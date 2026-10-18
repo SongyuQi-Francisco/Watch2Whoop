@@ -30,15 +30,15 @@
 
 ### 方式 2：填你自己的 API key
 
-「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」）→ 填模型、接口地址、API key、每月预算 →「保存」。
+「AI 设置」→「添加」→「来源」选你有 key 的那家（Google Gemini AI Studio 免费档可勾「免费档（单价 \$0）」；DeepSeek、通义千问选「OpenAI 兼容接口」）→ 填模型、接口地址、API key、每月预算 →「保存」。
 
 ![选来源](images/tester-handbook/ai-kinds.jpg) ![填 API key](images/tester-handbook/ai-api.jpg)
 
 key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。
 
-### 方式 3：用你的 Claude / ChatGPT 订阅
+### 方式 3：用你的 Claude / ChatGPT / Google AI 订阅
 
-适合在电脑上用 Claude 桌面版 / Claude Code、Codex 的人。「AI 设置」→「添加」→ 选「Claude 订阅」或「ChatGPT 订阅」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。
+适合在电脑上用 Claude 桌面版 / Claude Code、Codex、Gemini CLI / Antigravity 的人。「AI 设置」→「添加」→ 选「Claude 订阅」、「ChatGPT 订阅」或「Google AI 订阅」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。
 
 ![连接客户端（MCP）](images/tester-handbook/ai-mcp.jpg)
 

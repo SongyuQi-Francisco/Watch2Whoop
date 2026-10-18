@@ -484,6 +484,28 @@ def test_every_write_tool_asks_in_butler_settings():
     assert "Bash" in cfg["permissions"]["deny"] and cfg["permissions"]["defaultMode"] == "default"
 
 
+def test_gemini_butler_settings_and_policies():
+    """Gemini CLI butler configuration: settings.json and policies/butler.toml mirror the Claude Code setup."""
+    import tomllib
+    import json
+    from pathlib import Path
+    from body_engine.ai.chat import ALWAYS_CONFIRM
+    assistant = Path(__file__).resolve().parents[2] / "assistant"
+    g_cfg = json.loads((assistant / ".gemini/settings.json").read_text())
+    assert g_cfg["mcpServers"]["body-engine"]["headers"]["Authorization"] == "Bearer ${BODY_AI_TOKEN}"
+    assert "run_shell_command" in g_cfg["tools"]["exclude"] and "write_file" in g_cfg["tools"]["exclude"]
+
+    policy_file = assistant / ".gemini/policies/butler.toml"
+    assert policy_file.exists()
+    policy = tomllib.loads(policy_file.read_text())
+    rules = policy.get("rule", [])
+    ask_rule = next((r for r in rules if r.get("decision") == "ask_user" and r.get("mcpName") == "body-engine"), None)
+    assert ask_rule is not None
+    assert set(ask_rule["toolName"]) == ALWAYS_CONFIRM
+    deny_tools = next((r for r in rules if r.get("decision") == "deny" and not r.get("mcpName")), None)
+    assert deny_tools is not None and "run_shell_command" in deny_tools["toolName"]
+
+
 def test_failed_call_keeps_audit_but_undoes_partial_writes(dsn, world):
     """Same as mcp_server._call: commit after an error. Half-written lab results are undone by the savepoint, the failure audit stays."""
     ids, _ = world

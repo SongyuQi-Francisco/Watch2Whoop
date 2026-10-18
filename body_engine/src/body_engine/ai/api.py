@@ -54,7 +54,7 @@ def public_url(request: Request) -> str:
 
 
 def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dict:
-    """How to connect the three clients. Tokens are read from environment variables, never written into config files."""
+    """How to connect the clients. Tokens are read from environment variables, never written into config files."""
     url = public_url(request) + "/mcp"
     header = '{"Authorization": "Bearer ${' + token_env + '}"}'
     return {
@@ -64,9 +64,13 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
         "clients": {
             "claude-code": f"claude mcp add-json --scope user body-engine '{{\"type\": \"http\", \"url\": \"{url}\", \"headers\": {header}}}'",
             "codex": f"codex mcp add body-engine --url {url} --bearer-token-env-var {token_env}",
-            "gemini-cli": ("~/.gemini/settings.json 的 mcpServers 里加：\n"
-                           + json.dumps({"body-engine": {"httpUrl": url, "headers": {"Authorization": f"Bearer ${token_env}"}}},
+            "gemini-cli": (f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
+                           "# 或在 ~/.gemini/settings.json（及 Antigravity mcp_config.json）的 mcpServers 里加：\n"
+                           + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
+            "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,
+                                                                "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
+                                ensure_ascii=False, indent=2),
         },
         "prompt": "连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
     }
@@ -133,7 +137,7 @@ def _bad(fn, *a):
 def list_providers(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     uid = _self_only(viewer, user)
     return {"providers": providers.list_providers(conn, uid), "month_cost_usd": round(providers.month_cost(conn, uid), 4),
-            "kinds": catalog.public_catalog(), "mcp": mcp_setup(request), "fallback": _fallback_view(conn, viewer)}
+            "kinds": catalog.public_catalog(uid), "mcp": mcp_setup(request), "fallback": _fallback_view(conn, viewer)}
 
 
 @router.post("/v1/users/{user}/ai-providers", status_code=201)

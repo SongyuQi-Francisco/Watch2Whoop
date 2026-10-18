@@ -9,8 +9,8 @@
   and users can enter a custom unit price on the provider (e.g. 0 for local Ollama).
 """
 
-MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "generic_mcp_client")
-API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "openai_compatible")
+MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
+API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "gemini_cli", "openai_compatible")
 
 KINDS: dict[str, dict] = {
     "claude_plan_mcp": {
@@ -19,8 +19,11 @@ KINDS: dict[str, dict] = {
     "codex_plan_mcp": {
         "label": "ChatGPT 订阅（Codex）", "category": "mcp", "client": "codex",
         "note": "在你自己登录的 Codex CLI 里连 Body Engine 的 MCP；后端不碰你的 ChatGPT 账号。"},
+    "gemini_plan_mcp": {
+        "label": "Google AI 订阅（Gemini）", "category": "mcp", "client": "gemini-cli",
+        "note": "在你自己登录 Google 账号的 Gemini CLI / Antigravity 里连 Body Engine 的 MCP；后端不碰你的 Google 账号。"},
     "generic_mcp_client": {
-        "label": "其他 MCP 客户端（Gemini CLI 等）", "category": "mcp", "client": "gemini-cli",
+        "label": "其他 MCP 客户端", "category": "mcp", "client": "other",
         "note": "任何支持远程 MCP（Streamable HTTP + Bearer 头）的客户端都可以连。"},
     "anthropic_api": {
         "label": "Anthropic API（Claude）", "category": "api", "default_model": "claude-opus-5-5",
@@ -32,8 +35,15 @@ KINDS: dict[str, dict] = {
         "vision": True, "key_hint": "sk-…（platform.openai.com 生成）"},
     "gemini_api": {
         "label": "Google Gemini API", "category": "api", "default_model": "gemini-4-argon",
-        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-pro"],
-        "vision": True, "key_hint": "AI Studio 生成的 API key"},
+        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                   "gemini-2.5-pro", "gemini-2.5-flash"],
+        "vision": True, "key_hint": "AIza…（AI Studio 生成；免费额度可勾选下方「免费额度」）"},
+    "gemini_cli": {
+        "label": "Google AI 订阅（服务端 Gemini CLI）", "category": "api", "default_model": "gemini-4-argon",
+        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                   "gemini-2.5-pro", "gemini-2.5-flash"],
+        "vision": True, "needs_key": False, "owner_only": True,
+        "note": "仅限部署者本人：调用服务器上已登录 Google AI Plan 的 gemini CLI，在今天页内对话，不走 API key 计费。"},
     "openai_compatible": {
         "label": "OpenAI 兼容接口（DeepSeek、通义千问、Ollama…）", "category": "api", "default_model": None,
         "models": [], "vision": None, "needs_base_url": True,
@@ -77,9 +87,16 @@ def cost_usd(model: str, usage: dict, custom_in=None, custom_out=None) -> float:
             + usage.get("output_tokens", 0) * p_out) / 1_000_000
 
 
-def public_catalog() -> list[dict]:
+def is_owner(user_id: int) -> bool:
+    import os
+    return str(user_id) == os.environ.get("BODY_ASSISTANT_USER_ID", "1")
+
+
+def public_catalog(user_id: int | None = None) -> list[dict]:
     out = []
     for kind, k in KINDS.items():
+        if user_id is not None and k.get("owner_only") and not is_owner(user_id):
+            continue
         out.append({"kind": kind, **{f: v for f, v in k.items()},
                     "prices": {m: PRICES.get(m) for m in k.get("models", [])}})
     return out

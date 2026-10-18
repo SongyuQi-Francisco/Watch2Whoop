@@ -90,7 +90,20 @@ class GeminiAdapter(Adapter):
                 "tool_use" if calls else "end")
         if stop in ("max_tokens", "refusal"):
             calls = []
-        u = {"input_tokens": (usage.prompt_token_count or 0) if usage else 0,
-             # Thinking tokens are billed at the output price
-             "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0}
+        u = self._extract_usage(usage)
         yield "result", TurnResult(text=text, tool_calls=calls, native=native, usage=u, stop=stop)
+
+    @staticmethod
+    def _extract_usage(usage) -> dict:
+        if not usage:
+            return {}
+        prompt_tok = getattr(usage, "prompt_token_count", 0) or 0
+        cached_tok = getattr(usage, "cached_content_token_count", 0) or 0
+        thoughts_tok = getattr(usage, "thoughts_token_count", 0) or 0
+        candidates_tok = getattr(usage, "candidates_token_count", 0) or 0
+        return {
+            "input_tokens": max(prompt_tok - cached_tok, 0),
+            "cache_read_tokens": cached_tok,
+            "output_tokens": candidates_tok + thoughts_tok,
+        }
+

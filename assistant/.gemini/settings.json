@@ -1,0 +1,44 @@
+{
+  "context": {
+    "fileName": [
+      "CLAUDE.md",
+      "GEMINI.md"
+    ]
+  },
+  "mcpServers": {
+    "body-engine": {
+      "type": "http",
+      "url": "${BODY_MCP_URL:-https://body.example.com/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${BODY_AI_TOKEN}"
+      }
+    }
+  },
+  "tools": {
+    "exclude": [
+      "run_shell_command",
+      "write_file",
+      "replace",
+      "read_file",
+      "read_many_files",
+      "list_directory",
+      "glob",
+      "grep_search",
+      "web_fetch",
+      "google_web_search",
+      "save_memory"
+    ]
+  },
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TZ=Australia/Sydney /bin/date '+[当前本地时间 %Y-%m-%d %H:%M %a，Australia/Sydney]'"
+          }
+        ]
+      }
+    ]
+  }
+}

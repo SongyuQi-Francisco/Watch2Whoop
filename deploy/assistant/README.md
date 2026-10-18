@@ -75,3 +75,13 @@ The conversation flows were run with `claude -p` inside `assistant/` (same CLAUD
 - A session is stuck: send it a message from the phone and Claude Code serves it again; or `ssh Ali systemctl restart body-butler`.
 - To start a new conversation (context too long): `/clear` in this session on the phone, or create a new session for the Ali machine in claude.ai/code (same directory, same settings).
 - Mac fallback: `deploy/assistant/butler.py status`; logs `health_data/assistant/butler-*.log`.
+
+## Gemini CLI (Google AI Plan) support in `assistant/`
+When the owner has a Google AI Plan (Google AI Pro / Ultra) instead of or alongside a Claude subscription, `assistant/` also provides a complete Gemini CLI configuration:
+- `assistant/.gemini/settings.json`: reads `CLAUDE.md` as the butler persona (`context.fileName`), connects `body-engine` HTTP MCP (`${BODY_MCP_URL:-https://body.example.com/mcp}` with `Bearer ${BODY_AI_TOKEN}`), excludes built-in shell/filesystem/web tools (`tools.exclude`), and attaches the local Sydney timestamp via `BeforeAgent` hook.
+- `assistant/.gemini/policies/butler.toml`: Policy Engine rules matching `.claude/settings.json` (`test_every_write_tool_asks_in_butler_settings` verifies parity) — allows `body-engine` MCP tools, requires `ask_user` confirmation for the 5 destructive undo/delete tools (`ALWAYS_CONFIRM`), and denies built-in shell/file/web tools.
+- **Check environment**: run `deploy/assistant/butler.py gemini-check` to verify the `gemini` binary (`BODY_GEMINI_BIN` or `PATH`), Google OAuth login (`~/.gemini/oauth_creds.json`), and `assistant/.gemini/settings.json`.
+- **Two ways for the owner to use it**:
+  1. **Interactive terminal / MCP**: `cd assistant && gemini` (uses your Google AI Plan OAuth login and `BODY_AI_TOKEN` to call `body-engine` MCP tools directly).
+  2. **In-page Jarvis chat (`gemini_cli` provider, owner-only)**: in the Today page under "Me → AI settings → Add", the deployer (`BODY_ASSISTANT_USER_ID`, default 1) can add **Google AI Plan (服务器 Gemini CLI · 仅部署者)**. The backend `GeminiCliAdapter` invokes `gemini -p ... --output-format stream-json` in an isolated workspace with `GEMINI_API_KEY` / `GOOGLE_API_KEY` stripped, routing in-page multimodal chat and `body-engine` tool calls (with in-page write confirmation cards) through the owner's Google AI Plan OAuth login. Non-owner users cannot see or create `gemini_cli`.
+

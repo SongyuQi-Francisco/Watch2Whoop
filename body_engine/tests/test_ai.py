@@ -479,3 +479,106 @@ def test_mcp_read_only_and_revoke(client, world, setup):
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["A"])).status_code == 404
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["B"])).status_code == 204
     assert rpc(client, ro, "tools/list").status_code == 401
+
+
+# ---------------------------------------------------------------- Gemini Plan & Gemini CLI
+def test_gemini_plan_mcp_and_redirect(client, world):
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["D"]), json={"kind": "gemini_plan_mcp", "is_default": True})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert r.json()["kind"] == "gemini_plan_mcp" and "Google AI 订阅" in r.json()["label"]
+    # When default provider is gemini_plan_mcp, chat redirects to Gemini CLI / Antigravity
+    r_chat = chat(client, tok["D"])
+    assert r_chat.status_code == 409
+    detail = r_chat.json()["detail"]
+    assert detail["code"] == "subscription"
+    assert "Gemini CLI / Antigravity" in detail["message"]
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["D"]))
+
+
+def test_gemini_cli_owner_only_isolation(client, world, monkeypatch):
+    ids, tok = world
+    monkeypatch.setenv("BODY_ASSISTANT_USER_ID", str(ids["C"]))
+    # User B (not owner) is rejected
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["B"]), json={"kind": "gemini_cli"})
+    assert r.status_code == 422 and "部署者" in r.text
+    # Public catalog filters out gemini_cli for non-owner
+    cat_b = client.get("/v1/users/me/ai-providers", headers=H(tok["B"])).json()["kinds"]
+    assert not any(k["kind"] == "gemini_cli" for k in cat_b)
+    # User C (owner) sees gemini_cli in catalog and can create it without an api_key
+    cat_c = client.get("/v1/users/me/ai-providers", headers=H(tok["C"])).json()["kinds"]
+    cli_kind = next(k for k in cat_c if k["kind"] == "gemini_cli")
+    assert cli_kind["needs_key"] is False and cli_kind["owner_only"] is True
+    # Reject api_key on gemini_cli
+    r_bad = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli", "api_key": "some-key"})
+    assert r_bad.status_code == 422
+    # Create successfully
+    r_ok = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli", "model": "gemini-2.5-flash"})
+    assert r_ok.status_code == 201
+    g_id = r_ok.json()["id"]
+    assert r_ok.json()["kind"] == "gemini_cli"
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{g_id}", headers=H(tok["C"]))
+
+
+
+def test_free_tier_budget_zero_price(client, world):
+    """Free Tier configuration (price_in=0, price_out=0) is marked free and not blocked by monthly_budget_usd=0."""
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["A"]), json={
+        "kind": "gemini_api",
+        "api_key": "AIzaSyFakeKeyForTest",
+        "model": "gemini-3.6-flash",
+        "monthly_budget_usd": 0,
+        "price_in_per_mtok": 0.0,
+        "price_out_per_mtok": 0.0,
+    })
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    # Chat loop does not block with 402 budget error
+    FakeAdapter.script = [{"text": "Free tier ok"}]
+    r_chat = chat(client, tok["A"], "test free tier")
+    assert r_chat.status_code == 200
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["A"]))
+
+
+def test_gemini_cli_adapter_unit():
+    from body_engine.ai.adapters.gemini_cli import _hold_back_tag_prefix, _parse_tool_calls, clean_env, BLOCKED_ENV
+    # Tag holding back
+    assert _hold_back_tag_prefix("hello <tool_call") == ("hello ", "<tool_call")
+    assert _hold_back_tag_prefix("hello <tool") == ("hello ", "<tool")
+    assert _hold_back_tag_prefix("hello world") == ("hello world", "")
+    assert _hold_back_tag_prefix("hello <tool_call>{}</tool_call>") == ("hello ", "<tool_call>{}</tool_call>")
+    # Tool call parsing
+    raw = '思考过程<tool_call>{"name": "get_profile", "args": {"user": "me"}}</tool_call>结束'
+    clean, calls = _parse_tool_calls(raw)
+    assert clean == "思考过程结束"
+    assert len(calls) == 1 and calls[0]["name"] == "get_profile" and calls[0]["args"] == {"user": "me"}
+    # clean_env strips blocked keys
+    os.environ["GEMINI_API_KEY"] = "secret"
+    os.environ["GOOGLE_API_KEY"] = "secret"
+    try:
+        env = clean_env()
+        for k in BLOCKED_ENV:
+            assert k not in env
+    finally:
+        os.environ.pop("GEMINI_API_KEY", None)
+        os.environ.pop("GOOGLE_API_KEY", None)
+
+
+def test_gemini_api_adapter_cached_tokens():
+    from unittest.mock import MagicMock
+    from body_engine.ai.adapters.gemini_api import GeminiAdapter
+    adapter = GeminiAdapter("gemini-2.5-flash", "AIzaTest")
+    meta = MagicMock()
+    meta.prompt_token_count = 1000
+    meta.cached_content_token_count = 600
+    meta.candidates_token_count = 200
+    meta.thoughts_token_count = 0
+    usage = adapter._extract_usage(meta)
+    assert usage["input_tokens"] == 400
+    assert usage["cache_read_tokens"] == 600
+    assert usage["output_tokens"] == 200
