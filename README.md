@@ -58,6 +58,7 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 - [ ] **Other watches**: Garmin, Oura, Polar, Huawei, Xiaomi, Android Health Connect
 - [ ] Shopping list, cycle tracking, more languages
 - [ ] *Later (deferred)*: **Training module v2**: exercise library, 3 / 4 / 5-day splits, weekly plans and recommendations, built by talking to your AI ([plan](docs/training-v2-plan.md))
+- [ ] *Later (deferred)*: **Friends page**: family / friend circles, today + 7-day status of everyone you share with, rolling 7-day leaderboards ([plan](docs/friends-social-plan.md))
 
 ### Contributing
 Every change goes through a pull request from your own branch; CI must pass and a maintainer reviews. Want to bring this to **your** watch? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -115,6 +116,7 @@ cd Watch2Whoop
 - [ ] **其他手表**：Garmin、Oura、Polar、华为、小米、安卓 Health Connect
 - [ ] 采购清单、生理周期、更多语言
 - [ ] *以后的版本（暂不做）*：**训练模块 v2**：动作库、3 / 4 / 5 分化、每周计划和动作推荐，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
+- [ ] *以后的版本（暂不做）*：**朋友页**：家庭 / 好友圈子，一屏看到共享的人今天和最近 7 天的状态，近 7 天滚动排行榜（[方案](docs/friends-social-plan.md)）
 
 ### 参与贡献
 所有改动都从你自己的分支提 Pull Request，CI 通过、维护者审核后合并。想把本项目带到**你的**手表上？先看 [CONTRIBUTING.md](CONTRIBUTING.md)。
