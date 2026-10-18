@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import login_codes, login_limit, session, views
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.22-2026-10-19"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.23-2026-10-19"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])

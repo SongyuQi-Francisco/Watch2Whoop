@@ -51,13 +51,13 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 ### Roadmap
 - [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
 - [x] One-command local Quick Start
+- [x] **Training module v2**: bilingual exercise library, 3 / 4 / 5-day splits, weekly plans, readiness autoregulation and safe exercise swap, built by talking to your AI ([design](docs/training-v2-plan.md))
 - [ ] iOS app on TestFlight
 - [ ] English docs and UI
 - [ ] One-command Linux VPS installer
 - [ ] RMSSD-based recovery (iOS 27 / Open Wearables 0.10)
 - [ ] **Other watches**: Garmin, Oura, Polar, Huawei, Xiaomi, Android Health Connect
 - [ ] Shopping list, cycle tracking, more languages
-- [ ] *Later (deferred)*: **Training module v2**: exercise library, 3 / 4 / 5-day splits, weekly plans and recommendations, built by talking to your AI ([plan](docs/training-v2-plan.md))
 
 ### Contributing
 Every change goes through a pull request from your own branch; CI must pass and a maintainer reviews. Want to bring this to **your** watch? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -108,13 +108,13 @@ cd Watch2Whoop
 ### 路线图
 - [x] Apple Watch：恢复、负荷、睡眠、身体年龄、压力、教练、报告
 - [x] 一条命令的本地快速开始
+- [x] **训练模块 v2**：双语动作库、3 / 4 / 5 分化、每周计划、恢复分自调节与同模式安全换动作，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
 - [ ] iOS app 上 TestFlight
 - [ ] 英文文档和界面
 - [ ] Linux 云服务器一键安装
 - [ ] 基于 RMSSD 的恢复分（iOS 27 / Open Wearables 0.10）
 - [ ] **其他手表**：Garmin、Oura、Polar、华为、小米、安卓 Health Connect
 - [ ] 采购清单、生理周期、更多语言
-- [ ] *以后的版本（暂不做）*：**训练模块 v2**：动作库、3 / 4 / 5 分化、每周计划和动作推荐，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
 
 ### 参与贡献
 所有改动都从你自己的分支提 Pull Request，CI 通过、维护者审核后合并。想把本项目带到**你的**手表上？先看 [CONTRIBUTING.md](CONTRIBUTING.md)。

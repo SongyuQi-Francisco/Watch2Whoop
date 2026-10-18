@@ -192,21 +192,93 @@ def resolve_exercise(idx: dict, name: str, exercise_id: str | None) -> tuple[dic
     return None, cands[:8]
 
 
-def search_exercises(conn, user_id: int, query: str, client=None) -> list[dict]:
-    """Search the exercise library (name / alias contains query), with the Body Engine status (banned / caution / active)."""
-    client = client or sparky_client.client_for_user(conn, user_id)
-    idx = exercise_index(conn, user_id, client)
-    q = _norm(query)
-    out = []
-    for e in idx["library"]:
-        m = idx["meta_by_app_id"].get(e["id"])
-        names = [e["name"], *(_meta_names(m) if m else [])]
-        if not q or any(q in _norm(x) for x in names):
-            out.append({"exercise_id": e["id"], "name": e["name"], "category": e.get("category"),
-                        "primary_muscles": e.get("primary_muscles"),
-                        "status": (m or {}).get("status") or ("banned" if banned_reason(idx, e["name"], e["id"]) else None),
-                        "cues": (m or {}).get("cues"), "reason": (m or {}).get("reason")})
-    return out[:30]
+def search_exercises(conn, user_id: int, query: str | None = "", client=None,
+                     muscle: str | None = None, equipment: str | None = None,
+                     pattern: str | None = None, include_banned: bool = True,
+                     limit: int = 30) -> list[dict]:
+    """Search the bilingual exercise catalog (plus SparkyFitness library when linked) by name / alias / muscle / equipment / movement pattern."""
+    from ..training import catalog as tr_catalog
+    cat_hits = tr_catalog.search(
+        conn, user_id=user_id, query=query, muscle=muscle,
+        equipment=equipment, pattern=pattern, include_banned=include_banned, limit=limit,
+    )
+    sparky_by_norm: dict[str, dict] = {}
+    sparky_lib: list[dict] = []
+    idx: dict | None = None
+    try:
+        sp_client = client or sparky_client.client_for_user(conn, user_id)
+        idx = exercise_index(conn, user_id, sp_client)
+        sparky_lib = idx["library"]
+        for e in sparky_lib:
+            sparky_by_norm[_norm(e["name"])] = e
+            sparky_by_norm[_strip_paren(e["name"])] = e
+    except Exception:
+        pass
+
+    out: list[dict] = []
+    seen_app_ids: set[str] = set()
+    for c in cat_hits:
+        app_id = c.get("app_exercise_id")
+        if not app_id and sparky_by_norm:
+            sp = sparky_by_norm.get(_norm(c["name_zh"])) or sparky_by_norm.get(_strip_paren(c["name_zh"]))
+            if sp:
+                app_id = sp["id"]
+        if app_id:
+            seen_app_ids.add(app_id)
+        out.append({
+            "slug": c["slug"],
+            "exercise_id": app_id or c["slug"],
+            "name": c["name_zh"],
+            "name_zh": c["name_zh"],
+            "name_en": c["name_en"],
+            "category": c["category"],
+            "movement_pattern": c["movement_pattern"],
+            "movement_pattern_zh": c.get("movement_pattern_zh"),
+            "equipment": c["equipment"],
+            "equipment_zh": c["equipment_zh"],
+            "primary_muscles": c["primary_muscles"],
+            "primary_muscles_zh": c["primary_muscles_zh"],
+            "secondary_muscles": c["secondary_muscles"],
+            "status": c["status"],
+            "cues": c["cues"],
+            "reason": c["reason"],
+            "joint_flags": c["joint_flags"],
+            "per_side": c["per_side"],
+        })
+
+    # Append any custom SparkyFitness exercises not in the catalog when no structured filter is active
+    if idx and not (muscle or equipment or pattern):
+        q = _norm(query)
+        for e in sparky_lib:
+            if e["id"] in seen_app_ids:
+                continue
+            m = idx["meta_by_app_id"].get(e["id"])
+            names = [e["name"], *(_meta_names(m) if m else [])]
+            if not q or any(q in _norm(x) for x in names):
+                st = (m or {}).get("status") or ("banned" if banned_reason(idx, e["name"], e["id"]) else "active")
+                if not include_banned and st == "banned":
+                    continue
+                out.append({
+                    "slug": (m or {}).get("exercise_ref") or e["id"],
+                    "exercise_id": e["id"],
+                    "name": e["name"],
+                    "name_zh": e["name"],
+                    "name_en": (m or {}).get("name_en"),
+                    "category": e.get("category"),
+                    "movement_pattern": None,
+                    "movement_pattern_zh": None,
+                    "equipment": [],
+                    "equipment_zh": [],
+                    "primary_muscles": e.get("primary_muscles") or [],
+                    "primary_muscles_zh": [],
+                    "secondary_muscles": [],
+                    "status": st,
+                    "cues": (m or {}).get("cues"),
+                    "reason": (m or {}).get("reason"),
+                    "joint_flags": {},
+                    "per_side": False,
+                })
+    return out[:limit]
 
 
 # ---------------------------------------------------------------- workouts

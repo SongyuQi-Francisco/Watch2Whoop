@@ -553,8 +553,15 @@
   function exerciseRow(x) {
     const st = x.status === "banned" ? badge("bad", "禁用") : x.status === "caution" ? badge("mid", "注意") : "";
     const sug = (x.suggestions || []).map((s) => badge(s.level === "warning" ? "mid" : "good", s.next_weight_kg != null ? `→ ${s.next_weight_kg} kg` : "建议")).join(" ");
-    return `<div class="ex ${x.status === "banned" ? "banned" : ""}"><div class="ex-name"><span>${esc(x.name)}</span>${st}${sug}</div>
+    const ref = x.slug || x.name || "";
+    return `<div class="ex ${x.status === "banned" ? "banned" : ""}" data-ex-ref="${esc(ref)}" style="cursor:pointer"><div class="ex-name"><span>${esc(x.name)}</span>${st}${sug}</div>
       ${x.sets_text ? `<div class="ex-meta">${esc(x.sets_text)}</div>` : ""}</div>`;
+  }
+
+  function bindExRows(root) {
+    for (const el of $$("[data-ex-ref]", root)) {
+      if (el.dataset.exRef) el.onclick = () => exerciseDetailSheet(el.dataset.exRef);
+    }
   }
 
   function trainingSheet(d) {
@@ -562,13 +569,17 @@
     let html = "";
     if (t.error) html += kv("训练", null, t.error);
     else {
+      if (t.readiness?.advice && t.readiness.tier !== "unknown") {
+        const tone = t.readiness.tier === "green" ? "good" : t.readiness.tier === "red" ? "bad" : "mid";
+        html += `<div class="rcard-tags" style="margin-bottom:6px">${badge(tone, t.readiness.label || "恢复自调节")}</div><div class="small muted" style="margin-bottom:10px">${esc(t.readiness.advice)}</div>`;
+      }
       html += t.planned.length ? t.planned.map((p) => {
         const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
         return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
       }).join("") : `<div class="empty faint" style="padding:12px">${t.rest_day ? "休息" : "无计划"}</div>`;
       if (t.logged.length) html += `<div class="cat">已记录</div>` + t.logged.map((s) => s.exercises.map(exerciseRow).join("")).join("");
     }
-    openSheet(`训练 · ${shortDay(d.date)}`, html);
+    openSheet(`训练 · ${shortDay(d.date)}`, html, bindExRows);
   }
 
   function nutritionSheet(d) {
@@ -2236,6 +2247,98 @@
   const weekStart = (iso) => addDays(iso, -((parseDay(iso).getDay() + 6) % 7));
   const planShort = (planned) => planned[0].name.replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || planned[0].name;   // week strip: first session, short
 
+  async function exerciseDetailSheet(slugOrName) {
+    openSheet("动作详情", `<div class="empty faint">…</div>`);
+    let ex;
+    try { ex = await load(`ex:${slugOrName}`, `/v1/users/${ownerPath()}/training/exercises/${encodeURIComponent(slugOrName)}`); }
+    catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${esc(e.message || "暂无详情")}</div>`; return; }
+    $("#sheet-title").textContent = ex.name_zh || slugOrName;
+    const stBadge = ex.status === "banned" ? badge("bad", "禁用") : ex.status === "caution" ? badge("mid", "注意") : badge("good", "正常");
+    const muscles = [...(ex.primary_muscles_zh || []).map((m) => badge("plain", m)), ...(ex.equipment_zh || []).map((q) => badge("plain", q)),
+      ex.movement_pattern_zh ? badge("plain", ex.movement_pattern_zh) : ""].filter(Boolean).join("");
+    const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${k}${v === "high" ? "高" : "中"}`)).join("");
+    const steps = (ex.instructions_zh || []).map((s) => `<li>${esc(s)}</li>`).join("");
+    const self = isSelf();
+    const alts = (ex.alternatives || []).map((a) => `<div class="item" style="align-items:center">
+      <div style="flex:1;min-width:0"><div class="row-title">${esc(a.name_zh)}</div>
+        <div class="small muted">${esc([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])].join(" · "))}</div></div>
+      ${self ? `<button class="btn" style="padding:4px 10px;font-size:12px" data-swap-to="${esc(a.slug)}">换进计划</button>` : ""}</div>`).join("");
+    $("#sheet-body").innerHTML = `
+      ${ex.name_en ? `<div class="small muted" style="margin:-4px 0 8px">${esc(ex.name_en)}</div>` : ""}
+      <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
+      ${ex.reason ? kv("限制原因", esc(ex.reason)) : ""}
+      ${ex.cues ? kv("动作要点", esc(ex.cues)) : ""}
+      ${steps ? `<div class="cat" style="margin-top:12px">执行步骤</div><ol class="steps">${steps}</ol>` : ""}
+      ${alts ? `<div class="cat" style="margin-top:14px">同模式安全替代动作</div><div class="card list">${alts}</div>` : ""}`;
+    const root = $("#sheet-body");
+    for (const b of $$("[data-swap-to]", root)) {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const res = await api(`/v1/users/me/training/plan/swap`, { method: "POST", body: { from_exercise: ex.slug, to_exercise: b.dataset.swapTo } });
+          delete S.data[`tweek${S.todayDate}:${S.owner}`];
+          delete S.data[todayKey()];
+          closeSheet(); render();
+          toast(`已替换为 ${res.to_exercise?.name_zh || b.dataset.swapTo}`);
+        } catch (err) { toast(err.message); b.disabled = false; }
+      };
+    }
+  }
+
+  async function exerciseLibrarySheet() {
+    openSheet("动作库", `<div class="empty faint">…</div>`);
+    let list = [];
+    try { const res = await load("exlib", `/v1/users/${ownerPath()}/training/exercises?limit=100`); list = res.exercises || []; }
+    catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${esc(e.message)}</div>`; return; }
+    let q = "", grp = "";
+    const GROUPS_FILTER = [["", "全部"], ["back", "背"], ["chest", "胸"], ["legs", "腿"], ["shoulders", "肩"], ["arms", "手臂"], ["core", "核心"]];
+    const draw = () => {
+      const qq = q.trim().toLowerCase();
+      const shown = list.filter((x) => (!grp || (x.muscle_groups || []).includes(grp)) && (!qq || [x.name_zh, x.name_en, ...(x.aliases || [])].some((n) => String(n || "").toLowerCase().includes(qq))));
+      $("#sheet-body").innerHTML = `
+        <input class="search" id="ex-q" type="search" placeholder="搜中英文动作名、别名…" value="${esc(q)}" style="margin-bottom:8px">
+        <div class="tags" style="margin-bottom:10px">${GROUPS_FILTER.map(([k, t]) => `<button class="tag ${grp === k ? "on" : ""}" data-exgrp="${k}"><span>${t}</span></button>`).join("")}</div>
+        <div class="card list" id="ex-list">${shown.map((x) => `<button class="item" data-ex-open="${esc(x.slug)}">
+          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(x.name_zh)} ${x.status === "banned" ? badge("bad", "禁用") : x.status === "caution" ? badge("mid", "注意") : ""}</div>
+            <div class="small muted">${esc([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])].join(" · "))}</div></div>
+          <span class="chev">${ICON.chev}</span></button>`).join("") || `<div class="empty faint">没有匹配的动作</div>`}</div>`;
+      const root = $("#sheet-body");
+      for (const b of $$("[data-exgrp]", root)) b.onclick = () => { grp = b.dataset.exgrp; draw(); };
+      for (const b of $$("[data-ex-open]", root)) b.onclick = () => exerciseDetailSheet(b.dataset.exOpen);
+      const inp = $("#ex-q", root);
+      if (inp) inp.oninput = () => { q = inp.value; draw(); $("#ex-q", $("#sheet-body"))?.focus(); };
+    };
+    draw();
+  }
+
+  function splitPickerSheet(wk) {
+    const splits = wk?.available_splits || [];
+    let chosen = wk?.plan?.split_type || (splits[2]?.split_type || "4_day_upper_lower");
+    const draw = () => {
+      const cur = splits.find((s) => s.split_type === chosen) || splits[0];
+      openSheet("周训练分化计划", `
+        <div class="tags" style="margin-bottom:10px">${splits.map((s) => `<button class="tag ${s.split_type === chosen ? "on" : ""}" data-split="${esc(s.split_type)}"><span>${esc(s.name)}</span></button>`).join("")}</div>
+        ${cur ? `<div class="small muted" style="margin-bottom:10px">${esc(cur.summary)}</div>
+          <div class="card list">${(cur.days || []).map((d) => kv(`${d.weekday_zh} · ${d.name}`, `${d.exercise_count} 动作`)).join("")}</div>` : ""}
+        <div class="btns"><button class="btn btn-primary" id="save-split">启用该周计划（自动避开禁用动作）</button></div>`,
+      (root) => {
+        for (const b of $$("[data-split]", root)) b.onclick = () => { chosen = b.dataset.split; draw(); };
+        const save = $("#save-split", root);
+        if (save) save.onclick = async () => {
+          save.disabled = true;
+          try {
+            const res = await api(`/v1/users/me/training/plan`, { method: "PUT", body: { split_type: chosen, auto_swap_banned: true, sync_sparky: true } });
+            delete S.data[`tweek${S.todayDate}:${S.owner}`];
+            delete S.data[todayKey()];
+            closeSheet(); render();
+            toast(`已启用：${res.saved?.name || chosen}`);
+          } catch (err) { toast(err.message); save.disabled = false; }
+        };
+      });
+    };
+    draw();
+  }
+
   async function trainingPageHtml() {
     const today = S.todayDate, mon = weekStart(today), sun = addDays(mon, 6);
     const [wk, wcal] = await Promise.all([
@@ -2255,15 +2358,25 @@
         <span class="pl">${esc(label)}</span></button>`;
     }
     const sm = wcal?.summary || {};
-    const left = `<div class="section"><div class="section-head"><h2>本周</h2>${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}</div>
+    const rd = wk.readiness;
+    const rdHtml = rd && rd.tier && rd.tier !== "unknown"
+      ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><div class="rcard-tags">${badge(rd.tier === "green" ? "good" : rd.tier === "red" ? "bad" : "mid", rd.label)}</div><div class="small muted" style="margin-top:4px">${esc(rd.advice)}</div></div>` : "";
+    const volEntries = Object.values(wk.volume_by_group || {});
+    const volHtml = volEntries.length
+      ? `<div class="rcard-tags" style="margin-top:10px">${volEntries.map((g) => badge(g.status === "optimal" ? "good" : "plain", `${g.name_zh} ${g.direct_sets}组`)).join("")}</div>` : "";
+    const headActions = `<span style="display:flex;gap:10px;align-items:center">
+      ${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}
+      ${isSelf() && wk.available_splits?.length ? `<button class="link" id="pick-split">${wk.plan ? "切换分化" : "选周计划"}</button>` : ""}
+      <button class="link" id="open-exlib">动作库</button></span>`;
+    const left = `<div class="section"><div class="section-head"><h2>本周</h2>${headActions}</div>
         <div class="card"><div class="week">${week}</div>
         <div class="msum" style="margin:14px 0 0">${[["训练", sm.training_days, "天"], ["时长", sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           ["消耗", (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           ["计划", (wk.days || []).filter((x) => x.planned.length).length || null, "天"]]
-          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div></div></div>`;
+          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}</div></div>`;
     const sugg = (wk.suggestions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv("建议", esc(x.title)) + (x.next_weight_kg != null ? kv("下次重量", `${fmtNum(x.next_weight_kg, 1)} kg`) : "")))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.level === "warning" ? "mid" : "good", x.next_weight_kg != null ? `→ ${fmtNum(x.next_weight_kg, 1)} kg` : "建议")}</span><span class="chev">${ICON.chev}</span></button>`);
-    const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv("状态", x.status === "banned" ? "禁用" : "注意") + (x.reason ? kv("原因", esc(x.reason)) : "") + (x.cues ? kv("要点", esc(x.cues)) : "")))}>
+    const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => exerciseDetailSheet(x.slug || x.name))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.status === "banned" ? "bad" : "mid", x.status === "banned" ? "禁用" : "注意")}</span><span class="chev">${ICON.chev}</span></button>`);
     const recs = wk.error ? `<div class="section"><div class="section-head"><h2>建议</h2></div><div class="empty faint">${esc(short(wk.error, "—"))}</div></div>`
       : `<div class="section"><div class="section-head"><h2>建议</h2></div>${sugg.length || caut.length ? `<div class="card list">${[...sugg, ...caut].join("")}</div>` : `<div class="empty faint">暂无</div>`}</div>`;
@@ -2276,7 +2389,7 @@
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
       return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
     }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? "休息" : "无计划"}</div>`;
-    openSheet(`计划 · ${fmtDay(iso)}`, html);
+    openSheet(`计划 · ${fmtDay(iso)}`, html, bindExRows);
   }
 
   function afterTraining(view) {
@@ -2286,6 +2399,10 @@
       const iso = b.dataset.wday;
       if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso, planDays[iso]);
     };
+    const pick = $("#pick-split", view);
+    if (pick && wk) pick.onclick = () => splitPickerSheet(wk);
+    const lib = $("#open-exlib", view);
+    if (lib) lib.onclick = () => exerciseLibrarySheet();
     const c = $("#rec-cal", view);
     if (c) { bindCalSwipe(c); renderCal(0); }
   }

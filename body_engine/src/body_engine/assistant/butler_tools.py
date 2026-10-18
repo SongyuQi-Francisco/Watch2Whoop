@@ -112,10 +112,17 @@ TOOL_SPECS: list[dict] = [
     # ---------- SparkyFitness writes ----------
     dict(
         name="search_exercises",
-        description="在 SparkyFitness 动作库按名称 / 别名找动作：exercise_id、名称、主要肌群、状态（banned / caution / active）"
-                    "和要点。记训练前用它对准动作；query 空 = 全部（最多 30）。",
-        input_schema=_schema({"user": USER, "query": {"type": "string", "description": "例 卧推"}}),
-        handler=lambda conn, uid, a: sparky_write.search_exercises(conn, uid, a["query"]),
+        description="在动作库（+ SparkyFitness）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+        input_schema=_schema({
+            "user": USER,
+            "query": _n("string"),
+            "muscle": _n("string", "chest/back/shoulders/legs/arms/core 或中文"),
+            "equipment": _n("string", "dumbbell/barbell/cable/machine/body only 或中文"),
+            "pattern": _n("string"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.search_exercises(
+            conn, uid, a.get("query") or "", muscle=a.get("muscle"),
+            equipment=a.get("equipment"), pattern=a.get("pattern")),
         scope="training",
     ),
     dict(
