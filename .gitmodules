@@ -1,0 +1,3 @@
+[submodule "vendor/open-wearables"]
+	path = vendor/open-wearables
+	url = https://github.com/the-momentum/open-wearables.git

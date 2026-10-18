@@ -1,0 +1,198 @@
+# Watch2Whoop Quick Start: Body Engine + Open Wearables + SparkyFitness (+ Grafana with --grafana) in ONE
+# compose project, for trying the project on a laptop. Not the production layout (see deploy/ for that).
+# Run it through ./quickstart.sh, which generates quickstart/.data/ (secrets, env) first.
+# Every port binds 127.0.0.1 only; host ports come from quickstart/.data/quickstart.env.
+name: ${W2W_PROJECT:-watch2whoop-quickstart}
+
+x-ow-backend: &ow-backend
+  pull_policy: missing
+  image: themomentum/open-wearables-backend:0.9.0@sha256:2addfb46940ae2a6f91ac888921106d51796c49c19876356e220e97c8b41ff98
+  env_file: [./.data/open_wearables.env]
+  environment:
+    DB_HOST: ow-db
+    REDIS_HOST: ow-redis
+    TZ: ${W2W_TZ:-UTC}
+  depends_on:
+    ow-db: {condition: service_healthy}
+    ow-redis: {condition: service_started}
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------- Body Engine
+  body-db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: body
+      POSTGRES_USER: body
+      POSTGRES_PASSWORD_FILE: /run/secrets/body_db_password
+      TZ: ${W2W_TZ:-UTC}
+    secrets: [body_db_password]
+    volumes: [body_db_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U body -d body"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  body-engine:
+    build: ../body_engine
+    image: watch2whoop-body-engine:quickstart
+    environment:
+      BODY_DB_HOST: body-db
+      BODY_DB_PORT: "5432"
+      BODY_DB_PASSWORD_FILE: /run/secrets/body_db_password
+      BODY_SECRETS_DIR: /run/secrets
+      BODY_SPARKY_URL: http://sparkyfitness-frontend:80
+      BODY_OW_URL: http://ow-app:8000
+      BODY_OW_API_KEY_FILE: /run/secrets/open_wearables_api_key
+      BODY_AI_MASTER_KEY_FILE: /run/secrets/ai_master_key
+      BODY_HEALTH_DATA_DIR: /data/health
+      BODY_PUBLIC_URL: http://localhost:${W2W_BODY_PORT:-18100}
+      # plain http://localhost: let Safari / WKWebView keep the session cookie (only for Host localhost)
+      BODY_WEB_INSECURE_LOCAL_COOKIE: "1"
+      TZ: ${W2W_TZ:-UTC}
+    secrets: [body_db_password, open_wearables_api_key, ai_master_key, sparkyfitness_api_key_demo_ro, sparkyfitness_api_key_demo_rw]
+    volumes: ["./.data/health:/data/health"]
+    ports: ["127.0.0.1:${W2W_BODY_PORT:-18100}:8100"]
+    depends_on:
+      body-db: {condition: service_healthy}
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- Open Wearables (API + workers only)
+  ow-db:
+    image: postgres:18.4@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
+    environment:
+      POSTGRES_DB: open-wearables
+      POSTGRES_USER: open-wearables
+      POSTGRES_PASSWORD: ${OW_DB_PASSWORD:?run ./quickstart.sh}
+      TZ: ${W2W_TZ:-UTC}
+    volumes: [ow_db_data:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U open-wearables -d open-wearables"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  ow-redis:
+    image: redis:8.2.4@sha256:320e9ce6d5c940815a84d989f0e53e3a4d065c0d9132cd9e1222265e78eb6080
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [ow_redis_data:/data]
+    restart: unless-stopped
+
+  ow-app:
+    <<: *ow-backend
+    command: scripts/start/app.sh
+    ports: ["127.0.0.1:${W2W_OW_PORT:-18200}:8000"]
+
+  ow-worker:
+    <<: *ow-backend
+    command: scripts/start/worker.sh
+
+  ow-beat:
+    <<: *ow-backend
+    command: scripts/start/beat.sh
+
+  # ---------------------------------------------------------------- SparkyFitness (official images, unmodified)
+  sparkyfitness-db:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_DB: sparkyfitness_db
+      POSTGRES_USER: sparky
+      POSTGRES_PASSWORD: ${SPARKY_FITNESS_DB_PASSWORD:?run ./quickstart.sh}
+      TZ: ${W2W_TZ:-UTC}
+    volumes: [sparkyfitness_db:/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparky -d sparkyfitness_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  sparkyfitness-server:
+    image: codewithcj/sparkyfitness_server:v1.8.0@sha256:001f173ef46aeb40882516a5f14db73180517b051a82e551c98db48b9263d9e6
+    environment:
+      SPARKY_FITNESS_DB_HOST: sparkyfitness-db
+      SPARKY_FITNESS_DB_PORT: 5432
+      SPARKY_FITNESS_DB_NAME: sparkyfitness_db
+      SPARKY_FITNESS_DB_USER: sparky
+      SPARKY_FITNESS_DB_PASSWORD: ${SPARKY_FITNESS_DB_PASSWORD:?}
+      SPARKY_FITNESS_APP_DB_USER: sparky_app
+      SPARKY_FITNESS_APP_DB_PASSWORD: ${SPARKY_FITNESS_APP_DB_PASSWORD:?}
+      SPARKY_FITNESS_FRONTEND_URL: http://localhost:${W2W_SF_PORT:-18300}
+      SPARKY_FITNESS_EXTRA_TRUSTED_ORIGINS: http://localhost:${W2W_SF_PORT:-18300},http://127.0.0.1:${W2W_SF_PORT:-18300}
+      SPARKY_FITNESS_API_ENCRYPTION_KEY: ${SPARKY_FITNESS_API_ENCRYPTION_KEY:?}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      NODE_ENV: production
+      TZ: ${W2W_TZ:-UTC}
+      SPARKY_FITNESS_LOG_LEVEL: ERROR
+      SPARKY_FITNESS_SERVER_PORT: 3010
+      # quickstart.sh opens sign-up only while it creates the demo account
+      SPARKY_FITNESS_DISABLE_SIGNUP: ${SF_DISABLE_SIGNUP:-true}
+      SPARKY_FITNESS_ADMIN_EMAIL: ${SPARKY_FITNESS_ADMIN_EMAIL:-demo@example.com}
+      SPARKY_FITNESS_DEMO_MODE: "false"
+      PUID: 1000
+      GUID: 1000
+    volumes:
+      - sparkyfitness_backup:/app/SparkyFitnessServer/backup
+      - sparkyfitness_uploads:/app/SparkyFitnessServer/uploads
+    depends_on:
+      sparkyfitness-db: {condition: service_healthy}
+    restart: unless-stopped
+
+  sparkyfitness-frontend:
+    image: codewithcj/sparkyfitness:v1.8.0@sha256:d67af4087e9bb3ca8c462225c0bba7a83517dfe404aa9e347885fd6d2a4f5d4c
+    environment:
+      SPARKY_FITNESS_FRONTEND_URL: http://localhost:${W2W_SF_PORT:-18300}
+      SPARKY_FITNESS_SERVER_HOST: sparkyfitness-server
+      SPARKY_FITNESS_SERVER_PORT: 3010
+      PUID: 1000
+      GUID: 1000
+    ports: ["127.0.0.1:${W2W_SF_PORT:-18300}:80"]
+    depends_on: [sparkyfitness-server]
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------- Grafana (optional: ./quickstart.sh --grafana)
+  grafana:
+    profiles: [grafana]
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL: ""
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: ${W2W_TZ:-UTC}
+      GF_LOG_LEVEL: warn
+    secrets: [grafana_admin_password, grafana_ro_body_password, grafana_ro_ow_password]
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana:/etc/grafana/provisioning:ro
+      - ../deploy/grafana/dashboards:/var/lib/grafana-dashboards:ro
+    ports: ["127.0.0.1:${W2W_GRAFANA_PORT:-18400}:3000"]
+    restart: unless-stopped
+
+secrets:
+  body_db_password: {file: ./.data/secrets/body_db_password}
+  open_wearables_api_key: {file: ./.data/secrets/open_wearables_api_key}
+  ai_master_key: {file: ./.data/secrets/ai_master_key}
+  sparkyfitness_api_key_demo_ro: {file: ./.data/secrets/sparkyfitness_api_key_demo_ro}
+  sparkyfitness_api_key_demo_rw: {file: ./.data/secrets/sparkyfitness_api_key_demo_rw}
+  grafana_admin_password: {file: ./.data/secrets/grafana_admin_password}
+  grafana_ro_body_password: {file: ./.data/secrets/grafana_ro_body_password}
+  grafana_ro_ow_password: {file: ./.data/secrets/grafana_ro_ow_password}
+
+volumes:
+  body_db_data:
+  ow_db_data:
+  ow_redis_data:
+  sparkyfitness_db:
+  sparkyfitness_backup:
+  sparkyfitness_uploads:
+  grafana_data:

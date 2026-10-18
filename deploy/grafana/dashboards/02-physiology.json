@@ -1,0 +1,1277 @@
+{
+ "uid": "body-physiology",
+ "title": "身体管理 · 生理指标",
+ "description": "静息心率、HRV、呼吸、血氧、手腕温度、VO₂max，带前 60 天基线带（均值 ± 1 SD，和恢复分用的基线一致）。",
+ "tags": [
+  "身体管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "静息心率（睡眠期最低 5 分钟）",
+   "description": "恢复分用的当晚值；没有睡眠期心率的天退回 Apple 全天 resting_heart_rate。灰带 = 前 60 天均值 ± 1 SD（≥ 14 晚才画）。高于灰带上沿 = 偏高（疲劳 / 生病 / 喝酒 / 晚睡）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, rhr_night AS v FROM daily_scores WHERE user_id = $user) x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"静息心率\", CASE WHEN n >= 14 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 14 THEN m END AS \"60 天基线\", CASE WHEN n >= 14 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bpm",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "静息心率"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 9
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "HRV（ln SDNN）",
+   "description": "睡眠窗口内 SDNN 读数取 ln 后的中位数（Apple 夜里只测 1–3 次，单条读数的晚上很吵）。低于灰带下沿 = 恢复差。ln 4.0 ≈ 55 ms，3.5 ≈ 33 ms。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, hrv_night_ln AS v FROM daily_scores WHERE user_id = $user) x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"ln HRV\", CASE WHEN n >= 14 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 14 THEN m END AS \"60 天基线\", CASE WHEN n >= 14 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "ln HRV"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 9
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "呼吸频率（睡眠期）",
+   "description": "当晚中位数。明显高于基线常见于生病、喝酒。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, resp_rate_night AS v FROM daily_scores WHERE user_id = $user) x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"呼吸频率\", CASE WHEN n >= 14 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 14 THEN m END AS \"60 天基线\", CASE WHEN n >= 14 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "次/分",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "呼吸频率"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 9,
+    "w": 12,
+    "h": 9
+   },
+   "id": 3
+  },
+  {
+   "type": "timeseries",
+   "title": "血氧",
+   "description": "全天平均（daily_metrics.oxygen_saturation）。评分只做标记：当晚中位数 < 94% 或 < 90% 的读数 ≥ 2 条 → spo2_low。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, value AS v FROM daily_metrics WHERE user_id = $user AND metric = 'oxygen_saturation') x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"血氧\", CASE WHEN n >= 5 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 5 THEN m END AS \"60 天基线\", CASE WHEN n >= 5 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percent",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "血氧"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 9,
+    "w": 12,
+    "h": 9
+   },
+   "id": 4
+  },
+  {
+   "type": "timeseries",
+   "title": "手腕温度（睡眠期）",
+   "description": "Apple 只在部分晚上记录（一年约 20 晚）。评分只做标记：比 60 天中位数偏 ≥ 0.6°C。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, value AS v FROM daily_metrics WHERE user_id = $user AND metric = 'apple_sleeping_wrist_temperature') x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"手腕温度\", CASE WHEN n >= 5 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 5 THEN m END AS \"60 天基线\", CASE WHEN n >= 5 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "celsius",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "手腕温度"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 18,
+    "w": 12,
+    "h": 9
+   },
+   "id": 5
+  },
+  {
+   "type": "timeseries",
+   "title": "最大摄氧量 VO₂max",
+   "description": "Apple 在户外走路 / 跑步后估算，几周才一次。长期往上走 = 有氧能力在进步。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, v FROM (SELECT date, value AS v FROM daily_metrics WHERE user_id = $user AND metric = 'vo2_max') x WHERE v IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 61 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, v, avg(v) OVER w AS m, stddev_samp(v) OVER w AS sd, count(v) OVER w AS n FROM s WINDOW w AS (ORDER BY date RANGE BETWEEN '60 days'::interval PRECEDING AND '1 day'::interval PRECEDING)) SELECT date::timestamptz AS time, v AS \"VO₂max\", CASE WHEN n >= 3 THEN m - sd END AS \"基线下沿\", CASE WHEN n >= 3 THEN m END AS \"60 天基线\", CASE WHEN n >= 3 THEN m + sd END AS \"基线上沿\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "mL/min·kg",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线上沿"
+      },
+      "properties": [
+       {
+        "id": "custom.fillBelowTo",
+        "value": "基线下沿"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 18
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "基线下沿"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 0
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       },
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": false
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "60 天基线"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "60 天基线（灰带 ± 1 SD）"
+       },
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 1
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "VO₂max"
+      },
+      "properties": [
+       {
+        "id": "custom.showPoints",
+        "value": "always"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 18,
+    "w": 12,
+    "h": 9
+   },
+   "id": 6
+  }
+ ]
+}

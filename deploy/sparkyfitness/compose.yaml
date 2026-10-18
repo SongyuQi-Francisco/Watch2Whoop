@@ -1,0 +1,86 @@
+# SparkyFitness local deployment (training, nutrition and weight logging). Invoke through deploy/sparkyfitness/sf.sh,
+# which passes --env-file secrets/sparkyfitness.env (passwords, encryption key, external address; not tracked by git).
+#
+# Differences from upstream docker/docker-compose.prod.yml:
+# - Image pinned to v1.8.0 + digest, not latest; no auto-updaters such as watchtower
+# - Only the frontend (nginx) is exposed, bound to 127.0.0.1:8300; the database and backend are not exposed
+#   (ports avoid Body Engine 5433 / 8100, OW 8200–8203 / 5434, and the Shortcut receiver 8765)
+# - Data lives in docker named volumes, not in the repo directory
+# - Sign-up is off by default (SF_DISABLE_SIGNUP), turned on temporarily only when bootstrap.py creates an account
+# - Memory limit: Docker Desktop has only 8GB and OW already uses about 2GB
+# - Remote access: tailscale serve --bg --https=8444 http://127.0.0.1:8300 (see README)
+name: sparkyfitness
+
+services:
+  sparkyfitness-db:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_DB: sparkyfitness_db
+      POSTGRES_USER: sparky
+      POSTGRES_PASSWORD: ${SPARKY_FITNESS_DB_PASSWORD:?}
+      TZ: Australia/Sydney
+    volumes:
+      - sparkyfitness_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sparky -d sparkyfitness_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: 512m
+    restart: unless-stopped
+
+  sparkyfitness-server:
+    image: codewithcj/sparkyfitness_server:v1.8.0@sha256:001f173ef46aeb40882516a5f14db73180517b051a82e551c98db48b9263d9e6
+    environment:
+      SPARKY_FITNESS_DB_HOST: sparkyfitness-db
+      SPARKY_FITNESS_DB_PORT: 5432
+      SPARKY_FITNESS_DB_NAME: sparkyfitness_db
+      SPARKY_FITNESS_DB_USER: sparky
+      SPARKY_FITNESS_DB_PASSWORD: ${SPARKY_FITNESS_DB_PASSWORD:?}
+      SPARKY_FITNESS_APP_DB_USER: sparky_app
+      SPARKY_FITNESS_APP_DB_PASSWORD: ${SPARKY_FITNESS_APP_DB_PASSWORD:?}
+      SPARKY_FITNESS_FRONTEND_URL: ${SPARKY_FITNESS_FRONTEND_URL:?}
+      # Opening http://localhost:8300 in a local browser also allows login
+      SPARKY_FITNESS_EXTRA_TRUSTED_ORIGINS: http://localhost:8300,http://127.0.0.1:8300
+      SPARKY_FITNESS_API_ENCRYPTION_KEY: ${SPARKY_FITNESS_API_ENCRYPTION_KEY:?}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?}
+      NODE_ENV: production
+      TZ: Australia/Sydney
+      SPARKY_FITNESS_LOG_LEVEL: ERROR
+      SPARKY_FITNESS_SERVER_PORT: 3010
+      SPARKY_FITNESS_DISABLE_SIGNUP: ${SF_DISABLE_SIGNUP:-true}
+      SPARKY_FITNESS_ADMIN_EMAIL: ${SPARKY_FITNESS_ADMIN_EMAIL:?}
+      SPARKY_FITNESS_DEMO_MODE: "false"
+      # No SMTP: when a password is forgotten, use reset-password on the admin page, or see the README
+      PUID: 1000
+      GUID: 1000
+    volumes:
+      - sparkyfitness_backup:/app/SparkyFitnessServer/backup
+      - sparkyfitness_uploads:/app/SparkyFitnessServer/uploads
+    depends_on:
+      sparkyfitness-db:
+        condition: service_healthy
+    mem_limit: 768m
+    restart: unless-stopped
+
+  sparkyfitness-frontend:
+    image: codewithcj/sparkyfitness:v1.8.0@sha256:d67af4087e9bb3ca8c462225c0bba7a83517dfe404aa9e347885fd6d2a4f5d4c
+    environment:
+      SPARKY_FITNESS_FRONTEND_URL: ${SPARKY_FITNESS_FRONTEND_URL:?}
+      SPARKY_FITNESS_SERVER_HOST: sparkyfitness-server
+      SPARKY_FITNESS_SERVER_PORT: 3010
+      NGINX_RATE_LIMIT: 5r/s
+      PUID: 1000
+      GUID: 1000
+    ports:
+      - "127.0.0.1:8300:80"
+    depends_on:
+      - sparkyfitness-server
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  sparkyfitness_db:
+  sparkyfitness_backup:
+  sparkyfitness_uploads:

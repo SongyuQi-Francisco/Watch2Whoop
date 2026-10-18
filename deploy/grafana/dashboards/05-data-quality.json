@@ -1,0 +1,856 @@
+{
+ "uid": "body-data-quality",
+ "title": "身体管理 · 数据质量",
+ "description": "各来源每天的数据量、心率覆盖、评分 flags、最近同步时间。",
+ "tags": [
+  "身体管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   },
+   {
+    "name": "ow_user",
+    "label": "OW 用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 2,
+    "query": "SELECT ow_user_id FROM users WHERE id = $user AND ow_user_id IS NOT NULL",
+    "definition": "SELECT ow_user_id FROM users WHERE id = $user AND ow_user_id IS NOT NULL",
+    "includeAll": false,
+    "multi": false,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "每日指标条数（按来源）",
+   "description": "daily_metrics 每天有多少个指标、最后用的是哪个来源（优先级 ow > apple_export > shortcut，高的覆盖低的）。OW 的 iPhone app 稳定同步后应该全是 ow。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, source AS metric, count(*) AS value FROM daily_metrics WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY 1, 2 ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "ow"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "apple_export"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "shortcut"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "睡眠段数（按来源，归到醒来那天）",
+   "description": "没有主睡眠的天 → 睡眠分、恢复分都空。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT wake_date::timestamptz AS time, source || CASE WHEN is_main THEN '（主睡眠）' ELSE '（小睡 / 其他）' END AS metric, count(*) AS value FROM sleep_sessions WHERE user_id = $user AND wake_date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY 1, 2 ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "OW 原始样本数（按来源）",
+   "description": "Open Wearables 库里每天的原始样本（心率、HRV、步数……）条数。export.xml 是 2026-10-14 导入的全量历史，之后靠 iPhone 上的 OW app 同步。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "open-wearables"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT (p.recorded_at AT TIME ZONE 'Australia/Sydney')::date::timestamptz AS time, CASE WHEN ds.source = 'apple_health_xml' THEN 'export.xml' WHEN ds.device_type = 'watch' THEN 'OW app · 手表' WHEN ds.device_type = 'phone' THEN 'OW app · 手机' ELSE 'OW app · 其他' END AS metric, count(*) AS value FROM data_point_series p JOIN data_source ds ON ds.id = p.data_source_id WHERE ds.user_id = '$ow_user' AND p.recorded_at >= $__timeFrom()::timestamptz - interval '1 day' AND p.recorded_at < $__timeTo()::timestamptz GROUP BY 1, 2 ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "open-wearables"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "export.xml"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "OW app · 手表"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "OW app · 手机"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "id": 3
+  },
+  {
+   "type": "timeseries",
+   "title": "有心率的小时数",
+   "description": "strain 要一天里 ≥ 12 个小时有心率（否则 no_raw_hr / hr_coverage_low）。红 = 不够。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "open-wearables"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH h AS ( SELECT (p.recorded_at AT TIME ZONE 'Australia/Sydney')::date AS d, count(DISTINCT date_trunc('hour', p.recorded_at)) AS n FROM data_point_series p JOIN data_source ds ON ds.id = p.data_source_id JOIN series_type_definition t ON t.id = p.series_type_definition_id WHERE ds.user_id = '$ow_user' AND t.code = 'heart_rate' AND p.recorded_at >= $__timeFrom()::timestamptz - interval '1 day' AND p.recorded_at < $__timeTo()::timestamptz GROUP BY 1) SELECT d::timestamptz AS time, CASE WHEN n < 12 THEN n END AS \"不够（< 12 小时）\", CASE WHEN n >= 12 THEN n END AS \"够（≥ 12 小时）\" FROM h ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "open-wearables"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0,
+     "min": 0,
+     "max": 24
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "不够（< 12 小时）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "够（≥ 12 小时）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "id": 4
+  },
+  {
+   "type": "barchart",
+   "title": "评分 flags（所选时间范围的天数）",
+   "description": "每个 flag 的中文说明见右边的表；no_sleep / no_raw_hr 多 = 手表没戴或没同步。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT f AS \"flag\", count(*) AS \"天数\" FROM daily_scores, jsonb_object_keys(flags) f WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY 1 ORDER BY 2 DESC"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "gradientMode": "none"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "stacking": "none",
+    "showValue": "auto",
+    "barWidth": 0.8,
+    "groupWidth": 0.7,
+    "xTickLabelRotation": 0,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 12,
+    "h": 9
+   },
+   "id": 5
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "每天的 flags",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT date::text AS \"日期\", string_agg(f.key || '：' || f.value, '；' ORDER BY f.key) AS \"flags\" FROM daily_scores, jsonb_each_text(flags) f WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY date ORDER BY date DESC"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "日期"
+      },
+      "properties": [
+       {
+        "id": "custom.width",
+        "value": 110
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 16,
+    "w": 12,
+    "h": 9
+   },
+   "id": 6
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "Body Engine：最近同步 / 计算",
+   "description": "每小时 :10 的定时任务会更新这几行。超过 2 小时没动 → 看 deploy/ops/doctor.sh。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT * FROM ( SELECT CASE source WHEN 'ow' THEN '从 OW 导入（import-ow）' WHEN 'shortcut' THEN '快捷指令导入' WHEN 'apple_export' THEN '全量导出导入' ELSE source END AS \"任务\", last_synced_at AS \"时间\", last_synced_at AS \"多久前\", cursor AS \"游标 / 数据到\" FROM sync_state WHERE user_id = $user UNION ALL SELECT '评分计算（compute-scores）', max(computed_at), max(computed_at), max(date)::text FROM daily_scores WHERE user_id = $user UNION ALL SELECT '规则评估（evaluate-rules）', max(ran_at), max(ran_at), max(date)::text FROM rule_runs WHERE user_id = $user ) x ORDER BY \"时间\" DESC"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "时间"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeAsLocalNoDateIfToday"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "多久前"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeFromNow"
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 25,
+    "w": 12,
+    "h": 7
+   },
+   "id": 7
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "Open Wearables：最近收到的数据",
+   "description": "最近 30 天的样本里，各来源最后一次写进 OW 的时间。OW app 只在手机解锁、app 在后台被唤醒时同步。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "open-wearables"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT CASE WHEN ds.source = 'apple_health_xml' THEN 'export.xml' WHEN ds.device_type = 'watch' THEN 'OW app · 手表' WHEN ds.device_type = 'phone' THEN 'OW app · 手机' ELSE 'OW app · 其他' END AS \"来源\", max(p.created_at) AS \"最后写入\", max(p.created_at) AS \"多久前\", max(p.recorded_at) AS \"最新样本时间\" FROM data_point_series p JOIN data_source ds ON ds.id = p.data_source_id WHERE ds.user_id = '$ow_user' AND p.recorded_at > now() - interval '30 days' GROUP BY 1 ORDER BY 2 DESC"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "open-wearables"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "最后写入"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeAsLocalNoDateIfToday"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "多久前"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeFromNow"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "最新样本时间"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "dateTimeAsLocalNoDateIfToday"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 25,
+    "w": 12,
+    "h": 7
+   },
+   "id": 8
+  }
+ ]
+}

@@ -1,0 +1,90 @@
+"""Endpoints for the personal profile and electronic consent (Today page web/static/profile.js). Only your own; changes need write (cookie write requests also need X-Body-Web: 1).
+
+- GET   /v1/users/{user}/profile   -> profile + missing + consent (required / version / accepted_at / reconfirm)
+- PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?}(null = clear)
+- GET   /v1/consent                 -> {version, summary, text} (full consent form in Markdown)
+- POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents)
+"""
+from datetime import date
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
+
+from . import consent, store
+
+router = APIRouter(tags=["profile"])
+
+
+def get_conn():
+    from .. import api
+    with api.pool.connection() as conn:
+        yield conn
+
+
+def current_user(request: Request, conn=Depends(get_conn)) -> dict:
+    from .. import api
+    return api.current_user(request, conn, request.headers.get("authorization"))
+
+
+def _self(viewer: dict, user: str, write: bool = False) -> int:
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, "个人资料只能看 / 改自己的")
+    if write and "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, "这个登录没有 write 权限")
+    return viewer["id"]
+
+
+def _out(conn, uid: int) -> dict:
+    return {**store.get(conn, uid), "consent": consent.status(conn, uid)}
+
+
+class ProfileIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    display_name: str | None = Field(default=None, max_length=60)
+    birth_date: date | None = None
+    sex: Literal["male", "female"] | None = None
+    height_cm: float | None = None
+    timezone: str | None = Field(default=None, max_length=60)
+    goal_weight_kg: float | None = None
+
+
+class ConsentIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: str = Field(min_length=1, max_length=40)
+    agree: Literal[True]
+
+
+@router.get("/v1/users/{user}/profile")
+def get_profile(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _out(conn, _self(viewer, user))
+
+
+@router.patch("/v1/users/{user}/profile")
+def patch_profile(user: str, body: ProfileIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user, True)
+    patch = body.model_dump(exclude_unset=True)
+    if "display_name" in patch and patch["display_name"] is None:
+        raise HTTPException(422, "称呼不能清空")
+    if "timezone" in patch and patch["timezone"] is None:
+        raise HTTPException(422, "时区不能清空")
+    try:
+        store.update(conn, uid, patch)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    return _out(conn, uid)
+
+
+@router.get("/v1/consent")
+def get_consent(viewer=Depends(current_user)):
+    return {"version": consent.version(), "summary": consent.SUMMARY, "text": consent.display_text()}
+
+
+@router.post("/v1/users/{user}/consent")
+def post_consent(user: str, body: ConsentIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user, True)
+    try:
+        consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"))
+    except ValueError as e:
+        raise HTTPException(409, str(e)) from e
+    return _out(conn, uid)

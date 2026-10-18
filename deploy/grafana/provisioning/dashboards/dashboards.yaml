@@ -1,0 +1,16 @@
+# Dashboards (provisioning, tracked in git): deploy/grafana/dashboards/*.json.
+# Edits in the web UI cannot be saved (allowUiUpdates: false): edit the JSON files instead; Grafana reloads them automatically within 30 seconds.
+# To tune in the web UI and then save: dashboard top right Export → Export as JSON, overwrite the matching file and commit to git.
+apiVersion: 1
+
+providers:
+  - name: body-dashboards
+    folder: 身体管理
+    folderUid: body
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana-dashboards
+      foldersFromFilesStructure: false

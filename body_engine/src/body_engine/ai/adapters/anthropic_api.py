@@ -1,0 +1,101 @@
+"""Anthropic API (Claude) adapter: official anthropic SDK, Messages API + tool calls, streaming.
+
+- Default model claude-opus-5-5 (the user can change it). Thinking uses the model default adaptive (cannot be turned off on Opus 5.5), effort set to medium.
+- Prompt caching: top-level cache_control caches automatically (tools -> system -> messages prefix; system does not change within a conversation).
+- Refusal fallback: Opus 5.5 / Sonnet 5.5 / Fable 5.1 / Opus 5 enable server-side fallbacks="default" (beta server-side-fallback-2026-07-01),
+  when rejected by the safety classifier the API retries with another model; if it still ends as a refusal the user is told.
+- Tools use strict=True (api_definition in tools.py); eager_input_streaming is off: tool arguments are short, strict validation matters more than streaming them while generating.
+- The assistant's raw content (including thinking blocks) is stored as native and passed back as-is when the same model continues the conversation (preserved thinking requires history to be append-only and unchanged).
+"""
+import anthropic
+
+from .base import MAX_OUTPUT_TOKENS, TIMEOUT_S, Adapter, AdapterError, TurnResult
+
+FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-opus-5"}
+EFFORT_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-opus-5",
+                 "claude-sonnet-5"}
+
+
+# When passing back to the API keep only the fields the input format accepts for each block type (read-only fields that appear in output may be rejected if sent back); thinking signature and content are not changed by a single character
+_KEEP = {"text": ("type", "text", "citations"), "tool_use": ("type", "id", "name", "input"),
+         "thinking": ("type", "thinking", "signature"), "redacted_thinking": ("type", "data")}
+
+
+def _replayable(block: dict) -> dict:
+    keep = _KEEP.get(block.get("type"))
+    return {k: block[k] for k in keep if k in block} if keep else block
+
+
+class AnthropicAdapter(Adapter):
+    kind = "anthropic_api"
+
+    def _messages(self, history: list[dict]) -> list[dict]:
+        out = []
+        for m in history:
+            if m["role"] == "assistant":
+                if m.get("native_key") == self.key and m.get("native") is not None:
+                    out.append({"role": "assistant", "content": m["native"]})
+                    continue
+                blocks = []
+                for b in m["content"]:
+                    if b["type"] == "text" and b["text"]:
+                        blocks.append({"type": "text", "text": b["text"]})
+                    elif b["type"] == "tool_call":
+                        blocks.append({"type": "tool_use", "id": b["id"], "name": b["name"], "input": b["args"]})
+                out.append({"role": "assistant", "content": blocks or [{"type": "text", "text": "（空）"}]})
+            elif m["role"] == "tool":
+                out.append({"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": b["id"], "content": b["content"], "is_error": b["is_error"]}
+                    for b in m["content"]]})
+            else:
+                blocks = []
+                for b in m["content"]:
+                    if b["type"] == "image":
+                        blocks.append({"type": "image", "source": {"type": "base64", "media_type": b["media_type"],
+                                                                   "data": b["data"]}})
+                    elif b["type"] == "text":
+                        blocks.append({"type": "text", "text": b["text"]})
+                out.append({"role": "user", "content": blocks})
+        return out
+
+    def stream_turn(self, system, history, tools):
+        client = anthropic.Anthropic(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
+        kwargs = dict(model=self.model, max_tokens=MAX_OUTPUT_TOKENS, system=system,
+                      messages=self._messages(history), tools=[t.api_definition() for t in tools],
+                      cache_control={"type": "ephemeral"})
+        if self.model in EFFORT_MODELS:
+            kwargs["output_config"] = {"effort": "medium"}
+        if self.model in FALLBACK_MODELS:
+            kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        try:
+            with client.beta.messages.stream(**kwargs) as stream:
+                for event in stream:
+                    if event.type == "text":
+                        yield "text", event.text
+                final = stream.get_final_message()
+        except anthropic.AuthenticationError:
+            raise AdapterError("Anthropic API key 无效或已停用，请在「AI 设置」里更新", "auth")
+        except anthropic.PermissionDeniedError:
+            raise AdapterError("这个 API key 没有权限用这个模型", "auth")
+        except anthropic.NotFoundError:
+            raise AdapterError(f"模型不存在：{self.model}", "bad_request")
+        except anthropic.RateLimitError:
+            raise AdapterError("Anthropic 限流了，稍后再试", "rate_limit")
+        except anthropic.BadRequestError as e:
+            raise AdapterError(f"请求被 Anthropic 拒绝：{e.message}", "bad_request")
+        except anthropic.APIStatusError as e:
+            raise AdapterError(f"Anthropic 服务出错（{e.status_code}），稍后再试", "unavailable")
+        except anthropic.APIConnectionError:
+            raise AdapterError("连不上 Anthropic（网络问题）", "network")
+
+        u = final.usage
+        usage = {"input_tokens": u.input_tokens or 0, "output_tokens": u.output_tokens or 0,
+                 "cache_read_tokens": u.cache_read_input_tokens or 0,
+                 "cache_write_tokens": u.cache_creation_input_tokens or 0}
+        native = [_replayable(b.model_dump(mode="json", exclude_none=True)) for b in final.content]
+        text = "".join(b.text for b in final.content if b.type == "text")
+        calls = [{"id": b.id, "name": b.name, "args": b.input} for b in final.content if b.type == "tool_use"]
+        stop = {"tool_use": "tool_use", "max_tokens": "max_tokens", "refusal": "refusal"}.get(final.stop_reason, "end")
+        if stop == "refusal":
+            calls = []  # A refusal may cut a tool call in half
+        yield "result", TurnResult(text=text, tool_calls=calls, native=native, usage=usage, stop=stop)

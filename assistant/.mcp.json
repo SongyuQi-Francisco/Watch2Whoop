@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "body-engine": {
+      "type": "http",
+      "url": "${BODY_MCP_URL:-https://body.example.com/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${BODY_AI_TOKEN}"
+      }
+    }
+  }
+}

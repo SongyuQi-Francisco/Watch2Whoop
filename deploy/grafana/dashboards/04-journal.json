@@ -1,0 +1,708 @@
+{
+ "uid": "body-journal",
+ "title": "身体管理 · 日记和提醒",
+ "description": "日记行为和次日恢复分的对照；规则提醒按规则统计。",
+ "tags": [
+  "身体管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "state-timeline",
+   "title": "日记：每天做了什么（只显示记录过的天）",
+   "description": "日期 = 行为发生的那天。没记录 = 缺失（空白），不等于「否」。数量型日记项（红肉 g、喝水 L）不在这里。",
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH e AS ( SELECT e.date, i.label_zh, i.sort, e.value FROM journal_entries e JOIN journal_items i ON i.user_id = e.user_id AND i.key = e.key WHERE e.user_id = $user AND i.kind = 'bool' AND e.date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date), x AS (SELECT date, label_zh, sort, value FROM e UNION ALL SELECT date + 1, label_zh, sort, NULL FROM e) SELECT date::timestamptz AS time, label_zh AS metric, max(value) AS value FROM x GROUP BY date, label_zh, sort ORDER BY 1, sort"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "custom": {
+      "fillOpacity": 80,
+      "lineWidth": 0,
+      "spanNulls": false
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "mappings": [
+      {
+       "type": "value",
+       "options": {
+        "1": {
+         "text": "是",
+         "color": "green",
+         "index": 0
+        },
+        "0": {
+         "text": "否",
+         "color": "#8e8e8e",
+         "index": 1
+        }
+       }
+      }
+     ]
+    },
+    "overrides": []
+   },
+   "options": {
+    "mergeValues": false,
+    "showValue": "never",
+    "alignValue": "center",
+    "rowHeight": 0.8,
+    "legend": {
+     "showLegend": false,
+     "displayMode": "list",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "single",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 10
+   },
+   "id": 1
+  },
+  {
+   "type": "timeseries",
+   "title": "次日恢复分（画在行为当天）",
+   "description": "D 天的柱子是 D+1 的恢复分，和上面同一列的行为对照着看。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT (date - 1)::timestamptz AS time, CASE WHEN recovery < 34 THEN recovery END AS \"红（< 34）\", CASE WHEN recovery >= 34 AND recovery < 67 THEN recovery END AS \"黄（34–66）\", CASE WHEN recovery >= 67 THEN recovery END AS \"绿（≥ 67）\" FROM daily_scores WHERE user_id = $user AND date - 1 BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "红（< 34）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "黄（34–66）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "绿（≥ 67）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 24,
+    "h": 6
+   },
+   "id": 2
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "日记行为 → 次日恢复分（所选时间范围）",
+   "description": "只比较明确记了「是」和「否」的天（没记录不算「否」）。只是两组均值的差，没控制睡眠、负荷等其他因素；带统计检验的版本问 AI 助手（analyze_journal）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "WITH j AS ( SELECT i.label_zh, i.sort, e.date, e.value FROM journal_entries e JOIN journal_items i ON i.user_id = e.user_id AND i.key = e.key WHERE e.user_id = $user AND i.kind = 'bool' AND e.date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date), r AS (SELECT date - 1 AS date, recovery FROM daily_scores WHERE user_id = $user AND recovery IS NOT NULL), allr AS (SELECT round(avg(recovery)) AS m FROM r WHERE date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date) SELECT j.label_zh AS \"行为\", count(r.recovery) FILTER (WHERE j.value = 1) AS \"「是」天数\", round(avg(r.recovery) FILTER (WHERE j.value = 1)) AS \"「是」→ 次日恢复\", count(r.recovery) FILTER (WHERE j.value = 0) AS \"「否」天数\", round(avg(r.recovery) FILTER (WHERE j.value = 0)) AS \"「否」→ 次日恢复\", round(avg(r.recovery) FILTER (WHERE j.value = 1)) - round(avg(r.recovery) FILTER (WHERE j.value = 0)) AS \"差（是 − 否）\", (SELECT m FROM allr) AS \"全部天次日恢复（参考）\", CASE WHEN count(r.recovery) FILTER (WHERE j.value = 1) < 5 OR count(r.recovery) FILTER (WHERE j.value = 0) < 5 THEN '样本不足（是 / 否各要 ≥ 5 天）' WHEN count(r.recovery) FILTER (WHERE j.value = 1) < 15 OR count(r.recovery) FILTER (WHERE j.value = 0) < 15 THEN '仅供参考（各 ≥ 15 天才可信）' ELSE '可信' END AS \"说明\" FROM j LEFT JOIN r ON r.date = j.date GROUP BY j.label_zh, j.sort ORDER BY j.sort"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 24,
+    "h": 9
+   },
+   "id": 3
+  },
+  {
+   "type": "barchart",
+   "title": "提醒次数（按规则，所选时间范围）",
+   "description": "每天的评估会重新列出当天仍成立的提醒，所以同一件事连续几天都会计数（= 提醒天次）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT CASE rule_key WHEN 'progression' THEN '加重建议' WHEN 'calorie_adjust' THEN '调热量' WHEN 'pre_workout_fuel' THEN '练前进食' WHEN 'frequency_caps' THEN '频率上限（红肉）' WHEN 'exercise_restrictions' THEN '禁用 / 注意动作' WHEN 'readiness' THEN '恢复和睡眠债' ELSE rule_key END AS \"规则\", NULLIF(count(*) FILTER (WHERE level = 'info'), 0) AS \"提示\", NULLIF(count(*) FILTER (WHERE level = 'warning'), 0) AS \"警告\", NULLIF(count(*) FILTER (WHERE level = 'alert'), 0) AS \"严重\" FROM reminders WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY 1 ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "gradientMode": "none"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "提示"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "警告"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "严重"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "orientation": "horizontal",
+    "stacking": "normal",
+    "showValue": "auto",
+    "barWidth": 0.8,
+    "groupWidth": 0.7,
+    "xTickLabelRotation": 0,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 25,
+    "w": 12,
+    "h": 8
+   },
+   "id": 4
+  },
+  {
+   "type": "barchart",
+   "title": "规则评估结果（按规则，所选时间范围）",
+   "description": "每条规则每天一次评估。「数据不足」多 = 该多记录（例如调热量要每周至少称 2 次体重）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT CASE e->>'rule_key' WHEN 'progression' THEN '加重建议' WHEN 'calorie_adjust' THEN '调热量' WHEN 'pre_workout_fuel' THEN '练前进食' WHEN 'frequency_caps' THEN '频率上限（红肉）' WHEN 'exercise_restrictions' THEN '禁用 / 注意动作' WHEN 'readiness' THEN '恢复和睡眠债' ELSE e->>'rule_key' END AS \"规则\", NULLIF(count(*) FILTER (WHERE e->>'status' = 'triggered'), 0) AS \"触发\", NULLIF(count(*) FILTER (WHERE e->>'status' = 'not_triggered'), 0) AS \"没触发\", NULLIF(count(*) FILTER (WHERE e->>'status' = 'insufficient_data'), 0) AS \"数据不足\", NULLIF(count(*) FILTER (WHERE e->>'status' = 'error'), 0) AS \"出错\" FROM rule_runs, jsonb_array_elements(results) e WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date GROUP BY 1 ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "fillOpacity": 80,
+      "lineWidth": 1,
+      "gradientMode": "none"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "触发"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "没触发"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "数据不足"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#8e8e8e"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "出错"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "orientation": "horizontal",
+    "stacking": "normal",
+    "showValue": "auto",
+    "barWidth": 0.8,
+    "groupWidth": 0.7,
+    "xTickLabelRotation": 0,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 25,
+    "w": 12,
+    "h": 8
+   },
+   "id": 5
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "最近的提醒",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT date::text AS \"日期\", CASE rule_key WHEN 'progression' THEN '加重建议' WHEN 'calorie_adjust' THEN '调热量' WHEN 'pre_workout_fuel' THEN '练前进食' WHEN 'frequency_caps' THEN '频率上限（红肉）' WHEN 'exercise_restrictions' THEN '禁用 / 注意动作' WHEN 'readiness' THEN '恢复和睡眠债' ELSE rule_key END AS \"规则\", CASE level WHEN 'info' THEN '提示' WHEN 'warning' THEN '警告' WHEN 'alert' THEN '严重' END AS \"级别\", title AS \"内容\", CASE status WHEN 'new' THEN '新' WHEN 'seen' THEN '已看' WHEN 'dismissed' THEN '不再提醒' END AS \"状态\" FROM reminders WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY date DESC, CASE level WHEN 'alert' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, rule_key LIMIT 200"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "日期"
+      },
+      "properties": [
+       {
+        "id": "custom.width",
+        "value": 110
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "规则"
+      },
+      "properties": [
+       {
+        "id": "custom.width",
+        "value": 150
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "级别"
+      },
+      "properties": [
+       {
+        "id": "custom.width",
+        "value": 70
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "mappings",
+        "value": [
+         {
+          "type": "value",
+          "options": {
+           "提示": {
+            "color": "blue",
+            "index": 0
+           },
+           "警告": {
+            "color": "orange",
+            "index": 1
+           },
+           "严重": {
+            "color": "red",
+            "index": 2
+           }
+          }
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "状态"
+      },
+      "properties": [
+       {
+        "id": "custom.width",
+        "value": 90
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 33,
+    "w": 24,
+    "h": 9
+   },
+   "id": 6
+  }
+ ]
+}

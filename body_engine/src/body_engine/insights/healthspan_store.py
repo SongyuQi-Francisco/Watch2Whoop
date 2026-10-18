@@ -1,0 +1,265 @@
+"""Body age: read data -> compute weekly -> write healthspan_weekly -> read. Formulas are in healthspan.py, parameters in healthspan_params.py."""
+import json
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import psycopg
+from psycopg.types.json import Jsonb
+
+_dumps = lambda o: json.dumps(o, default=str, ensure_ascii=False)   # contributions contain dates
+
+from .. import sparky_client
+from ..scores.engine import scoring_origin
+from . import healthspan as HS
+from . import healthspan_params as H
+from . import sleep_detail
+
+LABELS = {  # key: (Chinese name, category, unit)
+    "sleep_duration": ("平均睡眠时长", "sleep", "h"),
+    "sleep_regularity": ("作息规律性（SRI）", "sleep", ""),
+    "steps": ("日均步数", "activity", "步"),
+    "mvpa": ("每周中高强度运动", "activity", "分钟"),
+    "strength": ("每周力量训练", "activity", "分钟"),
+    "vo2max": ("VO₂max", "fitness", "mL/kg/min"),
+    "rhr": ("静息心率", "fitness", "bpm"),
+    "body_comp": ("身体成分", "fitness", ""),
+}
+STRENGTH_TYPES = {"strength_training", "traditional_strength_training", "functional_strength_training",
+                  "core_training", "cross_training"}
+
+
+def _table_exists(conn, name: str) -> bool:
+    return conn.execute("SELECT to_regclass(%s) AS t", (name,)).fetchone()["t"] is not None
+
+
+class Data:
+    """All inputs of one person over [start, end] (indexed by date), reused repeatedly when computing weekly snapshots."""
+
+    def __init__(self, conn: psycopg.Connection, user_id: int, start: date, end: date, sparky=None):
+        u = conn.execute("SELECT timezone, birth_date, sex, height_cm FROM users WHERE id = %s", (user_id,)).fetchone()
+        self.tz, self.birth, self.height = ZoneInfo(u["timezone"]), u["birth_date"], u["height_cm"]
+        self.sex = {"m": "male", "male": "male", "男": "male", "f": "female", "female": "female", "女": "female"}.get(
+            (u["sex"] or "").strip().lower())
+        self.notes: list[str] = []
+        rows = conn.execute("""SELECT date, sleep_actual_min, strain, details->'load'->'zone_minutes' AS z
+                               FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s""",
+                            (user_id, start, end)).fetchall()
+        self.sleep = {r["date"]: r["sleep_actual_min"] / 60 for r in rows if r["sleep_actual_min"] is not None}
+        # moderate-to-vigorous: Z2–Z3 (60–80% HRmax) count as moderate, Z4–Z5 (>= 80%) as vigorous, vigorous × 2 -> moderate-equivalent minutes / day
+        self.mvpa = {}
+        for r in rows:
+            if r["strain"] is not None and r["z"]:
+                z = r["z"]
+                self.mvpa[r["date"]] = (z[1] + z[2]) + H.VIGOROUS_FACTOR * (z[3] + z[4])
+        metric = lambda m: {r["date"]: r["value"] for r in conn.execute(
+            "SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = %s AND date BETWEEN %s AND %s",
+            (user_id, m, start, end))}
+        self.steps, self.rhr, self.vo2 = metric("step_count"), metric("resting_heart_rate"), metric("vo2_max")
+        self.weight = metric("body_mass")
+        self.waist: dict[date, float] = {}
+        # sleep regularity: minute-by-minute state for each wake date
+        mains, intervals = sleep_detail.load_intervals(conn, user_id, start, end)
+        self.sleep_days = {d: sleep_detail.asleep_minutes(intervals, d, self.tz) for d in mains if start <= d <= end}
+        # strength-training minutes: watch workout records (workouts table) and SparkyFitness workout records, take the larger on the same day
+        self.strength: dict[date, float] = defaultdict(float)
+        first_track = []
+        if _table_exists(conn, "workouts"):
+            for r in conn.execute("""SELECT local_date, type, duration_min FROM workouts WHERE user_id = %s
+                                     AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s""",
+                                  (user_id, start, end)):
+                if r["type"] in STRENGTH_TYPES:
+                    self.strength[r["local_date"]] += r["duration_min"]
+        sparky_days: dict[date, float] = {}
+        try:
+            sparky = sparky or sparky_client.client_for_user(conn, user_id)
+            for s in sparky_client.training_log(sparky, start, end):
+                d = date.fromisoformat(s["date"][:10])
+                ex = [e for e in s["exercises"] if (e.get("category") or "strength") == "strength"]
+                if not ex:
+                    continue
+                minutes = s.get("total_duration_minutes") or sum(e.get("duration_minutes") or 0 for e in ex)
+                if not minutes:   # no duration in SparkyFitness: estimate from the working set count
+                    minutes = H.STRENGTH_MIN_PER_SET * sum(len(e["sets"]) for e in ex)
+                sparky_days[d] = sparky_days.get(d, 0) + minutes
+            for r in sparky_client.weight(sparky, start, end):
+                d = date.fromisoformat(r["date"])
+                if "weight_kg" in r:
+                    self.weight[d] = r["weight_kg"]   # manual weigh-ins take priority over Apple Health
+                if "waist_cm" in r:
+                    self.waist[d] = r["waist_cm"]
+                if "height_cm" in r and not self.height:
+                    self.height = r["height_cm"]
+        except Exception as e:  # SparkyFitness not connected / unreadable: strength training uses only watch records
+            self.notes.append(f"SparkyFitness 读不到（{type(e).__name__}），力量训练只看手表训练记录、体重只看 Apple 健康")
+        for d, m in sparky_days.items():
+            self.strength[d] = max(self.strength.get(d, 0.0), m)
+        if self.strength:
+            first_track.append(min(self.strength))
+        origin = scoring_origin(conn, user_id)
+        if origin:
+            first_track.append(origin)
+        # before the first recorded day it is unknown whether the user trained; from when they started wearing the watch (or first logged a workout), days without records count as 0 minutes
+        self.strength_from = min(first_track) if first_track else None
+
+
+def _sri_weighted(days: dict[date, bytearray], as_of: date) -> tuple[float | None, int]:
+    lo, recent = as_of - timedelta(days=H.WINDOW_DAYS - 1), as_of - timedelta(days=H.RECENT_DAYS - 1)
+    same = total = 0.0
+    pairs = 0
+    for d, cur in days.items():
+        nxt = days.get(d + timedelta(days=1))
+        if nxt is None or not (lo <= d and d + timedelta(days=1) <= as_of):
+            continue
+        w = H.RECENT_WEIGHT if d >= recent else 1.0
+        same += w * sum(1 for x, y in zip(cur, nxt) if x == y)
+        total += w * sleep_detail.DAY_MIN
+        pairs += 1
+    return (200 * same / total - 100 if total else None), pairs
+
+
+def _latest(values: dict[date, float], as_of: date, max_age: int) -> tuple[date, float] | None:
+    xs = [(d, v) for d, v in values.items() if as_of - timedelta(days=max_age) <= d <= as_of]
+    return max(xs) if xs else None
+
+
+def snapshot(data: Data, as_of: date) -> dict:
+    """Body age on one day (window = 180 days back from as_of)."""
+    items, insufficient = [], []
+
+    def add(key, value, hr, data_days, extra=None):
+        label, cat, unit = LABELS[key]
+        years = HS.years_from_hr(hr)
+        items.append({"key": key, "label": label, "category": cat, "value": value, "unit": unit, "hr": round(hr, 3),
+                      "years": round(years, 2), "direction": "younger" if years < 0 else "older" if years > 0 else "neutral",
+                      "tip": HS.tip(key, years, value), "data_days": data_days, **(extra or {})})
+
+    def missing(key, reason):
+        insufficient.append({"key": key, "label": LABELS[key][0], "category": LABELS[key][1], "reason": reason})
+
+    # ---- sleep
+    v, n = HS.weighted_mean(data.sleep, as_of)
+    if n >= H.MIN_DAYS:
+        add("sleep_duration", round(v, 2), HS.hr_sleep_duration(v), n,
+            {"self_report_equiv_h": round(HS.self_report_hours(v), 2)})
+    else:
+        missing("sleep_duration", f"180 天里只有 {n} 晚手表睡眠（要 ≥ {H.MIN_DAYS}）")
+    v, n = _sri_weighted(data.sleep_days, as_of)
+    if n >= H.MIN_DAYS:
+        add("sleep_regularity", round(v, 1), HS.hr_regularity(v), n)
+    else:
+        missing("sleep_regularity", f"只有 {n} 对相邻两晚都有手表睡眠（要 ≥ {H.MIN_DAYS}）")
+    # ---- activity
+    age = HS.chrono_age(data.birth, as_of) if data.birth else None
+    v, n = HS.weighted_mean(data.steps, as_of)
+    if n >= H.MIN_DAYS and age is not None:
+        add("steps", round(v), HS.hr_steps(v, age), n)
+    else:
+        missing("steps", f"只有 {n} 天步数（要 ≥ {H.MIN_DAYS}）")
+    v, n = HS.weighted_mean(data.mvpa, as_of)
+    if n >= H.MIN_DAYS:
+        add("mvpa", round(v * 7), HS.hr_mvpa(v * 7), n)
+    else:
+        missing("mvpa", f"只有 {n} 天有足够的原始心率（要 ≥ {H.MIN_DAYS}）")
+    if data.strength_from is not None:
+        lo = max(data.strength_from, as_of - timedelta(days=H.WINDOW_DAYS - 1))
+        days = {lo + timedelta(days=k): data.strength.get(lo + timedelta(days=k), 0.0)
+                for k in range((as_of - lo).days + 1)}
+        v, n = HS.weighted_mean(days, as_of)
+    else:
+        v, n = None, 0
+    if n >= H.MIN_DAYS:
+        add("strength", round(v * 7), HS.hr_strength(v * 7), n)
+    else:
+        missing("strength", f"开始记录训练只有 {n} 天（要 ≥ {H.MIN_DAYS}）")
+    # ---- fitness
+    vo2 = [(d, x) for d, x in data.vo2.items() if as_of - timedelta(days=H.WINDOW_DAYS - 1) <= d <= as_of]
+    latest = max(vo2)[0] if vo2 else None
+    norm = HS.vo2_norm(age, data.sex) if age is not None and data.sex else None
+    if data.sex is None:
+        missing("vo2max", "没填性别（users.sex），没法对照同龄常模")
+    elif len(vo2) < H.VO2_MIN_READINGS or (as_of - latest).days > H.VO2_MAX_AGE_DAYS:
+        missing("vo2max", f"180 天里只有 {len(vo2)} 次 VO₂max 读数或最近一次超过 {H.VO2_MAX_AGE_DAYS} 天"
+                          f"（要 ≥ {H.VO2_MIN_READINGS} 次；户外走路 / 跑步 20 分钟以上手表才会估）")
+    else:
+        v, n = HS.weighted_mean(dict(vo2), as_of)
+        add("vo2max", round(v, 1), HS.hr_vo2(v, norm), n, {"norm_median": round(norm, 1), "readings": len(vo2),
+                                                          "percentile": HS.vo2_percentile(v, age, data.sex)})
+    v, n = HS.weighted_mean(data.rhr, as_of)
+    if n >= H.MIN_DAYS:
+        add("rhr", round(v, 1), HS.hr_rhr(v), n)
+    else:
+        missing("rhr", f"只有 {n} 天静息心率（要 ≥ {H.MIN_DAYS}）")
+    w = _latest(data.weight, as_of, H.WEIGHT_MAX_AGE_DAYS)
+    waist = _latest(data.waist, as_of, H.WINDOW_DAYS)
+    if waist and data.height:
+        whtr = waist[1] / data.height
+        add("body_comp", round(whtr, 3), HS.hr_whtr(whtr), 1, {"measure": "waist_to_height", "measured_on": waist[0]})
+    elif w and data.height:
+        bmi = w[1] / (data.height / 100) ** 2
+        add("body_comp", round(bmi, 1), HS.hr_bmi(bmi), 1,
+            {"measure": "bmi", "measured_on": w[0], "weight_kg": w[1], "note": "没有腰围，用 BMI（分不清肌肉和脂肪）"})
+    else:
+        missing("body_comp", f"最近 {H.WEIGHT_MAX_AGE_DAYS} 天没有体重或没有身高" if data.height else "没有身高")
+    delta = HS.combine(items) if items else None
+    return {"as_of": as_of, "chrono_age": round(age, 2) if age is not None else None,
+            "delta_years": None if delta is None else round(delta, 2),
+            "body_age": None if delta is None or age is None else round(age + delta, 1),
+            "contributors": sorted(items, key=lambda i: -abs(i["years"])), "insufficient": insufficient}
+
+
+def week_ends(first: date, today: date) -> list[tuple[date, date]]:
+    """[(week_start Monday, as_of)]: one per Sunday, the last being the week containing today (as_of = today)."""
+    out = []
+    monday = first - timedelta(days=first.weekday())
+    while monday <= today:
+        out.append((monday, min(monday + timedelta(days=6), today)))
+        monday += timedelta(days=7)
+    return out
+
+
+def compute(conn: psycopg.Connection, user_id: int, today: date | None = None, sparky=None) -> list[dict]:
+    origin = scoring_origin(conn, user_id)
+    user = conn.execute("SELECT birth_date, timezone FROM users WHERE id = %s", (user_id,)).fetchone()
+    if origin is None or user["birth_date"] is None:
+        return []
+    today = today or datetime.now(ZoneInfo(user["timezone"])).date()
+    data = Data(conn, user_id, origin - timedelta(days=1), today, sparky)
+    rows, history = [], []
+    for week_start, as_of in week_ends(origin + timedelta(days=H.MIN_DAYS), today):
+        snap = snapshot(data, as_of)
+        history.append((as_of, snap["delta_years"]))
+        p = HS.pace(history, as_of)
+        snap.update(pace_of_aging=p["pace"], pace_raw=p["pace_raw"], pace_window_weeks=p["window_weeks"])
+        snap["week_start"] = week_start
+        snap["notes"] = data.notes
+        rows.append(snap)
+    return rows
+
+
+def write(conn: psycopg.Connection, user_id: int, rows: list[dict]) -> int:
+    with conn.transaction():
+        conn.execute("DELETE FROM healthspan_weekly WHERE user_id = %s", (user_id,))
+        with conn.cursor() as cur:
+            cur.executemany(
+                """INSERT INTO healthspan_weekly (user_id, week_start, as_of, chrono_age, body_age, delta_years,
+                     pace_of_aging, pace_raw, pace_window_weeks, contributors, insufficient, algo_version)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                [(user_id, r["week_start"], r["as_of"], r["chrono_age"], r["body_age"], r["delta_years"],
+                  r["pace_of_aging"], r["pace_raw"], r["pace_window_weeks"], Jsonb(r["contributors"], _dumps), Jsonb(r["insufficient"], _dumps), H.ALGO_VERSION) for r in rows])
+    return len(rows)
+
+
+def read(conn: psycopg.Connection, user_id: int, weeks: int = 26) -> dict | None:
+    rows = conn.execute("""SELECT * FROM healthspan_weekly WHERE user_id = %s ORDER BY week_start DESC LIMIT %s""",
+                        (user_id, weeks)).fetchall()
+    if not rows:
+        return None
+    cur = rows[0]
+    return {"body_age": cur["body_age"], "chrono_age": cur["chrono_age"], "delta_years": cur["delta_years"],
+            "pace_of_aging": cur["pace_of_aging"], "pace_raw": cur["pace_raw"],
+            "window_weeks": cur["pace_window_weeks"], "as_of": cur["as_of"], "algo_version": cur["algo_version"],
+            "history": [{"week": r["week_start"], "as_of": r["as_of"], "body_age": r["body_age"],
+                         "delta_years": r["delta_years"], "pace": r["pace_of_aging"], "pace_raw": r["pace_raw"],
+                         "window_weeks": r["pace_window_weeks"]} for r in reversed(rows)],
+            "contributors": cur["contributors"], "insufficient": cur["insufficient"]}

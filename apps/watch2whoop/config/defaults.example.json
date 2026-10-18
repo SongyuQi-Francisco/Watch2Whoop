@@ -1,0 +1,5 @@
+{
+  "W2W_DEFAULT_TODAY_URL": "https://body.example.com",
+  "W2W_DEFAULT_OW_HOST": "https://sync.example.com",
+  "W2W_SYNC_DAYS_BACK": "90"
+}

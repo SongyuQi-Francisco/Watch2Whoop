@@ -1,0 +1,48 @@
+// Tailscale access control (ACL) — paste into https://login.tailscale.com/admin/acls/file, replace the whole file and save.
+// Goal: the cloud server Ali (tag:body-server) only provides this project's services and cannot access any device in the tailnet;
+//       your devices (Mac, MacBook Air, iPhone) keep talking to each other as usual and can reach the services on Ali;
+//       family members who join later can only reach the Today page and the Shortcut upload on Ali, cannot see your devices, and cannot see each other.
+{
+	// Only the admin (you) can tag devices with tag:body-server
+	"tagOwners": {
+		"tag:body-server": ["autogroup:admin"],
+	},
+
+	"acls": [
+		// Your own devices can reach each other (excluding tagged servers)
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+
+		// You (the admin) reach Ali: this project's HTTPS services + SSH
+		{
+			"action": "accept",
+			"src":    ["autogroup:admin"],
+			"dst":    ["tag:body-server:22,443,8443,8444,8445,8446"],
+		},
+
+		// Family members who join later (ordinary tailnet members): only the Today page (443) and the Shortcut upload (8446) are open
+		{
+			"action": "accept",
+			"src":    ["autogroup:member"],
+			"dst":    ["tag:body-server:443,8446"],
+		},
+
+		// Note: no rule has tag:body-server as src → Ali cannot initiate access to any device.
+	],
+
+	// Tailscale SSH is not enabled (SSH to Ali uses its own sshd + keys)
+	"ssh": [],
+
+	// Tailscale runs these tests automatically on save; a wrong rule cannot be saved
+	"tests": [
+		{
+			// Ali cannot reach your Mac, MacBook Air or iPhone
+			"src":  "tag:body-server",
+			"deny": ["100.64.0.11:22", "100.64.0.11:443", "100.64.0.11:8765", "100.64.0.12:22", "100.64.0.13:443"],
+		},
+		{
+			// You can reach the services on Ali
+			"src":    "owner@example.com",
+			"accept": ["tag:body-server:443", "tag:body-server:8446", "tag:body-server:22"],
+		},
+	],
+}

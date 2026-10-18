@@ -1,0 +1,10 @@
+# The production dashboards (deploy/grafana/dashboards/*.json), read-only.
+apiVersion: 1
+providers:
+  - name: body-dashboards
+    folder: Watch2Whoop
+    folderUid: body
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana-dashboards

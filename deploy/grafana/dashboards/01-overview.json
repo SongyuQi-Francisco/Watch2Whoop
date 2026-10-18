@@ -1,0 +1,1212 @@
+{
+ "uid": "body-overview",
+ "title": "身体管理 · 总览",
+ "description": "恢复 / 睡眠 / 负荷 / 训练负荷趋势 / 睡眠债。数据来自 Body Engine 的 daily_scores（每小时更新）。",
+ "tags": [
+  "身体管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "stat",
+   "title": "恢复分",
+   "description": "最近一个有值的日子。绿 ≥ 67，黄 34–66，红 < 34。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, recovery AS \"恢复分\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 34
+       },
+       {
+        "color": "green",
+        "value": 67
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 1
+  },
+  {
+   "type": "stat",
+   "title": "睡眠分",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, sleep_score AS \"睡眠分\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 70
+       },
+       {
+        "color": "green",
+        "value": 85
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 4,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "负荷 strain",
+   "description": "0–21。今天还没过完时是到目前为止的值。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, strain AS \"strain\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 14
+       },
+       {
+        "color": "red",
+        "value": 18
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 3
+  },
+  {
+   "type": "stat",
+   "title": "实际睡眠",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, sleep_actual_min / 60.0 AS \"实际睡眠\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: 小时",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 6
+       },
+       {
+        "color": "green",
+        "value": 7
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 4
+  },
+  {
+   "type": "stat",
+   "title": "睡眠债",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, sleep_debt_min / 60.0 AS \"睡眠债\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: 小时",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": 2
+       },
+       {
+        "color": "red",
+        "value": 4
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 5
+  },
+  {
+   "type": "stat",
+   "title": "TSB（状态）",
+   "description": "CTL − ATL：负数 = 最近练得比长期习惯多（疲劳），太低（< −30）注意恢复。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, tsb AS \"TSB\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "yellow",
+        "value": -30
+       },
+       {
+        "color": "green",
+        "value": -10
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 20,
+    "y": 0,
+    "w": 4,
+    "h": 4
+   },
+   "id": 6
+  },
+  {
+   "type": "timeseries",
+   "title": "恢复分",
+   "description": "HRV（SDNN）0.6、睡眠期静息心率 0.2、睡眠表现 0.15、呼吸 0.05，和前 60 天基线比。没有手表睡眠的天是空的（看「数据质量」）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, CASE WHEN recovery < 34 THEN recovery END AS \"红（< 34）\", CASE WHEN recovery >= 34 AND recovery < 67 THEN recovery END AS \"黄（34–66）\", CASE WHEN recovery >= 67 THEN recovery END AS \"绿（≥ 67）\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "红（< 34）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "黄（34–66）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "绿（≥ 67）"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "id": 7
+  },
+  {
+   "type": "timeseries",
+   "title": "睡眠分",
+   "description": "OW Sleep Score 规格：时长 40%、阶段 20%、规律性 20%、中断 20%。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, CASE WHEN sleep_score < 70 THEN sleep_score END AS \"< 70\", CASE WHEN sleep_score >= 70 AND sleep_score < 85 THEN sleep_score END AS \"70–84\", CASE WHEN sleep_score >= 85 THEN sleep_score END AS \"≥ 85\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "min": 0,
+     "max": 100
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "< 70"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "70–84"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "≥ 85"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 4,
+    "w": 12,
+    "h": 8
+   },
+   "id": 8
+  },
+  {
+   "type": "timeseries",
+   "title": "负荷：strain 和肌肉负荷",
+   "description": "strain：心率 TRIMP 映射到 0–21（K = 170）。肌肉负荷：SparkyFitness 当天力量动作工作组 Σ 次数 × 重量，没有训练记录的天留空（没记录 ≠ 没练）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, strain AS \"strain\", muscle_load AS \"肌肉负荷（训练容量 kg）\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "肌肉负荷（训练容量 kg）"
+      },
+      "properties": [
+       {
+        "id": "custom.axisPlacement",
+        "value": "right"
+       },
+       {
+        "id": "unit",
+        "value": "suffix: kg"
+       },
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 8
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "purple"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "strain"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       },
+       {
+        "id": "max",
+        "value": 21
+       },
+       {
+        "id": "min",
+        "value": 0
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "id": 9
+  },
+  {
+   "type": "timeseries",
+   "title": "训练负荷趋势：CTL / ATL / TSB",
+   "description": "用每天的 TRIMP 做指数加权：CTL 42 天、ATL 7 天、TSB = CTL − ATL。前 42 天是热身期。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, ctl AS \"CTL（42 天，体能）\", atl AS \"ATL（7 天，疲劳）\", tsb AS \"TSB（状态）\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "TSB（状态）"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "bars"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 35
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 12,
+    "h": 8
+   },
+   "id": 10
+  },
+  {
+   "type": "timeseries",
+   "title": "睡眠时长和睡眠需求",
+   "description": "实际睡眠 = 主睡眠 + 前一个主睡眠之后的小睡。睡眠需求 = 8h + 睡眠债（最多 +2h）+ 前一天负荷加成。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, sleep_actual_min / 60.0 AS \"实际睡眠\", sleep_need_min / 60.0 AS \"睡眠需求\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: 小时",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "实际睡眠"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "bars"
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 60
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "睡眠需求"
+      },
+      "properties": [
+       {
+        "id": "custom.lineStyle",
+        "value": {
+         "fill": "dash",
+         "dash": [
+          6,
+          4
+         ]
+        }
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "id": 11
+  },
+  {
+   "type": "timeseries",
+   "title": "睡眠债",
+   "description": "最近 14 晚「8h − 实际睡眠」的加权平均（近的权重大），进入当晚睡眠前的值。≥ 2h 提醒、≥ 4h 警告（规则 readiness）。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "SELECT date::timestamptz AS time, CASE WHEN sleep_debt_min / 60.0 < 2 THEN sleep_debt_min / 60.0 END AS \"< 2 小时\", CASE WHEN sleep_debt_min / 60.0 >= 2 AND sleep_debt_min / 60.0 < 4 THEN sleep_debt_min / 60.0 END AS \"2–4 小时\", CASE WHEN sleep_debt_min / 60.0 >= 4 THEN sleep_debt_min / 60.0 END AS \"≥ 4 小时\" FROM daily_scores WHERE user_id = $user AND date BETWEEN ($__timeFrom()::timestamptz)::date AND ($__timeTo()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: 小时",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      },
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "< 2 小时"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "2–4 小时"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "yellow"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "≥ 4 小时"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 20,
+    "w": 12,
+    "h": 8
+   },
+   "id": 12
+  }
+ ]
+}

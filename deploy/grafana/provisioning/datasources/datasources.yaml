@@ -1,0 +1,54 @@
+# Grafana data sources (provisioning, tracked in git). Passwords / keys are read from docker secrets files ($__file{}), not written here.
+# All read-only: databases use the grafana_ro role (050_grafana_ro.sql, ow_grafana_ro.sql); SparkyFitness uses the owner's own read-only API key.
+apiVersion: 1
+
+prune: true   # data sources removed from this file are also deleted in Grafana
+
+datasources:
+  - name: Body Engine
+    uid: body-engine
+    type: grafana-postgresql-datasource
+    url: host.docker.internal:5433
+    user: grafana_ro
+    isDefault: true
+    editable: false
+    jsonData:
+      database: body
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $__file{/run/secrets/grafana_ro_body_password}
+
+  - name: Open Wearables
+    uid: open-wearables
+    type: grafana-postgresql-datasource
+    url: host.docker.internal:5434
+    user: grafana_ro
+    editable: false
+    jsonData:
+      database: open-wearables
+      sslmode: disable
+      postgresVersion: 1800
+      timescaledb: false
+      maxOpenConns: 3
+      maxIdleConns: 1
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: $__file{/run/secrets/grafana_ro_ow_password}
+
+  # SparkyFitness (weight): its tables separate users by row-level security, so by design no database role is given (docs/system-design.md §9); use the API.
+  - name: SparkyFitness
+    uid: sparkyfitness
+    type: yesoreyeram-infinity-datasource
+    editable: false
+    jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - http://host.docker.internal:8300
+      global_queries: []
+    secureJsonData:
+      bearerToken: $__file{/run/secrets/sparkyfitness_api_key_owner_ro}

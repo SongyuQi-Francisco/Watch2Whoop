@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "model": "claude-opus-5-5",
+  "autoMemoryEnabled": false,
+  "disableClaudeAiConnectors": true,
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [
+    "body-engine"
+  ],
+  "enabledPlugins": {
+    "stock-deep-analyzer@uzi-skill": false
+  },
+  "claudeMdExcludes": [
+    "**/Watch2Whoop/CLAUDE.md",
+    "**/Watch2Whoop/.claude/worktrees/*/CLAUDE.md",
+    "/opt/body-management/CLAUDE.md"
+  ],
+  "env": {
+    "ENABLE_TOOL_SEARCH": "false",
+    "MAX_MCP_OUTPUT_TOKENS": "30000"
+  },
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "mcp__body-engine__*"
+    ],
+    "ask": [
+      "mcp__body-engine__undo_sparky_entry",
+      "mcp__body-engine__undo_meal_log",
+      "mcp__body-engine__delete_journal_entry",
+      "mcp__body-engine__delete_lab_results",
+      "mcp__body-engine__delete_observation"
+    ],
+    "deny": [
+      "Bash",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "CronCreate",
+      "CronDelete",
+      "RemoteTrigger",
+      "mcp__claude_ai_*",
+      "mcp__claude-in-chrome__*",
+      "Read(//path/to/Watch2Whoop/secrets/**)",
+      "Read(//path/to/Watch2Whoop/health_data/**)",
+      "Read(//opt/body-management/secrets/**)",
+      "Read(//opt/body-management/health_data/**)",
+      "Read(//opt/body-management/.env)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.claude.json)",
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/Library/Keychains/**)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "TZ=Australia/Sydney /bin/date '+[当前本地时间 %Y-%m-%d %H:%M %a，Australia/Sydney]'"
+          }
+        ]
+      }
+    ]
+  }
+}

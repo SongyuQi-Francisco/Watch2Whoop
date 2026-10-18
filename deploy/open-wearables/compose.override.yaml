@@ -1,0 +1,104 @@
+# Override file for the local Open Wearables deployment, layered on vendor/open-wearables/docker-compose.yml (vendor source is not modified).
+# Invoke through deploy/open-wearables/ow.sh, which passes --env-file secrets/open_wearables.env and BODY_ROOT.
+#
+# Differences from the upstream compose:
+# - Not built locally; uses the officially released 0.9.0 images (same version the submodule pins), all images pinned by version + digest
+# - Ports bind to 127.0.0.1 only and avoid Body Engine (5433 / 8100):
+#     API 8200, developer portal 8201, Flower 8202, S3 (SeaweedFS) 8203, Postgres 5434; Redis and Svix are not exposed
+# - All passwords come from secrets/open_wearables.env (not tracked by git)
+# - Adds a SeaweedFS as S3 for chunked export.xml upload (MinIO no longer publishes images on Docker Hub)
+# - Removes the development develop/watch and the frontend dev server
+
+# Note: !reset inside an anchor has no effect; build / develop must be reset separately in each service
+x-backend: &backend
+  image: themomentum/open-wearables-backend:0.9.0@sha256:2addfb46940ae2a6f91ac888921106d51796c49c19876356e220e97c8b41ff98
+  pull_policy: missing
+  env_file: !override
+    - ${BODY_ROOT:?}/secrets/open_wearables.env
+  environment:
+    TZ: Australia/Sydney
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:18.4@sha256:a02db8cac496f15b094798a38254f14d6e00741f709360e5e00bb6668ea31636
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+      TZ: Australia/Sydney
+    ports: !override
+      - "127.0.0.1:5434:5432"
+    restart: unless-stopped
+
+  app:
+    <<: *backend
+    build: !reset null
+    develop: !reset null
+    ports: !override
+      - "127.0.0.1:8200:8000"
+    depends_on:
+      seaweedfs:
+        condition: service_started
+
+  celery-worker:
+    <<: *backend
+    build: !reset null
+    develop: !reset null
+
+  celery-beat:
+    <<: *backend
+    build: !reset null
+    develop: !reset null
+
+  flower:
+    <<: *backend
+    build: !reset null
+    develop: !reset null
+    ports: !override
+      - "127.0.0.1:8202:5555"
+
+  redis:
+    image: redis:8.2.4@sha256:320e9ce6d5c940815a84d989f0e53e3a4d065c0d9132cd9e1222265e78eb6080
+    ports: !reset []
+    restart: unless-stopped
+
+  svix-server:
+    image: svix/svix-server:v1.81.0@sha256:dc83849a86027a85b18174d6969ddb448f12ea1f62b4e12af8a84da25e6833e6
+    env_file: !override
+      - ${BODY_ROOT:?}/secrets/open_wearables.env
+    ports: !reset []
+    restart: unless-stopped
+
+  frontend:
+    image: themomentum/open-wearables-frontend:0.9.0@sha256:0ea6853e29dc541a40899c182aba6f84cff634dae23d87ff7fd4a1b7bfc8dc52
+    pull_policy: missing
+    build: !reset null
+    develop: !reset null
+    env_file: !reset []
+    environment:
+      NODE_ENV: production
+      # Address the browser uses to reach the API (the image supports runtime config)
+      VITE_API_URL: http://localhost:8200
+    ports: !override
+      - "127.0.0.1:8201:3000"
+    restart: unless-stopped
+
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48@sha256:4e61d15fd35994cb1e43e1e553dff106794841fd9a99ade2fc8c8bfce4d7872d
+    command:
+      - server
+      - -dir=/data
+      - -ip=seaweedfs
+      - -ip.bind=0.0.0.0
+      - -master.volumeSizeLimitMB=1024
+      - -s3
+      - -s3.port=8333
+      - -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - seaweedfs_data:/data
+      - ${BODY_ROOT:?}/secrets/open_wearables_s3.json:/etc/seaweedfs/s3.json:ro
+    ports:
+      - "127.0.0.1:8203:8333"
+    restart: unless-stopped
+
+volumes:
+  seaweedfs_data:

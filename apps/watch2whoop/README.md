@@ -1,0 +1,201 @@
+# Watch2Whoop iOS app
+
+[English](#english) · [中文步骤](#中文步骤)
+
+---
+
+## English
+
+The main Watch2Whoop product: one app that does everything (the "single entry point"), also used by family members.
+
+1. **Background sync of Apple Health data** to your own self-deployed [Open Wearables](https://github.com/the-momentum/open-wearables) (OW, the "sync server"): raw heart rate samples, HRV, resting heart rate, sleep stages, workouts, steps, energy, blood oxygen, respiration, weight / body fat, VO₂max and more. It uses OW's official Flutter SDK ([open_wearables_health_sdk](https://github.com/the-momentum/open_wearables_health_sdk), MIT), with HealthKit background delivery + BGTask incremental sync (native iOS SDK 0.15).
+2. **The Today page embedded full-screen** (Body Engine's web front end); viewing, logging and "Ask the butler" (「问管家」) all happen there.
+3. **Scan one "setup QR code" and you are set up**: server addresses + sync invitation code + a one-time Today-page login code, so family members need no technical knowledge.
+
+The app only connects to the servers given in the setup information, and has **no third-party analytics or crash reporting**. The person who builds and uploads it cannot see any health data.
+
+### Layout
+| Path | Purpose |
+|---|---|
+| `lib/main.dart` | Entry point: onboarding not finished → onboarding page, otherwise → Today page; receives `watch2whoop://setup?…` setup links |
+| `lib/src/pages/onboarding_page.dart` | Onboarding: scan a QR code / paste the setup info (one step) → Health permissions → Today page (auto login); "manual entry" (「手动填写」) is collapsed |
+| `lib/src/pages/home_page.dart` | Full-screen WebView of the Today page; same-origin links stay in the app, others go to the system; `watch2whoop://sync` opens the sync page; opens `/app/#login=…` when a one-time login code is present |
+| `lib/src/pages/sync_page.dart` | Native "phone sync" (「手机同步」) page: status, record counts per type, sync now, retry on failure, scan / paste new setup info, server settings, sync log |
+| `lib/src/pages/scan_page.dart` | In-app setup QR scanner (mobile_scanner; on iOS it uses the system AVFoundation, without Google ML Kit) |
+| `lib/src/setup_flow.dart` | Applies setup info in one step (server → connect sync → store the login code); receives `watch2whoop://` links |
+| `lib/src/health_sync.dart` | Wraps the OW SDK: invitation code redemption, authorization, start / stop sync, status |
+| `lib/src/sync_stats.dart`, `lib/src/config.dart` | Sync log statistics; configuration, address validation, invitation / login codes, setup-info parsing (pure Dart, unit-tested) |
+| `ios/Runner/AppDelegate.swift` | Starts the OW SDK natively first (BGTask, background wake-up); SDK log buffer; setup-link inbox; the simulator debug build writes test data |
+| `ios/Flutter/Watch2Whoop.xcconfig` | Bundle ID / Team ID / display name (**placeholder values in the repository**) |
+| `config/defaults.example.json` | Default server addresses compiled into the app: the project's own public servers (`body.example.com` / `sync.example.com`); people who self-host change them to their own domains |
+
+### Setup QR code (done by the server admin)
+```bash
+# A family member's first use: create the user in OW, issue the sync invitation code and the Today-page login code, print the QR code (needs qrencode)
+python3 deploy/open-wearables/invite.py --create-user "Mum" --body-user-id <Body Engine user ID> --label "Mum's iPhone" \
+    --today-url https://body.example.com --ow-url https://sync.example.com \
+    --body-cmd deploy/ali/engine.sh --qr mom-setup.png      # run on Ali in /opt/body-management
+```
+- The QR code contains `watch2whoop://setup?today=…&ow=…&code=…&login=…`. **There is no long-lived token**: the sync invitation code is single-use and expires after a few days; the Today-page login code is single-use and lasts 72 hours by default (when redeemed, the server issues this iPhone its own dedicated token; revoking it signs this device out). Even so, only give it to the person it is for.
+- The family member scans it with the **iPhone Camera** → taps "Open in Watch2Whoop" → the server is filled in and sync is connected automatically → tap "Continue" (「继续」), in the Health permissions tap "Turn On All" and "Allow" → "Open Today page" (「打开今天页」) logs in automatically. They can also tap "Scan setup QR code" (「扫描设置二维码」) in the app, or be sent the link and use "Paste setup info" (「粘贴设置信息」).
+- Create the Body Engine user first (`body-engine user-add`) and record the OW user's UUID in `users.ow_user_id` (`body-engine ow-link`, or the UUID printed by invite.py).
+- If the server is only on a private network, the iPhone must connect to the VPN first (the app shows a one-line hint); a public https domain does not need that.
+
+### Building and shipping via TestFlight (for the person with the Apple Developer account)
+
+#### 0. Prerequisites
+- A paid Apple Developer Program account (a free account cannot use TestFlight).
+- A Mac with Xcode 26 or newer (install the iOS platform in Xcode → Settings → Components).
+- Flutter **3.47.7** (`brew install --cask flutter`, confirm with `flutter --version`) and CocoaPods 1.17 (`brew install cocoapods`).
+- If `xcode-select -p` prints `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` once.
+
+#### 1. Get the code
+The project owner will give you the repository address and a commit / tag.
+```bash
+git clone <repository address> watch2whoop-src
+cd watch2whoop-src/apps/watch2whoop
+flutter pub get
+cd ios && pod install && cd ..
+grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # should be 0.15.x, not 0.14
+```
+
+#### 2. Fill in your own Bundle ID, Team ID and default servers (none of it goes into git)
+```bash
+cp ios/Flutter/Watch2Whoop.local.xcconfig.example ios/Flutter/Watch2Whoop.local.xcconfig
+open -e ios/Flutter/Watch2Whoop.local.xcconfig
+cp config/defaults.example.json config/defaults.json
+open -e config/defaults.json
+```
+- `W2W_BUNDLE_ID`: your bundle ID, e.g. `com.<your name>.watch2whoop` (globally unique, cannot be changed after upload).
+- `W2W_TEAM_ID`: the 10-character Team ID under developer.apple.com → Account → Membership details.
+- `W2W_DISPLAY_NAME`: the name on the home screen, default Watch2Whoop.
+- `config/defaults.json`: the example already holds the project's public servers (Today page `https://body.example.com`, sync `https://sync.example.com`); just copy it. People who deploy their own server change it to their own domains. The setup QR code carries the addresses as well, so this step only decides what is pre-filled for "manual entry".
+
+**Do not** change Team / Bundle ID on Xcode's Signing page (that writes into the project file); edit the files above instead.
+
+#### 3. Confirm signing and capabilities in Xcode (once, the first time)
+1. `open ios/Runner.xcworkspace` (note: `.xcworkspace`).
+2. **Runner** target → **Signing & Capabilities**: tick "Automatically manage signing"; the Team should already be yours; you should see **HealthKit** (with Background Delivery ticked) and **Background Modes** (Background fetch, Background processing). They come from the repository; you do not add them.
+3. When it asks to register the App ID, click "Register" / "Try Again"; Xcode creates an App ID with HealthKit.
+
+#### 4. Create the app in App Store Connect
+App Store Connect → **Apps** → **+** → **New App**: platform iOS; name unique across the App Store (e.g. `Watch2Whoop <your name>`); bundle ID the one from step 2; SKU anything. TestFlight only, no App Store release.
+
+#### 5. Build and upload
+Before each upload, increase the build number (the number after `+`) in `version: 1.0.0+1` in `pubspec.yaml` by 1.
+```bash
+flutter build ipa --release --dart-define-from-file=config/defaults.json
+```
+Open `build/ios/ipa/*.ipa` with Apple's **Transporter** and click "Deliver" (or in Xcode: **Product → Archive → Distribute App → App Store Connect → Upload**). `Info.plist` already declares that it uses no non-exempt encryption, so export compliance is not asked again. After 10 to 30 minutes the build becomes "Ready to Test" in TestFlight.
+
+#### 6. Add the owner and family members as testers
+**A. The project owner: internal testing (no review, fastest)**
+App Store Connect → **Users and Access** → **+**, invite them by their Apple ID email, choose the role with the fewest permissions (e.g. "Customer Support") and tick only this app → after they accept, under **TestFlight → Internal Testing** create a group, add them, and tick "automatic distribution". Internal testers become members of your team (they can see this app's App Store Connect page), so this is only suitable for the project owner.
+
+**B. Family members (recommended): external testing, invited by email**
+1. **TestFlight → External Testing** → **+** to create a group (e.g. "Family") and tick "automatic distribution".
+2. The first time you add a build to an external group you must fill in the "Test Information" and submit it for **Beta App Review** (usually within 1 day):
+   - Description: "Watch2Whoop syncs Apple Health data to a server the user deploys themselves, and shows recovery score, sleep, workouts and more. Accounts are invited by the server administrator."
+   - If review needs sign-in information: ask the project owner to generate a **demo** setup link (a test account with deletable data), put it in the "Review Notes", and have the project owner revoke it once review is done.
+3. After approval, under **Testers → +** in the group, enter each family member's Apple ID email. They receive an email: first install the **TestFlight** app on the iPhone, then tap "View in TestFlight" → "Accept" → "Install" in the email. After that, they finish setup with the setup QR code from the project owner.
+4. Later builds: a new build under the same version number usually needs no new review; changing the version number (`1.0.0` → `1.1.0`) goes through Beta review again.
+- You can also turn on a "public link", but anyone with the link can install (it is useless without a setup QR code, though); inviting family by email is safer.
+
+#### 7. Maintenance
+- **TestFlight builds expire after 90 days**: before that, repeat step 5 (build number +1) and upload. The Bundle ID stays the same; after family members update, their data, login and sync progress are kept, and TestFlight reminds them to update.
+- To follow a new version: `git pull` → `flutter pub get` → `cd ios && pod install` → step 5. First ask the project owner whether the server is compatible.
+
+### System limits (the app also shows a one-line hint)
+- **iOS does not let apps read health data while the phone is locked**: sync pauses and continues after unlock.
+- **After the app is swiped away from the background it does not sync automatically** (iOS no longer wakes a force-quit app); it catches up the next time it is opened.
+- The timing of background sync is decided by iOS (HealthKit delivery + BGTask) and can be delayed by tens of minutes.
+- Wrist temperature and HRV RMSSD (iOS 27) are not yet supported by SDK 0.15.
+- There is no service worker in WKWebView, so the Today page inside the app has no offline cache.
+
+### Development
+```bash
+flutter test                       # unit tests: configuration, address validation, setup info / links, login codes, sync log statistics, invitation code redemption
+flutter analyze
+flutter build ios --simulator --debug
+xcrun simctl install booted build/ios/iphonesimulator/Runner.app
+xcrun simctl openurl booted "watch2whoop://setup?today=…&ow=…&code=…&login=…"   # simulates a "Camera scan"
+```
+- The simulator can use `http://localhost:<port>` (plain http is only allowed for localhost / LAN, see `checkServerUrl`); a real device needs https.
+- Logging in to the Today page in the simulator: WKWebView does not keep `Secure` cookies on http://localhost. The local Body Engine dev server needs `BODY_WEB_INSECURE_LOCAL_COOKIE=1` (see "Today page" (「今天页」) in `body_engine/README.md`); for login-code tests use a separate development database (`BODY_DB_NAME=…`) and do not run unmerged migrations against the production database.
+- The simulator has no camera, so in-app scanning can only be tested on a real device; test setup links with `simctl openurl`.
+- The debug build's "phone sync" page has "Write test data to the simulator's Health app" at the bottom (compiled only under `DEBUG && simulator`). Use a dedicated OW test user for testing (`invite.py --create-user`) and delete it afterwards.
+- When the path contains Chinese characters, the `flutter analyze` analysis server crashes (a known Dart LSP issue); copy the project to a pure-English path and run it there.
+- For Android later: `flutter create --platforms android .`; the OW SDK already supports Health Connect / Samsung Health.
+
+License: not chosen yet (the repository is private for now; the owner decides before open-sourcing). The OW SDK is MIT-licensed.
+
+---
+
+## 中文步骤
+
+以下是给帮忙编译上传 TestFlight 的朋友看的中文步骤（与上面英文部分内容一致）。
+
+### 0. 需要准备
+- 付费的 Apple Developer Program 账号（免费账号不能用 TestFlight）。
+- Mac + Xcode 26 或更新（Xcode → Settings → Components 里装好 iOS 平台）。
+- Flutter **3.47.7**（`brew install --cask flutter`，`flutter --version` 确认）、CocoaPods 1.17（`brew install cocoapods`）。
+- `xcode-select -p` 显示 `/Library/Developer/CommandLineTools` 时运行一次 `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`。
+
+### 1. 拉代码
+项目所有者会给你仓库地址和一个 commit / tag。
+```bash
+git clone <仓库地址> watch2whoop-src
+cd watch2whoop-src/apps/watch2whoop
+flutter pub get
+cd ios && pod install && cd ..
+grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # 应该是 0.15.x，不能是 0.14
+```
+
+### 2. 填你自己的 Bundle ID、Team ID 和默认服务器（都不进 git）
+```bash
+cp ios/Flutter/Watch2Whoop.local.xcconfig.example ios/Flutter/Watch2Whoop.local.xcconfig
+open -e ios/Flutter/Watch2Whoop.local.xcconfig
+cp config/defaults.example.json config/defaults.json
+open -e config/defaults.json
+```
+- `W2W_BUNDLE_ID`：你的套装 ID，例如 `com.<你的名字>.watch2whoop`（全球唯一，上传后不能改）。
+- `W2W_TEAM_ID`：developer.apple.com → Account → Membership details 里的 10 位 Team ID。
+- `W2W_DISPLAY_NAME`：主屏幕上的名字，默认 Watch2Whoop。
+- `config/defaults.json`：示例里已经是我们的公网服务器（今天页 `https://body.example.com`、同步 `https://sync.example.com`），直接复制就行。自己部署服务器的人改成自己的域名。设置二维码里也带地址，所以这一步只决定「手动填写」时预填什么。
+
+**不要**在 Xcode 的 Signing 页面里改 Team / Bundle ID（会写进工程文件）；改上面的文件就行。
+
+### 3. 用 Xcode 确认签名和能力（第一次做一次）
+1. `open ios/Runner.xcworkspace`（注意是 `.xcworkspace`）。
+2. **Runner** target → **Signing & Capabilities**：勾「Automatically manage signing」，Team 应该已经是你的；能看到 **HealthKit**（勾着 Background Delivery）和 **Background Modes**（Background fetch、Background processing）——来自仓库，不用自己加。
+3. 提示要注册 App ID 时点「Register」/「Try Again」，Xcode 会建好带 HealthKit 的 App ID。
+
+### 4. 在 App Store Connect 建 app
+App Store Connect → **App** → **+** → **新建 App**：平台 iOS；名称全 App Store 唯一（例如 `Watch2Whoop <你的名字>`）；套装 ID 选第 2 步那个；SKU 随便填。只走 TestFlight，不上架。
+
+### 5. 编译和上传
+每次上传前把 `pubspec.yaml` 里 `version: 1.0.0+1` 的构建号（`+` 后面的数）加 1。
+```bash
+flutter build ipa --release --dart-define-from-file=config/defaults.json
+```
+用 Apple 的 **Transporter** 打开 `build/ios/ipa/*.ipa` 点「交付」（或 Xcode **Product → Archive → Distribute App → App Store Connect → Upload**）。`Info.plist` 已声明不使用非豁免加密，不会再问出口合规。10–30 分钟后 TestFlight 里变成「可供测试」。
+
+### 6. 把用户和家人加成测试员
+**A. 项目所有者本人：内部测试（不用审核，最快）**
+App Store Connect → **用户和访问** → **+**，用对方的 Apple ID 邮箱邀请，角色选权限最小的（例如「客户支持」），只勾这个 app → 对方接受后，在 **TestFlight → 内部测试** 新建组、加人、勾「自动分发」。内部测试员会成为你团队的成员（能看到这个 app 的 App Store Connect 页面），只适合项目所有者。
+
+**B. 家人（推荐）：外部测试，按邮箱邀请**
+1. **TestFlight → 外部测试** → **+** 新建组（例如「家人」），勾「自动分发」。
+2. 第一次给外部组加构建时要填「测试信息」并提交 **Beta 版 App 审核**（通常 1 天内）：
+   - 描述：「Watch2Whoop 把 Apple 健康数据同步到用户自己部署的服务器，并显示恢复分、睡眠、训练等。账号由服务器管理员邀请。」
+   - 审核需要登录信息时：请项目所有者生成一个**演示用**设置链接（测试账号、数据可删），写在「审核备注」里；审核完让项目所有者吊销。
+3. 审核通过后，在组里 **测试员 → +** 输入家人的 Apple ID 邮箱。家人会收到邮件：先在 iPhone 装 **TestFlight** app，再点邮件里的「查看测试」→「接受」→「安装」。之后再用项目所有者给的设置二维码完成设置。
+4. 以后的新构建：同一版本号下的新构建一般不用再审；改了版本号（`1.0.0` → `1.1.0`）会再走一次 Beta 审核。
+- 也可以开「公开链接」，但任何拿到链接的人都能装（没有设置二维码也用不了），家人用邮箱邀请更稳妥。
+
+### 7. 维护
+- **TestFlight 构建 90 天过期**：过期前重新做第 5 步（构建号 +1）上传即可。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
+- 跟新版本：`git pull` → `flutter pub get` → `cd ios && pod install` → 第 5 步。先问项目所有者服务器是否兼容。
+
+## License
+MIT — see [LICENSE](LICENSE). The rest of the repository (server side) is AGPL-3.0, see [docs/LICENSES.md](../../docs/LICENSES.md).

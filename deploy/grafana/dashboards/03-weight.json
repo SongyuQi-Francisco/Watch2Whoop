@@ -1,0 +1,628 @@
+{
+ "uid": "body-weight",
+ "title": "身体管理 · 体重和活动",
+ "description": "体重（SparkyFitness）和 7 天均值、每日步数、活动能量。饮食明细在 SparkyFitness 里看。",
+ "tags": [
+  "身体管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "体重（SparkyFitness）",
+   "description": "来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust 要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。目标：3 个月内到 80kg。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "yesoreyeram-infinity-datasource",
+      "uid": "sparkyfitness"
+     },
+     "type": "json",
+     "source": "url",
+     "format": "table",
+     "parser": "backend",
+     "url": "http://host.docker.internal:8300/api/measurements/check-in-measurements-range/2020-01-01/${__to:date:YYYY-MM-DD}",
+     "url_options": {
+      "method": "GET",
+      "data": ""
+     },
+     "root_selector": "( $r := $[weight != null].{\"d\": entry_date, \"ms\": $toMillis(entry_date & \"T00:00:00+10:00\"), \"w\": weight}; $r.( $m := ms; $win := $r[ms > $m - 6*86400000 and ms <= $m]; {\"time\": d & \"T00:00:00+10:00\", \"weight\": w, \"avg7\": $round($average($win.w), 2), \"n7\": $count($win)} ) )",
+     "columns": [
+      {
+       "selector": "time",
+       "text": "time",
+       "type": "timestamp"
+      },
+      {
+       "selector": "weight",
+       "text": "体重",
+       "type": "number"
+      },
+      {
+       "selector": "avg7",
+       "text": "7 天均值",
+       "type": "number"
+      },
+      {
+       "selector": "n7",
+       "text": "7 天内称重次数",
+       "type": "number"
+      }
+     ]
+    }
+   ],
+   "datasource": {
+    "type": "yesoreyeram-infinity-datasource",
+    "uid": "sparkyfitness"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "suffix: kg",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 0,
+      "showPoints": "auto",
+      "pointSize": 5,
+      "spanNulls": true,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "体重"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "points"
+       },
+       {
+        "id": "custom.pointSize",
+        "value": 9
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "blue"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "7 天均值"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       },
+       {
+        "id": "custom.showPoints",
+        "value": "never"
+       },
+       {
+        "id": "custom.spanNulls",
+        "value": true
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "7 天内称重次数"
+      },
+      "properties": [
+       {
+        "id": "custom.hideFrom",
+        "value": {
+         "legend": true,
+         "tooltip": false,
+         "viz": true
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 16,
+    "h": 9
+   },
+   "id": 1
+  },
+  {
+   "type": "table",
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "indexByName": {
+       "time": 0,
+       "体重": 1,
+       "7 天均值": 2,
+       "7 天内称重次数": 3
+      }
+     }
+    }
+   ],
+   "title": "称重记录",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "yesoreyeram-infinity-datasource",
+      "uid": "sparkyfitness"
+     },
+     "type": "json",
+     "source": "url",
+     "format": "table",
+     "parser": "backend",
+     "url": "http://host.docker.internal:8300/api/measurements/check-in-measurements-range/2020-01-01/${__to:date:YYYY-MM-DD}",
+     "url_options": {
+      "method": "GET",
+      "data": ""
+     },
+     "root_selector": "( $r := $[weight != null].{\"d\": entry_date, \"ms\": $toMillis(entry_date & \"T00:00:00+10:00\"), \"w\": weight}; $r.( $m := ms; $win := $r[ms > $m - 6*86400000 and ms <= $m]; {\"time\": d & \"T00:00:00+10:00\", \"weight\": w, \"avg7\": $round($average($win.w), 2), \"n7\": $count($win)} ) )",
+     "columns": [
+      {
+       "selector": "time",
+       "text": "time",
+       "type": "timestamp"
+      },
+      {
+       "selector": "weight",
+       "text": "体重",
+       "type": "number"
+      },
+      {
+       "selector": "avg7",
+       "text": "7 天均值",
+       "type": "number"
+      },
+      {
+       "selector": "n7",
+       "text": "7 天内称重次数",
+       "type": "number"
+      }
+     ]
+    }
+   ],
+   "datasource": {
+    "type": "yesoreyeram-infinity-datasource",
+    "uid": "sparkyfitness"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "time"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "日期"
+       },
+       {
+        "id": "unit",
+        "value": "time:YYYY-MM-DD"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "体重"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "suffix: kg"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "7 天均值"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "suffix: kg"
+       },
+       {
+        "id": "decimals",
+        "value": 2
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [
+     {
+      "displayName": "日期",
+      "desc": true
+     }
+    ],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 8,
+    "h": 9
+   },
+   "id": 2
+  },
+  {
+   "type": "timeseries",
+   "title": "每日步数",
+   "description": "OW 导入器按 HealthKit 规则去重（手表 > 手机），比快捷指令直接相加的数少。今天还没过完。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, value FROM daily_metrics WHERE user_id = $user AND metric = 'step_count' AND date BETWEEN ($__timeFrom()::timestamptz)::date - 6 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, value, avg(value) OVER (ORDER BY date RANGE BETWEEN '6 days'::interval PRECEDING AND CURRENT ROW) AS m FROM s) SELECT date::timestamptz AS time, value AS \"步数\", m AS \"7 天均值\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "7 天均值"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "line"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "步数"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 9,
+    "w": 12,
+    "h": 8
+   },
+   "id": 3
+  },
+  {
+   "type": "timeseries",
+   "title": "活动能量",
+   "description": "Apple 的 active energy（不含基础代谢），kcal。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "time_series",
+     "rawSql": "WITH s AS (SELECT date, value FROM daily_metrics WHERE user_id = $user AND metric = 'active_energy_burned' AND date BETWEEN ($__timeFrom()::timestamptz)::date - 6 AND ($__timeTo()::timestamptz)::date), b AS (SELECT date, value, avg(value) OVER (ORDER BY date RANGE BETWEEN '6 days'::interval PRECEDING AND CURRENT ROW) AS m FROM s) SELECT date::timestamptz AS time, value AS \"活动能量\", m AS \"7 天均值\" FROM b WHERE date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "kcal",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 1,
+      "fillOpacity": 70,
+      "showPoints": "never",
+      "pointSize": 5,
+      "spanNulls": 259200000,
+      "barAlignment": 0,
+      "axisPlacement": "auto",
+      "gradientMode": "none",
+      "thresholdsStyle": {
+       "mode": "off"
+      }
+     },
+     "color": {
+      "mode": "palette-classic"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "7 天均值"
+      },
+      "properties": [
+       {
+        "id": "custom.drawStyle",
+        "value": "line"
+       },
+       {
+        "id": "custom.lineWidth",
+        "value": 2
+       },
+       {
+        "id": "custom.fillOpacity",
+        "value": 0
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "orange"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "活动能量"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "red"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "gridPos": {
+    "x": 12,
+    "y": 9,
+    "w": 12,
+    "h": 8
+   },
+   "id": 4
+  }
+ ]
+}

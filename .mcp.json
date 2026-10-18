@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "body-engine": {
+      "command": "uv",
+      "args": ["--directory", "body_engine", "run", "--quiet", "body-engine-mcp"]
+    }
+  }
+}

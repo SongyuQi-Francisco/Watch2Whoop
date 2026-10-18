@@ -1,0 +1,9 @@
+// Watch2Whoop signing and identity. The repo holds placeholder values (open-source friendly).
+// When building yourself: copy Watch2Whoop.local.xcconfig.example to Watch2Whoop.local.xcconfig (not tracked by git) and fill in your own values.
+// Signing / identity. Placeholders only. Copy Watch2Whoop.local.xcconfig.example to
+// Watch2Whoop.local.xcconfig (git-ignored) and fill in your own values.
+W2W_BUNDLE_ID = org.watch2whoop.app
+W2W_TEAM_ID =
+W2W_DISPLAY_NAME = Watch2Whoop
+
+#include? "Watch2Whoop.local.xcconfig"

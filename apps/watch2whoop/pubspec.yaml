@@ -1,0 +1,42 @@
+name: watch2whoop
+description: "Watch2Whoop: background Apple Health sync to a self-hosted Open Wearables server + the Body Engine today page in one app."
+publish_to: 'none'
+
+# Bump the build number after the + for every TestFlight upload (e.g. 1.0.0+1 → 1.0.0+2).
+# Bump the build number after "+" for every TestFlight upload.
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+  flutter: 3.47.7
+
+# All versions are pinned (no ^); bump them manually and re-verify when upgrading.
+# All versions are pinned exactly; upgrade deliberately.
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # Open Wearables Flutter SDK (MIT). 0.0.25 depends on the native iOS SDK ~> 0.15.0
+  # (0.14 has the sync race that interrupts the initial export) — check ios/Podfile.lock.
+  open_wearables_health_sdk: 0.0.25
+  webview_flutter: 4.14.1
+  webview_flutter_wkwebview: 3.27.0
+  url_launcher: 6.3.3
+  shared_preferences: 2.5.6
+  http: 1.6.0
+  wakelock_plus: 1.8.1
+  package_info_plus: 10.2.2
+  # Scan the setup QR code (iOS uses system AVFoundation / Vision, no Google ML Kit)
+  mobile_scanner: 7.4.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  config:
+    # All plugins go through CocoaPods (OW SDK 0.0.25 has no Swift Package yet).
+    enable-swift-package-manager: false

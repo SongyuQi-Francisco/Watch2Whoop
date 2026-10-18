@@ -1,0 +1,8 @@
+// Copy to Watch2Whoop.local.xcconfig (same folder) and fill in. That file is git-ignored.
+
+// Bundle ID used when creating the app in App Store Connect; globally unique and cannot be changed later.
+W2W_BUNDLE_ID = com.yourname.watch2whoop
+// Apple Developer Team ID (developer.apple.com → Membership details, 10 alphanumeric characters).
+W2W_TEAM_ID = ABCDE12345
+// Name shown on the home screen.
+W2W_DISPLAY_NAME = Watch2Whoop

@@ -1,0 +1,16 @@
+{
+  "name": "身体管理 · 今天",
+  "short_name": "身体",
+  "description": "恢复分、睡眠、提醒、日记和训练饮食（Body Engine）",
+  "lang": "zh-CN",
+  "start_url": "/app/",
+  "scope": "/app/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

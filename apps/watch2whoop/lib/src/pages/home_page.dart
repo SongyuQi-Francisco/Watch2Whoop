@@ -1,0 +1,253 @@
+// Main screen = full-screen embedded Today page (the Body Engine PWA). Login reuses the Today page own token → httpOnly cookie.
+// - The Today page handles the safe area (viewport-fit=cover + env(safe-area-inset-*)) and pull-to-refresh itself, so no SafeArea here in full screen.
+// - Same-origin links open inside the app; other links ("Ask the butler" → Claude app, SparkyFitness) are handed to the system.
+// - Inside the app the Today page sees window.Watch2Whoop (JS channel) and uses it to show the "phone sync" entry, which navigates to watch2whoop://sync.
+//
+// Home = the Body Engine today page, full screen in a WebView.
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
+
+import '../app_state.dart';
+import '../config.dart';
+import '../health_sync.dart';
+import '../i18n.dart';
+import '../setup_flow.dart';
+import '../ui.dart';
+import 'sync_page.dart';
+
+/// Address the Today page uses to open the native sync page.
+const String kSyncLink = 'watch2whoop://sync';
+
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  late final WebViewController _web;
+  String? _loadedUrl;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final params = WebKitWebViewControllerCreationParams(
+      allowsInlineMediaPlayback: true,
+      // Media types that can play without a user gesture: none
+      mediaTypesRequiringUserAction: const {PlaybackMediaTypes.audio, PlaybackMediaTypes.video},
+    );
+    _web = WebViewController.fromPlatformCreationParams(params)
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('Watch2Whoop', onMessageReceived: (m) => _onBridge(m.message))
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onNavigationRequest: _onNavigation,
+          onPageStarted: (_) => setState(() => _loading = true),
+          onPageFinished: (_) => setState(() => _loading = false),
+          // A same-page navigation that only changes the # fragment (one-time login code) may not fire onPageFinished, so fall back on progress
+          onProgress: (p) {
+            if (p >= 100 && _loading) setState(() => _loading = false);
+          },
+          onUrlChange: (_) {
+            if (_loading) setState(() => _loading = false);
+          },
+          onWebResourceError: (e) {
+            if (e.isForMainFrame ?? true) {
+              setState(() {
+                _error = e.description;
+                _loading = false;
+              });
+            }
+          },
+          onHttpError: (e) {
+            // The Today page handles its own API 401s etc.; we only care when the main document fails to open (e.g. 502: service not up).
+            if (e.request?.uri.toString() == _loadedUrl && (e.response?.statusCode ?? 0) >= 500) {
+              setState(() => _error = 'HTTP ${e.response?.statusCode}');
+            }
+          },
+        ),
+      );
+    final wk = _web.platform;
+    if (wk is WebKitWebViewController) {
+      wk.setAllowsBackForwardNavigationGestures(false);
+      // Debug builds can inspect the page from the Safari "Develop" menu on the Mac.
+      wk.setInspectable(kDebugMode);
+    }
+    AppState.instance.addListener(_onConfig);
+    SetupLinks.instance.pending.addListener(_onLink);
+    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    AppState.instance.removeListener(_onConfig);
+    SetupLinks.instance.pending.removeListener(_onLink);
+    super.dispose();
+  }
+
+  void _onConfig() {
+    // Reload when the Today page address changed or a new one-time login code arrived.
+    final c = AppState.instance.config;
+    if (c.todayEntry.toString() != _loadedUrl || c.pendingLoginCode != null) _load();
+  }
+
+  /// Already set up, then scanned another setup QR code (e.g. switching phone number / re-invited): ask before applying it.
+  Future<void> _onLink() async {
+    final info = SetupLinks.instance.pending.value;
+    if (info == null || !mounted) return;
+    SetupLinks.instance.pending.value = null;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('使用新的设置信息？', 'Use the new setup info?')),
+        content: Text(tr('会更新服务器地址${info.code != null ? '、重新连接同步' : ''}${info.loginCode != null ? '、重新登录今天页' : ''}。',
+            'This updates the servers${info.code != null ? ', reconnects sync' : ''}${info.loginCode != null ? ' and signs in again' : ''}.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('使用', 'Use'))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      final r = await applySetup(info);
+      if (r.owConnected) {
+        await HealthSync.instance.requestAuthorization();
+        await HealthSync.instance.startSync(AppState.instance.config.syncDaysBack);
+      }
+      if (r.owError != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(connectError(r.owError!))));
+      }
+    } on FormatException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(urlError(e.message))));
+    }
+  }
+
+  @override
+  void didChangePlatformBrightness() => _syncBackground();
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
+    if (state == AppLifecycleState.resumed) HealthSync.instance.drainNativeLog();
+  }
+
+  void _syncBackground() {
+    final dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+    _web.setBackgroundColor(dark ? Colors.black : Colors.white);
+  }
+
+  Future<void> _load() async {
+    _syncBackground();
+    final config = AppState.instance.config;
+    final url = config.todayEntry.toString();
+    setState(() {
+      _loadedUrl = url;
+      _error = null;
+      _loading = true;
+    });
+    final code = config.pendingLoginCode;
+    if (code != null) {
+      // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it from the address bar right away; the code is single-use and cleared after use.
+      await AppState.instance.update(config.copyWith(clearPendingLoginCode: true));
+      await _web.loadRequest(config.todayEntry.replace(fragment: 'login=$code'));
+    } else {
+      await _web.loadRequest(Uri.parse(url));
+    }
+  }
+
+  void _onBridge(String message) {
+    if (message == 'sync' || message == 'settings') _openSync();
+  }
+
+  Future<NavigationDecision> _onNavigation(NavigationRequest req) async {
+    final uri = Uri.tryParse(req.url);
+    if (uri == null) return NavigationDecision.prevent;
+    if (uri.scheme == 'watch2whoop') {
+      if (uri.host == 'sync' || uri.host == 'settings') _openSync();
+      return NavigationDecision.prevent;
+    }
+    if (uri.scheme == 'about' || uri.scheme == 'blob' || uri.scheme == 'data') return NavigationDecision.navigate;
+    if ((uri.scheme == 'http' || uri.scheme == 'https') && sameOrigin(uri, AppState.instance.config.todayEntry)) {
+      return NavigationDecision.navigate;
+    }
+    // External links: "Ask the butler" (claude.ai → universal link to the Claude app), SparkyFitness, etc.
+    if (req.isMainFrame) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    return NavigationDecision.prevent;
+  }
+
+  void _openSync() {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SyncPage()));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    return Scaffold(
+      backgroundColor: dark ? Colors.black : Colors.white,
+      body: Stack(
+        children: [
+          Positioned.fill(child: WebViewWidget(controller: _web)),
+          if (_loading && _error == null)
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(child: LinearProgressIndicator(minHeight: 2)),
+            ),
+          if (_error != null) Positioned.fill(child: _errorView(context)),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorView(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final config = AppState.instance.config;
+    return ColoredBox(
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Icon(Icons.cloud_off_outlined, size: 44, color: cs.onSurfaceVariant),
+              const SizedBox(height: 16),
+              Text(
+                tr('连不上今天页', 'Cannot reach the today page'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                tr('检查网络；服务器只在内网时要先连 VPN。\n${shortUrl(config.todayUrl)}',
+                    'Check your connection (connect the VPN if the server is private).\n${shortUrl(config.todayUrl)}'),
+                textAlign: TextAlign.center,
+                style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+              Text(_error ?? '', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              const SizedBox(height: 28),
+              BigButton(tr('重试', 'Retry'), onPressed: _load),
+              const SizedBox(height: 6),
+              BigButton(tr('同步状态和设置', 'Sync status & settings'), secondary: true, onPressed: _openSync),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

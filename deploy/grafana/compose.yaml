@@ -1,0 +1,74 @@
+# Grafana OSS local deployment: for the owner only, to view long-term trends (docs/system-design.md §2; family charts live in the Body Engine Today page).
+# Invoke through deploy/grafana/gf.sh (it sets the secrets directory and the external address).
+#
+# - Image pinned to 13.2.4 + digest (use deploy/ops/fetch_image.py when docker pull hangs, see README)
+# - Port bound to 127.0.0.1:8400 only; HTTPS inside the tailnet: tailscale serve --bg --https=8445 http://127.0.0.1:8400
+# - Anonymous access, sign-up, org creation, telemetry (usage stats, update check, news, external snapshots, Gravatar) and default preinstalled plugins are turned off
+# - Data sources and dashboards are managed by provisioning files (tracked in git); dashboards cannot be saved from the web UI, edit dashboards/*.json instead
+# - Connects to the databases via host.docker.internal:5433 / 5434 (the host ports bind to 127.0.0.1 only, Docker Desktop can forward them),
+#   without joining the networks of other compose projects: Grafana can only reach the database ports, and only logs in as the read-only role grafana_ro
+name: grafana
+
+services:
+  grafana:
+    image: grafana/grafana:13.2.4@sha256:dbbc38ea21103cefb50396340cd88afec779c7e070b0a7bf5a75b4ce46651d3f
+    environment:
+      TZ: Australia/Sydney
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:8400/}
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_SIGNOUT_MENU: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_USERS_DEFAULT_LANGUAGE: zh-Hans
+      GF_USERS_DEFAULT_THEME: system
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SNAPSHOTS_EXTERNAL_ENABLED: "false"
+      GF_PUBLIC_DASHBOARDS_ENABLED: "false"
+      GF_DATE_FORMATS_DEFAULT_TIMEZONE: Australia/Sydney
+      GF_DATE_FORMATS_DEFAULT_WEEK_START: monday
+      # Install only the Infinity plugin used to read the SparkyFitness API (pinned version); skip the app plugins Grafana preinstalls by default
+      GF_PLUGINS_PREINSTALL: ""
+      GF_PLUGINS_PREINSTALL_SYNC: yesoreyeram-infinity-datasource@4.1.1
+      GF_LOG_LEVEL: warn
+    secrets:
+      - grafana_admin_password
+      - grafana_ro_body_password
+      - grafana_ro_ow_password
+      - sparkyfitness_api_key_owner_ro
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana-dashboards:ro
+    ports:
+      - "127.0.0.1:8400:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health | grep -q '\"database\": *\"ok\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    mem_limit: 768m
+    restart: unless-stopped
+
+secrets:
+  grafana_admin_password:
+    file: ${BODY_SECRETS_DIR:?}/grafana_admin_password
+  grafana_ro_body_password:
+    file: ${BODY_SECRETS_DIR:?}/grafana_ro_body_password
+  grafana_ro_ow_password:
+    file: ${BODY_SECRETS_DIR:?}/grafana_ro_ow_password
+  sparkyfitness_api_key_owner_ro:
+    file: ${BODY_SECRETS_DIR:?}/sparkyfitness_api_key_owner_ro
+
+volumes:
+  grafana_data:

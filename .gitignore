@@ -1,0 +1,21 @@
+# Private data and local files, not tracked by git
+health_data/
+models/
+data/
+*.db
+*.db-*
+.env
+.DS_Store
+__pycache__/
+node_modules/
+health_sync/server.err
+secrets/*
+!secrets/README.md
+.venv/
+*.egg-info/
+.pytest_cache/
+assistant/.claude/settings.local.json
+.docker/
+dist/
+quickstart/.data/
+tools/public/private.local.json
