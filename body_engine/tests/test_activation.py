@@ -228,6 +228,7 @@ def test_activation_page_served_with_csp(client):
     html = r.text
     assert "激活 Watch2Whoop" in html and "打开 App 完成设置" in html
     assert '<script src="activate.js"></script>' in html
+    assert 'href="handbook/"' in html   # the handbook is one tap away
     assert "<script>" not in html                     # no inline script (blocked by the CSP)
     js = client.get("/app/activate.js")
     assert js.status_code == 200 and "/v1/web/activate" in js.text and "location.hash" in js.text
