@@ -1,6 +1,7 @@
 """Endpoints and static files for the Today page.
 
 - POST /v1/web/login {"token"}: validate an API token and exchange it for an httpOnly cookie (session.py); POST /v1/web/logout signs out.
+- POST /v1/web/activate {"code"}: reusable activation code → fresh watch2whoop://setup link (activation.py; page /app/activate.html#<code>).
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
@@ -14,7 +15,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import login_codes, login_limit, session, views
+from . import activation, login_codes, login_limit, session, views
 
 STATIC = Path(__file__).parent / "static"
 WEB_VERSION = "v2.22-2026-10-19"   # Today page frontend version (bump whenever the page changes)
@@ -90,6 +91,26 @@ def login_with_code(body: LoginCodeIn, request: Request, response: Response, con
     session_id, user = res
     session.set_cookie(response, session_id, request)
     return _me(user)
+
+
+class ActivateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=8, max_length=40)
+
+
+@router.post("/v1/web/activate")
+def activate(body: ActivateIn, request: Request, conn=Depends(get_conn)):
+    """Redeem a reusable activation code (activate.html#<code>) for a fresh watch2whoop://setup link (activation.py).
+    No auth; failures are a generic 401 and count against the per-IP login failure limit (429 once exceeded)."""
+    ip = request.client.host if request.client else "?"
+    wait = login_limit.retry_after(ip)
+    if wait:
+        raise HTTPException(429, "失败次数太多，请稍后再试", headers={"Retry-After": str(wait)})
+    res = activation.activate(conn, body.code, request.headers.get("user-agent"), str(request.base_url))
+    if res is None:
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "激活码无效或已停用")
+    return res
 
 
 @router.post("/v1/web/logout", status_code=204)
