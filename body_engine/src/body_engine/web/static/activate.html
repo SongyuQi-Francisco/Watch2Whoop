@@ -23,6 +23,7 @@ input{display:block;width:100%;font:600 18px ui-monospace,Menlo,monospace;letter
 button{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;padding:16px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);cursor:pointer}
 button:disabled{opacity:.5}
 .err{min-height:1.5em;margin:12px 0 0;color:var(--bad);font-size:15px}
+.help{display:block;margin:20px 0 0;padding:14px;border-radius:14px;background:var(--surface);color:var(--text);text-align:center;text-decoration:none;font-weight:600}
 </style>
 </head>
 <body>
@@ -35,6 +36,7 @@ button:disabled{opacity:.5}
     <button id="go" type="submit">打开 App 完成设置</button>
   </form>
   <div id="err" class="err" role="alert"></div>
+  <a class="help" href="handbook/" target="_blank" rel="noopener">使用手册</a>
 </main>
 <script src="activate.js"></script>
 </body>
