@@ -16,6 +16,7 @@ toolName = [
   "delete_journal_entry",
   "delete_lab_results",
   "delete_observation",
+  "delete_supplement",
 ]
 decision = "ask_user"
 priority = 100
@@ -29,6 +30,7 @@ toolName = [
   "delete_journal_entry",
   "delete_lab_results",
   "delete_observation",
+  "delete_supplement",
 ]
 decision = "deny"
 priority = 100
