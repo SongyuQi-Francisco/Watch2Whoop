@@ -58,6 +58,22 @@ String get currentLang => langOverride.value ?? systemLang;
 
 bool get isZh => currentLang == 'zh';
 
+/// The language switch shows each language in its own name, whatever the current language: (Chinese name, English name).
+const (String, String) kLangNames = ('中文', 'English');
+
+/// Accessibility label of the switch, in both languages (it is read before the user's language is known).
+const (String, String) kLangLabel = ('语言', 'Language');
+
+/// Today page entry carrying the language override in the fragment (`#login=…&lang=en`): i18n.js takes it like its own
+/// login-page switch (used at once, saved to the profile after login) and removes it from the address bar.
+/// Unchanged when there is no override (the page then follows the profile / the device).
+Uri withLangFragment(Uri entry) {
+  final l = langOverride.value;
+  if (l == null) return entry;
+  final parts = entry.fragment.split('&').where((p) => p.isNotEmpty && !p.startsWith('lang=')).toList()..add('lang=$l');
+  return entry.replace(fragment: parts.join('&'));
+}
+
 String tr(String zh, String en) => isZh ? zh : en;
 
 /// Type names in the SDK log -> display names. Unlisted ones are shown as is.

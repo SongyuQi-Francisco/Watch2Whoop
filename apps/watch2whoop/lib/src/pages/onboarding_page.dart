@@ -2,6 +2,7 @@
 // → Health permission + sync connected silently (server-minted OW invitation code) → Today page logged in with a fresh one-time code.
 // "I have a setup link" keeps the admin-issued setup link / QR / paste path (setup_link_page.dart) for existing users.
 // Locked builds (server_lock.dart) show no server and no "I have a setup link": only a camera-opened link for this server still works.
+// A 中文 / English switch sits top right on every step (ui.dart LangSwitch); a change redraws the page in place, inputs kept.
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -55,6 +56,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
     _code = TextEditingController();
     _invite = TextEditingController();
     SetupLinks.instance.pending.addListener(_onLink);
+    langOverride.addListener(_onLang);
     _checkApple();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
@@ -65,12 +67,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   void dispose() {
     SetupLinks.instance.pending.removeListener(_onLink);
+    langOverride.removeListener(_onLang);
     _timer?.cancel();
     _server.dispose();
     _email.dispose();
     _code.dispose();
     _invite.dispose();
     super.dispose();
+  }
+
+  void _onLang() {
+    if (mounted) setState(() {});
   }
 
   /// A setup link opened the app (camera QR scan): hand over to the setup-link flow, which consumes it.
@@ -317,8 +324,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             children: [
+              const Align(alignment: Alignment.centerRight, child: LangSwitch()),
+              const SizedBox(height: 4),
               ...body,
               if (_progress != null) ...[
                 const SizedBox(height: 14),

@@ -4,6 +4,7 @@
 // Onboarding: scan / paste the setup info (servers + invitation code + one-time login code) → Health → today page.
 // Locked builds (server_lock.dart) only get here from a setup link opened by the camera: no scan / paste / manual entry,
 // a link for another server is refused, one for this server keeps its invitation and login codes.
+// The 中文 / English switch (ui.dart LangSwitch) sits top right, as on the sign-in screen.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -43,16 +44,22 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     _ow = TextEditingController(text: _config.owHost);
     _code = TextEditingController();
     SetupLinks.instance.pending.addListener(_onLink);
+    langOverride.addListener(_onLang);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
   }
 
   @override
   void dispose() {
     SetupLinks.instance.pending.removeListener(_onLink);
+    langOverride.removeListener(_onLang);
     _today.dispose();
     _ow.dispose();
     _code.dispose();
     super.dispose();
+  }
+
+  void _onLang() {
+    if (mounted) setState(() {});
   }
 
   /// Setup link brought in by opening the app via camera QR scan.
@@ -187,8 +194,10 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             children: [
+              const Align(alignment: Alignment.centerRight, child: LangSwitch()),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   for (var i = 0; i < steps.length; i++)

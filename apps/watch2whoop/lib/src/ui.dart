@@ -189,6 +189,52 @@ String shortUrl(String url) {
   return s.length <= 34 ? s : '${s.substring(0, 16)}…${s.substring(s.length - 16)}';
 }
 
+/// 中文 / English switch for the top right of the first-run screens (same look as the Today page login switch).
+/// Sets the language override (saved; i18n.dart): the root rebuilds every native screen at once, and the Today page
+/// receives it with the first load and saves it to the profile after login.
+class LangSwitch extends StatelessWidget {
+  const LangSwitch({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget option(String lang, String label) {
+      final on = currentLang == lang;
+      return Semantics(
+        selected: on,
+        button: true,
+        child: TextButton(
+          onPressed: () => setLangOverride(lang),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: on ? cs.onSurface : cs.onSurfaceVariant,
+            backgroundColor: on ? cs.onSurface.withValues(alpha: 0.08) : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          child: Text(label, style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w600 : FontWeight.w400)),
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<String?>(
+      valueListenable: langOverride,
+      builder: (context, _, _) => Semantics(
+        label: '${kLangLabel.$2} / ${kLangLabel.$1}',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            option('zh', kLangNames.$1),
+            Text('/', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+            option('en', kLangNames.$2),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Address input field, normalized on blur.
 class UrlField extends StatelessWidget {
   const UrlField({super.key, required this.controller, required this.label, required this.hint, required this.kind, this.error});

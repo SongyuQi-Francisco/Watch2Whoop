@@ -192,7 +192,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _webLoginTried = true;
         final entry = await freshWebLoginEntry();
         if (entry != null) {
-          await _web.loadRequest(entry);
+          await _web.loadRequest(withLangFragment(entry));
           return;
         }
       }
@@ -201,9 +201,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (code != null) {
       // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it
       // from the address bar right away. It stays saved until the page reports `logged-in` / `login-failed` (_onBridge).
-      await _web.loadRequest(config.todayEntry.replace(fragment: 'login=$code'));
+      await _web.loadRequest(withLangFragment(config.todayEntry.replace(fragment: 'login=$code')));
     } else {
-      await _web.loadRequest(Uri.parse(url));
+      await _web.loadRequest(withLangFragment(Uri.parse(url))); // #lang=…: the language picked on the native sign-in screen
     }
   }
 
@@ -238,7 +238,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (status != 401 || _webLoginTried || AppState.instance.accountToken == null) return;
     _webLoginTried = true;
     final entry = await freshWebLoginEntry();
-    if (entry != null && mounted) await _web.loadRequest(entry);
+    if (entry != null && mounted) await _web.loadRequest(withLangFragment(entry));
   }
 
   Future<void> _onAccountDeleted() => signOutToOnboarding(revoke: false);
