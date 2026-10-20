@@ -2533,6 +2533,11 @@
       $("#retry").onclick = () => boot();
       return;
     }
+    if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
+      $("#login").hidden = true; $("#app").hidden = true;
+      window.BodyAccount.showPending(() => boot());
+      return;
+    }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });

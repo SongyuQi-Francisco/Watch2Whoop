@@ -49,6 +49,8 @@ services:
       BODY_AI_MASTER_KEY_FILE: /run/secrets/ai_master_key
       BODY_HEALTH_DATA_DIR: /data/health
       BODY_PUBLIC_URL: http://localhost:${W2W_BODY_PORT:-18100}
+      # Self-service sign-up demo: e-mail sign-in codes are not sent, they appear in `docker compose logs body-engine`
+      BODY_MAIL_MODE: console
       # plain http://localhost: let Safari / WKWebView keep the session cookie (only for Host localhost)
       BODY_WEB_INSECURE_LOCAL_COOKIE: "1"
       TZ: ${W2W_TZ:-UTC}
