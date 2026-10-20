@@ -56,7 +56,7 @@ def fmt_qty(qty: float | None, unit: str) -> str:
 
 
 def category_label(cat: str | None) -> str:
-    return L(P.CATEGORIES.get(cat, "其他"), P.CATEGORIES_EN.get(cat, "Other"))
+    return Li(P.CATEGORIES.get(cat, "其他"), P.CATEGORIES_EN.get(cat, "Other"))
 
 
 def flag_labels(flags: list[str]) -> list[str]:
