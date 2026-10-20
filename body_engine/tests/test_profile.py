@@ -272,3 +272,41 @@ def test_revoke_tokens_by_name_and_all(client, users, dsn):
             auth.revoke_tokens(conn, uid)
     assert client.get("/v1/users/me/profile", headers=H(other)).status_code == 401
     client.cookies.clear()
+
+
+# ---------------------------------------------------------------- first-run intro (issue #60)
+def test_intro_flag_follows_the_user(client, users):
+    ids, tok = users
+    client.cookies.clear()   # t2's tokens were all revoked by the test above: owner and t1 here
+    me = lambda t: client.get("/v1/web/me", headers=H(tok[t])).json()["me"]
+    assert me("owner")["intro_seen"] is False                                  # new user: the Today page shows the intro once
+    r = client.put("/v1/users/me/intro", headers=H(tok["owner"]), json={"seen": True})
+    assert r.status_code == 200 and r.json()["intro_seen"] is True
+    first = r.json()["intro_seen_at"]
+    assert client.put("/v1/users/me/intro", headers=H(tok["owner"]), json={"seen": True}).json()["intro_seen_at"] == first   # kept
+    assert me("owner")["intro_seen"] is True and me("t1")["intro_seen"] is False   # per user, on the server (any device)
+    assert client.put("/v1/users/me/intro", headers=H(tok["owner"]), json={"seen": False}).json()["intro_seen"] is False
+    assert me("owner")["intro_seen"] is False
+    # Only your own, with write; cookie writes need the CSRF header
+    assert client.put(f"/v1/users/{ids['t1']}/intro", headers=H(tok["owner"]), json={"seen": True}).status_code == 403
+    assert client.put("/v1/users/me/intro", headers=H(tok["t1_ro"]), json={"seen": True}).status_code == 403
+    assert client.put("/v1/users/me/intro", headers=H(tok["t1"]), json={"seen": "yes"}).status_code == 422
+    assert client.put("/v1/users/me/intro", json={"seen": True}).status_code == 401
+    web = TestClient(api.app, base_url="https://testserver")
+    assert web.post("/v1/web/login", json={"token": tok["t1"]}).status_code == 200
+    assert web.put("/v1/users/me/intro", json={"seen": True}).status_code == 403          # no X-Body-Web
+    assert web.put("/v1/users/me/intro", headers=CSRF, json={"seen": True}).status_code == 200
+    assert web.get("/v1/web/me").json()["me"]["intro_seen"] is True
+
+
+def test_intro_page_wiring(client):
+    """intro.js is loaded and cached, re-openable from the Me page next to 「使用手册」, shown once via the server flag."""
+    html = client.get("/app/").text
+    assert html.index('src="intro.js"') < html.index('src="app.js"')
+    js = client.get("/app/intro.js").text
+    assert "/v1/users/me/intro" in js and "intro_seen" in js and "window.BodyIntro" in js and "/app/handbook/" not in js.split("*/", 1)[1]
+    app_js = client.get("/app/app.js").text
+    assert 'id="me-handbook"' in app_js and app_js.index('id="me-handbook"') < app_js.index('id="me-intro"')
+    assert "openHandbook, openAiSettings" in app_js
+    assert '"intro.js"' in client.get("/app/sw.js").text
+    assert "家人" not in js

@@ -19,6 +19,7 @@ import '../i18n.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'scan_page.dart';
 
 class SyncPage extends StatefulWidget {
@@ -408,6 +409,9 @@ class _SyncPageState extends State<SyncPage> {
                   Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
                   Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
                 ],
+                Row2(tr('权限', 'Permissions'), onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const PermissionsPage()))
+                    .then((_) => _refresh())),
                 Row2(tr('首次同步范围', 'First sync range'), value: tr('${_config.syncDaysBack} 天', '${_config.syncDaysBack} days')),
                 if (connected) Row2(tr('同步账号', 'Sync account'), value: '${_config.owUserId!.substring(0, 8)}…'),
                 if (connected) Row2(tr('重新连接', 'Reconnect'), onTap: _reconnect),

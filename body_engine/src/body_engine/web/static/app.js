@@ -2023,6 +2023,7 @@
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
         ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
+        ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
         ${item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
@@ -2131,6 +2132,8 @@
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     $("#me-logout", view).onclick = logout;
     $("#me-handbook", view).onclick = () => openHandbook();
+    const intro = $("#me-intro", view);
+    if (intro) intro.onclick = () => window.BodyIntro.open();   // intro.js (issue #60)
   }
 
   // ---- Handbook (「我 → 使用手册」, issue #37): /app/handbook/ shown in a full-screen panel with a back button instead of navigating away.
@@ -2897,7 +2900,7 @@
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc }, me));
+    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings() }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;

@@ -20,6 +20,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'sync_page.dart';
 
 /// Address the Today page uses to open the native sync page.
@@ -102,7 +103,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
     _load();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onLink();
+      // Someone who was never asked for Health (e.g. updated from a build without the permissions step): show it once
+      if (shouldShowPermissions(AppState.instance.config)) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionsPage()));
+      }
+    });
   }
 
   @override
