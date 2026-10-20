@@ -104,7 +104,7 @@
     let data = null;
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (r.status === 401 && !quiet401) {
-      showLogin(String(data?.detail || "").includes("过期") ? "登录已过期，请重新输入 token" : "");
+      showLogin(String(data?.detail || "").includes("过期") ? "登录已过期，请重新登录" : "");
       throw new ApiError(401, "没有登录");
     }
     if (!r.ok) {
@@ -169,7 +169,8 @@
     $("#app").hidden = true;
     $("#login-error").textContent = msg || "";
     $("#login-app").hidden = !IN_APP;
-    setTimeout(() => $("#token").focus(), 50);
+    if (window.BodyAccount) window.BodyAccount.loginShown(msg);   // step flow (e-mail → code → invite), account.js
+    else setTimeout(() => $("#token").focus(), 50);
   }
 
   // What the login box got: a 16-character activation code (activate.html link, reusable), a 12-character one-time login code
@@ -2519,7 +2520,8 @@
       // used / expired (this device may still be signed in: boot() then shows the page and the box stays hidden)
       tellApp("login-failed");
       const msg = LOGIN_401[err.kind] || err.message;
-      setTimeout(() => { if (!$("#login").hidden) $("#login-error").textContent = msg; }, 0);
+      if (window.BodyAccount) window.BodyAccount.showOther(msg);   // under 「其他登录方式」 once the login screen shows
+      else setTimeout(() => { if (!$("#login").hidden) $("#login-error").textContent = msg; }, 0);
     }
   }
 

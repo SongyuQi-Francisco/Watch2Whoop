@@ -1,9 +1,14 @@
 /* Self-service sign-up on the Today page (body_engine/account/). Separate from app.js:
-   - Login screen: an extra "用邮箱登录" (sign in with e-mail) card under the login form: e-mail → 6-digit code → cookie session → reload.
-   - Pending accounts (signed in, no invite code yet): a full-screen "输入激活码" page; app.js boot() calls BodyAccount.showPending().
+   - Login screen (#login in index.html) is a step flow, one thing per screen: 1 e-mail (「发送验证码」; 「通过 Apple 登录」 only
+     inside the Watch2Whoop app when it sets window.Watch2WhoopFeatures.appleSignIn, then the app is asked over its JS channel
+     with "apple-sign-in") → 2 six-digit code (resend after a cooldown, change e-mail) → cookie session → reload →
+     3 pending accounts (signed in, no invite code yet): the invite-code step; app.js boot() calls BodyAccount.showPending().
+     Active accounts skip 3. The older ways (login code, activation code, token: app.js #login-form) sit in a collapsed
+     「其他登录方式」, opened by itself when the server has no e-mail sign-in. Errors only ever show on the current step.
    - Me page: "删除账号" (delete account) row (registered in window.BodyPlugins; not for the deployer), explicit confirm, then
      DELETE /v1/account. Inside the Watch2Whoop app the page then opens watch2whoop://account-deleted so the app resets itself.
-   Endpoints: POST /v1/auth/email/start, /v1/auth/email/verify, /v1/account/redeem-invite, DELETE /v1/account, POST /v1/web/logout. */
+   Endpoints: GET /v1/auth/methods, POST /v1/auth/email/start, /v1/auth/email/verify, /v1/account/redeem-invite,
+   DELETE /v1/account, POST /v1/web/logout. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -12,18 +17,7 @@
   let C = null;
   let ME = null;
 
-  const CSS = `
-    .login{flex-direction:column;gap:18px}
-    .login-email{border-top:1px solid var(--line, rgba(127,127,127,.25));padding-top:16px}
-    .login-email .linkbtn{display:block;margin:0 auto;background:none;border:0;color:var(--text-2);font-size:14px;cursor:pointer}
-    .login-email .row{display:flex;gap:8px}.login-email .row .input{flex:1;min-width:0}
-    .acct-page{position:fixed;inset:0;z-index:60;background:var(--bg);color:var(--text);overflow:auto;display:flex;align-items:center;justify-content:center;
-      padding:calc(env(safe-area-inset-top) + 20px) 28px calc(env(safe-area-inset-bottom) + 20px)}
-    .acct-page .card{width:100%;max-width:360px;text-align:center}
-    .acct-page h1{font-size:24px;margin:0 0 6px}.acct-page p{color:var(--text-2);font-size:14px;margin:0 0 18px}
-    .acct-page .input{margin-bottom:10px;text-align:center;letter-spacing:.12em;text-transform:uppercase}
-    .acct-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:10px 0 0}
-    .acct-page .linkbtn{background:none;border:0;color:var(--text-2);font-size:13px;margin-top:18px;cursor:pointer}`;
+  const CSS = `.acct-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:10px 0 0}`;
 
   function injectCss() {
     if ($("#account-css")) return;
@@ -46,101 +40,179 @@
       const d = data?.detail;
       const err = new Error(typeof d === "string" ? d : `请求失败（${r.status}）`);
       err.status = r.status;
+      err.retryAfter = Number(r.headers.get("Retry-After")) || 0;
       throw err;
     }
     return data;
   }
 
-  // ---------------------------------------------------------------- login: e-mail code
-  function emailCard() {
-    const login = $("#login");
-    if (!login || $("#login-email")) return;
-    fetch("/v1/auth/methods", { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : {})).then((m) => {
-      if (m.email) buildEmailCard(login);
-    }).catch(() => { /* older server or offline: no e-mail sign-in */ });
+  // ---------------------------------------------------------------- login: step flow
+  const STEPS = ["email", "code", "invite"];
+  const RESEND_SECONDS = 60;           // the server allows one code e-mail per address per minute (account/api.py)
+  const methods = fetch("/v1/auth/methods", { credentials: "same-origin" })
+    .then((r) => (r.ok ? r.json() : {})).catch(() => ({}));   // older server or offline: only the other ways
+  const L = { step: null, sentTo: "", resendAt: 0, timer: 0 };
+  const appleInApp = () => !!window.Watch2Whoop && !!window.Watch2WhoopFeatures?.appleSignIn;
+
+  function setError(id, text, ok) {
+    const el = $(id);
+    el.textContent = text || "";
+    el.classList.toggle("ok", !!ok);
   }
 
-  function buildEmailCard(login) {
-    if ($("#login-email")) return;
-    const box = document.createElement("div");
-    box.className = "login-card login-email";
-    box.id = "login-email";
-    box.innerHTML = `<button type="button" class="linkbtn" id="le-open">用邮箱登录 / 注册</button>
-      <form id="le-form" hidden autocomplete="on">
-        <input id="le-email" class="input" type="email" autocomplete="email" autocapitalize="off" spellcheck="false" placeholder="邮箱" aria-label="邮箱" required>
-        <div class="row" id="le-code-row" hidden>
-          <input id="le-code" class="input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" aria-label="验证码">
-        </div>
-        <button type="submit" class="btn btn-primary btn-block" id="le-btn">发送验证码</button>
-        <button type="button" class="linkbtn" id="le-resend" hidden>重新发送</button>
-        <p class="login-error" id="le-error" role="alert"></p>
-      </form>`;
-    login.appendChild(box);
-    let sent = false;
-    $("#le-open").onclick = () => { $("#le-open").hidden = true; $("#le-form").hidden = false; $("#le-email").focus(); };
-    const send = async () => {
-      $("#le-error").textContent = "";
-      await call("/v1/auth/email/start", "POST", { email: $("#le-email").value.trim(), lang: "zh" });
-      sent = true;
-      $("#le-code-row").hidden = false; $("#le-resend").hidden = false;
-      $("#le-btn").textContent = "登录";
-      $("#le-error").textContent = "验证码已发到邮箱，10 分钟内有效";
-      $("#le-code").focus();
+  // Show one step: its form, the progress indicator (earlier steps ticked) and nothing else's errors.
+  function go(step) {
+    L.step = step;
+    for (const s of STEPS) $(`#ls-${s}`).hidden = s !== step;
+    const idx = STEPS.indexOf(step);
+    $("#login-steps").hidden = idx < 0;
+    for (const li of document.querySelectorAll("#login-steps li")) {
+      const i = STEPS.indexOf(li.dataset.step);
+      li.classList.toggle("done", i < idx);
+      if (i === idx) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
+    }
+    for (const id of ["#le-email-error", "#le-code-error", "#ap-error", "#login-error"]) setError(id, "");
+    const other = $("#login-other");
+    other.hidden = step === "invite";              // already signed in: only the invite code (or sign out)
+    other.classList.toggle("only", idx < 0);
+    if (idx < 0) other.open = true;
+    if (step) other.open = false;
+    const focus = { email: "#le-email", code: "#le-code", invite: "#ap-code" }[step] || "#token";
+    setTimeout(() => { const el = $(focus); if (el && !el.closest("[hidden]")) el.focus(); }, 50);
+  }
+
+  // app.js showLogin(): back to the first step; `msg` (e.g. session expired) shows there.
+  async function loginShown(msg) {
+    const m = await methods;
+    const apple = !!(m.apple && appleInApp());
+    $("#le-apple").hidden = $("#le-or").hidden = !apple;
+    $("#le-hint").textContent = apple ? "登录或注册" : "用邮箱登录或注册";
+    if (m.email) {
+      go("email");
+      if (msg) setError("#le-email-error", msg);
+    } else {
+      go(null);
+      if (msg) setError("#login-error", msg);
+    }
+    applyOther();
+  }
+
+  // app.js: a one-time login code from the app's link failed; its error belongs to 「其他登录方式」. The login screen may not
+  // be up yet (boot() still asking /v1/web/me), so keep it a few seconds for loginShown().
+  function showOther(msg) {
+    L.other = { msg, at: Date.now() };
+    if (!$("#login").hidden && L.step !== "invite") applyOther();
+  }
+  function applyOther() {
+    const o = L.other;
+    L.other = null;
+    if (!o || Date.now() - o.at > 10000) return;
+    for (const id of ["#le-email-error", "#le-code-error"]) setError(id, "");
+    $("#login-other").open = true;
+    setError("#login-error", o.msg);
+  }
+
+  function tickResend() {
+    clearInterval(L.timer);
+    const btn = $("#le-resend");
+    const draw = () => {
+      const left = Math.ceil((L.resendAt - Date.now()) / 1000);
+      btn.disabled = left > 0;
+      btn.textContent = left > 0 ? `重新发送（${left} 秒）` : "重新发送";
+      if (left <= 0) clearInterval(L.timer);
     };
-    $("#le-resend").onclick = () => send().catch((e) => { $("#le-error").textContent = e.status === 429 ? "发送太频繁，过一会儿再试" : e.message; });
-    $("#le-form").addEventListener("submit", async (e) => {
+    draw();
+    L.timer = setInterval(draw, 1000);
+  }
+
+  const sendError = (err) => (err.status === 429 ? `发送太频繁，${err.retryAfter ? `${err.retryAfter} 秒后` : "过一会儿"}再试`
+    : err.status === 400 ? "邮箱格式不对" : err.status === 503 ? "服务器暂时不能用邮箱登录" : err.message);
+
+  async function sendCode(email) {
+    await call("/v1/auth/email/start", "POST", { email, lang: "zh" });
+    L.sentTo = email;
+    L.resendAt = Date.now() + RESEND_SECONDS * 1000;
+  }
+
+  function bindLogin() {
+    if (!$("#ls-email") || bindLogin.done) return;
+    bindLogin.done = true;
+    $("#ls-email").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const btn = $("#le-btn");
+      const email = $("#le-email").value.trim();
+      setError("#le-email-error", "");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setError("#le-email-error", email ? "邮箱格式不对" : "请输入邮箱"); $("#le-email").focus(); return; }
+      const toCode = () => { $("#le-to").textContent = email; $("#le-code").value = ""; go("code"); tickResend(); };
+      if (email.toLowerCase() === L.sentTo.toLowerCase() && Date.now() < L.resendAt) { toCode(); return; }   // just sent: no second e-mail
+      const btn = $("#le-send");
+      btn.disabled = true;
+      try { await sendCode(email); toCode(); setError("#le-code-error", "10 分钟内有效", true); }
+      catch (err) { setError("#le-email-error", sendError(err)); }
+      finally { btn.disabled = false; }
+    });
+    $("#le-apple").onclick = () => { try { window.Watch2Whoop.postMessage("apple-sign-in"); } catch (e) { /* older app */ } };
+    $("#le-back").onclick = () => go("email");
+    $("#le-resend").onclick = async () => {
+      const btn = $("#le-resend");
+      btn.disabled = true;
+      setError("#le-code-error", "");
+      try { await sendCode(L.sentTo); setError("#le-code-error", "已重新发送", true); }
+      catch (err) { if (err.retryAfter) L.resendAt = Date.now() + err.retryAfter * 1000; setError("#le-code-error", sendError(err)); }
+      tickResend();
+    };
+    const code = $("#le-code");
+    code.addEventListener("input", () => {
+      const digits = code.value.replace(/\D/g, "").slice(0, 6);
+      if (digits !== code.value) code.value = digits;
+      if (digits.length === 6 && !$("#le-verify").disabled) $("#ls-code").requestSubmit();   // pasted / auto-filled code
+    });
+    $("#ls-code").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const v = code.value.trim();
+      setError("#le-code-error", "");
+      if (!/^\d{6}$/.test(v)) { setError("#le-code-error", "验证码是 6 位数字"); code.focus(); return; }
+      const btn = $("#le-verify");
       btn.disabled = true;
       try {
-        if (!sent) { await send(); return; }
-        await call("/v1/auth/email/verify", "POST", { email: $("#le-email").value.trim(), code: $("#le-code").value.trim(), client: "web" });
+        await call("/v1/auth/email/verify", "POST", { email: L.sentTo, code: v, client: "web" });
+        btn.textContent = "已登录…";
         location.replace(location.pathname + location.search);   // signed in (cookie): start the page again
+        return;
       } catch (err) {
-        $("#le-error").textContent = err.status === 401 ? "验证码不对或已过期" : err.status === 429 ? "尝试太多次，过一会儿再试"
-          : err.status === 503 ? "服务器暂时不能用邮箱登录" : err.message;
-      } finally { btn.disabled = false; }
+        setError("#le-code-error", err.status === 401 ? "验证码不对或已过期" : err.status === 429 ? "尝试太多次，过一会儿再试"
+          : err.status === 403 ? "这个账号已停用" : err.message);
+        code.select();
+      }
+      btn.disabled = false;
     });
   }
 
-  // ---------------------------------------------------------------- pending: invite code
+  // ---------------------------------------------------------------- step 3: invite code (pending accounts)
   function showPending(onActive) {
-    injectCss();
-    let page = $("#acct-pending");
-    if (!page) {
-      page = document.createElement("div");
-      page.id = "acct-pending";
-      page.className = "acct-page";
-      page.innerHTML = `<form class="card" id="ap-form" autocomplete="off">
-          <img src="icon.svg" alt="" width="60" height="60" style="border-radius:14px">
-          <h1>输入激活码</h1>
-          <p>内测期间凭激活码开通 · Enter your invite code</p>
-          <input id="ap-code" class="input" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXXX-XXXXX" aria-label="激活码" required>
-          <button class="btn btn-primary btn-block" id="ap-btn" type="submit">开通</button>
-          <p class="acct-err" id="ap-error" role="alert"></p>
-          <button type="button" class="linkbtn" id="ap-logout">退出登录</button>
-        </form>`;
-      document.body.appendChild(page);
-    }
-    page.hidden = false;
-    $("#ap-form", page).onsubmit = async (e) => {
+    bindLogin();
+    $("#app").hidden = true;
+    $("#login").hidden = false;
+    $("#login-app").hidden = !IN_APP;
+    go("invite");
+    $("#ls-invite").onsubmit = async (e) => {
       e.preventDefault();
-      const btn = $("#ap-btn", page);
+      const v = $("#ap-code").value.trim();
+      setError("#ap-error", "");
+      if (v.replace(/[\s-]/g, "").length < 6) { setError("#ap-error", v ? "激活码不完整" : "请输入激活码"); $("#ap-code").focus(); return; }
+      const btn = $("#ap-btn");
       btn.disabled = true;
-      $("#ap-error", page).textContent = "";
       try {
-        await call("/v1/account/redeem-invite", "POST", { code: $("#ap-code", page).value.trim() });
-        page.hidden = true;
+        await call("/v1/account/redeem-invite", "POST", { code: v });
+        $("#ap-code").value = "";
         onActive?.();
       } catch (err) {
-        $("#ap-error", page).textContent = err.status === 401 ? "激活码无效、已用完或已过期" : err.status === 429 ? "尝试太多次，过一会儿再试" : err.message;
+        setError("#ap-error", err.status === 401 ? "激活码无效、已用完或已过期" : err.status === 429 ? "尝试太多次，过一会儿再试" : err.message);
       } finally { btn.disabled = false; }
     };
-    $("#ap-logout", page).onclick = async () => {
+    $("#ap-logout").onclick = async () => {
       try { await call("/v1/web/logout", "POST"); } catch (e) { /* signed out locally anyway */ }
       location.replace(location.pathname);
     };
-    setTimeout(() => $("#ap-code", page).focus(), 50);
   }
 
   // ---------------------------------------------------------------- Me: delete account
@@ -167,7 +239,7 @@
     });
   }
 
-  window.BodyAccount = { showPending };
+  window.BodyAccount = { showPending, loginShown, showOther };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: (ctx, me) => { C = ctx; ME = me?.me || null; },
     meItem: (chev) => (ME && ME.role !== "owner"
@@ -176,6 +248,6 @@
   });
 
   injectCss();
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", emailCard);
-  else emailCard();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindLogin);
+  else bindLogin();
 })();
