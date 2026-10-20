@@ -26,6 +26,7 @@ class AppConfig {
     this.onboardingDone = false,
     this.owUserId,
     this.healthRequested = false,
+    this.permissionsSeen = false,
     this.pendingLoginCode,
   });
 
@@ -40,6 +41,10 @@ class AppConfig {
   /// OW user id obtained after redeeming the invitation code (display only; credentials live in the SDK Keychain).
   final String? owUserId;
   final bool healthRequested;
+
+  /// The permissions step (pages/permissions_page.dart) was finished or skipped: it is not shown on its own again
+  /// (still re-openable from Phone sync → Permissions).
+  final bool permissionsSeen;
 
   /// One-time Today page login code carried in the setup info: opened as `/app/#login=code` until the Today page reports
   /// the outcome over the JS channel (see [loginCodeSettled]); kept until then, so an interrupted load retries on the next open.
@@ -61,6 +66,7 @@ class AppConfig {
     String? owUserId,
     bool clearOwUserId = false,
     bool? healthRequested,
+    bool? permissionsSeen,
     String? pendingLoginCode,
     bool clearPendingLoginCode = false,
   }) => AppConfig(
@@ -70,6 +76,7 @@ class AppConfig {
     onboardingDone: onboardingDone ?? this.onboardingDone,
     owUserId: clearOwUserId ? null : (owUserId ?? this.owUserId),
     healthRequested: healthRequested ?? this.healthRequested,
+    permissionsSeen: permissionsSeen ?? this.permissionsSeen,
     pendingLoginCode: clearPendingLoginCode ? null : (pendingLoginCode ?? this.pendingLoginCode),
   );
 
@@ -80,6 +87,7 @@ class AppConfig {
     'onboardingDone': onboardingDone,
     'owUserId': owUserId,
     'healthRequested': healthRequested,
+    'permissionsSeen': permissionsSeen,
     'pendingLoginCode': pendingLoginCode,
   };
 
@@ -90,6 +98,7 @@ class AppConfig {
     onboardingDone: (j['onboardingDone'] as bool?) ?? false,
     owUserId: j['owUserId'] as String?,
     healthRequested: (j['healthRequested'] as bool?) ?? false,
+    permissionsSeen: (j['permissionsSeen'] as bool?) ?? false,
     pendingLoginCode: j['pendingLoginCode'] as String?,
   );
 }
