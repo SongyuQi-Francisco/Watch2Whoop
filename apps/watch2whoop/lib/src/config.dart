@@ -102,6 +102,11 @@ bool loginCodeSettled(String message) => message == 'logged-in' || message == 'l
 class ConfigStore {
   static const _key = 'w2w.config.v1';
 
+  static Future<bool> exists() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_key);
+  }
+
   static Future<AppConfig> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_key);

@@ -551,7 +551,7 @@ CREATE TABLE sync_state (
 - **初版**：`body-engine recipes-init --user-id 1` 按 body-management.md（5.2.2、5.3.1、5.3.1b、5.3.2）给 25 个菜填 slots、标签、做法（只摘原文）、食材（原文有克数的用原文，没写的按常见份量估，并让每份热量和蛋白落在原文估算附近，见 `assistant/recipe_seed.py`）；「已会做」的（蘑菇烧鸡、盐葱酱牛肋条、姜葱鸡油饭、组合）can_make=true，蘑菇烧鸡和姜葱鸡油饭收藏。
 - **健康约束**（`assistant/recipe_params.py`）：嘌呤（尿酸偏高）、饱和脂肪（脂肪肝、ALT、甘油三酯）、红肉 ≤ 250g/周、牛肋条 ≤ 1 次/周。推荐时红肉超额度和近 7 天吃过牛肋条的直接排除，嘌呤和饱和脂肪扣分。
 - **接口和工具**：见 `body_engine/README.md`（`/v1/users/{user}/recipes…`，管家工具 `list_recipes`、`get_recipe`、`suggest_meals`、`create_recipe`、`update_recipe`、`log_recipe`）。记录和快捷记餐共用 `meal_logs` 和撤销接口。
-- **采购（下一步）**：食材已带 `purchase_unit` 和 `store`；周采购清单 = 下周计划的菜 × 份数 → 按食材合并 → 按门店分组、按采购单位取整。
+- **采购（2026-10-20）**：商品库、周采购清单、家里存货，见 `docs/grocery-plan.md`（迁移 240，`grocery/`，今天页饮食 →「采购」）。
 
 ## 16. 训练历史（2026-10-17，训练日历）
 用户要求：在「训练与饮食」里看到历史训练，用日历标出哪天练了、强度、时长；Apple Watch 每天的卡路里消耗和训练消耗也要进系统，好安排训练（也给身体管家用）。代码 `body_engine/src/body_engine/training/`，迁移 `080_workouts.sql`，参数 `training/params.py`（`TRAINING_VERSION`）。

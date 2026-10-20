@@ -1,6 +1,7 @@
 // A few shared widgets: grouped cards, buttons, hint rows. Style matches the Today page: restrained, few words, borderless cards.
 import 'package:flutter/material.dart';
 
+import 'account_api.dart';
 import 'config.dart';
 import 'i18n.dart';
 
@@ -152,6 +153,20 @@ String connectError(Object e) {
   if (code.contains('server')) return tr('服务器出错：$code', 'Server error: $code');
   return tr('连接失败：$code', 'Connection failed: $code');
 }
+
+/// Generic messages for account API errors (callers override the context-specific ones).
+String accountError(AccountApiException e) => switch (e.code) {
+  'network' => tr('连不上服务器：检查网络和地址', 'Cannot reach the server: check the network and address'),
+  'rate_limited' => e.retryAfter != null
+      ? tr('太频繁了，请 ${e.retryAfter!.inSeconds} 秒后再试', 'Too many attempts — try again in ${e.retryAfter!.inSeconds}s')
+      : tr('太频繁了，请稍后再试', 'Too many attempts — try again later'),
+  'invalid' => tr('登录已失效，请重新登录', 'Signed out — please sign in again'),
+  'pending' => tr('账号还没激活', 'The account is not activated yet'),
+  'provisioning' => tr('同步账号还在准备中，请稍后再试', 'The sync account is still being prepared — try again shortly'),
+  'unavailable' => tr('服务器暂时不支持这个操作', 'The server does not support this right now'),
+  'bad_request' => tr('填写的内容格式不对', 'Invalid input'),
+  _ => tr('服务器出错（${e.status ?? e.code}）', 'Server error (${e.status ?? e.code})'),
+};
 
 String ago(DateTime? t) {
   if (t == null) return '—';

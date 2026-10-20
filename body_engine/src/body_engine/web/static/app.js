@@ -16,7 +16,7 @@
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
   // Features in separate files (profile.js profile and consent, history.js health history import): each entry in window.BodyPlugins may have
-  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view). app.js calls them in these 3 places only.
+  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购.
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
@@ -602,7 +602,8 @@
     const g = n.goal || {}, i = n.intake;
     openSheet(`饮食 · ${shortDay(d.date)}`, kv("热量", `${fmtNum(i.calories)} / ${fmtNum(g.calories)} kcal`) + kv("蛋白质", `${fmtNum(i.protein_g)} / ${fmtNum(g.protein_g)} g`)
       + kv("碳水", `${fmtNum(i.carbs_g)} / ${fmtNum(g.carbs_g)} g`) + kv("脂肪", `${fmtNum(i.fat_g)} / ${fmtNum(g.fat_g)} g`)
-      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div>${n.entries.map((e) => kv([e.time, e.food].filter(Boolean).join(" "), e.calories != null ? `${fmtNum(e.calories)} <small class="muted">kcal</small>` : "—")).join("")}` : ""));
+      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div><div class="group">${n.entries.map((e) => `<button class="item food-entry" ${sheetAttr(() => foodEntrySheet(e))}><span class="f">${esc([e.time, e.food].filter(Boolean).join(" ") || "—")}</span>
+          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`).join("")}</div>` : ""));
   }
 
   function dayCardHtml(d, meals) {
@@ -2181,7 +2182,29 @@
     openSheet(e.food || "食物", `${kv("份量", e.quantity ? esc(`${fmtNum(e.quantity, 1)} ${e.unit || ""}`) : null)}${e.time ? kv("时间", esc(e.time)) : ""}
       ${kv("热量", g("calories", "kcal", 0))}${kv("蛋白质", g("protein_g", "g"))}${kv("碳水", g("carbs_g", "g"))}${kv("脂肪", g("fat_g", "g"))}
       ${e.saturated_fat_g != null ? kv("饱和脂肪", g("saturated_fat_g", "g")) : ""}${e.fiber_g != null ? kv("纤维", g("fiber_g", "g")) : ""}
-      ${e.sugars_g != null ? kv("糖", g("sugars_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}`);
+      ${e.sugar_g != null ? kv("糖", g("sugar_g", "g")) : ""}${e.added_sugar_g != null ? kv("添加糖", g("added_sugar_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}
+      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more"><button class="btn btn-danger" type="button" id="fe-del">删除这条</button></div>` : ""}`,
+    (root) => {
+      const del = $("#fe-del", root);
+      if (!del) return;
+      del.onclick = () => {   // confirm inside the sheet (window.confirm does nothing in the app's WebView)
+        $("#fe-more", root).outerHTML = `<p class="para">从饮食记录里删除，不能恢复</p>
+          <div class="btns"><button class="btn" type="button" id="fe-cancel">取消</button><button class="btn btn-danger" type="button" id="fe-del-ok">确认删除</button></div>`;
+        $("#fe-cancel", root).onclick = () => foodEntrySheet(e);
+        const ok = $("#fe-del-ok", root);
+        ok.onclick = async () => {
+          ok.disabled = true;
+          const done = (msg) => { delete S.data[`${todayKey(e.date)}:${S.owner}`]; delete S.data[`today:${S.owner}`]; closeSheet(); render(); toast(msg); };
+          try {
+            await api(`/v1/users/me/nutrition/entries/${encodeURIComponent(e.id)}?date=${encodeURIComponent(e.date)}`, { method: "DELETE" });
+            done("已删除");
+          } catch (err) {
+            if (err.status === 404) done("这条已经不在了");
+            else { toast(err.message); ok.disabled = false; }
+          }
+        };
+      };
+    });
   }
   function foodDayHtml(d) {
     const n = d?.nutrition;
@@ -2191,8 +2214,9 @@
     const g = n.goal || {}, i = n.intake || {}, entries = n.entries || [];
     const pct = (a, b) => (b ? Math.min(100, (a / b) * 100) : 0);
     const m = (label, a, b) => `<div><div class="macro-l"><span>${label}</span><span>${fmtNum(a)}/${fmtNum(b)}</span></div><div class="bar ${b && a > b * 1.1 ? "over" : ""}"><span style="width:${pct(a, b).toFixed(0)}%"></span></div></div>`;
-    const sat = sumOf(entries, "saturated_fat_g"), fib = sumOf(entries, "fiber_g");
+    const sat = sumOf(entries, "saturated_fat_g"), fib = sumOf(entries, "fiber_g"), add = sumOf(entries, "added_sugar_g");
     const extra = [sat != null && ["饱和脂肪", `${fmtNum(sat, 1)}<small> g</small>`], fib != null && ["纤维", `${fmtNum(fib, 1)}<small> g</small>`],
+      add != null && ["添加糖", `${fmtNum(add, 1)}<small> g</small>`],
       entries.length && ["条目", `${entries.length}`]].filter(Boolean);
     const total = `<div class="card food-day">
         <div class="kcal" style="margin-top:0"><span class="row-sub">热量</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
@@ -2214,7 +2238,9 @@
   const RENDER_food = async () => {
     const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["recipes", "食谱"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`;
     if (S.foodMode === "shopping") {
-      return seg + `<div class="soon"><span class="glyph">${ICON.cart}</span><div>即将上线</div></div>`;
+      const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
+      return seg + (shop ? await shop.foodShop({ owner: ownerPath(), self: isSelf(), date: S.todayDate })
+        : `<div class="soon"><span class="glyph">${ICON.cart}</span><div>即将上线</div></div>`);
     }
     const past = isPast();   // looking back: that day's intake + the recipe list; quick log and suggestions are only for today
     const [list, sug, d, meals] = await Promise.all([
@@ -2243,6 +2269,7 @@
   function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe); }
   function afterFood(view) {
     for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; render(); };
+    if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
     bindRecipes(view);
     bindMeals(view);
     const q = $("#food-q", view);
@@ -2506,6 +2533,11 @@
     }
     // Profile language (null = follow the device): if it differs from what this page was drawn in, reload once in the right language
     if (I18N.setPref(me.me?.language)) { location.reload(); return; }
+    if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
+      $("#login").hidden = true; $("#app").hidden = true;
+      window.BodyAccount.showPending(() => boot());
+      return;
+    }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });

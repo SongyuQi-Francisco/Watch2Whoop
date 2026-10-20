@@ -271,13 +271,14 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
 
 
 def nutrition_today(conn, owner_id: int, day: date) -> dict:
-    client = sparky_client.client_for_user(conn, owner_id)
-    n = sparky_client.nutrition(client, day, day)
-    d = n["days"][0] if n["days"] else {"logged": False, "calories": 0, "protein_g": 0, "carbs_g": 0, "fat_g": 0,
-                                        "goal": sparky_client.goal_for_date(client, day)}
+    """Goal = the version in effect that day (goals/nutrition.py); sugar totals carry coverage (nutrition/daily.py)."""
+    from ..nutrition import daily
+    n = daily.nutrition(conn, owner_id, day, day)
+    d = n["days"][0]
     return {"date": day, "logged": d["logged"], "goal": d["goal"],
-            "intake": {k: d[k] for k in ("calories", "protein_g", "carbs_g", "fat_g")},
-            "entries": n.get("entries", [])}
+            "intake": {k: d[k] for k in ("calories", "protein_g", "carbs_g", "fat_g", "sugar_g", "added_sugar_g",
+                                         "fiber_g", "sodium_mg")},
+            "known": d["known"], "adherence": d["adherence"], "entries": n.get("entries", [])}
 
 
 def today(conn, viewer: dict, owner_id: int, day: date | None = None) -> dict:
