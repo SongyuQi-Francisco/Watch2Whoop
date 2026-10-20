@@ -40,7 +40,7 @@ class Ctx:
     sleep_goal: dict | None = None                 # row from goals.store.get_goal (including plan_rows)
     sleep_nights: list[dict] = field(default_factory=list)  # main sleep of each night before tonight (goals.sleep.nights_from_sessions)
     sleep_duration_min: int | None = None          # target sleep duration (from the goal, or the score's sleep need)
-    overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/overrides.py)
+    overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/day_overrides.py)
     errors: dict[str, str] = field(default_factory=dict)    # source -> reason the read failed
     missing: dict[str, str] = field(default_factory=dict)   # source -> reason it is not connected / not available
 

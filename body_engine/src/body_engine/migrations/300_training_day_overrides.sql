@@ -1,4 +1,4 @@
--- Day-level changes to the weekly training plan (training/overrides.py, docs/training-v2-plan.md "Day changes").
+-- Day-level changes to the weekly training plan (training/day_overrides.py, docs/training-v2-plan.md "Day changes").
 -- One row = "on this date do these sessions instead of the plan's weekday": sessions is a list of
 --   {"dow": 1..7}  the content of that weekday in the active weekly plan (Body Engine training_plans or SparkyFitness), or
 --   {"label": ""}  a free activity outside the plan (basketball, swimming);

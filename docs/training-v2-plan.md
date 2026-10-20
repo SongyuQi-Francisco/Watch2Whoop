@@ -48,7 +48,7 @@
 | `undo_day_changes` | 撤销（弹确认） | 删除按日期的调整，恢复周计划原样（默认今天到本周日） |
 
 ## 按日期调整（换今天的训练、重排本周）
-- 表 `training_day_overrides`（迁移 `230_training_day_overrides.sql`，代码 `training/overrides.py`）：一行 = 这一天改做什么，`sessions` 是 `[{"dow": 1–7}]`（周计划里那个星期几的内容）或 `[{"label": "篮球"}]`（计划外活动），空列表 = 休息；没有行 = 按周计划。`source`：`user`（用户点名的那天）/ `replan`（重排挪动的，下次重排可以再挪）。
+- 表 `training_day_overrides`（迁移 `300_training_day_overrides.sql`，代码 `training/day_overrides.py`）：一行 = 这一天改做什么，`sessions` 是 `[{"dow": 1–7}]`（周计划里那个星期几的内容）或 `[{"label": "篮球"}]`（计划外活动），空列表 = 休息；没有行 = 按周计划。`source`：`user`（用户点名的那天）/ `replan`（重排挪动的，下次重排可以再挪）。
 - 两种周计划都适用：Body Engine `training_plans`（`get_week_plan` 直接套用）和 SparkyFitness 周计划（`rules.context.Ctx.planned_for`，规则引擎和今天页同一份）。`save_plan` 换新计划时清掉从开始那天起的旧调整。
 - 重排规则（`training/params.py` 的 `REPLAN_*`，有出处）：今天及以前的天、用户点名的天不动；计划里本周还没出现的训练放到剩下几天（每个训练一次 → 各肌群周组数不变），同一大肌群不连续两天、连练不超过 3 天、尽量少挪；今天恢复红区则明天先空着；放不下的列在 `skipped`。禁用 / 注意动作照旧在结果和今天页标出。
 - 今天页：训练卡多一个「已调整」标签，弹层第一行「原计划」；记录 → 训练的本周条上调整过的日子标签换成强调色。

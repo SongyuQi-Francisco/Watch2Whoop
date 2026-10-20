@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta
 
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, history, overrides, params as P, plans
+from . import catalog, day_overrides, history, params as P, plans
 
 
 def _d(s: str | None) -> date | None:
@@ -195,22 +195,22 @@ TOOL_SPECS: list[dict] = [
 ]
 
 
-# ---------------------------------------------------------------- day changes (overrides.py)
+# ---------------------------------------------------------------- day changes (day_overrides.py)
 def _reschedule_day(conn, uid, a):
-    return overrides.reschedule_day(conn, uid, date.fromisoformat(a["date"]), a["session"], reason=a.get("reason"),
+    return day_overrides.reschedule_day(conn, uid, date.fromisoformat(a["date"]), a["session"], reason=a.get("reason"),
                                     replan=a.get("replan") is not False)
 
 
 def _swap_days(conn, uid, a):
-    return overrides.swap_days(conn, uid, date.fromisoformat(a["date_a"]), date.fromisoformat(a["date_b"]))
+    return day_overrides.swap_days(conn, uid, date.fromisoformat(a["date_a"]), date.fromisoformat(a["date_b"]))
 
 
 def _replan_week(conn, uid, a):
-    return overrides.replan_week(conn, uid, _d(a.get("date")), apply=a.get("apply") is not False)
+    return day_overrides.replan_week(conn, uid, _d(a.get("date")), apply=a.get("apply") is not False)
 
 
 def _undo_day_changes(conn, uid, a):
-    return overrides.undo_day_changes(conn, uid, _d(a.get("start")), _d(a.get("end")))
+    return day_overrides.undo_day_changes(conn, uid, _d(a.get("start")), _d(a.get("end")))
 
 
 TOOL_SPECS += [

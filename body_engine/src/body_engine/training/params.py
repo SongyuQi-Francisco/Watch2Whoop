@@ -272,7 +272,7 @@ SPLIT_TEMPLATES: dict[str, dict] = {
 }
 
 
-# ---------- Day changes: re-planning the rest of the week (training/overrides.py) ----------
+# ---------- Day changes: re-planning the rest of the week (training/day_overrides.py) ----------
 # The same major muscle group on two consecutive days leaves < 48 h between sessions, the usual minimum for a trained
 # muscle group to recover (Schoenfeld et al., 2016 Sports Med frequency review; NSCA Essentials 4th ed., ch. 17).
 # Costs only rank the candidate weeks; the cheapest one is chosen (ties: fewest moved days).

@@ -573,7 +573,7 @@ def save_plan(
         ),
     ).fetchone()
 
-    # Day changes of the old plan (training/overrides.py) no longer apply from the new plan's start
+    # Day changes of the old plan (training/day_overrides.py) no longer apply from the new plan's start
     cleared = conn.execute("DELETE FROM training_day_overrides WHERE user_id = %s AND date >= %s",
                            (user_id, max(start_d, _user_today(conn, user_id)))).rowcount
 
@@ -706,7 +706,7 @@ def get_week_plan(
                 "exercises": [_normalize_item(conn, owner_id, x, with_meta=with_meta) for x in d_obj.get("exercises") or []],
             })
 
-        # Day changes (training/overrides.py): a date may hold other weekdays' sessions, a free activity or rest
+        # Day changes (training/day_overrides.py): a date may hold other weekdays' sessions, a free activity or rest
         ovs = load_overrides(conn, owner_id, start, end)
         vol_by_dow: dict[int, list[dict]] = {}
         for nd in normalized_days_for_vol:

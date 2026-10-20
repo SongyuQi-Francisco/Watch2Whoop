@@ -1,4 +1,4 @@
-"""Day-level changes to the weekly training plan (training/overrides.py, migration 230):
+"""Day-level changes to the weekly training plan (training/day_overrides.py, migration 300):
 - resolving what the user asked for (plan session name / weekday / rest / free activity / ambiguous)
 - reschedule_day + re-planning the rest of the week (each plan session once, no muscle group two days in a row), swap_days,
   undo_day_changes, save_plan clearing old changes
@@ -21,7 +21,7 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.rules import context as rules_context
 from body_engine.rules.context import Ctx
-from body_engine.training import overrides as OV, plans
+from body_engine.training import day_overrides as OV, plans
 from body_engine.web import views
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_TRAINING_OVERRIDES", "body_test_training_overrides")
