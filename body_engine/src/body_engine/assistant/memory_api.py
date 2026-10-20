@@ -3,12 +3,12 @@ reading someone else's needs shares authorization (memory scope memory, meal tem
 and with cookie login write requests must carry X-Body-Web: 1 (web/session.py)."""
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
-from . import meals, memory, status
+from . import briefing, meals, memory, sparky_write, status
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["memory"])
 
@@ -97,3 +97,15 @@ def log_meal_template(user: str, template_id: int, body: MealLogIn | None = None
 def undo_meal_log(user: str, log_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Undo one quick meal logging: delete the entries this logging wrote into SparkyFitness."""
     return _meal_call(meals.undo_log, conn, _self(viewer, user), log_id)
+
+
+# ---------------------------------------------------------------- deleting a food entry (Today page, 饮食 day detail)
+@router.delete("/nutrition/entries/{entry_id}")
+def delete_food_entry(user: str, entry_id: str = Path(pattern=r"^[A-Za-z0-9-]{1,64}$"),
+                      date: dt.date = Query(description="这条记录的日期 YYYY-MM-DD"),
+                      conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user deletes one of their own SparkyFitness food entries (any source) with their read-write key; only for oneself, needs write."""
+    owner = _self(viewer, user)
+    out = _meal_call(sparky_write.delete_food_entry, conn, owner, date, entry_id)
+    briefing.invalidate(owner)
+    return out

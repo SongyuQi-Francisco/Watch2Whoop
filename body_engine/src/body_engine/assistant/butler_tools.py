@@ -164,13 +164,18 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="undo_sparky_entry",
-        description="撤销管家写进 SparkyFitness 的一条饮食或训练（log_food / log_workout 返回的 id）。用户在 app 里记的不删。",
+        description="撤销 AI 写的（source=body_assistant）一条饮食 / 训练：给 id（get_nutrition / get_training_log 里有），"
+                    "或饮食按 date+meal+food(+time) 精确匹配（多条拒绝）。其他来源让用户在今天页删。",
         input_schema=_schema({
             "kind": {"type": "string", "enum": ["food", "workout"]},
             "date": {"type": "string", "description": "YYYY-MM-DD"},
-            "id": {"type": "string"},
+            "id": _n("string"),
+            "meal": _n("string"),
+            "food": _n("string"),
+            "time": _n("string", "HH:MM"),
         }),
-        handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"]),
+        handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"],
+                                                             meal=a["meal"], food=a["food"], time=a["time"]),
         scope="training", writes=True,
     ),
     # ---------- screenshot metrics ----------

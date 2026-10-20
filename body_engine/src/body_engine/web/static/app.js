@@ -604,7 +604,8 @@
     const g = n.goal || {}, i = n.intake;
     openSheet(`饮食 · ${shortDay(d.date)}`, kv("热量", `${fmtNum(i.calories)} / ${fmtNum(g.calories)} kcal`) + kv("蛋白质", `${fmtNum(i.protein_g)} / ${fmtNum(g.protein_g)} g`)
       + kv("碳水", `${fmtNum(i.carbs_g)} / ${fmtNum(g.carbs_g)} g`) + kv("脂肪", `${fmtNum(i.fat_g)} / ${fmtNum(g.fat_g)} g`)
-      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div>${n.entries.map((e) => kv([e.time, e.food].filter(Boolean).join(" "), e.calories != null ? `${fmtNum(e.calories)} <small class="muted">kcal</small>` : "—")).join("")}` : ""));
+      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div><div class="group">${n.entries.map((e) => `<button class="item food-entry" ${sheetAttr(() => foodEntrySheet(e))}><span class="f">${esc([e.time, e.food].filter(Boolean).join(" ") || "—")}</span>
+          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`).join("")}</div>` : ""));
   }
 
   function dayCardHtml(d, meals) {
@@ -2183,7 +2184,29 @@
     openSheet(e.food || "食物", `${kv("份量", e.quantity ? esc(`${fmtNum(e.quantity, 1)} ${e.unit || ""}`) : null)}${e.time ? kv("时间", esc(e.time)) : ""}
       ${kv("热量", g("calories", "kcal", 0))}${kv("蛋白质", g("protein_g", "g"))}${kv("碳水", g("carbs_g", "g"))}${kv("脂肪", g("fat_g", "g"))}
       ${e.saturated_fat_g != null ? kv("饱和脂肪", g("saturated_fat_g", "g")) : ""}${e.fiber_g != null ? kv("纤维", g("fiber_g", "g")) : ""}
-      ${e.sugars_g != null ? kv("糖", g("sugars_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}`);
+      ${e.sugars_g != null ? kv("糖", g("sugars_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}
+      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more"><button class="btn btn-danger" type="button" id="fe-del">删除这条</button></div>` : ""}`,
+    (root) => {
+      const del = $("#fe-del", root);
+      if (!del) return;
+      del.onclick = () => {   // confirm inside the sheet (window.confirm does nothing in the app's WebView)
+        $("#fe-more", root).outerHTML = `<p class="para">从饮食记录里删除，不能恢复</p>
+          <div class="btns"><button class="btn" type="button" id="fe-cancel">取消</button><button class="btn btn-danger" type="button" id="fe-del-ok">确认删除</button></div>`;
+        $("#fe-cancel", root).onclick = () => foodEntrySheet(e);
+        const ok = $("#fe-del-ok", root);
+        ok.onclick = async () => {
+          ok.disabled = true;
+          const done = (msg) => { delete S.data[`${todayKey(e.date)}:${S.owner}`]; delete S.data[`today:${S.owner}`]; closeSheet(); render(); toast(msg); };
+          try {
+            await api(`/v1/users/me/nutrition/entries/${encodeURIComponent(e.id)}?date=${encodeURIComponent(e.date)}`, { method: "DELETE" });
+            done("已删除");
+          } catch (err) {
+            if (err.status === 404) done("这条已经不在了");
+            else { toast(err.message); ok.disabled = false; }
+          }
+        };
+      };
+    });
   }
   function foodDayHtml(d) {
     const n = d?.nutrition;
