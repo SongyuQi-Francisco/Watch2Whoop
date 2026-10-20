@@ -79,6 +79,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | Document | Language | What it covers |
 |---|---|---|
 | [system-design.md](system-design.md) | Chinese | Architecture, data ownership per component, table design, scoring algorithms, rules engine, Today page, training history, iOS app (§0 product principles, §16 training, §17 iOS app) |
+| [apps.md](apps.md) | English + Chinese summary | Client apps: platform matrix (iOS, Android, HarmonyOS), shared client contract, `apps/` layout, app versioning and release tags, CI path filters |
 | [ai-assistant-plan.md](ai-assistant-plan.md) | Chinese | The AI coach ("body butler"): tools, memory, multi-user / multi-provider AI access (§9) |
 | [whoop-feature-map.md](whoop-feature-map.md) | Chinese | Every WHOOP body-data feature → our implementation and API |
 | [training-v2-plan.md](training-v2-plan.md) | Chinese | Training module v2 (deferred): exercise library, splits, weekly plans, AI-built plans, data sources and their licences |
