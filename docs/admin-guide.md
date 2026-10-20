@@ -209,10 +209,13 @@ deploy/ops/install.sh                      # 装定时任务（macOS LaunchAgent
 
 ## 内测码（自助注册上线后）
 
-批量内测码（自助注册时用）的命令随「自助注册」PR 一起提供，**需要该 PR 合并后可用**。目前只有方案（PR #8，`docs/self-signup-plan.md`），草案命令：
+自助注册的人用 Apple / 邮箱登录后要输一个内测码才能开通。
 
 ```bash
-body-engine invite-code batch --count 50 --label 渠道-1020 [--days 30] [--max-uses 1]   # 草案，以合并后的 --help 为准
+body-engine invite-code create --label 群-1020 --uses 20 [--days 30]   # 一个码，最多开 20 个账号；明文只打印这一次
+body-engine invite-code batch --count 50 --label 渠道-1020 [--days 30] [--max-uses 1]   # 一批一次性码（CSV）
+body-engine invite-code list [--batch N]   # 已用 / 剩余次数；每次使用绑定的身份（Apple / 邮箱，打码显示）和时间
+body-engine invite-code revoke --batch N | --code-id N
 ```
 
-在那之前，每个人都用上面的「开户」+「激活链接」。
+一个人只能用一次：每次兑换都记下这个账号的登录身份（只存哈希和打码提示），删号重注册也不能再用码开新账号。

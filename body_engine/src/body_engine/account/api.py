@@ -12,6 +12,7 @@ Account (Bearer or cookie; also for `pending` accounts):
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
+  GET    /v1/users/{user}/invite-code      the user's own referral code (created on first call); 404 unless BODY_REFERRALS_ENABLED
 A `pending` account gets 403 {"detail": "account_pending"} everywhere else (api.current_user → gate()).
 
 Limits: verification / redemption failures count against the shared per-IP login failure limit (web/login_limit.py);
@@ -20,6 +21,7 @@ code e-mails are limited per address (EMAIL_SENDS_PER_ADDRESS per hour, one per 
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -27,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
 from ..web import activation, login_codes, login_limit, session
-from . import delete as account_delete, invites, mailer, provision, signin
+from . import delete as account_delete, invites, mailer, params, provision, signin
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -234,6 +236,21 @@ def redeem_invite(body: RedeemIn, request: Request, conn=Depends(get_conn), view
         start_provisioning(viewer["id"])
     user = conn.execute("SELECT * FROM users WHERE id = %s", (viewer["id"],)).fetchone()
     return {"status": user["status"], "provisioning": provision.status(conn, viewer["id"])}
+
+
+@router.get("/v1/users/{user}/invite-code")
+def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Referral groundwork: the user's own code for friends (redeeming it records the inviter and a pending reward)."""
+    if not os.environ.get(params.REFERRALS_ENV):
+        raise HTTPException(404, "referrals_disabled")
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, "邀请码只能看自己的")
+    try:
+        res = invites.referral_code(conn, viewer["id"])
+    except ValueError:
+        raise HTTPException(403, "account_pending")
+    conn.commit()
+    return res
 
 
 @router.post("/v1/account/ow-invitation")

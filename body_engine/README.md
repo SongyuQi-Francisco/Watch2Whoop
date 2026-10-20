@@ -350,7 +350,10 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
 - Sign-in without passwords: e-mail + one-time 6-digit code (`account/signin.py`, mailer `account/mailer.py`: SMTP or `console`)
   and native Sign in with Apple (identity token verified against Apple's JWKS, audience `BODY_APPLE_AUDIENCES`).
 - New accounts are `pending` (403 `account_pending` everywhere except `/v1/account*`, `/v1/web/me`) until they redeem an
-  invite code (`account/invites.py`; `body-engine invite-code batch | list | revoke`). Redemption activates the account and
+  invite code (`account/invites.py`; `body-engine invite-code create | batch | list | revoke`; `create --uses N` = one code for
+  N people, each redemption bound to the account's sign-in identities, one redemption per identity ever). Referral groundwork
+  (migration 330): codes have a kind and an owner, a referral redemption records the inviter and a pending `invite_rewards`
+  row (`account/params.py`); `GET /v1/users/{user}/invite-code` only with `BODY_REFERRALS_ENABLED`. Redemption activates the account and
   provisions it in the background (`account/provision.py`: OW user, SparkyFitness account + encrypted keys, journal items,
   profile card); `body-engine provision-run` retries unfinished ones (hourly) and removes pending accounts after 7 days.
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).

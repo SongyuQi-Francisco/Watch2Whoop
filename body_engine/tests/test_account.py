@@ -306,7 +306,8 @@ def test_invite_batch_redeem_and_provisioning(client, dsn, _env, monkeypatch):
         b = next(x for x in invites.list_batches(conn) if x["id"] == batch["batch_id"])
         assert (b["codes"], b["uses"], b["free_codes"], b["state"]) == (2, 2, 0, "active")
         codes = invites.list_codes(conn, batch["batch_id"])
-        assert codes[0]["redeemed"][0]["email"] == "invited@example.com" and codes[0]["hint"] == code[-3:]
+        assert codes[0]["redeemed"][0]["identities"] == [{"provider": "email", "hint": "i***@e***.com"}]
+        assert codes[0]["hint"] == code[-3:] and "invited@example.com" not in json.dumps(codes, default=str)
 
     # OW invitation for the app: minted for this user's OW account
     f = _ow_signing(monkeypatch)
@@ -348,6 +349,121 @@ def test_invite_max_uses_expiry_and_revoke(client, dsn):
                             (fresh[-3:],)).fetchone()["uses"] == 0
     with pytest.raises(ValueError):
         _batch(dsn, 0)
+
+
+def _pending(conn, provider, subject, email=None):
+    user, new = signin.find_or_create_user(conn, provider, subject, email, True)
+    assert new
+    return user["id"]
+
+
+def test_one_code_many_people_then_exhausted_and_listed(dsn):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        res = invites.create_code(conn, "club", 3, days=30)
+        code = res["code"]
+        users = [_pending(conn, "email", f"club{i}@example.com", f"club{i}@example.com") for i in range(3)]
+        users.append(_pending(conn, "apple", "001234.apple-sub.9876", None))
+        assert [invites.redeem(conn, u, code) for u in users] == [True, True, True, False]   # 4th: used up
+        assert conn.execute("SELECT status FROM users WHERE id = %s", (users[3],)).fetchone()["status"] == "pending"
+        b = next(x for x in invites.list_batches(conn) if x["id"] == res["batch_id"])
+        assert (b["codes"], b["uses"], b["capacity"], b["remaining"], b["kind"], b["state"]) == (1, 3, 3, 0, "admin", "active")
+        assert [r["identities"] for r in b["redemptions"]] == [[{"provider": "email", "hint": "c***@e***.com"}]] * 3
+        assert [r["user_id"] for r in b["redemptions"]] == users[:3] and all(r["redeemed_at"] for r in b["redemptions"])
+        assert all(r["inviter_user_id"] is None for r in b["redemptions"])
+        # a fresh code for the Apple user: the hint is the tail of Apple's subject (no e-mail shared)
+        other = invites.create_code(conn, "solo", 1)
+        assert invites.redeem(conn, users[3], other["code"])
+        c = invites.list_codes(conn, other["batch_id"])[0]
+        assert c["redeemed"][0]["identities"] == [{"provider": "apple", "hint": "Apple ID ···9876"}]
+        with pytest.raises(ValueError):
+            invites.create_code(conn, "none", 0)
+    assert invites.mask_email("John.Doe@Mail.Example.org") == "j***@m***.org" and invites.mask_email("x") == "***"
+
+
+def test_last_use_race_only_one_wins(dsn):
+    import threading
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        code = invites.create_code(conn, "race", 1)["code"]
+        racers = [_pending(conn, "email", f"race{i}@example.com", f"race{i}@example.com") for i in range(4)]
+        conn.commit()
+    barrier, results = threading.Barrier(len(racers)), {}
+
+    def go(uid):
+        with psycopg.connect(dsn, row_factory=dict_row) as c:
+            barrier.wait()
+            results[uid] = invites.redeem(c, uid, code)
+            c.commit() if results[uid] else c.rollback()
+
+    threads = [threading.Thread(target=go, args=(u,)) for u in racers]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(results.values()) == [False, False, False, True]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT uses, max_uses FROM invite_codes WHERE code_sha256 = %s", (invites._sha(code),)).fetchone()
+        assert (row["uses"], row["max_uses"]) == (1, 1)
+        assert conn.execute("SELECT count(*) AS n FROM users WHERE id = ANY(%s) AND status = 'active'", (racers,)).fetchone()["n"] == 1
+
+
+def test_same_identity_cannot_redeem_twice(dsn):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        code = invites.create_code(conn, "twice", 5)["code"]
+        uid = _pending(conn, "email", "twice@example.com", "twice@example.com")
+        assert invites.redeem(conn, uid, code) and invites.redeem(conn, uid, code)   # already active: no second use
+        conn.commit()
+        account_delete.delete_account(conn, uid)
+        # deleted the account and signed up again with the same e-mail: the identity has had its invite
+        again = _pending(conn, "email", "twice@example.com", "twice@example.com")
+        assert not invites.redeem(conn, again, code)
+        assert not invites.redeem(conn, again, invites.create_code(conn, "fresh", 1)["code"])
+        assert conn.execute("SELECT uses FROM invite_codes WHERE code_sha256 = %s", (invites._sha(code),)).fetchone()["uses"] == 1
+        b = invites.list_batches(conn)
+        assert any(r["user_id"] is None and r["identities"] == [{"provider": "email", "hint": "t***@e***.com"}]
+                   for x in b for r in x["redemptions"])   # the record outlives the account, masked
+
+
+def test_referral_code_records_inviter_and_pending_reward(client, dsn, _env, monkeypatch):
+    from body_engine.account import params
+    client.cookies.clear()
+    s = _email_login(client, "inviter@example.com", "app")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    inviter = s["me"]["id"]
+    assert client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]}).status_code == 200
+    monkeypatch.delenv(params.REFERRALS_ENV, raising=False)
+    assert client.get("/v1/users/me/invite-code", headers=h).status_code == 404   # off by default
+    monkeypatch.setenv(params.REFERRALS_ENV, "1")
+    r = client.get("/v1/users/me/invite-code", headers=h)
+    assert r.status_code == 200, r.text
+    mine = r.json()
+    assert mine["max_uses"] == params.REFERRAL_MAX_USES and mine["uses"] == 0 and len(invites.normalize(mine["code"])) == invites.LENGTH
+    assert client.get("/v1/users/me/invite-code", headers=h).json()["code"] == mine["code"]   # same code next time
+    assert client.get("/v1/users/1/invite-code", headers=h).status_code == 403
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        friend = _pending(conn, "email", "friend@example.com", "friend@example.com")
+        assert invites.redeem(conn, friend, mine["code"])
+        red = conn.execute("SELECT * FROM invite_redemptions WHERE user_id = %s", (friend,)).fetchone()
+        assert red["inviter_user_id"] == inviter and red["circle_id"] is None
+        rw = conn.execute("SELECT * FROM invite_rewards WHERE redemption_id = %s", (red["id"],)).fetchone()
+        assert (rw["user_id"], rw["invitee_user_id"], rw["state"], rw["reward_type"]) == (
+            inviter, friend, "pending", params.REFERRAL_REWARD["type"])
+        assert float(rw["amount"]) == params.REFERRAL_REWARD["amount"]
+        b = next(x for x in invites.list_batches(conn) if x["label"] == f"referral:u{inviter}")
+        assert (b["kind"], b["owner_user_id"], b["uses"], b["remaining"]) == ("referral", inviter, 1, params.REFERRAL_MAX_USES - 1)
+        # an admin code leaves no inviter and no reward
+        plain = _pending(conn, "email", "plain@example.com", "plain@example.com")
+        assert invites.redeem(conn, plain, _batch(dsn)["codes"][0])
+        assert conn.execute("SELECT inviter_user_id FROM invite_redemptions WHERE user_id = %s", (plain,)).fetchone()["inviter_user_id"] is None
+        assert conn.execute("SELECT count(*) AS n FROM invite_rewards WHERE invitee_user_id = %s", (plain,)).fetchone()["n"] == 0
+        conn.commit()
+        # the inviter deletes their account: the code stops working (never an owner-less admin code); the friend's record stays
+        conn.execute("UPDATE users SET ow_user_id = NULL, sparky_user_id = NULL WHERE id = %s", (inviter,))
+        conn.commit()
+        account_delete.delete_account(conn, inviter)
+        late = _pending(conn, "email", "late@example.com", "late@example.com")
+        assert not invites.redeem(conn, late, mine["code"])
+        assert conn.execute("SELECT inviter_user_id FROM invite_redemptions WHERE user_id = %s", (friend,)).fetchone()["inviter_user_id"] is None
+        assert conn.execute("SELECT count(*) AS n FROM invite_redemptions WHERE user_id = %s", (friend,)).fetchone()["n"] == 1
 
 
 def test_provisioning_failure_is_retried(client, dsn, _env, monkeypatch):
