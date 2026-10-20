@@ -44,6 +44,7 @@ def summarize_sessions(sessions: list[dict]) -> list[dict]:
         out.append({"id": s.get("id"), "date": s.get("date"), "name": s.get("name"), "notes": s.get("notes"),
                     "source": s.get("source"), "minutes": s.get("total_duration_minutes") or None,
                     "exercises": [{"name": e.get("name"), "sets": ", ".join(_set_text(x) for x in e.get("sets") or []),
+                                   "set_ids": [x.get("id") for x in e.get("sets") or []] or None,
                                    "minutes": e.get("duration_minutes") or None, "avg_hr": e.get("avg_heart_rate"),
                                    "notes": e.get("notes")} for e in s.get("exercises") or []]})
     return out
@@ -67,7 +68,7 @@ SPARKY_TOOLS = [
     Tool(
         name="get_training_log",
         description="力量训练记录（SparkyFitness）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），"
-                    "每个动作的组：「次数×重量 RIR」（哑铃是单只）。动作的禁用状态不在这里。",
+                    "每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
         input_schema=_range_schema(detail={**DETAIL, "description": "true=每组一个对象、带动作 ID"}),
         handler=_training,
         scope="training",

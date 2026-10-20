@@ -69,7 +69,10 @@ def shortcut_type(s: str) -> str:
     if key in P.SHORTCUT_TYPES:
         return P.SHORTCUT_TYPES[key]
     spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", re.sub(r"^HKWorkoutActivityType", "", (s or "").strip())).lower()
-    return P.SHORTCUT_TYPES.get(spaced, key.replace(" ", "_") or "other")
+    if spaced in P.SHORTCUT_TYPES:
+        return P.SHORTCUT_TYPES[spaced]
+    # unknown name: keep it readable (mixed_metabolic_x); it shows as-is and update_workout / a type rule can fix it
+    return re.sub(r"\W+", "_", spaced).strip("_") or "other"
 
 
 def parse(p: list[str], tz: ZoneInfo) -> dict | None:
