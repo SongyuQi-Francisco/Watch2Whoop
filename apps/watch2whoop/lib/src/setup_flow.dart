@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
+import 'server_lock.dart';
 
 class SetupResult {
   const SetupResult({this.serversSet = false, this.owConnected = false, this.loginCodeSaved = false, this.owError});
@@ -20,8 +21,10 @@ class SetupResult {
   final Object? owError;
 }
 
-/// Applies the setup info. Throws [FormatException] when the address format is wrong (message is the checkServerUrl error code).
-Future<SetupResult> applySetup(SetupInfo info) async {
+/// Applies the setup info. Throws [FormatException] when the address format is wrong (message is the checkServerUrl error code)
+/// or, in a locked build, when the link is for another server (`other_server`).
+Future<SetupResult> applySetup(SetupInfo setup) async {
+  final info = ServerLock.current.admit(setup);
   var c = AppState.instance.config;
   var serversSet = false;
   if (info.todayUrl != null) {
