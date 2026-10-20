@@ -383,7 +383,11 @@
 
   // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // The non-passive touchmove listener exists only while two or more fingers are down: a document-wide non-passive touchmove makes iOS WebKit
+  // wait on the page for every one-finger move, which kept sideways strips (.quick) from scrolling in the iOS app (issue #11)
+  const noPinch = (e) => { if (e.touches.length > 1) e.preventDefault(); };
+  document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) document.addEventListener("touchmove", noPinch, { passive: false }); }, { passive: true });
+  for (const ev of ["touchend", "touchcancel"]) document.addEventListener(ev, (e) => { if (e.touches.length < 2) document.removeEventListener("touchmove", noPinch); }, { passive: true });
 
   // Pull to refresh (a home-screen app has no built-in one from the browser)
   (() => {
@@ -760,12 +764,29 @@
         ${bedChart(recent, g, viewDay())}</button></div>`;
   }
 
-  // ---- Meal templates (/meal-templates from the body butler session; tap to log, undoable, long-press for details and to adjust grams)
+  // ---- Meal templates (/meal-templates from the body butler session). One component everywhere (Today food card, Record, Food):
+  // a sideways strip of the most used templates (uses_30d), then 「全部」 for a sheet with all of them. Tap = log (已记 ✓ + toast 撤销);
+  // tapping a logged one only offers 撤销 again; templates whose grams need confirming open their detail sheet first.
+  const QUICK_MAX = 5;
   const mealKcal = (t) => t.totals?.kcal ?? t.totals?.calories ?? (t.items || []).reduce((s, x) => s + (x.kcal || 0), 0);
-  function quickHtml(meals, wrap) {
+  const mealsByUse = (meals) => meals.map((t, i) => [t, i]).sort((a, b) => (b[0].uses_30d || 0) - (a[0].uses_30d || 0) || a[1] - b[1]).map(([t]) => t);
+  const mealSub = (t) => (loggedId(t) ? "已记 ✓" : t.needs_confirmation ? "待确认" : `${fmtNum(mealKcal(t))} kcal`);
+  function quickHtml(meals, bare) {
     if (!Array.isArray(meals) || !meals.length) return "";
-    return `<div class="quick ${wrap ? "wrap" : ""}">${meals.map((t) => `<button class="qchip ${t.needs_confirmation && !loggedId(t) ? "warn" : ""} ${loggedId(t) ? "done" : ""}" data-meal="${esc(t.id)}">
-        <span class="n">${esc(t.name)}</span><span class="k">${loggedId(t) ? "已记 ✓" : t.needs_confirmation ? "待确认" : `${fmtNum(mealKcal(t))} kcal`}</span></button>`).join("")}</div>`;
+    const top = mealsByUse(meals).slice(0, QUICK_MAX);
+    return `<div class="quick ${bare ? "bare" : ""}">${top.map((t) => `<button class="qchip ${t.needs_confirmation && !loggedId(t) ? "warn" : ""} ${loggedId(t) ? "done" : ""}" data-meal="${esc(t.id)}">
+        <span class="n">${esc(t.name)}</span><span class="k">${mealSub(t)}</span></button>`).join("")}${meals.length > QUICK_MAX
+      ? `<button class="qchip more" data-meal-all><span class="n">全部</span><span class="k">${meals.length}</span></button>` : ""}</div>`;
+  }
+  function allMealsSheet() {
+    const meals = mealsByUse(S.data[`meals:${S.owner}`] || []);
+    openSheet("快捷记录", meals.map((t) => `<div class="item-row meal-row">
+        <button class="f" data-log="${esc(t.id)}">${esc(t.name)}<small class="${loggedId(t) ? "" : t.needs_confirmation ? "mid" : ""}">${mealSub(t)}</small></button>
+        <button class="btn" data-edit="${esc(t.id)}">克数</button></div>`).join(""),
+    (root) => {
+      for (const b of $$("[data-log]", root)) b.onclick = () => { const m = mealOf(b.dataset.log); closeSheet(); if (m) tapMeal(m); };
+      for (const b of $$("[data-edit]", root)) b.onclick = () => { const m = mealOf(b.dataset.edit); if (m) mealSheet(m); };
+    });
   }
   const loggedId = (t) => S.mealLogs[t.id] ?? t.today_log?.log_id ?? null;   // logged during this open, or the server remembers it was already logged today
   const mealOf = (id) => (S.data[`meals:${S.owner}`] || []).find((t) => String(t.id) === String(id));
@@ -816,25 +837,14 @@
     });
   }
 
+  function tapMeal(m) {
+    if (loggedId(m)) toast(`已记 · ${m.name}`, "撤销", () => undoMeal(m));   // already logged: no second log by accident, undo stays one tap away
+    else if (m.needs_confirmation) mealSheet(m);
+    else logMeal(m);
+  }
   function bindMeals(view) {
-    for (const b of $$("[data-meal]", view)) {
-      let timer = null, long = false;
-      const t = () => mealOf(b.dataset.meal);
-      b.addEventListener("pointerdown", () => { long = false; b.classList.add("press"); timer = setTimeout(() => { long = true; b.classList.remove("press"); mealSheet(t()); }, 500); });
-      const cancel = () => { clearTimeout(timer); b.classList.remove("press"); };
-      b.addEventListener("pointerup", cancel);
-      b.addEventListener("pointerleave", cancel);
-      b.addEventListener("pointercancel", cancel);
-      b.addEventListener("contextmenu", (e) => e.preventDefault());
-      b.addEventListener("click", () => {
-        if (long) return;
-        const m = t();
-        if (!m) return;
-        if (loggedId(m)) { undoMeal(m); return; }      // tapping an already logged one again = undo
-        if (m.needs_confirmation) { mealSheet(m); return; }
-        logMeal(m);
-      });
-    }
+    for (const b of $$("[data-meal]", view)) b.onclick = () => { const m = mealOf(b.dataset.meal); if (m) tapMeal(m); };
+    for (const b of $$("[data-meal-all]", view)) b.onclick = allMealsSheet;
   }
 
   // ---- Reminders

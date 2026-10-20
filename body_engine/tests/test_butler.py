@@ -671,6 +671,7 @@ def test_meal_log_and_undo(conn, world):
     entry = next(w[2] for w in fake.writes if w[1] == "/food-entries")
     assert entry["meal_type"] == "breakfast" and entry["source"] == "body_assistant" and "克数待确认" in entry["notes"]
     assert meals.list_templates(conn, a)[0]["today_log"]["log_id"] == res["log_id"]
+    assert meals.list_templates(conn, a)[0]["uses_30d"] == 1   # the Today page puts the most used templates first
     # Tapping again on the same day -> duplicate, rejected
     fake.food[res["date"]] = [{"id": e["id"], "meal_type": "breakfast", "food_name": e["food"], "calories": 1,
                                "source": "body_assistant"} for e in res["entries"]]
@@ -682,6 +683,7 @@ def test_meal_log_and_undo(conn, world):
     with pytest.raises(LookupError, match="撤销过"):
         meals.undo_log(conn, a, res["log_id"], client=fake)
     assert meals.list_templates(conn, a)[0]["today_log"] is None
+    assert meals.list_templates(conn, a)[0]["uses_30d"] == 0   # undone logs don't count
     with pytest.raises(LookupError):
         meals.undo_log(conn, ids["B"], res["log_id"], client=fake)  # someone else's
 

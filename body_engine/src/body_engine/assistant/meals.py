@@ -87,7 +87,12 @@ def list_templates(conn: psycopg.Connection, user_id: int) -> list[dict]:
     for r in conn.execute("""SELECT id, template_id, created_at FROM meal_logs
                              WHERE user_id = %s AND date = %s AND undone_at IS NULL ORDER BY id""", (user_id, today)):
         logs[r["template_id"]] = {"log_id": r["id"], "logged_at": r["created_at"]}
-    return [_view(r, logs.get(r["id"])) for r in rows]
+    # How often each template was logged in the last 30 days (not undone): the Today page shows the most used first
+    uses = {r["template_id"]: r["n"] for r in conn.execute(
+        """SELECT template_id, count(*) AS n FROM meal_logs
+           WHERE user_id = %s AND date > %s::date - 30 AND undone_at IS NULL AND template_id IS NOT NULL
+           GROUP BY template_id""", (user_id, today))}
+    return [{**_view(r, logs.get(r["id"])), "uses_30d": uses.get(r["id"], 0)} for r in rows]
 
 
 def _get(conn, user_id: int, template_id: int) -> dict:
