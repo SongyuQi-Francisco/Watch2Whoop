@@ -1,7 +1,8 @@
 """Data the rules use (Ctx) and its loading (load).
 
 Data sources (system design section 5; each kind of data has exactly one source):
-- SparkyFitness (the evaluated user's own read-only key): training logs, exercise library, workout templates, weekly training plan, food logs, nutrition goals, weight;
+- SparkyFitness (the evaluated user's own read-only key): training logs, exercise library, workout templates, weekly training plan, food logs, weight;
+- nutrition goals: goals/nutrition.py (Body Engine versions; SparkyFitness only before the first version), food extras (added sugar);
 - Body Engine: exercise_meta (banned / caution), daily_scores, journal_entries, daily_metrics.body_mass (weight supplement).
 Sources that cannot be read are recorded in errors, and rules depending on them return error (earlier reminders are not deleted); SparkyFitness not connected is recorded in missing (insufficient data).
 """
@@ -12,7 +13,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import sparky_client
-from ..goals import store as goal_store
+from ..goals import nutrition as nutrition_goals, store as goal_store
+from ..nutrition import daily as nutrition_daily
 from . import params as P
 
 TRAINING_DAYS = P.PROGRESSION_LOOKBACK_DAYS
@@ -32,8 +34,8 @@ class Ctx:
     presets: dict[int, dict] | None = None         # workout templates: id -> template
     plans: list[dict] | None = None                # weekly training plan
     meta: list[dict] = field(default_factory=list)  # all exercise_meta rows
-    food: list[dict] | None = None                 # food logs [day - 13, day]
-    goals: list[dict] | None = None                # nutrition goals for 7 days from day
+    food: list[dict] | None = None                 # food logs [day - 13, day] with sugar fields (nutrition/daily.entries)
+    goals: list[dict] | None = None                # nutrition goals in effect for 7 days from day (goals/nutrition.resolver)
     weights: list[dict] | None = None              # [{date, weight_kg, source}]，[day − 20, day]
     scores: dict[date, dict] = field(default_factory=dict)
     journal: dict[tuple[date, str], float] = field(default_factory=dict)
@@ -181,13 +183,14 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
         except sparky_client.SparkyError as e:
             ctx.missing["sparky"] = str(e)
     if client is not None:
+        goal_of = nutrition_goals.resolver(conn, user_id, client)
         fetches = {
             "exercises": lambda: {e["id"]: e for e in sparky_client.exercises(client)},
             "presets": lambda: sparky_client.workout_presets(client),
             "plans": lambda: sparky_client.workout_plans(client),
             "sessions": lambda: sparky_client.training_log(client, day - timedelta(days=TRAINING_DAYS), day),
-            "food": lambda: sparky_client.nutrition(client, day - timedelta(days=FOOD_DAYS - 1), day)["entries"],
-            "goals": lambda: [sparky_client.goal_for_date(client, day + timedelta(days=k)) for k in range(7)],
+            "food": lambda: nutrition_daily.entries(conn, user_id, day - timedelta(days=FOOD_DAYS - 1), day, client),
+            "goals": lambda: [goal_of(day + timedelta(days=k)) for k in range(7)],
             "weights": lambda: sparky_client.weight(client, day - timedelta(days=WEIGHT_DAYS - 1), day),
         }
         for name, fetch in fetches.items():

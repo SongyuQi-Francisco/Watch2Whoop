@@ -302,10 +302,11 @@ def test_today_training_and_nutrition_with_fake_sparky(client, world, monkeypatc
                         {"day_of_week": dow, "sort_order": 1, "workout_preset_id": None, "exercise_id": "ex3",
                          "exercise_name": "游泳"}]}])
     monkeypatch.setattr(sparky_client, "training_log", lambda c, s, e: [])
-    monkeypatch.setattr(sparky_client, "nutrition", lambda c, s, e, entries=True: {
-        "days": [{"date": TODAY.isoformat(), "logged": True, "calories": 1200, "protein_g": 90, "carbs_g": 100,
-                  "fat_g": 30, "goal": {"name": "训练日", "calories": 2400, "protein_g": 160, "carbs_g": 255, "fat_g": 62}}],
-        "entries": [{"food": "鸡蛋", "calories": 140}]})
+    monkeypatch.setattr(sparky_client, "food_entries", lambda c, s, e: [
+        {"id": "f1", "date": TODAY.isoformat(), "time": "08:00", "food": "鸡蛋", "calories": 1200, "protein_g": 90,
+         "carbs_g": 100, "fat_g": 30, "sugar_g": None}])
+    monkeypatch.setattr(sparky_client, "goal_for_date", lambda c, d: {
+        "name": "训练日", "calories": 2400, "protein_g": 160, "carbs_g": 255, "fat_g": 62})
     d = client.get("/v1/users/me/today", headers=bearer(tok["A"])).json()
     t = d["training"]
     assert [p["name"] for p in t["planned"]] == ["上肢 A", "游泳"]
@@ -317,6 +318,8 @@ def test_today_training_and_nutrition_with_fake_sparky(client, world, monkeypatc
     assert "sparky_url" not in t and "sparky_url" not in d   # Single entry point: the front end doesn't jump to SparkyFitness
     n = d["nutrition"]
     assert n["intake"]["calories"] == 1200 and n["goal"]["calories"] == 2400 and n["logged"] is True
+    assert n["intake"]["sugar_g"] is None and n["known"]["sugar_g"] == 0   # unknown, not 0
+    assert n["goal"]["source"] == "sparkyfitness" and n["goal"]["added_sugar_max_g"] == 25   # no version yet: fallback
     # Record tab, training page: this week Monday–Sunday, today's plan in the right slot, suggestions and caution exercises
     w = client.get(f"/v1/users/me/training/week?date={TODAY}", headers=bearer(tok["A"])).json()
     mon = TODAY - timedelta(days=TODAY.weekday())
@@ -616,12 +619,12 @@ def test_login_failures_are_rate_limited(client, world, monkeypatch):
     r = client.post("/v1/web/login", json={"token": world[1]["A"]})
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
     # Once the window has passed (shift the recorded time back) it can be tried again
-    with login_limit._lock:
-        for q in login_limit._failures.values():
+    with login_limit._failures._lock:
+        for q in login_limit._failures._events.values():
             for i in range(len(q)):
                 q[i] -= login_limit.WINDOW_SECONDS + 1
     assert client.post("/v1/web/login", json={"token": world[1]["A"]}).status_code == 200
-    assert login_limit._failures == {}   # reset after success
+    assert login_limit._failures._events == {}   # reset after success
     login_limit.reset()
 
 

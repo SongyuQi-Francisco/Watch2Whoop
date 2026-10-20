@@ -1,0 +1,269 @@
+"""Grocery (docs/grocery-plan.md): product library, weekly list generation (merge, pantry, package rounding, health hints),
+tick -> pantry, AI tools and API authorization. Needs Postgres: separate test DB BODY_TEST_DB_NAME (default body_test_grocery)."""
+import os
+from datetime import date
+
+import psycopg
+import pytest
+from fastapi.testclient import TestClient
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+from body_engine import api, auth
+from body_engine.ai.chat import ALWAYS_CONFIRM
+from body_engine.assistant import meals, recipes
+from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
+from body_engine.config import Settings
+from body_engine.db import migrate
+from body_engine.grocery import params as P, store
+
+TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_grocery")
+WEEK = date(2026, 10, 21)   # a Wednesday; week_start = 2026-10-19
+
+
+# ---------------------------------------------------------------- no database needed
+def test_tools_registered_and_marked():
+    for n in ("save_product", "remove_product", "generate_shopping_list", "add_shopping_items", "mark_bought",
+              "remove_shopping_items", "set_pantry"):
+        assert TOOLS_BY_NAME[n].writes and TOOLS_BY_NAME[n].scope == "nutrition", n
+    for n in ("find_products", "get_shopping_list"):
+        assert not TOOLS_BY_NAME[n].writes, n
+    assert {"remove_product", "remove_shopping_items"} <= ALWAYS_CONFIRM
+    assert not {"save_product", "mark_bought", "generate_shopping_list"} & ALWAYS_CONFIRM
+
+
+def test_guess_category_and_format():
+    assert store.guess_category("牛油果") == "produce"
+    assert store.guess_category("鸡胸肉") == "meat"
+    assert store.guess_category("希腊酸奶") == "dairy_eggs"
+    assert store.guess_category("某种东西") == "other"
+    assert store.fmt_qty(1500, "g") == "1.5 kg" and store.fmt_qty(12, "pcs") == "12 个" and store.fmt_qty(500, "ml") == "500 ml"
+
+
+def test_sized_rounds_to_packages():
+    prod = {"package_size": 1000, "package_unit": "g", "piece_g": None, "price": 11.5, "currency": "AUD"}
+    s = store._sized(prod, 1200, "g")
+    assert s["packages"] == 2 and s["buy_qty"] == 2000 and s["est_cost"] == 23.0
+    eggs = {"package_size": 12, "package_unit": "pcs", "piece_g": 50, "price": 7, "currency": "AUD"}
+    assert store._sized(eggs, 700, "g")["packages"] == 2          # 700 g = 14 eggs -> 2 cartons
+    s = store._sized(None, 120, "g")
+    assert s["buy_qty"] == 150 and s["packages"] is None           # rounded up to 50 g
+
+
+def test_product_flags_fsa():
+    row = {"nutrition": {"sat_fat_g": 6, "sugar_g": 1, "sodium_mg": 700}, "package_unit": "g", "purine_level": "high",
+           "red_meat": True, "name": "牛肋条"}
+    assert store.product_flags(row) == ["饱和脂肪高", "钠高", "高嘌呤", "红肉", "牛肋条"]
+    drink = {"nutrition": {"sugar_g": 12}, "package_unit": "ml", "purine_level": None, "red_meat": False, "name": "果汁"}
+    assert store.product_flags(drink) == ["糖高"]   # drinks use the halved per-100 ml line
+    assert P.HIGH_PER_100ML["sugar_g"] < P.HIGH_PER_100G["sugar_g"]
+
+
+# ---------------------------------------------------------------- database
+@pytest.fixture(scope="module")
+def dsn():
+    if TEST_DB in ("body", "body_pr1", ""):
+        pytest.exit("the test DB must not be a real DB")
+    try:
+        admin = psycopg.connect(Settings(db_name="postgres").dsn, autocommit=True)
+    except Exception as e:
+        pytest.skip(f"cannot connect to Postgres: {e}")
+    with admin:
+        admin.execute(f'DROP DATABASE IF EXISTS "{TEST_DB}" WITH (FORCE)')
+        admin.execute(f'CREATE DATABASE "{TEST_DB}"')
+    dsn = Settings(db_name=TEST_DB).dsn
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        migrate(conn)
+    return dsn
+
+
+@pytest.fixture(scope="module")
+def world(dsn):
+    """A (owner of everything), B (A shares nutrition with B), C (no share)."""
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        ids = {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '1990-01-01', 175) "
+                               "RETURNING id", (n,)).fetchone()["id"] for n in ("A", "B", "C")}
+        tokens = {n: auth.create_token(conn, ids[n], "t", ["read", "write"]) for n in ids}
+        tokens["A_ro"] = auth.create_token(conn, ids["A"], "ro", ["read"])
+        conn.execute("INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)", (ids["A"], ids["B"], ["nutrition"]))
+        a = ids["A"]
+        r = recipes.create_recipe(conn, a, {
+            "name": "鸡胸西兰花", "slots": ["dinner"], "servings": 2, "ingredients": [
+                {"food": "鸡胸肉", "grams": 400, "kcal": 480, "protein_g": 92, "carbs_g": 0, "fat_g": 10, "store": "costco"},
+                {"food": "西兰花", "grams": 300, "kcal": 100, "protein_g": 8, "carbs_g": 14, "fat_g": 1}]}, sync=False)
+        rib = recipes.create_recipe(conn, a, {
+            "name": "盐葱牛肋条", "slots": ["dinner"], "servings": 1, "ingredients": [
+                {"food": "牛肋条", "grams": 200, "kcal": 560, "protein_g": 36, "carbs_g": 0, "fat_g": 46, "sat_fat_g": 19,
+                 "red_meat_g": 200, "purine_mg": 240}]}, sync=False)
+        t = meals.create_template(conn, a, "早餐", "breakfast", [
+            {"food": "鸡蛋", "grams": 100, "kcal": 143, "protein_g": 12.6, "carbs_g": 0.7, "fat_g": 9.5, "sat_fat_g": 3.1,
+             "purine_level": "low", "red_meat_g": 0}], False)
+    return ids, tokens, {"recipe": r["id"], "rib": rib["id"], "template": t["id"]}
+
+
+@pytest.fixture()
+def conn(dsn):
+    with psycopg.connect(dsn, row_factory=dict_row) as c:
+        yield c
+
+
+@pytest.fixture(scope="module")
+def client(dsn):
+    api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=3, open=True)
+    yield TestClient(api.app)
+    api.pool.close()
+
+
+def h(token):
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_product_upsert_and_validation(conn, world):
+    ids, _, _ = world
+    a = ids["A"]
+    p = store.save_product(conn, a, {"name": "鸡胸肉", "brand": "Farm", "store": "Costco", "package_size": 1000,
+                                     "package_unit": "g", "price": 11.5, "currency": "aud", "matches": ["鸡胸"],
+                                     "nutrition": {"kcal": 120, "protein_g": 23, "carbs_g": 0, "fat_g": 2.5, "sodium_mg": 60}})
+    assert p["created"] and p["category"] == "meat" and p["currency"] == "AUD" and p["unit_price"] == 11.5
+    assert p["price_on"] is not None and p["size_label"] == "1 kg"
+    # same name + brand (case-insensitive) -> update, nutrition merged, unknown values (null) do not clear
+    p2 = store.save_product(conn, a, {"name": "鸡胸肉", "brand": "farm", "price": 12.0,
+                                      "nutrition": {"sat_fat_g": 0.7, "kcal": None}})
+    assert not p2["created"] and p2["id"] == p["id"] and p2["price"] == 12.0
+    assert p2["nutrition"]["kcal"] == 120 and p2["nutrition"]["sat_fat_g"] == 0.7
+    with pytest.raises(ValueError, match="差太多"):
+        store.save_product(conn, a, {"name": "错", "nutrition": {"kcal": 500, "protein_g": 1, "carbs_g": 1, "fat_g": 1}})
+    with pytest.raises(ValueError, match="一起给"):
+        store.save_product(conn, a, {"name": "只有规格", "package_size": 500})
+    with pytest.raises(ValueError, match="条码"):
+        store.save_product(conn, a, {"name": "坏条码", "barcode": "12ab"})
+    eggs = store.save_product(conn, a, {"name": "鸡蛋 12 个", "package_size": 12, "package_unit": "pcs", "piece_g": 50,
+                                        "price": 7.0, "currency": "AUD", "matches": ["鸡蛋"], "barcode": "9300000000011"})
+    assert eggs["category"] == "dairy_eggs"
+    same = store.save_product(conn, a, {"name": "Eggs", "barcode": "9300000000011", "price": 7.5})   # matched by barcode
+    assert same["id"] == eggs["id"] and same["name"] == "Eggs" and same["price"] == 7.5
+    found = store.list_products(conn, a, q="costco")
+    assert [x["name"] for x in found] == ["鸡胸肉"]
+    conn.commit()
+
+
+def test_generate_list_with_pantry_and_rounding(conn, world):
+    ids, _, ref = world
+    a = ids["A"]
+    store.set_pantry(conn, a, [{"name": "西兰花", "quantity": 250, "unit": "g"}])
+    out = store.generate(conn, a, WEEK, [
+        {"kind": "recipe", "ref_id": ref["recipe"], "amount": 6},      # 3x the pot: 1200 g chicken, 900 g broccoli
+        {"kind": "template", "ref_id": ref["template"], "amount": 7},  # 700 g eggs
+        {"kind": "food", "food": "燕麦", "amount": 400, "unit": "g"},
+    ])
+    assert out["week_start"] == "2026-10-19" and out["week_end"] == "2026-10-25"
+    items = {i["name"]: i for i in out["items"]}
+    chicken = items["鸡胸肉"]
+    assert chicken["packages"] == 2 and chicken["buy_qty"] == 2000 and chicken["est_cost"] == 24.0
+    assert chicken["store"] == "Costco" and chicken["used_by"] == ["鸡胸西兰花"] and chicken["qty_label"] == "2 包 · 2 kg"
+    assert items["西兰花"]["need_qty"] == 650 and items["西兰花"]["buy_qty"] == 650   # 900 - 250 pantry, rounded to 50
+    egg = items["鸡蛋"]
+    assert egg["unit"] == "pcs" and egg["need_qty"] == 14 and egg["packages"] == 2   # Eggs product matched via matches
+    assert items["燕麦"]["category"] == "grains" and items["燕麦"]["source"] == "plan"
+    assert out["progress"] == {"bought": 0, "total": 4} and out["est_total"]["AUD"] == 24.0 + 15.0
+    assert not [w for w in out["warnings"] if w["code"] in ("red_meat", "short_rib")]
+    # pantry covers the whole need -> not on the list
+    store.set_pantry(conn, a, [{"name": "燕麦", "quantity": 1000, "unit": "g"}])
+    again = store.generate(conn, a, WEEK, out["plan"])
+    assert "燕麦" in again["covered_by_pantry"] and "燕麦" not in {i["name"] for i in again["items"]}
+    conn.commit()
+
+
+def test_health_warnings(conn, world):
+    ids, _, ref = world
+    out = store.generate(conn, ids["A"], date(2026, 11, 2), [{"kind": "recipe", "ref_id": ref["rib"], "amount": 2}])
+    codes = {w["code"] for w in out["warnings"]}
+    assert codes >= {"red_meat", "short_rib"}   # 400 g red meat > 250 g; short rib twice > once a week
+    conn.rollback()
+
+
+def test_tick_updates_pantry_and_price(conn, world):
+    ids, _, _ = world
+    a = ids["A"]
+    lst = store.get_list(conn, a, WEEK)
+    chicken = next(i for i in lst["items"] if i["name"] == "鸡胸肉")
+    out = store.set_bought(conn, a, [chicken["id"]], True, {chicken["id"]: 26.0})
+    assert out["progress"]["bought"] == 1
+    pantry = {p["name"]: p for p in store.list_pantry(conn, a)}
+    assert pantry["鸡胸肉"]["quantity"] == 2000
+    prod = store.list_products(conn, a, q="鸡胸肉")[0]
+    assert prod["price"] == 13.0   # 26 paid for 2 packages
+    store.set_bought(conn, a, [chicken["id"]], False)
+    assert {p["name"]: p for p in store.list_pantry(conn, a)}["鸡胸肉"]["quantity"] == 0
+    # regenerating keeps manual and bought lines
+    store.add_items(conn, a, WEEK, [{"name": "纸巾", "qty": None, "unit": None, "product_id": None, "note": None}])
+    store.add_items(conn, a, WEEK, [{"name": "纸巾", "qty": 2, "unit": "pcs", "product_id": None, "note": None}])
+    lst = store.get_list(conn, a, WEEK)
+    paper = next(i for i in lst["items"] if i["name"] == "纸巾")
+    assert paper["buy_qty"] == 3 and paper["source"] == "manual" and paper["category"] == "other"
+    regen = store.generate(conn, a, WEEK, lst["plan"])
+    assert "纸巾" in {i["name"] for i in regen["items"]}
+    conn.commit()
+
+
+def test_tools_via_run_tool(conn, world):
+    ids, _, ref = world
+    a, b, c = ids["A"], ids["B"], ids["C"]
+    p = run_tool(conn, a, "butler", "save_product", {"name": "希腊酸奶", "brand": "X", "package_size": 1000, "package_unit": "g",
+                                                     "price": 6.5, "currency": "AUD", "nutrition": {"kcal": 70, "protein_g": 9,
+                                                     "carbs_g": 4, "fat_g": 2, "sat_fat_g": 1.3, "sugar_g": 4}})
+    assert p["created"] and p["category"] == "dairy_eggs"
+    lst = run_tool(conn, a, "butler", "add_shopping_items", {"week": "2026-10-21", "items": [{"product_id": p["id"]}]})
+    item = next(i for i in lst["items"] if i["name"] == "希腊酸奶")
+    assert item["packages"] == 1 and item["est_cost"] == 6.5
+    run_tool(conn, a, "butler", "mark_bought", {"item_ids": [item["id"]], "bought": True})
+    got = run_tool(conn, b, "butler", "get_shopping_list", {"user": str(a), "week": "2026-10-21"})   # B has the share
+    assert any(i["bought"] for i in got["items"]) and "pantry" in got
+    assert run_tool(conn, b, "butler", "find_products", {"user": str(a), "q": "酸奶"})[0]["name"] == "希腊酸奶"
+    with pytest.raises(PermissionError):
+        run_tool(conn, c, "butler", "get_shopping_list", {"user": str(a)})
+    with pytest.raises(PermissionError):   # writes only for oneself, even with a share
+        run_tool(conn, b, "butler", "set_pantry", {"user": str(a), "items": [{"name": "x", "quantity": 1, "unit": "g"}]})
+    with pytest.raises(LookupError):       # C cannot touch A's items by id
+        run_tool(conn, c, "butler", "mark_bought", {"item_ids": [item["id"]], "bought": False})
+    with pytest.raises(LookupError):
+        run_tool(conn, c, "butler", "remove_product", {"product_id": p["id"]})
+    out = run_tool(conn, a, "butler", "remove_shopping_items", {"item_ids": [item["id"]]})
+    assert out["removed"] == ["希腊酸奶"]
+    run_tool(conn, a, "butler", "remove_product", {"product_id": p["id"]})
+    assert not run_tool(conn, a, "butler", "find_products", {"q": "酸奶"})
+    conn.commit()
+
+
+def test_api_auth_and_flow(client, world):
+    ids, tok, ref = world
+    a = ids["A"]
+    r = client.get("/v1/users/me/grocery/list?week=2026-10-21", headers=h(tok["A"]))
+    assert r.status_code == 200 and r.json()["week_start"] == "2026-10-19"
+    item = r.json()["items"][0]
+    assert client.get(f"/v1/users/{a}/grocery/list", headers=h(tok["B"])).status_code == 200
+    assert client.get(f"/v1/users/{a}/grocery/list", headers=h(tok["C"])).status_code == 403
+    assert client.get(f"/v1/users/{a}/grocery/products", headers=h(tok["C"])).status_code == 403
+    assert client.get(f"/v1/users/{a}/grocery/pantry", headers=h(tok["C"])).status_code == 403
+    # writes: only oneself, needs write scope
+    assert client.patch(f"/v1/users/{a}/grocery/list/items/{item['id']}", json={"bought": True},
+                        headers=h(tok["B"])).status_code == 403
+    assert client.patch(f"/v1/users/me/grocery/list/items/{item['id']}", json={"bought": True},
+                        headers=h(tok["A_ro"])).status_code == 403
+    assert client.patch(f"/v1/users/me/grocery/list/items/{item['id']}", json={"bought": True},
+                        headers=h(tok["C"])).status_code == 404   # not C's item
+    r = client.patch(f"/v1/users/me/grocery/list/items/{item['id']}", json={"bought": True}, headers=h(tok["A"]))
+    assert r.status_code == 200 and next(i for i in r.json()["items"] if i["id"] == item["id"])["bought"]
+    r = client.post("/v1/users/me/grocery/products", json={"name": "橄榄油", "package_size": 750, "package_unit": "ml",
+                                                         "price": 12, "currency": "AUD"}, headers=h(tok["C"]))
+    assert r.status_code == 201 and r.json()["category"] == "pantry" and r.json()["unit_price"] == 16.0
+    assert client.get("/v1/users/me/grocery/products", headers=h(tok["A"])).json()[0]["name"] != "橄榄油"
+    assert client.delete(f"/v1/users/me/grocery/products/{r.json()['id']}", headers=h(tok["A"])).status_code == 404
+    assert client.delete(f"/v1/users/me/grocery/products/{r.json()['id']}", headers=h(tok["C"])).status_code == 204
+    r = client.post("/v1/users/me/grocery/list/generate", json={"week": "2026-11-09", "plan": [
+        {"kind": "recipe", "ref_id": ref["recipe"], "amount": 2}]}, headers=h(tok["C"]))
+    assert r.status_code == 404   # A's recipe is not C's
+    r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "米", "quantity": 2000, "unit": "g"}]},
+                   headers=h(tok["C"]))
+    assert r.status_code == 200 and r.json()[0]["label"] == "2 kg"
+    assert client.post("/v1/users/me/grocery/list/generate", json={"plan": []}, headers=h(tok["C"])).status_code == 422

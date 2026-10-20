@@ -1,14 +1,14 @@
-"""HTTP endpoints for the bedtime goal (scope sleep). Reading someone else's needs a shares grant; writing is only for oneself, and the token needs write;
+"""HTTP endpoints for the bedtime goal (scope sleep) and nutrition goals (scope nutrition). Reading someone else's needs a shares grant; writing is only for oneself, and the token needs write;
 when the Today page logs in with a cookie, PUT must carry X-Body-Web: 1 (checked uniformly by web/session.py)."""
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..records.api import _bad_request, _owner, _self, current_user, get_conn
 from . import params as P
-from . import store
+from . import nutrition as store_nutrition, store
 
 router = APIRouter(prefix="/v1/users/{user}/goals", tags=["goals"])
 HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
@@ -37,3 +37,48 @@ def get_sleep_goal(user: str, night: Annotated[date | None, Query(description="�
 def put_sleep_goal(user: str, body: SleepGoalIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Set / change the goal: each time the stepping restarts from the average bedtime of the last 7 nights (pace and duration not given fall back to the old goal or defaults)."""
     return _bad_request(store.set_goal, conn, _self(viewer, user), **body.model_dump())
+
+
+# ---------------------------------------------------------------- nutrition goals (goals/nutrition.py, scope nutrition)
+class NutritionSetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    calories: float | None = Field(None, description="kcal")
+    protein_g: float | None = None
+    carbs_g: float | None = None
+    fat_g: float | None = None
+    sat_fat_max_g: float | None = Field(None, description="饱和脂肪上限 g")
+    added_sugar_max_g: float | None = Field(None, description="添加糖上限 g；不设 = 默认 25")
+    fiber_min_g: float | None = Field(None, description="纤维下限 g")
+
+
+class NutritionGoalsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    training: NutritionSetIn | None = Field(None, description="训练日；null 或不填的字段 = 沿用当前版本")
+    rest: NutritionSetIn | None = Field(None, description="休息日")
+    training_weekdays: list[Annotated[int, Field(ge=1, le=7)]] | None = Field(
+        None, description="用训练日目标的星期 1=周一…7=周日；null = 沿用")
+    effective_from: date | None = Field(None, description="生效日期，默认今天")
+    name: str | None = Field(None, max_length=40, description="版本名")
+    reason: str = Field(min_length=1, max_length=300, description="为什么改")
+
+
+@router.get("/nutrition")
+def get_nutrition_goals(user: str, day: Annotated[date | None, Query(alias="date", description="哪天，默认今天")] = None,
+                        conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Nutrition goals: `goal` = the goal in effect on `date` (training / rest day resolved), `version` = the version in
+    effect with both sets, `upcoming` = versions starting later, `history` = every version newest first (who / why;
+    superseded = replaced by a later row with the same effective date, never in effect)."""
+    return store_nutrition.view(conn, _owner(conn, viewer, user, "nutrition"), day)
+
+
+@router.put("/nutrition")
+def put_nutrition_goals(user: str, body: NutritionGoalsIn, request: Request, conn=Depends(get_conn),
+                        viewer=Depends(current_user)):
+    """Add a goal version for oneself (earlier versions are kept). Fields left out carry over from the version in effect."""
+    owner = _self(viewer, user)
+    d = body.model_dump()
+    sets = {k: ({f: v for f, v in d[k].items() if v is not None} or None) if d[k] else None for k in ("training", "rest")}
+    return _bad_request(store_nutrition.set_goals, conn, owner, training=sets["training"], rest=sets["rest"],
+                        training_weekdays=d["training_weekdays"], effective_from=d["effective_from"], name=d["name"],
+                        reason=d["reason"], set_by="api" if request.headers.get("authorization") else "web",
+                        actor_user_id=viewer["id"])

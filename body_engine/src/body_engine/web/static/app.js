@@ -14,7 +14,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const IN_APP = !!window.Watch2Whoop;  // the WebView of the Watch2Whoop iOS app
   // Features in separate files (profile.js profile and consent, history.js health history import): each entry in window.BodyPlugins may have
-  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view). app.js calls them in these 3 places only.
+  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购.
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
@@ -406,7 +406,11 @@
 
   // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  document.addEventListener("touchmove", (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  // The non-passive touchmove listener exists only while two or more fingers are down: a document-wide non-passive touchmove makes iOS WebKit
+  // wait on the page for every one-finger move, which kept sideways strips (.quick) from scrolling in the iOS app (issue #11)
+  const noPinch = (e) => { if (e.touches.length > 1) e.preventDefault(); };
+  document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) document.addEventListener("touchmove", noPinch, { passive: false }); }, { passive: true });
+  for (const ev of ["touchend", "touchcancel"]) document.addEventListener(ev, (e) => { if (e.touches.length < 2) document.removeEventListener("touchmove", noPinch); }, { passive: true });
 
   // Pull to refresh (a home-screen app has no built-in one from the browser)
   (() => {
@@ -600,7 +604,8 @@
     const g = n.goal || {}, i = n.intake;
     openSheet(`饮食 · ${shortDay(d.date)}`, kv("热量", `${fmtNum(i.calories)} / ${fmtNum(g.calories)} kcal`) + kv("蛋白质", `${fmtNum(i.protein_g)} / ${fmtNum(g.protein_g)} g`)
       + kv("碳水", `${fmtNum(i.carbs_g)} / ${fmtNum(g.carbs_g)} g`) + kv("脂肪", `${fmtNum(i.fat_g)} / ${fmtNum(g.fat_g)} g`)
-      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div>${n.entries.map((e) => kv([e.time, e.food].filter(Boolean).join(" "), e.calories != null ? `${fmtNum(e.calories)} <small class="muted">kcal</small>` : "—")).join("")}` : ""));
+      + (n.entries.length ? `<div class="cat">${n.entries.length} 项</div><div class="group">${n.entries.map((e) => `<button class="item food-entry" ${sheetAttr(() => foodEntrySheet(e))}><span class="f">${esc([e.time, e.food].filter(Boolean).join(" ") || "—")}</span>
+          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`).join("")}</div>` : ""));
   }
 
   function dayCardHtml(d, meals) {
@@ -783,12 +788,29 @@
         ${bedChart(recent, g, viewDay())}</button></div>`;
   }
 
-  // ---- Meal templates (/meal-templates from the body butler session; tap to log, undoable, long-press for details and to adjust grams)
+  // ---- Meal templates (/meal-templates from the body butler session). One component everywhere (Today food card, Record, Food):
+  // a sideways strip of the most used templates (uses_30d), then 「全部」 for a sheet with all of them. Tap = log (已记 ✓ + toast 撤销);
+  // tapping a logged one only offers 撤销 again; templates whose grams need confirming open their detail sheet first.
+  const QUICK_MAX = 5;
   const mealKcal = (t) => t.totals?.kcal ?? t.totals?.calories ?? (t.items || []).reduce((s, x) => s + (x.kcal || 0), 0);
-  function quickHtml(meals, wrap) {
+  const mealsByUse = (meals) => meals.map((t, i) => [t, i]).sort((a, b) => (b[0].uses_30d || 0) - (a[0].uses_30d || 0) || a[1] - b[1]).map(([t]) => t);
+  const mealSub = (t) => (loggedId(t) ? "已记 ✓" : t.needs_confirmation ? "待确认" : `${fmtNum(mealKcal(t))} kcal`);
+  function quickHtml(meals, bare) {
     if (!Array.isArray(meals) || !meals.length) return "";
-    return `<div class="quick ${wrap ? "wrap" : ""}">${meals.map((t) => `<button class="qchip ${t.needs_confirmation && !loggedId(t) ? "warn" : ""} ${loggedId(t) ? "done" : ""}" data-meal="${esc(t.id)}">
-        <span class="n">${esc(t.name)}</span><span class="k">${loggedId(t) ? "已记 ✓" : t.needs_confirmation ? "待确认" : `${fmtNum(mealKcal(t))} kcal`}</span></button>`).join("")}</div>`;
+    const top = mealsByUse(meals).slice(0, QUICK_MAX);
+    return `<div class="quick ${bare ? "bare" : ""}">${top.map((t) => `<button class="qchip ${t.needs_confirmation && !loggedId(t) ? "warn" : ""} ${loggedId(t) ? "done" : ""}" data-meal="${esc(t.id)}">
+        <span class="n">${esc(t.name)}</span><span class="k">${mealSub(t)}</span></button>`).join("")}${meals.length > QUICK_MAX
+      ? `<button class="qchip more" data-meal-all><span class="n">全部</span><span class="k">${meals.length}</span></button>` : ""}</div>`;
+  }
+  function allMealsSheet() {
+    const meals = mealsByUse(S.data[`meals:${S.owner}`] || []);
+    openSheet("快捷记录", meals.map((t) => `<div class="item-row meal-row">
+        <button class="f" data-log="${esc(t.id)}">${esc(t.name)}<small class="${loggedId(t) ? "" : t.needs_confirmation ? "mid" : ""}">${mealSub(t)}</small></button>
+        <button class="btn" data-edit="${esc(t.id)}">克数</button></div>`).join(""),
+    (root) => {
+      for (const b of $$("[data-log]", root)) b.onclick = () => { const m = mealOf(b.dataset.log); closeSheet(); if (m) tapMeal(m); };
+      for (const b of $$("[data-edit]", root)) b.onclick = () => { const m = mealOf(b.dataset.edit); if (m) mealSheet(m); };
+    });
   }
   const loggedId = (t) => S.mealLogs[t.id] ?? t.today_log?.log_id ?? null;   // logged during this open, or the server remembers it was already logged today
   const mealOf = (id) => (S.data[`meals:${S.owner}`] || []).find((t) => String(t.id) === String(id));
@@ -839,25 +861,14 @@
     });
   }
 
+  function tapMeal(m) {
+    if (loggedId(m)) toast(`已记 · ${m.name}`, "撤销", () => undoMeal(m));   // already logged: no second log by accident, undo stays one tap away
+    else if (m.needs_confirmation) mealSheet(m);
+    else logMeal(m);
+  }
   function bindMeals(view) {
-    for (const b of $$("[data-meal]", view)) {
-      let timer = null, long = false;
-      const t = () => mealOf(b.dataset.meal);
-      b.addEventListener("pointerdown", () => { long = false; b.classList.add("press"); timer = setTimeout(() => { long = true; b.classList.remove("press"); mealSheet(t()); }, 500); });
-      const cancel = () => { clearTimeout(timer); b.classList.remove("press"); };
-      b.addEventListener("pointerup", cancel);
-      b.addEventListener("pointerleave", cancel);
-      b.addEventListener("pointercancel", cancel);
-      b.addEventListener("contextmenu", (e) => e.preventDefault());
-      b.addEventListener("click", () => {
-        if (long) return;
-        const m = t();
-        if (!m) return;
-        if (loggedId(m)) { undoMeal(m); return; }      // tapping an already logged one again = undo
-        if (m.needs_confirmation) { mealSheet(m); return; }
-        logMeal(m);
-      });
-    }
+    for (const b of $$("[data-meal]", view)) b.onclick = () => { const m = mealOf(b.dataset.meal); if (m) tapMeal(m); };
+    for (const b of $$("[data-meal-all]", view)) b.onclick = allMealsSheet;
   }
 
   // ---- Reminders
@@ -2173,7 +2184,29 @@
     openSheet(e.food || "食物", `${kv("份量", e.quantity ? esc(`${fmtNum(e.quantity, 1)} ${e.unit || ""}`) : null)}${e.time ? kv("时间", esc(e.time)) : ""}
       ${kv("热量", g("calories", "kcal", 0))}${kv("蛋白质", g("protein_g", "g"))}${kv("碳水", g("carbs_g", "g"))}${kv("脂肪", g("fat_g", "g"))}
       ${e.saturated_fat_g != null ? kv("饱和脂肪", g("saturated_fat_g", "g")) : ""}${e.fiber_g != null ? kv("纤维", g("fiber_g", "g")) : ""}
-      ${e.sugars_g != null ? kv("糖", g("sugars_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}`);
+      ${e.sugar_g != null ? kv("糖", g("sugar_g", "g")) : ""}${e.added_sugar_g != null ? kv("添加糖", g("added_sugar_g", "g")) : ""}${e.sodium_mg != null ? kv("钠", g("sodium_mg", "mg", 0)) : ""}
+      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more"><button class="btn btn-danger" type="button" id="fe-del">删除这条</button></div>` : ""}`,
+    (root) => {
+      const del = $("#fe-del", root);
+      if (!del) return;
+      del.onclick = () => {   // confirm inside the sheet (window.confirm does nothing in the app's WebView)
+        $("#fe-more", root).outerHTML = `<p class="para">从饮食记录里删除，不能恢复</p>
+          <div class="btns"><button class="btn" type="button" id="fe-cancel">取消</button><button class="btn btn-danger" type="button" id="fe-del-ok">确认删除</button></div>`;
+        $("#fe-cancel", root).onclick = () => foodEntrySheet(e);
+        const ok = $("#fe-del-ok", root);
+        ok.onclick = async () => {
+          ok.disabled = true;
+          const done = (msg) => { delete S.data[`${todayKey(e.date)}:${S.owner}`]; delete S.data[`today:${S.owner}`]; closeSheet(); render(); toast(msg); };
+          try {
+            await api(`/v1/users/me/nutrition/entries/${encodeURIComponent(e.id)}?date=${encodeURIComponent(e.date)}`, { method: "DELETE" });
+            done("已删除");
+          } catch (err) {
+            if (err.status === 404) done("这条已经不在了");
+            else { toast(err.message); ok.disabled = false; }
+          }
+        };
+      };
+    });
   }
   function foodDayHtml(d) {
     const n = d?.nutrition;
@@ -2183,8 +2216,9 @@
     const g = n.goal || {}, i = n.intake || {}, entries = n.entries || [];
     const pct = (a, b) => (b ? Math.min(100, (a / b) * 100) : 0);
     const m = (label, a, b) => `<div><div class="macro-l"><span>${label}</span><span>${fmtNum(a)}/${fmtNum(b)}</span></div><div class="bar ${b && a > b * 1.1 ? "over" : ""}"><span style="width:${pct(a, b).toFixed(0)}%"></span></div></div>`;
-    const sat = sumOf(entries, "saturated_fat_g"), fib = sumOf(entries, "fiber_g");
+    const sat = sumOf(entries, "saturated_fat_g"), fib = sumOf(entries, "fiber_g"), add = sumOf(entries, "added_sugar_g");
     const extra = [sat != null && ["饱和脂肪", `${fmtNum(sat, 1)}<small> g</small>`], fib != null && ["纤维", `${fmtNum(fib, 1)}<small> g</small>`],
+      add != null && ["添加糖", `${fmtNum(add, 1)}<small> g</small>`],
       entries.length && ["条目", `${entries.length}`]].filter(Boolean);
     const total = `<div class="card food-day">
         <div class="kcal" style="margin-top:0"><span class="row-sub">热量</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
@@ -2206,7 +2240,9 @@
   const RENDER_food = async () => {
     const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["recipes", "食谱"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`;
     if (S.foodMode === "shopping") {
-      return seg + `<div class="soon"><span class="glyph">${ICON.cart}</span><div>即将上线</div></div>`;
+      const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
+      return seg + (shop ? await shop.foodShop({ owner: ownerPath(), self: isSelf(), date: S.todayDate })
+        : `<div class="soon"><span class="glyph">${ICON.cart}</span><div>即将上线</div></div>`);
     }
     const past = isPast();   // looking back: that day's intake + the recipe list; quick log and suggestions are only for today
     const [list, sug, d, meals] = await Promise.all([
@@ -2235,6 +2271,7 @@
   function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe); }
   function afterFood(view) {
     for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; render(); };
+    if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
     bindRecipes(view);
     bindMeals(view);
     const q = $("#food-q", view);
@@ -2494,6 +2531,11 @@
       $("#login").hidden = true; $("#app").hidden = false;
       $("#view").innerHTML = `<div class="empty">${esc(err.message)}<div class="btns"><button class="btn" id="retry">重试</button></div></div>`;
       $("#retry").onclick = () => boot();
+      return;
+    }
+    if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
+      $("#login").hidden = true; $("#app").hidden = true;
+      window.BodyAccount.showPending(() => boot());
       return;
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
