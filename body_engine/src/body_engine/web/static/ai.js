@@ -15,7 +15,7 @@
   const yuan = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
   const quotaText = (f) => `${yuan(f.spent_cny)} / ¥${Number(f.quota_cny)}`;
   const mmdd = (iso) => (iso ? iso.slice(5) : "");
-  const CLIENTS = [["claude-code", "Claude Code / Claude 桌面版"], ["codex", "Codex CLI"], ["gemini-cli", "Gemini CLI"], ["other", "其他 MCP 客户端"]];
+  const CLIENTS = [["claude-code", "Claude Code / Claude 桌面版"], ["codex", "Codex CLI"], ["gemini-cli", "Gemini CLI / Antigravity"], ["other", "其他 MCP 客户端"]];
 
   // ---------------------------------------------------------------- settings
   async function loadProviders() { return C.api("/v1/users/me/ai-providers"); }
@@ -63,8 +63,15 @@
     try { [d, ch] = await Promise.all([loadProviders(), C.api("/v1/users/me/ai-choice")]); } catch (e) { C.toast(e.message); return; }
     applyAi(ch.ai, ch.ai.assistant_url);
     const kinds = Object.fromEntries(d.kinds.map((k) => [k.kind, k]));
+    const subLine = (p) => {
+      if (p.category !== "api") return "订阅";
+      if (kinds[p.kind]?.needs_key === false) return `${esc(p.model)} · 服务端订阅`;
+      const free = p.price_in_per_mtok === 0 && p.price_out_per_mtok === 0;
+      const cost = free ? "免费额度" : `本月 ${money(p.month_cost_usd)} / ${money(p.monthly_budget_usd)}`;
+      return `${esc(p.model)} · ${cost}${p.secret_last4 ? ` · key …${esc(p.secret_last4)}` : ""}`;
+    };
     const row = (p) => `<button class="item" data-pid="${p.id}"><span class="row-title">${esc(p.display_name)}${p.status !== "active" ? ` <span class="badge mid">停用</span>` : ""}
-        <span class="small muted" style="display:block;font-weight:400">${p.category === "api" ? `${esc(p.model)} · 本月 ${money(p.month_cost_usd)} / ${money(p.monthly_budget_usd)}${p.secret_last4 ? ` · key …${esc(p.secret_last4)}` : ""}` : "订阅"}</span></span></button>`;
+        <span class="small muted" style="display:block;font-weight:400">${subLine(p)}</span></span></button>`;
     const f = d.fallback;
     const fbRow = f ? `<button class="item" id="ai-fb"><span class="row-title">${esc(f.display_name)}${fbBadge(f)}
         <span class="small muted" style="display:block;font-weight:400">本月 ${quotaText(f)} · ${mmdd(f.reset_on)} 重置</span></span></button>` : "";
@@ -89,15 +96,30 @@
 
   function apiFields(k, p = {}) {
     const models = (k.models || []).map((m) => `<option value="${esc(m)}">`).join("");
+    const modelField = `<div class="field"><label>模型</label><input class="input" id="f-model" list="f-models" value="${esc(p.model || k.default_model || "")}" placeholder="${k.kind === "openai_compatible" ? "例：deepseek-chat、qwen-plus、llama3.1" : ""}" autocapitalize="off" spellcheck="false"><datalist id="f-models">${models}</datalist></div>`;
+    if (k.needs_key === false) {
+      return `${modelField}${k.note ? `<p class="small muted" style="margin-top:8px">${esc(k.note)}</p>` : ""}`;
+    }
+    const isFree = p.price_in_per_mtok === 0 && p.price_out_per_mtok === 0;
     return `
-      <div class="field"><label>模型</label><input class="input" id="f-model" list="f-models" value="${esc(p.model || k.default_model || "")}" placeholder="${k.kind === "openai_compatible" ? "例：deepseek-chat、qwen-plus、llama3.1" : ""}" autocapitalize="off" spellcheck="false"><datalist id="f-models">${models}</datalist></div>
+      ${modelField}
       ${k.needs_base_url ? `<div class="field"><label>接口地址 base_url</label><input class="input" id="f-base" value="${esc(p.base_url || "")}" placeholder="${esc((k.base_url_examples || [])[0] || "https://…/v1")}" autocapitalize="off" spellcheck="false"></div>` : ""}
       <div class="field"><label>API key${p.secret_last4 ? `（现在：…${esc(p.secret_last4)}，留空不改）` : ""}</label><input class="input" id="f-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(k.key_hint || "")}"></div>
-      <div class="field"><label>每月预算（美元，超过就停）</label><input class="input" id="f-budget" type="number" inputmode="decimal" min="0" step="1" value="${esc(p.monthly_budget_usd ?? 5)}"></div>`;
+      <div class="field"><label>每月预算（美元，超过就停）</label><input class="input" id="f-budget" type="number" inputmode="decimal" min="0" step="1" value="${esc(p.monthly_budget_usd ?? 5)}"></div>
+      <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-free"${isFree ? " checked data-was-free=\"1\"" : ""}> 免费额度（按 $0 计）</label>`;
   }
 
   function readApiFields(root, k, editing) {
-    const body = { model: $("#f-model", root).value.trim(), monthly_budget_usd: Number($("#f-budget", root).value || 0) };
+    if (k.needs_key === false) return { model: $("#f-model", root).value.trim() };
+    const box = $("#f-free", root);
+    const free = box?.checked;
+    // Unticking clears only the $0 price this box set; a custom unit price set some other way is left alone
+    const unset = editing && box?.dataset.wasFree === "1";
+    const body = {
+      model: $("#f-model", root).value.trim(),
+      monthly_budget_usd: Number($("#f-budget", root).value || 0),
+      ...(free ? { price_in_per_mtok: 0, price_out_per_mtok: 0 } : (unset ? { price_in_per_mtok: null, price_out_per_mtok: null } : {})),
+    };
     if (k.needs_base_url) body.base_url = $("#f-base", root).value.trim();
     const key = $("#f-key", root).value.trim();
     if (key) body.api_key = key; else if (!editing) body.api_key = undefined;
@@ -116,7 +138,7 @@
       const draw = () => {
         const k = kinds[$("#f-kind", root).value];
         $("#f-more", root).innerHTML = k.category === "api" ? apiFields(k)
-          : `<div class="rcard-tags" style="margin-top:12px"><span class="badge plain">订阅</span><span class="badge plain">MCP</span></div>`;
+          : `<div class="rcard-tags" style="margin-top:12px"><span class="badge plain">订阅</span><span class="badge plain">MCP</span></div>${k.note ? `<p class="small muted" style="margin-top:8px">${esc(k.note)}</p>` : ""}`;
       };
       $("#f-kind", root).onchange = draw; draw();
       $("#f-save", root).onclick = async () => {
@@ -125,16 +147,16 @@
         try {
           await C.api("/v1/users/me/ai-providers", { method: "POST", body });
           await afterChange();
-          if (k.category === "mcp") mcpSheet(mcp); else { C.toast("已保存"); openSettings(); }
+          if (k.category === "mcp") mcpSheet(mcp, k.client); else { C.toast("已保存"); openSettings(); }
         } catch (e) { $("#f-err", root).textContent = e.message; }
       };
     });
   }
 
   function editSheet(p, kinds, mcp) {
-    const k = kinds[p.kind];
+    const k = kinds[p.kind] || { kind: p.kind, category: p.category, models: [] };
     C.openSheet(p.display_name, `
-      ${p.category === "api" ? apiFields(k, p) : `<div class="rcard-tags"><span class="badge plain">订阅</span><span class="badge plain">MCP</span></div>`}
+      ${p.category === "api" ? apiFields(k, p) : `<div class="rcard-tags"><span class="badge plain">订阅</span><span class="badge plain">MCP</span></div>${k.note ? `<p class="small muted" style="margin-top:8px">${esc(k.note)}</p>` : ""}`}
       <p class="login-error" id="f-err" role="alert"></p>
       <div class="btns">${C.ai?.choice === `p:${p.id}` || p.status !== "active" ? "" : `<button class="btn" id="f-def">用这个</button>`}${p.category === "api" ? `<button class="btn btn-primary" id="f-save">保存</button>` : `<button class="btn" id="f-mcp">连接说明</button>`}</div>
       <div class="btns"><button class="btn" id="f-toggle">${p.status === "active" ? "停用" : "启用"}</button><button class="btn btn-danger" id="f-del">删除</button></div>`, (root) => {
@@ -144,7 +166,7 @@
       };
       const save = $("#f-save", root); if (save) save.onclick = () => patch(readApiFields(root, k, true), "已保存");
       const def = $("#f-def", root); if (def) def.onclick = () => pick({ key: `p:${p.id}` }, () => { C.toast(`Jarvis 用：${p.display_name}`); openSettings(); });
-      const m = $("#f-mcp", root); if (m) m.onclick = () => mcpSheet(mcp);
+      const m = $("#f-mcp", root); if (m) m.onclick = () => mcpSheet(mcp, k.client);
       $("#f-toggle", root).onclick = () => patch({ status: p.status === "active" ? "disabled" : "active" }, "已更新");
       $("#f-del", root).onclick = async () => {
         if (!confirm(`删除「${p.display_name}」？保存的 key 也会删掉。`)) return;
@@ -154,7 +176,7 @@
     });
   }
 
-  async function mcpSheet(mcp) {
+  async function mcpSheet(mcp, defaultClient = "claude-code") {
     let d;
     try { d = await C.api("/v1/users/me/ai-tokens"); } catch (e) { C.toast(e.message); return; }
     const live = d.tokens.filter((t) => !t.revoked_at);
@@ -163,19 +185,19 @@
       ${live.length ? `<div class="group" style="margin-top:12px">${live.map((t) => `<div class="item"><span class="row-title">${esc(t.name.replace(/^mcp:/, ""))}${t.scopes.includes("write") ? "" : ` <span class="badge plain">只读</span>`}
           <span class="small muted" style="display:block;font-weight:400">${t.last_used_at ? `最近使用 ${new Date(t.last_used_at).toLocaleString("zh-CN", { hour12: false })}` : "还没用过"}</span></span>
           <button class="btn btn-danger" style="flex:none;min-height:34px" data-revoke="${t.id}">吊销</button></div>`).join("")}</div>` : ""}
-      <div class="field"><label>客户端</label><select class="input" id="t-client">${CLIENTS.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join("")}</select></div>
+      <div class="field"><label>客户端</label><select class="input" id="t-client">${CLIENTS.map(([v, l]) => `<option value="${v}"${v === defaultClient ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></div>
       <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="t-ro"> 只读</label>
       <div class="btns"><button class="btn btn-primary" id="t-new">生成 token</button></div>
       <div id="t-out"></div>`, (root) => {
       $$("[data-revoke]", root).forEach((b) => { b.onclick = async () => {
         if (!confirm("吊销后这个客户端立即连不上，确定？")) return;
-        try { await C.api(`/v1/users/me/ai-tokens/${b.dataset.revoke}`, { method: "DELETE" }); await afterChange(); C.toast("已吊销"); mcpSheet(mcp); } catch (e) { C.toast(e.message); }
+        try { await C.api(`/v1/users/me/ai-tokens/${b.dataset.revoke}`, { method: "DELETE" }); await afterChange(); C.toast("已吊销"); mcpSheet(mcp, defaultClient); } catch (e) { C.toast(e.message); }
       }; });
       $("#t-new", root).onclick = async () => {
         const client = $("#t-client", root).value;
         try {
           const r = await C.api("/v1/users/me/ai-tokens", { method: "POST", body: { client, read_only: $("#t-ro", root).checked } });
-          const snip = r.mcp.clients[client] || r.mcp.clients["claude-code"];
+          const snip = r.mcp.clients[client] || r.mcp.clients["other"] || r.mcp.clients["claude-code"];
           $("#t-out", root).innerHTML = `
             <div class="notice" style="margin-top:14px">只显示一次</div>
             <pre class="ai-code" id="t-token">${esc(r.token)}</pre>

@@ -75,3 +75,11 @@ The conversation flows were run with `claude -p` inside `assistant/` (same CLAUD
 - A session is stuck: send it a message from the phone and Claude Code serves it again; or `ssh Ali systemctl restart body-butler`.
 - To start a new conversation (context too long): `/clear` in this session on the phone, or create a new session for the Ali machine in claude.ai/code (same directory, same settings).
 - Mac fallback: `deploy/assistant/butler.py status`; logs `health_data/assistant/butler-*.log`.
+
+## Gemini CLI in `assistant/` (Google AI plan)
+For an owner who uses a Google AI plan instead of, or next to, a Claude subscription:
+- `assistant/.gemini/settings.json`: persona from `GEMINI.md`, which imports `CLAUDE.md` (a `CLAUDE.md` file name would also load the repository's developer notes one directory up); remote MCP `${BODY_MCP_URL}` with `Bearer ${BODY_AI_TOKEN}`; built-in tools excluded; a `BeforeAgent` hook adds the local time as `additionalContext`.
+- `assistant/.gemini/policies/butler.toml`: body-engine tools allowed, the 5 delete / undo tools (`ALWAYS_CONFIRM`) ask (denied when non-interactive), built-in tools denied; `tests/test_butler.py` checks it against `ALWAYS_CONFIRM`.
+- `deploy/assistant/butler.py gemini-check`: the `gemini` binary (`BODY_GEMINI_BIN` or `PATH`), the Google sign-in, the settings file.
+- Use it in a terminal: `cd assistant && gemini`. There is no Gemini equivalent of `claude remote-control` yet, so the phone entry point stays the Claude butler.
+- In-page chat through the server's CLI (`gemini_cli` provider) is **off by default**: it needs `BODY_GEMINI_CLI_ENABLED=1` in the body-engine environment, a `gemini` binary where body-engine runs (the default image has none), and is only for `BODY_ASSISTANT_USER_ID`. Point `BODY_GEMINI_HOME` at a directory holding only the CLI's sign-in. Details and the containment list: `docs/ai-assistant-plan.md` 9.14.
