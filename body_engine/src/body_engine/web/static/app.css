@@ -276,6 +276,8 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
 .ex:first-child { border-top: 0; }
 .ex-name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
 .ex-meta { font-size: 13px; color: var(--text-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+button.ex { display: block; width: 100%; border: 0; border-top: 1px solid var(--hair); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.ex:first-child { border-top: 0; }
 .ex.banned .ex-name span { text-decoration: line-through; color: var(--text-2); }
 .badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }

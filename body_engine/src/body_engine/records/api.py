@@ -114,6 +114,12 @@ def update_supplement(user: str, supplement_id: int, body: SupplementPatch,
     return _found(_bad_request(store.update_supplement, conn, _self(viewer, user), supplement_id, body.fields()), "补剂")
 
 
+@router.delete("/supplements/{supplement_id}")
+def delete_supplement(user: str, supplement_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Entered by mistake / duplicate: removes it and its own journal item. To stop taking it, PATCH status=stopped."""
+    return _found(store.delete_supplement(conn, _self(viewer, user), supplement_id), "补剂")
+
+
 # ---------- Lab results ----------
 LabFlag = Literal["H", "L", "abnormal", "normal"]
 LabSource = Literal["lab", "home_device"]

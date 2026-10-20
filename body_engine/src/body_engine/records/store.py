@@ -70,6 +70,26 @@ def update_supplement(conn, user_id: int, supplement_id: int, fields: dict) -> d
     return _update(conn, "supplements", {"id": supplement_id, "user_id": user_id}, fields, SUPPLEMENT_FIELDS)
 
 
+def delete_supplement(conn, user_id: int, supplement_id: int) -> dict | None:
+    """Hard delete (entered by mistake / duplicate), unlike status=stopped which keeps the history.
+    Also removes the supplement's own journal item (category supplement, no other supplement uses that key) and,
+    through ON DELETE CASCADE, its journal entries. None = no such supplement for this user."""
+    row = conn.execute("DELETE FROM supplements WHERE id = %s AND user_id = %s RETURNING id, name, journal_key",
+                       (supplement_id, user_id)).fetchone()
+    if row is None:
+        return None
+    out = {"deleted": {"id": row["id"], "name": row["name"]}, "journal_item": None, "journal_entries": 0}
+    key = row["journal_key"]
+    if key and not conn.execute("SELECT 1 FROM supplements WHERE user_id = %s AND journal_key = %s",
+                                (user_id, key)).fetchone():
+        n = conn.execute("SELECT count(*) AS n FROM journal_entries WHERE user_id = %s AND key = %s",
+                         (user_id, key)).fetchone()["n"]
+        if conn.execute("DELETE FROM journal_items WHERE user_id = %s AND key = %s AND category = 'supplement' RETURNING key",
+                        (user_id, key)).fetchone():
+            out["journal_item"], out["journal_entries"] = key, n
+    return out
+
+
 def ensure_supplement_journal_item(conn, user_id: int, key: str, name: str) -> None:
     conn.execute("""INSERT INTO journal_items (user_id, key, label_zh, kind, category, sort)
                     VALUES (%s, %s, %s, 'bool', 'supplement', 10) ON CONFLICT DO NOTHING""",
