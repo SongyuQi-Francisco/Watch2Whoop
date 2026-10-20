@@ -90,7 +90,7 @@ echo
 
 if [ "$mode" = "publish" ]; then
   check "tag $publish_tag matches pubspec.yaml version $version" '[ "$publish_tag" = "$tag" ]'
-  check "tag $tag is an annotated tag" '[ "$(git cat-file -t "refs/tags/$tag")" = tag ]'
+  check "tag $publish_tag is an annotated tag" '[ "$(git cat-file -t "refs/tags/$publish_tag")" = tag ]'
 fi
 if [ "$test_run" = 1 ] || [ "$allow_unmerged" = 1 ]; then
   echo "⚠ not checking that $short is on origin/main"
