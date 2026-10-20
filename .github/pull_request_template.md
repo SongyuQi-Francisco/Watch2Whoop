@@ -16,3 +16,4 @@
 - [ ] I license this under the licence of the directories I changed (AGPL-3.0; MIT for `apps/watch2whoop/` and `shortcuts/`), see CONTRIBUTING.md
 - [ ] Docs updated if behaviour, commands or settings changed
 - [ ] App changes: `CHANGELOG.md` of the app has a line under "Unreleased" (version bumps only in release PRs, see docs/apps.md)
+- [ ] I will leave a summary comment on this PR and on every issue it closes (what changed, verification, CI, deploy status; see CONTRIBUTING.md "Maintenance rules")

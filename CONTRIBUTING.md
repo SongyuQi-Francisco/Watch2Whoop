@@ -3,6 +3,15 @@
 Thanks for helping! Good first areas: a new data provider (other watches), translations / English UI, validating the
 algorithms against published research, an Android client, UI polish.
 
+## Maintenance rules / 维护规则
+- **Issues are never closed silently.** Before closing one (including auto-close by `Fixes #N` on merge), comment what
+  was fixed, in which PR / commit, how it was verified, and anything left open.
+  关闭 issue（包括合并时 `Fixes #N` 自动关闭）前，先留言：修了什么、哪个 PR / commit、怎么验证的、还剩什么没做。
+- **Every PR keeps a written record in comments**: what was developed, what each later round of commits changed (rebase,
+  review fixes, version bumps), test / CI results, and the deploy status (merged / deployed / needs a new app build).
+  每个 PR 都在评论里留记录：开发了什么、之后每一轮提交改了什么（rebase、review 修改、版本号）、测试 / CI 结果、部署状态
+  （已合并 / 已部署 / 需要新的 app 构建）。
+
 ## Workflow
 Nobody pushes to `main`, maintainers included; every change is a pull request.
 

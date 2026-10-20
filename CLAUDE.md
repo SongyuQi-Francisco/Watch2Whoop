@@ -24,6 +24,7 @@ then [`docs/README.md`](docs/README.md) (design documents, mostly Chinese) and [
 
 ## Conventions
 - Every change is a pull request from your own branch or fork (never push to `main`); CI (`.github/workflows/ci.yml`) must be green and a maintainer reviews before a squash merge. See `CONTRIBUTING.md`.
+- Maintenance rules (CONTRIBUTING.md): never close an issue silently — comment what was fixed, in which PR / commit, how it was verified and what is left open; keep a written record on every PR (what was developed, each later round of commits, test / CI results, deploy status).
 - Never commit `health_data/`, `secrets/`, database files or `.env`. Secrets are files under `secrets/`, read at runtime.
 - Importers must be idempotent. Dates and times are ISO 8601 with the user's local time zone; weight in kg, energy in kcal.
 - User-facing text is Chinese-first today (English UI is on the roadmap); code comments and developer docs are English.
