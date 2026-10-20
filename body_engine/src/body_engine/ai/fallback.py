@@ -31,7 +31,7 @@ from . import fallback_params as fp
 from . import providers
 
 KIND = "system_fallback"
-CONSENT_VERSION = "2026-10-18.2"   # .2: photos, video frames and voice transcripts
+CONSENT_VERSION = "2026-10-20"   # writes go through without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
 # Read tools the short prompt relies on + the everyday write tools. No ECG / raw heart data, no family data, no recipe editing.
 TOOL_NAMES = (
     "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
@@ -50,7 +50,7 @@ CONSENT_POINTS = [
     "语音在本服务器上转成文字（不发给任何第三方），你确认文字后才发送；录音转完立即删除，不保存。",
     "不发：心电图、逐拍心跳、家人的数据。",
     "DeepSeek 按它自己的用户协议和隐私政策处理这些内容；对话记录存在本服务器，你可以随时删除。",
-    "要写入数据库的内容（饮食、训练、体重…）都要你点确认才写。",
+    "AI 会直接把你说的饮食、训练、体重等写进你的记录（不再逐条确认），删除和撤销之前会先问你。",
     "随时可以在「我 → AI 设置」撤回；撤回后不再发送。也可以不用托底，接入你自己的 AI。",
 ]
 
