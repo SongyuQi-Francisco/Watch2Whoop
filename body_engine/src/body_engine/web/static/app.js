@@ -92,7 +92,7 @@
   class ApiError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
   async function api(path, { method = "GET", body, quiet401 } = {}) {
-    const headers = { Accept: "application/json" };
+    const headers = { Accept: "application/json", ...I18N.headers() };   // X-Body-Lang: server texts in the page language
     if (method !== "GET") headers["X-Body-Web"] = "1";
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
@@ -2533,6 +2533,13 @@
       $("#retry").onclick = () => boot();
       return;
     }
+    // Language picked on the login page and the profile has none yet: save it to the profile (it then follows the account)
+    const picked = I18N.unsaved();
+    if (picked && me.me && !me.me.language) {
+      try { await api("/v1/users/me/profile", { method: "PATCH", body: { language: picked } }); I18N.markSaved(); }
+      catch (e) { /* e.g. account still pending: keep it on this device, try again next time */ }
+      me.me.language = picked;
+    } else I18N.markSaved();
     // Profile language (null = follow the device): if it differs from what this page was drawn in, reload once in the right language
     if (I18N.setPref(me.me?.language)) { location.reload(); return; }
     if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)

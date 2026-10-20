@@ -9,6 +9,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import auth, queries
+from ..i18n import use_lang
 from ..toolspec import DETAIL, END, START, USER, fill_defaults, nullable, schema
 from . import briefing, writelog
 from ..scores import store as scores_store
@@ -174,6 +175,12 @@ def run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, 
     """Run one tool: authorize -> call -> write audit. Confirmation of writes is the caller's job (chat loop / MCP client).
     The tool runs in a savepoint: on error only what it half-wrote is undone and the audit stays (the caller must also commit after an error, see mcp_server).
     In-Today-page chat (ai/chat.py) additionally records provider_id / model; for the MCP channel these two columns are empty."""
+    with use_lang("zh"):   # AI-facing texts stay as they are, also when the in-page chat request carries X-Body-Lang: en
+        return _run_tool(conn, viewer_id, channel, name, args, provider_id=provider_id, model=model)
+
+
+def _run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, args: dict, *,
+              provider_id: int | None = None, model: str | None = None) -> Any:
     tool = TOOLS_BY_NAME[name]
     full = fill_defaults(tool.input_schema, args)  # MCP clients may leave out nullable / defaulted fields (toolspec.relaxed)
     owner_id = viewer_id if full.get("user", "me") == "me" else int(full["user"])

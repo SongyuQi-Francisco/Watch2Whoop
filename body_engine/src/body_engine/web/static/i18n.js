@@ -1,11 +1,17 @@
-/* Tiny i18n layer for the Today page and the activation page (issue #13). No build step: load this file before the other scripts.
+/* Tiny i18n layer for the Today page and the activation page (issues #13, #42). No build step: load this file first, then i18n-en.js.
    - Language: the user's profile setting `language` (zh / en, from /v1/web/me, cached in localStorage "be.lang"); empty = follow the device
-     (navigator.language: zh* -> zh, anything else -> en).
-   - I18N.t(key, params) looks the key up in the current language's table, falls back to zh, then to the key itself; "{name}" placeholders
-     are filled from params. Page scripts alias it as `tr` (app.js has many local variables named `t`).
-   - Static HTML: data-i18n="key" (text), data-i18n-aria (aria-label), data-i18n-ph (placeholder); <html data-i18n-title> sets the title.
-   - Every key must exist in both tables with the same placeholders: tests/test_i18n.py checks this, and that every key used in the
-     page scripts / HTML exists. Add new languages as another table (same keys). Stage-2 checklist: docs/i18n-plan.md. */
+     (navigator.language: zh* -> zh, anything else -> en). Before login the login page's 中文 / English switch sets the same localStorage key.
+   - I18N.t(key, params), aliased `tr` in the page scripts (app.js has many locals named `t`). Two kinds of key:
+       1. dotted keys ("tab.today"): looked up in the ZH / EN tables below (the shell, from stage 1);
+       2. the Chinese source text itself (gettext style): tr("恢复"), tr("{n} 项", { n }). Chinese = the key; English = i18n-en.js.
+          New UI text is written this way: the code stays readable and a parallel change only has to wrap its new strings.
+     Lookup falls back to zh, then to the key itself; "{name}" placeholders are filled from params.
+   - Static HTML: data-i18n="key" (text), data-i18n-aria (aria-label), data-i18n-ph (placeholder), data-i18n-title (title);
+     <html data-i18n-title> sets the document title. Keys may be either kind.
+   - tests/test_i18n.py: every key in both languages with the same placeholders, every tr() key used by the scripts / HTML exists,
+     and no Chinese literal outside tr(...) in the page scripts (mark a deliberate one, e.g. a regex on server data, with `i18n-ok`).
+   - Data from the server (food names, journal items, AI-written status cards) is shown as stored. Server texts the page shows
+     (reminders, explain sheets, labels, error messages) come in the request's language: api() sends X-Body-Lang (I18N.headers()). */
 (() => {
   "use strict";
   const ZH = {
@@ -194,6 +200,7 @@
   };
   const TABLES = { zh: ZH, en: EN };
   const PREF_KEY = "be.lang";
+  const UNSAVED_KEY = "be.lang.unsaved";   // chosen on the login page, not yet in the profile (app.js saves it after login)
 
   const device = () => {
     const l = String((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase();
@@ -203,8 +210,9 @@
   const resolve = (pref) => (TABLES[pref] ? pref : device());
   let lang = resolve(readPref());
 
+  const EN_TEXT = {};   // Chinese source text -> English (filled by i18n-en.js via addEn)
   function t(key, params) {
-    let s = TABLES[lang][key] ?? ZH[key] ?? key;
+    let s = TABLES[lang][key] ?? (lang === "en" ? EN_TEXT[key] : undefined) ?? ZH[key] ?? key;
     if (params) s = s.replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m));
     return s;
   }
@@ -237,6 +245,7 @@
     for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
     for (const el of root.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", t(el.dataset.i18nAria));
     for (const el of root.querySelectorAll("[data-i18n-ph]")) el.setAttribute("placeholder", t(el.dataset.i18nPh));
+    for (const el of root.querySelectorAll("[data-i18n-title]")) if (el !== document.documentElement) el.setAttribute("title", t(el.dataset.i18nTitle));
   }
 
   // The profile setting from the server ("zh" / "en" / null = device). Returns true when the page language changed
@@ -250,6 +259,24 @@
     return true;
   }
 
-  window.I18N = { t, apply, setPref, locale, dayLabel, monthDay, yearMonth, monthShort, weekdaysMon, get lang() { return lang; }, tables: TABLES };
-  apply();
+  // The language chosen on this device before login (login page switch): remembered, used until the profile says otherwise.
+  // Returns true when the page language changed (the caller reloads or re-applies).
+  function choose(l) {
+    if (!TABLES[l]) return false;
+    try { localStorage.setItem(PREF_KEY, l); localStorage.setItem(UNSAVED_KEY, "1"); } catch (e) { /* private mode */ }
+    if (l === lang) return false;
+    lang = l;
+    return true;
+  }
+  // After login: the language picked on the login page that the profile does not have yet (null when there is none)
+  const unsaved = () => { try { return localStorage.getItem(UNSAVED_KEY) ? (TABLES[readPref()] ? readPref() : null) : null; } catch (e) { return null; } };
+  const markSaved = () => { try { localStorage.removeItem(UNSAVED_KEY); } catch (e) { /* private mode */ } };
+  const addEn = (entries) => { Object.assign(EN_TEXT, entries); if (lang === "en") apply(); };
+  // Headers for every API call so server texts (reminders, explain sheets, labels, errors) come back in this language
+  const headers = () => ({ "X-Body-Lang": lang });
+  const num = (v, d = 0) => Number(v).toLocaleString(locale(), { maximumFractionDigits: d });
+
+  window.I18N = { t, apply, setPref, choose, unsaved, markSaved, addEn, headers, num, locale, dayLabel, monthDay, yearMonth, monthShort, weekdaysMon,
+    get lang() { return lang; }, tables: TABLES, enText: EN_TEXT };
+  apply();   // again when i18n-en.js adds the English text table
 })();

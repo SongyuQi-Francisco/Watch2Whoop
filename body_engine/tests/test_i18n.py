@@ -1,9 +1,14 @@
-"""i18n coverage for the Today page (web/static/i18n.js, issue #13): every key exists in zh and en with the same placeholders,
-every key the page scripts / HTML use exists, and i18n.js is loaded before the scripts that use it and cached by the service worker."""
+"""i18n coverage for the Today page (web/static/i18n.js + i18n-en.js, issues #13 / #42): every key exists in zh and en with the
+same placeholders, every key the page scripts / HTML use exists, no Chinese literal outside tr(...) in the page scripts, every
+Chinese text in the HTML is marked data-i18n*, and the i18n files are loaded before the scripts that use them and cached by sw.js."""
+import json
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+
+from i18n_scan import CJK, scan, stray_chinese, tr_keys
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "body_engine" / "web" / "static"
 SRC = (STATIC / "i18n.js").read_text(encoding="utf-8")
@@ -23,6 +28,25 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "history.js", "profile.js", "activate.js", "sw.js"]
+PAGES = ["index.html", "activate.html"]
+
+
+def en_text() -> dict[str, str]:
+    src = (STATIC / "i18n-en.js").read_text(encoding="utf-8")
+    m = re.search(r"I18N\.addEn\(\{\n(.*?)\n?\}\);", src, re.S)
+    assert m, "I18N.addEn({ … }) not found in i18n-en.js"
+    out: dict[str, str] = {}
+    for ln in m.group(1).splitlines():
+        if not ln.strip() or ln.strip().startswith("//"):
+            continue
+        k, v = json.loads("{" + ln.strip().rstrip(",") + "}").popitem()
+        assert k not in out, f"i18n-en.js: duplicate entry {k!r}"
+        out[k] = v
+    return out
+
+
+EN_TEXT = en_text()
 PH = re.compile(r"\{(\w+)\}")
 
 
@@ -34,24 +58,84 @@ def test_every_key_in_both_languages():
         assert not re.search(r"[一-鿿]", EN[k]), f"{k}: Chinese left in the English table"
 
 
-USE_JS = re.compile(r"""\b(?:tr|I18N\.t)\(\s*["']([\w.]+)["']""")
-USE_HTML = re.compile(r'data-i18n(?:-aria|-ph|-title)?="([\w.]+)"')
+def test_english_text_table():
+    assert EN_TEXT, "i18n-en.js is empty"
+    for k, v in EN_TEXT.items():
+        assert CJK.search(k), f"i18n-en.js: key without Chinese {k!r} (use a dotted key in i18n.js instead)"
+        assert v.strip(), f"i18n-en.js: empty English for {k!r}"
+        assert not re.search(r"[一-鿿]", v), f"i18n-en.js: Chinese left in the English for {k!r}"
+        assert set(PH.findall(k)) == set(PH.findall(v)), f"i18n-en.js: placeholders differ for {k!r}"
 
 
-@pytest.mark.parametrize("name", ["app.js", "profile.js", "activate.js", "index.html", "activate.html"])
+USE_HTML = re.compile(r'data-i18n(?:-aria|-ph|-title)?="([^"]+)"')
+DOTTED = re.compile(r"""["']((?:tab|hdr|common|login|err|banner|picker|who|me|jarvis|profile|activate)\.(?!js\b)\w+)["']""")
+
+
+def known(key: str) -> bool:
+    return key in ZH if not CJK.search(key) else key in EN_TEXT
+
+
+@pytest.mark.parametrize("name", SCRIPTS + PAGES)
 def test_used_keys_exist(name):
     text = (STATIC / name).read_text(encoding="utf-8")
-    used = set(USE_HTML.findall(text)) if name.endswith(".html") else set(USE_JS.findall(text))
-    # keys picked by a ternary inside tr(...): every quoted dotted literal that looks like a key
-    if name.endswith(".js"):
-        used |= set(re.findall(r"""["']((?:tab|hdr|common|login|err|banner|picker|who|me|jarvis|profile|activate)\.\w+)["']""", text))
-    assert used, f"{name} uses no i18n keys"
-    missing = sorted(k for k in used if k not in ZH)
-    assert not missing, f"{name}: keys missing from i18n.js: {missing}"
+    if name.endswith(".html"):
+        used = set(USE_HTML.findall(text))
+    else:
+        lits = tr_keys(text)
+        dyn = [f"{x.line}: {x.text}" for x in lits if x.kind == "tpl"]
+        assert not dyn, f"{name}: tr() keys must be plain strings (use {{name}} placeholders, not ${{}}): {dyn}"
+        used = {x.text.encode().decode("unicode_escape") if "\\u" in x.text else x.text for x in lits}
+        used |= set(DOTTED.findall(text))   # keys picked by a ternary inside tr(...)
+    missing = sorted(k for k in used if not known(k))
+    assert not missing, f"{name}: keys missing from i18n.js / i18n-en.js: {missing}"
+
+
+@pytest.mark.parametrize("name", SCRIPTS)
+def test_no_chinese_outside_tr(name):
+    """Every Chinese text in the page scripts goes through tr(); data matched against server texts is marked i18n-ok."""
+    stray = stray_chinese((STATIC / name).read_text(encoding="utf-8"))
+    assert not stray, f"{name}: {len(stray)} Chinese literals outside tr(): " + "; ".join(f"{x.line}: {x.text[:40]!r}" for x in stray[:25])
+
+
+class _HtmlCheck(HTMLParser):
+    ATTRS = {"placeholder": "data-i18n-ph", "aria-label": "data-i18n-aria", "title": "data-i18n-title"}
+
+    def __init__(self):
+        super().__init__()
+        self.stack: list[tuple[str, dict]] = []
+        self.bad: list[str] = []
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        for attr, marker in self.ATTRS.items():
+            if CJK.search(a.get(attr) or "") and marker not in a:
+                self.bad.append(f"<{tag} {attr}={a[attr]!r}>")
+        if tag == "meta" and CJK.search(a.get("content") or "") and "i18n-ok" not in (a.get("data-note") or ""):
+            self.bad.append(f"<meta content={a['content']!r}>")
+        if tag not in ("meta", "link", "input", "img", "br", "source"):
+            self.stack.append((tag, a))
+
+    def handle_endtag(self, tag):
+        while self.stack and self.stack.pop()[0] != tag:
+            pass
+
+    def handle_data(self, data):
+        if CJK.search(data) and self.stack and self.stack[-1][0] not in ("script", "style", "title"):
+            tag, a = self.stack[-1]
+            if "data-i18n" not in a:
+                self.bad.append(f"<{tag}> {data.strip()[:30]!r}")
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_html_marked(name):
+    p = _HtmlCheck()
+    p.feed((STATIC / name).read_text(encoding="utf-8"))
+    assert not p.bad, f"{name}: Chinese without data-i18n*: {p.bad}"
 
 
 def test_loaded_first_and_cached():
     for page, user in (("index.html", "ai-media.js"), ("activate.html", "activate.js")):
         html = (STATIC / page).read_text(encoding="utf-8")
-        assert html.index('src="i18n.js"') < html.index(f'src="{user}"'), page
-    assert '"i18n.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")
+        assert html.index('src="i18n.js"') < html.index('src="i18n-en.js"') < html.index(f'src="{user}"'), page
+    sw = (STATIC / "sw.js").read_text(encoding="utf-8")
+    assert '"i18n.js"' in sw and '"i18n-en.js"' in sw
