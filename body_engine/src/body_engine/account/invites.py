@@ -9,8 +9,11 @@
 - One code, many people: `invite-code create --label X --uses N` is a batch of one code with max_uses N. Every
   redemption records the sign-in identities (Apple / e-mail) of the account as a hash plus a masked hint; an identity
   can redeem only once, ever (the record outlives the account), so one person cannot open several accounts with it.
-- Referral groundwork: a code has a kind (admin / referral) and an owner (NULL = admin). Redeeming a user's referral
-  code records the inviter and writes a pending reward (account/params.py). Circles are not built yet (circle_id).
+- Referral codes: every active user can have one code of kind `referral` (owner = the user; shown on the Me page). It
+  opens up to params.REFERRAL_MAX_USES accounts, at most params.REFERRAL_DAILY_REDEEMS in any 24 hours (soft cap: two
+  redemptions racing for the last slot of a day may both pass; the total stays strict), never expires, and stops working
+  when the admin revokes it, the inviter is disabled or deleted, or referrals are switched off (BODY_REFERRALS_ENABLED). Redeeming one records the inviter and writes a pending
+  reward (params.REFERRAL_REWARD). Circles are not built yet (invite_redemptions.circle_id stays NULL).
 """
 from __future__ import annotations
 
@@ -103,12 +106,13 @@ _REDEMPTIONS = """coalesce((SELECT json_agg(json_build_object(
     FROM invite_redemptions r LEFT JOIN users u ON u.id = r.user_id WHERE r.code_id = {code}), '[]')"""
 
 
-def list_batches(conn: psycopg.Connection) -> list[dict]:
+def list_batches(conn: psycopg.Connection, kind: str | None = None) -> list[dict]:
     """Every batch with: codes, total uses / capacity / remaining, codes still usable, state, and every redemption with
-    its bound identity (masked) and time."""
+    its bound identity (masked) and time. kind='referral': only users' referral codes (owner = who invited)."""
     return conn.execute(
         """SELECT b.id, b.label, b.created_by, b.created_at, b.expires_at, b.max_uses, b.revoked_at,
                   min(c.kind) AS kind, min(c.owner_user_id) AS owner_user_id,
+                  (SELECT o.display_name FROM users o WHERE o.id = min(c.owner_user_id)) AS owner_name,
                   count(c.id) AS codes, coalesce(sum(c.uses), 0) AS uses, coalesce(sum(c.max_uses), 0) AS capacity,
                   CASE WHEN b.revoked_at IS NOT NULL OR (b.expires_at IS NOT NULL AND b.expires_at <= now()) THEN 0
                        ELSE coalesce(sum(c.max_uses - c.uses) FILTER (WHERE c.revoked_at IS NULL), 0) END AS remaining,
@@ -120,7 +124,7 @@ def list_batches(conn: psycopg.Connection) -> list[dict]:
                             json_array_elements(""" + _REDEMPTIONS.format(code="c2.id") + """) x
                             WHERE c2.batch_id = b.id), '[]') AS redemptions
            FROM invite_batches b LEFT JOIN invite_codes c ON c.batch_id = b.id
-           GROUP BY b.id ORDER BY b.id""").fetchall()
+           GROUP BY b.id HAVING %(kind)s::text IS NULL OR min(c.kind) = %(kind)s::text ORDER BY b.id""", {"kind": kind}).fetchall()
 
 
 def list_codes(conn: psycopg.Connection, batch_id: int) -> list[dict]:
@@ -132,19 +136,30 @@ def list_codes(conn: psycopg.Connection, batch_id: int) -> list[dict]:
 
 
 def referral_code(conn: psycopg.Connection, user_id: int) -> dict:
-    """The user's own referral code, created on first use: {code, uses, max_uses, expires_at}. Only active users."""
+    """The user's own referral code, created on first use: {code, uses, max_uses, remaining, joined, expires_at}.
+    Only active users. A code the admin revoked is replaced by a new one only when the admin allows it: here it is not
+    (revoked = this user's inviting is stopped), so a user whose code was revoked gets ValueError("revoked")."""
     user = conn.execute("SELECT status FROM users WHERE id = %s FOR UPDATE", (user_id,)).fetchone()
     if user is None or user["status"] != "active":
-        raise ValueError("only active accounts have a referral code")
-    q = """SELECT c.display_code AS code, c.uses, c.max_uses, b.expires_at FROM invite_codes c JOIN invite_batches b ON b.id = c.batch_id
-           WHERE c.owner_user_id = %s AND c.kind = 'referral' AND c.revoked_at IS NULL"""
+        raise ValueError("pending")
+    q = """SELECT c.id, c.display_code AS code, c.uses, c.max_uses, b.expires_at,
+                  (SELECT count(*) FROM invite_redemptions r WHERE r.code_id = c.id AND r.user_id IS NOT NULL) AS joined
+           FROM invite_codes c JOIN invite_batches b ON b.id = c.batch_id
+           WHERE c.owner_user_id = %s AND c.kind = 'referral' AND c.revoked_at IS NULL AND b.revoked_at IS NULL"""
     row = conn.execute(q, (user_id,)).fetchone()
     if row is None:
+        if conn.execute("SELECT 1 FROM invite_codes WHERE owner_user_id = %s AND kind = 'referral'", (user_id,)).fetchone():
+            raise ValueError("revoked")
         res = create_batch(conn, 1, f"referral:u{user_id}", params.REFERRAL_DAYS, params.REFERRAL_MAX_USES, f"user {user_id}")
         conn.execute("UPDATE invite_codes SET kind = 'referral', owner_user_id = %s, display_code = %s WHERE batch_id = %s",
                      (user_id, pretty(res["codes"][0]), res["batch_id"]))
         row = conn.execute(q, (user_id,)).fetchone()
-    return dict(row)
+    elif row["max_uses"] != params.REFERRAL_MAX_USES:   # the limit was changed in params.py
+        conn.execute("UPDATE invite_codes SET max_uses = %s WHERE id = %s", (params.REFERRAL_MAX_USES, row["id"]))
+        row = conn.execute(q, (user_id,)).fetchone()
+    out = {k: row[k] for k in ("code", "uses", "max_uses", "joined", "expires_at")}
+    out["remaining"] = max(0, row["max_uses"] - row["uses"])
+    return out
 
 
 def revoke_owned(conn: psycopg.Connection, user_id: int) -> int:
@@ -182,10 +197,16 @@ def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
         return False   # this Apple ID / e-mail already opened an account with an invite code
     row = conn.execute(
         """UPDATE invite_codes c SET uses = c.uses + 1 FROM invite_batches b
-           WHERE c.code_sha256 = %s AND c.batch_id = b.id AND c.revoked_at IS NULL AND b.revoked_at IS NULL
+           WHERE c.code_sha256 = %(sha)s AND c.batch_id = b.id AND c.revoked_at IS NULL AND b.revoked_at IS NULL
              AND (b.expires_at IS NULL OR b.expires_at > now()) AND c.uses < c.max_uses
-             AND (c.kind = 'admin' OR c.owner_user_id IS DISTINCT FROM %s)
-           RETURNING c.id, c.kind, c.owner_user_id""", (_sha(code), user_id)).fetchone()
+             AND (c.kind = 'admin'
+                  OR (%(referrals)s AND c.owner_user_id IS DISTINCT FROM %(user)s
+                      AND EXISTS (SELECT 1 FROM users o WHERE o.id = c.owner_user_id AND o.status = 'active')
+                      AND (SELECT count(*) FROM invite_redemptions r
+                           WHERE r.code_id = c.id AND r.redeemed_at > now() - interval '1 day') < %(daily)s))
+           RETURNING c.id, c.kind, c.owner_user_id""",
+        {"sha": _sha(code), "user": user_id, "daily": params.REFERRAL_DAILY_REDEEMS,
+         "referrals": params.referrals_enabled()}).fetchone()
     if row is None:
         return False
     inviter = row["owner_user_id"] if row["kind"] == "referral" else None
@@ -194,6 +215,7 @@ def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
     for provider, sha, hint in idents:
         conn.execute("INSERT INTO invite_redemption_identities (redemption_id, provider, identity_sha256, hint) VALUES (%s, %s, %s, %s)",
                      (red["id"], provider, sha, hint))
+    # TODO(circles): put the new user into the inviter's circle here (invite_redemptions.circle_id); no circles yet.
     if inviter is not None:
         r = params.REFERRAL_REWARD
         conn.execute("""INSERT INTO invite_rewards (user_id, redemption_id, invitee_user_id, reward_type, amount, unit)

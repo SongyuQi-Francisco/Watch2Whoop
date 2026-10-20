@@ -12,7 +12,9 @@ Account (Bearer or cookie; also for `pending` accounts):
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
-  GET    /v1/users/{user}/invite-code      the user's own referral code (created on first call); 404 unless BODY_REFERRALS_ENABLED
+  GET    /v1/users/{user}/invite-code      the user's own referral code (created on first call) + how many joined; 404 unless
+                                           BODY_REFERRALS_ENABLED (the Me page entry hides itself: /v1/auth/methods → referrals)
+  POST /v1/account/redeem-invite takes admin invite codes and users' referral codes alike (same 10-character format).
 A `pending` account gets 403 {"detail": "account_pending"} everywhere else (api.current_user → gate()).
 
 Limits: verification / redemption failures count against the shared per-IP login failure limit (web/login_limit.py);
@@ -98,7 +100,7 @@ def _session_response(conn, request: Request, response: Response, user: dict, ne
 @router.get("/v1/auth/methods")
 def methods():
     """Which sign-in methods this server offers (the login pages hide the others)."""
-    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences())}
+    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled()}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail
@@ -241,16 +243,17 @@ def redeem_invite(body: RedeemIn, request: Request, conn=Depends(get_conn), view
 @router.get("/v1/users/{user}/invite-code")
 def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Referral groundwork: the user's own code for friends (redeeming it records the inviter and a pending reward)."""
-    if not os.environ.get(params.REFERRALS_ENV):
+    if not params.referrals_enabled():
         raise HTTPException(404, "referrals_disabled")
     if user not in ("me", str(viewer["id"])):
         raise HTTPException(403, "邀请码只能看自己的")
     try:
         res = invites.referral_code(conn, viewer["id"])
-    except ValueError:
-        raise HTTPException(403, "account_pending")
+    except ValueError as e:
+        conn.rollback()
+        raise HTTPException(403, "referral_revoked" if str(e) == "revoked" else "account_pending")
     conn.commit()
-    return res
+    return {**res, "link": f"/app/?invite={res['code']}", "daily_limit": params.REFERRAL_DAILY_REDEEMS}
 
 
 @router.post("/v1/account/ow-invitation")

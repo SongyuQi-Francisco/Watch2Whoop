@@ -7,8 +7,11 @@
      「其他登录方式」, opened by itself when the server has no e-mail sign-in. Errors only ever show on the current step.
    - Me page: "删除账号" (delete account) row (registered in window.BodyPlugins; not for the deployer), explicit confirm, then
      DELETE /v1/account. Inside the Watch2Whoop app the page then opens watch2whoop://account-deleted so the app resets itself.
+   - Referrals (only when /v1/auth/methods says referrals: true, i.e. the server sets BODY_REFERRALS_ENABLED): Me page row
+     「邀请好友」 → the user's own code, copy, share link /app/?invite=CODE and how many friends joined. A link like that is
+     remembered (sessionStorage) through sign-in and fills the invite step.
    Endpoints: GET /v1/auth/methods, POST /v1/auth/email/start, /v1/auth/email/verify, /v1/account/redeem-invite,
-   DELETE /v1/account, POST /v1/web/logout. */
+   GET /v1/users/me/invite-code, DELETE /v1/account, POST /v1/web/logout. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -17,7 +20,34 @@
   let C = null;
   let ME = null;
 
-  const CSS = `.acct-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:10px 0 0}`;
+  const CSS = `.acct-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:10px 0 0}
+.ref-code{font:600 28px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-align:center;margin:18px 0 6px;user-select:all;-webkit-user-select:all}
+.ref-count{text-align:center;margin:0 0 4px}`;
+
+  // User-facing strings of the referral feature, in one place so the i18n layer can wrap them later.
+  const T = {
+    inviteTitle: "邀请好友",
+    inviteLead: "好友用你的邀请码注册，就能开通账号",
+    joined: (n, max) => `已有 ${n} 位好友加入 · 还能邀请 ${Math.max(0, max - n)} 位`,
+    copyCode: "复制邀请码",
+    shareLink: "分享链接",
+    copied: "已复制",
+    linkCopied: "链接已复制",
+    shareText: (code) => `用我的邀请码 ${code} 注册 Watch2Whoop`,
+    revoked: "你的邀请码已被管理员停用",
+    fromFriend: "已填好好友的邀请码",
+    full: "邀请名额已用完",
+  };
+
+  // ?invite=XXXXX-XXXXX (a friend's share link): remembered through e-mail / Apple sign-in for the invite step.
+  const INVITE_KEY = "w2w-invite";
+  (function rememberInvite() {
+    let v = "";
+    try { v = new URLSearchParams(location.search).get("invite") || ""; } catch (e) { /* old browser */ }
+    v = v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
+    if (v.length === 10) { try { sessionStorage.setItem(INVITE_KEY, v); } catch (e) { /* storage blocked */ } }
+  })();
+  const pendingInvite = () => { try { return sessionStorage.getItem(INVITE_KEY) || ""; } catch (e) { return ""; } };
 
   function injectCss() {
     if ($("#account-css")) return;
@@ -194,6 +224,11 @@
     $("#login").hidden = false;
     $("#login-app").hidden = !IN_APP;
     go("invite");
+    const pre = pendingInvite();
+    if (pre && !$("#ap-code").value) {
+      $("#ap-code").value = `${pre.slice(0, 5)}-${pre.slice(5)}`;
+      setError("#ap-error", T.fromFriend, true);
+    }
     $("#ls-invite").onsubmit = async (e) => {
       e.preventDefault();
       const v = $("#ap-code").value.trim();
@@ -204,6 +239,7 @@
       try {
         await call("/v1/account/redeem-invite", "POST", { code: v });
         $("#ap-code").value = "";
+        try { sessionStorage.removeItem(INVITE_KEY); } catch (e2) { /* storage blocked */ }
         onActive?.();
       } catch (err) {
         setError("#ap-error", err.status === 401 ? "激活码无效、已用完或已过期" : err.status === 429 ? "尝试太多次，过一会儿再试" : err.message);
@@ -239,7 +275,43 @@
     });
   }
 
+  // ---------------------------------------------------------------- Me: invite friends (referral code)
+  function inviteSheet() {
+    C.openSheet(T.inviteTitle, `<div id="ref-body"><p class="para muted">…</p></div>`, async (root) => {
+      const body = $("#ref-body", root);
+      let r;
+      try { r = await C.api("/v1/users/me/invite-code"); }
+      catch (err) { body.innerHTML = `<p class="para">${esc(err.status === 403 && /revoked/.test(err.message) ? T.revoked : err.message)}</p>`; return; }
+      const link = new URL(r.link, location.origin).href;
+      body.innerHTML = `<p class="para muted">${esc(T.inviteLead)}</p>
+        <div class="ref-code" id="ref-code">${esc(r.code)}</div>
+        <p class="para small muted ref-count" id="ref-count">${esc(r.remaining > 0 ? T.joined(r.joined, r.max_uses) : `${T.joined(r.joined, r.max_uses)} · ${T.full}`)}</p>
+        <div class="btns"><button class="btn" id="ref-copy">${esc(T.copyCode)}</button><button class="btn btn-primary" id="ref-share">${esc(T.shareLink)}</button></div>`;
+      const copy = async (text, msg) => {
+        try { await navigator.clipboard.writeText(text); C.toast(msg); } catch (e) { C.toast(text); }
+      };
+      $("#ref-copy", root).onclick = () => copy(r.code, T.copied);
+      $("#ref-share", root).onclick = async () => {
+        if (navigator.share) {
+          try { await navigator.share({ title: "Watch2Whoop", text: T.shareText(r.code), url: link }); return; }
+          catch (e) { if (e && e.name === "AbortError") return; }
+        }
+        copy(`${T.shareText(r.code)} ${link}`, T.linkCopied);
+      };
+    });
+  }
+
   window.BodyAccount = { showPending, loginShown, showOther };
+  // before the delete-account row on the Me page
+  (window.BodyPlugins = window.BodyPlugins || []).push({
+    meItem: (chev) => (ME ? `<button class="item" id="me-invite" hidden><span class="row-title">${esc(T.inviteTitle)}</span>${chev || ""}</button>` : ""),
+    bindMe: async (view) => {
+      const b = $("#me-invite", view);
+      if (!b) return;
+      b.onclick = inviteSheet;
+      if ((await methods).referrals) b.hidden = false;
+    },
+  });
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: (ctx, me) => { C = ctx; ME = me?.me || null; },
     meItem: (chev) => (ME && ME.role !== "owner"

@@ -436,7 +436,8 @@ def test_referral_code_records_inviter_and_pending_reward(client, dsn, _env, mon
     r = client.get("/v1/users/me/invite-code", headers=h)
     assert r.status_code == 200, r.text
     mine = r.json()
-    assert mine["max_uses"] == params.REFERRAL_MAX_USES and mine["uses"] == 0 and len(invites.normalize(mine["code"])) == invites.LENGTH
+    assert mine["max_uses"] == params.REFERRAL_MAX_USES and mine["uses"] == mine["joined"] == 0 and len(invites.normalize(mine["code"])) == invites.LENGTH
+    assert mine["link"] == f"/app/?invite={mine['code']}" and mine["remaining"] == params.REFERRAL_MAX_USES
     assert client.get("/v1/users/me/invite-code", headers=h).json()["code"] == mine["code"]   # same code next time
     assert client.get("/v1/users/1/invite-code", headers=h).status_code == 403
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -552,10 +553,12 @@ def test_purge_stale_pending(dsn):
 
 
 def test_methods_and_page_assets(client, monkeypatch):
-    assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True}
+    monkeypatch.delenv("BODY_REFERRALS_ENABLED", raising=False)
+    assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True, "referrals": False}
     monkeypatch.setenv("BODY_MAIL_MODE", "off")
     monkeypatch.delenv("BODY_APPLE_AUDIENCES")
-    assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False}
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False, "referrals": True}
     assert '<script src="account.js" defer></script>' in client.get("/app/").text
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text
@@ -578,3 +581,95 @@ def test_login_page_is_a_step_flow(client):
     assert 'data-step="email"' in login and 'data-step="code"' in login and 'data-step="invite"' in login
     js = client.get("/app/account.js").text
     assert "loginShown" in js and "showPending" in js and "apple-sign-in" in js
+
+
+# ---------------------------------------------------------------------------------------------------- referral codes (launch)
+
+def _active_with_referral(conn, monkeypatch, email):
+    """An active user (redeemed an admin code) and their referral code (plaintext)."""
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    uid = _pending(conn, "email", email, email)
+    assert invites.redeem(conn, uid, invites.create_code(conn, "seed", 1)["code"])
+    return uid, invites.referral_code(conn, uid)["code"]
+
+
+def test_referral_rules_daily_cap_total_cap_disabled_switch_and_revoke(dsn, monkeypatch):
+    from body_engine.account import params
+    monkeypatch.setattr(params, "REFERRAL_DAILY_REDEEMS", 2)
+    monkeypatch.setattr(params, "REFERRAL_MAX_USES", 3)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        inviter, code = _active_with_referral(conn, monkeypatch, "rules@example.com")
+        friends = [_pending(conn, "email", f"rules{i}@example.com", f"rules{i}@example.com") for i in range(5)]
+        assert invites.redeem(conn, friends[0], code) and invites.redeem(conn, friends[1], code)
+        assert not invites.redeem(conn, friends[2], code)                  # 3rd in 24 hours: daily cap
+        conn.execute("""UPDATE invite_redemptions SET redeemed_at = now() - interval '25 hours'
+                        WHERE inviter_user_id = %s""", (inviter,))
+        assert invites.redeem(conn, friends[2], code)                      # a day later: allowed again
+        assert not invites.redeem(conn, friends[3], code)                  # total cap (3) reached
+        info = invites.referral_code(conn, inviter)
+        assert (info["uses"], info["joined"], info["remaining"], info["expires_at"]) == (3, 3, 0, None)
+        # raising the limit in params applies to the existing code
+        monkeypatch.setattr(params, "REFERRAL_MAX_USES", 4)
+        assert invites.referral_code(conn, inviter)["remaining"] == 1
+        # switch off: referral codes stop, admin codes still work
+        monkeypatch.setenv("BODY_REFERRALS_ENABLED", "0")
+        assert not invites.redeem(conn, friends[3], code)
+        monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+        # a disabled inviter's code stops working
+        conn.execute("UPDATE users SET status = 'disabled' WHERE id = %s", (inviter,))
+        assert not invites.redeem(conn, friends[3], code)
+        conn.execute("UPDATE users SET status = 'active' WHERE id = %s", (inviter,))
+        assert invites.redeem(conn, friends[3], code)
+        # the admin revokes it: it stops, and no new code is handed out to replace it
+        batch = next(b for b in invites.list_batches(conn, "referral") if b["owner_user_id"] == inviter)
+        invites.revoke(conn, code_id=conn.execute("SELECT id FROM invite_codes WHERE batch_id = %s", (batch["id"],)).fetchone()["id"])
+        assert not invites.redeem(conn, friends[4], code)
+        with pytest.raises(ValueError, match="revoked"):
+            invites.referral_code(conn, inviter)
+        assert conn.execute("SELECT count(*) AS n FROM invite_rewards WHERE user_id = %s AND state = 'pending'",
+                            (inviter,)).fetchone()["n"] == 4
+
+
+def test_referral_list_shows_who_invited_whom(dsn, monkeypatch):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        inviter, code = _active_with_referral(conn, monkeypatch, "lister@example.com")
+        conn.execute("UPDATE users SET display_name = 'Inviter' WHERE id = %s", (inviter,))
+        friend = _pending(conn, "apple", "000111.sub.4242", "relay@privaterelay.example.com")
+        assert invites.redeem(conn, friend, code)
+        refs = invites.list_batches(conn, "referral")
+        assert refs and all(b["kind"] == "referral" for b in refs)
+        assert not any(b["kind"] == "referral" for b in invites.list_batches(conn, "admin"))
+        b = next(b for b in refs if b["owner_user_id"] == inviter)
+        assert b["owner_name"] == "Inviter" and b["remaining"] == b["capacity"] - 1
+        assert b["redemptions"] == [{**b["redemptions"][0], "user_id": friend, "inviter_user_id": inviter,
+                                     "identities": [{"provider": "apple", "hint": "r***@p***.com"}]}]
+
+
+def test_referral_code_through_the_api_and_web(client, dsn, _env, monkeypatch):
+    """A friend signs up with a referral code through /v1/account/redeem-invite (the same call the iOS app's native
+    onboarding and the Today page's invite step make); the Me page row and the ?invite= prefill are in place."""
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    client.cookies.clear()
+    s = _email_login(client, "host@example.com", "app")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    assert client.get("/v1/users/me/invite-code", headers=h).status_code == 403       # pending: no code yet
+    assert client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]}).status_code == 200
+    mine = client.get("/v1/users/me/invite-code", headers=h).json()
+    g = _email_login(client, "guest@example.com", "app", "iPhone")
+    gh = {"Authorization": f"Bearer {g['token']}"}
+    typed = mine["code"].lower().replace("-", " ")                                      # typed loosely, like the app allows
+    r = client.post("/v1/account/redeem-invite", headers=gh, json={"code": typed})
+    assert r.status_code == 200 and r.json()["status"] == "active"
+    again = client.get("/v1/users/me/invite-code", headers=h).json()
+    assert again["code"] == mine["code"] and again["joined"] == 1 and again["remaining"] == mine["remaining"] - 1
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        red = conn.execute("SELECT inviter_user_id FROM invite_redemptions WHERE user_id = %s", (g["me"]["id"],)).fetchone()
+        assert red["inviter_user_id"] == s["me"]["id"]
+        assert conn.execute("SELECT state FROM invite_rewards WHERE invitee_user_id = %s", (g["me"]["id"],)).fetchone()["state"] == "pending"
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "0")
+    assert client.get("/v1/users/me/invite-code", headers=h).status_code == 404       # switched off: hidden
+    js = client.get("/app/account.js").text
+    for needle in ('id="me-invite" hidden', "/v1/users/me/invite-code", "referrals", 'get("invite")', "sessionStorage", "navigator.share"):
+        assert needle in js, needle
+    assert "好友的邀请码" in client.get("/app/").text
+    client.cookies.clear()

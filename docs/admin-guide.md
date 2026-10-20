@@ -219,3 +219,16 @@ body-engine invite-code revoke --batch N | --code-id N
 ```
 
 一个人只能用一次：每次兑换都记下这个账号的登录身份（只存哈希和打码提示），删号重注册也不能再用码开新账号。
+
+### 用户邀请码（推荐）
+
+服务器设了 `BODY_REFERRALS_ENABLED=1` 后，每个已开通的用户在「我」→「邀请好友」里有自己的邀请码（复制 / 分享链接 `…/app/?invite=码`，链接打开后注册流程会自动填好）。好友用它注册就能开通，不用管理员发码。默认关闭：不设这个变量，入口和接口都隐藏，已有的用户邀请码也不能用。
+
+- 规则在 `body_engine/src/body_engine/account/params.py`：每人最多邀请 `REFERRAL_MAX_USES`（10）人，每个码 24 小时内最多 `REFERRAL_DAILY_REDEEMS`（3）次；不过期。
+- 邀请人被停用或删号，码立即失效；管理员可以停掉某个人的码（停掉后不会自动发新码）。
+- 每次通过邀请码开通都记下邀请人，并在 `invite_rewards` 记一条待发奖励（奖励是什么还没定，只记账）。
+
+```bash
+body-engine invite-code list --kind referral   # 谁邀请了谁：每个用户的码、已用 / 剩余，每次使用的人、身份（打码）、时间
+body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N 从上面的列表 --batch 看）
+```
