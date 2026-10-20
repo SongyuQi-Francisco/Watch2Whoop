@@ -36,7 +36,7 @@ def _lookup(token: str) -> Identity | None:
     from .. import api
     with api.pool.connection() as conn:
         user = tokens.user_for_mcp_token(conn, token)
-    if user is None:
+    if user is None or (user.get("status") or "active") != "active":   # pending / disabled accounts (account/api.py)
         return None
     return Identity(user["id"], user["token_name"], "write" in (user["token_scopes"] or []))
 

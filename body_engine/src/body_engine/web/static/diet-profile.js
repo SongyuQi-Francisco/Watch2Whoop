@@ -38,8 +38,11 @@
     let s;
     try { s = await C.api(path(true)); } catch (e) { return; }   // no memory share: no entry
     if (owner !== info.owner || !box.isConnected) return;
-    if (!s.version && !s.sections && !info.self) return;
-    const meta = s.version || s.sections ? `${s.version ? esc(s.version) : ""}${s.updated_on ? `（${md(s.updated_on)} 更新）` : ""}` : "未建立";
+    const any = s.version || s.sections || s.goal_effective_from;
+    if (!any && !info.self) return;
+    // Version label: the diet profile's own version; without one, the goal version in effect (goals/nutrition.py)
+    const label = s.version ? esc(s.version) : s.goal_effective_from ? `目标 ${md(s.goal_effective_from)} 起` : "";
+    const meta = any ? `${label}${s.updated_on ? `（${md(s.updated_on)} 更新）` : ""}` : "未建立";
     box.innerHTML = `<button class="card item dp-entry" aria-haspopup="dialog"><span class="row-title">我的饮食档案</span>
       <span class="val small muted">${meta}</span><span class="chev">${CHEV}</span></button>`;
     box.hidden = false;
@@ -63,7 +66,8 @@
       html += g.sets.map((s) => row(esc(s.name || "目标"), `${num(s.calories)} kcal`,
         [s.protein_g != null && `蛋白 ${num(s.protein_g)}`, s.carbs_g != null && `碳水 ${num(s.carbs_g)}`, s.fat_g != null && `脂肪 ${num(s.fat_g)} g`,
           s.sat_fat_max_g != null && `饱和脂肪 ≤ ${num(s.sat_fat_max_g)} g`, s.added_sugar_max_g != null && `添加糖 ≤ ${num(s.added_sugar_max_g)} g`,
-          s.days && `${s.days} 天 / 周`].filter(Boolean).join(" · "))).join("");
+          s.fiber_min_g != null && `纤维 ≥ ${num(s.fiber_min_g)} g`, s.days && `${s.days} 天 / 周`].filter(Boolean).join(" · "))).join("");
+      if (g.effective_from) html += row("生效", `${md(g.effective_from)} 起`, esc(g.reason || ""));
     } else if (g) html += row("目标", "—");
     const t = targets?.data;
     const water = t?.water_ml ?? g?.sets?.find((s) => s.water_ml)?.water_ml;
@@ -112,20 +116,30 @@
     return html;
   }
 
-  function versionsBody(vs) {
-    return vs.map((v, i) => `<div class="dp-row dp-stack dp-ver"><div class="dp-l"><b>${esc(v.version)}</b><span class="small muted"> ${md(v.changed_on)}${i === 0 ? " · 当前" : ""}</span></div>
+  // Diet profile versions + goal versions (goals/nutrition.py), newest first
+  function logItems(p) {
+    const items = (p.versions || []).map((v) => ({ at: String(v.changed_on), label: v.version, changes: v.changes, reason: v.reason }));
+    for (const g of p.goal_history || []) {
+      const kcal = g.training_days && g.training_kcal !== g.rest_kcal ? `训练日 ${num(g.training_kcal)} / 休息日 ${num(g.rest_kcal)} kcal` : `${num(g.rest_kcal)} kcal`;
+      items.push({ at: String(g.effective_from), label: "目标", changes: kcal, reason: g.reason });
+    }
+    return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
+  }
+  function versionsBody(items) {
+    return items.map((v) => `<div class="dp-row dp-stack dp-ver"><div class="dp-l"><b>${esc(v.label)}</b><span class="small muted"> ${md(v.at)}</span></div>
       <div>${esc(v.changes)}</div>${v.reason ? `<div class="small muted">${esc(v.reason)}</div>` : ""}</div>`).join("");
   }
 
   function sheetHtml(p) {
     const sec = Object.fromEntries((p.sections || []).map((s) => [s.section, s]));
+    const log = logItems(p);
     const html = [
       p.hidden?.includes("goals") ? "" : block("goals", "当前目标", goalsBody(p, sec.targets)),
       block("why", "为什么是这个数", whyBody(p, sec.rationale)),
       block("constraints", "健康约束", listBody(sec.constraints, "rule", "basis")),
       block("day_plan", "一天怎么吃", dayBody(sec.day_plan)),
       block("adjust_rules", "什么时候调整", listBody(sec.adjust_rules, "when", "action")),
-      p.versions?.length ? block("versions", "版本记录", versionsBody(p.versions), `${p.versions.length}`) : "",
+      log.length ? block("versions", "版本记录", versionsBody(log), `${log.length}`) : "",
     ].join("");
     return html || `<div class="empty">暂无</div>`;
   }

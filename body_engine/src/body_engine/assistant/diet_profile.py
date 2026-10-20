@@ -5,7 +5,7 @@ key; its structured content is in `data` and `value` holds a short text renderin
 page keep working). Editing an item as text (update_profile_card / PUT /memory/profile/{key}) clears `data`; the page then
 shows the text. Version log: table diet_profile_versions (date, what changed, why).
 
-Not stored here: the goals themselves (diet_goals.py: versioned goals from #31 when installed, else SparkyFitness) and the
+Not stored here: the goals themselves (diet_goals.py over goals/nutrition.py: versioned goals, SparkyFitness before the first version) and the
 energy averages (computed from daily_metrics on read). Authorization: profile sections and versions need scope memory, the
 goals block nutrition, the energy block metrics (each block is null + listed in `hidden` when the viewer lacks it).
 """
@@ -17,6 +17,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import auth
+from ..goals import nutrition
 from . import diet_goals, diet_profile_params as P
 
 # section -> (profile card key, label, sort). Sorts sit between diet_preferences (60) and training_preferences (70).
@@ -234,15 +235,22 @@ def _sections(conn, user_id: int, tz: ZoneInfo) -> list[dict]:
              "text": r["value"], "source": r["source"], "updated_on": r["updated_at"].astimezone(tz).date()} for r in rows]
 
 
-def summary(conn: psycopg.Connection, user_id: int) -> dict:
-    """What the one-line entry needs: version, last update (local date), how many sections. No external calls."""
+def summary(conn: psycopg.Connection, user_id: int, viewer_id: int | None = None) -> dict:
+    """What the one-line entry needs: diet profile version, the goal version in effect (goals/nutrition.py, only with
+    scope nutrition), last update (local date; a new goal version counts), how many sections. No external calls."""
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     row = conn.execute(
         """SELECT count(*) AS n, max(updated_at) AS at FROM assistant_profile WHERE user_id = %s AND key = ANY(%s)""",
         (user_id, list(KEY_TO_SECTION))).fetchone()
     last = latest_version(conn, user_id)
     stamps = [t for t in (row["at"], last and last["created_at"]) if t]
+    goal = None
+    if viewer_id is None or auth.can_view(conn, viewer_id, user_id, "nutrition"):
+        goal = nutrition.version_for(nutrition.versions(conn, user_id), datetime.now(tz).date())
+        if goal:
+            stamps.append(goal["created_at"])
     return {"version": last and last["version"], "sections": row["n"],
+            "goal_version_id": goal and goal["id"], "goal_effective_from": goal and goal["effective_from"],
             "updated_on": max(stamps).astimezone(tz).date() if stamps else None}
 
 
@@ -264,6 +272,7 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, client=None, v
         """SELECT version, changed_on, changes, reason, sections, source FROM diet_profile_versions WHERE user_id = %s
            ORDER BY created_at DESC, id DESC""" + (" LIMIT %s" if versions else ""),
         (owner_id, versions) if versions else (owner_id,)).fetchall()
-    return {**summary(conn, owner_id), "self": viewer_id == owner_id, "goals": goals, "energy": en,
-            "weight": weight, "plan": plan_math(en, goals, weight), "sections": _sections(conn, owner_id, tz),
-            "versions": vers, "hidden": hidden}
+    return {**summary(conn, owner_id, viewer_id), "self": viewer_id == owner_id, "goals": goals,
+            "goal_history": None if goals is None else diet_goals.history(conn, owner_id)[:versions or None],
+            "energy": en, "weight": weight, "plan": plan_math(en, goals, weight),
+            "sections": _sections(conn, owner_id, tz), "versions": vers, "hidden": hidden}

@@ -33,7 +33,9 @@
       "mcp__body-engine__delete_observation",
       "mcp__body-engine__delete_supplement",
       "mcp__body-engine__remove_product",
-      "mcp__body-engine__remove_shopping_items"
+      "mcp__body-engine__remove_shopping_items",
+      "mcp__body-engine__delete_workout",
+      "mcp__body-engine__rollback_write"
     ],
     "deny": [
       "Bash",

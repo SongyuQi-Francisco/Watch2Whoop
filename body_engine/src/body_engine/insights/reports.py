@@ -1,4 +1,5 @@
-"""Weekly / monthly reports (matching WHOOP Performance Assessment): summary of recovery, sleep, strain, stress, training, weight and journal findings, compared with the previous period.
+"""Weekly / monthly reports (matching WHOOP Performance Assessment): summary of recovery, sleep, strain, stress, training, weight,
+nutrition (calorie / protein adherence against the goal in effect each day, added sugar, sugary drinks) and journal findings, compared with the previous period.
 Outputs only structured data; the text summary is written by the body butler. Week = 7 days back from end, month = 30 days back from end, previous period = the immediately preceding span of the same length."""
 import math
 import statistics
@@ -116,6 +117,30 @@ def _weight_block(conn, user_id: int, start: date, end: date, sparky=None) -> di
             "from_date": first["date"] if first and last and first is not last else None}
 
 
+def _nutrition_block(conn, user_id: int, start: date, end: date, sparky=None) -> dict:
+    """Food logs against the goal in effect each day (goals/nutrition.py) and added sugar (unknown is not 0)."""
+    from ..nutrition import daily
+    try:
+        days = daily.nutrition(conn, user_id, start, end, include_entries=False, client=sparky)["days"]
+    except Exception as e:  # SparkyFitness being unreadable affects only this block
+        return {"error": f"SparkyFitness：{type(e).__name__}: {e}"}
+    logged = [d for d in days if d["logged"]]
+    judged_cal = [d for d in logged if d["adherence"]["calories"] is not None]
+    judged_pro = [d for d in logged if d["adherence"]["protein"] is not None]
+    sugar = [d for d in logged if d["added_sugar_g"] is not None]
+    return {"days_logged": len(logged), "avg_calories": _mean(d["calories"] for d in logged),
+            "avg_protein_g": _mean(d["protein_g"] for d in logged),
+            "calories_on_target_days": sum(1 for d in judged_cal if d["adherence"]["calories"]),
+            "calories_judged_days": len(judged_cal),
+            "protein_on_target_days": sum(1 for d in judged_pro if d["adherence"]["protein"]),
+            "protein_judged_days": len(judged_pro),
+            "added_sugar_avg_g": _mean(d["added_sugar_g"] for d in sugar), "added_sugar_known_days": len(sugar),
+            "added_sugar_over_cap_days": sum(1 for d in sugar if d["goal"] and d["added_sugar_g"] > d["goal"]["added_sugar_max_g"]),
+            "sugar_avg_g": _mean(d["sugar_g"] for d in logged),
+            "sugary_drinks": sum(d["sugary_drinks"] for d in logged),
+            "goal_versions": sorted({d["goal"]["name"] for d in days if d["goal"] and d["goal"]["name"]})}
+
+
 def _journal_block(conn, user_id: int, end: date) -> list[dict]:
     """Behaviors in the last 90 days of the journal that have a "clear effect on next-day recovery" (>= 5 days each, |t| >= 1.96), sorted by effect size."""
     found = []
@@ -162,7 +187,10 @@ def report(conn: psycopg.Connection, user_id: int, period: str, end: date, spark
     cur["training"], prev["training"] = _training_block(conn, user_id, start, end, sparky), \
         _training_block(conn, user_id, pstart, pend, sparky)
     cur["weight"] = _weight_block(conn, user_id, start, end, sparky)
+    cur["nutrition"], prev["nutrition"] = _nutrition_block(conn, user_id, start, end, sparky), \
+        _nutrition_block(conn, user_id, pstart, pend, sparky)
     return {"period": period, "start": start, "end": end, "previous": {"start": pstart, "end": pend},
             "current": cur, "previous_values": prev,
-            "change": {k: _delta(cur[k], prev.get(k)) for k in ("recovery", "sleep", "load", "stress", "training")},
+            "change": {k: _delta(cur[k], prev.get(k)) for k in ("recovery", "sleep", "load", "stress", "training",
+                                                                "nutrition")},
             "journal_findings": _journal_block(conn, user_id, end)}

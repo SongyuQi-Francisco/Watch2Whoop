@@ -1,7 +1,6 @@
 """「我的饮食档案」(issue #32): sections on the profile card, version log, energy averages and deficit, goals adapter,
 AI tools and API authorization. Needs Postgres: separate test DB BODY_TEST_DB_NAME (default body_test_diet_profile)."""
 import os
-import types
 from datetime import date, timedelta
 
 import psycopg
@@ -15,6 +14,7 @@ from body_engine.ai.chat import ALWAYS_CONFIRM
 from body_engine.assistant import diet_goals, diet_profile as DP, diet_profile_params as P, memory
 from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
+from body_engine.goals import nutrition
 from body_engine.db import migrate
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_diet_profile")
@@ -62,34 +62,6 @@ def test_plan_math():
     assert DP.plan_math(en, {"avg_kcal": 1500}, {"kg": 60.0})["fast"]       # 1.18 kg/week > 1 % of 60 kg
     assert DP.plan_math({"total_kcal": None}, {"avg_kcal": 2300}, None) is None
     assert DP.plan_math(en, {"avg_kcal": None}, None) is None
-
-
-def test_goals_adapter_sparky_fallback_and_hook(monkeypatch):
-    class FakeSparky:
-        def get(self, path):
-            d = date.fromisoformat(path.rsplit("/", 1)[1])
-            train = d.weekday() < 5
-            return {"preset_name": "训练日" if train else "休息日", "calories": 2400 if train else 2100,
-                    "protein": 180, "carbs": 250 if train else 180, "fat": 65, "water_goal_ml": 3000}
-    monkeypatch.setattr(diet_goals, "_goals_module", lambda: None)
-    g = diet_goals.current(None, 1, date(2026, 10, 19), client=FakeSparky())
-    assert g["source"] == "sparkyfitness" and {s["name"]: s["days"] for s in g["sets"]} == {"训练日": 5, "休息日": 2}
-    assert g["avg_kcal"] == pytest.approx((5 * 2400 + 2 * 2100) / 7)
-
-    # issue #31's versioned goals, when installed, are used instead of SparkyFitness
-    mod = types.SimpleNamespace(current_goals=lambda conn, uid, day: {
-        "training_day": {"kcal": 2500, "protein_g": 180, "added_sugar_max_g": 25}, "rest_day": {"calories": 2100},
-        "effective_from": "2026-10-21", "version": 3})
-
-    class Conn:   # the adapter wraps the hook in a savepoint
-        def transaction(self):
-            import contextlib
-            return contextlib.nullcontext()
-    monkeypatch.setattr(diet_goals, "_goals_module", lambda: mod)
-    g = diet_goals.current(Conn(), 1, date(2026, 10, 19))
-    assert g["source"] == "nutrition_goals" and g["avg_kcal"] == 2300 and g["version"] == 3
-    assert g["sets"][0] == {"name": "训练日", "calories": 2500, "protein_g": 180, "carbs_g": None, "fat_g": None,
-                            "sat_fat_max_g": None, "added_sugar_max_g": 25, "fiber_g": None, "water_ml": None}
 
 
 # ---------------------------------------------------------------- database
@@ -232,3 +204,42 @@ def test_goals_unavailable_still_shows_profile(client, world):
     _, tokens = world
     b = client.get("/v1/users/me/diet-profile", headers=h(tokens["A"])).json()
     assert b["goals"]["error"] and b["goals"]["sets"] == [] and b["plan"] is None and b["energy"]["total_kcal"] == 2600
+
+
+class FakeSparky:
+    """SparkyFitness /goals/by-date: weekdays one preset, weekends another."""
+    def get(self, path):
+        d = date.fromisoformat(path.rsplit("/", 1)[1])
+        train = d.weekday() < 5
+        return {"preset_name": "训练日" if train else "休息日", "calories": 2400 if train else 2100,
+                "protein": 180, "carbs": 250 if train else 180, "fat": 65, "water_goal_ml": 3000}
+
+
+def test_goals_adapter_uses_nutrition_goals(conn, world):
+    """No version yet: nutrition.resolve's SparkyFitness fallback; with a version (#31): its sets, effective date, reason,
+    the version in the entry line and in the version log."""
+    ids, _ = world
+    d = ids["D"]
+    day = DP._local_today(conn, d)
+    g = diet_goals.current(conn, d, day, client=FakeSparky())
+    assert g["source"] == "sparkyfitness" and g["version_id"] is None
+    assert {s["name"]: s["days"] for s in g["sets"]} == {"训练日": 5, "休息日": 2}
+    assert g["avg_kcal"] == pytest.approx((5 * 2400 + 2 * 2100) / 7)
+
+    v = nutrition.set_goals(conn, d, reason="体重两周没动，下调", set_by="butler", actor_user_id=d,
+                            training={"calories": 2500, "protein_g": 180, "carbs_g": 270, "fat_g": 70, "added_sugar_max_g": 25},
+                            rest={"calories": 2100, "protein_g": 180, "carbs_g": 170, "fat_g": 70},
+                            training_weekdays=[1, 2, 3, 4, 5])["version"]
+    g = diet_goals.current(conn, d, day, client=FakeSparky())
+    assert g["source"] == "body_engine" and g["version_id"] == v["id"] and g["effective_from"] == day
+    assert g["reason"] == "体重两周没动，下调" and g["avg_kcal"] == pytest.approx((5 * 2500 + 2 * 2100) / 7)
+    assert [(s["name"], s["calories"], s["days"]) for s in g["sets"]] == [("训练日", 2500, 5), ("休息日", 2100, 2)]
+    assert g["sets"][0]["added_sugar_max_g"] == 25
+    s = DP.summary(conn, d)
+    assert s["version"] is None and s["goal_version_id"] == v["id"] and s["goal_effective_from"] == day
+    assert s["updated_on"] == day
+    view = DP.view(conn, d, d)
+    assert view["goals"]["version_id"] == v["id"]
+    assert view["goal_history"][0]["training_kcal"] == 2500 and view["goal_history"][0]["reason"] == "体重两周没动，下调"
+    # A viewer without nutrition does not learn about the goal version from the entry line either
+    assert DP.summary(conn, d, ids["B"])["goal_version_id"] is None

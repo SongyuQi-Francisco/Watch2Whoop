@@ -10,7 +10,7 @@ from psycopg.types.json import Jsonb
 
 from .. import auth, queries
 from ..toolspec import DETAIL, END, START, USER, fill_defaults, nullable, schema
-from . import briefing
+from . import briefing, writelog
 from ..scores import store as scores_store
 from ..records.tools import TOOL_SPECS as RECORD_TOOL_SPECS
 from ..rules.tools import TOOL_SPECS as RULE_TOOL_SPECS
@@ -185,7 +185,14 @@ def run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, 
         if not auth.can_view(conn, viewer_id, owner_id, tool.scope):
             raise PermissionError(f"没有查看用户 {owner_id} 的 {tool.scope} 的授权")
         with conn.transaction():
-            result = tool.handler(conn, owner_id, {**full, "_viewer_id": viewer_id})  # training calendar blocks are further authorized per viewer
+            args_in = {**full, "_viewer_id": viewer_id, "_channel": channel}
+            if tool.writes:  # every AI write is logged with before / after values (writelog.py, rollback_write)
+                with writelog.capture(viewer_id, channel, name) as cap:
+                    result = tool.handler(conn, owner_id, args_in)
+                    if not cap["ids"]:
+                        writelog.record_generic(conn, full, result)
+            else:
+                result = tool.handler(conn, owner_id, args_in)  # training calendar blocks are further authorized per viewer
     except Exception as e:
         _audit(conn, viewer_id, channel, name, args, False, str(e), provider_id, model)
         raise

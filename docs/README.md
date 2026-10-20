@@ -81,6 +81,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [system-design.md](system-design.md) | Chinese | Architecture, data ownership per component, table design, scoring algorithms, rules engine, Today page, training history, iOS app (§0 product principles, §16 training, §17 iOS app) |
 | [apps.md](apps.md) | English + Chinese summary | Client apps: platform matrix (iOS, Android, HarmonyOS), shared client contract, `apps/` layout, app versioning and release tags, CI path filters |
 | [ai-assistant-plan.md](ai-assistant-plan.md) | Chinese | The AI coach ("body butler"): tools, memory, multi-user / multi-provider AI access (§9) |
+| [self-signup-plan.md](self-signup-plan.md) | Chinese | Self-service sign-up (e-mail code / Sign in with Apple) gated by batch invite codes; automatic provisioning, in-app account deletion, mail provider and DNS setup |
 | [whoop-feature-map.md](whoop-feature-map.md) | Chinese | Every WHOOP body-data feature → our implementation and API |
 | [training-v2-plan.md](training-v2-plan.md) | Chinese | Training module v2 (deferred): exercise library, splits, weekly plans, AI-built plans, data sources and their licences |
 | [raw-data-plan.md](raw-data-plan.md) | Chinese | Getting more raw Apple Watch data (heartbeat series, ECG, iOS 27 RMSSD, watchOS app) and what it unlocks (awaiting confirmation) |

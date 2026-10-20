@@ -14,5 +14,5 @@ def get_diet_profile(user: str, brief: bool = Query(False, description="true = å
                      conn=Depends(get_conn), viewer=Depends(current_user)):
     owner = _owner(conn, viewer, user, "memory")
     if brief:
-        return diet_profile.summary(conn, owner)
+        return diet_profile.summary(conn, owner, viewer["id"])
     return diet_profile.view(conn, viewer["id"], owner)
