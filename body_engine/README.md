@@ -153,10 +153,11 @@ Development: `uv run uvicorn body_engine.api:app --port 8120 --reload` (set envi
 When a test user is onboarded the admin supplies only the Apple ID email; the profile and the consent are done by the person themself in the Today page (`web/static/profile.js`).
 | Endpoint (you can only manage your own, changes need write) | Description |
 |---|---|
-| `GET /v1/users/{user}/profile` | `{display_name, birth_date, sex, height_cm, timezone, goal_weight_kg, missing, consent: {required, version, accepted_at, accepted_version, reconfirm}}` |
+| `GET /v1/users/{user}/profile` | `{display_name, birth_date, sex, height_cm, timezone, goal_weight_kg, language, missing, consent: {required, version, accepted_at, accepted_version, reconfirm}}` |
 | `PATCH /v1/users/{user}/profile` | Change some of the fields (null = clear; display name and time zone cannot be cleared); the goal weight is written into the status card `goal_weight` (source user) |
 | `GET /v1/consent` · `POST /v1/users/{user}/consent {version, agree: true}` | The key points of the consent form + the full text (`consent.md`, identical character for character to `docs/family-consent.md`, checked by a test); consent is recorded in `user_consents` (time, version, User-Agent) and `users.consent_at / consent_version`. Outdated version 409 |
 - Consent required = role member and `consent_at` empty (the owner does not need it). Without consent: `import-ow / import-shortcut / import-workouts / compute-scores / evaluate-rules / refresh-status / import-apple-zip` print `skip:` and return immediately, history import is 403, and queued ones are not processed. After the text changes, people who already consented get `reconfirm` true (the app asks them to confirm again; their data is not blocked).
+- `language` (migration 250): `zh` / `en`, null = follow the device. The Today page draws itself in it (`web/static/i18n.js`, also returned by `/v1/web/me`), and the AI personas answer in it (`get_briefing` `me.language`, the in-page chat system prompt). Plan and stage-2 checklist: `docs/i18n-plan.md`.
 - Degradation when profile data is missing: no birth date → HRmax uses only observed values and body age is not computed; no sex → VO₂max is not compared with norms; no height → BMI is not computed.
 
 ## Health history import (`src/body_engine/history/`, `importers/apple_zip.py`)

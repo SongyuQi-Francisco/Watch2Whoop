@@ -13,6 +13,8 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const IN_APP = !!window.Watch2Whoop;  // the WebView of the Watch2Whoop iOS app
+  // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
+  const I18N = window.I18N, tr = I18N.t;
   // Features in separate files (profile.js profile and consent, history.js health history import): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view). app.js calls them in these 3 places only.
   const PLUGINS = () => window.BodyPlugins || [];
@@ -24,7 +26,7 @@
   const CATEGORY = { supplement: "补剂", diet: "饮食", training: "训练", lifestyle: "生活", symptom: "症状" };
   const EVENT_CATEGORY = { symptom: "症状", injury: "受伤 / 疼痛", medical: "就医 / 体检", posture: "体态", other: "其他" };
   const SUPP_STATUS = { active: "在吃", as_needed: "按需", paused: "暂停", stopped: "已停", not_needed: "不需要" };
-  const TABS = { today: "今天", trends: "趋势", food: "饮食", record: "记录", me: "我" };
+  const TABS = { today: tr("tab.today"), trends: tr("tab.trends"), food: tr("tab.food"), record: tr("tab.record"), me: tr("tab.me") };
   const DATED = new Set(["today", "trends", "food"]);   // tabs that follow the selected date (top date opens the month calendar)
   const WIDE = window.matchMedia("(min-width: 1024px)");   // desktop wide screen: left navigation, multiple columns, bigger charts
   const LOAD_FLAGS = ["no_raw_hr", "load_missing", "day_in_progress", "hr_coverage_low", "prev_strain_missing", "muscle_load_unavailable"];
@@ -60,7 +62,7 @@
   const parseDay = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
   const isoDay = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
   const addDays = (s, n) => { const d = parseDay(s); d.setDate(d.getDate() + n); return isoDay(d); };
-  const fmtDay = (s) => { const d = parseDay(s); return `${d.getMonth() + 1}月${d.getDate()}日 周${WEEK[d.getDay()]}`; };
+  const fmtDay = (s, withYear) => I18N.dayLabel(parseDay(s), withYear);
   const shortDay = (s) => { const d = parseDay(s); return `${d.getMonth() + 1}/${d.getDate()}`; };
   const hm = (m) => (m == null ? null : `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`);
   const fmtMin = (m) => {
@@ -97,19 +99,19 @@
     try {
       r = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) {
-      throw new ApiError(0, "连不上");
+      throw new ApiError(0, tr("err.offline"));
     }
     if (r.headers.get("X-Offline") === "1") { S.offlineAt = r.headers.get("X-Cached-At") || ""; showBanner(); }
     else if (method === "GET" && S.offlineAt !== null) { S.offlineAt = null; showBanner(); }
     let data = null;
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (r.status === 401 && !quiet401) {
-      showLogin(String(data?.detail || "").includes("过期") ? "登录已过期，请重新输入 token" : "");
-      throw new ApiError(401, "没有登录");
+      showLogin(String(data?.detail || "").includes("过期") ? tr("login.expired") : "");
+      throw new ApiError(401, tr("err.notLoggedIn"));
     }
     if (!r.ok) {
       const d = data?.detail;
-      throw new ApiError(r.status, typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x.msg).join("；") : `请求失败（${r.status}）`);
+      throw new ApiError(r.status, typeof d === "string" ? d : Array.isArray(d) ? d.map((x) => x.msg).join("；") : tr("err.request", { status: r.status }));
     }
     return data;
   }
@@ -128,8 +130,8 @@
     if (S.offlineAt === null) { el.hidden = true; return; }
     const when = S.offlineAt ? new Date(S.offlineAt) : null;
     el.textContent = when && !isNaN(when)
-      ? `离线 · ${when.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })} 的数据`
-      : "离线 · 上次的数据";
+      ? tr("banner.offlineAt", { when: when.toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) })
+      : tr("banner.offline");
     el.hidden = false;
   }
 
@@ -180,11 +182,7 @@
     if (/^[A-HJ-NP-Z2-9]{12}$/.test(c)) return { kind: "code", code: c };
     return { kind: "token", code: String(v || "").trim() };
   }
-  const LOGIN_401 = {
-    activation: "激活码无效或已停用：找管理员要新的激活链接",
-    code: "登录码已用过或已过期：找管理员要新的，或填激活码",
-    token: "token 不对或已吊销",
-  };
+  const LOGIN_401 = { activation: tr("login.badActivation"), code: tr("login.badCode"), token: tr("login.badToken") };
   // Redeem what was typed; an activation code is swapped for a fresh one-time login code first (POST /v1/web/activate
   // answers a watch2whoop://setup link whose `login` parameter is that code). A 401 error carries .kind = the step that failed.
   async function redeemLogin(v) {
@@ -238,13 +236,13 @@
     const who = S.viewable.find((v) => v.id === S.owner);
     const onToday = S.tab === "today", dated = DATED.has(S.tab), day = dated ? viewDay() : S.todayDate;
     const past = dated && isPast();
-    $("#hdr-title").textContent = !onToday || !past ? TABS[S.tab] : day === addDays(S.todayDate, -1) ? "昨天" : `${parseDay(day).getMonth() + 1}月${parseDay(day).getDate()}日`;
-    const year = day && day.slice(0, 4) !== String(S.todayDate || "").slice(0, 4) ? `${day.slice(0, 4)}年` : "";
-    $("#hdr-date").innerHTML = (day ? esc(year + fmtDay(day)) : "") + (who && !who.self ? ` · ${esc(who.display_name)}` : "")
+    $("#hdr-title").textContent = !onToday || !past ? TABS[S.tab] : day === addDays(S.todayDate, -1) ? tr("hdr.yesterday") : I18N.monthDay(parseDay(day));
+    const otherYear = !!day && day.slice(0, 4) !== String(S.todayDate || "").slice(0, 4);
+    $("#hdr-date").innerHTML = (day ? esc(fmtDay(day, otherYear)) : "") + (who && !who.self ? ` · ${esc(who.display_name)}` : "")
       + (dated ? `<span class="pick-ic">${ICON.cal}</span>` : "");
     const pick = $("#hdr-pick");
     pick.classList.toggle("pickable", dated);
-    if (dated) { pick.setAttribute("role", "button"); pick.tabIndex = 0; pick.setAttribute("aria-label", "选择日期"); }
+    if (dated) { pick.setAttribute("role", "button"); pick.tabIndex = 0; pick.setAttribute("aria-label", tr("hdr.pickDate")); }
     else { pick.removeAttribute("role"); pick.removeAttribute("tabindex"); pick.removeAttribute("aria-label"); }
     $("#daynav").hidden = !dated;
     $("#day-next").disabled = !past;
@@ -299,7 +297,7 @@
   const ZONE_CLS = { green: "good", yellow: "mid", red: "bad" };
   async function pickerSheet() {
     S.pickMonth = monthOf(viewDay());
-    openSheet("日期", `<div id="pick-body"><div class="empty faint">…</div></div>`);
+    openSheet(tr("picker.title"), `<div id="pick-body"><div class="empty faint">…</div></div>`);
     await drawPicker(0);
   }
   async function drawPicker(dir, jump) {
@@ -314,9 +312,9 @@
     if (data?.first) S.pickFirst = data.first;
     const firstYm = first ? monthOf(first) : null, todayYm = monthOf(S.todayDate);
     const [y, m] = ym.split("-").map(Number);
-    const nav = `<div class="month-nav"><button class="m pick-title" id="pk-title" aria-expanded="${!!jump}">${y}年${m}月<span class="chev">${ICON.chev}</span></button><div class="arrows">
-        <button id="pk-prev" aria-label="上个月" ${firstYm && ym <= firstYm ? "disabled" : ""}><svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button id="pk-next" aria-label="下个月" ${ym >= todayYm ? "disabled" : ""}><svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div>`;
+    const nav = `<div class="month-nav"><button class="m pick-title" id="pk-title" aria-expanded="${!!jump}">${esc(I18N.yearMonth(y, m))}<span class="chev">${ICON.chev}</span></button><div class="arrows">
+        <button id="pk-prev" aria-label="${tr("picker.prevMonth")}" ${firstYm && ym <= firstYm ? "disabled" : ""}><svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="pk-next" aria-label="${tr("picker.nextMonth")}" ${ym >= todayYm ? "disabled" : ""}><svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></div>`;
     let body;
     if (jump) {   // Jump to year / month: one row of years (the earliest year with data -> this year), 12 months below
       const y0 = Number((first || S.todayDate).slice(0, 4)), y1 = Number(S.todayDate.slice(0, 4));
@@ -324,24 +322,24 @@
       body = `<div class="pk-years">${years.map((yy) => `<button data-pk-year="${yy}" aria-pressed="${yy === y}">${yy}</button>`).join("")}</div>
         <div class="pk-months">${Array.from({ length: 12 }, (_, k) => {
           const v = `${y}-${String(k + 1).padStart(2, "0")}`, off = v > todayYm || (firstYm && v < firstYm);
-          return `<button data-pk-month="${v}" aria-pressed="${v === ym}" ${off ? "disabled" : ""}>${k + 1}月</button>`;
+          return `<button data-pk-month="${v}" aria-pressed="${v === ym}" ${off ? "disabled" : ""}>${esc(I18N.monthShort(k + 1))}</button>`;
         }).join("")}</div>`;
     } else {
       const by = Object.fromEntries((data?.days || []).map((d) => [d.date, d]));
       const lead = (new Date(y, m - 1, 1).getDay() + 6) % 7, daysIn = new Date(y, m, 0).getDate();
-      let cells = ["一", "二", "三", "四", "五", "六", "日"].map((w) => `<div class="cal-wd">${w}</div>`).join("") + `<div></div>`.repeat(lead);
+      let cells = I18N.weekdaysMon().map((w) => `<div class="cal-wd">${w}</div>`).join("") + `<div></div>`.repeat(lead);
       for (let k = 1; k <= daysIn; k++) {
         const iso = `${ym}-${String(k).padStart(2, "0")}`, d = by[iso];
         const future = iso > S.todayDate, has = !data || !!d?.has_data;   // don't block selection when the endpoint can't be read
         const off = future || (!has && iso !== S.todayDate);
         const dot = d?.zone ? `<i class="pz ${ZONE_CLS[d.zone]}"></i>` : d?.has_data ? `<i class="pz"></i>` : `<i class="pz none"></i>`;
         cells += `<button class="pday ${iso === S.todayDate ? "today" : ""} ${iso === viewDay() ? "sel" : ""} ${off ? "off" : ""}" data-pk-day="${iso}" ${off ? "disabled" : ""}
-            aria-label="${m}月${k}日${d?.recovery != null ? `，恢复 ${d.recovery}` : ""}"><span class="n">${k}</span>${dot}</button>`;
+            aria-label="${esc(I18N.monthDay(new Date(y, m - 1, k)))}${d?.recovery != null ? tr("picker.recovery", { n: d.recovery }) : ""}"><span class="n">${k}</span>${dot}</button>`;
       }
       body = `<div class="cal-grid pk-grid ${dir > 0 ? "slide-l" : dir < 0 ? "slide-r" : ""}">${cells}</div>
-        <div class="pk-legend"><span><i class="pz good"></i>≥67</span><span><i class="pz mid"></i>34–66</span><span><i class="pz bad"></i>&lt;34</span><span><i class="pz"></i>有数据</span></div>`;
+        <div class="pk-legend"><span><i class="pz good"></i>≥67</span><span><i class="pz mid"></i>34–66</span><span><i class="pz bad"></i>&lt;34</span><span><i class="pz"></i>${tr("picker.hasData")}</span></div>`;
     }
-    root.innerHTML = nav + body + (isPast() ? `<div class="btns"><button class="btn btn-primary" id="pk-today">回到今天</button></div>` : "");
+    root.innerHTML = nav + body + (isPast() ? `<div class="btns"><button class="btn btn-primary" id="pk-today">${tr("common.backToday")}</button></div>` : "");
     $("#pk-title", root).onclick = () => drawPicker(0, !jump);
     const step = (n) => { const v = addMonths(S.pickMonth, n); if (v > todayYm || (firstYm && v < firstYm)) return; S.pickMonth = v; drawPicker(n); };
     $("#pk-prev", root).onclick = () => step(-1);
@@ -353,8 +351,8 @@
     };
     for (const b of $$("[data-pk-month]", root)) b.onclick = () => { S.pickMonth = b.dataset.pkMonth; drawPicker(0); };
     for (const b of $$("[data-pk-day]", root)) b.onclick = () => { closeSheet(); const d = b.dataset.pkDay; setViewDate(d, d < viewDay() ? -1 : 1); };
-    const t = $("#pk-today", root);
-    if (t) t.onclick = () => { closeSheet(); setViewDate(S.todayDate, 1); };
+    const tb = $("#pk-today", root);
+    if (tb) tb.onclick = () => { closeSheet(); setViewDate(S.todayDate, 1); };
     // Swipe left / right in the sheet to change month
     root.ontouchstart = (e) => { root._x = e.touches[0].clientX; root._y = e.touches[0].clientY; };
     root.ontouchend = (e) => {
@@ -366,8 +364,8 @@
   }
 
   function whoSheet() {
-    openSheet("查看", `<div class="group">${S.viewable.map((v) => `<button class="item" data-owner="${v.id}">
-        <span class="row-title">${esc(v.self ? `我（${v.display_name}）` : v.display_name)}</span>${v.id === S.owner ? `<span class="check">${ICON.check}</span>` : ""}</button>`).join("")}</div>`,
+    openSheet(tr("who.title"), `<div class="group">${S.viewable.map((v) => `<button class="item" data-owner="${v.id}">
+        <span class="row-title">${esc(v.self ? tr("who.me", { name: v.display_name }) : v.display_name)}</span>${v.id === S.owner ? `<span class="check">${ICON.check}</span>` : ""}</button>`).join("")}</div>`,
     (root) => { for (const b of $$("[data-owner]", root)) b.onclick = () => { S.owner = Number(b.dataset.owner); closeSheet(); render(); }; });
   }
 
@@ -397,7 +395,7 @@
     } catch (err) {
       if (seq !== renderSeq || err.status === 401) return;
       view.dataset.shown = "";
-      view.innerHTML = `<div class="empty">${esc(err.message)}<div class="btns"><button class="btn" id="retry">重试</button></div></div>`;
+      view.innerHTML = `<div class="empty">${esc(err.message)}<div class="btns"><button class="btn" id="retry">${tr("common.retry")}</button></div></div>`;
       $("#retry").onclick = () => render();
     }
   }
@@ -1867,8 +1865,8 @@
   }
   function statusHtml(mem) {
     const list = Array.isArray(mem?.status) ? mem.status : [];
-    const head = `<div class="section-head"><h2>身体状态</h2></div>`;
-    if (!list.length) return `<div class="section">${head}<div class="group"><div class="item"><span class="row-title faint">暂无</span></div></div></div>`;
+    const head = `<div class="section-head"><h2>${tr("me.status")}</h2></div>`;
+    if (!list.length) return `<div class="section">${head}<div class="group"><div class="item"><span class="row-title faint">${tr("common.none")}</span></div></div></div>`;
     const groups = new Map();
     for (const it of list) { const g = it.group || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(it); }
     return `<div class="section">${head}${[...groups].map(([g, items]) => `${g ? `<div class="cat">${esc(g)}</div>` : ""}
@@ -1923,10 +1921,10 @@
       <div class="obs-meta">${esc(fmtWhen(o.created_at))}${o.source ? ` · ${esc(SOURCE_LABEL[o.source] || o.source)}` : ""}</div></button>`;
 
   function observationsHtml(mem) {
-    const none = `<div class="group"><div class="item"><span class="row-title faint">暂无</span></div></div>`;
+    const none = `<div class="group"><div class="item"><span class="row-title faint">${tr("common.none")}</span></div></div>`;
     const obs = Array.isArray(mem?.observations) ? mem.observations : [];
-    return `<div class="section"><div class="section-head"><h2>观察笔记</h2>
-        ${obs.length > 3 ? `<button class="link" ${sheetAttr(() => openSheet(`观察笔记 · ${obs.length}`, `<div class="group">${obs.map(obsRow).join("")}</div>`))}>全部 ${obs.length}</button>` : ""}</div>
+    return `<div class="section"><div class="section-head"><h2>${tr("me.observations")}</h2>
+        ${obs.length > 3 ? `<button class="link" ${sheetAttr(() => openSheet(tr("me.observationsN", { n: obs.length }), `<div class="group">${obs.map(obsRow).join("")}</div>`))}>${tr("common.all", { n: obs.length })}</button>` : ""}</div>
       ${obs.length ? `<div class="group">${obs.slice(0, 3).map(obsRow).join("")}</div>` : none}</div>`;
   }
 
@@ -1943,23 +1941,23 @@
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
     return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
-        <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${who.self ? ((S.me.token_scopes || []).includes("write") ? "可查看 · 可记录" : "只读") : "家人 · 只读"}</div></div></div>
+        <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
       ${healthspanHtml(hs)}
       <div class="cols2"><div>${statusHtml(mem)}</div><div>${observationsHtml(mem)}
       <div class="section"><div class="group">
-        ${item("补剂", supps.error ? "—" : `${supps.filter((x) => x.status === "active").length} 在吃`, supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
-        ${item("身体事件", events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
-        ${item("化验", labs.error ? "—" : `${labs.length} 项`, labs.error ? "" : sheetAttr(() => labsSheet(labs)))}
+        ${item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
+        ${item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
+        ${item(tr("me.labs"), labs.error ? "—" : tr("me.labsN", { n: labs.length }), labs.error ? "" : sheetAttr(() => labsSheet(labs)))}
       </div></div>
       <div class="section"><div class="group">
-        ${who.self && window.BodyAI ? item("AI 设置", esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
+        ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
-        ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">手机同步</span><span class="chev">${ICON.chev}</span></a>` : ""}
-        ${S.viewable.length > 1 ? item("切换查看", esc(who.display_name), 'id="me-who"') : ""}
-        ${item("数据更新", computed ? new Date(computed).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
-        <button class="item danger" id="me-logout"><span class="row-title">退出登录</span></button>
+        ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : ""}
+        ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
+        ${item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
+        <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
       </div></div>
-      <div class="version">今天页 ${esc(S.version?.web || "")} · Body Engine ${esc(S.version?.api || "")}</div></div></div>`;
+      <div class="version">${esc(tr("me.version", { web: S.version?.web || "", api: S.version?.api || "" }))}</div></div></div>`;
   };
 
   // Supplements (「我 → 补剂」): own list is editable (add / edit / stop / delete a mistaken entry); someone else's is read-only
@@ -1972,7 +1970,7 @@
         ${meta ? `<div class="ex-meta">${esc(meta)}</div>` : ""}`;
       return edit ? `<button class="ex" data-supp="${s.id}">${inner}</button>` : `<div class="ex">${inner}</div>`;
     };
-    openSheet("补剂", `${list.map(row).join("") || `<div class="empty faint">暂无</div>`}
+    openSheet(tr("me.supplements"), `${list.map(row).join("") || `<div class="empty faint">暂无</div>`}
       ${edit ? `<div class="btns"><button class="btn" id="supp-add">添加</button></div>` : ""}`,
     (root) => {
       for (const b of $$("[data-supp]", root)) b.onclick = () => suppEditSheet(list.find((s) => String(s.id) === b.dataset.supp));
@@ -2047,7 +2045,7 @@
   }
 
   function eventsSheet(list) {
-    openSheet("身体事件", [...list].reverse().map((e) => `<div class="ex"><div class="ex-name"><span>${esc(e.title)}</span>${e.severity ? badge(e.severity >= 3 ? "bad" : "mid", `${e.severity}`) : ""}</div>
+    openSheet(tr("me.events"), [...list].reverse().map((e) => `<div class="ex"><div class="ex-name"><span>${esc(e.title)}</span>${e.severity ? badge(e.severity >= 3 ? "bad" : "mid", `${e.severity}`) : ""}</div>
       <div class="ex-meta">${esc(new Date(e.occurred_at).toLocaleDateString("zh-CN"))}${e.category ? ` · ${esc(EVENT_CATEGORY[e.category] || e.category)}` : ""}${e.body_part ? ` · ${esc(e.body_part)}` : ""}</div>${e.resolved_on ? `<div class="rcard-tags" style="margin-top:4px">${badge("good", `${shortDay(e.resolved_on)} 好了`)}</div>` : ""}
       ${e.note ? `<div class="ex-meta clamp1">${esc(e.note)}</div>` : ""}</div>`).join("") || `<div class="empty faint">暂无</div>`);
   }
@@ -2056,7 +2054,7 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
-    $("#me-refresh", view).onclick = async () => { await refresh(); toast("已刷新"); };
+    $("#me-refresh", view).onclick = async () => { await refresh(); toast(tr("common.refreshed")); };
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
@@ -2290,7 +2288,7 @@
     const lead = (first.getDay() + 6) % 7;   // weeks start on Monday
     const by = Object.fromEntries((data?.days || []).map((d) => [d.date, d]));
     const today = S.todayDate;
-    let cells = ["一", "二", "三", "四", "五", "六", "日"].map((w) => `<div class="cal-wd">${w}</div>`).join("");
+    let cells = I18N.weekdaysMon().map((w) => `<div class="cal-wd">${w}</div>`).join("");
     cells += Array.from({ length: lead }, () => `<div></div>`).join("");
     for (let k = 1; k <= daysIn; k++) {
       const iso = `${ym}-${String(k).padStart(2, "0")}`, d = by[iso];
@@ -2466,14 +2464,14 @@
     if (S.assistantUrl) { e?.preventDefault(); window.open(S.assistantUrl, "_blank", "noopener"); return; }
     e?.preventDefault();
     if (S.ai?.mode === "mcp") {
-      openSheet("Jarvis", `${kv("AI", esc(S.ai.display_name || "订阅"))}${tags([badge("good", "已连接"), badge("plain", "在官方 app 里问")])}
-        ${window.BodyAI ? `<div class="btns"><button class="btn" id="ask-switch">换 AI</button></div>` : ""}`,
+      openSheet("Jarvis", `${kv("AI", esc(S.ai.display_name || tr("jarvis.subscription")))}${tags([badge("good", tr("jarvis.connected")), badge("plain", tr("jarvis.askInApp"))])}
+        ${window.BodyAI ? `<div class="btns"><button class="btn" id="ask-switch">${tr("jarvis.switch")}</button></div>` : ""}`,
         (root) => { const b = $("#ask-switch", root); if (b) b.onclick = () => { closeSheet(); window.BodyAI.openSettings(); }; });
       return;
     }
     const canSet = !!window.BodyAI && S.owner === S.me?.id;
-    openSheet("Jarvis", `${kv("AI", null)}${tags([badge("plain", "未设置")])}
-      ${canSet ? `<div class="btns"><button class="btn btn-primary" id="ask-setup">去 AI 设置</button></div>` : ""}`,
+    openSheet("Jarvis", `${kv("AI", null)}${tags([badge("plain", tr("jarvis.unset"))])}
+      ${canSet ? `<div class="btns"><button class="btn btn-primary" id="ask-setup">${tr("jarvis.setup")}</button></div>` : ""}`,
       (root) => { const b = $("#ask-setup", root); if (b) b.onclick = () => { closeSheet(); window.BodyAI.openSettings(); }; });
   }
   $("#ask").addEventListener("click", (e) => openAssistant(e));
@@ -2502,10 +2500,12 @@
     catch (err) {
       if (err.status === 401) return;
       $("#login").hidden = true; $("#app").hidden = false;
-      $("#view").innerHTML = `<div class="empty">${esc(err.message)}<div class="btns"><button class="btn" id="retry">重试</button></div></div>`;
+      $("#view").innerHTML = `<div class="empty">${esc(err.message)}<div class="btns"><button class="btn" id="retry">${tr("common.retry")}</button></div></div>`;
       $("#retry").onclick = () => boot();
       return;
     }
+    // Profile language (null = follow the device): if it differs from what this page was drawn in, reload once in the right language
+    if (I18N.setPref(me.me?.language)) { location.reload(); return; }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
