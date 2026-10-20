@@ -2,7 +2,8 @@
 
 Links only, no fetching: a saved Coles / Woolworths product page (validated and parsed here), else a search link per store by the
 product's name. Which stores: the chain named in the store field (aliases in params.STORES); both when the store is empty; none for
-another known store (Aldi, a market...), which has no product pages to link to."""
+another known store (Aldi, a market...), which has no product pages to link to. Always limited to the chains the user has connected
+(issue #44; `connected`, none by default)."""
 import re
 import urllib.parse
 
@@ -62,14 +63,29 @@ def search_url(key: str, term: str) -> str:
     return P.STORES[key]["search"] + urllib.parse.quote(term.strip())
 
 
+def store_label(store: str | None) -> str | None:
+    """Display name: the chain's short label (Woolworths / Woolies -> WWS) for a known chain, else the text as it is."""
+    key = store_key(store)
+    return P.STORES[key]["label"] if key else store
+
+
+def check_stores(stores) -> list[str]:
+    if not isinstance(stores, (list, tuple)) or any(s not in P.STORES for s in stores):
+        raise ValueError(f"超市只能是 {', '.join(P.STORES)}")
+    return [k for k in P.STORES if k in stores]   # params order, no duplicates
+
+
 def links(name: str, store: str | None = None, product_url: str | None = None, brand: str | None = None,
-          matches: list[str] | tuple = ()) -> list[dict]:
-    """[{store, label, kind: product | search, url}]: the saved product page first (its own chain only), else searches."""
+          matches: list[str] | tuple = (), connected: list[str] | tuple = ()) -> list[dict]:
+    """[{store, label, kind: product | search, url}] for the connected chains only: the saved product page first (its own chain
+    only), else searches."""
     if product_url:
         p = parse_product_url(product_url)
+        if p["store"] not in connected:
+            return []
         return [{"store": p["store"], "label": P.STORES[p["store"]]["label"], "kind": "product", "url": p["url"]}]
     key = store_key(store)
-    keys = list(P.STORES) if key is None else [key] if key else []
+    keys = [k for k in (list(P.STORES) if key is None else [key] if key else []) if k in connected]
     term = search_term(name, brand, matches)
     if not term:
         return []

@@ -71,7 +71,8 @@
 | 「晚饭吃了照烧鸡腿」这类食谱库里有的菜 | `list_recipes`（q 搜菜名）→ `log_recipe`（servings 吃了几份；不含主食的菜，米饭另外 `log_food`） |
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
 | 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
-| Coles / Woolworths 商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页；不要自己去网站查价格） |
+| Coles / WWS（Woolworths）商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页；不要自己去网站查价格）。返回 `store_not_connected` = 这家超市还没连接，链接不显示：问用户要不要连接 |
+| 「我用 Coles / WWS」「连接 / 断开超市」 | `set_stores`（给全部要连接的；默认都不连，只显示已连接超市的链接） |
 | 只有条码 | `lookup_barcode` → 用户确认后 `save_product`，`nutrition_source` 填返回的 source |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |
 | 记错了 | 改：饮食 `update_food_entry`、力量训练某组 `update_training_set`、手表训练类型 / 名称 `update_workout`；删（任何来源）：饮食 / 力量训练 / 一组 / 某天称重 `undo_sparky_entry`、重复或错误的手表训练 `delete_workout`、日记 `delete_journal_entry`、化验 `delete_lab_results`、录错的补剂 `delete_supplement`；事件用 `update_event`；改回原样：`get_write_log` → `rollback_write` |

@@ -62,7 +62,8 @@ def test_tool_definitions_budget():
     43.5k -> 46.5k on 2026-10-21 for the nutrition goal tools and the sugar / fiber / sodium fields on log_food, meal
     templates and recipe ingredients (#31).
     46.5k -> 47k on 2026-10-21 for lookup_barcode and save_product's product_url / nutrition_source (#29, grocery-plan §7).
-    47k -> 49k on 2026-10-21 for the 2 diet profile tools (#33)."""
+    47k -> 49k on 2026-10-21 for the 2 diet profile tools (#33).
+    set_stores (issue #44) fits under 49k."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
     assert size < 49000, size
