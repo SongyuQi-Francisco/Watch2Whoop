@@ -51,7 +51,7 @@
 html { -webkit-text-size-adjust: 100%; }
 /* Fixed app-like layout on phones: only the content scrolls vertically; no pinch / double-tap zoom, no whole-page sideways drag,
    no rubber-band of the whole page showing blank edges. Horizontal strips and charts still scroll inside themselves. */
-html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* manipulation, not "pan-x pan-y": iOS WebKit then stopped sideways scrolling inside strips like .quick; pinch zoom is blocked in app.js */
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js; sideways strips set their own touch-action (.quick) */
 input, select, textarea { font-size: max(16px, 1em); }   /* iOS zooms into fields with a font smaller than 16px on focus */
 button, a, [role="button"], .tab { touch-action: manipulation; }   /* no double-tap zoom delay on controls */
 body {
@@ -380,25 +380,32 @@ textarea.input { resize: none; }
 .food-entry .f { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .food-entry .k { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .food-entry .k small { font-weight: 400; color: var(--text-2); font-size: 11px; }
-.quick { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+/* Quick-meal strip: its own sideways scroller. touch-action: pan-x on the strip and its chips tells iOS WebKit up front that a touch here
+   pans the strip, not the page (buttons default to manipulation); it bleeds to the card edges and snaps chip by chip (issue #11). */
+.quick {
+  display: flex; gap: 8px; margin: 14px -16px 0; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  scroll-snap-type: x proximity; scroll-padding: 0 16px; touch-action: pan-x;
+}
 .quick, .rec-row, .pk-years { overscroll-behavior-x: contain; }
-.quick .qchip { flex: none; }
+.quick .qchip { flex: none; scroll-snap-align: start; touch-action: pan-x; }
 .quick::-webkit-scrollbar { display: none; }
-.quick.wrap { flex-wrap: wrap; overflow: visible; margin-top: 0; }
+.quick.bare { --gut-l: max(20px, env(safe-area-inset-left)); --gut-r: max(20px, env(safe-area-inset-right)); margin: 0 calc(-1 * var(--gut-r)) 0 calc(-1 * var(--gut-l)); padding: 0 var(--gut-r) 0 var(--gut-l); scroll-padding: 0 var(--gut-r) 0 var(--gut-l); }
+.qchip.more { min-width: 72px; }
+.meal-row .f { border: 0; background: none; padding: 4px 0; text-align: left; }
+.meal-row .btn { flex: none; min-height: 36px; padding: 6px 14px; }
 .qchip {
   flex: none; border: 0; background: var(--surface-2); border-radius: 14px; padding: 10px 14px; text-align: left;
   display: flex; flex-direction: column; gap: 1px; min-width: 112px; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none; transition: background .2s, color .2s, transform .15s;
 }
 .card .qchip { background: var(--surface-2); }
-.view > .tags .qchip, .quick.wrap .qchip { background: var(--surface); }
+.view > .tags .qchip, .quick.bare .qchip { background: var(--surface); }
 .qchip .n { font-weight: 600; font-size: 14px; }
 .qchip .k { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .qchip.warn .k { color: var(--mid); }
 .qchip.done { background: var(--text) !important; color: var(--bg); }
 .qchip.done .k { color: inherit; opacity: .7; }
 .qchip.busy { opacity: .5; }
-.qchip.press { transform: scale(.97); }
 .item-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--hair); }
 .item-row:first-child { border-top: 0; }
 .item-row .f { flex: 1; min-width: 0; font-size: 14px; }
