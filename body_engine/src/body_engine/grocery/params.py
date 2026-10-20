@@ -35,3 +35,26 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
                 "nut", "bean", "tofu")),
     ("drinks", ("咖啡", "茶", "汁", "水", "coffee", "tea", "juice")),
 ]
+
+# Store links (docs/grocery-plan.md §7). Links only: the server never fetches, scrapes or embeds these sites (their terms forbid it).
+# Product pages and Woolworths search open the store apps through universal links on iOS; Coles search opens in Safari.
+# key -> label (short chip), name (written to the store field), accepted product-page pattern (path; group 1 = SKU), search URL prefix, name aliases in the free-text store field.
+STORES = {
+    "coles": {"label": "Coles", "name": "Coles", "host": "www.coles.com.au", "path": r"/product/[a-z0-9-]*?-?([0-9]{1,12})/?",
+              "search": "https://www.coles.com.au/search/products?q=", "aliases": ("coles",)},
+    "woolworths": {"label": "Woolies", "name": "Woolworths", "host": "www.woolworths.com.au", "path": r"/shop/productdetails/([0-9]{1,12})(?:/[a-z0-9-]*)?/?",
+                   "search": "https://www.woolworths.com.au/shop/search/products?searchTerm=",
+                   "aliases": ("woolworths", "woolies", "woolworth")},
+}
+PRODUCT_URL_MAX = 300
+
+# Open Food Facts (barcode -> nutrition per 100 g). ODbL: show the attribution next to the data. Single lookups only, never bulk.
+# Their API asks for a custom User-Agent with contact info; read rate limit 100 req/min per IP (search 10/min) -> we stay far below.
+# Off unless BODY_OFF_CONTACT (an e-mail or URL) is set.
+OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
+OFF_PAGE_URL = "https://world.openfoodfacts.org/product/{code}"
+OFF_FIELDS = "code,product_name,product_name_en,brands,quantity,nutriments"
+OFF_PER_MINUTE = 15        # per process, all users together
+OFF_PER_USER_DAY = 50
+OFF_TIMEOUT_S = 8
+OFF_ATTRIBUTION = "Open Food Facts (ODbL)"
