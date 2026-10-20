@@ -1,4 +1,5 @@
-"""System prompt of the chat: a provider-independent persona (system_prompt.md) + this user's own basic profile and long-term memory.
+"""System prompt of the chat: the root rules (root_rules.md, above everything else) + a provider-independent persona
+(system_prompt.md) + this user's own basic profile and long-term memory.
 
 - Assembled once at the start of a conversation and stored in ai_conversations.system_prompt, never changed afterwards: history is append-only so the prompt cache hits,
   and Claude's preserved thinking also requires system to stay the same. So "what time is it now" is not put here but prepended to each user message (time_prefix).
@@ -12,6 +13,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import queries
+from ..feedback import store as feedback_store
+from . import root_rules
 from ..assistant import memory, status
 
 MAX_MEMORY_CHARS = 12000
@@ -21,9 +24,10 @@ LITE_MEMORY_CHARS = 4000  # the fallback AI (fallback.py): shorter memory snapsh
 
 
 def base_prompt(lite: bool = False) -> str:
+    """Root rules first (they take precedence over the persona and the memory below), then the persona."""
     name = "system_prompt_lite.md" if lite else "system_prompt.md"
     text = resources.files("body_engine.ai").joinpath(name).read_text()
-    return re.sub(r"<!--.*?-->\s*", "", text, flags=re.S).strip()
+    return root_rules.text() + "\n\n" + re.sub(r"<!--.*?-->\s*", "", text, flags=re.S).strip()
 
 
 def _memory_block(conn: psycopg.Connection, user_id: int, limit: int = MAX_MEMORY_CHARS) -> str:
@@ -53,6 +57,7 @@ def _memory_block(conn: psycopg.Connection, user_id: int, limit: int = MAX_MEMOR
 def build_system_prompt(conn: psycopg.Connection, user_id: int, lite: bool = False) -> str:
     p = queries.profile(conn, user_id) or {}
     basics = [f"称呼：{p.get('display_name') or '—'}", f"时区：{p.get('timezone') or 'UTC'}"]
+    basics.append(f"反馈模式：{feedback_store.mode(conn, user_id)}")  # root rule 4
     for k, label in (("age", "年龄"), ("sex", "性别"), ("height_cm", "身高 cm")):
         if p.get(k) is not None:
             basics.append(f"{label}：{p[k]}")
