@@ -83,6 +83,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [ai-assistant-plan.md](ai-assistant-plan.md) | Chinese | The AI coach ("body butler"): tools, memory, multi-user / multi-provider AI access (§9) |
 | [whoop-feature-map.md](whoop-feature-map.md) | Chinese | Every WHOOP body-data feature → our implementation and API |
 | [training-v2-plan.md](training-v2-plan.md) | Chinese | Training module v2 (deferred): exercise library, splits, weekly plans, AI-built plans, data sources and their licences |
+| [grocery-store-data-plan.md](grocery-store-data-plan.md) | Chinese | **Proposal / not started**: Coles / Woolworths products, prices, price history and weekly specials for the shopping list; how Shoplet does it, terms-of-service analysis, options (user-supplied via AI first, scraping only as an opt-in external plugin after a legal check), data model draft |
 | [raw-data-plan.md](raw-data-plan.md) | Chinese | Getting more raw Apple Watch data (heartbeat series, ECG, iOS 27 RMSSD, watchOS app) and what it unlocks (awaiting confirmation) |
 | [shortcut-sync-spec.md](shortcut-sync-spec.md) | Chinese | The iOS Shortcut upload format (`cols-v1`) and how the server parses it — the single source of truth for the Shortcut |
 | [shortcut-raw-heart-rate.md](shortcut-raw-heart-rate.md) | Chinese | Historical: why the Shortcut uploads raw heart-rate samples |
