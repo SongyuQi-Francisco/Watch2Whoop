@@ -41,7 +41,8 @@ class AppConfig {
   final String? owUserId;
   final bool healthRequested;
 
-  /// One-time Today page login code carried in the setup info: consumed when opening the Today page (`/app/#login=code`), then cleared.
+  /// One-time Today page login code carried in the setup info: opened as `/app/#login=code` until the Today page reports
+  /// the outcome over the JS channel (see [loginCodeSettled]); kept until then, so an interrupted load retries on the next open.
   final String? pendingLoginCode;
 
   bool get owConnected => owUserId != null && owUserId!.isNotEmpty;
@@ -92,6 +93,11 @@ class AppConfig {
     pendingLoginCode: j['pendingLoginCode'] as String?,
   );
 }
+
+/// Messages the Today page posts on the `Watch2Whoop` JS channel once it knows how the login went:
+/// `logged-in` (a session works, /v1/web/me answered) or `login-failed` (the server rejected the code: used / expired).
+/// Either one settles the pending one-time login code; anything else (network error, page killed) keeps it for a retry.
+bool loginCodeSettled(String message) => message == 'logged-in' || message == 'login-failed';
 
 class ConfigStore {
   static const _key = 'w2w.config.v1';
