@@ -116,22 +116,28 @@ def _normalize(kind: str, data: dict, existing: dict | None) -> dict:
         if not MODEL_RE.match(model):
             raise ValueError("要填模型名（例：" + (k.get("default_model") or "deepseek-chat") + "）")
         out["model"] = model
-    if kind == "openai_compatible":
-        if "base_url" in data or existing is None:
-            if not data.get("base_url"):
-                raise ValueError("OpenAI 兼容接口要填 base_url")
-            out["base_url"] = _check_base_url(data["base_url"])
-    elif data.get("base_url"):
-        raise ValueError("只有 OpenAI 兼容接口才填 base_url")
-    if data.get("api_key"):
-        key = _check_key(data["api_key"])
-        out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
-        out["_key"] = key
-    elif existing is None:
-        base = out.get("base_url") or ""
-        local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
-        if not local:
-            raise ValueError("要填 API key")
+    if k.get("needs_key") is False:
+        if data.get("api_key") or data.get("base_url"):
+            raise ValueError("服务端 Gemini CLI 用服务器上的登录，不填 API key 和 base_url")
+        if existing is None:
+            out.update(monthly_budget_usd=0, price_in_per_mtok=0, price_out_per_mtok=0)
+    else:
+        if kind == "openai_compatible":
+            if "base_url" in data or existing is None:
+                if not data.get("base_url"):
+                    raise ValueError("OpenAI 兼容接口要填 base_url")
+                out["base_url"] = _check_base_url(data["base_url"])
+        elif data.get("base_url"):
+            raise ValueError("只有 OpenAI 兼容接口才填 base_url")
+        if data.get("api_key"):
+            key = _check_key(data["api_key"])
+            out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
+            out["_key"] = key
+        elif existing is None:
+            base = out.get("base_url") or ""
+            local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
+            if not local:
+                raise ValueError("要填 API key")
     for f in ("monthly_budget_usd", "price_in_per_mtok", "price_out_per_mtok"):
         if f in data:
             v = data[f]
@@ -153,6 +159,8 @@ def create_provider(conn: psycopg.Connection, user_id: int, data: dict) -> dict:
     kind = data.get("kind")
     if kind not in catalog.KINDS:
         raise ValueError(f"不认识的提供商种类：{kind}")
+    if not catalog.kind_allowed(kind, user_id):
+        raise ValueError("服务端 Gemini CLI 没开，或只给部署者本人用；可以选「Google AI 订阅（Gemini）」或填自己的 Gemini API key")
     n = conn.execute("SELECT count(*) AS n FROM ai_providers WHERE user_id = %s", (user_id,)).fetchone()["n"]
     if n >= MAX_PROVIDERS:
         raise ValueError(f"每人最多 {MAX_PROVIDERS} 个提供商")

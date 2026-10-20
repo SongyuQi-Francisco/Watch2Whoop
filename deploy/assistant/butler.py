@@ -17,7 +17,7 @@ Standard library only, compatible with Python 3.6 (Ali's system Python) up to ma
 After a restart, claude remote-control reattaches the session this directory served before (if down for under 4 hours),
 so the URL normally stays the same.
 
-Usage: butler.py run (for systemd / the LaunchAgent) | butler.py status | butler.py check (does not start, only checks the environment)
+Usage: butler.py run (for systemd / the LaunchAgent) | butler.py status | butler.py check | butler.py gemini-check
 """
 import json
 import os
@@ -208,6 +208,50 @@ def check():
     return problems
 
 
+GEMINI_BLOCKED_ENV = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_GENAI_USE_VERTEXAI"]
+
+
+def find_gemini():
+    """Locate the gemini CLI binary: BODY_GEMINI_BIN > PATH > common npm/Homebrew paths. Returns (path, version)."""
+    b = os.environ.get("BODY_GEMINI_BIN")
+    if b:
+        return (b, version_of(b) or (0, 0, 0)) if Path(b).exists() else (None, None)
+    dirs = os.environ.get("PATH", "").split(":") + [
+        str(Path.home() / ".npm-global/bin"),
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        str(Path.home() / ".local/bin"),
+    ]
+    for d in dict.fromkeys(dirs):
+        if not d:
+            continue
+        p = Path(d) / "gemini"
+        if p.exists():
+            return str(p), version_of(str(p)) or (0, 0, 0)
+    return None, None
+
+
+def gemini_check():
+    """Check whether Gemini CLI is installed, logged in via Google AI Plan OAuth, and configured in assistant/."""
+    problems = []
+    if not (ASSISTANT_DIR / "CLAUDE.md").exists():
+        problems.append(f"找不到管家目录 {ASSISTANT_DIR}")
+    if not (ASSISTANT_DIR / ".gemini/settings.json").exists():
+        problems.append(f"找不到 {ASSISTANT_DIR / '.gemini/settings.json'}")
+    binary, v = find_gemini()
+    if not binary:
+        problems.append("找不到 gemini（装 Gemini CLI：npm install -g @google/gemini-cli）")
+    oauth = Path(os.environ.get("GEMINI_CLI_HOME", str(Path.home()))) / ".gemini/oauth_creds.json"
+    if not oauth.is_file():
+        problems.append(f"找不到 {oauth}：运行 gemini 选 Login with Google 登录 Google AI Plan 账号")
+    for k in GEMINI_BLOCKED_ENV:
+        if k in os.environ:
+            problems.append(f"环境里有 {k}（页面内调用时会自动清掉，终端直接运行 gemini 前请先 unset）")
+    if not os.environ.get("BODY_AI_TOKEN") and not ai_token_file_readable():
+        problems.append(f"没有 {AI_TOKEN_FILE}（终端 cd assistant/ 直接跑 gemini 连 MCP 时需要；页面内 gemini_cli 不需要）")
+    return binary, v, problems
+
+
 def run():
     rotate_logs()
     binary, v = find_claude()
@@ -334,6 +378,12 @@ def main():
         print(f"claude：{binary}（{'.'.join(map(str, v))}）\n管家目录：{ASSISTANT_DIR}\n状态文件：{STATE}")
         print("\n".join("⚠ " + p for p in problems) or "✓ 可以启动")
         return 1 if any("太旧" in p or "找不到" in p for p in problems) else 0
+    if cmd == "gemini-check":
+        binary, v, problems = gemini_check()
+        ver = ".".join(map(str, v)) if v else "未安装"
+        print(f"gemini：{binary or '未找到'}（{ver}）\n管家目录：{ASSISTANT_DIR}")
+        print("\n".join("⚠ " + p for p in problems) or "✓ Gemini CLI（Google AI Plan）可用")
+        return 1 if any("找不到" in p for p in problems) else 0
     if cmd == "status":
         return status()
     print(__doc__)
