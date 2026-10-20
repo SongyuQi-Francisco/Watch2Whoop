@@ -161,7 +161,7 @@
   }
   $("#sheet-close").onclick = closeSheet;
   $("#sheet").addEventListener("click", (e) => { if (e.target.id === "sheet") closeSheet(); });
-  document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!$("#sheet").hidden) closeSheet(); });
+  document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!$("#sheet").hidden) closeSheet(); else closeHandbook(); });
 
   // ------------------------------------------------------------------ login
   function showLogin(msg) {
@@ -406,8 +406,8 @@
 
   // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  // The non-passive touchmove listener exists only while two or more fingers are down: a document-wide non-passive touchmove makes iOS WebKit
-  // wait on the page for every one-finger move, which kept sideways strips (.quick) from scrolling in the iOS app (issue #11)
+  // The non-passive touchmove listener exists only while two or more fingers are down, so one-finger pans never wait on the page.
+  // (Sideways strips such as .quick: the real blocker in issue #11 was the :active opacity on their div.card, see app.css.)
   const noPinch = (e) => { if (e.touches.length > 1) e.preventDefault(); };
   document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) document.addEventListener("touchmove", noPinch, { passive: false }); }, { passive: true });
   for (const ev of ["touchend", "touchcancel"]) document.addEventListener(ev, (e) => { if (e.touches.length < 2) document.removeEventListener("touchmove", noPinch); }, { passive: true });
@@ -1956,6 +1956,7 @@
         ${who.self && window.BodyAI ? item("AI 设置", esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
         ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">手机同步</span><span class="chev">${ICON.chev}</span></a>` : ""}
+        ${item("使用手册", null, 'id="me-handbook"')}
         ${S.viewable.length > 1 ? item("切换查看", esc(who.display_name), 'id="me-who"') : ""}
         ${item("数据更新", computed ? new Date(computed).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">退出登录</span></button>
@@ -2062,6 +2063,66 @@
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
     $("#me-logout", view).onclick = logout;
+    $("#me-handbook", view).onclick = () => openHandbook();
+  }
+
+  // ---- Handbook (「我 → 使用手册」, issue #37): /app/handbook/ shown in a full-screen panel with a back button instead of navigating away.
+  // Inside the iOS app the WebView has no back gesture and the home-screen PWA has no browser bar, so leaving the page would strand the user;
+  // an iframe is blocked by CSP (frame-ancestors 'none'). The handbook is static HTML rendered by the deployer's handbook.py: its <style> and
+  // <main> go into a shadow root (its CSS stays isolated), relative image / link URLs are resolved against the handbook's address.
+  function handbookPanel() {
+    let p = $("#handbook");
+    if (p) return p;
+    p = document.createElement("div");
+    p.id = "handbook"; p.className = "panel"; p.hidden = true;
+    p.setAttribute("role", "dialog"); p.setAttribute("aria-modal", "true"); p.setAttribute("aria-label", "使用手册");
+    p.innerHTML = `<div class="panel-head">
+        <button class="close" id="hb-close" aria-label="返回"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <h2>使用手册</h2><span class="panel-spacer"></span></div>
+      <div class="panel-body hb-body" id="hb-body"></div>`;
+    document.body.append(p);
+    $("#hb-close", p).onclick = closeHandbook;
+    const host = $("#hb-body", p);
+    host.attachShadow({ mode: "open" }).addEventListener("click", (e) => {
+      const a = e.target.closest("a[href]");
+      if (!a) return;
+      e.preventDefault();
+      const href = a.getAttribute("href");
+      if (href.startsWith("#")) { a.getRootNode().getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({ behavior: "smooth" }); return; }
+      const url = new URL(href, HANDBOOK_URL);
+      if (url.origin === location.origin && url.pathname.startsWith(new URL(HANDBOOK_URL).pathname)) loadHandbook(url.href);   // the web edition (handbook/web/)
+      else window.open(url.href, "_blank", "noopener");   // outside: the iOS app hands it to the system
+    });
+    return p;
+  }
+  const HANDBOOK_URL = new URL("handbook/", location.href).href;
+  async function loadHandbook(url) {
+    const root = $("#hb-body").shadowRoot;
+    root.innerHTML = `<p style="text-align:center;opacity:.5;padding:28px 0">…</p>`;
+    try {
+      const res = await fetch(url, { credentials: "same-origin" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      for (const el of doc.querySelectorAll("[src]")) el.setAttribute("src", new URL(el.getAttribute("src"), url).href);
+      for (const el of doc.querySelectorAll("a[href]:not([href^='#'])")) el.setAttribute("href", new URL(el.getAttribute("href"), url).href);
+      const css = [...doc.querySelectorAll("style")].map((x) => x.textContent).join("\n").replace(/:root\b/g, ":host").replace(/(^|[}\s])body\s*\{/g, "$1.hb{");
+      root.innerHTML = `<style>${css}\n:host{display:block;min-height:100%;background:var(--bg)}</style><div class="hb">${doc.querySelector("main")?.outerHTML || doc.body.innerHTML}</div>`;
+      $("#hb-body").scrollTop = 0;
+    } catch (err) {
+      root.innerHTML = `<p style="text-align:center;padding:28px 0">打不开手册（${esc(err.message)}）</p>`;
+    }
+  }
+  function openHandbook() {
+    const p = handbookPanel();
+    p.hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add("open")));
+    loadHandbook(HANDBOOK_URL);
+  }
+  function closeHandbook() {
+    const p = $("#handbook");
+    if (!p) return;
+    p.classList.remove("open");
+    setTimeout(() => { if (!p.classList.contains("open")) p.hidden = true; }, 280);
   }
 
   // ------------------------------------------------------------------ food: recipes (/recipes from the body butler session, scope nutrition) and later shopping
