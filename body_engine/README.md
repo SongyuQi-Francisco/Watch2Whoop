@@ -315,6 +315,13 @@ Tools: `find_products`, `get_shopping_list`, `lookup_barcode` (read; Open Food F
 - Ticking a line adds it to the pantry (unticking takes it back); a paid price updates the product price per package.
 - API (scope `nutrition`): `GET/POST /v1/users/{user}/grocery/products`, `PATCH/DELETE …/products/{id}`, `GET …/list?week=&pantry=`, `POST …/list/generate`, `POST …/list/items`, `PATCH/DELETE …/list/items/{id}`, `GET/PUT …/pantry`. Today page: 饮食 → 采购 (`web/static/grocery.js`).
 
+### Diet profile 「我的饮食档案」 (`assistant/diet_profile.py`, migration 285; issue #32)
+Tools: `get_diet_profile` (read, scope memory), `update_diet_profile` (write, runs directly — not a delete).
+- Part of the profile card: sections are `assistant_profile` items `diet_targets` (steps, water, note), `diet_rationale` (goal weight, checkpoints), `diet_constraints` (rule + basis), `diet_day_plan` (meals, staples), `diet_adjust_rules` (when → action), structured in the new `data` column; `value` is a short text rendering for `get_memory` / `get_briefing`. A text edit of such an item (`update_profile_card`, `PUT …/memory/profile/{key}`) clears `data`.
+- Version log `diet_profile_versions`: `update_diet_profile` with `changes` (+ `reason`) appends a dated entry; version auto +0.1 (`V1.0`, `V1.1`…) or given (`V3.0`).
+- Computed on read, never stored: goals (`assistant/diet_goals.py`: `goals/nutrition.current` — the version in effect with its training / rest sets, effective date and reason; before the first version `nutrition.resolve`'s SparkyFitness fallback over the next 7 days; goal versions also appear in the version log and the entry line's update date), 28-day average basal / active / total energy from `daily_metrics`, daily deficit and expected weekly change (7700 kcal/kg, flagged above 1 % of body weight per week; sources in `assistant/diet_profile_params.py`).
+- API: `GET /v1/users/{user}/diet-profile[?brief=true]` (scope memory; the goals block needs nutrition and the energy block metrics, otherwise null and listed in `hidden`). Today page: one collapsed line at the top of 饮食, tap → sheet with collapsible blocks, version log collapsed (`web/static/diet-profile.js`, open state in localStorage).
+
 `get_profile` now also returns the user's local `now_local` and weekday (the butler uses it to decide "which day the small hours belong to"); `get_training_log` gives each workout an `id`.
 `run_tool` runs a tool inside a savepoint: on error only what the tool had half-written is rolled back, and a failed call is still audited (the MCP server commits even after an error).
 

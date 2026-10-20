@@ -14,7 +14,8 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const IN_APP = !!window.Watch2Whoop;  // the WebView of the Watch2Whoop iOS app
   // Features in separate files (profile.js profile and consent, history.js health history import): each entry in window.BodyPlugins may have
-  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购.
+  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
+  // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes.
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
@@ -2300,7 +2301,8 @@
   }
 
   const RENDER_food = async () => {
-    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["recipes", "食谱"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`;
+    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["recipes", "食谱"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
+      + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
       const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
       return seg + (shop ? await shop.foodShop({ owner: ownerPath(), self: isSelf(), date: S.todayDate })
@@ -2333,6 +2335,7 @@
   function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe); }
   function afterFood(view) {
     for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; render(); };
+    PLUGINS().forEach((p) => p.bindFoodTop?.(view));
     if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
     bindRecipes(view);
     bindMeals(view);
