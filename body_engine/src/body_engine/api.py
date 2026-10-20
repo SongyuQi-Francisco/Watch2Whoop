@@ -52,8 +52,8 @@ app.add_middleware(LangMiddleware)   # X-Body-Lang from the Today page -> texts 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
     """FastAPI's own handler, with the Chinese detail translated when the request asked for English (errors_en.py)."""
-    if is_en() and isinstance(exc.detail, str):
-        exc = HTTPException(exc.status_code, errors_en.translate(exc.detail), headers=exc.headers)
+    if is_en() and isinstance(exc.detail, (str, dict)):   # dict = {"code", "message", …} (AI chat / voice)
+        exc = HTTPException(exc.status_code, errors_en.translate_detail(exc.detail), headers=exc.headers)
     return await http_exception_handler(request, exc)
 
 

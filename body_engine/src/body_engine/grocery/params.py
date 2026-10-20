@@ -22,6 +22,15 @@ HIGH_PER_100G = {"sat_fat_g": 5.0, "sugar_g": 22.5, "sodium_mg": 600}
 HIGH_PER_100ML = {"sat_fat_g": 2.5, "sugar_g": 11.25, "sodium_mg": 300}
 FLAG_LABELS = {"sat_fat_g": "饱和脂肪高", "sugar_g": "糖高", "sodium_mg": "钠高"}
 
+# English twins for Food → Shopping in English (issue #42); the Chinese labels stay what the AI tools see
+CATEGORIES_EN = {
+    "produce": "Produce", "meat": "Meat", "seafood": "Seafood", "dairy_eggs": "Dairy & eggs", "grains": "Grains & bread",
+    "pantry": "Pantry", "frozen": "Frozen", "drinks": "Drinks", "snacks": "Snacks", "supplements": "Supplements",
+    "household": "Household", "other": "Other",
+}
+FLAGS_EN = {"饱和脂肪高": "High sat fat", "糖高": "High sugar", "钠高": "High sodium", "高嘌呤": "High purine",
+            "红肉": "Red meat", "牛肋条": "Short rib"}   # every product flag (FLAG_LABELS + store.product_flags)
+
 # Keyword -> category guess for ingredients that have no product yet (first match wins; produce before meat so 牛油果 is not beef).
 CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("dairy_eggs", ("蛋", "奶", "酸奶", "芝士", "奶酪", "egg", "milk", "yogurt", "yoghurt", "cheese")),

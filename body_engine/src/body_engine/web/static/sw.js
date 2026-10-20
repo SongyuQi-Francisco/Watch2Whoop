@@ -39,7 +39,10 @@ async function data(req) {
   } catch (err) {
     const cached = await cache.match(req);
     if (cached) return withHeaders(cached, { "X-Offline": "1" });
-    return new Response(JSON.stringify({ detail: "离线，这台设备上也没有保存过这项数据" }),
+    // No I18N in the worker: the detail follows the page language sent in X-Body-Lang
+    const detail = req.headers.get("X-Body-Lang") === "en" ? "Offline, and this device has no saved copy of this data"
+      : "离线，这台设备上也没有保存过这项数据";   // i18n-ok
+    return new Response(JSON.stringify({ detail }),
       { status: 503, headers: { "Content-Type": "application/json", "X-Offline": "1" } });
   }
 }

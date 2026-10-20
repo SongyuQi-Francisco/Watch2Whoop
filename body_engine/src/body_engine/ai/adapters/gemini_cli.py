@@ -27,6 +27,7 @@ import threading
 import uuid
 from pathlib import Path
 
+from ...i18n import L
 from ...toolspec import relaxed
 from .base import TIMEOUT_S, Adapter, AdapterError, TurnResult
 
@@ -51,14 +52,15 @@ def find_gemini() -> str:
     if b:
         if Path(b).is_file() and os.access(b, os.X_OK):
             return b
-        raise AdapterError("找不到 BODY_GEMINI_BIN 指定的 gemini", "unavailable")
+        raise AdapterError(L("找不到 BODY_GEMINI_BIN 指定的 gemini", "The gemini set in BODY_GEMINI_BIN was not found"), "unavailable")
     dirs = [d for d in os.environ.get("PATH", "").split(":") if d] + [
         str(Path.home() / ".npm-global/bin"), str(Path.home() / ".local/bin"), "/opt/homebrew/bin", "/usr/local/bin"]
     for d in dict.fromkeys(dirs):
         p = Path(d) / "gemini"
         if p.is_file() and os.access(p, os.X_OK):
             return str(p)
-    raise AdapterError("服务器上找不到 gemini CLI（npm i -g @google/gemini-cli，再用 Google 账号登录）", "unavailable")
+    raise AdapterError(L("服务器上找不到 gemini CLI（npm i -g @google/gemini-cli，再用 Google 账号登录）",
+                         "No gemini CLI on the server (npm i -g @google/gemini-cli, then sign in with Google)"), "unavailable")
 
 
 def clean_env() -> dict[str, str]:
@@ -107,14 +109,17 @@ def _parse_tool_calls(raw: str) -> tuple[str, list[dict]]:
 def _classify(detail: str, rc: int, model: str) -> AdapterError:
     low = detail.lower()
     if any(w in low for w in ("auth", "login", "oauth", "unauthenticated", "credentials")):
-        return AdapterError("服务器上的 Gemini CLI 没登录或登录过期：在服务器上运行 gemini 重新登录", "auth")
+        return AdapterError(L("服务器上的 Gemini CLI 没登录或登录过期：在服务器上运行 gemini 重新登录",
+                              "The Gemini CLI on the server is not signed in (or expired): run gemini on the server to sign in"), "auth")
     if "429" in low or "quota" in low or "rate limit" in low or "resource_exhausted" in low:
-        return AdapterError("Google AI 订阅的额度用完或被限流，稍后再试", "rate_limit")
+        return AdapterError(L("Google AI 订阅的额度用完或被限流，稍后再试", "The Google AI subscription is out of quota or rate limited; try again later"),
+                            "rate_limit")
     if "not found" in low or "404" in low:
-        return AdapterError(f"Gemini CLI 找不到模型：{model}", "bad_request")
+        return AdapterError(L(f"Gemini CLI 找不到模型：{model}", f"The Gemini CLI has no model {model}"), "bad_request")
     if "trusted" in low:
-        return AdapterError("Gemini CLI 拒绝在临时目录运行（版本太旧？需要支持 --skip-trust）", "unavailable")
-    return AdapterError(f"Gemini CLI 调用失败（退出码 {rc}）", "unavailable")
+        return AdapterError(L("Gemini CLI 拒绝在临时目录运行（版本太旧？需要支持 --skip-trust）",
+                              "The Gemini CLI refused to run in a temporary folder (too old? it needs --skip-trust)"), "unavailable")
+    return AdapterError(L(f"Gemini CLI 调用失败（退出码 {rc}）", f"The Gemini CLI failed (exit code {rc})"), "unavailable")
 
 
 class GeminiCliAdapter(Adapter):
@@ -188,7 +193,7 @@ class GeminiCliAdapter(Adapter):
                                             stdin=stdin, stdout=subprocess.PIPE, stderr=stderr,
                                             text=True, encoding="utf-8", errors="replace", bufsize=1)
             except OSError:
-                raise AdapterError("无法启动 gemini CLI", "unavailable")
+                raise AdapterError(L("无法启动 gemini CLI", "Could not start the gemini CLI"), "unavailable")
             timed_out = threading.Event()
 
             def _kill():
@@ -236,7 +241,7 @@ class GeminiCliAdapter(Adapter):
                     proc.kill()
                     proc.wait()
             if timed_out.is_set():
-                raise AdapterError("Gemini CLI 响应超时，稍后再试", "unavailable")
+                raise AdapterError(L("Gemini CLI 响应超时，稍后再试", "The Gemini CLI timed out; try again later"), "unavailable")
             if rc != 0 or err_event:
                 detail = err_event or stderr_file.read_text(encoding="utf-8", errors="replace")[-2000:]
                 raise _classify(detail, rc, self.model)

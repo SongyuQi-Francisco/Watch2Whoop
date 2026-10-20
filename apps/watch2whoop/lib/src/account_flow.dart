@@ -9,6 +9,7 @@ import 'account_api.dart';
 import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
+import 'i18n.dart';
 
 /// Short device label the server shows in the token list.
 String get deviceLabel {
@@ -103,6 +104,11 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   } catch (_) {}
   state.webLoginNeeded = false;
   await state.setAccountToken(null);
+  try {
+    await setLangOverride(null); // the next person starts in the system language
+  } catch (e) {
+    debugPrint('lang reset failed: $e');
+  }
   final c = state.config;
   await state.update(AppConfig(todayUrl: c.todayUrl, owHost: c.owHost, syncDaysBack: c.syncDaysBack));
 }

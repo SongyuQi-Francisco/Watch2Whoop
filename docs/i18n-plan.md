@@ -1,7 +1,7 @@
-# English version (issue #13): plan and checklist
+# English version (issues #13, #42): plan and checklist
 
-The product is Chinese-first today. English is added in stages, each a separate pull request ("Part of #13"), so that the
-many people editing `web/static/app.js` do not collide with one huge diff.
+The product is Chinese-first. Stage 1 (#20) added the i18n layer and the profile language; stage 2 (#42, same PR) puts the
+whole Today page, the server texts it shows and the app's native screens through it.
 
 ## How it works
 
@@ -9,20 +9,33 @@ many people editing `web/static/app.js` do not collide with one huge diff.
   Set in the Today page under Me → Profile; returned by `GET/PATCH /v1/users/{user}/profile` and `GET /v1/web/me`.
 - **Today page**: `web/static/i18n.js`, loaded before every other script (no build step).
   - `I18N.t(key, params)` with `{name}` placeholders; page scripts alias it as `tr` (app.js has many locals named `t`).
-  - Two tables, `ZH` and `EN`, one `"key": "text",` per line. New languages = another table with the same keys.
+  - **New text: the Chinese source is the key** (gettext style): `tr("恢复")`, `tr("最近 {n} 天", { n })`. The English is one
+    `"中文": "English",` line in `web/static/i18n-en.js`. The code stays readable for the Chinese-first maintainers, and a change
+    made in parallel only has to wrap its new strings in `tr()` and add their English.
+  - The stage-1 shell keeps its dotted keys (`tr("tab.today")`, tables `ZH` / `EN` in `i18n.js`).
+  - Chinese that is data, not UI (a regex on a server reason, a value stored in Chinese, the language names 中文 / English):
+    mark the line `// i18n-ok`; show stored values with `tr(value)` when they are a fixed vocabulary.
   - Static HTML: `data-i18n` (text), `data-i18n-aria`, `data-i18n-ph` (placeholder), `<html data-i18n-title>`.
   - Dates: `I18N.dayLabel / monthDay / yearMonth / monthShort / weekdaysMon / locale()`; never hard-code `"zh-CN"` in new code.
   - Language changes reload the page once (strings computed at startup, such as tab names, are only right after a reload).
+  - Switches: Me page 「语言 / Language」 (saved to the profile); login page 中文 / English (before login: from
+    `navigator.language`, remembered in localStorage by `I18N.choose`, written to the profile after login by `boot()`).
+  - Every API call sends `X-Body-Lang` (`I18N.headers()`).
+- **Server**: `body_engine/i18n.py` — `LangMiddleware` reads `X-Body-Lang` into a context variable (default zh, so MCP / AI
+  clients, scripts and older pages see no change); `L("中文", "English")`, `tl(label, TABLE)`, `is_en()`. AI tool runs
+  (`assistant.tools.run_tool`) always run in zh, also inside the in-page chat. HTTP error details are translated once in the
+  exception handler (`errors_en.py`). Reminders store `title_en` / `message_en` next to the Chinese.
   - Key prefixes by area: `tab. hdr. common. login. err. banner. picker. who. me. jarvis. profile. activate.`;
     add a prefix to the list in `body_engine/tests/test_i18n.py` when you start a new area.
 - **Tests**: `body_engine/tests/test_i18n.py` (every key in zh and en with the same placeholders, no Chinese in the English
-  table, every key used by the scripts / HTML exists, i18n.js loaded first and cached by `sw.js`);
+  tables, every key used by the scripts / HTML exists, **no Chinese literal outside `tr()` in any page script** (scanner in
+  `tests/i18n_scan.py`), every Chinese text in the HTML marked `data-i18n*`, i18n files loaded first and cached by `sw.js`);
   `apps/watch2whoop/test/i18n_test.dart` (every Chinese literal in the app is the zh half of `tr('中文', 'English')`).
 - **AI**: the personas (`ai/system_prompt.md`, `ai/system_prompt_lite.md`, `assistant/CLAUDE.md`) reply in the user's
   language: `get_briefing` → `me.language`, and the in-page chat system prompt lists 语言 under 用户. Tool results stay
   Chinese / structured; the model translates.
-- **iOS app**: `tr('中文', 'English')` by the system language (`lib/src/i18n.dart`); the embedded Today page follows the
-  same system language unless the profile sets one.
+- **iOS app**: `tr('中文', 'English')` (`lib/src/i18n.dart`): the system language by default; the Today page posts
+  `lang:zh|en|` on the `Watch2Whoop` JS channel after login and on the login switch, and the native screens follow it.
 
 ## Stage 1 (done)
 
@@ -32,31 +45,20 @@ many people editing `web/static/app.js` do not collide with one huge diff.
 - [x] AI personas: reply in the user's language
 - [x] iOS app: all onboarding / sync / home strings already bilingual; coverage test added
 
-## Stage 2: remaining Today page (one PR per bullet keeps diffs small)
+## Stage 2 (#42, done in the same PR)
 
-- [ ] Today tab cards and sheets: recovery / sleep / strain / load / training / nutrition sheets, reminders, meal
-      templates (`RENDER_today`, `recoverySheet` … `allRemindersSheet`, `goalSheet`, `mealSheet`), `SHORT` reason labels,
-      `ZONE_LABEL`, `CATEGORY`, `LEVEL`, `fmtMin` / `fmtNum` units, sleep chart weekday labels (`WEEK`)
-- [ ] Trends tab: metric names, ranges, status cards, `nightSheet`, `RENDER_trends`
-- [ ] Log tab: journal, events, training calendar / day / plan sheets (`RENDER_record`, `eventSheet`, `numberSheet`,
-      `daySheet`, `planSheet`, `sessionHtml`, `EVENT_CATEGORY`, `SUPP_STATUS`, intensity names)
-- [ ] Food tab: recipes, recipe sheet, food entry, shopping (`RENDER_food`, `recipeSheet`, `foodEntrySheet`, `SLOTS`)
-- [ ] Me tab details: healthspan, status / lab sheets (`statusSheet`, `labSheet`, `labsSheet`, `observationSheet`,
-      `healthspanSheet`), toasts such as 已删除 / 已撤销 / 已记
-- [ ] `ai.js` (AI settings, chat panel, fallback AI consent sheet), `history.js` (health history import),
-      `profile.js` consent sheet wrapper (buttons, headings; the consent text itself is stage 3), `sw.js` offline message
-- [ ] Server error `detail` strings shown in toasts: return a stable `code` next to the Chinese `detail`
-      and translate the code in the page (keep `detail` for older clients)
+- [x] Every Today page script through `tr()` (app.js, ai.js, account.js incl. the step-by-step sign-in, grocery.js,
+      history.js, profile.js, sw.js offline message), index.html marked; enforced by `test_no_chinese_outside_tr`
+- [x] Me page language switch, login page language switch (remembered, saved to the profile after login)
+- [x] Server texts the page shows: explain glossary + personal advice, reminders (`title_en` / `message_en`), status card
+      labels, trends / today / training labels, error details (`errors_en.py`)
+- [x] iOS app native screens follow the profile language
 
-## Stage 3: server texts
+## Stage 3: still Chinese
 
-- [ ] Explain glossary (`explain/glossary.py`, `glossary_trends.py`, `personal.py`): add English entries, choose by the
-      viewer's `language` (fall back to zh)
-- [ ] Reminders (`rules/`): titles and bodies by language; keep the thresholds and sources in `params.py` unchanged
-- [ ] Status card labels (`assistant/status.py`) and the goal-weight item written by `profile/store.py`
 - [ ] Consent form in English: own file and **own version number** (`consent.en.md`, `docs/family-consent.en.md`,
-      identical check like the Chinese one); record which language was accepted in `user_consents`
-- [ ] Fallback AI consent text (`ai/fallback.py`)
+      identical check like the Chinese one); record which language was accepted in `user_consents` (legal text: owner review)
+- [ ] User data stays as stored (food names, recipes, journal items, notes and status cards the AI wrote)
 
 ## Stage 4: handbook and app store
 

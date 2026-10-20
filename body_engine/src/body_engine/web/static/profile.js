@@ -10,8 +10,9 @@
   let P = null;              // result of the latest GET /profile
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
-  const tr = window.I18N.t;
+  const tr = (k, p) => window.I18N.t(k, p);
   const LATER_KEY = "be.profile.later";
+  const ZH_NAME = "中文";   // i18n-ok (the language picker shows each language in its own name)
   const TZS = ["Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Adelaide", "Australia/Perth",
     "Pacific/Auckland", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Taipei", "Asia/Singapore", "Asia/Kuala_Lumpur",
     "Asia/Tokyo", "Europe/London", "America/Los_Angeles", "America/New_York"];
@@ -69,14 +70,14 @@
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-modal", "true");
     el.innerHTML = `<div class="consent-in">
-      <h1>${reconfirm ? "同意书更新了" : "使用前请确认"}</h1>
-      <p class="para" style="margin:0">${reconfirm ? "《健康数据使用同意书》有了新版本，请再看一遍。" : "Watch2Whoop 会处理你的健康数据。请先看完下面的要点（或全文），同意后才开始处理。"}</p>
+      <h1>${esc(reconfirm ? tr("同意书更新了") : tr("使用前请确认"))}</h1>
+      <p class="para" style="margin:0">${esc(reconfirm ? tr("《健康数据使用同意书》有了新版本，请再看一遍。") : tr("Watch2Whoop 会处理你的健康数据。请先看完下面的要点（或全文），同意后才开始处理。"))}</p>
       <ul>${c.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
-      <button class="link" id="consent-more" type="button">阅读完整同意书（版本 ${esc(c.version)}）</button>
+      <button class="link" id="consent-more" type="button">${esc(tr("阅读完整同意书（版本 {v}）", { v: c.version }))}</button>
       <div class="consent-full" id="consent-full" hidden>${md(c.text)}</div>
-      <label class="consent-check"><input type="checkbox" id="consent-ok"><span>我已阅读并同意《健康数据使用同意书》</span></label>
-      <div class="btns"><button class="btn btn-primary" id="consent-yes" disabled>同意并继续</button>
-        ${reconfirm ? "" : `<button class="btn" id="consent-no">不同意</button>`}</div>
+      <label class="consent-check"><input type="checkbox" id="consent-ok"><span>${esc(tr("我已阅读并同意《健康数据使用同意书》"))}</span></label>
+      <div class="btns"><button class="btn btn-primary" id="consent-yes" disabled>${esc(tr("同意并继续"))}</button>
+        ${reconfirm ? "" : `<button class="btn" id="consent-no">${esc(tr("不同意"))}</button>`}</div>
       <p class="small muted" id="consent-msg" style="margin-top:14px"></p></div>`;
     document.body.appendChild(el);
     document.body.style.overflow = "hidden";
@@ -84,7 +85,7 @@
     $("#consent-ok", el).onchange = (e) => { $("#consent-yes", el).disabled = !e.target.checked; };
     const no = $("#consent-no", el);
     if (no) no.onclick = () => {
-      $("#consent-msg", el).textContent = "不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。";
+      $("#consent-msg", el).textContent = tr("不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。");
     };
     $("#consent-yes", el).onclick = async () => {
       $("#consent-yes", el).disabled = true;
@@ -97,7 +98,7 @@
       }
       el.remove();
       document.body.style.overflow = "";
-      C.toast("谢谢！同步上来的数据一小时内开始处理");
+      C.toast(tr("谢谢！同步上来的数据一小时内开始处理"));
       maybePrompt();
     };
   }
@@ -136,7 +137,7 @@
       <div class="field"><label>${tr("profile.goal")}</label><input class="input" id="pf-goal" type="number" inputmode="decimal" min="30" max="250" step="0.1" value="${v(p.goal_weight_kg)}"></div>
       <div class="field"><label>${tr("profile.tz")}</label><select class="input" id="pf-tz">${tzOptions(p.timezone)}</select></div>
       <div class="field"><label>${tr("profile.lang")}</label><select class="input" id="pf-lang">
-        <option value="">${tr("profile.langAuto")}</option><option value="zh"${p.language === "zh" ? " selected" : ""}>中文</option>
+        <option value="">${tr("profile.langAuto")}</option><option value="zh"${p.language === "zh" ? " selected" : ""}>${ZH_NAME}</option>
         <option value="en"${p.language === "en" ? " selected" : ""}>English</option></select></div>
       <p class="small muted" id="pf-msg" style="margin-top:10px"></p>
       <div class="btns"><button class="btn btn-primary" id="pf-save">${tr("common.save")}</button>${first ? `<button class="btn" id="pf-later">${tr("profile.later")}</button>` : ""}</div>`,
