@@ -31,6 +31,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final WebViewController _web;
   String? _loadedUrl;
+  String? _loadedCode;
+  DateTime _loadedAt = DateTime.fromMillisecondsSinceEpoch(0);
   String? _error;
   bool _loading = true;
 
@@ -97,7 +99,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _onConfig() {
     // Reload when the Today page address changed or a new one-time login code arrived.
     final c = AppState.instance.config;
-    if (c.todayEntry.toString() != _loadedUrl || c.pendingLoginCode != null) _load();
+    if (c.todayEntry.toString() != _loadedUrl || (c.pendingLoginCode != null && c.pendingLoginCode != _loadedCode)) _load();
   }
 
   /// Already set up, then scanned another setup QR code (e.g. switching phone number / re-invited): ask before applying it.
@@ -138,7 +140,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
-    if (state == AppLifecycleState.resumed) HealthSync.instance.drainNativeLog();
+    if (state != AppLifecycleState.resumed) return;
+    HealthSync.instance.drainNativeLog();
+    // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
+    // ran its script), so try again, but not while a load that just started may still be redeeming the code.
+    if (AppState.instance.config.pendingLoginCode != null && DateTime.now().difference(_loadedAt) > const Duration(seconds: 20)) _load();
   }
 
   void _syncBackground() {
@@ -150,15 +156,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _syncBackground();
     final config = AppState.instance.config;
     final url = config.todayEntry.toString();
+    final code = config.pendingLoginCode;
     setState(() {
       _loadedUrl = url;
+      _loadedCode = code;
+      _loadedAt = DateTime.now();
       _error = null;
       _loading = true;
     });
-    final code = config.pendingLoginCode;
     if (code != null) {
-      // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it from the address bar right away; the code is single-use and cleared after use.
-      await AppState.instance.update(config.copyWith(clearPendingLoginCode: true));
+      // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it
+      // from the address bar right away. It stays saved until the page reports `logged-in` / `login-failed` (_onBridge).
       await _web.loadRequest(config.todayEntry.replace(fragment: 'login=$code'));
     } else {
       await _web.loadRequest(Uri.parse(url));
@@ -167,6 +175,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   void _onBridge(String message) {
     if (message == 'sync' || message == 'settings') _openSync();
+    final c = AppState.instance.config;
+    if (loginCodeSettled(message) && c.pendingLoginCode != null) {
+      AppState.instance.update(c.copyWith(clearPendingLoginCode: true));
+    }
   }
 
   Future<NavigationDecision> _onNavigation(NavigationRequest req) async {
