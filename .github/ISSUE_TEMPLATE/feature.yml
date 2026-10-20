@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an idea or a new platform / data source
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which part would change? A maintainer adds the matching `platform:*` label.
+      multiple: true
+      options:
+        - iOS app
+        - Android app
+        - HarmonyOS app
+        - Today page (web / PWA)
+        - Server (Body Engine, AI / MCP, deployment)
+        - iOS Shortcut
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How it could work. For a new watch / platform, see docs/apps.md for what a client has to implement.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to work on this myself
