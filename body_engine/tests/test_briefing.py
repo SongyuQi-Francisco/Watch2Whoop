@@ -57,10 +57,10 @@ def test_relaxed_schema_and_fill_defaults():
 def test_tool_definitions_budget():
     """tools/list is sent with every model call. ~47.6k chars before the 2026-10-18 slimming; keep it from growing back.
     36k -> 41k on 2026-10-20 for the 9 grocery tools (docs/grocery-plan.md); 41.5k on 2026-10-21 for lookup_barcode and
-    save_product's product_url / nutrition_source (grocery-plan §7)."""
+    save_product's product_url / nutrition_source (grocery-plan §7); 41.8k for set_stores (issue #44)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 41500, size
+    assert size < 41800, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 

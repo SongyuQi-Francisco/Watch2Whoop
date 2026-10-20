@@ -18,11 +18,11 @@ def _d(s):
 
 
 def _slim_product(p: dict) -> dict:
-    return {k: v for k, v in p.items() if v not in (None, [], {}, "") and k not in ("category_label", "size_label", "links")}
+    return {k: v for k, v in p.items() if v not in (None, [], {}, "") and k not in ("category_label", "size_label", "store_label", "links")}
 
 
 def _slim_list(lst: dict) -> dict:   # store links are for the page; the AI has product_url via find_products
-    return {**lst, "items": [{k: v for k, v in i.items() if k != "links"} for i in lst.get("items", [])]}
+    return {**lst, "items": [{k: v for k, v in i.items() if k not in ("links", "store_label")} for i in lst.get("items", [])]}
 
 
 NUTRITION = schema({k: _n("number") for k in P.NUTRITION_KEYS})
@@ -57,7 +57,7 @@ TOOL_SPECS: list[dict] = [
             "purine_level": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
             "red_meat": _n("boolean"), "barcode": _n("string"),
             "matches": {"type": ["array", "null"], "items": {"type": "string"}}, "note": _n("string"),
-            "product_url": _n("string", "Coles / Woolworths 商品页，\"\"=清除"),
+            "product_url": _n("string", "Coles / WWS 商品页，\"\"=清除"),
             "nutrition_source": _n("string", "如 lookup_barcode 的 source"),
         }),
         handler=lambda conn, uid, a: _slim_product(store.save_product(conn, uid, a, a["product_id"])),
@@ -69,6 +69,13 @@ TOOL_SPECS: list[dict] = [
         input_schema=schema({"barcode": {"type": "string"}}),
         handler=lambda conn, uid, a: off.lookup(uid, a["barcode"]),
         scope="nutrition",
+    ),
+    dict(
+        name="set_stores",
+        description="设已连接的超市（woolworths=WWS），只显示它们的链接 / 价格；[]=都不连。",
+        input_schema=schema({"stores": {"type": "array", "items": {"type": "string", "enum": list(P.STORES)}}}),
+        handler=lambda conn, uid, a: store.set_connected_stores(conn, uid, a["stores"]),
+        scope="nutrition", writes=True,
     ),
     dict(
         name="remove_product",
@@ -87,7 +94,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_shopping_list",
-        description="一周的采购清单（按类别，买了没有、估价、warnings）和家里存货 pantry。",
+        description="一周的采购清单（按类别，买了没有、估价、warnings）、存货 pantry、connected_stores。",
         input_schema=schema({"user": USER, "week": WEEK}),
         handler=lambda conn, uid, a: _slim_list(store.get_list(conn, uid, _d(a["week"]), with_pantry=True)),
         scope="nutrition",
