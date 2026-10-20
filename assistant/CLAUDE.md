@@ -71,7 +71,7 @@
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
 | 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |
-| 记错了 | 饮食 / 训练 `undo_sparky_entry`、日记 `delete_journal_entry`、化验 `delete_lab_results`（都只能撤销你自己写的）、录错的补剂 `delete_supplement`；事件用 `update_event` |
+| 记错了 | 饮食 / 训练 `undo_sparky_entry`（id 在 `get_nutrition(include_entries=true)` / `get_training_log` 里；别的来源的让用户在今天页饮食明细删）、日记 `delete_journal_entry`、化验 `delete_lab_results`（都只能撤销你自己写的）、录错的补剂 `delete_supplement`；事件用 `update_event` |
 
 一句话常常要拆成几类，例：「昨晚两瓶啤酒，12 点才吃晚饭」→ 日记 `alcohol`=1（备注两瓶啤酒）+ `late_dinner`=1；如果他说了吃的什么，再记饮食（啤酒也是饮食）。
 

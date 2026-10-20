@@ -463,6 +463,64 @@ def test_undo_only_deletes_assistant_entries(conn, world):
         sparky_write.undo_entry(conn, a, "food", d, "app", client=fake)
 
 
+def test_undo_by_content_match(conn, world):
+    """Issue #25: without an id, food is matched exactly by date + meal + name (+ time); 0 or several matches refuse."""
+    ids, _ = world
+    a = ids["A"]
+    d = "2026-10-16"
+    rows = [{"id": "p1", "source": "body_assistant", "meal_type": "dinner", "food_name": "蘑菇烧鸡（去皮鸡腿 170g）",
+             "entry_time": "19:00:00"},
+            {"id": "p2", "source": "body_assistant", "meal_type": "dinner", "food_name": "蘑菇烧鸡（去皮鸡腿 170g）",
+             "entry_time": "21:30:00"},
+            {"id": "b1", "source": "body_assistant", "meal_type": "snacks", "food_name": "啤酒", "entry_time": None},
+            {"id": "y1", "source": None, "meal_type": "breakfast", "food_name": "酸奶"}]
+    fake = FakeSparky(food={d: rows})
+    undo = lambda **kw: sparky_write.undo_entry(conn, a, "food", d, None, client=fake, **{"meal": None, "food": None,
+                                                                                        "time": None, **kw})
+    with pytest.raises(ValueError, match="没有「啤酒」"):          # 0 matches: wrong meal
+        undo(meal="dinner", food="啤酒")
+    with pytest.raises(ValueError, match="有 2 条.*p1.*p2"):     # several: refuse, list the ids
+        undo(meal="dinner", food="蘑菇烧鸡(去皮鸡腿170g)")
+    with pytest.raises(ValueError, match="meal"):
+        undo(meal="supper", food="啤酒")
+    assert fake.writes == []
+    assert undo(meal="dinner", food="蘑菇烧鸡（去皮鸡腿 170g）", time="21:30")["deleted"]["id"] == "p2"
+    assert undo(meal="snacks", food=" 啤酒 ")["deleted"]["id"] == "b1"
+    with pytest.raises(PermissionError, match="今天页"):          # logged elsewhere: the user deletes it on the Today page
+        undo(meal="breakfast", food="酸奶")
+    assert fake.writes == [("DELETE", "/food-entries/p2", None), ("DELETE", "/food-entries/b1", None)]
+    # Workouts need an id; SparkyFitness ids may be numbers while the AI passes a string
+    fake = FakeSparky(sessions={d: [{"id": 7, "type": "preset", "source": "body_assistant", "name": "胸"}]})
+    with pytest.raises(ValueError, match="训练要给 id"):
+        sparky_write.undo_entry(conn, a, "workout", d, None, client=fake)
+    assert sparky_write.undo_entry(conn, a, "workout", d, "7", client=fake)["deleted"]["name"] == "胸"
+    assert fake.writes == [("DELETE", "/exercise-preset-entries/7", None)]
+    # Through the tool (relaxed MCP call without the optional fields)
+    assert TOOLS_BY_NAME["undo_sparky_entry"].input_schema["required"] == ["kind", "date", "id", "meal", "food", "time"]
+
+
+def test_delete_food_entry_api(client, world, monkeypatch):
+    """Today page: DELETE /v1/users/me/nutrition/entries/{id}?date= deletes any of your own entries (write scope, only for yourself)."""
+    ids, tok = world
+    d = "2026-10-16"
+    fakes = {ids["A"]: FakeSparky(food={d: [{"id": "app-1", "source": None, "meal_type": "breakfast", "food_name": "酸奶"}]}),
+             ids["B"]: FakeSparky()}
+    monkeypatch.setattr(sparky_write.sparky_client, "write_client_for_user", lambda conn, uid: fakes[uid])
+    url = f"/v1/users/me/nutrition/entries/app-1?date={d}"
+    assert client.delete(url, headers=h(tok["A_ro"])).status_code == 403                      # read-only token
+    assert client.delete(f"/v1/users/{ids['A']}/nutrition/entries/app-1?date={d}", headers=h(tok["B"])).status_code == 403
+    assert client.delete(url, headers=h(tok["B"])).status_code == 404                          # B's own account has no such entry
+    assert client.delete(f"/v1/users/me/nutrition/entries/app-1", headers=h(tok["A"])).status_code == 422  # date required
+    assert client.delete(f"/v1/users/me/nutrition/entries/a%2Fb?date={d}", headers=h(tok["A"])).status_code in (404, 422)
+    assert fakes[ids["A"]].writes == [] and fakes[ids["B"]].writes == []
+    web = TestClient(api.app, base_url="https://testserver")
+    assert web.post("/v1/web/login", json={"token": tok["A"]}).status_code == 200
+    assert web.delete(url).status_code == 403                                                    # cookie write without X-Body-Web
+    r = web.delete(url, headers={"X-Body-Web": "1"})
+    assert r.status_code == 200 and r.json()["deleted"]["food"] == "酸奶"
+    assert fakes[ids["A"]].writes == [("DELETE", "/food-entries/app-1", None)]
+
+
 def test_write_tools_only_for_self(conn, world):
     ids, _ = world
     # Write tools have no user parameter; run_tool runs as the viewer itself; a manually injected user is blocked too
