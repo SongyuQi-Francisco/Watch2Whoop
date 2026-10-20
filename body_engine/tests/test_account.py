@@ -673,3 +673,21 @@ def test_referral_code_through_the_api_and_web(client, dsn, _env, monkeypatch):
         assert needle in js, needle
     assert "好友的邀请码" in client.get("/app/").text
     client.cookies.clear()
+
+
+def test_referral_and_invite_step_texts_are_bilingual(client):
+    """Every tr("中文") key in account.js and every data-i18n key of the invite step has English (account.js EN table,
+    same convention as #20's i18n layer: the Chinese source text is the key, {name} placeholders match)."""
+    import re
+    js = client.get("/app/account.js").text
+    table = js[js.index("const EN = {"):js.index("};", js.index("const EN = {"))]
+    en = dict(re.findall(r'^\s*"([^"]+)": "([^"]+)",$', table, re.M))
+    keys = set(re.findall(r'\btr\("([^"]+)"', js))
+    html = client.get("/app/").text
+    step = html[html.index('<form id="ls-invite"'):html.index("</form>", html.index('<form id="ls-invite"'))]
+    keys |= set(re.findall(r'data-i18n(?:-aria)?="([^"]+)"', step))
+    assert keys and keys <= set(en), keys - set(en)
+    for zh, e in en.items():
+        assert set(re.findall(r"\{(\w+)\}", zh)) == set(re.findall(r"\{(\w+)\}", e)), zh
+        assert not re.search(r"[\u4e00-\u9fff]", e), e
+    assert "Invite friends" in en.values()

@@ -246,7 +246,7 @@ def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_use
     if not params.referrals_enabled():
         raise HTTPException(404, "referrals_disabled")
     if user not in ("me", str(viewer["id"])):
-        raise HTTPException(403, "邀请码只能看自己的")
+        raise HTTPException(403, "own_code_only")   # language-neutral codes; the page shows its own text
     try:
         res = invites.referral_code(conn, viewer["id"])
     except ValueError as e:

@@ -88,11 +88,11 @@
       </div>
     </form>
     <form id="ls-invite" class="login-step" novalidate hidden>
-      <p>输入激活码开通账号<br><span class="small">管理员给的激活码，或好友的邀请码</span></p>
-      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXXX-XXXXX" aria-label="激活码" enterkeyhint="go">
-      <button type="submit" class="btn btn-primary btn-block" id="ap-btn">开通</button>
+      <p><span data-i18n="输入激活码开通账号">输入激活码开通账号</span><br><span class="small" data-i18n="管理员给的激活码，或好友的邀请码">管理员给的激活码，或好友的邀请码</span></p>
+      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXXX-XXXXX" aria-label="激活码" data-i18n-aria="激活码" enterkeyhint="go">
+      <button type="submit" class="btn btn-primary btn-block" id="ap-btn" data-i18n="开通">开通</button>
       <p class="login-error" id="ap-error" role="alert"></p>
-      <div class="login-links"><button type="button" class="linkbtn" id="ap-logout">‹ 退出，换个账号</button></div>
+      <div class="login-links"><button type="button" class="linkbtn" id="ap-logout" data-i18n="‹ 退出，换个账号">‹ 退出，换个账号</button></div>
     </form>
     <details class="login-other" id="login-other">
       <summary>其他登录方式</summary>
