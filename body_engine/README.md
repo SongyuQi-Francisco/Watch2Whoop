@@ -285,6 +285,13 @@ Tools: `list_recipes`, `get_recipe`, `suggest_meals` (read); `create_recipe`, `u
 - When created / renamed / ingredients changed, a copy is synced to SparkyFitness (custom food `recipe:<id>` + meal); an error there does not affect Body Engine.
 - Shopping preparation: ingredients carry `purchase_unit` (purchase-unit hint) and `store` (costco / woolworths / other, left empty for now).
 
+### Grocery (`grocery/`, tables `grocery_products` / `pantry_items` / `shopping_lists` / `shopping_items`, migration 240; design in `docs/grocery-plan.md`)
+Tools: `find_products`, `get_shopping_list` (read); `save_product`, `generate_shopping_list`, `add_shopping_items`, `mark_bought`, `set_pantry` (write, run directly); `remove_product`, `remove_shopping_items` (ask first, `ALWAYS_CONFIRM`).
+- Product library per user: name, brand, store (free text), category, package size + unit (g / ml / pcs, `piece_g` for things sold by count), price per package + currency, nutrition per 100 g, purine level, red-meat flag, barcode, `matches` (ingredient names it covers). `save_product` upserts by id, barcode, or name + brand.
+- Weekly list (`week_start` = Monday in the user's time zone): plan = recipes × servings, meal templates × times, free foods → merged by ingredient name → matched to products → minus pantry → whole packages (unmatched: rounded up to 50 g) → estimated cost. Regenerating replaces only unbought plan lines. `warnings`: weekly red meat / short rib over the caps in `rules/params.py`, high-purine products, per-100 g sat fat / sugar / sodium above the FSA "high" lines (`grocery/params.py`).
+- Ticking a line adds it to the pantry (unticking takes it back); a paid price updates the product price per package.
+- API (scope `nutrition`): `GET/POST /v1/users/{user}/grocery/products`, `PATCH/DELETE …/products/{id}`, `GET …/list?week=&pantry=`, `POST …/list/generate`, `POST …/list/items`, `PATCH/DELETE …/list/items/{id}`, `GET/PUT …/pantry`. Today page: 饮食 → 采购 (`web/static/grocery.js`).
+
 `get_profile` now also returns the user's local `now_local` and weekday (the butler uses it to decide "which day the small hours belong to"); `get_training_log` gives each workout an `id`.
 `run_tool` runs a tool inside a savepoint: on error only what the tool had half-written is rolled back, and a failed call is still audited (the MCP server commits even after an error).
 

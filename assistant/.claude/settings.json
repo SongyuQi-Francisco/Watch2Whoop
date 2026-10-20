@@ -31,7 +31,9 @@
       "mcp__body-engine__delete_journal_entry",
       "mcp__body-engine__delete_lab_results",
       "mcp__body-engine__delete_observation",
-      "mcp__body-engine__delete_supplement"
+      "mcp__body-engine__delete_supplement",
+      "mcp__body-engine__remove_product",
+      "mcp__body-engine__remove_shopping_items"
     ],
     "deny": [
       "Bash",
