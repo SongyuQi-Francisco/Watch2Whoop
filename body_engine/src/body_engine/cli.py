@@ -20,6 +20,7 @@ from .rules import engine as rules_engine
 from .goals import store as goal_store
 from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, tokens as ai_tokens
+from .feedback import cli as feedback_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare",
@@ -186,6 +187,7 @@ def main() -> None:
     ar.add_argument("--user-id", type=int, required=True)
     ar.add_argument("--token-id", type=int, required=True)
     ai_fallback_cli.add_parser(sub)
+    feedback_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -310,6 +312,8 @@ def main() -> None:
             print("revoked" if ai_tokens.revoke(conn, args.user_id, args.token_id) else "not found / already revoked")
         elif args.cmd == "ai-fallback":
             ai_fallback_cli.run(conn, args)
+        elif args.cmd == "feedback":
+            feedback_cli.run(conn, args)
         elif args.cmd == "import-apple-export":
             export_date = args.export_date or _export_date(args.processed_dir)
             print(f"export date: {export_date}")

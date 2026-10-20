@@ -1,7 +1,7 @@
 # AI 自动反馈：根规则层 + 报告通道（设计，待部署者选方案）
 
 > 2026-10-21 部署者提出：所有 AI（托底 AI、用户自己的 API key、外部订阅 AI 经 MCP、身体管家）在帮用户时，**发现 bug 或听到新需求，就自己打包报告给开发者，并告诉用户报告了**（先问用户是可选的）。怎么送到开发者手里没有定，要选项。
-> 这份只是设计；实现在部署者选定方案后另开 PR。
+> **2026-10-21 部署者已选：按推荐做**（A' + C 分两期；默认 auto，用户可改 ask / off；摘要发到部署者邮箱，地址只配在服务器环境变量；同意书加一句并升版本）。第 1 期已实现（见第 8 节），第 2 期私有仓库镜像以后做。
 
 ## 0. 结论先说
 - **根规则**：一份带版本号的 `ai/root_rules.md`，随代码发布，不进数据库、没有任何写工具能改；从同一份文件注入 4 个地方（今天页内对话 / 托底 AI 的 system prompt、MCP `instructions`、prompt `butler`、`get_briefing.system_rules`），声明优先于用户长期记忆。
@@ -132,3 +132,11 @@
    - 替代：GitHub App（只装在这一个仓库，权限 Issues: R/W）。不挂在个人账号上、token 自动轮换，但要多管一个 App 的私钥；只有你一个维护者时 PAT 够用，以后有多个维护者再换。
 3. token 放 Ali 的 `secrets/github_feedback_token`（只在 `compose.body.yaml` 挂进 body-engine），`BODY_FEEDBACK_MODE=private_issue`。
 4. 公开仓库的提升用你电脑上已登录的 `gh`，服务器上不放公开仓库的任何 token。
+
+## 8. 第 1 期实现情况（2026-10-21）
+- 根规则 `ai/root_rules.md`（v1）注入：页内对话 / 托底 AI 的 system prompt（`ai/prompt.base_prompt`，`butler` prompt 同一份）、**MCP instructions 放了全文**（比设计的一行更稳，只在会话开始发一次）、`get_briefing.system_rules`（`version`、`feedback_mode`、`text`）、`assistant/CLAUDE.md` 一行。
+- 迁移 `340_feedback.sql`；`feedback/`：`sanitize.py`、`store.py`、`params.py`、`tools.py`（`report_feedback` 写、不用确认、托底 AI 也有；`list_feedback`）、`api.py`、`digest.py`、`cli.py`。
+- 「我 → 反馈记录」：`web/static/feedback.js`（模式切换、列表、撤回）。
+- 只读 token 看不到写工具，所以也不能 `report_feedback`（和其他写工具一样）。
+- 同意书 `2026-10-21.1` 加了「自动反馈」一条；`consent.py` 的要点加一条。
+- 测试 `tests/test_feedback.py`。

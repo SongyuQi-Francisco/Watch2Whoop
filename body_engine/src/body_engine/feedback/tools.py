@@ -8,8 +8,7 @@ _s = nullable("string")
 TOOL_SPECS: list[dict] = [
     dict(
         name="report_feedback",
-        description="把系统 bug 或用户的新需求报告给开发者（根规则）。只写产品行为：不写健康数值、名字、邮箱、电话、token、链接；"
-                    "服务端会再去敏、查重、限流。返回 tell_user：照它用一句话告诉用户。",
+        description="把系统 bug / 用户的新需求报告给开发者（根规则）。只写产品行为，不写健康数值、名字、联系方式。照返回的 tell_user 告诉用户。",
         input_schema=schema({
             "kind": {"type": "string", "enum": ["bug", "feature"]},
             "title": {"type": "string", "description": "≤ 60 字"},
@@ -24,7 +23,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="list_feedback",
-        description="用户自己报过（或 +1 过）的反馈和进展。",
+        description="用户报过（或 +1）的反馈和进展。",
         input_schema=schema({}),
         handler=lambda conn, uid, a: store.list_for_user(conn, uid),
         scope="memory",
