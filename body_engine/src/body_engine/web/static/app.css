@@ -307,15 +307,46 @@ textarea.input { resize: none; }
 .sev button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
 
 /* ---------- Login, hints ---------- */
-.login { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top) + 20px) 28px calc(env(safe-area-inset-bottom) + 20px); }
-.login-card { width: 100%; max-width: 360px; }
+.login { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 20px); }
+.login-card { width: 100%; max-width: 360px; margin: auto; }
 .login-card img { display: block; margin: 0 auto 18px; border-radius: 14px; }
 .login-card h1 { margin: 0 0 6px; font-size: 26px; font-weight: 700; text-align: center; letter-spacing: -0.02em; }
-.login-card p { text-align: center; font-size: 14px; color: var(--text-2); margin: 0 0 22px; }
+.login-card p { text-align: center; font-size: 14px; color: var(--text-2); margin: 0 0 22px; overflow-wrap: anywhere; }
+.login-card p b { color: var(--text); font-weight: 600; }
+.login-card p .small { font-size: 13px; color: var(--text-3); }
 .login-card .input { margin-bottom: 10px; }
+.login-code { text-align: center; font-size: 22px; letter-spacing: .3em; font-variant-numeric: tabular-nums; }
+.login-code::placeholder { font-size: 16px; letter-spacing: .05em; }
+#ap-code { text-transform: uppercase; letter-spacing: .12em; }
+.login-steps { list-style: none; display: flex; justify-content: center; gap: 6px; padding: 0; margin: 14px 0 22px; font-size: 12px; color: var(--text-3); }
+.login-steps li { display: flex; align-items: center; gap: 5px; }
+.login-steps li + li::before { content: ""; width: 18px; height: 1px; background: var(--text-3); margin-right: 1px; opacity: .6; }
+.login-steps i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid currentColor; font-size: 11px; font-weight: 600; }
+.login-steps li.done { color: var(--good); }
+.login-steps li.done i { background: var(--good-soft); border-color: transparent; }
+.login-steps li[aria-current="step"] { color: var(--text); font-weight: 600; }
+.login-steps li[aria-current="step"] i { background: var(--text); color: var(--bg); border-color: var(--text); }
+.login-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.login-links:has(> :only-child) { justify-content: center; }
+.linkbtn { background: none; border: 0; padding: 6px 2px; color: var(--text-2); font-size: 14px; cursor: pointer; }
+.linkbtn[disabled] { color: var(--text-3); cursor: default; }
+.login-or { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--text-3); font-size: 12px; }
+.login-or::before, .login-or::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
+.login-other { margin-top: 26px; border-top: 1px solid var(--hair); padding-top: 14px; }
+.login-other > summary { list-style: none; text-align: center; font-size: 13px; color: var(--text-2); cursor: pointer; padding: 4px; }
+.login-other > summary::-webkit-details-marker { display: none; }
+.login-other > summary::after { content: " ›"; }
+.login-other[open] > summary::after { content: " ⌄"; }
+.login-other[open] > summary { margin-bottom: 14px; }
+.login-other.only { border-top: 0; margin-top: 0; padding-top: 0; }
+.login-other.only > summary { display: none; }
+.login-other.only p { margin: 14px 0 22px; }
+.login-other.only #login-btn { background: var(--text); color: var(--bg); }
+.login-other p { font-size: 13px; margin-bottom: 14px; }
 .login-app { display: block; text-align: center; font-size: 13px; color: var(--text-2); margin-top: 18px; text-decoration: none; }
 .login-app[hidden] { display: none; }
-.login-error { color: var(--bad); font-size: 13px; text-align: center; min-height: 1.2em; margin: 10px 0 0 !important; }
+.login-card .login-error { color: var(--bad); font-size: 13px; text-align: center; min-height: 1.2em; margin: 10px 0 0 !important; }
+.login-card .login-error.ok { color: var(--text-2); }
 .empty { text-align: center; color: var(--text-2); padding: 28px 12px; font-size: 14px; }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 50; bottom: calc(var(--tabbar-h) + var(--ask-h) + env(safe-area-inset-bottom) + 16px);

@@ -57,16 +57,53 @@
   </div>
 </div>
 
+<!-- Sign-in is a step flow, one thing per screen (account.js drives it): 1 e-mail → 2 six-digit code → 3 invite code (pending
+     accounts only). The older ways (one-time login code, activation code, token) stay under 「其他登录方式」 (app.js). -->
 <div id="login" class="login" hidden>
-  <form id="login-form" class="login-card" autocomplete="off">
+  <div class="login-card">
     <img src="icon.svg" alt="" width="60" height="60">
     <h1>身体管理</h1>
-    <p>输入激活码（16 位）、登录码（12 位）或 token</p>
-    <input id="token" class="input" name="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="激活码 / 登录码" aria-label="激活码、登录码或 token" required>
-    <button type="submit" class="btn btn-primary btn-block" id="login-btn">登录</button>
-    <p class="login-error" id="login-error" role="alert"></p>
+    <ol class="login-steps" id="login-steps" aria-label="登录步骤" hidden>
+      <li data-step="email"><i>1</i><span>邮箱</span></li>
+      <li data-step="code"><i>2</i><span>验证码</span></li>
+      <li data-step="invite"><i>3</i><span>开通</span></li>
+    </ol>
+    <form id="ls-email" class="login-step" novalidate hidden>
+      <p id="le-hint">用邮箱登录或注册</p>
+      <button type="button" class="btn btn-block login-apple" id="le-apple" hidden>通过 Apple 登录</button>
+      <div class="login-or" id="le-or" hidden><span>或</span></div>
+      <input id="le-email" class="input" type="email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="邮箱" aria-label="邮箱" enterkeyhint="send">
+      <button type="submit" class="btn btn-primary btn-block" id="le-send">发送验证码</button>
+      <p class="login-error" id="le-email-error" role="alert"></p>
+    </form>
+    <form id="ls-code" class="login-step" novalidate hidden>
+      <p>验证码已发到<br><b id="le-to"></b></p>
+      <input id="le-code" class="input login-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" aria-label="6 位验证码" enterkeyhint="go">
+      <button type="submit" class="btn btn-primary btn-block" id="le-verify">登录</button>
+      <p class="login-error" id="le-code-error" role="alert"></p>
+      <div class="login-links">
+        <button type="button" class="linkbtn" id="le-back">‹ 换邮箱</button>
+        <button type="button" class="linkbtn" id="le-resend" disabled>重新发送</button>
+      </div>
+    </form>
+    <form id="ls-invite" class="login-step" novalidate hidden>
+      <p>输入激活码开通账号<br><span class="small">内测期间凭激活码开通</span></p>
+      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXXX-XXXXX" aria-label="激活码" enterkeyhint="go">
+      <button type="submit" class="btn btn-primary btn-block" id="ap-btn">开通</button>
+      <p class="login-error" id="ap-error" role="alert"></p>
+      <div class="login-links"><button type="button" class="linkbtn" id="ap-logout">‹ 退出，换个账号</button></div>
+    </form>
+    <details class="login-other" id="login-other">
+      <summary>其他登录方式</summary>
+      <form id="login-form" autocomplete="off">
+        <p>登录码（12 位）、激活链接里的码（16 位）或 token</p>
+        <input id="token" class="input" name="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="登录码 / 激活码 / token" aria-label="登录码、激活码或 token" required>
+        <button type="submit" class="btn btn-block" id="login-btn">登录</button>
+        <p class="login-error" id="login-error" role="alert"></p>
+      </form>
+    </details>
     <a class="login-app" id="login-app" href="watch2whoop://sync" hidden>手机同步与设置</a>
-  </form>
+  </div>
 </div>
 
 <div id="sheet" class="sheet" hidden>
