@@ -61,10 +61,12 @@ def test_tool_definitions_budget():
     delete_workout, get_write_log, rollback_write; descriptions kept to one short line).
     43.5k -> 46.5k on 2026-10-21 for the nutrition goal tools and the sugar / fiber / sodium fields on log_food, meal
     templates and recipe ingredients (#31).
-    46.5k -> 50k for the Training V2 tools (#1: get_exercise, propose_plan, save_plan, get_week_plan, swap_exercise, list_splits)."""
+    46.5k -> 47k on 2026-10-21 for lookup_barcode and save_product's product_url / nutrition_source (#29, grocery-plan §7).
+    47k -> 49k on 2026-10-21 for the 2 diet profile tools (#33).
+    49k -> 52.5k for the Training V2 tools (#1: get_exercise, propose_plan, save_plan, get_week_plan, swap_exercise, list_splits)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 50000, size
+    assert size < 52500, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 
