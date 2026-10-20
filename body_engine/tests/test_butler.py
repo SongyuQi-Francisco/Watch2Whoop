@@ -231,9 +231,9 @@ def test_add_lab_results(conn, world):
     assert lab_catalog.add_results(conn, a, day, None, diff, overwrite=True)["updated"][0]["previous"] == 480
     trend = run_tool(conn, a, "butler", "get_lab_results", {"user": "me", "tests": ["uric_acid"]})[0]
     assert [h["value"] for h in trend["history"]] == [550, 470]
-    # Undo: only deletes what the butler wrote; the migrated August results are kept
-    with pytest.raises(PermissionError, match="不是身体管家写的"):
-        lab_catalog.delete_results(conn, a, date(2026, 8, 30), ["uric_acid"])
+    # Delete (issue #30: any source; the tool asks first)
+    with pytest.raises(ValueError, match="没有这些项目"):
+        lab_catalog.delete_results(conn, a, date(2026, 8, 30), ["alt"])
     assert lab_catalog.delete_results(conn, a, day, ["uric_acid", "alt"])["deleted"]["test_keys"]
     assert [h["value"] for h in run_tool(conn, a, "butler", "get_lab_results",
                                          {"user": "me", "tests": ["uric_acid"]})[0]["history"]] == [550]
@@ -451,16 +451,74 @@ def test_log_weight_ignores_earlier_checkin(conn, world):
     assert res["written"] == {"date": d.isoformat(), "weight": 88.0} and not res["overwrote"]
 
 
-def test_undo_only_deletes_assistant_entries(conn, world):
+def test_undo_deletes_any_source(conn, world):
+    """Issue #30: the AI deletes food entries of any source (the tool asks the user first)."""
     ids, _ = world
     a = ids["A"]
     d = "2026-10-16"
     fake = FakeSparky(food={d: [{"id": "mine", "source": "body_assistant", "food_name": "啤酒"},
                                 {"id": "app", "source": None, "food_name": "早餐"}]})
     assert sparky_write.undo_entry(conn, a, "food", d, "mine", client=fake)["deleted"]["name"] == "啤酒"
-    assert fake.writes == [("DELETE", "/food-entries/mine", None)]
-    with pytest.raises(PermissionError, match="不是身体管家写的"):
-        sparky_write.undo_entry(conn, a, "food", d, "app", client=fake)
+    assert sparky_write.undo_entry(conn, a, "food", d, "app", client=fake)["deleted"]["name"] == "早餐"
+    assert fake.writes == [("DELETE", "/food-entries/mine", None), ("DELETE", "/food-entries/app", None)]
+
+
+def test_undo_by_content_match(conn, world):
+    """Issue #25: without an id, food is matched exactly by date + meal + name (+ time); 0 or several matches refuse."""
+    ids, _ = world
+    a = ids["A"]
+    d = "2026-10-16"
+    rows = [{"id": "p1", "source": "body_assistant", "meal_type": "dinner", "food_name": "蘑菇烧鸡（去皮鸡腿 170g）",
+             "entry_time": "19:00:00"},
+            {"id": "p2", "source": "body_assistant", "meal_type": "dinner", "food_name": "蘑菇烧鸡（去皮鸡腿 170g）",
+             "entry_time": "21:30:00"},
+            {"id": "b1", "source": "body_assistant", "meal_type": "snacks", "food_name": "啤酒", "entry_time": None},
+            {"id": "y1", "source": None, "meal_type": "breakfast", "food_name": "酸奶"}]
+    fake = FakeSparky(food={d: rows})
+    undo = lambda **kw: sparky_write.undo_entry(conn, a, "food", d, None, client=fake, **{"meal": None, "food": None,
+                                                                                        "time": None, **kw})
+    with pytest.raises(ValueError, match="没有「啤酒」"):          # 0 matches: wrong meal
+        undo(meal="dinner", food="啤酒")
+    with pytest.raises(ValueError, match="有 2 条.*p1.*p2"):     # several: refuse, list the ids
+        undo(meal="dinner", food="蘑菇烧鸡(去皮鸡腿170g)")
+    with pytest.raises(ValueError, match="meal"):
+        undo(meal="supper", food="啤酒")
+    assert fake.writes == []
+    assert undo(meal="dinner", food="蘑菇烧鸡（去皮鸡腿 170g）", time="21:30")["deleted"]["id"] == "p2"
+    assert undo(meal="snacks", food=" 啤酒 ")["deleted"]["id"] == "b1"
+    assert undo(meal="breakfast", food="酸奶")["deleted"]["id"] == "y1"   # logged elsewhere: deleted too (#30)
+    assert fake.writes == [("DELETE", "/food-entries/p2", None), ("DELETE", "/food-entries/b1", None),
+                           ("DELETE", "/food-entries/y1", None)]
+    # Workouts need an id; SparkyFitness ids may be numbers while the AI passes a string
+    fake = FakeSparky(sessions={d: [{"id": 7, "type": "preset", "source": "body_assistant", "name": "胸"}]})
+    with pytest.raises(ValueError, match="要给 id"):
+        sparky_write.undo_entry(conn, a, "workout", d, None, client=fake)
+    assert sparky_write.undo_entry(conn, a, "workout", d, "7", client=fake)["deleted"]["name"] == "胸"
+    assert fake.writes == [("DELETE", "/exercise-preset-entries/7", None)]
+    # Through the tool (relaxed MCP call without the optional fields)
+    assert TOOLS_BY_NAME["undo_sparky_entry"].input_schema["required"] == ["kind", "date", "id", "meal", "food", "time"]
+
+
+def test_delete_food_entry_api(client, world, monkeypatch):
+    """Today page: DELETE /v1/users/me/nutrition/entries/{id}?date= deletes any of your own entries (write scope, only for yourself)."""
+    ids, tok = world
+    d = "2026-10-16"
+    fakes = {ids["A"]: FakeSparky(food={d: [{"id": "app-1", "source": None, "meal_type": "breakfast", "food_name": "酸奶"}]}),
+             ids["B"]: FakeSparky()}
+    monkeypatch.setattr(sparky_write.sparky_client, "write_client_for_user", lambda conn, uid: fakes[uid])
+    url = f"/v1/users/me/nutrition/entries/app-1?date={d}"
+    assert client.delete(url, headers=h(tok["A_ro"])).status_code == 403                      # read-only token
+    assert client.delete(f"/v1/users/{ids['A']}/nutrition/entries/app-1?date={d}", headers=h(tok["B"])).status_code == 403
+    assert client.delete(url, headers=h(tok["B"])).status_code == 404                          # B's own account has no such entry
+    assert client.delete(f"/v1/users/me/nutrition/entries/app-1", headers=h(tok["A"])).status_code == 422  # date required
+    assert client.delete(f"/v1/users/me/nutrition/entries/a%2Fb?date={d}", headers=h(tok["A"])).status_code in (404, 422)
+    assert fakes[ids["A"]].writes == [] and fakes[ids["B"]].writes == []
+    web = TestClient(api.app, base_url="https://testserver")
+    assert web.post("/v1/web/login", json={"token": tok["A"]}).status_code == 200
+    assert web.delete(url).status_code == 403                                                    # cookie write without X-Body-Web
+    r = web.delete(url, headers={"X-Body-Web": "1"})
+    assert r.status_code == 200 and r.json()["deleted"]["food"] == "酸奶"
+    assert fakes[ids["A"]].writes == [("DELETE", "/food-entries/app-1", None)]
 
 
 def test_write_tools_only_for_self(conn, world):
@@ -608,6 +666,8 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     assert (u["value"], u["unit"], u["trend"], u["tone"], u["spark"]) == ("偏高 470", "μmol/L", "down", "warn", [550, 470])
     assert (got["training_week"]["value"], got["training_week"]["tone"]) == ("3", "warn")
     assert (got["red_meat_week"]["value"], got["red_meat_week"]["tone"]) == ("40", "good")
+    assert (got["added_sugar_today"]["value"], got["added_sugar_today"]["tone"]) == ("未知", "neutral")   # unknown, not 0
+    assert "added_sugar_7d" not in got
     assert all(i["source"] == "auto" for k, i in got.items() if k in status.AUTO_KEYS)
     # SparkyFitness errors: training and red meat keep old values; weight has no data any more -> removed
     def boom(conn, uid):
@@ -615,7 +675,7 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     monkeypatch.setattr(status.sparky_client, "client_for_user", boom)
     monkeypatch.setattr(status, "_weights", lambda conn, uid, s, e: {})
     res = status.refresh_auto(conn, b, today)
-    assert set(res["errors"]) == {"calc_training", "calc_red_meat"} and {"weight", "to_goal"} <= set(res["removed"])
+    assert set(res["errors"]) == {"calc_training", "calc_red_meat", "calc_sugar"} and {"weight", "to_goal"} <= set(res["removed"])
     got = {i["key"]: i for i in status.list_status(conn, b)}
     assert got["training_week"]["value"] == "3" and "weight" not in got and "goal_weight" in got
 
@@ -640,7 +700,8 @@ def test_meal_template_validation_and_scaling(conn, world):
     c = ids["C"]
     tpl = meals.create_template(conn, c, "固定早餐", "breakfast", meals.FIXED_BREAKFAST["items"], True)
     assert tpl["totals"] == {"kcal": 547.0, "protein_g": 30.2, "carbs_g": 35.6, "fat_g": 31.4, "sat_fat_g": 8.2,
-                             "red_meat_g": 40.0}
+                             "red_meat_g": 40.0, "sugar_g": None, "added_sugar_g": None, "fiber_g": None,
+                             "sodium_mg": None}   # unknown, not 0
     with pytest.raises(ValueError, match="已经有"):
         meals.create_template(conn, c, "固定早餐", "breakfast", meals.FIXED_BREAKFAST["items"], True)
     bad = [dict(meals.FIXED_BREAKFAST["items"][0], kcal=900)]
@@ -671,6 +732,7 @@ def test_meal_log_and_undo(conn, world):
     entry = next(w[2] for w in fake.writes if w[1] == "/food-entries")
     assert entry["meal_type"] == "breakfast" and entry["source"] == "body_assistant" and "克数待确认" in entry["notes"]
     assert meals.list_templates(conn, a)[0]["today_log"]["log_id"] == res["log_id"]
+    assert meals.list_templates(conn, a)[0]["uses_30d"] == 1   # the Today page puts the most used templates first
     # Tapping again on the same day -> duplicate, rejected
     fake.food[res["date"]] = [{"id": e["id"], "meal_type": "breakfast", "food_name": e["food"], "calories": 1,
                                "source": "body_assistant"} for e in res["entries"]]
@@ -682,6 +744,7 @@ def test_meal_log_and_undo(conn, world):
     with pytest.raises(LookupError, match="撤销过"):
         meals.undo_log(conn, a, res["log_id"], client=fake)
     assert meals.list_templates(conn, a)[0]["today_log"] is None
+    assert meals.list_templates(conn, a)[0]["uses_30d"] == 0   # undone logs don't count
     with pytest.raises(LookupError):
         meals.undo_log(conn, ids["B"], res["log_id"], client=fake)  # someone else's
 

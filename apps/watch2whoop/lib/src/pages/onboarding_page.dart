@@ -1,16 +1,25 @@
-// First-run onboarding (for non-technical family members): scan the "setup QR code" / paste setup info → fills in the server, connects sync, keeps the login code
-// → allow reading health data → open the Today page (auto login if there is a login code). Manual entry is tucked under "Manual entry" (手动填写).
-// Onboarding: scan / paste the setup info (servers + invitation code + one-time login code) → Health → today page.
+// First-run onboarding (self-service): server address → Sign in with Apple / e-mail code → invite code (pending accounts only)
+// → Health permission + sync connected silently (server-minted OW invitation code) → Today page logged in with a fresh one-time code.
+// "I have a setup link" keeps the admin-issued setup link / QR / paste path (setup_link_page.dart) for existing users.
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
+import '../account_api.dart';
+import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
-import 'scan_page.dart';
+import 'setup_link_page.dart';
+
+enum _Step { welcome, email, code, invite, health, done }
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -20,162 +29,287 @@ class OnboardingPage extends StatefulWidget {
 }
 
 class _OnboardingPageState extends State<OnboardingPage> {
-  int _step = 0;
+  _Step _step = _Step.welcome;
+  bool _legacy = false;
   bool _busy = false;
-  bool _manual = false;
+  bool _editServer = false;
+  bool _apple = false;
   String? _error;
-  String? _todayError, _owError;
-  bool _insecure = false;
-  late final TextEditingController _today, _ow, _code;
+  String? _info;
+  String? _serverError;
+  String? _progress;
+  int _cooldown = 0;
+  Timer? _timer;
+  late final TextEditingController _server, _email, _code, _invite;
 
-  AppConfig get _config => AppState.instance.config;
+  AppState get _state => AppState.instance;
+  AppConfig get _config => _state.config;
 
   @override
   void initState() {
     super.initState();
-    _today = TextEditingController(text: _config.todayUrl);
-    _ow = TextEditingController(text: _config.owHost);
+    _server = TextEditingController(text: _config.todayUrl);
+    _editServer = !checkServerUrl(_config.todayUrl, UrlKind.today).isOk;
+    _email = TextEditingController();
     _code = TextEditingController();
+    _invite = TextEditingController();
     SetupLinks.instance.pending.addListener(_onLink);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
+    _checkApple();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onLink();
+      if (_state.accountToken != null) _resume();
+    });
   }
 
   @override
   void dispose() {
     SetupLinks.instance.pending.removeListener(_onLink);
-    _today.dispose();
-    _ow.dispose();
+    _timer?.cancel();
+    _server.dispose();
+    _email.dispose();
     _code.dispose();
+    _invite.dispose();
     super.dispose();
   }
 
-  /// Setup link brought in by opening the app via camera QR scan.
+  /// A setup link opened the app (camera QR scan): hand over to the setup-link flow, which consumes it.
   void _onLink() {
-    final info = SetupLinks.instance.pending.value;
-    if (info == null || _busy) return;
-    SetupLinks.instance.pending.value = null;
-    _apply(info);
+    if (SetupLinks.instance.pending.value != null && !_legacy && mounted) setState(() => _legacy = true);
   }
 
-  Future<void> _paste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final info = parseSetupText(data?.text ?? '');
-    if (info.isEmpty) {
-      setState(() => _error = tr('剪贴板里没有设置信息', 'No setup info on the clipboard'));
-      return;
-    }
-    await _apply(info);
+  Future<void> _checkApple() async {
+    if (kIsWeb || !Platform.isIOS) return;
+    try {
+      final ok = await SignInWithApple.isAvailable();
+      if (mounted) setState(() => _apple = ok);
+    } catch (_) {}
   }
 
-  Future<void> _scan() async {
-    final text = await Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanPage()));
-    if (text == null) return;
-    await _apply(parseSetupText(text));
+  /// Signed in earlier but onboarding was interrupted (app closed): continue where it stopped.
+  Future<void> _resume() async {
+    await _run(() async {
+      final info = await accountApiFor(_config.todayUrl).account(_state.accountToken!);
+      _afterStatus(info.status);
+    }, silentInvalid: true);
   }
 
-  Future<void> _apply(SetupInfo info) async {
+  // -------------------------------------------------------------------------- helpers
+
+  Future<void> _run(Future<void> Function() f, {String Function(AccountApiException)? onError, bool silentInvalid = false}) async {
     setState(() {
       _busy = true;
       _error = null;
+      _info = null;
     });
     try {
-      final r = await applySetup(info);
-      _today.text = _config.todayUrl;
-      _ow.text = _config.owHost;
-      if (_config.todayUrl.isEmpty || _config.owHost.isEmpty) {
-        setState(() {
-          _manual = true;
-          _error = tr('设置信息里缺服务器地址，请手动填写', 'The setup info has no server addresses — fill them in');
-        });
-        return;
+      await f();
+    } on AccountApiException catch (e) {
+      if (e.code == 'invalid' && silentInvalid) {
+        await _state.setAccountToken(null); // stored token no longer valid: sign in again
+      } else if (mounted) {
+        setState(() => _error = onError?.call(e) ?? accountError(e));
       }
-      if (r.owConnected) {
-        setState(() => _step = 2);
-      } else {
-        setState(() {
-          _step = 1;
-          if (r.owError != null) _error = connectError(r.owError!);
-        });
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code != AuthorizationErrorCode.canceled && mounted) {
+        setState(() => _error = tr('通过 Apple 登录没有成功：${e.message}', 'Sign in with Apple failed: ${e.message}'));
       }
-    } on FormatException catch (e) {
-      setState(() {
-        _manual = true;
-        _error = urlError(e.message);
-      });
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _progress = null;
+        });
+      }
     }
   }
 
-  Future<void> _saveServers() async {
-    final t = checkServerUrl(_today.text, UrlKind.today);
-    final o = checkServerUrl(_ow.text, UrlKind.ow);
+  /// Validates the server field; null (with the error shown) if it is wrong.
+  String? _serverUrl() {
+    final c = checkServerUrl(_server.text, UrlKind.today);
     setState(() {
-      _todayError = t.isOk ? null : urlError(t.error);
-      _owError = o.isOk ? null : urlError(o.error);
-      _insecure = t.insecureLocal || o.insecureLocal;
+      _serverError = c.isOk ? null : urlError(c.error);
+      if (!c.isOk) _editServer = true;
     });
-    if (!t.isOk || !o.isOk) return;
-    _today.text = t.url!;
-    _ow.text = o.url!;
-    await AppState.instance.update(_config.copyWith(todayUrl: t.url, owHost: o.url));
+    if (c.isOk) _server.text = c.url!;
+    return c.url;
+  }
+
+  void _afterStatus(AccountStatus s) {
+    if (!mounted) return;
     setState(() {
-      _error = null;
-      _step = 1;
+      switch (s) {
+        case AccountStatus.pending:
+          _step = _Step.invite;
+        case AccountStatus.disabled:
+          _step = _Step.welcome;
+          _error = tr('这个账号已停用，请联系管理员。', 'This account is disabled. Contact the administrator.');
+        case AccountStatus.active:
+        case AccountStatus.unknown:
+          _step = _Step.health;
+      }
     });
   }
 
-  Future<void> _connect() async {
-    final code = normalizeInvitationCode(_code.text);
-    if (code == null) {
-      setState(() => _error = tr('邀请码是 8 位字母和数字', 'The invitation code has 8 letters/digits'));
+  Future<void> _signedIn(AccountSession s, String server) async {
+    await saveSession(s, server);
+    var status = s.status;
+    if (status == AccountStatus.unknown) {
+      status = (await accountApiFor(server).account(s.token)).status;
+    }
+    if (status == AccountStatus.disabled) await _state.setAccountToken(null);
+    _afterStatus(status);
+  }
+
+  void _startCooldown([Duration? d]) {
+    _timer?.cancel();
+    setState(() => _cooldown = (d ?? const Duration(seconds: 60)).inSeconds.clamp(1, 3600));
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return t.cancel();
+      setState(() => _cooldown--);
+      if (_cooldown <= 0) t.cancel();
+    });
+  }
+
+  // -------------------------------------------------------------------------- actions
+
+  Future<void> _signInWithApple() async {
+    final server = _serverUrl();
+    if (server == null) return;
+    await _run(() async {
+      final raw = generateRawNonce();
+      final cred = await SignInWithApple.getAppleIDCredential(
+        scopes: const [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        nonce: sha256Hex(raw),
+      );
+      final idToken = cred.identityToken;
+      if (idToken == null || idToken.isEmpty) throw AccountApiException('bad_response');
+      final s = await accountApiFor(server).signInWithApple(
+        identityToken: idToken,
+        rawNonce: raw,
+        device: deviceLabel,
+        givenName: cred.givenName,
+        familyName: cred.familyName,
+      );
+      await _signedIn(s, server);
+    }, onError: (e) => switch (e.code) {
+      'invalid' => tr('Apple 登录验证没通过，请再试一次', 'The Apple sign-in could not be verified — try again'),
+      'unavailable' => tr('这个服务器没有开通「通过 Apple 登录」，请用邮箱登录', 'This server has no Sign in with Apple — use e-mail'),
+      _ => accountError(e),
+    });
+  }
+
+  void _toEmail() {
+    if (_serverUrl() == null) return;
+    setState(() {
+      _error = null;
+      _step = _Step.email;
+    });
+  }
+
+  Future<void> _sendCode() async {
+    final email = _email.text.trim();
+    if (!looksLikeEmail(email)) {
+      setState(() => _error = tr('邮箱格式不对', 'Invalid e-mail address'));
       return;
     }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final userId = await HealthSync.instance.connect(owHost: _config.owHost, code: code);
-      await AppState.instance.update(_config.copyWith(owUserId: userId));
+    await _run(() async {
+      await accountApiFor(_server.text).startEmail(email, lang: isZh ? 'zh' : 'en');
       _code.clear();
-      setState(() => _step = 2);
-    } catch (e) {
-      setState(() => _error = connectError(e));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _requestHealth() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final ok = await HealthSync.instance.requestAuthorization();
-      await AppState.instance.update(_config.copyWith(healthRequested: true));
-      if (!ok) {
-        setState(() => _error = tr(
-          '没有允许任何类型。可以在「健康」app → 右上角头像 → App → Watch2Whoop 里打开。',
-          'Nothing was allowed. Change it in Health → profile → Apps → Watch2Whoop.',
-        ));
+      if (mounted) {
+        setState(() {
+          _step = _Step.code;
+          _info = tr('验证码已发到 $email，10 分钟内有效', 'Code sent to $email (valid for 10 minutes)');
+        });
       }
-      await HealthSync.instance.startSync(_config.syncDaysBack);
-      setState(() => _step = 3);
-    } catch (e) {
-      setState(() => _error = '$e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+      _startCooldown();
+    }, onError: (e) {
+      if (e.code == 'rate_limited') _startCooldown(e.retryAfter);
+      return switch (e.code) {
+        'bad_request' => tr('邮箱格式不对', 'Invalid e-mail address'),
+        'unavailable' => tr('这个服务器还不能发邮件，请用其他方式登录', 'This server cannot send e-mail yet — use another way'),
+        _ => accountError(e),
+      };
+    });
   }
 
-  Future<void> _finish() => AppState.instance.update(_config.copyWith(onboardingDone: true));
+  Future<void> _verifyCode() async {
+    final code = normalizeEmailCode(_code.text);
+    if (code == null) {
+      setState(() => _error = tr('验证码是 6 位数字', 'The code has 6 digits'));
+      return;
+    }
+    final server = _server.text;
+    await _run(() async {
+      final s = await accountApiFor(server).verifyEmail(_email.text.trim(), code, device: deviceLabel);
+      await _signedIn(s, server);
+    }, onError: (e) => e.code == 'invalid'
+        ? tr('验证码不对或已过期', 'Wrong or expired code')
+        : accountError(e));
+  }
+
+  Future<void> _redeem() async {
+    final code = normalizeInviteCode(_invite.text);
+    if (code == null) {
+      setState(() => _error = tr('激活码是 10 位字母和数字', 'The invite code has 10 letters/digits'));
+      return;
+    }
+    await _run(() async {
+      final status = await accountApiFor(_config.todayUrl).redeemInvite(_state.accountToken!, code);
+      _invite.clear();
+      _afterStatus(status == AccountStatus.unknown ? AccountStatus.active : status);
+    }, onError: (e) => e.code == 'invalid'
+        ? tr('激活码无效、已用完或已过期', 'Invite code is invalid, used up or expired')
+        : accountError(e));
+  }
+
+  Future<void> _connectAndAllow() async {
+    String? note;
+    await _run(() async {
+      setState(() => _progress = tr('正在准备同步账号…', 'Preparing your sync account…'));
+      final r = await connectSyncViaAccount();
+      if (!r.connected) {
+        note = r.manualNeeded || r.error == null
+            ? tr('同步还没连上：之后在「我」→「手机同步」里连接。', 'Sync is not connected yet: connect it later under Me → Phone sync.')
+            : (r.error is AccountApiException ? accountError(r.error as AccountApiException) : connectError(r.error!));
+      }
+      if (mounted) setState(() => _progress = tr('等待健康权限…', 'Waiting for Health access…'));
+      final ok = await HealthSync.instance.requestAuthorization();
+      await _state.update(_config.copyWith(healthRequested: true));
+      if (!ok) {
+        note = tr('没有允许任何类型。可以在「健康」app → 右上角头像 → App → Watch2Whoop 里打开。',
+            'Nothing was allowed. Change it in Health → profile → Apps → Watch2Whoop.');
+      }
+      if (r.connected) await HealthSync.instance.startSync(_config.syncDaysBack);
+      if (mounted) setState(() => _step = _Step.done);
+    });
+    if (note != null && mounted) setState(() => _info = note);
+  }
+
+  Future<void> _switchAccount() => _run(() async {
+    await signOutToOnboarding();
+    if (mounted) setState(() => _step = _Step.welcome);
+  });
+
+  Future<void> _finish() => _state.update(_config.copyWith(onboardingDone: true));
+
+  // -------------------------------------------------------------------------- UI
 
   @override
   Widget build(BuildContext context) {
+    if (_legacy) {
+      return SetupLinkOnboarding(onBack: () => setState(() => _legacy = false));
+    }
     final cs = Theme.of(context).colorScheme;
-    final steps = [_setupStep, _owStep, _healthStep, _doneStep];
+    final body = switch (_step) {
+      _Step.welcome => _welcome(),
+      _Step.email => _emailStep(),
+      _Step.code => _codeStep(),
+      _Step.invite => _inviteStep(),
+      _Step.health => _healthStep(),
+      _Step.done => _doneStep(),
+    };
     return Scaffold(
       body: SafeArea(
         child: GestureDetector(
@@ -183,23 +317,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
             children: [
-              Row(
-                children: [
-                  for (var i = 0; i < steps.length; i++)
-                    Expanded(
-                      child: Container(
-                        height: 3,
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        decoration: BoxDecoration(
-                          color: i <= _step ? cs.primary : cs.onSurfaceVariant.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              ...steps[_step](),
+              ...body,
+              if (_progress != null) ...[
+                const SizedBox(height: 14),
+                Hint(_progress!, icon: Icons.hourglass_top),
+              ],
+              if (_info != null) ...[
+                const SizedBox(height: 14),
+                Hint(_info!, icon: Icons.check_circle_outline),
+              ],
               if (_error != null) ...[
                 const SizedBox(height: 14),
                 Hint(_error!, icon: Icons.error_outline, color: cs.error),
@@ -211,97 +337,151 @@ class _OnboardingPageState extends State<OnboardingPage> {
     );
   }
 
-  Widget _title(String t, String sub) => Column(
+  Widget _title(String t, [String? sub]) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(t, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, letterSpacing: -0.5)),
-      const SizedBox(height: 8),
-      Text(sub, style: TextStyle(fontSize: 15, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4)),
+      if (sub != null) ...[
+        const SizedBox(height: 8),
+        Text(sub, style: TextStyle(fontSize: 15, color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.4)),
+      ],
       const SizedBox(height: 24),
     ],
   );
 
-  List<Widget> _setupStep() => [
-    _title(
-      tr('开始使用', 'Get started'),
-      tr('家人会给你一个「设置二维码」：用 iPhone 相机扫一下就能自动设置好。也可以在这里扫码，或粘贴设置信息。',
-          'You will get a setup QR code: scan it with the iPhone Camera and everything is set up. You can also scan it here or paste the setup text.'),
+  Widget _outlined(String label, IconData icon, VoidCallback? onPressed) => OutlinedButton.icon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 18),
+    label: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+    style: OutlinedButton.styleFrom(
+      minimumSize: const Size.fromHeight(50),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     ),
-    BigButton(tr('扫描设置二维码', 'Scan setup code'), onPressed: _busy ? null : _scan, busy: _busy),
-    const SizedBox(height: 10),
-    OutlinedButton.icon(
-      onPressed: _busy ? null : _paste,
-      icon: const Icon(Icons.content_paste, size: 18),
-      label: Text(tr('粘贴设置信息', 'Paste setup text')),
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      ),
-    ),
-    const SizedBox(height: 6),
-    BigButton(
-      _manual ? tr('收起手动填写', 'Hide manual setup') : tr('手动填写服务器', 'Enter servers manually'),
-      secondary: true,
-      onPressed: _busy ? null : () => setState(() => _manual = !_manual),
-    ),
-    if (_manual) ...[
-      const SizedBox(height: 12),
-      UrlField(
-        controller: _today,
-        label: tr('今天页地址', 'Today page URL'),
-        hint: 'https://body.example.com',
-        kind: UrlKind.today,
-        error: _todayError,
-      ),
-      const SizedBox(height: 14),
-      UrlField(
-        controller: _ow,
-        label: tr('同步服务器地址', 'Sync server URL'),
-        hint: 'https://sync.example.com',
-        kind: UrlKind.ow,
-        error: _owError,
-      ),
-      if (_insecure) ...[
+  );
+
+  List<Widget> _welcome() {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return [
+      _title('Watch2Whoop', tr('登录后开始同步 Apple 健康数据。', 'Sign in to start syncing your Apple Health data.')),
+      if (_editServer)
+        UrlField(
+          controller: _server,
+          label: tr('服务器地址', 'Server address'),
+          hint: 'https://body.example.com',
+          kind: UrlKind.today,
+          error: _serverError,
+        )
+      else
+        Row2(
+          tr('服务器', 'Server'),
+          value: shortUrl(_server.text),
+          trailing: TextButton(onPressed: _busy ? null : () => setState(() => _editServer = true), child: Text(tr('更改', 'Change'))),
+        ),
+      const SizedBox(height: 20),
+      if (_apple) ...[
+        SizedBox(
+          height: 50,
+          child: SignInWithAppleButton(
+            text: tr('通过 Apple 登录', 'Sign in with Apple'),
+            style: dark ? SignInWithAppleButtonStyle.white : SignInWithAppleButtonStyle.black,
+            borderRadius: const BorderRadius.all(Radius.circular(14)),
+            onPressed: _busy ? () {} : _signInWithApple,
+          ),
+        ),
         const SizedBox(height: 10),
-        Hint(tr('http 只适合模拟器 / 开发；手机上请用 https。', 'http is for the simulator / development only.')),
       ],
-      const SizedBox(height: 18),
-      BigButton(tr('下一步', 'Next'), onPressed: _saveServers),
-    ],
-    const SizedBox(height: 22),
-    Hint(vpnHint, icon: Icons.vpn_lock_outlined),
+      _outlined(tr('用邮箱登录', 'Sign in with e-mail'), Icons.mail_outline, _busy ? null : _toEmail),
+      if (_busy) ...[
+        const SizedBox(height: 14),
+        const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2))),
+      ],
+      const SizedBox(height: 22),
+      BigButton(tr('我有设置链接', 'I have a setup link'), secondary: true, onPressed: _busy ? null : () => setState(() => _legacy = true)),
+    ];
+  }
+
+  List<Widget> _emailStep() => [
+    _title(tr('用邮箱登录', 'Sign in with e-mail'), tr('我们会发一个 6 位验证码到你的邮箱，不用设密码。', 'We e-mail you a 6-digit code — no password.')),
+    TextField(
+      controller: _email,
+      autofocus: true,
+      keyboardType: TextInputType.emailAddress,
+      autocorrect: false,
+      enableSuggestions: false,
+      autofillHints: const [AutofillHints.email],
+      textInputAction: TextInputAction.send,
+      decoration: InputDecoration(
+        labelText: tr('邮箱', 'E-mail'),
+        hintText: 'name@example.com',
+        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+      ),
+      onSubmitted: (_) => _sendCode(),
+    ),
+    const SizedBox(height: 24),
+    BigButton(
+      _cooldown > 0 ? tr('发送验证码（${_cooldown}s）', 'Send code (${_cooldown}s)') : tr('发送验证码', 'Send code'),
+      onPressed: _cooldown > 0 ? null : _sendCode,
+      busy: _busy,
+    ),
+    BigButton(tr('上一步', 'Back'), secondary: true, onPressed: _busy ? null : () => setState(() {
+      _error = null;
+      _step = _Step.welcome;
+    })),
   ];
 
-  List<Widget> _owStep() => [
-    _title(
-      tr('连接同步', 'Connect sync'),
-      tr('输入 8 位邀请码（在设置信息里，或问家人要）。连接后 app 会在后台把健康数据同步到服务器。',
-          'Enter the 8-character invitation code. The app then syncs your Health data in the background.'),
-    ),
+  List<Widget> _codeStep() => [
+    _title(tr('输入验证码', 'Enter the code'), _email.text.trim()),
     TextField(
       controller: _code,
+      autofocus: true,
+      keyboardType: TextInputType.number,
+      autofillHints: const [AutofillHints.oneTimeCode],
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+      style: const TextStyle(fontSize: 26, letterSpacing: 8, fontWeight: FontWeight.w600),
+      decoration: InputDecoration(
+        labelText: tr('6 位验证码', '6-digit code'),
+        border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
+      ),
+      onChanged: (v) {
+        if (v.length == 6 && !_busy) _verifyCode();
+      },
+      onSubmitted: (_) => _verifyCode(),
+    ),
+    const SizedBox(height: 24),
+    BigButton(tr('登录', 'Sign in'), onPressed: _verifyCode, busy: _busy),
+    BigButton(
+      _cooldown > 0 ? tr('重新发送（${_cooldown}s）', 'Resend (${_cooldown}s)') : tr('重新发送', 'Resend'),
+      secondary: true,
+      onPressed: _busy || _cooldown > 0 ? null : _sendCode,
+    ),
+    BigButton(tr('换个邮箱', 'Use another e-mail'), secondary: true, onPressed: _busy ? null : () => setState(() {
+      _error = null;
+      _info = null;
+      _step = _Step.email;
+    })),
+  ];
+
+  List<Widget> _inviteStep() => [
+    _title(tr('输入激活码', 'Enter invite code'), tr('内测期间需要激活码，向邀请你的人要。', 'During the beta you need an invite code from whoever invited you.')),
+    TextField(
+      controller: _invite,
+      autofocus: true,
       autocorrect: false,
       enableSuggestions: false,
       textCapitalization: TextCapitalization.characters,
-      // Alphanumeric only: use the ASCII keyboard to avoid the candidate bar of Chinese input methods
+      // Alphanumeric only: the ASCII keyboard avoids the candidate bar of Chinese input methods
       keyboardType: TextInputType.visiblePassword,
-      style: const TextStyle(fontSize: 22, letterSpacing: 4, fontWeight: FontWeight.w600),
+      style: const TextStyle(fontSize: 22, letterSpacing: 3, fontWeight: FontWeight.w600),
       decoration: InputDecoration(
-        labelText: tr('邀请码', 'Invitation code'),
-        hintText: 'ABCD2345',
+        labelText: tr('激活码', 'Invite code'),
+        hintText: 'ABCDE-23456',
         border: const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12))),
       ),
-      onSubmitted: (_) => _connect(),
+      onSubmitted: (_) => _redeem(),
     ),
     const SizedBox(height: 24),
-    BigButton(tr('连接', 'Connect'), onPressed: _connect, busy: _busy),
-    const SizedBox(height: 6),
-    BigButton(
-      tr('跳过，只看今天页', 'Skip — today page only'),
-      secondary: true,
-      onPressed: _busy ? null : () => setState(() => _step = 3),
-    ),
-    BigButton(tr('上一步', 'Back'), secondary: true, onPressed: _busy ? null : () => setState(() => _step = 0)),
+    BigButton(tr('激活', 'Activate'), onPressed: _redeem, busy: _busy),
+    BigButton(tr('换个账号登录', 'Use another account'), secondary: true, onPressed: _busy ? null : _switchAccount),
   ];
 
   List<Widget> _healthStep() => [
@@ -312,23 +492,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
     ),
     Hint(limitsHint),
     const SizedBox(height: 24),
-    BigButton(tr('继续', 'Continue'), onPressed: _requestHealth, busy: _busy),
+    BigButton(tr('继续', 'Continue'), onPressed: _connectAndAllow, busy: _busy),
   ];
 
-  List<Widget> _doneStep() {
-    final auto = _config.pendingLoginCode != null;
-    return [
-      _title(
-        tr('设置好了', 'All set'),
-        auto
-            ? tr('打开今天页会自动登录。以后同步状态在「我」→「手机同步」里看。',
-                'The today page signs you in automatically. Sync status lives under Me → Phone sync.')
-            : tr('打开今天页后，输入家人给你的 token 登录（只需一次）。以后同步状态在「我」→「手机同步」里看。',
-                'On the today page, sign in once with the token you were given. Sync status lives under Me → Phone sync.'),
-      ),
-      if (_config.owConnected) Hint(tr('首次同步可能要几分钟，保持 app 打开会更快。', 'The first sync can take a few minutes; keep the app open.')),
-      const SizedBox(height: 24),
-      BigButton(tr('打开今天页', 'Open today page'), onPressed: _finish),
-    ];
-  }
+  List<Widget> _doneStep() => [
+    _title(
+      tr('设置好了', 'All set'),
+      tr('以后同步状态在「我」→「手机同步」里看。', 'Sync status lives under Me → Phone sync.'),
+    ),
+    if (_config.owConnected) Hint(tr('首次同步可能要几分钟，保持 app 打开会更快。', 'The first sync can take a few minutes; keep the app open.')),
+    const SizedBox(height: 24),
+    BigButton(tr('打开今天页', 'Open today page'), onPressed: _finish),
+  ];
 }

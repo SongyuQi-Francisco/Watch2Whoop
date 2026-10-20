@@ -181,7 +181,7 @@ def test_evaluate_rules_idempotent_and_keeps_status(conn, world):
     res = engine.run(conn, a, FRI, FakeSparky())
     status = {r["rule_key"]: r["status"] for r in res["rules"]}
     assert status == {"progression": "triggered", "calorie_adjust": "insufficient_data", "pre_workout_fuel": "triggered",
-                      "frequency_caps": "not_triggered", "exercise_restrictions": "triggered",
+                      "frequency_caps": "not_triggered", "sugar_caps": "not_triggered", "exercise_restrictions": "triggered",
                       "readiness": "insufficient_data", "sleep_goal": "insufficient_data"}
     rem = reminders(conn, a)
     assert set(rem) == {("progression", "p1:39:up"), ("pre_workout_fuel", ""), ("pre_workout_fuel", "carbs"),

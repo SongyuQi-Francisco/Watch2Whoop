@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # Bump the build number after the + for every TestFlight upload (e.g. 1.0.0+1 → 1.0.0+2).
 # Bump the build number after "+" for every TestFlight upload.
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.13.5
@@ -25,6 +25,12 @@ dependencies:
   url_launcher: 6.3.3
   shared_preferences: 2.5.6
   http: 1.6.0
+  # Sign in with Apple (native button + ASAuthorization); CocoaPods podspec, iOS 13+
+  sign_in_with_apple: 8.2.0
+  # Keychain storage for the Body Engine account token (never in shared_preferences)
+  flutter_secure_storage: 11.2.0
+  # sha256 of the Sign in with Apple nonce
+  crypto: 3.0.7
   wakelock_plus: 1.8.1
   package_info_plus: 10.2.2
   # Scan the setup QR code (iOS uses system AVFoundation / Vision, no Google ML Kit)

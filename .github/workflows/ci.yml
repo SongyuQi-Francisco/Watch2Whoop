@@ -1,5 +1,10 @@
 # CI for pull requests and main. Job names are the required status checks of the `main` branch protection
 # (tools/public/RELEASE.md, section 2). No secrets are needed: the database is a throwaway service container.
+#
+# Path filters (docs/apps.md, section 5): on pull requests the `changes` job decides which jobs are needed. Jobs are
+# skipped with a job-level `if`, and a skipped job reports success, so the required checks still pass. Do not move the
+# filter to `on: pull_request: paths:` — a workflow that does not start leaves required checks pending forever.
+# Pushes to main, changes to this workflow and any failure of `changes` run everything.
 name: CI
 
 on:
@@ -14,9 +19,62 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The Flutter app (its job keeps the required check name "Flutter tests").
+  FLUTTER_APP: apps/watch2whoop
+  # Further client apps, tested by the "Other apps" job. enabled: false = placeholder (the directory does not exist yet).
+  # To add one: create the directory, set enabled: true and add a step for its `kind` in the `other-apps` job.
+  OTHER_APPS: >-
+    [{"id": "harmony", "path": "apps/harmony", "kind": "harmony", "enabled": false}]
+
 jobs:
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      flutter: ${{ steps.filter.outputs.flutter }}
+      other_apps: ${{ steps.filter.outputs.other_apps }}
+    steps:
+      - id: filter
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          all() {  # run everything
+            echo "$1 → running all jobs"
+            echo "server=true" >> "$GITHUB_OUTPUT"
+            echo "flutter=true" >> "$GITHUB_OUTPUT"
+            echo "other_apps=$(jq -c '[.[] | select(.enabled)]' <<< "$OTHER_APPS")" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          [ "$EVENT" = pull_request ] || all "event $EVENT"
+          files="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')" \
+            || all "could not list the changed files"
+          [ -n "$files" ] || all "no changed files listed"
+          echo "Changed files:"; echo "$files" | sed 's/^/  /'
+          grep -qx '\.github/workflows/ci\.yml' <<< "$files" && all "workflow changed"
+          # Server = anything outside apps/ (docs included: tests compare some documents with server copies).
+          if grep -qv '^apps/' <<< "$files"; then server=true; else server=false; fi
+          if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
+          other="$(jq -c --arg files "$files" \
+            '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \
+            <<< "$OTHER_APPS")"
+          echo "server=$server flutter=$flutter other_apps=$other"
+          { echo "server=$server"; echo "flutter=$flutter"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
+
   body-engine:
     name: Body Engine tests
+    needs: changes
+    # !cancelled(): still run when `changes` failed (then its outputs are empty), so a broken filter never skips tests
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.server == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -56,7 +114,7 @@ jobs:
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
 
   syntax:
-    name: Syntax checks
+    name: Syntax checks   # always runs: it covers every tracked .py / .sh and takes seconds
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -71,11 +129,13 @@ jobs:
 
   flutter:
     name: Flutter tests
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: apps/watch2whoop
+        working-directory: ${{ env.FLUTTER_APP }}
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2.9.1
@@ -86,3 +146,25 @@ jobs:
       # config/defaults.json (your own server address) is git-ignored and not needed: the defaults compile to empty values
       - run: flutter pub get
       - run: flutter test
+      # When the Android target exists, add a build check here, e.g. `flutter build apk --debug`.
+
+  other-apps:
+    name: Other apps
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.other_apps != '[]' && needs.changes.outputs.other_apps != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.changes.outputs.other_apps) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.app.path }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: HarmonyOS (placeholder)
+        if: matrix.app.kind == 'harmony'
+        run: |
+          echo "No HarmonyOS toolchain in CI yet: add the build / test steps for ${{ matrix.app.path }} here (docs/apps.md)."
+          exit 1

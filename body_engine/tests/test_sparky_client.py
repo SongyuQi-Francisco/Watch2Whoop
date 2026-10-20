@@ -64,7 +64,8 @@ def test_nutrition_scales_entries_and_marks_unlogged_days():
         "/goals/by-date/2026-10-14": {"preset_name": "休息日", "calories": 2200, "protein": 160},
         "/goals/by-date/2026-10-15": {"preset_name": "训练日", "calories": 2400, "protein": 160},
         "/food-entries/range/2026-10-14/2026-10-15": [
-            {"entry_date": "2026-10-15", "entry_time": "14:30:00", "food_name": "酸奶", "quantity": 300,
+            {"id": "fe-1", "source": "body_assistant", "entry_date": "2026-10-15", "entry_time": "14:30:00",
+             "food_name": "酸奶", "quantity": 300,
              "serving_size": 100, "unit": "g", "calories": 60, "protein": 10, "carbs": None, "fat": 0}],
     })
     out = S.nutrition(c, date(2026, 10, 14), date(2026, 10, 15))
@@ -72,6 +73,13 @@ def test_nutrition_scales_entries_and_marks_unlogged_days():
     assert [(d["goal"]["name"], d["goal"]["calories"]) for d in out["days"]] == [("休息日", 2200), ("训练日", 2400)]
     e = out["entries"][0]
     assert (e["calories"], e["protein_g"], e["carbs_g"], e["time"]) == (180, 30, None, "14:30")
+    assert (e["id"], e["source"]) == ("fe-1", "body_assistant")   # issue #25: undo entries from an earlier conversation
+
+
+def test_training_log_sessions_carry_id_and_source():
+    s = S._session({**_preset("2026-10-15", "胸", []), "id": 42, "source": "body_assistant"})
+    assert (s["id"], s["source"]) == (42, "body_assistant")
+    assert sparky_tools.summarize_sessions([s])[0]["id"] == 42
 
 
 def test_weight_skips_empty_rows_and_weekly_average():

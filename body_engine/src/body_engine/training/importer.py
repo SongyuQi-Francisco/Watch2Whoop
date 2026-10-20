@@ -59,6 +59,11 @@ def parse_ow(raw: dict, tz: ZoneInfo, xml_energy_unit: str = P.XML_ENERGY_UNIT) 
     if kcal is not None and xml and xml_energy_unit == "kJ":
         kcal /= KJ_PER_KCAL
     t = raw.get("type") or "other"
+    if t in P.GENERIC_TYPES and raw.get("name"):
+        # OW only knew "other": its label often still carries the HealthKit activity type (e.g. HKWorkoutActivityTypeBasketball)
+        from .shortcut_workouts import shortcut_type
+        if (m := shortcut_type(raw["name"])) in P.TYPE_NAMES:
+            t = m
     row.update(source="ow", external_id=raw["id"], origin=src.get("source"), is_xml=xml,
                device=src.get("device_name") or src.get("device"), type=t, name_zh=type_name(t),
                total_kcal=None if kcal is None else round(kcal, 1), active_kcal=None,
@@ -71,10 +76,14 @@ def parse_ow(raw: dict, tz: ZoneInfo, xml_energy_unit: str = P.XML_ENERGY_UNIT) 
 # ---------------------------------------------------------------- write to the database
 def upsert(conn: psycopg.Connection, user_id: int, rows: list[dict]) -> dict:
     """Insert or update by (user_id, source, external_id); returns {inserted, updated, unchanged, ids}.
+    User overrides / type rules (overrides.py) are applied first, so a re-import never undoes a correction.
     The flags set at import time (implausible duration, energy from the Shortcut) are rewritten each time; the results of heart-rate / energy computation (enrich) are kept."""
+    from . import overrides
     counts = {"inserted": 0, "updated": 0, "unchanged": 0}
     ids = []
+    ov = overrides.load(conn, user_id)
     for r in rows:
+        r = overrides.apply(dict(r), ov)   # the user's corrections (type, name, hidden) and type rules win over the import
         old = conn.execute("SELECT id, " + ", ".join(FIELDS) + ", flags FROM workouts "
                            "WHERE user_id = %s AND source = %s AND external_id = %s",
                            (user_id, r["source"], r["external_id"])).fetchone()
@@ -117,7 +126,10 @@ def _differs(a, b) -> bool:
 def _rank(w: dict) -> tuple:
     dev = (w.get("device") or "").lower()
     device = 0 if "watch" in dev else 1 if ("iphone" in dev or "phone" in dev) else 2
-    return (P.SOURCE_RANK.get(w["source"], 9), 1 if w["is_xml"] else 0, device, w["id"])
+    # a copy with a real activity type wins over one the source only knew as generic (e.g. a Shortcut workout inferred
+    # from exercise minutes + heart rate vs. the OW / Apple workout that arrives later)
+    return (1 if w["type"] in P.GENERIC_TYPES else 0, P.SOURCE_RANK.get(w["source"], 9), 1 if w["is_xml"] else 0,
+            device, w["id"])
 
 
 def _is_dup(a: dict, b: dict) -> bool:
@@ -125,17 +137,23 @@ def _is_dup(a: dict, b: dict) -> bool:
         return True
     overlap = (min(a["end_at"], b["end_at"]) - max(a["start_at"], b["start_at"])).total_seconds()
     shorter = min((a["end_at"] - a["start_at"]).total_seconds(), (b["end_at"] - b["start_at"]).total_seconds())
-    return a["type"] == b["type"] and shorter > 0 and overlap / shorter >= P.DUP_OVERLAP
+    same_type = a["type"] == b["type"] or a["type"] in P.GENERIC_TYPES or b["type"] in P.GENERIC_TYPES
+    return same_type and shorter > 0 and overlap / shorter >= P.DUP_OVERLAP
 
 
 def refresh_duplicates(conn: psycopg.Connection, user_id: int) -> dict:
-    """Recompute dup_of for all of this user's workouts: from highest priority down, one that duplicates an already-kept workout points to it. Returns {kept, duplicates, changed}."""
-    rows = conn.execute("""SELECT id, source, is_xml, device, type, start_at, end_at, dup_of, excluded FROM workouts
+    """Recompute dup_of for all of this user's workouts: from highest priority down, one that duplicates an already-kept workout points to it. Returns {kept, duplicates, changed}.
+    Runs after every import, whichever copy arrived first. A dup_of set by hand (flags.manual_dup) is never changed."""
+    rows = conn.execute("""SELECT id, source, is_xml, device, type, start_at, end_at, dup_of, excluded, flags FROM workouts
                            WHERE user_id = %s""", (user_id,)).fetchall()
     kept: list[dict] = []
     target: dict[int, int | None] = {}
+    manual = {w["id"]: w["dup_of"] for w in rows if (w["flags"] or {}).get("manual_dup") and w["dup_of"]}
     for w in sorted(rows, key=_rank):
-        if w["excluded"]:
+        if w["id"] in manual:
+            target[w["id"]] = manual[w["id"]]
+            continue
+        if w["excluded"] and w["excluded"] != "user_hidden":   # hidden by the user: still holds its copies as duplicates
             target[w["id"]] = None
             continue
         hit = next((k for k in kept if k["start_at"] < w["end_at"] + P.DUP_SAME_TIME
