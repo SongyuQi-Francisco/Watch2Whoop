@@ -2,6 +2,8 @@
 // for accounts opened by an admin. Scan the "setup QR code" / paste setup info → fills in the server, connects sync, keeps the login code
 // → allow reading health data → open the Today page (auto login if there is a login code). Manual entry is tucked under "Manual entry" (手动填写).
 // Onboarding: scan / paste the setup info (servers + invitation code + one-time login code) → Health → today page.
+// Locked builds (server_lock.dart) only get here from a setup link opened by the camera: no scan / paste / manual entry,
+// a link for another server is refused, one for this server keeps its invitation and login codes.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -168,7 +170,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
       await HealthSync.instance.startSync(_config.syncDaysBack);
       setState(() => _step = 3);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = redactServer('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -225,7 +227,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     ],
   );
 
-  List<Widget> _setupStep() => [
+  List<Widget> _setupStep() => serverLocked ? _lockedSetupStep() : [
     _title(
       tr('开始使用', 'Get started'),
       tr('家人会给你一个「设置二维码」：用 iPhone 相机扫一下就能自动设置好。也可以在这里扫码，或粘贴设置信息。',
@@ -274,6 +276,19 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     ],
     const SizedBox(height: 22),
     Hint(vpnHint, icon: Icons.vpn_lock_outlined),
+    if (widget.onBack != null) ...[
+      const SizedBox(height: 18),
+      BigButton(tr('改用账号登录', 'Sign in with an account instead'), secondary: true, onPressed: _busy ? null : widget.onBack),
+    ],
+  ];
+
+  /// Locked build: nothing to type or scan here; a refused link shows its error and the way back to sign-in.
+  List<Widget> _lockedSetupStep() => [
+    _title(
+      tr('设置链接', 'Setup link'),
+      _busy ? tr('正在读取设置链接…', 'Reading the setup link…') : tr('用 iPhone 相机扫描设置二维码会自动打开这里。', 'Scan the setup QR code with the iPhone Camera to open it here.'),
+    ),
+    if (_busy) const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2))),
     if (widget.onBack != null) ...[
       const SizedBox(height: 18),
       BigButton(tr('改用账号登录', 'Sign in with an account instead'), secondary: true, onPressed: _busy ? null : widget.onBack),

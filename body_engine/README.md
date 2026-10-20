@@ -291,7 +291,7 @@ Each item: `key`, `label` (≤ 6 characters), `value` (≤ 12 characters, **with
 | `recovery` (恢复, recovery) | Mean recovery score of the last 7 days (≥ 67 good, 50–66 neutral, 34–49 warn, < 34 bad), trend vs the previous 7 days; spark 14 days |
 | `sleep_debt` (睡眠债, sleep debt) / `sleep_hours` (睡眠时长, sleep duration) | The latest sleep debt (≤ 1h good, ≤ 2h warn); mean actual sleep over the last 7 nights (≥ 7h good, ≥ 6h warn); spark 14 days (hours) |
 | `bedtime` (入睡时间, bedtime) | Mean onset time of the main sleep over the last 7 nights (≤ 00:30 good, ≤ 02:00 warn, later bad); spark = hours relative to midnight (23:30 = −0.5, 02:40 = 2.67) |
-| `uric_acid` / `alt` / `triglycerides` | The latest lab result ("high 550"), more than 20% over the upper limit bad; spark = values of all past results |
+| `uric_acid` / `alt` / `triglycerides` | The latest lab result ("high 520"), more than 20% over the upper limit bad; spark = values of all past results |
 | `training_week` (本周训练, training this week) | Number of days with workout records in the last 7 days (≥ 4 good, 2–3 warn); spark = the last 6 windows of 7 days |
 | `red_meat_week` (红肉 7 天, red meat 7 days) | Same definition as the rule engine (journal red_meat_g first, otherwise estimated from food names; "红肉 Ng" (red meat N g) in a name is taken as labelled) |
 | `added_sugar_today` (今日添加糖) / `added_sugar_7d` (7 天平均) | Added sugar today over the entries that know it (未知 when none do; ≤ cap of the goal in effect good, ≤ 50 g warn, more bad); 7-day average over the days with numbers, spark 7 days |

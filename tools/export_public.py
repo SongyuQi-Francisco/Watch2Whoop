@@ -91,10 +91,10 @@ BLOCK_PATCHES = [
     ("docs/LICENSES.md", r"- \*\*Jarvis button icon\*\*[^\n]*\n",
      "- **Jarvis button icon** — \"sparkles\" from [Tabler Icons](https://tabler.io/icons), MIT.\n"),
 ]
-# Licence files: copied verbatim (no replacements: the copyright holder is named on purpose) and required by the scan
+# Licence files: copied verbatim and required by the scan; the copyright holder is "Watch2Whoop contributors" (no personal names)
 LICENSES = {"LICENSE": "GNU AFFERO GENERAL PUBLIC LICENSE", "apps/watch2whoop/LICENSE": "MIT License",
             "shortcuts/LICENSE": "MIT License"}
-COPYRIGHT_LINE = re.compile(r"^Copyright \(c\) \d{4} [^\n]{1,80} and Watch2Whoop contributors$")
+COPYRIGHT_LINE = re.compile(r"^Copyright \(c\) \d{4} Watch2Whoop contributors$")
 TEXT_SUFFIXES = {".py", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".sh", ".js", ".css", ".html", ".sql",
                  ".dart", ".swift", ".hujson", ".xcconfig", ".example", ".conf", ".service", ".timer", ".plist",
                  ".webmanifest", ".gitignore", ".gitmodules", ".lock", ".pbxproj", ".xcscheme", ".storyboard",
