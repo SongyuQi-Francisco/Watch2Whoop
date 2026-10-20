@@ -16,6 +16,7 @@ import psycopg
 
 from .. import auth, sparky_client
 from ..rules import params as RP, store as rules_store
+from ..rules.context import load_overrides
 from . import catalog, params as P
 from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 
@@ -572,11 +573,16 @@ def save_plan(
         ),
     ).fetchone()
 
+    # Day changes of the old plan (training/overrides.py) no longer apply from the new plan's start
+    cleared = conn.execute("DELETE FROM training_day_overrides WHERE user_id = %s AND date >= %s",
+                           (user_id, max(start_d, _user_today(conn, user_id)))).rowcount
+
     sparky_sync = {"synced": False, "reason": "未请求同步"}
     if sync_sparky:
         sparky_sync = _sync_plan_to_sparky(conn, user_id, row, client=client)
 
     return {
+        **({"day_changes_cleared": cleared} if cleared else {}),
         "saved": {
             "id": row["id"],
             "name": row["name"],
@@ -700,17 +706,33 @@ def get_week_plan(
                 "exercises": [_normalize_item(conn, owner_id, x, with_meta=with_meta) for x in d_obj.get("exercises") or []],
             })
 
-        week_days = []
+        # Day changes (training/overrides.py): a date may hold other weekdays' sessions, a free activity or rest
+        ovs = load_overrides(conn, owner_id, start, end)
+        vol_by_dow: dict[int, list[dict]] = {}
+        for nd in normalized_days_for_vol:
+            vol_by_dow.setdefault(nd["day_of_week"], []).extend(nd["exercises"])
+        week_days, vol_days = [], []
         for k in range(7):
             d = start + timedelta(days=k)
             dow = d.isoweekday()
-            planned = raw_days_by_dow.get(dow, [])
+            ov = ovs.get(d)
+            refs = ov["sessions"] if ov is not None else [{"dow": dow}]
+            planned, vol_items = [], []
+            for ref in refs:
+                if ref.get("dow"):
+                    planned += raw_days_by_dow.get(int(ref["dow"]), [])
+                    vol_items += vol_by_dow.get(int(ref["dow"]), [])
+                elif ref.get("label"):
+                    planned.append({"name": ref["label"], "exercises": []})
+            vol_days.append({"day_of_week": dow, "exercises": vol_items})
             week_days.append({
                 "date": d,
                 "day_of_week": dow,
                 "weekday_zh": WEEKDAY_ZH[dow],
                 "planned": planned,
                 "rest_day": len(planned) == 0,
+                "change": ov and {"from": [p["name"] for p in raw_days_by_dow.get(dow, [])],
+                                  "source": ov["source"], "reason": ov.get("reason")},
             })
 
         return {
@@ -727,7 +749,7 @@ def get_week_plan(
                 "source": "body_engine",
             },
             "days": week_days,
-            "volume_by_group": volume_summary(normalized_days_for_vol),
+            "volume_by_group": volume_summary(vol_days),
             "suggestions": sugg_list,
             "cautions": cautions,
             "readiness": readiness_advice(conn, owner_id, day) if with_scores else None,

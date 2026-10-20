@@ -2,7 +2,7 @@
 from datetime import date, datetime, timedelta
 
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, history, params as P, plans
+from . import catalog, history, overrides, params as P, plans
 
 
 def _d(s: str | None) -> date | None:
@@ -189,6 +189,65 @@ TOOL_SPECS: list[dict] = [
             "sync_sparky": {"type": "boolean"},
         }),
         handler=_swap_exercise,
+        scope="training",
+        writes=True,
+    ),
+]
+
+
+# ---------------------------------------------------------------- day changes (overrides.py)
+def _reschedule_day(conn, uid, a):
+    return overrides.reschedule_day(conn, uid, date.fromisoformat(a["date"]), a["session"], reason=a.get("reason"),
+                                    replan=a.get("replan") is not False)
+
+
+def _swap_days(conn, uid, a):
+    return overrides.swap_days(conn, uid, date.fromisoformat(a["date_a"]), date.fromisoformat(a["date_b"]))
+
+
+def _replan_week(conn, uid, a):
+    return overrides.replan_week(conn, uid, _d(a.get("date")), apply=a.get("apply") is not False)
+
+
+def _undo_day_changes(conn, uid, a):
+    return overrides.undo_day_changes(conn, uid, _d(a.get("start")), _d(a.get("end")))
+
+
+TOOL_SPECS += [
+    dict(
+        name="reschedule_day",
+        description="改某天练什么：session=计划里的训练名 / 周几 / 休息 / 计划外活动；默认重排本周剩余几天。",
+        input_schema=_schema({
+            "date": DATE,
+            "session": {"type": "string"},
+            "reason": _n("string"),
+            "replan": {"type": "boolean"},
+        }),
+        handler=_reschedule_day,
+        scope="training",
+        writes=True,
+    ),
+    dict(
+        name="swap_days",
+        description="互换两天的训练（如 周二 ↔ 周四）。",
+        input_schema=_schema({"date_a": DATE, "date_b": DATE}),
+        handler=_swap_days,
+        scope="training",
+        writes=True,
+    ),
+    dict(
+        name="replan_week",
+        description="重排本周 date 之后的训练（不连练同一肌群、看恢复分）；apply=false 只预览。",
+        input_schema=_schema({"date": _n("string", "YYYY-MM-DD，默认今天"), "apply": {"type": "boolean"}}),
+        handler=_replan_week,
+        scope="training",
+        writes=True,
+    ),
+    dict(
+        name="undo_day_changes",
+        description="撤销按日期的训练调整（默认今天到周日）。",
+        input_schema=_schema({"start": _n("string", "YYYY-MM-DD"), "end": _n("string", "YYYY-MM-DD")}),
+        handler=_undo_day_changes,
         scope="training",
         writes=True,
     ),

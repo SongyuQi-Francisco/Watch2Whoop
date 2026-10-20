@@ -12,7 +12,7 @@ from .. import auth, queries, sparky_client
 from ..config import settings
 from ..importers import ow as ow_imp, shortcut as sc_imp
 from ..rules import params as RP, store as rules_store
-from ..rules.context import Ctx
+from ..rules.context import Ctx, load_overrides
 from ..scores import store as scores_store
 from ..trends import series as trend_series
 
@@ -193,7 +193,17 @@ def _training_ctx(conn, viewer_id: int, owner_id: int, day: date):
     with_meta = auth.can_view(conn, viewer_id, owner_id, "exercises")
     if with_meta:
         ctx.meta = conn.execute("SELECT * FROM exercise_meta WHERE user_id = %s", (owner_id,)).fetchall()
+    ctx.overrides = load_overrides(conn, owner_id, day - timedelta(days=7), day + timedelta(days=7))
     return client, ctx, with_meta
+
+
+def _day_change(ctx: Ctx, d: date) -> dict | None:
+    """A changed day (training_day_overrides): the plan's own sessions of that weekday, who changed it and why."""
+    ov = ctx.overrides.get(d)
+    if ov is None:
+        return None
+    names = [it["preset"]["name"] if it["kind"] == "preset" else it["name"] for it in ctx.weekday_items(d.isoweekday(), d)]
+    return {"from": names, "source": ov["source"], "reason": ov.get("reason")}
 
 
 def _load_suggestions(conn, viewer_id: int, owner_id: int, start: date, end: date) -> dict[str, list]:
@@ -218,6 +228,8 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
             planned.append({"name": p["name"], "exercises": [
                 _exercise_view(ctx, x["exercise_id"], x.get("name"), x["sets"], x.get("rep_goal"), suggestions, with_meta)
                 for x in p["exercises"]]})
+        elif item["kind"] == "label":   # a free activity put on this day (basketball, swimming)
+            planned.append({"name": item["name"], "exercises": []})
         else:
             planned.append({"name": item["name"], "exercises": [
                 _exercise_view(ctx, item["exercise_id"], item["name"], [], None, suggestions, with_meta)]})
@@ -246,6 +258,7 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             "plan": wk["plan"],
             "planned": day_entry["planned"],
             "rest_day": day_entry["rest_day"],
+            "change": day_entry.get("change"),
             "logged": logged,
             "readiness": wk.get("readiness"),
             **({"sparky_error": sparky_error} if sparky_error else {}),
@@ -264,7 +277,8 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                                     for x in e["sets"])}
             for e in s["exercises"]]})
     return {"plan": plan and {"name": plan["name"], "start_date": plan["start_date"]}, "planned": planned,
-            "rest_day": plan is not None and not planned, "logged": logged}
+            "rest_day": (plan is not None or day in ctx.overrides) and not planned, "change": _day_change(ctx, day),
+            "logged": logged}
 
 
 def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
@@ -282,7 +296,8 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     for k in range(7):
         d = start + timedelta(days=k)
         planned = _planned_view(ctx, d, sugg, with_meta)
-        days.append({"date": d, "planned": planned, "rest_day": ctx.active_plan(d) is not None and not planned})
+        days.append({"date": d, "planned": planned, "rest_day": (ctx.active_plan(d) is not None or d in ctx.overrides) and not planned,
+                     "change": _day_change(ctx, d)})
         for p in planned:
             for x in p["exercises"]:
                 if x["status"] != "active" and x["exercise_id"] not in seen:

@@ -28,6 +28,7 @@
     "ask": [
       "mcp__body-engine__undo_sparky_entry",
       "mcp__body-engine__undo_meal_log",
+      "mcp__body-engine__undo_day_changes",
       "mcp__body-engine__delete_journal_entry",
       "mcp__body-engine__delete_lab_results",
       "mcp__body-engine__delete_observation",

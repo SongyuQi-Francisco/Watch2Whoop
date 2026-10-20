@@ -474,6 +474,7 @@ textarea.input { resize: none; }
 .wday .mark .i { fill: var(--train); }
 .wday .mark .ring { fill: none; stroke: var(--train); stroke-width: 1.6; }
 .wday .pl { font-size: 10px; color: var(--text-2); max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: 12px; line-height: 12px; }
+.wday.changed .pl { color: var(--train); font-weight: 600; }   /* the plan was changed for this date (training_day_overrides) */
 #rec-cal .month-nav { margin-top: 0; }
 .cal-legend { display: flex; justify-content: center; gap: 14px; margin-top: 14px; font-size: 11px; color: var(--text-2); }
 .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
