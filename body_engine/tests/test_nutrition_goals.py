@@ -372,3 +372,13 @@ def test_templates_and_recipes_carry_sugar(conn, world):
     ings = recipes.check_ingredients([{**i, "purine_mg": 0, "purchase_unit": None, "store": None} for i in items])
     ps = recipes.per_serving(ings, 2)
     assert ps["sugar_g"] == 9 and ps["added_sugar_g"] == 4 and ps["sodium_mg"] is None
+
+
+def test_extras_follow_edited_entry(conn, world):
+    ids, _ = world
+    d = ids["D"]
+    extras.save(conn, d, "e1", TODAY, {"added_sugar_g": 10, "sugar_g": 12}, True)
+    assert not extras.save(conn, d, "e1", TODAY, {"added_sugar_g": 99}, None, source="notes_parse")   # never over log_food
+    extras.carry_over(conn, d, "e1", "e2", TODAY - timedelta(days=1), 0.5)   # update_food_entry: new id, half portion
+    got = extras.load(conn, d, TODAY - timedelta(days=1), TODAY)
+    assert list(got) == ["e2"] and got["e2"]["added_sugar_g"] == 5 and got["e2"]["sugar_g"] == 6 and got["e2"]["sugary_drink"]
