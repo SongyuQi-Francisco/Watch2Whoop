@@ -154,7 +154,7 @@ LABS_EN: dict[str, dict] = {
         "read": [("Within range", "Normal"), ("Above the upper limit, < 2×", "Mildly high"), ("≥ 2× the upper limit", "Clearly high")],
         "recovery": "Skip hard training for 2 days before a follow-up test, so a rise from muscle isn't mistaken for a liver problem.",
         "tips": ["Losing 7–10% of body weight clearly improves fatty liver", "Less alcohol, sugary drinks and saturated fat",
-                 "Supplements (especially \"liver detox\" ones) can affect liver enzymes too; ask your doctor whether to stop them before a follow-up"],
+                 "Supplements (especially \"detox\" ones) can affect liver enzymes too; ask your doctor whether to stop them before a follow-up"],
     },
     "triglycerides": {
         "title": "Triglycerides",

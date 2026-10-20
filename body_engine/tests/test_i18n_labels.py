@@ -139,7 +139,7 @@ def dsn():
 @pytest.fixture(scope="module")
 def world(dsn):
     with psycopg.connect(dsn, row_factory=dict_row, autocommit=True) as conn:
-        a = conn.execute("""INSERT INTO users (display_name, birth_date, sex, timezone) VALUES ('A', '2001-08-03', 'm',
+        a = conn.execute("""INSERT INTO users (display_name, birth_date, sex, timezone) VALUES ('A', '1990-01-01', 'm',
                             'Australia/Sydney') RETURNING id""").fetchone()["id"]
         tok = auth.create_token(conn, a, "web", ["read", "write"])
         for d, rec, tsb in ((YDAY, 75, -20), (TODAY, 80, -5)):
