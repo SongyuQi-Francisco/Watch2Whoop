@@ -518,6 +518,15 @@ textarea.input { resize: none; }
 .rcard-meta { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .rcard-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .rcard .why { font-size: 12px; color: var(--text-2); }
+/* 饮食 page (issue #43): per-meal suggestions, the recipes sub-page header */
+.mp-slot + .mp-slot { margin-top: 14px; }
+.mp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.mp-slot .rec-row .rcard { flex-basis: 72%; }
+.sub-head { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; }
+.sub-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.sub-back { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--text-2); font-size: 15px; padding: 6px 8px 6px 0; }
+.sub-back svg { width: 16px; height: 16px; transform: rotate(180deg); }
+.sub-back + h2::before { content: "/"; color: var(--text-3); font-weight: 400; margin-right: 8px; }
 .nut4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 2px 0 6px; }
 .nut4 .l { font-size: 11px; color: var(--text-2); } .nut4 .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--text); line-height: 1.6; }

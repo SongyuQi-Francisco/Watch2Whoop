@@ -53,7 +53,7 @@
     assistantUrl: null, version: null,
     mealLogs: {},
     calMonth: null,
-    foodMode: "recipes", foodQ: "", reportPeriod: "week",  // food page: recipes / shopping, search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
+    foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
   };
 
   // ------------------------------------------------------------------ utilities
@@ -821,7 +821,7 @@
       if (again) body.allow_duplicates = true;
       const res = await api(`/v1/users/me/meal-templates/${encodeURIComponent(t.id)}/log`, { method: "POST", body });
       S.mealLogs[t.id] = res?.log_id;
-      delete S.data[`today:${S.owner}`];
+      delete S.data[`today:${S.owner}`]; delete S.data[`mealplan${S.todayDate}:${S.owner}`];
       render();
       toast(`已记 · ${t.name}`, "撤销", () => undoMeal(t));
     } catch (err) {
@@ -836,7 +836,7 @@
       await api(`/v1/users/me/meal-logs/${encodeURIComponent(id)}`, { method: "DELETE" });
       delete S.mealLogs[t.id];
       if (t.today_log) t.today_log = null;
-      delete S.data[`today:${S.owner}`];
+      delete S.data[`today:${S.owner}`]; delete S.data[`mealplan${S.todayDate}:${S.owner}`];
       render();
       toast(`已撤销 · ${t.name}`);
     } catch (err) { toast(err.message); }
@@ -2067,7 +2067,8 @@
   // ------------------------------------------------------------------ food: recipes (/recipes from the body butler session, scope nutrition) and later shopping
   // GET /recipes?slot=&tag=&q= → [{id, name, slot, kcal, protein_g, carbs_g, fat_g, prep_min, tags, badges, favorite, can_make}]
   // GET /recipes/{id} (+ ingredients, steps); POST /recipes/{id}/log {date, meal, servings} → {log_id}; DELETE /meal-logs/{log_id}
-  // PATCH /recipes/{id} {favorite | can_make}; GET /recipes/suggest?date=&slot= -> today's suggestions. Field names follow the butler session; be lenient here.
+  // PATCH /recipes/{id} {favorite | can_make}; GET /recipes/meal-plan?date= -> per-meal suggestions {remaining, slots[{slot, logged, target, suggestions[+labels]}]} (issue #43).
+  // Field names follow the butler session; be lenient here.
   const SLOTS = [["breakfast", "早餐"], ["lunch", "午餐"], ["dinner", "晚餐"], ["snack", "加餐"]];
   const SLOT_NAME = Object.fromEntries([...SLOTS, ["snacks", "加餐"]]);
   const slotOf = (r) => { const v = r.slot || (Array.isArray(r.slots) ? r.slots[0] : null) || r.meal || "lunch"; return v === "snacks" ? "snack" : v; };
@@ -2088,12 +2089,13 @@
     return out;
   }
   const plainTags = (r) => (r.tags || []).filter((t) => !/嘌呤|红肉|饱和脂肪/.test(t));   // no longer shown if they duplicate the constraint badges
-  function recipeCard(r) {
-    const badges = [...recipeBadges(r).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label)),
-      ...plainTags(r).slice(0, 3).map((t) => badge("plain", t))].join("");
-    const meta = [nut(r, "kcal") != null && `${fmtNum(nut(r, "kcal"))} kcal`, nut(r, "protein_g") != null && `蛋白 ${fmtNum(nut(r, "protein_g"))} g`,
+  function recipeCard(r, slot) {   // slot: a per-meal suggestion (its own short labels, kcal with the rice it needs, opens with that meal selected)
+    const badges = (r.labels ? r.labels.map(badgeOf).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label))
+      : [...recipeBadges(r).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label)), ...plainTags(r).slice(0, 3).map((t) => badge("plain", t))]).join("");
+    const kc = r.meal_kcal ?? nut(r, "kcal"), pr = r.meal_protein_g ?? nut(r, "protein_g");
+    const meta = [kc != null && `${fmtNum(kc)} kcal${r.with_staple ? " 含饭" : ""}`, pr != null && `蛋白 ${fmtNum(pr)} g`,
       (r.prep_min ?? r.time_min) != null && `${r.prep_min ?? r.time_min}′`].filter(Boolean).join(" · ");
-    return `<button class="rcard ${r.can_make === false ? "off" : ""}" data-recipe="${esc(r.id)}">
+    return `<button class="rcard ${r.can_make === false && !slot ? "off" : ""}" data-recipe="${esc(r.id)}"${slot ? ` data-slot="${esc(slot)}"` : ""}>
       <div class="rcard-top"><span class="rcard-name">${esc(r.name)}</span>${r.favorite ? `<span class="star on" aria-label="已收藏">★</span>` : ""}</div>
       ${meta ? `<div class="rcard-meta">${esc(meta)}</div>` : ""}${badges ? `<div class="rcard-tags">${badges}</div>` : ""}
 </button>`;
@@ -2111,14 +2113,15 @@
       <div class="recipe-grid">${by.get(k).map((r) => recipeCard(r)).join("")}</div></div>`).join("");
   }
 
-  async function recipeSheet(id) {
+  async function recipeSheet(id, slot) {
+    const day = viewDay();   // log to the day the page shows (issue #43: looking back at 10/18 it logged to today, so the page did not change)
     openSheet("食谱", `<div class="empty faint">…</div>`);
     let r;
     try { r = await load(`recipe${id}`, `${recipePath()}/${encodeURIComponent(id)}`); }
     catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">暂无</div>`; return; }
     $("#sheet-title").textContent = r.name;
     const self = isSelf();
-    let servings = 1, meal = slotOf(r) || defaultMeal();
+    let servings = 1, meal = slot || slotOf(r) || defaultMeal();
     const ings = r.ingredients || [];
     const steps = (r.steps || []).map((x) => (typeof x === "string" ? x : x.text || ""));
     const draw = () => {
@@ -2133,7 +2136,7 @@
             <div class="seg" role="group" aria-label="餐次">${SLOTS.map(([k, t]) => `<button data-meal-slot="${k}" aria-pressed="${k === meal}">${t}</button>`).join("")}</div>
             <div class="stepper"><button id="sv-minus" aria-label="少半份">−</button><span class="v">${servings} 份</span><button id="sv-plus" aria-label="多半份">＋</button></div></div>
           <div class="btns"><button class="btn" id="r-fav">${r.favorite ? "★ 已收藏" : "☆ 收藏"}</button><button class="btn" id="r-can">${r.can_make === false ? "现在做不了" : "现在能做"}</button>
-            <button class="btn btn-primary" id="r-log">记 ${servings} 份</button></div>` : ""}`;
+            <button class="btn btn-primary" id="r-log">${day !== S.todayDate ? `记到 ${shortDay(day)}` : `记 ${servings} 份`}</button></div>` : ""}`;
       if (!self) return;
       const root = $("#sheet-body");
       for (const b of $$("[data-meal-slot]", root)) b.onclick = () => { meal = b.dataset.mealSlot; draw(); };
@@ -2141,7 +2144,7 @@
       $("#sv-plus", root).onclick = () => { servings = Math.min(6, servings + 0.5); draw(); };
       $("#r-fav", root).onclick = () => patchRecipe(r, { favorite: !r.favorite }, draw);
       $("#r-can", root).onclick = () => patchRecipe(r, { can_make: r.can_make === false }, draw);
-      $("#r-log", root).onclick = () => logRecipe(r, servings, meal);
+      $("#r-log", root).onclick = () => logRecipe(r, servings, meal, day);
     };
     draw();
   }
@@ -2158,19 +2161,22 @@
     } catch (err) { toast(err.status === 404 ? "暂不可用" : err.message); }
   }
 
-  async function logRecipe(r, servings, meal, again) {
+  // Cached data a recipe log changes: that day's intake (/today?date=), the per-meal plan, the recipe list (last eaten)
+  const dropFoodDay = (day) => { for (const k of [todayKey(day), "today", `mealplan${day}`, "recipes"]) delete S.data[`${k}:${S.owner}`]; };
+  async function logRecipe(r, servings, meal, day, again) {
     try {
-      const res = await api(`/v1/users/me/recipes/${encodeURIComponent(r.id)}/log`, { method: "POST", body: { date: S.todayDate, meal, servings, ...(again ? { allow_duplicates: true } : {}) } });
+      const res = await api(`/v1/users/me/recipes/${encodeURIComponent(r.id)}/log`, { method: "POST", body: { date: day, meal, servings, ...(again ? { allow_duplicates: true } : {}) } });
       closeSheet();
-      delete S.data[`today:${S.owner}`]; delete S.data[`suggest:${S.owner}`];
+      dropFoodDay(day);
+      S.foodSub = null;   // back to the day's intake, where the new entry shows
       render();
       const logId = res?.log_id;
-      toast(`已记 · ${servings} 份`, logId != null ? "撤销" : null, async () => {
-        try { await api(`/v1/users/me/meal-logs/${encodeURIComponent(logId)}`, { method: "DELETE" }); delete S.data[`today:${S.owner}`]; render(); toast("已撤销"); }
+      toast(day !== S.todayDate ? `已记到 ${shortDay(day)}` : `已记 · ${servings} 份`, logId != null ? "撤销" : null, async () => {
+        try { await api(`/v1/users/me/meal-logs/${encodeURIComponent(logId)}`, { method: "DELETE" }); dropFoodDay(day); render(); toast("已撤销"); }
         catch (err) { toast(err.message); }
       });
     } catch (err) {
-      if (err.status === 409) toast("已记过", "再记一份", () => logRecipe(r, servings, meal, true));
+      if (err.status === 409) toast(day !== S.todayDate ? `${shortDay(day)} 已记过` : "已记过", "再记一份", () => logRecipe(r, servings, meal, day, true));
       else toast(err.status === 404 ? "暂不可用" : err.message);
     }
   }
@@ -2196,7 +2202,7 @@
         const ok = $("#fe-del-ok", root);
         ok.onclick = async () => {
           ok.disabled = true;
-          const done = (msg) => { delete S.data[`${todayKey(e.date)}:${S.owner}`]; delete S.data[`today:${S.owner}`]; closeSheet(); render(); toast(msg); };
+          const done = (msg) => { dropFoodDay(e.date); closeSheet(); render(); toast(msg); };
           try {
             await api(`/v1/users/me/nutrition/entries/${encodeURIComponent(e.id)}?date=${encodeURIComponent(e.date)}`, { method: "DELETE" });
             done("已删除");
@@ -2237,43 +2243,59 @@
     return `<div class="section">${head}${total}${meals}</div>`;
   }
 
+  // ---- Per-meal suggestions (GET /recipes/meal-plan, issue #43): each meal not logged yet gets 2 recipes (taste, pantry, health caps)
+  function mealPlanHtml(plan) {
+    const slots = (plan?.slots || []).filter((s) => s.suggestions?.length);
+    if (!slots.length) return "";
+    const rem = plan.remaining;
+    const rows = slots.map((s) => `<div class="mp-slot"><div class="mp-h"><span class="row-title">${SLOT_NAME[s.slot] || s.slot}</span>
+        ${s.target ? `<span class="small muted">${s.target.kcal > 0 ? `≈ ${fmtNum(s.target.kcal)} kcal · ${fmtNum(s.target.protein_g)} g` : "已到目标"}</span>` : ""}</div>
+      <div class="rec-row">${s.suggestions.map((r) => recipeCard(r, s.slot)).join("")}</div></div>`).join("");
+    return `<div class="section"><div class="section-head"><h2>每餐推荐</h2>${rem ? `<span class="small muted">余 ${fmtNum(Math.max(0, rem.kcal))} kcal · ${fmtNum(Math.max(0, rem.protein_g))} g</span>` : ""}</div>${rows}</div>`;
+  }
+
+  // ---- Recipes sub-page (饮食 → 食谱 at the bottom of the page): search + the list by meal
+  async function recipesSubHtml() {
+    const list = await load("recipes", recipePath()).catch((e) => ({ error: e }));
+    const head = `<div class="sub-head"><button class="sub-back" id="food-back" aria-label="返回饮食">${ICON.chev}<span>饮食</span></button><h2>食谱</h2></div>`;
+    if (list.error) return head + `<div class="empty">暂无食谱</div>`;
+    return head + `<input class="search" id="food-q" type="search" placeholder="搜索" value="${esc(S.foodQ || "")}" aria-label="搜索食谱">
+      <div id="food-list">${recipeListHtml(list, S.foodQ)}</div>`;
+  }
+
   const RENDER_food = async () => {
-    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["recipes", "食谱"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`;
+    if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
+    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="饮食">${[["diet", "饮食"], ["shopping", "采购"]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`;
     if (S.foodMode === "shopping") {
       const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
       return seg + (shop ? await shop.foodShop({ owner: ownerPath(), self: isSelf(), date: S.todayDate })
         : `<div class="soon"><span class="glyph">${ICON.cart}</span><div>即将上线</div></div>`);
     }
-    const past = isPast();   // looking back: that day's intake + the recipe list; quick log and suggestions are only for today
-    const [list, sug, d, meals] = await Promise.all([
+    const past = isPast();   // looking back: that day's intake + the recipes entry; quick log and suggestions are only for today
+    const [list, plan, d, meals] = await Promise.all([
       load("recipes", recipePath()).catch((e) => ({ error: e })),
-      past ? null : load("suggest", `${recipePath()}/suggest?date=${S.todayDate}`).catch(() => null),
+      past ? null : load(`mealplan${S.todayDate}`, `${recipePath()}/meal-plan?date=${S.todayDate}`).catch(() => null),
       load(todayKey(), todayPath()).catch(() => null),
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,
     ]);
-    const n = d?.nutrition;
-    const left = sug?.remaining ? { kcal: sug.remaining.kcal, p: sug.remaining.protein_g }
-      : n && !n.error && n.goal ? { kcal: (n.goal.calories || 0) - (n.intake.calories || 0), p: (n.goal.protein_g || 0) - (n.intake.protein_g || 0) } : null;
-    const sugList = (Array.isArray(sug) ? sug : sug?.suggestions || sug?.items || sug?.recipes || []).map((x) => (x.recipe ? { ...x.recipe, reason: x.reason } : x)).slice(0, 3);
     const quick = isSelf() ? quickHtml(meals, true) : "";
     let html = seg + foodDayHtml(d);
     if (quick) html += `<div class="section"><div class="section-head"><h2>快捷记录</h2></div>${quick}</div>`;
-    if (sugList.length) {
-      html += `<div class="section"><div class="section-head"><h2>今天推荐</h2>${left ? `<span class="small muted">余 ${fmtNum(Math.max(0, left.kcal))} kcal · ${fmtNum(Math.max(0, left.p))} g 蛋白</span>` : ""}</div>
-        <div class="rec-row">${sugList.map((r) => recipeCard(r)).join("")}</div></div>`;
-    }
-    if (list.error) return html + `<div class="section"><div class="empty">暂无食谱</div></div>`;
-    html += `<div class="section"><div class="section-head"><h2>食谱</h2></div><input class="search" id="food-q" type="search" placeholder="搜索" value="${esc(S.foodQ || "")}" aria-label="搜索食谱"></div>
-      <div id="food-list">${recipeListHtml(list, S.foodQ)}</div>`;
+    html += mealPlanHtml(plan);
+    const n = Array.isArray(list) ? list.length : null;
+    html += `<div class="section"><div class="group"><button class="item" id="food-recipes"><span class="row-title">食谱</span>${n != null ? `<span class="val">${n}</span>` : ""}<span class="chev">${ICON.chev}</span></button></div></div>`;
     return html;
   };
 
-  function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe); }
+  function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe, b.dataset.slot); }
   function afterFood(view) {
-    for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; render(); };
+    for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; S.foodSub = null; render(); };
     if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
     bindRecipes(view);
     bindMeals(view);
+    const open = $("#food-recipes", view), back = $("#food-back", view);
+    if (open) open.onclick = () => { S.foodSub = "recipes"; render(); window.scrollTo(0, 0); };
+    if (back) back.onclick = () => { S.foodSub = null; render(); window.scrollTo(0, 0); };
     const q = $("#food-q", view);
     if (q) q.oninput = () => {
       S.foodQ = q.value;
