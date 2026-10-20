@@ -13,6 +13,7 @@ mcpName = "body-engine"
 toolName = [
   "undo_sparky_entry",
   "undo_meal_log",
+  "undo_day_changes",
   "delete_journal_entry",
   "delete_lab_results",
   "delete_observation",
@@ -27,6 +28,7 @@ mcpName = "body-engine"
 toolName = [
   "undo_sparky_entry",
   "undo_meal_log",
+  "undo_day_changes",
   "delete_journal_entry",
   "delete_lab_results",
   "delete_observation",
