@@ -8,8 +8,9 @@ They use the read-write key (sparky_client.write_client_for_user) and check befo
 - Workouts: each exercise is first matched against the SparkyFitness exercise library (ID / name / Chinese and English names and aliases in exercise_meta); a match that is banned
   (marked banned in exercise_meta or 【禁用】 in the SparkyFitness description) rejects the whole call with the reason; the same exercise already logged that day is treated as a duplicate and skipped.
 - Weight: an existing different value on the same day is not overwritten (only with overwrite=true), an identical one is skipped.
-Undo: undo_sparky_entry only deletes food / workout entries the butler wrote itself (source=body_assistant), named by id or (food) by an exact
-date + meal + name (+ time) match. The user deletes any of their own food entries on the Today page (delete_food_entry).
+Edit / delete (issue #30, any source; deletes ask the user first): update_food_entry, update_set, undo_entry (food entry by id or an exact
+date + meal + name (+ time) match, workout session, single set, one day's check-in). Every change is logged with before / after values
+(writelog.py) and rollback() puts it back. The user also deletes food entries on the Today page (delete_food_entry, not logged).
 """
 import hashlib
 import json
@@ -21,6 +22,7 @@ import psycopg
 
 from .. import sparky_client
 from ..records import store as records_store
+from . import writelog
 
 SOURCE = "body_assistant"
 MEALS = {"breakfast": "早餐", "lunch": "午餐", "dinner": "晚餐", "snacks": "加餐 / 零食"}
@@ -133,19 +135,24 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
                             f"这天{MEALS[it['meal']]}已经有「{dup.get('food_name')}」（{dup.get('calories')} kcal，"
                             f"id {dup['id']}），当作重复没写；确认是另一份就用 allow_duplicates=true 再写"})
             continue
-        amount = it["amount"].strip()
-        food_id, variant_id = _ensure_food(client, it)
-        body = {"food_id": food_id, "variant_id": variant_id, "quantity": 1, "unit": amount,
-                "entry_date": d.isoformat(), "entry_time": it.get("time"),
-                "meal_type_id": meal_ids[it["meal"]], "meal_type": it["meal"],
-                "notes": it.get("notes"), "source": SOURCE, "source_id": _food_source_id(d, it)}
-        row = client.request("POST", "/food-entries", {k: v for k, v in body.items() if v is not None})
+        row = _create_food(client, meal_ids, d, it)
         days[d].append(row)
+        writelog.record(conn, "food", "create", row["id"], None, row)
         created.append({"id": row["id"], "date": d.isoformat(), "meal": it["meal"], "food": it["food"].strip(),
-                        "amount": amount, "calories": it["calories"], "protein_g": it["protein_g"],
+                        "amount": it["amount"].strip(), "calories": it["calories"], "protein_g": it["protein_g"],
                         "carbs_g": it["carbs_g"], "fat_g": it["fat_g"]})
     return {"created": created, "skipped_duplicates": skipped, "warnings": warnings,
-            "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉"}
+            "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉，改用 update_food_entry"}
+
+
+def _create_food(client, meal_ids: dict, d: date, it: dict) -> dict:
+    amount = it["amount"].strip()
+    food_id, variant_id = _ensure_food(client, it)
+    body = {"food_id": food_id, "variant_id": variant_id, "quantity": 1, "unit": amount,
+            "entry_date": d.isoformat(), "entry_time": it.get("time"),
+            "meal_type_id": meal_ids[it["meal"]], "meal_type": it["meal"],
+            "notes": it.get("notes"), "source": SOURCE, "source_id": _food_source_id(d, it)}
+    return client.request("POST", "/food-entries", {k: v for k, v in body.items() if v is not None})
 
 
 # ---------------------------------------------------------------- exercise matching
@@ -294,6 +301,7 @@ def log_workout(conn: psycopg.Connection, user_id: int, a: dict, client=None) ->
     body = {"entry_date": d.isoformat(), "name": a["name"].strip() or "训练", "notes": a.get("notes"),
             "source": SOURCE, "exercises": exercises}
     row = client.request("POST", "/exercise-preset-entries", {k: v for k, v in body.items() if v is not None})
+    writelog.record(conn, "session", "create", row["id"], None, {"id": row["id"], "date": d.isoformat(), "type": "preset"})
     return {"created": {"id": row["id"], "date": d.isoformat(), "name": row.get("name"),
                         "exercises": [{"name": (x.get("exercise_snapshot") or {}).get("name") or x.get("name"),
                                        "sets": len(x.get("sets") or [])} for x in row.get("exercises") or []]},
@@ -336,16 +344,19 @@ def log_weight(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> 
     if not todo:
         return {"written": None, "unchanged": same, "reason": f"{d} 已经记过同样的数值，没重复写"}
     client.request("POST", "/measurements/check-in", {"entry_date": d.isoformat(), **todo})
+    writelog.record(conn, "weight", "update" if cur else "create", d.isoformat(),
+                    {"date": d.isoformat(), **{c: cur.get(c) for c in todo}} if cur else None,
+                    {"date": d.isoformat(), **todo})
     return {"written": {"date": d.isoformat(), **todo}, "unchanged": same, "overwrote": conflict or None}
 
 
-# ---------------------------------------------------------------- undo
+# ---------------------------------------------------------------- lookups
 def _day_rows(client, kind: str, d: date) -> list[dict]:
     if kind == "food":
         return client.get(f"/food-entries/by-date/{d.isoformat()}") or []
-    if kind == "workout":
+    if kind in ("workout", "set"):
         return client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
-    raise ValueError("kind 只能是 food / workout")
+    raise ValueError("kind 只能是 food / workout / set / weight")
 
 
 def _entry_path(kind: str, row: dict) -> str:
@@ -374,16 +385,132 @@ def _match_food(rows: list[dict], d: date, meal: str | None, food: str | None, h
     return hits[0]
 
 
+def _food_row(client, d: date, entry_id) -> dict:
+    row = next((r for r in _day_rows(client, "food", d) if str(r.get("id")) == str(entry_id)), None)
+    if row is None:
+        raise ValueError(f"{d} 没有这条饮食记录：{entry_id}（用 get_nutrition(include_entries=true) 查 id 和日期）")
+    return row
+
+
+def _session_entries(s: dict) -> list[dict]:
+    """Exercise entries of one SparkyFitness session: the exercises of a preset session, or the standalone entry itself."""
+    return s.get("exercises") or [] if s.get("type", "preset") == "preset" else [s]
+
+
+def _find_set(client, d: date, set_id) -> tuple[dict, dict, dict]:
+    for s in _day_rows(client, "set", d):
+        for e in _session_entries(s):
+            for x in e.get("sets") or []:
+                if str(x.get("id")) == str(set_id):
+                    return s, e, x
+    raise ValueError(f"{d} 没有这一组：{set_id}（组的 id 在 get_training_log 里）")
+
+
+SET_KEYS = ("set_number", "set_type", "reps", "weight", "duration", "rest_time", "notes", "rpe", "rir", "is_pr", "distance")
+
+
+def _clean_sets(sets: list[dict]) -> list[dict]:
+    """Sets as SparkyFitness accepts them back (PUT replaces all sets of the exercise entry; ids are not sent)."""
+    out = []
+    for n, x in enumerate(sorted(sets, key=lambda x: x.get("set_number") or 0)):
+        out.append({**{k: x.get(k) for k in SET_KEYS if x.get(k) is not None}, "set_number": n + 1})
+    return out
+
+
+# ---------------------------------------------------------------- edit
+def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> dict:
+    """Change one food entry of any source. Portion / meal / date / time: edited in place (same id).
+    New name, amount or nutrition: written as a new entry with the full corrected values (old one removed), returns the new id."""
+    d = date.fromisoformat(a["date"])
+    if a.get("meal") and a["meal"] not in MEALS:
+        raise ValueError(f"meal 只能是 {', '.join(MEALS)}")
+    if a.get("time") and not TIME_RE.match(a["time"]):
+        raise ValueError("time 要是 24 小时制 HH:MM")
+    portion = a.get("portion")
+    if portion is not None and not 0 < portion <= 20:
+        raise ValueError("portion 是相对现在份量的倍数（0.5 = 一半），要 > 0")
+    new_d = check_date(conn, user_id, a["new_date"]) if a.get("new_date") else d
+    client = client or sparky_client.write_client_for_user(conn, user_id)
+    row = _food_row(client, d, a["id"])
+    meal = a.get("meal") or row.get("meal_type")
+    hhmm = a.get("time") or (row.get("entry_time") or "")[:5] or None
+    nutrition = ("food", "amount", "calories", "protein_g", "carbs_g", "fat_g")
+    if all(a.get(k) is None for k in nutrition):
+        if portion is None and not a.get("meal") and not a.get("new_date") and not a.get("time"):
+            raise ValueError("没有要改的字段")
+        meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
+        body = {"quantity": round((row.get("quantity") or 1) * (portion or 1), 4), "unit": row.get("unit"),
+                "entry_date": new_d.isoformat(), "meal_type": meal, "meal_type_id": meal_ids.get(meal),
+                "entry_time": hhmm, "notes": row.get("notes"), "variant_id": row.get("variant_id")}
+        new = client.request("PUT", f"/food-entries/{row['id']}", {k: v for k, v in body.items() if v is not None})
+        new = {**row, **(new or {}), **{k: v for k, v in body.items() if v is not None}}
+    else:
+        cur = sparky_client._food_entry(row)
+        f = portion or 1
+        item = {"date": new_d.isoformat(), "meal": meal, "time": hhmm, "notes": row.get("notes"),
+                "food": a.get("food") or row.get("food_name"),
+                "amount": a.get("amount") or (f"{cur['quantity'] * f:g} {cur['unit'] or '份'}"),
+                **{k: a[k] if a.get(k) is not None else (None if cur.get(k) is None else round(cur[k] * f, 1))
+                   for k in ("calories", "protein_g", "carbs_g", "fat_g")},
+                "saturated_fat_g": None if cur.get("saturated_fat_g") is None else round(cur["saturated_fat_g"] * f, 1),
+                "alcohol_g": None if row.get("alcohol_g") is None else round(row["alcohol_g"] * (row.get("quantity") or 1)
+                                                                             / (row.get("serving_size") or 1) * f, 1)}
+        for k in ("calories", "protein_g", "carbs_g", "fat_g"):
+            item[k] = item[k] or 0
+        if item["saturated_fat_g"] is not None and (item["saturated_fat_g"] > item["fat_g"] + 0.5 or a.get("fat_g") is not None):
+            item["saturated_fat_g"] = min(item["saturated_fat_g"], item["fat_g"])
+        _check_food(item)
+        meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
+        new = _create_food(client, meal_ids, new_d, item)
+        client.request("DELETE", _entry_path("food", row))
+    writelog.record(conn, "food", "update", row["id"], row, new)
+    out = sparky_client._food_entry({**new, "entry_date": str(new.get("entry_date") or new_d)})
+    return {"updated": {k: v for k, v in out.items() if v is not None}, "previous_id": row["id"],
+            "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删"}
+
+
+def update_set(conn: psycopg.Connection, user_id: int, day: str, set_id, reps, weight_kg, rir, client=None) -> dict:
+    """Change reps / weight / RIR of one set (any source). Only the given fields change."""
+    d = date.fromisoformat(day)
+    if reps is None and weight_kg is None and rir is None:
+        raise ValueError("reps、weight_kg、rir 至少给一个")
+    client = client or sparky_client.write_client_for_user(conn, user_id)
+    s, e, x = _find_set(client, d, set_id)
+    before = _clean_sets(e.get("sets") or [])
+    after = []
+    for y in sorted(e.get("sets") or [], key=lambda y: y.get("set_number") or 0):
+        if str(y.get("id")) == str(set_id):
+            y = {**y, **{k: v for k, v in (("reps", reps), ("weight", weight_kg), ("rir", rir)) if v is not None}}
+            _check_set(e.get("name") or "这一组", {"reps": y.get("reps"), "weight_kg": y.get("weight"), "rir": y.get("rir"),
+                                                  "duration_s": y.get("duration")})
+        after.append(y)
+    after = _clean_sets(after)
+    client.request("PUT", f"/exercise-entries/{e['id']}", {"sets": after})
+    writelog.record(conn, "sets", "update", e["id"], {"date": d.isoformat(), "entry_id": e["id"], "sets": before},
+                    {"date": d.isoformat(), "entry_id": e["id"], "sets": after})
+    n = next(i for i, y in enumerate(sorted(e.get("sets") or [], key=lambda y: y.get("set_number") or 0))
+             if str(y.get("id")) == str(set_id))
+    name = (e.get("exercise_snapshot") or {}).get("name") or e.get("name")
+    return {"updated": {"date": d.isoformat(), "exercise": name, "set": n + 1, "was": before[n], "now": after[n]},
+            "note": "这个动作的各组 id 已经换新，再改要重新 get_training_log"}
+
+
+# ---------------------------------------------------------------- delete (any source; the tools ask the user first)
 def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entry_id: str | None = None, client=None,
                *, meal: str | None = None, food: str | None = None, time: str | None = None) -> dict:
-    """Delete one record the butler wrote itself (source=body_assistant); other sources (logged manually in the app, migrated) are not deleted
-    (the user deletes those on the Today page, delete_food_entry). The record is named by id, or for food by an exact date + meal + name (+ time)."""
+    """Delete one record of any source (written by the AI, logged in the app, migrated): a food entry (id, or date + meal + name
+    (+ time)), a whole workout session (id), one set (set id) or that day's weight / body check-in. Logged with the full
+    old values, so rollback_write can put it back."""
     d = date.fromisoformat(day)
-    if kind not in ("food", "workout"):
-        raise ValueError("kind 只能是 food / workout")
-    if not entry_id and kind == "workout":
-        raise ValueError("训练要给 id（get_training_log 里每次训练的 id）")
+    if kind not in ("food", "workout", "set", "weight"):
+        raise ValueError("kind 只能是 food / workout / set / weight")
+    if not entry_id and kind in ("workout", "set"):
+        raise ValueError("训练 / 组要给 id（get_training_log 里有）")
     client = client or sparky_client.write_client_for_user(conn, user_id)
+    if kind == "weight":
+        return _delete_weight(conn, client, d)
+    if kind == "set":
+        return _delete_set(conn, client, d, entry_id)
     rows = _day_rows(client, kind, d)
     if entry_id:
         row = next((r for r in rows if str(r.get("id")) == str(entry_id)), None)
@@ -391,12 +518,39 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
             raise ValueError(f"{d} 没有这条记录：{entry_id}")
     else:
         row = _match_food(rows, d, meal, food, time)
-    if row.get("source") != SOURCE:
-        raise PermissionError(f"这条不是身体管家写的（source={row.get('source')}），不删；"
-                              "请用户在今天页「饮食」当天的明细里点开这条删除")
     client.request("DELETE", _entry_path(kind, row))
+    writelog.record(conn, "food" if kind == "food" else "session", "delete", row["id"], row, None)
     return {"deleted": {"kind": kind, "date": d.isoformat(), "id": row["id"],
-                        "name": row.get("food_name") or row.get("name")}}
+                        "name": row.get("food_name") or row.get("name"), "source": row.get("source")}}
+
+
+def _delete_set(conn, client, d: date, set_id) -> dict:
+    s, e, x = _find_set(client, d, set_id)
+    sets = e.get("sets") or []
+    if len(sets) == 1:
+        raise ValueError("这是这个动作唯一的一组；删整次训练用 kind=workout")
+    before = _clean_sets(sets)
+    after = _clean_sets([y for y in sets if str(y.get("id")) != str(set_id)])
+    client.request("PUT", f"/exercise-entries/{e['id']}", {"sets": after})
+    writelog.record(conn, "sets", "update", e["id"], {"date": d.isoformat(), "entry_id": e["id"], "sets": before},
+                    {"date": d.isoformat(), "entry_id": e["id"], "sets": after})
+    name = (e.get("exercise_snapshot") or {}).get("name") or e.get("name")
+    return {"deleted": {"kind": "set", "date": d.isoformat(), "exercise": name,
+                        "set": {k: x.get(k) for k in ("set_number", "reps", "weight", "rir") if x.get(k) is not None}}}
+
+
+CHECKIN_COLUMNS = ("weight", "neck", "waist", "hips", "steps", "height", "body_fat_percentage", "muscle_mass_kg",
+                   "bone_mass_kg", "body_water_percentage", "bmr")
+
+
+def _delete_weight(conn, client, d: date) -> dict:
+    cur = client.get(f"/measurements/check-in/{d.isoformat()}") or {}
+    if not cur.get("id") or str(cur.get("entry_date") or "")[:10] != d.isoformat():
+        raise ValueError(f"{d} 没有称重 / 体成分记录")
+    before = {"date": d.isoformat(), **{c: cur[c] for c in CHECKIN_COLUMNS if cur.get(c) is not None}}
+    client.request("DELETE", f"/measurements/check-in/{cur['id']}")
+    writelog.record(conn, "weight", "delete", d.isoformat(), before, None)
+    return {"deleted": before}
 
 
 def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_id: str, client=None) -> dict:
@@ -409,3 +563,80 @@ def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_i
     client.request("DELETE", _entry_path("food", row))
     return {"deleted": {"id": row["id"], "date": day.isoformat(), "meal": row.get("meal_type"),
                         "food": row.get("food_name"), "source": row.get("source")}}
+
+
+# ---------------------------------------------------------------- rollback (assistant/writelog.py)
+def _recreate_food(client, row: dict) -> dict:
+    meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
+    body = {"food_id": row.get("food_id"), "variant_id": row.get("variant_id"), "quantity": row.get("quantity") or 1,
+            "unit": row.get("unit"), "entry_date": str(row["entry_date"])[:10],
+            "entry_time": (row.get("entry_time") or "")[:5] or None, "meal_type": row.get("meal_type"),
+            "meal_type_id": meal_ids.get(row.get("meal_type")), "notes": row.get("notes"),
+            "source": row.get("source"), "source_id": row.get("source_id")}
+    return client.request("POST", "/food-entries", {k: v for k, v in body.items() if v is not None})
+
+
+def _recreate_session(client, s: dict) -> dict:
+    def ex_body(e, i):
+        return {"exercise_id": e.get("exercise_id"), "sort_order": i, "duration_minutes": e.get("duration_minutes") or 0,
+                "notes": e.get("notes"), "sets": _clean_sets(e.get("sets") or [])}
+    d = str(s["entry_date"])[:10]
+    if s.get("type", "preset") == "preset":
+        body = {"entry_date": d, "name": s.get("name") or "训练", "notes": s.get("notes"), "source": s.get("source"),
+                "exercises": [{k: v for k, v in ex_body(e, i).items() if v is not None}
+                              for i, e in enumerate(s.get("exercises") or [])]}
+        return client.request("POST", "/exercise-preset-entries", {k: v for k, v in body.items() if v is not None})
+    body = {**ex_body(s, 0), "entry_date": d, "calories_burned": s.get("calories_burned") or 0}
+    body.pop("sort_order")
+    return client.request("POST", "/exercise-entries", {k: v for k, v in body.items() if v is not None})
+
+
+def rollback(conn, user_id: int, kind: str, action: str, before, after, client=None) -> dict:
+    client = client or sparky_client.write_client_for_user(conn, user_id)
+    if kind == "food":
+        if action == "create":
+            row = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
+            client.request("DELETE", _entry_path("food", row))
+            return {"deleted": row["id"]}
+        if action == "delete":
+            return {"restored": _recreate_food(client, before)["id"]}
+        # update: in place -> put the old portion / meal / date / time back; replaced -> remove the new one, restore the old one
+        new = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
+        if str(after["id"]) == str(before["id"]):
+            body = {"quantity": before.get("quantity"), "unit": before.get("unit"),
+                    "entry_date": str(before["entry_date"])[:10], "meal_type": before.get("meal_type"),
+                    "entry_time": (before.get("entry_time") or "")[:5] or None, "notes": before.get("notes"),
+                    "variant_id": before.get("variant_id")}
+            client.request("PUT", f"/food-entries/{new['id']}", {k: v for k, v in body.items() if v is not None})
+            return {"restored": new["id"]}
+        client.request("DELETE", _entry_path("food", new))
+        return {"restored": _recreate_food(client, before)["id"], "deleted": new["id"]}
+    if kind == "session":
+        if action == "create":
+            d = date.fromisoformat(after["date"])
+            row = next((r for r in _day_rows(client, "workout", d) if str(r.get("id")) == str(after["id"])), None)
+            if row is None:
+                raise ValueError("这次训练已经不在了")
+            client.request("DELETE", _entry_path("workout", row))
+            return {"deleted": row["id"]}
+        return {"restored": _recreate_session(client, before)["id"]}
+    if kind == "sets":
+        d = date.fromisoformat(before["date"])
+        rows = _day_rows(client, "set", d)
+        entry = next((e for s in rows for e in _session_entries(s) if str(e.get("id")) == str(after.get("entry_id")
+                                                                                              or before.get("entry_id"))), None)
+        if entry is None:
+            raise ValueError("这个动作已经不在了")
+        client.request("PUT", f"/exercise-entries/{entry['id']}", {"sets": before["sets"]})
+        return {"restored_sets": len(before["sets"])}
+    if kind == "weight":
+        d = (before or after)["date"]
+        if before is None:  # the AI created that day's check-in: remove it
+            cur = client.get(f"/measurements/check-in/{d}") or {}
+            if cur.get("id") and str(cur.get("entry_date") or "")[:10] == d:
+                client.request("DELETE", f"/measurements/check-in/{cur['id']}")
+            return {"deleted": d}
+        vals = {c: before.get(c) for c in (before if action == "delete" else after) if c != "date"}
+        client.request("POST", "/measurements/check-in", {"entry_date": d, **vals})
+        return {"restored": {"date": d, **vals}}
+    raise ValueError(f"不支持回滚 {kind}")

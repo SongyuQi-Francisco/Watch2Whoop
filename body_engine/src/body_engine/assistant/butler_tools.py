@@ -5,7 +5,7 @@ Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
 
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import meals, memory, recipes, snapshots, sparky_write, status
+from . import meals, memory, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -164,10 +164,10 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="undo_sparky_entry",
-        description="撤销 AI 写的（source=body_assistant）一条饮食 / 训练：给 id（get_nutrition / get_training_log 里有），"
-                    "或饮食按 date+meal+food(+time) 精确匹配（多条拒绝）。其他来源让用户在今天页删。",
+        description="删一条饮食 / 一次力量训练 / 一组 / 某天称重（任何来源；id 在 get_nutrition / get_training_log）。"
+                    "饮食也可按 meal+food(+time) 匹配。",
         input_schema=_schema({
-            "kind": {"type": "string", "enum": ["food", "workout"]},
+            "kind": {"type": "string", "enum": ["food", "workout", "set", "weight"]},
             "date": {"type": "string", "description": "YYYY-MM-DD"},
             "id": _n("string"),
             "meal": _n("string"),
@@ -177,6 +177,48 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"],
                                                              meal=a["meal"], food=a["food"], time=a["time"]),
         scope="training", writes=True,
+    ),
+    dict(
+        name="update_food_entry",
+        description="改一条饮食（任何来源，null = 不改）。改名称 / 营养会换成新 id。",
+        input_schema=_schema({
+            "date": {"type": "string"},
+            "id": {"type": "string"},
+            "new_date": _n("string"),
+            "meal": {"type": ["string", "null"], "enum": [*sparky_write.MEALS, None]},
+            "time": _n("string", "HH:MM"),
+            "portion": _n("number", "0.5 = 一半"),
+            "food": _n("string"), "amount": _n("string"),
+            "calories": _n("number"), "protein_g": _n("number"), "carbs_g": _n("number"), "fat_g": _n("number"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.update_food_entry(conn, uid, a),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="update_training_set",
+        description="改力量训练一组的次数 / 重量 / RIR（get_training_log 的 set_ids），null = 不改。",
+        input_schema=_schema({
+            "date": {"type": "string"},
+            "set_id": {"type": "integer"},
+            "reps": _n("integer"), "weight_kg": _n("number"), "rir": _n("number"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.update_set(conn, uid, a["date"], a["set_id"], a["reps"],
+                                                            a["weight_kg"], a["rir"]),
+        scope="training", writes=True,
+    ),
+    dict(
+        name="get_write_log",
+        description="AI 写操作日志（新 → 旧，改前 / 改后）；rollback=ok 的可 rollback_write。",
+        input_schema=_schema({"days": _n("integer")}),
+        handler=lambda conn, uid, a: writelog.list_log(conn, uid, a["days"] or 14),
+        scope="memory",
+    ),
+    dict(
+        name="rollback_write",
+        description="按日志 id 把一次 AI 修改改回原样。",
+        input_schema=_schema({"log_id": {"type": "integer"}}),
+        handler=lambda conn, uid, a: writelog.rollback(conn, uid, a["log_id"]),
+        scope="memory", writes=True,
     ),
     # ---------- screenshot metrics ----------
     dict(

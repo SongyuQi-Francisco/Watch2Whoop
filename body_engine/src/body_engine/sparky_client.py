@@ -134,14 +134,14 @@ def link_user(conn: psycopg.Connection, user_id: int, key_name: str, client: Spa
 
 # ---------------------------------------------------------------- workouts
 def _set(s: dict) -> dict:
-    return {"set": s["set_number"], "type": s.get("set_type"), "reps": s.get("reps"), "weight_kg": s.get("weight"),
+    return {"id": s.get("id"), "set": s["set_number"], "type": s.get("set_type"), "reps": s.get("reps"), "weight_kg": s.get("weight"),
             "rir": s.get("rir"), "rpe": s.get("rpe"), "duration_s": s.get("duration"),
             "distance_km": s.get("distance"), "notes": s.get("notes")}
 
 
 def _exercise(e: dict) -> dict:
     snap = e.get("exercise_snapshot") or {}
-    return {"exercise_id": e.get("exercise_id"), "name": snap.get("name") or e.get("name"),
+    return {"entry_id": e.get("id"), "exercise_id": e.get("exercise_id"), "name": snap.get("name") or e.get("name"),
             "category": snap.get("category") or e.get("category"), "primary_muscles": snap.get("primary_muscles"),
             "notes": e.get("notes"),
             "superset_group": e.get("superset_group"), "duration_minutes": e.get("duration_minutes"),
