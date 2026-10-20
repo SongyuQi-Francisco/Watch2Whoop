@@ -141,7 +141,7 @@
 - 类目页 `/browse/<类目>?page=N` 是服务端渲染的 Next.js 页面：`<script id="__NEXT_DATA__">` 里有 `props.pageProps.searchResults`，每页 48 个商品（另有少量广告位，`_type` 不是 `PRODUCT` 的跳过、重复的按 id 去重）、`noOfResults` 总数。每个商品：`id`、`name`、`brand`、`size`、`merchandiseHeir` / `onlineHeirs`（类目）、`pricing`：`now`、`was`、`saveAmount`、`priceDescription`（半价是「1/2 Price」）、`promotionType`（`SPECIAL`）、`specialType`（`PERCENT_OFF` / `MULTI_SAVE`）、`offerDescription`（「Buy 2 for $13.50」）、`multiBuyPromotion`（`minQuantity`、`reward` = 每件折后价）、`comparable`（「$19.60/ 1kg」「$3.85/ 100mL」）。没有条码。
 - 商品页链接按 `https://www.coles.com.au/product/<slug>-<id>` 拼（和 #29 的链接规则一致）。
 - 只抓食品类的一级类目（`grocery/sync/params.py` 的 `COLES_CATEGORIES`：meat-seafood、fruit-vegetables、dairy-eggs-fridge、bakery、deli、pantry、frozen、drinks、chips-chocolates-snacks、health-dietary、international-foods）。肉类约 570 个商品 = 12 页；全部食品类预计几百页，按 6 秒间隔约 1 小时内跑完。
-- 页面里还有 Imperva 的脚本，但对我们的请求直接返回了完整数据；一旦返回挑战页，按 8.3 停止。
+- 页面里还有 Imperva 的脚本。**实测（2026-10-21，一次，本地测试库）**：robots.txt + `meat-seafood` 前 5 页正常（245 个商品、79 个特价），第 6 页返回的页面没有 `__NEXT_DATA__`（多半是机器人检测页），用时 43 秒、共 7 个请求；程序按 8.3 停下、记 `unclear`，**没有重试，也没有改任何东西去绕过**。所以按现在的节奏，全量刷新（约 250–300 页）过不了它的检测。在维护者决定下一步之前（例如联系 Coles 请求放行这个 User-Agent），服务器上**不开启**这个组件。
 
 **WWS（Woolworths）**：
 - 用诚实的 User-Agent 请求 `https://www.woolworths.com.au/robots.txt` 被 Akamai 直接返回 **403 Access Denied**（商品页同理）。按约束：**不抓、不绕过**。`wws.py` 只实现 robots 检查和「被拒绝 → blocked」的状态，解析器等确实能合规访问时再写（例如 Woolworths 书面同意或把我们的 User-Agent 放行）。
