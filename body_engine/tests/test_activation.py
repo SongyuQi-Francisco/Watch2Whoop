@@ -8,6 +8,9 @@ import base64
 import hashlib
 import hmac
 import json
+import re
+import shutil
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -237,3 +240,46 @@ def test_activation_page_served_with_csp(client):
 def test_sign_jwt_rejects_unknown_algorithm():
     with pytest.raises(ValueError):
         activation.sign_jwt({"sub": "x"}, "k", "RS256")
+
+
+def test_login_box_takes_activation_code(client, users, dsn):
+    """Issue #12: the Today page login box redeems an activation code the way app.js does it: /v1/web/activate →
+    `login` from the setup link → /v1/web/login-code. Each step fails with its own message."""
+    act = _new(dsn, users["plain"], label="box")
+    client.cookies.clear()
+    pretty = f"{act['code'][:4]}-{act['code'][4:8]}-{act['code'][8:12]}-{act['code'][12:]}".lower()
+    code = pretty.replace("-", "").upper()                      # loginKind() strips dashes / spaces, upper-cases
+    r = client.post("/v1/web/activate", json={"code": code})
+    assert r.status_code == 200, r.text
+    login = urllib.parse.unquote(re.search(r"[?&]login=([^&]+)", r.json()["setup_link"]).group(1))   # same regex as app.js
+    assert client.post("/v1/web/login-code", json={"code": login}).status_code == 200
+    assert client.get("/v1/web/me").json()["me"]["id"] == users["plain"]
+    client.cookies.clear()
+    # the one-time login code is spent; a token-looking value goes to /v1/web/login: distinct server answers
+    r = client.post("/v1/web/login-code", json={"code": login})
+    assert r.status_code == 401 and "已用过" in r.json()["detail"]
+    assert client.post("/v1/web/login", json={"token": "be_not-a-real-token"}).json()["detail"] == "token 无效或已吊销"
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        activation.revoke(conn, act["id"])
+    assert client.post("/v1/web/activate", json={"code": code}).json()["detail"] == "激活码无效或已停用"
+
+
+def test_today_page_login_kinds_and_app_bridge(client):
+    """app.js: loginKind() tells activation codes (16) from login codes (12) and tokens; distinct Chinese errors per step;
+    the page reports logged-in / login-failed to the iOS app so it keeps its login code until then."""
+    js = client.get("/app/app.js").text
+    for s in ('"/v1/web/activate"', 'tellApp("logged-in")', 'tellApp("login-failed")', "window.Watch2Whoop.postMessage",
+              '"hashchange"', "激活码无效或已停用", "登录码已用过或已过期", "token 不对或已吊销"):
+        assert s in js, s
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    fn = re.search(r"  function loginKind\(v\) \{.*?\n  \}\n", js, re.S).group(0)
+    probe = fn + """
+const cases = ["ABCD-EFGH-JKMN-PQRS", " abcdefghjkmnpqrs ", "ABCD-EFGH-JKMN", "abcdefghjkmn", "be_abcdefghjkmnpqrs",
+               "ABCDEFGHJKMNPQR0", "ABCDEFGHJKMNPQ"];
+console.log(JSON.stringify(cases.map(loginKind)));"""
+    out = json.loads(subprocess.run([node, "-e", probe], capture_output=True, text=True, check=True).stdout)
+    assert [o["kind"] for o in out] == ["activation", "activation", "code", "code", "token", "token", "token"]
+    assert out[0]["code"] == "ABCDEFGHJKMNPQRS" and out[3]["code"] == "ABCDEFGHJKMN"
+    assert out[4]["code"] == "be_abcdefghjkmnpqrs"
