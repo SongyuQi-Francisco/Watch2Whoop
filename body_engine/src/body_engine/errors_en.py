@@ -150,6 +150,12 @@ EXACT: dict[str, str] = {
     "商品名 1–60 字": "Product name must be 1–60 characters",
     "currency 用 3 位代码，例如 AUD / CNY": "currency is a 3-letter code, e.g. AUD / CNY",
     "条码只能是 6–14 位数字": "Barcode must be 6–14 digits",
+    "条码查询太频繁，过一分钟再试": "Too many barcode lookups, try again in a minute",
+    "Open Food Facts 暂时查不了（网络）": "Open Food Facts is unavailable right now (network)",
+    "商品链接格式不对": "Invalid product link",
+    "商品链接要是 https:// 开头的官网地址": "The product link must be an https:// address on the store's site",
+    "只支持 Coles（coles.com.au/product/…）和 Woolworths（woolworths.com.au/shop/productdetails/…）的商品页":
+        "Only Coles (coles.com.au/product/…) and Woolworths (woolworths.com.au/shop/productdetails/…) product pages are supported",
     "matches 最多 20 个、每个 ≤ 60 字": "matches: at most 20, each ≤ 60 characters",
     "新商品要有名字（name）": "A new product needs a name",
     "存货名 1–60 字": "Pantry item name must be 1–60 characters",
@@ -204,6 +210,11 @@ TERMS: dict[str, str] = {
 }
 
 _TEMPLATES: list[tuple[str, str]] = [
+    # ---- grocery (links.py, off.py)
+    ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
+    ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
+    ("商品链接 1–{} 字", "Product link: 1–{} characters"),
+    ("不是 {} 的商品页（要 /product/… 或 /shop/productdetails/<编号>/…）", "Not a {} product page (needs /product/… or /shop/productdetails/<id>/…)"),
     # ---- authorization
     ("没有查看用户 {} 的 {} 的授权", "No permission to view the {2} of user {1}"),
     ("没有查看用户 {} 的授权", "No permission to view user {}"),

@@ -14,14 +14,14 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ..assistant import meals, recipes
-from ..i18n import L, tl
+from ..i18n import L as Li, tl
 from ..rules import params as rule_params
 from ..rules.nutrition import is_short_rib, red_meat_estimate
-from . import params as P
+from . import links as L, params as P
 
 PURINE = ("low", "medium", "high")
 PRODUCT_FIELDS = ("name", "brand", "store", "category", "package_size", "package_unit", "piece_g", "price", "currency",
-                  "nutrition", "purine_level", "red_meat", "barcode", "matches", "note")
+                  "nutrition", "purine_level", "red_meat", "barcode", "matches", "note", "product_url", "nutrition_source")
 PLAN_KINDS = ("recipe", "template", "food")
 
 
@@ -52,7 +52,7 @@ def fmt_qty(qty: float | None, unit: str) -> str:
         return ""
     if unit in ("g", "ml") and qty >= 1000:
         return f"{qty / 1000:g} {'kg' if unit == 'g' else 'L'}"
-    return L(f"{qty:g} 个", f"{qty:g} pcs") if unit == "pcs" else f"{qty:g} {unit}"
+    return Li(f"{qty:g} 个", f"{qty:g} pcs") if unit == "pcs" else f"{qty:g} {unit}"
 
 
 def category_label(cat: str | None) -> str:
@@ -145,6 +145,20 @@ def _check_product(f: dict, current: dict | None = None) -> dict:
         out["matches"] = list(dict.fromkeys(m))
     if "red_meat" in out:
         out["red_meat"] = bool(out["red_meat"])
+    if "product_url" in out:   # "" clears; otherwise only a Coles / Woolworths product page, stored canonical with its SKU
+        out["store_sku"] = None
+        if (out["product_url"] or "").strip():
+            link = L.parse_product_url(out["product_url"])
+            out["product_url"], out["store_sku"] = link["url"], link["sku"]
+            store = out.get("store", (current or {}).get("store"))
+            if L.store_key(store) != link["store"]:   # the link says which chain it is
+                out["store"] = P.STORES[link["store"]]["name"]
+        else:
+            out["product_url"] = None
+    if "nutrition_source" in out:
+        out["nutrition_source"] = (out["nutrition_source"] or "").strip() or None
+        if out["nutrition_source"] and len(out["nutrition_source"]) > 60:
+            raise ValueError("nutrition_source 最多 60 字")
     return out
 
 
@@ -172,7 +186,13 @@ def product_view(row: dict) -> dict:
             "piece_g": _num(row["piece_g"]), "price": price, "currency": row["currency"],
             "price_on": row["price_on"].isoformat() if row["price_on"] else None, "unit_price": unit_price,
             "nutrition": row["nutrition"] or {}, "purine_level": row["purine_level"], "red_meat": row["red_meat"],
-            "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row))}
+            "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row)),
+            "product_url": row["product_url"], "store_sku": row["store_sku"], "nutrition_source": row["nutrition_source"],
+            "links": product_links(row)}
+
+
+def product_links(row: dict) -> list[dict]:
+    return L.links(row["name"], row["store"], row["product_url"], row["brand"], row["matches"])
 
 
 def _products(conn, user_id: int) -> list[dict]:
@@ -217,6 +237,9 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
         if f.get("barcode"):
             cur = conn.execute("SELECT * FROM grocery_products WHERE user_id = %s AND barcode = %s AND active",
                                (user_id, re.sub(r"\s", "", f["barcode"]))).fetchone()
+        if cur is None and (f.get("product_url") or "").strip():   # the same store product page
+            cur = conn.execute("SELECT * FROM grocery_products WHERE user_id = %s AND product_url = %s AND active",
+                               (user_id, L.parse_product_url(f["product_url"])["url"])).fetchone()
         if cur is None and f.get("name"):
             cur = conn.execute("""SELECT * FROM grocery_products WHERE user_id = %s AND active AND lower(name) = lower(%s)
                                   AND lower(coalesce(brand, '')) = lower(coalesce(%s, ''))""",
@@ -463,14 +486,15 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
     return {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
 
 
-def _item_view(r: dict) -> dict:
+def _item_view(r: dict, prod: dict | None = None) -> dict:
     buy, unit = float(r["buy_qty"]), r["unit"]
-    label = (L(f"{r['packages']} 包", f"{r['packages']} pk") + f" · {fmt_qty(buy, unit)}" if r["packages"] else fmt_qty(buy, unit))
+    label = (Li(f"{r['packages']} 包", f"{r['packages']} pk") + f" · {fmt_qty(buy, unit)}" if r["packages"] else fmt_qty(buy, unit))
     return {"id": r["id"], "name": r["name"], "product_id": r["product_id"], "category": r["category"],
             "category_label": category_label(r["category"]), "store": r["store"],
             "need_qty": _num(r["need_qty"]), "unit": unit, "packages": r["packages"], "buy_qty": buy, "qty_label": label,
             "est_cost": _num(r["est_cost"]), "currency": r["currency"], "source": r["source"], "used_by": r["used_by"],
-            "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"])}
+            "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"]),
+            "links": product_links(prod) if prod else L.links(r["name"], r["store"])}
 
 
 def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
@@ -482,17 +506,17 @@ def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
             red += float(r["buy_qty"])
     cap = rule_params.RED_MEAT_G_PER_WEEK
     if red > cap:
-        out.append({"code": "red_meat", "label": L(f"红肉 {red:.0f}g", f"Red meat {red:.0f}g"),
+        out.append({"code": "red_meat", "label": Li(f"红肉 {red:.0f}g", f"Red meat {red:.0f}g"),
                     "detail": f"这周计划的红肉约 {red:.0f}g，超过每周 ≤ {cap}g 的上限"})
     sr = summary.get("short_rib") or 0
     if sr > rule_params.SHORT_RIB_PER_WEEK:
-        out.append({"code": "short_rib", "label": L(f"牛肋条 ×{sr:g}", f"Short rib ×{sr:g}"),
+        out.append({"code": "short_rib", "label": Li(f"牛肋条 ×{sr:g}", f"Short rib ×{sr:g}"),
                     "detail": f"牛肋条计划 {sr:g} 次，上限每周 {rule_params.SHORT_RIB_PER_WEEK} 次"})
     for r in rows:
         p = products.get(r["product_id"])
         flags = [f for f in product_flags(p) if f not in ("红肉", "牛肋条")] if p else []   # those two are the weekly totals above
         if flags:
-            out.append({"code": "product", "label": f"{r['name']} " + L("、".join(flags), ", ".join(flag_labels(flags))),
+            out.append({"code": "product", "label": f"{r['name']} " + Li("、".join(flags), ", ".join(flag_labels(flags))),
                         "item_id": r["id"],
                         "detail": f"{p['name']} 标记：{'、'.join(flags)}（每 100g 按英国 FSA 红绿灯「高」线；嘌呤按商品库）"})
     return out
@@ -504,7 +528,7 @@ def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, wi
     rows = conn.execute("SELECT * FROM shopping_items WHERE list_id = %s ORDER BY category, bought_at NULLS FIRST, name",
                         (lst["id"],)).fetchall() if lst else []
     products = {p["id"]: p for p in _products(conn, user_id)}
-    items = [_item_view(r) for r in rows]
+    items = [_item_view(r, products.get(r["product_id"])) for r in rows]
     order = list(P.CATEGORIES)
     items.sort(key=lambda i: (order.index(i["category"]) if i["category"] in order else 99, i["bought"], i["name"]))
     cost: dict[str, float] = {}

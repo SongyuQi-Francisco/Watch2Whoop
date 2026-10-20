@@ -2,7 +2,7 @@
    grouped by the script that uses them. tests/test_i18n.py checks that every tr("中文") in the page scripts / HTML has an entry,
    placeholders match and no Chinese is left in the English. */
 I18N.addEn({
-  // app.js
+  // earlier
   "绿": "green",
   "黄": "yellow",
   "红": "red",
@@ -459,7 +459,6 @@ I18N.addEn({
   "全天总消耗": "All-day total energy",
   "锻炼分钟": "Exercise minutes",
   "已暂停": "Paused",
-  // ai.js, account.js, grocery.js, history.js, profile.js, index.html, sw.js
   "连不上服务器": "Can't reach the server",
   "登录或注册": "Sign in or sign up",
   "用邮箱登录或注册": "Sign in or sign up with your e-mail",
@@ -671,4 +670,34 @@ I18N.addEn({
   "［视频 {n} 帧，约 {s} 秒］": "[Video: {n} frames, about {s}s]",
   "［视频语音］": "[Video audio] ",
   "［语音］": "[Voice] ",
+  // diet
+  "我的饮食档案": "My diet profile",
+  "目标 {d} 起": "Goal from {d}",
+  "（{d} 更新）": " (updated {d})",
+  "未建立": "Not set up",
+  "目标": "Target",
+  "{n} 天 / 周": "Days/week: {n}",
+  "生效": "In effect",
+  "{date} 起": "From {date}",
+  "喝水": "Water",
+  "基础代谢": "Basal energy",
+  "近 {n} 天平均": "{n}-day average",
+  "每天": "Per day",
+  "预计每周": "Per week (est.)",
+  "减得偏快": "Losing fast",
+  "检查点 {d}": "Checkpoint {d}",
+  "训练日": "Training day",
+  "当前目标": "Current targets",
+  "为什么是这个数": "Why these numbers",
+  "健康约束": "Health constraints",
+  "一天怎么吃": "A day of eating",
+  "什么时候调整": "When to adjust",
+  "版本记录": "Version history",
+  "没读到饮食档案": "Couldn't load the diet profile",
+  // lead
+  "使用手册": "User guide",
+  "打不开手册（{err}）": "Couldn't open the guide ({err})",
+  "链接": "Links",
+  "{store} 商品页：{name}": "{store} product page: {name}",
+  "{store} 搜索：{name}": "Search {store}: {name}",
 });

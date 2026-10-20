@@ -51,7 +51,8 @@ def _check_key(key: str) -> None:
 
 def update_profile(conn: psycopg.Connection, user_id: int, key: str, value: str, label: str | None = None,
                    source: str = "assistant") -> dict:
-    """Create or wholly replace one profile card item. Standard keys need no label; new keys must give one."""
+    """Create or wholly replace one profile card item. Standard keys need no label; new keys must give one.
+    The text becomes the truth: structured `data` (diet profile sections, assistant/diet_profile.py) is cleared."""
     _check_key(key)
     value = (value or "").strip()
     if not value:
@@ -67,7 +68,7 @@ def update_profile(conn: psycopg.Connection, user_id: int, key: str, value: str,
     return conn.execute(
         """INSERT INTO assistant_profile (user_id, key, label, value, sort, source) VALUES (%s, %s, %s, %s, %s, %s)
            ON CONFLICT (user_id, key) DO UPDATE SET label = EXCLUDED.label, value = EXCLUDED.value,
-             source = EXCLUDED.source, updated_at = now()
+             source = EXCLUDED.source, data = NULL, updated_at = now()
            RETURNING key, label, value, updated_at, source""",
         (user_id, key, label, value, sort, source)).fetchone()
 

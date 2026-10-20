@@ -51,7 +51,7 @@
 html { -webkit-text-size-adjust: 100%; }
 /* Fixed app-like layout on phones: only the content scrolls vertically; no pinch / double-tap zoom, no whole-page sideways drag,
    no rubber-band of the whole page showing blank edges. Horizontal strips and charts still scroll inside themselves. */
-html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js; sideways strips set their own touch-action (.quick) */
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js */
 input, select, textarea { font-size: max(16px, 1em); }   /* iOS zooms into fields with a font smaller than 16px on focus */
 button, a, [role="button"], .tab { touch-action: manipulation; }   /* no double-tap zoom delay on controls */
 body {
@@ -293,7 +293,10 @@ button.ex:first-child { border-top: 0; }
 .btn-block { width: 100%; flex: none; }
 .btn-danger { color: var(--bad); }
 .btn[disabled] { opacity: .45; }
-.btn:active, .tag:active, .tile:active, .card:active, .item:active { opacity: .7; }
+/* Press feedback only on cards that are tappable (button / a). A plain div.card can contain a sideways scroller (the quick-meal strip):
+   iOS applies :active to every ancestor of the touched element once the page has touch listeners, and the opacity flip at touchstart
+   rebuilds the card's layer so the strip's native scroll view drops the pan (issue #11). */
+.btn:active, .tag:active, .tile:active, button.card:active, a.card:active, .item:active { opacity: .7; }
 .field { margin-top: 12px; }
 .field label { display: block; font-size: 12px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
 .input { width: 100%; border: 0; background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 16px; min-height: 46px; }
@@ -411,14 +414,14 @@ textarea.input { resize: none; }
 .food-entry .f { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .food-entry .k { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .food-entry .k small { font-weight: 400; color: var(--text-2); font-size: 11px; }
-/* Quick-meal strip: its own sideways scroller. touch-action: pan-x on the strip and its chips tells iOS WebKit up front that a touch here
-   pans the strip, not the page (buttons default to manipulation); it bleeds to the card edges and snaps chip by chip (issue #11). */
+/* Quick-meal strip: its own sideways scroller; it bleeds to the card edges and snaps chip by chip. It sits in a plain div.card, which must
+   not get :active feedback (see the :active rule above, issue #11); a vertical swipe that starts on it still scrolls the page. */
 .quick {
   display: flex; gap: 8px; margin: 14px -16px 0; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
-  scroll-snap-type: x proximity; scroll-padding: 0 16px; touch-action: pan-x;
+  scroll-snap-type: x proximity; scroll-padding: 0 16px;
 }
 .quick, .rec-row, .pk-years { overscroll-behavior-x: contain; }
-.quick .qchip { flex: none; scroll-snap-align: start; touch-action: pan-x; }
+.quick .qchip { flex: none; scroll-snap-align: start; }
 .quick::-webkit-scrollbar { display: none; }
 .quick.bare { --gut-l: max(20px, env(safe-area-inset-left)); --gut-r: max(20px, env(safe-area-inset-right)); margin: 0 calc(-1 * var(--gut-r)) 0 calc(-1 * var(--gut-l)); padding: 0 var(--gut-r) 0 var(--gut-l); scroll-padding: 0 var(--gut-r) 0 var(--gut-l); }
 .qchip.more { min-width: 72px; }
@@ -474,6 +477,7 @@ textarea.input { resize: none; }
 .panel-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .panel-spacer { width: 30px; }
 .panel-body { flex: 1; overflow-y: auto; padding: 4px max(20px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 28px) max(20px, env(safe-area-inset-left)); touch-action: pan-y; }
+.panel-body.hb-body { padding: 0 0 env(safe-area-inset-bottom); }   /* the handbook (「我 → 使用手册」) brings its own margins and background */
 .month-nav { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 12px; }
 .month-nav .m { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .month-nav .arrows { display: flex; gap: 6px; }

@@ -167,6 +167,8 @@ from .butler_tools import TOOL_SPECS as BUTLER_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in BUTLER_TOOL_SPECS]  # body butler: write SparkyFitness, screenshot metrics, long-term memory
 from ..grocery.tools import TOOL_SPECS as GROCERY_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in GROCERY_TOOL_SPECS]  # grocery: product library, weekly shopping list, pantry
+from .diet_profile_tools import TOOL_SPECS as DIET_PROFILE_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in DIET_PROFILE_TOOL_SPECS]  # 「我的饮食档案」: targets rationale, constraints, day plan, versions
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 

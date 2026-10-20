@@ -15,3 +15,13 @@
 .gitem[aria-pressed="true"] .row-title { color: var(--text-3); text-decoration: line-through; }
 .gitem[disabled] { cursor: default; }
 #grocery .item .badge { flex-shrink: 0; }
+.grow { display: flex; align-items: center; }
+.grow + .grow { border-top: 1px solid var(--hair); }
+.grow > .item { flex: 1; min-width: 0; padding-right: 10px; }
+.grow > .item .row-title { min-width: 4.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow > .item .val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grow > .glinks { padding-right: 12px; }
+.glinks { display: flex; gap: 4px; flex-shrink: 0; }
+.gstore { font-size: 11px; font-weight: 600; padding: 4px 7px; border-radius: 6px; text-decoration: none; color: var(--text-2); border: 1px solid var(--hair); line-height: 1.2; }
+.gstore.on { background: var(--surface-2); color: var(--text); border-color: transparent; }
+.gstore:active { opacity: .7; }
