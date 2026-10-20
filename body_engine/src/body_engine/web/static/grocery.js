@@ -2,7 +2,11 @@
    Separate from app.js: registered in window.BodyPlugins with init(ctx), foodShop(info) -> HTML, bindFoodShop(view).
    ctx = { api, openSheet, closeSheet, toast, esc }; info = { owner: "me" | id, self, date }.
    Endpoints (scope nutrition): GET /v1/users/{u}/grocery/list?week=, PATCH …/list/items/{id} {bought}, GET …/products.
-   Input comes from the user's AI (save_product, generate_shopping_list); this page only shows numbers and short labels. */
+   Input comes from the user's AI (save_product, generate_shopping_list); this page only shows numbers and short labels.
+   Store links (item.links / product.links from the server: the saved Coles / Woolworths product page, else a search by name) are plain
+   <a href>s next to the row. Inside the iOS app (window.Watch2Whoop) no target: the WebView's navigation delegate hands cross-origin
+   main-frame links to the system, which opens the store app through universal links (a target=_blank link would do nothing there).
+   In a browser they open in a new tab so the Today page stays. The page never loads the store sites itself. */
 (() => {
   "use strict";
   let C = null;
@@ -18,13 +22,17 @@
   const num = (v, d = 1) => (v == null ? "—" : Number(v).toLocaleString("zh-CN", { maximumFractionDigits: d }));
   const md = (iso) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
   const badge = (cls, t) => `<span class="badge ${cls}">${esc(t)}</span>`;
+  const IN_APP = !!window.Watch2Whoop;
+  const storeLinks = (links, name) => (links || []).length ? `<span class="glinks">${links.map((l) =>
+    `<a class="gstore${l.kind === "product" ? " on" : ""}" href="${esc(l.url)}"${IN_APP ? "" : ` target="_blank"`} rel="noopener noreferrer"
+      aria-label="${esc(`${l.label} ${l.kind === "product" ? "商品页" : "搜索"} ${name}`)}">${esc(l.label)}</a>`).join("")}</span>` : "";
   const CAT_ORDER = ["produce", "meat", "seafood", "dairy_eggs", "grains", "pantry", "frozen", "drinks", "snacks", "supplements", "household", "other"];
 
   function itemRow(i) {
     const val = [i.qty_label, i.est_cost != null ? money(i.paid_price ?? i.est_cost, i.currency) : ""].filter(Boolean).join(" · ");
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
-    return `<button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.name)}${i.bought ? "，已买" : ""}">
-      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span><span class="val">${esc(val)}</span></button>`;
+    return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.name)}${i.bought ? "，已买" : ""}">
+      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span><span class="val">${esc(val)}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
 
   function listHtml() {
@@ -51,8 +59,8 @@
 
   function productRow(p) {
     const val = [p.size_label, p.price != null ? money(p.price, p.currency) : ""].filter(Boolean).join(" · ");
-    return `<button class="item" data-gp="${esc(p.id)}"><span class="row-title">${esc(p.name)}${p.brand ? `<span class="small muted"> ${esc(p.brand)}</span>` : ""}</span>
-      ${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>`;
+    return `<div class="grow"><button class="item" data-gp="${esc(p.id)}"><span class="row-title">${esc(p.name)}${p.brand ? `<span class="small muted"> ${esc(p.brand)}</span>` : ""}</span>
+      ${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
   }
 
   function productsHtml() {
@@ -72,13 +80,13 @@
     const unitP = p.unit_price != null ? `${money(p.unit_price, p.currency)} / ${p.package_unit === "pcs" ? "个" : p.package_unit === "ml" ? "L" : "kg"}` : null;
     const flags = (p.flags || []).map((f) => badge("mid", f)).join("");
     C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}
-      ${kv("品牌", p.brand)}${kv("门店", p.store)}${kv("类别", p.category_label)}${kv("规格", p.size_label)}
+      ${kv("品牌", p.brand)}${kv("门店", p.store)}${(p.links || []).length ? `<div class="kv"><span class="k">链接</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv("类别", p.category_label)}${kv("规格", p.size_label)}
       ${kv("价格", p.price != null ? money(p.price, p.currency) : null)}${kv("单价", unitP)}${kv("价格日期", p.price_on)}
       <div class="ghead" style="margin-top:16px"><span>每 ${per}</span></div>
       ${kv("热量", n.kcal != null ? `${num(n.kcal, 0)} kcal` : null)}${kv("蛋白质", n.protein_g != null ? `${num(n.protein_g)} g` : null)}
       ${kv("碳水", n.carbs_g != null ? `${num(n.carbs_g)} g` : null)}${kv("脂肪", n.fat_g != null ? `${num(n.fat_g)} g` : null)}
       ${kv("饱和脂肪", n.sat_fat_g != null ? `${num(n.sat_fat_g)} g` : null)}${kv("糖", n.sugar_g != null ? `${num(n.sugar_g)} g` : null)}
-      ${kv("钠", n.sodium_mg != null ? `${num(n.sodium_mg, 0)} mg` : null)}${p.barcode ? kv("条码", p.barcode) : ""}`);
+      ${kv("钠", n.sodium_mg != null ? `${num(n.sodium_mg, 0)} mg` : null)}${p.nutrition_source ? kv("来源", p.nutrition_source) : ""}${p.barcode ? kv("条码", p.barcode) : ""}`);
   }
 
   function paint(view) {

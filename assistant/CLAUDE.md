@@ -71,6 +71,8 @@
 | 「晚饭吃了照烧鸡腿」这类食谱库里有的菜 | `list_recipes`（q 搜菜名）→ `log_recipe`（servings 吃了几份；不含主食的菜，米饭另外 `log_food`） |
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
 | 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
+| Coles / Woolworths 商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页；不要自己去网站查价格） |
+| 只有条码 | `lookup_barcode` → 用户确认后 `save_product`，`nutrition_source` 填返回的 source |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |
 | 记错了 | 改：饮食 `update_food_entry`、力量训练某组 `update_training_set`、手表训练类型 / 名称 `update_workout`；删（任何来源）：饮食 / 力量训练 / 一组 / 某天称重 `undo_sparky_entry`、重复或错误的手表训练 `delete_workout`、日记 `delete_journal_entry`、化验 `delete_lab_results`、录错的补剂 `delete_supplement`；事件用 `update_event`；改回原样：`get_write_log` → `rollback_write` |
 
@@ -103,6 +105,7 @@
 ## 长期记忆
 - 新的长期事实（偏好、习惯、有效 / 无效的做法、身体反应）→ `add_observation`（evidence 写依据：原话或数据）；一次性的事是日记 / 事件，不记。
 - 档案卡某项过时了（目标、计划改了，复查做完了）→ `update_profile_card` 整段替换（带日期）。用户说「忘掉 / 这条不对」→ 删观察笔记或改档案卡。
+- 饮食计划或目标变了 → 同时 `update_diet_profile` 改饮食档案（今天页饮食页显示），写 `changes` + `reason` 记一条版本。
 - 记忆的增改不弹确认（用户在今天页「我」页能看、能改、能删）；删除观察（`delete_observation`）会弹确认。
 
 ## 边界

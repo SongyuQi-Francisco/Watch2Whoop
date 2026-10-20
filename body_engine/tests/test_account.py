@@ -443,3 +443,22 @@ def test_methods_and_page_assets(client, monkeypatch):
     assert '<script src="account.js" defer></script>' in client.get("/app/").text
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text
+
+
+def test_login_page_is_a_step_flow(client):
+    """Issue #38: one thing per screen. Each step is its own form with exactly one submit button (Enter submits that step
+    only), the steps start hidden (account.js shows one), and the older ways sit in a collapsed 「其他登录方式」."""
+    import re
+    html = client.get("/app/").text
+    login = html[html.index('<div id="login"'):html.index('<div id="sheet"')]
+    forms = dict(re.findall(r'<form id="([\w-]+)"[^>]*>(.*?)</form>', login, re.S))
+    assert set(forms) == {"ls-email", "ls-code", "ls-invite", "login-form"}
+    for body in forms.values():
+        assert len(re.findall(r'type="submit"', body)) == 1
+    for step in ("ls-email", "ls-code", "ls-invite"):
+        assert re.search(rf'<form id="{step}"[^>]*\bhidden\b', login)
+    other = login[login.index('<details class="login-other"'):login.index("</details>")]
+    assert " open" not in other.split(">")[0] and "<summary>其他登录方式</summary>" in other and 'id="login-form"' in other
+    assert 'data-step="email"' in login and 'data-step="code"' in login and 'data-step="invite"' in login
+    js = client.get("/app/account.js").text
+    assert "loginShown" in js and "showPending" in js and "apple-sign-in" in js
