@@ -172,22 +172,45 @@
     setTimeout(() => $("#token").focus(), 50);
   }
 
+  // What the login box got: a 16-character activation code (activate.html link, reusable), a 12-character one-time login code
+  // (dashes / spaces ignored, alphabet without 0 O 1 I), or else an API token.
+  function loginKind(v) {
+    const c = String(v || "").replace(/[\s-]/g, "").toUpperCase();
+    if (/^[A-HJ-NP-Z2-9]{16}$/.test(c)) return { kind: "activation", code: c };
+    if (/^[A-HJ-NP-Z2-9]{12}$/.test(c)) return { kind: "code", code: c };
+    return { kind: "token", code: String(v || "").trim() };
+  }
+  const LOGIN_401 = {
+    activation: "激活码无效或已停用：找管理员要新的激活链接",
+    code: "登录码已用过或已过期：找管理员要新的，或填激活码",
+    token: "token 不对或已吊销",
+  };
+  // Redeem what was typed; an activation code is swapped for a fresh one-time login code first (POST /v1/web/activate
+  // answers a watch2whoop://setup link whose `login` parameter is that code). A 401 error carries .kind = the step that failed.
+  async function redeemLogin(v) {
+    let { kind, code } = loginKind(v);
+    const step = async (k, fn) => { try { return await fn(); } catch (err) { err.kind = k; throw err; } };
+    if (kind === "activation") {
+      const res = await step("activation", () => api("/v1/web/activate", { method: "POST", body: { code }, quiet401: true }));
+      const m = /[?&]login=([^&]+)/.exec(res?.setup_link || "");
+      if (!m) { const err = new Error(LOGIN_401.code); err.status = 401; err.kind = "code"; throw err; }
+      kind = "code"; code = decodeURIComponent(m[1]);
+    }
+    if (kind === "code") await step("code", () => api("/v1/web/login-code", { method: "POST", body: { code }, quiet401: true }));
+    else await step("token", () => api("/v1/web/login", { method: "POST", body: { token: code }, quiet401: true }));
+  }
+
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = $("#login-btn");
     btn.disabled = true;
     $("#login-error").textContent = "";
-    // the box takes either a one-time login code (12 characters, from the personal handbook; used e.g. by the Home Screen
-    // web app, whose cookies are separate from Safari's) or an API token
-    const v = $("#token").value.trim(), code = v.replace(/[\s-]/g, "");
-    const isCode = /^[A-HJ-NP-Z2-9]{12}$/i.test(code);
     try {
-      if (isCode) await api("/v1/web/login-code", { method: "POST", body: { code }, quiet401: true });
-      else await api("/v1/web/login", { method: "POST", body: { token: v }, quiet401: true });
+      await redeemLogin($("#token").value);
       $("#token").value = "";
       await boot();
     } catch (err) {
-      $("#login-error").textContent = err.status === 401 ? (isCode ? "登录码不对、已用过或已过期：找管理员要新的" : "token 不对或已吊销") : err.message;
+      $("#login-error").textContent = err.status === 401 ? LOGIN_401[err.kind] || err.message : err.message;
     } finally { btn.disabled = false; }
   });
 
@@ -2456,13 +2479,19 @@
   $("#ask").addEventListener("click", (e) => openAssistant(e));
 
   // ------------------------------------------------------------------ startup
+  // The Watch2Whoop app keeps its one-time login code until the page reports the outcome on its JS channel (`logged-in` after
+  // /v1/web/me works, `login-failed` when the server rejected the code), so a load that was interrupted is retried next time.
+  const tellApp = (msg) => { try { if (IN_APP) window.Watch2Whoop.postMessage(msg); } catch (e) { /* older app */ } };
   async function loginFromHash() {
     const m = /(?:^#|&)login=([A-Za-z0-9-]{8,40})/.exec(location.hash);
     if (!m) return;
     history.replaceState(null, "", location.pathname + location.search);
-    try { await api("/v1/web/login-code", { method: "POST", body: { code: m[1] }, quiet401: true }); }
+    try { await redeemLogin(m[1]); }
     catch (err) {
-      const msg = err.status === 401 ? "登录码无效、已用过或已过期：输入 token，或请家人重新生成设置信息" : err.message;
+      if (err.status !== 401) return;   // offline etc.: the app tries again with the same code
+      // used / expired (this device may still be signed in: boot() then shows the page and the box stays hidden)
+      tellApp("login-failed");
+      const msg = LOGIN_401[err.kind] || err.message;
       setTimeout(() => { if (!$("#login").hidden) $("#login-error").textContent = msg; }, 0);
     }
   }
@@ -2485,6 +2514,7 @@
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
     $("#app").hidden = false;
+    tellApp("logged-in");
     if (keepTab) { render(); return; }
     let tab = "today";
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
@@ -2505,4 +2535,6 @@
   boot.last = Date.now();
   // The Watch2Whoop app's "setup info" / QR code carries a one-time login code: opening /app/#login=<code> logs in automatically (the code is wiped from the address bar immediately)
   loginFromHash().then(boot);
+  // The app may set #login=<code> on a page that is already open (same-document navigation, no reload)
+  window.addEventListener("hashchange", () => { if (/(?:^#|&)login=/.test(location.hash)) loginFromHash().then(() => boot()); });
 })();

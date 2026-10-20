@@ -146,4 +146,12 @@ void main() {
     expect(AppConfig.fromJson(const {}).syncDaysBack, kDefaultSyncDaysBack);
     expect(kDefaultSyncDaysBack, 90);
   });
+
+  test('only a definite answer from the Today page settles the pending login code', () {
+    expect(loginCodeSettled('logged-in'), isTrue);
+    expect(loginCodeSettled('login-failed'), isTrue);
+    for (final m in ['sync', 'settings', '', 'logged-out']) {
+      expect(loginCodeSettled(m), isFalse, reason: m);
+    }
+  });
 }
