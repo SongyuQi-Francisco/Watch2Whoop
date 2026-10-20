@@ -65,7 +65,7 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
             "claude-code": f"claude mcp add-json --scope user body-engine '{{\"type\": \"http\", \"url\": \"{url}\", \"headers\": {header}}}'",
             "codex": f"codex mcp add body-engine --url {url} --bearer-token-env-var {token_env}",
             "gemini-cli": (f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
-                           "# 或在 ~/.gemini/settings.json（及 Antigravity mcp_config.json）的 mcpServers 里加：\n"
+                           "# 或在 ~/.gemini/settings.json 的 mcpServers 里加（Antigravity 的 MCP 设置填同样的地址和请求头）：\n"
                            + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
             "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,

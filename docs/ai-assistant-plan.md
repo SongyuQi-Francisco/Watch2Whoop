@@ -76,7 +76,7 @@
 | P2 | 晨间简报、周复盘（Claude 桌面版本地定时任务或规则引擎 + 网页推送）、更多工具 | P1 |
 | P3 | 规划：训练计划 / 饮食计划生成与调整、复查和补剂管理 | P2 |
 | P4（接入层已实现，第 9 节） | 家人 / 其他用户：每人用自己的 AI 来源——订阅在自己的客户端里连远程 MCP，或填自己的 API key 在今天页里对话；各自的 token、key、记忆和预算 | 统一登录（Pocket ID）、每人的 SparkyFitness key |
-| P8（阶段八：Google AI 订阅与 Gemini 全面补齐，初版已完成） | 阶段八：Google AI Plan 客户端 MCP（Gemini CLI / Antigravity）、Google AI Studio 增强与 $0 免费档、部署者端 Gemini CLI 接入与管家工作区策略（初版落地，待后续迭代完善） | Google 订阅账号 / Gemini CLI |
+| P8（已实现，第 9.14 节） | Google AI：订阅类 `gemini_plan_mcp`（Gemini CLI / Antigravity 连远程 MCP）、Gemini API 免费额度（单价 $0）、部署者可选的服务端 Gemini CLI（默认关闭）、管家目录的 Gemini CLI 配置 | Google 账号 / Gemini CLI |
 | 以后 | RMSSD 上线后重算恢复、语音对话、手机版 Claude 接入（需要公网远程 MCP，要单独评估安全） | OW 0.10 等 |
 
 ## 5. 已决定（2026-10-17）
@@ -300,20 +300,16 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 
 **验证**：`tests/test_briefing.py`（压缩、宽松 schema 和补齐、工具定义预算、开局摘要只含自己的数据、家人按 shares 只看授权的块、缓存命中 / 写工具清缓存 / 外部改数据指纹变化 / 过期 / 别人写不影响、默认摘要 vs detail）、`tests/test_ai.py` 新增远程 MCP 的宽松 schema + `get_briefing` 用例。
 
-#### 9.14 阶段八：Google AI Plan / Gemini 接入全量补齐（2026-10-19，初版已完成，迁移 `220_gemini_plan.sql`）
-> 背景：之前只做了 `gemini_api`（API key）和通用 MCP 里的 Gemini CLI 手写 JSON，缺一等公民的 Google AI 订阅（Pro / Ultra）、AI Studio 免费档免计费选项、以及部署者服务器端的 Gemini CLI（Google AI Plan OAuth）页内对话与管家目录策略。本阶段定位为阶段八（P8），将现有产出先行合并，并对后续演进点留存清晰标注供团队持续补充。
+#### 9.14 Google AI：订阅、Gemini API 免费额度、服务端 Gemini CLI（P8，迁移 `225_gemini_plan.sql`）
 
-| 模块 | 内容 |
+| 部分 | 做法 |
 |---|---|
-| ① 订阅类一等公民 `gemini_plan_mcp` | `catalog.py` 新增 `gemini_plan_mcp`（名称「Google AI 订阅（Gemini CLI / Antigravity）」，`client="gemini-cli"`），迁移 `220_gemini_plan.sql` 扩充 `ai_providers_kind_check`；`api.py` `mcp_setup` 的 `gemini-cli` 改为 `gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${BODY_ENGINE_MCP_TOKEN}' body-engine <url>`；前端 `ai.js` 点「连接客户端」时按当前订阅类型自动选中对应客户端 tab |
-| ② `gemini_api`（Google AI Studio）增强 | 模型列表补齐 `gemini-3.6-flash`、`gemini-2.5-flash`；`adapters/gemini_api.py` 从 `usage_metadata.cached_content_token_count` 拆出 `cache_read_tokens` 并从 `input_tokens` 扣除；前端新增「免费档（单价 \$0）」勾选项（`price_in_per_mtok=0, price_out_per_mtok=0`），`chat.py` 的 `check_budget` 对单价为 0 或免 key 的提供商标为 `free=True`，即使 `monthly_budget_usd=0` 也不会误报 402 |
-| ③ 部署者专用 `gemini_cli`（服务器 Gemini CLI · Google AI Plan） | `catalog.py` 新增 `gemini_cli`（`needs_key=False`、`owner_only=True`），仅对 `BODY_ASSISTANT_USER_ID`（默认 1）暴露和允许创建/使用，家人或普通用户看不到也不能创建（防止共用部署者本人的 Google 订阅登录）。`adapters/gemini_cli.py` 调用本机 `gemini -p ... --output-format stream-json --approval-mode default`，启动前清掉 `GEMINI_API_KEY` / `GOOGLE_API_KEY` / `GOOGLE_GENAI_USE_VERTEXAI` 强制走 `~/.gemini/oauth_creds.json` 订阅 OAuth，禁用 CLI 内置 shell/文件工具，图片写进临时工作目录用 `@photo_N.jpg` 传入，通过 `<tool_call>` 协议与 `chat.py` 的 `run_tool` + `ALWAYS_CONFIRM` 页内确认卡片打通 |
-| ④ 管家目录 `assistant/.gemini/` 与 `butler.py gemini-check` | 新增 `assistant/.gemini/settings.json`（加载 `CLAUDE.md`、配 `body-engine` HTTP MCP、排除内置工具、`BeforeAgent` 时间戳 hook）与 `assistant/.gemini/policies/butler.toml`（Policy Engine 规则与 `.claude/settings.json` 完全对齐，由 `test_every_write_tool_asks_in_butler_settings` 自动校验）；`deploy/assistant/butler.py gemini-check` 检查 `gemini` 版本、`~/.gemini/oauth_creds.json` 登录状态和环境变量 |
+| 订阅 `gemini_plan_mcp` | 和 Claude / ChatGPT 订阅一样：用户在自己登录的 Gemini CLI / Antigravity 里连远程 MCP `/mcp`，后端不碰 Google 账号。连接说明：`gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${BODY_ENGINE_MCP_TOKEN}' body-engine <地址>/mcp`（单引号：配置里存 `${…}`，运行时才展开），或 `~/.gemini/settings.json` 的 `mcpServers` 写 `{"type": "http", "url": …, "headers": …}`（Gemini CLI 0.39 的 `mcp add` 就是这样写的）。「连接客户端」按提供商种类预选客户端。`generic_mcp_client` 改名「其他 MCP 客户端」。 |
+| Gemini API 免费额度 | AI 设置里勾「免费额度（按 $0 计）」= 单价 0：用量照记，`check_budget` 不再因为预算 0 拦截。**免费额度不是无限的**：Google 按模型限速 / 限每日次数（数字常变，以 AI Studio 的 rate limits 页为准），超了返回 429（适配器报「被限流」）；**免费层的内容 Google 可能用来改进产品**（Gemini API 条款的 Unpaid Services），手册里写明了。取消勾选只清掉这个勾设的 $0 单价。 |
+| Gemini 用量 | `usage_metadata.cached_content_token_count` 拆成 `cache_read_tokens`（`prompt_token_count` 本身含缓存部分，所以从 input 里减掉），缓存按输入价的 0.25 计（Gemini 2.5 的缓存价；新模型更便宜，偏高估）。 |
+| 服务端 Gemini CLI `gemini_cli`（**默认关闭**） | 在服务器上以服务进程身份跑子进程，所以要管理员显式打开：`BODY_GEMINI_CLI_ENABLED=1`，并且只有 `BODY_ASSISTANT_USER_ID` 能看到、创建、使用（`catalog.kind_allowed`；关掉后已有的行也不再被用）。CLI 只当文本生成器：工具由 `chat.py` 以当前用户身份执行（只看得到自己的数据，删除 / 撤销照样要页内确认），用 `<tool_call>{…}</tool_call>` 文本协议对接。隔离：admin 级 policy 拒绝 CLI 的全部工具（shell、文件、网页、记忆、子代理）+ 工作区 `tools.exclude`；`-e none` 关扩展，`--allowed-mcp-server-names` 填一个不存在的名字关掉服务器自己配置的 MCP；每轮新建 0700 临时目录，只放这一轮的照片（`--skip-trust` 只信任它）；环境变量白名单（数据库密码、secrets、`GEMINI_API_KEY` / `GOOGLE_API_KEY` 都不传，只走 CLI 的 Google 登录）；对话从 stdin 传（不进 argv，`ps` 看不到，长对话也不超 ARG_MAX）；stderr 写文件、错误信息不带原文；整轮超时 180 秒强杀；用户 / 工具文本里的 `@` 换成全角，只有我们写的 `@photo_N.ext` 会被附上。建议 `BODY_GEMINI_HOME` 指向只放 CLI 登录信息的目录（作为 `GEMINI_CLI_HOME`），这样服务器用户自己的 Gemini 设置、hooks、MCP 都不加载。默认的 body-engine 镜像里**没有** Node / gemini，要用得自己装进镜像或在宿主机跑 body-engine。 |
+| 管家目录 | `assistant/.gemini/settings.json`（`GEMINI.md` 导入 `CLAUDE.md` 做角色设定——不直接用 `CLAUDE.md` 这个文件名，否则会把仓库根目录的开发者说明也读进去；远程 MCP `${BODY_MCP_URL}` + `Bearer ${BODY_AI_TOKEN}`；排除内置工具；`BeforeAgent` hook 输出 `additionalContext` 注入本地时间）和 `policies/butler.toml`（body-engine 工具放行，`ALWAYS_CONFIRM` 里的 5 个删除 / 撤销要确认、非交互时拒绝，内置工具拒绝；`tests/test_butler.py` 校验和 `ALWAYS_CONFIRM` 一致）。`deploy/assistant/butler.py gemini-check` 检查 gemini、登录和配置。 |
 
-#### 阶段八后续完善与补充事项（TODO / 欢迎后续补充）
-1. **Gemini CLI 后台常驻守护进程模式**：目前 Claude Code 支持 `claude remote-control` 常驻守护会话（由 `deploy/assistant/butler.py run` 管理），而 Gemini CLI 现阶段主要通过无头单次调用流式模式（`GeminiCliAdapter`）和终端交互式 MCP 使用。待官方 Gemini CLI 推出原生的常驻多会话 Remote Control 守护模式后，可进一步补充 `butler.py run --gemini` 守护运行支持。
-2. **多用户 Google OAuth 代理授权**：当前 `gemini_cli` 严格绑定部署者本人（`BODY_ASSISTANT_USER_ID`），防止家庭成员越权复用主账号配额。后续若家庭成员希望在服务器端免 key 直接接入各自的 Google AI Plan，可补充多用户 Google OAuth 授权委托管理。
-3. **原生实时多模态（Gemini Multimodal Live WebRTC）**：当前多模态语音交互基于本地 SenseVoice ASR 容器转文字处理；后续可探索接入 Gemini 原生 Multimodal Live 双向实时音视频流。
-4. **云端生产环境真实 Google AI Plan 联调**：当前单元测试、MCP 规范、策略校验与 Mock 适配测试均已全部通过（24/24 `test_ai.py`，33/33 `test_butler.py`）；后续将配合部署者在 Ali 生产环境搭载真实 Google 订阅账号做最终端到端试用。
+**验证**：`tests/test_ai.py`：订阅重定向、默认关闭（看不到、建不了、关掉后旧行不用）、只给部署者、免费额度不被预算拦、Gemini 缓存用量拆分；服务端适配器用一个假的 `gemini` 可执行文件测 argv（不含对话）、stdin、环境变量白名单、临时目录内容、`@` 中和、工具标签不流给用户、错误分类不带原文。真实 Gemini CLI 端到端没有在 CI 里跑（会用到真实账号）；参数对照 Gemini CLI 0.39 的源码核对过。
 
-
+**以后**：Gemini CLI 的常驻远程会话（类似 `claude remote-control`）出了再接进 `butler.py`；家人各自的 Google 登录不在服务器上做（用订阅 MCP 或自己的 API key）。

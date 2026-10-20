@@ -106,16 +106,19 @@
       ${k.needs_base_url ? `<div class="field"><label>接口地址 base_url</label><input class="input" id="f-base" value="${esc(p.base_url || "")}" placeholder="${esc((k.base_url_examples || [])[0] || "https://…/v1")}" autocapitalize="off" spellcheck="false"></div>` : ""}
       <div class="field"><label>API key${p.secret_last4 ? `（现在：…${esc(p.secret_last4)}，留空不改）` : ""}</label><input class="input" id="f-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(k.key_hint || "")}"></div>
       <div class="field"><label>每月预算（美元，超过就停）</label><input class="input" id="f-budget" type="number" inputmode="decimal" min="0" step="1" value="${esc(p.monthly_budget_usd ?? 5)}"></div>
-      <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-free"${isFree ? " checked" : ""}> 免费额度（AI Studio 免费层 / 本机模型，单价按 $0 计）</label>`;
+      <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-free"${isFree ? " checked data-was-free=\"1\"" : ""}> 免费额度（按 $0 计）</label>`;
   }
 
   function readApiFields(root, k, editing) {
     if (k.needs_key === false) return { model: $("#f-model", root).value.trim() };
-    const free = $("#f-free", root)?.checked;
+    const box = $("#f-free", root);
+    const free = box?.checked;
+    // Unticking clears only the $0 price this box set; a custom unit price set some other way is left alone
+    const unset = editing && box?.dataset.wasFree === "1";
     const body = {
       model: $("#f-model", root).value.trim(),
       monthly_budget_usd: Number($("#f-budget", root).value || 0),
-      ...(free ? { price_in_per_mtok: 0, price_out_per_mtok: 0 } : (editing ? { price_in_per_mtok: null, price_out_per_mtok: null } : {})),
+      ...(free ? { price_in_per_mtok: 0, price_out_per_mtok: 0 } : (unset ? { price_in_per_mtok: null, price_out_per_mtok: null } : {})),
     };
     if (k.needs_base_url) body.base_url = $("#f-base", root).value.trim();
     const key = $("#f-key", root).value.trim();

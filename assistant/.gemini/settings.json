@@ -1,9 +1,6 @@
 {
   "context": {
-    "fileName": [
-      "CLAUDE.md",
-      "GEMINI.md"
-    ]
+    "fileName": "GEMINI.md"
   },
   "mcpServers": {
     "body-engine": {
@@ -26,7 +23,8 @@
       "grep_search",
       "web_fetch",
       "google_web_search",
-      "save_memory"
+      "save_memory",
+      "write_todos"
     ]
   },
   "hooks": {
@@ -35,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TZ=Australia/Sydney /bin/date '+[当前本地时间 %Y-%m-%d %H:%M %a，Australia/Sydney]'"
+            "command": "TZ=Australia/Sydney /bin/date '+{\"hookSpecificOutput\": {\"hookEventName\": \"BeforeAgent\", \"additionalContext\": \"[当前本地时间 %Y-%m-%d %H:%M %a，Australia/Sydney]\"}}'"
           }
         ]
       }

@@ -76,12 +76,10 @@ The conversation flows were run with `claude -p` inside `assistant/` (same CLAUD
 - To start a new conversation (context too long): `/clear` in this session on the phone, or create a new session for the Ali machine in claude.ai/code (same directory, same settings).
 - Mac fallback: `deploy/assistant/butler.py status`; logs `health_data/assistant/butler-*.log`.
 
-## Gemini CLI (Google AI Plan) support in `assistant/`
-When the owner has a Google AI Plan (Google AI Pro / Ultra) instead of or alongside a Claude subscription, `assistant/` also provides a complete Gemini CLI configuration:
-- `assistant/.gemini/settings.json`: reads `CLAUDE.md` as the butler persona (`context.fileName`), connects `body-engine` HTTP MCP (`${BODY_MCP_URL:-https://body.example.com/mcp}` with `Bearer ${BODY_AI_TOKEN}`), excludes built-in shell/filesystem/web tools (`tools.exclude`), and attaches the local Sydney timestamp via `BeforeAgent` hook.
-- `assistant/.gemini/policies/butler.toml`: Policy Engine rules matching `.claude/settings.json` (`test_every_write_tool_asks_in_butler_settings` verifies parity) — allows `body-engine` MCP tools, requires `ask_user` confirmation for the 5 destructive undo/delete tools (`ALWAYS_CONFIRM`), and denies built-in shell/file/web tools.
-- **Check environment**: run `deploy/assistant/butler.py gemini-check` to verify the `gemini` binary (`BODY_GEMINI_BIN` or `PATH`), Google OAuth login (`~/.gemini/oauth_creds.json`), and `assistant/.gemini/settings.json`.
-- **Two ways for the owner to use it**:
-  1. **Interactive terminal / MCP**: `cd assistant && gemini` (uses your Google AI Plan OAuth login and `BODY_AI_TOKEN` to call `body-engine` MCP tools directly).
-  2. **In-page Jarvis chat (`gemini_cli` provider, owner-only)**: in the Today page under "Me → AI settings → Add", the deployer (`BODY_ASSISTANT_USER_ID`, default 1) can add **Google AI Plan (服务器 Gemini CLI · 仅部署者)**. The backend `GeminiCliAdapter` invokes `gemini -p ... --output-format stream-json` in an isolated workspace with `GEMINI_API_KEY` / `GOOGLE_API_KEY` stripped, routing in-page multimodal chat and `body-engine` tool calls (with in-page write confirmation cards) through the owner's Google AI Plan OAuth login. Non-owner users cannot see or create `gemini_cli`.
-
+## Gemini CLI in `assistant/` (Google AI plan)
+For an owner who uses a Google AI plan instead of, or next to, a Claude subscription:
+- `assistant/.gemini/settings.json`: persona from `GEMINI.md`, which imports `CLAUDE.md` (a `CLAUDE.md` file name would also load the repository's developer notes one directory up); remote MCP `${BODY_MCP_URL}` with `Bearer ${BODY_AI_TOKEN}`; built-in tools excluded; a `BeforeAgent` hook adds the local time as `additionalContext`.
+- `assistant/.gemini/policies/butler.toml`: body-engine tools allowed, the 5 delete / undo tools (`ALWAYS_CONFIRM`) ask (denied when non-interactive), built-in tools denied; `tests/test_butler.py` checks it against `ALWAYS_CONFIRM`.
+- `deploy/assistant/butler.py gemini-check`: the `gemini` binary (`BODY_GEMINI_BIN` or `PATH`), the Google sign-in, the settings file.
+- Use it in a terminal: `cd assistant && gemini`. There is no Gemini equivalent of `claude remote-control` yet, so the phone entry point stays the Claude butler.
+- In-page chat through the server's CLI (`gemini_cli` provider) is **off by default**: it needs `BODY_GEMINI_CLI_ENABLED=1` in the body-engine environment, a `gemini` binary where body-engine runs (the default image has none), and is only for `BODY_ASSISTANT_USER_ID`. Point `BODY_GEMINI_HOME` at a directory holding only the CLI's sign-in. Details and the containment list: `docs/ai-assistant-plan.md` 9.14.

@@ -494,6 +494,11 @@ def test_gemini_butler_settings_and_policies():
     g_cfg = json.loads((assistant / ".gemini/settings.json").read_text())
     assert g_cfg["mcpServers"]["body-engine"]["headers"]["Authorization"] == "Bearer ${BODY_AI_TOKEN}"
     assert "run_shell_command" in g_cfg["tools"]["exclude"] and "write_file" in g_cfg["tools"]["exclude"]
+    # Persona = assistant/CLAUDE.md via GEMINI.md (a CLAUDE.md file name would also pull in the repo's developer notes)
+    assert g_cfg["context"]["fileName"] == "GEMINI.md"
+    assert "@./CLAUDE.md" in (assistant / "GEMINI.md").read_text()
+    hook = g_cfg["hooks"]["BeforeAgent"][0]["hooks"][0]["command"]
+    assert "additionalContext" in hook   # plain stdout would only be shown to the user, not given to the model
 
     policy_file = assistant / ".gemini/policies/butler.toml"
     assert policy_file.exists()

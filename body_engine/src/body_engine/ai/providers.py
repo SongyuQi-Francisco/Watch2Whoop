@@ -118,7 +118,7 @@ def _normalize(kind: str, data: dict, existing: dict | None) -> dict:
         out["model"] = model
     if k.get("needs_key") is False:
         if data.get("api_key") or data.get("base_url"):
-            raise ValueError("服务端 Gemini CLI 使用服务器上的 Google 账号登录，不填 API key 和 base_url")
+            raise ValueError("服务端 Gemini CLI 用服务器上的登录，不填 API key 和 base_url")
         if existing is None:
             out.update(monthly_budget_usd=0, price_in_per_mtok=0, price_out_per_mtok=0)
     else:
@@ -159,8 +159,8 @@ def create_provider(conn: psycopg.Connection, user_id: int, data: dict) -> dict:
     kind = data.get("kind")
     if kind not in catalog.KINDS:
         raise ValueError(f"不认识的提供商种类：{kind}")
-    if catalog.KINDS[kind].get("owner_only") and not catalog.is_owner(user_id):
-        raise ValueError("服务端 Gemini CLI 只给部署者本人使用；请选「Google AI 订阅（Gemini）」（在自己的客户端里连 MCP）或填自己的 Gemini API key")
+    if not catalog.kind_allowed(kind, user_id):
+        raise ValueError("服务端 Gemini CLI 没开，或只给部署者本人用；可以选「Google AI 订阅（Gemini）」或填自己的 Gemini API key")
     n = conn.execute("SELECT count(*) AS n FROM ai_providers WHERE user_id = %s", (user_id,)).fetchone()["n"]
     if n >= MAX_PROVIDERS:
         raise ValueError(f"每人最多 {MAX_PROVIDERS} 个提供商")

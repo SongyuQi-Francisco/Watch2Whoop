@@ -74,11 +74,11 @@
 
 ### 方式 2：填你自己的 API key
 
-「AI 设置」→「添加」→「来源」选你有 key 的那家（Google Gemini AI Studio 免费档可勾「免费档（单价 \$0）」；DeepSeek、通义千问选「OpenAI 兼容接口」）→ 填模型、接口地址、API key、每月预算 →「保存」。
+「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」；Google AI Studio 的免费 key 勾「免费额度」）→ 填模型、接口地址、API key、每月预算 →「保存」。
 
 ![选来源](images/tester-handbook/ai-kinds.jpg) ![填 API key](images/tester-handbook/ai-api.jpg)
 
-key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。
+key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。Gemini 免费额度有次数限制，用完要等；而且免费额度下 Google 可能用你发的内容改进它的产品，介意的话用付费 key 或别的方式。
 
 ### 方式 3：用你的 Claude / ChatGPT / Google AI 订阅
 

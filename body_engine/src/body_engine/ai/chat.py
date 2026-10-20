@@ -66,8 +66,8 @@ def resolve_provider(conn: psycopg.Connection, user_id: int, need_quota: bool = 
                   "gemini_plan_mcp": "Gemini CLI / Antigravity"}.get(row["kind"], "你的 AI 客户端")
         raise ChatError("subscription", f"你用的是订阅（{row['display_name']}）：请在 {client} 里和身体管家对话"
                         "（已连上 Body Engine 的 MCP）", assistant_url=owner_assistant_url(user_id), kind=row["kind"])
-    if catalog.KINDS.get(row["kind"], {}).get("owner_only") and not catalog.is_owner(user_id):
-        raise ChatError("forbidden", "服务端 Gemini CLI 只给部署者本人使用", status=403)
+    if not catalog.kind_allowed(row["kind"], user_id):
+        raise ChatError("forbidden", "服务端 Gemini CLI 没开，或只给部署者本人用", status=403)
     if row["status"] != "active":
         raise ChatError("disabled", "默认的 AI 提供商已停用，在「AI 设置」里启用或换一个")
     return row
