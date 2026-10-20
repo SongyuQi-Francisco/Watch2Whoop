@@ -159,7 +159,7 @@ def _ex(
     }
 
 
-# 120+ curated exercises covering:
+# 100 curated exercises covering:
 # - All 46 exercises from body-management.md / md_seed.py / body_md_data.py
 # - Standard 3 / 4 / 5-day split staples across all movement patterns & equipment types
 CURATED_EXERCISES: list[dict] = [

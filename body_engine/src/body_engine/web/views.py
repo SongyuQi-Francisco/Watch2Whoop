@@ -229,8 +229,8 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     if tr_plans._active_plan_row(conn, owner_id) is not None:
         wk = tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
         day_entry = next((d for d in wk["days"] if d["date"] == day), {"planned": [], "rest_day": True})
-        logged = []
-        try:
+        logged, sparky_error = [], None
+        try:   # what was logged comes from SparkyFitness; when it cannot be read the Body Engine plan is still shown
             client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
             for s in sparky_client.training_log(client, day, day):
                 logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
@@ -240,14 +240,15 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                                             else f"{x['duration_s']:g} 秒" if x.get("duration_s") else "—"
                                             for x in e["sets"])}
                     for e in s["exercises"]]})
-        except sparky_client.SparkyError:
-            pass
+        except sparky_client.SparkyError as e:
+            sparky_error = str(e)
         return {
             "plan": wk["plan"],
             "planned": day_entry["planned"],
             "rest_day": day_entry["rest_day"],
             "logged": logged,
             "readiness": wk.get("readiness"),
+            **({"sparky_error": sparky_error} if sparky_error else {}),
         }
     client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)

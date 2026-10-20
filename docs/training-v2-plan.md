@@ -6,7 +6,7 @@
 - **单一入口**：今天页「记录」tab → 训练（以及今天页「今日训练与饮食」卡片），不另装 app，即可查看**本周计划 / 分化模板切换 / 肌群周容量 / 恢复分自调节 / 动作库检索与安全替代**。
 - **三层可维护双语动作库（`exercise_catalog` + `exercise_meta`）**：
   1. **L0 开源公共领域底座**：兼容 [yuhonas/free-exercise-db](https://github.com/yuhonas/free-exercise-db)（Unlicense，800+ 动作英文名、肌群、器械、力学分类与分步图片路径）。支持通过 `uv run body-engine seed-exercises --free-db-json /path/to/exercises.json` 一键增量导入。
-  2. **L1 双语与生物力学精选层（`training/catalog_data.py`）**：内置 120+ 高频标准动作的中英文名、国内健身房/小红书/抖音常见俗称别名（`aliases`）、19 类生物力学动作模式（`movement_pattern`，如 `horizontal_push`、`vertical_pull`、`hip_hinge`、`face_pull_er` 等）、关节压力标签（`joint_stress`：肩前侧受压、要求肩内旋、易激活上斜方、下背剪切力、膝/肘/腕负荷）、单双侧标记（`per_side`）、默认进阶步长（`default_increment_kg`）与中文动作要点（`cues_zh` / `instructions_zh`）。
+  2. **L1 双语与生物力学精选层（`training/catalog_data.py`）**：内置 100 个高频标准动作的中英文名、国内健身房/小红书/抖音常见俗称别名（`aliases`）、18 类生物力学动作模式（`movement_pattern`，如 `horizontal_push`、`vertical_pull`、`hip_hinge`、`face_pull_er` 等）、关节压力标签（`joint_stress`：肩前侧受压、要求肩内旋、易激活上斜方、下背剪切力、膝/肘/腕负荷）、单双侧标记（`per_side`）、默认进阶步长（`default_increment_kg`）与中文动作要点（`cues_zh` / `instructions_zh`）。
   3. **L2 用户个人规则层（`exercise_meta`）**：按 `user_id` 隔离，存储每个人的 `banned`（禁用）/ `caution`（注意）/ `active`（正常）、个人伤病原因（`reason`）、个人专属提示（`cues`）及 `SparkyFitness` 映射 ID（`app_exercise_id`）。无个人记录时，高风险动作（直立划船、颈后推举、颈后下拉、双杠臂屈伸）默认降级为 `caution` 提示。
 - **3 / 4 / 5 分化模板与周计划管理（`training_plans`）**：
   - 内置 4 套科学分化模板（定义在 `training/params.py` 的 `SPLIT_TEMPLATES`，全部避开肩内旋高危禁用动作）：

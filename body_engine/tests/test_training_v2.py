@@ -454,3 +454,23 @@ def test_training_v2_http_endpoints_and_auth(client, world):
     assert td["training"]["plan"]["split_type"] == "4_day_upper_lower"
     tw = client.get("/v1/users/me/training/week", headers=H(tok["A"])).json()
     assert tw["plan"]["split_type"] == "4_day_upper_lower" and "volume_by_group" in tw
+
+
+def test_body_engine_plan_shown_when_sparkyfitness_unreachable(client, world, monkeypatch):
+    """SparkyFitness connected but timing out (a read timeout is an OSError, not a URLError): the Today page and the week
+    strip still show the active Body Engine plan; only the logged part says why it is missing."""
+    from body_engine import sparky_client
+
+    def timeout(*_a, **_k):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(sparky_client, "client_for_user", lambda conn, uid: sparky_client.SparkyClient("test-key"))
+    monkeypatch.setattr(sparky_client.urllib.request, "urlopen", timeout)
+    _ids, tok = world
+    assert client.put("/v1/users/me/training/plan", headers=H(tok["A"]),
+                      json={"split_type": "4_day_upper_lower", "sync_sparky": False}).status_code == 200
+    td = client.get("/v1/users/me/today", headers=H(tok["A"])).json()["training"]
+    assert td["plan"]["split_type"] == "4_day_upper_lower" and "error" not in td
+    assert "连不上 SparkyFitness" in td["sparky_error"] and td["logged"] == []
+    tw = client.get("/v1/users/me/training/week", headers=H(tok["A"])).json()
+    assert tw["plan"]["split_type"] == "4_day_upper_lower" and len(tw["days"]) == 7
