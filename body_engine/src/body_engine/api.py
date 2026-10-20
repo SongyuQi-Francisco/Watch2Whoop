@@ -12,6 +12,7 @@ from . import auth, queries
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
 from .assistant.memory_api import router as memory_router
+from .assistant.diet_profile_api import router as diet_profile_router
 from .assistant.recipes_api import router as recipes_router
 from .assistant.router import router as assistant_router
 from .config import settings
@@ -118,6 +119,7 @@ app.include_router(insights_router)
 app.include_router(rules_router)
 app.include_router(goals_router)
 app.include_router(memory_router)
+app.include_router(diet_profile_router)
 app.include_router(recipes_router)
 app.include_router(training_router)
 app.include_router(grocery_router)

@@ -1,0 +1,25 @@
+/* 「我的饮食档案」 (diet-profile.js): one-line entry on 饮食 and the sheet with collapsible blocks. Uses the tokens from app.css. */
+.dp-entry-wrap { margin-top: 12px; }
+.dp-entry { background: var(--surface); border-radius: var(--radius); }
+.dp-entry .val { flex-shrink: 0; }
+.dp-block { background: var(--in-sheet); border-radius: 14px; margin-bottom: 8px; }
+.dp-block > summary { list-style: none; display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; font-weight: 600; font-size: 15px; cursor: pointer; }
+.dp-block > summary::-webkit-details-marker { display: none; }
+.dp-block > summary::after { content: ""; width: 7px; height: 7px; border: solid var(--text-3); border-width: 0 1.6px 1.6px 0; transform: rotate(45deg); margin-left: auto; flex-shrink: 0; align-self: center; transition: transform .2s; }
+.dp-block[open] > summary::after { transform: rotate(-135deg); }
+.dp-body { padding: 0 14px 12px; }
+.dp-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; font-size: 14px; }
+.dp-row + .dp-row { border-top: 1px solid var(--hair); }
+.dp-row .dp-l { min-width: 0; overflow-wrap: anywhere; }
+.dp-row .dp-v { flex-shrink: 0; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.dp-stack { flex-direction: column; align-items: stretch; gap: 2px; }
+.dp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 6px; }
+.dp-stats > div { background: var(--sheet); border-radius: 12px; padding: 8px 10px; min-width: 0; }
+.dp-stats .l { font-size: 11px; color: var(--text-2); font-weight: 500; white-space: nowrap; }
+.dp-stats .v { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dp-stats .v small { font-size: 11px; color: var(--text-2); font-weight: 500; }
+.dp-cap { margin: 0 2px 10px; }
+.dp-flag { margin: 2px 0 8px; }
+.dp-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
+.dp-note { padding-top: 6px; }
+.dp-text { white-space: pre-wrap; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
