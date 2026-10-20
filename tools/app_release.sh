@@ -51,7 +51,10 @@ fi
 root="$(git rev-parse --show-toplevel)"
 cd "$root"
 
-git fetch --quiet --tags origin main || die "git fetch origin failed"
+# In the workflow, actions/checkout leaves a lightweight copy of the pushed tag: --force replaces it with the real
+# annotated tag from origin (origin is authoritative for tags anyway).
+force=""; [ "$mode" = "publish" ] && force="--force"
+git fetch --quiet $force --tags origin main || die "git fetch origin failed"
 [ -n "$ref" ] || ref="origin/main"
 commit="$(git rev-parse --verify --quiet "$ref^{commit}")" || die "not a commit: $ref"
 short="$(git rev-parse --short "$commit")"
