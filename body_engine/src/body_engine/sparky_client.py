@@ -184,7 +184,7 @@ def _food_entry(e: dict) -> dict:
             "food": e.get("food_name"), "quantity": qty, "unit": e.get("unit"),
             "calories": total("calories"), "protein_g": total("protein"), "carbs_g": total("carbs"),
             "fat_g": total("fat"), "saturated_fat_g": total("saturated_fat"), "fiber_g": total("dietary_fiber"),
-            "sugars_g": total("sugars"), "sodium_mg": total("sodium"), "notes": e.get("notes")}
+            "sugar_g": total("sugars"), "sodium_mg": total("sodium"), "notes": e.get("notes")}
 
 
 def food_entries(client: SparkyClient, start: date, end: date) -> list[dict]:
@@ -196,7 +196,8 @@ def food_entries(client: SparkyClient, start: date, end: date) -> list[dict]:
 def nutrition(client: SparkyClient, start: date, end: date, entries: bool = True) -> dict:
     """Per-day calories / macro totals and the day's targets in [start, end]; with entries=True each food entry is attached.
     Days without records total 0 (not necessarily nothing eaten, maybe just not logged).
-    Targets are looked up by date (goal_for_date, which follows the weekly goal plan switching training / rest days); the default goal in the report endpoint is not used."""
+    Targets are looked up by date (goal_for_date, which follows the weekly goal plan switching training / rest days); the default goal in the report endpoint is not used.
+    SparkyFitness-only view: the app uses nutrition/daily.py instead (goals from goals/nutrition.py, sugar extras, coverage)."""
     days = client.get("/reports/nutrition-trends-with-goals", startDate=start.isoformat(), endDate=end.isoformat())
     out = {"days": []}
     for d in days:
@@ -301,7 +302,9 @@ def workout_plans(client: SparkyClient) -> list[dict]:
 
 def goal_for_date(client: SparkyClient, day: date) -> dict:
     """Food goal in effect on a given day (follows the weekly goal plan switching training / rest days).
-    Note the goal in /reports/nutrition-trends-with-goals is the default goal and does not follow the weekly goal plan, so it is queried separately."""
+    Note the goal in /reports/nutrition-trends-with-goals is the default goal and does not follow the weekly goal plan, so it is queried separately.
+    Only the active weekly goal plan is followed (dates before it get the default goal), so past dates are not reliable:
+    goals/nutrition.py uses this only as the fallback before a user's first Body Engine goal version."""
     g = client.get(f"/goals/by-date/{day.isoformat()}")
     return {"date": day.isoformat(), "name": g.get("preset_name"), "calories": g.get("calories"),
             "protein_g": g.get("protein"), "carbs_g": g.get("carbs"), "fat_g": g.get("fat"),

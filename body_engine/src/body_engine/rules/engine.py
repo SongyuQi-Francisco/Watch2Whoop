@@ -18,6 +18,7 @@ RULES = [
     (nutrition.CALORIES, nutrition.calorie_adjust),
     (nutrition.FUEL, nutrition.pre_workout_fuel),
     (nutrition.CAPS, nutrition.frequency_caps),
+    (nutrition.SUGAR, nutrition.sugar_caps),
     (safety.EXERCISES, safety.exercise_restrictions),
     (safety.READINESS, safety.readiness),
     (sleep_goal.KEY, sleep_goal.evaluate),

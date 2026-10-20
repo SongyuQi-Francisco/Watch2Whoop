@@ -57,6 +57,7 @@
 | 内容 | 工具 |
 |---|---|
 | 饮食（照片、外卖截图、营养成分表、文字） | `log_food`（SparkyFitness；可多条；酒类填 alcohol_g） |
+| 饮食目标改了（热量、蛋白、添加糖上限…） | `set_nutrition_goals`（训练日 / 休息日两套，只填改的，写 reason）；记饮食知道糖就填 sugar_g / added_sugar_g，不知道留 null（不是 0） |
 | 训练（笔记、器械屏幕、别的 app 截图） | 先 `search_exercises` 对准动作，再 `log_workout` |
 | 体重、体脂、腰围、InBody 主要数值 | `log_weight`；InBody 其他项（骨骼肌、内脏脂肪等级…）用 `log_metric_snapshot`（source_app=inbody） |
 | 化验单照片 / PDF | `add_lab_results`（一张单子一次写完，按采样日期） |

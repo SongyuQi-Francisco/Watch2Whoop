@@ -666,6 +666,8 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     assert (u["value"], u["unit"], u["trend"], u["tone"], u["spark"]) == ("偏高 470", "μmol/L", "down", "warn", [550, 470])
     assert (got["training_week"]["value"], got["training_week"]["tone"]) == ("3", "warn")
     assert (got["red_meat_week"]["value"], got["red_meat_week"]["tone"]) == ("40", "good")
+    assert (got["added_sugar_today"]["value"], got["added_sugar_today"]["tone"]) == ("未知", "neutral")   # unknown, not 0
+    assert "added_sugar_7d" not in got
     assert all(i["source"] == "auto" for k, i in got.items() if k in status.AUTO_KEYS)
     # SparkyFitness errors: training and red meat keep old values; weight has no data any more -> removed
     def boom(conn, uid):
@@ -673,7 +675,7 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     monkeypatch.setattr(status.sparky_client, "client_for_user", boom)
     monkeypatch.setattr(status, "_weights", lambda conn, uid, s, e: {})
     res = status.refresh_auto(conn, b, today)
-    assert set(res["errors"]) == {"calc_training", "calc_red_meat"} and {"weight", "to_goal"} <= set(res["removed"])
+    assert set(res["errors"]) == {"calc_training", "calc_red_meat", "calc_sugar"} and {"weight", "to_goal"} <= set(res["removed"])
     got = {i["key"]: i for i in status.list_status(conn, b)}
     assert got["training_week"]["value"] == "3" and "weight" not in got and "goal_weight" in got
 
@@ -698,7 +700,8 @@ def test_meal_template_validation_and_scaling(conn, world):
     c = ids["C"]
     tpl = meals.create_template(conn, c, "固定早餐", "breakfast", meals.FIXED_BREAKFAST["items"], True)
     assert tpl["totals"] == {"kcal": 547.0, "protein_g": 30.2, "carbs_g": 35.6, "fat_g": 31.4, "sat_fat_g": 8.2,
-                             "red_meat_g": 40.0}
+                             "red_meat_g": 40.0, "sugar_g": None, "added_sugar_g": None, "fiber_g": None,
+                             "sodium_mg": None}   # unknown, not 0
     with pytest.raises(ValueError, match="已经有"):
         meals.create_template(conn, c, "固定早餐", "breakfast", meals.FIXED_BREAKFAST["items"], True)
     bad = [dict(meals.FIXED_BREAKFAST["items"][0], kcal=900)]

@@ -1,11 +1,14 @@
 """Assistant tool specs for the bedtime goal (wrapped into Tool and registered by assistant/tools.py)."""
 from datetime import date
 
-from ..toolspec import USER, nullable, schema
-from . import store
+from ..toolspec import OPT_DAY, USER, nullable, schema
+from . import nutrition, store
 
 
 _schema = schema
+_g = nullable("number")
+GOAL_SET = schema({"calories": _g, "protein_g": _g, "carbs_g": _g, "fat_g": _g, "sat_fat_max_g": _g,
+                   "added_sugar_max_g": _g, "fiber_min_g": nullable("number", "纤维下限")})
 
 
 TOOL_SPECS: list[dict] = [
@@ -33,4 +36,36 @@ TOOL_SPECS: list[dict] = [
         scope="sleep",
         writes=True,
     ),
+    dict(
+        name="get_nutrition_goals",
+        description="饮食目标：某天生效的目标（训练日 / 休息日）、当前版本两套目标、以后生效的版本和全部历史（谁改的、为什么）。"
+                    "添加糖没设上限时默认 25g。",
+        input_schema=_schema({"user": USER, "date": OPT_DAY}),
+        handler=lambda conn, uid, a: nutrition.view(conn, uid, date.fromisoformat(a["date"]) if a["date"] else None),
+        scope="nutrition",
+    ),
+    dict(
+        name="set_nutrition_goals",
+        description="改饮食目标：新加一个版本（旧版本保留）。只填要改的，null = 沿用当前版本；第一版要给全热量和三大营养素。",
+        input_schema=_schema({
+            "training": GOAL_SET, "rest": GOAL_SET,
+            "training_weekdays": {"type": ["array", "null"], "items": {"type": "integer"},
+                                  "description": "用训练日目标的星期，1=周一…7=周日"},
+            "effective_from": nullable("string", "YYYY-MM-DD，null = 今天"),
+            "name": nullable("string", "版本名，例 减脂 B"),
+            "reason": {"type": "string", "description": "为什么改"},
+        }),
+        handler=lambda conn, uid, a: nutrition.set_goals(
+            conn, uid, training=_set_or_none(a["training"]), rest=_set_or_none(a["rest"]),
+            training_weekdays=a["training_weekdays"],
+            effective_from=date.fromisoformat(a["effective_from"]) if a["effective_from"] else None,
+            name=a["name"], reason=a["reason"], set_by=a.get("_channel") or "assistant",
+            actor_user_id=a.get("_viewer_id")),
+        scope="nutrition",
+        writes=True,
+    ),
 ]
+
+
+def _set_or_none(s: dict | None) -> dict | None:
+    return s if s and any(v is not None for v in s.values()) else None
