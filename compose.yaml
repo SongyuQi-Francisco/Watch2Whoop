@@ -40,6 +40,10 @@ services:
       # and the address remote MCP shows to clients (https inside the tailnet; /mcp is forwarded by the same 443 → 8100 tailscale serve)
       BODY_AI_MASTER_KEY_FILE: /run/secrets/ai_master_key
       BODY_PUBLIC_URL: https://your-server.your-tailnet.ts.net
+      # Reusable activation links for the app (web/activation.py): the sync address put into setup links, and OW's signing
+      # secret for minting invitation codes (OW's master secret: add it as a docker secret for this container only)
+      # BODY_OW_PUBLIC_URL: https://sync.example.com
+      # BODY_OW_INVITE_SIGNING_FILE: /run/secrets/ow_invite_signing
       TZ: Australia/Sydney
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)

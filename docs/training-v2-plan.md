@@ -1,6 +1,6 @@
 # 训练模块 v2（动作库、3/4/5 分化、周计划与智能换动作）
 
-> 状态：已实现（迁移 `210_training_v2.sql`，代码在 `body_engine/src/body_engine/training/`，测试在 `body_engine/tests/test_training_v2.py`）。
+> 状态：已实现（迁移 `220_training_v2.sql`，代码在 `body_engine/src/body_engine/training/`，测试在 `body_engine/tests/test_training_v2.py`）。
 
 ## 目标与核心能力
 - **单一入口**：今天页「记录」tab → 训练（以及今天页「今日训练与饮食」卡片），不另装 app，即可查看**本周计划 / 分化模板切换 / 肌群周容量 / 恢复分自调节 / 动作库检索与安全替代**。

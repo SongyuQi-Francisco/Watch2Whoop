@@ -17,9 +17,20 @@ output as a setup link / QR code (a family member scans it with the iPhone camer
 - The QR code needs `qrencode` (Mac: brew install qrencode; Ali: apt install qrencode); without it only the link is printed, use --copy to put it on the clipboard,
   then tap 「粘贴设置信息」 ("Paste setup info") in the iPhone app.
 - Standard library only, runs with the system python3 (3.6 compatible: the Ali system Python is 3.6).
+
+Reusable alternative: activation links. The link above works once (both codes are single-use). For a link a person can open
+again on a new phone or after a reinstall, until you revoke it, use Body Engine activation codes (web/activation.py):
+
+    body-engine activation-code create --user-id 3 --label Mom      # prints the code and <BODY_PUBLIC_URL>/app/activate.html#<code>
+    body-engine activation-code list [--user-id 3] / revoke --id N
+
+Each use mints fresh one-time codes server-side. For the sync invitation code Body Engine needs OW's signing secret:
+`invite.py --export-signing-file secrets/ow_invite_signing.json` writes it (mode 600) from the OW container; mount it read-only
+into the body-engine container only and point BODY_OW_INVITE_SIGNING_FILE at it. That file is OW's master secret.
 """
 import argparse
 import json
+import os
 import shlex
 import shutil
 import subprocess
@@ -75,6 +86,39 @@ def ow_invite(container: str, env: Dict[str, str]) -> dict:
     return json.loads(p.stdout.strip().splitlines()[-1])
 
 
+# Prints OW's JWT signing settings + the first developer's id (the same developer ow_invite uses), for activation links.
+_SIGNING_IN_CONTAINER = r"""
+import json
+from app.config import settings
+from app.database import SessionLocal
+from app.models import Developer
+
+db = SessionLocal()
+try:
+    dev = db.query(Developer).order_by(Developer.created_at).first()
+    if dev is None:
+        raise SystemExit("OW 里还没有开发者账号（先登录一次门户）")
+    print(json.dumps({"secret_key": settings.secret_key, "algorithm": settings.algorithm, "developer_id": str(dev.id)}))
+finally:
+    db.close()
+"""
+
+
+def export_signing_file(container: str, path: str) -> None:
+    """Write OW's signing secret for Body Engine activation links (BODY_OW_INVITE_SIGNING_FILE), mode 600."""
+    p = subprocess.run(["docker", "exec", "-i", container, "python", "-"], input=_SIGNING_IN_CONTAINER,
+                       stdout=PIPE, stderr=PIPE, universal_newlines=True)
+    if p.returncode != 0:
+        sys.exit(f"读取 OW 签名配置失败：{p.stderr.strip()[-800:]}")
+    data = json.loads(p.stdout.strip().splitlines()[-1])
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f)
+        f.write("\n")
+    os.chmod(path, 0o600)
+    print(f"已写入 {path}（OW 的主密钥：权限 600，只读挂进 body-engine 容器，设 BODY_OW_INVITE_SIGNING_FILE）")
+
+
 def body_login_code(body_cmd: str, user_id: int, label: Optional[str], hours: int) -> str:
     args = shlex.split(body_cmd) + ["login-code", "--user-id", str(user_id), "--hours", str(hours)]
     if label:
@@ -104,7 +148,12 @@ def main() -> None:
     ap.add_argument("--body-cmd", default=BODY_CMD, help=f"how to run Body Engine commands (default: {BODY_CMD})")
     ap.add_argument("--qr", metavar="PNG", help="also save the QR code as a PNG (needs qrencode)")
     ap.add_argument("--copy", action="store_true", help="put the setup link on the Mac clipboard (pbcopy)")
+    ap.add_argument("--export-signing-file", metavar="PATH",
+                    help="only write OW's signing secret (for Body Engine activation links) to PATH, mode 600, and exit")
     a = ap.parse_args()
+    if a.export_signing_file:
+        export_signing_file(a.ow_container, a.export_signing_file)
+        return
     if not (a.ow_user_id or a.create_user or a.body_user_id):
         ap.error("至少要 --ow-user-id / --create-user（同步）或 --body-user-id（今天页登录）之一")
 

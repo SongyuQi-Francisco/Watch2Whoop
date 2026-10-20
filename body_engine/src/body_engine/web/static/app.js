@@ -2467,7 +2467,9 @@
   // subscription type without a link (family members) -> explain that they chat in their own AI app; nothing configured -> prompt to go to "Me -> AI settings" (「我 → AI 设置」).
   function openAssistant(e) {
     if (window.BodyAI?.handlesAsk()) { e?.preventDefault(); window.BodyAI.openChat(); return; }
-    if (S.assistantUrl) { if (e?.currentTarget?.id !== "ask") window.open(S.assistantUrl, "_blank", "noopener"); return; }
+    // Open the butler link from code for every entry point: inside the iOS app (WKWebView) a target=_blank <a> does nothing,
+    // while window.open reaches the app's navigation delegate, which hands claude.ai to the Claude app.
+    if (S.assistantUrl) { e?.preventDefault(); window.open(S.assistantUrl, "_blank", "noopener"); return; }
     e?.preventDefault();
     if (S.ai?.mode === "mcp") {
       openSheet("Jarvis", `${kv("AI", esc(S.ai.display_name || "订阅"))}${tags([badge("good", "已连接"), badge("plain", "在官方 app 里问")])}
@@ -2480,7 +2482,7 @@
       ${canSet ? `<div class="btns"><button class="btn btn-primary" id="ask-setup">去 AI 设置</button></div>` : ""}`,
       (root) => { const b = $("#ask-setup", root); if (b) b.onclick = () => { closeSheet(); window.BodyAI.openSettings(); }; });
   }
-  $("#ask").addEventListener("click", (e) => { if (window.BodyAI?.handlesAsk() || !S.assistantUrl) openAssistant(e); });
+  $("#ask").addEventListener("click", (e) => openAssistant(e));
 
   // ------------------------------------------------------------------ startup
   async function loginFromHash() {
