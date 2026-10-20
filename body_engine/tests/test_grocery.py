@@ -267,3 +267,55 @@ def test_api_auth_and_flow(client, world):
                    headers=h(tok["C"]))
     assert r.status_code == 200 and r.json()[0]["label"] == "2 kg"
     assert client.post("/v1/users/me/grocery/list/generate", json={"plan": []}, headers=h(tok["C"])).status_code == 422
+
+
+def test_store_links_on_products_and_items(conn, world):
+    ids, _, _ = world
+    a, c = ids["A"], ids["C"]
+    url = "https://www.woolworths.com.au/shop/productdetails/36059/woolworths-chicken-breast?utm=share"
+    p = store.save_product(conn, a, {"name": "Chicken Thigh", "store": "Costco", "product_url": url, "matches": ["鸡腿肉"]})
+    assert p["created"] and p["store"] == "Woolworths" and p["store_sku"] == "36059"
+    assert p["product_url"] == "https://www.woolworths.com.au/shop/productdetails/36059/woolworths-chicken-breast"
+    assert p["links"] == [{"store": "woolworths", "label": "Woolies", "kind": "product", "url": p["product_url"]}]
+    again = store.save_product(conn, a, {"name": "鸡腿肉 1kg", "product_url": url, "price": 9})   # same page -> same product
+    assert not again["created"] and again["id"] == p["id"] and again["name"] == "鸡腿肉 1kg"
+    with pytest.raises(ValueError, match="只支持"):
+        store.save_product(conn, a, {"name": "x", "product_url": "https://shop.example.com/product/1"})
+    with pytest.raises(ValueError, match="商品页"):
+        store.save_product(conn, a, {"product_url": "https://www.coles.com.au/search/products?q=milk"}, p["id"])
+    conn.commit()
+    with pytest.raises(psycopg.errors.CheckViolation):   # the table refuses other hosts even if the code is bypassed
+        conn.execute("UPDATE grocery_products SET product_url = 'https://evil.com/x', store_sku = '1' WHERE id = %s", (p["id"],))
+    conn.rollback()
+    cleared = store.save_product(conn, a, {"product_url": ""}, p["id"])
+    assert cleared["product_url"] is None and cleared["store_sku"] is None
+    assert cleared["links"][0]["kind"] == "search" and [x["store"] for x in cleared["links"]] == ["woolworths"]
+    store.save_product(conn, a, {"product_url": url}, p["id"])
+    # list items: the product page when the product has one, else per-store search by the item name
+    lst = store.add_items(conn, a, date(2026, 11, 16), [{"product_id": p["id"]}, {"name": "Paper towel"}, {"name": "牛油果"}])
+    by = {i["name"]: i for i in lst["items"]}
+    assert by["鸡腿肉 1kg"]["links"][0]["kind"] == "product"
+    assert [x["label"] for x in by["Paper towel"]["links"]] == ["Coles", "Woolies"]
+    assert "Paper%20towel" in by["Paper towel"]["links"][0]["url"]
+    # tool output leaves the page links out (tokens); product_url stays
+    found = run_tool(conn, a, "butler", "find_products", {"q": "鸡腿"})
+    assert found[0]["product_url"] and "links" not in found[0]
+    got = run_tool(conn, a, "butler", "get_shopping_list", {"week": "2026-11-16"})
+    assert got["items"] and all("links" not in i for i in got["items"])
+    saved = run_tool(conn, a, "butler", "save_product", {"product_id": p["id"], "nutrition_source": "Open Food Facts (ODbL)"})
+    assert saved["nutrition_source"] == "Open Food Facts (ODbL)" and "links" not in saved
+    with pytest.raises(LookupError):   # C cannot set a link on A's product
+        run_tool(conn, c, "butler", "save_product", {"product_id": p["id"], "product_url": url})
+    conn.commit()
+
+
+def test_api_product_url(client, world):
+    _, tok, _ = world
+    r = client.post("/v1/users/me/grocery/products", json={"name": "Milk 3L", "product_url":
+                    "https://www.coles.com.au/product/coles-full-cream-milk-3l-8150288"}, headers=h(tok["C"]))
+    assert r.status_code == 201 and r.json()["store"] == "Coles" and r.json()["links"][0]["kind"] == "product"
+    bad = client.post("/v1/users/me/grocery/products", json={"name": "Bad", "product_url": "https://example.com/p/1"},
+                      headers=h(tok["C"]))
+    assert bad.status_code in (400, 422)
+    lst = client.get("/v1/users/me/grocery/list?week=2026-10-21", headers=h(tok["A"])).json()
+    assert all("links" in i for i in lst["items"])

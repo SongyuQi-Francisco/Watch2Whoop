@@ -43,6 +43,8 @@ class ProductIn(BaseModel):
     barcode: str | None = None
     matches: list[str] | None = None
     note: str | None = None
+    product_url: str | None = Field(None, max_length=300, description="Coles / Woolworths 商品页；\"\" = 清除")
+    nutrition_source: str | None = Field(None, max_length=60)
 
     def fields(self) -> dict:
         d = self.model_dump(exclude_unset=True)

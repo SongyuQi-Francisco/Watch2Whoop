@@ -48,6 +48,8 @@ def main() -> None:
     u.add_argument("--sex")
     u.add_argument("--timezone", default="Australia/Sydney")
     sub.add_parser("user-list", help="list users")
+    lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
+    lb.add_argument("barcode")
 
     lc = sub.add_parser("login-code", help="issue a one-time login code (for the Watch2Whoop app setup info / QR code; the plaintext is shown only once)")
     lc.add_argument("--user-id", type=int, required=True)
@@ -212,6 +214,10 @@ def main() -> None:
         except Exception:  # noqa: BLE001  import works even without OW configured
             client = None
         print(json.dumps(history_run.run_pending(client, args.max_jobs), default=str, ensure_ascii=False))
+        return
+    if args.cmd == "lookup-barcode":  # does not connect to the database
+        from .grocery import off
+        print(json.dumps(off.lookup(0, args.barcode), ensure_ascii=False, indent=2))
         return
     if args.cmd == "raw-slim":  # does not connect to the database
         from .rawdata import export as rx_export
