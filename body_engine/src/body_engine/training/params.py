@@ -288,3 +288,61 @@ SPLIT_TEMPLATES: dict[str, dict] = {
     },
 }
 
+
+# ---------- Recommended working weight (issue #41, training/loads.py, docs/training-v2-plan.md "推荐重量") ----------
+# Order of evidence for each planned exercise:
+#   1. a progression reminder of the rule engine (rules/progression.py, double progression) -> its next_weight_kg, unchanged;
+#   2. the user's own history (SparkyFitness working sets, warm-ups excluded):
+#      - latest session in the same rep range -> keep that working weight (double progression only adds weight when every set
+#        reached the top of the range, which is what the reminder in 1. says);
+#      - otherwise convert through an estimated 1RM: Epley (1985) e1RM = w × (1 + reps_to_failure / 30), with
+#        reps_to_failure = reps + RIR (RIR-based autoregulation, Zourdos et al. 2016 JSCR; Helms et al. 2016 Strength Cond J),
+#        then w = e1RM / (1 + (target_reps + target_RIR) / 30), rounded down to the exercise's increment;
+#   3. no history -> a conservative starting weight from body weight and movement pattern, labelled 「估算」.
+EPLEY_DIVISOR = 30
+LOAD_RIR_ASSUMED = 2          # RIR not logged -> assume 2 (body-management.md 4.3: each working set leaves 1–2 reps in reserve)
+LOAD_TARGET_RIR = 2           # the suggested weight leaves ~2 reps in reserve at the middle of the rep range
+LOAD_LOOKBACK_DAYS = 120      # same window as rules/params.PROGRESSION_LOOKBACK_DAYS
+LOAD_SAME_RANGE_SLACK = 2     # the latest session's median reps within [low − 2, high + 2] counts as "same rep range"
+LOAD_STALE_DAYS = 28          # last logged more than 4 weeks ago -> e1RM × 0.9 (inferred: conservative restart after a break)
+LOAD_STALE_FACTOR = 0.9
+LOAD_DEFAULT_REPS = (8, 12)   # rep range used for the exercise detail when the exercise is not in the active plan
+LOAD_STEP_KG = 2.5            # rounding step when the catalog has no default_increment_kg
+LOAD_MIN_KG = {"barbell": 20.0, "ez curl bar": 7.5, "dumbbell": 2.0, "kettlebell": 4.0}   # empty bar / lightest common implement
+# Today's readiness (plans.readiness_advice): red says "weights down 10–15%" -> take the smaller cut; yellow says "do not add
+# weight today" -> a progression increase is held at the last weight.
+LOAD_READINESS_FACTOR = {"red": 0.9}
+LOAD_HISTORY_TTL_S = 120      # SparkyFitness history is cached per user for 2 minutes (the Today page asks for it on every load)
+
+# Starting weights without history: fraction of body weight of a *beginner* 1RM for the barbell (or machine stack) version of
+# each pattern, from public strength standards for untrained / beginner adult men (Strength Level / ExRx "untrained" tables:
+# bench ≈ 0.5, squat ≈ 0.75, deadlift ≈ 1.0, overhead press ≈ 0.35, row ≈ 0.5 × body weight), × LOAD_START_FRACTION for a first
+# working set of ~10 reps with 3+ reps in reserve. Deliberately low: the first session calibrates, history takes over afterwards.
+LOAD_START_FRACTION = 0.6
+STARTER_1RM_BW: dict[str, float] = {
+    "horizontal_push": 0.5, "incline_push": 0.4, "vertical_push": 0.35, "vertical_pull": 0.5, "horizontal_pull": 0.5,
+    "squat": 0.75, "hip_hinge": 0.75, "lunge_split": 0.35, "knee_extension": 0.4, "knee_flexion": 0.3, "calf": 0.75,
+    "lateral_raise": 0.25, "face_pull_er": 0.2, "elbow_flexion": 0.3, "elbow_extension": 0.3, "shrug_upright": 0.6,
+}
+# Load per implement relative to the barbell version: dumbbells / kettlebells are per single implement (as the progression rule logs them).
+STARTER_EQUIPMENT_FACTOR = {"barbell": 1.0, "ez curl bar": 1.0, "smith machine": 0.9, "machine": 1.0, "cable": 0.7,
+                            "dumbbell": 0.4, "kettlebell": 0.4}
+# Exercises whose load scale differs from their pattern (fraction of body weight for the starting working set, already final).
+STARTER_SLUG_BW = {"leg_press": 0.9, "leg_press_high_feet": 0.9, "goblet_squat": 0.15, "barbell_hip_thrust": 0.5,
+                   "standing_calf_raise": 0.4}
+# Sex unknown -> the female factors (the more conservative). Female / male beginner standard ≈ 0.5 upper body, ≈ 0.7 lower body.
+STARTER_SEX_FACTOR = {"male": {"upper": 1.0, "lower": 1.0}, "female": {"upper": 0.5, "lower": 0.7}}
+LOWER_BODY_PATTERNS = {"squat", "hip_hinge", "lunge_split", "knee_extension", "knee_flexion", "calf"}
+
+# ---------- free-exercise-db (Unlicense) import: pinned upstream commit, downloaded once into the deployment's own media storage ----------
+FREE_DB_REPO = "yuhonas/free-exercise-db"
+FREE_DB_COMMIT = "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5"   # 2026-09-27
+FREE_DB_JSON_SHA256 = "5bb747e3fc658f095a60dcbf6d53c96627acdcc6ffb6fffde86f7e26995d40bf"   # dist/exercises.json at that commit (876 exercises)
+# Variants of exercises that are restricted for the owner (and caution by default for everyone): an imported variant inherits the
+# user's restriction on the curated exercise (catalog.family_slug). Matched against the English name, lower case.
+HAZARD_FAMILIES: tuple[tuple[str, str], ...] = (
+    (r"\bupright\b.*\brow\b", "upright_row"),
+    (r"(press|jerk).*behind.*neck|behind.*neck.*press", "behind_neck_press"),
+    (r"(pulldown|pull-up|chin).*behind.*neck|behind.*neck.*(pulldown|pull)", "behind_neck_pulldown"),
+    (r"\bdips?\b(?!\s*squat)", "dips"),
+)

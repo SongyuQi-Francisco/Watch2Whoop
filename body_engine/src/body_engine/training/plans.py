@@ -16,7 +16,7 @@ import psycopg
 
 from .. import auth, sparky_client
 from ..rules import params as RP, store as rules_store
-from . import catalog, params as P
+from . import catalog, loads, params as P
 from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 
 WEEKDAY_ZH = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
@@ -259,9 +259,12 @@ def propose_plan(
     name: str | None = None,
     notes: str | None = None,
     auto_swap_banned: bool = False,
+    with_loads: bool = True,
 ) -> dict:
-    """Generate a structured weekly training plan proposal, checking exercise restrictions and weekly set volume."""
+    """Generate a structured weekly training plan proposal, checking exercise restrictions and weekly set volume.
+    with_loads: add each exercise's recommended working weight (training/loads.py; not stored by save_plan)."""
     catalog.ensure_seeded(conn)
+    load_ctx = loads.Context(conn, user_id, user_id, _user_today(conn, user_id)) if with_loads else None
     if custom_days is not None:
         tpl_name = name or "自定义周训练计划"
         tpl_summary = notes or f"自定义 {len(custom_days)} 天分化计划"
@@ -339,6 +342,8 @@ def propose_plan(
                     "reason": item["reason"],
                     "cues": item["cues"],
                 })
+            if load_ctx is not None:
+                loads.attach(load_ctx, item)
             ex_items.append(item)
 
         days_out.append({
@@ -538,6 +543,7 @@ def save_plan(
         name=name,
         notes=notes,
         auto_swap_banned=auto_swap_banned,
+        with_loads=False,
     )
     if proposal["banned_conflicts"]:
         reasons = [
@@ -635,7 +641,7 @@ def get_week_plan(
     detail: bool = True,
 ) -> dict:
     """Return the active weekly training plan for [Monday..Sunday] around `day`, enriched with exercise metadata,
-    weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
+    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError("没有授权查看该用户的训练计划（需要 training 权限）")
     catalog.ensure_seeded(conn)
@@ -655,6 +661,7 @@ def get_week_plan(
 
     plan_row = _active_plan_row(conn, owner_id)
     if plan_row is not None:
+        load_ctx = loads.Context(conn, viewer_id, owner_id, day)
         raw_days_by_dow: dict[int, list[dict]] = {}
         normalized_days_for_vol: list[dict] = []
         cautions: list[dict] = []
@@ -662,15 +669,17 @@ def get_week_plan(
 
         for d_obj in plan_row.get("days") or []:
             dow = int(d_obj["day_of_week"])
-            exs = []
+            exs, vol_items = [], []
             for raw_ex in d_obj.get("exercises") or []:
                 item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta)
+                vol_items.append(item)
                 matched_sugg = []
                 if item.get("app_exercise_id") and item["app_exercise_id"] in sugg_by_name:
                     matched_sugg.append(sugg_by_name[item["app_exercise_id"]])
                 elif catalog.norm(item["name_zh"]) in sugg_by_name:
                     matched_sugg.append(sugg_by_name[catalog.norm(item["name_zh"])])
                 item["suggestions"] = matched_sugg
+                loads.attach(load_ctx, item, matched_sugg[0] if matched_sugg else None)
                 item["name"] = item["name_zh"]
                 item["exercise_id"] = item.get("app_exercise_id") or item["slug"]
                 if item["status"] != "active" and item["slug"] not in seen_caution:
@@ -688,17 +697,14 @@ def get_week_plan(
                         "slug": item["slug"],
                         "name": item["name_zh"],
                         "sets_text": item["sets_text"],
+                        "load": item["load_text"],
                         "status": item["status"],
                         "cues": item["cues"] if item["status"] != "active" else None,
                     })
                 else:
                     exs.append(item)
             raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], "exercises": exs})
-            normalized_days_for_vol.append({
-                "day_of_week": dow,
-                "name": d_obj["name"],
-                "exercises": [_normalize_item(conn, owner_id, x, with_meta=with_meta) for x in d_obj.get("exercises") or []],
-            })
+            normalized_days_for_vol.append({"day_of_week": dow, "name": d_obj["name"], "exercises": vol_items})
 
         week_days = []
         for k in range(7):
@@ -732,6 +738,7 @@ def get_week_plan(
             "cautions": cautions,
             "readiness": readiness_advice(conn, owner_id, day) if with_scores else None,
             "available_splits": list_splits() if detail else None,
+            **({"load_history_error": load_ctx.history_error} if load_ctx.history_error and detail else {}),
         }
 
     # No active plan in training_plans yet: return empty plan with available splits so the UI or AI can propose one

@@ -15,6 +15,7 @@ from ..rules import params as RP, store as rules_store
 from ..rules.context import Ctx
 from ..scores import store as scores_store
 from ..trends import series as trend_series
+from ..training import loads as tr_loads
 
 RECOVERY_GREEN = 67          # >= 67 green, 34-66 yellow, < 34 red (the bands in system design §7)
 SCOPE_LABELS = {"scores": "评分", "reminders": "提醒", "training": "训练", "nutrition": "饮食", "sleep": "睡眠",
@@ -178,9 +179,13 @@ def _exercise_view(ctx: Ctx, ex_id: str, name: str | None, sets: list[dict], rep
         desc = ((ctx.exercises or {}).get(ex_id) or {}).get("description") or ""
         status = next((s for m, s in RP.SPARKY_STATUS_MARKERS.items() if desc.startswith(m)), "active")
     desc = ((ctx.exercises or {}).get(ex_id) or {}).get("description")
+    working = [s for s in sets if (s.get("type") or "").lower() not in RP.WARMUP_SET_TYPES]
+    reps = [s["reps"] for s in working if s.get("reps")]
     return {"exercise_id": ex_id, "name": ctx.exercise_name(ex_id, name), "status": status,
             "reason": (meta or {}).get("reason"), "cues": (meta or {}).get("cues") or (desc if status != "active" else None),
-            "sets_text": _sets_text(sets, rep_goal), "suggestions": suggestions.get(ex_id, [])}
+            "sets_text": _sets_text(sets, rep_goal), "suggestions": suggestions.get(ex_id, []),
+            "rep_low": min(reps) if reps else None, "rep_high": max([rep_goal or 0, *reps]) or None,
+            "weight_kg": next((s["weight_kg"] for s in working if s.get("weight_kg")), None)}
 
 
 def _training_ctx(conn, viewer_id: int, owner_id: int, day: date):
@@ -210,7 +215,8 @@ def _load_suggestions(conn, viewer_id: int, owner_id: int, start: date, end: dat
     return out
 
 
-def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> list[dict]:
+def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool, load_ctx=None) -> list[dict]:
+    """The SparkyFitness weekly plan for `day`; with load_ctx each exercise gets a recommended weight (training/loads.py)."""
     planned = []
     for item in ctx.planned_for(day):
         if item["kind"] == "preset":
@@ -221,6 +227,10 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
         else:
             planned.append({"name": item["name"], "exercises": [
                 _exercise_view(ctx, item["exercise_id"], item["name"], [], None, suggestions, with_meta)]})
+    if load_ctx is not None:
+        for p in planned:
+            for x in p["exercises"]:
+                tr_loads.attach_logged(load_ctx, x, (x.get("suggestions") or [None])[0])
     return planned
 
 
@@ -242,6 +252,12 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                     for e in s["exercises"]]})
         except sparky_client.SparkyError as e:
             sparky_error = str(e)
+        tier = (wk.get("readiness") or {}).get("tier")
+        if day == local_today(conn, owner_id) and tier in ("red", "yellow"):
+            for p in day_entry["planned"]:
+                for x in p["exercises"]:
+                    x["load"] = tr_loads.apply_readiness(x.get("load"), tier)
+                    x["load_text"] = tr_loads.short_text(x["load"])
         return {
             "plan": wk["plan"],
             "planned": day_entry["planned"],
@@ -253,7 +269,7 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)
     plan = ctx.active_plan()
-    planned = _planned_view(ctx, day, suggestions, with_meta)
+    planned = _planned_view(ctx, day, suggestions, with_meta, tr_loads.Context(conn, viewer_id, owner_id, day))
     logged = []
     for s in sparky_client.training_log(client, day, day):
         logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
@@ -278,10 +294,11 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     end = start + timedelta(days=6)
     _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
     sugg = _load_suggestions(conn, viewer_id, owner_id, day - timedelta(days=6), day)
+    load_ctx = tr_loads.Context(conn, viewer_id, owner_id, day)
     days, cautions, seen = [], [], set()
     for k in range(7):
         d = start + timedelta(days=k)
-        planned = _planned_view(ctx, d, sugg, with_meta)
+        planned = _planned_view(ctx, d, sugg, with_meta, load_ctx)
         days.append({"date": d, "planned": planned, "rest_day": ctx.active_plan(d) is not None and not planned})
         for p in planned:
             for x in p["exercises"]:

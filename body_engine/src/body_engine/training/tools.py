@@ -3,7 +3,7 @@ read the calendar / a day, correct or hide a watch workout (overrides.py), exerc
 from datetime import date, datetime, timedelta
 
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, history, overrides, params as P, plans
+from . import catalog, history, loads, overrides, params as P, plans
 
 
 def _d(s: str | None) -> date | None:
@@ -60,7 +60,9 @@ def _day(conn, uid, a):
 
 
 def _get_exercise(conn, uid, a):
-    return catalog.get_exercise(conn, uid, a["exercise"])
+    ex = catalog.get_exercise(conn, uid, a["exercise"])
+    ex.pop("image_urls", None)   # pictures are for the Today page, not the model
+    return {**ex, **loads.for_exercise(conn, a.get("_viewer_id", uid), uid, ex, plans._user_today(conn, uid))}
 
 
 def _propose_plan(conn, uid, a):
@@ -137,14 +139,14 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_exercise",
-        description="单个动作详情：中英文名、主次肌群、器械、动作模式、要点、关节压力、用户限制（active/caution/banned）及同模式安全替代。",
+        description="单个动作详情：中英文名、主次肌群、器械、动作模式、要点、关节压力、用户限制、同模式安全替代、推荐重量 load 与最近 3 次记录。",
         input_schema=_schema({"user": USER, "exercise": {"type": "string"}}),
         handler=_get_exercise,
         scope="training",
     ),
     dict(
         name="propose_plan",
-        description="生成 3/4/5 分化或自定义周计划草案（不写库）：每天动作处方、各肌群周组数、恢复分自调节、禁用冲突与替代。排计划先调它预览。",
+        description="生成 3/4/5 分化或自定义周计划草案（不写库）：每天动作处方与推荐重量、各肌群周组数、恢复分自调节、禁用冲突与替代。排计划先调它预览。",
         input_schema=_schema({
             "user": USER,
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
@@ -174,7 +176,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_week_plan",
-        description="当前生效的周训练计划（周一至周日）：每天动作与组数处方、肌群周组数、近期加减重建议、今日恢复分自调节建议。",
+        description="当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。",
         input_schema=_schema({"user": USER, "date": _n("string", "YYYY-MM-DD"), "detail": DETAIL}),
         handler=_get_week_plan,
         scope="training",
