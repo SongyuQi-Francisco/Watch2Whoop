@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from . import auth, sparky_client
+from .account import stats as user_stats
 from .assistant import meals as assistant_meals, memory as assistant_memory, memory_seed
 from .assistant import recipes as assistant_recipes, status as assistant_status
 from .config import settings
@@ -48,6 +49,15 @@ def main() -> None:
     u.add_argument("--sex")
     u.add_argument("--timezone", default="Australia/Sydney")
     sub.add_parser("user-list", help="list users")
+    us = sub.add_parser("user-stats", help="read-only: accounts by status, sign-ups / activations / active users in the last N days, "
+                        "last activity per user", epilog=user_stats.HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
+    us.add_argument("--days", type=int, default=7, help="window in days (default 7; e.g. 1 / 30 / 90)")
+    us.add_argument("--signals", default=",".join(user_stats.SIGNALS),
+                    help=f"which signals count as active (comma separated, default all: {','.join(user_stats.SIGNALS)})")
+    us.add_argument("--active-only", action="store_true", help="only users active in the window")
+    us.add_argument("--new-only", action="store_true", help="only users who signed up or activated in the window")
+    us.add_argument("--json", action="store_true", help="one JSON document instead of the table")
+    us.add_argument("--full-email", action="store_true", help="print full e-mail addresses (default masked: a***@domain)")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
 
@@ -251,6 +261,15 @@ def main() -> None:
         elif args.cmd == "user-list":
             for r in conn.execute("SELECT id, display_name, role, birth_date, height_cm, timezone FROM users ORDER BY id"):
                 print(json.dumps(r, default=str, ensure_ascii=False))
+        elif args.cmd == "user-stats":
+            try:
+                res = user_stats.collect(conn, args.days, tuple(x.strip() for x in args.signals.split(",") if x.strip()))
+            except ValueError as e:
+                p.error(str(e))
+            res = user_stats.filter_users(res, args.active_only, args.new_only)
+            if not args.full_email:
+                res = user_stats.masked(res)
+            print(json.dumps(res, default=str, ensure_ascii=False) if args.json else user_stats.render(res))
         elif args.cmd == "login-code":
             from .web import login_codes
             print(login_codes.create(conn, args.user_id, args.label, args.hours, args.scopes.split(",")))

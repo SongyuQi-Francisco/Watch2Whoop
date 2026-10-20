@@ -24,6 +24,7 @@ docker compose exec body-engine body-engine …          # 仓库根目录，进
 ```
 
 - 查用户 id：`body-engine user-list`。
+- 用了多少人：`body-engine user-stats [--days 7] [--active-only] [--new-only] [--signals web,sync] [--json]`（只读）：按状态的账号数，最近 N 天新注册 / 新激活 / 活跃（按信号分开算），每人的注册方式、激活时间、各信号最近一次。邮箱默认打码（`a***@域名`），`--full-email` 才显示全文。「激活」「活跃」的定义和每个信号读哪张表见 `user-stats --help`（`account/stats.py`）。
 - **明文只显示一次**：token、登录码、激活码打印出来后库里只存 sha256，丢了只能重发。
 
 ## 开户
