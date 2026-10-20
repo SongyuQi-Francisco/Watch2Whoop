@@ -12,6 +12,27 @@ algorithms against published research, an Android client, UI polish.
   每个 PR 都在评论里留记录：开发了什么、之后每一轮提交改了什么（rebase、review 修改、版本号）、测试 / CI 结果、部署状态
   （已合并 / 已部署 / 需要新的 app 构建）。
 
+## Bilingual UI / 双语界面
+**Every new feature and every change ships in both Chinese and English.** A PR that adds or changes user-facing text
+without both languages is not merged.
+- **Today page** (`body_engine/src/body_engine/web/static/`): every UI string goes through `tr("中文", { … })`, and its
+  English goes into `i18n-en.js`. In HTML, use `data-i18n` / `data-i18n-ph` / `data-i18n-aria` / `data-i18n-title`.
+  For dates and numbers use the `I18N.*` helpers.
+- **Server texts the page shows** (labels, reminders, explain sheets, error details): use `L("中文", "English")` /
+  `tl()` from `body_engine/i18n.py`, picked by the request's `X-Body-Lang`. New `HTTPException` details also get
+  their English in `errors_en.py`. AI-facing texts (tool results, prompts) stay Chinese.
+- **iOS app**: write `tr('中文', 'English')` (`lib/src/i18n.dart`).
+- **Enforced in CI**:
+  - `body_engine/tests/test_i18n.py` fails on any Chinese literal outside `tr()`, on a key without English, and on
+    unmarked Chinese in the HTML;
+  - `test_i18n_server.py` fails on an error detail without English;
+  - `apps/watch2whoop/test/i18n_test.dart` fails on a Chinese literal outside `tr()`.
+- Details: [docs/i18n-plan.md](docs/i18n-plan.md).
+
+每个新功能、每次改动都要同时有中文和英文：今天页的文字走 `tr("中文")` 并在 `i18n-en.js` 加英文；服务器给页面的文字用
+`L()` / `tl()`（按 `X-Body-Lang`），报错的英文加进 `errors_en.py`；app 用 `tr('中文', 'English')`。CI 里的 i18n 测试会拦住
+缺英文或漏掉 `tr()` 的改动。
+
 ## Workflow
 Nobody pushes to `main`, maintainers included; every change is a pull request.
 
