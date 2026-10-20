@@ -122,7 +122,7 @@ def test_coles_parse_page_fixture():
     mb = coles.parse_page(fx("coles_meat_p2.html"))["products"][0]
     assert mb["special_type"] == "multibuy" and mb["special_label"] == "Buy 2 for $15" and mb["multibuy_qty"] == 2
     assert mb["multibuy_unit_price"] == 7.5 and mb["was_price"] is None
-    with pytest.raises(http.Unclear):
+    with pytest.raises(http.Unclear, match="Pardon Our Interruption"):   # the title goes into the run's error for a person to judge
         coles.parse_page(fx("coles_challenge.html"))
     with pytest.raises(http.Unclear):
         coles.parse_page('<script id="__NEXT_DATA__" type="application/json">{"props": {}}</script>')

@@ -25,6 +25,7 @@
   const base = () => `/v1/users/${info.owner}/grocery`;
   const CUR = { AUD: "A$", CNY: "¥", USD: "$", NZD: "NZ$", EUR: "€", GBP: "£", JPY: "¥", MYR: "RM" };
   const money = (v, cur) => (v == null ? "" : `${CUR[cur] || (cur ? `${cur} ` : "")}${Number(v).toFixed(v >= 100 ? 0 : 2)}`);
+  const short = (v, cur) => (v == null ? "" : `${CUR[cur] || ""}${Number(v) >= 10 ? Math.round(v) : Number(v).toFixed(1).replace(/\.0$/, "")}`);   // stat cards / badges at phone width
   const num = (v, d = 1) => (v == null ? "—" : Number(v).toLocaleString("zh-CN", { maximumFractionDigits: d }));
   const md = (iso) => `${Number(iso.slice(5, 7))}/${Number(iso.slice(8, 10))}`;
   const badge = (cls, t) => `<span class="badge ${cls}">${esc(t)}</span>`;
@@ -34,7 +35,7 @@
       aria-label="${esc(`${l.label} ${l.kind === "product" ? "商品页" : "搜索"} ${name}`)}">${esc(l.label)}</a>`).join("")}</span>` : "";
   const CAT_ORDER = ["produce", "meat", "seafood", "dairy_eggs", "grains", "pantry", "frozen", "drinks", "snacks", "supplements", "household", "other"];
 
-  const halfBadge = (o) => (o && o.half_price ? badge("good", o.save_total || o.save ? `半价 省${money(o.save_total || o.save, "AUD")}` : "半价") : "");
+  const halfBadge = (o) => (o && o.half_price ? badge("good", o.save_total || o.save ? `半价 -${short(o.save_total || o.save, "AUD")}` : "半价") : "");
 
   function itemRow(i) {
     const val = [i.qty_label, i.est_cost != null ? money(i.paid_price ?? i.est_cost, i.currency) : ""].filter(Boolean).join(" · ");
@@ -49,7 +50,7 @@
     const items = list.items || [];
     const head = `<div class="section-head"><h2>本周采购</h2><span class="small muted">${md(list.week_start)}–${md(list.week_end)}</span></div>`;
     if (!items.length) return `${head}<div class="card"><div class="empty">暂无清单</div></div>`;
-    const totals = Object.entries(list.est_total || {}).map(([c, v]) => money(v, c)).join(" + ") || "—";
+    const totals = Object.entries(list.est_total || {}).map(([c, v]) => short(v, c)).join(" + ") || "—";
     const stats = `<div class="card gstats"><div><div class="l">已买</div><div class="v">${list.progress.bought}<small> / ${list.progress.total}</small></div></div>
       <div><div class="l">估价</div><div class="v">${esc(totals)}</div></div>
       <div><div class="l">未估价</div><div class="v">${list.unpriced}<small> 项</small></div></div>${halfStat()}</div>`;
@@ -69,15 +70,15 @@
   function halfStat() {
     const h = list.half_price;
     if (!h || !h.items) return "";
-    const save = Object.entries(h.save || {}).map(([c, v]) => money(v, c)).join(" + ") || "—";
-    return `<div><div class="l">半价省</div><div class="v good">${esc(save)}<small> ${h.items} 项</small></div></div>`;
+    const save = Object.entries(h.save || {}).map(([c, v]) => short(v, c)).join(" + ") || "—";
+    return `<div><div class="l">半价省 · ${h.items}</div><div class="v good">${esc(save)}</div></div>`;
   }
 
   function specialsHtml() {
     const xs = specials && !specials.error ? specials.items || [] : [];
     if (!xs.length) return "";
     const row = (x) => `<div class="grow"><a class="item gsp" href="${esc(x.url)}"${IN_APP ? "" : ` target="_blank"`} rel="noopener noreferrer">
-      <span class="row-title">${esc(x.name)}</span>${(x.flags || []).length ? badge("mid", x.flags[0]) : ""}
+      <span class="row-title">${esc(x.name.startsWith(`${x.label} `) ? x.name.slice(x.label.length + 1) : x.name)}</span>${(x.flags || []).length ? badge("mid", x.flags[0]) : ""}
       <span class="val"><span class="gstore on">${esc(x.label)}</span> ${esc(money(x.price, "AUD"))}${x.was_price ? ` <s>${esc(money(x.was_price, "AUD"))}</s>` : ""}</span></a></div>`;
     return `<div class="section-head"><h2>本周半价</h2><span class="small muted">${md(specials.week_start)}–${md(specials.valid_to)}</span></div>
       <div class="card list">${xs.map(row).join("")}</div>`;

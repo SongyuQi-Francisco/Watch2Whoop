@@ -23,7 +23,9 @@ def parse_page(html: str) -> dict:
     """-> {total, page_size, products: [normalised]}; Unclear when the page is not what we know."""
     m = _NEXT.search(html or "")
     if not m:
-        raise Unclear("Coles 页面里没有 __NEXT_DATA__（可能是挑战页或改版了）")
+        t = re.search(r"<title[^>]*>(.*?)</title>", html or "", re.S | re.I)
+        title = re.sub(r"\s+", " ", t.group(1)).strip()[:80] if t else "无标题"
+        raise Unclear(f"Coles 页面里没有 __NEXT_DATA__（可能是挑战页或改版了；页面标题「{title}」，{len(html or '')} 字节）")
     try:
         data = json.loads(m.group(1))
         sr = data["props"]["pageProps"]["searchResults"]

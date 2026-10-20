@@ -39,7 +39,6 @@ COLES_CATEGORIES = ("meat-seafood", "fruit-vegetables", "dairy-eggs-fridge", "ba
 WWS_BASE = "https://www.woolworths.com.au"
 
 # ---------------------------------------------------------------- matching (offers.py)
-MAX_EXTRA_WORDS = 3      # a store product may have this many more words than the search term (beyond the best one) to still count
 # Common ingredient names -> English search terms (the stores only understand English). First match wins (longer keys first).
 ZH_EN: list[tuple[str, str]] = [
     ("鸡胸肉", "chicken breast"), ("鸡胸", "chicken breast"), ("鸡腿肉", "chicken thigh"), ("鸡腿", "chicken thigh"),

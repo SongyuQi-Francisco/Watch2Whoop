@@ -19,8 +19,11 @@ from .runner import specials_week, sydney_today
 
 WORD = re.compile(r"[a-z0-9]+")
 CURRENCY = "AUD"   # both supported stores are Australian
-_PROCESSED = ("schnitzel", "kebab", "marinated", "crumbed", "seasoned", "nugget", "burger", "slider", "kiev", "sauce",
-              "flavoured", "pie", "roll", "dumpling", "pizza", "chips", "bites")
+_PROCESSED = ("schnitzel", "kebab", "marinated", "crumb", "seasoned", "nugget", "burger", "slider", "kiev", "kyiv", "sauce",
+              "flavour", "pie", "roll", "dumpling", "pizza", "chips", "bites", "roast", "smoked", "bbq", "korean", "teriyaki",
+              "honey", "garlic", "herb", "lemon", "mustard", "satay", "peri", "glazed", "stuffed", "tikka", "tandoori", "cajun",
+              "chilli", "creamy", "parmigia", "bolognese", "dill", "pepper")
+_PROTEINS = ("chicken", "beef", "pork", "lamb", "veal", "turkey", "duck", "salmon", "tuna", "prawn", "barramundi", "cod", "basa")
 
 
 def visible_stores(conn: psycopg.Connection, user_id: int) -> list[str]:
@@ -79,26 +82,28 @@ def _hits(words: list[str], name_words: set[str]) -> bool:
     return all(any(nw.startswith(w) for nw in name_words) for w in words)
 
 
-def _processed(name: str) -> bool:
+def _processed(name: str, words: list[str] = ()) -> bool:
+    """Flavoured / crumbed / cooked products, and mixes with another protein ("Pork & Beef Mince" for beef mince)."""
     nw = _words(name)
-    return any(any(x.startswith(p) for x in nw) for p in _PROCESSED)
+    if any(any(x.startswith(p) for x in nw) for p in _PROCESSED if not any(w.startswith(p) for w in words)):
+        return True
+    asked = [p for p in _PROTEINS if any(w.startswith(p) for w in words)]
+    return bool(asked) and any(any(x.startswith(p) for x in nw) for p in _PROTEINS if p not in asked)
 
 
 def _pick(rows: list[dict], words: list[str]) -> dict | None:
-    """Plain products before processed ones; close matches (few extra words); then half price, then the lowest unit price."""
+    """Plain products before processed / mixed ones; then this week's half price; then the lowest unit price; fewer extra
+    words last."""
     if not rows:
         return None
-    plain = [r for r in rows if not _processed(r["name"])] or rows
-
-    def extra(r):
-        bw = _words(r["brand"] or "")
-        return len(_words(r["name"]) - bw) - len(words)
-    best = min(extra(r) for r in plain)
-    pool = [r for r in plain if extra(r) <= best + P.MAX_EXTRA_WORDS]
     inf = float("inf")
-    pool.sort(key=lambda r: (r["special_type"] != "half_price", float(r["unit_price"]) if r["unit_price"] is not None else inf,
-                             extra(r), float(r["price"]) if r["price"] is not None else inf))
-    return pool[0]
+
+    def key(r):
+        extra = len(_words(r["name"]) - _words(r["brand"] or "")) - len(words)
+        return (_processed(r["name"], words), r["special_type"] != "half_price",
+                float(r["unit_price"]) if r["unit_price"] is not None else inf, extra,
+                float(r["price"]) if r["price"] is not None else inf)
+    return min(rows, key=key)
 
 
 def offer_view(r: dict) -> dict:
