@@ -1,9 +1,9 @@
-# 超市商品数据：Coles / Woolworths 的真实商品、价格和每周特价（提案，未开始，2026-10-21）
+# 超市商品数据：Coles / WWS（Woolworths）的真实商品、价格和每周特价
 
-> **状态：提案 / 未开始。** 这份文档只写需求、法律风险和可选方案，**没有任何抓取代码**，在维护者做出第 5 节的决定之前也不应该写。接着 [grocery-plan.md](grocery-plan.md)（采购：周清单、商品库、存货）。
-> 另外一个 PR 正在做「用户自己提供的 Coles / Woolworths 商品链接 + 门店搜索链接」（零抓取），本文第 4 节方案 C 建立在它上面，不重复设计。
+> **状态：已决定（2026-10-21），实施中。** 维护者读完第 3 节的条款风险后，在 PR #28 里决定做**自有商品库**（方案 A 的收紧版）：做成部署者自己开启的可选组件 `grocery-sync`，默认关闭。决定原文见 PR #28 的评论；**落地设计以第 8 节为准**，第 4–7 节保留为当时的分析记录。
+> 相关：[grocery-plan.md](grocery-plan.md)（采购：周清单、商品库、存货；第 7 节门店链接和「已连接的超市」，issue #44）。
 >
-> **免责：** 下面的条款分析是开发者阅读公开网页后的整理，**不是法律意见**。真要做方案 A 之前，请找澳大利亚执业律师确认。
+> **免责：** 下面的条款分析是开发者阅读公开网页后的整理，**不是法律意见**。条款风险由开启组件的部署者自行评估。
 
 ## 1. 目标和用户故事
 像澳洲 app Shoplet 那样，让采购清单显示**真实的商品、当前价格和本周特价**，并和健康规则结合。
@@ -79,7 +79,7 @@
 - 发邮件给 Shoplet 官网 Contact 页上的一般联系邮箱（contact，商务合作也可以用 business 邮箱），问有没有官方 API / 数据合作，个人非商业开源项目能否接入，以及他们的数据来源是否允许再分发。
 - **由仓库所有者决定是否发、以谁的名义发**；本 PR 不发任何邮件。注意：如果他们的数据本身来自抓取，接他们的数据并不能消除第 3 节的问题，要问清楚。
 
-## 5. 建议
+## 5. 建议（决定前的版本，已被第 8 节取代）
 1. **现在只做方案 C**（零风险）：价格观测表 + 每周特价表 + AI 工具，数据来自用户的截图、链接、小票和实付价格。U2–U5 都能用用户自己的数据部分实现，U1 用用户发来的特价截图实现。
 2. 可选加 **Open Food Facts** 按条码补营养（方案 D 的一部分，许可清楚）。
 3. **所有者要先决定的事**（在这之前不写任何抓取代码）：
@@ -87,7 +87,7 @@
    - 如果做，只能是核心仓库之外、默认关闭、部署者自己安装的插件；核心仓库只提供第 6 节的数据表和导入接口。
    - 是否发邮件给 Shoplet（方案 E）或联系联盟计划 / 数据商（方案 D）。
 
-## 6. 数据模型草稿
+## 6. 数据模型草稿（决定前的版本，最终版见 8.4）
 新迁移（编号到时再定，例如 `2xx_store_data.sql`），每张表带 `user_id`，按 shares 的 `nutrition` 授权，和 `grocery_*` 一样。
 
 | 表 | 字段（草稿） |
@@ -102,10 +102,84 @@
 - 今天页「采购」：每行加「Coles $x.xx / Woolworths $y.yy」短标签和特价角标、价格历史迷你折线；不放解释文字。
 - 将来的抓取插件（如果第 5 节决定做）只通过同一个导入接口写 `price_observations`（`source = plugin:<名字>`），核心代码不认识任何零售商网站。
 
-## 7. 验收标准（方案 C 这一期）
+## 7. 验收标准（方案 C，决定前的版本；最终版见 8.10）
 - [ ] 用户把 Coles / Woolworths 特价页截图或商品链接发给 AI，AI 能存成 `store_products` + `price_observations`，重复发同一张不产生重复（幂等）。
 - [ ] 清单每一行（有数据时）显示两家最近价格、单价、多久前看到的、来源；没有数据时不显示、不报错。
 - [ ] `get_weekly_specials` 返回本周和清单对得上的特价，违反健康规则的带标签；红肉周上限等阈值仍只在 `params.py`。
 - [ ] 价格历史至少能画 12 周；实付价格（`mark_bought` 的 paid_price）自动成为一条观测。
 - [ ] 每张新表带 `user_id`，接口按用户 / shares 鉴权，测试覆盖「看不到别人的价格观测」。
 - [ ] 服务器端**没有任何对 coles.com.au / woolworths.com.au 的请求**（测试或代码审查确认）。
+
+## 8. 实施设计（维护者决定后的版本，2026-10-21）
+### 8.1 决定要点
+- 建 Coles 和 WWS 两家的**食品类**商品库：名称、品牌、规格、条码（有就存）、类目、商品页链接、当前价、单价（每 kg / L / 个）、是否特价、特价类型（半价 / 降价 / 多买优惠）、有效期，以及价格历史。
+- **每周三 01:00（Australia/Sydney）全量刷新一次**，平时不刷。两家的特价周是周三到下周二。
+- 生成采购清单、推荐食谱时，**优先本周半价**且符合用户目标和健康约束的商品；清单里标「本周半价」和节省金额。
+- **只对已连接该超市的用户显示**该超市的商品和价格（issue #44）。用户自己商品库里的条目（AI 加的链接、价签照片）**优先于**抓取数据。
+- 收到超市方面的要求：立即停用并删除抓取数据（`grocery-sync purge`）。
+
+### 8.2 组件和开关
+- 组件名 `grocery-sync`，代码在 `body_engine/src/body_engine/grocery/sync/`，每家超市一个独立的抓取 + 解析模块（`coles.py`、`wws.py`），互不依赖；核心采购代码只读数据库里的结果。
+- **默认关闭**。部署者在环境变量里开：
+  - `BODY_GROCERY_SYNC=coles`（逗号分隔，开哪几家；不设 = 关闭）；
+  - `BODY_GROCERY_SYNC_CONTACT=<邮箱或网址>`（必填，写进 User-Agent；不填不跑）；
+  - 可选 `BODY_GROCERY_SYNC_DELAY_S`（请求间隔，默认 6 秒，最小 3 秒）、`BODY_GROCERY_SYNC_MAX_REQUESTS`（每家每次最多请求数，默认 800）。
+- **关闭后**：不再抓取；读取端也不再用抓取数据（采购页、清单、推荐都回到只用 AI 加的商品）。删除数据用 `purge`。
+- 命令：`body-engine grocery-sync run [--store coles] [--force] [--max-pages N]`、`grocery-sync status`、`grocery-sync purge [--store coles] --yes`。`run` 6 天内跑过就跳过（`--force` 例外），所以定时器重复触发也只抓一次。
+
+### 8.3 抓取约束（对站点友好，降低风险）
+- 只访问公开页面，不登录、不带 cookie 会话、不执行 JavaScript、不调站点内部接口、**不绕过任何访问限制**（不伪装浏览器 UA、不轮换 IP、不过验证码）。
+- 每次运行先取 `robots.txt`，自己实现 RFC 9309 的匹配（`*` / `$` 通配、最长规则优先、同长 Allow 优先）；**每个 URL 请求前都检查**，不允许就不请求。取不到 robots.txt（401 / 403 / 5xx / 超时）= 整家不抓。
+- 单线程，请求间隔 ≥ 6 秒（加 0–2 秒抖动）；超时 / 5xx 指数退避重试最多 3 次（30 → 60 → 120 秒）；**403 / 429 / 页面结构不对（例如出现挑战页、没有 `__NEXT_DATA__`）立即停止这一家**，记一次 `blocked` / `unclear`，不重试，等人看。
+- User-Agent：`Watch2Whoop-grocery-sync/<版本> (+<项目主页>; <部署者联系方式>)`，项目主页取 `BODY_GROCERY_SYNC_HOMEPAGE`，默认公开仓库地址。
+- 每周一次；同一次运行里同一个 URL 只请求一次。
+- **不保存、不展示**商品图片、长描述、广告位；只存 8.4 列出的字段。
+
+### 8.4 站点调研（2026-10-21，用上面的 User-Agent，只取了 robots.txt 和 3 个页面）
+**Coles**：
+- `robots.txt`（200）允许 `/browse/…`（没有 Disallow）和 `Allow: /product/*-*`、`Allow: /on-special?filter_Special=halfprice`；禁止 `/search/`、`*?filter_Special=*`（除了上面那个）、`/*/*/*/on-special*`、`/brand/*`、`/images/*`、`*?pid=*`、`*?utm_source*` 等。
+- 类目页 `/browse/<类目>?page=N` 是服务端渲染的 Next.js 页面：`<script id="__NEXT_DATA__">` 里有 `props.pageProps.searchResults`，每页 48 个商品（另有少量广告位，`_type` 不是 `PRODUCT` 的跳过、重复的按 id 去重）、`noOfResults` 总数。每个商品：`id`、`name`、`brand`、`size`、`merchandiseHeir` / `onlineHeirs`（类目）、`pricing`：`now`、`was`、`saveAmount`、`priceDescription`（半价是「1/2 Price」）、`promotionType`（`SPECIAL`）、`specialType`（`PERCENT_OFF` / `MULTI_SAVE`）、`offerDescription`（「Buy 2 for $13.50」）、`multiBuyPromotion`（`minQuantity`、`reward` = 每件折后价）、`comparable`（「$19.60/ 1kg」「$3.85/ 100mL」）。没有条码。
+- 商品页链接按 `https://www.coles.com.au/product/<slug>-<id>` 拼（和 #29 的链接规则一致）。
+- 只抓食品类的一级类目（`grocery/sync/params.py` 的 `COLES_CATEGORIES`：meat-seafood、fruit-vegetables、dairy-eggs-fridge、bakery、deli、pantry、frozen、drinks、chips-chocolates-snacks、health-dietary、international-foods）。肉类约 570 个商品 = 12 页；全部食品类预计几百页，按 6 秒间隔约 1 小时内跑完。
+- 页面里还有 Imperva 的脚本，但对我们的请求直接返回了完整数据；一旦返回挑战页，按 8.3 停止。
+
+**WWS（Woolworths）**：
+- 用诚实的 User-Agent 请求 `https://www.woolworths.com.au/robots.txt` 被 Akamai 直接返回 **403 Access Denied**（商品页同理）。按约束：**不抓、不绕过**。`wws.py` 只实现 robots 检查和「被拒绝 → blocked」的状态，解析器等确实能合规访问时再写（例如 Woolworths 书面同意或把我们的 User-Agent 放行）。
+- 在那之前，WWS 用户仍然用 #29 / #44 的商品链接 + 搜索链接，价格来自 AI 记的价签 / 小票 / 实付。
+
+### 8.5 数据表（迁移 320_grocery_store_data.sql）
+这几张表存的是**超市公开的商品目录**，不是任何人的个人数据，所以**不带 user_id**、所有用户共用一份（例外写在迁移里）；谁能看由「已连接的超市」+ 组件开关控制。
+
+| 表 | 字段 |
+|---|---|
+| `store_products` | `id`、`store`（coles / woolworths）、`sku`（超市商品编号）、`name`、`brand`、`size_text`、`package_size` + `package_unit`（g / ml / pcs，从规格解析）、`barcode`（可空）、`category`（超市一级类目）、`url`（商品页）、`price`、`was_price`、`unit_price` + `unit_price_unit`（kg / L / ea）、`special_type`（half_price / price_drop / multibuy / special / 空）、`special_label`（「Buy 2 for $13.50」这类短文本）、`save_amount`、`multibuy_qty` + `multibuy_unit_price`、`first_seen`、`last_seen`、`active`（最近一次运行看到）；唯一 (`store`, `sku`) |
+| `price_observations` | `store_product_id`、`observed_on`（悉尼日期）、`price`、`was_price`、`unit_price`、`special_type`、`run_id`；唯一 (`store_product_id`, `observed_on`) → 价格历史，重复跑幂等 |
+| `weekly_specials` | `store`、`week_start`（特价周的周三）、`store_product_id`、`special_type`、`price`、`was_price`、`save_amount`、`label`、`valid_to`（下周二）；唯一 (`store`, `week_start`, `store_product_id`) |
+| `grocery_sync_runs` | 每次运行：`store`、开始 / 结束时间、`status`（ok / partial / blocked / unclear / failed）、请求数、页数、商品数、特价数、半价数、错误 |
+
+### 8.6 和用户数据怎么对上
+- 读的时候现算（不建每人一份的副本）：清单行 / 商品库条目 → 英文搜索词（商品英文名 + 品牌、`matches` 里的英文名、`grocery/sync/params.py` 的常用食材中英对照，如 鸡胸肉 → chicken breast），在已连接超市的 `store_products` 里按「所有词都出现在商品名里」找，多余的词越少越好；同样贴近的里面**本周半价优先**，再按单价低的。
+- 用户商品库里存了商品页（`product_url` / `store_sku`）→ 直接按编号对上，不再模糊匹配；用户自己记的价格优先于抓取价格（估价用用户的，抓取价格只作「本周价」显示）。
+- 健康约束：推荐里排除零食 / 冰淇淋 / 甜饮料 / 加工肉等关键词和类目（`EXCLUDE_KEYWORDS`、`EXCLUDE_CATEGORIES`），红肉按本周红肉余量（`rules/params.py`）、牛肋条按频率、高嘌呤关键词打标签；抓取数据没有营养成分，所以只按名字 / 类目判断，并标明是估计。
+
+### 8.7 推荐和界面
+- `generate_shopping_list` / `get_shopping_list`：每行附 `offer`（已连接超市里最合适的一个：哪家、价格、单价、是否本周半价、省多少、商品页），清单汇总 `half_price`：本周半价的行数和合计节省；没有用户价格的行用 offer 价估价。
+- 新工具 `get_weekly_specials`：本周已连接超市的半价商品（按清单 / 商品库能对上的排前面，带健康标签，排除不符合约束的）。
+- `suggest_meals`：食材能对上本周半价的菜加分，理由里写「本周半价：鸡胸肉（Coles 省 $x）」。
+- 今天页「采购」：清单行加「半价」角标和「省 $x」；统计卡加「半价省」；商品库行有对上的半价商品时加角标。不放解释文字。
+
+### 8.8 部署（Ali，私有 ops 仓库）
+- 环境变量（Ali 的 `.env` / compose）：`BODY_GROCERY_SYNC=coles`、`BODY_GROCERY_SYNC_CONTACT=<部署者联系方式>`。
+- systemd timer：`OnCalendar=Wed *-*-* 01:00:00 Australia/Sydney`，`Persistent=true`，跑 `deploy/ali/engine.sh grocery-sync run`（一次性容器，和 hourly 一样）；doctor 读 `grocery-sync status`：最近一次不是 ok 或超过 8 天没跑 → ⚠。
+- 停用：去掉 `BODY_GROCERY_SYNC` 并停 timer；收到要求时再跑 `grocery-sync purge --yes`。
+
+### 8.9 风险边界（实现里写死的）
+- 只读公开页面、遵守 robots.txt、限速、可识别 User-Agent、不存图片和描述、默认关闭、一键删除。
+- 发现被拒绝 / 页面结构变了：停下来记状态，**不改代码去绕**；要恢复需要人确认。
+- CI 和测试从不访问超市网站：解析器用 `tests/fixtures/grocery_sync/` 里的合成页面（同样结构、虚构商品），抓取器用假的 HTTP 客户端。
+
+### 8.10 验收
+- [ ] 周三 01:00 任务跑完：Coles 商品库价格更新，`weekly_specials` 里本周半价 / 降价 / 多买标记正确；`grocery-sync status` 显示请求数、商品数、半价数、用时。
+- [ ] 采购清单和推荐里能看到「本周半价」优先和节省金额；只对已连接 Coles 的用户显示。
+- [ ] 关闭组件后不再抓取，界面回到只用 AI 添加的商品；`purge` 后抓取数据全部删除。
+- [ ] WWS：被拒绝时状态为 blocked，不产生任何后续请求。
