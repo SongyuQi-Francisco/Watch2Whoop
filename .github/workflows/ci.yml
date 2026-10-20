@@ -126,6 +126,8 @@ jobs:
         run: git ls-files -z '*.py' | xargs -0 -r python -m py_compile
       - name: bash -n (all tracked .sh)
         run: git ls-files -z '*.sh' | xargs -0 -r -n1 bash -n
+      - name: example app config points at example.com, server lock off
+        run: python tools/check_example_config.py
 
   flutter:
     name: Flutter tests

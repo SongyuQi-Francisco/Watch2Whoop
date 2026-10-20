@@ -1,6 +1,6 @@
 """Health-constraint thresholds and recommendation parameters for recipes (used by recipes.py). Changing a threshold needs no migration, it is recomputed on read; writes also refresh the stored constraint_flags.
 
-Sources: health constraints in CLAUDE.md / body-management.md (uric acid 550, fatty liver, ALT, triglycerides -> low saturated fat, low-to-medium purine;
+Sources: common diet guidance for high uric acid, fatty liver, raised ALT and triglycerides (-> low saturated fat, low-to-medium purine;
 red meat <= 250g/week, beef short rib <= 1 per week, see rules/params.py). Purine grams are estimated from common food purine tables (mg per 100g) and are only a grading reference.
 """
 # Purine per serving (mg): < LOW is low, <= HIGH is medium, > HIGH is high. Gout diets often use "<= 400mg per day"; a 180g serving of chicken is itself about 230mg,

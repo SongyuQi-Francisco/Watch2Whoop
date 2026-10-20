@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import 'account_store.dart';
 import 'config.dart';
+import 'health_sync.dart';
+import 'server_lock.dart';
 
 /// Global config (saved on change, and the UI is notified).
 class AppState extends ChangeNotifier {
@@ -18,9 +20,19 @@ class AppState extends ChangeNotifier {
 
   Future<void> load() async {
     final fresh = !await ConfigStore.exists();
-    config = await ConfigStore.load();
+    final locked = ServerLock.current.enforce(await ConfigStore.load());
+    config = locked.config;
     // Keychain items survive deleting the app: a fresh install must not silently reuse the old account.
-    if (fresh) await AccountStore.deleteToken();
+    // A locked build that finds a config for another server starts over as well (that account and sync belong there).
+    if (fresh || locked.reset) await AccountStore.deleteToken();
+    if (locked.reset) {
+      try {
+        await HealthSync.instance.disconnect();
+      } catch (e) {
+        debugPrint('disconnect after server lock reset failed: $e');
+      }
+      await ConfigStore.save(config);
+    }
     accountToken = await AccountStore.readToken();
   }
 
