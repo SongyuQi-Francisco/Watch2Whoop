@@ -1,8 +1,9 @@
-"""AI assistant tool specs for training history (wrapped into Tool and registered by assistant/tools.py), all read-only."""
+"""AI assistant tool specs for training history (wrapped into Tool and registered by assistant/tools.py): read the calendar / a day,
+correct or hide a watch workout (overrides.py)."""
 from datetime import date, datetime, timedelta
 
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import history
+from . import history, overrides
 
 
 def _d(s: str | None) -> date | None:
@@ -63,5 +64,26 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"user": USER, "date": DATE}),
         handler=_day,
         scope="training",
+    ),
+    dict(
+        name="update_workout",
+        description="改手表训练的类型 / 名称（get_training_day 的 workout_id），同步不会覆盖。"
+                    "apply_to_similar：同星期相近时间的「其他运动」也用这个类型。",
+        input_schema=_schema({
+            "workout_id": {"type": "integer"},
+            "type": nullable("string", "basketball、swimming、strength_training…"),
+            "name": nullable("string"),
+            "apply_to_similar": nullable("boolean"),
+        }),
+        handler=lambda conn, uid, a: overrides.update_workout(conn, uid, a["workout_id"], a["type"], a["name"],
+                                                              bool(a["apply_to_similar"])),
+        scope="training", writes=True,
+    ),
+    dict(
+        name="delete_workout",
+        description="删掉（隐藏）重复 / 错误的手表训练，不计入日历、周报、负荷，同步也不回来。",
+        input_schema=_schema({"workout_id": {"type": "integer"}}),
+        handler=lambda conn, uid, a: overrides.hide_workout(conn, uid, a["workout_id"]),
+        scope="training", writes=True,
     ),
 ]

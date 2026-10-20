@@ -1,6 +1,6 @@
 # 自助注册 + 内测激活码
 
-> 状态：服务器和今天页已实现（2026-10-20，`body_engine/src/body_engine/account/`，迁移 `230_self_signup.sql`）；iOS app 另一个 PR。
+> 状态：服务器和今天页已实现（2026-10-20，`body_engine/src/body_engine/account/`，迁移 `295_self_signup.sql`）；iOS app 另一个 PR。
 > 方案最初在 PR #8 里讨论，这份文档取代它。
 
 ## 为什么

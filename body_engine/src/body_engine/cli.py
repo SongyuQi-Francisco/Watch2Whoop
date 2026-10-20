@@ -164,6 +164,15 @@ def main() -> None:
     g.add_argument("--pace", type=int, help="minutes to move earlier per step, default 20")
     g.add_argument("--step-days", type=int, help="days per step, default 3")
 
+    ng = sub.add_parser("nutrition-goals-import", help="backfill nutrition goal versions from the user's SparkyFitness weekly goal plans (active and inactive; idempotent; dry run unless --apply)")
+    ng.add_argument("--user-id", type=int, required=True)
+    ng.add_argument("--apply", action="store_true", help="write (default: only show what would be written)")
+    sb = sub.add_parser("nutrition-sugar-backfill", help="parse sugar / fiber grams written in old food entry notes into food_entry_extras (idempotent; dry run unless --apply)")
+    sb.add_argument("--user-id", type=int, required=True)
+    sb.add_argument("--start", type=date.fromisoformat, required=True)
+    sb.add_argument("--end", type=date.fromisoformat, required=True)
+    sb.add_argument("--apply", action="store_true", help="write (default: only show what would be written)")
+
     ak = sub.add_parser("ai-key-init", help="generate the master encryption key secrets/ai_master_key for AI provider keys (mode 600; an existing one is left alone)")
     at = sub.add_parser("ai-token-create", help="issue a remote MCP token to a user's AI client (scope mcp; the plaintext is shown only once)")
     at.add_argument("--user-id", type=int, required=True)
@@ -354,6 +363,14 @@ def main() -> None:
             if args.from_md:
                 res["meal_templates"] = assistant_meals.seed_templates(conn, args.user_id)
             print(json.dumps(res, ensure_ascii=False))
+        elif args.cmd == "nutrition-goals-import":
+            from .goals import nutrition as nutrition_goals
+            print(json.dumps(nutrition_goals.import_sparky_plans(conn, args.user_id, apply=args.apply),
+                             default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "nutrition-sugar-backfill":
+            from .nutrition import extras as nutrition_extras
+            print(json.dumps(nutrition_extras.backfill_from_notes(conn, args.user_id, args.start, args.end, apply=args.apply),
+                             default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "set-sleep-goal":
             print(json.dumps(goal_store.set_goal(conn, args.user_id, args.bedtime, args.wake, args.pace, args.step_days),
                              default=str, ensure_ascii=False, indent=1))

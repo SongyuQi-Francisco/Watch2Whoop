@@ -1,7 +1,8 @@
 """Status cards of the body profile (table assistant_status): the small cards on the Today page "Me" tab, one short phrase each.
 
 - auto items are computed by the backend from the database / SparkyFitness (refresh_auto): weight and weekly change, distance to goal, 7-day average recovery score, sleep debt,
-  average bedtime, sleep duration, latest uric acid / ALT / triglycerides, workouts in the last 7 days, red meat in the last 7 days. Refreshed by the hourly job
+  average bedtime, sleep duration, latest uric acid / ALT / triglycerides, workouts in the last 7 days, red meat in the last 7 days,
+  added sugar today and its 7-day average (against the cap of the goal in effect, nutrition/daily.py). Refreshed by the hourly job
   (body-engine refresh-status) and on read (when older than STALE_MINUTES); an item that cannot be computed (no data) is dropped,
   and a read error keeps the previous value.
 - assistant items are written by the body butler after its own judgement (set_status_items): current phase, injury status, goal weight, plan adherence, etc.
@@ -33,7 +34,7 @@ STALE_MINUTES = 30
 SPARK_MAX = 30
 GOAL_KEY = "goal_weight"            # Goal weight written by the butler (value is a number, unit kg); auto to_goal uses it
 AUTO_KEYS = ("weight", "to_goal", "recovery", "sleep_debt", "bedtime", "sleep_hours", "uric_acid", "alt",
-             "triglycerides", "training_week", "red_meat_week")
+             "triglycerides", "training_week", "red_meat_week", "added_sugar_today", "added_sugar_7d")
 LAB_ITEMS = {"uric_acid": ("尿酸", 10), "alt": ("ALT", 20), "triglycerides": ("甘油三酯", 30)}
 FIELDS = ("key", "label", "value", "unit", "tone", "trend", "good_direction", "group", "spark", "note",
           "updated_at", "source")
@@ -309,6 +310,40 @@ def calc_red_meat(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
               "note": f"上限 {cap} g · 记了 {days_logged} 天"}, 10)]
 
 
+def _sugar_tone(g: float, cap: float) -> str:
+    return "good" if g <= cap else "warn" if g <= max(rule_params.ADDED_SUGAR_WARN_G, cap) else "bad"
+
+
+def calc_sugar(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
+    """「今日添加糖」 and 「7 天平均」 (added sugar). Only entries that know their added sugar count; a logged day where
+    none do shows 未知 (unknown is not 0). The 7-day average is over days with at least one known entry."""
+    from ..goals import nutrition as goals
+    from ..nutrition import daily, extras
+    start = today - timedelta(days=6)
+    rows = daily.entries(conn, user_id, start, today)
+    if not rows:
+        return []
+    cap = goals.resolve(conn, user_id, today)["added_sugar_max_g"]
+    days = [start + timedelta(days=k) for k in range(7)]
+    per_day = [extras.day_totals([r for r in rows if r["date"] == d.isoformat()]) for d in days]
+    spark = [t["added_sugar_g"] for t in per_day]
+    out = []
+    t = per_day[-1]
+    if t["known"]["of"]:
+        g = t["added_sugar_g"]
+        out.append(({"key": "added_sugar_today", "label": "今日添加糖", "value": "未知" if g is None else f"{g:.0f}",
+                     "unit": None if g is None else "g", "tone": "neutral" if g is None else _sugar_tone(g, cap),
+                     "trend": None, "good_direction": "down", "group": "饮食", "spark": None,
+                     "note": f"上限 {cap:g} g · 有数 {t['known']['added_sugar_g']}/{t['known']['of']} 条"}, 20))
+    known_days = [v for v in spark if v is not None]
+    if known_days:
+        avg = sum(known_days) / len(known_days)
+        out.append(({"key": "added_sugar_7d", "label": "7 天平均", "value": f"{avg:.0f}", "unit": "g",
+                     "tone": _sugar_tone(avg, cap), "trend": None, "good_direction": "down", "group": "饮食",
+                     "spark": spark, "note": f"添加糖 · {len(known_days)} 天有数"}, 30))
+    return out
+
+
 CALCULATORS = [  # (keys owned, function)
     (("weight", "to_goal"), calc_weight),
     (("recovery", "sleep_debt", "sleep_hours"), calc_scores),
@@ -316,6 +351,7 @@ CALCULATORS = [  # (keys owned, function)
     (tuple(LAB_ITEMS), calc_labs),
     (("training_week",), calc_training),
     (("red_meat_week",), calc_red_meat),
+    (("added_sugar_today", "added_sugar_7d"), calc_sugar),
 ]
 
 

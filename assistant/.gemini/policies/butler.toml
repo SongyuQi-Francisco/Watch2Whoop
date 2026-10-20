@@ -17,6 +17,10 @@ toolName = [
   "delete_lab_results",
   "delete_observation",
   "delete_supplement",
+  "remove_product",
+  "remove_shopping_items",
+  "delete_workout",
+  "rollback_write",
 ]
 decision = "ask_user"
 priority = 100
@@ -31,6 +35,10 @@ toolName = [
   "delete_lab_results",
   "delete_observation",
   "delete_supplement",
+  "remove_product",
+  "remove_shopping_items",
+  "delete_workout",
+  "rollback_write",
 ]
 decision = "deny"
 priority = 100

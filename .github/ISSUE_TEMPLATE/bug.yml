@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Maintainers close an issue only with a comment saying what was fixed, in which PR / commit, how it was verified
+        and what is left open (CONTRIBUTING.md, "Maintenance rules").
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Never paste real health data, tokens, setup links / QR codes or server addresses you
+        want to keep private.** Screenshots with synthetic or blurred numbers are fine.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where does it happen? A maintainer adds the matching `platform:*` label.
+      multiple: true
+      options:
+        - iOS app
+        - Android app
+        - HarmonyOS app
+        - Today page (web / PWA)
+        - Server (Body Engine, AI / MCP, deployment)
+        - iOS Shortcut
+        - Docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: App version and build (e.g. 1.0.0 (2), shown in TestFlight), server release / commit, or the date you saw it on the Today page.
+  - type: input
+    id: device
+    attributes:
+      label: Device and OS
+      placeholder: e.g. iPhone 17, iOS 27.1, Apple Watch Series 12
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log lines with personal data removed.
+      render: text

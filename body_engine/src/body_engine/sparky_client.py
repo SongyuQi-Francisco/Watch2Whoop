@@ -148,14 +148,14 @@ def link_user(conn: psycopg.Connection, user_id: int, key_name: str, client: Spa
 
 # ---------------------------------------------------------------- workouts
 def _set(s: dict) -> dict:
-    return {"set": s["set_number"], "type": s.get("set_type"), "reps": s.get("reps"), "weight_kg": s.get("weight"),
+    return {"id": s.get("id"), "set": s["set_number"], "type": s.get("set_type"), "reps": s.get("reps"), "weight_kg": s.get("weight"),
             "rir": s.get("rir"), "rpe": s.get("rpe"), "duration_s": s.get("duration"),
             "distance_km": s.get("distance"), "notes": s.get("notes")}
 
 
 def _exercise(e: dict) -> dict:
     snap = e.get("exercise_snapshot") or {}
-    return {"exercise_id": e.get("exercise_id"), "name": snap.get("name") or e.get("name"),
+    return {"entry_id": e.get("id"), "exercise_id": e.get("exercise_id"), "name": snap.get("name") or e.get("name"),
             "category": snap.get("category") or e.get("category"), "primary_muscles": snap.get("primary_muscles"),
             "notes": e.get("notes"),
             "superset_group": e.get("superset_group"), "duration_minutes": e.get("duration_minutes"),
@@ -194,22 +194,24 @@ def _food_entry(e: dict) -> dict:
     qty, serving = e.get("quantity") or 0, e.get("serving_size") or 1
     scale = qty / serving if serving else 0
     total = lambda k: None if e.get(k) is None else round(e[k] * scale, 1)
-    return {"date": e["entry_date"][:10], "time": (e.get("entry_time") or "")[:5] or None, "meal_type": e.get("meal_type"),
+    return {"id": e.get("id"), "source": e.get("source"), "date": e["entry_date"][:10], "time": (e.get("entry_time") or "")[:5] or None, "meal_type": e.get("meal_type"),
             "food": e.get("food_name"), "quantity": qty, "unit": e.get("unit"),
             "calories": total("calories"), "protein_g": total("protein"), "carbs_g": total("carbs"),
             "fat_g": total("fat"), "saturated_fat_g": total("saturated_fat"), "fiber_g": total("dietary_fiber"),
-            "sugars_g": total("sugars"), "sodium_mg": total("sodium"), "notes": e.get("notes")}
+            "sugar_g": total("sugars"), "sodium_mg": total("sodium"), "notes": e.get("notes")}
 
 
 def food_entries(client: SparkyClient, start: date, end: date) -> list[dict]:
-    """Every food entry in [start, end] (portion already converted to this entry's total nutrition)."""
+    """Every food entry in [start, end] (portion already converted to this entry's total nutrition).
+    id is the SparkyFitness entry id (undo_sparky_entry / DELETE .../nutrition/entries/{id}); source=body_assistant = written by this system's AI."""
     return [_food_entry(e) for e in client.get(f"/food-entries/range/{start.isoformat()}/{end.isoformat()}")]
 
 
 def nutrition(client: SparkyClient, start: date, end: date, entries: bool = True) -> dict:
     """Per-day calories / macro totals and the day's targets in [start, end]; with entries=True each food entry is attached.
     Days without records total 0 (not necessarily nothing eaten, maybe just not logged).
-    Targets are looked up by date (goal_for_date, which follows the weekly goal plan switching training / rest days); the default goal in the report endpoint is not used."""
+    Targets are looked up by date (goal_for_date, which follows the weekly goal plan switching training / rest days); the default goal in the report endpoint is not used.
+    SparkyFitness-only view: the app uses nutrition/daily.py instead (goals from goals/nutrition.py, sugar extras, coverage)."""
     days = client.get("/reports/nutrition-trends-with-goals", startDate=start.isoformat(), endDate=end.isoformat())
     out = {"days": []}
     for d in days:
@@ -314,7 +316,9 @@ def workout_plans(client: SparkyClient) -> list[dict]:
 
 def goal_for_date(client: SparkyClient, day: date) -> dict:
     """Food goal in effect on a given day (follows the weekly goal plan switching training / rest days).
-    Note the goal in /reports/nutrition-trends-with-goals is the default goal and does not follow the weekly goal plan, so it is queried separately."""
+    Note the goal in /reports/nutrition-trends-with-goals is the default goal and does not follow the weekly goal plan, so it is queried separately.
+    Only the active weekly goal plan is followed (dates before it get the default goal), so past dates are not reliable:
+    goals/nutrition.py uses this only as the fallback before a user's first Body Engine goal version."""
     g = client.get(f"/goals/by-date/{day.isoformat()}")
     return {"date": day.isoformat(), "name": g.get("preset_name"), "calories": g.get("calories"),
             "protein_g": g.get("protein"), "carbs_g": g.get("carbs"), "fat_g": g.get("fat"),
