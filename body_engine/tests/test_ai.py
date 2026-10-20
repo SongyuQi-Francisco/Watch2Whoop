@@ -304,7 +304,7 @@ def test_logging_runs_directly_only_delete_asks(client, world, setup, dsn):
     evs = sse(chat(client, tok["A"], "删掉那条").text)
     assert evs[-1][0] == "confirm" and evs[-1][1]["calls"][0]["tool"] == "delete_observation"
     assert chat_mod.ALWAYS_CONFIRM == {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
-                                       "delete_supplement"}
+                                       "delete_supplement", "remove_product", "remove_shopping_items"}
 
 
 def test_memory_writes_without_confirmation(client, world, setup, dsn):

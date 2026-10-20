@@ -164,6 +164,8 @@ from ..cardio.tools import TOOL_SPECS as CARDIO_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in CARDIO_TOOL_SPECS]  # heart rate recovery, recovery index, ECG summaries
 from .butler_tools import TOOL_SPECS as BUTLER_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in BUTLER_TOOL_SPECS]  # body butler: write SparkyFitness, screenshot metrics, long-term memory
+from ..grocery.tools import TOOL_SPECS as GROCERY_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in GROCERY_TOOL_SPECS]  # grocery: product library, weekly shopping list, pantry
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 
