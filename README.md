@@ -58,6 +58,7 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 - [ ] RMSSD-based recovery (iOS 27 / Open Wearables 0.10)
 - [ ] **Other watches**: Garmin, Oura, Polar, Huawei, Xiaomi, Android Health Connect
 - [ ] Shopping list, cycle tracking, more languages
+- [x] **Self-service sign-up** (e-mail code or Sign in with Apple) gated by admin-issued invite codes during the beta ([design](docs/self-signup-plan.md))
 - [ ] *Later (deferred)*: **Training module v2**: exercise library, 3 / 4 / 5-day splits, weekly plans and recommendations, built by talking to your AI ([plan](docs/training-v2-plan.md))
 
 ### Contributing
@@ -116,6 +117,7 @@ cd Watch2Whoop
 - [ ] 基于 RMSSD 的恢复分（iOS 27 / Open Wearables 0.10）
 - [ ] **其他手表**：Garmin、Oura、Polar、华为、小米、安卓 Health Connect
 - [ ] 采购清单、生理周期、更多语言
+- [x] **自助注册**（邮箱验证码或通过 Apple 登录），内测期凭管理员批量发的激活码开通（[设计](docs/self-signup-plan.md)）
 - [ ] *以后的版本（暂不做）*：**训练模块 v2**：动作库、3 / 4 / 5 分化、每周计划和动作推荐，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
 
 ### 参与贡献

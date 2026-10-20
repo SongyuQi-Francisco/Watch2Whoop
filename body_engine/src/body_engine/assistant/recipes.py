@@ -1,7 +1,8 @@
 """Recipe management (table recipe_meta, docs/system-design.md section 15).
 
 - Recipe storage keeps using SparkyFitness meals (a mirror: name, steps, per-serving calories and protein); Body Engine stores the metadata: which meal it suits (slots),
-  tags, times, servings, steps, ingredients (amounts for the whole pot, each with nutrition, purine, red meat grams, purchase unit, store), favourite, can-cook, last eaten date.
+  tags, times, servings, steps, ingredients (amounts for the whole pot, each with nutrition, purine, red meat grams, purchase unit, store;
+  optional sugar_g / added_sugar_g / fiber_g / sodium_mg, null = unknown), favourite, can-cook, last eaten date.
 - Per-serving nutrition and health-constraint flags (constraint_flags: purine, saturated fat, red meat) are computed from the ingredients; thresholds are in recipe_params.py.
 - Logging: one SparkyFitness food entry (the name carries servings and "红肉 Ng", the rules engine counts red meat by that label), one row left in meal_logs,
   and undo is shared with meal templates (DELETE /meal-logs/{log_id}).
@@ -15,6 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..nutrition import extras
 from ..records import store as records_store
 from ..rules import params as rule_params
 from ..rules.nutrition import is_short_rib
@@ -56,6 +58,7 @@ def check_ingredients(items: list[dict]) -> list[dict]:
         est = 4 * clean["protein_g"] + 4 * clean["carbs_g"] + 9 * clean["fat_g"]
         if abs(est - clean["kcal"]) > max(15, 0.3 * clean["kcal"]):
             raise ValueError(f"{food}：热量 {clean['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
+        clean.update(extras.check_optional(food, it, clean["carbs_g"]))   # null = unknown, kept as null
         store = it.get("store")
         if store not in (*STORES, None):
             raise ValueError(f"{food}：store 只能是 {' / '.join(STORES)} 或 null")
@@ -66,7 +69,9 @@ def check_ingredients(items: list[dict]) -> list[dict]:
 
 
 def per_serving(ingredients: list[dict], servings: float) -> dict:
-    return {f: round(sum(i.get(f) or 0 for i in ingredients) / servings, 1) for f in NUTRIENTS}
+    """Per-serving nutrition; sugar / added sugar / fiber / sodium only over ingredients that know them (null when none do)."""
+    return {**{f: round(sum(i.get(f) or 0 for i in ingredients) / servings, 1) for f in NUTRIENTS},
+            **{f: extras.known_sum(ingredients, f, 1 / servings) for f in extras.OPTIONAL}}
 
 
 def constraint_flags(ingredients: list[dict], servings: float) -> dict:
@@ -111,7 +116,8 @@ def view(row: dict, detail: bool = False) -> dict:
     if detail:
         out.update(cuisine=row["cuisine"], servings=_servings(row), includes_staple=row["includes_staple"],
                    ingredients=row["ingredients"], steps=row["steps"], note=row["note"], manual_tags=row["tags"],
-                   sat_fat_g=ps["sat_fat_g"], sparky_meal_id=row["sparky_meal_id"], source=row["source"],
+                   sat_fat_g=ps["sat_fat_g"], **{f: ps[f] for f in extras.OPTIONAL},
+                   sparky_meal_id=row["sparky_meal_id"], source=row["source"],
                    updated_at=row["updated_at"])
     return out
 
@@ -185,6 +191,8 @@ def _sync_sparky(conn, user_id: int, row: dict, client=None) -> str | None:
     unit = row["serving_label"] or "1 份"
     nutr = {"calories": ps["kcal"], "protein": ps["protein_g"], "carbs": ps["carbs_g"], "fat": ps["fat_g"],
             "saturated_fat": ps["sat_fat_g"]}
+    nutr.update({k: ps[f] for k, f in (("sugars", "sugar_g"), ("dietary_fiber", "fiber_g"), ("sodium", "sodium_mg"))
+                 if ps[f] is not None})
     food = client.request("POST", "/foods", {"name": row["name"], "is_custom": True, "provider_type": "custom",
                                              "provider_external_id": f"recipe:{row['id']}", "serving_size": 1,
                                              "serving_unit": unit, **nutr, "notes": "身体管家的食谱镜像"})
@@ -297,6 +305,7 @@ def log_recipe(conn: psycopg.Connection, user_id: int, recipe_id: int, day: date
             "amount": f"{servings:g} × {row['serving_label'] or '1 份'}", "calories": round(ps["kcal"] * k, 1),
             "protein_g": round(ps["protein_g"] * k, 1), "carbs_g": round(ps["carbs_g"] * k, 1),
             "fat_g": round(ps["fat_g"] * k, 1), "saturated_fat_g": round(ps["sat_fat_g"] * k, 1), "alcohol_g": None,
+            **{f: None if ps[f] is None else round(ps[f] * k, 1) for f in extras.OPTIONAL}, "sugary_drink": None,
             "notes": f"食谱「{row['name']}」"}
     res = sparky_write.log_food(conn, user_id, [item], allow_duplicates, client=client)
     if not res["created"]:
@@ -345,7 +354,8 @@ def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slo
     if slot not in SLOTS:
         raise ValueError(f"slot 只能是 {' / '.join(SLOTS)}")
     client = client or sparky_client.client_for_user(conn, user_id)
-    goal = sparky_client.goal_for_date(client, day)
+    from ..goals import nutrition as nutrition_goals
+    goal = nutrition_goals.resolve(conn, user_id, day, client)
     week_food = sparky_client.food_entries(client, day - timedelta(days=6), day)
     eaten = [f for f in week_food if f["date"] == day.isoformat()]
     sums = {k: sum(f.get(k) or 0 for f in eaten) for k in ("calories", "protein_g", "carbs_g", "fat_g")}
