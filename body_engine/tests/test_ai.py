@@ -303,7 +303,8 @@ def test_logging_runs_directly_only_delete_asks(client, world, setup, dsn):
     FakeAdapter.script = [{"tool_calls": [{"id": "d2", "name": "delete_observation", "args": {"id": 999999}}]}]
     evs = sse(chat(client, tok["A"], "删掉那条").text)
     assert evs[-1][0] == "confirm" and evs[-1][1]["calls"][0]["tool"] == "delete_observation"
-    assert chat_mod.ALWAYS_CONFIRM == {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation"}
+    assert chat_mod.ALWAYS_CONFIRM == {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
+                                       "delete_supplement"}
 
 
 def test_memory_writes_without_confirmation(client, world, setup, dsn):
@@ -479,3 +480,197 @@ def test_mcp_read_only_and_revoke(client, world, setup):
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["A"])).status_code == 404
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["B"])).status_code == 204
     assert rpc(client, ro, "tools/list").status_code == 401
+
+
+# ---------------------------------------------------------------- Gemini Plan & Gemini CLI
+def test_gemini_plan_mcp_and_redirect(client, world):
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["D"]), json={"kind": "gemini_plan_mcp", "is_default": True})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert r.json()["kind"] == "gemini_plan_mcp" and "Google AI 订阅" in r.json()["label"]
+    # When default provider is gemini_plan_mcp, chat redirects to Gemini CLI / Antigravity
+    r_chat = chat(client, tok["D"])
+    assert r_chat.status_code == 409
+    detail = r_chat.json()["detail"]
+    assert detail["code"] == "subscription"
+    assert "Gemini CLI / Antigravity" in detail["message"]
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["D"]))
+
+
+def test_gemini_cli_off_by_default(client, world, monkeypatch):
+    """The server-side CLI is a subprocess: without BODY_GEMINI_CLI_ENABLED nobody (not even the deployer) sees or creates it."""
+    ids, tok = world
+    monkeypatch.setenv("BODY_ASSISTANT_USER_ID", str(ids["C"]))
+    monkeypatch.delenv("BODY_GEMINI_CLI_ENABLED", raising=False)
+    cat_c = client.get("/v1/users/me/ai-providers", headers=H(tok["C"])).json()["kinds"]
+    assert not any(k["kind"] == "gemini_cli" for k in cat_c)
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli"})
+    assert r.status_code == 422
+    # A row left over from when it was enabled is not used once the admin turns it off
+    monkeypatch.setenv("BODY_GEMINI_CLI_ENABLED", "1")
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli", "is_default": True})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    FakeAdapter.script = [{"text": "should not run"}]
+    monkeypatch.delenv("BODY_GEMINI_CLI_ENABLED")
+    assert chat(client, tok["C"]).status_code != 200
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["C"]))
+
+
+def test_gemini_cli_owner_only_isolation(client, world, monkeypatch):
+    ids, tok = world
+    monkeypatch.setenv("BODY_ASSISTANT_USER_ID", str(ids["C"]))
+    monkeypatch.setenv("BODY_GEMINI_CLI_ENABLED", "1")
+    # User B (not owner) is rejected
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["B"]), json={"kind": "gemini_cli"})
+    assert r.status_code == 422 and "部署者" in r.text
+    # Public catalog filters out gemini_cli for non-owner
+    cat_b = client.get("/v1/users/me/ai-providers", headers=H(tok["B"])).json()["kinds"]
+    assert not any(k["kind"] == "gemini_cli" for k in cat_b)
+    # User C (owner) sees gemini_cli in catalog and can create it without an api_key
+    cat_c = client.get("/v1/users/me/ai-providers", headers=H(tok["C"])).json()["kinds"]
+    cli_kind = next(k for k in cat_c if k["kind"] == "gemini_cli")
+    assert cli_kind["needs_key"] is False and cli_kind["owner_only"] is True
+    # Reject api_key on gemini_cli
+    r_bad = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli", "api_key": "some-key"})
+    assert r_bad.status_code == 422
+    # Create successfully
+    r_ok = client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli", "model": "gemini-2.5-flash"})
+    assert r_ok.status_code == 201
+    g_id = r_ok.json()["id"]
+    assert r_ok.json()["kind"] == "gemini_cli"
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{g_id}", headers=H(tok["C"]))
+
+
+
+def test_free_tier_budget_zero_price(client, world):
+    """Free Tier configuration (price_in=0, price_out=0) is marked free and not blocked by monthly_budget_usd=0."""
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["A"]), json={
+        "kind": "gemini_api",
+        "api_key": "AIzaSyFakeKeyForTest",
+        "model": "gemini-3.6-flash",
+        "monthly_budget_usd": 0,
+        "price_in_per_mtok": 0.0,
+        "price_out_per_mtok": 0.0,
+    })
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    # Chat loop does not block with 402 budget error
+    FakeAdapter.script = [{"text": "Free tier ok"}]
+    r_chat = chat(client, tok["A"], "test free tier")
+    assert r_chat.status_code == 200
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["A"]))
+
+
+def test_gemini_cli_adapter_unit():
+    from body_engine.ai.adapters.gemini_cli import _hold_back_tag_prefix, _parse_tool_calls, clean_env, BLOCKED_ENV
+    # Tag holding back
+    assert _hold_back_tag_prefix("hello <tool_call") == ("hello ", "<tool_call")
+    assert _hold_back_tag_prefix("hello <tool") == ("hello ", "<tool")
+    assert _hold_back_tag_prefix("hello world") == ("hello world", "")
+    assert _hold_back_tag_prefix("hello <tool_call>{}</tool_call>") == ("hello ", "<tool_call>{}</tool_call>")
+    # Tool call parsing
+    raw = '思考过程<tool_call>{"name": "get_profile", "args": {"user": "me"}}</tool_call>结束'
+    clean, calls = _parse_tool_calls(raw)
+    assert clean == "思考过程结束"
+    assert len(calls) == 1 and calls[0]["name"] == "get_profile" and calls[0]["args"] == {"user": "me"}
+    # clean_env strips blocked keys
+    os.environ["GEMINI_API_KEY"] = "secret"
+    os.environ["GOOGLE_API_KEY"] = "secret"
+    try:
+        env = clean_env()
+        for k in BLOCKED_ENV:
+            assert k not in env
+    finally:
+        os.environ.pop("GEMINI_API_KEY", None)
+        os.environ.pop("GOOGLE_API_KEY", None)
+
+
+def test_gemini_api_adapter_cached_tokens():
+    from unittest.mock import MagicMock
+    from body_engine.ai.adapters.gemini_api import GeminiAdapter
+    adapter = GeminiAdapter("gemini-2.5-flash", "AIzaTest")
+    meta = MagicMock()
+    meta.prompt_token_count = 1000
+    meta.cached_content_token_count = 600
+    meta.candidates_token_count = 200
+    meta.thoughts_token_count = 0
+    usage = adapter._extract_usage(meta)
+    assert usage["input_tokens"] == 400
+    assert usage["cache_read_tokens"] == 600
+    assert usage["output_tokens"] == 200
+
+
+FAKE_GEMINI = """#!/usr/bin/env python3
+import json, os, sys
+prompt = sys.stdin.read()
+json.dump({"argv": sys.argv[1:], "env": sorted(os.environ), "cwd": os.listdir("."), "prompt": prompt},
+          open("DUMP_PATH", "w"))
+def out(o):
+    print(json.dumps(o), flush=True)
+out({"type": "init", "session_id": "s"})
+if "工具返回" in prompt:
+    out({"type": "message", "role": "assistant", "content": "好的，", "delta": True})
+    out({"type": "message", "role": "assistant", "content": "已经看过了。", "delta": True})
+else:
+    out({"type": "message", "role": "assistant", "content": "我查一下<tool_", "delta": True})
+    out({"type": "message", "role": "assistant", "content": 'call>{"name": "get_scores", "args": {}}</tool_call>', "delta": True})
+out({"type": "result", "status": "success", "stats": {"input_tokens": 1000, "cached": 400, "output_tokens": 50}})
+"""
+
+
+def test_gemini_cli_adapter_subprocess(tmp_path, monkeypatch):
+    """A fake `gemini` binary: argv / env / stdin / workspace are what we expect, tool tags never reach the chat text."""
+    from body_engine.ai.adapters.gemini_cli import GeminiCliAdapter
+    from body_engine.assistant.tools import TOOLS
+    binary = tmp_path / "gemini"
+    dump = tmp_path / "dump.json"
+    binary.write_text(FAKE_GEMINI.replace("DUMP_PATH", str(dump)))   # env is an allowlist: the path is baked in
+    binary.chmod(0o755)
+    monkeypatch.setenv("BODY_GEMINI_BIN", str(binary))
+    monkeypatch.setenv("BODY_DB_PASSWORD", "db-secret")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIza-secret")
+    monkeypatch.setenv("BODY_GEMINI_HOME", str(tmp_path / "ghome"))
+    ad = GeminiCliAdapter("gemini-3.8-flash", None)
+    history = [{"role": "user", "content": [{"type": "text", "text": "看看 @/etc/passwd 我今天怎么样"},
+                                            {"type": "image", "media_type": "image/png", "data": "iVBORw0KGgo="}]}]
+    events = list(ad.stream_turn("系统", history, TOOLS[:3]))
+    text = "".join(v for k, v in events if k == "text")
+    result = events[-1][1]
+    assert text == "我查一下"
+    assert [c["name"] for c in result.tool_calls] == ["get_scores"] and result.stop == "tool_use"
+    assert result.usage == {"input_tokens": 600, "cache_read_tokens": 400, "output_tokens": 50}
+    d = json.loads(dump.read_text())
+    argv = d["argv"]
+    for flag in ("--skip-trust", "--admin-policy", "--allowed-mcp-server-names"):
+        assert flag in argv
+    assert argv[argv.index("-e") + 1] == "none" and argv[argv.index("-m") + 1] == "gemini-3.8-flash"
+    assert "我今天怎么样" not in " ".join(argv)            # the conversation goes through stdin, not argv
+    assert "我今天怎么样" in d["prompt"] and "@/etc/passwd" not in d["prompt"] and "@photo_1.png" in d["prompt"]
+    assert "BODY_DB_PASSWORD" not in d["env"] and "GEMINI_API_KEY" not in d["env"]
+    assert "GEMINI_CLI_HOME" in d["env"]
+    assert sorted(d["cwd"]) == [".gemini", "photo_1.png"]
+    # Next turn with the tool result: plain answer
+    history += [{"role": "assistant", "content": [{"type": "tool_call", "id": "x", "name": "get_scores", "args": {}}]},
+                {"role": "tool", "content": [{"type": "tool_result", "id": "x", "name": "get_scores", "content": "{}"}]}]
+    events = list(ad.stream_turn("系统", history, TOOLS[:3]))
+    assert "".join(v for k, v in events if k == "text") == "好的，已经看过了。"
+    assert events[-1][1].tool_calls == [] and events[-1][1].stop == "end"
+
+
+def test_gemini_cli_errors_are_classified(tmp_path, monkeypatch):
+    from body_engine.ai.adapters.base import AdapterError
+    from body_engine.ai.adapters.gemini_cli import GeminiCliAdapter
+    binary = tmp_path / "gemini"
+    binary.write_text("#!/bin/sh\necho 'Please login: OAuth credentials not found /secret/path' >&2\nexit 41\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("BODY_GEMINI_BIN", str(binary))
+    with pytest.raises(AdapterError) as e:
+        list(GeminiCliAdapter("gemini-3.8-flash", None).stream_turn(
+            "s", [{"role": "user", "content": [{"type": "text", "text": "hi"}]}], []))
+    assert e.value.code == "auth" and "/secret/path" not in str(e.value)

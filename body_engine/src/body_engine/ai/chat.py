@@ -34,7 +34,8 @@ MAX_TEXT = 8000
 # Owner's decision (2026-10-18): logging tools (food, training, weight, journal, labs, templates, recipes, events, supplements,
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Still requires login with write permission, and can only write for the caller.
-ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation"}
+ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
+                  "delete_supplement"}
 
 
 class ChatError(Exception):
@@ -62,9 +63,12 @@ def resolve_provider(conn: psycopg.Connection, user_id: int, need_quota: bool = 
     if row is None:
         raise ChatError("no_provider", "还没有设置 AI：在「我 → AI 设置」里选一个提供商")
     if catalog.is_mcp(row["kind"]):
-        client = {"claude_plan_mcp": "Claude app / Claude Code", "codex_plan_mcp": "Codex"}.get(row["kind"], "你的 AI 客户端")
+        client = {"claude_plan_mcp": "Claude app / Claude Code", "codex_plan_mcp": "Codex",
+                  "gemini_plan_mcp": "Gemini CLI / Antigravity"}.get(row["kind"], "你的 AI 客户端")
         raise ChatError("subscription", f"你用的是订阅（{row['display_name']}）：请在 {client} 里和身体管家对话"
                         "（已连上 Body Engine 的 MCP）", assistant_url=owner_assistant_url(user_id), kind=row["kind"])
+    if not catalog.kind_allowed(row["kind"], user_id):
+        raise ChatError("forbidden", "服务端 Gemini CLI 没开，或只给部署者本人用", status=403)
     if row["status"] != "active":
         raise ChatError("disabled", "默认的 AI 提供商已停用，在「AI 设置」里启用或换一个")
     return row
@@ -79,7 +83,10 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
         return s["spent_cny"], s["quota_cny"]
     spent = providers.month_cost(conn, user_id, provider["id"])
     budget = float(provider["monthly_budget_usd"])
-    if spent >= budget:
+    free = (catalog.KINDS.get(provider["kind"], {}).get("needs_key") is False
+            or (provider.get("price_in_per_mtok") is not None and provider.get("price_out_per_mtok") is not None
+                and float(provider["price_in_per_mtok"]) == 0 and float(provider["price_out_per_mtok"]) == 0))
+    if not free and spent >= budget:
         raise ChatError("budget", f"本月 AI 预算已用完（${spent:.2f} / ${budget:.2f}）：在「AI 设置」里调高预算，或下个月再用",
                         status=402, spent_usd=round(spent, 4), budget_usd=budget)
     return spent, budget

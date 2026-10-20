@@ -47,6 +47,7 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |
 | [`docs/`](docs/README.md) | Design documents |
+| [`docs/admin-guide.md`](docs/admin-guide.md) | Admin guide (Chinese): accounts, access links, AI, backups, troubleshooting |
 
 ### Roadmap
 - [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
@@ -104,6 +105,7 @@ cd Watch2Whoop
 | [`quickstart/`](quickstart/README.md) | 一条命令的本地演示 |
 | `deploy/`、`assistant/` | 部署、运维、AI 管家工作目录 |
 | [`docs/`](docs/README.md) | 设计文档 |
+| [`docs/admin-guide.md`](docs/admin-guide.md) | 管理员手册：开户、发链接、AI、备份、排错 |
 
 ### 路线图
 - [x] Apple Watch：恢复、负荷、睡眠、身体年龄、压力、教练、报告

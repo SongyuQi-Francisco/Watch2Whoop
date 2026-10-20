@@ -1940,10 +1940,88 @@
       <div class="version">今天页 ${esc(S.version?.web || "")} · Body Engine ${esc(S.version?.api || "")}</div></div></div>`;
   };
 
+  // Supplements (「我 → 补剂」): own list is editable (add / edit / stop / delete a mistaken entry); someone else's is read-only
+  const canEditSupps = () => isSelf() && (S.me?.token_scopes || []).includes("write");
   function suppSheet(list) {
-    openSheet("补剂", list.map((s) => `<div class="ex"><div class="ex-name"><span>${esc(s.name)}</span>${badge(s.status === "active" ? "good" : "plain", SUPP_STATUS[s.status] || s.status)}</div>
-      ${[s.dose, s.timing].filter(Boolean).length ? `<div class="ex-meta">${esc([s.dose, s.timing].filter(Boolean).join(" · "))}</div>` : ""}
-      </div>`).join("") || `<div class="empty faint">暂无</div>`);
+    const edit = canEditSupps();
+    const row = (s) => {
+      const meta = [s.ingredients, s.dose, s.timing].filter(Boolean).join(" · ");
+      const inner = `<div class="ex-name"><span>${esc(s.name)}</span>${badge(s.status === "active" ? "good" : "plain", SUPP_STATUS[s.status] || s.status)}</div>
+        ${meta ? `<div class="ex-meta">${esc(meta)}</div>` : ""}`;
+      return edit ? `<button class="ex" data-supp="${s.id}">${inner}</button>` : `<div class="ex">${inner}</div>`;
+    };
+    openSheet("补剂", `${list.map(row).join("") || `<div class="empty faint">暂无</div>`}
+      ${edit ? `<div class="btns"><button class="btn" id="supp-add">添加</button></div>` : ""}`,
+    (root) => {
+      for (const b of $$("[data-supp]", root)) b.onclick = () => suppEditSheet(list.find((s) => String(s.id) === b.dataset.supp));
+      const add = $("#supp-add", root);
+      if (add) add.onclick = () => suppEditSheet(null);
+    });
+  }
+
+  async function suppReload(msg) {
+    delete S.data[`supps:${S.owner}`];
+    let list = null;
+    try { list = await load("supps", `/v1/users/${ownerPath()}/supplements`); } catch (e) { /* the list re-loads on the next render */ }
+    render();
+    if (list) suppSheet(list); else closeSheet();
+    toast(msg);
+  }
+
+  function suppEditSheet(s) {
+    const f = (id, label, v, ph = "可不填") => `<div class="field"><label for="${id}">${label}</label><input class="input" id="${id}" maxlength="200" placeholder="${ph}" value="${esc(v || "")}"></div>`;
+    openSheet(s ? "编辑补剂" : "添加补剂", `<form id="supp-form" autocomplete="off">
+      ${f("sp-name", "名称", s?.name, "例：鱼油")}
+      ${f("sp-spec", "规格", s?.ingredients, "例：1000mg / 粒")}
+      <div class="pair field"><div><label for="sp-dose">每日用量</label><input class="input" id="sp-dose" maxlength="200" placeholder="例：1 粒" value="${esc(s?.dose || "")}"></div>
+        <div><label for="sp-timing">服用时间</label><input class="input" id="sp-timing" maxlength="200" placeholder="例：随早餐" value="${esc(s?.timing || "")}"></div></div>
+      <div class="field"><label for="sp-status">状态</label><select class="input" id="sp-status">${Object.entries(SUPP_STATUS).map(([k, v]) => `<option value="${k}" ${k === (s?.status || "active") ? "selected" : ""}>${v}</option>`).join("")}</select></div>
+      <div class="btns"><button class="btn btn-primary" type="submit" id="sp-save">保存</button></div>
+      ${s ? `<div class="btns" id="sp-more">${s.status !== "stopped" ? `<button class="btn" type="button" id="sp-stop">不再服用</button>` : ""}<button class="btn btn-danger" type="button" id="sp-del">录错了，删除</button></div>` : ""}</form>`,
+    (root) => {
+      const val = (id) => $(id, root).value.trim();
+      $("#supp-form", root).onsubmit = async (e) => {
+        e.preventDefault();
+        const name = val("#sp-name");
+        if (!name) { toast("填一个名称"); return; }
+        const body = { name, ingredients: val("#sp-spec") || null, dose: val("#sp-dose") || null, timing: val("#sp-timing") || null, status: val("#sp-status") };
+        if (body.status === "stopped" && !s?.stopped_on) body.stopped_on = S.todayDate;
+        if (!s) for (const k of Object.keys(body)) if (body[k] === null) delete body[k];
+        const btn = $("#sp-save", root);
+        btn.disabled = true;
+        try {
+          if (s) await api(`/v1/users/me/supplements/${encodeURIComponent(s.id)}`, { method: "PATCH", body });
+          else await api("/v1/users/me/supplements", { method: "POST", body });
+          await suppReload(s ? "已保存" : `已添加：${name}`);
+        } catch (err) { toast(err.message); btn.disabled = false; }
+      };
+      const stop = $("#sp-stop", root);
+      if (stop) stop.onclick = async () => {
+        stop.disabled = true;
+        try {
+          await api(`/v1/users/me/supplements/${encodeURIComponent(s.id)}`, { method: "PATCH", body: { status: "stopped", stopped_on: S.todayDate } });
+          await suppReload("已停，记录保留");
+        } catch (err) { toast(err.message); stop.disabled = false; }
+      };
+      const del = $("#sp-del", root);
+      if (del) del.onclick = () => {   // confirm inside the sheet (window.confirm does nothing in the app's WebView)
+        $("#sp-more", root).outerHTML = `<p class="para">连同它的日记项一起删除，不能恢复</p>
+          <div class="btns"><button class="btn" type="button" id="sp-cancel">取消</button><button class="btn btn-danger" type="button" id="sp-del-ok">确认删除</button></div>`;
+        $("#sp-cancel", root).onclick = () => suppEditSheet(s);
+        const ok = $("#sp-del-ok", root);
+        ok.onclick = async () => {
+          ok.disabled = true;
+          try {
+            await api(`/v1/users/me/supplements/${encodeURIComponent(s.id)}`, { method: "DELETE" });
+            delete S.data[`jitems:${S.owner}`];
+            await suppReload("已删除");
+          } catch (err) {
+            if (err.status === 404) await suppReload("这条已经不在了");
+            else { toast(err.message); ok.disabled = false; }
+          }
+        };
+      };
+    });
   }
 
   function eventsSheet(list) {
