@@ -16,6 +16,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..grocery.sync import offers as store_offers, params as sync_params
 from ..nutrition import extras
 from ..records import store as records_store
 from ..rules import params as rule_params
@@ -347,6 +348,11 @@ def _short_rib_recent(food: list[dict]) -> bool:
     return any(is_short_rib(f.get("food") or "") for f in food)
 
 
+def _half_label(h: dict) -> str:
+    save = f" 省 ${h['save']:g}" if h.get("save") else ""
+    return f"{h['food']}（{h['label']}{save}）"
+
+
 def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slot: str | None = None,
             client=None) -> dict:
     day = day or meals.user_now(conn, user_id).date()
@@ -383,7 +389,10 @@ def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slo
                     for r in records_store.lab_report(conn, user_id, ["uric_acid"]))
     purine_w = 1.5 if uric_high else 1.0
     picks, excluded = [], []
-    for row in _rows(conn, user_id):
+    rows = _rows(conn, user_id)
+    # this week's half price in the user's connected supermarkets (grocery-sync; {} when off / nothing connected)
+    half = store_offers.half_price_hits(conn, user_id, [i["food"] for r in rows if slot in r["slots"] for i in r["ingredients"]])
+    for row in rows:
         if slot not in row["slots"]:
             continue
         v = view(row)
@@ -410,10 +419,13 @@ def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slo
         if recent:
             score += RP.W_RECENT
         score -= (RP.BONUS_FAVORITE if row["favorite"] else 0) + (RP.BONUS_CAN_MAKE if row["can_make"] else 0)
-        picks.append((score, row, v, staple, kcal, prot, recent))
+        hp = [{"food": i["food"], **{k: half[i["food"]][k] for k in ("label", "name", "price", "save")}}
+              for i in row["ingredients"] if i["food"] in half]
+        score -= min(sync_params.BONUS_HALF_PRICE * len(hp), sync_params.BONUS_HALF_PRICE_MAX)
+        picks.append((score, row, v, staple, kcal, prot, recent, hp))
     picks.sort(key=lambda x: x[0])
     out = []
-    for score, row, v, staple, kcal, prot, recent in picks[:RP.SUGGEST_COUNT]:
+    for score, row, v, staple, kcal, prot, recent, hp in picks[:RP.SUGGEST_COUNT]:
         bits = [f"这一餐还能吃约 {target['kcal']:.0f} kcal、蛋白 {target['protein_g']:.0f}g",
                 f"这道{'配饭 90g ' if staple else ''}约 {kcal:.0f} kcal、蛋白 {prot:.0f}g"]
         f = v["constraint_flags"]
@@ -427,8 +439,10 @@ def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slo
             bits.append("你收藏的")
         if not row["can_make"]:
             bits.append("还没做过，可以学")
+        if hp:
+            bits.append("本周半价：" + "、".join(_half_label(h) for h in hp))
         out.append({**v, "with_staple": staple, "meal_kcal": round(kcal), "meal_protein_g": round(prot),
-                    "score": round(score, 3), "reason": "；".join(bits) + "。"})
+                    "score": round(score, 3), "reason": "；".join(bits) + "。", **({"half_price": hp} if hp else {})})
     return {"date": day.isoformat(), "slot": slot, "goal": {"name": goal["name"], "kcal": goal["calories"],
                                                             "protein_g": goal["protein_g"]},
             "eaten": {"kcal": round(sums["calories"]), "protein_g": round(sums["protein_g"])},

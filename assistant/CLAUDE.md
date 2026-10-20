@@ -75,6 +75,7 @@
 | 「我用 Coles / WWS」「连接 / 断开超市」 | `set_stores`（给全部要连接的；默认都不连，只显示已连接超市的链接） |
 | 只有条码 | `lookup_barcode` → 用户确认后 `save_product`，`nutrition_source` 填返回的 source |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |
+| 「这周有什么半价」「买什么划算」 | `get_weekly_specials`（已连接超市的本周半价，已按健康约束筛过）；清单行的 `offer` 是超市本周价，`special=half_price` 时告诉用户省多少，可以建议换成半价的同类 |
 | 记错了 | 改：饮食 `update_food_entry`、力量训练某组 `update_training_set`、手表训练类型 / 名称 `update_workout`；删（任何来源）：饮食 / 力量训练 / 一组 / 某天称重 `undo_sparky_entry`、重复或错误的手表训练 `delete_workout`、日记 `delete_journal_entry`、化验 `delete_lab_results`、录错的补剂 `delete_supplement`；事件用 `update_event`；改回原样：`get_write_log` → `rollback_write` |
 
 一句话常常要拆成几类，例：「昨晚两瓶啤酒，12 点才吃晚饭」→ 日记 `alcohol`=1（备注两瓶啤酒）+ `late_dinner`=1；如果他说了吃的什么，再记饮食（啤酒也是饮食）。

@@ -8,7 +8,9 @@
    main-frame links to the system, which opens the store app through universal links (a target=_blank link would do nothing there).
    In a browser they open in a new tab so the Today page stays. The page never loads the store sites itself.
    Links are only for the supermarkets the user has connected (issue #44, none by default): the 「超市」 chips at the bottom
-   (GET / PUT …/grocery/stores, own page only) switch them; the server filters links, this page only re-renders. */
+   (GET / PUT …/grocery/stores, own page only) switch them; the server filters links, this page only re-renders.
+   With the deployer's opt-in grocery-sync on (docs/grocery-store-data-plan.md §8), items / products carry `offer` (the connected
+   store's weekly price; half price first) -> 「半价」 badge and saving; GET …/grocery/specials fills 「本周半价」. */
 (() => {
   "use strict";
   let C = null;
@@ -16,6 +18,7 @@
   let list = null;      // last GET /grocery/list
   let products = null;  // last GET /grocery/products
   let stores = null;    // last GET /grocery/stores (own page only)
+  let specials = null;  // last GET /grocery/specials (this week's half price, grocery-sync)
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -31,11 +34,14 @@
       aria-label="${esc(`${l.label} ${l.kind === "product" ? "商品页" : "搜索"} ${name}`)}">${esc(l.label)}</a>`).join("")}</span>` : "";
   const CAT_ORDER = ["produce", "meat", "seafood", "dairy_eggs", "grains", "pantry", "frozen", "drinks", "snacks", "supplements", "household", "other"];
 
+  const halfBadge = (o) => (o && o.half_price ? badge("good", o.save_total || o.save ? `半价 省${money(o.save_total || o.save, "AUD")}` : "半价") : "");
+
   function itemRow(i) {
     const val = [i.qty_label, i.est_cost != null ? money(i.paid_price ?? i.est_cost, i.currency) : ""].filter(Boolean).join(" · ");
+    const hb = i.bought ? "" : halfBadge(i.offer);
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
     return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.name)}${i.bought ? "，已买" : ""}">
-      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span><span class="val">${esc(val)}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
+      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}<span class="val">${esc(val)}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
 
   function listHtml() {
@@ -46,7 +52,7 @@
     const totals = Object.entries(list.est_total || {}).map(([c, v]) => money(v, c)).join(" + ") || "—";
     const stats = `<div class="card gstats"><div><div class="l">已买</div><div class="v">${list.progress.bought}<small> / ${list.progress.total}</small></div></div>
       <div><div class="l">估价</div><div class="v">${esc(totals)}</div></div>
-      <div><div class="l">未估价</div><div class="v">${list.unpriced}<small> 项</small></div></div></div>`;
+      <div><div class="l">未估价</div><div class="v">${list.unpriced}<small> 项</small></div></div>${halfStat()}</div>`;
     const warns = (list.warnings || []).length
       ? `<div class="gwarn">${list.warnings.map((w) => badge(w.code === "product" ? "mid" : "bad", w.label)).join("")}</div>` : "";
     const by = new Map();
@@ -60,10 +66,27 @@
     return head + stats + warns + groups;
   }
 
+  function halfStat() {
+    const h = list.half_price;
+    if (!h || !h.items) return "";
+    const save = Object.entries(h.save || {}).map(([c, v]) => money(v, c)).join(" + ") || "—";
+    return `<div><div class="l">半价省</div><div class="v good">${esc(save)}<small> ${h.items} 项</small></div></div>`;
+  }
+
+  function specialsHtml() {
+    const xs = specials && !specials.error ? specials.items || [] : [];
+    if (!xs.length) return "";
+    const row = (x) => `<div class="grow"><a class="item gsp" href="${esc(x.url)}"${IN_APP ? "" : ` target="_blank"`} rel="noopener noreferrer">
+      <span class="row-title">${esc(x.name)}</span>${(x.flags || []).length ? badge("mid", x.flags[0]) : ""}
+      <span class="val"><span class="gstore on">${esc(x.label)}</span> ${esc(money(x.price, "AUD"))}${x.was_price ? ` <s>${esc(money(x.was_price, "AUD"))}</s>` : ""}</span></a></div>`;
+    return `<div class="section-head"><h2>本周半价</h2><span class="small muted">${md(specials.week_start)}–${md(specials.valid_to)}</span></div>
+      <div class="card list">${xs.map(row).join("")}</div>`;
+  }
+
   function productRow(p) {
     const val = [p.size_label, p.price != null ? money(p.price, p.currency) : ""].filter(Boolean).join(" · ");
     return `<div class="grow"><button class="item" data-gp="${esc(p.id)}"><span class="row-title">${esc(p.name)}${p.brand ? `<span class="small muted"> ${esc(p.brand)}</span>` : ""}</span>
-      ${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
+      ${halfBadge(p.offer)}${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
   }
 
   function productsHtml() {
@@ -85,6 +108,7 @@
     C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}
       ${kv("品牌", p.brand)}${kv("门店", p.store_label)}${(p.links || []).length ? `<div class="kv"><span class="k">链接</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv("类别", p.category_label)}${kv("规格", p.size_label)}
       ${kv("价格", p.price != null ? money(p.price, p.currency) : null)}${kv("单价", unitP)}${kv("价格日期", p.price_on)}
+      ${p.offer ? kv("本周价", `${p.offer.label} ${money(p.offer.price, "AUD")}${p.offer.was_price ? ` / ${money(p.offer.was_price, "AUD")}` : ""}${p.offer.half_price ? " · 半价" : ""}`) : ""}
       <div class="ghead" style="margin-top:16px"><span>每 ${per}</span></div>
       ${kv("热量", n.kcal != null ? `${num(n.kcal, 0)} kcal` : null)}${kv("蛋白质", n.protein_g != null ? `${num(n.protein_g)} g` : null)}
       ${kv("碳水", n.carbs_g != null ? `${num(n.carbs_g)} g` : null)}${kv("脂肪", n.fat_g != null ? `${num(n.fat_g)} g` : null)}
@@ -102,7 +126,8 @@
     const next = stores.stores.filter((s) => (s.key === key ? !s.connected : s.connected)).map((s) => s.key);
     try {
       stores = await C.api("/v1/users/me/grocery/stores", { method: "PUT", body: { connected: next } });
-      [list, products] = await Promise.all([C.api(`${base()}/list${info.date ? `?week=${encodeURIComponent(info.date)}` : ""}`), C.api(`${base()}/products`)]);
+      [list, products, specials] = await Promise.all([C.api(`${base()}/list${info.date ? `?week=${encodeURIComponent(info.date)}` : ""}`),
+        C.api(`${base()}/products`), C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e }))]);
     } catch (e) {
       C.toast(e.message || "没有保存");
       return;
@@ -112,6 +137,7 @@
     $("#g-list", box).innerHTML = listHtml();
     $("#g-products", box).innerHTML = productsHtml();
     $("#g-stores", box).innerHTML = storesHtml();
+    $("#g-specials", box).innerHTML = specialsHtml();
     bind(box);
   }
 
@@ -148,12 +174,14 @@
   async function foodShop(i) {
     info = i;
     const wk = i.date ? `?week=${encodeURIComponent(i.date)}` : "";
-    [list, products, stores] = await Promise.all([
+    [list, products, stores, specials] = await Promise.all([
       C.api(`${base()}/list${wk}`).catch((e) => ({ error: e })),
       C.api(`${base()}/products`).catch((e) => ({ error: e })),
       i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
+      C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e })),
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
+      <div class="section" id="g-specials">${specialsHtml()}</div>
       <div class="section"><div class="section-head"><h2>商品库</h2><span class="small muted">${Array.isArray(products) ? products.length : ""}</span></div>
         <input class="search" id="g-q" type="search" placeholder="搜索" value="${esc(q)}" aria-label="搜索商品"><div id="g-products">${productsHtml()}</div></div>
       <div class="section" id="g-stores">${storesHtml()}</div></div>`;

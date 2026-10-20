@@ -65,3 +65,7 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 - 默认关闭：管理员设 `BODY_OFF_CONTACT`（邮箱或网址）才开，User-Agent 是 `Watch2Whoop/<版本> (<联系方式>)`（OFF 要求）。
 - 只做单个查询，不批量：每个进程每分钟最多 15 次（OFF 商品读取限制是每 IP 每分钟 100 次），每人每天 50 次，同一个条码一天内用内存缓存。
 - 数据是 ODbL：结果带 `source = "Open Food Facts (ODbL)"`，AI 存进商品库时填 `nutrition_source`，今天页商品详情显示「来源」。只读工具，不自动写；用户拍的营养成分表优先于 OFF。
+
+## 8. 超市商品库和每周半价（grocery-sync，2026-10-21）
+维护者在 PR #28 决定建自有超市商品库：可选组件 `grocery-sync`（默认关闭），每周三 01:00（悉尼）刷新已开启超市的公开食品目录，采购清单 / 推荐优先「本周半价」。设计、抓取约束、站点调研（Coles 可以；WWS 对可识别的 User-Agent 返回 403，不抓）和部署见 [grocery-store-data-plan.md](grocery-store-data-plan.md) 第 8 节；本节第 7 节「服务器从不访问门店网站」在组件**开启**时不再成立，关闭时仍然成立。
+
