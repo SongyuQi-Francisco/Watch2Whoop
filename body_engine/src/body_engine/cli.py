@@ -64,6 +64,24 @@ def main() -> None:
     acl.add_argument("--user-id", type=int)
     acr = acs.add_parser("revoke", help="revoke an activation code by id (devices already set up stay signed in)")
     acr.add_argument("--id", type=int, required=True)
+    iv = sub.add_parser("invite-code", help="beta invite codes for self-service sign-up (account/invites.py)")
+    ivs = iv.add_subparsers(dest="iv_cmd", required=True)
+    ivb = ivs.add_parser("batch", help="create a batch; prints CSV code,batch_id,label,expires_at,max_uses (plaintext shown only once)")
+    ivb.add_argument("--count", type=int, required=True)
+    ivb.add_argument("--label", required=True, help="who / which channel the batch is for")
+    ivb.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
+    ivb.add_argument("--max-uses", type=int, default=1, help="accounts per code (default 1)")
+    ivb.add_argument("--created-by", help="free text recorded with the batch")
+    ivl = ivs.add_parser("list", help="batches with uses / free codes; --batch N: its codes and who redeemed them")
+    ivl.add_argument("--batch", type=int)
+    ivr = ivs.add_parser("revoke", help="stop a batch or one code (accounts already opened stay)")
+    ivg = ivr.add_mutually_exclusive_group(required=True)
+    ivg.add_argument("--batch", type=int)
+    ivg.add_argument("--code-id", type=int)
+    pr = sub.add_parser("provision-run", help="finish provisioning of self-signed-up users (OW user, SparkyFitness account, journal items; idempotent, hourly)")
+    pr.add_argument("--user-id", type=int, help="only this user (default: every active user not done yet)")
+    mt = sub.add_parser("mail-test", help="send a test sign-in e-mail with the configured mailer (BODY_MAIL_MODE / BODY_SMTP_*)")
+    mt.add_argument("--to", required=True)
     t = sub.add_parser("token-create", help="issue an API token to a user (the plaintext is shown only once)")
     t.add_argument("--user-id", type=int, required=True)
     t.add_argument("--name", required=True, help="purpose, e.g. iphone-shortcut, claude-mcp")
@@ -190,6 +208,12 @@ def main() -> None:
         from .rawdata import export as rx_export
         print(json.dumps(rx_export.slim(args.file, args.out), ensure_ascii=False))
         return
+    if args.cmd == "mail-test":  # does not connect to the database
+        from .account import mailer
+        subject, text = mailer.code_message("123456", 10)
+        mailer.send(args.to, "[test] " + subject, text)
+        print("sent via", mailer.mode())
+        return
     if args.cmd == "ai-key-init":  # does not connect to the database
         path, created = ai_crypto.init_master_key()
         print(("created: " if created else "exists (unchanged): ") + str(path))
@@ -229,6 +253,30 @@ def main() -> None:
                     print(json.dumps(r, default=str, ensure_ascii=False))
             else:
                 print("revoked" if activation.revoke(conn, args.id) else "not found / already revoked")
+        elif args.cmd == "invite-code":
+            from .account import invites
+            if args.iv_cmd == "batch":
+                import csv
+                import sys
+                res = invites.create_batch(conn, args.count, args.label, args.days, args.max_uses, args.created_by)
+                w = csv.writer(sys.stdout)
+                w.writerow(["code", "batch_id", "label", "expires_at", "max_uses"])
+                for code in res["codes"]:
+                    w.writerow([invites.pretty(code), res["batch_id"], res["label"],
+                                res["expires_at"].isoformat() if res["expires_at"] else "", res["max_uses"]])
+            elif args.iv_cmd == "list":
+                rows = invites.list_codes(conn, args.batch) if args.batch else invites.list_batches(conn)
+                for r in rows:
+                    print(json.dumps(r, default=str, ensure_ascii=False))
+            else:
+                print("revoked" if invites.revoke(conn, args.batch, args.code_id) else "not found / already revoked")
+        elif args.cmd == "provision-run":
+            from .account import delete as account_delete, provision, signin
+            signin.purge_old_codes(conn)
+            print("purged pending accounts:", account_delete.purge_pending(conn))
+            conn.commit()
+            res = [provision.run(conn, args.user_id)] if args.user_id else provision.run_pending(conn)
+            print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "token-create":
             print(auth.create_token(conn, args.user_id, args.name, args.scopes.split(",")))
         elif args.cmd == "token-list":

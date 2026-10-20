@@ -308,6 +308,17 @@ Tools: `list_recipes`, `get_recipe`, `suggest_meals` (read); `create_recipe`, `u
 - **Adapters** (`adapters/`): `anthropic_api.py` (Messages API streaming, default claude-opus-5-5, effort medium, automatic prompt caching, refusal fallbacks="default"), `openai_api.py` (OpenAI uses the Responses API, store=False; compatible endpoints use Chat Completions + the base_url the user enters, http allowed only for the local machine), `gemini_api.py` (google-genai, automatic function calling turned off, `cached_content_token_count` split into `cache_read_tokens`), `gemini_cli.py` (opt-in, owner-only: headless `gemini -o stream-json` as a text generator with a `<tool_call>` protocol; every CLI tool denied by an admin policy, no extensions / MCP servers, fresh temp workspace, allowlisted environment without keys or secrets, prompt via stdin, 180 s kill), `fake.py` (for tests). The price table is in `catalog.py` (unknown models are estimated at the most expensive tier; a custom unit price can be set on the provider).
 - **Tests**: `tests/test_ai.py` (separate database `body_test_ai`, fake adapter, no paid API calls): keys do not leak, A's and B's configs are invisible to each other, ciphertext is bound to the user, a conversation uses only its own key and own memory, read-tool loop + audit, write operations need confirmation (nobody else can confirm), rejection and "ignore it and just send a new message", read-only login, images, budget rejection, free-tier $0 unit price, subscription redirect (including `gemini_plan_mcp`), `gemini_cli` off by default + owner-only + adapter tests against a fake `gemini` binary, remote MCP (token scope, read-only, revocation, can only see your own data, audit channel).
 
+## Self-service sign-up (`src/body_engine/account/`, migration 230)
+Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../docs/self-signup-plan.md).
+- Sign-in without passwords: e-mail + one-time 6-digit code (`account/signin.py`, mailer `account/mailer.py`: SMTP or `console`)
+  and native Sign in with Apple (identity token verified against Apple's JWKS, audience `BODY_APPLE_AUDIENCES`).
+- New accounts are `pending` (403 `account_pending` everywhere except `/v1/account*`, `/v1/web/me`) until they redeem an
+  invite code (`account/invites.py`; `body-engine invite-code batch | list | revoke`). Redemption activates the account and
+  provisions it in the background (`account/provision.py`: OW user, SparkyFitness account + encrypted keys, journal items,
+  profile card); `body-engine provision-run` retries unfinished ones (hourly) and removes pending accounts after 7 days.
+- `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
+- Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
+
 ## Layout
 - `src/body_engine/migrations/`: SQL executed once in numbered order; the table definitions are authoritative here
 - `src/body_engine/queries.py`: functions that read data, shared by the API and the AI assistant

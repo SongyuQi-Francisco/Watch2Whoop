@@ -616,12 +616,12 @@ def test_login_failures_are_rate_limited(client, world, monkeypatch):
     r = client.post("/v1/web/login", json={"token": world[1]["A"]})
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
     # Once the window has passed (shift the recorded time back) it can be tried again
-    with login_limit._lock:
-        for q in login_limit._failures.values():
+    with login_limit._failures._lock:
+        for q in login_limit._failures._events.values():
             for i in range(len(q)):
                 q[i] -= login_limit.WINDOW_SECONDS + 1
     assert client.post("/v1/web/login", json={"token": world[1]["A"]}).status_code == 200
-    assert login_limit._failures == {}   # reset after success
+    assert login_limit._failures._events == {}   # reset after success
     login_limit.reset()
 
 
