@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../account_api.dart';
+import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../debug_seed.dart';
@@ -198,6 +200,47 @@ class _SyncPageState extends State<SyncPage> {
     _refresh();
   }
 
+  bool get _hasAccount => AppState.instance.accountToken != null;
+
+  /// Self-service accounts: connect sync without any code (server-minted OW invitation); fall back to the manual code dialog.
+  Future<void> _connectViaAccount() async {
+    var manual = false;
+    await _run(() async {
+      final r = await connectSyncViaAccount();
+      if (r.connected) {
+        await _sync.requestAuthorization();
+        await AppState.instance.update(_config.copyWith(healthRequested: true));
+        await _sync.startSync(_config.syncDaysBack);
+        setState(() => _message = tr('已连接，开始同步', 'Connected — syncing'));
+      } else if (r.manualNeeded) {
+        manual = true;
+      } else {
+        final e = r.error;
+        setState(() => _message = e is AccountApiException ? accountError(e) : connectError(e ?? 'server'));
+      }
+    });
+    if (manual && mounted && _config.owHost.isNotEmpty) await _reconnect();
+  }
+
+  Future<void> _signOut() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('退出登录？', 'Sign out?')),
+        content: Text(tr('这台 iPhone 停止同步并退出账号；服务器上的数据不受影响，之后用同一个 Apple ID / 邮箱登录即可。',
+            'This iPhone stops syncing and signs out. Your data on the server is kept; sign in again with the same Apple ID / e-mail.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('退出', 'Sign out'))),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    final nav = Navigator.of(context);
+    await _run(() => signOutToOnboarding());
+    if (nav.mounted) nav.popUntil((r) => r.isFirst);
+  }
+
   Future<void> _disconnect() async {
     final yes = await showDialog<bool>(
       context: context,
@@ -333,7 +376,9 @@ class _SyncPageState extends State<SyncPage> {
                 BigButton(tr('失败重试', 'Retry'), secondary: true, onPressed: _busy ? null : _retry),
               ],
             ] else
-              BigButton(tr('用邀请码连接', 'Connect with invitation code'), onPressed: _config.owHost.isEmpty ? null : _reconnect),
+              _hasAccount
+                  ? BigButton(tr('连接同步', 'Connect sync'), onPressed: _connectViaAccount, busy: _busy)
+                  : BigButton(tr('用邀请码连接', 'Connect with invitation code'), onPressed: _config.owHost.isEmpty ? null : _reconnect),
             if (_message != null) ...[
               const SizedBox(height: 10),
               Hint(_message!, icon: Icons.check_circle_outline),
@@ -364,6 +409,7 @@ class _SyncPageState extends State<SyncPage> {
                 if (connected) Row2(tr('同步账号', 'Sync account'), value: '${_config.owUserId!.substring(0, 8)}…'),
                 if (connected) Row2(tr('重新连接', 'Reconnect'), onTap: _reconnect),
                 if (connected) Row2(tr('断开同步', 'Disconnect sync'), danger: true, onTap: _disconnect),
+                if (_hasAccount) Row2(tr('退出登录', 'Sign out'), danger: true, onTap: _busy ? null : _signOut),
               ],
               footer: tr('健康权限在「健康」app → 右上角头像 → App → Watch2Whoop 里改。',
                   'Change Health permissions in Health → profile → Apps → Watch2Whoop.'),
