@@ -27,3 +27,13 @@ CAFFEINE_NOON_CUTOFF_MIN = 12 * 60
 DINNER_BEFORE_MIN = 3 * 60    # journal item late_dinner "main meal within 3 hours of bed" counts as too late; 6.2.7 if hungry, have a glass of milk
 TRAINING_BEFORE_MIN = 3 * 60  # 6.2.5 finish training at least 3 hours before bed where possible
 MORNING_LIGHT = "起床后 30 分钟内晒太阳 10–20 分钟"   # 6.2.3 the most effective signal for shifting the body clock
+
+# ---------- nutrition goals (goals/nutrition.py, issue #31) ----------
+# Plausibility ranges for one day's set (anything outside is almost certainly a unit / typing mistake, not a plan).
+NUTRITION_RANGES = {"calories": (800, 6000), "protein_g": (0, 400), "carbs_g": (0, 900), "fat_g": (0, 300),
+                    "sat_fat_max_g": (0, 100), "added_sugar_max_g": (0, 200), "fiber_min_g": (0, 100)}
+# 4 kcal/g protein and carbs, 9 kcal/g fat (Atwater factors). A set whose macros miss its calories by more than this
+# share still saves (alcohol, rounding), with a warning.
+MACRO_KCAL_TOL = 0.15
+GOAL_BACKDATE_DAYS = 366      # corrections may start up to a year back (history stays; reports / adherence follow it)
+GOAL_AHEAD_DAYS = 90          # a planned change may start up to 90 days ahead

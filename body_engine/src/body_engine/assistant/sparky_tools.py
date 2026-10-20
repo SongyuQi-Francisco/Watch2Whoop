@@ -56,7 +56,8 @@ def _training(conn, uid, a):
 
 
 def _nutrition(conn, uid, a):
-    return sparky_client.nutrition(sparky_client.client_for_user(conn, uid), *_range(a), entries=a["include_entries"])
+    from ..nutrition import daily
+    return daily.nutrition(conn, uid, *_range(a), include_entries=a["include_entries"])
 
 
 def _weight(conn, uid, a):
@@ -75,8 +76,8 @@ SPARKY_TOOLS = [
     ),
     Tool(
         name="get_nutrition",
-        description="饮食（SparkyFitness）：每天热量、蛋白、碳水、脂肪合计和当天目标（训练日 / 休息日不同）；"
-                    "logged=false = 没记录（不等于没吃）。",
+        description="饮食：每天热量、三大营养素、糖 / 添加糖 / 纤维 / 钠合计（known = 有数的条数，null = 未知不是 0）、"
+                    "含糖饮料数、当天生效的目标和达标（adherence）；logged=false = 没记录（不等于没吃）。",
         input_schema=_range_schema(include_entries={"type": "boolean", "description": "附每条记录（含 id、source）"}),
         handler=_nutrition,
         scope="nutrition",

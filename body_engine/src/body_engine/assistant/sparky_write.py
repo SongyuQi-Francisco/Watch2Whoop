@@ -1,7 +1,9 @@
 """Tools for the body butler to write SparkyFitness (food, workouts, weight). All are write tools: they can only write for the caller, and the MCP client asks the user to confirm before each run.
 
 They use the read-write key (sparky_client.write_client_for_user) and check before writing:
-- Food: date not in the future; calories and the three macros (+ alcohol) roughly add up; a same-named food already in the same meal of the same day is treated as a duplicate and skipped
+- Food: date not in the future; calories and the three macros (+ alcohol) roughly add up; optional sugar_g / added_sugar_g /
+  fiber_g / sodium_mg (null = unknown) and sugary_drink: sugar / fiber / sodium go into the SparkyFitness food, everything
+  (added sugar has no SparkyFitness field) into food_entry_extras (nutrition/extras.py); a same-named food already in the same meal of the same day is treated as a duplicate and skipped
   (only written with allow_duplicates=true). Each entry carries source=body_assistant and a source_id computed from its content, which SparkyFitness uses for idempotency
   (retrying the same entry never writes twice). SparkyFitness requires food entries to hang on a food in the food library, so a custom food is created / reused by content
   (provider_external_id = ba:<content hash>, 1 serving = this portion).
@@ -21,6 +23,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import sparky_client
+from ..nutrition import extras
 from ..records import store as records_store
 from . import writelog
 
@@ -72,6 +75,9 @@ def _check_food(item: dict) -> list[str]:
         raise ValueError(f"{item['food']}：热量 {kcal:g} kcal 和三大营养素算出来的 {est:.0f} kcal "
                          f"（4×蛋白 + 4×碳水 + 9×脂肪 + 7×酒精）差太多，先核对")
     warnings = []
+    extras.check_optional(item["food"], item, c)
+    if item.get("sugary_drink") is not None and not isinstance(item["sugary_drink"], bool):
+        raise ValueError(f"{item['food']}：sugary_drink 是 true / false / null")
     if item.get("saturated_fat_g") is not None and item["saturated_fat_g"] > f + 0.5:
         raise ValueError(f"{item['food']}：饱和脂肪不能多于总脂肪")
     if item.get("saturated_fat_g") and item["saturated_fat_g"] >= 10:
@@ -90,8 +96,12 @@ def _ensure_food(client, it: dict) -> tuple[str, str]:
     if none, create one: 1 serving = this portion, nutrition is the total for this portion. That way changing the portion in the app converts correctly,
     and the same food can be picked directly next time."""
     name, amount = it["food"].strip(), it["amount"].strip()
-    sig = json.dumps([name, amount, it["calories"], it["protein_g"], it["carbs_g"], it["fat_g"],
-                      it.get("saturated_fat_g"), it.get("alcohol_g")], ensure_ascii=False)
+    sig_items = [name, amount, it["calories"], it["protein_g"], it["carbs_g"], it["fat_g"],
+                 it.get("saturated_fat_g"), it.get("alcohol_g")]
+    extra = [it.get(f) for f in ("sugar_g", "fiber_g", "sodium_mg")]
+    if any(v is not None for v in extra):   # only then: foods created before sugar tracking keep their id
+        sig_items += extra
+    sig = json.dumps(sig_items, ensure_ascii=False)
     ext_id = "ba:" + hashlib.sha1(sig.encode()).hexdigest()[:16]
     page = client.get("/foods/foods-paginated", searchTerm=name, foodFilter="mine", currentPage=1, itemsPerPage=100,
                       sortBy="name:asc", providerType="") or {}
@@ -101,7 +111,8 @@ def _ensure_food(client, it: dict) -> tuple[str, str]:
             "name": name, "is_custom": True, "provider_type": "custom", "provider_external_id": ext_id,
             "serving_size": 1, "serving_unit": amount, "calories": it["calories"], "protein": it["protein_g"],
             "carbs": it["carbs_g"], "fat": it["fat_g"], "saturated_fat": it.get("saturated_fat_g"),
-            "alcohol_g": it.get("alcohol_g"), "notes": "身体管家记录饮食时建（营养是估算）"}.items() if v is not None})
+            "alcohol_g": it.get("alcohol_g"), "sugars": it.get("sugar_g"), "dietary_fiber": it.get("fiber_g"),
+            "sodium": it.get("sodium_mg"), "notes": "身体管家记录饮食时建（营养是估算）"}.items() if v is not None})
     return hit["id"], (hit.get("default_variant") or {})["id"]
 
 
@@ -138,9 +149,12 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
         row = _create_food(client, meal_ids, d, it)
         days[d].append(row)
         writelog.record(conn, "food", "create", row["id"], None, row)
+        opt = {f: it.get(f) for f in extras.OPTIONAL}
+        extras.save(conn, user_id, row["id"], d, opt, it.get("sugary_drink"))   # added sugar has no SparkyFitness field
         created.append({"id": row["id"], "date": d.isoformat(), "meal": it["meal"], "food": it["food"].strip(),
                         "amount": it["amount"].strip(), "calories": it["calories"], "protein_g": it["protein_g"],
-                        "carbs_g": it["carbs_g"], "fat_g": it["fat_g"]})
+                        "carbs_g": it["carbs_g"], "fat_g": it["fat_g"],
+                        **{k: v for k, v in opt.items() if v is not None}})
     return {"created": created, "skipped_duplicates": skipped, "warnings": warnings,
             "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉，改用 update_food_entry"}
 
@@ -435,6 +449,7 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
     meal = a.get("meal") or row.get("meal_type")
     hhmm = a.get("time") or (row.get("entry_time") or "")[:5] or None
     nutrition = ("food", "amount", "calories", "protein_g", "carbs_g", "fat_g")
+    renamed = False
     if all(a.get(k) is None for k in nutrition):
         if portion is None and not a.get("meal") and not a.get("new_date") and not a.get("time"):
             raise ValueError("没有要改的字段")
@@ -447,12 +462,15 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
     else:
         cur = sparky_client._food_entry(row)
         f = portion or 1
+        renamed = bool(a.get("food")) and a["food"].strip() != (row.get("food_name") or "").strip()   # another food: sugar unknown
         item = {"date": new_d.isoformat(), "meal": meal, "time": hhmm, "notes": row.get("notes"),
                 "food": a.get("food") or row.get("food_name"),
                 "amount": a.get("amount") or (f"{cur['quantity'] * f:g} {cur['unit'] or '份'}"),
                 **{k: a[k] if a.get(k) is not None else (None if cur.get(k) is None else round(cur[k] * f, 1))
                    for k in ("calories", "protein_g", "carbs_g", "fat_g")},
                 "saturated_fat_g": None if cur.get("saturated_fat_g") is None else round(cur["saturated_fat_g"] * f, 1),
+                **{k: None if cur.get(k) is None or renamed else round(cur[k] * f, 1)
+                   for k in ("sugar_g", "fiber_g", "sodium_mg")},
                 "alcohol_g": None if row.get("alcohol_g") is None else round(row["alcohol_g"] * (row.get("quantity") or 1)
                                                                              / (row.get("serving_size") or 1) * f, 1)}
         for k in ("calories", "protein_g", "carbs_g", "fat_g"):
@@ -464,6 +482,10 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         new = _create_food(client, meal_ids, new_d, item)
         client.request("DELETE", _entry_path("food", row))
     writelog.record(conn, "food", "update", row["id"], row, new)
+    if not renamed:   # added sugar etc. follow the entry (scaled by the portion)
+        extras.carry_over(conn, user_id, row["id"], new["id"], new_d, portion or 1)
+    else:
+        conn.execute("DELETE FROM food_entry_extras WHERE user_id = %s AND entry_id = %s", (user_id, str(row["id"])))
     out = sparky_client._food_entry({**new, "entry_date": str(new.get("entry_date") or new_d)})
     return {"updated": {k: v for k, v in out.items() if v is not None}, "previous_id": row["id"],
             "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删"}

@@ -15,6 +15,9 @@ DATE = {"type": "string", "description": "行为发生那天 YYYY-MM-DD（凌晨
 OPT_LOG_DATE = _n("string", "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）")
 HHMM = _n("string", "HH:MM，null = 现在")
 G = {"type": "number"}  # grams / kcal fields: the property name says the unit
+OPT = _n("number")      # optional nutrition (sugar_g / added_sugar_g / fiber_g / sodium_mg): null = unknown, never 0
+SUGAR = {"sugar_g": _n("number", "总糖；不知道 null，不是 0"), "added_sugar_g": _n("number", "添加糖（加的糖、蜂蜜、糖浆、甜饮料）"),
+         "fiber_g": OPT, "sodium_mg": OPT}
 
 FOOD_ITEM = _schema({
     "date": DATE,
@@ -26,6 +29,8 @@ FOOD_ITEM = _schema({
     "protein_g": G, "carbs_g": G, "fat_g": G,
     "saturated_fat_g": _n("number"),
     "alcohol_g": _n("number", "酒类填"),
+    **SUGAR,
+    "sugary_drink": _n("boolean", "含糖饮料 true"),
     "notes": _n("string", "估算依据、拿不准的地方"),
 })
 
@@ -65,6 +70,7 @@ MEAL_ITEM = _schema({
     "kcal": G, "protein_g": G, "carbs_g": G, "fat_g": G, "sat_fat_g": G,
     "purine_level": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
     "red_meat_g": {"type": "number", "description": "红肉 / 加工肉生重，没有 0"},
+    "sugar_g": OPT, "added_sugar_g": OPT, "fiber_g": OPT, "sodium_mg": OPT,
     "note": _n("string"),
 })
 
@@ -77,6 +83,7 @@ INGREDIENT = _schema({
     "red_meat_g": {"type": "number", "description": "红肉 / 加工肉生重，没有 0"},
     "purchase_unit": _n("string", "例 整盒（约 1kg）"),
     "store": {"type": ["string", "null"], "enum": [*recipes.STORES, None]},
+    "sugar_g": OPT, "added_sugar_g": OPT, "fiber_g": OPT, "sodium_mg": OPT,
     "note": _n("string"),
 })
 

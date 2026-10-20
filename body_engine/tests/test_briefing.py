@@ -58,10 +58,12 @@ def test_tool_definitions_budget():
     """tools/list is sent with every model call. ~47.6k chars before the 2026-10-18 slimming; keep it from growing back.
     36k -> 41k on 2026-10-20 for the 9 grocery tools (docs/grocery-plan.md).
     41k -> 43.5k on 2026-10-21 for 6 edit / delete / audit tools (#30: update_food_entry, update_training_set, update_workout,
-    delete_workout, get_write_log, rollback_write; descriptions kept to one short line)."""
+    delete_workout, get_write_log, rollback_write; descriptions kept to one short line).
+    43.5k -> 46.5k on 2026-10-21 for the nutrition goal tools and the sugar / fiber / sodium fields on log_food, meal
+    templates and recipe ingredients (#31)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 43500, size
+    assert size < 46500, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 
