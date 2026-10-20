@@ -5,6 +5,11 @@ body:
   - type: markdown
     attributes:
       value: |
+        Maintainers close an issue only with a comment saying what was fixed, in which PR / commit, how it was verified
+        and what is left open (CONTRIBUTING.md, "Maintenance rules").
+  - type: markdown
+    attributes:
+      value: |
         Thanks for reporting! **Never paste real health data, tokens, setup links / QR codes or server addresses you
         want to keep private.** Screenshots with synthetic or blurred numbers are fine.
   - type: dropdown

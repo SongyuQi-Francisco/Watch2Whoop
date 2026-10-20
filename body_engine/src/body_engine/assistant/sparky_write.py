@@ -8,7 +8,8 @@ They use the read-write key (sparky_client.write_client_for_user) and check befo
 - Workouts: each exercise is first matched against the SparkyFitness exercise library (ID / name / Chinese and English names and aliases in exercise_meta); a match that is banned
   (marked banned in exercise_meta or 【禁用】 in the SparkyFitness description) rejects the whole call with the reason; the same exercise already logged that day is treated as a duplicate and skipped.
 - Weight: an existing different value on the same day is not overwritten (only with overwrite=true), an identical one is skipped.
-Undo: undo_sparky_entry only deletes food / workout entries the butler wrote itself (source=body_assistant).
+Undo: undo_sparky_entry only deletes food / workout entries the butler wrote itself (source=body_assistant), named by id or (food) by an exact
+date + meal + name (+ time) match. The user deletes any of their own food entries on the Today page (delete_food_entry).
 """
 import hashlib
 import json
@@ -339,23 +340,72 @@ def log_weight(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> 
 
 
 # ---------------------------------------------------------------- undo
-def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entry_id: str, client=None) -> dict:
-    """Delete one record the butler wrote itself (source=body_assistant); other sources (logged manually in the app, migrated) are not deleted."""
-    d = date.fromisoformat(day)
-    client = client or sparky_client.write_client_for_user(conn, user_id)
+def _day_rows(client, kind: str, d: date) -> list[dict]:
     if kind == "food":
-        rows = client.get(f"/food-entries/by-date/{d.isoformat()}") or []
-        path = f"/food-entries/{entry_id}"
-    elif kind == "workout":
-        rows = client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
-        path = f"/exercise-preset-entries/{entry_id}"
-    else:
+        return client.get(f"/food-entries/by-date/{d.isoformat()}") or []
+    if kind == "workout":
+        return client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
+    raise ValueError("kind 只能是 food / workout")
+
+
+def _entry_path(kind: str, row: dict) -> str:
+    if kind == "food":
+        return f"/food-entries/{row['id']}"
+    # The butler writes whole sessions (preset entries); a standalone exercise entry has its own path
+    return f"/exercise-preset-entries/{row['id']}" if row.get("type", "preset") == "preset" else f"/exercise-entries/{row['id']}"
+
+
+def _match_food(rows: list[dict], d: date, meal: str | None, food: str | None, hhmm: str | None) -> dict:
+    """Exactly one food entry by meal + food name (+ time); 0 or several matches refuse with what was found."""
+    if meal not in MEALS or not (food or "").strip():
+        raise ValueError("没给 id 时要给 meal（breakfast / lunch / dinner / snacks）和 food 精确匹配；"
+                         "或用 get_nutrition(include_entries=true) 查 id")
+    if hhmm and not TIME_RE.match(hhmm):
+        raise ValueError("time 要是 24 小时制 HH:MM")
+    hits = [r for r in rows if r.get("meal_type") == meal and _norm(r.get("food_name")) == _norm(food)
+            and (not hhmm or (r.get("entry_time") or "")[:5] == hhmm)]
+    if not hits:
+        raise ValueError(f"{d} {MEALS[meal]}没有「{food}」{f'（{hhmm}）' if hhmm else ''}；"
+                         "用 get_nutrition(include_entries=true) 核对名字或拿 id")
+    if len(hits) > 1:
+        found = "；".join(f"id {r['id']}（{(r.get('entry_time') or '')[:5] or '无时间'}，{r.get('source') or '其他来源'}）"
+                         for r in hits)
+        raise ValueError(f"{d} {MEALS[meal]}「{food}」有 {len(hits)} 条，不确定删哪条：{found}。给 time 或 id 再试")
+    return hits[0]
+
+
+def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entry_id: str | None = None, client=None,
+               *, meal: str | None = None, food: str | None = None, time: str | None = None) -> dict:
+    """Delete one record the butler wrote itself (source=body_assistant); other sources (logged manually in the app, migrated) are not deleted
+    (the user deletes those on the Today page, delete_food_entry). The record is named by id, or for food by an exact date + meal + name (+ time)."""
+    d = date.fromisoformat(day)
+    if kind not in ("food", "workout"):
         raise ValueError("kind 只能是 food / workout")
-    row = next((r for r in rows if r.get("id") == entry_id), None)
-    if row is None:
-        raise ValueError(f"{d} 没有这条记录：{entry_id}")
+    if not entry_id and kind == "workout":
+        raise ValueError("训练要给 id（get_training_log 里每次训练的 id）")
+    client = client or sparky_client.write_client_for_user(conn, user_id)
+    rows = _day_rows(client, kind, d)
+    if entry_id:
+        row = next((r for r in rows if str(r.get("id")) == str(entry_id)), None)
+        if row is None:
+            raise ValueError(f"{d} 没有这条记录：{entry_id}")
+    else:
+        row = _match_food(rows, d, meal, food, time)
     if row.get("source") != SOURCE:
-        raise PermissionError(f"这条不是身体管家写的（source={row.get('source')}），不删；请在 SparkyFitness app 里改")
-    client.request("DELETE", path)
-    return {"deleted": {"kind": kind, "date": d.isoformat(), "id": entry_id,
+        raise PermissionError(f"这条不是身体管家写的（source={row.get('source')}），不删；"
+                              "请用户在今天页「饮食」当天的明细里点开这条删除")
+    client.request("DELETE", _entry_path(kind, row))
+    return {"deleted": {"kind": kind, "date": d.isoformat(), "id": row["id"],
                         "name": row.get("food_name") or row.get("name")}}
+
+
+def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_id: str, client=None) -> dict:
+    """The user deletes one of their own food entries from the Today page (any source: logged by the AI, in the app, migrated).
+    Uses the user's own read-write key, so only that user's SparkyFitness data can be touched; the entry must be on that day."""
+    client = client or sparky_client.write_client_for_user(conn, user_id)
+    row = next((r for r in _day_rows(client, "food", day) if str(r.get("id")) == str(entry_id)), None)
+    if row is None:
+        raise LookupError(f"{day} 没有这条饮食记录（可能已经删了）")
+    client.request("DELETE", _entry_path("food", row))
+    return {"deleted": {"id": row["id"], "date": day.isoformat(), "meal": row.get("meal_type"),
+                        "food": row.get("food_name"), "source": row.get("source")}}

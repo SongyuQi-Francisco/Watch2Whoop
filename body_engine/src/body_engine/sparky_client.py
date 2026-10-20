@@ -180,7 +180,7 @@ def _food_entry(e: dict) -> dict:
     qty, serving = e.get("quantity") or 0, e.get("serving_size") or 1
     scale = qty / serving if serving else 0
     total = lambda k: None if e.get(k) is None else round(e[k] * scale, 1)
-    return {"date": e["entry_date"][:10], "time": (e.get("entry_time") or "")[:5] or None, "meal_type": e.get("meal_type"),
+    return {"id": e.get("id"), "source": e.get("source"), "date": e["entry_date"][:10], "time": (e.get("entry_time") or "")[:5] or None, "meal_type": e.get("meal_type"),
             "food": e.get("food_name"), "quantity": qty, "unit": e.get("unit"),
             "calories": total("calories"), "protein_g": total("protein"), "carbs_g": total("carbs"),
             "fat_g": total("fat"), "saturated_fat_g": total("saturated_fat"), "fiber_g": total("dietary_fiber"),
@@ -188,7 +188,8 @@ def _food_entry(e: dict) -> dict:
 
 
 def food_entries(client: SparkyClient, start: date, end: date) -> list[dict]:
-    """Every food entry in [start, end] (portion already converted to this entry's total nutrition)."""
+    """Every food entry in [start, end] (portion already converted to this entry's total nutrition).
+    id is the SparkyFitness entry id (undo_sparky_entry / DELETE .../nutrition/entries/{id}); source=body_assistant = written by this system's AI."""
     return [_food_entry(e) for e in client.get(f"/food-entries/range/{start.isoformat()}/{end.isoformat()}")]
 
 

@@ -77,7 +77,7 @@
 | Coles / Woolworths 商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页；不要自己去网站查价格） |
 | 只有条码 | `lookup_barcode` → 用户确认后 `save_product`，`nutrition_source` 填返回的 source |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |
-| 记错了 | 饮食 / 训练 `undo_sparky_entry`、日记 `delete_journal_entry`、化验 `delete_lab_results`（都只能撤销你自己写的）、录错的补剂 `delete_supplement`；事件用 `update_event` |
+| 记错了 | 饮食 / 训练 `undo_sparky_entry`（id 在 `get_nutrition(include_entries=true)` / `get_training_log` 里；别的来源的让用户在今天页饮食明细删）、日记 `delete_journal_entry`、化验 `delete_lab_results`（都只能撤销你自己写的）、录错的补剂 `delete_supplement`；事件用 `update_event` |
 
 一句话常常要拆成几类，例：「昨晚两瓶啤酒，12 点才吃晚饭」→ 日记 `alcohol`=1（备注两瓶啤酒）+ `late_dinner`=1；如果用户说了吃的什么，再记饮食（啤酒也是饮食）。
 

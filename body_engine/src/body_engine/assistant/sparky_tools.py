@@ -76,7 +76,7 @@ SPARKY_TOOLS = [
         name="get_nutrition",
         description="饮食（SparkyFitness）：每天热量、蛋白、碳水、脂肪合计和当天目标（训练日 / 休息日不同）；"
                     "logged=false = 没记录（不等于没吃）。",
-        input_schema=_range_schema(include_entries={"type": "boolean", "description": "附每条饮食记录"}),
+        input_schema=_range_schema(include_entries={"type": "boolean", "description": "附每条记录（含 id、source）"}),
         handler=_nutrition,
         scope="nutrition",
     ),

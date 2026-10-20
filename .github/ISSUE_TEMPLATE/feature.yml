@@ -2,6 +2,11 @@ name: Feature request
 description: Suggest an idea or a new platform / data source
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Maintainers close an issue only with a comment saying what was fixed, in which PR / commit, how it was verified
+        and what is left open (CONTRIBUTING.md, "Maintenance rules").
   - type: dropdown
     id: platform
     attributes:
