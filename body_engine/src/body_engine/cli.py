@@ -1,6 +1,7 @@
 """Command line: body-engine <command>. On the Mac use `uv run body-engine ...`; in the container the command has the same name."""
 import argparse
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -53,6 +54,16 @@ def main() -> None:
     lc.add_argument("--label", help="who / which device, e.g. mom's iPhone (written into the redeemed token name app:<label>)")
     lc.add_argument("--hours", type=int, default=72, help="validity in hours (default 72, max 2160 = 90 days)")
     lc.add_argument("--scopes", default="read,write")
+    ac = sub.add_parser("activation-code", help="reusable activation links for the Watch2Whoop app (web/activation.py)")
+    acs = ac.add_subparsers(dest="ac_cmd", required=True)
+    acc = acs.add_parser("create", help="issue an activation code and print it with its link (the plaintext is shown only once)")
+    acc.add_argument("--user-id", type=int, required=True)
+    acc.add_argument("--label", help="for whom, e.g. Mum (shown in list; minted login codes are named activation:<label>)")
+    acc.add_argument("--days", type=int, help="validity in days (default: until revoked)")
+    acl = acs.add_parser("list", help="list activation codes (no plaintext)")
+    acl.add_argument("--user-id", type=int)
+    acr = acs.add_parser("revoke", help="revoke an activation code by id (devices already set up stay signed in)")
+    acr.add_argument("--id", type=int, required=True)
     t = sub.add_parser("token-create", help="issue an API token to a user (the plaintext is shown only once)")
     t.add_argument("--user-id", type=int, required=True)
     t.add_argument("--name", required=True, help="purpose, e.g. iphone-shortcut, claude-mcp")
@@ -204,6 +215,20 @@ def main() -> None:
         elif args.cmd == "login-code":
             from .web import login_codes
             print(login_codes.create(conn, args.user_id, args.label, args.hours, args.scopes.split(",")))
+        elif args.cmd == "activation-code":
+            from .web import activation
+            if args.ac_cmd == "create":
+                res = activation.create(conn, args.user_id, args.label, args.days)
+                base = (os.environ.get("BODY_PUBLIC_URL") or "").rstrip("/")
+                print(res["code"])
+                print(f"{base or '<BODY_PUBLIC_URL>'}/app/activate.html#{res['code']}")
+                print(f"# id={res['id']} {'valid until revoked' if args.days is None else f'valid {args.days} days'}; "
+                      "plaintext shown only this once" + ("" if base else "; BODY_PUBLIC_URL is not set"))
+            elif args.ac_cmd == "list":
+                for r in activation.list_codes(conn, args.user_id):
+                    print(json.dumps(r, default=str, ensure_ascii=False))
+            else:
+                print("revoked" if activation.revoke(conn, args.id) else "not found / already revoked")
         elif args.cmd == "token-create":
             print(auth.create_token(conn, args.user_id, args.name, args.scopes.split(",")))
         elif args.cmd == "token-list":
