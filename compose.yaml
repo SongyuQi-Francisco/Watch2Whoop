@@ -44,6 +44,15 @@ services:
       # secret for minting invitation codes (OW's master secret: add it as a docker secret for this container only)
       # BODY_OW_PUBLIC_URL: https://sync.example.com
       # BODY_OW_INVITE_SIGNING_FILE: /run/secrets/ow_invite_signing
+      # Self-service sign-up (docs/self-signup-plan.md): e-mail codes need a mail sender, Sign in with Apple the app's bundle ID.
+      # BODY_MAIL_MODE: smtp                         # smtp | console (dev: code only in the log) | off
+      # BODY_MAIL_FROM: Watch2Whoop <no-reply@example.com>
+      # BODY_SMTP_HOST: smtp.example.com
+      # BODY_SMTP_PORT: "587"                        # 587 STARTTLS (default) or 465 with BODY_SMTP_SECURITY: ssl
+      # BODY_SMTP_USER: your-smtp-login
+      # BODY_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      # BODY_APPLE_AUDIENCES: com.example.watch2whoop  # the iOS app's bundle ID (comma separated if several)
+      # BODY_SPARKY_ADMIN_KEY_FILE: /run/secrets/sparkyfitness_api_key_owner_rw   # deleting SparkyFitness accounts on account deletion
       TZ: Australia/Sydney
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)

@@ -10,7 +10,8 @@ The main Watch2Whoop product: one app that does everything (the "single entry po
 
 1. **Background sync of Apple Health data** to your own self-deployed [Open Wearables](https://github.com/the-momentum/open-wearables) (OW, the "sync server"): raw heart rate samples, HRV, resting heart rate, sleep stages, workouts, steps, energy, blood oxygen, respiration, weight / body fat, VO₂max and more. It uses OW's official Flutter SDK ([open_wearables_health_sdk](https://github.com/the-momentum/open_wearables_health_sdk), MIT), with HealthKit background delivery + BGTask incremental sync (native iOS SDK 0.15).
 2. **The Today page embedded full-screen** (Body Engine's web front end); viewing, logging and "Ask the butler" (「问管家」) all happen there.
-3. **Scan one "setup QR code" and you are set up**: server addresses + sync invitation code + a one-time Today-page login code, so family members need no technical knowledge.
+3. **Self-service sign-up**: "Sign in with Apple" or an e-mail code (no password) → an invite code during the beta (only for new, not yet activated accounts) → Health permission; sync is connected silently with a server-minted invitation code and the Today page is logged in automatically. Changing phones = sign in with the same Apple ID / e-mail again.
+4. **Or scan one "setup QR code"** ("I have a setup link" on the first screen, for accounts opened by an admin): server addresses + sync invitation code + a one-time Today-page login code.
 
 The app only connects to the servers given in the setup information, and has **no third-party analytics or crash reporting**. The person who builds and uploads it cannot see any health data.
 
@@ -18,9 +19,11 @@ The app only connects to the servers given in the setup information, and has **n
 | Path | Purpose |
 |---|---|
 | `lib/main.dart` | Entry point: onboarding not finished → onboarding page, otherwise → Today page; receives `watch2whoop://setup?…` setup links |
-| `lib/src/pages/onboarding_page.dart` | Onboarding: scan a QR code / paste the setup info (one step) → Health permissions → Today page (auto login); "manual entry" (「手动填写」) is collapsed |
-| `lib/src/pages/home_page.dart` | Full-screen WebView of the Today page; same-origin links stay in the app, others go to the system; `watch2whoop://sync` opens the sync page; opens `/app/#login=…` when a one-time login code is present |
-| `lib/src/pages/sync_page.dart` | Native "phone sync" (「手机同步」) page: status, record counts per type, sync now, retry on failure, scan / paste new setup info, server settings, sync log |
+| `lib/src/pages/onboarding_page.dart` | First screen: server address → Sign in with Apple / e-mail code → invite code (pending accounts) → Health permission + silent sync connection → Today page |
+| `lib/src/pages/setup_link_page.dart` | "I have a setup link": scan a QR code / paste the setup info (one step) → Health permissions → Today page (auto login); "manual entry" (「手动填写」) is collapsed |
+| `lib/src/account_api.dart`, `account_flow.dart`, `account_store.dart` | Self-service account API client (pure Dart, unit-tested), session / sync / sign-out glue, the account token in the iOS Keychain (`flutter_secure_storage`, this device only) |
+| `lib/src/pages/home_page.dart` | Full-screen WebView of the Today page; same-origin links stay in the app, others go to the system; `watch2whoop://sync` opens the sync page; opens `/app/#login=…` when a one-time login code is present (account users: a fresh code is minted when the page is not logged in); `watch2whoop://account-deleted` (sent by the page after 「我」→「删除账号」) stops sync, clears the token and returns to onboarding |
+| `lib/src/pages/sync_page.dart` | Native "phone sync" (「手机同步」) page: status, record counts per type, sync now, retry on failure, scan / paste new setup info, server settings, sign out, sync log |
 | `lib/src/pages/scan_page.dart` | In-app setup QR scanner (mobile_scanner; on iOS it uses the system AVFoundation, without Google ML Kit) |
 | `lib/src/setup_flow.dart` | Applies setup info in one step (server → connect sync → store the login code); receives `watch2whoop://` links |
 | `lib/src/health_sync.dart` | Wraps the OW SDK: invitation code redemption, authorization, start / stop sync, status |
@@ -47,13 +50,19 @@ python3 deploy/open-wearables/invite.py --create-user "Mum" --body-user-id <Body
 - A paid Apple Developer Program account (a free account cannot use TestFlight).
 - A Mac with Xcode 26 or newer (install the iOS platform in Xcode → Settings → Components).
 - Flutter **3.47.7** (`brew install --cask flutter`, confirm with `flutter --version`) and CocoaPods 1.17 (`brew install cocoapods`).
-- If `xcode-select -p` prints `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` once.
+- If `xcode-select -p` prints `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` once (required: a dependency's native build hook calls `xcrun --sdk iphoneos` and fails with "Bad state: No element" otherwise).
 
-#### 1. Get the code
-The project owner will give you the repository address and a commit / tag.
+#### 1. Get the code — always from a release tag, never from `main`
+Every store build is made from a tag the project owner creates, e.g. `app-ios-v1.0.0+2` (version 1.0.0, build 2;
+[docs/apps.md](../../docs/apps.md#4-versioning-and-releases)). The owner tells you the tag; the
+repository's **Releases** page lists them with a source zip of this
+directory and the changes ([CHANGELOG.md](CHANGELOG.md)). `main` may contain unfinished work and a version number that
+was never released.
 ```bash
-git clone <repository address> watch2whoop-src
+git clone --branch app-ios-v1.0.0+2 --depth 1 <repository URL> watch2whoop-src
 cd watch2whoop-src/apps/watch2whoop
+git describe --tags --exact-match        # must print the tag you were given
+grep '^version:' pubspec.yaml            # must match the tag (1.0.0+2); do not edit it
 flutter pub get
 cd ios && pod install && cd ..
 grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # should be 0.15.x, not 0.14
@@ -77,12 +86,18 @@ open -e config/defaults.json
 1. `open ios/Runner.xcworkspace` (note: `.xcworkspace`).
 2. **Runner** target → **Signing & Capabilities**: tick "Automatically manage signing"; the Team should already be yours; you should see **HealthKit** (with Background Delivery ticked) and **Background Modes** (Background fetch, Background processing). They come from the repository; you do not add them.
 3. When it asks to register the App ID, click "Register" / "Try Again"; Xcode creates an App ID with HealthKit.
+4. **Sign in with Apple** (needed since build 1.0.0+2; the entitlement `com.apple.developer.applesignin` is already in `ios/Runner/Runner.entitlements`):
+   - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → your app's bundle ID → tick **Sign In with Apple** (choose "Enable as a primary App ID") → **Save**.
+   - Refresh the provisioning profile: with "Automatically manage signing" Xcode does it on the next build (if it still complains, untick and re-tick the checkbox, or Xcode → Settings → Accounts → Download Manual Profiles). With manual signing, regenerate the App Store profile for this App ID and download it.
+   - Tell the server owner your bundle ID: the server's `BODY_APPLE_AUDIENCES` must equal it exactly, otherwise Apple sign-ins are rejected (401).
+   - You should now also see **Sign in with Apple** under Signing & Capabilities.
 
 #### 4. Create the app in App Store Connect
 App Store Connect → **Apps** → **+** → **New App**: platform iOS; name unique across the App Store (e.g. `Watch2Whoop <your name>`); bundle ID the one from step 2; SKU anything. TestFlight only, no App Store release.
 
 #### 5. Build and upload
-Before each upload, increase the build number (the number after `+`) in `version: 1.0.0+1` in `pubspec.yaml` by 1.
+Do **not** change the version: the tag already has the right `version:` in `pubspec.yaml` (a new build number needs a
+new tag from the project owner). Upload exactly the tag you were given and tell the owner when it is in TestFlight.
 ```bash
 flutter build ipa --release --dart-define-from-file=config/defaults.json
 ```
@@ -102,8 +117,15 @@ App Store Connect → **Users and Access** → **+**, invite them by their Apple
 - You can also turn on a "public link", but anyone with the link can install (it is useless without a setup QR code, though); inviting family by email is safer.
 
 #### 7. Maintenance
-- **TestFlight builds expire after 90 days**: before that, repeat step 5 (build number +1) and upload. The Bundle ID stays the same; after family members update, their data, login and sync progress are kept, and TestFlight reminds them to update.
-- To follow a new version: `git pull` → `flutter pub get` → `cd ios && pod install` → step 5. First ask the project owner whether the server is compatible.
+- **TestFlight builds expire after 90 days**: before that, ask the project owner for a new tag (they bump the build
+  number), then do steps 1 and 5 again. The Bundle ID stays the same; after family members update, their data, login and sync progress are kept, and TestFlight reminds them to update.
+- To follow a new version: get the new tag (step 1, or `git fetch --tags && git checkout <tag>` in your existing clone) → `flutter pub get` → `cd ios && pod install` → step 5. Keep your local `Watch2Whoop.local.xcconfig` and `config/defaults.json` (they are not in git).
+
+#### What changed in 1.0.0+2 (self-service sign-up)
+- New first screen: Sign in with Apple / e-mail code → invite code → Health. Existing setup links / QR codes keep working ("I have a setup link").
+- Needs the server version with the self-service account API (`/v1/auth/*`, `/v1/account/*`); ask the server owner before uploading.
+- A new TestFlight build is required (build number already bumped to `+2` in `pubspec.yaml`; bump it again for every further upload).
+- Beta App Review: the reviewer can sign in with Apple or e-mail; provide an invite code in the Review Notes (ask the server owner for a one-off code). Accounts can be deleted inside the app (Today page → 我 → 删除账号), as App Review guideline 5.1.1(v) requires.
 
 ### System limits (the app also shows a one-line hint)
 - **iOS does not let apps read health data while the phone is locked**: sync pauses and continues after unlock.
@@ -139,13 +161,17 @@ License: not chosen yet (the repository is private for now; the owner decides be
 - 付费的 Apple Developer Program 账号（免费账号不能用 TestFlight）。
 - Mac + Xcode 26 或更新（Xcode → Settings → Components 里装好 iOS 平台）。
 - Flutter **3.47.7**（`brew install --cask flutter`，`flutter --version` 确认）、CocoaPods 1.17（`brew install cocoapods`）。
-- `xcode-select -p` 显示 `/Library/Developer/CommandLineTools` 时运行一次 `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`。
+- `xcode-select -p` 显示 `/Library/Developer/CommandLineTools` 时运行一次 `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`（必须：有个依赖的原生构建脚本会调 `xcrun --sdk iphoneos`，不设会报「Bad state: No element」）。
 
-### 1. 拉代码
-项目所有者会给你仓库地址和一个 commit / tag。
+### 1. 拉代码——只从发布 tag 拉，不用 `main`
+每个商店构建都对应项目所有者打的一个 tag，例如 `app-ios-v1.0.0+2`（版本 1.0.0、构建号 2）。项目所有者会告诉你 tag；
+仓库的 **Releases** 页面上也有，附带这个目录的源码 zip 和改动说明
+（[CHANGELOG.md](CHANGELOG.md)）。`main` 上可能有没做完的改动和没发布过的版本号。
 ```bash
-git clone <仓库地址> watch2whoop-src
+git clone --branch app-ios-v1.0.0+2 --depth 1 <repository URL> watch2whoop-src
 cd watch2whoop-src/apps/watch2whoop
+git describe --tags --exact-match        # 必须显示给你的那个 tag
+grep '^version:' pubspec.yaml            # 必须和 tag 一致（1.0.0+2），不要改
 flutter pub get
 cd ios && pod install && cd ..
 grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # 应该是 0.15.x，不能是 0.14
@@ -169,12 +195,19 @@ open -e config/defaults.json
 1. `open ios/Runner.xcworkspace`（注意是 `.xcworkspace`）。
 2. **Runner** target → **Signing & Capabilities**：勾「Automatically manage signing」，Team 应该已经是你的；能看到 **HealthKit**（勾着 Background Delivery）和 **Background Modes**（Background fetch、Background processing）——来自仓库，不用自己加。
 3. 提示要注册 App ID 时点「Register」/「Try Again」，Xcode 会建好带 HealthKit 的 App ID。
+4. **通过 Apple 登录**（1.0.0+2 起需要；权限 `com.apple.developer.applesignin` 已经写在 `ios/Runner/Runner.entitlements` 里）：
+   - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → 点这个 app 的 Bundle ID → 勾 **Sign In with Apple**（选「Enable as a primary App ID」）→ **Save**。
+   - 更新描述文件（provisioning profile）：勾了「Automatically manage signing」时 Xcode 下次编译会自动更新（还报错就把这个勾去掉再勾上，或 Xcode → Settings → Accounts → Download Manual Profiles）；手动签名的话给这个 App ID 重新生成 App Store 描述文件并下载。
+   - 把你的 Bundle ID 告诉服务器管理员：服务器的 `BODY_APPLE_AUDIENCES` 必须和它一字不差，否则 Apple 登录会被拒（401）。
+   - 之后在 Signing & Capabilities 里也能看到 **Sign in with Apple**。
 
 ### 4. 在 App Store Connect 建 app
 App Store Connect → **App** → **+** → **新建 App**：平台 iOS；名称全 App Store 唯一（例如 `Watch2Whoop <你的名字>`）；套装 ID 选第 2 步那个；SKU 随便填。只走 TestFlight，不上架。
 
 ### 5. 编译和上传
-每次上传前把 `pubspec.yaml` 里 `version: 1.0.0+1` 的构建号（`+` 后面的数）加 1。
+**1.0.0+2 的变化（自助注册）**：首屏换成「通过 Apple 登录 / 用邮箱登录 → 输入激活码 → 健康权限」，原来的设置链接 / 二维码仍可用（首屏「我有设置链接」）；需要服务器已经部署了自助账号接口（`/v1/auth/*`、`/v1/account/*`），上传前先问服务器管理员；需要新的 TestFlight 构建（`pubspec.yaml` 的构建号已经改成 `+2`）。Beta 审核时在「审核备注」里给审核员一个激活码（问服务器管理员要），账号可以在 app 里删除（今天页「我」→「删除账号」，审核指南 5.1.1(v)）。
+
+**不要改**版本号：tag 里的 `pubspec.yaml` 已经是正确的 `version:`（要新构建号就请项目所有者打新 tag）。上传给你的那个 tag，进 TestFlight 后告诉项目所有者。
 ```bash
 flutter build ipa --release --dart-define-from-file=config/defaults.json
 ```
@@ -194,8 +227,8 @@ App Store Connect → **用户和访问** → **+**，用对方的 Apple ID 邮�
 - 也可以开「公开链接」，但任何拿到链接的人都能装（没有设置二维码也用不了），家人用邮箱邀请更稳妥。
 
 ### 7. 维护
-- **TestFlight 构建 90 天过期**：过期前重新做第 5 步（构建号 +1）上传即可。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
-- 跟新版本：`git pull` → `flutter pub get` → `cd ios && pod install` → 第 5 步。先问项目所有者服务器是否兼容。
+- **TestFlight 构建 90 天过期**：过期前请项目所有者打一个新 tag（他会把构建号加 1），再做第 1、5 步。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
+- 跟新版本：拿到新 tag（第 1 步，或在已有目录里 `git fetch --tags && git checkout <tag>`）→ `flutter pub get` → `cd ios && pod install` → 第 5 步。本地的 `Watch2Whoop.local.xcconfig` 和 `config/defaults.json` 不在 git 里，保留即可。
 
 ## License
 MIT — see [LICENSE](LICENSE). The rest of the repository (server side) is AGPL-3.0, see [docs/LICENSES.md](../../docs/LICENSES.md).

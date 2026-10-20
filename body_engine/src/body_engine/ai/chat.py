@@ -35,7 +35,7 @@ MAX_TEXT = 8000
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Still requires login with write permission, and can only write for the caller.
 ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
-                  "delete_supplement"}
+                  "delete_supplement", "remove_product", "remove_shopping_items", "delete_workout", "rollback_write"}
 
 
 class ChatError(Exception):

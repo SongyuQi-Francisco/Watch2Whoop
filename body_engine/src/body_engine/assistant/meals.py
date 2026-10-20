@@ -1,7 +1,8 @@
 """Quick meal logging: a frequently eaten meal is saved as a template (table meal_templates); one tap on the Today page or one sentence to the butler logs it into SparkyFitness.
 
 - Each food in a template: food, grams, kcal, protein_g, carbs_g, fat_g, sat_fat_g, purine_level (low / medium / high),
-  red_meat_g (raw red meat grams; processed meats like bacon / ham count too), note. If the grams are estimated, needs_confirmation=true.
+  red_meat_g (raw red meat grams; processed meats like bacon / ham count too), optional sugar_g / added_sugar_g / fiber_g /
+  sodium_mg (null = unknown, issue #31), note. If the grams are estimated, needs_confirmation=true.
 - Logging = one SparkyFitness food entry per food (via sparky_write.log_food: duplicate detection, source=body_assistant),
   the name carries grams and "红肉 Ng", and the rules engine and status cards count red meat by the labelled grams. Each logging leaves a row in meal_logs (entry ids),
   and undo deletes the SparkyFitness entries by it (only ones the butler wrote).
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
+from ..nutrition import extras
 from ..rules import params as rule_params
 from . import sparky_write
 
@@ -55,6 +57,7 @@ def check_items(items: list[dict]) -> list[dict]:
         est = 4 * clean["protein_g"] + 4 * clean["carbs_g"] + 9 * clean["fat_g"]
         if abs(est - clean["kcal"]) > max(15, 0.25 * clean["kcal"]):
             raise ValueError(f"{food}：热量 {clean['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
+        clean.update(extras.check_optional(food, it, clean["carbs_g"]))   # null = unknown, kept as null
         purine = it.get("purine_level")
         if purine not in (*PURINE, None):
             raise ValueError(f"{food}：purine_level 只能是 low / medium / high")
@@ -65,7 +68,9 @@ def check_items(items: list[dict]) -> list[dict]:
 
 
 def totals(items: list[dict]) -> dict:
-    return {f: round(sum(i.get(f) or 0 for i in items), 1) for f in TOTAL_FIELDS}
+    """Sums; sugar / added sugar / fiber / sodium only over items that know them (null when none do)."""
+    return {**{f: round(sum(i.get(f) or 0 for i in items), 1) for f in TOTAL_FIELDS},
+            **{f: extras.known_sum(items, f) for f in extras.OPTIONAL}}
 
 
 def _view(row: dict, today_log: dict | None = None) -> dict:
@@ -87,7 +92,12 @@ def list_templates(conn: psycopg.Connection, user_id: int) -> list[dict]:
     for r in conn.execute("""SELECT id, template_id, created_at FROM meal_logs
                              WHERE user_id = %s AND date = %s AND undone_at IS NULL ORDER BY id""", (user_id, today)):
         logs[r["template_id"]] = {"log_id": r["id"], "logged_at": r["created_at"]}
-    return [_view(r, logs.get(r["id"])) for r in rows]
+    # How often each template was logged in the last 30 days (not undone): the Today page shows the most used first
+    uses = {r["template_id"]: r["n"] for r in conn.execute(
+        """SELECT template_id, count(*) AS n FROM meal_logs
+           WHERE user_id = %s AND date > %s::date - 30 AND undone_at IS NULL AND template_id IS NOT NULL
+           GROUP BY template_id""", (user_id, today))}
+    return [{**_view(r, logs.get(r["id"])), "uses_30d": uses.get(r["id"], 0)} for r in rows]
 
 
 def _get(conn, user_id: int, template_id: int) -> dict:
@@ -150,7 +160,8 @@ def scale_items(items: list[dict], overrides: list[dict] | None) -> list[dict]:
         if g == 0:
             continue  # Not eaten this time
         k = g / i["grams"]
-        out.append({**i, "grams": float(g), **{f: round(i[f] * k, 1) for f in SCALED}})
+        out.append({**i, "grams": float(g), **{f: round(i[f] * k, 1) for f in SCALED},
+                    **{f: round(i[f] * k, 1) for f in extras.OPTIONAL if i.get(f) is not None}})
     if not out:
         raise ValueError("全部克数都是 0，没东西可记")
     return out
@@ -182,6 +193,7 @@ def log_template(conn: psycopg.Connection, user_id: int, template_id: int, day: 
     food = [{"date": day.isoformat(), "meal": tpl["meal"], "time": time, "food": entry_name(i),
              "amount": f"{i['grams']:g} g", "calories": i["kcal"], "protein_g": i["protein_g"], "carbs_g": i["carbs_g"],
              "fat_g": i["fat_g"], "saturated_fat_g": i["sat_fat_g"], "alcohol_g": None,
+             **{f: i.get(f) for f in extras.OPTIONAL}, "sugary_drink": None,
              "notes": "；".join(x for x in (f"快捷记餐「{tpl['name']}」", PURINE_ZH.get(i.get("purine_level")),
                                            i.get("note"), "克数待确认" if tpl["needs_confirmation"] else None) if x)}
             for i in items]

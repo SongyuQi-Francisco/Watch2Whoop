@@ -20,46 +20,79 @@ MAX_FAILURES = int(os.environ.get("BODY_LOGIN_MAX_FAILURES", "10"))
 WINDOW_SECONDS = int(os.environ.get("BODY_LOGIN_WINDOW_SECONDS", "900"))
 MAX_TRACKED_IPS = 10_000   # Keep many distinct IPs from blowing up memory: drop the oldest when over the cap
 
-_lock = threading.Lock()
-_failures: dict[str, deque] = {}
+class Limiter:
+    """A sliding-window event counter per key (IP, e-mail, …): retry_after() says how long to wait once `max_events` events
+    happened within `window` seconds. The module-level functions below are the shared login-failure limiter; sign-up uses
+    more instances (account/api.py: e-mails sent per address / per IP)."""
+
+    def __init__(self, max_events: int, window: int):
+        self.max_events, self.window = max_events, window
+        self._lock = threading.Lock()
+        self._events: dict[str, deque] = {}
+        _ALL.append(self)
+
+    def _prune(self, q: deque, now: float) -> None:
+        while q and q[0] <= now - self.window:
+            q.popleft()
+
+    def retry_after(self, key: str, now: float | None = None) -> int:
+        """0 if this key may go ahead now, otherwise how many seconds it still has to wait."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            q = self._events.get(key)
+            if not q:
+                return 0
+            self._prune(q, now)
+            if len(q) < self.max_events:
+                return 0
+            return max(1, int(q[0] + self.window - now) + 1)
+
+    def record(self, key: str, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            q = self._events.get(key)
+            if q is None:
+                if len(self._events) >= MAX_TRACKED_IPS:
+                    self._events.pop(next(iter(self._events)))
+                q = self._events[key] = deque()
+            self._prune(q, now)
+            q.append(now)
+
+    def clear(self, key: str) -> None:
+        with self._lock:
+            self._events.pop(key, None)
+
+    def reset(self) -> None:
+        with self._lock:
+            self._events.clear()
 
 
-def _prune(q: deque, now: float) -> None:
-    while q and q[0] <= now - WINDOW_SECONDS:
-        q.popleft()
+_ALL: list[Limiter] = []
+
+
+class _LoginFailures(Limiter):
+    """The shared login-failure limiter: reads MAX_FAILURES / WINDOW_SECONDS at call time (tests patch them)."""
+    max_events = property(lambda self: MAX_FAILURES, lambda self, v: None)
+    window = property(lambda self: WINDOW_SECONDS, lambda self, v: None)
+
+
+_failures = _LoginFailures(MAX_FAILURES, WINDOW_SECONDS)
 
 
 def retry_after(ip: str, now: float | None = None) -> int:
     """Whether this IP may try now: returns 0 if yes, otherwise how many seconds it still has to wait."""
-    now = time.monotonic() if now is None else now
-    with _lock:
-        q = _failures.get(ip)
-        if not q:
-            return 0
-        _prune(q, now)
-        if len(q) < MAX_FAILURES:
-            return 0
-        return max(1, int(q[0] + WINDOW_SECONDS - now) + 1)
+    return _failures.retry_after(ip, now)
 
 
 def record_failure(ip: str, now: float | None = None) -> None:
-    now = time.monotonic() if now is None else now
-    with _lock:
-        q = _failures.get(ip)
-        if q is None:
-            if len(_failures) >= MAX_TRACKED_IPS:
-                _failures.pop(next(iter(_failures)))
-            q = _failures[ip] = deque()
-        _prune(q, now)
-        q.append(now)
+    _failures.record(ip, now)
 
 
 def record_success(ip: str) -> None:
-    with _lock:
-        _failures.pop(ip, None)
+    _failures.clear(ip)
 
 
 def reset() -> None:
-    """For tests."""
-    with _lock:
-        _failures.clear()
+    """For tests: clears every limiter."""
+    for limiter in _ALL:
+        limiter.reset()

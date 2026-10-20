@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import activation, login_codes, login_limit, session, views
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.27-2026-10-20"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.32-2026-10-21"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -57,7 +57,7 @@ class LoginIn(BaseModel):
 
 
 def _me(user: dict) -> dict:
-    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes")}
+    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status")}
 
 
 @router.post("/v1/web/login")

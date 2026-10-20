@@ -195,7 +195,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="delete_lab_results",
-        description="撤销 add_lab_results 写的化验结果（按采样日期和 test_key）。迁移来的历史结果不能删。",
+        description="删除某采样日期的化验结果（按 test_key，任何来源）。",
         input_schema=_schema({
             "collected_on": DATE,
             "test_keys": {"type": "array", "items": {"type": "string"}},

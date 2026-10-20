@@ -2,6 +2,9 @@
 // - The Today page handles the safe area (viewport-fit=cover + env(safe-area-inset-*)) and pull-to-refresh itself, so no SafeArea here in full screen.
 // - Same-origin links open inside the app; other links ("Ask the butler" → Claude app, SparkyFitness) are handed to the system.
 // - Inside the app the Today page sees window.Watch2Whoop (JS channel) and uses it to show the "phone sync" entry, which navigates to watch2whoop://sync.
+// - Self-service accounts (Bearer token in the Keychain): when the page is not logged in, the app mints a fresh one-time login code
+//   (POST /v1/account/web-login-code) and opens /app/#login=<code>. After the page deletes the account it navigates to
+//   watch2whoop://account-deleted: sync stops, the token and config are cleared, and the app returns to onboarding.
 //
 // Home = the Body Engine today page, full screen in a WebView.
 import 'package:flutter/foundation.dart';
@@ -10,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../health_sync.dart';
@@ -20,6 +24,12 @@ import 'sync_page.dart';
 
 /// Address the Today page uses to open the native sync page.
 const String kSyncLink = 'watch2whoop://sync';
+
+/// The Today page navigates here after deleting the account (「我」→「删除账号」).
+const String kAccountDeletedHost = 'account-deleted';
+
+/// Bridge message prefix for the login check of self-service accounts.
+const String _kMePrefix = 'w2w-me:';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,6 +45,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   DateTime _loadedAt = DateTime.fromMillisecondsSinceEpoch(0);
   String? _error;
   bool _loading = true;
+
+  /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
+  bool _checkLogin = false;
+  bool _webLoginTried = false;
 
   @override
   void initState() {
@@ -52,7 +66,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         NavigationDelegate(
           onNavigationRequest: _onNavigation,
           onPageStarted: (_) => setState(() => _loading = true),
-          onPageFinished: (_) => setState(() => _loading = false),
+          onPageFinished: (_) {
+            setState(() => _loading = false);
+            _maybeCheckLogin();
+          },
           // A same-page navigation that only changes the # fragment (one-time login code) may not fire onPageFinished, so fall back on progress
           onProgress: (p) {
             if (p >= 100 && _loading) setState(() => _loading = false);
@@ -164,6 +181,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _error = null;
       _loading = true;
     });
+    _checkLogin = false;
+    if (code == null && AppState.instance.accountToken != null) {
+      // Self-service account: right after sign-in, log the page in with a fresh one-time code; otherwise check after loading.
+      if (AppState.instance.webLoginNeeded) {
+        AppState.instance.webLoginNeeded = false;
+        _webLoginTried = true;
+        final entry = await freshWebLoginEntry();
+        if (entry != null) {
+          await _web.loadRequest(entry);
+          return;
+        }
+      }
+      _checkLogin = !_webLoginTried;
+    }
     if (code != null) {
       // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it
       // from the address bar right away. It stays saved until the page reports `logged-in` / `login-failed` (_onBridge).
@@ -179,13 +210,39 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (loginCodeSettled(message) && c.pendingLoginCode != null) {
       AppState.instance.update(c.copyWith(clearPendingLoginCode: true));
     }
+    if (message.startsWith(_kMePrefix)) _onLoginStatus(int.tryParse(message.substring(_kMePrefix.length)) ?? 0);
   }
+
+  /// Asks the page (same-origin cookie) whether it is logged in; the answer comes back over the JS channel.
+  Future<void> _maybeCheckLogin() async {
+    if (!_checkLogin) return;
+    _checkLogin = false;
+    try {
+      await _web.runJavaScript(
+        "fetch('/v1/web/me',{credentials:'same-origin'})"
+        ".then(function(r){Watch2Whoop.postMessage('$_kMePrefix'+r.status)})"
+        ".catch(function(){Watch2Whoop.postMessage('${_kMePrefix}0')});",
+      );
+    } catch (e) {
+      debugPrint('login check failed: $e');
+    }
+  }
+
+  Future<void> _onLoginStatus(int status) async {
+    if (status != 401 || _webLoginTried || AppState.instance.accountToken == null) return;
+    _webLoginTried = true;
+    final entry = await freshWebLoginEntry();
+    if (entry != null && mounted) await _web.loadRequest(entry);
+  }
+
+  Future<void> _onAccountDeleted() => signOutToOnboarding(revoke: false);
 
   Future<NavigationDecision> _onNavigation(NavigationRequest req) async {
     final uri = Uri.tryParse(req.url);
     if (uri == null) return NavigationDecision.prevent;
     if (uri.scheme == 'watch2whoop') {
       if (uri.host == 'sync' || uri.host == 'settings') _openSync();
+      if (uri.host == kAccountDeletedHost) _onAccountDeleted();
       return NavigationDecision.prevent;
     }
     if (uri.scheme == 'about' || uri.scheme == 'blob' || uri.scheme == 'data') return NavigationDecision.navigate;

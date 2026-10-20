@@ -14,8 +14,13 @@ TYPE_NAMES = {
     "elliptical": "椭圆机", "rowing_machine": "划船机", "hiking": "徒步", "yoga": "瑜伽", "pilates": "普拉提",
     "stretching": "拉伸", "fitness_equipment": "器械训练", "soccer": "足球", "tennis": "网球", "badminton": "羽毛球",
     "table_tennis": "乒乓球", "volleyball": "排球", "boxing": "拳击", "martial_arts": "武术", "golf": "高尔夫",
+    "dance": "舞蹈", "climbing": "攀岩", "jump_rope": "跳绳", "squash": "壁球", "pickleball": "匹克球",
+    "rugby": "橄榄球", "australian_football": "澳式足球", "american_football": "美式足球", "baseball": "棒球",
+    "cricket": "板球", "hockey": "曲棍球", "skating": "滑冰", "surfing": "冲浪", "skiing": "滑雪",
     "generic": "其他运动", "other": "其他运动",
 }
+GENERIC_TYPES = {"generic", "other", "unknown"}   # the source did not know the activity: overrides / type rules may set it
+RULE_HOUR_WINDOW = 2.0   # a type rule (workout_type_rules) matches generic workouts on its weekday starting within ±2 h
 
 # Categories: used when merging SparkyFitness records and as the duration fallback when there is no heart rate
 STRENGTH_TYPES = {"strength_training", "fitness_equipment", "generic", "other"}   # SparkyFitness strength exercises are merged into these workouts
@@ -39,6 +44,18 @@ SHORTCUT_TYPES = {
     "flexibility": "stretching", "柔韧度": "stretching", "cooldown": "stretching", "整理放松": "stretching",
     "pilates": "pilates", "普拉提": "pilates", "soccer": "soccer", "足球": "soccer", "tennis": "tennis", "网球": "tennis",
     "badminton": "badminton", "羽毛球": "badminton", "other": "generic", "其他": "generic",
+    # more HKWorkoutActivityType names (export.xml / OW labels: HKWorkoutActivityTypeX -> "x" with spaces)
+    "mixed metabolic cardio training": "cardio_training", "step training": "cardio_training", "hiit": "cardio_training",
+    "preparation and recovery": "stretching", "mind and body": "yoga",
+    "dance": "dance", "cardio dance": "dance", "social dance": "dance", "dance inspired training": "dance", "舞蹈": "dance",
+    "climbing": "climbing", "攀岩": "climbing", "jump rope": "jump_rope", "跳绳": "jump_rope",
+    "kickboxing": "boxing", "拳击": "boxing", "boxing": "boxing", "martial arts": "martial_arts", "武术": "martial_arts",
+    "squash": "squash", "pickleball": "pickleball", "table tennis": "table_tennis", "乒乓球": "table_tennis",
+    "volleyball": "volleyball", "排球": "volleyball", "rugby": "rugby", "australian football": "australian_football",
+    "american football": "american_football", "baseball": "baseball", "softball": "baseball", "cricket": "cricket",
+    "hockey": "hockey", "golf": "golf", "高尔夫": "golf", "skating sports": "skating", "skating": "skating",
+    "surfing sports": "surfing", "surfing": "surfing", "snow sports": "skiing", "downhill skiing": "skiing",
+    "cross country skiing": "skiing", "snowboarding": "skiing", "water fitness": "swimming",
 }
 
 # ---------- import ----------

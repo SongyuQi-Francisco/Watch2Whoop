@@ -99,7 +99,7 @@
 | 2.1 Apple Readiness / 睡眠分截图 | `log_metric_snapshot`：单独的表 `metric_snapshots`，来源 screenshot，不覆盖传感器数据 |
 | 2.1 补剂瓶子 | 已有的 `add_supplement` / `update_supplement` |
 | 2.1 确认卡片 | 写工具在设置里是 `ask`：Remote Control 把权限确认推到手机 / 网页，点允许才写；拒绝就不写。拿不准的字段由管家在写之前的摘要里标出来（Claude Code 的确认框不能自定义黄色高亮） |
-| 2.1 随时可撤销 | `undo_sparky_entry`（只删管家写的饮食 / 训练）、`delete_journal_entry`、`delete_lab_results`（只删管家写的化验）；事件 / 补剂用对应的修改工具 |
+| 2.1 随时可撤销 | `undo_sparky_entry`（饮食 / 力量训练 / 一组 / 某天称重，任何来源，先确认）、`delete_workout`、`delete_journal_entry`、`delete_lab_results`（任何来源）；改用 `update_food_entry` / `update_training_set` / `update_workout`；每次 AI 写操作记在 `ai_write_log`（改前 / 改后），`rollback_write` 按日志改回（issue #30）；事件 / 补剂用对应的修改工具 |
 | 2.2 身体档案卡 + 观察笔记 | 表 `assistant_profile`、`assistant_observations`（迁移 060）；工具 `get_memory`、`update_profile_card`、`add_observation`、`delete_observation`；API `GET /v1/users/{user}/memory`、`PUT .../memory/profile/{key}`、`DELETE .../memory/observations/{id}`（scope memory，今天页「我」页用）。初版档案卡 `body-engine memory-init --user-id 1 --from-md`（数据库现有的化验、动作限制、补剂、基本资料 + `assistant/memory_seed.py` 里从 body-management.md 转录的目标、作息、偏好、计划；只读 body-management.md），已为 user 1 生成 12 项 |
 | 2.2 回答有依据 | CLAUDE.md：先读档案卡和数据，建议说明用了哪些数据，不编数字，约束一律从数据库读 |
 | 2.3「今天怎么样」 | CLAUDE.md：3 行简报（恢复 / 睡眠 / 今天的训练调整和提醒） |
