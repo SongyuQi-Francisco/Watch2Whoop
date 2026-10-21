@@ -5,7 +5,9 @@
   matched to products, minus the pantry, rounded up to package sizes, estimated cost; health hints in `warnings`.
 - Ticking an item adds what was bought to the pantry (unticking takes it back); a paid price updates the product's price.
 - Store links are limited to the supermarkets the user has connected (grocery_settings, none by default, issue #44).
-- With the opt-in grocery-sync component on (grocery/sync/), list items and products get the best store `offer` from the
+- Prices the user's own AI recorded (prices.py, record_store_prices) price the list: per line the cheapest connected store,
+  totals per store, savings on specials, what still needs a price; ticking a line records the purchase (grocery_purchases).
+- With the opt-in grocery-sync component on (grocery/sync/), lines without an own price get the best store `offer` from the
   connected supermarkets' weekly catalogue; this week's half price comes first and its saving is summed. The user's own price
   stays the estimate when there is one (docs/grocery-store-data-plan.md §8.6–8.7).
 The caller is responsible for authorization (writes only for the caller)."""
@@ -22,6 +24,7 @@ from ..i18n import L as Li, tl
 from ..rules import params as rule_params
 from ..rules.nutrition import is_short_rib, red_meat_estimate
 from . import links as L, params as P
+from . import prices as PR
 from .sync import offers as SO
 
 PURINE = ("low", "medium", "high")
@@ -522,7 +525,7 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
     conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
                  (Jsonb(plan), Jsonb(summary), lst["id"]))
     out = {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
-    if "half_price" in out:   # this week's half price that fits the health rules, for swapping things in (AI)
+    if out.get("connected_stores"):   # this week's half price that fits the health rules, for swapping things in (AI)
         sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(summary))
         out["specials"] = sp["items"]
     return out
@@ -572,7 +575,7 @@ def _add_offers(conn, user_id: int, items: list[dict], products: dict) -> dict |
         return None
     half = {"items": 0, "save": {}}
     for i in items:
-        if i["bought"]:
+        if i["bought"] or i.get("offer"):   # the user's own recorded price wins
             continue
         off = SO.find_offer(conn, vis, i["name"], products.get(i["product_id"]))
         if not off:
@@ -598,7 +601,19 @@ def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, wi
     products = {p["id"]: p for p in _products(conn, user_id)}
     con = connected_stores(conn, user_id)
     items = [_item_view(r, products.get(r["product_id"]), con) for r in rows]
+    priced = PR.price_list(conn, user_id, items, products)
     half = _add_offers(conn, user_id, items, products)
+    if priced is not None:
+        own = priced.pop("half_price")
+        if half is None:
+            half = own
+        else:
+            half["items"] += own["items"]
+            for c, v in own["save"].items():
+                half["save"][c] = round(half["save"].get(c, 0) + v, 2)
+    bought_ids = [i["id"] for i in items if i["bought"]]
+    for iid, pur in (PR.purchases_for_items(conn, user_id, bought_ids).items() if bought_ids else ()):
+        next(i for i in items if i["id"] == iid)["purchase"] = pur
     order = list(P.CATEGORIES)
     items.sort(key=lambda i: (order.index(i["category"]) if i["category"] in order else 99, i["bought"],
                               not (i.get("offer") or {}).get("half_price"), i["name"]))
@@ -611,7 +626,8 @@ def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, wi
            "items": items, "progress": {"bought": sum(i["bought"] for i in items), "total": len(items)},
            "est_total": cost, "unpriced": sum(1 for i in items if i["est_cost"] is None),
            "warnings": _warnings(lst["summary"] if lst else {}, rows, products), "connected_stores": con,
-           **({"half_price": half} if half is not None else {})}
+           **({"half_price": half} if half is not None and half["items"] else {}),
+           **({"prices": priced} if priced is not None else {})}
     if with_pantry:
         out["pantry"] = list_pantry(conn, user_id)
     return out
@@ -691,11 +707,14 @@ def set_bought(conn: psycopg.Connection, user_id: int, item_ids: list[int], boug
         if bought and r["bought_at"] is None:
             conn.execute("UPDATE shopping_items SET bought_at = now(), paid_price = %s WHERE id = %s", (price, r["id"]))
             _pantry_change(conn, user_id, r["name"], r["product_id"], float(r["buy_qty"]), r["unit"], piece_g)
+            PR.on_bought(conn, user_id, r, prod, price)   # purchase history (actual or recorded store price)
         elif bought and price is not None:
             conn.execute("UPDATE shopping_items SET paid_price = %s WHERE id = %s", (price, r["id"]))
+            PR.on_bought(conn, user_id, r, prod, price)
         elif not bought and r["bought_at"] is not None:
             conn.execute("UPDATE shopping_items SET bought_at = NULL, paid_price = NULL WHERE id = %s", (r["id"],))
             _pantry_change(conn, user_id, r["name"], r["product_id"], -float(r["buy_qty"]), r["unit"], piece_g)
+            PR.remove_item_purchase(conn, user_id, r["id"])
         if bought and price is not None and prod and prod["active"]:
             conn.execute("UPDATE grocery_products SET price = %s, price_on = %s, updated_at = now() WHERE id = %s",
                          (round(price / (r["packages"] or 1), 2), today(conn, user_id), prod["id"]))

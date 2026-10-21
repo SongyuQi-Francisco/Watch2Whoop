@@ -4,7 +4,7 @@ tests/test_briefing.py). Write tools have no user parameter: they write only for
 from datetime import date
 
 from ..toolspec import USER, nullable, schema
-from . import off, params as P, store
+from . import off, params as P, prices, store
 from .sync import offers as SO
 
 _n = nullable
@@ -25,7 +25,8 @@ def _slim_product(p: dict) -> dict:
     return out
 
 
-OFFER_KEYS = ("store", "name", "size", "price", "was_price", "unit_price", "unit_price_unit", "special", "special_label", "save_total")
+OFFER_KEYS = ("store", "name", "size", "price", "was_price", "unit_price", "unit_price_unit", "special", "special_label", "save_total",
+              "age_days", "store_product_id")
 
 
 def _slim_offer(o: dict | None) -> dict | None:
@@ -48,6 +49,16 @@ def _slim_list(lst: dict) -> dict:   # store links are for the page; the AI has 
 def _slim_special(s: dict) -> dict:
     return {k: s[k] for k in ("store", "name", "size", "price", "was_price", "save", "unit_price", "unit_price_unit", "flags", "for")
             if s.get(k) not in (None, "", [])}
+
+
+def _history(conn, uid, a):
+    if a["store_product_id"] is not None:
+        st = prices.stats(conn, uid, a["store_product_id"])
+        st["points"] = st["points"][-20:]
+        return {k: v for k, v in st.items() if v not in (None, [], {}, "") and k not in ("image_url", "store_label")}
+    return [{k: v for k, v in {**p, "offer": _slim_offer({**p["offer"], "save_total": p["offer"]["save"],
+                                                          "age_days": p["offer"]["age_days"]}) if p["offer"] else None}.items()
+             if v not in (None, [], {}, "") and k not in ("image_url", "store_label")} for p in prices.list_products(conn, uid, a["q"])[:30]]
 
 
 def _specials(conn, uid, a):
@@ -114,6 +125,36 @@ TOOL_SPECS: list[dict] = [
         description="已连接超市本周半价（按健康约束筛过，用户常买的在前；for=对上的商品）。推荐 / 列清单时优先用。",
         input_schema=schema({"user": USER, "q": _n("string", "英文关键词"), "limit": _n("integer")}),
         handler=_specials,
+        scope="nutrition",
+    ),
+    dict(
+        name="get_shopping_context",
+        description="查价前先调：本周计划和清单、健康约束、已连接超市、存货、needs_price（缺价或超过 7 天的，最多 15 样）、rules（查价规则，必须遵守）。",
+        input_schema=schema({"user": USER, "week": WEEK}),
+        handler=lambda conn, uid, a: prices.shopping_context(conn, uid, _d(a["week"])),
+        scope="nutrition",
+    ),
+    dict(
+        name="record_store_prices",
+        description="写回你在超市商品页 / 截图里看到的价格（一次 ≤30 样，只写清单上的）。price 每包 AUD；special+was_price=特价和原价；"
+                    "for_item=对应的清单项；bought=true 记成用户实际买了（paid_total 实付）。",
+        input_schema=schema({"items": {"type": "array", "items": schema({
+            "store": {"type": "string", "enum": list(P.STORES)}, "url": _n("string", "商品页"), "name": {"type": "string"},
+            "brand": _n("string"), "size": _n("string", "规格，如 500g"), "price": {"type": "number"},
+            "unit_price": _n("number"), "unit_price_unit": {"type": ["string", "null"], "enum": ["kg", "L", "ea", None]},
+            "was_price": _n("number"), "special": {"type": ["string", "null"], "enum": [*P.SPECIAL_TYPES, None]},
+            "special_label": _n("string"), "barcode": _n("string"), "image_url": _n("string", "超市图片地址（只存引用）"),
+            "observed_at": _n("string", "ISO，null=现在"),
+            "source": {"type": ["string", "null"], "enum": [*P.PRICE_SOURCES, None], "description": "ai=网页 screenshot=截图"},
+            "for_item": _n("string"), "bought": _n("boolean"), "packages": _n("number"), "paid_total": _n("number")})}}),
+        handler=lambda conn, uid, a: prices.record(conn, uid, a["items"]),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="get_price_history",
+        description="用户自己的超市商品价格：q 搜（最近价和几天前），或 store_product_id 看历史（最低 / 平均 / 最近、特价频率、上次买贵没）。",
+        input_schema=schema({"user": USER, "q": _n("string"), "store_product_id": _n("integer")}),
+        handler=lambda conn, uid, a: _history(conn, uid, a),
         scope="nutrition",
     ),
     dict(

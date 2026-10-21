@@ -19,7 +19,7 @@ from . import catalog, crypto
 MODEL_RE = re.compile(r"^[A-Za-z0-9._:/@+-]{1,100}$")
 LOCAL_HTTP_HOSTS = {"localhost", "127.0.0.1", "host.docker.internal"}
 MAX_PROVIDERS = 10
-PUBLIC_COLS = ("id", "kind", "display_name", "model", "base_url", "secret_last4", "monthly_budget_usd",
+PUBLIC_COLS = ("id", "kind", "display_name", "model", "base_url", "secret_last4", "monthly_budget_usd", "web_tools",
                "price_in_per_mtok", "price_out_per_mtok", "status", "is_default", "created_at", "updated_at")
 
 
@@ -151,6 +151,11 @@ def _normalize(kind: str, data: dict, existing: dict | None) -> dict:
             local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
             if not local:
                 raise ValueError(L("要填 API key", "Enter an API key"))
+    if data.get("web_tools") is not None:
+        if data["web_tools"] and kind not in catalog.WEB_TOOL_KINDS:
+            raise ValueError(L("只有 Anthropic / OpenAI / Gemini API 能打开官方联网工具",
+                               "Only the Anthropic, OpenAI and Gemini APIs can turn on the official web tools"))
+        out["web_tools"] = bool(data["web_tools"])
     for f in ("monthly_budget_usd", "price_in_per_mtok", "price_out_per_mtok"):
         if f in data:
             v = data[f]

@@ -1,5 +1,7 @@
 """Read side of grocery-sync (docs/grocery-store-data-plan.md §8.6–8.7): store offers for list items / library products, this
-week's half-price recommendations, and half-price hits for meal suggestions.
+week's half-price recommendations, and half-price hits for meal suggestions. Only catalogue rows (origin = 'sync') are read here;
+products users added themselves are visible only to the users who linked them (grocery/prices.py). This week's specials also include
+the ones the user's own AI recorded (own_specials_rows).
 
 Who sees what: only stores that are both turned on by the deployer (params.enabled_stores) and connected by the user
 (grocery_settings, issue #44). With the component off everything here returns nothing, so the pages fall back to the user's own
@@ -124,7 +126,7 @@ def find_offer(conn: psycopg.Connection, stores: list[str], name: str, product: 
         key = L.parse_product_url(product["product_url"])["store"]
         if key not in stores:
             return None
-        row = conn.execute("SELECT * FROM store_products WHERE store = %s AND sku = %s AND active",
+        row = conn.execute("SELECT * FROM store_products WHERE store = %s AND sku = %s AND active AND origin = 'sync'",
                            (key, product["store_sku"])).fetchone()
         return offer_view(row) if row else None
     chain = L.store_key((product or {}).get("store"))
@@ -133,7 +135,8 @@ def find_offer(conn: psycopg.Connection, stores: list[str], name: str, product: 
         if not stores:
             return None
     for words in terms_for(name, product):
-        rows = conn.execute("SELECT * FROM store_products WHERE active AND store = ANY(%s) AND name ~* ALL(%s) LIMIT 200",
+        rows = conn.execute("SELECT * FROM store_products WHERE active AND origin = 'sync' AND store = ANY(%s) AND name ~* ALL(%s) "
+                            "LIMIT 200",
                             (stores, [rf"\m{w}" for w in words])).fetchall()
         if (best := _pick(rows, words)) is not None:
             return offer_view(best)
@@ -189,8 +192,40 @@ def specials_rows(conn: psycopg.Connection, stores: list[str], week: date, only_
     if not stores:
         return []
     return conn.execute(f"""SELECT s.*, w.save_amount AS w_save FROM weekly_specials w JOIN store_products s ON s.id = w.store_product_id
-                            WHERE w.store = ANY(%s) AND w.week_start = %s AND s.active
+                            WHERE w.store = ANY(%s) AND w.week_start = %s AND s.active AND s.origin = 'sync'
                             {"AND w.special_type = 'half_price'" if only_half else ""}""", (stores, week)).fetchall()
+
+
+def own_specials_rows(conn: psycopg.Connection, user_id: int, week: date, only_half: bool = True) -> list[dict]:
+    """Specials this user's own AI recorded in this specials week (record_store_prices, docs/grocery-plan.md §9): the latest own
+    observation per linked product in the user's connected stores. Shaped like store_products rows so offer_view works."""
+    row = conn.execute("SELECT stores FROM grocery_settings WHERE user_id = %s", (user_id,)).fetchone()
+    stores = row["stores"] if row else []
+    if not stores:
+        return []
+    tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"]
+    rows = conn.execute(
+        """SELECT s.*, o.price AS o_price, o.was_price AS o_was, o.unit_price AS o_unit, o.unit_price_unit AS o_uu,
+                  o.special_type AS o_special, o.special_label AS o_label
+           FROM user_store_products u JOIN store_products s ON s.id = u.store_product_id
+           JOIN LATERAL (SELECT * FROM price_observations p WHERE p.user_id = u.user_id AND p.store_product_id = s.id
+                         ORDER BY p.observed_at DESC LIMIT 1) o ON TRUE
+           WHERE u.user_id = %s AND s.store = ANY(%s) AND (o.observed_at AT TIME ZONE %s)::date >= %s""",
+        (user_id, stores, tz, week)).fetchall()
+    out = []
+    for r in rows:
+        if not r["o_special"] or (only_half and r["o_special"] != "half_price"):
+            continue
+        save = round(float(r["o_was"]) - float(r["o_price"]), 2) if r["o_was"] else None
+        out.append({**r, "price": r["o_price"], "was_price": r["o_was"], "unit_price": r["o_unit"], "unit_price_unit": r["o_uu"],
+                    "special_type": r["o_special"], "special_label": r["o_label"], "save_amount": save})
+    return out
+
+
+def _all_specials(conn, user_id: int, sync_stores: list[str], week: date) -> list[dict]:
+    own = own_specials_rows(conn, user_id, week)
+    ids = {r["id"] for r in own}
+    return own + [r for r in specials_rows(conn, sync_stores, week) if r["id"] not in ids]
 
 
 def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None, limit: int | None = None,
@@ -200,14 +235,15 @@ def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None
     stores = visible_stores(conn, user_id)
     day = sydney_today()
     week = specials_week(day)
-    out = {"enabled": bool(P.enabled_stores()), "stores": stores, "week_start": week.isoformat(),
-           "valid_to": date.fromordinal(week.toordinal() + 6).isoformat(), "items": [], "excluded": 0}
-    if not stores:
+    rows = _all_specials(conn, user_id, stores, week)
+    out = {"enabled": bool(P.enabled_stores()), "stores": sorted({r["store"] for r in rows} | set(stores)),
+           "week_start": week.isoformat(), "valid_to": date.fromordinal(week.toordinal() + 6).isoformat(), "items": [], "excluded": 0}
+    if not rows:
         return out
     wanted = _user_terms(conn, user_id)
     qwords = [_stem(w) for w in WORD.findall((q or "").lower())]
     items = []
-    for r in specials_rows(conn, stores, week):
+    for r in rows:
         nw = _words(r["name"])
         if qwords and not _hits(qwords, nw):
             continue
@@ -231,7 +267,7 @@ def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None
 def half_price_hits(conn: psycopg.Connection, user_id: int, foods: list[str]) -> dict[str, dict]:
     """food name -> the half-price offer it matches this week (for meal suggestions). One query, matched in memory."""
     stores = visible_stores(conn, user_id)
-    rows = [r for r in specials_rows(conn, stores, specials_week(sydney_today())) if not _excluded(r["name"], r["category"])]
+    rows = [r for r in _all_specials(conn, user_id, stores, specials_week(sydney_today())) if not _excluded(r["name"], r["category"])]
     if not rows:
         return {}
     products = conn.execute("SELECT * FROM grocery_products WHERE user_id = %s AND active", (user_id,)).fetchall()

@@ -48,7 +48,8 @@ class GeminiAdapter(Adapter):
             system_instruction=system, max_output_tokens=MAX_OUTPUT_TOKENS,
             tools=[types.Tool(function_declarations=[
                 types.FunctionDeclaration(name=t.name, description=t.description, parameters_json_schema=t.input_schema)
-                for t in tools])],
+                for t in tools])]
+            + ([types.Tool(google_search=types.GoogleSearch()), types.Tool(url_context=types.UrlContext())] if self.web else []),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
         parts: list[types.Part] = []
         usage, finish = None, None

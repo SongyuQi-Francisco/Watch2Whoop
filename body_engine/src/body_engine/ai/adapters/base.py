@@ -36,6 +36,7 @@ class TurnResult:
 
 class Adapter:
     kind = ""
+    web = False   # the vendor's official web search / fetch tools (set by adapters.make; only WEB_TOOL_KINDS act on it)
 
     def __init__(self, model: str, api_key: str | None, base_url: str | None = None):
         self.model = model
