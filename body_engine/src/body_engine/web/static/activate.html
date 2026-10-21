@@ -24,6 +24,9 @@ button{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"
 button:disabled{opacity:.5}
 .err{min-height:1.5em;margin:12px 0 0;color:var(--bad);font-size:15px}
 button.secondary{margin-top:10px;background:var(--surface);color:var(--text)}
+h2{font-size:20px;margin:28px 0 8px}
+ol{margin:0 0 16px;padding-left:22px}li{margin:6px 0}
+.small{font-size:14px;margin:14px 0 0}
 .status{min-height:1.5em;margin:0 0 20px;color:var(--text-2)}
 .help{display:block;margin:20px 0 0;padding:14px;border-radius:14px;background:var(--surface);color:var(--text);text-align:center;text-decoration:none;font-weight:600}
 </style>
@@ -38,13 +41,27 @@ button.secondary{margin-top:10px;background:var(--surface);color:var(--text)}
     <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" data-i18n-ph="activate.code" data-i18n-aria="activate.code">
     <button id="go" type="submit" data-i18n="activate.go">打开 App 完成设置</button>
   </form>
-  <!-- code in the link: open the app, fall back to the web by itself; the two buttons are for when the guess is wrong -->
+  <!-- code in the link: iPhone / iPad open the app (no web fallback; the install guide if it does not open),
+       a computer signs in on the web; activate.js shows one button -->
   <div id="choose" hidden>
     <p id="status" class="status" role="status"></p>
-    <button id="open-app" type="button" data-i18n="activate.openApp">在 App 里打开</button>
-    <button id="open-web" type="button" class="secondary" data-i18n="activate.openWeb">在网页里打开</button>
+    <button id="open-app" type="button" data-i18n="activate.openApp" hidden>在 App 里打开</button>
+    <button id="open-web" type="button" data-i18n="activate.openWeb" hidden>在网页里打开</button>
   </div>
   <div id="err" class="err" role="alert"></div>
+  <section id="install" class="guide" hidden>
+    <h2 data-i18n="activate.installTitle">先安装 App</h2>
+    <p data-i18n="activate.installLead">iPhone 上要用 Watch2Whoop App。装好以后再点一次这个激活链接。</p>
+    <ol>
+      <li data-i18n="activate.install1">在 App Store 安装 TestFlight</li>
+      <li data-i18n="activate.install2">打开 TestFlight 邀请邮件，点「查看测试」→「接受」</li>
+      <li data-i18n="activate.install3">在 TestFlight 里安装 Watch2Whoop</li>
+      <li data-i18n="activate.install4">回到这里，再点一次激活链接</li>
+    </ol>
+    <a class="help" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener" data-i18n="activate.getTestFlight">去 App Store 装 TestFlight</a>
+    <p class="small" data-i18n="activate.noInvite">没收到邀请邮件？请管理员把你的 Apple ID 加为测试员</p>
+  </section>
+
   <a class="help" href="handbook/" target="_blank" rel="noopener" data-i18n="activate.handbook">使用手册</a>
 </main>
 <script src="i18n.js"></script>

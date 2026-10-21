@@ -436,10 +436,10 @@ def test_purge_stale_pending(dsn):
 
 
 def test_methods_and_page_assets(client, monkeypatch):
-    assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True}
+    assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True, "ios_web": "warn"}
     monkeypatch.setenv("BODY_MAIL_MODE", "off")
     monkeypatch.delenv("BODY_APPLE_AUDIENCES")
-    assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False}
+    assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False, "ios_web": "warn"}
     assert '<script src="account.js" defer></script>' in client.get("/app/").text
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text
