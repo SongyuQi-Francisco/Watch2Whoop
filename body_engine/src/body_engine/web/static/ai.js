@@ -65,13 +65,13 @@
     applyAi(ch.ai, ch.ai.assistant_url);
     const kinds = Object.fromEntries(d.kinds.map((k) => [k.kind, k]));
     const subLine = (p) => {
+      if (p.retired) return esc(tr("已下线，只能删除"));
       if (p.category !== "api") return esc(tr("订阅"));
-      if (kinds[p.kind]?.needs_key === false) return `${esc(p.model)} · ${esc(tr("服务端订阅"))}`;
       const free = p.price_in_per_mtok === 0 && p.price_out_per_mtok === 0;
       const cost = esc(free ? tr("免费额度") : tr("本月 {cost} / {budget}", { cost: money(p.month_cost_usd), budget: money(p.monthly_budget_usd) }));
       return `${esc(p.model)} · ${cost}${p.secret_last4 ? ` · key …${esc(p.secret_last4)}` : ""}`;
     };
-    const row = (p) => `<button class="item" data-pid="${p.id}"><span class="row-title">${esc(p.display_name)}${p.status !== "active" ? ` <span class="badge mid">${esc(tr("已停用"))}</span>` : ""}
+    const row = (p) => `<button class="item" data-pid="${p.id}"><span class="row-title">${esc(p.display_name)}${p.retired ? ` <span class="badge plain">${esc(tr("已下线"))}</span>` : p.status !== "active" ? ` <span class="badge mid">${esc(tr("已停用"))}</span>` : ""}
         <span class="small muted" style="display:block;font-weight:400">${subLine(p)}</span></span></button>`;
     const f = d.fallback;
     const fbRow = f ? `<button class="item" id="ai-fb"><span class="row-title">${esc(f.display_name)}${fbBadge(f)}
@@ -98,9 +98,6 @@
   function apiFields(k, p = {}) {
     const models = (k.models || []).map((m) => `<option value="${esc(m)}">`).join("");
     const modelField = `<div class="field"><label>${esc(tr("模型"))}</label><input class="input" id="f-model" list="f-models" value="${esc(p.model || k.default_model || "")}" placeholder="${k.kind === "openai_compatible" ? esc(tr("例：deepseek-chat、qwen-plus、llama3.1")) : ""}" autocapitalize="off" spellcheck="false"><datalist id="f-models">${models}</datalist></div>`;
-    if (k.needs_key === false) {
-      return `${modelField}${k.note ? `<p class="small muted" style="margin-top:8px">${esc(k.note)}</p>` : ""}`;
-    }
     const isFree = p.price_in_per_mtok === 0 && p.price_out_per_mtok === 0;
     return `
       ${modelField}
@@ -111,7 +108,6 @@
   }
 
   function readApiFields(root, k, editing) {
-    if (k.needs_key === false) return { model: $("#f-model", root).value.trim() };
     const box = $("#f-free", root);
     const free = box?.checked;
     // Unticking clears only the $0 price this box set; a custom unit price set some other way is left alone
@@ -156,6 +152,17 @@
 
   function editSheet(p, kinds, mcp) {
     const k = kinds[p.kind] || { kind: p.kind, category: p.category, models: [] };
+    const del = (root) => async () => {
+      if (!confirm(tr("删除「{name}」？保存的 key 也会删掉。", { name: p.display_name }))) return;
+      try { await C.api(`/v1/users/me/ai-providers/${p.id}`, { method: "DELETE" }); await afterChange(); C.toast(tr("已删除")); openSettings(); }
+      catch (e) { $("#f-err", root).textContent = e.message; }
+    };
+    if (p.retired) {   // a kind that no longer exists (the server-side Gemini CLI): it can only be deleted
+      C.openSheet(p.display_name, `<p class="para">${esc(tr("这个 AI 提供商已下线，不能再用，只能删除。"))}</p>
+        <p class="login-error" id="f-err" role="alert"></p>
+        <div class="btns"><button class="btn btn-danger" id="f-del">${esc(tr("删除"))}</button></div>`, (root) => { $("#f-del", root).onclick = del(root); });
+      return;
+    }
     C.openSheet(p.display_name, `
       ${p.category === "api" ? apiFields(k, p) : `<div class="rcard-tags"><span class="badge plain">${esc(tr("订阅"))}</span><span class="badge plain">MCP</span></div>${k.note ? `<p class="small muted" style="margin-top:8px">${esc(k.note)}</p>` : ""}`}
       <p class="login-error" id="f-err" role="alert"></p>
@@ -169,11 +176,7 @@
       const def = $("#f-def", root); if (def) def.onclick = () => pick({ key: `p:${p.id}` }, () => { C.toast(tr("Jarvis 用：{name}", { name: p.display_name })); openSettings(); });
       const m = $("#f-mcp", root); if (m) m.onclick = () => mcpSheet(mcp, k.client);
       $("#f-toggle", root).onclick = () => patch({ status: p.status === "active" ? "disabled" : "active" }, tr("已更新"));
-      $("#f-del", root).onclick = async () => {
-        if (!confirm(tr("删除「{name}」？保存的 key 也会删掉。", { name: p.display_name }))) return;
-        try { await C.api(`/v1/users/me/ai-providers/${p.id}`, { method: "DELETE" }); await afterChange(); C.toast(tr("已删除")); openSettings(); }
-        catch (e) { $("#f-err", root).textContent = e.message; }
-      };
+      $("#f-del", root).onclick = del(root);
     });
   }
 

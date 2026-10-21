@@ -109,7 +109,7 @@ def _ai_mode(conn, viewer: dict, e: dict) -> dict:
     row = e["provider"]
     return {"mode": "mcp" if catalog.is_mcp(row["kind"]) else "api", "kind": row["kind"],
             "display_name": catalog.display_name(row), "model": row["model"], "status": row["status"],
-            "vision": catalog.KINDS[row["kind"]].get("vision")}
+            "vision": catalog.kind_info(row["kind"]).get("vision")}
 
 
 # ---------------------------------------------------------------- providers
