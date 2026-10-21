@@ -42,7 +42,7 @@ TOOL_NAMES = (
     "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
     "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
     "list_events", "list_journal_items", "get_journal", "get_memory",
-    "log_food", "log_workout", "log_weight", "undo_sparky_entry", "log_journal", "add_event",
+    "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
     "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue

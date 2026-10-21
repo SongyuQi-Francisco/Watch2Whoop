@@ -14,7 +14,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 _ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
-ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template"}
+ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water"}
 # kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries)
 ONLY_ACTION = {"merge": "merge", "template": "create"}
 
@@ -94,6 +94,9 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
         result = {"template_removed": int(row["target"]) if n else None}
     elif kind == "workout":
         result = overrides.restore(conn, user_id, int(row["target"]), before, after)
+    elif kind == "water":
+        from ..water import store as water_store
+        result = water_store.rollback(conn, user_id, row["action"], before, after)
     else:
         result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
     new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None
