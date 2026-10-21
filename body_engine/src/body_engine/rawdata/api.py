@@ -94,12 +94,19 @@ class EcgIn(_In):
     software_version: str | None = Field(None, max_length=40)
 
 
+class WaterSampleIn(_In):
+    uuid: UUID
+    start: AwareDatetime
+    ml: float = Field(gt=0, le=5000)
+
+
 class IngestIn(_In):
     batch_id: UUID
     device: str | None = Field(None, max_length=80)
     app_version: str | None = Field(None, max_length=40)
     heartbeats: list[HeartbeatIn] = Field(default_factory=list, max_length=I.MAX_HEARTBEATS)
     ecgs: list[EcgIn] = Field(default_factory=list, max_length=I.MAX_ECGS)
+    water: list[WaterSampleIn] = Field(default_factory=list, max_length=I.MAX_WATER)   # Apple Health drinks (issue #125)
     deleted: list[UUID] = Field(default_factory=list, max_length=I.MAX_DELETED)
 
 
