@@ -54,6 +54,7 @@ class ConsentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str = Field(min_length=1, max_length=40)
     agree: Literal[True]
+    language: Literal["zh", "en"] | None = None   # the text that was read; default the request's language
 
 
 @router.get("/v1/users/{user}/profile")
@@ -78,14 +79,15 @@ def patch_profile(user: str, body: ProfileIn, conn=Depends(get_conn), viewer=Dep
 
 @router.get("/v1/consent")
 def get_consent(viewer=Depends(current_user)):
-    return {"version": consent.version(), "summary": consent.SUMMARY, "text": consent.display_text()}
+    """In the request's language (X-Body-Lang); `language` says which text this is (both carry the same version)."""
+    return {"version": consent.version(), "summary": consent.summary(), "text": consent.display_text(), "language": consent.lang()}
 
 
 @router.post("/v1/users/{user}/consent")
 def post_consent(user: str, body: ConsentIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     uid = _self(viewer, user, True)
     try:
-        consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"))
+        consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"), language=body.language)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
     return _out(conn, uid)

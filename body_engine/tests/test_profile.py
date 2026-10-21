@@ -4,6 +4,7 @@ Uses a separate test database BODY_TEST_DB_NAME (default body_test_profile), dro
 """
 import io
 import os
+import re
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -24,6 +25,7 @@ from test_history import export_xml
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_profile")
 CSRF = {"X-Body-Web": "1"}
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "family-consent.md"
+DOCS_EN = DOCS.with_name("family-consent.en.md")
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +49,7 @@ def dsn():
 def users(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         ids = {"owner": conn.execute("INSERT INTO users (display_name, role) VALUES ('本人', 'owner') RETURNING id").fetchone()["id"]}
-        for n in ("t1", "t2"):   # The admin only gave an email: the display name is the email prefix, nothing else is filled in
+        for n in ("t1", "t2", "t3"):   # The admin only gave an email: the display name is the email prefix, nothing else is filled in
             ids[n] = conn.execute("INSERT INTO users (display_name) VALUES (%s) RETURNING id", (n,)).fetchone()["id"]
         tok = {n: auth.create_token(conn, i, "t", ["read", "write"]) for n, i in ids.items()}
         tok["t1_ro"] = auth.create_token(conn, ids["t1"], "ro", ["read"])
@@ -79,6 +81,39 @@ def test_consent_text_matches_docs():
     assert consent.version() == "2026-10-21.1"
     shown = consent.display_text()
     assert "一字不差" not in shown and "## 2. 在我同意之前" in shown
+
+
+def test_english_consent_matches_chinese():
+    """consent.en.md = docs/family-consent.en.md, same version as the Chinese, the same clauses (sections and bullets)."""
+    if not DOCS_EN.exists():
+        pytest.skip("not inside the repo (no docs/)")
+    assert consent.text("en") == DOCS_EN.read_text(encoding="utf-8"), \
+        "profile/consent.en.md and docs/family-consent.en.md must be identical character for character"
+    assert consent.version("en") == consent.version(), "the English consent carries the Chinese text's version number"
+    zh, en = consent.text("zh"), consent.text("en")
+    for pattern in (r"^## \d+\.", r"^- ", r"^> ", r"^---$"):
+        assert len(re.findall(pattern, zh, re.M)) == len(re.findall(pattern, en, re.M)), f"clause count differs: {pattern}"
+    assert not re.search(r"[一-鿿]", en), "Chinese left in the English consent"
+    assert len(consent.SUMMARY_EN) == len(consent.SUMMARY)
+    assert not any(re.search(r"[一-鿿]", p) for p in consent.SUMMARY_EN)
+    shown = consent.display_text("en")
+    assert "identical" not in shown and "## 2. Before I agree" in shown
+
+
+def test_consent_in_the_readers_language(client, users, dsn):
+    ids, tok = users
+    c = client.get("/v1/consent", headers={**H(tok["t3"]), "X-Body-Lang": "en"}).json()
+    assert c["language"] == "en" and c["version"] == consent.version() and "stored, not processed" in c["text"]
+    assert c["summary"] == consent.SUMMARY_EN
+    assert client.get("/v1/consent", headers=H(tok["t3"])).json()["language"] == "zh"
+    r = client.post("/v1/users/me/consent", json={"version": c["version"], "agree": True, "language": "en"}, headers=H(tok["t3"]))
+    assert r.status_code == 200 and r.json()["consent"]["accepted_language"] == "en"
+    assert client.post("/v1/users/me/consent", json={"version": c["version"], "agree": True, "language": "fr"},
+                       headers=H(tok["t3"])).status_code == 422
+    with psycopg.connect(dsn, row_factory=dict_row, autocommit=True) as conn:
+        assert conn.execute("SELECT language FROM user_consents WHERE user_id = %s", (ids["t3"],)).fetchone()["language"] == "en"
+        conn.execute("DELETE FROM user_consents WHERE user_id = %s", (ids["t3"],))
+        conn.execute("UPDATE users SET consent_at = NULL, consent_version = NULL WHERE id = %s", (ids["t3"],))
 
 
 def test_consent_flow_and_gate(client, users, dsn, tmp_path, monkeypatch):
