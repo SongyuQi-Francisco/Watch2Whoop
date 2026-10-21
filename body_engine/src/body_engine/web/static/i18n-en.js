@@ -664,7 +664,7 @@ I18N.addEn({
   "连接说明": "How to connect",
   "重置": "Reset",
   "钥匙串": "Keychain",
-  "问问题或记点什么": "Ask something or log something",
+  "问问题或记点什么": "Ask or log something",
   "麦克风不可用：在系统设置里允许，或用键盘上的 🎤 听写": "Microphone unavailable: allow it in Settings, or use the 🎤 dictation key on the keyboard",
   "（现在：…{last4}，留空不改）": " (now …{last4}; leave empty to keep it)",
   "［图片 {n} 张］": "[Images: {n}]",
