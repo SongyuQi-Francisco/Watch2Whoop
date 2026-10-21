@@ -77,15 +77,47 @@ def display_text(language: str | None = None) -> str:
     return "\n".join(l for l in text(language or lang()).splitlines() if not l.startswith(">")).strip() + "\n"
 
 
+BASE_SETTING = "consent_base_version"
+
+
+def vkey(v: str) -> tuple:
+    """Sort key of a consent version YYYY-MM-DD[.N]: by date, then N as a number (so .10 comes after .9)."""
+    day, _, n = v.partition(".")
+    return (day, int(n) if n.isdigit() else 0, n)
+
+
+def newest(*versions: str) -> str:
+    return max(versions, key=vkey)
+
+
+def base_version(conn: psycopg.Connection) -> str:
+    """The version everyone must have agreed to: rollout_settings.consent_base_version, else the text's own version.
+    Pin it to the previous version while a new text goes to a cohort first (docs/rollout.md)."""
+    from ..rollout import flags
+    pinned = flags.get_setting(conn, BASE_SETTING)
+    return version() if not pinned or vkey(pinned) > vkey(version()) else pinned
+
+
+def required_version(conn: psycopg.Connection, user_id: int) -> str:
+    """max(base version, min_consent_version of every flag that targets this user), never newer than the text itself.
+    Without a pinned base and flag requirements this is the text's version, i.e. the behaviour before flags existed."""
+    from ..rollout import flags
+    need = newest(base_version(conn), *flags.consent_versions_needed(conn, user_id))
+    return version() if vkey(need) > vkey(version()) else need
+
+
 def status(conn: psycopg.Connection, user_id: int) -> dict:
     u = conn.execute("SELECT role, consent_at, consent_version FROM users WHERE id = %s", (user_id,)).fetchone()
     cur = version()
     required = u["role"] != "owner" and u["consent_at"] is None
+    need = required_version(conn, user_id)
     last = conn.execute("SELECT language FROM user_consents WHERE user_id = %s ORDER BY accepted_at DESC, id DESC LIMIT 1",
                         (user_id,)).fetchone()
-    return {"required": required, "version": cur, "accepted_at": u["consent_at"], "accepted_version": u["consent_version"],
-            "accepted_language": last["language"] if last else None,
-            "reconfirm": (not required and u["role"] != "owner" and u["consent_version"] not in (None, cur, "paper"))}
+    agreed = u["consent_version"]
+    return {"required": required, "version": cur, "required_version": need, "accepted_at": u["consent_at"],
+            "accepted_version": agreed, "accepted_language": last["language"] if last else None,
+            # paper consent is never asked again in the app (the admin collects a new signature)
+            "reconfirm": (not required and u["role"] != "owner" and agreed not in (None, "paper") and vkey(agreed) < vkey(need))}
 
 
 def needs_consent(conn: psycopg.Connection, user_id: int) -> bool:
@@ -111,14 +143,14 @@ def accept(conn: psycopg.Connection, user_id: int, ver: str, method: str = "app"
 
 def agreed_at_least(conn: psycopg.Connection, user_id: int, minimum: str) -> bool:
     """The owner, or someone who agreed in the app to version `minimum` or later (versions are YYYY-MM-DD.N, compared as
-    text). Paper consent ("paper") and older versions do not count: they never named what `minimum` added."""
+    vkey). Paper consent ("paper") and older versions do not count: they never named what `minimum` added."""
     u = conn.execute("SELECT role, consent_at, consent_version FROM users WHERE id = %s", (user_id,)).fetchone()
     if u is None:
         return False
     if u["role"] == "owner":
         return True
     v = u["consent_version"]
-    return u["consent_at"] is not None and v not in (None, "paper") and v >= minimum
+    return u["consent_at"] is not None and v not in (None, "paper") and vkey(v) >= vkey(minimum)
 
 
 SKIP_MESSAGE = "user {} 还没在 app 里同意（同意书 docs/family-consent.md）：健康数据暂存、不处理"
