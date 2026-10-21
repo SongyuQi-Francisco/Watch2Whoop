@@ -1,7 +1,62 @@
 // UI strings: Chinese first, English when the device language is not Chinese.
-import 'dart:ui';
+// The language follows the system by default; once signed in, the Today page reports the profile language over the JS channel
+// (`lang:zh` / `lang:en` / `lang:` = follow the system), which is kept as an override until sign-out.
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-bool get isZh => PlatformDispatcher.instance.locale.languageCode == 'zh';
+const String _kLangKey = 'w2w.lang.v1';
+
+/// JS channel message prefix the Today page uses to report the profile language.
+const String kLangMessagePrefix = 'lang:';
+
+/// Language override: 'zh' / 'en', or null = follow the system language. The root widget listens to it and rebuilds.
+final ValueNotifier<String?> langOverride = ValueNotifier<String?>(null);
+
+/// 'zh' / 'en' for a language tag such as `zh`, `zh-Hans`, `en_AU`; null for empty or unsupported (= follow the system).
+String? normalizeLang(String? tag) {
+  final t = (tag ?? '').trim().toLowerCase();
+  if (t == 'zh' || t.startsWith('zh-') || t.startsWith('zh_')) return 'zh';
+  if (t == 'en' || t.startsWith('en-') || t.startsWith('en_')) return 'en';
+  return null;
+}
+
+/// Parses a JS channel message: null when it is not a language message, otherwise a record whose `lang` is the override
+/// to apply (null = follow the system).
+({String? lang})? parseLangMessage(String message) =>
+    message.startsWith(kLangMessagePrefix) ? (lang: normalizeLang(message.substring(kLangMessagePrefix.length))) : null;
+
+/// Loads the saved override; call before runApp so the first frame is already in the right language.
+Future<void> loadLangOverride() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    langOverride.value = normalizeLang(prefs.getString(_kLangKey));
+  } catch (e) {
+    debugPrint('loadLangOverride failed: $e');
+  }
+}
+
+/// Sets (and saves) the override; null clears it (= follow the system). Listeners are only notified on a change.
+Future<void> setLangOverride(String? lang) async {
+  final v = normalizeLang(lang);
+  langOverride.value = v;
+  final prefs = await SharedPreferences.getInstance();
+  if (v == null) {
+    await prefs.remove(_kLangKey);
+  } else {
+    await prefs.setString(_kLangKey, v);
+  }
+}
+
+/// Device language code; replaceable in tests (the test binding's locale is not PlatformDispatcher.instance's).
+@visibleForTesting
+String Function() systemLanguageCode = () => PlatformDispatcher.instance.locale.languageCode;
+
+String get systemLang => systemLanguageCode() == 'zh' ? 'zh' : 'en';
+
+/// Language the native screens use right now: the override first, else the system language.
+String get currentLang => langOverride.value ?? systemLang;
+
+bool get isZh => currentLang == 'zh';
 
 String tr(String zh, String en) => isZh ? zh : en;
 

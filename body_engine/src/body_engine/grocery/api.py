@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..assistant.memory_api import _meal_call
 from ..records.api import _owner, _self, current_user, get_conn
 from . import store
+from .sync import offers as store_offers
 
 router = APIRouter(prefix="/v1/users/{user}/grocery", tags=["grocery"])
 Unit = Literal["g", "ml", "pcs"]
@@ -97,9 +98,40 @@ class PantryEntry(BaseModel):
     product_id: int | None = None
 
 
+class StoresIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connected: list[str] = Field(max_length=10, description="已连接的超市：coles / woolworths，[] = 都不连")
+
+
 class PantryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[PantryEntry] = Field(min_length=1)
+
+
+@router.get("/stores")
+def get_stores(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Connected supermarkets (issue #44): store links / prices are shown only for these. None by default."""
+    return store.stores_view(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.put("/stores")
+def put_stores(user: str, body: StoresIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(store.set_connected_stores, conn, _self(viewer, user), body.connected)
+
+
+@router.get("/specials")
+def get_specials(user: str, q: str | None = None, limit: int = 20, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """This week's half price in the user's connected supermarkets (grocery-sync; empty when the component is off), health-filtered,
+    things the user buys first."""
+    owner = _owner(conn, viewer, user, "nutrition")
+    lst = store.get_list(conn, owner)
+    return store_offers.weekly_specials(conn, owner, q, max(1, min(limit, 50)),
+                                        red_meat_left=store_offers.red_meat_left(_summary(conn, owner, lst["week_start"])))
+
+
+def _summary(conn, user_id: int, week_start: str) -> dict:
+    row = conn.execute("SELECT summary FROM shopping_lists WHERE user_id = %s AND week_start = %s", (user_id, week_start)).fetchone()
+    return row["summary"] if row else {}
 
 
 @router.get("/products")

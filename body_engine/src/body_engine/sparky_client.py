@@ -71,6 +71,8 @@ class SparkyClient:
             raise SparkyError(f"{method} {path} → {e.code}: {e.read()[:300].decode(errors='replace')}") from e
         except urllib.error.URLError as e:
             raise SparkyError(f"连不上 SparkyFitness（{self.base_url}）：{e.reason}") from e
+        except OSError as e:   # read timeout / connection reset after connecting: the same as unreachable
+            raise SparkyError(f"连不上 SparkyFitness（{self.base_url}）：{type(e).__name__}") from e
 
     def whoami(self) -> dict:
         """The user the current key belongs to; also confirms it is a read-only key (with API key login, session.id is the key's id)."""
@@ -107,6 +109,52 @@ def client_for_user(conn: psycopg.Connection, user_id: int) -> SparkyClient:
     if not path.exists():
         raise SparkyError(f"找不到 SparkyFitness 只读 key：{path}（deploy/sparkyfitness/bootstrap.py 生成）")
     return SparkyClient(path.read_text().strip())
+
+
+# What the Today page shows for the training log source (issue #66 FB-4). Bilingual: the page picks label / label_en
+# (#20's L() / tr() once it lands); the AI gets the same state in get_briefing / training tool results.
+LINK_TEXT = {
+    "connected": ("训练记录已连接", "Training log connected"),
+    "not_linked": ("训练记录未连接", "Training log not connected"),
+    "unreadable": ("训练记录读不到", "Training log unreadable"),
+}
+LINK_HINT = {
+    "not_linked": ("在「我 → 训练记录」点「连接」；连上前计划照常保存在 Body Engine，但读不到训练历史和重量。",
+                   "Tap Connect under Me → Training log. Until then plans are still saved in Body Engine, "
+                   "but training history and weights cannot be read."),
+    "unreadable": ("训练记录暂时读不到（服务器或 key 的问题）；计划照常保存，稍后会自动恢复，一直不行请联系管理员。",
+                   "The training log cannot be read right now (server or key problem); plans are still saved. "
+                   "It recovers by itself; if it keeps failing, contact the admin."),
+}
+
+
+def link_state(conn: psycopg.Connection, user_id: int, probe: bool = False) -> dict:
+    """Whether this user's training log (SparkyFitness) can be used: connected / not_linked (no key yet: neither the admin's
+    sparky-link nor the self-service connect has run) / unreadable (linked, but the key or the server fails; probe=True
+    also asks the server). Never raises; `reason` is for logs and the AI, `label` / `hint` (+ _en) are for the page."""
+    def out(state: str, reason: str | None = None) -> dict:
+        zh, en = LINK_TEXT[state]
+        res = {"state": state, "label": zh, "label_en": en}
+        if state in LINK_HINT:
+            res["hint"], res["hint_en"] = LINK_HINT[state]
+        if reason:
+            res["reason"] = reason[:300]
+        return res
+    row = conn.execute("SELECT sparky_key_name, sparky_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
+    if row is None:
+        return out("not_linked")
+    try:
+        client = client_for_user(conn, user_id)
+    except SparkyError as e:
+        return out("unreadable" if row["sparky_key_name"] else "not_linked", None if not row["sparky_key_name"] else str(e))
+    except Exception as e:  # noqa: BLE001  e.g. a provisioned key that cannot be decrypted
+        return out("unreadable", f"{type(e).__name__}: {e}")
+    if probe:
+        try:
+            client.get("/auth/get-session")
+        except SparkyError as e:
+            return out("unreadable", str(e))
+    return out("connected")
 
 
 _verified_rw: set[tuple[str, str]] = set()  # (key file, SparkyFitness user id): read-write keys already validated in this process
