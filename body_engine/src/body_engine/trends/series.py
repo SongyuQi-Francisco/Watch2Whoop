@@ -10,10 +10,11 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import auth, queries, sparky_client
+from ..i18n import tl
 from ..insights import coach
 from . import calc, params as P
 
-# (key, Chinese label, unit, scope, group). Groups follow WHOOP: recovery / sleep / strain / stress / long-term.
+# (key, Chinese label, unit, scope, group); English in params.EN. Groups follow WHOOP: recovery / sleep / strain / stress / long-term.
 SERIES = [
     ("recovery", "恢复分", "", "scores", "recovery"),
     ("hrv", "HRV（SDNN 日均）", "ms", "metrics", "recovery"),
@@ -315,7 +316,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         avg7 = [extra["weight_avg7"][d] for d in dates] if key == "weight" else rolling(values)
         present = [v for v in values if v is not None]
         prev = [float(v) for d, v in raw[key].items() if prev_start <= d < start and v is not None]
-        series[key] = {"label": label, "unit": unit, "group": group, "values": values, "avg7": avg7, "n": len(present),
+        series[key] = {"label": tl(label, P.EN), "unit": tl(unit, P.EN), "group": group, "values": values, "avg7": avg7, "n": len(present),
                        "min": min(present) if present else None, "max": max(present) if present else None,
                        "mean": round(sum(present) / len(present), 2) if present else None,
                        "prev_mean": round(sum(prev) / len(prev), 2) if prev else None, "prev_n": len(prev)}

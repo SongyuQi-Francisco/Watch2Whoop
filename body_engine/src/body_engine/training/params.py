@@ -19,6 +19,19 @@ TYPE_NAMES = {
     "cricket": "板球", "hockey": "曲棍球", "skating": "滑冰", "surfing": "冲浪", "skiing": "滑雪",
     "generic": "其他运动", "other": "其他运动",
 }
+# English display names (Today page in English, issue #42); name_zh stays the stored name
+TYPE_NAMES_EN = {
+    "strength_training": "Strength training", "walking": "Walking / incline", "running": "Running", "treadmill": "Treadmill",
+    "basketball": "Basketball", "swimming": "Swimming", "pool_swimming": "Pool swim", "open_water_swimming": "Open water swim",
+    "cycling": "Cycling", "indoor_cycling": "Indoor cycling", "stair_climbing": "Stair climbing", "cardio_training": "Cardio",
+    "elliptical": "Elliptical", "rowing_machine": "Rowing machine", "hiking": "Hiking", "yoga": "Yoga", "pilates": "Pilates",
+    "stretching": "Stretching", "fitness_equipment": "Gym equipment", "soccer": "Soccer", "tennis": "Tennis", "badminton": "Badminton",
+    "table_tennis": "Table tennis", "volleyball": "Volleyball", "boxing": "Boxing", "martial_arts": "Martial arts", "golf": "Golf",
+    "dance": "Dance", "climbing": "Climbing", "jump_rope": "Jump rope", "squash": "Squash", "pickleball": "Pickleball",
+    "rugby": "Rugby", "australian_football": "Australian football", "american_football": "American football", "baseball": "Baseball",
+    "cricket": "Cricket", "hockey": "Hockey", "skating": "Skating", "surfing": "Surfing", "skiing": "Skiing",
+    "generic": "Other workout", "other": "Other workout",
+}
 GENERIC_TYPES = {"generic", "other", "unknown"}   # the source did not know the activity: overrides / type rules may set it
 RULE_HOUR_WINDOW = 2.0   # a type rule (workout_type_rules) matches generic workouts on its weekday starting within ±2 h
 
@@ -77,6 +90,7 @@ DEVICE_RANK = {"watch": 0, "phone": 1}
 # ---------- intensity grading (per workout) ----------
 INTENSITY_LEVELS = ("rest", "light", "moderate", "hard", "max")
 INTENSITY_LABELS = {"rest": "休息", "light": "轻松", "moderate": "中等", "hard": "高强度", "max": "极限"}
+INTENSITY_LABELS_EN = {"rest": "Rest", "light": "Light", "moderate": "Moderate", "hard": "Hard", "max": "All out"}
 # 1) With raw heart rate: the workout's Edwards TRIMP (five zones at 50/60/70/80/90% HRmax, minutes × 1–5).
 #    Basis: after backfill, for the owner's 36 watch workouts with complete heart rate, TRIMP quartiles are 26 / 59 / 110;
 #    a 40-minute incline climb (average heart rate 140) is about 120, a 1-hour climb about 180, 1 hour of basketball 160–180, 2 hours of basketball 210, strength training at heart rate around 100 is 20–90.

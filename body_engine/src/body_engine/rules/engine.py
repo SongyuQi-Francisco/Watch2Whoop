@@ -56,18 +56,21 @@ def store(conn: psycopg.Connection, user_id: int, day: date, results: list[RuleR
                 seen[(r.rule_key, r.subject)] = r   # keep only the last one per subject
             for r in seen.values():
                 row = conn.execute(
-                    """INSERT INTO reminders (user_id, date, rule_key, subject, level, title, message, evidence, status,
-                                              rules_version)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """INSERT INTO reminders (user_id, date, rule_key, subject, level, title, message, title_en, message_en,
+                                              evidence, status, rules_version)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                        ON CONFLICT (user_id, date, rule_key, subject) DO UPDATE SET
                          level = EXCLUDED.level, title = EXCLUDED.title, message = EXCLUDED.message,
+                         title_en = EXCLUDED.title_en, message_en = EXCLUDED.message_en,
                          evidence = EXCLUDED.evidence, rules_version = EXCLUDED.rules_version, updated_at = now()
-                       WHERE (reminders.level, reminders.title, reminders.message, reminders.evidence, reminders.rules_version)
-                             IS DISTINCT FROM (EXCLUDED.level, EXCLUDED.title, EXCLUDED.message, EXCLUDED.evidence,
-                                               EXCLUDED.rules_version)
+                       WHERE (reminders.level, reminders.title, reminders.message, reminders.title_en, reminders.message_en,
+                              reminders.evidence, reminders.rules_version)
+                             IS DISTINCT FROM (EXCLUDED.level, EXCLUDED.title, EXCLUDED.message, EXCLUDED.title_en,
+                                               EXCLUDED.message_en, EXCLUDED.evidence, EXCLUDED.rules_version)
                        RETURNING (xmax = 0) AS inserted""",
-                    (user_id, day, r.rule_key, r.subject, r.level, r.title, r.message, Jsonb(jsonable(r.evidence)),
-                     _initial_status(conn, user_id, day, r), P.RULES_VERSION)).fetchone()
+                    (user_id, day, r.rule_key, r.subject, r.level, r.title, r.message, r.title_en or None,
+                     r.message_en or None, Jsonb(jsonable(r.evidence)), _initial_status(conn, user_id, day, r),
+                     P.RULES_VERSION)).fetchone()
                 counts["unchanged" if row is None else "inserted" if row["inserted"] else "updated"] += 1
             subjects = [s for (_, s) in seen]
             counts["deleted"] += conn.execute(

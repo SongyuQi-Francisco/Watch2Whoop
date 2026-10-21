@@ -10,6 +10,7 @@ import re
 import psycopg
 
 from .. import auth
+from ..i18n import L
 
 CLIENT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
 MAX_ACTIVE = 10
@@ -18,11 +19,13 @@ MAX_ACTIVE = 10
 def create(conn: psycopg.Connection, user_id: int, client: str, read_only: bool = False) -> dict:
     client = (client or "").strip().lower()
     if not CLIENT_RE.match(client):
-        raise ValueError("客户端名只能用小写字母、数字和 -，例 claude-code、codex、gemini-cli")
+        raise ValueError(L("客户端名只能用小写字母、数字和 -，例 claude-code、codex、gemini-cli",
+                           "Client names use lower-case letters, digits and - only, e.g. claude-code, codex, gemini-cli"))
     n = conn.execute("""SELECT count(*) AS n FROM api_tokens WHERE user_id = %s AND %s = ANY(scopes)
                         AND revoked_at IS NULL""", (user_id, auth.MCP_SCOPE)).fetchone()["n"]
     if n >= MAX_ACTIVE:
-        raise ValueError(f"每人最多 {MAX_ACTIVE} 个有效的 AI token，先吊销不用的")
+        raise ValueError(L(f"每人最多 {MAX_ACTIVE} 个有效的 AI token，先吊销不用的",
+                           f"At most {MAX_ACTIVE} active AI tokens per person; revoke the ones you no longer use"))
     scopes = [auth.MCP_SCOPE, "read"] + ([] if read_only else ["write"])
     token = auth.create_token(conn, user_id, f"mcp:{client}", scopes)
     row = conn.execute("SELECT id, name, scopes, created_at FROM api_tokens WHERE token_sha256 = %s",

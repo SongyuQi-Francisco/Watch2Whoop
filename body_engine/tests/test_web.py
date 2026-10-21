@@ -577,7 +577,7 @@ def test_static_pages(client):
     assert "/days?month=" in js and "history.replaceState" in js
     assert 'DATED = new Set(["today", "trends", "food"])' in js       # the date picker also drives Trends (range end) and Food (that day's intake)
     assert "trends?days=${days}${q}" in js and "&end=${end}" in js and "foodDayHtml" in js
-    assert "[365, \"1年\"]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
+    assert "[365, tr(\"1年\")]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
     assert "script-src 'self'" in r.headers["content-security-policy"]
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
     for f in ("app.js", "app.css", "sw.js", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png"):

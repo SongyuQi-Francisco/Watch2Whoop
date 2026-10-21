@@ -2,9 +2,9 @@
    - Page files (/app/) and API data (GET /v1/) are both "network first, fall back to cache on failure": always fresh when online.
    - Cached data gets X-Cached-At (save time); when returned offline it gets X-Offline: 1, which the page uses to show the "offline" (「离线」) banner.
    - On 401 (not logged in / logged out) the data cache is cleared; the page also deletes it on logout. Writes (POST / PUT / PATCH / DELETE) are not cached. */
-const SHELL = "be-shell-v42";
+const SHELL = "be-shell-v45";
 const DATA = "be-data";
-const SHELL_FILES = ["./", "index.html", "app.css", "app.js", "ai.css", "ai.js", "ai-media.js", "profile.js", "history.js", "account.js", "grocery.js", "grocery.css", "diet-profile.js", "diet-profile.css", "manifest.webmanifest", "icon.svg", "apple-touch-icon.png"];
+const SHELL_FILES = ["./", "index.html", "app.css", "app.js", "ai.css", "ai.js", "ai-media.js", "i18n.js", "i18n-en.js", "profile.js", "history.js", "account.js", "grocery.js", "grocery.css", "diet-profile.js", "diet-profile.css", "manifest.webmanifest", "icon.svg", "apple-touch-icon.png"];
 const TIMEOUT_MS = 8000;
 
 self.addEventListener("install", (e) => {
@@ -39,7 +39,10 @@ async function data(req) {
   } catch (err) {
     const cached = await cache.match(req);
     if (cached) return withHeaders(cached, { "X-Offline": "1" });
-    return new Response(JSON.stringify({ detail: "离线，这台设备上也没有保存过这项数据" }),
+    // No I18N in the worker: the detail follows the page language sent in X-Body-Lang
+    const detail = req.headers.get("X-Body-Lang") === "en" ? "Offline, and this device has no saved copy of this data"
+      : "离线，这台设备上也没有保存过这项数据";   // i18n-ok
+    return new Response(JSON.stringify({ detail }),
       { status: 503, headers: { "Content-Type": "application/json", "X-Offline": "1" } });
   }
 }
