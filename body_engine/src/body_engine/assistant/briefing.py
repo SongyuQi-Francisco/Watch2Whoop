@@ -79,7 +79,8 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
              (SELECT row(count(*), max(updated_at))::text FROM assistant_profile WHERE user_id = %(u)s) AS p,
              (SELECT row(count(*), max(id))::text FROM assistant_observations WHERE user_id = %(u)s) AS o,
              (SELECT row(count(*), max(updated_at))::text FROM assistant_status WHERE user_id = %(u)s) AS st,
-             (SELECT row(count(*), max(updated_at))::text FROM exercise_meta WHERE user_id = %(u)s) AS ex""",
+             (SELECT row(count(*), max(updated_at))::text FROM exercise_meta WHERE user_id = %(u)s) AS ex,
+             (SELECT row(count(*), max(id), max(effective_to))::text FROM diet_constraints WHERE user_id = %(u)s) AS dc""",
         {"u": user_id, "s": since}).fetchone()
     return tuple(row.values())
 
@@ -172,9 +173,15 @@ def _exercises(conn, uid: int) -> dict:
     return {"banned": [r["name_zh"] for r in rules["banned"]], "caution": [r["name_zh"] for r in rules["caution"]]}
 
 
+def _diet(conn, uid: int) -> list[str]:
+    """The user's own diet constraints in effect (issue #76); [] = none, nothing to limit."""
+    from ..nutrition import constraints
+    return [c["text"] for c in constraints.listing(conn, uid)["constraints"]]
+
+
 SECTIONS = (  # (key, scope)
     ("me", "profile"), ("scores", "scores"), ("bedtimes", "sleep"), ("training", "training"),
-    ("reminders", "reminders"), ("memory", "memory"), ("exercises", "exercises"),
+    ("reminders", "reminders"), ("memory", "memory"), ("exercises", "exercises"), ("diet_constraints", "nutrition"),
 )
 NEXT = "档案卡只有要点（其余项见 profile_card_more），全文 get_memory；饮食、体重不在摘要里"
 
@@ -192,6 +199,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
         "reminders": lambda: _reminders(conn, owner_id, today),
         "memory": lambda: _memory(conn, owner_id, STATUS_IN_SCORES if allowed["scores"] else ()),
         "exercises": lambda: _exercises(conn, owner_id),
+        "diet_constraints": lambda: _diet(conn, owner_id),
     }
     out: dict = {"timezone": str(tz), "date": today}
     hidden = []

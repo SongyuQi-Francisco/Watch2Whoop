@@ -110,6 +110,13 @@
     return sec.data.items.map((x) => `<div class="dp-row dp-stack"><div class="dp-l">${sep}${esc(x[a])}</div><div class="small muted">${esc(x[b])}</div></div>`).join("");
   }
 
+  // The constraints the app enforces (reminders, recipe ranking, shopping; issue #76): label, limit, since, basis
+  function rulesBody(r) {
+    if (!r?.current?.length) return "";
+    return `<div class="dp-chips">${r.current.map((c) => `<span class="badge mid">${esc(c.text)}</span>`).join("")}</div>`
+      + r.current.filter((c) => c.basis).map((c) => `<div class="small muted">${esc(c.text)} · ${tr("自 {d}", { d: md(c.effective_from) })} · ${esc(c.basis)}</div>`).join("");
+  }
+
   function dayBody(sec) {
     if (!sec) return "";
     if (!sec.data) return textBody(sec);
@@ -127,6 +134,7 @@
       const kcal = g.training_days && g.training_kcal !== g.rest_kcal ? `${tr("训练日")} ${num(g.training_kcal)} / ${tr("休息日")} ${num(g.rest_kcal)} kcal` : `${num(g.rest_kcal)} kcal`;
       items.push({ at: String(g.effective_from), label: tr("目标"), changes: kcal, reason: g.reason });
     }
+    for (const c of p.constraint_rules?.history || []) items.push({ at: String(c.effective_to), label: tr("约束"), changes: c.text, reason: tr("到此为止") });
     return items.sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
   }
   function versionsBody(items) {
@@ -140,7 +148,7 @@
     const html = [
       p.hidden?.includes("goals") ? "" : block("goals", tr("当前目标"), goalsBody(p, sec.targets)),
       block("why", tr("为什么是这个数"), whyBody(p, sec.rationale)),
-      block("constraints", tr("健康约束"), listBody(sec.constraints, "rule", "basis")),
+      block("constraints", tr("健康约束"), rulesBody(p.constraint_rules) + listBody(sec.constraints, "rule", "basis")),
       block("day_plan", tr("一天怎么吃"), dayBody(sec.day_plan)),
       block("adjust_rules", tr("什么时候调整"), listBody(sec.adjust_rules, "when", "action")),
       log.length ? block("versions", tr("版本记录"), versionsBody(log), `${log.length}`) : "",

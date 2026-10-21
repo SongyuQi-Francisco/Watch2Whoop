@@ -25,6 +25,7 @@ from body_engine.goals import nutrition as goals_nutrition
 from body_engine.grocery import params as GP
 from body_engine.i18n import use_lang
 from body_engine.insights import coach, fitness, healthspan_store
+from body_engine.nutrition import constraints
 from body_engine.rawdata import ecg
 from body_engine.training import history, params as TP
 from body_engine.trends import calc, params as P, series
@@ -73,7 +74,7 @@ def test_key_tables_have_english_twins(zh, en):
 
 
 def test_value_tables_cover_every_label():
-    assert set(GP.FLAG_LABELS.values()) | {"高嘌呤", "红肉", "牛肋条"} <= set(GP.FLAGS_EN)
+    assert set(GP.FLAG_LABELS.values()) | {"高嘌呤", "红肉"} <= set(GP.FLAGS_EN)
     assert set(history.SOURCE_EN) == {"快捷指令", "Apple 健康"}
     for table in (GP.FLAGS_EN, history.SOURCE_EN, recipes.AUTO_TAGS_EN):
         no_cjk(*table.values())
@@ -257,7 +258,11 @@ def test_insight_labels(client, world):
     assert get(client, tok, "/v1/users/me/vo2max", EN)["level_label"] is None   # no readings: no level
 
 
-def test_grocery_labels(client, world):
+def world_user(conn) -> int:
+    return conn.execute("SELECT id FROM users WHERE display_name = 'A'").fetchone()["id"]
+
+
+def test_grocery_labels(client, world, dsn):
     _, tok = world
     h = {"Authorization": f"Bearer {tok}"}
     r = client.post("/v1/users/me/grocery/products", headers=h, json={
@@ -265,6 +270,8 @@ def test_grocery_labels(client, world):
         "red_meat": True, "nutrition": {"kcal": 400, "protein_g": 20, "carbs_g": 0, "fat_g": 35, "sat_fat_g": 12}})
     assert r.status_code == 201, r.text
     pid = r.json()["id"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:   # the red meat warning needs the user's own limit (#76)
+        constraints.set_constraint(conn, world_user(conn), "red_meat_g_per_week", 300)
     r = client.post("/v1/users/me/grocery/list/items", headers=h, json={"items": [
         {"name": "Bacon", "product_id": pid}, {"name": "Eggs", "qty": 12, "unit": "pcs"}]})
     assert r.status_code == 201, r.text

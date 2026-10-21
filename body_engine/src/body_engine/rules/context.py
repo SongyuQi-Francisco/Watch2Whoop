@@ -7,6 +7,7 @@ Data sources (system design section 5; each kind of data has exactly one source)
 Sources that cannot be read are recorded in errors, and rules depending on them return error (earlier reminders are not deleted); SparkyFitness not connected is recorded in missing (insufficient data).
 """
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -43,6 +44,7 @@ class Ctx:
     sleep_nights: list[dict] = field(default_factory=list)  # main sleep of each night before tonight (goals.sleep.nights_from_sessions)
     sleep_duration_min: int | None = None          # target sleep duration (from the goal, or the score's sleep need)
     overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/day_overrides.py)
+    diet: Any = None                               # this user's diet constraints in effect (nutrition/constraints.Constraints)
     errors: dict[str, str] = field(default_factory=dict)    # source -> reason the read failed
     missing: dict[str, str] = field(default_factory=dict)   # source -> reason it is not connected / not available
 
@@ -195,6 +197,8 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     ctx.sleep_nights = goal_store.load_nights(conn, user_id, tz, day)   # night of day = tonight (the evening before going to sleep)
     ctx.sleep_duration_min = goal_store.duration(conn, user_id, ctx.sleep_goal, day)
     ctx.overrides = load_overrides(conn, user_id, day - timedelta(days=7), day + timedelta(days=7))
+    from ..nutrition import constraints as diet_constraints
+    ctx.diet = diet_constraints.for_user(conn, user_id, day)
     body_mass = conn.execute(
         """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
            AND date BETWEEN %s AND %s""", (user_id, day - timedelta(days=WEIGHT_DAYS - 1), day)).fetchall()

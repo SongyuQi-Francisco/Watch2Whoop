@@ -16,6 +16,7 @@ from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.grocery import params as P, store
+from body_engine.nutrition import constraints
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_grocery")
 WEEK = date(2026, 10, 21)   # a Wednesday; week_start = 2026-10-19
@@ -53,7 +54,7 @@ def test_sized_rounds_to_packages():
 def test_product_flags_fsa():
     row = {"nutrition": {"sat_fat_g": 6, "sugar_g": 1, "sodium_mg": 700}, "package_unit": "g", "purine_level": "high",
            "red_meat": True, "name": "牛肋条"}
-    assert store.product_flags(row) == ["饱和脂肪高", "钠高", "高嘌呤", "红肉", "牛肋条"]
+    assert store.product_flags(row) == ["饱和脂肪高", "钠高", "高嘌呤", "红肉"]   # no food is singled out by name (#76)
     drink = {"nutrition": {"sugar_g": 12}, "package_unit": "ml", "purine_level": None, "red_meat": False, "name": "果汁"}
     assert store.product_flags(drink) == ["糖高"]   # drinks use the halved per-100 ml line
     assert P.HIGH_PER_100ML["sugar_g"] < P.HIGH_PER_100G["sugar_g"]
@@ -175,10 +176,18 @@ def test_generate_list_with_pantry_and_rounding(conn, world):
 
 
 def test_health_warnings(conn, world):
+    """Weekly red meat / per-food warnings only against the user's own diet constraints (issue #76)."""
     ids, _, ref = world
-    out = store.generate(conn, ids["A"], date(2026, 11, 2), [{"kind": "recipe", "ref_id": ref["rib"], "amount": 2}])
+    plan = [{"kind": "recipe", "ref_id": ref["rib"], "amount": 2}]
+    out = store.generate(conn, ids["A"], date(2026, 11, 2), plan)
+    assert not {w["code"] for w in out["warnings"]} & {"red_meat", "food_limit"}   # no constraints: no limits
+    conn.rollback()
+    constraints.set_constraint(conn, ids["A"], "red_meat_g_per_week", 300, basis="测试")
+    constraints.set_constraint(conn, ids["A"], "food_times_per_week", 1, target="牛肋条")
+    out = store.generate(conn, ids["A"], date(2026, 11, 2), plan)
     codes = {w["code"] for w in out["warnings"]}
-    assert codes >= {"red_meat", "short_rib"}   # 400 g red meat > 250 g; short rib twice > once a week
+    assert codes >= {"red_meat", "food_limit"}   # 400 g red meat > 300 g; 牛肋条 twice > once a week
+    assert any("你设的" in w["detail"] for w in out["warnings"] if w["code"] == "red_meat")
     conn.rollback()
 
 

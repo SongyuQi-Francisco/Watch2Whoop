@@ -68,10 +68,11 @@ def test_tool_definitions_budget():
     53.5k -> 54.5k for plan start / training_days / addons and the ask-first wording on propose_plan / save_plan (#65, #66); set_stores (#44) fits in.
     54.5k -> 55k for get_weekly_specials (grocery-sync, #48).
     55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md).
-        55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9)."""
+        55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9).
+    57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 57500, size
+    assert size < 59000, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 

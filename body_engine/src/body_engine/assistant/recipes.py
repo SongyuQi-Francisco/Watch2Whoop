@@ -6,8 +6,10 @@
 - Per-serving nutrition and health-constraint flags (constraint_flags: purine, saturated fat, red meat) are computed from the ingredients; thresholds are in recipe_params.py.
 - Logging: one SparkyFitness food entry (the name carries servings and "红肉 Ng", the rules engine counts red meat by that label), one row left in meal_logs,
   and undo is shared with meal templates (DELETE /meal-logs/{log_id}).
-- Suggestions: score by the calories / protein left for the day (the day's nutrition goal - logged), how many meals remain after this one, the weekly red meat quota, beef short rib frequency,
-  purine (weighted more when uric acid is high), saturated fat, what is left of the day's added sugar / saturated fat caps, whether eaten recently,
+- Suggestions: score by the calories / protein left for the day (the day's nutrition goal - logged), how many meals remain after this one,
+  the user's OWN diet constraints only (nutrition/constraints.py, issue #76: red meat per week and per-food limits exclude dishes,
+  low purine / low saturated fat add penalties, purine weighted more when the user's own uric acid result is high); a user without
+  constraints gets none of these. Also what is left of the day's added sugar / saturated fat caps, whether eaten recently,
   favourites, can-cook, how often it was logged lately (taste) and how much of it is in the pantry; return 3 dishes, each with a one-line reason.
   meal_plan does the same for every meal of the day at once (issue #43).
 The caller is responsible for authorization (writes only for the caller).
@@ -20,10 +22,8 @@ from psycopg.types.json import Jsonb
 from .. import sparky_client
 from ..grocery.sync import offers as store_offers, params as sync_params
 from ..i18n import L, tl
-from ..nutrition import extras
+from ..nutrition import constraints as diet_constraints, extras
 from ..records import store as records_store
-from ..rules import params as rule_params
-from ..rules.nutrition import is_short_rib
 from . import meals, recipe_params as RP, recipe_seed, sparky_write
 
 SLOTS = ("breakfast", "lunch", "dinner", "snack")
@@ -84,7 +84,7 @@ def constraint_flags(ingredients: list[dict], servings: float) -> dict:
     return {"purine_mg": round(purine),
             "purine_level": "low" if purine < RP.PURINE_LOW_MG else "medium" if purine <= RP.PURINE_HIGH_MG else "high",
             "sat_fat_g": sat, "sat_fat_level": "low" if sat <= RP.SAT_FAT_LOW_G else "medium" if sat <= RP.SAT_FAT_HIGH_G else "high",
-            "red_meat_g": ps["red_meat_g"], "short_rib": any(is_short_rib(i["food"]) for i in ingredients)}
+            "red_meat_g": ps["red_meat_g"]}
 
 
 # English twins of the automatic tags the Food tab shows (issue #42). 低嘌呤 / 低饱和脂肪 / 红肉 stay Chinese: the page hides
@@ -145,13 +145,32 @@ def get_row(conn, user_id: int, recipe_id: int) -> dict:
     return row
 
 
+def constraint_badges(flags: dict, diet) -> list[dict]:
+    """Recipe card chips judged against the user's own diet constraints (issue #76): purine only with low_purine,
+    saturated fat only with low_saturated_fat; red meat grams are shown to everybody, as a warning only with a limit."""
+    out = []
+    if diet.low_purine:
+        tone = {"low": "good", "medium": "warn", "high": "bad"}[flags["purine_level"]]
+        out.append({"label": L({"low": "嘌呤低", "medium": "嘌呤中", "high": "嘌呤高"}[flags["purine_level"]],
+                               {"low": "Low purine", "medium": "Medium purine", "high": "High purine"}[flags["purine_level"]]),
+                    "tone": tone})
+    if flags["red_meat_g"]:
+        out.append({"label": L(f"红肉 {flags['red_meat_g']:g}g", f"Red meat {flags['red_meat_g']:g} g"),
+                    "tone": "warn" if diet.red_meat_g is not None else "neutral"})
+    if diet.low_sat_fat and flags["sat_fat_level"] == "high":
+        out.append({"label": L("饱和脂肪高", "High sat. fat"), "tone": "bad"})
+    return out
+
+
 def list_recipes(conn: psycopg.Connection, user_id: int, slot: str | None = None, tag: str | None = None,
                  q: str | None = None) -> list[dict]:
     if slot is not None and slot not in SLOTS:
         raise ValueError(f"slot 只能是 {' / '.join(SLOTS)}")
     out = []
+    diet = diet_constraints.for_user(conn, user_id)
     for r in _rows(conn, user_id):
         v = view(r)
+        v["badges"] = constraint_badges(v["constraint_flags"], diet)
         if slot and slot not in v["slots"]:
             continue
         if tag and tag not in v["tags"]:
@@ -165,7 +184,8 @@ def list_recipes(conn: psycopg.Connection, user_id: int, slot: str | None = None
 
 
 def get_recipe(conn, user_id: int, recipe_id: int) -> dict:
-    return view(get_row(conn, user_id, recipe_id), detail=True)
+    v = view(get_row(conn, user_id, recipe_id), detail=True)
+    return {**v, "badges": constraint_badges(v["constraint_flags"], diet_constraints.for_user(conn, user_id))}
 
 
 # ---------------------------------------------------------------- write
@@ -328,10 +348,12 @@ def log_recipe(conn: psycopg.Connection, user_id: int, recipe_id: int, day: date
         (user_id, row["id"], day, sparky_meal(slot), Jsonb(logged), Jsonb(entries), channel)).fetchone()
     refresh_last_cooked(conn, row["id"])
     warnings = list(res["warnings"])
-    if red:
+    cap = diet_constraints.for_user(conn, user_id, day).red_meat_g
+    if red and cap is not None:   # only for a user with a red meat constraint (issue #76)
         week = red_meat_week(conn, user_id, day)
-        if week is not None and week > rule_params.RED_MEAT_G_PER_WEEK:
-            warnings.append(f"近 7 天红肉已约 {week:.0f}g，超过每周 {rule_params.RED_MEAT_G_PER_WEEK}g 的上限")
+        if week is not None and week > cap:
+            warnings.append(L(f"近 7 天红肉已约 {week:.0f}g，超过你设的每周 {cap:g}g", f"Red meat in the last 7 days: about "
+                              f"{week:.0f} g, over your {cap:g} g a week"))
     return {"log_id": log["id"], "recipe_id": row["id"], "name": row["name"], "date": day.isoformat(), "time": time,
             "meal": sparky_meal(slot), "servings": servings, "entries": entries,
             "totals": {f: round(ps[f] * k, 1) for f in ("kcal", "protein_g", "carbs_g", "fat_g", "sat_fat_g", "red_meat_g")},
@@ -352,8 +374,13 @@ def red_meat_week(conn, user_id: int, today: date) -> float | None:
         return None
 
 
-def _short_rib_recent(food: list[dict]) -> bool:
-    return any(is_short_rib(f.get("food") or "") for f in food)
+def _food_times(diet, food: list[dict]) -> dict[str, int]:
+    """How often each of the user's per-food limits was eaten in these entries."""
+    out: dict[str, int] = {f["target"]: 0 for f in diet.food_limits}
+    for f in food:
+        if (lim := diet.food_limit_hit(f.get("food") or "")) is not None:
+            out[lim["target"]] += 1
+    return out
 
 
 def _habits(conn, user_id: int, day: date) -> dict[int, int]:
@@ -403,7 +430,7 @@ def _half_label(h: dict) -> str:
 
 def _context(conn, user_id: int, day: date, client=None) -> dict:
     """Everything the per-meal ranking needs, read once: the day's goal and what was eaten (with added sugar from
-    food_entry_extras), the last 7 days for red meat / short rib, uric acid, the pantry and the logging habits."""
+    food_entry_extras), the user's diet constraints and the last 7 days against them, uric acid, the pantry and the logging habits."""
     from ..goals import nutrition as nutrition_goals
     from ..nutrition import daily
     client = client or sparky_client.client_for_user(conn, user_id)
@@ -425,14 +452,19 @@ def _context(conn, user_id: int, day: date, client=None) -> dict:
     added = extras.known_sum(eaten, "added_sugar_g") or 0
     caps = {"added_sugar_g": None if goal.get("added_sugar_max_g") is None else goal["added_sugar_max_g"] - added,
             "sat_fat_g": None if goal.get("sat_fat_max_g") is None else goal["sat_fat_max_g"] - sums["saturated_fat_g"]}
-    week_red = red_meat_week(conn, user_id, day)
+    diet = diet_constraints.for_user(conn, user_id, day)
+    week_red = red_meat_week(conn, user_id, day) if diet.red_meat_g is not None else None
     rows = _rows(conn, user_id)
-    uric_high = any(r["test_key"] == "uric_acid" and r["status"] == "high"
-                    for r in records_store.lab_report(conn, user_id, ["uric_acid"]))
+    purine_w = 0.0
+    if diet.low_purine:   # purine only counts for a user with a low purine constraint; more when their uric acid is high
+        uric_high = any(r["test_key"] == "uric_acid" and r["status"] == "high"
+                        for r in records_store.lab_report(conn, user_id, ["uric_acid"]))
+        purine_w = 1.5 if uric_high else 1.0
     return {"day": day, "goal": goal, "sums": sums, "remaining": remaining, "by_meal": by_meal,
             "logged_meals": {f.get("meal_type") for f in eaten}, "caps_left": caps, "week_red": week_red,
-            "red_left": None if week_red is None else rule_params.RED_MEAT_G_PER_WEEK - week_red,
-            "rib_recent": _short_rib_recent(week_food), "purine_w": 1.5 if uric_high else 1.0,
+            "red_left": None if week_red is None else diet.red_meat_g - week_red, "diet": diet,
+            "food_times": _food_times(diet, week_food), "purine_w": purine_w,
+            "sat_fat_w": 1.0 if diet.low_sat_fat else 0.0,
             "habits": _habits(conn, user_id, day), "pantry": _pantry(conn, user_id), "rows": rows,
             # this week's half price in the user's connected supermarkets (grocery-sync; {} when off / nothing connected)
             "half": store_offers.half_price_hits(conn, user_id, [i["food"] for r in rows for i in r["ingredients"]])}
@@ -463,12 +495,20 @@ def _rank(ctx: dict, slot: str, target: dict) -> tuple[list[dict], list[dict]]:
             continue
         v = view(row)
         flags = v["constraint_flags"]
-        if flags["short_rib"] and ctx["rib_recent"]:
-            excluded.append({"id": row["id"], "name": row["name"], "reason": "近 7 天已经吃过牛肋条（每周最多 1 次）"})
+        full = [lim for i in row["ingredients"] if (lim := ctx["diet"].food_limit_hit(i["food"])) is not None
+                and ctx["food_times"].get(lim["target"], 0) >= lim["max"]]
+        if full:
+            lim = full[0]
+            excluded.append({"id": row["id"], "name": row["name"],
+                             "reason": L(f"近 7 天已经吃了 {ctx['food_times'][lim['target']]} 次{lim['target']}（你设的每周最多 "
+                                         f"{lim['max']:g} 次）", f"{lim['target']} already {ctx['food_times'][lim['target']]} "
+                                         f"times in the last 7 days (your limit: {lim['max']:g} a week)")})
             continue
         if flags["red_meat_g"] and red_left is not None and flags["red_meat_g"] > red_left:
             excluded.append({"id": row["id"], "name": row["name"],
-                             "reason": f"本周红肉只剩 {max(red_left, 0):.0f}g，这道要 {flags['red_meat_g']:g}g"})
+                             "reason": L(f"本周红肉只剩 {max(red_left, 0):.0f}g，这道要 {flags['red_meat_g']:g}g",
+                                         f"Only {max(red_left, 0):.0f} g of red meat left this week; this dish needs "
+                                         f"{flags['red_meat_g']:g} g")})
             continue
         ps = per_serving(row["ingredients"], _servings(row))
         staple = slot in ("lunch", "dinner") and not row["includes_staple"]
@@ -481,7 +521,7 @@ def _rank(ctx: dict, slot: str, target: dict) -> tuple[list[dict], list[dict]]:
             score += RP.W_KCAL * kcal / 500  # Today's calories are already enough: the lighter the better
         if target["protein_g"] > 0:
             score += RP.W_PROTEIN * max(target["protein_g"] - prot, 0) / target["protein_g"]
-        score += ctx["purine_w"] * RP.W_PURINE[flags["purine_level"]] + RP.W_SAT_FAT[flags["sat_fat_level"]]
+        score += ctx["purine_w"] * RP.W_PURINE[flags["purine_level"]] + ctx["sat_fat_w"] * RP.W_SAT_FAT[flags["sat_fat_level"]]
         over = []
         sugar_left, sat_left = ctx["caps_left"]["added_sugar_g"], ctx["caps_left"]["sat_fat_g"]
         if sugar_left is not None and (ps["added_sugar_g"] or 0) > max(sugar_left, 0):
@@ -503,7 +543,8 @@ def _rank(ctx: dict, slot: str, target: dict) -> tuple[list[dict], list[dict]]:
         hp = [{"food": i["food"], **{k: half[i["food"]][k] for k in ("label", "name", "price", "save")}}
               for i in row["ingredients"] if i["food"] in half]
         score -= min(sync_params.BONUS_HALF_PRICE * len(hp), sync_params.BONUS_HALF_PRICE_MAX)
-        picks.append({"hp": hp, "score": score, "row": row, "view": v, "staple": staple, "kcal": kcal, "prot": prot,
+        picks.append({"purine_on": ctx["purine_w"] > 0, "sat_fat_on": ctx["sat_fat_w"] > 0,
+                      "red_cap_on": red_left is not None, "hp": hp, "score": score, "row": row, "view": v, "staple": staple, "kcal": kcal, "prot": prot,
                       "recent": recent, "habit": habit, "pantry": pantry, "over": over, "added_sugar_g": ps["added_sugar_g"]})
     picks.sort(key=lambda p: p["score"])
     return picks, excluded
@@ -513,10 +554,11 @@ def _reason(p: dict, target: dict, red_left: float | None) -> str:
     row, f = p["row"], p["view"]["constraint_flags"]
     bits = [f"这一餐还能吃约 {target['kcal']:.0f} kcal、蛋白 {target['protein_g']:.0f}g",
             f"这道{'配饭 90g ' if p['staple'] else ''}约 {p['kcal']:.0f} kcal、蛋白 {p['prot']:.0f}g"]
-    if f["purine_level"] == "low" and not f["red_meat_g"]:
-        bits.append("低嘌呤")
-    elif f["purine_level"] == "high":
-        bits.append("嘌呤偏高，汤少喝")
+    if p.get("purine_on"):   # only for a user with a low purine constraint (issue #76)
+        if f["purine_level"] == "low" and not f["red_meat_g"]:
+            bits.append("低嘌呤")
+        elif f["purine_level"] == "high":
+            bits.append("嘌呤偏高，汤少喝")
     if f["red_meat_g"] and red_left is not None:
         bits.append(f"吃完本周红肉还剩 {red_left - f['red_meat_g']:.0f}g")
     if "added_sugar" in p["over"]:
@@ -547,15 +589,17 @@ def _labels(p: dict) -> list[dict]:
         out.append({"label": L("常吃", "Usual"), "tone": "neutral"})
     if p["row"]["favorite"]:
         out.append({"label": L("收藏", "Favourite"), "tone": "neutral"})
-    if f["purine_level"] == "high":
-        out.append({"label": L("嘌呤高", "High purine"), "tone": "bad"})
-    elif f["purine_level"] == "low" and not f["red_meat_g"]:
-        out.append({"label": L("嘌呤低", "Low purine"), "tone": "good"})
+    if p.get("purine_on"):   # purine / red meat / saturated fat judged only against the user's own constraints (issue #76)
+        if f["purine_level"] == "high":
+            out.append({"label": L("嘌呤高", "High purine"), "tone": "bad"})
+        elif f["purine_level"] == "low" and not f["red_meat_g"]:
+            out.append({"label": L("嘌呤低", "Low purine"), "tone": "good"})
     if f["red_meat_g"]:
-        out.append({"label": L(f"红肉 {f['red_meat_g']:g}g", f"Red meat {f['red_meat_g']:g} g"), "tone": "warn"})
+        out.append({"label": L(f"红肉 {f['red_meat_g']:g}g", f"Red meat {f['red_meat_g']:g} g"),
+                    "tone": "warn" if p.get("red_cap_on") else "neutral"})
     if "added_sugar" in p["over"]:
         out.append({"label": L("添加糖超", "Over sugar cap"), "tone": "bad"})
-    if "sat_fat" in p["over"] or f["sat_fat_level"] == "high":
+    if "sat_fat" in p["over"] or (p.get("sat_fat_on") and f["sat_fat_level"] == "high"):
         out.append({"label": L("饱和脂肪高", "High sat. fat"), "tone": "bad" if "sat_fat" in p["over"] else "warn"})
     return out
 

@@ -2,7 +2,7 @@
 those marked "inferred" are values where body-management.md was unclear, taken from the most conservative reading (collected in the system design "rule engine" section).
 Bump RULES_VERSION whenever a parameter that affects results changes."""
 
-RULES_VERSION = "v1.2-2026-10-21"   # v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py); v1.2: sugar caps, goals from nutrition_goal_versions
+RULES_VERSION = "v1.3-2026-10-22"   # v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py); v1.2: sugar caps, goals from nutrition_goal_versions; v1.3: red meat / food caps from the user's own diet constraints (#76)
 
 # ---------- Double progression (body-management.md 4.5; rep ranges and increments come from SparkyFitness workout templates, migrated from 4.4) ----------
 # 4.5: when all sets of an exercise reach the top of the rep range -> add one increment next time (upper body +1-2.5kg, lower body +2.5-5kg) and go back to the bottom of the range.
@@ -38,22 +38,18 @@ WATER_TARGET_L = 3.0                     # about 3-3.5L per day while taking cre
 SYMPTOM_LOOKBACK_DAYS = 14               # hypoglycemia-like feeling on leg day / not enough eaten before training in the last 14 days -> reminder is raised to warning
 LEG_MUSCLES = {"quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"}
 
-# ---------- Frequency caps (body-management.md 5.3.1, 5.3.2; health constraints in CLAUDE.md) ----------
-# 5.3.1: red meat (beef) total <= 250g per week; beef short rib at most 1 meal per week. 5.3.2: beef / pork (lean cuts) combined <= 2 meals per week.
-RED_MEAT_G_PER_WEEK = 250
-RED_MEAT_WARN_FRACTION = 0.8             # at 80% (200g) show "almost there"
-SHORT_RIB_PER_WEEK = 1
-RED_MEAT_MEALS_PER_WEEK = 2
-# Inferred: "per week" is a rolling 7 days (including today), more conservative than calendar weeks; beef / lamb / pork (including processed meat such as bacon, ham, sausage) all count as red meat
-# (the journal item red_meat_g's note also says "lean beef, lamb and pork all count").
-# Grams: use the journal red_meat_g if logged that day; otherwise estimate from food log names (each entry at the typical portion below, raw weight).
+# ---------- Red meat recognition (food knowledge, for the user's own diet constraints) ----------
+# Limits are per user (nutrition/constraints.py, issue #76): nobody gets a red meat cap or a per-food limit by default.
+# "Per week" is a rolling 7 days (including today); beef / lamb / pork, including processed meat such as bacon, ham and
+# sausage, all count as red meat (WCRF/AICR 2018 definition of red and processed meat).
+# Grams: use the journal red_meat_g if logged that day; otherwise estimate from food log names (each entry at the typical
+# portion below, raw weight; a typical main-meal serving of meat is 120–150 g raw).
 RED_MEAT_KEYWORDS: list[tuple[str, int]] = [   # (keyword, estimated grams per serving), earlier matches win
-    ("牛肋条", 135), ("short rib", 135),          # 5.3.1: beef short rib 120-150g
+    ("牛肋条", 135), ("short rib", 135),
     ("培根", 30), ("bacon", 30), ("火腿", 30), ("香肠", 50), ("sausage", 50),
     ("牛", 150), ("beef", 150), ("steak", 150), ("羊", 150), ("lamb", 150), ("猪", 150), ("pork", 150),
     ("排骨", 150), ("rump", 150), ("topside", 150),
 ]
-SHORT_RIB_KEYWORDS = ("牛肋条", "short rib", "beef rib")
 # strip these from the name before matching (milk and avocado are not meat)
 RED_MEAT_EXCLUDE = ("牛奶", "牛乳", "牛油果", "牛油", "酸牛奶", "羊奶", "羊乳", "蜗牛", "牛蛙", "milk", "avocado")
 

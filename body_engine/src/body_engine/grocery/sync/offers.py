@@ -13,8 +13,8 @@ from datetime import date
 
 import psycopg
 
-from ...rules import params as rule_params
-from ...rules.nutrition import is_short_rib, red_meat_estimate
+from ...nutrition import constraints as diet_constraints
+from ...rules.nutrition import red_meat_estimate
 from .. import links as L, params as GP
 from . import params as P
 from .runner import specials_week, sydney_today
@@ -154,21 +154,20 @@ def item_cost(offer: dict, buy_qty: float, unit: str) -> tuple[int, float | None
 
 
 # ---------------------------------------------------------------- this week's half price
-def _excluded(name: str, category: str | None) -> bool:
+def _excluded(name: str, category: str | None, diet=None) -> bool:
     if category in P.EXCLUDE_CATEGORIES:
         return True
     low = " " + " ".join(WORD.findall((name or "").lower())) + " "
     for u in P.EXCLUDE_UNLESS:
         low = low.replace(f" {u} ", " ")
-    return any(f" {k} " in low for k in P.EXCLUDE_KEYWORDS)
+    words = P.EXCLUDE_KEYWORDS + (P.EXCLUDE_IF_LOW_SAT_FAT if diet is not None and diet.low_sat_fat else ())
+    return any(f" {k} " in low for k in words)
 
 
 def _flags(name: str) -> list[str]:
     out = []
     if red_meat_estimate(name):
         out.append("红肉")
-    if is_short_rib(name):
-        out.append("牛肋条")
     nw = _words(name)
     if any(any(w.startswith(k) for w in nw) for k in P.HIGH_PURINE_KEYWORDS if " " not in k) or \
             any(k in (name or "").lower() for k in P.HIGH_PURINE_KEYWORDS if " " in k):
@@ -231,7 +230,9 @@ def _all_specials(conn, user_id: int, sync_stores: list[str], week: date) -> lis
 def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None, limit: int | None = None,
                     red_meat_left: float | None = None) -> dict:
     """This week's half-price products in the user's connected stores that fit the health rules: things the user buys first, then
-    lean protein / produce, larger savings first. Red meat is dropped when the week's red-meat budget is used up."""
+    lean protein / produce, larger savings first. Red meat is dropped when the user's own weekly red-meat limit is used up;
+    high-purine items rank lower only for a user with a low purine constraint (nutrition/constraints.py, issue #76)."""
+    diet = diet_constraints.for_user(conn, user_id)
     stores = visible_stores(conn, user_id)
     day = sydney_today()
     week = specials_week(day)
@@ -247,7 +248,7 @@ def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None
         nw = _words(r["name"])
         if qwords and not _hits(qwords, nw):
             continue
-        if _excluded(r["name"], r["category"]):
+        if _excluded(r["name"], r["category"], diet):
             out["excluded"] += 1
             continue
         flags = _flags(r["name"])
@@ -256,7 +257,8 @@ def weekly_specials(conn: psycopg.Connection, user_id: int, q: str | None = None
             continue
         matched = sorted({label for label, words in wanted if _hits(words, nw)})
         v = offer_view(r)
-        items.append((not matched, P.CATEGORY_RANK.get(r["category"], 4), "高嘌呤" in flags, "红肉" in flags,
+        items.append((not matched, P.CATEGORY_RANK.get(r["category"], 4), diet.low_purine and "高嘌呤" in flags,
+                      red_meat_left is not None and "红肉" in flags,
                       -(v["save"] or 0), {**v, "category": r["category"], "flags": flags, "for": matched[:3]}))
     items.sort(key=lambda x: x[:5])
     out["items"] = [x[-1] for x in items[: max(1, min(limit or P.SPECIALS_LIMIT, 50))]]
@@ -282,5 +284,7 @@ def half_price_hits(conn: psycopg.Connection, user_id: int, foods: list[str]) ->
     return out
 
 
-def red_meat_left(summary: dict | None) -> float:
-    return rule_params.RED_MEAT_G_PER_WEEK - float((summary or {}).get("red_meat_g") or 0)
+def red_meat_left(conn: psycopg.Connection, user_id: int, summary: dict | None) -> float | None:
+    """What is left of the user's own weekly red meat limit after this week's plan; None = no limit (issue #76)."""
+    cap = diet_constraints.for_user(conn, user_id).red_meat_g
+    return None if cap is None else cap - float((summary or {}).get("red_meat_g") or 0)

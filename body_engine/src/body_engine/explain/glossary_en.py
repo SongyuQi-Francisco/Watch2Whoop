@@ -195,11 +195,11 @@ STATUS_EN: dict[str, dict] = {
     },
     "red_meat_week": {
         "title": "Red meat (7 days)",
-        "what": "Grams of red meat (beef, lamb, pork) eaten in the last 7 days; journal entries first, otherwise estimated from food logs.",
+        "what": "Grams of red meat (beef, lamb, pork) eaten in the last 7 days; journal entries first, otherwise estimated from food logs. Shown only when you set a red meat limit.",
         "read": [("< 80% of the limit", "Good"), ("80–100%", "Near the limit"), ("> limit", "Over")],
         "recovery": "",
-        "tips": ["Get protein mainly from dairy, eggs, chicken and fish, from varied sources",
-                 "Choose lean cuts of red meat; skip rich meat stews and broths"],
+        "tips": ["Vary your protein: poultry, fish, eggs, dairy and soy in turn",
+                 "Choose lean cuts of red meat"],
     },
     "phase": {
         "title": "Current phase",

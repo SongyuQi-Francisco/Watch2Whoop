@@ -1,4 +1,5 @@
-"""Initial recipe metadata: transcribed from body-management.md (5.2.2, 5.3.1, 5.3.1b, 5.3.2, 2026-10-17 version); the original file is only read, never changed.
+"""Initial recipe metadata for the deployer's own recipe library (body-engine recipes-init, owner only). Recipe notes are about the
+dish; a user's limits (red meat, a food per week, purine, saturated fat) are their own diet constraints (nutrition/constraints.py).
 
 - Dishes map to the 25 meals migrated into SparkyFitness (matched by name).
 - Cooking steps are excerpted from the original only; the original mostly has no prep / cook minutes, so they are estimated as "done in about half an hour" (where the original gives them, use those, e.g. steam 8-10 min, roast 25 min).
@@ -61,7 +62,7 @@ CATALOG: dict[str, tuple] = {
     "黑咖啡": (2, 0.1, 0.3, 0, 0, 0, False, "咖啡豆一袋"),
 }
 
-MAIN = "1 份（不含主食）"  # 5.3.2: main dishes come with mixed brown/white rice 90g (70g on rest days) or potato / sweet potato 250g + vegetables 250g
+MAIN = "1 份（不含主食）"  # main dishes are eaten with a staple (rice, potato / sweet potato) and vegetables
 LUNCH_DINNER = ["lunch", "dinner"]
 
 # Per dish: name in SparkyFitness -> metadata. ingredients is (ingredient, grams[, note]) for the whole pot (servings portions).
@@ -90,7 +91,7 @@ RECIPES: list[dict] = [
     dict(key="yogurt_curry_chicken", name="酸奶咖喱烤鸡", cuisine="印度", slots=LUNCH_DINNER, tags=["鸡肉"],
          prep_min=10, cook_min=25, serving_label=MAIN,
          ingredients=[("去皮鸡腿肉", 200), ("无糖希腊酸奶", 80), ("咖喱粉", 5)],
-         steps=["希腊酸奶 + 咖喱粉腌，烤箱 200°C 25 分钟。", "酸奶对尿酸友好。"]),
+         steps=["希腊酸奶 + 咖喱粉腌，烤箱 200°C 25 分钟。", "酸奶腌过的鸡肉更嫩。"]),
     dict(key="lemon_herb_chicken", name="柠檬香草烤鸡腿", cuisine="地中海", slots=LUNCH_DINNER, tags=["鸡肉", "可备餐"],
          prep_min=10, cook_min=20, serving_label=MAIN,
          ingredients=[("去皮鸡腿肉", 200), ("柠檬蒜迷迭香", 15), ("食用油", 5)],
@@ -124,7 +125,7 @@ RECIPES: list[dict] = [
     dict(key="miso_salmon", name="味噌烤三文鱼", cuisine="日料", slots=LUNCH_DINNER, tags=["鱼", "快手"],
          prep_min=5, cook_min=12, serving_label=MAIN,
          ingredients=[("三文鱼", 180), ("味噌", 15), ("味醂", 8)],
-         steps=["味噌 + 一点味醂抹面，烤 12 分钟。"], note="omega-3 有助降甘油三酯；三文鱼每周最多 2 次。"),
+         steps=["味噌 + 一点味醂抹面，烤 12 分钟。"], note="富含 omega-3。"),
     dict(key="tomato_basa_soup", name="番茄巴沙鱼汤", cuisine="家常", slots=LUNCH_DINNER, tags=["鱼", "汤"],
          prep_min=10, cook_min=15, serving_label=MAIN,
          ingredients=[("巴沙鱼", 200), ("番茄", 200), ("老豆腐", 80), ("食用油", 4)],
@@ -133,7 +134,7 @@ RECIPES: list[dict] = [
     dict(key="chicken_mapo_tofu", name="鸡肉末麻婆豆腐", cuisine="川菜", slots=LUNCH_DINNER, tags=["豆腐", "鸡肉"],
          prep_min=10, cook_min=15, serving_label=MAIN,
          ingredients=[("老豆腐", 200), ("鸡肉末", 80), ("豆瓣酱", 10, "少放"), ("食用油", 5)],
-         steps=["鸡肉末代替牛肉末，豆瓣酱少放。"], note="豆制品适量吃不升尿酸。"),
+         steps=["鸡肉末代替牛肉末，豆瓣酱少放。"], note="豆制品是很好的植物蛋白。"),
     dict(key="pan_fried_tofu_greens", name="香煎豆腐配青菜", cuisine="家常", slots=LUNCH_DINNER, tags=["豆腐", "素食日"],
          prep_min=5, cook_min=15, serving_label=MAIN,
          ingredients=[("老豆腐", 160), ("青菜（菜心 / 芥兰）", 250), ("食用油", 6), ("酱油", 10)],
@@ -152,7 +153,7 @@ RECIPES: list[dict] = [
          ingredients=[("牛肋条", 150, "120–150g 生重，切掉看得见的白色脂肪"), ("葱姜蒜", 30), ("食用油", 5, "葱油酱用油 ≤ 5ml")],
          steps=["牛肋条 120–150g（生重），切掉肉眼可见的白色脂肪。", "用烤箱 / 空气炸锅 / 烤盘让油滴掉；葱油酱用油 ≤ 5ml。",
                 "配大份蔬菜。"],
-         note="每周最多 1 顿（高脂部位，对脂肪肝和甘油三酯不友好）；想多吃就换 rump / topside 切条，同样的盐葱酱。"),
+         note="高脂部位；想吃瘦一点就换 rump / topside 切条，同样的盐葱酱。"),
     dict(key="black_pepper_beef_rump", name="黑椒牛柳（rump）", cuisine="港式", slots=LUNCH_DINNER, tags=["牛肉", "快手"],
          prep_min=10, cook_min=10, serving_label=MAIN,
          ingredients=[("牛肉 rump", 150), ("洋葱彩椒", 150), ("食用油", 8), ("黑椒汁", 15)],
@@ -169,7 +170,7 @@ RECIPES: list[dict] = [
          prep_min=10, cook_min=8, serving_label=MAIN,
          ingredients=[("猪里脊", 150), ("蒜苗", 100), ("食用油", 8), ("酱油", 10)],
          steps=["里脊片 + 蒜苗快炒。"], note="里脊脂肪很低。"),
-    # ---------- combos (5.3.1b busy days, 5.2.2 breakfast) ----------
+    # ---------- combos (busy days, breakfast) ----------
     dict(key="busy_pre_workout", name="忙碌日练前：吐司 + 希腊酸奶 + 香蕉", cuisine="组合", slots=["snack"],
          tags=["忙碌日", "练前", "快手"], prep_min=3, cook_min=0, serving_label="1 份", includes_staple=True, can_make=True,
          ingredients=[("全麦吐司", 70, "2 片"), ("无糖希腊酸奶", 150), ("香蕉", 120, "1 根")],

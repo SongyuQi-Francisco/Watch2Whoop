@@ -2215,12 +2215,11 @@
   const recipePath = () => `/v1/users/${ownerPath()}/recipes`;
 
   const PURINE = { low: [tr("嘌呤低"), "good"], medium: [tr("嘌呤中"), "warn"], high: [tr("嘌呤高"), "bad"] };
-  function recipeBadges(r) {   // health-constraint badges: the body butler's constraint_flags, or ready-made badges
+  function recipeBadges(r) {   // health-constraint badges: ready-made from the server (judged against the user's own diet constraints, #76), else the raw flags
     if (r.badges || r.constraints) return (r.badges || r.constraints).map(badgeOf);
     const f = r.constraint_flags || {}, out = [];
     if (PURINE[f.purine_level]) out.push({ label: PURINE[f.purine_level][0], tone: PURINE[f.purine_level][1] });
     if (f.red_meat_g > 0) out.push({ label: tr("红肉 {n}g", { n: fmtNum(f.red_meat_g) }), tone: "warn" });
-    if (f.short_rib) out.push({ label: tr("牛肋条"), tone: "warn" });
     if (f.sat_fat_level === "high") out.push({ label: tr("饱和脂肪高"), tone: "bad" });
     return out;
   }

@@ -14,8 +14,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
-from ..nutrition import extras
-from ..rules import params as rule_params
+from ..i18n import L
+from ..nutrition import constraints as diet_constraints, extras
 from . import sparky_write
 
 PURINE = ("low", "medium", "high")
@@ -172,14 +172,16 @@ def entry_name(i: dict) -> str:
     return f"{i['food']}（{i['grams']:g}g{extra}）"
 
 
-def red_meat_warning(items: list[dict]) -> str | None:
+def red_meat_warning(items: list[dict], cap: float | None) -> str | None:
+    """Only for a user with a red meat constraint (cap = their g per week, nutrition/constraints.py, issue #76)."""
     g = sum(i.get("red_meat_g") or 0 for i in items)
-    if not g:
+    if not g or cap is None:
         return None
-    cap = rule_params.RED_MEAT_G_PER_WEEK
     names = "、".join(i["food"] for i in items if i.get("red_meat_g"))
-    return (f"{names}是红肉 / 加工肉：这份 {g:g}g，算进每周 ≤ {cap}g 的上限；"
-            f"天天吃一周约 {g * 7:.0f}g" + ("，会超上限" if g * 7 > cap else ""))
+    return L(f"{names}是红肉 / 加工肉：这份 {g:g}g，算进你设的每周 ≤ {cap:g}g；天天吃一周约 {g * 7:.0f}g"
+             + ("，会超上限" if g * 7 > cap else ""),
+             f"{names}: red / processed meat, {g:g} g, counts toward your {cap:g} g a week; every day that is about "
+             f"{g * 7:.0f} g a week" + (", over your limit" if g * 7 > cap else ""))
 
 
 def log_template(conn: psycopg.Connection, user_id: int, template_id: int, day: date | None = None,
@@ -208,7 +210,8 @@ def log_template(conn: psycopg.Connection, user_id: int, template_id: int, day: 
         """INSERT INTO meal_logs (user_id, template_id, date, meal, items, entries, channel)
            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id, created_at""",
         (user_id, tpl["id"], day, tpl["meal"], Jsonb(logged_items), Jsonb(entries), channel)).fetchone()
-    warnings = [w for w in (red_meat_warning(logged_items),
+    cap = diet_constraints.for_user(conn, user_id, day).red_meat_g
+    warnings = [w for w in (red_meat_warning(logged_items, cap),
                             "模板克数还没确认，是估算值" if tpl["needs_confirmation"] else None) if w]
     return {"log_id": row["id"], "template_id": tpl["id"], "name": tpl["name"], "date": day.isoformat(), "time": time,
             "meal": tpl["meal"], "entries": entries, "totals": totals(logged_items),

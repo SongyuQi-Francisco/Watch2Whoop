@@ -499,7 +499,7 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
     hc = conn.execute("SELECT value FROM assistant_profile WHERE user_id = %s AND key = 'health_constraints'", (user_id,)).fetchone()
     summary = conn.execute("SELECT summary FROM shopping_lists WHERE user_id = %s AND week_start = %s",
                            (user_id, lst["week_start"])).fetchone()
-    from ..rules import params as RP
+    from ..nutrition import constraints as diet_constraints
     items, needs = [], []
     for i in lst["items"]:
         if i["bought"]:
@@ -518,6 +518,8 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
         "pantry": [f"{p['name']} {p['label']}" for p in lst.get("pantry", [])],
         "health": {"constraints": (hc["value"][:300] if hc else None),
                    "red_meat_g_planned": (summary["summary"] or {}).get("red_meat_g") if summary else None,
-                   "red_meat_cap_g_week": RP.RED_MEAT_G_PER_WEEK, "warnings": [w["label"] for w in lst["warnings"]]},
+                   # the user's own limits (nutrition/constraints.py, issue #76); [] = none
+                   "diet_constraints": [c["text"] for c in diet_constraints.listing(conn, user_id)["constraints"]],
+                   "warnings": [w["label"] for w in lst["warnings"]]},
         "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS],
     }
