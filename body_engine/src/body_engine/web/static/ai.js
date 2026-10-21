@@ -1,5 +1,5 @@
 /* AI integration for the Today page (docs/ai-assistant-plan.md §9). Separate from app.js, which calls into this file in only 3 places:
-   1. After startup BodyAI.init(ctx): ctx = { api, openSheet, closeSheet, toast, esc, refresh, me, ai, assistantUrl }
+   1. After startup BodyAI.init(ctx): ctx = { api, openSheet, closeSheet, toast, esc, refresh, page, isSelf, me, ai, assistantUrl }
    2. "Ask the butler" (「问管家」): when BodyAI.handlesAsk() is true (the default provider is an API type) open the in-page chat panel, otherwise keep the original redirect
    3. "AI settings" (「AI 设置」) on the Me page: BodyAI.openSettings(), BodyAI.settingsValue()
    Endpoints: /v1/users/me/ai-providers, /v1/users/me/ai-tokens, POST /v1/assistant/chat (SSE), POST /v1/assistant/chat/confirm (SSE),
@@ -313,6 +313,7 @@
       <div class="ai-usage small muted" id="ai-quota" hidden></div>
       <div class="panel-body ai-log" id="ai-log"></div>
       <div class="ai-thumbs" id="ai-thumbs"></div>
+      <div class="ai-quick-row" id="ai-quick-row" hidden></div>
       <div class="ai-rec" id="ai-rec" hidden><span class="ai-rec-dot"></span><span id="ai-rec-time">0:00</span><span class="small" id="ai-rec-hint">${esc(tr("松开识别 · 上滑取消"))}</span></div>
       <form class="ai-composer" id="ai-form" autocomplete="off">
         <label class="close ai-attach" id="ai-photo" aria-label="${esc(tr("照片"))}"><input type="file" accept="image/*" id="ai-file" multiple hidden>${ICON.photo}</label>
@@ -344,6 +345,7 @@
     p.hidden = false;
     requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add("open")));
     if (!$("#ai-log", p).children.length) hello();
+    drawQuick();
     setTimeout(() => $("#ai-text", p).focus(), 300);
   }
   function header() {
@@ -353,7 +355,43 @@
     $("#ai-photo", p).hidden = $("#ai-video", p).hidden = C.ai?.vision === false;
   }
   function newConversation() {
-    chat.conv = null; $("#ai-log").innerHTML = ""; hello();
+    chat.conv = null; $("#ai-log").innerHTML = ""; hello(); drawQuick();
+  }
+
+  // Quick tasks for the page Jarvis was opened from (#101): before the first message under the greeting, afterwards a
+  // scrollable row above the input. write: changes data (hidden while viewing someone else); photo: opens the photo picker.
+  function quickList() {
+    const page = C.page?.() || "today", tab = page.split(".")[0];
+    const Q = {
+      today: [{ t: tr("今天适合练吗") }, { t: tr("解释一下今天的恢复分") }, { t: tr("昨晚睡得怎么样") }],
+      trends: [{ t: tr("复盘这一周") }, { t: tr("最近负荷是不是太高") }, { t: tr("最近睡得够吗") }],
+      "record.journal": [{ t: tr("最近哪些习惯影响恢复") }, { t: tr("记一下今天的状态"), write: true }],
+      "record.training": [{ t: tr("今天练什么") }, { t: tr("这周按恢复调整一下"), write: true }],
+      food: [{ t: tr("拍照记一餐"), write: true, photo: true }, { t: tr("今天还差多少蛋白") }, { t: tr("下一餐吃什么合适") }],
+      "food.shopping": [{ t: tr("按下周菜单列清单并查价"), write: true }, { t: tr("这周有什么半价适合我") }],
+      me: [{ t: tr("我的数据都共享给了谁") }, { t: tr("你都记得我哪些事") }],
+    };
+    const self = C.isSelf ? C.isSelf() : true;
+    return (Q[page] || Q[tab] || Q.today).filter((q) => (self || !q.write) && !(q.photo && C.ai?.vision === false));
+  }
+  function drawQuick() {
+    const p = panel(), list = quickList(), started = !!$(".ai-msg.user", p), row = $("#ai-quick-row", p);
+    $("#ai-quick", p)?.remove();
+    const html = list.map((q, i) => `<button type="button" class="ai-q" data-q="${i}">${esc(q.t)}</button>`).join("");
+    row.innerHTML = started ? html : ""; row.hidden = !started || !list.length; row.scrollLeft = 0;
+    if (!started && list.length) {
+      const box = document.createElement("div"); box.id = "ai-quick"; box.className = "ai-quick"; box.innerHTML = html;
+      $("#ai-log", p).appendChild(box);
+    }
+    $$("[data-q]", p).forEach((b) => { b.onclick = () => askQuick(list[Number(b.dataset.q)]); });
+  }
+  function askQuick(q) {
+    if (chat.busy) return;
+    const ta = $("#ai-text");
+    if (q.photo) { ta.value = q.t; $("#ai-file").click(); return; }  // the user sends once the photo is attached
+    const draft = ta.value;
+    ta.value = q.t; send();
+    ta.value = draft;  // send() has taken the question synchronously; keep what the user was typing
   }
 
   // Quick switch in the chat panel: same options as AI settings. An in-page AI (API / fallback) starts a new conversation here;
@@ -515,6 +553,7 @@
     if (tags) text = `${tags}${text ? "\n" : ""}${text}`;
     const shown = [photos.length ? tr("［图片 {n} 张］", { n: photos.length }) : "", tags].filter(Boolean).join("");
     bubble("user", (ta.value.trim() + (shown ? `${ta.value.trim() ? "\n" : ""}${shown}` : "")));
+    if ($("#ai-quick")) drawQuick();  // first message: the quick tasks move to the row above the input
     ta.value = ""; ta.style.height = "auto";
     await stream("/v1/assistant/chat", { message: text, images, conversation_id: chat.conv });
   }

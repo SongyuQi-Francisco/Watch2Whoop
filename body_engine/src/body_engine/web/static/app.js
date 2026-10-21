@@ -78,6 +78,9 @@
   const todayKey = (day = viewDay()) => `today${day && day !== S.todayDate ? day : ""}`;
   const ownerPath = () => (S.owner === S.me?.id ? "me" : String(S.owner));
   const isSelf = () => S.owner === S.me?.id;
+  // The page Jarvis is opened from (#101): the tab, plus its sub-page where it has one. Same ids as the chat request's `page` (#99).
+  const pageId = () => ({ trends: `trends.${S.trendsMode}`, record: `record.${S.recSub}`,
+    food: S.foodMode === "shopping" ? "food.shopping" : S.foodSub === "recipes" ? "food.recipes" : "food.diet" })[S.tab] || S.tab;
   const dash = () => `<span class="dash">—</span>`;
   // The UI only shows numbers and short words; the backend's original reasons / explanations are left for the butler (read via API / MCP), here they are mapped to one- or two-character labels
   // The regexes match the server's Chinese reasons (and English ones, should a reason come back in English)
@@ -2978,7 +2981,7 @@
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
-    window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
+    window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
