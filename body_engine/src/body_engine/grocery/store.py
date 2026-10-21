@@ -367,8 +367,12 @@ def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> lis
         if not isinstance(q, (int, float)) or q < 0:
             raise ValueError(f"{name}：quantity 要是 ≥ 0 的数")
         pid = it.get("product_id")
-        if pid is not None:
-            _product_row(conn, user_id, pid)
+        if pid is not None:   # must be this user's; a product removed meanwhile (e.g. undoing 用完了) just drops the link
+            prod = conn.execute("SELECT active FROM grocery_products WHERE id = %s AND user_id = %s", (pid, user_id)).fetchone()
+            if prod is None:
+                raise LookupError("没有这个商品（或不是你的）")
+            if not prod["active"]:
+                pid = None
         if q == 0:
             conn.execute("DELETE FROM pantry_items WHERE user_id = %s AND lower(name) = lower(%s)", (user_id, name))
             continue
