@@ -126,6 +126,8 @@ def main() -> None:
     wk.add_argument("--start", type=date.fromisoformat, help="start from this day (user local date), default all history")
     wk.add_argument("--end", type=date.fromisoformat, help="up to and including this day, default today")
 
+    sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
+    sr.add_argument("--user-id", type=int, default=None)
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -351,6 +353,9 @@ def main() -> None:
         elif args.cmd == "import-workouts":
             print(json.dumps(workouts_importer.import_ow(conn, OWClient(), args.user_id, args.start, args.end),
                              default=str, ensure_ascii=False))
+        elif args.cmd == "sync-refresh-run":
+            from .sync import refresh as sync_refresh
+            print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,

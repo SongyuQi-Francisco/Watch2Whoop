@@ -24,6 +24,7 @@ from .insights.api import router as insights_router
 from .records.api import router as records_router
 from .rules.api import router as rules_router
 from .goals.api import router as goals_router
+from .sync.api import router as sync_router
 from .history.api import router as history_router
 from .profile.api import router as profile_router
 from .explain.api import router as explain_router
@@ -145,6 +146,7 @@ app.include_router(explain_router)
 app.include_router(rawdata_router)
 app.include_router(cardio_router)
 app.include_router(account_api.router)
+app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
 web_api.install(app)

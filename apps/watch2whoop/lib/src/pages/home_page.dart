@@ -19,6 +19,7 @@ import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
+import '../sync_on_open.dart';
 import '../ui.dart';
 import 'permissions_page.dart';
 import 'sync_page.dart';
@@ -46,6 +47,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   DateTime _loadedAt = DateTime.fromMillisecondsSinceEpoch(0);
   String? _error;
   bool _loading = true;
+
+  /// Sync on open (sync_on_open.dart): one round on cold start and on every return to the foreground (throttled), then the
+  /// Today page asks the server for the new data (web/static/sync.js) and shows 「同步中… / 已更新」.
+  late final SyncOnOpen _syncOnOpen = SyncOnOpen(
+    canSync: () {
+      final c = AppState.instance.config;
+      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn;
+    },
+    startRound: () async {
+      await HealthSync.instance.startSync(AppState.instance.config.syncDaysBack);
+    },
+    isSyncing: () async => (await HealthSync.instance.status()).isSyncing,
+    onDone: _afterSyncRound,
+  );
+
+  Future<void> _afterSyncRound() async {
+    await HealthSync.instance.drainNativeLog();
+    for (var i = 0; i < 10 && mounted && (_loading || _error != null); i++) {
+      await Future<void>.delayed(const Duration(seconds: 1)); // the page may still be loading on a cold start
+    }
+    if (!mounted || _error != null) return;
+    try {
+      await _web.runJavaScript("window.BodySync && window.BodySync.refresh('app');");
+    } catch (e) {
+      debugPrint('sync refresh call failed: $e');
+    }
+  }
 
   /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
   bool _checkLogin = false;
@@ -105,6 +133,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
+      _syncOnOpen.trigger(); // cold start
       // Someone who was never asked for Health (e.g. updated from a build without the permissions step): show it once
       if (shouldShowPermissions(AppState.instance.config)) {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionsPage()));
@@ -169,6 +198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
+    _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
     // ran its script), so try again, but not while a load that just started may still be redeeming the code.
     if (AppState.instance.config.pendingLoginCode != null && DateTime.now().difference(_loadedAt) > const Duration(seconds: 20)) _load();
