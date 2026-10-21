@@ -248,6 +248,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     # ---- circles (friends/)
     ("不认识的共享范围：{}", "Unknown sharing scope: {}"),
     ("不认识的鼓励：{}", "Unknown cheer: {}"),
+    ("排行榜只能是 {}", "Board must be one of: {}"),
     ("圈子名称 1–{} 字", "Circle name: 1–{} characters"),
     ("最多加入 {} 个圈子", "You can be in at most {} circles"),
     ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),

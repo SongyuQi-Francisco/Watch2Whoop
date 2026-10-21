@@ -58,7 +58,8 @@ def _scores_block(conn, uid: int, today) -> dict:
 
 
 def _trained_today(conn, uid: int, today) -> bool:
-    return conn.execute("SELECT 1 FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL LIMIT 1",
+    return conn.execute("""SELECT 1 FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
+                           AND excluded IS NULL LIMIT 1""",
                         (uid, today)).fetchone() is not None
 
 

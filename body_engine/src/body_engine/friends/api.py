@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..records.api import _self, current_user, get_conn
 from ..web import login_limit
-from . import cards, params as P, store
+from . import cards, leaderboard, params as P, store
 
 router = APIRouter(prefix="/v1/friends", tags=["friends"])
 _failures = login_limit.Limiter(P.JOIN_MAX_FAILURES, P.JOIN_WINDOW_SECONDS)
@@ -150,3 +150,11 @@ def member_cards(conn=Depends(get_conn), viewer=Depends(current_user)):
 @router.post("/nudges")
 def nudge(body: NudgeIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     return _run(cards.nudge, conn, _self(viewer, "me"), body.to, body.kind)
+
+
+@router.get("/leaderboard")
+def leaderboard_board(board: str = "body", conn=Depends(get_conn), viewer=Depends(current_user)):
+    """One board (body / activity / lifestyle / recomp / longevity): me + circle members, ranked among those who share."""
+    if board not in P.BOARDS:
+        raise HTTPException(400, f"排行榜只能是 {', '.join(P.BOARDS)}")
+    return leaderboard.board(conn, viewer["id"], board)
