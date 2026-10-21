@@ -77,6 +77,8 @@ The conversation flows were run with `claude -p` inside `assistant/` (same CLAUD
 - Mac fallback: `deploy/assistant/butler.py status`; logs `health_data/assistant/butler-*.log`.
 
 ## Gemini CLI in `assistant/` (Google AI plan)
+> **Since 2026-06-18 Google no longer serves Gemini CLI to Google AI Pro / Ultra (and free individual) sign-ins**; only enterprise Gemini Code Assist accounts and paid API keys keep it. With a consumer plan this setup no longer works; the replacement would be Antigravity CLI (`agy`), not wired in yet (`docs/ai-assistant-plan.md` 9.15).
+
 For an owner who uses a Google AI plan instead of, or next to, a Claude subscription:
 - `assistant/.gemini/settings.json`: persona from `GEMINI.md`, which imports `CLAUDE.md` (a `CLAUDE.md` file name would also load the repository's developer notes one directory up); remote MCP `${BODY_MCP_URL}` with `Bearer ${BODY_AI_TOKEN}`; built-in tools excluded; a `BeforeAgent` hook adds the local time as `additionalContext`.
 - `assistant/.gemini/policies/butler.toml`: body-engine tools allowed, the 5 delete / undo tools (`ALWAYS_CONFIRM`) ask (denied when non-interactive), built-in tools denied; `tests/test_butler.py` checks it against `ALWAYS_CONFIRM`.

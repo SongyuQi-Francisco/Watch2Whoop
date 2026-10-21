@@ -73,7 +73,7 @@ def resolve_provider(conn: psycopg.Connection, user_id: int, need_quota: bool = 
                                          "No AI set up yet: pick a provider in Me → AI settings"))
     if catalog.is_mcp(row["kind"]):
         client = {"claude_plan_mcp": "Claude app / Claude Code", "codex_plan_mcp": "Codex",
-                  "gemini_plan_mcp": "Gemini CLI / Antigravity"}.get(row["kind"], L("你的 AI 客户端", "your AI client"))
+                  "gemini_plan_mcp": "Antigravity"}.get(row["kind"], L("你的 AI 客户端", "your AI client"))
         name = catalog.display_name(row)
         raise ChatError("subscription", L(f"你用的是订阅（{name}）：请在 {client} 里和身体管家对话（已连上 Body Engine 的 MCP）",
                                           f"You use a subscription ({name}): talk to Jarvis in {client} "

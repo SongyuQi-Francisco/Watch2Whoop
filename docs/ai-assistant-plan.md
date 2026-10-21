@@ -313,3 +313,13 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 **验证**：`tests/test_ai.py`：订阅重定向、默认关闭（看不到、建不了、关掉后旧行不用）、只给部署者、免费额度不被预算拦、Gemini 缓存用量拆分；服务端适配器用一个假的 `gemini` 可执行文件测 argv（不含对话）、stdin、环境变量白名单、临时目录内容、`@` 中和、工具标签不流给用户、错误分类不带原文。真实 Gemini CLI 端到端没有在 CI 里跑（会用到真实账号）；参数对照 Gemini CLI 0.39 的源码核对过。
 
 **以后**：Gemini CLI 的常驻远程会话（类似 `claude remote-control`）出了再接进 `butler.py`；家人各自的 Google 登录不在服务器上做（用订阅 MCP 或自己的 API key）。
+
+#### 9.15 Google AI Pro / Ultra 订阅怎么接（2026-10-21 按 Google 官方文档核实）
+- **订阅**：Google AI Pro / AI Ultra（原 Google One AI Premium / Gemini Advanced），Google One 普通存储套餐不算。
+- **Gemini CLI**：2026-06-18 起不再给 AI Pro / Ultra 和免费个人账号提供服务，只剩企业版 Gemini Code Assist 和付费 Gemini API key（[Google Developers Blog](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)）。所以「连接客户端」里的 Gemini CLI 只对付费 API key 有用；服务端 `gemini_cli`（故意只走订阅登录）和管家的 Gemini 版本对个人订阅已经不能用。
+- **Antigravity**（桌面版 / IDE / CLI `agy`）是订阅用户现在的客户端。有免费个人档（按周算额度），Pro / Ultra 额度更高。远程 MCP 写在 `~/.gemini/config/mcp_config.json`（或项目里的 `.agents/mcp_config.json`），格式是 `serverUrl` + `headers`（不认 `url` / `httpUrl`），也支持 OAuth / DCR（[Antigravity MCP 文档](https://antigravity.google/docs/mcp/)）。配置里的 `${VAR}` 据第三方说不会展开，所以我们给的命令让 shell 把 token 填进去。还没关的 bug：[antigravity-cli#71](https://github.com/google-antigravity/antigravity-cli/issues/71)（工具能列出来但调不动，维护者建议升级到 v1.2.9 并用 `~/.gemini/config`）。**`/mcp` + Bearer 现在就能接。**
+- **Gemini 网页 / 手机 app 的自定义应用**（Connected Apps → Custom apps，只能在 gemini.google.com 添加）：18 岁以上、**人在美国**、只支持英文、个人账号、要开 Keep Activity（[Gemini Apps Help](https://support.google.com/gemini/answer/17209137)）。鉴权：服务器支持 OAuth 动态客户端注册就不用填；不支持就在 Advanced features 里填凭据，没有静态 Bearer 头的选项。`/mcp` 现在接不上。
+- **地区**：澳洲能用 Antigravity 和 AI Pro，Gemini app 的自定义应用不行；中国大陆 Gemini 只有 Workspace（[Gemini 网页版可用地区](https://support.google.com/gemini/answer/13575153)），AI Pro / Antigravity 不开放，网络也连不上，中国用户还是用托底 AI 或 DeepSeek 等 API。
+- **没做（要做的话另开 PR）**：
+  1. `/mcp` 加 MCP 标准的 OAuth 2.1：protected resource / authorization server metadata、DCR `/register`、`/authorize`（复用今天页登录 + 同意页）、`/token`（PKCE、refresh token，发的仍是 mcp scope 的 AI token，可吊销）、401 + `WWW-Authenticate`；现有 Bearer token 照常可用。约 2–3 天。Gemini app 只对美国用户有意义，但 Claude 网页 / 手机连接器、ChatGPT 连接器也走 OAuth。
+  2. 服务端 `gemini_cli` 和管家 Gemini 版本：改用 Antigravity CLI 或下线。
