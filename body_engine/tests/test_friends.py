@@ -3,6 +3,7 @@ dissolve, shares.circle_scopes kept apart from hand-made grants, cross-user acce
 after leaving, never ECGs), consent gate, invite limits, the referral hook (#57) and account deletion.
 Test database body_test_friends (BODY_TEST_DB_NAME_FRIENDS), recreated on every run; skipped without Postgres."""
 import os
+from datetime import timedelta
 
 import psycopg
 import pytest
@@ -322,3 +323,83 @@ def test_account_deletion_passes_circles_on(client, world, dsn):
         assert auth.can_view(conn, ids["Cat"], ids["Ben"], "scores")
         assert conn.execute("SELECT count(*) AS n FROM shares WHERE owner_id = %s OR viewer_id = %s",
                             (gone, gone)).fetchone()["n"] == 0
+
+
+# ---------------------------------------------------------------- Friends tab: member cards and cheers (PR B)
+def _scores(dsn, uid, days=8, recovery=70, strain=10.0, workout_today=False):
+    from body_engine.web import views
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        today = views.local_today(conn, uid)
+        for i in range(days):
+            conn.execute("""INSERT INTO daily_scores (user_id, date, recovery, strain, sleep_score, sleep_actual_min, algo_version)
+                            VALUES (%s, %s, %s, %s, 80, 420, 't') ON CONFLICT (user_id, date) DO NOTHING""",
+                         (uid, today - timedelta(days=i), recovery, strain))
+        if workout_today:
+            conn.execute("""INSERT INTO workouts (user_id, source, external_id, type, name_zh, local_date, start_at, end_at, duration_min)
+                            VALUES (%s, 'shortcut', %s, 'running', '跑步', %s, now(), now(), 30)""", (uid, f"t{uid}", today))
+        return today
+
+
+def test_cards_show_only_shared_blocks(client, world, dsn):
+    ids, tok = world
+    a, b = ids["Ann"], ids["Ben"]
+    _scores(dsn, a, recovery=80, workout_today=True)
+    _scores(dsn, b, recovery=30)
+    code = circle(client, tok["Ann"])["invite"]["code"]
+    join(client, tok["Ben"], code, ["sleep"])
+    ov = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()
+    assert ov["has_circles"] and ov["me"]["self"] and ov["me"]["scores"]["recovery"] == 30
+    ann = ov["members"][0]
+    assert ann["display_name"] == "Ann" and ann["circles"] == ["家"]
+    assert ann["scores"]["recovery"] == 80 and ann["scores"]["zone"] == "green" and ann["scores"]["synced_today"]
+    assert len(ann["scores"]["week"]) == 7 and ann["trained"] is True and ann["hidden"] == []
+    # Ben shares only sleep: Ann sees his name and nothing else
+    ben = client.get("/v1/friends/overview", headers=h(tok["Ann"])).json()["members"][0]
+    assert ben["scores"] is None and ben["trained"] is None and set(ben["hidden"]) == {"scores", "training"}
+    assert ben["shared"] == ["sleep"]
+    # English labels for the page
+    en = client.get("/v1/friends/overview", headers=h(tok["Ben"]) | {"X-Body-Lang": "en"}).json()
+    assert en["members"][0]["scores"]["label"] == "Ready to push"
+    # an ECG grant never shows up as shared, even a hand-made one
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE shares SET scopes = '{ecg}' WHERE owner_id = %s AND viewer_id = %s", (a, b))
+    assert "ecg" not in client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["shared"]
+    # after leaving: no card at all
+    cid = client.get("/v1/friends", headers=h(tok["Ben"])).json()["circles"][0]["id"]
+    client.delete(f"/v1/friends/circles/{cid}/me", headers=h(tok["Ben"]))
+    ov = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()
+    assert ov["members"] == [] and not ov["has_circles"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM daily_scores"); conn.execute("DELETE FROM workouts")
+
+
+def test_cards_last_sync_when_today_is_empty(client, world, dsn):
+    from body_engine.web import views
+    ids, tok = world
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        today = views.local_today(conn, ids["Ann"])
+        conn.execute("INSERT INTO daily_scores (user_id, date, recovery, algo_version) VALUES (%s, %s, 50, 't')",
+                     (ids["Ann"], today - timedelta(days=3)))
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    s = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["scores"]
+    assert s["recovery"] is None and not s["synced_today"] and s["last_date"] == str(today - timedelta(days=3))
+    assert [d["zone"] for d in s["week"]].count("yellow") == 1
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM daily_scores")
+
+
+def test_nudges_once_a_day_and_only_inside_circles(client, world, dsn):
+    ids, tok = world
+    a = ids["Ann"]
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    send = lambda t, to, kind: client.post("/v1/friends/nudges", headers=h(tok[t]), json={"to": to, "kind": kind})
+    assert send("Ben", a, "clap").json() == {"sent": ["clap"]}
+    assert send("Ben", a, "clap").status_code == 409
+    assert send("Ben", a, "sleep").json() == {"sent": ["clap", "sleep"]}
+    assert send("Ben", a, "hug").status_code == 400
+    assert send("Cat", a, "clap").status_code == 404            # not in a circle with Ann
+    assert send("Ann", a, "clap").status_code == 404            # not to oneself
+    assert client.post("/v1/friends/nudges", headers=h(tok["ann_ro"]), json={"to": ids["Ben"], "kind": "clap"}).status_code == 403
+    assert client.get("/v1/friends/overview", headers=h(tok["Ann"])).json()["me"]["received"] == \
+        {"clap": ["Ben"], "sleep": ["Ben"], "train": []}
+    assert client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["sent"] == ["clap", "sleep"]

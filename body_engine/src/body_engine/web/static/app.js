@@ -21,13 +21,16 @@
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
+  const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
   const ZONE = { green: "good", yellow: "mid", red: "bad" };
   const ZONE_LABEL = { green: tr("绿"), yellow: tr("黄"), red: tr("红") };
   const LEVEL = { alert: "bad", warning: "mid", info: "" };
   const CATEGORY = { supplement: tr("补剂"), diet: tr("饮食"), training: tr("训练"), lifestyle: tr("生活"), symptom: tr("症状") };
   const EVENT_CATEGORY = { symptom: tr("症状"), injury: tr("受伤 / 疼痛"), medical: tr("就医 / 体检"), posture: tr("体态"), other: tr("其他") };
   const SUPP_STATUS = { active: tr("在吃"), as_needed: tr("按需"), paused: tr("已暂停"), stopped: tr("已停"), not_needed: tr("不需要") };
-  const TABS = { today: tr("tab.today"), trends: tr("tab.trends"), food: tr("tab.food"), record: tr("tab.record"), me: tr("tab.me") };
+  // 饮食 (food) is a segment of 记录 since the Friends tab (docs/friends-social-plan.md §3.1): S.tab "food" draws the food
+  // page with the record segments on top and keeps 记录 highlighted in the tab bar
+  const TABS = { today: tr("tab.today"), trends: tr("tab.trends"), friends: tr("tab.friends"), food: tr("tab.food"), record: tr("tab.record"), me: tr("tab.me") };
   const DATED = new Set(["today", "trends", "food"]);   // tabs that follow the selected date (top date opens the month calendar)
   const WIDE = window.matchMedia("(min-width: 1024px)");   // desktop wide screen: left navigation, multiple columns, bigger charts
   const LOAD_FLAGS = ["no_raw_hr", "load_missing", "day_in_progress", "hr_coverage_low", "prev_strain_missing", "muscle_load_unavailable"];
@@ -52,8 +55,9 @@
     me: null, viewable: [], owner: null, tab: "today", todayDate: null,
     viewDate: DATE_PARAM,   // the date the Today / Trends / Food pages are viewing; null = today
     pickMonth: null,        // the month the date picker is viewing, YYYY-MM
-    recordDay: 0, recSub: (() => { try { return localStorage.getItem("be.recSub") === "training" ? "training" : "journal"; } catch (e) { return "journal"; } })(), showAll: false, trendsDays: (() => { try { const v = Number(localStorage.getItem("be.trendsDays")); return [7, 30, 90, 180, 365].includes(v) ? v : 30; } catch (e) { return 30; } })(), trendsMode: "metrics", data: {}, offlineAt: null,
+    recordDay: 0, recSub: (() => { try { const v = localStorage.getItem("be.recSub"); return ["training", "food"].includes(v) ? v : "journal"; } catch (e) { return "journal"; } })(), showAll: false, trendsDays: (() => { try { const v = Number(localStorage.getItem("be.trendsDays")); return [7, 30, 90, 180, 365].includes(v) ? v : 30; } catch (e) { return 30; } })(), trendsMode: "metrics", data: {}, offlineAt: null,
     assistantUrl: null, version: null,
+    backTab: "friends",     // where 「返回」 on the read-only banner goes (viewing a friend's pages)
     mealLogs: {},
     calMonth: null,
     foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
@@ -229,8 +233,11 @@
 
   // ------------------------------------------------------------------ page switching
   function setTab(tab) {
+    if (tab === "record" && S.recSub === "food") tab = "food";
+    if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     S.tab = tab;
-    for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === tab ? "page" : "false");
+    const lit = tab === "food" ? "record" : tab;
+    for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
     try { localStorage.setItem("be.tab", tab); } catch (e) { /* private mode */ }
     window.scrollTo(0, 0);
     render();
@@ -256,6 +263,13 @@
     btn.hidden = S.viewable.length < 2;
     btn.textContent = (who?.display_name || "?").slice(0, 1).toUpperCase();
     btn.classList.toggle("other", !!who && !who.self);
+    const ro = $("#viewing"), other = !!who && !who.self;
+    $(".dock").classList.toggle("viewing-other", other);   // no AI chat on someone else's pages
+    ro.hidden = !other || S.tab === "friends";
+    if (other) {
+      ro.innerHTML = `<span>${esc(tr("正在查看：{name}（只读）", { name: who.display_name }))}</span><button type="button" id="viewing-back">${esc(tr("返回"))}</button>`;
+      $("#viewing-back").onclick = () => { S.owner = S.me.id; setTab(S.backTab || "friends"); };
+    }
     window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
   }
   $("#who").onclick = () => whoSheet();
@@ -1641,11 +1655,16 @@
     return `<button class="tag ${v === 1 ? "on" : v === 0 ? "no" : ""}" data-jkey="${esc(it.key)}" aria-pressed="${v === 1}" ${self ? "" : "disabled"}><span>${esc(shortLabel(it))}</span></button>`;
   }
 
-  const RENDER_record = async () => {
-    const sub = `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${[["journal", tr("日记")], ["training", tr("训练")]]
-      .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${S.recSub === k}">${t}</button>`).join("")}</div></div>`;
-    return sub + (S.recSub === "training" ? await trainingPageHtml() : await journalPageHtml());
-  };
+  const recSeg = () => `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${[["journal", tr("日记")], ["training", tr("训练")], ["food", tr("饮食")]]
+    .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${S.recSub === k}">${t}</button>`).join("")}</div></div>`;
+  function bindRecSeg(view) {
+    for (const b of $$("[data-rsub]", view)) b.onclick = () => {
+      S.recSub = b.dataset.rsub;
+      try { localStorage.setItem("be.recSub", S.recSub); } catch (e) { /* private mode */ }
+      setTab("record");
+    };
+  }
+  const RENDER_record = async () => recSeg() + (S.recSub === "training" ? await trainingPageHtml() : await journalPageHtml());
 
   const journalPageHtml = async () => {
     const today = S.todayDate;
@@ -1753,12 +1772,7 @@
   }
 
   function afterRecord(view) {
-    for (const b of $$("[data-rsub]", view)) b.onclick = () => {
-      S.recSub = b.dataset.rsub;
-      try { localStorage.setItem("be.recSub", S.recSub); } catch (e) { /* private mode */ }
-      window.scrollTo(0, 0);
-      render();
-    };
+    bindRecSeg(view);
     if (S.recSub === "training") { afterTraining(view); return; }
     for (const b of $$("[data-rday]", view)) b.onclick = () => { S.recordDay = Number(b.dataset.rday); render(); };
     const all = $("#show-all", view);
@@ -2401,7 +2415,7 @@
 
   const RENDER_food = async () => {
     if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
-    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
+    const seg = recSeg() + `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
       + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
       const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
@@ -2426,6 +2440,7 @@
 
   function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe, b.dataset.slot); }
   function afterFood(view) {
+    bindRecSeg(view);
     for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; S.foodSub = null; render(); };
     PLUGINS().forEach((p) => p.bindFoodTop?.(view));
     if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
@@ -2442,8 +2457,79 @@
     };
   }
 
-  const RENDER = { today: RENDER_today, trends: RENDER_trends, food: RENDER_food, record: RENDER_record, me: RENDER_me };
-  const AFTER = { today: afterToday, trends: afterTrends, food: afterFood, record: afterRecord, me: afterMe };
+  // ------------------------------------------------------------------ friends (friends/cards.py, docs/friends-social-plan.md §3.3 / §3.5)
+  // Member cards: today (status label, recovery / sleep / strain, trained, last sync) + 7 recovery dots and 7 strain bars;
+  // a block the person did not share is not drawn. Tap a card → that person's pages, read-only, with the banner on top.
+  const NUDGE = { clap: "👏", sleep: "💤", train: "💪" };
+  const NUDGE_LABEL = { clap: tr("棒"), sleep: tr("早点睡"), train: tr("一起练") };
+  function weekSvg(week) {
+    const w = 300, h = 40, step = w / 7, top = Math.max(14, ...week.map((d) => d.strain || 0));
+    let g = "";
+    week.forEach((d, i) => {
+      const cx = step * i + step / 2;
+      g += `<circle class="fd-dot ${d.zone ? ZONE[d.zone] : "none"}" cx="${cx.toFixed(1)}" cy="6" r="4.5"><title>${esc(shortDay(d.date))}${d.recovery != null ? ` · ${d.recovery}` : ""}</title></circle>`;
+      const bh = d.strain ? Math.max(2, (d.strain / top) * 22) : 0;
+      if (bh) g += `<rect class="fd-bar" x="${(cx - 5).toFixed(1)}" y="${(h - bh).toFixed(1)}" width="10" height="${bh.toFixed(1)}" rx="2"/>`;
+    });
+    return `<svg class="fd-week" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(tr("最近 7 天"))}">${g}</svg>`;
+  }
+  function friendCard(m, kinds) {
+    const sc = m.scores;
+    const nums = sc ? `<div class="fd-nums">
+        <span><b class="${sc.zone ? `tone-${ZONE[sc.zone]}` : ""}">${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
+        <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
+        <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span></div>${weekSvg(sc.week)}` : `<p class="fd-none">${esc(tr("未共享"))}</p>`;
+    const tagsH = [];
+    if (sc?.label) tagsH.push(badge(ZONE[sc.zone] || "plain", sc.label));
+    if (m.trained) tagsH.push(badge("plain", tr("已训练")));
+    if (sc && !sc.synced_today) tagsH.push(badge("plain", sc.last_date ? tr("上次同步 {d}", { d: shortDay(sc.last_date) }) : tr("未同步")));
+    const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
+    const cheers = m.self
+      ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
+      : `<div class="fd-cheer">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
+    return `<div class="card fd-card${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
+      <div class="fd-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
+      ${tagsH.length ? `<div class="rcard-tags">${tagsH.join("")}</div>` : ""}${nums}${cheers}</div>`;
+  }
+  const RENDER_friends = async () => {
+    const ov = await api("/v1/friends/overview");
+    S.data.friends = ov;
+    const manage = `<div class="toolbar fd-bar-top"><button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
+    if (!ov.has_circles) {
+      return `${manage}<div class="empty">${esc(tr("还没有圈子"))}<div class="btns"><button class="btn btn-primary" id="fd-new">${esc(tr("建圈子"))}</button><button class="btn" id="fd-join">${esc(tr("用邀请码加入"))}</button></div></div>`;
+    }
+    const kinds = ov.nudge_kinds || Object.keys(NUDGE);
+    return `${manage}<div class="fd-grid">${[ov.me, ...ov.members].map((m) => friendCard(m, kinds)).join("")}</div>`;
+  };
+  function viewMember(id) {
+    S.owner = id; S.backTab = "friends";
+    setTab("today");
+  }
+  function afterFriends(view) {
+    window.BodyCircles && (window.BodyCircles.onChange = () => { S.data = {}; refresh(); });
+    const c = $("#fd-circles", view);
+    if (c) c.onclick = () => window.BodyCircles?.open();
+    const n = $("#fd-new", view), j = $("#fd-join", view);
+    if (n) n.onclick = () => window.BodyCircles?.open();
+    if (j) j.onclick = () => window.BodyCircles?.open();
+    for (const el of $$("[data-member]", view)) {
+      el.onclick = (e) => { if (!e.target.closest("[data-nudge]")) viewMember(Number(el.dataset.member)); };
+      el.onkeydown = (e) => { if (e.key === "Enter") viewMember(Number(el.dataset.member)); };
+    }
+    for (const b of $$("[data-nudge]", view)) b.onclick = async (e) => {
+      e.stopPropagation();
+      if (b.getAttribute("aria-pressed") === "true") return;
+      try {
+        await api("/v1/friends/nudges", { method: "POST", body: { to: Number(b.dataset.to), kind: b.dataset.nudge } });
+        b.setAttribute("aria-pressed", "true");
+        toast(tr("已发送"));
+      } catch (err) { toast(err.message); }
+    };
+  }
+
+  const RENDER = { today: RENDER_today, trends: RENDER_trends, friends: RENDER_friends, food: RENDER_food, record: RENDER_record, me: RENDER_me };
+  const AFTER = { today: afterToday, trends: afterTrends, friends: afterFriends, food: afterFood, record: afterRecord, me: afterMe };
 
   // ------------------------------------------------------------------ training history (month calendar; /training/calendar and /training/day from the training history session, scope training)
   // Fields: see system design §16: calendar?month= → {days[{date, today, future, sessions_count, duration_min, workout_kcal, intensity…}],

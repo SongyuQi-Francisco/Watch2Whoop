@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..records.api import _self, current_user, get_conn
 from ..web import login_limit
-from . import params as P, store
+from . import cards, params as P, store
 
 router = APIRouter(prefix="/v1/friends", tags=["friends"])
 _failures = login_limit.Limiter(P.JOIN_MAX_FAILURES, P.JOIN_WINDOW_SECONDS)
@@ -56,6 +56,12 @@ class JoinIn(BaseModel):
     code: str | None = Field(default=None, max_length=40)
     invite_id: int | None = None
     scopes: list[str] = Field(max_length=30)
+
+
+class NudgeIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    to: int
+    kind: str = Field(max_length=10)
 
 
 class ScopesIn(BaseModel):
@@ -133,3 +139,14 @@ def decline(invite_id: int, conn=Depends(get_conn), viewer=Depends(current_user)
     if not store.decline(conn, _self(viewer, "me"), invite_id):
         raise HTTPException(404, "这个邀请已失效")
     return Response(status_code=204)
+
+
+@router.get("/overview")
+def member_cards(conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Friends tab: my card and every co-member's (today + last 7 days), each block only if shared with me."""
+    return cards.overview(conn, viewer["id"])
+
+
+@router.post("/nudges")
+def nudge(body: NudgeIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _run(cards.nudge, conn, _self(viewer, "me"), body.to, body.kind)

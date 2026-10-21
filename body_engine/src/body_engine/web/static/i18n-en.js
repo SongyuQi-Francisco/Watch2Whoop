@@ -961,4 +961,15 @@ I18N.addEn({
   "重置邀请": "Reset invites",
   "长期记忆": "Long-term memory",
   "饮食达标率": "Nutrition adherence",
+  // Friends tab (app.js friends section)
+  "一起练": "Train together",
+  "上次同步 {d}": "Last sync {d}",
+  "已发送": "Sent",
+  "已训练": "Trained",
+  "早点睡": "Sleep early",
+  "最近 7 天": "Last 7 days",
+  "未共享": "Not shared",
+  "未同步": "Not synced",
+  "棒": "Well done",
+  "正在查看：{name}（只读）": "Viewing: {name} (read-only)",
 });
