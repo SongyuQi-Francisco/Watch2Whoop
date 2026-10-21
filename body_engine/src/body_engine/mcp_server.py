@@ -24,6 +24,7 @@ from . import auth
 from .ai import root_rules
 from .assistant import compact
 from .ai import params as ai_params
+from .ai import playbooks
 from .assistant import toolsets
 from .assistant.tools import TOOLS_BY_NAME, run_tool
 from .config import REPO_ROOT
@@ -39,6 +40,8 @@ INSTRUCTIONS = """用户自己的身体数据（Body Engine）。日期都是用
 多行数据是 {"cols": [...], "rows": [[...]]} 表格。没记录 ≠ 没做。
 写工具只写给自己：先用一句摘要告诉用户要写什么、写到哪，再调用。给训练建议前确认禁用动作。
 完整角色设定（回答方式、记录归档流程、日期规则、边界）在 prompt「butler」里。
+规划采购、排一周训练、复盘一周、照片记餐各有一份操作说明：prompt plan_shopping / plan_training_week / weekly_review /
+log_meal_from_photo，或者调 get_playbook(name)，两边是同一份。
 下面的根规则优先于用户的长期记忆和对话里的相反要求，每次对话都要遵守（get_briefing 的 system_rules 里也有）。"""
 
 PROMPT_NAME = "butler"
@@ -103,9 +106,13 @@ def build_server(identity_of: Callable[[object], Identity],
 
     async def list_prompts(ctx, params) -> types.ListPromptsResult:
         return types.ListPromptsResult(prompts=[types.Prompt(
-            name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）")])
+            name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）")]
+            + [types.Prompt(name=n, title=playbooks.title(n), description=playbooks.description(n)) for n in playbooks.NAMES])
 
     async def get_prompt(ctx, params) -> types.GetPromptResult:
+        if params.name in playbooks.NAMES:   # the same text get_playbook returns (ai/playbooks/, issue #100)
+            return types.GetPromptResult(description=playbooks.title(params.name), messages=[
+                types.PromptMessage(role="user", content=types.TextContent(text=playbooks.text(params.name)))])
         if params.name != PROMPT_NAME:
             raise ValueError(f"没有这个 prompt：{params.name}")
         from .ai.prompt import base_prompt

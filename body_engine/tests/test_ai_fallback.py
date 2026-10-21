@@ -19,6 +19,7 @@ from psycopg.rows import dict_row
 from body_engine import api, auth
 from body_engine.ai import adapters, crypto, fallback, providers
 from body_engine.ai import fallback_params as fp
+from body_engine.ai import params as ai_params
 from body_engine.ai.adapters.fake import FakeAdapter
 from body_engine.assistant import toolsets
 from body_engine.ai.adapters.openai_api import DeepSeekFallbackAdapter, OpenAICompatAdapter
@@ -136,8 +137,13 @@ def test_tools_are_own_data_subset():
     assert not {"get_ecg_list", "get_cardio", "create_recipe"} & set(names)
     for t in fallback.tools():
         assert "user" not in t.input_schema.get("properties", {}) and "user" not in t.input_schema.get("required", [])
-    size = sum(len(t.description) + len(json.dumps(t.input_schema, ensure_ascii=False)) for t in fallback.tools())
-    assert size < 30000, size  # ~28k with every Today page read tool (issue #58); the full set is ~47k chars
+    def size(tools):
+        return sum(len(t.description) + len(json.dumps(t.input_schema, ensure_ascii=False)) for t in tools)
+    # ~28k with every Today page read tool (issue #58), ~30.5k with the scene tools (#100). Since #99 a call sends only the
+    # core part of the whitelist + the page's groups (the rest via find_tools): cap what is sent, and the whole whitelist.
+    assert size(fallback.tools()) < 32000, size(fallback.tools())
+    sent = max(size(toolsets.for_page(fallback.tools(), page)) for page in [None, *ai_params.PAGE_GROUPS])
+    assert sent < 25000, sent
 
 
 def test_cost_and_estimate():

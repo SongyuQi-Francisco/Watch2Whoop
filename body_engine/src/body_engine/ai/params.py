@@ -9,7 +9,7 @@ Tool definitions are sent on every call, so the budgets below are enforced by te
 Change the lists here; keep the core list ordered as in assistant/tools.TOOLS (the sent order follows TOOLS anyway).
 """
 
-# Resident core: the opening briefing, the scene context tools, the everyday logging tools and their undo.
+# Resident core: the opening briefing, the scene context tools and playbooks, the everyday logging tools and their undo.
 CORE_TOOLS = (
     "get_briefing", "list_metrics", "get_daily_metrics", "get_sleep", "get_scores", "list_events", "add_event",
     "get_training_log", "get_nutrition", "get_weight",
@@ -21,6 +21,7 @@ CORE_TOOLS = (
     "get_meal_templates", "log_meal_template",
     "get_shopping_context", "record_store_prices",
     "report_feedback",
+    "get_training_context", "get_week_review_context", "get_playbook",   # scene context + playbooks (#100)
 )
 
 # Group -> one line for find_tools' index (AI-facing text, Chinese).
@@ -33,6 +34,7 @@ GROUPS = {
     "records": "健康档案：补剂、化验单和历次趋势、日记项和日记、身体事件（伤病、疼痛…）",
     "memory": "长期记忆：档案卡、观察笔记、状态卡；AI 写入记录和回滚",
     "feedback": "给开发者报 bug / 提需求，查看已报的",
+    "help": "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
 }
 
 # Today page id -> extra groups for the in-page chat. Ids are the tab ids in web/static/app.js (TABS) and its sub-pages
@@ -64,7 +66,7 @@ CORE_BUDGET_CHARS = 30000
 META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
 GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 9000,
-                      "records": 10000, "memory": 4000, "feedback": 1500}
+                      "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500}
 PAGE_BUDGET_CHARS = 36000         # core + the page's groups + meta, for any page in PAGE_GROUPS
 
 FIND_TOOLS_MAX = 12               # find_tools(query) returns at most this many full schemas
@@ -76,3 +78,10 @@ READ_RESULT_MAX_CHARS_BY_TOOL = {
     "propose_plan": 14000,       # a whole week's draft with sets, loads and the questions to ask first (~10k)
     "search_exercises": 12000,   # up to its own result limit, each with muscles, equipment and safe alternatives (~9k)
 }
+
+# Scene context tools (assistant/scenes.py, issue #100)
+TRAINING_RECENT_DAYS = 14         # get_training_context: training and load looked back on
+EQUIPMENT_CARD_KEY = "equipment"  # profile card item where the user's equipment is kept (asked once, then remembered)
+REVIEW_MIN_DAYS = 4               # get_week_review_context: fewer scored / food-logged days than this -> a `needs` line
+REVIEW_NOTES_PER_ITEM = 3         # journal notes shown per item in the week review
+REVIEW_NOTE_CHARS = 60

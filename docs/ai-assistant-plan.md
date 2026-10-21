@@ -366,3 +366,23 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 **预算测试**（`tests/test_tool_groups.py`，上限都在 `ai/params.py`）：核心组 ≤ 30k；每个组各有上限（`GROUP_BUDGET_CHARS`），以后加工具只占它自己那个组；元工具 ≤ 2.5k；MCP `tools/list` ≤ 35k；每个页面的组合 ≤ 36k。另有：每个读工具在合成数据（一年的评分、120 天睡眠和指标、160 次训练、日记、化验、身体事件、观察笔记）上的摘要档不超过 `READ_RESULT_MAX_CHARS`（8k，`propose_plan` 14k、`search_exercises` 12k）；工具顺序稳定（同一个页面每次一样、跟 `TOOLS` 顺序、元工具在最后）；元工具的护栏（只读、`ALWAYS_CONFIRM`、托底白名单、读写不混用、审计记真实工具名，`tests/test_ai.py`、`tests/test_ai_fallback.py` 端到端）。
 
 **以后可以考虑**：按实际用量调核心组（`assistant_audit` 里统计哪些工具常被 `run_*_tool` 调，就挪进核心组或对应页面的组）；`find_tools` 的关键词匹配目前是简单的子串匹配，中文同义词（「称重」/「体重」）要靠按组浏览。
+
+### 9.18 场景脚手架：context 工具 + 批量写回 + 操作说明（2026-10-21，#100；`assistant/scenes.py`、`assistant/scene_tools.py`、`ai/playbooks/`）
+**统一约定**（照 `get_shopping_context` / `record_store_prices` 的样子，以后加场景都按这个来）：
+- **context 工具**：只读，一次返回完成这件事需要的全部信息，另带
+  - `rules`：护栏，AI 必须照做（写在返回里，不靠 AI 记得提示词）；
+  - `needs`：还缺什么（数据没有、服务没连上、要先问用户的事），AI 先处理这些再动手。
+  - 按 section 鉴权（和 `get_briefing` 一样）：看别人的数据时只给对方 shares 允许的部分，其余列在 `hidden`；某一块出错（例如 SparkyFitness 没连上）只影响这一块，错误写在原处并进 `needs`。
+  - 用 `compact` 输出，摘要档受 9.17 的返回字数上限测试约束。
+- **批量写回**：一次写多条，幂等（同一条再写不会重复），返回里每一条单独成功 / 失败和原因，失败的改了单独重写，不用整批重来。
+- **操作说明（playbook）**：`ai/playbooks/<name>.md`，给 AI 看的中文。每份写清楚：调哪些工具、按什么顺序、什么时候先问用户、护栏（只处理用户自己的事；不绕过任何网站的限制；联网只查清单上的东西，或者这个场景不联网）。两种拿法是同一份文本：MCP prompt `<name>`（和 `butler` 并列），以及工具 `get_playbook(name)`（很多客户端不显示 prompt；页内对话、托底 AI 也用它）。
+
+**这次加的**：
+- `get_training_context(user, date)`：本周计划（每天练什么、组数和推荐重量、各肌群周组数、进阶提醒、能练的星期几、计划用到的器械）、`readiness`（恢复分档位、减量系数、CTL / ATL / TSB、今天的负荷目标）、禁用 / 注意动作、最近 14 天的训练和负荷、档案卡里的器械（key `equipment`）；`needs` 例：还没有周计划、不知道哪几天能练 / 有哪些器械、最近没有恢复分、训练记录没连上。
+- `get_week_review_context(user, end)`：最近 7 天（到 `end`，默认今天；和今天页的周报同一套数字，`insights/reports.py`）的恢复、睡眠、负荷、压力、训练、饮食达标率、体重，每块带 `vs_previous`（和上一周的差值）；这一周的日记（每项记了几天、几天是「是」、备注）和 90 天里影响次日恢复的习惯；身体事件。`needs` 例：恢复分或饮食记录少于 4 天、SparkyFitness 没连上、没称重。
+- 两个都只读，放进常驻核心组（核心组加上它们和 `get_playbook` 后 35 个、18.1k 字符，上限 30k；MCP `tools/list` 21.1k）；鉴权在工具上只要 `profile`（和 `get_briefing` 一样），其余按 section 查。
+- playbook 第一批 4 份：`plan_shopping`（规划采购）、`plan_training_week`（排一周训练）、`weekly_review`（复盘一周）、`log_meal_from_photo`（照片记餐）。
+- 托底 AI 的白名单加上 `get_playbook`、`get_training_context`、`get_week_review_context`（都不碰心电图）。
+- `system_prompt.md`、`assistant/CLAUDE.md`、`system_prompt_lite.md`、MCP `INSTRUCTIONS` 各加一行，说明有哪些 playbook。
+
+**测试**：`tests/test_scenes.py`（两个 context 工具有数据 / 没数据、另一个结束日期、没有 share 读不到、只共享 profile + scores 时其余部分在 `hidden` 里）、`tests/test_playbooks.py`（文件和名单一致、提到的工具都存在、每份有步骤 / 先问用户 / 护栏三节、`get_playbook` 和 prompt 同一份文本、托底白名单不含心电图）、`tests/test_ai.py::test_mcp_playbook_prompts`（`prompts/list`、`prompts/get`、`get_playbook` 走真实的 `/mcp`）。

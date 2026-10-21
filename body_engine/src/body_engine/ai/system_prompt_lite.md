@@ -17,6 +17,7 @@
 - 排周计划：先问开始日、本周剩余怎么排、哪几天能练，给草案，用户确认后才 `save_plan`。训练记录没连上就告诉用户去「我 → 训练记录」连接。
 - 饮食建议：遵守用户自己的饮食约束（`get_briefing` 的 `diet_constraints`）和化验结果；没有约束不要替用户加限制。用户要设 / 改约束：确认数值和依据后 `set_diet_constraint`。
 - 工具列表里没有的工具：先 `find_tools`（按组或关键词）查参数，再用 `run_read_tool` / `run_write_tool` 调用。
+- 规划采购、排一周训练、复盘一周、照片记餐：先 `get_playbook`（plan_shopping / plan_training_week / weekly_review / log_meal_from_photo）照着做。
 - 想省额度：一次只调真正需要的工具，日期范围不要拉太长。
 
 ## 记录

@@ -19,6 +19,7 @@ from body_engine import api, auth
 from body_engine.ai import adapters, crypto, providers
 from body_engine.ai import chat as chat_mod
 from body_engine.ai import params as ai_params
+from body_engine.ai import playbooks
 from body_engine.ai.adapters.fake import FakeAdapter
 from body_engine.assistant import toolsets
 from body_engine.assistant.tools import TOOLS
@@ -613,6 +614,24 @@ def test_mcp_core_list_and_meta_tools(client, world, setup, dsn):
     found = rpc(client, ro, "tools/call", {"name": "find_tools", "arguments": {"group": "records"}}).json()["result"]
     assert "add_event" not in found["content"][0]["text"] and "list_events" in found["content"][0]["text"]
 
+
+
+def test_mcp_playbook_prompts(client, world, setup):
+    """#100: every playbook is an MCP prompt next to butler, and get_playbook returns the very same text."""
+    ids, tok = world
+    t = tok["A_mcp"]
+    prompts = rpc(client, t, "prompts/list").json()["result"]["prompts"]
+    assert [p["name"] for p in prompts] == ["butler", *playbooks.NAMES]
+    assert all(p["title"] and p["description"] for p in prompts)
+    for name in playbooks.NAMES:
+        got = rpc(client, t, "prompts/get", {"name": name}).json()["result"]
+        text = got["messages"][0]["content"]["text"]
+        assert text == playbooks.text(name) and got["description"] == playbooks.title(name)
+        res = rpc(client, t, "tools/call", {"name": "get_playbook", "arguments": {"name": name}}).json()["result"]
+        assert not res.get("isError") and json.loads(res["content"][0]["text"])["text"] == text
+    assert "error" in rpc(client, t, "prompts/get", {"name": "nope"}).json()
+    names = {x["name"] for x in rpc(client, t, "tools/list").json()["result"]["tools"]}
+    assert {"get_playbook", "get_training_context", "get_week_review_context"} <= names   # in the core group
 
 # ---------------------------------------------------------------- Gemini Plan & Gemini CLI
 def test_gemini_plan_mcp_and_redirect(client, world):
