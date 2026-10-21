@@ -382,6 +382,17 @@ def test_pantry_view_api(client, world):
     r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "鸡蛋", "quantity": 6, "unit": "pcs", "product_id": None}]},
                    headers=h(tok["A"]))
     assert {p["name"]: p for p in r.json()}["鸡蛋"]["quantity"] == 6
+    # undo of 用完了 after the linked product was removed: the row comes back without the link (was a 404)
+    pid = client.post("/v1/users/me/grocery/products", json={"name": "黄油"}, headers=h(tok["A"])).json()["id"]
+    client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "黄油", "quantity": 250, "unit": "g", "product_id": pid}]},
+               headers=h(tok["A"]))
+    client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "黄油", "quantity": 0, "unit": "g"}]}, headers=h(tok["A"]))
+    assert client.delete(f"/v1/users/me/grocery/products/{pid}", headers=h(tok["A"])).status_code == 204
+    r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "黄油", "quantity": 250, "unit": "g", "product_id": pid}]},
+                   headers=h(tok["A"]))
+    assert r.status_code == 200 and {p["name"]: p for p in r.json()}["黄油"]["product_id"] is None
+    assert client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "黄油", "quantity": 1, "unit": "g", "product_id": pid}]},
+                      headers=h(tok["C"])).status_code == 404   # still only one's own product ids
     # C's pantry is separate: A's eggs are not C's
     assert "鸡蛋" not in {p["name"] for p in client.get("/v1/users/me/grocery/pantry", headers=h(tok["C"])).json()}
     # the list line says how much the pantry covered, in the page language
