@@ -6,10 +6,11 @@
   (APPLE_JWKS_URL, cached, refetched on an unknown `kid`), iss = https://appleid.apple.com, aud ∈ BODY_APPLE_AUDIENCES
   (the app bundle ID(s), comma separated), exp, and — when the app sends its raw nonce — sha256(nonce) = the `nonce`
   claim. No Apple secret / key file is needed for this (that is only for web sign-in with a Services ID, later).
-- Identities: (provider, subject) → user. An unknown identity makes a new `pending` user. Accounts are never joined by
-  matching e-mail addresses (Apple may hand out a private relay address, and an address is not proof of the same person):
-  existing accounts get their identities bound explicitly (account/identities.py: the admin's `identity-link`, or the
-  signed-in user under Me → 「登录方式」). Disabled users cannot sign in.
+- Identities: (provider, subject) → user. An unknown identity makes a new `pending` user. Existing accounts get their
+  identities bound explicitly (account/identities.py: the admin's `identity-link`, Me → 「登录方式」, or an existing
+  account's activation / login code entered on the invite step). The one automatic case is in the Apple endpoint
+  (identities.apple_account_for): Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail.
+  Disabled users cannot sign in.
 """
 from __future__ import annotations
 

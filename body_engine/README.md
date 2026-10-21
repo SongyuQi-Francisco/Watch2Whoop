@@ -356,8 +356,10 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
 - Existing accounts (admin-created) sign in with e-mail / Apple once an identity is bound (`account/identities.py`):
   `body-engine identity-link --user-id N --email x [--move] | --list | --unlink`, `user-add --email`, `activation-code create
   --email`; signed-in users add more under Me → 「登录方式」 (`web/static/identities.js`, `POST /v1/account/identities/email`
-  with a code, `/v1/account/identities/apple` with an Apple token from the app). One identity, one account; accounts are
-  never merged by e-mail.
+  with a code, `/v1/account/identities/apple` with an Apple token from the app). A pending sign-up that enters an existing
+  account's activation / login code on the invite step moves its identity there. Apple joins an existing account only on
+  an Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail. Changes are audited in
+  `identity_events` (migration 390).
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 

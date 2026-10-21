@@ -580,3 +580,126 @@ def test_identity_cli_and_admin_creation(dsn, monkeypatch, capsys):
     listed = [json.loads(x) for x in run("identity-link", "--list", "--user-id", str(other)).splitlines()]
     assert [x["email"] for x in listed] == ["cli.other@example.com"]
     assert "removed: 1" in run("identity-link", "--unlink", "--user-id", str(other), "--email", "cli.other@example.com")
+
+
+# ---------------------------------------------------------------------------------------------------- once activated, sign in directly
+
+def _pending(conn, provider, subject, email=None):
+    user, new = signin.find_or_create_user(conn, provider, subject, email or subject, True)
+    assert new
+    return user["id"]
+
+
+def _apple(client, sub, email, verified=True, client_kind="app"):
+    r = client.post("/v1/auth/apple", json={"identity_token": apple_token(sub=sub, email=email, verified=verified),
+                                            "nonce": "raw-nonce", "client": client_kind})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def _events(dsn, kind):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        return conn.execute("SELECT * FROM identity_events WHERE kind = %s ORDER BY id", (kind,)).fetchall()
+
+
+def test_apple_joins_existing_account_only_on_an_exact_verified_match(client, dsn, _env):
+    from body_engine.account import identities
+    _reset_mail_limits()
+    client.cookies.clear()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = _admin_user(conn, "AppleMatch")
+        identities.link_email(conn, uid, "apple.match@example.com")
+        pend = _pending(conn, "email", "pending.match@example.com")            # a pending account's e-mail
+        a, b = _admin_user(conn, "AmbA"), _admin_user(conn, "AmbB")
+        identities.link_email(conn, a, "ambiguous@example.com")
+        conn.execute("""INSERT INTO user_identities (user_id, provider, subject, email, verified_at)
+                        VALUES (%s, 'apple', 'apple-amb-b', 'ambiguous@example.com', now())""", (b,))
+    # exact verified, non-relay match → that account, Apple ID bound, audited
+    out = _apple(client, "apple-match-1", "apple.match@example.com")
+    assert out["me"]["id"] == uid and out["new_user"] is False and out["status"] == "active" and "hint" not in out
+    ev = [e for e in _events(dsn, "auto_link_apple") if e["user_id"] == uid]
+    assert len(ev) == 1 and ev[0]["provider"] == "apple" and ev[0]["actor"] == "sign-in" and "apple.match" not in ev[0]["hint"]
+    # already bound → straight in (no new audit row)
+    assert _apple(client, "apple-match-1", "apple.match@example.com")["me"]["id"] == uid
+    assert len([e for e in _events(dsn, "auto_link_apple") if e["user_id"] == uid]) == 1
+    # every other case: a new pending account and the hint to bind Apple from the old account
+    for sub, email, verified in (("apple-relay", "abc123@" + identities.APPLE_RELAY_DOMAIN, True),   # private relay
+                                 ("apple-unverified", "apple.match@example.com", False),        # not verified by Apple
+                                 ("apple-nomatch", "nobody.here@example.com", True),            # no account
+                                 ("apple-amb", "ambiguous@example.com", True),                  # two accounts carry it
+                                 ("apple-pending", "pending.match@example.com", True)):         # only a pending account
+        o = _apple(client, sub, email, verified)
+        assert o["new_user"] is True and o["status"] == "pending" and o["hint"] == "existing_account_bind_apple", sub
+        assert o["me"]["id"] not in (uid, a, b, pend), sub
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM user_identities WHERE user_id = %s", (uid,)).fetchone()["n"] == 2
+
+
+def test_pending_sign_in_claims_existing_account_with_its_code(client, dsn, _env):
+    from body_engine.account import identities
+    from body_engine.web import activation, login_codes
+    _reset_mail_limits()
+    client.cookies.clear()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = _admin_user(conn, "Claimed")
+        code = activation.create(conn, uid, "test")["code"]
+        other = _admin_user(conn, "ClaimedWeb")
+        lcode = login_codes.create(conn, other, "test", 1)
+    # app: an unbound e-mail made a pending account; the invite step takes the old account's activation code
+    s = _email_login(client, "claimer@example.com", "app")
+    assert s["me"]["status"] == "pending"
+    h = {"Authorization": f"Bearer {s['token']}"}
+    assert client.post("/v1/account/redeem-invite", headers=h, json={"code": "AAAAABBBBBCCCCCD"}).status_code == 401
+    r = client.post("/v1/account/redeem-invite", headers=h, json={"code": code.lower()})
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["claimed"] is True and out["me"]["id"] == uid and out["status"] == "active" and out["token"]
+    acct = client.get("/v1/account", headers={"Authorization": f"Bearer {out['token']}"}).json()
+    assert acct["id"] == uid and acct["identities"] == [{"provider": "email", "email": "claimer@example.com"}]
+    assert client.get("/v1/account", headers=h).status_code == 401                      # the pending account is gone
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT 1 FROM users WHERE id = %s", (s["me"]["id"],)).fetchone() is None
+    ev = [e for e in _events(dsn, "claim_by_code") if e["user_id"] == uid]
+    assert len(ev) == 1 and ev[0]["from_user_id"] == s["me"]["id"]
+    # next time: the e-mail code goes straight into the old account, no invite step
+    _reset_mail_limits()
+    again = _email_login(client, "claimer@example.com", "app")
+    assert again["me"]["id"] == uid and again["new_user"] is False and again["me"]["status"] == "active"
+    # web: a one-time login code works too, and the cookie session switches to that account
+    _reset_mail_limits()
+    client.cookies.clear()
+    w = _email_login(client, "claimer.web@example.com")
+    assert w["me"]["status"] == "pending"
+    r = client.post("/v1/account/redeem-invite", headers=WEB, json={"code": lcode})
+    assert r.status_code == 200 and r.json()["claimed"] is True and "token" not in r.json()
+    assert client.get("/v1/web/me").json()["me"]["id"] == other
+    assert client.post("/v1/account/redeem-invite", headers=WEB, json={"code": lcode}).status_code in (200, 401)   # active now: no-op or used
+    client.cookies.clear()
+    # an active account is never sent to the invite step; a brand-new e-mail still is (pending → invite code)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        identities.link_email(conn, other, "claimed.bound@example.com")
+    _reset_mail_limits()
+    bound = _email_login(client, "claimed.bound@example.com", "app")
+    assert bound["me"]["status"] == "active" and client.get("/v1/account", headers={"Authorization": f"Bearer {bound['token']}"}).json()["invite_required"] is False
+    _reset_mail_limits()
+    fresh = _email_login(client, "claimed.fresh@example.com", "app")
+    fh = {"Authorization": f"Bearer {fresh['token']}"}
+    assert client.get("/v1/account", headers=fh).json()["invite_required"] is True
+    assert client.post("/v1/account/redeem-invite", headers=fh, json={"code": _batch(dsn)["codes"][0]}).json()["status"] == "active"
+
+
+def test_identity_texts_are_bilingual(client):
+    """Every tr("中文") key in identities.js / account.js and every data-i18n key on the login screen that identities.js
+    owns has English with the same placeholders (same convention as #20's i18n layer)."""
+    import re
+    ids = client.get("/app/identities.js").text
+    table = ids[ids.index("const EN = {"):ids.index("};", ids.index("const EN = {"))]
+    en = dict(re.findall(r'^\s*"([^"]+)": "([^"]+)",$', table, re.M))
+    keys = set(re.findall(r'\btr\("([^"]+)"', ids)) | set(re.findall(r'\btr\("([^"]+)"', client.get("/app/account.js").text))
+    html = client.get("/app/").text
+    keys |= {k for k in re.findall(r'data-i18n="([^"]+)"', html)}
+    assert keys and keys <= set(en), keys - set(en)
+    for zh, e in en.items():
+        assert set(re.findall(r"\{(\w+)\}", zh)) == set(re.findall(r"\{(\w+)\}", e)), zh
+        assert not re.search(r"[一-鿿]", e), e
+    assert '<script src="identities.js" defer></script>\n<script src="account.js" defer></script>' in html

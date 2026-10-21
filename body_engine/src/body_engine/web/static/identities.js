@@ -4,7 +4,8 @@
    "apple-link" on the app's JS channel, the app runs Sign in with Apple and calls
    window.BodyIdentities.appleResult({identity_token, nonce}) — or appleResult(null) when the user cancels).
    An e-mail / Apple ID that already belongs to another account is refused (409 identity_taken); accounts are never merged.
-   Also: the login page's new hint texts and the 「登录 / 注册」 wording go through tr() below.
+   Also: the login page's new hint texts and the 「登录 / 注册」 wording go through tr() below; an account with no sign-in
+   method (came in by an activation / login link) gets a 「绑定 Apple / 邮箱」 toast once per session.
    Loaded before account.js (which uses window.BodyIdentities.tr for its login hint). */
 (() => {
   "use strict";
@@ -21,7 +22,9 @@
     "登录 / 注册": "Sign in / sign up",
     "用邮箱登录 / 注册": "Sign in or sign up with e-mail",
     "以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录": "Used an activation link before? Ask your admin to bind your e-mail first, then sign in with it",
-    "已经有账号？这个邮箱可能还没绑定：退出后用激活链接登录，或请管理员绑定邮箱": "Already have an account? This e-mail may not be bound yet: sign out and use your activation link, or ask your admin to bind it",
+    "已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录": "Already have an account? Enter its activation code or login code above: this sign-in is bound to it and next time you go straight in",
+    "用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple": "Signed in with Apple but already have an account? Sign in with an e-mail code first, then add Apple under Me → Sign-in methods",
+    "绑定 Apple / 邮箱，下次直接登录": "Add Apple / e-mail to sign in directly next time",
     "登录方式": "Sign-in methods",
     "{n} 种": "{n}",
     "邮箱": "E-mail",
@@ -135,7 +138,18 @@
 
   window.BodyIdentities = { tr, appleResult: (res) => appleDone?.(res) };
   (window.BodyPlugins = window.BodyPlugins || []).push({
-    init: (ctx, me) => { C = ctx; ME = me?.me || null; },
+    init: (ctx, me) => {
+      C = ctx; ME = me?.me || null;
+      // came in by an activation / login link and the account has no sign-in method yet: suggest binding one (once a session)
+      if (!ME || ME.status === "pending") return;
+      let shown = false;
+      try { shown = sessionStorage.getItem("w2w-bind-hint") === "1"; sessionStorage.setItem("w2w-bind-hint", "1"); } catch (e) { /* storage blocked */ }
+      if (shown) return;
+      call("/v1/account").then((a) => {
+        ACCT = a;
+        if (!(a.identities || []).length) setTimeout(() => C.toast(tr("绑定 Apple / 邮箱，下次直接登录"), tr("绑定"), methodsSheet), 1200);
+      }).catch(() => { /* offline: ask next time */ });
+    },
     meItem: (chev) => (ME ? `<button class="item" id="me-signin"><span class="row-title">${esc(tr("登录方式"))}</span><span class="val" id="me-signin-val"></span>${chev || ""}</button>` : ""),
     bindMe: async (view) => {
       const b = $("#me-signin", view);

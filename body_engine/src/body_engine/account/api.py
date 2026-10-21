@@ -7,7 +7,8 @@ Sign-in (no auth):
   "session": client=web sets the Today page cookie; client=app returns a device API token (Bearer) instead.
 Account (Bearer or cookie; also for `pending` accounts):
   GET    /v1/account                       status, identities, provisioning
-  POST   /v1/account/redeem-invite {code}  pending → active, provisioning starts in the background
+  POST   /v1/account/redeem-invite {code}  pending → active, provisioning starts in the background; an existing account's
+                                           activation / login code instead moves this sign-in to that account (claimed)
   POST   /v1/account/ow-invitation         fresh Open Wearables invitation code for this user's sync account (active only)
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
@@ -186,11 +187,18 @@ def apple(body: AppleIn, request: Request, response: Response, conn=Depends(get_
         raise HTTPException(401, "Apple 登录无效，请重试")
     email, verified = signin.apple_email(claims)
     name = " ".join(x for x in (body.given_name, body.family_name) if x) or None
+    known = conn.execute("SELECT 1 FROM user_identities WHERE provider = 'apple' AND subject = %s", (claims["sub"],)).fetchone()
+    if known is None and (target := identities.apple_account_for(conn, email, verified)) is not None:
+        # Apple-verified, not a relay address, exactly one active account's bound e-mail: that account (audited)
+        identities._link(conn, target, "apple", claims["sub"], email, verified, actor="sign-in", kind="auto_link_apple")
     try:
         user, new_user = signin.find_or_create_user(conn, "apple", claims["sub"], email, verified, name)
     except signin.SignInError:
         raise HTTPException(403, "account_disabled")
-    return _session_response(conn, request, response, user, new_user, body.client, body.device)
+    out = _session_response(conn, request, response, user, new_user, body.client, body.device)
+    if new_user:   # no existing account found: the app / page suggests binding Apple from the old account instead
+        out["hint"] = "existing_account_bind_apple"
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------- account
@@ -261,7 +269,7 @@ def bind_email(body: BindEmailIn, request: Request, conn=Depends(get_conn), view
     if not ok:
         login_limit.record_failure(ip)
         raise HTTPException(401, "code_invalid")
-    return _bind(conn, viewer, lambda: identities.link_email(conn, viewer["id"], email, verified=True))
+    return _bind(conn, viewer, lambda: identities.link_email(conn, viewer["id"], email, verified=True, actor="user"))
 
 
 @router.post("/v1/account/identities/apple")
@@ -280,9 +288,39 @@ def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), view
     return _bind(conn, viewer, lambda: identities.link_apple(conn, viewer["id"], claims))
 
 
+def _existing_account_for_code(conn, code: str) -> int | None:
+    """An existing account's activation code (16) or one-time login code (12) → its user id (counts a use / uses it up)."""
+    norm = login_codes.normalize(code)
+    if len(norm) == activation.LENGTH:
+        row = conn.execute("""UPDATE activation_codes SET uses = uses + 1, last_used_at = now()
+                              WHERE code_sha256 = %s AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+                              RETURNING user_id""", (activation._sha(norm),)).fetchone()
+    elif len(norm) == login_codes.LENGTH:
+        row = conn.execute("""UPDATE web_login_codes SET used_at = now()
+                              WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() RETURNING user_id""",
+                           (login_codes._sha(norm),)).fetchone()
+    else:
+        return None
+    return row["user_id"] if row else None
+
+
 @router.post("/v1/account/redeem-invite")
-def redeem_invite(body: RedeemIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+def redeem_invite(body: RedeemIn, request: Request, response: Response, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """An invite code activates this (pending) account. An existing account's activation code / login code instead moves
+    the identity this person signed in with to that account and signs them in there ({claimed: true, token for the app})."""
     ip = _check_ip(request)
+    if viewer.get("status") == "pending" and len(login_codes.normalize(body.code)) in (activation.LENGTH, login_codes.LENGTH):
+        target = _existing_account_for_code(conn, body.code)
+        user = conn.execute("SELECT * FROM users WHERE id = %s", (target,)).fetchone() if target else None
+        if user is None or user["status"] != "active":
+            conn.rollback()
+            login_limit.record_failure(ip)
+            raise HTTPException(401, "激活码无效、已用完或已过期")
+        identities.claim_with_code(conn, viewer["id"], user["id"])
+        client = "app" if (request.headers.get("authorization") or "").lower().startswith("bearer ") else "web"
+        out = _session_response(conn, request, response, user, False, client, "claimed")
+        conn.commit()
+        return {**out, "claimed": True, "provisioning": provision.status(conn, user["id"])}
     if not invites.redeem(conn, viewer["id"], body.code):
         conn.rollback()
         login_limit.record_failure(ip)
