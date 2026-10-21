@@ -24,7 +24,7 @@ WEEK = date(2026, 10, 21)   # a Wednesday; week_start = 2026-10-19
 # ---------------------------------------------------------------- no database needed
 def test_tools_registered_and_marked():
     for n in ("save_product", "remove_product", "generate_shopping_list", "add_shopping_items", "mark_bought",
-              "remove_shopping_items", "set_pantry"):
+              "remove_shopping_items", "set_pantry", "set_stores"):
         assert TOOLS_BY_NAME[n].writes and TOOLS_BY_NAME[n].scope == "nutrition", n
     for n in ("find_products", "get_shopping_list"):
         assert not TOOLS_BY_NAME[n].writes, n
@@ -274,9 +274,14 @@ def test_store_links_on_products_and_items(conn, world):
     a, c = ids["A"], ids["C"]
     url = "https://www.woolworths.com.au/shop/productdetails/36059/woolworths-chicken-breast?utm=share"
     p = store.save_product(conn, a, {"name": "Chicken Thigh", "store": "Costco", "product_url": url, "matches": ["鸡腿肉"]})
-    assert p["created"] and p["store"] == "Woolworths" and p["store_sku"] == "36059"
+    assert p["created"] and p["store"] == "WWS" and p["store_label"] == "WWS" and p["store_sku"] == "36059"
     assert p["product_url"] == "https://www.woolworths.com.au/shop/productdetails/36059/woolworths-chicken-breast"
-    assert p["links"] == [{"store": "woolworths", "label": "Woolies", "kind": "product", "url": p["product_url"]}]
+    assert p["links"] == [] and p["store_not_connected"] == "WWS"   # issue #44: no supermarket connected by default
+    assert store.stores_view(conn, a)["connected"] == []
+    out = run_tool(conn, a, "butler", "set_stores", {"stores": ["woolworths", "coles"]})
+    assert out["connected"] == ["coles", "woolworths"] and [s["label"] for s in out["stores"]] == ["Coles", "WWS"]
+    p = store.list_products(conn, a, q="Chicken Thigh")[0]
+    assert p["links"] == [{"store": "woolworths", "label": "WWS", "kind": "product", "url": p["product_url"]}]
     again = store.save_product(conn, a, {"name": "鸡腿肉 1kg", "product_url": url, "price": 9})   # same page -> same product
     assert not again["created"] and again["id"] == p["id"] and again["name"] == "鸡腿肉 1kg"
     with pytest.raises(ValueError, match="只支持"):
@@ -295,8 +300,15 @@ def test_store_links_on_products_and_items(conn, world):
     lst = store.add_items(conn, a, date(2026, 11, 16), [{"product_id": p["id"]}, {"name": "Paper towel"}, {"name": "牛油果"}])
     by = {i["name"]: i for i in lst["items"]}
     assert by["鸡腿肉 1kg"]["links"][0]["kind"] == "product"
-    assert [x["label"] for x in by["Paper towel"]["links"]] == ["Coles", "Woolies"]
+    assert [x["label"] for x in by["Paper towel"]["links"]] == ["Coles", "WWS"]
     assert "Paper%20towel" in by["Paper towel"]["links"][0]["url"]
+    assert lst["connected_stores"] == ["coles", "woolworths"]
+    store.set_connected_stores(conn, a, ["coles"])   # only the connected chain's links stay
+    by = {i["name"]: i for i in store.get_list(conn, a, date(2026, 11, 16))["items"]}
+    assert by["鸡腿肉 1kg"]["links"] == [] and [x["label"] for x in by["Paper towel"]["links"]] == ["Coles"]
+    with pytest.raises(ValueError):
+        store.set_connected_stores(conn, a, ["aldi"])
+    store.set_connected_stores(conn, a, ["coles", "woolworths"])
     # tool output leaves the page links out (tokens); product_url stays
     found = run_tool(conn, a, "butler", "find_products", {"q": "鸡腿"})
     assert found[0]["product_url"] and "links" not in found[0]
@@ -313,9 +325,20 @@ def test_api_product_url(client, world):
     _, tok, _ = world
     r = client.post("/v1/users/me/grocery/products", json={"name": "Milk 3L", "product_url":
                     "https://www.coles.com.au/product/coles-full-cream-milk-3l-8150288"}, headers=h(tok["C"]))
-    assert r.status_code == 201 and r.json()["store"] == "Coles" and r.json()["links"][0]["kind"] == "product"
+    assert r.status_code == 201 and r.json()["store"] == "Coles" and r.json()["links"] == []   # C has no store connected
+    assert client.get("/v1/users/me/grocery/stores", headers=h(tok["C"])).json()["connected"] == []
+    assert client.put("/v1/users/me/grocery/stores", json={"connected": ["coles"]}, headers=h(tok["A_ro"])).status_code == 403
+    assert client.put("/v1/users/me/grocery/stores", json={"connected": ["aldi"]}, headers=h(tok["C"])).status_code == 422
+    r = client.put("/v1/users/me/grocery/stores", json={"connected": ["coles"]}, headers=h(tok["C"]))
+    assert r.status_code == 200 and r.json()["connected"] == ["coles"]
+    prods = client.get("/v1/users/me/grocery/products", headers=h(tok["C"])).json()
+    assert next(x for x in prods if x["name"] == "Milk 3L")["links"][0]["kind"] == "product"
     bad = client.post("/v1/users/me/grocery/products", json={"name": "Bad", "product_url": "https://example.com/p/1"},
                       headers=h(tok["C"]))
     assert bad.status_code in (400, 422)
+    a_id = world[0]["A"]
+    assert client.get(f"/v1/users/{a_id}/grocery/stores", headers=h(tok["C"])).status_code == 403
+    assert client.get(f"/v1/users/{a_id}/grocery/stores", headers=h(tok["B"])).status_code == 200   # nutrition share
+    assert client.put(f"/v1/users/{a_id}/grocery/stores", json={"connected": []}, headers=h(tok["B"])).status_code == 403
     lst = client.get("/v1/users/me/grocery/list?week=2026-10-21", headers=h(tok["A"])).json()
     assert all("links" in i for i in lst["items"])

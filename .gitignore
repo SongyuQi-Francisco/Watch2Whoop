@@ -1,6 +1,7 @@
 # Private data and local files, not tracked by git
 health_data/
 models/
+/media/
 data/
 *.db
 *.db-*

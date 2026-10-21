@@ -1,5 +1,5 @@
 /* Grocery (饮食 → 采购), grocery.js. Uses the colour tokens from app.css. */
-.gstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0; background: none; margin-bottom: 10px; }
+.gstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; padding: 0; background: none; margin-bottom: 10px; }
 .gstats > div { background: var(--surface); border-radius: 14px; padding: 10px 10px 9px; min-width: 0; }
 .gstats .l { font-size: 11px; color: var(--text-2); font-weight: 500; white-space: nowrap; }
 .gstats .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -25,3 +25,11 @@
 .gstore { font-size: 11px; font-weight: 600; padding: 4px 7px; border-radius: 6px; text-decoration: none; color: var(--text-2); border: 1px solid var(--hair); line-height: 1.2; }
 .gstore.on { background: var(--surface-2); color: var(--text); border-color: transparent; }
 .gstore:active { opacity: .7; }
+.gconn { display: flex; gap: 8px; flex-wrap: wrap; }
+.gconn-b { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--hair); background: none; color: var(--text-2); cursor: pointer; }
+.gconn-b[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: transparent; }
+.gstats .v.good { color: var(--good); }
+#g-specials:empty { display: none; }
+.gsp { text-decoration: none; color: inherit; }
+.gsp .val s { color: var(--text-3); font-weight: 400; }
+.gsp .val .gstore { margin-right: 4px; }

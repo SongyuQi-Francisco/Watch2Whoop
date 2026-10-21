@@ -4,7 +4,7 @@
    "apple-link" on the app's JS channel, the app runs Sign in with Apple and calls
    window.BodyIdentities.appleResult({identity_token, nonce}) — or appleResult(null) when the user cancels).
    An e-mail / Apple ID that already belongs to another account is refused (409 identity_taken); accounts are never merged.
-   Also: the login page's new hint texts and the 「登录 / 注册」 wording go through tr() below; an account with no sign-in
+   Also: an account with no sign-in
    method (came in by an activation / login link) gets a 「绑定 Apple / 邮箱」 toast once per session.
    Loaded before account.js (which uses window.BodyIdentities.tr for its login hint). */
 (() => {
@@ -15,49 +15,7 @@
   let ME = null;
   let ACCT = null;
 
-  // ---- i18n bridge until #20's i18n.js is merged (same convention as #20: the Chinese source text is the key, {name}
-  // placeholders; window.I18N wins when present). After #20 merges: move EN into i18n-en.js and use #20's tr.
-  // Language as in #20: localStorage "be.lang" (zh / en), else the device language.
-  const EN = {   // i18n-ok (translation table)
-    "登录 / 注册": "Sign in / sign up",
-    "用邮箱登录 / 注册": "Sign in or sign up with e-mail",
-    "以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录": "Used an activation link before? Ask your admin to bind your e-mail first, then sign in with it",
-    "已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录": "Already have an account? Enter its activation code or login code above: this sign-in is bound to it and next time you go straight in",
-    "用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple": "Signed in with Apple but already have an account? Sign in with an e-mail code first, then add Apple under Me → Sign-in methods",
-    "绑定 Apple / 邮箱，下次直接登录": "Add Apple / e-mail to sign in directly next time",
-    "登录方式": "Sign-in methods",
-    "{n} 种": "{n}",
-    "邮箱": "E-mail",
-    "绑定邮箱": "Add e-mail",
-    "绑定 Apple 登录": "Add Sign in with Apple",
-    "在 Watch2Whoop app 里绑定 Apple 登录": "Add Sign in with Apple inside the Watch2Whoop app",
-    "还没有绑定登录方式": "No sign-in method yet",
-    "发送验证码": "Send code",
-    "6 位验证码": "6-digit code",
-    "绑定": "Add",
-    "已绑定": "Added",
-    "邮箱格式不对": "Invalid e-mail address",
-    "验证码不对或已过期": "Wrong or expired code",
-    "验证码已发送，10 分钟内有效": "Code sent, valid for 10 minutes",
-    "发送太频繁，过一会儿再试": "Too many requests, try again in a moment",
-    "这个邮箱或 Apple ID 已经属于另一个账号": "This e-mail or Apple ID already belongs to another account",
-    "已取消": "Cancelled",
-  };
-  const lang = () => {
-    try { const v = localStorage.getItem("be.lang"); if (v === "zh" || v === "en") return v; } catch (e) { /* storage blocked */ }
-    const l = String((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase();
-    return l.startsWith("zh") ? "zh" : "en";
-  };
-  const tr = (key, params) => {
-    if (window.I18N?.t) return window.I18N.t(key, params);
-    const out = lang() === "en" ? EN[key] ?? key : key;
-    return params ? out.replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m)) : out;
-  };
-  // static texts on the login page that carry data-i18n with a key from EN (the rest of the page is translated by #20)
-  function applyStatic(root = document) {
-    if (window.I18N?.apply) return;
-    for (const el of root.querySelectorAll("[data-i18n]")) if (EN[el.dataset.i18n]) el.textContent = tr(el.dataset.i18n);
-  }
+  const tr = (k, p) => window.I18N.t(k, p);
 
   async function call(path, method = "GET", body) {
     const headers = { Accept: "application/json" };
@@ -164,6 +122,4 @@
     },
   });
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => applyStatic());
-  else applyStatic();
 })();

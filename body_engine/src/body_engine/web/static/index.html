@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-i18n-title="app.title">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="身体">
+<meta name="apple-mobile-web-app-title" content="身体" data-note="i18n-ok: home-screen name">
 <meta name="referrer" content="no-referrer">
 <meta name="application-name" content="body-engine-today">
 <title>身体 · 今天</title>
@@ -26,21 +26,21 @@
   <header class="top">
     <div class="top-l" id="hdr-pick">
       <div class="top-date" id="hdr-date"></div>
-      <h1 class="top-title" id="hdr-title">今天</h1>
+      <h1 class="top-title" id="hdr-title" data-i18n="tab.today">今天</h1>
     </div>
     <div class="top-r">
       <div class="daynav" id="daynav" hidden>
-        <button id="day-prev" aria-label="前一天"><svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
-        <button id="day-next" aria-label="后一天"><svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="day-prev" aria-label="前一天" data-i18n-aria="hdr.prevDay"><svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button id="day-next" aria-label="后一天" data-i18n-aria="hdr.nextDay"><svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <button id="who" class="avatar" aria-label="切换查看的人" hidden></button>
+      <button id="who" class="avatar" aria-label="切换查看的人" data-i18n-aria="hdr.who" hidden></button>
     </div>
   </header>
   <div id="banner" class="banner" hidden></div>
   <div id="ptr" class="ptr" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
 
   <main id="view" class="view" tabindex="-1"></main>
-  <button id="back-today" class="back-today" type="button" hidden>回到今天</button>
+  <button id="back-today" class="back-today" type="button" data-i18n="common.backToday" hidden>回到今天</button>
 
   <div class="dock">
     <a class="ask" id="ask" href="#" rel="noopener">
@@ -48,12 +48,12 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Jarvis</span>
     </a>
-    <nav class="tabbar" aria-label="页面">
-      <button data-tab="today" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 1 7.7 10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><span>今天</span></button>
-      <button data-tab="trends" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l4.5-5 3.5 3 7-8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>趋势</span></button>
-      <button data-tab="food" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5h16a8 8 0 0 1-16 0z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 4.5c0 1.5 1.5 1.5 1.5 3S9 9 9 10M14 4.5c0 1.5 1.5 1.5 1.5 3S14 9 14 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span>饮食</span></button>
-      <button data-tab="record" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span>记录</span></button>
-      <button data-tab="me" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span>我</span></button>
+    <nav class="tabbar" aria-label="页面" data-i18n-aria="nav.tabs">
+      <button data-tab="today" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 1 7.7 10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><span data-i18n="tab.today">今天</span></button>
+      <button data-tab="trends" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l4.5-5 3.5 3 7-8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span data-i18n="tab.trends">趋势</span></button>
+      <button data-tab="food" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5h16a8 8 0 0 1-16 0z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 4.5c0 1.5 1.5 1.5 1.5 3S9 9 9 10M14 4.5c0 1.5 1.5 1.5 1.5 3S14 9 14 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span data-i18n="tab.food">饮食</span></button>
+      <button data-tab="record" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span data-i18n="tab.record">记录</span></button>
+      <button data-tab="me" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span data-i18n="tab.me">我</span></button>
     </nav>
   </div>
 </div>
@@ -63,49 +63,49 @@
 <div id="login" class="login" hidden>
   <div class="login-card">
     <img src="icon.svg" alt="" width="60" height="60">
-    <h1>身体管理</h1>
-    <ol class="login-steps" id="login-steps" aria-label="登录步骤" hidden>
-      <li data-step="email"><i>1</i><span>邮箱</span></li>
-      <li data-step="code"><i>2</i><span>验证码</span></li>
-      <li data-step="invite"><i>3</i><span>开通</span></li>
+    <h1 data-i18n="login.title">身体管理</h1>
+    <ol class="login-steps" id="login-steps" aria-label="登录步骤" data-i18n-aria="登录步骤" hidden>
+      <li data-step="email"><i>1</i><span data-i18n="邮箱">邮箱</span></li>
+      <li data-step="code"><i>2</i><span data-i18n="验证码">验证码</span></li>
+      <li data-step="invite"><i>3</i><span data-i18n="开通">开通</span></li>
     </ol>
     <form id="ls-email" class="login-step" novalidate hidden>
-      <p id="le-hint">用邮箱登录 / 注册</p>
-      <button type="button" class="btn btn-block login-apple" id="le-apple" hidden>通过 Apple 登录</button>
-      <div class="login-or" id="le-or" hidden><span>或</span></div>
-      <input id="le-email" class="input" type="email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="邮箱" aria-label="邮箱" enterkeyhint="send">
-      <button type="submit" class="btn btn-primary btn-block" id="le-send">发送验证码</button>
+      <p id="le-hint" data-i18n="用邮箱登录 / 注册">用邮箱登录 / 注册</p>
+      <button type="button" class="btn btn-block login-apple" id="le-apple" data-i18n="通过 Apple 登录" hidden>通过 Apple 登录</button>
+      <div class="login-or" id="le-or" hidden><span data-i18n="或">或</span></div>
+      <input id="le-email" class="input" type="email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="邮箱" aria-label="邮箱" data-i18n-ph="邮箱" data-i18n-aria="邮箱" enterkeyhint="send">
+      <button type="submit" class="btn btn-primary btn-block" id="le-send" data-i18n="发送验证码">发送验证码</button>
       <p class="login-error" id="le-email-error" role="alert"></p>
       <p class="login-note"><span class="small" data-i18n="以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录">以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录</span></p>
     </form>
     <form id="ls-code" class="login-step" novalidate hidden>
-      <p>验证码已发到<br><b id="le-to"></b></p>
-      <input id="le-code" class="input login-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" aria-label="6 位验证码" enterkeyhint="go">
-      <button type="submit" class="btn btn-primary btn-block" id="le-verify">登录</button>
+      <p><span data-i18n="验证码已发到">验证码已发到</span><br><b id="le-to"></b></p>
+      <input id="le-code" class="input login-code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码" aria-label="6 位验证码" data-i18n-ph="6 位验证码" data-i18n-aria="6 位验证码" enterkeyhint="go">
+      <button type="submit" class="btn btn-primary btn-block" id="le-verify" data-i18n="login.submit">登录</button>
       <p class="login-error" id="le-code-error" role="alert"></p>
       <div class="login-links">
-        <button type="button" class="linkbtn" id="le-back">‹ 换邮箱</button>
-        <button type="button" class="linkbtn" id="le-resend" disabled>重新发送</button>
+        <button type="button" class="linkbtn" id="le-back" data-i18n="‹ 换邮箱">‹ 换邮箱</button>
+        <button type="button" class="linkbtn" id="le-resend" data-i18n="重新发送" disabled>重新发送</button>
       </div>
     </form>
     <form id="ls-invite" class="login-step" novalidate hidden>
-      <p>输入激活码开通账号<br><span class="small">内测期间凭激活码开通</span></p>
-      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="24" placeholder="XXXXX-XXXXX" aria-label="激活码" enterkeyhint="go">
-      <button type="submit" class="btn btn-primary btn-block" id="ap-btn">开通</button>
+      <p><span data-i18n="输入激活码开通账号">输入激活码开通账号</span><br><span class="small" data-i18n="管理员给的激活码，或好友的邀请码">管理员给的激活码，或好友的邀请码</span></p>
+      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="24" placeholder="XXXXX-XXXXX" aria-label="激活码" data-i18n-aria="激活码" enterkeyhint="go">
+      <button type="submit" class="btn btn-primary btn-block" id="ap-btn" data-i18n="开通">开通</button>
       <p class="login-error" id="ap-error" role="alert"></p>
       <p class="login-note"><span class="small" data-i18n="已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录">已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录</span><br><span class="small" data-i18n="用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple">用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple</span></p>
-      <div class="login-links"><button type="button" class="linkbtn" id="ap-logout">‹ 退出，换个账号</button></div>
+      <div class="login-links"><button type="button" class="linkbtn" id="ap-logout" data-i18n="‹ 退出，换个账号">‹ 退出，换个账号</button></div>
     </form>
     <details class="login-other" id="login-other">
-      <summary>其他登录方式</summary>
+      <summary data-i18n="其他登录方式">其他登录方式</summary>
       <form id="login-form" autocomplete="off">
-        <p>登录码（12 位）、激活链接里的码（16 位）或 token</p>
-        <input id="token" class="input" name="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="登录码 / 激活码 / token" aria-label="登录码、激活码或 token" required>
-        <button type="submit" class="btn btn-block" id="login-btn">登录</button>
+        <p data-i18n="登录码（12 位）、激活链接里的码（16 位）或 token">登录码（12 位）、激活链接里的码（16 位）或 token</p>
+        <input id="token" class="input" name="token" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="登录码 / 激活码 / token" aria-label="登录码、激活码或 token" data-i18n-ph="登录码 / 激活码 / token" data-i18n-aria="登录码、激活码或 token" required>
+        <button type="submit" class="btn btn-block" id="login-btn" data-i18n="login.submit">登录</button>
         <p class="login-error" id="login-error" role="alert"></p>
       </form>
     </details>
-    <a class="login-app" id="login-app" href="watch2whoop://sync" hidden>手机同步与设置</a>
+    <a class="login-app" id="login-app" href="watch2whoop://sync" data-i18n="login.app" hidden>手机同步与设置</a>
   </div>
 </div>
 
@@ -113,20 +113,24 @@
   <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
     <div class="grab"></div>
     <div class="sheet-head"><h2 id="sheet-title"></h2>
-      <button class="close" id="sheet-close" aria-label="关闭"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>
+      <button class="close" id="sheet-close" aria-label="关闭" data-i18n-aria="common.close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button></div>
     <div id="sheet-body"></div>
   </div>
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script src="i18n.js" defer></script>
+<script src="i18n-en.js" defer></script>
 <script src="ai-media.js" defer></script>
 <script src="ai.js" defer></script>
 <script src="profile.js" defer></script>
 <script src="history.js" defer></script>
 <script src="identities.js" defer></script>
 <script src="account.js" defer></script>
+<script src="feedback.js" defer></script>
 <script src="grocery.js" defer></script>
 <script src="diet-profile.js" defer></script>
+<script src="muscle-map.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

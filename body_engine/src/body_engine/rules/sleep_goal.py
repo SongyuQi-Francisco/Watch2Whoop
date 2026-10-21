@@ -40,12 +40,17 @@ def evaluate(ctx) -> RuleResult:
              "今天别再喝咖啡" if woke is not None and woke >= cut else f"咖啡 {S.fmt(cut)} 前",
              f"晚饭、训练 {S.fmt(t - G.DINNER_BEFORE_MIN)} 前结束",
              f"{S.fmt(wake)} 起床；{G.MORNING_LIGHT}"]
+    lines_en = [f"From {S.fmt(t - G.SCREEN_OFF_BEFORE_MIN)}: screens off, lights dimmed",
+                "No more coffee today" if woke is not None and woke >= cut else f"Coffee before {S.fmt(cut)}",
+                f"Finish dinner and training by {S.fmt(t - G.DINNER_BEFORE_MIN)}",
+                f"Get up at {S.fmt(wake)}; {G.MORNING_LIGHT_EN}"]
     stage = S.stage_for(plan, night)
     evidence = {"night": night.isoformat(), "tonight_target": S.fmt(t), "plan_stage": S.fmt(stage["bed_off"]),
                 "final_target": goal["target_bedtime"], "wake_target": S.fmt(wake),
                 "last_night": {"bedtime": last["bedtime"], "wake": last["wake"]} if last else None,
                 "source": "body-management.md 6.1、6.2；goals/params.py"}
-    reminders = [Reminder(KEY, "info", f"今晚 {S.fmt(t)} 前睡", "\n".join(lines), subject="", evidence=evidence)]
+    reminders = [Reminder(KEY, "info", f"今晚 {S.fmt(t)} 前睡", "\n".join(lines), subject="", evidence=evidence,
+                          title_en=f"Bed by {S.fmt(t)} tonight", message_en="\n".join(lines_en))]
 
     # Consecutive deviation: the last 3 nights (with consecutive data) all more than 30 minutes later than that night's target
     streak = []
@@ -59,16 +64,24 @@ def evaluate(ctx) -> RuleResult:
     if len(streak) >= G.DEVIATION_NIGHTS:
         reminders.append(Reminder(KEY, "warning", f"连续 {len(streak)} 晚比目标晚",
                                   f"平均晚 {round(sum(streak) / len(streak))} 分钟。\n今晚先守住 {S.fmt(t)}；按时起床、晒太阳。",
-                                  subject="deviation", evidence={**evidence, "late_by_min": streak}))
+                                  subject="deviation", evidence={**evidence, "late_by_min": streak},
+                                  title_en=f"Later than your target {len(streak)} nights in a row",
+                                  message_en=f"{round(sum(streak) / len(streak))} min late on average.\nTonight, hold "
+                                             f"{S.fmt(t)}; get up on time and get some sunlight."))
     # Stage reached / final reached (once per stage: sticky + subject carries the stage time)
     a = S.avg(recent, "bed_off")
     if a is not None and a <= final + G.ON_TARGET_TOL_MIN:
         reminders.append(Reminder(KEY, "info", f"达成目标：7 晚平均 {S.fmt(a)}",
                                   f"目标 {goal['target_bedtime']}，保持住起床时间和早上晒太阳。",
-                                  subject=f"final:{goal['target_bedtime']}", evidence=evidence, sticky=True))
+                                  subject=f"final:{goal['target_bedtime']}", evidence=evidence, sticky=True,
+                                  title_en=f"Goal reached: 7-night average {S.fmt(a)}",
+                                  message_en=f"Goal {goal['target_bedtime']}; keep your wake time and the morning sunlight."))
     elif a is not None and stage["bed_off"] != final and stage is not plan[0] and a <= stage["bed_off"] + G.ON_TARGET_TOL_MIN:
         reminders.append(Reminder(KEY, "info", f"到 {S.fmt(stage['bed_off'])} 这一档了",
                                   f"7 晚平均 {S.fmt(a)}。按计划继续往前提，最终 {goal['target_bedtime']}。",
-                                  subject=f"stage:{S.fmt(stage['bed_off'])}", evidence=evidence, sticky=True))
+                                  subject=f"stage:{S.fmt(stage['bed_off'])}", evidence=evidence, sticky=True,
+                                  title_en=f"Reached the {S.fmt(stage['bed_off'])} step",
+                                  message_en=f"7-night average {S.fmt(a)}. Keep moving earlier as planned; final goal "
+                                             f"{goal['target_bedtime']}."))
     return RuleResult(KEY, "triggered", reminders=reminders,
                       details={"tonight_target": S.fmt(t), "avg_bedtime_7d": S.fmt(a), "nights_7d": len(recent)})

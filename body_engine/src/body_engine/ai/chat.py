@@ -20,6 +20,7 @@ from psycopg.types.json import Jsonb
 
 from ..assistant import compact
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
+from ..i18n import L, is_en
 from . import adapters, catalog, choice, crypto, fallback, prompt, providers
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
@@ -34,8 +35,15 @@ MAX_TEXT = 8000
 # Owner's decision (2026-10-18): logging tools (food, training, weight, journal, labs, templates, recipes, events, supplements,
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Still requires login with write permission, and can only write for the caller.
-ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
+ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
                   "delete_supplement", "remove_product", "remove_shopping_items", "delete_workout", "rollback_write"}
+# What the confirm card says for these tools in English (the Chinese card uses the tool description's first sentence)
+CONFIRM_EN = {"undo_sparky_entry": "Delete a food entry / strength workout / set / weigh-in",
+              "undo_meal_log": "Undo a quick meal log", "undo_day_changes": "Undo day changes to the training plan", "delete_journal_entry": "Clear a journal answer for a day",
+              "delete_lab_results": "Delete lab results for a sample date", "delete_observation": "Delete an observation note",
+              "delete_supplement": "Delete a supplement and its journal item", "remove_product": "Remove a product",
+              "remove_shopping_items": "Remove shopping list items", "delete_workout": "Hide a duplicate / wrong workout",
+              "rollback_write": "Roll back an AI change"}
 
 
 class ChatError(Exception):
@@ -58,19 +66,25 @@ def resolve_provider(conn: psycopg.Connection, user_id: int, need_quota: bool = 
         fallback.require_available(conn, user_id, need_quota=need_quota)  # raises with the reason (consent, quota, paused)
         return fallback.provider()
     if e["source"] == "butler":
-        raise ChatError("subscription", "请在 Claude app 中使用身体管家", assistant_url=e["url"])
+        raise ChatError("subscription", L("请在 Claude app 中使用身体管家", "Use the body butler in the Claude app"), assistant_url=e["url"])
     row = e["provider"]
     if row is None:
-        raise ChatError("no_provider", "还没有设置 AI：在「我 → AI 设置」里选一个提供商")
+        raise ChatError("no_provider", L("还没有设置 AI：在「我 → AI 设置」里选一个提供商",
+                                         "No AI set up yet: pick a provider in Me → AI settings"))
     if catalog.is_mcp(row["kind"]):
         client = {"claude_plan_mcp": "Claude app / Claude Code", "codex_plan_mcp": "Codex",
-                  "gemini_plan_mcp": "Gemini CLI / Antigravity"}.get(row["kind"], "你的 AI 客户端")
-        raise ChatError("subscription", f"你用的是订阅（{row['display_name']}）：请在 {client} 里和身体管家对话"
-                        "（已连上 Body Engine 的 MCP）", assistant_url=owner_assistant_url(user_id), kind=row["kind"])
+                  "gemini_plan_mcp": "Gemini CLI / Antigravity"}.get(row["kind"], L("你的 AI 客户端", "your AI client"))
+        name = catalog.display_name(row)
+        raise ChatError("subscription", L(f"你用的是订阅（{name}）：请在 {client} 里和身体管家对话（已连上 Body Engine 的 MCP）",
+                                          f"You use a subscription ({name}): talk to Jarvis in {client} "
+                                          "(connected to Body Engine's MCP)"),
+                        assistant_url=owner_assistant_url(user_id), kind=row["kind"])
     if not catalog.kind_allowed(row["kind"], user_id):
-        raise ChatError("forbidden", "服务端 Gemini CLI 没开，或只给部署者本人用", status=403)
+        raise ChatError("forbidden", L("服务端 Gemini CLI 没开，或只给部署者本人用",
+                                       "The server-side Gemini CLI is off, or only for the deployer"), status=403)
     if row["status"] != "active":
-        raise ChatError("disabled", "默认的 AI 提供商已停用，在「AI 设置」里启用或换一个")
+        raise ChatError("disabled", L("默认的 AI 提供商已停用，在「AI 设置」里启用或换一个",
+                                      "Your default AI provider is turned off; turn it on or pick another in AI settings"))
     return row
 
 
@@ -78,7 +92,8 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
     if fallback.is_fallback(provider):
         s = fallback.summary(conn, user_id)
         if s["spent_cny"] >= s["quota_cny"]:
-            raise ChatError("quota", s["message"] or "本月额度已用完", status=402, spent_cny=s["spent_cny"],
+            raise ChatError("quota", s["message"] or L("本月额度已用完", "This month's quota is used up"), status=402,
+                            spent_cny=s["spent_cny"],
                             quota_cny=s["quota_cny"], remaining_cny=0, reset_on=s["reset_on"])
         return s["spent_cny"], s["quota_cny"]
     spent = providers.month_cost(conn, user_id, provider["id"])
@@ -87,7 +102,9 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
             or (provider.get("price_in_per_mtok") is not None and provider.get("price_out_per_mtok") is not None
                 and float(provider["price_in_per_mtok"]) == 0 and float(provider["price_out_per_mtok"]) == 0))
     if not free and spent >= budget:
-        raise ChatError("budget", f"本月 AI 预算已用完（${spent:.2f} / ${budget:.2f}）：在「AI 设置」里调高预算，或下个月再用",
+        raise ChatError("budget", L(f"本月 AI 预算已用完（${spent:.2f} / ${budget:.2f}）：在「AI 设置」里调高预算，或下个月再用",
+                                    f"This month's AI budget is used up (${spent:.2f} / ${budget:.2f}): raise it in AI settings, "
+                                    "or wait for next month"),
                         status=402, spent_usd=round(spent, 4), budget_usd=budget)
     return spent, budget
 
@@ -114,16 +131,16 @@ def clean_images(images: list[dict] | None) -> list[dict]:
     for img in images or []:
         mt, data = img.get("media_type"), img.get("data") or ""
         if mt not in IMAGE_TYPES:
-            raise ChatError("bad_image", "图片只支持 JPEG / PNG / WebP / GIF", status=422)
+            raise ChatError("bad_image", L("图片只支持 JPEG / PNG / WebP / GIF", "Images must be JPEG / PNG / WebP / GIF"), status=422)
         try:
             raw = base64.b64decode(data, validate=True)
         except (binascii.Error, ValueError):
-            raise ChatError("bad_image", "图片数据不是有效的 base64", status=422)
+            raise ChatError("bad_image", L("图片数据不是有效的 base64", "The image data is not valid base64"), status=422)
         if len(raw) > MAX_IMAGE_BYTES:
-            raise ChatError("bad_image", "图片太大（每张不超过 5MB）", status=422)
+            raise ChatError("bad_image", L("图片太大（每张不超过 5MB）", "Image too big (5 MB at most each)"), status=422)
         out.append({"type": "image", "media_type": mt, "data": data})
     if len(out) > MAX_IMAGES:
-        raise ChatError("bad_image", f"一次最多 {MAX_IMAGES} 张图片", status=422)
+        raise ChatError("bad_image", L(f"一次最多 {MAX_IMAGES} 张图片", f"At most {MAX_IMAGES} images at a time"), status=422)
     return out
 
 
@@ -131,7 +148,7 @@ def clean_images(images: list[dict] | None) -> list[dict]:
 def _conversation(conn, user_id: int, conv_id: int) -> dict:
     row = conn.execute("SELECT * FROM ai_conversations WHERE id = %s AND user_id = %s", (conv_id, user_id)).fetchone()
     if row is None:
-        raise ChatError("not_found", "没有这个对话", status=404)
+        raise ChatError("not_found", L("没有这个对话", "No such conversation"), status=404)
     return row
 
 
@@ -203,6 +220,8 @@ def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args:
 def _summary(name: str, args: dict) -> str:
     tool = TOOLS_BY_NAME.get(name)
     shown = {k: v for k, v in args.items() if k != "user" and v not in (None, "", [])}
+    if is_en():
+        return f"{CONFIRM_EN.get(name, name)}: " + json.dumps(shown, ensure_ascii=False)[:600]
     return f"{tool.description.split('。')[0] if tool else name}：" + json.dumps(shown, ensure_ascii=False)[:600]
 
 
@@ -219,16 +238,17 @@ def make_adapter(provider: dict, user_id: int) -> adapters.Adapter:
     if fallback.is_fallback(provider):
         key = fallback.read_key()
         if key is None:
-            raise ChatError("fallback_off", "托底 AI 还没开通", status=409)
+            raise ChatError("fallback_off", L("托底 AI 还没开通", "The backup AI is not set up yet"), status=409)
         return adapters.make(provider["kind"], provider["model"], key, provider["base_url"])
     try:
         key = providers.decrypt_secret(provider, user_id)
     except crypto.MasterKeyMissing as e:
         raise ChatError("server_key", str(e), status=503)
     except PermissionError:
-        raise ChatError("forbidden", "这个提供商不属于你", status=403)
+        raise ChatError("forbidden", L("这个提供商不属于你", "This provider is not yours"), status=403)
     except Exception:  # Bad authentication tag: the master key was changed or the data is corrupted
-        raise ChatError("bad_secret", "保存的 API key 解不开了，请在「AI 设置」里重新填一次")
+        raise ChatError("bad_secret", L("保存的 API key 解不开了，请在「AI 设置」里重新填一次",
+                                        "The saved API key can no longer be read; enter it again in AI settings"))
     return adapters.make(provider["kind"], provider["model"], key, provider["base_url"])
 
 
@@ -274,9 +294,9 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
         mid = _add_message(conn, conv["id"], viewer["id"], "assistant", content, result.native, adapter.key)
         conn.commit()
         if result.stop == "refusal":
-            yield ev("notice", message="模型拒绝回答这个问题")
+            yield ev("notice", message=L("模型拒绝回答这个问题", "The model declined to answer this"))
         if result.stop == "max_tokens":
-            yield ev("notice", message="回答太长被截断了")
+            yield ev("notice", message=L("回答太长被截断了", "The answer was too long and got cut off"))
         if not result.tool_calls:
             conn.execute("UPDATE ai_conversations SET state = 'idle' WHERE id = %s", (conv["id"],))
             conn.commit()
@@ -312,8 +332,10 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             return
         _finish_tool_message(conn, conv, mid, [b for b in content if b["type"] == "tool_call"])
         conn.commit()
+    n = fp.MAX_ROUNDS if fb else MAX_ROUNDS
     yield ev("error", code="too_many_rounds",
-             message=f"连续调了 {fp.MAX_ROUNDS if fb else MAX_ROUNDS} 次模型还没说完，先停一下；可以接着问")
+             message=L(f"连续调了 {n} 次模型还没说完，先停一下；可以接着问",
+                       f"Still not done after {n} model calls in a row, so it stopped here; you can ask it to go on"))
 
 
 def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
@@ -328,14 +350,15 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     message = (message or "").strip()
     imgs = clean_images(images)
     if not message and not imgs:
-        raise ChatError("empty", "说点什么，或者发一张图", status=422)
+        raise ChatError("empty", L("说点什么，或者发一张图", "Say something, or send a picture"), status=422)
     if len(message) > MAX_TEXT:
-        raise ChatError("too_long", f"一条消息不超过 {MAX_TEXT} 字", status=422)
+        raise ChatError("too_long", L(f"一条消息不超过 {MAX_TEXT} 字", f"At most {MAX_TEXT} characters per message"), status=422)
     provider = resolve_provider(conn, viewer["id"], allow_owner_fallback=allow_owner_fallback)
     fb = fallback.is_fallback(provider)
     vision = fp.VISION if fb else catalog.KINDS[provider["kind"]].get("vision")
     if imgs and vision is False:
-        raise ChatError("no_vision", "托底 AI 暂不支持图片，用文字描述一下" if fb else "这个提供商的模型不支持图片", status=422)
+        raise ChatError("no_vision", L("托底 AI 暂不支持图片，用文字描述一下", "The backup AI can't read images yet; describe it in words")
+                        if fb else L("这个提供商的模型不支持图片", "This provider's model can't read images"), status=422)
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
@@ -347,7 +370,8 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
         conv = _conversation(conn, viewer["id"], conversation_id)
         n = conn.execute("SELECT count(*) AS n FROM ai_messages WHERE conversation_id = %s", (conv["id"],)).fetchone()["n"]
         if n >= (fp.MAX_MESSAGES if fb else MAX_MESSAGES):
-            raise ChatError("too_long", "这个对话太长了，开一个新对话吧（长期记忆不受影响）")
+            raise ChatError("too_long", L("这个对话太长了，开一个新对话吧（长期记忆不受影响）",
+                                          "This conversation is too long; start a new one (long-term memory is kept)"))
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
     content = [{"type": "text", "text": f"{prompt.time_prefix(conn, viewer['id'])}\n{message}"}] + imgs
     return provider, adapter, conv, content
@@ -355,7 +379,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
 
 def _run(conn, viewer, provider, adapter, conv, content) -> Iterator[dict]:
     yield ev("conversation", id=conv["id"], provider=provider["kind"], model=provider["model"],
-             display_name=provider["display_name"],
+             display_name=catalog.display_name(provider),
              **({"quota": {k: v for k, v in fallback.summary(conn, viewer["id"]).items()
                            if k in ("spent_cny", "quota_cny", "remaining_cny", "reset_on")}} if fallback.is_fallback(provider) else {}))
     _close_open_calls(conn, conv, "用户没有确认就发了新消息，这次没有写入")
@@ -368,11 +392,11 @@ def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
     row = conn.execute("SELECT * FROM ai_tool_calls WHERE id = %s AND user_id = %s FOR UPDATE",
                        (call_id, viewer["id"])).fetchone()
     if row is None:
-        raise ChatError("not_found", "没有这个待确认的操作", status=404)
+        raise ChatError("not_found", L("没有这个待确认的操作", "No such pending action"), status=404)
     if row["status"] != "pending":
-        raise ChatError("decided", "这个操作已经处理过了")
+        raise ChatError("decided", L("这个操作已经处理过了", "This action was already handled"))
     if approve and "write" not in (viewer.get("token_scopes") or []):
-        raise ChatError("read_only", "这次登录是只读的，不能写", status=403)
+        raise ChatError("read_only", L("这次登录是只读的，不能写", "This login is read-only; it can't write"), status=403)
     conv = _conversation(conn, viewer["id"], row["conversation_id"])
     # An approved write still runs when the fallback quota ran out meanwhile (the loop then stops before the next model call)
     provider = resolve_provider(conn, viewer["id"], need_quota=False)

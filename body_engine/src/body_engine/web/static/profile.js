@@ -10,7 +10,9 @@
   let P = null;              // result of the latest GET /profile
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
+  const tr = (k, p) => window.I18N.t(k, p);
   const LATER_KEY = "be.profile.later";
+  const ZH_NAME = "中文";   // i18n-ok (the language picker shows each language in its own name)
   const TZS = ["Australia/Sydney", "Australia/Melbourne", "Australia/Brisbane", "Australia/Adelaide", "Australia/Perth",
     "Pacific/Auckland", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Taipei", "Asia/Singapore", "Asia/Kuala_Lumpur",
     "Asia/Tokyo", "Europe/London", "America/Los_Angeles", "America/New_York"];
@@ -68,14 +70,14 @@
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-modal", "true");
     el.innerHTML = `<div class="consent-in">
-      <h1>${reconfirm ? "同意书更新了" : "使用前请确认"}</h1>
-      <p class="para" style="margin:0">${reconfirm ? "《健康数据使用同意书》有了新版本，请再看一遍。" : "Watch2Whoop 会处理你的健康数据。请先看完下面的要点（或全文），同意后才开始处理。"}</p>
+      <h1>${esc(reconfirm ? tr("同意书更新了") : tr("使用前请确认"))}</h1>
+      <p class="para" style="margin:0">${esc(reconfirm ? tr("《健康数据使用同意书》有了新版本，请再看一遍。") : tr("Watch2Whoop 会处理你的健康数据。请先看完下面的要点（或全文），同意后才开始处理。"))}</p>
       <ul>${c.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
-      <button class="link" id="consent-more" type="button">阅读完整同意书（版本 ${esc(c.version)}）</button>
+      <button class="link" id="consent-more" type="button">${esc(tr("阅读完整同意书（版本 {v}）", { v: c.version }))}</button>
       <div class="consent-full" id="consent-full" hidden>${md(c.text)}</div>
-      <label class="consent-check"><input type="checkbox" id="consent-ok"><span>我已阅读并同意《健康数据使用同意书》</span></label>
-      <div class="btns"><button class="btn btn-primary" id="consent-yes" disabled>同意并继续</button>
-        ${reconfirm ? "" : `<button class="btn" id="consent-no">不同意</button>`}</div>
+      <label class="consent-check"><input type="checkbox" id="consent-ok"><span>${esc(tr("我已阅读并同意《健康数据使用同意书》"))}</span></label>
+      <div class="btns"><button class="btn btn-primary" id="consent-yes" disabled>${esc(tr("同意并继续"))}</button>
+        ${reconfirm ? "" : `<button class="btn" id="consent-no">${esc(tr("不同意"))}</button>`}</div>
       <p class="small muted" id="consent-msg" style="margin-top:14px"></p></div>`;
     document.body.appendChild(el);
     document.body.style.overflow = "hidden";
@@ -83,12 +85,12 @@
     $("#consent-ok", el).onchange = (e) => { $("#consent-yes", el).disabled = !e.target.checked; };
     const no = $("#consent-no", el);
     if (no) no.onclick = () => {
-      $("#consent-msg", el).textContent = "不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。";
+      $("#consent-msg", el).textContent = tr("不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。");
     };
     $("#consent-yes", el).onclick = async () => {
       $("#consent-yes", el).disabled = true;
       try {
-        P = await C.api("/v1/users/me/consent", { method: "POST", body: { version: c.version, agree: true } });
+        P = await C.api("/v1/users/me/consent", { method: "POST", body: { version: c.version, agree: true, language: c.language || undefined } });   // the text that was read
       } catch (e) {
         $("#consent-msg", el).textContent = e.message;
         $("#consent-yes", el).disabled = false;
@@ -96,7 +98,7 @@
       }
       el.remove();
       document.body.style.overflow = "";
-      C.toast("谢谢！同步上来的数据一小时内开始处理");
+      C.toast(tr("谢谢！同步上来的数据一小时内开始处理"));
       maybePrompt();
     };
   }
@@ -124,18 +126,21 @@
     try { if (!P || !first) await load(); } catch (e) { C.toast(e.message); return; }
     const p = P;
     const v = (x) => (x == null ? "" : esc(x));
-    C.openSheet(first ? "完善个人资料" : "个人资料", `
-      ${first ? `<p class="para" style="margin:0 0 4px">这些用来算心率区间、身体年龄、和同龄人对比。只有你自己看得到，以后在「我」→「个人资料」里随时能改。</p>` : ""}
-      <div class="field"><label>怎么称呼你</label><input class="input" id="pf-name" maxlength="30" value="${v(p.display_name)}"></div>
-      <div class="field"><label>生日</label><input class="input" id="pf-birth" type="date" min="1920-01-01" value="${v(p.birth_date)}"></div>
-      <div class="field"><label>性别</label><select class="input" id="pf-sex">
-        <option value="">不填</option><option value="male"${p.sex === "male" ? " selected" : ""}>男</option>
-        <option value="female"${p.sex === "female" ? " selected" : ""}>女</option></select></div>
-      <div class="field"><label>身高（cm）</label><input class="input" id="pf-height" type="number" inputmode="decimal" min="100" max="230" step="0.1" value="${v(p.height_cm)}"></div>
-      <div class="field"><label>目标体重（kg，可不填）</label><input class="input" id="pf-goal" type="number" inputmode="decimal" min="30" max="250" step="0.1" value="${v(p.goal_weight_kg)}"></div>
-      <div class="field"><label>时区</label><select class="input" id="pf-tz">${tzOptions(p.timezone)}</select></div>
+    C.openSheet(tr(first ? "profile.complete" : "profile.title"), `
+      ${first ? `<p class="para" style="margin:0 0 4px">${esc(tr("profile.intro"))}</p>` : ""}
+      <div class="field"><label>${tr("profile.name")}</label><input class="input" id="pf-name" maxlength="30" value="${v(p.display_name)}"></div>
+      <div class="field"><label>${tr("profile.birth")}</label><input class="input" id="pf-birth" type="date" min="1920-01-01" value="${v(p.birth_date)}"></div>
+      <div class="field"><label>${tr("profile.sex")}</label><select class="input" id="pf-sex">
+        <option value="">${tr("profile.sexNone")}</option><option value="male"${p.sex === "male" ? " selected" : ""}>${tr("profile.male")}</option>
+        <option value="female"${p.sex === "female" ? " selected" : ""}>${tr("profile.female")}</option></select></div>
+      <div class="field"><label>${tr("profile.height")}</label><input class="input" id="pf-height" type="number" inputmode="decimal" min="100" max="230" step="0.1" value="${v(p.height_cm)}"></div>
+      <div class="field"><label>${tr("profile.goal")}</label><input class="input" id="pf-goal" type="number" inputmode="decimal" min="30" max="250" step="0.1" value="${v(p.goal_weight_kg)}"></div>
+      <div class="field"><label>${tr("profile.tz")}</label><select class="input" id="pf-tz">${tzOptions(p.timezone)}</select></div>
+      <div class="field"><label>${tr("profile.lang")}</label><select class="input" id="pf-lang">
+        <option value="">${tr("profile.langAuto")}</option><option value="zh"${p.language === "zh" ? " selected" : ""}>${ZH_NAME}</option>
+        <option value="en"${p.language === "en" ? " selected" : ""}>English</option></select></div>
       <p class="small muted" id="pf-msg" style="margin-top:10px"></p>
-      <div class="btns"><button class="btn btn-primary" id="pf-save">保存</button>${first ? `<button class="btn" id="pf-later">以后再填</button>` : ""}</div>`,
+      <div class="btns"><button class="btn btn-primary" id="pf-save">${tr("common.save")}</button>${first ? `<button class="btn" id="pf-later">${tr("profile.later")}</button>` : ""}</div>`,
     (root) => {
       const later = $("#pf-later", root);
       if (later) later.onclick = () => { laterSet(); C.closeSheet(); };
@@ -143,15 +148,16 @@
         const num = (id) => { const x = $(id, root).value.trim(); return x === "" ? null : Number(x); };
         const body = { display_name: $("#pf-name", root).value.trim(), birth_date: $("#pf-birth", root).value || null,
           sex: $("#pf-sex", root).value || null, height_cm: num("#pf-height"), goal_weight_kg: num("#pf-goal"),
-          timezone: $("#pf-tz", root).value };
+          timezone: $("#pf-tz", root).value, language: $("#pf-lang", root).value || null };
         const renamed = body.display_name !== p.display_name || body.timezone !== p.timezone;
         try {
           P = await C.api("/v1/users/me/profile", { method: "PATCH", body });
         } catch (e) { $("#pf-msg", root).textContent = e.message; return; }
         laterSet();
+        const relang = window.I18N.setPref(P.language);   // the whole page is drawn in the new language after a reload
         C.closeSheet();
-        C.toast("已保存");
-        if (renamed) setTimeout(() => location.reload(), 600);   // Display name / timezone are used in the header and dates: reload
+        C.toast(tr("common.saved"));
+        if (renamed || relang) setTimeout(() => location.reload(), 600);   // Display name / timezone are used in the header and dates: reload
         else updateItem();
       };
     });
@@ -159,7 +165,7 @@
 
   function updateItem() {
     const el = document.getElementById("me-profile-val");
-    if (el && P) el.textContent = P.missing.length ? "未填完" : P.display_name;
+    if (el && P) el.textContent = P.missing.length ? tr("profile.incomplete") : P.display_name;
   }
 
   async function init(ctx) {
@@ -174,7 +180,7 @@
   window.BodyProfile = { open: () => openProfile(false) };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init,
-    meItem: (chev) => `<button class="item" id="me-profile"><span class="row-title">个人资料</span><span class="val" id="me-profile-val">${P ? esc(P.missing.length ? "未填完" : P.display_name) : ""}</span>${chev || ""}</button>`,
+    meItem: (chev) => `<button class="item" id="me-profile"><span class="row-title">${tr("profile.title")}</span><span class="val" id="me-profile-val">${P ? esc(P.missing.length ? tr("profile.incomplete") : P.display_name) : ""}</span>${chev || ""}</button>`,
     bindMe: (view) => { const b = $("#me-profile", view); if (b) b.onclick = () => openProfile(false); updateItem(); },
   });
 })();

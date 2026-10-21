@@ -128,6 +128,23 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 - **余额低于停用线全体自动暂停**，`status` 第二行显示余额、停用线、告警线；充值后下次查余额时恢复。
 - 第一次用前用户要在 app 里单独同意。
 
+## AI 自动反馈
+用户的 AI 发现 bug、听到新需求时会用 `report_feedback` 报进服务器的反馈队列（根规则，`docs/ai-feedback-plan.md`）。服务器先去敏、查重、限流；原话只在服务器上。
+
+```bash
+body-engine feedback list                       # 最新的在前；--status new 只看没处理的
+body-engine feedback show FB-12                 # 去敏后的内容；--raw 看 AI 原话（可能有个人信息，别外传）
+body-engine feedback show FB-12 --public        # 只输出可以贴进公开 issue 的标题和正文
+body-engine feedback status FB-12 public --public-url https://github.com/…/issues/N
+body-engine feedback status FB-12 fixed --note "新版已修好"     # 用户的 AI 下次对话会告诉他（note 不要写个人信息）
+body-engine feedback block --user-id 7          # 有人刷屏时停掉他的反馈
+body-engine feedback digest --dry-run           # 预览每日摘要；不加 --dry-run 发到 BODY_FEEDBACK_DIGEST_TO
+```
+
+- 每日摘要：部署的定时任务每天跑一次 `body-engine feedback digest`；收件地址只配在服务器环境 `BODY_FEEDBACK_DIGEST_TO`（不进仓库），用已有的发信配置（`BODY_MAIL_MODE=smtp`、`BODY_SMTP_*`）。没有新反馈也没有工具报错时不发。
+- 提升到公开仓库：`show --public` 的内容再人工看一遍，用自己电脑上的 `gh issue create` 发，然后 `status … public --public-url …`。服务器上不放公开仓库的 token。
+- 全服务器停用：`BODY_FEEDBACK_MODE=off`。
+
 ## 导入健康历史
 
 用户在 app「我 → 导入健康历史」自己上传，后台队列处理（`body-engine history-import-run`，定时任务每分钟或每小时跑一次）。管理员代导：
@@ -228,10 +245,26 @@ body-engine activation-code create --user-id 7 --email someone@example.com   # �
 
 ## 内测码（自助注册上线后）
 
-批量内测码（自助注册时用）的命令随「自助注册」PR 一起提供，**需要该 PR 合并后可用**。目前只有方案（PR #8，`docs/self-signup-plan.md`），草案命令：
+自助注册的人用 Apple / 邮箱登录后要输一个内测码才能开通。
 
 ```bash
-body-engine invite-code batch --count 50 --label 渠道-1020 [--days 30] [--max-uses 1]   # 草案，以合并后的 --help 为准
+body-engine invite-code create --label 群-1020 --uses 20 [--days 30]   # 一个码，最多开 20 个账号；明文只打印这一次
+body-engine invite-code batch --count 50 --label 渠道-1020 [--days 30] [--max-uses 1]   # 一批一次性码（CSV）
+body-engine invite-code list [--batch N]   # 已用 / 剩余次数；每次使用绑定的身份（Apple / 邮箱，打码显示）和时间
+body-engine invite-code revoke --batch N | --code-id N
 ```
 
-在那之前，每个人都用上面的「开户」+「激活链接」。
+一个人只能用一次：每次兑换都记下这个账号的登录身份（只存哈希和打码提示），删号重注册也不能再用码开新账号。
+
+### 用户邀请码（推荐）
+
+服务器设了 `BODY_REFERRALS_ENABLED=1` 后，每个已开通的用户在「我」→「邀请好友」里有自己的邀请码（复制 / 分享链接 `…/app/?invite=码`，链接打开后注册流程会自动填好）。好友用它注册就能开通，不用管理员发码。默认关闭：不设这个变量，入口和接口都隐藏，已有的用户邀请码也不能用。
+
+- 规则在 `body_engine/src/body_engine/account/params.py`：每人最多邀请 `REFERRAL_MAX_USES`（10）人，每个码 24 小时内最多 `REFERRAL_DAILY_REDEEMS`（3）次；不过期。
+- 邀请人被停用或删号，码立即失效；管理员可以停掉某个人的码（停掉后不会自动发新码）。
+- 每次通过邀请码开通都记下邀请人，并在 `invite_rewards` 记一条待发奖励（奖励是什么还没定，只记账）。
+
+```bash
+body-engine invite-code list --kind referral   # 谁邀请了谁：每个用户的码、已用 / 剩余，每次使用的人、身份（打码）、时间
+body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N 从上面的列表 --batch 看）
+```
