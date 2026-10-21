@@ -327,15 +327,25 @@ def match_product(products: list[dict], name: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- pantry
-def _pantry_view(r: dict) -> dict:
+def _pantry_view(r: dict, tz: ZoneInfo) -> dict:
+    """days_ago: whole days since the last change in the user's time zone (the Today page shows 「x 天前更新」)."""
+    cat = r.get("category") or guess_category(r["name"])
     return {"id": r["id"], "name": r["name"], "quantity": float(r["quantity"]), "unit": r["unit"],
             "label": fmt_qty(float(r["quantity"]), r["unit"]), "product_id": r["product_id"],
-            "updated_at": r["updated_at"]}
+            "category": cat, "category_label": category_label(cat), "updated_at": r["updated_at"],
+            "days_ago": max(0, (datetime.now(tz).date() - r["updated_at"].astimezone(tz).date()).days)}
 
 
 def list_pantry(conn: psycopg.Connection, user_id: int) -> list[dict]:
-    return [_pantry_view(r) for r in conn.execute(
-        "SELECT * FROM pantry_items WHERE user_id = %s ORDER BY lower(name)", (user_id,))]
+    """What is at home, sorted by category (the product's, else guessed from the name) then name."""
+    tz = _tz(conn, user_id)
+    rows = conn.execute("""SELECT pi.*, gp.category FROM pantry_items pi
+                           LEFT JOIN grocery_products gp ON gp.id = pi.product_id AND gp.user_id = pi.user_id AND gp.active
+                           WHERE pi.user_id = %s""", (user_id,)).fetchall()
+    order = list(P.CATEGORIES)
+    out = [_pantry_view(r, tz) for r in rows]
+    out.sort(key=lambda p: (order.index(p["category"]) if p["category"] in order else 99, p["name"].lower()))
+    return out
 
 
 def _pantry_row(conn, user_id: int, name: str):
@@ -510,21 +520,23 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
         else:
             need = sum(conv)
         stock = pantry.get(k) or (pantry_by_product.get(prod["id"]) if prod else None)
+        used = None   # how much the pantry covered (shown on the line as 「家里有 …」, issue #102)
         if stock:
             have = _convert(float(stock["quantity"]), stock["unit"], unit, piece_g)
             if have:
+                used = round(min(have, need), 1)
                 need -= have
         if need <= 0:
             covered.append(n["name"])
             continue
         s = _sized(prod, need, unit)
         conn.execute("""INSERT INTO shopping_items (list_id, user_id, name, product_id, category, store, need_qty, unit, packages,
-                          buy_qty, est_cost, currency, source, used_by, note)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'plan',%s,%s)""",
+                          buy_qty, est_cost, currency, source, used_by, note, pantry_qty)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'plan',%s,%s,%s)""",
                      (lst["id"], user_id, n["name"], prod["id"] if prod else None,
                       prod["category"] if prod else guess_category(n["name"]),
                       (prod["store"] if prod else None) or n["store"], s["need_qty"], s["unit"], s["packages"], s["buy_qty"],
-                      s["est_cost"], s["currency"], n["used_by"], note))
+                      s["est_cost"], s["currency"], n["used_by"], note, used or None))
         added += 1
     conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
                  (Jsonb(plan), Jsonb(summary), lst["id"]))
@@ -543,6 +555,9 @@ def _item_view(r: dict, prod: dict | None = None, connected: list[str] | tuple =
             "need_qty": _num(r["need_qty"]), "unit": unit, "packages": r["packages"], "buy_qty": buy, "qty_label": label,
             "est_cost": _num(r["est_cost"]), "currency": r["currency"], "source": r["source"], "used_by": r["used_by"],
             "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"]),
+            "pantry_qty": _num(r["pantry_qty"]),
+            "pantry_label": Li(f"家里有 {fmt_qty(float(r['pantry_qty']), unit)}", f"{fmt_qty(float(r['pantry_qty']), unit)} at home")
+            if r["pantry_qty"] else None,
             "links": product_links(prod, connected) if prod else L.links(r["name"], r["store"], connected=connected)}
 
 

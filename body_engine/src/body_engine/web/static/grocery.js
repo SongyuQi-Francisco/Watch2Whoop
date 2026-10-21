@@ -15,7 +15,10 @@
    special and age_days (shown as 「x 天前」); list.prices has totals per store, savings and what still needs a price; bought lines
    carry purchase.verdict (买得便宜 / 买贵了). 「价格记录」 lists the user's own store products (GET …/store-products) and opens the
    price history of one (GET …/store-products/{id}: curve, min / average / latest, how often on special). No store images: the
-   page's CSP only loads its own images, and store images are not copied. */
+   page's CSP only loads its own images, and store images are not copied.
+   「家里存货」 (issue #102) lists the pantry (GET …/grocery/pantry: by category, quantity, 「x 天前更新」); on the own page each row has
+   「用完了」 (PUT …/pantry with quantity 0, undo in the toast puts the old quantity back). Changing amounts stays with the AI (set_pantry).
+   List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought. */
 (() => {
   "use strict";
   let C = null;
@@ -25,6 +28,7 @@
   let stores = null;    // last GET /grocery/stores (own page only)
   let specials = null;  // last GET /grocery/specials (this week's half price, grocery-sync)
   let sprods = null;    // last GET /grocery/store-products (this user's own store products and latest prices)
+  let pantry = null;    // last GET /grocery/pantry (what is at home)
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -53,8 +57,9 @@
     const age = !i.bought && i.offer?.age_days > 0   // list rows are tight at phone width: only prices from earlier days show their age
       ? `<small class="gage${i.offer.stale ? " old" : ""}">${esc(ageLabel(i.offer.age_days))}</small>` : "";
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
+    const home = !i.bought && i.pantry_label ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
     return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.bought ? tr("{name}，已买", { name: i.name }) : i.name)}">
-      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
+      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}${home}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
 
   function listHtml() {
@@ -183,6 +188,54 @@
       ${kv(tr("钠"), n.sodium_mg != null ? `${num(n.sodium_mg, 0)} mg` : null)}${p.nutrition_source ? kv(tr("来源"), p.nutrition_source) : ""}${p.barcode ? kv(tr("条码"), p.barcode) : ""}`);
   }
 
+  function pantryRow(p) {
+    const age = p.days_ago == null ? "" : p.days_ago <= 0 ? tr("今天更新") : tr("{n} 天前更新", { n: p.days_ago });
+    const btn = info.self ? `<span class="glinks"><button class="gstore" data-gpu="${esc(p.id)}" aria-label="${esc(tr("{name} 用完了", { name: p.name }))}">${esc(tr("用完了"))}</button></span>` : "";
+    return `<div class="grow"><div class="item"><span class="row-title">${esc(p.name)}</span>
+      <span class="val">${esc(p.label)}<small class="gage">${esc(age)}</small></span></div>${btn}</div>`;
+  }
+
+  function pantryHtml() {
+    const xs = Array.isArray(pantry) ? pantry : [];
+    const head = `<div class="section-head"><h2>${esc(tr("家里存货"))}</h2><span class="small muted">${xs.length || ""}</span></div>`;
+    if (!xs.length) return `${head}<div class="card"><div class="empty">${esc(tr("暂无存货"))}</div></div>`;
+    const by = new Map();
+    for (const p of xs) { if (!by.has(p.category)) by.set(p.category, []); by.get(p.category).push(p); }   // the server sorts by category, then name
+    return head + [...by.values()].map((ps) => `<div class="ggroup"><div class="ghead"><span>${esc(ps[0].category_label)}</span></div>
+      <div class="card list">${ps.map(pantryRow).join("")}</div></div>`).join("");
+  }
+
+  function paintPantry() {
+    const el = $("#g-pantry");
+    if (!el) return;
+    el.innerHTML = pantryHtml();
+    bind(el);
+  }
+
+  async function putPantry(item) {
+    pantry = await C.api("/v1/users/me/grocery/pantry", { method: "PUT", body: { items: [item] } });
+    paintPantry();
+  }
+
+  async function usedUp(id) {
+    const p = (pantry || []).find((x) => String(x.id) === String(id));
+    if (!p) return;
+    try {
+      await putPantry({ name: p.name, quantity: 0, unit: p.unit });
+    } catch (e) {
+      C.toast(e.message || tr("没有保存"));
+      return;
+    }
+    C.toast(tr("已用完 · {name}", { name: p.name }), tr("撤销"), async () => {
+      try {
+        await putPantry({ name: p.name, quantity: p.quantity, unit: p.unit, product_id: p.product_id });
+        C.toast(tr("已撤销 · {name}", { name: p.name }));
+      } catch (e) {
+        C.toast(e.message || tr("没有保存"));
+      }
+    });
+  }
+
   function storesHtml() {
     if (!stores || stores.error) return "";
     return `<div class="section-head"><h2>${esc(tr("超市"))}</h2></div><div class="gconn">${stores.stores.map((s) =>
@@ -226,6 +279,8 @@
     try {
       list = await C.api(`/v1/users/me/grocery/list/items/${encodeURIComponent(id)}`, { method: "PATCH", body: { bought: item.bought } });
       paint();
+      pantry = await C.api(`${base()}/pantry`).catch(() => pantry);   // ticking adds to the pantry, unticking takes it back
+      paintPantry();
     } catch (e) {
       item.bought = !item.bought;
       list.progress.bought += item.bought ? 1 : -1;
@@ -239,19 +294,22 @@
     for (const b of root.querySelectorAll("[data-gp]")) b.onclick = () => productSheet(b.dataset.gp);
     for (const b of root.querySelectorAll("[data-gs]")) b.onclick = () => toggleStore(b.dataset.gs);
     for (const b of root.querySelectorAll("[data-gsp]")) b.onclick = () => sprodSheet(b.dataset.gsp);
+    for (const b of root.querySelectorAll("[data-gpu]")) b.onclick = () => usedUp(b.dataset.gpu);
   }
 
   async function foodShop(i) {
     info = i;
     const wk = i.date ? `?week=${encodeURIComponent(i.date)}` : "";
-    [list, products, stores, specials, sprods] = await Promise.all([
+    [list, products, stores, specials, sprods, pantry] = await Promise.all([
       C.api(`${base()}/list${wk}`).catch((e) => ({ error: e })),
       C.api(`${base()}/products`).catch((e) => ({ error: e })),
       i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
       C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e })),
       C.api(`${base()}/store-products`).catch(() => null),
+      C.api(`${base()}/pantry`).catch(() => null),
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
+      <div class="section" id="g-pantry">${pantryHtml()}</div>
       <div class="section" id="g-specials">${specialsHtml()}</div>
       <div class="section" id="g-sprods">${sprodsHtml()}</div>
       <div class="section"><div class="section-head"><h2>${esc(tr("商品库"))}</h2><span class="small muted">${Array.isArray(products) ? products.length : ""}</span></div>

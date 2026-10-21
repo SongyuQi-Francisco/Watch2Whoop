@@ -920,4 +920,12 @@ I18N.addEn({
   "没见过": "None seen",
   "上次买": "Last bought",
   "允许联网（官方搜索 / 读网页，用来查价格；费用算在你的 key 上）": "Allow web access (the vendor's own search / page reading, for prices; billed on your key)",
+  // grocery: pantry view (issue #102)
+  "家里存货": "At home",
+  "暂无存货": "Nothing at home recorded",
+  "今天更新": "updated today",
+  "{n} 天前更新": "updated {n} d ago",
+  "用完了": "Used up",
+  "{name} 用完了": "{name}: used up",
+  "已用完 · {name}": "Used up · {name}",
 });

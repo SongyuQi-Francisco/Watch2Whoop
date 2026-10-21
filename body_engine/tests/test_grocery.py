@@ -163,6 +163,8 @@ def test_generate_list_with_pantry_and_rounding(conn, world):
     assert chicken["packages"] == 2 and chicken["buy_qty"] == 2000 and chicken["est_cost"] == 24.0
     assert chicken["store"] == "Costco" and chicken["used_by"] == ["鸡胸西兰花"] and chicken["qty_label"] == "2 包 · 2 kg"
     assert items["西兰花"]["need_qty"] == 650 and items["西兰花"]["buy_qty"] == 650   # 900 - 250 pantry, rounded to 50
+    assert items["西兰花"]["pantry_qty"] == 250 and items["西兰花"]["pantry_label"] == "家里有 250 g"   # issue #102
+    assert items["鸡胸肉"]["pantry_qty"] is None and items["鸡胸肉"]["pantry_label"] is None
     egg = items["鸡蛋"]
     assert egg["unit"] == "pcs" and egg["need_qty"] == 14 and egg["packages"] == 2   # Eggs product matched via matches
     assert items["燕麦"]["category"] == "grains" and items["燕麦"]["source"] == "plan"
@@ -351,3 +353,53 @@ def test_api_product_url(client, world):
     assert client.put(f"/v1/users/{a_id}/grocery/stores", json={"connected": []}, headers=h(tok["B"])).status_code == 403
     lst = client.get("/v1/users/me/grocery/list?week=2026-10-21", headers=h(tok["A"])).json()
     assert all("links" in i for i in lst["items"])
+
+
+def test_pantry_view_api(client, world):
+    """Issue #102: the Today page pantry: category, days since the last change, 「用完了」 + undo through PUT …/pantry, read-only
+    for viewers with a share, nothing for others; the list explains what the pantry covered (pantry_label, both languages)."""
+    ids, tok, ref = world
+    a = ids["A"]
+    r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "鸡蛋", "quantity": 6, "unit": "pcs"},
+                                                                   {"name": "大米", "quantity": 1500, "unit": "g"}]},
+                   headers=h(tok["A"]))
+    assert r.status_code == 200
+    got = {p["name"]: p for p in r.json()}
+    assert got["鸡蛋"]["category"] == "dairy_eggs" and got["鸡蛋"]["category_label"] == "蛋奶" and got["鸡蛋"]["days_ago"] == 0
+    assert got["大米"]["category"] == "grains" and got["鸡蛋"]["label"] == "6 个"
+    cats = [p["category"] for p in r.json()]
+    assert cats.index("dairy_eggs") < cats.index("grains")   # sorted by category (UI order), then name
+    en = client.get("/v1/users/me/grocery/pantry", headers={**h(tok["A"]), "X-Body-Lang": "en"}).json()
+    assert {p["name"]: p for p in en}["鸡蛋"]["label"] == "6 pcs" and {p["name"]: p for p in en}["鸡蛋"]["category_label"] == "Dairy & eggs"
+    # viewers: B (nutrition share) reads, cannot write; C neither
+    assert {p["name"] for p in client.get(f"/v1/users/{a}/grocery/pantry", headers=h(tok["B"])).json()} >= {"鸡蛋", "大米"}
+    assert client.put(f"/v1/users/{a}/grocery/pantry", json={"items": [{"name": "鸡蛋", "quantity": 0, "unit": "pcs"}]},
+                      headers=h(tok["B"])).status_code == 403
+    assert client.get(f"/v1/users/{a}/grocery/pantry", headers=h(tok["C"])).status_code == 403
+    # 用完了 = quantity 0 (row removed); undo puts the old quantity back
+    r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "鸡蛋", "quantity": 0, "unit": "pcs"}]}, headers=h(tok["A"]))
+    assert "鸡蛋" not in {p["name"] for p in r.json()}
+    r = client.put("/v1/users/me/grocery/pantry", json={"items": [{"name": "鸡蛋", "quantity": 6, "unit": "pcs", "product_id": None}]},
+                   headers=h(tok["A"]))
+    assert {p["name"]: p for p in r.json()}["鸡蛋"]["quantity"] == 6
+    # C's pantry is separate: A's eggs are not C's
+    assert "鸡蛋" not in {p["name"] for p in client.get("/v1/users/me/grocery/pantry", headers=h(tok["C"])).json()}
+    # the list line says how much the pantry covered, in the page language
+    r = client.post("/v1/users/me/grocery/list/generate", json={"week": "2026-11-16", "plan": [
+        {"kind": "food", "food": "大米", "amount": 2000, "unit": "g"}]}, headers={**h(tok["A"]), "X-Body-Lang": "en"})
+    rice = next(i for i in r.json()["items"] if i["name"] == "大米")
+    assert rice["pantry_qty"] == 1500 and rice["pantry_label"] == "1.5 kg at home" and rice["need_qty"] == 500
+    lst = client.get(f"/v1/users/{a}/grocery/list?week=2026-11-16", headers=h(tok["B"])).json()
+    assert next(i for i in lst["items"] if i["name"] == "大米")["pantry_label"] == "家里有 1.5 kg"
+
+
+def test_pantry_view_page_source():
+    """grocery.js: the pantry section, 「用完了」 only on the own page, undo in the toast, the 「家里有」 chip on list lines."""
+    from pathlib import Path
+    js = (Path(__file__).parents[1] / "src/body_engine/web/static/grocery.js").read_text()
+    assert 'id="g-pantry"' in js and "/pantry`" in js
+    row = js[js.index("function pantryRow"):js.index("function pantryHtml")]
+    assert "info.self ?" in row and "data-gpu" in row   # viewers see the pantry read-only
+    used = js[js.index("async function usedUp"):js.index("function storesHtml")]
+    assert "quantity: 0" in used and 'tr("撤销")' in used and "quantity: p.quantity" in used
+    assert "i.pantry_label" in js

@@ -36,7 +36,7 @@ def _slim_offer(o: dict | None) -> dict | None:
 def _slim_list(lst: dict) -> dict:   # store links are for the page; the AI has product_url via find_products
     items = []
     for i in lst.get("items", []):
-        x = {k: v for k, v in i.items() if k not in ("links", "store_label", "offer")}
+        x = {k: v for k, v in i.items() if k not in ("links", "store_label", "offer", "pantry_label")}
         if i.get("offer"):
             x["offer"] = _slim_offer(i["offer"])
         items.append(x)

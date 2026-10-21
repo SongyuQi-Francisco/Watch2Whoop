@@ -40,3 +40,4 @@
 .gspark polyline { stroke: var(--text-2); stroke-width: 1.6; }
 .gspark .gsp-dot { fill: var(--good); }
 .gspark .gpaid-dot { fill: var(--text); }
+button.gstore { background: none; font-family: inherit; cursor: pointer; }   /* 「用完了」 on a pantry row (issue #102) */
