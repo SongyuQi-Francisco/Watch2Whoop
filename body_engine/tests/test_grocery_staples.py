@@ -134,10 +134,17 @@ def test_due_staples_on_the_list(conn, world):
     assert not {i["name"]: i for i in out["items"]}["面包"]["staple"]
     out = store.generate(conn, a, None, [{"kind": "food", "food": "egg", "amount": 30, "unit": "pcs"}])
     assert next(i for i in out["items"] if i["product_id"] == pr["鸡蛋"])["need_qty"] == 30   # the plan needs more
+    # an empty plan only tops up the usual items: this week's plan lines (and the plan) stay
+    lst = store.get_list(conn, a)
+    out = store.generate(conn, a, None, [])
+    assert [i["product_id"] for i in out["items"] if i["source"] == "plan"] == [pr["鸡蛋"]]   # the 30-egg plan line is kept
+    assert next(i for i in out["items"] if i["product_id"] == pr["鸡蛋"])["need_qty"] == 30 and out["plan"] == lst["plan"]
+    assert [i["name"] for i in out["items"] if i["source"] == "staple"] == ["香蕉"]   # eggs: covered by the kept plan line
+    out = store.generate(conn, a, None, [{"kind": "food", "food": "面包", "amount": 600, "unit": "g"}])   # a new plan replaces
     # manual and bought lines stay
     store.add_items(conn, a, None, [{"name": "纸巾", "qty": 1, "unit": "pcs", "product_id": None, "note": None}])
     out = store.generate(conn, a, None, [])
-    assert {i["name"]: i["source"] for i in out["items"]} == {"鸡蛋": "staple", "香蕉": "staple", "纸巾": "manual"}
+    assert {i["name"]: i["source"] for i in out["items"]} == {"面包": "plan", "鸡蛋": "staple", "香蕉": "staple", "纸巾": "manual"}
     # removing the usual item: no longer added
     store.remove_staple(conn, a, pr["香蕉"])
     assert "香蕉" not in {i["name"] for i in store.generate(conn, a, None, [])["items"]}

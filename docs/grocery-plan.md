@@ -36,7 +36,7 @@
 - **常买（#103，迁移 500）**：商品可以标成「常买」（`grocery_products.staple`，带间隔天数 `staple_every_days`、每次买多少 `staple_qty` + `staple_unit`，`pack` = 包数）。
   - **推荐**：按这个用户自己的 `grocery_purchases`，最近 `STAPLE_SUGGEST_WEEKS`（8）周买过 ≥ `STAPLE_SUGGEST_MIN`（3）次、还没标的商品，放进 `get_shopping_context` 的 `staple_suggestions`（次数、建议间隔 = 自己购买间隔的中位数）。只推荐：AI 问过用户、用户同意后才调 `set_staple`，不自动标；用户在对话里拒绝过的推荐不再提（`rules` 里写明，不加新列）。
   - **下次该买** = 上次买的日期 + 间隔（从没买过 = 今天）。
-  - **生成周清单**：到这周日为止到期的常买商品自动加进清单，来源 `staple`；存货已经够一次的量就不加（进 `covered_by_pantry`）；还没到期的不加。菜单里也有同一样东西时合并成一行（来源 `plan`），取两者里大的那个量（菜单的量已经补够了，不再叠加）。重新生成时 `plan` / `staple` 来的未买行一起替换，手动加的和已买的保留。有常买商品时可以只生成常买（`plan` 为空）。
+  - **生成周清单**：到这周日为止到期的常买商品自动加进清单，来源 `staple`；存货已经够一次的量就不加（进 `covered_by_pantry`）；还没到期的不加。菜单里也有同一样东西时合并成一行（来源 `plan`），取两者里大的那个量（菜单的量已经补够了，不再叠加）。重新生成时 `plan` / `staple` 来的未买行一起替换，手动加的和已买的保留。有常买商品时可以只补常买（`plan` 为空）：只替换常买来的未买行，这周原来按菜单生成的行和计划保留，已经有计划行的商品不再加。
   - **工具**：`set_staple`（写，直接跑）、`remove_staple`（`ALWAYS_CONFIRM` + 管家的 `ask`）。接口 `PUT / DELETE …/products/{id}/staple`（只能改自己的），商品接口多 `staple`、`staple_info`（`every_days`、`qty`、`unit`、`last_bought`、`next_due`、`due`）；清单行多 `staple`。
   - **今天页**：清单行显示「常买」；商品库里常买商品显示「常买」和「下次该买 10/28」（到期了用提示色），详情里显示间隔和每次的量。
 
