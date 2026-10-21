@@ -54,6 +54,11 @@
 - 今天页：训练卡多一个「已调整」标签，弹层第一行「原计划」；记录 → 训练的本周条上调整过的日子标签换成强调色。
 - 日期范围：今天前 7 天到今天后 28 天。
 
+## 从任意一天开始、热身附加项、训练记录没连上（#65、#66）
+- **从哪天开始**（#65，`training/plan_start.py`）：`propose_plan` / `save_plan` 新增 `training_days`（用户能练的星期几，分化里的训练按顺序放上去）和 `start_date`（今天或以后任意一天，开始前不排计划）。开始的那一周先读本周已经练过的（SparkyFitness 记录 → 动作库肌群、手表训练），剩下能练的日子只补还没练到的肌群（不连练同一肌群），写成按日期调整（source replan）；下周起按完整周期。`propose_plan` 返回 `ask_user_first`：AI 先问清开始日、本周剩下几天怎么排、每周哪几天能练、不能练的日子、要不要热身附加项，给草案，用户确认后才 `save_plan`。
+- **4 分化就是 4 天**（#66 FB-3）：模板里不再写死周三的「肩部康复 / 灵活性」。康复 / 灵活性做成可选附加项（`params.MOBILITY_ADDONS`：肩、下背），只在用户自己的动作限制（`exercise_meta` 禁用 / 注意 → 动作库 `joint_stress`）涉及那个部位时作为建议给出（`addon_suggestions`），用户同意才加，作为热身放在相关训练的开头，不计入每周组数。动作库里「下背部」（竖脊肌）归到核心，不再把硬拉 / 山羊挺身算成又一次背部训练。
+- **训练记录没连上 / 读不到**（#66 FB-4）：`sparky_client.link_state` 给出 connected / not_linked / unreadable，带中英文短标签和提示。`GET /v1/users/{user}/training/sparky` 返回状态；`POST /v1/users/me/training/sparky/connect` 自助连接（和自助注册的开通步骤相同，`account/provision.connect_sparky`；管理员关联的账号提示找管理员）。今天页的训练页和「我」页有「训练记录」一行显示状态，点开可以连接；没有计划也没有训练记录时，训练页显示空的一周，不再报错。`save_plan` 同步失败时计划照样保存，`sparky_sync.tell_user` 告诉 AI 怎么跟用户说；`get_briefing` 的 `training.training_log` 告诉 AI 训练记录的状态。
+
 ## HTTP 接口与日常维护命令
 - `GET /v1/users/{user}/training/exercises?q=&muscle=&equipment=&pattern=&category=`：动作库筛选与搜索
 - `GET /v1/users/{user}/training/exercises/{slug}`：动作详情、关节压力、个人限制与同模式安全替代动作

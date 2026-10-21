@@ -135,6 +135,45 @@ RECOVERY_GREEN = 67
 RECOVERY_RED = 34
 AUTOREG_SLEEP_DEBT_MIN = 120
 
+# What the AI settles with the user before save_plan (issue #65): returned by propose_plan as ask_user_first.
+PLAN_QUESTIONS = [
+    "从哪天开始（今天或用户选的日子）",
+    "本周剩下几天怎么排（只补本周还没练到的，还是本周先休息）",
+    "每周哪几天能练（training_days）",
+    "有没有固定不能练的日子",
+    "要不要加热身附加项（addon_suggestions，按用户自己的动作限制给出）",
+]
+
+# Optional mobility / prehab add-ons (issue #66 FB-3): never part of a split template. propose_plan suggests one only when
+# the user's own exercise restrictions (exercise_meta banned / caution, mapped to catalog joint_stress) load that area;
+# the user decides (propose_plan / save_plan `addons`), and it is added as a short warm-up block to the sessions that train
+# the matching muscle groups. Prehab for impingement-type shoulder limits: scapular control + external-rotation work
+# (Cools et al., 2014 Br J Sports Med; Kibler et al., 2013 Br J Sports Med); lumbar: core stability + hip mobility
+# (McGill, Low Back Disorders 3rd ed.). Rows: (slug, sets, rep_low, rep_high, rest_sec, duration_sec_or_None, note_or_None).
+MOBILITY_ADDONS: dict[str, dict] = {
+    "shoulder": {
+        "name": "肩部灵活 / 激活（热身）", "name_en": "Shoulder mobility / activation (warm-up)",
+        "joints": {"shoulder_anterior", "shoulder_ir", "shoulder_internal_rotation", "upper_trap"},
+        "groups": {"chest", "back", "shoulders"},
+        "exercises": [
+            ("foam_roller_t_spine", 1, 5, 5, 30, None, "2–3 个位置"),
+            ("serratus_wall_slide", 1, 10, 10, 30, None, None),
+            ("band_face_pull_er", 2, 15, 15, 30, None, "轻阻力"),
+            ("cross_body_stretch_supine", 1, None, None, 30, 30, "每侧 30 秒"),
+        ],
+    },
+    "lumbar": {
+        "name": "下背 / 髋灵活（热身）", "name_en": "Lower back / hip mobility (warm-up)",
+        "joints": {"lumbar"},
+        "groups": {"legs"},
+        "exercises": [
+            ("hip_flexor_stretch", 1, None, None, 30, 30, "每侧 30 秒"),
+            ("bird_dog", 2, 8, 8, 30, None, "每侧"),
+            ("glute_bridge", 2, 12, 12, 30, None, "徒手"),
+        ],
+    },
+}
+
 # Built-in 3 / 4 / 5-day split templates (adapted from standard strength & conditioning splits and body-management.md §4;
 # openGym starter split concepts referenced under AGPL-3.0, docs/training-v2-plan.md).
 # Each exercise row: (slug, sets, rep_low, rep_high, rest_sec, duration_sec_or_None, note_or_None)
@@ -205,7 +244,7 @@ SPLIT_TEMPLATES: dict[str, dict] = {
         "split_type": "4_day_upper_lower",
         "name": "4 分化 · 上下肢（A / B）",
         "days_per_week": 4,
-        "summary": "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每个肌群每周练 2 次。",
+        "summary": "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每周 4 天，每个肌群每周练 2 次。",
         "days": [
             (1, "上肢 A（拉为主）", [
                 ("lat_pulldown", 4, 8, 12, 120, None, None),
@@ -224,13 +263,6 @@ SPLIT_TEMPLATES: dict[str, dict] = {
                 ("seated_leg_curl", 3, 12, 12, 60, None, None),
                 ("standing_calf_raise", 3, 15, 15, 45, None, None),
                 ("dead_bug", 3, 10, 10, 45, None, "每侧"),
-            ]),
-            (3, "肩部康复 / 灵活性 routine", [
-                ("cross_body_stretch_supine", 3, None, None, 30, 30, "每侧 30 秒"),
-                ("doorway_pec_stretch", 2, None, None, 30, 30, "每侧 30 秒"),
-                ("foam_roller_t_spine", 3, 5, 5, 30, None, "2–3 个位置"),
-                ("serratus_wall_slide", 2, 10, 10, 30, None, None),
-                ("band_face_pull_er", 3, 15, 15, 30, None, "轻阻力"),
             ]),
             (4, "上肢 B（推为主）", [
                 ("incline_dumbbell_press", 4, 8, 12, 120, None, None),

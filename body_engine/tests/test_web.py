@@ -218,8 +218,9 @@ def test_today_scores_reasons_and_load_text(client, world):
     assert sc["recovery_word"] is None and sc["load_status"] == {"key": "balanced", "label": "平衡"}
     # reminders: today's
     assert {r["rule_key"] for r in d["reminders"]} == {"progression", "readiness"}
-    # SparkyFitness not connected: these two blocks error on their own, other blocks are unaffected
-    assert d["training"]["code"] == "sparky" and d["nutrition"]["code"] == "sparky"
+    # SparkyFitness not connected: nutrition errors on its own; training (no plan) is an empty day that says why (#66 FB-4)
+    assert d["nutrition"]["code"] == "sparky"
+    assert d["training"]["planned"] == [] and d["training"]["sparky"]["state"] == "not_linked"
 
 
 def test_reasons_and_zones():

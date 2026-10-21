@@ -72,6 +72,9 @@ def _propose_plan(conn, uid, a):
         name=a.get("name"),
         notes=a.get("notes"),
         auto_swap_banned=bool(a.get("auto_swap_banned")),
+        training_days=a.get("training_days"),
+        start_date=a.get("start_date"),
+        addons=a.get("addons"),
     )
 
 
@@ -86,6 +89,8 @@ def _save_plan(conn, uid, a):
         notes=a.get("notes"),
         auto_swap_banned=bool(a.get("auto_swap_banned")),
         sync_sparky=bool(a.get("sync_sparky", True)),
+        training_days=a.get("training_days"),
+        addons=a.get("addons"),
     )
 
 
@@ -111,6 +116,12 @@ def _swap_exercise(conn, uid, a):
         sync_sparky=bool(a.get("sync_sparky", True)),
     )
 
+
+PLAN_START = {
+    "training_days": {"type": ["array", "null"], "items": {"type": "integer"}, "description": "能练的星期几 1–7"},
+    "start_date": _n("string", "YYYY-MM-DD，默认今天"),
+    "addons": {"type": ["array", "null"], "items": {"type": "string", "enum": list(P.MOBILITY_ADDONS)}},
+}
 
 SPLIT_ENUM = [*P.SPLIT_TEMPLATES.keys(), "custom"]
 
@@ -144,7 +155,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="propose_plan",
-        description="生成 3/4/5 分化或自定义周计划草案（不写库）：每天动作处方、各肌群周组数、恢复分自调节、禁用冲突与替代。排计划先调它预览。",
+        description="周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看。first_week=本周已练后只补缺的安排。",
         input_schema=_schema({
             "user": USER,
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
@@ -152,13 +163,14 @@ TOOL_SPECS: list[dict] = [
             "notes": _n("string"),
             "auto_swap_banned": {"type": "boolean"},
             "custom_days": {"type": ["array", "null"], "items": PLAN_DAY},
+            **PLAN_START,
         }),
         handler=_propose_plan,
         scope="training",
     ),
     dict(
         name="save_plan",
-        description="保存并激活周训练计划（写 training_plans 并同步 SparkyFitness）；含禁用动作且未开 auto_swap_banned 时拒绝。",
+        description="用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户。",
         input_schema=_schema({
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
             "name": _n("string"),
@@ -167,6 +179,8 @@ TOOL_SPECS: list[dict] = [
             "auto_swap_banned": {"type": "boolean"},
             "sync_sparky": {"type": "boolean"},
             "custom_days": {"type": ["array", "null"], "items": PLAN_DAY},
+            "training_days": PLAN_START["training_days"],
+            "addons": PLAN_START["addons"],
         }),
         handler=_save_plan,
         scope="training",

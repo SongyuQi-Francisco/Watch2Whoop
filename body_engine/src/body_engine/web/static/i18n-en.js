@@ -727,4 +727,13 @@ I18N.addEn({
   // training day changes (#17)
   "原计划": "Original plan",
   "已调整": "Changed",
+  // training log link (#71)
+  "已启用：{name} · 训练记录未同步": "Now using: {name} · training log not synced",
+  "已连接": "Connected",
+  "未连接": "Not connected",
+  "训练记录": "Training log",
+  "训练记录已连接": "Training log connected",
+  "读不到": "Unreadable",
+  "连接": "Connect",
+  "连接中…": "Connecting…",
 });

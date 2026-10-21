@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth
+from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from . import catalog, history, plans
 
@@ -42,6 +42,9 @@ class ProposePlanIn(BaseModel):
     notes: str | None = None
     auto_swap_banned: bool = False
     custom_days: list[PlanDayIn] | None = None
+    training_days: list[int] | None = None   # issue #65: the user's weekdays, 1 = Monday
+    start_date: date | None = None           # any day from today
+    addons: list[str] | None = None          # optional mobility warm-ups (issue #66 FB-3)
 
 
 class SavePlanIn(BaseModel):
@@ -53,6 +56,8 @@ class SavePlanIn(BaseModel):
     auto_swap_banned: bool = False
     sync_sparky: bool = True
     custom_days: list[PlanDayIn] | None = None
+    training_days: list[int] | None = None
+    addons: list[str] | None = None
 
 
 class SwapExerciseIn(BaseModel):
@@ -138,6 +143,35 @@ def get_active_plan(user: str, day: Annotated[date | None, Query(alias="date")] 
     return plans.get_week_plan(conn, viewer["id"], owner_id, day=day, detail=True)
 
 
+@router.get("/sparky")
+def training_log_link(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Whether the training log (SparkyFitness) is connected / not_linked / unreadable (asks the server), issue #66 FB-4."""
+    owner_id = _owner(conn, viewer, user, "training")
+    st = sparky_client.link_state(conn, owner_id, probe=True)
+    if owner_id != viewer["id"]:
+        st.pop("reason", None)
+    return {**st, "can_connect": owner_id == viewer["id"] and st["state"] == "not_linked"}
+
+
+@router.post("/sparky/connect")
+def connect_training_log(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Self-service connect: create this user's SparkyFitness account and keys (the provisioning step of self-signup)."""
+    from ..account import provision
+    uid = _self(viewer, user)
+    if sparky_client.link_state(conn, uid)["state"] == "connected":
+        return {**sparky_client.link_state(conn, uid, probe=True), "can_connect": False}
+    res = provision.connect_sparky(conn, uid)
+    st = sparky_client.link_state(conn, uid, probe=True)
+    if not res["ok"]:
+        admin = res.get("error") == "admin_linked"
+        st["error"], st["error_en"] = (
+            ("这个账号的训练记录由管理员关联，请联系管理员。", "The admin links this account's training log; please contact the admin.")
+            if admin else
+            ("现在连不上：服务器的训练记录服务没开放注册或暂时不可用，请联系管理员。",
+             "Cannot connect now: the server's training log service does not allow sign-up or is unavailable; please contact the admin."))
+    return {**st, "can_connect": st["state"] == "not_linked"}
+
+
 @router.post("/plan/propose")
 def propose_training_plan(user: str, body: ProposePlanIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Preview a 3 / 4 / 5-day or custom weekly training plan without saving."""
@@ -152,6 +186,9 @@ def propose_training_plan(user: str, body: ProposePlanIn, conn=Depends(get_conn)
             name=body.name,
             notes=body.notes,
             auto_swap_banned=body.auto_swap_banned,
+            training_days=body.training_days,
+            start_date=body.start_date,
+            addons=body.addons,
         )
     except ValueError as e:
         raise HTTPException(422, str(e))
@@ -173,6 +210,8 @@ def save_training_plan(user: str, body: SavePlanIn, conn=Depends(get_conn), view
             notes=body.notes,
             auto_swap_banned=body.auto_swap_banned,
             sync_sparky=body.sync_sparky,
+            training_days=body.training_days,
+            addons=body.addons,
         )
     except PermissionError as e:
         raise HTTPException(409, str(e))

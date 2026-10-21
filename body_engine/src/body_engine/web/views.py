@@ -246,6 +246,14 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
     return planned
 
 
+def _sparky_state(conn, viewer_id: int, owner_id: int) -> dict:
+    """The training log's link state for the page (issue #66 FB-4); the technical reason only for the user themself."""
+    st = sparky_client.link_state(conn, owner_id)
+    if viewer_id != owner_id:
+        st.pop("reason", None)
+    return {**st, "can_connect": viewer_id == owner_id and st["state"] == "not_linked"}
+
+
 def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     from ..training import plans as tr_plans
     if tr_plans._active_plan_row(conn, owner_id) is not None:
@@ -271,9 +279,13 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             "change": day_entry.get("change"),
             "logged": logged,
             "readiness": wk.get("readiness"),
+            "sparky": _sparky_state(conn, viewer_id, owner_id),
             **({"sparky_error": sparky_error} if sparky_error else {}),
         }
-    client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    try:
+        client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    except sparky_client.SparkyError:   # no Body Engine plan and no training log: an empty day that says why (issue #66 FB-4)
+        return {"plan": None, "planned": [], "rest_day": False, "logged": [], "sparky": _sparky_state(conn, viewer_id, owner_id)}
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)
     plan = ctx.active_plan()
     planned = _planned_view(ctx, day, suggestions, with_meta)
@@ -288,7 +300,7 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             for e in s["exercises"]]})
     return {"plan": plan and {"name": plan["name"], "start_date": plan["start_date"]}, "planned": planned,
             "rest_day": (plan is not None or day in ctx.overrides) and not planned, "change": _day_change(ctx, day),
-            "logged": logged}
+            "logged": logged, "sparky": _sparky_state(conn, viewer_id, owner_id)}
 
 
 def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
@@ -297,10 +309,19 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     What was actually trained comes from /training/calendar (same week)."""
     from ..training import plans as tr_plans
     if tr_plans._active_plan_row(conn, owner_id) is not None:
-        return tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
+        return {**tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True),
+                "sparky": _sparky_state(conn, viewer_id, owner_id)}
     start = day - timedelta(days=day.weekday())
     end = start + timedelta(days=6)
-    _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    try:
+        _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    except sparky_client.SparkyError:   # no plan anywhere yet: an empty week to pick a split from, and why the log is missing
+        with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
+        return {"start": start, "end": end, "date": day, "plan": None,
+                "days": [{"date": start + timedelta(days=k), "planned": [], "rest_day": False, "change": None} for k in range(7)],
+                "suggestions": [], "cautions": [], "volume_by_group": {},
+                "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
+                "available_splits": tr_plans.list_splits(), "sparky": _sparky_state(conn, viewer_id, owner_id)}
     sugg = _load_suggestions(conn, viewer_id, owner_id, day - timedelta(days=6), day)
     days, cautions, seen = [], [], set()
     for k in range(7):
@@ -324,7 +345,7 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
             "days": days, "suggestions": suggestions, "cautions": cautions,
             "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
-            "available_splits": tr_plans.list_splits()}
+            "available_splits": tr_plans.list_splits(), "sparky": _sparky_state(conn, viewer_id, owner_id)}
 
 
 def nutrition_today(conn, owner_id: int, day: date) -> dict:
