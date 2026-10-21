@@ -15,18 +15,19 @@ import psycopg
 
 from ..i18n import L, is_en
 
-# Key points shown in the dialog (correspond to sections 1-5 of the full text; change together with it)
+# Key points shown in the dialog (correspond to sections 1-4 of the full text; never promise anything the full text does
+# not say; change together with it)
 SUMMARY = [
     "同步你在「健康」里授权的数据（心率、睡眠、训练、步数、心电图和心跳间期等），加上你自己记录的内容，用来算恢复分、睡眠分、负荷。",
-    "数据存在管理员的服务器，HTTPS 加密传输，每晚加密备份；不卖、不给任何第三方。",
-    "只有你自己能看。家人默认看不到，心电图还要另外单独授权；管理员只在维护、排错、按你的要求导出 / 删除时接触。",
+    "只有你自己能看。家人默认看不到，你在 app 里加入圈子或请管理员开通共享后，指定的人才能看指定的内容；"
+    "心电图还要另外单独授权。管理员作为服务器的维护者，技术上能接触到数据库。",
     "加入圈子（朋友页）时由你选给圈子成员看什么（默认：评分、训练、饮食达标率），随时可改、可退出；心电图永远不进圈子。",
     "AI 默认不开；你自己接入 AI 后，回答问题时会把需要的那部分数据发给你选的 AI 公司。"
-    "也可以用管理员提供的托底 AI（DeepSeek，服务器在中国），第一次用前会单独请你确认。",
+    "也可以用管理员提供的托底 AI（DeepSeek），第一次用前会单独请你确认。",
     "AI 发现系统的问题或听到你想要的新功能，会自动报告给管理员（去掉健康数值、名字和联系方式）；"
     "在「我 → 反馈记录」查看，也可以改成先问你或关闭。",
-    "随时可以改资料、要求导出全部数据、删除账号（备份里的旧副本 6 个月内消失）、撤回同意。",
-    "这是家庭自建的测试系统，不是医疗设备，分数只供参考；心电图只展示 Apple 的结果，不是诊断。",
+    "随时可以改资料、删除账号（备份里的旧副本 6 个月内消失）、撤回同意。",
+    "这是健康管理 app，不是医疗设备，分数只供参考；心电图只展示 Apple 的结果，不是诊断。",
 ]
 
 
@@ -34,21 +35,19 @@ SUMMARY_EN = [
     "Syncs the data you allow in Apple Health (heart rate, sleep, workouts, steps, ECGs and beat-to-beat intervals and so on), "
     "plus what you log yourself, "
     "to calculate recovery, sleep score and strain.",
-    "The data is stored on the administrator's server, sent over HTTPS and backed up encrypted every night; never sold or "
-    "given to any third party.",
-    "Only you can see it. Family members cannot by default, and ECGs need a separate permission; the administrator "
-    "touches it only for maintenance, "
-    "troubleshooting, or exporting / deleting it at your request.",
+    "Only you can see it. Family members cannot by default; once you join a circle in the app or ask the administrator to "
+    "set up sharing, the named people can see the named content. ECGs need a separate permission. As the person who "
+    "maintains the server, the administrator can technically access the database.",
     "When you join a circle (Friends page) you choose what its members see (by default: scores, workouts, nutrition "
     "adherence); change it or leave at any time. ECGs are never shared through circles.",
     "AI is off by default; once you connect your own AI, the part of your data an answer needs is sent to the AI company "
-    "you chose. You can also use the backup AI the administrator provides (DeepSeek, servers in China); you are asked "
-    "separately before the first use.",
+    "you chose. You can also use the backup AI the administrator provides (DeepSeek); you are asked separately before "
+    "the first use.",
     "When the AI finds a problem in the system or hears about a feature you want, it reports it to the administrator by "
     "itself (without health values, names or contact details); see it under Me → Feedback, or switch to ask-first or off.",
-    "Any time you can change your profile, ask for an export of all your data, delete your account (old copies in backups "
-    "disappear within 6 months) or withdraw consent.",
-    "This is a test system built by a family, not a medical device; the scores are for reference only, and ECGs only show "
+    "Any time you can change your profile, delete your account (old copies in backups disappear within 6 months) or "
+    "withdraw consent.",
+    "This is a health management app, not a medical device; the scores are for reference only, and ECGs only show "
     "Apple's results, not a diagnosis.",
 ]
 FILES = {"zh": "consent.md", "en": "consent.en.md"}
