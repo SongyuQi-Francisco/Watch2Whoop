@@ -487,6 +487,8 @@ def purchases_for_items(conn, user_id: int, item_ids: list[int]) -> dict[int, di
 
 
 # ---------------------------------------------------------------- context for the user's AI
+# Usual-item suggestions (issue #103, owner's decision on #108): no "declined" column; the AI remembers within the conversation.
+STAPLE_RULE = "staple_suggestions 只是推荐：问过用户、同意了才 set_staple；同一个推荐用户在对话里拒绝过就不要再提。"
 GUARDRAILS = ("只查 needs_price 里的商品（这个用户自己清单上的），一次最多 {n} 样，不要整站抓取、不要翻目录页。",
               "用已连接超市的商品页 / 搜索页；打不开、要登录或被拦截（403 / 验证码），就告诉用户，改用截图，不要尝试绕过。",
               "查到后用 record_store_prices 一次写回（带商品页 URL、规格、价格、是否特价和原价、查询时间）。")
@@ -521,7 +523,7 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
                    # the user's own limits (nutrition/constraints.py, issue #76); [] = none
                    "diet_constraints": [c["text"] for c in diet_constraints.listing(conn, user_id)["constraints"]],
                    "warnings": [w["label"] for w in lst["warnings"]]},
-        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS],
+        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS] + [STAPLE_RULE],
         # usual-item candidates from this user's own purchases (issue #103): ask before set_staple, never mark on your own
         "staple_suggestions": store.staple_suggestions(conn, user_id),
         # best before within a few days or past (issue #104): suggest using them up; pantry_auto = the switch

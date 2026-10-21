@@ -100,7 +100,8 @@ def test_suggestions_only_own_history_and_never_marked(conn, world):
     assert sug[0]["times"] == 3 and sug[0]["every_days"] == 7 and sug[0]["product_id"] == pr["鸡蛋"]
     assert not any(p["staple"] for p in store.list_products(conn, a))   # suggesting marks nothing
     assert [s["name"] for s in store.staple_suggestions(conn, b)] == ["面包"]
-    assert "staple_suggestions" in prices.shopping_context(conn, a)
+    ctx = prices.shopping_context(conn, a)
+    assert "staple_suggestions" in ctx and prices.STAPLE_RULE in ctx["rules"]   # declined ones are not offered again
 
 
 def test_due_staples_on_the_list(conn, world):
