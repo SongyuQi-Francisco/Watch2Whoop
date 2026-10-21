@@ -24,6 +24,8 @@ EXACT: dict[str, str] = {
     "不能移除自己，用退出": "You can't remove yourself; leave the circle instead",
     "这个人不在圈子里": "This person is not in the circle",
     "要给邀请码或邀请 ID（只给一个）": "Give an invite code or an invite ID (just one)",
+    "这个人不在你的圈子里": "This person is not in any of your circles",
+    "今天已经点过了": "Already sent today",
     # ---- AI feedback (feedback/api.py)
     "反馈记录只能看自己的": "You can only see your own feedback",
     "没有这条反馈（或不是你的）": "No such feedback (or it is not yours)",
@@ -245,6 +247,8 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("不是 {} 的商品页（要 /product/… 或 /shop/productdetails/<编号>/…）", "Not a {} product page (needs /product/… or /shop/productdetails/<id>/…)"),
     # ---- circles (friends/)
     ("不认识的共享范围：{}", "Unknown sharing scope: {}"),
+    ("不认识的鼓励：{}", "Unknown cheer: {}"),
+    ("排行榜只能是 {}", "Board must be one of: {}"),
     ("圈子名称 1–{} 字", "Circle name: 1–{} characters"),
     ("最多加入 {} 个圈子", "You can be in at most {} circles"),
     ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),
