@@ -135,6 +135,45 @@ RECOVERY_GREEN = 67
 RECOVERY_RED = 34
 AUTOREG_SLEEP_DEBT_MIN = 120
 
+# What the AI settles with the user before save_plan (issue #65): returned by propose_plan as ask_user_first.
+PLAN_QUESTIONS = [
+    "从哪天开始（今天或用户选的日子）",
+    "本周剩下几天怎么排（只补本周还没练到的，还是本周先休息）",
+    "每周哪几天能练（training_days）",
+    "有没有固定不能练的日子",
+    "要不要加热身附加项（addon_suggestions，按用户自己的动作限制给出）",
+]
+
+# Optional mobility / prehab add-ons (issue #66 FB-3): never part of a split template. propose_plan suggests one only when
+# the user's own exercise restrictions (exercise_meta banned / caution, mapped to catalog joint_stress) load that area;
+# the user decides (propose_plan / save_plan `addons`), and it is added as a short warm-up block to the sessions that train
+# the matching muscle groups. Prehab for impingement-type shoulder limits: scapular control + external-rotation work
+# (Cools et al., 2014 Br J Sports Med; Kibler et al., 2013 Br J Sports Med); lumbar: core stability + hip mobility
+# (McGill, Low Back Disorders 3rd ed.). Rows: (slug, sets, rep_low, rep_high, rest_sec, duration_sec_or_None, note_or_None).
+MOBILITY_ADDONS: dict[str, dict] = {
+    "shoulder": {
+        "name": "肩部灵活 / 激活（热身）", "name_en": "Shoulder mobility / activation (warm-up)",
+        "joints": {"shoulder_anterior", "shoulder_ir", "shoulder_internal_rotation", "upper_trap"},
+        "groups": {"chest", "back", "shoulders"},
+        "exercises": [
+            ("foam_roller_t_spine", 1, 5, 5, 30, None, "2–3 个位置"),
+            ("serratus_wall_slide", 1, 10, 10, 30, None, None),
+            ("band_face_pull_er", 2, 15, 15, 30, None, "轻阻力"),
+            ("cross_body_stretch_supine", 1, None, None, 30, 30, "每侧 30 秒"),
+        ],
+    },
+    "lumbar": {
+        "name": "下背 / 髋灵活（热身）", "name_en": "Lower back / hip mobility (warm-up)",
+        "joints": {"lumbar"},
+        "groups": {"legs"},
+        "exercises": [
+            ("hip_flexor_stretch", 1, None, None, 30, 30, "每侧 30 秒"),
+            ("bird_dog", 2, 8, 8, 30, None, "每侧"),
+            ("glute_bridge", 2, 12, 12, 30, None, "徒手"),
+        ],
+    },
+}
+
 # Built-in 3 / 4 / 5-day split templates (adapted from standard strength & conditioning splits and body-management.md §4;
 # openGym starter split concepts referenced under AGPL-3.0, docs/training-v2-plan.md).
 # Each exercise row: (slug, sets, rep_low, rep_high, rest_sec, duration_sec_or_None, note_or_None)
@@ -205,7 +244,7 @@ SPLIT_TEMPLATES: dict[str, dict] = {
         "split_type": "4_day_upper_lower",
         "name": "4 分化 · 上下肢（A / B）",
         "days_per_week": 4,
-        "summary": "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每个肌群每周练 2 次。",
+        "summary": "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每周 4 天，每个肌群每周练 2 次。",
         "days": [
             (1, "上肢 A（拉为主）", [
                 ("lat_pulldown", 4, 8, 12, 120, None, None),
@@ -224,13 +263,6 @@ SPLIT_TEMPLATES: dict[str, dict] = {
                 ("seated_leg_curl", 3, 12, 12, 60, None, None),
                 ("standing_calf_raise", 3, 15, 15, 45, None, None),
                 ("dead_bug", 3, 10, 10, 45, None, "每侧"),
-            ]),
-            (3, "肩部康复 / 灵活性 routine", [
-                ("cross_body_stretch_supine", 3, None, None, 30, 30, "每侧 30 秒"),
-                ("doorway_pec_stretch", 2, None, None, 30, 30, "每侧 30 秒"),
-                ("foam_roller_t_spine", 3, 5, 5, 30, None, "2–3 个位置"),
-                ("serratus_wall_slide", 2, 10, 10, 30, None, None),
-                ("band_face_pull_er", 3, 15, 15, 30, None, "轻阻力"),
             ]),
             (4, "上肢 B（推为主）", [
                 ("incline_dumbbell_press", 4, 8, 12, 120, None, None),
@@ -302,3 +334,85 @@ SPLIT_TEMPLATES: dict[str, dict] = {
     },
 }
 
+
+# ---------- Recommended working weight (issue #41, training/loads.py, docs/training-v2-plan.md "推荐重量") ----------
+# Order of evidence for each planned exercise:
+#   1. a progression reminder of the rule engine (rules/progression.py, double progression) -> its next_weight_kg, unchanged;
+#   2. the user's own history (SparkyFitness working sets, warm-ups excluded):
+#      - latest session in the same rep range -> keep that working weight (double progression only adds weight when every set
+#        reached the top of the range, which is what the reminder in 1. says);
+#      - otherwise convert through an estimated 1RM: Epley (1985) e1RM = w × (1 + reps_to_failure / 30), with
+#        reps_to_failure = reps + RIR (RIR-based autoregulation, Zourdos et al. 2016 JSCR; Helms et al. 2016 Strength Cond J),
+#        then w = e1RM / (1 + (target_reps + target_RIR) / 30), rounded down to the exercise's increment;
+#   3. no history -> a conservative starting weight from body weight and movement pattern, labelled 「估算」.
+EPLEY_DIVISOR = 30
+LOAD_RIR_ASSUMED = 2          # RIR not logged -> assume 2 (body-management.md 4.3: each working set leaves 1–2 reps in reserve)
+LOAD_TARGET_RIR = 2           # the suggested weight leaves ~2 reps in reserve at the middle of the rep range
+LOAD_LOOKBACK_DAYS = 120      # same window as rules/params.PROGRESSION_LOOKBACK_DAYS
+LOAD_SAME_RANGE_SLACK = 2     # the latest session's median reps within [low − 2, high + 2] counts as "same rep range"
+LOAD_STALE_DAYS = 28          # last logged more than 4 weeks ago -> e1RM × 0.9 (inferred: conservative restart after a break)
+LOAD_STALE_FACTOR = 0.9
+LOAD_DEFAULT_REPS = (8, 12)   # rep range used for the exercise detail when the exercise is not in the active plan
+LOAD_STEP_KG = 2.5            # rounding step when the catalog has no default_increment_kg
+LOAD_MIN_KG = {"barbell": 20.0, "ez curl bar": 7.5, "dumbbell": 2.0, "kettlebell": 4.0}   # empty bar / lightest common implement
+# Today's readiness (plans.readiness_advice): red says "weights down 10–15%" -> take the smaller cut; yellow says "do not add
+# weight today" -> a progression increase is held at the last weight.
+LOAD_READINESS_FACTOR = {"red": 0.9}
+LOAD_HISTORY_TTL_S = 120      # SparkyFitness history is cached per user for 2 minutes (the Today page asks for it on every load)
+
+# Starting weights without history: fraction of body weight of a *beginner* 1RM for the barbell (or machine stack) version of
+# each pattern, from public strength standards for untrained / beginner adult men (Strength Level / ExRx "untrained" tables:
+# bench ≈ 0.5, squat ≈ 0.75, deadlift ≈ 1.0, overhead press ≈ 0.35, row ≈ 0.5 × body weight), × LOAD_START_FRACTION for a first
+# working set of ~10 reps with 3+ reps in reserve. Deliberately low: the first session calibrates, history takes over afterwards.
+LOAD_START_FRACTION = 0.6
+STARTER_1RM_BW: dict[str, float] = {
+    "horizontal_push": 0.5, "incline_push": 0.4, "vertical_push": 0.35, "vertical_pull": 0.5, "horizontal_pull": 0.5,
+    "squat": 0.75, "hip_hinge": 0.75, "lunge_split": 0.35, "knee_extension": 0.4, "knee_flexion": 0.3, "calf": 0.75,
+    "lateral_raise": 0.25, "face_pull_er": 0.2, "elbow_flexion": 0.3, "elbow_extension": 0.3, "shrug_upright": 0.6,
+}
+# Load per implement relative to the barbell version: dumbbells / kettlebells are per single implement (as the progression rule logs them).
+STARTER_EQUIPMENT_FACTOR = {"barbell": 1.0, "ez curl bar": 1.0, "smith machine": 0.9, "machine": 1.0, "cable": 0.7,
+                            "dumbbell": 0.4, "kettlebell": 0.4}
+# Exercises whose load scale differs from their pattern (fraction of body weight for the starting working set, already final).
+STARTER_SLUG_BW = {"leg_press": 0.9, "leg_press_high_feet": 0.9, "goblet_squat": 0.15, "barbell_hip_thrust": 0.5,
+                   "standing_calf_raise": 0.4}
+# Sex unknown -> the female factors (the more conservative). Female / male beginner standard ≈ 0.5 upper body, ≈ 0.7 lower body.
+STARTER_SEX_FACTOR = {"male": {"upper": 1.0, "lower": 1.0}, "female": {"upper": 0.5, "lower": 0.7}}
+LOWER_BODY_PATTERNS = {"squat", "hip_hinge", "lunge_split", "knee_extension", "knee_flexion", "calf"}
+
+# ---------- free-exercise-db (Unlicense) import: pinned upstream commit, downloaded once into the deployment's own media storage ----------
+FREE_DB_REPO = "yuhonas/free-exercise-db"
+FREE_DB_COMMIT = "f00c92c7dcf1216a928a52c3706c7ce8e2f71ed5"   # 2026-09-27
+FREE_DB_JSON_SHA256 = "5bb747e3fc658f095a60dcbf6d53c96627acdcc6ffb6fffde86f7e26995d40bf"   # dist/exercises.json at that commit (876 exercises)
+# Variants of exercises that are restricted for the owner (and caution by default for everyone): an imported variant inherits the
+# user's restriction on the curated exercise (catalog.family_slug). Matched against the English name, lower case.
+HAZARD_FAMILIES: tuple[tuple[str, str], ...] = (
+    (r"\bupright\b.*\brow\b", "upright_row"),
+    (r"(press|jerk).*behind.*neck|behind.*neck.*press", "behind_neck_press"),
+    (r"(pulldown|pull-up|chin).*behind.*neck|behind.*neck.*(pulldown|pull)", "behind_neck_pulldown"),
+    (r"\bdips?\b(?!\s*squat)", "dips"),
+)
+
+# ---------- Day changes: re-planning the rest of the week (training/day_overrides.py) ----------
+# The same major muscle group on two consecutive days leaves < 48 h between sessions, the usual minimum for a trained
+# muscle group to recover (Schoenfeld et al., 2016 Sports Med frequency review; NSCA Essentials 4th ed., ch. 17).
+# Costs only rank the candidate weeks; the cheapest one is chosen (ties: fewest moved days).
+REPLAN_COST_SAME_GROUP = 10.0      # per major muscle group trained on two consecutive days
+REPLAN_COST_SAME_LEGS = 5.0        # extra for legs back to back (largest muscle mass, slowest to recover)
+REPLAN_MAX_STREAK = 3              # training days in a row before each extra day costs REPLAN_COST_STREAK
+REPLAN_COST_STREAK = 3.0
+REPLAN_COST_MOVED = 1.0            # per day whose session differs from the plan's own weekday (keep the week familiar)
+REPLAN_COST_DISTANCE = 0.1         # per day a session is moved away from its own weekday (tie-breaker)
+REPLAN_COST_SKIPPED = 30.0         # per plan session that no longer fits in this week
+REPLAN_COST_RED_NEXT_DAY = 4.0     # recovery red today: training again tomorrow
+OVERRIDE_PAST_DAYS = 7             # reschedule_day / swap_days accept dates from today − 7 ...
+OVERRIDE_FUTURE_DAYS = 28          # ... to today + 28
+# Session names -> major muscle groups when the exercises do not say (SparkyFitness exercises without muscles, free labels)
+SESSION_NAME_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("下肢", "腿", "臀", "leg", "lower"), ("legs",)),
+    (("上肢", "upper"), ("chest", "back", "shoulders", "arms")),
+    (("推", "push", "胸", "chest"), ("chest", "shoulders", "arms")),
+    (("拉", "pull", "背", "back"), ("back", "arms")),
+    (("肩", "shoulder"), ("shoulders",)),
+    (("全身", "full"), ("chest", "back", "legs", "shoulders")),
+)

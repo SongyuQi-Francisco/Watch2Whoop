@@ -9,7 +9,6 @@ Three-layer maintenance architecture:
 3. Per-user layer: table `exercise_meta` (banned / caution / active, personal cues, reason, app_exercise_id in SparkyFitness).
 """
 
-IMAGE_BASE_URL = "https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises"
 
 MUSCLE_ZH: dict[str, str] = {
     "chest": "胸部",
@@ -36,7 +35,7 @@ MUSCLE_GROUP: dict[str, str] = {
     "chest": "chest",
     "lats": "back",
     "middle back": "back",
-    "lower back": "back",
+    "lower back": "core",   # erector spinae = trunk extensors (McGill); not an upper-back session (issue #66 FB-3)
     "traps": "shoulders",
     "shoulders": "shoulders",
     "quadriceps": "legs",
@@ -461,7 +460,7 @@ CURATED_EXERCISES: list[dict] = [
         equipment=["dumbbell"], primary=["hamstrings", "glutes"], secondary=["lower back"],
         joint_stress=["lumbar"], inc=2.5,
         cues="膝盖微屈固定，屁股水平往后推，哑铃紧贴大腿和小腿下放至感受腘绳肌拉伸，全程背部中立不弓背。",
-        images=["Romanian_Deadlift_With_Dumbbells/0.jpg", "Romanian_Deadlift_With_Dumbbells/1.jpg"]),
+        images=["Stiff-Legged_Dumbbell_Deadlift/0.jpg", "Stiff-Legged_Dumbbell_Deadlift/1.jpg"]),
     _ex("barbell_romanian_deadlift", "杠铃罗马尼亚硬拉", "Barbell Romanian Deadlift",
         aliases=["杠铃RDL", "罗马尼亚硬拉", "Romanian Deadlift", "RDL"],
         force="pull", mechanic="compound", pattern="hip_hinge",
@@ -496,7 +495,7 @@ CURATED_EXERCISES: list[dict] = [
         equipment=["dumbbell", "body only"], primary=["quadriceps", "glutes"], secondary=["hamstrings"],
         joint_stress=["knee"], per_side=True, inc=2.5,
         cues="前脚离凳一大步，躯干略前倾更多练臀；下蹲控制 2 秒，膝盖朝脚尖方向；练前吃够碳水。",
-        images=["Single_Leg_Squat/0.jpg", "Single_Leg_Squat/1.jpg"]),
+        images=["Split_Squat_with_Dumbbells/0.jpg", "Split_Squat_with_Dumbbells/1.jpg"]),
     _ex("dumbbell_walking_lunge", "哑铃行走弓步", "Dumbbell Walking Lunge",
         aliases=["哑铃弓步蹲", "行走弓步", "弓步蹲", "db_walking_lunge", "db_lunge", "Dumbbell Lunges"],
         force="push", mechanic="compound", pattern="lunge_split",
@@ -880,8 +879,7 @@ CURATED_EXERCISES: list[dict] = [
         modality="reps_only", force="static", mechanic="isolation", pattern="core",
         equipment=["body only"], primary=["abdominals", "lower back"], secondary=["glutes"],
         per_side=True, level="beginner", inc=None,
-        cues="四足跪姿骨盆与腰椎保持水平静止，缓慢向前后延伸对侧手脚停 2 秒。",
-        images=["Bird_Dog/0.jpg", "Bird_Dog/1.jpg"]),
+        cues="四足跪姿骨盆与腰椎保持水平静止，缓慢向前后延伸对侧手脚停 2 秒。"),   # no free-exercise-db picture
     _ex("ab_roller", "健腹轮推行", "Ab Roller",
         aliases=["健腹轮", "Ab Wheel Rollout"],
         modality="bodyweight_reps", force="pull", mechanic="compound", pattern="core",
