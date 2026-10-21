@@ -3,9 +3,13 @@
 1. Pure functions through the old `body_engine.*` import paths: the same cases and golden file as the package's own
    test (packages/openbodyscore/tests/test_golden.py).
 2. End to end: quickstart/demo_data.py's synthetic export (fixed seed and date) -> the real Apple export importer ->
-   scoring engine, body age and stress -> compared with tests/fixtures/golden_e2e.json.
+   scoring engine, body age and stress -> compared with tests/fixtures/golden_e2e_<hrv kind>.json.
 Both golden files were written from the code before the extraction. To rewrite the end-to-end file after an
 intentional algorithm change (bump ALGO_VERSION): BODY_WRITE_GOLDEN=1 uv run pytest tests/test_openbodyscore_golden.py
+
+HRV kinds: one end-to-end golden file per entry of HRV_KINDS (scores/params.HRV_KIND). Only "sdnn" exists today; the
+RMSSD switch (#117) adds "rmssd" here plus its file. RMSSD needs beat-to-beat series (heartbeat_series), which the
+demo export does not contain yet, so #117 also has to add them to the synthetic data.
 """
 import importlib.util
 import io
@@ -29,7 +33,8 @@ from body_engine.scores import engine
 
 REPO = Path(__file__).resolve().parents[2]
 PKG_TESTS = REPO / "packages" / "openbodyscore" / "tests"
-E2E_GOLDEN = Path(__file__).parent / "fixtures" / "golden_e2e.json"
+FIXTURES = Path(__file__).parent / "fixtures"
+HRV_KINDS = ["sdnn"]   # add "rmssd" with #117
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_golden")
 TZ = ZoneInfo("Australia/Sydney")
 NOW = datetime(2026, 9, 30, 9, 0, tzinfo=TZ)
@@ -111,7 +116,7 @@ class ExportOW:
             yield from self.workouts
 
 
-def e2e(conn, tmp_path) -> dict:
+def e2e(conn, tmp_path, hrv_kind: str) -> dict:
     demo = _load("quickstart_demo_data", REPO / "quickstart" / "demo_data.py")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -119,13 +124,13 @@ def e2e(conn, tmp_path) -> dict:
     path = tmp_path / "demo-export.zip"
     path.write_bytes(buf.getvalue())
     uid = conn.execute("""INSERT INTO users (display_name, timezone, birth_date, sex, height_cm, ow_user_id, consent_at)
-                          VALUES ('golden', 'Australia/Sydney', '1990-01-01', 'male', 180, 'ow-golden', now())
-                          RETURNING id""").fetchone()["id"]
+                          VALUES (%s, 'Australia/Sydney', '1990-01-01', 'male', 180, 'ow-golden', now())
+                          RETURNING id""", (f"golden-{hrv_kind}",)).fetchone()["id"]
     imported = apple_zip.run(conn, uid, path)
     today = NOW.date()
     origin = engine.scoring_origin(conn, uid)
     from body_engine.scores import params as P
-    inp = engine.load(conn, None, uid, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), today, None)
+    inp = engine.load(conn, None, uid, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), today, None, hrv_kind=hrv_kind)
     rows = engine.score_days(inp, origin, today, today)
     engine.write(conn, uid, rows, origin, today)
     weeks = healthspan_store.compute(conn, uid, today=today)
@@ -134,12 +139,15 @@ def e2e(conn, tmp_path) -> dict:
                   "origin": origin, "daily_scores": rows, "healthspan": weeks, "stress": stress_rows})
 
 
-def test_end_to_end_matches_golden(conn, tmp_path):
-    got = e2e(conn, tmp_path)
+@pytest.mark.parametrize("hrv_kind", HRV_KINDS)
+def test_end_to_end_matches_golden(conn, tmp_path, hrv_kind):
+    golden = FIXTURES / f"golden_e2e_{hrv_kind}.json"
+    got = e2e(conn, tmp_path, hrv_kind)
     if os.environ.get("BODY_WRITE_GOLDEN") == "1":
-        E2E_GOLDEN.write_text(json.dumps(got, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
-        pytest.skip(f"wrote {E2E_GOLDEN}")
-    want = json.loads(E2E_GOLDEN.read_text())
+        golden.write_text(json.dumps(got, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+        pytest.skip(f"wrote {golden}")
+    want = json.loads(golden.read_text())
+    assert {d["hrv_kind"] for d in want["daily_scores"]} == {hrv_kind}
     # coverage of the fixture itself: every score kind actually has values
     days = want["daily_scores"]
     assert sum(d["recovery"] is not None for d in days) >= 30 and sum(d["strain"] is not None for d in days) >= 50

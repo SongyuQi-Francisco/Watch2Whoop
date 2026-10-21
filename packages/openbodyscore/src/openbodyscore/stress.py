@@ -10,10 +10,9 @@
 - Per day: mean score of the scored hours, hours in low / medium / high, and the highest hour.
 No raw heart rate -> no score for that day (the caller states the reason).
 
-Parameter sources: 1.4826 × MAD is the standard consistency constant that makes the MAD estimate the standard deviation of normal
-data (Rousseeuw PJ, Croux C. J Am Stat Assoc 1993;88:1273). The windows, weights, offset and bands below are first-version design
-choices (Watch2Whoop docs/system-design.md §7), not fitted to data. Every function takes `params=` (default: this module);
-`override(**changes)` builds a modified copy.
+Parameters: 1.4826 × MAD is the usual factor that makes the median absolute deviation comparable to a standard deviation for
+normally distributed data. The windows, weights, offset and bands below are v1 values, not yet validated (METHODOLOGY.md, issue #118).
+Every function takes `params=` (default: this module); `override(**changes)` builds a modified copy.
 """
 import bisect
 import math

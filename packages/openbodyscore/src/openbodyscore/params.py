@@ -1,10 +1,10 @@
 """Scoring parameters for sleep, recovery, strain (Watch2Whoop docs/system-design.md §7). Bump ALGO_VERSION whenever any parameter that affects results changes.
 
-Sources: the sleep score constants are Open Wearables 0.9.0's Sleep Score (backend/app/algorithms/sleep.py, MIT licence);
-TRIMP zones and weights: Edwards S. The Heart Rate Monitor Book, 1993; HRmax formula: Tanaka H et al. J Am Coll Cardiol 2001;37:153;
-CTL / ATL: the 42 / 7-day exponentially weighted training load of Banister's impulse-response model.
-The recovery weights, the recovery logistic (slope 1.6, offset 0.3), the 8h sleep-need baseline and the strain constant K = 170 are
-first-version design choices (Watch2Whoop docs/system-design.md §7), to be calibrated on more data; the comment next to each says how it was chosen.
+Sources (category of each parameter: METHODOLOGY.md): the sleep score constants are ported from the Open Wearables 0.9.0
+Sleep Score (backend/app/algorithms/sleep.py, config_algorithms.py; MIT licence); strain uses Edwards TRIMP zones and the
+Tanaka HRmax formula (208 − 0.7 × age); CTL / ATL follow Banister's fitness-fatigue model. The recovery weights and logistic
+(1.6 / 0.3) and the sleep-need baseline are v1 values, not yet validated; the strain constant K = 170 was calibrated on one
+person's data (see its comment). Validation: issue #118.
 Every scoring function takes `params=` (default: this module); `override(**changes)` builds a modified copy.
 """
 import sys

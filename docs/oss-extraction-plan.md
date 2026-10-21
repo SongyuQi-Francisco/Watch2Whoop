@@ -10,10 +10,16 @@ package **inside this repository**; only when its interface is stable does it mo
 
 | # | Piece | Licence | Where it lives now | Next |
 |---|---|---|---|---|
-| 1 | **Scoring library** `openbodyscore` (working name): sleep, recovery, strain, training load, muscle load, stress, body age, HRV from beat times | **Apache-2.0** | `packages/openbodyscore/` (this step) | stabilise the API, then its own repository and PyPI |
-| 2 | **HealthKit sync spec + iOS Shortcut** | MIT (the Shortcut already is); the spec under the same licence | `docs/shortcut-sync-spec.md`, `shortcuts/` | second step |
-| 3 | **MCP "personal data layer" framework** | to be decided with the piece | `body_engine/` (MCP server, tools) | after #107 / #109 are merged and stable |
-| 4 | English design documents and extension-point notes in this repository | AGPL-3.0 (docs of this repository) | `docs/`, component READMEs | ongoing |
+| 1 | **Scoring library** `openbodyscore` (working name; the main focus): sleep, recovery, strain, training load, muscle load, stress, body age, HRV from beat times | **Apache-2.0** | `packages/openbodyscore/` (this step) | methodology and validation (#118), RMSSD (#117), stabilise the API, then its own repository and PyPI |
+| 2 | **MCP "personal data layer" framework** (#116) | to be decided with the piece | `body_engine/` (MCP server, tools) | built and run in this project first, then extracted |
+| 3 | English design documents and extension-point notes in this repository | AGPL-3.0 (docs of this repository) | `docs/`, component READMEs | ongoing |
+
+Not extracted (maintainer decision, 2026-10-22): the HealthKit sync spec and the iOS Shortcut (`docs/shortcut-sync-spec.md`,
+`shortcuts/`, already MIT) — too little value as a separate project.
+
+**Naming and wording.** The package / repository name is a working name until the maintainer picks the final one
+(renaming only touches the directory and configuration). Neither may contain the WHOOP trademark. Public wording may
+say "open-source, evidence-based WHOOP-style scores" and must state that the project is not affiliated with WHOOP.
 
 The server (`body_engine/`, `deploy/`, …) stays AGPL-3.0. Relicensing the extracted code is possible because every
 commit in the history of the moved files is the maintainer's own (checked with `git log` on the moved paths when
@@ -44,7 +50,8 @@ so calls without it behave exactly as before. `params.override(NAME=value, …)`
 `stress.override`, `hrv.override`) returns a copy with some values replaced and rejects unknown names; the module
 itself is never modified, so overrides are safe in a multi-threaded server. Arguments that had a parameter as their
 default (`window`, `hold`, `cap`, `k`, `weeks`) now default to `None` and read the parameter at call time. The
-source of every parameter is in the docstring / comment next to it; the package README has the methodology table.
+source of every parameter is in the docstring / comment next to it; `packages/openbodyscore/METHODOLOGY.md` labels each one literature / ported spec / design choice / personal
+calibration (a skeleton; the full text is #118).
 
 ### Proof that no number changed
 1. `packages/openbodyscore/tests/golden_cases.py` builds 60 days of synthetic data for a made-up person (seeded, the
@@ -53,7 +60,8 @@ source of every parameter is in the docstring / comment next to it; the package 
    separate commit before anything moved. `tests/test_golden.py` (package) and
    `body_engine/tests/test_openbodyscore_golden.py` (old import paths) compare exactly (floats round-trip through JSON).
 2. End to end: `quickstart/demo_data.py`'s export (seed 7, 60 days, fixed date) → the real Apple export importer →
-   scoring engine, body age and stress → `body_engine/tests/fixtures/golden_e2e.json`, also written before the move.
+   scoring engine, body age and stress → `body_engine/tests/fixtures/golden_e2e_sdnn.json` (one file per HRV kind; the RMSSD one is added with #117), also
+   written before the move.
 3. `test_old_import_paths_are_the_package` checks that the old paths give the package's own objects.
 
 ### Build and CI
@@ -83,7 +91,7 @@ dependencies: `zipfile`, `xml.etree.iterparse`, `csv`). What has to be separated
   display name — and `shortcut_workouts.shortcut_type`); the output rows carry Body Engine column names and source
   ranks. The `io` module should return neutral records (samples, sleep segments, workouts with the HealthKit activity
   type) and Body Engine maps them to rows.
-- Golden test the same way (a synthetic export in, records out) before moving. Planned for the second PR of #115.
+- Golden test the same way (a synthetic export in, records out) before moving. A later PR of #115.
 
 ## 3. Package and repository plan
 1. **In this repository** (now): `packages/openbodyscore/`, version `0.1.0`, classifier `Private :: Do Not Upload`
@@ -94,6 +102,8 @@ dependencies: `zipfile`, `xml.etree.iterparse`, `csv`). What has to be separated
 3. **Own repository** (`openbodyscore`, Apache-2.0), with history of the package directory (`git filter-repo
    --path packages/openbodyscore`), its own CI and releases; this repository then depends on a pinned version from
    PyPI (or a git tag) instead of the path source, and the old import paths keep working.
+   Order: #117 (HRV switched to RMSSD) comes after this step is merged; it bumps `ALGO_VERSION` and adds an `rmssd`
+   golden file next to the `sdnn` one (`body_engine/tests/test_openbodyscore_golden.py`, `HRV_KINDS`).
 4. **PyPI**: tagged releases, semantic versions; a score change is at least a minor version and is listed in a CHANGELOG.
 
 ## 4. Release checklist (before the first public release)
@@ -113,7 +123,10 @@ dependencies: `zipfile`, `xml.etree.iterparse`, `csv`). What has to be separated
       golden file).
 - [ ] **One person's data**: no hard-coded personal values; the owner-calibrated constants (strain K, the first-version
       recovery weights) are documented as such.
-- [ ] **Docs**: README with install, example, methodology; a CHANGELOG; supported Python versions tested in CI.
+- [ ] **Methodology and validation (#118) complete**: `METHODOLOGY.md` filled in (inputs, formulas, every parameter with its
+      category and a verified source, known limits), the validation studies of #118 done, and the README states only
+      validated claims ("v1 value, not yet validated" otherwise). Includes replacing the one-person calibration (strain K).
+- [ ] **Docs**: README with install, example; a CHANGELOG; supported Python versions tested in CI.
 - [ ] Remove `Private :: Do Not Upload`.
 
 ## 5. Merge coordination (step 1)
