@@ -90,8 +90,9 @@ def resolve_owner(conn, viewer: dict, user: str, scope: str) -> int:
     return owner_id
 
 
-def date_range(start: date | None, end: date | None, default_days: int = 30) -> tuple[date, date]:
-    end = end or date.today()
+def date_range(conn, owner_id: int, start: date | None, end: date | None, default_days: int = 30) -> tuple[date, date]:
+    """Default end = the owner's own today (their time zone)."""
+    end = end or queries.local_today(conn, owner_id)
     return start or end - timedelta(days=default_days - 1), end
 
 
@@ -116,21 +117,21 @@ def daily_metrics(user: str, start: date | None = None, end: date | None = None,
                   metric: Annotated[list[str] | None, Query()] = None,
                   conn=Depends(get_conn), viewer=Depends(current_user)):
     owner_id = resolve_owner(conn, viewer, user, "metrics")
-    return queries.daily_metrics(conn, owner_id, *date_range(start, end), metric)
+    return queries.daily_metrics(conn, owner_id, *date_range(conn, owner_id, start, end), metric)
 
 
 @app.get("/v1/users/{user}/sleep")
 def sleep(user: str, start: date | None = None, end: date | None = None, main_only: bool = False,
           conn=Depends(get_conn), viewer=Depends(current_user)):
     owner_id = resolve_owner(conn, viewer, user, "sleep")
-    return queries.sleep_sessions(conn, owner_id, *date_range(start, end), main_only)
+    return queries.sleep_sessions(conn, owner_id, *date_range(conn, owner_id, start, end), main_only)
 
 
 @app.get("/v1/users/{user}/scores")
 def scores(user: str, start: date | None = None, end: date | None = None, details: bool = False,
            conn=Depends(get_conn), viewer=Depends(current_user)):
     owner_id = resolve_owner(conn, viewer, user, "scores")
-    return scores_store.scores(conn, owner_id, *date_range(start, end), details)
+    return scores_store.scores(conn, owner_id, *date_range(conn, owner_id, start, end), details)
 
 
 app.include_router(assistant_router)

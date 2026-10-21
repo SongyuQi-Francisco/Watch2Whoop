@@ -1218,21 +1218,44 @@
   // One chart helper for all cards: layers of bars / lines / bands on a shared x axis (one slot per day), with a hover cursor.
   // layer: {type: "bar" | "line" | "avg" | "dots" | "band" | "range", values, cls, lo, hi, axis: "r"} ("range" = per-day [lo, hi] boxes, "r" = right axis 0–21)
   const CH = new Map();   // chart id -> {n, W, tip(i), y(i)} for the hover cursor
+  // chart-range:start (pure; tests/test_charts.py runs it with node)
+  // y range of a chart: every reading, and the reference band opts.zone at least where it is nearest to the readings: a band
+  // wholly above (below) them adds its lower (upper) edge, so a strip of it always shows; a band that overlaps them adds
+  // nothing (it is clipped at the plot edge) so a normal week is not flattened. opts.min / opts.max are the usual scale and
+  // widen when a reading falls outside; every side not pinned by them gets padding. (FB-2: the HRR card had min 0, zone
+  // 20–60 and a few low readings; the band was drawn from far outside the chart over the cards below.)
+  function chartRange(nums, opts = {}) {
+    const data = nums.filter((v) => v != null && Number.isFinite(v));
+    const z = (opts.zone || []).filter((v) => v != null && Number.isFinite(v));
+    const vals = [...data];
+    if (z.length === 2) {
+      const [zlo, zhi] = [Math.min(...z), Math.max(...z)];
+      if (!data.length) vals.push(zlo, zhi);
+      else if (zlo > Math.max(...data)) vals.push(zlo);
+      else if (zhi < Math.min(...data)) vals.push(zhi);
+    }
+    if (!vals.length) return { lo: opts.min ?? 0, hi: opts.max ?? (opts.min ?? 0) + 1 };
+    const dlo = Math.min(...vals), dhi = Math.max(...vals);
+    let lo = opts.min != null ? Math.min(opts.min, dlo) : dlo, hi = opts.max != null ? Math.max(opts.max, dhi) : dhi;
+    const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1;
+    if (opts.min == null || dlo < opts.min) lo -= pad;
+    if (opts.max == null || dhi > opts.max) hi += pad;
+    return { lo, hi };
+  }
+  // chart-range:end
   function tChart(id, dates, layers, opts = {}) {
     const wide = WIDE.matches, W = wide ? 560 : 320, H = opts.h ?? (wide ? 150 : 92), T = 6, B = 16, n = dates.length;
     const nums = layers.filter((l) => l.axis !== "r").flatMap((l) => (l.type === "range" ? l.values.flat() : [...(l.values || []), ...(l.lo || []), ...(l.hi || [])])).filter((v) => v != null);
-    let lo = opts.min ?? Math.min(...nums), hi = opts.max ?? Math.max(...nums);
-    if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
-    const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1;
-    if (opts.min == null) lo -= pad;
-    if (opts.max == null) hi += pad;
+    const { lo, hi } = chartRange(nums, opts);
+    const top = (y) => Math.max(T, Math.min(H - B, y));   // a band edge, kept inside the plot area
     const slot = W / Math.max(1, n), bw = Math.max(1, slot * (n > 60 ? 0.9 : 0.66));
     const cx = (i) => (n === 1 ? W / 2 : opts.bars ? slot * (i + 0.5) : (i / (n - 1)) * W);
     const sy = (v, axis) => (axis === "r" ? T + (1 - Math.max(0, Math.min(21, v)) / 21) * (H - T - B) : T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B));
     const path = (vals, axis) => { let d = "", pen = false; vals.forEach((v, i) => { if (v == null) { pen = false; return; } d += `${pen ? "L" : "M"}${cx(i).toFixed(1)},${sy(v, axis).toFixed(1)}`; pen = true; }); return d; };
-    let g = "";
+    // Data layers are clipped to the plot area (a little room left and right for the end dots); the date labels stay outside the clip
+    let g = `<defs><clipPath id="${id}-clip"><rect x="-4" y="0" width="${W + 8}" height="${H - B + 0.5}"/></clipPath></defs><g clip-path="url(#${id}-clip)">`;
     if (opts.guide) for (const [v, t] of opts.guide) g += `<line class="guide" x1="0" x2="${W}" y1="${sy(v).toFixed(1)}" y2="${sy(v).toFixed(1)}"/>${t ? `<text x="${W}" y="${(sy(v) - 3).toFixed(1)}" text-anchor="end">${t}</text>` : ""}`;
-    if (opts.zone) g += `<rect class="band" x="0" width="${W}" y="${sy(opts.zone[1]).toFixed(1)}" height="${Math.max(0, sy(opts.zone[0]) - sy(opts.zone[1])).toFixed(1)}" rx="3"/>`;
+    if (opts.zone) { const y1 = top(sy(opts.zone[1])), y0 = top(sy(opts.zone[0])); g += `<rect class="band" x="0" width="${W}" y="${y1.toFixed(1)}" height="${Math.max(0, y0 - y1).toFixed(1)}" rx="3"/>`; }
     for (const l of layers) {
       if (l.type === "band") {   // personal baseline band, one block per run of consecutive values
         let seg = [];
@@ -1241,7 +1264,7 @@
         flush();
         if (l.mean) g += `<path class="base-mean" d="${path(l.mean)}"/>`;
       } else if (l.type === "range") {
-        l.values.forEach((r, i) => { if (r) g += `<rect class="tgt" x="${(cx(i) - slot / 2).toFixed(1)}" width="${slot.toFixed(2)}" y="${sy(r[1], l.axis).toFixed(1)}" height="${Math.max(0.5, sy(r[0], l.axis) - sy(r[1], l.axis)).toFixed(1)}"/>`; });
+        l.values.forEach((r, i) => { if (r) { const y1 = top(sy(r[1], l.axis)), y0 = top(sy(r[0], l.axis)); g += `<rect class="tgt" x="${(cx(i) - slot / 2).toFixed(1)}" width="${slot.toFixed(2)}" y="${y1.toFixed(1)}" height="${Math.max(0.5, y0 - y1).toFixed(1)}"/>`; } });
       } else if (l.type === "bar") {
         const base = sy(Math.max(lo, Math.min(hi, opts.barBase ?? Math.max(lo, 0))), l.axis);
         l.values.forEach((v, i) => {
@@ -1256,6 +1279,7 @@
         if (l.type === "line" && l.dots !== false && (n <= 31 || (wide && n <= 92))) l.values.forEach((v, i) => { if (v != null) g += `<circle class="dot" cx="${cx(i).toFixed(1)}" cy="${sy(v, l.axis).toFixed(1)}" r="1.3"/>`; });
       }
     }
+    g += "</g>";
     if (wide && !opts.noTicks) for (const v of [lo + (hi - lo) * 0.15, hi - (hi - lo) * 0.15]) g += `<text class="ylab" x="0" y="${(sy(v) - 3).toFixed(1)}">${fmtNum(v, Math.abs(hi - lo) < 5 ? 1 : 0)}</text>`;
     g += `<line class="grid" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
     g += `<text x="0" y="${H - 3}">${shortDay(dates[0])}</text>${wide ? `<text x="${W / 2}" y="${H - 3}" text-anchor="middle">${shortDay(dates[Math.floor((n - 1) / 2)])}</text>` : ""}<text x="${W}" y="${H - 3}" text-anchor="end">${shortDay(dates[n - 1])}</text>`;
@@ -1862,7 +1886,8 @@
     const sy = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
     let g = "";
     if (refs.length) {
-      const top = sy(h.ref_high ?? hi), bot = sy(h.ref_low ?? lo);
+      const inPlot = (y) => Math.max(T, Math.min(H - B, y));   // the reference band never leaves the plot area
+      const top = inPlot(sy(h.ref_high ?? hi)), bot = inPlot(sy(h.ref_low ?? lo));
       g += `<rect class="band" x="0" width="${W - PR + 4}" y="${top.toFixed(1)}" height="${Math.max(0, bot - top).toFixed(1)}" rx="3"/>`;
       for (const v of refs) g += `<line class="guide" x1="0" x2="${W - PR + 4}" y1="${sy(v).toFixed(1)}" y2="${sy(v).toFixed(1)}"/><text x="${W}" y="${(sy(v) + 3.5).toFixed(1)}" text-anchor="end">${fmtNum(v, dig)}</text>`;
     }

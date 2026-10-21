@@ -26,7 +26,7 @@ from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.65-2026-10-22"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.67-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
