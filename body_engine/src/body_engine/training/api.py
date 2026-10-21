@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
-from . import catalog, history, plans
+from . import catalog, history, loads, plans
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
 
@@ -119,13 +119,15 @@ def list_catalog_exercises(
 
 @router.get("/exercises/{slug}")
 def get_catalog_exercise(user: str, slug: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Full exercise detail: bilingual names, muscles, equipment, instructions, cues, joint stress flags, user status, and safe alternatives."""
+    """Full exercise detail: bilingual names, muscles, equipment, instructions, cues, demo image URLs, joint stress flags, user status,
+    safe alternatives, the recommended working weight and the last 3 logged sessions."""
     owner_id = _owner(conn, viewer, user, "training")
     with_meta = auth.can_view(conn, viewer["id"], owner_id, "exercises")
     try:
-        return catalog.get_exercise(conn, owner_id if with_meta else None, slug)
+        ex = catalog.get_exercise(conn, owner_id if with_meta else None, slug)
     except ValueError as e:
         raise HTTPException(404, str(e))
+    return {**ex, **loads.for_exercise(conn, viewer["id"], owner_id, ex, plans._user_today(conn, owner_id))}
 
 
 @router.get("/splits")

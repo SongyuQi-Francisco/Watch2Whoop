@@ -263,7 +263,7 @@ def test_seed_catalog_and_free_exercise_db_import(conn, tmp_path):
         },
     ]), encoding="utf-8")
     res2 = catalog.seed_catalog(conn, sample_json)
-    assert res2["imported_free_db"] == 1 and res2["skipped_free_db"] == 1
+    assert res2["imported_free_db"] == 1 and res2["merged_free_db"] == 1
 
     # Curated entry keeps its Chinese cues and instructions
     goblet = catalog.resolve(conn, "goblet_squat")
