@@ -1,9 +1,15 @@
 """Endpoints and static files for the Today page.
 
 - POST /v1/web/login {"token"}: validate an API token and exchange it for an httpOnly cookie (session.py); POST /v1/web/logout signs out.
+- POST /v1/web/activate {"code", "web"?}: reusable activation code → fresh watch2whoop://setup link (activation.py; page
+  /app/activate.html#<code>). web=true (the page signing in on the web) mints only the login code, no OW invitation, so a
+  link the app may still be opening keeps a valid OW code.
+- POST /v1/web/ingest-token {"device"}: the Watch2Whoop app (in its WebView, with the page's cookie) gets an upload-only
+  token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
+- /app/media/: exercise demo images in the deployment's own media storage (BODY_MEDIA_DIR; training/media.py downloads them once).
 """
 from datetime import date
 from pathlib import Path
@@ -14,10 +20,13 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import login_codes, login_limit, session, views
+from .. import auth
+from ..training import catalog as tr_catalog
+from . import activation, login_codes, login_limit, session, views
+from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.22-2026-10-19"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.61-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -56,7 +65,9 @@ class LoginIn(BaseModel):
 
 
 def _me(user: dict) -> dict:
-    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes")}
+    out = {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status", "language")}
+    out["intro_seen"] = user.get("intro_seen_at") is not None   # first-run intro (issue #60, profile/api.py PUT /intro)
+    return out
 
 
 @router.post("/v1/web/login")
@@ -90,6 +101,47 @@ def login_with_code(body: LoginCodeIn, request: Request, response: Response, con
     session_id, user = res
     session.set_cookie(response, session_id, request)
     return _me(user)
+
+
+class ActivateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=8, max_length=40)
+    web: bool = False   # activate.html signing in on the web: mint only a Today page login code (no OW invitation)
+
+
+@router.post("/v1/web/activate")
+def activate(body: ActivateIn, request: Request, conn=Depends(get_conn)):
+    """Redeem a reusable activation code (activate.html#<code>) for a fresh watch2whoop://setup link (activation.py).
+    No auth; failures are a generic 401 and count against the per-IP login failure limit (429 once exceeded)."""
+    ip = request.client.host if request.client else "?"
+    wait = login_limit.retry_after(ip)
+    if wait:
+        raise HTTPException(429, "失败次数太多，请稍后再试", headers={"Retry-After": str(wait)})
+    res = activation.activate(conn, body.code, request.headers.get("user-agent"), str(request.base_url), mint_ow=not body.web)
+    if res is None:
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "激活码无效或已停用")
+    return res
+
+
+class IngestTokenIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    device: str = Field("iPhone", min_length=1, max_length=40)
+
+
+@router.post("/v1/web/ingest-token")
+def ingest_token(body: IngestTokenIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Upload-only token (scope ingest) for the app's raw data uploads. Cookie session with write permission only; a new
+    token for the same device replaces the old one."""
+    if viewer.get("auth") != "session":
+        raise HTTPException(403, "只能在今天页登录后获取")
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, "这个登录没有 write 权限")
+    name = f"app:ingest:{body.device.strip()}"
+    auth.revoke_tokens(conn, viewer["id"], name)
+    token = auth.create_token(conn, viewer["id"], name, [auth.INGEST_SCOPE])
+    conn.commit()
+    return {"token": token, "scopes": [auth.INGEST_SCOPE]}
 
 
 @router.post("/v1/web/logout", status_code=204)
@@ -137,7 +189,7 @@ def journal_frequent(user: str, end: date | None = None, days: Annotated[int, Qu
     owner_id = owner(conn, viewer, user)
     if not views.auth.can_view(conn, viewer["id"], owner_id, "journal"):
         raise HTTPException(403, f"没有查看用户 {owner_id} 的 journal 的授权")
-    return views.frequent_journal(conn, owner_id, end, days, limit, min(6, limit))
+    return with_label(views.frequent_journal(conn, owner_id, end, days, limit, min(6, limit)))
 
 
 @router.get("/v1/users/{user}/sleep/nights")
@@ -169,10 +221,26 @@ def month_days(user: str, month: Annotated[str | None, Query(pattern=r"^\d{4}-(0
     return views.month_days(conn, viewer, owner_id, month or views.local_today(conn, owner_id).strftime("%Y-%m"))
 
 
+class MediaFiles(StaticFiles):
+    """Exercise demo images (BODY_MEDIA_DIR/…): the directory is looked up per request, so it may appear after start-up."""
+
+    def __init__(self):
+        super().__init__(directory=tr_catalog.media_dir(), check_dir=False)
+
+    async def check_config(self) -> None:   # no media downloaded yet = every image is a 404, not a server error
+        return None
+
+    def lookup_path(self, path: str):
+        self.all_directories = [str(tr_catalog.media_dir())]
+        return super().lookup_path(path)
+
+
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/app"):
+    if path.startswith("/app/media/"):   # exercise demo images: pinned upstream commit, never change
+        response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+    elif path.startswith("/app"):
         response.headers["Content-Security-Policy"] = CSP
         response.headers["Cache-Control"] = "no-cache"  # Revalidate with the server every time (offline is covered by the service worker)
     if path.startswith("/v1/"):
@@ -185,6 +253,8 @@ async def security_headers(request: Request, call_next):
 def install(app: FastAPI) -> None:
     """Call once from api.py: endpoints, static files, security headers."""
     app.include_router(router)
+    # Exercise demo images downloaded once by `body-engine fetch-exercise-db --images` (training/media.py); mounted before /app
+    app.mount("/app/media", MediaFiles(), name="media")
     app.mount("/app", StaticFiles(directory=STATIC, html=True), name="web")
     app.add_api_route("/", lambda: RedirectResponse("/app/"), include_in_schema=False)
     app.middleware("http")(security_headers)

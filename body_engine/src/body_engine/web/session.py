@@ -34,8 +34,8 @@ def _sha(session_id: str) -> str:
 def login(conn: psycopg.Connection, token: str, user_agent: str | None = None) -> tuple[str, dict] | None:
     """If the token is valid create a session and return (plaintext session ID, user); otherwise None."""
     row = conn.execute("""SELECT id, user_id FROM api_tokens WHERE token_sha256 = %s AND revoked_at IS NULL
-                          AND NOT (%s = ANY(scopes))""",  # AI clients' MCP tokens cannot log into the web page
-                       (auth.hash_token(token.strip()), auth.MCP_SCOPE)).fetchone()
+                          AND NOT (scopes && %s::text[])""",  # AI clients' MCP tokens and app upload tokens cannot log in
+                       (auth.hash_token(token.strip()), auth.RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
     session_id = secrets.token_urlsafe(32)

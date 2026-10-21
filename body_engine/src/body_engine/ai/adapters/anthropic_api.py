@@ -6,12 +6,21 @@
   when rejected by the safety classifier the API retries with another model; if it still ends as a refusal the user is told.
 - Tools use strict=True (api_definition in tools.py); eager_input_streaming is off: tool arguments are short, strict validation matters more than streaming them while generating.
 - The assistant's raw content (including thinking blocks) is stored as native and passed back as-is when the same model continues the conversation (preserved thinking requires history to be append-only and unchanged).
+- web (ai_providers.web_tools, off by default): Anthropic's own server tools web_search + web_fetch (the _20260209 variants with
+  dynamic filtering on the models that support them, basic web search otherwise), billed on the user's key. Server tool blocks
+  (server_tool_use, web_search_tool_result, web_fetch_tool_result) stay in native as returned. A turn that stops with pause_turn
+  (the server-side loop hit its limit) is continued by re-sending the partial assistant content, up to MAX_CONTINUE times.
 """
 import anthropic
 
+from ...i18n import L
 from .base import MAX_OUTPUT_TOKENS, TIMEOUT_S, Adapter, AdapterError, TurnResult
 
 FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-opus-5"}
+WEB_NEW_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5-5",
+                  "claude-sonnet-5", "claude-sonnet-4-6"}   # web_search_20260209 / web_fetch_20260209
+WEB_MAX_USES = 8      # searches + page reads per request (a dozen items from one list)
+MAX_CONTINUE = 3      # pause_turn continuations per turn
 EFFORT_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-opus-5",
                  "claude-sonnet-5"}
 
@@ -58,43 +67,62 @@ class AnthropicAdapter(Adapter):
                 out.append({"role": "user", "content": blocks})
         return out
 
+    def _web_tools(self) -> list[dict]:
+        if not self.web:
+            return []
+        if self.model in WEB_NEW_MODELS:
+            return [{"type": "web_search_20260209", "name": "web_search", "max_uses": WEB_MAX_USES},
+                    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": WEB_MAX_USES}]
+        return [{"type": "web_search_20250305", "name": "web_search", "max_uses": WEB_MAX_USES}]
+
     def stream_turn(self, system, history, tools):
         client = anthropic.Anthropic(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
+        messages = self._messages(history)
         kwargs = dict(model=self.model, max_tokens=MAX_OUTPUT_TOKENS, system=system,
-                      messages=self._messages(history), tools=[t.api_definition() for t in tools],
+                      tools=[t.api_definition() for t in tools] + self._web_tools(),
                       cache_control={"type": "ephemeral"})
         if self.model in EFFORT_MODELS:
             kwargs["output_config"] = {"effort": "medium"}
         if self.model in FALLBACK_MODELS:
             kwargs.update(betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+        content: list[dict] = []   # this turn's blocks, across pause_turn continuations
+        usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
         try:
-            with client.beta.messages.stream(**kwargs) as stream:
-                for event in stream:
-                    if event.type == "text":
-                        yield "text", event.text
-                final = stream.get_final_message()
+            for _ in range(MAX_CONTINUE + 1):
+                kwargs["messages"] = messages + ([{"role": "assistant", "content": content}] if content else [])
+                with client.beta.messages.stream(**kwargs) as stream:
+                    for event in stream:
+                        if event.type == "text":
+                            yield "text", event.text
+                    final = stream.get_final_message()
+                content += [_replayable(b.model_dump(mode="json", exclude_none=True)) for b in final.content]
+                u = final.usage
+                usage["input_tokens"] += u.input_tokens or 0
+                usage["output_tokens"] += u.output_tokens or 0
+                usage["cache_read_tokens"] += u.cache_read_input_tokens or 0
+                usage["cache_write_tokens"] += u.cache_creation_input_tokens or 0
+                if final.stop_reason != "pause_turn":
+                    break
         except anthropic.AuthenticationError:
-            raise AdapterError("Anthropic API key 无效或已停用，请在「AI 设置」里更新", "auth")
+            raise AdapterError(L("Anthropic API key 无效或已停用，请在「AI 设置」里更新",
+                                 "The Anthropic API key is invalid or disabled; update it in AI settings"), "auth")
         except anthropic.PermissionDeniedError:
-            raise AdapterError("这个 API key 没有权限用这个模型", "auth")
+            raise AdapterError(L("这个 API key 没有权限用这个模型", "This API key may not use this model"), "auth")
         except anthropic.NotFoundError:
-            raise AdapterError(f"模型不存在：{self.model}", "bad_request")
+            raise AdapterError(L(f"模型不存在：{self.model}", f"No such model: {self.model}"), "bad_request")
         except anthropic.RateLimitError:
-            raise AdapterError("Anthropic 限流了，稍后再试", "rate_limit")
+            raise AdapterError(L("Anthropic 限流了，稍后再试", "Anthropic is rate limiting; try again later"), "rate_limit")
         except anthropic.BadRequestError as e:
-            raise AdapterError(f"请求被 Anthropic 拒绝：{e.message}", "bad_request")
+            raise AdapterError(L(f"请求被 Anthropic 拒绝：{e.message}", f"Anthropic rejected the request: {e.message}"), "bad_request")
         except anthropic.APIStatusError as e:
-            raise AdapterError(f"Anthropic 服务出错（{e.status_code}），稍后再试", "unavailable")
+            raise AdapterError(L(f"Anthropic 服务出错（{e.status_code}），稍后再试", f"Anthropic service error ({e.status_code}); try again later"),
+                               "unavailable")
         except anthropic.APIConnectionError:
-            raise AdapterError("连不上 Anthropic（网络问题）", "network")
+            raise AdapterError(L("连不上 Anthropic（网络问题）", "Can't reach Anthropic (network problem)"), "network")
 
-        u = final.usage
-        usage = {"input_tokens": u.input_tokens or 0, "output_tokens": u.output_tokens or 0,
-                 "cache_read_tokens": u.cache_read_input_tokens or 0,
-                 "cache_write_tokens": u.cache_creation_input_tokens or 0}
-        native = [_replayable(b.model_dump(mode="json", exclude_none=True)) for b in final.content]
-        text = "".join(b.text for b in final.content if b.type == "text")
-        calls = [{"id": b.id, "name": b.name, "args": b.input} for b in final.content if b.type == "tool_use"]
+        native = content
+        text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+        calls = [{"id": b["id"], "name": b["name"], "args": b["input"]} for b in content if b.get("type") == "tool_use"]
         stop = {"tool_use": "tool_use", "max_tokens": "max_tokens", "refusal": "refusal"}.get(final.stop_reason, "end")
         if stop == "refusal":
             calls = []  # A refusal may cut a tool call in half

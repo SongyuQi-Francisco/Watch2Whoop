@@ -1,9 +1,11 @@
 """Endpoints for the personal profile and electronic consent (Today page web/static/profile.js). Only your own; changes need write (cookie write requests also need X-Body-Web: 1).
 
 - GET   /v1/users/{user}/profile   -> profile + missing + consent (required / version / accepted_at / reconfirm)
-- PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?}(null = clear)
+- PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?, language?}(null = clear; language null = follow the device)
 - GET   /v1/consent                 -> {version, summary, text} (full consent form in Markdown)
 - POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents)
+- PUT   /v1/users/{user}/intro     {seen: bool} -> the first-run intro was finished / skipped (true) or is to be shown again (false);
+                                    users.intro_seen_at, read back as /v1/web/me -> me.intro_seen (issue #60)
 """
 from datetime import date
 from typing import Literal
@@ -47,12 +49,19 @@ class ProfileIn(BaseModel):
     height_cm: float | None = None
     timezone: str | None = Field(default=None, max_length=60)
     goal_weight_kg: float | None = None
+    language: Literal["zh", "en"] | None = None
+
+
+class IntroIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seen: bool = Field(strict=True)
 
 
 class ConsentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str = Field(min_length=1, max_length=40)
     agree: Literal[True]
+    language: Literal["zh", "en"] | None = None   # the text that was read; default the request's language
 
 
 @router.get("/v1/users/{user}/profile")
@@ -77,14 +86,24 @@ def patch_profile(user: str, body: ProfileIn, conn=Depends(get_conn), viewer=Dep
 
 @router.get("/v1/consent")
 def get_consent(viewer=Depends(current_user)):
-    return {"version": consent.version(), "summary": consent.SUMMARY, "text": consent.display_text()}
+    """In the request's language (X-Body-Lang); `language` says which text this is (both carry the same version)."""
+    return {"version": consent.version(), "summary": consent.summary(), "text": consent.display_text(), "language": consent.lang()}
 
 
 @router.post("/v1/users/{user}/consent")
 def post_consent(user: str, body: ConsentIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     uid = _self(viewer, user, True)
     try:
-        consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"))
+        consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"), language=body.language)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
     return _out(conn, uid)
+
+
+@router.put("/v1/users/{user}/intro")
+def set_intro(user: str, body: IntroIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """First-run intro on the Today page: seen (finished or skipped) or reset so it shows again. Only your own."""
+    uid = _self(viewer, user, write=True)
+    row = conn.execute("UPDATE users SET intro_seen_at = CASE WHEN %s THEN coalesce(intro_seen_at, now()) END "
+                       "WHERE id = %s RETURNING intro_seen_at", (body.seen, uid)).fetchone()
+    return {"intro_seen": row["intro_seen_at"] is not None, "intro_seen_at": row["intro_seen_at"]}

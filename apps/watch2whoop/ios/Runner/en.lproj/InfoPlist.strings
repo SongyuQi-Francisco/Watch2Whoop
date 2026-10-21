@@ -1,0 +1,4 @@
+/* iOS permission prompts, English (the development language). Chinese: zh-Hans.lproj/InfoPlist.strings; keep the two in step. */
+"NSCameraUsageDescription" = "Used only to scan the setup QR code. No photos are taken and no images are saved.";
+"NSHealthShareUsageDescription" = "Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up.";
+"NSHealthUpdateUsageDescription" = "Release builds never write to Health; only debug builds write test data in the simulator.";

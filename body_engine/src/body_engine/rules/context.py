@@ -1,18 +1,21 @@
 """Data the rules use (Ctx) and its loading (load).
 
 Data sources (system design section 5; each kind of data has exactly one source):
-- SparkyFitness (the evaluated user's own read-only key): training logs, exercise library, workout templates, weekly training plan, food logs, nutrition goals, weight;
+- SparkyFitness (the evaluated user's own read-only key): training logs, exercise library, workout templates, weekly training plan, food logs, weight;
+- nutrition goals: goals/nutrition.py (Body Engine versions; SparkyFitness only before the first version), food extras (added sugar);
 - Body Engine: exercise_meta (banned / caution), daily_scores, journal_entries, daily_metrics.body_mass (weight supplement).
 Sources that cannot be read are recorded in errors, and rules depending on them return error (earlier reminders are not deleted); SparkyFitness not connected is recorded in missing (insufficient data).
 """
 from dataclasses import dataclass, field
+from typing import Any
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import psycopg
 
 from .. import sparky_client
-from ..goals import store as goal_store
+from ..goals import nutrition as nutrition_goals, store as goal_store
+from ..nutrition import daily as nutrition_daily
 from . import params as P
 
 TRAINING_DAYS = P.PROGRESSION_LOOKBACK_DAYS
@@ -32,14 +35,16 @@ class Ctx:
     presets: dict[int, dict] | None = None         # workout templates: id -> template
     plans: list[dict] | None = None                # weekly training plan
     meta: list[dict] = field(default_factory=list)  # all exercise_meta rows
-    food: list[dict] | None = None                 # food logs [day - 13, day]
-    goals: list[dict] | None = None                # nutrition goals for 7 days from day
+    food: list[dict] | None = None                 # food logs [day - 13, day] with sugar fields (nutrition/daily.entries)
+    goals: list[dict] | None = None                # nutrition goals in effect for 7 days from day (goals/nutrition.resolver)
     weights: list[dict] | None = None              # [{date, weight_kg, source}]，[day − 20, day]
     scores: dict[date, dict] = field(default_factory=dict)
     journal: dict[tuple[date, str], float] = field(default_factory=dict)
     sleep_goal: dict | None = None                 # row from goals.store.get_goal (including plan_rows)
     sleep_nights: list[dict] = field(default_factory=list)  # main sleep of each night before tonight (goals.sleep.nights_from_sessions)
     sleep_duration_min: int | None = None          # target sleep duration (from the goal, or the score's sleep need)
+    overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/day_overrides.py)
+    diet: Any = None                               # this user's diet constraints in effect (nutrition/constraints.Constraints)
     errors: dict[str, str] = field(default_factory=dict)    # source -> reason the read failed
     missing: dict[str, str] = field(default_factory=dict)   # source -> reason it is not connected / not available
 
@@ -88,12 +93,26 @@ class Ctx:
         return None
 
     def planned_for(self, day: date | None = None) -> list[dict]:
-        """Contents of that day's plan: [{kind: preset, preset} | {kind: exercise, exercise_id, name}] (in order)."""
+        """Contents of that day's plan: [{kind: preset, preset} | {kind: exercise, exercise_id, name} | {kind: label, name}] (in order).
+        A day change (training_day_overrides) replaces the weekday's content with other weekdays' content / free labels / rest."""
         day = day or self.day
-        plan = self.active_plan(day)
+        ov = self.overrides.get(day)
+        if ov is None:
+            return self.weekday_items(day.isoweekday(), day)
+        out = []
+        for ref in ov.get("sessions") or []:
+            if ref.get("dow"):
+                out += self.weekday_items(int(ref["dow"]), day)
+            elif ref.get("label"):
+                out.append({"kind": "label", "name": ref["label"]})
+        return out
+
+    def weekday_items(self, iso_dow: int, day: date | None = None) -> list[dict]:
+        """The active plan's content of one weekday (1 = Monday ... 7 = Sunday), ignoring day changes."""
+        plan = self.active_plan(day or self.day)
         if plan is None:
             return []
-        dow = day.isoweekday() % 7   # SparkyFitness: 0 = Sunday
+        dow = iso_dow % 7   # SparkyFitness: 0 = Sunday
         out = []
         for a in sorted((a for a in plan["assignments"] if a["day_of_week"] == dow), key=lambda a: a["sort_order"]):
             if a.get("workout_preset_id") is not None:
@@ -113,7 +132,7 @@ class Ctx:
                 out += [{"exercise_id": x["exercise_id"], "name": self.exercise_name(x["exercise_id"], x.get("name")),
                          "category": x.get("category"), "preset": item["preset"]["name"]}
                         for x in item["preset"]["exercises"]]
-            else:
+            elif item["kind"] == "exercise":
                 out.append({"exercise_id": item["exercise_id"], "name": item["name"], "category": None, "preset": None})
         return out
 
@@ -149,6 +168,13 @@ def _today(tz: ZoneInfo) -> date:
     return datetime.now(tz).date()
 
 
+def load_overrides(conn: psycopg.Connection, user_id: int, start: date, end: date) -> dict[date, dict]:
+    """Day changes of the weekly plan (training_day_overrides) in [start, end], by date."""
+    return {r["date"]: r for r in conn.execute(
+        "SELECT date, sessions, source, reason, updated_at FROM training_day_overrides WHERE user_id = %s AND date BETWEEN %s AND %s",
+        (user_id, start, end))}
+
+
 def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
          client: sparky_client.SparkyClient | None = None) -> Ctx:
     user = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()
@@ -170,6 +196,9 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     ctx.sleep_goal = goal_store.get_goal(conn, user_id)
     ctx.sleep_nights = goal_store.load_nights(conn, user_id, tz, day)   # night of day = tonight (the evening before going to sleep)
     ctx.sleep_duration_min = goal_store.duration(conn, user_id, ctx.sleep_goal, day)
+    ctx.overrides = load_overrides(conn, user_id, day - timedelta(days=7), day + timedelta(days=7))
+    from ..nutrition import constraints as diet_constraints
+    ctx.diet = diet_constraints.for_user(conn, user_id, day)
     body_mass = conn.execute(
         """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
            AND date BETWEEN %s AND %s""", (user_id, day - timedelta(days=WEIGHT_DAYS - 1), day)).fetchall()
@@ -181,13 +210,14 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
         except sparky_client.SparkyError as e:
             ctx.missing["sparky"] = str(e)
     if client is not None:
+        goal_of = nutrition_goals.resolver(conn, user_id, client)
         fetches = {
             "exercises": lambda: {e["id"]: e for e in sparky_client.exercises(client)},
             "presets": lambda: sparky_client.workout_presets(client),
             "plans": lambda: sparky_client.workout_plans(client),
             "sessions": lambda: sparky_client.training_log(client, day - timedelta(days=TRAINING_DAYS), day),
-            "food": lambda: sparky_client.nutrition(client, day - timedelta(days=FOOD_DAYS - 1), day)["entries"],
-            "goals": lambda: [sparky_client.goal_for_date(client, day + timedelta(days=k)) for k in range(7)],
+            "food": lambda: nutrition_daily.entries(conn, user_id, day - timedelta(days=FOOD_DAYS - 1), day, client),
+            "goals": lambda: [goal_of(day + timedelta(days=k)) for k in range(7)],
             "weights": lambda: sparky_client.weight(client, day - timedelta(days=WEIGHT_DAYS - 1), day),
         }
         for name, fetch in fetches.items():

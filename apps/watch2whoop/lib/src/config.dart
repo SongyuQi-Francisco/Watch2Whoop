@@ -26,6 +26,7 @@ class AppConfig {
     this.onboardingDone = false,
     this.owUserId,
     this.healthRequested = false,
+    this.permissionsSeen = false,
     this.pendingLoginCode,
   });
 
@@ -41,7 +42,12 @@ class AppConfig {
   final String? owUserId;
   final bool healthRequested;
 
-  /// One-time Today page login code carried in the setup info: consumed when opening the Today page (`/app/#login=code`), then cleared.
+  /// The permissions step (pages/permissions_page.dart) was finished or skipped: it is not shown on its own again
+  /// (still re-openable from Phone sync → Permissions).
+  final bool permissionsSeen;
+
+  /// One-time Today page login code carried in the setup info: opened as `/app/#login=code` until the Today page reports
+  /// the outcome over the JS channel (see [loginCodeSettled]); kept until then, so an interrupted load retries on the next open.
   final String? pendingLoginCode;
 
   bool get owConnected => owUserId != null && owUserId!.isNotEmpty;
@@ -60,6 +66,7 @@ class AppConfig {
     String? owUserId,
     bool clearOwUserId = false,
     bool? healthRequested,
+    bool? permissionsSeen,
     String? pendingLoginCode,
     bool clearPendingLoginCode = false,
   }) => AppConfig(
@@ -69,6 +76,7 @@ class AppConfig {
     onboardingDone: onboardingDone ?? this.onboardingDone,
     owUserId: clearOwUserId ? null : (owUserId ?? this.owUserId),
     healthRequested: healthRequested ?? this.healthRequested,
+    permissionsSeen: permissionsSeen ?? this.permissionsSeen,
     pendingLoginCode: clearPendingLoginCode ? null : (pendingLoginCode ?? this.pendingLoginCode),
   );
 
@@ -79,6 +87,7 @@ class AppConfig {
     'onboardingDone': onboardingDone,
     'owUserId': owUserId,
     'healthRequested': healthRequested,
+    'permissionsSeen': permissionsSeen,
     'pendingLoginCode': pendingLoginCode,
   };
 
@@ -89,12 +98,23 @@ class AppConfig {
     onboardingDone: (j['onboardingDone'] as bool?) ?? false,
     owUserId: j['owUserId'] as String?,
     healthRequested: (j['healthRequested'] as bool?) ?? false,
+    permissionsSeen: (j['permissionsSeen'] as bool?) ?? false,
     pendingLoginCode: j['pendingLoginCode'] as String?,
   );
 }
 
+/// Messages the Today page posts on the `Watch2Whoop` JS channel once it knows how the login went:
+/// `logged-in` (a session works, /v1/web/me answered) or `login-failed` (the server rejected the code: used / expired).
+/// Either one settles the pending one-time login code; anything else (network error, page killed) keeps it for a retry.
+bool loginCodeSettled(String message) => message == 'logged-in' || message == 'login-failed';
+
 class ConfigStore {
   static const _key = 'w2w.config.v1';
+
+  static Future<bool> exists() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.containsKey(_key);
+  }
 
   static Future<AppConfig> load() async {
     final prefs = await SharedPreferences.getInstance();

@@ -9,10 +9,12 @@ import 'src/health_sync.dart';
 import 'src/i18n.dart';
 import 'src/pages/home_page.dart';
 import 'src/pages/onboarding_page.dart';
+import 'src/raw_sync.dart';
 import 'src/setup_flow.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await loadLangOverride(); // profile language saved from the Today page (null = system language)
   await AppState.instance.load();
   try {
     // Also runs when woken by HealthKit in the background: restore the SDK session and the SDK continues syncing on its own.
@@ -20,8 +22,21 @@ Future<void> main() async {
   } catch (e) {
     debugPrint('HealthSync.start failed: $e');
   }
+  await RawSync.instance.load(); // last upload of beat-to-beat HRV / ECG, for the sync page
   SetupLinks.instance.start(); // watch2whoop://setup?… passed in when the app is opened by scanning the setup QR code with the camera
+  langOverride.addListener(_rebuildAll);
   runApp(const Watch2WhoopApp());
+}
+
+/// tr() reads the language without a BuildContext, so a language change marks every element for rebuild (state is kept,
+/// the WebView is not reloaded); the root ListenableBuilder also switches MaterialApp.locale.
+void _rebuildAll() {
+  void mark(Element e) {
+    e.markNeedsBuild();
+    e.visitChildren(mark);
+  }
+
+  WidgetsBinding.instance.rootElement?.visitChildren(mark);
 }
 
 class Watch2WhoopApp extends StatelessWidget {
@@ -55,7 +70,7 @@ class Watch2WhoopApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: AppState.instance,
+      listenable: Listenable.merge([AppState.instance, langOverride]),
       builder: (context, _) {
         final config = AppState.instance.config;
         return MaterialApp(

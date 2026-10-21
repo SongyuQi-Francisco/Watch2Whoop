@@ -13,6 +13,7 @@ import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'raw_sync.dart';
 import 'sync_stats.dart';
 
 /// Types to request: everything the SDK supports, minus reproductive health (sensitive, unused) and nutrition (SparkyFitness is the source for nutrition).
@@ -166,12 +167,27 @@ class HealthSync {
 
   /// Shows the HealthKit authorization prompt (the user taps it). true = at least one item was allowed.
   /// HealthKit does not tell the app which read permissions were denied, so all we can know is that the prompt was shown.
-  Future<bool> requestAuthorization() =>
-      OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
+  /// The beat-to-beat HRV series and ECG that the app reads itself (raw_sync.dart) follow in a second, small sheet.
+  Future<bool> requestAuthorization() async {
+    final ok = await OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
+    await RawSync.instance.requestAuth();
+    return ok;
+  }
 
   /// Starts background sync; calling it again while already on = sync one round immediately (skipped if the SDK is already syncing).
   Future<bool> startSync(int syncDaysBack) =>
       OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+
+  /// Changes the read range (health_range.dart). "All history" after the 90-day export: the anchors only see newer
+  /// samples, so they are reset and the whole history is exported again (the last 90 days are re-sent once and stored
+  /// once by Open Wearables). Back to 90 days: only later full exports are limited; nothing already read is removed.
+  Future<void> changeRange(int syncDaysBack) async {
+    if (syncDaysBack <= 0) {
+      await OpenWearablesHealthSdk.stopBackgroundSync();
+      await OpenWearablesHealthSdk.resetAnchors();
+    }
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
 
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {

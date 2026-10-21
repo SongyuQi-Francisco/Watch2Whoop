@@ -27,80 +27,141 @@ blockquote{margin:12px 0;padding:10px 14px;background:var(--card);border-left:3p
 .chat .me{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px}
 .chat .ai{align-self:flex-start;background:var(--bg);border-bottom-left-radius:5px}
 .chat .who{display:block;font-size:11px;opacity:.7;font-weight:600}
+.tbl{overflow-x:auto;margin:12px 0}table{border-collapse:collapse;width:100%;font-size:15px;background:var(--card);border-radius:12px;overflow:hidden}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}th{font-size:13px;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}td:first-child{white-space:nowrap}
 </style></head><body><main>
 <h1>Watch2Whoop 使用手册</h1>
+<p>中文 · <a href="en/">English</a></p>
 
 <p><b>Watch2Whoop 是给你的 AI 用的身体数据库。</b> Apple Watch 的数据自动进来，算出恢复分、睡眠分、负荷；你说过的每一顿饭、每一次训练、每一张化验单都存下来，AI 随时调出来帮你分析。</p>
 <p><b>你必须有一个 AI。</b> 这里没有输入框，也没有记录按钮：吃了什么、练了什么、体重、化验单、哪里不舒服，都是<b>跟 AI 说</b>，打字、截图、拍照都行，AI 帮你记进去。页面只负责看图表和分数。</p>
 <div class="shots one"><img loading="lazy" alt="今天页" src="img/today.jpg"></div>
-<h2>开始前准备</h2>
-<ul><li><b>账号信息</b>：管理员单独发给你的一小段文字（手机登录码、电脑登录链接、快捷指令的上传地址和上传 token）。只给你本人，不要转发。
-</li><li><b>快捷指令文件</b>「Watch2Whoop Health Sync」：大家用同一个。
-</li><li><b>一个 AI</b>：见下一节「连接你的 AI」。
+<h2 id="目录">目录</h2>
+<ul><li><a href="#怎么用一切都和-ai-说">怎么用：一切都和 AI 说</a>
+</li><li><a href="#开始前准备">开始前准备</a>
+</li><li><a href="#设置-app">设置 app</a>
+</li><li><a href="#连接你的-ai核心">连接你的 AI（核心）</a>
+</li><li><a href="#常见问题">常见问题</a>
 </li></ul>
-<h2>连接你的 AI（核心）</h2>
-<p>登录以后（步骤在下面），点底部「我」→ 最下面的「AI 设置」。三种方式选一种。</p>
+<h2 id="怎么用一切都和-ai-说">怎么用：一切都和 AI 说</h2>
+<p><b>一条原则：想记什么、想问什么，都直接跟你的 AI 说。</b> 不用找按钮，不用填表；打字、说话、拍照、截图都行。AI 会读你的数据、帮你记、帮你算，页面只用来看结果。还没连 AI 的先看「连接你的 AI」。</p>
+<p>下面是一些真实的说法，照着说或者用你自己的话都行。</p>
+<p><b>记饮食</b></p>
+<ul><li>（拍一张午饭）记一下午饭
+</li><li>早餐两个鸡蛋、一杯无糖豆浆、一片全麦面包
+</li><li>晚饭和昨天一样
+</li><li>刚才那顿米饭只吃了一半，改一下
+</li><li>删掉刚才记错的那条
+</li><li>今天还差多少蛋白质？晚饭吃什么合适？
+</li><li>把「鸡蛋燕麦早餐」存成快捷记餐
+</li></ul>
+<p><b>训练</b></p>
+<ul><li>帮我排一个下周的训练计划，一周练 4 天
+</li><li>今天恢复不好，换成轻一点的
+</li><li>周三没空，把腿日挪到周四
+</li><li>今天练了胸：卧推 4×8 60kg，上斜哑铃 3×10 20kg
+</li><li>肩膀不舒服，以后别给我安排过头推举
+</li><li>这周练了几次？哪个部位练得少？
+</li></ul>
+<p><b>体重、糖、补剂、化验</b></p>
+<ul><li>今天早上体重 78.4
+</li><li>（体重秤照片）记一下
+</li><li>今天添加糖吃了多少？还剩多少额度？
+</li><li>我每天吃一粒鱼油、5g 肌酸，帮我记上
+</li><li>鱼油停了
+</li><li>（化验单照片）帮我录入
+</li><li>尿酸这几次的趋势怎么样？
+</li></ul>
+<p><b>食谱和采购</b></p>
+<ul><li>推荐几个高蛋白、低脂的晚饭
+</li><li>记一份「番茄鸡胸意面」
+</li><li>把这个菜谱存下来：（贴菜谱）
+</li><li>按这周的菜单生成采购清单
+</li><li>牛奶、鸡蛋买好了，从清单里划掉
+</li><li>家里还有什么能做晚饭？
+</li></ul>
+<p><b>看懂分数，安排今天</b></p>
+<ul><li>我今天恢复怎么样，适合练吗？
+</li><li>为什么今天恢复分这么低？
+</li><li>昨晚睡得怎么样？今晚几点睡合适？
+</li><li>身体年龄是怎么算的？我能怎么改善？
+</li><li>今天负荷还能加多少？
+</li></ul>
+<p><b>回顾和报告</b></p>
+<ul><li>给我这周的周报
+</li><li>这个月和上个月比，体重和睡眠有什么变化？
+</li><li>最近哪些习惯对我的恢复影响最大？
+</li><li>记一下：今天下午头疼，喝了咖啡
+</li></ul>
+<h3 id="遇到问题--发现-bug-也问-ai">遇到问题 / 发现 bug 也问 AI</h3>
+<p>不会用、数据看起来不对、看不懂某个数字，先问 AI。它能看到你的数据，多数问题当场就能回答。</p>
+<ul><li>今天的步数怎么比手表上少？
+</li><li>昨晚的睡眠为什么没同步进来？
+</li><li>这个页面上的「负荷」是什么意思？
+</li><li>我觉得这里有个 bug：（截图）
+</li></ul>
+<p>觉得是 bug 时，把截图和经过告诉 AI，它会帮你整理成一段清楚的描述，你转给管理员就行。以后 AI 会直接把 bug 报给开发者。</p>
+<h2 id="开始前准备">开始前准备</h2>
+<p><b>iPhone 只用 Watch2Whoop App；电脑用浏览器。</b> iPhone 上的网页版（Safari、「添加到主屏幕」）已停用，打开会提示你去装 App。</p>
+<ul><li><b>激活链接</b>：管理员单独发给你的一条链接（或二维码），只给你本人，不要转发。可以重复用：换手机、重装 app 再点一次就行。
+</li><li><b>TestFlight 邀请邮件</b>：发到你的 Apple ID 邮箱。
+</li><li><b>一个 AI</b>：见「连接你的 AI」。
+</li></ul>
+<h2 id="设置-app">设置 app</h2>
+<h3 id="①-装-app">① 装 app</h3>
+<p>打开 TestFlight 邀请邮件 →「查看测试」→ 按提示从 App Store 装好 TestFlight →「接受」→「安装」。</p>
+<h3 id="②-点激活链接">② 点激活链接</h3>
+<p>在 iPhone 上点管理员给你的激活链接（或用相机扫二维码）→「打开 App 完成设置」→ 弹出「在 Watch2Whoop 中打开」时点「打开」。</p>
+<div class="shots one"><img loading="lazy" alt="激活页" src="img/activate.jpg"></div>
+
+<p>服务器、健康同步、今天页登录一次完成，<b>不用输入任何码</b>。</p>
+<h3 id="③-授权健康">③ 授权健康</h3>
+<p>「全部打开」→「允许」。只读取，不写入。</p>
+<div class="shots one"><img loading="lazy" alt="全部打开" src="img/health-permission.jpg"></div>
+<h3 id="④-同意">④ 同意</h3>
+<p>勾选同意 →「同意并继续」→ 填资料 →「保存」。</p>
+<div class="shots"><img loading="lazy" alt="同意" src="img/consent.jpg"><img loading="lazy" alt="个人资料" src="img/profile.jpg"></div>
+<h3 id="⑤-连接你的-ai">⑤ 连接你的 AI</h3>
+<p>见下一节「连接你的 AI」。</p>
+<h3 id="⑥-等第一次同步">⑥ 等第一次同步</h3>
+<p>第一次同步最近 90 天，几分钟到十几分钟：保持 app 打开、手机解锁。之后 app 在后台自动同步，不用管。</p>
+<h3 id="⑦-读取更早的历史可选">⑦ 读取更早的历史（可选）</h3>
+<p>设置时可以选「近 90 天」（默认）或「全部历史」。以后想要更早的数据：「我」→「手机同步」→「读取范围」选「全部历史」。app 直接从「健康」读，不用再导出文件；数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快，中断了下次打开接着读。今天页会显示「历史数据导入中 x%」。</p>
+<h3 id="电脑上看">电脑上看</h3>
+<p>浏览器打开 <code>body.example.com/app</code>。第一次登录：在电脑上点你的激活链接会直接在浏览器里登录；也可以用邮箱验证码登录。</p>
+<h2 id="连接你的-ai核心">连接你的 AI（核心）</h2>
+<p>设置好 app 以后（步骤在上面），点底部「我」→ 最下面的「AI 设置」。三种方式选一种。</p>
 <div class="shots"><img loading="lazy" alt="AI 设置" src="img/me-ai.jpg"><img loading="lazy" alt="添加 / 连接客户端" src="img/ai-settings.jpg"></div>
-<h3>方式 1：Jarvis 托底 AI（最省事）</h3>
+<p>「AI 设置」最上面的「Jarvis 用」选当前用哪个（托底 AI 一直在里面），对话框顶部的名字也能点开切换；自己的 AI 停用或删除后会自动回到托底。</p>
+<h3 id="方式-1jarvis-托底-ai最省事">方式 1：Jarvis 托底 AI（最省事）</h3>
 <p>不用申请任何账号，开通后直接用。底层是 DeepSeek，每月约 ¥3。第一次使用时会问你是否同意把你的身体数据发给 DeepSeek 处理，同意后才能用。</p>
-<div class="shot">📷 截图稍后补（托底 AI 正在上线）</div>
-<h3>方式 2：填你自己的 API key</h3>
-<p>「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」）→ 填模型、接口地址、API key、每月预算 →「保存」。</p>
+<h3 id="方式-2填你自己的-api-key">方式 2：填你自己的 API key</h3>
+<p>「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」；Google AI Studio 的免费 key 勾「免费额度」）→ 填模型、接口地址、API key、每月预算 →「保存」。</p>
 <div class="shots"><img loading="lazy" alt="选来源" src="img/ai-kinds.jpg"><img loading="lazy" alt="填 API key" src="img/ai-api.jpg"></div>
-<p>key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。</p>
-<h3>方式 3：用你的 Claude / ChatGPT 订阅</h3>
-<p>适合在电脑上用 Claude 桌面版 / Claude Code、Codex 的人。「AI 设置」→「添加」→ 选「Claude 订阅」或「ChatGPT 订阅」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。</p>
+<p>key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。Gemini 免费额度有次数限制，用完要等；而且免费额度下 Google 可能用你发的内容改进它的产品，介意的话用付费 key 或别的方式。</p>
+<h3 id="方式-3用你的-claude--chatgpt--google-ai-订阅">方式 3：用你的 Claude / ChatGPT / Google AI 订阅</h3>
+<p>适合在电脑上用 Claude 桌面版 / Claude Code、Codex、Antigravity 的人。「AI 设置」→「添加」→ 选「Claude 订阅」、「ChatGPT 订阅」或「Google AI Pro / Ultra 订阅（Antigravity）」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。</p>
+<p><b>Claude 网页 / 手机 app、ChatGPT（开发者模式）不用 token</b>：在它们的「连接器」里添加「连接客户端（MCP）」顶部显示的地址，它会跳到今天页，确认应用名和跳转地址后点「同意」。连上的应用列在「连接客户端（MCP）」里，随时可以「断开」。ChatGPT 个人版目前可能只能读、不能写。</p>
+<p>Google AI Pro / Ultra 订阅：用 Antigravity（桌面版、IDE 或 <code>agy</code> 命令行，Antigravity 免费档也能用，额度少一些）。Gemini CLI 从 2026-06-18 起不再支持订阅登录，只能配付费 Gemini API key 用。Gemini 网页 / 手机 app 的「自定义应用」目前只对美国用户开放，暂时连不了。</p>
 <div class="shots one"><img loading="lazy" alt="连接客户端（MCP）" src="img/ai-mcp.jpg"></div>
 <p>token 只显示一次；不用了在同一个地方「吊销」。</p>
-<h3>怎么用</h3>
+<h3 id="在-app-里和-jarvis-对话">在 app 里和 Jarvis 对话</h3>
 <p>点任何页面底部的「Jarvis」开始对话。还没设置 AI 时会提示「去 AI 设置」。</p>
 <div class="shots one"><img loading="lazy" alt="Jarvis" src="img/jarvis-none.jpg"></div>
 <div class="chat"><div class="b me"><span class="who">你</span>（拍一张午饭的照片）记一下午饭</div><div class="b ai"><span class="who">AI</span>识别出米饭约 150g、清蒸鱼约 120g、炒青菜……一共约 620 kcal、蛋白质 38g。确认记到今天午餐吗？</div><div class="b me"><span class="who">你</span>（化验单截图）帮我录入</div><div class="b ai"><span class="who">AI</span>读到 12 项：尿酸 480 μmol/L（偏高）、ALT 41 U/L……确认录入 10 月 18 日的化验吗？</div><div class="b me"><span class="who">你</span>今天练腿 50 分钟，深蹲 5×5 100kg</div><div class="b me"><span class="who">你</span>我今天恢复怎么样，适合练吗？</div></div>
 <p>AI 要写入数据前都会先问你「确认吗」，你点确认才会记。</p>
-<h2>网页版设置（现在）</h2>
-<h3>① 加到主屏幕</h3>
-<p>Safari 打开 <code>body.example.com/app</code>，点「…」。</p>
-<div class="shots"><img loading="lazy" alt="点「…」" src="img/safari-login.jpg"><img loading="lazy" alt="点「共享」" src="img/safari-more.jpg"></div>
-<p>「添加到主屏幕」→「添加」。</p>
-<div class="shots"><img loading="lazy" alt="添加到主屏幕" src="img/safari-share.jpg"><img loading="lazy" alt="添加" src="img/add-home.jpg"></div>
-<h3>② 登录</h3>
-<p>从主屏幕打开「身体」，粘贴账号信息里的<b>手机登录码</b>，点「登录」。账号信息里写「✓ 手机已登录」的跳过这一步。</p>
-<div class="shots"><img loading="lazy" alt="主屏幕图标" src="img/home-icon.jpg"><img loading="lazy" alt="粘贴登录码" src="img/login-code.jpg"></div>
-<h3>③ 同意</h3>
-<p>勾选同意 →「同意并继续」→ 填资料 →「保存」。</p>
-<div class="shots"><img loading="lazy" alt="同意" src="img/consent.jpg"><img loading="lazy" alt="个人资料" src="img/profile.jpg"></div>
-<h3>④ 连接你的 AI</h3>
-<p>按上面「连接你的 AI」选一种方式。</p>
-<h3>⑤ 装快捷指令</h3>
-<p>点开「Watch2Whoop Health Sync」文件 →「设置快捷指令」。</p>
-<div class="shots one"><img loading="lazy" alt="设置快捷指令" src="img/shortcut-open.jpg"></div>
-<p>第 1 题粘贴账号信息里的<b>上传地址</b>；第 2 题把 <code>YOUR-UPLOAD-TOKEN</code> 换成账号信息里的<b>上传 token</b> →「添加快捷指令」。</p>
-<div class="shots"><img loading="lazy" alt="上传地址" src="img/shortcut-url.jpg"><img loading="lazy" alt="上传 token" src="img/shortcut-token.jpg"></div>
-<h3>⑥ 打开权限</h3>
-<p>设置 → App → 健康 → 数据访问与设备 → 快捷指令 →「全部打开」。</p>
-<div class="shots"><img loading="lazy" alt="快捷指令" src="img/settings-health-access.jpg"><img loading="lazy" alt="全部打开" src="img/settings-shortcuts-health.jpg"></div>
-<p>解锁手机，点一下运行。问「允许发送健康样本」时选「始终允许」。</p>
-<div class="shots one"><img loading="lazy" alt="运行" src="img/shortcut-run.jpg"></div>
-<h3>⑦ 自动同步</h3>
-<p>「自动化」→「新建自动化」→「特定时间」（12:00、18:00、22:00 各一条）、「睡眠」（醒来时）、「App」（打开微信时）。</p>
-<div class="shots"><img loading="lazy" alt="特定时间、睡眠" src="img/auto-triggers.jpg"><img loading="lazy" alt="App" src="img/auto-app.jpg"></div>
-<p>选「立即运行」、关「运行时通知」→「下一步」→ 选「Watch2Whoop Health Sync」。</p>
-<div class="shots"><img loading="lazy" alt="立即运行" src="img/auto-time.jpg"><img loading="lazy" alt="选快捷指令" src="img/auto-pick.jpg"></div>
-<h3>⑧ 导入历史</h3>
-<p>「健康」→ 头像 →「导出所有健康数据」→ 存到「文件」。今天页「我」→「导入健康历史」→「选择文件」。</p>
-<div class="shots"><img loading="lazy" alt="导出" src="img/health-export.jpg"><img loading="lazy" alt="导入" src="img/import.jpg"></div>
-<h3>电脑上看</h3>
-<p>电脑浏览器打开账号信息里的<b>电脑登录链接</b>（只能用一次）。</p>
-<h3>装了 app 以后</h3>
-<p>管理员会发新的账号信息（带设置二维码）。app 同步正常后，「自动化」里删掉快捷指令的自动化。</p>
-<h2>常见问题</h2>
-<p><b>怎么记录？</b> 跟 AI 说，见「连接你的 AI → 怎么用」。页面上没有输入框是故意的。</p>
-<p><b>同步失败</b>：「快捷指令」没有健康权限，上传是空的（服务器回 <code>400 bad size</code>）。设置 → App → 健康 → 数据访问与设备 → 快捷指令 →「全部打开」，然后解锁手机手动运行一次。</p>
-<div class="shots"><img loading="lazy" alt="没有权限" src="img/shortcut-no-access.jpg"><img loading="lazy" alt="全部打开" src="img/settings-shortcuts-health.jpg"></div>
-<p><b>锁屏时不同步</b>：锁屏时读不到健康数据，解锁后下一次会补上。</p>
-<p><b>登录码无效</b>：只能用一次、有效期见账号信息，找管理员要新的。</p>
-<p><b>换手机</b>：重做设置步骤，同意和资料不用重填。</p>
-<p><b>隐私</b>：数据只有你自己能看，详见登录后的同意书。用 AI 时，对话内容会发给你选的那家 AI 服务。</p>
+<p>输入框旁边三个按钮：</p>
+<div class="tbl"><table><thead><tr><th>按钮</th><th>用法</th></tr></thead><tbody><tr><td>📷 照片</td><td>拍照或从相册选，一次最多 8 张（饭、体重秤、化验单、手表截图）</td></tr><tr><td>🎬 视频</td><td>选一段视频，自动抽最多 8 张画面；视频里有人说话会先转成文字放进输入框</td></tr><tr><td>🎤 按住说话</td><td>按住说、松开识别（最长 60 秒），文字先放进输入框，你看一眼、改错字再发；手指上滑取消</td></tr></tbody></table></div>
+<p>语音在服务器上转文字，不发给第三方，录音转完就删。<b>按 🎤 没反应、或提示「这里不能录音」时</b>：点输入框，用键盘上的 🎤 听写，效果一样。</p>
+<h2 id="常见问题">常见问题</h2>
+<p><b>怎么记录？</b> 跟 AI 说，见 <a href="#怎么用一切都和-ai-说">怎么用：一切都和 AI 说</a>。页面上没有输入框是故意的。</p>
+<p><b>卡在「输入 8 位邀请码」</b>：不用手动填。回到主屏幕，再点一次激活链接，app 会自动设置好。</p>
+<p><b>激活链接打不开 app</b>：先确认已经用 TestFlight 装好 Watch2Whoop（没装时激活页会显示安装步骤）；用 Safari 打开链接，不要在微信里直接点（微信里先「在浏览器打开」）。没收到 TestFlight 邀请邮件：请管理员把你的 Apple ID 加为测试员。</p>
+<p><b>数据没更新</b>：打开一下 app，保持解锁几十秒；锁屏时 iPhone 不让读健康数据，解锁后会补上。</p>
+<p><b>以前用快捷指令同步的</b>：app 同步正常后，在「快捷指令」→「自动化」里删掉同步健康数据的那几条，避免重复和报错。iPhone 网页版和快捷指令同步都已停用，旧版手册只留作存档：<a href="web/">这里</a>。</p>
+<p><b>换手机 / 重装 app</b>：再点一次同一个激活链接，同意和资料不用重填。</p>
+<p><b>隐私</b>：数据只有你自己能看，详见同意书。用 AI 时，对话内容会发给你选的那家 AI 服务。</p>
 <p><b>导出 / 删除数据</b>：找管理员。</p>
 
 </main></body></html>

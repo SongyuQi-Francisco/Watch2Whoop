@@ -23,7 +23,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from . import asr, catalog, chat, choice, crypto, fallback, providers, tokens
+from ..i18n import L, lang
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, tokens
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
@@ -54,21 +55,42 @@ def public_url(request: Request) -> str:
 
 
 def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dict:
-    """How to connect the three clients. Tokens are read from environment variables, never written into config files."""
+    """How to connect the clients. Tokens are read from environment variables, never written into config files."""
     url = public_url(request) + "/mcp"
     header = '{"Authorization": "Bearer ${' + token_env + '}"}'
     return {
         "url": url, "token_env": token_env,
-        "keychain": (f"security add-generic-password -a \"$USER\" -s body-engine-mcp -w   # 粘贴 token\n"
+        "keychain": (f"security add-generic-password -a \"$USER\" -s body-engine-mcp -w   # {L('粘贴 token', 'paste the token')}\n"
                      f"echo 'export {token_env}=$(security find-generic-password -s body-engine-mcp -w)' >> ~/.zshrc"),
         "clients": {
             "claude-code": f"claude mcp add-json --scope user body-engine '{{\"type\": \"http\", \"url\": \"{url}\", \"headers\": {header}}}'",
             "codex": f"codex mcp add body-engine --url {url} --bearer-token-env-var {token_env}",
-            "gemini-cli": ("~/.gemini/settings.json 的 mcpServers 里加：\n"
-                           + json.dumps({"body-engine": {"httpUrl": url, "headers": {"Authorization": f"Bearer ${token_env}"}}},
+            "antigravity": (f"agy mcp add --header \"Authorization: Bearer ${{{token_env}}}\" body-engine {url}\n"
+                            "chmod 600 ~/.gemini/config/mcp_config.json\n"
+                            + L("# Antigravity 不展开配置文件里的 ${…}：上面这条命令由 shell 把 token 填进去。\n"
+                                "# 也可以手动写（桌面版 / IDE 的 MCP Servers → Manage MCP Servers → View raw config 是同一个文件）\n"
+                                "# ~/.gemini/config/mcp_config.json，把 <token> 换成上面那串 token：\n",
+                                "# Antigravity does not expand ${…} in its config file: the command above lets the shell fill in the token.\n"
+                                "# Or write it by hand (MCP Servers → Manage MCP Servers → View raw config in the desktop app / IDE is the\n"
+                                "# same file) in ~/.gemini/config/mcp_config.json, with <token> replaced by the token above:\n")
+                            + json.dumps({"mcpServers": {"body-engine": {"serverUrl": url, "headers": {"Authorization": "Bearer <token>"}}}},
+                                         ensure_ascii=False, indent=2)),
+            "gemini-cli": (L("# Gemini CLI 从 2026-06-18 起只支持付费 Gemini API key（AI Pro / Ultra 订阅请选 Antigravity）\n",
+                             "# Since 2026-06-18 Gemini CLI only works with a paid Gemini API key (AI Pro / Ultra: choose Antigravity)\n")
+                           + f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
+                           + L("# 或在 ~/.gemini/settings.json 的 mcpServers 里加：\n", "# or add it to mcpServers in ~/.gemini/settings.json:\n")
+                           + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
+            "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,
+                                                                "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
+                                ensure_ascii=False, indent=2),
         },
-        "prompt": "连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
+        "oauth": None if not oauth.enabled() else L("Claude 网页 / 手机 app、ChatGPT、Gemini app：在它们的「连接器 / 自定义应用」里添加这个地址，按提示登录今天页并同意，不用 token。",
+                   "Claude web / mobile, ChatGPT, the Gemini app: add this address as a connector / custom app, sign in to the Today "
+                   "page when asked and approve; no token needed."),
+        "prompt": L("连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
+                    "Once connected, ask the AI to read the MCP prompt \"butler\" (the coach's role) first, "
+                    "or just say \"use body-engine to check how I'm doing today\"."),
     }
 
 
@@ -84,13 +106,13 @@ def _ai_mode(conn, viewer: dict, e: dict) -> dict:
     if e["source"] == "fallback":
         return fallback.summary(conn, viewer["id"])
     if e["source"] == "butler":
-        return {"mode": "butler", "display_name": "身体管家", "assistant_url": e["url"]}
+        return {"mode": "butler", "display_name": L("身体管家", "Body butler"), "assistant_url": e["url"]}
     if e["source"] == "none":
         return {"mode": "none"}
     row = e["provider"]
     return {"mode": "mcp" if catalog.is_mcp(row["kind"]) else "api", "kind": row["kind"],
-            "display_name": row["display_name"], "model": row["model"], "status": row["status"],
-            "vision": catalog.KINDS[row["kind"]].get("vision")}
+            "display_name": catalog.display_name(row), "model": row["model"], "status": row["status"],
+            "vision": catalog.kind_info(row["kind"]).get("vision")}
 
 
 # ---------------------------------------------------------------- providers
@@ -104,6 +126,7 @@ class ProviderIn(BaseModel):
     monthly_budget_usd: float | None = Field(None, ge=0, le=10000)
     price_in_per_mtok: float | None = Field(None, ge=0, le=1000)
     price_out_per_mtok: float | None = Field(None, ge=0, le=1000)
+    web_tools: bool | None = Field(None, description="官方联网搜索 / 读网页（只 Anthropic / OpenAI / Gemini API），默认关，费用算你的 key")
     is_default: bool = False
 
 
@@ -117,6 +140,7 @@ class ProviderPatch(BaseModel):
     price_in_per_mtok: float | None = Field(None, ge=0, le=1000)
     price_out_per_mtok: float | None = Field(None, ge=0, le=1000)
     status: Literal["active", "disabled"] | None = None
+    web_tools: bool | None = None
     is_default: bool | None = None
 
 
@@ -133,7 +157,7 @@ def _bad(fn, *a):
 def list_providers(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     uid = _self_only(viewer, user)
     return {"providers": providers.list_providers(conn, uid), "month_cost_usd": round(providers.month_cost(conn, uid), 4),
-            "kinds": catalog.public_catalog(), "mcp": mcp_setup(request), "fallback": _fallback_view(conn, viewer)}
+            "kinds": catalog.public_catalog(uid), "mcp": mcp_setup(request), "fallback": _fallback_view(conn, viewer)}
 
 
 @router.post("/v1/users/{user}/ai-providers", status_code=201)
@@ -197,6 +221,8 @@ def _fallback_view(conn, viewer: dict) -> dict | None:
     s = fallback.summary(conn, viewer["id"])
     s["used"] = choice.effective(conn, viewer["id"])["source"] == "fallback"
     s["points"] = fallback.consent_points(conn, viewer["id"])
+    s["points_lang"] = lang()                # "en" = a translation; the Chinese points (consent_version) are what is agreed to
+    s["points_translated"] = lang() != "zh"
     if viewer.get("role") == "owner":
         st = fallback.state(conn)
         s["balance_cny"] = float(st["balance_cny"]) if st.get("balance_cny") is not None else None
@@ -244,7 +270,8 @@ class AiTokenIn(BaseModel):
 
 @router.get("/v1/users/{user}/ai-tokens")
 def list_ai_tokens(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return {"tokens": tokens.list_tokens(conn, _self_only(viewer, user)), "mcp": mcp_setup(request)}
+    uid = _self_only(viewer, user)
+    return {"tokens": tokens.list_tokens(conn, uid), "connections": oauth.list_grants(conn, uid), "mcp": mcp_setup(request)}
 
 
 @router.post("/v1/users/{user}/ai-tokens", status_code=201)
@@ -288,7 +315,8 @@ def _sse(gen, cm):
     except Exception as e:  # Do not send internal details (may contain paths etc.) to the frontend
         log.exception("chat stream failed")
         print(f"chat stream failed: {type(e).__name__}: {e}", file=sys.stderr)
-        yield f"event: error\ndata: {json.dumps({'code': 'internal', 'message': '出错了，稍后再试'})}\n\n"
+        msg = L("出错了，稍后再试", "Something went wrong; try again later")
+        yield f"event: error\ndata: {json.dumps({'code': 'internal', 'message': msg}, ensure_ascii=False)}\n\n"
     finally:
         cm.__exit__(None, None, None)
 
@@ -334,7 +362,7 @@ async def transcribe(request: Request, conn=Depends(get_conn), viewer=Depends(cu
     """Voice -> text. Body: audio/wav (PCM16 mono, <= 60 s). Returns {text, seconds, used_today, per_day}; the page puts the text
     in the input box for the user to check before sending. The audio is never stored. Errors: detail = {code, message}."""
     if int(request.headers.get("content-length") or 0) > asr.MAX_BYTES:
-        raise HTTPException(413, {"code": "too_large", "message": f"录音太大（最长 {asr.MAX_SECONDS} 秒）"})
+        raise HTTPException(413, {"code": "too_large", "message": asr.too_large_message()})
     data = await request.body()
     try:
         return await run_in_threadpool(asr.transcribe, conn, viewer["id"], data)

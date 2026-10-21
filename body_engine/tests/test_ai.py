@@ -129,6 +129,10 @@ def test_provider_defaults_and_secret_never_returned(client, world, setup, dsn):
     body = r.json()
     assert [p["id"] for p in body["providers"]] == [pa["id"]]
     assert body["mcp"]["url"].endswith("/mcp") and "BODY_ENGINE_MCP_TOKEN" in body["mcp"]["clients"]["codex"]
+    agy = body["mcp"]["clients"]["antigravity"]   # Antigravity: serverUrl + headers, token filled in by the shell
+    assert agy.startswith('agy mcp add --header "Authorization: Bearer ${BODY_ENGINE_MCP_TOKEN}" body-engine ')
+    assert '"serverUrl": "' + body["mcp"]["url"] + '"' in agy and "~/.gemini/config/mcp_config.json" in agy
+    assert "API key" in body["mcp"]["clients"]["gemini-cli"]
     with db(dsn) as conn:
         row = conn.execute("SELECT encrypted_secret FROM ai_providers WHERE id = %s", (pa["id"],)).fetchone()
         assert KEY_A.encode() not in bytes(row["encrypted_secret"])
@@ -303,7 +307,9 @@ def test_logging_runs_directly_only_delete_asks(client, world, setup, dsn):
     FakeAdapter.script = [{"tool_calls": [{"id": "d2", "name": "delete_observation", "args": {"id": 999999}}]}]
     evs = sse(chat(client, tok["A"], "删掉那条").text)
     assert evs[-1][0] == "confirm" and evs[-1][1]["calls"][0]["tool"] == "delete_observation"
-    assert chat_mod.ALWAYS_CONFIRM == {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation"}
+    assert chat_mod.ALWAYS_CONFIRM == {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
+                                       "delete_supplement", "remove_product", "remove_shopping_items", "delete_workout",
+                                       "rollback_write"}
 
 
 def test_memory_writes_without_confirmation(client, world, setup, dsn):
@@ -479,3 +485,81 @@ def test_mcp_read_only_and_revoke(client, world, setup):
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["A"])).status_code == 404
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["B"])).status_code == 204
     assert rpc(client, ro, "tools/list").status_code == 401
+
+
+# ---------------------------------------------------------------- Gemini Plan & Gemini CLI
+def test_gemini_plan_mcp_and_redirect(client, world):
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["D"]), json={"kind": "gemini_plan_mcp", "is_default": True})
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    assert r.json()["kind"] == "gemini_plan_mcp" and "Google AI Pro / Ultra 订阅" in r.json()["label"]
+    # When default provider is gemini_plan_mcp, chat redirects to Antigravity (Gemini CLI dropped subscriptions on 2026-06-18)
+    r_chat = chat(client, tok["D"])
+    assert r_chat.status_code == 409
+    detail = r_chat.json()["detail"]
+    assert detail["code"] == "subscription"
+    assert "Antigravity" in detail["message"] and "Gemini CLI" not in detail["message"]
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["D"]))
+
+
+def test_retired_gemini_cli_row_can_only_be_deleted(client, world, dsn):
+    """The server-side Gemini CLI (kind gemini_cli) was retired (migration 460): it is gone from the catalog, can't be created,
+    an old row shows as retired, can't be changed, turned on or chatted with, Jarvis falls back, and the row can be deleted."""
+    ids, tok = world
+    cat = client.get("/v1/users/me/ai-providers", headers=H(tok["C"])).json()["kinds"]
+    assert not any(k["kind"] == "gemini_cli" for k in cat)
+    assert client.post("/v1/users/me/ai-providers", headers=H(tok["C"]), json={"kind": "gemini_cli"}).status_code == 422
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:   # a row from before the retirement, as migration 460 leaves it
+        pid = conn.execute("""INSERT INTO ai_providers (user_id, kind, display_name, model, status, is_default)
+                              VALUES (%s, 'gemini_cli', 'Google AI 订阅（服务端 Gemini CLI）', 'gemini-2.5-flash', 'disabled', false)
+                              RETURNING id""", (ids["C"],)).fetchone()["id"]
+    try:
+        row = next(p for p in client.get("/v1/users/me/ai-providers", headers=H(tok["C"])).json()["providers"] if p["id"] == pid)
+        assert row["retired"] and row["status"] == "disabled" and "已下线" in row["display_name"]
+        r = client.patch(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["C"]), json={"status": "active"})
+        assert r.status_code == 422 and "下线" in r.json()["detail"]
+        from body_engine.ai import catalog, choice
+        assert not catalog.kind_allowed("gemini_cli") and "gemini_cli" not in adapters.ADAPTERS
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:   # even if it were still on and the default, Jarvis can't use it
+            r0 = conn.execute("SELECT * FROM ai_providers WHERE id = %s", (pid,)).fetchone()
+            assert not choice.usable(conn, {**r0, "status": "active", "is_default": True})
+    finally:
+        assert client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["C"])).status_code in (200, 204)
+
+
+def test_free_tier_budget_zero_price(client, world):
+    """Free Tier configuration (price_in=0, price_out=0) is marked free and not blocked by monthly_budget_usd=0."""
+    ids, tok = world
+    r = client.post("/v1/users/me/ai-providers", headers=H(tok["A"]), json={
+        "kind": "gemini_api",
+        "api_key": "AIzaSyFakeKeyForTest",
+        "model": "gemini-3.6-flash",
+        "monthly_budget_usd": 0,
+        "price_in_per_mtok": 0.0,
+        "price_out_per_mtok": 0.0,
+    })
+    assert r.status_code == 201
+    pid = r.json()["id"]
+    # Chat loop does not block with 402 budget error
+    FakeAdapter.script = [{"text": "Free tier ok"}]
+    r_chat = chat(client, tok["A"], "test free tier")
+    assert r_chat.status_code == 200
+    # Clean up
+    client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["A"]))
+
+
+def test_gemini_api_adapter_cached_tokens():
+    from unittest.mock import MagicMock
+    from body_engine.ai.adapters.gemini_api import GeminiAdapter
+    adapter = GeminiAdapter("gemini-2.5-flash", "AIzaTest")
+    meta = MagicMock()
+    meta.prompt_token_count = 1000
+    meta.cached_content_token_count = 600
+    meta.candidates_token_count = 200
+    meta.thoughts_token_count = 0
+    usage = adapter._extract_usage(meta)
+    assert usage["input_tokens"] == 400
+    assert usage["cache_read_tokens"] == 600
+    assert usage["output_tokens"] == 200

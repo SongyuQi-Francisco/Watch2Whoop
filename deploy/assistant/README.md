@@ -14,7 +14,7 @@ The body butler (身体管家) is an always-on Claude Code session. Its working 
 
 - **Session URL**: read from claude's `~/.claude/projects/<directory name>/bridge-pointer.json` (the output only prints the environment URL). After a restart, `claude remote-control` reattaches the session this directory served before (if down for under 4 hours), so service restarts and code pushes keep the URL; a different machine (Mac <-> Ali) means a new session and a new URL, and `butler.sh activate` points "Ask the butler" (「问管家」) at it. See the current URL with `butler.sh status` or Ali's doctor. On the phone you can also open the Claude app -> **Code** -> find "身体管家" (green dot = online).
 - **When the owner has to act** (login expired / directory not trusted / first Remote Control start), `butler.py` writes the status as `needs_login` / `needs_trust` / `needs_consent` and retries every 5 minutes; Ali's doctor (hourly, also brought back by the Mac doctor) shows a failure and what to do. Usually one run of `butler.sh login` fixes it.
-- **Confirmation cards** (owner's rule, 2026-10-18): logging tools run directly; only deleting / undoing (`undo_sparky_entry`, `undo_meal_log`, `delete_journal_entry`, `delete_lab_results`, `delete_observation`) is `ask` in `.claude/settings.json`, so a permission prompt pops up before execution. The in-page chat uses the same list (`ai/chat.py` `ALWAYS_CONFIRM`).
+- **Confirmation cards** (owner's rule, 2026-10-18): logging tools run directly; only deleting / undoing (`undo_sparky_entry`, `undo_meal_log`, `delete_journal_entry`, `delete_lab_results`, `delete_observation`, `delete_supplement`, `remove_product`, `remove_shopping_items`) is `ask` in `.claude/settings.json`, so a permission prompt pops up before execution. The in-page chat uses the same list (`ai/chat.py` `ALWAYS_CONFIRM`).
 - **Cost**: uses your subscription quota (when the Pro quota runs out you wait for the reset). Model Claude Opus 5.5 (`model` in `.claude/settings.json`; on the phone `/model` can switch temporarily).
 - **Resources**: one claude process per session (roughly 200-400MB idle); `--capacity 2` + a 1.5G cap. Claude Code's auto-updater keeps a few versions in `/home/bodybutler/.local/share/claude` (about 300MB); the disk row in Ali's doctor reports the headroom.
 
@@ -75,3 +75,10 @@ The conversation flows were run with `claude -p` inside `assistant/` (same CLAUD
 - A session is stuck: send it a message from the phone and Claude Code serves it again; or `ssh Ali systemctl restart body-butler`.
 - To start a new conversation (context too long): `/clear` in this session on the phone, or create a new session for the Ali machine in claude.ai/code (same directory, same settings).
 - Mac fallback: `deploy/assistant/butler.py status`; logs `health_data/assistant/butler-*.log`.
+
+## Gemini CLI butler and server-side Gemini CLI: retired (2026-10)
+Since 2026-06-18 Google no longer lets Google AI Pro / Ultra (and free individual) accounts sign in to Gemini CLI; only enterprise Gemini Code Assist accounts and paid API keys can. Both Gemini CLI setups built on a consumer plan therefore stopped working and were removed:
+- the butler's Gemini version (`assistant/.gemini/`, `assistant/GEMINI.md`, `butler.py gemini-check`);
+- the in-page chat through the server's Gemini CLI (`gemini_cli` provider, `BODY_GEMINI_CLI_ENABLED`, `BODY_GEMINI_HOME`). Migration `460_retire_gemini_cli.sql` turns old `gemini_cli` rows off; the AI settings page shows them as 「已下线」 with only a delete button.
+
+Still supported for Google users: the subscription route through Antigravity (`gemini_plan_mcp`, connects to `/mcp`) and the user's own Gemini API key (`gemini_api`). The Claude butler is unchanged.

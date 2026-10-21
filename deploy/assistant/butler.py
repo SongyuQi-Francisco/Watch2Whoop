@@ -17,7 +17,7 @@ Standard library only, compatible with Python 3.6 (Ali's system Python) up to ma
 After a restart, claude remote-control reattaches the session this directory served before (if down for under 4 hours),
 so the URL normally stays the same.
 
-Usage: butler.py run (for systemd / the LaunchAgent) | butler.py status | butler.py check (does not start, only checks the environment)
+Usage: butler.py run (for systemd / the LaunchAgent) | butler.py status | butler.py check
 """
 import json
 import os

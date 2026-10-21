@@ -399,6 +399,8 @@ def job_scores(log: Log, full: bool) -> list:
     # queued Apple Health history uploads from the Today page (on Ali body-imports.timer handles them every minute; on the Mac they ride along with the hourly job)
     if "history-import-run" in help_text:
         engine_step(log, errors, "history-import-run", "history-import-run")
+    if "oauth-cleanup" in help_text:   # MCP OAuth: expired codes / tokens, clients that were never approved
+        engine_step(log, errors, "oauth-cleanup", "oauth-cleanup")
     users = list_users()
     log("用户：" + ", ".join(f"{u['id']} {u['name']}" for u in users))
     for u in users:

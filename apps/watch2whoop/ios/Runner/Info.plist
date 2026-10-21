@@ -10,7 +10,7 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>zh-Hans</string>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>$(W2W_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
@@ -21,8 +21,8 @@
 	<string>6.0</string>
 	<key>CFBundleLocalizations</key>
 	<array>
-		<string>zh-Hans</string>
 		<string>en</string>
+		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleName</key>
 	<string>Watch2Whoop</string>
@@ -57,11 +57,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>扫描「设置二维码」完成连接；不拍照、不保存图像。Used only to scan the setup QR code; nothing is recorded.</string>
+	<string>Used only to scan the setup QR code. No photos are taken and no images are saved.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Watch2Whoop 读取你的健康数据（心率、HRV、睡眠、训练等），只同步到你自己设置的服务器。Watch2Whoop reads your Health data and syncs it only to the server you set up.</string>
+	<string>Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up.</string>
 	<key>NSHealthUpdateUsageDescription</key>
-	<string>正式版不写入健康数据（只有开发调试版在模拟器里写测试数据）。Release builds never write to Health; only debug builds write test data in the simulator.</string>
+	<string>Release builds never write to Health; only debug builds write test data in the simulator.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

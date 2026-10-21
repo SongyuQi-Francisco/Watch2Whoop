@@ -181,7 +181,7 @@ def test_evaluate_rules_idempotent_and_keeps_status(conn, world):
     res = engine.run(conn, a, FRI, FakeSparky())
     status = {r["rule_key"]: r["status"] for r in res["rules"]}
     assert status == {"progression": "triggered", "calorie_adjust": "insufficient_data", "pre_workout_fuel": "triggered",
-                      "frequency_caps": "not_triggered", "exercise_restrictions": "triggered",
+                      "frequency_caps": "not_triggered", "sugar_caps": "not_triggered", "exercise_restrictions": "triggered",
                       "readiness": "insufficient_data", "sleep_goal": "insufficient_data"}
     rem = reminders(conn, a)
     assert set(rem) == {("progression", "p1:39:up"), ("pre_workout_fuel", ""), ("pre_workout_fuel", "carbs"),
@@ -228,7 +228,9 @@ def test_sticky_dismiss_carries_to_next_day(conn, world):
 def test_user_without_sparky(conn, world):
     ids, _ = world
     res = engine.run(conn, ids["C"], FRI)
-    assert res["sources_missing"]["sparky"] and all(r["status"] == "insufficient_data" for r in res["rules"])
+    assert res["sources_missing"]["sparky"]
+    # no diet constraints (issue #76): the caps rule has nothing to check; every other rule lacks data
+    assert all(r["status"] == ("not_triggered" if r["rule_key"] == "frequency_caps" else "insufficient_data") for r in res["rules"])
 
 
 # ---------------------------------------------------------------- API / assistant

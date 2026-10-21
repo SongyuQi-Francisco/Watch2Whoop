@@ -1,9 +1,11 @@
-"""Nutrition rules: adjust calories by weekly average weight (5.2), pre-workout eating (4.2.1), red meat / beef short rib frequency caps (5.3.1, 5.3.2).
-Advice only; never changes goals in SparkyFitness (Body Engine only has a read-only key)."""
+"""Nutrition rules: adjust calories by weekly average weight, pre-workout eating, the user's own diet constraints (red meat per
+week, a food per week; nutrition/constraints.py, issue #76), added sugar and sugary drinks (issue #31, thresholds in params.py).
+Advice only; never changes goals (the user changes them through set_nutrition_goals, goals/nutrition.py)."""
 import re
 from datetime import date, timedelta
 from statistics import fmean
 
+from ..nutrition import constraint_params as CP
 from . import params as P
 from .base import Reminder, RuleResult
 from .common import days_back, need
@@ -11,6 +13,7 @@ from .common import days_back, need
 CALORIES = "calorie_adjust"
 FUEL = "pre_workout_fuel"
 CAPS = "frequency_caps"
+SUGAR = "sugar_caps"
 
 
 # ================= Adjust calories by weekly average weight =================
@@ -21,14 +24,17 @@ def _window_avg(weights: list[dict], end: date, n_days: int = 7) -> dict:
             "avg_kg": round(fmean(vals), 2) if len(vals) >= P.MIN_WEIGHINS_PER_WEEK else None}
 
 
-def _goal_lines(ctx, delta: int) -> tuple[str, list[dict]]:
+def _goal_lines(ctx, delta: int) -> tuple[str, list[dict], str]:
+    """(Chinese text, rows, English text). Goal names are the user's own (kept as written)."""
     goals = {}
     for g in ctx.goals or []:
         if g.get("calories"):
             goals.setdefault(g.get("name") or "当前目标", g["calories"])
     rows = [{"goal": name, "calories": kcal, "suggested": kcal + delta} for name, kcal in goals.items()]
     text = "；".join(f"{r['goal'].split('（')[0]} {r['calories']:g} → {r['suggested']:g} kcal" for r in rows)
-    return text, rows
+    en = "; ".join(f"{'Current goal' if r['goal'] == '当前目标' else r['goal'].split('（')[0]} {r['calories']:g} → "
+                   f"{r['suggested']:g} kcal" for r in rows)
+    return text, rows, en
 
 
 def calorie_adjust(ctx) -> RuleResult:
@@ -45,22 +51,36 @@ def calorie_adjust(ctx) -> RuleResult:
     evidence = {**details, "source": "body-management.md 5.2（V2.1）、5.2.0", "weights": weights[-10:]}
     week = f"{ctx.day.isocalendar().year}-W{ctx.day.isocalendar().week:02d}"
     if one_week is not None and one_week > P.FAST_LOSS_KG_PER_WEEK:
-        text, rows = _goal_lines(ctx, P.FAST_LOSS_KCAL)
+        text, rows, text_en = _goal_lines(ctx, P.FAST_LOSS_KCAL)
         return RuleResult(CALORIES, "triggered", reminders=[Reminder(
             CALORIES, "warning", f"体重降得太快：建议每天加 {P.FAST_LOSS_KCAL} kcal",
             f"近 7 天平均 {w0['avg_kg']} kg，前 7 天 {w1['avg_kg']} kg，一周降了 {one_week} kg（超过 {P.FAST_LOSS_KG_PER_WEEK} kg）。"
             f"按 5.2 每天加约 {P.FAST_LOSS_KCAL} kcal" + (f"（{text}）" if text else "") +
-            "。降太快会让尿酸短期升高、疲劳和早醒（2.1.2）。只是建议，要改请在 SparkyFitness 里改目标。",
-            subject=f"fast:{week}", evidence={**evidence, "suggested_goals": rows}, sticky=True)], details=details)
+            "。降太快容易疲劳、掉肌肉，也可能让尿酸短期升高。只是建议，要改目标告诉管家（set_nutrition_goals）。",
+            subject=f"fast:{week}", evidence={**evidence, "suggested_goals": rows}, sticky=True,
+            title_en=f"Losing weight too fast: add {P.FAST_LOSS_KCAL} kcal a day",
+            message_en=f"7-day average {w0['avg_kg']} kg, the 7 days before {w1['avg_kg']} kg: down {one_week} kg in a week "
+                       f"(more than {P.FAST_LOSS_KG_PER_WEEK} kg). Per 5.2, add about {P.FAST_LOSS_KCAL} kcal a day"
+                       + (f" ({text_en})" if text_en else "") +
+                       ". Losing too fast tends to bring fatigue and muscle loss, and can raise uric acid for a while. "
+                       "Advice only; to change your goals, tell Jarvis (set_nutrition_goals).")], details=details)
     if two_week is not None and two_week < P.SLOW_LOSS_KG_PER_WEEK:
-        text, rows = _goal_lines(ctx, P.SLOW_LOSS_KCAL)
+        text, rows, text_en = _goal_lines(ctx, P.SLOW_LOSS_KCAL)
         trend = f"平均每周降 {two_week} kg" if two_week >= 0 else f"平均每周反而升 {-two_week} kg"
+        trend_en = f"down {two_week} kg a week on average" if two_week >= 0 else f"up {-two_week} kg a week on average"
         return RuleResult(CALORIES, "triggered", reminders=[Reminder(
             CALORIES, "info", f"体重降得慢：建议每天少 {-P.SLOW_LOSS_KCAL} kcal",
             f"近 7 天平均 {w0['avg_kg']} kg，两周前那 7 天 {w2['avg_kg']} kg，{trend}（不到 {P.SLOW_LOSS_KG_PER_WEEK} kg）。"
             f"按 5.2 每天减约 {-P.SLOW_LOSS_KCAL} kcal" + (f"（{text}）" if text else "") +
-            "：先减油和零食，不先砍训练日碳水。如果最近疲劳或早醒，先别减。只是建议，要改请在 SparkyFitness 里改目标。",
-            subject=f"slow:{week}", evidence={**evidence, "suggested_goals": rows}, sticky=True)], details=details)
+            "：先减油和零食，不先砍训练日碳水。如果最近疲劳或早醒，先别减。只是建议，要改目标告诉管家（set_nutrition_goals）。",
+            subject=f"slow:{week}", evidence={**evidence, "suggested_goals": rows}, sticky=True,
+            title_en=f"Losing weight slowly: eat {-P.SLOW_LOSS_KCAL} kcal less a day",
+            message_en=f"7-day average {w0['avg_kg']} kg, the 7 days two weeks ago {w2['avg_kg']} kg: {trend_en} "
+                       f"(less than {P.SLOW_LOSS_KG_PER_WEEK} kg). Per 5.2, eat about {-P.SLOW_LOSS_KCAL} kcal less a day"
+                       + (f" ({text_en})" if text_en else "") +
+                       ": cut oil and snacks first, not the carbs on training days. If you have been tired or waking early "
+                       "lately, hold off. Advice only; to change your goals, tell Jarvis (set_nutrition_goals).")],
+            details=details)
     if one_week is None and two_week is None:
         return RuleResult(CALORIES, "insufficient_data",
                           f"周均体重算不出来：每个 7 天窗口至少要 {P.MIN_WEIGHINS_PER_WEEK} 次称重，"
@@ -102,23 +122,36 @@ def pre_workout_fuel(ctx) -> RuleResult:
     lo, hi = P.PRE_MEAL_CARBS_G
     plo, phi = P.PRE_MEAL_PROTEIN_G
     lines = [f"练前 1.5–2 小时吃一顿正餐：碳水 {lo}–{hi}g、蛋白 {plo}–{phi}g；离上一餐超过 4 小时，练前 30–60 分钟再加一根香蕉或一片吐司配蜂蜜。"]
+    en = [f"Eat a proper meal 1.5–2 h before: carbs {lo}–{hi} g, protein {plo}–{phi} g; if your last meal was more than 4 h "
+          "earlier, add a banana or a slice of toast with honey 30–60 min before."]
     if legs:
         lines += ["不空腹练腿；手边备一根香蕉或一盒果汁（快糖）。",
                   "头晕、手抖、出冷汗、心慌：立刻停组坐下，吃 15–20g 快糖，15 分钟没缓解再吃一次，当天不再做高强度。"]
+        en += ["Don't train legs on an empty stomach; keep a banana or a juice box (fast sugar) at hand.",
+               "Dizzy, shaky, cold sweat, racing heart: stop the set and sit down, take 15–20 g of fast sugar, take more if "
+               "it hasn't eased in 15 min, and no more high intensity that day."]
     lines.append(f"练前 2 小时喝 500ml 水，练中每 15–20 分钟小口喝 150–250ml，1 小时内不超过约 1L。")
+    en.append("Drink 500 ml of water 2 h before; during training sip 150–250 ml every 15–20 min, no more than about 1 L an hour.")
     water = ctx.journal.get((ctx.day - timedelta(days=1), "water_l"))
     if water is not None and water < P.WATER_TARGET_L:
         lines.append(f"昨天只喝了 {water:g}L（吃肌酸期间目标 3–3.5L）。")
+        en.append(f"Yesterday you drank only {water:g} L (target 3–3.5 L while taking creatine).")
     if symptoms:
         lines.append("最近有过：" + "、".join(f"{d} {'低血糖感' if k == 'low_blood_sugar' else '练前没吃够'}" for d, k in symptoms) + "。")
+        en.append("Recently: " + ", ".join(f"{d} {'low blood sugar' if k == 'low_blood_sugar' else 'under-fuelled training'}"
+                                          for d, k in symptoms) + ".")
     label = "、".join(sessions) or "训练"
+    label_en = ", ".join(sessions) or "Workout"   # session / template names are the user's own
     evidence = {"planned": [{"exercise_id": p["exercise_id"], "name": p["name"], "template": p["preset"]} for p in planned],
                 "logged_today": [e["name"] for e in logged], "leg_exercises": legs,
                 "recent_symptoms": [{"date": d, "key": k} for d, k in symptoms], "water_l_yesterday": water,
                 "source": "body-management.md 4.2.1"}
     reminders = [Reminder(FUEL, "warning" if legs and symptoms else "info",
                           f"今天{label}：{'练腿，练前吃够、备快糖' if legs else '练前记得吃正餐'}",
-                          "\n".join(lines), subject="", evidence=evidence)]
+                          "\n".join(lines), subject="", evidence=evidence,
+                          title_en=f"{label_en} today: " + ("leg day, eat enough before and keep fast sugar at hand" if legs
+                                                            else "eat a proper meal before training"),
+                          message_en="\n".join(en))]
     food_today = [f for f in ctx.food or [] if f["date"] == ctx.day.isoformat()]
     if food_today:
         carbs = sum(f.get("carbs_g") or 0 for f in food_today)
@@ -126,14 +159,18 @@ def pre_workout_fuel(ctx) -> RuleResult:
             reminders.append(Reminder(
                 FUEL, "warning", f"今天记录的碳水只有 {carbs:g}g",
                 f"今天有{label}，饮食记录里全天碳水 {carbs:g}g，还不够练前一顿正餐（{lo}–{hi}g）。"
-                f"10-15 练腿低血糖就是当天第一餐 14:30、没吃主食（4.2.1）。练前补一顿有主食的正餐。",
+                f"空腹或碳水太少时训练容易低血糖；练前补一顿有主食的正餐。",
                 subject="carbs", evidence={"carbs_g_logged": carbs, "entries": [
                     {"time": f.get("time"), "food": f.get("food"), "carbs_g": f.get("carbs_g")} for f in food_today],
-                    "source": "body-management.md 4.2.1"}))
+                    "source": "body-management.md 4.2.1"},
+                title_en=f"Carbs logged today: only {carbs:g} g",
+                message_en=f"{label_en} today, and your food log shows {carbs:g} g of carbs for the whole day: not enough for one "
+                           f"pre-workout meal ({lo}–{hi} g). Training fasted or on very few carbs can bring low blood sugar; "
+                           "have a proper meal with a staple before training."))
     return RuleResult(FUEL, "triggered", reminders=reminders, details={"leg_day": bool(legs)})
 
 
-# ================= Frequency caps =================
+# ================= Frequency caps (the user's own diet constraints, issue #76) =================
 def _clean(name: str) -> str:
     s = (name or "").lower()
     for x in P.RED_MEAT_EXCLUDE:
@@ -159,12 +196,19 @@ def red_meat_estimate(food: str, quantity: float | None = None, unit: str | None
     return None
 
 
-def is_short_rib(food: str) -> bool:
-    s = _clean(food)
-    return any(k in s for k in P.SHORT_RIB_KEYWORDS)
+def _basis(row_basis: str | None) -> tuple[str, str]:
+    return (f"（{row_basis}）" if row_basis else "", f" ({row_basis})" if row_basis else "")
 
 
 def frequency_caps(ctx) -> RuleResult:
+    """Red meat grams / meals and per-food times in a rolling 7 days, against THIS user's diet constraints only.
+    A user without such constraints gets nothing from this rule."""
+    diet = ctx.diet
+    g_cap = diet.red_meat_g if diet else None
+    meal_cap = diet.red_meat_meals if diet else None
+    food_limits = diet.food_limits if diet else []
+    if g_cap is None and meal_cap is None and not food_limits:
+        return RuleResult(CAPS, "not_triggered", "没有设置红肉 / 食物次数的饮食约束")
     if "food" in ctx.errors:
         return RuleResult(CAPS, "error", f"读不到饮食记录：{ctx.errors['food']}")
     window = days_back(ctx.day, 7)
@@ -175,7 +219,8 @@ def frequency_caps(ctx) -> RuleResult:
     if not logged_days:
         why = "没连 SparkyFitness" if ctx.food is None else "这 7 天没有饮食记录"
         return RuleResult(CAPS, "insufficient_data", f"{why}，日记里也没记红肉克数")
-    per_day, meals, ribs, matched = {}, set(), [], []
+    per_day, meals, matched = {}, set(), []
+    times: dict[str, list[dict]] = {f["target"]: [] for f in food_limits}
     for d in window:
         iso = d.isoformat()
         hits = []
@@ -183,8 +228,8 @@ def frequency_caps(ctx) -> RuleResult:
             if (est := red_meat_estimate(f.get("food") or "", f.get("quantity"), f.get("unit"))) is not None:
                 hits.append({"food": f.get("food"), "meal_type": f.get("meal_type"), "keyword": est[0], "grams_est": est[1]})
                 meals.add((iso, f.get("meal_type") or f.get("time") or f.get("food")))
-            if is_short_rib(f.get("food") or ""):
-                ribs.append({"date": iso, "food": f.get("food")})
+            if diet and (lim := diet.food_limit_hit(f.get("food") or "")) is not None:
+                times[lim["target"]].append({"date": iso, "food": f.get("food")})
         if d in journal_g:
             per_day[iso] = {"grams": journal_g[d], "from": "日记 red_meat_g"}
             if journal_g[d] > 0 and not hits:
@@ -194,34 +239,120 @@ def frequency_caps(ctx) -> RuleResult:
         matched += [{"date": iso, **h} for h in hits]
     grams = sum(v["grams"] for v in per_day.values())
     coverage = f"这 7 天有 {len(logged_days)} 天有饮食记录" + ("" if len(logged_days) == 7 else "，没记的天不算，实际可能更多")
+    coverage_en = f"Days with a food log in these 7: {len(logged_days)}" + (
+        "" if len(logged_days) == 7 else "; days without a log are not counted, so the real amount may be higher")
     evidence = {"window": [window[0].isoformat(), window[-1].isoformat()], "red_meat_g": grams, "per_day": per_day,
-                "matched_entries": matched, "short_rib": ribs, "red_meat_meals": len(meals),
-                "logged_days": logged_days, "source": "body-management.md 5.3.1、5.3.2"}
+                "matched_entries": matched, "food_times": times, "red_meat_meals": len(meals),
+                "logged_days": logged_days, "source": "diet_constraints",
+                "constraints": [r["kind"] + (f":{r['target']}" if r["target"] else "") for r in diet.rows]}
     reminders = []
-    cap = P.RED_MEAT_G_PER_WEEK
-    if grams > cap:
-        reminders.append(Reminder(CAPS, "warning", f"近 7 天红肉约 {grams:g}g，超过 {cap}g",
-                                  f"尿酸偏高、脂肪肝：红肉每周 ≤ {cap}g（5.3.1）。接下来几天蛋白换成鸡、鱼、蛋、奶、豆腐。{coverage}。",
-                                  subject="red_meat_g", evidence=evidence))
-    elif grams >= cap * P.RED_MEAT_WARN_FRACTION:
-        reminders.append(Reminder(CAPS, "info", f"近 7 天红肉约 {grams:g}g，快到 {cap}g 了",
-                                  f"还剩约 {cap - grams:g}g；接下来优先鸡、鱼、蛋、奶、豆腐。{coverage}。",
-                                  subject="red_meat_g", evidence=evidence))
-    if len(ribs) > P.SHORT_RIB_PER_WEEK:
-        reminders.append(Reminder(CAPS, "warning", f"近 7 天吃了 {len(ribs)} 次牛肋条，超过每周 {P.SHORT_RIB_PER_WEEK} 次",
-                                  "牛肋条是高脂部位，对脂肪肝和甘油三酯不友好（5.3.1）；想吃这道菜换成 rump / topside 牛排切条。",
-                                  subject="short_rib", evidence=evidence))
-    elif len(ribs) == P.SHORT_RIB_PER_WEEK:
-        nxt = date.fromisoformat(ribs[-1]["date"]) + timedelta(days=7)
-        reminders.append(Reminder(CAPS, "info", "这周已经吃过牛肋条了",
-                                  f"{ribs[-1]['date']} 吃过一次；每周最多 1 次（5.3.1），下一次 {nxt.isoformat()} 以后。",
-                                  subject="short_rib", evidence=evidence))
-    if len(meals) > P.RED_MEAT_MEALS_PER_WEEK:
-        reminders.append(Reminder(CAPS, "warning", f"近 7 天吃了 {len(meals)} 顿红肉，超过每周 {P.RED_MEAT_MEALS_PER_WEEK} 顿",
-                                  f"牛肉 / 猪肉（瘦部位）每周合计 ≤ {P.RED_MEAT_MEALS_PER_WEEK} 顿（5.3.2），培根、火腿等加工肉也算。{coverage}。",
-                                  subject="red_meat_meals", evidence=evidence))
-    details = {"red_meat_g": grams, "short_rib": len(ribs), "red_meat_meals": len(meals), "logged_days": len(logged_days)}
+    alt, alt_en = "接下来几天的蛋白质换成别的来源（禽肉、鱼、蛋、奶、豆制品）", \
+        "for the next few days get your protein elsewhere (poultry, fish, eggs, dairy, soy)"
+    if g_cap is not None:
+        row = diet._one("red_meat_g_per_week")
+        b, b_en = _basis(row.get("basis"))
+        cap = int(g_cap) if float(g_cap).is_integer() else g_cap
+        if grams > g_cap:
+            reminders.append(Reminder(CAPS, "warning", f"近 7 天红肉约 {grams:g}g，超过 {cap}g",
+                                      f"你的饮食约束：红肉每周 ≤ {cap}g{b}。{alt}。{coverage}。",
+                                      subject="red_meat_g", evidence=evidence,
+                                      title_en=f"Red meat in the last 7 days: about {grams:g} g, over {cap} g",
+                                      message_en=f"Your diet constraint: red meat ≤ {cap} g a week{b_en}. For the next few days get "
+                                                 f"your protein elsewhere (poultry, fish, eggs, dairy, soy). {coverage_en}."))
+        elif grams >= g_cap * CP.WARN_FRACTION:
+            reminders.append(Reminder(CAPS, "info", f"近 7 天红肉约 {grams:g}g，快到 {cap}g 了",
+                                      f"还剩约 {g_cap - grams:g}g；{alt}。{coverage}。",
+                                      subject="red_meat_g", evidence=evidence,
+                                      title_en=f"Red meat in the last 7 days: about {grams:g} g, close to {cap} g",
+                                      message_en=f"About {g_cap - grams:g} g left; {alt_en}. {coverage_en}."))
+    for lim in food_limits:
+        eaten = times[lim["target"]]
+        mx = int(lim["max"]) if float(lim["max"]).is_integer() else lim["max"]
+        b, b_en = _basis(lim.get("basis"))
+        if len(eaten) > lim["max"]:
+            reminders.append(Reminder(CAPS, "warning", f"近 7 天吃了 {len(eaten)} 次{lim['target']}，超过每周 {mx} 次",
+                                      f"你的饮食约束：{lim['target']}每周最多 {mx} 次{b}。",
+                                      subject=f"food:{lim['target']}", evidence=evidence,
+                                      title_en=f"{lim['target']} {len(eaten)} times in the last 7 days, over {mx} a week",
+                                      message_en=f"Your diet constraint: {lim['target']} at most {mx} times a week{b_en}."))
+        elif eaten and len(eaten) == lim["max"]:
+            nxt = date.fromisoformat(eaten[0]["date"]) + timedelta(days=7)
+            reminders.append(Reminder(CAPS, "info", f"这周的{lim['target']}已经吃够了",
+                                      f"近 7 天吃了 {len(eaten)} 次，每周最多 {mx} 次{b}；下一次 {nxt.isoformat()} 以后。",
+                                      subject=f"food:{lim['target']}", evidence=evidence,
+                                      title_en=f"{lim['target']}: this week's limit reached",
+                                      message_en=f"{len(eaten)} times in the last 7 days, at most {mx} a week{b_en}; next time "
+                                                 f"after {nxt.isoformat()}."))
+    if meal_cap is not None and len(meals) > meal_cap:
+        row = diet._one("red_meat_meals_per_week")
+        b, b_en = _basis(row.get("basis"))
+        mc = int(meal_cap) if float(meal_cap).is_integer() else meal_cap
+        reminders.append(Reminder(CAPS, "warning", f"近 7 天吃了 {len(meals)} 顿红肉，超过每周 {mc} 顿",
+                                  f"你的饮食约束：红肉每周 ≤ {mc} 顿{b}，培根、火腿等加工肉也算。{coverage}。",
+                                  subject="red_meat_meals", evidence=evidence,
+                                  title_en=f"Red meat {len(meals)} meals in the last 7 days, over {mc} a week",
+                                  message_en=f"Your diet constraint: red meat ≤ {mc} meals a week{b_en}; processed meat such "
+                                             f"as bacon and ham counts too. {coverage_en}."))
+    details = {"red_meat_g": grams, "food_times": {k: len(v) for k, v in times.items()}, "red_meat_meals": len(meals),
+               "logged_days": len(logged_days)}
     if reminders:
         return RuleResult(CAPS, "triggered", coverage, reminders, details)
-    return RuleResult(CAPS, "not_triggered",
-                      f"近 7 天红肉约 {grams:g}g、牛肋条 {len(ribs)} 次、红肉 {len(meals)} 顿，都没到上限；{coverage}", details=details)
+    return RuleResult(CAPS, "not_triggered", f"近 7 天红肉约 {grams:g}g、红肉 {len(meals)} 顿，都没到你设的上限；{coverage}",
+                      details=details)
+
+
+# ================= Added sugar and sugary drinks =================
+def sugar_caps(ctx) -> RuleResult:
+    if "food" in ctx.errors:
+        return RuleResult(SUGAR, "error", f"读不到饮食记录：{ctx.errors['food']}")
+    if ctx.food is None:
+        return RuleResult(SUGAR, "insufficient_data", "没连 SparkyFitness，没有饮食记录")
+    from ..nutrition import extras
+    window = days_back(ctx.day, 7)
+    keys = {d.isoformat() for d in window}
+    today = [f for f in ctx.food if f["date"] == ctx.day.isoformat()]
+    drinks = [f for f in ctx.food if f["date"] in keys and f.get("sugary_drink")]
+    goal = (ctx.goals or [None])[0] or {}
+    cap = goal.get("added_sugar_max_g") or P.ADDED_SUGAR_CAP_G
+    warn = max(P.ADDED_SUGAR_WARN_G, cap)
+    t = extras.day_totals(today)
+    added, known = t["added_sugar_g"], t["known"]
+    coverage = f"今天 {known['of']} 条记录里 {known['added_sugar_g']} 条有添加糖的数，没数的不算"
+    coverage_en = (f"Today's entries with an added sugar value: {known['added_sugar_g']} of {known['of']}; "
+                   "the others are not counted")
+    evidence = {"date": ctx.day.isoformat(), "added_sugar_g": added, "cap_g": cap,
+                "cap_from_goal": not goal.get("added_sugar_cap_default", True), "warn_g": warn, "known": known,
+                "entries": [{"food": f.get("food"), "added_sugar_g": f.get("added_sugar_g"), "sugar_g": f.get("sugar_g")}
+                            for f in today if f.get("added_sugar_g") or f.get("sugar_g")],
+                "source": "WHO 2015 糖摄入指南（游离糖 < 10% 能量，最好 < 5%，约 25g）"}
+    reminders = []
+    if added is not None and added > cap:
+        level = "warning" if added > warn else "info"
+        reminders.append(Reminder(SUGAR, level, f"今天添加糖约 {added:g}g，超过 {cap:g}g",
+                                  f"添加糖每天 ≤ {cap:g}g（WHO：最好 < 5% 能量，约 25g；> 50g 超过 10% 的上限）。"
+                                  f"甜饮料、甜点、酱料里的糖都算；接下来换无糖饮料和水果。{coverage}。",
+                                  subject="added_sugar", evidence=evidence,
+                                  title_en=f"Added sugar today: about {added:g} g, over {cap:g} g",
+                                  message_en=f"Added sugar ≤ {cap:g} g a day (WHO: ideally < 5% of energy, about 25 g; > 50 g "
+                                             "is over the 10% limit). Sugar in sweet drinks, desserts and sauces all counts; "
+                                             f"switch to sugar-free drinks and fruit. {coverage_en}."))
+    if len(drinks) > P.SUGARY_DRINKS_PER_WEEK:
+        reminders.append(Reminder(SUGAR, "warning", f"近 7 天喝了 {len(drinks)} 次含糖饮料",
+                                  f"超过每周 {P.SUGARY_DRINKS_PER_WEEK} 次。果糖饮料会升尿酸和甘油三酯；"
+                                  "换成无糖版、气泡水或茶。",
+                                  subject="sugary_drinks", evidence={
+                                      "window": [window[0].isoformat(), window[-1].isoformat()],
+                                      "drinks": [{"date": f["date"], "food": f.get("food")} for f in drinks],
+                                      "limit": P.SUGARY_DRINKS_PER_WEEK,
+                                      "source": "Choi & Curhan 2008 BMJ（含糖软饮与痛风）；ACR 2020 痛风指南"},
+                                  title_en=f"Sugary drinks {len(drinks)} times in the last 7 days",
+                                  message_en=f"More than {P.SUGARY_DRINKS_PER_WEEK} a week. Fructose drinks raise uric acid and "
+                                             "triglycerides; switch to sugar-free versions, sparkling water or tea."))
+    details = {"added_sugar_g": added, "cap_g": cap, "sugary_drinks_7d": len(drinks), "known": known}
+    note = (f"今天添加糖 {'未知' if added is None else f'{added:g}g'}（上限 {cap:g}g），"
+            f"近 7 天含糖饮料 {len(drinks)} 次")
+    if reminders:
+        return RuleResult(SUGAR, "triggered", note, reminders, details)
+    if not today and not drinks:
+        return RuleResult(SUGAR, "insufficient_data", "今天还没有饮食记录", details=details)
+    return RuleResult(SUGAR, "not_triggered", note, details=details)

@@ -1,5 +1,6 @@
 // Native "phone sync" (手机同步) page: last sync time, per-type counts, failure retry, sync now, and server settings.
 // Native sync status page (+ settings). Opened from the today page (Me → Phone sync) or the error screen.
+// Locked builds (server_lock.dart): no server rows, no scan / paste of setup info, and the server is redacted from logs and errors.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -8,14 +9,20 @@ import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../account_api.dart';
+import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../debug_seed.dart';
+import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
+import 'range_picker.dart';
 import 'scan_page.dart';
 
 class SyncPage extends StatefulWidget {
@@ -81,7 +88,7 @@ class _SyncPageState extends State<SyncPage> {
       await f();
       if (done != null) setState(() => _message = done);
     } catch (e) {
-      setState(() => _message = '$e');
+      setState(() => _message = redactServer('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
       _refresh();
@@ -198,6 +205,71 @@ class _SyncPageState extends State<SyncPage> {
     _refresh();
   }
 
+  bool get _hasAccount => AppState.instance.accountToken != null;
+
+  /// 90 days ⇄ all history. Going to all history re-reads everything (the last 90 days once more, stored once).
+  Future<void> _changeRange(int days) async {
+    final toAll = isAllHistory(days);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(toAll ? tr('读取全部历史？', 'Read all history?') : tr('改回近 90 天？', 'Back to the last 90 days?')),
+        content: Text(toAll
+            ? tr('从「健康」里最早的一条开始读。数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快；中断了下次打开接着读。读完后服务器会补算全部历史的分数。',
+                'Reads from the oldest record in Health. With a lot of data this takes tens of minutes to a few hours; it is faster with the app open and the phone unlocked, and resumes if interrupted. The server then computes the scores for the whole history.')
+            : tr('已经读到的数据不会删除，只是以后不再读更早的。', 'Data already read stays; older data is just not read any more.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(toAll ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    await _run(() async {
+      if (_config.owConnected && _sync.isSignedIn) await _sync.changeRange(days);
+      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
+    }, done: toAll ? tr('开始读取全部历史', 'Reading all history') : tr('已改回近 90 天', 'Back to the last 90 days'));
+  }
+
+  /// Self-service accounts: connect sync without any code (server-minted OW invitation); fall back to the manual code dialog.
+  Future<void> _connectViaAccount() async {
+    var manual = false;
+    await _run(() async {
+      final r = await connectSyncViaAccount();
+      if (r.connected) {
+        await _sync.requestAuthorization();
+        await AppState.instance.update(_config.copyWith(healthRequested: true));
+        await _sync.startSync(_config.syncDaysBack);
+        setState(() => _message = tr('已连接，开始同步', 'Connected — syncing'));
+      } else if (r.manualNeeded) {
+        manual = true;
+      } else {
+        final e = r.error;
+        setState(() => _message = e is AccountApiException ? accountError(e) : connectError(e ?? 'server'));
+      }
+    });
+    if (manual && mounted && _config.owHost.isNotEmpty) await _reconnect();
+  }
+
+  Future<void> _signOut() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr('退出登录？', 'Sign out?')),
+        content: Text(tr('这台 iPhone 停止同步并退出账号；服务器上的数据不受影响，之后用同一个 Apple ID / 邮箱登录即可。',
+            'This iPhone stops syncing and signs out. Your data on the server is kept; sign in again with the same Apple ID / e-mail.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('退出', 'Sign out'))),
+        ],
+      ),
+    );
+    if (yes != true || !mounted) return;
+    final nav = Navigator.of(context);
+    await _run(() => signOutToOnboarding());
+    if (nav.mounted) nav.popUntil((r) => r.isFirst);
+  }
+
   Future<void> _disconnect() async {
     final yes = await showDialog<bool>(
       context: context,
@@ -305,7 +377,7 @@ class _SyncPageState extends State<SyncPage> {
                     if (failedAfterSuccess) ...[
                       const SizedBox(height: 8),
                       Hint(
-                        tr('上次失败（${ago(stats.lastErrorAt)}）：${stats.lastError}', 'Last failure (${ago(stats.lastErrorAt)}): ${stats.lastError}'),
+                        redactServer(tr('上次失败（${ago(stats.lastErrorAt)}）：${stats.lastError}', 'Last failure (${ago(stats.lastErrorAt)}): ${stats.lastError}')),
                         icon: Icons.error_outline,
                         color: cs.error,
                       ),
@@ -333,37 +405,73 @@ class _SyncPageState extends State<SyncPage> {
                 BigButton(tr('失败重试', 'Retry'), secondary: true, onPressed: _busy ? null : _retry),
               ],
             ] else
-              BigButton(tr('用邀请码连接', 'Connect with invitation code'), onPressed: _config.owHost.isEmpty ? null : _reconnect),
+              _hasAccount
+                  ? BigButton(tr('连接同步', 'Connect sync'), onPressed: _connectViaAccount, busy: _busy)
+                  : BigButton(tr('用邀请码连接', 'Connect with invitation code'), onPressed: _config.owHost.isEmpty ? null : _reconnect),
             if (_message != null) ...[
               const SizedBox(height: 10),
               Hint(_message!, icon: Icons.check_circle_outline),
             ],
             const SizedBox(height: 24),
 
+            // ---- read range (health_range.dart): 90 days or the whole history, with the history progress
+            Group(
+              title: tr('读取范围', 'Read range'),
+              rows: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                  child: RangePicker(syncDaysBack: _config.syncDaysBack, onChanged: _changeRange, enabled: !_busy),
+                ),
+                if (isAllHistory(_config.syncDaysBack) && connected)
+                  HistoryProgressCard(HistoryProgress.from(_status, requestedTypes.length, DateTime.now())),
+              ],
+              footer: tr('app 直接从「健康」读取，不用再导出文件。', 'The app reads Health directly; no export file needed.'),
+            ),
+
             // ---- per-type counts
             Group(
               title: tr('已上传（按类型）', 'Uploaded by type'),
               footer: stats.perType.isEmpty
                   ? null
-                  : tr('从这次连接起累计 ${stats.total} 条。手腕温度、HRV RMSSD 暂时不在这里（SDK 还不支持），由快捷指令补。',
-                      '${stats.total} records since connecting. Wrist temperature and HRV RMSSD are not supported by the SDK yet.'),
+                  : tr('从这次连接起累计 ${stats.total} 条。手腕温度、HRV RMSSD 暂时不在这里（SDK 还不支持），由快捷指令补；心跳间期和心电图见下一栏。',
+                      '${stats.total} records since connecting. Wrist temperature and HRV RMSSD are not supported by the SDK yet; beat-to-beat HRV and ECG are in the next section.'),
               rows: stats.perType.isEmpty
                   ? [Row2(tr('还没有上传记录', 'Nothing uploaded yet'))]
                   : [for (final e in stats.sortedTypes) Row2(typeLabel(e.key), value: '${e.value}')],
+            ),
+
+            // ---- beat-to-beat HRV and ECG: read by the app itself, uploaded straight to the server (raw_sync.dart)
+            ValueListenableBuilder<RawSyncStatus>(
+              valueListenable: RawSync.instance.status,
+              builder: (context, raw, _) => Group(
+                title: tr('心跳间期和心电图', 'Beat-to-beat HRV and ECG'),
+                rows: [
+                  Row2(tr('心跳间期', 'Beat-to-beat readings'), value: raw.heartbeats == null ? '—' : '${raw.heartbeats}'),
+                  Row2(tr('心电图', 'ECG recordings'), value: raw.ecgs == null ? '—' : '${raw.ecgs}'),
+                  Row2(tr('上次上传', 'Last upload'), value: ago(raw.lastUpload)),
+                ],
+                footer: raw.problem ??
+                    tr('打开 app 时直接从「健康」读取，传到你的服务器。', 'Read from Health when you open the app and sent to your server.'),
+              ),
             ),
 
             // ---- settings
             Group(
               title: tr('设置', 'Settings'),
               rows: [
-                Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
-                Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
-                Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
-                Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
-                Row2(tr('首次同步范围', 'First sync range'), value: tr('${_config.syncDaysBack} 天', '${_config.syncDaysBack} days')),
+                if (!serverLocked) ...[
+                  Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
+                  Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
+                  Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
+                  Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
+                ],
+                Row2(tr('权限', 'Permissions'), onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const PermissionsPage()))
+                    .then((_) => _refresh())),
                 if (connected) Row2(tr('同步账号', 'Sync account'), value: '${_config.owUserId!.substring(0, 8)}…'),
                 if (connected) Row2(tr('重新连接', 'Reconnect'), onTap: _reconnect),
                 if (connected) Row2(tr('断开同步', 'Disconnect sync'), danger: true, onTap: _disconnect),
+                if (_hasAccount) Row2(tr('退出登录', 'Sign out'), danger: true, onTap: _busy ? null : _signOut),
               ],
               footer: tr('健康权限在「健康」app → 右上角头像 → App → Watch2Whoop 里改。',
                   'Change Health permissions in Health → profile → Apps → Watch2Whoop.'),
@@ -385,7 +493,7 @@ class _SyncPageState extends State<SyncPage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: SelectableText(
-                      _sync.recentLog.reversed.take(80).join('\n'),
+                      redactServer(_sync.recentLog.reversed.take(80).join('\n')),
                       style: TextStyle(fontSize: 11, fontFamily: 'Menlo', color: cs.onSurfaceVariant),
                     ),
                   ),

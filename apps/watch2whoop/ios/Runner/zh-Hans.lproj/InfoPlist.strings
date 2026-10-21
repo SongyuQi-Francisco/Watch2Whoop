@@ -1,0 +1,4 @@
+/* iOS 权限提示，简体中文。English: en.lproj/InfoPlist.strings (development language); keep the two in step. */
+"NSCameraUsageDescription" = "只用来扫描「设置二维码」完成连接；不拍照、不保存图像。";
+"NSHealthShareUsageDescription" = "Watch2Whoop 读取你的健康数据（心率、HRV 和心跳间期、心电图、睡眠、训练等），只同步到你自己设置的服务器。";
+"NSHealthUpdateUsageDescription" = "正式版不写入健康数据（只有开发调试版在模拟器里写测试数据）。";

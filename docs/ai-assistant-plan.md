@@ -76,6 +76,7 @@
 | P2 | 晨间简报、周复盘（Claude 桌面版本地定时任务或规则引擎 + 网页推送）、更多工具 | P1 |
 | P3 | 规划：训练计划 / 饮食计划生成与调整、复查和补剂管理 | P2 |
 | P4（接入层已实现，第 9 节） | 家人 / 其他用户：每人用自己的 AI 来源——订阅在自己的客户端里连远程 MCP，或填自己的 API key 在今天页里对话；各自的 token、key、记忆和预算 | 统一登录（Pocket ID）、每人的 SparkyFitness key |
+| P8（已实现，第 9.14 节） | Google AI：订阅类 `gemini_plan_mcp`（Gemini CLI / Antigravity 连远程 MCP）、Gemini API 免费额度（单价 $0）（服务端 Gemini CLI 和管家目录的 Gemini CLI 配置已于 2026-10 下线） | Google 账号 / Gemini CLI |
 | 以后 | RMSSD 上线后重算恢复、语音对话、手机版 Claude 接入（需要公网远程 MCP，要单独评估安全） | OW 0.10 等 |
 
 ## 5. 已决定（2026-10-17）
@@ -98,7 +99,7 @@
 | 2.1 Apple Readiness / 睡眠分截图 | `log_metric_snapshot`：单独的表 `metric_snapshots`，来源 screenshot，不覆盖传感器数据 |
 | 2.1 补剂瓶子 | 已有的 `add_supplement` / `update_supplement` |
 | 2.1 确认卡片 | 写工具在设置里是 `ask`：Remote Control 把权限确认推到手机 / 网页，点允许才写；拒绝就不写。拿不准的字段由管家在写之前的摘要里标出来（Claude Code 的确认框不能自定义黄色高亮） |
-| 2.1 随时可撤销 | `undo_sparky_entry`（只删管家写的饮食 / 训练）、`delete_journal_entry`、`delete_lab_results`（只删管家写的化验）；事件 / 补剂用对应的修改工具 |
+| 2.1 随时可撤销 | `undo_sparky_entry`（饮食 / 力量训练 / 一组 / 某天称重，任何来源，先确认）、`delete_workout`、`delete_journal_entry`、`delete_lab_results`（任何来源）；改用 `update_food_entry` / `update_training_set` / `update_workout`；每次 AI 写操作记在 `ai_write_log`（改前 / 改后），`rollback_write` 按日志改回（issue #30）；事件 / 补剂用对应的修改工具 |
 | 2.2 身体档案卡 + 观察笔记 | 表 `assistant_profile`、`assistant_observations`（迁移 060）；工具 `get_memory`、`update_profile_card`、`add_observation`、`delete_observation`；API `GET /v1/users/{user}/memory`、`PUT .../memory/profile/{key}`、`DELETE .../memory/observations/{id}`（scope memory，今天页「我」页用）。初版档案卡 `body-engine memory-init --user-id 1 --from-md`（数据库现有的化验、动作限制、补剂、基本资料 + `assistant/memory_seed.py` 里从 body-management.md 转录的目标、作息、偏好、计划；只读 body-management.md），已为 user 1 生成 12 项 |
 | 2.2 回答有依据 | CLAUDE.md：先读档案卡和数据，建议说明用了哪些数据，不编数字，约束一律从数据库读 |
 | 2.3「今天怎么样」 | CLAUDE.md：3 行简报（恢复 / 睡眠 / 今天的训练调整和提醒） |
@@ -237,6 +238,8 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 
 成本估算：一次模型调用的输入约 0.8–1.2 万 token（设定 + 工具 + 记忆 + 历史）；缓存未命中约 ¥0.02，命中后约 ¥0.001，再加输出（500 token ≈ ¥0.004）。一个问题通常 1–3 次调用，¥3 大约够 150–400 个问题。**余额**：7 个人 × ¥3 = ¥21 / 月，2026-10-18 余额只有 ¥12.01，要先充值。
 
+**2026-10-21（issue #58）补齐今天页的读工具**：托底 AI 被问「衰老速度什么意思」时答「你的数据里没有」，因为白名单里没有身体年龄、压力、健康监测等本系统自己算的指标的读工具。`TOOL_NAMES` 从 44 个加到 63 个：`get_healthspan`、`get_stress`、`get_health_monitor`、`get_hr_zones`、`get_vo2max`、`get_report`、`get_sleep_details`、`get_lab_history`、`get_metric_snapshots`、`analyze_journal`、`get_diet_profile`、`get_nutrition_goals`、`get_meal_templates`、`list_recipes`、`get_recipe`、`suggest_meals`、`get_shopping_list`、`get_weekly_specials`、`find_products`（仍然不加 `get_cardio` / `get_ecg_list`）。`system_prompt_lite.md` 加了一句「今天页上的指标都由本系统计算，先调工具，不要说没有」。`tests/test_fallback_coverage.py` 把今天页脚本调用的每个接口、每个讲解 key 对到托底的读工具，新加卡片忘了加白名单时 CI 会失败。固定开销：工具定义 26.6k → 34.2k 字符（按 DeepSeek 的估算规则约 +2.6k token），设定 +0.1k token；每次模型调用缓存未命中多 ¥0.005，命中多 ¥0.0001。趋势页的几张状态卡（HRV 状态、训练状态、身体电量、恢复时间、韧性、生病风险、生物钟等）目前**没有任何 AI 工具**能读（只在 `/trends` 里算），测试里列为 `NO_TOOL_YET`，留作后续。
+
 ### 9.11 多模态：照片、视频、语音（2026-10-18）
 > 用户原话的意思：托底 AI 不能发语音、照片、视频是有问题的；所有 API 都走 DeepSeek，模型不支持的能力自己搭配。产品本来就是「没有输入框，所有记录靠跟 AI 对话」。
 
@@ -252,6 +255,7 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - 容器：`compose.body.yaml` 的 `asr`，`cpus: 1.0`、`mem_limit: 640m`，同一时间只识别一条、最多 3 条排队（再多 503「正忙」），录音只在内存里、不落盘、日志只记时长；`127.0.0.1:8770` 只给 doctor，Body Engine 走 `http://asr:8000`（`BODY_ASR_URL`，没设就是关闭，页面退回键盘听写）。doctor 的容器内存预算从 3584M 调到 4224M。
 - **iOS**：Safari / 主屏幕 PWA 支持 getUserMedia（iOS 14.5+），代码路径是标准的，但这次没在真机 / 模拟器上实测（这台 Mac 的模拟器工具要求 `xcode-select` 指向完整 Xcode）。**Watch2Whoop app 的 WKWebView** 里录音要 app 加 `NSMicrophoneUsageDescription` 并处理 WebView 的麦克风权限请求：在 app 声明 `window.Watch2WhoopFeatures = {mic: true}` 之前，页面在 app 里不调用麦克风，按 🎤 会提示「用键盘上的 🎤 听写」（手册里写了）。app 里选照片 / 视频走系统相册不需要权限，但「拍照」会用相机，`NSCameraUsageDescription` 现在写的是「只扫二维码、不拍照」，要一起改。
 - 隐私：同意书第 4 节托底条款加了「照片、截图、视频画面会发给 DeepSeek」，新增「语音输入」条款（服务器上转文字、不发第三方、转完即删）；版本 2026-10-18.3。托底的单独同意版本升到 2026-10-18.2，之前同意过的人第一次再用会重新看到确认弹层。
+- 2026-10-22：同意书 2026-10-22.1 和托底确认要点写明「呼吸频率 / 血氧 / 手腕温度等每日指标」和「采购清单、家里存货、已连接的超市、商品价格和购买记录」（#81 核对时发现这两类之前没写明，但已经在发），托底的单独同意版本升到 2026-10-22；和心电图 / 心跳间期那次改版（#79）一起，用户只需要重新确认一次。
 - 公网 nginx（`deploy/ali/public/watch2whoop.https.conf`）：`Permissions-Policy` 原来是 `microphone=()`（禁止录音）→ `microphone=(self)`；`/v1/` 的请求体上限 2 MB 发几张照片就会超 → `/v1/assistant/chat` 单独 16 MB、SSE 不缓冲、读超时 300 秒，`/v1/assistant/transcribe` 3 MB。今天页的 CSP 加了 `img-src blob:`、`media-src 'self' blob:`（读选中的照片 / 视频）。
 - 托底多了 3 个写工具：`add_lab_results`（化验单照片）、`log_metric_snapshot`（手表 / InBody 截图）、`add_supplement`（补剂瓶子），照旧每次写之前确认。
 - 验证：`tests/test_ai_fallback.py` 19 个（图片 / 8 帧上限、估算按每张 1024 token、旧同意要重新确认、语音：关闭时 503、格式 / 时长校验、每天 / 每分钟限次、识别服务挂了也计数、要登录、413）。真实调用（本地测试账号，无真实数据）：一张 InBody 图读出 88.6 kg / 24.3%（¥0.0008）；浏览器里用 ffmpeg 生成的 13 秒视频走完整流程：抽 5 帧 + 声音识别进输入框 → 发送 → DeepSeek 从画面读出 InBody 数值、从文字读出午餐（¥0.03）。
@@ -298,3 +302,37 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 **以后可以考虑**：管家 `settings.json` 里 `ENABLE_TOOL_SEARCH=false`（工具定义全部预加载）；打开工具搜索后固定开销还能再降一大截，但每个工具第一次用要多一次搜索往返，要实测再定。今天页内对话的系统提示仍附完整长期记忆（≤ 12000 字），和 `get_briefing` 的记忆要点有少量重复。
 
 **验证**：`tests/test_briefing.py`（压缩、宽松 schema 和补齐、工具定义预算、开局摘要只含自己的数据、家人按 shares 只看授权的块、缓存命中 / 写工具清缓存 / 外部改数据指纹变化 / 过期 / 别人写不影响、默认摘要 vs detail）、`tests/test_ai.py` 新增远程 MCP 的宽松 schema + `get_briefing` 用例。
+
+#### 9.14 Google AI：订阅、Gemini API 免费额度（P8，迁移 `225_gemini_plan.sql`；服务端 Gemini CLI 和管家 Gemini 版本已下线）
+
+| 部分 | 做法 |
+|---|---|
+| 订阅 `gemini_plan_mcp` | 和 Claude / ChatGPT 订阅一样：用户在自己登录的 Gemini CLI / Antigravity 里连远程 MCP `/mcp`，后端不碰 Google 账号。连接说明：`gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${BODY_ENGINE_MCP_TOKEN}' body-engine <地址>/mcp`（单引号：配置里存 `${…}`，运行时才展开），或 `~/.gemini/settings.json` 的 `mcpServers` 写 `{"type": "http", "url": …, "headers": …}`（Gemini CLI 0.39 的 `mcp add` 就是这样写的）。「连接客户端」按提供商种类预选客户端。`generic_mcp_client` 改名「其他 MCP 客户端」。 |
+| Gemini API 免费额度 | AI 设置里勾「免费额度（按 $0 计）」= 单价 0：用量照记，`check_budget` 不再因为预算 0 拦截。**免费额度不是无限的**：Google 按模型限速 / 限每日次数（数字常变，以 AI Studio 的 rate limits 页为准），超了返回 429（适配器报「被限流」）；**免费层的内容 Google 可能用来改进产品**（Gemini API 条款的 Unpaid Services），手册里写明了。取消勾选只清掉这个勾设的 $0 单价。 |
+| Gemini 用量 | `usage_metadata.cached_content_token_count` 拆成 `cache_read_tokens`（`prompt_token_count` 本身含缓存部分，所以从 input 里减掉），缓存按输入价的 0.25 计（Gemini 2.5 的缓存价；新模型更便宜，偏高估）。 |
+| 服务端 Gemini CLI `gemini_cli` | **已下线（2026-10，迁移 `460_retire_gemini_cli.sql`）**。原因：Google 从 2026-06-18 起不再让 AI Pro / Ultra 订阅登录 Gemini CLI，而这个功能故意只走订阅登录，所以早就不能用了。适配器、目录项、`BODY_GEMINI_CLI_ENABLED` / `BODY_GEMINI_HOME` 都已删除；旧的 `gemini_cli` 行被停用、取消默认，「AI 设置」里显示「已下线」、只能删除，Jarvis 按 `choice.effective` 的规则回落（部署者到管家链接，其他人到托底 AI）。kind 仍留在 CHECK 约束里，旧行才合法；目录里没有这一项，所以建不了新的。 |
+| 管家 Gemini 版本 | **已下线（2026-10）**，原因同上：`assistant/.gemini/`、`assistant/GEMINI.md`、`butler.py gemini-check` 已删除。管家只保留 Claude 版本；Google 订阅用户用 Antigravity 连 `/mcp`（`gemini_plan_mcp`）。 |
+
+**验证**：`tests/test_ai.py`：订阅重定向、免费额度不被预算拦、Gemini 缓存用量拆分；`gemini_cli` 下线后：目录里没有、建不了、旧行显示「已下线」、不能修改 / 启用 / 被 Jarvis 选用、可以删除。
+
+
+#### 9.15 Google AI Pro / Ultra 订阅怎么接（2026-10-21 按 Google 官方文档核实）
+- **订阅**：Google AI Pro / AI Ultra（原 Google One AI Premium / Gemini Advanced），Google One 普通存储套餐不算。
+- **Gemini CLI**：2026-06-18 起不再给 AI Pro / Ultra 和免费个人账号提供服务，只剩企业版 Gemini Code Assist 和付费 Gemini API key（[Google Developers Blog](https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/)）。所以「连接客户端」里的 Gemini CLI 只对付费 API key 有用；服务端 `gemini_cli`（故意只走订阅登录）和管家的 Gemini 版本因此已下线（9.14）。
+- **Antigravity**（桌面版 / IDE / CLI `agy`）是订阅用户现在的客户端。有免费个人档（按周算额度），Pro / Ultra 额度更高。远程 MCP 写在 `~/.gemini/config/mcp_config.json`（或项目里的 `.agents/mcp_config.json`），格式是 `serverUrl` + `headers`（不认 `url` / `httpUrl`），也支持 OAuth / DCR（[Antigravity MCP 文档](https://antigravity.google/docs/mcp/)）。配置里的 `${VAR}` 据第三方说不会展开，所以我们给的命令让 shell 把 token 填进去。还没关的 bug：[antigravity-cli#71](https://github.com/google-antigravity/antigravity-cli/issues/71)（工具能列出来但调不动，维护者建议升级到 v1.2.9 并用 `~/.gemini/config`）。**`/mcp` + Bearer 现在就能接。**
+- **Gemini 网页 / 手机 app 的自定义应用**（Connected Apps → Custom apps，只能在 gemini.google.com 添加）：18 岁以上、**人在美国**、只支持英文、个人账号、要开 Keep Activity（[Gemini Apps Help](https://support.google.com/gemini/answer/17209137)）。鉴权：服务器支持 OAuth 动态客户端注册就不用填；不支持就在 Advanced features 里填凭据，没有静态 Bearer 头的选项。`/mcp` 现在接不上。
+- **地区**：澳洲能用 Antigravity 和 AI Pro，Gemini app 的自定义应用不行；中国大陆 Gemini 只有 Workspace（[Gemini 网页版可用地区](https://support.google.com/gemini/answer/13575153)），AI Pro / Antigravity 不开放，网络也连不上，中国用户还是用托底 AI 或 DeepSeek 等 API。
+- **没做（要做的话另开 PR）**：
+  1. ~~`/mcp` 加 MCP 标准的 OAuth 2.1~~（已做，见 9.16）：protected resource / authorization server metadata、DCR `/register`、`/authorize`（复用今天页登录 + 同意页）、`/token`（PKCE、refresh token，发的仍是 mcp scope 的 AI token，可吊销）、401 + `WWW-Authenticate`；现有 Bearer token 照常可用。约 2–3 天。Gemini app 只对美国用户有意义，但 Claude 网页 / 手机连接器、ChatGPT 连接器也走 OAuth。
+  2. ~~服务端 `gemini_cli` 和管家 Gemini 版本：改用 Antigravity CLI 或下线~~：已下线（迁移 460）。
+
+#### 9.16 /mcp 的 OAuth 2.1（2026-10-21，`ai/oauth.py`、`ai/oauth_http.py`、`ai/oauth_api.py`、迁移 `440_mcp_oauth.sql`）
+- **为什么**：Claude 网页 / 手机 / 桌面的自定义连接器、ChatGPT 连接器、Gemini app 只走 OAuth（Claude 的静态请求头是 beta、只给组织 Owner；ChatGPT 明确不支持静态 token）。按 MCP 授权规范做，三家都能接。
+- **用的库**：官方 `mcp` Python SDK 的 `mcp.server.auth`（MIT，已经是依赖）：`/oauth/authorize`、`/oauth/token`、`/oauth/register`、`/oauth/revoke` 和 PKCE 校验来自 SDK；存储和策略是 `BodyOAuthProvider`。
+- **发现**：`/mcp` 没带有效 token 时回 401 + `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`；RFC 9728 元数据（resource = `<base>/mcp`，授权服务器 = `<base>/oauth`）和 RFC 8414 元数据（`/.well-known/oauth-authorization-server/oauth`，根路径和 `/oauth/.well-known/…` 也给）。
+- **开关**：只有设了 `BODY_PUBLIC_URL` 才开 OAuth（issuer / resource 只从它来，不用 Host 头推导）；没设时元数据和 `/oauth/*` 都是 404，`/mcp` 的 401 不带 `resource_metadata`，静态 token 照常。
+- **注册**：DCR，**全部是公开客户端**（`token_endpoint_auth_method` 强制 `none`，没有 client secret）。回调地址白名单：带主机名的 https、本机回环 http（任意端口匹配）、带点号的反向域名私有协议（RFC 8252 §7.1，例 `com.example.app:/cb`）。同一 IP 每小时 20 个；全服务器每天最多 500 个**还没被同意过的**客户端；没被同意过的客户端 1 小时后由 `oauth-cleanup` 删掉，同意了但从没换过 token 的连接也是 1 小时后删掉。参数在 `ai/oauth_params.py`。
+- **授权**：`/oauth/authorize` 按 IP 限流（10 分钟 30 次）；请求有误时**不跳回客户端**（防开放重定向，RFC 9700 §4.11.2），只回我们自己的 400 错误页，唯一允许的跳转是到同意页；只认 S256；`resource` 不是本服务器的 `/mcp` 就拒绝（RFC 8707）；`/oauth/authorize` 把请求存 10 分钟，浏览器去 `/app/oauth.html?req=…`。同意页先加载、再从本站读登录状态（今天页 cookie 是 SameSite=Strict，从 AI 应用跳过来的那次请求不带 cookie），显示应用名、跳转地址（https 只显示域名，其他协议连协议一起显示）、账号和权限，可以选只读；跳转域名不是已知 AI 厂商（`KNOWN_REDIRECT_HOSTS`）时有醒目提醒，本机地址另有提醒；只读登录不能同意，用 cookie 同意必须带 `X-Body-Web: 1`。
+- **令牌**：授权码一次性、5 分钟；access token = `api_tokens` 里 scope 含 mcp 的一行（和静态 AI token 同一种，`/mcp`、审计、只读处理都不变），1 小时过期，绑在连接（grant）上；refresh token 90 天、每次用都轮换，旧的被再次使用（或授权码被重复使用）就吊销整个连接（没有宽限期，符合规范；上线后看 `oauth_grants.revoke_reason` 的统计，客户端网络重试误伤多了再考虑短宽限期）；`revoke_tokens(everything=True)` 也会吊销用户全部连接；`/oauth/revoke` 也是吊销整个连接。所有令牌、授权码、请求号只存 sha256。
+- **用户看到的**：「我 → AI 设置 → 连接客户端（MCP）」列出已连接的应用（应用名、跳转域名、最近使用），可以断开（`GET/DELETE /v1/users/me/ai-connections`）；静态 AI token 照常可用，列表和上限只算静态的。每人最多 20 个连接。
+- **运维**：`body-engine oauth-cleanup`（每小时，幂等）、`oauth-connections --user-id N`、`oauth-revoke --user-id N --connection-id M`。公网 nginx 要放行 `/oauth/`（authorize、token、register、revoke）、`/.well-known/oauth-protected-resource`*、`/.well-known/oauth-authorization-server`*、`/app/oauth.html`、`/app/oauth.js`，见 PR 说明。

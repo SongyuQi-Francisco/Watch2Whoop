@@ -1,5 +1,7 @@
 # Watch2Whoop 使用手册
 
+中文 · [English](tester-handbook.en.md)
+
 <!-- W2W:HELLO -->
 
 **Watch2Whoop 是给你的 AI 用的身体数据库。** Apple Watch 的数据自动进来，算出恢复分、睡眠分、负荷；你说过的每一顿饭、每一次训练、每一张化验单都存下来，AI 随时调出来帮你分析。
@@ -8,15 +10,139 @@
 
 ![今天页](images/tester-handbook/today.jpg)
 
+## 目录
+
+- [怎么用：一切都和 AI 说](#怎么用一切都和-ai-说)
+- [开始前准备](#开始前准备)
+- [设置 app](#设置-app)
+- [连接你的 AI（核心）](#连接你的-ai核心)
+- [常见问题](#常见问题)
+
+## 怎么用：一切都和 AI 说
+
+**一条原则：想记什么、想问什么，都直接跟你的 AI 说。** 不用找按钮，不用填表；打字、说话、拍照、截图都行。AI 会读你的数据、帮你记、帮你算，页面只用来看结果。还没连 AI 的先看「连接你的 AI」。
+
+下面是一些真实的说法，照着说或者用你自己的话都行。
+
+**记饮食**
+
+- （拍一张午饭）记一下午饭
+- 早餐两个鸡蛋、一杯无糖豆浆、一片全麦面包
+- 晚饭和昨天一样
+- 刚才那顿米饭只吃了一半，改一下
+- 删掉刚才记错的那条
+- 今天还差多少蛋白质？晚饭吃什么合适？
+- 把「鸡蛋燕麦早餐」存成快捷记餐
+
+**训练**
+
+- 帮我排一个下周的训练计划，一周练 4 天
+- 今天恢复不好，换成轻一点的
+- 周三没空，把腿日挪到周四
+- 今天练了胸：卧推 4×8 60kg，上斜哑铃 3×10 20kg
+- 肩膀不舒服，以后别给我安排过头推举
+- 这周练了几次？哪个部位练得少？
+
+**体重、糖、补剂、化验**
+
+- 今天早上体重 78.4
+- （体重秤照片）记一下
+- 今天添加糖吃了多少？还剩多少额度？
+- 我每天吃一粒鱼油、5g 肌酸，帮我记上
+- 鱼油停了
+- （化验单照片）帮我录入
+- 尿酸这几次的趋势怎么样？
+
+**食谱和采购**
+
+- 推荐几个高蛋白、低脂的晚饭
+- 记一份「番茄鸡胸意面」
+- 把这个菜谱存下来：（贴菜谱）
+- 按这周的菜单生成采购清单
+- 牛奶、鸡蛋买好了，从清单里划掉
+- 家里还有什么能做晚饭？
+
+**看懂分数，安排今天**
+
+- 我今天恢复怎么样，适合练吗？
+- 为什么今天恢复分这么低？
+- 昨晚睡得怎么样？今晚几点睡合适？
+- 身体年龄是怎么算的？我能怎么改善？
+- 今天负荷还能加多少？
+
+**回顾和报告**
+
+- 给我这周的周报
+- 这个月和上个月比，体重和睡眠有什么变化？
+- 最近哪些习惯对我的恢复影响最大？
+- 记一下：今天下午头疼，喝了咖啡
+
+### 遇到问题 / 发现 bug 也问 AI
+
+不会用、数据看起来不对、看不懂某个数字，先问 AI。它能看到你的数据，多数问题当场就能回答。
+
+- 今天的步数怎么比手表上少？
+- 昨晚的睡眠为什么没同步进来？
+- 这个页面上的「负荷」是什么意思？
+- 我觉得这里有个 bug：（截图）
+
+觉得是 bug 时，把截图和经过告诉 AI，它会帮你整理成一段清楚的描述，你转给管理员就行。以后 AI 会直接把 bug 报给开发者。
+
 ## 开始前准备
 
-- **账号信息**：管理员单独发给你的一小段文字（手机登录码、电脑登录链接、快捷指令的上传地址和上传 token）。只给你本人，不要转发。
-- **快捷指令文件**「Watch2Whoop Health Sync」：大家用同一个。
-- **一个 AI**：见下一节「连接你的 AI」。
+**iPhone 只用 Watch2Whoop App；电脑用浏览器。** iPhone 上的网页版（Safari、「添加到主屏幕」）已停用，打开会提示你去装 App。
+
+- **激活链接**：管理员单独发给你的一条链接（或二维码），只给你本人，不要转发。可以重复用：换手机、重装 app 再点一次就行。
+- **TestFlight 邀请邮件**：发到你的 Apple ID 邮箱。
+- **一个 AI**：见「连接你的 AI」。
+
+## 设置 app
+
+### ① 装 app
+
+打开 TestFlight 邀请邮件 →「查看测试」→ 按提示从 App Store 装好 TestFlight →「接受」→「安装」。
+
+### ② 点激活链接
+
+在 iPhone 上点管理员给你的激活链接（或用相机扫二维码）→「打开 App 完成设置」→ 弹出「在 Watch2Whoop 中打开」时点「打开」。
+
+![激活页](images/tester-handbook/activate.jpg)
+
+<!-- W2W:SETUP -->
+
+服务器、健康同步、今天页登录一次完成，**不用输入任何码**。
+
+### ③ 授权健康
+
+「全部打开」→「允许」。只读取，不写入。
+
+![全部打开](images/tester-handbook/health-permission.jpg)
+
+### ④ 同意
+
+勾选同意 →「同意并继续」→ 填资料 →「保存」。
+
+![同意](images/tester-handbook/consent.jpg) ![个人资料](images/tester-handbook/profile.jpg)
+
+### ⑤ 连接你的 AI
+
+见下一节「连接你的 AI」。
+
+### ⑥ 等第一次同步
+
+第一次同步最近 90 天，几分钟到十几分钟：保持 app 打开、手机解锁。之后 app 在后台自动同步，不用管。
+
+### ⑦ 读取更早的历史（可选）
+
+设置时可以选「近 90 天」（默认）或「全部历史」。以后想要更早的数据：「我」→「手机同步」→「读取范围」选「全部历史」。app 直接从「健康」读，不用再导出文件；数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快，中断了下次打开接着读。今天页会显示「历史数据导入中 x%」。
+
+### 电脑上看
+
+浏览器打开 `body.example.com/app`。第一次登录：在电脑上点你的激活链接会直接在浏览器里登录；也可以用邮箱验证码登录。
 
 ## 连接你的 AI（核心）
 
-登录以后（步骤在下面），点底部「我」→ 最下面的「AI 设置」。三种方式选一种。
+设置好 app 以后（步骤在上面），点底部「我」→ 最下面的「AI 设置」。三种方式选一种。
 
 ![AI 设置](images/tester-handbook/me-ai.jpg) ![添加 / 连接客户端](images/tester-handbook/ai-settings.jpg)
 
@@ -26,25 +152,27 @@
 
 不用申请任何账号，开通后直接用。底层是 DeepSeek，每月约 ¥3。第一次使用时会问你是否同意把你的身体数据发给 DeepSeek 处理，同意后才能用。
 
-> 📷 截图稍后补（托底 AI 正在上线）
-
 ### 方式 2：填你自己的 API key
 
-「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」）→ 填模型、接口地址、API key、每月预算 →「保存」。
+「AI 设置」→「添加」→「来源」选你有 key 的那家（DeepSeek、通义千问选「OpenAI 兼容接口」；Google AI Studio 的免费 key 勾「免费额度」）→ 填模型、接口地址、API key、每月预算 →「保存」。
 
 ![选来源](images/tester-handbook/ai-kinds.jpg) ![填 API key](images/tester-handbook/ai-api.jpg)
 
-key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。
+key 只上传一次，之后只显示末 4 位；超过每月预算会自动停。Gemini 免费额度有次数限制，用完要等；而且免费额度下 Google 可能用你发的内容改进它的产品，介意的话用付费 key 或别的方式。
 
-### 方式 3：用你的 Claude / ChatGPT 订阅
+### 方式 3：用你的 Claude / ChatGPT / Google AI 订阅
 
-适合在电脑上用 Claude 桌面版 / Claude Code、Codex 的人。「AI 设置」→「添加」→ 选「Claude 订阅」或「ChatGPT 订阅」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。
+适合在电脑上用 Claude 桌面版 / Claude Code、Codex、Antigravity 的人。「AI 设置」→「添加」→ 选「Claude 订阅」、「ChatGPT 订阅」或「Google AI Pro / Ultra 订阅（Antigravity）」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。
+
+**Claude 网页 / 手机 app、ChatGPT（开发者模式）不用 token**：在它们的「连接器」里添加「连接客户端（MCP）」顶部显示的地址，它会跳到今天页，确认应用名和跳转地址后点「同意」。连上的应用列在「连接客户端（MCP）」里，随时可以「断开」。ChatGPT 个人版目前可能只能读、不能写。
+
+Google AI Pro / Ultra 订阅：用 Antigravity（桌面版、IDE 或 `agy` 命令行，Antigravity 免费档也能用，额度少一些）。Gemini CLI 从 2026-06-18 起不再支持订阅登录，只能配付费 Gemini API key 用。Gemini 网页 / 手机 app 的「自定义应用」目前只对美国用户开放，暂时连不了。
 
 ![连接客户端（MCP）](images/tester-handbook/ai-mcp.jpg)
 
 token 只显示一次；不用了在同一个地方「吊销」。
 
-### 怎么用
+### 在 app 里和 Jarvis 对话
 
 点任何页面底部的「Jarvis」开始对话。还没设置 AI 时会提示「去 AI 设置」。
 
@@ -67,137 +195,23 @@ AI 要写入数据前都会先问你「确认吗」，你点确认才会记。
 | 🎬 视频 | 选一段视频，自动抽最多 8 张画面；视频里有人说话会先转成文字放进输入框 |
 | 🎤 按住说话 | 按住说、松开识别（最长 60 秒），文字先放进输入框，你看一眼、改错字再发；手指上滑取消 |
 
-语音在服务器上转文字，不发给第三方，录音转完就删。**在 Watch2Whoop app 里按 🎤 没反应、或提示「这里不能录音」时**：点输入框，用键盘上的 🎤 听写，效果一样。
+语音在服务器上转文字，不发给第三方，录音转完就删。**按 🎤 没反应、或提示「这里不能录音」时**：点输入框，用键盘上的 🎤 听写，效果一样。
 
-<!-- W2W:ONLY web -->
-## 网页版设置（现在）
-
-### ① 加到主屏幕
-
-Safari 打开 `body.example.com/app`，点「…」。
-
-![点「…」](images/tester-handbook/safari-login.jpg) ![点「共享」](images/tester-handbook/safari-more.jpg)
-
-「添加到主屏幕」→「添加」。
-
-![添加到主屏幕](images/tester-handbook/safari-share.jpg) ![添加](images/tester-handbook/add-home.jpg)
-
-### ② 登录
-
-从主屏幕打开「身体」，粘贴账号信息里的**手机登录码**，点「登录」。账号信息里写「✓ 手机已登录」的跳过这一步。
-
-![主屏幕图标](images/tester-handbook/home-icon.jpg) ![粘贴登录码](images/tester-handbook/login-code.jpg)
-
-### ③ 同意
-
-勾选同意 →「同意并继续」→ 填资料 →「保存」。
-
-![同意](images/tester-handbook/consent.jpg) ![个人资料](images/tester-handbook/profile.jpg)
-
-### ④ 连接你的 AI
-
-按上面「连接你的 AI」选一种方式。
-
-### ⑤ 装快捷指令
-
-点开「Watch2Whoop Health Sync」文件 →「设置快捷指令」。
-
-![设置快捷指令](images/tester-handbook/shortcut-open.jpg)
-
-第 1 题粘贴账号信息里的**上传地址**；第 2 题把 `YOUR-UPLOAD-TOKEN` 换成账号信息里的**上传 token** →「添加快捷指令」。
-
-![上传地址](images/tester-handbook/shortcut-url.jpg) ![上传 token](images/tester-handbook/shortcut-token.jpg)
-
-### ⑥ 打开权限
-
-设置 → App → 健康 → 数据访问与设备 → 快捷指令 →「全部打开」。
-
-![快捷指令](images/tester-handbook/settings-health-access.jpg) ![全部打开](images/tester-handbook/settings-shortcuts-health.jpg)
-
-解锁手机，点一下运行。问「允许发送健康样本」时选「始终允许」。
-
-![运行](images/tester-handbook/shortcut-run.jpg)
-
-### ⑦ 自动同步
-
-「自动化」→「新建自动化」→「特定时间」（12:00、18:00、22:00 各一条）、「睡眠」（醒来时）、「App」（打开微信时）。
-
-![特定时间、睡眠](images/tester-handbook/auto-triggers.jpg) ![App](images/tester-handbook/auto-app.jpg)
-
-选「立即运行」、关「运行时通知」→「下一步」→ 选「Watch2Whoop Health Sync」。
-
-![立即运行](images/tester-handbook/auto-time.jpg) ![选快捷指令](images/tester-handbook/auto-pick.jpg)
-
-### ⑧ 导入历史
-
-「健康」→ 头像 →「导出所有健康数据」→ 存到「文件」。今天页「我」→「导入健康历史」→「选择文件」。
-
-![导出](images/tester-handbook/health-export.jpg) ![导入](images/tester-handbook/import.jpg)
-
-### 电脑上看
-
-电脑浏览器打开账号信息里的**电脑登录链接**（只能用一次）。
-
-### 装了 app 以后
-
-管理员会发新的账号信息（带设置二维码）。app 同步正常后，「自动化」里删掉快捷指令的自动化。
-
-<!-- W2W:ONLY end -->
-<!-- W2W:ONLY app -->
-## App 版设置
-
-### ① 装 app
-
-TestFlight 邮件 →「查看测试」→ App Store 装 TestFlight →「接受」→「安装」。
-
-### ② 扫码
-
-iPhone 相机扫账号信息里的设置二维码 →「在 Watch2Whoop 中打开」。
-
-<!-- W2W:SETUP -->
-
-### ③ 授权健康
-
-「全部打开」→「允许」。
-
-![全部打开](images/tester-handbook/health-permission.jpg)
-
-### ④ 同意
-
-勾选同意 →「同意并继续」→ 填资料 →「保存」。
-
-![同意](images/tester-handbook/consent.jpg) ![个人资料](images/tester-handbook/profile.jpg)
-
-### ⑤ 连接你的 AI
-
-按上面「连接你的 AI」选一种方式。
-
-### ⑥ 同步
-
-首次同步 90 天：app 留在前台、手机解锁。
-
-### ⑦ 导入历史
-
-「健康」→ 头像 →「导出所有健康数据」→ 存到「文件」。「我」→「导入健康历史」→「选择文件」。
-
-![导出](images/tester-handbook/health-export.jpg) ![导入](images/tester-handbook/import.jpg)
-
-<!-- W2W:ONLY end -->
 ## 常见问题
 
-**怎么记录？** 跟 AI 说，见「连接你的 AI → 怎么用」。页面上没有输入框是故意的。
+**怎么记录？** 跟 AI 说，见 [怎么用：一切都和 AI 说](#怎么用一切都和-ai-说)。页面上没有输入框是故意的。
 
-**同步失败**：「快捷指令」没有健康权限，上传是空的（服务器回 `400 bad size`）。设置 → App → 健康 → 数据访问与设备 → 快捷指令 →「全部打开」，然后解锁手机手动运行一次。
+**卡在「输入 8 位邀请码」**：不用手动填。回到主屏幕，再点一次激活链接，app 会自动设置好。
 
-![没有权限](images/tester-handbook/shortcut-no-access.jpg) ![全部打开](images/tester-handbook/settings-shortcuts-health.jpg)
+**激活链接打不开 app**：先确认已经用 TestFlight 装好 Watch2Whoop（没装时激活页会显示安装步骤）；用 Safari 打开链接，不要在微信里直接点（微信里先「在浏览器打开」）。没收到 TestFlight 邀请邮件：请管理员把你的 Apple ID 加为测试员。
 
-**锁屏时不同步**：锁屏时读不到健康数据，解锁后下一次会补上。
+**数据没更新**：打开一下 app，保持解锁几十秒；锁屏时 iPhone 不让读健康数据，解锁后会补上。
 
-**登录码无效**：只能用一次、有效期见账号信息，找管理员要新的。
+**以前用快捷指令同步的**：app 同步正常后，在「快捷指令」→「自动化」里删掉同步健康数据的那几条，避免重复和报错。iPhone 网页版和快捷指令同步都已停用，旧版手册只留作存档：[这里](archive/tester-handbook-web-shortcut.md)。
 
-**换手机**：重做设置步骤，同意和资料不用重填。
+**换手机 / 重装 app**：再点一次同一个激活链接，同意和资料不用重填。
 
-**隐私**：数据只有你自己能看，详见登录后的同意书。用 AI 时，对话内容会发给你选的那家 AI 服务。
+**隐私**：数据只有你自己能看，详见同意书。用 AI 时，对话内容会发给你选的那家 AI 服务。
 
 **导出 / 删除数据**：找管理员。
 

@@ -2,7 +2,7 @@
 those marked "inferred" are values where body-management.md was unclear, taken from the most conservative reading (collected in the system design "rule engine" section).
 Bump RULES_VERSION whenever a parameter that affects results changes."""
 
-RULES_VERSION = "v1.1-2026-10-17"   # v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py)
+RULES_VERSION = "v1.3-2026-10-22"   # v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py); v1.2: sugar caps, goals from nutrition_goal_versions; v1.3: red meat / food caps from the user's own diet constraints (#76)
 
 # ---------- Double progression (body-management.md 4.5; rep ranges and increments come from SparkyFitness workout templates, migrated from 4.4) ----------
 # 4.5: when all sets of an exercise reach the top of the rep range -> add one increment next time (upper body +1-2.5kg, lower body +2.5-5kg) and go back to the bottom of the range.
@@ -38,22 +38,18 @@ WATER_TARGET_L = 3.0                     # about 3-3.5L per day while taking cre
 SYMPTOM_LOOKBACK_DAYS = 14               # hypoglycemia-like feeling on leg day / not enough eaten before training in the last 14 days -> reminder is raised to warning
 LEG_MUSCLES = {"quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"}
 
-# ---------- Frequency caps (body-management.md 5.3.1, 5.3.2; health constraints in CLAUDE.md) ----------
-# 5.3.1: red meat (beef) total <= 250g per week; beef short rib at most 1 meal per week. 5.3.2: beef / pork (lean cuts) combined <= 2 meals per week.
-RED_MEAT_G_PER_WEEK = 250
-RED_MEAT_WARN_FRACTION = 0.8             # at 80% (200g) show "almost there"
-SHORT_RIB_PER_WEEK = 1
-RED_MEAT_MEALS_PER_WEEK = 2
-# Inferred: "per week" is a rolling 7 days (including today), more conservative than calendar weeks; beef / lamb / pork (including processed meat such as bacon, ham, sausage) all count as red meat
-# (the journal item red_meat_g's note also says "lean beef, lamb and pork all count").
-# Grams: use the journal red_meat_g if logged that day; otherwise estimate from food log names (each entry at the typical portion below, raw weight).
+# ---------- Red meat recognition (food knowledge, for the user's own diet constraints) ----------
+# Limits are per user (nutrition/constraints.py, issue #76): nobody gets a red meat cap or a per-food limit by default.
+# "Per week" is a rolling 7 days (including today); beef / lamb / pork, including processed meat such as bacon, ham and
+# sausage, all count as red meat (WCRF/AICR 2018 definition of red and processed meat).
+# Grams: use the journal red_meat_g if logged that day; otherwise estimate from food log names (each entry at the typical
+# portion below, raw weight; a typical main-meal serving of meat is 120–150 g raw).
 RED_MEAT_KEYWORDS: list[tuple[str, int]] = [   # (keyword, estimated grams per serving), earlier matches win
-    ("牛肋条", 135), ("short rib", 135),          # 5.3.1: beef short rib 120-150g
+    ("牛肋条", 135), ("short rib", 135),
     ("培根", 30), ("bacon", 30), ("火腿", 30), ("香肠", 50), ("sausage", 50),
     ("牛", 150), ("beef", 150), ("steak", 150), ("羊", 150), ("lamb", 150), ("猪", 150), ("pork", 150),
     ("排骨", 150), ("rump", 150), ("topside", 150),
 ]
-SHORT_RIB_KEYWORDS = ("牛肋条", "short rib", "beef rib")
 # strip these from the name before matching (milk and avocado are not meat)
 RED_MEAT_EXCLUDE = ("牛奶", "牛乳", "牛油果", "牛油", "酸牛奶", "羊奶", "羊乳", "蜗牛", "牛蛙", "milk", "avocado")
 
@@ -71,3 +67,31 @@ RECOVERY_RED = 34                        # recovery score < 34 = red (WHOOP's ba
 HEAVY_CARDIO_KEYWORDS = ("篮球", "basketball")
 # Inferred: body-management.md sets no sleep debt threshold; use 2h (= DEBT_CAP_MIN, the cap on sleep debt counted into sleep need in scoring).
 SLEEP_DEBT_HIGH_MIN = 120
+
+# ---------- Sugar (issue #31; nutrition/extras.py, rules/nutrition.sugar_caps, status card, reports) ----------
+# WHO 2015 "Guideline: Sugars intake for adults and children": free sugars < 10% of energy (strong recommendation;
+# 10% of 2000 kcal = 50 g) and a further reduction to < 5% (conditional; about 25 g / 6 teaspoons a day).
+# AHA 2009 (Johnson et al., Circulation 120:1011) also caps added sugar at 25 g/day for women, 36 g/day for men.
+# Default cap = the WHO 5% figure; a goal version's added_sugar_max_g overrides it. Above the cap -> info, above
+# ADDED_SUGAR_WARN_G (the WHO 10% figure) -> warning.
+ADDED_SUGAR_CAP_G = 25
+ADDED_SUGAR_WARN_G = 50
+# Sugar-sweetened drinks (soft drinks, juice, milk tea, energy drinks): fructose raises serum urate and triglycerides
+# (Choi & Curhan 2008, BMJ 336:309 — gout risk rises with >= 2 servings/day of sugar-sweetened soft drinks; ACR 2020
+# gout guideline: limit high-fructose corn syrup; EASL 2016 NAFLD guideline: avoid fructose-containing drinks).
+# Inferred: the guidelines give no weekly count; warn when more than 2 in a rolling 7 days (including today).
+SUGARY_DRINKS_PER_WEEK = 2
+# A drink is "sugary" when log_food marked sugary_drink=true, or its name matches a keyword below and contains none of
+# the exclusions; a keyword match with known total sugar below SUGARY_DRINK_MIN_SUGAR_G is not counted (diet versions).
+SUGARY_DRINK_KEYWORDS = ("可乐", "雪碧", "芬达", "汽水", "碳酸饮料", "奶茶", "果汁", "橙汁", "苹果汁", "柠檬茶", "冰红茶",
+                         "绿茶饮料", "能量饮料", "红牛", "运动饮料", "佳得乐", "宝矿力", "含糖饮料", "甜饮料", "糖水",
+                         "coke", "cola", "soda", "soft drink", "juice", "bubble tea", "milk tea", "lemonade",
+                         "iced tea", "energy drink", "gatorade", "powerade", "red bull", "sprite", "fanta")
+SUGARY_DRINK_EXCLUDE = ("无糖", "零度", "零糖", "0糖", "低糖", "zero", "diet", "sugar free", "sugar-free", "no sugar")
+SUGARY_DRINK_MIN_SUGAR_G = 5
+
+# ---------- Calorie / protein adherence (status of a logged day against the goal in effect that day) ----------
+# Inferred (no source in body-management.md): calories within +-10% of the day's goal and protein >= 90% of it count as
+# "on target" — the usual tolerance of diet-tracking apps; days without any food entry are not judged.
+CALORIE_ADHERENCE_TOL = 0.10
+PROTEIN_ADHERENCE_MIN = 0.90

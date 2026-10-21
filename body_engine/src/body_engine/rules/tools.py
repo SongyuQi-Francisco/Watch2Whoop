@@ -38,7 +38,7 @@ def _dismiss(conn, uid, a):
 TOOL_SPECS: list[dict] = [
     dict(
         name="get_reminders",
-        description="规则提醒（每天生成，只是建议）：加重 / 减重、按周均体重调热量、练前进食、红肉 / 牛肋条频率上限、"
+        description="规则提醒（每天生成，只是建议）：加重 / 减重、按周均体重调热量、练前进食、用户自己设的红肉 / 食物次数上限、"
                     "禁用 / 注意动作、恢复分低 / 睡眠债高。级别 alert > warning > info，状态 new / seen / dismissed；"
                     "rule_runs = 结束那天每条规则的结果（没触发 / 数据不足的原因）。",
         input_schema=_schema({

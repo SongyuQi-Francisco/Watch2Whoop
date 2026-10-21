@@ -9,7 +9,7 @@ N (member who has not accepted the main consent form), O (owner with the body bu
 """
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 import pytest
@@ -28,6 +28,10 @@ TEST_DB = os.environ.get("BODY_TEST_DB_NAME_FALLBACK", "body_test_ai_fallback")
 DS_KEY = "test-fallback-key-not-real-0000"
 ALL_SCOPES = ["profile", "metrics", "sleep", "scores", "events", "memory", "journal", "nutrition", "training",
               "weight", "supplements", "labs", "exercises", "reminders"]
+
+# Just after midnight in Sydney (AEDT, UTC+11): 2026-10-22 00:30 local. Daily limits count from the user's local midnight,
+# so tests that put earlier calls at "now - 5 minutes" broke in the first minutes of every Sydney day (CI, 13:0x UTC).
+SYDNEY_00_30 = datetime(2026, 10, 21, 13, 30, tzinfo=timezone.utc)
 
 
 @pytest.fixture(scope="module")
@@ -132,7 +136,7 @@ def test_tools_are_own_data_subset():
     for t in fallback.tools():
         assert "user" not in t.input_schema.get("properties", {}) and "user" not in t.input_schema.get("required", [])
     size = sum(len(t.description) + len(json.dumps(t.input_schema, ensure_ascii=False)) for t in fallback.tools())
-    assert size < 25000, size  # the full set is ~47k chars
+    assert size < 30000, size  # ~28k with every Today page read tool (issue #58); the full set is ~47k chars
 
 
 def test_cost_and_estimate():
@@ -201,7 +205,8 @@ def test_chat_needs_fallback_consent_then_works(client, world, dsn):
     assert conv["provider"] == "system_fallback" and conv["quota"]["quota_cny"] == fp.MONTHLY_QUOTA_CNY
     call = FakeAdapter.calls[0]
     assert call["api_key"] == DS_KEY and call["model"] == fp.MODEL and call["base_url"] == fp.BASE_URL
-    assert call["system"].startswith("# 身体管家（精简版）") and "F1 喜欢早上练" in call["system"]
+    assert call["system"].startswith("## 根规则 v2") and "# 身体管家（精简版）" in call["system"]   # root rules first
+    assert "F1 喜欢早上练" in call["system"]
     assert set(call["tools"]) == set(fallback.TOOL_NAMES)
     usage = next(d for e, d in evs if e == "usage")
     expect = (1000 * 2 + 9000 * 0.04 + 200 * 8) / 1e6
@@ -288,7 +293,7 @@ def test_worst_case_estimate_blocks_last_call(client, world, dsn):
     assert err["code"] == "quota" and "不够再问一轮" in err["message"] and not FakeAdapter.calls
 
 
-def test_rate_limits(client, world, dsn):
+def test_rate_limits(client, world, dsn, monkeypatch):
     ids, tok = world
     reset(dsn, ids["F1"])
     with db(dsn) as c:
@@ -298,16 +303,39 @@ def test_rate_limits(client, world, dsn):
     err = next(d for e, d in sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"}).text)
                if e == "error")
     assert err["code"] == "rate_limit" and "一分钟" in err["message"]
+    # Per day (from local midnight): "now" frozen at Sydney 00:30, a full day's calls at 00:10
+    monkeypatch.setattr(fallback, "_now", lambda: SYDNEY_00_30)
     with db(dsn) as c:
-        c.execute("UPDATE ai_usage SET at = now() - interval '5 minutes' WHERE user_id = %s", (ids["F1"],))
-        n = fp.RATE_PER_DAY - fp.RATE_PER_MINUTE
+        c.execute("DELETE FROM ai_usage WHERE user_id = %s", (ids["F1"],))
         c.execute("""INSERT INTO ai_usage (user_id, kind, model, cost_cny, at)
-                     SELECT %s, 'system_fallback', %s, 0, now() - interval '5 minutes' FROM generate_series(1, %s)""",
-                  (ids["F1"], fp.MODEL, n))
+                     SELECT %s, 'system_fallback', %s, 0, %s FROM generate_series(1, %s)""",
+                  (ids["F1"], fp.MODEL, SYDNEY_00_30 - timedelta(minutes=20), fp.RATE_PER_DAY))
     err = next(d for e, d in sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"}).text)
                if e == "error")
-    # The day starts at local midnight (Sydney): if that is less than 5 minutes ago the rows fall on yesterday
-    assert err["code"] == "rate_limit"
+    assert err["code"] == "rate_limit" and "今天" in err["message"]
+
+
+def test_daily_limits_follow_local_midnight(world, dsn, monkeypatch):
+    """At Sydney 00:30 (UTC 13:30) calls and recognitions from 23:50 the evening before are yesterday's, 00:10 is today;
+    for a user in UTC the same rows are all today."""
+    from body_engine.ai import asr
+    ids, _ = world
+    uid = ids["F1"]
+    monkeypatch.setattr(fallback, "_now", lambda: SYDNEY_00_30)
+    monkeypatch.setattr(asr, "_now", lambda: SYDNEY_00_30)
+    reset(dsn, uid)
+    with db(dsn) as c:
+        c.execute("DELETE FROM asr_usage WHERE user_id = %s", (uid,))
+        for minutes, n in ((40, 3), (20, 2)):   # 23:50 yesterday, 00:10 today (Sydney)
+            at = SYDNEY_00_30 - timedelta(minutes=minutes)
+            c.execute("""INSERT INTO ai_usage (user_id, kind, model, cost_cny, at)
+                         SELECT %s, 'system_fallback', %s, 0, %s FROM generate_series(1, %s)""", (uid, fp.MODEL, at, n))
+            c.execute("""INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok, at)
+                         SELECT %s, 1000, 100, true, %s FROM generate_series(1, %s)""", (uid, at, n))
+        assert fallback.calls_today(c, uid) == 2 and asr.usage_today(c, uid) == 2
+        c.execute("UPDATE users SET timezone = 'UTC' WHERE id = %s", (uid,))   # 13:30 UTC: the day began 13.5 h ago
+        assert fallback.calls_today(c, uid) == 5 and asr.usage_today(c, uid) == 5
+        c.rollback()
 
 
 def test_balance_pause_and_admin_switch(client, world, dsn, monkeypatch):
@@ -428,7 +456,7 @@ def test_asr_off_by_default(client, world):
     assert r.status_code == 503 and r.json()["detail"]["code"] == "asr_off"
 
 
-def test_asr_transcribe_and_limits(client, world, dsn, asr_on):
+def test_asr_transcribe_and_limits(client, world, dsn, asr_on, monkeypatch):
     from body_engine.ai import asr
     ids, tok = world
     with db(dsn) as c:
@@ -446,15 +474,20 @@ def test_asr_transcribe_and_limits(client, world, dsn, asr_on):
     with db(dsn) as c:
         row = c.execute("SELECT * FROM asr_usage WHERE user_id = %s", (ids["F2"],)).fetchone()
         assert row["ok"] and row["audio_ms"] == 2000 and set(row) == {"id", "user_id", "at", "audio_ms", "proc_ms", "ok", "error"}
+    # Limits with "now" frozen at Sydney 00:30: a full day's recognitions at 00:10, then a full minute's at 00:29:50
+    monkeypatch.setattr(asr, "_now", lambda: SYDNEY_00_30)
+    with db(dsn) as c:
+        c.execute("DELETE FROM asr_usage WHERE user_id = %s", (ids["F2"],))
         c.execute("""INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok, at)
-                     SELECT %s, 1000, 100, true, now() - interval '5 minutes' FROM generate_series(1, %s)""",
-                  (ids["F2"], asr.ASR_PER_DAY))
+                     SELECT %s, 1000, 100, true, %s FROM generate_series(1, %s)""",
+                  (ids["F2"], SYDNEY_00_30 - timedelta(minutes=20), asr.ASR_PER_DAY))
     r = client.post("/v1/assistant/transcribe", headers=W(tok["F2"]), content=make_wav(2))
     assert r.status_code == 429 and "每天" in r.json()["detail"]["message"]
     with db(dsn) as c:
         c.execute("DELETE FROM asr_usage WHERE user_id = %s", (ids["F2"],))
-        c.execute("INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok) SELECT %s, 1000, 100, true FROM generate_series(1, %s)",
-                  (ids["F2"], asr.ASR_PER_MINUTE))
+        c.execute("""INSERT INTO asr_usage (user_id, audio_ms, proc_ms, ok, at)
+                     SELECT %s, 1000, 100, true, %s FROM generate_series(1, %s)""",
+                  (ids["F2"], SYDNEY_00_30 - timedelta(seconds=10), asr.ASR_PER_MINUTE))
     r = client.post("/v1/assistant/transcribe", headers=W(tok["F2"]), content=make_wav(2))
     assert r.status_code == 429 and "太快" in r.json()["detail"]["message"]
 

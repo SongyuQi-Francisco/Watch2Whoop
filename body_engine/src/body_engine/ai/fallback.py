@@ -18,7 +18,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,31 +27,65 @@ import psycopg
 
 from ..assistant.tools import TOOLS_BY_NAME as ALL_TOOLS
 from ..config import REPO_ROOT
+from ..i18n import L, is_en
 from . import fallback_params as fp
 from . import providers
 
 KIND = "system_fallback"
-CONSENT_VERSION = "2026-10-18.2"   # .2: photos, video frames and voice transcripts
-# Read tools the short prompt relies on + the everyday write tools. No ECG / raw heart data, no family data, no recipe editing.
+CONSENT_VERSION = "2026-10-22"   # daily metrics and grocery named; 10-20: writes without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
+# Read tools for everything the Today page shows + the everyday write tools. No ECG / raw heart data (get_cardio,
+# get_ecg_list: excluded by the consent below), no family data, no recipe editing.
 TOOL_NAMES = (
     "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
     "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_exercise_rules",
-    "search_exercises", "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
+    "search_exercises", "get_exercise", "get_week_plan", "propose_plan", "save_plan", "swap_exercise",
+    "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
+    "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
     "list_events", "list_journal_items", "get_journal", "get_memory",
     "log_food", "log_workout", "log_weight", "undo_sparky_entry", "log_journal", "add_event",
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
+    "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
+    # The read tool behind every Today page card (issue #58; tests/test_fallback_coverage.py maps cards -> tools):
+    # computed metrics, the 饮食 page and 采购.
+    "get_healthspan", "get_stress", "get_health_monitor", "get_hr_zones", "get_vo2max", "get_report",
+    "get_sleep_details", "get_lab_history", "get_metric_snapshots", "analyze_journal",
+    "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
+    "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
+    "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
 )
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
-    "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、化验、补剂、日记、提醒。",
+    "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、呼吸频率 / 血氧 / 手腕温度等每日指标、化验、补剂、日记、提醒，"
+    "还有采购清单、家里存货、已连接的超市、商品价格和购买记录。",
     "你发的照片、截图和视频里抽出的画面也会发给 DeepSeek。",
     "语音在本服务器上转成文字（不发给任何第三方），你确认文字后才发送；录音转完立即删除，不保存。",
     "不发：心电图、逐拍心跳、家人的数据。",
     "DeepSeek 按它自己的用户协议和隐私政策处理这些内容；对话记录存在本服务器，你可以随时删除。",
-    "要写入数据库的内容（饮食、训练、体重…）都要你点确认才写。",
+    "AI 会直接把你说的饮食、训练、体重等写进你的记录（不再逐条确认），删除和撤销之前会先问你。",
     "随时可以在「我 → AI 设置」撤回；撤回后不再发送。也可以不用托底，接入你自己的 AI。",
+]
+# English translation of CONSENT_POINTS for the page (X-Body-Lang: en). The Chinese list is the authoritative text and
+# CONSENT_VERSION is set by hand when the Chinese changes; this list never changes the version (change it together with the Chinese).
+CONSENT_POINTS_EN = [
+    "The backup AI is DeepSeek (a Chinese company, servers in China), provided and paid for by the admin, "
+    "with ¥{quota:g} per person per month.",
+    "When you ask something, DeepSeek receives: your message, your name / age / sex / height / time zone, your long-term "
+    "memory (profile card, observation notes, status card), and, when the answer needs them, your scores, sleep, workouts, "
+    "food, weight, daily metrics such as respiratory rate / blood oxygen / wrist temperature, lab results, supplements, "
+    "journal and reminders, plus shopping lists, what you have at home, the supermarkets you connected, product prices and "
+    "purchase records.",
+    "Photos, screenshots and frames taken from your videos are sent to DeepSeek too.",
+    "Voice is turned into text on this server (never sent to any third party) and is sent only after you confirm the text; "
+    "the recording is deleted right after, never stored.",
+    "Never sent: ECGs, beat-to-beat heart data, your family's data.",
+    "DeepSeek handles this content under its own terms of use and privacy policy; conversations are stored on this server "
+    "and you can delete them at any time.",
+    "The AI writes the food, workouts, weight etc. you mention straight into your log (no confirmation each time); "
+    "it asks before deleting or undoing anything.",
+    "You can withdraw at any time in Me → AI settings; after that nothing is sent. You can also skip the backup AI and "
+    "connect your own AI.",
 ]
 
 
@@ -71,8 +105,12 @@ def read_key() -> str | None:
 
 def provider() -> dict:
     """A provider-shaped dict for chat.py (not a row: provider_id stays NULL in ai_usage / ai_conversations)."""
-    return {"id": None, "user_id": None, "kind": KIND, "display_name": f"托底 AI · {fp.DISPLAY_NAME}", "model": fp.MODEL,
+    return {"id": None, "user_id": None, "kind": KIND, "display_name": display_name(), "model": fp.MODEL,
             "base_url": fp.BASE_URL, "status": "active", "encrypted_secret": None}
+
+
+def display_name() -> str:
+    return L(f"托底 AI · {fp.DISPLAY_NAME}", f"Backup AI · {fp.DISPLAY_NAME}")
 
 
 def is_fallback(p: dict | None) -> bool:
@@ -129,7 +167,7 @@ def set_quota(conn: psycopg.Connection, user_id: int, cny: float | None, note: s
         conn.execute("DELETE FROM ai_fallback_quota WHERE user_id = %s", (user_id,))
         return
     if not 0 <= cny <= 1000:
-        raise ValueError("额度要在 0–1000 元之间")
+        raise ValueError(L("额度要在 0–1000 元之间", "The quota must be between ¥0 and ¥1000"))
     conn.execute("""INSERT INTO ai_fallback_quota (user_id, monthly_cny, note) VALUES (%s, %s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET monthly_cny = EXCLUDED.monthly_cny, note = EXCLUDED.note,
                     updated_at = now()""", (user_id, cny, note))
@@ -151,6 +189,17 @@ def _calls_since(conn, user_id: int, since: datetime) -> int:
                         (user_id, KIND, since)).fetchone()["n"]
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def calls_today(conn, user_id: int) -> int:
+    """Model calls since the user's local midnight (their time zone): the RATE_PER_DAY counter."""
+    tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"] or "UTC"
+    start = _now().astimezone(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return _calls_since(conn, user_id, start)
+
+
 # ---------------------------------------------------------------- consent
 def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
     """The current (not revoked, current version) consent, or None. The owner (the admin who pays for it) needs none."""
@@ -164,7 +213,7 @@ def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
 
 def accept_consent(conn: psycopg.Connection, user_id: int, version: str, user_agent: str | None = None) -> None:
     if version != CONSENT_VERSION:
-        raise ValueError("托底 AI 的说明更新了，请刷新后再看一遍")
+        raise ValueError(L("托底 AI 的说明更新了，请刷新后再看一遍", "The backup AI terms were updated; reload and read them again"))
     if consent(conn, user_id) is None:
         conn.execute("INSERT INTO ai_fallback_consents (user_id, version, user_agent) VALUES (%s, %s, %s)",
                      (user_id, version, (user_agent or "")[:300] or None))
@@ -176,8 +225,9 @@ def revoke_consent(conn: psycopg.Connection, user_id: int) -> int:
 
 
 def consent_points(conn: psycopg.Connection, user_id: int) -> list[str]:
+    """In the request's language (English is a translation; the version stays the Chinese text's CONSENT_VERSION)."""
     q = quota_cny(conn, user_id)
-    return [p.format(quota=q) for p in CONSENT_POINTS]
+    return [p.format(quota=q) for p in (CONSENT_POINTS_EN if is_en() else CONSENT_POINTS)]
 
 
 # ---------------------------------------------------------------- global state and balance
@@ -197,7 +247,7 @@ def fetch_balance(key: str, timeout: float = 8) -> float:
         data = json.loads(resp.read())
     infos = [i for i in data.get("balance_infos") or [] if i.get("currency") == "CNY"]
     if not infos:
-        raise ValueError("余额接口没有返回人民币余额")
+        raise ValueError("余额接口没有返回人民币余额")  # admin only (CLI / doctor)
     return float(infos[0]["total_balance"])
 
 
@@ -229,15 +279,17 @@ def refresh_balance(conn: psycopg.Connection, force: bool = False) -> dict:
 def paused_reason(conn: psycopg.Connection, refresh: bool = True) -> tuple[str, str] | None:
     """Reasons that stop the fallback for everyone: (code, message) or None."""
     if read_key() is None:
-        return "fallback_off", "托底 AI 还没开通"
+        return "fallback_off", L("托底 AI 还没开通", "The backup AI is not set up yet")
     st = refresh_balance(conn) if refresh else state(conn)
     if not st.get("enabled"):
-        return "fallback_off", "托底 AI 已被管理员暂停"
+        return "fallback_off", L("托底 AI 已被管理员暂停", "The admin has paused the backup AI")
     if st.get("balance_error") == "HTTP 401":
-        return "fallback_paused", "托底 AI 暂停了（管理员的 key 失效，已经提醒他）"
+        return "fallback_paused", L("托底 AI 暂停了（管理员的 key 失效，已经提醒他）",
+                                    "The backup AI is paused (the admin's key stopped working; they have been told)")
     bal = st.get("balance_cny")
     if bal is not None and float(bal) < fp.BALANCE_STOP_CNY:
-        return "fallback_paused", "托底 AI 暂停了（管理员的余额不足，已经提醒他充值）"
+        return "fallback_paused", L("托底 AI 暂停了（管理员的余额不足，已经提醒他充值）",
+                                    "The backup AI is paused (the admin's balance is low; they have been told to top up)")
     return None
 
 
@@ -247,20 +299,21 @@ def summary(conn: psycopg.Connection, user_id: int, refresh: bool = False) -> di
     from ..profile import consent as main_consent
     spent, quota = month_spent_cny(conn, user_id), quota_cny(conn, user_id)
     c = consent(conn, user_id)
-    out = {"mode": "fallback", "kind": KIND, "display_name": f"托底 AI · {fp.DISPLAY_NAME}", "model": fp.MODEL,
+    out = {"mode": "fallback", "kind": KIND, "display_name": display_name(), "model": fp.MODEL,
            "status": "active", "vision": fp.VISION, "spent_cny": round(spent, 4), "quota_cny": quota,
            "remaining_cny": round(max(quota - spent, 0), 4), "reset_on": reset_on(conn, user_id).isoformat(),
            "consent": c is not None, "consent_version": CONSENT_VERSION,
            "consented_at": c.get("accepted_at") if c else None}
     reason = paused_reason(conn, refresh)
     if reason is None and main_consent.needs_consent(conn, user_id):
-        reason = ("needs_consent", "先在今天页同意健康数据使用同意书")
+        reason = ("needs_consent", L("先在今天页同意健康数据使用同意书", "First accept the health data consent on the Today page"))
     if reason is None and quota <= 0:
-        reason = ("fallback_off", "你的账号没有托底 AI 额度")
+        reason = ("fallback_off", L("你的账号没有托底 AI 额度", "Your account has no backup AI quota"))
     if reason is None and spent >= quota:
-        reason = ("quota", f"本月额度已用完，{out['reset_on'][5:]} 重置")
+        reason = ("quota", L(f"本月额度已用完，{out['reset_on'][5:]} 重置",
+                             f"This month's quota is used up; it resets on {out['reset_on']}"))
     if reason is None and c is None:
-        reason = ("fallback_consent", "第一次用托底 AI 要先同意")
+        reason = ("fallback_consent", L("第一次用托底 AI 要先同意", "Agree to the terms before using the backup AI for the first time"))
     out["available"] = reason is None
     out["reason"], out["message"] = reason if reason else (None, None)
     return out
@@ -290,18 +343,19 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
     spent, quota = s["spent_cny"], s["quota_cny"]
     extra = _quota_extra(s)
     if spent >= quota:
-        raise ChatError("quota", f"本月额度已用完（¥{spent:.2f} / ¥{quota:g}），{s['reset_on'][5:]} 重置；"
-                        "也可以在「我 → AI 设置」接入自己的 AI", status=402, **extra)
+        raise ChatError("quota", L(f"本月额度已用完（¥{spent:.2f} / ¥{quota:g}），{s['reset_on'][5:]} 重置；"
+                                   "也可以在「我 → AI 设置」接入自己的 AI",
+                                   f"This month's quota is used up (¥{spent:.2f} / ¥{quota:g}); it resets on {s['reset_on']}. "
+                                   "You can also connect your own AI in Me → AI settings"), status=402, **extra)
     if estimate_call_cny(system, history, tools()) > quota - spent:
-        raise ChatError("quota", f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
-                        "开一个新对话会省一些", status=402, **extra)
-    now = datetime.now(ZoneInfo("UTC"))
-    if _calls_since(conn, user_id, now - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
-        raise ChatError("rate_limit", "问得太快了，歇一分钟再问", status=429)
-    tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"] or "UTC"
-    day_start = datetime.now(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
-    if _calls_since(conn, user_id, day_start) >= fp.RATE_PER_DAY:
-        raise ChatError("rate_limit", "今天问得太多了，明天再来", status=429)
+        raise ChatError("quota", L(f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
+                                   "开一个新对话会省一些",
+                                   f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "
+                                   f"it resets on {s['reset_on']}. A new conversation costs less"), status=402, **extra)
+    if _calls_since(conn, user_id, _now() - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
+        raise ChatError("rate_limit", L("问得太快了，歇一分钟再问", "Too many questions at once; wait a minute"), status=429)
+    if calls_today(conn, user_id) >= fp.RATE_PER_DAY:
+        raise ChatError("rate_limit", L("今天问得太多了，明天再来", "That's all the questions for today; come back tomorrow"), status=429)
     return spent, quota
 
 

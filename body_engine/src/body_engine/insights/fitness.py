@@ -4,11 +4,13 @@ from datetime import date, timedelta
 
 import psycopg
 
+from ..i18n import L
 from . import healthspan as HS
 from .healthspan_store import _table_exists
 
 ZONES = ["Z1 50–60%", "Z2 60–70%", "Z3 70–80%", "Z4 80–90%", "Z5 ≥90%"]   # %HRmax (same set as TRIMP)
 LEVELS = ((80, "excellent", "优秀"), (60, "good", "良好"), (40, "average", "中等"), (20, "fair", "一般"), (0, "poor", "较差"))
+LEVELS_EN = {"excellent": "Excellent", "good": "Good", "average": "Average", "fair": "Fair", "poor": "Poor"}
 
 
 def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date) -> dict:
@@ -65,6 +67,7 @@ def vo2max(conn: psycopg.Connection, user_id: int, end: date, days: int = 365) -
             "readings": len(rows), "trend_per_year": trend,
             "monthly": [{"month": m, "avg": round(statistics.fmean(v), 1), "n": len(v)} for m, v in sorted(months.items())],
             "norm_median": round(HS.vo2_norm(age, sex), 1) if age is not None and sex else None,
-            "percentile": pct, "level": key, "level_zh": zh,
+            "percentile": pct, "level": key, "level_zh": zh,   # level_zh = data (AI); level_label = the page's language
+            "level_label": L(zh, LEVELS_EN[key]) if key else None,
             "norm_source": "FRIEND 2022 跑步机常模（Kaminsky 2022 Mayo Clin Proc），同龄同性别",
             "missing_reason": None if sex else "没填性别（users.sex），没法对照常模"}

@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="referrer" content="no-referrer"><meta name="robots" content="noindex,nofollow"><title>Watch2Whoop Handbook</title><style>
+:root{--bg:#f6f6f4;--card:#fff;--text:#1d1d1f;--muted:#6e6e73;--line:#e5e5e2;--accent:#0a7c5a;--on-accent:#fff;--accent-soft:#e3f3ec;--warn-soft:#fff4e0;--warn:#8a5a00}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--text:#f5f5f7;--muted:#a1a1a6;--line:#2c2c2e;--accent:#3ccf91;--on-accent:#00261a;--accent-soft:#0f2a20;--warn-soft:#2a2210;--warn:#f0c060}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif}
+main{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:28px;line-height:1.2;margin:8px 0 12px}h2{font-size:15px;letter-spacing:.06em;color:var(--muted);margin:36px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+h3{font-size:26px;line-height:1.25;font-weight:800;margin:30px 0 8px}
+p{margin:10px 0}ul,ol{padding-left:22px;margin:10px 0}li{margin:6px 0}li>ul,li>ol{margin:4px 0}
+a{color:var(--accent)}code{font:14px ui-monospace,Menlo,monospace;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:1px 5px;word-break:break-all}
+hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+blockquote{margin:12px 0;padding:10px 14px;background:var(--card);border-left:3px solid var(--line);border-radius:8px;color:var(--muted)}
+.shot{margin:10px 0;padding:12px 14px;border:1.5px dashed var(--line);border-radius:10px;color:var(--muted);font-size:14px}
+.card{background:var(--card);border-radius:16px;padding:18px;margin:16px 0;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.card.key{border:2px solid var(--accent)}
+.btn{display:block;text-align:center;background:var(--accent);color:var(--on-accent);text-decoration:none;font-weight:600;border-radius:12px;padding:14px;margin:12px 0}
+.qr{display:block;width:240px;max-width:80%;height:auto;margin:10px auto;background:#fff;padding:10px;border-radius:12px;image-rendering:pixelated}
+.mono{font:13px ui-monospace,Menlo,monospace;word-break:break-all;background:var(--bg);border-radius:8px;padding:10px;user-select:all;-webkit-user-select:all}
+.warn{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14px}
+.small{font-size:13px;color:var(--muted)}
+.shots{display:flex;gap:10px;justify-content:center;margin:10px 0 20px}
+.shots img{width:calc(50% - 5px);max-width:270px;height:auto;border-radius:16px;border:1px solid var(--line);background:#fff}
+.shots.one img{width:64%}
+.chat{display:flex;flex-direction:column;gap:8px;margin:14px 0;padding:14px;background:var(--card);border-radius:16px}
+.chat .b{max-width:85%;padding:9px 13px;border-radius:16px;font-size:15px;line-height:1.5}
+.chat .me{align-self:flex-end;background:var(--accent);color:var(--on-accent);border-bottom-right-radius:5px}
+.chat .ai{align-self:flex-start;background:var(--bg);border-bottom-left-radius:5px}
+.chat .who{display:block;font-size:11px;opacity:.7;font-weight:600}
+.tbl{overflow-x:auto;margin:12px 0}table{border-collapse:collapse;width:100%;font-size:15px;background:var(--card);border-radius:12px;overflow:hidden}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line)}th{font-size:13px;color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}td:first-child{white-space:nowrap}
+</style></head><body><main>
+<h1>Watch2Whoop Handbook</h1>
+<p><a href="../">中文</a> · English</p>
+
+<p><b>Watch2Whoop is a body database for your AI.</b> Your Apple Watch data flows in automatically and becomes recovery, sleep and strain scores; every meal, workout and lab report you mention is stored, and your AI can pull it up and analyse it at any time.</p>
+<p><b>You need an AI.</b> There are no input boxes and no &quot;log&quot; buttons here: what you ate, how you trained, your weight, lab reports, anything that feels off — you <b>tell your AI</b>, by typing, a screenshot or a photo, and it logs it for you. The pages are only for looking at charts and scores.</p>
+<blockquote>Screenshots in this edition still show the Chinese interface; they will be replaced with English ones once the English interface ships.</blockquote>
+<div class="shots one"><img loading="lazy" alt="Today page" src="img/today.jpg"></div>
+<h2 id="contents">Contents</h2>
+<ul><li><a href="#how-to-use-just-talk-to-your-ai">How to use: just talk to your AI</a>
+</li><li><a href="#before-you-start">Before you start</a>
+</li><li><a href="#set-up-the-app">Set up the app</a>
+</li><li><a href="#connect-your-ai-the-core">Connect your AI (the core)</a>
+</li><li><a href="#faq">FAQ</a>
+</li></ul>
+<h2 id="how-to-use-just-talk-to-your-ai">How to use: just talk to your AI</h2>
+<p><b>One rule: whatever you want to log or ask, say it to your AI.</b> No buttons to find, no forms to fill in; type, speak, send a photo or a screenshot. The AI reads your data, logs things and does the maths; the pages just show the results. Haven&#x27;t connected an AI yet? See &quot;Connect your AI&quot; first.</p>
+<p>Here are some real-world requests. Use them as they are or in your own words.</p>
+<p><b>Meals</b></p>
+<ul><li>(photo of lunch) Log my lunch
+</li><li>Breakfast: two eggs, a glass of unsweetened soy milk, a slice of wholemeal bread
+</li><li>Dinner was the same as yesterday
+</li><li>I only ate half the rice at that meal, fix it
+</li><li>Delete the entry I just logged by mistake
+</li><li>How much protein am I still short today? What should I have for dinner?
+</li><li>Save &quot;egg and oats breakfast&quot; as a quick meal
+</li></ul>
+<p><b>Training</b></p>
+<ul><li>Plan next week&#x27;s training for me, 4 days a week
+</li><li>My recovery is poor today, swap in something lighter
+</li><li>I&#x27;m busy on Wednesday, move leg day to Thursday
+</li><li>Chest today: bench press 4×8 60 kg, incline dumbbell press 3×10 20 kg
+</li><li>My shoulder hurts, stop giving me overhead presses
+</li><li>How many times did I train this week? Which muscle group am I neglecting?
+</li></ul>
+<p><b>Weight, sugar, supplements, labs</b></p>
+<ul><li>Weight this morning 78.4
+</li><li>(photo of the scale) Log this
+</li><li>How much added sugar have I had today? How much is left?
+</li><li>I take one fish-oil capsule and 5 g of creatine a day, add them
+</li><li>I&#x27;ve stopped the fish oil
+</li><li>(photo of a lab report) Enter these results
+</li><li>How has my uric acid trended over the last few tests?
+</li></ul>
+<p><b>Recipes and shopping</b></p>
+<ul><li>Suggest a few high-protein, low-fat dinners
+</li><li>Log one serving of &quot;tomato chicken pasta&quot;
+</li><li>Save this recipe: (paste the recipe)
+</li><li>Make a shopping list from this week&#x27;s menu
+</li><li>Bought the milk and eggs, tick them off the list
+</li><li>What can I cook for dinner with what&#x27;s at home?
+</li></ul>
+<p><b>Understand your scores, plan your day</b></p>
+<ul><li>How&#x27;s my recovery today? Should I train?
+</li><li>Why is my recovery score so low today?
+</li><li>How did I sleep last night? When should I go to bed tonight?
+</li><li>How is my body age calculated? How can I improve it?
+</li><li>How much more strain can I take today?
+</li></ul>
+<p><b>Reviews and reports</b></p>
+<ul><li>Give me this week&#x27;s report
+</li><li>Compared with last month, how have my weight and sleep changed?
+</li><li>Which habits have affected my recovery the most lately?
+</li><li>Note: headache this afternoon, had a coffee
+</li></ul>
+<h3 id="something-wrong-or-found-a-bug-ask-your-ai-too">Something wrong or found a bug? Ask your AI too</h3>
+<p>Not sure how something works, the data looks wrong, a number makes no sense — ask your AI first. It can see your data, so most questions get answered on the spot.</p>
+<ul><li>Why is today&#x27;s step count lower than on my watch?
+</li><li>Why didn&#x27;t last night&#x27;s sleep sync?
+</li><li>What does &quot;strain&quot; on this page mean?
+</li><li>I think this is a bug: (screenshot)
+</li></ul>
+<p>If it looks like a bug, give the AI the screenshot and what happened; it will turn it into a clear description you can forward to your admin. Later the AI will report bugs to the developers directly.</p>
+<h2 id="before-you-start">Before you start</h2>
+<p><b>On iPhone, Watch2Whoop is used through its app; on a computer, in a browser.</b> The iPhone web version (Safari, &quot;Add to Home Screen&quot;) is retired; opening it there points you to the app.</p>
+<ul><li><b>Activation link</b>: a link (or QR code) your admin sends to you alone. Don&#x27;t forward it. It can be reused: after switching phones or reinstalling the app, just tap it again.
+</li><li><b>TestFlight invitation email</b>: sent to your Apple ID email address.
+</li><li><b>An AI</b>: see &quot;Connect your AI&quot;.
+</li></ul>
+<h2 id="set-up-the-app">Set up the app</h2>
+<h3 id="①-install-the-app">① Install the app</h3>
+<p>Open the TestFlight invitation email → &quot;View in TestFlight&quot; → install TestFlight from the App Store as prompted → &quot;Accept&quot; → &quot;Install&quot;.</p>
+<h3 id="②-tap-the-activation-link">② Tap the activation link</h3>
+<p>On your iPhone, tap the activation link from your admin (or scan the QR code with the camera) → &quot;Open the app to finish setup&quot; → when &quot;Open in Watch2Whoop&quot; pops up, tap &quot;Open&quot;.</p>
+<div class="shots one"><img loading="lazy" alt="Activation page" src="img/activate.jpg"></div>
+
+<p>Server, health sync and Today page sign-in are all set up in one go — <b>no codes to type</b>.</p>
+<h3 id="③-allow-health-access">③ Allow Health access</h3>
+<p>&quot;Turn On All&quot; → &quot;Allow&quot;. Read-only; nothing is written to Health.</p>
+<div class="shots one"><img loading="lazy" alt="Turn On All" src="img/health-permission.jpg"></div>
+<h3 id="④-consent">④ Consent</h3>
+<p>Tick the consent box → &quot;Agree and continue&quot; → fill in your profile → &quot;Save&quot;.</p>
+<div class="shots"><img loading="lazy" alt="Consent" src="img/consent.jpg"><img loading="lazy" alt="Profile" src="img/profile.jpg"></div>
+<h3 id="⑤-connect-your-ai">⑤ Connect your AI</h3>
+<p>See the next section, &quot;Connect your AI&quot;.</p>
+<h3 id="⑥-wait-for-the-first-sync">⑥ Wait for the first sync</h3>
+<p>The first sync pulls the last 90 days and takes a few minutes to a quarter of an hour: keep the app open and the phone unlocked. After that the app syncs in the background on its own.</p>
+<h3 id="⑦-read-older-history-optional">⑦ Read older history (optional)</h3>
+<p>During setup you can pick &quot;Last 90 days&quot; (default) or &quot;All history&quot;. To get older data later: &quot;Me&quot; → &quot;Phone sync&quot; → &quot;Read range&quot; → &quot;All history&quot;. The app reads Health directly, no export file needed; a lot of data can take from tens of minutes to a few hours: keep the app open and the phone unlocked, and if it stops it carries on the next time you open the app. The Today page shows &quot;Importing history x%&quot;.</p>
+<h3 id="on-a-computer">On a computer</h3>
+<p>Open <code>body.example.com/app</code> in a browser. The first time: opening your activation link on the computer signs you in right away; you can also sign in with an e-mail code.</p>
+<h2 id="connect-your-ai-the-core">Connect your AI (the core)</h2>
+<p>Once the app is set up (steps above), tap &quot;Me&quot; at the bottom → &quot;AI settings&quot; at the very bottom. Pick one of three ways.</p>
+<div class="shots"><img loading="lazy" alt="AI settings" src="img/me-ai.jpg"><img loading="lazy" alt="Add / connect a client" src="img/ai-settings.jpg"></div>
+<p>&quot;Jarvis uses&quot; at the top of &quot;AI settings&quot; picks which AI is active (the fallback AI is always there); you can also tap the name at the top of the chat to switch. If your own AI is disabled or deleted, Jarvis falls back to the fallback AI automatically.</p>
+<h3 id="option-1-jarvis-fallback-ai-the-easiest">Option 1: Jarvis fallback AI (the easiest)</h3>
+<p>No account to sign up for; it works as soon as it&#x27;s enabled. It runs on DeepSeek, about ¥3 a month. The first time you use it, it asks whether you agree to send your body data to DeepSeek for processing; it only works after you agree.</p>
+<h3 id="option-2-your-own-api-key">Option 2: your own API key</h3>
+<p>&quot;AI settings&quot; → &quot;Add&quot; → under &quot;Source&quot; pick the provider you have a key for (for DeepSeek or Qwen choose &quot;OpenAI-compatible API&quot;; for a free Google AI Studio key tick &quot;Free tier&quot;) → fill in the model, API endpoint, API key and monthly budget → &quot;Save&quot;.</p>
+<div class="shots"><img loading="lazy" alt="Pick a source" src="img/ai-kinds.jpg"><img loading="lazy" alt="Enter the API key" src="img/ai-api.jpg"></div>
+<p>The key is uploaded once and afterwards only its last 4 characters are shown; it stops automatically when the monthly budget is used up. The Gemini free tier has request limits, so you may have to wait; on the free tier Google may also use what you send to improve its products — if that bothers you, use a paid key or another option.</p>
+<h3 id="option-3-your-claude--chatgpt--google-ai-subscription">Option 3: your Claude / ChatGPT / Google AI subscription</h3>
+<p>For people who use the Claude desktop app / Claude Code, Codex, or Antigravity on a computer. &quot;AI settings&quot; → &quot;Add&quot; → choose &quot;Claude subscription&quot;, &quot;ChatGPT subscription&quot; or &quot;Google AI Pro / Ultra subscription (Antigravity)&quot; → &quot;Save&quot; → &quot;Connect a client (MCP)&quot; → pick the client → &quot;Generate token&quot;, then follow the 3 on-screen steps on your computer.</p>
+<p><b>Claude web / mobile and ChatGPT (developer mode) need no token</b>: add the address shown at the top of &quot;Connect a client (MCP)&quot; as a connector there; it opens the Today page, check the app name and the return address, then tap &quot;Approve&quot;. Connected apps are listed under &quot;Connect a client (MCP)&quot; and can be disconnected at any time. Personal ChatGPT plans may only be able to read, not write, for now.</p>
+<p>Google AI Pro / Ultra: use Antigravity (desktop app, IDE or the <code>agy</code> CLI; Antigravity&#x27;s free tier works too, with lower limits). Gemini CLI no longer accepts subscription sign-in since 2026-06-18 and only works with a paid Gemini API key. The Gemini web / mobile app&#x27;s &quot;custom apps&quot; are open to users in the US only, so they cannot connect for now.</p>
+<div class="shots one"><img loading="lazy" alt="Connect a client (MCP)" src="img/ai-mcp.jpg"></div>
+<p>The token is shown only once; when you no longer need it, &quot;Revoke&quot; it in the same place.</p>
+<h3 id="chat-with-jarvis-in-the-app">Chat with Jarvis in the app</h3>
+<p>Tap &quot;Jarvis&quot; at the bottom of any page to start a chat. If no AI is set up yet, it points you to &quot;AI settings&quot;.</p>
+<div class="shots one"><img loading="lazy" alt="Jarvis" src="img/jarvis-none.jpg"></div>
+<div class="chat"><div class="b me"><span class="who">You</span>(photo of lunch) Log my lunch</div><div class="b ai"><span class="who">AI</span>I see about 150 g of rice, about 120 g of steamed fish, stir-fried greens… about 620 kcal and 38 g of protein in total. Log it as today&#x27;s lunch?</div><div class="b me"><span class="who">You</span>(screenshot of a lab report) Enter these</div><div class="b ai"><span class="who">AI</span>I read 12 results: uric acid 480 μmol/L (high), ALT 41 U/L… Enter them as the labs from 18 October?</div><div class="b me"><span class="who">You</span>Legs today, 50 minutes, squat 5×5 100 kg</div><div class="b me"><span class="who">You</span>How&#x27;s my recovery today? Should I train?</div></div>
+<p>Before writing anything, the AI asks you to confirm; nothing is logged until you do.</p>
+<p>Three buttons next to the input box:</p>
+<div class="tbl"><table><thead><tr><th>Button</th><th>What it does</th></tr></thead><tbody><tr><td>📷 Photo</td><td>Take a photo or pick from the library, up to 8 at a time (meals, the scale, lab reports, watch screenshots)</td></tr><tr><td>🎬 Video</td><td>Pick a video; up to 8 frames are extracted, and any speech in it is transcribed into the input box first</td></tr><tr><td>🎤 Hold to talk</td><td>Hold to speak, release to transcribe (up to 60 seconds); the text goes into the input box so you can check and fix it before sending; slide up to cancel</td></tr></tbody></table></div>
+<p>Speech is transcribed on the server, never sent to a third party, and the recording is deleted right after. <b>If 🎤 does nothing, or says recording isn&#x27;t available here</b>: tap the input box and use the 🎤 dictation key on the keyboard — it works just as well.</p>
+<h2 id="faq">FAQ</h2>
+<p><b>How do I log things?</b> Tell your AI — see <a href="#how-to-use-just-talk-to-your-ai">How to use: just talk to your AI</a>. There&#x27;s no input box on the pages on purpose.</p>
+<p><b>Stuck at &quot;Enter the 8-character invite code&quot;</b>: you don&#x27;t need to type it. Go back to the home screen and tap the activation link again; the app sets itself up.</p>
+<p><b>The activation link doesn&#x27;t open the app</b>: first make sure Watch2Whoop is installed through TestFlight (without the app, the activation page shows the install steps); open the link in Safari, not directly inside WeChat (in WeChat, choose &quot;Open in browser&quot; first). No TestFlight invitation e-mail: ask your admin to add your Apple ID as a tester.</p>
+<p><b>Data isn&#x27;t updating</b>: open the app and keep the phone unlocked for a few dozen seconds; iPhone doesn&#x27;t allow reading Health data while locked, and it catches up once unlocked.</p>
+<p><b>Used to sync with a Shortcut</b>: once the app syncs properly, delete the health-sync automations under Shortcuts → &quot;Automation&quot; to avoid duplicates and errors. The iPhone web version and Shortcut syncing are retired; the old handbook (Chinese) is kept only as an archive: <a href="../web/">here</a>.</p>
+<p><b>New phone / reinstalled the app</b>: tap the same activation link again; your consent and profile carry over.</p>
+<p><b>Privacy</b>: only you can see your data; see the consent form for details. When you use an AI, the conversation is sent to the AI service you chose.</p>
+<p><b>Export / delete your data</b>: ask your admin.</p>
+
+</main></body></html>
