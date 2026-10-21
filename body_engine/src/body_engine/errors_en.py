@@ -214,6 +214,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
     ("商品链接 1–{} 字", "Product link: 1–{} characters"),
+    ("超市只能是 {}", "Supermarkets can only be: {}"),
     ("不是 {} 的商品页（要 /product/… 或 /shop/productdetails/<编号>/…）", "Not a {} product page (needs /product/… or /shop/productdetails/<id>/…)"),
     # ---- authorization
     ("没有查看用户 {} 的 {} 的授权", "No permission to view the {2} of user {1}"),

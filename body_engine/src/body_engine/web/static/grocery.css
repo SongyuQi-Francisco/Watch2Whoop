@@ -25,3 +25,6 @@
 .gstore { font-size: 11px; font-weight: 600; padding: 4px 7px; border-radius: 6px; text-decoration: none; color: var(--text-2); border: 1px solid var(--hair); line-height: 1.2; }
 .gstore.on { background: var(--surface-2); color: var(--text); border-color: transparent; }
 .gstore:active { opacity: .7; }
+.gconn { display: flex; gap: 8px; flex-wrap: wrap; }
+.gconn-b { font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--hair); background: none; color: var(--text-2); cursor: pointer; }
+.gconn-b[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: transparent; }

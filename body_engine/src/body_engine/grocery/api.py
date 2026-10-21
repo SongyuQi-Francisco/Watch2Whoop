@@ -97,9 +97,25 @@ class PantryEntry(BaseModel):
     product_id: int | None = None
 
 
+class StoresIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    connected: list[str] = Field(max_length=10, description="已连接的超市：coles / woolworths，[] = 都不连")
+
+
 class PantryIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     items: list[PantryEntry] = Field(min_length=1)
+
+
+@router.get("/stores")
+def get_stores(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Connected supermarkets (issue #44): store links / prices are shown only for these. None by default."""
+    return store.stores_view(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.put("/stores")
+def put_stores(user: str, body: StoresIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(store.set_connected_stores, conn, _self(viewer, user), body.connected)
 
 
 @router.get("/products")

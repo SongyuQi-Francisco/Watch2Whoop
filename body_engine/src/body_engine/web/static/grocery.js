@@ -6,13 +6,16 @@
    Store links (item.links / product.links from the server: the saved Coles / Woolworths product page, else a search by name) are plain
    <a href>s next to the row. Inside the iOS app (window.Watch2Whoop) no target: the WebView's navigation delegate hands cross-origin
    main-frame links to the system, which opens the store app through universal links (a target=_blank link would do nothing there).
-   In a browser they open in a new tab so the Today page stays. The page never loads the store sites itself. */
+   In a browser they open in a new tab so the Today page stays. The page never loads the store sites itself.
+   Links are only for the supermarkets the user has connected (issue #44, none by default): the 「超市」 chips at the bottom
+   (GET / PUT …/grocery/stores, own page only) switch them; the server filters links, this page only re-renders. */
 (() => {
   "use strict";
   let C = null;
   let info = null;
   let list = null;      // last GET /grocery/list
   let products = null;  // last GET /grocery/products
+  let stores = null;    // last GET /grocery/stores (own page only)
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -81,13 +84,36 @@
     const unitP = p.unit_price != null ? `${money(p.unit_price, p.currency)} / ${p.package_unit === "pcs" ? tr("个") : p.package_unit === "ml" ? "L" : "kg"}` : null;
     const flags = (p.flags || []).map((f) => badge("mid", f)).join("");
     C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}
-      ${kv(tr("品牌"), p.brand)}${kv(tr("门店"), p.store)}${(p.links || []).length ? `<div class="kv"><span class="k">${tr("链接")}</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv(tr("类别"), p.category_label)}${kv(tr("规格"), p.size_label)}
+      ${kv(tr("品牌"), p.brand)}${kv(tr("门店"), p.store_label)}${(p.links || []).length ? `<div class="kv"><span class="k">${tr("链接")}</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv(tr("类别"), p.category_label)}${kv(tr("规格"), p.size_label)}
       ${kv(tr("价格"), p.price != null ? money(p.price, p.currency) : null)}${kv(tr("单价"), unitP)}${kv(tr("价格日期"), p.price_on ? md(p.price_on) : null)}
       <div class="ghead" style="margin-top:16px"><span>${esc(tr("每 {per}", { per }))}</span></div>
       ${kv(tr("热量"), n.kcal != null ? `${num(n.kcal, 0)} kcal` : null)}${kv(tr("蛋白质"), n.protein_g != null ? `${num(n.protein_g)} g` : null)}
       ${kv(tr("碳水"), n.carbs_g != null ? `${num(n.carbs_g)} g` : null)}${kv(tr("脂肪"), n.fat_g != null ? `${num(n.fat_g)} g` : null)}
       ${kv(tr("饱和脂肪"), n.sat_fat_g != null ? `${num(n.sat_fat_g)} g` : null)}${kv(tr("糖"), n.sugar_g != null ? `${num(n.sugar_g)} g` : null)}
       ${kv(tr("钠"), n.sodium_mg != null ? `${num(n.sodium_mg, 0)} mg` : null)}${p.nutrition_source ? kv(tr("来源"), p.nutrition_source) : ""}${p.barcode ? kv(tr("条码"), p.barcode) : ""}`);
+  }
+
+  function storesHtml() {
+    if (!stores || stores.error) return "";
+    return `<div class="section-head"><h2>${esc(tr("超市"))}</h2></div><div class="gconn">${stores.stores.map((s) =>
+      `<button class="gconn-b" data-gs="${esc(s.key)}" aria-pressed="${s.connected}">${esc(s.label)}</button>`).join("")}</div>`;
+  }
+
+  async function toggleStore(key) {
+    const next = stores.stores.filter((s) => (s.key === key ? !s.connected : s.connected)).map((s) => s.key);
+    try {
+      stores = await C.api("/v1/users/me/grocery/stores", { method: "PUT", body: { connected: next } });
+      [list, products] = await Promise.all([C.api(`${base()}/list${info.date ? `?week=${encodeURIComponent(info.date)}` : ""}`), C.api(`${base()}/products`)]);
+    } catch (e) {
+      C.toast(e.message || tr("没有保存"));
+      return;
+    }
+    const box = $("#grocery");
+    if (!box) return;
+    $("#g-list", box).innerHTML = listHtml();
+    $("#g-products", box).innerHTML = productsHtml();
+    $("#g-stores", box).innerHTML = storesHtml();
+    bind(box);
   }
 
   function paint(view) {
@@ -117,18 +143,21 @@
   function bind(root) {
     for (const b of root.querySelectorAll("[data-gi]")) b.onclick = () => tick(b.dataset.gi);
     for (const b of root.querySelectorAll("[data-gp]")) b.onclick = () => productSheet(b.dataset.gp);
+    for (const b of root.querySelectorAll("[data-gs]")) b.onclick = () => toggleStore(b.dataset.gs);
   }
 
   async function foodShop(i) {
     info = i;
     const wk = i.date ? `?week=${encodeURIComponent(i.date)}` : "";
-    [list, products] = await Promise.all([
+    [list, products, stores] = await Promise.all([
       C.api(`${base()}/list${wk}`).catch((e) => ({ error: e })),
       C.api(`${base()}/products`).catch((e) => ({ error: e })),
+      i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
       <div class="section"><div class="section-head"><h2>${esc(tr("商品库"))}</h2><span class="small muted">${Array.isArray(products) ? products.length : ""}</span></div>
-        <input class="search" id="g-q" type="search" placeholder="${esc(tr("搜索"))}" value="${esc(q)}" aria-label="${esc(tr("搜索商品"))}"><div id="g-products">${productsHtml()}</div></div></div>`;
+        <input class="search" id="g-q" type="search" placeholder="${esc(tr("搜索"))}" value="${esc(q)}" aria-label="${esc(tr("搜索商品"))}"><div id="g-products">${productsHtml()}</div></div>
+      <div class="section" id="g-stores">${storesHtml()}</div></div>`;
   }
 
   function bindFoodShop(view) {

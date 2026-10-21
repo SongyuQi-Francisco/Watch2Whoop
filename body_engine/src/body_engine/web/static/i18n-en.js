@@ -735,6 +735,8 @@ I18N.addEn({
   // training day changes (#17)
   "原计划": "Original plan",
   "已调整": "Changed",
+  // connected supermarkets (#49)
+  "超市": "Supermarkets",
   // training log link (#71)
   "已启用：{name} · 训练记录未同步": "Now using: {name} · training log not synced",
   "已连接": "Connected",

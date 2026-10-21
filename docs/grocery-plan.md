@@ -57,6 +57,8 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 1. 商品存了商品页 → 只给这个链接（实心小标签）；
 2. 否则按名字搜（空心小标签）：Coles `https://www.coles.com.au/search/products?q=`、Woolworths `https://www.woolworths.com.au/shop/search/products?searchTerm=`。门店字段是 Coles / Woolworths（含 Woolies）→ 只给那一家；门店空 → 两家都给；别的门店（Aldi、Costco、菜市场）→ 不给。搜索词用英文：英文名（加品牌），否则 `matches` 里第一个英文名（「鸡胸肉」→「chicken breast」），都没有才用原名。
 
+**已连接的超市（issue #44）**：超市链接不是默认的。每个人在今天页「饮食 → 采购」底部的「超市」里点亮自己用的超市（目前 Coles、WWS = Woolworths），或者对 AI 说「我用 Coles」（`set_stores`）；存在表 `grocery_settings`（迁移 270），接口 `GET / PUT /v1/users/{user}/grocery/stores`。**一个都没连接时不显示任何超市按钮**；连接了以后只给已连接的那几家（存了商品页但那家没连接 → 不显示，`save_product` 返回 `store_not_connected` 让 AI 问要不要连接）。界面上 Woolworths 一律显示 **WWS**（`params.STORES` 的 label；门店字段写 Woolworths / Woolies / WWS 都认）。商品和链接仍然由 AI 添加，界面不提供手动表单。
+
 **iPhone 上怎么打开**：商品页和 Woolworths 搜索是 universal link，会直接开门店 app；Coles 搜索只开 Safari。在 Watch2Whoop app 里链接不带 `target`：WebView 的导航代理（`apps/watch2whoop/lib/src/pages/home_page.dart` 的 `_onNavigation`）把跨域的主框架跳转交给系统，系统按 universal link 开 app（和「问管家」打开 Claude app 是同一条路）；浏览器里在新标签页打开，今天页留着。**不需要新的 TestFlight 版本**。
 
 **条码 → 营养（可选）**：`lookup_barcode` / `body-engine lookup-barcode <条码>` 查 Open Food Facts 的商品接口（`grocery/off.py`）：名字、品牌、规格、每 100g 营养（钠 g → mg）。
