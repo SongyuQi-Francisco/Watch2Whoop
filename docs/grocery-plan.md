@@ -31,7 +31,7 @@
 - 勾掉一行（今天页点一下，或 AI 调 `mark_bought`）→ `bought_at`，存货加上这一行的购买量；取消勾选再减回去。
 - 告诉 AI 实付价格 → 按包数折成单价，更新商品库价格和日期。
 - 做饭 / 记餐暂时不自动扣存货（粗略即可）：用户说「鸡蛋吃完了」时 AI 调 `set_pantry`。
-- **今天页看得到存货（#102，迁移 490）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
+- **今天页看得到存货（#102，迁移 495）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
 
 ## 4. 接口和工具
 接口（前缀 `/v1/users/{user}/grocery`，scope `nutrition`）：`GET /products?q=&category=`、`POST /products`、`PATCH /products/{id}`、`DELETE /products/{id}`；`GET /list?week=`（周内任一天，默认本周）、`POST /list/generate`、`POST /list/items`、`PATCH /list/items/{id}`（bought、paid_price）、`DELETE /list/items/{id}`；`GET /pantry`、`PUT /pantry`。
