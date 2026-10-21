@@ -77,6 +77,7 @@ NO_DATA = {
     "feedback-mode": "setting",
     "ai-choice": "setting", "ai-fallback": "setting", "ai-fallback/consent": "setting",
     "ai-providers": "setting", "ai-providers/{x}": "setting", "ai-tokens": "setting", "ai-tokens/{x}": "setting",
+    "ai-connections/{x}": "setting: disconnect an OAuth connection (ai/oauth.py)",
     "consent": "account", "intro": "account", "invite-code": "account",
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
 }
