@@ -249,7 +249,8 @@ def make_adapter(provider: dict, user_id: int) -> adapters.Adapter:
     except Exception:  # Bad authentication tag: the master key was changed or the data is corrupted
         raise ChatError("bad_secret", L("保存的 API key 解不开了，请在「AI 设置」里重新填一次",
                                         "The saved API key can no longer be read; enter it again in AI settings"))
-    return adapters.make(provider["kind"], provider["model"], key, provider["base_url"])
+    web = bool(provider.get("web_tools")) and provider["kind"] in catalog.WEB_TOOL_KINDS   # never the fallback (returned above)
+    return adapters.make(provider["kind"], provider["model"], key, provider["base_url"], web=web)
 
 
 def _usage_event(provider: dict, usage: dict, cost: float, spent: float, budget: float) -> dict:

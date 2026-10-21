@@ -96,7 +96,7 @@ def test_robots_rfc9309_longest_match():
 def test_common_parsers():
     assert C.parse_size("500g") == (500, "g") and C.parse_size("1.5kg") == (1500, "g") and C.parse_size("2L") == (2000, "ml")
     assert C.parse_size("6 x 330mL") == (1980, "ml") and C.parse_size("12 Pack") == (12, "pcs")
-    assert C.parse_size("approx. 1.6kg each") == (1600, "g") and C.parse_size("each") == (None, None)
+    assert C.parse_size("approx. 1.6kg each") == (1600, "g") and C.parse_size("each") == (1, "pcs") and C.parse_size("bunch") == (None, None)
     assert C.parse_comparable("$19.60/ 1kg") == (19.6, "kg") and C.parse_comparable("$3.85/ 100mL") == (38.5, "L")
     assert C.parse_comparable("$1.59/ 100g") == (15.9, "kg") and C.parse_comparable("$2.63/ 1ea") == (2.63, "ea")
     assert C.parse_comparable(None) == (None, None)
@@ -279,7 +279,7 @@ def test_offers_on_list_and_specials(conn, users, on):
     assert by["鸡胸肉"]["est_cost"] == 11.0 and "est_from" not in by["鸡胸肉"]     # the user's own price stays the estimate
     assert by["希腊酸奶"]["offer"]["sku"] == "9000007" and by["希腊酸奶"]["est_cost"] == 4.0 and by["希腊酸奶"]["est_from"] == "coles"
     assert by["西兰花"]["offer"]["half_price"] and "offer" not in by["纸巾"]
-    assert lst["half_price"]["items"] == 3 and lst["half_price"]["save"]["AUD"] == 13.0 + 4.0 + 1.5
+    assert lst["half_price"]["items"] == 3 and lst["half_price"]["save"]["AUD"] == 13.0 + 4.0 + 2 * 1.5   # broccoli "each" x 2
     # the user's saved store page wins over fuzzy matching
     store.save_product(conn, a, {"product_url": "https://www.coles.com.au/product/testfarm-chicken-breast-fillets-large-pack-9000003"},
                        chicken["id"])

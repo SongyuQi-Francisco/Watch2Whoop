@@ -41,12 +41,13 @@ def _save(conn, run_id: int, day: date, week: date, cat: str, products: list[dic
                 VALUES (%s, %s, {', '.join(['%s'] * len(COLS))}, %s, %s, TRUE)
                 ON CONFLICT (store, sku) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in COLS if c != 'category')},
                   category = coalesce(store_products.category, EXCLUDED.category), last_seen = EXCLUDED.last_seen,
-                  active = TRUE, updated_at = now()
+                  active = TRUE, origin = 'sync', updated_at = now()
                 RETURNING id""",
             (p["store"], p["sku"], *vals.values(), day, day)).fetchone()
-        conn.execute("""INSERT INTO price_observations (store_product_id, observed_on, price, was_price, unit_price, special_type, run_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (store_product_id, observed_on) DO UPDATE SET price = EXCLUDED.price,
+        conn.execute("""INSERT INTO price_observations (store_product_id, observed_on, observed_at, source, price, was_price, unit_price,
+                                                        special_type, run_id)
+                        VALUES (%s, %s, now(), 'sync', %s, %s, %s, %s, %s)
+                        ON CONFLICT (store_product_id, observed_on) WHERE user_id IS NULL DO UPDATE SET price = EXCLUDED.price,
                           was_price = EXCLUDED.was_price, unit_price = EXCLUDED.unit_price, special_type = EXCLUDED.special_type,
                           run_id = EXCLUDED.run_id""",
                      (row["id"], day, p.get("price"), p.get("was_price"), p.get("unit_price"), p.get("special_type"), run_id))
@@ -108,7 +109,8 @@ def run_store(conn: psycopg.Connection, store: str, *, force: bool = False, max_
         conn.rollback()
         status, error = "failed", f"{e.__class__.__name__}: {e}"
     if status == "ok":   # a complete run: what it did not see is gone / no longer on special
-        conn.execute("UPDATE store_products SET active = FALSE, updated_at = now() WHERE store = %s AND active AND NOT (sku = ANY(%s))",
+        conn.execute("UPDATE store_products SET active = FALSE, updated_at = now() WHERE store = %s AND origin = 'sync' AND active "
+                     "AND NOT (sku = ANY(%s))",
                      (store, list(seen)))
         conn.execute("""DELETE FROM weekly_specials w USING store_products s WHERE w.store_product_id = s.id AND w.store = %s
                           AND w.week_start = %s AND NOT (s.sku = ANY(%s))""", (store, week, list(seen)))
@@ -139,7 +141,7 @@ def status(conn: psycopg.Connection) -> dict:
                                    (SELECT count(*) FROM weekly_specials w WHERE w.store = %s AND w.week_start = %s) AS specials,
                                    (SELECT count(*) FROM weekly_specials w WHERE w.store = %s AND w.week_start = %s
                                       AND w.special_type = 'half_price') AS half_price
-                                 FROM store_products WHERE store = %s""",
+                                 FROM store_products WHERE store = %s AND origin = 'sync'""",
                               (store, specials_week(day), store, specials_week(day), store)).fetchone()
         stale = store in out["enabled"] and (ok is None or ok["started_at"].astimezone(ZoneInfo(P.TZ)).date()
                                               < day - timedelta(days=P.STALE_DAYS))
@@ -156,12 +158,20 @@ def status(conn: psycopg.Connection) -> dict:
 
 
 def purge(conn: psycopg.Connection, store: str | None = None) -> dict:
-    """Kill switch: delete every scraped row (products, price history, specials, run log) for one store or all."""
+    """Kill switch: delete every scraped row (catalogue products, sync price history, specials, run log) for one store or all.
+    Users' own data stays: a scraped product a user has linked (record_store_prices) becomes a plain pool row without the scraped
+    prices; their own price observations and purchases are untouched (docs/grocery-plan.md §9)."""
     if store is not None and store not in FETCHERS:
         raise ValueError(f"不认识的超市：{store}")
-    where, args = ("WHERE store = %s", (store,)) if store else ("", ())
-    n = conn.execute(f"DELETE FROM store_products {where}", args).rowcount   # cascades to price_observations / weekly_specials
-    conn.execute(f"DELETE FROM weekly_specials {where}", args)
-    runs = conn.execute(f"DELETE FROM grocery_sync_runs {where}", args).rowcount
+    cond, args = ("AND store = %s", (store,)) if store else ("", ())
+    conn.execute(f"""DELETE FROM price_observations WHERE user_id IS NULL AND store_product_id IN
+                       (SELECT id FROM store_products WHERE origin = 'sync' {cond})""", args)
+    conn.execute(f"DELETE FROM weekly_specials WHERE TRUE {cond}", args)
+    n = conn.execute(f"""DELETE FROM store_products s WHERE origin = 'sync' {cond}
+                           AND NOT EXISTS (SELECT 1 FROM user_store_products u WHERE u.store_product_id = s.id)""", args).rowcount
+    kept = conn.execute(f"""UPDATE store_products SET origin = 'user', price = NULL, was_price = NULL, unit_price = NULL,
+                              unit_price_unit = NULL, special_type = NULL, special_label = NULL, save_amount = NULL, multibuy_qty = NULL,
+                              multibuy_unit_price = NULL, category = NULL, updated_at = now() WHERE origin = 'sync' {cond}""", args).rowcount
+    runs = conn.execute(f"DELETE FROM grocery_sync_runs WHERE TRUE {cond}", args).rowcount
     conn.commit()
-    return {"store": store or "all", "products_deleted": n, "runs_deleted": runs}
+    return {"store": store or "all", "products_deleted": n, "kept_linked_by_users": kept, "runs_deleted": runs}

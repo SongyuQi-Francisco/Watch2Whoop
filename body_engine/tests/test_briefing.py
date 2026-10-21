@@ -67,10 +67,11 @@ def test_tool_definitions_budget():
     52.5k -> 53.5k for the day-change tools (#17: reschedule_day, swap_days, replan_week, undo_day_changes).
     53.5k -> 54.5k for plan start / training_days / addons and the ask-first wording on propose_plan / save_plan (#65, #66); set_stores (#44) fits in.
     54.5k -> 55k for get_weekly_specials (grocery-sync, #48).
-    55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md)."""
+    55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md).
+        55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 55500, size
+    assert size < 57500, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..assistant.memory_api import _meal_call
 from ..records.api import _owner, _self, current_user, get_conn
-from . import store
+from . import prices, store
 from .sync import offers as store_offers
 
 router = APIRouter(prefix="/v1/users/{user}/grocery", tags=["grocery"])
@@ -117,6 +117,61 @@ def get_stores(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
 @router.put("/stores")
 def put_stores(user: str, body: StoresIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     return _meal_call(store.set_connected_stores, conn, _self(viewer, user), body.connected)
+
+
+class StorePriceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    store: str = Field(max_length=20)
+    name: str = Field(max_length=160)
+    price: float = Field(ge=0, le=10000, description="每包，AUD")
+    url: str | None = Field(None, max_length=300)
+    brand: str | None = Field(None, max_length=60)
+    size: str | None = Field(None, max_length=40)
+    unit_price: float | None = Field(None, ge=0)
+    unit_price_unit: Literal["kg", "L", "ea"] | None = None
+    was_price: float | None = Field(None, ge=0)
+    special: Literal["half_price", "price_drop", "multibuy", "special"] | None = None
+    special_label: str | None = Field(None, max_length=60)
+    barcode: str | None = Field(None, max_length=20)
+    image_url: str | None = Field(None, max_length=500)
+    observed_at: dt.datetime | None = None
+    source: Literal["ai", "screenshot", "manual"] = "manual"
+    for_item: str | None = Field(None, max_length=60)
+    bought: bool = False
+    packages: float | None = Field(None, gt=0, le=100)
+    paid_total: float | None = Field(None, ge=0)
+
+
+class StorePricesIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    items: list[StorePriceIn] = Field(min_length=1, max_length=30)
+
+
+@router.get("/context")
+def get_context(user: str, week: dt.date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """What the user's AI needs to look prices up: this week's plan and list, health constraints, connected stores, pantry, and which
+    items still need a price (missing / older than a week). The server itself never visits store websites."""
+    return _meal_call(prices.shopping_context, conn, _owner(conn, viewer, user, "nutrition"), week)
+
+
+@router.post("/store-prices", status_code=201)
+def post_store_prices(user: str, body: StorePricesIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Prices the user's AI (or the user) read from store pages / screenshots, as a batch. Only for oneself."""
+    items = [{**i.model_dump(), "observed_at": i.observed_at.isoformat() if i.observed_at else None} for i in body.items]
+    return _meal_call(prices.record, conn, _self(viewer, user), items)
+
+
+@router.get("/store-products")
+def get_store_products(user: str, q: str | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The store products this user uploaded or linked (no one else's), each with their own latest price and its age."""
+    return _meal_call(prices.list_products, conn, _owner(conn, viewer, user, "nutrition"), q)
+
+
+@router.get("/store-products/{store_product_id}")
+def get_store_product(user: str, store_product_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Price history of one of the user's store products: curve, min / average / latest, specials, last purchase verdict.
+    404 for anything the user has not linked (whether or not it exists)."""
+    return _meal_call(prices.stats, conn, _owner(conn, viewer, user, "nutrition"), store_product_id)
 
 
 @router.get("/specials")
