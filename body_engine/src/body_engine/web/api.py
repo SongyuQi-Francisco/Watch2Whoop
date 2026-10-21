@@ -4,6 +4,8 @@
 - POST /v1/web/activate {"code", "web"?}: reusable activation code → fresh watch2whoop://setup link (activation.py; page
   /app/activate.html#<code>). web=true (the page signing in on the web) mints only the login code, no OW invitation, so a
   link the app may still be opening keeps a valid OW code.
+- POST /v1/web/ingest-token {"device"}: the Watch2Whoop app (in its WebView, with the page's cookie) gets an upload-only
+  token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
@@ -18,6 +20,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import auth
 from ..training import catalog as tr_catalog
 from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
@@ -119,6 +122,26 @@ def activate(body: ActivateIn, request: Request, conn=Depends(get_conn)):
         login_limit.record_failure(ip)
         raise HTTPException(401, "激活码无效或已停用")
     return res
+
+
+class IngestTokenIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    device: str = Field("iPhone", min_length=1, max_length=40)
+
+
+@router.post("/v1/web/ingest-token")
+def ingest_token(body: IngestTokenIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Upload-only token (scope ingest) for the app's raw data uploads. Cookie session with write permission only; a new
+    token for the same device replaces the old one."""
+    if viewer.get("auth") != "session":
+        raise HTTPException(403, "只能在今天页登录后获取")
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, "这个登录没有 write 权限")
+    name = f"app:ingest:{body.device.strip()}"
+    auth.revoke_tokens(conn, viewer["id"], name)
+    token = auth.create_token(conn, viewer["id"], name, [auth.INGEST_SCOPE])
+    conn.commit()
+    return {"token": token, "scopes": [auth.INGEST_SCOPE]}
 
 
 @router.post("/v1/web/logout", status_code=204)

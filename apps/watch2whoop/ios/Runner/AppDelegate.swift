@@ -38,7 +38,9 @@ import HealthKit
       switch call.method {
       case "drainLog": result(SyncLogBuffer.shared.drain())
       case "takeLinks": result(LinkInbox.shared.take())
-      default: result(FlutterMethodNotImplemented)
+      default:
+        // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
+        if !RawSync.shared.handle(call, result) { result(FlutterMethodNotImplemented) }
       }
     }
     // watch2whoop://setup?… (opened by scanning the setup QR code with the camera): store it first, Dart picks it up later
@@ -147,7 +149,7 @@ enum DebugHealthSeeder {
     let types: Set<HKSampleType> = [
       q(.heartRate), q(.restingHeartRate), q(.heartRateVariabilitySDNN), q(.stepCount),
       q(.activeEnergyBurned), q(.oxygenSaturation), q(.respiratoryRate), q(.bodyMass),
-      HKCategoryType(.sleepAnalysis), HKObjectType.workoutType(),
+      HKCategoryType(.sleepAnalysis), HKObjectType.workoutType(), HKSeriesType.heartbeat(),
     ]
     store.requestAuthorization(toShare: types, read: nil) { ok, error in
       guard ok else { DispatchQueue.main.async { done("auth failed: \(error?.localizedDescription ?? "-")") }; return }
@@ -204,8 +206,10 @@ enum DebugHealthSeeder {
             builder.addMetadata(meta) { _, _ in
               builder.endCollection(withEnd: ws.addingTimeInterval(3000)) { _, _ in
                 builder.finishWorkout { w, error in
-                  DispatchQueue.main.async {
-                    done("saved \(samples.count) samples + \(w == nil ? 0 : 1) workout\(error.map { " (\($0.localizedDescription))" } ?? "")")
+                  heartbeats(now) { n in
+                    DispatchQueue.main.async {
+                      done("saved \(samples.count) samples + \(w == nil ? 0 : 1) workout + \(n) heartbeat series\(error.map { " (\($0.localizedDescription))" } ?? "")")
+                    }
                   }
                 }
               }
@@ -214,6 +218,30 @@ enum DebugHealthSeeder {
         }
       }
     }
+  }
+
+  /// Three beat-to-beat series (60 beats, RR alternating 980 / 1020 ms, RMSSD 40 ms) 1–3 hours ago, for RawSync.
+  static func heartbeats(_ now: Date, _ done: @escaping (Int) -> Void) {
+    func one(_ i: Int, _ n: Int) {
+      guard i < 3 else { done(n); return }
+      let start = now.addingTimeInterval(-Double(i + 1) * 3600)
+      let b = HKHeartbeatSeriesBuilder(healthStore: store, device: nil, start: start)
+      var t = 0.0
+      func beat(_ k: Int) {
+        guard k < 60 else {
+          b.addMetadata(["W2WTestData": 1]) { _, _ in
+            b.finishSeries { s, _ in one(i + 1, n + (s == nil ? 0 : 1)) }
+          }
+          return
+        }
+        b.addHeartbeatWithTimeInterval(sinceSeriesStartDate: t, precededByGap: false) { _, _ in
+          t += k % 2 == 0 ? 0.98 : 1.02
+          beat(k + 1)
+        }
+      }
+      beat(0)
+    }
+    one(0, 0)
   }
 }
 #endif

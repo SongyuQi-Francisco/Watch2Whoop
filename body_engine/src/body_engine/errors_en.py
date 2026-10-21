@@ -20,6 +20,7 @@ EXACT: dict[str, str] = {
     "缺少 Bearer token": "Missing Bearer token",
     "缺少 Bearer token（或没有登录）": "Missing Bearer token (or not signed in)",
     "token 无效或已吊销": "Invalid or revoked token",
+    "只能在今天页登录后获取": "Only available after signing in on the Today page",
     "登录已过期或已退出，请重新输入 token": "Your session expired or you signed out; enter the token again",
     "用户写 me 或数字 ID": "User must be me or a numeric ID",
     "写操作只能写给自己": "You can only write your own data",

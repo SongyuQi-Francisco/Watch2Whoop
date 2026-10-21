@@ -7,6 +7,11 @@ import psycopg
 TOKEN_PREFIX = "be_"
 # A token with this scope is an AI-client-only token (ai/tokens.py): usable only for the remote MCP (/mcp); normal /v1 endpoints and the Today page login reject it.
 MCP_SCOPE = "mcp"
+# Upload-only token of the Watch2Whoop app (rawdata/ingest.py): usable only for POST /v1/ingest/*; it cannot read anything,
+# and normal /v1 endpoints and the Today page login reject it. Minted by the logged-in Today page (POST /v1/web/ingest-token).
+INGEST_SCOPE = "ingest"
+# Tokens with one of these scopes only work on their own endpoint
+RESTRICTED_SCOPES = [MCP_SCOPE, INGEST_SCOPE]
 
 
 def hash_token(token: str) -> str:
@@ -47,12 +52,25 @@ def revoke_tokens(conn: psycopg.Connection, user_id: int, name: str | None = Non
 def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
     row = conn.execute(
         """UPDATE api_tokens SET last_used_at = now()
-           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (%s = ANY(scopes))
-           RETURNING user_id, scopes""", (hash_token(token), MCP_SCOPE)).fetchone()
+           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
+           RETURNING user_id, scopes""", (hash_token(token), RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_scopes": row["scopes"]}
+
+
+def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
+    """Identity for POST /v1/ingest/*: the app's account token (scope write) or its upload-only token (scope ingest)."""
+    row = conn.execute(
+        """UPDATE api_tokens SET last_used_at = now()
+           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (%s = ANY(scopes))
+             AND ('write' = ANY(scopes) OR %s = ANY(scopes))
+           RETURNING id, user_id, scopes""", (hash_token(token), MCP_SCOPE, INGEST_SCOPE)).fetchone()
+    if row is None:
+        return None
+    user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
+    return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
 
 
 def can_view(conn: psycopg.Connection, viewer_id: int, owner_id: int, scope: str) -> bool:

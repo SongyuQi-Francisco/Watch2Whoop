@@ -13,6 +13,7 @@ import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'raw_sync.dart';
 import 'sync_stats.dart';
 
 /// Types to request: everything the SDK supports, minus reproductive health (sensitive, unused) and nutrition (SparkyFitness is the source for nutrition).
@@ -166,8 +167,12 @@ class HealthSync {
 
   /// Shows the HealthKit authorization prompt (the user taps it). true = at least one item was allowed.
   /// HealthKit does not tell the app which read permissions were denied, so all we can know is that the prompt was shown.
-  Future<bool> requestAuthorization() =>
-      OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
+  /// The beat-to-beat HRV series and ECG that the app reads itself (raw_sync.dart) follow in a second, small sheet.
+  Future<bool> requestAuthorization() async {
+    final ok = await OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
+    await RawSync.instance.requestAuth();
+    return ok;
+  }
 
   /// Starts background sync; calling it again while already on = sync one round immediately (skipped if the SDK is already syncing).
   Future<bool> startSync(int syncDaysBack) =>

@@ -17,6 +17,7 @@ import '../debug_seed.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
@@ -432,11 +433,26 @@ class _SyncPageState extends State<SyncPage> {
               title: tr('已上传（按类型）', 'Uploaded by type'),
               footer: stats.perType.isEmpty
                   ? null
-                  : tr('从这次连接起累计 ${stats.total} 条。手腕温度、HRV RMSSD 暂时不在这里（SDK 还不支持），由快捷指令补。',
-                      '${stats.total} records since connecting. Wrist temperature and HRV RMSSD are not supported by the SDK yet.'),
+                  : tr('从这次连接起累计 ${stats.total} 条。手腕温度、HRV RMSSD 暂时不在这里（SDK 还不支持），由快捷指令补；心跳间期和心电图见下一栏。',
+                      '${stats.total} records since connecting. Wrist temperature and HRV RMSSD are not supported by the SDK yet; beat-to-beat HRV and ECG are in the next section.'),
               rows: stats.perType.isEmpty
                   ? [Row2(tr('还没有上传记录', 'Nothing uploaded yet'))]
                   : [for (final e in stats.sortedTypes) Row2(typeLabel(e.key), value: '${e.value}')],
+            ),
+
+            // ---- beat-to-beat HRV and ECG: read by the app itself, uploaded straight to the server (raw_sync.dart)
+            ValueListenableBuilder<RawSyncStatus>(
+              valueListenable: RawSync.instance.status,
+              builder: (context, raw, _) => Group(
+                title: tr('心跳间期和心电图', 'Beat-to-beat HRV and ECG'),
+                rows: [
+                  Row2(tr('心跳间期', 'Beat-to-beat readings'), value: raw.heartbeats == null ? '—' : '${raw.heartbeats}'),
+                  Row2(tr('心电图', 'ECG recordings'), value: raw.ecgs == null ? '—' : '${raw.ecgs}'),
+                  Row2(tr('上次上传', 'Last upload'), value: ago(raw.lastUpload)),
+                ],
+                footer: raw.problem ??
+                    tr('打开 app 时直接从「健康」读取，传到你的服务器。', 'Read from Health when you open the app and sent to your server.'),
+              ),
             ),
 
             // ---- settings

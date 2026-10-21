@@ -185,7 +185,7 @@ uv run body-engine history-backfill-run   # one time-budgeted step (240 s) per q
 ```
 
 ## Health history import (`src/body_engine/history/`, `importers/apple_zip.py`) — admin only now
-The Today page no longer offers the upload: the app reads the whole history from HealthKit itself when the user picks "All history" (see "Health read range" below). The endpoints and `import-apple-zip` stay for admins (old export files, and HRV beat-to-beat / ECG, which the app cannot read).
+The Today page no longer offers the upload: the app reads the whole history from HealthKit itself when the user picks "All history" (see "Health read range" below). The endpoints and `import-apple-zip` stay for admins (old export files). HRV beat-to-beat series and ECG recordings now come from the app too (see "App uploads" under Raw watch data).
 Originally: a new user's app syncs only 90 days the first time; anything earlier is uploaded by the person themself as the export.zip from Health → "Export All Health Data" (migration 130: `history_imports`, `export_samples`).
 | Endpoint (you can only manage your own, changes need write) | Description |
 |---|---|
@@ -211,7 +211,7 @@ uv run body-engine import-raw --user-id 1 --file raw.zip             # heartbeat
 uv run body-engine hrv-compare --user-id 1 --out ../health_data/reports/hrv-compare.md   # SDNN vs RMSSD recovery, computes only (personal data: keep out of git)
 ```
 - `rawdata/hrv.py`: RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r = 0.89 on the owner's 1,999 readings.
-- New users get both automatically: the history import (`import-apple-zip`, Today page upload) reads the beat lists and `electrocardiograms/*.csv` in the same pass. The app (RawSync, phase ⑤) will replace export copies with the more precise HealthKit copies of the same readings.
+- The admin history import (`import-apple-zip`) reads the beat lists and `electrocardiograms/*.csv` in the same pass. App copies (below) replace export copies of the same readings (HealthKit has full-precision beat times).
 - Scoring: `scores/params.HRV_KIND` = `sdnn` (default) or `rmssd` (heartbeat_series only, never mixed). Switch only after the user has read `hrv-compare`; then bump `ALGO_VERSION` and recompute everything.
 - `cardio/hrr.py`: HRR60 = peak in the last 2 min of a workout − heart rate 60 s after the end; valid only if the peak ≥ 75% HRmax. Written by `compute-scores` for the days it writes (from the raw heart rate it already loads).
 
@@ -223,6 +223,20 @@ uv run body-engine hrv-compare --user-id 1 --out ../health_data/reports/hrv-comp
 | `GET /v1/users/{user}/cardio?start=&end=` | scores | HRR60 per workout + 30-day mean vs the previous 30 days; recovery index per night (minutes / % of the night until the lowest 5-minute heart rate) |
 
 Butler tools: `get_cardio` (scores), `get_ecg_list` (ecg; summaries only, never the waveform). Tests: `tests/test_rawdata.py` (database body_test_rawdata).
+
+### App uploads (`rawdata/ingest.py`, migration 430)
+The Watch2Whoop app reads both types from HealthKit itself (OW SDK 0.15 has neither): `ios/Runner/RawSync.swift`
+(`HKHeartbeatSeriesQuery`, `HKElectrocardiogramQuery`, one `HKAnchoredObjectQuery` anchor per type) and
+`lib/src/raw_sync.dart` (upload, then the anchor moves). It runs after each sync-on-open round, with the same read range as
+the OW sync (90 days / all history).
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST /v1/ingest/healthkit` | Bearer: account token (write) or upload-only token (scope `ingest`) | One batch `{batch_id, heartbeats[{uuid, start, end, source, beats (s since the first beat), gaps}], ecgs[{uuid, start, sample_hz, voltage_b64 (int16 LE µV), classification, symptoms_status, avg_hr, device, software_version}], deleted[uuid]}`; ≤ 2 MB, ≤ 500 readings / 20 ECGs. Stored with `store.py` (RMSSD / SDNN and ECG R peaks computed on insert), origin `app`. Idempotent: known HealthKit UUIDs are skipped, a re-sent `batch_id` is answered from `rawdata_uploads`. `deleted` removes app copies the person deleted in Health. 409 `consent_required` before consent (nothing stored; the app retries later) |
+| `GET /v1/ingest/healthkit` | same | `{heartbeats, ecgs, last_upload_at}` uploaded by the app |
+| `POST /v1/web/ingest-token` `{device}` | Today page cookie session with write | Mints the upload-only token for setup-link users (no account token in the app); a new one for the same device revokes the old one. It cannot read anything or log in to the Today page |
+
+ECG keeps its own share scope and the AI still only gets summaries. Tests: `tests/test_rawdata_ingest.py`.
 
 ## Training history (`src/body_engine/training/`)
 Workouts from the watch / iOS Shortcut and SparkyFitness strength records are merged into one training history, used by the Today page's training calendar and by the body butler when planning training. For the rules, thresholds and backfill results see system design section 16.
