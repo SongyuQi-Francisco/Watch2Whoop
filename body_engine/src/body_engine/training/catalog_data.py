@@ -35,7 +35,7 @@ MUSCLE_GROUP: dict[str, str] = {
     "chest": "chest",
     "lats": "back",
     "middle back": "back",
-    "lower back": "back",
+    "lower back": "core",   # erector spinae = trunk extensors (McGill); not an upper-back session (issue #66 FB-3)
     "traps": "shoulders",
     "shoulders": "shoulders",
     "quadriceps": "legs",

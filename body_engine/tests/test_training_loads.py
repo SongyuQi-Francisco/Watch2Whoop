@@ -201,6 +201,7 @@ def world(dsn, tmp_path_factory):
                                 '{"exercise": "高位下拉（正手，略宽于肩）", "next_weight_kg": 41.5}'::jsonb, 'test')""",
                      (ids["A"], date.today()))
         plans.save_plan(conn, ids["A"], "4_day_upper_lower", sync_sparky=False)
+        _plan_from_monday(conn, ids["A"])
     return ids, tok
 
 
@@ -226,6 +227,14 @@ def history(monkeypatch):
     yield sessions
     loads.clear_history_cache()
 
+
+
+def _plan_from_monday(conn, user_id):
+    """Plans start on the day they are saved (#65) and the start week only gets the missing sessions (day changes); these
+    tests look at a plan that covers the whole current week, so move the start back to Monday and drop the start-week fill."""
+    monday = date.today() - timedelta(days=date.today().weekday())
+    conn.execute("UPDATE training_plans SET start_date = %s WHERE user_id = %s AND active", (monday, user_id))
+    conn.execute("DELETE FROM training_day_overrides WHERE user_id = %s", (user_id,))
 
 def _items(week):
     return {x["slug"]: x for d in week["days"] for p in d["planned"] for x in p["exercises"]}
@@ -325,8 +334,8 @@ def test_estimate_reasons_not_linked_and_no_body_weight(conn, world, monkeypatch
 
 def test_page_explains_every_load_basis():
     js = (STATIC / "app.js").read_text(encoding="utf-8")
-    table = re.search(r"const LOAD_BASIS = \{(.*?)\};", js, re.S).group(1)
-    keys = set(re.findall(r"^\s*(\w+):", table, re.M))
+    table = re.search(r"const loadBasisText = .*?switch \(key\) \{(.*?)\n    \}", js, re.S).group(1)   # one tr() phrase per basis
+    keys = set(re.findall(r'case "(\w+)":', table))
     assert {"progression", "history", "e1rm", "plan", "bodyweight",
             "no_history", "not_linked", "history_unreadable", "no_body_weight"} <= keys
 
@@ -366,6 +375,7 @@ def test_today_card_applies_red_readiness(conn, world, history, monkeypatch):
     every_day = [{"day_of_week": d, "name": "卧推日", "exercises": [{"slug": "dumbbell_bench_press", "sets": 3, "rep_low": 8, "rep_high": 12}]}
                  for d in range(1, 8)]
     plans.save_plan(conn, ids["A"], "custom", days=every_day, sync_sparky=False)
+    _plan_from_monday(conn, ids["A"])
     today = views.local_today(conn, ids["A"])
     conn.execute("""INSERT INTO daily_scores (user_id, date, recovery, sleep_score, algo_version) VALUES (%s, %s, 20, 50, 'test')
                     ON CONFLICT (user_id, date) DO UPDATE SET recovery = 20""", (ids["A"], today))

@@ -23,7 +23,8 @@
   function html(primary, secondary) {
     const lv = level(primary, secondary);
     if (!Object.keys(lv).length) return "";
-    return `<div class="mm">${view(DATA.front, lv, "正面")}${view(DATA.back, lv, "背面")}</div>`;
+    const tr = window.I18N ? window.I18N.t : (k) => k;
+    return `<div class="mm">${view(DATA.front, lv, tr("正面"))}${view(DATA.back, lv, tr("背面"))}</div>`;
   }
   window.BodyMuscleMap = { html, REGIONS };
 })();

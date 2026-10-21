@@ -372,7 +372,8 @@ def test_save_plan_sparky_sync_and_swap_exercise(conn, world):
                                   sync_sparky=True, client=fake_sp)
     assert swapped["swapped"] is True
     assert swapped["to_exercise"]["slug"] == "machine_chest_press"
-    wk_after = plans.get_week_plan(conn, a, a)
+    today = plans._user_today(conn, a)
+    wk_after = plans.get_week_plan(conn, a, a, today + timedelta(days=7 - today.weekday()))   # next week: the plan started today (#65)
     mon_exs = [e["slug"] for e in wk_after["days"][0]["planned"][0]["exercises"]]
     assert "machine_chest_press" in mon_exs and "dumbbell_bench_press" not in mon_exs
 
