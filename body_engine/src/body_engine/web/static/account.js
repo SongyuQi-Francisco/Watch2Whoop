@@ -77,6 +77,8 @@
     shown[id] = text;
     el.textContent = (typeof text === "function" ? text() : text) || "";
     el.classList.toggle("ok", !!ok);
+    const field = el.previousElementSibling;   // the error sits right under its field (index.html)
+    if (field?.classList.contains("input")) field.setAttribute("aria-invalid", String(!!el.textContent && !ok));
   }
 
   // Show one step: its form, the progress indicator (earlier steps ticked) and nothing else's errors.
