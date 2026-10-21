@@ -90,7 +90,7 @@
     $("#consent-yes", el).onclick = async () => {
       $("#consent-yes", el).disabled = true;
       try {
-        P = await C.api("/v1/users/me/consent", { method: "POST", body: { version: c.version, agree: true } });
+        P = await C.api("/v1/users/me/consent", { method: "POST", body: { version: c.version, agree: true, language: c.language || undefined } });   // the text that was read
       } catch (e) {
         $("#consent-msg", el).textContent = e.message;
         $("#consent-yes", el).disabled = false;

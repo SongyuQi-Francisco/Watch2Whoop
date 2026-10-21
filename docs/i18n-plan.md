@@ -56,14 +56,16 @@ whole Today page, the server texts it shows and the app's native screens through
 
 ## Stage 3: still Chinese
 
-- [ ] Consent form in English: own file and **own version number** (`consent.en.md`, `docs/family-consent.en.md`,
-      identical check like the Chinese one); record which language was accepted in `user_consents` (legal text: owner review)
+- [x] Consent form in English (#64): `profile/consent.en.md` = `docs/family-consent.en.md`, clause by clause the Chinese
+      text with the **same version number** (tests check both pairs, the version and the clause count); `GET /v1/consent`
+      answers in the request's language; `user_consents.language` (migration 380) records which text was read.
+      Deploy: the ops overlay replaces the example domains in the English files too.
 - [ ] User data stays as stored (food names, recipes, journal items, notes and status cards the AI wrote)
 
 ## Stage 4: handbook and app store
 
 - [ ] `docs/tester-handbook.en.md`, rendered to `/app/handbook/en/` by `deploy/ali/handbook.py`; activation page links
       to the handbook in the page language
-- [ ] iOS permission prompts: split the bilingual `NS*UsageDescription` strings into `en.lproj` / `zh-Hans.lproj`
-      `InfoPlist.strings` (needs the Xcode project's variant group; test on a device)
+- [x] iOS permission prompts (#64): `ios/Runner/en.lproj` / `zh-Hans.lproj` `InfoPlist.strings` (variant group in the Xcode
+      project), English is the development language (`CFBundleDevelopmentRegion = en`, Info.plist holds the English)
 - [ ] App Store English listing and review notes
