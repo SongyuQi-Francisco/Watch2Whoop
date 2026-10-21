@@ -426,6 +426,24 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 
+## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
+Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
+| Endpoint (acts for the caller only; changes need write) | Description |
+|---|---|
+| `GET /v1/friends` | My circles (members, `my_scopes`, for the owner the number of live invite codes), invites addressed to me (from a referral sign-up), the scope choices and defaults, `consent_ok` |
+| `POST /v1/friends/circles {name, scopes}` | New circle, I am owner and first member; returns the first invite code (plaintext only here) |
+| `PATCH /v1/friends/circles/{id} {name}` · `DELETE /v1/friends/circles/{id}` | Owner: rename / dissolve |
+| `POST /v1/friends/circles/{id}/invite {reset}` | Owner: a new 72-hour code (`reset: true` first revokes every live code); at most 5 live codes |
+| `GET /v1/friends/invite?code=` | What a code opens (name, owner, member count) |
+| `POST /v1/friends/join {code \| invite_id, scopes}` | Join with the scopes I pick; joining twice changes nothing |
+| `PATCH /v1/friends/circles/{id}/me {scopes}` · `DELETE /v1/friends/circles/{id}/me` | Change what I share / leave (an owner who leaves hands over to the longest-standing member) |
+| `DELETE /v1/friends/circles/{id}/members/{user}` · `DELETE /v1/friends/invites/{id}` | Owner removes a member / I decline an invite |
+- Sharing: a member's scopes (`friends/params.py` `CIRCLE_SCOPES`; defaults scores, sleep, training, `nutrition_summary`) are shown to every other member. Between two people the union over all common circles goes to `shares.circle_scopes`, separate from the hand-made `shares.scopes` (which alone obeys `expires_at`); `auth.can_view` and `/v1/web/me` use both. Every membership change recomputes it in the same transaction, so leaving / removal / dissolving take effect at once and never touch hand-made grants.
+- `ecg` is never a circle scope (rejected by the API, a CHECK on `circle_members.scopes` and `shares.circle_scopes`). `nutrition_summary` = whether calories / protein met the goal; a `nutrition` grant implies it (`auth.IMPLIED_BY`).
+- Creating / joining needs consent version `friends/params.py` `CONSENT_VERSION` (2026-10-22.2, the first with the circle clause) or later (409 otherwise). Wrong invite codes: 10 per 15 minutes per IP and per user, then 429. Only code hashes are stored.
+- Referral sign-ups (#57): redeeming a user's referral code invites the new user to every circle the inviter owns (30 days, `invite_redemptions.circle_id` = the first); nothing is shared until they accept and pick scopes. Account deletion leaves every circle first (`store.leave_all`), so owned circles pass on.
+- Tests: `tests/test_friends.py` (cross-user access, leaving, ECG, hand-made grants, consent, limits, referral, deletion).
+
 ## Layout
 - `src/body_engine/migrations/`: SQL executed once in numbered order; the table definitions are authoritative here
 - `src/body_engine/queries.py`: functions that read data, shared by the API and the AI assistant

@@ -20,6 +20,7 @@ SUMMARY = [
     "同步你在「健康」里授权的数据（心率、睡眠、训练、步数、心电图和心跳间期等），加上你自己记录的内容，用来算恢复分、睡眠分、负荷。",
     "数据存在管理员的服务器，HTTPS 加密传输，每晚加密备份；不卖、不给任何第三方。",
     "只有你自己能看。家人默认看不到，心电图还要另外单独授权；管理员只在维护、排错、按你的要求导出 / 删除时接触。",
+    "加入圈子（朋友页）时由你选给圈子成员看什么（默认：评分、训练、饮食达标率），随时可改、可退出；心电图永远不进圈子。",
     "AI 默认不开；你自己接入 AI 后，回答问题时会把需要的那部分数据发给你选的 AI 公司。"
     "也可以用管理员提供的托底 AI（DeepSeek，服务器在中国），第一次用前会单独请你确认。",
     "AI 发现系统的问题或听到你想要的新功能，会自动报告给管理员（去掉健康数值、名字和联系方式）；"
@@ -38,6 +39,8 @@ SUMMARY_EN = [
     "Only you can see it. Family members cannot by default, and ECGs need a separate permission; the administrator "
     "touches it only for maintenance, "
     "troubleshooting, or exporting / deleting it at your request.",
+    "When you join a circle (Friends page) you choose what its members see (by default: scores, workouts, nutrition "
+    "adherence); change it or leave at any time. ECGs are never shared through circles.",
     "AI is off by default; once you connect your own AI, the part of your data an answer needs is sent to the AI company "
     "you chose. You can also use the backup AI the administrator provides (DeepSeek, servers in China); you are asked "
     "separately before the first use.",

@@ -21,7 +21,8 @@ from ..training import loads as tr_loads
 RECOVERY_GREEN = 67          # >= 67 green, 34-66 yellow, < 34 red (the bands in system design §7)
 SCOPE_LABELS = {"scores": "评分", "reminders": "提醒", "training": "训练", "nutrition": "饮食", "sleep": "睡眠",
                 "metrics": "每日指标", "weight": "体重", "journal": "日记", "events": "身体事件",
-                "supplements": "补剂", "exercises": "动作限制"}
+                "supplements": "补剂", "exercises": "动作限制",
+                "nutrition_summary": "饮食达标率", "labs": "化验", "memory": "长期记忆"}
 
 # When a score is empty, look through flags in this order to find the reason
 FIELD_FLAGS = {
@@ -62,7 +63,7 @@ def section(conn, viewer_id: int, owner_id: int, scope: str, fn):
 
 def has_any_share(conn, viewer_id: int, owner_id: int) -> bool:
     return viewer_id == owner_id or conn.execute(
-        "SELECT 1 FROM shares WHERE owner_id = %s AND viewer_id = %s AND (expires_at IS NULL OR expires_at > now())",
+        f"SELECT 1 FROM shares s WHERE s.owner_id = %s AND s.viewer_id = %s AND cardinality({auth.EFFECTIVE_SCOPES.format(s='s')}) > 0",
         (owner_id, viewer_id)).fetchone() is not None
 
 
@@ -70,10 +71,12 @@ def viewable(conn, viewer: dict) -> list[dict]:
     """People you can view: yourself + family members who granted you access in shares (not expired)."""
     out = [{"id": viewer["id"], "display_name": viewer["display_name"], "self": True, "scopes": None}]
     for r in conn.execute(
-            """SELECT s.owner_id, u.display_name, s.scopes FROM shares s JOIN users u ON u.id = s.owner_id
-               WHERE s.viewer_id = %s AND s.owner_id <> %s AND (s.expires_at IS NULL OR s.expires_at > now())
+            f"""SELECT s.owner_id, u.display_name, {auth.EFFECTIVE_SCOPES.format(s="s")} AS scopes
+               FROM shares s JOIN users u ON u.id = s.owner_id
+               WHERE s.viewer_id = %s AND s.owner_id <> %s AND cardinality({auth.EFFECTIVE_SCOPES.format(s="s")}) > 0
                ORDER BY u.display_name""", (viewer["id"], viewer["id"])):
-        out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": r["scopes"]})
+        scopes = sorted(set(r["scopes"]))
+        out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": scopes})
     return out
 
 

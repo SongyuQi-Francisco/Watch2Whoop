@@ -1,6 +1,6 @@
 # Watch2Whoop beta: consent to the use of health data
 
-Version: 2026-10-22.1
+Version: 2026-10-22.2
 
 > The first time you open the Today page, the app shows the key points and the full text of this consent form. Your health data is processed only after you tick "I have read and agree"; the system records the time and this version number. Signing on paper also works (the administrator records the date with `onboard.py --consent-at`). When the form is revised you are asked to confirm again.
 > This is the English text of `consent.md`, clause by clause, with the same version number. This file and `docs/family-consent.en.md` must be identical (a test checks it); change both together with the Chinese text and update the version number.
@@ -27,6 +27,7 @@ I (the user of this account) agree that the administrator (the person who mainta
 ## 4. Who can see it
 - **Me**: with my own account (the login link / QR code is given only to me and works like a key).
 - **Other family members**: **cannot see** my data by default. Only after I explicitly agree and the administrator sets up "sharing" can the named people see the named content; I can ask to cancel it at any time.
+- **Circle sharing (Friends page)**: I can create a circle myself or join someone else's circle with an invite; if I neither create nor join one, nothing is shared through circles. When I join, I choose myself what the other members of that circle can see: scores (recovery, sleep, strain and so on), workouts and nutrition adherence (only whether each day's calories / protein met my goal, not what I ate) are ticked by default; detailed food, weight, lab results, supplements, journal and long-term memory are not. Circle members can see my name, the content I ticked, my leaderboard scores (measured against my own baseline) and the cheers I send them; an AI they connect can also read the part I share with them. I can change what I share or leave a circle at any time, and after I leave they **immediately** stop seeing it. Someone who signs up with my personal invite code is invited to join the circles I created; whether they join and what they share is their own choice. **ECGs are never shared through circles.**
 - **ECGs**: **not included in sharing** by default; even with sharing set up, someone can see my ECGs only if I separately allow it.
 - **The administrator**: as the maintainer of the server, technically has access to the database. The administrator promises to access it only for maintenance, troubleshooting, backup and restore, and exporting / deleting at my request, and not to look at my data otherwise.
 - **AI assistant**: **off** by default. If I connect an AI myself under Me → AI settings in the app (for example Claude or ChatGPT), **the part of my data needed for an answer** is sent to the AI company I chose when it answers a question, and is handled under that company's terms. Nothing is sent if I do not connect one. For ECGs only a summary such as the classification and heart rate is sent, **never the waveform**.
