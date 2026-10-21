@@ -13,6 +13,8 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+- Back in the foreground the app tells the Today page (`watch2whoop:foreground`), so an in-page chat answer cut off
+  while the app was in the background is picked up again instead of showing 「连不上」 (#114).
 
 ## 1.0.0+2 — 2026-10-21
 - Self-service sign-up: Sign in with Apple, e-mail code, invite code; existing setup links keep working (#16).

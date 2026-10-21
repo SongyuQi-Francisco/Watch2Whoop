@@ -658,6 +658,7 @@ I18N.addEn({
   "这张图读不了": "Can't read this image",
   "这里不能录音：点输入框，用键盘上的 🎤 听写": "Recording isn't available here: tap the text box and use the 🎤 dictation key on the keyboard",
   "连不上（没联网，或 Tailscale 没开）": "Can't connect (no internet, or Tailscale is off)",
+  "接着回答…": "Picking up the answer…",
   "连不上，稍后再试": "Can't connect, try again later",
   "连接客户端（MCP）": "Connect a client (MCP)",
   "连接说明": "How to connect",

@@ -23,6 +23,7 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../page_events.dart';
 import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
@@ -276,10 +277,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _foreground = state == AppLifecycleState.resumed;
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
+    _tellPageForeground();
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
     // ran its script), so try again, but not while a load that just started may still be redeeming the code.
     if (AppState.instance.config.pendingLoginCode != null && DateTime.now().difference(_loadedAt) > const Duration(seconds: 20)) _load();
+  }
+
+  /// The page picks up an in-page chat answer that was cut off while the app was in the background (page_events.dart, #114).
+  Future<void> _tellPageForeground() async {
+    if (!mounted || _loading || _error != null) return;
+    try {
+      await _web.runJavaScript(kForegroundJs);
+    } catch (e) {
+      debugPrint('foreground event failed: $e');
+    }
   }
 
   void _syncBackground() {
