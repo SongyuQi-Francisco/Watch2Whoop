@@ -18,7 +18,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -189,6 +189,17 @@ def _calls_since(conn, user_id: int, since: datetime) -> int:
                         (user_id, KIND, since)).fetchone()["n"]
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def calls_today(conn, user_id: int) -> int:
+    """Model calls since the user's local midnight (their time zone): the RATE_PER_DAY counter."""
+    tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"] or "UTC"
+    start = _now().astimezone(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return _calls_since(conn, user_id, start)
+
+
 # ---------------------------------------------------------------- consent
 def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
     """The current (not revoked, current version) consent, or None. The owner (the admin who pays for it) needs none."""
@@ -341,12 +352,9 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
                                    "开一个新对话会省一些",
                                    f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "
                                    f"it resets on {s['reset_on']}. A new conversation costs less"), status=402, **extra)
-    now = datetime.now(ZoneInfo("UTC"))
-    if _calls_since(conn, user_id, now - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
+    if _calls_since(conn, user_id, _now() - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
         raise ChatError("rate_limit", L("问得太快了，歇一分钟再问", "Too many questions at once; wait a minute"), status=429)
-    tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"] or "UTC"
-    day_start = datetime.now(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
-    if _calls_since(conn, user_id, day_start) >= fp.RATE_PER_DAY:
+    if calls_today(conn, user_id) >= fp.RATE_PER_DAY:
         raise ChatError("rate_limit", L("今天问得太多了，明天再来", "That's all the questions for today; come back tomorrow"), status=429)
     return spent, quota
 
