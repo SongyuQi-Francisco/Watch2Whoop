@@ -21,6 +21,7 @@
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
+  const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
   const ZONE = { green: "good", yellow: "mid", red: "bad" };
   const ZONE_LABEL = { green: tr("绿"), yellow: tr("黄"), red: tr("红") };
   const LEVEL = { alert: "bad", warning: "mid", info: "" };
