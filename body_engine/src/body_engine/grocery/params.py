@@ -69,3 +69,22 @@ OFF_PER_MINUTE = 15        # per process, all users together
 OFF_PER_USER_DAY = 50
 OFF_TIMEOUT_S = 8
 OFF_ATTRIBUTION = "Open Food Facts (ODbL)"
+
+# ---------------------------------------------------------------- prices from the user's own AI (docs/grocery-plan.md §9)
+# The server never fetches store pages; the user's AI looks prices up and writes them with record_store_prices.
+PRICE_SOURCES = ("ai", "screenshot", "manual")
+SPECIAL_TYPES = ("half_price", "price_drop", "multibuy", "special")
+RECORD_MAX_ITEMS = 30        # per call: the AI looks up the user's own list (a dozen or so items), never a whole store
+CONTEXT_NEEDS_MAX = 15       # get_shopping_context lists at most this many items to look up at once
+PRICE_STALE_DAYS = 7         # a price older than this is shown with its age and listed again under needs_price
+PRICE_MAX_AGE_FUTURE_H = 1   # observed_at may not be in the future (clock skew allowance)
+# "Bought dear / cheap / normal": the price per package against this user's own history of the same store product
+# (observations + purchases, excluding the purchase itself) and the cheapest special seen recently. Thresholds are a judgement
+# call (roughly the size of an ordinary Coles / WWS "price drop"), kept here so they can be tuned.
+VERDICT_HISTORY_DAYS = 180   # history used for the average
+VERDICT_MIN_POINTS = 2       # fewer reference prices -> no verdict
+VERDICT_CHEAP_PCT = 0.08     # ≥ 8 % under the average -> cheap
+VERDICT_DEAR_PCT = 0.12      # ≥ 12 % over the average -> dear
+VERDICT_SPECIAL_DAYS = 21    # a special seen within this many days counts as "recently on special"
+VERDICT_SPECIAL_DEAR = 1.25  # paying ≥ 25 % more than that recent special, not on special yourself -> dear
+VERDICT_SPECIAL_CHEAP = 1.02 # paying within 2 % of the recent special (or less) -> cheap

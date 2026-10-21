@@ -79,7 +79,9 @@
 | 「晚饭吃了照烧鸡腿」这类食谱库里有的菜 | `list_recipes`（q 搜菜名）→ `log_recipe`（servings 吃了几份；不含主食的菜，米饭另外 `log_food`） |
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
 | 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
-| Coles / WWS（Woolworths）商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页；不要自己去网站查价格）。返回 `store_not_connected` = 这家超市还没连接，链接不显示：问用户要不要连接 |
+| Coles / WWS（Woolworths）商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页）。返回 `store_not_connected` = 这家超市还没连接，链接不显示：问用户要不要连接 |
+| 「帮我查一下这周清单的价格」「哪家便宜」 | 先 `get_shopping_context`，**按它的 rules 做**：只查 `needs_price` 里的（用户自己清单上的，一次十几样），用你自己的联网能力打开已连接超市的商品页 / 搜索页，不整站抓、不翻目录；页面打不开、要登录或被拦截（403、验证码）就直接告诉用户、请他发截图，**不要尝试绕过**；查到后 `record_store_prices` 一次写回（商品页 URL、规格、价格、特价和原价、for_item）。没有联网能力就请用户发商品页截图。然后 `get_shopping_list` 告诉用户哪家买、总价、哪些特价、能省多少 |
+| 用户买了、发了小票 / 实付价 | 清单上的 `mark_bought`（paid 填实付）；不在清单上的 `record_store_prices` 带 bought=true。返回的 verdict：cheap 买得便宜 / dear 买贵了 / normal |
 | 「我用 Coles / WWS」「连接 / 断开超市」 | `set_stores`（给全部要连接的；默认都不连，只显示已连接超市的链接） |
 | 只有条码 | `lookup_barcode` → 用户确认后 `save_product`，`nutrition_source` 填返回的 source |
 | 「这周吃这几道菜，帮我列采购清单」 | `generate_shopping_list`（recipe × 份数、template × 次数、其他食材）→ 把 warnings 告诉用户；买了 `mark_bought`，家里还有多少 `set_pantry` |

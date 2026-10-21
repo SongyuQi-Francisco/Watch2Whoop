@@ -95,6 +95,8 @@
     });
   }
 
+  const WEB_KINDS = ["anthropic_api", "openai_api", "gemini_api"];   // ai/catalog.WEB_TOOL_KINDS: the vendor's own web search, off by default
+
   function apiFields(k, p = {}) {
     const models = (k.models || []).map((m) => `<option value="${esc(m)}">`).join("");
     const modelField = `<div class="field"><label>${esc(tr("模型"))}</label><input class="input" id="f-model" list="f-models" value="${esc(p.model || k.default_model || "")}" placeholder="${k.kind === "openai_compatible" ? esc(tr("例：deepseek-chat、qwen-plus、llama3.1")) : ""}" autocapitalize="off" spellcheck="false"><datalist id="f-models">${models}</datalist></div>`;
@@ -104,7 +106,8 @@
       ${k.needs_base_url ? `<div class="field"><label>${esc(tr("接口地址 base_url"))}</label><input class="input" id="f-base" value="${esc(p.base_url || "")}" placeholder="${esc((k.base_url_examples || [])[0] || "https://…/v1")}" autocapitalize="off" spellcheck="false"></div>` : ""}
       <div class="field"><label>API key${p.secret_last4 ? esc(tr("（现在：…{last4}，留空不改）", { last4: p.secret_last4 })) : ""}</label><input class="input" id="f-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="${esc(k.key_hint || "")}"></div>
       <div class="field"><label>${esc(tr("每月预算（美元，超过就停）"))}</label><input class="input" id="f-budget" type="number" inputmode="decimal" min="0" step="1" value="${esc(p.monthly_budget_usd ?? 5)}"></div>
-      <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-free"${isFree ? " checked data-was-free=\"1\"" : ""}> ${esc(tr("免费额度（按 $0 计）"))}</label>`;
+      <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-free"${isFree ? " checked data-was-free=\"1\"" : ""}> ${esc(tr("免费额度（按 $0 计）"))}</label>
+      ${WEB_KINDS.includes(k.kind) ? `<label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="f-web"${p.web_tools ? " checked" : ""}> ${esc(tr("允许联网（官方搜索 / 读网页，用来查价格；费用算在你的 key 上）"))}</label>` : ""}`;
   }
 
   function readApiFields(root, k, editing) {
@@ -118,6 +121,8 @@
       ...(free ? { price_in_per_mtok: 0, price_out_per_mtok: 0 } : (unset ? { price_in_per_mtok: null, price_out_per_mtok: null } : {})),
     };
     if (k.needs_base_url) body.base_url = $("#f-base", root).value.trim();
+    const web = $("#f-web", root);
+    if (web) body.web_tools = web.checked;
     const key = $("#f-key", root).value.trim();
     if (key) body.api_key = key; else if (!editing) body.api_key = undefined;
     return body;

@@ -92,7 +92,8 @@ class OpenAIResponsesAdapter(Adapter):
             stream = client.responses.create(
                 model=self.model, instructions=system, input=self._input(history),
                 tools=[{"type": "function", "name": t.name, "description": t.description,
-                        "parameters": t.input_schema, "strict": False} for t in tools],
+                        "parameters": t.input_schema, "strict": False} for t in tools]
+                + ([{"type": "web_search"}] if self.web else []),   # OpenAI's own web search (ai_providers.web_tools)
                 store=False, include=["reasoning.encrypted_content"], max_output_tokens=MAX_OUTPUT_TOKENS,
                 stream=True)
             for event in stream:
@@ -117,7 +118,7 @@ class OpenAIResponsesAdapter(Adapter):
                 text += [c.text for c in item.content if getattr(c, "type", "") == "output_text"]
             elif item.type == "function_call":
                 calls.append({"id": item.call_id, "name": item.name, "args": _args(item.arguments)})
-            if item.type in ("message", "function_call", "reasoning"):
+            if item.type in ("message", "function_call", "reasoning", "web_search_call"):
                 native.append(d)
         u = final.usage
         # input_tokens already includes the cache-hit part, counted at full price (erring on the high side)

@@ -69,3 +69,24 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 ## 8. 超市商品库和每周半价（grocery-sync，2026-10-21）
 维护者在 PR #28 决定建自有超市商品库：可选组件 `grocery-sync`（默认关闭），每周三 01:00（悉尼）刷新已开启超市的公开食品目录，采购清单 / 推荐优先「本周半价」。设计、抓取约束、站点调研（Coles 可以；WWS 对可识别的 User-Agent 返回 403，不抓）和部署见 [grocery-store-data-plan.md](grocery-store-data-plan.md) 第 8 节；本节第 7 节「服务器从不访问门店网站」在组件**开启**时不再成立，关闭时仍然成立。
 
+
+## 9. 价格交给用户自己的 AI（2026-10-22，迁移 420）
+负责人定的方向：**我们的服务器不访问超市网站**（grocery-sync 保持关闭，见第 8 节），查价格交给用户自己的 AI，用它自带的联网能力；我们只提供结构和存储（`grocery/prices.py`）。
+
+**流程**
+1. `get_shopping_context`：本周计划和清单、健康约束（档案卡 health_constraints、红肉周上限、清单 warnings）、已连接超市（含搜索地址）、存货、`needs_price`（缺价或超过 7 天的，最多 15 样）、`rules`（查价规则）。
+2. 用户的 AI 打开已连接超市的商品页 / 搜索页（或看用户发的截图），用 `record_store_prices` 一次写回（≤ 30 样）：超市、商品页 URL、商品名、规格、价格、单价、特价类型和原价、条码、图片地址（只存引用）、查询时间、来源（ai / screenshot / manual）、对应的清单项 `for_item`；`bought=true` 同时记成一次购买。
+3. 采购清单（`generate_shopping_list` / `get_shopping_list` / 今天页）用这些价格算：每行在已连接超市里取需要的整包数最便宜的那家（同价特价优先），`prices.by_store` 每家几样多少钱、`savings` 特价省多少、`missing` 缺价、`stale` 旧价；行上显示「x 天前」。用户商品库里比它更新的价格（实付、价签）仍然是估价。
+4. **护栏**（写在工具描述、管家设定、根规则 v2 第 7 条里）：只查用户自己清单上的东西，一次十几样，不整站抓取、不翻目录；页面打不开、要登录或被拦截（403、验证码）就告诉用户、改用截图，**不尝试绕过**。
+
+**数据模型**
+- **商品去重池** `store_products`（沿用 #48 的表）：同一个商品物理上只存一份。去重键依次是「超市 + 超市商品 ID」（从 Coles / WWS 商品页 URL 解析）→「超市 + 条码」→「超市 + 规范化名称 + 规格」（`name_key`）；后来带了商品页的上传会把只有名字的那条补上 ID，不另建一条。池里只放商品信息（名称、品牌、规格、条码、商品页、图片地址引用），**不放任何用户的价格**；已有的字段不会被别人的上传覆盖。这张表不带 user_id 是例外（迁移里写明：只有商品元数据，没有个人数据）。
+- **按用户隔离** `user_store_products`：每个用户只能看到自己上传 / 关联过的商品（也记下这个用户叫它什么，`matches`）。所有读接口和工具都 JOIN 这张表；没关联过的商品和不存在的商品回答完全一样（404 / 「没有这个商品（或不是你的）」），猜 ID 也拿不到。#48 的同步读取端只读 `origin = 'sync'` 的目录行，不会读到用户上传的商品。
+- **价格观察** `price_observations`（加了 user_id、observed_at、source）：用户 + 商品 + 价格 + 特价 + 原价 + 时间 + 来源，**永不过期**，界面显示「x 天前」。同一条（同一时间、同一来源）重复写只存一次。
+- **购买历史** `grocery_purchases`：清单上勾掉（带实付就用实付，不带就记清单上的超市价并标「估计」）或 AI 记一笔（`bought=true`），记实际价格、超市、日期、是否特价、原价；取消勾选会删掉那一条。
+- **统计**（`prices.stats`，接口 `GET …/store-products/{id}`，工具 `get_price_history`）：价格曲线（观察 + 实付）、最低 / 平均 / 最近、打过几次折、大约多久一次；上次买的 verdict：和这个用户自己 180 天的平均比，低 8% 以上 = 买得便宜、高 12% 以上 = 买贵了；最近 21 天见过特价、自己没赶上特价且贵 25% 以上也算买贵了（阈值在 `grocery/params.py`）。
+- **图片不复制**：只存超市图片的 URL 引用，不下载、不存储；今天页的 CSP 只加载自己的图片，所以不显示。商品图版权归超市。用户截图的缩略图这一期没做。
+
+**页内对话联网**：API 类（Anthropic / OpenAI / Gemini）可以在「AI 设置」里打开各家**官方**的联网工具（`ai_providers.web_tools`，默认关，费用算在用户自己的 key 上）：Anthropic `web_search_20260209` + `web_fetch_20260209`（老模型只有 `web_search_20250305`，`pause_turn` 自动续），OpenAI Responses `web_search`，Gemini `google_search` + `url_context`。托底 AI、OpenAI 兼容接口、服务端 Gemini CLI 不开。订阅类（Claude / ChatGPT / Gemini app）本来就有自己的联网，通过 MCP 用同样的工具。
+
+**接口**（scope nutrition，读别人的要 shares 授权，写只能写自己的）：`GET …/grocery/context`、`POST …/grocery/store-prices`、`GET …/grocery/store-products?q=`、`GET …/grocery/store-products/{id}`。今天页「采购」：行上「x 天前」和特价 / 半价角标，已买的行显示「买得便宜 / 买贵了」，统计下面是每家合计、特价省多少、缺价 / 旧价几样；新的「价格记录」列出自己的超市商品，点开看价格走势、最低 / 平均 / 最近、打折频率、上次买的判断。

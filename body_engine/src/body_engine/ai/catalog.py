@@ -14,6 +14,9 @@ from ..i18n import is_en
 
 MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
 API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "openai_compatible")
+# The vendors' own web search / page reading tools can be switched on for these (ai_providers.web_tools, off by default; billed on the
+# user's own key). Never for the fallback AI or OpenAI-compatible services (no common standard).
+WEB_TOOL_KINDS = ("anthropic_api", "openai_api", "gemini_api")
 
 KINDS: dict[str, dict] = {
     "claude_plan_mcp": {
