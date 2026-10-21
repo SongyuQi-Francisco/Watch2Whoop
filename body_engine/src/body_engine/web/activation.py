@@ -157,9 +157,11 @@ def setup_link(today: str | None, ow: str | None, code: str | None, login: str |
 
 
 def activate(conn: psycopg.Connection, code: str, user_agent: str | None = None,
-             today_url: str | None = None) -> dict | None:
+             today_url: str | None = None, mint_ow: bool = True) -> dict | None:
     """Redeem an activation code. Valid → {setup_link, sync, note}; anything else → None (the caller answers a generic 401).
     sync is False when the link carries no OW invitation code (note says why, for the admin; the app asks for the code later).
+    mint_ow=False (web sign-in from activate.html): no OW invitation is minted (minting one voids the user's older unused
+    code, which an app opening a previous link may still need); note "web".
     user_agent is accepted for symmetry with login codes; the device token is only created when the app redeems the login code."""
     if len(normalize(code)) != LENGTH:
         return None
@@ -174,7 +176,9 @@ def activate(conn: psycopg.Connection, code: str, user_agent: str | None = None,
     ow_code, note = None, None
     ow_user_id = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (row["user_id"],)).fetchone()["ow_user_id"]
     signing = ow_signing()
-    if not ow_user_id:
+    if not mint_ow:
+        note = "web"
+    elif not ow_user_id:
         note = "no_ow_user"
     elif signing is None:
         note = "ow_signing_not_configured"

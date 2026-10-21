@@ -23,6 +23,8 @@ input{display:block;width:100%;font:600 18px ui-monospace,Menlo,monospace;letter
 button{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;padding:16px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);cursor:pointer}
 button:disabled{opacity:.5}
 .err{min-height:1.5em;margin:12px 0 0;color:var(--bad);font-size:15px}
+button.secondary{margin-top:10px;background:var(--surface);color:var(--text)}
+.status{min-height:1.5em;margin:0 0 20px;color:var(--text-2)}
 .help{display:block;margin:20px 0 0;padding:14px;border-radius:14px;background:var(--surface);color:var(--text);text-align:center;text-decoration:none;font-weight:600}
 </style>
 </head>
@@ -30,11 +32,18 @@ button:disabled{opacity:.5}
 <main>
   <img src="icon.svg" alt="">
   <h1 data-i18n="activate.title">激活 Watch2Whoop</h1>
-  <p data-i18n="activate.hint">先在 TestFlight 装好 Watch2Whoop，再点下面的按钮</p>
-  <form id="form" novalidate>
-    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" data-i18n-ph="activate.code" data-i18n-aria="activate.code" hidden>
+  <p id="hint" data-i18n="activate.hint">先在 TestFlight 装好 Watch2Whoop，再点下面的按钮</p>
+  <!-- no code in the link: the person types it (activate.js shows the form only then) -->
+  <form id="form" novalidate hidden>
+    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" data-i18n-ph="activate.code" data-i18n-aria="activate.code">
     <button id="go" type="submit" data-i18n="activate.go">打开 App 完成设置</button>
   </form>
+  <!-- code in the link: open the app, fall back to the web by itself; the two buttons are for when the guess is wrong -->
+  <div id="choose" hidden>
+    <p id="status" class="status" role="status"></p>
+    <button id="open-app" type="button" data-i18n="activate.openApp">在 App 里打开</button>
+    <button id="open-web" type="button" class="secondary" data-i18n="activate.openWeb">在网页里打开</button>
+  </div>
   <div id="err" class="err" role="alert"></div>
   <a class="help" href="handbook/" target="_blank" rel="noopener" data-i18n="activate.handbook">使用手册</a>
 </main>

@@ -105,6 +105,12 @@
     "activate.invalid": "激活码无效或已停用",
     "activate.tooMany": "失败次数太多，请稍后再试",
     "activate.network": "网络连接失败，请重试",
+    "activate.hintLink": "装了 Watch2Whoop 会打开 App；没装就直接在网页里打开",
+    "activate.opening": "正在打开 Watch2Whoop…",
+    "activate.webFallback": "没有打开 App，正在网页里登录…",
+    "activate.openApp": "在 App 里打开",
+    "activate.openWeb": "在网页里打开",
+    "activate.askAdmin": "找管理员要新的链接",
   };
   const EN = {
     "app.title": "Body · Today",
@@ -197,6 +203,12 @@
     "activate.invalid": "Invalid or disabled activation code",
     "activate.tooMany": "Too many attempts, please try again later",
     "activate.network": "Network error, please try again",
+    "activate.hintLink": "If Watch2Whoop is installed the app opens; otherwise you continue in the browser",
+    "activate.opening": "Opening Watch2Whoop…",
+    "activate.webFallback": "The app didn't open, signing you in on the web…",
+    "activate.openApp": "Open in the app",
+    "activate.openWeb": "Open in the browser",
+    "activate.askAdmin": "Ask your admin for a new link",
   };
   const TABLES = { zh: ZH, en: EN };
   const PREF_KEY = "be.lang";

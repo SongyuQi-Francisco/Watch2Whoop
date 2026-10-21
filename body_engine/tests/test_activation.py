@@ -283,3 +283,93 @@ console.log(JSON.stringify(cases.map(loginKind)));"""
     assert [o["kind"] for o in out] == ["activation", "activation", "code", "code", "token", "token", "token"]
     assert out[0]["code"] == "ABCDEFGHJKMNPQRS" and out[3]["code"] == "ABCDEFGHJKMN"
     assert out[4]["code"] == "be_abcdefghjkmnpqrs"
+
+
+ACTIVATE_HARNESS = r"""
+const src = require("fs").readFileSync(process.argv[1], "utf8");
+async function scenario(hash, opts) {
+  const els = {}, calls = [], timers = [], docL = {}, winL = {};
+  const el = (id) => els[id] || (els[id] = { id, hidden: ["form", "choose"].includes(id), textContent: "", disabled: false, value: "",
+    _l: {}, addEventListener(t, f) { this._l[t] = f; }, focus() {}, after(n) { els[n.id] = n; } });
+  const document = { hidden: false, getElementById: (id) => (id === "ask" ? els.ask || null : el(id)),
+    addEventListener: (t, f) => { docL[t] = f; }, createElement: () => el("_new") };
+  const location = { hash, _href: null, replaced: null, set href(v) { this._href = v; calls.push(["open", v]);
+      if (opts.appOpens) { document.hidden = true; docL.visibilitychange(); } },
+    get href() { return this._href; }, replace(v) { this.replaced = v; calls.push(["replace", v]); } };
+  const fetch = async (url, init) => {
+    calls.push(["fetch", url, JSON.parse(init.body)]);
+    if (url === "/v1/web/activate") return opts.valid
+      ? { ok: true, status: 200, json: async () => ({ setup_link: "watch2whoop://setup?today=x&login=LOGIN" + calls.length }) }
+      : { ok: false, status: 401, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  const window = { addEventListener: (t, f) => { winL[t] = f; } };
+  const setTimeout = (f) => { timers.push(f); return timers.length; };
+  new Function("window", "document", "location", "fetch", "setTimeout", "clearTimeout", src)(
+    window, document, location, fetch, setTimeout, () => { timers.length = 0; });
+  for (let i = 0; i < 5; i++) await new Promise((r) => global.setTimeout(r, 0));
+  if (opts.click) { els[opts.click]._l.click(); for (let i = 0; i < 5; i++) await new Promise((r) => global.setTimeout(r, 0)); }
+  if (opts.typed) { els.code.value = opts.typed; els.form._l.submit({ preventDefault() {} }); for (let i = 0; i < 5; i++) await new Promise((r) => global.setTimeout(r, 0)); }
+  for (const f of timers.splice(0)) f();   // FALLBACK_MS elapses (and the button re-enable)
+  for (let i = 0; i < 5; i++) await new Promise((r) => global.setTimeout(r, 0));
+  return { calls, form: els.form.hidden, choose: els.choose.hidden, err: els.err.textContent, ask: !!els.ask, status: els.status.textContent };
+}
+(async () => {
+  const out = {
+    noApp: await scenario("#abcd-efgh-jkmn-pqrs", { valid: true }),
+    appOpens: await scenario("#ABCDEFGHJKMNPQRS", { valid: true, appOpens: true }),
+    invalid: await scenario("#ABCDEFGHJKMNPQRS", { valid: false }),
+    noCode: await scenario("", { valid: true }),
+    typed: await scenario("", { valid: true, typed: "abcd efgh jkmn pqrs" }),
+    webButton: await scenario("#ABCDEFGHJKMNPQRS", { valid: true, appOpens: true, click: "open-web" }),
+  };
+  console.log(JSON.stringify(out));
+})();
+"""
+
+
+def test_activation_page_flow(client, tmp_path):
+    """activate.js with a stub DOM: a code in the link never shows the input; the app is tried first and, when the page stays
+    in front, the same link's login code signs in on the web; leaving the page (app opened) spends nothing on the web;
+    an invalid code says so with no input and no buttons; 「在网页里打开」 exchanges the code again."""
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    src = tmp_path / "activate.js"
+    src.write_text(client.get("/app/activate.js").text)
+    out = json.loads(subprocess.run([node, "-e", ACTIVATE_HARNESS, str(src)], capture_output=True, text=True, check=True).stdout)
+    no_app = out["noApp"]
+    assert no_app["form"] is True and no_app["choose"] is False                      # never the input box
+    kinds = [c[0] if c[0] != "fetch" else c[1] for c in no_app["calls"]]
+    assert kinds == ["/v1/web/activate", "open", "/v1/web/activate", "/v1/web/login-code", "replace"], kinds
+    assert no_app["calls"][0][2] == {"code": "ABCDEFGHJKMNPQRS"}                    # for the app: full setup link
+    assert no_app["calls"][2][2] == {"code": "ABCDEFGHJKMNPQRS", "web": True}       # for the web: its own login code only
+    assert no_app["calls"][3][2]["code"].startswith("LOGIN")
+    assert no_app["calls"][4][1] == "./"
+    opened = [c[1] if c[0] == "fetch" else c[0] for c in out["appOpens"]["calls"]]
+    assert opened == ["/v1/web/activate", "open"]                                    # app took over: nothing spent here
+    bad = out["invalid"]
+    assert bad["err"] == "activate.invalid" and bad["ask"] and bad["choose"] is True and bad["form"] is True
+    assert out["noCode"]["form"] is False and out["noCode"]["calls"] == []
+    typed = out["typed"]
+    assert typed["form"] is True and typed["calls"][0][2] == {"code": "ABCDEFGHJKMNPQRS"} and typed["calls"][-1][0] == "replace"
+    web = [c[1] if c[0] == "fetch" else c[0] for c in out["webButton"]["calls"]]
+    assert web == ["/v1/web/activate", "open", "/v1/web/activate", "/v1/web/login-code", "replace"], web
+    assert out["webButton"]["calls"][2][2] == {"code": "ABCDEFGHJKMNPQRS", "web": True}
+
+
+def test_web_activation_mints_no_ow_code(client, users, dsn, ow):
+    """activate.html / the login box signing in on the web (web=true): a login code only, no OW invitation, so an app that
+    is still opening an earlier link keeps a valid sync code."""
+    code = _new(dsn, users["synced"], label="Web")["code"]
+    before = len(ow)
+    r = client.post("/v1/web/activate", json={"code": code, "web": True})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["sync"] is False and body["note"] == "web" and "code" not in _params(body["setup_link"])
+    assert len(ow) == before                                                           # OW was not called
+    client.cookies.clear()
+    assert client.post("/v1/web/login-code", json={"code": _params(body["setup_link"])["login"]}).status_code == 200
+    assert client.get("/v1/web/me").json()["me"]["id"] == users["synced"]
+    client.cookies.clear()
+    assert client.post("/v1/web/activate", json={"code": "ABCDEFGHJKMNPQRS", "web": True}).status_code == 401

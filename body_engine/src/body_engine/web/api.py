@@ -1,7 +1,9 @@
 """Endpoints and static files for the Today page.
 
 - POST /v1/web/login {"token"}: validate an API token and exchange it for an httpOnly cookie (session.py); POST /v1/web/logout signs out.
-- POST /v1/web/activate {"code"}: reusable activation code → fresh watch2whoop://setup link (activation.py; page /app/activate.html#<code>).
+- POST /v1/web/activate {"code", "web"?}: reusable activation code → fresh watch2whoop://setup link (activation.py; page
+  /app/activate.html#<code>). web=true (the page signing in on the web) mints only the login code, no OW invitation, so a
+  link the app may still be opening keeps a valid OW code.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
@@ -19,7 +21,7 @@ from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.39-2026-10-22"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.40-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -97,6 +99,7 @@ def login_with_code(body: LoginCodeIn, request: Request, response: Response, con
 class ActivateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: str = Field(min_length=8, max_length=40)
+    web: bool = False   # activate.html signing in on the web: mint only a Today page login code (no OW invitation)
 
 
 @router.post("/v1/web/activate")
@@ -107,7 +110,7 @@ def activate(body: ActivateIn, request: Request, conn=Depends(get_conn)):
     wait = login_limit.retry_after(ip)
     if wait:
         raise HTTPException(429, "失败次数太多，请稍后再试", headers={"Retry-After": str(wait)})
-    res = activation.activate(conn, body.code, request.headers.get("user-agent"), str(request.base_url))
+    res = activation.activate(conn, body.code, request.headers.get("user-agent"), str(request.base_url), mint_ow=not body.web)
     if res is None:
         login_limit.record_failure(ip)
         raise HTTPException(401, "激活码无效或已停用")
