@@ -38,7 +38,12 @@ def exercise_restrictions(ctx) -> RuleResult:
                 f"{_meta_text(meta, 'reason')}请在 SparkyFitness 里把它从模板删掉。{_meta_text(meta, 'cues')}",
                 subject=f"plan:{ex_id}", sticky=True,
                 evidence={"exercise_id": ex_id, "exercise": info["name"], "template": info["template"],
-                          "status_basis": basis, "source": "body-management.md 4.3"}))
+                          "status_basis": basis, "source": "body-management.md 4.3"},
+                # exercise / template names and the exercise_meta reason / cues are the user's own text (kept as written)
+                title_en=f"Banned exercise in your training plan: {info['name']}",
+                message_en=f"“{info['template'] or plan['name']}” contains {info['name']}, an exercise you never do (4.3). "
+                           f"{_meta_text(meta, 'reason')}Remove it from the template in SparkyFitness. "
+                           f"{_meta_text(meta, 'cues')}".rstrip()))
     # 2) A banned exercise was done in recent training logs / a caution exercise was too heavy
     caps = {ctx.meta_by_ref[ref]["app_exercise_id"]: (ref, kg) for ref, kg in P.CAUTION_MAX_WEIGHT_KG.items()
             if ref in ctx.meta_by_ref and ctx.meta_by_ref[ref].get("app_exercise_id")}
@@ -58,7 +63,10 @@ def exercise_restrictions(ctx) -> RuleResult:
                     f"{name} 是永久不做的动作（4.3）。{_meta_text(meta, 'reason')}下次换成：{_meta_text(meta, 'cues') or '计划里的替代动作。'}",
                     subject=f"log:{e['exercise_id']}:{d}", sticky=True,
                     evidence={"exercise_id": e["exercise_id"], "exercise": name, "date": d, "sets": sets,
-                              "status_basis": basis, "source": "body-management.md 4.3"}))
+                              "status_basis": basis, "source": "body-management.md 4.3"},
+                    title_en=f"Banned exercise on {d}: {name}",
+                    message_en=f"{name} is an exercise you never do (4.3). {_meta_text(meta, 'reason')}Next time do instead: "
+                               f"{_meta_text(meta, 'cues') or 'the alternative in your plan.'}"))
             if e["exercise_id"] in caps and d >= caution_since:
                 ref, cap = caps[e["exercise_id"]]
                 heavy = max((x.get("weight_kg") or 0) for x in e["sets"]) if e["sets"] else 0
@@ -69,7 +77,10 @@ def exercise_restrictions(ctx) -> RuleResult:
                         f"{_meta_text(meta, 'cues')}",
                         subject=f"weight:{e['exercise_id']}:{d}", sticky=True,
                         evidence={"exercise_id": e["exercise_id"], "exercise": name, "date": d, "sets": sets,
-                                  "max_kg": cap, "source": "body-management.md 4.3、4.4"}))
+                                  "max_kg": cap, "source": "body-management.md 4.3、4.4"},
+                        title_en=f"{d} {name}: {heavy:g} kg, over {cap:g} kg",
+                        message_en=f"Heavy cable face pulls train the upper traps, and 4.3 lists them as never-do; the plan is "
+                                   f"a light weight around {cap:g} kg (4.4). {_meta_text(meta, 'cues')}".rstrip()))
     # 3) Caution exercises in today's plan: list the key points
     caution = []
     for p in ctx.planned_exercises():
@@ -84,7 +95,10 @@ def exercise_restrictions(ctx) -> RuleResult:
         reminders.append(Reminder(
             EXERCISES, "info", f"今天计划里有 {len(caution)} 个要小心的动作",
             "\n".join(f"· {c['exercise']}：{c['cues']}" + (f"（{c['reason']}）" if c["reason"] else "") for c in caution),
-            subject="", evidence={"exercises": caution, "source": "body-management.md 4.3、exercise_meta"}))
+            subject="", evidence={"exercises": caution, "source": "body-management.md 4.3、exercise_meta"},
+            title_en=f"Exercises to take care with in today's plan: {len(caution)}",
+            message_en="\n".join(f"· {c['exercise']}: {c['cues']}" + (f" ({c['reason']})" if c["reason"] else "")
+                                 for c in caution)))
     details = {"plan_exercises": len(in_plan), "unmapped_meta": sum(1 for m in ctx.meta if not m.get("app_exercise_id"))}
     if reminders:
         return RuleResult(EXERCISES, "triggered", reminders=reminders, details=details)
@@ -123,15 +137,26 @@ def readiness(ctx) -> RuleResult:
                 READINESS, "warning", f"恢复分 {row['recovery']}（红），今天降强度",
                 f"今天计划「{'、'.join(heavy)}」。恢复红的日子：每个动作少做 1 组、每组多留 1–2 次余力，不冲重量；"
                 "或者换成爬坡 / 肩部 routine。身体不舒服就休息。",
-                subject="red_heavy", evidence={**evidence, "planned_heavy": heavy}))
+                subject="red_heavy", evidence={**evidence, "planned_heavy": heavy},
+                title_en=f"Recovery {row['recovery']} (red): lower the intensity today",
+                message_en=f"Today's plan: “{', '.join(heavy)}”. On a red day do one set less per exercise, keep 1–2 more reps "
+                           "in reserve per set and don't push the weight; or switch to incline walking / the shoulder routine. "
+                           "If you feel unwell, rest."))
         else:
             reminders.append(Reminder(
                 READINESS, "info", f"恢复分 {row['recovery']}（红）",
-                "今天计划里没有大重量训练；以散步、灵活度为主，早点睡。", subject="red", evidence=evidence))
+                "今天计划里没有大重量训练；以散步、灵活度为主，早点睡。", subject="red", evidence=evidence,
+                title_en=f"Recovery {row['recovery']} (red)",
+                message_en="No heavy training in today's plan; keep to walking and mobility, and go to bed early."))
     if "illness_warning" in flags:
         reminders.append(Reminder(READINESS, "warning", "可能在生病或过度疲劳",
                                   flags["illness_warning"] + "。今天别做高强度，注意体温和症状；连续几天这样考虑看 GP。",
-                                  subject="illness", evidence=evidence))
+                                  subject="illness", evidence=evidence,
+                                  title_en="Possibly getting sick or overreaching",
+                                  # the flag text is fixed (scores/engine.py illness_warning)
+                                  message_en="Resting HR more than 5 above baseline and HRV below 85% of baseline. No high "
+                                             "intensity today; watch your temperature and symptoms, and if it lasts several "
+                                             "days, consider seeing a GP."))
     debt = row["sleep_debt_min"]
     if debt is not None and debt >= P.SLEEP_DEBT_HIGH_MIN:
         reminders.append(Reminder(
@@ -139,7 +164,11 @@ def readiness(ctx) -> RuleResult:
             f"睡眠债 {debt / 60:.1f} 小时",
             f"最近 14 晚加权平均少睡 {debt} 分钟（睡眠需求 {row['sleep_need_min'] or '—'} 分钟）。今晚提前上床；"
             "午睡最多 20 分钟、下午 3 点后不睡，12 点后不喝咖啡（6.2）。",
-            subject="sleep_debt", evidence=evidence))
+            subject="sleep_debt", evidence=evidence,
+            title_en=f"Sleep debt {debt / 60:.1f} h",
+            message_en=f"Over the last 14 nights you slept {debt} min less than you need on a weighted average (sleep need "
+                       f"{row['sleep_need_min'] or '—'} min). Go to bed earlier tonight; nap at most 20 min and not after 3 pm, "
+                       "and no coffee after 12 noon (6.2)."))
     if reminders:
         return RuleResult(READINESS, "triggered", reminders=reminders)
     if row["recovery"] is None:

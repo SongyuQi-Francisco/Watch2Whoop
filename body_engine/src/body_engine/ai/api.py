@@ -23,6 +23,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
+from ..i18n import L, lang
 from . import asr, catalog, chat, choice, crypto, fallback, providers, tokens
 
 log = logging.getLogger(__name__)
@@ -59,20 +60,23 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
     header = '{"Authorization": "Bearer ${' + token_env + '}"}'
     return {
         "url": url, "token_env": token_env,
-        "keychain": (f"security add-generic-password -a \"$USER\" -s body-engine-mcp -w   # 粘贴 token\n"
+        "keychain": (f"security add-generic-password -a \"$USER\" -s body-engine-mcp -w   # {L('粘贴 token', 'paste the token')}\n"
                      f"echo 'export {token_env}=$(security find-generic-password -s body-engine-mcp -w)' >> ~/.zshrc"),
         "clients": {
             "claude-code": f"claude mcp add-json --scope user body-engine '{{\"type\": \"http\", \"url\": \"{url}\", \"headers\": {header}}}'",
             "codex": f"codex mcp add body-engine --url {url} --bearer-token-env-var {token_env}",
             "gemini-cli": (f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
-                           "# 或在 ~/.gemini/settings.json 的 mcpServers 里加（Antigravity 的 MCP 设置填同样的地址和请求头）：\n"
+                           + L("# 或在 ~/.gemini/settings.json 的 mcpServers 里加（Antigravity 的 MCP 设置填同样的地址和请求头）：\n",
+                               "# or add it to mcpServers in ~/.gemini/settings.json (in Antigravity's MCP settings use the same URL and header):\n")
                            + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
             "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,
                                                                 "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
                                 ensure_ascii=False, indent=2),
         },
-        "prompt": "连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
+        "prompt": L("连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
+                    "Once connected, ask the AI to read the MCP prompt \"butler\" (the coach's role) first, "
+                    "or just say \"use body-engine to check how I'm doing today\"."),
     }
 
 
@@ -88,12 +92,12 @@ def _ai_mode(conn, viewer: dict, e: dict) -> dict:
     if e["source"] == "fallback":
         return fallback.summary(conn, viewer["id"])
     if e["source"] == "butler":
-        return {"mode": "butler", "display_name": "身体管家", "assistant_url": e["url"]}
+        return {"mode": "butler", "display_name": L("身体管家", "Body butler"), "assistant_url": e["url"]}
     if e["source"] == "none":
         return {"mode": "none"}
     row = e["provider"]
     return {"mode": "mcp" if catalog.is_mcp(row["kind"]) else "api", "kind": row["kind"],
-            "display_name": row["display_name"], "model": row["model"], "status": row["status"],
+            "display_name": catalog.display_name(row), "model": row["model"], "status": row["status"],
             "vision": catalog.KINDS[row["kind"]].get("vision")}
 
 
@@ -201,6 +205,8 @@ def _fallback_view(conn, viewer: dict) -> dict | None:
     s = fallback.summary(conn, viewer["id"])
     s["used"] = choice.effective(conn, viewer["id"])["source"] == "fallback"
     s["points"] = fallback.consent_points(conn, viewer["id"])
+    s["points_lang"] = lang()                # "en" = a translation; the Chinese points (consent_version) are what is agreed to
+    s["points_translated"] = lang() != "zh"
     if viewer.get("role") == "owner":
         st = fallback.state(conn)
         s["balance_cny"] = float(st["balance_cny"]) if st.get("balance_cny") is not None else None
@@ -292,7 +298,8 @@ def _sse(gen, cm):
     except Exception as e:  # Do not send internal details (may contain paths etc.) to the frontend
         log.exception("chat stream failed")
         print(f"chat stream failed: {type(e).__name__}: {e}", file=sys.stderr)
-        yield f"event: error\ndata: {json.dumps({'code': 'internal', 'message': '出错了，稍后再试'})}\n\n"
+        msg = L("出错了，稍后再试", "Something went wrong; try again later")
+        yield f"event: error\ndata: {json.dumps({'code': 'internal', 'message': msg}, ensure_ascii=False)}\n\n"
     finally:
         cm.__exit__(None, None, None)
 
@@ -338,7 +345,7 @@ async def transcribe(request: Request, conn=Depends(get_conn), viewer=Depends(cu
     """Voice -> text. Body: audio/wav (PCM16 mono, <= 60 s). Returns {text, seconds, used_today, per_day}; the page puts the text
     in the input box for the user to check before sending. The audio is never stored. Errors: detail = {code, message}."""
     if int(request.headers.get("content-length") or 0) > asr.MAX_BYTES:
-        raise HTTPException(413, {"code": "too_large", "message": f"录音太大（最长 {asr.MAX_SECONDS} 秒）"})
+        raise HTTPException(413, {"code": "too_large", "message": asr.too_large_message()})
     data = await request.body()
     try:
         return await run_in_threadpool(asr.transcribe, conn, viewer["id"], data)

@@ -16,27 +16,32 @@ import json
 
 import openai
 
+from ...i18n import L
 from .base import MAX_OUTPUT_TOKENS, TIMEOUT_S, Adapter, AdapterError, TurnResult
 
 
 def _errors(e: Exception, who: str) -> AdapterError:
+    en = {"兼容接口": "The API"}.get(who, who)  # OpenAICompatAdapter.who
     if isinstance(e, openai.AuthenticationError):
-        return AdapterError(f"{who} 的 API key 无效或已停用，请在「AI 设置」里更新", "auth")
+        return AdapterError(L(f"{who} 的 API key 无效或已停用，请在「AI 设置」里更新",
+                              f"{en}: the API key is invalid or disabled; update it in AI settings"), "auth")
     if isinstance(e, openai.PermissionDeniedError):
-        return AdapterError(f"这个 {who} key 没有权限用这个模型", "auth")
+        return AdapterError(L(f"这个 {who} key 没有权限用这个模型", f"{en}: this key may not use this model"), "auth")
     if isinstance(e, openai.NotFoundError):
-        return AdapterError(f"{who} 上找不到这个模型（或地址不对）", "bad_request")
+        return AdapterError(L(f"{who} 上找不到这个模型（或地址不对）", f"{en}: model not found (or wrong address)"), "bad_request")
     if isinstance(e, openai.RateLimitError):
-        return AdapterError(f"{who} 限流了（或额度用完），稍后再试", "rate_limit")
+        return AdapterError(L(f"{who} 限流了（或额度用完），稍后再试", f"{en}: rate limited (or out of quota); try again later"),
+                            "rate_limit")
     if isinstance(e, openai.APIStatusError) and e.status_code == 402:  # DeepSeek: Insufficient Balance
-        return AdapterError(f"{who} 账户余额不足，充值后再用", "balance")
+        return AdapterError(L(f"{who} 账户余额不足，充值后再用", f"{en}: insufficient balance; top up first"), "balance")
     if isinstance(e, openai.BadRequestError):
-        return AdapterError(f"请求被 {who} 拒绝：{e.message}", "bad_request")
+        return AdapterError(L(f"请求被 {who} 拒绝：{e.message}", f"{en} rejected the request: {e.message}"), "bad_request")
     if isinstance(e, openai.APIStatusError):
-        return AdapterError(f"{who} 服务出错（{e.status_code}），稍后再试", "unavailable")
+        return AdapterError(L(f"{who} 服务出错（{e.status_code}），稍后再试", f"{en}: service error ({e.status_code}); try again later"),
+                            "unavailable")
     if isinstance(e, openai.APIConnectionError):
-        return AdapterError(f"连不上 {who}（网络或地址问题）", "network")
-    return AdapterError(f"{who} 调用失败：{type(e).__name__}", "unavailable")
+        return AdapterError(L(f"连不上 {who}（网络或地址问题）", f"Can't reach {en} (network or address problem)"), "network")
+    return AdapterError(L(f"{who} 调用失败：{type(e).__name__}", f"{en} call failed: {type(e).__name__}"), "unavailable")
 
 
 def _data_url(b: dict) -> str:
@@ -96,14 +101,14 @@ class OpenAIResponsesAdapter(Adapter):
                 elif event.type in ("response.completed", "response.incomplete"):
                     final = event.response
                 elif event.type == "response.failed":
-                    msg = getattr(getattr(event.response, "error", None), "message", None) or "生成失败"
+                    msg = getattr(getattr(event.response, "error", None), "message", None) or L("生成失败", "generation failed")
                     raise AdapterError(f"OpenAI：{msg}", "unavailable")
         except AdapterError:
             raise
         except openai.OpenAIError as e:
             raise _errors(e, "OpenAI")
         if final is None:
-            raise AdapterError("OpenAI 没有返回完整结果", "unavailable")
+            raise AdapterError(L("OpenAI 没有返回完整结果", "OpenAI did not return a complete result"), "unavailable")
 
         native, text, calls = [], [], []
         for item in final.output:
@@ -225,6 +230,7 @@ class DeepSeekFallbackAdapter(OpenAICompatAdapter):
             yield from super().stream_turn(system, history, tools)
         except AdapterError as e:
             if e.code in ("auth", "balance"):
-                raise AdapterError("托底 AI 暂停了（管理员的 DeepSeek 账户有问题，已经提醒他）；"
-                                   "也可以在「我 → AI 设置」接入自己的 AI", "fallback_unavailable")
+                raise AdapterError(L("托底 AI 暂停了（管理员的 DeepSeek 账户有问题，已经提醒他）；也可以在「我 → AI 设置」接入自己的 AI",
+                                     "The backup AI is paused (a problem with the admin's DeepSeek account; they have been told). "
+                                     "You can also connect your own AI in Me → AI settings"), "fallback_unavailable")
             raise

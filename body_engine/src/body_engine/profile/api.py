@@ -1,7 +1,7 @@
 """Endpoints for the personal profile and electronic consent (Today page web/static/profile.js). Only your own; changes need write (cookie write requests also need X-Body-Web: 1).
 
 - GET   /v1/users/{user}/profile   -> profile + missing + consent (required / version / accepted_at / reconfirm)
-- PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?}(null = clear)
+- PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?, language?}(null = clear; language null = follow the device)
 - GET   /v1/consent                 -> {version, summary, text} (full consent form in Markdown)
 - POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents)
 """
@@ -47,6 +47,7 @@ class ProfileIn(BaseModel):
     height_cm: float | None = None
     timezone: str | None = Field(default=None, max_length=60)
     goal_weight_kg: float | None = None
+    language: Literal["zh", "en"] | None = None
 
 
 class ConsentIn(BaseModel):

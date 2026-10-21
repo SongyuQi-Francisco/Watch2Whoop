@@ -211,6 +211,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       AppState.instance.update(c.copyWith(clearPendingLoginCode: true));
     }
     if (message.startsWith(_kMePrefix)) _onLoginStatus(int.tryParse(message.substring(_kMePrefix.length)) ?? 0);
+    // Profile language (after login) or the language picked on the login page: the native screens follow it.
+    final lang = parseLangMessage(message);
+    if (lang != null && lang.lang != langOverride.value) setLangOverride(lang.lang);
   }
 
   /// Asks the page (same-origin cookie) whether it is logged in; the answer comes back over the JS channel.
