@@ -897,4 +897,5 @@ I18N.addEn({
   "断开": "Disconnect",
   "断开后这个应用立即连不上，确定？": "The app loses access right away. Disconnect?",
   "已断开": "Disconnected",
+  "注意：跳转地址不是常见的 AI 应用（Claude、ChatGPT、Gemini、Antigravity）。应用名可以随便填，只有你确定这个地址属于你要连接的应用时才同意。": "Careful: the return address is not one of the usual AI apps (Claude, ChatGPT, Gemini, Antigravity). Anyone can pick the app name; approve only if you are sure this address belongs to the app you want to connect.",
 });

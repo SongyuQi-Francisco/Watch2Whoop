@@ -38,8 +38,14 @@ def set_pref(conn: psycopg.Connection, user_id: int, source: str) -> None:
 
 
 def _mcp_tokens_all_revoked(conn, user_id: int) -> bool:
-    r = conn.execute("""SELECT count(*) AS n, count(*) FILTER (WHERE revoked_at IS NULL) AS live FROM api_tokens
-                        WHERE user_id = %s AND 'mcp' = ANY(scopes)""", (user_id,)).fetchone()
+    """The user had MCP access and none is left. Live = a static AI token not revoked, or an OAuth connection not revoked
+    (its short-lived access token may have expired while the refresh token still works); an OAuth access token row by
+    itself never counts, expired or not (ai/oauth.py)."""
+    r = conn.execute("""SELECT (SELECT count(*) FROM api_tokens WHERE user_id = %(u)s AND 'mcp' = ANY(scopes)) AS n,
+                               (SELECT count(*) FROM api_tokens WHERE user_id = %(u)s AND 'mcp' = ANY(scopes)
+                                  AND oauth_grant_id IS NULL AND revoked_at IS NULL)
+                             + (SELECT count(*) FROM oauth_grants WHERE user_id = %(u)s AND revoked_at IS NULL) AS live""",
+                     {"u": user_id}).fetchone()
     return r["n"] > 0 and r["live"] == 0
 
 

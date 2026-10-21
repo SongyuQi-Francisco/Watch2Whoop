@@ -23,13 +23,21 @@ CORS = {"Access-Control-Allow-Origin": "*"}
 @well_known.get("/.well-known/oauth-protected-resource")
 @well_known.get("/.well-known/oauth-protected-resource/mcp")
 def protected_resource(request: Request):
-    return JSONResponse(oauth_http.protected_resource_metadata(oauth.base_url(request)), headers=CORS)
+    base = _base()
+    return JSONResponse(oauth_http.protected_resource_metadata(base), headers=CORS)
 
 
 @well_known.get("/.well-known/oauth-authorization-server")
 @well_known.get("/.well-known/oauth-authorization-server/oauth")
 def authorization_server(request: Request):
-    return JSONResponse(oauth_http.authorization_server_metadata(oauth.base_url(request)), headers=CORS)
+    return JSONResponse(oauth_http.authorization_server_metadata(_base()), headers=CORS)
+
+
+def _base() -> str:
+    base = oauth.base_url()
+    if base is None:   # OAuth needs BODY_PUBLIC_URL; never derived from the Host header
+        raise HTTPException(404, "OAuth is not enabled on this server")
+    return base
 
 
 def _write(viewer: dict) -> int:

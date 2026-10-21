@@ -85,7 +85,7 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
                                                                 "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
                                 ensure_ascii=False, indent=2),
         },
-        "oauth": L("Claude 网页 / 手机 app、ChatGPT、Gemini app：在它们的「连接器 / 自定义应用」里添加这个地址，按提示登录今天页并同意，不用 token。",
+        "oauth": None if not oauth.enabled() else L("Claude 网页 / 手机 app、ChatGPT、Gemini app：在它们的「连接器 / 自定义应用」里添加这个地址，按提示登录今天页并同意，不用 token。",
                    "Claude web / mobile, ChatGPT, the Gemini app: add this address as a connector / custom app, sign in to the Today "
                    "page when asked and approve; no token needed."),
         "prompt": L("连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",

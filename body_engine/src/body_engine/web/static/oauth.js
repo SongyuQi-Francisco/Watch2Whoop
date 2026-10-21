@@ -37,6 +37,7 @@
     $("ro").checked = !data.scopes.includes("write");
     $("ro").disabled = !data.scopes.includes("write");
     $("loopback").hidden = !data.loopback;
+    $("unknown").hidden = data.loopback || !!data.known_vendor;   // a registered client can call itself anything
     show("consent");
   }
 

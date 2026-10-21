@@ -6,10 +6,11 @@ official MCP Python SDK (`mcp.server.auth`: /oauth/authorize, /oauth/token, /oau
 this module is the storage and policy behind them (`BodyOAuthProvider`) plus the consent step (ai/oauth_api.py,
 web/static/oauth.html).
 
+- Off unless BODY_PUBLIC_URL is set: the issuer and resource URLs come only from it, never from the Host header.
 - Clients register themselves (RFC 7591). All are public clients: token_endpoint_auth_method is forced to `none`, no client
-  secret exists, PKCE S256 protects the code. Redirect URIs must be https, a loopback http address, or a private-use scheme;
-  loopback ones match with any port (RFC 8252 §7.3). Registration is rate limited (oauth_http.py) and clients that never got
-  a grant are deleted after CLIENT_UNUSED_DAYS (`cleanup`).
+  secret exists, PKCE S256 protects the code. Redirect URIs (allow-list): https with a host, a loopback http address (any
+  port matches, RFC 8252 §7.3), or a private-use scheme in reverse-domain form with a dot (RFC 8252 §7.1). Registration
+  is rate limited (oauth_http.py) and clients that never got a grant are deleted after an hour (`cleanup`).
 - /oauth/authorize stores the request and sends the browser to the consent page; the logged-in user approves or denies there.
   Approving creates a grant (one connection, listed under 「我 → AI 设置」) and a one-time code (5 minutes, sha256 only).
 - Tokens: the access token is an api_tokens row with scope mcp (the same kind as static AI tokens, so /mcp, audit and
@@ -37,17 +38,18 @@ from psycopg.types.json import Jsonb
 
 from .. import auth
 from ..i18n import L
+from . import oauth_params as P
+from .oauth_params import KNOWN_REDIRECT_HOSTS
 
 SCOPES = ("read", "write")
 ACCESS_TTL_S = 3600
 REFRESH_TTL = timedelta(days=90)
 CODE_TTL = timedelta(minutes=5)
 REQUEST_TTL = timedelta(minutes=10)
-CLIENT_UNUSED_DAYS = 1           # registered but never approved -> deleted by cleanup()
 EXPIRED_TOKEN_KEEP_DAYS = 7      # expired OAuth access token rows are deleted after this
 MAX_GRANTS = 20                  # live connections per user
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
-BAD_SCHEMES = ("javascript", "data", "file", "vbscript", "about", "blob")
+PRIVATE_SCHEME = re.compile(r"^[a-z][a-z0-9+-]*(\.[a-z0-9+-]+)+$")   # reverse domain name, e.g. com.example.app
 
 # Set by oauth_http for the register call: the caller's IP (sha256), for the rate limit
 REGISTER_IP: ContextVar[str | None] = ContextVar("oauth_register_ip", default=None)
@@ -61,15 +63,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def base_url(scope_or_request=None) -> str:
-    """This server's public origin: BODY_PUBLIC_URL, else the request's own scheme + host."""
-    env = (os.environ.get("BODY_PUBLIC_URL") or "").rstrip("/")
-    if env or scope_or_request is None:
-        return env or "http://localhost:8100"
-    scope = getattr(scope_or_request, "scope", scope_or_request)
-    headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers") or []}
-    host = headers.get("host") or "localhost"
-    return f"{scope.get('scheme', 'http')}://{host}"
+def base_url(scope_or_request=None) -> str | None:
+    """This server's public origin from BODY_PUBLIC_URL; None = OAuth is off. Never derived from the Host header, which a
+    client controls (the issuer / resource in the metadata and the consent redirect must not follow it)."""
+    return (os.environ.get("BODY_PUBLIC_URL") or "").strip().rstrip("/") or None
+
+
+def enabled() -> bool:
+    return base_url() is not None
 
 
 def resource_url(base: str) -> str:
@@ -86,19 +87,32 @@ def is_loopback(uri: str) -> bool:
 
 
 def check_redirect_uri(uri: str) -> None:
+    """Allow-list (RFC 8252 / OAuth 2.1): https with a host, loopback http, or a reverse-domain private-use scheme."""
     p = urlparse(uri)
-    scheme = (p.scheme or "").lower()
-    if not scheme or scheme in BAD_SCHEMES or p.fragment:
+    scheme = p.scheme or ""
+    if p.fragment or not scheme or scheme != scheme.lower():
         raise ValueError(uri)
-    if scheme == "http" and not is_loopback(uri):
-        raise ValueError(uri)
-    if scheme in ("http", "https") and not p.hostname:
-        raise ValueError(uri)
+    if scheme == "https" and p.hostname:
+        return
+    if scheme == "http" and is_loopback(uri):
+        return
+    if PRIVATE_SCHEME.match(scheme):
+        return
+    raise ValueError(uri)
 
 
 def redirect_host(uri: str) -> str:
+    """What the consent page and AI settings show as where the browser goes back to: the host for https, otherwise the full
+    scheme as well (so `evil.app://claude.ai/cb` is not shown as claude.ai)."""
     p = urlparse(uri)
-    return p.hostname or f"{p.scheme}:"
+    if p.scheme == "https" and p.hostname:
+        return p.hostname
+    return f"{p.scheme}://{p.netloc}" if p.netloc else f"{p.scheme}:"
+
+
+def known_vendor(uri: str) -> bool:
+    p = urlparse(uri)
+    return p.scheme == "https" and (p.hostname or "") in KNOWN_REDIRECT_HOSTS
 
 
 def _slug(name: str | None) -> str:
@@ -144,11 +158,12 @@ def load_client(conn: psycopg.Connection, client_id: str) -> BodyClient | None:
 
 
 def registrations(conn: psycopg.Connection, ip_sha: str | None) -> tuple[int, int]:
-    """(this IP in the last hour, everyone in the last day)."""
+    """(this IP in the last hour, clients nobody approved yet in the last day — approved ones do not count)."""
     r = conn.execute("""SELECT count(*) FILTER (WHERE registered_ip_sha256 = %s AND created_at > now() - interval '1 hour') AS ip,
-                               count(*) AS day FROM oauth_clients WHERE created_at > now() - interval '1 day'""",
-                     (ip_sha,)).fetchone()
-    return r["ip"], r["day"]
+                               count(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.client_id))
+                                 AS unapproved
+                        FROM oauth_clients c WHERE created_at > now() - interval '1 day'""", (ip_sha,)).fetchone()
+    return r["ip"], r["unapproved"]
 
 
 # ---------------------------------------------------------------- authorization requests (consent page)
@@ -176,7 +191,8 @@ def request_view(conn: psycopg.Connection, rid: str) -> dict | None:
     if r is None:
         return None
     return {"client_name": r["client_name"] or L("未命名的应用", "Unnamed app"), "redirect_host": redirect_host(r["redirect_uri"]),
-            "redirect_uri": r["redirect_uri"], "loopback": is_loopback(r["redirect_uri"]), "scopes": r["scopes"],
+            "redirect_uri": r["redirect_uri"], "loopback": is_loopback(r["redirect_uri"]),
+            "known_vendor": known_vendor(r["redirect_uri"]), "scopes": r["scopes"],
             "client_uri": r["client_uri"], "expires_at": r["expires_at"]}
 
 
@@ -324,10 +340,15 @@ def cleanup(conn: psycopg.Connection) -> dict:
         """DELETE FROM api_tokens WHERE oauth_grant_id IS NOT NULL
            AND COALESCE(revoked_at, expires_at) < now() - make_interval(days => %s) RETURNING 1""",
         (EXPIRED_TOKEN_KEEP_DAYS,)).fetchall())
+    out["grants"] = len(conn.execute(   # approved, but the client never exchanged the code: no token was ever issued
+        """DELETE FROM oauth_grants g WHERE created_at < now() - make_interval(hours => %s)
+           AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens t WHERE t.grant_id = g.id)
+           AND NOT EXISTS (SELECT 1 FROM api_tokens a WHERE a.oauth_grant_id = g.id) RETURNING 1""",
+        (P.GRANT_UNUSED_HOURS,)).fetchall())
     out["clients"] = len(conn.execute(
-        """DELETE FROM oauth_clients c WHERE created_at < now() - make_interval(days => %s)
+        """DELETE FROM oauth_clients c WHERE created_at < now() - make_interval(hours => %s)
            AND NOT EXISTS (SELECT 1 FROM oauth_grants g WHERE g.client_id = c.client_id) RETURNING 1""",
-        (CLIENT_UNUSED_DAYS,)).fetchall())
+        (P.CLIENT_UNUSED_HOURS,)).fetchall())
     return out
 
 

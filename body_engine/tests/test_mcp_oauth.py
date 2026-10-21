@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from body_engine import api, auth
-from body_engine.ai import oauth, oauth_http
+from body_engine.ai import choice, oauth, oauth_http, oauth_params
 from body_engine.config import Settings
 from body_engine.db import migrate
 
@@ -62,8 +62,10 @@ def client(dsn, world):
 
 
 @pytest.fixture(autouse=True)
-def fresh_limits():
+def fresh_limits(monkeypatch):
     oauth_http._register_ip.reset()
+    oauth_http._authorize_ip.reset()
+    monkeypatch.setattr(oauth_params, "REGISTER_PER_IP_HOUR", 1000)   # this module registers many clients from one IP
 
 
 def H(token):
@@ -141,6 +143,10 @@ def test_register_public_clients_and_redirect_rules(client, dsn):
     assert body["token_endpoint_auth_method"] == "none" and "client_secret" not in body
     assert register(client, uris=["http://evil.example/cb"]).status_code == 400          # plain http only for loopback
     assert register(client, uris=["javascript:alert(1)"]).status_code == 400
+    assert register(client, uris=["evilapp://claude.ai/cb"]).status_code == 400              # private scheme needs a dot
+    assert register(client, uris=["data:text/html,x"]).status_code == 400
+    assert register(client, uris=["https://claude.ai/cb#frag"]).status_code == 400
+    assert register(client, uris=["com.example.app:/oauth/cb"]).status_code == 201           # RFC 8252 §7.1
     assert register(client, uris=["http://127.0.0.1:3118/callback"]).status_code == 201
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         row = conn.execute("SELECT metadata FROM oauth_clients WHERE client_id = %s", (body["client_id"],)).fetchone()
@@ -148,9 +154,21 @@ def test_register_public_clients_and_redirect_rules(client, dsn):
 
 
 def test_register_rate_limit(client, monkeypatch):
-    monkeypatch.setattr(oauth_http, "REGISTER_PER_IP_HOUR", 0)   # the database count: this IP already registered clients
+    monkeypatch.setattr(oauth_params, "REGISTER_PER_IP_HOUR", 0)   # the database count: this IP already registered clients
     r = register(client)
     assert r.status_code == 429 and r.json()["error"] == "slow_down"
+
+
+def test_register_daily_cap_counts_only_unapproved(client, world, dsn, monkeypatch):
+    """Review #6: approved clients do not use up the server-wide daily registration budget."""
+    connect(client, world[1]["A"])                                                # one approved client
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        _, unapproved = oauth.registrations(conn, None)
+        total = conn.execute("SELECT count(*) AS n FROM oauth_clients").fetchone()["n"]
+    assert unapproved < total                                                     # earlier tests approved some clients
+    monkeypatch.setattr(oauth_params, "REGISTER_UNAPPROVED_PER_DAY", unapproved + 1)
+    assert register(client).status_code == 201
+    assert register(client).status_code == 429                                    # now unapproved == cap
 
 
 # ---------------------------------------------------------------- authorization code + PKCE
@@ -186,12 +204,28 @@ def test_full_flow_pkce_and_tools(client, world):
 def test_pkce_plain_and_wrong_resource_refused(client):
     cid = register(client).json()["client_id"]
     _, challenge = pkce()
-    plain = authorize(client, cid, challenge, code_challenge_method="plain")
-    assert "error=invalid_request" in plain.headers.get("location", "") or plain.status_code == 400
-    other = authorize(client, cid, challenge, resource="https://other.example/mcp")
-    assert "error=invalid_request" in other.headers.get("location", "")
-    unknown_cb = authorize(client, cid, challenge, redirect="https://evil.example/cb")
-    assert unknown_cb.status_code == 400                                           # never redirect to an unregistered URI
+    # Review #2: errors never redirect to the client (open redirector, RFC 9700 §4.11.2) — our own 400 page instead
+    for r in (authorize(client, cid, challenge, code_challenge_method="plain"),
+              authorize(client, cid, challenge, resource="https://other.example/mcp"),
+              authorize(client, cid, challenge, scope="admin"),
+              client.get("/oauth/authorize", params={"client_id": cid, "redirect_uri": CB}, follow_redirects=False),
+              ):
+        assert r.status_code == 400 and "location" not in r.headers, (r.status_code, r.headers.get("location"))
+        assert "text/html" in r.headers["content-type"] and "授权请求无效" in r.text
+    unknown_cb = authorize(client, cid, challenge, redirect="https://evil.example/cb")   # the SDK's own 400, no redirect
+    assert unknown_cb.status_code == 400 and "location" not in unknown_cb.headers
+    assert "invalid_request" in authorize(client, cid, challenge, resource="https://other.example/mcp").text
+
+
+def test_authorize_rate_limit(client, monkeypatch):
+    """Review #5: /oauth/authorize needs no login and stores a row, so it is limited per IP."""
+    cid = register(client).json()["client_id"]
+    _, challenge = pkce()
+    monkeypatch.setattr(oauth_http._authorize_ip, "max_events", 2)
+    assert authorize(client, cid, challenge).status_code == 302
+    assert authorize(client, cid, challenge).status_code == 302
+    r = authorize(client, cid, challenge)
+    assert r.status_code == 429 and "location" not in r.headers
 
 
 def test_loopback_redirect_any_port(client, world):
@@ -322,3 +356,108 @@ def test_consent_page_served(client):
     html = client.get("/app/oauth.html").text
     assert '<script src="oauth.js"></script>' in html and 'src="i18n.js"' in html
     assert "X-Body-Web" in client.get("/app/oauth.js").text
+
+
+# ---------------------------------------------------------------- security review of #85
+def test_consent_shows_scheme_and_unknown_vendor(client, world):
+    """Review #4: a non-https redirect shows its scheme; hosts that are not a known AI app get a warning."""
+    _, tok = world
+    cid = register(client, "Claude", uris=["com.evil.app://claude.ai/cb"]).json()["client_id"]
+    _, challenge = pkce()
+    loc = authorize(client, cid, challenge, redirect="com.evil.app://claude.ai/cb").headers["location"]
+    view = client.get(f"/v1/oauth/requests/{parse_qs(urlparse(loc).query)['req'][0]}", headers=H(tok["A"])).json()
+    assert view["redirect_host"] == "com.evil.app://claude.ai" and not view["known_vendor"]
+    cid = register(client, "Claude", uris=["https://evil.example/cb"]).json()["client_id"]
+    loc = authorize(client, cid, challenge, redirect="https://evil.example/cb").headers["location"]
+    view = client.get(f"/v1/oauth/requests/{parse_qs(urlparse(loc).query)['req'][0]}", headers=H(tok["A"])).json()
+    assert view["redirect_host"] == "evil.example" and not view["known_vendor"]
+    cid = register(client).json()["client_id"]
+    loc = authorize(client, cid, challenge).headers["location"]
+    assert client.get(f"/v1/oauth/requests/{parse_qs(urlparse(loc).query)['req'][0]}", headers=H(tok["A"])).json()["known_vendor"]
+    js = client.get("/app/oauth.js").text
+    assert 'id="unknown"' in client.get("/app/oauth.html").text and "known_vendor" in js
+
+
+def test_client_name_with_html_is_text(client, world):
+    """Review #9: a client name is shown as text: the API returns it verbatim, the page only uses textContent."""
+    _, tok = world
+    name = '<img src=x onerror="alert(1)">Claude'
+    cid = register(client, name).json()["client_id"]
+    _, challenge = pkce()
+    loc = authorize(client, cid, challenge).headers["location"]
+    view = client.get(f"/v1/oauth/requests/{parse_qs(urlparse(loc).query)['req'][0]}", headers=H(tok["A"])).json()
+    assert view["client_name"] == name
+    js = client.get("/app/oauth.js").text
+    assert "innerHTML" not in js and "insertAdjacentHTML" not in js
+    ai_js = client.get("/app/ai.js").text
+    assert "esc(c.client_name" in ai_js                                            # AI settings list escapes it
+
+
+def test_cookie_post_needs_csrf_header(client, world):
+    """Review #9: approving with the Today page cookie requires X-Body-Web: 1 (no cross-site form can add it)."""
+    _, tok = world
+    cid = register(client).json()["client_id"]
+    _, challenge = pkce()
+    loc = authorize(client, cid, challenge).headers["location"]
+    req = parse_qs(urlparse(loc).query)["req"][0]
+    c = client   # the module client (a second TestClient would restart the app and close the pool); cookies cleared after
+    try:
+        assert c.post("/v1/web/login", json={"token": tok["A"]}).status_code == 200
+        assert c.get(f"/v1/oauth/requests/{req}").status_code == 200               # cookie read works
+        r = c.post(f"/v1/oauth/requests/{req}", json={"approve": True})
+        assert r.status_code == 403
+        r = c.post(f"/v1/oauth/requests/{req}", json={"approve": True}, headers={"X-Body-Web": "1"})
+        assert r.status_code == 200 and "code=" in r.json()["redirect"]
+    finally:
+        c.cookies.clear()
+
+
+def test_revoke_everything_ends_oauth_connections(client, world, dsn):
+    """Review #1: revoking all of a user's tokens also ends their OAuth connections, refresh tokens included."""
+    ids, _ = world
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = conn.execute("INSERT INTO users (display_name) VALUES ('R') RETURNING id").fetchone()["id"]
+        web = auth.create_token(conn, uid, "web", ["read", "write"])
+    cid, _, t = connect(client, web)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert not choice._mcp_tokens_all_revoked(conn, uid)
+        conn.execute("UPDATE api_tokens SET expires_at = now() - interval '1 minute' WHERE oauth_grant_id IS NOT NULL AND user_id = %s",
+                     (uid,))
+        assert not choice._mcp_tokens_all_revoked(conn, uid)   # an expired access token alone: the connection still lives
+        out = auth.revoke_tokens(conn, uid, everything=True)
+        assert out["oauth_connections"] == 1
+        assert choice._mcp_tokens_all_revoked(conn, uid)
+    r = client.post("/oauth/token", data={"grant_type": "refresh_token", "refresh_token": t["refresh_token"], "client_id": cid})
+    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+
+
+def test_cleanup_drops_grants_never_used(client, world, dsn):
+    """Review #8: approved but the code was never exchanged → the grant is deleted, so it does not fill MAX_GRANTS."""
+    _, tok = world
+    cid = register(client).json()["client_id"]
+    _, challenge = pkce()
+    _, d = consent(client, tok["A"], authorize(client, cid, challenge).headers["location"])
+    assert d.status_code == 200
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        gid = conn.execute("SELECT max(id) AS g FROM oauth_grants WHERE client_id = %s", (cid,)).fetchone()["g"]
+        conn.execute("UPDATE oauth_grants SET created_at = now() - interval '2 hours' WHERE id = %s", (gid,))
+        out = oauth.cleanup(conn)
+        assert out["grants"] >= 1 and conn.execute("SELECT 1 FROM oauth_grants WHERE id = %s", (gid,)).fetchone() is None
+
+
+def test_oauth_off_without_public_url(client, monkeypatch):
+    """Review #7: without BODY_PUBLIC_URL OAuth is off (no Host-header-derived issuer); static tokens still work."""
+    monkeypatch.delenv("BODY_PUBLIC_URL")
+    assert client.get("/.well-known/oauth-protected-resource/mcp").status_code == 404
+    assert client.get("/.well-known/oauth-authorization-server/oauth").status_code == 404
+    assert register(client).status_code == 404
+    r = rpc(client, None, "tools/list")
+    assert r.status_code == 401 and "resource_metadata" not in r.headers["www-authenticate"]
+    assert client.get("/.well-known/oauth-protected-resource/mcp", headers={"Host": "evil.example"}).status_code == 404
+
+
+def test_apps_cache_is_bounded(monkeypatch):
+    app = oauth_http.OAuthApp()
+    for i in range(oauth_params.APPS_CACHE_MAX + 3):
+        app._app(f"https://h{i}.example")
+    assert len(app._apps) == oauth_params.APPS_CACHE_MAX
