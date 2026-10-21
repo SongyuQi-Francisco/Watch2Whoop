@@ -29,12 +29,14 @@ from fastapi import APIRouter, Depends
 from body_engine.plugins import Job
 from body_engine.records.api import current_user, get_conn
 
+from .helpers import TABLE   # a plugin may be several modules
+
 router = APIRouter()
 
 
 @router.get("/v1/plugin-demo/ping")
 def ping(conn=Depends(get_conn), viewer=Depends(current_user)):
-    return {"user": viewer["id"], "rows": conn.execute("SELECT count(*) AS n FROM plugin_demo_runs").fetchone()["n"]}
+    return {"user": viewer["id"], "rows": conn.execute(f"SELECT count(*) AS n FROM {TABLE}").fetchone()["n"]}
 
 
 def tick(conn):
@@ -75,6 +77,7 @@ def plugin_dir(tmp_path, monkeypatch):
     (d / "migrations").mkdir(parents=True)
     (d / "static").mkdir()
     (d / "__init__.py").write_text(textwrap.dedent(DEMO))
+    (d / "helpers.py").write_text('TABLE = "plugin_demo_runs"\n')
     (d / "migrations" / "001_demo.sql").write_text("CREATE TABLE IF NOT EXISTS plugin_demo_runs (id SERIAL PRIMARY KEY);")
     for f in ("demo.js", "owner.js", "secret.js", "demo.css"):
         (d / "static" / f).write_text(f"/* {f} */")

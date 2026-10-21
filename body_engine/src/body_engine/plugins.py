@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import sys
+import types
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -77,6 +78,10 @@ def load() -> tuple[Plugin, ...]:
         if root is not None:
             log.warning("BODY_PLUGIN_DIR %s is not a directory: no plugins", root)
         return ()
+    if "body_plugins" not in sys.modules:   # parent package, so a plugin's relative imports (from . import x) work
+        pkg = types.ModuleType("body_plugins")
+        pkg.__path__ = []
+        sys.modules["body_plugins"] = pkg
     out = []
     for d in sorted(p for p in root.iterdir() if p.is_dir() and (p / "__init__.py").is_file()):
         if not NAME_RE.match(d.name):
@@ -94,8 +99,8 @@ def load() -> tuple[Plugin, ...]:
 
 def reset() -> None:
     """Forget loaded plugins (tests; a process normally loads them once)."""
-    for p in load():
-        sys.modules.pop(f"body_plugins.{p.name}", None)
+    for name in [m for m in sys.modules if m == "body_plugins" or m.startswith("body_plugins.")]:
+        sys.modules.pop(name, None)
     load.cache_clear()
 
 
