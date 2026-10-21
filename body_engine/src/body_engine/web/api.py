@@ -6,7 +6,8 @@
   link the app may still be opening keeps a valid OW code.
 - POST /v1/web/ingest-token {"device"}: the Watch2Whoop app (in its WebView, with the page's cookie) gets an upload-only
   token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
-- GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
+- GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
+  feature flags on for this user and their A/B variants (rollout/); also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
 - /app/media/: exercise demo images in the deployment's own media storage (BODY_MEDIA_DIR; training/media.py downloads them once).
@@ -24,6 +25,7 @@ from .. import auth
 from ..training import catalog as tr_catalog
 from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
+from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
 WEB_VERSION = "v2.65-2026-10-22"   # Today page frontend version (bump whenever the page changes)
@@ -162,6 +164,7 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     return {"me": _me(viewer), "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
+            **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)
             "version": {"web": WEB_VERSION, "api": api.app.version}}
 
 

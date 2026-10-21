@@ -79,6 +79,7 @@ NO_DATA = {
     "feedback/{x}": "write: +1 / withdraw feedback",
     "water/{x}": "write: undo a drink (log_water / rollback_write)",
     "feedback-mode": "setting",
+    "experiments/{x}/exposure": "write: one A/B exposure (rollout/)",
     "ai-choice": "setting", "ai-fallback": "setting", "ai-fallback/consent": "setting",
     "ai-providers": "setting", "ai-providers/{x}": "setting", "ai-tokens": "setting", "ai-tokens/{x}": "setting",
     "ai-connections/{x}": "setting: disconnect an OAuth connection (ai/oauth.py)",
