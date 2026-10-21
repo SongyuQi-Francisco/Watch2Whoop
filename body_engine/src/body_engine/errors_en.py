@@ -215,6 +215,12 @@ TERMS: dict[str, str] = {
 }
 
 _TEMPLATES: list[tuple[str, str]] = [
+    # ---- memory recent notes (assistant/memory.py, #112)
+    ("until 写 YYYY-MM-DD（近况的最后一天）或 recent（默认 {} 天），长期事实不填",
+     "until: YYYY-MM-DD (the last day of the recent note) or recent (default {} days); leave it empty for a lasting fact"),
+    ("until {} 已经过去了（今天 {}），过去的事写日记或事件", "until {} has already passed (today is {}); past events go in the journal or events"),
+    ("近况最长 {} 天；更长的是长期事实（不填 until）或档案卡",
+     "A recent note lasts at most {} days; anything longer is a lasting fact (no until) or a profile card item"),
     # ---- grocery (links.py, off.py)
     ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),

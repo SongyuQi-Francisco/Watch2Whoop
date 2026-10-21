@@ -5,7 +5,7 @@ Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
 
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import meals, memory, recipes, snapshots, sparky_write, status, writelog
+from . import meals, memory, memory_params, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -115,16 +115,22 @@ def _suggest_meals(conn, uid, a):
     return plan
 
 
+def _obs_brief(o: dict) -> dict:
+    out = {"id": o["id"], "date": f"{o['created_at']:%Y-%m-%d}", "text": o["text"]}
+    return out | ({"until": f"{o['valid_until']}"} if o.get("kind") == "recent" else {})
+
+
 def _memory_with_status(conn, uid, a=None):
-    st, m = status.list_status(conn, uid), memory.get_memory(conn, uid)
-    if (a or {}).get("detail"):
+    a = a or {}
+    st, m = status.list_status(conn, uid), memory.get_memory(conn, uid, history=bool(a.get("history")))
+    if a.get("detail"):
         return {"status": st, **m}
-    # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence
+    # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence.
+    # Recent notes carry `until`; expired ones only with history=true (otherwise just counted).
     return {"status": [{k: s.get(k) for k in STATUS_BRIEF} for s in st],
             "profile_card": [{"key": c["key"], "label": c["label"], "value": c["value"],
                               "updated": f"{c['updated_at']:%Y-%m-%d}"} for c in m["profile_card"]],
-            "observations": [{"id": o["id"], "date": f"{o['created_at']:%Y-%m-%d}", "text": o["text"]}
-                             for o in m["observations"]]}
+            "observations": [_obs_brief(o) for o in m["observations"]], "expired_recent": m["expired_recent"]}
 
 
 TOOL_SPECS: list[dict] = [
@@ -281,7 +287,8 @@ TOOL_SPECS: list[dict] = [
         name="get_memory",
         description="完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、"
                     "有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
-        input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带趋势数组、时间戳、来源和依据"}}),
+        input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带趋势数组、时间戳、来源和依据"},
+                              "history": _n("boolean", "true=也带已过期的近况")}),
         handler=lambda conn, uid, a: _memory_with_status(conn, uid, a),
         scope="memory",
     ),
@@ -299,12 +306,13 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="add_observation",
-        description="记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）。一句话一个事实，不重复记。",
+        description="记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
         input_schema=_schema({
             "text": {"type": "string", "description": "≤ 1000 字"},
             "evidence": _n("string", "用户原话 / 哪些数据"),
+            "until": _n("string", f"近况最后一天 YYYY-MM-DD；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
         }),
-        handler=lambda conn, uid, a: memory.add_observation(conn, uid, a["text"], a["evidence"]),
+        handler=lambda conn, uid, a: memory.add_observation(conn, uid, a["text"], a["evidence"], until=a["until"]),
         scope="memory", writes=True,
     ),
     dict(

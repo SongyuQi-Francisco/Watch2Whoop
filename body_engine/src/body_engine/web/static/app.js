@@ -1814,7 +1814,8 @@
   // The body status card and observation notes come from the body butler's long-term memory (docs/ai-assistant-plan.md 2.2). The detailed profile text is the butler's underlying memory,
   // not shown or edited in the front end; here only status (short status items) and observation notes (deletable) are shown.
   // GET /memory → {status: [{key, label, value, unit, tone, trend, good_direction, group, spark, note, updated_at, source}],
-  //               observations: [{id, text, created_at, source}], profile_card (unused)}; DELETE /memory/observations/{id}.
+  //               observations: [{id, text, created_at, source, kind, valid_until}], expired_recent, profile_card (unused)};
+  // DELETE /memory/observations/{id}. kind=recent notes (with an end date, #112) get their own 「近况」 block; expired ones are only counted.
   const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }); };
   const memPath = () => `/v1/users/${ownerPath()}/memory`;
   const SOURCE_LABEL = { assistant: tr("管家"), butler: tr("管家"), user: tr("你"), import: tr("导入"), rules: tr("规则"), scores: tr("评分"), auto: tr("自动") };
@@ -1979,8 +1980,8 @@
 
   function observationSheet(o) {
     const self = isSelf();
-    openSheet(tr("观察笔记"), `<p class="para" style="margin:0;color:var(--text)">${esc(o.text)}</p>
-      ${tags([fmtWhen(o.created_at) && badge("plain", fmtWhen(o.created_at)), o.source && badge("plain", SOURCE_LABEL[o.source] || o.source)].filter(Boolean))}
+    openSheet(o.kind === "recent" ? tr("近况") : tr("观察笔记"), `<p class="para" style="margin:0;color:var(--text)">${esc(o.text)}</p>
+      ${tags([o.kind === "recent" && o.valid_until && badge("plain", untilLabel(o)), fmtWhen(o.created_at) && badge("plain", fmtWhen(o.created_at)), o.source && badge("plain", SOURCE_LABEL[o.source] || o.source)].filter(Boolean))}
       ${self ? `<div class="btns"><button class="btn btn-danger" id="obs-del">${tr("删除这条")}</button></div>` : ""}`,
     (root) => {
       const del = $("#obs-del", root);
@@ -1997,12 +1998,23 @@
     });
   }
 
+  const untilLabel = (o) => tr("到 {d}", { d: I18N.monthDay(parseDay(o.valid_until)) });
   const obsRow = (o) => `<button class="obs" ${sheetAttr(() => observationSheet(o))}><div class="obs-text">${esc(o.text)}</div>
-      <div class="obs-meta">${esc(fmtWhen(o.created_at))}${o.source ? ` · ${esc(SOURCE_LABEL[o.source] || o.source)}` : ""}</div></button>`;
+      <div class="obs-meta">${o.kind === "recent" ? `${esc(untilLabel(o))} · ` : ""}${esc(fmtWhen(o.created_at))}${o.source ? ` · ${esc(SOURCE_LABEL[o.source] || o.source)}` : ""}</div></button>`;
+
+  // 近况: notes with an end date (travelling, a cold); shown only while in effect, the expired ones as a count
+  function recentHtml(mem) {
+    const recent = (Array.isArray(mem?.observations) ? mem.observations : []).filter((o) => o.kind === "recent");
+    const expired = mem?.expired_recent || 0;
+    if (!recent.length && !expired) return "";
+    const rows = recent.map(obsRow).join("");
+    const tail = expired ? `<div class="item"><span class="row-title faint">${tr("已过期 {n} 条（AI 不再参考）", { n: expired })}</span></div>` : "";
+    return `<div class="section"><div class="section-head"><h2>${tr("近况")}</h2></div><div class="group">${rows}${tail}</div></div>`;
+  }
 
   function observationsHtml(mem) {
     const none = `<div class="group"><div class="item"><span class="row-title faint">${tr("common.none")}</span></div></div>`;
-    const obs = Array.isArray(mem?.observations) ? mem.observations : [];
+    const obs = (Array.isArray(mem?.observations) ? mem.observations : []).filter((o) => o.kind !== "recent");
     return `<div class="section"><div class="section-head"><h2>${tr("me.observations")}</h2>
         ${obs.length > 3 ? `<button class="link" ${sheetAttr(() => openSheet(tr("me.observationsN", { n: obs.length }), `<div class="group">${obs.map(obsRow).join("")}</div>`))}>${tr("common.all", { n: obs.length })}</button>` : ""}</div>
       ${obs.length ? `<div class="group">${obs.slice(0, 3).map(obsRow).join("")}</div>` : none}</div>`;
@@ -2040,7 +2052,7 @@
     return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
         <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
       ${healthspanHtml(hs)}
-      <div class="cols2"><div>${statusHtml(mem)}</div><div>${observationsHtml(mem)}
+      <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
       <div class="section"><div class="group">
         ${item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
         ${item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
