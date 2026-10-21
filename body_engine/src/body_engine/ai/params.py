@@ -67,7 +67,9 @@ META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
 GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 9000,
                       "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500}
-PAGE_BUDGET_CHARS = 36000         # core + the page's groups + meta, for any page in PAGE_GROUPS
+PAGE_BUDGET_CHARS = 36000         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
+                                  # that has been on several pages (the oldest pages' groups are dropped beyond it)
+FALLBACK_PAGE_BUDGET_CHARS = 25000  # the same cap for the fallback AI (core and pages cut to its whitelist)
 
 FIND_TOOLS_MAX = 12               # find_tools(query) returns at most this many full schemas
 

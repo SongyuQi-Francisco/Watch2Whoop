@@ -82,6 +82,42 @@ def test_pages_accumulate_in_tools_order():
     assert [t.name for t in toolsets.for_page(TOOLS, [])] == [t.name for t in toolsets.for_page(TOOLS, None)]
 
 
+def _walk(tools, seq, budget):
+    pages, sizes = [], []
+    for page in seq:
+        pages = toolsets.visit_page(tools, pages, page, budget)
+        sent = toolsets.for_page(tools, pages)
+        names = {t.name for t in sent}
+        assert pages[-1] == page and {t.name for t in tools if t.group in toolsets.page_groups(page)} <= names
+        assert set(P.CORE_TOOLS) & {t.name for t in tools} <= names   # core and the current page always stay
+        sizes.append(CHARS(sent))
+    return pages, sizes
+
+
+def test_page_visits_stay_under_the_cap():
+    """Review of #107: groups accumulate across pages but never past the cap (in-page chat PAGE_BUDGET_CHARS, fallback AI
+    FALLBACK_PAGE_BUDGET_CHARS): every ordered pair and triple of pages and every page in turn, there and back."""
+    import itertools
+    ids = list(P.PAGE_GROUPS)
+    seqs = [list(s) for n in (2, 3) for s in itertools.permutations(ids, n)] + [ids, ids[::-1], ids + ids[::-1] + ids]
+    for tools, budget in ((TOOLS, P.PAGE_BUDGET_CHARS), (fallback.tools(), P.FALLBACK_PAGE_BUDGET_CHARS)):
+        for seq in seqs:
+            _, sizes = _walk(tools, seq, budget)
+            assert max(sizes) <= budget, (seq, sizes)
+    # dropping happens: after all pages the oldest ones are gone; revisiting a kept page changes nothing
+    pages, _ = _walk(TOOLS, ids, P.PAGE_BUDGET_CHARS)
+    assert pages[-1] == ids[-1] and len(pages) < len(ids)
+    assert toolsets.visit_page(TOOLS, pages, pages[0], P.PAGE_BUDGET_CHARS)[:-1] == pages[1:]
+    assert [t.name for t in toolsets.for_page(TOOLS, toolsets.visit_page(TOOLS, pages, pages[0], P.PAGE_BUDGET_CHARS))] == [
+        t.name for t in toolsets.for_page(TOOLS, pages)]
+
+
+def test_only_known_pages_are_kept():
+    assert toolsets.known_page("food.shopping") and toolsets.known_page("trends.sleep") and toolsets.known_page("me")
+    assert not any(toolsets.known_page(p) for p in (None, "", "nope", "nope.x", "x" * 40))
+    assert toolsets.visit_page(TOOLS, ["today"], "nope", P.PAGE_BUDGET_CHARS) == ["today"]
+
+
 def test_page_groups():
     assert toolsets.page_groups("food.shopping") == P.PAGE_GROUPS["food.shopping"]
     assert toolsets.page_groups("food.whatever") == P.PAGE_GROUPS["food"]
@@ -135,8 +171,12 @@ def test_find_tools_respects_read_only_and_the_fallback_whitelist():
 
 
 def test_resolve_guardrails():
-    tool, args = toolsets.resolve(ALL, toolsets.RUN_READ, {"name": "get_lab_history", "args": {"name": "尿酸"}})
-    assert tool.name == "get_lab_history" and args == {"name": "尿酸"}
+    tool, args = toolsets.resolve(ALL, toolsets.RUN_READ, {"name": "get_lab_history", "args": {"test": "尿酸"}})
+    assert tool.name == "get_lab_history" and args == {"test": "尿酸"}
+    with pytest.raises(ValueError, match="缺少参数：test"):       # checked against the real schema before anything runs
+        toolsets.resolve(ALL, toolsets.RUN_READ, {"name": "get_lab_history", "args": {"name": "尿酸"}})
+    with pytest.raises(ValueError, match="observation_id"):      # ... and before a confirm card would pop up
+        toolsets.resolve(ALL, toolsets.RUN_WRITE, {"name": "delete_observation", "args": {"id": 1}})
     assert toolsets.resolve(ALL, toolsets.RUN_READ, {"name": "get_profile", "args": None})[1] == {}
     assert toolsets.resolve(ALL, toolsets.RUN_READ, {"name": "get_profile", "args": '{"user": "me"}'})[1] == {"user": "me"}
     with pytest.raises(PermissionError, match="run_write_tool"):   # read / write never mix

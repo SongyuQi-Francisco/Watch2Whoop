@@ -69,6 +69,29 @@ def for_page(tools: Iterable[Tool], page: str | list[str] | None) -> list[Tool]:
     return [t for t in tools if t.name in params.CORE_TOOLS or t.group in groups] + META_TOOLS
 
 
+def known_page(page: str | None) -> bool:
+    """A page id ai/params.PAGE_GROUPS knows (directly or by its tab); only these are kept on a conversation."""
+    return bool(page) and (page in params.PAGE_GROUPS or page.split(".", 1)[0] in params.PAGE_GROUPS)
+
+
+def fit_pages(tools: Iterable[Tool], pages: list[str], budget: int) -> list[str]:
+    """Pages oldest -> newest (the last is the current one). Drop the oldest until core + their groups + meta fit the
+    budget; the current page always stays. Dropped groups are still reachable through find_tools."""
+    tools = list(tools)
+    pages = list(pages)
+    while len(pages) > 1 and definition_chars(for_page(tools, pages)) > budget:
+        pages = pages[1:]
+    return pages
+
+
+def visit_page(tools: Iterable[Tool], pages: list[str], page: str | None, budget: int) -> list[str]:
+    """The conversation's pages after a message from `page`: a known page moves to the end (most recent), then the oldest
+    ones are dropped while over budget. Moving or re-visiting never changes the tool set; adding or dropping does once."""
+    if not known_page(page):
+        return list(pages)
+    return fit_pages(tools, [p for p in pages if p != page] + [page], budget)
+
+
 def for_mcp(can_write: bool) -> list[Tool]:
     """MCP tools/list: core + the ALWAYS_CONFIRM tools (the client's approval rules go by tool name) + the meta tools.
     Read-only tokens see no write tool and no run_write_tool."""
@@ -138,4 +161,7 @@ def resolve(access: Access, meta: str, args: dict) -> tuple[Tool, dict]:
         raise PermissionError("这个 token / 这次登录是只读的，不能写")
     if name in access.direct_only:
         raise PermissionError(f"{name} 要直接调用（删除 / 撤销类，客户端会先请用户确认）")
+    missing = [k for k in relaxed(tool.input_schema).get("required", []) if inner.get(k) is None]
+    if missing:   # before any confirm card: a call that cannot run is refused here
+        raise ValueError(f"{name} 缺少参数：{'、'.join(missing)}（参数说明用 find_tools 查）")
     return tool, inner

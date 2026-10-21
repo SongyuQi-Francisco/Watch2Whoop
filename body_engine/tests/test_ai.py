@@ -548,39 +548,59 @@ def test_chat_page_groups_and_meta_tools(client, world, setup, dsn, monkeypatch)
 
 
 def test_chat_new_page_adds_its_groups(client, world, setup, dsn):
-    """Owner's decision on #107: a conversation started on `today` that gets a message from `food.shopping` sends the
-    grocery group from then on (added, never removed; TOOLS order, so the tools sent before keep their relative order)."""
+    """Owner's decision on #107, capped after review: a page new to the conversation adds its groups (TOOLS order, the tools
+    already sent keep their relative order); while core + all the pages' groups fit PAGE_BUDGET_CHARS they accumulate,
+    beyond it the oldest pages' groups are dropped (the current page always stays; find_tools still reaches the rest)."""
     ids, tok = world
-    FakeAdapter.script = [{"text": "好"}]
-    evs = sse(chat(client, tok["A"], "今天适合练吗", page="today").text)
-    conv_id = next(d for e, d in evs if e == "conversation")["id"]
+    names = lambda pages: [t.name for t in toolsets.for_page(TOOLS, pages)]
+
+    def send(text, conv_id, page, script=None):
+        FakeAdapter.calls.clear()
+        FakeAdapter.script = script or [{"text": "好"}]
+        evs = sse(chat(client, tok["A"], text, page=page, **({"conversation_id": conv_id} if conv_id else {})).text)
+        return evs, next(d for e, d in evs if e == "conversation")["id"]
+
+    def pages_of(conv_id):
+        with db(dsn) as conn:
+            return conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"]
+
+    # the owner's case: started on today, a message from food.shopping -> the grocery group is sent from then on
+    _, conv_id = send("今天适合练吗", None, "today")
     before = FakeAdapter.calls[0]["tools"]
-    assert before == [t.name for t in toolsets.for_page(TOOLS, "today")] and "get_shopping_list" not in before
-    FakeAdapter.calls.clear()
-    FakeAdapter.script = [{"tool_calls": [{"id": "g1", "name": "get_shopping_list", "args": {}}]}, {"text": "好"}]
-    evs = sse(chat(client, tok["A"], "按下周菜单列清单", conversation_id=conv_id, page="food.shopping").text)
+    assert before == names(["today"]) and "get_shopping_list" not in before
+    evs, _ = send("按下周菜单列清单", conv_id, "food.shopping",
+                  [{"tool_calls": [{"id": "g1", "name": "get_shopping_list", "args": {}}]}, {"text": "好"}])
     after = FakeAdapter.calls[0]["tools"]
-    grocery = [t.name for t in TOOLS if t.group == "grocery"]
-    assert set(grocery) <= set(after) and after == [t.name for t in toolsets.for_page(TOOLS, ["today", "food.shopping"])]
-    assert [n for n in after if n in before] == before                 # nothing dropped, old order unchanged
+    assert {t.name for t in TOOLS if t.group == "grocery"} <= set(after) and FakeAdapter.calls[1]["tools"] == after
+    assert [n for n in before if n in after] == [n for n in after if n in before]       # relative order unchanged
     assert after[-3:] == ["find_tools", "run_read_tool", "run_write_tool"]
-    assert FakeAdapter.calls[1]["tools"] == after                       # stable again from the next round on
-    assert ("tool", {"name": "get_shopping_list", "status": "done"}) in evs   # called directly, no find_tools round
-    # back on today: nothing removed, nothing re-added
-    FakeAdapter.calls.clear()
-    FakeAdapter.script = [{"text": "好"}]
-    sse(chat(client, tok["A"], "回到今天", conversation_id=conv_id, page="today").text)
-    assert FakeAdapter.calls[0]["tools"] == after
-    with db(dsn) as conn:
-        assert conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"] == ["today", "food.shopping"]
+    assert ("tool", {"name": "get_shopping_list", "status": "done"}) in evs             # called directly, no find_tools round
+    # today + food.shopping together are over the cap, so today's groups made way (core stays)
+    assert toolsets.definition_chars(toolsets.for_page(TOOLS, ["today", "food.shopping"])) > ai_params.PAGE_BUDGET_CHARS
+    assert pages_of(conv_id) == ["food.shopping"] and after == names(["food.shopping"])
+    # pages that fit together accumulate; re-visiting or an unknown page id changes nothing
+    _, conv2 = send("记日记", None, "record.journal")
+    _, _ = send("你记得我什么", conv2, "me")
+    both = FakeAdapter.calls[0]["tools"]
+    assert both == names(["record.journal", "me"]) and set(names(["record.journal"])) < set(both)
+    for page in ("record.journal", "no-such-page"):
+        send("再问", conv2, page)
+        assert FakeAdapter.calls[0]["tools"] == both
+    assert pages_of(conv2) == ["me", "record.journal"]
 
 def test_chat_run_write_tool_keeps_confirm_and_read_only(client, world, setup, dsn, monkeypatch):
     """ALWAYS_CONFIRM goes by the real name behind run_write_tool; a read-only login cannot write through it."""
     ids, tok = world
     FakeAdapter.script = [{"tool_calls": [{"id": "c1", "name": "run_write_tool",
-                                           "args": {"name": "delete_observation", "args": {"id": 999999}}}]}]
+                                           "args": {"name": "delete_observation", "args": {"observation_id": 999999}}}]}]
     evs = sse(chat(client, tok["A"], "删掉那条").text)
     assert evs[-1][0] == "confirm" and evs[-1][1]["calls"][0]["tool"] == "delete_observation"
+    # wrong arguments are refused against the real schema before any confirm card
+    FakeAdapter.script = [{"tool_calls": [{"id": "c0", "name": "run_write_tool",
+                                           "args": {"name": "delete_observation", "args": {"id": 999999}}}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "删掉那条").text)
+    assert ("tool", {"name": "run_write_tool", "status": "error"}) in evs and not any(e == "confirm" for e, _ in evs)
+    assert "observation_id" in FakeAdapter.calls[-1]["history"][-1]["content"][0]["content"]
     # a plain write through run_write_tool runs directly, audited under its own name
     FakeAdapter.script = [{"tool_calls": [{"id": "c2", "name": "run_write_tool",
                                            "args": {"name": "add_event", "args": _ev_args("测试：经元工具写")}}]}, {"text": "记好了"}]
