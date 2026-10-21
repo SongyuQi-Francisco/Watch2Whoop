@@ -30,3 +30,15 @@ W_SAT_FAT = {"low": 0, "medium": 0.1, "high": 0.4}
 W_RECENT = 0.5
 BONUS_FAVORITE = 0.15
 BONUS_CAN_MAKE = 0.3
+
+# Per-meal plan (meal_plan, issue #43): taste (what the user actually logs) and what is at home (grocery pantry)
+HABIT_DAYS = 60                # "Usual taste": how often the recipe was logged in the last 60 days (meal_logs, undone ones excluded)
+HABIT_CAP = 4                  # 4+ logs in that window = the full habit bonus
+W_HABIT = 0.25                 # Bonus × min(logs, HABIT_CAP) / HABIT_CAP
+HABIT_LABEL_MIN = 2            # Logged at least twice in the window -> label 「常吃」
+W_PANTRY = 0.4                 # Bonus × share of the main ingredients (seasonings excluded) that are in the pantry in the amount one serving needs
+PANTRY_SKIP_CATEGORIES = ("pantry", "drinks")   # grocery categories that count as seasonings / always at home: not part of the pantry match
+# Daily caps from the nutrition goal (goals/nutrition.py: added_sugar_max_g, sat_fat_max_g): a dish that alone exceeds what is left of the cap
+W_ADDED_SUGAR_OVER = 0.5
+W_SAT_FAT_OVER = 0.4
+PLAN_PER_SLOT = 2              # Suggestions per meal in the per-meal plan (one recipe is suggested for at most one meal)

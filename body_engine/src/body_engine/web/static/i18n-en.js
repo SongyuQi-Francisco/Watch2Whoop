@@ -724,6 +724,14 @@ I18N.addEn({
   "腿": "Legs",
   "选周计划": "Pick a weekly plan",
   "限制原因": "Why restricted",
+  // food page (#46)
+  "{d} 已记过": "Already logged on {d}",
+  "含饭": "with rice",
+  "已到目标": "Target reached",
+  "已记到 {d}": "Logged to {d}",
+  "每餐推荐": "Meal suggestions",
+  "记到 {d}": "Log to {d}",
+  "返回饮食": "Back to Food",
   // training day changes (#17)
   "原计划": "Original plan",
   "已调整": "Changed",
