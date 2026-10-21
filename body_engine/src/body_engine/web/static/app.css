@@ -878,3 +878,20 @@ button.card.trend { display: flex; flex-direction: column; justify-content: flex
 .lab-row .lr-t { grid-area: t; display: flex; gap: 4px; flex-wrap: wrap; }
 .lab-row .lr-c { grid-area: c; text-align: right; }
 .lab-item .val small { font-size: 12px; }
+/* Safe-alternative rows and their preview card (#67): the card floats over the detail sheet, centred, never wider or taller
+   than the screen (16px gutter, safe areas), scrolls inside itself when the content is long */
+.alt-row { cursor: pointer; }
+.alt-thumb { width: 44px; height: 32px; flex: 0 0 44px; border-radius: 6px; object-fit: cover; background: var(--surface-2); display: block; }
+.pv-scrim { position: fixed; inset: 0; z-index: 35; display: flex; align-items: center; justify-content: center; background: var(--scrim);
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px); }
+.pv-card { position: relative; width: min(360px, 100%); max-height: 100%; overflow-y: auto; background: var(--sheet); border-radius: var(--radius);
+  padding: 14px 16px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, .25); }
+.pv-x { position: absolute; top: 6px; right: 8px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--in-sheet); color: var(--text-2); font-size: 20px; line-height: 1; cursor: pointer; z-index: 1; }
+.pv-img { width: 100%; aspect-ratio: 3 / 2; max-height: 180px; object-fit: contain; background: #fff; border-radius: 12px; display: block; margin-bottom: 10px; }
+.pv-map .mm { border-top: 0; padding-top: 4px; }
+.pv-map .mm-view svg { width: 64px; height: 128px; }
+.pv-name { font-weight: 600; font-size: 17px; padding-right: 36px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pv-en { font-size: 13px; color: var(--text-2); margin-top: 2px; margin-bottom: 4px; }
+.pv-card .btns { margin-top: 14px; }
+.pv-card .btns .btn { flex: 1; }
+.pv-card .btn:not(.btn-primary) { background: var(--in-sheet); }
