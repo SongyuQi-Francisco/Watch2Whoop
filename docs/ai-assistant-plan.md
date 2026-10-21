@@ -336,3 +336,33 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **令牌**：授权码一次性、5 分钟；access token = `api_tokens` 里 scope 含 mcp 的一行（和静态 AI token 同一种，`/mcp`、审计、只读处理都不变），1 小时过期，绑在连接（grant）上；refresh token 90 天、每次用都轮换，旧的被再次使用（或授权码被重复使用）就吊销整个连接（没有宽限期，符合规范；上线后看 `oauth_grants.revoke_reason` 的统计，客户端网络重试误伤多了再考虑短宽限期）；`revoke_tokens(everything=True)` 也会吊销用户全部连接；`/oauth/revoke` 也是吊销整个连接。所有令牌、授权码、请求号只存 sha256。
 - **用户看到的**：「我 → AI 设置 → 连接客户端（MCP）」列出已连接的应用（应用名、跳转域名、最近使用），可以断开（`GET/DELETE /v1/users/me/ai-connections`）；静态 AI token 照常可用，列表和上限只算静态的。每人最多 20 个连接。
 - **运维**：`body-engine oauth-cleanup`（每小时，幂等）、`oauth-connections --user-id N`、`oauth-revoke --user-id N --connection-id M`。公网 nginx 要放行 `/oauth/`（authorize、token、register、revoke）、`/.well-known/oauth-protected-resource`*、`/.well-known/oauth-authorization-server`*、`/app/oauth.html`、`/app/oauth.js`，见 PR 说明。
+
+### 9.17 工具分组、按需加载（2026-10-21，#99；`ai/params.py`、`assistant/toolsets.py`、迁移 `490_ai_conversation_page.sql`）
+> 106 个工具的定义一共 58,539 字符，每次调模型（MCP `tools/list`、页内对话）都整份发过去，预算测试的上限已经到 59k，再加工具就要再提。
+
+**做法**：每个工具有一个领域组（`*/tools.py` 里每个工具的 `group=`）；每次只发「常驻核心组 + 当前页面对应的组」，其余的通过三个元工具拿到。不依赖 `tools/list_changed`（很多 MCP 客户端不支持）。
+- **组**（`ai/params.GROUPS`）：`body`（评分、睡眠、指标、分析、提醒、体重）、`training`、`nutrition`、`recipes`、`grocery`、`records`（补剂、化验、日记、身体事件）、`memory`（档案卡、观察笔记、状态卡、写入记录和回滚）、`feedback`。
+- **常驻核心组**（`ai/params.CORE_TOOLS`，32 个，17.1k 字符，上限 30k）：`get_briefing`、各场景的 context 工具（`get_shopping_context` / `record_store_prices`）、常用读（评分、睡眠、每日指标、训练日历 / 记录、周计划、饮食、体重、日记、提醒、禁用动作）和常用记录（`log_food`、`log_workout`、`log_weight`、`log_journal`、`add_event`、`log_meal_template`、`update_food_entry`、`add_observation`、`update_profile_card`、`report_feedback`）及其撤销（`undo_sparky_entry`、`get_write_log` / `rollback_write`）。
+- **三个元工具**（`assistant/toolsets.py`）：
+  - `find_tools(group | query)`：返回这些工具的完整参数说明（宽松 schema）和该用哪个元工具调用；都不填 = 列出所有组和工具名；query 按空格分词匹配名字和说明，最多 12 个；
+  - `run_read_tool(name, args)`：read_only_hint = true；
+  - `run_write_tool(name, args)`：read_only_hint = false，MCP 客户端写之前照样弹审批。
+- **护栏不变**：元工具先被解析成里面那个真实的工具（`toolsets.resolve`），再按直接调用的路径走 `run_tool`：
+  - 审计（`assistant_audit.tool`）和页内对话的 `ai_tool_calls.tool` 记的是真实的工具名；`find_tools` 不读用户数据，不写审计；
+  - `run_read_tool` 调写工具、`run_write_tool` 调读工具都会被拒绝；只读 token / 只读登录不能用 `run_write_tool`；
+  - `ALWAYS_CONFIRM` 按真实的工具名判断：页内对话里 `run_write_tool(delete_observation…)` 照样先弹确认；
+  - MCP：删除 / 撤销类（`ALWAYS_CONFIRM`）一直在 `tools/list` 里，`run_write_tool` 不接它们（返回「要直接调用」），这样客户端按工具名的审批规则（管家 `settings.json` 的 `ask`）照样生效；
+  - 托底 AI：`find_tools` 只列它白名单里的工具（用它自己的 schema，没有 `user`），`run_read_tool` / `run_write_tool` 也只能调白名单里的（心电图照样调不到）。
+- **MCP**：`tools/list` = 核心组 + `ALWAYS_CONFIRM` 的工具 + 元工具；只读 token 看不到写工具和 `run_write_tool`。没列出来的工具按名字直接调用也照样能用（旧客户端、管家的写法不变）。`INSTRUCTIONS`、`system_prompt.md`（MCP prompt「butler」用同一份）、`assistant/CLAUDE.md`、`system_prompt_lite.md` 各加了一句怎么用。
+- **页内对话**：`POST /v1/assistant/chat` 加可以为空的 `page`（今天页的 tab id `today` / `trends` / `food` / `record` / `me`，子页面写成 `<tab>.<sub>`，例 `food.shopping`、`record.training`；没有对应的子页面就退回 tab；不认识的 = 只发核心组）。发「核心组 + 这个页面的组 + 元工具」，顺序跟 `TOOLS` 一致、元工具在最后。页面在新建对话时存进 `ai_conversations.page`，整个对话不变（工具在提示缓存前缀的最前面，换了就要重新算缓存）；没有 `page` 的旧对话 / 旧客户端只发核心组。托底 AI 在它的白名单范围内同样处理，额度预估按实际发的工具算。
+
+| | 改前 | 改后 |
+|---|---|---|
+| MCP `tools/list`（可写 token） | 106 个，58,539 字符 | 44 个，20,088 字符（−66%） |
+| MCP `tools/list`（只读 token） | 46 个只读工具 | 21 个，8,222 字符 |
+| 页内对话，没有 page / 「今天」/「采购」 | 106 个，58,539 字符 | 35 个 18.1k / 65 个 31.4k / 58 个 32.2k |
+| 托底 AI（没有 page） | 67 个，29.6k | 28 个，13.3k |
+
+**预算测试**（`tests/test_tool_groups.py`，上限都在 `ai/params.py`）：核心组 ≤ 30k；每个组各有上限（`GROUP_BUDGET_CHARS`），以后加工具只占它自己那个组；元工具 ≤ 2.5k；MCP `tools/list` ≤ 35k；每个页面的组合 ≤ 36k。另有：每个读工具在合成数据（一年的评分、120 天睡眠和指标、160 次训练、日记、化验、身体事件、观察笔记）上的摘要档不超过 `READ_RESULT_MAX_CHARS`（8k，`propose_plan` 14k、`search_exercises` 12k）；工具顺序稳定（同一个页面每次一样、跟 `TOOLS` 顺序、元工具在最后）；元工具的护栏（只读、`ALWAYS_CONFIRM`、托底白名单、读写不混用、审计记真实工具名，`tests/test_ai.py`、`tests/test_ai_fallback.py` 端到端）。
+
+**以后可以考虑**：按实际用量调核心组（`assistant_audit` 里统计哪些工具常被 `run_*_tool` 调，就挪进核心组或对应页面的组）；`find_tools` 的关键词匹配目前是简单的子串匹配，中文同义词（「称重」/「体重」）要靠按组浏览。

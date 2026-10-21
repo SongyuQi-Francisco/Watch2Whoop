@@ -25,6 +25,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
 from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, tokens
+from . import params as ai_params
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
@@ -299,6 +300,7 @@ class ChatIn(BaseModel):
     message: str = Field("", max_length=chat.MAX_TEXT)
     images: list[ImageIn] = Field(default_factory=list, max_length=chat.MAX_IMAGES)
     conversation_id: int | None = None
+    page: str | None = Field(None, max_length=ai_params.PAGE_MAX_LEN)   # Today page id: picks extra tool groups (ai/params.PAGE_GROUPS)
 
 
 class ConfirmIn(BaseModel):
@@ -345,7 +347,8 @@ def post_chat(body: ChatIn, viewer=Depends(current_user)):
     Not set up / subscription type / budget used up: 409 / 402, detail = {code, message, assistant_url?}."""
     # A read-only login can chat too (read tools work as usual), write tools are rejected (chat.py decides by token_scopes)
     return _stream(lambda conn: chat.chat_events(conn, viewer, body.message,
-                                                 [i.model_dump() for i in body.images], body.conversation_id))
+                                                 [i.model_dump() for i in body.images], body.conversation_id,
+                                                 page=body.page))
 
 
 @router.post("/v1/assistant/chat/confirm")

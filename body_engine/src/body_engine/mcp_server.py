@@ -6,6 +6,8 @@ Two transports, the same tools (assistant/tools.py, the same copy the in-Today-p
 - Streamable HTTP (ai/mcp_http.py, mounted at /mcp): each user connects with their own AI-only token (scope mcp),
   identity is decided by each request's Bearer header, audit channel = mcp:<client name>; read-only tokens do not see write tools.
 Write tools are marked read_only_hint=False, so the MCP client asks the user for approval before running them.
+tools/list sends only the resident core, the delete / undo tools and the meta tools (assistant/toolsets.py, issue #99);
+every other tool is found with find_tools and runs through run_read_tool / run_write_tool, which call run_tool with the real name.
 """
 import os
 from contextlib import AbstractContextManager
@@ -21,14 +23,19 @@ from mcp.server.stdio import stdio_server
 from . import auth
 from .ai import root_rules
 from .assistant import compact
-from .assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
+from .ai import params as ai_params
+from .assistant import toolsets
+from .assistant.tools import TOOLS_BY_NAME, run_tool
 from .config import REPO_ROOT
 from .db import connect
 from .toolspec import relaxed
 
 INSTRUCTIONS = """用户自己的身体数据（Body Engine）。日期都是用户本地日期。
 对话开始先调 get_briefing（现在时间、资料、最新评分、最近 7 天、训练、提醒、状态卡、档案卡要点、禁用动作，约 1.5k token），
-需要细节再调对应工具；日期范围按问题取，不要一次拉全部历史。工具返回里省略的字段 = 没有数据；
+需要细节再调对应工具；日期范围按问题取，不要一次拉全部历史。
+这里只列了常用工具；其余的（训练计划、食谱、采购、化验、补剂、长期记忆…）先用 find_tools 按组或关键词查到完整参数，
+再用 run_read_tool（读）/ run_write_tool（写）调用，规矩和直接调用一样；删除 / 撤销类直接按名字调用。
+工具返回里省略的字段 = 没有数据；
 多行数据是 {"cols": [...], "rows": [[...]]} 表格。没记录 ≠ 没做。
 写工具只写给自己：先用一句摘要告诉用户要写什么、写到哪，再调用。给训练建议前确认禁用动作。
 完整角色设定（回答方式、记录归档流程、日期规则、边界）在 prompt「butler」里。
@@ -65,19 +72,33 @@ def build_server(identity_of: Callable[[object], Identity],
             types.Tool(name=t.name, description=t.description, input_schema=relaxed(t.input_schema),
                        annotations=types.ToolAnnotations(read_only_hint=not t.writes, destructive_hint=False,
                                                          open_world_hint=False))
-            for t in TOOLS if ident.can_write or not t.writes])
+            for t in toolsets.for_mcp(ident.can_write)])
+
+    def _error(text: str) -> types.CallToolResult:
+        return types.CallToolResult(content=[types.TextContent(text=text)], is_error=True)
 
     async def call_tool(ctx, params) -> types.CallToolResult:
         ident = identity_of(ctx)
-        tool = TOOLS_BY_NAME.get(params.name)
-        if tool is None:
-            return types.CallToolResult(content=[types.TextContent(text=f"没有这个工具：{params.name}")], is_error=True)
-        if tool.writes and not ident.can_write:
-            return types.CallToolResult(content=[types.TextContent(text="这个 token 是只读的，不能写")], is_error=True)
+        name, args = params.name, params.arguments or {}
+        access = toolsets.Access(TOOLS_BY_NAME, ident.can_write, frozenset(ai_params.ALWAYS_CONFIRM))
         try:
-            text = await anyio.to_thread.run_sync(_call, ident, params.name, params.arguments or {}, connect_fn)
+            if name == toolsets.FIND:
+                return types.CallToolResult(content=[types.TextContent(
+                    text=compact.dumps(toolsets.find(access, args.get("group"), args.get("query"))))])
+            if name in toolsets.RUN_NAMES:  # run the real tool: same checks, the audit records the real name
+                tool, args = toolsets.resolve(access, name, args)
+                name = tool.name
+        except (PermissionError, ValueError) as e:
+            return _error(f"{type(e).__name__}: {e}")
+        tool = TOOLS_BY_NAME.get(name)
+        if tool is None:
+            return _error(f"没有这个工具：{name}")
+        if tool.writes and not ident.can_write:
+            return _error("这个 token 是只读的，不能写")
+        try:
+            text = await anyio.to_thread.run_sync(_call, ident, name, args, connect_fn)
         except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
-            return types.CallToolResult(content=[types.TextContent(text=f"{type(e).__name__}: {e}")], is_error=True)
+            return _error(f"{type(e).__name__}: {e}")
         return types.CallToolResult(content=[types.TextContent(text=text)])
 
     async def list_prompts(ctx, params) -> types.ListPromptsResult:

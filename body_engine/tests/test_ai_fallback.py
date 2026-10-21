@@ -20,6 +20,7 @@ from body_engine import api, auth
 from body_engine.ai import adapters, crypto, fallback, providers
 from body_engine.ai import fallback_params as fp
 from body_engine.ai.adapters.fake import FakeAdapter
+from body_engine.assistant import toolsets
 from body_engine.ai.adapters.openai_api import DeepSeekFallbackAdapter, OpenAICompatAdapter
 from body_engine.config import Settings
 from body_engine.db import migrate
@@ -207,7 +208,9 @@ def test_chat_needs_fallback_consent_then_works(client, world, dsn):
     assert call["api_key"] == DS_KEY and call["model"] == fp.MODEL and call["base_url"] == fp.BASE_URL
     assert call["system"].startswith("## 根规则 v2") and "# 身体管家（精简版）" in call["system"]   # root rules first
     assert "F1 喜欢早上练" in call["system"]
-    assert set(call["tools"]) == set(fallback.TOOL_NAMES)
+    # core ∩ whitelist + the meta tools (no page sent); the rest of the whitelist via find_tools (#99)
+    assert call["tools"] == [t.name for t in toolsets.for_page(fallback.tools(), None)]
+    assert set(call["tools"]) - set(toolsets.META_BY_NAME) < set(fallback.TOOL_NAMES)
     usage = next(d for e, d in evs if e == "usage")
     expect = (1000 * 2 + 9000 * 0.04 + 200 * 8) / 1e6
     assert usage["currency"] == "CNY" and usage["cost_cny"] == pytest.approx(expect, abs=1e-4)
@@ -242,6 +245,25 @@ def test_tools_read_only_own_data(client, world, dsn):
                       "ORDER BY id DESC LIMIT 1", (ids["F1"],)).fetchone()
         assert a["channel"] == "api:system_fallback" and a["args"]["user"] == "me" and a["model"] == fp.MODEL
 
+
+
+def test_meta_tools_stay_inside_the_whitelist(client, world, dsn):
+    """#99: find_tools / run_read_tool give the fallback nothing beyond its whitelist (no ECG), its own schemas (no `user`),
+    and reads through run_read_tool are still forced to the caller's own data."""
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    FakeAdapter.script = [
+        {"tool_calls": [{"id": "m1", "name": "find_tools", "args": {"group": "body", "query": None}},
+                        {"id": "m2", "name": "run_read_tool", "args": {"name": "get_ecg_list", "args": {"limit": 5}}},
+                        {"id": "m3", "name": "run_read_tool", "args": {"name": "get_profile", "args": {"user": str(ids["F2"])}}}]},
+        {"text": "好"}]
+    r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "看看心电图", "page": "trends"})
+    assert r.status_code == 200, r.text
+    assert FakeAdapter.calls[0]["tools"] == [t.name for t in toolsets.for_page(fallback.tools(), "trends")]
+    results = {b["id"]: b for b in FakeAdapter.calls[1]["history"][-1]["content"]}
+    assert "get_health_monitor" in results["m1"]["content"] and "get_ecg_list" not in results["m1"]["content"]
+    assert results["m2"]["is_error"] and "get_ecg_list" in results["m2"]["content"]
+    assert '"F1"' in results["m3"]["content"] and '"F2"' not in results["m3"]["content"]
 
 def test_write_needs_confirmation(client, world, dsn, monkeypatch):
     ids, tok = world
@@ -392,7 +414,7 @@ def test_images_and_video_frames_then_revoke(client, world, dsn):
     assert sum(b["type"] == "image" for b in user_msg) == 8 and "［视频 8 帧" in user_msg[0]["text"]
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "太多", "images": [img] * 9})
     assert r.status_code == 422
-    assert {"add_lab_results", "log_metric_snapshot", "add_supplement"} <= set(FakeAdapter.calls[0]["tools"])
+    assert {"add_lab_results", "log_metric_snapshot", "add_supplement"} <= set(fallback.TOOL_NAMES)   # reachable via find_tools
     assert client.delete("/v1/users/me/ai-fallback/consent", headers=H(tok["F1"])).status_code == 204
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
     assert r.status_code == 403 and r.json()["detail"]["code"] == "fallback_consent"
