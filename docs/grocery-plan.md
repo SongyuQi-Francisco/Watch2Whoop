@@ -34,7 +34,7 @@
 - **今天页看得到存货（#102，迁移 495）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
 
 - **常买（#103，迁移 500）**：商品可以标成「常买」（`grocery_products.staple`，带间隔天数 `staple_every_days`、每次买多少 `staple_qty` + `staple_unit`，`pack` = 包数）。
-  - **推荐**：按这个用户自己的 `grocery_purchases`，最近 `STAPLE_SUGGEST_WEEKS`（8）周买过 ≥ `STAPLE_SUGGEST_MIN`（3）次、还没标的商品，放进 `get_shopping_context` 的 `staple_suggestions`（次数、建议间隔 = 自己购买间隔的中位数）。只推荐：AI 问过用户、用户同意后才调 `set_staple`，不自动标。
+  - **推荐**：按这个用户自己的 `grocery_purchases`，最近 `STAPLE_SUGGEST_WEEKS`（8）周买过 ≥ `STAPLE_SUGGEST_MIN`（3）次、还没标的商品，放进 `get_shopping_context` 的 `staple_suggestions`（次数、建议间隔 = 自己购买间隔的中位数）。只推荐：AI 问过用户、用户同意后才调 `set_staple`，不自动标；用户在对话里拒绝过的推荐不再提（`rules` 里写明，不加新列）。
   - **下次该买** = 上次买的日期 + 间隔（从没买过 = 今天）。
   - **生成周清单**：到这周日为止到期的常买商品自动加进清单，来源 `staple`；存货已经够一次的量就不加（进 `covered_by_pantry`）；还没到期的不加。菜单里也有同一样东西时合并成一行（来源 `plan`），取两者里大的那个量（菜单的量已经补够了，不再叠加）。重新生成时 `plan` / `staple` 来的未买行一起替换，手动加的和已买的保留。有常买商品时可以只生成常买（`plan` 为空）。
   - **工具**：`set_staple`（写，直接跑）、`remove_staple`（`ALWAYS_CONFIRM` + 管家的 `ask`）。接口 `PUT / DELETE …/products/{id}/staple`（只能改自己的），商品接口多 `staple`、`staple_info`（`every_days`、`qty`、`unit`、`last_bought`、`next_due`、`due`）；清单行多 `staple`。
