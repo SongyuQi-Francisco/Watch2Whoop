@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'account_api.dart';
 import 'config.dart';
 import 'i18n.dart';
+import 'server_lock.dart';
+
+export 'server_lock.dart' show redactServer, serverLocked;
 
 class Group extends StatelessWidget {
   const Group({super.key, this.title, required this.rows, this.footer});
@@ -143,11 +146,12 @@ String urlError(String? code) => switch (code) {
   'https' => tr('必须用 https 地址', 'Must be an https address'),
   'scheme' => tr('只支持 https://', 'Only https:// is supported'),
   'extra' => tr('地址里不要带账号、? 或 #', 'No credentials, ? or # in the address'),
+  'other_server' => tr('这个设置链接不是给这个 app 的', 'This setup link is for a different server'),
   _ => tr('地址格式不对', 'Invalid address'),
 };
 
 String connectError(Object e) {
-  final code = e is Exception ? e.toString() : '$e';
+  final code = redactServer(e is Exception ? e.toString() : '$e');
   if (code.contains('invalid_code')) return tr('邀请码无效或已用过 / 过期，请重新生成', 'Invitation code is invalid, used or expired');
   if (code.contains('network')) return tr('连不上同步服务器：检查网络和地址（服务器在内网时要先连 VPN）', 'Cannot reach the sync server: check the network and address (VPN if it is private)');
   if (code.contains('server')) return tr('服务器出错：$code', 'Server error: $code');
@@ -183,6 +187,52 @@ String ago(DateTime? t) {
 String shortUrl(String url) {
   final s = url.replaceFirst(RegExp(r'^https?://'), '');
   return s.length <= 34 ? s : '${s.substring(0, 16)}…${s.substring(s.length - 16)}';
+}
+
+/// 中文 / English switch for the top right of the first-run screens (same look as the Today page login switch).
+/// Sets the language override (saved; i18n.dart): the root rebuilds every native screen at once, and the Today page
+/// receives it with the first load and saves it to the profile after login.
+class LangSwitch extends StatelessWidget {
+  const LangSwitch({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget option(String lang, String label) {
+      final on = currentLang == lang;
+      return Semantics(
+        selected: on,
+        button: true,
+        child: TextButton(
+          onPressed: () => setLangOverride(lang),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(0, 32),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: on ? cs.onSurface : cs.onSurfaceVariant,
+            backgroundColor: on ? cs.onSurface.withValues(alpha: 0.08) : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          child: Text(label, style: TextStyle(fontSize: 13, fontWeight: on ? FontWeight.w600 : FontWeight.w400)),
+        ),
+      );
+    }
+
+    return ValueListenableBuilder<String?>(
+      valueListenable: langOverride,
+      builder: (context, _, _) => Semantics(
+        label: '${kLangLabel.$2} / ${kLangLabel.$1}',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            option('zh', kLangNames.$1),
+            Text('/', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+            option('en', kLangNames.$2),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Address input field, normalized on blur.

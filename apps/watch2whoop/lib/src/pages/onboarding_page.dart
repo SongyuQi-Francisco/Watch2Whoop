@@ -1,6 +1,8 @@
 // First-run onboarding (self-service): server address → Sign in with Apple / e-mail code → invite code (pending accounts only)
 // → Health permission + sync connected silently (server-minted OW invitation code) → Today page logged in with a fresh one-time code.
 // "I have a setup link" keeps the admin-issued setup link / QR / paste path (setup_link_page.dart) for existing users.
+// Locked builds (server_lock.dart) show no server and no "I have a setup link": only a camera-opened link for this server still works.
+// A 中文 / English switch sits top right on every step (ui.dart LangSwitch); a change redraws the page in place, inputs kept.
 import 'dart:async';
 import 'dart:io' show Platform;
 
@@ -49,11 +51,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
   void initState() {
     super.initState();
     _server = TextEditingController(text: _config.todayUrl);
-    _editServer = !checkServerUrl(_config.todayUrl, UrlKind.today).isOk;
+    _editServer = !serverLocked && !checkServerUrl(_config.todayUrl, UrlKind.today).isOk;
     _email = TextEditingController();
     _code = TextEditingController();
     _invite = TextEditingController();
     SetupLinks.instance.pending.addListener(_onLink);
+    langOverride.addListener(_onLang);
     _checkApple();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
@@ -64,12 +67,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   void dispose() {
     SetupLinks.instance.pending.removeListener(_onLink);
+    langOverride.removeListener(_onLang);
     _timer?.cancel();
     _server.dispose();
     _email.dispose();
     _code.dispose();
     _invite.dispose();
     super.dispose();
+  }
+
+  void _onLang() {
+    if (mounted) setState(() {});
   }
 
   /// A setup link opened the app (camera QR scan): hand over to the setup-link flow, which consumes it.
@@ -114,7 +122,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
         setState(() => _error = tr('通过 Apple 登录没有成功：${e.message}', 'Sign in with Apple failed: ${e.message}'));
       }
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = redactServer('$e'));
     } finally {
       if (mounted) {
         setState(() {
@@ -127,6 +135,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   /// Validates the server field; null (with the error shown) if it is wrong.
   String? _serverUrl() {
+    if (serverLocked) return _config.todayUrl;   // the built-in server (AppState enforces it)
     final c = checkServerUrl(_server.text, UrlKind.today);
     setState(() {
       _serverError = c.isOk ? null : urlError(c.error);
@@ -315,8 +324,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             children: [
+              const Align(alignment: Alignment.centerRight, child: LangSwitch()),
+              const SizedBox(height: 4),
               ...body,
               if (_progress != null) ...[
                 const SizedBox(height: 14),
@@ -363,7 +374,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
     final dark = Theme.of(context).brightness == Brightness.dark;
     return [
       _title('Watch2Whoop', tr('登录后开始同步 Apple 健康数据。', 'Sign in to start syncing your Apple Health data.')),
-      if (_editServer)
+      if (serverLocked)
+        const SizedBox.shrink()
+      else if (_editServer)
         UrlField(
           controller: _server,
           label: tr('服务器地址', 'Server address'),
@@ -395,8 +408,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
         const SizedBox(height: 14),
         const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2))),
       ],
-      const SizedBox(height: 22),
-      BigButton(tr('我有设置链接', 'I have a setup link'), secondary: true, onPressed: _busy ? null : () => setState(() => _legacy = true)),
+      if (!serverLocked) ...[
+        const SizedBox(height: 22),
+        BigButton(tr('我有设置链接', 'I have a setup link'), secondary: true, onPressed: _busy ? null : () => setState(() => _legacy = true)),
+      ],
     ];
   }
 

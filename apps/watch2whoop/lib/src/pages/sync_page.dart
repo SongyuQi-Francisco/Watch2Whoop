@@ -1,5 +1,6 @@
 // Native "phone sync" (手机同步) page: last sync time, per-type counts, failure retry, sync now, and server settings.
 // Native sync status page (+ settings). Opened from the today page (Me → Phone sync) or the error screen.
+// Locked builds (server_lock.dart): no server rows, no scan / paste of setup info, and the server is redacted from logs and errors.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -83,7 +84,7 @@ class _SyncPageState extends State<SyncPage> {
       await f();
       if (done != null) setState(() => _message = done);
     } catch (e) {
-      setState(() => _message = '$e');
+      setState(() => _message = redactServer('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
       _refresh();
@@ -348,7 +349,7 @@ class _SyncPageState extends State<SyncPage> {
                     if (failedAfterSuccess) ...[
                       const SizedBox(height: 8),
                       Hint(
-                        tr('上次失败（${ago(stats.lastErrorAt)}）：${stats.lastError}', 'Last failure (${ago(stats.lastErrorAt)}): ${stats.lastError}'),
+                        redactServer(tr('上次失败（${ago(stats.lastErrorAt)}）：${stats.lastError}', 'Last failure (${ago(stats.lastErrorAt)}): ${stats.lastError}')),
                         icon: Icons.error_outline,
                         color: cs.error,
                       ),
@@ -401,10 +402,12 @@ class _SyncPageState extends State<SyncPage> {
             Group(
               title: tr('设置', 'Settings'),
               rows: [
-                Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
-                Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
-                Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
-                Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
+                if (!serverLocked) ...[
+                  Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
+                  Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
+                  Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
+                  Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
+                ],
                 Row2(tr('首次同步范围', 'First sync range'), value: tr('${_config.syncDaysBack} 天', '${_config.syncDaysBack} days')),
                 if (connected) Row2(tr('同步账号', 'Sync account'), value: '${_config.owUserId!.substring(0, 8)}…'),
                 if (connected) Row2(tr('重新连接', 'Reconnect'), onTap: _reconnect),
@@ -431,7 +434,7 @@ class _SyncPageState extends State<SyncPage> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: SelectableText(
-                      _sync.recentLog.reversed.take(80).join('\n'),
+                      redactServer(_sync.recentLog.reversed.take(80).join('\n')),
                       style: TextStyle(fontSize: 11, fontFamily: 'Menlo', color: cs.onSurfaceVariant),
                     ),
                   ),
