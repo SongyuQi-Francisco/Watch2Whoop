@@ -1,7 +1,22 @@
 """Data-reading functions. API routes and AI assistant tools both call these, so both see the same data under the same authorization."""
-from datetime import date
+from datetime import date, datetime, timezone
+from zoneinfo import ZoneInfo
 
 import psycopg
+
+
+def user_tz(conn: psycopg.Connection, user_id: int) -> ZoneInfo:
+    row = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()
+    return ZoneInfo((row or {}).get("timezone") or "Australia/Sydney")
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def local_today(conn: psycopg.Connection, user_id: int) -> date:
+    """The user's own date now (their time zone, not the server's): the default "today" of every date range."""
+    return _now().astimezone(user_tz(conn, user_id)).date()
 
 
 def daily_metrics(conn: psycopg.Connection, user_id: int, start: date, end: date,
@@ -36,7 +51,7 @@ def profile(conn: psycopg.Connection, user_id: int) -> dict:
     row = conn.execute("""SELECT id, display_name, birth_date, sex, height_cm, timezone, language FROM users WHERE id = %s""",
                        (user_id,)).fetchone()
     if row and row["birth_date"]:
-        today = date.today()
+        today = local_today(conn, user_id)
         b = row["birth_date"]
         row["age"] = today.year - b.year - ((today.month, today.day) < (b.month, b.day))
     return row

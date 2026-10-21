@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 
 import psycopg
 
+from .. import queries
 from ..scores import engine as SE
 from ..scores import inputs as SI
 from ..scores import params as P
@@ -90,8 +91,8 @@ def compare(conn: psycopg.Connection, client, user_id: int, start: date | None =
     origin = SE.scoring_origin(conn, user_id)
     if origin is None:
         raise ValueError("这个用户还没有手表数据")
-    inp = SI.load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end or date.today(), None, "sdnn")
-    end = end or datetime.now(inp.tz).date()
+    end = end or queries.local_today(conn, user_id)
+    inp = SI.load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, None, "sdnn")
     start = max(start or origin, origin)
     inp_r = dataclasses.replace(inp, hrv_kind="rmssd",
                                 hrv=SI.rmssd_hrv(conn, user_id, inp.tz, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end))

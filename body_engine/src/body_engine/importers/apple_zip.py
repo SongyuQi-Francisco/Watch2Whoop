@@ -23,6 +23,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
+from .. import queries
 from ..rawdata import export as rx
 from ..rawdata import store as rx_store
 from ..training import importer as wk
@@ -310,7 +311,7 @@ def run(conn: psycopg.Connection, user_id: int, path: Path, import_id: int | Non
         dups = wk.refresh_duplicates(conn, user_id)
         conn.execute("""INSERT INTO sync_state (user_id, source, last_synced_at, cursor) VALUES (%s, %s, now(), %s)
                         ON CONFLICT (user_id, source) DO UPDATE SET last_synced_at = now(), cursor = EXCLUDED.cursor""",
-                     (user_id, SOURCE, (export_date or date.today()).isoformat()))
+                     (user_id, SOURCE, (export_date or queries.local_today(conn, user_id)).isoformat()))
     days = sorted({r["date"] for r in daily})
     return {"records": p.records, "daily_rows": n_daily, "days": len(days),
             "first_day": days[0].isoformat() if days else None, "last_day": days[-1].isoformat() if days else None,

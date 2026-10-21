@@ -11,6 +11,7 @@ from datetime import date
 
 import psycopg
 
+from .. import queries
 from ..records import store as records_store
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -104,10 +105,9 @@ def delete_observation(conn: psycopg.Connection, user_id: int, observation_id: i
 
 
 # ---------------------------------------------------------------- initial profile card
-def _age(birth: date | None) -> int | None:
+def _age(birth: date | None, t: date) -> int | None:
     if birth is None:
         return None
-    t = date.today()
     return t.year - birth.year - ((t.month, t.day) < (birth.month, birth.day))
 
 
@@ -121,7 +121,7 @@ def from_database(conn: psycopg.Connection, user_id: int) -> dict[str, str]:
     u = conn.execute("SELECT birth_date, height_cm, sex, timezone FROM users WHERE id = %s", (user_id,)).fetchone()
     if u:
         parts = []
-        if (a := _age(u["birth_date"])) is not None:
+        if (a := _age(u["birth_date"], queries.local_today(conn, user_id))) is not None:
             parts.append(f"{a} 岁（{u['birth_date']} 生）")
         if u["height_cm"]:
             parts.append(f"身高 {u['height_cm']:g}cm")
