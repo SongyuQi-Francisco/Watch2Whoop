@@ -384,7 +384,7 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - playbook 第一批 4 份：`plan_shopping`（规划采购）、`plan_training_week`（排一周训练）、`weekly_review`（复盘一周）、`log_meal_from_photo`（照片记餐）。
 - 托底 AI 的白名单加上 `get_playbook`、`get_training_context`、`get_week_review_context`（都不碰心电图）。
 - 每份 playbook 的说明下面统一加一行「提到的工具不在你的工具列表里时，用 find_tools 找，再用 run_read_tool / run_write_tool 调。」（`playbooks.FIND_LINE`，在 `text()` 里加，MCP prompt 和 `get_playbook` 仍是同一份）：通过 MCP 接上时，playbook 里提到的很多工具不在 `tools/list` 里。
-- **托底 AI 能做哪些 playbook**（`playbooks.FALLBACK`，负责人决定：白名单不为它扩大）：只有里面提到的工具全在托底白名单里的才标 yes，现在只有 `plan_training_week`；`weekly_review` 只差 `set_nutrition_goals`，`plan_shopping`、`log_meal_from_photo` 差好几个采购 / 记餐工具，都是 no。`system_prompt_lite.md` 只列 yes 的；托底调 `get_playbook` 拿 no 的，返回一句「这件事需要用户自己的 AI」。
+- **托底 AI 能做哪些 playbook**（`playbooks.FALLBACK`，负责人决定：白名单不为它扩大）：只有里面提到的工具全在托底白名单里的才标 yes（`playbooks.OPTIONAL_TOOLS` 里的可选工具不算，playbook 写明了没有它时怎么做），现在是 `plan_training_week` 和 `weekly_review`（没有 `set_nutrition_goals` 时只给建议数值，请用户用自己的 AI 改目标）；`plan_shopping`、`log_meal_from_photo` 差好几个采购 / 记餐工具，标 no。`system_prompt_lite.md` 只列 yes 的；托底调 `get_playbook` 拿 no 的，返回一句「这件事需要用户自己的 AI」。
 - `system_prompt.md`、`assistant/CLAUDE.md`、`system_prompt_lite.md`、MCP `INSTRUCTIONS` 各加一行，说明有哪些 playbook。
 
 **测试**：`tests/test_scenes.py`（两个 context 工具有数据 / 没数据、另一个结束日期、没有 share 读不到、只共享 profile + scores 时其余部分在 `hidden` 里）、`tests/test_playbooks.py`（文件和名单一致、提到的工具都存在、每份有步骤 / 先问用户 / 护栏三节、`get_playbook` 和 prompt 同一份文本、托底白名单不含心电图）、`tests/test_ai.py::test_mcp_playbook_prompts`（`prompts/list`、`prompts/get`、`get_playbook` 走真实的 `/mcp`）。

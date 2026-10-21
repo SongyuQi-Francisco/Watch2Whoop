@@ -85,10 +85,15 @@ def test_fallback_flags():
     lite = (resources.files("body_engine.ai") / "system_prompt_lite.md").read_text(encoding="utf-8")
     tool = TOOLS_BY_NAME["get_playbook"]
     for n, ok in playbooks.FALLBACK.items():
-        missing = playbooks.tools_mentioned(n) - set(fallback.TOOL_NAMES)
+        optional = playbooks.OPTIONAL_TOOLS.get(n, set())
+        assert optional <= playbooks.tools_mentioned(n)
+        missing = playbooks.tools_mentioned(n) - set(fallback.TOOL_NAMES) - optional
         assert (not missing) if ok else missing, (n, missing)        # the flag matches the whitelist exactly
         assert (n in lite) == ok, n
         got = tool.handler(None, 1, {"name": n, "_channel": f"api:{fallback.KIND}"})
         assert got["text"] == (playbooks.text(n) if ok else playbooks.FALLBACK_NO)
         assert tool.handler(None, 1, {"name": n, "_channel": "mcp"})["text"] == playbooks.text(n)
-    assert any(playbooks.FALLBACK.values())                          # else the lite prompt line goes (and the PR says so)
+    assert [n for n, ok in playbooks.FALLBACK.items() if ok] == ["plan_training_week", "weekly_review"]
+    for n, tools in playbooks.OPTIONAL_TOOLS.items():                # each optional tool: the text says what to do without it
+        for t in tools:
+            assert f"没有 `{t}` 时" in playbooks.text(n), (n, t)

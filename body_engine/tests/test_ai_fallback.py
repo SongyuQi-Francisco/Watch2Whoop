@@ -284,6 +284,7 @@ def test_playbooks_the_fallback_cannot_do(client, world, dsn):
     results = {b["id"]: b["content"] for b in FakeAdapter.calls[1]["history"][-1]["content"]}
     assert "需要用户自己的 AI" in results["p1"] and "get_shopping_context" not in results["p1"]
     assert "get_training_context" in results["p2"]
+    assert fallback.TOOL_NAMES.count("set_nutrition_goals") == 0   # weekly_review is for the fallback without widening it
 
 def test_write_needs_confirmation(client, world, dsn, monkeypatch):
     ids, tok = world

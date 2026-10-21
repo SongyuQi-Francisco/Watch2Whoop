@@ -13,8 +13,11 @@ from importlib import resources
 NAMES = ("plan_shopping", "plan_training_week", "weekly_review", "log_meal_from_photo")
 # Playbooks the fallback AI can carry out: every tool they name is in ai/fallback.TOOL_NAMES (tests/test_playbooks.py).
 # The whitelist is not widened for them (owner's decision); the others answer the fallback with FALLBACK_NO.
-# weekly_review: only set_nutrition_goals is missing; plan_shopping / log_meal_from_photo need several grocery / meal tools.
-FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review": False, "log_meal_from_photo": False}
+# plan_shopping / log_meal_from_photo need several grocery / meal tools the fallback does not have.
+FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review": True, "log_meal_from_photo": False}
+# Tools a playbook can do without: it says what to do when they are missing (weekly_review: suggest the numbers instead of
+# changing the nutrition goals). Not counted when checking FALLBACK against the whitelist.
+OPTIONAL_TOOLS = {"weekly_review": {"set_nutrition_goals"}}
 FALLBACK_NO = "这件事需要用户自己的 AI（托底 AI 没有它要用的工具）：告诉用户可以在「我 → AI 设置」接入自己的 AI；能做的部分照常帮用户做。"
 # One line at the top of every playbook, so the MCP prompt and get_playbook stay the same text (#109 review)
 FIND_LINE = "提到的工具不在你的工具列表里时，用 find_tools 找，再用 run_read_tool / run_write_tool 调。"
