@@ -9,10 +9,22 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Build | Tag | Commit | Store |
 |---|---|---|---|
-| 1.0.0+2 | `app-ios-v1.0.0+2` | (set when tagged) | TestFlight (iOS) |
+| 1.0.0+5 | `app-ios-v1.0.0+5` | (set when tagged) | TestFlight (iOS) |
+| 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.0+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.0+5 — 2026-10-22
+- Fix: the app crashed on open (SIGABRT) once Health access had been asked, in build 1.0.0 (4) made from
+  `app-ios-v1.0.0+2`. The permission request for beat-to-beat HRV and ECG (`RawSync.swift`) asked for the heartbeat
+  series without its parent type HRV SDNN; HealthKit rejects such a request with an `NSInvalidArgumentException`
+  ("Authorization for HKQuantityTypeIdentifierHeartRateVariabilitySDNN should also be requested when requesting
+  authorization to read HKDataTypeIdentifierHeartbeatSeries"), which Swift cannot catch. The request now includes HRV
+  SDNN. Checked every HealthKit request in the app: none of the types the OW SDK asks for has a parent type.
+- The automatic ask for these two permissions is remembered before the system sheet is requested, so a failure in
+  HealthKit can no longer repeat on every open; the permissions step still asks on demand.
+- The build number jumps to 5: TestFlight already has build 4 (the upload of `app-ios-v1.0.0+2`).
 
 ## 1.0.0+2 — 2026-10-21
 - Self-service sign-up: Sign in with Apple, e-mail code, invite code; existing setup links keep working (#16).

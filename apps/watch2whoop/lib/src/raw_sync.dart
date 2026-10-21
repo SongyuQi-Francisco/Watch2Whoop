@@ -286,12 +286,14 @@ class RawSync {
   }
 
   /// Asks HealthKit for the two read permissions (the second, small sheet after the OW one). Remembered, so people who
-  /// granted Health before this version see it once on the next open.
+  /// granted Health before this version see it once on the next open. Remembered before the native call: if HealthKit
+  /// aborts the app (as build 1.0.0+4 did), the automatic ask is not repeated on every open; the permissions step still
+  /// asks on demand.
   Future<void> requestAuth() async {
     try {
-      await source.requestAuth();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_authKey, true);
+      await source.requestAuth();
     } catch (e) {
       debugPrint('raw auth failed: $e');
     }
