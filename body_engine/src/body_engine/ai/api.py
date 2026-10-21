@@ -112,7 +112,7 @@ def _ai_mode(conn, viewer: dict, e: dict) -> dict:
     row = e["provider"]
     return {"mode": "mcp" if catalog.is_mcp(row["kind"]) else "api", "kind": row["kind"],
             "display_name": catalog.display_name(row), "model": row["model"], "status": row["status"],
-            "vision": catalog.KINDS[row["kind"]].get("vision")}
+            "vision": catalog.kind_info(row["kind"]).get("vision")}
 
 
 # ---------------------------------------------------------------- providers
@@ -126,6 +126,7 @@ class ProviderIn(BaseModel):
     monthly_budget_usd: float | None = Field(None, ge=0, le=10000)
     price_in_per_mtok: float | None = Field(None, ge=0, le=1000)
     price_out_per_mtok: float | None = Field(None, ge=0, le=1000)
+    web_tools: bool | None = Field(None, description="官方联网搜索 / 读网页（只 Anthropic / OpenAI / Gemini API），默认关，费用算你的 key")
     is_default: bool = False
 
 
@@ -139,6 +140,7 @@ class ProviderPatch(BaseModel):
     price_in_per_mtok: float | None = Field(None, ge=0, le=1000)
     price_out_per_mtok: float | None = Field(None, ge=0, le=1000)
     status: Literal["active", "disabled"] | None = None
+    web_tools: bool | None = None
     is_default: bool | None = None
 
 

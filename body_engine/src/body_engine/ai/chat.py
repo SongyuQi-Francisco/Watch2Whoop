@@ -79,9 +79,9 @@ def resolve_provider(conn: psycopg.Connection, user_id: int, need_quota: bool = 
                                           f"You use a subscription ({name}): talk to Jarvis in {client} "
                                           "(connected to Body Engine's MCP)"),
                         assistant_url=owner_assistant_url(user_id), kind=row["kind"])
-    if not catalog.kind_allowed(row["kind"], user_id):
-        raise ChatError("forbidden", L("服务端 Gemini CLI 没开，或只给部署者本人用",
-                                       "The server-side Gemini CLI is off, or only for the deployer"), status=403)
+    if not catalog.kind_allowed(row["kind"]):
+        raise ChatError("disabled", L("这个 AI 提供商已下线：在「AI 设置」里换一个",
+                                      "This AI provider was retired: pick another in AI settings"))
     if row["status"] != "active":
         raise ChatError("disabled", L("默认的 AI 提供商已停用，在「AI 设置」里启用或换一个",
                                       "Your default AI provider is turned off; turn it on or pick another in AI settings"))
@@ -98,8 +98,7 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
         return s["spent_cny"], s["quota_cny"]
     spent = providers.month_cost(conn, user_id, provider["id"])
     budget = float(provider["monthly_budget_usd"])
-    free = (catalog.KINDS.get(provider["kind"], {}).get("needs_key") is False
-            or (provider.get("price_in_per_mtok") is not None and provider.get("price_out_per_mtok") is not None
+    free = ((provider.get("price_in_per_mtok") is not None and provider.get("price_out_per_mtok") is not None
                 and float(provider["price_in_per_mtok"]) == 0 and float(provider["price_out_per_mtok"]) == 0))
     if not free and spent >= budget:
         raise ChatError("budget", L(f"本月 AI 预算已用完（${spent:.2f} / ${budget:.2f}）：在「AI 设置」里调高预算，或下个月再用",
@@ -249,7 +248,8 @@ def make_adapter(provider: dict, user_id: int) -> adapters.Adapter:
     except Exception:  # Bad authentication tag: the master key was changed or the data is corrupted
         raise ChatError("bad_secret", L("保存的 API key 解不开了，请在「AI 设置」里重新填一次",
                                         "The saved API key can no longer be read; enter it again in AI settings"))
-    return adapters.make(provider["kind"], provider["model"], key, provider["base_url"])
+    web = bool(provider.get("web_tools")) and provider["kind"] in catalog.WEB_TOOL_KINDS   # never the fallback (returned above)
+    return adapters.make(provider["kind"], provider["model"], key, provider["base_url"], web=web)
 
 
 def _usage_event(provider: dict, usage: dict, cost: float, spent: float, budget: float) -> dict:
@@ -355,7 +355,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
         raise ChatError("too_long", L(f"一条消息不超过 {MAX_TEXT} 字", f"At most {MAX_TEXT} characters per message"), status=422)
     provider = resolve_provider(conn, viewer["id"], allow_owner_fallback=allow_owner_fallback)
     fb = fallback.is_fallback(provider)
-    vision = fp.VISION if fb else catalog.KINDS[provider["kind"]].get("vision")
+    vision = fp.VISION if fb else catalog.kind_info(provider["kind"]).get("vision")
     if imgs and vision is False:
         raise ChatError("no_vision", L("托底 AI 暂不支持图片，用文字描述一下", "The backup AI can't read images yet; describe it in words")
                         if fb else L("这个提供商的模型不支持图片", "This provider's model can't read images"), status=422)

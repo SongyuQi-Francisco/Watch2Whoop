@@ -53,6 +53,8 @@ READ = {
     "grocery/list": ["get_shopping_list"],
     "grocery/products": ["find_products"],
     "grocery/specials": ["get_weekly_specials"],
+    "grocery/store-products": ["get_price_history"],          # 「价格记录」 (prices from the user's own AI)
+    "grocery/store-products/{x}": ["get_price_history"],
     "feedback": ["list_feedback"],
 }
 # endpoints with no data for the AI to read

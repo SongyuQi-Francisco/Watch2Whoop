@@ -52,7 +52,7 @@ def _mcp_tokens_all_revoked(conn, user_id: int) -> bool:
 def usable(conn: psycopg.Connection, row: dict | None) -> bool:
     if row is None or row["status"] != "active":
         return False
-    if not catalog.kind_allowed(row["kind"], row["user_id"]):
+    if not catalog.kind_allowed(row["kind"]):
         return False
     return not (catalog.is_mcp(row["kind"]) and _mcp_tokens_all_revoked(conn, row["user_id"]))
 

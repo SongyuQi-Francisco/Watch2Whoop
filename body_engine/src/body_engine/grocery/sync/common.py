@@ -23,6 +23,8 @@ def parse_size(text: str | None) -> tuple[float | None, str | None]:
         return round(base, 1), unit
     if m := _COUNT.search(s):
         return float(m.group(1)), "pcs"
+    if s.lower() in ("each", "ea", "per each"):   # sold by the piece (Coles: broccoli "each")
+        return 1.0, "pcs"
     return None, None
 
 

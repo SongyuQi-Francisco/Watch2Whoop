@@ -179,7 +179,6 @@ EXACT: dict[str, str] = {
     "余额接口没有返回人民币余额": "The balance API returned no CNY balance",
     "请在 Claude app 中使用身体管家": "Use Jarvis in the Claude app",
     "还没有设置 AI：在「我 → AI 设置」里选一个提供商": "No AI set up yet: pick a provider in Me → AI settings",
-    "服务端 Gemini CLI 没开，或只给部署者本人用": "The server's Gemini CLI is off, or only for the deployer",
     "默认的 AI 提供商已停用，在「AI 设置」里启用或换一个": "Your default AI provider is disabled; enable it or pick another in AI settings",
     "说点什么，或者发一张图": "Say something, or send a photo",
     "没有这个待确认的操作": "No such pending action",

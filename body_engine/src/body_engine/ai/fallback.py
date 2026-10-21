@@ -51,7 +51,7 @@ TOOL_NAMES = (
     "get_healthspan", "get_stress", "get_health_monitor", "get_hr_zones", "get_vo2max", "get_report",
     "get_sleep_details", "get_lab_history", "get_metric_snapshots", "analyze_journal",
     "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
-    "get_shopping_list", "get_weekly_specials", "find_products",
+    "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
 )
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",
