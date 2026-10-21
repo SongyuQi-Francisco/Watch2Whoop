@@ -32,7 +32,7 @@ from . import fallback_params as fp
 from . import providers
 
 KIND = "system_fallback"
-CONSENT_VERSION = "2026-10-20"   # writes go through without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
+CONSENT_VERSION = "2026-10-22"   # daily metrics and grocery named; 10-20: writes without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
 # Read tools for everything the Today page shows + the everyday write tools. No ECG / raw heart data (get_cardio,
 # get_ecg_list: excluded by the consent below), no family data, no recipe editing.
 TOOL_NAMES = (
@@ -56,7 +56,8 @@ TOOL_NAMES = (
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
-    "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、化验、补剂、日记、提醒。",
+    "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、呼吸频率 / 血氧 / 手腕温度等每日指标、化验、补剂、日记、提醒，"
+    "还有采购清单、家里存货、已连接的超市、商品价格和购买记录。",
     "你发的照片、截图和视频里抽出的画面也会发给 DeepSeek。",
     "语音在本服务器上转成文字（不发给任何第三方），你确认文字后才发送；录音转完立即删除，不保存。",
     "不发：心电图、逐拍心跳、家人的数据。",
@@ -71,7 +72,9 @@ CONSENT_POINTS_EN = [
     "with ¥{quota:g} per person per month.",
     "When you ask something, DeepSeek receives: your message, your name / age / sex / height / time zone, your long-term "
     "memory (profile card, observation notes, status card), and, when the answer needs them, your scores, sleep, workouts, "
-    "food, weight, lab results, supplements, journal and reminders.",
+    "food, weight, daily metrics such as respiratory rate / blood oxygen / wrist temperature, lab results, supplements, "
+    "journal and reminders, plus shopping lists, what you have at home, the supermarkets you connected, product prices and "
+    "purchase records.",
     "Photos, screenshots and frames taken from your videos are sent to DeepSeek too.",
     "Voice is turned into text on this server (never sent to any third party) and is sent only after you confirm the text; "
     "the recording is deleted right after, never stored.",
