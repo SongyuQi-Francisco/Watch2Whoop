@@ -62,7 +62,10 @@ def _day(conn, uid, a):
 def _get_exercise(conn, uid, a):
     ex = catalog.get_exercise(conn, uid, a["exercise"])
     ex.pop("image_urls", None)   # pictures are for the Today page, not the model
-    return {**ex, **loads.for_exercise(conn, a.get("_viewer_id", uid), uid, ex, plans._user_today(conn, uid))}
+    out = {**ex, **loads.for_exercise(conn, a.get("_viewer_id", uid), uid, ex, plans._user_today(conn, uid))}
+    for alt in out.get("alternatives") or []:
+        alt.pop("thumb", None)
+    return out
 
 
 def _propose_plan(conn, uid, a):
