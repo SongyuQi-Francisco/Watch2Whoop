@@ -27,6 +27,9 @@ then [`docs/README.md`](docs/README.md) (design documents, mostly Chinese) and [
 - Maintenance rules (CONTRIBUTING.md): never close an issue silently — comment what was fixed, in which PR / commit, how it was verified and what is left open; keep a written record on every PR (what was developed, each later round of commits, test / CI results, deploy status).
 - Never commit `health_data/`, `secrets/`, database files or `.env`. Secrets are files under `secrets/`, read at runtime.
 - Importers must be idempotent. Dates and times are ISO 8601 with the user's local time zone; weight in kg, energy in kcal.
-- User-facing text is Chinese-first today (English UI is on the roadmap); code comments and developer docs are English.
+- **Every new feature and change is bilingual (zh + en)**, a permanent rule (CONTRIBUTING.md "Bilingual UI", [`docs/i18n-plan.md`](docs/i18n-plan.md)): in the Today page scripts every UI string goes
+  through `tr("中文")` with its English in `web/static/i18n-en.js` (`tests/test_i18n.py` fails on any Chinese literal outside `tr()`);
+  server texts the page shows pick the language from `X-Body-Lang` (`i18n.py` `L()` / `tl()`, error details in `errors_en.py`),
+  AI-facing texts stay Chinese; the iOS app uses `tr('中文', 'English')`. Code comments and developer docs are English.
 - New database migration: `body_engine/src/body_engine/migrations/NNN_name.sql`; grant `SELECT` to `grafana_ro` if Grafana reads it.
 - Health-related rules and thresholds live in `*/params.py` with their sources; keep them configurable, never hard-code one person's data.

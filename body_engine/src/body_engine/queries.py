@@ -33,7 +33,7 @@ def sleep_sessions(conn: psycopg.Connection, user_id: int, start: date, end: dat
 
 
 def profile(conn: psycopg.Connection, user_id: int) -> dict:
-    row = conn.execute("""SELECT id, display_name, birth_date, sex, height_cm, timezone FROM users WHERE id = %s""",
+    row = conn.execute("""SELECT id, display_name, birth_date, sex, height_cm, timezone, language FROM users WHERE id = %s""",
                        (user_id,)).fetchone()
     if row and row["birth_date"]:
         today = date.today()

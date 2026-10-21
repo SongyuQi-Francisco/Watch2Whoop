@@ -159,6 +159,26 @@ def test_profile_self_only_and_validation(client, users):
     assert client.get("/v1/users/me/profile", headers=H(tok["t1"])).json()["display_name"] == "t1"
 
 
+def test_profile_language(client, users, dsn):
+    """Language (issue #13): empty = follow the device; zh / en only; /v1/web/me and the AI briefing / system prompt carry it."""
+    from body_engine.ai import prompt
+    from body_engine.assistant import briefing
+    _, tok = users
+    ids = users[0]
+    assert client.get("/v1/users/me/profile", headers=H(tok["t1"])).json()["language"] is None
+    for bad in ({"language": "fr"}, {"language": "EN"}, {"language": 1}):
+        assert client.patch("/v1/users/me/profile", json=bad, headers=H(tok["t1"])).status_code == 422, bad
+    assert client.patch("/v1/users/me/profile", json={"language": "en"}, headers=H(tok["t1"])).json()["language"] == "en"
+    assert client.get("/v1/web/me", headers=H(tok["t1"])).json()["me"]["language"] == "en"
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert briefing._me(conn, ids["t1"])["language"] == "en"
+        assert "语言：en" in prompt.build_system_prompt(conn, ids["t1"])
+    # other users unaffected; null goes back to "follow the device"
+    assert client.get("/v1/users/me/profile", headers=H(tok["t2"])).json()["language"] is None
+    assert client.patch("/v1/users/me/profile", json={"language": None}, headers=H(tok["t1"])).json()["language"] is None
+    assert client.get("/v1/web/me", headers=H(tok["t1"])).json()["me"]["language"] is None
+
+
 def test_profile_cookie_needs_csrf(client, users):
     _, tok = users
     client.cookies.clear()

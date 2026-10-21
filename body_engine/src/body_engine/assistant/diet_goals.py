@@ -2,11 +2,13 @@
 
 Goals are owned by goals/nutrition.py (versioned training / rest-day sets, issue #31). That module already falls back to
 SparkyFitness /goals/by-date for dates before a user's first version, so this adapter never calls SparkyFitness itself.
-The diet profile never stores goals.
+The diet profile never stores goals. Set names are built here at read time: English when the Today page asks for it
+(X-Body-Lang: en); AI tools always run in zh.
 """
 from datetime import date, timedelta
 
 from ..goals import nutrition
+from ..i18n import L
 from . import diet_profile_params as P
 
 SET_FIELDS = ("calories", "protein_g", "carbs_g", "fat_g", "sat_fat_max_g", "added_sugar_max_g", "fiber_min_g")
@@ -24,9 +26,9 @@ def current(conn, user_id: int, day: date, client=None) -> dict:
     if v is not None:
         n = len(v["training_weekdays"])
         if n and v["training"] != v["rest"]:
-            sets = [_set("训练日", v["training"], n), _set("休息日", v["rest"], 7 - n)]
+            sets = [_set(L("训练日", "Training day"), v["training"], n), _set(L("休息日", "Rest day"), v["rest"], 7 - n)]
         else:   # no training days: every day is a rest day; or both sets equal
-            sets = [_set("每天", v["training"] if n else v["rest"], 7)]
+            sets = [_set(L("每天", "Every day"), v["training"] if n else v["rest"], 7)]
         kcal = (n * (v["training"].get("calories") or 0) + (7 - n) * (v["rest"].get("calories") or 0)) / 7
         return {"source": "body_engine", "sets": sets, "avg_kcal": kcal or None, "version_id": v["id"],
                 "effective_from": v["effective_from"], "name": v["name"], "reason": v["reason"], "error": None}
@@ -39,12 +41,12 @@ def current(conn, user_id: int, day: date, client=None) -> dict:
             continue
         key = (g.get("name"), g.get("calories"), g.get("protein_g"), g.get("carbs_g"), g.get("fat_g"))
         if key not in groups:
-            groups[key] = _set(g.get("name") or "目标", g, 0)
+            groups[key] = _set(g.get("name") or L("目标", "Target"), g, 0)
         groups[key]["days"] += 1
     kcal = [g["calories"] for g in days if g.get("calories")]
     return {"source": days[0]["source"] if kcal else None, "sets": list(groups.values()),
             "avg_kcal": sum(kcal) / len(kcal) if kcal else None, "version_id": None, "effective_from": None,
-            "name": None, "reason": None, "error": None if kcal else "还没有饮食目标"}
+            "name": None, "reason": None, "error": None if kcal else L("还没有饮食目标", "No nutrition goals yet")}
 
 
 def history(conn, user_id: int) -> list[dict]:

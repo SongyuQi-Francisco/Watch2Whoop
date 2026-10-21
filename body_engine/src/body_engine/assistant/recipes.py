@@ -18,6 +18,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..i18n import L, tl
 from ..nutrition import extras
 from ..records import store as records_store
 from ..rules import params as rule_params
@@ -85,6 +86,11 @@ def constraint_flags(ingredients: list[dict], servings: float) -> dict:
             "red_meat_g": ps["red_meat_g"], "short_rib": any(is_short_rib(i["food"]) for i in ingredients)}
 
 
+# English twins of the automatic tags the Food tab shows (issue #42). 低嘌呤 / 低饱和脂肪 / 红肉 stay Chinese: the page hides
+# them (they repeat the constraint badges it draws from constraint_flags) and the AI reads them as data.
+AUTO_TAGS_EN = {"高蛋白": "High protein", "快手": "Quick", "含主食": "With staple"}
+
+
 def auto_tags(row: dict, ps: dict, flags: dict) -> list[str]:
     tags = []
     if ps["protein_g"] >= RP.HIGH_PROTEIN_G:
@@ -99,7 +105,7 @@ def auto_tags(row: dict, ps: dict, flags: dict) -> list[str]:
         tags.append("红肉")
     if row["includes_staple"]:
         tags.append("含主食")
-    return tags
+    return [tl(t, AUTO_TAGS_EN) for t in tags]
 
 
 def _servings(row) -> float:
@@ -112,7 +118,7 @@ def view(row: dict, detail: bool = False) -> dict:
     out = {"id": row["id"], "name": row["name"], "slots": row["slots"],
            "tags": list(dict.fromkeys([*row["tags"], *auto_tags(row, ps, flags)])),
            "kcal": ps["kcal"], "protein_g": ps["protein_g"], "carbs_g": ps["carbs_g"], "fat_g": ps["fat_g"],
-           "per_serving": row["serving_label"] or "1 份", "prep_min": row["prep_min"], "cook_min": row["cook_min"],
+           "per_serving": row["serving_label"] or L("1 份", "1 serving"), "prep_min": row["prep_min"], "cook_min": row["cook_min"],
            "favorite": row["favorite"], "can_make": row["can_make"], "constraint_flags": flags,
            "last_cooked_on": row["last_cooked_on"], "image": row["image"]}
     if detail:
@@ -521,21 +527,21 @@ def _labels(p: dict) -> list[dict]:
     f, out = p["view"]["constraint_flags"], []
     pm = p["pantry"]
     if pm and pm["have"]:
-        out.append({"label": f"家里有 {pm['have']}/{pm['of']}", "tone": "good" if pm["have"] == pm["of"] else "neutral"})
+        out.append({"label": L(f"家里有 {pm['have']}/{pm['of']}", f"Have {pm['have']}/{pm['of']}"), "tone": "good" if pm["have"] == pm["of"] else "neutral"})
     if p["habit"] >= RP.HABIT_LABEL_MIN:
-        out.append({"label": "常吃", "tone": "neutral"})
+        out.append({"label": L("常吃", "Usual"), "tone": "neutral"})
     if p["row"]["favorite"]:
-        out.append({"label": "收藏", "tone": "neutral"})
+        out.append({"label": L("收藏", "Favourite"), "tone": "neutral"})
     if f["purine_level"] == "high":
-        out.append({"label": "嘌呤高", "tone": "bad"})
+        out.append({"label": L("嘌呤高", "High purine"), "tone": "bad"})
     elif f["purine_level"] == "low" and not f["red_meat_g"]:
-        out.append({"label": "嘌呤低", "tone": "good"})
+        out.append({"label": L("嘌呤低", "Low purine"), "tone": "good"})
     if f["red_meat_g"]:
-        out.append({"label": f"红肉 {f['red_meat_g']:g}g", "tone": "warn"})
+        out.append({"label": L(f"红肉 {f['red_meat_g']:g}g", f"Red meat {f['red_meat_g']:g} g"), "tone": "warn"})
     if "added_sugar" in p["over"]:
-        out.append({"label": "添加糖超", "tone": "bad"})
+        out.append({"label": L("添加糖超", "Over sugar cap"), "tone": "bad"})
     if "sat_fat" in p["over"] or f["sat_fat_level"] == "high":
-        out.append({"label": "饱和脂肪高", "tone": "bad" if "sat_fat" in p["over"] else "warn"})
+        out.append({"label": L("饱和脂肪高", "High sat. fat"), "tone": "bad" if "sat_fat" in p["over"] else "warn"})
     return out
 
 

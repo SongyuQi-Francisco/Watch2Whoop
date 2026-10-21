@@ -10,6 +10,7 @@ import psycopg
 
 from .. import auth, queries, sparky_client
 from ..config import settings
+from ..i18n import L
 from ..importers import ow as ow_imp, shortcut as sc_imp
 from ..rules import params as RP, store as rules_store
 from ..rules.context import Ctx
@@ -98,6 +99,15 @@ def recovery_zone(v) -> str | None:
 
 
 RECOVERY_WORD = {"green": "适合高强度", "yellow": "按计划训练", "red": "以恢复为主"}
+LOAD_STATUS = {"fresh": "新鲜", "balanced": "平衡", "loading": "积累疲劳", "fatigued": "疲劳"}
+# English twins of the labels the Today page shows verbatim (issue #42); reasons / load_text stay Chinese (AI-facing, or
+# pattern-matched by the page)
+RECOVERY_WORD_EN = {"green": "Ready to push", "yellow": "Train as planned", "red": "Focus on recovery"}
+LOAD_STATUS_EN = {"fresh": "Fresh", "balanced": "Balanced", "loading": "Building fatigue", "fatigued": "Fatigued"}
+
+
+def _recovery_word(zone: str | None) -> str | None:
+    return L(RECOVERY_WORD[zone], RECOVERY_WORD_EN[zone]) if zone in RECOVERY_WORD else None
 
 
 def load_status(row: dict | None) -> dict | None:
@@ -106,7 +116,7 @@ def load_status(row: dict | None) -> dict | None:
         return None
     tsb = row["tsb"]
     key = "fresh" if tsb >= 10 else "balanced" if tsb >= -10 else "loading" if tsb >= -30 else "fatigued"
-    return {"key": key, "label": {"fresh": "新鲜", "balanced": "平衡", "loading": "积累疲劳", "fatigued": "疲劳"}[key]}
+    return {"key": key, "label": L(LOAD_STATUS[key], LOAD_STATUS_EN[key])}
 
 
 def load_text(row: dict | None, missing_days: int) -> str:
@@ -145,7 +155,7 @@ def scores_today(conn, owner_id: int, day: date) -> dict:
         "date": day, "today": today, "yesterday": yesterday,
         "today_reasons": reasons(today), "yesterday_reasons": reasons(yesterday),
         "recovery_zone": recovery_zone((today or {}).get("recovery")),
-        "recovery_word": RECOVERY_WORD.get(recovery_zone((today or {}).get("recovery"))),
+        "recovery_word": _recovery_word(recovery_zone((today or {}).get("recovery"))),
         "load_status": load_status(yesterday),
         "last_recovery": None if (today or {}).get("recovery") is not None else
         (last and {**last, "zone": recovery_zone(last["recovery"])}),
@@ -163,10 +173,10 @@ def _sets_text(sets: list[dict], rep_goal=None) -> str:
     n = len(working)
     if any(s.get("duration_s") for s in working) and not any(s.get("reps") for s in working):
         secs = max(s.get("duration_s") or 0 for s in working)
-        return f"{n} 组 × {secs:g} 秒"
+        return L(f"{n} 组 × {secs:g} 秒", f"{n} sets × {secs:g} s")
     reps = [s["reps"] for s in working if s.get("reps")]
     lo, hi = (min(reps), max(rep_goal or 0, max(reps))) if reps else (None, None)
-    text = f"{n} × {lo}" + (f"–{hi}" if hi and hi != lo else "") if lo else f"{n} 组"
+    text = f"{n} × {lo}" + (f"–{hi}" if hi and hi != lo else "") if lo else L(f"{n} 组", f"{n} sets")
     w = next((s["weight_kg"] for s in working if s.get("weight_kg")), None)
     return text + (f" · {w:g} kg" if w else "")
 
@@ -225,6 +235,31 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
 
 
 def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
+    from ..training import plans as tr_plans
+    if tr_plans._active_plan_row(conn, owner_id) is not None:
+        wk = tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
+        day_entry = next((d for d in wk["days"] if d["date"] == day), {"planned": [], "rest_day": True})
+        logged, sparky_error = [], None
+        try:   # what was logged comes from SparkyFitness; when it cannot be read the Body Engine plan is still shown
+            client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+            for s in sparky_client.training_log(client, day, day):
+                logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
+                    {**_exercise_view(ctx, e["exercise_id"], e["name"], [], None, {}, with_meta),
+                     "sets_text": ", ".join(f"{x['weight_kg']:g}×{x['reps']}" if x.get("weight_kg") and x.get("reps")
+                                            else f"{x['reps']} 次" if x.get("reps")
+                                            else f"{x['duration_s']:g} 秒" if x.get("duration_s") else "—"
+                                            for x in e["sets"])}
+                    for e in s["exercises"]]})
+        except sparky_client.SparkyError as e:
+            sparky_error = str(e)
+        return {
+            "plan": wk["plan"],
+            "planned": day_entry["planned"],
+            "rest_day": day_entry["rest_day"],
+            "logged": logged,
+            "readiness": wk.get("readiness"),
+            **({"sparky_error": sparky_error} if sparky_error else {}),
+        }
     client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)
     plan = ctx.active_plan()
@@ -234,8 +269,8 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
         logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
             {**_exercise_view(ctx, e["exercise_id"], e["name"], [], None, {}, with_meta),
              "sets_text": ", ".join(f"{x['weight_kg']:g}×{x['reps']}" if x.get("weight_kg") and x.get("reps")
-                                    else f"{x['reps']} 次" if x.get("reps")
-                                    else f"{x['duration_s']:g} 秒" if x.get("duration_s") else "—"
+                                    else L(f"{x['reps']} 次", f"{x['reps']} reps") if x.get("reps")
+                                    else L(f"{x['duration_s']:g} 秒", f"{x['duration_s']:g} s") if x.get("duration_s") else "—"
                                     for x in e["sets"])}
             for e in s["exercises"]]})
     return {"plan": plan and {"name": plan["name"], "start_date": plan["start_date"]}, "planned": planned,
@@ -243,9 +278,12 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
 
 
 def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
-    """The Record tab's training page: this week's plan (Monday to Sunday, from the SparkyFitness weekly plan), the load suggestions
-    of the last 7 days (one per exercise, newest first) and the caution / banned exercises in this week's plan.
+    """The Record tab's training page: this week's plan (Monday to Sunday, from training_plans or SparkyFitness weekly plan),
+    the load suggestions of the last 7 days (one per exercise, newest first) and the caution / banned exercises in this week's plan.
     What was actually trained comes from /training/calendar (same week)."""
+    from ..training import plans as tr_plans
+    if tr_plans._active_plan_row(conn, owner_id) is not None:
+        return tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
     start = day - timedelta(days=day.weekday())
     end = start + timedelta(days=6)
     _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
@@ -266,8 +304,12 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
         suggestions.append({"exercise_id": ex_id, "name": ctx.exercise_name(ex_id, latest.get("exercise")), **latest})
     suggestions.sort(key=lambda r: (str(r.get("date") or ""), r["id"]), reverse=True)
     plan = ctx.active_plan(day)
-    return {"start": start, "end": end, "date": day, "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
-            "days": days, "suggestions": suggestions, "cautions": cautions}
+    with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
+    return {"start": start, "end": end, "date": day,
+            "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
+            "days": days, "suggestions": suggestions, "cautions": cautions,
+            "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
+            "available_splits": tr_plans.list_splits()}
 
 
 def nutrition_today(conn, owner_id: int, day: date) -> dict:
