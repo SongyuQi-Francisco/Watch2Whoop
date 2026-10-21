@@ -868,6 +868,11 @@ I18N.addEn({
   "上一步": "Back",
   "下一步": "Next",
   "开始使用": "Get started",
+  "午饭：鸡胸肉沙拉，一碗米饭": "Lunch: chicken salad and a bowl of rice",
+  "已记录午饭": "Lunch logged",
+  "练了腿，深蹲 5 组": "Leg day, 5 sets of squats",
+  "已记进训练": "Added to training",
+  "你的服务器": "Your server",
   // water.js (daily water, issue #125)
   "今天喝水": "Water today",
   "目标来自饮食档案": "Goal from your diet profile",

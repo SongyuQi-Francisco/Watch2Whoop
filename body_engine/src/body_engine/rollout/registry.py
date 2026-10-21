@@ -10,4 +10,5 @@ FLAGS: dict[str, str] = {
     "friends": "朋友页：圈子和共享、朋友 tab、排行榜（docs/friends-social-plan.md）；同意书至少 2026-10-22.2",
     "meal_merge": "饮食当天明细多选：存成快捷模板 / 合并成一条（#93、#97）",
     "water": "饮水记录：今天页喝水卡片、log_water、下午提醒、Apple 健康饮水（#125）",
+    "intro_v2": "新手引导新视觉（#95）；关着时用 #63 的旧版",
 }
