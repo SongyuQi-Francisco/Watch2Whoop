@@ -346,6 +346,14 @@ def for_exercise(conn: psycopg.Connection, viewer_id: int, owner_id: int, ex: di
     item = {**ex, "rep_low": lo, "rep_high": hi, "increment_kg": ex.get("default_increment_kg")}
     load = ctx.for_item(item, prog)
     hist = ctx.history_for(item) or []
-    return {"load": load, "load_text": short_text(load), "rep_range": [lo, hi],
+    # Alternatives carry what the preview card shows (issue #67): a thumbnail and the weight for the same rep range,
+    # so the card opens without another request (and from the cached detail when offline)
+    alts = []
+    for a in ex.get("alternatives") or []:
+        row = ctx.index.rows.get(a["slug"]) or {}
+        a_load = ctx.for_item({**a, "rep_low": lo, "rep_high": hi, "increment_kg": a.get("default_increment_kg")})
+        thumb = catalog.image_urls(row.get("images") or [])[:1]
+        alts.append({**a, "thumb": thumb[0] if thumb else None, "load": a_load, "load_text": short_text(a_load)})
+    return {"load": load, "load_text": short_text(load), "rep_range": [lo, hi], "alternatives": alts,
             "recent": [{"date": h["date"], "sets": [f"{s['weight_kg']:g}×{s['reps']}" for s in h["sets"]]} for h in hist[:3]],
             **({"load_history_error": ctx.history_error} if ctx.history_error else {})}

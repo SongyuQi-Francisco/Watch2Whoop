@@ -365,6 +365,61 @@ def test_exercise_detail_tool_and_http(dsn, world, history, tmp_path, monkeypatc
         api.pool.close()
 
 
+def test_alternatives_carry_preview_card_data(dsn, world, history, tmp_path, monkeypatch):
+    """#67: each safe alternative in the exercise detail carries a thumbnail (only when the image is downloaded), its
+    recommended weight for the same rep range, names, muscles and equipment; the AI tool gets no thumbnails."""
+    ids, tok = world
+    monkeypatch.setenv("BODY_MEDIA_DIR", str(tmp_path))
+    monkeypatch.delenv("BODY_EXERCISE_IMAGE_BASE_URL", raising=False)
+    api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=2, open=True)
+    try:
+        c = TestClient(api.app, base_url="https://testserver")
+        url, h = "/v1/users/me/training/exercises/dumbbell_bench_press", {"Authorization": f"Bearer {tok['A']}"}
+        alts = c.get(url, headers=h).json()["alternatives"]
+        assert alts and all(a["thumb"] is None for a in alts)          # nothing downloaded yet: no broken thumbnails
+        first = alts[0]
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            img = conn.execute("SELECT images FROM exercise_catalog WHERE slug = %s", (first["slug"],)).fetchone()["images"][0]
+        (tmp_path / "exercises" / img).parent.mkdir(parents=True)
+        (tmp_path / "exercises" / img).write_bytes(b"\xff\xd8")
+        alts = c.get(url, headers=h).json()["alternatives"]
+        a = next(x for x in alts if x["slug"] == first["slug"])
+        assert a["thumb"] == f"/app/media/exercises/{img}"
+        for x in alts:
+            assert {"name_zh", "name_en", "primary_muscles_zh", "equipment_zh", "status", "load", "load_text"} <= set(x)
+            assert x["status"] != "banned"
+        weighted = [x for x in alts if x["modality"] == "weight_reps"]
+        assert weighted and all(x["load"] and (x["load"]["kg"] or x["load"]["reason"] == "no_body_weight") for x in weighted)
+        # B may see A's training but not A's weight: no estimates on the cards either
+        b_alts = c.get(f"/v1/users/{ids['A']}/training/exercises/dumbbell_bench_press",
+                       headers={"Authorization": f"Bearer {tok['B']}"}).json()["alternatives"]
+        assert all(x["load"] is None or x["load"]["basis"] != "estimate" for x in b_alts)
+    finally:
+        api.pool.close()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        out = run_tool(conn, ids["A"], "butler", "get_exercise", {"user": "me", "exercise": "dumbbell_bench_press"})
+    assert out["alternatives"] and all("thumb" not in x for x in out["alternatives"])
+
+
+def test_preview_card_page_contract():
+    """#67 on the page: alternative rows open the preview card; its two buttons open the full detail and swap through
+    the existing /training/plan/swap; the card fits the screen; offline is not "no data"; catalog labels are bilingual."""
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    en = (STATIC / "i18n-en.js").read_text(encoding="utf-8")
+    assert 'data-alt="${i}"' in js and "altPreview(ex.alternatives[" in js
+    body = js[js.index("function altPreview"):js.index("async function exerciseDetailSheet")]
+    assert 'data-pv="detail"' in body and 'data-pv="swap"' in body and "exerciseDetailSheet(a.slug)" in body
+    assert "swapInPlan(fromSlug, a.slug" in body and 'isSelf() && a.status !== "banned"' in body
+    assert "/training/plan/swap" in js[js.index("async function swapInPlan"):js.index("function closeAltPreview")]
+    card = re.search(r"\.pv-card \{([^}]*)\}", css).group(1)
+    assert "min(360px, 100%)" in card and "max-height: 100%" in card and "overflow-y: auto" in card
+    assert "safe-area-inset-bottom" in re.search(r"\.pv-scrim \{([^}]*)\}", css).group(1)
+    assert "e.status === 0 ? offlineHtml()" in js and '"离线，连上网络后重试"' in en
+    for zh in [*catalog_data.MUSCLE_ZH.values(), *catalog_data.EQUIPMENT_ZH.values()]:
+        assert f'"{zh}":' in en, zh
+
+
 def test_today_card_applies_red_readiness(conn, world, history, monkeypatch):
     """Runs last: replaces A's plan with one bench-press day on every weekday and logs a red recovery score for today."""
     from body_engine.web import views
