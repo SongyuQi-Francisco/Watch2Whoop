@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 import wave
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -67,9 +67,14 @@ def check_wav(data: bytes) -> float:
     return seconds
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def usage_today(conn: psycopg.Connection, user_id: int) -> int:
+    """Recognitions since the user's local midnight (their time zone)."""
     tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"] or "UTC"
-    start = datetime.now(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
+    start = _now().astimezone(ZoneInfo(tz)).replace(hour=0, minute=0, second=0, microsecond=0)
     return conn.execute("SELECT count(*) AS n FROM asr_usage WHERE user_id = %s AND at >= %s",
                         (user_id, start)).fetchone()["n"]
 
@@ -85,7 +90,7 @@ def _limits(conn, user_id: int) -> None:
     if usage_today(conn, user_id) >= ASR_PER_DAY:
         raise AsrError("rate_limit", L(f"今天的语音识别用完了（每天 {ASR_PER_DAY} 条），可以用键盘上的听写",
                                       f"No voice input left today ({ASR_PER_DAY} a day); use the keyboard's dictation"), 429)
-    since = datetime.now(ZoneInfo("UTC")) - timedelta(minutes=1)
+    since = _now() - timedelta(minutes=1)
     n = conn.execute("SELECT count(*) AS n FROM asr_usage WHERE user_id = %s AND at >= %s", (user_id, since)).fetchone()["n"]
     if n >= ASR_PER_MINUTE:
         raise AsrError("rate_limit", L("说得太快了，歇一下再试", "Too many at once; wait a moment and try again"), 429)
