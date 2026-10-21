@@ -21,7 +21,7 @@ from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.53-2026-10-22"
+WEB_VERSION = "v2.54-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -60,7 +60,9 @@ class LoginIn(BaseModel):
 
 
 def _me(user: dict) -> dict:
-    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status", "language")}
+    out = {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status", "language")}
+    out["intro_seen"] = user.get("intro_seen_at") is not None   # first-run intro (issue #60, profile/api.py PUT /intro)
+    return out
 
 
 @router.post("/v1/web/login")

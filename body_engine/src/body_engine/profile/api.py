@@ -4,6 +4,8 @@
 - PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?, language?}(null = clear; language null = follow the device)
 - GET   /v1/consent                 -> {version, summary, text} (full consent form in Markdown)
 - POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents)
+- PUT   /v1/users/{user}/intro     {seen: bool} -> the first-run intro was finished / skipped (true) or is to be shown again (false);
+                                    users.intro_seen_at, read back as /v1/web/me -> me.intro_seen (issue #60)
 """
 from datetime import date
 from typing import Literal
@@ -50,6 +52,11 @@ class ProfileIn(BaseModel):
     language: Literal["zh", "en"] | None = None
 
 
+class IntroIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    seen: bool = Field(strict=True)
+
+
 class ConsentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str = Field(min_length=1, max_length=40)
@@ -91,3 +98,12 @@ def post_consent(user: str, body: ConsentIn, request: Request, conn=Depends(get_
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
     return _out(conn, uid)
+
+
+@router.put("/v1/users/{user}/intro")
+def set_intro(user: str, body: IntroIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """First-run intro on the Today page: seen (finished or skipped) or reset so it shows again. Only your own."""
+    uid = _self(viewer, user, write=True)
+    row = conn.execute("UPDATE users SET intro_seen_at = CASE WHEN %s THEN coalesce(intro_seen_at, now()) END "
+                       "WHERE id = %s RETURNING intro_seen_at", (body.seen, uid)).fetchone()
+    return {"intro_seen": row["intro_seen_at"] is not None, "intro_seen_at": row["intro_seen_at"]}

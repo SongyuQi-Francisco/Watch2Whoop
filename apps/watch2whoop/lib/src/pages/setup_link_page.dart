@@ -14,6 +14,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'scan_page.dart';
 
 class SetupLinkOnboarding extends StatefulWidget {
@@ -160,6 +161,13 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     }
   }
 
+  /// Continue / skip the permissions step (it counts as seen either way).
+  Future<void> _finishPermissions() async {
+    await AppState.instance.update(_config.copyWith(permissionsSeen: true));
+    if (mounted) setState(() => _step = 3);
+  }
+
+  /// Health card button of the permissions step: the iOS prompt, then start syncing.
   Future<void> _requestHealth() async {
     setState(() {
       _busy = true;
@@ -174,8 +182,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
           'Nothing was allowed. Change it in Health → profile → Apps → Watch2Whoop.',
         ));
       }
-      await HealthSync.instance.startSync(_config.syncDaysBack);
-      setState(() => _step = 3);
+      if (_config.owConnected) await HealthSync.instance.startSync(_config.syncDaysBack);
     } catch (e) {
       setState(() => _error = redactServer('$e'));
     } finally {
@@ -336,15 +343,19 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     BigButton(tr('上一步', 'Back'), secondary: true, onPressed: _busy ? null : () => setState(() => _step = 0)),
   ];
 
+  /// The permissions step (permissions_page.dart), the same cards as Phone sync → Permissions.
   List<Widget> _healthStep() => [
     _title(
-      tr('允许读取健康数据', 'Allow Health access'),
-      tr('接下来会弹出系统的健康权限窗口，请点「全部打开」，再点「允许」。只读取、不写入。首次会同步最近 ${_config.syncDaysBack} 天。',
-          'Next, iOS asks for Health access — tap "Turn On All", then "Allow". Read-only. The first sync covers the last ${_config.syncDaysBack} days.'),
+      tr('开权限', 'Permissions'),
+      tr('同步只需要读取健康数据，首次会同步最近 ${_config.syncDaysBack} 天。开关由你在 iOS 里点。',
+          'Syncing only needs to read your Health data; the first sync covers the last ${_config.syncDaysBack} days. You make the choice in iOS.'),
     ),
+    PermissionsPanel(onRequestHealth: _requestHealth),
+    const SizedBox(height: 12),
     Hint(limitsHint),
     const SizedBox(height: 24),
-    BigButton(tr('继续', 'Continue'), onPressed: _requestHealth, busy: _busy),
+    BigButton(_config.healthRequested ? tr('继续', 'Continue') : tr('跳过，以后再说', 'Skip for now'),
+        onPressed: _busy ? null : _finishPermissions),
   ];
 
   List<Widget> _doneStep() {

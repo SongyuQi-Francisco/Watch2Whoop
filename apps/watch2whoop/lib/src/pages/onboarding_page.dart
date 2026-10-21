@@ -1,5 +1,6 @@
 // First-run onboarding (self-service): server address → Sign in with Apple / e-mail code → invite code (pending accounts only)
-// → Health permission + sync connected silently (server-minted OW invitation code) → Today page logged in with a fresh one-time code.
+// → permissions step (permissions_page.dart: Health; sync connected silently with a server-minted OW invitation code)
+// → Today page logged in with a fresh one-time code (the Today page then shows its intro once, intro.js).
 // "I have a setup link" keeps the admin-issued setup link / QR / paste path (setup_link_page.dart) for existing users.
 // Locked builds (server_lock.dart) show no server and no "I have a setup link": only a camera-opened link for this server still works.
 // A 中文 / English switch sits top right on every step (ui.dart LangSwitch); a change redraws the page in place, inputs kept.
@@ -19,6 +20,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'setup_link_page.dart';
 
 enum _Step { welcome, email, code, invite, health, done }
@@ -273,16 +275,24 @@ class _OnboardingPageState extends State<OnboardingPage> {
         : accountError(e));
   }
 
-  Future<void> _connectAndAllow() async {
+  /// Sync connected (server-minted invitation code); a note for the user when it could not be.
+  Future<bool> _ensureSync(void Function(String) onNote) async {
+    if (_config.owConnected) return true;
+    if (mounted) setState(() => _progress = tr('正在准备同步账号…', 'Preparing your sync account…'));
+    final r = await connectSyncViaAccount();
+    if (!r.connected) {
+      onNote(r.manualNeeded || r.error == null
+          ? tr('同步还没连上：之后在「我」→「手机同步」里连接。', 'Sync is not connected yet: connect it later under Me → Phone sync.')
+          : (r.error is AccountApiException ? accountError(r.error as AccountApiException) : connectError(r.error!)));
+    }
+    return r.connected;
+  }
+
+  /// Health card button: connect sync first (that configures the SDK), then the iOS prompt, then start syncing.
+  Future<void> _allowHealth() async {
     String? note;
     await _run(() async {
-      setState(() => _progress = tr('正在准备同步账号…', 'Preparing your sync account…'));
-      final r = await connectSyncViaAccount();
-      if (!r.connected) {
-        note = r.manualNeeded || r.error == null
-            ? tr('同步还没连上：之后在「我」→「手机同步」里连接。', 'Sync is not connected yet: connect it later under Me → Phone sync.')
-            : (r.error is AccountApiException ? accountError(r.error as AccountApiException) : connectError(r.error!));
-      }
+      final connected = await _ensureSync((n) => note = n);
       if (mounted) setState(() => _progress = tr('等待健康权限…', 'Waiting for Health access…'));
       final ok = await HealthSync.instance.requestAuthorization();
       await _state.update(_config.copyWith(healthRequested: true));
@@ -290,7 +300,17 @@ class _OnboardingPageState extends State<OnboardingPage> {
         note = tr('没有允许任何类型。可以在「健康」app → 右上角头像 → App → Watch2Whoop 里打开。',
             'Nothing was allowed. Change it in Health → profile → Apps → Watch2Whoop.');
       }
-      if (r.connected) await HealthSync.instance.startSync(_config.syncDaysBack);
+      if (connected) await HealthSync.instance.startSync(_config.syncDaysBack);
+    });
+    if (mounted) setState(() => _info = note);
+  }
+
+  /// Continue / skip the permissions step: sync is connected even before Health is allowed; the step counts as seen.
+  Future<void> _afterPermissions() async {
+    String? note;
+    await _run(() async {
+      await _ensureSync((n) => note = n);
+      await _state.update(_config.copyWith(permissionsSeen: true));
       if (mounted) setState(() => _step = _Step.done);
     });
     if (note != null && mounted) setState(() => _info = note);
@@ -499,15 +519,19 @@ class _OnboardingPageState extends State<OnboardingPage> {
     BigButton(tr('换个账号登录', 'Use another account'), secondary: true, onPressed: _busy ? null : _switchAccount),
   ];
 
+  /// The permissions step (pages/permissions_page.dart), the same cards as Phone sync → Permissions.
   List<Widget> _healthStep() => [
     _title(
-      tr('允许读取健康数据', 'Allow Health access'),
-      tr('接下来会弹出系统的健康权限窗口，请点「全部打开」，再点「允许」。只读取、不写入。首次会同步最近 ${_config.syncDaysBack} 天。',
-          'Next, iOS asks for Health access — tap "Turn On All", then "Allow". Read-only. The first sync covers the last ${_config.syncDaysBack} days.'),
+      tr('开权限', 'Permissions'),
+      tr('同步只需要读取健康数据，首次会同步最近 ${_config.syncDaysBack} 天。开关由你在 iOS 里点。',
+          'Syncing only needs to read your Health data; the first sync covers the last ${_config.syncDaysBack} days. You make the choice in iOS.'),
     ),
+    PermissionsPanel(onRequestHealth: _allowHealth),
+    const SizedBox(height: 12),
     Hint(limitsHint),
     const SizedBox(height: 24),
-    BigButton(tr('继续', 'Continue'), onPressed: _connectAndAllow, busy: _busy),
+    BigButton(_config.healthRequested ? tr('继续', 'Continue') : tr('跳过，以后再说', 'Skip for now'),
+        onPressed: _afterPermissions, busy: _busy),
   ];
 
   List<Widget> _doneStep() => [
