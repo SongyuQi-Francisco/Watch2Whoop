@@ -39,6 +39,8 @@ SUMMARY_EN = [
     "AI is off by default; once you connect your own AI, the part of your data an answer needs is sent to the AI company "
     "you chose. You can also use the backup AI the administrator provides (DeepSeek, servers in China); you are asked "
     "separately before the first use.",
+    "When the AI finds a problem in the system or hears about a feature you want, it reports it to the administrator by "
+    "itself (without health values, names or contact details); see it under Me → Feedback, or switch to ask-first or off.",
     "Any time you can change your profile, ask for an export of all your data, delete your account (old copies in backups "
     "disappear within 6 months) or withdraw consent.",
     "This is a test system built by a family, not a medical device; the scores are for reference only.",
