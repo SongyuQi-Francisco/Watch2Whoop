@@ -215,6 +215,6 @@ Speech is transcribed on the server, never sent to a third party, and the record
 
 **Privacy**: only you can see your data; see the consent form for details. When you use an AI, the conversation is sent to the AI service you chose.
 
-**Export / delete your data**: ask your admin.
+**Delete your data**: ask your admin.
 
 <!-- W2W:FOOTER -->
