@@ -931,3 +931,21 @@ def test_referral_and_invite_step_texts_are_bilingual(client):
         assert set(re.findall(r"\{(\w+)\}", zh)) == set(re.findall(r"\{(\w+)\}", e)), zh
         assert not re.search(r"[\u4e00-\u9fff]", e), e
     assert "Invite friends" in en.values()
+
+
+def test_login_screen_layout_issue_36(client):
+    """Issue #36: every step's error sits right under its field (account.js marks that field aria-invalid); the language
+    switch and the sign-in card are styled in app.css (the switch had lost its CSS in a merge); motion respects
+    prefers-reduced-motion; a centred card from 720px."""
+    import re
+    html = client.get("/app/").text
+    login = html[html.index('<div id="login"'):html.index('<div id="sheet"')]
+    for field, err in (("le-email", "le-email-error"), ("le-code", "le-code-error"), ("ap-code", "ap-error"), ("token", "login-error")):
+        m = re.search(rf'<input id="{field}"[^>]*>\s*<p class="login-error" id="{err}"', login)
+        assert m, f"#{err} is not right under #{field}"
+    css = client.get("/app/app.css").text
+    for rule in (".login-lang {", '.login-lang button[aria-pressed="true"]', '.login-card .input[aria-invalid="true"]',
+                 ".login-card .login-error:empty", "@keyframes login-in", "prefers-reduced-motion: reduce", "@media (min-width: 720px)"):
+        assert rule in css, rule
+    js = client.get("/app/account.js").text
+    assert 'field.setAttribute("aria-invalid"' in js and 'box.className = "login-lang"' in js
