@@ -23,6 +23,7 @@ from psycopg import sql
 from ..config import REPO_ROOT, settings
 from ..ow_client import OWClient, OWError
 from ..sparky_client import SparkyClient, SparkyError
+from . import invites
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +46,10 @@ def _delete_rows(conn: psycopg.Connection, user_id: int) -> int:
     refs += conn.execute(
         """SELECT format('%I.%I', table_schema, table_name) AS t, column_name AS col FROM information_schema.columns
            WHERE table_schema = 'public' AND column_name = 'user_id' AND table_name <> 'users'""").fetchall()
-    pending = sorted({(r["t"], r["col"]) for r in refs if r["t"] != "public.invite_redemptions"})
+    # kept, their user columns become NULL with the user: redemptions (counts, identity records), the codes this user owns
+    # (revoked first: invites.revoke_owned) and rewards earned by someone else for inviting this user
+    keep = {("public.invite_codes", "owner_user_id"), ("public.invite_rewards", "invitee_user_id")}
+    pending = sorted({(r["t"], r["col"]) for r in refs if r["t"] != "public.invite_redemptions" and (r["t"], r["col"]) not in keep})
     for _ in range(8):
         failed = []
         for t, col in pending:
@@ -94,6 +98,7 @@ def delete_account(conn: psycopg.Connection, user_id: int, ow_client: OWClient |
             leftovers.append({"system": "open-wearables", "id": user["ow_user_id"], "error": str(e)[:200]})
     for item in leftovers:
         log.error("account deletion of user %s: %s user %s not deleted: %s", user_id, item["system"], item["id"], item["error"])
+    invites.revoke_owned(conn, user_id)
     conn.commit()
     tables = _delete_rows(conn, user_id)
     conn.commit()

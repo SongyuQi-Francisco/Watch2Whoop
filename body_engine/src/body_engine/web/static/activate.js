@@ -8,6 +8,7 @@
   const input = document.getElementById("code");
   const btn = document.getElementById("go");
   const err = document.getElementById("err");
+  const tr = window.I18N ? window.I18N.t : (k) => k;
 
   const clean = (s) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   let code = clean(location.hash.replace(/^#/, ""));
@@ -18,7 +19,7 @@
     if (!input.hidden) code = clean(input.value);
     err.textContent = "";
     if (!code) {
-      err.textContent = "请输入激活码";
+      err.textContent = tr("activate.enterCode");
       input.focus();
       return;
     }
@@ -37,16 +38,16 @@
           location.href = data.setup_link;
           return;
         }
-        err.textContent = "激活码无效或已停用";
+        err.textContent = tr("activate.invalid");
       } else if (r.status === 429) {
-        err.textContent = "失败次数太多，请稍后再试";
+        err.textContent = tr("activate.tooMany");
       } else {
-        err.textContent = "激活码无效或已停用";
+        err.textContent = tr("activate.invalid");
         input.hidden = false;
         if (!input.value) input.value = code;
       }
     } catch (_) {
-      err.textContent = "网络连接失败，请重试";
+      err.textContent = tr("activate.network");
     } finally {
       setTimeout(() => { btn.disabled = false; }, 1500);
     }

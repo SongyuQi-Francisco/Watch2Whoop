@@ -906,3 +906,91 @@ def test_recipe_api_auth(client, world, monkeypatch):
     assert web.post(f"/v1/users/me/recipes/{rid}/log", headers={"X-Body-Web": "1"},
                     json={"date": "2026-10-15", "meal": "lunch"}).status_code == 409
     assert web.delete(f"/v1/users/me/meal-logs/{body['log_id']}", headers={"X-Body-Web": "1"}).status_code == 200
+
+
+# ---------- per-meal plan (issue #43) ----------
+def _user(conn, name):
+    uid = conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '1990-01-01', 175) RETURNING id",
+                       (name,)).fetchone()["id"]
+    return uid, auth.create_token(conn, uid, "test", ["read", "write"])
+
+
+def test_pantry_match():
+    row = {"servings": 1, "ingredients": [recipe_seed.ingredient("鸡蛋", 100), recipe_seed.ingredient("鸡肉末", 60),
+                                          recipe_seed.ingredient("酱油", 5)]}   # 酱油 is a seasoning: not counted
+    pantry = [{"name": "鸡蛋", "quantity": 6, "unit": "pcs"}, {"name": "鸡肉末 (Coles)", "quantity": 40, "unit": "g"}]
+    assert recipes.pantry_match(row, pantry) == {"have": 1, "of": 2, "missing": ["鸡肉末"]}   # 40 g < the 60 g one serving needs
+    pantry[1]["quantity"] = 500
+    assert recipes.pantry_match(row, pantry) == {"have": 2, "of": 2, "missing": []}
+    assert recipes.pantry_match(row, []) is None                                            # no pantry kept: no claim either way
+
+
+def test_meal_plan_taste_pantry_and_caps(conn, world, monkeypatch):
+    d, _ = _user(conn, "D")
+    recipes.seed(conn, d, client=FakeSparky())
+    day = date(2026, 10, 17)
+    fake = FakeSparky(food={"2026-10-17": [{"id": "fe-b", "food_name": "希腊酸奶碗", "meal_type": "breakfast", "quantity": 1,
+                                            "serving_size": 1, "calories": 300, "protein": 25, "carbs": 30, "fat": 3}]})
+    monkeypatch.setattr(status.sparky_client, "client_for_user", lambda conn, uid: fake)
+    egg = conn.execute("SELECT id FROM recipe_meta WHERE user_id = %s AND name = '鸡蛋羹（加鸡肉末）'", (d,)).fetchone()["id"]
+    conn.execute("INSERT INTO pantry_items (user_id, name, quantity, unit) VALUES (%s, '鸡蛋', 10, 'pcs'), (%s, '鸡肉末', 500, 'g')",
+                 (d, d))
+    for k in range(3):   # logged 3 times lately: the user's usual taste
+        conn.execute("INSERT INTO meal_logs (user_id, recipe_id, date, meal, items, entries, channel) "
+                     "VALUES (%s, %s, %s, 'snacks', '[]', '[]', 'web')", (d, egg, day - timedelta(days=5 + k)))
+    plan = recipes.meal_plan(conn, d, day)
+    by = {s["slot"]: s for s in plan["slots"]}
+    assert by["breakfast"]["logged"] == {"kcal": 300, "protein_g": 25, "entries": 1} and by["breakfast"]["suggestions"] == []
+    for s in ("lunch", "dinner", "snack"):
+        assert len(by[s]["suggestions"]) == 2 and all(s in x["slots"] for x in by[s]["suggestions"]), s
+    ids = [x["id"] for s in plan["slots"] for x in s["suggestions"]]
+    assert len(ids) == len(set(ids))                                   # one recipe is suggested for one meal only
+    # The open meals split what is left of the day (2100 kcal) 35 : 35 : 10, the snack capped at 10% of the day (240)
+    assert [by[s]["target"]["kcal"] for s in ("lunch", "dinner", "snack")] == [919, 919, 240]
+    first = next(x for s in ("dinner", "snack") for x in by[s]["suggestions"] if x["id"] == egg)
+    assert first["pantry"] == {"have": 2, "of": 2, "missing": []} and first["times_logged"] == 3
+    assert {"label": "家里有 2/2", "tone": "good"} in first["labels"] and {"label": "常吃", "tone": "neutral"} in first["labels"]
+    assert "家里有 2/2 样主料" in first["reason"] and "近 60 天吃过 3 次" in first["reason"]
+    # Taste and pantry each lower (improve) the score by exactly their weight
+    ctx = recipes._context(conn, d, day, fake)
+    target, _ = recipes._meal_target(ctx, "snack")
+    score = lambda c: next(p["score"] for p in recipes._rank(c, "snack", target)[0] if p["row"]["id"] == egg)
+    plain = dict(ctx, pantry=[], habits={})
+    assert round(score(plain) - score(ctx), 6) == round(recipes.RP.W_PANTRY + recipes.RP.W_HABIT * 3 / recipes.RP.HABIT_CAP, 6)
+    # Added sugar: a dish that alone exceeds what is left of the day's cap (25 g default) is pushed down and labelled
+    sweet = recipes.create_recipe(conn, d, {**_new_recipe(name="测试蜜汁鸡", slots=["dinner"]), "ingredients": [
+        recipe_seed.ingredient("鸡胸肉", 300), dict(recipe_seed.ingredient("食用油", 10), added_sugar_g=0, sugar_g=0),
+        {"food": "蜂蜜", "grams": 100, "kcal": 304, "protein_g": 0.3, "carbs_g": 82, "fat_g": 0, "sugar_g": 82,
+         "added_sugar_g": 82}]}, sync=False)
+    ctx = recipes._context(conn, d, day, fake)
+    p = next(p for p in recipes._rank(ctx, "dinner", recipes._meal_target(ctx, "dinner")[0])[0] if p["row"]["id"] == sweet["id"])
+    assert p["over"] == ["added_sugar"] and {"label": "添加糖超", "tone": "bad"} in recipes._labels(p)
+
+
+def test_meal_plan_api_and_past_day_log(client, world, monkeypatch, conn):
+    """Regression for issue #43: logging a recipe while the page looks back at an earlier day must land on that day,
+    and the day's per-meal plan (and intake) must then show the meal as logged."""
+    e, tok = _user(conn, "E")
+    conn.commit()
+    fake = FakeSparky()
+    monkeypatch.setattr(sparky_write.sparky_client, "write_client_for_user", lambda conn, uid: fake)
+    monkeypatch.setattr(status.sparky_client, "client_for_user", lambda conn, uid: fake)
+    recipes.seed(conn, e, client=fake)
+    conn.commit()
+    rid = recipes.list_recipes(conn, e, slot="dinner")[0]["id"]
+    past = (sparky_write.user_today(conn, e) - timedelta(days=3)).isoformat()
+    assert client.get(f"/v1/users/{e}/recipes/meal-plan", headers=h(world[1]["C"])).status_code == 403   # no nutrition share
+    before = client.get(f"/v1/users/me/recipes/meal-plan?date={past}", headers=h(tok)).json()
+    assert {s["slot"]: s["logged"] for s in before["slots"]}["dinner"] is None
+    web = TestClient(api.app, base_url="https://testserver")
+    assert web.post("/v1/web/login", json={"token": tok}).status_code == 200
+    r = web.post(f"/v1/users/me/recipes/{rid}/log", headers={"X-Body-Web": "1"}, json={"date": past, "meal": "dinner", "servings": 1})
+    assert r.status_code == 201 and r.json()["date"] == past
+    assert [w[2]["entry_date"] for w in fake.writes if w[1] == "/food-entries"] == [past]
+    after = web.get(f"/v1/users/me/recipes/meal-plan?date={past}").json()
+    dinner = {s["slot"]: s for s in after["slots"]}["dinner"]
+    assert dinner["logged"]["entries"] == 1 and dinner["suggestions"] == []
+    assert all(rid not in [x["id"] for x in s["suggestions"]] or s["slot"] != "dinner" for s in after["slots"])
+    out = run_tool(conn, e, "butler", "suggest_meals", {"user": "me", "date": past, "slot": "all"})
+    assert [s["slot"] for s in out["slots"]] == list(recipes.SLOTS)
+    assert set(out["slots"][0]["suggestions"][0]) == {"id", "name", "meal_kcal", "meal_protein_g", "with_staple", "reason"}

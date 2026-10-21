@@ -22,6 +22,15 @@ HIGH_PER_100G = {"sat_fat_g": 5.0, "sugar_g": 22.5, "sodium_mg": 600}
 HIGH_PER_100ML = {"sat_fat_g": 2.5, "sugar_g": 11.25, "sodium_mg": 300}
 FLAG_LABELS = {"sat_fat_g": "饱和脂肪高", "sugar_g": "糖高", "sodium_mg": "钠高"}
 
+# English twins for Food → Shopping in English (issue #42); the Chinese labels stay what the AI tools see
+CATEGORIES_EN = {
+    "produce": "Produce", "meat": "Meat", "seafood": "Seafood", "dairy_eggs": "Dairy & eggs", "grains": "Grains & bread",
+    "pantry": "Pantry", "frozen": "Frozen", "drinks": "Drinks", "snacks": "Snacks", "supplements": "Supplements",
+    "household": "Household", "other": "Other",
+}
+FLAGS_EN = {"饱和脂肪高": "High sat fat", "糖高": "High sugar", "钠高": "High sodium", "高嘌呤": "High purine",
+            "红肉": "Red meat", "牛肋条": "Short rib"}   # every product flag (FLAG_LABELS + store.product_flags)
+
 # Keyword -> category guess for ingredients that have no product yet (first match wins; produce before meat so 牛油果 is not beef).
 CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
     ("dairy_eggs", ("蛋", "奶", "酸奶", "芝士", "奶酪", "egg", "milk", "yogurt", "yoghurt", "cheese")),
@@ -38,13 +47,15 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
 
 # Store links (docs/grocery-plan.md §7). Links only: the server never fetches, scrapes or embeds these sites (their terms forbid it).
 # Product pages and Woolworths search open the store apps through universal links on iOS; Coles search opens in Safari.
-# key -> label (short chip), name (written to the store field), accepted product-page pattern (path; group 1 = SKU), search URL prefix, name aliases in the free-text store field.
+# key -> label (short chip and display name), name (written to the store field), accepted product-page pattern (path; group 1 = SKU),
+# search URL prefix, name aliases in the free-text store field. Links are shown only for the chains a user has connected (issue #44;
+# none by default, table grocery_settings).
 STORES = {
     "coles": {"label": "Coles", "name": "Coles", "host": "www.coles.com.au", "path": r"/product/[a-z0-9-]*?-?([0-9]{1,12})/?",
               "search": "https://www.coles.com.au/search/products?q=", "aliases": ("coles",)},
-    "woolworths": {"label": "Woolies", "name": "Woolworths", "host": "www.woolworths.com.au", "path": r"/shop/productdetails/([0-9]{1,12})(?:/[a-z0-9-]*)?/?",
+    "woolworths": {"label": "WWS", "name": "WWS", "host": "www.woolworths.com.au", "path": r"/shop/productdetails/([0-9]{1,12})(?:/[a-z0-9-]*)?/?",
                    "search": "https://www.woolworths.com.au/shop/search/products?searchTerm=",
-                   "aliases": ("woolworths", "woolies", "woolworth")},
+                   "aliases": ("woolworths", "woolies", "woolworth", "wws")},
 }
 PRODUCT_URL_MAX = 300
 

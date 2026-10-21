@@ -4,6 +4,7 @@ and per-user isolation (a family member sees only shared blocks; nobody gets ano
 Uses a separate test database BODY_TEST_DB_NAME_EXPLAIN (default body_test_explain), dropped and recreated on every run; skipped if Postgres is unreachable.
 """
 import os
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -17,7 +18,7 @@ from psycopg_pool import ConnectionPool
 from body_engine import api, auth
 from body_engine.config import Settings
 from body_engine.db import migrate
-from body_engine.explain import glossary as G
+from body_engine.explain import glossary as G, glossary_en as GE
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_EXPLAIN", "body_test_explain")
 TZ = ZoneInfo("Australia/Sydney")
@@ -246,3 +247,107 @@ def test_page_uses_explain_endpoints():
     js = (Path(api.__file__).parent / "web" / "static" / "app.js").read_text()
     assert "/explain/${kind}/" in js and 'explainInto(root, "status", it.key' in js
     assert "openChat(prompt)" in js   # "Ask AI" goes to the viewer's own AI chat
+
+
+# ---------- English (issue #42) ----------
+
+CJK = re.compile(r"[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]")
+
+
+def HE(token):
+    return {**H(token), "X-Body-Lang": "en"}
+
+
+def no_cjk(*texts):
+    for t in texts:
+        assert not CJK.search(t or ""), t
+
+
+def static_texts(e):
+    """The static texts of an entry (glossary dict) or of an explain response (read as dicts)."""
+    read = [x if isinstance(x, (list, tuple)) else (x["range"], x["label"]) for x in e.get("read", [])]
+    return [e["title"], e["what"], e.get("recovery") or "", *[t for x in read for t in x[:2]], *e.get("tips", []), *e.get("avoid", [])]
+
+
+def test_every_entry_has_an_english_twin():
+    pairs = [(G.METRICS, GE.METRICS_EN), (G.LABS, GE.LABS_EN), (G.STATUS, GE.STATUS_EN),
+             ({c["title"]: c for c in G.CONDITIONS}, GE.CONDITIONS_EN)]
+    for zh_all, en_all in pairs:
+        assert set(en_all) == set(zh_all)
+        for k, zh in zh_all.items():
+            en = en_all[k]
+            want = {f for f in G.TEXT_FIELDS if f in zh and (f != "unit" or CJK.search(zh["unit"]))}
+            assert set(en) == want, k                                   # same text fields, nothing else
+            for f in ("read", "tips", "avoid"):
+                if f in zh:
+                    assert len(en[f]) == len(zh[f]), (k, f)
+            assert all(len(x) == 2 for x in en.get("read", [])), k      # (range, label); the tone comes from the zh entry
+            assert bool(en.get("recovery")) == bool(zh.get("recovery")), k
+            no_cjk(*static_texts(en), en.get("unit", ""))
+
+
+def test_localize_picks_by_language():
+    from body_engine.i18n import use_lang
+    with use_lang("en"):
+        e = G.metric("recovery")
+        assert e["title"] == "Recovery" and e["keywords"] == ["恢复"]          # keywords match Chinese notes: unchanged
+        assert [t for _, _, t in e["read"]] == [t for _, _, t in G.METRICS["recovery"]["read"]]
+        assert G.condition_for("肩 内旋受限")["title"] == "Limited shoulder internal rotation"
+        assert G.condition_for("肩 内旋受限")["match"] == ["内旋"]
+        assert G.metric("sleep_need")["unit"] == "h" and G.metric("spo2")["unit"] == "%"
+    assert G.metric("recovery")["title"] == "恢复分" and G.condition_for("肩 内旋受限")["title"] == "肩关节内旋受限"
+
+
+def test_glossary_endpoint_language(client, world):
+    _, tok = world
+    zh = client.get("/v1/explain/glossary", headers=H(tok["A"])).json()
+    en = client.get("/v1/explain/glossary", headers=HE(tok["A"])).json()
+    assert zh["metrics"]["hrv"]["title"] == G.METRICS["hrv"]["title"] and zh["conditions"][0]["title"] == "肩关节内旋受限"
+    assert set(en) == set(zh) and set(en["metrics"]) == set(zh["metrics"]) and len(en["conditions"]) == len(zh["conditions"])
+    for e in [*en["metrics"].values(), *en["labs"].values(), *en["status"].values(), *en["conditions"]]:
+        no_cjk(*static_texts(e))
+    assert set(en["metrics"]["hrv"]) == set(zh["metrics"]["hrv"])        # same fields
+
+
+def test_metric_sheets_in_english(client, world):
+    _, tok = world
+    for key in G.METRICS:
+        zh = get(client, tok["A"], f"/v1/users/me/explain/metric/{key}").json()
+        r = client.get(f"/v1/users/me/explain/metric/{key}", headers=HE(tok["A"])).json()
+        assert set(r) == set(zh), key
+        assert zh["title"] == G.METRICS[key]["title"]                    # no header: Chinese as before
+        no_cjk(*static_texts(r), *[f["label"] for f in r["facts"]])
+        data = str((r["current"] or {}).get("value", ""))                # e.g. bedtime "凌晨 2:30" comes from the status card
+        no_cjk(*[a["text"].replace(data, "") for a in r["advice"]], r["ai_prompt"].replace(data, ""))
+        if r["current"]:
+            no_cjk(r["current"]["basis"], r["current"]["unit"])
+        assert r["ai_prompt"].startswith("Please explain"), key
+    hrv = client.get("/v1/users/me/explain/metric/hrv", headers=HE(tok["A"])).json()
+    assert hrv["title"].startswith("HRV") and "SDNN" in hrv["what"] and hrv["current"]["basis"] == "7-day avg"
+    assert any(f["label"] == "Your baseline" for f in hrv["facts"]) and "below baseline" in hrv["advice"][0]["text"]
+    sc = client.get("/v1/users/me/explain/metric/sleep_score", headers=HE(tok["A"])).json()
+    assert {"label": "Duration", "value": "40"} in sc["facts"] and "Consistency" in sc["advice"][0]["text"]
+    sh = client.get("/v1/users/me/explain/metric/sleep_hours", headers=HE(tok["A"])).json()
+    assert sh["current"]["unit"] == "h" and "clearly not enough" in sh["advice"][0]["text"]
+
+
+def test_status_and_lab_sheets_in_english(client, world):
+    _, tok = world
+    r = client.get("/v1/users/me/explain/status/right_shoulder", headers=HE(tok["A"])).json()
+    assert r["title"] == "Limited shoulder internal rotation" and r["avoid"] and any("45°" in t for t in r["tips"])
+    no_cjk(*static_texts(r), *[a["text"] for a in r["advice"]])
+    assert [x["name"] for x in r["exercises"]["banned"]] == ["直立划船"]      # the owner's own data stays as written
+    assert r["profile"][0].startswith("肩内旋受限") and r["item"]["value"] == "内旋受限"
+    assert r["ai_prompt"].startswith('Please explain my "肩: 内旋受限"')
+    s = client.get("/v1/users/me/explain/status/sleep_issue", headers=HE(tok["A"])).json()
+    assert s["title"] == "Sleep problems" and {"Bedtime", "Sleep duration"} <= {f["label"] for f in s["facts"]}
+    u = client.get("/v1/users/me/explain/status/uric_acid", headers=HE(tok["A"])).json()
+    assert u["title"] == "Uric acid" and "31% above the upper limit" in u["advice"][0]["text"]
+    no_cjk(*static_texts(u), *[a["text"] for a in u["advice"]], *[f["label"] for f in u["facts"]], *[f["value"] for f in u["facts"]])
+    lab = client.get("/v1/users/me/explain/lab/uric_acid", headers=HE(tok["A"])).json()
+    assert lab["title"] == "Uric acid" and {"Source", "Reference range"} <= {f["label"] for f in lab["facts"]}
+    m = client.get("/v1/users/me/explain/status/mystery", headers=HE(tok["A"])).json()
+    assert m["title"] == "其他" and m["what"] == "管家写的"                 # Jarvis's own note: data
+    nf = client.get("/v1/users/me/explain/metric/nope", headers=HE(tok["A"]))
+    assert nf.status_code == 404 and not CJK.search(nf.text)
+    assert "没有这个指标" in get(client, tok["A"], "/v1/users/me/explain/metric/nope").text

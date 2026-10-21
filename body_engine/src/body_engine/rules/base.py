@@ -16,6 +16,8 @@ class Reminder:
     subject: str = ""                       # distinguishes several reminders of the same rule on the same day (e.g. exercise ID)
     evidence: dict = field(default_factory=dict)   # supporting data (JSON)
     sticky: bool = False                    # if this subject was "dismissed" before, inherit dismissed
+    title_en: str = ""                      # English (issue #42): same facts and numbers; "" = page falls back to title
+    message_en: str = ""
 
 
 @dataclass

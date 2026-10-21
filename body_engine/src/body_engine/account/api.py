@@ -7,11 +7,18 @@ Sign-in (no auth):
   "session": client=web sets the Today page cookie; client=app returns a device API token (Bearer) instead.
 Account (Bearer or cookie; also for `pending` accounts):
   GET    /v1/account                       status, identities, provisioning
-  POST   /v1/account/redeem-invite {code}  pending → active, provisioning starts in the background
+  POST   /v1/account/redeem-invite {code}  pending → active, provisioning starts in the background; an existing account's
+                                           activation / login code instead moves this sign-in to that account (claimed)
   POST   /v1/account/ow-invitation         fresh Open Wearables invitation code for this user's sync account (active only)
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
+  POST   /v1/account/identities/email {email, code}          bind another e-mail (code from /v1/auth/email/start); active only
+  POST   /v1/account/identities/apple {identity_token, nonce} bind the user's Apple ID (token from the app); active only
+         409 {"detail": "identity_taken"} when that e-mail / Apple ID already belongs to another account (never merged)
+  GET    /v1/users/{user}/invite-code      the user's own referral code (created on first call) + how many joined; 404 unless
+                                           BODY_REFERRALS_ENABLED (the Me page entry hides itself: /v1/auth/methods → referrals)
+  POST /v1/account/redeem-invite takes admin invite codes and users' referral codes alike (same 10-character format).
 A `pending` account gets 403 {"detail": "account_pending"} everywhere else (api.current_user → gate()).
 
 Limits: verification / redemption failures count against the shared per-IP login failure limit (web/login_limit.py);
@@ -20,6 +27,7 @@ code e-mails are limited per address (EMAIL_SENDS_PER_ADDRESS per hour, one per 
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -27,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
 from ..web import activation, login_codes, login_limit, session
-from . import delete as account_delete, invites, mailer, provision, signin
+from . import delete as account_delete, identities, invites, mailer, params, provision, signin
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -96,7 +104,7 @@ def _session_response(conn, request: Request, response: Response, user: dict, ne
 @router.get("/v1/auth/methods")
 def methods():
     """Which sign-in methods this server offers (the login pages hide the others)."""
-    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences())}
+    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled()}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail
@@ -183,18 +191,27 @@ def apple(body: AppleIn, request: Request, response: Response, conn=Depends(get_
         raise HTTPException(401, "Apple 登录无效，请重试")
     email, verified = signin.apple_email(claims)
     name = " ".join(x for x in (body.given_name, body.family_name) if x) or None
+    known = conn.execute("SELECT 1 FROM user_identities WHERE provider = 'apple' AND subject = %s", (claims["sub"],)).fetchone()
+    if known is None and (target := identities.apple_account_for(conn, email, verified)) is not None:
+        # Apple-verified, not a relay address, exactly one active account's bound e-mail: that account (audited)
+        identities._link(conn, target, "apple", claims["sub"], email, verified, actor="sign-in", kind="auto_link_apple")
     try:
         user, new_user = signin.find_or_create_user(conn, "apple", claims["sub"], email, verified, name)
     except signin.SignInError:
         raise HTTPException(403, "account_disabled")
-    return _session_response(conn, request, response, user, new_user, body.client, body.device)
+    out = _session_response(conn, request, response, user, new_user, body.client, body.device)
+    if new_user:   # no existing account found: the app / page suggests binding Apple from the old account instead
+        out["hint"] = "existing_account_bind_apple"
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------- account
 
 def account_info(conn, user: dict) -> dict:
     ids = conn.execute("SELECT provider, email FROM user_identities WHERE user_id = %s ORDER BY id", (user["id"],)).fetchall()
-    return {**me_dict(user), "identities": ids, "invite_required": user.get("status") == "pending",
+    # identities: [{provider, email}] (Me → 「登录方式」); apple_link: this server can verify Apple tokens
+    return {**me_dict(user), "identities": ids, "apple_link": bool(signin.apple_audiences()),
+            "invite_required": user.get("status") == "pending",
             "provisioning": provision.status(conn, user["id"])}
 
 
@@ -222,9 +239,92 @@ def start_provisioning(user_id: int) -> None:
     threading.Thread(target=_provision_in_background, args=(user_id,), daemon=True).start()
 
 
-@router.post("/v1/account/redeem-invite")
-def redeem_invite(body: RedeemIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+class BindEmailIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=254)
+    code: str = Field(min_length=6, max_length=12)
+
+
+class BindAppleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identity_token: str = Field(min_length=20, max_length=8000)
+    nonce: str | None = Field(None, max_length=200)
+
+
+def _bind(conn, viewer: dict, fn) -> dict:
+    if viewer.get("status") != "active":
+        raise HTTPException(403, "account_pending")
+    try:
+        result = fn()
+    except identities.IdentityConflict:
+        conn.rollback()
+        raise HTTPException(409, "identity_taken")
+    conn.commit()
+    return {"result": result, "identities": account_info(conn, viewer)["identities"]}
+
+
+@router.post("/v1/account/identities/email")
+def bind_email(body: BindEmailIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Bind another e-mail to the signed-in account; the code (sent by /v1/auth/email/start) proves the address."""
     ip = _check_ip(request)
+    email = signin.normalize_email(body.email)
+    ok = email is not None and signin.check_email_code(conn, email, body.code)
+    conn.commit()
+    if not ok:
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "code_invalid")
+    return _bind(conn, viewer, lambda: identities.link_email(conn, viewer["id"], email, verified=True, actor="user"))
+
+
+@router.post("/v1/account/identities/apple")
+def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Bind the user's Apple ID (a fresh identity token from Sign in with Apple in the app) to the signed-in account."""
+    audiences = signin.apple_audiences()
+    if not audiences:
+        raise HTTPException(503, "apple_not_configured")
+    ip = _check_ip(request)
+    try:
+        claims = signin.verify_apple_token(body.identity_token, audiences, body.nonce)
+    except signin.SignInError as e:
+        log.info("apple link rejected: %s", e)
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "apple_invalid")
+    return _bind(conn, viewer, lambda: identities.link_apple(conn, viewer["id"], claims))
+
+
+def _existing_account_for_code(conn, code: str) -> int | None:
+    """An existing account's activation code (16) or one-time login code (12) → its user id (counts a use / uses it up)."""
+    norm = login_codes.normalize(code)
+    if len(norm) == activation.LENGTH:
+        row = conn.execute("""UPDATE activation_codes SET uses = uses + 1, last_used_at = now()
+                              WHERE code_sha256 = %s AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+                              RETURNING user_id""", (activation._sha(norm),)).fetchone()
+    elif len(norm) == login_codes.LENGTH:
+        row = conn.execute("""UPDATE web_login_codes SET used_at = now()
+                              WHERE code_sha256 = %s AND used_at IS NULL AND expires_at > now() RETURNING user_id""",
+                           (login_codes._sha(norm),)).fetchone()
+    else:
+        return None
+    return row["user_id"] if row else None
+
+
+@router.post("/v1/account/redeem-invite")
+def redeem_invite(body: RedeemIn, request: Request, response: Response, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """An invite code activates this (pending) account. An existing account's activation code / login code instead moves
+    the identity this person signed in with to that account and signs them in there ({claimed: true, token for the app})."""
+    ip = _check_ip(request)
+    if viewer.get("status") == "pending" and len(login_codes.normalize(body.code)) in (activation.LENGTH, login_codes.LENGTH):
+        target = _existing_account_for_code(conn, body.code)
+        user = conn.execute("SELECT * FROM users WHERE id = %s", (target,)).fetchone() if target else None
+        if user is None or user["status"] != "active":
+            conn.rollback()
+            login_limit.record_failure(ip)
+            raise HTTPException(401, "激活码无效、已用完或已过期")
+        identities.claim_with_code(conn, viewer["id"], user["id"])
+        client = "app" if (request.headers.get("authorization") or "").lower().startswith("bearer ") else "web"
+        out = _session_response(conn, request, response, user, False, client, "claimed")
+        conn.commit()
+        return {**out, "claimed": True, "provisioning": provision.status(conn, user["id"])}
     if not invites.redeem(conn, viewer["id"], body.code):
         conn.rollback()
         login_limit.record_failure(ip)
@@ -234,6 +334,22 @@ def redeem_invite(body: RedeemIn, request: Request, conn=Depends(get_conn), view
         start_provisioning(viewer["id"])
     user = conn.execute("SELECT * FROM users WHERE id = %s", (viewer["id"],)).fetchone()
     return {"status": user["status"], "provisioning": provision.status(conn, viewer["id"])}
+
+
+@router.get("/v1/users/{user}/invite-code")
+def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Referral groundwork: the user's own code for friends (redeeming it records the inviter and a pending reward)."""
+    if not params.referrals_enabled():
+        raise HTTPException(404, "referrals_disabled")
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, "own_code_only")   # language-neutral codes; the page shows its own text
+    try:
+        res = invites.referral_code(conn, viewer["id"])
+    except ValueError as e:
+        conn.rollback()
+        raise HTTPException(403, "referral_revoked" if str(e) == "revoked" else "account_pending")
+    conn.commit()
+    return {**res, "link": f"/app/?invite={res['code']}", "daily_limit": params.REFERRAL_DAILY_REDEEMS}
 
 
 @router.post("/v1/account/ow-invitation")

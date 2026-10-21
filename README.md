@@ -27,7 +27,7 @@
 - **No forms** — send text, a screenshot or a photo; the AI logs it.
 - **Real numbers** — recovery, strain, sleep debt, body age and stress computed from raw watch data against your own baselines.
 
-Features, architecture and WHOOP comparison: [docs/README.md](docs/README.md) · Tester handbook (Chinese): [docs/tester-handbook.md](docs/tester-handbook.md)
+Features, architecture and WHOOP comparison: [docs/README.md](docs/README.md) · Tester handbook: [English](docs/tester-handbook.en.md) · [中文](docs/tester-handbook.md)
 
 ### Quick Start
 Needs Docker (Compose v2) and `python3` ≥ 3.9. Runs locally with 60 days of synthetic data.
@@ -52,6 +52,7 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 ### Roadmap
 - [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
 - [x] One-command local Quick Start
+- [x] **Training module v2**: bilingual exercise library, 3 / 4 / 5-day splits, weekly plans, readiness autoregulation and safe exercise swap, built by talking to your AI ([design](docs/training-v2-plan.md))
 - [ ] iOS app on TestFlight
 - [ ] English docs and UI
 - [ ] One-command Linux VPS installer
@@ -59,7 +60,7 @@ Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real 
 - [ ] **Other watches**: Garmin, Oura, Polar, Huawei, Xiaomi, Android Health Connect
 - [ ] Shopping list, cycle tracking, more languages
 - [x] **Self-service sign-up** (e-mail code or Sign in with Apple) gated by admin-issued invite codes during the beta ([design](docs/self-signup-plan.md))
-- [ ] *Later (deferred)*: **Training module v2**: exercise library, 3 / 4 / 5-day splits, weekly plans and recommendations, built by talking to your AI ([plan](docs/training-v2-plan.md))
+- [x] **Training module v2** (first version): exercise library, 3 / 4 / 5-day splits, weekly plans, day-level changes, built by talking to your AI ([plan](docs/training-v2-plan.md))
 
 ### Contributing
 Every change goes through a pull request from your own branch; CI must pass and a maintainer reviews. Want to bring this to **your** watch? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -86,7 +87,7 @@ Third-party services (Open Wearables, SparkyFitness, Grafana) keep their own lic
 - **没有表单**：发文字、截图或照片，AI 帮你记。
 - **真实的数字**：恢复、负荷、睡眠债、身体年龄、压力，用手表原始数据和你自己的基线算。
 
-功能、架构和 WHOOP 对照：[docs/README.md](docs/README.md) · 测试用户手册：[docs/tester-handbook.md](docs/tester-handbook.md)
+功能、架构和 WHOOP 对照：[docs/README.md](docs/README.md) · 测试用户手册：[中文](docs/tester-handbook.md) · [English](docs/tester-handbook.en.md)
 
 ### 快速开始
 需要 Docker（Compose v2）和 `python3` ≥ 3.9。在本机用 60 天合成数据跑起来。
@@ -111,6 +112,7 @@ cd Watch2Whoop
 ### 路线图
 - [x] Apple Watch：恢复、负荷、睡眠、身体年龄、压力、教练、报告
 - [x] 一条命令的本地快速开始
+- [x] **训练模块 v2**：双语动作库、3 / 4 / 5 分化、每周计划、恢复分自调节与同模式安全换动作，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
 - [ ] iOS app 上 TestFlight
 - [ ] 英文文档和界面
 - [ ] Linux 云服务器一键安装
@@ -118,7 +120,7 @@ cd Watch2Whoop
 - [ ] **其他手表**：Garmin、Oura、Polar、华为、小米、安卓 Health Connect
 - [ ] 采购清单、生理周期、更多语言
 - [x] **自助注册**（邮箱验证码或通过 Apple 登录），内测期凭管理员批量发的激活码开通（[设计](docs/self-signup-plan.md)）
-- [ ] *以后的版本（暂不做）*：**训练模块 v2**：动作库、3 / 4 / 5 分化、每周计划和动作推荐，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
+- [x] **训练模块 v2**（第一版）：动作库、3 / 4 / 5 分化、每周计划、按天调整，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
 
 ### 参与贡献
 所有改动都从你自己的分支提 Pull Request，CI 通过、维护者审核后合并。想把本项目带到**你的**手表上？先看 [CONTRIBUTING.md](CONTRIBUTING.md)。

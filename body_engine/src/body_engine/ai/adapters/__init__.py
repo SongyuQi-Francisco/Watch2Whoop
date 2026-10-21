@@ -1,5 +1,6 @@
 """Provider adapter registry: kind -> adapter class. SDKs are imported only when used (a vendor SDK not being installed does not affect the others).
 Tests replace it with fake.FakeAdapter (monkeypatch ADAPTERS), calling no paid API."""
+from ...i18n import L
 from .base import Adapter, AdapterError, TurnResult  # noqa: F401
 
 
@@ -39,5 +40,6 @@ ADAPTERS = {"anthropic_api": _anthropic, "openai_api": _openai, "openai_compatib
 
 def make(kind: str, model: str, api_key: str | None, base_url: str | None = None) -> Adapter:
     if kind not in ADAPTERS:
-        raise AdapterError(f"{kind} 不是 API 类提供商，不能在今天页里对话", "bad_request")
+        raise AdapterError(L(f"{kind} 不是 API 类提供商，不能在今天页里对话", f"{kind} is not an API provider; it can't chat on the Today page"),
+                           "bad_request")
     return ADAPTERS[kind]()(model, api_key, base_url)
