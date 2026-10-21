@@ -85,6 +85,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [self-signup-plan.md](self-signup-plan.md) | Chinese | Self-service sign-up (e-mail code / Sign in with Apple) gated by batch invite codes; automatic provisioning, in-app account deletion, mail provider and DNS setup |
 | [whoop-feature-map.md](whoop-feature-map.md) | Chinese | Every WHOOP body-data feature → our implementation and API |
 | [training-v2-plan.md](training-v2-plan.md) | Chinese | Training module v2 (deferred): exercise library, splits, weekly plans, AI-built plans, data sources and their licences |
+| [friends-social-plan.md](friends-social-plan.md) | Chinese | Friends page (in development): circles and invites, per-scope sharing, today + 7-day member cards, baseline-relative leaderboards, data model and API |
 | [raw-data-plan.md](raw-data-plan.md) | Chinese | Getting more raw Apple Watch data (heartbeat series, ECG, iOS 27 RMSSD, watchOS app) and what it unlocks (awaiting confirmation) |
 | [shortcut-sync-spec.md](shortcut-sync-spec.md) | Chinese | The iOS Shortcut upload format (`cols-v1`) and how the server parses it — the single source of truth for the Shortcut |
 | [shortcut-raw-heart-rate.md](shortcut-raw-heart-rate.md) | Chinese | Historical: why the Shortcut uploads raw heart-rate samples |

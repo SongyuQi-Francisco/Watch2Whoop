@@ -13,6 +13,8 @@ from statistics import fmean, stdev
 
 import psycopg
 
+from .. import queries
+
 MIN_N = 5
 RELIABLE_N = 15
 
@@ -62,7 +64,7 @@ def analyze(conn: psycopg.Connection, user_id: int, key: str, end: date | None =
                         (user_id, key)).fetchone()
     if item is None:
         raise ValueError(f"没有这个日记项：{key}")
-    end = end or date.today()
+    end = end or queries.local_today(conn, user_id)
     start = end - timedelta(days=days - 1)
     rows = conn.execute(
         """SELECT e.date, e.value, rhr.value AS resting_heart_rate, hrv.value AS heart_rate_variability_sdnn,
