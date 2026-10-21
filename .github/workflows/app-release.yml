@@ -1,0 +1,44 @@
+# App releases (docs/apps.md, section 4). A maintainer pushes a tag app-<platform>-vX.Y.Z+N (tools/app_release.sh --push);
+# this workflow checks it again (version in pubspec.yaml = tag, CHANGELOG section, on main, build number goes up) and
+# publishes the GitHub pre-release with the source zip of the app directory and its sha256. The person who builds for
+# TestFlight / Play takes the source ONLY from that release (or `git clone --branch <tag>`). Nothing here needs a secret:
+# GITHUB_TOKEN with contents: write creates the release. Actions are pinned to a commit.
+name: App release
+
+on:
+  push:
+    tags: ["app-ios-v*", "app-android-v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: app-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          fetch-depth: 0          # all tags (build numbers) and main (the commit must be on it)
+          submodules: false
+      - name: Check the tag and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: tools/app_release.sh --publish "$GITHUB_REF_NAME"
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "### ${GITHUB_REF_NAME}"
+            echo
+            echo "Release: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME//+/%2B}"
+            echo
+            echo '```'
+            cat dist/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -47,13 +47,15 @@ CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [
 
 # Store links (docs/grocery-plan.md §7). Links only: the server never fetches, scrapes or embeds these sites (their terms forbid it).
 # Product pages and Woolworths search open the store apps through universal links on iOS; Coles search opens in Safari.
-# key -> label (short chip), name (written to the store field), accepted product-page pattern (path; group 1 = SKU), search URL prefix, name aliases in the free-text store field.
+# key -> label (short chip and display name), name (written to the store field), accepted product-page pattern (path; group 1 = SKU),
+# search URL prefix, name aliases in the free-text store field. Links are shown only for the chains a user has connected (issue #44;
+# none by default, table grocery_settings).
 STORES = {
     "coles": {"label": "Coles", "name": "Coles", "host": "www.coles.com.au", "path": r"/product/[a-z0-9-]*?-?([0-9]{1,12})/?",
               "search": "https://www.coles.com.au/search/products?q=", "aliases": ("coles",)},
-    "woolworths": {"label": "Woolies", "name": "Woolworths", "host": "www.woolworths.com.au", "path": r"/shop/productdetails/([0-9]{1,12})(?:/[a-z0-9-]*)?/?",
+    "woolworths": {"label": "WWS", "name": "WWS", "host": "www.woolworths.com.au", "path": r"/shop/productdetails/([0-9]{1,12})(?:/[a-z0-9-]*)?/?",
                    "search": "https://www.woolworths.com.au/shop/search/products?searchTerm=",
-                   "aliases": ("woolworths", "woolies", "woolworth")},
+                   "aliases": ("woolworths", "woolies", "woolworth", "wws")},
 }
 PRODUCT_URL_MAX = 300
 

@@ -56,7 +56,7 @@
     assistantUrl: null, version: null,
     mealLogs: {},
     calMonth: null,
-    foodMode: "recipes", foodQ: "", reportPeriod: "week",  // food page: recipes / shopping, search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
+    foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
   };
 
   // ------------------------------------------------------------------ utilities
@@ -579,11 +579,45 @@
   }
 
   // ---- Training + nutrition cards
+  // Recommended working weight (training/loads.py): progression up = good, estimate = muted "估算", otherwise plain
+  const loadBasisText = (ld) => {
+    const key = ld.basis === "estimate" ? ld.reason : ld.basis, date = ld.last ? shortDay(ld.last.date) : "";
+    switch (key) {
+      case "progression": return tr("按进阶规则");
+      case "history": return tr("同上次（{date}）", { date });
+      case "e1rm": return tr("按上次（{date}）换算", { date });
+      case "plan": return tr("计划里写的重量");
+      case "bodyweight": return tr("自重动作");
+      case "no_history": return tr("按体重 × 系数估算：这个动作还没有记录");
+      case "not_linked": return tr("按体重 × 系数估算：还没连训练记录");
+      case "history_unreadable": return tr("按体重 × 系数估算：训练记录读不到");
+      case "no_body_weight": return tr("缺体重：记一次体重后可估算");
+      default: return null;
+    }
+  };
+
+  function loadBadge(ld) {
+    if (ld?.reason === "no_body_weight") return `<span class="small muted">${esc(tr("缺体重"))}</span>`;
+    if (!ld || (ld.kg == null && ld.basis !== "bodyweight")) return "";
+    if (ld.kg == null) return badge("plain", ld.label);
+    const kg = `${fmtNum(ld.kg, 1)} kg`;
+    if (ld.basis === "estimate") return `${badge("plain", `≈ ${kg}`)}<span class="small muted">${tr("估算")}</span>`;
+    const tone = ld.readiness === "red" || ld.direction === "down" ? "mid" : ld.basis === "progression" && ld.direction === "up" ? "good" : "plain";
+    return badge(tone, ld.basis === "progression" && ld.direction === "up" ? `→ ${kg}` : kg);
+  }
+
   function exerciseRow(x) {
     const st = x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : "";
-    const sug = (x.suggestions || []).map((s) => badge(s.level === "warning" ? "mid" : "good", s.next_weight_kg != null ? `→ ${s.next_weight_kg} kg` : tr("建议"))).join(" ");
-    return `<div class="ex ${x.status === "banned" ? "banned" : ""}"><div class="ex-name"><span>${esc(x.name)}</span>${st}${sug}</div>
-      ${x.sets_text ? `<div class="ex-meta">${esc(x.sets_text)}</div>` : ""}</div>`;
+    const sug = x.load?.basis === "progression" ? "" : (x.suggestions || []).map((s) => badge(s.level === "warning" ? "mid" : "good", s.next_weight_kg != null ? `→ ${s.next_weight_kg} kg` : tr("建议"))).join(" ");
+    const ref = x.slug || x.name || "";
+    return `<div class="ex ${x.status === "banned" ? "banned" : ""}" data-ex-ref="${esc(ref)}" style="cursor:pointer"><div class="ex-name"><span>${esc(x.name)}</span>${st}${sug}</div>
+      ${x.sets_text || x.load ? `<div class="ex-meta">${esc(x.sets_text || "")}${x.status !== "banned" ? ` ${loadBadge(x.load)}` : ""}</div>` : ""}</div>`;
+  }
+
+  function bindExRows(root) {
+    for (const el of $$("[data-ex-ref]", root)) {
+      if (el.dataset.exRef) el.onclick = () => exerciseDetailSheet(el.dataset.exRef);
+    }
   }
 
   function trainingSheet(d) {
@@ -591,13 +625,19 @@
     let html = "";
     if (t.error) html += kv(tr("训练"), null, t.error);
     else {
+      if (t.readiness?.advice && t.readiness.tier !== "unknown") {
+        const tone = t.readiness.tier === "green" ? "good" : t.readiness.tier === "red" ? "bad" : "mid";
+        html += `<div class="rcard-tags" style="margin-bottom:6px">${badge(tone, t.readiness.label || tr("恢复自调节"))}</div><div class="small muted" style="margin-bottom:10px">${esc(t.readiness.advice)}</div>`;
+      }
+      if (t.sparky_error && t.planned.length) html += tags([badge("mid", tr("训练记录读不到 · 重量为估算"))]);
+      if (t.change) html += kv(tr("原计划"), esc(t.change.from?.join(" · ") || tr("休息")));
       html += t.planned.length ? t.planned.map((p) => {
         const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
         return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
       }).join("") : `<div class="empty faint" style="padding:12px">${t.rest_day ? tr("休息") : tr("无计划")}</div>`;
       if (t.logged.length) html += `<div class="cat">${tr("已记录")}</div>` + t.logged.map((s) => s.exercises.map(exerciseRow).join("")).join("");
     }
-    openSheet(`${tr("训练")} · ${shortDay(d.date)}`, html);
+    openSheet(`${tr("训练")} · ${shortDay(d.date)}`, html, bindExRows);
   }
 
   function nutritionSheet(d) {
@@ -625,6 +665,7 @@
       const caution = ex.filter((x) => x.status !== "active").length, up = ex.filter((x) => x.suggestions?.length).length;
       sub = [badge("plain", tr("{n} 动作", { n: ex.length })), caution ? badge("mid", tr("注意 {n}", { n: caution })) : "", up ? badge("good", tr("加重 {n}", { n: up })) : ""].join("");
     }
+    if (t.change) sub += badge("mid", tr("已调整"));
     if (t.logged?.length) sub += badge("good", tr("已练"));
     let food = "";
     if (!n.error) {
@@ -823,7 +864,7 @@
       if (again) body.allow_duplicates = true;
       const res = await api(`/v1/users/me/meal-templates/${encodeURIComponent(t.id)}/log`, { method: "POST", body });
       S.mealLogs[t.id] = res?.log_id;
-      delete S.data[`today:${S.owner}`];
+      delete S.data[`today:${S.owner}`]; delete S.data[`mealplan${S.todayDate}:${S.owner}`];
       render();
       toast(tr("已记 · {name}", { name: t.name }), tr("撤销"), () => undoMeal(t));
     } catch (err) {
@@ -838,7 +879,7 @@
       await api(`/v1/users/me/meal-logs/${encodeURIComponent(id)}`, { method: "DELETE" });
       delete S.mealLogs[t.id];
       if (t.today_log) t.today_log = null;
-      delete S.data[`today:${S.owner}`];
+      delete S.data[`today:${S.owner}`]; delete S.data[`mealplan${S.todayDate}:${S.owner}`];
       render();
       toast(tr("已撤销 · {name}", { name: t.name }));
     } catch (err) { toast(err.message); }
@@ -1954,13 +1995,14 @@
   }
 
   const RENDER_me = async () => {
-    const [mem, supps, events, d, hs, labs] = await Promise.all([
+    const [mem, supps, events, d, hs, labs, tlog] = await Promise.all([
       load("memory", memPath()).catch((e) => ({ error: e })),
       load("supps", `/v1/users/${ownerPath()}/supplements`).catch((e) => ({ error: e })),
       load("events", `/v1/users/${ownerPath()}/events?start=${addDays(S.todayDate, -364)}&end=${S.todayDate}`).catch((e) => ({ error: e })),
       load("today", todayPath(S.todayDate)).catch(() => null),
       optional("healthspan", WHOOP_API.healthspan()),
       load("labs", `/v1/users/${ownerPath()}/labs/summary`).catch((e) => ({ error: e })),
+      load("tlog", `/v1/users/${ownerPath()}/training/sparky`).catch(() => null),
     ]);
     const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true };
     const computed = d?.scores?.computed_at;
@@ -1973,6 +2015,7 @@
         ${item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
         ${item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
         ${item(tr("me.labs"), labs.error ? "—" : tr("me.labsN", { n: labs.length }), labs.error ? "" : sheetAttr(() => labsSheet(labs)))}
+        ${tlog ? item(tr("训练记录"), tlogBadge(tlog), sheetAttr(() => trainingLogSheet(tlog))) : ""}
       </div></div>
       <div class="section"><div class="group">
         ${isSelf() ? langRow() : ""}
@@ -2152,7 +2195,8 @@
   // ------------------------------------------------------------------ food: recipes (/recipes from the body butler session, scope nutrition) and later shopping
   // GET /recipes?slot=&tag=&q= → [{id, name, slot, kcal, protein_g, carbs_g, fat_g, prep_min, tags, badges, favorite, can_make}]
   // GET /recipes/{id} (+ ingredients, steps); POST /recipes/{id}/log {date, meal, servings} → {log_id}; DELETE /meal-logs/{log_id}
-  // PATCH /recipes/{id} {favorite | can_make}; GET /recipes/suggest?date=&slot= -> today's suggestions. Field names follow the butler session; be lenient here.
+  // PATCH /recipes/{id} {favorite | can_make}; GET /recipes/meal-plan?date= -> per-meal suggestions {remaining, slots[{slot, logged, target, suggestions[+labels]}]} (issue #43).
+  // Field names follow the butler session; be lenient here.
   const SLOTS = [["breakfast", tr("早餐")], ["lunch", tr("午餐")], ["dinner", tr("晚餐")], ["snack", tr("加餐")]];
   const SLOT_NAME = Object.fromEntries([...SLOTS, ["snacks", tr("加餐")]]);
   const slotOf = (r) => { const v = r.slot || (Array.isArray(r.slots) ? r.slots[0] : null) || r.meal || "lunch"; return v === "snacks" ? "snack" : v; };
@@ -2172,13 +2216,14 @@
     if (f.sat_fat_level === "high") out.push({ label: tr("饱和脂肪高"), tone: "bad" });
     return out;
   }
-  const plainTags = (r) => (r.tags || []).filter((t) => !/嘌呤|红肉|饱和脂肪|purine|red meat|saturated/i.test(t));   // i18n-ok: tags are data   // no longer shown if they duplicate the constraint badges
-  function recipeCard(r) {
-    const badges = [...recipeBadges(r).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label)),
-      ...plainTags(r).slice(0, 3).map((t) => badge("plain", t))].join("");
-    const meta = [nut(r, "kcal") != null && `${fmtNum(nut(r, "kcal"))} kcal`, nut(r, "protein_g") != null && `${tr("蛋白")} ${fmtNum(nut(r, "protein_g"))} g`,
+  const plainTags = (r) => (r.tags || []).filter((t) => !/嘌呤|红肉|饱和脂肪|purine|red meat|saturated/i.test(t));   // i18n-ok: tags are data; no longer shown if they duplicate the constraint badges
+  function recipeCard(r, slot) {   // slot: a per-meal suggestion (its own short labels, kcal with the rice it needs, opens with that meal selected)
+    const badges = (r.labels ? r.labels.map(badgeOf).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label))
+      : [...recipeBadges(r).map((b) => badge(TONE_CLASS[b.tone] || "mid", b.label)), ...plainTags(r).slice(0, 3).map((t) => badge("plain", t))]).join("");
+    const kc = r.meal_kcal ?? nut(r, "kcal"), pr = r.meal_protein_g ?? nut(r, "protein_g");
+    const meta = [kc != null && `${fmtNum(kc)} kcal${r.with_staple ? ` ${tr("含饭")}` : ""}`, pr != null && `${tr("蛋白")} ${fmtNum(pr)} g`,
       (r.prep_min ?? r.time_min) != null && `${r.prep_min ?? r.time_min}′`].filter(Boolean).join(" · ");
-    return `<button class="rcard ${r.can_make === false ? "off" : ""}" data-recipe="${esc(r.id)}">
+    return `<button class="rcard ${r.can_make === false && !slot ? "off" : ""}" data-recipe="${esc(r.id)}"${slot ? ` data-slot="${esc(slot)}"` : ""}>
       <div class="rcard-top"><span class="rcard-name">${esc(r.name)}</span>${r.favorite ? `<span class="star on" aria-label="${tr("已收藏")}">★</span>` : ""}</div>
       ${meta ? `<div class="rcard-meta">${esc(meta)}</div>` : ""}${badges ? `<div class="rcard-tags">${badges}</div>` : ""}
 </button>`;
@@ -2197,14 +2242,15 @@
   }
 
   const perServing = (s) => s.replace(/^1 (份|serving)/i, "").replace(/^[（(](.*)[）)]$/, "$1") || s;   // i18n-ok: "1 份（…）" from the server
-  async function recipeSheet(id) {
+  async function recipeSheet(id, slot) {
+    const day = viewDay();   // log to the day the page shows (issue #43: looking back at 10/18 it logged to today, so the page did not change)
     openSheet(tr("食谱"), `<div class="empty faint">…</div>`);
     let r;
     try { r = await load(`recipe${id}`, `${recipePath()}/${encodeURIComponent(id)}`); }
     catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${tr("暂无")}</div>`; return; }
     $("#sheet-title").textContent = r.name;
     const self = isSelf();
-    let servings = 1, meal = slotOf(r) || defaultMeal();
+    let servings = 1, meal = slot || slotOf(r) || defaultMeal();
     const ings = r.ingredients || [];
     const steps = (r.steps || []).map((x) => (typeof x === "string" ? x : x.text || ""));
     const draw = () => {
@@ -2219,7 +2265,7 @@
             <div class="seg" role="group" aria-label="${tr("餐次")}">${SLOTS.map(([k, t]) => `<button data-meal-slot="${k}" aria-pressed="${k === meal}">${t}</button>`).join("")}</div>
             <div class="stepper"><button id="sv-minus" aria-label="${tr("少半份")}">−</button><span class="v">${tr("{n} 份", { n: servings })}</span><button id="sv-plus" aria-label="${tr("多半份")}">&#xFF0B;</button></div></div>
           <div class="btns"><button class="btn" id="r-fav">${r.favorite ? tr("★ 已收藏") : tr("☆ 收藏")}</button><button class="btn" id="r-can">${r.can_make === false ? tr("现在做不了") : tr("现在能做")}</button>
-            <button class="btn btn-primary" id="r-log">${tr("记 {n} 份", { n: servings })}</button></div>` : ""}`;
+            <button class="btn btn-primary" id="r-log">${day !== S.todayDate ? tr("记到 {d}", { d: shortDay(day) }) : tr("记 {n} 份", { n: servings })}</button></div>` : ""}`;
       if (!self) return;
       const root = $("#sheet-body");
       for (const b of $$("[data-meal-slot]", root)) b.onclick = () => { meal = b.dataset.mealSlot; draw(); };
@@ -2227,7 +2273,7 @@
       $("#sv-plus", root).onclick = () => { servings = Math.min(6, servings + 0.5); draw(); };
       $("#r-fav", root).onclick = () => patchRecipe(r, { favorite: !r.favorite }, draw);
       $("#r-can", root).onclick = () => patchRecipe(r, { can_make: r.can_make === false }, draw);
-      $("#r-log", root).onclick = () => logRecipe(r, servings, meal);
+      $("#r-log", root).onclick = () => logRecipe(r, servings, meal, day);
     };
     draw();
   }
@@ -2244,19 +2290,22 @@
     } catch (err) { toast(err.status === 404 ? tr("暂不可用") : err.message); }
   }
 
-  async function logRecipe(r, servings, meal, again) {
+  // Cached data a recipe log changes: that day's intake (/today?date=), the per-meal plan, the recipe list (last eaten)
+  const dropFoodDay = (day) => { for (const k of [todayKey(day), "today", `mealplan${day}`, "recipes"]) delete S.data[`${k}:${S.owner}`]; };
+  async function logRecipe(r, servings, meal, day, again) {
     try {
-      const res = await api(`/v1/users/me/recipes/${encodeURIComponent(r.id)}/log`, { method: "POST", body: { date: S.todayDate, meal, servings, ...(again ? { allow_duplicates: true } : {}) } });
+      const res = await api(`/v1/users/me/recipes/${encodeURIComponent(r.id)}/log`, { method: "POST", body: { date: day, meal, servings, ...(again ? { allow_duplicates: true } : {}) } });
       closeSheet();
-      delete S.data[`today:${S.owner}`]; delete S.data[`suggest:${S.owner}`];
+      dropFoodDay(day);
+      S.foodSub = null;   // back to the day's intake, where the new entry shows
       render();
       const logId = res?.log_id;
-      toast(tr("已记 · {n} 份", { n: servings }), logId != null ? tr("撤销") : null, async () => {
-        try { await api(`/v1/users/me/meal-logs/${encodeURIComponent(logId)}`, { method: "DELETE" }); delete S.data[`today:${S.owner}`]; render(); toast(tr("已撤销")); }
+      toast(day !== S.todayDate ? tr("已记到 {d}", { d: shortDay(day) }) : tr("已记 · {n} 份", { n: servings }), logId != null ? tr("撤销") : null, async () => {
+        try { await api(`/v1/users/me/meal-logs/${encodeURIComponent(logId)}`, { method: "DELETE" }); dropFoodDay(day); render(); toast(tr("已撤销")); }
         catch (err) { toast(err.message); }
       });
     } catch (err) {
-      if (err.status === 409) toast(tr("已记过"), tr("再记一份"), () => logRecipe(r, servings, meal, true));
+      if (err.status === 409) toast(day !== S.todayDate ? tr("{d} 已记过", { d: shortDay(day) }) : tr("已记过"), tr("再记一份"), () => logRecipe(r, servings, meal, day, true));
       else toast(err.status === 404 ? tr("暂不可用") : err.message);
     }
   }
@@ -2282,7 +2331,7 @@
         const ok = $("#fe-del-ok", root);
         ok.onclick = async () => {
           ok.disabled = true;
-          const done = (msg) => { delete S.data[`${todayKey(e.date)}:${S.owner}`]; delete S.data[`today:${S.owner}`]; closeSheet(); render(); toast(msg); };
+          const done = (msg) => { dropFoodDay(e.date); closeSheet(); render(); toast(msg); };
           try {
             await api(`/v1/users/me/nutrition/entries/${encodeURIComponent(e.id)}?date=${encodeURIComponent(e.date)}`, { method: "DELETE" });
             done(tr("已删除"));
@@ -2323,45 +2372,61 @@
     return `<div class="section">${head}${total}${meals}</div>`;
   }
 
+  // ---- Per-meal suggestions (GET /recipes/meal-plan, issue #43): each meal not logged yet gets 2 recipes (taste, pantry, health caps)
+  function mealPlanHtml(plan) {
+    const slots = (plan?.slots || []).filter((s) => s.suggestions?.length);
+    if (!slots.length) return "";
+    const rem = plan.remaining;
+    const rows = slots.map((s) => `<div class="mp-slot"><div class="mp-h"><span class="row-title">${SLOT_NAME[s.slot] || s.slot}</span>
+        ${s.target ? `<span class="small muted">${s.target.kcal > 0 ? `≈ ${fmtNum(s.target.kcal)} kcal · ${fmtNum(s.target.protein_g)} g` : tr("已到目标")}</span>` : ""}</div>
+      <div class="rec-row">${s.suggestions.map((r) => recipeCard(r, s.slot)).join("")}</div></div>`).join("");
+    return `<div class="section"><div class="section-head"><h2>${tr("每餐推荐")}</h2>${rem ? `<span class="small muted">${tr("余 {k} kcal · {p} g 蛋白", { k: fmtNum(Math.max(0, rem.kcal)), p: fmtNum(Math.max(0, rem.protein_g)) })}</span>` : ""}</div>${rows}</div>`;
+  }
+
+  // ---- Recipes sub-page (饮食 → 食谱 at the bottom of the page): search + the list by meal
+  async function recipesSubHtml() {
+    const list = await load("recipes", recipePath()).catch((e) => ({ error: e }));
+    const head = `<div class="sub-head"><button class="sub-back" id="food-back" aria-label="${tr("返回饮食")}">${ICON.chev}<span>${tr("饮食")}</span></button><h2>${tr("食谱")}</h2></div>`;
+    if (list.error) return head + `<div class="empty">${tr("暂无食谱")}</div>`;
+    return head + `<input class="search" id="food-q" type="search" placeholder="${tr("搜索")}" value="${esc(S.foodQ || "")}" aria-label="${tr("搜索食谱")}">
+      <div id="food-list">${recipeListHtml(list, S.foodQ)}</div>`;
+  }
+
   const RENDER_food = async () => {
-    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["recipes", tr("食谱")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
+    if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
+    const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
       + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
       const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
       return seg + (shop ? await shop.foodShop({ owner: ownerPath(), self: isSelf(), date: S.todayDate })
         : `<div class="soon"><span class="glyph">${ICON.cart}</span><div>${tr("即将上线")}</div></div>`);
     }
-    const past = isPast();   // looking back: that day's intake + the recipe list; quick log and suggestions are only for today
-    const [list, sug, d, meals] = await Promise.all([
+    const past = isPast();   // looking back: that day's intake + the recipes entry; quick log and suggestions are only for today
+    const [list, plan, d, meals] = await Promise.all([
       load("recipes", recipePath()).catch((e) => ({ error: e })),
-      past ? null : load("suggest", `${recipePath()}/suggest?date=${S.todayDate}`).catch(() => null),
+      past ? null : load(`mealplan${S.todayDate}`, `${recipePath()}/meal-plan?date=${S.todayDate}`).catch(() => null),
       load(todayKey(), todayPath()).catch(() => null),
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,
     ]);
-    const n = d?.nutrition;
-    const left = sug?.remaining ? { kcal: sug.remaining.kcal, p: sug.remaining.protein_g }
-      : n && !n.error && n.goal ? { kcal: (n.goal.calories || 0) - (n.intake.calories || 0), p: (n.goal.protein_g || 0) - (n.intake.protein_g || 0) } : null;
-    const sugList = (Array.isArray(sug) ? sug : sug?.suggestions || sug?.items || sug?.recipes || []).map((x) => (x.recipe ? { ...x.recipe, reason: x.reason } : x)).slice(0, 3);
     const quick = isSelf() ? quickHtml(meals, true) : "";
     let html = seg + foodDayHtml(d);
     if (quick) html += `<div class="section"><div class="section-head"><h2>${tr("快捷记录")}</h2></div>${quick}</div>`;
-    if (sugList.length) {
-      html += `<div class="section"><div class="section-head"><h2>${tr("今天推荐")}</h2>${left ? `<span class="small muted">${tr("余 {k} kcal · {p} g 蛋白", { k: fmtNum(Math.max(0, left.kcal)), p: fmtNum(Math.max(0, left.p)) })}</span>` : ""}</div>
-        <div class="rec-row">${sugList.map((r) => recipeCard(r)).join("")}</div></div>`;
-    }
-    if (list.error) return html + `<div class="section"><div class="empty">${tr("暂无食谱")}</div></div>`;
-    html += `<div class="section"><div class="section-head"><h2>${tr("食谱")}</h2></div><input class="search" id="food-q" type="search" placeholder="${tr("搜索")}" value="${esc(S.foodQ || "")}" aria-label="${tr("搜索食谱")}"></div>
-      <div id="food-list">${recipeListHtml(list, S.foodQ)}</div>`;
+    html += mealPlanHtml(plan);
+    const n = Array.isArray(list) ? list.length : null;
+    html += `<div class="section"><div class="group"><button class="item" id="food-recipes"><span class="row-title">${tr("食谱")}</span>${n != null ? `<span class="val">${n}</span>` : ""}<span class="chev">${ICON.chev}</span></button></div></div>`;
     return html;
   };
 
-  function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe); }
+  function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe, b.dataset.slot); }
   function afterFood(view) {
-    for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; render(); };
+    for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; S.foodSub = null; render(); };
     PLUGINS().forEach((p) => p.bindFoodTop?.(view));
     if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
     bindRecipes(view);
     bindMeals(view);
+    const open = $("#food-recipes", view), back = $("#food-back", view);
+    if (open) open.onclick = () => { S.foodSub = "recipes"; render(); window.scrollTo(0, 0); };
+    if (back) back.onclick = () => { S.foodSub = null; render(); window.scrollTo(0, 0); };
     const q = $("#food-q", view);
     if (q) q.oninput = () => {
       S.foodQ = q.value;
@@ -2457,12 +2522,182 @@
   }
 
   // ---- Record tab, training page: this week (plan + what was trained), suggestions, caution exercises, history calendar
-  // /training/week?date= → {start, end, plan, days[{date, planned[{name, exercises}], rest_day}], suggestions[{name, level, title, next_weight_kg}], cautions[{name, status, reason, cues}]};
+  // /training/week?date= → {start, end, plan, days[{date, planned[{name, exercises}], rest_day, change{from[], source, reason}|null}], suggestions[{name, level, title, next_weight_kg}], cautions[{name, status, reason, cues}]};
   // what was trained this week comes from /training/calendar?start=&end=.
   const weekStart = (iso) => addDays(iso, -((parseDay(iso).getDay() + 6) % 7));
   const planShort = (planned) => planned[0].name.replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || planned[0].name;   // week strip: first session, short (i18n-ok: plan names are data)
 
-  const WEEK_MON = I18N.weekdaysMon();
+  async function exerciseDetailSheet(slugOrName) {
+    openSheet(tr("动作详情"), `<div class="empty faint">…</div>`);
+    let ex;
+    try { ex = await load(`ex:${slugOrName}`, `/v1/users/${ownerPath()}/training/exercises/${encodeURIComponent(slugOrName)}`); }
+    catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${esc(e.message || tr("暂无详情"))}</div>`; return; }
+    $("#sheet-title").textContent = ex.name_zh || slugOrName;
+    const stBadge = ex.status === "banned" ? badge("bad", tr("禁用")) : ex.status === "caution" ? badge("mid", tr("注意")) : badge("good", tr("正常"));
+    const muscles = [...(ex.equipment_zh || []).map((q) => badge("plain", q)),
+      ex.movement_pattern_zh ? badge("plain", ex.movement_pattern_zh) : ""].filter(Boolean).join("");
+    const imgs = ex.image_urls || [];
+    const carousel = imgs.length ? `<div class="ex-car" id="ex-car">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(`${ex.name_zh} ${i + 1}`)}" loading="lazy" decoding="async">`).join("")}</div>
+      ${imgs.length > 1 ? `<div class="ex-dots">${imgs.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}` : "";
+    const map = window.BodyMuscleMap ? window.BodyMuscleMap.html(ex.primary_muscles, ex.secondary_muscles) : "";
+    const ld = ex.load;
+    const loadV = ld && ex.status !== "banned" && (ld.kg != null || ld.basis === "bodyweight")
+      ? `${ld.kg != null ? `${fmtNum(ld.kg, 1)} kg` : esc(ld.label)}${ld.kg != null ? ` <small class="muted">${esc([ld.per, `× ${ld.target_reps}`, ld.label].filter(Boolean).join(" · "))}</small>` : ""}` : null;
+    const basis = ld && ex.status !== "banned" ? loadBasisText(ld) : null;
+    const basisV = basis ? `${esc(basis)}${ld.body_weight_kg ? ` <small class="muted">${esc(`${fmtNum(ld.body_weight_kg, 1)} kg × ${ld.bw_fraction}`)}</small>` : ""}` : null;
+    const recent = (ex.recent || []).map((r) => kv(shortDay(r.date), esc(r.sets.join(" · ")))).join("");
+    const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${k}${v === "high" ? tr("高") : tr("中")}`)).join("");
+    const steps = (ex.instructions_zh || []).map((s) => `<li>${esc(s)}</li>`).join("");
+    const self = isSelf();
+    const alts = (ex.alternatives || []).map((a) => `<div class="item" style="align-items:center">
+      <div style="flex:1;min-width:0"><div class="row-title">${esc(a.name_zh)}</div>
+        <div class="small muted">${esc([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])].join(" · "))}</div></div>
+      ${self ? `<button class="btn" style="padding:4px 10px;font-size:12px" data-swap-to="${esc(a.slug)}">${tr("换进计划")}</button>` : ""}</div>`).join("");
+    $("#sheet-body").innerHTML = `
+      ${ex.name_en && ex.name_en !== ex.name_zh ? `<div class="small muted" style="margin:-4px 0 8px">${esc(ex.name_en)}</div>` : ""}
+      ${carousel}
+      <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
+      ${ex.reason ? kv(tr("限制原因"), esc(ex.reason)) : ""}
+      ${loadV ? kv(tr("推荐重量"), loadV) : ""}
+      ${basisV ? kv(tr("依据"), basisV) : ""}
+      ${(ex.primary_muscles_zh || []).length ? kv(tr("主肌群"), esc(ex.primary_muscles_zh.join(tr("、")))) : ""}
+      ${(ex.secondary_muscles_zh || []).length ? kv(tr("次肌群"), esc(ex.secondary_muscles_zh.join(tr("、")))) : ""}
+      ${map}
+      ${ex.cues ? kv(tr("动作要点"), esc(ex.cues)) : ""}
+      ${recent ? `<div class="cat" style="margin-top:12px">${tr("最近")}</div>${recent}` : ""}
+      ${steps ? `<div class="cat" style="margin-top:12px">${tr("执行步骤")}</div><ol class="steps">${steps}</ol>` : ""}
+      ${alts ? `<div class="cat" style="margin-top:14px">${tr("同模式安全替代动作")}</div><div class="card list">${alts}</div>` : ""}`;
+    const root = $("#sheet-body");
+    const car = $("#ex-car", root);
+    if (car) {   // free-exercise-db shows start / end positions: alternate them like a slow animation until the user swipes
+      const dots = $$(".ex-dots i", root);
+      const at = () => Math.round(car.scrollLeft / Math.max(1, car.clientWidth));
+      car.addEventListener("scroll", () => dots.forEach((d, i) => d.classList.toggle("on", i === at())), { passive: true });
+      let auto = imgs.length > 1 ? setInterval(() => {
+        if (!car.isConnected) { clearInterval(auto); return; }
+        car.scrollTo({ left: ((at() + 1) % imgs.length) * car.clientWidth, behavior: "smooth" });
+      }, 1600) : null;
+      const stop = () => { if (auto) { clearInterval(auto); auto = null; } };
+      car.addEventListener("touchstart", stop, { passive: true });
+      car.addEventListener("pointerdown", stop);
+    }
+    for (const b of $$("[data-swap-to]", root)) {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const res = await api(`/v1/users/me/training/plan/swap`, { method: "POST", body: { from_exercise: ex.slug, to_exercise: b.dataset.swapTo } });
+          delete S.data[`tweek${S.todayDate}:${S.owner}`];
+          delete S.data[todayKey()];
+          closeSheet(); render();
+          toast(tr("已替换为 {name}", { name: res.to_exercise?.name_zh || b.dataset.swapTo }));
+        } catch (err) { toast(err.message); b.disabled = false; }
+      };
+    }
+  }
+
+  async function exerciseLibrarySheet() {
+    openSheet(tr("动作库"), `<div class="empty faint">…</div>`);
+    let list = [], q = "", grp = "", seq = 0, timer = null;
+    const GROUPS_FILTER = [["", tr("全部")], ["back", tr("背")], ["chest", tr("胸")], ["legs", tr("腿")], ["shoulders", tr("肩")], ["arms", tr("手臂")], ["core", tr("核心")]];
+    const fetchList = async () => {   // searched on the server: the catalog has ~950 exercises (curated + free-exercise-db)
+      const my = ++seq, qs = new URLSearchParams({ limit: "100" });
+      if (q.trim()) qs.set("q", q.trim());
+      if (grp) qs.set("muscle", grp);
+      try { const res = await load(`exlib:${qs}`, `/v1/users/${ownerPath()}/training/exercises?${qs}`); if (my === seq) { list = res.exercises || []; draw(); } }
+      catch (e) { if (my === seq) $("#sheet-body").innerHTML = `<div class="empty faint">${esc(e.message)}</div>`; }
+    };
+    const draw = () => {
+      const shown = list;
+      $("#sheet-body").innerHTML = `
+        <input class="search" id="ex-q" type="search" placeholder="${esc(tr("搜中英文动作名、别名…"))}" value="${esc(q)}" style="margin-bottom:8px">
+        <div class="tags" style="margin-bottom:10px">${GROUPS_FILTER.map(([k, t]) => `<button class="tag ${grp === k ? "on" : ""}" data-exgrp="${k}"><span>${t}</span></button>`).join("")}</div>
+        <div class="card list" id="ex-list">${shown.map((x) => `<button class="item" data-ex-open="${esc(x.slug)}">
+          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(x.name_zh)} ${x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : ""}</div>
+            <div class="small muted">${esc([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])].join(" · "))}</div></div>
+          <span class="chev">${ICON.chev}</span></button>`).join("") || `<div class="empty faint">${tr("没有匹配的动作")}</div>`}</div>`;
+      const root = $("#sheet-body");
+      for (const b of $$("[data-exgrp]", root)) b.onclick = () => { grp = b.dataset.exgrp; fetchList(); };
+      for (const b of $$("[data-ex-open]", root)) b.onclick = () => exerciseDetailSheet(b.dataset.exOpen);
+      const inp = $("#ex-q", root);
+      if (inp) {
+        inp.oninput = () => { q = inp.value; clearTimeout(timer); timer = setTimeout(fetchList, 250); };
+        if (q) { inp.focus(); inp.setSelectionRange(q.length, q.length); }
+      }
+    };
+    fetchList();
+  }
+
+  function splitPickerSheet(wk) {
+    const splits = wk?.available_splits || [];
+    let chosen = wk?.plan?.split_type || (splits[2]?.split_type || "4_day_upper_lower");
+    const draw = () => {
+      const cur = splits.find((s) => s.split_type === chosen) || splits[0];
+      openSheet(tr("周训练分化计划"), `
+        <div class="tags" style="margin-bottom:10px">${splits.map((s) => `<button class="tag ${s.split_type === chosen ? "on" : ""}" data-split="${esc(s.split_type)}"><span>${esc(s.name)}</span></button>`).join("")}</div>
+        ${cur ? `<div class="small muted" style="margin-bottom:10px">${esc(cur.summary)}</div>
+          <div class="card list">${(cur.days || []).map((d) => kv(`${d.weekday_zh} · ${d.name}`, tr("{n} 动作", { n: d.exercise_count }))).join("")}</div>` : ""}
+        <div class="btns"><button class="btn btn-primary" id="save-split">${tr("启用该周计划（自动避开禁用动作）")}</button></div>`,
+      (root) => {
+        for (const b of $$("[data-split]", root)) b.onclick = () => { chosen = b.dataset.split; draw(); };
+        const save = $("#save-split", root);
+        if (save) save.onclick = async () => {
+          save.disabled = true;
+          try {
+            const res = await api(`/v1/users/me/training/plan`, { method: "PUT", body: { split_type: chosen, auto_swap_banned: true, sync_sparky: true } });
+            delete S.data[`tweek${S.todayDate}:${S.owner}`];
+            delete S.data[todayKey()];
+            closeSheet(); render();
+            // Saved even when the training log sync failed (issue #66 FB-4): say so instead of a plain OK
+            toast(res.sparky_sync && res.sparky_sync.synced === false && res.sparky_sync.link !== undefined
+              ? tr("已启用：{name} · 训练记录未同步", { name: res.saved?.name || chosen })
+              : tr("已启用：{name}", { name: res.saved?.name || chosen }));
+          } catch (err) { toast(err.message); save.disabled = false; }
+        };
+      });
+    };
+    draw();
+  }
+
+  // ---- Training log link, issue #66 FB-4: state on the training page and under Me, self-service connect (/training/sparky).
+  const TLOG_STATE = {
+    connected: ["good", tr("已连接")],
+    not_linked: ["mid", tr("未连接")],
+    unreadable: ["bad", tr("读不到")],
+  };
+  const tlogBadge = (st) => { const [tone, word] = TLOG_STATE[st?.state] || TLOG_STATE.unreadable; return badge(tone, word); };
+  function trainingLogSheet(st) {
+    const html = kv(tr("训练记录"), tlogBadge(st))
+      + (st?.hint ? `<div class="small muted" style="margin:10px 0">${esc((I18N.lang === "en" && st.hint_en) || st.hint)}</div>` : "")
+      + `<div class="small muted" id="tlog-err" hidden></div>`
+      + (st?.can_connect ? `<div class="btns"><button class="btn btn-primary" id="tlog-connect">${tr("连接")}</button></div>` : "");
+    openSheet(tr("训练记录"), html, (body) => {
+      const b = $("#tlog-connect", body);
+      if (b) b.onclick = () => connectTrainingLog(b, body);
+    });
+  }
+  async function connectTrainingLog(btn, body) {
+    btn.disabled = true;
+    btn.textContent = tr("连接中…");
+    try {
+      const r = await api(`/v1/users/me/training/sparky/connect`, { method: "POST" });
+      if (r.state === "connected") {
+        closeSheet();
+        toast(tr("训练记录已连接"));
+        for (const k of Object.keys(S.data)) if (/^(tweek|tlog|today|tcal)/.test(k)) delete S.data[k];
+        render();
+        return;
+      }
+      const e = $("#tlog-err", body);
+      const en = I18N.lang === "en";
+      e.textContent = (en && (r.error_en || r.hint_en)) || r.error || r.hint || "";
+      e.hidden = false;
+    } catch (err) {
+      toast(err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = tr("连接");
+  }
+
   async function trainingPageHtml() {
     const today = S.todayDate, mon = weekStart(today), sun = addDays(mon, 6);
     const [wk, wcal] = await Promise.all([
@@ -2477,20 +2712,34 @@
       const iso = addDays(mon, k), p = planDays[iso], d = done[iso];
       const trained = d && d.sessions_count > 0 && d.intensity !== "rest";
       const label = p?.planned?.length ? planShort(p.planned) : p?.rest_day ? tr("休") : "";
-      week += `<button class="wday ${iso === today ? "today" : ""} ${iso > today ? "future" : ""}" data-wday="${iso}">
+      week += `<button class="wday ${iso === today ? "today" : ""} ${iso > today ? "future" : ""} ${p?.change ? "changed" : ""}" data-wday="${iso}">
         <span class="wd">${WEEK_MON[k]}</span><span class="n">${parseDay(iso).getDate()}</span>${markSvg(trained ? d : null)}
         <span class="pl">${esc(label)}</span></button>`;
     }
     const sm = wcal?.summary || {};
-    const left = `<div class="section"><div class="section-head"><h2>${tr("本周")}</h2>${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}</div>
+    const rd = wk.readiness;
+    const rdHtml = rd && rd.tier && rd.tier !== "unknown"
+      ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><div class="rcard-tags">${badge(rd.tier === "green" ? "good" : rd.tier === "red" ? "bad" : "mid", rd.label)}</div><div class="small muted" style="margin-top:4px">${esc(rd.advice)}</div></div>` : "";
+    const volEntries = Object.values(wk.volume_by_group || {});
+    const volHtml = volEntries.length
+      ? `<div class="rcard-tags" style="margin-top:10px">${volEntries.map((g) => badge(g.status === "optimal" ? "good" : "plain", `${g.name_zh} ${tr("{n}组", { n: g.direct_sets })}`)).join("")}</div>` : "";
+    const headActions = `<span style="display:flex;gap:10px;align-items:center">
+      ${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}
+      ${isSelf() && wk.available_splits?.length ? `<button class="link" id="pick-split">${wk.plan ? tr("切换分化") : tr("选周计划")}</button>` : ""}
+      <button class="link" id="open-exlib">${tr("动作库")}</button></span>`;
+    const tlog = wk.sparky && wk.sparky.state !== "connected"
+      ? `<div class="card list" style="margin-top:10px"><button class="item" id="tlog-row"><span class="row-title">${tr("训练记录")}</span><span class="val">${tlogBadge(wk.sparky)}</span><span class="chev">${ICON.chev}</span></button></div>`
+      : "";
+    const left = `<div class="section"><div class="section-head"><h2>${tr("本周")}</h2>${headActions}</div>
         <div class="card"><div class="week">${week}</div>
         <div class="msum" style="margin:14px 0 0">${[[tr("训练"), sm.training_days, tr("天")], [tr("时长"), sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           [tr("消耗"), (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           [tr("计划"), (wk.days || []).filter((x) => x.planned.length).length || null, tr("天")]]
-          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div></div></div>`;
+          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}
+        ${wk.load_history_error && wk.plan ? tags([badge("mid", tr("训练记录读不到 · 重量为估算"))]) : ""}</div>${tlog}</div>`;
     const sugg = (wk.suggestions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv(tr("建议"), esc(x.title)) + (x.next_weight_kg != null ? kv(tr("下次重量"), `${fmtNum(x.next_weight_kg, 1)} kg`) : "")))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.level === "warning" ? "mid" : "good", x.next_weight_kg != null ? `→ ${fmtNum(x.next_weight_kg, 1)} kg` : tr("建议"))}</span><span class="chev">${ICON.chev}</span></button>`);
-    const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv(tr("状态"), x.status === "banned" ? tr("禁用") : tr("注意")) + (x.reason ? kv(tr("原因"), esc(x.reason)) : "") + (x.cues ? kv(tr("要点"), esc(x.cues)) : "")))}>
+    const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => exerciseDetailSheet(x.slug || x.name))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.status === "banned" ? "bad" : "mid", x.status === "banned" ? tr("禁用") : tr("注意"))}</span><span class="chev">${ICON.chev}</span></button>`);
     const recs = wk.error ? `<div class="section"><div class="section-head"><h2>${tr("建议")}</h2></div><div class="empty faint">${esc(short(wk.error, "—"))}</div></div>`
       : `<div class="section"><div class="section-head"><h2>${tr("建议")}</h2></div>${sugg.length || caut.length ? `<div class="card list">${[...sugg, ...caut].join("")}</div>` : `<div class="empty faint">${tr("暂无")}</div>`}</div>`;
@@ -2499,11 +2748,11 @@
   }
 
   function planSheet(iso, day) {
-    const html = day?.planned?.length ? day.planned.map((p) => {
+    const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
       return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
-    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`;
-    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html);
+    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`);
+    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, bindExRows);
   }
 
   function afterTraining(view) {
@@ -2513,6 +2762,12 @@
       const iso = b.dataset.wday;
       if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso, planDays[iso]);
     };
+    const pick = $("#pick-split", view);
+    if (pick && wk) pick.onclick = () => splitPickerSheet(wk);
+    const lib = $("#open-exlib", view);
+    if (lib) lib.onclick = () => exerciseLibrarySheet();
+    const tl = $("#tlog-row", view);
+    if (tl && wk) tl.onclick = () => trainingLogSheet(wk.sparky);
     const c = $("#rec-cal", view);
     if (c) { bindCalSwipe(c); renderCal(0); }
   }
@@ -2563,6 +2818,7 @@
          [tr("步数"), dl.steps != null ? fmtNum(dl.steps) : null], ["strain", dl.strain != null ? fmtNum(dl.strain, 1) : null],
          [tr("肌肉负荷"), dl.muscle_load != null ? `${fmtNum(dl.muscle_load)} kg` : null], [tr("次日恢复"), dl.recovery_next_day ?? null]]
         .filter(([, v]) => v != null).map(([l, v]) => kv(l, v)).join("")
+      + (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
       + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "") + `</div>`;
   }
 

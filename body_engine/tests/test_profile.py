@@ -78,7 +78,7 @@ def test_consent_text_matches_docs():
     if not DOCS.exists():
         pytest.skip("not inside the repo (no docs/)")
     assert consent.text() == DOCS.read_text(encoding="utf-8"), "profile/consent.md and docs/family-consent.md must be identical character for character"
-    assert consent.version() == "2026-10-18.3"
+    assert consent.version() == "2026-10-21.1"
     shown = consent.display_text()
     assert "一字不差" not in shown and "## 2. 在我同意之前" in shown
 

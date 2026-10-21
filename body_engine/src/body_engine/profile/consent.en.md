@@ -1,6 +1,6 @@
 # Watch2Whoop beta: consent to the use of health data
 
-Version: 2026-10-18.3
+Version: 2026-10-21.1
 
 > The first time you open the Today page, the app shows the key points and the full text of this consent form. Your health data is processed only after you tick "I have read and agree"; the system records the time and this version number. Signing on paper also works (the administrator records the date with `onboard.py --consent-at`). When the form is revised you are asked to confirm again.
 > This is the English text of `consent.md`, clause by clause, with the same version number. This file and `docs/family-consent.en.md` must be identical (a test checks it); change both together with the Chinese text and update the version number.
@@ -30,6 +30,7 @@ I (the user of this account) agree that the administrator (the person who mainta
 - **AI assistant**: **off** by default. If I connect an AI myself under Me → AI settings in the app (for example Claude or ChatGPT), **the part of my data needed for an answer** is sent to the AI company I chose when it answers a question, and is handled under that company's terms. Nothing is sent if I do not connect one.
 - **Backup AI (optional)**: if I have not connected my own AI, I can use the backup AI the administrator provides (DeepSeek, a Chinese company with servers in China; the administrator pays, with a monthly allowance per person). **The app asks me separately before the first use.** After I confirm, each question sends DeepSeek my message, basic profile (name, age, sex, height, time zone), long-term memory, and whatever of my own scores, sleep, workouts, food, weight, lab results, supplements, journal and reminders the answer needs; **photos and screenshots I send, and frames taken from videos, are sent as well**, and handled under DeepSeek's terms. ECGs and beat-to-beat heart data are not sent, and other family members' data is not read. Nothing is sent if I do not confirm, and I can withdraw at any time under AI settings.
 - **Voice input**: when I hold to talk in Jarvis (or send a video with sound), the sound is turned into text on the administrator's server and **not sent to any third party**; it is deleted right after, no recording is kept, and the text goes to the AI only after I have confirmed or edited it.
+- **Automatic feedback**: when the AI that helps me finds a problem in the system (a bug) or hears about a feature I want, it turns it into a feedback report for the administrator by itself and tells me its number. The report only says what went wrong in the product; the server **removes health values, names, e-mail addresses, phone numbers and links** before the administrator sees it (a daily e-mail digest). The administrator may turn the anonymised content into public development tasks, but never says who reported it. My original words stay only on the server. Under Me → Feedback I can view my reports, withdraw ones not handled yet, or switch to "Ask me first" / "Off".
 
 ## 5. My rights
 - **View and correct**: I can edit my profile myself at any time under Me → Profile in the app; if other data is wrong, I can correct it myself or ask the administrator to.
