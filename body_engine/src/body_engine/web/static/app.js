@@ -20,6 +20,50 @@
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
+  // Optional plugins of this server (BODY_PLUGIN_DIR, body_engine/plugins.py): /app/plugins/manifest.json lists the scripts and
+  // styles for the signed-in user; they load before the plugins are initialised and register in window.BodyPlugins like the
+  // files above. A server without plugins lists nothing and nothing is loaded.
+  let pluginFiles = null;
+  function loadPluginFiles() {
+    pluginFiles ??= fetch("/app/plugins/manifest.json", { credentials: "same-origin", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : {})).catch(() => ({}))
+      .then((m) => {
+        for (const href of m.styles || []) document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href }));
+        return Promise.all((m.scripts || []).map((src) => new Promise((done) => {
+          const el = Object.assign(document.createElement("script"), { src });
+          el.onload = el.onerror = done;
+          document.head.append(el);
+        })));
+      });
+    return pluginFiles;
+  }
+  // Page events for plugins: BodyHooks.on(name, fn). The page emits "page" ({page}) when the visible page changes and "action"
+  // ({feature, page}) when a control is used. feature = the control's data-feature, its id, or the name of its data-* attribute
+  // (with the value only for data-tab / data-mode); never text the user typed or values of records. Nothing listens by default.
+  const HOOKS = new Map();
+  window.BodyHooks = {
+    on(name, fn) { if (!HOOKS.has(name)) HOOKS.set(name, []); HOOKS.get(name).push(fn); },
+    emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
+  };
+  let lastPage = "";
+  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
+  function featureOf(el) {
+    const named = el.closest("[data-feature]")?.dataset.feature;
+    if (named) return named;
+    if (/^[a-z][a-z0-9_-]{0,39}$/.test(el.id || "")) return el.id.replace(/[-_]?\d+$/, "");   // tip-3 -> tip
+    for (const a of el.getAttributeNames()) {
+      const k = a.startsWith("data-") ? a.slice(5) : "";
+      if ((k === "tab" || k === "mode") && /^[a-z_-]{1,30}$/.test(el.getAttribute(a))) return `${k}:${el.getAttribute(a)}`;
+      if (/^[a-z][a-z-]{0,30}$/.test(k)) return k;
+    }
+    return null;
+  }
+  document.addEventListener("click", (e) => {
+    if (!HOOKS.has("action")) return;
+    const el = e.target.closest?.("[data-feature], button, a, [role=button], [data-sheet]");
+    const feature = el && featureOf(el);
+    if (feature) window.BodyHooks.emit("action", { feature, page: lastPage });
+  }, true);
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
   const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
@@ -227,7 +271,7 @@
   async function logout() {
     try { await api("/v1/web/logout", { method: "POST" }); } catch (e) { /* clear local state even when offline */ }
     try { if (window.caches) await caches.delete("be-data"); } catch (e) { /* no Cache API */ }
-    S.data = {}; S.me = null;
+    S.data = {}; S.me = null; pluginFiles = null;
     window.BodyAI?.reset();
     $("#view").innerHTML = ""; $("#view").dataset.shown = "";
     closeSheet();
@@ -412,6 +456,7 @@
     const seq = ++renderSeq;
     const view = $("#view");
     header();
+    if (pageKey() !== lastPage) { lastPage = pageKey(); window.BodyHooks.emit("page", { page: lastPage }); }
     const shown = `${S.tab}:${S.owner}`, same = view.dataset.shown === shown;  // reloading the same page: keep content and scroll position
     if (!same) view.innerHTML = `<div class="empty faint">…</div>`;
     try {
@@ -515,7 +560,7 @@
   const xpBox = `<div class="xp"><div class="xp-load"><span></span><span></span><span></span></div></div>`;
   function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true)); }
   // A kv row that opens the explanation of one metric
-  const xkv = (k, v, reason, key) => `<button class="kv kv-btn" ${sheetAttr(() => explainSheet("metric", key, k))}><span class="k">${esc(k)}<i class="xp-i">${ICON.info}</i></span>${v != null ? `<span class="v">${v}</span>` : `<span class="v r">${esc(reason ? short(reason) : "—")}</span>`}</button>`;
+  const xkv = (k, v, reason, key) => `<button class="kv kv-btn" data-feature="explain" ${sheetAttr(() => explainSheet("metric", key, k))}><span class="k">${esc(k)}<i class="xp-i">${ICON.info}</i></span>${v != null ? `<span class="v">${v}</span>` : `<span class="v r">${esc(reason ? short(reason) : "—")}</span>`}</button>`;
 
   // ------------------------------------------------------------------ today
   function ring(value, zone) {
@@ -1322,7 +1367,7 @@
     }
   }
 
-  const xpLabel = (key, label) => `<button class="trend-label xp-label" ${sheetAttr(() => explainSheet("metric", key, label))}>${label}<i class="xp-i">${ICON.info}</i></button>`;
+  const xpLabel = (key, label) => `<button class="trend-label xp-label" data-feature="explain" ${sheetAttr(() => explainSheet("metric", key, label))}>${label}<i class="xp-i">${ICON.info}</i></button>`;
   const RANGE = [[7, tr("1周")], [30, tr("1月")], [90, tr("3月")], [180, tr("6月")], [365, tr("1年")]];
   const rangeName = (n) => (RANGE.find(([d]) => d === n) || [n, tr("{n} 天", { n })])[1];
   // [key, label, unit, decimals, better direction (1 up / -1 down / 0 neutral), chart, explain key]
@@ -3157,6 +3202,7 @@
 
   async function boot(keepTab) {
     let me;
+    const plugged = loadPluginFiles();
     try { me = await api("/v1/web/me"); }
     catch (err) {
       if (err.status === 401) return;
@@ -3185,6 +3231,7 @@
     applyTabs();
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
+    await plugged;
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;

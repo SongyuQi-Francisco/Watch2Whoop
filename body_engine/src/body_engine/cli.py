@@ -41,7 +41,13 @@ def _export_date(processed_dir: Path) -> date:
 def main() -> None:
     p = argparse.ArgumentParser(prog="body-engine")
     sub = p.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("migrate", help="create / upgrade the table schema")
+    sub.add_parser("migrate", help="create / upgrade the table schema (and the migrations of BODY_PLUGIN_DIR plugins)")
+    pl = sub.add_parser("plugins", help="optional server plugins from BODY_PLUGIN_DIR (plugins.py): list / run a job now")
+    pls = pl.add_subparsers(dest="plugins_cmd", required=True)
+    pls.add_parser("list", help="loaded plugins, their jobs and page files")
+    plr = pls.add_parser("run", help="run one plugin job now (with its advisory lock)")
+    plr.add_argument("plugin")
+    plr.add_argument("job")
 
     u = sub.add_parser("user-add", help="create a user")
     u.add_argument("--name", required=True)
@@ -317,6 +323,23 @@ def main() -> None:
                 return
         if args.cmd == "migrate":
             print("applied:", migrate(conn) or "nothing")
+            from . import plugins
+            if plugins.load():
+                print("plugins applied:", plugins.migrate(conn) or "nothing")
+        elif args.cmd == "plugins":
+            from . import plugins
+            if args.plugins_cmd == "list":
+                if not plugins.load():
+                    print("no plugins (BODY_PLUGIN_DIR is not set or empty)")
+                for p in plugins.load():
+                    jobs = ", ".join(f"{j.name} ({f'every {j.every_s}s' if j.every_s else f'daily {j.daily_at} {j.tz}'})" for j in p.jobs)
+                    print(f"{p.name}: {p.path}; router {'yes' if getattr(p.module, 'router', None) else 'no'}; jobs: {jobs or '-'}")
+            else:
+                p = next((x for x in plugins.load() if x.name == args.plugin), None)
+                job = next((j for j in (p.jobs if p else []) if j.name == args.job), None)
+                if job is None:
+                    raise SystemExit(f"no job {args.plugin}/{args.job}")
+                print(json.dumps(plugins.run_job(p, job, conn), default=str, ensure_ascii=False))
         elif args.cmd == "grocery-sync":
             from .grocery.sync import runner as gsync
             if args.gs_cmd == "run":

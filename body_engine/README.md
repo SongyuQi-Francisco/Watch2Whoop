@@ -454,6 +454,15 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 
+## Optional plugins (`src/body_engine/plugins.py`)
+None by default. Set `BODY_PLUGIN_DIR` to a directory of plugin packages (`<dir>/<name>/__init__.py`, name `[a-z][a-z0-9_]*`) to extend a deployment without changing this code. A plugin may define:
+- `router` (a FastAPI `APIRouter`, included as is; reuse `records.api.current_user` for authorization);
+- `JOBS = [Job(name, fn, every_s=300)]` or `Job(name, fn, daily_at="08:00", tz="Australia/Sydney")`: run inside the API process with a Postgres advisory lock and their own connection; must be idempotent (a daily job may run again after a restart);
+- `migrations/*.sql`: applied by `body-engine migrate` after the core migrations, recorded as `<name>/<file>`;
+- `page_scripts(conn, user)` / `page_styles(conn, user)`: files under `<name>/static/` the Today page loads for this user (only listed files are served, at `/app/plugins/<name>/<file>`; `/app/plugins/manifest.json` lists them).
+
+The Today page loads the listed files before initialising `window.BodyPlugins` and offers `window.BodyHooks.on(name, fn)`: `"page"` (`{page}`, when the visible page changes) and `"action"` (`{feature, page}`, when a control is used; `feature` is the control's `data-feature`, id or data-attribute name, never typed text or record values). `body-engine plugins list | run <plugin> <job>`.
+
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
 Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
 | Endpoint (acts for the caller only; changes need write) | Description |

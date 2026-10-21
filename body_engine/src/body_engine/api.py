@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, queries
+from . import auth, errors_en, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .ai.api import router as ai_router
@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     global pool
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
-    async with mcp_app.lifespan():  # session manager of the remote MCP (/mcp)
+    async with mcp_app.lifespan(), plugins.scheduler():  # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins
         yield
     pool.close()
 
@@ -164,4 +164,5 @@ app.include_router(rollout_router)       # feature flags / A/B variants of the s
 app.include_router(oauth_router)        # MCP OAuth: consent step and connections (ai/oauth_api.py)
 app.include_router(oauth_well_known)    # RFC 9728 / RFC 8414 discovery documents
 app.mount("/oauth", oauth_app)          # /oauth/authorize, /token, /register, /revoke (mcp.server.auth, ai/oauth_http.py)
+plugins.install(app)   # optional BODY_PLUGIN_DIR plugins: their routers and /app/plugins/… (before the /app mount)
 web_api.install(app)
