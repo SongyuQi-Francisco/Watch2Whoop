@@ -8,8 +8,8 @@ No default provider (and no body butler link): the fallback AI (fallback.py, the
 short prompt and tool subset that can only read the caller's own data.
 All queries carry user_id = the logged-in person: conversations, pending writes, providers and keys never leak to anyone else.
 
-Tools sent with each call: the resident core + the groups of the page the conversation was started on + the meta tools
-(assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
+Tools sent with each call: the resident core + the groups of every page the conversation has been on (ai_conversations.pages,
+only added to) + the meta tools (assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
 the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go by the real tool name.
 
 Events (produced by chat_events, converted to SSE by api.py): conversation, text, tool, confirm, usage, error, done.
@@ -279,7 +279,7 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
     fb = fallback.is_fallback(provider)
     allowed = fallback.tools() if fb else TOOLS   # the fallback only ever reaches its own whitelist, also through the meta tools
     access = toolsets.Access({t.name: t for t in allowed}, can_write)
-    tools = toolsets.for_page(allowed, conv.get("page"))
+    tools = toolsets.for_page(allowed, conv.get("pages"))
     for _ in range(fp.MAX_ROUNDS if fb else MAX_ROUNDS):
         history = _history(conn, conv["id"], viewer["id"])
         try:
@@ -368,7 +368,7 @@ def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: li
                 conversation_id: int | None, allow_owner_fallback: bool = False, page: str | None = None) -> Iterator[dict]:
     """One user message. Pre-checks (provider, budget, parameters) are done by prepare_chat before the first next().
     allow_owner_fallback: only `body-engine ai-fallback try` (lets the deployer, who has the butler link, test the fallback).
-    page: the Today page id the chat was opened on (ai/params.PAGE_GROUPS); kept for a new conversation only."""
+    page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups."""
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page)
     return _run(conn, viewer, provider, adapter, conv, content)
 
@@ -389,10 +389,10 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
-        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, page)
+        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, pages)
                                VALUES (%s,%s,%s,%s,%s) RETURNING *""",
                             (viewer["id"], provider["id"], (message or "图片")[:40],
-                             prompt.build_system_prompt(conn, viewer["id"], lite=fb), page or None)).fetchone()
+                             prompt.build_system_prompt(conn, viewer["id"], lite=fb), [page] if page else [])).fetchone()
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
         n = conn.execute("SELECT count(*) AS n FROM ai_messages WHERE conversation_id = %s", (conv["id"],)).fetchone()["n"]
@@ -400,6 +400,9 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
             raise ChatError("too_long", L("这个对话太长了，开一个新对话吧（长期记忆不受影响）",
                                           "This conversation is too long; start a new one (long-term memory is kept)"))
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
+        if page and page not in conv["pages"]:   # first time on this page: add its groups (only ever added to)
+            conv = conn.execute("UPDATE ai_conversations SET pages = array_append(pages, %s) WHERE id = %s RETURNING *",
+                                (page, conv["id"])).fetchone()
     content = [{"type": "text", "text": f"{prompt.time_prefix(conn, viewer['id'])}\n{message}"}] + imgs
     return provider, adapter, conv, content
 

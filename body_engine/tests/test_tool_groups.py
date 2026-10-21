@@ -72,6 +72,16 @@ def test_tool_order_is_stable():
     assert not {n for n in ro if n in TOOLS_BY_NAME and TOOLS_BY_NAME[n].writes} and toolsets.RUN_WRITE not in ro
 
 
+def test_pages_accumulate_in_tools_order():
+    """A conversation that has been on several pages gets the union of their groups; adding a page only inserts tools."""
+    one = [t.name for t in toolsets.for_page(TOOLS, ["today"])]
+    two = [t.name for t in toolsets.for_page(TOOLS, ["today", "food.shopping"])]
+    assert one == [t.name for t in toolsets.for_page(TOOLS, "today")]
+    assert [n for n in two if n in one] == one and set(two) > set(one)
+    assert two == [t.name for t in toolsets.for_page(TOOLS, ["food.shopping", "today"])]   # order of visits does not matter
+    assert [t.name for t in toolsets.for_page(TOOLS, [])] == [t.name for t in toolsets.for_page(TOOLS, None)]
+
+
 def test_page_groups():
     assert toolsets.page_groups("food.shopping") == P.PAGE_GROUPS["food.shopping"]
     assert toolsets.page_groups("food.whatever") == P.PAGE_GROUPS["food"]

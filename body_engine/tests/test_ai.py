@@ -516,18 +516,19 @@ def test_chat_page_groups_and_meta_tools(client, world, setup, dsn, monkeypatch)
     assert '"display_name":"A"' in FakeAdapter.calls[2]["history"][-1]["content"][0]["content"]
     conv_id = next(d for e, d in evs if e == "conversation")["id"]
     with db(dsn) as conn:
-        assert conn.execute("SELECT page FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["page"] == "food.shopping"
+        assert conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"] == ["food.shopping"]
         rows = conn.execute("SELECT call_id, tool, status FROM ai_tool_calls WHERE conversation_id = %s ORDER BY id",
                             (conv_id,)).fetchall()
         assert [(r["call_id"], r["tool"], r["status"]) for r in rows] == [("f1", "find_tools", "done"), ("r1", "get_profile", "done")]
         a = conn.execute("SELECT tool, channel, ok FROM assistant_audit ORDER BY id DESC LIMIT 1").fetchone()
         assert a == {"tool": "get_profile", "channel": "api:anthropic_api", "ok": True}
         assert conn.execute("SELECT count(*) AS n FROM assistant_audit WHERE tool IN ('find_tools', 'run_read_tool')").fetchone()["n"] == 0
-    # The next message in the same conversation keeps the page's tools (stable cached prefix), whatever page it is sent from
-    FakeAdapter.calls.clear()
-    FakeAdapter.script = [{"text": "好"}]
-    sse(chat(client, tok["A"], "再问", conversation_id=conv_id, page="today").text)
-    assert FakeAdapter.calls[0]["tools"] == sent
+    # The next message from the same page (or with no page) keeps exactly the same tools: stable cached prefix
+    for again in ("food.shopping", None):
+        FakeAdapter.calls.clear()
+        FakeAdapter.script = [{"text": "好"}]
+        sse(chat(client, tok["A"], "再问", conversation_id=conv_id, **({"page": again} if again else {})).text)
+        assert FakeAdapter.calls[0]["tools"] == sent
     # No page = core only; read / write tools behind the wrong meta tool are refused and nothing is written
     FakeAdapter.calls.clear()
     FakeAdapter.script = [{"tool_calls": [
@@ -544,6 +545,33 @@ def test_chat_page_groups_and_meta_tools(client, world, setup, dsn, monkeypatch)
     with db(dsn) as conn:
         assert conn.execute("SELECT count(*) AS n FROM events WHERE title = '测试：读写混用'").fetchone()["n"] == 0
 
+
+def test_chat_new_page_adds_its_groups(client, world, setup, dsn):
+    """Owner's decision on #107: a conversation started on `today` that gets a message from `food.shopping` sends the
+    grocery group from then on (added, never removed; TOOLS order, so the tools sent before keep their relative order)."""
+    ids, tok = world
+    FakeAdapter.script = [{"text": "好"}]
+    evs = sse(chat(client, tok["A"], "今天适合练吗", page="today").text)
+    conv_id = next(d for e, d in evs if e == "conversation")["id"]
+    before = FakeAdapter.calls[0]["tools"]
+    assert before == [t.name for t in toolsets.for_page(TOOLS, "today")] and "get_shopping_list" not in before
+    FakeAdapter.calls.clear()
+    FakeAdapter.script = [{"tool_calls": [{"id": "g1", "name": "get_shopping_list", "args": {}}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "按下周菜单列清单", conversation_id=conv_id, page="food.shopping").text)
+    after = FakeAdapter.calls[0]["tools"]
+    grocery = [t.name for t in TOOLS if t.group == "grocery"]
+    assert set(grocery) <= set(after) and after == [t.name for t in toolsets.for_page(TOOLS, ["today", "food.shopping"])]
+    assert [n for n in after if n in before] == before                 # nothing dropped, old order unchanged
+    assert after[-3:] == ["find_tools", "run_read_tool", "run_write_tool"]
+    assert FakeAdapter.calls[1]["tools"] == after                       # stable again from the next round on
+    assert ("tool", {"name": "get_shopping_list", "status": "done"}) in evs   # called directly, no find_tools round
+    # back on today: nothing removed, nothing re-added
+    FakeAdapter.calls.clear()
+    FakeAdapter.script = [{"text": "好"}]
+    sse(chat(client, tok["A"], "回到今天", conversation_id=conv_id, page="today").text)
+    assert FakeAdapter.calls[0]["tools"] == after
+    with db(dsn) as conn:
+        assert conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"] == ["today", "food.shopping"]
 
 def test_chat_run_write_tool_keeps_confirm_and_read_only(client, world, setup, dsn, monkeypatch):
     """ALWAYS_CONFIRM goes by the real name behind run_write_tool; a read-only login cannot write through it."""

@@ -1,6 +1,6 @@
 """Tool groups and on-demand loading (issue #99, docs/ai-assistant-plan.md §9.17).
 
-Only the resident core (ai/params.CORE_TOOLS) and, in the in-page chat, the current page's groups are sent with each model
+Only the resident core (ai/params.CORE_TOOLS) and, in the in-page chat, the groups of the pages it has been on are sent with each model
 call. The rest stays reachable through three meta tools that work with every MCP client (no tools/list_changed needed):
 - find_tools(group | query): the full (relaxed) schemas of matching tools;
 - run_read_tool(name, args): runs a read tool (read_only_hint = true);
@@ -60,9 +60,12 @@ def page_groups(page: str | None) -> tuple[str, ...]:
     return params.PAGE_GROUPS.get(page.split(".", 1)[0], ())
 
 
-def for_page(tools: Iterable[Tool], page: str | None) -> list[Tool]:
-    """In-page chat: core + the page's groups (in `tools` order, so the cached prefix is stable), then the meta tools."""
-    groups = set(page_groups(page))
+def for_page(tools: Iterable[Tool], page: str | list[str] | None) -> list[Tool]:
+    """In-page chat: core + the groups of the page (or of every page the conversation has been on), in `tools` order so
+    the same pages always give the same list, then the meta tools. Adding a page only inserts tools: the ones already
+    sent keep their relative order."""
+    pages = [page] if isinstance(page, str) else (page or [])
+    groups = {g for p in pages for g in page_groups(p)}
     return [t for t in tools if t.name in params.CORE_TOOLS or t.group in groups] + META_TOOLS
 
 
