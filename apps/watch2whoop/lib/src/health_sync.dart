@@ -173,6 +173,17 @@ class HealthSync {
   Future<bool> startSync(int syncDaysBack) =>
       OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
 
+  /// Changes the read range (health_range.dart). "All history" after the 90-day export: the anchors only see newer
+  /// samples, so they are reset and the whole history is exported again (the last 90 days are re-sent once and stored
+  /// once by Open Wearables). Back to 90 days: only later full exports are limited; nothing already read is removed.
+  Future<void> changeRange(int syncDaysBack) async {
+    if (syncDaysBack <= 0) {
+      await OpenWearablesHealthSdk.stopBackgroundSync();
+      await OpenWearablesHealthSdk.resetAnchors();
+    }
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
+
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {
     final s = await status();

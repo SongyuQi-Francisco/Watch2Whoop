@@ -21,6 +21,7 @@ import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
 import 'permissions_page.dart';
+import 'range_picker.dart';
 import 'setup_link_page.dart';
 
 enum _Step { welcome, email, code, invite, health, done }
@@ -519,13 +520,29 @@ class _OnboardingPageState extends State<OnboardingPage> {
     BigButton(tr('换个账号登录', 'Use another account'), secondary: true, onPressed: _busy ? null : _switchAccount),
   ];
 
+  /// Read range (health_range.dart): stored with the config; if syncing already started, the SDK follows at once.
+  Future<void> _pickRange(int days) async {
+    await AppState.instance.update(_config.copyWith(syncDaysBack: days));
+    if (_config.owConnected && _config.healthRequested) {
+      try {
+        await HealthSync.instance.changeRange(days);
+      } catch (e) {
+        debugPrint('changeRange failed: $e');
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
   /// The permissions step (pages/permissions_page.dart), the same cards as Phone sync → Permissions.
   List<Widget> _healthStep() => [
     _title(
       tr('开权限', 'Permissions'),
-      tr('同步只需要读取健康数据，首次会同步最近 ${_config.syncDaysBack} 天。开关由你在 iOS 里点。',
-          'Syncing only needs to read your Health data; the first sync covers the last ${_config.syncDaysBack} days. You make the choice in iOS.'),
+      tr('同步只需要读取健康数据。先选读多少，再允许读取；开关由你在 iOS 里点。',
+          'Syncing only needs to read your Health data. Pick how much to read, then allow it; you make the choice in iOS.'),
     ),
+    Text(tr('读取范围', 'Read range'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+    RangePicker(syncDaysBack: _config.syncDaysBack, onChanged: _pickRange, enabled: !_busy),
+    const SizedBox(height: 12),
     PermissionsPanel(onRequestHealth: _allowHealth),
     const SizedBox(height: 12),
     Hint(limitsHint),

@@ -15,7 +15,7 @@
   const IN_APP = !!window.Watch2Whoop;  // the WebView of the Watch2Whoop iOS app
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
-  // Features in separate files (profile.js profile and consent, history.js health history import): each entry in window.BodyPlugins may have
+  // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes.
   const PLUGINS = () => window.BodyPlugins || [];

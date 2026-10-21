@@ -173,8 +173,20 @@ When a test user is onboarded the admin supplies only the Apple ID email; the pr
 - `language` (migration 250): `zh` / `en`, null = follow the device. The Today page draws itself in it (`web/static/i18n.js`, also returned by `/v1/web/me`), and the AI personas answer in it (`get_briefing` `me.language`, the in-page chat system prompt). Plan and stage-2 checklist: `docs/i18n-plan.md`.
 - Degradation when profile data is missing: no birth date → HRmax uses only observed values and body age is not computed; no sex → VO₂max is not compared with norms; no height → BMI is not computed.
 
-## Health history import (`src/body_engine/history/`, `importers/apple_zip.py`)
-A new user's app syncs only 90 days the first time; anything earlier is uploaded by the person themself as the export.zip from Health → "Export All Health Data" (migration 130: `history_imports`, `export_samples`).
+## Health read range and full-history backfill (`src/body_engine/sync/history.py`, migration 410)
+The app reads 90 days of Apple Health by default or the whole history (OW SDK `syncDaysBack` 0 = everything, newest first, resumable). It reports through the Today page in its WebView:
+| Endpoint (own data only) | Description |
+|---|---|
+| `PUT /v1/users/{user}/health-history` `{scope: days90 \| all, upload_percent?, sent?, upload_done?}` | The app's choice and progress (needs write). Choosing `all` starts the upload phase; `upload_done` queues the backfill; after an error, `upload_done` resumes from the saved cursor |
+| `GET /v1/users/{user}/health-history` | `{scope, status: idle / uploading / queued / importing / scoring / done / error, active, percent, upload_percent, sent, …}`; `percent` = upload 0–70, import 70–95, scoring 97 (the Today page shows 「历史数据导入中 x%」) |
+
+```bash
+uv run body-engine history-backfill-run   # one time-budgeted step (240 s) per queued user: OW import in 30-day windows from the earliest day, then all scores; resumable
+```
+
+## Health history import (`src/body_engine/history/`, `importers/apple_zip.py`) — admin only now
+The Today page no longer offers the upload: the app reads the whole history from HealthKit itself when the user picks "All history" (see "Health read range" below). The endpoints and `import-apple-zip` stay for admins (old export files, and HRV beat-to-beat / ECG, which the app cannot read).
+Originally: a new user's app syncs only 90 days the first time; anything earlier is uploaded by the person themself as the export.zip from Health → "Export All Health Data" (migration 130: `history_imports`, `export_samples`).
 | Endpoint (you can only manage your own, changes need write) | Description |
 |---|---|
 | `GET /v1/users/{user}/history-import` | The latest import `{job, chunk_bytes, max_bytes}`; the job's `status` uploading / queued / processing / done / failed / cancelled, `phase` parsing / scores, `progress` 0–1, `message` is Chinese text for the person themself |

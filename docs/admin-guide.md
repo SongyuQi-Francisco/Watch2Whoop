@@ -146,9 +146,11 @@ body-engine feedback digest --dry-run           # 预览每日摘要；不加 --
 - 提升到公开仓库：`show --public` 的内容再人工看一遍，用自己电脑上的 `gh issue create` 发，然后 `status … public --public-url …`。服务器上不放公开仓库的 token。
 - 全服务器停用：`BODY_FEEDBACK_MODE=off`。
 
-## 导入健康历史
+## 健康历史
 
-用户在 app「我 → 导入健康历史」自己上传，后台队列处理（`body-engine history-import-run`，定时任务每分钟或每小时跑一次）。管理员代导：
+用户在 app 里选读取范围：「近 90 天」（默认）或「全部历史」（首次设置的权限那一步，或以后「我 → 手机同步 → 读取范围」）。app 直接从 HealthKit 读、经 Open Wearables 上传；读完后服务器补算全部历史（`body-engine history-backfill-run`，每分钟的 imports 任务有排队时执行，表 `health_history`）。今天页的「导入健康历史」（上传 export.zip）入口已经去掉。
+
+管理员代导（例如老用户手上已有的导出文件，或者要补 HRV 逐拍 / 心电图——app 读不到这两类）：
 
 ```bash
 body-engine import-apple-zip --user-id 3 --file /path/export.zip    # 流式解析，不解压；--no-scores 不重算评分

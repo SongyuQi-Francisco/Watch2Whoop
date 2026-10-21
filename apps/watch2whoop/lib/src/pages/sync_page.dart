@@ -14,12 +14,14 @@ import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../debug_seed.dart';
+import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
 import 'permissions_page.dart';
+import 'range_picker.dart';
 import 'scan_page.dart';
 
 class SyncPage extends StatefulWidget {
@@ -204,6 +206,30 @@ class _SyncPageState extends State<SyncPage> {
 
   bool get _hasAccount => AppState.instance.accountToken != null;
 
+  /// 90 days ⇄ all history. Going to all history re-reads everything (the last 90 days once more, stored once).
+  Future<void> _changeRange(int days) async {
+    final toAll = isAllHistory(days);
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(toAll ? tr('读取全部历史？', 'Read all history?') : tr('改回近 90 天？', 'Back to the last 90 days?')),
+        content: Text(toAll
+            ? tr('从「健康」里最早的一条开始读。数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快；中断了下次打开接着读。读完后服务器会补算全部历史的分数。',
+                'Reads from the oldest record in Health. With a lot of data this takes tens of minutes to a few hours; it is faster with the app open and the phone unlocked, and resumes if interrupted. The server then computes the scores for the whole history.')
+            : tr('已经读到的数据不会删除，只是以后不再读更早的。', 'Data already read stays; older data is just not read any more.')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(toAll ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    await _run(() async {
+      if (_config.owConnected && _sync.isSignedIn) await _sync.changeRange(days);
+      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
+    }, done: toAll ? tr('开始读取全部历史', 'Reading all history') : tr('已改回近 90 天', 'Back to the last 90 days'));
+  }
+
   /// Self-service accounts: connect sync without any code (server-minted OW invitation); fall back to the manual code dialog.
   Future<void> _connectViaAccount() async {
     var manual = false;
@@ -387,6 +413,20 @@ class _SyncPageState extends State<SyncPage> {
             ],
             const SizedBox(height: 24),
 
+            // ---- read range (health_range.dart): 90 days or the whole history, with the history progress
+            Group(
+              title: tr('读取范围', 'Read range'),
+              rows: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                  child: RangePicker(syncDaysBack: _config.syncDaysBack, onChanged: _changeRange, enabled: !_busy),
+                ),
+                if (isAllHistory(_config.syncDaysBack) && connected)
+                  HistoryProgressCard(HistoryProgress.from(_status, requestedTypes.length, DateTime.now())),
+              ],
+              footer: tr('app 直接从「健康」读取，不用再导出文件。', 'The app reads Health directly; no export file needed.'),
+            ),
+
             // ---- per-type counts
             Group(
               title: tr('已上传（按类型）', 'Uploaded by type'),
@@ -412,7 +452,6 @@ class _SyncPageState extends State<SyncPage> {
                 Row2(tr('权限', 'Permissions'), onTap: () => Navigator.of(context)
                     .push(MaterialPageRoute(builder: (_) => const PermissionsPage()))
                     .then((_) => _refresh())),
-                Row2(tr('首次同步范围', 'First sync range'), value: tr('${_config.syncDaysBack} 天', '${_config.syncDaysBack} days')),
                 if (connected) Row2(tr('同步账号', 'Sync account'), value: '${_config.owUserId!.substring(0, 8)}…'),
                 if (connected) Row2(tr('重新连接', 'Reconnect'), onTap: _reconnect),
                 if (connected) Row2(tr('断开同步', 'Disconnect sync'), danger: true, onTap: _disconnect),

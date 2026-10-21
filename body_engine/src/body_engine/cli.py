@@ -163,6 +163,8 @@ def main() -> None:
     wk.add_argument("--start", type=date.fromisoformat, help="start from this day (user local date), default all history")
     wk.add_argument("--end", type=date.fromisoformat, help="up to and including this day, default today")
 
+    hb = sub.add_parser("history-backfill-run", help="full-history backfill for users whose app read the whole Apple Health history: import from OW window by window, then recompute all scores (resumable, time-budgeted; nothing queued = nothing done)")
+    hb.add_argument("--user-id", type=int, default=None)
     sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
     sr.add_argument("--user-id", type=int, default=None)
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
@@ -449,6 +451,9 @@ def main() -> None:
         elif args.cmd == "import-workouts":
             print(json.dumps(workouts_importer.import_ow(conn, OWClient(), args.user_id, args.start, args.end),
                              default=str, ensure_ascii=False))
+        elif args.cmd == "history-backfill-run":
+            from .sync import history as health_history
+            print(json.dumps(health_history.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
         elif args.cmd == "sync-refresh-run":
             from .sync import refresh as sync_refresh
             print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
