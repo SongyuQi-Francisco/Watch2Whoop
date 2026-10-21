@@ -189,8 +189,14 @@
     let d;
     try { d = await C.api("/v1/users/me/ai-tokens"); } catch (e) { C.toast(e.message); return; }
     const live = d.tokens.filter((t) => !t.revoked_at);
+    const conns = d.connections || [];
+    const when = (t) => new Date(t).toLocaleString(window.I18N.locale(), { hour12: false });
     C.openSheet(tr("连接客户端（MCP）"), `
       <div class="kv"><span class="k">${esc(tr("地址"))}</span><span class="v" style="word-break:break-all">${esc(mcp.url)}</span></div>
+      ${d.mcp?.oauth ? `<p class="small muted" style="margin:8px 0 0">${esc(d.mcp.oauth)}</p>` : ""}
+      ${conns.length ? `<p class="small muted" style="margin:14px 0 0">${esc(tr("已连接的应用"))}</p><div class="group" style="margin-top:6px">${conns.map((c) => `<div class="item"><span class="row-title">${esc(c.client_name || tr("未命名的应用"))}${c.scopes.includes("write") ? "" : ` <span class="badge plain">${esc(tr("me.ro"))}</span>`}
+          <span class="small muted" style="display:block;font-weight:400">${esc(c.redirect_host)} · ${esc(c.last_used_at ? tr("最近使用 {when}", { when: when(c.last_used_at) }) : tr("还没用过"))}</span></span>
+          <button class="btn btn-danger" style="flex:none;min-height:34px" data-disconnect="${c.id}">${esc(tr("断开"))}</button></div>`).join("")}</div>` : ""}
       ${live.length ? `<div class="group" style="margin-top:12px">${live.map((t) => `<div class="item"><span class="row-title">${esc(t.name.replace(/^mcp:/, ""))}${t.scopes.includes("write") ? "" : ` <span class="badge plain">${esc(tr("me.ro"))}</span>`}
           <span class="small muted" style="display:block;font-weight:400">${esc(t.last_used_at ? tr("最近使用 {when}", { when: new Date(t.last_used_at).toLocaleString(window.I18N.locale(), { hour12: false }) }) : tr("还没用过"))}</span></span>
           <button class="btn btn-danger" style="flex:none;min-height:34px" data-revoke="${t.id}">${esc(tr("吊销"))}</button></div>`).join("")}</div>` : ""}
@@ -198,6 +204,10 @@
       <label class="small muted" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="t-ro"> ${esc(tr("me.ro"))}</label>
       <div class="btns"><button class="btn btn-primary" id="t-new">${esc(tr("生成 token"))}</button></div>
       <div id="t-out"></div>`, (root) => {
+      $$("[data-disconnect]", root).forEach((b) => { b.onclick = async () => {
+        if (!confirm(tr("断开后这个应用立即连不上，确定？"))) return;
+        try { await C.api(`/v1/users/me/ai-connections/${b.dataset.disconnect}`, { method: "DELETE" }); await afterChange(); C.toast(tr("已断开")); mcpSheet(mcp, defaultClient); } catch (e) { C.toast(e.message); }
+      }; });
       $$("[data-revoke]", root).forEach((b) => { b.onclick = async () => {
         if (!confirm(tr("吊销后这个客户端立即连不上，确定？"))) return;
         try { await C.api(`/v1/users/me/ai-tokens/${b.dataset.revoke}`, { method: "DELETE" }); await afterChange(); C.toast(tr("已吊销")); mcpSheet(mcp, defaultClient); } catch (e) { C.toast(e.message); }

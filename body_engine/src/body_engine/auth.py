@@ -32,7 +32,8 @@ def list_tokens(conn: psycopg.Connection, user_id: int) -> list[dict]:
 
 def revoke_tokens(conn: psycopg.Connection, user_id: int, name: str | None = None, everything: bool = False) -> dict:
     """Revoke a user's live API tokens: by exact name, or all of them (everything=True, which also voids the user's unused
-    one-time login codes and revokes their reusable activation codes). Today page sessions made from a revoked token stop working at once (web/session.py checks it).
+    one-time login codes, revokes their reusable activation codes and ends their OAuth connections with all refresh tokens).
+    Today page sessions made from a revoked token stop working at once (web/session.py checks it).
     AI-client tokens (scope mcp) are left alone unless everything=True."""
     if not name and not everything:
         raise ValueError("give a token name or everything=True")
@@ -43,7 +44,13 @@ def revoke_tokens(conn: psycopg.Connection, user_id: int, name: str | None = Non
                                 AND expires_at > now() RETURNING id""", (user_id,)).fetchall()
         activation = conn.execute("""UPDATE activation_codes SET revoked_at = now() WHERE user_id = %s AND revoked_at IS NULL
                                      RETURNING id""", (user_id,)).fetchall()
-        return {"tokens": len(n), "login_codes": len(codes), "activation_codes": len(activation)}
+        # OAuth connections (ai/oauth.py): revoking the access tokens alone is not enough, a refresh token would mint a new one
+        from .ai import oauth
+        grants = [r["id"] for r in conn.execute("SELECT id FROM oauth_grants WHERE user_id = %s AND revoked_at IS NULL",
+                                                 (user_id,))]
+        for g in grants:
+            oauth.revoke_grant(conn, g, "admin")
+        return {"tokens": len(n), "login_codes": len(codes), "activation_codes": len(activation), "oauth_connections": len(grants)}
     n = conn.execute("""UPDATE api_tokens SET revoked_at = now() WHERE user_id = %s AND name = %s AND revoked_at IS NULL
                         RETURNING id""", (user_id, name)).fetchall()
     return {"tokens": len(n), "login_codes": 0}

@@ -164,6 +164,8 @@ key 只上传一次，之后只显示末 4 位；超过每月预算会自动停�
 
 适合在电脑上用 Claude 桌面版 / Claude Code、Codex、Antigravity 的人。「AI 设置」→「添加」→ 选「Claude 订阅」、「ChatGPT 订阅」或「Google AI Pro / Ultra 订阅（Antigravity）」→「保存」→「连接客户端（MCP）」→ 选客户端 →「生成 token」，按屏幕上的 3 步在电脑上配置。
 
+**Claude 网页 / 手机 app、ChatGPT（开发者模式）不用 token**：在它们的「连接器」里添加「连接客户端（MCP）」顶部显示的地址，它会跳到今天页，确认应用名和跳转地址后点「同意」。连上的应用列在「连接客户端（MCP）」里，随时可以「断开」。ChatGPT 个人版目前可能只能读、不能写。
+
 Google AI Pro / Ultra 订阅：用 Antigravity（桌面版、IDE 或 `agy` 命令行，Antigravity 免费档也能用，额度少一些）。Gemini CLI 从 2026-06-18 起不再支持订阅登录，只能配付费 Gemini API key 用。Gemini 网页 / 手机 app 的「自定义应用」目前只对美国用户开放，暂时连不了。
 
 ![连接客户端（MCP）](images/tester-handbook/ai-mcp.jpg)

@@ -21,10 +21,12 @@ WEB_TOOL_KINDS = ("anthropic_api", "openai_api", "gemini_api")
 KINDS: dict[str, dict] = {
     "claude_plan_mcp": {
         "label": "Claude 订阅（Pro / Max）", "category": "mcp", "client": "claude-code",
-        "note": "订阅只能在 Claude 官方客户端里用：在 Claude Code / Claude 桌面版里连 Body Engine 的 MCP。"},
+        "note": "订阅只能在 Claude 官方客户端里用：在 Claude 网页 / 手机 app 的连接器里添加 Body Engine 的地址（登录今天页同意即可），"
+                "或在 Claude Code / Claude 桌面版里用 token 连。"},
     "codex_plan_mcp": {
         "label": "ChatGPT 订阅（Codex）", "category": "mcp", "client": "codex",
-        "note": "在你自己登录的 Codex CLI 里连 Body Engine 的 MCP；后端不碰你的 ChatGPT 账号。"},
+        "note": "在你自己登录的 Codex CLI 里用 token 连，或在 ChatGPT 开发者模式的连接器里添加 Body Engine 的地址（写入目前只有 Business / "
+                "Enterprise / Edu 能用）；后端不碰你的 ChatGPT 账号。"},
     "gemini_plan_mcp": {
         # Google AI Pro / Ultra (formerly Google One AI Premium). Since 2026-06-18 Gemini CLI no longer serves these plans;
         # Antigravity (desktop / IDE / CLI `agy`) is the subscription client. The Gemini app's custom MCP apps need OAuth
@@ -60,10 +62,12 @@ KINDS: dict[str, dict] = {
 KINDS_EN: dict[str, dict] = {
     "claude_plan_mcp": {
         "label": "Claude subscription (Pro / Max)",
-        "note": "A subscription only works in Claude's own apps: connect Body Engine's MCP in Claude Code or Claude Desktop."},
+        "note": "A subscription only works in Claude's own apps: add Body Engine's address as a connector in Claude web / mobile (sign "
+                "in to the Today page and approve), or connect Claude Code / Claude Desktop with a token."},
     "codex_plan_mcp": {
         "label": "ChatGPT subscription (Codex)",
-        "note": "Connect Body Engine's MCP in the Codex CLI you signed in to; the server never touches your ChatGPT account."},
+        "note": "Connect the Codex CLI you signed in to with a token, or add Body Engine's address as a connector in ChatGPT's "
+                "developer mode (writing currently needs Business / Enterprise / Edu); the server never touches your ChatGPT account."},
     "gemini_plan_mcp": {
         "label": "Google AI Pro / Ultra subscription (Antigravity)",
         "note": "Connect Body Engine's MCP in the Antigravity you signed in to (desktop app, IDE or the agy CLI); the server never "
