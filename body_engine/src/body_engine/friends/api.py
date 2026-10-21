@@ -4,11 +4,14 @@ Wrong invite codes count per client IP and per user (params.JOIN_MAX_FAILURES in
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import auth
 from ..records.api import _self, current_user, get_conn
+from ..rollout import flags
 from ..web import login_limit
 from . import cards, params as P, store
 
-router = APIRouter(prefix="/v1/friends", tags=["friends"])
+# Every endpoint is behind the `friends` feature flag (docs/rollout.md): 404 while it is off for the caller
+router = APIRouter(prefix="/v1/friends", tags=["friends"], dependencies=[Depends(flags.require(auth.CIRCLES_FLAG))])
 _failures = login_limit.Limiter(P.JOIN_MAX_FAILURES, P.JOIN_WINDOW_SECONDS)
 
 

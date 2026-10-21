@@ -56,21 +56,18 @@ def section(conn, viewer_id: int, owner_id: int, scope: str, fn):
 
 
 def has_any_share(conn, viewer_id: int, owner_id: int) -> bool:
-    return viewer_id == owner_id or conn.execute(
-        f"SELECT 1 FROM shares s WHERE s.owner_id = %s AND s.viewer_id = %s AND cardinality({auth.EFFECTIVE_SCOPES.format(s='s')}) > 0",
-        (owner_id, viewer_id)).fetchone() is not None
+    return viewer_id == owner_id or bool(auth.granted_scopes(conn, viewer_id, owner_id))
 
 
 def viewable(conn, viewer: dict) -> list[dict]:
     """People you can view: yourself + family members who granted you access in shares (not expired)."""
     out = [{"id": viewer["id"], "display_name": viewer["display_name"], "self": True, "scopes": None}]
     for r in conn.execute(
-            f"""SELECT s.owner_id, u.display_name, {auth.EFFECTIVE_SCOPES.format(s="s")} AS scopes
-               FROM shares s JOIN users u ON u.id = s.owner_id
-               WHERE s.viewer_id = %s AND s.owner_id <> %s AND cardinality({auth.EFFECTIVE_SCOPES.format(s="s")}) > 0
-               ORDER BY u.display_name""", (viewer["id"], viewer["id"])):
-        scopes = sorted(set(r["scopes"]))
-        out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": scopes})
+            """SELECT s.owner_id, u.display_name FROM shares s JOIN users u ON u.id = s.owner_id
+               WHERE s.viewer_id = %s AND s.owner_id <> %s ORDER BY u.display_name""", (viewer["id"], viewer["id"])):
+        scopes = auth.granted_scopes(conn, viewer["id"], r["owner_id"])
+        if scopes:
+            out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": sorted(scopes)})
     return out
 
 

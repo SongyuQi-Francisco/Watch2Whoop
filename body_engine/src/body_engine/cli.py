@@ -22,6 +22,7 @@ from .goals import store as goal_store
 from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
+from .rollout import cli as rollout_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare",
@@ -255,6 +256,7 @@ def main() -> None:
     orv.add_argument("--connection-id", type=int, required=True)
     ai_fallback_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
+    rollout_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -439,6 +441,11 @@ def main() -> None:
             print("revoked" if oauth.revoke_grant(conn, args.connection_id, "admin", user_id=args.user_id) else "not found / already revoked")
         elif args.cmd == "ai-fallback":
             ai_fallback_cli.run(conn, args)
+        elif args.cmd in rollout_cli.COMMANDS:
+            try:
+                rollout_cli.run(conn, args)
+            except (KeyError, ValueError) as e:
+                p.error(str(e))
         elif args.cmd == "feedback":
             feedback_cli.run(conn, args)
         elif args.cmd == "import-apple-export":
