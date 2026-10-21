@@ -10,6 +10,7 @@ import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
+import 'raw_sync.dart';
 
 /// Short device label the server shows in the token list.
 String get deviceLabel {
@@ -104,6 +105,7 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   } catch (_) {}
   state.webLoginNeeded = false;
   await state.setAccountToken(null);
+  await RawSync.instance.clear();
   try {
     await setLangOverride(null); // the next person starts in the system language
   } catch (e) {

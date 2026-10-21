@@ -59,7 +59,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Used only to scan the setup QR code. No photos are taken and no images are saved.</string>
 	<key>NSHealthShareUsageDescription</key>
-	<string>Watch2Whoop reads your Health data (heart rate, HRV, sleep, workouts and more) and syncs it only to the server you set up.</string>
+	<string>Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up.</string>
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Release builds never write to Health; only debug builds write test data in the simulator.</string>
 	<key>UIApplicationSceneManifest</key>

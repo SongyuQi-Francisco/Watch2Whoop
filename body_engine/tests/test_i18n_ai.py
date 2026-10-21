@@ -126,7 +126,7 @@ def test_catalog_mcp_and_fallback_view(client, world):
     assert f_zh["display_name"].startswith("托底 AI") and f_zh["message"] == "第一次用托底 AI 要先同意"
     # The consent version is the Chinese text's, in both languages; agreeing on the English page records that version
     assert f_en["consent_version"] == f_zh["consent_version"] == fallback.CONSENT_VERSION
-    assert fallback.CONSENT_VERSION == "2026-10-20"
+    assert fallback.CONSENT_VERSION == "2026-10-22"
 
 
 def test_consent_in_english_records_the_same_version(client, world, dsn):

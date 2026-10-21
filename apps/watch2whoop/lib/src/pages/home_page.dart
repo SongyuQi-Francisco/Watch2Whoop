@@ -12,6 +12,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
@@ -22,6 +23,7 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
 import '../ui.dart';
@@ -36,6 +38,9 @@ const String kAccountDeletedHost = 'account-deleted';
 
 /// Bridge message prefix for the login check of self-service accounts.
 const String _kMePrefix = 'w2w-me:';
+
+/// Bridge message prefix for the upload-only token the page mints for setup-link users (raw_sync.dart).
+const String _kIngestPrefix = 'w2w-ingest:';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -99,6 +104,49 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       debugPrint('sync refresh call failed: $e');
     }
     await _reportRange();
+    await _rawSync();
+  }
+
+  /// Beat-to-beat HRV series and ECG recordings, straight to Body Engine (raw_sync.dart), after each sync-on-open round.
+  Future<void> _rawSync() async {
+    final c = AppState.instance.config;
+    if (!mounted || !c.healthRequested) return;
+    String? version;
+    try {
+      final p = await PackageInfo.fromPlatform();
+      version = '${p.version}+${p.buildNumber}';
+    } catch (_) {}
+    await RawSync.instance.run(
+      serverUrl: c.todayUrl,
+      daysBack: c.syncDaysBack,
+      accountToken: AppState.instance.accountToken,
+      pageToken: _pageIngestToken,
+      appVersion: version,
+    );
+  }
+
+  /// Setup-link users have no account token: the logged-in page mints an upload-only token (cookie + X-Body-Web) and
+  /// passes it back over the JS channel.
+  Completer<String?>? _ingestWait;
+
+  Future<String?> _pageIngestToken() async {
+    if (!mounted || _loading || _error != null) return null;
+    final wait = _ingestWait = Completer<String?>();
+    try {
+      await _web.runJavaScript(
+        "fetch('/v1/web/ingest-token',{method:'POST',credentials:'same-origin',"
+        "headers:{'Content-Type':'application/json','X-Body-Web':'1'},body:JSON.stringify({device:'iPhone'})})"
+        ".then(function(r){return r.ok?r.json():null})"
+        ".then(function(j){Watch2Whoop.postMessage('$_kIngestPrefix'+((j&&j.token)||''))})"
+        ".catch(function(){Watch2Whoop.postMessage('$_kIngestPrefix')});",
+      );
+      return await wait.future.timeout(const Duration(seconds: 15), onTimeout: () => null);
+    } catch (e) {
+      debugPrint('ingest token failed: $e');
+      return null;
+    } finally {
+      _ingestWait = null;
+    }
   }
 
   /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
@@ -275,6 +323,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _onBridge(String message) {
+    if (message.startsWith(_kIngestPrefix)) {
+      final t = message.substring(_kIngestPrefix.length);
+      final w = _ingestWait;
+      if (w != null && !w.isCompleted) w.complete(t.isEmpty ? null : t);
+      return;
+    }
     if (message == 'sync' || message == 'settings') _openSync();
     final c = AppState.instance.config;
     if (loginCodeSettled(message) && c.pendingLoginCode != null) {

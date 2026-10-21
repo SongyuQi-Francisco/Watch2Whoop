@@ -30,6 +30,12 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
   Read range. The app reads the whole history from HealthKit itself (OW SDK, newest first, resumable) with progress and a
   rough time left; the server then computes the scores for the whole history and the Today page shows
   「历史数据导入中 x%」. The manual export.zip upload on the Today page is gone (admins keep `import-apple-zip`).
+- Beat-to-beat HRV and ECG: the app reads the beat times of each HRV reading (`HKHeartbeatSeriesQuery`) and the ECG
+  recordings (`HKElectrocardiogramQuery`: waveform, Apple's classification, average heart rate) from Health itself and
+  sends them straight to the server (`POST /v1/ingest/healthkit`; OW does not carry these types). Same read range as above,
+  incremental (HealthKit anchors, moved only after the server accepted a batch), on every sync on open; one extra Health
+  permission sheet for the two types. Phone sync shows the counts and the last upload. Uploaded only after the person
+  agreed to consent version 2026-10-22.1, which names ECGs and beat-to-beat intervals (the Today page asks once).
 
 ## 1.0.0+1 — 2026-10-18
 First build (iOS only), the state of the public release `v0.1.0`:

@@ -28,7 +28,7 @@ from .sync.api import router as sync_router
 from .history.api import router as history_router
 from .profile.api import router as profile_router
 from .explain.api import router as explain_router
-from .rawdata.api import router as rawdata_router
+from .rawdata.api import ingest_router as rawdata_ingest_router, router as rawdata_router
 from .cardio.api import router as cardio_router
 from .training.api import router as training_router
 from .grocery.api import router as grocery_router
@@ -146,6 +146,7 @@ app.include_router(history_router)
 app.include_router(profile_router)
 app.include_router(explain_router)
 app.include_router(rawdata_router)
+app.include_router(rawdata_ingest_router)   # uploads from the app (rawdata/ingest.py)
 app.include_router(cardio_router)
 app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
