@@ -724,4 +724,7 @@ I18N.addEn({
   "腿": "Legs",
   "选周计划": "Pick a weekly plan",
   "限制原因": "Why restricted",
+  // training day changes (#17)
+  "原计划": "Original plan",
+  "已调整": "Changed",
 });

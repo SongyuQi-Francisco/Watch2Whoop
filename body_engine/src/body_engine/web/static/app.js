@@ -602,6 +602,7 @@
         const tone = t.readiness.tier === "green" ? "good" : t.readiness.tier === "red" ? "bad" : "mid";
         html += `<div class="rcard-tags" style="margin-bottom:6px">${badge(tone, t.readiness.label || tr("恢复自调节"))}</div><div class="small muted" style="margin-bottom:10px">${esc(t.readiness.advice)}</div>`;
       }
+      if (t.change) html += kv(tr("原计划"), esc(t.change.from?.join(" · ") || tr("休息")));
       html += t.planned.length ? t.planned.map((p) => {
         const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
         return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
@@ -636,6 +637,7 @@
       const caution = ex.filter((x) => x.status !== "active").length, up = ex.filter((x) => x.suggestions?.length).length;
       sub = [badge("plain", tr("{n} 动作", { n: ex.length })), caution ? badge("mid", tr("注意 {n}", { n: caution })) : "", up ? badge("good", tr("加重 {n}", { n: up })) : ""].join("");
     }
+    if (t.change) sub += badge("mid", tr("已调整"));
     if (t.logged?.length) sub += badge("good", tr("已练"));
     let food = "";
     if (!n.error) {
@@ -2468,7 +2470,7 @@
   }
 
   // ---- Record tab, training page: this week (plan + what was trained), suggestions, caution exercises, history calendar
-  // /training/week?date= → {start, end, plan, days[{date, planned[{name, exercises}], rest_day}], suggestions[{name, level, title, next_weight_kg}], cautions[{name, status, reason, cues}]};
+  // /training/week?date= → {start, end, plan, days[{date, planned[{name, exercises}], rest_day, change{from[], source, reason}|null}], suggestions[{name, level, title, next_weight_kg}], cautions[{name, status, reason, cues}]};
   // what was trained this week comes from /training/calendar?start=&end=.
   const weekStart = (iso) => addDays(iso, -((parseDay(iso).getDay() + 6) % 7));
   const planShort = (planned) => planned[0].name.replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || planned[0].name;   // week strip: first session, short (i18n-ok: plan names are data)
@@ -2579,7 +2581,7 @@
       const iso = addDays(mon, k), p = planDays[iso], d = done[iso];
       const trained = d && d.sessions_count > 0 && d.intensity !== "rest";
       const label = p?.planned?.length ? planShort(p.planned) : p?.rest_day ? tr("休") : "";
-      week += `<button class="wday ${iso === today ? "today" : ""} ${iso > today ? "future" : ""}" data-wday="${iso}">
+      week += `<button class="wday ${iso === today ? "today" : ""} ${iso > today ? "future" : ""} ${p?.change ? "changed" : ""}" data-wday="${iso}">
         <span class="wd">${WEEK_MON[k]}</span><span class="n">${parseDay(iso).getDate()}</span>${markSvg(trained ? d : null)}
         <span class="pl">${esc(label)}</span></button>`;
     }
@@ -2611,10 +2613,10 @@
   }
 
   function planSheet(iso, day) {
-    const html = day?.planned?.length ? day.planned.map((p) => {
+    const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
       return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
-    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`;
+    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`);
     openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, bindExRows);
   }
 
@@ -2679,6 +2681,7 @@
          [tr("步数"), dl.steps != null ? fmtNum(dl.steps) : null], ["strain", dl.strain != null ? fmtNum(dl.strain, 1) : null],
          [tr("肌肉负荷"), dl.muscle_load != null ? `${fmtNum(dl.muscle_load)} kg` : null], [tr("次日恢复"), dl.recovery_next_day ?? null]]
         .filter(([, v]) => v != null).map(([l, v]) => kv(l, v)).join("")
+      + (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
       + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "") + `</div>`;
   }
 

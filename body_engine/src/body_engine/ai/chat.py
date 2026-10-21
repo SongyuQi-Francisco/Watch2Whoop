@@ -35,11 +35,11 @@ MAX_TEXT = 8000
 # Owner's decision (2026-10-18): logging tools (food, training, weight, journal, labs, templates, recipes, events, supplements,
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Still requires login with write permission, and can only write for the caller.
-ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "delete_journal_entry", "delete_lab_results", "delete_observation",
+ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
                   "delete_supplement", "remove_product", "remove_shopping_items", "delete_workout", "rollback_write"}
 # What the confirm card says for these tools in English (the Chinese card uses the tool description's first sentence)
 CONFIRM_EN = {"undo_sparky_entry": "Delete a food entry / strength workout / set / weigh-in",
-              "undo_meal_log": "Undo a quick meal log", "delete_journal_entry": "Clear a journal answer for a day",
+              "undo_meal_log": "Undo a quick meal log", "undo_day_changes": "Undo day changes to the training plan", "delete_journal_entry": "Clear a journal answer for a day",
               "delete_lab_results": "Delete lab results for a sample date", "delete_observation": "Delete an observation note",
               "delete_supplement": "Delete a supplement and its journal item", "remove_product": "Remove a product",
               "remove_shopping_items": "Remove shopping list items", "delete_workout": "Hide a duplicate / wrong workout",

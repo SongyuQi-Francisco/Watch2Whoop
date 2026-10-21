@@ -302,3 +302,27 @@ SPLIT_TEMPLATES: dict[str, dict] = {
     },
 }
 
+
+# ---------- Day changes: re-planning the rest of the week (training/day_overrides.py) ----------
+# The same major muscle group on two consecutive days leaves < 48 h between sessions, the usual minimum for a trained
+# muscle group to recover (Schoenfeld et al., 2016 Sports Med frequency review; NSCA Essentials 4th ed., ch. 17).
+# Costs only rank the candidate weeks; the cheapest one is chosen (ties: fewest moved days).
+REPLAN_COST_SAME_GROUP = 10.0      # per major muscle group trained on two consecutive days
+REPLAN_COST_SAME_LEGS = 5.0        # extra for legs back to back (largest muscle mass, slowest to recover)
+REPLAN_MAX_STREAK = 3              # training days in a row before each extra day costs REPLAN_COST_STREAK
+REPLAN_COST_STREAK = 3.0
+REPLAN_COST_MOVED = 1.0            # per day whose session differs from the plan's own weekday (keep the week familiar)
+REPLAN_COST_DISTANCE = 0.1         # per day a session is moved away from its own weekday (tie-breaker)
+REPLAN_COST_SKIPPED = 30.0         # per plan session that no longer fits in this week
+REPLAN_COST_RED_NEXT_DAY = 4.0     # recovery red today: training again tomorrow
+OVERRIDE_PAST_DAYS = 7             # reschedule_day / swap_days accept dates from today − 7 ...
+OVERRIDE_FUTURE_DAYS = 28          # ... to today + 28
+# Session names -> major muscle groups when the exercises do not say (SparkyFitness exercises without muscles, free labels)
+SESSION_NAME_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("下肢", "腿", "臀", "leg", "lower"), ("legs",)),
+    (("上肢", "upper"), ("chest", "back", "shoulders", "arms")),
+    (("推", "push", "胸", "chest"), ("chest", "shoulders", "arms")),
+    (("拉", "pull", "背", "back"), ("back", "arms")),
+    (("肩", "shoulder"), ("shoulders",)),
+    (("全身", "full"), ("chest", "back", "legs", "shoulders")),
+)
