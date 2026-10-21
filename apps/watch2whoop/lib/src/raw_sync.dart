@@ -232,7 +232,7 @@ class RawSyncStatus {
   final String? stop;
 
   String? get problem => switch (stop) {
-        'consent' => tr('确认同意书后开始上传', 'Starts after you accept the consent'),
+        'consent' => tr('在今天页确认新版同意书后开始上传', 'Starts after you accept the new consent on the Today page'),
         'unauthorized' => tr('登录失效，打开今天页后重试', 'Signed out; open the Today page to retry'),
         'failed' => tr('上次上传失败，下次打开 app 重试', 'Last upload failed; retries next time you open the app'),
         _ => null,

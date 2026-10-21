@@ -48,11 +48,13 @@ def dsn():
 @pytest.fixture(scope="module")
 def users(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        def add(name, role="member", consent=True):
+        def add(name, role="member", version=I.RAW_CONSENT_VERSION):
             return conn.execute("""INSERT INTO users (display_name, role, consent_at, consent_version)
                                    VALUES (%s, %s, %s, %s) RETURNING id""",
-                                (name, role, "2026-10-01" if consent else None, "v" if consent else None)).fetchone()["id"]
-        ids = {"a": add("a", "owner"), "b": add("b"), "noconsent": add("noconsent", consent=False)}
+                                (name, role, "2026-10-01" if version else None, version)).fetchone()["id"]
+        ids = {"a": add("a", "owner", None), "b": add("b"), "noconsent": add("noconsent", version=None),
+               "old": add("old", version="2026-10-21.1"), "paper": add("paper", version="paper"),
+               "newer": add("newer", version="2026-11-30.2")}
         tok = {n: auth.create_token(conn, i, "t", ["read", "write"]) for n, i in ids.items()}
         tok["a_ro"] = auth.create_token(conn, ids["a"], "ro", ["read"])
         tok["a_ingest"] = auth.create_token(conn, ids["a"], "app:ingest:x", [auth.INGEST_SCOPE])
@@ -172,11 +174,20 @@ def test_ingest_token_from_web_session(client, users):
 
 def test_consent_and_validation(client, users, dsn):
     ids, tok = users
-    r = client.post("/v1/ingest/healthkit", json=batch(heartbeats=[reading(T0)]), headers=H(tok["noconsent"]))
-    assert r.status_code == 409 and r.json()["detail"] == "consent_required"
+    # Never agreed, agreed to a version before ECG / beat-to-beat were named, or on paper: 409, nothing stored
+    for who in ("noconsent", "old", "paper"):
+        r = client.post("/v1/ingest/healthkit", json=batch(heartbeats=[reading(T0)], ecgs=[ecg(T0)]), headers=H(tok[who]))
+        assert r.status_code == 409 and r.json()["detail"] == "consent_required", who
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        assert conn.execute("SELECT count(*) AS n FROM heartbeat_series WHERE user_id = %s",
-                            (ids["noconsent"],)).fetchone()["n"] == 0
+        for who in ("noconsent", "old", "paper"):
+            for table in ("heartbeat_series", "ecg_recordings", "rawdata_uploads"):
+                assert conn.execute(f"SELECT count(*) AS n FROM {table} WHERE user_id = %s",
+                                    (ids[who],)).fetchone()["n"] == 0, (who, table)
+        # Confirming the new version in the app opens it
+        conn.execute("UPDATE users SET consent_version = %s WHERE id = %s", (I.RAW_CONSENT_VERSION, ids["old"]))
+        conn.commit()
+    assert client.post("/v1/ingest/healthkit", json=batch(heartbeats=[reading(T0)]), headers=H(tok["old"])).status_code == 200
+    assert client.post("/v1/ingest/healthkit", json=batch(heartbeats=[reading(T0)]), headers=H(tok["newer"])).status_code == 200
     bad_gaps = reading(T0 + timedelta(days=3))
     bad_gaps["gaps"] = [False]
     assert client.post("/v1/ingest/healthkit", json=batch(heartbeats=[bad_gaps]), headers=H(tok["a"])).status_code == 422

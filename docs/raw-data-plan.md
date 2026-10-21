@@ -262,7 +262,7 @@ GRANT SELECT ON hk_samples, heartbeat_series, workout_details TO grafana_ro;   -
 | P0 ② SDNN vs RMSSD 对比（`hrv-compare`） | ✅ 命令完成；本机 export.xml（到 2026-10-14）的报告已交中控，Ali 上全量数据的报告待部署后跑；**评分仍是 SDNN，等用户确认再切** |
 | P0 ③ ECG 导入、接口（scope `ecg`）、管家摘要工具 | ✅ |
 | P0 ④ HRR60（`cardio/hrr.py`，`workout_hrr`）、Recovery Index 展示（`/cardio`，算法沿用评分引擎的 `rhr_low_offset_min`） | ✅ 本机实测 40 次训练 9 次够强度可算，均值 23 bpm |
-| P0 ⑤ RawSync + ingest 接口 + 同意书改版 | 心跳序列和心电图 ✅（app 直读，`RawSync.swift`、`raw_sync.dart`、`POST /v1/ingest/healthkit`、迁移 430）；其余类型（手腕温度、Apple RMSSD、心律 / 高血压事件等）和同意书改版未做 |
+| P0 ⑤ RawSync + ingest 接口 + 同意书改版 | 心跳序列和心电图 ✅（app 直读，`RawSync.swift`、`raw_sync.dart`、`POST /v1/ingest/healthkit`、迁移 430）；同意书 2026-10-22.1 已加心电图和心跳间期（第 1、2、4、6 条），上传只接受同意了这一版或更新版本的用户；其余类型（手腕温度、Apple RMSSD、心律 / 高血压事件等）未做 |
 | P1 今天页卡片、心肺年龄估算（和身体年龄并列）、watchOS 智能闹钟 | 未开始 |
 
 ## 9a. 原来要你确认的（已确认，保留原文）

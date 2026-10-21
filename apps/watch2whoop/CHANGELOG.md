@@ -34,7 +34,8 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
   recordings (`HKElectrocardiogramQuery`: waveform, Apple's classification, average heart rate) from Health itself and
   sends them straight to the server (`POST /v1/ingest/healthkit`; OW does not carry these types). Same read range as above,
   incremental (HealthKit anchors, moved only after the server accepted a batch), on every sync on open; one extra Health
-  permission sheet for the two types. Phone sync shows the counts and the last upload.
+  permission sheet for the two types. Phone sync shows the counts and the last upload. Uploaded only after the person
+  agreed to consent version 2026-10-22.1, which names ECGs and beat-to-beat intervals (the Today page asks once).
 
 ## 1.0.0+1 — 2026-10-18
 First build (iOS only), the state of the public release `v0.1.0`:

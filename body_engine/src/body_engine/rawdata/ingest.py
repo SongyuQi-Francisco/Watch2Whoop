@@ -6,8 +6,10 @@ SDNN for each reading and the ECG R peaks / heart rate / RMSSD are computed on i
 - Idempotent: samples whose HealthKit UUID is already stored for this user are skipped; a re-sent batch (same batch_id) is
   answered from rawdata_uploads without touching the data (migration 430). The app moves its HealthKit anchor only after a 200.
 - deleted[] = UUIDs HealthKit reports as deleted (the person deleted the reading / ECG in Health): the app copy is removed.
-- Consent: a member who has not agreed yet gets 409 consent_required and the app keeps its anchor and tries again later, so
-  nothing is stored or processed before consent (the stricter reading of consent clause 2).
+- Consent: ECGs and beat-to-beat intervals were first named in consent version RAW_CONSENT_VERSION (clauses 1, 2, 4, 6).
+  Anyone (but the owner) who has not agreed to that version or a later one, including people who agreed to an older one
+  or on paper, gets 409 consent_required: nothing is stored, the app keeps its anchor and tries again after the person
+  confirmed the new consent on the Today page. Other health data is not affected.
 """
 import base64
 import binascii
@@ -19,6 +21,7 @@ from ..profile import consent
 from . import ecg as E
 from . import store
 
+RAW_CONSENT_VERSION = "2026-10-22.1"   # first consent version that names ECGs and beat-to-beat intervals
 MAX_BODY_BYTES = 2 * 1024 * 1024    # the public nginx /v1/ location allows 2 MB; the app aims at ≤ 1 MB per batch
 MAX_HEARTBEATS = 500                # readings per batch (a reading is ~1 minute, ~50 beats)
 MAX_BEATS = 4000                    # beats per reading (Breathe sessions are longer than background readings)
@@ -65,7 +68,7 @@ def _ecg(it: dict) -> E.Ecg:
 
 def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None = None) -> dict:
     """batch: validated payload (rawdata/api.py IngestIn as a dict, datetimes already parsed). Commits. Returns counts."""
-    if consent.needs_consent(conn, user_id):
+    if not consent.agreed_at_least(conn, user_id, RAW_CONSENT_VERSION):
         raise PermissionError("consent_required")
     done = conn.execute("SELECT counts FROM rawdata_uploads WHERE user_id = %s AND batch_id = %s",
                         (user_id, batch["batch_id"])).fetchone()
