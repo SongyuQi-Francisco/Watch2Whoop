@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..assistant.memory_api import _meal_call
 from ..records.api import _owner, _self, current_user, get_conn
-from . import prices, store
+from . import pantry_auto, prices, store
 from .sync import offers as store_offers
 
 router = APIRouter(prefix="/v1/users/{user}/grocery", tags=["grocery"])
@@ -103,6 +103,12 @@ class PantryEntry(BaseModel):
     quantity: float = Field(ge=0)
     unit: Unit
     product_id: int | None = None
+    best_before: dt.date | None = None   # None = keep (issue #104)
+
+
+class PantryAutoIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
 
 
 class StoresIn(BaseModel):
@@ -266,6 +272,17 @@ def delete_item(user: str, item_id: int, conn=Depends(get_conn), viewer=Depends(
 @router.get("/pantry")
 def get_pantry(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     return store.list_pantry(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.get("/pantry-auto")
+def get_pantry_auto(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Whether logged meals take from the pantry (issue #104); the Today page only shows it."""
+    return pantry_auto.status(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.put("/pantry-auto")
+def put_pantry_auto(user: str, body: PantryAutoIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(pantry_auto.set_enabled, conn, _self(viewer, user), body.enabled)
 
 
 @router.put("/pantry")

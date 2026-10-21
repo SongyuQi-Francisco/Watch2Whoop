@@ -374,12 +374,17 @@ def match_product(products: list[dict], name: str) -> dict | None:
 
 # ---------------------------------------------------------------- pantry
 def _pantry_view(r: dict, tz: ZoneInfo) -> dict:
-    """days_ago: whole days since the last change in the user's time zone (the Today page shows 「x 天前更新」)."""
+    """days_ago: whole days since the last change in the user's time zone (the Today page shows 「x 天前更新」).
+    best_before / days_left / expiring (within params.PANTRY_EXPIRY_DAYS or past; the page shows 「x 天后到期」, issue #104)."""
     cat = r.get("category") or guess_category(r["name"])
+    day = datetime.now(tz).date()
+    left = (r["best_before"] - day).days if r.get("best_before") else None
     return {"id": r["id"], "name": r["name"], "quantity": float(r["quantity"]), "unit": r["unit"],
             "label": fmt_qty(float(r["quantity"]), r["unit"]), "product_id": r["product_id"],
             "category": cat, "category_label": category_label(cat), "updated_at": r["updated_at"],
-            "days_ago": max(0, (datetime.now(tz).date() - r["updated_at"].astimezone(tz).date()).days)}
+            "days_ago": max(0, (day - r["updated_at"].astimezone(tz).date()).days),
+            "best_before": r["best_before"].isoformat() if r.get("best_before") else None, "days_left": left,
+            "expiring": left is not None and left <= P.PANTRY_EXPIRY_DAYS}
 
 
 def list_pantry(conn: psycopg.Connection, user_id: int) -> list[dict]:
@@ -399,8 +404,18 @@ def _pantry_row(conn, user_id: int, name: str):
                         (user_id, name.strip())).fetchone()
 
 
+def _best_before(v) -> date | None:
+    if v is None or isinstance(v, date):
+        return v
+    try:
+        return date.fromisoformat(str(v).strip())
+    except ValueError:
+        raise ValueError("best_before 要是 YYYY-MM-DD") from None
+
+
 def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> list[dict]:
-    """items: [{name, quantity, unit, product_id?}]: set what is at home now; quantity 0 = used up (row removed)."""
+    """items: [{name, quantity, unit, product_id?, best_before?}]: set what is at home now; quantity 0 = used up (row removed).
+    best_before None / missing = keep what is stored (issue #104)."""
     if not items:
         raise ValueError("至少给一样")
     for it in items:
@@ -418,10 +433,12 @@ def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> lis
         if q == 0:
             conn.execute("DELETE FROM pantry_items WHERE user_id = %s AND lower(name) = lower(%s)", (user_id, name))
             continue
-        conn.execute("""INSERT INTO pantry_items (user_id, name, product_id, quantity, unit) VALUES (%s, %s, %s, %s, %s)
+        bb = _best_before(it.get("best_before"))
+        conn.execute("""INSERT INTO pantry_items (user_id, name, product_id, quantity, unit, best_before) VALUES (%s, %s, %s, %s, %s, %s)
                         ON CONFLICT (user_id, lower(name)) DO UPDATE SET quantity = EXCLUDED.quantity, unit = EXCLUDED.unit,
-                          product_id = coalesce(EXCLUDED.product_id, pantry_items.product_id), updated_at = now()""",
-                     (user_id, name, pid, q, unit))
+                          product_id = coalesce(EXCLUDED.product_id, pantry_items.product_id),
+                          best_before = coalesce(EXCLUDED.best_before, pantry_items.best_before), updated_at = now()""",
+                     (user_id, name, pid, q, unit, bb))
     return list_pantry(conn, user_id)
 
 

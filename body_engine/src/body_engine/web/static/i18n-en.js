@@ -934,4 +934,10 @@ I18N.addEn({
   "下次该买": "Next buy",
   "每 {n} 天 · {amount}": "Every {n} days · {amount}",
   "{n} 包": "{n} pk",
+  // grocery: pantry follows logged meals, best before (issue #104)
+  "记餐自动扣存货：开": "Logged meals come off the pantry: on",
+  "记餐自动扣存货：关": "Logged meals come off the pantry: off",
+  "已过期": "Expired",
+  "今天到期": "Expires today",
+  "{n} 天后到期": "Expires in {n} d",
 });

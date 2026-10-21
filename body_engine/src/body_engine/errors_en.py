@@ -148,6 +148,7 @@ EXACT: dict[str, str] = {
     "package_unit 只能是 g / ml / pcs": "package_unit must be g / ml / pcs",
     "qty 要是 > 0 的数": "qty must be a number > 0",                       # usual items (grocery/staples.py, #103)
     "unit 只能是 pack / g / ml / pcs": "unit must be pack / g / ml / pcs",
+    "best_before 要是 YYYY-MM-DD": "best_before must be YYYY-MM-DD",       # pantry best before (#104)
     "purine_level 只能是 low / medium / high": "purine_level must be low / medium / high",
     "没有这个商品（或不是你的）": "Product not found (or not yours)",
     "至少给一样": "Give at least one item",

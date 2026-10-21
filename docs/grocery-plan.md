@@ -30,7 +30,18 @@
 ## 3. 买了 / 存货
 - 勾掉一行（今天页点一下，或 AI 调 `mark_bought`）→ `bought_at`，存货加上这一行的购买量；取消勾选再减回去。
 - 告诉 AI 实付价格 → 按包数折成单价，更新商品库价格和日期。
-- 做饭 / 记餐暂时不自动扣存货（粗略即可）：用户说「鸡蛋吃完了」时 AI 调 `set_pantry`。
+- ~~做饭 / 记餐暂时不自动扣存货~~ → **记餐自动扣存货（#104，迁移 510，`grocery/pantry_auto.py`）**：
+  - **开关**：每个用户一个（`grocery_settings.pantry_auto`，空 = `params.PANTRY_AUTO_DEFAULT`，现在是**关**）。用户对 AI 说了才改（`set_pantry_auto`，接口 `GET / PUT …/grocery/pantry-auto`）；今天页「家里存货」下只显示一行状态。
+  - **扣什么**：所有经过 `log_food` 写进 SparkyFitness 的记录：
+    - AI 直接记的：食物名 + 份量文字里第一个能认的量（「2 个」「200 g」「1 碗（约 250g）」；碗 / 份 / 勺不认，`params.AMOUNT_UNITS`）；
+    - 快捷记餐模板：每样食材的克数；
+    - 食谱：整锅食材 × 吃的份数 / 菜谱份数。
+  - **怎么对**：名字和存货名完全一样，或者和存货关联商品的名字 / `matches` 一样（不做包含匹配，「鸡蛋饼」不会扣「鸡蛋」）；换算和生成清单一样（g ↔ ml 1:1，个数用 `piece_g`）。对不上、换算不了的不扣，也不报错。扣到 0 为止，扣到 0 的行删掉（和「用完了」一样）。同一样东西有几行时，先扣保质期最近的，没写保质期的最后扣。
+  - **撤销**：每次扣减按 SparkyFitness 条目 id 记进 `pantry_deductions`，带原来那一行的快照。`undo_sparky_entry`、`undo_meal_log`、今天页删除、`rollback_write`（撤销那条记餐）都会加回去，被删掉的行按快照恢复。AI 写的还进 `ai_write_log`（kind `pantry`），对它 `rollback_write` 只恢复存货、记餐保留。
+  - 有一点没做：改一条记录（`update_food_entry`）不会重新扣。
+- **保质期（#104）**：`pantry_items.best_before`（可以为空）。AI 在用户说「牛奶 10/25 过期」或者读小票时，用 `set_pantry` 的 `best_before` 填；不给就不改。
+  - `PANTRY_EXPIRY_DAYS`（3）天内到期、或者已经过期的，进 `get_shopping_context.expiring` 和 `get_briefing.pantry_expiring`（没有就不出现）。
+  - 今天页存货行上显示短标签「x 天后到期」/「今天到期」/「已过期」。
 - **今天页看得到存货（#102，迁移 490）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
 
 - **常买（#103，迁移 500）**：商品可以标成「常买」（`grocery_products.staple`，带间隔天数 `staple_every_days`、每次买多少 `staple_qty` + `staple_unit`，`pack` = 包数）。
@@ -43,13 +54,13 @@
 ## 4. 接口和工具
 接口（前缀 `/v1/users/{user}/grocery`，scope `nutrition`）：`GET /products?q=&category=`、`POST /products`、`PATCH /products/{id}`、`DELETE /products/{id}`；`GET /list?week=`（周内任一天，默认本周）、`POST /list/generate`、`POST /list/items`、`PATCH /list/items/{id}`（bought、paid_price）、`DELETE /list/items/{id}`；`GET /pantry`、`PUT /pantry`。
 
-AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或按 id / 条码 / 商品页 / 名字 + 品牌更新；`product_url`、`nutrition_source`）、`lookup_barcode`（只读，第 7 节）、`remove_product`、`generate_shopping_list`、`get_shopping_list`（含存货）、`add_shopping_items`、`mark_bought`、`remove_shopping_items`、`set_pantry`、`set_staple`、`remove_staple`（#103）。删除类（`remove_product`、`remove_shopping_items`、`remove_staple`）进 `ai/chat.py` 的 `ALWAYS_CONFIRM` 和 `assistant/.claude/settings.json` 的 `ask`，其余直接写。
+AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或按 id / 条码 / 商品页 / 名字 + 品牌更新；`product_url`、`nutrition_source`）、`lookup_barcode`（只读，第 7 节）、`remove_product`、`generate_shopping_list`、`get_shopping_list`（含存货）、`add_shopping_items`、`mark_bought`、`remove_shopping_items`、`set_pantry`、`set_staple`、`remove_staple`（#103）、`set_pantry_auto`（#104）。删除类（`remove_product`、`remove_shopping_items`、`remove_staple`）进 `ai/chat.py` 的 `ALWAYS_CONFIRM` 和 `assistant/.claude/settings.json` 的 `ask`，其余直接写。
 
 ## 5. 今天页
 饮食 tab →「采购」：本周（周一到周日）清单按类别分组，每行名字 + 「2 包 · 1 kg」+ 估价 + 门店小标签（「Coles」「Woolies」，第 7 节），点一下勾掉；顶部「已买 3 / 12」和估计总价；健康提示用短标签。下面是商品库（搜索、点开看规格 / 价格 / 每 100g 营养）。前端在 `web/static/grocery.js`（和 profile.js、history.js 一样登记在 `window.BodyPlugins`，app.js 只加了挂载点）。
 
 ## 6. 以后
-- 做饭 / 记餐后按食材自动扣存货；保质期提醒。
+- ~~做饭 / 记餐后按食材自动扣存货；保质期提醒~~（#104 做了，见第 3 节）。
 - 按门店拆单、比价（同一食材多个商品时按单价挑）。
 - 条码扫描（app 里调相机）直接查商品库（查到 Open Food Facts 的用 `lookup_barcode`）。
 

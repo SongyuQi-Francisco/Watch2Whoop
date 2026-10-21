@@ -75,6 +75,7 @@ NO_DATA = {
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
     "grocery/stores": "setting: which supermarkets are connected",
+    "grocery/pantry-auto": "setting: whether logged meals come off the pantry (issue #104)",
     "grocery/list/items/{x}": "write: tick an item",
     "feedback/{x}": "write: +1 / withdraw feedback",
     "feedback-mode": "setting",

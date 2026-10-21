@@ -104,3 +104,21 @@ STAPLE_DEFAULT_EVERY_DAYS = 7
 STAPLE_MIN_DAYS = 1
 STAPLE_MAX_DAYS = 180
 STAPLE_UNITS = ("pack", "g", "ml", "pcs")   # pack = whole packages of the product
+
+# ---------------------------------------------------------------- pantry goes down with logged meals (issue #104)
+# Default of the per-user switch (grocery_settings.pantry_auto NULL). Off: changing someone's pantry without asking is the bigger
+# surprise, and the pantry is rough (docs/grocery-plan.md §3); each user (or the AI on their word) turns it on. Owner's call (PR).
+PANTRY_AUTO_DEFAULT = False
+# Best before: items within this many days (or already past) are listed in get_shopping_context / get_briefing and get the short
+# 「x 天后到期」 label on the Today page. 3 days ≈ the "use within a few days" window of chilled food once it is close; a
+# judgement call, tune here.
+PANTRY_EXPIRY_DAYS = 3
+PANTRY_EXPIRY_MAX = 10       # at most this many in get_briefing / get_shopping_context
+# Amounts in a logged food's free-text amount ("2 个", "200 g", "1 碗（约 250g）") -> (factor, pantry unit). Only these; anything
+# else (碗, 份, 勺, slices) is not deducted. Latin units need a non-letter after them ("1 large" is not litres).
+AMOUNT_UNITS = {
+    "kg": (1000, "g"), "千克": (1000, "g"), "公斤": (1000, "g"), "g": (1, "g"), "克": (1, "g"),
+    "ml": (1, "ml"), "毫升": (1, "ml"), "l": (1000, "ml"), "升": (1000, "ml"),
+    "个": (1, "pcs"), "只": (1, "pcs"), "枚": (1, "pcs"), "颗": (1, "pcs"), "根": (1, "pcs"), "pcs": (1, "pcs"),
+    "pc": (1, "pcs"), "pieces": (1, "pcs"), "piece": (1, "pcs"),
+}

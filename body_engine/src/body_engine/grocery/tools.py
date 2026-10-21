@@ -4,7 +4,7 @@ tests/test_briefing.py). Write tools have no user parameter: they write only for
 from datetime import date
 
 from ..toolspec import USER, nullable, schema
-from . import off, params as P, prices, store
+from . import off, pantry_auto, params as P, prices, store
 from .sync import offers as SO
 
 _n = nullable
@@ -220,10 +220,18 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="set_pantry",
-        description="设家里现在有多少（粗略），例如「鸡蛋还剩 6 个」；quantity=0 = 用完了。",
+        description="设家里现在有多少（粗略），例如「鸡蛋还剩 6 个」；quantity=0 = 用完了；best_before 保质期（null=不改）。",
         input_schema=schema({"items": {"type": "array", "items": schema({
-            "name": {"type": "string"}, "quantity": {"type": "number"}, "unit": UNIT, "product_id": _n("integer")})}}),
+            "name": {"type": "string"}, "quantity": {"type": "number"}, "unit": UNIT, "product_id": _n("integer"),
+            "best_before": _n("string", "YYYY-MM-DD")})}}),
         handler=lambda conn, uid, a: store.set_pantry(conn, uid, a["items"]),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="set_pantry_auto",
+        description="开 / 关记餐时自动扣存货（用户说了才改）。",
+        input_schema=schema({"enabled": {"type": "boolean"}}),
+        handler=lambda conn, uid, a: pantry_auto.set_enabled(conn, uid, a["enabled"]),
         scope="nutrition", writes=True,
     ),
 ]

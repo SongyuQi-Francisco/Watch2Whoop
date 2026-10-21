@@ -120,7 +120,10 @@ def _ensure_food(client, it: dict) -> tuple[str, str]:
 
 
 def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_duplicates: bool,
-             client: sparky_client.SparkyClient | None = None) -> dict:
+             client: sparky_client.SparkyClient | None = None, deduct: bool = True) -> dict:
+    """deduct: take what was eaten from the pantry (grocery/pantry_auto.py, issue #104; only when the user's switch is on).
+    Quick meals / recipes pass False and deduct their own ingredients per entry."""
+    from ..grocery import pantry_auto   # grocery imports assistant
     if not items:
         raise ValueError("items 不能为空")
     checked = []
@@ -139,7 +142,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
     client = client or sparky_client.write_client_for_user(conn, user_id)
     meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
     days: dict[date, list] = {}
-    created, skipped = [], []
+    created, skipped, pantry = [], [], []
     for d, it in checked:
         if d not in days:
             days[d] = client.get(f"/food-entries/by-date/{d.isoformat()}") or []
@@ -155,12 +158,15 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
         writelog.record(conn, "food", "create", row["id"], None, row)
         opt = {f: it.get(f) for f in extras.OPTIONAL}
         extras.save(conn, user_id, row["id"], d, opt, it.get("sugary_drink"))   # added sugar has no SparkyFitness field
+        if deduct:
+            pantry += pantry_auto.deduct_logged(conn, user_id, row["id"], d, it["food"], it["amount"])
         created.append({"id": row["id"], "date": d.isoformat(), "meal": it["meal"], "food": it["food"].strip(),
                         "amount": it["amount"].strip(), "calories": it["calories"], "protein_g": it["protein_g"],
                         "carbs_g": it["carbs_g"], "fat_g": it["fat_g"],
                         **{k: v for k, v in opt.items() if v is not None}})
     return {"created": created, "skipped_duplicates": skipped, "warnings": warnings,
-            "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉，改用 update_food_entry"}
+            **({"pantry_used": pantry} if pantry else {}),
+            "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉（扣掉的存货会加回去），改用 update_food_entry"}
 
 
 def _create_food(client, meal_ids: dict, d: date, it: dict) -> dict:
@@ -618,8 +624,16 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
         row = _match_food(rows, d, meal, food, time)
     client.request("DELETE", _entry_path(kind, row))
     writelog.record(conn, "food" if kind == "food" else "session", "delete", row["id"], row, None)
+    back = _pantry_back(conn, user_id, row["id"]) if kind == "food" else []
     return {"deleted": {"kind": kind, "date": d.isoformat(), "id": row["id"],
-                        "name": row.get("food_name") or row.get("name"), "source": row.get("source")}}
+                        "name": row.get("food_name") or row.get("name"), "source": row.get("source")},
+            **({"pantry_restored": back} if back else {})}
+
+
+def _pantry_back(conn, user_id: int, entry_id) -> list[dict]:
+    """A food entry is gone: what it took from the pantry goes back (grocery/pantry_auto.py, issue #104)."""
+    from ..grocery import pantry_auto
+    return pantry_auto.restore(conn, user_id, entry_id)
 
 
 def _delete_set(conn, client, d: date, set_id) -> dict:
@@ -659,6 +673,7 @@ def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_i
     if row is None:
         raise LookupError(f"{day} 没有这条饮食记录（可能已经删了）")
     client.request("DELETE", _entry_path("food", row))
+    _pantry_back(conn, user_id, row["id"])
     return {"deleted": {"id": row["id"], "date": day.isoformat(), "meal": row.get("meal_type"),
                         "food": row.get("food_name"), "source": row.get("source")}}
 
@@ -695,6 +710,7 @@ def rollback(conn, user_id: int, kind: str, action: str, before, after, client=N
         if action == "create":
             row = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
             client.request("DELETE", _entry_path("food", row))
+            _pantry_back(conn, user_id, row["id"])
             return {"deleted": row["id"]}
         if action == "delete":
             return {"restored": _recreate_food(client, before)["id"]}

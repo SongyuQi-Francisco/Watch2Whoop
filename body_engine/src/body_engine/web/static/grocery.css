@@ -41,3 +41,4 @@
 .gspark .gsp-dot { fill: var(--good); }
 .gspark .gpaid-dot { fill: var(--text); }
 button.gstore { background: none; font-family: inherit; cursor: pointer; }   /* 「用完了」 on a pantry row (issue #102) */
+.gauto { margin: -4px 2px 10px; }   /* 「记餐自动扣存货：开 / 关」 under 「家里存货」 (issue #104) */

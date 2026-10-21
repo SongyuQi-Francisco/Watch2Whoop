@@ -21,7 +21,9 @@
    List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought.
    Usual items (issue #103): list lines of a usual-item product (item.staple; source staple = added because it is due) get 「常买」;
    products carry staple_info.next_due -> 「下次该买 10/28」 on the row and in the sheet. Marking is done by the AI after the user
-   confirms (set_staple); the page only shows it. */
+   confirms (set_staple); the page only shows it.
+   Pantry follows logged meals (issue #104): GET …/grocery/pantry-auto -> one status line under 「家里存货」 (switched by the AI,
+   set_pantry_auto); pantry rows with a best before close by (expiring) get 「x 天后到期」 / 「今天到期」 / 「已过期」. */
 (() => {
   "use strict";
   let C = null;
@@ -32,6 +34,7 @@
   let specials = null;  // last GET /grocery/specials (this week's half price, grocery-sync)
   let sprods = null;    // last GET /grocery/store-products (this user's own store products and latest prices)
   let pantry = null;    // last GET /grocery/pantry (what is at home)
+  let pantryAuto = null; // last GET /grocery/pantry-auto ({enabled, label})
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -201,14 +204,19 @@
 
   function pantryRow(p) {
     const age = p.days_ago == null ? "" : p.days_ago <= 0 ? tr("今天更新") : tr("{n} 天前更新", { n: p.days_ago });
+    const left = p.days_left;
+    const exp = p.expiring && left != null
+      ? badge(left <= 0 ? "bad" : "mid", left < 0 ? tr("已过期") : left === 0 ? tr("今天到期") : tr("{n} 天后到期", { n: left })) : "";
     const btn = info.self ? `<span class="glinks"><button class="gstore" data-gpu="${esc(p.id)}" aria-label="${esc(tr("{name} 用完了", { name: p.name }))}">${esc(tr("用完了"))}</button></span>` : "";
-    return `<div class="grow"><div class="item"><span class="row-title">${esc(p.name)}</span>
-      <span class="val">${esc(p.label)}<small class="gage">${esc(age)}</small></span></div>${btn}</div>`;
+    return `<div class="grow"><div class="item"><span class="row-title">${esc(p.name)}</span>${exp}
+      <span class="val">${esc(p.label)}${exp ? "" : `<small class="gage">${esc(age)}</small>`}</span></div>${btn}</div>`;   // phone width: the expiry badge wins over 「x 天前更新」
   }
 
   function pantryHtml() {
     const xs = Array.isArray(pantry) ? pantry : [];
-    const head = `<div class="section-head"><h2>${esc(tr("家里存货"))}</h2><span class="small muted">${xs.length || ""}</span></div>`;
+    const auto = pantryAuto && !pantryAuto.error
+      ? `<div class="small muted gauto">${esc(pantryAuto.enabled ? tr("记餐自动扣存货：开") : tr("记餐自动扣存货：关"))}</div>` : "";
+    const head = `<div class="section-head"><h2>${esc(tr("家里存货"))}</h2><span class="small muted">${xs.length || ""}</span></div>${auto}`;
     if (!xs.length) return `${head}<div class="card"><div class="empty">${esc(tr("暂无存货"))}</div></div>`;
     const by = new Map();
     for (const p of xs) { if (!by.has(p.category)) by.set(p.category, []); by.get(p.category).push(p); }   // the server sorts by category, then name
@@ -239,7 +247,7 @@
     }
     C.toast(tr("已用完 · {name}", { name: p.name }), tr("撤销"), async () => {
       try {
-        await putPantry({ name: p.name, quantity: p.quantity, unit: p.unit, product_id: p.product_id });
+        await putPantry({ name: p.name, quantity: p.quantity, unit: p.unit, product_id: p.product_id, best_before: p.best_before });
         C.toast(tr("已撤销 · {name}", { name: p.name }));
       } catch (e) {
         C.toast(e.message || tr("没有保存"));
@@ -311,13 +319,14 @@
   async function foodShop(i) {
     info = i;
     const wk = i.date ? `?week=${encodeURIComponent(i.date)}` : "";
-    [list, products, stores, specials, sprods, pantry] = await Promise.all([
+    [list, products, stores, specials, sprods, pantry, pantryAuto] = await Promise.all([
       C.api(`${base()}/list${wk}`).catch((e) => ({ error: e })),
       C.api(`${base()}/products`).catch((e) => ({ error: e })),
       i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
       C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e })),
       C.api(`${base()}/store-products`).catch(() => null),
       C.api(`${base()}/pantry`).catch(() => null),
+      C.api(`${base()}/pantry-auto`).catch((e) => ({ error: e })),
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
       <div class="section" id="g-pantry">${pantryHtml()}</div>
