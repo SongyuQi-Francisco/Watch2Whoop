@@ -8,6 +8,11 @@ from ..toolspec import OPT_DAY, OPT_END, USER, schema
 from . import scenes
 
 
+def _is_fallback(a: dict) -> bool:
+    from ..ai import fallback   # ai.fallback imports the tool registry
+    return a.get("_channel") == f"api:{fallback.KIND}"   # the in-page chat's channel (ai/chat._exec)
+
+
 def _d(s: str | None) -> date | None:
     return date.fromisoformat(s) if s else None
 
@@ -29,6 +34,6 @@ TOOL_SPECS: list[dict] = [
          description="做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、"
                      "plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
          input_schema=schema({"name": {"type": "string", "enum": list(playbooks.NAMES)}}),
-         handler=lambda conn, uid, a: playbooks.get(a["name"]),
+         handler=lambda conn, uid, a: playbooks.get(a["name"], for_fallback=_is_fallback(a)),
          group="help", scope="profile"),
 ]

@@ -271,6 +271,20 @@ def test_meta_tools_stay_inside_the_whitelist(client, world, dsn):
     assert results["m2"]["is_error"] and "get_ecg_list" in results["m2"]["content"]
     assert '"F1"' in results["m3"]["content"] and '"F2"' not in results["m3"]["content"]
 
+
+def test_playbooks_the_fallback_cannot_do(client, world, dsn):
+    """#109 review: get_playbook through the fallback AI returns the playbook only when every tool in it is whitelisted."""
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    FakeAdapter.script = [{"tool_calls": [{"id": "p1", "name": "get_playbook", "args": {"name": "plan_shopping"}},
+                                          {"id": "p2", "name": "get_playbook", "args": {"name": "plan_training_week"}}]},
+                          {"text": "好"}]
+    r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "帮我规划采购"})
+    assert r.status_code == 200, r.text
+    results = {b["id"]: b["content"] for b in FakeAdapter.calls[1]["history"][-1]["content"]}
+    assert "需要用户自己的 AI" in results["p1"] and "get_shopping_context" not in results["p1"]
+    assert "get_training_context" in results["p2"]
+
 def test_write_needs_confirmation(client, world, dsn, monkeypatch):
     ids, tok = world
     from body_engine.ai import chat as chat_mod

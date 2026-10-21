@@ -6,6 +6,8 @@ from importlib import resources
 import pytest
 
 from body_engine.ai import fallback, playbooks
+from body_engine.ai import params as P
+from body_engine.assistant import toolsets
 from body_engine.assistant.tools import TOOLS_BY_NAME
 
 KEY_TOOLS = {
@@ -60,3 +62,33 @@ def test_fallback_gets_the_scene_tools_but_no_ecg():
     names = set(fallback.TOOL_NAMES)
     assert {"get_playbook", "get_training_context", "get_week_review_context"} <= names
     assert not {"get_ecg_list", "get_cardio"} & names
+
+
+
+@pytest.mark.parametrize("name", playbooks.NAMES)
+def test_tools_not_listed_are_reachable_through_find_tools(name):
+    """Review of #109: over MCP most tools a playbook names are not in tools/list. Every playbook says how to reach them
+    (the same line in the prompt and in get_playbook), and every named tool is listed or comes back from find_tools."""
+    text = playbooks.text(name)
+    assert playbooks.FIND_LINE in text and text.index(playbooks.FIND_LINE) < text.index("## 步骤")
+    listed = {t.name for t in toolsets.for_mcp(True)}
+    access = toolsets.Access(TOOLS_BY_NAME, True, frozenset(P.ALWAYS_CONFIRM))
+    for tool in playbooks.tools_mentioned(name) - listed:
+        found = {e["name"]: e for e in toolsets.find(access, group=TOOLS_BY_NAME[tool].group)["tools"]}
+        assert found[tool]["run"] in (toolsets.RUN_READ, toolsets.RUN_WRITE), tool
+
+
+def test_fallback_flags():
+    """Owner's decision: the whitelist is not widened. A playbook marked for the fallback names only whitelisted tools;
+    the lite prompt lists exactly those; get_playbook from the fallback AI answers the others with FALLBACK_NO."""
+    assert set(playbooks.FALLBACK) == set(playbooks.NAMES)
+    lite = (resources.files("body_engine.ai") / "system_prompt_lite.md").read_text(encoding="utf-8")
+    tool = TOOLS_BY_NAME["get_playbook"]
+    for n, ok in playbooks.FALLBACK.items():
+        missing = playbooks.tools_mentioned(n) - set(fallback.TOOL_NAMES)
+        assert (not missing) if ok else missing, (n, missing)        # the flag matches the whitelist exactly
+        assert (n in lite) == ok, n
+        got = tool.handler(None, 1, {"name": n, "_channel": f"api:{fallback.KIND}"})
+        assert got["text"] == (playbooks.text(n) if ok else playbooks.FALLBACK_NO)
+        assert tool.handler(None, 1, {"name": n, "_channel": "mcp"})["text"] == playbooks.text(n)
+    assert any(playbooks.FALLBACK.values())                          # else the lite prompt line goes (and the PR says so)
