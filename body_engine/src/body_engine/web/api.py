@@ -7,6 +7,7 @@
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions; also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
+- /app/media/: exercise demo images in the deployment's own media storage (BODY_MEDIA_DIR; training/media.py downloads them once).
 """
 from datetime import date
 from pathlib import Path
@@ -17,11 +18,12 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..training import catalog as tr_catalog
 from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.41-2026-10-22"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.47-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -194,10 +196,26 @@ def month_days(user: str, month: Annotated[str | None, Query(pattern=r"^\d{4}-(0
     return views.month_days(conn, viewer, owner_id, month or views.local_today(conn, owner_id).strftime("%Y-%m"))
 
 
+class MediaFiles(StaticFiles):
+    """Exercise demo images (BODY_MEDIA_DIR/…): the directory is looked up per request, so it may appear after start-up."""
+
+    def __init__(self):
+        super().__init__(directory=tr_catalog.media_dir(), check_dir=False)
+
+    async def check_config(self) -> None:   # no media downloaded yet = every image is a 404, not a server error
+        return None
+
+    def lookup_path(self, path: str):
+        self.all_directories = [str(tr_catalog.media_dir())]
+        return super().lookup_path(path)
+
+
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
-    if path.startswith("/app"):
+    if path.startswith("/app/media/"):   # exercise demo images: pinned upstream commit, never change
+        response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
+    elif path.startswith("/app"):
         response.headers["Content-Security-Policy"] = CSP
         response.headers["Cache-Control"] = "no-cache"  # Revalidate with the server every time (offline is covered by the service worker)
     if path.startswith("/v1/"):
@@ -210,6 +228,8 @@ async def security_headers(request: Request, call_next):
 def install(app: FastAPI) -> None:
     """Call once from api.py: endpoints, static files, security headers."""
     app.include_router(router)
+    # Exercise demo images downloaded once by `body-engine fetch-exercise-db --images` (training/media.py); mounted before /app
+    app.mount("/app/media", MediaFiles(), name="media")
     app.mount("/app", StaticFiles(directory=STATIC, html=True), name="web")
     app.add_api_route("/", lambda: RedirectResponse("/app/"), include_in_schema=False)
     app.middleware("http")(security_headers)

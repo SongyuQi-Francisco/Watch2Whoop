@@ -132,8 +132,7 @@ def test_reschedule_today_and_replan_rest_of_week(conn, world):
     ids, _tok, mon = world
     a = ids["A"]
     base = plans.get_week_plan(conn, a, a, mon)
-    assert _names(base)[:5] == ["上肢 A（拉为主）", "下肢 A（深蹲为主）", "肩部康复 / 灵活性 routine", "上肢 B（推为主）",
-                                "下肢 B（髋铰链为主）"]
+    assert _names(base)[:5] == ["上肢 A（拉为主）", "下肢 A（深蹲为主）", "休息", "上肢 B（推为主）", "下肢 B（髋铰链为主）"]
 
     res = OV.reschedule_day(conn, a, mon, "下肢 B", reason="今天想练腿")
     assert res["before"] == "上肢 A（拉为主）" and res["after"] == "下肢 B（髋铰链为主）" and res["matched"] == "name"
@@ -176,7 +175,8 @@ def test_swap_rest_custom_and_undo(conn, world):
     assert conn.execute("SELECT 1 FROM training_day_overrides WHERE user_id = %s AND date = %s", (a, sat)).fetchone() is None
 
     undone = OV.undo_day_changes(conn, a, mon, sun)
-    assert undone["restored"] and _names(plans.get_week_plan(conn, a, a, mon)) == _names(plans.get_week_plan(conn, a, a, mon - timedelta(days=7)))
+    assert undone["restored"] and _names(plans.get_week_plan(conn, a, a, mon)) == [
+        "上肢 A（拉为主）", "下肢 A（深蹲为主）", "休息", "上肢 B（推为主）", "下肢 B（髋铰链为主）", "休息", "休息"]   # the plan's own week
 
 
 def test_replan_preview_and_recovery_red(conn, world):
