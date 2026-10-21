@@ -161,7 +161,11 @@ def main() -> None:
     x.add_argument("--user-id", type=int, required=True)
     x.add_argument("--dry-run", action="store_true", help="only print the comparison table, do not write to the database")
     sx = sub.add_parser("seed-exercises", help="seed the bilingual exercise_catalog table (curated overlay + optional free-exercise-db exercises.json; idempotent)")
-    sx.add_argument("--free-exercise-db", type=Path, help="optional path to yuhonas/free-exercise-db dist/exercises.json (Unlicense)")
+    sx.add_argument("--free-exercise-db", "--free-db-json", dest="free_exercise_db", type=Path, help="optional path to yuhonas/free-exercise-db dist/exercises.json (Unlicense)")
+    sx.add_argument("--free-db", action="store_true", help="import the pinned free-exercise-db (downloads exercises.json into the media dir first if missing)")
+    fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
+                        "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
+    fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
 
     m = sub.add_parser("memory-init", help="generate the body butler's initial profile card (existing database data + optional body-management.md transcription; only fills in missing items)")
     m.add_argument("--user-id", type=int, required=True)
@@ -241,6 +245,10 @@ def main() -> None:
         subject, text = mailer.code_message("123456", 10)
         mailer.send(args.to, "[test] " + subject, text)
         print("sent via", mailer.mode())
+        return
+    if args.cmd == "fetch-exercise-db":  # does not connect to the database
+        from .training import media as tr_media
+        print(json.dumps(tr_media.fetch(images=args.images), ensure_ascii=False, indent=1))
         return
     if args.cmd == "ai-key-init":  # does not connect to the database
         path, created = ai_crypto.init_master_key()
@@ -388,8 +396,9 @@ def main() -> None:
         elif args.cmd == "link-exercises":
             print(exercise_link.format_report(exercise_link.run(conn, args.user_id, dry_run=args.dry_run)))
         elif args.cmd == "seed-exercises":
-            from .training import catalog as tr_catalog
-            print(json.dumps(tr_catalog.seed_catalog(conn, args.free_exercise_db), ensure_ascii=False))
+            from .training import catalog as tr_catalog, media as tr_media
+            src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
+            print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
         elif args.cmd == "memory-init":
             res = assistant_memory.init_profile(conn, args.user_id, memory_seed.MD_PROFILE if args.from_md else None)
             res["status"] = assistant_status.init_status(conn, args.user_id, with_seed=args.from_md)
