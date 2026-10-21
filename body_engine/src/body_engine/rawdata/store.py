@@ -4,6 +4,7 @@ from datetime import datetime
 import psycopg
 from psycopg.types.json import Jsonb
 
+from ..i18n import is_en
 from . import ecg as E
 from . import hrv as H
 
@@ -72,6 +73,7 @@ def _ecg_summary(r: dict, tz=None) -> dict:
     start = r["start_at"].astimezone(tz) if tz else r["start_at"]
     return {"id": r["id"], "start_at": start.isoformat(timespec="seconds"), "classification": r["classification"],
             "classification_zh": E.CLASS_ZH.get(r["classification"], r["classification"]),
+            "classification_text": (E.CLASS_EN if is_en() else E.CLASS_ZH).get(r["classification"], r["classification"]),
             "classification_label": r["classification_label"], "symptoms": r["symptoms"],
             "hr": r["apple_avg_hr"] or d.get("hr"), "rmssd": d.get("rmssd"), "quality": d.get("quality"),
             "duration_s": round(r["n_samples"] / r["sample_hz"], 1), "device": r["device"], "origin": r["origin"]}

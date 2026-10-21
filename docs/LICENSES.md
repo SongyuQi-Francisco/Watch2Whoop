@@ -18,6 +18,9 @@ Third-party components are **not part of this repository's code** and keep their
 - **SparkyFitness** — its author's own **non-commercial** licence. It runs as a separate, **unmodified** service from the official images, and this project talks to it only through its HTTP API; none of its code is in this repository. Self-hosting for yourself and your family is fine; any commercial use has to respect (or replace) SparkyFitness, which our licence cannot change.
 - **Grafana OSS** — AGPL-3.0, optional, a separate unmodified service; the dashboards and provisioning files here are our own.
 - **Jarvis button icon** — "sparkles" from [Tabler Icons](https://tabler.io/icons), MIT.
+- **Exercise data and demo images** — [free-exercise-db](https://github.com/yuhonas/free-exercise-db), Unlicense (public domain). Pinned commit, downloaded once into each deployment's own media storage by `body-engine fetch-exercise-db --images`; the images are not in this repository and are never loaded from GitHub at runtime.
+- **Muscle map** (`body_engine/src/body_engine/web/static/muscle-map.js`) — body outline polygons from [react-body-highlighter](https://github.com/giavinh79/react-body-highlighter) (commit d03fcd8), **MIT**, Copyright (c) 2020 GV79. The MIT notice is kept in the file header.
+- **Not used:** the exercise demo images / animations shipped with openGym come from Gym visual (gymvisual.com) and are licensed to openGym only. Using them would need a licence from gymvisual.com first.
 - PostgreSQL, Redis, SeaweedFS and the Python / Dart libraries are used under their own (permissive or LGPL / AGPL-compatible) licences.
 
 Contributions are accepted under the licence of the directory they change (inbound = outbound, no CLA); see [CONTRIBUTING.md](../CONTRIBUTING.md).
@@ -29,7 +32,7 @@ Contributions are accepted under the licence of the directory they change (inbou
 - **服务器部分用 GNU AGPL-3.0**（根目录 [`LICENSE`](../LICENSE)）：除下面两个目录以外的全部内容，包括 Body Engine（`body_engine/`）、部署和运维（`deploy/`）、快捷指令接收器（`health_sync/`）、AI 管家工作目录（`assistant/`）、Quick Start、tools、docs。可以自由使用、自托管、修改和分享；如果把**改过的**版本作为网络服务提供给别人用，就必须向这些用户提供源代码。
 - **iOS app（`apps/watch2whoop/`）和快捷指令（`shortcuts/`）用 MIT**（各自目录下的 `LICENSE`），方便通过 App Store / TestFlight 分发和在任何地方复用。
 
-第三方组件**不属于本仓库的代码**，保持各自的许可证：Open Wearables 是 MIT（钉版本的 submodule 和官方镜像）；SparkyFitness 是作者自定义的**非商业**许可，作为**未修改**的独立服务（官方镜像）运行，本项目只通过它的 HTTP API 交互，代码不在本仓库——自己和家人自托管没问题，商业用途必须遵守（或替换掉）SparkyFitness 的许可，我们的许可证改变不了这一点；Grafana OSS 是 AGPL-3.0，可选、未修改的独立服务，这里的看板和配置文件是我们自己写的；PostgreSQL、Redis、SeaweedFS 以及 Python / Dart 依赖按各自的许可证使用。
+第三方组件**不属于本仓库的代码**，保持各自的许可证：Open Wearables 是 MIT（钉版本的 submodule 和官方镜像）；SparkyFitness 是作者自定义的**非商业**许可，作为**未修改**的独立服务（官方镜像）运行，本项目只通过它的 HTTP API 交互，代码不在本仓库——自己和家人自托管没问题，商业用途必须遵守（或替换掉）SparkyFitness 的许可，我们的许可证改变不了这一点；Grafana OSS 是 AGPL-3.0，可选、未修改的独立服务，这里的看板和配置文件是我们自己写的；动作数据和演示图来自 free-exercise-db（Unlicense，公共领域），钉版本，由 `body-engine fetch-exercise-db --images` 一次性下载到各自部署的存储里，不在本仓库、运行时不连 GitHub；动作详情的肌群示意图（`web/static/muscle-map.js`）用 react-body-highlighter 的人体多边形坐标（MIT，Copyright (c) 2020 GV79，文件头保留许可声明）；openGym 自带的演示图 / 动画是 Gym visual（gymvisual.com）只授权给 openGym 的素材，本项目不用，要用需先向 gymvisual.com 申请授权；PostgreSQL、Redis、SeaweedFS 以及 Python / Dart 依赖按各自的许可证使用。
 
 贡献按所改目录的许可证授权（inbound = outbound，不需要签 CLA），见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 

@@ -5,6 +5,7 @@ import math
 import statistics
 from datetime import date, datetime, timedelta
 
+from ..i18n import tl
 from . import params as P
 
 ByDate = dict[date, float]
@@ -25,6 +26,9 @@ def _band(xs: list[float]) -> tuple[float, float] | None:
 
 
 # ---------------------------------------------------------------- HRV status
+HRV_STATUS = {"balanced": "平衡", "high": "偏高", "low": "偏低", "poor": "很低"}
+
+
 def hrv_status(hrv_ms: ByDate, end: date) -> dict | None:
     """7-day mean of ln HRV vs the band of the 60 days before that window. status: balanced / high / low / poor."""
     w0 = end - timedelta(days=P.HRV_STATUS_WINDOW - 1)
@@ -36,7 +40,7 @@ def hrv_status(hrv_ms: ByDate, end: date) -> dict | None:
     avg = statistics.fmean(week)
     lo, hi = m - P.HRV_BAND_SD * sd, m + P.HRV_BAND_SD * sd
     status = "poor" if avg < m - P.HRV_POOR_SD * sd else "low" if avg < lo else "high" if avg > hi else "balanced"
-    return {"status": status, "label": {"balanced": "平衡", "high": "偏高", "low": "偏低", "poor": "很低"}[status],
+    return {"status": status, "label": tl(HRV_STATUS[status], P.EN),
             "avg7_ms": round(math.exp(avg), 1), "band_ms": [round(math.exp(lo), 1), round(math.exp(hi), 1)],
             "baseline_ms": round(math.exp(m), 1), "nights": len(week)}
 
@@ -95,7 +99,7 @@ def training_status(trimp: ByDate, ctl: ByDate, vo2: ByDate, hrv: dict | None, e
         status = "unproductive"
     else:
         status = "maintaining"
-    return {"status": status, "label": TRAINING_STATUS[status], "acwr": ratio,
+    return {"status": status, "label": tl(TRAINING_STATUS[status], P.EN), "acwr": ratio,
             "acute": round(rolling_mean(trimp, end, P.ACUTE_DAYS), 1), "chronic": round(rolling_mean(trimp, end, P.CHRONIC_DAYS), 1),
             "vo2_change_60d": vo2_slope, "trimp_days": days_with}
 
@@ -110,7 +114,7 @@ def load_focus(zone_minutes: dict[date, list[float]], end: date, days: int = P.C
     s = sum(tot)
     if not s:
         return None
-    return {"groups": [{"key": k, "label": lbl, "trimp": round(sum(tot[i] for i in idx)),
+    return {"groups": [{"key": k, "label": tl(lbl, P.EN), "trimp": round(sum(tot[i] for i in idx)),
                         "pct": round(100 * sum(tot[i] for i in idx) / s)} for k, lbl, idx in P.LOAD_FOCUS], "days": days}
 
 
@@ -144,7 +148,7 @@ def resilience(recovery: ByDate, sleep_perf: ByDate, stress: ByDate, end: date) 
     load = statistics.fmean(st) / 3 if st else 0.0
     balance = capacity - 0.5 * load
     key, label = next((k, lbl) for cut, k, lbl in P.RESILIENCE_LEVELS if balance >= cut)
-    return {"level": key, "label": label, "balance": round(balance, 3), "capacity": round(capacity, 3),
+    return {"level": key, "label": tl(label, P.EN), "balance": round(balance, 3), "capacity": round(capacity, 3),
             "stress_load": round(load, 3) if st else None, "days": len(rec)}
 
 
@@ -183,7 +187,7 @@ def illness_risk(z: dict | None, temp_dev: float | None, spo2: float | None) -> 
         signs += 0.5
     score = round(100 * (1 - math.exp(-signs / 2)))
     key, label = next((k, lbl) for cut, k, lbl in P.ILLNESS_LEVELS if score >= cut)
-    return {"score": score, "level": key, "label": label}
+    return {"score": score, "level": key, "label": tl(label, P.EN)}
 
 
 # ---------------------------------------------------------------- chronotype
@@ -209,7 +213,7 @@ def chronotype(nights: list[tuple[datetime, datetime]]) -> dict | None:
             msf -= (sd_f - sd_w) / 2
     key, label = next((k, lbl) for cut, k, lbl in P.CHRONO_BINS if msf < cut)
     m = int(round(msf)) % 1440
-    return {"type": key, "label": label, "mid_sleep": f"{m // 60:02d}:{m % 60:02d}", "free_days": len(free) >= 3,
+    return {"type": key, "label": tl(label, P.EN), "mid_sleep": f"{m // 60:02d}:{m % 60:02d}", "free_days": len(free) >= 3,
             "nights": len(nights)}
 
 
@@ -255,13 +259,16 @@ def recovery_time(strain: ByDate, tsb: ByDate, zone_today: str | None, day: date
 
 
 # ---------------------------------------------------------------- recovery index / heart-rate recovery
+RI_LEVELS = {"good": "前半夜", "fair": "后半夜", "late": "很晚"}
+
+
 def recovery_index(low_offset_min: float | None, asleep_min: float | None) -> dict | None:
     """When the lowest 5-minute heart rate came, as a share of the night (Oura Recovery Index)."""
     if low_offset_min is None or not asleep_min:
         return None
     frac = max(0.0, min(1.0, low_offset_min / asleep_min))
     key = "good" if frac < P.RI_GOOD else "fair" if frac < P.RI_LATE else "late"
-    return {"pct": round(100 * frac), "level": key, "label": {"good": "前半夜", "fair": "后半夜", "late": "很晚"}[key]}
+    return {"pct": round(100 * frac), "level": key, "label": tl(RI_LEVELS[key], P.EN)}
 
 
 def hr_recovery(end_hr: float | None, after_hr: float | None) -> float | None:

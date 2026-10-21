@@ -9,6 +9,9 @@ profile card and recent observations, banned / caution exercises. About 1–1.5k
   unchanged and it is younger than CACHE_TTL_S; any write tool of that user drops it (assistant/tools.run_tool). The fingerprint
   covers the tables the briefing reads; the TTL covers SparkyFitness (strength sessions, weight in the status card), which is outside
   the database. "now" is filled in on every call.
+- Root rules (ai/root_rules.md): every briefing carries `system_rules` (version, the caller's feedback mode, full text) — the one
+  place every AI reliably reads — and, for one's own briefing, `feedback_updates` (status changes of the caller's feedback
+  reports, each shown once). Both are added outside the cache.
 """
 import threading
 import time as _time
@@ -18,7 +21,9 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from .. import auth, queries
+from .. import auth, queries, sparky_client
+from ..ai import root_rules
+from ..feedback import store as feedback_store
 from ..records import store as records_store
 from ..rules import store as rules_store
 from . import memory, status
@@ -65,7 +70,7 @@ def _mean(xs) -> float | None:
 def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
     row = conn.execute(
         """SELECT
-             (SELECT row(display_name, timezone, birth_date, sex, height_cm)::text FROM users WHERE id = %(u)s) AS u,
+             (SELECT row(display_name, timezone, birth_date, sex, height_cm, language)::text FROM users WHERE id = %(u)s) AS u,
              (SELECT row(count(*), max(computed_at))::text FROM daily_scores WHERE user_id = %(u)s AND date >= %(s)s) AS sc,
              (SELECT row(count(*), max(id), max(end_at))::text FROM sleep_sessions WHERE user_id = %(u)s AND wake_date >= %(s)s) AS sl,
              (SELECT row(count(*), max(updated_at))::text FROM workouts WHERE user_id = %(u)s AND start_at >= %(s)s::date - 1) AS w,
@@ -82,7 +87,7 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
 # ---------------------------------------------------------------- sections
 def _me(conn, uid: int) -> dict:
     p = queries.profile(conn, uid) or {}
-    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm")}
+    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm", "language")}
 
 
 def _scores(conn, uid: int, today: date) -> dict:
@@ -135,8 +140,9 @@ def _training(conn, viewer: int, uid: int, today: date) -> dict:
     out = {"days_28": {"training": s["training_days"], "rest": s["rest_days"], "by_type": s["by_type"],
                        "by_intensity": {k: v for k, v in s["by_intensity"].items() if v and k != "rest"}},
            "streak_days": streak, "last_7": last7}
-    if cal.get("sparky_error"):
-        out["sparky_error"] = cal["sparky_error"]
+    if cal.get("sparky_error"):   # issue #66 FB-4: say it plainly so the AI tells the user (no admin commands)
+        link = sparky_client.link_state(conn, uid)
+        out["training_log"] = {"state": link["state"], "tell_user": link.get("hint") or cal["sparky_error"][:200]}
     return out
 
 
@@ -215,8 +221,26 @@ def _now(tz: str) -> str:
     return f"{now:%Y-%m-%d %H:%M} 周{'一二三四五六日'[now.weekday()]}"
 
 
+def _rules(conn: psycopg.Connection, viewer_id: int) -> dict:
+    return {"version": root_rules.version(), "feedback_mode": feedback_store.mode(conn, viewer_id), "text": root_rules.text()}
+
+
+def _updates(conn: psycopg.Connection, user_id: int) -> dict:
+    try:
+        with conn.transaction():
+            u = feedback_store.updates_for_briefing(conn, user_id)
+    except Exception:  # never let the feedback queue spoil the briefing
+        return {}
+    return {"feedback_updates": u} if u else {}
+
+
 def get(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
-    """The briefing, from the cache when the caller reads their own and nothing changed."""
+    """The briefing, from the cache when the caller reads their own and nothing changed; root rules always added fresh."""
+    return {**_get(conn, viewer_id, owner_id), "system_rules": _rules(conn, viewer_id),
+            **(_updates(conn, viewer_id) if viewer_id == owner_id else {})}
+
+
+def _get(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
     if viewer_id != owner_id:  # family view: never cached (sections depend on the viewer's shares)
         res = build(conn, viewer_id, owner_id)
         return {"now": _now(res["timezone"]), **res}

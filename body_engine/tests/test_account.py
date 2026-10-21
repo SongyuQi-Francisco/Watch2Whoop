@@ -577,7 +577,7 @@ def test_login_page_is_a_step_flow(client):
     for step in ("ls-email", "ls-code", "ls-invite"):
         assert re.search(rf'<form id="{step}"[^>]*\bhidden\b', login)
     other = login[login.index('<details class="login-other"'):login.index("</details>")]
-    assert " open" not in other.split(">")[0] and "<summary>其他登录方式</summary>" in other and 'id="login-form"' in other
+    assert " open" not in other.split(">")[0] and "<summary data-i18n=\"其他登录方式\">其他登录方式</summary>" in other and 'id="login-form"' in other
     assert 'data-step="email"' in login and 'data-step="code"' in login and 'data-step="invite"' in login
     js = client.get("/app/account.js").text
     assert "loginShown" in js and "showPending" in js and "apple-sign-in" in js
@@ -676,16 +676,17 @@ def test_referral_code_through_the_api_and_web(client, dsn, _env, monkeypatch):
 
 
 def test_referral_and_invite_step_texts_are_bilingual(client):
-    """Every tr("中文") key in account.js and every data-i18n key of the invite step has English (account.js EN table,
-    same convention as #20's i18n layer: the Chinese source text is the key, {name} placeholders match)."""
+    """Every tr("中文") key in account.js and every data-i18n key of the invite step has English in #20's i18n-en.js
+    (the Chinese source text is the key, {name} placeholders match)."""
     import re
     js = client.get("/app/account.js").text
-    table = js[js.index("const EN = {"):js.index("};", js.index("const EN = {"))]
+    table = client.get("/app/i18n-en.js").text
     en = dict(re.findall(r'^\s*"([^"]+)": "([^"]+)",$', table, re.M))
     keys = set(re.findall(r'\btr\("([^"]+)"', js))
     html = client.get("/app/").text
     step = html[html.index('<form id="ls-invite"'):html.index("</form>", html.index('<form id="ls-invite"'))]
     keys |= set(re.findall(r'data-i18n(?:-aria)?="([^"]+)"', step))
+    keys = {k for k in keys if re.search(r"[\u4e00-\u9fff]", k)}   # dotted keys (err.request) live in i18n.js
     assert keys and keys <= set(en), keys - set(en)
     for zh, e in en.items():
         assert set(re.findall(r"\{(\w+)\}", zh)) == set(re.findall(r"\{(\w+)\}", e)), zh

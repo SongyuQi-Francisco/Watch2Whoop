@@ -218,8 +218,9 @@ def test_today_scores_reasons_and_load_text(client, world):
     assert sc["recovery_word"] is None and sc["load_status"] == {"key": "balanced", "label": "平衡"}
     # reminders: today's
     assert {r["rule_key"] for r in d["reminders"]} == {"progression", "readiness"}
-    # SparkyFitness not connected: these two blocks error on their own, other blocks are unaffected
-    assert d["training"]["code"] == "sparky" and d["nutrition"]["code"] == "sparky"
+    # SparkyFitness not connected: nutrition errors on its own; training (no plan) is an empty day that says why (#66 FB-4)
+    assert d["nutrition"]["code"] == "sparky"
+    assert d["training"]["planned"] == [] and d["training"]["sparky"]["state"] == "not_linked"
 
 
 def test_reasons_and_zones():
@@ -577,7 +578,12 @@ def test_static_pages(client):
     assert "/days?month=" in js and "history.replaceState" in js
     assert 'DATED = new Set(["today", "trends", "food"])' in js       # the date picker also drives Trends (range end) and Food (that day's intake)
     assert "trends?days=${days}${q}" in js and "&end=${end}" in js and "foodDayHtml" in js
-    assert "[365, \"1年\"]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
+    # Issue #43: a recipe is logged to the day the 饮食 page shows (looking back at 10/18 used to log to today: no visible change),
+    # and that day's cached intake / per-meal plan are dropped so the page redraws with the new entry
+    assert "const day = viewDay();" in js and "body: { date: day, meal, servings" in js and "date: S.todayDate, meal, servings" not in js
+    assert "const dropFoodDay = (day) =>" in js and "todayKey(day)" in js and "/meal-plan?date=" in js
+    assert '[["diet", tr("饮食")], ["shopping", tr("采购")]]' in js and 'id="food-recipes"' in js   # 饮食 mode; recipes are a sub-page at the bottom
+    assert "[365, tr(\"1年\")]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
     assert "script-src 'self'" in r.headers["content-security-policy"]
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
     for f in ("app.js", "app.css", "sw.js", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png"):
