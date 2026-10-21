@@ -42,6 +42,7 @@ class Ctx:
     sleep_goal: dict | None = None                 # row from goals.store.get_goal (including plan_rows)
     sleep_nights: list[dict] = field(default_factory=list)  # main sleep of each night before tonight (goals.sleep.nights_from_sessions)
     sleep_duration_min: int | None = None          # target sleep duration (from the goal, or the score's sleep need)
+    overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/day_overrides.py)
     errors: dict[str, str] = field(default_factory=dict)    # source -> reason the read failed
     missing: dict[str, str] = field(default_factory=dict)   # source -> reason it is not connected / not available
 
@@ -90,12 +91,26 @@ class Ctx:
         return None
 
     def planned_for(self, day: date | None = None) -> list[dict]:
-        """Contents of that day's plan: [{kind: preset, preset} | {kind: exercise, exercise_id, name}] (in order)."""
+        """Contents of that day's plan: [{kind: preset, preset} | {kind: exercise, exercise_id, name} | {kind: label, name}] (in order).
+        A day change (training_day_overrides) replaces the weekday's content with other weekdays' content / free labels / rest."""
         day = day or self.day
-        plan = self.active_plan(day)
+        ov = self.overrides.get(day)
+        if ov is None:
+            return self.weekday_items(day.isoweekday(), day)
+        out = []
+        for ref in ov.get("sessions") or []:
+            if ref.get("dow"):
+                out += self.weekday_items(int(ref["dow"]), day)
+            elif ref.get("label"):
+                out.append({"kind": "label", "name": ref["label"]})
+        return out
+
+    def weekday_items(self, iso_dow: int, day: date | None = None) -> list[dict]:
+        """The active plan's content of one weekday (1 = Monday ... 7 = Sunday), ignoring day changes."""
+        plan = self.active_plan(day or self.day)
         if plan is None:
             return []
-        dow = day.isoweekday() % 7   # SparkyFitness: 0 = Sunday
+        dow = iso_dow % 7   # SparkyFitness: 0 = Sunday
         out = []
         for a in sorted((a for a in plan["assignments"] if a["day_of_week"] == dow), key=lambda a: a["sort_order"]):
             if a.get("workout_preset_id") is not None:
@@ -115,7 +130,7 @@ class Ctx:
                 out += [{"exercise_id": x["exercise_id"], "name": self.exercise_name(x["exercise_id"], x.get("name")),
                          "category": x.get("category"), "preset": item["preset"]["name"]}
                         for x in item["preset"]["exercises"]]
-            else:
+            elif item["kind"] == "exercise":
                 out.append({"exercise_id": item["exercise_id"], "name": item["name"], "category": None, "preset": None})
         return out
 
@@ -151,6 +166,13 @@ def _today(tz: ZoneInfo) -> date:
     return datetime.now(tz).date()
 
 
+def load_overrides(conn: psycopg.Connection, user_id: int, start: date, end: date) -> dict[date, dict]:
+    """Day changes of the weekly plan (training_day_overrides) in [start, end], by date."""
+    return {r["date"]: r for r in conn.execute(
+        "SELECT date, sessions, source, reason, updated_at FROM training_day_overrides WHERE user_id = %s AND date BETWEEN %s AND %s",
+        (user_id, start, end))}
+
+
 def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
          client: sparky_client.SparkyClient | None = None) -> Ctx:
     user = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()
@@ -172,6 +194,7 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     ctx.sleep_goal = goal_store.get_goal(conn, user_id)
     ctx.sleep_nights = goal_store.load_nights(conn, user_id, tz, day)   # night of day = tonight (the evening before going to sleep)
     ctx.sleep_duration_min = goal_store.duration(conn, user_id, ctx.sleep_goal, day)
+    ctx.overrides = load_overrides(conn, user_id, day - timedelta(days=7), day + timedelta(days=7))
     body_mass = conn.execute(
         """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
            AND date BETWEEN %s AND %s""", (user_id, day - timedelta(days=WEIGHT_DAYS - 1), day)).fetchall()

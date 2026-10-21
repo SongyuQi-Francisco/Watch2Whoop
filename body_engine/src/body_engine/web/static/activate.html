@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-i18n-title="activate.title">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -29,15 +29,17 @@ button:disabled{opacity:.5}
 <body>
 <main>
   <img src="icon.svg" alt="">
-  <h1>激活 Watch2Whoop</h1>
-  <p>先在 TestFlight 装好 Watch2Whoop，再点下面的按钮</p>
+  <h1 data-i18n="activate.title">激活 Watch2Whoop</h1>
+  <p data-i18n="activate.hint">先在 TestFlight 装好 Watch2Whoop，再点下面的按钮</p>
   <form id="form" novalidate>
-    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" hidden>
-    <button id="go" type="submit">打开 App 完成设置</button>
+    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" data-i18n-ph="activate.code" data-i18n-aria="activate.code" hidden>
+    <button id="go" type="submit" data-i18n="activate.go">打开 App 完成设置</button>
   </form>
   <div id="err" class="err" role="alert"></div>
-  <a class="help" href="handbook/" target="_blank" rel="noopener">使用手册</a>
+  <a class="help" href="handbook/" target="_blank" rel="noopener" data-i18n="activate.handbook">使用手册</a>
 </main>
+<script src="i18n.js"></script>
+<script src="i18n-en.js"></script>
 <script src="activate.js"></script>
 </body>
 </html>

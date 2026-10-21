@@ -19,6 +19,19 @@ TYPE_NAMES = {
     "cricket": "板球", "hockey": "曲棍球", "skating": "滑冰", "surfing": "冲浪", "skiing": "滑雪",
     "generic": "其他运动", "other": "其他运动",
 }
+# English display names (Today page in English, issue #42); name_zh stays the stored name
+TYPE_NAMES_EN = {
+    "strength_training": "Strength training", "walking": "Walking / incline", "running": "Running", "treadmill": "Treadmill",
+    "basketball": "Basketball", "swimming": "Swimming", "pool_swimming": "Pool swim", "open_water_swimming": "Open water swim",
+    "cycling": "Cycling", "indoor_cycling": "Indoor cycling", "stair_climbing": "Stair climbing", "cardio_training": "Cardio",
+    "elliptical": "Elliptical", "rowing_machine": "Rowing machine", "hiking": "Hiking", "yoga": "Yoga", "pilates": "Pilates",
+    "stretching": "Stretching", "fitness_equipment": "Gym equipment", "soccer": "Soccer", "tennis": "Tennis", "badminton": "Badminton",
+    "table_tennis": "Table tennis", "volleyball": "Volleyball", "boxing": "Boxing", "martial_arts": "Martial arts", "golf": "Golf",
+    "dance": "Dance", "climbing": "Climbing", "jump_rope": "Jump rope", "squash": "Squash", "pickleball": "Pickleball",
+    "rugby": "Rugby", "australian_football": "Australian football", "american_football": "American football", "baseball": "Baseball",
+    "cricket": "Cricket", "hockey": "Hockey", "skating": "Skating", "surfing": "Surfing", "skiing": "Skiing",
+    "generic": "Other workout", "other": "Other workout",
+}
 GENERIC_TYPES = {"generic", "other", "unknown"}   # the source did not know the activity: overrides / type rules may set it
 RULE_HOUR_WINDOW = 2.0   # a type rule (workout_type_rules) matches generic workouts on its weekday starting within ±2 h
 
@@ -77,6 +90,7 @@ DEVICE_RANK = {"watch": 0, "phone": 1}
 # ---------- intensity grading (per workout) ----------
 INTENSITY_LEVELS = ("rest", "light", "moderate", "hard", "max")
 INTENSITY_LABELS = {"rest": "休息", "light": "轻松", "moderate": "中等", "hard": "高强度", "max": "极限"}
+INTENSITY_LABELS_EN = {"rest": "Rest", "light": "Light", "moderate": "Moderate", "hard": "Hard", "max": "All out"}
 # 1) With raw heart rate: the workout's Edwards TRIMP (five zones at 50/60/70/80/90% HRmax, minutes × 1–5).
 #    Basis: after backfill, for the owner's 36 watch workouts with complete heart rate, TRIMP quartiles are 26 / 59 / 110;
 #    a 40-minute incline climb (average heart rate 140) is about 120, a 1-hour climb about 180, 1 hour of basketball 160–180, 2 hours of basketball 210, strength training at heart rate around 100 is 20–90.
@@ -99,8 +113,216 @@ DURATION_THRESHOLDS = {
 }
 MIN_SESSION_MIN = 5                    # records under 5 minutes (workouts started by accident) are still shown, but with intensity light
 
-# Heart-rate recovery: also read heart rate up to 3 minutes after the workout ends; drop = last reading of the final minute − reading closest to
-# 1 minute after the end (within 45–100 s). Stored in workouts.flags.hr_recovery_bpm (Trends tab). Apple's own
-# heart_rate_recovery_one_minute (HealthKit), when synced into daily_metrics, takes priority.
 HRR_TAIL = timedelta(minutes=3)
 HRR_AFTER = (timedelta(seconds=45), timedelta(seconds=100))
+
+# ---------- Training V2: weekly volume guidelines & readiness autoregulation ----------
+# Evidence base:
+# - Weekly working sets per major muscle group: 10–20 sets/week maximizes hypertrophy, with >=2x/week frequency
+#   (Schoenfeld et al., 2016 Sports Med; Schoenfeld et al., 2017 J Sports Sci). body-management.md §4.0 targets:
+#   back 12–14, chest 9–10, legs 14–16, shoulders 9–12, arms 4–6, core 6.
+# - Readiness autoregulation: WHOOP-style recovery tiers (<34 red, 34–66 yellow, >=67 green) + sleep debt (>=120 min)
+#   (Kiviniemi et al., 2007 MSSE; docs/system-design.md §7, §13).
+WEEKLY_SET_TARGETS: dict[str, tuple[int, int]] = {
+    "back": (10, 24),
+    "chest": (8, 16),
+    "legs": (10, 20),
+    "shoulders": (8, 16),
+    "arms": (4, 12),
+    "core": (4, 10),
+}
+RECOVERY_GREEN = 67
+RECOVERY_RED = 34
+AUTOREG_SLEEP_DEBT_MIN = 120
+
+# Built-in 3 / 4 / 5-day split templates (adapted from standard strength & conditioning splits and body-management.md §4;
+# openGym starter split concepts referenced under AGPL-3.0, docs/training-v2-plan.md).
+# Each exercise row: (slug, sets, rep_low, rep_high, rest_sec, duration_sec_or_None, note_or_None)
+SPLIT_TEMPLATES: dict[str, dict] = {
+    "3_day_ppl": {
+        "split_type": "3_day_ppl",
+        "name": "3 分化 · 推 / 拉 / 腿",
+        "days_per_week": 3,
+        "summary": "周一推（胸/肩/三头）、周三拉（背/后束/二头）、周五腿（股四头/臀/腘绳/核心），适合每周固定 3 练。",
+        "days": [
+            (1, "推（胸 / 肩 / 三头）", [
+                ("dumbbell_bench_press", 4, 8, 12, 120, None, None),
+                ("incline_dumbbell_press", 3, 8, 12, 120, None, None),
+                ("landmine_press", 3, 10, 10, 90, None, "每侧"),
+                ("dumbbell_lateral_raise", 3, 12, 15, 60, None, None),
+                ("cable_triceps_pushdown", 3, 12, 15, 60, None, None),
+            ]),
+            (3, "拉（背 / 后束 / 二头）", [
+                ("lat_pulldown", 4, 8, 12, 120, None, None),
+                ("seated_cable_row_close", 4, 8, 12, 120, None, None),
+                ("seated_cable_row_wide", 3, 10, 12, 90, None, None),
+                ("cable_face_pull", 3, 15, 15, 60, None, "轻重量"),
+                ("dumbbell_hammer_curl", 3, 10, 12, 60, None, None),
+            ]),
+            (5, "腿（股四头 / 臀腿 / 核心）", [
+                ("goblet_squat", 4, 8, 12, 120, None, None),
+                ("dumbbell_romanian_deadlift", 3, 10, 12, 120, None, None),
+                ("leg_press", 3, 10, 12, 120, None, None),
+                ("seated_leg_curl", 3, 12, 15, 60, None, None),
+                ("standing_calf_raise", 3, 15, 15, 45, None, None),
+                ("dead_bug", 3, 10, 10, 45, None, "每侧"),
+            ]),
+        ],
+    },
+    "3_day_full": {
+        "split_type": "3_day_full",
+        "name": "3 分化 · 全身 A / B / C",
+        "days_per_week": 3,
+        "summary": "每次覆盖推 + 拉 + 下肢，高频率、单次部位疲劳低，适合新手入门或恢复期。",
+        "days": [
+            (1, "全身 A", [
+                ("goblet_squat", 3, 8, 12, 120, None, None),
+                ("dumbbell_bench_press", 3, 8, 12, 120, None, None),
+                ("lat_pulldown", 3, 8, 12, 120, None, None),
+                ("dumbbell_romanian_deadlift", 3, 10, 10, 90, None, None),
+                ("dumbbell_lateral_raise", 3, 12, 15, 60, None, None),
+                ("dead_bug", 3, 10, 10, 45, None, "每侧"),
+            ]),
+            (3, "全身 B", [
+                ("barbell_hip_thrust", 3, 8, 12, 120, None, None),
+                ("incline_dumbbell_press", 3, 8, 12, 120, None, None),
+                ("seated_cable_row_close", 3, 8, 12, 120, None, None),
+                ("leg_press", 3, 10, 12, 90, None, None),
+                ("cable_face_pull", 3, 15, 15, 60, None, "轻重量"),
+                ("plank", 3, None, None, 45, 40, "30–45 秒"),
+            ]),
+            (5, "全身 C", [
+                ("bulgarian_split_squat", 3, 8, 10, 90, None, "每侧"),
+                ("landmine_press", 3, 10, 10, 90, None, "每侧"),
+                ("close_grip_underhand_pulldown", 3, 8, 12, 120, None, None),
+                ("seated_leg_curl", 3, 12, 12, 60, None, None),
+                ("dumbbell_hammer_curl", 2, 10, 12, 60, None, None),
+                ("cable_triceps_pushdown", 2, 12, 12, 60, None, None),
+            ]),
+        ],
+    },
+    "4_day_upper_lower": {
+        "split_type": "4_day_upper_lower",
+        "name": "4 分化 · 上下肢（A / B）",
+        "days_per_week": 4,
+        "summary": "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每个肌群每周练 2 次。",
+        "days": [
+            (1, "上肢 A（拉为主）", [
+                ("lat_pulldown", 4, 8, 12, 120, None, None),
+                ("seated_cable_row_close", 4, 8, 12, 120, None, None),
+                ("dumbbell_bench_press", 3, 8, 12, 120, None, None),
+                ("one_arm_dumbbell_row", 3, 10, 12, 90, None, "每侧"),
+                ("dumbbell_lateral_raise", 3, 12, 15, 60, None, None),
+                ("cable_face_pull", 3, 15, 15, 60, None, "轻重量"),
+                ("dumbbell_hammer_curl", 2, 10, 12, 60, None, None),
+            ]),
+            (2, "下肢 A（深蹲为主）", [
+                ("goblet_squat", 4, 8, 12, 120, None, None),
+                ("leg_press", 3, 10, 12, 120, None, None),
+                ("dumbbell_romanian_deadlift", 3, 10, 10, 120, None, None),
+                ("dumbbell_walking_lunge", 2, 10, 10, 90, None, "每侧"),
+                ("seated_leg_curl", 3, 12, 12, 60, None, None),
+                ("standing_calf_raise", 3, 15, 15, 45, None, None),
+                ("dead_bug", 3, 10, 10, 45, None, "每侧"),
+            ]),
+            (3, "肩部康复 / 灵活性 routine", [
+                ("cross_body_stretch_supine", 3, None, None, 30, 30, "每侧 30 秒"),
+                ("doorway_pec_stretch", 2, None, None, 30, 30, "每侧 30 秒"),
+                ("foam_roller_t_spine", 3, 5, 5, 30, None, "2–3 个位置"),
+                ("serratus_wall_slide", 2, 10, 10, 30, None, None),
+                ("band_face_pull_er", 3, 15, 15, 30, None, "轻阻力"),
+            ]),
+            (4, "上肢 B（推为主）", [
+                ("incline_dumbbell_press", 4, 8, 12, 120, None, None),
+                ("close_grip_underhand_pulldown", 3, 8, 12, 120, None, None),
+                ("seated_cable_row_wide", 3, 10, 12, 90, None, None),
+                ("landmine_press", 3, 10, 10, 90, None, "每侧"),
+                ("cable_fly_mid", 3, 12, 15, 60, None, None),
+                ("dumbbell_lateral_raise", 3, 12, 15, 60, None, None),
+                ("cable_triceps_pushdown", 2, 12, 12, 60, None, None),
+                ("band_external_rotation", 2, 15, 15, 30, None, "每侧"),
+            ]),
+            (5, "下肢 B（髋铰链为主）", [
+                ("barbell_hip_thrust", 4, 8, 12, 120, None, None),
+                ("bulgarian_split_squat", 3, 8, 10, 90, None, "每侧"),
+                ("leg_press_high_feet", 3, 10, 12, 120, None, None),
+                ("seated_leg_extension", 3, 12, 15, 60, None, None),
+                ("back_extension_45", 2, 12, 12, 60, None, None),
+                ("plank", 3, None, None, 45, 40, "30–45 秒"),
+            ]),
+        ],
+    },
+    "5_day_ul_ppl": {
+        "split_type": "5_day_ul_ppl",
+        "name": "5 分化 · 上下肢 + 推拉腿",
+        "days_per_week": 5,
+        "summary": "周一上肢、周二下肢、周三休息、周四推、周五拉、周六腿；每个肌群每周 2 次且单次容量更充裕。",
+        "days": [
+            (1, "上肢（综合）", [
+                ("lat_pulldown", 4, 8, 12, 120, None, None),
+                ("incline_dumbbell_press", 4, 8, 12, 120, None, None),
+                ("seated_cable_row_close", 3, 8, 12, 120, None, None),
+                ("landmine_press", 3, 10, 10, 90, None, "每侧"),
+                ("dumbbell_lateral_raise", 3, 12, 15, 60, None, None),
+                ("dumbbell_hammer_curl", 2, 10, 12, 60, None, None),
+                ("cable_triceps_pushdown", 2, 12, 12, 60, None, None),
+            ]),
+            (2, "下肢 A（深蹲主导）", [
+                ("goblet_squat", 4, 8, 12, 120, None, None),
+                ("dumbbell_romanian_deadlift", 3, 10, 10, 120, None, None),
+                ("leg_press", 3, 10, 12, 120, None, None),
+                ("seated_leg_curl", 3, 12, 12, 60, None, None),
+                ("standing_calf_raise", 3, 15, 15, 45, None, None),
+                ("dead_bug", 3, 10, 10, 45, None, "每侧"),
+            ]),
+            (4, "推（胸 / 肩 / 三头）", [
+                ("dumbbell_bench_press", 4, 8, 12, 120, None, None),
+                ("incline_machine_press", 3, 10, 12, 90, None, None),
+                ("cable_fly_mid", 3, 12, 15, 60, None, None),
+                ("dumbbell_lateral_raise", 4, 12, 15, 60, None, None),
+                ("cable_triceps_pushdown", 3, 12, 15, 60, None, None),
+                ("band_external_rotation", 2, 15, 15, 30, None, "每侧"),
+            ]),
+            (5, "拉（背 / 后束 / 二头）", [
+                ("close_grip_underhand_pulldown", 4, 8, 12, 120, None, None),
+                ("seated_cable_row_wide", 4, 10, 12, 90, None, None),
+                ("one_arm_dumbbell_row", 3, 10, 12, 90, None, "每侧"),
+                ("cable_face_pull", 3, 15, 15, 60, None, "轻重量"),
+                ("cable_bicep_curl", 3, 10, 12, 60, None, None),
+            ]),
+            (6, "下肢 B（髋铰链主导）", [
+                ("barbell_hip_thrust", 4, 8, 12, 120, None, None),
+                ("bulgarian_split_squat", 3, 8, 10, 90, None, "每侧"),
+                ("leg_press_high_feet", 3, 10, 12, 120, None, None),
+                ("seated_leg_extension", 3, 12, 15, 60, None, None),
+                ("back_extension_45", 2, 12, 12, 60, None, None),
+                ("plank", 3, None, None, 45, 40, "30–45 秒"),
+            ]),
+        ],
+    },
+}
+
+
+# ---------- Day changes: re-planning the rest of the week (training/day_overrides.py) ----------
+# The same major muscle group on two consecutive days leaves < 48 h between sessions, the usual minimum for a trained
+# muscle group to recover (Schoenfeld et al., 2016 Sports Med frequency review; NSCA Essentials 4th ed., ch. 17).
+# Costs only rank the candidate weeks; the cheapest one is chosen (ties: fewest moved days).
+REPLAN_COST_SAME_GROUP = 10.0      # per major muscle group trained on two consecutive days
+REPLAN_COST_SAME_LEGS = 5.0        # extra for legs back to back (largest muscle mass, slowest to recover)
+REPLAN_MAX_STREAK = 3              # training days in a row before each extra day costs REPLAN_COST_STREAK
+REPLAN_COST_STREAK = 3.0
+REPLAN_COST_MOVED = 1.0            # per day whose session differs from the plan's own weekday (keep the week familiar)
+REPLAN_COST_DISTANCE = 0.1         # per day a session is moved away from its own weekday (tie-breaker)
+REPLAN_COST_SKIPPED = 30.0         # per plan session that no longer fits in this week
+REPLAN_COST_RED_NEXT_DAY = 4.0     # recovery red today: training again tomorrow
+OVERRIDE_PAST_DAYS = 7             # reschedule_day / swap_days accept dates from today − 7 ...
+OVERRIDE_FUTURE_DAYS = 28          # ... to today + 28
+# Session names -> major muscle groups when the exercises do not say (SparkyFitness exercises without muscles, free labels)
+SESSION_NAME_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("下肢", "腿", "臀", "leg", "lower"), ("legs",)),
+    (("上肢", "upper"), ("chest", "back", "shoulders", "arms")),
+    (("推", "push", "胸", "chest"), ("chest", "shoulders", "arms")),
+    (("拉", "pull", "背", "back"), ("back", "arms")),
+    (("肩", "shoulder"), ("shoulders",)),
+    (("全身", "full"), ("chest", "back", "legs", "shoulders")),
+)

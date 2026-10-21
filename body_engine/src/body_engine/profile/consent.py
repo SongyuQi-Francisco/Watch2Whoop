@@ -11,6 +11,8 @@ from importlib import resources
 
 import psycopg
 
+from ..i18n import L
+
 # Key points shown in the dialog (correspond to sections 1-5 of the full text; change together with it)
 SUMMARY = [
     "同步你在「健康」里授权的数据（心率、睡眠、训练、步数等），加上你自己记录的内容，用来算恢复分、睡眠分、负荷。",
@@ -56,7 +58,8 @@ def needs_consent(conn: psycopg.Connection, user_id: int) -> bool:
 def accept(conn: psycopg.Connection, user_id: int, ver: str, method: str = "app", user_agent: str | None = None,
            at=None) -> dict:
     if method == "app" and ver != version():
-        raise ValueError(f"同意书已经更新到 {version()}，请刷新后再看一遍")
+        raise ValueError(L(f"同意书已经更新到 {version()}，请刷新后再看一遍",
+                           f"The consent was updated to {version()}; reload and read it again"))
     with conn.transaction():
         conn.execute("""INSERT INTO user_consents (user_id, version, method, accepted_at, user_agent)
                         VALUES (%s, %s, %s, COALESCE(%s, now()), %s)""",

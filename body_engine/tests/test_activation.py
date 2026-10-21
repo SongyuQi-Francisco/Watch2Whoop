@@ -267,9 +267,9 @@ def test_login_box_takes_activation_code(client, users, dsn):
 def test_today_page_login_kinds_and_app_bridge(client):
     """app.js: loginKind() tells activation codes (16) from login codes (12) and tokens; distinct Chinese errors per step;
     the page reports logged-in / login-failed to the iOS app so it keeps its login code until then."""
-    js = client.get("/app/app.js").text
+    js = client.get("/app/app.js").text + client.get("/app/i18n.js").text   # error texts live in the i18n tables
     for s in ('"/v1/web/activate"', 'tellApp("logged-in")', 'tellApp("login-failed")', "window.Watch2Whoop.postMessage",
-              '"hashchange"', "激活码无效或已停用", "登录码已用过或已过期", "token 不对或已吊销"):
+              '"hashchange"', 'tr("login.badActivation")', "激活码无效或已停用", "登录码已用过或已过期", "token 不对或已吊销"):
         assert s in js, s
     node = shutil.which("node")
     if not node:

@@ -63,10 +63,11 @@ def test_tool_definitions_budget():
     templates and recipe ingredients (#31).
     46.5k -> 47k on 2026-10-21 for lookup_barcode and save_product's product_url / nutrition_source (#29, grocery-plan §7).
     47k -> 49k on 2026-10-21 for the 2 diet profile tools (#33).
-    set_stores (issue #44) fits under 49k."""
+    49k -> 52.5k for the Training V2 tools (#1: get_exercise, propose_plan, save_plan, get_week_plan, swap_exercise, list_splits).
+    52.5k -> 53.5k for the day-change tools (#17: reschedule_day, swap_days, replan_week, undo_day_changes); set_stores (#44) fits in."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 49000, size
+    assert size < 53500, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 
