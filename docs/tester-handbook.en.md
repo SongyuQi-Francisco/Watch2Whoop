@@ -92,6 +92,8 @@ If it looks like a bug, give the AI the screenshot and what happened; it will tu
 
 ## Before you start
 
+**On iPhone, Watch2Whoop is used through its app; on a computer, in a browser.** The iPhone web version (Safari, "Add to Home Screen") is retired; opening it there points you to the app.
+
 - **Activation link**: a link (or QR code) your admin sends to you alone. Don't forward it. It can be reused: after switching phones or reinstalling the app, just tap it again.
 - **TestFlight invitation email**: sent to your Apple ID email address.
 - **An AI**: see "Connect your AI".
@@ -140,7 +142,7 @@ To see data older than 90 days: Health → your profile picture → "Export All 
 
 ### On a computer
 
-Open `body.example.com/app` in a browser. The first time, ask your admin for a one-time computer sign-in link.
+Open `body.example.com/app` in a browser. The first time: opening your activation link on the computer signs you in right away; you can also sign in with an e-mail code.
 
 ## Connect your AI (the core)
 
@@ -201,11 +203,11 @@ Speech is transcribed on the server, never sent to a third party, and the record
 
 **Stuck at "Enter the 8-character invite code"**: you don't need to type it. Go back to the home screen and tap the activation link again; the app sets itself up.
 
-**The activation link doesn't open the app**: first make sure Watch2Whoop is installed through TestFlight; open the link in Safari, not directly inside WeChat (in WeChat, choose "Open in browser" first).
+**The activation link doesn't open the app**: first make sure Watch2Whoop is installed through TestFlight (without the app, the activation page shows the install steps); open the link in Safari, not directly inside WeChat (in WeChat, choose "Open in browser" first). No TestFlight invitation e-mail: ask your admin to add your Apple ID as a tester.
 
 **Data isn't updating**: open the app and keep the phone unlocked for a few dozen seconds; iPhone doesn't allow reading Health data while locked, and it catches up once unlocked.
 
-**Used to sync with a Shortcut**: once the app syncs properly, delete the health-sync automations under Shortcuts → "Automation" to avoid duplicates and errors. The old handbook (Chinese) is [here](archive/tester-handbook-web-shortcut.md).
+**Used to sync with a Shortcut**: once the app syncs properly, delete the health-sync automations under Shortcuts → "Automation" to avoid duplicates and errors. The iPhone web version and Shortcut syncing are retired; the old handbook (Chinese) is kept only as an archive: [here](archive/tester-handbook-web-shortcut.md).
 
 **New phone / reinstalled the app**: tap the same activation link again; your consent and profile carry over.
 

@@ -101,10 +101,18 @@ def _session_response(conn, request: Request, response: Response, user: dict, ne
     return out
 
 
+def ios_web_mode() -> str:
+    """BODY_IOS_WEB: what the Today page does in iOS Safari outside the Watch2Whoop app (web/static/ios-web.js).
+    warn (default): a banner pointing to the app; off: only the install guide (install.html), no sign-in, no content."""
+    v = (os.environ.get("BODY_IOS_WEB") or "warn").strip().lower()
+    return v if v in ("warn", "off") else "warn"
+
+
 @router.get("/v1/auth/methods")
 def methods():
-    """Which sign-in methods this server offers (the login pages hide the others)."""
-    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled()}
+    """Which sign-in methods this server offers (the login pages hide the others), and the iOS-Safari mode."""
+    return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled(),
+            "ios_web": ios_web_mode()}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail
