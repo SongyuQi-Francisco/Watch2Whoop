@@ -1947,13 +1947,14 @@
   }
 
   const RENDER_me = async () => {
-    const [mem, supps, events, d, hs, labs] = await Promise.all([
+    const [mem, supps, events, d, hs, labs, tlog] = await Promise.all([
       load("memory", memPath()).catch((e) => ({ error: e })),
       load("supps", `/v1/users/${ownerPath()}/supplements`).catch((e) => ({ error: e })),
       load("events", `/v1/users/${ownerPath()}/events?start=${addDays(S.todayDate, -364)}&end=${S.todayDate}`).catch((e) => ({ error: e })),
       load("today", todayPath(S.todayDate)).catch(() => null),
       optional("healthspan", WHOOP_API.healthspan()),
       load("labs", `/v1/users/${ownerPath()}/labs/summary`).catch((e) => ({ error: e })),
+      load("tlog", `/v1/users/${ownerPath()}/training/sparky`).catch(() => null),
     ]);
     const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true };
     const computed = d?.scores?.computed_at;
@@ -1966,6 +1967,7 @@
         ${item("补剂", supps.error ? "—" : `${supps.filter((x) => x.status === "active").length} 在吃`, supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
         ${item("身体事件", events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
         ${item("化验", labs.error ? "—" : `${labs.length} 项`, labs.error ? "" : sheetAttr(() => labsSheet(labs)))}
+        ${tlog ? item("训练记录" /* en: Training log */, tlogBadge(tlog), sheetAttr(() => trainingLogSheet(tlog))) : ""}
       </div></div>
       <div class="section"><div class="group">
         ${who.self && window.BodyAI ? item("AI 设置", esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
@@ -2536,12 +2538,55 @@
             delete S.data[`tweek${S.todayDate}:${S.owner}`];
             delete S.data[todayKey()];
             closeSheet(); render();
-            toast(`已启用：${res.saved?.name || chosen}`);
+            // Saved even when the training log sync failed (issue #66 FB-4): say so instead of a plain OK
+            toast(res.sparky_sync && res.sparky_sync.synced === false && res.sparky_sync.link !== undefined
+              ? `已启用：${res.saved?.name || chosen} · 训练记录未同步` /* en: Activated: … · training log not synced */
+              : `已启用：${res.saved?.name || chosen}`);
           } catch (err) { toast(err.message); save.disabled = false; }
         };
       });
     };
     draw();
+  }
+
+  // ---- Training log link, issue #66 FB-4: state on the training page and under Me, self-service connect (/training/sparky).
+  //      New strings are bilingual for #20: wrap each Chinese literal in tr() and add the English from its comment to i18n-en.js.
+  const TLOG_STATE = {
+    connected: ["good", "已连接" /* en: Connected */],
+    not_linked: ["mid", "未连接" /* en: Not connected */],
+    unreadable: ["bad", "读不到" /* en: Unreadable */],
+  };
+  const tlogBadge = (st) => { const [tone, word] = TLOG_STATE[st?.state] || TLOG_STATE.unreadable; return badge(tone, word); };
+  function trainingLogSheet(st) {
+    const html = kv("训练记录" /* en: Training log */, tlogBadge(st))
+      + (st?.hint ? `<div class="small muted" style="margin:10px 0">${esc(st.hint)}</div>` : "")
+      + `<div class="small muted" id="tlog-err" hidden></div>`
+      + (st?.can_connect ? `<div class="btns"><button class="btn btn-primary" id="tlog-connect">连接</button></div>` /* en: Connect */ : "");
+    openSheet("训练记录" /* en: Training log */, html, (body) => {
+      const b = $("#tlog-connect", body);
+      if (b) b.onclick = () => connectTrainingLog(b, body);
+    });
+  }
+  async function connectTrainingLog(btn, body) {
+    btn.disabled = true;
+    btn.textContent = "连接中…"; /* en: Connecting… */
+    try {
+      const r = await api(`/v1/users/me/training/sparky/connect`, { method: "POST" });
+      if (r.state === "connected") {
+        closeSheet();
+        toast("训练记录已连接"); /* en: Training log connected */
+        for (const k of Object.keys(S.data)) if (/^(tweek|tlog|today|tcal)/.test(k)) delete S.data[k];
+        render();
+        return;
+      }
+      const e = $("#tlog-err", body);
+      e.textContent = r.error || r.hint || "";
+      e.hidden = false;
+    } catch (err) {
+      toast(err.message);
+    }
+    btn.disabled = false;
+    btn.textContent = "连接"; /* en: Connect */
   }
 
   async function trainingPageHtml() {
@@ -2573,12 +2618,15 @@
       ${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}
       ${isSelf() && wk.available_splits?.length ? `<button class="link" id="pick-split">${wk.plan ? "切换分化" : "选周计划"}</button>` : ""}
       <button class="link" id="open-exlib">动作库</button></span>`;
+    const tlog = wk.sparky && wk.sparky.state !== "connected"
+      ? `<div class="card list" style="margin-top:10px"><button class="item" id="tlog-row"><span class="row-title">训练记录</span><span class="val">${tlogBadge(wk.sparky)}</span><span class="chev">${ICON.chev}</span></button></div>` /* en: Training log */
+      : "";
     const left = `<div class="section"><div class="section-head"><h2>本周</h2>${headActions}</div>
         <div class="card"><div class="week">${week}</div>
         <div class="msum" style="margin:14px 0 0">${[["训练", sm.training_days, "天"], ["时长", sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           ["消耗", (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           ["计划", (wk.days || []).filter((x) => x.planned.length).length || null, "天"]]
-          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}</div></div>`;
+          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}</div>${tlog}</div>`;
     const sugg = (wk.suggestions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv("建议", esc(x.title)) + (x.next_weight_kg != null ? kv("下次重量", `${fmtNum(x.next_weight_kg, 1)} kg`) : "")))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.level === "warning" ? "mid" : "good", x.next_weight_kg != null ? `→ ${fmtNum(x.next_weight_kg, 1)} kg` : "建议")}</span><span class="chev">${ICON.chev}</span></button>`);
     const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => exerciseDetailSheet(x.slug || x.name))}>
@@ -2608,6 +2656,8 @@
     if (pick && wk) pick.onclick = () => splitPickerSheet(wk);
     const lib = $("#open-exlib", view);
     if (lib) lib.onclick = () => exerciseLibrarySheet();
+    const tl = $("#tlog-row", view);
+    if (tl && wk) tl.onclick = () => trainingLogSheet(wk.sparky);
     const c = $("#rec-cal", view);
     if (c) { bindCalSwipe(c); renderCal(0); }
   }
