@@ -66,7 +66,14 @@ class PlanEntry(BaseModel):
 class GenerateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     week: dt.date | None = Field(None, description="这周任一天，默认本周")
-    plan: list[PlanEntry] = Field(min_length=1)
+    plan: list[PlanEntry] = Field(default_factory=list, description="empty = only the usual items that are due (needs some)")
+
+
+class StapleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    every_days: int | None = Field(None, ge=1, le=180)
+    qty: float | None = Field(None, gt=0)
+    unit: Literal["pack", "g", "ml", "pcs"] | None = None
 
 
 class ItemIn(BaseModel):
@@ -211,6 +218,17 @@ def patch_product(user: str, product_id: int, body: ProductIn, conn=Depends(get_
 def delete_product(user: str, product_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     _meal_call(store.remove_product, conn, _self(viewer, user), product_id)
     return Response(status_code=204)
+
+
+@router.put("/products/{product_id}/staple")
+def put_staple(user: str, product_id: int, body: StapleIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Mark a usual item (issue #103): interval, amount each time. Own products only."""
+    return _meal_call(store.set_staple, conn, _self(viewer, user), product_id, body.model_dump())
+
+
+@router.delete("/products/{product_id}/staple")
+def delete_staple(user: str, product_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(store.remove_staple, conn, _self(viewer, user), product_id)
 
 
 @router.get("/list")

@@ -18,7 +18,10 @@
    page's CSP only loads its own images, and store images are not copied.
    「家里存货」 (issue #102) lists the pantry (GET …/grocery/pantry: by category, quantity, 「x 天前更新」); on the own page each row has
    「用完了」 (PUT …/pantry with quantity 0, undo in the toast puts the old quantity back). Changing amounts stays with the AI (set_pantry).
-   List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought. */
+   List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought.
+   Usual items (issue #103): list lines of a usual-item product (item.staple; source staple = added because it is due) get 「常买」;
+   products carry staple_info.next_due -> 「下次该买 10/28」 on the row and in the sheet. Marking is done by the AI after the user
+   confirms (set_staple); the page only shows it. */
 (() => {
   "use strict";
   let C = null;
@@ -58,8 +61,9 @@
       ? `<small class="gage${i.offer.stale ? " old" : ""}">${esc(ageLabel(i.offer.age_days))}</small>` : "";
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
     const home = !i.bought && i.pantry_label ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
+    const usual = i.staple ? badge("plain", tr("常买")) : "";
     return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.bought ? tr("{name}，已买", { name: i.name }) : i.name)}">
-      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}${home}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
+      <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}${usual}${home}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
 
   function listHtml() {
@@ -155,10 +159,14 @@
       ${d.url ? `<div class="kv"><span class="k">${esc(tr("链接"))}</span>${storeLinks([{ store: d.store, label: d.store_label, kind: "product", url: d.url }], d.name)}</div>` : ""}`);
   }
 
+  const nextBuy = (s) => tr("下次该买 {d}", { d: md(s.next_due) });
+
   function productRow(p) {
     const val = [p.size_label, p.price != null ? money(p.price, p.currency) : ""].filter(Boolean).join(" · ");
+    const s = p.staple && p.staple_info;
+    const usual = s ? badge(s.due ? "mid" : "plain", nextBuy(s)) : "";   // a badge does not shrink: the date stays readable at phone width
     return `<div class="grow"><button class="item" data-gp="${esc(p.id)}"><span class="row-title">${esc(p.name)}${p.brand ? `<span class="small muted"> ${esc(p.brand)}</span>` : ""}</span>
-      ${halfBadge(p.offer)}${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
+      ${usual}${halfBadge(p.offer)}${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
   }
 
   function productsHtml() {
@@ -177,7 +185,10 @@
     const per = p.package_unit === "ml" ? "100 ml" : "100 g";
     const unitP = p.unit_price != null ? `${money(p.unit_price, p.currency)} / ${p.package_unit === "pcs" ? tr("个") : p.package_unit === "ml" ? "L" : "kg"}` : null;
     const flags = (p.flags || []).map((f) => badge("mid", f)).join("");
-    C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}
+    const s = p.staple && p.staple_info;
+    const amount = s ? (s.unit === "pack" ? tr("{n} 包", { n: s.qty }) : `${s.qty} ${s.unit === "pcs" ? tr("个") : s.unit}`) : "";
+    const usual = s ? `${kv(tr("常买"), tr("每 {n} 天 · {amount}", { n: s.every_days, amount }))}${kv(tr("下次该买"), md(s.next_due))}` : "";
+    C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}${usual}
       ${kv(tr("品牌"), p.brand)}${kv(tr("门店"), p.store_label)}${(p.links || []).length ? `<div class="kv"><span class="k">${tr("链接")}</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv(tr("类别"), p.category_label)}${kv(tr("规格"), p.size_label)}
       ${kv(tr("价格"), p.price != null ? money(p.price, p.currency) : null)}${kv(tr("单价"), unitP)}${kv(tr("价格日期"), p.price_on ? md(p.price_on) : null)}
       ${p.offer ? kv(tr("本周价"), `${p.offer.label} ${money(p.offer.price, "AUD")}${p.offer.was_price ? ` / ${money(p.offer.was_price, "AUD")}` : ""}${p.offer.half_price ? ` · ${tr("半价")}` : ""}`) : ""}

@@ -166,7 +166,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="generate_shopping_list",
-        description="按这周要吃的生成采购清单（合并食材、对商品库、扣存货、按包装取整、估价）；重新生成只换计划来的未买项。"
+        description="按这周要吃的生成采购清单（合并食材、对商品库、扣存货、按包装取整、估价，加到期的常买）；重新生成只换计划 / 常买来的未买项。"
                     "warnings（按用户自己的饮食约束 / 高盐糖脂）要转告。",
         input_schema=schema({"week": WEEK, "plan": {"type": "array", "items": PLAN}}),
         handler=lambda conn, uid, a: _slim_list(store.generate(conn, uid, _d(a["week"]), a["plan"])),
@@ -201,6 +201,21 @@ TOOL_SPECS: list[dict] = [
         description="从清单删掉几行。",
         input_schema=schema({"item_ids": IDS}),
         handler=lambda conn, uid, a: _slim_list(store.remove_items(conn, uid, a["item_ids"])),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="set_staple",
+        description="用户确认后标常买（推荐在 get_shopping_context.staple_suggestions）；every_days/qty null=按历史/一包。",
+        input_schema=schema({"product_id": {"type": "integer"}, "every_days": _n("integer"), "qty": _n("number"),
+                             "unit": {"type": ["string", "null"], "enum": [*P.STAPLE_UNITS, None]}}),
+        handler=lambda conn, uid, a: _slim_product(store.set_staple(conn, uid, a["product_id"], a)),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="remove_staple",
+        description="取消常买。",
+        input_schema=schema({"product_id": {"type": "integer"}}),
+        handler=lambda conn, uid, a: _slim_product(store.remove_staple(conn, uid, a["product_id"])),
         scope="nutrition", writes=True,
     ),
     dict(

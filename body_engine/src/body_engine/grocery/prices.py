@@ -522,4 +522,6 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
                    "diet_constraints": [c["text"] for c in diet_constraints.listing(conn, user_id)["constraints"]],
                    "warnings": [w["label"] for w in lst["warnings"]]},
         "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS],
+        # usual-item candidates from this user's own purchases (issue #103): ask before set_staple, never mark on your own
+        "staple_suggestions": store.staple_suggestions(conn, user_id),
     }

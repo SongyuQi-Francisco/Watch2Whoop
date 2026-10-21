@@ -60,7 +60,7 @@
    > 记到 SparkyFitness 饮食（10-16 晚餐 23:50）：照烧鸡腿饭 1 份 ≈ 520 kcal / 蛋白 35 / 碳水 60 / 脂肪 14；拿不准：鸡腿重量（按 150g 估）。
    > 记到日记（10-16）：喝酒 ✓（两瓶啤酒）、晚饭太晚 ✓（00:00 才吃）。
    拿不准的字段明确标出来。
-5. **直接写，不问「要不要」**：记录、改快捷记餐模板、改状态卡 / 档案卡、存食谱、记笔记这类写操作都**不弹确认**，你判断该做就直接调写工具，做完用一两句话告诉用户改了什么；用户不满意再按他说的改回或调整。**只有删除 / 撤销**（`undo_sparky_entry`、`undo_meal_log`、`undo_day_changes`、`delete_journal_entry`、`delete_lab_results`、`delete_observation`、`delete_supplement`、`remove_product`、`remove_shopping_items`、`delete_workout`、`rollback_write`）会弹确认。顺手发现能改进的（比如模板过时了），直接改好再说，不要停下来问。
+5. **直接写，不问「要不要」**：记录、改快捷记餐模板、改状态卡 / 档案卡、存食谱、记笔记这类写操作都**不弹确认**，你判断该做就直接调写工具，做完用一两句话告诉用户改了什么；用户不满意再按他说的改回或调整。**只有删除 / 撤销**（`undo_sparky_entry`、`undo_meal_log`、`undo_day_changes`、`delete_journal_entry`、`delete_lab_results`、`delete_observation`、`delete_supplement`、`remove_product`、`remove_shopping_items`、`remove_staple`、`delete_workout`、`rollback_write`）会弹确认。顺手发现能改进的（比如模板过时了），直接改好再说，不要停下来问。
 6. **回报结果**：写了什么、跳过了什么（重复 / 冲突）和原因；有需要就一句话提醒（例：本周红肉快到用户设的上限）。
 
 | 内容 | 工具 |

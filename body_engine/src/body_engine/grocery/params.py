@@ -89,3 +89,18 @@ VERDICT_DEAR_PCT = 0.12      # ≥ 12 % over the average -> dear
 VERDICT_SPECIAL_DAYS = 21    # a special seen within this many days counts as "recently on special"
 VERDICT_SPECIAL_DEAR = 1.25  # paying ≥ 25 % more than that recent special, not on special yourself -> dear
 VERDICT_SPECIAL_CHEAP = 1.02 # paying within 2 % of the recent special (or less) -> cheap
+
+# ---------------------------------------------------------------- usual items / 常买 (issue #103, docs/grocery-plan.md §3)
+# Suggest marking a product as a usual item when this user bought it at least STAPLE_SUGGEST_MIN times in the last
+# STAPLE_SUGGEST_WEEKS weeks (grocery_purchases). 3 in 8 weeks ≈ at least every other to every third week: the rhythm of the
+# eggs / milk / bananas shop the issue describes, and enough points for a usable interval (2 gaps). A judgement call, not a
+# published threshold; tune here. Only suggested: the user confirms (set_staple) before anything is marked.
+STAPLE_SUGGEST_WEEKS = 8
+STAPLE_SUGGEST_MIN = 3
+STAPLE_SUGGEST_MAX = 8            # suggestions returned at once (get_shopping_context)
+# Interval when set_staple is not given one: the median gap between this user's own purchases (rounded to whole days, at
+# least STAPLE_MIN_DAYS), else a weekly shop. Bounds match the CHECK in migration 500.
+STAPLE_DEFAULT_EVERY_DAYS = 7
+STAPLE_MIN_DAYS = 1
+STAPLE_MAX_DAYS = 180
+STAPLE_UNITS = ("pack", "g", "ml", "pcs")   # pack = whole packages of the product

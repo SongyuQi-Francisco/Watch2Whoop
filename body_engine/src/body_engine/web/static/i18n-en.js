@@ -928,4 +928,10 @@ I18N.addEn({
   "用完了": "Used up",
   "{name} 用完了": "{name}: used up",
   "已用完 · {name}": "Used up · {name}",
+  // grocery: usual items (issue #103)
+  "常买": "Usual",
+  "下次该买 {d}": "Next buy {d}",
+  "下次该买": "Next buy",
+  "每 {n} 天 · {amount}": "Every {n} days · {amount}",
+  "{n} 包": "{n} pk",
 });

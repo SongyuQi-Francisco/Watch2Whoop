@@ -25,12 +25,12 @@ WEEK = date(2026, 10, 21)   # a Wednesday; week_start = 2026-10-19
 # ---------------------------------------------------------------- no database needed
 def test_tools_registered_and_marked():
     for n in ("save_product", "remove_product", "generate_shopping_list", "add_shopping_items", "mark_bought",
-              "remove_shopping_items", "set_pantry", "set_stores"):
+              "remove_shopping_items", "set_pantry", "set_stores", "set_staple", "remove_staple"):
         assert TOOLS_BY_NAME[n].writes and TOOLS_BY_NAME[n].scope == "nutrition", n
     for n in ("find_products", "get_shopping_list"):
         assert not TOOLS_BY_NAME[n].writes, n
-    assert {"remove_product", "remove_shopping_items"} <= ALWAYS_CONFIRM
-    assert not {"save_product", "mark_bought", "generate_shopping_list"} & ALWAYS_CONFIRM
+    assert {"remove_product", "remove_shopping_items", "remove_staple"} <= ALWAYS_CONFIRM
+    assert not {"save_product", "mark_bought", "generate_shopping_list", "set_staple"} & ALWAYS_CONFIRM
 
 
 def test_guess_category_and_format():

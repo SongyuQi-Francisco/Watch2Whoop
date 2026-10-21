@@ -146,6 +146,8 @@ EXACT: dict[str, str] = {
     # ---- grocery (grocery/store.py)
     "nutrition 要是对象（每 100g）": "nutrition must be an object (per 100 g)",
     "package_unit 只能是 g / ml / pcs": "package_unit must be g / ml / pcs",
+    "qty 要是 > 0 的数": "qty must be a number > 0",                       # usual items (grocery/staples.py, #103)
+    "unit 只能是 pack / g / ml / pcs": "unit must be pack / g / ml / pcs",
     "purine_level 只能是 low / medium / high": "purine_level must be low / medium / high",
     "没有这个商品（或不是你的）": "Product not found (or not yours)",
     "至少给一样": "Give at least one item",
@@ -218,6 +220,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     # ---- grocery (links.py, off.py)
     ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
+    ("every_days 要是 {}–{} 的整数（天）", "every_days must be a whole number of days, {}–{}"),
     ("商品链接 1–{} 字", "Product link: 1–{} characters"),
     ("超市只能是 {}", "Supermarkets can only be: {}"),
     # ---- grocery-sync (sync/coles.py, sync/http.py; admin CLI / run records)

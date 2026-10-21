@@ -33,10 +33,17 @@
 - 做饭 / 记餐暂时不自动扣存货（粗略即可）：用户说「鸡蛋吃完了」时 AI 调 `set_pantry`。
 - **今天页看得到存货（#102，迁移 490）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
 
+- **常买（#103，迁移 500）**：商品可以标成「常买」（`grocery_products.staple`，带间隔天数 `staple_every_days`、每次买多少 `staple_qty` + `staple_unit`，`pack` = 包数）。
+  - **推荐**：按这个用户自己的 `grocery_purchases`，最近 `STAPLE_SUGGEST_WEEKS`（8）周买过 ≥ `STAPLE_SUGGEST_MIN`（3）次、还没标的商品，放进 `get_shopping_context` 的 `staple_suggestions`（次数、建议间隔 = 自己购买间隔的中位数）。只推荐：AI 问过用户、用户同意后才调 `set_staple`，不自动标。
+  - **下次该买** = 上次买的日期 + 间隔（从没买过 = 今天）。
+  - **生成周清单**：到这周日为止到期的常买商品自动加进清单，来源 `staple`；存货已经够一次的量就不加（进 `covered_by_pantry`）；还没到期的不加。菜单里也有同一样东西时合并成一行（来源 `plan`），取两者里大的那个量（菜单的量已经补够了，不再叠加）。重新生成时 `plan` / `staple` 来的未买行一起替换，手动加的和已买的保留。有常买商品时可以只生成常买（`plan` 为空）。
+  - **工具**：`set_staple`（写，直接跑）、`remove_staple`（`ALWAYS_CONFIRM` + 管家的 `ask`）。接口 `PUT / DELETE …/products/{id}/staple`（只能改自己的），商品接口多 `staple`、`staple_info`（`every_days`、`qty`、`unit`、`last_bought`、`next_due`、`due`）；清单行多 `staple`。
+  - **今天页**：清单行显示「常买」；商品库里常买商品显示「常买」和「下次该买 10/28」（到期了用提示色），详情里显示间隔和每次的量。
+
 ## 4. 接口和工具
 接口（前缀 `/v1/users/{user}/grocery`，scope `nutrition`）：`GET /products?q=&category=`、`POST /products`、`PATCH /products/{id}`、`DELETE /products/{id}`；`GET /list?week=`（周内任一天，默认本周）、`POST /list/generate`、`POST /list/items`、`PATCH /list/items/{id}`（bought、paid_price）、`DELETE /list/items/{id}`；`GET /pantry`、`PUT /pantry`。
 
-AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或按 id / 条码 / 商品页 / 名字 + 品牌更新；`product_url`、`nutrition_source`）、`lookup_barcode`（只读，第 7 节）、`remove_product`、`generate_shopping_list`、`get_shopping_list`（含存货）、`add_shopping_items`、`mark_bought`、`remove_shopping_items`、`set_pantry`。删除类（`remove_product`、`remove_shopping_items`）进 `ai/chat.py` 的 `ALWAYS_CONFIRM` 和 `assistant/.claude/settings.json` 的 `ask`，其余直接写。
+AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或按 id / 条码 / 商品页 / 名字 + 品牌更新；`product_url`、`nutrition_source`）、`lookup_barcode`（只读，第 7 节）、`remove_product`、`generate_shopping_list`、`get_shopping_list`（含存货）、`add_shopping_items`、`mark_bought`、`remove_shopping_items`、`set_pantry`、`set_staple`、`remove_staple`（#103）。删除类（`remove_product`、`remove_shopping_items`、`remove_staple`）进 `ai/chat.py` 的 `ALWAYS_CONFIRM` 和 `assistant/.claude/settings.json` 的 `ask`，其余直接写。
 
 ## 5. 今天页
 饮食 tab →「采购」：本周（周一到周日）清单按类别分组，每行名字 + 「2 包 · 1 kg」+ 估价 + 门店小标签（「Coles」「Woolies」，第 7 节），点一下勾掉；顶部「已买 3 / 12」和估计总价；健康提示用短标签。下面是商品库（搜索、点开看规格 / 价格 / 每 100g 营养）。前端在 `web/static/grocery.js`（和 profile.js、history.js 一样登记在 `window.BodyPlugins`，app.js 只加了挂载点）。

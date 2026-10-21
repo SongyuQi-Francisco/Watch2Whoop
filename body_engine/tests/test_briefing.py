@@ -69,10 +69,12 @@ def test_tool_definitions_budget():
     54.5k -> 55k for get_weekly_specials (grocery-sync, #48).
     55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md).
         55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9).
-    57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint)."""
+    57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint).
+    59k -> 59.2k for the usual-item tools (#103: set_staple, remove_staple; the smallest step that fits). Tool groups (#99) are not
+    merged yet; once they are, these move into the grocery group and the limit can come back down."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 59000, size
+    assert size < 59200, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 
