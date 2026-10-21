@@ -235,6 +235,31 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
 
 
 def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
+    from ..training import plans as tr_plans
+    if tr_plans._active_plan_row(conn, owner_id) is not None:
+        wk = tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
+        day_entry = next((d for d in wk["days"] if d["date"] == day), {"planned": [], "rest_day": True})
+        logged, sparky_error = [], None
+        try:   # what was logged comes from SparkyFitness; when it cannot be read the Body Engine plan is still shown
+            client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+            for s in sparky_client.training_log(client, day, day):
+                logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
+                    {**_exercise_view(ctx, e["exercise_id"], e["name"], [], None, {}, with_meta),
+                     "sets_text": ", ".join(f"{x['weight_kg']:g}×{x['reps']}" if x.get("weight_kg") and x.get("reps")
+                                            else f"{x['reps']} 次" if x.get("reps")
+                                            else f"{x['duration_s']:g} 秒" if x.get("duration_s") else "—"
+                                            for x in e["sets"])}
+                    for e in s["exercises"]]})
+        except sparky_client.SparkyError as e:
+            sparky_error = str(e)
+        return {
+            "plan": wk["plan"],
+            "planned": day_entry["planned"],
+            "rest_day": day_entry["rest_day"],
+            "logged": logged,
+            "readiness": wk.get("readiness"),
+            **({"sparky_error": sparky_error} if sparky_error else {}),
+        }
     client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)
     plan = ctx.active_plan()
@@ -253,9 +278,12 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
 
 
 def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
-    """The Record tab's training page: this week's plan (Monday to Sunday, from the SparkyFitness weekly plan), the load suggestions
-    of the last 7 days (one per exercise, newest first) and the caution / banned exercises in this week's plan.
+    """The Record tab's training page: this week's plan (Monday to Sunday, from training_plans or SparkyFitness weekly plan),
+    the load suggestions of the last 7 days (one per exercise, newest first) and the caution / banned exercises in this week's plan.
     What was actually trained comes from /training/calendar (same week)."""
+    from ..training import plans as tr_plans
+    if tr_plans._active_plan_row(conn, owner_id) is not None:
+        return tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
     start = day - timedelta(days=day.weekday())
     end = start + timedelta(days=6)
     _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
@@ -276,8 +304,12 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
         suggestions.append({"exercise_id": ex_id, "name": ctx.exercise_name(ex_id, latest.get("exercise")), **latest})
     suggestions.sort(key=lambda r: (str(r.get("date") or ""), r["id"]), reverse=True)
     plan = ctx.active_plan(day)
-    return {"start": start, "end": end, "date": day, "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
-            "days": days, "suggestions": suggestions, "cautions": cautions}
+    with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
+    return {"start": start, "end": end, "date": day,
+            "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
+            "days": days, "suggestions": suggestions, "cautions": cautions,
+            "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
+            "available_splits": tr_plans.list_splits()}
 
 
 def nutrition_today(conn, owner_id: int, day: date) -> dict:
