@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, available_timezones
 
 import psycopg
 
+from .. import queries
 from ..assistant import status as status_card
 
 SEXES = {"male", "female"}
@@ -40,7 +41,7 @@ def get(conn: psycopg.Connection, user_id: int) -> dict:
     return out
 
 
-def _validate(patch: dict) -> dict:
+def _validate(patch: dict, today: date) -> dict:
     out = {}
     for k, v in patch.items():
         if k not in FIELDS:
@@ -51,7 +52,6 @@ def _validate(patch: dict) -> dict:
                 raise ValueError("称呼要 1–30 个字")
         elif k == "birth_date" and v is not None:
             v = v if isinstance(v, date) else date.fromisoformat(str(v))
-            today = date.today()
             if not date(1920, 1, 1) <= v <= date(today.year - 10, today.month, min(today.day, 28)):
                 raise ValueError("生日不对（要在 1920 年以后、至少 10 岁）")
         elif k == "sex" and v is not None:
@@ -80,7 +80,7 @@ def _validate(patch: dict) -> dict:
 
 
 def update(conn: psycopg.Connection, user_id: int, patch: dict) -> dict:
-    p = _validate(patch)
+    p = _validate(patch, queries.local_today(conn, user_id))
     cols = {k: v for k, v in p.items() if k != "goal_weight_kg"}
     with conn.transaction():
         if cols:

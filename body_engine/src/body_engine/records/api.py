@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
-from .. import auth
+from .. import auth, queries
 from . import analysis, defaults, lab_history, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["records"])
@@ -240,9 +240,10 @@ class EventPatch(_Model):
 @router.get("/events")
 def list_events(user: str, start: date | None = None, end: date | None = None, category: str | None = None,
                 conn=Depends(get_conn), viewer=Depends(current_user)):
-    end = end or date.today()
+    owner = _owner(conn, viewer, user, "events")
+    end = end or queries.local_today(conn, owner)
     start = start or end - timedelta(days=364)
-    return store.list_events(conn, _owner(conn, viewer, user, "events"), start, end, category)
+    return store.list_events(conn, owner, start, end, category)
 
 
 @router.post("/events", status_code=201)
@@ -294,9 +295,10 @@ def put_journal_item(user: str, key: str, body: JournalItemIn,
 @router.get("/journal")
 def journal(user: str, start: date | None = None, end: date | None = None,
             key: Annotated[list[str] | None, Query()] = None, conn=Depends(get_conn), viewer=Depends(current_user)):
-    end = end or date.today()
+    owner = _owner(conn, viewer, user, "journal")
+    end = end or queries.local_today(conn, owner)
     start = start or end - timedelta(days=29)
-    return defaults.with_label(store.journal_entries(conn, _owner(conn, viewer, user, "journal"), start, end, key))
+    return defaults.with_label(store.journal_entries(conn, owner, start, end, key))
 
 
 @router.put("/journal/{day}/{key}")

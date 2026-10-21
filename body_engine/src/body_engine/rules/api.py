@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
+from .. import queries
 from ..records.api import _owner, _self, current_user, get_conn
 from . import store
 from .engine import RULE_KEYS
@@ -25,9 +26,10 @@ def list_reminders(user: str, start: date | None = None, end: date | None = None
                    evidence: bool = True, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Reminders (by default only the end day = today, excluding those "dismissed"). Each day's evaluation re-lists the reminders that still hold that day,
     so looking at the current day is enough; pass start to see history."""
-    end = end or date.today()
+    owner = _owner(conn, viewer, user, "reminders")
+    end = end or queries.local_today(conn, owner)
     start = start or end
-    return store.list_reminders(conn, _owner(conn, viewer, user, "reminders"), start, end,
+    return store.list_reminders(conn, owner, start, end,
                                 status or ["new", "seen"], rule, evidence)
 
 
@@ -35,8 +37,9 @@ def list_reminders(user: str, start: date | None = None, end: date | None = None
 def rule_runs(user: str, start: date | None = None, end: date | None = None,
               conn=Depends(get_conn), viewer=Depends(current_user)):
     """Result of each rule on each evaluate-rules run (fired / not fired / insufficient data / error) and the reason."""
-    end = end or date.today()
-    return store.rule_runs(conn, _owner(conn, viewer, user, "reminders"), start or end - timedelta(days=6), end)
+    owner = _owner(conn, viewer, user, "reminders")
+    end = end or queries.local_today(conn, owner)
+    return store.rule_runs(conn, owner, start or end - timedelta(days=6), end)
 
 
 @router.patch("/reminders/{reminder_id}")
