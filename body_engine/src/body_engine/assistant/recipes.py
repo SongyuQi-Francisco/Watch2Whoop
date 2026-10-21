@@ -17,6 +17,7 @@ from psycopg.types.json import Jsonb
 
 from .. import sparky_client
 from ..grocery.sync import offers as store_offers, params as sync_params
+from ..i18n import L, tl
 from ..nutrition import extras
 from ..records import store as records_store
 from ..rules import params as rule_params
@@ -84,6 +85,11 @@ def constraint_flags(ingredients: list[dict], servings: float) -> dict:
             "red_meat_g": ps["red_meat_g"], "short_rib": any(is_short_rib(i["food"]) for i in ingredients)}
 
 
+# English twins of the automatic tags the Food tab shows (issue #42). 低嘌呤 / 低饱和脂肪 / 红肉 stay Chinese: the page hides
+# them (they repeat the constraint badges it draws from constraint_flags) and the AI reads them as data.
+AUTO_TAGS_EN = {"高蛋白": "High protein", "快手": "Quick", "含主食": "With staple"}
+
+
 def auto_tags(row: dict, ps: dict, flags: dict) -> list[str]:
     tags = []
     if ps["protein_g"] >= RP.HIGH_PROTEIN_G:
@@ -98,7 +104,7 @@ def auto_tags(row: dict, ps: dict, flags: dict) -> list[str]:
         tags.append("红肉")
     if row["includes_staple"]:
         tags.append("含主食")
-    return tags
+    return [tl(t, AUTO_TAGS_EN) for t in tags]
 
 
 def _servings(row) -> float:
@@ -111,7 +117,7 @@ def view(row: dict, detail: bool = False) -> dict:
     out = {"id": row["id"], "name": row["name"], "slots": row["slots"],
            "tags": list(dict.fromkeys([*row["tags"], *auto_tags(row, ps, flags)])),
            "kcal": ps["kcal"], "protein_g": ps["protein_g"], "carbs_g": ps["carbs_g"], "fat_g": ps["fat_g"],
-           "per_serving": row["serving_label"] or "1 份", "prep_min": row["prep_min"], "cook_min": row["cook_min"],
+           "per_serving": row["serving_label"] or L("1 份", "1 serving"), "prep_min": row["prep_min"], "cook_min": row["cook_min"],
            "favorite": row["favorite"], "can_make": row["can_make"], "constraint_flags": flags,
            "last_cooked_on": row["last_cooked_on"], "image": row["image"]}
     if detail:

@@ -18,6 +18,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ..assistant import meals, recipes
+from ..i18n import L as Li, tl
 from ..rules import params as rule_params
 from ..rules.nutrition import is_short_rib, red_meat_estimate
 from . import links as L, params as P
@@ -56,7 +57,16 @@ def fmt_qty(qty: float | None, unit: str) -> str:
         return ""
     if unit in ("g", "ml") and qty >= 1000:
         return f"{qty / 1000:g} {'kg' if unit == 'g' else 'L'}"
-    return f"{qty:g} 个" if unit == "pcs" else f"{qty:g} {unit}"
+    return Li(f"{qty:g} 个", f"{qty:g} pcs") if unit == "pcs" else f"{qty:g} {unit}"
+
+
+def category_label(cat: str | None) -> str:
+    return Li(P.CATEGORIES.get(cat, "其他"), P.CATEGORIES_EN.get(cat, "Other"))
+
+
+def flag_labels(flags: list[str]) -> list[str]:
+    """product_flags (Chinese, compared in _warnings) in the request's language."""
+    return [tl(f, P.FLAGS_EN) for f in flags]
 
 
 def guess_category(name: str) -> str:
@@ -195,12 +205,12 @@ def product_view(row: dict, connected: list[str] | tuple = ()) -> dict:
     if size and price is not None:   # per kg / L / piece
         unit_price = round(price / size * (1000 if unit in ("g", "ml") else 1), 2)
     return {"id": row["id"], "name": row["name"], "brand": row["brand"], "store": row["store"],
-            "store_label": L.store_label(row["store"]), "category": row["category"], "category_label": P.CATEGORIES.get(row["category"], "其他"),
+            "store_label": L.store_label(row["store"]), "category": row["category"], "category_label": category_label(row["category"]),
             "package_size": size, "package_unit": unit, "size_label": fmt_qty(size, unit) if unit else None,
             "piece_g": _num(row["piece_g"]), "price": price, "currency": row["currency"],
             "price_on": row["price_on"].isoformat() if row["price_on"] else None, "unit_price": unit_price,
             "nutrition": row["nutrition"] or {}, "purine_level": row["purine_level"], "red_meat": row["red_meat"],
-            "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": product_flags(row),
+            "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row)),
             "product_url": row["product_url"], "store_sku": row["store_sku"], "nutrition_source": row["nutrition_source"],
             "links": product_links(row, connected)}
 
@@ -520,9 +530,9 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
 
 def _item_view(r: dict, prod: dict | None = None, connected: list[str] | tuple = ()) -> dict:
     buy, unit = float(r["buy_qty"]), r["unit"]
-    label = (f"{r['packages']} 包 · {fmt_qty(buy, unit)}" if r["packages"] else fmt_qty(buy, unit))
+    label = (Li(f"{r['packages']} 包", f"{r['packages']} pk") + f" · {fmt_qty(buy, unit)}" if r["packages"] else fmt_qty(buy, unit))
     return {"id": r["id"], "name": r["name"], "product_id": r["product_id"], "category": r["category"],
-            "category_label": P.CATEGORIES.get(r["category"], "其他"), "store": r["store"], "store_label": L.store_label(r["store"]),
+            "category_label": category_label(r["category"]), "store": r["store"], "store_label": L.store_label(r["store"]),
             "need_qty": _num(r["need_qty"]), "unit": unit, "packages": r["packages"], "buy_qty": buy, "qty_label": label,
             "est_cost": _num(r["est_cost"]), "currency": r["currency"], "source": r["source"], "used_by": r["used_by"],
             "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"]),
@@ -538,17 +548,18 @@ def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
             red += float(r["buy_qty"])
     cap = rule_params.RED_MEAT_G_PER_WEEK
     if red > cap:
-        out.append({"code": "red_meat", "label": f"红肉 {red:.0f}g",
+        out.append({"code": "red_meat", "label": Li(f"红肉 {red:.0f}g", f"Red meat {red:.0f}g"),
                     "detail": f"这周计划的红肉约 {red:.0f}g，超过每周 ≤ {cap}g 的上限"})
     sr = summary.get("short_rib") or 0
     if sr > rule_params.SHORT_RIB_PER_WEEK:
-        out.append({"code": "short_rib", "label": f"牛肋条 ×{sr:g}",
+        out.append({"code": "short_rib", "label": Li(f"牛肋条 ×{sr:g}", f"Short rib ×{sr:g}"),
                     "detail": f"牛肋条计划 {sr:g} 次，上限每周 {rule_params.SHORT_RIB_PER_WEEK} 次"})
     for r in rows:
         p = products.get(r["product_id"])
         flags = [f for f in product_flags(p) if f not in ("红肉", "牛肋条")] if p else []   # those two are the weekly totals above
         if flags:
-            out.append({"code": "product", "label": f"{r['name']} {'、'.join(flags)}", "item_id": r["id"],
+            out.append({"code": "product", "label": f"{r['name']} " + Li("、".join(flags), ", ".join(flag_labels(flags))),
+                        "item_id": r["id"],
                         "detail": f"{p['name']} 标记：{'、'.join(flags)}（每 100g 按英国 FSA 红绿灯「高」线；嘌呤按商品库）"})
     return out
 

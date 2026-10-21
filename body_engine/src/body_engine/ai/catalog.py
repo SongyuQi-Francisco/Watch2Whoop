@@ -10,6 +10,8 @@
 """
 import os
 
+from ..i18n import is_en
+
 MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
 API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "gemini_cli", "openai_compatible")
 
@@ -52,6 +54,29 @@ KINDS: dict[str, dict] = {
         "key_hint": "对应服务的 API key（本机 Ollama 随便填）",
         "base_url_examples": ["https://api.deepseek.com/v1", "https://dashscope.aliyuncs.com/compatible-mode/v1",
                               "http://host.docker.internal:11434/v1"]},
+}
+
+# English for the texts above (AI settings on the Today page, X-Body-Lang: en); applied at read time by public_catalog / label
+KINDS_EN: dict[str, dict] = {
+    "claude_plan_mcp": {
+        "label": "Claude subscription (Pro / Max)",
+        "note": "A subscription only works in Claude's own apps: connect Body Engine's MCP in Claude Code or Claude Desktop."},
+    "codex_plan_mcp": {
+        "label": "ChatGPT subscription (Codex)",
+        "note": "Connect Body Engine's MCP in the Codex CLI you signed in to; the server never touches your ChatGPT account."},
+    "gemini_plan_mcp": {
+        "label": "Google AI subscription (Gemini)",
+        "note": "Connect Body Engine's MCP in the Gemini CLI / Antigravity you signed in to; the server never touches your Google account."},
+    "generic_mcp_client": {
+        "label": "Other MCP client",
+        "note": "Any client that supports remote MCP (Streamable HTTP + Bearer header) can connect."},
+    "anthropic_api": {"label": "Anthropic API (Claude)", "key_hint": "sk-ant-… (create one at console.anthropic.com)"},
+    "openai_api": {"label": "OpenAI API", "key_hint": "sk-… (create one at platform.openai.com)"},
+    "gemini_api": {"label": "Google Gemini API", "key_hint": "API key from AI Studio"},
+    "gemini_cli": {"label": "Google AI subscription (Gemini CLI on the server)",
+                   "note": "Deployer only: uses the Gemini CLI signed in on the server"},
+    "openai_compatible": {"label": "OpenAI-compatible API (DeepSeek, Qwen, Ollama…)",
+                          "key_hint": "That service's API key (anything for a local Ollama)"},
 }
 
 # USD per million tokens: (input, output)
@@ -109,11 +134,28 @@ def kind_allowed(kind: str, user_id: int) -> bool:
     return gemini_cli_enabled() and is_owner(user_id)
 
 
+def texts(kind: str) -> dict:
+    """label / note / key_hint of a kind in the request's language."""
+    k = KINDS.get(kind, {})
+    out = {f: k[f] for f in ("label", "note", "key_hint") if f in k}
+    return {**out, **KINDS_EN.get(kind, {})} if is_en() else out
+
+
+def label(kind: str) -> str:
+    return texts(kind).get("label") or kind
+
+
+def display_name(row: dict) -> str:
+    """A provider's name for the page: the stored name, except the default (the Chinese catalog label) follows the language."""
+    name = row.get("display_name") or ""
+    return label(row["kind"]) if name == KINDS.get(row.get("kind"), {}).get("label") else name
+
+
 def public_catalog(user_id: int | None = None) -> list[dict]:
     out = []
     for kind, k in KINDS.items():
         if k.get("owner_only") and (user_id is None or not kind_allowed(kind, user_id)):
             continue
-        out.append({"kind": kind, **{f: v for f, v in k.items()},
+        out.append({"kind": kind, **{f: v for f, v in k.items()}, **texts(kind),
                     "prices": {m: PRICES.get(m) for m in k.get("models", [])}})
     return out

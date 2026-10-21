@@ -71,6 +71,8 @@ class SparkyClient:
             raise SparkyError(f"{method} {path} → {e.code}: {e.read()[:300].decode(errors='replace')}") from e
         except urllib.error.URLError as e:
             raise SparkyError(f"连不上 SparkyFitness（{self.base_url}）：{e.reason}") from e
+        except OSError as e:   # read timeout / connection reset after connecting: the same as unreachable
+            raise SparkyError(f"连不上 SparkyFitness（{self.base_url}）：{type(e).__name__}") from e
 
     def whoami(self) -> dict:
         """The user the current key belongs to; also confirms it is a read-only key (with API key login, session.id is the key's id)."""

@@ -13,6 +13,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ..config import REPO_ROOT
+from ..i18n import L
 
 VERSION = b"v1"
 
@@ -40,10 +41,11 @@ def init_master_key(path: Path | None = None) -> tuple[Path, bool]:
 def _key() -> bytes:
     path = key_path()
     if not path.exists():
-        raise MasterKeyMissing(f"服务器还没有 AI 主密钥（{path.name}）：管理员先运行 body-engine ai-key-init")
+        raise MasterKeyMissing(L(f"服务器还没有 AI 主密钥（{path.name}）：管理员先运行 body-engine ai-key-init",
+                                 f"The server has no AI master key yet ({path.name}): the admin runs body-engine ai-key-init first"))
     key = base64.b64decode(path.read_text().strip())
     if len(key) != 32:
-        raise MasterKeyMissing("AI 主密钥格式不对（应为 32 字节 base64）")
+        raise MasterKeyMissing(L("AI 主密钥格式不对（应为 32 字节 base64）", "The AI master key is malformed (should be 32 bytes, base64)"))
     return key
 
 

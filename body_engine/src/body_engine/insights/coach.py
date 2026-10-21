@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
+from ..i18n import is_en
 from ..scores import params as SP
 from ..scores import sleep as S
 
@@ -167,6 +168,16 @@ MONITOR = {   # key: (label, unit, getter, minimum half-band)
 }
 
 
+MONITOR_EN = {  # key: (English label, unit) for the Today page in English (issue #42)
+    "rhr": ("Resting HR (lowest during sleep)", "bpm"),
+    "hrv": ("HRV (SDNN, night)", "ms"),
+    "resp_rate": ("Respiratory rate (night)", "/min"),
+    "spo2": ("Blood oxygen (night median)", "%"),
+    "wrist_temp": ("Wrist temperature (night)", "°C"),
+}
+RHR_APPLE_LABEL = ("静息心率（Apple 全天，最近一晚没有睡眠期原始心率）", "Resting HR (Apple, all day; no raw sleep HR last night)")
+
+
 def monitor_range(values: list[float], key: str) -> tuple[float, float, float] | None:
     """Returns (lower, upper, center). HRV's symmetric range is computed on the ln scale and converted back to ms."""
     if len(values) < MONITOR_MIN_NIGHTS:
@@ -196,8 +207,10 @@ def health_monitor(conn: psycopg.Connection, user_id: int, d: date) -> dict:
     latest = latest_any
     metrics = []
     for key, (label, unit, get, _) in MONITOR.items():
+        if is_en():
+            label, unit = MONITOR_EN[key]
         if key == "rhr" and rhr_apple:
-            label = "静息心率（Apple 全天，最近一晚没有睡眠期原始心率）"
+            label = RHR_APPLE_LABEL[is_en()]
         cur = get(latest) if latest else None
         hist = [v for r in rows if latest is None or r["date"] < latest["date"] if (v := get(r)) is not None]
         rng = monitor_range(hist, key)

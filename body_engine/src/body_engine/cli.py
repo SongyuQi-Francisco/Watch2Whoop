@@ -160,6 +160,8 @@ def main() -> None:
     x = sub.add_parser("link-exercises", help="write SparkyFitness exercise IDs into exercise_meta.app_exercise_id (matched by name / alias, idempotent)")
     x.add_argument("--user-id", type=int, required=True)
     x.add_argument("--dry-run", action="store_true", help="only print the comparison table, do not write to the database")
+    sx = sub.add_parser("seed-exercises", help="seed the bilingual exercise_catalog table (curated overlay + optional free-exercise-db exercises.json; idempotent)")
+    sx.add_argument("--free-exercise-db", type=Path, help="optional path to yuhonas/free-exercise-db dist/exercises.json (Unlicense)")
 
     m = sub.add_parser("memory-init", help="generate the body butler's initial profile card (existing database data + optional body-management.md transcription; only fills in missing items)")
     m.add_argument("--user-id", type=int, required=True)
@@ -385,6 +387,9 @@ def main() -> None:
             print(rules_engine.format_report(rules_engine.run(conn, args.user_id, args.date)))
         elif args.cmd == "link-exercises":
             print(exercise_link.format_report(exercise_link.run(conn, args.user_id, dry_run=args.dry_run)))
+        elif args.cmd == "seed-exercises":
+            from .training import catalog as tr_catalog
+            print(json.dumps(tr_catalog.seed_catalog(conn, args.free_exercise_db), ensure_ascii=False))
         elif args.cmd == "memory-init":
             res = assistant_memory.init_profile(conn, args.user_id, memory_seed.MD_PROFILE if args.from_md else None)
             res["status"] = assistant_status.init_status(conn, args.user_id, with_seed=args.from_md)

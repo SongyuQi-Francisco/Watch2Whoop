@@ -6,12 +6,14 @@
 - GET /v1/users/{user}/explain/status/{key}?date=  one status card item (needs the memory scope, same as /memory).
 - GET /v1/users/{user}/explain/lab/{test_key}?date=  one lab test, for the lab trend sheet (needs the labs scope).
 - GET /v1/explain/glossary  all static entries (for the butler / other clients).
+Texts follow the request language (X-Body-Lang, issue #42); without the header they are Chinese, as the AI clients expect.
 """
 from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
+from ..i18n import L
 from ..records.api import _owner, current_user, get_conn
 from ..web import api as web_api, views
 from . import glossary as G, personal
@@ -24,7 +26,7 @@ def explain_metric(user: str, key: str, day: Annotated[date | None, Query(alias=
                    conn=Depends(get_conn), viewer=Depends(current_user)):
     """What the metric is, how to read it, how it relates to recovery, and advice from the owner's own numbers."""
     if key not in G.METRICS:
-        raise HTTPException(404, f"没有这个指标的讲解：{key}")
+        raise HTTPException(404, L(f"没有这个指标的讲解：{key}", f"No explanation for this metric: {key}"))
     owner = web_api.owner(conn, viewer, user)
     return personal.explain_metric(conn, viewer["id"], owner, key, day or views.local_today(conn, owner))
 
@@ -37,7 +39,7 @@ def explain_status(user: str, key: str = Path(pattern=r"^[a-z][a-z0-9_]*$"),
     owner = _owner(conn, viewer, user, "memory")
     out = personal.explain_status(conn, viewer["id"], owner, key, day or views.local_today(conn, owner))
     if out is None:
-        raise HTTPException(404, f"没有这个状态项：{key}")
+        raise HTTPException(404, L(f"没有这个状态项：{key}", f"No such status item: {key}"))
     return out
 
 
@@ -53,4 +55,4 @@ def explain_lab(user: str, key: str = Path(pattern=r"^[A-Za-z0-9_\u4e00-\u9fff]+
 @router.get("/v1/explain/glossary")
 def glossary(viewer=Depends(current_user)):
     """Static entries only (no personal data)."""
-    return {"metrics": G.METRICS, "labs": G.LABS, "status": G.STATUS, "conditions": G.CONDITIONS}
+    return G.all_entries()

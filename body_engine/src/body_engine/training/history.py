@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import auth, sparky_client
+from ..i18n import is_en, tl
 from ..rules import params as RP
 from ..rules.context import Ctx
 from . import params as P
@@ -24,6 +25,7 @@ from .importer import avg_hr_trimp, hr_max_for, type_name
 
 MAX_RANGE_DAYS = 92
 STATUS_ZH = {"banned": "禁用", "caution": "注意", "active": "正常"}
+STATUS_EN = {"banned": "Banned", "caution": "Caution", "active": "OK"}
 LEVEL_RANK = {lvl: i for i, lvl in enumerate(P.INTENSITY_LEVELS)}
 
 
@@ -104,7 +106,7 @@ def _exercise_view(e: dict, ctx: Ctx | None) -> dict:
     if ctx is not None and e.get("exercise_id"):
         status = ctx.status_of(e["exercise_id"])[0]
     return {"exercise_id": e.get("exercise_id"), "name": e.get("name"), "category": e.get("category"),
-            "status": STATUS_ZH.get(status, "正常"), "status_key": status, "notes": e.get("notes"),
+            "status": STATUS_EN.get(status, "OK") if is_en() else STATUS_ZH.get(status, "正常"), "status_key": status, "notes": e.get("notes"),
             "duration_min": e.get("duration_minutes") or None,
             "sets": [{"set": s.get("set"), "type": s.get("type"), "reps": s.get("reps"), "weight_kg": s.get("weight_kg"),
                       "rir": s.get("rir"), "rpe": s.get("rpe"), "duration_s": s.get("duration_s"),
@@ -218,11 +220,41 @@ def classify(sess: dict, hr_max: float | None) -> None:
         basis, value = ("duration", minutes) if minutes else ("none", None)
     if (sess.get("duration_min") or P.MIN_SESSION_MIN) < P.MIN_SESSION_MIN:
         level = "light"
-    sess.update(intensity=level, intensity_label=P.INTENSITY_LABELS[level], intensity_basis=basis,
+    sess.update(intensity=level, intensity_label=intensity_label(level), intensity_basis=basis,
                 intensity_value=value)
 
 
 BASIS_ZH = {"trimp": "按心率（TRIMP）", "avg_hr": "按平均心率估", "volume": "按力量训练量", "duration": "按时长", "none": "没有数据"}
+BASIS_EN = {"trimp": "By heart rate (TRIMP)", "avg_hr": "Estimated from average HR", "volume": "By strength volume",
+            "duration": "By duration", "none": "No data"}
+
+# ---------------------------------------------------------------- display language (issue #42)
+# Stored names stay Chinese (name_zh, AI tools); an English request gets the type part of a name in English. A name that is
+# not a type name (a user's override, a SparkyFitness session or exercise name) is the user's own text and stays as is.
+_TYPE_OF_ZH = {zh: t for t, zh in P.TYPE_NAMES.items()}
+SOURCE_EN = {"快捷指令": "Shortcut", "Apple 健康": "Apple Health"}
+
+
+def intensity_label(level: str) -> str:
+    return P.INTENSITY_LABELS_EN[level] if is_en() else P.INTENSITY_LABELS[level]
+
+
+def display_name(name: str | None) -> str | None:
+    """'力量训练' / '力量训练 · Push day' -> 'Strength training' / 'Strength training · Push day' when the request is English."""
+    if not name or not is_en():
+        return name
+    head, sep, rest = name.partition(" · ")
+    t = _TYPE_OF_ZH.get(head)
+    return P.TYPE_NAMES_EN.get(t, head) + sep + rest if t else name
+
+
+def _localize(sess: dict) -> None:
+    if not is_en():
+        return
+    sess["name"] = display_name(sess["name"])
+    sess["type_name"] = P.TYPE_NAMES_EN.get(sess["type"], sess["type_name"])
+    head, sep, rest = sess["source_label"].partition(" + ")
+    sess["source_label"] = tl(head, SOURCE_EN) + sep + rest
 
 
 def _r(x, nd=0):
@@ -283,8 +315,9 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
                 s["exercises"] = [_exercise_view(e, ctx) for e in s["exercises"]]
             else:
                 s["exercises"] = [{"name": e.get("name"), "category": e.get("category")} for e in s["exercises"]]
-            s["intensity_basis_label"] = BASIS_ZH.get(s["intensity_basis"])
+            s["intensity_basis_label"] = (BASIS_EN if is_en() else BASIS_ZH).get(s["intensity_basis"])
             s.pop("_cat", None)
+            _localize(s)
         m, sc = metrics.get(d, {}), scores.get(d) or {}
         intensity = _max_level(*(s["intensity"] for s in sessions)) or "rest"
         workout_kcal = sum(s["active_kcal"] or 0 for s in sessions)
@@ -302,7 +335,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
             "exercise_min": _r(m.get("exercise_min")), "steps": _r(m.get("steps")),
             "strain": sc.get("strain"), "muscle_load": sc.get("muscle_load"), "recovery": sc.get("recovery"),
             "recovery_next_day": (scores.get(d + timedelta(days=1)) or {}).get("recovery"),
-            "intensity": intensity, "intensity_label": P.INTENSITY_LABELS[intensity],
+            "intensity": intensity, "intensity_label": intensity_label(intensity),
             "types": list(dict.fromkeys(s["type"] for s in sessions)),
             "labels": list(dict.fromkeys(s["name"] for s in sessions)), "flags": flags,
         })
@@ -378,7 +411,7 @@ def calendar(conn: psycopg.Connection, viewer_id: int, owner_id: int, month: str
         days.append(row)
     return {"month": label, "start": start, "end": end, "timezone": res["timezone"], "days": days,
             "summary": summarize(res["days"]), "sparky_error": res["sparky_error"], "hidden": res["hidden"],
-            "intensity_levels": [{"key": k, "label": P.INTENSITY_LABELS[k]} for k in P.INTENSITY_LEVELS],
+            "intensity_levels": [{"key": k, "label": intensity_label(k)} for k in P.INTENSITY_LEVELS],
             "version": P.TRAINING_VERSION}
 
 

@@ -65,7 +65,7 @@ def _mean(xs) -> float | None:
 def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
     row = conn.execute(
         """SELECT
-             (SELECT row(display_name, timezone, birth_date, sex, height_cm)::text FROM users WHERE id = %(u)s) AS u,
+             (SELECT row(display_name, timezone, birth_date, sex, height_cm, language)::text FROM users WHERE id = %(u)s) AS u,
              (SELECT row(count(*), max(computed_at))::text FROM daily_scores WHERE user_id = %(u)s AND date >= %(s)s) AS sc,
              (SELECT row(count(*), max(id), max(end_at))::text FROM sleep_sessions WHERE user_id = %(u)s AND wake_date >= %(s)s) AS sl,
              (SELECT row(count(*), max(updated_at))::text FROM workouts WHERE user_id = %(u)s AND start_at >= %(s)s::date - 1) AS w,
@@ -82,7 +82,7 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
 # ---------------------------------------------------------------- sections
 def _me(conn, uid: int) -> dict:
     p = queries.profile(conn, uid) or {}
-    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm")}
+    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm", "language")}
 
 
 def _scores(conn, uid: int, today: date) -> dict:
