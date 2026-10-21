@@ -8,4 +8,5 @@ is on for everyone and the old path is gone.
 FLAGS: dict[str, str] = {
     # "new_food_page": "饮食页新版（2026-11）",
     "friends": "朋友页：圈子和共享、朋友 tab、排行榜（docs/friends-social-plan.md）；同意书至少 2026-10-22.2",
+    "meal_merge": "饮食当天明细多选：存成快捷模板 / 合并成一条（#93、#97）",
 }
