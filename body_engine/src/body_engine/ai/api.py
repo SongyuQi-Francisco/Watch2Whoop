@@ -65,9 +65,20 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
         "clients": {
             "claude-code": f"claude mcp add-json --scope user body-engine '{{\"type\": \"http\", \"url\": \"{url}\", \"headers\": {header}}}'",
             "codex": f"codex mcp add body-engine --url {url} --bearer-token-env-var {token_env}",
-            "gemini-cli": (f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
-                           + L("# 或在 ~/.gemini/settings.json 的 mcpServers 里加（Antigravity 的 MCP 设置填同样的地址和请求头）：\n",
-                               "# or add it to mcpServers in ~/.gemini/settings.json (in Antigravity's MCP settings use the same URL and header):\n")
+            "antigravity": (f"agy mcp add --header \"Authorization: Bearer ${{{token_env}}}\" body-engine {url}\n"
+                            "chmod 600 ~/.gemini/config/mcp_config.json\n"
+                            + L("# Antigravity 不展开配置文件里的 ${…}：上面这条命令由 shell 把 token 填进去。\n"
+                                "# 也可以手动写（桌面版 / IDE 的 MCP Servers → Manage MCP Servers → View raw config 是同一个文件）\n"
+                                "# ~/.gemini/config/mcp_config.json，把 <token> 换成上面那串 token：\n",
+                                "# Antigravity does not expand ${…} in its config file: the command above lets the shell fill in the token.\n"
+                                "# Or write it by hand (MCP Servers → Manage MCP Servers → View raw config in the desktop app / IDE is the\n"
+                                "# same file) in ~/.gemini/config/mcp_config.json, with <token> replaced by the token above:\n")
+                            + json.dumps({"mcpServers": {"body-engine": {"serverUrl": url, "headers": {"Authorization": "Bearer <token>"}}}},
+                                         ensure_ascii=False, indent=2)),
+            "gemini-cli": (L("# Gemini CLI 从 2026-06-18 起只支持付费 Gemini API key（AI Pro / Ultra 订阅请选 Antigravity）\n",
+                             "# Since 2026-06-18 Gemini CLI only works with a paid Gemini API key (AI Pro / Ultra: choose Antigravity)\n")
+                           + f"gemini mcp add --scope user --transport http -H 'Authorization: Bearer ${{{token_env}}}' body-engine {url}\n"
+                           + L("# 或在 ~/.gemini/settings.json 的 mcpServers 里加：\n", "# or add it to mcpServers in ~/.gemini/settings.json:\n")
                            + json.dumps({"body-engine": {"type": "http", "url": url, "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}},
                                         ensure_ascii=False, indent=2)),
             "other": json.dumps({"mcpServers": {"body-engine": {"type": "http", "url": url,

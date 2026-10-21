@@ -23,8 +23,12 @@ KINDS: dict[str, dict] = {
         "label": "ChatGPT 订阅（Codex）", "category": "mcp", "client": "codex",
         "note": "在你自己登录的 Codex CLI 里连 Body Engine 的 MCP；后端不碰你的 ChatGPT 账号。"},
     "gemini_plan_mcp": {
-        "label": "Google AI 订阅（Gemini）", "category": "mcp", "client": "gemini-cli",
-        "note": "在你自己登录的 Gemini CLI / Antigravity 里连 Body Engine 的 MCP；后端不碰你的 Google 账号。"},
+        # Google AI Pro / Ultra (formerly Google One AI Premium). Since 2026-06-18 Gemini CLI no longer serves these plans;
+        # Antigravity (desktop / IDE / CLI `agy`) is the subscription client. The Gemini app's custom MCP apps need OAuth
+        # and are US-only (docs/ai-assistant-plan.md 9.15), so they are not offered here.
+        "label": "Google AI Pro / Ultra 订阅（Antigravity）", "category": "mcp", "client": "antigravity",
+        "note": "在你自己登录的 Antigravity（桌面版、IDE 或 agy 命令行）里连 Body Engine 的 MCP；后端不碰你的 Google 账号。"
+                "Gemini CLI 从 2026-06-18 起不再支持订阅登录。"},
     "generic_mcp_client": {
         "label": "其他 MCP 客户端", "category": "mcp", "client": "other",
         "note": "任何支持远程 MCP（Streamable HTTP + Bearer 头）的客户端都可以连。"},
@@ -47,7 +51,8 @@ KINDS: dict[str, dict] = {
                    "gemini-2.5-pro", "gemini-2.5-flash"],
         # Server-side subprocess: off unless the admin sets BODY_GEMINI_CLI_ENABLED=1, and only for BODY_ASSISTANT_USER_ID
         "vision": True, "needs_key": False, "owner_only": True,
-        "note": "仅部署者：用服务器上登录的 Gemini CLI"},
+        "note": "仅部署者：用服务器上登录的 Gemini CLI（Google 2026-06-18 起不再给 AI Pro / Ultra 订阅提供 Gemini CLI，"
+                "只剩企业版 Code Assist 账号能登录）"},
     "openai_compatible": {
         "label": "OpenAI 兼容接口（DeepSeek、通义千问、Ollama…）", "category": "api", "default_model": None,
         "models": [], "vision": None, "needs_base_url": True,
@@ -65,8 +70,9 @@ KINDS_EN: dict[str, dict] = {
         "label": "ChatGPT subscription (Codex)",
         "note": "Connect Body Engine's MCP in the Codex CLI you signed in to; the server never touches your ChatGPT account."},
     "gemini_plan_mcp": {
-        "label": "Google AI subscription (Gemini)",
-        "note": "Connect Body Engine's MCP in the Gemini CLI / Antigravity you signed in to; the server never touches your Google account."},
+        "label": "Google AI Pro / Ultra subscription (Antigravity)",
+        "note": "Connect Body Engine's MCP in the Antigravity you signed in to (desktop app, IDE or the agy CLI); the server never "
+                "touches your Google account. Gemini CLI no longer accepts subscription sign-in since 2026-06-18."},
     "generic_mcp_client": {
         "label": "Other MCP client",
         "note": "Any client that supports remote MCP (Streamable HTTP + Bearer header) can connect."},
@@ -74,7 +80,8 @@ KINDS_EN: dict[str, dict] = {
     "openai_api": {"label": "OpenAI API", "key_hint": "sk-… (create one at platform.openai.com)"},
     "gemini_api": {"label": "Google Gemini API", "key_hint": "API key from AI Studio"},
     "gemini_cli": {"label": "Google AI subscription (Gemini CLI on the server)",
-                   "note": "Deployer only: uses the Gemini CLI signed in on the server"},
+                   "note": "Deployer only: uses the Gemini CLI signed in on the server (since 2026-06-18 Google no longer serves "
+                           "Gemini CLI to AI Pro / Ultra plans; only enterprise Code Assist accounts can sign in)"},
     "openai_compatible": {"label": "OpenAI-compatible API (DeepSeek, Qwen, Ollama…)",
                           "key_hint": "That service's API key (anything for a local Ollama)"},
 }

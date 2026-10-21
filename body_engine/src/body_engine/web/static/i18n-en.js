@@ -582,6 +582,7 @@ I18N.addEn({
   "免费额度（按 $0 计）": "Free tier (counted as $0)",
   "已关闭": "Off",
   "其他 MCP 客户端": "Other MCP client",
+  "Gemini CLI（API key）": "Gemini CLI (API key)",
   "出错了": "Something went wrong",
   "删除": "Delete",
   "删除「{name}」？保存的 key 也会删掉。": "Delete \"{name}\"? The saved key is deleted too.",

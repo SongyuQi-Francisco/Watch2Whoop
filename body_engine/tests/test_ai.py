@@ -129,6 +129,10 @@ def test_provider_defaults_and_secret_never_returned(client, world, setup, dsn):
     body = r.json()
     assert [p["id"] for p in body["providers"]] == [pa["id"]]
     assert body["mcp"]["url"].endswith("/mcp") and "BODY_ENGINE_MCP_TOKEN" in body["mcp"]["clients"]["codex"]
+    agy = body["mcp"]["clients"]["antigravity"]   # Antigravity: serverUrl + headers, token filled in by the shell
+    assert agy.startswith('agy mcp add --header "Authorization: Bearer ${BODY_ENGINE_MCP_TOKEN}" body-engine ')
+    assert '"serverUrl": "' + body["mcp"]["url"] + '"' in agy and "~/.gemini/config/mcp_config.json" in agy
+    assert "API key" in body["mcp"]["clients"]["gemini-cli"]
     with db(dsn) as conn:
         row = conn.execute("SELECT encrypted_secret FROM ai_providers WHERE id = %s", (pa["id"],)).fetchone()
         assert KEY_A.encode() not in bytes(row["encrypted_secret"])
@@ -489,13 +493,13 @@ def test_gemini_plan_mcp_and_redirect(client, world):
     r = client.post("/v1/users/me/ai-providers", headers=H(tok["D"]), json={"kind": "gemini_plan_mcp", "is_default": True})
     assert r.status_code == 201
     pid = r.json()["id"]
-    assert r.json()["kind"] == "gemini_plan_mcp" and "Google AI 订阅" in r.json()["label"]
-    # When default provider is gemini_plan_mcp, chat redirects to Gemini CLI / Antigravity
+    assert r.json()["kind"] == "gemini_plan_mcp" and "Google AI Pro / Ultra 订阅" in r.json()["label"]
+    # When default provider is gemini_plan_mcp, chat redirects to Antigravity (Gemini CLI dropped subscriptions on 2026-06-18)
     r_chat = chat(client, tok["D"])
     assert r_chat.status_code == 409
     detail = r_chat.json()["detail"]
     assert detail["code"] == "subscription"
-    assert "Gemini CLI / Antigravity" in detail["message"]
+    assert "Antigravity" in detail["message"] and "Gemini CLI" not in detail["message"]
     # Clean up
     client.delete(f"/v1/users/me/ai-providers/{pid}", headers=H(tok["D"]))
 

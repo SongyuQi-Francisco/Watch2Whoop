@@ -16,7 +16,7 @@
   const yuan = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
   const quotaText = (f) => `${yuan(f.spent_cny)} / ¥${Number(f.quota_cny)}`;
   const mmdd = (iso) => (iso ? window.I18N.monthDay(new Date(`${iso.slice(0, 10)}T12:00:00`)) : "");
-  const CLIENTS = [["claude-code", tr("Claude Code / Claude 桌面版")], ["codex", "Codex CLI"], ["gemini-cli", "Gemini CLI / Antigravity"], ["other", tr("其他 MCP 客户端")]];
+  const CLIENTS = [["claude-code", tr("Claude Code / Claude 桌面版")], ["codex", "Codex CLI"], ["antigravity", "Antigravity"], ["gemini-cli", tr("Gemini CLI（API key）")], ["other", tr("其他 MCP 客户端")]];
 
   // ---------------------------------------------------------------- settings
   async function loadProviders() { return C.api("/v1/users/me/ai-providers"); }

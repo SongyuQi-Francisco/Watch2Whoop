@@ -166,7 +166,9 @@ The key is uploaded once and afterwards only its last 4 characters are shown; it
 
 ### Option 3: your Claude / ChatGPT / Google AI subscription
 
-For people who use the Claude desktop app / Claude Code, Codex, or Gemini CLI / Antigravity on a computer. "AI settings" → "Add" → choose "Claude subscription", "ChatGPT subscription" or "Google AI subscription" → "Save" → "Connect a client (MCP)" → pick the client → "Generate token", then follow the 3 on-screen steps on your computer.
+For people who use the Claude desktop app / Claude Code, Codex, or Antigravity on a computer. "AI settings" → "Add" → choose "Claude subscription", "ChatGPT subscription" or "Google AI Pro / Ultra subscription (Antigravity)" → "Save" → "Connect a client (MCP)" → pick the client → "Generate token", then follow the 3 on-screen steps on your computer.
+
+Google AI Pro / Ultra: use Antigravity (desktop app, IDE or the `agy` CLI; Antigravity's free tier works too, with lower limits). Gemini CLI no longer accepts subscription sign-in since 2026-06-18 and only works with a paid Gemini API key. The Gemini web / mobile app's "custom apps" are open to users in the US only, so they cannot connect for now.
 
 ![Connect a client (MCP)](images/tester-handbook/ai-mcp.jpg)
 
