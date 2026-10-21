@@ -128,6 +128,23 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 - **余额低于停用线全体自动暂停**，`status` 第二行显示余额、停用线、告警线；充值后下次查余额时恢复。
 - 第一次用前用户要在 app 里单独同意。
 
+## AI 自动反馈
+用户的 AI 发现 bug、听到新需求时会用 `report_feedback` 报进服务器的反馈队列（根规则，`docs/ai-feedback-plan.md`）。服务器先去敏、查重、限流；原话只在服务器上。
+
+```bash
+body-engine feedback list                       # 最新的在前；--status new 只看没处理的
+body-engine feedback show FB-12                 # 去敏后的内容；--raw 看 AI 原话（可能有个人信息，别外传）
+body-engine feedback show FB-12 --public        # 只输出可以贴进公开 issue 的标题和正文
+body-engine feedback status FB-12 public --public-url https://github.com/…/issues/N
+body-engine feedback status FB-12 fixed --note "新版已修好"     # 用户的 AI 下次对话会告诉他（note 不要写个人信息）
+body-engine feedback block --user-id 7          # 有人刷屏时停掉他的反馈
+body-engine feedback digest --dry-run           # 预览每日摘要；不加 --dry-run 发到 BODY_FEEDBACK_DIGEST_TO
+```
+
+- 每日摘要：部署的定时任务每天跑一次 `body-engine feedback digest`；收件地址只配在服务器环境 `BODY_FEEDBACK_DIGEST_TO`（不进仓库），用已有的发信配置（`BODY_MAIL_MODE=smtp`、`BODY_SMTP_*`）。没有新反馈也没有工具报错时不发。
+- 提升到公开仓库：`show --public` 的内容再人工看一遍，用自己电脑上的 `gh issue create` 发，然后 `status … public --public-url …`。服务器上不放公开仓库的 token。
+- 全服务器停用：`BODY_FEEDBACK_MODE=off`。
+
 ## 导入健康历史
 
 用户在 app「我 → 导入健康历史」自己上传，后台队列处理（`body-engine history-import-run`，定时任务每分钟或每小时跑一次）。管理员代导：

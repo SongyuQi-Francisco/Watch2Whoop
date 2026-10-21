@@ -14,6 +14,9 @@ EXACT: dict[str, str] = {
     # ---- auth / sessions (api.py, records/api.py, web/)
     # ---- grocery-sync (sync/wws.py)
     "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
+    # ---- AI feedback (feedback/api.py)
+    "反馈记录只能看自己的": "You can only see your own feedback",
+    "没有这条反馈（或不是你的）": "No such feedback (or it is not yours)",
     "缺少 Bearer token": "Missing Bearer token",
     "缺少 Bearer token（或没有登录）": "Missing Bearer token (or not signed in)",
     "token 无效或已吊销": "Invalid or revoked token",

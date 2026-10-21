@@ -66,10 +66,11 @@ def test_tool_definitions_budget():
     49k -> 52.5k for the Training V2 tools (#1: get_exercise, propose_plan, save_plan, get_week_plan, swap_exercise, list_splits).
     52.5k -> 53.5k for the day-change tools (#17: reschedule_day, swap_days, replan_week, undo_day_changes).
     53.5k -> 54.5k for plan start / training_days / addons and the ask-first wording on propose_plan / save_plan (#65, #66); set_stores (#44) fits in.
-    54.5k -> 55k for get_weekly_specials (grocery-sync, #48)."""
+    54.5k -> 55k for get_weekly_specials (grocery-sync, #48).
+    55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md)."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 55000, size
+    assert size < 55500, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 
@@ -146,7 +147,8 @@ def test_briefing_own_data_and_size(conn, world):
     text = compact.dumps(b)
     assert "A 喜欢早上练" in text and "乳糖" not in text            # nobody else's memory
     assert "big" not in text                                           # no reminder evidence
-    assert len(text) < 4500, len(text)                                  # ~1.5k tokens
+    rules = len(compact.dumps({"system_rules": b["system_rules"]}))   # root rules: fixed text, on every briefing
+    assert len(text) - rules < 4500, len(text)                          # ~1.5k tokens + the root rules
 
 
 def test_briefing_family_view_respects_shares(conn, world):

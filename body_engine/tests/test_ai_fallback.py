@@ -201,7 +201,8 @@ def test_chat_needs_fallback_consent_then_works(client, world, dsn):
     assert conv["provider"] == "system_fallback" and conv["quota"]["quota_cny"] == fp.MONTHLY_QUOTA_CNY
     call = FakeAdapter.calls[0]
     assert call["api_key"] == DS_KEY and call["model"] == fp.MODEL and call["base_url"] == fp.BASE_URL
-    assert call["system"].startswith("# 身体管家（精简版）") and "F1 喜欢早上练" in call["system"]
+    assert call["system"].startswith("## 根规则 v1") and "# 身体管家（精简版）" in call["system"]   # root rules first
+    assert "F1 喜欢早上练" in call["system"]
     assert set(call["tools"]) == set(fallback.TOOL_NAMES)
     usage = next(d for e, d in evs if e == "usage")
     expect = (1000 * 2 + 9000 * 0.04 + 200 * 8) / 1e6

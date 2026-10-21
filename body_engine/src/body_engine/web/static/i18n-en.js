@@ -771,4 +771,17 @@ I18N.addEn({
   "训练记录读不到 · 重量为估算": "Training log unreadable · weights are estimates",
   "正面": "Front",
   "背面": "Back",
+  // AI feedback (#55)
+  "先问我": "Ask me first",
+  "公开链接": "Public link",
+  "关闭": "Off",
+  "反馈暂停": "Feedback paused",
+  "反馈模式": "Feedback mode",
+  "反馈记录": "Feedback",
+  "我 +1": "Me +1",
+  "撤回": "Withdraw",
+  "自动报告": "Report automatically",
+  "读取失败": "Couldn't load",
+  "还没有反馈": "No feedback yet",
+  "问题": "Bug",
 });
