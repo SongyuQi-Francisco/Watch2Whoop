@@ -43,6 +43,7 @@ SparkyFitness (workouts, meals, weight) is not imported; it is read live through
 
 ## Scores (`src/body_engine/scores/`)
 WHOOP-style sleep score, sleep need / sleep debt / sleep performance, recovery score (HRV currently uses SDNN), strain (Edwards TRIMP), CTL / ATL / TSB. For the formulas, parameter values, differences from the design and backfill results see "Implementation notes" in section 7 of the system design.
+- The pure functions and parameters (`params`, `sleep`, `recovery`, `strain`, `muscle`) live in the Apache-2.0 package [`packages/openbodyscore`](../packages/openbodyscore/README.md) (issue #115); the files here are aliases of those modules, so `from body_engine.scores import params` keeps working. Change the algorithms there; golden tests (`tests/test_openbodyscore_golden.py`) fail on any changed number.
 - `params.py`: all parameters and `ALGO_VERSION` (when you change a parameter that affects results, bump the version, then run `compute-scores`).
 - `sleep.py` / `recovery.py` / `strain.py`: pure functions; `inputs.py`: reads `sleep_sessions`, OW raw samples and iOS Shortcut samples (`shortcut_samples`, including ungrouped raw heart rate; falls back to the archive when the table is empty); `engine.py`: day-by-day computation and database writes; `store.py`: reads scores (shared by the API and the assistant).
 - One row per day; a score that cannot be computed is left empty, with the reason in `flags` (`{code: explanation}`), and the sub-scores and baselines in `details`.
@@ -51,7 +52,7 @@ WHOOP-style sleep score, sleep need / sleep debt / sleep performance, recovery s
 
 ## WHOOP-comparable analysis (`src/body_engine/insights/`)
 Body age / pace of ageing, stress, today's strain target, sleep coach, health monitor, sleep details (regularity SRI, efficiency, latency), heart rate zones, VO₂max level, weekly / monthly reports. Item-by-item mapping in `../docs/whoop-feature-map.md`; the algorithms, literature, anchor points, API fields and real-data results are in "Body age and other analyses" in section 7 of the system design.
-- `healthspan_params.py`: all curve parameters of body age and their sources (bump `ALGO_VERSION` when you change them); `healthspan.py` pure functions; `healthspan_store.py` reads data, takes weekly snapshots, writes / reads `healthspan_weekly`.
+- `healthspan_params.py`: all curve parameters of body age and their sources (bump `ALGO_VERSION` when you change them); `healthspan.py` pure functions (both re-exported from `openbodyscore`, except the tips texts `TIPS` / `tip()`; the pure part of `stress.py` likewise); `healthspan_store.py` reads data, takes weekly snapshots, writes / reads `healthspan_weekly`.
 - `stress.py` (writes `stress_daily`), `coach.py` (strain target, sleep coach, health monitor, computed on demand), `sleep_detail.py`, `fitness.py`, `reports.py`; `views.py` holds the read functions shared by the API and the butler tools, `api.py` the routes, `tools.py` the butler tools, `jobs.py` the parts compute-scores runs along the way (a failure in one does not affect the scores).
 - The sleep coach uses the bedtime target of the rules session (`goals/`): if that module is present it recommends according to the target, otherwise only according to sleep need.
 - Tests: `tests/test_insights.py` (formula edge cases, insufficient data, time zones), `tests/test_insights_db.py` (test database body_test_insights, created if missing, emptied every run).
@@ -210,7 +211,7 @@ uv run body-engine raw-slim --file export.xml --out raw.zip          # Mac: 700 
 uv run body-engine import-raw --user-id 1 --file raw.zip             # heartbeat_series + ecg_recordings only, idempotent (also works on the full export)
 uv run body-engine hrv-compare --user-id 1 --out ../health_data/reports/hrv-compare.md   # SDNN vs RMSSD recovery, computes only (personal data: keep out of git)
 ```
-- `rawdata/hrv.py`: RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r = 0.89 on the owner's 1,999 readings.
+- `rawdata/hrv.py` (alias of `openbodyscore.hrv`): RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r = 0.89 on the owner's 1,999 readings.
 - The admin history import (`import-apple-zip`) reads the beat lists and `electrocardiograms/*.csv` in the same pass. App copies (below) replace export copies of the same readings (HealthKit has full-precision beat times).
 - Scoring: `scores/params.HRV_KIND` = `sdnn` (default) or `rmssd` (heartbeat_series only, never mixed). Switch only after the user has read `hrv-compare`; then bump `ALGO_VERSION` and recompute everything.
 - `cardio/hrr.py`: HRR60 = peak in the last 2 min of a workout − heart rate 60 s after the end; valid only if the peak ≥ 75% HRmax. Written by `compute-scores` for the days it writes (from the raw heart rate it already loads).
