@@ -2978,6 +2978,7 @@
       return;
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
+    S.flags = me.flags || []; S.experiments = me.experiments || {};
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
@@ -2991,6 +2992,22 @@
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
     setTab(TABS[tab] ? tab : "today");
   }
+
+  // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
+  // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per
+  // page load is counted and the variant comes back (null = not in the experiment: draw the normal page).
+  const exposed = new Set();
+  window.BodyFlags = {
+    on: (key) => (S.flags || []).includes(key),
+    variant: (key) => {
+      const v = (S.experiments || {})[key] || null;
+      if (v && !exposed.has(key)) {
+        exposed.add(key);
+        api(`/v1/users/me/experiments/${encodeURIComponent(key)}/exposure`, { method: "POST" }).catch(() => {});
+      }
+      return v;
+    },
+  };
 
   // Redraw when the window crosses the wide-screen breakpoint (charts have different sizes)
   WIDE.addEventListener?.("change", () => { if (S.me) { $("#view").dataset.shown = ""; render(); } });
