@@ -56,6 +56,7 @@ READ = {
     "grocery/store-products": ["get_price_history"],          # 「价格记录」 (prices from the user's own AI)
     "grocery/store-products/{x}": ["get_price_history"],
     "feedback": ["list_feedback"],
+    "water": ["get_briefing"],                                 # today's water vs goal (briefing section water)
 }
 # endpoints with no data for the AI to read
 NO_DATA = {
@@ -74,8 +75,11 @@ NO_DATA = {
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
     "grocery/stores": "setting: which supermarkets are connected",
+    "nutrition/combine": "write: selected food entries -> a template / one entry (issue #93)",
+    "nutrition/merges/{x}": "write: split a merge back into its entries",
     "grocery/list/items/{x}": "write: tick an item",
     "feedback/{x}": "write: +1 / withdraw feedback",
+    "water/{x}": "write: undo a drink (log_water / rollback_write)",
     "feedback-mode": "setting",
     "experiments/{x}/exposure": "write: one A/B exposure (rollout/)",
     "ai-choice": "setting", "ai-fallback": "setting", "ai-fallback/consent": "setting",

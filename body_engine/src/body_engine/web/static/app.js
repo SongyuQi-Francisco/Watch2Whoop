@@ -17,7 +17,8 @@
   const I18N = window.I18N, tr = I18N.t;
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
-  // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes.
+  // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
+  // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
@@ -2353,8 +2354,10 @@
       ${kv(tr("热量"), g("calories", "kcal", 0))}${kv(tr("蛋白质"), g("protein_g", "g"))}${kv(tr("碳水"), g("carbs_g", "g"))}${kv(tr("脂肪"), g("fat_g", "g"))}
       ${e.saturated_fat_g != null ? kv(tr("饱和脂肪"), g("saturated_fat_g", "g")) : ""}${e.fiber_g != null ? kv(tr("纤维"), g("fiber_g", "g")) : ""}
       ${e.sugar_g != null ? kv(tr("糖"), g("sugar_g", "g")) : ""}${e.added_sugar_g != null ? kv(tr("添加糖"), g("added_sugar_g", "g")) : ""}${e.sodium_mg != null ? kv(tr("钠"), g("sodium_mg", "mg", 0)) : ""}
-      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more"><button class="btn btn-danger" type="button" id="fe-del">${tr("删除这条")}</button></div>` : ""}`,
+      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more">${e.merge_id && window.BodyFlags?.on("meal_merge") ? `<button class="btn" type="button" id="fe-split">${tr("拆开成原来的几条")}</button>` : ""}<button class="btn btn-danger" type="button" id="fe-del">${tr("删除这条")}</button></div>` : ""}`,
     (root) => {
+      const split = $("#fe-split", root);
+      if (split) split.onclick = () => { closeSheet(); splitMerge(e.merge_id, e.date); };
       const del = $("#fe-del", root);
       if (!del) return;
       del.onclick = () => {   // confirm inside the sheet (window.confirm does nothing in the app's WebView)
@@ -2395,14 +2398,25 @@
         ${extra.length ? `<div class="food-extra">${extra.map(([l, v]) => `<div><span class="l">${l}</span><span class="v">${v}</span></div>`).join("")}</div>` : ""}</div>`;
     const by = new Map(MEAL_ORDER.map((k) => [k, []]));
     for (const e of entries) by.get(mealSlot(e)).push(e);
+    const pick = S.foodPick;   // select mode (issue #93): pick entries, then 「存成模板」 / 「合并成一条」
+    S.foodDayEntries = entries;
+    const row = (e) => (pick && e.id
+      ? `<button class="item food-entry pick" data-fpick="${esc(e.id)}" aria-pressed="${pick.has(String(e.id))}"><span class="pchk" aria-hidden="true"></span><span class="f">${esc(e.food || "—")}</span>
+          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span></button>`
+      : `<button class="item food-entry" ${sheetAttr(() => foodEntrySheet(e))}><span class="f">${esc(e.food || "—")}</span>
+          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`);
     const meals = MEAL_ORDER.filter((k) => by.get(k).length).map((k) => {
       const xs = by.get(k), kc = sumOf(xs, "calories"), pr = sumOf(xs, "protein_g");
       return `<div class="card list food-meal"><div class="food-meal-h"><span class="row-title">${SLOT_NAME[k]}</span>
           <span class="small muted">${kc != null ? `${fmtNum(kc)} kcal` : ""}${pr != null ? ` · ${tr("蛋白")} ${fmtNum(pr)} g` : ""}</span></div>
-        ${xs.map((e) => `<button class="item food-entry" ${sheetAttr(() => foodEntrySheet(e))}><span class="f">${esc(e.food || "—")}</span>
-          <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`).join("")}</div>`;
+        ${xs.map(row).join("")}</div>`;
     }).join("");
-    return `<div class="section">${head}${total}${meals}</div>`;
+    const canPick = isSelf() && entries.some((e) => e.id) && window.BodyFlags?.on("meal_merge");   // rollout flag meal_merge
+    const pickBtn = canPick ? `<button class="pick-btn" id="fd-pick" type="button">${pick ? tr("完成") : tr("选择")}</button>` : "";
+    const bar = pick ? `<div class="pickbar"><span class="small">${tr("已选 {n} 条", { n: pick.size })}</span>
+        <button class="btn" id="fp-tpl" type="button"${pick.size ? "" : " disabled"}>${tr("存成模板")}</button>
+        <button class="btn btn-primary" id="fp-merge" type="button"${pick.size >= 2 ? "" : " disabled"}>${tr("合并成一条")}</button></div>` : "";
+    return `<div class="section">${head.replace("</div>", `${pickBtn}</div>`)}${total}${meals}${bar}</div>`;
   }
 
   // ---- Per-meal suggestions (GET /recipes/meal-plan, issue #43): each meal not logged yet gets 2 recipes (taste, pantry, health caps)
@@ -2442,7 +2456,8 @@
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,
     ]);
     const quick = isSelf() ? quickHtml(meals, true) : "";
-    let html = seg + foodDayHtml(d);
+    let html = seg + foodDayHtml(d)
+      + PLUGINS().map((p) => p.foodDiet?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate, past }) || "").join("");   // water.js
     if (quick) html += `<div class="section"><div class="section-head"><h2>${tr("快捷记录")}</h2></div>${quick}</div>`;
     html += mealPlanHtml(plan);
     const n = Array.isArray(list) ? list.length : null;
@@ -2450,13 +2465,66 @@
     return html;
   };
 
+  // ---- Several entries -> a template / one entry (issue #93): POST /nutrition/combine; undo a merge: DELETE /nutrition/merges/{id}
+  function combineSheet(action) {
+    const picked = (S.foodDayEntries || []).filter((e) => S.foodPick?.has(String(e.id)));
+    if (!picked.length) return;
+    const kc = sumOf(picked, "calories"), pr = sumOf(picked, "protein_g");
+    const def = picked.map((e) => String(e.food || "").replace(/\s*[\uff08(][^\uff08\uff09()]*\d\s*(?:g|\u514b|ml|\u4efd|\u4e2a)[^\uff08\uff09()]*[\uff09)]\s*$/, "")).join(" + ");
+    openSheet(action === "merge" ? tr("合并成一条") : tr("存成模板"), `
+      <p class="small muted" style="margin:0 0 10px">${tr("{n} 条", { n: picked.length })} · ${kc != null ? `${fmtNum(kc)} kcal` : "—"}${pr != null ? ` · ${tr("蛋白")} ${fmtNum(pr, 1)} g` : ""}</p>
+      <div class="field"><label>${tr("名字")}</label><input class="input" id="fp-name" maxlength="${action === "merge" ? 50 : 30}" value="${esc(def.slice(0, action === "merge" ? 50 : 30))}"></div>
+      <div class="btns"><button class="btn" type="button" id="fp-cancel">${tr("取消")}</button><button class="btn btn-primary" type="button" id="fp-ok">${action === "merge" ? tr("合并") : tr("存成模板")}</button></div>`,
+    (root) => {
+      $("#fp-cancel", root).onclick = () => closeSheet();
+      const ok = $("#fp-ok", root);
+      ok.onclick = async () => {
+        ok.disabled = true;
+        const day = picked[0].date;
+        try {
+          const res = await api("/v1/users/me/nutrition/combine", { method: "POST", body: {
+            date: day, entry_ids: picked.map((e) => String(e.id)), action, name: $("#fp-name", root).value.trim() || null } });
+          S.foodPick = null;
+          dropFoodDay(day);
+          delete S.data[`meals:${S.owner}`];
+          closeSheet();
+          render();
+          if (res.merge) toast(tr("已合并 · {name}", { name: res.merge.name }), tr("撤销"), () => splitMerge(res.merge.id, day));
+          else toast(tr("已存成模板 · {name}", { name: res.template.name }));
+        } catch (err) { toast(err.message); ok.disabled = false; }
+      };
+    });
+  }
+  async function splitMerge(id, day) {
+    try {
+      await api(`/v1/users/me/nutrition/merges/${encodeURIComponent(id)}`, { method: "DELETE" });
+      dropFoodDay(day);
+      render();
+      toast(tr("已拆开"));
+    } catch (err) { toast(err.message); }
+  }
+  function bindPick(view) {
+    const btn = $("#fd-pick", view);
+    if (btn) btn.onclick = () => { S.foodPick = S.foodPick ? null : new Set(); render(); };
+    for (const b of $$("[data-fpick]", view)) b.onclick = () => {
+      const id = b.dataset.fpick;
+      if (S.foodPick.has(id)) S.foodPick.delete(id); else S.foodPick.add(id);
+      render();
+    };
+    const tpl = $("#fp-tpl", view), merge = $("#fp-merge", view);
+    if (tpl) tpl.onclick = () => combineSheet("template");
+    if (merge) merge.onclick = () => combineSheet("merge");
+  }
+
   function bindRecipes(root) { for (const b of $$("[data-recipe]", root)) b.onclick = () => recipeSheet(b.dataset.recipe, b.dataset.slot); }
   function afterFood(view) {
     for (const b of $$("[data-fmode]", view)) b.onclick = () => { S.foodMode = b.dataset.fmode; S.foodSub = null; render(); };
     PLUGINS().forEach((p) => p.bindFoodTop?.(view));
     if (S.foodMode === "shopping") { PLUGINS().forEach((p) => p.bindFoodShop?.(view)); return; }
+    PLUGINS().forEach((p) => p.bindFoodDiet?.(view));
     bindRecipes(view);
     bindMeals(view);
+    bindPick(view);
     const open = $("#food-recipes", view), back = $("#food-back", view);
     if (open) open.onclick = () => { S.foodSub = "recipes"; render(); window.scrollTo(0, 0); };
     if (back) back.onclick = () => { S.foodSub = null; render(); window.scrollTo(0, 0); };

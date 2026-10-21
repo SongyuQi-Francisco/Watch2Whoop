@@ -873,6 +873,13 @@ I18N.addEn({
   "练了腿，深蹲 5 组": "Leg day, 5 sets of squats",
   "已记进训练": "Added to training",
   "你的服务器": "Your server",
+  // water.js (daily water, issue #125)
+  "今天喝水": "Water today",
+  "目标来自饮食档案": "Goal from your diet profile",
+  "通用建议值": "General recommendation",
+  "桑拿": "Sauna",
+  "撤销最近一次（{ml} ml）": "Undo the last one ({ml} ml)",
+  "没记上，再试一次": "Not saved, try again",
   // sync.js (on-demand refresh)
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",
@@ -925,4 +932,17 @@ I18N.addEn({
   "没见过": "None seen",
   "上次买": "Last bought",
   "允许联网（官方搜索 / 读网页，用来查价格；费用算在你的 key 上）": "Allow web access (the vendor's own search / page reading, for prices; billed on your key)",
+  // 饮食 day detail: select entries -> template / merge (issue #93)
+  "拆开成原来的几条": "Split back into the original entries",
+  "完成": "Done",
+  "选择": "Select",
+  "已选 {n} 条": "{n} selected",
+  "存成模板": "Save as template",
+  "合并成一条": "Merge into one",
+  "名字": "Name",
+  "{n} 条": "{n} entries",
+  "合并": "Merge",
+  "已合并 · {name}": "Merged · {name}",
+  "已存成模板 · {name}": "Saved as template · {name}",
+  "已拆开": "Split",
 });

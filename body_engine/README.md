@@ -210,6 +210,26 @@ uv run body-engine import-apple-zip --user-id 2 --file export.zip   # admin impo
 - File names from Chinese-language systems (导出.zip / 导出.xml) are recognised too; anything that is not an Apple Health export, a corrupt zip or an incomplete XML gets a Chinese explanation.
 - Limits: `BODY_IMPORT_MAX_MB` (default 1024), `BODY_IMPORT_MIN_FREE_MB` (default 2048), `BODY_IMPORT_DIR` (default `health_data/imports`).
 
+## Daily water (`src/body_engine/water/`, migration 540, issue #125)
+One row per drink in `water_intake` (time, ml, source `ai` / `manual` / `button` / `apple_health`), summed per local day.
+Idempotent: the page's `client_id` and HealthKit UUIDs are stored once.
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `GET /v1/users/{user}/water?date=` | scope nutrition | `{total_ml, goal{ml, base_ml, source, extras}, percent, entries, undo, quick_ml}` |
+| `POST /v1/users/{user}/water` `{ml, source?, at?, client_id?}` | own, write | One drink (the Today page's +250 / +500 buttons) |
+| `DELETE /v1/users/{user}/water/{id}` | own, write | Undo one drink |
+
+- Goal: the diet profile's `water_ml` target, else `water/params.py` defaults (NHMRC fluids from beverages 2.6 L men /
+  2.1 L women), plus 500 ml on a day with a 30+ min workout and 500 ml after a sauna (journal item `sauna`); sources there.
+- AI: `log_water` (undo with `rollback_write`, write-log kind `water`); today's total is in `get_briefing` (`water`).
+- Apple Health: `water[]` in `POST /v1/ingest/healthkit` (HealthKit `dietaryWater`; Open Wearables 0.9 maps only
+  Android's hydration). The app's reader comes with the next iOS version.
+- Reminder: rule `water_halfway` (`rules/hydration.py`): from 15:00 local time, under half of the goal -> one info reminder that day.
+- Rollout: feature flag `water` (`rollout/registry.py`, docs/rollout.md), off until an admin turns it on; off = the
+  endpoints 404 (`flags.require`), no Today page card (`BodyFlags.on`), `log_water` refuses, no briefing / rule / Apple
+  Health water. Tests: `tests/test_water.py`.
+
 ## Raw watch data and cardio (`src/body_engine/rawdata/`, `cardio/`, migration 150)
 Plan and evidence: `../docs/raw-data-plan.md`. Tables `heartbeat_series` (one row per Apple HRV reading: beat times + our RMSSD / SDNN), `ecg_recordings` (int16 µV waveform, zlib, Apple's classification, R peaks), `workout_hrr` (heart rate recovery after each workout).
 ```bash
