@@ -31,6 +31,9 @@ CLASS_LABELS = {
 CLASS_ZH = {"sinusRhythm": "窦性心律", "atrialFibrillation": "房颤迹象", "inconclusiveHighHeartRate": "心率过高，无法判断",
             "inconclusiveLowHeartRate": "心率过低，无法判断", "inconclusivePoorReading": "记录不佳",
             "inconclusiveOther": "无法判断", "unrecognized": "未识别", "notSet": "未分类"}
+CLASS_EN = {"sinusRhythm": "Sinus rhythm", "atrialFibrillation": "Signs of AFib", "inconclusiveHighHeartRate": "Inconclusive: high heart rate",
+            "inconclusiveLowHeartRate": "Inconclusive: low heart rate", "inconclusivePoorReading": "Poor recording",
+            "inconclusiveOther": "Inconclusive", "unrecognized": "Unrecognized", "notSet": "Not classified"}   # issue #42
 TS_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4}")
 HZ_RE = re.compile(r"([\d.]+)\s*(hertz|hz|赫兹)", re.I)
 MAX_SAMPLES = 512 * 60          # a recording is 30 s; anything far longer is not an Apple ECG

@@ -18,12 +18,14 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..i18n import is_en
 from ..rules import params as rule_params
 from . import params as P
 
 FIELDS = ("calories", "protein_g", "carbs_g", "fat_g", "sat_fat_max_g", "added_sugar_max_g", "fiber_min_g")
 MACROS = ("calories", "protein_g", "carbs_g", "fat_g")
 DAY_TYPE_ZH = {"training": "训练日", "rest": "休息日"}
+DAY_TYPE_EN = {"training": "Training day", "rest": "Rest day"}   # goal name for the Today page in English (issue #42)
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")   # ISO 1..7
 
 
@@ -66,6 +68,12 @@ def _version_view(r: dict, superseded: bool | None = None) -> dict:
     return out
 
 
+def _goal_name(t: str, version_name: str | None) -> str:
+    if is_en():
+        return DAY_TYPE_EN[t] + (f" ({version_name})" if version_name else "")
+    return DAY_TYPE_ZH[t] + (f"（{version_name}）" if version_name else "")
+
+
 def _goal(day: date, version: dict | None, sparky: dict | None) -> dict:
     """One date's goal. Keys name / calories / protein_g / carbs_g / fat_g keep the shape of sparky_client.goal_for_date."""
     out = {"date": day.isoformat(), "source": None, "version_id": None, "effective_from": None, "day_type": None,
@@ -74,7 +82,7 @@ def _goal(day: date, version: dict | None, sparky: dict | None) -> dict:
         t = day_type(version, day)
         s = version[t]
         out.update(source="body_engine", version_id=version["id"], effective_from=version["effective_from"],
-                   day_type=t, name=DAY_TYPE_ZH[t] + (f"（{version['name']}）" if version["name"] else ""),
+                   day_type=t, name=_goal_name(t, version["name"]),
                    **{f: s.get(f) for f in FIELDS})
     elif sparky is not None:
         out.update(source="sparkyfitness", name=sparky.get("name"),

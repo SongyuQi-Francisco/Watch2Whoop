@@ -10,6 +10,7 @@ from psycopg.types.json import Jsonb
 _dumps = lambda o: json.dumps(o, default=str, ensure_ascii=False)   # contributions contain dates
 
 from .. import sparky_client
+from ..i18n import is_en
 from ..scores.engine import scoring_origin
 from . import healthspan as HS
 from . import healthspan_params as H
@@ -24,6 +25,16 @@ LABELS = {  # key: (Chinese name, category, unit)
     "vo2max": ("VO₂max", "fitness", "mL/kg/min"),
     "rhr": ("静息心率", "fitness", "bpm"),
     "body_comp": ("身体成分", "fitness", ""),
+}
+LABELS_EN = {  # key: (English name, unit) — the Today page in English (issue #42); stored rows keep the Chinese label
+    "sleep_duration": ("Average sleep", "h"),
+    "sleep_regularity": ("Sleep regularity (SRI)", ""),
+    "steps": ("Daily steps", "steps"),
+    "mvpa": ("Weekly moderate-to-vigorous activity", "min"),
+    "strength": ("Weekly strength training", "min"),
+    "vo2max": ("VO₂max", "mL/kg/min"),
+    "rhr": ("Resting HR", "bpm"),
+    "body_comp": ("Body composition", ""),
 }
 STRENGTH_TYPES = {"strength_training", "traditional_strength_training", "functional_strength_training",
                   "core_training", "cross_training"}
@@ -262,4 +273,15 @@ def read(conn: psycopg.Connection, user_id: int, weeks: int = 26) -> dict | None
             "history": [{"week": r["week_start"], "as_of": r["as_of"], "body_age": r["body_age"],
                          "delta_years": r["delta_years"], "pace": r["pace_of_aging"], "pace_raw": r["pace_raw"],
                          "window_weeks": r["pace_window_weeks"]} for r in reversed(rows)],
-            "contributors": cur["contributors"], "insufficient": cur["insufficient"]}
+            "contributors": _localized(cur["contributors"]), "insufficient": _localized(cur["insufficient"])}
+
+
+def _localized(items: list[dict] | None) -> list[dict] | None:
+    """Stored contributor / insufficient rows with label (and unit) in the request's language, by key."""
+    if not items or not is_en():
+        return items
+    out = []
+    for it in items:
+        en = LABELS_EN.get(it.get("key"))
+        out.append({**it, "label": en[0], **({"unit": en[1]} if "unit" in it else {})} if en else it)
+    return out
