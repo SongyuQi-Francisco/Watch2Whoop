@@ -14,6 +14,8 @@ from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
+from .ai.oauth_api import router as oauth_router, well_known as oauth_well_known
+from .ai.oauth_http import oauth_app
 from .assistant.memory_api import router as memory_router
 from .assistant.diet_profile_api import router as diet_profile_router
 from .assistant.recipes_api import router as recipes_router
@@ -151,4 +153,7 @@ app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
+app.include_router(oauth_router)        # MCP OAuth: consent step and connections (ai/oauth_api.py)
+app.include_router(oauth_well_known)    # RFC 9728 / RFC 8414 discovery documents
+app.mount("/oauth", oauth_app)          # /oauth/authorize, /token, /register, /revoke (mcp.server.auth, ai/oauth_http.py)
 web_api.install(app)

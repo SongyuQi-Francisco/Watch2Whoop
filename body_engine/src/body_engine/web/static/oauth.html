@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN" data-i18n-title="连接 AI 应用">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>连接 AI 应用</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#fff;--surface:#f4f4f6;--text:#111113;--text-2:#6c6c73;--accent:#111113;--on-accent:#fff;--bad:#be5a44}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--surface:#1c1c1e;--text:#f5f5f7;--text-2:#a1a1a6;--accent:#f5f5f7;--on-accent:#000;--bad:#e07a62}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;display:flex;align-items:center;justify-content:center}
+main{width:100%;max-width:420px;padding:32px 16px calc(32px + env(safe-area-inset-bottom))}
+img{display:block;width:56px;height:56px;margin:0 0 18px;border-radius:12px}
+h1{font-size:24px;line-height:1.25;margin:0 0 16px;word-break:break-word}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--surface);font-size:15px}
+.kv .k{color:var(--text-2);flex:none}.kv .v{text-align:right;word-break:break-all;font-weight:600}
+.warn{margin:14px 0 0;padding:12px;border-radius:12px;background:var(--surface);font-size:14px}
+label{display:flex;gap:10px;align-items:center;margin:18px 0 0;font-size:15px}
+button{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;padding:15px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);cursor:pointer;margin-top:12px}
+button.secondary{background:var(--surface);color:var(--text)}
+button:disabled{opacity:.5}
+a.btn{display:block;text-align:center;text-decoration:none;font-weight:600;padding:15px;border-radius:14px;background:var(--accent);color:var(--on-accent);margin-top:12px}
+.err{min-height:1.5em;margin:14px 0 0;color:var(--bad);font-size:15px}
+.muted{color:var(--text-2);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <img src="icon.svg" alt="">
+  <p id="status" class="muted" data-i18n="读取中…">读取中…</p>
+  <!-- not signed in: sign in on the Today page (new tab), then come back -->
+  <section id="login" hidden>
+    <h1 data-i18n="先登录今天页">先登录今天页</h1>
+    <p class="muted" data-i18n="在这个浏览器里登录今天页，回到这里点「我已登录」。">在这个浏览器里登录今天页，回到这里点「我已登录」。</p>
+    <a class="btn" href="./" target="_blank" rel="noopener" data-i18n="去登录">去登录</a>
+    <button id="retry" class="secondary" type="button" data-i18n="我已登录">我已登录</button>
+  </section>
+  <section id="consent" hidden>
+    <h1 id="title"></h1>
+    <div class="kv"><span class="k" data-i18n="应用">应用</span><span class="v" id="client"></span></div>
+    <div class="kv"><span class="k" data-i18n="授权后跳转到">授权后跳转到</span><span class="v" id="host"></span></div>
+    <div class="kv"><span class="k" data-i18n="账号">账号</span><span class="v" id="user"></span></div>
+    <div class="kv"><span class="k" data-i18n="权限">权限</span><span class="v" id="scopes"></span></div>
+    <p id="loopback" class="warn" hidden data-i18n="这个应用跳转到本机地址（例如 Claude Code）。只有你自己刚在这台电脑上发起连接时才同意。">这个应用跳转到本机地址（例如 Claude Code）。只有你自己刚在这台电脑上发起连接时才同意。</p>
+    <p class="warn" data-i18n="同意后，这个 AI 应用可以读取（和写入）你的身体数据。不认识这个应用或跳转地址，就点「拒绝」。">同意后，这个 AI 应用可以读取（和写入）你的身体数据。不认识这个应用或跳转地址，就点「拒绝」。</p>
+    <label><input type="checkbox" id="ro"> <span data-i18n="只读（不能写入记录）">只读（不能写入记录）</span></label>
+    <button id="approve" type="button" data-i18n="同意">同意</button>
+    <button id="deny" class="secondary" type="button" data-i18n="拒绝">拒绝</button>
+  </section>
+  <p id="err" class="err" role="alert"></p>
+</main>
+<script src="i18n.js"></script>
+<script src="i18n-en.js"></script>
+<script src="oauth.js"></script>
+</body>
+</html>

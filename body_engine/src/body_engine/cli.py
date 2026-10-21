@@ -232,6 +232,13 @@ def main() -> None:
     ar = sub.add_parser("ai-token-revoke", help="revoke an AI client token (takes effect immediately)")
     ar.add_argument("--user-id", type=int, required=True)
     ar.add_argument("--token-id", type=int, required=True)
+    oc = sub.add_parser("oauth-cleanup", help="MCP OAuth housekeeping: expired requests / codes / refresh and access tokens, clients never approved (idempotent, hourly)")
+    oc.add_argument("--json", action="store_true")
+    ol = sub.add_parser("oauth-connections", help="a user's approved OAuth connections to /mcp (Claude, ChatGPT, …)")
+    ol.add_argument("--user-id", type=int, required=True)
+    orv = sub.add_parser("oauth-revoke", help="end one OAuth connection (its access and refresh tokens stop at once)")
+    orv.add_argument("--user-id", type=int, required=True)
+    orv.add_argument("--connection-id", type=int, required=True)
     ai_fallback_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
 
@@ -406,6 +413,16 @@ def main() -> None:
                 print(json.dumps(r, default=str, ensure_ascii=False))
         elif args.cmd == "ai-token-revoke":
             print("revoked" if ai_tokens.revoke(conn, args.user_id, args.token_id) else "not found / already revoked")
+        elif args.cmd == "oauth-cleanup":
+            from .ai import oauth
+            print(json.dumps(oauth.cleanup(conn)))
+        elif args.cmd == "oauth-connections":
+            from .ai import oauth
+            for r in oauth.list_grants(conn, args.user_id):
+                print(json.dumps(r, default=str, ensure_ascii=False))
+        elif args.cmd == "oauth-revoke":
+            from .ai import oauth
+            print("revoked" if oauth.revoke_grant(conn, args.connection_id, "admin", user_id=args.user_id) else "not found / already revoked")
         elif args.cmd == "ai-fallback":
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "feedback":

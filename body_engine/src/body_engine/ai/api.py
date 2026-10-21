@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
-from . import asr, catalog, chat, choice, crypto, fallback, providers, tokens
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, tokens
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
@@ -85,6 +85,9 @@ def mcp_setup(request: Request, token_env: str = "BODY_ENGINE_MCP_TOKEN") -> dic
                                                                 "headers": {"Authorization": f"Bearer ${{{token_env}}}"}}}},
                                 ensure_ascii=False, indent=2),
         },
+        "oauth": L("Claude 网页 / 手机 app、ChatGPT、Gemini app：在它们的「连接器 / 自定义应用」里添加这个地址，按提示登录今天页并同意，不用 token。",
+                   "Claude web / mobile, ChatGPT, the Gemini app: add this address as a connector / custom app, sign in to the Today "
+                   "page when asked and approve; no token needed."),
         "prompt": L("连上以后让 AI 先读 MCP 里的 prompt「butler」（身体管家的角色设定），或者直接说「用 body-engine 看看我今天怎么样」。",
                     "Once connected, ask the AI to read the MCP prompt \"butler\" (the coach's role) first, "
                     "or just say \"use body-engine to check how I'm doing today\"."),
@@ -265,7 +268,8 @@ class AiTokenIn(BaseModel):
 
 @router.get("/v1/users/{user}/ai-tokens")
 def list_ai_tokens(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return {"tokens": tokens.list_tokens(conn, _self_only(viewer, user)), "mcp": mcp_setup(request)}
+    uid = _self_only(viewer, user)
+    return {"tokens": tokens.list_tokens(conn, uid), "connections": oauth.list_grants(conn, uid), "mcp": mcp_setup(request)}
 
 
 @router.post("/v1/users/{user}/ai-tokens", status_code=201)

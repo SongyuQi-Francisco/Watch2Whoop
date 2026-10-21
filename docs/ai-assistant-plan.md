@@ -323,3 +323,13 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **没做（要做的话另开 PR）**：
   1. `/mcp` 加 MCP 标准的 OAuth 2.1：protected resource / authorization server metadata、DCR `/register`、`/authorize`（复用今天页登录 + 同意页）、`/token`（PKCE、refresh token，发的仍是 mcp scope 的 AI token，可吊销）、401 + `WWW-Authenticate`；现有 Bearer token 照常可用。约 2–3 天。Gemini app 只对美国用户有意义，但 Claude 网页 / 手机连接器、ChatGPT 连接器也走 OAuth。
   2. 服务端 `gemini_cli` 和管家 Gemini 版本：改用 Antigravity CLI 或下线。
+
+#### 9.16 /mcp 的 OAuth 2.1（2026-10-21，`ai/oauth.py`、`ai/oauth_http.py`、`ai/oauth_api.py`、迁移 `440_mcp_oauth.sql`）
+- **为什么**：Claude 网页 / 手机 / 桌面的自定义连接器、ChatGPT 连接器、Gemini app 只走 OAuth（Claude 的静态请求头是 beta、只给组织 Owner；ChatGPT 明确不支持静态 token）。按 MCP 授权规范做，三家都能接。
+- **用的库**：官方 `mcp` Python SDK 的 `mcp.server.auth`（MIT，已经是依赖）：`/oauth/authorize`、`/oauth/token`、`/oauth/register`、`/oauth/revoke` 和 PKCE 校验来自 SDK；存储和策略是 `BodyOAuthProvider`。
+- **发现**：`/mcp` 没带有效 token 时回 401 + `WWW-Authenticate: Bearer resource_metadata="…/.well-known/oauth-protected-resource/mcp"`；RFC 9728 元数据（resource = `<base>/mcp`，授权服务器 = `<base>/oauth`）和 RFC 8414 元数据（`/.well-known/oauth-authorization-server/oauth`，根路径和 `/oauth/.well-known/…` 也给）。
+- **注册**：DCR，**全部是公开客户端**（`token_endpoint_auth_method` 强制 `none`，没有 client secret），回调地址只允许 https、本机回环 http（任意端口匹配）或私有 scheme；同一 IP 每小时 20 个、全服务器每天 500 个；一天内没被同意过的客户端由 `oauth-cleanup` 删掉。
+- **授权**：只认 S256；`resource` 不是本服务器的 `/mcp` 就拒绝（RFC 8707）；`/oauth/authorize` 把请求存 10 分钟，浏览器去 `/app/oauth.html?req=…`。同意页先加载、再从本站读登录状态（今天页 cookie 是 SameSite=Strict，从 AI 应用跳过来的那次请求不带 cookie），显示应用名、跳转域名（本机地址另有提示）、账号和权限，可以选只读；只读登录不能同意。
+- **令牌**：授权码一次性、5 分钟；access token = `api_tokens` 里 scope 含 mcp 的一行（和静态 AI token 同一种，`/mcp`、审计、只读处理都不变），1 小时过期，绑在连接（grant）上；refresh token 90 天、每次用都轮换，旧的被再次使用（或授权码被重复使用）就吊销整个连接；`/oauth/revoke` 也是吊销整个连接。所有令牌、授权码、请求号只存 sha256。
+- **用户看到的**：「我 → AI 设置 → 连接客户端（MCP）」列出已连接的应用（应用名、跳转域名、最近使用），可以断开（`GET/DELETE /v1/users/me/ai-connections`）；静态 AI token 照常可用，列表和上限只算静态的。每人最多 20 个连接。
+- **运维**：`body-engine oauth-cleanup`（每小时，幂等）、`oauth-connections --user-id N`、`oauth-revoke --user-id N --connection-id M`。公网 nginx 要放行 `/oauth/`（authorize、token、register、revoke）、`/.well-known/oauth-protected-resource`*、`/.well-known/oauth-authorization-server`*、`/app/oauth.html`、`/app/oauth.js`，见 PR 说明。
