@@ -1,13 +1,13 @@
 """AI tool for water (registered by assistant/tools.py). One short write tool to stay inside the tool-definition budget
 (tests/test_briefing.py); the AI reads today's total from get_briefing (section water). Undo: rollback_write (kind water)."""
 from ..assistant import writelog
+from ..rollout import flags
 from ..toolspec import nullable, schema
-from . import enabled, store
+from . import params as P, store
 
 
 def _log(conn, uid, a):
-    if not enabled(conn, uid):
-        raise ValueError("喝水记录还没对这个账号开放")
+    flags.guard(conn, uid, P.FEATURE)   # FlagOff while the water flag is off for this user
     at = store.parse_at(a["at"], store.tz_of(conn, uid))
     row = store.add(conn, uid, a["ml"], "ai", at)
     writelog.record(conn, "water", "create", row["id"], None, row)

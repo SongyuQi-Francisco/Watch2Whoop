@@ -226,8 +226,9 @@ Idempotent: the page's `client_id` and HealthKit UUIDs are stored once.
 - Apple Health: `water[]` in `POST /v1/ingest/healthkit` (HealthKit `dietaryWater`; Open Wearables 0.9 maps only
   Android's hydration). The app's reader comes with the next iOS version.
 - Reminder: rule `water_halfway` (`rules/hydration.py`): from 15:00 local time, under half of the goal -> one info reminder that day.
-- Rollout: `water.enabled(conn, user_id)` is the feature-flag hook (`FEATURE = "water"`); it returns True until the
-  feature-flag module is merged. Tests: `tests/test_water.py`.
+- Rollout: feature flag `water` (`rollout/registry.py`, docs/rollout.md), off until an admin turns it on; off = the
+  endpoints 404 (`flags.require`), no Today page card (`BodyFlags.on`), `log_water` refuses, no briefing / rule / Apple
+  Health water. Tests: `tests/test_water.py`.
 
 ## Raw watch data and cardio (`src/body_engine/rawdata/`, `cardio/`, migration 150)
 Plan and evidence: `../docs/raw-data-plan.md`. Tables `heartbeat_series` (one row per Apple HRV reading: beat times + our RMSSD / SDNN), `ecg_recordings` (int16 µV waveform, zlib, Apple's classification, R peaks), `workout_hrr` (heart rate recovery after each workout).

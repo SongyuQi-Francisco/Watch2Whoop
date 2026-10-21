@@ -15,13 +15,14 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from body_engine import api, auth, water
+from body_engine import api, auth
 from body_engine.assistant.tools import run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.rawdata import ingest as I
 from body_engine.rules import hydration
 from body_engine.rules.context import Ctx
+from body_engine.rollout import flags
 from body_engine.water import params as P
 from body_engine.water import store
 
@@ -54,6 +55,9 @@ def users(dsn):
                                    VALUES (%s, %s, %s, 'Australia/Sydney', now(), %s) RETURNING id""",
                                 (name, role, sex, I.RAW_CONSENT_VERSION)).fetchone()["id"]
         ids = {"a": add("a", "male", "owner"), "b": add("b", "female"), "c": add("c")}
+        flags.set_flag(conn, P.FEATURE, "all", actor="test")   # the water flag (default off) is on for these tests
+        conn.commit()
+        flags.invalidate()
         tok = {n: auth.create_token(conn, i, "t", ["read", "write"]) for n, i in ids.items()}
         tok["a_ro"] = auth.create_token(conn, ids["a"], "ro", ["read"])
     return ids, tok
@@ -175,18 +179,34 @@ def test_reminder_rule():
     assert hydration.evaluate(Ctx(user_id=1, day=day, tz=TZ)).status == "insufficient_data"   # feature off
 
 
-def test_rollout_hook_off(client, users, dsn, monkeypatch):
+def test_flag_off_and_beta_cohort(client, users, dsn):
+    """The water flag (rollout/registry.py) off: endpoints 404, no tool, no briefing section, no rule input, uploads skip
+    water; cohort state: only the beta group gets it."""
     ids, tok = users
-    monkeypatch.setattr(water, "enabled", lambda conn, uid: False)
-    import body_engine.water.api as wapi
-    import body_engine.water.tools as wtools
-    monkeypatch.setattr(wapi, "enabled", lambda conn, uid: False)
-    monkeypatch.setattr(wtools, "enabled", lambda conn, uid: False)
-    assert client.get("/v1/users/me/water", headers=H(tok["a"])).status_code == 404
-    assert client.post("/v1/users/me/water", json={"ml": 250}, headers=H(tok["a"])).status_code == 404
     with conn_of(dsn) as conn:
-        with pytest.raises(Exception):
-            run_tool(conn, ids["a"], "mcp", "log_water", {"ml": 250, "at": None})
-        from body_engine.rules.context import load
-        c = load(conn, ids["a"], client=None)
-        assert c.water is None
+        flags.set_flag(conn, P.FEATURE, "off", actor="test")
+        conn.commit()
+    flags.invalidate()
+    try:
+        assert client.get("/v1/users/me/water", headers=H(tok["a"])).status_code == 404
+        assert client.post("/v1/users/me/water", json={"ml": 250}, headers=H(tok["a"])).status_code == 404
+        up = client.post("/v1/ingest/healthkit", json={"batch_id": str(uuid.uuid4()), "water": [
+            {"uuid": str(uuid.uuid4()), "start": datetime.now(TZ).isoformat(), "ml": 300}]}, headers=H(tok["b"])).json()
+        assert up["water"] == 0
+        with conn_of(dsn) as conn:
+            with pytest.raises(Exception):
+                run_tool(conn, ids["a"], "mcp", "log_water", {"ml": 250, "at": None})
+            assert run_tool(conn, ids["a"], "mcp", "get_briefing", {"user": "me"}).get("water") is None
+            from body_engine.rules.context import load
+            assert load(conn, ids["a"], client=None).water is None
+            flags.set_flag(conn, P.FEATURE, "cohort", actor="test")
+            flags.cohort_add(conn, ids["b"], actor="test")
+            conn.commit()
+        flags.invalidate()
+        assert client.get("/v1/users/me/water", headers=H(tok["a"])).status_code == 404
+        assert client.get("/v1/users/me/water", headers=H(tok["b"])).status_code == 200
+    finally:
+        with conn_of(dsn) as conn:
+            flags.set_flag(conn, P.FEATURE, "all", actor="test")
+            conn.commit()
+        flags.invalidate()

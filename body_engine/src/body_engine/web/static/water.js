@@ -2,7 +2,8 @@
    newest drink. Separate from app.js: registered in window.BodyPlugins with init(ctx), foodDiet(info) -> placeholder HTML
    (rendered right after 「今天吃了」) and bindFoodDiet(view), which loads GET /v1/users/{u}/water?date= and draws the card.
    Buttons only for one's own account on today's date; a past day or a family member's day is read-only. The card stays
-   hidden when the endpoint says feature_off (rollout flag) or fails. Each button press carries a client_id, so a retry or
+   out while the "water" rollout flag is off for the signed-in user (BodyFlags.on; the endpoints answer 404 then too) and
+   hidden when the request fails. Each button press carries a client_id, so a retry or
    a double tap is stored once. */
 (() => {
   "use strict";
@@ -37,6 +38,7 @@
 
   function foodDiet(i) {
     info = i;
+    if (!window.BodyFlags?.on("water")) return "";   // rollout flag (docs/rollout.md)
     return `<div class="section" id="water-box" hidden></div>`;
   }
 

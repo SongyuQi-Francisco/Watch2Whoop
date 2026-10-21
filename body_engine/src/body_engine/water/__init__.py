@@ -8,18 +8,19 @@
   water[]); Open Wearables 0.9 maps only Android's hydration, so it cannot carry Apple's water.
 - rules/hydration.py: one afternoon reminder when less than half of the goal is in.
 
-Gradual rollout: everything above asks enabled(conn, user_id) first. The feature-flag module is being built in another
-pull request; until it is merged this hook returns True for everyone. Once it lands, replace the body with its check of
-params.FEATURE (default: the beta group only).
+Gradual rollout (docs/rollout.md): feature flag FEATURE = "water" (rollout/registry.py), off until an admin turns it on
+(`body-engine flags set water --state cohort` for the beta group). Off: the endpoints answer 404, the Today page draws
+no card, log_water refuses, get_briefing has no water, the rule does not run and Apple Health water is not stored.
 """
 import psycopg
 
+from ..rollout import flags
 from .params import FEATURE
 
 
 def enabled(conn: psycopg.Connection, user_id: int) -> bool:
-    """Feature-flag hook for FEATURE ("water"). TODO(feature flags): call the flag module here once it is merged."""
-    return True
+    """The water flag for this user (rollout/flags.enabled)."""
+    return flags.enabled(conn, user_id, FEATURE)
 
 
 __all__ = ["FEATURE", "enabled"]
