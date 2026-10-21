@@ -166,7 +166,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="generate_shopping_list",
-        description="按这周要吃的生成采购清单（合并食材、对商品库、扣存货、按包装取整、估价，加到期的常买）；重新生成只换计划 / 常买来的未买项；plan 为空 = 只补到期的常买，保留原来的计划行。"
+        description="按这周要吃的生成采购清单（合并食材、对商品库、扣存货、按包装取整、估价，加到期的常买）；重新生成只换计划 / 常买来的未买项；plan 空=只补常买、留计划行。"
                     "warnings（按用户自己的饮食约束 / 高盐糖脂）要转告。",
         input_schema=schema({"week": WEEK, "plan": {"type": "array", "items": PLAN}}),
         handler=lambda conn, uid, a: _slim_list(store.generate(conn, uid, _d(a["week"]), a["plan"])),
