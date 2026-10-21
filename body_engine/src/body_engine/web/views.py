@@ -37,13 +37,7 @@ SCORE_FIELDS = ("recovery", "sleep_score", "sleep_performance", "sleep_actual_mi
                 "hrv_night_ms", "rhr_night", "strain", "muscle_load", "ctl", "atl", "tsb")
 
 
-def user_tz(conn: psycopg.Connection, user_id: int) -> ZoneInfo:
-    row = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()
-    return ZoneInfo((row or {}).get("timezone") or "Australia/Sydney")
-
-
-def local_today(conn: psycopg.Connection, user_id: int) -> date:
-    return datetime.now(user_tz(conn, user_id)).date()
+user_tz, local_today = queries.user_tz, queries.local_today   # moved to queries.py (used by records / rules / importers too)
 
 
 def forbidden(scope: str) -> dict:

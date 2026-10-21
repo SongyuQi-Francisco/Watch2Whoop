@@ -3,6 +3,7 @@ Format follows Claude API strict tools: all properties are in required, and opti
 Write tools (writes=True) have no user parameter and can only write for oneself."""
 from datetime import date, timedelta
 
+from .. import queries
 from ..toolspec import DATE, DETAIL, OPT_END, USER, nullable, schema
 from . import analysis, lab_catalog, lab_history, store
 
@@ -42,7 +43,7 @@ def _deleted_journal(ok: bool, a: dict) -> dict:
 
 
 def _journal(conn, uid, a):
-    end = _d(a["end"]) or date.today()
+    end = _d(a["end"]) or queries.local_today(conn, uid)
     start = _d(a["start"]) or end - timedelta(days=29)
     return store.journal_entries(conn, uid, start, end, a["keys"] or None)
 

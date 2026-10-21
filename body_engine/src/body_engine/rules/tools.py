@@ -1,6 +1,7 @@
 """AI assistant tool specs for reminders (wrapped into registered Tools by assistant/tools.py)."""
 from datetime import date
 
+from .. import queries
 from ..toolspec import DETAIL, OPT_END, USER, nullable, schema
 from . import store
 
@@ -14,7 +15,7 @@ REMINDER_KEYS = ("id", "date", "rule_key", "level", "title", "message", "status"
 
 
 def _get(conn, uid, a):
-    end = _d(a["end"]) or date.today()
+    end = _d(a["end"]) or queries.local_today(conn, uid)
     start = _d(a["start"]) or end
     statuses = None if a["include_dismissed"] else ["new", "seen"]
     if a.get("detail"):
