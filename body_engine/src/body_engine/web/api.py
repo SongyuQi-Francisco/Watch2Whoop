@@ -16,9 +16,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import activation, login_codes, login_limit, session, views
+from ..records.defaults import with_label
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.37-2026-10-21"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.39-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -57,7 +58,7 @@ class LoginIn(BaseModel):
 
 
 def _me(user: dict) -> dict:
-    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status")}
+    return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "token_scopes", "status", "language")}
 
 
 @router.post("/v1/web/login")
@@ -158,7 +159,7 @@ def journal_frequent(user: str, end: date | None = None, days: Annotated[int, Qu
     owner_id = owner(conn, viewer, user)
     if not views.auth.can_view(conn, viewer["id"], owner_id, "journal"):
         raise HTTPException(403, f"没有查看用户 {owner_id} 的 journal 的授权")
-    return views.frequent_journal(conn, owner_id, end, days, limit, min(6, limit))
+    return with_label(views.frequent_journal(conn, owner_id, end, days, limit, min(6, limit)))
 
 
 @router.get("/v1/users/{user}/sleep/nights")
