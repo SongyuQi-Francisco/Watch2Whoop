@@ -31,7 +31,7 @@
 - 勾掉一行（今天页点一下，或 AI 调 `mark_bought`）→ `bought_at`，存货加上这一行的购买量；取消勾选再减回去。
 - 告诉 AI 实付价格 → 按包数折成单价，更新商品库价格和日期。
 - ~~做饭 / 记餐暂时不自动扣存货~~ → **记餐自动扣存货（#104，迁移 510，`grocery/pantry_auto.py`）**：
-  - **开关**：每个用户一个（`grocery_settings.pantry_auto`，空 = `params.PANTRY_AUTO_DEFAULT`，现在是**关**）。用户对 AI 说了才改（`set_pantry_auto`，接口 `GET / PUT …/grocery/pantry-auto`）；今天页「家里存货」下只显示一行状态。
+  - **开关**：每个用户一个（`grocery_settings.pantry_auto`，空 = `params.PANTRY_AUTO_DEFAULT`，现在是**关**；关着的时候 `get_shopping_context` 带一句 `pantry_auto_hint` 提醒 AI）。用户对 AI 说了才改（`set_pantry_auto`，接口 `GET / PUT …/grocery/pantry-auto`）；今天页「家里存货」下只显示一行状态。
   - **扣什么**：所有经过 `log_food` 写进 SparkyFitness 的记录：
     - AI 直接记的：食物名 + 份量文字里第一个能认的量（「2 个」「200 g」「1 碗（约 250g）」；碗 / 份 / 勺不认，`params.AMOUNT_UNITS`）；
     - 快捷记餐模板：每样食材的克数；

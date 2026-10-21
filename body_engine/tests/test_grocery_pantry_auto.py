@@ -224,7 +224,10 @@ def test_best_before_reminders(conn, world):
     with pytest.raises(ValueError):
         store.set_pantry(conn, a, [{"name": "牛奶", "quantity": 800, "unit": "ml", "best_before": "10/25"}])
     conn.rollback()
-    exp = prices.shopping_context(conn, a)["expiring"]
+    ctx = prices.shopping_context(conn, a)
+    assert ctx["pantry_auto"] and "pantry_auto_hint" not in ctx    # A switched it on
+    assert prices.shopping_context(conn, ids["C"])["pantry_auto_hint"] == prices.PANTRY_AUTO_HINT   # C: off (default)
+    exp = ctx["expiring"]
     assert [e["name"] for e in exp] == ["酸奶", "牛奶"] and exp[1]["days_left"] == 2
     lines = briefing.build(conn, a, a)["pantry_expiring"]
     assert lines[0].startswith("酸奶") and "已过期" in lines[0] and "2 天后到期" in lines[1]
