@@ -69,24 +69,24 @@ def working_sets(sets: list[dict]) -> list[dict]:
             and s.get("reps") and (s.get("weight_kg") or 0) > 0]
 
 
-def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[list[dict], str | None]:
-    """The owner's SparkyFitness sessions in the lookback window (cached briefly) and, when SparkyFitness is linked but could
-    not be read, the reason. Not linked at all = no history (empty list, no error)."""
+def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[list[dict], str | None, bool]:
+    """The owner's SparkyFitness sessions in the lookback window (cached briefly), the reason when SparkyFitness is linked
+    but could not be read, and whether it is linked at all (not linked = no history, no error)."""
     start = day - timedelta(days=P.LOAD_LOOKBACK_DAYS)
     key = (conn.info.dbname, owner_id, start, day)
     hit = _HISTORY_CACHE.get(key)
     if hit and time.monotonic() - hit[0] < P.LOAD_HISTORY_TTL_S:
-        return hit[1], None
+        return hit[1], None, True
     try:
         client = sparky_client.client_for_user(conn, owner_id)
     except (sparky_client.SparkyError, ValueError):
-        return [], None
+        return [], None, False
     try:
         sessions = sparky_client.training_log(client, start, day)
     except sparky_client.SparkyError as e:
-        return [], str(e)
+        return [], str(e), True
     _HISTORY_CACHE[key] = (time.monotonic(), sessions)
-    return sessions, None
+    return sessions, None, True
 
 
 def clear_history_cache(owner_id: int | None = None) -> None:
@@ -143,11 +143,12 @@ def history_by_slug(index: Index, sessions: list[dict], day: date) -> dict[str, 
     return {k: [v[d] for d in sorted(v, reverse=True)] for k, v in out.items()}
 
 
-def body_weight(conn: psycopg.Connection, owner_id: int, day: date) -> float | None:
-    """Latest body weight in the last 60 days (SparkyFitness weigh-ins first, then Apple Health body_mass)."""
+def body_weight(conn: psycopg.Connection, owner_id: int, day: date, use_sparky: bool = True) -> float | None:
+    """Latest body weight in the last 60 days (SparkyFitness weigh-ins first, then Apple Health body_mass).
+    use_sparky=False: SparkyFitness just failed for this request, do not wait for it a second time."""
     from ..trends.series import weights
     try:
-        w = weights(conn, owner_id, day - timedelta(days=60), day)
+        w = weights(conn, owner_id, day - timedelta(days=60), day) if use_sparky else {}
     except Exception:  # noqa: BLE001  the starting estimate is optional: never fail a page over it
         w = {}
     if not w:
@@ -158,10 +159,8 @@ def body_weight(conn: psycopg.Connection, owner_id: int, day: date) -> float | N
 
 
 # ---------------------------------------------------------------- one exercise
-def estimate_start(ex: dict, bw: float | None, sex: str | None) -> float | None:
-    """Conservative first working weight without history (params.STARTER_*). None when the scale is unknown."""
-    if not bw:
-        return None
+def start_fraction(ex: dict, sex: str | None) -> float | None:
+    """Fraction of body weight for the starting working set (params.STARTER_*). None when the scale is unknown."""
     slug, pattern, eq = ex.get("slug"), ex.get("movement_pattern"), _equip(ex)
     part = "lower" if pattern in P.LOWER_BODY_PATTERNS else "upper"
     sex_f = (P.STARTER_SEX_FACTOR.get(sex or "") or P.STARTER_SEX_FACTOR["female"])[part]
@@ -173,14 +172,24 @@ def estimate_start(ex: dict, bw: float | None, sex: str | None) -> float | None:
             frac /= 2   # one-arm cable / machine work: half the two-sided stack
     else:
         return None
-    return _min_load(ex, round_down(bw * frac * sex_f, ex.get("increment_kg") or ex.get("default_increment_kg") or P.LOAD_STEP_KG))
+    return frac * sex_f
+
+
+def estimate_start(ex: dict, bw: float | None, sex: str | None) -> float | None:
+    """Conservative first working weight without history. None without body weight or when the scale is unknown."""
+    frac = start_fraction(ex, sex)
+    if not bw or frac is None:
+        return None
+    return _min_load(ex, round_down(bw * frac, ex.get("increment_kg") or ex.get("default_increment_kg") or P.LOAD_STEP_KG))
 
 
 def recommend(ex: dict, rep_low: int | None, rep_high: int | None, hist: list[dict] | None,
               progression: dict | None = None, bw: float | None = None, sex: str | None = None,
-              day: date | None = None) -> dict | None:
+              day: date | None = None, reason: str = "no_history") -> dict | None:
     """Recommended working weight for one exercise item (catalog fields: slug, modality, equipment, movement_pattern,
-    per_side, increment_kg / default_increment_kg). Returns None when a weight makes no sense (timed / cardio)."""
+    per_side, increment_kg / default_increment_kg). Returns None when a weight makes no sense (timed / cardio).
+    reason: why an estimate (if any) has no history behind it — "no_history" (nothing logged for this exercise),
+    "not_linked" (no training log connected), "history_unreadable" (SparkyFitness linked but not readable now)."""
     modality = ex.get("modality") or "weight_reps"
     if modality == "duration" or (ex.get("category") or "strength") in ("cardio", "stretching", "mobility"):
         return None
@@ -218,7 +227,8 @@ def recommend(ex: dict, rep_low: int | None, rep_high: int | None, hist: list[di
     kg = estimate_start(ex, bw, sex)
     if kg is None:
         return None
-    return {**base, "kg": kg, "basis": "estimate", "label": BASIS_LABEL["estimate"]}
+    return {**base, "kg": kg, "basis": "estimate", "label": BASIS_LABEL["estimate"], "reason": reason,
+            "body_weight_kg": round(bw, 1), "bw_fraction": round(start_fraction(ex, sex), 3)}
 
 
 def apply_readiness(load: dict | None, tier: str | None) -> dict | None:
@@ -244,7 +254,7 @@ def short_text(load: dict | None) -> str | None:
     if not load:
         return None
     if load.get("kg") is None:
-        return load.get("label")
+        return load.get("label")   # 自重 / 缺体重
     kg = f"{load['kg']:g} kg"
     return f"≈ {kg} 估算" if load["basis"] == "estimate" else kg
 
@@ -256,14 +266,16 @@ class Context:
     def __init__(self, conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date,
                  sessions: list[dict] | None = None):
         self.day = day
-        self.history_error = None
+        self.history_error, linked = None, True
         if sessions is None:
-            sessions, self.history_error = load_history(conn, owner_id, day)
+            sessions, self.history_error, linked = load_history(conn, owner_id, day)
+        # why an estimate has no history behind it (shown in the exercise detail, issue #66 FB-5)
+        self.reason = "history_unreadable" if self.history_error else "no_history" if linked else "not_linked"
         self.index = Index(conn, owner_id)
         self.hist = history_by_slug(self.index, sessions or [], day)
-        # The estimate reveals body weight indirectly: only for viewers who may see the weight; and never while the history
-        # could not be read (an estimate would ignore what the user actually lifts)
-        self.can_estimate = auth.can_view(conn, viewer_id, owner_id, "weight") and self.history_error is None
+        # The estimate reveals body weight indirectly: only for viewers who may see the weight. It is also given while the
+        # history cannot be read (labelled 估算 with that reason): a conservative start beats no number at all.
+        self.can_estimate = auth.can_view(conn, viewer_id, owner_id, "weight")
         self._conn, self._owner, self._bw = conn, owner_id, None
         row = conn.execute("SELECT sex FROM users WHERE id = %s", (owner_id,)).fetchone()
         self.sex = (row or {}).get("sex")
@@ -272,7 +284,7 @@ class Context:
     def bw(self) -> float | None:
         """Body weight, looked up only when some exercise has no history (it costs a SparkyFitness request)."""
         if self._bw is None and self.can_estimate:
-            self._bw = body_weight(self._conn, self._owner, self.day) or 0.0
+            self._bw = body_weight(self._conn, self._owner, self.day, use_sparky=self.history_error is None) or 0.0
         return self._bw or None
 
     def history_for(self, item: dict) -> list[dict] | None:
@@ -281,8 +293,14 @@ class Context:
     def for_item(self, item: dict, progression: dict | None = None) -> dict | None:
         hist = self.history_for(item)
         needs_bw = not hist and not (progression or {}).get("next_weight_kg") and item.get("modality", "weight_reps") == "weight_reps"
-        return recommend(item, item.get("rep_low"), item.get("rep_high"), hist, progression,
-                         self.bw if needs_bw else None, self.sex, self.day)
+        load = recommend(item, item.get("rep_low"), item.get("rep_high"), hist, progression,
+                         self.bw if needs_bw else None, self.sex, self.day, self.reason)
+        if (load is None and needs_bw and self.can_estimate and not self.bw and start_fraction(item, self.sex) is not None
+                and (item.get("category") or "strength") == "strength"):
+            # estimable, but no body weight logged in the last 60 days: say so instead of showing nothing
+            load = {"kg": None, "basis": "estimate", "reason": "no_body_weight", "label": "缺体重", "per": _per(item),
+                    "target_reps": target_reps(item.get("rep_low"), item.get("rep_high"))}
+        return load
 
 
 def attach(ctx: Context, item: dict, progression: dict | None = None) -> dict:

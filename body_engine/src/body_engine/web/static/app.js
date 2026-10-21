@@ -580,7 +580,26 @@
 
   // ---- Training + nutrition cards
   // Recommended working weight (training/loads.py): progression up = good, estimate = muted "估算", otherwise plain
+  // Whole phrases with {placeholders}: when the i18n layer (#20) lands, `fillText(x, p)` becomes `tr(x, p)`
+  const fillText = (s, p = {}) => s.replace(/\{(\w+)\}/g, (_, k) => (p[k] ?? ""));
+  const LOAD_BASIS = {
+    progression: "按进阶规则",
+    history: "同上次（{date}）",
+    e1rm: "按上次（{date}）换算",
+    plan: "计划里写的重量",
+    bodyweight: "自重动作",
+    no_history: "按体重 × 系数估算：这个动作还没有记录",
+    not_linked: "按体重 × 系数估算：还没连训练记录",
+    history_unreadable: "按体重 × 系数估算：训练记录读不到",
+    no_body_weight: "缺体重：记一次体重后可估算",
+  };
+  const loadBasisText = (ld) => {
+    const key = ld.basis === "estimate" ? ld.reason : ld.basis;
+    return LOAD_BASIS[key] ? fillText(LOAD_BASIS[key], { date: ld.last ? shortDay(ld.last.date) : "" }) : null;
+  };
+
   function loadBadge(ld) {
+    if (ld?.reason === "no_body_weight") return `<span class="small muted">${esc(fillText("缺体重"))}</span>`;
     if (!ld || (ld.kg == null && ld.basis !== "bodyweight")) return "";
     if (ld.kg == null) return badge("plain", ld.label);
     const kg = `${fmtNum(ld.kg, 1)} kg`;
@@ -612,6 +631,7 @@
         const tone = t.readiness.tier === "green" ? "good" : t.readiness.tier === "red" ? "bad" : "mid";
         html += `<div class="rcard-tags" style="margin-bottom:6px">${badge(tone, t.readiness.label || "恢复自调节")}</div><div class="small muted" style="margin-bottom:10px">${esc(t.readiness.advice)}</div>`;
       }
+      if (t.sparky_error && t.planned.length) html += tags([badge("mid", fillText("训练记录读不到 · 重量为估算"))]);
       html += t.planned.length ? t.planned.map((p) => {
         const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
         return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
@@ -2476,6 +2496,8 @@
     const ld = ex.load;
     const loadV = ld && ex.status !== "banned" && (ld.kg != null || ld.basis === "bodyweight")
       ? `${ld.kg != null ? `${fmtNum(ld.kg, 1)} kg` : esc(ld.label)}${ld.kg != null ? ` <small class="muted">${esc([ld.per, `× ${ld.target_reps}`, ld.label].filter(Boolean).join(" · "))}</small>` : ""}` : null;
+    const basis = ld && ex.status !== "banned" ? loadBasisText(ld) : null;
+    const basisV = basis ? `${esc(basis)}${ld.body_weight_kg ? ` <small class="muted">${esc(fillText("{bw} kg × {f}", { bw: fmtNum(ld.body_weight_kg, 1), f: ld.bw_fraction }))}</small>` : ""}` : null;
     const recent = (ex.recent || []).map((r) => kv(shortDay(r.date), esc(r.sets.join(" · ")))).join("");
     const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${k}${v === "high" ? "高" : "中"}`)).join("");
     const steps = (ex.instructions_zh || []).map((s) => `<li>${esc(s)}</li>`).join("");
@@ -2490,6 +2512,7 @@
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
       ${ex.reason ? kv("限制原因", esc(ex.reason)) : ""}
       ${loadV ? kv("推荐重量", loadV) : ""}
+      ${basisV ? kv("依据", basisV) : ""}
       ${(ex.primary_muscles_zh || []).length ? kv("主肌群", esc(ex.primary_muscles_zh.join("、"))) : ""}
       ${(ex.secondary_muscles_zh || []).length ? kv("次肌群", esc(ex.secondary_muscles_zh.join("、"))) : ""}
       ${map}
@@ -2619,7 +2642,8 @@
         <div class="msum" style="margin:14px 0 0">${[["训练", sm.training_days, "天"], ["时长", sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           ["消耗", (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           ["计划", (wk.days || []).filter((x) => x.planned.length).length || null, "天"]]
-          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}</div></div>`;
+          .map(([l, v, u]) => `<div><div class="l">${l}</div><div class="v">${v ?? "—"}${v != null && u ? `<small>${u}</small>` : ""}</div></div>`).join("")}</div>${volHtml}${rdHtml}
+        ${wk.load_history_error && wk.plan ? tags([badge("mid", fillText("训练记录读不到 · 重量为估算"))]) : ""}</div></div>`;
     const sugg = (wk.suggestions || []).map((x) => `<button class="item" ${sheetAttr(() => openSheet(x.name, kv("建议", esc(x.title)) + (x.next_weight_kg != null ? kv("下次重量", `${fmtNum(x.next_weight_kg, 1)} kg`) : "")))}>
         <span class="row-title">${esc(x.name)}</span><span class="val">${badge(x.level === "warning" ? "mid" : "good", x.next_weight_kg != null ? `→ ${fmtNum(x.next_weight_kg, 1)} kg` : "建议")}</span><span class="chev">${ICON.chev}</span></button>`);
     const caut = (wk.cautions || []).map((x) => `<button class="item" ${sheetAttr(() => exerciseDetailSheet(x.slug || x.name))}>

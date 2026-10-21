@@ -20,7 +20,7 @@ from ..training import catalog as tr_catalog
 from . import activation, login_codes, login_limit, session, views
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.39-2026-10-21"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.41-2026-10-21"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])

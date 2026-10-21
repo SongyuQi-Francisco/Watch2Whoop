@@ -59,7 +59,8 @@ def test_recommend_order_progression_history_conversion_estimate():
     # 3. no history -> conservative estimate by body weight; sex unknown uses the female (lower) factors
     est_m = loads.recommend(BENCH, 8, 12, None, bw=90, sex="male", day=today)
     est_u = loads.recommend(BENCH, 8, 12, None, bw=90, sex=None, day=today)
-    assert est_m["basis"] == "estimate" and est_m["label"] == "估算"
+    assert est_m["basis"] == "estimate" and est_m["label"] == "估算" and est_m["reason"] == "no_history"
+    assert est_m["body_weight_kg"] == 90 and est_m["bw_fraction"] == pytest.approx(0.5 * P.LOAD_START_FRACTION * 0.4)
     assert est_m["kg"] == loads.round_down(90 * 0.5 * P.LOAD_START_FRACTION * 0.4, 2.5) == 10.0
     assert est_u["kg"] < est_m["kg"]
     assert loads.recommend(BENCH, 8, 12, None, bw=None, day=today) is None          # no body weight -> no guess
@@ -259,6 +260,7 @@ def test_week_plan_and_propose_plan_carry_loads(conn, world, history):
     assert bench["load"]["basis"] == "history" and bench["load"]["kg"] == 20 and bench["load_text"] == "20 kg"
     assert lat["load"]["basis"] == "progression" and lat["load"]["kg"] == 41.5
     assert goblet["load"]["basis"] == "estimate" and goblet["load"]["kg"] == loads.round_down(90 * 0.15, 2.5)
+    assert goblet["load"]["reason"] == "no_history"
     assert plank["load"] is None
     leg = items["leg_press"]   # 100 × 5 logged, plan asks 10–12 -> converted down
     assert leg["load"]["basis"] == "e1rm" and leg["load"]["kg"] < 100
@@ -277,7 +279,8 @@ def test_viewer_without_weight_scope_gets_no_estimate(conn, world, history):
     assert items["goblet_squat"]["load"] is None
 
 
-def test_history_unreadable_means_no_estimate(conn, world, monkeypatch):
+def test_history_unreadable_still_estimates_with_reason(conn, world, monkeypatch):
+    """Issue #66 FB-5: SparkyFitness linked but unreadable -> conservative body-weight estimate labelled 估算, with the reason."""
     ids, _ = world
     loads.clear_history_cache()
     monkeypatch.setattr(sparky_client, "client_for_user", lambda conn, uid: object())
@@ -285,11 +288,47 @@ def test_history_unreadable_means_no_estimate(conn, world, monkeypatch):
     def down(*_a, **_k):
         raise sparky_client.SparkyError("连不上 SparkyFitness（test）")
     monkeypatch.setattr(sparky_client, "training_log", down)
+    asked = []
+    monkeypatch.setattr(sparky_client, "weight", lambda *a: asked.append(a) or [])   # must not be asked again
     wk = plans.get_week_plan(conn, ids["A"], ids["A"], date.today())
     items = _items(wk)
-    assert "连不上" in wk["load_history_error"] and items["goblet_squat"]["load"] is None
+    assert "连不上" in wk["load_history_error"]
+    for slug in ("goblet_squat", "dumbbell_bench_press"):   # the bench press has history, but it cannot be read now
+        ld = items[slug]["load"]
+        assert ld["basis"] == "estimate" and ld["reason"] == "history_unreadable" and ld["label"] == "估算"
+        assert ld["kg"] and ld["body_weight_kg"] == 90 and 0 < ld["bw_fraction"] < 1
+    assert items["dumbbell_bench_press"]["load_text"] == "≈ 10 kg 估算" and asked == []   # body weight from Apple Health
     assert items["lat_pulldown"]["load"]["kg"] == 41.5   # the progression reminder still applies
+    assert items["plank"]["load"] is None
+    # viewers without the weight scope still get no estimate
+    assert _items(plans.get_week_plan(conn, ids["B"], ids["A"], date.today()))["goblet_squat"]["load"] is None
     loads.clear_history_cache()
+
+
+def test_estimate_reasons_not_linked_and_no_body_weight(conn, world, monkeypatch):
+    ids, _ = world
+    loads.clear_history_cache()
+
+    def unlinked(conn, uid):
+        raise sparky_client.SparkyError("还没连 SparkyFitness")
+    monkeypatch.setattr(sparky_client, "client_for_user", unlinked)
+    items = _items(plans.get_week_plan(conn, ids["A"], ids["A"], date.today()))
+    assert items["goblet_squat"]["load"]["reason"] == "not_linked" and items["goblet_squat"]["load"]["kg"]
+    # no body weight in the last 60 days: say so (short label) instead of showing nothing
+    monkeypatch.setattr(loads, "body_weight", lambda *a, **k: None)
+    wk = plans.get_week_plan(conn, ids["A"], ids["A"], date.today())
+    ld = _items(wk)["goblet_squat"]["load"]
+    assert ld["kg"] is None and ld["reason"] == "no_body_weight" and _items(wk)["goblet_squat"]["load_text"] == "缺体重"
+    assert _items(wk)["plank"]["load"] is None
+    loads.clear_history_cache()
+
+
+def test_page_explains_every_load_basis():
+    js = (STATIC / "app.js").read_text(encoding="utf-8")
+    table = re.search(r"const LOAD_BASIS = \{(.*?)\};", js, re.S).group(1)
+    keys = set(re.findall(r"^\s*(\w+):", table, re.M))
+    assert {"progression", "history", "e1rm", "plan", "bodyweight",
+            "no_history", "not_linked", "history_unreadable", "no_body_weight"} <= keys
 
 
 def test_exercise_detail_tool_and_http(dsn, world, history, tmp_path, monkeypatch):
