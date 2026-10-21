@@ -193,7 +193,7 @@
     let { kind, code } = loginKind(v);
     const step = async (k, fn) => { try { return await fn(); } catch (err) { err.kind = k; throw err; } };
     if (kind === "activation") {
-      const res = await step("activation", () => api("/v1/web/activate", { method: "POST", body: { code }, quiet401: true }));
+      const res = await step("activation", () => api("/v1/web/activate", { method: "POST", body: { code, web: true }, quiet401: true }));
       const m = /[?&]login=([^&]+)/.exec(res?.setup_link || "");
       if (!m) { const err = new Error(LOGIN_401.code); err.status = 401; err.kind = "code"; throw err; }
       kind = "code"; code = decodeURIComponent(m[1]);

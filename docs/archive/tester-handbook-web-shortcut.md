@@ -1,6 +1,6 @@
 # Watch2Whoop 使用手册（旧版：网页 + 快捷指令）
 
-> 已归档（2026-10-19）。现在用 Watch2Whoop app，见新版 [使用手册](../tester-handbook.md)。这一版只给还没装 app、靠主屏幕网页 + 快捷指令同步的人参考。
+> **已停用（2026-10-22）**：iPhone 只用 Watch2Whoop App，「添加到主屏幕」的网页版不再支持。请按新版 [使用手册](../tester-handbook.md) 装 App。这一版只留作存档。
 
 <!-- W2W:HELLO -->
 
