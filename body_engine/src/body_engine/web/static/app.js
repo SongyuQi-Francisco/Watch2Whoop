@@ -234,11 +234,20 @@
   }
 
   // ------------------------------------------------------------------ page switching
+  // The Friends page is behind the feature flag `friends` (docs/rollout.md). Off: the old tabs (饮食 is its own tab, no
+  // 朋友 tab, 记录 has 日记 | 训练). On: 朋友 replaces 饮食 in the tab bar and 饮食 becomes the third segment of 记录.
+  const friendsOn = () => (S.flags || []).includes("friends");
+  function applyTabs() {
+    const on = friendsOn();
+    $('.tab[data-tab="friends"]').hidden = !on;
+    $('.tab[data-tab="food"]').hidden = on;
+  }
   function setTab(tab) {
-    if (tab === "record" && S.recSub === "food") tab = "food";
+    if (tab === "friends" && !friendsOn()) tab = "today";
+    if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     S.tab = tab;
-    const lit = tab === "food" ? "record" : tab;
+    const lit = tab === "food" && friendsOn() ? "record" : tab;
     for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
     try { localStorage.setItem("be.tab", tab); } catch (e) { /* private mode */ }
     window.scrollTo(0, 0);
@@ -1681,8 +1690,12 @@
     return `<button class="tag ${v === 1 ? "on" : v === 0 ? "no" : ""}" data-jkey="${esc(it.key)}" aria-pressed="${v === 1}" ${self ? "" : "disabled"}><span>${esc(shortLabel(it))}</span></button>`;
   }
 
-  const recSeg = () => `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${[["journal", tr("日记")], ["training", tr("训练")], ["food", tr("饮食")]]
-    .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${S.recSub === k}">${t}</button>`).join("")}</div></div>`;
+  const recSeg = () => {
+    const subs = [["journal", tr("日记")], ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
+    const cur = S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    return `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${subs
+      .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${cur === k}">${t}</button>`).join("")}</div></div>`;
+  };
   function bindRecSeg(view) {
     for (const b of $$("[data-rsub]", view)) b.onclick = () => {
       S.recSub = b.dataset.rsub;
@@ -2442,7 +2455,7 @@
 
   const RENDER_food = async () => {
     if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
-    const seg = recSeg() + `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
+    const seg = (friendsOn() ? recSeg() : "") + `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
       + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
       const shop = PLUGINS().find((p) => p.foodShop);   // grocery.js
@@ -3100,6 +3113,8 @@
       return;
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
+    S.flags = me.flags || []; S.experiments = me.experiments || {};
+    applyTabs();
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
@@ -3113,6 +3128,22 @@
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
     setTab(TABS[tab] ? tab : "today");
   }
+
+  // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
+  // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per
+  // page load is counted and the variant comes back (null = not in the experiment: draw the normal page).
+  const exposed = new Set();
+  window.BodyFlags = {
+    on: (key) => (S.flags || []).includes(key),
+    variant: (key) => {
+      const v = (S.experiments || {})[key] || null;
+      if (v && !exposed.has(key)) {
+        exposed.add(key);
+        api(`/v1/users/me/experiments/${encodeURIComponent(key)}/exposure`, { method: "POST" }).catch(() => {});
+      }
+      return v;
+    },
+  };
 
   // Redraw when the window crosses the wide-screen breakpoint (charts have different sizes)
   WIDE.addEventListener?.("change", () => { if (S.me) { $("#view").dataset.shown = ""; render(); } });

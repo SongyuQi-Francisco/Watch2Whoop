@@ -29,9 +29,7 @@ def co_members(conn: psycopg.Connection, uid: int) -> list[dict]:
 
 def share_with(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> set[str]:
     """Scopes `owner_id` grants `viewer_id` right now (circles + hand-made, nutrition implies nutrition_summary)."""
-    row = conn.execute(f"""SELECT {auth.EFFECTIVE_SCOPES.format(s="s")} AS scopes FROM shares s
-                           WHERE s.owner_id = %s AND s.viewer_id = %s""", (owner_id, viewer_id)).fetchone()
-    scopes = set(row["scopes"]) if row else set()
+    scopes = auth.granted_scopes(conn, viewer_id, owner_id)
     for narrow, wide in auth.IMPLIED_BY.items():
         if scopes & set(wide):
             scopes.add(narrow)

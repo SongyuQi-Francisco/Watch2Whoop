@@ -80,18 +80,35 @@ def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
 
 
-# What a shares row grants right now: the hand-made grant while it has not expired, plus what common circles add
-# (friends/store.py keeps circle_scopes). Use as `{EFFECTIVE_SCOPES.format(s="s")}` with the shares alias.
-EFFECTIVE_SCOPES = ("((CASE WHEN {s}.expires_at IS NULL OR {s}.expires_at > now() THEN {s}.scopes ELSE '{{}}'::text[] END)"
-                    " || {s}.circle_scopes)")
 # A scope that a wider scope also grants: whoever may see someone's food may see whether they met their goals
 IMPLIED_BY = {"nutrition_summary": ("nutrition",)}
+# The feature flag that gates circles (rollout/registry.py). Circle grants (shares.circle_scopes) count only while it is
+# on for both people, so turning the Friends page off (or never turning it on for someone) stops circle sharing at once;
+# hand-made grants (shares.scopes) never depend on it.
+CIRCLES_FLAG = "friends"
+
+
+def circles_on(conn: psycopg.Connection, user_id: int) -> bool:
+    from .rollout import flags
+    return flags.enabled(conn, user_id, CIRCLES_FLAG)
+
+
+def granted_scopes(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> set[str]:
+    """What `owner_id` lets `viewer_id` see right now: the hand-made grant while it has not expired, plus what common
+    circles add (friends/store.py keeps circle_scopes) when circles are on for both."""
+    row = conn.execute(
+        """SELECT CASE WHEN expires_at IS NULL OR expires_at > now() THEN scopes ELSE '{}'::text[] END AS manual,
+                  circle_scopes FROM shares WHERE owner_id = %s AND viewer_id = %s""", (owner_id, viewer_id)).fetchone()
+    if row is None:
+        return set()
+    out = set(row["manual"])
+    if row["circle_scopes"] and not set(row["circle_scopes"]) <= out \
+            and circles_on(conn, viewer_id) and circles_on(conn, owner_id):
+        out |= set(row["circle_scopes"])
+    return out
 
 
 def can_view(conn: psycopg.Connection, viewer_id: int, owner_id: int, scope: str) -> bool:
     if viewer_id == owner_id:
         return True
-    return conn.execute(
-        f"""SELECT 1 FROM shares s WHERE s.owner_id = %s AND s.viewer_id = %s
-            AND {EFFECTIVE_SCOPES.format(s="s")} && %s::text[]""",
-        (owner_id, viewer_id, [scope, *IMPLIED_BY.get(scope, ())])).fetchone() is not None
+    return bool(granted_scopes(conn, viewer_id, owner_id) & {scope, *IMPLIED_BY.get(scope, ())})

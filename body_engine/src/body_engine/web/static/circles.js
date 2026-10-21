@@ -2,6 +2,7 @@
    a code (or an invite from a friend's referral sign-up), pick what to share (scopes; ECGs never), change it, leave; the owner
    can reset invites, remove members and dissolve. Opening /app/?circle=CODE shows the join sheet after sign-in.
    Separate from app.js: registered in window.BodyPlugins (init / meItem / bindMe); window.BodyCircles.open() for other pages.
+   Behind the `friends` feature flag (docs/rollout.md): while it is off nothing is drawn and the API answers 404.
    Endpoints: GET /v1/friends, POST /v1/friends/circles, …/circles/{id}/invite, GET /v1/friends/invite?code=,
    POST /v1/friends/join, PATCH|DELETE /v1/friends/circles/{id}/me, DELETE …/members/{u}, DELETE …/circles/{id},
    DELETE /v1/friends/invites/{id}. */
@@ -260,11 +261,12 @@
     if (v) v.textContent = shortVal();
   }
 
+  const on = () => !!window.BodyFlags?.on("friends");
   window.BodyCircles = { open, load: () => load(), data: () => data, onChange: null };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: async (ctx, me) => {
       C = ctx; ME = me?.me || null; injectCss();
-      if (!ME) return;
+      if (!ME || !(me?.flags || []).includes("friends")) return;   // a ?circle= code stays remembered until the flag is on
       const code = takeCode();
       await load();
       if (!code || !data) return;
@@ -273,7 +275,7 @@
         joinSheet({ code, name: pv.name, owner: pv.owner_name, members: pv.members });
       } catch (e) { codeSheet(code); }
     },
-    meItem: (chev) => (ME ? `<button class="item" id="me-circles"><span class="row-title">${esc(tr("圈子"))}</span><span class="val" id="me-circles-val">${esc(shortVal())}</span>${chev || ""}</button>` : ""),
+    meItem: (chev) => (ME && on() ? `<button class="item" id="me-circles"><span class="row-title">${esc(tr("圈子"))}</span><span class="val" id="me-circles-val">${esc(shortVal())}</span>${chev || ""}</button>` : ""),
     bindMe: (view) => {
       const b = $("#me-circles", view);
       if (!b) return;
