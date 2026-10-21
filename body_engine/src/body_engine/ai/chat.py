@@ -8,8 +8,9 @@ No default provider (and no body butler link): the fallback AI (fallback.py, the
 short prompt and tool subset that can only read the caller's own data.
 All queries carry user_id = the logged-in person: conversations, pending writes, providers and keys never leak to anyone else.
 
-Tools sent with each call: the resident core + the groups of every page the conversation has been on (ai_conversations.pages,
-only added to) + the meta tools (assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
+Tools sent with each call: the resident core + the groups of the pages the conversation has been on (ai_conversations.pages,
+most recent last; beyond PAGE_BUDGET_CHARS the oldest are dropped, the current page always stays) + the meta tools
+(assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
 the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go by the real tool name.
 
 Events (produced by chat_events, converted to SSE by api.py): conversation, text, tool, confirm, usage, error, done.
@@ -28,6 +29,7 @@ from ..i18n import L, is_en
 from . import adapters, catalog, choice, crypto, fallback, prompt, providers
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
+from . import params as ai_params
 from .params import ALWAYS_CONFIRM  # only deleting / undoing asks first (tests patch it here)
 
 MAX_ROUNDS = 8                 # Max model calls chained for one user message (stops the tool loop from running forever)
@@ -274,12 +276,16 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
     return name, args, tool, None if tool else f"没有这个工具：{name}"
 
 
+def _page_budget(provider: dict) -> int:
+    return ai_params.FALLBACK_PAGE_BUDGET_CHARS if fallback.is_fallback(provider) else ai_params.PAGE_BUDGET_CHARS
+
+
 def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter) -> Iterator[dict]:
     can_write = "write" in (viewer.get("token_scopes") or [])
     fb = fallback.is_fallback(provider)
     allowed = fallback.tools() if fb else TOOLS   # the fallback only ever reaches its own whitelist, also through the meta tools
     access = toolsets.Access({t.name: t for t in allowed}, can_write)
-    tools = toolsets.for_page(allowed, conv.get("pages"))
+    tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider)))
     for _ in range(fp.MAX_ROUNDS if fb else MAX_ROUNDS):
         history = _history(conn, conv["id"], viewer["id"])
         try:
@@ -368,7 +374,8 @@ def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: li
                 conversation_id: int | None, allow_owner_fallback: bool = False, page: str | None = None) -> Iterator[dict]:
     """One user message. Pre-checks (provider, budget, parameters) are done by prepare_chat before the first next().
     allow_owner_fallback: only `body-engine ai-fallback try` (lets the deployer, who has the butler link, test the fallback).
-    page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups."""
+    page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups
+    (unknown ids are ignored; over the budget the oldest pages' groups are dropped)."""
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page)
     return _run(conn, viewer, provider, adapter, conv, content)
 
@@ -392,7 +399,8 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
         conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, pages)
                                VALUES (%s,%s,%s,%s,%s) RETURNING *""",
                             (viewer["id"], provider["id"], (message or "图片")[:40],
-                             prompt.build_system_prompt(conn, viewer["id"], lite=fb), [page] if page else [])).fetchone()
+                             prompt.build_system_prompt(conn, viewer["id"], lite=fb),
+                             [page] if toolsets.known_page(page) else [])).fetchone()
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
         n = conn.execute("SELECT count(*) AS n FROM ai_messages WHERE conversation_id = %s", (conv["id"],)).fetchone()["n"]
@@ -400,9 +408,11 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
             raise ChatError("too_long", L("这个对话太长了，开一个新对话吧（长期记忆不受影响）",
                                           "This conversation is too long; start a new one (long-term memory is kept)"))
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
-        if page and page not in conv["pages"]:   # first time on this page: add its groups (only ever added to)
-            conv = conn.execute("UPDATE ai_conversations SET pages = array_append(pages, %s) WHERE id = %s RETURNING *",
-                                (page, conv["id"])).fetchone()
+        allowed = fallback.tools() if fb else TOOLS
+        pages = toolsets.visit_page(allowed, conv["pages"], page, _page_budget(provider))
+        if pages != conv["pages"]:   # a new page adds its groups; over the cap the oldest pages' groups are dropped
+            conv = conn.execute("UPDATE ai_conversations SET pages = %s WHERE id = %s RETURNING *",
+                                (pages, conv["id"])).fetchone()
     content = [{"type": "text", "text": f"{prompt.time_prefix(conn, viewer['id'])}\n{message}"}] + imgs
     return provider, adapter, conv, content
 
