@@ -353,6 +353,11 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   invite code (`account/invites.py`; `body-engine invite-code batch | list | revoke`). Redemption activates the account and
   provisions it in the background (`account/provision.py`: OW user, SparkyFitness account + encrypted keys, journal items,
   profile card); `body-engine provision-run` retries unfinished ones (hourly) and removes pending accounts after 7 days.
+- Existing accounts (admin-created) sign in with e-mail / Apple once an identity is bound (`account/identities.py`):
+  `body-engine identity-link --user-id N --email x [--move] | --list | --unlink`, `user-add --email`, `activation-code create
+  --email`; signed-in users add more under Me → 「登录方式」 (`web/static/identities.js`, `POST /v1/account/identities/email`
+  with a code, `/v1/account/identities/apple` with an Apple token from the app). One identity, one account; accounts are
+  never merged by e-mail.
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 

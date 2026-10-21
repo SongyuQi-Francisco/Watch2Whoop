@@ -12,6 +12,9 @@ Account (Bearer or cookie; also for `pending` accounts):
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
+  POST   /v1/account/identities/email {email, code}          bind another e-mail (code from /v1/auth/email/start); active only
+  POST   /v1/account/identities/apple {identity_token, nonce} bind the user's Apple ID (token from the app); active only
+         409 {"detail": "identity_taken"} when that e-mail / Apple ID already belongs to another account (never merged)
 A `pending` account gets 403 {"detail": "account_pending"} everywhere else (api.current_user → gate()).
 
 Limits: verification / redemption failures count against the shared per-IP login failure limit (web/login_limit.py);
@@ -27,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
 from ..web import activation, login_codes, login_limit, session
-from . import delete as account_delete, invites, mailer, provision, signin
+from . import delete as account_delete, identities, invites, mailer, provision, signin
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -194,7 +197,9 @@ def apple(body: AppleIn, request: Request, response: Response, conn=Depends(get_
 
 def account_info(conn, user: dict) -> dict:
     ids = conn.execute("SELECT provider, email FROM user_identities WHERE user_id = %s ORDER BY id", (user["id"],)).fetchall()
-    return {**me_dict(user), "identities": ids, "invite_required": user.get("status") == "pending",
+    # identities: [{provider, email}] (Me → 「登录方式」); apple_link: this server can verify Apple tokens
+    return {**me_dict(user), "identities": ids, "apple_link": bool(signin.apple_audiences()),
+            "invite_required": user.get("status") == "pending",
             "provisioning": provision.status(conn, user["id"])}
 
 
@@ -220,6 +225,59 @@ def _provision_in_background(user_id: int) -> None:
 def start_provisioning(user_id: int) -> None:
     """Provision in a background thread so the app does not wait on OW / SparkyFitness (tests replace this)."""
     threading.Thread(target=_provision_in_background, args=(user_id,), daemon=True).start()
+
+
+class BindEmailIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str = Field(min_length=3, max_length=254)
+    code: str = Field(min_length=6, max_length=12)
+
+
+class BindAppleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    identity_token: str = Field(min_length=20, max_length=8000)
+    nonce: str | None = Field(None, max_length=200)
+
+
+def _bind(conn, viewer: dict, fn) -> dict:
+    if viewer.get("status") != "active":
+        raise HTTPException(403, "account_pending")
+    try:
+        result = fn()
+    except identities.IdentityConflict:
+        conn.rollback()
+        raise HTTPException(409, "identity_taken")
+    conn.commit()
+    return {"result": result, "identities": account_info(conn, viewer)["identities"]}
+
+
+@router.post("/v1/account/identities/email")
+def bind_email(body: BindEmailIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Bind another e-mail to the signed-in account; the code (sent by /v1/auth/email/start) proves the address."""
+    ip = _check_ip(request)
+    email = signin.normalize_email(body.email)
+    ok = email is not None and signin.check_email_code(conn, email, body.code)
+    conn.commit()
+    if not ok:
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "code_invalid")
+    return _bind(conn, viewer, lambda: identities.link_email(conn, viewer["id"], email, verified=True))
+
+
+@router.post("/v1/account/identities/apple")
+def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Bind the user's Apple ID (a fresh identity token from Sign in with Apple in the app) to the signed-in account."""
+    audiences = signin.apple_audiences()
+    if not audiences:
+        raise HTTPException(503, "apple_not_configured")
+    ip = _check_ip(request)
+    try:
+        claims = signin.verify_apple_token(body.identity_token, audiences, body.nonce)
+    except signin.SignInError as e:
+        log.info("apple link rejected: %s", e)
+        login_limit.record_failure(ip)
+        raise HTTPException(401, "apple_invalid")
+    return _bind(conn, viewer, lambda: identities.link_apple(conn, viewer["id"], claims))
 
 
 @router.post("/v1/account/redeem-invite")

@@ -347,6 +347,7 @@ textarea.input { resize: none; }
 .login-app[hidden] { display: none; }
 .login-card .login-error { color: var(--bad); font-size: 13px; text-align: center; min-height: 1.2em; margin: 10px 0 0 !important; }
 .login-card .login-error.ok { color: var(--text-2); }
+.login-card .login-note { margin: 14px 0 0 !important; }   /* hints under a sign-in step (identities.js) */
 .empty { text-align: center; color: var(--text-2); padding: 28px 12px; font-size: 14px; }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 50; bottom: calc(var(--tabbar-h) + var(--ask-h) + env(safe-area-inset-bottom) + 16px);

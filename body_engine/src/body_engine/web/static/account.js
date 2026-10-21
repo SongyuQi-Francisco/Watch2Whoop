@@ -86,7 +86,8 @@
     const m = await methods;
     const apple = !!(m.apple && appleInApp());
     $("#le-apple").hidden = $("#le-or").hidden = !apple;
-    $("#le-hint").textContent = apple ? "登录或注册" : "用邮箱登录或注册";
+    const tr = window.BodyIdentities?.tr || ((s) => s);   // identities.js (bilingual until #20's i18n layer lands)
+    $("#le-hint").textContent = apple ? tr("登录 / 注册") : tr("用邮箱登录 / 注册");
     if (m.email) {
       go("email");
       if (msg) setError("#le-email-error", msg);

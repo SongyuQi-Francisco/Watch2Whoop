@@ -207,6 +207,21 @@ deploy/ops/install.sh                      # 装定时任务（macOS LaunchAgent
 
 `python3 deploy/assistant/butler.py status` 看状态：`needs_login` = 登录过期，在跑管家的机器上用管家那个系统用户重新 `claude` 登录；`needs_trust` = 没信任 `assistant/` 目录。会话地址变了要更新 `.env` 的 `BODY_ASSISTANT_URL`。详见 [deploy/assistant/README.md](../deploy/assistant/README.md)。
 
+## 登录身份：让老账号能用邮箱 / Apple 登录
+
+管理员开的账号（开户、激活链接）原来没有登录身份，本人在登录页用邮箱或 Apple 登录会变成一个新的待开通账号。给账号绑定邮箱后，本人用邮箱验证码就直接进自己的账号：
+
+```bash
+body-engine identity-link --user-id 7 --email someone@example.com   # 绑定（重复跑无副作用）；这个邮箱已属于别的账号时拒绝
+body-engine identity-link --user-id 7 --email someone@example.com --move   # 确认后从别的账号（比如误建的待开通账号）移过来
+body-engine identity-link --list [--user-id 7]                      # 看谁绑了哪些邮箱 / Apple
+body-engine identity-link --unlink --user-id 7 --email someone@example.com   # 或 --unlink --id N
+body-engine user-add --name 妈妈 --email mum@example.com             # 开户时直接绑定
+body-engine activation-code create --user-id 7 --email someone@example.com   # 发激活码时顺带绑定
+```
+
+本人登录后还可以在「我」→「登录方式」自己再绑一个邮箱（验证码确认）或 Apple 登录（要在 Watch2Whoop app 里）。账号之间**不会**因为邮箱相同自动合并（Apple 可能给隐藏的转发邮箱）。
+
 ## 内测码（自助注册上线后）
 
 批量内测码（自助注册时用）的命令随「自助注册」PR 一起提供，**需要该 PR 合并后可用**。目前只有方案（PR #8，`docs/self-signup-plan.md`），草案命令：

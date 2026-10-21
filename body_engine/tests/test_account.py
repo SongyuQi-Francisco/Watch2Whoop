@@ -244,16 +244,16 @@ def test_apple_token_verification():
 
 def test_apple_sign_in_app_token_and_linking(client, monkeypatch):
     client.cookies.clear()
-    # e-mail first, then Apple with the same verified e-mail → the same account
+    # e-mail first, then Apple with the same verified e-mail → NOT merged (accounts are only joined by explicit binding)
     first = _email_login(client, "linked@example.com", "app", "iPhone 17")
     assert first["token"].startswith(auth.TOKEN_PREFIX)
     r = client.post("/v1/auth/apple", json={"identity_token": apple_token(sub="apple-linked", email="linked@example.com"),
                                             "nonce": "raw-nonce", "client": "app", "device": "iPhone 17", "given_name": "Ann"})
     assert r.status_code == 200, r.text
     out = r.json()
-    assert out["me"]["id"] == first["me"]["id"] and out["new_user"] is False
+    assert out["me"]["id"] != first["me"]["id"] and out["new_user"] is True
     h = {"Authorization": f"Bearer {out['token']}"}
-    assert {i["provider"] for i in client.get("/v1/account", headers=h).json()["identities"]} == {"email", "apple"}
+    assert [i["provider"] for i in client.get("/v1/account", headers=h).json()["identities"]] == ["apple"]
     # private relay address, not verified elsewhere → a new pending account named after the given name
     r = client.post("/v1/auth/apple", json={"identity_token": apple_token(sub="apple-new", email="relay-abc@example.com"),
                                             "nonce": "raw-nonce", "given_name": "Bo"})
@@ -453,6 +453,7 @@ def test_login_page_is_a_step_flow(client):
     login = html[html.index('<div id="login"'):html.index('<div id="sheet"')]
     forms = dict(re.findall(r'<form id="([\w-]+)"[^>]*>(.*?)</form>', login, re.S))
     assert set(forms) == {"ls-email", "ls-code", "ls-invite", "login-form"}
+    assert "登录 / 注册" in forms["ls-email"] and "请管理员先绑定你的邮箱" in forms["ls-email"]
     for body in forms.values():
         assert len(re.findall(r'type="submit"', body)) == 1
     for step in ("ls-email", "ls-code", "ls-invite"):
@@ -462,3 +463,120 @@ def test_login_page_is_a_step_flow(client):
     assert 'data-step="email"' in login and 'data-step="code"' in login and 'data-step="invite"' in login
     js = client.get("/app/account.js").text
     assert "loginShown" in js and "showPending" in js and "apple-sign-in" in js
+
+
+# ---------------------------------------------------------------------------------------------------- identities of existing accounts
+
+def _reset_mail_limits():
+    for limiter in (account_api._per_ip, account_api._per_address, account_api._resend):
+        limiter.reset()
+
+
+def _admin_user(conn, name):
+    """An account the admin created (onboarding / activation code): active, no identity."""
+    return conn.execute("INSERT INTO users (display_name, role, status) VALUES (%s, 'member', 'active') RETURNING id",
+                        (name,)).fetchone()["id"]
+
+
+def test_identity_link_uniqueness_move_unlink(dsn):
+    from body_engine.account import identities
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        a, b = _admin_user(conn, "IdA"), _admin_user(conn, "IdB")
+        assert identities.link_email(conn, a, " Same@Example.com ") == "linked"
+        assert identities.link_email(conn, a, "same@example.com") == "already"            # idempotent
+        with pytest.raises(identities.IdentityConflict) as e:
+            identities.link_email(conn, b, "same@example.com")                             # one e-mail, one account
+        assert e.value.user_id == a
+        assert identities.link_email(conn, b, "same@example.com", move=True) == "moved"
+        rows = identities.list_identities(conn, b)
+        assert [(r["provider"], r["email"], r["display_name"]) for r in rows] == [("email", "same@example.com", "IdB")]
+        assert identities.list_identities(conn, a) == []
+        assert identities.unlink(conn, user_id=b, email="SAME@example.com") == 1
+        assert identities.unlink(conn, identity_id=rows[0]["id"]) == 0
+        with pytest.raises(ValueError):
+            identities.link_email(conn, a, "not-an-email")
+        with pytest.raises(ValueError):
+            identities.link_email(conn, 999999, "x@example.com")
+
+
+def test_existing_account_signs_in_by_email_new_email_is_pending(client, dsn, _env):
+    _reset_mail_limits()
+    from body_engine.account import identities
+    client.cookies.clear()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = _admin_user(conn, "Onboarded")
+        identities.link_email(conn, uid, "onboarded@example.com")
+    s = _email_login(client, "onboarded@example.com", "app", "iPhone")
+    assert s["me"]["id"] == uid and s["new_user"] is False and s["me"]["status"] == "active"
+    acct = client.get("/v1/account", headers={"Authorization": f"Bearer {s['token']}"}).json()
+    assert acct["invite_required"] is False and acct["identities"] == [{"provider": "email", "email": "onboarded@example.com"}]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:   # the first code sign-in verified the admin-bound address
+        assert conn.execute("SELECT verified_at FROM user_identities WHERE user_id = %s", (uid,)).fetchone()["verified_at"]
+    other = _email_login(client, "brand-new@example.com", "app")
+    assert other["new_user"] is True and other["me"]["status"] == "pending" and other["me"]["id"] != uid
+
+
+def test_bind_apple_and_email_while_signed_in(client, dsn, _env):
+    _reset_mail_limits()
+    from body_engine.account import identities
+    client.cookies.clear()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = _admin_user(conn, "Binder")
+        identities.link_email(conn, uid, "binder@example.com")
+    s = _email_login(client, "binder@example.com", "app")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    assert client.get("/v1/account", headers=h).json()["apple_link"] is True
+    # Apple: a fresh token from the app binds this Apple ID; signing in with Apple then opens the same account
+    r = client.post("/v1/account/identities/apple", headers=h, json={"identity_token": apple_token(sub="apple-binder", email="relay-x@privaterelay.example.com"), "nonce": "raw-nonce"})
+    assert r.status_code == 200 and r.json()["result"] == "linked", r.text
+    assert {i["provider"] for i in r.json()["identities"]} == {"email", "apple"}
+    again = client.post("/v1/auth/apple", json={"identity_token": apple_token(sub="apple-binder"), "nonce": "raw-nonce"}).json()
+    assert again["me"]["id"] == uid and again["new_user"] is False
+    assert client.post("/v1/account/identities/apple", headers=h, json={"identity_token": apple_token(sub="apple-binder"), "nonce": "raw-nonce"}).json()["result"] == "already"
+    # an Apple ID that already has its own account is not taken over
+    stranger = client.post("/v1/auth/apple", json={"identity_token": apple_token(sub="apple-stranger"), "nonce": "raw-nonce"}).json()
+    assert stranger["new_user"] is True
+    assert client.post("/v1/account/identities/apple", headers=h, json={"identity_token": apple_token(sub="apple-stranger"), "nonce": "raw-nonce"}).status_code == 409
+    assert client.post("/v1/account/identities/apple", headers=h, json={"identity_token": apple_token(sub="x"), "nonce": "wrong"}).status_code == 401
+    # a pending account cannot bind
+    ph = {"Authorization": f"Bearer {stranger['token']}"}
+    assert client.post("/v1/account/identities/apple", headers=ph, json={"identity_token": apple_token(sub="apple-other"), "nonce": "raw-nonce"}).status_code == 403
+    # e-mail: the code sent to the new address proves it
+    _reset_mail_limits()
+    assert client.post("/v1/auth/email/start", json={"email": "binder.work@example.com"}).status_code == 200
+    code = mailer.OUTBOX[-1][2].split("：")[1].split("\n")[0].strip()
+    assert client.post("/v1/account/identities/email", headers=h, json={"email": "binder.work@example.com", "code": "000000" if code != "000000" else "111111"}).status_code == 401
+    r = client.post("/v1/account/identities/email", headers=h, json={"email": "binder.work@example.com", "code": code})
+    assert r.status_code == 200 and r.json()["result"] == "linked"
+    _reset_mail_limits()
+    assert _email_login(client, "binder.work@example.com", "app")["me"]["id"] == uid
+    # an address that signs in to another account is refused
+    _reset_mail_limits()
+    assert client.post("/v1/auth/email/start", json={"email": "brand-new@example.com"}).status_code == 200
+    code = mailer.OUTBOX[-1][2].split("：")[1].split("\n")[0].strip()
+    assert client.post("/v1/account/identities/email", headers=h, json={"email": "brand-new@example.com", "code": code}).status_code == 409
+
+
+def test_identity_cli_and_admin_creation(dsn, monkeypatch, capsys):
+    import sys
+    from body_engine import cli, db
+    monkeypatch.setattr(db, "settings", Settings(db_name=TEST_DB))
+    monkeypatch.setattr(cli, "connect", lambda: psycopg.connect(Settings(db_name=TEST_DB).dsn, row_factory=dict_row), raising=False)
+
+    def run(*argv):
+        monkeypatch.setattr(sys, "argv", ["body-engine", *argv])
+        cli.main()
+        return capsys.readouterr().out
+
+    out = run("user-add", "--name", "CliPerson", "--email", "cli.person@example.com")
+    uid = int(out.split("user id:")[1].split()[0])
+    assert "email: linked" in out
+    assert "already" in run("identity-link", "--user-id", str(uid), "--email", "cli.person@example.com")
+    other = int(run("user-add", "--name", "CliOther").split("user id:")[1].split()[0])
+    with pytest.raises(SystemExit, match="already signs in to user"):
+        run("identity-link", "--user-id", str(other), "--email", "cli.person@example.com")
+    out = run("activation-code", "create", "--user-id", str(other), "--email", "cli.other@example.com")
+    assert "# email: linked" in out
+    listed = [json.loads(x) for x in run("identity-link", "--list", "--user-id", str(other)).splitlines()]
+    assert [x["email"] for x in listed] == ["cli.other@example.com"]
+    assert "removed: 1" in run("identity-link", "--unlink", "--user-id", str(other), "--email", "cli.other@example.com")
