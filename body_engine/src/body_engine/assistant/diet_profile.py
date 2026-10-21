@@ -18,6 +18,7 @@ from psycopg.types.json import Jsonb
 
 from .. import auth
 from ..goals import nutrition
+from ..nutrition import constraints as diet_constraints
 from . import diet_goals, diet_profile_params as P
 
 # section -> (profile card key, label, sort). Sorts sit between diet_preferences (60) and training_preferences (70).
@@ -272,7 +273,13 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, client=None, v
         """SELECT version, changed_on, changes, reason, sections, source FROM diet_profile_versions WHERE user_id = %s
            ORDER BY created_at DESC, id DESC""" + (" LIMIT %s" if versions else ""),
         (owner_id, versions) if versions else (owner_id,)).fetchall()
+    # The constraints the app enforces (nutrition/constraints.py, issue #76): same scope as the goals (nutrition)
+    rules = None
+    if "goals" not in hidden:
+        listing = diet_constraints.listing(conn, owner_id, history=True)
+        rules = {"current": listing["constraints"],
+                 "history": [h for h in listing["history"] if h["effective_to"]][-(versions or 50):]}
     return {**summary(conn, owner_id, viewer_id), "self": viewer_id == owner_id, "goals": goals,
             "goal_history": None if goals is None else diet_goals.history(conn, owner_id)[:versions or None],
-            "energy": en, "weight": weight, "plan": plan_math(en, goals, weight),
+            "energy": en, "weight": weight, "plan": plan_math(en, goals, weight), "constraint_rules": rules,
             "sections": _sections(conn, owner_id, tz), "versions": vers, "hidden": hidden}

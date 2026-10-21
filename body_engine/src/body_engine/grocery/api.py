@@ -181,7 +181,7 @@ def get_specials(user: str, q: str | None = None, limit: int = 20, conn=Depends(
     owner = _owner(conn, viewer, user, "nutrition")
     lst = store.get_list(conn, owner)
     return store_offers.weekly_specials(conn, owner, q, max(1, min(limit, 50)),
-                                        red_meat_left=store_offers.red_meat_left(_summary(conn, owner, lst["week_start"])))
+                                        red_meat_left=store_offers.red_meat_left(conn, owner, _summary(conn, owner, lst["week_start"])))
 
 
 def _summary(conn, user_id: int, week_start: str) -> dict:

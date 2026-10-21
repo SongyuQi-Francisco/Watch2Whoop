@@ -343,7 +343,7 @@ def test_shopping_context_and_tools(conn, world):
     ctx = run_tool(conn, a, "butler", "get_shopping_context", {})
     assert {s["store"] for s in ctx["connected_stores"]} == {"coles", "woolworths"}
     assert "纸巾" in ctx["needs_price"] and len(ctx["needs_price"]) <= P.CONTEXT_NEEDS_MAX
-    assert any("绕过" in r for r in ctx["rules"]) and ctx["health"]["red_meat_cap_g_week"] > 0
+    assert any("绕过" in r for r in ctx["rules"]) and ctx["health"]["diet_constraints"] == []   # no limits set (#76)
     out = run_tool(conn, a, "butler", "record_store_prices", {"items": [
         {"store": "coles", "name": "Kleenex Tissues", "price": 4.5, "for_item": "纸巾", "source": "screenshot"}]})
     assert out["recorded"] == 1

@@ -18,6 +18,7 @@ from body_engine.assistant import meals, memory, memory_seed, recipe_seed, recip
 from body_engine.assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
+from body_engine.nutrition import constraints
 from body_engine.records import lab_catalog
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_butler")
@@ -616,6 +617,7 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
                     VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 550, 'μmol/L', 420),
                            (%s, '2026-10-10', 'uric_acid', '尿酸', 'blood', 470, 'μmol/L', 420)""", (b, b))
     status.set_items(conn, b, [_item(key="goal_weight", label="目标体重", value="80", unit="kg", group="目标")], [])
+    constraints.set_constraint(conn, b, "red_meat_g_per_week", 300, effective_from=today - timedelta(days=30))   # the card needs a limit (#76)
     weights = {today - timedelta(days=k): 89.0 + k * 0.1 for k in range(14)}  # drops 0.1 per day over two weeks
     monkeypatch.setattr(status, "_weights", lambda conn, uid, s, e: weights)
     monkeypatch.setattr(status.sparky_client, "client_for_user", lambda conn, uid: None)
@@ -639,6 +641,7 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     assert (u["value"], u["unit"], u["trend"], u["tone"], u["spark"]) == ("偏高 470", "μmol/L", "down", "warn", [550, 470])
     assert (got["training_week"]["value"], got["training_week"]["tone"]) == ("3", "warn")
     assert (got["red_meat_week"]["value"], got["red_meat_week"]["tone"]) == ("40", "good")
+    assert got["red_meat_week"]["note"].startswith("上限 300 g")
     assert (got["added_sugar_today"]["value"], got["added_sugar_today"]["tone"]) == ("未知", "neutral")   # unknown, not 0
     assert "added_sugar_7d" not in got
     assert all(i["source"] == "auto" for k, i in got.items() if k in status.AUTO_KEYS)
@@ -698,6 +701,10 @@ def test_meal_log_and_undo(conn, world):
     fake = FakeSparky()
     res = meals.log_template(conn, a, tpl["id"], client=fake, channel="test")
     assert len(res["entries"]) == 5 and res["totals"]["kcal"] == 547
+    assert not any("红肉" in w for w in res["warnings"])   # no red meat limit set: nothing to warn about (#76)
+    meals.undo_log(conn, a, res["log_id"], client=fake)
+    constraints.set_constraint(conn, a, "red_meat_g_per_week", 200, basis="测试")
+    res = meals.log_template(conn, a, tpl["id"], allow_duplicates=True, client=fake, channel="test")
     assert any("红肉" in w and "280g" in w and "会超上限" in w for w in res["warnings"])
     names = [w[2]["food_id"] for w in fake.writes if w[1] == "/food-entries"]
     foods = {f["id"]: f["name"] for f in fake.foods}
@@ -763,7 +770,7 @@ def test_recipe_seed_data_is_consistent():
     ps, f = by_name["姜葱鸡油饭（减脂版）"]  # body-management.md: about 700 kcal per serving, protein 45g, carbs 75g, fat 20g
     assert 650 <= ps["kcal"] <= 780 and 40 <= ps["protein_g"] <= 50 and 70 <= ps["carbs_g"] <= 90
     ps, f = by_name["盐葱酱牛肋条"]
-    assert f["short_rib"] and f["red_meat_g"] == 150 and f["sat_fat_level"] == "high"
+    assert "short_rib" not in f and f["red_meat_g"] == 150 and f["sat_fat_level"] == "high"
     assert by_name["希腊酸奶碗"][1]["purine_level"] == "low"
 
 
@@ -785,7 +792,8 @@ def test_recipe_create_list_update(conn, world):
     assert r["ingredients"][2]["store"] == "costco" and r["ingredients"][0]["purchase_unit"] == "整盒（约 1kg）"
     assert set(recipes.list_recipes(conn, c)[0]) == {"id", "name", "slots", "tags", "kcal", "protein_g", "carbs_g", "fat_g",
                                                      "per_serving", "prep_min", "cook_min", "favorite", "can_make",
-                                                     "constraint_flags", "last_cooked_on", "image"}
+                                                     "constraint_flags", "last_cooked_on", "image", "badges"}
+    assert recipes.list_recipes(conn, c)[0]["badges"] == []   # no constraints: no purine / fat judgement (#76)
     assert [x["name"] for x in recipes.list_recipes(conn, c, slot="lunch", tag="高蛋白", q="鸡胸")] == ["测试鸡胸沙拉"]
     assert recipes.list_recipes(conn, c, slot="breakfast") == [] and recipes.list_recipes(conn, c, q="三文鱼") == []
     with pytest.raises(ValueError, match="已经有"):
@@ -796,7 +804,7 @@ def test_recipe_create_list_update(conn, world):
         recipes.create_recipe(conn, c, _new_recipe(name="y", ingredients=[dict(recipe_seed.ingredient("米（生）", 90), store="aldi")]), sync=False)
     beef = [recipe_seed.ingredient("牛肋条", 300), recipe_seed.ingredient("食用油", 10)]
     u = recipes.update_recipe(conn, c, r["id"], {"ingredients": beef, "favorite": True, "name": None}, sync=False)
-    assert u["constraint_flags"]["red_meat_g"] == 150 and u["constraint_flags"]["short_rib"] and u["favorite"]
+    assert u["constraint_flags"]["red_meat_g"] == 150 and "short_rib" not in u["constraint_flags"] and u["favorite"]
     assert conn.execute("SELECT constraint_flags->>'red_meat_g' AS g FROM recipe_meta WHERE id = %s", (r["id"],)).fetchone()["g"] == "150.0"
     with pytest.raises(LookupError):
         recipes.get_recipe(conn, ids["B"], r["id"])  # someone else's
@@ -835,6 +843,13 @@ def test_recipe_suggest_respects_constraints(conn, world, monkeypatch):
         "2026-10-17": [{"food_name": "希腊酸奶碗", "meal_type": "breakfast", "quantity": 1, "serving_size": 1,
                         "calories": 300, "protein": 25, "carbs": 30, "fat": 3}]})
     monkeypatch.setattr(status.sparky_client, "client_for_user", lambda conn, uid: fake)
+    conn.execute("DELETE FROM diet_constraints WHERE user_id = %s", (b,))   # an earlier test gave B a limit
+    free = recipes.suggest(conn, b, day, "dinner")   # no diet constraints (#76): nothing excluded, no red meat budget
+    assert free["excluded"] == [] and free["red_meat_week_g"] is None
+    assert all(not any(lb["label"].startswith("嘌呤") for lb in s["labels"]) for s in free["suggestions"])
+    constraints.set_constraint(conn, b, "red_meat_g_per_week", 260, basis="测试", effective_from=day - timedelta(days=30))
+    constraints.set_constraint(conn, b, "food_times_per_week", 1, target="牛肋条", effective_from=day - timedelta(days=30))
+    constraints.set_constraint(conn, b, "low_purine", effective_from=day - timedelta(days=30))
     res = recipes.suggest(conn, b, day, "dinner")
     assert res["remaining"] == {"kcal": 2100, "protein_g": 135, "carbs_g": 225, "fat_g": 59}
     # Lunch not logged: treated as eaten at the usual 35% (840 kcal / 56g), the rest goes to dinner
@@ -842,7 +857,7 @@ def test_recipe_suggest_respects_constraints(conn, world, monkeypatch):
     assert res["red_meat_week_g"] == 150
     names = {e["name"]: e["reason"] for e in res["excluded"]}
     assert "牛肋条" in names["盐葱酱牛肋条"]                       # eaten in the last 7 days
-    assert "本周红肉只剩 100g" in names["黑椒牛柳（rump）"]         # 150 + 150 > 250
+    assert "本周红肉只剩 110g" in names["黑椒牛柳（rump）"]         # 150 + 150 > 260
     assert len(res["suggestions"]) == 3 and all(s["reason"] and "dinner" in s["slots"] for s in res["suggestions"])
     lunch = recipes.suggest(conn, b, day, "lunch")
     assert lunch["meal_target"]["kcal"] == 1050  # dinner still follows lunch: the remainder is split 35 : 35

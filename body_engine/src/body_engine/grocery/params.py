@@ -3,7 +3,8 @@
 Per-100 g thresholds follow the UK Food Standards Agency front-of-pack "traffic light" guidance (Guide to creating a front of pack
 nutrition label, FSA / DH 2016): high = sat fat > 5 g, total sugars > 22.5 g, salt > 1.5 g (sodium ≈ salt / 2.5 -> 600 mg) per 100 g.
 For drinks (per 100 ml) the FSA lines are halved: sat fat > 2.5 g, sugars > 11.25 g, salt > 0.75 g (sodium 300 mg).
-Red meat and short rib caps reuse rules/params.py (the user's weekly caps); purine levels reuse the meal-template scale.
+Red meat / per-food weekly limits are the user's own diet constraints (nutrition/constraints.py, issue #76; none by default);
+purine levels reuse the meal-template scale.
 All are hints for the AI and the list view; nothing blocks a purchase."""
 
 CATEGORIES = {   # key -> short Chinese label (UI order)
@@ -29,7 +30,7 @@ CATEGORIES_EN = {
     "household": "Household", "other": "Other",
 }
 FLAGS_EN = {"饱和脂肪高": "High sat fat", "糖高": "High sugar", "钠高": "High sodium", "高嘌呤": "High purine",
-            "红肉": "Red meat", "牛肋条": "Short rib"}   # every product flag (FLAG_LABELS + store.product_flags)
+            "红肉": "Red meat"}   # every product flag (FLAG_LABELS + store.product_flags)
 
 # Keyword -> category guess for ingredients that have no product yet (first match wins; produce before meat so 牛油果 is not beef).
 CATEGORY_KEYWORDS: list[tuple[str, tuple[str, ...]]] = [

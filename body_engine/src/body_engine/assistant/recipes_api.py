@@ -41,7 +41,7 @@ def list_recipes(user: str, slot: Slot | None = None, tag: str | None = None, q:
 @router.get("/suggest")
 def suggest(user: str, date: dt.date | None = None, slot: Slot | None = None,
             conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Recommend 3 dishes: by the calories / protein left for the day, weekly red meat quota, beef short rib frequency, purine, saturated fat, whether eaten recently."""
+    """Recommend 3 dishes: by the calories / protein left for the day, the user's own diet constraints (issue #76), whether eaten recently."""
     return _meal_call(recipes.suggest, conn, _owner(conn, viewer, user, "nutrition"), date, slot)
 
 

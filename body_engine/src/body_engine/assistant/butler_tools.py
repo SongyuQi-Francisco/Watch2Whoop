@@ -23,7 +23,7 @@ FOOD_ITEM = _schema({
     "date": DATE,
     "meal": {"type": "string", "enum": list(sparky_write.MEALS)},
     "time": _n("string", "HH:MM"),
-    "food": {"type": "string", "description": "具体到能估营养，例：盐葱酱牛肋条（牛肋条 150g）"},
+    "food": {"type": "string", "description": "具体到能估营养，例：照烧鸡腿（鸡腿 150g）"},
     "amount": {"type": "string", "description": "份量，例 200 g、1 碗（约 250g 熟饭）"},
     "calories": {"type": "number", "description": "这一份的总 kcal"},
     "protein_g": G, "carbs_g": G, "fat_g": G,
@@ -99,7 +99,7 @@ def _recipe_list(conn, uid, a):
                                           "per_serving", "favorite", "can_make", "last_cooked_on")}
                    | {"min": (r.get("prep_min") or 0) + (r.get("cook_min") or 0) or None,
                       "purine": f.get("purine_level"), "sat_fat": f.get("sat_fat_level"),
-                      "red_meat_g": f.get("red_meat_g") or None, "short_rib": f.get("short_rib") or None})
+                      "red_meat_g": f.get("red_meat_g") or None})
     return out
 
 
@@ -361,7 +361,7 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="log_meal_template",
         description="按模板记一餐进 SparkyFitness。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝"
-                    "（allow_duplicates=true 才再记）。有红肉时返回 warnings，要转告用户。返回 log_id（撤销用 undo_meal_log）。",
+                    "（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
         input_schema=_schema({
             "template_id": {"type": "integer"},
             "date": OPT_LOG_DATE,
@@ -405,7 +405,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="suggest_meals",
-        description="推荐吃什么（食谱库 + 理由）：按当天剩余热量 / 蛋白、红肉周额度、牛肋条频率、嘌呤、饱和脂肪 / 添加糖额度、"
+        description="推荐吃什么（食谱库 + 理由）：按当天剩余热量 / 蛋白、用户自己的饮食约束、饱和脂肪 / 添加糖额度、"
                     "最近吃过没有、收藏、常吃、家里存货（采购的存货）。不含主食的菜按配 90g 米算。excluded = 被额度排除的菜。"
                     "slot=all：早 / 午 / 晚 / 加餐各推荐 2 道（已记的餐给已吃数）。",
         input_schema=_schema({

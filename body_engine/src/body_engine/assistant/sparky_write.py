@@ -23,7 +23,8 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import sparky_client
-from ..nutrition import extras
+from ..i18n import L
+from ..nutrition import constraint_params as CP, constraints as diet_constraints, extras
 from ..records import store as records_store
 from . import writelog
 
@@ -60,7 +61,7 @@ def _strip_paren(name: str) -> str:
 
 
 # ---------------------------------------------------------------- food
-def _check_food(item: dict) -> list[str]:
+def _check_food(item: dict, low_sat_fat: bool = False) -> list[str]:
     """Return warnings; obvious errors raise directly."""
     kcal = item["calories"]
     p, c, f = item["protein_g"], item["carbs_g"], item["fat_g"]
@@ -80,8 +81,10 @@ def _check_food(item: dict) -> list[str]:
         raise ValueError(f"{item['food']}：sugary_drink 是 true / false / null")
     if item.get("saturated_fat_g") is not None and item["saturated_fat_g"] > f + 0.5:
         raise ValueError(f"{item['food']}：饱和脂肪不能多于总脂肪")
-    if item.get("saturated_fat_g") and item["saturated_fat_g"] >= 10:
-        warnings.append(f"{item['food']}：饱和脂肪 {item['saturated_fat_g']:g}g，偏高（脂肪肝 / 甘油三酯）")
+    if low_sat_fat and item.get("saturated_fat_g") and item["saturated_fat_g"] >= CP.SAT_FAT_ENTRY_WARN_G:
+        # only for a user with a low saturated fat constraint (nutrition/constraints.py, issue #76)
+        warnings.append(L(f"{item['food']}：饱和脂肪 {item['saturated_fat_g']:g}g，偏高（你设了低饱和脂肪）",
+                          f"{item['food']}: saturated fat {item['saturated_fat_g']:g} g, high (you set low saturated fat)"))
     return warnings
 
 
@@ -122,6 +125,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
         raise ValueError("items 不能为空")
     checked = []
     warnings: list[str] = []
+    low_sat_fat = diet_constraints.for_user(conn, user_id).low_sat_fat
     for it in items:
         if it["meal"] not in MEALS:
             raise ValueError(f"meal 只能是 {', '.join(MEALS)}")
@@ -130,7 +134,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
         if not (it.get("food") or "").strip() or not (it.get("amount") or "").strip():
             raise ValueError("每条都要有 food（吃了什么）和 amount（份量）")
         d = check_date(conn, user_id, it["date"])
-        warnings += _check_food(it)
+        warnings += _check_food(it, low_sat_fat)
         checked.append((d, it))
     client = client or sparky_client.write_client_for_user(conn, user_id)
     meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}

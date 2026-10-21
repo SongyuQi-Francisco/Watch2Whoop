@@ -1,4 +1,5 @@
-"""Default journal items every user has (system design section 7 + rules from body-management.md).
+"""Default journal items every user has (system design section 7). Notes are generic; a user's own limits are their diet
+constraints (nutrition/constraints.py, issue #76), not text here.
 
 Date = the day the behavior happened; analysis looks at the next day's outcome. Supplement journal items (supp_*) follow their supplements, see md_seed.py / store.add_supplement.
 (key, Chinese name, kind, unit, category, description)
@@ -9,11 +10,11 @@ DEFAULT_JOURNAL_ITEMS: list[tuple[str, str, str, str | None, str, str]] = [
     # Diet
     ("caffeine", "喝了咖啡 / 含咖啡因饮料", "bool", None, "diet", "咖啡、茶、能量饮料、预训练补剂都算"),
     ("caffeine_after_noon", "中午 12 点后摄入咖啡因", "bool", None, "diet", "规则：12 点后不喝（6.2）"),
-    ("alcohol", "喝酒", "bool", None, "diet", "尿酸、脂肪肝都要避免"),
+    ("alcohol", "喝酒", "bool", None, "diet", "啤酒、葡萄酒、烈酒都算"),
     ("late_dinner", "晚饭太晚（睡前 3 小时内吃正餐）", "bool", None, "diet", "睡前饿了喝牛奶 / 酸奶不算"),
-    ("red_meat_g", "红肉（生重）", "number", "g", "diet", "牛羊猪瘦肉都算；每周 ≤ 250g，牛肋条 ≤ 1 次 / 周"),
-    ("water_l", "喝水量", "number", "L", "diet", "吃肌酸期间目标 3–3.5L"),
-    ("underfed_training", "练前没吃够（离上一餐 > 4 小时且没加餐）", "bool", None, "diet", "规则见 4.2.1"),
+    ("red_meat_g", "红肉（生重）", "number", "g", "diet", "牛、羊、猪肉都算，培根、火腿等加工肉也算"),
+    ("water_l", "喝水量", "number", "L", "diet", "一天喝的水（含饮料）"),
+    ("underfed_training", "练前没吃够（离上一餐 > 4 小时且没加餐）", "bool", None, "diet", "练前 1.5–2 小时吃一顿有主食的正餐"),
     # Training
     ("training_upper", "练上肢（力量）", "bool", None, "training", "胸、背、肩、手臂"),
     ("training_legs", "练腿（力量）", "bool", None, "training", "下肢 A / B，或任何下肢力量动作"),
@@ -29,7 +30,7 @@ DEFAULT_JOURNAL_ITEMS: list[tuple[str, str, str, str | None, str, str]] = [
     ("screen_before_bed", "睡前 1 小时还在看手机", "bool", None, "lifestyle", ""),
     ("stress", "压力大", "bool", None, "lifestyle", "主观感觉"),
     # Symptoms
-    ("low_blood_sugar", "低血糖感（头晕、手抖、出冷汗、心慌）", "bool", None, "symptom", "处理办法见 4.2.1"),
+    ("low_blood_sugar", "低血糖感（头晕、手抖、出冷汗、心慌）", "bool", None, "symptom", "先吃点快糖；反复出现要告诉医生"),
     ("excessive_thirst", "极度口渴", "bool", None, "symptom", "吃够喝够后仍反复出现要告诉 GP"),
     ("sick", "生病 / 不舒服", "bool", None, "symptom", "感冒、发烧、肠胃不适等"),
     ("shoulder_pain", "肩疼（不只是弹响）", "bool", None, "symptom", "弹响伴疼痛要看 physio（2.3）"),

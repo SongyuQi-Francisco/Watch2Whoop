@@ -59,15 +59,20 @@ ZH_EN: list[tuple[str, str]] = [
 
 # ---------------------------------------------------------------- recommendations (weekly specials)
 SPECIALS_LIMIT = 20
-# Not recommended (the user's goals: fat loss, uric acid, fatty liver, triglycerides; see docs/grocery-store-data-plan.md §8.6).
+# Never recommended as a special, for anybody (generic public-health guidance, docs/grocery-store-data-plan.md §8.6):
+# foods high in fat / sugar / salt (UK DHSC 2021 HFSS rules; WHO 2015 free sugars), processed meat (IARC 2015 group 1;
+# WCRF/AICR 2018 "little if any") and alcohol (WHO Europe 2023: no safe level).
 EXCLUDE_CATEGORIES = ("chips-chocolates-snacks",)
 EXCLUDE_KEYWORDS = ("ice cream", "chocolate", "lolly", "lollies", "biscuit", "cookie", "cake", "donut", "doughnut", "chips",
                     "crisps", "soft drink", "cola", "lemonade", "energy drink", "cordial", "juice", "syrup", "dessert",
                     "brownie", "muffin", "croissant", "pie", "sausage roll", "pizza", "nugget", "schnitzel", "battered",
                     "crumbed", "fried", "bacon", "salami", "chorizo", "kabana", "frankfurt", "hot dog", "beer", "wine",
-                    "cream", "butter", "pastry")
+                    "pastry")
+# Only for a user with the low_saturated_fat diet constraint (nutrition/constraints.py, issue #76)
+EXCLUDE_IF_LOW_SAT_FAT = ("cream", "butter")
 EXCLUDE_UNLESS = ("peanut butter", "almond butter")   # whole-word matches above that are fine after all
-# High-purine foods (flagged, ranked lower): offal, small oily fish, some shellfish, yeast extracts.
+# High-purine foods (flagged; ranked lower only for a user with the low_purine diet constraint): offal, small oily fish,
+# some shellfish, yeast extracts.
 HIGH_PURINE_KEYWORDS = ("liver", "kidney", "heart", "anchov", "sardine", "mackerel", "herring", "mussel", "scallop",
                         "trout", "vegemite", "yeast extract")
 # Ranking of half-price items by category (lower = earlier): lean protein and produce first.

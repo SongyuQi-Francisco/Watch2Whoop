@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import pytest
 
 from body_engine.rules import nutrition, params as P, progression, safety
+from body_engine.nutrition.constraints import Constraints
 from body_engine.rules.context import Ctx
 from body_engine.rules.engine import evaluate_ctx
 from body_engine.scores.muscle import daily_muscle_load
@@ -226,15 +227,35 @@ def test_fuel_water_line():
     assert "L（" not in one(nutrition.pre_workout_fuel(ctx(journal={(FRI - timedelta(days=1), "water_l"): 3.0}))).message
 
 
-# ================= frequency cap =================
-def test_red_meat_estimates_and_exclusions():
+# ================= frequency caps: only the user's own diet constraints (issue #76) =================
+# Test limits on purpose differ from any real person's: 300 g red meat / week, 肥牛 once a week, 3 red meat meals.
+LIMITS = Constraints([
+    {"kind": "red_meat_g_per_week", "target": "", "value": 300.0, "match": [], "basis": "测试依据"},
+    {"kind": "food_times_per_week", "target": "肥牛", "value": 1.0, "match": ["fatty beef"], "basis": None},
+    {"kind": "red_meat_meals_per_week", "target": "", "value": 3.0, "match": [], "basis": None},
+])
+
+
+def cctx(**kw) -> Ctx:
+    return ctx(diet=LIMITS, **kw)
+
+
+def test_red_meat_estimates_and_food_limits():
     assert nutrition.red_meat_estimate("盐葱酱牛肋条") == ("牛肋条", 135)
     assert nutrition.red_meat_estimate("吐司 2 片、煎蛋 2 个、培根 2 片") == ("培根", 30)
     assert nutrition.red_meat_estimate("黑椒牛柳", 2, "份") == ("牛", 300)
     assert nutrition.red_meat_estimate("黑椒牛柳", 200, "g") == ("牛", 150)
     for food in ("A2 全脂牛奶 250ml", "牛油果吐司", "燕麦 + 牛奶", "蘑菇烧鸡", "Greek yoghurt"):
         assert nutrition.red_meat_estimate(food) is None, food
-    assert nutrition.is_short_rib("盐葱酱牛肋条") and not nutrition.is_short_rib("黑椒牛柳")
+    assert LIMITS.food_limit_hit("肥牛卷 200g")["target"] == "肥牛" and LIMITS.food_limit_hit("Fatty Beef hotpot")
+    assert LIMITS.food_limit_hit("黑椒牛柳") is None
+
+
+def test_no_constraints_no_caps():
+    """A user without diet constraints gets nothing from this rule, however much red meat they log."""
+    r = nutrition.frequency_caps(ctx(journal=_j(900)))
+    assert r.status == "not_triggered" and not r.reminders and "没有设置" in r.note
+    assert nutrition.frequency_caps(ctx(diet=Constraints([]), journal=_j(900))).status == "not_triggered"
 
 
 def _j(g, day=FRI):
@@ -242,41 +263,42 @@ def _j(g, day=FRI):
 
 
 def test_red_meat_grams_boundaries():
-    assert nutrition.frequency_caps(ctx(journal=_j(199))).status == "not_triggered"
-    assert one(nutrition.frequency_caps(ctx(journal=_j(200))), "info").subject == "red_meat_g"
-    assert one(nutrition.frequency_caps(ctx(journal=_j(250))), "info").subject == "red_meat_g"
-    rem = one(nutrition.frequency_caps(ctx(journal=_j(251))), "warning")
-    assert "超过 250g" in rem.title and "没记的天不算" in rem.message
+    assert nutrition.frequency_caps(cctx(journal=_j(239))).status == "not_triggered"
+    assert one(nutrition.frequency_caps(cctx(journal=_j(240))), "info").subject == "red_meat_g"
+    assert one(nutrition.frequency_caps(cctx(journal=_j(300))), "info").subject == "red_meat_g"
+    rem = one(nutrition.frequency_caps(cctx(journal=_j(301))), "warning")
+    assert "超过 300g" in rem.title and "没记的天不算" in rem.message and "测试依据" in rem.message
+    assert "尿酸" not in rem.message and "脂肪肝" not in rem.message and rem.message_en
     # 7 days ago (day 8) doesn't count
-    assert nutrition.frequency_caps(ctx(journal={**_j(100), **_j(200, FRI - timedelta(days=7))})).status == "not_triggered"
-    assert nutrition.frequency_caps(ctx(journal={**_j(100), **_j(200, FRI - timedelta(days=6))})).status == "triggered"
+    assert nutrition.frequency_caps(cctx(journal={**_j(100), **_j(250, FRI - timedelta(days=7))})).status == "not_triggered"
+    assert nutrition.frequency_caps(cctx(journal={**_j(100), **_j(250, FRI - timedelta(days=6))})).status == "triggered"
 
 
 def test_journal_grams_override_food_estimate():
     food = [{"date": FRI.isoformat(), "meal_type": "dinner", "food": "黑椒牛柳", "quantity": 1, "unit": "份"}]
-    assert nutrition.frequency_caps(ctx(food=food)).details["red_meat_g"] == 150
-    assert nutrition.frequency_caps(ctx(food=food, journal=_j(120))).details["red_meat_g"] == 120
+    assert nutrition.frequency_caps(cctx(food=food)).details["red_meat_g"] == 150
+    assert nutrition.frequency_caps(cctx(food=food, journal=_j(120))).details["red_meat_g"] == 120
 
 
-def test_short_rib_and_meal_counts():
-    rib = lambda d, meal="dinner": {"date": d.isoformat(), "meal_type": meal, "food": "盐葱酱牛肋条", "quantity": 1, "unit": "份"}
-    rem = one(nutrition.frequency_caps(ctx(food=[rib(FRI - timedelta(days=2))])), "info")
-    assert rem.subject == "short_rib" and "2026-10-21" in rem.message
-    r = nutrition.frequency_caps(ctx(food=[rib(FRI - timedelta(days=5)), rib(FRI)]))
-    assert {x.subject: x.level for x in r.reminders} == {"red_meat_g": "warning", "short_rib": "warning"}   # 270g
+def test_food_limit_and_meal_counts():
+    fb = lambda d, meal="dinner": {"date": d.isoformat(), "meal_type": meal, "food": "肥牛卷", "quantity": 100, "unit": "g"}
+    rem = one(nutrition.frequency_caps(cctx(food=[fb(FRI - timedelta(days=2))])), "info")
+    assert rem.subject == "food:肥牛" and "2026-10-21" in rem.message
+    r = nutrition.frequency_caps(cctx(food=[fb(FRI - timedelta(days=5)), fb(FRI)]))
+    assert {x.subject: x.level for x in r.reminders} == {"food:肥牛": "warning", "red_meat_g": "info"}   # 2 × 150 g
     beef = lambda d, meal: {"date": d.isoformat(), "meal_type": meal, "food": "黑椒牛柳（rump）", "quantity": 1, "unit": "g"}
-    two = [beef(FRI, "lunch"), beef(FRI - timedelta(days=1), "dinner")]
-    assert "red_meat_meals" not in {x.subject for x in nutrition.frequency_caps(ctx(food=two)).reminders}
-    r = nutrition.frequency_caps(ctx(food=two + [{"date": FRI.isoformat(), "meal_type": "breakfast", "food": "培根", "unit": "片"}]))
+    three = [beef(FRI, "lunch"), beef(FRI - timedelta(days=1), "dinner"), beef(FRI - timedelta(days=2), "dinner")]
+    assert "red_meat_meals" not in {x.subject for x in nutrition.frequency_caps(cctx(food=three)).reminders}
+    r = nutrition.frequency_caps(cctx(food=three + [{"date": FRI.isoformat(), "meal_type": "breakfast", "food": "培根", "unit": "片"}]))
     assert "red_meat_meals" in {x.subject for x in r.reminders}
 
 
 def test_caps_insufficient_and_error():
-    assert nutrition.frequency_caps(ctx()).status == "insufficient_data"
-    assert nutrition.frequency_caps(ctx(food=None)).status == "insufficient_data"
-    assert nutrition.frequency_caps(ctx(errors={"food": "x"})).status == "error"
+    assert nutrition.frequency_caps(cctx()).status == "insufficient_data"
+    assert nutrition.frequency_caps(cctx(food=None)).status == "insufficient_data"
+    assert nutrition.frequency_caps(cctx(errors={"food": "x"})).status == "error"
     food = [{"date": FRI.isoformat(), "meal_type": "lunch", "food": "蘑菇烧鸡", "quantity": 1, "unit": "份"}]
-    assert nutrition.frequency_caps(ctx(food=food)).status == "not_triggered"
+    assert nutrition.frequency_caps(cctx(food=food)).status == "not_triggered"
 
 
 # ================= banned / caution exercises =================

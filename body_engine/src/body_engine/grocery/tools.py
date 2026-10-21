@@ -64,7 +64,7 @@ def _history(conn, uid, a):
 def _specials(conn, uid, a):
     lst = store.get_list(conn, uid)
     row = conn.execute("SELECT summary FROM shopping_lists WHERE user_id = %s AND week_start = %s", (uid, lst["week_start"])).fetchone()
-    out = SO.weekly_specials(conn, uid, a["q"], a["limit"], red_meat_left=SO.red_meat_left(row["summary"] if row else {}))
+    out = SO.weekly_specials(conn, uid, a["q"], a["limit"], red_meat_left=SO.red_meat_left(conn, uid, row["summary"] if row else {}))
     return {**out, "items": [_slim_special(s) for s in out["items"]]}
 
 
@@ -167,7 +167,7 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="generate_shopping_list",
         description="按这周要吃的生成采购清单（合并食材、对商品库、扣存货、按包装取整、估价）；重新生成只换计划来的未买项。"
-                    "warnings（红肉 / 牛肋条 / 嘌呤 / 高盐糖脂）要转告。",
+                    "warnings（按用户自己的饮食约束 / 高盐糖脂）要转告。",
         input_schema=schema({"week": WEEK, "plan": {"type": "array", "items": PLAN}}),
         handler=lambda conn, uid, a: _slim_list(store.generate(conn, uid, _d(a["week"]), a["plan"])),
         scope="nutrition", writes=True,

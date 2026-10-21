@@ -16,3 +16,11 @@ def get_diet_profile(user: str, brief: bool = Query(False, description="true = å
     if brief:
         return diet_profile.summary(conn, owner, viewer["id"])
     return diet_profile.view(conn, viewer["id"], owner)
+
+
+@router.get("/diet-constraints")
+def get_diet_constraints(user: str, history: bool = Query(False), conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user's own diet constraints (issue #76; empty = no limits), the kinds that can be set with reference values,
+    and with history=true every version. Scope nutrition. Writing is done by the user's AI (set_diet_constraint)."""
+    from ..nutrition import constraints
+    return constraints.listing(conn, _owner(conn, viewer, user, "nutrition"), history)

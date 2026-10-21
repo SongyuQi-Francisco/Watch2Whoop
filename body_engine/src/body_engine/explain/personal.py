@@ -624,13 +624,19 @@ def calc_red_meat(item: dict) -> Out:
     m = re.search(r"\d+(\.\d+)?", item["value"] or "")
     if not m:
         return o
-    grams, cap = float(m.group()), RP.RED_MEAT_G_PER_WEEK
+    grams = float(m.group())
     tone = TONE.get(item["tone"], "plain")
     o.current = {"value": round(grams), "unit": "g", "basis": L("近 7 天", "Last 7 days"), "tone": tone}
-    o.facts.append(_fact(L("每周上限", "Weekly limit"), f"{cap} g"))
+    # The cap is the user's own diet constraint (nutrition/constraints.py, issue #76), written into the card's note
+    c = re.search(r"上限 (\d+(?:\.\d+)?) g", item.get("note") or "")
+    if not c:
+        return o
+    cap = float(c.group(1))
+    o.facts.append(_fact(L("你设的每周上限", "Your weekly limit"), f"{cap:g} g"))
     o.advice.append(_adv(L(f"还有 {cap - grams:.0f} g 余量。", f"{cap - grams:.0f} g left this week.") if grams <= cap else
-                         L(f"超了 {grams - cap:.0f} g：接下来几天换成鸡、鱼、蛋、奶。",
-                           f"{grams - cap:.0f} g over: switch to chicken, fish, eggs and dairy for the next few days."), tone))
+                         L(f"超了 {grams - cap:.0f} g：接下来几天的蛋白质换成禽肉、鱼、蛋、奶或豆制品。",
+                           f"{grams - cap:.0f} g over: get your protein from poultry, fish, eggs, dairy or soy for the next "
+                           "few days."), tone))
     return o
 
 

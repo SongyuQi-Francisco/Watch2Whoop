@@ -228,7 +228,9 @@ def test_sticky_dismiss_carries_to_next_day(conn, world):
 def test_user_without_sparky(conn, world):
     ids, _ = world
     res = engine.run(conn, ids["C"], FRI)
-    assert res["sources_missing"]["sparky"] and all(r["status"] == "insufficient_data" for r in res["rules"])
+    assert res["sources_missing"]["sparky"]
+    # no diet constraints (issue #76): the caps rule has nothing to check; every other rule lacks data
+    assert all(r["status"] == ("not_triggered" if r["rule_key"] == "frequency_caps" else "insufficient_data") for r in res["rules"])
 
 
 # ---------------------------------------------------------------- API / assistant

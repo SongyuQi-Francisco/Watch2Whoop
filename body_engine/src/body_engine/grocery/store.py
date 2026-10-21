@@ -21,8 +21,8 @@ from psycopg.types.json import Jsonb
 
 from ..assistant import meals, recipes
 from ..i18n import L as Li, tl
-from ..rules import params as rule_params
-from ..rules.nutrition import is_short_rib, red_meat_estimate
+from ..nutrition import constraints as diet_constraints
+from ..rules.nutrition import red_meat_estimate
 from . import links as L, params as P
 from . import prices as PR
 from .sync import offers as SO
@@ -178,8 +178,6 @@ def product_flags(row: dict) -> list[str]:
         flags.append("高嘌呤")
     if row.get("red_meat"):
         flags.append("红肉")
-    if is_short_rib(row.get("name") or ""):
-        flags.append("牛肋条")
     return flags
 
 
@@ -445,9 +443,16 @@ def _check_plan(plan: list[dict]) -> list[dict]:
 
 
 def _needs(conn, user_id: int, plan: list[dict]) -> tuple[dict, dict]:
-    """Merge the plan into {key: {name, g, pcs, store, used_by}} and health totals {red_meat_g, short_rib}."""
+    """Merge the plan into {key: {name, g, pcs, store, used_by}} and health totals {red_meat_g, food_times}
+    (food_times: how often the plan has each food the user limits per week, nutrition/constraints.py, issue #76)."""
     needs: dict[str, dict] = {}
-    red, short_rib = 0.0, 0.0
+    red = 0.0
+    diet = diet_constraints.for_user(conn, user_id)
+    food_times: dict[str, float] = {f["target"]: 0 for f in diet.food_limits}
+
+    def count(foods: list[str], times: float) -> None:
+        for target in {lim["target"] for f in foods if (lim := diet.food_limit_hit(f)) is not None}:
+            food_times[target] += times
 
     def add(name, qty, unit, used_by, store=None):
         n = needs.setdefault(_key(name), {"name": name.strip(), "g": 0.0, "pcs": 0.0, "store": None, "used_by": []})
@@ -463,20 +468,19 @@ def _needs(conn, user_id: int, plan: list[dict]) -> tuple[dict, dict]:
             for i in r["ingredients"]:
                 add(i["food"], i["grams"] * k, "g", r["name"], i.get("store"))
                 red += (i.get("red_meat_g") or 0) * k
-            if any(is_short_rib(i["food"]) for i in r["ingredients"]):
-                short_rib += math.ceil(p["amount"])
+            count([i["food"] for i in r["ingredients"]], math.ceil(p["amount"]))
         elif p["kind"] == "template":
             t = meals._get(conn, user_id, p["ref_id"])
             for i in t["items"]:
                 add(i["food"], i["grams"] * p["amount"], "g", t["name"])
                 red += (i.get("red_meat_g") or 0) * p["amount"]
+            count([i["food"] for i in t["items"]], math.ceil(p["amount"]))
         else:
             add(p["food"], p["amount"], p["unit"], None)
             if p["unit"] in ("g", "ml") and red_meat_estimate(p["food"]):
                 red += p["amount"]
-            if is_short_rib(p["food"]):
-                short_rib += 1
-    return needs, {"red_meat_g": round(red), "short_rib": short_rib}
+            count([p["food"]], 1)
+    return needs, {"red_meat_g": round(red), "food_times": food_times}
 
 
 def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: list[dict]) -> dict:
@@ -526,7 +530,7 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
                  (Jsonb(plan), Jsonb(summary), lst["id"]))
     out = {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
     if out.get("connected_stores"):   # this week's half price that fits the health rules, for swapping things in (AI)
-        sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(summary))
+        sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(conn, user_id, summary))
         out["specials"] = sp["items"]
     return out
 
@@ -542,24 +546,29 @@ def _item_view(r: dict, prod: dict | None = None, connected: list[str] | tuple =
             "links": product_links(prod, connected) if prod else L.links(r["name"], r["store"], connected=connected)}
 
 
-def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
+def _warnings(summary: dict, rows: list[dict], products: dict, diet) -> list[dict]:
+    """Weekly totals against the user's own diet constraints (none without constraints), and product flags."""
     out = []
     red = summary.get("red_meat_g") or 0
     for r in rows:   # free foods / manual items that are red-meat products, counted by what is bought
         p = products.get(r["product_id"])
         if p and p["red_meat"] and r["source"] == "manual" and r["unit"] in ("g", "ml"):
             red += float(r["buy_qty"])
-    cap = rule_params.RED_MEAT_G_PER_WEEK
-    if red > cap:
+    cap = diet.red_meat_g
+    if cap is not None and red > cap:
         out.append({"code": "red_meat", "label": Li(f"红肉 {red:.0f}g", f"Red meat {red:.0f}g"),
-                    "detail": f"这周计划的红肉约 {red:.0f}g，超过每周 ≤ {cap}g 的上限"})
-    sr = summary.get("short_rib") or 0
-    if sr > rule_params.SHORT_RIB_PER_WEEK:
-        out.append({"code": "short_rib", "label": Li(f"牛肋条 ×{sr:g}", f"Short rib ×{sr:g}"),
-                    "detail": f"牛肋条计划 {sr:g} 次，上限每周 {rule_params.SHORT_RIB_PER_WEEK} 次"})
+                    "detail": Li(f"这周计划的红肉约 {red:.0f}g，超过你设的每周 ≤ {cap:g}g",
+                                 f"About {red:.0f} g of red meat planned this week, over your {cap:g} g a week")})
+    for lim in diet.food_limits:
+        n = (summary.get("food_times") or {}).get(lim["target"]) or 0
+        if n > lim["max"]:
+            out.append({"code": "food_limit", "label": Li(f"{lim['target']} ×{n:g}", f"{lim['target']} ×{n:g}"),
+                        "detail": Li(f"{lim['target']}计划 {n:g} 次，你设的上限每周 {lim['max']:g} 次",
+                                     f"{lim['target']} planned {n:g} times, your limit is {lim['max']:g} a week")})
     for r in rows:
         p = products.get(r["product_id"])
-        flags = [f for f in product_flags(p) if f not in ("红肉", "牛肋条")] if p else []   # those two are the weekly totals above
+        hidden = {"红肉"} | (set() if diet.low_purine else {"高嘌呤"})   # red meat is the weekly total above; purine only matters with a purine constraint
+        flags = [f for f in product_flags(p) if f not in hidden] if p else []
         if flags:
             out.append({"code": "product", "label": f"{r['name']} " + Li("、".join(flags), ", ".join(flag_labels(flags))),
                         "item_id": r["id"],
@@ -625,7 +634,8 @@ def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, wi
            "generated_at": lst["generated_at"] if lst else None, "plan": lst["plan"] if lst else [],
            "items": items, "progress": {"bought": sum(i["bought"] for i in items), "total": len(items)},
            "est_total": cost, "unpriced": sum(1 for i in items if i["est_cost"] is None),
-           "warnings": _warnings(lst["summary"] if lst else {}, rows, products), "connected_stores": con,
+           "warnings": _warnings(lst["summary"] if lst else {}, rows, products, diet_constraints.for_user(conn, user_id)),
+           "connected_stores": con,
            **({"half_price": half} if half is not None and half["items"] else {}),
            **({"prices": priced} if priced is not None else {})}
     if with_pantry:

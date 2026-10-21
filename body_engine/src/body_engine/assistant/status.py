@@ -23,6 +23,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..nutrition import constraint_params as CP, constraints as diet_constraints
 from ..records import lab_history
 from ..rules import params as rule_params
 from ..rules.nutrition import red_meat_estimate
@@ -297,17 +298,20 @@ def red_meat_grams(conn, user_id: int, today: date) -> float | None:
 
 
 def calc_red_meat(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
+    """Only for a user with a red meat constraint (nutrition/constraints.py, issue #76); otherwise no card."""
+    cap = diet_constraints.for_user(conn, user_id, today).red_meat_g
+    if cap is None:
+        return []
     grams = red_meat_grams(conn, user_id, today)
     if grams is None:
         return []
     start = today - timedelta(days=6)
     days_logged = len({f["date"] for f in sparky_client.food_entries(sparky_client.client_for_user(conn, user_id),
                                                                      start, today)})
-    cap = rule_params.RED_MEAT_G_PER_WEEK
-    tone = "good" if grams < cap * rule_params.RED_MEAT_WARN_FRACTION else "warn" if grams <= cap else "bad"
+    tone = "good" if grams < cap * CP.WARN_FRACTION else "warn" if grams <= cap else "bad"
     return [({"key": "red_meat_week", "label": "红肉7天", "value": f"{grams:.0f}", "unit": "g", "tone": tone,
               "trend": None, "good_direction": "down", "group": "饮食", "spark": None,
-              "note": f"上限 {cap} g · 记了 {days_logged} 天"}, 10)]
+              "note": f"上限 {cap:g} g · 记了 {days_logged} 天"}, 10)]
 
 
 def _sugar_tone(g: float, cap: float) -> str:
