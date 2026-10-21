@@ -428,8 +428,12 @@ def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> lis
         if not isinstance(q, (int, float)) or q < 0:
             raise ValueError(f"{name}：quantity 要是 ≥ 0 的数")
         pid = it.get("product_id")
-        if pid is not None:
-            _product_row(conn, user_id, pid)
+        if pid is not None:   # must be this user's; a product removed meanwhile (e.g. undoing 用完了) just drops the link
+            prod = conn.execute("SELECT active FROM grocery_products WHERE id = %s AND user_id = %s", (pid, user_id)).fetchone()
+            if prod is None:
+                raise LookupError("没有这个商品（或不是你的）")
+            if not prod["active"]:
+                pid = None
         if q == 0:
             conn.execute("DELETE FROM pantry_items WHERE user_id = %s AND lower(name) = lower(%s)", (user_id, name))
             continue
@@ -558,9 +562,11 @@ def _needs(conn, user_id: int, plan: list[dict]) -> tuple[dict, dict]:
 
 def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: list[dict]) -> dict:
     """Plan -> lines (source plan), plus the usual items due by the end of the week (source staple, issue #103): a usual item
-    the plan also needs becomes one line with the larger amount; one the pantry already covers is left off."""
+    the plan also needs becomes one line with the larger amount; one the pantry already covers is left off.
+    An empty plan (allowed only with usual items) tops up the due usual items and keeps this week's plan lines and plan."""
     products = _products(conn, user_id)
-    if plan or not any(p["staple"] for p in products):   # an empty plan is fine when there are usual items to add
+    staples_only = not plan and any(p["staple"] for p in products)
+    if not staples_only:
         plan = _check_plan(plan)
     ws = week_start(conn, user_id, day)
     needs, summary = _needs(conn, user_id, plan)
@@ -577,14 +583,17 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
     pantry = {_key(r["name"]): r for r in conn.execute("SELECT * FROM pantry_items WHERE user_id = %s", (user_id,))}
     pantry_by_product = {r["product_id"]: r for r in pantry.values() if r["product_id"]}
     lst = _list_row(conn, user_id, ws, create=True)
-    conn.execute("DELETE FROM shopping_items WHERE list_id = %s AND source IN ('plan', 'staple') AND bought_at IS NULL", (lst["id"],))
-    manual = {_key(r["name"]) for r in conn.execute(
-        "SELECT name FROM shopping_items WHERE list_id = %s AND source = 'manual' AND bought_at IS NULL", (lst["id"],))}
+    conn.execute(f"""DELETE FROM shopping_items WHERE list_id = %s AND bought_at IS NULL
+                     AND source IN ({"'staple'" if staples_only else "'plan', 'staple'"})""", (lst["id"],))
+    kept = conn.execute(f"""SELECT name, product_id FROM shopping_items WHERE list_id = %s AND bought_at IS NULL
+                            AND source IN ({"'manual', 'plan'" if staples_only else "'manual'"})""", (lst["id"],)).fetchall()
+    manual = {_key(r["name"]) for r in kept}   # unbought lines that stay: not added twice
+    kept_pids = {r["product_id"] for r in kept if r["product_id"]} if staples_only else set()   # a kept plan line covers the product
     covered, added = [], 0
     for k, n in needs.items():
-        if k in manual:
-            continue
         prod = matched[k]
+        if k in manual or (prod and prod["id"] in kept_pids):
+            continue
         piece_g = _num(prod["piece_g"]) if prod else None
         st = n.get("staple")
         if prod and prod["package_unit"]:
@@ -622,8 +631,9 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
                       (prod["store"] if prod else None) or n["store"], s["need_qty"], s["unit"], s["packages"], s["buy_qty"],
                       s["est_cost"], s["currency"], "plan" if n["plan"] else "staple", n["used_by"], note, used or None))
         added += 1
-    conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
-                 (Jsonb(plan), Jsonb(summary), lst["id"]))
+    if not staples_only:   # a staples-only top-up keeps the week's plan and its health totals
+        conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
+                     (Jsonb(plan), Jsonb(summary), lst["id"]))
     out = {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
     if out.get("connected_stores"):   # this week's half price that fits the health rules, for swapping things in (AI)
         sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(conn, user_id, summary))
