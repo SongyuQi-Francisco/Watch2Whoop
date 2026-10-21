@@ -74,6 +74,8 @@ NO_DATA = {
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
     "grocery/stores": "setting: which supermarkets are connected",
+    "nutrition/combine": "write: selected food entries -> a template / one entry (issue #93)",
+    "nutrition/merges/{x}": "write: split a merge back into its entries",
     "grocery/list/items/{x}": "write: tick an item",
     "feedback/{x}": "write: +1 / withdraw feedback",
     "feedback-mode": "setting",
