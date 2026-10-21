@@ -868,6 +868,13 @@ I18N.addEn({
   "上一步": "Back",
   "下一步": "Next",
   "开始使用": "Get started",
+  // water.js (daily water, issue #125)
+  "今天喝水": "Water today",
+  "目标来自饮食档案": "Goal from your diet profile",
+  "通用建议值": "General recommendation",
+  "桑拿": "Sauna",
+  "撤销最近一次（{ml} ml）": "Undo the last one ({ml} ml)",
+  "没记上，再试一次": "Not saved, try again",
   // sync.js (on-demand refresh)
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",

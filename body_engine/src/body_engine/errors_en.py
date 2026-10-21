@@ -27,6 +27,8 @@ EXACT: dict[str, str] = {
     "这个人不在你的圈子里": "This person is not in any of your circles",
     "今天已经点过了": "Already sent today",
     # ---- AI feedback (feedback/api.py)
+    # ---- water (water/api.py, issue #125)
+    "没有这条喝水记录": "No such water entry",
     "反馈记录只能看自己的": "You can only see your own feedback",
     "没有这条反馈（或不是你的）": "No such feedback (or it is not yours)",
     "缺少 Bearer token": "Missing Bearer token",
