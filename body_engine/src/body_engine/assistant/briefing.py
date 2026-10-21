@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from .. import auth, queries
+from .. import auth, queries, sparky_client
 from ..records import store as records_store
 from ..rules import store as rules_store
 from . import memory, status
@@ -135,8 +135,9 @@ def _training(conn, viewer: int, uid: int, today: date) -> dict:
     out = {"days_28": {"training": s["training_days"], "rest": s["rest_days"], "by_type": s["by_type"],
                        "by_intensity": {k: v for k, v in s["by_intensity"].items() if v and k != "rest"}},
            "streak_days": streak, "last_7": last7}
-    if cal.get("sparky_error"):
-        out["sparky_error"] = cal["sparky_error"]
+    if cal.get("sparky_error"):   # issue #66 FB-4: say it plainly so the AI tells the user (no admin commands)
+        link = sparky_client.link_state(conn, uid)
+        out["training_log"] = {"state": link["state"], "tell_user": link.get("hint") or cal["sparky_error"][:200]}
     return out
 
 

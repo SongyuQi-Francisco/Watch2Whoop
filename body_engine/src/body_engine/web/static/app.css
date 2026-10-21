@@ -554,10 +554,33 @@ textarea.input { resize: none; }
 .rcard-meta { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .rcard-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .rcard .why { font-size: 12px; color: var(--text-2); }
+/* 饮食 page (issue #43): per-meal suggestions, the recipes sub-page header */
+.mp-slot + .mp-slot { margin-top: 14px; }
+.mp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.mp-slot .rec-row .rcard { flex-basis: 72%; }
+.sub-head { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; }
+.sub-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.sub-back { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--text-2); font-size: 15px; padding: 6px 8px 6px 0; }
+.sub-back svg { width: 16px; height: 16px; transform: rotate(180deg); }
+.sub-back + h2::before { content: "/"; color: var(--text-3); font-weight: 400; margin-right: 8px; }
 .nut4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 2px 0 6px; }
 .nut4 .l { font-size: 11px; color: var(--text-2); } .nut4 .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--text); line-height: 1.6; }
 .steps li + li { margin-top: 4px; }
+/* Exercise detail (issue #41): demo image carousel (start / end position) and front / back muscle map */
+.ex-car { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 12px; background: #fff; margin-bottom: 6px; }
+.ex-car::-webkit-scrollbar { display: none; }
+.ex-car img { flex: 0 0 100%; width: 100%; aspect-ratio: 3 / 2; max-height: 260px; object-fit: contain; scroll-snap-align: center; display: block; }
+.ex-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 10px; }
+.ex-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: .5; }
+.ex-dots i.on { background: var(--text); opacity: 1; }
+.mm { display: flex; justify-content: center; gap: 18px; padding: 12px 0 4px; border-top: 1px solid var(--hair); }
+.mm-view { margin: 0; text-align: center; }
+.mm-view svg { width: 112px; height: 224px; display: block; }
+.mm-view figcaption { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+.mm-off { fill: var(--surface-2); }
+.mm-pri { fill: var(--train); }
+.mm-sec { fill: var(--train); fill-opacity: .38; }
 .stepper { display: inline-flex; align-items: center; gap: 4px; background: var(--in-sheet); border-radius: 12px; padding: 3px; }
 .stepper button { width: 36px; height: 36px; border: 0; border-radius: 10px; background: none; font-size: 20px; color: var(--text); }
 .stepper .v { min-width: 48px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }

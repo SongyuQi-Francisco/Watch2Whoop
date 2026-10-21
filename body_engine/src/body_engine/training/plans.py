@@ -17,7 +17,7 @@ import psycopg
 from .. import auth, sparky_client
 from ..rules import params as RP, store as rules_store
 from ..rules.context import load_overrides
-from . import catalog, params as P
+from . import catalog, loads, params as P
 from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 
 WEEKDAY_ZH = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
@@ -131,7 +131,7 @@ def volume_summary(days: list[dict]) -> dict[str, dict]:
     for d in days:
         dow = d.get("day_of_week") or 0
         for ex in d.get("exercises") or []:
-            if (ex.get("category") or "strength") != "strength":
+            if (ex.get("category") or "strength") != "strength" or ex.get("addon"):   # mobility add-ons are warm-ups
                 continue
             n_sets = int(ex.get("sets") or 0)
             if n_sets <= 0:
@@ -260,9 +260,22 @@ def propose_plan(
     name: str | None = None,
     notes: str | None = None,
     auto_swap_banned: bool = False,
+    training_days: list[int] | None = None,
+    start_date: date | str | None = None,
+    addons: list[str] | None = None,
+    log_client: sparky_client.SparkyClient | None = None,
+    with_loads: bool = True,
 ) -> dict:
-    """Generate a structured weekly training plan proposal, checking exercise restrictions and weekly set volume."""
+    """Generate a structured weekly training plan proposal, checking exercise restrictions and weekly set volume.
+    training_days: the user's weekdays (sessions are put on them in order); start_date: any day from today (issue #65; the
+    start week only gets the sessions still missing after what was already trained this week); addons: optional mobility
+    warm-ups (issue #66 FB-3, suggested from the user's own restrictions); with_loads: add each exercise's recommended
+    working weight (training/loads.py; not stored by save_plan)."""
+    from . import plan_start
     catalog.ensure_seeded(conn)
+    today = _user_today(conn, user_id)
+    load_ctx = loads.Context(conn, user_id, user_id, today) if with_loads else None
+    start_d = plan_start.check_start(date.fromisoformat(start_date) if isinstance(start_date, str) else start_date, today)
     if custom_days is not None:
         tpl_name = name or "自定义周训练计划"
         tpl_summary = notes or f"自定义 {len(custom_days)} 天分化计划"
@@ -280,6 +293,7 @@ def propose_plan(
         tpl_summary = tpl["summary"]
         raw_days = tpl["days"]
         days_per_week = tpl["days_per_week"]
+    raw_days = plan_start.remap_days(raw_days, training_days)
 
     days_out: list[dict] = []
     cautions: list[dict] = []
@@ -340,6 +354,8 @@ def propose_plan(
                     "reason": item["reason"],
                     "cues": item["cues"],
                 })
+            if load_ctx is not None:
+                loads.attach(load_ctx, item)
             ex_items.append(item)
 
         days_out.append({
@@ -349,8 +365,15 @@ def propose_plan(
             "exercises": ex_items,
         })
 
+    days_out.sort(key=lambda d: d["day_of_week"])
+    addons_applied = plan_start.apply_addons(conn, user_id, days_out, addons, _normalize_item)
     vol = volume_summary(days_out)
     return {
+        "start_date": start_d.isoformat(),
+        "first_week": plan_start.first_week(conn, user_id, days_out, start_d, today, log_client),
+        "addons": addons_applied,
+        "addon_suggestions": [a for a in plan_start.suggested_addons(conn, user_id) if a["key"] not in addons_applied],
+        "ask_user_first": P.PLAN_QUESTIONS,
         "split_type": split_type,
         "name": tpl_name,
         "days_per_week": days_per_week,
@@ -529,8 +552,13 @@ def save_plan(
     auto_swap_banned: bool = False,
     sync_sparky: bool = True,
     client: sparky_client.SparkyClient | None = None,
+    training_days: list[int] | None = None,
+    addons: list[str] | None = None,
+    log_client: sparky_client.SparkyClient | None = None,
 ) -> dict:
-    """Validate and persist an active weekly training plan in `training_plans`, blocking any banned exercises."""
+    """Validate and persist an active weekly training plan in `training_plans`, blocking any banned exercises.
+    The AI calls this only after the user confirmed the propose_plan draft (start day, rest of this week, weekdays)."""
+    from . import plan_start
     proposal = propose_plan(
         conn,
         user_id=user_id,
@@ -539,6 +567,11 @@ def save_plan(
         name=name,
         notes=notes,
         auto_swap_banned=auto_swap_banned,
+        training_days=training_days,
+        start_date=start_date,
+        addons=addons,
+        log_client=log_client,
+        with_loads=False,
     )
     if proposal["banned_conflicts"]:
         reasons = [
@@ -551,8 +584,7 @@ def save_plan(
             + "。请先替换禁用动作，或传 auto_swap_banned=true 自动替换为安全动作后再保存。"
         )
 
-    start_d = (date.fromisoformat(start_date) if isinstance(start_date, str)
-               else (start_date or _user_today(conn, user_id)))
+    start_d = date.fromisoformat(proposal["start_date"])
 
     conn.execute(
         "UPDATE training_plans SET active = FALSE, updated_at = now() WHERE user_id = %s AND active = TRUE",
@@ -577,11 +609,22 @@ def save_plan(
     cleared = conn.execute("DELETE FROM training_day_overrides WHERE user_id = %s AND date >= %s",
                            (user_id, max(start_d, _user_today(conn, user_id)))).rowcount
 
+    # The start week: only the sessions still missing after what was already trained (day changes, source replan)
+    first_week_changes = plan_start.apply_first_week(conn, user_id, row, proposal["first_week"])
+
     sparky_sync = {"synced": False, "reason": "未请求同步"}
     if sync_sparky:
         sparky_sync = _sync_plan_to_sparky(conn, user_id, row, client=client)
+        if not sparky_sync.get("synced"):   # issue #66 FB-4: the plan is saved here all the same; say what to do
+            link = sparky_client.link_state(conn, user_id)
+            sparky_sync = {**sparky_sync, "link": link["state"],
+                           "tell_user": "计划已保存在 Body Engine（今天页和 AI 都能用）；没同步到训练记录（SparkyFitness）。"
+                                        + (link.get("hint") or "")}
 
     return {
+        "first_week": proposal["first_week"],
+        "first_week_changes": first_week_changes,
+        "addons": proposal["addons"],
         **({"day_changes_cleared": cleared} if cleared else {}),
         "saved": {
             "id": row["id"],
@@ -641,7 +684,7 @@ def get_week_plan(
     detail: bool = True,
 ) -> dict:
     """Return the active weekly training plan for [Monday..Sunday] around `day`, enriched with exercise metadata,
-    weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
+    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError("没有授权查看该用户的训练计划（需要 training 权限）")
     catalog.ensure_seeded(conn)
@@ -661,6 +704,7 @@ def get_week_plan(
 
     plan_row = _active_plan_row(conn, owner_id)
     if plan_row is not None:
+        load_ctx = loads.Context(conn, viewer_id, owner_id, day)
         raw_days_by_dow: dict[int, list[dict]] = {}
         normalized_days_for_vol: list[dict] = []
         cautions: list[dict] = []
@@ -668,15 +712,17 @@ def get_week_plan(
 
         for d_obj in plan_row.get("days") or []:
             dow = int(d_obj["day_of_week"])
-            exs = []
+            exs, vol_items = [], []
             for raw_ex in d_obj.get("exercises") or []:
                 item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta)
+                vol_items.append(item)
                 matched_sugg = []
                 if item.get("app_exercise_id") and item["app_exercise_id"] in sugg_by_name:
                     matched_sugg.append(sugg_by_name[item["app_exercise_id"]])
                 elif catalog.norm(item["name_zh"]) in sugg_by_name:
                     matched_sugg.append(sugg_by_name[catalog.norm(item["name_zh"])])
                 item["suggestions"] = matched_sugg
+                loads.attach(load_ctx, item, matched_sugg[0] if matched_sugg else None)
                 item["name"] = item["name_zh"]
                 item["exercise_id"] = item.get("app_exercise_id") or item["slug"]
                 if item["status"] != "active" and item["slug"] not in seen_caution:
@@ -694,17 +740,14 @@ def get_week_plan(
                         "slug": item["slug"],
                         "name": item["name_zh"],
                         "sets_text": item["sets_text"],
+                        "load": item["load_text"],
                         "status": item["status"],
                         "cues": item["cues"] if item["status"] != "active" else None,
                     })
                 else:
                     exs.append(item)
             raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], "exercises": exs})
-            normalized_days_for_vol.append({
-                "day_of_week": dow,
-                "name": d_obj["name"],
-                "exercises": [_normalize_item(conn, owner_id, x, with_meta=with_meta) for x in d_obj.get("exercises") or []],
-            })
+            normalized_days_for_vol.append({"day_of_week": dow, "name": d_obj["name"], "exercises": vol_items})
 
         # Day changes (training/day_overrides.py): a date may hold other weekdays' sessions, a free activity or rest
         ovs = load_overrides(conn, owner_id, start, end)
@@ -716,7 +759,8 @@ def get_week_plan(
             d = start + timedelta(days=k)
             dow = d.isoweekday()
             ov = ovs.get(d)
-            refs = ov["sessions"] if ov is not None else [{"dow": dow}]
+            before_start = d < plan_row["start_date"]   # issue #65: the plan starts on any day; nothing planned before it
+            refs = [] if before_start else ov["sessions"] if ov is not None else [{"dow": dow}]
             planned, vol_items = [], []
             for ref in refs:
                 if ref.get("dow"):
@@ -730,8 +774,9 @@ def get_week_plan(
                 "day_of_week": dow,
                 "weekday_zh": WEEKDAY_ZH[dow],
                 "planned": planned,
-                "rest_day": len(planned) == 0,
-                "change": ov and {"from": [p["name"] for p in raw_days_by_dow.get(dow, [])],
+                "rest_day": len(planned) == 0 and not before_start,
+                **({"before_start": True} if before_start else {}),
+                "change": None if before_start else ov and {"from": [p["name"] for p in raw_days_by_dow.get(dow, [])],
                                   "source": ov["source"], "reason": ov.get("reason")},
             })
 
@@ -754,6 +799,7 @@ def get_week_plan(
             "cautions": cautions,
             "readiness": readiness_advice(conn, owner_id, day) if with_scores else None,
             "available_splits": list_splits() if detail else None,
+            **({"load_history_error": load_ctx.history_error} if load_ctx.history_error and detail else {}),
         }
 
     # No active plan in training_plans yet: return empty plan with available splits so the UI or AI can propose one

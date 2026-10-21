@@ -103,6 +103,18 @@ def _recipe_list(conn, uid, a):
     return out
 
 
+def _suggest_meals(conn, uid, a):
+    """slot=all -> the per-meal plan, each suggestion cut to what the AI needs (the reason carries the rest)."""
+    day = date.fromisoformat(a["date"]) if a["date"] else None
+    if a["slot"] != "all":
+        return recipes.suggest(conn, uid, day, a["slot"])
+    plan = recipes.meal_plan(conn, uid, day)
+    for s in plan["slots"]:
+        s["suggestions"] = [{k: x[k] for k in ("id", "name", "meal_kcal", "meal_protein_g", "with_staple", "reason")}
+                            for x in s["suggestions"]]
+    return plan
+
+
 def _memory_with_status(conn, uid, a=None):
     st, m = status.list_status(conn, uid), memory.get_memory(conn, uid)
     if (a or {}).get("detail"):
@@ -393,15 +405,15 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="suggest_meals",
-        description="推荐这一餐吃什么（食谱库 3 道 + 理由）：按当天剩余热量 / 蛋白、红肉周额度、牛肋条频率、嘌呤、饱和脂肪、"
-                    "最近吃过没有、收藏。不含主食的菜按配 90g 米算。excluded = 被额度排除的菜。",
+        description="推荐吃什么（食谱库 + 理由）：按当天剩余热量 / 蛋白、红肉周额度、牛肋条频率、嘌呤、饱和脂肪 / 添加糖额度、"
+                    "最近吃过没有、收藏、常吃、家里存货（采购的存货）。不含主食的菜按配 90g 米算。excluded = 被额度排除的菜。"
+                    "slot=all：早 / 午 / 晚 / 加餐各推荐 2 道（已记的餐给已吃数）。",
         input_schema=_schema({
             "user": USER,
             "date": _n("string", "YYYY-MM-DD，null = 今天"),
-            "slot": {"type": ["string", "null"], "enum": [*recipes.SLOTS, None], "description": "null = 按现在时间"},
+            "slot": {"type": ["string", "null"], "enum": [*recipes.SLOTS, "all", None], "description": "null = 按现在时间"},
         }),
-        handler=lambda conn, uid, a: recipes.suggest(conn, uid, date.fromisoformat(a["date"]) if a["date"] else None,
-                                                     a["slot"]),
+        handler=_suggest_meals,
         scope="nutrition",
     ),
     dict(

@@ -3,6 +3,7 @@
 Maintains `exercise_catalog` (shared read-only dictionary) and joins it with each user's `exercise_meta`
 (banned / caution / active, personal cues, reason, app_exercise_id).
 """
+import functools
 import json
 import os
 import re
@@ -12,8 +13,9 @@ from pathlib import Path
 import psycopg
 
 from .. import sparky_client
+from ..config import REPO_ROOT
 from ..records import store as records_store
-from . import catalog_data as CD
+from . import catalog_data as CD, params as P
 
 DEFAULT_BANNED_SLUGS = {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
 _PAREN_TAIL = re.compile(r"[（(][^（()）]*[)）]\s*$")
@@ -35,10 +37,29 @@ _GROUP_BY_ZH = {v: k for k, v in CD.GROUP_ZH.items()} | {
 }
 
 
+LOCAL_IMAGE_BASE = "/app/media/exercises"   # served from media_dir()/exercises by web/api.py (never hotlinked from GitHub)
+
+
+def media_dir() -> Path:
+    """The deployment's own storage for downloaded exercise media (`body-engine fetch-exercise-db --images`)."""
+    return Path(os.environ.get("BODY_MEDIA_DIR", REPO_ROOT / "media"))
+
+
 def image_base_url() -> str:
-    return os.environ.get("BODY_EXERCISE_IMAGE_BASE_URL", CD.IMAGE_BASE_URL).rstrip("/")
+    return os.environ.get("BODY_EXERCISE_IMAGE_BASE_URL", LOCAL_IMAGE_BASE).rstrip("/")
 
 
+def image_urls(images: list[str]) -> list[str]:
+    """Public URLs of an exercise's demo images. With the default local storage only images that were downloaded are listed."""
+    base = image_base_url()
+    if base != LOCAL_IMAGE_BASE:
+        return [img if img.startswith("http") else f"{base}/{img}" for img in images]
+    root = media_dir() / "exercises"
+    return [f"{base}/{img}" for img in images if not img.startswith(("http", "/")) and ".." not in img
+            and (root / img).is_file()]
+
+
+@functools.lru_cache(maxsize=50000)
 def norm(s: str | None) -> str:
     s = unicodedata.normalize("NFKC", s or "").lower()
     s = s.replace("（禁用）", "").replace("(禁用)", "")
@@ -92,15 +113,25 @@ def _infer_pattern(raw: dict) -> str:
     return "horizontal_push" if force == "push" else "horizontal_pull"
 
 
+_EQUIP_ALIASES = {"body weight": "body only", "none": "body only", "": "body only", "e-z curl bar": "ez curl bar",
+                  "kettlebells": "kettlebell", "band": "bands"}
+
+
+def family_of(name: str | None) -> str | None:
+    """Curated restricted exercise an imported variant belongs to (params.HAZARD_FAMILIES), e.g. "Upright Cable Row" -> upright_row."""
+    n = (name or "").lower()
+    return next((slug for rx, slug in P.HAZARD_FAMILIES if re.search(rx, n)), None)
+
+
 def convert_free_exercise_db_entry(raw: dict) -> dict:
     """Convert an upstream yuhonas/free-exercise-db JSON entry into our exercise_catalog row format."""
     slug = _slugify(raw.get("id") or raw["name"])
     cat_raw = (raw.get("category") or "strength").lower()
     category = cat_raw if cat_raw in ("strength", "stretching", "cardio", "mobility") else "strength"
     eq_raw = (raw.get("equipment") or "body only").lower()
-    eq = "body only" if eq_raw in ("body only", "body weight", "none", "") else eq_raw
+    eq = _EQUIP_ALIASES.get(eq_raw, eq_raw)
     modality = "duration" if category in ("cardio", "stretching") else (
-        "bodyweight_reps" if eq == "body only" else "weight_reps"
+        "bodyweight_reps" if eq == "body only" else "reps_only" if eq in ("bands", "foam roll") else "weight_reps"
     )
     force = (raw.get("force") or "").lower()
     mechanic = (raw.get("mechanic") or "").lower()
@@ -127,24 +158,61 @@ def convert_free_exercise_db_entry(raw: dict) -> dict:
         "instructions_zh": instructions,
         "images": list(raw.get("images") or []),
         "source": "free-exercise-db",
+        "source_ref": raw.get("id"),
+        "family_slug": family_of(raw.get("name")),
     }
 
 
+def _curated_rows() -> dict[str, dict]:
+    out = {}
+    for item in CD.CURATED_EXERCISES:
+        imgs = item.get("images") or []
+        out[item["slug"]] = {**item, "aliases": list(item.get("aliases") or []),
+                             "source_ref": imgs[0].split("/", 1)[0] if imgs else None, "family_slug": None}
+    return out
+
+
+def _merge_upstream(row: dict, raw: dict, conv: dict) -> None:
+    """Fold a free-exercise-db entry into the curated row it duplicates: the curated Chinese overlay wins, upstream fills gaps."""
+    seen = {norm(x) for x in [row["name_zh"], row["name_en"], row["slug"], *row["aliases"]]}
+    for extra in (raw.get("name"), raw.get("id")):
+        if extra and norm(extra) not in seen:
+            row["aliases"].append(extra)
+            seen.add(norm(extra))
+    if not row.get("images"):
+        row["images"] = conv["images"]
+    if not row.get("secondary_muscles"):
+        row["secondary_muscles"] = conv["secondary_muscles"]
+    row["source_ref"] = row.get("source_ref") or conv["source_ref"]
+
+
 def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> dict:
-    """Idempotently populate `exercise_catalog` from CURATED_EXERCISES + optional upstream JSON."""
-    curated_by_slug = {item["slug"]: item for item in CD.CURATED_EXERCISES}
+    """Idempotently populate `exercise_catalog` from CURATED_EXERCISES + optional upstream free-exercise-db JSON.
+    Upstream entries that duplicate a curated exercise (same image folder, English name, alias or slug) are merged into it."""
+    curated_by_slug = _curated_rows()
     by_slug: dict[str, dict] = dict(curated_by_slug)
-    imported_free_db = 0
-    skipped_free_db = 0
+    by_key: dict[str, str] = {}
+    for slug, row in curated_by_slug.items():
+        for x in [row["slug"], row["name_en"], *row["aliases"]]:
+            by_key.setdefault(norm(x), slug)
+        for img in row.get("images") or []:
+            by_key.setdefault(norm(img.split("/", 1)[0]), slug)
+    imported_free_db = merged_free_db = 0
     if extra_json is not None and extra_json.exists():
         raw_list = json.loads(extra_json.read_text(encoding="utf-8"))
         for item in raw_list:
             conv = convert_free_exercise_db_entry(item)
-            if conv["slug"] in curated_by_slug:
-                skipped_free_db += 1
-            else:
-                by_slug[conv["slug"]] = conv
-                imported_free_db += 1
+            target = (by_key.get(norm(item.get("id"))) or by_key.get(norm(item.get("name")))
+                      or (conv["slug"] if conv["slug"] in curated_by_slug else None))
+            if target:
+                _merge_upstream(by_slug[target], item, conv)
+                merged_free_db += 1
+                continue
+            fam = curated_by_slug.get(conv["family_slug"] or "")
+            if fam:   # a variant of a restricted exercise carries the same joint-stress tags
+                conv["joint_stress"] = list(dict.fromkeys([*conv["joint_stress"], *fam["joint_stress"]]))
+            by_slug[conv["slug"]] = conv
+            imported_free_db += 1
 
     rows = list(by_slug.values())
     with conn.cursor() as cur:
@@ -152,12 +220,13 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
             """INSERT INTO exercise_catalog (
                  slug, name_zh, name_en, aliases, category, modality, force, mechanic, level,
                  movement_pattern, equipment, primary_muscles, secondary_muscles, joint_stress,
-                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, updated_at
+                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref, family_slug, updated_at
                ) VALUES (
                  %(slug)s, %(name_zh)s, %(name_en)s, %(aliases)s, %(category)s, %(modality)s,
                  %(force)s, %(mechanic)s, %(level)s, %(movement_pattern)s, %(equipment)s,
                  %(primary_muscles)s, %(secondary_muscles)s, %(joint_stress)s, %(per_side)s,
-                 %(default_increment_kg)s, %(cues_zh)s, %(instructions_zh)s, %(images)s, %(source)s, now()
+                 %(default_increment_kg)s, %(cues_zh)s, %(instructions_zh)s, %(images)s, %(source)s,
+                 %(source_ref)s, %(family_slug)s, now()
                )
                ON CONFLICT (slug) DO UPDATE SET
                  name_zh = EXCLUDED.name_zh,
@@ -179,6 +248,8 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
                  instructions_zh = EXCLUDED.instructions_zh,
                  images = EXCLUDED.images,
                  source = EXCLUDED.source,
+                 source_ref = EXCLUDED.source_ref,
+                 family_slug = EXCLUDED.family_slug,
                  updated_at = now()""",
             rows,
         )
@@ -186,7 +257,7 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
         "seeded": len(rows),
         "curated": len(CD.CURATED_EXERCISES),
         "imported_free_db": imported_free_db,
-        "skipped_free_db": skipped_free_db,
+        "merged_free_db": merged_free_db,
     }
 
 
@@ -215,7 +286,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
     if meta is not None:
         status = meta["status"]
     else:
-        status = "caution" if slug in DEFAULT_BANNED_SLUGS else "active"
+        status = "caution" if slug in DEFAULT_BANNED_SLUGS or row.get("family_slug") in DEFAULT_BANNED_SLUGS else "active"
     cues = (meta or {}).get("cues") or row.get("cues_zh")
     reason = (meta or {}).get("reason")
     grp = body_group(row)
@@ -266,8 +337,11 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         "reason": reason,
         "source": row.get("source"),
     }
+    if row.get("family_slug"):
+        out["family_slug"] = row["family_slug"]
+    if (meta or {}).get("inherited_from"):
+        out["restriction_from"] = meta["inherited_from"]
     if detail:
-        base = image_base_url()
         imgs = row.get("images") or []
         out.update(
             aliases=list(dict.fromkeys([*(row.get("aliases") or []), *((meta or {}).get("aliases") or [])])),
@@ -276,14 +350,32 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             level=row.get("level"),
             instructions_zh=row.get("instructions_zh") or ([cues] if cues else []),
             images=imgs,
-            image_urls=[img if img.startswith("http") else f"{base}/{img}" for img in imgs],
+            image_urls=image_urls(imgs),
         )
     return out
 
 
-def _load_catalog_and_meta(conn: psycopg.Connection, user_id: int | None, with_meta: bool = True) -> tuple[list[dict], dict[str, dict]]:
+_ROWS_CACHE: dict[str, tuple] = {}
+
+
+def catalog_rows(conn: psycopg.Connection) -> list[dict]:
+    """All exercise_catalog rows (about 950 with free-exercise-db), cached per database until the table changes.
+    Each row carries `_names`: normalized names / aliases for matching. Rows are shared: treat them as read-only."""
     ensure_seeded(conn)
-    cat_rows = conn.execute("SELECT * FROM exercise_catalog ORDER BY slug").fetchall()
+    fp = conn.execute("SELECT count(*) AS n, max(updated_at) AS t FROM exercise_catalog").fetchone()
+    key, stamp = conn.info.dbname, (fp["n"], fp["t"])
+    hit = _ROWS_CACHE.get(key)
+    if hit is None or hit[0] != stamp:
+        rows = conn.execute("SELECT * FROM exercise_catalog ORDER BY slug").fetchall()
+        for r in rows:
+            names = [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])]
+            r["_names"] = {norm(x) for x in names if x} | {norm(strip_paren(x)) for x in names if x} - {""}
+        hit = _ROWS_CACHE[key] = (stamp, rows)
+    return hit[1]
+
+
+def _load_catalog_and_meta(conn: psycopg.Connection, user_id: int | None, with_meta: bool = True) -> tuple[list[dict], dict[str, dict]]:
+    cat_rows = catalog_rows(conn)
     meta_by_ref: dict[str, dict] = {}
     if user_id is not None and with_meta:
         for m in records_store.list_exercises(conn, user_id):
@@ -302,16 +394,21 @@ def _match_meta_to_slug(cat_rows: list[dict], meta_by_ref: dict[str, dict]) -> d
         else:
             unmatched_meta.append(m)
     if unmatched_meta:
+        m_names = [(m, {norm(x) for x in [m["exercise_ref"], m.get("name_zh"), m.get("name_en"), *(m.get("aliases") or [])] if x})
+                   for m in unmatched_meta]
         for r in cat_rows:
             if r["slug"] in by_slug:
                 continue
-            r_names = {norm(x) for x in [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])] if x}
-            r_names |= {norm(strip_paren(x)) for x in [r["name_zh"], r["name_en"]] if x}
-            for m in unmatched_meta:
-                m_names = {norm(x) for x in [m["exercise_ref"], m.get("name_zh"), m.get("name_en"), *(m.get("aliases") or [])] if x}
-                if r_names & m_names:
+            r_names = r.get("_names") or {norm(x) for x in [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])] if x}
+            for m, names in m_names:
+                if r_names & names:
                     by_slug[r["slug"]] = m
                     break
+    # Imported variants of a restricted exercise inherit the user's restriction (not the SparkyFitness id)
+    for r in cat_rows:
+        fam = r.get("family_slug")
+        if fam and r["slug"] not in by_slug and fam in by_slug and by_slug[fam]["status"] != "active":
+            by_slug[r["slug"]] = {**by_slug[fam], "app_exercise_id": None, "inherited_from": fam}
     return by_slug
 
 
@@ -510,8 +607,10 @@ def search(
             else:
                 continue
         else:
-            # Prefer user's configured / linked exercises first, then common compound exercises
-            rank = (30 if m else 0) + (10 if r.get("mechanic") == "compound" else 0)
+            # Prefer user's configured / linked exercises first, then the curated overlay, then common compound exercises
+            rank = (30 if m else 0) + (20 if r.get("source") == "curated" else 0) + (10 if r.get("mechanic") == "compound" else 0)
+        if q and r.get("source") == "curated":
+            rank += 5
         if f_muscle and f_muscle in item["primary_muscles"]:
             rank += 15
         scored.append((-rank, r["slug"], item))
@@ -599,7 +698,8 @@ def recommend_alternatives(
     cands: list[tuple[int, str, dict]] = []
     for r in cat_rows:
         slug = r["slug"]
-        if slug == t_slug or slug in DEFAULT_BANNED_SLUGS:
+        # Only curated rows carry checked movement patterns and joint-stress tags (imported rows would all look "safer")
+        if slug == t_slug or slug in DEFAULT_BANNED_SLUGS or r.get("source") != "curated" or r.get("family_slug"):
             continue
         m = meta_by_slug.get(slug)
         status = (m or {}).get("status") or "active"

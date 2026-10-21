@@ -16,6 +16,7 @@ from ..rules import params as RP, store as rules_store
 from ..rules.context import Ctx, load_overrides
 from ..scores import store as scores_store
 from ..trends import series as trend_series
+from ..training import loads as tr_loads
 
 RECOVERY_GREEN = 67          # >= 67 green, 34-66 yellow, < 34 red (the bands in system design §7)
 SCOPE_LABELS = {"scores": "评分", "reminders": "提醒", "training": "训练", "nutrition": "饮食", "sleep": "睡眠",
@@ -188,9 +189,13 @@ def _exercise_view(ctx: Ctx, ex_id: str, name: str | None, sets: list[dict], rep
         desc = ((ctx.exercises or {}).get(ex_id) or {}).get("description") or ""
         status = next((s for m, s in RP.SPARKY_STATUS_MARKERS.items() if desc.startswith(m)), "active")
     desc = ((ctx.exercises or {}).get(ex_id) or {}).get("description")
+    working = [s for s in sets if (s.get("type") or "").lower() not in RP.WARMUP_SET_TYPES]
+    reps = [s["reps"] for s in working if s.get("reps")]
     return {"exercise_id": ex_id, "name": ctx.exercise_name(ex_id, name), "status": status,
             "reason": (meta or {}).get("reason"), "cues": (meta or {}).get("cues") or (desc if status != "active" else None),
-            "sets_text": _sets_text(sets, rep_goal), "suggestions": suggestions.get(ex_id, [])}
+            "sets_text": _sets_text(sets, rep_goal), "suggestions": suggestions.get(ex_id, []),
+            "rep_low": min(reps) if reps else None, "rep_high": max([rep_goal or 0, *reps]) or None,
+            "weight_kg": next((s["weight_kg"] for s in working if s.get("weight_kg")), None)}
 
 
 def _training_ctx(conn, viewer_id: int, owner_id: int, day: date):
@@ -230,7 +235,8 @@ def _load_suggestions(conn, viewer_id: int, owner_id: int, start: date, end: dat
     return out
 
 
-def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> list[dict]:
+def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool, load_ctx=None) -> list[dict]:
+    """The SparkyFitness weekly plan for `day`; with load_ctx each exercise gets a recommended weight (training/loads.py)."""
     planned = []
     for item in ctx.planned_for(day):
         if item["kind"] == "preset":
@@ -243,7 +249,19 @@ def _planned_view(ctx: Ctx, day: date, suggestions: dict, with_meta: bool) -> li
         else:
             planned.append({"name": item["name"], "exercises": [
                 _exercise_view(ctx, item["exercise_id"], item["name"], [], None, suggestions, with_meta)]})
+    if load_ctx is not None:
+        for p in planned:
+            for x in p["exercises"]:
+                tr_loads.attach_logged(load_ctx, x, (x.get("suggestions") or [None])[0])
     return planned
+
+
+def _sparky_state(conn, viewer_id: int, owner_id: int) -> dict:
+    """The training log's link state for the page (issue #66 FB-4); the technical reason only for the user themself."""
+    st = sparky_client.link_state(conn, owner_id)
+    if viewer_id != owner_id:
+        st.pop("reason", None)
+    return {**st, "can_connect": viewer_id == owner_id and st["state"] == "not_linked"}
 
 
 def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
@@ -264,6 +282,12 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                     for e in s["exercises"]]})
         except sparky_client.SparkyError as e:
             sparky_error = str(e)
+        tier = (wk.get("readiness") or {}).get("tier")
+        if day == local_today(conn, owner_id) and tier in ("red", "yellow"):
+            for p in day_entry["planned"]:
+                for x in p["exercises"]:
+                    x["load"] = tr_loads.apply_readiness(x.get("load"), tier)
+                    x["load_text"] = tr_loads.short_text(x["load"])
         return {
             "plan": wk["plan"],
             "planned": day_entry["planned"],
@@ -271,12 +295,16 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             "change": day_entry.get("change"),
             "logged": logged,
             "readiness": wk.get("readiness"),
+            "sparky": _sparky_state(conn, viewer_id, owner_id),
             **({"sparky_error": sparky_error} if sparky_error else {}),
         }
-    client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    try:
+        client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    except sparky_client.SparkyError:   # no Body Engine plan and no training log: an empty day that says why (issue #66 FB-4)
+        return {"plan": None, "planned": [], "rest_day": False, "logged": [], "sparky": _sparky_state(conn, viewer_id, owner_id)}
     suggestions = _load_suggestions(conn, viewer_id, owner_id, day, day)
     plan = ctx.active_plan()
-    planned = _planned_view(ctx, day, suggestions, with_meta)
+    planned = _planned_view(ctx, day, suggestions, with_meta, tr_loads.Context(conn, viewer_id, owner_id, day))
     logged = []
     for s in sparky_client.training_log(client, day, day):
         logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
@@ -288,7 +316,7 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             for e in s["exercises"]]})
     return {"plan": plan and {"name": plan["name"], "start_date": plan["start_date"]}, "planned": planned,
             "rest_day": (plan is not None or day in ctx.overrides) and not planned, "change": _day_change(ctx, day),
-            "logged": logged}
+            "logged": logged, "sparky": _sparky_state(conn, viewer_id, owner_id)}
 
 
 def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
@@ -297,15 +325,25 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     What was actually trained comes from /training/calendar (same week)."""
     from ..training import plans as tr_plans
     if tr_plans._active_plan_row(conn, owner_id) is not None:
-        return tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True)
+        return {**tr_plans.get_week_plan(conn, viewer_id, owner_id, day, detail=True),
+                "sparky": _sparky_state(conn, viewer_id, owner_id)}
     start = day - timedelta(days=day.weekday())
     end = start + timedelta(days=6)
-    _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    try:
+        _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+    except sparky_client.SparkyError:   # no plan anywhere yet: an empty week to pick a split from, and why the log is missing
+        with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
+        return {"start": start, "end": end, "date": day, "plan": None,
+                "days": [{"date": start + timedelta(days=k), "planned": [], "rest_day": False, "change": None} for k in range(7)],
+                "suggestions": [], "cautions": [], "volume_by_group": {},
+                "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
+                "available_splits": tr_plans.list_splits(), "sparky": _sparky_state(conn, viewer_id, owner_id)}
     sugg = _load_suggestions(conn, viewer_id, owner_id, day - timedelta(days=6), day)
+    load_ctx = tr_loads.Context(conn, viewer_id, owner_id, day)
     days, cautions, seen = [], [], set()
     for k in range(7):
         d = start + timedelta(days=k)
-        planned = _planned_view(ctx, d, sugg, with_meta)
+        planned = _planned_view(ctx, d, sugg, with_meta, load_ctx)
         days.append({"date": d, "planned": planned, "rest_day": (ctx.active_plan(d) is not None or d in ctx.overrides) and not planned,
                      "change": _day_change(ctx, d)})
         for p in planned:
@@ -324,7 +362,7 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
             "plan": plan and {"name": plan["name"], "start_date": plan["start_date"]},
             "days": days, "suggestions": suggestions, "cautions": cautions,
             "readiness": tr_plans.readiness_advice(conn, owner_id, day) if with_scores else None,
-            "available_splits": tr_plans.list_splits()}
+            "available_splits": tr_plans.list_splits(), "sparky": _sparky_state(conn, viewer_id, owner_id)}
 
 
 def nutrition_today(conn, owner_id: int, day: date) -> dict:
