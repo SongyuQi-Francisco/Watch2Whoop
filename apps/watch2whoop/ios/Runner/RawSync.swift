@@ -25,8 +25,12 @@ final class RawSync {
     case heartbeat, ecg
   }
 
+  /// HRV SDNN is the parent type of the heartbeat series: HealthKit raises NSInvalidArgumentException (an uncatchable
+  /// crash in Swift) when the series is requested without its parent in the same call ("Authorization for
+  /// HKQuantityTypeIdentifierHeartRateVariabilitySDNN should also be requested…"), which made build 1.0.0+4 crash on open.
+  /// The OW sheet already asks for HRV SDNN, so repeating it here adds nothing to the sheet.
   private var readTypes: Set<HKObjectType> {
-    [HKSeriesType.heartbeat(), HKObjectType.electrocardiogramType()]
+    [HKQuantityType(.heartRateVariabilitySDNN), HKSeriesType.heartbeat(), HKObjectType.electrocardiogramType()]
   }
 
   /// Handles the raw* methods of the watch2whoop/native channel; false = not one of them.

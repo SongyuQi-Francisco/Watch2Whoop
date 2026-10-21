@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch2whoop/src/raw_sync.dart';
 
 /// What RawSync.swift hands over for one page (test samples: the simulator has no ECG).
@@ -55,6 +56,18 @@ class FakeSource implements RawSource {
   Future<void> reset() async => _pos.clear();
 }
 
+/// Records whether the "asked" flag was already stored when the native sheet was requested.
+class AuthProbe extends FakeSource {
+  AuthProbe() : super(const {});
+  bool? askedBeforeCall;
+
+  @override
+  Future<bool> requestAuth() async {
+    askedBeforeCall = (await SharedPreferences.getInstance()).getBool('w2w.raw.authAsked.v1');
+    return true;
+  }
+}
+
 RawPage hb(String anchor, {bool more = false}) => RawPage.fromMap(nativePage(anchor: anchor, more: more));
 
 RawPage ecgPage(String anchor) => RawPage(items: [
@@ -62,6 +75,14 @@ RawPage ecgPage(String anchor) => RawPage(items: [
     ], anchor: anchor);
 
 void main() {
+  test('the automatic permission ask is remembered before the native call (no crash on every open)', () async {
+    SharedPreferences.setMockInitialValues({});
+    final probe = AuthProbe();
+    RawSync.instance.source = probe;
+    await RawSync.instance.requestAuth();
+    expect(probe.askedBeforeCall, isTrue);
+  });
+
   test('native page parses into the server batch format', () {
     final p = RawPage.fromMap(nativePage(more: true));
     expect(p.more, isTrue);

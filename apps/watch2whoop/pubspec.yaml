@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # Bump the build number after the + for every TestFlight upload (e.g. 1.0.0+1 → 1.0.0+2).
 # Bump the build number after "+" for every TestFlight upload.
-version: 1.0.0+2
+version: 1.0.0+5
 
 environment:
   sdk: ^3.13.5
