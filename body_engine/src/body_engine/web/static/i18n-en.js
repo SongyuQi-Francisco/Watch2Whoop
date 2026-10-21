@@ -834,4 +834,7 @@ I18N.addEn({
   "上一步": "Back",
   "下一步": "Next",
   "开始使用": "Get started",
+  // sync.js (on-demand refresh)
+  "同步中…": "Syncing…",
+  "已更新 {t}": "Updated {t}",
 });

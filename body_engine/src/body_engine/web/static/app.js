@@ -255,6 +255,7 @@
     btn.hidden = S.viewable.length < 2;
     btn.textContent = (who?.display_name || "?").slice(0, 1).toUpperCase();
     btn.classList.toggle("other", !!who && !who.self);
+    window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
   }
   $("#who").onclick = () => whoSheet();
 
@@ -427,7 +428,10 @@
     window.addEventListener("touchend", async () => {
       if (y0 === null) return;
       y0 = null;
-      if (dy > 80) { ptr.classList.add("spin"); ptr.style.height = "30px"; try { await refresh(); } finally { ptr.classList.remove("spin"); ptr.style.height = "0"; } }
+      if (dy > 80) {
+        window.BodySync?.refresh("pull");   // also ask the server for fresh data (sync.js polls and reloads when it is in)
+        ptr.classList.add("spin"); ptr.style.height = "30px"; try { await refresh(); } finally { ptr.classList.remove("spin"); ptr.style.height = "0"; }
+      }
       else ptr.style.height = "0";
     });
   })();
@@ -2125,7 +2129,7 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
-    $("#me-refresh", view).onclick = async () => { await refresh(); toast(tr("common.refreshed")); };
+    $("#me-refresh", view).onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
@@ -2900,7 +2904,7 @@
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings() }, me));
+    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
