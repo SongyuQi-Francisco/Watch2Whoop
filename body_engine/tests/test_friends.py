@@ -15,6 +15,8 @@ from body_engine import api, auth
 from body_engine.account import delete, invites, signin
 from body_engine.config import Settings
 from body_engine.db import migrate
+from body_engine.assistant.tools import run_tool
+from body_engine.friends import api as friends_api, leaderboard, params as P, store
 from body_engine.friends import api as friends_api, params as P, store
 from body_engine.rollout import flags
 
@@ -63,9 +65,12 @@ def client(dsn):
 def clean(dsn):
     """Every test starts without circles, circle grants or join-failure counts."""
     friends_api._failures._events.clear()
+    leaderboard.clear_cache()
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("DELETE FROM circles")
         conn.execute("DELETE FROM shares")
+        for t in ("daily_scores", "workouts", "healthspan_weekly", "daily_metrics", "assistant_status"):
+            conn.execute(f"DELETE FROM {t}")
     yield
 
 
@@ -406,6 +411,122 @@ def test_nudges_once_a_day_and_only_inside_circles(client, world, dsn):
         {"clap": ["Ben"], "sleep": ["Ben"], "train": []}
     assert client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["sent"] == ["clap", "sleep"]
 
+
+# ---------------------------------------------------------------- leaderboards (PR C)
+def test_board_scoring_pieces():
+    assert leaderboard.acwr_score(1.0) == 100 and leaderboard.acwr_score(1.5) == 100
+    assert leaderboard.acwr_score(0.4) == 50 and leaderboard.acwr_score(1.75) == 50 and leaderboard.acwr_score(2.5) == 0
+    assert leaderboard.band_score(0.75, P.LOSS_BAND) == 100 and leaderboard.band_score(0.25, P.LOSS_BAND) == 50
+    assert leaderboard.band_score(-0.3, P.LOSS_BAND) == 0 and leaderboard.band_score(1.5, P.LOSS_BAND) == 50
+    assert leaderboard.maintain_score(0.3) == 100 and leaderboard.maintain_score(2.0) == 0
+    assert leaderboard.pace_score(0.5) == 100 and leaderboard.pace_score(1.0) == 50 and leaderboard.pace_score(1.5) == 0
+    assert set(P.BOARDS) == set(P.BOARD_SCOPES) and not any("ecg" in v for v in P.BOARD_SCOPES.values())
+
+
+def _rows(client, tok, board):
+    r = client.get("/v1/friends/leaderboard", params={"board": board}, headers=h(tok))
+    assert r.status_code == 200, r.text
+    return {x["display_name"]: x for x in r.json()["rows"]}, r.json()
+
+
+def test_body_board_ranks_only_people_who_share(client, world, dsn):
+    ids, tok = world
+    _scores(dsn, ids["Ann"], recovery=80)
+    _scores(dsn, ids["Ben"], recovery=40)
+    _scores(dsn, ids["Cat"], days=2, recovery=90)            # too few days
+    code = circle(client, tok["Ann"])["invite"]["code"]
+    join(client, tok["Ben"], code, ["sleep"])                  # shares no scores
+    join(client, tok["Cat"], code)
+    rows, body = _rows(client, tok["Ann"], "body")
+    assert body["window_days"] == 7 and body["scopes"] == ["scores"]
+    assert rows["Ann"]["status"] == "ok" and rows["Ann"]["rank"] == 1 and rows["Ann"]["sub"]["green_days"] == 7
+    assert rows["Ben"]["status"] == "not_shared" and rows["Ben"]["rank"] is None and rows["Ben"]["score"] is None
+    assert rows["Cat"]["status"] == "insufficient" and rows["Cat"]["rank"] is None
+    assert list(body["rows"])[0]["display_name"] == "Ann"     # ranked first, not-ranked rows after
+    # Ben sees his own row (always) and Ann's (she shares scores); Ann ranks above him
+    rows, _ = _rows(client, tok["Ben"], "body")
+    assert rows["Ann"]["rank"] == 1 and rows["Ben"]["rank"] == 2 and rows["Ben"]["self"]
+    # leaving: gone from the board at once
+    cid = client.get("/v1/friends", headers=h(tok["Ben"])).json()["circles"][0]["id"]
+    client.delete(f"/v1/friends/circles/{cid}/me", headers=h(tok["Ben"]))
+    rows, _ = _rows(client, tok["Ann"], "body")
+    assert "Ben" not in rows
+    assert client.get("/v1/friends/leaderboard", params={"board": "x"}, headers=h(tok["Ann"])).status_code == 400
+
+
+def test_activity_board_needs_training_and_a_baseline(client, world, dsn):
+    ids, tok = world
+    _scores(dsn, ids["Ann"], days=35, strain=10.0, workout_today=True)
+    _scores(dsn, ids["Ben"], days=35, strain=10.0)
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"], ["scores"])   # no training
+    rows, _ = _rows(client, tok["Ann"], "activity")
+    assert rows["Ben"]["status"] == "not_shared"
+    a = rows["Ann"]
+    assert a["status"] == "ok" and a["sub"] == {"acwr": 1.0, "training_days": 1}
+    assert a["score"] == round(0.7 * 100 + 0.3 * 25)
+
+
+def test_lifestyle_and_recomp_use_own_goals(client, world, dsn, monkeypatch):
+    from body_engine.web import views
+    ids, tok = world
+    a = ids["Ann"]
+    days = [{"date": None, "logged": True, "calories_ok": i < 5, "protein_ok": i < 6} for i in range(7)]
+    monkeypatch.setattr(leaderboard, "_nutrition_days", lambda conn, uid, s, e: days)
+    monkeypatch.setattr(leaderboard, "_bedtime_hits", lambda conn, uid: 6)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        today = views.local_today(conn, a)
+        for i in range(14):   # 80 kg a week ago, 79.4 now: −0.75 %/week toward a 75 kg goal
+            conn.execute("""INSERT INTO daily_metrics (user_id, date, metric, value, unit, agg, source)
+                            VALUES (%s, %s, 'body_mass', %s, 'kg', 'avg', 'shortcut')""", (a, today - timedelta(days=i), 79.4 if i < 7 else 80.0))
+    assert client.patch("/v1/users/me/profile", headers=h(tok["Ann"]), json={"goal_weight_kg": 75}).status_code == 200
+    monkeypatch.setattr(leaderboard, "_weights", lambda conn, uid, s, e: {
+        r["date"]: r["value"] for r in conn.execute("SELECT date, value FROM daily_metrics WHERE user_id = %s", (uid,))})
+    monkeypatch.setattr(leaderboard, "_strength_volume", lambda conn, uid, s, e: {e - timedelta(days=i): 1000.0 for i in range(35)})
+    rows, _ = _rows(client, tok["Ann"], "lifestyle")
+    assert rows["Ann"]["sub"] == {"on_time": 6, "food_met": 5, "days": 7}
+    assert rows["Ann"]["score"] == round(100 * (0.5 * 6 / 7 + 0.5 * 5 / 7))
+    rows, _ = _rows(client, tok["Ann"], "recomp")
+    sub = rows["Ann"]["sub"]
+    assert sub["mode"] == "lose" and sub["rate_pct_week"] == -0.75 and sub["volume_ratio"] == 1.0 and sub["protein_met"] == 6
+    assert rows["Ann"]["score"] == round(0.4 * 100 + 0.4 * 100 + 0.2 * 100 * 6 / 7)
+    # Ben shares training + nutrition adherence but not weight: not on the recomp board for Ann
+    join(client, tok["Ben"], circle(client, tok["Ann"], "x")["invite"]["code"], ["training", "nutrition_summary", "sleep"])
+    rows, _ = _rows(client, tok["Ann"], "recomp")
+    assert rows["Ben"]["status"] == "not_shared"
+    rows, _ = _rows(client, tok["Ann"], "lifestyle")
+    assert rows["Ben"]["status"] == "ok"                      # sleep + nutrition_summary are enough here
+
+
+def test_longevity_board_uses_four_weeks(client, world, dsn):
+    from body_engine.web import views
+    ids, tok = world
+    a = ids["Ann"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        today = views.local_today(conn, a)
+        for weeks, delta, pace in ((0, -2.0, 0.8), (4, -1.5, 0.9)):
+            d = today - timedelta(days=7 * weeks)
+            conn.execute("""INSERT INTO healthspan_weekly (user_id, week_start, as_of, chrono_age, body_age, delta_years,
+                            pace_of_aging, algo_version) VALUES (%s, %s, %s, 40, %s, %s, %s, 't')""",
+                         (a, d - timedelta(days=6), d, 40 + delta, delta, pace))
+    rows, body = _rows(client, tok["Ann"], "longevity")
+    assert body["window_days"] == 28
+    assert rows["Ann"]["sub"] == {"gap_change_years": -0.5, "pace": 0.8}
+    assert rows["Ann"]["score"] == round(0.6 * 75 + 0.4 * leaderboard.pace_score(0.8))
+
+
+def test_ai_overview_only_shows_what_is_shared(client, world, dsn):
+    ids, tok = world
+    _scores(dsn, ids["Ann"], recovery=80)
+    _scores(dsn, ids["Cat"], recovery=60)
+    code = circle(client, tok["Ann"])["invite"]["code"]
+    join(client, tok["Ben"], code)
+    join(client, tok["Cat"], code, ["sleep"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        out = run_tool(conn, ids["Ben"], "mcp:test", "get_friends_overview", {})
+    by = {m["name"]: m for m in out["members"]}
+    assert by["Ann"]["recovery"] == 80 and by["Ann"]["boards"]["body"].startswith("#1")
+    assert "recovery" not in by["Cat"] and by["Cat"]["boards"]["body"] == "not_shared" and "scores" in by["Cat"]["not_shared"]
+    assert by["Ben"]["self"] and "Dan" not in by
 # ---------------------------------------------------------------- feature flag `friends` (docs/rollout.md)
 def _flag(dsn, state, **kw):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
@@ -470,3 +591,19 @@ def test_today_page_shell_has_both_tab_bars(client):
     assert '<button data-tab="food" class="tab">' in html and '<button data-tab="friends" class="tab" hidden>' in html
     js = client.get("/app/app.js").text
     assert 'friendsOn()' in js and "applyTabs();" in js
+
+
+def test_flag_off_closes_leaderboard_and_ai_tool(client, world, dsn):
+    ids, tok = world
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    try:
+        _flag(dsn, "off")
+        assert client.get("/v1/friends/leaderboard", params={"board": "body"}, headers=h(tok["Ben"])).status_code == 404
+        assert client.get("/v1/friends/overview", headers=h(tok["Ben"])).status_code == 404
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            with pytest.raises(flags.FlagOff):
+                run_tool(conn, ids["Ben"], "mcp:test", "get_friends_overview", {})
+    finally:
+        _flag(dsn, "all")
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert run_tool(conn, ids["Ben"], "mcp:test", "get_friends_overview", {})["members"]

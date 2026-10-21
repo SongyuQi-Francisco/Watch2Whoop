@@ -58,6 +58,8 @@
     recordDay: 0, recSub: (() => { try { const v = localStorage.getItem("be.recSub"); return ["training", "food"].includes(v) ? v : "journal"; } catch (e) { return "journal"; } })(), showAll: false, trendsDays: (() => { try { const v = Number(localStorage.getItem("be.trendsDays")); return [7, 30, 90, 180, 365].includes(v) ? v : 30; } catch (e) { return 30; } })(), trendsMode: "metrics", data: {}, offlineAt: null,
     assistantUrl: null, version: null,
     backTab: "friends",     // where 「返回」 on the read-only banner goes (viewing a friend's pages)
+    friendsMode: "cards",   // Friends tab: member cards / leaderboard
+    board: (() => { try { return localStorage.getItem("be.board") || "body"; } catch (e) { return "body"; } })(),
     mealLogs: {},
     calMonth: null,
     foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
@@ -2595,13 +2597,42 @@
         <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${tagsH.length ? `<div class="rcard-tags">${tagsH.join("")}</div>` : ""}${nums}${cheers}</div>`;
   }
+  // Leaderboards (friends/leaderboard.py): scores 0–100 against each person's own baseline; "not shared" and "not enough
+  // data" rows have no rank and come last.
+  const BOARD = { body: tr("身体状态"), activity: tr("运动"), lifestyle: tr("认真生活"), recomp: tr("瘦体增肌"), longevity: tr("抗衰老") };
+  function boardSub(board, s) {
+    if (!s || !Object.keys(s).length) return "";
+    if (board === "body") return [tr("绿灯 {n}/7", { n: s.green_days }), s.sleep_avg_min != null ? tr("睡眠 {t}", { t: hm(s.sleep_avg_min) }) : ""].filter(Boolean).join(" · ");
+    if (board === "activity") return `${tr("负荷比 {r}", { r: fmtNum(s.acwr, 2) })} · ${tr("训练 {n} 天", { n: s.training_days })}`;
+    if (board === "lifestyle") return `${tr("按时睡 {n}/{d}", { n: s.on_time, d: s.days })} · ${tr("饮食达标 {n}/{d}", { n: s.food_met, d: s.days })}`;
+    if (board === "recomp") return `${tr("{v}%/周", { v: signed(s.rate_pct_week, 2) })} · ${tr("训练量 ×{v}", { v: fmtNum(s.volume_ratio, 2) })} · ${tr("蛋白 {n}/{d}", { n: s.protein_met, d: s.days })}`;
+    if (board === "longevity") return [tr("身体年龄差 {v} 岁", { v: signed(s.gap_change_years, 1) }), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
+    return "";
+  }
+  async function boardHtml() {
+    const b = await api(`/v1/friends/leaderboard?board=${encodeURIComponent(S.board)}`);
+    const seg = `<div class="toolbar"><div class="seg seg-range fd-boards" role="group" aria-label="${esc(tr("排行榜"))}">${b.boards.map((k) =>
+      `<button data-board="${k}" aria-pressed="${k === b.board}">${esc(BOARD[k] || k)}</button>`).join("")}</div></div>`;
+    const rows = b.rows.map((r) => {
+      const ok = r.status === "ok";
+      const note = ok ? boardSub(b.board, r.sub) : r.status === "not_shared" ? tr("未共享") : tr("数据不足");
+      return `<div class="fd-row${ok ? "" : " off"}${r.self ? " fd-self" : ""}"><span class="fd-rank">${ok ? r.rank : "·"}</span>
+        <span class="fd-av">${esc((r.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-rn"><b>${esc(r.self ? tr("who.me", { name: r.display_name }) : r.display_name)}</b><i>${esc(note)}</i></span>
+        <span class="fd-sc">${ok ? r.score : "—"}</span>${ok ? `<span class="fd-sbar"><span style="width:${Math.max(2, r.score)}%"></span></span>` : ""}</div>`;
+    }).join("");
+    return `${seg}<p class="fd-win">${esc(b.window_days === 28 ? tr("近 4 周 · 和自己的基线比") : tr("近 7 天 · 和自己的基线比"))}</p><div class="card fd-board">${rows}</div>`;
+  }
   const RENDER_friends = async () => {
+    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ["board", tr("排行榜")]].map(([k, t]) =>
+      `<button data-fmode2="${k}" aria-pressed="${S.friendsMode === k}">${esc(t)}</button>`).join("")}</div>`;
+    const manage = `<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
     const ov = await api("/v1/friends/overview");
     S.data.friends = ov;
-    const manage = `<div class="toolbar fd-bar-top"><button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
     if (!ov.has_circles) {
       return `${manage}<div class="empty">${esc(tr("还没有圈子"))}<div class="btns"><button class="btn btn-primary" id="fd-new">${esc(tr("建圈子"))}</button><button class="btn" id="fd-join">${esc(tr("用邀请码加入"))}</button></div></div>`;
     }
+    if (S.friendsMode === "board") return manage + await boardHtml();
     const kinds = ov.nudge_kinds || Object.keys(NUDGE);
     return `${manage}<div class="fd-grid">${[ov.me, ...ov.members].map((m) => friendCard(m, kinds)).join("")}</div>`;
   };
@@ -2611,6 +2642,12 @@
   }
   function afterFriends(view) {
     window.BodyCircles && (window.BodyCircles.onChange = () => { S.data = {}; refresh(); });
+    for (const b of $$("[data-fmode2]", view)) b.onclick = () => { S.friendsMode = b.dataset.fmode2; render(); };
+    for (const b of $$("[data-board]", view)) b.onclick = () => {
+      S.board = b.dataset.board;
+      try { localStorage.setItem("be.board", S.board); } catch (e) { /* private mode */ }
+      render();
+    };
     const c = $("#fd-circles", view);
     if (c) c.onclick = () => window.BodyCircles?.open();
     const n = $("#fd-new", view), j = $("#fd-join", view);
