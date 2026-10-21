@@ -9,8 +9,9 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import auth, queries
+from ..i18n import use_lang
 from ..toolspec import DETAIL, END, START, USER, fill_defaults, nullable, schema
-from . import briefing
+from . import briefing, writelog
 from ..scores import store as scores_store
 from ..records.tools import TOOL_SPECS as RECORD_TOOL_SPECS
 from ..rules.tools import TOOL_SPECS as RULE_TOOL_SPECS
@@ -164,6 +165,12 @@ from ..cardio.tools import TOOL_SPECS as CARDIO_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in CARDIO_TOOL_SPECS]  # heart rate recovery, recovery index, ECG summaries
 from .butler_tools import TOOL_SPECS as BUTLER_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in BUTLER_TOOL_SPECS]  # body butler: write SparkyFitness, screenshot metrics, long-term memory
+from ..grocery.tools import TOOL_SPECS as GROCERY_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in GROCERY_TOOL_SPECS]  # grocery: product library, weekly shopping list, pantry
+from .diet_profile_tools import TOOL_SPECS as DIET_PROFILE_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in DIET_PROFILE_TOOL_SPECS]  # 「我的饮食档案」: targets rationale, constraints, day plan, versions
+from ..feedback.tools import TOOL_SPECS as FEEDBACK_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in FEEDBACK_TOOL_SPECS]  # root rules: bugs and feature requests to the developers
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 
@@ -172,6 +179,12 @@ def run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, 
     """Run one tool: authorize -> call -> write audit. Confirmation of writes is the caller's job (chat loop / MCP client).
     The tool runs in a savepoint: on error only what it half-wrote is undone and the audit stays (the caller must also commit after an error, see mcp_server).
     In-Today-page chat (ai/chat.py) additionally records provider_id / model; for the MCP channel these two columns are empty."""
+    with use_lang("zh"):   # AI-facing texts stay as they are, also when the in-page chat request carries X-Body-Lang: en
+        return _run_tool(conn, viewer_id, channel, name, args, provider_id=provider_id, model=model)
+
+
+def _run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, args: dict, *,
+              provider_id: int | None = None, model: str | None = None) -> Any:
     tool = TOOLS_BY_NAME[name]
     full = fill_defaults(tool.input_schema, args)  # MCP clients may leave out nullable / defaulted fields (toolspec.relaxed)
     owner_id = viewer_id if full.get("user", "me") == "me" else int(full["user"])
@@ -181,7 +194,14 @@ def run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, 
         if not auth.can_view(conn, viewer_id, owner_id, tool.scope):
             raise PermissionError(f"没有查看用户 {owner_id} 的 {tool.scope} 的授权")
         with conn.transaction():
-            result = tool.handler(conn, owner_id, {**full, "_viewer_id": viewer_id})  # training calendar blocks are further authorized per viewer
+            args_in = {**full, "_viewer_id": viewer_id, "_channel": channel}
+            if tool.writes:  # every AI write is logged with before / after values (writelog.py, rollback_write)
+                with writelog.capture(viewer_id, channel, name) as cap:
+                    result = tool.handler(conn, owner_id, args_in)
+                    if not cap["ids"]:
+                        writelog.record_generic(conn, full, result)
+            else:
+                result = tool.handler(conn, owner_id, args_in)  # training calendar blocks are further authorized per viewer
     except Exception as e:
         _audit(conn, viewer_id, channel, name, args, False, str(e), provider_id, model)
         raise

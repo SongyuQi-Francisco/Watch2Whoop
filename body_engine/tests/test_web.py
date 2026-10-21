@@ -218,8 +218,9 @@ def test_today_scores_reasons_and_load_text(client, world):
     assert sc["recovery_word"] is None and sc["load_status"] == {"key": "balanced", "label": "平衡"}
     # reminders: today's
     assert {r["rule_key"] for r in d["reminders"]} == {"progression", "readiness"}
-    # SparkyFitness not connected: these two blocks error on their own, other blocks are unaffected
-    assert d["training"]["code"] == "sparky" and d["nutrition"]["code"] == "sparky"
+    # SparkyFitness not connected: nutrition errors on its own; training (no plan) is an empty day that says why (#66 FB-4)
+    assert d["nutrition"]["code"] == "sparky"
+    assert d["training"]["planned"] == [] and d["training"]["sparky"]["state"] == "not_linked"
 
 
 def test_reasons_and_zones():
@@ -302,10 +303,11 @@ def test_today_training_and_nutrition_with_fake_sparky(client, world, monkeypatc
                         {"day_of_week": dow, "sort_order": 1, "workout_preset_id": None, "exercise_id": "ex3",
                          "exercise_name": "游泳"}]}])
     monkeypatch.setattr(sparky_client, "training_log", lambda c, s, e: [])
-    monkeypatch.setattr(sparky_client, "nutrition", lambda c, s, e, entries=True: {
-        "days": [{"date": TODAY.isoformat(), "logged": True, "calories": 1200, "protein_g": 90, "carbs_g": 100,
-                  "fat_g": 30, "goal": {"name": "训练日", "calories": 2400, "protein_g": 160, "carbs_g": 255, "fat_g": 62}}],
-        "entries": [{"food": "鸡蛋", "calories": 140}]})
+    monkeypatch.setattr(sparky_client, "food_entries", lambda c, s, e: [
+        {"id": "f1", "date": TODAY.isoformat(), "time": "08:00", "food": "鸡蛋", "calories": 1200, "protein_g": 90,
+         "carbs_g": 100, "fat_g": 30, "sugar_g": None}])
+    monkeypatch.setattr(sparky_client, "goal_for_date", lambda c, d: {
+        "name": "训练日", "calories": 2400, "protein_g": 160, "carbs_g": 255, "fat_g": 62})
     d = client.get("/v1/users/me/today", headers=bearer(tok["A"])).json()
     t = d["training"]
     assert [p["name"] for p in t["planned"]] == ["上肢 A", "游泳"]
@@ -317,6 +319,8 @@ def test_today_training_and_nutrition_with_fake_sparky(client, world, monkeypatc
     assert "sparky_url" not in t and "sparky_url" not in d   # Single entry point: the front end doesn't jump to SparkyFitness
     n = d["nutrition"]
     assert n["intake"]["calories"] == 1200 and n["goal"]["calories"] == 2400 and n["logged"] is True
+    assert n["intake"]["sugar_g"] is None and n["known"]["sugar_g"] == 0   # unknown, not 0
+    assert n["goal"]["source"] == "sparkyfitness" and n["goal"]["added_sugar_max_g"] == 25   # no version yet: fallback
     # Record tab, training page: this week Monday–Sunday, today's plan in the right slot, suggestions and caution exercises
     w = client.get(f"/v1/users/me/training/week?date={TODAY}", headers=bearer(tok["A"])).json()
     mon = TODAY - timedelta(days=TODAY.weekday())
@@ -574,7 +578,12 @@ def test_static_pages(client):
     assert "/days?month=" in js and "history.replaceState" in js
     assert 'DATED = new Set(["today", "trends", "food"])' in js       # the date picker also drives Trends (range end) and Food (that day's intake)
     assert "trends?days=${days}${q}" in js and "&end=${end}" in js and "foodDayHtml" in js
-    assert "[365, \"1年\"]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
+    # Issue #43: a recipe is logged to the day the 饮食 page shows (looking back at 10/18 used to log to today: no visible change),
+    # and that day's cached intake / per-meal plan are dropped so the page redraws with the new entry
+    assert "const day = viewDay();" in js and "body: { date: day, meal, servings" in js and "date: S.todayDate, meal, servings" not in js
+    assert "const dropFoodDay = (day) =>" in js and "todayKey(day)" in js and "/meal-plan?date=" in js
+    assert '[["diet", tr("饮食")], ["shopping", tr("采购")]]' in js and 'id="food-recipes"' in js   # 饮食 mode; recipes are a sub-page at the bottom
+    assert "[365, tr(\"1年\")]" in js and "statusTiles" in js and "behaviorHtml" in js   # Trends: 1 week – 1 year, status cards, behavior insights
     assert "script-src 'self'" in r.headers["content-security-policy"]
     assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
     for f in ("app.js", "app.css", "sw.js", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png"):
@@ -616,12 +625,12 @@ def test_login_failures_are_rate_limited(client, world, monkeypatch):
     r = client.post("/v1/web/login", json={"token": world[1]["A"]})
     assert r.status_code == 429 and int(r.headers["Retry-After"]) > 0
     # Once the window has passed (shift the recorded time back) it can be tried again
-    with login_limit._lock:
-        for q in login_limit._failures.values():
+    with login_limit._failures._lock:
+        for q in login_limit._failures._events.values():
             for i in range(len(q)):
                 q[i] -= login_limit.WINDOW_SECONDS + 1
     assert client.post("/v1/web/login", json={"token": world[1]["A"]}).status_code == 200
-    assert login_limit._failures == {}   # reset after success
+    assert login_limit._failures._events == {}   # reset after success
     login_limit.reset()
 
 

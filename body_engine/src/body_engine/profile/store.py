@@ -1,7 +1,8 @@
 """Personal profile: filled in by the user and editable any time (the admin only supplies an email when onboarding; the display name is a placeholder from the email prefix).
 
-Fields: display_name (how to address the user), birth_date, sex (male / female / empty), height_cm, timezone, goal_weight_kg.
-- The first five are in the users table; goal weight is written to the status card goal_weight (source user; "distance to goal" uses it); clearing = deleting that item.
+Fields: display_name (how to address the user), birth_date, sex (male / female / empty), height_cm, timezone, goal_weight_kg,
+language (zh / en; empty = follow the device language; the Today page language and the AI reply language).
+- All but goal weight are in the users table; goal weight is written to the status card goal_weight (source user; "distance to goal" uses it); clearing = deleting that item.
 - Missing fields degrade gracefully everywhere: no birthday -> HRmax uses only observed values, body age is not computed; no sex -> VO2max is not compared with norms; no height -> no BMI.
 - missing: items prompted during guided fill-in (display name always exists, so it does not count).
 """
@@ -14,7 +15,8 @@ from ..assistant import status as status_card
 
 SEXES = {"male", "female"}
 SEX_ALIASES = {"m": "male", "男": "male", "f": "female", "女": "female"}
-FIELDS = ("display_name", "birth_date", "sex", "height_cm", "timezone", "goal_weight_kg")
+LANGUAGES = {"zh", "en"}
+FIELDS = ("display_name", "birth_date", "sex", "height_cm", "timezone", "goal_weight_kg", "language")
 
 
 def _sex(v):
@@ -24,7 +26,7 @@ def _sex(v):
 
 
 def get(conn: psycopg.Connection, user_id: int) -> dict:
-    u = conn.execute("SELECT display_name, birth_date, sex, height_cm, timezone FROM users WHERE id = %s",
+    u = conn.execute("SELECT display_name, birth_date, sex, height_cm, timezone, language FROM users WHERE id = %s",
                      (user_id,)).fetchone()
     goal = conn.execute("SELECT value FROM assistant_status WHERE user_id = %s AND key = %s",
                         (user_id, status_card.GOAL_KEY)).fetchone()
@@ -33,7 +35,7 @@ def get(conn: psycopg.Connection, user_id: int) -> dict:
     except ValueError:
         g = None
     out = {"display_name": u["display_name"], "birth_date": u["birth_date"], "sex": _sex(u["sex"]),
-           "height_cm": u["height_cm"], "timezone": u["timezone"], "goal_weight_kg": g}
+           "height_cm": u["height_cm"], "timezone": u["timezone"], "goal_weight_kg": g, "language": u["language"]}
     out["missing"] = [k for k in ("birth_date", "sex", "height_cm") if out[k] is None]
     return out
 
@@ -65,6 +67,9 @@ def _validate(patch: dict) -> dict:
             if v not in available_timezones():
                 raise ValueError("时区不对（例：Australia/Sydney、Asia/Shanghai）")
             ZoneInfo(v)
+        elif k == "language" and v is not None:
+            if v not in LANGUAGES:
+                raise ValueError("语言填 zh / en，或者留空（跟随系统）")
         elif k == "goal_weight_kg" and v is not None:
             v = float(v)
             if not 30 <= v <= 250:

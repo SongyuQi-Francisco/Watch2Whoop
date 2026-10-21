@@ -34,16 +34,32 @@ services:
       BODY_OW_URL: http://host.docker.internal:8200
       BODY_OW_API_KEY_FILE: /run/secrets/open_wearables_api_key
       BODY_HEALTH_DATA_DIR: /data/health
+      # Exercise demo images (free-exercise-db, Unlicense), downloaded once with `body-engine fetch-exercise-db --images`
+      BODY_MEDIA_DIR: /data/media
       # Link opened by the Today page "Ask the butler" (问管家): the https address of the body butler Remote Control session on claude.ai/code, set in the .env at the repo root; find the current address with deploy/assistant/butler.py status
       BODY_ASSISTANT_URL: ${BODY_ASSISTANT_URL:-}
       # AI integration layer (docs/ai-assistant-plan.md §9): master key encrypting each user's API key (first run uv run body-engine ai-key-init on the host),
       # and the address remote MCP shows to clients (https inside the tailnet; /mcp is forwarded by the same 443 → 8100 tailscale serve)
       BODY_AI_MASTER_KEY_FILE: /run/secrets/ai_master_key
       BODY_PUBLIC_URL: https://your-server.your-tailnet.ts.net
+      # Reusable activation links for the app (web/activation.py): the sync address put into setup links, and OW's signing
+      # secret for minting invitation codes (OW's master secret: add it as a docker secret for this container only)
+      # BODY_OW_PUBLIC_URL: https://sync.example.com
+      # BODY_OW_INVITE_SIGNING_FILE: /run/secrets/ow_invite_signing
+      # Self-service sign-up (docs/self-signup-plan.md): e-mail codes need a mail sender, Sign in with Apple the app's bundle ID.
+      # BODY_MAIL_MODE: smtp                         # smtp | console (dev: code only in the log) | off
+      # BODY_REFERRALS_ENABLED: "1"                  # users get their own invite code for friends (Me → 邀请好友); default off
+      # BODY_MAIL_FROM: Watch2Whoop <no-reply@example.com>
+      # BODY_SMTP_HOST: smtp.example.com
+      # BODY_SMTP_PORT: "587"                        # 587 STARTTLS (default) or 465 with BODY_SMTP_SECURITY: ssl
+      # BODY_SMTP_USER: your-smtp-login
+      # BODY_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      # BODY_APPLE_AUDIENCES: com.example.watch2whoop  # the iOS app's bundle ID (comma separated if several)
+      # BODY_SPARKY_ADMIN_KEY_FILE: /run/secrets/sparkyfitness_api_key_owner_rw   # deleting SparkyFitness accounts on account deletion
       TZ: Australia/Sydney
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)
-    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports"]
+    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports", "./media:/data/media"]
     ports: ["127.0.0.1:8100:8100"]
     depends_on:
       body-db: {condition: service_healthy}

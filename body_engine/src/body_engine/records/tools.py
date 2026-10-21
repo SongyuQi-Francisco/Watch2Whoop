@@ -121,18 +121,27 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="update_supplement",
-        description="修改一种补剂（id 从 list_supplements）。null = 不改。停用：status=stopped + stopped_on。",
+        description="修改一种补剂（id 从 list_supplements）。null = 不改。不再吃：status=stopped + stopped_on。",
         input_schema=_schema({
             "supplement_id": {"type": "integer"},
+            "name": _nullable("string"),
             "status": {"type": ["string", "null"], "enum": [*SUPP_STATUS, None]},
             "dose": _nullable("string"),
             "timing": _nullable("string"),
+            "ingredients": _nullable("string", "规格"),
             "started_on": _nullable("string", "YYYY-MM-DD"),
             "stopped_on": _nullable("string", "YYYY-MM-DD"),
             "advice": _nullable("string", "整段替换"),
         }),
         handler=lambda conn, uid, a: _require(store.update_supplement(conn, uid, a["supplement_id"],
                                                                       _changes(a, "supplement_id")), "补剂"),
+        scope="supplements", writes=True,
+    ),
+    dict(
+        name="delete_supplement",
+        description="删除录错 / 重复的补剂及它的日记项，不可恢复。不再吃用 update_supplement status=stopped。",
+        input_schema=_schema({"supplement_id": {"type": "integer"}}),
+        handler=lambda conn, uid, a: _require(store.delete_supplement(conn, uid, a["supplement_id"]), "补剂"),
         scope="supplements", writes=True,
     ),
     # ---------- Lab results ----------
@@ -186,7 +195,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="delete_lab_results",
-        description="撤销 add_lab_results 写的化验结果（按采样日期和 test_key）。迁移来的历史结果不能删。",
+        description="删除某采样日期的化验结果（按 test_key，任何来源）。",
         input_schema=_schema({
             "collected_on": DATE,
             "test_keys": {"type": "array", "items": {"type": "string"}},

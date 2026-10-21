@@ -9,6 +9,7 @@
 """
 import anthropic
 
+from ...i18n import L
 from .base import MAX_OUTPUT_TOKENS, TIMEOUT_S, Adapter, AdapterError, TurnResult
 
 FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-opus-5"}
@@ -74,19 +75,21 @@ class AnthropicAdapter(Adapter):
                         yield "text", event.text
                 final = stream.get_final_message()
         except anthropic.AuthenticationError:
-            raise AdapterError("Anthropic API key 无效或已停用，请在「AI 设置」里更新", "auth")
+            raise AdapterError(L("Anthropic API key 无效或已停用，请在「AI 设置」里更新",
+                                 "The Anthropic API key is invalid or disabled; update it in AI settings"), "auth")
         except anthropic.PermissionDeniedError:
-            raise AdapterError("这个 API key 没有权限用这个模型", "auth")
+            raise AdapterError(L("这个 API key 没有权限用这个模型", "This API key may not use this model"), "auth")
         except anthropic.NotFoundError:
-            raise AdapterError(f"模型不存在：{self.model}", "bad_request")
+            raise AdapterError(L(f"模型不存在：{self.model}", f"No such model: {self.model}"), "bad_request")
         except anthropic.RateLimitError:
-            raise AdapterError("Anthropic 限流了，稍后再试", "rate_limit")
+            raise AdapterError(L("Anthropic 限流了，稍后再试", "Anthropic is rate limiting; try again later"), "rate_limit")
         except anthropic.BadRequestError as e:
-            raise AdapterError(f"请求被 Anthropic 拒绝：{e.message}", "bad_request")
+            raise AdapterError(L(f"请求被 Anthropic 拒绝：{e.message}", f"Anthropic rejected the request: {e.message}"), "bad_request")
         except anthropic.APIStatusError as e:
-            raise AdapterError(f"Anthropic 服务出错（{e.status_code}），稍后再试", "unavailable")
+            raise AdapterError(L(f"Anthropic 服务出错（{e.status_code}），稍后再试", f"Anthropic service error ({e.status_code}); try again later"),
+                               "unavailable")
         except anthropic.APIConnectionError:
-            raise AdapterError("连不上 Anthropic（网络问题）", "network")
+            raise AdapterError(L("连不上 Anthropic（网络问题）", "Can't reach Anthropic (network problem)"), "network")
 
         u = final.usage
         usage = {"input_tokens": u.input_tokens or 0, "output_tokens": u.output_tokens or 0,

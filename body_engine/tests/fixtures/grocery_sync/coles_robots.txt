@@ -1,0 +1,19 @@
+# Synthetic copy of the rules that matter (structure of www.coles.com.au/robots.txt, 2026-10-21)
+User-agent: *
+
+Disallow: /search/
+Disallow: /*/*/*/on-special*
+Disallow: /brand/*
+Disallow: /images/*
+Disallow: *?pid=*
+Disallow: *?utm_source*
+Allow: /on-special?filter_Special=halfprice
+Disallow: *?filter_Special=*
+Disallow: /product/*$
+Allow: /product/*-*
+Disallow: /lists/
+Disallow: /account/
+
+User-agent: AdsBot-Google
+
+Disallow:

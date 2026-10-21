@@ -9,6 +9,7 @@ import base64
 from google import genai
 from google.genai import errors, types
 
+from ...i18n import L
 from .base import MAX_OUTPUT_TOKENS, TIMEOUT_S, Adapter, AdapterError, TurnResult
 
 
@@ -66,16 +67,18 @@ class GeminiAdapter(Adapter):
         except errors.APIError as e:
             code = getattr(e, "code", None)
             if code in (401, 403):
-                raise AdapterError("Gemini API key 无效或没有权限，请在「AI 设置」里更新", "auth")
+                raise AdapterError(L("Gemini API key 无效或没有权限，请在「AI 设置」里更新",
+                                     "The Gemini API key is invalid or not allowed; update it in AI settings"), "auth")
             if code == 404:
-                raise AdapterError(f"Gemini 上找不到模型：{self.model}", "bad_request")
+                raise AdapterError(L(f"Gemini 上找不到模型：{self.model}", f"Gemini has no model {self.model}"), "bad_request")
             if code == 429:
-                raise AdapterError("Gemini 限流了（或额度用完），稍后再试", "rate_limit")
+                raise AdapterError(L("Gemini 限流了（或额度用完），稍后再试", "Gemini is rate limiting (or out of quota); try again later"), "rate_limit")
             if code == 400:
-                raise AdapterError(f"请求被 Gemini 拒绝：{getattr(e, 'message', '')}", "bad_request")
-            raise AdapterError(f"Gemini 服务出错（{code}），稍后再试", "unavailable")
+                raise AdapterError(L(f"请求被 Gemini 拒绝：{getattr(e, 'message', '')}",
+                                     f"Gemini rejected the request: {getattr(e, 'message', '')}"), "bad_request")
+            raise AdapterError(L(f"Gemini 服务出错（{code}），稍后再试", f"Gemini service error ({code}); try again later"), "unavailable")
         except Exception as e:  # network etc.
-            raise AdapterError(f"连不上 Gemini：{type(e).__name__}", "network")
+            raise AdapterError(L(f"连不上 Gemini：{type(e).__name__}", f"Can't reach Gemini: {type(e).__name__}"), "network")
 
         calls = []
         for i, p in enumerate(parts):
@@ -90,7 +93,20 @@ class GeminiAdapter(Adapter):
                 "tool_use" if calls else "end")
         if stop in ("max_tokens", "refusal"):
             calls = []
-        u = {"input_tokens": (usage.prompt_token_count or 0) if usage else 0,
-             # Thinking tokens are billed at the output price
-             "output_tokens": ((usage.candidates_token_count or 0) + (usage.thoughts_token_count or 0)) if usage else 0}
+        u = self._extract_usage(usage)
         yield "result", TurnResult(text=text, tool_calls=calls, native=native, usage=u, stop=stop)
+
+    @staticmethod
+    def _extract_usage(usage) -> dict:
+        if not usage:
+            return {}
+        prompt_tok = getattr(usage, "prompt_token_count", 0) or 0
+        cached_tok = getattr(usage, "cached_content_token_count", 0) or 0
+        thoughts_tok = getattr(usage, "thoughts_token_count", 0) or 0
+        candidates_tok = getattr(usage, "candidates_token_count", 0) or 0
+        return {
+            "input_tokens": max(prompt_tok - cached_tok, 0),
+            "cache_read_tokens": cached_tok,
+            "output_tokens": candidates_tok + thoughts_tok,
+        }
+

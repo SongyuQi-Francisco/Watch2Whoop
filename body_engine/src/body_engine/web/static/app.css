@@ -51,7 +51,7 @@
 html { -webkit-text-size-adjust: 100%; }
 /* Fixed app-like layout on phones: only the content scrolls vertically; no pinch / double-tap zoom, no whole-page sideways drag,
    no rubber-band of the whole page showing blank edges. Horizontal strips and charts still scroll inside themselves. */
-html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* manipulation, not "pan-x pan-y": iOS WebKit then stopped sideways scrolling inside strips like .quick; pinch zoom is blocked in app.js */
+html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js */
 input, select, textarea { font-size: max(16px, 1em); }   /* iOS zooms into fields with a font smaller than 16px on focus */
 button, a, [role="button"], .tab { touch-action: manipulation; }   /* no double-tap zoom delay on controls */
 body {
@@ -276,6 +276,8 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
 .ex:first-child { border-top: 0; }
 .ex-name { font-weight: 500; display: flex; align-items: center; gap: 8px; }
 .ex-meta { font-size: 13px; color: var(--text-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+button.ex { display: block; width: 100%; border: 0; border-top: 1px solid var(--hair); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.ex:first-child { border-top: 0; }
 .ex.banned .ex-name span { text-decoration: line-through; color: var(--text-2); }
 .badge { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; }
 .badge.bad { background: var(--bad-soft); color: var(--bad); }
@@ -291,7 +293,10 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
 .btn-block { width: 100%; flex: none; }
 .btn-danger { color: var(--bad); }
 .btn[disabled] { opacity: .45; }
-.btn:active, .tag:active, .tile:active, .card:active, .item:active { opacity: .7; }
+/* Press feedback only on cards that are tappable (button / a). A plain div.card can contain a sideways scroller (the quick-meal strip):
+   iOS applies :active to every ancestor of the touched element once the page has touch listeners, and the opacity flip at touchstart
+   rebuilds the card's layer so the strip's native scroll view drops the pan (issue #11). */
+.btn:active, .tag:active, .tile:active, button.card:active, a.card:active, .item:active { opacity: .7; }
 .field { margin-top: 12px; }
 .field label { display: block; font-size: 12px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
 .input { width: 100%; border: 0; background: var(--surface); border-radius: 12px; padding: 12px 14px; font-size: 16px; min-height: 46px; }
@@ -302,15 +307,47 @@ textarea.input { resize: none; }
 .sev button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
 
 /* ---------- Login, hints ---------- */
-.login { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: calc(env(safe-area-inset-top) + 20px) 28px calc(env(safe-area-inset-bottom) + 20px); }
-.login-card { width: 100%; max-width: 360px; }
+.login { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: calc(env(safe-area-inset-top) + 20px) 16px calc(env(safe-area-inset-bottom) + 20px); }
+.login-card { width: 100%; max-width: 360px; margin: auto; }
 .login-card img { display: block; margin: 0 auto 18px; border-radius: 14px; }
 .login-card h1 { margin: 0 0 6px; font-size: 26px; font-weight: 700; text-align: center; letter-spacing: -0.02em; }
-.login-card p { text-align: center; font-size: 14px; color: var(--text-2); margin: 0 0 22px; }
+.login-card p { text-align: center; font-size: 14px; color: var(--text-2); margin: 0 0 22px; overflow-wrap: anywhere; }
+.login-card p b { color: var(--text); font-weight: 600; }
+.login-card p .small { font-size: 13px; color: var(--text-3); }
 .login-card .input { margin-bottom: 10px; }
+.login-code { text-align: center; font-size: 22px; letter-spacing: .3em; font-variant-numeric: tabular-nums; }
+.login-code::placeholder { font-size: 16px; letter-spacing: .05em; }
+#ap-code { text-transform: uppercase; letter-spacing: .12em; }
+.login-steps { list-style: none; display: flex; justify-content: center; gap: 6px; padding: 0; margin: 14px 0 22px; font-size: 12px; color: var(--text-3); }
+.login-steps li { display: flex; align-items: center; gap: 5px; }
+.login-steps li + li::before { content: ""; width: 18px; height: 1px; background: var(--text-3); margin-right: 1px; opacity: .6; }
+.login-steps i { font-style: normal; width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; border: 1px solid currentColor; font-size: 11px; font-weight: 600; }
+.login-steps li.done { color: var(--good); }
+.login-steps li.done i { background: var(--good-soft); border-color: transparent; }
+.login-steps li[aria-current="step"] { color: var(--text); font-weight: 600; }
+.login-steps li[aria-current="step"] i { background: var(--text); color: var(--bg); border-color: var(--text); }
+.login-links { display: flex; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.login-links:has(> :only-child) { justify-content: center; }
+.linkbtn { background: none; border: 0; padding: 6px 2px; color: var(--text-2); font-size: 14px; cursor: pointer; }
+.linkbtn[disabled] { color: var(--text-3); cursor: default; }
+.login-or { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--text-3); font-size: 12px; }
+.login-or::before, .login-or::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
+.login-other { margin-top: 26px; border-top: 1px solid var(--hair); padding-top: 14px; }
+.login-other > summary { list-style: none; text-align: center; font-size: 13px; color: var(--text-2); cursor: pointer; padding: 4px; }
+.login-other > summary::-webkit-details-marker { display: none; }
+.login-other > summary::after { content: " ›"; }
+.login-other[open] > summary::after { content: " ⌄"; }
+.login-other[open] > summary { margin-bottom: 14px; }
+.login-other.only { border-top: 0; margin-top: 0; padding-top: 0; }
+.login-other.only > summary { display: none; }
+.login-other.only p { margin: 14px 0 22px; }
+.login-other.only #login-btn { background: var(--text); color: var(--bg); }
+.login-other p { font-size: 13px; margin-bottom: 14px; }
 .login-app { display: block; text-align: center; font-size: 13px; color: var(--text-2); margin-top: 18px; text-decoration: none; }
 .login-app[hidden] { display: none; }
-.login-error { color: var(--bad); font-size: 13px; text-align: center; min-height: 1.2em; margin: 10px 0 0 !important; }
+.login-card .login-error { color: var(--bad); font-size: 13px; text-align: center; min-height: 1.2em; margin: 10px 0 0 !important; }
+.login-card .login-error.ok { color: var(--text-2); }
+.login-card .login-note { margin: 14px 0 0 !important; }   /* hints under a sign-in step (identities.js) */
 .empty { text-align: center; color: var(--text-2); padding: 28px 12px; font-size: 14px; }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); z-index: 50; bottom: calc(var(--tabbar-h) + var(--ask-h) + env(safe-area-inset-bottom) + 16px);
@@ -378,25 +415,32 @@ textarea.input { resize: none; }
 .food-entry .f { flex: 1; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .food-entry .k { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .food-entry .k small { font-weight: 400; color: var(--text-2); font-size: 11px; }
-.quick { display: flex; gap: 8px; margin-top: 14px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+/* Quick-meal strip: its own sideways scroller; it bleeds to the card edges and snaps chip by chip. It sits in a plain div.card, which must
+   not get :active feedback (see the :active rule above, issue #11); a vertical swipe that starts on it still scrolls the page. */
+.quick {
+  display: flex; gap: 8px; margin: 14px -16px 0; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
+  scroll-snap-type: x proximity; scroll-padding: 0 16px;
+}
 .quick, .rec-row, .pk-years { overscroll-behavior-x: contain; }
-.quick .qchip { flex: none; }
+.quick .qchip { flex: none; scroll-snap-align: start; }
 .quick::-webkit-scrollbar { display: none; }
-.quick.wrap { flex-wrap: wrap; overflow: visible; margin-top: 0; }
+.quick.bare { --gut-l: max(20px, env(safe-area-inset-left)); --gut-r: max(20px, env(safe-area-inset-right)); margin: 0 calc(-1 * var(--gut-r)) 0 calc(-1 * var(--gut-l)); padding: 0 var(--gut-r) 0 var(--gut-l); scroll-padding: 0 var(--gut-r) 0 var(--gut-l); }
+.qchip.more { min-width: 72px; }
+.meal-row .f { border: 0; background: none; padding: 4px 0; text-align: left; }
+.meal-row .btn { flex: none; min-height: 36px; padding: 6px 14px; }
 .qchip {
   flex: none; border: 0; background: var(--surface-2); border-radius: 14px; padding: 10px 14px; text-align: left;
   display: flex; flex-direction: column; gap: 1px; min-width: 112px; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none; transition: background .2s, color .2s, transform .15s;
 }
 .card .qchip { background: var(--surface-2); }
-.view > .tags .qchip, .quick.wrap .qchip { background: var(--surface); }
+.view > .tags .qchip, .quick.bare .qchip { background: var(--surface); }
 .qchip .n { font-weight: 600; font-size: 14px; }
 .qchip .k { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .qchip.warn .k { color: var(--mid); }
 .qchip.done { background: var(--text) !important; color: var(--bg); }
 .qchip.done .k { color: inherit; opacity: .7; }
 .qchip.busy { opacity: .5; }
-.qchip.press { transform: scale(.97); }
 .item-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--hair); }
 .item-row:first-child { border-top: 0; }
 .item-row .f { flex: 1; min-width: 0; font-size: 14px; }
@@ -434,6 +478,7 @@ textarea.input { resize: none; }
 .panel-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
 .panel-spacer { width: 30px; }
 .panel-body { flex: 1; overflow-y: auto; padding: 4px max(20px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 28px) max(20px, env(safe-area-inset-left)); touch-action: pan-y; }
+.panel-body.hb-body { padding: 0 0 env(safe-area-inset-bottom); }   /* the handbook (「我 → 使用手册」) brings its own margins and background */
 .month-nav { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 12px; }
 .month-nav .m { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .month-nav .arrows { display: flex; gap: 6px; }
@@ -472,6 +517,7 @@ textarea.input { resize: none; }
 .wday .mark .i { fill: var(--train); }
 .wday .mark .ring { fill: none; stroke: var(--train); stroke-width: 1.6; }
 .wday .pl { font-size: 10px; color: var(--text-2); max-width: 100%; padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: 12px; line-height: 12px; }
+.wday.changed .pl { color: var(--train); font-weight: 600; }   /* the plan was changed for this date (training_day_overrides) */
 #rec-cal .month-nav { margin-top: 0; }
 .cal-legend { display: flex; justify-content: center; gap: 14px; margin-top: 14px; font-size: 11px; color: var(--text-2); }
 .cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -509,10 +555,33 @@ textarea.input { resize: none; }
 .rcard-meta { font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .rcard-tags { display: flex; flex-wrap: wrap; gap: 5px; }
 .rcard .why { font-size: 12px; color: var(--text-2); }
+/* 饮食 page (issue #43): per-meal suggestions, the recipes sub-page header */
+.mp-slot + .mp-slot { margin-top: 14px; }
+.mp-h { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 0 2px 8px; }
+.mp-slot .rec-row .rcard { flex-basis: 72%; }
+.sub-head { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; }
+.sub-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.sub-back { display: inline-flex; align-items: center; gap: 2px; border: 0; background: none; color: var(--text-2); font-size: 15px; padding: 6px 8px 6px 0; }
+.sub-back svg { width: 16px; height: 16px; transform: rotate(180deg); }
+.sub-back + h2::before { content: "/"; color: var(--text-3); font-weight: 400; margin-right: 8px; }
 .nut4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 2px 0 6px; }
 .nut4 .l { font-size: 11px; color: var(--text-2); } .nut4 .v { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .steps { margin: 6px 0 0; padding-left: 20px; font-size: 14px; color: var(--text); line-height: 1.6; }
 .steps li + li { margin-top: 4px; }
+/* Exercise detail (issue #41): demo image carousel (start / end position) and front / back muscle map */
+.ex-car { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; border-radius: 12px; background: #fff; margin-bottom: 6px; }
+.ex-car::-webkit-scrollbar { display: none; }
+.ex-car img { flex: 0 0 100%; width: 100%; aspect-ratio: 3 / 2; max-height: 260px; object-fit: contain; scroll-snap-align: center; display: block; }
+.ex-dots { display: flex; justify-content: center; gap: 6px; margin-bottom: 10px; }
+.ex-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); opacity: .5; }
+.ex-dots i.on { background: var(--text); opacity: 1; }
+.mm { display: flex; justify-content: center; gap: 18px; padding: 12px 0 4px; border-top: 1px solid var(--hair); }
+.mm-view { margin: 0; text-align: center; }
+.mm-view svg { width: 112px; height: 224px; display: block; }
+.mm-view figcaption { font-size: 12px; color: var(--text-2); margin-top: 4px; }
+.mm-off { fill: var(--surface-2); }
+.mm-pri { fill: var(--train); }
+.mm-sec { fill: var(--train); fill-opacity: .38; }
 .stepper { display: inline-flex; align-items: center; gap: 4px; background: var(--in-sheet); border-radius: 12px; padding: 3px; }
 .stepper button { width: 36px; height: 36px; border: 0; border-radius: 10px; background: none; font-size: 20px; color: var(--text); }
 .stepper .v { min-width: 48px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }

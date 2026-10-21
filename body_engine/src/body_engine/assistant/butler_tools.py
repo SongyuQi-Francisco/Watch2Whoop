@@ -5,7 +5,7 @@ Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
 
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import meals, memory, recipes, snapshots, sparky_write, status
+from . import meals, memory, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -15,6 +15,9 @@ DATE = {"type": "string", "description": "行为发生那天 YYYY-MM-DD（凌晨
 OPT_LOG_DATE = _n("string", "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）")
 HHMM = _n("string", "HH:MM，null = 现在")
 G = {"type": "number"}  # grams / kcal fields: the property name says the unit
+OPT = _n("number")      # optional nutrition (sugar_g / added_sugar_g / fiber_g / sodium_mg): null = unknown, never 0
+SUGAR = {"sugar_g": _n("number", "总糖；不知道 null，不是 0"), "added_sugar_g": _n("number", "添加糖（加的糖、蜂蜜、糖浆、甜饮料）"),
+         "fiber_g": OPT, "sodium_mg": OPT}
 
 FOOD_ITEM = _schema({
     "date": DATE,
@@ -26,6 +29,8 @@ FOOD_ITEM = _schema({
     "protein_g": G, "carbs_g": G, "fat_g": G,
     "saturated_fat_g": _n("number"),
     "alcohol_g": _n("number", "酒类填"),
+    **SUGAR,
+    "sugary_drink": _n("boolean", "含糖饮料 true"),
     "notes": _n("string", "估算依据、拿不准的地方"),
 })
 
@@ -65,6 +70,7 @@ MEAL_ITEM = _schema({
     "kcal": G, "protein_g": G, "carbs_g": G, "fat_g": G, "sat_fat_g": G,
     "purine_level": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
     "red_meat_g": {"type": "number", "description": "红肉 / 加工肉生重，没有 0"},
+    "sugar_g": OPT, "added_sugar_g": OPT, "fiber_g": OPT, "sodium_mg": OPT,
     "note": _n("string"),
 })
 
@@ -77,6 +83,7 @@ INGREDIENT = _schema({
     "red_meat_g": {"type": "number", "description": "红肉 / 加工肉生重，没有 0"},
     "purchase_unit": _n("string", "例 整盒（约 1kg）"),
     "store": {"type": ["string", "null"], "enum": [*recipes.STORES, None]},
+    "sugar_g": OPT, "added_sugar_g": OPT, "fiber_g": OPT, "sodium_mg": OPT,
     "note": _n("string"),
 })
 
@@ -96,6 +103,18 @@ def _recipe_list(conn, uid, a):
     return out
 
 
+def _suggest_meals(conn, uid, a):
+    """slot=all -> the per-meal plan, each suggestion cut to what the AI needs (the reason carries the rest)."""
+    day = date.fromisoformat(a["date"]) if a["date"] else None
+    if a["slot"] != "all":
+        return recipes.suggest(conn, uid, day, a["slot"])
+    plan = recipes.meal_plan(conn, uid, day)
+    for s in plan["slots"]:
+        s["suggestions"] = [{k: x[k] for k in ("id", "name", "meal_kcal", "meal_protein_g", "with_staple", "reason")}
+                            for x in s["suggestions"]]
+    return plan
+
+
 def _memory_with_status(conn, uid, a=None):
     st, m = status.list_status(conn, uid), memory.get_memory(conn, uid)
     if (a or {}).get("detail"):
@@ -112,10 +131,17 @@ TOOL_SPECS: list[dict] = [
     # ---------- SparkyFitness writes ----------
     dict(
         name="search_exercises",
-        description="在 SparkyFitness 动作库按名称 / 别名找动作：exercise_id、名称、主要肌群、状态（banned / caution / active）"
-                    "和要点。记训练前用它对准动作；query 空 = 全部（最多 30）。",
-        input_schema=_schema({"user": USER, "query": {"type": "string", "description": "例 卧推"}}),
-        handler=lambda conn, uid, a: sparky_write.search_exercises(conn, uid, a["query"]),
+        description="在动作库（+ SparkyFitness）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+        input_schema=_schema({
+            "user": USER,
+            "query": _n("string"),
+            "muscle": _n("string", "chest/back/shoulders/legs/arms/core 或中文"),
+            "equipment": _n("string", "dumbbell/barbell/cable/machine/body only 或中文"),
+            "pattern": _n("string"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.search_exercises(
+            conn, uid, a.get("query") or "", muscle=a.get("muscle"),
+            equipment=a.get("equipment"), pattern=a.get("pattern")),
         scope="training",
     ),
     dict(
@@ -164,14 +190,61 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="undo_sparky_entry",
-        description="撤销管家写进 SparkyFitness 的一条饮食或训练（log_food / log_workout 返回的 id）。用户在 app 里记的不删。",
+        description="删一条饮食 / 一次力量训练 / 一组 / 某天称重（任何来源；id 在 get_nutrition / get_training_log）。"
+                    "饮食也可按 meal+food(+time) 匹配。",
         input_schema=_schema({
-            "kind": {"type": "string", "enum": ["food", "workout"]},
+            "kind": {"type": "string", "enum": ["food", "workout", "set", "weight"]},
             "date": {"type": "string", "description": "YYYY-MM-DD"},
-            "id": {"type": "string"},
+            "id": _n("string"),
+            "meal": _n("string"),
+            "food": _n("string"),
+            "time": _n("string", "HH:MM"),
         }),
-        handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"]),
+        handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"],
+                                                             meal=a["meal"], food=a["food"], time=a["time"]),
         scope="training", writes=True,
+    ),
+    dict(
+        name="update_food_entry",
+        description="改一条饮食（任何来源，null = 不改）。改名称 / 营养会换成新 id。",
+        input_schema=_schema({
+            "date": {"type": "string"},
+            "id": {"type": "string"},
+            "new_date": _n("string"),
+            "meal": {"type": ["string", "null"], "enum": [*sparky_write.MEALS, None]},
+            "time": _n("string", "HH:MM"),
+            "portion": _n("number", "0.5 = 一半"),
+            "food": _n("string"), "amount": _n("string"),
+            "calories": _n("number"), "protein_g": _n("number"), "carbs_g": _n("number"), "fat_g": _n("number"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.update_food_entry(conn, uid, a),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="update_training_set",
+        description="改力量训练一组的次数 / 重量 / RIR（get_training_log 的 set_ids），null = 不改。",
+        input_schema=_schema({
+            "date": {"type": "string"},
+            "set_id": {"type": "integer"},
+            "reps": _n("integer"), "weight_kg": _n("number"), "rir": _n("number"),
+        }),
+        handler=lambda conn, uid, a: sparky_write.update_set(conn, uid, a["date"], a["set_id"], a["reps"],
+                                                            a["weight_kg"], a["rir"]),
+        scope="training", writes=True,
+    ),
+    dict(
+        name="get_write_log",
+        description="AI 写操作日志（新 → 旧，改前 / 改后）；rollback=ok 的可 rollback_write。",
+        input_schema=_schema({"days": _n("integer")}),
+        handler=lambda conn, uid, a: writelog.list_log(conn, uid, a["days"] or 14),
+        scope="memory",
+    ),
+    dict(
+        name="rollback_write",
+        description="按日志 id 把一次 AI 修改改回原样。",
+        input_schema=_schema({"log_id": {"type": "integer"}}),
+        handler=lambda conn, uid, a: writelog.rollback(conn, uid, a["log_id"]),
+        scope="memory", writes=True,
     ),
     # ---------- screenshot metrics ----------
     dict(
@@ -332,15 +405,15 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="suggest_meals",
-        description="推荐这一餐吃什么（食谱库 3 道 + 理由）：按当天剩余热量 / 蛋白、红肉周额度、牛肋条频率、嘌呤、饱和脂肪、"
-                    "最近吃过没有、收藏。不含主食的菜按配 90g 米算。excluded = 被额度排除的菜。",
+        description="推荐吃什么（食谱库 + 理由）：按当天剩余热量 / 蛋白、红肉周额度、牛肋条频率、嘌呤、饱和脂肪 / 添加糖额度、"
+                    "最近吃过没有、收藏、常吃、家里存货（采购的存货）。不含主食的菜按配 90g 米算。excluded = 被额度排除的菜。"
+                    "slot=all：早 / 午 / 晚 / 加餐各推荐 2 道（已记的餐给已吃数）。",
         input_schema=_schema({
             "user": USER,
             "date": _n("string", "YYYY-MM-DD，null = 今天"),
-            "slot": {"type": ["string", "null"], "enum": [*recipes.SLOTS, None], "description": "null = 按现在时间"},
+            "slot": {"type": ["string", "null"], "enum": [*recipes.SLOTS, "all", None], "description": "null = 按现在时间"},
         }),
-        handler=lambda conn, uid, a: recipes.suggest(conn, uid, date.fromisoformat(a["date"]) if a["date"] else None,
-                                                     a["slot"]),
+        handler=_suggest_meals,
         scope="nutrition",
     ),
     dict(

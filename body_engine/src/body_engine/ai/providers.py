@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
+from ..i18n import L
 from . import catalog, crypto
 
 MODEL_RE = re.compile(r"^[A-Za-z0-9._:/@+-]{1,100}$")
@@ -22,31 +23,38 @@ PUBLIC_COLS = ("id", "kind", "display_name", "model", "base_url", "secret_last4"
                "price_in_per_mtok", "price_out_per_mtok", "status", "is_default", "created_at", "updated_at")
 
 
+class _PrivateIp(ValueError):
+    pass
+
+
 def _check_base_url(url: str) -> str:
     """Address for openai_compatible: https to any host; http only to the local machine (Ollama etc.), so the key is never sent in plaintext over the network.
     Credentials and query strings are not allowed."""
     url = url.strip().rstrip("/")
     parts = urlsplit(url)
     if parts.scheme not in ("https", "http") or not parts.hostname:
-        raise ValueError("base_url 要写成 https://… （本机服务可以用 http://localhost:端口/v1）")
+        raise ValueError(L("base_url 要写成 https://… （本机服务可以用 http://localhost:端口/v1）",
+                           "base_url must look like https://… (a local service can use http://localhost:port/v1)"))
     if parts.username or parts.password or parts.query or parts.fragment:
-        raise ValueError("base_url 不能带账号密码、? 或 #")
+        raise ValueError(L("base_url 不能带账号密码、? 或 #", "base_url cannot contain a user name, password, ? or #"))
     if parts.scheme == "http" and parts.hostname not in LOCAL_HTTP_HOSTS:
-        raise ValueError("http 只允许本机地址（localhost / 127.0.0.1 / host.docker.internal），其他请用 https")
+        raise ValueError(L("http 只允许本机地址（localhost / 127.0.0.1 / host.docker.internal），其他请用 https",
+                           "http is only allowed for this machine (localhost / 127.0.0.1 / host.docker.internal); use https otherwise"))
     try:  # Private-network IPs are never allowed (except the local allow-list), so the chat endpoint cannot be used to probe the internal network
         ip = ipaddress.ip_address(parts.hostname)
         if (ip.is_private or ip.is_link_local or ip.is_reserved) and parts.hostname not in LOCAL_HTTP_HOSTS:
-            raise ValueError("base_url 不能是内网 IP")
-    except ValueError as e:
-        if "内网" in str(e):
-            raise
+            raise _PrivateIp(L("base_url 不能是内网 IP", "base_url cannot be a private network IP"))
+    except _PrivateIp:
+        raise
+    except ValueError:  # not an IP address: a host name
+        pass
     return url
 
 
 def _check_key(key: str) -> str:
     key = (key or "").strip()
     if not 8 <= len(key) <= 512 or any(c.isspace() for c in key):
-        raise ValueError("API key 格式不对（8–512 个字符，不能有空格）")
+        raise ValueError(L("API key 格式不对（8–512 个字符，不能有空格）", "The API key looks wrong (8–512 characters, no spaces)"))
     return key
 
 
@@ -57,7 +65,8 @@ def _public(row: dict) -> dict:
             out[k] = float(out[k])
     out["has_secret"] = row.get("encrypted_secret") is not None
     out["category"] = catalog.KINDS[row["kind"]]["category"]
-    out["label"] = catalog.KINDS[row["kind"]]["label"]
+    out["label"] = catalog.label(row["kind"])
+    out["display_name"] = catalog.display_name(row)
     return out
 
 
@@ -95,7 +104,7 @@ def default_provider(conn: psycopg.Connection, user_id: int) -> dict | None:
 
 def decrypt_secret(row: dict, user_id: int) -> str | None:
     if row["user_id"] != user_id:  # Check once more: a key may only be used by its owner
-        raise PermissionError("这个提供商不属于当前用户")
+        raise PermissionError(L("这个提供商不属于当前用户", "This provider belongs to someone else"))
     return crypto.decrypt(user_id, row["encrypted_secret"]) if row["encrypted_secret"] is not None else None
 
 
@@ -109,34 +118,44 @@ def _normalize(kind: str, data: dict, existing: dict | None) -> dict:
     if catalog.is_mcp(kind):
         for f in ("model", "base_url", "api_key"):
             if data.get(f):
-                raise ValueError("订阅类不填模型、地址和 key：模型在你自己的客户端里选，后端不碰你的账号")
+                raise ValueError(L("订阅类不填模型、地址和 key：模型在你自己的客户端里选，后端不碰你的账号",
+                                   "A subscription takes no model, address or key: pick the model in your own client; "
+                                   "the server never touches your account"))
         return out
     if "model" in data or existing is None:
         model = (data.get("model") or k.get("default_model") or "").strip()
         if not MODEL_RE.match(model):
-            raise ValueError("要填模型名（例：" + (k.get("default_model") or "deepseek-chat") + "）")
+            ex = k.get("default_model") or "deepseek-chat"
+            raise ValueError(L(f"要填模型名（例：{ex}）", f"Enter a model name (e.g. {ex})"))
         out["model"] = model
-    if kind == "openai_compatible":
-        if "base_url" in data or existing is None:
-            if not data.get("base_url"):
-                raise ValueError("OpenAI 兼容接口要填 base_url")
-            out["base_url"] = _check_base_url(data["base_url"])
-    elif data.get("base_url"):
-        raise ValueError("只有 OpenAI 兼容接口才填 base_url")
-    if data.get("api_key"):
-        key = _check_key(data["api_key"])
-        out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
-        out["_key"] = key
-    elif existing is None:
-        base = out.get("base_url") or ""
-        local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
-        if not local:
-            raise ValueError("要填 API key")
+    if k.get("needs_key") is False:
+        if data.get("api_key") or data.get("base_url"):
+            raise ValueError(L("服务端 Gemini CLI 用服务器上的登录，不填 API key 和 base_url",
+                               "The server-side Gemini CLI uses the server's sign-in: no API key or base_url"))
+        if existing is None:
+            out.update(monthly_budget_usd=0, price_in_per_mtok=0, price_out_per_mtok=0)
+    else:
+        if kind == "openai_compatible":
+            if "base_url" in data or existing is None:
+                if not data.get("base_url"):
+                    raise ValueError(L("OpenAI 兼容接口要填 base_url", "An OpenAI-compatible API needs a base_url"))
+                out["base_url"] = _check_base_url(data["base_url"])
+        elif data.get("base_url"):
+            raise ValueError(L("只有 OpenAI 兼容接口才填 base_url", "Only an OpenAI-compatible API takes a base_url"))
+        if data.get("api_key"):
+            key = _check_key(data["api_key"])
+            out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
+            out["_key"] = key
+        elif existing is None:
+            base = out.get("base_url") or ""
+            local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
+            if not local:
+                raise ValueError(L("要填 API key", "Enter an API key"))
     for f in ("monthly_budget_usd", "price_in_per_mtok", "price_out_per_mtok"):
         if f in data:
             v = data[f]
             if v is not None and not 0 <= float(v) <= 10000:
-                raise ValueError(f"{f} 要在 0–10000 之间")
+                raise ValueError(L(f"{f} 要在 0–10000 之间", f"{f} must be between 0 and 10000"))
             out[f] = v
     return out
 
@@ -152,10 +171,14 @@ def _apply_key(user_id: int, cols: dict) -> dict:
 def create_provider(conn: psycopg.Connection, user_id: int, data: dict) -> dict:
     kind = data.get("kind")
     if kind not in catalog.KINDS:
-        raise ValueError(f"不认识的提供商种类：{kind}")
+        raise ValueError(L(f"不认识的提供商种类：{kind}", f"Unknown provider kind: {kind}"))
+    if not catalog.kind_allowed(kind, user_id):
+        raise ValueError(L("服务端 Gemini CLI 没开，或只给部署者本人用；可以选「Google AI 订阅（Gemini）」或填自己的 Gemini API key",
+                           "The server-side Gemini CLI is off, or only for the deployer; pick \"Google AI subscription (Gemini)\" "
+                           "or enter your own Gemini API key"))
     n = conn.execute("SELECT count(*) AS n FROM ai_providers WHERE user_id = %s", (user_id,)).fetchone()["n"]
     if n >= MAX_PROVIDERS:
-        raise ValueError(f"每人最多 {MAX_PROVIDERS} 个提供商")
+        raise ValueError(L(f"每人最多 {MAX_PROVIDERS} 个提供商", f"At most {MAX_PROVIDERS} providers per person"))
     cols = _apply_key(user_id, _normalize(kind, data, None))
     make_default = bool(data.get("is_default")) or n == 0  # The first one is set as default automatically
     with conn.transaction():
@@ -175,7 +198,7 @@ def update_provider(conn: psycopg.Connection, user_id: int, provider_id: int, da
     cols = _apply_key(user_id, _normalize(row["kind"], data, row))
     if "status" in data:
         if data["status"] not in ("active", "disabled"):
-            raise ValueError("status 只能是 active / disabled")
+            raise ValueError(L("status 只能是 active / disabled", "status must be active or disabled"))
         cols["status"] = data["status"]
     with conn.transaction():
         if data.get("is_default"):

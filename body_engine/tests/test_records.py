@@ -122,6 +122,47 @@ def test_write_only_to_self(client, world):
                         json={"status": "bogus"}).status_code == 422
 
 
+def test_supplement_edit_stop_delete(client, world):
+    """「我 → 补剂」: edit name / spec / dose / timing, stop (keeps history), delete a mistaken entry with its own journal item."""
+    ids, tok = world
+    a = h(tok["A"])
+    new = lambda name, key: client.post("/v1/users/me/supplements", headers=a,
+                                        json={"name": name, "status": "active", "journal_key": key}).json()
+    s = new("维生素 D", "supp_vitd")
+    r = client.patch(f"/v1/users/me/supplements/{s['id']}", headers=a,
+                     json={"name": "维生素 D3", "ingredients": "1000 IU / 粒", "dose": "2 粒", "timing": "随早餐"})
+    assert r.status_code == 200 and (r.json()["name"], r.json()["ingredients"], r.json()["dose"], r.json()["timing"]) == \
+        ("维生素 D3", "1000 IU / 粒", "2 粒", "随早餐")
+    assert client.patch(f"/v1/users/me/supplements/{s['id']}", headers=a, json={"name": ""}).status_code == 422
+    # stop: the row and its journal item stay
+    r = client.patch(f"/v1/users/me/supplements/{s['id']}", headers=a, json={"status": "stopped", "stopped_on": "2026-10-20"})
+    assert r.json()["status"] == "stopped"
+    assert any(i["key"] == "supp_vitd" for i in client.get("/v1/users/me/journal/items", headers=a).json())
+
+    # delete: B (has a view share), C, a read-only token and a wrong id cannot
+    dup = new("鱼油 重复", "supp_fish_dup")
+    assert client.put("/v1/users/me/journal/2026-10-19/supp_fish_dup", headers=a, json={"value": 1}).status_code == 200
+    assert client.delete(f"/v1/users/{ids['A']}/supplements/{dup['id']}", headers=h(tok["B"])).status_code == 403
+    assert client.delete(f"/v1/users/me/supplements/{dup['id']}", headers=h(tok["C"])).status_code == 404
+    assert client.delete(f"/v1/users/me/supplements/{dup['id']}", headers=h(tok["A_ro"])).status_code == 403
+    r = client.delete(f"/v1/users/me/supplements/{dup['id']}", headers=a)
+    assert r.status_code == 200
+    assert r.json() == {"deleted": {"id": dup["id"], "name": "鱼油 重复"}, "journal_item": "supp_fish_dup", "journal_entries": 1}
+    assert all(x["id"] != dup["id"] for x in client.get("/v1/users/me/supplements", headers=a).json())
+    assert all(i["key"] != "supp_fish_dup" for i in client.get("/v1/users/me/journal/items", headers=a).json())
+    assert client.delete(f"/v1/users/me/supplements/{dup['id']}", headers=a).status_code == 404
+
+    # a journal key shared with another supplement, and a non-supplement journal item, are kept
+    one, two = new("锌 A", "supp_zinc_shared"), new("锌 B", "supp_zinc_shared")
+    assert client.delete(f"/v1/users/me/supplements/{one['id']}", headers=a).json()["journal_item"] is None
+    assert any(i["key"] == "supp_zinc_shared" for i in client.get("/v1/users/me/journal/items", headers=a).json())
+    assert client.delete(f"/v1/users/me/supplements/{two['id']}", headers=a).json()["journal_item"] == "supp_zinc_shared"
+    odd = client.post("/v1/users/me/supplements", headers=a, json={"name": "酒", "status": "not_needed",
+                                                                   "journal_key": "alcohol"}).json()
+    assert client.delete(f"/v1/users/me/supplements/{odd['id']}", headers=a).json()["journal_item"] is None
+    assert any(i["key"] == "alcohol" for i in client.get("/v1/users/me/journal/items", headers=a).json())
+
+
 # ---------- lab results ----------
 
 def test_labs_compare_and_trend(client, world):
@@ -244,6 +285,18 @@ def test_assistant_tools(dsn, world):
             run_tool(conn, ids["B"], "mcp", "update_supplement", {"supplement_id": 1, "status": "stopped", "dose": None,
                                                                   "timing": None, "started_on": None,
                                                                   "stopped_on": None, "advice": None})
+        # supplements: update name / spec, then delete a mistaken entry with its own journal item
+        s = run_tool(conn, ids["A"], "mcp", "add_supplement", {"name": "镁", "status": "active", "journal_key": "supp_mg_tool"})
+        row = run_tool(conn, ids["A"], "mcp", "update_supplement", {"supplement_id": s["id"], "name": "甘氨酸镁",
+                                                                    "ingredients": "200mg / 粒"})
+        assert row["name"] == "甘氨酸镁" and row["ingredients"] == "200mg / 粒" and row["status"] == "active"
+        with pytest.raises(PermissionError):   # B can view A's supplements but cannot delete them
+            run_tool(conn, ids["B"], "mcp", "delete_supplement", {"user": str(ids["A"]), "supplement_id": s["id"]})
+        with pytest.raises(ValueError):        # A's id through B's own data: not found
+            run_tool(conn, ids["B"], "mcp", "delete_supplement", {"supplement_id": s["id"]})
+        out = run_tool(conn, ids["A"], "mcp", "delete_supplement", {"supplement_id": s["id"]})
+        assert out["deleted"]["name"] == "甘氨酸镁" and out["journal_item"] == "supp_mg_tool"
+        assert not conn.execute("SELECT 1 FROM journal_items WHERE user_id = %s AND key = 'supp_mg_tool'", (ids["A"],)).fetchone()
         rules = run_tool(conn, ids["A"], "mcp", "get_exercise_rules", {"user": "me"})   # default: the slim summary
         assert [x["ref"] for x in rules["banned"]] == ["dips"] and "aliases" not in rules["banned"][0]
         full = run_tool(conn, ids["A"], "mcp", "get_exercise_rules", {"user": "me", "detail": True})

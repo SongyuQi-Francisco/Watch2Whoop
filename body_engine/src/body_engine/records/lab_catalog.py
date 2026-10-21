@@ -102,7 +102,7 @@ def add_results(conn, user_id: int, collected_on, lab: str | None, results: list
     different -> do not overwrite (only with overwrite=true). If flag is not given, compute it from the reference range.
     The status cards are refreshed straight away (assistant/status.py sync_labs)."""
     from . import lab_params, store
-    from ..assistant import status as status_cards
+    from ..assistant import status as status_cards, writelog
     if not results:
         raise ValueError("results 不能为空")
     if source not in lab_params.SOURCES:
@@ -148,14 +148,17 @@ def add_results(conn, user_id: int, collected_on, lab: str | None, results: list
             row = store.add_lab(conn, user_id, f, import_key=f"assistant:{collected_on}:{f['test_key']}:{source}")
             if row is None:
                 raise ValueError(f"{f['test_name']}：{collected_on} 已经写过一次又被删改过，先 delete_lab_results 再写")
+            writelog.record(conn, "lab", "create", row["id"], None, [row])
             out["created"].append({**brief, "id": row["id"]})
         elif same and (fasting is None or cur["fasting"] == fasting):
             out["unchanged"].append(brief)
         elif same:
-            store.update_lab(conn, user_id, cur["id"], {"fasting": fasting})
+            new = store.update_lab(conn, user_id, cur["id"], {"fasting": fasting})
+            writelog.record(conn, "lab", "update", cur["id"], [cur], [new])
             out["updated"].append({**brief, "id": cur["id"], "fasting": fasting})
         elif overwrite:
-            store.update_lab(conn, user_id, cur["id"], {k: v for k, v in f.items() if k != "collected_on"})
+            new = store.update_lab(conn, user_id, cur["id"], {k: v for k, v in f.items() if k != "collected_on"})
+            writelog.record(conn, "lab", "update", cur["id"], [cur], [new])
             out["updated"].append({**brief, "id": cur["id"], "previous": cur["value"] if cur["value"] is not None
                                    else cur["value_text"]})
         else:
@@ -169,19 +172,44 @@ def add_results(conn, user_id: int, collected_on, lab: str | None, results: list
 
 
 def delete_results(conn, user_id: int, collected_on, test_keys: list[str]) -> dict:
-    """Undo lab results written by the butler (import_key starting with assistant:); migrated and manually added ones are not deleted."""
+    """Delete lab results of one draw date by test_key, any source (written by the AI, migrated, added by hand).
+    The old rows are logged (assistant/writelog.py) so rollback_write can restore them."""
+    from ..assistant import status, writelog
     if not test_keys:
         raise ValueError("test_keys 不能为空")
-    rows = conn.execute("""SELECT id, test_key, import_key FROM lab_results
-                           WHERE user_id = %s AND collected_on = %s AND test_key = ANY(%s)""",
+    rows = conn.execute("""SELECT * FROM lab_results WHERE user_id = %s AND collected_on = %s AND test_key = ANY(%s)""",
                         (user_id, collected_on, test_keys)).fetchall()
-    others = [r["test_key"] for r in rows if not (r["import_key"] or "").startswith("assistant:")]
-    if others:
-        raise PermissionError(f"{', '.join(others)} 不是身体管家写的，不删（请在数据库 / API 里改）")
     missing = sorted(set(test_keys) - {r["test_key"] for r in rows})
     if missing:
-        raise ValueError(f"{collected_on} 没有这些项目：{', '.join(missing)}")
+        raise ValueError(f"{collected_on} 没有这些项目：{', '.join(missing)}（get_lab_history 看日期）")
     conn.execute("DELETE FROM lab_results WHERE id = ANY(%s)", ([r["id"] for r in rows],))
-    from ..assistant import status
+    writelog.record(conn, "lab", "delete", ",".join(str(r["id"]) for r in rows), rows, None)
     status.sync_labs(conn, user_id)
-    return {"deleted": {"collected_on": str(collected_on), "test_keys": sorted({r["test_key"] for r in rows})}}
+    return {"deleted": {"collected_on": str(collected_on), "test_keys": sorted({r["test_key"] for r in rows}),
+                        "rows": len(rows)}}
+
+
+LAB_RESTORE_COLS = ("collected_on", "test_key", "test_name", "category", "value", "value_text", "unit", "ref_low",
+                    "ref_high", "flag", "lab", "note", "source", "fasting", "import_key")
+
+
+def rollback(conn, user_id: int, action: str, before, after) -> dict:
+    """Undo one logged lab change: created rows are deleted, deleted rows re-inserted, updated rows get their old values."""
+    from ..assistant import status
+    if action == "create":
+        conn.execute("DELETE FROM lab_results WHERE user_id = %s AND id = ANY(%s)", (user_id, [r["id"] for r in after]))
+        out = {"deleted": len(after)}
+    elif action == "delete":
+        for r in before:
+            cols = [c for c in LAB_RESTORE_COLS if c in r]
+            conn.execute(f"INSERT INTO lab_results (user_id, {', '.join(cols)}) VALUES (%s, {', '.join(['%s'] * len(cols))})",
+                         (user_id, *[r[c] for c in cols]))
+        out = {"restored": len(before)}
+    else:
+        for r in before:
+            cols = [c for c in LAB_RESTORE_COLS if c in r and c != "import_key"]
+            conn.execute(f"UPDATE lab_results SET {', '.join(c + ' = %s' for c in cols)}, updated_at = now() "
+                         "WHERE id = %s AND user_id = %s", (*[r[c] for c in cols], r["id"], user_id))
+        out = {"restored": len(before)}
+    status.sync_labs(conn, user_id)
+    return out

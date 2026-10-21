@@ -1,4 +1,5 @@
-"""Static explanation entries (Chinese, short). Each entry:
+"""Static explanation entries (Chinese, short; English twins in glossary_en.py, picked by metric() / lab() / status() / condition()
+when the request language is en, issue #42). Each entry:
 title, what (what it is), read [(range, label, tone)] (how to read it), recovery (how it relates to recovery),
 tips [general advice], avoid [things to avoid], keywords (used to pick matching sentences from the profile card);
 conditions may also list metrics whose personal numbers are attached (personal.CALC keys).
@@ -313,5 +314,47 @@ STATUS_AS_METRIC = {"recovery": "recovery", "sleep_hours": "sleep_hours", "sleep
 
 
 def condition_for(text: str) -> dict | None:
-    """First condition whose match words appear in the text (label + value + note of a status item)."""
-    return next((c for c in CONDITIONS if any(w.lower() in text.lower() for w in c["match"])), None)
+    """First condition whose match words appear in the text (label + value + note of a status item), in the request language.
+    The match words stay Chinese: they match the user's own notes."""
+    c = next((c for c in CONDITIONS if any(w.lower() in text.lower() for w in c["match"])), None)
+    return condition(c) if c else None
+
+
+# ---------------------------------------------------------------- language (issue #42)
+from ..i18n import is_en  # noqa: E402
+from .glossary_en import CONDITIONS_EN, LABS_EN, METRICS_EN, STATUS_EN  # noqa: E402
+
+TEXT_FIELDS = ("title", "what", "read", "recovery", "tips", "avoid", "unit")   # the fields an English twin replaces
+
+
+def localize(e: dict, en: dict | None) -> dict:
+    """The entry in the request language: the English twin's texts over the Chinese entry (non-text fields kept);
+    `read` in the twin is [(range, label)], the tone comes from the Chinese entry. No twin: the Chinese entry."""
+    if not en or not is_en():
+        return e
+    out = {**e, **{k: v for k, v in en.items() if k != "read"}}
+    if "read" in en:
+        out["read"] = [(rng, label, t) for (rng, label), (_, _, t) in zip(en["read"], e.get("read", []))]
+    return out
+
+
+def metric(key: str) -> dict:
+    return localize(METRICS[key], METRICS_EN.get(key))
+
+
+def lab(key: str) -> dict:
+    return localize(LABS[key], LABS_EN.get(key))
+
+
+def status(key: str) -> dict:
+    return localize(STATUS[key], STATUS_EN.get(key))
+
+
+def condition(c: dict) -> dict:
+    return localize(c, CONDITIONS_EN.get(c["title"]))
+
+
+def all_entries() -> dict:
+    """Every static entry in the request language (GET /v1/explain/glossary)."""
+    return {"metrics": {k: metric(k) for k in METRICS}, "labs": {k: lab(k) for k in LABS},
+            "status": {k: status(k) for k in STATUS}, "conditions": [condition(c) for c in CONDITIONS]}

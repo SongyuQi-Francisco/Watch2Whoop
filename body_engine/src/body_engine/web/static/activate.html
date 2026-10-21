@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN" data-i18n-title="activate.title">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>激活 Watch2Whoop</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--bg:#fff;--surface:#f4f4f6;--text:#111113;--text-2:#6c6c73;--accent:#111113;--on-accent:#fff;--bad:#be5a44}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--surface:#1c1c1e;--text:#f5f5f7;--text-2:#a1a1a6;--accent:#f5f5f7;--on-accent:#000;--bad:#e07a62}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;display:flex;align-items:center;justify-content:center}
+main{width:100%;max-width:420px;padding:32px 16px calc(32px + env(safe-area-inset-bottom))}
+img{display:block;width:64px;height:64px;margin:0 0 20px;border-radius:14px}
+h1{font-size:26px;line-height:1.2;margin:0 0 8px}
+p{margin:0 0 24px;color:var(--text-2)}
+input{display:block;width:100%;font:600 18px ui-monospace,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;padding:14px;margin:0 0 12px;border:0;border-radius:12px;background:var(--surface);color:var(--text)}
+button{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;padding:16px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);cursor:pointer}
+button:disabled{opacity:.5}
+.err{min-height:1.5em;margin:12px 0 0;color:var(--bad);font-size:15px}
+.help{display:block;margin:20px 0 0;padding:14px;border-radius:14px;background:var(--surface);color:var(--text);text-align:center;text-decoration:none;font-weight:600}
+</style>
+</head>
+<body>
+<main>
+  <img src="icon.svg" alt="">
+  <h1 data-i18n="activate.title">激活 Watch2Whoop</h1>
+  <p data-i18n="activate.hint">先在 TestFlight 装好 Watch2Whoop，再点下面的按钮</p>
+  <form id="form" novalidate>
+    <input id="code" name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" inputmode="text" placeholder="激活码" aria-label="激活码" data-i18n-ph="activate.code" data-i18n-aria="activate.code" hidden>
+    <button id="go" type="submit" data-i18n="activate.go">打开 App 完成设置</button>
+  </form>
+  <div id="err" class="err" role="alert"></div>
+  <a class="help" href="handbook/" target="_blank" rel="noopener" data-i18n="activate.handbook">使用手册</a>
+</main>
+<script src="i18n.js"></script>
+<script src="i18n-en.js"></script>
+<script src="activate.js"></script>
+</body>
+</html>

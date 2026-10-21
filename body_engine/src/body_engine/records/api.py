@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, R
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
-from . import analysis, lab_history, store
+from . import analysis, defaults, lab_history, store
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["records"])
 
@@ -112,6 +112,12 @@ def update_supplement(user: str, supplement_id: int, body: SupplementPatch,
     if body.fields().get("status") is None and "status" in body.fields():
         raise HTTPException(422, "status 不能为空")
     return _found(_bad_request(store.update_supplement, conn, _self(viewer, user), supplement_id, body.fields()), "补剂")
+
+
+@router.delete("/supplements/{supplement_id}")
+def delete_supplement(user: str, supplement_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Entered by mistake / duplicate: removes it and its own journal item. To stop taking it, PATCH status=stopped."""
+    return _found(store.delete_supplement(conn, _self(viewer, user), supplement_id), "补剂")
 
 
 # ---------- Lab results ----------
@@ -273,7 +279,7 @@ KEY_PATTERN = r"^[a-z][a-z0-9_]*$"
 
 @router.get("/journal/items")
 def journal_items(user: str, active_only: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return store.list_journal_items(conn, _owner(conn, viewer, user, "journal"), active_only)
+    return defaults.with_label(store.list_journal_items(conn, _owner(conn, viewer, user, "journal"), active_only))
 
 
 @router.put("/journal/items/{key}")
@@ -290,7 +296,7 @@ def journal(user: str, start: date | None = None, end: date | None = None,
             key: Annotated[list[str] | None, Query()] = None, conn=Depends(get_conn), viewer=Depends(current_user)):
     end = end or date.today()
     start = start or end - timedelta(days=29)
-    return store.journal_entries(conn, _owner(conn, viewer, user, "journal"), start, end, key)
+    return defaults.with_label(store.journal_entries(conn, _owner(conn, viewer, user, "journal"), start, end, key))
 
 
 @router.put("/journal/{day}/{key}")

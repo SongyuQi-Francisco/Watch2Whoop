@@ -8,9 +8,12 @@
   Announced price rises (Gemini 2026-12 / 2027-01) use the raised price, erring on the high side; models not in the table use FALLBACK_PRICE (the most expensive tier),
   and users can enter a custom unit price on the provider (e.g. 0 for local Ollama).
 """
+import os
 
-MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "generic_mcp_client")
-API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "openai_compatible")
+from ..i18n import is_en
+
+MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
+API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "gemini_cli", "openai_compatible")
 
 KINDS: dict[str, dict] = {
     "claude_plan_mcp": {
@@ -19,8 +22,11 @@ KINDS: dict[str, dict] = {
     "codex_plan_mcp": {
         "label": "ChatGPT 订阅（Codex）", "category": "mcp", "client": "codex",
         "note": "在你自己登录的 Codex CLI 里连 Body Engine 的 MCP；后端不碰你的 ChatGPT 账号。"},
+    "gemini_plan_mcp": {
+        "label": "Google AI 订阅（Gemini）", "category": "mcp", "client": "gemini-cli",
+        "note": "在你自己登录的 Gemini CLI / Antigravity 里连 Body Engine 的 MCP；后端不碰你的 Google 账号。"},
     "generic_mcp_client": {
-        "label": "其他 MCP 客户端（Gemini CLI 等）", "category": "mcp", "client": "gemini-cli",
+        "label": "其他 MCP 客户端", "category": "mcp", "client": "other",
         "note": "任何支持远程 MCP（Streamable HTTP + Bearer 头）的客户端都可以连。"},
     "anthropic_api": {
         "label": "Anthropic API（Claude）", "category": "api", "default_model": "claude-opus-5-5",
@@ -32,14 +38,45 @@ KINDS: dict[str, dict] = {
         "vision": True, "key_hint": "sk-…（platform.openai.com 生成）"},
     "gemini_api": {
         "label": "Google Gemini API", "category": "api", "default_model": "gemini-4-argon",
-        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-2.5-pro"],
+        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                   "gemini-2.5-pro", "gemini-2.5-flash"],
         "vision": True, "key_hint": "AI Studio 生成的 API key"},
+    "gemini_cli": {
+        "label": "Google AI 订阅（服务端 Gemini CLI）", "category": "api", "default_model": "gemini-4-argon",
+        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
+                   "gemini-2.5-pro", "gemini-2.5-flash"],
+        # Server-side subprocess: off unless the admin sets BODY_GEMINI_CLI_ENABLED=1, and only for BODY_ASSISTANT_USER_ID
+        "vision": True, "needs_key": False, "owner_only": True,
+        "note": "仅部署者：用服务器上登录的 Gemini CLI"},
     "openai_compatible": {
         "label": "OpenAI 兼容接口（DeepSeek、通义千问、Ollama…）", "category": "api", "default_model": None,
         "models": [], "vision": None, "needs_base_url": True,
         "key_hint": "对应服务的 API key（本机 Ollama 随便填）",
         "base_url_examples": ["https://api.deepseek.com/v1", "https://dashscope.aliyuncs.com/compatible-mode/v1",
                               "http://host.docker.internal:11434/v1"]},
+}
+
+# English for the texts above (AI settings on the Today page, X-Body-Lang: en); applied at read time by public_catalog / label
+KINDS_EN: dict[str, dict] = {
+    "claude_plan_mcp": {
+        "label": "Claude subscription (Pro / Max)",
+        "note": "A subscription only works in Claude's own apps: connect Body Engine's MCP in Claude Code or Claude Desktop."},
+    "codex_plan_mcp": {
+        "label": "ChatGPT subscription (Codex)",
+        "note": "Connect Body Engine's MCP in the Codex CLI you signed in to; the server never touches your ChatGPT account."},
+    "gemini_plan_mcp": {
+        "label": "Google AI subscription (Gemini)",
+        "note": "Connect Body Engine's MCP in the Gemini CLI / Antigravity you signed in to; the server never touches your Google account."},
+    "generic_mcp_client": {
+        "label": "Other MCP client",
+        "note": "Any client that supports remote MCP (Streamable HTTP + Bearer header) can connect."},
+    "anthropic_api": {"label": "Anthropic API (Claude)", "key_hint": "sk-ant-… (create one at console.anthropic.com)"},
+    "openai_api": {"label": "OpenAI API", "key_hint": "sk-… (create one at platform.openai.com)"},
+    "gemini_api": {"label": "Google Gemini API", "key_hint": "API key from AI Studio"},
+    "gemini_cli": {"label": "Google AI subscription (Gemini CLI on the server)",
+                   "note": "Deployer only: uses the Gemini CLI signed in on the server"},
+    "openai_compatible": {"label": "OpenAI-compatible API (DeepSeek, Qwen, Ollama…)",
+                          "key_hint": "That service's API key (anything for a local Ollama)"},
 }
 
 # USD per million tokens: (input, output)
@@ -53,8 +90,11 @@ PRICES: dict[str, tuple[float, float]] = {
     "gemini-3.5-flash-lite": (0.30, 2.50), "gemini-2.5-pro": (1.25, 10.0), "gemini-2.5-flash": (0.30, 2.50),
 }
 FALLBACK_PRICE = (10.0, 50.0)
-# Claude prompt caching: read 0.1x, write (5 minutes) 1.25x of the input price. OpenAI / Gemini cache discounts are not counted (full price, erring on the high side).
+# Claude prompt caching: read 0.1x, write (5 minutes) 1.25x of the input price. OpenAI cache discounts are not counted
+# (full price, erring on the high side); Gemini reports cached tokens separately and is charged 0.25x
+# (Gemini 2.5 context-cache price; newer models are cheaper, so this errs on the high side).
 CACHE_READ_FACTOR = 0.1
+GEMINI_CACHE_READ_FACTOR = 0.25
 CACHE_WRITE_FACTOR = 1.25
 
 
@@ -71,15 +111,51 @@ def price(model: str, custom_in=None, custom_out=None) -> tuple[float, float]:
 def cost_usd(model: str, usage: dict, custom_in=None, custom_out=None) -> float:
     """usage: input_tokens (excluding the cached part), output_tokens, cache_read_tokens, cache_write_tokens."""
     p_in, p_out = price(model, custom_in, custom_out)
+    read_factor = GEMINI_CACHE_READ_FACTOR if model.startswith("gemini") else CACHE_READ_FACTOR
     return (usage.get("input_tokens", 0) * p_in
-            + usage.get("cache_read_tokens", 0) * p_in * CACHE_READ_FACTOR
+            + usage.get("cache_read_tokens", 0) * p_in * read_factor
             + usage.get("cache_write_tokens", 0) * p_in * CACHE_WRITE_FACTOR
             + usage.get("output_tokens", 0) * p_out) / 1_000_000
 
 
-def public_catalog() -> list[dict]:
+def is_owner(user_id: int) -> bool:
+    return str(user_id) == os.environ.get("BODY_ASSISTANT_USER_ID", "1")
+
+
+def gemini_cli_enabled() -> bool:
+    """The server-side Gemini CLI runs a subprocess as the server: the admin has to opt in (default off)."""
+    return os.environ.get("BODY_GEMINI_CLI_ENABLED", "").strip().lower() in ("1", "true", "yes")
+
+
+def kind_allowed(kind: str, user_id: int) -> bool:
+    """owner_only kinds (gemini_cli) exist only when enabled, and only for the deployer."""
+    if not KINDS.get(kind, {}).get("owner_only"):
+        return True
+    return gemini_cli_enabled() and is_owner(user_id)
+
+
+def texts(kind: str) -> dict:
+    """label / note / key_hint of a kind in the request's language."""
+    k = KINDS.get(kind, {})
+    out = {f: k[f] for f in ("label", "note", "key_hint") if f in k}
+    return {**out, **KINDS_EN.get(kind, {})} if is_en() else out
+
+
+def label(kind: str) -> str:
+    return texts(kind).get("label") or kind
+
+
+def display_name(row: dict) -> str:
+    """A provider's name for the page: the stored name, except the default (the Chinese catalog label) follows the language."""
+    name = row.get("display_name") or ""
+    return label(row["kind"]) if name == KINDS.get(row.get("kind"), {}).get("label") else name
+
+
+def public_catalog(user_id: int | None = None) -> list[dict]:
     out = []
     for kind, k in KINDS.items():
-        out.append({"kind": kind, **{f: v for f, v in k.items()},
+        if k.get("owner_only") and (user_id is None or not kind_allowed(kind, user_id)):
+            continue
+        out.append({"kind": kind, **{f: v for f, v in k.items()}, **texts(kind),
                     "prices": {m: PRICES.get(m) for m in k.get("models", [])}})
     return out

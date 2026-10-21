@@ -1,7 +1,8 @@
 """Status cards of the body profile (table assistant_status): the small cards on the Today page "Me" tab, one short phrase each.
 
 - auto items are computed by the backend from the database / SparkyFitness (refresh_auto): weight and weekly change, distance to goal, 7-day average recovery score, sleep debt,
-  average bedtime, sleep duration, latest uric acid / ALT / triglycerides, workouts in the last 7 days, red meat in the last 7 days. Refreshed by the hourly job
+  average bedtime, sleep duration, latest uric acid / ALT / triglycerides, workouts in the last 7 days, red meat in the last 7 days,
+  added sugar today and its 7-day average (against the cap of the goal in effect, nutrition/daily.py). Refreshed by the hourly job
   (body-engine refresh-status) and on read (when older than STALE_MINUTES); an item that cannot be computed (no data) is dropped,
   and a read error keeps the previous value.
 - assistant items are written by the body butler after its own judgement (set_status_items): current phase, injury status, goal weight, plan adherence, etc.
@@ -33,7 +34,7 @@ STALE_MINUTES = 30
 SPARK_MAX = 30
 GOAL_KEY = "goal_weight"            # Goal weight written by the butler (value is a number, unit kg); auto to_goal uses it
 AUTO_KEYS = ("weight", "to_goal", "recovery", "sleep_debt", "bedtime", "sleep_hours", "uric_acid", "alt",
-             "triglycerides", "training_week", "red_meat_week")
+             "triglycerides", "training_week", "red_meat_week", "added_sugar_today", "added_sugar_7d")
 LAB_ITEMS = {"uric_acid": ("尿酸", 10), "alt": ("ALT", 20), "triglycerides": ("甘油三酯", 30)}
 FIELDS = ("key", "label", "value", "unit", "tone", "trend", "good_direction", "group", "spark", "note",
           "updated_at", "source")
@@ -309,6 +310,40 @@ def calc_red_meat(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
               "note": f"上限 {cap} g · 记了 {days_logged} 天"}, 10)]
 
 
+def _sugar_tone(g: float, cap: float) -> str:
+    return "good" if g <= cap else "warn" if g <= max(rule_params.ADDED_SUGAR_WARN_G, cap) else "bad"
+
+
+def calc_sugar(conn, user_id: int, today: date) -> list[tuple[dict, int]]:
+    """「今日添加糖」 and 「7 天平均」 (added sugar). Only entries that know their added sugar count; a logged day where
+    none do shows 未知 (unknown is not 0). The 7-day average is over days with at least one known entry."""
+    from ..goals import nutrition as goals
+    from ..nutrition import daily, extras
+    start = today - timedelta(days=6)
+    rows = daily.entries(conn, user_id, start, today)
+    if not rows:
+        return []
+    cap = goals.resolve(conn, user_id, today)["added_sugar_max_g"]
+    days = [start + timedelta(days=k) for k in range(7)]
+    per_day = [extras.day_totals([r for r in rows if r["date"] == d.isoformat()]) for d in days]
+    spark = [t["added_sugar_g"] for t in per_day]
+    out = []
+    t = per_day[-1]
+    if t["known"]["of"]:
+        g = t["added_sugar_g"]
+        out.append(({"key": "added_sugar_today", "label": "今日添加糖", "value": "未知" if g is None else f"{g:.0f}",
+                     "unit": None if g is None else "g", "tone": "neutral" if g is None else _sugar_tone(g, cap),
+                     "trend": None, "good_direction": "down", "group": "饮食", "spark": None,
+                     "note": f"上限 {cap:g} g · 有数 {t['known']['added_sugar_g']}/{t['known']['of']} 条"}, 20))
+    known_days = [v for v in spark if v is not None]
+    if known_days:
+        avg = sum(known_days) / len(known_days)
+        out.append(({"key": "added_sugar_7d", "label": "7 天平均", "value": f"{avg:.0f}", "unit": "g",
+                     "tone": _sugar_tone(avg, cap), "trend": None, "good_direction": "down", "group": "饮食",
+                     "spark": spark, "note": f"添加糖 · {len(known_days)} 天有数"}, 30))
+    return out
+
+
 CALCULATORS = [  # (keys owned, function)
     (("weight", "to_goal"), calc_weight),
     (("recovery", "sleep_debt", "sleep_hours"), calc_scores),
@@ -316,6 +351,7 @@ CALCULATORS = [  # (keys owned, function)
     (tuple(LAB_ITEMS), calc_labs),
     (("training_week",), calc_training),
     (("red_meat_week",), calc_red_meat),
+    (("added_sugar_today", "added_sugar_7d"), calc_sugar),
 ]
 
 
@@ -365,6 +401,89 @@ def refresh_if_stale(conn: psycopg.Connection, user_id: int) -> None:
                        (user_id,)).fetchone()
     if row is None or row["last_synced_at"] < datetime.now(timezone.utc) - timedelta(minutes=STALE_MINUTES):
         refresh_auto(conn, user_id)
+
+
+# ---------------------------------------------------------------- English for the Today page (issue #42)
+# Items stay stored in Chinese (the AI reads them, explain/personal.py matches Chinese keywords); the page's read path
+# (memory_api GET /memory) calls localize() in an English request. Only the texts the backend itself writes are translated:
+# groups (fixed list), the auto items' label / value / unit / note, the goal weight item (profile/store.py), the lab part of a
+# lab-linked card. Labels / values / notes the AI wrote stay as written (a label equal to a fixed one is translated too).
+GROUP_EN = {"身体": "Body", "目标": "Goals", "健康": "Health", "训练": "Training", "作息": "Sleep & routine",
+            "饮食": "Nutrition", "其他": "Other"}
+LABEL_EN = {"体重": "Weight", "距目标": "To goal", "恢复": "Recovery", "睡眠债": "Sleep debt", "睡眠时长": "Sleep duration",
+            "入睡时间": "Bedtime", "尿酸": "Uric acid", "ALT": "ALT", "甘油三酯": "Triglycerides", "本周训练": "Workouts",
+            "红肉7天": "Red meat 7d", "今日添加糖": "Added sugar today", "7 天平均": "7-day average",
+            "目标体重": "Goal weight", "当前阶段": "Current phase"}
+VALUE_EN = {"已达到": "Reached", "未知": "Unknown", "减脂增肌": "Recomp"}
+UNIT_EN = {"次": "workouts"}
+_LAB_WORD_EN = {"偏高": "High", "偏低": "Low", "正常": "Normal"}
+_LAB_SOURCE_EN = {"化验": "lab", "家测": "home"}
+_CLOCK = re.compile(r"(凌晨|早上|下午) (\d{1,2}):(\d{2})")
+_NOTE_EN = [(re.compile(zh), en) for zh, en in (
+    (r"上次称 (\d\d-\d\d)", r"Last weigh-in \1"),
+    (r"周均变化待数据", "Weekly change: needs more data"),
+    (r"周均 ([+-]?[\d.]+) kg（偏快）", r"Weekly avg \1 kg (fast)"),
+    (r"周均 ([+-]?[\d.]+) kg", r"Weekly avg \1 kg"),
+    (r"目标 ([\d.]+) kg", r"Goal \1 kg"),
+    (r"按现速约 (\d+) 周", r"About \1 wk at this pace"),
+    (r"7天均 · (\d\d-\d\d) (\S+)", r"7-day avg · \1: \2"),
+    (r"近 7 晚平均", "Last 7 nights avg"),
+    (r"近 7 天 · 计划 (\d+) 次", r"Last 7 days · plan \1"),
+    (r"上限 (\S+) g · 记了 (\d+) 天", r"Cap \1 g · \2 days logged"),
+    (r"上限 (\S+) g · 有数 (\d+)/(\d+) 条", r"Cap \1 g · known \2/\3"),
+    (r"添加糖 · (\d+) 天有数", r"Added sugar · \1 days known"),
+    (r"示例", "Example"),
+)]
+_LAB_NOTE = re.compile(r"(\d\d-\d\d) · (\S+)(?: · 上限 (\S+))?")
+
+
+def _note_en(note: str | None) -> str | None:
+    if not note:
+        return note
+    for rx, en in _NOTE_EN:
+        if m := rx.fullmatch(note):
+            return m.expand(en)
+    return note
+
+
+def _lab_note_en(note: str) -> str:
+    """'10-18 · 家测 · 上限 420' (records/lab_history.card) -> '10-18 · home · max 420'; a butler note after it is kept."""
+    m = _LAB_NOTE.match(note)
+    if not m:
+        return note
+    out = f"{m[1]} · {_LAB_SOURCE_EN.get(m[2], m[2])}" + (f" · max {m[3]}" if m[3] else "")
+    return out + note[m.end():]
+
+
+def _value_en(v: str | None) -> str | None:
+    if not v:
+        return v
+    if v in VALUE_EN:
+        return VALUE_EN[v]
+    if m := _CLOCK.fullmatch(v):  # bedtime "凌晨 2:40" -> "02:40" (the hour is already 0–23)
+        return f"{int(m[2]):02d}:{m[3]}"
+    word, _, num = v.partition(" ")  # lab "偏高 489"
+    return f"{_LAB_WORD_EN[word]} {num}" if word in _LAB_WORD_EN and num else v
+
+
+def localize(items: list[dict]) -> list[dict]:
+    """list_status() items in the request language (no-op in Chinese)."""
+    from ..i18n import is_en
+    if not is_en():
+        return items
+    out = []
+    for it in items:
+        it = dict(it, group=GROUP_EN.get(it.get("group"), it.get("group")), label=LABEL_EN.get(it["label"], it["label"]))
+        backend = it.get("source") in ("auto", "user", "seed")
+        if backend or it.get("lab_key"):
+            it["value"] = _value_en(it["value"])
+            it["unit"] = UNIT_EN.get(it.get("unit"), it.get("unit"))
+        if it.get("lab_key") and it.get("note"):
+            it["note"] = _lab_note_en(it["note"])
+        elif backend:
+            it["note"] = _note_en(it.get("note"))
+        out.append(it)
+    return out
 
 
 # ---------------------------------------------------------------- initial version

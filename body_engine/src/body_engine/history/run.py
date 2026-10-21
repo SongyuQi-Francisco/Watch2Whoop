@@ -18,6 +18,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from ..config import settings
+from ..i18n import L
 from ..importers import apple_zip
 from . import store
 
@@ -62,13 +63,16 @@ def _set(conn, job_id: int, **kv) -> None:
 
 
 def summary(res: dict) -> str:
+    """The completion message (stored in Chinese; store.public rebuilds it from the result in the request's language)."""
     if not res.get("days"):
-        return "导入完成，但导出里没有可用的每日数据"
-    s = f"导入完成：{res['first_day']} 到 {res['last_day']}，{res['days']} 天每日数据、{res['nights']} 晚睡眠、{res['workouts']} 次训练"
+        return L("导入完成，但导出里没有可用的每日数据", "Import done, but the export has no usable daily data")
+    s = L(f"导入完成：{res['first_day']} 到 {res['last_day']}，{res['days']} 天每日数据、{res['nights']} 晚睡眠、{res['workouts']} 次训练",
+          f"Import done: {res['first_day']} to {res['last_day']}. Days: {res['days']}, nights of sleep: {res['nights']}, "
+          f"workouts: {res['workouts']}")
     if res.get("ecg"):
-        s += f"、{res['ecg']} 条心电图"
+        s += L(f"、{res['ecg']} 条心电图", f", ECGs: {res['ecg']}")
     if res.get("scores_note"):
-        s += "。" + res["scores_note"]
+        s += L("。" + res["scores_note"], ". Scores are recalculated tonight")
     return s
 
 
