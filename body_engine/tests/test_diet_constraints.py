@@ -193,3 +193,31 @@ def test_tools_and_api_auth(conn, world, client):
     assert client.get(f"/v1/users/{a}/diet-constraints", headers=H(tok["C"])).status_code == 403
     en = client.get("/v1/users/me/diet-constraints", headers={**H(tok["A"]), "X-Body-Lang": "en"}).json()
     assert any(x["label"].startswith("Red meat") for x in en["constraints"])
+
+
+def test_cli_diet_constraint_set_is_idempotent_and_lists(dsn, world, monkeypatch, capsys):
+    """Deploy step for carried-over data the profile card does not hold (issue #76): run twice, the second run changes nothing."""
+    import json
+    import sys
+    from body_engine import cli
+    ids, _ = world
+    c = ids["C"]
+    monkeypatch.setattr(cli, "connect", lambda: psycopg.connect(dsn, row_factory=dict_row))
+
+    def run(*argv):
+        monkeypatch.setattr(sys, "argv", ["body-engine", "diet-constraint-set", "--user-id", str(c), *argv])
+        cli.main()
+        return json.loads(capsys.readouterr().out)
+
+    first = run("--kind", "red_meat_meals_per_week", "--value", "4", "--basis", "测试")
+    assert first["changed"] and first["constraint"]["source"] == "user"
+    assert run("--kind", "red_meat_meals_per_week", "--value", "4", "--basis", "测试")["changed"] is False
+    lst = run("--list")
+    assert [x["kind"] for x in lst["constraints"]] == ["red_meat_meals_per_week"] and "kinds" not in lst
+    assert len(run("--list", "--history")["history"]) >= 1
+    assert run("--kind", "red_meat_meals_per_week", "--end")["changed"]
+    with pytest.raises(SystemExit):
+        run("--kind", "red_meat_meals_per_week")            # a value is needed
+    with pytest.raises(SystemExit):
+        run("--value", "3")                                  # --kind or --list
+    capsys.readouterr()

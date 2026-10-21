@@ -197,6 +197,20 @@ def main() -> None:
                         "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
     fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
 
+    from .nutrition import constraint_params as diet_cp
+    dc = sub.add_parser("diet-constraint-set", help="add / change one of a user's own diet constraints (issue #76; versioned, "
+                        "idempotent: the same value again changes nothing); --list shows what is in effect")
+    dc.add_argument("--user-id", type=int, required=True)
+    dc.add_argument("--list", action="store_true", help="only list the constraints in effect (with --history: every version)")
+    dc.add_argument("--history", action="store_true")
+    dc.add_argument("--kind", choices=list(diet_cp.KINDS))
+    dc.add_argument("--value", type=float, help="the limit (g / meals / times per week); leave out for on/off kinds")
+    dc.add_argument("--target", help="food_times_per_week: the food")
+    dc.add_argument("--match", action="append", help="another name of the target food (repeatable)")
+    dc.add_argument("--basis", help="why / source, e.g. 医生建议")
+    dc.add_argument("--effective-from", type=date.fromisoformat, help="YYYY-MM-DD, default today in the user's time zone")
+    dc.add_argument("--end", action="store_true", help="stop this constraint from --effective-from (history is kept)")
+
     m = sub.add_parser("memory-init", help="generate the body butler's initial profile card (existing database data + optional body-management.md transcription; only fills in missing items)")
     m.add_argument("--user-id", type=int, required=True)
     m.add_argument("--from-md", action="store_true", help="add the body-management.md transcription (assistant/memory_seed.py, only valid for the owner), "
@@ -490,6 +504,24 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "diet-constraint-set":
+            from .nutrition import constraints as diet_constraints
+            if not conn.execute("SELECT 1 FROM users WHERE id = %s", (args.user_id,)).fetchone():
+                p.error(f"no user {args.user_id}")
+            if args.list:
+                out = diet_constraints.listing(conn, args.user_id, args.history)
+                out.pop("kinds")
+            elif not args.kind:
+                p.error("--kind is required (or use --list)")
+            else:
+                try:
+                    out = (diet_constraints.end_constraint(conn, args.user_id, args.kind, args.target, args.effective_from)
+                           if args.end else
+                           diet_constraints.set_constraint(conn, args.user_id, args.kind, args.value, args.target, args.match,
+                                                           args.basis, args.effective_from, source="user"))
+                except ValueError as e:
+                    p.error(str(e))
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         elif args.cmd == "memory-init":
             res = assistant_memory.init_profile(conn, args.user_id, memory_seed.MD_PROFILE if args.from_md else None)
             res["status"] = assistant_status.init_status(conn, args.user_id, with_seed=args.from_md)
