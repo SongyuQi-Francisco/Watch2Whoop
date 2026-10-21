@@ -13,9 +13,9 @@ import os
 from ..i18n import is_en
 
 MCP_KINDS = ("claude_plan_mcp", "codex_plan_mcp", "gemini_plan_mcp", "generic_mcp_client")
-API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "gemini_cli", "openai_compatible")
+API_KINDS = ("anthropic_api", "openai_api", "gemini_api", "openai_compatible")
 # The vendors' own web search / page reading tools can be switched on for these (ai_providers.web_tools, off by default; billed on the
-# user's own key). Never for the fallback AI, OpenAI-compatible services (no common standard) or the server-side Gemini CLI.
+# user's own key). Never for the fallback AI or OpenAI-compatible services (no common standard).
 WEB_TOOL_KINDS = ("anthropic_api", "openai_api", "gemini_api")
 
 KINDS: dict[str, dict] = {
@@ -48,14 +48,6 @@ KINDS: dict[str, dict] = {
         "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
                    "gemini-2.5-pro", "gemini-2.5-flash"],
         "vision": True, "key_hint": "AI Studio 生成的 API key"},
-    "gemini_cli": {
-        "label": "Google AI 订阅（服务端 Gemini CLI）", "category": "api", "default_model": "gemini-4-argon",
-        "models": ["gemini-4-argon", "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite",
-                   "gemini-2.5-pro", "gemini-2.5-flash"],
-        # Server-side subprocess: off unless the admin sets BODY_GEMINI_CLI_ENABLED=1, and only for BODY_ASSISTANT_USER_ID
-        "vision": True, "needs_key": False, "owner_only": True,
-        "note": "仅部署者：用服务器上登录的 Gemini CLI（Google 2026-06-18 起不再给 AI Pro / Ultra 订阅提供 Gemini CLI，"
-                "只剩企业版 Code Assist 账号能登录）"},
     "openai_compatible": {
         "label": "OpenAI 兼容接口（DeepSeek、通义千问、Ollama…）", "category": "api", "default_model": None,
         "models": [], "vision": None, "needs_base_url": True,
@@ -82,9 +74,6 @@ KINDS_EN: dict[str, dict] = {
     "anthropic_api": {"label": "Anthropic API (Claude)", "key_hint": "sk-ant-… (create one at console.anthropic.com)"},
     "openai_api": {"label": "OpenAI API", "key_hint": "sk-… (create one at platform.openai.com)"},
     "gemini_api": {"label": "Google Gemini API", "key_hint": "API key from AI Studio"},
-    "gemini_cli": {"label": "Google AI subscription (Gemini CLI on the server)",
-                   "note": "Deployer only: uses the Gemini CLI signed in on the server (since 2026-06-18 Google no longer serves "
-                           "Gemini CLI to AI Pro / Ultra plans; only enterprise Code Assist accounts can sign in)"},
     "openai_compatible": {"label": "OpenAI-compatible API (DeepSeek, Qwen, Ollama…)",
                           "key_hint": "That service's API key (anything for a local Ollama)"},
 }
@@ -132,16 +121,23 @@ def is_owner(user_id: int) -> bool:
     return str(user_id) == os.environ.get("BODY_ASSISTANT_USER_ID", "1")
 
 
-def gemini_cli_enabled() -> bool:
-    """The server-side Gemini CLI runs a subprocess as the server: the admin has to opt in (default off)."""
-    return os.environ.get("BODY_GEMINI_CLI_ENABLED", "").strip().lower() in ("1", "true", "yes")
+# Kinds that no longer exist. Old rows stay (disabled) so the user can see and delete them; they can't be used or re-enabled.
+# gemini_cli: the server-side Gemini CLI on the deployer's Google AI plan; Google stopped serving Gemini CLI to AI Pro / Ultra
+# plans on 2026-06-18 (migration 460_retire_gemini_cli.sql).
+RETIRED_KINDS: dict[str, dict] = {
+    "gemini_cli": {"label": "Google AI 订阅（服务端 Gemini CLI，已下线）", "label_en": "Google AI subscription (server-side Gemini CLI, retired)",
+                   "category": "api"},
+}
 
 
-def kind_allowed(kind: str, user_id: int) -> bool:
-    """owner_only kinds (gemini_cli) exist only when enabled, and only for the deployer."""
-    if not KINDS.get(kind, {}).get("owner_only"):
-        return True
-    return gemini_cli_enabled() and is_owner(user_id)
+def kind_info(kind: str) -> dict:
+    """The catalog entry, or the retired entry for an old row (empty dict for an unknown kind)."""
+    return KINDS.get(kind) or RETIRED_KINDS.get(kind) or {}
+
+
+def kind_allowed(kind: str, user_id: int | None = None) -> bool:
+    """A kind can be used (created, chatted with, chosen) only while it is in the catalog: retired kinds can't."""
+    return kind in KINDS
 
 
 def texts(kind: str) -> dict:
@@ -152,20 +148,23 @@ def texts(kind: str) -> dict:
 
 
 def label(kind: str) -> str:
+    if kind in RETIRED_KINDS:
+        r = RETIRED_KINDS[kind]
+        return r["label_en"] if is_en() else r["label"]
     return texts(kind).get("label") or kind
 
 
 def display_name(row: dict) -> str:
     """A provider's name for the page: the stored name, except the default (the Chinese catalog label) follows the language."""
     name = row.get("display_name") or ""
+    if row.get("kind") in RETIRED_KINDS:
+        return label(row["kind"])
     return label(row["kind"]) if name == KINDS.get(row.get("kind"), {}).get("label") else name
 
 
 def public_catalog(user_id: int | None = None) -> list[dict]:
     out = []
     for kind, k in KINDS.items():
-        if k.get("owner_only") and (user_id is None or not kind_allowed(kind, user_id)):
-            continue
         out.append({"kind": kind, **{f: v for f, v in k.items()}, **texts(kind),
                     "prices": {m: PRICES.get(m) for m in k.get("models", [])}})
     return out

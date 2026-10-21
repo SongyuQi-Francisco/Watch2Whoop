@@ -20,7 +20,7 @@
 | 今天页内对话 / 托底 AI 的 system prompt（`ai/prompt.py`） | API 类 AI、托底 AI | 完整根规则，放在角色设定**之前**、长期记忆**之前** |
 | MCP `instructions`（`mcp_server.py`） | 读 instructions 的客户端（Claude 等） | 一行：「根规则见 get_briefing.system_rules，优先于记忆」 |
 | prompt `butler`（`get_prompt`） | 用这个 prompt 的客户端 | `root_rules.md` + `system_prompt.md` 拼接 |
-| `assistant/CLAUDE.md` / `GEMINI.md`（身体管家） | 身体管家 | 一行指向 `get_briefing.system_rules`（管家每次都先调它） |
+| `assistant/CLAUDE.md`（身体管家；Gemini 版本已下线） | 身体管家 | 一行指向 `get_briefing.system_rules`（管家每次都先调它） |
 
 - **版本**：`root_rules.md` 第一行 `<!-- root-rules v1 -->`，`ai/root_rules.py` 读出版本号和正文；每份报告记下 `rules_version`，以后改规则能看出旧报告是按哪一版写的。测试检查所有注入点的版本一致、`get_briefing` 总长度仍在预算内（`tests/test_briefing.py` 的上限要一起调）。
 - **不能改**：文件在镜像里，用户和 AI 的写工具只写 `assistant_profile` / `assistant_observations` / `assistant_status`，碰不到它。部署者改它 = 改代码走 PR。

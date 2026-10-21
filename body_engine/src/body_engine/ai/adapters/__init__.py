@@ -29,13 +29,8 @@ def _gemini():
     return GeminiAdapter
 
 
-def _gemini_cli():
-    from .gemini_cli import GeminiCliAdapter
-    return GeminiCliAdapter
-
-
 ADAPTERS = {"anthropic_api": _anthropic, "openai_api": _openai, "openai_compatible": _compat, "gemini_api": _gemini,
-            "gemini_cli": _gemini_cli, "system_fallback": _fallback}
+            "system_fallback": _fallback}
 
 
 def make(kind: str, model: str, api_key: str | None, base_url: str | None = None, web: bool = False) -> Adapter:

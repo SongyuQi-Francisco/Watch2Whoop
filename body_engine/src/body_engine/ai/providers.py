@@ -64,7 +64,8 @@ def _public(row: dict) -> dict:
         if out[k] is not None:
             out[k] = float(out[k])
     out["has_secret"] = row.get("encrypted_secret") is not None
-    out["category"] = catalog.KINDS[row["kind"]]["category"]
+    out["category"] = catalog.kind_info(row["kind"]).get("category", "api")
+    out["retired"] = row["kind"] in catalog.RETIRED_KINDS
     out["label"] = catalog.label(row["kind"])
     out["display_name"] = catalog.display_name(row)
     return out
@@ -128,29 +129,22 @@ def _normalize(kind: str, data: dict, existing: dict | None) -> dict:
             ex = k.get("default_model") or "deepseek-chat"
             raise ValueError(L(f"要填模型名（例：{ex}）", f"Enter a model name (e.g. {ex})"))
         out["model"] = model
-    if k.get("needs_key") is False:
-        if data.get("api_key") or data.get("base_url"):
-            raise ValueError(L("服务端 Gemini CLI 用服务器上的登录，不填 API key 和 base_url",
-                               "The server-side Gemini CLI uses the server's sign-in: no API key or base_url"))
-        if existing is None:
-            out.update(monthly_budget_usd=0, price_in_per_mtok=0, price_out_per_mtok=0)
-    else:
-        if kind == "openai_compatible":
-            if "base_url" in data or existing is None:
-                if not data.get("base_url"):
-                    raise ValueError(L("OpenAI 兼容接口要填 base_url", "An OpenAI-compatible API needs a base_url"))
-                out["base_url"] = _check_base_url(data["base_url"])
-        elif data.get("base_url"):
-            raise ValueError(L("只有 OpenAI 兼容接口才填 base_url", "Only an OpenAI-compatible API takes a base_url"))
-        if data.get("api_key"):
-            key = _check_key(data["api_key"])
-            out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
-            out["_key"] = key
-        elif existing is None:
-            base = out.get("base_url") or ""
-            local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
-            if not local:
-                raise ValueError(L("要填 API key", "Enter an API key"))
+    if kind == "openai_compatible":
+        if "base_url" in data or existing is None:
+            if not data.get("base_url"):
+                raise ValueError(L("OpenAI 兼容接口要填 base_url", "An OpenAI-compatible API needs a base_url"))
+            out["base_url"] = _check_base_url(data["base_url"])
+    elif data.get("base_url"):
+        raise ValueError(L("只有 OpenAI 兼容接口才填 base_url", "Only an OpenAI-compatible API takes a base_url"))
+    if data.get("api_key"):
+        key = _check_key(data["api_key"])
+        out["encrypted_secret"] = None  # Placeholder: encrypted after create / update gets the user_id
+        out["_key"] = key
+    elif existing is None:
+        base = out.get("base_url") or ""
+        local = urlsplit(base).hostname in LOCAL_HTTP_HOSTS if base else False
+        if not local:
+            raise ValueError(L("要填 API key", "Enter an API key"))
     if data.get("web_tools") is not None:
         if data["web_tools"] and kind not in catalog.WEB_TOOL_KINDS:
             raise ValueError(L("只有 Anthropic / OpenAI / Gemini API 能打开官方联网工具",
@@ -177,10 +171,6 @@ def create_provider(conn: psycopg.Connection, user_id: int, data: dict) -> dict:
     kind = data.get("kind")
     if kind not in catalog.KINDS:
         raise ValueError(L(f"不认识的提供商种类：{kind}", f"Unknown provider kind: {kind}"))
-    if not catalog.kind_allowed(kind, user_id):
-        raise ValueError(L("服务端 Gemini CLI 没开，或只给部署者本人用；可以选「Google AI 订阅（Gemini）」或填自己的 Gemini API key",
-                           "The server-side Gemini CLI is off, or only for the deployer; pick \"Google AI subscription (Gemini)\" "
-                           "or enter your own Gemini API key"))
     n = conn.execute("SELECT count(*) AS n FROM ai_providers WHERE user_id = %s", (user_id,)).fetchone()["n"]
     if n >= MAX_PROVIDERS:
         raise ValueError(L(f"每人最多 {MAX_PROVIDERS} 个提供商", f"At most {MAX_PROVIDERS} providers per person"))
@@ -200,6 +190,8 @@ def update_provider(conn: psycopg.Connection, user_id: int, provider_id: int, da
     row = get_provider(conn, user_id, provider_id)
     if row is None:
         return None
+    if not catalog.kind_allowed(row["kind"]):
+        raise ValueError(L("这个提供商已下线，不能再修改或启用，只能删除", "This provider was retired: it can't be changed or turned on, only deleted"))
     cols = _apply_key(user_id, _normalize(row["kind"], data, row))
     if "status" in data:
         if data["status"] not in ("active", "disabled"):

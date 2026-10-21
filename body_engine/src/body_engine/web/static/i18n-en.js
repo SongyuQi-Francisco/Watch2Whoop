@@ -619,7 +619,6 @@ I18N.addEn({
   "撤回后托底 AI 不再发送你的数据，也就不能用了。确定？": "After withdrawing, the backup AI no longer sends your data and can't be used. Withdraw?",
   "新对话": "New chat",
   "最近使用 {when}": "Last used {when}",
-  "服务端订阅": "server subscription",
   "未同意": "Not agreed",
   "本月 {cost} / {budget}": "This month {cost} / {budget}",
   "本月 {quota} · {day} 重置": "This month {quota} · resets {day}",
@@ -870,6 +869,10 @@ I18N.addEn({
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",
   "历史数据导入中 {p}%": "Importing history {p}%",
+  // retired AI providers
+  "已下线，只能删除": "Retired, can only be deleted",
+  "已下线": "Retired",
+  "这个 AI 提供商已下线，不能再用，只能删除。": "This AI provider was retired: it can no longer be used, only deleted.",
   // grocery: prices from the user's own AI, purchase history (grocery.js); web tools toggle (ai.js)
   "{n} 天前": "{n} d ago",
   "买得便宜": "Good price",
