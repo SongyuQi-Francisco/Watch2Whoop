@@ -784,4 +784,17 @@ I18N.addEn({
   "读取失败": "Couldn't load",
   "还没有反馈": "No feedback yet",
   "问题": "Bug",
+  // invite friends (#57)
+  "你的邀请码已被管理员停用": "Your invite code was turned off by the admin",
+  "分享链接": "Share link",
+  "复制邀请码": "Copy code",
+  "好友用你的邀请码注册，就能开通账号": "Friends who sign up with your code get their account right away",
+  "已填好好友的邀请码": "Your friend's invite code is filled in",
+  "已有 {n} 位好友加入 · 还能邀请 {left} 位": "{n} friends joined · {left} invites left",
+  "用我的邀请码 {code} 注册 Watch2Whoop": "Sign up for Watch2Whoop with my invite code {code}",
+  "邀请名额已用完": "No invites left",
+  "邀请好友": "Invite friends",
+  "链接已复制": "Link copied",
+  "激活码": "Activation code",
+  "管理员给的激活码，或好友的邀请码": "An activation code from the admin, or a friend's invite code",
 });

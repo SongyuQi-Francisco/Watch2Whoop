@@ -80,14 +80,20 @@ def main() -> None:
     acr.add_argument("--id", type=int, required=True)
     iv = sub.add_parser("invite-code", help="beta invite codes for self-service sign-up (account/invites.py)")
     ivs = iv.add_subparsers(dest="iv_cmd", required=True)
+    ivc = ivs.add_parser("create", help="one code that opens up to N accounts (one per person); prints the code (shown only once)")
+    ivc.add_argument("--label", required=True, help="who / which channel the code is for")
+    ivc.add_argument("--uses", type=int, required=True, help="how many accounts it can open")
+    ivc.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
+    ivc.add_argument("--created-by", help="free text recorded with the code")
     ivb = ivs.add_parser("batch", help="create a batch; prints CSV code,batch_id,label,expires_at,max_uses (plaintext shown only once)")
     ivb.add_argument("--count", type=int, required=True)
     ivb.add_argument("--label", required=True, help="who / which channel the batch is for")
     ivb.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
     ivb.add_argument("--max-uses", type=int, default=1, help="accounts per code (default 1)")
     ivb.add_argument("--created-by", help="free text recorded with the batch")
-    ivl = ivs.add_parser("list", help="batches with uses / free codes; --batch N: its codes and who redeemed them")
+    ivl = ivs.add_parser("list", help="batches with uses / remaining and who redeemed (masked identity, time); --batch N: per code")
     ivl.add_argument("--batch", type=int)
+    ivl.add_argument("--kind", choices=["admin", "referral"], help="referral: users' own codes — who invited whom")
     ivr = ivs.add_parser("revoke", help="stop a batch or one code (accounts already opened stay)")
     ivg = ivr.add_mutually_exclusive_group(required=True)
     ivg.add_argument("--batch", type=int)
@@ -304,7 +310,12 @@ def main() -> None:
                 print("revoked" if activation.revoke(conn, args.id) else "not found / already revoked")
         elif args.cmd == "invite-code":
             from .account import invites
-            if args.iv_cmd == "batch":
+            if args.iv_cmd == "create":
+                res = invites.create_code(conn, args.label, args.uses, args.days, args.created_by)
+                print(invites.pretty(res["code"]))
+                print(f"batch {res['batch_id']} · {res['label']} · {res['max_uses']} uses · "
+                      f"expires {res['expires_at'].isoformat() if res['expires_at'] else 'never'} · plaintext shown only this once")
+            elif args.iv_cmd == "batch":
                 import csv
                 import sys
                 res = invites.create_batch(conn, args.count, args.label, args.days, args.max_uses, args.created_by)
@@ -314,7 +325,7 @@ def main() -> None:
                     w.writerow([invites.pretty(code), res["batch_id"], res["label"],
                                 res["expires_at"].isoformat() if res["expires_at"] else "", res["max_uses"]])
             elif args.iv_cmd == "list":
-                rows = invites.list_codes(conn, args.batch) if args.batch else invites.list_batches(conn)
+                rows = invites.list_codes(conn, args.batch) if args.batch else invites.list_batches(conn, args.kind)
                 for r in rows:
                     print(json.dumps(r, default=str, ensure_ascii=False))
             else:
