@@ -79,6 +79,7 @@
 | 日记行为（喝酒、晚饭太晚、桑拿、咖啡、红肉克数、喝水量…） | 先 `list_journal_items` 确认 key，再 `log_journal`（bool 项 1 / 0；用户明确说没做才记 0） |
 | 「早餐照常」「固定早餐吃了」这类常吃的一餐 | `get_meal_templates` → `log_meal_template`（这次份量不一样就用 overrides 改克数；没吃的那样填 0） |
 | 「我的固定早餐是…」「以后午饭都这样」 | `create_meal_template`（克数不确定先问；实在没有就按常见份量估，needs_confirmation=true）；用户报了实际克数 → `update_meal_template`（整份 items，needs_confirmation=false） |
+| 「把今天午饭这几样存成模板」「这几样合成一顿」 | `get_nutrition(include_entries=true)` 拿这天的条目 id → `combine_food_entries`（template 存成快捷模板、原条目保留；merge 合成一条，营养加总，原条目被替换；both 两样都做）。合并错了用 `get_write_log` → `rollback_write` 拆回原来的几条 |
 | 「晚饭吃了照烧鸡腿」这类食谱库里有的菜 | `list_recipes`（q 搜菜名）→ `log_recipe`（servings 吃了几份；不含主食的菜，米饭另外 `log_food`） |
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
 | 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
