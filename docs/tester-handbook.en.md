@@ -134,11 +134,9 @@ See the next section, "Connect your AI".
 
 The first sync pulls the last 90 days and takes a few minutes to a quarter of an hour: keep the app open and the phone unlocked. After that the app syncs in the background on its own.
 
-### ⑦ Import older history (optional)
+### ⑦ Read older history (optional)
 
-To see data older than 90 days: Health → your profile picture → "Export All Health Data" → save it to Files. In the app: "Me" → "Import health history" → "Choose file".
-
-![Export](images/tester-handbook/health-export.jpg) ![Import](images/tester-handbook/import.jpg)
+During setup you can pick "Last 90 days" (default) or "All history". To get older data later: "Me" → "Phone sync" → "Read range" → "All history". The app reads Health directly, no export file needed; a lot of data can take from tens of minutes to a few hours: keep the app open and the phone unlocked, and if it stops it carries on the next time you open the app. The Today page shows "Importing history x%".
 
 ### On a computer
 

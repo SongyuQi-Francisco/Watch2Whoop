@@ -828,7 +828,7 @@ I18N.addEn({
   "去连接": "Connect",
   "每天看一眼今天页：恢复分告诉你今天练多重": "Check Today every day: recovery tells you how hard to train",
   "戴着手表睡觉，睡眠和恢复才准": "Wear the watch to sleep so sleep and recovery are accurate",
-  "第一次同步最近 90 天，要几分钟到十几分钟；保持 app 打开、手机解锁": "The first sync covers the last 90 days and takes a few minutes to a quarter of an hour; keep the app open and the phone unlocked",
+  "第一次同步默认读最近 90 天，几分钟到十几分钟；要更早的历史，在「我 → 手机同步」选「全部历史」": "The first sync reads the last 90 days by default (a few minutes to a quarter of an hour); for older history choose \"All history\" under Me → Phone sync",
   "更多说明在「我 → 使用手册」": "More in Me → User guide",
   "打开手册": "Open guide",
   "跳过": "Skip",
@@ -838,4 +838,5 @@ I18N.addEn({
   // sync.js (on-demand refresh)
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",
+  "历史数据导入中 {p}%": "Importing history {p}%",
 });

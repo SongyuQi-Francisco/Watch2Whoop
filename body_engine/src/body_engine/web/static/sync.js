@@ -2,7 +2,10 @@
    server for fresh data. Used by pull to refresh and 「我 → 数据更新」 (app.js), and by the Watch2Whoop app after its sync round
    on open (it runs `BodySync.refresh("app")` in the page). POST /v1/users/me/sync/refresh pulls the new data from Open Wearables
    in the background and queues the score recompute; this file polls /sync/status while that is busy and reloads the page
-   data when the import and then the scores are done. Registered in window.BodyPlugins (init) and window.BodySync. */
+   data when the import and then the scores are done. Registered in window.BodyPlugins (init) and window.BodySync.
+   Also the Apple Health read range (sync/history.py): while the whole history is being read and processed the line shows
+   「历史数据导入中 x%」 (GET /v1/users/me/health-history, polled every 30 s), and window.BodyHealthRange.report() lets the app
+   (which has no cookie of its own) send its choice and progress (PUT, from its WebView). */
 (() => {
   "use strict";
   let C = null;          // ctx from app.js: api, reload
@@ -10,6 +13,8 @@
   let shown = false;     // the line is visible: own data, Today tab, today's date
   let polling = 0;       // poll generation (a new refresh restarts polling)
   let active = false;    // a poll loop is running
+  let hist = null;       // last /health-history
+  let histTimer = 0;
   const $ = (s, r = document) => r.querySelector(s);
   const tr = (k, p) => window.I18N.t(k, p);
   const POLL_MS = 3000, POLL_MAX_MS = 5 * 60 * 1000;
@@ -38,13 +43,34 @@
   function draw() {
     const e = el();
     const last = lastTime(st);
-    const text = !st || !st.linked ? "" : st.busy ? tr("同步中…") : last ? tr("已更新 {t}", { t: hhmm(last) }) : "";
+    const text = hist?.active ? tr("历史数据导入中 {p}%", { p: hist.percent ?? 0 })
+      : !st || !st.linked ? "" : st.busy ? tr("同步中…") : last ? tr("已更新 {t}", { t: hhmm(last) }) : "";
     e.textContent = text;
     e.hidden = !shown || !text;
   }
 
+  async function loadHistory() {
+    clearTimeout(histTimer);
+    histTimer = 0;
+    const was = hist?.active;
+    try { hist = await C.api("/v1/users/me/health-history"); } catch (e) { hist = null; }
+    draw();
+    if (hist?.active) histTimer = setTimeout(loadHistory, 30000);
+    else if (was) C.reload?.();   // the history just finished: show the new scores
+  }
+
+  // The app's read range and progress (it runs this in its WebView; the page has the login cookie)
+  async function report(body) {
+    if (!C) return null;
+    try { hist = await C.api("/v1/users/me/health-history", { method: "PUT", body }); } catch (e) { return null; }
+    draw();
+    if (hist?.active && !histTimer) histTimer = setTimeout(loadHistory, 30000);
+    return hist;
+  }
+
   async function load() {
     try { st = await C.api("/v1/users/me/sync/status"); } catch (e) { st = null; }
+    if (!hist) loadHistory();
     draw();
     if (st?.busy && !active) poll(++polling);   // opened while a refresh is running (e.g. from another device)
   }
@@ -85,6 +111,7 @@
   }
 
   window.BodySync = { refresh, header };
+  window.BodyHealthRange = { report };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init(ctx) { C = ctx; },   // runs again on every reload: keep st (a poll may be running)
   });

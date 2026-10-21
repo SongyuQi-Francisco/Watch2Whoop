@@ -26,6 +26,10 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 - First-run onboarding: a permissions step (Health) after sign-up; intro and tips on the Today page (#63).
 - Sync on open: every time the app is opened or comes back to the foreground it syncs once (throttled) and asks the
   server to pull the new data right away; the Today page shows 「同步中… / 已更新」 (#69).
+- Health read range: 「近 90 天」 (default) or 「全部历史」, chosen in the permissions step or later under Phone sync →
+  Read range. The app reads the whole history from HealthKit itself (OW SDK, newest first, resumable) with progress and a
+  rough time left; the server then computes the scores for the whole history and the Today page shows
+  「历史数据导入中 x%」. The manual export.zip upload on the Today page is gone (admins keep `import-apple-zip`).
 
 ## 1.0.0+1 — 2026-10-18
 First build (iOS only), the state of the public release `v0.1.0`:

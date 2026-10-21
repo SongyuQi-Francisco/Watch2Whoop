@@ -7,6 +7,9 @@
 //   watch2whoop://account-deleted: sync stops, the token and config are cleared, and the app returns to onboarding.
 //
 // Home = the Body Engine today page, full screen in a WebView.
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,6 +19,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
+import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
@@ -62,6 +66,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     onDone: _afterSyncRound,
   );
 
+  /// Read range and history progress for the server (health_range.dart), through the page (it has the login cookie):
+  /// every 30 s while the app is in the foreground, after the page loads and after each sync round; only when it changed.
+  late final RangeReporter _rangeReporter = RangeReporter((r) async {
+    final res = await _web.runJavaScriptReturningResult(
+        'window.BodyHealthRange ? (window.BodyHealthRange.report(${jsonEncode(r)}), 1) : 0');
+    return res.toString() == '1';
+  });
+  Timer? _rangeTimer;
+  bool _foreground = true;
+
+  Future<void> _reportRange() async {
+    final c = AppState.instance.config;
+    if (!mounted || !_foreground || _loading || _error != null || !c.owConnected) return;
+    try {
+      final p = HistoryProgress.from(await HealthSync.instance.status(), requestedTypes.length, DateTime.now());
+      await _rangeReporter.maybeSend(rangeReport(c, p));
+    } catch (e) {
+      debugPrint('range report failed: $e');
+    }
+  }
+
   Future<void> _afterSyncRound() async {
     await HealthSync.instance.drainNativeLog();
     for (var i = 0; i < 10 && mounted && (_loading || _error != null); i++) {
@@ -73,6 +98,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('sync refresh call failed: $e');
     }
+    await _reportRange();
   }
 
   /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
@@ -98,6 +124,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           onPageFinished: (_) {
             setState(() => _loading = false);
             _maybeCheckLogin();
+            Future<void>.delayed(const Duration(seconds: 3), _reportRange);
           },
           // A same-page navigation that only changes the # fragment (one-time login code) may not fire onPageFinished, so fall back on progress
           onProgress: (p) {
@@ -131,6 +158,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
     _load();
+    _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportRange());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
@@ -144,6 +172,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _rangeTimer?.cancel();
     AppState.instance.removeListener(_onConfig);
     SetupLinks.instance.pending.removeListener(_onLink);
     super.dispose();
@@ -196,6 +225,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
+    _foreground = state == AppLifecycleState.resumed;
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
