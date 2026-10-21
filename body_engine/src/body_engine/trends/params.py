@@ -79,3 +79,31 @@ RI_GOOD, RI_LATE = 0.5, 0.75          # lowest point in the first half = good, a
 
 # ---- heart-rate recovery one minute after exercise (Cole et al. 1999: ≤ 12 bpm abnormal)
 HRR_LOW, HRR_GOOD = 12.0, 20.0
+
+# ---- English twins of every Chinese label / unit the Trends tab shows (series.py SERIES, the status labels above and in
+# calc.py), looked up with i18n.tl() when the request is in English (issue #42). Chinese stays the stored / AI-facing text.
+EN = {
+    # series labels
+    "恢复分": "Recovery", "HRV（SDNN 日均）": "HRV (SDNN, daily mean)", "静息心率（Apple）": "Resting HR (Apple)",
+    "呼吸频率": "Respiratory rate", "血氧": "Blood oxygen (SpO₂)", "手腕温度偏差": "Wrist temperature deviation",
+    "生病风险": "Illness risk", "最低心率出现": "Lowest HR timing", "实际睡眠": "Sleep", "睡眠需求": "Sleep need",
+    "睡眠债": "Sleep debt", "睡眠表现": "Sleep performance", "睡眠表现（综合）": "Sleep performance (overall)",
+    "恢复性睡眠": "Restorative sleep", "恢复性睡眠占比": "Restorative sleep share", "睡眠效率": "Sleep efficiency",
+    "睡眠分": "Sleep score", "睡眠规律性": "Sleep consistency", "夜间醒来": "Awakenings", "日照时间": "Time in daylight",
+    "负荷 strain": "Strain", "负荷（含肌肉）": "Strain (with muscle load)", "CTL 体能": "Fitness (CTL)",
+    "ATL 疲劳": "Fatigue (ATL)", "TSB 状态": "Form (TSB)", "急慢性负荷比": "Acute:chronic load ratio",
+    "有氧分钟": "Aerobic minutes", "肌肉负荷": "Muscle load", "步数": "Steps", "活动消耗": "Active energy",
+    "总消耗": "Total energy", "运动后心率恢复": "Heart rate recovery", "压力": "Stress", "韧性": "Resilience",
+    "体重": "Weight", "身体年龄": "Body age",
+    # units
+    "次/分": "/min", "次": "times", "分钟": "min", "步": "steps", "岁": "yrs",
+    # status labels (calc.py and LOAD_FOCUS / RESILIENCE_LEVELS / ILLNESS_LEVELS / CHRONO_BINS above)
+    "平衡": "Balanced", "偏高": "High", "偏低": "Low", "很低": "Very low",
+    "过度": "Overreaching", "去适应": "Detraining", "恢复中": "Recovering", "疲劳": "Strained", "有效": "Productive",
+    "低效": "Unproductive", "保持": "Maintaining",
+    "低有氧": "Low aerobic", "高有氧": "High aerobic", "无氧": "Anaerobic",
+    "极强": "Exceptional", "强": "Strong", "稳固": "Solid", "一般": "Adequate", "受限": "Limited",
+    "高": "High", "留意": "Watch", "低": "Low",
+    "早型": "Early", "中间型": "Intermediate", "晚型": "Late", "极晚型": "Very late",
+    "前半夜": "First half", "后半夜": "Second half", "很晚": "Very late",
+}
