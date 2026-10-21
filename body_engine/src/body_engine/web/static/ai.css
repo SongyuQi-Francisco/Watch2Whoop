@@ -78,3 +78,4 @@
   color: var(--text); font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer;
 }
 .ai-q:active { background: var(--surface-2); }
+.ai-q:disabled { opacity: .45; cursor: default; }

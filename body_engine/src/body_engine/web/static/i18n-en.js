@@ -938,4 +938,5 @@ I18N.addEn({
   "这周有什么半价适合我": "Half-price picks for me",
   "我的数据都共享给了谁": "Who can see my data?",
   "你都记得我哪些事": "What do you remember about me?",
+  "快捷问题": "Quick questions",
 });

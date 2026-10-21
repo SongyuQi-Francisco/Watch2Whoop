@@ -288,7 +288,7 @@
 
   // ---------------------------------------------------------------- chat panel
   // items: what goes with the next message: {kind: "photo", img} or {kind: "video", frames, seconds}. Frames count as images (at most MAX_IMAGES).
-  const chat = { conv: null, busy: false, items: [] };
+  const chat = { conv: null, busy: false, items: [], photoQuick: null };   // photoQuick: a photo quick task waiting for the picker
   const MAX_IMAGES = 8;
   const imageCount = () => chat.items.reduce((n, it) => n + (it.kind === "video" ? it.frames.length : 1), 0);
   const ICON = {
@@ -313,7 +313,7 @@
       <div class="ai-usage small muted" id="ai-quota" hidden></div>
       <div class="panel-body ai-log" id="ai-log"></div>
       <div class="ai-thumbs" id="ai-thumbs"></div>
-      <div class="ai-quick-row" id="ai-quick-row" hidden></div>
+      <div class="ai-quick-row" id="ai-quick-row" role="group" aria-label="${esc(tr("快捷问题"))}" hidden></div>
       <div class="ai-rec" id="ai-rec" hidden><span class="ai-rec-dot"></span><span id="ai-rec-time">0:00</span><span class="small" id="ai-rec-hint">${esc(tr("松开识别 · 上滑取消"))}</span></div>
       <form class="ai-composer" id="ai-form" autocomplete="off">
         <label class="close ai-attach" id="ai-photo" aria-label="${esc(tr("照片"))}"><input type="file" accept="image/*" id="ai-file" multiple hidden>${ICON.photo}</label>
@@ -329,7 +329,10 @@
     $("#ai-form", p).onsubmit = (e) => { e.preventDefault(); send(); };
     $("#ai-text", p).addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && window.matchMedia("(min-width: 1024px)").matches) { e.preventDefault(); send(); } });
     $("#ai-text", p).addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`; });
-    $("#ai-file", p).onchange = (e) => addImages([...e.target.files]).finally(() => { e.target.value = ""; });
+    $("#ai-file", p).onchange = (e) => addImages([...e.target.files]).finally(() => { e.target.value = ""; photoQuickDone(); });
+    $("#ai-file", p).addEventListener("cancel", () => { chat.photoQuick = null; });
+    // The photo button itself is a normal attach (the picker's own click bubbles up here too: ignore that one)
+    $("#ai-photo", p).addEventListener("click", (e) => { if (e.target.id !== "ai-file") chat.photoQuick = null; });
     $("#ai-vfile", p).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addVideo(f); };
     setupMic($("#ai-mic", p));
     return p;
@@ -359,39 +362,59 @@
   }
 
   // Quick tasks for the page Jarvis was opened from (#101): before the first message under the greeting, afterwards a
-  // scrollable row above the input. write: changes data (hidden while viewing someone else); photo: opens the photo picker.
+  // scrollable row above the input. A tap sends only its own text; the draft and attached photos stay for the user.
+  // photo: opens the photo picker and sends the text with the photos picked there.
+  // None while viewing someone else (the chat answers about the signed-in user), none on a page without a list.
   function quickList() {
+    if (C.isSelf && !C.isSelf()) return [];
     const page = C.page?.() || "today", tab = page.split(".")[0];
     const Q = {
       today: [{ t: tr("今天适合练吗") }, { t: tr("解释一下今天的恢复分") }, { t: tr("昨晚睡得怎么样") }],
       trends: [{ t: tr("复盘这一周") }, { t: tr("最近负荷是不是太高") }, { t: tr("最近睡得够吗") }],
-      "record.journal": [{ t: tr("最近哪些习惯影响恢复") }, { t: tr("记一下今天的状态"), write: true }],
-      "record.training": [{ t: tr("今天练什么") }, { t: tr("这周按恢复调整一下"), write: true }],
-      food: [{ t: tr("拍照记一餐"), write: true, photo: true }, { t: tr("今天还差多少蛋白") }, { t: tr("下一餐吃什么合适") }],
-      "food.shopping": [{ t: tr("按下周菜单列清单并查价"), write: true }, { t: tr("这周有什么半价适合我") }],
+      "record.journal": [{ t: tr("最近哪些习惯影响恢复") }, { t: tr("记一下今天的状态") }],
+      "record.training": [{ t: tr("今天练什么") }, { t: tr("这周按恢复调整一下") }],
+      food: [{ t: tr("拍照记一餐"), photo: true }, { t: tr("今天还差多少蛋白") }, { t: tr("下一餐吃什么合适") }],
+      "food.shopping": [{ t: tr("按下周菜单列清单并查价") }, { t: tr("这周有什么半价适合我") }],
       me: [{ t: tr("我的数据都共享给了谁") }, { t: tr("你都记得我哪些事") }],
     };
-    const self = C.isSelf ? C.isSelf() : true;
-    return (Q[page] || Q[tab] || Q.today).filter((q) => (self || !q.write) && !(q.photo && C.ai?.vision === false));
+    return (Q[page] || Q[tab] || []).filter((q) => !(q.photo && C.ai?.vision === false));
   }
   function drawQuick() {
     const p = panel(), list = quickList(), started = !!$(".ai-msg.user", p), row = $("#ai-quick-row", p);
+    const hadFocus = !!$("#ai-quick", p)?.contains(document.activeElement) && document.activeElement.matches(":focus-visible");
     $("#ai-quick", p)?.remove();
-    const html = list.map((q, i) => `<button type="button" class="ai-q" data-q="${i}">${esc(q.t)}</button>`).join("");
+    const html = list.map((q, i) => `<button type="button" class="ai-q" data-q="${i}"${chat.busy ? " disabled" : ""}>${esc(q.t)}</button>`).join("");
     row.innerHTML = started ? html : ""; row.hidden = !started || !list.length; row.scrollLeft = 0;
     if (!started && list.length) {
       const box = document.createElement("div"); box.id = "ai-quick"; box.className = "ai-quick"; box.innerHTML = html;
+      box.setAttribute("role", "group"); box.setAttribute("aria-label", tr("快捷问题"));
       $("#ai-log", p).appendChild(box);
     }
     $$("[data-q]", p).forEach((b) => { b.onclick = () => askQuick(list[Number(b.dataset.q)]); });
+    if (hadFocus) $("#ai-text", p).focus();  // keyboard use: the pressed button is gone (and the row is disabled while replying)
+  }
+  function quickBusy(on) { $$("#ai-chat [data-q]").forEach((b) => { b.disabled = on; }); }
+  // Send text (+ items) as the user's message without touching the draft or the photos already attached
+  function sendQuick(text, items = []) {
+    const ta = $("#ai-text"), draft = ta.value, kept = chat.items;
+    chat.items = items; ta.value = text;
+    send();  // takes the text and items synchronously
+    chat.items = kept; drawThumbs();
+    ta.value = draft; ta.dispatchEvent(new Event("input"));
   }
   function askQuick(q) {
     if (chat.busy) return;
-    const ta = $("#ai-text");
-    if (q.photo) { ta.value = q.t; $("#ai-file").click(); return; }  // the user sends once the photo is attached
-    const draft = ta.value;
-    ta.value = q.t; send();
-    ta.value = draft;  // send() has taken the question synchronously; keep what the user was typing
+    if (q.photo) { chat.photoQuick = { text: q.t, before: chat.items.length }; $("#ai-file").click(); return; }
+    sendQuick(q.t);
+  }
+  // After the photo picker: a pending photo quick task sends its text with the newly picked photos only
+  function photoQuickDone() {
+    const q = chat.photoQuick; chat.photoQuick = null;
+    if (!q || chat.busy) return;
+    const picked = chat.items.slice(q.before);
+    if (!picked.length) return;
+    chat.items = chat.items.slice(0, q.before);
+    sendQuick(q.text, picked);
   }
 
   // Quick switch in the chat panel: same options as AI settings. An in-page AI (API / fallback) starts a new conversation here;
@@ -559,7 +582,7 @@
   }
 
   async function stream(path, body) {
-    chat.busy = true; $("#ai-send").disabled = true;
+    chat.busy = true; $("#ai-send").disabled = true; quickBusy(true);
     let cur = null, wrote = false;
     const status = note("…", "faint");
     try {
@@ -606,7 +629,7 @@
       status.remove(); note(tr("连不上（没联网，或 Tailscale 没开）"), "warn");
     } finally {
       if (status.isConnected && status.textContent === "…") status.remove();
-      chat.busy = false; $("#ai-send").disabled = false;
+      chat.busy = false; $("#ai-send").disabled = false; quickBusy(false);
       if (wrote) C.refresh?.();  // Something was written to the database: refresh the Today page data
     }
   }
