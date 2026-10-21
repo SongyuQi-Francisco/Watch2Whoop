@@ -224,6 +224,25 @@ deploy/ops/install.sh                      # 装定时任务（macOS LaunchAgent
 
 `python3 deploy/assistant/butler.py status` 看状态：`needs_login` = 登录过期，在跑管家的机器上用管家那个系统用户重新 `claude` 登录；`needs_trust` = 没信任 `assistant/` 目录。会话地址变了要更新 `.env` 的 `BODY_ASSISTANT_URL`。详见 [deploy/assistant/README.md](../deploy/assistant/README.md)。
 
+## 登录身份：让老账号能用邮箱 / Apple 登录
+
+管理员开的账号（开户、激活链接）原来没有登录身份，本人在登录页用邮箱或 Apple 登录会变成一个新的待开通账号。给账号绑定邮箱后，本人用邮箱验证码就直接进自己的账号：
+
+```bash
+body-engine identity-link --user-id 7 --email someone@example.com   # 绑定（重复跑无副作用）；这个邮箱已属于别的账号时拒绝
+body-engine identity-link --user-id 7 --email someone@example.com --move   # 确认后从别的账号（比如误建的待开通账号）移过来
+body-engine identity-link --list [--user-id 7]                      # 看谁绑了哪些邮箱 / Apple
+body-engine identity-link --unlink --user-id 7 --email someone@example.com   # 或 --unlink --id N
+body-engine user-add --name 妈妈 --email mum@example.com             # 开户时直接绑定
+body-engine activation-code create --user-id 7 --email someone@example.com   # 发激活码时顺带绑定
+```
+
+目标：账号开通过一次以后，之后用 Apple 或邮箱验证码登录都直接进，不用再输任何码。
+
+- 本人用还没绑定的邮箱 / Apple 登录，会先到「开通」那一步：在那里填**自己老账号的激活码或登录码**，这个登录方式就绑到老账号上（误建的空账号自动删掉），之后直接登录。
+- 用激活链接 / 登录码进来、账号还没有任何登录方式的，进去后会提示「绑定 Apple / 邮箱」；本人也可以在「我」→「登录方式」自己绑（邮箱用验证码确认，Apple 要在 Watch2Whoop app 里）。
+- Apple 登录只有一种情况会自动进老账号：Apple 确认过的、不是隐藏转发（`@privaterelay.appleid.com`）的邮箱，正好等于**唯一一个**已开通账号绑定的邮箱。其他情况（转发邮箱、对不上、对上多个）一律当新账号，不会猜着合并。每次自动绑定、移动、解绑都记在 `identity_events`（只存打码后的地址）。
+
 ## 内测码（自助注册上线后）
 
 自助注册的人用 Apple / 邮箱登录后要输一个内测码才能开通。

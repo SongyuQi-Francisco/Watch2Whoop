@@ -48,6 +48,14 @@ def main() -> None:
     u.add_argument("--height-cm", type=float)
     u.add_argument("--sex")
     u.add_argument("--timezone", default="Australia/Sydney")
+    u.add_argument("--email", help="bind this e-mail as the account's sign-in (the person then signs in with an e-mail code)")
+    il = sub.add_parser("identity-link", help="bind / list / remove sign-in identities of accounts (account/identities.py)")
+    il.add_argument("--user-id", type=int)
+    il.add_argument("--email", help="e-mail to bind (or to remove with --unlink)")
+    il.add_argument("--move", action="store_true", help="take the e-mail over from the account it is bound to now")
+    il.add_argument("--list", action="store_true", help="list identities (all, or --user-id's)")
+    il.add_argument("--unlink", action="store_true", help="remove --id, or --user-id's --email")
+    il.add_argument("--id", type=int, help="identity id (from --list), for --unlink")
     sub.add_parser("user-list", help="list users")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
@@ -74,6 +82,7 @@ def main() -> None:
     acc.add_argument("--user-id", type=int, required=True)
     acc.add_argument("--label", help="for whom, e.g. Mum (shown in list; minted login codes are named activation:<label>)")
     acc.add_argument("--days", type=int, help="validity in days (default: until revoked)")
+    acc.add_argument("--email", help="also bind this e-mail as the account's sign-in (identity-link)")
     acl = acs.add_parser("list", help="list activation codes (no plaintext)")
     acl.add_argument("--user-id", type=int)
     acr = acs.add_parser("revoke", help="revoke an activation code by id (devices already set up stay signed in)")
@@ -288,6 +297,24 @@ def main() -> None:
                    VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
                 (args.name, args.role, args.birth_date, args.height_cm, args.sex, args.timezone)).fetchone()
             print("user id:", row["id"])
+            if args.email:
+                from .account import identities
+                print("email:", identities.link_email(conn, row["id"], args.email))
+        elif args.cmd == "identity-link":
+            from .account import identities
+            if args.list:
+                for r in identities.list_identities(conn, args.user_id):
+                    print(json.dumps(r, default=str, ensure_ascii=False))
+            elif args.unlink:
+                print("removed:", identities.unlink(conn, args.id, args.user_id, args.email))
+            else:
+                if args.user_id is None or not args.email:
+                    raise SystemExit("identity-link: give --user-id and --email (or --list / --unlink)")
+                try:
+                    print(identities.link_email(conn, args.user_id, args.email, move=args.move))
+                except identities.IdentityConflict as e:
+                    raise SystemExit(f"refused: {args.email} already signs in to user {e.user_id} ({e.status}); "
+                                     "--move takes it over")
         elif args.cmd == "user-list":
             for r in conn.execute("SELECT id, display_name, role, birth_date, height_cm, timezone FROM users ORDER BY id"):
                 print(json.dumps(r, default=str, ensure_ascii=False))
@@ -303,6 +330,9 @@ def main() -> None:
                 print(f"{base or '<BODY_PUBLIC_URL>'}/app/activate.html#{res['code']}")
                 print(f"# id={res['id']} {'valid until revoked' if args.days is None else f'valid {args.days} days'}; "
                       "plaintext shown only this once" + ("" if base else "; BODY_PUBLIC_URL is not set"))
+                if args.email:
+                    from .account import identities
+                    print("# email:", identities.link_email(conn, args.user_id, args.email))
             elif args.ac_cmd == "list":
                 for r in activation.list_codes(conn, args.user_id):
                     print(json.dumps(r, default=str, ensure_ascii=False))

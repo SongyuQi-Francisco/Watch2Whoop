@@ -6,9 +6,11 @@
   (APPLE_JWKS_URL, cached, refetched on an unknown `kid`), iss = https://appleid.apple.com, aud ∈ BODY_APPLE_AUDIENCES
   (the app bundle ID(s), comma separated), exp, and — when the app sends its raw nonce — sha256(nonce) = the `nonce`
   claim. No Apple secret / key file is needed for this (that is only for web sign-in with a Services ID, later).
-- Identities: (provider, subject) → user. A new identity whose verified e-mail matches an existing identity's e-mail
-  joins that user (same person signing in with Apple after e-mail, or the other way round); otherwise a new `pending`
-  user is created. Disabled users cannot sign in.
+- Identities: (provider, subject) → user. An unknown identity makes a new `pending` user. Existing accounts get their
+  identities bound explicitly (account/identities.py: the admin's `identity-link`, Me → 「登录方式」, or an existing
+  account's activation / login code entered on the invite step). The one automatic case is in the Apple endpoint
+  (identities.apple_account_for): Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail.
+  Disabled users cannot sign in.
 """
 from __future__ import annotations
 
@@ -189,16 +191,10 @@ def find_or_create_user(conn: psycopg.Connection, provider: str, subject: str, e
                         verified_at = COALESCE(verified_at, CASE WHEN %s THEN now() END) WHERE id = %s""",
                      (email, email_verified, ident["id"]))
     else:
-        user_id = None
-        if email and email_verified:
-            hit = conn.execute("""SELECT user_id FROM user_identities WHERE lower(email) = %s AND verified_at IS NOT NULL
-                                  ORDER BY id LIMIT 1""", (email,)).fetchone()
-            user_id = hit["user_id"] if hit else None
-        if user_id is None:
-            display = (name or "").strip()[:40] or (email.split("@")[0][:30] if email else "") or "新用户"
-            user_id = conn.execute("INSERT INTO users (display_name, role, status) VALUES (%s, 'member', 'pending') RETURNING id",
-                                   (display,)).fetchone()["id"]
-            new_user = True
+        display = (name or "").strip()[:40] or (email.split("@")[0][:30] if email else "") or "新用户"
+        user_id = conn.execute("INSERT INTO users (display_name, role, status) VALUES (%s, 'member', 'pending') RETURNING id",
+                               (display,)).fetchone()["id"]
+        new_user = True
         conn.execute("""INSERT INTO user_identities (user_id, provider, subject, email, verified_at, last_login_at)
                         VALUES (%s, %s, %s, %s, CASE WHEN %s THEN now() END, now())""",
                      (user_id, provider, subject, email, email_verified))

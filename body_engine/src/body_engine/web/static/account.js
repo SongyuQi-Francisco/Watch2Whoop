@@ -132,7 +132,7 @@
     setError("#login-error", o.msg);
   }
 
-  const drawHint = () => { $("#le-hint").textContent = L.apple ? tr("登录或注册") : tr("用邮箱登录或注册"); };
+  const drawHint = () => { $("#le-hint").textContent = L.apple ? tr("登录 / 注册") : tr("用邮箱登录 / 注册"); };
 
   function tickResend() {
     clearInterval(L.timer);
