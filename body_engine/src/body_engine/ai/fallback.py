@@ -33,7 +33,8 @@ from . import providers
 
 KIND = "system_fallback"
 CONSENT_VERSION = "2026-10-20"   # writes go through without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
-# Read tools the short prompt relies on + the everyday write tools. No ECG / raw heart data, no family data, no recipe editing.
+# Read tools for everything the Today page shows + the everyday write tools. No ECG / raw heart data (get_cardio,
+# get_ecg_list: excluded by the consent below), no family data, no recipe editing.
 TOOL_NAMES = (
     "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
     "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_exercise_rules",
@@ -45,6 +46,12 @@ TOOL_NAMES = (
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
     "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
+    # The read tool behind every Today page card (issue #58; tests/test_fallback_coverage.py maps cards -> tools):
+    # computed metrics, the 饮食 page and 采购.
+    "get_healthspan", "get_stress", "get_health_monitor", "get_hr_zones", "get_vo2max", "get_report",
+    "get_sleep_details", "get_lab_history", "get_metric_snapshots", "analyze_journal",
+    "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
+    "get_shopping_list", "get_weekly_specials", "find_products",
 )
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",

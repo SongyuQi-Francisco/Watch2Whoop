@@ -238,6 +238,8 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 
 成本估算：一次模型调用的输入约 0.8–1.2 万 token（设定 + 工具 + 记忆 + 历史）；缓存未命中约 ¥0.02，命中后约 ¥0.001，再加输出（500 token ≈ ¥0.004）。一个问题通常 1–3 次调用，¥3 大约够 150–400 个问题。**余额**：7 个人 × ¥3 = ¥21 / 月，2026-10-18 余额只有 ¥12.01，要先充值。
 
+**2026-10-21（issue #58）补齐今天页的读工具**：托底 AI 被问「衰老速度什么意思」时答「你的数据里没有」，因为白名单里没有身体年龄、压力、健康监测等本系统自己算的指标的读工具。`TOOL_NAMES` 从 44 个加到 63 个：`get_healthspan`、`get_stress`、`get_health_monitor`、`get_hr_zones`、`get_vo2max`、`get_report`、`get_sleep_details`、`get_lab_history`、`get_metric_snapshots`、`analyze_journal`、`get_diet_profile`、`get_nutrition_goals`、`get_meal_templates`、`list_recipes`、`get_recipe`、`suggest_meals`、`get_shopping_list`、`get_weekly_specials`、`find_products`（仍然不加 `get_cardio` / `get_ecg_list`）。`system_prompt_lite.md` 加了一句「今天页上的指标都由本系统计算，先调工具，不要说没有」。`tests/test_fallback_coverage.py` 把今天页脚本调用的每个接口、每个讲解 key 对到托底的读工具，新加卡片忘了加白名单时 CI 会失败。固定开销：工具定义 26.6k → 34.2k 字符（按 DeepSeek 的估算规则约 +2.6k token），设定 +0.1k token；每次模型调用缓存未命中多 ¥0.005，命中多 ¥0.0001。趋势页的几张状态卡（HRV 状态、训练状态、身体电量、恢复时间、韧性、生病风险、生物钟等）目前**没有任何 AI 工具**能读（只在 `/trends` 里算），测试里列为 `NO_TOOL_YET`，留作后续。
+
 ### 9.11 多模态：照片、视频、语音（2026-10-18）
 > 用户原话的意思：托底 AI 不能发语音、照片、视频是有问题的；所有 API 都走 DeepSeek，模型不支持的能力自己搭配。产品本来就是「没有输入框，所有记录靠跟 AI 对话」。
 
