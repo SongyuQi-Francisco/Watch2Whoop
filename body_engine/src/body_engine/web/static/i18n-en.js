@@ -737,6 +737,12 @@ I18N.addEn({
   "已调整": "Changed",
   // connected supermarkets (#49)
   "超市": "Supermarkets",
+  // weekly specials (#48)
+  "半价": "Half price",
+  "半价 -{save}": "Half price −{save}",
+  "半价省 · {n}": "Half-price saving · {n}",
+  "本周价": "This week",
+  "本周半价": "Half price this week",
   // training log link (#71)
   "已启用：{name} · 训练记录未同步": "Now using: {name} · training log not synced",
   "已连接": "Connected",

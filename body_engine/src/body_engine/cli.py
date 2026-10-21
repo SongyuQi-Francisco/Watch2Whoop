@@ -50,6 +50,17 @@ def main() -> None:
     sub.add_parser("user-list", help="list users")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
+    gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
+                                             "(BODY_GROCERY_SYNC + BODY_GROCERY_SYNC_CONTACT; docs/grocery-store-data-plan.md §8)")
+    gss = gs.add_subparsers(dest="gs_cmd", required=True)
+    gsr = gss.add_parser("run", help="crawl the enabled stores politely (robots.txt, delay, stop when refused); skips if run < 6 days ago")
+    gsr.add_argument("--store", choices=["coles", "woolworths"])
+    gsr.add_argument("--force", action="store_true", help="run even if an ok run is younger than 6 days")
+    gsr.add_argument("--max-pages", type=int, help="stop after N pages (a test run; status = partial)")
+    gss.add_parser("status", help="last run per store, product / special counts, staleness (JSON)")
+    gsp = gss.add_parser("purge", help="kill switch: delete all scraped store data (products, price history, specials, run log)")
+    gsp.add_argument("--store", choices=["coles", "woolworths"])
+    gsp.add_argument("--yes", action="store_true", help="required")
 
     lc = sub.add_parser("login-code", help="issue a one-time login code (for the Watch2Whoop app setup info / QR code; the plaintext is shown only once)")
     lc.add_argument("--user-id", type=int, required=True)
@@ -252,6 +263,17 @@ def main() -> None:
                 return
         if args.cmd == "migrate":
             print("applied:", migrate(conn) or "nothing")
+        elif args.cmd == "grocery-sync":
+            from .grocery.sync import runner as gsync
+            if args.gs_cmd == "run":
+                out = gsync.run(conn, [args.store] if args.store else None, force=args.force, max_pages=args.max_pages)
+            elif args.gs_cmd == "status":
+                out = gsync.status(conn)
+            else:
+                if not args.yes:
+                    raise SystemExit("purge deletes all scraped store data: add --yes")
+                out = gsync.purge(conn, args.store)
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         elif args.cmd == "user-add":
             row = conn.execute(
                 """INSERT INTO users (display_name, role, birth_date, height_cm, sex, timezone)

@@ -12,6 +12,8 @@ from .i18n import is_en
 
 EXACT: dict[str, str] = {
     # ---- auth / sessions (api.py, records/api.py, web/)
+    # ---- grocery-sync (sync/wws.py)
+    "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
     "缺少 Bearer token": "Missing Bearer token",
     "缺少 Bearer token（或没有登录）": "Missing Bearer token (or not signed in)",
     "token 无效或已吊销": "Invalid or revoked token",
@@ -215,6 +217,17 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
     ("商品链接 1–{} 字", "Product link: 1–{} characters"),
     ("超市只能是 {}", "Supermarkets can only be: {}"),
+    # ---- grocery-sync (sync/coles.py, sync/http.py; admin CLI / run records)
+    ("Coles 页面里没有 __NEXT_DATA__（可能是挑战页或改版了；页面标题「{}」，{} 字节）", "No __NEXT_DATA__ in the Coles page (a challenge page or a redesign; title \"{}\", {} bytes)"),
+    ("Coles 页面结构变了（results 不是列表）", "The Coles page structure changed (results is not a list)"),
+    ("Coles 页面结构变了（{}: {}）", "The Coles page structure changed ({}: {})"),
+    ("Coles {} 第 1 页没有商品，但 noOfResults = {}", "Coles {}: no products on page 1 but noOfResults = {}"),
+    ("到了每次最多 {} 个请求的上限", "Reached the limit of {} requests per run"),
+    ("读不到 robots.txt（HTTP {}）", "Can't read robots.txt (HTTP {})"),
+    ("robots.txt 不允许：{}", "Not allowed by robots.txt: {}"),
+    ("读不到 robots.txt（{}）", "Can't read robots.txt ({})"),
+    ("不认识的超市：{}（可用 {}）", "Unknown supermarket: {} (available: {})"),
+    ("不认识的超市：{}", "Unknown supermarket: {}"),
     ("不是 {} 的商品页（要 /product/… 或 /shop/productdetails/<编号>/…）", "Not a {} product page (needs /product/… or /shop/productdetails/<id>/…)"),
     # ---- authorization
     ("没有查看用户 {} 的 {} 的授权", "No permission to view the {2} of user {1}"),
