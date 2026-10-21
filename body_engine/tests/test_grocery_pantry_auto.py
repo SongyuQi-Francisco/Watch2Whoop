@@ -31,6 +31,8 @@ def test_parse_amount():
     assert pantry_auto.parse_amount("0.5 kg") == (500, "g") and pantry_auto.parse_amount("1.5 L") == (1500, "ml")
     assert pantry_auto.parse_amount("250ml") == (250, "ml")
     assert pantry_auto.parse_amount("1 份") is None and pantry_auto.parse_amount("1 large") is None
+    assert pantry_auto.parse_amount("1/2 个") is None and pantry_auto.parse_amount("½ 个") is None   # fractions: not deducted
+    assert pantry_auto.parse_amount("12个") == (12, "pcs")
     assert pantry_auto.parse_amount("") is None and pantry_auto.parse_amount(None) is None
 
 
@@ -117,7 +119,7 @@ def test_switch_off_by_default_then_log_and_undo(conn, world, fake):
                                                             "id": res["created"][0]["id"], "meal": None, "food": None, "time": None})
     assert out["pantry_restored"][0]["qty"] == 2 and _pantry(conn, a)["鸡蛋"]["quantity"] == 6
     # undoing twice does not add twice
-    assert pantry_auto.restore(conn, a, res["created"][0]["id"]) == []
+    assert pantry_auto.restore(conn, a, res["created"][0]["id"]) == {"restored": [], "not_restored": []}
     conn.commit()
 
 
@@ -140,6 +142,58 @@ def test_rollback_write_and_delete_restore(conn, world, fake):
                         (a,)).fetchone()
     run_tool(conn, a, "butler", "rollback_write", {"log_id": flog["id"]})
     assert _pantry(conn, a)["鸡蛋"]["quantity"] == 6
+    conn.commit()
+
+
+def _undo(conn, uid, entry):
+    return run_tool(conn, uid, "butler", "undo_sparky_entry", {"kind": "food", "date": entry["date"], "id": entry["id"],
+                                                               "meal": None, "food": None, "time": None})
+
+
+def test_replaced_entry_keeps_its_deductions(conn, world, fake):
+    """update_food_entry with a new amount / name writes a new entry: the deductions follow it (review on #110)."""
+    ids, _, _ = world
+    a = ids["A"]
+    res = run_tool(conn, a, "butler", "log_food", {"items": [_food(conn, a, "鸡蛋", "2 个", "snacks")], "allow_duplicates": True})
+    e = res["created"][0]
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == 4
+    upd = run_tool(conn, a, "butler", "update_food_entry", {
+        "date": e["date"], "id": e["id"], "new_date": None, "meal": None, "time": None, "portion": None, "food": None,
+        "amount": "3 个", "calories": None, "protein_g": None, "carbs_g": None, "fat_g": None})
+    new_id = upd["updated"]["id"]
+    assert str(new_id) != str(e["id"]) and _pantry(conn, a)["鸡蛋"]["quantity"] == 4   # no re-deduction (known limitation)
+    row = conn.execute("SELECT entry_id, origin_entry_id FROM pantry_deductions WHERE user_id = %s AND restored_at IS NULL", (a,)).fetchone()
+    assert row["entry_id"] == str(new_id) and row["origin_entry_id"] == str(e["id"])
+    # rollback of the update: the old entry comes back (new id again), the deductions follow; undoing it restores the pantry
+    log = conn.execute("SELECT id FROM ai_write_log WHERE user_id = %s AND tool = 'update_food_entry' ORDER BY id DESC LIMIT 1",
+                       (a,)).fetchone()
+    back = run_tool(conn, a, "butler", "rollback_write", {"log_id": log["id"]})["result"]
+    out = _undo(conn, a, {"date": e["date"], "id": back["restored"]})
+    assert out["pantry_restored"][0]["qty"] == 2 and _pantry(conn, a)["鸡蛋"]["quantity"] == 6
+    # update, then undo the new entry directly
+    res = run_tool(conn, a, "butler", "log_food", {"items": [_food(conn, a, "鸡蛋", "1 个", "snacks")], "allow_duplicates": True})
+    e = res["created"][0]
+    upd = run_tool(conn, a, "butler", "update_food_entry", {
+        "date": e["date"], "id": e["id"], "new_date": None, "meal": None, "time": None, "portion": None, "food": "水煮鸡蛋",
+        "amount": None, "calories": None, "protein_g": None, "carbs_g": None, "fat_g": None})
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == 5
+    _undo(conn, a, {"date": e["date"], "id": upd["updated"]["id"]})
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == 6
+    conn.commit()
+
+
+def test_restore_after_unit_change_is_reported(conn, world, fake):
+    ids, _, pr = world
+    a = ids["A"]
+    res = run_tool(conn, a, "butler", "log_food", {"items": [_food(conn, a, "鸡蛋", "2 个", "snacks")], "allow_duplicates": True})
+    store.set_pantry(conn, a, [{"name": "鸡蛋", "quantity": 300, "unit": "g"}])   # the user now counts eggs in grams
+    out = _undo(conn, a, res["created"][0])
+    assert "pantry_restored" not in out and out["pantry_not_restored"][0]["qty"] == 2
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == 300
+    assert conn.execute("SELECT count(*) n FROM pantry_deductions WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL",
+                        (a, str(res["created"][0]["id"]))).fetchone()["n"] == 1   # not marked restored
+    conn.execute("DELETE FROM pantry_deductions WHERE user_id = %s AND entry_id = %s", (a, str(res["created"][0]["id"])))
+    store.set_pantry(conn, a, [{"name": "鸡蛋", "quantity": 6, "unit": "pcs", "product_id": pr["A"]}])
     conn.commit()
 
 
@@ -206,6 +260,21 @@ def test_other_users_untouched(conn, world, fake):
     with pytest.raises(PermissionError):   # writes only for oneself
         run_tool(conn, b, "butler", "set_pantry_auto", {"user": str(a), "enabled": False})
     conn.commit()
+
+
+def test_expired_stock(conn, world):
+    """Expired stock does not count when a list is generated; buying it again clears the passed best before (review on #110)."""
+    ids, _, _ = world
+    c = ids["C"]
+    t = store.today(conn, c)
+    store.set_pantry(conn, c, [{"name": "牛奶", "quantity": 2000, "unit": "ml", "best_before": (t - timedelta(days=2)).isoformat()}])
+    out = store.generate(conn, c, None, [{"kind": "food", "food": "牛奶", "amount": 1000, "unit": "ml"}])
+    milk = next(i for i in out["items"] if i["name"] == "牛奶")
+    assert milk["need_qty"] == 1000 and milk["pantry_qty"] is None
+    store.set_bought(conn, c, [milk["id"]], True)
+    got = _pantry(conn, c)["牛奶"]
+    assert got["quantity"] == 3000 and got["best_before"] is None
+    conn.rollback()
 
 
 def test_best_before_reminders(conn, world):

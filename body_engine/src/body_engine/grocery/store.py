@@ -458,6 +458,9 @@ def _convert(qty: float, frm: str, to: str, piece_g: float | None) -> float | No
 
 def _pantry_change(conn, user_id: int, name: str, product_id: int | None, qty: float, unit: str, piece_g=None) -> None:
     row = _pantry_row(conn, user_id, name)
+    if row is not None and qty > 0 and row["best_before"] and row["best_before"] < today(conn, user_id):
+        # bought again while the stored best before has passed: the new pack's date is unknown until the AI fills it (#104)
+        conn.execute("UPDATE pantry_items SET best_before = NULL WHERE id = %s", (row["id"],))
     if row is None:
         if qty > 0:
             conn.execute("INSERT INTO pantry_items (user_id, name, product_id, quantity, unit) VALUES (%s, %s, %s, %s, %s)",
@@ -581,6 +584,7 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
             matched[k] = p
         needs[k]["staple"] = d
     pantry = {_key(r["name"]): r for r in conn.execute("SELECT * FROM pantry_items WHERE user_id = %s", (user_id,))}
+    day0 = today(conn, user_id)
     pantry_by_product = {r["product_id"]: r for r in pantry.values() if r["product_id"]}
     lst = _list_row(conn, user_id, ws, create=True)
     conn.execute(f"""DELETE FROM shopping_items WHERE list_id = %s AND bought_at IS NULL
@@ -613,6 +617,8 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
             if sn is not None:
                 need = max(need, sn)
         stock = pantry.get(k) or (pantry_by_product.get(prod["id"]) if prod else None)
+        if stock and stock["best_before"] and stock["best_before"] < day0:   # expired stock does not count (#104)
+            stock = None
         used = None   # how much the pantry covered (shown on the line as 「家里有 …」, issue #102)
         if stock:
             have = _convert(float(stock["quantity"]), stock["unit"], unit, piece_g)

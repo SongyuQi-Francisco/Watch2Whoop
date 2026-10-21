@@ -20,8 +20,9 @@ from ..i18n import L as Li
 from . import params as P
 from . import store
 
-_AMOUNT = re.compile(r"(\d+(?:\.\d+)?)\s*(" + "|".join(sorted(map(re.escape, P.AMOUNT_UNITS), key=len, reverse=True))
+_AMOUNT = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(" + "|".join(sorted(map(re.escape, P.AMOUNT_UNITS), key=len, reverse=True))
                      + r")(?![A-Za-z])", re.IGNORECASE)
+_FRACTION = re.compile(r"\d\s*/\s*\d|[½⅓⅔¼¾⅕⅙⅛]")   # 「1/2 个」 is not 2 eggs: amounts with a fraction are not deducted
 
 
 # ---------------------------------------------------------------- switch
@@ -46,7 +47,9 @@ def set_enabled(conn: psycopg.Connection, user_id: int, on: bool) -> dict:
 
 # ---------------------------------------------------------------- matching
 def parse_amount(amount: str | None) -> tuple[float, str] | None:
-    """「2 个」 -> (2, pcs); 「1 碗（约 250g 熟饭）」 -> (250, g); 「1 份」 -> None. The first amount with a known unit wins."""
+    """「2 个」 -> (2, pcs); 「1 碗（约 250g 熟饭）」 -> (250, g); 「1 份」, 「1/2 个」 -> None. The first amount with a known unit wins."""
+    if _FRACTION.search(amount or ""):
+        return None
     m = _AMOUNT.search(amount or "")
     if not m:
         return None
@@ -125,30 +128,40 @@ def deduct_logged(conn: psycopg.Connection, user_id: int, entry_id, day: date, f
     return deduct(conn, user_id, entry_id, day, [(food, *parsed)]) if parsed else []
 
 
-def restore(conn: psycopg.Connection, user_id: int, entry_id) -> list[dict]:
-    """Put back what this entry took (undo / delete / rollback). Idempotent: each deduction is restored once."""
-    rows = conn.execute("""UPDATE pantry_deductions SET restored_at = now()
-                           WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL RETURNING *""",
-                        (user_id, str(entry_id))).fetchall()
-    out = []
+def restore(conn: psycopg.Connection, user_id: int, entry_id) -> dict:
+    """Put back what this entry took (undo / delete / rollback). Idempotent: each deduction is restored once.
+    {restored, not_restored}: a deduction whose pantry row changed unit meanwhile (e.g. set_pantry from pieces to grams) cannot
+    be added back; it stays unrestored and is listed so the AI can tell the user."""
+    rows = conn.execute("""SELECT * FROM pantry_deductions WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL
+                           ORDER BY id FOR UPDATE""", (user_id, str(entry_id))).fetchall()
+    out, failed = [], []
     for d in rows:
         s, qty = d["snapshot"], float(d["qty"])
         cur = conn.execute("SELECT * FROM pantry_items WHERE user_id = %s AND lower(name) = lower(%s) FOR UPDATE",
                            (user_id, s["name"])).fetchone()
         if cur is None:   # used up and removed meanwhile: bring the row back as it was
             pid = s.get("product_id")
-            if pid is not None and not conn.execute("SELECT 1 FROM grocery_products WHERE id = %s AND user_id = %s",
+            if pid is not None and not conn.execute("SELECT 1 FROM grocery_products WHERE id = %s AND user_id = %s AND active",
                                                     (pid, user_id)).fetchone():
                 pid = None
             conn.execute("""INSERT INTO pantry_items (user_id, name, product_id, quantity, unit, best_before)
                             VALUES (%s, %s, %s, %s, %s, %s)""", (user_id, s["name"], pid, qty, d["unit"], s.get("best_before")))
         else:
             add = store._convert(qty, d["unit"], cur["unit"], None)
-            if add is None:   # the row changed unit meanwhile (e.g. set_pantry): leave it
+            if add is None:   # the row changed unit meanwhile (e.g. set_pantry): not restored, say so
+                failed.append({"pantry": s["name"], "qty": qty, "unit": d["unit"], "now_unit": cur["unit"]})
                 continue
             conn.execute("UPDATE pantry_items SET quantity = quantity + %s, updated_at = now() WHERE id = %s", (add, cur["id"]))
+        conn.execute("UPDATE pantry_deductions SET restored_at = now() WHERE id = %s", (d["id"],))
         out.append({"pantry": s["name"], "qty": qty, "unit": d["unit"]})
-    return out
+    return {"restored": out, "not_restored": failed}
+
+
+def rekey(conn: psycopg.Connection, user_id: int, old_id, new_id) -> None:
+    """A food entry was replaced by a new one (update_food_entry with a new name / amount, rollback of that): its deductions
+    follow it, so undoing / deleting the new entry still puts them back. origin_entry_id keeps the first id."""
+    conn.execute("""UPDATE pantry_deductions SET origin_entry_id = coalesce(origin_entry_id, entry_id), entry_id = %s
+                    WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL""", (str(new_id), user_id, str(old_id)))
 
 
 # ---------------------------------------------------------------- best before

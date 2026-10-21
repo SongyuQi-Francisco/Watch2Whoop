@@ -83,7 +83,8 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
         result = overrides.restore(conn, user_id, int(row["target"]), before, after)
     elif kind == "pantry":   # what a logged meal took from the pantry goes back; the food entry stays (issue #104)
         from ..grocery import pantry_auto
-        result = {"pantry_restored": pantry_auto.restore(conn, user_id, row["target"])}
+        back = pantry_auto.restore(conn, user_id, row["target"])
+        result = {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
     else:
         result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
     new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None

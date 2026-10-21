@@ -33,17 +33,20 @@
 - ~~做饭 / 记餐暂时不自动扣存货~~ → **记餐自动扣存货（#104，迁移 510，`grocery/pantry_auto.py`）**：
   - **开关**：每个用户一个（`grocery_settings.pantry_auto`，空 = `params.PANTRY_AUTO_DEFAULT`，现在是**关**；关着的时候 `get_shopping_context` 带一句 `pantry_auto_hint` 提醒 AI）。用户对 AI 说了才改（`set_pantry_auto`，接口 `GET / PUT …/grocery/pantry-auto`）；今天页「家里存货」下只显示一行状态。
   - **扣什么**：所有经过 `log_food` 写进 SparkyFitness 的记录：
-    - AI 直接记的：食物名 + 份量文字里第一个能认的量（「2 个」「200 g」「1 碗（约 250g）」；碗 / 份 / 勺不认，`params.AMOUNT_UNITS`）；
+    - AI 直接记的：食物名 + 份量文字里第一个能认的量（「2 个」「200 g」「1 碗（约 250g）」；碗 / 份 / 勺和分数（「1/2 个」）不认，`params.AMOUNT_UNITS`）；
     - 快捷记餐模板：每样食材的克数；
     - 食谱：整锅食材 × 吃的份数 / 菜谱份数。
   - **怎么对**：名字和存货名完全一样，或者和存货关联商品的名字 / `matches` 一样（不做包含匹配，「鸡蛋饼」不会扣「鸡蛋」）；换算和生成清单一样（g ↔ ml 1:1，个数用 `piece_g`）。对不上、换算不了的不扣，也不报错。扣到 0 为止，扣到 0 的行删掉（和「用完了」一样）。同一样东西有几行时，先扣保质期最近的，没写保质期的最后扣。
   - **撤销**：每次扣减按 SparkyFitness 条目 id 记进 `pantry_deductions`，带原来那一行的快照。`undo_sparky_entry`、`undo_meal_log`、今天页删除、`rollback_write`（撤销那条记餐）都会加回去，被删掉的行按快照恢复。AI 写的还进 `ai_write_log`（kind `pantry`），对它 `rollback_write` 只恢复存货、记餐保留。
+  - **改过的记录**：`update_food_entry` 改名称 / 份量 / 营养时会换成一条新记录（新 id），扣减记录跟着改挂到新 id（`origin_entry_id` 记第一次的 id；#97 合并后合并 / 拆回也用这一套），所以撤销、删除改过的那条照样能加回存货；撤销那次修改（`rollback_write`）也一样。
+  - **加不回去的会说**：撤销时存货那一行已经换了单位（例如从「个」改成按克记），换算不了就不加回，这条扣减保持未恢复，结果里返回 `pantry_not_restored`，让 AI 告诉用户。
   - **已知的局限**（负责人在 #110 确认可以接受）：
-    - 用 `update_food_entry` 改一条记录（改份量、名字、营养）不会重新扣存货，存货保持第一次扣的量；
+    - 用 `update_food_entry` 改了数量不会按新数量重新扣，存货保持第一次扣的量；
     - 撤销一次撤销操作（例如对 `undo_sparky_entry` 的那条日志再 `rollback_write`，把删掉的记录恢复）时，记录回来了，但不会再扣一次存货。
 - **保质期（#104）**：`pantry_items.best_before`（可以为空）。AI 在用户说「牛奶 10/25 过期」或者读小票时，用 `set_pantry` 的 `best_before` 填；不给就不改。
   - `PANTRY_EXPIRY_DAYS`（3）天内到期、或者已经过期的，进 `get_shopping_context.expiring` 和 `get_briefing.pantry_expiring`（没有就不出现）。
   - 今天页存货行上显示短标签「x 天后到期」/「今天到期」/「已过期」。
+  - 生成清单时，已经过期的存货不算（照样买）；勾掉已买时，如果原来那一行的保质期已经过了，就清空 `best_before`（新买的保质期未知，等 AI 再填）。
 - **今天页看得到存货（#102，迁移 495）**：「采购」里本周清单下面是「家里存货」：按类别（商品的类别，没对上商品的按名字猜）再按名字排，每行名字、数量、「x 天前更新」。自己的页面每行有「用完了」（`PUT …/pantry` 数量 0，toast 里可以撤销，撤销把原来的数量写回去）；看别人的只读。改数量仍然对 AI 说。生成清单时被存货扣掉一部分的行记下扣了多少（`shopping_items.pantry_qty`），清单上显示短标签「家里有 6 个」（`pantry_label`，按页面语言），解释为什么少买；全部被存货盖住的不进清单（`covered_by_pantry`）。
 
 - **常买（#103，迁移 500）**：商品可以标成「常买」（`grocery_products.staple`，带间隔天数 `staple_every_days`、每次买多少 `staple_qty` + `staple_unit`，`pack` = 包数）。

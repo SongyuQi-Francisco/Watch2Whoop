@@ -72,10 +72,11 @@ def test_tool_definitions_budget():
     57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint).
     59k -> 59.2k for the usual-item tools (#103: set_staple, remove_staple; the smallest step that fits). Tool groups (#99) are not
     merged yet; once they are, these move into the grocery group and the limit can come back down.
-    59.2k -> 59.4k for set_pantry_auto and set_pantry's best_before (#104; same reason, #99 not merged yet)."""
+    59.2k -> 59.4k for set_pantry_auto and set_pantry's best_before (#104; same reason, #99 not merged yet).
+    59.4k -> 59.42k for the staples-only note on generate_shopping_list (review on #108). All three steps go once #107 lands."""
     size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
                               ensure_ascii=False)) for t in TOOLS)
-    assert size < 59400, size
+    assert size < 59420, size
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 

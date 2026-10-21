@@ -564,6 +564,7 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         new = _create_food(client, meal_ids, new_d, item)
         client.request("DELETE", _entry_path("food", row))
     writelog.record(conn, "food", "update", row["id"], row, new)
+    _pantry_follow(conn, user_id, row["id"], new["id"])   # replaced entry: undo / delete of the new one restores the pantry
     if not renamed:   # added sugar etc. follow the entry (scaled by the portion)
         extras.carry_over(conn, user_id, row["id"], new["id"], new_d, portion or 1)
     else:
@@ -624,16 +625,24 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
         row = _match_food(rows, d, meal, food, time)
     client.request("DELETE", _entry_path(kind, row))
     writelog.record(conn, "food" if kind == "food" else "session", "delete", row["id"], row, None)
-    back = _pantry_back(conn, user_id, row["id"]) if kind == "food" else []
+    back = _pantry_back(conn, user_id, row["id"]) if kind == "food" else {}
     return {"deleted": {"kind": kind, "date": d.isoformat(), "id": row["id"],
                         "name": row.get("food_name") or row.get("name"), "source": row.get("source")},
-            **({"pantry_restored": back} if back else {})}
+            **({"pantry_restored": back["restored"]} if back.get("restored") else {}),
+            **({"pantry_not_restored": back["not_restored"]} if back.get("not_restored") else {})}
 
 
-def _pantry_back(conn, user_id: int, entry_id) -> list[dict]:
+def _pantry_back(conn, user_id: int, entry_id) -> dict:
     """A food entry is gone: what it took from the pantry goes back (grocery/pantry_auto.py, issue #104)."""
     from ..grocery import pantry_auto
     return pantry_auto.restore(conn, user_id, entry_id)
+
+
+def _pantry_follow(conn, user_id: int, old_id, new_id) -> None:
+    """A food entry was replaced by a new id: its pantry deductions move with it."""
+    if str(old_id) != str(new_id):
+        from ..grocery import pantry_auto
+        pantry_auto.rekey(conn, user_id, old_id, new_id)
 
 
 def _delete_set(conn, client, d: date, set_id) -> dict:
@@ -724,7 +733,9 @@ def rollback(conn, user_id: int, kind: str, action: str, before, after, client=N
             client.request("PUT", f"/food-entries/{new['id']}", {k: v for k, v in body.items() if v is not None})
             return {"restored": new["id"]}
         client.request("DELETE", _entry_path("food", new))
-        return {"restored": _recreate_food(client, before)["id"], "deleted": new["id"]}
+        old = _recreate_food(client, before)
+        _pantry_follow(conn, user_id, new["id"], old["id"])
+        return {"restored": old["id"], "deleted": new["id"]}
     if kind == "session":
         if action == "create":
             d = date.fromisoformat(after["date"])
