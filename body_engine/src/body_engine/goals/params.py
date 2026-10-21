@@ -27,6 +27,7 @@ CAFFEINE_NOON_CUTOFF_MIN = 12 * 60
 DINNER_BEFORE_MIN = 3 * 60    # journal item late_dinner "main meal within 3 hours of bed" counts as too late; 6.2.7 if hungry, have a glass of milk
 TRAINING_BEFORE_MIN = 3 * 60  # 6.2.5 finish training at least 3 hours before bed where possible
 MORNING_LIGHT = "起床后 30 分钟内晒太阳 10–20 分钟"   # 6.2.3 the most effective signal for shifting the body clock
+MORNING_LIGHT_EN = "10–20 min of sunlight within 30 min of waking"   # English of the line above (issue #42)
 
 # ---------- nutrition goals (goals/nutrition.py, issue #31) ----------
 # Plausibility ranges for one day's set (anything outside is almost certainly a unit / typing mistake, not a plan).

@@ -18,6 +18,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ..ai import root_rules
+from ..i18n import L
 from . import params as P
 from .sanitize import PLACEHOLDER_RE, from_db, placeholder_ratio
 
@@ -158,7 +159,7 @@ def _votes(conn, report_id: int) -> int:
 # ---------------------------------------------------------------- the reporter's view
 def _view(r: dict, raw: bool = False) -> dict:
     out = {"id": ref(r["id"]), "kind": r["kind"], "title": r["title"], "status": r["status"],
-           "status_label": P.STATUS_LABEL[r["status"]], "votes": r["votes"], "created_at": r["created_at"],
+           "status_label": L(P.STATUS_LABEL[r["status"]], P.STATUS_LABEL_EN[r["status"]]), "votes": r["votes"], "created_at": r["created_at"],
            "status_changed_at": r["status_changed_at"], "note": r["note"], "public_url": r["public_url"],
            "duplicate_of": ref(r["duplicate_of"]) if r["duplicate_of"] else None,
            "withdrawable": r["status"] in P.WITHDRAWABLE}

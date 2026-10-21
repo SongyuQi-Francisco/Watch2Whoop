@@ -13,6 +13,7 @@ import os
 
 import psycopg
 
+from ..i18n import L
 from . import catalog, fallback, providers
 
 SOURCES = ("provider", "fallback", "butler")
@@ -85,34 +86,34 @@ def options(conn: psycopg.Connection, user_id: int) -> list[dict]:
                     "note": f"¥{s['spent_cny']:.2f} / ¥{s['quota_cny']:g}", "consent": s["consent"]})
     for r in conn.execute("SELECT * FROM ai_providers WHERE user_id = %s ORDER BY is_default DESC, id", (user_id,)):
         mcp = catalog.is_mcp(r["kind"])
-        out.append({"key": f"p:{r['id']}", "label": r["display_name"], "kind": "mcp" if mcp else "api",
-                    "available": usable(conn, r), "note": "订阅" if mcp else (r["model"] or ""),
+        out.append({"key": f"p:{r['id']}", "label": catalog.display_name(r), "kind": "mcp" if mcp else "api",
+                    "available": usable(conn, r), "note": L("订阅", "Subscription") if mcp else (r["model"] or ""),
                     "status": r["status"]})
     if owner_assistant_url(user_id):
-        out.append({"key": "butler", "label": "身体管家", "kind": "butler", "available": True, "note": "Claude"})
+        out.append({"key": "butler", "label": L("身体管家", "Body butler"), "kind": "butler", "available": True, "note": "Claude"})
     for o in out:
         o["current"] = o["key"] == cur
     return out
 
 
 def choose(conn: psycopg.Connection, user_id: int, key: str) -> None:
-    """The user's pick from AI settings or the chat panel's switcher. Raises ValueError with a short Chinese message."""
+    """The user's pick from AI settings or the chat panel's switcher. Raises ValueError with a short message (request language)."""
     if key == "fallback":
         if fallback.read_key() is None:
-            raise ValueError("这台服务器没有开通托底 AI")
+            raise ValueError(L("这台服务器没有开通托底 AI", "This server has no backup AI"))
         set_pref(conn, user_id, "fallback")
     elif key == "butler":
         if not owner_assistant_url(user_id):
-            raise ValueError("身体管家只给部署者本人")
+            raise ValueError(L("身体管家只给部署者本人", "The body butler is only for the deployer"))
         set_pref(conn, user_id, "butler")
     elif key.startswith("p:") and key[2:].isdigit():
         row = providers.get_provider(conn, user_id, int(key[2:]))
         if row is None:
-            raise ValueError("没有这个 AI（或不是你的）")
+            raise ValueError(L("没有这个 AI（或不是你的）", "No such AI (or it is not yours)"))
         if row["status"] != "active":
-            raise ValueError("这个 AI 停用了，先在 AI 设置里启用")
+            raise ValueError(L("这个 AI 停用了，先在 AI 设置里启用", "This AI is turned off; turn it on in AI settings first"))
         if not row["is_default"]:
             providers.update_provider(conn, user_id, row["id"], {"is_default": True})
         set_pref(conn, user_id, "provider")
     else:
-        raise ValueError("不认识的选项")
+        raise ValueError(L("不认识的选项", "Unknown option"))

@@ -51,6 +51,17 @@ def main() -> None:
     sub.add_parser("user-list", help="list users")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
+    gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
+                                             "(BODY_GROCERY_SYNC + BODY_GROCERY_SYNC_CONTACT; docs/grocery-store-data-plan.md §8)")
+    gss = gs.add_subparsers(dest="gs_cmd", required=True)
+    gsr = gss.add_parser("run", help="crawl the enabled stores politely (robots.txt, delay, stop when refused); skips if run < 6 days ago")
+    gsr.add_argument("--store", choices=["coles", "woolworths"])
+    gsr.add_argument("--force", action="store_true", help="run even if an ok run is younger than 6 days")
+    gsr.add_argument("--max-pages", type=int, help="stop after N pages (a test run; status = partial)")
+    gss.add_parser("status", help="last run per store, product / special counts, staleness (JSON)")
+    gsp = gss.add_parser("purge", help="kill switch: delete all scraped store data (products, price history, specials, run log)")
+    gsp.add_argument("--store", choices=["coles", "woolworths"])
+    gsp.add_argument("--yes", action="store_true", help="required")
 
     lc = sub.add_parser("login-code", help="issue a one-time login code (for the Watch2Whoop app setup info / QR code; the plaintext is shown only once)")
     lc.add_argument("--user-id", type=int, required=True)
@@ -150,6 +161,12 @@ def main() -> None:
     x = sub.add_parser("link-exercises", help="write SparkyFitness exercise IDs into exercise_meta.app_exercise_id (matched by name / alias, idempotent)")
     x.add_argument("--user-id", type=int, required=True)
     x.add_argument("--dry-run", action="store_true", help="only print the comparison table, do not write to the database")
+    sx = sub.add_parser("seed-exercises", help="seed the bilingual exercise_catalog table (curated overlay + optional free-exercise-db exercises.json; idempotent)")
+    sx.add_argument("--free-exercise-db", "--free-db-json", dest="free_exercise_db", type=Path, help="optional path to yuhonas/free-exercise-db dist/exercises.json (Unlicense)")
+    sx.add_argument("--free-db", action="store_true", help="import the pinned free-exercise-db (downloads exercises.json into the media dir first if missing)")
+    fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
+                        "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
+    fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
 
     m = sub.add_parser("memory-init", help="generate the body butler's initial profile card (existing database data + optional body-management.md transcription; only fills in missing items)")
     m.add_argument("--user-id", type=int, required=True)
@@ -231,6 +248,10 @@ def main() -> None:
         mailer.send(args.to, "[test] " + subject, text)
         print("sent via", mailer.mode())
         return
+    if args.cmd == "fetch-exercise-db":  # does not connect to the database
+        from .training import media as tr_media
+        print(json.dumps(tr_media.fetch(images=args.images), ensure_ascii=False, indent=1))
+        return
     if args.cmd == "ai-key-init":  # does not connect to the database
         path, created = ai_crypto.init_master_key()
         print(("created: " if created else "exists (unchanged): ") + str(path))
@@ -244,6 +265,17 @@ def main() -> None:
                 return
         if args.cmd == "migrate":
             print("applied:", migrate(conn) or "nothing")
+        elif args.cmd == "grocery-sync":
+            from .grocery.sync import runner as gsync
+            if args.gs_cmd == "run":
+                out = gsync.run(conn, [args.store] if args.store else None, force=args.force, max_pages=args.max_pages)
+            elif args.gs_cmd == "status":
+                out = gsync.status(conn)
+            else:
+                if not args.yes:
+                    raise SystemExit("purge deletes all scraped store data: add --yes")
+                out = gsync.purge(conn, args.store)
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         elif args.cmd == "user-add":
             row = conn.execute(
                 """INSERT INTO users (display_name, role, birth_date, height_cm, sex, timezone)
@@ -367,6 +399,10 @@ def main() -> None:
             print(rules_engine.format_report(rules_engine.run(conn, args.user_id, args.date)))
         elif args.cmd == "link-exercises":
             print(exercise_link.format_report(exercise_link.run(conn, args.user_id, dry_run=args.dry_run)))
+        elif args.cmd == "seed-exercises":
+            from .training import catalog as tr_catalog, media as tr_media
+            src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
+            print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
         elif args.cmd == "memory-init":
             res = assistant_memory.init_profile(conn, args.user_id, memory_seed.MD_PROFILE if args.from_md else None)
             res["status"] = assistant_status.init_status(conn, args.user_id, with_seed=args.from_md)

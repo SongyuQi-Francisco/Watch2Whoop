@@ -5,11 +5,12 @@
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
+  const tr = (k, p) => window.I18N.t(k, p);
   let C = null;
   let ME = null;
   let data = null;
-  const MODES = [["auto", "自动报告"], ["ask", "先问我"], ["off", "关闭"]];
-  const KIND = { bug: "问题", feature: "需求" };
+  const MODES = [["auto", tr("自动报告")], ["ask", tr("先问我")], ["off", tr("关闭")]];
+  const KIND = { bug: tr("问题"), feature: tr("需求") };
   const DONE = new Set(["fixed", "public"]);
 
   const CSS = `.fb-mode{display:flex;margin:0 0 14px}.fb-mode button{flex:1}
@@ -37,17 +38,17 @@
     return data;
   }
 
-  const shortVal = () => (data ? (data.reports.length ? String(data.reports.length) : (data.mode === "off" ? "关闭" : "")) : "");
+  const shortVal = () => (data ? (data.reports.length ? String(data.reports.length) : (data.mode === "off" ? tr("关闭") : "")) : "");
 
   function itemHtml(r) {
     const esc = C.esc;
     const day = String(r.created_at || "").slice(5, 10);
     const acts = [];
-    if (r.public_url) acts.push(`<a href="${esc(r.public_url)}" target="_blank" rel="noopener">公开链接</a>`);
-    if (r.withdrawable) acts.push(`<button type="button" data-withdraw="${esc(r.id)}">撤回</button>`);
+    if (r.public_url) acts.push(`<a href="${esc(r.public_url)}" target="_blank" rel="noopener">${esc(tr("公开链接"))}</a>`);
+    if (r.withdrawable) acts.push(`<button type="button" data-withdraw="${esc(r.id)}">${esc(tr("撤回"))}</button>`);
     return `<div class="fb-item">
       <div class="fb-head"><span>${esc(r.id)}</span><span>${esc(KIND[r.kind] || r.kind)}</span><span>${esc(day)}</span>
-        ${r.votes ? `<span>+${r.votes}</span>` : ""}${r.voted ? "<span>我 +1</span>" : ""}
+        ${r.votes ? `<span>+${r.votes}</span>` : ""}${r.voted ? `<span>${esc(tr("我 +1"))}</span>` : ""}
         <span class="fb-st${DONE.has(r.status) ? " ok" : ""}">${esc(r.status_label || r.status)}</span></div>
       <p class="fb-title">${esc(r.title)}</p>
       ${r.note ? `<p class="fb-note">${esc(r.note)}</p>` : ""}
@@ -56,12 +57,12 @@
   }
 
   function render(root) {
-    if (!data) { root.innerHTML = `<p class="empty">读取失败</p>`; return; }
+    if (!data) { root.innerHTML = `<p class="empty">${C.esc(tr("读取失败"))}</p>`; return; }
     const seg = data.available
-      ? `<div class="seg fb-mode" role="group" aria-label="反馈模式">${MODES.map(([k, t]) =>
+      ? `<div class="seg fb-mode" role="group" aria-label="${C.esc(tr("反馈模式"))}">${MODES.map(([k, t]) =>
         `<button type="button" data-mode="${k}" aria-pressed="${data.chosen_mode === k}">${t}</button>`).join("")}</div>`
-      : `<p class="para muted small">反馈暂停</p>`;
-    const list = data.reports.length ? data.reports.map(itemHtml).join("") : `<p class="empty">还没有反馈</p>`;
+      : `<p class="para muted small">${C.esc(tr("反馈暂停"))}</p>`;
+    const list = data.reports.length ? data.reports.map(itemHtml).join("") : `<p class="empty">${C.esc(tr("还没有反馈"))}</p>`;
     root.innerHTML = `${seg}${list}<p class="fb-err" id="fb-error" role="alert"></p>`;
     root.querySelectorAll("[data-mode]").forEach((b) => {
       b.onclick = async () => {
@@ -87,7 +88,7 @@
   }
 
   function open() {
-    C.openSheet("反馈记录", `<p class="para" style="margin:0">读取中…</p>`, async (root) => {
+    C.openSheet(tr("反馈记录"), `<p class="para" style="margin:0">${C.esc(tr("读取中…"))}</p>`, async (root) => {
       await load();
       render(root);
     });
@@ -100,7 +101,7 @@
 
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: (ctx, me) => { C = ctx; ME = me?.me || null; injectCss(); },
-    meItem: (chev) => (ME ? `<button class="item" id="me-feedback"><span class="row-title">反馈记录</span><span class="val" id="me-feedback-val">${C.esc(shortVal())}</span>${chev || ""}</button>` : ""),
+    meItem: (chev) => (ME ? `<button class="item" id="me-feedback"><span class="row-title">${C.esc(tr("反馈记录"))}</span><span class="val" id="me-feedback-val">${C.esc(shortVal())}</span>${chev || ""}</button>` : ""),
     bindMe: (view) => {
       const b = $("#me-feedback", view);
       if (!b) return;

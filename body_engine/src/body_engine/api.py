@@ -4,11 +4,13 @@ from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.exception_handlers import http_exception_handler
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, queries
+from . import auth, errors_en, queries
+from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
@@ -46,6 +48,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Body Engine", version="0.1.0", lifespan=lifespan)
+app.add_middleware(LangMiddleware)   # X-Body-Lang from the Today page -> texts it shows in that language (i18n.py)
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException):
+    """FastAPI's own handler, with the Chinese detail translated when the request asked for English (errors_en.py)."""
+    if is_en() and isinstance(exc.detail, (str, dict)):   # dict = {"code", "message", …} (AI chat / voice)
+        exc = HTTPException(exc.status_code, errors_en.translate_detail(exc.detail), headers=exc.headers)
+    return await http_exception_handler(request, exc)
 
 
 def get_conn():

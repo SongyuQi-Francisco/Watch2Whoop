@@ -22,5 +22,7 @@ TELL_USER_STATUSES = ("public", "fixed", "declined", "duplicate")   # worth tell
 # What a status means for the reporter (Me → 反馈记录, list_feedback)
 STATUS_LABEL = {"new": "已收到", "triaged": "开发者已看", "filed": "已记入待办", "public": "已公开",
                 "fixed": "已修复", "declined": "暂不做", "duplicate": "重复"}
+STATUS_LABEL_EN = {"new": "Received", "triaged": "Seen by the developers", "filed": "On the to-do list", "public": "Public",
+                   "fixed": "Fixed", "declined": "Not planned", "duplicate": "Duplicate"}
 KIND_LABEL = {"bug": "问题", "feature": "需求"}
 MODES = ("auto", "ask", "off")

@@ -164,6 +164,30 @@ def run(conn: psycopg.Connection, user_id: int, ow_client: OWClient | None = Non
     return status(conn, user_id)
 
 
+def connect_sparky(conn: psycopg.Connection, user_id: int, sparky: SparkySignup | None = None) -> dict:
+    """Self-service connect of the training log (Me → Training log, issue #66 FB-4): run only the sparky step for this user,
+    the same as self-signup provisioning does. Users linked by the admin (users.sparky_key_name) are left alone.
+    Returns {ok, error?}; the step's state is kept in user_provisioning like the other steps."""
+    user = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
+    if user is None or user.get("status", "active") != "active":
+        return {"ok": False, "error": "account_not_active"}
+    if user["sparky_key_name"]:
+        return {"ok": False, "error": "admin_linked"}
+    conn.execute("INSERT INTO user_provisioning (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
+    conn.commit()
+    try:
+        _sparky_step(conn, user, sparky or SparkySignup(timeout=30))
+        ok, err = True, None
+    except (RuntimeError, OSError, ValueError, KeyError, TypeError, psycopg.Error, crypto.MasterKeyMissing) as e:
+        conn.rollback()
+        ok, err = False, f"{type(e).__name__}: {str(e)[:200]}"
+        log.warning("connect_sparky user %s failed: %s", user_id, e)
+    conn.execute("""UPDATE user_provisioning SET steps = steps || %s, updated_at = now() WHERE user_id = %s""",
+                 (Jsonb({"sparky": "done" if ok else f"error: {err}"}), user_id))
+    conn.commit()
+    return {"ok": ok, **({"error": err} if err else {})}
+
+
 def status(conn: psycopg.Connection, user_id: int) -> dict:
     row = conn.execute("SELECT state, steps, attempts, updated_at FROM user_provisioning WHERE user_id = %s", (user_id,)).fetchone()
     if row is None:

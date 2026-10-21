@@ -58,7 +58,7 @@ def build_system_prompt(conn: psycopg.Connection, user_id: int, lite: bool = Fal
     p = queries.profile(conn, user_id) or {}
     basics = [f"称呼：{p.get('display_name') or '—'}", f"时区：{p.get('timezone') or 'UTC'}"]
     basics.append(f"反馈模式：{feedback_store.mode(conn, user_id)}")  # root rule 4
-    for k, label in (("age", "年龄"), ("sex", "性别"), ("height_cm", "身高 cm")):
+    for k, label in (("age", "年龄"), ("sex", "性别"), ("height_cm", "身高 cm"), ("language", "语言")):
         if p.get(k) is not None:
             basics.append(f"{label}：{p[k]}")
     memory_block = _memory_block(conn, user_id, LITE_MEMORY_CHARS if lite else MAX_MEMORY_CHARS)

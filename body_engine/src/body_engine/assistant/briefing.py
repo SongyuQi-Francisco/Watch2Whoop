@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from .. import auth, queries
+from .. import auth, queries, sparky_client
 from ..ai import root_rules
 from ..feedback import store as feedback_store
 from ..records import store as records_store
@@ -70,7 +70,7 @@ def _mean(xs) -> float | None:
 def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
     row = conn.execute(
         """SELECT
-             (SELECT row(display_name, timezone, birth_date, sex, height_cm)::text FROM users WHERE id = %(u)s) AS u,
+             (SELECT row(display_name, timezone, birth_date, sex, height_cm, language)::text FROM users WHERE id = %(u)s) AS u,
              (SELECT row(count(*), max(computed_at))::text FROM daily_scores WHERE user_id = %(u)s AND date >= %(s)s) AS sc,
              (SELECT row(count(*), max(id), max(end_at))::text FROM sleep_sessions WHERE user_id = %(u)s AND wake_date >= %(s)s) AS sl,
              (SELECT row(count(*), max(updated_at))::text FROM workouts WHERE user_id = %(u)s AND start_at >= %(s)s::date - 1) AS w,
@@ -87,7 +87,7 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
 # ---------------------------------------------------------------- sections
 def _me(conn, uid: int) -> dict:
     p = queries.profile(conn, uid) or {}
-    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm")}
+    return {k: p.get(k) for k in ("display_name", "age", "sex", "height_cm", "language")}
 
 
 def _scores(conn, uid: int, today: date) -> dict:
@@ -140,8 +140,9 @@ def _training(conn, viewer: int, uid: int, today: date) -> dict:
     out = {"days_28": {"training": s["training_days"], "rest": s["rest_days"], "by_type": s["by_type"],
                        "by_intensity": {k: v for k, v in s["by_intensity"].items() if v and k != "rest"}},
            "streak_days": streak, "last_7": last7}
-    if cal.get("sparky_error"):
-        out["sparky_error"] = cal["sparky_error"]
+    if cal.get("sparky_error"):   # issue #66 FB-4: say it plainly so the AI tells the user (no admin commands)
+        link = sparky_client.link_state(conn, uid)
+        out["training_log"] = {"state": link["state"], "tell_user": link.get("hint") or cal["sparky_error"][:200]}
     return out
 
 

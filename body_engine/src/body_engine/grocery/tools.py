@@ -5,6 +5,7 @@ from datetime import date
 
 from ..toolspec import USER, nullable, schema
 from . import off, params as P, store
+from .sync import offers as SO
 
 _n = nullable
 WEEK = _n("string", "这周任一天 YYYY-MM-DD，null=本周")
@@ -18,11 +19,42 @@ def _d(s):
 
 
 def _slim_product(p: dict) -> dict:
-    return {k: v for k, v in p.items() if v not in (None, [], {}, "") and k not in ("category_label", "size_label", "links")}
+    out = {k: v for k, v in p.items() if v not in (None, [], {}, "") and k not in ("category_label", "size_label", "store_label", "links")}
+    if p.get("offer"):
+        out["offer"] = _slim_offer({**p["offer"], "save_total": p["offer"].get("save")})
+    return out
+
+
+OFFER_KEYS = ("store", "name", "size", "price", "was_price", "unit_price", "unit_price_unit", "special", "special_label", "save_total")
+
+
+def _slim_offer(o: dict | None) -> dict | None:
+    return {k: o[k] for k in OFFER_KEYS if o.get(k) not in (None, "")} if o else None
 
 
 def _slim_list(lst: dict) -> dict:   # store links are for the page; the AI has product_url via find_products
-    return {**lst, "items": [{k: v for k, v in i.items() if k != "links"} for i in lst.get("items", [])]}
+    items = []
+    for i in lst.get("items", []):
+        x = {k: v for k, v in i.items() if k not in ("links", "store_label", "offer")}
+        if i.get("offer"):
+            x["offer"] = _slim_offer(i["offer"])
+        items.append(x)
+    out = {**lst, "items": items}
+    if out.get("specials"):
+        out["specials"] = [_slim_special(s) for s in out["specials"]]
+    return out
+
+
+def _slim_special(s: dict) -> dict:
+    return {k: s[k] for k in ("store", "name", "size", "price", "was_price", "save", "unit_price", "unit_price_unit", "flags", "for")
+            if s.get(k) not in (None, "", [])}
+
+
+def _specials(conn, uid, a):
+    lst = store.get_list(conn, uid)
+    row = conn.execute("SELECT summary FROM shopping_lists WHERE user_id = %s AND week_start = %s", (uid, lst["week_start"])).fetchone()
+    out = SO.weekly_specials(conn, uid, a["q"], a["limit"], red_meat_left=SO.red_meat_left(row["summary"] if row else {}))
+    return {**out, "items": [_slim_special(s) for s in out["items"]]}
 
 
 NUTRITION = schema({k: _n("number") for k in P.NUTRITION_KEYS})
@@ -57,7 +89,7 @@ TOOL_SPECS: list[dict] = [
             "purine_level": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
             "red_meat": _n("boolean"), "barcode": _n("string"),
             "matches": {"type": ["array", "null"], "items": {"type": "string"}}, "note": _n("string"),
-            "product_url": _n("string", "Coles / Woolworths 商品页，\"\"=清除"),
+            "product_url": _n("string", "Coles / WWS 商品页，\"\"=清除"),
             "nutrition_source": _n("string", "如 lookup_barcode 的 source"),
         }),
         handler=lambda conn, uid, a: _slim_product(store.save_product(conn, uid, a, a["product_id"])),
@@ -68,6 +100,20 @@ TOOL_SPECS: list[dict] = [
         description="按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
         input_schema=schema({"barcode": {"type": "string"}}),
         handler=lambda conn, uid, a: off.lookup(uid, a["barcode"]),
+        scope="nutrition",
+    ),
+    dict(
+        name="set_stores",
+        description="设已连接的超市（woolworths=WWS），只显示它们的链接 / 价格；[]=都不连。",
+        input_schema=schema({"stores": {"type": "array", "items": {"type": "string", "enum": list(P.STORES)}}}),
+        handler=lambda conn, uid, a: store.set_connected_stores(conn, uid, a["stores"]),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="get_weekly_specials",
+        description="已连接超市本周半价（按健康约束筛过，用户常买的在前；for=对上的商品）。推荐 / 列清单时优先用。",
+        input_schema=schema({"user": USER, "q": _n("string", "英文关键词"), "limit": _n("integer")}),
+        handler=_specials,
         scope="nutrition",
     ),
     dict(
@@ -87,7 +133,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_shopping_list",
-        description="一周的采购清单（按类别，买了没有、估价、warnings）和家里存货 pantry。",
+        description="一周的采购清单（按类别，买了没有、估价、warnings）、存货 pantry、connected_stores。",
         input_schema=schema({"user": USER, "week": WEEK}),
         handler=lambda conn, uid, a: _slim_list(store.get_list(conn, uid, _d(a["week"]), with_pantry=True)),
         scope="nutrition",
