@@ -434,7 +434,7 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
-Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
+Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
 | Endpoint (acts for the caller only; changes need write) | Description |
 |---|---|
 | `GET /v1/friends` | My circles (members, `my_scopes`, for the owner the number of live invite codes), invites addressed to me (from a referral sign-up), the scope choices and defaults, `consent_ok` |

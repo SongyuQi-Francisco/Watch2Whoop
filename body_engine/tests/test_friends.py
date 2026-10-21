@@ -15,6 +15,7 @@ from body_engine.account import delete, invites, signin
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.friends import api as friends_api, params as P, store
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_FRIENDS", "body_test_friends")
 NAMES = ("Ann", "Ben", "Cat", "Dan", "Eve")
@@ -46,6 +47,7 @@ def world(dsn):
                                (n, "2026-10-22.1" if n == "Eve" else P.CONSENT_VERSION)).fetchone()["id"] for n in NAMES}
         tok = {n: auth.create_token(conn, ids[n], "t", ["read", "write"]) for n in ids}
         tok["ann_ro"] = auth.create_token(conn, ids["Ann"], "ro", ["read"])
+        flags.set_flag(conn, "friends", "all", actor="test")   # the Friends page is behind this flag (docs/rollout.md)
     return ids, tok
 
 
@@ -322,3 +324,62 @@ def test_account_deletion_passes_circles_on(client, world, dsn):
         assert auth.can_view(conn, ids["Cat"], ids["Ben"], "scores")
         assert conn.execute("SELECT count(*) AS n FROM shares WHERE owner_id = %s OR viewer_id = %s",
                             (gone, gone)).fetchone()["n"] == 0
+
+
+
+# ---------------------------------------------------------------- feature flag `friends` (docs/rollout.md)
+def _flag(dsn, state, **kw):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        flags.set_flag(conn, "friends", state, actor="test", **kw)
+
+
+def test_flag_off_closes_everything_but_hand_made_shares(client, world, dsn):
+    ids, tok = world
+    a, b = ids["Ann"], ids["Ben"]
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE shares SET scopes = '{weight}' WHERE owner_id = %s AND viewer_id = %s", (a, b))
+    assert sees(client, tok["Ben"], a, "scores") == 200
+    try:
+        _flag(dsn, "off")
+        # every circle endpoint is gone, circle grants stop at once, the hand-made grant stays
+        assert client.get("/v1/friends", headers=h(tok["Ben"])).status_code == 404
+        assert client.post("/v1/friends/circles", headers=h(tok["Ann"]), json={"name": "x"}).status_code == 404
+        assert client.post("/v1/friends/join", headers=h(tok["Cat"]), json={"code": "AAAAA-BBBBB", "scopes": []}).status_code == 404
+        assert sees(client, tok["Ben"], a, "scores") == 403 and sees(client, tok["Ann"], b, "scores") == 403
+        assert can(dsn, b, a, "weight") and not can(dsn, b, a, "scores")
+        me = client.get("/v1/web/me", headers=h(tok["Ben"])).json()
+        assert "friends" not in me["flags"] and [v["scopes"] for v in me["viewable"] if v["id"] == a] == [["weight"]]
+        # only Ben in the beta cohort: Ann's circle grant still needs the flag on for Ann too
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.cohort_add(conn, b, "beta", actor="test")
+        _flag(dsn, "cohort", cohort="beta")
+        assert client.get("/v1/friends", headers=h(tok["Ben"])).status_code == 200
+        assert client.get("/v1/friends", headers=h(tok["Ann"])).status_code == 404
+        assert sees(client, tok["Ben"], a, "scores") == 403
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.cohort_add(conn, a, "beta", actor="test")
+        assert sees(client, tok["Ben"], a, "scores") == 200 and "friends" in client.get("/v1/web/me", headers=h(tok["Ben"])).json()["flags"]
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            for u in (a, b):
+                flags.cohort_remove(conn, u, "beta", actor="test")
+        _flag(dsn, "all")
+
+
+def test_flag_min_consent(client, world, dsn):
+    """The flag asks for consent 2026-10-22.2: Eve (older consent) has no Friends page until she confirms it."""
+    ids, tok = world
+    try:
+        _flag(dsn, "all", min_consent=P.CONSENT_VERSION)
+        assert client.get("/v1/friends", headers=h(tok["Eve"])).status_code == 404
+        assert client.get("/v1/friends", headers=h(tok["Ann"])).status_code == 200
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert P.CONSENT_VERSION in flags.consent_versions_needed(conn, ids["Eve"])
+            conn.execute("UPDATE users SET consent_version = %s WHERE id = %s", (P.CONSENT_VERSION, ids["Eve"]))
+        flags.invalidate()
+        assert client.get("/v1/friends", headers=h(tok["Eve"])).status_code == 200
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            conn.execute("UPDATE users SET consent_version = '2026-10-22.1' WHERE id = %s", (ids["Eve"],))
+            flags.set_flag(conn, "friends", "all", clear_min_consent=True, actor="test")
