@@ -3,6 +3,8 @@ same placeholders, every key the page scripts / HTML use exists, no Chinese lite
 Chinese text in the HTML is marked data-i18n*, and the i18n files are loaded before the scripts that use them and cached by sw.js."""
 import json
 import re
+import shutil
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -28,7 +30,7 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "history.js", "profile.js", "diet-profile.js", "muscle-map.js", "activate.js", "ios-web.js", "sw.js"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "history.js", "profile.js", "diet-profile.js", "muscle-map.js", "feedback.js", "identities.js", "intro.js", "sync.js", "activate.js", "ios-web.js", "sw.js"]
 PAGES = ["index.html", "activate.html", "install.html"]
 
 
@@ -139,3 +141,36 @@ def test_loaded_first_and_cached():
         assert html.index('src="i18n.js"') < html.index('src="i18n-en.js"') < html.index(f'src="{user}"'), page
     sw = (STATIC / "sw.js").read_text(encoding="utf-8")
     assert '"i18n.js"' in sw and '"i18n-en.js"' in sw
+
+
+NODE_HARNESS = r"""
+const fs = require("fs"), vm = require("vm");
+const [file, hash, device] = process.argv.slice(1);
+const store = {};
+let replaced = null;
+Object.assign(globalThis, {
+  window: globalThis,
+  localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } },
+  history: { replaceState: (a, b, u) => { replaced = u; } },
+  location: { hash, pathname: "/app/", search: "" },
+  document: { documentElement: { dataset: {}, lang: "" }, querySelectorAll: () => [], title: "" },
+});
+Object.defineProperty(globalThis, "navigator", { value: { language: device, languages: [device] }, configurable: true });   // Node 21+ has a read-only one
+vm.runInThisContext(fs.readFileSync(file, "utf8"));
+console.log(JSON.stringify({ lang: window.I18N.lang, replaced, unsaved: window.I18N.unsaved() }));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
+@pytest.mark.parametrize("hash_, device, lang, replaced, unsaved", [
+    ("#login=ABCDEFGH2345&lang=en", "zh-CN", "en", "/app/#login=ABCDEFGH2345", "en"),   # app sign-in: the login code stays for app.js
+    ("#lang=zh", "en-AU", "zh", "/app/", "zh"),
+    ("", "en-AU", "en", None, None),                                                  # no choice from the app: device language
+    ("#lang=fr", "zh-CN", "zh", None, None),                                          # unsupported: ignored
+])
+def test_app_sign_in_language_in_fragment(hash_, device, lang, replaced, unsaved):
+    """The Watch2Whoop app's native 中文 / English switch reaches the page as #…&lang=xx: used at once, saved to the profile
+    after login like the page's own login switch (unsaved), and removed from the address bar."""
+    out = subprocess.run(["node", "-e", NODE_HARNESS, str(STATIC / "i18n.js"), hash_, device],
+                         capture_output=True, text=True, check=True).stdout
+    assert json.loads(out) == {"lang": lang, "replaced": replaced, "unsaved": unsaved}

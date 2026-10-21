@@ -70,12 +70,13 @@
       <li data-step="invite"><i>3</i><span data-i18n="开通">开通</span></li>
     </ol>
     <form id="ls-email" class="login-step" novalidate hidden>
-      <p id="le-hint" data-i18n="用邮箱登录或注册">用邮箱登录或注册</p>
+      <p id="le-hint" data-i18n="用邮箱登录 / 注册">用邮箱登录 / 注册</p>
       <button type="button" class="btn btn-block login-apple" id="le-apple" data-i18n="通过 Apple 登录" hidden>通过 Apple 登录</button>
       <div class="login-or" id="le-or" hidden><span data-i18n="或">或</span></div>
       <input id="le-email" class="input" type="email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="邮箱" aria-label="邮箱" data-i18n-ph="邮箱" data-i18n-aria="邮箱" enterkeyhint="send">
       <button type="submit" class="btn btn-primary btn-block" id="le-send" data-i18n="发送验证码">发送验证码</button>
       <p class="login-error" id="le-email-error" role="alert"></p>
+      <p class="login-note"><span class="small" data-i18n="以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录">以前用激活链接登录？请管理员先绑定你的邮箱，再用邮箱登录</span></p>
     </form>
     <form id="ls-code" class="login-step" novalidate hidden>
       <p><span data-i18n="验证码已发到">验证码已发到</span><br><b id="le-to"></b></p>
@@ -88,10 +89,11 @@
       </div>
     </form>
     <form id="ls-invite" class="login-step" novalidate hidden>
-      <p><span data-i18n="输入激活码开通账号">输入激活码开通账号</span><br><span class="small" data-i18n="内测期间凭激活码开通">内测期间凭激活码开通</span></p>
-      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXXX-XXXXX" aria-label="激活码" data-i18n-aria="activate.code" enterkeyhint="go">
+      <p><span data-i18n="输入激活码开通账号">输入激活码开通账号</span><br><span class="small" data-i18n="管理员给的激活码，或好友的邀请码">管理员给的激活码，或好友的邀请码</span></p>
+      <input id="ap-code" class="input login-code" name="invite" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="24" placeholder="XXXXX-XXXXX" aria-label="激活码" data-i18n-aria="激活码" enterkeyhint="go">
       <button type="submit" class="btn btn-primary btn-block" id="ap-btn" data-i18n="开通">开通</button>
       <p class="login-error" id="ap-error" role="alert"></p>
+      <p class="login-note"><span class="small" data-i18n="已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录">已经有账号？在上面填它的激活码或登录码，这个登录方式就绑定到你的账号，下次直接登录</span><br><span class="small" data-i18n="用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple">用 Apple 登录但已有账号？先用邮箱验证码登录，再在「我 → 登录方式」绑定 Apple</span></p>
       <div class="login-links"><button type="button" class="linkbtn" id="ap-logout" data-i18n="‹ 退出，换个账号">‹ 退出，换个账号</button></div>
     </form>
     <details class="login-other" id="login-other">
@@ -124,10 +126,14 @@
 <script src="ai.js" defer></script>
 <script src="profile.js" defer></script>
 <script src="history.js" defer></script>
+<script src="identities.js" defer></script>
 <script src="account.js" defer></script>
+<script src="feedback.js" defer></script>
 <script src="grocery.js" defer></script>
 <script src="diet-profile.js" defer></script>
 <script src="muscle-map.js" defer></script>
+<script src="intro.js" defer></script>
+<script src="sync.js" defer></script>
 <script src="app.js" defer></script>
 </body>
 </html>

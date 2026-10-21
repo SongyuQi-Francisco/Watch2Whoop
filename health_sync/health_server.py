@@ -3,8 +3,8 @@
 
 POST /upload?name=health   body = text assembled by the Shortcut; header Authorization: Bearer <upload token>
   - Saved to health_data/<name>_latest.txt and health_data/archive/<name>_timestamp.txt (user 1);
-    other users go under archive/u<user_id>/. Replies 200 once saved, then runs `body-engine import-shortcut` in the background (idempotent;
-    uploads arriving during an import are merged into one re-run).
+    other users go under archive/u<user_id>/. Replies 200 once saved, then runs `body-engine import-shortcut`, `compute-scores` for the last
+    4 days and `evaluate-rules` in the background (idempotent; uploads arriving during an import are merged into one re-run).
   - The token identifies the user via secrets/health_upload_tokens.json (only sha256 is stored); old Shortcuts without a token are still accepted during the transition (counted as user 1),
     with one line in server.log; a wrong token gets 401. With HEALTH_SYNC_REQUIRE_TOKEN=1, requests without a token are rejected too.
 GET /ping                   health-sync ok
@@ -98,12 +98,21 @@ def _import_worker() -> None:
         for uid in users:
             with open(IMPORT_LOG, "a") as out:
                 out.write(f"{now()} import-shortcut user {uid}\n"); out.flush()
-                try:
-                    subprocess.run([UV, "--directory", ENGINE_DIR, "run", "--quiet", "body-engine", "import-shortcut",
-                                    "--user-id", str(uid), "--archive-dir", user_archive(uid)],
-                                   stdout=out, stderr=subprocess.STDOUT, timeout=600)
-                except Exception as e:  # an import failure does not affect receiving; the next upload will retry
-                    out.write(f"import failed: {e}\n")
+                # Scores of the last few days are recomputed right away, so a night that just synced shows on the Today page
+                # without waiting for the hourly job (4 days back covers every time zone; the engine recomputes from its origin
+                # and only writes this window). evaluate-rules refreshes the reminders that depend on those scores.
+                start = (datetime.date.today() - datetime.timedelta(days=4)).isoformat()
+                steps = [["import-shortcut", "--user-id", str(uid), "--archive-dir", user_archive(uid)],
+                         ["compute-scores", "--user-id", str(uid), "--start", start],
+                         ["evaluate-rules", "--user-id", str(uid)]]
+                for step in steps:
+                    try:
+                        r = subprocess.run([UV, "--directory", ENGINE_DIR, "run", "--quiet", "body-engine", *step],
+                                           stdout=out, stderr=subprocess.STDOUT, timeout=600)
+                    except Exception as e:  # a failure does not affect receiving; the next upload or the hourly job retries
+                        out.write(f"{step[0]} failed: {e}\n"); break
+                    if r.returncode != 0:
+                        out.write(f"{step[0]} exited {r.returncode}\n"); break
 
 
 def want_import(user_id: int) -> None:

@@ -19,7 +19,9 @@ import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
+import '../sync_on_open.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'sync_page.dart';
 
 /// Address the Today page uses to open the native sync page.
@@ -45,6 +47,33 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   DateTime _loadedAt = DateTime.fromMillisecondsSinceEpoch(0);
   String? _error;
   bool _loading = true;
+
+  /// Sync on open (sync_on_open.dart): one round on cold start and on every return to the foreground (throttled), then the
+  /// Today page asks the server for the new data (web/static/sync.js) and shows 「同步中… / 已更新」.
+  late final SyncOnOpen _syncOnOpen = SyncOnOpen(
+    canSync: () {
+      final c = AppState.instance.config;
+      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn;
+    },
+    startRound: () async {
+      await HealthSync.instance.startSync(AppState.instance.config.syncDaysBack);
+    },
+    isSyncing: () async => (await HealthSync.instance.status()).isSyncing,
+    onDone: _afterSyncRound,
+  );
+
+  Future<void> _afterSyncRound() async {
+    await HealthSync.instance.drainNativeLog();
+    for (var i = 0; i < 10 && mounted && (_loading || _error != null); i++) {
+      await Future<void>.delayed(const Duration(seconds: 1)); // the page may still be loading on a cold start
+    }
+    if (!mounted || _error != null) return;
+    try {
+      await _web.runJavaScript("window.BodySync && window.BodySync.refresh('app');");
+    } catch (e) {
+      debugPrint('sync refresh call failed: $e');
+    }
+  }
 
   /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
   bool _checkLogin = false;
@@ -102,7 +131,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
     _load();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onLink();
+      _syncOnOpen.trigger(); // cold start
+      // Someone who was never asked for Health (e.g. updated from a build without the permissions step): show it once
+      if (shouldShowPermissions(AppState.instance.config)) {
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionsPage()));
+      }
+    });
   }
 
   @override
@@ -128,8 +164,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr('使用新的设置信息？', 'Use the new setup info?')),
-        content: Text(tr('会更新服务器地址${info.code != null ? '、重新连接同步' : ''}${info.loginCode != null ? '、重新登录今天页' : ''}。',
-            'This updates the servers${info.code != null ? ', reconnects sync' : ''}${info.loginCode != null ? ' and signs in again' : ''}.')),
+        content: Text(serverLocked
+            ? tr('会${info.code != null ? '重新连接同步' : ''}${info.code != null && info.loginCode != null ? '、' : ''}${info.loginCode != null ? '重新登录今天页' : ''}。',
+                'This${info.code != null ? ' reconnects sync' : ''}${info.code != null && info.loginCode != null ? ' and' : ''}${info.loginCode != null ? ' signs in again' : ''}.')
+            : tr('会更新服务器地址${info.code != null ? '、重新连接同步' : ''}${info.loginCode != null ? '、重新登录今天页' : ''}。',
+                'This updates the servers${info.code != null ? ', reconnects sync' : ''}${info.loginCode != null ? ' and signs in again' : ''}.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('使用', 'Use'))),
@@ -159,6 +198,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
+    _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
     // ran its script), so try again, but not while a load that just started may still be redeeming the code.
     if (AppState.instance.config.pendingLoginCode != null && DateTime.now().difference(_loadedAt) > const Duration(seconds: 20)) _load();
@@ -189,7 +229,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _webLoginTried = true;
         final entry = await freshWebLoginEntry();
         if (entry != null) {
-          await _web.loadRequest(entry);
+          await _web.loadRequest(withLangFragment(entry));
           return;
         }
       }
@@ -198,9 +238,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (code != null) {
       // The one-time login code goes after the # (kept out of server logs); the Today page swaps it for a cookie and erases it
       // from the address bar right away. It stays saved until the page reports `logged-in` / `login-failed` (_onBridge).
-      await _web.loadRequest(config.todayEntry.replace(fragment: 'login=$code'));
+      await _web.loadRequest(withLangFragment(config.todayEntry.replace(fragment: 'login=$code')));
     } else {
-      await _web.loadRequest(Uri.parse(url));
+      await _web.loadRequest(withLangFragment(Uri.parse(url))); // #lang=…: the language picked on the native sign-in screen
     }
   }
 
@@ -235,7 +275,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (status != 401 || _webLoginTried || AppState.instance.accountToken == null) return;
     _webLoginTried = true;
     final entry = await freshWebLoginEntry();
-    if (entry != null && mounted) await _web.loadRequest(entry);
+    if (entry != null && mounted) await _web.loadRequest(withLangFragment(entry));
   }
 
   Future<void> _onAccountDeleted() => signOutToOnboarding(revoke: false);
@@ -305,13 +345,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               ),
               const SizedBox(height: 8),
               Text(
-                tr('检查网络；服务器只在内网时要先连 VPN。\n${shortUrl(config.todayUrl)}',
-                    'Check your connection (connect the VPN if the server is private).\n${shortUrl(config.todayUrl)}'),
+                serverLocked
+                    ? tr('检查网络后重试。', 'Check your connection and retry.')
+                    : tr('检查网络；服务器只在内网时要先连 VPN。\n${shortUrl(config.todayUrl)}',
+                        'Check your connection (connect the VPN if the server is private).\n${shortUrl(config.todayUrl)}'),
                 textAlign: TextAlign.center,
                 style: TextStyle(color: cs.onSurfaceVariant, height: 1.4),
               ),
               const SizedBox(height: 6),
-              Text(_error ?? '', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text(redactServer(_error ?? ''), textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               const SizedBox(height: 28),
               BigButton(tr('重试', 'Retry'), onPressed: _load),
               const SizedBox(height: 6),

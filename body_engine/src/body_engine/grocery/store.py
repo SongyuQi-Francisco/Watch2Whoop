@@ -4,6 +4,10 @@
 - A weekly list is generated from a plan (recipes x servings, meal templates x times, free foods): ingredients merged by name,
   matched to products, minus the pantry, rounded up to package sizes, estimated cost; health hints in `warnings`.
 - Ticking an item adds what was bought to the pantry (unticking takes it back); a paid price updates the product's price.
+- Store links are limited to the supermarkets the user has connected (grocery_settings, none by default, issue #44).
+- With the opt-in grocery-sync component on (grocery/sync/), list items and products get the best store `offer` from the
+  connected supermarkets' weekly catalogue; this week's half price comes first and its saving is summed. The user's own price
+  stays the estimate when there is one (docs/grocery-store-data-plan.md §8.6–8.7).
 The caller is responsible for authorization (writes only for the caller)."""
 import math
 import re
@@ -18,6 +22,7 @@ from ..i18n import L as Li, tl
 from ..rules import params as rule_params
 from ..rules.nutrition import is_short_rib, red_meat_estimate
 from . import links as L, params as P
+from .sync import offers as SO
 
 PURINE = ("low", "medium", "high")
 PRODUCT_FIELDS = ("name", "brand", "store", "category", "package_size", "package_unit", "piece_g", "price", "currency",
@@ -175,24 +180,43 @@ def product_flags(row: dict) -> list[str]:
     return flags
 
 
-def product_view(row: dict) -> dict:
+# ---------------------------------------------------------------- connected stores (issue #44)
+def connected_stores(conn: psycopg.Connection, user_id: int) -> list[str]:
+    row = conn.execute("SELECT stores FROM grocery_settings WHERE user_id = %s", (user_id,)).fetchone()
+    return L.check_stores(row["stores"]) if row else []
+
+
+def stores_view(conn: psycopg.Connection, user_id: int) -> dict:
+    con = connected_stores(conn, user_id)
+    return {"connected": con, "stores": [{"key": k, "label": s["label"], "connected": k in con} for k, s in P.STORES.items()]}
+
+
+def set_connected_stores(conn: psycopg.Connection, user_id: int, stores: list[str]) -> dict:
+    """Replace the set of connected supermarkets ([] = none)."""
+    stores = L.check_stores(stores)
+    conn.execute("""INSERT INTO grocery_settings (user_id, stores) VALUES (%s, %s)
+                    ON CONFLICT (user_id) DO UPDATE SET stores = EXCLUDED.stores, updated_at = now()""", (user_id, stores))
+    return stores_view(conn, user_id)
+
+
+def product_view(row: dict, connected: list[str] | tuple = ()) -> dict:
     size, unit, price = _num(row["package_size"]), row["package_unit"], _num(row["price"])
     unit_price = None
     if size and price is not None:   # per kg / L / piece
         unit_price = round(price / size * (1000 if unit in ("g", "ml") else 1), 2)
     return {"id": row["id"], "name": row["name"], "brand": row["brand"], "store": row["store"],
-            "category": row["category"], "category_label": category_label(row["category"]),
+            "store_label": L.store_label(row["store"]), "category": row["category"], "category_label": category_label(row["category"]),
             "package_size": size, "package_unit": unit, "size_label": fmt_qty(size, unit) if unit else None,
             "piece_g": _num(row["piece_g"]), "price": price, "currency": row["currency"],
             "price_on": row["price_on"].isoformat() if row["price_on"] else None, "unit_price": unit_price,
             "nutrition": row["nutrition"] or {}, "purine_level": row["purine_level"], "red_meat": row["red_meat"],
             "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row)),
             "product_url": row["product_url"], "store_sku": row["store_sku"], "nutrition_source": row["nutrition_source"],
-            "links": product_links(row)}
+            "links": product_links(row, connected)}
 
 
-def product_links(row: dict) -> list[dict]:
-    return L.links(row["name"], row["store"], row["product_url"], row["brand"], row["matches"])
+def product_links(row: dict, connected: list[str] | tuple = ()) -> list[dict]:
+    return L.links(row["name"], row["store"], row["product_url"], row["brand"], row["matches"], connected)
 
 
 def _products(conn, user_id: int) -> list[dict]:
@@ -204,13 +228,18 @@ def list_products(conn: psycopg.Connection, user_id: int, q: str | None = None, 
     if category is not None and category not in P.CATEGORIES:
         raise ValueError(f"category 只能是 {', '.join(P.CATEGORIES)}")
     qq = _key(q or "")
+    con = connected_stores(conn, user_id)
+    vis = SO.visible_stores(conn, user_id)
     out = []
     for r in _products(conn, user_id):
         if category and r["category"] != category:
             continue
         if qq and not any(qq in _key(t or "") for t in (r["name"], r["brand"], r["store"], r["barcode"], *r["matches"])):
             continue
-        out.append(product_view(r))
+        v = product_view(r, con)
+        if vis and (off := SO.find_offer(conn, vis, r["name"], r)):
+            v["offer"] = off
+        out.append(v)
     return out
 
 
@@ -254,7 +283,7 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
         cols = list(f)
         row = conn.execute(f"INSERT INTO grocery_products (user_id, {', '.join(cols)}) VALUES (%s, {', '.join(['%s'] * len(cols))}) "
                            "RETURNING *", (user_id, *f.values())).fetchone()
-        return {**product_view(row), "created": True}
+        return _saved(conn, user_id, row, True)
     if not f:
         raise ValueError("没有要改的内容")
     if "nutrition" in f and isinstance(f["nutrition"], dict):   # merge: a label photo may add only some values
@@ -263,7 +292,16 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
     sets = ", ".join(f"{k} = %s" for k in f)
     row = conn.execute(f"UPDATE grocery_products SET {sets}, updated_at = now() WHERE id = %s AND user_id = %s RETURNING *",
                        (*f.values(), cur["id"], user_id)).fetchone()
-    return {**product_view(row), "created": False}
+    return _saved(conn, user_id, row, False)
+
+
+def _saved(conn, user_id: int, row: dict, created: bool) -> dict:
+    con = connected_stores(conn, user_id)
+    out = {**product_view(row, con), "created": created}
+    key = L.parse_product_url(row["product_url"])["store"] if row["product_url"] else None
+    if key and key not in con:   # saved, but its link stays hidden until the user connects that supermarket
+        out["store_not_connected"] = P.STORES[key]["label"]
+    return out
 
 
 def remove_product(conn: psycopg.Connection, user_id: int, product_id: int) -> dict:
@@ -483,18 +521,22 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
         added += 1
     conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
                  (Jsonb(plan), Jsonb(summary), lst["id"]))
-    return {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
+    out = {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
+    if "half_price" in out:   # this week's half price that fits the health rules, for swapping things in (AI)
+        sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(summary))
+        out["specials"] = sp["items"]
+    return out
 
 
-def _item_view(r: dict, prod: dict | None = None) -> dict:
+def _item_view(r: dict, prod: dict | None = None, connected: list[str] | tuple = ()) -> dict:
     buy, unit = float(r["buy_qty"]), r["unit"]
     label = (Li(f"{r['packages']} 包", f"{r['packages']} pk") + f" · {fmt_qty(buy, unit)}" if r["packages"] else fmt_qty(buy, unit))
     return {"id": r["id"], "name": r["name"], "product_id": r["product_id"], "category": r["category"],
-            "category_label": category_label(r["category"]), "store": r["store"],
+            "category_label": category_label(r["category"]), "store": r["store"], "store_label": L.store_label(r["store"]),
             "need_qty": _num(r["need_qty"]), "unit": unit, "packages": r["packages"], "buy_qty": buy, "qty_label": label,
             "est_cost": _num(r["est_cost"]), "currency": r["currency"], "source": r["source"], "used_by": r["used_by"],
             "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"]),
-            "links": product_links(prod) if prod else L.links(r["name"], r["store"])}
+            "links": product_links(prod, connected) if prod else L.links(r["name"], r["store"], connected=connected)}
 
 
 def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
@@ -522,15 +564,44 @@ def _warnings(summary: dict, rows: list[dict], products: dict) -> list[dict]:
     return out
 
 
+def _add_offers(conn, user_id: int, items: list[dict], products: dict) -> dict | None:
+    """Store offers for unbought items (grocery-sync on + store connected). Returns {items, save} for this week's half price,
+    None when no store data is visible. Items without a user price get the store price as the estimate (est_from = store)."""
+    vis = SO.visible_stores(conn, user_id)
+    if not vis:
+        return None
+    half = {"items": 0, "save": {}}
+    for i in items:
+        if i["bought"]:
+            continue
+        off = SO.find_offer(conn, vis, i["name"], products.get(i["product_id"]))
+        if not off:
+            continue
+        packs, cost, save = SO.item_cost(off, i["buy_qty"], i["unit"])
+        i["offer"] = {**off, "packages": packs, "cost": cost, "save_total": save}
+        i["links"] = [{"store": off["store"], "label": off["label"], "kind": "product", "url": off["url"]} if
+                      (lk["store"] == off["store"] and lk["kind"] == "search") else lk for lk in i["links"]]
+        if i["est_cost"] is None and cost is not None:
+            i["est_cost"], i["currency"], i["est_from"] = cost, SO.CURRENCY, off["store"]
+        if off["half_price"]:
+            half["items"] += 1
+            if save:
+                half["save"][SO.CURRENCY] = round(half["save"].get(SO.CURRENCY, 0) + save, 2)
+    return half
+
+
 def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, with_pantry: bool = False) -> dict:
     ws = week_start(conn, user_id, day)
     lst = _list_row(conn, user_id, ws)
     rows = conn.execute("SELECT * FROM shopping_items WHERE list_id = %s ORDER BY category, bought_at NULLS FIRST, name",
                         (lst["id"],)).fetchall() if lst else []
     products = {p["id"]: p for p in _products(conn, user_id)}
-    items = [_item_view(r, products.get(r["product_id"])) for r in rows]
+    con = connected_stores(conn, user_id)
+    items = [_item_view(r, products.get(r["product_id"]), con) for r in rows]
+    half = _add_offers(conn, user_id, items, products)
     order = list(P.CATEGORIES)
-    items.sort(key=lambda i: (order.index(i["category"]) if i["category"] in order else 99, i["bought"], i["name"]))
+    items.sort(key=lambda i: (order.index(i["category"]) if i["category"] in order else 99, i["bought"],
+                              not (i.get("offer") or {}).get("half_price"), i["name"]))
     cost: dict[str, float] = {}
     for i in items:
         if i["est_cost"] is not None and i["currency"]:
@@ -539,7 +610,8 @@ def get_list(conn: psycopg.Connection, user_id: int, day: date | None = None, wi
            "generated_at": lst["generated_at"] if lst else None, "plan": lst["plan"] if lst else [],
            "items": items, "progress": {"bought": sum(i["bought"] for i in items), "total": len(items)},
            "est_total": cost, "unpriced": sum(1 for i in items if i["est_cost"] is None),
-           "warnings": _warnings(lst["summary"] if lst else {}, rows, products)}
+           "warnings": _warnings(lst["summary"] if lst else {}, rows, products), "connected_stores": con,
+           **({"half_price": half} if half is not None else {})}
     if with_pantry:
         out["pantry"] = list_pantry(conn, user_id)
     return out

@@ -48,6 +48,7 @@ services:
       # BODY_OW_INVITE_SIGNING_FILE: /run/secrets/ow_invite_signing
       # Self-service sign-up (docs/self-signup-plan.md): e-mail codes need a mail sender, Sign in with Apple the app's bundle ID.
       # BODY_MAIL_MODE: smtp                         # smtp | console (dev: code only in the log) | off
+      # BODY_REFERRALS_ENABLED: "1"                  # users get their own invite code for friends (Me → 邀请好友); default off
       # BODY_MAIL_FROM: Watch2Whoop <no-reply@example.com>
       # BODY_SMTP_HOST: smtp.example.com
       # BODY_SMTP_PORT: "587"                        # 587 STARTTLS (default) or 465 with BODY_SMTP_SECURITY: ssl

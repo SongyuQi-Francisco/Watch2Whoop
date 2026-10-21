@@ -169,6 +169,8 @@ from ..grocery.tools import TOOL_SPECS as GROCERY_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in GROCERY_TOOL_SPECS]  # grocery: product library, weekly shopping list, pantry
 from .diet_profile_tools import TOOL_SPECS as DIET_PROFILE_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in DIET_PROFILE_TOOL_SPECS]  # 「我的饮食档案」: targets rationale, constraints, day plan, versions
+from ..feedback.tools import TOOL_SPECS as FEEDBACK_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in FEEDBACK_TOOL_SPECS]  # root rules: bugs and feature requests to the developers
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 

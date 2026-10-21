@@ -18,6 +18,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import sparky_client
+from ..grocery.sync import offers as store_offers, params as sync_params
 from ..i18n import L, tl
 from ..nutrition import extras
 from ..records import store as records_store
@@ -395,6 +396,11 @@ def pantry_match(row: dict, pantry: list[dict]) -> dict | None:
     return {"have": len(have), "of": len(have) + len(missing), "missing": missing}
 
 
+def _half_label(h: dict) -> str:
+    save = f" 省 ${h['save']:g}" if h.get("save") else ""
+    return f"{h['food']}（{h['label']}{save}）"
+
+
 def _context(conn, user_id: int, day: date, client=None) -> dict:
     """Everything the per-meal ranking needs, read once: the day's goal and what was eaten (with added sugar from
     food_entry_extras), the last 7 days for red meat / short rib, uric acid, the pantry and the logging habits."""
@@ -420,13 +426,16 @@ def _context(conn, user_id: int, day: date, client=None) -> dict:
     caps = {"added_sugar_g": None if goal.get("added_sugar_max_g") is None else goal["added_sugar_max_g"] - added,
             "sat_fat_g": None if goal.get("sat_fat_max_g") is None else goal["sat_fat_max_g"] - sums["saturated_fat_g"]}
     week_red = red_meat_week(conn, user_id, day)
+    rows = _rows(conn, user_id)
     uric_high = any(r["test_key"] == "uric_acid" and r["status"] == "high"
                     for r in records_store.lab_report(conn, user_id, ["uric_acid"]))
     return {"day": day, "goal": goal, "sums": sums, "remaining": remaining, "by_meal": by_meal,
             "logged_meals": {f.get("meal_type") for f in eaten}, "caps_left": caps, "week_red": week_red,
             "red_left": None if week_red is None else rule_params.RED_MEAT_G_PER_WEEK - week_red,
             "rib_recent": _short_rib_recent(week_food), "purine_w": 1.5 if uric_high else 1.0,
-            "habits": _habits(conn, user_id, day), "pantry": _pantry(conn, user_id), "rows": _rows(conn, user_id)}
+            "habits": _habits(conn, user_id, day), "pantry": _pantry(conn, user_id), "rows": rows,
+            # this week's half price in the user's connected supermarkets (grocery-sync; {} when off / nothing connected)
+            "half": store_offers.half_price_hits(conn, user_id, [i["food"] for r in rows for i in r["ingredients"]])}
 
 
 def _meal_target(ctx: dict, slot: str) -> tuple[dict, list[str]]:
@@ -490,7 +499,11 @@ def _rank(ctx: dict, slot: str, target: dict) -> tuple[list[dict], list[dict]]:
         score -= RP.W_HABIT * min(habit, RP.HABIT_CAP) / RP.HABIT_CAP
         if pantry:
             score -= RP.W_PANTRY * pantry["have"] / pantry["of"]
-        picks.append({"score": score, "row": row, "view": v, "staple": staple, "kcal": kcal, "prot": prot,
+        half = ctx.get("half") or {}
+        hp = [{"food": i["food"], **{k: half[i["food"]][k] for k in ("label", "name", "price", "save")}}
+              for i in row["ingredients"] if i["food"] in half]
+        score -= min(sync_params.BONUS_HALF_PRICE * len(hp), sync_params.BONUS_HALF_PRICE_MAX)
+        picks.append({"hp": hp, "score": score, "row": row, "view": v, "staple": staple, "kcal": kcal, "prot": prot,
                       "recent": recent, "habit": habit, "pantry": pantry, "over": over, "added_sugar_g": ps["added_sugar_g"]})
     picks.sort(key=lambda p: p["score"])
     return picks, excluded
@@ -519,6 +532,8 @@ def _reason(p: dict, target: dict, red_left: float | None) -> str:
         bits.append("你收藏的")
     if not row["can_make"]:
         bits.append("还没做过，可以学")
+    if p.get("hp"):
+        bits.append("本周半价：" + "、".join(_half_label(h) for h in p["hp"]))
     return "；".join(bits) + "。"
 
 
@@ -548,7 +563,7 @@ def _labels(p: dict) -> list[dict]:
 def _suggestion(p: dict, target: dict, red_left: float | None) -> dict:
     return {**p["view"], "with_staple": p["staple"], "meal_kcal": round(p["kcal"]), "meal_protein_g": round(p["prot"]),
             "score": round(p["score"], 3), "pantry": p["pantry"], "times_logged": p["habit"], "labels": _labels(p),
-            "reason": _reason(p, target, red_left)}
+            "reason": _reason(p, target, red_left), **({"half_price": p["hp"]} if p.get("hp") else {})}
 
 
 def suggest(conn: psycopg.Connection, user_id: int, day: date | None = None, slot: str | None = None,

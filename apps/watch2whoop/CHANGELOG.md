@@ -9,13 +9,23 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Build | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.0+2 | `app-ios-v1.0.0+2` | (set when tagged) | TestFlight (iOS) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
-Becomes `## 1.0.0+2` (the version already in `pubspec.yaml`) once the owner has accepted it:
+
+## 1.0.0+2 — 2026-10-21
 - Self-service sign-up: Sign in with Apple, e-mail code, invite code; existing setup links keep working (#16).
+  Accounts that were activated before sign in directly with Apple or an e-mail code (server side, #70).
 - Today-page sign-in: the one-time login code from the setup link is kept until the Today page reports `logged-in` or
   `login-failed` over the `Watch2Whoop` JavaScript channel, and an interrupted load retries on the next open (#18).
+- English: the native screens follow the language chosen on the Today page or the login screen, with a 中文 / English
+  switch on the native login screen (#20, #61); iOS permission prompts localized in English and Chinese (#68).
+- The official build is locked to its server (`W2W_LOCK_SERVER` in the private `config/defaults.json`): no server field,
+  setup links for other servers are refused, the host is never shown (#61).
+- First-run onboarding: a permissions step (Health) after sign-up; intro and tips on the Today page (#63).
+- Sync on open: every time the app is opened or comes back to the foreground it syncs once (throttled) and asks the
+  server to pull the new data right away; the Today page shows 「同步中… / 已更新」 (#69).
 
 ## 1.0.0+1 — 2026-10-18
 First build (iOS only), the state of the public release `v0.1.0`:

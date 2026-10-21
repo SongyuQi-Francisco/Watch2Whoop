@@ -255,6 +255,7 @@
     btn.hidden = S.viewable.length < 2;
     btn.textContent = (who?.display_name || "?").slice(0, 1).toUpperCase();
     btn.classList.toggle("other", !!who && !who.self);
+    window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
   }
   $("#who").onclick = () => whoSheet();
 
@@ -427,7 +428,10 @@
     window.addEventListener("touchend", async () => {
       if (y0 === null) return;
       y0 = null;
-      if (dy > 80) { ptr.classList.add("spin"); ptr.style.height = "30px"; try { await refresh(); } finally { ptr.classList.remove("spin"); ptr.style.height = "0"; } }
+      if (dy > 80) {
+        window.BodySync?.refresh("pull");   // also ask the server for fresh data (sync.js polls and reloads when it is in)
+        ptr.classList.add("spin"); ptr.style.height = "30px"; try { await refresh(); } finally { ptr.classList.remove("spin"); ptr.style.height = "0"; }
+      }
       else ptr.style.height = "0";
     });
   })();
@@ -2023,6 +2027,7 @@
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
         ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
+        ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
         ${item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
@@ -2124,13 +2129,15 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
-    $("#me-refresh", view).onclick = async () => { await refresh(); toast(tr("common.refreshed")); };
+    $("#me-refresh", view).onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     $("#me-logout", view).onclick = logout;
     $("#me-handbook", view).onclick = () => openHandbook();
+    const intro = $("#me-intro", view);
+    if (intro) intro.onclick = () => window.BodyIntro.open();   // intro.js (issue #60)
   }
 
   // ---- Handbook (「我 → 使用手册」, issue #37): /app/handbook/ shown in a full-screen panel with a back button instead of navigating away.
@@ -2897,7 +2904,7 @@
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc }, me));
+    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;

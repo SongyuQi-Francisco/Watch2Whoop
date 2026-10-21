@@ -52,16 +52,30 @@ def test_store_key_and_search_term():
 
 
 def test_links():
-    saved = L.links("鸡胸肉", "Costco", "https://www.coles.com.au/product/chicken-breast-123")
+    ALL = ("coles", "woolworths")
+    saved = L.links("鸡胸肉", "Costco", "https://www.coles.com.au/product/chicken-breast-123", connected=ALL)
     assert saved == [{"store": "coles", "label": "Coles", "kind": "product", "url": "https://www.coles.com.au/product/chicken-breast-123"}]
-    both = L.links("Greek Yoghurt", None)
+    both = L.links("Greek Yoghurt", None, connected=ALL)
     assert [x["store"] for x in both] == ["coles", "woolworths"] and all(x["kind"] == "search" for x in both)
     assert both[0]["url"] == "https://www.coles.com.au/search/products?q=Greek%20Yoghurt"
     assert both[1]["url"] == "https://www.woolworths.com.au/shop/search/products?searchTerm=Greek%20Yoghurt"
-    assert [x["label"] for x in L.links("milk", "Woolies")] == ["Woolies"]
-    assert L.links("milk", "Aldi") == []
-    q = L.links("鸡蛋 & <b>", None)[0]["url"]   # always URL-encoded: nothing to break out of the href
+    assert [x["label"] for x in L.links("milk", "Woolies", connected=ALL)] == ["WWS"]   # issue #44: shown as WWS
+    assert L.links("milk", "Aldi", connected=ALL) == []
+    q = L.links("鸡蛋 & <b>", None, connected=ALL)[0]["url"]   # always URL-encoded: nothing to break out of the href
     assert "<" not in q and "&" not in q.split("?q=")[1] and " " not in q
+
+
+def test_links_only_for_connected_stores():
+    """Issue #44: no store is connected by default -> no links; otherwise only the connected chains."""
+    url = "https://www.coles.com.au/product/chicken-breast-123"
+    assert L.links("Greek Yoghurt", None) == [] and L.links("x", None, url) == []
+    assert [x["store"] for x in L.links("Greek Yoghurt", None, connected=["woolworths"])] == ["woolworths"]
+    assert L.links("x", None, url, connected=["woolworths"]) == []          # saved page of a chain that is not connected
+    assert L.links("milk", "Coles", connected=["woolworths"]) == []
+    assert L.store_key("WWS Metro") == "woolworths" and L.store_label("Woolworths") == "WWS" and L.store_label("Aldi") == "Aldi"
+    assert L.check_stores(["woolworths", "coles", "coles"]) == ["coles", "woolworths"]
+    with pytest.raises(ValueError):
+        L.check_stores(["aldi"])
 
 
 def test_tools_registered():

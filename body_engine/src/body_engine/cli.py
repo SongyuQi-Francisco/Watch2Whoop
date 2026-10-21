@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from . import auth, sparky_client
+from .account import stats as user_stats
 from .assistant import meals as assistant_meals, memory as assistant_memory, memory_seed
 from .assistant import recipes as assistant_recipes, status as assistant_status
 from .config import settings
@@ -20,6 +21,7 @@ from .rules import engine as rules_engine
 from .goals import store as goal_store
 from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, tokens as ai_tokens
+from .feedback import cli as feedback_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare",
@@ -47,9 +49,37 @@ def main() -> None:
     u.add_argument("--height-cm", type=float)
     u.add_argument("--sex")
     u.add_argument("--timezone", default="Australia/Sydney")
+    u.add_argument("--email", help="bind this e-mail as the account's sign-in (the person then signs in with an e-mail code)")
+    il = sub.add_parser("identity-link", help="bind / list / remove sign-in identities of accounts (account/identities.py)")
+    il.add_argument("--user-id", type=int)
+    il.add_argument("--email", help="e-mail to bind (or to remove with --unlink)")
+    il.add_argument("--move", action="store_true", help="take the e-mail over from the account it is bound to now")
+    il.add_argument("--list", action="store_true", help="list identities (all, or --user-id's)")
+    il.add_argument("--unlink", action="store_true", help="remove --id, or --user-id's --email")
+    il.add_argument("--id", type=int, help="identity id (from --list), for --unlink")
     sub.add_parser("user-list", help="list users")
+    us = sub.add_parser("user-stats", help="read-only: accounts by status, sign-ups / activations / active users in the last N days, "
+                        "last activity per user", epilog=user_stats.HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
+    us.add_argument("--days", type=int, default=7, help="window in days (default 7; e.g. 1 / 30 / 90)")
+    us.add_argument("--signals", default=",".join(user_stats.SIGNALS),
+                    help=f"which signals count as active (comma separated, default all: {','.join(user_stats.SIGNALS)})")
+    us.add_argument("--active-only", action="store_true", help="only users active in the window")
+    us.add_argument("--new-only", action="store_true", help="only users who signed up or activated in the window")
+    us.add_argument("--json", action="store_true", help="one JSON document instead of the table")
+    us.add_argument("--full-email", action="store_true", help="print full e-mail addresses (default masked: a***@domain)")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
+    gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
+                                             "(BODY_GROCERY_SYNC + BODY_GROCERY_SYNC_CONTACT; docs/grocery-store-data-plan.md §8)")
+    gss = gs.add_subparsers(dest="gs_cmd", required=True)
+    gsr = gss.add_parser("run", help="crawl the enabled stores politely (robots.txt, delay, stop when refused); skips if run < 6 days ago")
+    gsr.add_argument("--store", choices=["coles", "woolworths"])
+    gsr.add_argument("--force", action="store_true", help="run even if an ok run is younger than 6 days")
+    gsr.add_argument("--max-pages", type=int, help="stop after N pages (a test run; status = partial)")
+    gss.add_parser("status", help="last run per store, product / special counts, staleness (JSON)")
+    gsp = gss.add_parser("purge", help="kill switch: delete all scraped store data (products, price history, specials, run log)")
+    gsp.add_argument("--store", choices=["coles", "woolworths"])
+    gsp.add_argument("--yes", action="store_true", help="required")
 
     lc = sub.add_parser("login-code", help="issue a one-time login code (for the Watch2Whoop app setup info / QR code; the plaintext is shown only once)")
     lc.add_argument("--user-id", type=int, required=True)
@@ -62,20 +92,27 @@ def main() -> None:
     acc.add_argument("--user-id", type=int, required=True)
     acc.add_argument("--label", help="for whom, e.g. Mum (shown in list; minted login codes are named activation:<label>)")
     acc.add_argument("--days", type=int, help="validity in days (default: until revoked)")
+    acc.add_argument("--email", help="also bind this e-mail as the account's sign-in (identity-link)")
     acl = acs.add_parser("list", help="list activation codes (no plaintext)")
     acl.add_argument("--user-id", type=int)
     acr = acs.add_parser("revoke", help="revoke an activation code by id (devices already set up stay signed in)")
     acr.add_argument("--id", type=int, required=True)
     iv = sub.add_parser("invite-code", help="beta invite codes for self-service sign-up (account/invites.py)")
     ivs = iv.add_subparsers(dest="iv_cmd", required=True)
+    ivc = ivs.add_parser("create", help="one code that opens up to N accounts (one per person); prints the code (shown only once)")
+    ivc.add_argument("--label", required=True, help="who / which channel the code is for")
+    ivc.add_argument("--uses", type=int, required=True, help="how many accounts it can open")
+    ivc.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
+    ivc.add_argument("--created-by", help="free text recorded with the code")
     ivb = ivs.add_parser("batch", help="create a batch; prints CSV code,batch_id,label,expires_at,max_uses (plaintext shown only once)")
     ivb.add_argument("--count", type=int, required=True)
     ivb.add_argument("--label", required=True, help="who / which channel the batch is for")
     ivb.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
     ivb.add_argument("--max-uses", type=int, default=1, help="accounts per code (default 1)")
     ivb.add_argument("--created-by", help="free text recorded with the batch")
-    ivl = ivs.add_parser("list", help="batches with uses / free codes; --batch N: its codes and who redeemed them")
+    ivl = ivs.add_parser("list", help="batches with uses / remaining and who redeemed (masked identity, time); --batch N: per code")
     ivl.add_argument("--batch", type=int)
+    ivl.add_argument("--kind", choices=["admin", "referral"], help="referral: users' own codes — who invited whom")
     ivr = ivs.add_parser("revoke", help="stop a batch or one code (accounts already opened stay)")
     ivg = ivr.add_mutually_exclusive_group(required=True)
     ivg.add_argument("--batch", type=int)
@@ -126,6 +163,8 @@ def main() -> None:
     wk.add_argument("--start", type=date.fromisoformat, help="start from this day (user local date), default all history")
     wk.add_argument("--end", type=date.fromisoformat, help="up to and including this day, default today")
 
+    sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
+    sr.add_argument("--user-id", type=int, default=None)
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -192,6 +231,7 @@ def main() -> None:
     ar.add_argument("--user-id", type=int, required=True)
     ar.add_argument("--token-id", type=int, required=True)
     ai_fallback_cli.add_parser(sub)
+    feedback_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -252,15 +292,53 @@ def main() -> None:
                 return
         if args.cmd == "migrate":
             print("applied:", migrate(conn) or "nothing")
+        elif args.cmd == "grocery-sync":
+            from .grocery.sync import runner as gsync
+            if args.gs_cmd == "run":
+                out = gsync.run(conn, [args.store] if args.store else None, force=args.force, max_pages=args.max_pages)
+            elif args.gs_cmd == "status":
+                out = gsync.status(conn)
+            else:
+                if not args.yes:
+                    raise SystemExit("purge deletes all scraped store data: add --yes")
+                out = gsync.purge(conn, args.store)
+            print(json.dumps(out, ensure_ascii=False, indent=2, default=str))
         elif args.cmd == "user-add":
             row = conn.execute(
                 """INSERT INTO users (display_name, role, birth_date, height_cm, sex, timezone)
                    VALUES (%s,%s,%s,%s,%s,%s) RETURNING id""",
                 (args.name, args.role, args.birth_date, args.height_cm, args.sex, args.timezone)).fetchone()
             print("user id:", row["id"])
+            if args.email:
+                from .account import identities
+                print("email:", identities.link_email(conn, row["id"], args.email))
+        elif args.cmd == "identity-link":
+            from .account import identities
+            if args.list:
+                for r in identities.list_identities(conn, args.user_id):
+                    print(json.dumps(r, default=str, ensure_ascii=False))
+            elif args.unlink:
+                print("removed:", identities.unlink(conn, args.id, args.user_id, args.email))
+            else:
+                if args.user_id is None or not args.email:
+                    raise SystemExit("identity-link: give --user-id and --email (or --list / --unlink)")
+                try:
+                    print(identities.link_email(conn, args.user_id, args.email, move=args.move))
+                except identities.IdentityConflict as e:
+                    raise SystemExit(f"refused: {args.email} already signs in to user {e.user_id} ({e.status}); "
+                                     "--move takes it over")
         elif args.cmd == "user-list":
             for r in conn.execute("SELECT id, display_name, role, birth_date, height_cm, timezone FROM users ORDER BY id"):
                 print(json.dumps(r, default=str, ensure_ascii=False))
+        elif args.cmd == "user-stats":
+            try:
+                res = user_stats.collect(conn, args.days, tuple(x.strip() for x in args.signals.split(",") if x.strip()))
+            except ValueError as e:
+                p.error(str(e))
+            res = user_stats.filter_users(res, args.active_only, args.new_only)
+            if not args.full_email:
+                res = user_stats.masked(res)
+            print(json.dumps(res, default=str, ensure_ascii=False) if args.json else user_stats.render(res))
         elif args.cmd == "login-code":
             from .web import login_codes
             print(login_codes.create(conn, args.user_id, args.label, args.hours, args.scopes.split(",")))
@@ -273,6 +351,9 @@ def main() -> None:
                 print(f"{base or '<BODY_PUBLIC_URL>'}/app/activate.html#{res['code']}")
                 print(f"# id={res['id']} {'valid until revoked' if args.days is None else f'valid {args.days} days'}; "
                       "plaintext shown only this once" + ("" if base else "; BODY_PUBLIC_URL is not set"))
+                if args.email:
+                    from .account import identities
+                    print("# email:", identities.link_email(conn, args.user_id, args.email))
             elif args.ac_cmd == "list":
                 for r in activation.list_codes(conn, args.user_id):
                     print(json.dumps(r, default=str, ensure_ascii=False))
@@ -280,7 +361,12 @@ def main() -> None:
                 print("revoked" if activation.revoke(conn, args.id) else "not found / already revoked")
         elif args.cmd == "invite-code":
             from .account import invites
-            if args.iv_cmd == "batch":
+            if args.iv_cmd == "create":
+                res = invites.create_code(conn, args.label, args.uses, args.days, args.created_by)
+                print(invites.pretty(res["code"]))
+                print(f"batch {res['batch_id']} · {res['label']} · {res['max_uses']} uses · "
+                      f"expires {res['expires_at'].isoformat() if res['expires_at'] else 'never'} · plaintext shown only this once")
+            elif args.iv_cmd == "batch":
                 import csv
                 import sys
                 res = invites.create_batch(conn, args.count, args.label, args.days, args.max_uses, args.created_by)
@@ -290,7 +376,7 @@ def main() -> None:
                     w.writerow([invites.pretty(code), res["batch_id"], res["label"],
                                 res["expires_at"].isoformat() if res["expires_at"] else "", res["max_uses"]])
             elif args.iv_cmd == "list":
-                rows = invites.list_codes(conn, args.batch) if args.batch else invites.list_batches(conn)
+                rows = invites.list_codes(conn, args.batch) if args.batch else invites.list_batches(conn, args.kind)
                 for r in rows:
                     print(json.dumps(r, default=str, ensure_ascii=False))
             else:
@@ -320,6 +406,8 @@ def main() -> None:
             print("revoked" if ai_tokens.revoke(conn, args.user_id, args.token_id) else "not found / already revoked")
         elif args.cmd == "ai-fallback":
             ai_fallback_cli.run(conn, args)
+        elif args.cmd == "feedback":
+            feedback_cli.run(conn, args)
         elif args.cmd == "import-apple-export":
             export_date = args.export_date or _export_date(args.processed_dir)
             print(f"export date: {export_date}")
@@ -361,6 +449,9 @@ def main() -> None:
         elif args.cmd == "import-workouts":
             print(json.dumps(workouts_importer.import_ow(conn, OWClient(), args.user_id, args.start, args.end),
                              default=str, ensure_ascii=False))
+        elif args.cmd == "sync-refresh-run":
+            from .sync import refresh as sync_refresh
+            print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,

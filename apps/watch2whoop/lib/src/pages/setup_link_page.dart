@@ -2,6 +2,9 @@
 // for accounts opened by an admin. Scan the "setup QR code" / paste setup info → fills in the server, connects sync, keeps the login code
 // → allow reading health data → open the Today page (auto login if there is a login code). Manual entry is tucked under "Manual entry" (手动填写).
 // Onboarding: scan / paste the setup info (servers + invitation code + one-time login code) → Health → today page.
+// Locked builds (server_lock.dart) only get here from a setup link opened by the camera: no scan / paste / manual entry,
+// a link for another server is refused, one for this server keeps its invitation and login codes.
+// The 中文 / English switch (ui.dart LangSwitch) sits top right, as on the sign-in screen.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +14,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
+import 'permissions_page.dart';
 import 'scan_page.dart';
 
 class SetupLinkOnboarding extends StatefulWidget {
@@ -41,16 +45,22 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     _ow = TextEditingController(text: _config.owHost);
     _code = TextEditingController();
     SetupLinks.instance.pending.addListener(_onLink);
+    langOverride.addListener(_onLang);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
   }
 
   @override
   void dispose() {
     SetupLinks.instance.pending.removeListener(_onLink);
+    langOverride.removeListener(_onLang);
     _today.dispose();
     _ow.dispose();
     _code.dispose();
     super.dispose();
+  }
+
+  void _onLang() {
+    if (mounted) setState(() {});
   }
 
   /// Setup link brought in by opening the app via camera QR scan.
@@ -151,6 +161,13 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     }
   }
 
+  /// Continue / skip the permissions step (it counts as seen either way).
+  Future<void> _finishPermissions() async {
+    await AppState.instance.update(_config.copyWith(permissionsSeen: true));
+    if (mounted) setState(() => _step = 3);
+  }
+
+  /// Health card button of the permissions step: the iOS prompt, then start syncing.
   Future<void> _requestHealth() async {
     setState(() {
       _busy = true;
@@ -165,10 +182,9 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
           'Nothing was allowed. Change it in Health → profile → Apps → Watch2Whoop.',
         ));
       }
-      await HealthSync.instance.startSync(_config.syncDaysBack);
-      setState(() => _step = 3);
+      if (_config.owConnected) await HealthSync.instance.startSync(_config.syncDaysBack);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = redactServer('$e'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -185,8 +201,10 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
         child: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 28, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
             children: [
+              const Align(alignment: Alignment.centerRight, child: LangSwitch()),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   for (var i = 0; i < steps.length; i++)
@@ -225,7 +243,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     ],
   );
 
-  List<Widget> _setupStep() => [
+  List<Widget> _setupStep() => serverLocked ? _lockedSetupStep() : [
     _title(
       tr('开始使用', 'Get started'),
       tr('家人会给你一个「设置二维码」：用 iPhone 相机扫一下就能自动设置好。也可以在这里扫码，或粘贴设置信息。',
@@ -280,6 +298,19 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     ],
   ];
 
+  /// Locked build: nothing to type or scan here; a refused link shows its error and the way back to sign-in.
+  List<Widget> _lockedSetupStep() => [
+    _title(
+      tr('设置链接', 'Setup link'),
+      _busy ? tr('正在读取设置链接…', 'Reading the setup link…') : tr('用 iPhone 相机扫描设置二维码会自动打开这里。', 'Scan the setup QR code with the iPhone Camera to open it here.'),
+    ),
+    if (_busy) const Center(child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.2))),
+    if (widget.onBack != null) ...[
+      const SizedBox(height: 18),
+      BigButton(tr('改用账号登录', 'Sign in with an account instead'), secondary: true, onPressed: _busy ? null : widget.onBack),
+    ],
+  ];
+
   List<Widget> _owStep() => [
     _title(
       tr('连接同步', 'Connect sync'),
@@ -312,15 +343,19 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     BigButton(tr('上一步', 'Back'), secondary: true, onPressed: _busy ? null : () => setState(() => _step = 0)),
   ];
 
+  /// The permissions step (permissions_page.dart), the same cards as Phone sync → Permissions.
   List<Widget> _healthStep() => [
     _title(
-      tr('允许读取健康数据', 'Allow Health access'),
-      tr('接下来会弹出系统的健康权限窗口，请点「全部打开」，再点「允许」。只读取、不写入。首次会同步最近 ${_config.syncDaysBack} 天。',
-          'Next, iOS asks for Health access — tap "Turn On All", then "Allow". Read-only. The first sync covers the last ${_config.syncDaysBack} days.'),
+      tr('开权限', 'Permissions'),
+      tr('同步只需要读取健康数据，首次会同步最近 ${_config.syncDaysBack} 天。开关由你在 iOS 里点。',
+          'Syncing only needs to read your Health data; the first sync covers the last ${_config.syncDaysBack} days. You make the choice in iOS.'),
     ),
+    PermissionsPanel(onRequestHealth: _requestHealth),
+    const SizedBox(height: 12),
     Hint(limitsHint),
     const SizedBox(height: 24),
-    BigButton(tr('继续', 'Continue'), onPressed: _requestHealth, busy: _busy),
+    BigButton(_config.healthRequested ? tr('继续', 'Continue') : tr('跳过，以后再说', 'Skip for now'),
+        onPressed: _busy ? null : _finishPermissions),
   ];
 
   List<Widget> _doneStep() {

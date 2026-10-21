@@ -1,6 +1,7 @@
 /* Tiny i18n layer for the Today page and the activation page (issues #13, #42). No build step: load this file first, then i18n-en.js.
    - Language: the user's profile setting `language` (zh / en, from /v1/web/me, cached in localStorage "be.lang"); empty = follow the device
-     (navigator.language: zh* -> zh, anything else -> en). Before login the login page's 中文 / English switch sets the same localStorage key.
+     (navigator.language: zh* -> zh, anything else -> en). Before login the login page's 中文 / English switch sets the same localStorage key,
+     and so does #lang=zh|en in the address (the Watch2Whoop app's native sign-in switch).
    - I18N.t(key, params), aliased `tr` in the page scripts (app.js has many locals named `t`). Two kinds of key:
        1. dotted keys ("tab.today"): looked up in the ZH / EN tables below (the shell, from stage 1);
        2. the Chinese source text itself (gettext style): tr("恢复"), tr("{n} 项", { n }). Chinese = the key; English = i18n-en.js.
@@ -239,6 +240,14 @@
     return l.startsWith("zh") ? "zh" : "en";
   };
   const readPref = () => { try { return localStorage.getItem(PREF_KEY) || ""; } catch (e) { return ""; } };
+  // The app's native sign-in screen passes its 中文 / English choice in the fragment (#…&lang=en): taken like this page's
+  // login switch (used now, saved to the profile after login), then removed from the address bar (#login=… stays for app.js)
+  const fromApp = /(?:^#|&)lang=(zh|en)(?=&|$)/.exec(location.hash);
+  if (fromApp) {
+    try { localStorage.setItem(PREF_KEY, fromApp[1]); localStorage.setItem(UNSAVED_KEY, "1"); } catch (e) { /* private mode */ }
+    const rest = location.hash.slice(1).split("&").filter((p) => p && !p.startsWith("lang=")).join("&");
+    history.replaceState(null, "", location.pathname + location.search + (rest ? `#${rest}` : ""));
+  }
   const resolve = (pref) => (TABLES[pref] ? pref : device());
   let lang = resolve(readPref());
 

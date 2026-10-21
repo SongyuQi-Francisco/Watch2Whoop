@@ -35,7 +35,7 @@ TREND_FLAT_FRACTION = 0.01
 SPARK_POINTS = 12
 
 # Status card tone when above the upper limit: more than this share above it is "bad", otherwise "warn"
-# (same split as the old status card; e.g. uric acid 550 vs 420 = 31% -> bad, 480 = 14% -> warn).
+# (same split as the old status card; e.g. uric acid 520 vs 420 = 24% -> bad, 480 = 14% -> warn).
 HIGH_BAD_FRACTION = 0.20
 
 SOURCES = ("lab", "home_device")
