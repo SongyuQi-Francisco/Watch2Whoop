@@ -18,6 +18,7 @@ from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.nutrition import daily
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_COMBINE", "body_test_food_combine")
 DAY = date(2026, 10, 21)
@@ -140,10 +141,15 @@ def conn(dsn):
 def world(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         ids = {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm, timezone) VALUES (%s, '1990-01-01', 175, "
-                               "'Australia/Sydney') RETURNING id", (n,)).fetchone()["id"] for n in ("A", "B")}
+                               "'Australia/Sydney') RETURNING id", (n,)).fetchone()["id"] for n in ("A", "B", "C")}
         tok = {n: auth.create_token(conn, ids[n], "t", ["read", "write"]) for n in ids}
         tok["A_ro"] = auth.create_token(conn, ids["A"], "ro", ["read"])
         conn.execute("INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)", (ids["A"], ids["B"], ["nutrition"]))
+        # rollout flag meal_merge (docs/rollout.md): on for the beta cohort (A, B); C is not in it
+        flags.set_flag(conn, "meal_merge", "cohort", actor="test")
+        for n in ("A", "B"):
+            flags.cohort_add(conn, ids[n], actor="test")
+        flags.invalidate()
     return ids, tok
 
 
@@ -271,3 +277,32 @@ def test_cross_user(conn, world, sparky, dsn):
     finally:
         api.pool.close()
     assert fb.rows == {}                                                                  # B's data untouched throughout
+
+
+def test_flag_off_hides_everything(conn, world, sparky, dsn):
+    """meal_merge off for C (not in beta): the tool says not available, the endpoints 404, /v1/web/me has no meal_merge."""
+    ids, tok = world
+    c = ids["C"]
+    fc = sparky[c]
+    e = _lunch(fc)
+    with pytest.raises(flags.FlagOff):
+        FC.combine(conn, c, DAY, e, "merge")
+    with pytest.raises(LookupError, match="还没有对你开放"):
+        run_tool(conn, c, "butler", "combine_food_entries", {"date": DAY.isoformat(), "entry_ids": e, "action": "template",
+                                                              "name": None, "meal": None})
+    conn.rollback()
+    assert len(fc.rows) == 3                                                           # nothing changed
+    tc = auth.create_token(conn, c, "t", ["read", "write"])
+    conn.commit()
+    api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=2, open=True)
+    try:
+        cl = TestClient(api.app)
+        h = {"Authorization": f"Bearer {tc}"}
+        assert cl.post("/v1/users/me/nutrition/combine", json={"date": DAY.isoformat(), "entry_ids": e, "action": "merge"},
+                       headers=h).status_code == 404
+        assert cl.delete("/v1/users/me/nutrition/merges/1", headers=h).status_code == 404
+        assert "meal_merge" not in cl.get("/v1/users/me/flags", headers=h).json().get("flags", [])
+        ha = {"Authorization": f"Bearer {tok['A']}"}
+        assert "meal_merge" in cl.get("/v1/users/me/flags", headers=ha).json().get("flags", [])
+    finally:
+        api.pool.close()

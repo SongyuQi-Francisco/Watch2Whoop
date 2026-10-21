@@ -21,6 +21,7 @@
   const PLUGINS = () => window.BodyPlugins || [];
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
+  const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
   const ZONE = { green: "good", yellow: "mid", red: "bad" };
   const ZONE_LABEL = { green: tr("绿"), yellow: tr("黄"), red: tr("红") };
   const LEVEL = { alert: "bad", warning: "mid", info: "" };
@@ -2352,7 +2353,7 @@
       ${kv(tr("热量"), g("calories", "kcal", 0))}${kv(tr("蛋白质"), g("protein_g", "g"))}${kv(tr("碳水"), g("carbs_g", "g"))}${kv(tr("脂肪"), g("fat_g", "g"))}
       ${e.saturated_fat_g != null ? kv(tr("饱和脂肪"), g("saturated_fat_g", "g")) : ""}${e.fiber_g != null ? kv(tr("纤维"), g("fiber_g", "g")) : ""}
       ${e.sugar_g != null ? kv(tr("糖"), g("sugar_g", "g")) : ""}${e.added_sugar_g != null ? kv(tr("添加糖"), g("added_sugar_g", "g")) : ""}${e.sodium_mg != null ? kv(tr("钠"), g("sodium_mg", "mg", 0)) : ""}
-      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more">${e.merge_id ? `<button class="btn" type="button" id="fe-split">${tr("拆开成原来的几条")}</button>` : ""}<button class="btn btn-danger" type="button" id="fe-del">${tr("删除这条")}</button></div>` : ""}`,
+      ${isSelf() && e.id && e.date ? `<div class="btns" id="fe-more">${e.merge_id && window.BodyFlags?.on("meal_merge") ? `<button class="btn" type="button" id="fe-split">${tr("拆开成原来的几条")}</button>` : ""}<button class="btn btn-danger" type="button" id="fe-del">${tr("删除这条")}</button></div>` : ""}`,
     (root) => {
       const split = $("#fe-split", root);
       if (split) split.onclick = () => { closeSheet(); splitMerge(e.merge_id, e.date); };
@@ -2409,7 +2410,7 @@
           <span class="small muted">${kc != null ? `${fmtNum(kc)} kcal` : ""}${pr != null ? ` · ${tr("蛋白")} ${fmtNum(pr)} g` : ""}</span></div>
         ${xs.map(row).join("")}</div>`;
     }).join("");
-    const canPick = isSelf() && entries.some((e) => e.id);
+    const canPick = isSelf() && entries.some((e) => e.id) && window.BodyFlags?.on("meal_merge");   // rollout flag meal_merge
     const pickBtn = canPick ? `<button class="pick-btn" id="fd-pick" type="button">${pick ? tr("完成") : tr("选择")}</button>` : "";
     const bar = pick ? `<div class="pickbar"><span class="small">${tr("已选 {n} 条", { n: pick.size })}</span>
         <button class="btn" id="fp-tpl" type="button"${pick.size ? "" : " disabled"}>${tr("存成模板")}</button>
@@ -3042,6 +3043,7 @@
       return;
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
+    S.flags = me.flags || []; S.experiments = me.experiments || {};
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
@@ -3055,6 +3057,22 @@
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
     setTab(TABS[tab] ? tab : "today");
   }
+
+  // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
+  // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per
+  // page load is counted and the variant comes back (null = not in the experiment: draw the normal page).
+  const exposed = new Set();
+  window.BodyFlags = {
+    on: (key) => (S.flags || []).includes(key),
+    variant: (key) => {
+      const v = (S.experiments || {})[key] || null;
+      if (v && !exposed.has(key)) {
+        exposed.add(key);
+        api(`/v1/users/me/experiments/${encodeURIComponent(key)}/exposure`, { method: "POST" }).catch(() => {});
+      }
+      return v;
+    },
+  };
 
   // Redraw when the window crosses the wide-screen breakpoint (charts have different sizes)
   WIDE.addEventListener?.("change", () => { if (S.me) { $("#view").dataset.shown = ""; render(); } });

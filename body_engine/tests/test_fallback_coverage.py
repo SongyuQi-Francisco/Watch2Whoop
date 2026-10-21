@@ -79,6 +79,7 @@ NO_DATA = {
     "grocery/list/items/{x}": "write: tick an item",
     "feedback/{x}": "write: +1 / withdraw feedback",
     "feedback-mode": "setting",
+    "experiments/{x}/exposure": "write: one A/B exposure (rollout/)",
     "ai-choice": "setting", "ai-fallback": "setting", "ai-fallback/consent": "setting",
     "ai-providers": "setting", "ai-providers/{x}": "setting", "ai-tokens": "setting", "ai-tokens/{x}": "setting",
     "ai-connections/{x}": "setting: disconnect an OAuth connection (ai/oauth.py)",

@@ -162,6 +162,13 @@ A mobile-first PWA served by Body Engine itself (`/app/`, `/` redirects there), 
 
 Development: `uv run uvicorn body_engine.api:app --port 8120 --reload` (set environment variables such as `BODY_DB_PASSWORD_FILE` first) and open http://localhost:8120/app/ in a browser (Chrome allows Secure cookies on localhost). When debugging inside the Watch2Whoop app (WKWebView) in the iOS simulator, also add `BODY_WEB_INSECURE_LOCAL_COOKIE=1`: WKWebView does not store Secure cookies on http://localhost, so with it set only requests whose Host is localhost / 127.0.0.1 have Secure removed (`cookie_secure` in `web/session.py`); production over tailnet HTTPS is not affected.
 
+## Gradual rollout and A/B tests (`src/body_engine/rollout/`, migration 530; guide in `docs/rollout.md`)
+- **Feature flags**: keys declared in `rollout/registry.py`, state in `feature_flags` (`off` / `cohort` / `percent` / `all`; percent by a stable sha256 bucket of key + user_id, the cohort always included). `flags.enabled(conn, user_id, key)` (cached 30 s per process), `Depends(flags.require(key))` for endpoints (404 when off), `flags.guard()` elsewhere. `/v1/web/me` and `GET /v1/users/{user}/flags` return the keys on for the user and their A/B variants; the Today page reads them through `window.BodyFlags.on(key)` / `.variant(key)`.
+- **Cohorts** (`user_cohorts`, e.g. `beta`): `body-engine cohort add|remove|list`. No user is named in code.
+- **Consent follows flags**: a flag may need a minimum consent version; the version a user must confirm = max(base version, versions of the flags that target them), capped at `consent.md` (`profile/consent.required_version`). Base version: `body-engine flags consent-base [--set V | --clear]` (default: the text's version, i.e. the behaviour before flags).
+- **Experiments** (`experiments`, `experiment_exposures`): `body-engine experiments start <key> --variants control:50,new:50 [--cohort beta] [--days N] | stop | list | results`; stable variant per user, exposures per user and local day (no content), results = users and exposures per variant; outcome metrics plug into `experiments.METRICS`.
+- `body-engine flags list | set <key> --state … [--cohort] [--percent N] [--min-consent V|none] | audit`; every change is written to `rollout_audit` (`--by` names who).
+
 ## Profile and electronic consent (`src/body_engine/profile/`, migration 140)
 When a test user is onboarded the admin supplies only the Apple ID email; the profile and the consent are done by the person themself in the Today page (`web/static/profile.js`).
 | Endpoint (you can only manage your own, changes need write) | Description |

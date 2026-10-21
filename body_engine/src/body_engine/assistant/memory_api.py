@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
+from ..rollout import flags
 from . import briefing, food_combine, meals, memory, sparky_write, status
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["memory"])
@@ -109,7 +110,7 @@ class CombineIn(BaseModel):
     meal: str | None = Field(None, pattern="^(breakfast|lunch|dinner|snacks)$")
 
 
-@router.post("/nutrition/combine")
+@router.post("/nutrition/combine", dependencies=[Depends(flags.require("meal_merge"))])
 def combine_food_entries(user: str, body: CombineIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Selected food entries of one day -> a quick-meal template, merged into one entry, or both. Only for oneself."""
     owner = _self(viewer, user)
@@ -118,7 +119,7 @@ def combine_food_entries(user: str, body: CombineIn, conn=Depends(get_conn), vie
     return out
 
 
-@router.delete("/nutrition/merges/{merge_id}")
+@router.delete("/nutrition/merges/{merge_id}", dependencies=[Depends(flags.require("meal_merge"))])
 def split_food_merge(user: str, merge_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Undo a merge (「拆开」): the merged entry goes, the original entries come back."""
     owner = _self(viewer, user)

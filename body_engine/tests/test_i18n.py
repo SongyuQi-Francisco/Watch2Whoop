@@ -174,3 +174,13 @@ def test_app_sign_in_language_in_fragment(hash_, device, lang, replaced, unsaved
     out = subprocess.run(["node", "-e", NODE_HARNESS, str(STATIC / "i18n.js"), hash_, device],
                          capture_output=True, text=True, check=True).stdout
     assert json.loads(out) == {"lang": lang, "replaced": replaced, "unsaved": unsaved}
+
+
+@pytest.mark.parametrize("name", [s for s in SCRIPTS if s != "sw.js"])
+def test_upper_case_lookups_are_declared(name):
+    """Every `${NAME[...]}` in a page script refers to a constant declared in that script (the training week strip once
+    used WEEK_MON after it was renamed away, and 记录 → 训练 failed with "WEEK_MON is not defined")."""
+    js = (STATIC / name).read_text()
+    used = set(re.findall(r"\$\{([A-Z][A-Z0-9_]+)\[", js))
+    declared = set(re.findall(r"\b(?:const|let|var)\s+([A-Z][A-Z0-9_]+)\b", js))
+    assert used <= declared, sorted(used - declared)

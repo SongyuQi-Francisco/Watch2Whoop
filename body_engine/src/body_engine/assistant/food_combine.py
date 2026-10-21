@@ -134,6 +134,8 @@ def _merged_food(entries: list[dict], day: date, meal: str, name: str | None) ->
 
 def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[str], action: str,
             name: str | None = None, meal: str | None = None, channel: str = "web", client=None) -> dict:
+    from ..rollout import flags
+    flags.guard(conn, user_id, "meal_merge")   # rollout flag (docs/rollout.md): off -> "not available to you yet"
     if action not in ACTIONS:
         raise ValueError(L("action 只能是 template / merge / both", "action must be template, merge or both"))
     client = client or sparky_client.write_client_for_user(conn, user_id)
