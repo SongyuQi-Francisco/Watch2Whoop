@@ -27,7 +27,7 @@
 - **No forms** — send text, a screenshot or a photo; the AI logs it.
 - **Real numbers** — recovery, strain, sleep debt, body age and stress computed from raw watch data against your own baselines.
 
-Features, architecture and WHOOP comparison: [docs/README.md](docs/README.md) · Tester handbook (Chinese): [docs/tester-handbook.md](docs/tester-handbook.md)
+Features, architecture and WHOOP comparison: [docs/README.md](docs/README.md) · Tester handbook: [English](docs/tester-handbook.en.md) · [中文](docs/tester-handbook.md)
 
 ### Quick Start
 Needs Docker (Compose v2) and `python3` ≥ 3.9. Runs locally with 60 days of synthetic data.
@@ -87,7 +87,7 @@ Third-party services (Open Wearables, SparkyFitness, Grafana) keep their own lic
 - **没有表单**：发文字、截图或照片，AI 帮你记。
 - **真实的数字**：恢复、负荷、睡眠债、身体年龄、压力，用手表原始数据和你自己的基线算。
 
-功能、架构和 WHOOP 对照：[docs/README.md](docs/README.md) · 测试用户手册：[docs/tester-handbook.md](docs/tester-handbook.md)
+功能、架构和 WHOOP 对照：[docs/README.md](docs/README.md) · 测试用户手册：[中文](docs/tester-handbook.md) · [English](docs/tester-handbook.en.md)
 
 ### 快速开始
 需要 Docker（Compose v2）和 `python3` ≥ 3.9。在本机用 60 天合成数据跑起来。
