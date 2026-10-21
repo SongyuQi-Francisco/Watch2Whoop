@@ -1,7 +1,7 @@
 """Circles and sharing on the Friends page (docs/friends-social-plan.md §3.2, decided 2026-10-22). Configurable here."""
 
 # What a member may show the others of a circle, in the order the join sheet lists them. `ecg` is never one of them
-# (consent §4: ECGs are never shared through circles; also a CHECK in migration 470).
+# (consent §2 "圈子共享": ECGs are never shared through circles; also a CHECK in migration 470).
 CIRCLE_SCOPES = ("scores", "sleep", "training", "nutrition_summary",
                  "nutrition", "weight", "metrics", "labs", "supplements", "journal", "events", "memory")
 # Ticked by default when joining: scores (recovery, sleep, strain), training and nutrition adherence only.
@@ -9,7 +9,7 @@ CIRCLE_SCOPES = ("scores", "sleep", "training", "nutrition_summary",
 DEFAULT_SCOPES = ("scores", "sleep", "training", "nutrition_summary")
 NEVER_SHARED = ("ecg",)
 
-# Circle sharing needs the consent version that has the circle clause (consent §4 "圈子共享")
+# Circle sharing needs the consent version that has the circle clause (consent §2 "圈子共享", the owner-approved text of 2026-10-22.2)
 CONSENT_VERSION = "2026-10-22.2"
 
 INVITE_HOURS = 72             # an invite code / link works for 72 hours; the owner can reset it any time
