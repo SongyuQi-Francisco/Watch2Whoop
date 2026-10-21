@@ -397,6 +397,21 @@
     return el;
   }
   function note(text, tone = "") { return bubble("note", text, tone); }
+
+  // The AI's answer as safe Markdown (md.js, issue #92). While it streams, repaint at most once per frame and with
+  // partial=true (a dangling ** or ` stays hidden until its closer arrives); the final paint renders everything.
+  function paint(el, final) {
+    if (!el) return;
+    if (final) el._final = true;
+    const draw = () => {
+      el._queued = false;
+      if (window.BodyMarkdown) { el.classList.add("md"); el.innerHTML = window.BodyMarkdown.render(el._raw || "", { partial: !el._final }); }
+      else el.textContent = el._raw || "";
+      scroll();
+    };
+    if (final) { draw(); return; }
+    if (!el._queued) { el._queued = true; requestAnimationFrame(draw); }
+  }
   function scroll() { const l = $("#ai-log"); l.scrollTop = l.scrollHeight; }
 
   // ---------------------------------------------------------------- photos / video / voice (helpers in ai-media.js)
@@ -550,8 +565,9 @@
           if (!ev || data == null) continue;
           const d = JSON.parse(data);
           if (ev === "conversation") { chat.conv = d.id; if (d.quota) quotaLine(d.quota); }
-          else if (ev === "text") { if (!cur) { status.remove(); cur = bubble("assistant", ""); } cur.textContent += d.delta; scroll(); }
+          else if (ev === "text") { if (!cur) { status.remove(); cur = bubble("assistant", ""); cur._raw = ""; } cur._raw += d.delta; paint(cur); }
           else if (ev === "tool") {
+            paint(cur, true);
             cur = null;
             status.textContent = { running: tr("查看 {name}…", { name: d.name }), done: `✓ ${d.name}`, error: `✗ ${d.name}`, rejected: tr("已取消 {name}", { name: d.name }) }[d.status] || d.name;
             if (d.status === "done" && body.call_id) wrote = true;
@@ -560,12 +576,13 @@
           else if (ev === "usage") { usageLine(d); }
           else if (ev === "notice") note(d.message, "warn");
           else if (ev === "error") { status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
-          else if (ev === "done") { status.remove(); }
+          else if (ev === "done") { status.remove(); paint(cur, true); }
         }
       }
     } catch (e) {
       status.remove(); note(tr("连不上（没联网，或 Tailscale 没开）"), "warn");
     } finally {
+      paint(cur, true);
       if (status.isConnected && status.textContent === "…") status.remove();
       chat.busy = false; $("#ai-send").disabled = false;
       if (wrote) C.refresh?.();  // Something was written to the database: refresh the Today page data
