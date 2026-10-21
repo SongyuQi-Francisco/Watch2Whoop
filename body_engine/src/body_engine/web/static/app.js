@@ -160,6 +160,7 @@
     after?.($("#sheet-body"));
   }
   function closeSheet() {
+    closeAltPreview();
     const sh = $("#sheet");
     sh.classList.remove("open");
     sheetTimer = setTimeout(() => { if (!sh.classList.contains("open")) sh.hidden = true; }, 240);
@@ -2534,11 +2535,71 @@
   const weekStart = (iso) => addDays(iso, -((parseDay(iso).getDay() + 6) % 7));
   const planShort = (planned) => planned[0].name.replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || planned[0].name;   // week strip: first session, short (i18n-ok: plan names are data)
 
+  // Offline (network error, ApiError status 0) is not "no data": say so and offer a retry (the page-wide handling is #77)
+  const offlineHtml = () => `<div class="empty faint">${esc(tr("离线，连上网络后重试"))}</div>
+    <div class="btns" style="justify-content:center;margin-top:4px"><button class="btn" data-retry>${esc(tr("common.retry"))}</button></div>`;
+
+  async function swapInPlan(fromSlug, toSlug, btn) {
+    btn.disabled = true;
+    try {
+      const res = await api(`/v1/users/me/training/plan/swap`, { method: "POST", body: { from_exercise: fromSlug, to_exercise: toSlug } });
+      delete S.data[`tweek${S.todayDate}:${S.owner}`];
+      delete S.data[todayKey()];
+      closeAltPreview(); closeSheet(); render();
+      toast(tr("已替换为 {name}", { name: res.to_exercise?.name_zh || toSlug }));
+    } catch (err) { toast(err.status === 0 ? tr("离线，连上网络后重试") : err.message); btn.disabled = false; }
+  }
+
+  // ---- Preview card of a safe alternative (#67): opens over the detail sheet from data the detail response already carries
+  // (thumbnail, names, muscles, equipment, recommended weight), so it also works from the cached detail when offline.
+  function closeAltPreview() { $(".pv-scrim")?.remove(); }
+  document.addEventListener("keydown", (e) => {   // capture: Escape closes the card first, not the sheet under it
+    if (e.key === "Escape" && $(".pv-scrim")) { e.stopImmediatePropagation(); closeAltPreview(); }
+  }, true);
+
+  function altPreview(a, fromSlug) {
+    closeAltPreview();
+    const names = (list) => (list || []).map((x) => tr(x)).join(tr("、"));   // catalog labels: English in i18n-en.js
+    const ld = a.load;
+    const weight = ld && a.status !== "banned" && (ld.kg != null || ld.reason === "no_body_weight" || ld.basis === "bodyweight")
+      ? (ld.kg != null ? `${fmtNum(ld.kg, 1)} kg${ld.basis === "estimate" ? ` <small class="muted">${esc(tr("估算"))}</small>` : ""}` : esc(tr(ld.label))) : null;
+    const pic = a.thumb ? `<img class="pv-img" src="${esc(a.thumb)}" alt="${esc(a.name_zh)}" loading="lazy" decoding="async">`
+      : window.BodyMuscleMap ? `<div class="pv-map">${window.BodyMuscleMap.html(a.primary_muscles, a.secondary_muscles)}</div>` : "";
+    const st = a.status === "banned" ? badge("bad", tr("禁用")) : a.status === "caution" ? badge("mid", tr("注意")) : "";
+    const [main, other] = I18N.lang === "en" && a.name_en ? [a.name_en, a.name_zh] : [a.name_zh, a.name_en];   // both names, page language first
+    const el = document.createElement("div");
+    el.className = "pv-scrim";
+    el.innerHTML = `<div class="pv-card" role="dialog" aria-modal="true" aria-label="${esc(a.name_zh)}">
+      <button class="pv-x" data-pv="close" aria-label="${esc(tr("common.close"))}">×</button>
+      ${pic}
+      <div class="pv-name">${esc(main)} ${st}</div>
+      ${other && other !== main ? `<div class="pv-en">${esc(other)}</div>` : ""}
+      ${(a.primary_muscles_zh || []).length ? kv(tr("主肌群"), esc(names(a.primary_muscles_zh))) : ""}
+      ${(a.equipment_zh || []).length ? kv(tr("器械"), esc(names(a.equipment_zh))) : ""}
+      ${weight ? kv(tr("推荐重量"), weight) : ""}
+      <div class="btns"><button class="btn" data-pv="detail">${esc(tr("查看详情"))}</button>
+        ${isSelf() && a.status !== "banned" ? `<button class="btn btn-primary" data-pv="swap">${esc(tr("替换成这个"))}</button>` : ""}</div>
+    </div>`;
+    el.addEventListener("click", (e) => {
+      const act = e.target.closest("[data-pv]")?.dataset.pv;
+      if (e.target === el || act === "close") closeAltPreview();
+      else if (act === "detail") { closeAltPreview(); exerciseDetailSheet(a.slug); }
+      else if (act === "swap") swapInPlan(fromSlug, a.slug, e.target.closest("button"));
+    });
+    document.body.appendChild(el);
+    $(".pv-card .btn", el)?.focus({ preventScroll: true });
+  }
+
   async function exerciseDetailSheet(slugOrName) {
     openSheet(tr("动作详情"), `<div class="empty faint">…</div>`);
     let ex;
     try { ex = await load(`ex:${slugOrName}`, `/v1/users/${ownerPath()}/training/exercises/${encodeURIComponent(slugOrName)}`); }
-    catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${esc(e.message || tr("暂无详情"))}</div>`; return; }
+    catch (e) {
+      $("#sheet-body").innerHTML = e.status === 0 ? offlineHtml() : `<div class="empty faint">${esc(e.message || tr("暂无详情"))}</div>`;
+      const retry = $("[data-retry]", $("#sheet-body"));
+      if (retry) retry.onclick = () => exerciseDetailSheet(slugOrName);
+      return;
+    }
     $("#sheet-title").textContent = ex.name_zh || slugOrName;
     const stBadge = ex.status === "banned" ? badge("bad", tr("禁用")) : ex.status === "caution" ? badge("mid", tr("注意")) : badge("good", tr("正常"));
     const muscles = [...(ex.equipment_zh || []).map((q) => badge("plain", q)),
@@ -2555,11 +2616,12 @@
     const recent = (ex.recent || []).map((r) => kv(shortDay(r.date), esc(r.sets.join(" · ")))).join("");
     const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${k}${v === "high" ? tr("高") : tr("中")}`)).join("");
     const steps = (ex.instructions_zh || []).map((s) => `<li>${esc(s)}</li>`).join("");
-    const self = isSelf();
-    const alts = (ex.alternatives || []).map((a) => `<div class="item" style="align-items:center">
+    const alts = (ex.alternatives || []).map((a, i) => `<button class="item alt-row" data-alt="${i}">
+      ${a.thumb ? `<img class="alt-thumb" src="${esc(a.thumb)}" alt="" loading="lazy" decoding="async">` : `<span class="alt-thumb"></span>`}
       <div style="flex:1;min-width:0"><div class="row-title">${esc(a.name_zh)}</div>
-        <div class="small muted">${esc([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])].join(" · "))}</div></div>
-      ${self ? `<button class="btn" style="padding:4px 10px;font-size:12px" data-swap-to="${esc(a.slug)}">${tr("换进计划")}</button>` : ""}</div>`).join("");
+        <div class="small muted">${esc([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])].map((x) => tr(x)).join(" · "))}</div></div>
+      ${a.load_text && a.status !== "banned" ? `<span class="val">${esc(a.load?.kg != null ? `${a.load.basis === "estimate" ? "≈ " : ""}${fmtNum(a.load.kg, 1)} kg` : tr(a.load_text))}</span>` : ""}
+      <span class="chev">${ICON.chev}</span></button>`).join("");
     $("#sheet-body").innerHTML = `
       ${ex.name_en && ex.name_en !== ex.name_zh ? `<div class="small muted" style="margin:-4px 0 8px">${esc(ex.name_en)}</div>` : ""}
       ${carousel}
@@ -2588,18 +2650,7 @@
       car.addEventListener("touchstart", stop, { passive: true });
       car.addEventListener("pointerdown", stop);
     }
-    for (const b of $$("[data-swap-to]", root)) {
-      b.onclick = async () => {
-        b.disabled = true;
-        try {
-          const res = await api(`/v1/users/me/training/plan/swap`, { method: "POST", body: { from_exercise: ex.slug, to_exercise: b.dataset.swapTo } });
-          delete S.data[`tweek${S.todayDate}:${S.owner}`];
-          delete S.data[todayKey()];
-          closeSheet(); render();
-          toast(tr("已替换为 {name}", { name: res.to_exercise?.name_zh || b.dataset.swapTo }));
-        } catch (err) { toast(err.message); b.disabled = false; }
-      };
-    }
+    for (const b of $$("[data-alt]", root)) b.onclick = () => altPreview(ex.alternatives[Number(b.dataset.alt)], ex.slug);
   }
 
   async function exerciseLibrarySheet() {
