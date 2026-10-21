@@ -132,7 +132,7 @@ def test_tools_are_own_data_subset():
     for t in fallback.tools():
         assert "user" not in t.input_schema.get("properties", {}) and "user" not in t.input_schema.get("required", [])
     size = sum(len(t.description) + len(json.dumps(t.input_schema, ensure_ascii=False)) for t in fallback.tools())
-    assert size < 25000, size  # the full set is ~47k chars
+    assert size < 30000, size  # ~28k with every Today page read tool (issue #58); the full set is ~47k chars
 
 
 def test_cost_and_estimate():
