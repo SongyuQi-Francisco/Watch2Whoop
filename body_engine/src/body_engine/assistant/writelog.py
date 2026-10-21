@@ -14,7 +14,13 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 _ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
-ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab"}
+ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template"}
+# kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries)
+ONLY_ACTION = {"merge": "merge", "template": "create"}
+
+
+def _can_roll(kind: str, action: str) -> bool:
+    return kind in ROLLBACK_KINDS and action != "rollback" and ONLY_ACTION.get(kind, action) == action
 
 
 def _plain(x):
@@ -59,7 +65,7 @@ def list_log(conn, user_id: int, days: int = 14, limit: int = 30) -> list[dict]:
                            ORDER BY id DESC LIMIT %s""", (user_id, timedelta(days=days), limit)).fetchall()
     return [{"id": r["id"], "at": f"{r['created_at']:%Y-%m-%d %H:%M}", "tool": r["tool"], "kind": r["kind"],
              "action": r["action"], "target": r["target"], "before": r["before"], "after": r["after"],
-             "rollback": None if r["kind"] not in ROLLBACK_KINDS or r["action"] == "rollback"
+             "rollback": None if not _can_roll(r["kind"], r["action"])
              else ("done" if r["rolled_back_at"] else "ok")} for r in rows]
 
 
@@ -71,7 +77,7 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
         raise ValueError(f"没有这条操作日志：{log_id}（或不是你的）")
     if row["rolled_back_at"]:
         raise ValueError(f"这条已经在 {row['rolled_back_at']:%Y-%m-%d %H:%M} 回滚过了")
-    if row["action"] == "rollback" or row["kind"] not in ROLLBACK_KINDS:
+    if not _can_roll(row["kind"], row["action"]):
         raise ValueError("这条没有可自动回滚的前值；用对应的工具手动改回")
     from . import sparky_write
     from ..records import lab_catalog
@@ -79,6 +85,13 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
     kind, before, after = row["kind"], row["before"], row["after"]
     if kind in ("food", "session", "sets", "weight"):
         result = sparky_write.rollback(conn, user_id, kind, row["action"], before, after, client=client)
+    elif kind == "merge":   # food entries merged into one (assistant/food_combine.py): split them again
+        from . import food_combine
+        result = food_combine.split(conn, user_id, int(row["target"]), client=client, log=False)
+    elif kind == "template":   # a template made from logged entries: remove it
+        n = conn.execute("UPDATE meal_templates SET active = FALSE, updated_at = now() WHERE id = %s AND user_id = %s AND active",
+                         (int(row["target"]), user_id)).rowcount
+        result = {"template_removed": int(row["target"]) if n else None}
     elif kind == "workout":
         result = overrides.restore(conn, user_id, int(row["target"]), before, after)
     else:

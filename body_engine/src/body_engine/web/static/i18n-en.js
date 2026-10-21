@@ -972,4 +972,17 @@ I18N.addEn({
   "未同步": "Not synced",
   "棒": "Well done",
   "正在查看：{name}（只读）": "Viewing: {name} (read-only)",
+  // 饮食 day detail: select entries -> template / merge (issue #93)
+  "拆开成原来的几条": "Split back into the original entries",
+  "完成": "Done",
+  "选择": "Select",
+  "已选 {n} 条": "{n} selected",
+  "存成模板": "Save as template",
+  "合并成一条": "Merge into one",
+  "名字": "Name",
+  "{n} 条": "{n} entries",
+  "合并": "Merge",
+  "已合并 · {name}": "Merged · {name}",
+  "已存成模板 · {name}": "Saved as template · {name}",
+  "已拆开": "Split",
 });
