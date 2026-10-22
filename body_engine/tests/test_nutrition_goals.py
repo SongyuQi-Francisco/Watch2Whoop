@@ -35,8 +35,13 @@ REST_DAYS = ("tuesday", "thursday", "sunday")
 def test_check_optional_and_parse_notes():
     assert extras.check_optional("x", {"sugar_g": 10, "added_sugar_g": None}) == {
         "sugar_g": 10.0, "added_sugar_g": None, "fiber_g": None, "sodium_mg": None}
-    with pytest.raises(ValueError, match="添加糖不能多于总糖"):
+    with pytest.raises(ValueError, match=r"添加糖不能多于总糖.*added_sugar_g 9 g.*sugar_g 5 g.*超出 4 g"):
         extras.check_optional("x", {"sugar_g": 5, "added_sugar_g": 9})
+    notes = []
+    assert extras.check_optional("x", {"sugar_g": 5, "added_sugar_g": 9}, clamp_notes=notes)["added_sugar_g"] == 5
+    assert len(notes) == 1 and "多 4 g" in notes[0]
+    with pytest.raises(ValueError, match=r"sugar_g 不能多于碳水.*超出 10 g"):
+        extras.check_optional("x", {"sugar_g": 30}, carbs_g=20)
     with pytest.raises(ValueError, match="不能多于碳水"):
         extras.check_optional("x", {"sugar_g": 30}, carbs_g=20)
     with pytest.raises(ValueError, match="≥ 0"):
@@ -317,8 +322,10 @@ def test_log_food_sugar_fields_and_daily(conn, world, monkeypatch):
     item = {"date": iso, "meal": "snacks", "time": "15:00", "food": "可乐 330ml", "amount": "1 罐", "calories": 139,
             "protein_g": 0, "carbs_g": 35, "fat_g": 0, "saturated_fat_g": None, "alcohol_g": None, "sugar_g": 35,
             "added_sugar_g": 35, "fiber_g": None, "sodium_mg": 10, "sugary_drink": None, "notes": None}
-    with pytest.raises(ValueError, match="添加糖不能多于总糖"):
-        sparky_write.log_food(conn, a, [dict(item, added_sugar_g=40)], False, client=fake)
+    cut = sparky_write.log_food(conn, a, [dict(item, added_sugar_g=40)], False, client=fake)   # #183: cut to total sugar, said so
+    assert cut["created"][0]["added_sugar_g"] == 35 and "按总糖截为 35 g" in cut["warnings"][0]
+    fake.writes.clear()
+    conn.execute("DELETE FROM food_entry_extras WHERE user_id = %s", (a,))
     res = sparky_write.log_food(conn, a, [item], False, client=fake)
     entry_id = res["created"][0]["id"]
     (_, _, food), (_, _, _) = fake.writes

@@ -18,19 +18,25 @@ OPTIONAL = ("sugar_g", "added_sugar_g", "fiber_g", "sodium_mg")
 MAX_SODIUM_MG = 20000
 
 
-def check_optional(label: str, it: dict, carbs_g: float | None = None) -> dict:
-    """Validate the optional fields of one food / ingredient (None = unknown). Returns {field: value}."""
+def check_optional(label: str, it: dict, carbs_g: float | None = None, clamp_notes: list | None = None) -> dict:
+    """Validate the optional fields of one food / ingredient (None = unknown). Returns {field: value}.
+    Errors name the field and by how much it is over. clamp_notes (a list) = the AI write tools: added sugar above total
+    sugar is cut to the total sugar and a note is appended to the list, instead of failing the whole write."""
     out = {}
     for f in OPTIONAL:
         v = it.get(f)
         if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0):
             raise ValueError(f"{label}：{f} 要是 ≥ 0 的数（不知道就 null）")
         out[f] = None if v is None else float(v)
-    if out["added_sugar_g"] is not None and out["sugar_g"] is not None and out["added_sugar_g"] > out["sugar_g"] + 0.5:
-        raise ValueError(f"{label}：添加糖不能多于总糖")
+    a, s = out["added_sugar_g"], out["sugar_g"]
+    if a is not None and s is not None and a > s + 0.5:
+        if clamp_notes is None:
+            raise ValueError(f"{label}：添加糖不能多于总糖（added_sugar_g {a:g} g，sugar_g {s:g} g，超出 {a - s:g} g）")
+        clamp_notes.append(f"{label}：添加糖 {a:g} g 比总糖 {s:g} g 多 {a - s:g} g，已按总糖截为 {s:g} g（总糖不准就改总糖）")
+        out["added_sugar_g"] = s
     for f in ("sugar_g", "added_sugar_g"):
         if out[f] is not None and carbs_g is not None and out[f] > carbs_g + 0.5:
-            raise ValueError(f"{label}：{f} 不能多于碳水")
+            raise ValueError(f"{label}：{f} 不能多于碳水（{f} {out[f]:g} g，碳水 {carbs_g:g} g，超出 {out[f] - carbs_g:g} g）")
     if out["sodium_mg"] is not None and out["sodium_mg"] > MAX_SODIUM_MG:
         raise ValueError(f"{label}：钠 {out['sodium_mg']:g} mg 太多，是不是把 g 当成 mg 了")
     return out
@@ -58,6 +64,24 @@ def save(conn: psycopg.Connection, user_id: int, entry_id: str, day: date, value
            RETURNING entry_id""",
         (user_id, str(entry_id), day, *vals.values(), sugary_drink, source)).fetchone()
     return row is not None
+
+
+def set_values(conn: psycopg.Connection, user_id: int, entry_id: str, day: date, values: dict) -> None:
+    """Write the given (not None) optional values of one entry, keeping what the row already has for the others; inserts the
+    row when the entry had none. update_food_entry uses it for corrected / scaled values."""
+    vals = {f: values.get(f) for f in OPTIONAL}
+    if all(v is None for v in vals.values()):
+        return
+    conn.execute(
+        """INSERT INTO food_entry_extras (user_id, entry_id, date, sugar_g, added_sugar_g, fiber_g, sodium_mg, source)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, 'log_food')
+           ON CONFLICT (user_id, entry_id) DO UPDATE SET date = EXCLUDED.date,
+             sugar_g = COALESCE(EXCLUDED.sugar_g, food_entry_extras.sugar_g),
+             added_sugar_g = COALESCE(EXCLUDED.added_sugar_g, food_entry_extras.added_sugar_g),
+             fiber_g = COALESCE(EXCLUDED.fiber_g, food_entry_extras.fiber_g),
+             sodium_mg = COALESCE(EXCLUDED.sodium_mg, food_entry_extras.sodium_mg),
+             source = 'log_food', updated_at = now()""",
+        (user_id, str(entry_id), day, *vals.values()))
 
 
 def carry_over(conn: psycopg.Connection, user_id: int, old_id: str, new_id: str, new_date: date,

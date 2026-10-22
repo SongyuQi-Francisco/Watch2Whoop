@@ -621,6 +621,15 @@
     await stream("/v1/assistant/chat", { message: text, images, conversation_id: chat.conv, page: C.page?.() || null });   // page: extra tool groups (#99)
   }
 
+  const RESTART_WAITS = [3000, 6000];
+  // A failed send: a button on the message sends the same thing again (the page is not left with a dead end)
+  function retryButton(el, path, body) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn"; b.textContent = tr("common.retry");
+    b.onclick = () => { if (chat.busy) return; el.remove(); stream(path, body); };
+    el.appendChild(b);
+  }
+
   // resume: { conv, seq, cur, wrote, body } of a turn whose connection dropped (#114); path is then its events URL
   async function stream(path, body, resume = null) {
     chat.busy = true; $("#ai-send").disabled = true; quickBusy(true);
@@ -630,16 +639,30 @@
     const ctrl = new AbortController(); chat.live = { ctrl, hidden: document.visibilityState === "hidden", started: () => seq > 0 };
     if (!resume) chat.lost = null;   // a new message replaces a turn that was still waiting to be picked up
     try {
-      const r = await fetch(path, resume ? { credentials: "same-origin", signal: ctrl.signal, headers: { Accept: "text/event-stream", ...window.I18N.headers() } }
+      // A deploy restarts the server for a few seconds (502 / 503 / 504, or no connection): a new message waits and is sent
+      // again by itself, at most twice. Nothing was received yet, so it cannot be answered twice.
+      const init = resume ? { credentials: "same-origin", signal: ctrl.signal, headers: { Accept: "text/event-stream", ...window.I18N.headers() } }
         : { method: "POST", credentials: "same-origin", signal: ctrl.signal,
-          headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Body-Web": "1", ...window.I18N.headers() }, body: JSON.stringify(body) });
+          headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Body-Web": "1", ...window.I18N.headers() }, body: JSON.stringify(body) };
+      let r = null;
+      for (let n = 0; ; n++) {
+        let down = false;
+        try { r = await fetch(path, init); down = [502, 503, 504].includes(r.status); }
+        catch (e) { if (resume || ctrl.signal.aborted || navigator.onLine === false || n >= RESTART_WAITS.length) throw e; down = true; }
+        if (!down || resume || n >= RESTART_WAITS.length) break;
+        status.textContent = tr("服务器正在更新，几秒后自动重试…");
+        await new Promise((ok) => setTimeout(ok, RESTART_WAITS[n]));
+        status.textContent = wait;
+      }
       if (!r.ok) {
         let d = null; try { d = (await r.json()).detail; } catch (e) { /* no body */ }
         status.remove();
-        const msg = typeof d === "string" ? d : d?.message || tr("err.request", { status: r.status });
+        const restart = [502, 503, 504].includes(r.status) && !resume;
+        const msg = restart ? tr("服务器正在更新，请过一会儿再试") : typeof d === "string" ? d : d?.message || tr("err.request", { status: r.status });
         if (d?.code === "fallback_consent") { closeChat(); consentSheet(null, () => openChat()); return; }
         if (d?.quota_cny != null) quotaLine(d);
         const el = note(msg, "warn");
+        if (restart) retryButton(el, path, body);
         if (d?.assistant_url) { const a = document.createElement("a"); a.href = d.assistant_url; a.target = "_blank"; a.rel = "noopener"; a.className = "btn"; a.textContent = tr("打开"); el.appendChild(a); }
         if (r.status === 401) C.toast(tr("登录过期了，请重新登录"));
         return;
@@ -666,6 +689,8 @@
             cur = null;
             status.textContent = { running: tr("查看 {name}…", { name: d.name }), done: `✓ ${d.name}`, error: `✗ ${d.name}`, rejected: tr("已取消 {name}", { name: d.name }) }[d.status] || d.name;
             if (d.status === "done" && body.call_id) wrote = true;
+            // A rejected value (which field, how much over) is told apart from a network failure ("连不上") below
+            if (d.status === "error" && d.message) note(tr("{name} 校验失败：{msg}", { name: d.name, msg: d.message }), "warn");
           }
           else if (ev === "card") { if (rich()) { status.remove(); paint(cur, true); cur = null; showCard(d.card); } }
           else if (ev === "confirm") { ended = true; status.remove(); d.calls.forEach(confirmCard); }
@@ -680,7 +705,10 @@
       status.remove();
       // The turn goes on on the server (#114): once it started (an event arrived), pick it up instead of reporting an error
       if (seq > 0 && chat.conv) lost = { conv: chat.conv, seq, cur, wrote, body, tries: seq > (resume?.seq || 0) ? 0 : resume?.tries || 0 };
-      else note(navigator.onLine === false ? tr("离线，连上网络后重试") : tr("连不上（没联网，或 Tailscale 没开）"), "warn");
+      else {
+        const el = note(navigator.onLine === false ? tr("离线，连上网络后重试") : tr("连不上（没联网，或 Tailscale 没开）"), "warn");
+        if (!resume) retryButton(el, path, body);
+      }
     } finally {
       if (!lost) paint(cur, true);   // a turn that is picked up again keeps streaming into the same bubble
       if (status.isConnected && status.textContent === wait) status.remove();
