@@ -19,14 +19,20 @@ PRICE_CACHE_MISS_CNY = 2.0                # per million input tokens not in the 
 PRICE_OUTPUT_CNY = 8.0                    # per million output tokens
 
 MONTHLY_QUOTA_CNY = 3.0                   # per person per natural month (user's time zone); admin can override per person
-MAX_OUTPUT_TOKENS = 2048                  # per model call (short Chinese answers; log_food arguments fit easily)
-MAX_ROUNDS = 6                            # model calls chained for one user message (the general chat allows 8)
+MAX_OUTPUT_TOKENS = 4096                  # per model call: answers are short, but propose_plan / save_plan arguments for a whole
+                                          # week reached ~2,000 output tokens on Ali (2026-10-22), right at the old 2048 (issue #184)
+MAX_ROUNDS = 12                           # model calls chained for one user message (the general chat allows 8). A shopping plan or
+                                          # a week plan with find_tools / run_read_tool takes 7–10 (issue #184: 6 stopped them
+                                          # half way). The last one is always a tools-off answer (ai/chat.py _loop)
+MAX_TURN_CNY = 0.3                        # what one user message may cost (10% of the default quota): past it the next call is the
+                                          # tools-off answer. Observed 2026-10-22: a 6-round message ≈ ¥0.02 (mostly cache hits)
 # Context (ai/context.py): history is resent on every call, so past this budget the older turns are folded into a summary
 CONTEXT_MAX_CHARS = 24_000                # history after the summary, as JSON text (~8–12k tokens, ≈ ¥0.02 per call at cache-miss price)
 CONTEXT_MAX_MESSAGES = 40                 # or this many messages (tool calls and results count)
 KEEP_TURNS = 4                            # recent turns kept verbatim at most
 CHARS_PER_TOKEN = 2.0                     # pre-call estimate of prompt tokens (Chinese ~1–1.5 chars/token, JSON ~3–4): errs high
-RATE_PER_MINUTE = 10                      # model calls per person per minute (one message is usually 1–3 calls)
+RATE_PER_MINUTE = 20                      # model calls per person per minute (one message is usually 1–3 calls, at most
+                                          # MAX_ROUNDS + 1 history fold, all within ~20 s)
 RATE_PER_DAY = 150                        # model calls per person per day (local day)
 VISION = True                             # deepseek-flash reads images (https://api-docs.deepseek.com/guides/vision; tested 2026-10-18:
                                           # a 900x600 JPEG ~350 prompt tokens). Images may only be in user messages (ours are).

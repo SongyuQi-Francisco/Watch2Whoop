@@ -213,7 +213,7 @@ def test_chat_errors_and_stream_texts(client, world):
     assert not cjk(conv["display_name"]) and not cjk(notice["message"])
     FakeAdapter.script = [{"text": "ok", "stop": "max_tokens"}]
     ev = sse(client.post("/v1/assistant/chat", headers=H(tok["F"]), json={"message": "hi"}).text)
-    assert next(d for e, d in ev if e == "notice")["message"] == "回答太长被截断了"
+    assert next(d for e, d in ev if e == "notice")["message"] == "回答太长被截断了；回「继续」让它接着说"
 
 
 def test_confirm_card_summary(client, world):

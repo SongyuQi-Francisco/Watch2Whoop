@@ -228,6 +228,55 @@ def test_update_food_nutrition_replaces_entry(conn, ids, fake):
     assert [(r["food_id"], r["source"]) for r in fake.food[d]] == [("f-st", "sparky_app")]
 
 
+def _entry_extras(conn, uid, entry_id):
+    return conn.execute("SELECT * FROM food_entry_extras WHERE user_id = %s AND entry_id = %s", (uid, str(entry_id))).fetchone()
+
+
+def test_update_food_calories_scales_the_other_nutrients(conn, ids, fake):
+    """#183: changing calories (no portion) scaled only the macros; saturated fat, sodium, sugar, added sugar and fibre stayed."""
+    from body_engine.nutrition import extras
+    a = ids["A"]
+    d = (_today(conn, a) - timedelta(days=1)).isoformat()
+    fake.food[d] = [{"id": "app-s", "source": "sparky_app", "food_name": "牛排", "meal_type": "dinner", "entry_date": d,
+                     "entry_time": None, "quantity": 1, "unit": "份", "serving_size": 1, "calories": 600,
+                     "protein": 50, "carbs": 30, "fat": 28, "saturated_fat": 12, "sodium": 800, "sugars": 10,
+                     "dietary_fiber": 4, "variant_id": "v-st", "food_id": "f-st"}]
+    extras.save(conn, a, "app-s", date.fromisoformat(d), {"added_sugar_g": 6}, None)
+    res = run_tool(conn, a, "butler", "update_food_entry", {"date": d, "id": "app-s", "calories": 300, "protein_g": 25,
+                                                            "carbs_g": 15, "fat_g": 14})
+    food = fake.foods[-1]   # the new custom food carries the corrected values
+    assert (food["saturated_fat"], food["sodium"], food["sugars"], food["dietary_fiber"]) == (6, 400, 5, 2)
+    x = _entry_extras(conn, a, res["updated"]["id"])
+    assert (x["sugar_g"], x["added_sugar_g"], x["fiber_g"], x["sodium_mg"]) == (5, 3, 2, 400)
+    assert _entry_extras(conn, a, "app-s") is None   # moved to the new id
+
+
+def test_update_food_given_nutrients_win_and_added_sugar_is_cut(conn, ids, fake):
+    a = ids["A"]
+    d = (_today(conn, a) - timedelta(days=1)).isoformat()
+    fake.food[d] = [{"id": "app-g", "source": "sparky_app", "food_name": "酸奶", "meal_type": "snacks", "entry_date": d,
+                     "entry_time": None, "quantity": 1, "unit": "杯", "serving_size": 1, "calories": 200,
+                     "protein": 10, "carbs": 30, "fat": 4, "saturated_fat": 2, "sodium": 100, "sugars": 20,
+                     "variant_id": "v-y", "food_id": "f-y"}]
+    res = run_tool(conn, a, "butler", "update_food_entry", {"date": d, "id": "app-g", "portion": 2, "sodium_mg": 150,
+                                                            "saturated_fat_g": 3, "added_sugar_g": 50})
+    food = fake.foods[-1]
+    assert food["sodium"] == 150 and food["saturated_fat"] == 3 and food["sugars"] == 40   # given ones; the rest x2
+    assert food["calories"] == 400
+    assert any("按总糖截" in w for w in res["warnings"])
+    assert _entry_extras(conn, a, res["updated"]["id"])["added_sugar_g"] == 40   # cut to the total sugar
+
+
+def test_log_food_cuts_added_sugar_to_total_sugar(conn, ids, fake):
+    a = ids["A"]
+    d = _today(conn, a).isoformat()
+    res = run_tool(conn, a, "butler", "log_food", {"items": [_food_item(d, sugar_g=10, added_sugar_g=14)],
+                                                   "allow_duplicates": False})
+    assert res["created"][0]["added_sugar_g"] == 10 and res["created"][0]["sugar_g"] == 10
+    assert any("added_sugar_g" not in w and "按总糖截为 10 g" in w for w in res["warnings"])
+    assert _entry_extras(conn, a, res["created"][0]["id"])["added_sugar_g"] == 10
+
+
 def test_delete_food_any_source_logged_and_restored(conn, ids, fake):
     a = ids["A"]
     d = (_today(conn, a) - timedelta(days=2)).isoformat()

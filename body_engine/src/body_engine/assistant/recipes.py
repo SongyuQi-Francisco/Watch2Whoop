@@ -62,12 +62,13 @@ def check_ingredients(items: list[dict]) -> list[dict]:
         est = 4 * clean["protein_g"] + 4 * clean["carbs_g"] + 9 * clean["fat_g"]
         if abs(est - clean["kcal"]) > max(15, 0.3 * clean["kcal"]):
             raise ValueError(f"{food}：热量 {clean['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
-        clean.update(extras.check_optional(food, it, clean["carbs_g"]))   # null = unknown, kept as null
+        cut: list[str] = []   # added sugar above total sugar is cut, and the cut is said in the item note
+        clean.update(extras.check_optional(food, it, clean["carbs_g"], clamp_notes=cut))   # null = unknown, kept as null
         store = it.get("store")
         if store not in (*STORES, None):
             raise ValueError(f"{food}：store 只能是 {' / '.join(STORES)} 或 null")
         clean.update(purchase_unit=(it.get("purchase_unit") or "").strip() or None, store=store,
-                     note=(it.get("note") or "").strip() or None)
+                     note=" ".join(x for x in [(it.get("note") or "").strip(), *cut] if x) or None)
         out.append(clean)
     return out
 

@@ -221,10 +221,10 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 | 项 | 做法 |
 |---|---|
 | 谁用 | `ai_providers` 里**没有默认提供商**、也没有身体管家链接的人。配了自己的默认 AI 就用自己的（订阅类、停用的也不回落到托底）。部署者本人照旧用身体管家；测试用 `body-engine ai-fallback try --user-id 1 --message …`（只读登录，不写数据） |
-| 模型 | `deepseek-flash`（= DeepSeek-V4.1-Flash-1017），`https://api.deepseek.com`，OpenAI 兼容；**关闭思考模式**（`extra_body={"thinking": {"type": "disabled"}}`：便宜、没有 reasoning token）；单次 `max_tokens` 2048；图片先关（`VISION=False`，实测后再开） |
+| 模型 | `deepseek-flash`（= DeepSeek-V4.1-Flash-1017），`https://api.deepseek.com`，OpenAI 兼容；**关闭思考模式**（`extra_body={"thinking": {"type": "disabled"}}`：便宜、没有 reasoning token）；单次 `max_tokens` 4096（一周训练计划的参数约 2000 token，2048 太紧，#184）；图片先关（`VISION=False`，实测后再开） |
 | 价格 | DeepSeek 中文价格页的人民币价（2026-10-18 核对）：缓存命中 0.04、未命中 2、输出 8 元 / 百万 token（高峰价；空闲时段半价）。**一律按高峰价算**（保守：实际花费不会比记的多，也不用管中国法定节假日），所以不用汇率。改价在 `ai/fallback_params.py` |
 | 额度 | 每人每个自然月（用户时区）¥3（`MONTHLY_QUOTA_CNY`）；管理员可单独改（表 `ai_fallback_quota`，`ai-fallback quota --user-id N --cny 5`，`--cny 0` = 不给用，`--default` 恢复）。用量记 `ai_usage`：`kind=system_fallback`、`provider_id` 空、`cost_usd=0`（不算进用户自己 key 的预算）、`cost_cny` 实际花费、`cache_read_tokens` = 缓存命中 |
-| 每次调模型前 | 本月已用完 → 402「本月额度已用完，MM-DD 重置」；**最坏情况估算**（整段 prompt 按未命中价 + 最大输出）超过剩余 → 停；每人每分钟 10 次、每天 150 次模型调用（429）；一条消息最多 6 次模型调用；对话历史超过 2.4 万字符或 40 条消息时自动压缩成摘要（压缩本身也按上面的规则预检、计费） |
+| 每次调模型前 | 本月已用完 → 402「本月额度已用完，MM-DD 重置」；**最坏情况估算**（整段 prompt 按未命中价 + 最大输出）超过剩余 → 停；每人每分钟 20 次、每天 150 次模型调用（429）；一条消息最多 12 次模型调用、最多 ¥0.3（`MAX_TURN_CNY`），**最后一次不能再调工具**：带上同样的工具但关掉调用（`tool_choice: none`）、在历史末尾加一句收尾提示，让模型按已查到的直接回答，页面上提示「查了 N 轮，没答全的回「继续」」（#184：以前 6 次用完直接报错，采购规划、排周计划这种多步问题答不完）；对话历史超过 2.4 万字符或 40 条消息时自动压缩成摘要（压缩本身也按上面的规则预检、计费） |
 | 省 token | 精简角色设定 `ai/system_prompt_lite.md`（约 1100 字，完整版约 6600 字）、长期记忆快照最多 4000 字、29 个常用工具（约 1.5 万字；完整 64 个约 4.7 万字）。DeepSeek 自动做前缀缓存，历史只追加，第二轮起大部分输入按 0.04 元计 |
 | 只读自己的数据 | 托底的工具定义里去掉了 `user` 参数，执行时强制 `user=me`：即使家人授权了，也不经过 shares 读别人的数据。没有心电图、逐拍心跳（`get_ecg_list`、`get_cardio` 不在里面）。写操作照样要确认 |
 | 同意 | 同意书 `docs/family-consent.md` 第 4 节加了「托底 AI（可选）」条款（版本 2026-10-18.2）；**第一次用托底前单独弹层**说明发什么、发给谁，勾选后才能用，记在 `ai_fallback_consents`（版本 `fallback.CONSENT_VERSION`）；「AI 设置」里可以撤回。没同意主同意书（`needs_consent`）的也不能用。部署者本人不用单独同意 |

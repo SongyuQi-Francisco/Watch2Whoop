@@ -152,6 +152,9 @@
   // redraws the page; in a sheet offlineInto() binds it to reopening that sheet.
   const offlineHtml = () => `<div class="empty faint">${esc(tr("离线，连上网络后重试"))}</div>
     <div class="btns" style="justify-content:center;margin-top:4px"><button class="btn" data-retry>${esc(tr("common.retry"))}</button></div>`;
+  // A failed section: offline, or the server is updating (readable message + retry), else the message
+  const errorHtml = (err) => (err.status === 0 ? offlineHtml()
+    : `<div class="empty">${esc(err.message)}</div>` + (err.updating ? `<div class="btns" style="justify-content:center"><button class="btn" data-retry>${esc(tr("common.retry"))}</button></div>` : ""));
   function offlineInto(el, retry) {
     if (!el) return;
     el.innerHTML = offlineHtml();
@@ -171,6 +174,22 @@
     showBanner();
   }
 
+  // The server restarts for a few seconds when a new version is deployed (502 / 503 / 504 from the proxy, or no connection).
+  // Reads (GET) wait and try again by themselves, at most twice; every other request is sent once (a write must not run
+  // twice). A 503 with X-Offline is the service worker saying it has no copy, not a restart.
+  const UPDATING_WAITS = [3000, 6000];
+  const isRestart = (r) => [502, 503, 504].includes(r.status) && r.headers.get("X-Offline") !== "1";
+  async function fetchRetrying(path, init, retry) {
+    for (let n = 0; ; n++) {
+      let r = null, err = null;
+      try { r = await fetch(path, init); } catch (e) { err = e; }
+      const down = err ? navigator.onLine !== false && !OFF() : isRestart(r);   // offline_mode has its own saved copies
+      if (!down || !retry || n >= UPDATING_WAITS.length) { if (err) throw err; return r; }
+      toast(tr("服务器正在更新，几秒后自动重试…"), "", null, UPDATING_WAITS[n]);
+      await new Promise((ok) => setTimeout(ok, UPDATING_WAITS[n]));
+    }
+  }
+
   // queue: {kind, label, group?, coalesce?} = a write offline.js may keep and send later (water, weight, training sets).
   // It resolves {queued: item} when it was kept instead of sent: offline, or older writes are still waiting (they go first).
   async function api(path, { method = "GET", body, quiet401, queue } = {}) {
@@ -187,7 +206,7 @@
       // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
       // loads the real page once the network is back
       if (window.W2W_SHELL) throw new Error("offline shell");
-      r = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+      r = await fetchRetrying(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }, method === "GET");
     } catch (e) {
       if (off && method === "GET") {
         const hit = await off.get(path, I18N.lang);
@@ -215,6 +234,11 @@
     if (r.status === 401 && !quiet401) {
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
+    }
+    if (!r.ok && isRestart(r)) {   // still down after the retries (reads), or a write that was not repeated
+      const e = new ApiError(r.status, tr("服务器正在更新，请过一会儿再试"), data);
+      e.updating = true;
+      throw e;
     }
     if (!r.ok) {
       const d = data?.detail;
@@ -267,13 +291,13 @@
     draw();
   }
 
-  function toast(text, actionLabel, action) {
+  function toast(text, actionLabel, action, ms) {
     const el = $("#toast");
     el.innerHTML = `<span>${esc(text)}</span>` + (actionLabel ? `<button type="button">${esc(actionLabel)}</button>` : "");
     el.hidden = false;
     if (actionLabel) $("button", el).onclick = () => { el.hidden = true; action(); };
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => { el.hidden = true; }, actionLabel ? 5000 : 2200);
+    toast.t = setTimeout(() => { el.hidden = true; }, ms || (actionLabel ? 5000 : 2200));
   }
 
   // The time of a saved copy: hh:mm today, else day + time
@@ -1988,7 +2012,7 @@
       ${[[tr("今天"), 0], [tr("昨天"), 1]].map(([t, n]) => `<button data-rday="${n}" aria-pressed="${n === S.recordDay}">${t}</button>`).join("")}</div>
       <span class="small muted">${shortDay(recordDay())}</span></div>`;
     const err = freq.error || items.error || entries.error;
-    if (err) return seg + (err.status === 0 ? offlineHtml() : `<div class="empty">${esc(err.message)}</div>`);
+    if (err) return seg + errorHtml(err);
     const val = entryValues();
     const quick = S.recordDay === 0 ? quickHtml(meals, true) : "";   // meal templates only log today
     let html = `<div class="cols2"><div>` + seg + (quick ? `<div class="section-head"><h2>${tr("快捷记录")}</h2></div>${quick}<div style="height:22px"></div>` : "") + weightHtml()

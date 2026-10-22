@@ -62,7 +62,8 @@ def _strip_paren(name: str) -> str:
 
 # ---------------------------------------------------------------- food
 def _check_food(item: dict, low_sat_fat: bool = False) -> list[str]:
-    """Return warnings; obvious errors raise directly."""
+    """Return warnings; obvious errors raise directly. Added sugar above total sugar is cut to the total sugar (item is
+    changed in place) and said so in the warnings: one wrong optional number must not fail the whole entry."""
     kcal = item["calories"]
     p, c, f = item["protein_g"], item["carbs_g"], item["fat_g"]
     alcohol = item.get("alcohol_g") or 0
@@ -75,8 +76,8 @@ def _check_food(item: dict, low_sat_fat: bool = False) -> list[str]:
     if abs(est - kcal) > max(80, 0.25 * kcal):
         raise ValueError(f"{item['food']}：热量 {kcal:g} kcal 和三大营养素算出来的 {est:.0f} kcal "
                          f"（4×蛋白 + 4×碳水 + 9×脂肪 + 7×酒精）差太多，先核对")
-    warnings = []
-    extras.check_optional(item["food"], item, c)
+    warnings: list[str] = []
+    item["added_sugar_g"] = extras.check_optional(item["food"], item, c, clamp_notes=warnings)["added_sugar_g"]
     if item.get("sugary_drink") is not None and not isinstance(item["sugary_drink"], bool):
         raise ValueError(f"{item['food']}：sugary_drink 是 true / false / null")
     if item.get("saturated_fat_g") is not None and item["saturated_fat_g"] > f + 0.5:
@@ -130,6 +131,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
     warnings: list[str] = []
     low_sat_fat = diet_constraints.for_user(conn, user_id).low_sat_fat
     for it in items:
+        it = dict(it)   # _check_food may cut added sugar to total sugar
         if it["meal"] not in MEALS:
             raise ValueError(f"meal 只能是 {', '.join(MEALS)}")
         if it.get("time") and not TIME_RE.match(it["time"]):
@@ -530,8 +532,8 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
     row = _food_row(client, d, a["id"])
     meal = a.get("meal") or row.get("meal_type")
     hhmm = a.get("time") or (row.get("entry_time") or "")[:5] or None
-    nutrition = ("food", "amount", "calories", "protein_g", "carbs_g", "fat_g")
-    renamed = False
+    nutrition = ("food", "amount", "calories", "protein_g", "carbs_g", "fat_g", "saturated_fat_g", *extras.OPTIONAL)
+    renamed, warnings, item, carry = False, [], None, portion or 1   # item: the corrected values when written as a new entry
     if all(a.get(k) is None for k in nutrition):
         if portion is None and not a.get("meal") and not a.get("new_date") and not a.get("time"):
             raise ValueError("没有要改的字段")
@@ -542,36 +544,46 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         new = client.request("PUT", f"/food-entries/{row['id']}", {k: v for k, v in body.items() if v is not None})
         new = {**row, **(new or {}), **{k: v for k, v in body.items() if v is not None}}
     else:
+        carry = 1   # the new values below already carry the scaling
         cur = sparky_client._food_entry(row)
+        for k, v in (extras.load(conn, user_id, d, d).get(str(row["id"])) or {}).items():   # added sugar etc. live in the extras
+            if k in extras.OPTIONAL and cur.get(k) is None and v is not None:
+                cur[k] = float(v)
+        # Saturated fat, sugar, added sugar, fibre, sodium not given follow the portion, or (no portion) the change in calories
         f = portion or 1
+        if portion is None and a.get("calories") is not None and cur.get("calories"):
+            f = a["calories"] / cur["calories"]
+        scaled = lambda k: None if cur.get(k) is None else round(cur[k] * f, 1)
         renamed = bool(a.get("food")) and a["food"].strip() != (row.get("food_name") or "").strip()   # another food: sugar unknown
         item = {"date": new_d.isoformat(), "meal": meal, "time": hhmm, "notes": row.get("notes"),
                 "food": a.get("food") or row.get("food_name"),
-                "amount": a.get("amount") or (f"{cur['quantity'] * f:g} {cur['unit'] or '份'}"),
-                **{k: a[k] if a.get(k) is not None else (None if cur.get(k) is None else round(cur[k] * f, 1))
-                   for k in ("calories", "protein_g", "carbs_g", "fat_g")},
-                "saturated_fat_g": None if cur.get("saturated_fat_g") is None else round(cur["saturated_fat_g"] * f, 1),
-                **{k: None if cur.get(k) is None or renamed else round(cur[k] * f, 1)
-                   for k in ("sugar_g", "fiber_g", "sodium_mg")},
+                "amount": a.get("amount") or (f"{cur['quantity'] * (portion or 1):g} {cur['unit'] or '份'}"),
+                **{k: a[k] if a.get(k) is not None else (None if cur.get(k) is None else round(cur[k] * (portion or 1), 1))
+                   for k in ("calories", "protein_g", "carbs_g", "fat_g")},   # macros: the portion only, so a calories-only change still fails the check
+                **{k: a[k] if a.get(k) is not None else (None if renamed and k in extras.OPTIONAL else scaled(k))
+                   for k in ("saturated_fat_g", *extras.OPTIONAL)},
                 "alcohol_g": None if row.get("alcohol_g") is None else round(row["alcohol_g"] * (row.get("quantity") or 1)
                                                                              / (row.get("serving_size") or 1) * f, 1)}
         for k in ("calories", "protein_g", "carbs_g", "fat_g"):
             item[k] = item[k] or 0
         if item["saturated_fat_g"] is not None and (item["saturated_fat_g"] > item["fat_g"] + 0.5 or a.get("fat_g") is not None):
             item["saturated_fat_g"] = min(item["saturated_fat_g"], item["fat_g"])
-        _check_food(item)
+        warnings = _check_food(item)
         meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
         new = _create_food(client, meal_ids, new_d, item)
         client.request("DELETE", _entry_path("food", row))
     writelog.record(conn, "food", "update", row["id"], row, new)
     _pantry_follow(conn, user_id, row["id"], new["id"])   # replaced entry: undo / delete of the new one restores the pantry
-    if not renamed:   # added sugar etc. follow the entry (scaled by the portion)
-        extras.carry_over(conn, user_id, row["id"], new["id"], new_d, portion or 1)
-    else:
+    if renamed:
         conn.execute("DELETE FROM food_entry_extras WHERE user_id = %s AND entry_id = %s", (user_id, str(row["id"])))
+    else:   # added sugar etc. follow the entry (scaled by the portion)
+        extras.carry_over(conn, user_id, row["id"], new["id"], new_d, carry)
+    if item is not None:   # the corrected values (given, or scaled) are the entry's extras; added sugar has no SparkyFitness field
+        extras.set_values(conn, user_id, new["id"], new_d, {k: item.get(k) for k in extras.OPTIONAL})
     out = sparky_client._food_entry({**new, "entry_date": str(new.get("entry_date") or new_d)})
     return {"updated": {k: v for k, v in out.items() if v is not None}, "previous_id": row["id"],
-            "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删"}
+            "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删",
+            **({"warnings": warnings} if warnings else {})}
 
 
 def update_set(conn: psycopg.Connection, user_id: int, day: str, set_id, reps, weight_kg, rir, client=None) -> dict:

@@ -95,6 +95,7 @@ class OpenAIResponsesAdapter(Adapter):
             stream = client.responses.create(
                 model=self.model, instructions=system, input=self._input(history),
                 **({"tools": tool_defs} if tool_defs else {}),     # none for the history fold call (ai/context.py)
+                **({"tool_choice": "none"} if tool_defs and self.no_tool_calls else {}),
                 store=False, include=["reasoning.encrypted_content"], max_output_tokens=MAX_OUTPUT_TOKENS,
                 stream=True)
             for event in stream:
@@ -180,6 +181,7 @@ class OpenAICompatAdapter(Adapter):
                 **({"tools": [{"type": "function", "function": {"name": t.name, "description": t.description,
                                                                 "parameters": t.input_schema}} for t in tools]}
                    if tools else {}),   # an empty list is rejected; none for the history fold call (ai/context.py)
+                **({"tool_choice": "none"} if tools and self.no_tool_calls else {}),
                 max_tokens=self.max_tokens, stream=True, stream_options={"include_usage": True},
                 **({"extra_body": self.extra_body} if self.extra_body else {}))
             for chunk in stream:
