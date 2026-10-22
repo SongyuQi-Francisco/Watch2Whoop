@@ -171,7 +171,27 @@
 .ai-card-list li.ai-entry-acts { justify-content: flex-start; flex-wrap: wrap; gap: 6px; border-top: 0; padding-top: 0; }
 .ai-card .ai-entry-acts .ai-q { height: 32px; border: 0; background: var(--surface-2); }
 .ai-card-cap { margin: 10px 0 0; }
-.ai-card-recipe .ai-card-acts .btn, .ai-card-recipe .ai-card-acts .ai-q { white-space: nowrap; }
+.ai-card-acts .btn, .ai-card-acts .ai-q { white-space: nowrap; }
+
+/* ---------- Cards v2: body (flag jarvis_cards_v2; ai/cards_body.py). Bare cards hold the pages' own components (app.js
+   window.BodyCards: trend cards, tiles, the recovery ring, the body age card...), which bring their own --surface frames. */
+.ai-card.bare { background: none; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ai-card.bare > .section { margin: 0; }
+.ai-card.bare .ai-card-acts { margin-top: 0; }
+.ai-card.bare .ai-card-acts .btn, .ai-card.bare:not(.ai-card-actions) .ai-card-acts .ai-q { background: var(--surface); }
+.ai-card-in { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; }
+.ai-hero { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ai-hero .ring { width: 150px; height: 150px; }
+.ai-card.bare .tiles { margin-top: 0; }
+.ai-row { display: flex; flex-direction: column; }
+.ai-row .mini { width: 100%; }
+.ai-rep .ai-card-title { margin: 0 2px 4px; }
+.ai-rep .rep-head { margin-top: 0; }
+.ai-sleep-kv { margin-top: 10px; grid-template-columns: repeat(3, 1fr); }
+.ai-sleep-kv + .ai-card-sub { margin: 2px 0 8px; }
+.ai-sleep-kv .v small { font-size: 12px; }
+.ai-card-lab .lab-rows { margin-top: 6px; }
+.ai-shop li.done-ok .n { color: var(--text); }
 
 /* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
    Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
