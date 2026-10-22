@@ -48,12 +48,12 @@ def _user(args) -> str:
                 conn, args.user_id, inp.tz, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end)) \
                 if kinds[1] == "rmssd" else None
     rows = study.score(inp, origin, end)
-    agree = study.agreement(rows, study.score(other, origin, end)) if other is not None else None
+    alt = study.score(other, origin, end) if other is not None else None
+    agree = study.agreement(rows, alt) if alt is not None else None
     sens = None if args.no_sensitivity else study.sensitivity(inp, origin, end, base=rows)
     out = study.markdown(f"User {args.user_id} (HRV {kinds[0]}; aggregates only)", rows, None, sens, agree,
-                         tuple(kinds[:2]) if other is not None else ("A", "B"))
-    if other is not None:
-        alt = study.score(other, origin, end)
+                         tuple(kinds[:2]) if alt is not None else ("A", "B"))
+    if alt is not None:
         out += "\n" + study.markdown(f"User {args.user_id} (HRV {kinds[1]}; aggregates only)", alt)
     return out
 
