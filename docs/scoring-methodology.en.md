@@ -119,7 +119,7 @@ from the export carries about ±1–2 ms quantisation error; the app reads doubl
 Code `scores/recovery.py`, `scores/engine.py`.
 
 **Inputs** (within the main sleep window)
-- Night HRV: median of ln of the readings. Currently Apple's SDNN (`HRV_KIND = "sdnn"`); RMSSD from beat times is #117.
+- Night HRV: median of ln of the readings. Apple's SDNN by default (`HRV_KIND = "sdnn"`). The kind is chosen per user (#117, `scores/hrv_kind.py`): RMSSD from beat times only for a user switched on for it (`body-engine hrv-kind --enable-rmssd`) **and** with RMSSD on at least 21 of the last 28 nights, the newest at most 3 days old (`RMSSD_*`, design choices, not validated). One kind per person over the whole history, switched only by a full recompute; an RMSSD user's night without beat data has no HRV and no recovery score (SDNN never fills in). Nobody is switched on yet.
 - Night resting heart rate: the **lowest 5-minute mean** while asleep. Asleep, the watch records heart rate every 4–5 min, so each reading counts
   until the next (at most 10 min), time-weighted; a window covered less than half does not count; if none qualifies, the lowest single reading.
   Without sleeping heart rate, Apple's all-day resting heart rate is used **against its own baseline** (it runs a few bpm above the sleeping minimum).
