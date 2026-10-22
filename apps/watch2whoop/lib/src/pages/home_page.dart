@@ -23,7 +23,6 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
-import '../js_dialogs.dart';
 import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
