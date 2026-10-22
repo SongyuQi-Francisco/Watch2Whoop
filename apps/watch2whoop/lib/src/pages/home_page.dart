@@ -23,6 +23,7 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../offline_shell.dart';
 import '../page_events.dart';
 import '../raw_sync.dart';
 import '../setup_flow.dart';
@@ -57,6 +58,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   DateTime _loadedAt = DateTime.fromMillisecondsSinceEpoch(0);
   String? _error;
   bool _loading = true;
+
+  /// The kept copy of the page for a cold start without network (offline_shell.dart); _onShell = it is on screen now.
+  final OfflineShell _shell = OfflineShell();
+  bool _onShell = false;
 
   /// Sync on open (sync_on_open.dart): one round on cold start and on every return to the foreground (throttled), then the
   /// Today page asks the server for the new data (web/static/sync.js) and shows 「同步中… / 已更新」.
@@ -187,12 +192,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             if (_loading) setState(() => _loading = false);
           },
           onWebResourceError: (e) {
-            if (e.isForMainFrame ?? true) {
-              setState(() {
-                _error = e.description;
-                _loading = false;
-              });
-            }
+            if (e.isForMainFrame ?? true) _mainFrameFailed(e.description);
           },
           onHttpError: (e) {
             // The Today page handles its own API 401s etc.; we only care when the main document fails to open (e.g. 502: service not up).
@@ -283,6 +283,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HealthSync.instance.drainNativeLog();
     _tellPageForeground();
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
+    if (_onShell) {
+      _load(); // showing the kept copy of the page: try the real one again
+      return;
+    }
     // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
     // ran its script), so try again, but not while a load that just started may still be redeeming the code.
     if (AppState.instance.config.pendingLoginCode != null && DateTime.now().difference(_loadedAt) > const Duration(seconds: 20)) _load();
@@ -296,6 +300,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     } catch (e) {
       debugPrint('foreground event failed: $e');
     }
+  }
+
+  /// The page did not open (no network, server unreachable): the kept copy of the page when there is one for this server
+  /// (the page then shows what it kept and queues new records), otherwise the error view.
+  Future<void> _mainFrameFailed(String description) async {
+    final entry = AppState.instance.config.todayEntry;
+    final html = _onShell ? null : await _shell.load(entry);
+    if (!mounted) return;
+    if (html == null) {
+      setState(() {
+        _error = description;
+        _loading = false;
+      });
+      return;
+    }
+    setState(() {
+      _onShell = true;
+      _error = null;
+      _loading = false;
+    });
+    await _web.loadHtmlString(html, baseUrl: entry.removeFragment().toString());
   }
 
   void _syncBackground() {
@@ -314,6 +339,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _loadedAt = DateTime.now();
       _error = null;
       _loading = true;
+      _onShell = false;
     });
     _checkLogin = false;
     if (code == null && AppState.instance.accountToken != null) {
@@ -346,6 +372,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();
+    // Offline use (docs/offline-plan.md): keep / drop the copy of the page; the copy asks for the real page once online
+    if (message == 'offline:on' && !_onShell) _shell.save(AppState.instance.config.todayEntry);
+    if (message == 'offline:off') _shell.forget();
+    if (message == 'reload' && _onShell) _load();
     final c = AppState.instance.config;
     if (loginCodeSettled(message) && c.pendingLoginCode != null) {
       AppState.instance.update(c.copyWith(clearPendingLoginCode: true));
@@ -358,7 +388,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   /// Asks the page (same-origin cookie) whether it is logged in; the answer comes back over the JS channel.
   Future<void> _maybeCheckLogin() async {
-    if (!_checkLogin) return;
+    if (!_checkLogin || _onShell) return; // the kept copy of the page sends nothing, so it cannot tell
     _checkLogin = false;
     try {
       await _web.runJavaScript(
