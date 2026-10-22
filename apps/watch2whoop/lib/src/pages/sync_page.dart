@@ -340,6 +340,17 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
   Future<String?> _scanText() => Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanPage()));
   Future<String?> _clipboardText() async => (await Clipboard.getData(Clipboard.kTextPlain))?.text;
 
+  /// Beat-to-beat / ECG / water never asked by iOS (sheet did not come up): ask now, then one upload pass right away.
+  Future<void> _allowRaw() => _run(() async {
+    await RawSync.instance.requestAuth();
+    await RawSync.instance.run(
+      serverUrl: _config.todayUrl,
+      daysBack: _config.syncDaysBack,
+      accountToken: AppState.instance.accountToken,
+      pageToken: RawSync.instance.ingestToken, // setup-link users: the token the Today page minted earlier
+    );
+  });
+
   Future<void> _seed() => _run(() async {
     final r = await seedHealthTestData();
     setState(() => _message = r);
@@ -484,7 +495,10 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Row2(tr('心跳间期', 'Beat-to-beat readings'), value: raw.heartbeats == null ? '—' : '${raw.heartbeats}'),
                   Row2(tr('心电图', 'ECG recordings'), value: raw.ecgs == null ? '—' : '${raw.ecgs}'),
                   if (raw.water != null) Row2(tr('饮水记录', 'Water entries'), value: '${raw.water}'),
-                  Row2(tr('上次上传', 'Last upload'), value: ago(raw.lastUpload)),
+                  Row2(tr('上次上传', 'Last upload'), value: rawLastUploadText(raw)),
+                  Row2(tr('上次检查', 'Last check'), value: ago(raw.lastRun)),
+                  if (raw.stop == 'not_asked')
+                    Row2(tr('允许读取', 'Allow reading'), onTap: _busy ? null : _allowRaw),
                 ],
                 footer: raw.problem ??
                     tr('打开 app 时直接从「健康」读取，传到你的服务器。', 'Read from Health when you open the app and sent to your server.'),
@@ -560,10 +574,15 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
 
   Widget _kv(String k, String v) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
+    // The value wraps under its label's line (a failed sync carries its reason) instead of squeezing the label
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
-        Text(v, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+        Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+        ),
       ],
     ),
   );
