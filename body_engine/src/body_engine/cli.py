@@ -74,6 +74,13 @@ def main() -> None:
     us.add_argument("--new-only", action="store_true", help="only users who signed up or activated in the window")
     us.add_argument("--json", action="store_true", help="one JSON document instead of the table")
     us.add_argument("--full-email", action="store_true", help="print full e-mail addresses (default masked: a***@domain)")
+    nt = sub.add_parser("notify", help="notifications and APNs push (notify/, #175): status / test / prune")
+    nts = nt.add_subparsers(dest="notify_cmd", required=True)
+    nts.add_parser("status", help="whether APNs is configured, devices per user and environment, notifications of the last 7 days")
+    ntt = nts.add_parser("test", help="send a test notification (kind system) to one user now, ignoring quiet hours; prints Apple's answer")
+    ntt.add_argument("--user-id", type=int, required=True)
+    ntp = nts.add_parser("prune", help="delete notifications older than --days (default 90)")
+    ntp.add_argument("--days", type=int, default=90)
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
     gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
@@ -378,6 +385,11 @@ def main() -> None:
         elif args.cmd == "user-list":
             for r in conn.execute("SELECT id, display_name, role, birth_date, height_cm, timezone FROM users ORDER BY id"):
                 print(json.dumps(r, default=str, ensure_ascii=False))
+        elif args.cmd == "notify":
+            from .notify import admin as notify_admin
+            out = {"status": notify_admin.status, "test": lambda c: notify_admin.test(c, args.user_id),
+                   "prune": lambda c: notify_admin.prune(c, args.days)}[args.notify_cmd](conn)
+            print(json.dumps(out, default=str, ensure_ascii=False, indent=2))
         elif args.cmd == "user-stats":
             try:
                 res = user_stats.collect(conn, args.days, tuple(x.strip() for x in args.signals.split(",") if x.strip()))

@@ -39,6 +39,7 @@ from .training.api import router as training_router
 from .grocery.api import router as grocery_router
 from .feedback.api import router as feedback_router
 from .friends.api import router as friends_router
+from .notify.api import router as notify_router
 from .web import api as web_api, session as web_session
 
 pool: ConnectionPool | None = None
@@ -150,6 +151,7 @@ app.include_router(training_router)
 app.include_router(grocery_router)
 app.include_router(feedback_router)
 app.include_router(friends_router)
+app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
 app.include_router(ai_router)
 app.include_router(history_router)
 app.include_router(profile_router)

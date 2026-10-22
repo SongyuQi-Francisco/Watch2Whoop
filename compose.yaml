@@ -59,6 +59,13 @@ services:
       # BODY_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       # BODY_APPLE_AUDIENCES: com.example.watch2whoop  # the iOS app's bundle ID (comma separated if several)
       # BODY_SPARKY_ADMIN_KEY_FILE: /run/secrets/sparkyfitness_api_key_owner_rw   # deleting SparkyFitness accounts on account deletion
+      # iPhone push notifications (notify/, #175; apps/watch2whoop/README.md "Push notifications"): the APNs .p8 key as a
+      # docker secret (secrets/apns_key.p8, mode 600) plus its Key ID, the Team ID and the app's Bundle ID. Without them the
+      # server writes in-app notifications only. Check with: body-engine notify status / notify test --user-id N
+      # BODY_APNS_KEY_FILE: /run/secrets/apns_key
+      # BODY_APNS_KEY_ID: ABC123DEFG
+      # BODY_APNS_TEAM_ID: TEAM123456
+      # BODY_APNS_BUNDLE_ID: com.example.watch2whoop
       TZ: Australia/Sydney
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)
@@ -77,6 +84,8 @@ secrets:
     file: ./secrets/open_wearables_api_key
   sparkyfitness_api_key_owner_ro:   # add one per family member after they join: sparkyfitness_api_key_<key_name>_ro
     file: ./secrets/sparkyfitness_api_key_owner_ro
+  # apns_key:                       # the .p8 from Apple Developer → Keys (push); also add apns_key to the service's secrets
+  #   file: ./secrets/apns_key.p8
 
 volumes:
   body_db_data:
