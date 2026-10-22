@@ -240,6 +240,8 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 
 **2026-10-21（issue #58）补齐今天页的读工具**：托底 AI 被问「衰老速度什么意思」时答「你的数据里没有」，因为白名单里没有身体年龄、压力、健康监测等本系统自己算的指标的读工具。`TOOL_NAMES` 从 44 个加到 63 个：`get_healthspan`、`get_stress`、`get_health_monitor`、`get_hr_zones`、`get_vo2max`、`get_report`、`get_sleep_details`、`get_lab_history`、`get_metric_snapshots`、`analyze_journal`、`get_diet_profile`、`get_nutrition_goals`、`get_meal_templates`、`list_recipes`、`get_recipe`、`suggest_meals`、`get_shopping_list`、`get_weekly_specials`、`find_products`（仍然不加 `get_cardio` / `get_ecg_list`）。`system_prompt_lite.md` 加了一句「今天页上的指标都由本系统计算，先调工具，不要说没有」。`tests/test_fallback_coverage.py` 把今天页脚本调用的每个接口、每个讲解 key 对到托底的读工具，新加卡片忘了加白名单时 CI 会失败。固定开销：工具定义 26.6k → 34.2k 字符（按 DeepSeek 的估算规则约 +2.6k token），设定 +0.1k token；每次模型调用缓存未命中多 ¥0.005，命中多 ¥0.0001。趋势页的几张状态卡（HRV 状态、训练状态、身体电量、恢复时间、韧性、生病风险、生物钟等）目前**没有任何 AI 工具**能读（只在 `/trends` 里算），测试里列为 `NO_TOOL_YET`，留作后续。
 
+**2026-10-23（T0，开关 `ai_parity`，`ai/parity.py`、`ai/naming.py`）所有用户的 AI 权限一致**：测试用户报告托底 AI 能新增饮食、不能修改 / 合并 / 删除，因为 `TOOL_NAMES` 白名单只有基础写工具。负责人要求所有通道（托底、自己的 API key、远程 MCP、身体管家）对本人数据的工具一样。开关开着时托底用 `fallback.parity_names()` = 全部工具 − `fallback.CONSENT_EXCLUDED`（同意书写明不发给 DeepSeek 的三类：`get_ecg_list` 心电图、`get_cardio` 逐拍心跳、`get_friends_overview` 家人的数据）；`tests/test_ai_parity.py` 断言没有别的例外，新加的工具自动进托底。省 token：每次只带 core + 当前页**第一个**组（`params.FALLBACK_PARITY_PAGE_GROUPS`，上限 `FALLBACK_PARITY_PAGE_BUDGET_CHARS` 27.5k 字符），其余 `find_tools`；精简设定后面加一段改记录的工具（`parity.LITE_PROMPT`）。同时**不在 app 里说出底层软件名**：给 AI 看的文字（设定、工具定义、工具返回和报错、find_tools、历史）和用户看到的文字（输出流、存库的回答、确认卡、报错、页面上的 HTTP 报错和数据状态页）都经过 `naming.scrub`，「SparkyFitness / Sparky」→「底层数据库」/ our database；工具名、字段名在给 AI 的文字里保持原样（要能调用），在给用户的文字里去掉；输出流用 `naming.StreamScrubber` 处理分块边界。厂商原生回复（`native`）不改（思考签名要求原样）。开关关着时一切照旧。
+
 #### 9.10.1 额度卡（2026-10-23，issue #182，`ai/quota_cards.py`、迁移 `645_ai_quota_cards.sql`，开关 `ai_cards`）
 > 负责人提出：托底额度用完要等下个月 1 号，需要「额度卡」让管理员提前给人恢复或增加额度：定期发、作为奖励送、单独补偿。私有部署以后的付费扩充也调同一个发放函数（公开仓库不做支付）。
 >
@@ -431,6 +433,12 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **图片**：照片 / 截图理解照旧（识别后 `log_food` 等），写入成功自动附卡，用户直接在卡上看到结果、点「打开饮食」核对。
 - **存储**：卡片存在 `ai_tool_calls.card`，`GET /v1/assistant/conversations/{id}` 的每条消息带 `cards`，断线重连（resync）时重画。卡片是显示时的快照，点进去的页面是实时的。
 - **模型拿到什么**：工具结果只给一句摘要（「已显示 10-22 饮食卡：1850 kcal / 目标 2000…」），不重复卡片数据，省 token。
+- **第二版：所有模块（2026-10-23，T0；`ai/cards_food.py`，灰度开关 `jarvis_cards_v2`，要 `jarvis_rich` 也开着）**。开关关着时工具、提示、每张卡都和上面一样；开着时 `show_card` 换成 `cards.TOOL_V2`（更多 type，加 `slot` / `id` 参数；各 type 的用法写在提示 `cards.PROMPT_V2` 里，工具描述只有一句，工具预算不变）。
+  - 饮食（第一个 PR）：`goals`（某天热量环 + 蛋白环，碳水 / 脂肪 / 饱和脂肪上限 / 添加糖上限 / 纤维进度条，数据来自 `nutrition/daily`）、`suggest`（`suggest_meals` 的推荐，`slot=all` 是全天每餐计划；每道菜是饮食页自己的 `recipeCard`，下面「记下这餐」）、`recipe`（一道菜：每份宏量、每份食材克数、步数、约束标签；只显示同源图片 `/…`，第三方图片地址不进卡片；「打开食谱」打开饮食页上这道菜的弹层，在那里改份数 / 餐次再记）、`recipes`（食谱列表，按 slot）、`templates`（快捷记餐模板，「记一次」）、`shopping`（本周采购清单：未买在前、已买划掉、进度、估价、警告）。
+  - `meal` 卡在 v2 里带 `entry_actions`：点一条出现「×0.5 / ×1.5 / ×2 / 删除」；写工具后的自动卡多一个「撤销」。
+  - 行内按钮也是 `send`：页面用这一行自己的字段（服务器给的名字和 id）拼一句话发回 AI，例如「按快捷模板「固定早餐」记一次（模板 id 3）」「删掉 2026-10-22 记的「鸡胸肉饭」（id e1）」；删除 / 撤销照旧走确认卡（`ALWAYS_CONFIRM`）。模型给不了 URL、HTML 或数字。
+  - 自动卡：写工具多了 `cards.AUTO_V2`（`set_nutrition_goals` → goals，`create/update_meal_template` → templates，`update_recipe` → recipe，`add_shopping_items` / `generate_shopping_list` / `mark_bought` → shopping，`undo_sparky_entry`（饮食）/ `undo_meal_log` / `combine_food_entries` → meal）；**读工具**的 `cards.READ_AUTO`（`get_nutrition`（单日）、`get_nutrition_goals`、`suggest_meals`、`get_recipe`、`list_recipes`、`get_meal_templates`、`get_shopping_list`）**只给托底 AI**：弱模型很少自己调 show_card，查了什么就自动出那张卡；强模型常为了分析查好几天，不自动出卡，靠提示自己决定。一轮对话里同一张卡（type + date + id + slot …）只出一次，模型自己发过的也不再自动出。
+  - 图标：只用 Lucide（`utensils` 是没有图片的食谱占位、`check` 是已买），内联路径，记在 `THIRD_PARTY_NOTICES.md`。
 
 ### 9.20 页内对话联网：服务器的 web_search / web_fetch（2026-10-22，#150；`ai/web/`、迁移 `600_ai_web.sql`，灰度开关 `ai_web`）
 **问题**：采购（查价 → `save_product` / `record_store_prices` → 清单）靠 AI 自己联网。用 Claude / ChatGPT 连接器（MCP）和 Anthropic / OpenAI / Gemini 自己 key 的人有联网能力；托底 AI（管理员的 DeepSeek）和 `openai_compatible` 没有，于是永远用不了采购清单。

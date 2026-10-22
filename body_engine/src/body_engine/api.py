@@ -12,6 +12,7 @@ from starlette.routing import Route
 from . import auth, errors_en, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
+from .ai import naming, parity
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
 from .ai.oauth_api import router as oauth_router, well_known as oauth_well_known
@@ -64,9 +65,16 @@ app.add_middleware(LangMiddleware)   # X-Body-Lang from the Today page -> texts 
 
 @app.exception_handler(HTTPException)
 async def http_error(request: Request, exc: HTTPException):
-    """FastAPI's own handler, with the Chinese detail translated when the request asked for English (errors_en.py)."""
+    """FastAPI's own handler, with the Chinese detail translated when the request asked for English (errors_en.py).
+    With ai_parity on for the signed-in user, the back end's name is taken out of the text (ai/naming.py)."""
     if is_en() and isinstance(exc.detail, (str, dict)):   # dict = {"code", "message", …} (AI chat / voice)
         exc = HTTPException(exc.status_code, errors_en.translate_detail(exc.detail), headers=exc.headers)
+    if getattr(request.state, "ai_parity", False):
+        d = exc.detail
+        d = (naming.scrub(d, output=True) if isinstance(d, str) else
+             {k: naming.scrub(v, output=True) if k in ("message", "detail") else v for k, v in d.items()} if isinstance(d, dict)
+             else d)
+        exc = HTTPException(exc.status_code, d, headers=exc.headers)
     return await http_exception_handler(request, exc)
 
 
@@ -87,6 +95,7 @@ def current_user(request: Request, conn=Depends(get_conn), authorization: Annota
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)
     account_api.gate(user, request.url.path)
+    request.state.ai_parity = parity.on(conn, user["id"])   # error texts without the back end's name (http_error)
     return user
 
 

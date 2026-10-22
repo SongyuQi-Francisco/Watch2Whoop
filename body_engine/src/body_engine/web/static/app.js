@@ -3801,6 +3801,7 @@
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
   function goPage(page, card) {
     if (page === "profile") { window.BodyProfile?.open(); return; }   // a Jarvis muscle card without a sex in the profile (#189)
+    if (page === "recipe") { goRecipe(card); return; }
     if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
       S.owner = S.me.id;
       if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }
@@ -3811,9 +3812,15 @@
     S.owner = S.me.id;
     if (tab === "record" && sub === "journal" && recordsV2()) { setTab("today"); window.BodyJournal.openDay(journalCtx(), viewDay()); return; }   // records_v2: the old 记录 → 日记 link opens the day editor
     if (tab === "record" && sub) S.recSub = sub;
-    if (tab === "food") { S.foodMode = "diet"; S.foodSub = null; }
+    if (tab === "food") { S.foodMode = sub === "shopping" ? "shopping" : "diet"; S.foodSub = sub === "recipes" ? "recipes" : null; }
     if (tab === "trends") S.trendsMode = "metrics";
     setTab(tab);
+  }
+  // A Jarvis recipe card (flag jarvis_cards_v2): the food page with that recipe's sheet (servings, meal, 记 n 份) on top
+  function goRecipe(card) {
+    S.owner = S.me.id; S.foodMode = "diet"; S.foodSub = null;
+    setTab("food");
+    if (card?.id != null) recipeSheet(card.id, card.slot || undefined);
   }
   // The Today page's own SVG charts for plugins (ai.js cards): a line chart on a day axis, and the status card sparkline
   window.BodyCharts = {
@@ -3821,6 +3828,8 @@
     spark: sparkSvg,
     hypno: hypnoSvg,   // the sleep stage timeline (sleep card, Jarvis sleep card)
   };
+  // The food page's own pieces for Jarvis' diet cards (ai.js, flag jarvis_cards_v2): the recipe card and the meal names
+  window.BodyFood = { recipeCard, slotName: (k) => SLOT_NAME[k] || k };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
   // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per

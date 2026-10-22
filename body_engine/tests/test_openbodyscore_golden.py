@@ -3,7 +3,8 @@
 1. Pure functions through the old `body_engine.*` import paths: the same cases and golden file as the package's own
    test (packages/openbodyscore/tests/test_golden.py).
 2. End to end: quickstart/demo_data.py's synthetic export (fixed seed and date) -> the real Apple export importer ->
-   scoring engine, body age and stress -> compared with tests/fixtures/golden_e2e_<hrv kind>.json.
+   scoring engine, body age and stress -> compared with tests/fixtures/golden_e2e_<hrv kind>.json. Body age there is the
+   production version (v1.2 since 2026-10-23); v1.1, the rollback, has its own file golden_e2e_healthspan_v11.json.
 Both golden files were written from the code before the extraction. To rewrite the end-to-end file after an
 intentional algorithm change (bump ALGO_VERSION): BODY_WRITE_GOLDEN=1 uv run pytest tests/test_openbodyscore_golden.py
 
@@ -134,7 +135,7 @@ def e2e(conn, tmp_path, hrv_kind: str) -> dict:
     inp = engine.load(conn, None, uid, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), today, None, hrv_kind=hrv_kind)
     rows = engine.score_days(inp, origin, today, today)
     engine.write(conn, uid, rows, origin, today)
-    weeks = healthspan_store.compute(conn, uid, today=today)
+    weeks = healthspan_store.compute(conn, uid, today=today)   # the production version (healthspan_store.CURRENT, v1.2)
     stress_rows = stress.compute(conn, ExportOW(conn, uid), uid, today - timedelta(days=29), today)
     return _dump({"import": {k: imported[k] for k in ("records", "days", "nights", "workouts")},
                   "origin": origin, "daily_scores": rows, "healthspan": weeks, "stress": stress_rows})
@@ -154,6 +155,25 @@ def test_end_to_end_matches_golden(conn, tmp_path, hrv_kind):
     assert sum(d["recovery"] is not None for d in days) >= 30 and sum(d["strain"] is not None for d in days) >= 50
     assert sum(d["sleep_score"] is not None for d in days) >= 50
     assert want["healthspan"] and sum(r["score"] is not None for r in want["stress"]) >= 10
+    cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
+    diff = cases.mismatch(got, want)
+    assert diff is None, diff
+
+
+def test_end_to_end_healthspan_v11_matches_golden(conn, tmp_path):
+    """Body age v1.1 on the same synthetic export: production switched to v1.2 on 2026-10-23 (issue #118, the file above);
+    v1.1 stays as the rollback reference. Rewrite with BODY_WRITE_GOLDEN=1, like the file above."""
+    find = lambda: conn.execute("SELECT max(id) AS id FROM users WHERE display_name = 'golden-sdnn'").fetchone()["id"]
+    if find() is None:   # run on its own: import the export first (the test above already did otherwise)
+        e2e(conn, tmp_path, "sdnn")
+    uid = find()
+    got = _dump(healthspan_store.compute(conn, uid, today=NOW.date(), params=healthspan_store.VERSIONS["v1.1"]))
+    golden = FIXTURES / "golden_e2e_healthspan_v11.json"
+    if os.environ.get("BODY_WRITE_GOLDEN") == "1":
+        golden.write_text(json.dumps(got, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+        pytest.skip(f"wrote {golden}")
+    want = json.loads(golden.read_text())
+    assert want and all(any(c["key"] == "steps" for c in w["contributors"]) for w in want)
     cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
     diff = cases.mismatch(got, want)
     assert diff is None, diff

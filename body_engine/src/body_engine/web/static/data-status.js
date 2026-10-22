@@ -89,9 +89,11 @@
   function strengthText(st) {
     if (!st) return null;
     const sp = st.sparky === "connected" ? String(st.sessions.sparky ?? 0) : st.sparky === "not_linked" ? tr("未连接") : tr("读不到");
+    // flag ai_parity: the back end is never named in the app
+    const db = typeof window !== "undefined" && window.BodyFlags?.on("ai_parity") ? tr("底层数据库") : "SparkyFitness";
     return {
       days: tr("{d} 天有记录", { d: st.days }),
-      sources: `${tr("手表")} ${st.sessions.watch} · SparkyFitness ${sp} · Hevy ${st.sessions.hevy}`,
+      sources: `${tr("手表")} ${st.sessions.watch} · ${db} ${sp} · Hevy ${st.sessions.hevy}`,
     };
   }
   function strengthHtml(st) {
