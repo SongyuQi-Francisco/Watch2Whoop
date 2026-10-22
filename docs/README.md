@@ -79,6 +79,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | Document | Language | What it covers |
 |---|---|---|
 | [system-design.md](system-design.md) | Chinese | Architecture, data ownership per component, table design, scoring algorithms, rules engine, Today page, training history, iOS app (§0 product principles, §16 training, §17 iOS app) |
+| [oss-extraction-plan.md](oss-extraction-plan.md) | English | Open-source extraction: which pieces are split out (scoring library first, `packages/openbodyscore/`, Apache-2.0), licences, package / repository plan, release checklist |
 | [apps.md](apps.md) | English + Chinese summary | Client apps: platform matrix (iOS, Android, HarmonyOS), shared client contract, `apps/` layout, app versioning and release tags, CI path filters |
 | [ai-assistant-plan.md](ai-assistant-plan.md) | Chinese | The AI coach ("body butler"): tools, memory, multi-user / multi-provider AI access (§9) |
 | [ai-feedback-plan.md](ai-feedback-plan.md) | Chinese | AI self-reported feedback (design, awaiting the deployer's choice): a versioned root rule layer every AI receives, the `report_feedback` tool with server-side sanitisation / dedupe / rate limits, delivery options (public issues, private triage queue, e-mail digest, Discussions) |

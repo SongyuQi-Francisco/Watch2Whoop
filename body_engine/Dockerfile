@@ -1,7 +1,17 @@
+# The scoring algorithms live in ../packages/openbodyscore (a path dependency, issue #115). They come in as the named
+# build context `openbodyscore`: compose.yaml sets it (additional_contexts); by hand, from the repository root:
+#   docker build --build-context openbodyscore=packages/openbodyscore body_engine
+# Without it the empty stage below is used (never an image of that name from a registry) and the check fails the build.
+FROM scratch AS openbodyscore
+
 FROM python:3.12.15-slim
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /usr/local/bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=/opt/venv PATH=/opt/venv/bin:$PATH
+# uv.lock refers to ../packages/openbodyscore, i.e. /packages/openbodyscore next to /app
+COPY --from=openbodyscore . /packages/openbodyscore
+RUN test -f /packages/openbodyscore/pyproject.toml \
+    || { echo "missing build context: add --build-context openbodyscore=packages/openbodyscore (see the top of this file)" >&2; exit 1; }
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src
