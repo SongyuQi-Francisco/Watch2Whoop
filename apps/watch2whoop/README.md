@@ -106,7 +106,7 @@ open -e config/defaults.json
    - Tell the server owner your bundle ID: the server's `BODY_APPLE_AUDIENCES` must equal it exactly, otherwise Apple sign-ins are rejected (401).
    - You should now also see **Sign in with Apple** under Signing & Capabilities.
 
-5. **Push Notifications** (needed since 1.0.8; the entitlement `aps-environment` is already in `ios/Runner/Runner.entitlements`):
+5. **Push Notifications** (needed since 1.0.7; the entitlement `aps-environment` is already in `ios/Runner/Runner.entitlements`):
    - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → your app's bundle ID → tick **Push Notifications** → **Save**. If it offers to create certificates, skip that: the server uses a key (next point), not certificates.
    - Refresh the provisioning profile as for Sign in with Apple (automatic signing does it on the next build). You should then see **Push Notifications** under Signing & Capabilities (if not: **+ Capability** → Push Notifications).
    - Create the APNs key (once per team; one key works for all your apps): **Keys** → **+** → name it e.g. `Watch2Whoop push` → tick **Apple Push Notifications service (APNs)** → if asked, environment **Sandbox & Production** and **Team Scoped (All Topics)** → **Continue** → **Register** → **Download** `AuthKey_<KeyID>.p8` (Apple lets you download it **only once**). Note the **Key ID** (10 characters, shown on the key) and your **Team ID** (Membership details).
@@ -242,7 +242,7 @@ open -e config/defaults.json
    - 把你的 Bundle ID 告诉服务器管理员：服务器的 `BODY_APPLE_AUDIENCES` 必须和它一字不差，否则 Apple 登录会被拒（401）。
    - 之后在 Signing & Capabilities 里也能看到 **Sign in with Apple**。
 
-5. **推送通知**（1.0.8 起需要；权限 `aps-environment` 已经写在 `ios/Runner/Runner.entitlements` 里）：
+5. **推送通知**（1.0.7 起需要；权限 `aps-environment` 已经写在 `ios/Runner/Runner.entitlements` 里）：
    - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → 点这个 app 的 Bundle ID → 勾 **Push Notifications** → **Save**。如果提示创建证书（Certificates），跳过：服务器用的是 key（下一条），不用证书。
    - 和「通过 Apple 登录」一样更新描述文件（自动签名下次编译会自动更新）。之后在 Signing & Capabilities 里能看到 **Push Notifications**（没有的话点 **+ Capability** → Push Notifications）。
    - 生成 APNs key（每个团队做一次，一个 key 所有 app 都能用）：**Keys** → **+** → 名字例如 `Watch2Whoop push` → 勾 **Apple Push Notifications service (APNs)** → 如果要选，环境选 **Sandbox & Production**、选 **Team Scoped (All Topics)** → **Continue** → **Register** → **Download** 下载 `AuthKey_<KeyID>.p8`（Apple **只让下载一次**）。记下 **Key ID**（10 位，key 页面上有）和你的 **Team ID**（Membership details 里）。

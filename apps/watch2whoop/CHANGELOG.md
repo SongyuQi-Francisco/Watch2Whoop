@@ -10,7 +10,6 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
-| 1.0.8 | `app-ios-v1.0.8` | (set when tagged) | TestFlight (iOS) |
 | 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
@@ -18,23 +17,6 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
-
-## 1.0.8 — 2026-10-23
-Push notifications (#175; server side: the notification module `notify/` and the Today page bell, rollout flag
-`notifications`). **The builder has to switch on Push Notifications for the Bundle ID once** (README, step 3, item 5);
-the APNs key goes to the server owner, never into the app or git.
-- New capability Push Notifications (`aps-environment` in `ios/Runner/Runner.entitlements`; Xcode signs TestFlight builds
-  as `production`). No new pod or Dart package: the native side is `PushBridge` in `AppDelegate.swift` (channel
-  `watch2whoop/push`), the Dart side `lib/src/push.dart`.
-- The app never asks at launch: the Today page asks it the first time someone opens the Friends tab or the notification
-  settings (`push:ask`); iOS shows its dialog once. Once allowed, the device token is registered for the signed-in
-  account (`POST /v1/users/me/push-devices`) on every start (sent again when it changes or after a day); sign-out removes
-  it before the account token is revoked.
-- Tapping a notification opens its page in the Today page (a path on the same server only; anything else opens the
-  notification list). Notifications that arrive while the app is open show as a banner and refresh the page's unread
-  count; the app icon badge follows the page's unread count.
-- Works with older servers: without the notification module nothing is asked or registered (the page never sends
-  `push:ask`), and a 404 from the registration is ignored.
 
 ## 1.0.7 — 2026-10-22
 Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
@@ -59,6 +41,22 @@ could not see whether their data was read or where to change the permissions aft
 - 「打开系统设置」 / "Open Settings" with the steps (Settings → Health → Data Access & Devices → Watch2Whoop). The app
   changes nothing for the user.
 - 「本机最近一次同步」 / "Last sync on this phone": time and result (OK / failed with the reason) of the latest upload.
+
+Push notifications (#175; server side: the notification module `notify/` and the Today page bell, rollout flag
+`notifications`). **The builder has to switch on Push Notifications for the Bundle ID once** (README, step 3, item 5);
+the APNs key goes to the server owner, never into the app or git.
+- New capability Push Notifications (`aps-environment` in `ios/Runner/Runner.entitlements`; Xcode signs TestFlight builds
+  as `production`). No new pod or Dart package: the native side is `PushBridge` in `AppDelegate.swift` (channel
+  `watch2whoop/push`), the Dart side `lib/src/push.dart`.
+- The app never asks at launch: the Today page asks it the first time someone opens the Friends tab or the notification
+  settings (`push:ask`); iOS shows its dialog once. Once allowed, the device token is registered for the signed-in
+  account (`POST /v1/users/me/push-devices`) on every start (sent again when it changes or after a day); sign-out removes
+  it before the account token is revoked.
+- Tapping a notification opens its page in the Today page (a path on the same server only; anything else opens the
+  notification list). Notifications that arrive while the app is open show as a banner and refresh the page's unread
+  count; the app icon badge follows the page's unread count.
+- Works with older servers: without the notification module nothing is asked or registered (the page never sends
+  `push:ask`), and a 404 from the registration is ignored.
 
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
