@@ -30,7 +30,7 @@ CJK = re.compile(r"[一-鿿]")
 # Modules whose raised messages (ValueError, LookupError, ImportRefused, ChatError, AsrError …) routers turn into details.
 REACHABLE = ("account/api.py", "ai/api.py", "ai/chat.py", "ai/asr.py", "api.py", "assistant/memory_api.py",
              "assistant/memory.py", "assistant/meals.py", "assistant/recipes.py", "assistant/recipes_api.py",
-             "assistant/sparky_write.py", "cardio/", "explain/api.py", "goals/", "grocery/", "history/", "insights/api.py",
+             "assistant/sparky_write.py", "cardio/", "explain/api.py", "friends/", "goals/", "grocery/", "history/", "insights/api.py",
              "insights/reports.py", "nutrition/extras.py", "profile/api.py", "profile/store.py", "rawdata/api.py",
              "records/api.py", "records/store.py", "records/analysis.py", "rules/api.py", "training/api.py",
              "training/history.py", "web/", "sparky_client.py")

@@ -20,6 +20,7 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.nutrition import constraints
 from body_engine.records import lab_catalog
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_butler")
 
@@ -210,7 +211,9 @@ def memory_users(conn):
     ids = {n: conn.execute("INSERT INTO users (display_name, timezone) VALUES (%s, 'Australia/Sydney') RETURNING id",
                            (n,)).fetchone()["id"] for n in ("D", "E", "F")}
     conn.execute("INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)", (ids["D"], ids["E"], ["memory"]))
+    flags.set_flag(conn, "memory_recent", "all", actor="test")   # the rollout flag (default off) is on for these tests
     conn.commit()
+    flags.invalidate()
     return ids
 
 
@@ -251,6 +254,22 @@ def test_recent_note_expires_but_stays_in_history(conn, memory_users, monkeypatc
     again = memory.add_observation(conn, d, "这周出差到周五，酒店没有健身房", until="recent")
     assert again["duplicate"] and again["id"] == o["id"] and again["valid_until"] == date(2026, 10, 24) + timedelta(days=14)
     assert memory.get_memory(conn, d)["expired_recent"] == 0
+
+
+def test_recent_note_flag_off_keeps_a_lasting_fact(conn, memory_users, monkeypatch):
+    """Rollout flag memory_recent off (the default): until is ignored and the note is a lasting fact, as before #112."""
+    d = memory_users["D"]
+    _at(monkeypatch, WED)
+    flags.set_flag(conn, "memory_recent", "off", actor="test")
+    conn.commit()
+    flags.invalidate()
+    try:
+        o = run_tool(conn, d, "butler", "add_observation", {"text": "这周在外地", "evidence": None, "until": "2026-10-23"})
+        assert (o["kind"], o["valid_until"]) == ("fact", None)
+    finally:
+        flags.set_flag(conn, "memory_recent", "all", actor="test")
+        conn.commit()
+        flags.invalidate()
 
 
 def test_recent_note_until_is_checked(conn, memory_users, monkeypatch):

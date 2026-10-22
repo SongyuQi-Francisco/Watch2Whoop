@@ -4,8 +4,9 @@ every property is in `required`, optional ones use null. Write tools (writes=Tru
 Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
 
+from ..rollout import flags
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import meals, memory, memory_params, recipes, snapshots, sparky_write, status, writelog
+from . import food_combine, meals, memory, memory_params, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -312,7 +313,9 @@ TOOL_SPECS: list[dict] = [
             "evidence": _n("string", "用户原话 / 哪些数据"),
             "until": _n("string", f"近况最后一天 YYYY-MM-DD；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
         }),
-        handler=lambda conn, uid, a: memory.add_observation(conn, uid, a["text"], a["evidence"], until=a["until"]),
+        handler=lambda conn, uid, a: memory.add_observation(
+            conn, uid, a["text"], a["evidence"],
+            until=a["until"] if flags.enabled(conn, uid, "memory_recent") else None),   # flag off: a lasting fact, as before
         scope="memory", writes=True,
     ),
     dict(
@@ -388,6 +391,20 @@ TOOL_SPECS: list[dict] = [
         description="撤销一次快捷记餐（log_meal_template / log_recipe / 今天页按钮返回的 log_id）。",
         input_schema=_schema({"log_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: meals.undo_log(conn, uid, a["log_id"]),
+        scope="nutrition", writes=True,
+    ),
+    dict(
+        name="combine_food_entries",
+        description="某天已记的几条饮食：存成快捷模板（template）、合成一条（merge，营养加总，rollback_write 可拆回）或都做（both）。",
+        input_schema=_schema({
+            "date": {"type": "string", "description": "YYYY-MM-DD"},
+            "entry_ids": {"type": "array", "items": {"type": "string"}},
+            "action": {"type": "string", "enum": list(food_combine.ACTIONS)},
+            "name": _n("string", "null=按食物名"),
+            "meal": {"type": ["string", "null"], "enum": [*sparky_write.MEALS, None]},
+        }),
+        handler=lambda conn, uid, a: food_combine.combine(conn, uid, date.fromisoformat(a["date"]), a["entry_ids"], a["action"],
+                                                          a["name"], a["meal"], channel="ai"),
         scope="nutrition", writes=True,
     ),
     # ---------- recipes ----------

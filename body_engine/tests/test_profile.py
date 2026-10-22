@@ -78,9 +78,9 @@ def test_consent_text_matches_docs():
     if not DOCS.exists():
         pytest.skip("not inside the repo (no docs/)")
     assert consent.text() == DOCS.read_text(encoding="utf-8"), "profile/consent.md and docs/family-consent.md must be identical character for character"
-    assert consent.version() == "2026-10-22.1"
+    assert consent.version() == "2026-10-22.2"
     shown = consent.display_text()
-    assert "一字不差" not in shown and "## 2. 在我同意之前" in shown
+    assert "一字不差" not in shown and "## 2. 谁能看到" in shown
 
 
 def test_english_consent_matches_chinese():
@@ -97,13 +97,13 @@ def test_english_consent_matches_chinese():
     assert len(consent.SUMMARY_EN) == len(consent.SUMMARY)
     assert not any(re.search(r"[一-鿿]", p) for p in consent.SUMMARY_EN)
     shown = consent.display_text("en")
-    assert "identical" not in shown and "## 2. Before I agree" in shown
+    assert "identical" not in shown and "## 2. Who can see it" in shown
 
 
 def test_consent_in_the_readers_language(client, users, dsn):
     ids, tok = users
     c = client.get("/v1/consent", headers={**H(tok["t3"]), "X-Body-Lang": "en"}).json()
-    assert c["language"] == "en" and c["version"] == consent.version() and "stored, not processed" in c["text"]
+    assert c["language"] == "en" and c["version"] == consent.version() and "ECGs are never shared through circles" in c["text"]
     assert c["summary"] == consent.SUMMARY_EN
     assert client.get("/v1/consent", headers=H(tok["t3"])).json()["language"] == "zh"
     r = client.post("/v1/users/me/consent", json={"version": c["version"], "agree": True, "language": "en"}, headers=H(tok["t3"]))
@@ -122,7 +122,7 @@ def test_consent_flow_and_gate(client, users, dsn, tmp_path, monkeypatch):
     assert st["required"] is True and st["version"] == consent.version()
     assert client.get("/v1/users/me/profile", headers=H(tok["owner"])).json()["consent"]["required"] is False
     c = client.get("/v1/consent", headers=H(tok["t1"])).json()
-    assert c["version"] == consent.version() and len(c["summary"]) >= 4 and "暂存、不处理" in c["text"]
+    assert c["version"] == consent.version() and len(c["summary"]) >= 4 and "心电图永远不进圈子共享" in c["text"]
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         assert consent.gate(conn, ids["t1"]) and consent.gate(conn, ids["owner"]) is None
     # no consent: history import is rejected
@@ -306,7 +306,11 @@ def test_intro_page_wiring(client):
     js = client.get("/app/intro.js").text
     assert "/v1/users/me/intro" in js and "intro_seen" in js and "window.BodyIntro" in js and "/app/handbook/" not in js.split("*/", 1)[1]
     app_js = client.get("/app/app.js").text
-    assert 'id="me-handbook"' in app_js and app_js.index('id="me-handbook"') < app_js.index('id="me-intro"')
+    # classic Me page (me_settings flag off, rendered last in the file): 「新手引导」 right after 「使用手册」;
+    # with the flag on it lives in the 「设置」 sub-page (meSettingsHtml, issue #140)
+    assert 'id="me-handbook"' in app_js and app_js.rindex('id="me-handbook"') < app_js.rindex('id="me-intro"')
+    settings = app_js[app_js.index("function meSettingsHtml"):app_js.index("const RENDER_me")]
+    assert 'id="me-intro"' in settings and 'id="me-logout"' in settings
     assert "openHandbook, openAiSettings" in app_js
     assert '"intro.js"' in client.get("/app/sw.js").text
     assert "家人" not in js

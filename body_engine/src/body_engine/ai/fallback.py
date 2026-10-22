@@ -42,7 +42,7 @@ TOOL_NAMES = (
     "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
     "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
     "list_events", "list_journal_items", "get_journal", "get_memory",
-    "log_food", "log_workout", "log_weight", "undo_sparky_entry", "log_journal", "add_event",
+    "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
     "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
@@ -55,7 +55,7 @@ TOOL_NAMES = (
     "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
 )
 CONSENT_POINTS = [
-    "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",
+    "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
     "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、呼吸频率 / 血氧 / 手腕温度等每日指标、化验、补剂、日记、提醒，"
     "还有采购清单、家里存货、已连接的超市、商品价格和购买记录。",
@@ -69,7 +69,7 @@ CONSENT_POINTS = [
 # English translation of CONSENT_POINTS for the page (X-Body-Lang: en). The Chinese list is the authoritative text and
 # CONSENT_VERSION is set by hand when the Chinese changes; this list never changes the version (change it together with the Chinese).
 CONSENT_POINTS_EN = [
-    "The backup AI is DeepSeek (a Chinese company, servers in China), provided and paid for by the admin, "
+    "The backup AI is DeepSeek (a Chinese company), provided and paid for by the admin, "
     "with ¥{quota:g} per person per month.",
     "When you ask something, DeepSeek receives: your message, your name / age / sex / height / time zone, your long-term "
     "memory (profile card, observation notes, status card), and, when the answer needs them, your scores, sleep, workouts, "
