@@ -1175,10 +1175,24 @@
     if (!quiet && status === "dismissed") toast(tr("不再提醒"), tr("撤销"), () => setReminder(id, prev || "new", true));
   }
 
+  // Muscle load map (rollout flag muscle_load, muscle-load.js): what the script needs from the page
+  const muscleOn = () => (S.flags || []).includes("muscle_load") && !!window.BodyMuscleLoad?.on();
+  function muscleCtx() {
+    const c = {
+      api, esc, openSheet, closeSheet, toast, owner: ownerPath(), self: isSelf(),
+      openExercise: (slug) => exerciseDetailSheet(slug), ask: (text) => askAI(text), canAsk: canAskAI,
+      refresh: () => { for (const k of Object.keys(S.data)) if (/^mload/.test(k)) delete S.data[k]; render(); },
+      setTab: (tab, sub) => { if (tab === "record" && sub) S.recSub = sub; setTab(tab); },
+    };
+    window.BodyMuscleLoad?.setCtx(c);
+    return c;
+  }
+
   const RENDER_today = async () => {
     const day = viewDay(), past = isPast();
     const v2 = recordsV2();
-    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday] = await Promise.all([
+    const mload = muscleOn() && !past;
+    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday, mdata] = await Promise.all([
       load(todayKey(), todayPath()),
       (past ? load(`goal${day}`, `/v1/users/${ownerPath()}/goals/sleep?night=${day}`) : load("goal", `/v1/users/${ownerPath()}/goals/sleep`)).catch((e) => ({ error: e })),
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,   // meal templates only log today
@@ -1187,6 +1201,7 @@
       optional(`tday${day}`, `/v1/users/${ownerPath()}/training/day/${day}`),   // that day's activity (steps etc., Apple Health history has it too)
       v2 ? optional("jitems", `/v1/users/${ownerPath()}/journal/items?active_only=true`) : null,   // records_v2: the 日记 card (no journal share = no card)
       v2 ? optional(`jday${day}`, `/v1/users/${ownerPath()}/journal?start=${day}&end=${day}`) : null,
+      mload ? optional("mload", `/v1/users/${ownerPath()}/training/muscle-load`) : null,   // muscle_load: the small card (no training share = no card)
     ]);
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
@@ -1194,7 +1209,7 @@
     // Activity right after the scores, so on phones it is near the first screen
     return `<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
       <div class="col col-b">${sleepCardHtml(d.sleep)}${goalCardHtml(goal, d.sleep, sleepCoach)}</div>
-      <div class="col col-c">${dayCardHtml(d, meals)}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
+      <div class="col col-c">${dayCardHtml(d, meals)}${mdata ? window.BodyMuscleLoad.card(mdata, muscleCtx()) : ""}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
   };
 
   // What journal.js needs from the page (records_v2): the day editor sheet and the Trends 行为影响 card
@@ -1220,6 +1235,7 @@
     const arc = $(".ring .arc", view);
     if (arc) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
     bindMeals(view);
+    if (muscleOn()) window.BodyMuscleLoad.bindCard(view, muscleCtx());
     const c = $("#to-cal", view);
     if (c) c.onclick = () => { S.recSub = "training"; setTab("record"); };
   }
@@ -2344,6 +2360,7 @@
   }
 
   const RENDER_me = async () => {
+    if (muscleOn()) muscleCtx();   // 我 → 训练设置 row
     if (meSettingsOn() && S.meSub === "settings") {
       return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true });
     }
@@ -3263,7 +3280,7 @@
     if (add) add.onclick = () => window.BodyExercisePlan.openAdd({
       api, esc, toast, openSheet, setBack, back: () => exerciseDetailSheet(slugOrName, back), openDetail: exerciseDetailSheet,
       onAdded: () => {   // the week strip, the training page's today block and the Today card show the new exercise
-        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
+        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday|mload)/.test(k)) delete S.data[k];
         delete S.data[todayKey()];
         render();
       },
@@ -3432,7 +3449,8 @@
       : `<div class="section"><div class="section-head"><h2>${tr("建议")}</h2></div>${sugg.length || caut.length ? `<div class="card list">${[...sugg, ...caut].join("")}</div>` : `<div class="empty faint">${tr("暂无")}</div>`}</div>`;
     const hist = `<div class="section"><div class="section-head"><h2>${tr("训练历史")}</h2></div><div id="rec-cal"><div class="empty faint">…</div></div></div>`;
     const todayBox = trainingDayV2() ? window.BodyTrainingDay.placeholder() : wk.error ? "" : todayPlanHtml(planDays[today]);
-    return `<div class="cols2"><div>${todayBox}${left}${recs}</div><div>${hist}</div></div>`;
+    const mlBox = muscleOn() ? window.BodyMuscleLoad.placeholder() : "";   // muscle_load: filled in by afterTraining
+    return `<div class="cols2"><div>${mlBox}${todayBox}${left}${recs}</div><div>${hist}</div></div>`;
   }
 
   // FB-5: today's planned exercises right on the training page (they used to be only a short label in the week strip, and in
@@ -3505,6 +3523,7 @@
     if (c) { bindCalSwipe(c); renderCal(0); }
     const tp = $("#today-plan", view);
     if (tp) bindExRows(tp);
+    if (muscleOn() && $("#mml-box", view)) window.BodyMuscleLoad.mount(view, muscleCtx());
     const td = $("#td2", view);
     if (td) window.BodyTrainingDay.mount(td, {
       api, esc, toast, owner: ownerPath(), self: isSelf(), date: S.todayDate, openDetail: exerciseDetailSheet,

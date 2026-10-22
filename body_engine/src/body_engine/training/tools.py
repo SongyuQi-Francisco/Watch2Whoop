@@ -3,8 +3,9 @@ read the calendar / a day, correct or hide a watch workout (overrides.py), exerc
 from datetime import date, datetime, timedelta
 
 from .. import auth
+from ..rollout import flags
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, day_overrides, history, loads, overrides, params as P, plans, session_log
+from . import catalog, day_overrides, goals, history, loads, muscle_load, overrides, params as P, plans, session_log
 
 
 def _d(s: str | None) -> date | None:
@@ -61,6 +62,30 @@ def _day(conn, uid, a):
     out = history.day(conn, a.get("_viewer_id", uid), uid, d)
     if draft := session_log.draft_for_ai(conn, uid, d):   # FB-5: sets ticked on the training page, not submitted yet
         out["page_draft"] = draft
+    return out
+
+
+def _muscle_load(conn, uid, a):
+    viewer = a.get("_viewer_id", uid)
+    flags.guard(conn, viewer, "muscle_load")   # FlagOff while the flag is off for the person asking
+    rng = a.get("range") or "week"
+    if rng not in P.MUSCLE_RANGES:
+        raise ValueError("range 只能是 " + " / ".join(P.MUSCLE_RANGES))
+    full = muscle_load.compute(conn, uid)
+    basis = "last7" if rng == "last7" else "week"
+    rows = []
+    for m in full["muscles"]:
+        r = m["ranges"][rng]
+        rows.append({"key": m["key"], "name": m["name"], "sets": r["sets"], "kg": r["volume_kg"], "prev_week_sets": m["prev_week"]["sets"],
+                     "target": f"{m['target']['low']}-{m['target']['high']}", "status": m["status"][basis],
+                     "trained_today": m["trained_today"] or None, "last": m["last"] and m["last"]["date"]})
+    out = {"range": rng, "today": full["today"], "week_start": full["week_start"], "muscles": rows,
+           "note": "sets=有效组数（主要肌群 1 组计 1，次要计 0.5，热身不算）；status 按本周（range=last7 时近 7 天）对比 target 每周推荐组数：none 没练 / low 偏少 / ok 合适 / high 偏多；kg=组×次×重量",
+           "source": full["source"], "unmatched_exercises": full["unmatched"] or None}
+    if viewer == uid:   # the goals are not part of the training share: only the person themself
+        g = goals.get(conn, uid)
+        out["focus_muscles"] = g["focus_muscles"]
+        out["physique_goal"] = g["physique_goal"]
     return out
 
 
@@ -157,6 +182,13 @@ TOOL_SPECS: list[dict] = [
         description="某天训练详情：来源、起止、时长、能量、心率五区、TRIMP、强度，力量动作与每组次数/重量/RIR，全天指标；page_draft=今天页勾了还没提交的组。",
         input_schema=_schema({"user": USER, "date": DATE}),
         handler=_day,
+        group="training", scope="training",
+    ),
+    dict(
+        name="get_muscle_load",
+        description="肌肉负荷：每块肌群的有效组数、训练量(kg)、上周组数、推荐区间和偏少/合适/偏多、最近练的日期；自己的另带重点肌群和体态目标。调计划前先看，改动要用户确认。",
+        input_schema=_schema({"user": USER, "range": nullable("string", "today / week(默认，周一起) / last7", enum=["today", "week", "last7", None])}),
+        handler=_muscle_load,
         group="training", scope="training",
     ),
     dict(

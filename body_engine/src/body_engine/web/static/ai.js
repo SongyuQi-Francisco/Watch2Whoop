@@ -765,6 +765,7 @@
   const SEND = {
     adjust_training: () => [tr("按恢复调整"), tr("按今天的恢复调整一下训练")],
     next_meal: () => [tr("下一餐吃什么"), tr("下一餐吃什么合适")],
+    analyze_muscles: () => [tr("分析肌群训练"), tr("请分析我的肌群训练：先用 get_muscle_load 看各肌群本周的组数，结合我的重点肌群和体态目标，告诉我哪些偏少、哪些偏多、和目标差在哪、具体怎么改（每周给哪块加几组、换哪些动作，避开我的禁用动作）。要改训练计划的话先给我看改动，我确认后再改。")],
     explain_trend: (c) => [tr("解释这个变化"), tr("解释一下{name}最近的变化", { name: METRIC[c.metric] || c.metric })],
   };
   let cardSeq = 0;
@@ -818,7 +819,7 @@
   }
   function showCard(c) {
     if (!c?.type) return;
-    const body = { training: trainingBody, meal: mealBody, metric: metricBody, actions: () => "" }[c.type];
+    const body = { training: trainingBody, meal: mealBody, metric: metricBody, actions: () => "", muscle: (m) => window.BodyMuscleLoad?.cardSvg(m) || "" }[c.type];
     if (!body) return;
     const acts = actionButtons(c);
     const el = document.createElement("div");
