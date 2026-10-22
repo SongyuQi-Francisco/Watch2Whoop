@@ -151,13 +151,15 @@ def test_dedupe_and_votes(conn, world):
     conn.commit()
 
 
-def test_rate_limit_and_modes(conn, world):
+def test_rate_limit_and_modes(conn, world, monkeypatch):
     ids, _ = world
     d = ids["Dave"]
-    for k in range(P.PER_USER_DAY):
+    for k in range(8):                                                    # no per-user limit any more
         assert _report(conn, d, title=f"问题 {chr(65 + k)}{chr(70 + k)}", area=f"page{chr(65 + k)}")["reported"]
+    monkeypatch.setattr(P, "GLOBAL_DAY", 8)                               # only the server-wide runaway guard is left
     over = _report(conn, d, title="再来一个 XYZ", area="other")
     assert not over["reported"] and over["reason"] == "rate_limited"
+    monkeypatch.undo()
     store.set_mode(conn, ids["Carol"], "off")
     off = _report(conn, ids["Carol"], title="全新的问题 QQ", area="x")
     assert off["reason"] == "off" and store.mode(conn, ids["Carol"]) == "off"
