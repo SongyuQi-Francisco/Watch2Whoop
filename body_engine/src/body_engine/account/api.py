@@ -396,6 +396,8 @@ def app_logout(request: Request, conn=Depends(get_conn), viewer=Depends(current_
     if authz.startswith("Bearer "):
         conn.execute("UPDATE api_tokens SET revoked_at = now() WHERE token_sha256 = %s AND revoked_at IS NULL",
                      (auth.hash_token(authz.removeprefix("Bearer ").strip()),))
+    if viewer.get("token_id") is not None:   # this phone stops getting pushes for the account (notify/, #175)
+        conn.execute("DELETE FROM push_devices WHERE api_token_id = %s", (viewer["token_id"],))
     return Response(status_code=204)
 
 

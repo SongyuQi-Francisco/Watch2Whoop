@@ -82,3 +82,14 @@ TRAIN_VOLUME_FULL = 1.0             # last 7 days' strength volume ≥ the 28-da
 LONG_W_GAP, LONG_W_PACE = 0.6, 0.4
 GAP_YEARS_FULL = 1.0                # 1 year younger over 4 weeks = 100, unchanged = 50, 1 year older = 0
 PACE_BEST, PACE_MID, PACE_WORST = 0.5, 1.0, 1.5   # pace of aging (years per year): 0.5 → 100, 1.0 → 50, 1.5 → 0
+
+# ---------------------------------------------------------------- training feed (rollout flag circle_feed, friends/feed.py)
+FEED_FLAG = "circle_feed"
+FEED_SCOPE = "training"             # a member's posts go to a circle only when they ticked this scope for it
+FEED_PAGE = 10                      # posts per page (the page loads more when scrolling down)
+FEED_LOOKBACK_DAYS = 14             # days looked at when posts are made on the fly (a post follows the day's training)
+FEED_PREVIEW_EXERCISES = 3          # exercises shown before 「show all」
+COMMENT_MAX = 300                   # characters; text only
+COMMENTS_PER_HOUR = 30              # per person, against floods (429)
+COMMENTS_SHOWN = 100                # newest comments returned for one post
+REPORT_REASON_MAX = 200
