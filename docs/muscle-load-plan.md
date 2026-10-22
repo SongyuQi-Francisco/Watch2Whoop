@@ -1,6 +1,6 @@
 # 肌肉负荷图（开关 `muscle_load`）
 
-第一期：2D 男 / 女人体图（正面 + 背面）。第二期：3D（只用免费开源模型，本文末尾是调研结论，第二期不在这次实现）。
+第一期：2D 男 / 女人体图（正面 + 背面）。#189 补了三件事：运动单独一层、性别按个人资料、每人自己的自定义动作（下面各节）。第二期：3D（只用免费开源模型，本文末尾是调研结论，第二期不在这次实现）。
 
 ## 数据怎么算（`training/muscle_load.py`，参数和出处在 `training/params.py`）
 - 来源：SparkyFitness 里的力量训练（训练页逐组提交的、AI 记的都在里面）；Hevy 导入（#167 合并后，`training_session_logs.status='imported'` 的组，没合并前没有这类行、不影响）。没有组、没有次数 / 时长的不计入；热身组不计；有氧 / 拉伸不计。
@@ -10,13 +10,34 @@
 - 颜色：本周（近 7 天视图用近 7 天）有效组数对每周推荐区间：没练（0）/ 偏少（< 下限）/ 合适 / 偏多（> 上限）。默认 10–20 组（Schoenfeld 2017 剂量反应元分析：每周 ≥ 10 组增肌明显更好，约 20 组以内持续受益），小肌群 / 辅助较多的肌群用更低的区间（出处在 params.py）。今天练过的加描边；「今天」视图里没练的肌群显示灰色。
 - 区间是人群参考值，不是处方；以后可以做成按人调整，AI 会结合恢复、伤病和目标判断。
 
+## 运动单独一层（#189）
+- 来源：`workouts` 表（手表 / 快捷指令 / Hevy 的训练），`dup_of` 不为空、`excluded` 有值（含用户隐藏的）、力量类（`STRENGTH_TYPES`，它们的组数已经从动作里算了）都不算。
+- **按时长算，不折算成组数，也不改按组数着色的颜色**：运动没有公认的「等效组数」，硬折算会让颜色失真。
+- 运动类型 → 主要 / 次要肌群在 `training/params.py` 的 `SPORT_MUSCLES`，每类写了依据（跑步 Novacheck 1998、上坡走 Franz & Kram 2012、骑车 Hug & Dorel 2009、划船 Turpin 2011、游泳 Martens 2015、篮球 Stojanović 2018、网球 Kovacs 2007 等）。主要肌群分钟按 100%、次要按 50%。没在映射里的类型（瑜伽等）不计入任何肌群，只出现在整体运动列表里。
+- 今天 / 本周 / 近 7 天三个范围都算：每块肌群 `sport_min`，整体 `sports[范围]`（`mapped=false` = 不计入肌群），单块详情 `sports[范围]`（「篮球 74 分钟 · 主要」，和力量动作分开列）。
+- 图上：被运动练到的肌群盖一层斜纹（颜色照旧按组数），只被运动练到、没有组数的也看得出；图例「运动」。
+- `get_muscle_load` 每行带 `sport_min`，另带 `sports`；Jarvis 肌肉卡片带 `sport_min` 和 `sports`，摘要里写运动分钟，AI 分析时能考虑。
+
+## 性别按个人资料（#189）
+- 去掉完整页、今天页小卡、Jarvis 卡片上的「男 | 女」切换，一律按个人资料（`users.sex`，`profile/store.py`）。
+- 资料没填：显示男性图，并有小提示「在个人资料里设置性别」，点开就是个人资料（Jarvis 卡片多一个「设置性别」按钮，`show_card` 的 open page `profile`）。
+
+## 每人自己的自定义动作（#189）
+- 表 `custom_exercises`（迁移 `650_custom_exercises.sql`，带 `user_id`）：中英文名、别名、主要 / 次要肌群（只能用动作库的肌群 key）、器械、来源（ai / manual）、时间。代码 `training/custom.py`。
+- 匹配：`catalog.rows_for(conn, user_id)` = 公共动作库 + 这个用户自己的（slug `my_<id>`，source `user_custom`）；`loads.Index`（肌肉图、推荐重量）、动作库搜索、动作详情都用它。别人看不到，接口只能管自己的。
+- 公共动作库已有的名字、自己已有的名字都拒绝（不会遮住公共动作）。禁用动作照常拦截：名字是受限动作的变体（`HAZARD_FAMILIES`，如 upright row）时带上这个家族，用户禁用了原动作，这个也算禁用。
+- Jarvis：`add_custom_exercise`（写工具，直接执行；托底 AI 也有）、`delete_custom_exercise`（删除类，`ALWAYS_CONFIRM` 和 `assistant/.claude/settings.json` 的 ask 里都有）；`get_muscle_load` 的 `unmatched_exercises` 就是待补的。角色设定里写了：按动作判断肌群，拿不准先问用户。
+- 页面：肌肉图「N 个动作没对上动作库」旁边「让 Jarvis 补进动作库」，打开 Jarvis 并预填一条列出这些动作名的消息；补完后页面自动刷新、这些组被计入。动作库页「我的动作」可以加、改、删（`web/static/custom-exercises.js`）。
+- 接口（都在 `muscle_load` 开关后面）：`GET / POST /v1/users/{user}/training/custom-exercises`、`PATCH / DELETE …/custom-exercises/{id}`，只能是自己。
+- 管理员：`body-engine exercises custom-list` 列出所有用户的自定义动作名和多少人加过（不显示是谁），以后把常见的并进公共动作库。
+
 ## 接口（都在 `muscle_load` 开关后面，关着返回 404）
 - `GET /v1/users/{user}/training/muscle-load`：全部肌群、三个范围一次给齐。需要 `training`（朋友有训练共享可以看）；自己的另带 `goals`。
 - `GET /v1/users/{user}/training/muscle-load/{muscle}`：单块详情 + 推荐动作（来自动作库，不含禁用动作，「注意」动作标出来）。
 - `GET / PUT /v1/users/{user}/training/goals`：重点肌群（最多 5 个）和体态 / 形体目标（一句话，≤ 200 字）。只能是自己；体态目标同时写进长期记忆档案卡 `physique_goal`。迁移 `640_training_goals.sql`。
 
 ## 页面
-- 记录 → 训练顶部：完整的图（今天 / 本周 / 近 7 天，男 / 女切换，默认按个人资料性别），正面和背面并排，点肌肉或下面的列表看详情；「让 Jarvis 分析我的肌群训练」「训练设置」按钮。
+- 记录 → 训练顶部：完整的图（今天 / 本周 / 近 7 天，按个人资料性别，没有手动切换），正面和背面并排，点肌肉或下面的列表看详情；「让 Jarvis 分析我的肌群训练」「训练设置」按钮。
 - 今天页：一张小卡，点开进入记录 → 训练。
 - 我 → 训练设置：重点肌群、体态目标。
 - Jarvis：`show_card` 新类型 `muscle`（复用 #151 的互动卡片）。

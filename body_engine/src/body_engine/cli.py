@@ -207,6 +207,10 @@ def main() -> None:
     sx = sub.add_parser("seed-exercises", help="seed the bilingual exercise_catalog table (curated overlay + optional free-exercise-db exercises.json; idempotent)")
     sx.add_argument("--free-exercise-db", "--free-db-json", dest="free_exercise_db", type=Path, help="optional path to yuhonas/free-exercise-db dist/exercises.json (Unlicense)")
     sx.add_argument("--free-db", action="store_true", help="import the pinned free-exercise-db (downloads exercises.json into the media dir first if missing)")
+    exc = sub.add_parser("exercises", help="exercise library admin (issue #189)")
+    excs = exc.add_subparsers(dest="exercises_cmd", required=True)
+    excs.add_parser("custom-list", help="every user's own custom exercise names and how many users added each (never who), "
+                                       "to fold common ones into the shared catalog")
     fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
                         "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
     fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
@@ -542,6 +546,11 @@ def main() -> None:
             print(rules_engine.format_report(rules_engine.run(conn, args.user_id, args.date)))
         elif args.cmd == "link-exercises":
             print(exercise_link.format_report(exercise_link.run(conn, args.user_id, dry_run=args.dry_run)))
+        elif args.cmd == "exercises":
+            from .training import custom as tr_custom
+            rows = tr_custom.admin_names(conn)
+            print("\n".join(f"{r['users']:>4}  {r['name_zh']}" + (f"  ({r['name_en']})" if r["name_en"] else "") + f"  {r['last_added']}"
+                            for r in rows) or "(none)")
         elif args.cmd == "seed-exercises":
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db

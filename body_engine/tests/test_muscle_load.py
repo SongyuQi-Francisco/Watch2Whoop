@@ -1,8 +1,11 @@
 """Muscle load map (rollout flag muscle_load): primary 100% / secondary 50% bookkeeping, the three time ranges (week starts Monday),
 colour status against the weekly range, who may look (own data, a friend with the training share, nobody else), and nothing
-changes while the flag is off (no endpoint, no tool, no card)."""
+changes while the flag is off (no endpoint, no tool, no card).
+#189: sports (watch workouts) are a separate layer in minutes that never becomes sets or colours; duplicates, excluded / hidden and
+strength workouts are left out; the body follows the profile's sex (none = male + a hint, no manual switch)."""
 import os
 from datetime import date, timedelta
+from pathlib import Path
 
 import psycopg
 import pytest
@@ -19,6 +22,7 @@ from body_engine.rollout import flags
 from body_engine.training import goals, loads, muscle_load as ML, params as P, plans
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_MUSCLE_LOAD", "body_test_muscle_load")
+STATIC = Path(__file__).resolve().parents[1] / "src/body_engine/web/static"
 CSRF = {"X-Body-Web": "1"}
 
 
@@ -112,6 +116,34 @@ def test_unmatched_exercise_is_reported_not_counted():
     # SparkyFitness's own primary muscle is the fallback when the catalog does not know the exercise
     agg = ML.aggregate([_w(today, "神秘动作", [{"reps": 10, "weight_kg": 20}], primary_muscles=["Biceps"])], StubIndex(), today)
     assert agg["stats"]["biceps"]["week"]["sets"] == 1 and not agg["unmatched"]
+
+
+# ---------------------------------------------------------------- pure: sports layer (#189)
+def test_sport_mapping_uses_catalog_muscles_and_leaves_strength_out():
+    for t, (prim, sec) in P.SPORT_MUSCLES.items():
+        assert prim and set(prim) <= set(ML.CD.MUSCLE_ZH) and set(sec) <= set(ML.CD.MUSCLE_ZH), t
+        assert not set(prim) & set(sec), t
+        assert t in P.TYPE_NAMES and t in P.TYPE_NAMES_EN, t   # a known workout type with both names
+    assert not set(P.SPORT_MUSCLES) & P.STRENGTH_TYPES       # their sets are counted from the logged exercises
+    for t in ("basketball", "swimming", "running", "cycling", "hiking", "rowing_machine", "soccer", "tennis", "walking"):
+        assert t in P.SPORT_MUSCLES   # the sports named in the issue
+    assert (P.SPORT_PRIMARY_FACTOR, P.SPORT_SECONDARY_FACTOR) == (1.0, 0.5)
+
+
+def test_sports_counted_by_minutes_in_their_own_layer():
+    today = date(2026, 10, 21)   # Wednesday; the week starts on the 19th
+    sports = [{"date": today, "type": "basketball", "min": 74}, {"date": today - timedelta(days=5), "type": "swimming", "min": 40},
+              {"date": today, "type": "yoga", "min": 30}, {"date": today - timedelta(days=1), "type": "basketball", "min": 60}]
+    sp = ML.aggregate_sports(sports, today)
+    prim, sec = P.SPORT_MUSCLES["basketball"]
+    assert sp["stats"]["quadriceps"]["today"] == 74 and sp["stats"]["quadriceps"]["week"] == 134   # primary x 1
+    assert sp["stats"]["hamstrings"]["today"] == 37 and "hamstrings" in sec                         # secondary x 0.5
+    assert sp["stats"]["lats"]["week"] == 0 and sp["stats"]["lats"]["last7"] == 40                  # swimming last Friday: last 7 days only
+    assert sp["stats"]["biceps"]["last7"] == 0
+    today_list = sp["overall"]["today"]
+    assert [(x["type"], x["min"], x["mapped"]) for x in today_list] == [("basketball", 74, True), ("yoga", 30, False)]   # yoga: listed, no muscle
+    assert sp["by_muscle"]["quadriceps"]["week"] == [{"type": "basketball", "name": "篮球", "min": 134, "primary": True}]
+    assert sp["by_muscle"]["hamstrings"]["today"][0]["primary"] is False
 
 
 # ---------------------------------------------------------------- database: endpoints, permissions, flag
@@ -317,3 +349,62 @@ def test_page_and_imported_rows_counted_once(conn, world, monkeypatch):
         conn.execute("DELETE FROM workouts WHERE user_id = %s", (c,))
         conn.commit()
         loads.clear_history_cache(c)
+
+
+# ---------------------------------------------------------------- sports from the workouts table, sex from the profile (#189)
+def _workout(conn, uid, ext, type_, day, minutes, **kw):
+    cols = {"user_id": uid, "source": "ow", "external_id": ext, "type": type_, "name_zh": P.TYPE_NAMES.get(type_, type_),
+            "local_date": day, "duration_min": minutes, **kw}
+    names = ", ".join(cols)
+    conn.execute(f"""INSERT INTO workouts ({names}, start_at, end_at)
+                     VALUES ({", ".join(["%s"] * len(cols))}, now() - interval '2 hour', now() - interval '1 hour') RETURNING id""",
+                 list(cols.values()))
+    return conn.execute("SELECT id FROM workouts WHERE user_id = %s AND external_id = %s", (uid, ext)).fetchone()["id"]
+
+
+def test_sports_layer_from_workouts(conn, world, sessions):
+    """Sport minutes come from workouts (not duplicates, not excluded, not strength) and leave sets and colours as they were."""
+    ids, _, today = world
+    a = ids["A"]
+    before = {x["key"]: x for x in ML.compute(conn, a, today)["muscles"]}
+    try:
+        kept = _workout(conn, a, "bb1", "basketball", today, 74)
+        _workout(conn, a, "bb1-copy", "basketball", today, 74, dup_of=kept)            # the export.xml copy
+        _workout(conn, a, "sw1", "swimming", today, 40, excluded="user_hidden")        # hidden by the user
+        _workout(conn, a, "st1", "strength_training", today, 60)                       # counted through its sets
+        _workout(conn, a, "yg1", "yoga", today, 30)                                    # no mapping: overall list only
+        full = ML.compute(conn, a, today)
+        m = {x["key"]: x for x in full["muscles"]}
+        assert m["quadriceps"]["sport_min"] == {"today": 74, "week": 74, "last7": 74}
+        assert m["hamstrings"]["sport_min"]["week"] == 37 and m["lats"]["sport_min"]["week"] == 0
+        for k, x in m.items():   # the set layer is untouched
+            assert x["ranges"] == before[k]["ranges"] and x["status"] == before[k]["status"], k
+        assert [(x["type"], x["min"], x["mapped"]) for x in full["sports"]["week"]] == [("basketball", 74, True), ("yoga", 30, False)]
+        d = ML.detail(conn, a, "quadriceps", today)
+        assert d["sports"]["today"] == [{"type": "basketball", "name": "篮球", "min": 74, "primary": True}]
+        out = run_tool(conn, a, "test", "get_muscle_load", {"range": "today"})
+        rows = {r["key"]: r for r in out["muscles"]}
+        assert rows["quadriceps"]["sport_min"] == 74 and rows["lats"]["sport_min"] is None
+        assert {"name": "篮球", "min": 74, "mapped": True} in out["sports"] and "sport_min" in out["note"]
+        card = cards.build(conn, a, {"type": "muscle", "range": "week"})
+        assert {x["key"]: x["sport_min"] for x in card["muscles"]}["quadriceps"] == 74
+        assert card["sports"][0] == {"type": "basketball", "name": "篮球", "min": 74} and "篮球 74 分钟" in cards.summary(card)
+    finally:
+        conn.execute("DELETE FROM workouts WHERE user_id = %s", (a,))
+        conn.commit()
+
+
+def test_sex_follows_the_profile(client, conn, world, sessions, dsn):
+    """No manual switch: A's profile says female; B has none -> null (the page draws the male body with a hint) and the
+    Jarvis card offers 个人资料."""
+    ids, tok, _ = world
+    _set_flag(dsn, "all")
+    assert client.get("/v1/users/me/training/muscle-load", headers=H(tok["A"])).json()["sex"] == "female"
+    assert client.get("/v1/users/me/training/muscle-load", headers=H(tok["B"])).json()["sex"] is None
+    assert cards.build(conn, ids["B"], {"type": "muscle"})["actions"][-1] == {"kind": "open", "page": "profile"}
+    assert {"kind": "open", "page": "profile"} not in cards.build(conn, ids["A"], {"type": "muscle"})["actions"]
+    js = (STATIC / "muscle-load.js").read_text(encoding="utf-8")
+    assert "data-ms" not in js and 'tr("男")' not in js and "S.sex" not in js             # the 男 | 女 switch is gone
+    assert "BodyProfile?.open()" in js and 'tr("在个人资料里设置性别")' in js
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert 'if (page === "profile") { window.BodyProfile?.open(); return; }' in app

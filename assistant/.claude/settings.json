@@ -37,7 +37,8 @@
       "mcp__body-engine__remove_shopping_items",
       "mcp__body-engine__remove_staple",
       "mcp__body-engine__delete_workout",
-      "mcp__body-engine__rollback_write"
+      "mcp__body-engine__rollback_write",
+      "mcp__body-engine__delete_custom_exercise"
     ],
     "deny": [
       "Bash",

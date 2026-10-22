@@ -6,6 +6,11 @@ Unfinished page drafts and sets without reps or duration are not counted; warm-u
 Each set is credited to the muscles of its exercise in the catalog: primary muscles x PRIMARY_FACTOR (1.0), secondary x SECONDARY_FACTOR (0.5).
 Two numbers per muscle and range: effective sets (the weighted count) and volume in kg (reps x weight, weighted the same way; bodyweight
 sets add sets but no kg). Colours compare this week's effective sets with training/params.WEEKLY_SETS_RANGE (sources there).
+Sports (issue #189): watch workouts of the workouts table (basketball, swimming, running ...; not duplicates, not excluded / hidden,
+not strength types) are a separate layer counted in minutes: primary muscles of params.SPORT_MUSCLES x 1, secondary x 0.5. They never
+become sets and never change the colours; types without a mapping count for no muscle and only appear in the overall list.
+Exercises are matched against the shared catalog plus the user's own custom exercises (custom.py, through loads.Index).
+The body is drawn by the profile's sex (users.sex); the page shows the male body and a hint when it is not set.
 The result is read-only; callers do the authorization (training scope).
 """
 from __future__ import annotations
@@ -87,6 +92,49 @@ def _imported(conn: psycopg.Connection, uid: int, start: date, end: date) -> lis
     return out
 
 
+def _sports(conn: psycopg.Connection, uid: int, start: date, end: date) -> list[dict]:
+    """Watch workouts that are not strength training, one row per workout (duplicates and excluded / hidden ones left out)."""
+    rows = conn.execute("""SELECT local_date, type, duration_min FROM workouts
+                           WHERE user_id = %s AND local_date BETWEEN %s AND %s AND dup_of IS NULL AND excluded IS NULL
+                             AND NOT (type = ANY(%s)) ORDER BY start_at""",
+                        (uid, start, end, sorted(P.STRENGTH_TYPES))).fetchall()
+    return [{"date": r["local_date"], "type": r["type"], "min": float(r["duration_min"] or 0)} for r in rows if r["duration_min"]]
+
+
+def sport_name(t: str) -> str:
+    return L(P.TYPE_NAMES.get(t, t), P.TYPE_NAMES_EN.get(t, t))
+
+
+def aggregate_sports(sports: list[dict], today: date) -> dict:
+    """Minutes per muscle and window (primary x SPORT_PRIMARY_FACTOR, secondary x SPORT_SECONDARY_FACTOR), the sports behind
+    each muscle and the overall list per window (also the types without a muscle mapping)."""
+    win = {k: v for k, v in windows(today).items() if k in P.MUSCLE_RANGES}
+    stats = {m: {w: 0.0 for w in win} for m in CD.MUSCLE_ZH}
+    by_muscle: dict[str, dict[str, dict[str, dict]]] = {m: {w: {} for w in win} for m in CD.MUSCLE_ZH}
+    overall: dict[str, dict[str, dict]] = {w: {} for w in win}
+    for s in sports:
+        prim, sec = P.SPORT_MUSCLES.get(s["type"], ((), ()))
+        for wname, (a, b) in win.items():
+            if not a <= s["date"] <= b:
+                continue
+            o = overall[wname].setdefault(s["type"], {"type": s["type"], "name": sport_name(s["type"]), "min": 0.0,
+                                                       "mapped": s["type"] in P.SPORT_MUSCLES})
+            o["min"] += s["min"]
+            for muscles, factor in ((prim, P.SPORT_PRIMARY_FACTOR), (sec, P.SPORT_SECONDARY_FACTOR)):
+                for m in muscles:
+                    if m not in stats:
+                        continue
+                    stats[m][wname] += s["min"] * factor
+                    it = by_muscle[m][wname].setdefault(s["type"], {"type": s["type"], "name": sport_name(s["type"]), "min": 0.0,
+                                                                   "primary": factor == P.SPORT_PRIMARY_FACTOR})
+                    it["min"] += s["min"]
+
+    def done(items: dict) -> list[dict]:
+        return [{**x, "min": round(x["min"])} for x in sorted(items.values(), key=lambda x: -x["min"])]
+    return {"stats": stats, "by_muscle": {m: {w: done(v) for w, v in ws.items()} for m, ws in by_muscle.items()},
+            "overall": {w: done(v) for w, v in overall.items()}}
+
+
 def _muscles_of(index: loads.Index, ex: dict) -> tuple[list[str], list[str], str | None]:
     """(primary, secondary, catalog slug) of a logged exercise; the catalog first, else SparkyFitness's own primary muscles."""
     slug = ex.get("slug") if ex.get("slug") in index.rows else index.slug_for(ex.get("exercise_id"), ex.get("name"))
@@ -159,6 +207,11 @@ def _r(x: float, d: int = 1) -> float:
 
 def compute(conn: psycopg.Connection, owner_id: int, today: date | None = None) -> dict:
     """The whole map for one user (all three ranges at once, so the page switches without asking again)."""
+    return _build(conn, owner_id, today)[0]
+
+
+def _build(conn: psycopg.Connection, owner_id: int, today: date | None) -> tuple[dict, dict]:
+    """compute()'s result and the sports behind each muscle (only the one-muscle detail lists them)."""
     today = today or plans._user_today(conn, owner_id)
     win = windows(today)
     start = min(today - timedelta(days=P.MUSCLE_LOAD_BASELINE_DAYS - 1), win["prev_week"][0])
@@ -166,6 +219,7 @@ def compute(conn: psycopg.Connection, owner_id: int, today: date | None = None) 
     imported = _imported(conn, owner_id, start, today)
     index = loads.Index(conn, owner_id)
     agg = aggregate([*sessions, *imported], index, today)
+    sp = aggregate_sports(_sports(conn, owner_id, min(win["week"][0], win["last7"][0]), today), today)
     sex = (conn.execute("SELECT sex FROM users WHERE id = %s", (owner_id,)).fetchone() or {}).get("sex")
     muscles = []
     for key in CD.MUSCLE_ZH:
@@ -180,20 +234,22 @@ def compute(conn: psycopg.Connection, owner_id: int, today: date | None = None) 
             "target": {"low": low, "high": high},
             "status": {"week": status_for(key, week["sets"]), "last7": status_for(key, st["last7"]["sets"])},
             "trained_today": st["today"]["sets"] > 0,
+            "sport_min": {w: round(sp["stats"][key][w]) for w in P.MUSCLE_RANGES},
             "last": lst and {"date": lst["date"].isoformat(),
                              "exercises": [{k: v for k, v in e.items() if v is not None} for e in lst["exercises"]][:8]},
         })
     return {"version": P.MUSCLE_LOAD_VERSION, "today": today.isoformat(), "week_start": win["week"][0].isoformat(),
             "sex": sex if sex in ("male", "female") else None,
             "source": {"sparky": sparky_state, "imported_days": len(imported)},
-            "unmatched": agg["unmatched"], "muscles": muscles}
+            "unmatched": agg["unmatched"], "sports": sp["overall"], "muscles": muscles}, sp["by_muscle"]
 
 
 def detail(conn: psycopg.Connection, owner_id: int, muscle: str, today: date | None = None) -> dict:
     """One muscle of compute() plus recommended exercises from the catalog (banned ones left out, 'caution' marked)."""
     if muscle not in CD.MUSCLE_ZH:
         raise ValueError(L(f"没有这个肌群：{muscle}", f"Unknown muscle: {muscle}"))
-    full = compute(conn, owner_id, today)
+    full, by_muscle = _build(conn, owner_id, today)
+    sports = by_muscle[muscle]
     m = next(x for x in full["muscles"] if x["key"] == muscle)
     recs = []
     for it in catalog.search(conn, owner_id, muscle=muscle, include_banned=False, limit=P.RECOMMEND_LIMIT * 4):
@@ -203,4 +259,4 @@ def detail(conn: psycopg.Connection, owner_id: int, muscle: str, today: date | N
                      "equipment_zh": it.get("equipment_zh") or []})
         if len(recs) >= P.RECOMMEND_LIMIT:
             break
-    return {**m, "today": full["today"], "recommended": recs, "source": full["source"]}
+    return {**m, "today": full["today"], "recommended": recs, "source": full["source"], "sports": sports, "sex": full["sex"]}

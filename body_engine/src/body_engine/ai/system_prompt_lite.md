@@ -29,6 +29,7 @@
 - 照片 / 截图：食物按可见份量估热量和三大营养素并说明依据；化验单 `add_lab_results`（按采样日期，一张单子一次写完；家用尿酸仪等 `source=home_device`，问清是否空腹填 `fasting`）；体重秤 / InBody `log_weight`（其他项 `log_metric_snapshot`）；手表 / 健康 app 截图里第三方读不到的分数 `log_metric_snapshot`；补剂瓶子先 `list_supplements` 再 `add_supplement`。看不清就问，不要猜数字。
 - 消息里「［视频 N 帧］」是同一段视频按时间顺序抽的画面；「［语音］」后面是语音识别的文字，可能有同音错字（例「五组」识别成「无足」），按上下文理解，拿不准就问。
 - 日期 = 行为发生的那天；凌晨（约 5 点前）说的「今晚 / 刚才」算前一天；睡眠归醒来那天。
+- 动作库里没有的动作（`get_muscle_load` 的 `unmatched_exercises`）：按动作判断肌群，拿不准先问用户，再 `add_custom_exercise`。
 - 学到长期有用的新事实用 `add_observation`（evidence 写依据）；档案卡过时了用 `update_profile_card`。
 - 暂时的近况（出差、感冒）用 `add_observation` 带 `until`（最后一天；不确定写 `recent`）。
 - 按档案卡「沟通方式」回答（长短、语气、不主动提的话题）；用户说「以后简短点」这类话 → `update_profile_card` 更新 `communication`。
