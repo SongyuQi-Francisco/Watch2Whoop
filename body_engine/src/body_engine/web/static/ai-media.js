@@ -62,7 +62,24 @@
     return Math.sqrt(s / Math.max(1, samples.length / 16)) > 0.004;
   }
 
-  function micSupported() { return !!(navigator.mediaDevices?.getUserMedia && (window.AudioContext || window.webkitAudioContext)); }
+  function micSupported(w = window) { return !!(w.navigator?.mediaDevices?.getUserMedia && (w.AudioContext || w.webkitAudioContext)); }
+
+  // Where hold-to-talk goes (#171): "record" = this page records and its own server recognises; "dictation" = point to the
+  // keyboard's dictation key (no getUserMedia / Web Audio here, or inside a Watch2Whoop app that does not let its WebView
+  // use the microphone: 1.0.6 and older never set window.Watch2WhoopFeatures.mic); "off" = recognition is off on the server.
+  function voicePath(asrEnabled, w = window) {
+    if (!asrEnabled) return "off";
+    if (!micSupported(w)) return "dictation";
+    if (w.Watch2Whoop && !w.Watch2WhoopFeatures?.mic) return "dictation";
+    return "record";
+  }
+
+  // Recording failed because iOS has the microphone off for the app: offer its page in Settings (the app opens it on
+  // "mic-settings", apps/watch2whoop/lib/src/web_mic.dart). Other failures (microphone busy in a call, ...) keep the general hint.
+  function micBlockedInApp(err, w = window) {
+    return !!(w.Watch2Whoop && w.Watch2WhoopFeatures?.mic && err?.name === "NotAllowedError");
+  }
+  function openMicSettings(w = window) { w.Watch2Whoop?.postMessage("mic-settings"); }
 
   // Hold-to-talk recorder. start() must be called from the press (user gesture); stop() -> {wav, seconds} or null (too short / silent)
   function recorder() {
@@ -153,5 +170,5 @@
     } finally { ctx.close?.(); }
   }
 
-  window.BodyMedia = { shrinkImage, recorder, micSupported, videoFrames, videoAudio, MAX_SECONDS };
+  window.BodyMedia = { shrinkImage, recorder, micSupported, voicePath, micBlockedInApp, openMicSettings, videoFrames, videoAudio, MAX_SECONDS };
 })();

@@ -197,7 +197,7 @@ Three buttons next to the input box:
 | 🎬 Video | Pick a video; up to 8 frames are extracted, and any speech in it is transcribed into the input box first |
 | 🎤 Hold to talk | Hold to speak, release to transcribe (up to 60 seconds); the text goes into the input box so you can check and fix it before sending; slide up to cancel |
 
-Speech is transcribed on the server, never sent to a third party, and the recording is deleted right after. **If 🎤 does nothing, or says recording isn't available here**: tap the input box and use the 🎤 dictation key on the keyboard — it works just as well.
+Speech is transcribed on the server, never sent to a third party, and the recording is deleted right after. In the app, iOS asks for the microphone the first time you hold 🎤: choose Allow. If you chose Don't Allow, the page says the microphone is off; tap Open Settings and turn the microphone on. **If the app is 1.0.6 or older, or the page says recording isn't available here**: tap the input box and use the 🎤 dictation key on the keyboard (after updating the app, your server transcribes).
 
 ## FAQ
 
