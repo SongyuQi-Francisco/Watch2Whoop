@@ -49,7 +49,7 @@
     emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
   };
   let lastPage = "";
-  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
+  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub, today: S.sleepNight ? "sleep" : null }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
   function featureOf(el) {
     const named = el.closest("[data-feature]")?.dataset.feature;
     if (named) return named;
@@ -424,6 +424,7 @@
     if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     if (tab !== S.tab) S.meSub = null;   // 「设置」 is a sub-page of 我: leaving the tab closes it
+    S.sleepNight = null;                 // so is the sleep detail page of 今天 (tapping 今天 again also goes back)
     S.tab = tab;
     const lit = tab === "food" && friendsOn() ? "record" : tab;
     for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
@@ -467,6 +468,7 @@
   function setViewDate(day, dir, tab) {
     if (!day || !S.todayDate) return;
     if (day > S.todayDate) day = S.todayDate;
+    S.sleepNight = null;
     S.viewDate = day === S.todayDate ? null : day;
     const q = new URLSearchParams(location.search);
     if (S.viewDate) q.set("date", S.viewDate); else q.delete("date");
@@ -610,7 +612,7 @@
     }
   }
 
-  async function refresh() { S.data = {}; await boot(true); }
+  async function refresh() { S.data = {}; window.BodySleepDetail?.reset(); await boot(true); }
 
   // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
@@ -781,7 +783,7 @@
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
     return `<button class="hero" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
       <div class="tiles">
-        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => sleepSheet(sc))}
+        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)))}
         ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc))}
         ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc))}
       </div>
@@ -946,12 +948,32 @@
     const m = sl.main;
     const stat = (st, v) => `<div><div class="stage-l"><i class="k-${st}"></i>${HYP_NAME[st]}</div><div class="stage-v">${hm(v) ?? "—"}</div></div>`;
     const chart = sl.stages.length ? hypnoSvg(m, sl.stages) : "";
-    return `<div class="section">${head}<button class="card" ${sheetAttr(() => sleepDetailSheet(sl))}>
+    return `<div class="section">${head}<button class="card" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
       <div class="sleep-head"><div><div class="sub-l">${tr("入睡 → 醒来")}</div><div class="sleep-times">${m.start}<span class="arrow">→</span>${m.end}</div></div>
         <div class="sleep-total"><div class="sub-l">${tr("睡着")}</div><div class="v">${hm(m.asleep_min)}</div></div></div>
       ${chart}
       <div class="stages4">${stat("deep", m.deep_min)}${stat("core", m.core_min)}${stat("rem", m.rem_min)}${stat("awake", m.awake_min)}</div>
     </button></div>`;
+  }
+
+  // ---- Sleep detail page (sleep-detail.js, rollout flag sleep_detail): a sub-page of 今天 for one night, opened from the sleep card
+  // or the 睡眠 tile; S.sleepNight = that night's wake date ("latest" when unknown). Flag off: the sheets above, as before.
+  const sleepDetailOn = () => !!window.BodySleepDetail && (S.flags || []).includes("sleep_detail");
+  function openSleepDetail(date) {
+    closeSheet();
+    S.sleepNight = date || "latest";
+    $("#view").dataset.shown = "";
+    window.scrollTo(0, 0);
+    render();
+  }
+  function mountSleepDetail(el) {
+    window.BodySleepDetail.mount(el, {
+      api, owner: ownerPath(), date: S.sleepNight === "latest" ? null : S.sleepNight,
+      hypno: hypnoSvg, fmtDay: (d) => fmtDay(d, d.slice(0, 4) !== String(S.todayDate || "").slice(0, 4)),
+      canAsk: canAskAI, askAI, explain: (key, title) => explainSheet("metric", key, title),
+      back: () => { S.sleepNight = null; $("#view").dataset.shown = ""; render(); },
+      onDate: (d) => { if (S.sleepNight) S.sleepNight = d; },
+    });
   }
 
   // ---- Bedtime goal (GET / PUT /v1/users/{u}/goals/sleep from the rules session; when the endpoint is missing the last 7 nights are still shown)
@@ -1176,6 +1198,7 @@
   }
 
   const RENDER_today = async () => {
+    if (S.sleepNight && sleepDetailOn()) return window.BodySleepDetail.placeholder();
     const day = viewDay(), past = isPast();
     const v2 = recordsV2();
     const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday] = await Promise.all([
@@ -1188,6 +1211,7 @@
       v2 ? optional("jitems", `/v1/users/${ownerPath()}/journal/items?active_only=true`) : null,   // records_v2: the 日记 card (no journal share = no card)
       v2 ? optional(`jday${day}`, `/v1/users/${ownerPath()}/journal?start=${day}&end=${day}`) : null,
     ]);
+    S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
     // Stacked on phones; two / three columns on wide screens (.dash in app.css)
@@ -1217,6 +1241,8 @@
   }
 
   function afterToday(view) {
+    const sd = $("#sleep-detail", view);
+    if (sd) { mountSleepDetail(sd); return; }
     const arc = $(".ring .arc", view);
     if (arc) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
     bindMeals(view);
@@ -3450,12 +3476,43 @@
       <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
 
+  // A future day's plan. Own plan: each exercise has a remove button (this day only, or never again; issue #172) and the
+  // ones removed for this day can be put back.
   function planSheet(iso, day) {
+    const mine = isSelf() && !!(day?.planned?.length || day?.removed?.length);
+    const row = (p, x) => {
+      const rm = isSelf() && x.slug ? `<button type="button" class="td-rm" data-prm="${esc(x.slug)}" data-ps="${esc(p.name)}" data-pd="${p.day_of_week || ""}" data-pa="${p.added_for_day ? 1 : 0}" aria-label="${esc(tr("移除这个动作"))}" style="float:right;border:0;background:none;color:var(--text-3);font-size:20px;min-width:44px;min-height:44px">×</button>` : "";
+      return `<div>${rm}${exerciseRow(x)}</div>`;
+    };
+    const gone = (day?.removed || []).map((r) => `<button type="button" class="btn" data-prestore="${esc(r.slug)}" style="min-height:32px;padding:4px 12px;margin:4px 6px 0 0">${esc(I18N.lang === "en" && r.name_en ? r.name_en : r.name_zh || r.slug)} · ${tr("恢复")}</button>`).join("");
     const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
-      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
-    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`);
-    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, bindExRows);
+      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map((x) => row(p, x)).join("")}`;
+    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`)
+      + (gone ? `<div class="cat">${tr("已移除")}</div><div>${gone}</div>` : "");
+    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, (root) => {
+      bindExRows(root);
+      if (!mine || !window.BodyTrainingDay?.askRemove) return;
+      const ctx = { api, esc, toast, openSheet, closeSheet };
+      const again = async (kind) => {   // the week strip and the sheet follow the new plan (an undo from the toast only refreshes the page)
+        dropTrainingCaches();
+        await render();
+        if (kind === "restore") return;
+        const wk = S.data[`tweek${S.todayDate}:${S.owner}`];
+        planSheet(iso, (wk?.days || []).find((d) => d.date === iso));
+      };
+      for (const b of $$("[data-prm]", root)) b.onclick = (e) => {
+        e.stopPropagation();
+        const ex = day.planned.flatMap((p) => p.exercises).find((x) => x.slug === b.dataset.prm);
+        window.BodyTrainingDay.askRemove(ctx, { slug: b.dataset.prm, name: ex?.name || b.dataset.prm, date: iso, isToday: false,
+          dayOfWeek: Number(b.dataset.pd) || null, sessionName: b.dataset.ps, addedForDay: b.dataset.pa === "1" }, again);
+      };
+      for (const b of $$("[data-prestore]", root)) b.onclick = async () => {
+        try { await api(`/v1/users/me/training/plan/restore-exercise`, { method: "POST", body: { exercise: b.dataset.prestore, day: iso } }); }
+        catch (e) { toast(e.message); return; }
+        again("restored");
+      };
+    });
   }
 
   function afterTraining(view) {
@@ -3463,7 +3520,7 @@
     const planDays = Object.fromEntries((wk?.days || []).map((d) => [d.date, d]));
     for (const b of $$("[data-wday]", view)) b.onclick = () => {
       const iso = b.dataset.wday;
-      if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso, planDays[iso]);
+      if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso);
     };
     const pick = $("#pick-split", view);
     if (pick && wk) pick.onclick = () => splitPickerSheet(wk);
@@ -3479,11 +3536,14 @@
     if (td) window.BodyTrainingDay.mount(td, {
       api, esc, toast, owner: ownerPath(), self: isSelf(), date: S.todayDate, openDetail: exerciseDetailSheet,
       openTrainingLog: () => wk && trainingLogSheet(wk.sparky),
-      onSubmitted: () => {   // the week strip, the history calendar and the Today card show the new workout
-        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
-        delete S.data[todayKey()];
-      },
+      openSheet, closeSheet,
+      onSubmitted: dropTrainingCaches,   // the week strip, the history calendar and the Today card show the new workout
+      onPlanChanged: dropTrainingCaches, // ... or the plan without the removed exercise (issue #172)
     });
+  }
+  function dropTrainingCaches() {
+    for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
+    delete S.data[todayKey()];
   }
 
   function zonesHtml(z) {
@@ -3516,22 +3576,20 @@
 </div>`;
   }
 
-  async function daySheet(iso, plan) {
+  // The day card shows what was actually trained (exercises, sets x reps x weight, volume, the watch's numbers); the plan is not
+  // mixed in (issue #172): a past or today's plan lives on the training page's 「今日训练计划」 card, a future day's in planSheet.
+  async function daySheet(iso) {
     openSheet(fmtDay(iso), `<div class="empty faint">…</div>`);
     let d;
     try { d = await load(`tday${iso}`, `/v1/users/${ownerPath()}/training/day/${iso}`); }
     catch (e) {
-      if (e.status === 0) offlineInto($("#sheet-body"), () => daySheet(iso, plan));
+      if (e.status === 0) offlineInto($("#sheet-body"), () => daySheet(iso));
       else $("#sheet-body").innerHTML = `<div class="empty faint">${tr("暂无")}</div>`;
       return;
     }
     const dl = d.daily || {};
     const sessions = d.sessions || [];
-    // FB-5: the plan first (it was below that day's stats, easy to miss)
-    const planHtml = (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
-      + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "");
-    $("#sheet-body").innerHTML = planHtml + (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
-      + (plan?.planned?.length ? `<div class="cat">${tr("已练")}</div>` : "")
+    $("#sheet-body").innerHTML = (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
       + (sessions.length ? sessions.map(sessionHtml).join("") : `<div class="empty faint" style="padding:12px">${tr("无训练")}</div>`)
       + `<div style="height:14px"></div><div>`
       + [[tr("训练消耗"), dl.workout_kcal != null ? `${fmtNum(dl.workout_kcal)} kcal` : null],
@@ -3640,7 +3698,12 @@
   }
 
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
-  function goPage(page) {
+  function goPage(page, card) {
+    if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
+      S.owner = S.me.id;
+      if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }
+      setTab("today"); openSleepDetail(card?.date); return;
+    }
     const [tab, sub] = String(page || "today").split(".");
     if (!TABS[tab]) return;
     S.owner = S.me.id;
@@ -3654,6 +3717,7 @@
   window.BodyCharts = {
     line: (id, dates, values, opts = {}) => tChart(id, dates, [{ type: "avg", values, main: true }, { type: "dots", values }], opts),
     spark: sparkSvg,
+    hypno: hypnoSvg,   // the sleep stage timeline (sleep card, Jarvis sleep card)
   };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws

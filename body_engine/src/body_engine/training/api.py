@@ -4,6 +4,7 @@ Authorization:
 - Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
 - Add to plan (`/plan/add-options`, `/plan/add-exercise`, rollout flag exercise_add_to_plan, issue #154) is self-only.
 - Hevy import (`/import/hevy`, rollout flag hevy_import, issue #161) is self-only; uploading needs `write`.
+- Remove a planned exercise (`/plan/remove-exercise`, `/plan/restore-exercise`, issue #172; no flag) is self-only.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
 """
 from datetime import date
@@ -17,7 +18,7 @@ from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..rollout import flags
 from ..i18n import L
-from . import catalog, hevy_import, history, loads, plan_add, plans, session_log
+from . import catalog, hevy_import, history, loads, plan_add, plan_remove, plans, session_log
 from . import params as P
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
@@ -290,6 +291,45 @@ def add_plan_exercise(user: str, body: AddExerciseIn, conn=Depends(get_conn), vi
         raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+# ---------------------------------------------------------------- remove a planned exercise (issue #172)
+class RemoveExerciseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exercise: str = Field(min_length=1)
+    scope: Literal["day", "template"] = "day"
+    day: date | None = None                                     # day: which date (today or later)
+    day_of_week: int | None = Field(default=None, ge=1, le=7)   # template: which session (with session_name)
+    session_name: str | None = None
+    confirm: bool = False                                       # template: the page asked "every week, sure?"
+    sync_sparky: bool = True
+
+
+class RestoreExerciseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exercise: str = Field(min_length=1)
+    day: date
+
+
+@router.post("/plan/remove-exercise")
+def remove_plan_exercise(user: str, body: RemoveExerciseIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Remove a planned exercise for one date (scope day, undo with /plan/restore-exercise) or from the session template
+    (scope template, every week; needs confirm=true and never empties a session)."""
+    uid = _self(viewer, user)
+    try:
+        return plan_remove.remove(conn, uid, body.scope, body.exercise, day=body.day, day_of_week=body.day_of_week,
+                                  session_name=body.session_name, confirm=body.confirm, sync_sparky=body.sync_sparky)
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/plan/restore-exercise")
+def restore_plan_exercise(user: str, body: RestoreExerciseIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Undo a day-only removal."""
+    uid = _self(viewer, user)
+    return plan_remove.restore_for_day(conn, uid, body.exercise, body.day)
 
 
 # ---------------------------------------------------------------- training day v2 (FB-5): planned exercise cards + set-by-set log

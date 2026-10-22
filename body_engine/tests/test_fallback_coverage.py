@@ -28,6 +28,7 @@ READ = {
     "sleep-coach": ["get_sleep_coach"],
     "sleep/nights": ["get_sleep"],
     "sleep/details": ["get_sleep_details"],
+    "sleep/night": ["get_sleep", "get_sleep_details", "get_scores", "get_health_monitor"],   # sleep detail page (flag sleep_detail)
     "goals/sleep": ["get_sleep_goal"],
     "reports": ["get_report"],
     "events": ["list_events"],
@@ -70,6 +71,8 @@ NO_DATA = {
     "training/plan/swap": "write: swap an exercise (swap_exercise)",
     "training/plan/add-options": "the add-to-plan sheet's choices (sessions, days, default sets / reps; flag exercise_add_to_plan, #154)",
     "training/plan/add-exercise": "write: add an exercise to a session or one day of the plan (#154)",
+    "training/plan/remove-exercise": "write: remove a planned exercise for one day or from a session (#172)",
+    "training/plan/restore-exercise": "write: undo a one-day removal (#172)",
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "training/import/hevy": "the Hevy import sheet: upload, last summary, unmatched names (#161); the imported sets reach the AI through get_training_day / get_training_calendar",

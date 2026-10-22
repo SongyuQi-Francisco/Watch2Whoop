@@ -22,7 +22,7 @@ import psycopg
 from .. import auth, sparky_client
 from ..assistant import briefing, sparky_write
 from ..i18n import L
-from . import catalog, loads, plans
+from . import catalog, loads, params as P, plans
 
 MAX_SETS = 20
 MAX_EXERCISES = 30
@@ -71,6 +71,7 @@ def _card(item: dict, rows: dict[str, dict], ctx: loads.Context, set_factor: flo
         "reason": item.get("reason"),
         "cues": item.get("cues"),
         "note": item.get("note"),
+        "added_for_day": bool(item.get("added_for_day")),
         "modality": item.get("modality") or row.get("modality") or "weight_reps",
         "per_side": bool(item.get("per_side")),
         "sets_text": item.get("sets_text"),
@@ -85,6 +86,21 @@ def _card(item: dict, rows: dict[str, dict], ctx: loads.Context, set_factor: flo
         "last": [{"date": h["date"], "sets": [f"{s['weight_kg']:g}×{s['reps']}" if s.get("weight_kg") else f"{s['reps']}"
                                               for s in h["sets"] if s.get("reps")]} for h in hist[:1]],
     }
+
+
+def _minutes(cards: list[dict]) -> int | None:
+    """The collapsed plan card's "about N minutes": sets x (work + rest) of the exercises that can be done (params EST_*)."""
+    secs = 0
+    for c in cards:
+        if c["status"] == "banned":
+            continue
+        t = c["target"]
+        rest = P.EST_DEFAULT_REST_SEC if t.get("rest_sec") is None else t["rest_sec"]
+        secs += t["sets"] * ((t.get("duration_s") or P.EST_SET_WORK_SEC) + rest)
+    if not secs:
+        return None
+    step = P.EST_ROUND_MIN
+    return max(step, round(secs / 60 / step) * step)
 
 
 def _sparky_plan_items(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date, ctx: loads.Context) -> list[dict]:
@@ -116,12 +132,13 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
     if wk["plan"] is not None:
         entry = next((d for d in wk["days"] if d["date"] == day), {"planned": [], "rest_day": True, "change": None})
         sessions, plan, rest_day, change = entry["planned"], wk["plan"], entry["rest_day"], entry.get("change")
+        removed = entry.get("removed") or []
     else:
         try:
             sessions = _sparky_plan_items(conn, viewer_id, owner_id, day, ctx)
         except sparky_client.SparkyError:
             sessions = []
-        plan, rest_day, change = None, False, None
+        plan, rest_day, change, removed = None, False, None, []
     rows = {r["slug"]: r for r in catalog.catalog_rows(conn)}
     out_sessions = []
     for p in sessions:
@@ -131,7 +148,8 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
                 item["load"] = loads.apply_readiness(item.get("load"), tier)
                 item["load_text"] = loads.short_text(item["load"])
             exs.append(_card(item, rows, ctx, set_factor))
-        out_sessions.append({"name": p["name"], "exercises": exs})
+        out_sessions.append({"name": p["name"], "day_of_week": p.get("day_of_week"), "added_for_day": bool(p.get("added_for_day")),
+                             "exercises": exs, "minutes": _minutes(exs)})
     link = sparky_client.link_state(conn, owner_id)
     return {
         "date": day,
@@ -140,6 +158,10 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
         "sessions": out_sessions,
         "rest_day": rest_day and not out_sessions,
         "change": change,
+        "minutes": _minutes([c for s in out_sessions for c in s["exercises"]]),
+        "removed": removed,   # removed for this date only (issue #172): the page offers 恢复
+        # the plan card's remove / restore: own Body Engine plan, today or later (training/plan_remove.py)
+        "can_edit_plan": viewer_id == owner_id and plan is not None and day >= _today(conn, owner_id),
         "readiness": readiness and {k: readiness.get(k) for k in ("tier", "label", "set_factor", "rir_delta")},
         "log": _log_out(_row(conn, owner_id, day)),
         "training_log": link["state"],

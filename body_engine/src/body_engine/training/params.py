@@ -459,3 +459,10 @@ HEVY_ALIASES = {
     "preacher curl (barbell)": "preacher_curl", "ez bar biceps curl": "ez_bar_curl", "bicep curl (cable)": "cable_bicep_curl",
     "triceps extension (cable)": "overhead_cable_triceps_extension", "hack squat (machine)": "hack_squat",
 }
+
+# ---- Plan card estimate (issue #172): "约 N 分钟" on the collapsed 「今日训练计划」 card -------------------------------------
+# A planned set takes about EST_SET_WORK_SEC of work (timed exercises: their own duration) plus the prescribed rest;
+# the sum is rounded to EST_ROUND_MIN minutes. A rough planning figure, not a measurement.
+EST_SET_WORK_SEC = 40
+EST_DEFAULT_REST_SEC = 90
+EST_ROUND_MIN = 5
