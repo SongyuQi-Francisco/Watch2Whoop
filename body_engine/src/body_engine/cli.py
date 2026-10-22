@@ -38,6 +38,75 @@ def _export_date(processed_dir: Path) -> date:
         return max(date.fromisoformat(line.split(",")[1]) for line in list(f)[1:])
 
 
+def _expiry(conn, circle_id: int, expires: str | None, days: int | None):
+    """--expires (a date = the end of that day in the circle owner's time zone, or a date-time) / --days -> aware datetime."""
+    from datetime import datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+    if days is not None:
+        if not 1 <= days <= 3650:
+            raise ValueError("--days 1–3650")
+        return datetime.now().astimezone() + timedelta(days=days)
+    if not expires:
+        return None
+    tz = conn.execute("SELECT u.timezone FROM circles c JOIN users u ON u.id = c.owner_id WHERE c.id = %s",
+                      (circle_id,)).fetchone()
+    zone = ZoneInfo(tz["timezone"] if tz and tz["timezone"] else "UTC")
+    if len(expires) == 10:
+        d = datetime.fromisoformat(expires).date()
+        return datetime.combine(d + timedelta(days=1), time(), zone)
+    at = datetime.fromisoformat(expires)
+    return at if at.tzinfo else at.replace(tzinfo=zone)
+
+
+def _circle_admin(conn, args, p) -> None:
+    from pathlib import Path
+    from .friends import admin as circle_admin, codes as circle_codes
+    from .friends.store import FriendsError
+
+    def read(path):
+        f = Path(path).expanduser()
+        if not f.is_file():
+            raise ValueError(f"没有文件 {path}")
+        return f.read_bytes()
+
+    def show(rows):
+        for r in rows:
+            print(json.dumps(r, default=str, ensure_ascii=False))
+
+    try:
+        if args.cmd == "circle-admin":
+            if args.ca_cmd == "create":
+                scopes = [x.strip() for x in args.scopes.split(",") if x.strip()] if args.scopes else None
+                show([circle_admin.create_circle(conn, args.name, args.owner_user_id,
+                                                 read(args.avatar) if args.avatar else None, args.max_members, scopes)])
+            elif args.ca_cmd == "avatar":
+                cid = circle_admin.find_circle(conn, args.circle)
+                img = circle_admin.set_avatar(conn, cid, None if args.clear else read(args.file))
+                print(f"circle {cid}: " + (f"avatar image {img}" if img else "avatar cleared"))
+            else:
+                show(circle_admin.list_circles(conn))
+        elif args.cc_cmd == "create":
+            cid = circle_admin.find_circle(conn, args.circle)
+            row = circle_codes.create(conn, cid, args.code, args.max_uses, _expiry(conn, cid, args.expires, args.days),
+                                      args.label, args.created_by)
+            print(f"code {row['id']} · 「{row['code']}」 → circle {cid} · {row['max_uses']} uses · expires "
+                  f"{row['expires_at'].isoformat() if row['expires_at'] else 'never'}")
+        elif args.cc_cmd == "list":
+            for r in circle_codes.list_codes(conn, circle_admin.find_circle(conn, args.circle) if args.circle else None):
+                print(circle_codes.summary(r))
+        elif args.cc_cmd == "uses":
+            rows = circle_codes.uses(conn, args.id)
+            for kind, title in (("new_account", "新开户"), ("existing", "老用户加入")):
+                part = [r for r in rows if r["kind"] == kind]
+                print(f"# {title} {len(part)}")
+                show(part)
+        else:
+            print("disabled" if circle_codes.disable(conn, args.id) else "not found / already disabled")
+    except (ValueError, FriendsError) as e:
+        conn.rollback()
+        p.error(str(e))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="body-engine")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -131,6 +200,37 @@ def main() -> None:
     ivg = ivr.add_mutually_exclusive_group(required=True)
     ivg.add_argument("--batch", type=int)
     ivg.add_argument("--code-id", type=int)
+    ca = sub.add_parser("circle-admin", help="circles for groups (clubs, societies) made by the admin, and circle avatars (friends/admin.py)")
+    cas = ca.add_subparsers(dest="ca_cmd", required=True)
+    cac = cas.add_parser("create", help="make a circle with an owner (its first member; must have given the circle consent)")
+    cac.add_argument("--name", required=True)
+    cac.add_argument("--owner-user-id", type=int, required=True)
+    cac.add_argument("--avatar", help="PNG / JPEG / WebP file; cropped to a square, resized, metadata removed")
+    cac.add_argument("--max-members", type=int, help="member cap (default friends/params.py MAX_MEMBERS); set it above the codes' uses")
+    cac.add_argument("--scopes", help="comma-separated default scopes of people joining with a code (default DEFAULT_SCOPES)")
+    caa = cas.add_parser("avatar", help="set or clear a circle's avatar")
+    caa.add_argument("--circle", required=True, help="circle id (or its exact name)")
+    cag = caa.add_mutually_exclusive_group(required=True)
+    cag.add_argument("--file")
+    cag.add_argument("--clear", action="store_true")
+    cas.add_parser("list", help="circles that are not personal ones: owner, members, cap, avatar")
+    cc = sub.add_parser("circle-code", help="circle activation codes: sign up and join one circle with a readable code (friends/codes.py)")
+    ccs = cc.add_subparsers(dest="cc_cmd", required=True)
+    ccc = ccs.add_parser("create", help="bind a code to a circle; matching ignores case, spaces and dashes")
+    ccc.add_argument("--circle", required=True, help="circle id (or its exact name)")
+    ccc.add_argument("--code", required=True, help="the code as people will type it, e.g. 'Example Club 2026'")
+    ccc.add_argument("--max-uses", type=int, required=True, help="how many NEW accounts it may open (existing accounts join without limit)")
+    ccx = ccc.add_mutually_exclusive_group()
+    ccx.add_argument("--expires", help="ISO date (end of that day in the circle owner's time zone) or ISO date-time")
+    ccx.add_argument("--days", type=int, help="valid for D days")
+    ccc.add_argument("--label", help="free text shown in list")
+    ccc.add_argument("--created-by", help="free text recorded with the code")
+    ccl = ccs.add_parser("list", help="one line per code: state, new accounts N / max_uses, existing accounts joined, waiting for consent")
+    ccl.add_argument("--circle", help="only this circle (id or exact name)")
+    ccu = ccs.add_parser("uses", help="every use of one code, new accounts and existing accounts apart: who, when, joined, still a member")
+    ccu.add_argument("--id", type=int, required=True)
+    ccd = ccs.add_parser("disable", help="stop a code (people who joined stay)")
+    ccd.add_argument("--id", type=int, required=True)
     pr = sub.add_parser("provision-run", help="finish provisioning of self-signed-up users (OW user, SparkyFitness account, journal items; idempotent, hourly)")
     pr.add_argument("--user-id", type=int, help="only this user (default: every active user not done yet)")
     mt = sub.add_parser("mail-test", help="send a test sign-in e-mail with the configured mailer (BODY_MAIL_MODE / BODY_SMTP_*)")
@@ -446,6 +546,8 @@ def main() -> None:
                     print(json.dumps(r, default=str, ensure_ascii=False))
             else:
                 print("revoked" if invites.revoke(conn, args.batch, args.code_id) else "not found / already revoked")
+        elif args.cmd in ("circle-admin", "circle-code"):
+            _circle_admin(conn, args, p)
         elif args.cmd == "provision-run":
             from .account import delete as account_delete, provision, signin
             signin.purge_old_codes(conn)

@@ -1,5 +1,6 @@
 """WHOOP-style analysis (insights/): formula boundaries, insufficient data, time zones. Pure functions, no database."""
 import math
+import re
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -120,6 +121,24 @@ def test_tips():
     assert HS.tip("sleep_duration", 0.1, 6.4) == H.TIPS["sleep_ok"]
     assert all(len(t) <= 20 for t in [H.TIPS["sleep_short"], H.TIPS["sleep_long"], H.TIPS["sleep_ok"]]
                + [x for k, v in H.TIPS.items() if isinstance(v, tuple) for x in v])
+
+
+def test_body_comp_tip_uses_own_goal_weight_never_a_fixed_number():
+    assert HS.tip("body_comp", 1.0, 31.0) == "按计划减脂" and HS.tip("body_comp", -1.0, 22.0) == "体重合适，保持"
+    assert HS.tip("body_comp", 1.0, 31.0, 72.5) == "按计划减到目标体重 72.5 kg"
+    assert HS.tip("body_comp", -1.0, 22.0, 72.5) == "体重合适，保持"
+    texts = [t for v in H.TIPS.values() for t in (v if isinstance(v, tuple) else (v,))]
+    assert not any(re.search(r"\d\s*kg", t) for t in texts)        # no fixed weight (one person's goal) in the code
+
+
+def test_snapshot_body_comp_tip_reads_goal_only_below_current_weight():
+    as_of = date(2026, 10, 17)
+    heavy = {as_of - timedelta(days=5): 100.0}       # BMI 30.9 at 180 cm: older
+    tip = lambda **o: next(c["tip"] for c in store.snapshot(make_data(weight=heavy, **o), as_of)["contributors"]
+                           if c["key"] == "body_comp")
+    assert tip() == "按计划减脂" and tip(goal_kg=None) == "按计划减脂"
+    assert tip(goal_kg=88.0) == "按计划减到目标体重 88 kg"
+    assert tip(goal_kg=105.0) == "按计划减脂"         # a goal above the weight is not "lose down to"
 
 
 # ================================================================== body age: snapshot (synthetic data)

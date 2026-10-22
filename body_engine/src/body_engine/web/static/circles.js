@@ -43,7 +43,10 @@
 .cc-live{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--hair);font-size:14px}
 .cc-live:first-of-type{border-top:0}.cc-live .f{flex:1;min-width:0}.cc-live .u{color:var(--text-2);font-size:12px}
 .cc-live button{border:0;background:none;padding:4px 0 4px 8px;color:var(--bad);text-decoration:underline;font-size:13px}
-.cc-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:8px 0 0}`;
+.cc-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:8px 0 0}
+.cc-av{flex:none;width:var(--s,32px);height:var(--s,32px);border-radius:50%;overflow:hidden;background:var(--surface-2);color:var(--text-2);display:inline-flex;align-items:center;justify-content:center;font-weight:600;font-size:calc(var(--s,32px) * .45);line-height:1;vertical-align:middle}
+.cc-av img{width:100%;height:100%;object-fit:cover;display:block}
+.cc-jh{display:flex;align-items:center;gap:12px;margin:0 0 4px}`;
 
   function injectCss() {
     if ($("#circles-css")) return;
@@ -53,13 +56,20 @@
     document.head.appendChild(st);
   }
 
-  // /app/?circle=XXXXX-XXXXX: kept through sign-in, used once
+  // /app/?circle=XXXXX-XXXXX (a circle invite) or ?circle=<a circle activation code>: kept through sign-in, used once
   (function rememberCode() {
     let v = "";
     try { v = new URLSearchParams(location.search).get("circle") || ""; } catch (e) { /* old browser */ }
-    v = v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
-    if (v.length === 10) { try { sessionStorage.setItem(CODE_KEY, v); } catch (e) { /* storage blocked */ } }
+    v = v.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (v.replace(/[\s-]/g, "").length >= 4) { try { sessionStorage.setItem(CODE_KEY, v); } catch (e) { /* storage blocked */ } }
   })();
+  // A sign-up link /app/?invite=<circle activation code> opened by someone who already has an account (account.js keeps it)
+  const INVITE_KEY = "w2w-invite";
+  const takeInvite = () => {
+    let v = "";
+    try { v = sessionStorage.getItem(INVITE_KEY) || ""; sessionStorage.removeItem(INVITE_KEY); } catch (e) { /* storage blocked */ }
+    return v;
+  };
   const takeCode = () => {
     let v = "";
     try { v = sessionStorage.getItem(CODE_KEY) || ""; sessionStorage.removeItem(CODE_KEY); } catch (e) { /* storage blocked */ }
@@ -76,12 +86,18 @@
   }
 
   const esc = (v) => C.esc(v);
+  // A circle's avatar (members only, served by /v1/friends/circles/{id}/avatar) or its initial when it has none
+  function avatar(c, size = 32) {
+    const initial = esc((Array.from(String(c?.name || "").trim())[0] || "?").toUpperCase());
+    const img = c?.avatar ? `<img src="${esc(c.avatar)}" alt="" loading="lazy" decoding="async">` : "";
+    return `<span class="cc-av" style="--s:${Number(size) || 32}px" aria-hidden="true">${img || initial}</span>`;
+  }
   const scopeList = (scopes) => (scopes.length ? scopes.map((s) => LABEL[s] || s).join(" · ") : tr("什么都不共享"));
 
-  function picker(chosen) {
+  function picker(chosen, defaults) {
     const all = data?.scopes || Object.keys(LABEL);
     const def = new Set(data?.default_scopes || ["scores", "sleep", "training", "nutrition_summary"]);
-    const on = new Set(chosen || def);
+    const on = new Set(chosen || defaults || def);
     const row = (s) => `<label><input type="checkbox" data-scope="${esc(s)}"${on.has(s) ? " checked" : ""}><span>${esc(LABEL[s] || s)}</span></label>`;
     return `<div class="cc-pick"><h4>${esc(tr("推荐"))}</h4>${all.filter((s) => def.has(s)).map(row).join("")}
       <h4>${esc(tr("可选（适合家人）"))}</h4>${all.filter((s) => !def.has(s)).map(row).join("")}
@@ -108,7 +124,7 @@
     acts.push(`<button type="button" class="bad" data-leave="${c.id}">${esc(tr("退出"))}</button>`);
     if (owner) acts.push(`<button type="button" class="bad" data-dissolve="${c.id}">${esc(tr("解散"))}</button>`);
     const live = owner && c.invites?.live ? ` · ${esc(tr("{n} 个邀请有效", { n: c.invites.live }))}` : "";
-    return `<div class="cc-card"><div class="cc-head"><b>${esc(c.name)}</b><span class="small muted">${esc(tr("{n} 人", { n: c.members.length }))}${live}</span></div>
+    return `<div class="cc-card"><div class="cc-head">${avatar(c, 32)}<b>${esc(c.name)}</b><span class="small muted">${esc(tr("{n} 人", { n: c.members.length }))}${live}</span></div>
       <div class="cc-mem">${mem}</div>
       <p class="cc-sc">${esc(tr("我共享：{list}", { list: scopeList(c.my_scopes) }))}</p>
       <div class="cc-act">${acts.join("")}</div></div>`;
@@ -265,16 +281,19 @@
         const v = $("#cc-code", root).value.trim();
         try {
           const pv = await C.api(`/v1/friends/invite?code=${encodeURIComponent(v)}`);
-          joinSheet({ code: v, name: pv.name, owner: pv.owner_name, members: pv.members });
+          joinSheet(target(v, pv));
         } catch (e) { $("#cc-error", root).textContent = e.message; }
       };
     });
   }
 
+  // a code preview -> what joinSheet needs; a circle activation code brings the circle's own default scopes
+  const target = (code, pv) => ({ code, name: pv.name, owner: pv.owner_name, members: pv.members, defaults: pv.default_scopes || null });
+
   function joinSheet(t) {
     const sub = t.owner ? tr("{who} 的圈子 · {n} 人", { who: t.owner, n: t.members }) : "";
-    C.openSheet(tr("加入「{name}」", { name: t.name }), `${sub ? `<p class="para muted" style="margin:0">${esc(sub)}</p>` : ""}
-      <p class="para" style="margin:8px 0 0">${esc(tr("给圈子里的人看"))}</p>${picker(null)}
+    C.openSheet(tr("加入「{name}」", { name: t.name }), `<div class="cc-jh">${avatar({ name: t.name }, 40)}${sub ? `<p class="para muted" style="margin:0">${esc(sub)}</p>` : ""}</div>
+      <p class="para" style="margin:8px 0 0">${esc(tr("给圈子里的人看"))}</p>${picker(null, t.defaults)}
       <div class="btns"><button class="btn btn-primary" id="cc-ok">${esc(tr("加入"))}</button></div>
       <p class="cc-err" id="cc-error" role="alert"></p>`, (root) => {
       if (consentGate(root)) return;
@@ -313,17 +332,25 @@
   }
 
   const on = () => !!window.BodyFlags?.on("friends");
-  window.BodyCircles = { open, load: () => load(), data: () => data, onChange: null, labels: LABEL };
+  window.BodyCircles = { open, load: () => load(), data: () => data, onChange: null, labels: LABEL, avatar: (c, size) => avatar(c, size) };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: async (ctx, me) => {
       C = ctx; ME = me?.me || null; injectCss();
       if (!ME || !(me?.flags || []).includes("friends")) return;   // a ?circle= code stays remembered until the flag is on
-      const code = takeCode();
+      const code = takeCode(), invite = code ? "" : takeInvite();
       await load();
-      if (!code || !data) return;
+      if (!data) return;
+      if (invite) {   // only a circle activation code opens the join sheet; a friend's referral code means nothing here
+        try {
+          const pv = await C.api(`/v1/friends/invite?code=${encodeURIComponent(invite)}`);
+          if (pv.circle_code && !data.circles.some((c) => c.id === pv.id)) joinSheet(target(invite, pv));
+        } catch (e) { /* not a circle code, or used up: stay quiet */ }
+        return;
+      }
+      if (!code) return;
       try {
         const pv = await C.api(`/v1/friends/invite?code=${encodeURIComponent(code)}`);
-        joinSheet({ code, name: pv.name, owner: pv.owner_name, members: pv.members });
+        joinSheet(target(code, pv));
       } catch (e) { codeSheet(code); }
     },
     meItem: (chev) => (ME && on() ? `<button class="item" id="me-circles"><span class="row-title">${esc(tr("圈子"))}</span><span class="val" id="me-circles-val">${esc(shortVal())}</span>${chev || ""}</button>` : ""),

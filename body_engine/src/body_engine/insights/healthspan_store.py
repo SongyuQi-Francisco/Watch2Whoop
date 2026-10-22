@@ -83,6 +83,11 @@ class Data:
         self.steps, self.rhr, self.vo2 = metric("step_count"), metric("resting_heart_rate"), metric("vo2_max")
         self.weight = metric("body_mass")
         self.waist: dict[date, float] = {}
+        try:   # the user's own goal weight (profile / status card), only for the body-composition tip
+            from ..profile import store as profile
+            self.goal_kg = profile.get(conn, user_id)["goal_weight_kg"]
+        except Exception:  # noqa: BLE001
+            self.goal_kg = None
         # sleep regularity: minute-by-minute state for each wake date
         mains, intervals = sleep_detail.load_intervals(conn, user_id, start, end)
         self.sleep_days = {d: sleep_detail.asleep_minutes(intervals, d, self.tz) for d in mains if start <= d <= end}
@@ -220,12 +225,12 @@ def snapshot(data: Data, as_of: date, params=H) -> dict:
     """Body age on one day (window = 180 days back from as_of). params: healthspan_params (v1.1) or healthspan_params_v12."""
     items, insufficient = [], []
 
-    def add(key, value, hr, data_days, extra=None, years=None):
+    def add(key, value, hr, data_days, extra=None, years=None, goal_kg=None):
         label, cat, unit = LABELS[key]
         years = HS.years_from_hr(hr, params=params) if years is None else years
         items.append({"key": key, "label": label, "category": cat, "value": value, "unit": unit, "hr": round(hr, 3),
                       "years": round(years, 2), "direction": "younger" if years < 0 else "older" if years > 0 else "neutral",
-                      "tip": HS.tip(key, years, value), "data_days": data_days, **(extra or {})})
+                      "tip": HS.tip(key, years, value, goal_kg), "data_days": data_days, **(extra or {})})
 
     def missing(key, reason):
         insufficient.append({"key": key, "label": LABELS[key][0], "category": LABELS[key][1], "reason": reason})
@@ -284,14 +289,17 @@ def snapshot(data: Data, as_of: date, params=H) -> dict:
         missing("rhr", f"只有 {n} 天静息心率（要 ≥ {params.MIN_DAYS}）")
     w = _latest(data.weight, as_of, params.WEIGHT_MAX_AGE_DAYS)
     waist = _latest(data.waist, as_of, params.WINDOW_DAYS)
+    goal = getattr(data, "goal_kg", None)
+    goal = goal if goal and w and goal < w[1] else None   # "lose down to the goal" only when the goal is below the weight
     if waist and data.height:
         whtr = waist[1] / data.height
         add("body_comp", round(whtr, 3), HS.hr_whtr(whtr, params=params), 1,
-            {"measure": "waist_to_height", "measured_on": waist[0]})
+            {"measure": "waist_to_height", "measured_on": waist[0]}, goal_kg=goal)
     elif w and data.height:
         bmi = w[1] / (data.height / 100) ** 2
         add("body_comp", round(bmi, 1), HS.hr_bmi(bmi, params=params), 1,
-            {"measure": "bmi", "measured_on": w[0], "weight_kg": w[1], "note": "没有腰围，用 BMI（分不清肌肉和脂肪）"})
+            {"measure": "bmi", "measured_on": w[0], "weight_kg": w[1], "note": "没有腰围，用 BMI（分不清肌肉和脂肪）"},
+            goal_kg=goal)
     else:
         missing("body_comp", f"最近 {params.WEIGHT_MAX_AGE_DAYS} 天没有体重或没有身高" if data.height else "没有身高")
     delta = HS.combine(items, params=params) if items else None

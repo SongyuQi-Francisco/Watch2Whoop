@@ -7,6 +7,19 @@ import 'package:http/testing.dart';
 import 'package:watch2whoop/src/account_api.dart';
 
 void main() {
+  group('inviteStepCode', () {
+    test('invite codes are normalized, circle codes are sent as typed', () {
+      expect(inviteStepCode(' abcde-23456 '), 'ABCDE23456');
+      expect(inviteStepCode('  Example   Lifting Club '), 'Example Lifting Club');
+      expect(inviteStepCode('club'), 'club');
+    });
+    test('too short or too long is refused', () {
+      expect(inviteStepCode('a-b c'), isNull);
+      expect(inviteStepCode(''), isNull);
+      expect(inviteStepCode('x' * 41), isNull);
+    });
+  });
+
   group('normalizeInviteCode', () {
     test('accepts spaces, dashes and lowercase', () {
       expect(normalizeInviteCode('abcde-23456'), 'ABCDE23456');

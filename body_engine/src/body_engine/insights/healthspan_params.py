@@ -14,6 +14,7 @@ TIPS = {
     "strength": ("力量训练规律，保持", "每周力量训练 2 次以上"),
     "vo2max": ("心肺能力好，保持", "加 Z2 有氧和每周 1 次间歇"),
     "rhr": ("静息心率低，保持", "多做有氧、少熬夜"),
-    "body_comp": ("体重合适，保持", "按计划减脂，先到 80kg"),
+    "body_comp": ("体重合适，保持", "按计划减脂"),
+    "body_comp_goal": "按计划减到目标体重 {kg} kg",   # when the user's own goal weight (profile) is below their weight
     "activity": ("活动量充足，保持", "每天多走 2000 步或多练一次"),
 }
