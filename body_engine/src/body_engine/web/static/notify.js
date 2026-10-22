@@ -76,7 +76,7 @@
   function drawBell() {
     let b = $("#nt-bell");
     if (!on()) { b?.remove(); return; }
-    if (unread !== badgeSent) { badgeSent = unread; tellApp(`badge:${unread}`); }   // the app icon's badge (app 1.0.8)
+    if (unread !== badgeSent) { badgeSent = unread; tellApp(`badge:${unread}`); }   // the app icon's badge (app 1.0.7)
     if (!b) {
       b = document.createElement("button");
       b.id = "nt-bell";

@@ -115,7 +115,7 @@ def reset(dsn, uid):
 
 
 def register(client, t, token, env="production", lang=None):
-    r = client.post("/v1/users/me/push-devices", json={"token": token, "environment": env, "app_version": "1.0.8",
+    r = client.post("/v1/users/me/push-devices", json={"token": token, "environment": env, "app_version": "1.0.7",
                                                          **({"lang": lang} if lang else {})}, headers=H(t))
     assert r.status_code == 200, r.text
     return r.json()
