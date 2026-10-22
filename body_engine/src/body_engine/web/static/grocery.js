@@ -18,7 +18,8 @@
    page's CSP only loads its own images, and store images are not copied.
    「家里存货」 (issue #102) lists the pantry (GET …/grocery/pantry: by category, quantity, 「x 天前更新」); on the own page each row has
    「用完了」 (PUT …/pantry with quantity 0, undo in the toast puts the old quantity back). Changing amounts stays with the AI (set_pantry).
-   List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought. */
+   List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought.
+   Both behind the rollout flag pantry_view (docs/rollout.md): off -> no pantry section, no chip, no GET …/pantry. */
 (() => {
   "use strict";
   let C = null;
@@ -29,6 +30,7 @@
   let specials = null;  // last GET /grocery/specials (this week's half price, grocery-sync)
   let sprods = null;    // last GET /grocery/store-products (this user's own store products and latest prices)
   let pantry = null;    // last GET /grocery/pantry (what is at home)
+  const pantryOn = () => !!window.BodyFlags?.on("pantry_view");   // rollout flag
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -57,7 +59,7 @@
     const age = !i.bought && i.offer?.age_days > 0   // list rows are tight at phone width: only prices from earlier days show their age
       ? `<small class="gage${i.offer.stale ? " old" : ""}">${esc(ageLabel(i.offer.age_days))}</small>` : "";
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
-    const home = !i.bought && i.pantry_label ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
+    const home = !i.bought && i.pantry_label && pantryOn() ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
     return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.bought ? tr("{name}，已买", { name: i.name }) : i.name)}">
       <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}${home}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
@@ -207,7 +209,7 @@
 
   function paintPantry() {
     const el = $("#g-pantry");
-    if (!el) return;
+    if (!el || !pantryOn()) return;
     el.innerHTML = pantryHtml();
     bind(el);
   }
@@ -279,8 +281,10 @@
     try {
       list = await C.api(`/v1/users/me/grocery/list/items/${encodeURIComponent(id)}`, { method: "PATCH", body: { bought: item.bought } });
       paint();
-      pantry = await C.api(`${base()}/pantry`).catch(() => pantry);   // ticking adds to the pantry, unticking takes it back
-      paintPantry();
+      if (pantryOn()) {   // ticking adds to the pantry, unticking takes it back
+        pantry = await C.api(`${base()}/pantry`).catch(() => pantry);
+        paintPantry();
+      }
     } catch (e) {
       item.bought = !item.bought;
       list.progress.bought += item.bought ? 1 : -1;
@@ -306,10 +310,10 @@
       i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
       C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e })),
       C.api(`${base()}/store-products`).catch(() => null),
-      C.api(`${base()}/pantry`).catch(() => null),
+      pantryOn() ? C.api(`${base()}/pantry`).catch(() => null) : null,
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
-      <div class="section" id="g-pantry">${pantryHtml()}</div>
+      ${pantryOn() ? `<div class="section" id="g-pantry">${pantryHtml()}</div>` : ""}
       <div class="section" id="g-specials">${specialsHtml()}</div>
       <div class="section" id="g-sprods">${sprodsHtml()}</div>
       <div class="section"><div class="section-head"><h2>${esc(tr("商品库"))}</h2><span class="small muted">${Array.isArray(products) ? products.length : ""}</span></div>

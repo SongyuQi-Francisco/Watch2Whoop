@@ -142,21 +142,21 @@ TOOL_SPECS: list[dict] = [
             "detail": DETAIL,
         }),
         handler=_calendar,
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="get_training_day",
         description="某天训练详情：来源、起止、时长、能量、心率五区、TRIMP、强度，力量动作与每组次数/重量/RIR，全天指标。",
         input_schema=_schema({"user": USER, "date": DATE}),
         handler=_day,
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="get_exercise",
         description="单个动作详情：中英文名、主次肌群、器械、动作模式、要点、关节压力、用户限制、同模式安全替代、推荐重量 load 与最近 3 次记录。",
         input_schema=_schema({"user": USER, "exercise": {"type": "string"}}),
         handler=_get_exercise,
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="propose_plan",
@@ -171,7 +171,7 @@ TOOL_SPECS: list[dict] = [
             **PLAN_START,
         }),
         handler=_propose_plan,
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="save_plan",
@@ -188,7 +188,7 @@ TOOL_SPECS: list[dict] = [
             "addons": PLAN_START["addons"],
         }),
         handler=_save_plan,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
     dict(
@@ -196,7 +196,7 @@ TOOL_SPECS: list[dict] = [
         description="当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。",
         input_schema=_schema({"user": USER, "date": _n("string", "YYYY-MM-DD"), "detail": DETAIL}),
         handler=_get_week_plan,
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="swap_exercise",
@@ -209,7 +209,7 @@ TOOL_SPECS: list[dict] = [
             "sync_sparky": {"type": "boolean"},
         }),
         handler=_swap_exercise,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
     dict(
@@ -224,14 +224,14 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: overrides.update_workout(conn, uid, a["workout_id"], a["type"], a["name"],
                                                               bool(a["apply_to_similar"])),
-        scope="training", writes=True,
+        group="training", scope="training", writes=True,
     ),
     dict(
         name="delete_workout",
         description="删掉（隐藏）重复 / 错误的手表训练，不计入日历、周报、负荷，同步也不回来。",
         input_schema=_schema({"workout_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: overrides.hide_workout(conn, uid, a["workout_id"]),
-        scope="training", writes=True,
+        group="training", scope="training", writes=True,
     ),
 ]
 
@@ -265,7 +265,7 @@ TOOL_SPECS += [
             "replan": {"type": "boolean"},
         }),
         handler=_reschedule_day,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
     dict(
@@ -273,7 +273,7 @@ TOOL_SPECS += [
         description="互换两天的训练（如 周二 ↔ 周四）。",
         input_schema=_schema({"date_a": DATE, "date_b": DATE}),
         handler=_swap_days,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
     dict(
@@ -281,7 +281,7 @@ TOOL_SPECS += [
         description="重排本周 date 之后的训练（不连练同一肌群、看恢复分）；apply=false 只预览。",
         input_schema=_schema({"date": _n("string", "YYYY-MM-DD，默认今天"), "apply": {"type": "boolean"}}),
         handler=_replan_week,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
     dict(
@@ -289,7 +289,7 @@ TOOL_SPECS += [
         description="撤销按日期的训练调整（默认今天到周日）。",
         input_schema=_schema({"start": _n("string", "YYYY-MM-DD"), "end": _n("string", "YYYY-MM-DD")}),
         handler=_undo_day_changes,
-        scope="training",
+        group="training", scope="training",
         writes=True,
     ),
 ]

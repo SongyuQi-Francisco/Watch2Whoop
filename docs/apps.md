@@ -103,14 +103,18 @@ working because the depth does not change.
 ### 4. Versioning and releases
 
 - **The server** keeps semantic version tags `vX.Y.Z` (e.g. `v0.1.0`) and GitHub releases.
-- **Each app** has its own tags: `app-<platform>-v<marketing version>+<build number>`, e.g. `app-ios-v1.0.0+2`,
-  `app-android-v1.0.0+2`, `app-harmony-v1.0.0+1`. The tag points at the exact commit the store build was made from.
-- For the Flutter app the version comes from `pubspec.yaml` (`version: 1.0.0+2`). iOS and Android share it: the build
-  number only ever goes up (Android `versionCode` must increase forever; TestFlight needs a new build number for every
-  upload). One commit can carry both an iOS and an Android tag.
-- **The version is bumped in a PR**, never by the person building: change `version:` in `pubspec.yaml` and add a section
-  `## 1.0.0+2 — YYYY-MM-DD` to the app's `CHANGELOG.md` in the same PR. A new build only for the 90-day TestFlight
-  expiry is the same: bump `+N`, changelog line "Rebuild, no changes".
+- **Each app** has its own tags named after the **marketing version only**: `app-<platform>-v<X.Y.Z>`, e.g.
+  `app-ios-v1.0.6`, `app-android-v1.0.6`, `app-harmony-v1.0.0`. The public name of a build (tag, release title, zip,
+  CHANGELOG) never shows the build number. The tag points at the exact commit the store build was made from. Tags made
+  before this rule keep their names (`app-ios-v1.0.0+2`, `app-ios-v1.0.5+5`).
+- For the Flutter app the version comes from `pubspec.yaml` (`version: 1.0.6+6` = marketing version `1.0.6`, build
+  number `6`). The build number stays there because the stores need it; the person building never touches it. iOS and
+  Android share it: the build number only ever goes up (Android `versionCode` must increase forever; TestFlight needs a
+  new build number for every upload). One commit can carry both an iOS and an Android tag.
+- **Each marketing version is released once per platform.** The version is bumped in a PR, never by the person
+  building: change both parts of `version:` in `pubspec.yaml` and add a section `## 1.0.6 — YYYY-MM-DD` to the app's
+  `CHANGELOG.md` in the same PR. A new build only for the 90-day TestFlight expiry gets the next patch version
+  (`1.0.6+6` → `1.0.7+7`), changelog line "Rebuild, no changes".
 - **After the PR is merged** a maintainer runs [`tools/app_release.sh`](../tools/app_release.sh):
   ```bash
   tools/app_release.sh ios                 # dry run: checks + shows the tag and commit it would use
@@ -119,14 +123,17 @@ working because the depth does not change.
   ```
   **The GitHub Release is made only by the workflow [`app-release.yml`](../.github/workflows/app-release.yml)** on every
   pushed `app-ios-v*` / `app-android-v*` tag. It runs the same script (`--publish <tag>`), which checks the tag again:
-  the `pubspec.yaml` version equals the tag, the CHANGELOG section exists, the commit is on `main`, and the build number
-  is higher than the last one. It then publishes a **pre-release** with the source zip of the app directory, its
-  `.sha256` and the CHANGELOG section as notes. A failed check means no release; delete the tag
+  the marketing version in `pubspec.yaml` equals the tag, that version has no tag of this platform yet, the build number
+  is higher than the build of every earlier tag of the platform (read from each tag's `pubspec.yaml`, so the older
+  `…+N` tags count), the CHANGELOG section exists and the commit is on `main`. It then publishes a **pre-release**
+  titled "iOS app 1.0.6" with the source zip `watch2whoop-ios-app-v1.0.6.zip`, its `.sha256` and the CHANGELOG section
+  as notes (they name the build number once, for the person uploading). A failed check means no release; delete the tag
   (`git push origin :refs/tags/<tag>`) and fix it in a PR. App pre-releases are never marked "latest", so the server
   release stays the latest. The zip contains only the app directory at that commit (like the `v0.1.0` release asset)
   and carries the commit id as its zip comment (`unzip -z`).
-- Test runs of the flow use a `-test` version on a throwaway commit (e.g. `app-ios-v0.0.0-test+0`): not checked
-  against `main` or the build numbers, titled "TEST". Delete the release and the tag right after
+- Test runs of the flow use a `-test` version on a throwaway commit (`pubspec.yaml` `0.0.0-test+0` → tag
+  `app-ios-v0.0.0-test`): not checked against `main`, earlier versions or build numbers, titled "TEST". Delete the
+  release and the tag right after
   (`gh release delete <tag> --cleanup-tag --yes`).
 - **The person building** (TestFlight / Play) builds **only from that GitHub Release** (its zip, checked against the
   `.sha256` and the commit) or `git clone --branch <tag>`. Never from `main` or a zip sent by hand, and never edits
@@ -154,6 +161,6 @@ issue forms ask for the platform, and the PR template has a platform checklist.
 - **平台**：iOS = 现在的 Flutter app（`apps/watch2whoop/`，HealthKit，经 OW Flutter SDK）；**Android = 同一套 Flutter 代码**，OW Flutter SDK 0.0.25 已经支持 Health Connect 和 Samsung Health（minSdk 29），加 `android/` 目标即可；**华为 HarmonyOS NEXT = 单独的 app**（`apps/harmony/`），建议用原生 ArkTS（ArkWeb 内嵌今天页 + Health Service Kit，数据权限要华为审批），因为 OW 没有鸿蒙 SDK，同步部分怎么都得原生写；数据发到 OW 的移动端同步接口（首选）还是 Body Engine 新导入器，开工前要定。Apple Watch / Wear OS 以后做，分别放在 iOS / Android 工程里。
 - **共用**：服务器 API、WebView 里的今天页、设置二维码 `watch2whoop://setup?…`、OW 邀请码兑换、今天页一次性登录码、`watch2whoop://sync`。**各平台自己的**：健康数据来源和权限、后台执行、深链注册、签名和商店发布、版本号。
 - **目录**：目标是 `apps/flutter/`（iOS + Android）+ `apps/harmony/` + `apps/README.md` 索引。**现在不改名**：#16（app 自助注册）和 #20（多语言）都在改 `apps/watch2whoop/`；等它们合并后，单独开一个只改名的 PR，并在加 Android 之前做（步骤见第 3 节）。
-- **版本**：服务器继续 `vX.Y.Z`；app 用 `app-ios-v1.0.0+2` 这样的 tag（营销版本 + 构建号），iOS / Android 共用 pubspec 的版本、构建号只增不减；改版本号和 CHANGELOG 走 PR，合并后维护者跑 `tools/app_release.sh`（默认只预演，`--create` 本地打 tag + 打包看看，`--push` 推送 tag）；**GitHub Release 只由 workflow `app-release.yml` 在 tag 推上去后自动生成**（再查一遍版本号、CHANGELOG、在 main 上、构建号递增，附源码 zip + sha256），不依赖维护者的电脑。流程测试用 `app-ios-v0.0.0-test+0` 这类 `-test` 版本，测完立即删掉 release 和 tag。
+- **版本**：服务器继续 `vX.Y.Z`；app 的 tag 只用营销版本，例如 `app-ios-v1.0.6`。tag、Release 标题、zip 名、CHANGELOG 节标题（`## 1.0.6 — 日期`）都不出现构建号；构建号只留在 `pubspec.yaml`（`version: 1.0.6+6`，商店要用它，打包的人不用管）。iOS / Android 共用 pubspec 的版本，构建号只增不减；**每个营销版本每个平台只发一次**，TestFlight 90 天过期重新打包也要升补丁版本（1.0.6 → 1.0.7）。改版本号和 CHANGELOG 走 PR，合并后维护者跑 `tools/app_release.sh`（默认只预演，`--create` 本地打 tag + 打包看看，`--push` 推送 tag）；**GitHub Release 只由 workflow `app-release.yml` 在 tag 推上去后自动生成**：会再查一遍营销版本和 tag 一致、这个版本没发过、构建号比之前所有 tag 的都大（从每个 tag 的 `pubspec.yaml` 读，以前带 `+N` 的老 tag 也算）、有 CHANGELOG 一节、commit 在 main 上，然后附上源码 zip 和 sha256。整个流程不依赖维护者的电脑。以前的 `app-ios-v1.0.0+2`、`app-ios-v1.0.5+5` 保持原名。流程测试用 `-test` 版本（pubspec `0.0.0-test+0` → tag `app-ios-v0.0.0-test`），测完立即删掉 release 和 tag。
 - **帮忙编译的朋友**：只从这个 tag 的 GitHub Release 编译（zip 先对 sha256 和 commit，或 `git clone --branch <tag>`），不用 main、不用手发的 zip，不自己改版本号。
 - **CI**：按改动路径决定跑哪些任务，跳过的任务也报成功，分支保护的三个必需检查照常；以后的 app 加在工作流顶部的 `OTHER_APPS` 列表里（鸿蒙占位）。

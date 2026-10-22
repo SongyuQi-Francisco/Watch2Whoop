@@ -182,7 +182,8 @@ def test_evaluate_rules_idempotent_and_keeps_status(conn, world):
     status = {r["rule_key"]: r["status"] for r in res["rules"]}
     assert status == {"progression": "triggered", "calorie_adjust": "insufficient_data", "pre_workout_fuel": "triggered",
                       "frequency_caps": "not_triggered", "sugar_caps": "not_triggered", "exercise_restrictions": "triggered",
-                      "readiness": "insufficient_data", "sleep_goal": "insufficient_data"}
+                      "readiness": "insufficient_data", "sleep_goal": "insufficient_data",
+                      "water_halfway": "insufficient_data"}   # the water flag is off here
     rem = reminders(conn, a)
     assert set(rem) == {("progression", "p1:39:up"), ("pre_workout_fuel", ""), ("pre_workout_fuel", "carbs"),
                         ("exercise_restrictions", f"log:u1:2026-10-12"),

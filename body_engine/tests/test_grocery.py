@@ -409,6 +409,7 @@ def test_pantry_view_page_source():
     from pathlib import Path
     js = (Path(__file__).parents[1] / "src/body_engine/web/static/grocery.js").read_text()
     assert 'id="g-pantry"' in js and "/pantry`" in js
+    assert 'BodyFlags?.on("pantry_view")' in js and "pantryOn() ? `<div class=\"section\" id=\"g-pantry\">" in js   # rollout flag
     row = js[js.index("function pantryRow"):js.index("function pantryHtml")]
     assert "info.self ?" in row and "data-gpu" in row   # viewers see the pantry read-only
     used = js[js.index("async function usedUp"):js.index("function storesHtml")]

@@ -18,7 +18,11 @@ from psycopg.rows import dict_row
 from body_engine import api, auth
 from body_engine.ai import adapters, crypto, providers
 from body_engine.ai import chat as chat_mod
+from body_engine.ai import params as ai_params
+from body_engine.ai import playbooks
 from body_engine.ai.adapters.fake import FakeAdapter
+from body_engine.assistant import toolsets
+from body_engine.assistant.tools import TOOLS
 from body_engine.config import Settings
 from body_engine.db import migrate
 
@@ -429,7 +433,8 @@ def test_mcp_tools_own_data_and_audit(client, world, setup, dsn):
     assert init.json()["result"]["serverInfo"]["name"] == "body-engine"
     tools = rpc(client, t, "tools/list", id_=2).json()["result"]["tools"]
     by = {x["name"]: x for x in tools}
-    assert "get_profile" in by and by["add_event"]["annotations"]["readOnlyHint"] is False
+    assert "get_briefing" in by and by["add_event"]["annotations"]["readOnlyHint"] is False
+    assert "get_profile" not in by and by["find_tools"]["annotations"]["readOnlyHint"] is True   # not core (#99): still callable
     res = rpc(client, t, "tools/call", {"name": "get_profile", "arguments": {"user": "me"}}, id_=3).json()["result"]
     assert not res.get("isError") and json.loads(res["content"][0]["text"])["display_name"] == "A"
     res = rpc(client, t, "tools/call", {"name": "get_profile", "arguments": {"user": str(ids["D"])}}, id_=4).json()["result"]
@@ -471,7 +476,8 @@ def test_mcp_read_only_and_revoke(client, world, setup):
     r = client.post("/v1/users/me/ai-tokens", headers=H(tok["B"]), json={"client": "codex", "read_only": True}).json()
     ro = r["token"]
     names = {x["name"] for x in rpc(client, ro, "tools/list").json()["result"]["tools"]}
-    assert "get_profile" in names and "add_event" not in names and "log_food" not in names
+    assert "get_briefing" in names and "add_event" not in names and "log_food" not in names
+    assert "find_tools" in names and "run_read_tool" in names and "run_write_tool" not in names
     res = rpc(client, ro, "tools/call", {"name": "add_event", "arguments": {
         "occurred_at": "2026-10-16T10:00", "title": "x", "category": None, "body_part": None, "severity": None,
         "note": None}}).json()["result"]
@@ -486,6 +492,194 @@ def test_mcp_read_only_and_revoke(client, world, setup):
     assert client.delete(f"/v1/users/me/ai-tokens/{r['id']}", headers=H(tok["B"])).status_code == 204
     assert rpc(client, ro, "tools/list").status_code == 401
 
+
+# ---------------------------------------------------------------- tool groups and meta tools (#99)
+def _ev_args(title):
+    return {"occurred_at": "2026-10-16T21:00", "title": title, "category": None, "body_part": None, "severity": None, "note": None}
+
+
+def test_chat_page_groups_and_meta_tools(client, world, setup, dsn, monkeypatch):
+    """The page picks the groups sent besides the core and stays with the conversation; find_tools + run_read_tool reach
+    any other tool, and the audit / tool-call row carry the real tool name; read and write never mix."""
+    ids, tok = world
+    FakeAdapter.script = [
+        {"tool_calls": [{"id": "f1", "name": "find_tools", "args": {"group": "records", "query": None}}]},
+        {"tool_calls": [{"id": "r1", "name": "run_read_tool", "args": {"name": "get_profile", "args": {}}}]},
+        {"text": "你是 A。"},
+    ]
+    evs = sse(chat(client, tok["A"], "我是谁", page="food.shopping").text)
+    sent = [t.name for t in toolsets.for_page(TOOLS, "food.shopping")]
+    assert all(c["tools"] == sent for c in FakeAdapter.calls) and len(FakeAdapter.calls) == 3
+    assert "get_shopping_list" in sent and "get_profile" not in sent and sent[-1] == "run_write_tool"
+    assert ("tool", {"name": "find_tools", "status": "done"}) in evs and ("tool", {"name": "get_profile", "status": "done"}) in evs
+    hist = FakeAdapter.calls[1]["history"][-1]["content"][0]
+    assert hist["name"] == "find_tools" and "get_lab_history" in hist["content"] and "run_read_tool" in hist["content"]
+    assert '"display_name":"A"' in FakeAdapter.calls[2]["history"][-1]["content"][0]["content"]
+    conv_id = next(d for e, d in evs if e == "conversation")["id"]
+    with db(dsn) as conn:
+        assert conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"] == ["food.shopping"]
+        rows = conn.execute("SELECT call_id, tool, status FROM ai_tool_calls WHERE conversation_id = %s ORDER BY id",
+                            (conv_id,)).fetchall()
+        assert [(r["call_id"], r["tool"], r["status"]) for r in rows] == [("f1", "find_tools", "done"), ("r1", "get_profile", "done")]
+        a = conn.execute("SELECT tool, channel, ok FROM assistant_audit ORDER BY id DESC LIMIT 1").fetchone()
+        assert a == {"tool": "get_profile", "channel": "api:anthropic_api", "ok": True}
+        assert conn.execute("SELECT count(*) AS n FROM assistant_audit WHERE tool IN ('find_tools', 'run_read_tool')").fetchone()["n"] == 0
+    # The next message from the same page (or with no page) keeps exactly the same tools: stable cached prefix
+    for again in ("food.shopping", None):
+        FakeAdapter.calls.clear()
+        FakeAdapter.script = [{"text": "好"}]
+        sse(chat(client, tok["A"], "再问", conversation_id=conv_id, **({"page": again} if again else {})).text)
+        assert FakeAdapter.calls[0]["tools"] == sent
+    # No page = core only; read / write tools behind the wrong meta tool are refused and nothing is written
+    FakeAdapter.calls.clear()
+    FakeAdapter.script = [{"tool_calls": [
+        {"id": "x1", "name": "run_read_tool", "args": {"name": "add_event", "args": _ev_args("测试：读写混用")}},
+        {"id": "x2", "name": "run_write_tool", "args": {"name": "get_profile", "args": {}}},
+        {"id": "x3", "name": "run_read_tool", "args": {"name": "no_such_tool", "args": {}}}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "记一下").text)
+    assert FakeAdapter.calls[0]["tools"] == [t.name for t in toolsets.for_page(TOOLS, None)]
+    assert [d for e, d in evs if e == "tool"] == [{"name": "run_read_tool", "status": "error"},
+                                                  {"name": "run_write_tool", "status": "error"},
+                                                  {"name": "run_read_tool", "status": "error"}]
+    results = FakeAdapter.calls[1]["history"][-1]["content"]
+    assert "run_write_tool" in results[0]["content"] and "run_read_tool" in results[1]["content"] and results[2]["is_error"]
+    with db(dsn) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM events WHERE title = '测试：读写混用'").fetchone()["n"] == 0
+
+
+def test_chat_new_page_adds_its_groups(client, world, setup, dsn):
+    """Owner's decision on #107, capped after review: a page new to the conversation adds its groups (TOOLS order, the tools
+    already sent keep their relative order); while core + all the pages' groups fit PAGE_BUDGET_CHARS they accumulate,
+    beyond it the oldest pages' groups are dropped (the current page always stays; find_tools still reaches the rest)."""
+    ids, tok = world
+    names = lambda pages: [t.name for t in toolsets.for_page(TOOLS, pages)]
+
+    def send(text, conv_id, page, script=None):
+        FakeAdapter.calls.clear()
+        FakeAdapter.script = script or [{"text": "好"}]
+        evs = sse(chat(client, tok["A"], text, page=page, **({"conversation_id": conv_id} if conv_id else {})).text)
+        return evs, next(d for e, d in evs if e == "conversation")["id"]
+
+    def pages_of(conv_id):
+        with db(dsn) as conn:
+            return conn.execute("SELECT pages FROM ai_conversations WHERE id = %s", (conv_id,)).fetchone()["pages"]
+
+    # the owner's case: started on today, a message from food.shopping -> the grocery group is sent from then on
+    _, conv_id = send("今天适合练吗", None, "today")
+    before = FakeAdapter.calls[0]["tools"]
+    assert before == names(["today"]) and "get_shopping_list" not in before
+    evs, _ = send("按下周菜单列清单", conv_id, "food.shopping",
+                  [{"tool_calls": [{"id": "g1", "name": "get_shopping_list", "args": {}}]}, {"text": "好"}])
+    after = FakeAdapter.calls[0]["tools"]
+    assert {t.name for t in TOOLS if t.group == "grocery"} <= set(after) and FakeAdapter.calls[1]["tools"] == after
+    assert [n for n in before if n in after] == [n for n in after if n in before]       # relative order unchanged
+    assert after[-3:] == ["find_tools", "run_read_tool", "run_write_tool"]
+    assert ("tool", {"name": "get_shopping_list", "status": "done"}) in evs             # called directly, no find_tools round
+    # today + food.shopping together are over the cap, so today's groups made way (core stays)
+    assert toolsets.definition_chars(toolsets.for_page(TOOLS, ["today", "food.shopping"])) > ai_params.PAGE_BUDGET_CHARS
+    assert pages_of(conv_id) == ["food.shopping"] and after == names(["food.shopping"])
+    # pages that fit together accumulate; re-visiting or an unknown page id changes nothing
+    _, conv2 = send("记日记", None, "record.journal")
+    _, _ = send("你记得我什么", conv2, "me")
+    both = FakeAdapter.calls[0]["tools"]
+    assert both == names(["record.journal", "me"]) and set(names(["record.journal"])) < set(both)
+    for page in ("record.journal", "no-such-page"):
+        send("再问", conv2, page)
+        assert FakeAdapter.calls[0]["tools"] == both
+    assert pages_of(conv2) == ["me", "record.journal"]
+
+def test_chat_run_write_tool_keeps_confirm_and_read_only(client, world, setup, dsn, monkeypatch):
+    """ALWAYS_CONFIRM goes by the real name behind run_write_tool; a read-only login cannot write through it."""
+    ids, tok = world
+    FakeAdapter.script = [{"tool_calls": [{"id": "c1", "name": "run_write_tool",
+                                           "args": {"name": "delete_observation", "args": {"observation_id": 999999}}}]}]
+    evs = sse(chat(client, tok["A"], "删掉那条").text)
+    assert evs[-1][0] == "confirm" and evs[-1][1]["calls"][0]["tool"] == "delete_observation"
+    # wrong arguments are refused against the real schema before any confirm card
+    FakeAdapter.script = [{"tool_calls": [{"id": "c0", "name": "run_write_tool",
+                                           "args": {"name": "delete_observation", "args": {"id": 999999}}}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "删掉那条").text)
+    assert ("tool", {"name": "run_write_tool", "status": "error"}) in evs and not any(e == "confirm" for e, _ in evs)
+    assert "observation_id" in FakeAdapter.calls[-1]["history"][-1]["content"][0]["content"]
+    # a plain write through run_write_tool runs directly, audited under its own name
+    FakeAdapter.script = [{"tool_calls": [{"id": "c2", "name": "run_write_tool",
+                                           "args": {"name": "add_event", "args": _ev_args("测试：经元工具写")}}]}, {"text": "记好了"}]
+    evs = sse(chat(client, tok["A"], "记一下").text)
+    assert ("tool", {"name": "add_event", "status": "done"}) in evs
+    with db(dsn) as conn:
+        assert conn.execute("SELECT user_id FROM events WHERE title = '测试：经元工具写'").fetchone()["user_id"] == ids["A"]
+        assert conn.execute("SELECT tool FROM assistant_audit ORDER BY id DESC LIMIT 1").fetchone()["tool"] == "add_event"
+    FakeAdapter.script = [{"tool_calls": [{"id": "c3", "name": "run_write_tool",
+                                           "args": {"name": "add_event", "args": _ev_args("测试：只读经元工具")}}]}, {"text": "只读"}]
+    evs = sse(chat(client, tok["A_ro"], "记一下").text)
+    assert ("tool", {"name": "run_write_tool", "status": "error"}) in evs
+    assert "只读" in FakeAdapter.calls[-1]["history"][-1]["content"][0]["content"]
+    with db(dsn) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM events WHERE title = '测试：只读经元工具'").fetchone()["n"] == 0
+
+
+def test_mcp_core_list_and_meta_tools(client, world, setup, dsn):
+    """tools/list = core + delete / undo tools + meta (≤ 35k); everything else is found and run through the meta tools with
+    the same authorization and an audit under the real name; deletes must be called by their own name."""
+    ids, tok = world
+    t = tok["A_mcp"]
+    tools = rpc(client, t, "tools/list").json()["result"]["tools"]
+    assert [x["name"] for x in tools] == [x.name for x in toolsets.for_mcp(True)]
+    size = sum(len(json.dumps({"name": x["name"], "description": x["description"], "input_schema": x["inputSchema"]},
+                              ensure_ascii=False)) for x in tools)
+    assert size <= ai_params.MCP_LIST_BUDGET_CHARS, size
+    by = {x["name"]: x for x in tools}
+    assert by["run_read_tool"]["annotations"]["readOnlyHint"] is True and by["run_write_tool"]["annotations"]["readOnlyHint"] is False
+    assert "args" not in by["run_read_tool"]["inputSchema"].get("required", [])
+
+    def call(name, arguments):
+        return rpc(client, t, "tools/call", {"name": name, "arguments": arguments}).json()["result"]
+
+    found = call("find_tools", {"query": "化验 趋势"})
+    assert not found.get("isError") and "get_lab_history" in found["content"][0]["text"]
+    res = call("run_read_tool", {"name": "get_profile", "args": {}})
+    assert not res.get("isError") and json.loads(res["content"][0]["text"])["display_name"] == "A"
+    res = call("run_read_tool", {"name": "get_profile", "args": {"user": str(ids["D"])}})
+    assert res["isError"] and "没有查看用户" in res["content"][0]["text"]       # same shares check as a direct call
+    res = call("run_read_tool", {"name": "add_event", "args": _ev_args("测试：MCP 混用")})
+    assert res["isError"] and "run_write_tool" in res["content"][0]["text"]
+    res = call("run_write_tool", {"name": "delete_observation", "args": {"id": 1}})
+    assert res["isError"] and "直接调用" in res["content"][0]["text"]
+    res = call("run_write_tool", {"name": "add_event", "args": _ev_args("测试：MCP 元工具写")})
+    assert not res.get("isError"), res
+    with db(dsn) as conn:
+        assert conn.execute("SELECT user_id FROM events WHERE title = '测试：MCP 元工具写'").fetchone()["user_id"] == ids["A"]
+        assert conn.execute("SELECT count(*) AS n FROM events WHERE title = '测试：MCP 混用'").fetchone()["n"] == 0
+        a = conn.execute("SELECT tool, channel, ok FROM assistant_audit ORDER BY id DESC LIMIT 3").fetchall()
+        assert a[0] == {"tool": "add_event", "channel": "mcp:claude-code", "ok": True}
+        assert {r["tool"] for r in a} <= {"add_event", "get_profile"}
+    # a read-only token sees no write tool, no run_write_tool, and cannot write through it
+    ro = client.post("/v1/users/me/ai-tokens", headers=H(tok["B"]), json={"client": "ro-meta", "read_only": True}).json()["token"]
+    names = [x["name"] for x in rpc(client, ro, "tools/list").json()["result"]["tools"]]
+    assert names == [x.name for x in toolsets.for_mcp(False)] and "run_write_tool" not in names
+    res = rpc(client, ro, "tools/call", {"name": "run_write_tool", "arguments": {"name": "add_event", "args": _ev_args("测试：MCP 只读")}}).json()["result"]
+    assert res["isError"] and "只读" in res["content"][0]["text"]
+    found = rpc(client, ro, "tools/call", {"name": "find_tools", "arguments": {"group": "records"}}).json()["result"]
+    assert "add_event" not in found["content"][0]["text"] and "list_events" in found["content"][0]["text"]
+
+
+
+def test_mcp_playbook_prompts(client, world, setup):
+    """#100: every playbook is an MCP prompt next to butler, and get_playbook returns the very same text."""
+    ids, tok = world
+    t = tok["A_mcp"]
+    prompts = rpc(client, t, "prompts/list").json()["result"]["prompts"]
+    assert [p["name"] for p in prompts] == ["butler", *playbooks.NAMES]
+    assert all(p["title"] and p["description"] for p in prompts)
+    for name in playbooks.NAMES:
+        got = rpc(client, t, "prompts/get", {"name": name}).json()["result"]
+        text = got["messages"][0]["content"]["text"]
+        assert text == playbooks.text(name) and got["description"] == playbooks.title(name)
+        res = rpc(client, t, "tools/call", {"name": "get_playbook", "arguments": {"name": name}}).json()["result"]
+        assert not res.get("isError") and json.loads(res["content"][0]["text"])["text"] == text
+    assert "error" in rpc(client, t, "prompts/get", {"name": "nope"}).json()
+    names = {x["name"] for x in rpc(client, t, "tools/list").json()["result"]["tools"]}
+    assert {"get_playbook", "get_training_context", "get_week_review_context"} <= names   # in the core group
 
 # ---------------------------------------------------------------- Gemini Plan & Gemini CLI
 def test_gemini_plan_mcp_and_redirect(client, world):

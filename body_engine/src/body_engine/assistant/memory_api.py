@@ -8,7 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
-from . import briefing, meals, memory, sparky_write, status
+from ..rollout import flags
+from . import briefing, food_combine, meals, memory, sparky_write, status
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["memory"])
 
@@ -22,12 +23,15 @@ class ProfileIn(BaseModel):
 @router.get("/memory")
 def get_memory(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Status cards (status, ordered by group) + body profile card (the butler's underlying memory) + observation notes.
-    Auto items computed by the backend in the status cards are refreshed first if older than 30 minutes."""
+    Auto items computed by the backend in the status cards are refreshed first if older than 30 minutes.
+    Observations carry kind (fact / recent) and valid_until; expired recent notes are left out and only counted (#112)."""
     owner = _owner(conn, viewer, user, "memory")
     status.refresh_if_stale(conn, owner)
     m = memory.get_memory(conn, owner)
     return {"status": status.localize(status.list_status(conn, owner)), "profile_card": m["profile_card"],
-            "observations": [{k: o[k] for k in ("id", "text", "created_at", "source")} for o in m["observations"]]}
+            "observations": [{k: o[k] for k in ("id", "text", "created_at", "source", "kind", "valid_until")}
+                             for o in m["observations"]],
+            "expired_recent": m["expired_recent"]}
 
 
 @router.put("/memory/profile/{key}")
@@ -97,6 +101,34 @@ def log_meal_template(user: str, template_id: int, body: MealLogIn | None = None
 def undo_meal_log(user: str, log_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Undo one quick meal logging: delete the entries this logging wrote into SparkyFitness."""
     return _meal_call(meals.undo_log, conn, _self(viewer, user), log_id)
+
+
+# ---------------------------------------------------------------- several entries -> a template / one entry (issue #93)
+class CombineIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    date: dt.date
+    entry_ids: list[str] = Field(min_length=1, max_length=20)
+    action: str = Field(pattern="^(template|merge|both)$")
+    name: str | None = Field(None, max_length=60)
+    meal: str | None = Field(None, pattern="^(breakfast|lunch|dinner|snacks)$")
+
+
+@router.post("/nutrition/combine", dependencies=[Depends(flags.require("meal_merge"))])
+def combine_food_entries(user: str, body: CombineIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Selected food entries of one day -> a quick-meal template, merged into one entry, or both. Only for oneself."""
+    owner = _self(viewer, user)
+    out = _meal_call(food_combine.combine, conn, owner, body.date, body.entry_ids, body.action, body.name, body.meal)
+    briefing.invalidate(owner)
+    return out
+
+
+@router.delete("/nutrition/merges/{merge_id}", dependencies=[Depends(flags.require("meal_merge"))])
+def split_food_merge(user: str, merge_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Undo a merge (「拆开」): the merged entry goes, the original entries come back."""
+    owner = _self(viewer, user)
+    out = _meal_call(food_combine.split, conn, owner, merge_id)
+    briefing.invalidate(owner)
+    return out
 
 
 # ---------------------------------------------------------------- deleting a food entry (Today page, 饮食 day detail)
