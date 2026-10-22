@@ -124,9 +124,10 @@ def _own_schema(schema: dict) -> dict:
 
 
 @lru_cache(maxsize=1)
-def tools() -> tuple:
+def tools(extra: tuple = ()) -> tuple:
+    """The whitelist as own-data-only tools; `extra`: names added behind a rollout flag (ai/web.fallback_extra)."""
     return tuple(dataclasses.replace(ALL_TOOLS[n], input_schema=_own_schema(ALL_TOOLS[n].input_schema))
-                 for n in TOOL_NAMES if n in ALL_TOOLS)
+                 for n in (*TOOL_NAMES, *(n for n in extra if n not in TOOL_NAMES)) if n in ALL_TOOLS)
 
 
 # ---------------------------------------------------------------- money
@@ -171,8 +172,9 @@ def set_quota(conn: psycopg.Connection, user_id: int, cny: float | None, note: s
 
 
 def month_spent_cny(conn: psycopg.Connection, user_id: int) -> float:
+    """What the admin paid for this person this month: fallback model calls + server web searches (ai/web, issue #150)."""
     return float(conn.execute("""SELECT coalesce(sum(cost_cny), 0) AS c FROM ai_usage
-                                 WHERE user_id = %s AND kind = %s AND at >= %s""",
+                                 WHERE user_id = %s AND (kind = %s OR purpose IN ('web_search', 'web_fetch')) AND at >= %s""",
                               (user_id, KIND, providers.month_start(conn, user_id))).fetchone()["c"])
 
 
@@ -182,7 +184,8 @@ def reset_on(conn: psycopg.Connection, user_id: int) -> date:
 
 
 def _calls_since(conn, user_id: int, since: datetime) -> int:
-    return conn.execute("SELECT count(*) AS n FROM ai_usage WHERE user_id = %s AND kind = %s AND at >= %s",
+    return conn.execute("""SELECT count(*) AS n FROM ai_usage WHERE user_id = %s AND kind = %s AND at >= %s
+                           AND purpose NOT IN ('web_search', 'web_fetch')""",   # model calls only (not the web tools)
                         (user_id, KIND, since)).fetchone()["n"]
 
 

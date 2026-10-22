@@ -388,3 +388,36 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - `system_prompt.md`、`assistant/CLAUDE.md`、`system_prompt_lite.md`、MCP `INSTRUCTIONS` 各加一行，说明有哪些 playbook。
 
 **测试**：`tests/test_scenes.py`（两个 context 工具有数据 / 没数据、另一个结束日期、没有 share 读不到、只共享 profile + scores 时其余部分在 `hidden` 里）、`tests/test_playbooks.py`（文件和名单一致、提到的工具都存在、每份有步骤 / 先问用户 / 护栏三节、`get_playbook` 和 prompt 同一份文本、托底白名单不含心电图）、`tests/test_ai.py::test_mcp_playbook_prompts`（`prompts/list`、`prompts/get`、`get_playbook` 走真实的 `/mcp`）。
+
+### 9.19 页内对话联网：服务器的 web_search / web_fetch（2026-10-22，#150；`ai/web/`、迁移 `600_ai_web.sql`，灰度开关 `ai_web`）
+**问题**：采购（查价 → `save_product` / `record_store_prices` → 清单）靠 AI 自己联网。用 Claude / ChatGPT 连接器（MCP）和 Anthropic / OpenAI / Gemini 自己 key 的人有联网能力；托底 AI（管理员的 DeepSeek）和 `openai_compatible` 没有，于是永远用不了采购清单。
+
+**谁用什么**
+| 今天页的 AI | 联网方式 | 费用 |
+|---|---|---|
+| Anthropic API key | 官方 `web_search` + `web_fetch`（4.6 以后的模型 `_20260209` 带动态过滤；其余 `web_search_20250305` + `web_fetch_20250910`；`max_content_tokens` 20k） | 用户自己的 key（搜索 $10 / 1000 次 + token） |
+| OpenAI API key | Responses API `{"type": "web_search"}` | 用户自己的 key |
+| Gemini API key | `google_search` + `url_context`（Gemini 3：每月前 5000 次免费，之后 $14 / 1000 次） | 用户自己的 key |
+| 以上三家 | 都要用户在「AI 设置」打开「允许联网」（`ai_providers.web_tools`，默认关，#83）；不受 `ai_web` 影响 | |
+| `openai_compatible` | 各家联网方式不统一（Qwen `enable_search`、Kimi `$web_search`、OpenRouter `:online`…），不做专门适配 → 服务器工具 | 管理员（计入托底额度） |
+| 托底 AI（DeepSeek） | 服务器工具；同时加上存商品和出清单要用的采购工具（`web.FALLBACK_GROCERY`），`plan_shopping` playbook 对它开放 | 管理员（计入托底额度） |
+| MCP 连接器（Claude / ChatGPT / Codex…） | 客户端自己的联网，服务器工具不出现在 `tools/list` | 用户自己的订阅 |
+
+**服务器工具**（只在 `ai_web` 对这个用户打开时出现，跟在元工具后面发送，`group=grocery`）
+- `web_search(query)`：调一个可换的搜索 API（`ai/web/search.py`：Brave 默认 / Tavily / Serper，`BODY_WEB_SEARCH_PROVIDER`；key `secrets/web_search_api_key` 或 `BODY_WEB_SEARCH_API_KEY_FILE`）。**没配 key 时不出现，不报错**。按用户时区本地化（`Australia/*` → AU）。返回前 5 条的标题、链接、≤ 300 字摘要。
+- `web_fetch(url)`：服务器读一个公开网页（`ai/web/fetch.py`），返回标题、schema.org Product（名称、品牌、规格、条码、价格、币种、库存）、价格 meta 和 ≤ 4000 字正文摘录。
+
+**合规**（`ai/web/fetch.py`，参数 `ai/web/params.py`）
+- 只在用户这次的请求需要时由模型调用；没有定时任务、不翻页、不跟链接、不批量。
+- 先读 robots.txt（RFC 9309）按 `Watch2WhoopBot` 判断：200 按规则；404 类 = 没规则；401 / 403 / 429 / 5xx / 连不上 = 不读。User-Agent 如实写明是机器人和项目地址，不冒充浏览器。
+- 401 / 403 / 407 / 429 / 451 / 503、反爬 / 验证码页（Cloudflare、Imperva、PerimeterX、DataDome… 的特征）、登录墙（密码框 + 很少的正文）→ 停下，返回 `blocked=true` 和 `tell_user`「这家超市的网页读不到，可以把商品页截图或小票发给我」；同一网站 1 小时内不再请求，不重试、不换地址。**绝不绕过反爬或验证码。**
+- Coles / Woolworths（`NO_FETCH_HOSTS`，已知有反爬）直接按 blocked 处理，连 robots.txt 也不请求；它们的价格靠搜索结果摘要、用户截图或小票。
+- 只读 http / https 标准端口；主机名解析出的地址必须全是公网地址，连接直接连到检查过的地址（防 SSRF / DNS 重绑定），每次跳转（≤ 3 次）重新检查。
+- 只回给模型摘录；库里只存模型用 `save_product` / `record_store_prices` 写的商品名、规格、价格、门店、链接、日期，不存整页。（对话记录里会留着模型读到的那段摘录，和其他工具结果一样，删对话就删掉。）
+
+**费用和限制**
+- 每次搜索记一行 `ai_usage`（`purpose = web_search`，`cost_usd = 0`，`cost_cny` = 单价 × 7.3），读网页也记一行（`web_fetch`，0 元），都不是模型调用（托底的每分钟 / 每天调用上限不算它们）。
+- `fallback.month_spent_cny` = 托底模型调用 + 服务器搜索：每人每月仍是同一个托底额度（默认 ¥3），搜索前先查剩余够不够。`openai_compatible` 用户的搜索也算进这个额度，不动他自己的美元预算。
+- 每人每天（本地日）搜索 20 次、读网页 40 次；全部用户每月搜索合计 3000 次。
+
+**测试**：`tests/test_ai_web.py`（robots 各种回答、反爬 / 验证码 / 登录墙 / 403 拒绝且不重试、Coles / WWS 和内网地址不发请求、跳转重新检查、三家搜索 API 的请求格式、开关关着没有工具、开关打开后托底和兼容接口有、Anthropic key 没有、计费进 `ai_usage` 和托底额度、额度不够和每天次数用完时拒绝）；`tests/test_grocery_prices.py`（各家官方联网的请求参数）；`tests/test_playbooks.py`（`FALLBACK_WEB` 正好够用）。

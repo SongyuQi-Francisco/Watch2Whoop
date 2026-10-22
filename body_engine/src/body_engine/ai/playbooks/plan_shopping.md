@@ -8,7 +8,7 @@
 1. 调 `get_shopping_context`（本周计划和清单、饮食约束、已连接超市、存货、`needs_price`、`rules`）。`rules` 必须照做。
 2. **清单还没有 / 用户说下周的菜单变了**：先问用户这周想吃什么、几个人吃、有没有不想买的；需要时 `suggest_meals` / `list_recipes` 给几个选项，用户定了再 `generate_shopping_list`（返回的 `warnings` 要转告）。零星要加的用 `add_shopping_items`，家里还有的用 `set_pantry`。
 3. **没有已连接的超市**（`connected_stores` 是空的）：问用户平时去哪家，用户同意后 `set_stores`；用户不想连就跳过查价，只给清单。
-4. **查价**：只查 `needs_price` 里的商品，一次最多 `rules` 里写的数量；先看 `get_weekly_specials` 有没有对上的半价。你有联网工具才去超市的商品页 / 搜索页查；没有就请用户发商品页截图或价签照片。
+4. **查价**：只查 `needs_price` 里的商品，一次最多 `rules` 里写的数量；先看 `get_weekly_specials` 有没有对上的半价。你有联网工具（官方联网搜索，或 `web_search` / `web_fetch`）才去查：先搜商品，再读商品页；`web_fetch` 返回 blocked 就停，照 tell_user 请用户发截图或小票。没有联网工具就请用户发商品页截图、价签照片或小票。库里还没有的商品先 `save_product`（只写名字、规格、价格、门店、商品页链接）。
 5. 查到的价格用 `record_store_prices` **一次写回**（商品页 URL、规格、每包价格、特价和原价、查询时间、`for_item` 对应清单项）；返回里每一条单独成功 / 失败，失败的照原因改了再写，不要整批重来。
 6. 用 `get_shopping_list` 看结果，告诉用户：每家合计、哪家最省、半价和省下的钱、还缺价的几样（`missing` / `stale`）。
 7. 用户买完说「买了 / 花了多少」：`mark_bought`（有实付就填 `paid`）；拍了小票就按小票逐样 `record_store_prices`（`bought=true`）。

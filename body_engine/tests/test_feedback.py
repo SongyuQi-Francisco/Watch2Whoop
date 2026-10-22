@@ -25,7 +25,7 @@ TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_feedback")
 # ---------------------------------------------------------------- no database needed
 def test_root_rules_versioned_and_everywhere():
     text, v = root_rules.text(), root_rules.version()
-    assert v == "v2" and text.startswith("## 根规则 v2") and "report_feedback" in text and "<!--" not in text
+    assert v == "v3" and text.startswith("## 根规则 v3") and "report_feedback" in text and "<!--" not in text
     for lite in (False, True):   # in-page chat, fallback AI, MCP prompt `butler`: rules first, then the persona
         p = prompt.base_prompt(lite)
         assert p.startswith(text) and p.index("身体管家") > len(text)
@@ -132,7 +132,7 @@ def test_report_sanitises_and_stores(conn, world):
     row = store.admin_get(conn, store.parse_ref(out["id"]))
     assert "Bobby" not in row["body_public"] and "71" not in row["body_public"] and "‹某人›" in row["body_public"]
     assert row["body_raw"]["what"].startswith("Bobby")                    # raw kept on the server
-    assert row["rules_version"] == "v2" and row["channel"] == "mcp:test" and row["redactions"] >= 2
+    assert row["rules_version"] == "v3" and row["channel"] == "mcp:test" and row["redactions"] >= 2
     assert row["diagnostics"] == {"failed_tools": {"get_sleep": 1}}
     log = conn.execute("SELECT kind FROM ai_write_log WHERE tool = 'report_feedback'").fetchall()
     assert log                                                            # AI writes are logged like any other
@@ -175,7 +175,7 @@ def test_briefing_rules_and_updates(conn, world):
     ids, _ = world
     a = ids["Alice"]
     b = run_tool(conn, a, "mcp", "get_briefing", {"user": "me"})
-    assert b["system_rules"]["version"] == "v2" and b["system_rules"]["feedback_mode"] == "auto"
+    assert b["system_rules"]["version"] == "v3" and b["system_rules"]["feedback_mode"] == "auto"
     assert b["system_rules"]["text"] == root_rules.text() and "feedback_updates" not in b
     rid = store.list_for_user(conn, a)[0]["id"]
     store.set_status(conn, store.parse_ref(rid), "fixed", note="已在新版修好")
