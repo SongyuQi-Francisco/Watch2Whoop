@@ -133,3 +133,17 @@
 2. **PR A 圈子和共享**：迁移、`friends/` 模块（圈子、邀请、加入 / 改范围 / 退出、`shares.circle_scopes` 同步）、`nutrition_summary`、建 / 加入圈子要求同意书 2026-10-22.2（同意书本身在 #129）、#57 推荐注册接上圈子邀请；「我 → 圈子」管理页。
 3. **PR B 朋友 tab**：底部 tab 调整（饮食并进记录）、成员卡片、只读查看横幅、轻互动。
 4. **PR C 排行榜**：五个榜（`friends/params.py`）、`get_friends_overview` 工具。
+
+## 9. 圈子训练动态（2026-10-22，灰度开关 `circle_feed`，需要同时开 `friends`）
+
+朋友 tab 的分段是「成员 | 动态 | 排行榜」（开关关着时没有「动态」）。代码：`friends/feed.py`、`feed_api.py`、`feed_notify.py`，前端 `web/static/circle-feed.js`，迁移 `635_circle_feed.sql`。
+
+- **自动发，不弹窗**：谁给某个圈子勾选了「训练」共享，他当天的训练就自动出现在这个圈子的动态里，一天一条（`circle_feed_posts` 只是给 ❤️ 和评论用的锚点，内容每次读取时从 `training_session_logs`（打了勾的组）和 `workouts` 现算，所以当天新增的组会更新进去）。没勾「训练」的人不会出帖；同意书不变（沿用「圈子成员能看到我勾选的内容」）。
+- **帖子内容**：训练名、时长、动作列表（默认前 3 个，可展开）、每组的次数和重量、组数、总负荷（kg = 次 × 重量，只算打勾的组）、🏆 个人纪录（某动作今天的最大重量超过之前所有天；第一次做不算）。不含心电图、化验、体重。
+- **不能删除**：没有删除 / 修改帖子的接口。谁能看是每次读取时按「同圈 + 作者在该圈勾选了训练 + `auth.can_view`」算的，所以退出圈子后对方立即看不到（对方在别人帖子下的评论和 ❤️ 也不再显示）；重新加入又会出现。
+- **❤️**：`PUT|DELETE /v1/friends/feed/posts/{id}/like`，和 👏 / 💤 / 💪（`circle_nudges`）互不相干。取消后再点不会再次通知作者。
+- **评论**：只能文字（单行，最多 300 字，每人每小时 30 条）；写的人自己能删（软删除，留着给举报）；任何同圈的人可以举报（`circle_feed_reports`，每人每条一次，自己的不能举报）。帖子作者不能删别人的评论，只能举报。
+- **红点**：`GET /feed/unread`（自上次打开动态后别人在我的帖子上的 ❤️ + 评论数），朋友 tab 和「动态」分段上显示；打开动态时 `POST /feed/seen` 清掉。页面开着时每分钟刷新一次。
+- **通知**：有人 ❤️ / 评论时调用 `notify.notify(conn, user_id, kind, title, body, url, data)`（kind = `circle_feed_like` / `circle_feed_comment`）。推送模块 `notify/` 合并前 `feed_notify.push` 什么都不做（只靠红点）；合并后自动生效，不需要改这里。
+- 接口：`GET /v1/friends/feed?before=&limit=`（`before` = 上一页返回的 `next`，按日期倒序，往下滑加载更多）、`GET|POST /feed/posts/{id}/comments`、`DELETE /feed/comments/{id}`、`POST /feed/comments/{id}/report`。
+- 手机宽度截图（合成数据）：`docs/images/circle-feed/`。
