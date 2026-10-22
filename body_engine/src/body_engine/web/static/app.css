@@ -49,6 +49,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; }
+/* iOS app: no long-press menu on images ("Save to Photos" kills app builds 1.0.5 and older, see app.js IN_APP) */
+html.in-app, html.in-app img { -webkit-touch-callout: none; }
 /* Fixed app-like layout on phones: only the content scrolls vertically; no pinch / double-tap zoom, no whole-page sideways drag,
    no rubber-band of the whole page showing blank edges. Horizontal strips and charts still scroll inside themselves. */
 html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js */
