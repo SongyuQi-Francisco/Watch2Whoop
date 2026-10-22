@@ -1,6 +1,7 @@
 """HTTP endpoints for training history and Training V2 (exercise catalog, splits, weekly plan, exercise swap).
 Authorization:
 - Read endpoints require shares scope `training` (per-user restrictions additionally check `exercises`, readiness checks `scores`).
+- Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
 """
 from datetime import date
@@ -11,7 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
-from . import catalog, history, loads, plans
+from ..rollout import flags
+from . import catalog, history, loads, plans, session_log
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
 
@@ -239,3 +241,70 @@ def swap_plan_exercise(user: str, body: SwapExerciseIn, conn=Depends(get_conn), 
         raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+# ---------------------------------------------------------------- training day v2 (FB-5): planned exercise cards + set-by-set log
+class SessionSetIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    reps: int | None = Field(default=None, ge=0, le=100)
+    weight_kg: float | None = Field(default=None, ge=0, le=400)
+    duration_s: float | None = Field(default=None, gt=0, le=6 * 3600)
+    rir: float | None = Field(default=None, ge=0, le=10)
+    done: bool = False
+
+
+class SessionExerciseIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    slug: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
+    sets: list[SessionSetIn] = Field(default_factory=list, max_length=session_log.MAX_SETS)
+
+
+class SessionDraftIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exercises: list[SessionExerciseIn] = Field(default_factory=list, max_length=session_log.MAX_EXERCISES)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class SessionSubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allow_duplicate: bool = False
+
+
+V2 = [Depends(flags.require("training_day_v2"))]
+
+
+@router.get("/session", dependencies=V2)
+def training_session(user: str, day: Annotated[date | None, Query(alias="date")] = None,
+                     conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The day's planned exercises as cards (prescription, recommended weight, restriction, thumbnail, last session,
+    pre-fill target) and the page's draft / submitted set log."""
+    owner_id = _owner(conn, viewer, user, "training")
+    return session_log.view(conn, viewer["id"], owner_id, day)
+
+
+@router.put("/session/{day}", dependencies=V2)
+def save_training_session(user: str, day: date, body: SessionDraftIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Save the sets being filled in (draft); each set has its own reps / weight and a done tick."""
+    uid = _self(viewer, user)
+    try:
+        return session_log.save_draft(conn, uid, day, [e.model_dump() for e in body.exercises], body.notes)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.post("/session/{day}/submit", dependencies=V2)
+def submit_training_session(user: str, day: date, body: SessionSubmitIn | None = None,
+                            conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Write the sets marked done to the training log (SparkyFitness) as one workout; a resubmit replaces it."""
+    uid = _self(viewer, user)
+    try:
+        return session_log.submit(conn, uid, day, allow_duplicate=bool(body and body.allow_duplicate))
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except LookupError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except sparky_client.SparkyError as e:
+        raise HTTPException(502, str(e))

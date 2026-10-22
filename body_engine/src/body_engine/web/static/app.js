@@ -719,8 +719,14 @@
         return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
       }).join("") : `<div class="empty faint" style="padding:12px">${t.rest_day ? tr("休息") : tr("无计划")}</div>`;
       if (t.logged.length) html += `<div class="cat">${tr("已记录")}</div>` + t.logged.map((s) => s.exercises.map(exerciseRow).join("")).join("");
+      if (trainingDayV2() && isSelf() && !isPast() && t.planned.length)
+        html += `<div class="btns" style="margin-top:14px"><button class="btn btn-primary" id="go-log">${tr("逐组记录")}</button></div>`;
     }
-    openSheet(`${tr("训练")} · ${shortDay(d.date)}`, html, bindExRows);
+    openSheet(`${tr("训练")} · ${shortDay(d.date)}`, html, (root) => {
+      bindExRows(root);
+      const go = $("#go-log", root);
+      if (go) go.onclick = () => { closeSheet(); S.recSub = "training"; setTab("record"); };
+    });
   }
 
   function nutritionSheet(d) {
@@ -3164,7 +3170,22 @@
     const recs = wk.error ? `<div class="section"><div class="section-head"><h2>${tr("建议")}</h2></div><div class="empty faint">${esc(short(wk.error, "—"))}</div></div>`
       : `<div class="section"><div class="section-head"><h2>${tr("建议")}</h2></div>${sugg.length || caut.length ? `<div class="card list">${[...sugg, ...caut].join("")}</div>` : `<div class="empty faint">${tr("暂无")}</div>`}</div>`;
     const hist = `<div class="section"><div class="section-head"><h2>${tr("训练历史")}</h2></div><div id="rec-cal"><div class="empty faint">…</div></div></div>`;
-    return `<div class="cols2"><div>${left}${recs}</div><div>${hist}</div></div>`;
+    const todayBox = trainingDayV2() ? window.BodyTrainingDay.placeholder() : wk.error ? "" : todayPlanHtml(planDays[today]);
+    return `<div class="cols2"><div>${todayBox}${left}${recs}</div><div>${hist}</div></div>`;
+  }
+
+  // FB-5: today's planned exercises right on the training page (they used to be only a short label in the week strip, and in
+  // the day sheet below that day's stats). With the training_day_v2 flag, training-day.js draws cards with set-by-set logging.
+  const trainingDayV2 = () => !!window.BodyTrainingDay && (S.flags || []).includes("training_day_v2");
+  function todayPlanHtml(day) {
+    const planned = day?.planned || [];
+    const rows = planned.map((p) => {
+      const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
+      return `${single || planned.length < 2 ? "" : `<div class="small muted" style="margin:10px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
+    }).join("");
+    const head = planned.map((p) => p.name).join(" · ");
+    return `<div class="section" id="today-plan"><div class="section-head"><h2>${tr("今天")}</h2><span class="small muted">${esc(head)}${day?.change ? ` ${badge("mid", tr("已调整"))}` : ""}</span></div>
+      <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
 
   function planSheet(iso, day) {
@@ -3190,6 +3211,17 @@
     if (tl && wk) tl.onclick = () => trainingLogSheet(wk.sparky);
     const c = $("#rec-cal", view);
     if (c) { bindCalSwipe(c); renderCal(0); }
+    const tp = $("#today-plan", view);
+    if (tp) bindExRows(tp);
+    const td = $("#td2", view);
+    if (td) window.BodyTrainingDay.mount(td, {
+      api, esc, toast, owner: ownerPath(), self: isSelf(), date: S.todayDate, openDetail: exerciseDetailSheet,
+      openTrainingLog: () => wk && trainingLogSheet(wk.sparky),
+      onSubmitted: () => {   // the week strip, the history calendar and the Today card show the new workout
+        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
+        delete S.data[todayKey()];
+      },
+    });
   }
 
   function zonesHtml(z) {
@@ -3229,7 +3261,11 @@
     catch (e) { $("#sheet-body").innerHTML = `<div class="empty faint">${tr("暂无")}</div>`; return; }
     const dl = d.daily || {};
     const sessions = d.sessions || [];
-    $("#sheet-body").innerHTML = (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
+    // FB-5: the plan first (it was below that day's stats, easy to miss)
+    const planHtml = (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
+      + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "");
+    $("#sheet-body").innerHTML = planHtml + (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
+      + (plan?.planned?.length ? `<div class="cat">${tr("已练")}</div>` : "")
       + (sessions.length ? sessions.map(sessionHtml).join("") : `<div class="empty faint" style="padding:12px">${tr("无训练")}</div>`)
       + `<div style="height:14px"></div><div>`
       + [[tr("训练消耗"), dl.workout_kcal != null ? `${fmtNum(dl.workout_kcal)} kcal` : null],
@@ -3237,9 +3273,8 @@
          [tr("全天总消耗"), dl.total_kcal != null ? `${fmtNum(dl.total_kcal)} kcal` : null], [tr("锻炼分钟"), dl.exercise_min != null ? tr("{n} 分钟", { n: fmtNum(dl.exercise_min) }) : null],
          [tr("步数"), dl.steps != null ? fmtNum(dl.steps) : null], ["strain", dl.strain != null ? fmtNum(dl.strain, 1) : null],
          [tr("肌肉负荷"), dl.muscle_load != null ? `${fmtNum(dl.muscle_load)} kg` : null], [tr("次日恢复"), dl.recovery_next_day ?? null]]
-        .filter(([, v]) => v != null).map(([l, v]) => kv(l, v)).join("")
-      + (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
-      + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "") + `</div>`;
+        .filter(([, v]) => v != null).map(([l, v]) => kv(l, v)).join("") + `</div>`;
+    bindExRows($("#sheet-body"));
   }
 
   // ------------------------------------------------------------------ Ask the butler (body butler Claude Code session, Remote Control)

@@ -699,8 +699,13 @@ def get_week_plan(
     for s in sugg_list:
         if s.get("exercise"):
             sugg_by_name[catalog.norm(s["exercise"])] = s
+            hit = catalog.resolve(conn, s["exercise"], user_id=owner_id if with_meta else None)
+            if hit:   # SparkyFitness names ("高位下拉（正手，略宽于肩）") -> the catalog slug the plan uses
+                s["slug"] = hit["slug"]
+                sugg_by_name.setdefault(hit["slug"], s)
         if s.get("exercise_id"):
             sugg_by_name[s["exercise_id"]] = s
+    used_sugg: dict[int, dict] = {}   # suggestion id -> the plan exercise it belongs to
 
     plan_row = _active_plan_row(conn, owner_id)
     if plan_row is not None:
@@ -717,10 +722,14 @@ def get_week_plan(
                 item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta)
                 vol_items.append(item)
                 matched_sugg = []
-                if item.get("app_exercise_id") and item["app_exercise_id"] in sugg_by_name:
-                    matched_sugg.append(sugg_by_name[item["app_exercise_id"]])
-                elif catalog.norm(item["name_zh"]) in sugg_by_name:
-                    matched_sugg.append(sugg_by_name[catalog.norm(item["name_zh"])])
+                for key in (item.get("app_exercise_id"), item["slug"], catalog.norm(item["name_zh"])):
+                    sg = sugg_by_name.get(key) if key else None
+                    if sg and not (item.get("weight_kg") and sg.get("next_weight_kg")
+                                   and float(item["weight_kg"]) >= float(sg["next_weight_kg"])):
+                        matched_sugg.append(sg)   # a step the plan already prescribes is not suggested again
+                        used_sugg[sg["id"]] = item
+                    if sg:
+                        break
                 item["suggestions"] = matched_sugg
                 loads.attach(load_ctx, item, matched_sugg[0] if matched_sugg else None)
                 item["name"] = item["name_zh"]
@@ -795,7 +804,8 @@ def get_week_plan(
             },
             "days": week_days,
             "volume_by_group": volume_summary(vol_days),
-            "suggestions": sugg_list,
+            # FB-5: only suggestions about exercises in this plan (the rule engine also writes them for old SparkyFitness plans)
+            "suggestions": [{**sg, "slug": used_sugg[sg["id"]]["slug"]} for sg in sugg_list if sg["id"] in used_sugg],
             "cautions": cautions,
             "readiness": readiness_advice(conn, owner_id, day) if with_scores else None,
             "available_splits": list_splits() if detail else None,
@@ -826,6 +836,34 @@ def get_week_plan(
         "readiness": readiness_advice(conn, owner_id, day) if with_scores else None,
         "available_splits": list_splits(),
     }
+
+
+def _pattern_of(conn: psycopg.Connection, ex: dict) -> str | None:
+    """Movement pattern of a stored plan exercise (plans saved before it was stored: looked up in the catalog)."""
+    return ex.get("movement_pattern") or (catalog.resolve(conn, ex.get("slug") or "") or {}).get("movement_pattern")
+
+
+def _not_in_plan_message(days: list[dict], from_exercise: str, from_slug: str,
+                         day_of_week: int | None, session_name: str | None) -> str:
+    """An error the AI can act on (FB-5): that day's exercises by slug, and the days that do have the exercise."""
+    def label(d_obj: dict) -> str:
+        return f"{WEEKDAY_ZH.get(int(d_obj.get('day_of_week') or 0), '')} {d_obj.get('name') or ''}".strip()
+
+    chosen = [d for d in days
+              if (day_of_week is None or int(d.get("day_of_week") or 0) == int(day_of_week))
+              and (not session_name or catalog.norm(session_name) in catalog.norm(d.get("name") or ""))]
+    msg = f"当前周训练计划里没有找到动作「{from_exercise}」" + (f"（day_of_week={day_of_week}）" if day_of_week else "")
+    if day_of_week is not None or session_name:
+        if not chosen:
+            msg += "；计划里没有这一天 / 这个训练，计划的训练日：" + "、".join(label(d) for d in days)
+        for d in chosen:
+            msg += f"；{label(d)} 的动作：" + "、".join(
+                f"{e.get('slug')}（{e.get('name_zh') or e.get('name') or ''}）" for e in d.get("exercises") or [])
+    elsewhere = [label(d) for d in days if d not in chosen
+                 and any(e.get("slug") == from_slug for e in d.get("exercises") or [])]
+    if elsewhere:
+        msg += f"；这个动作在：{'、'.join(elsewhere)}"
+    return msg + "。from_exercise 用上面的 slug 再试"
 
 
 def swap_exercise(
@@ -863,9 +901,20 @@ def swap_exercise(
                     or (from_resolved and ex_slug == from_resolved["slug"])):
                 matches.append((d_idx, e_idx, d_obj, ex))
 
+    matched_by = "exact"
+    if not matches and from_resolved and from_resolved.get("movement_pattern"):
+        # FB-5: the AI named a sibling of the planned exercise (cable_face_pull for the plan's band_face_pull_er warm-up).
+        # Within the chosen day(s), one exercise of the same movement pattern is unambiguous; several are not.
+        same = [(d_idx, e_idx, d_obj, ex) for d_idx, d_obj in enumerate(days)
+                if (day_of_week is None or int(d_obj.get("day_of_week") or 0) == int(day_of_week))
+                and (not session_name or catalog.norm(session_name) in catalog.norm(d_obj.get("name") or ""))
+                for e_idx, ex in enumerate(d_obj.get("exercises") or [])
+                if _pattern_of(conn, ex) == from_resolved["movement_pattern"]]
+        if len(same) == 1 or (same and day_of_week is None and len({m[3].get("slug") for m in same}) == 1):
+            matches, matched_by = same, "movement_pattern"
+
     if not matches:
-        raise ValueError(f"当前周训练计划里没有找到动作「{from_exercise}」"
-                         + (f"（day_of_week={day_of_week}）" if day_of_week else ""))
+        raise ValueError(_not_in_plan_message(days, from_exercise, from_slug, day_of_week, session_name))
 
     target_slug = matches[0][3].get("slug") or from_slug
     alternatives = catalog.recommend_alternatives(conn, target_slug, user_id=user_id, limit=5)
@@ -933,6 +982,7 @@ def swap_exercise(
     return {
         "swapped": True,
         "plan_id": plan_row["id"],
+        **({"matched_by": matched_by} if matched_by != "exact" else {}),
         "replaced": replaced_in,
         "to_exercise": {
             "slug": to_resolved["slug"],
