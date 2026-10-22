@@ -90,6 +90,7 @@ English developer documentation lives next to the code: [`body_engine/README.md`
 | [scoring-validation.md](scoring-validation.md) | Chinese | **Scoring validation** (#118): pre-registered metrics (stability, construct validity, sensitivity, HRV-kind agreement), results on synthetic data (`python -m body_engine.validation`), conclusions from real data without personal values, and the WHOOP comparison plan awaiting decisions |
 | [training-v2-plan.md](training-v2-plan.md) | Chinese | Training module v2 (deferred): exercise library, splits, weekly plans, AI-built plans, data sources and their licences |
 | [friends-social-plan.md](friends-social-plan.md) | Chinese | Friends page (in development): circles and invites, per-scope sharing, today + 7-day member cards, baseline-relative leaderboards, data model and API |
+| [hevy-benchmark.md](hevy-benchmark.md) | Chinese | Benchmark against Hevy (#161): its workout logging and social features vs ours, gap table, P0–P2 priorities, what we skip and why, wireframes, phased plan, the Hevy CSV export format |
 | [raw-data-plan.md](raw-data-plan.md) | Chinese | Getting more raw Apple Watch data (heartbeat series, ECG, iOS 27 RMSSD, watchOS app) and what it unlocks (awaiting confirmation) |
 | [shortcut-sync-spec.md](shortcut-sync-spec.md) | Chinese | The iOS Shortcut upload format (`cols-v1`) and how the server parses it — the single source of truth for the Shortcut |
 | [shortcut-raw-heart-rate.md](shortcut-raw-heart-rate.md) | Chinese | Historical: why the Shortcut uploads raw heart-rate samples |
