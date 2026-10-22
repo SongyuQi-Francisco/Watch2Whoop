@@ -226,6 +226,14 @@ def test_page_reasons_and_steps():
     assert out["names"] == list(params.STALE_AFTER_DAYS)
 
 
+def test_page_strength_records():
+    """The strength-training records row (#210): days and sessions per source, SparkyFitness' state when not counted."""
+    out = node_json("""[P.strengthText({ weeks: 4, days: 3, sessions: { watch: 1, sparky: null, hevy: 2 }, sparky: "not_linked" }),
+      P.strengthText({ weeks: 4, days: 2, sessions: { watch: 0, sparky: 4, hevy: 0 }, sparky: "connected" }), P.strengthText(null)]""")
+    assert out[0] == {"days": "3 天有记录", "sources": "手表 1 · SparkyFitness 未连接 · Hevy 2"}
+    assert out[1]["sources"] == "手表 0 · SparkyFitness 4 · Hevy 0" and out[2] is None
+
+
 def test_page_wiring():
     js = (STATIC / "data-status.js").read_text(encoding="utf-8")
     assert '"/v1/users/me/data-status"' in js and 'BodyFlags?.on("data_status")' in js

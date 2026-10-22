@@ -312,7 +312,7 @@ def weight_activity() -> dict:
     L.row(9, [
         (16, timeseries("体重（SparkyFitness）", [wt], unit=KG, decimals=1,
                         desc="来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust "
-                        "要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。目标：3 个月内到 80kg。",
+                        "要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。",
                         overrides=[override("体重", **{"custom__drawStyle": "points", "custom__pointSize": 9,
                                                      "color": {"mode": "fixed", "fixedColor": "blue"}}),
                                    override("7 天均值", **{"custom__lineWidth": 2, "custom__showPoints": "never",

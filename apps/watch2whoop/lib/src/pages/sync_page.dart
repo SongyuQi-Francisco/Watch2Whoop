@@ -1,6 +1,9 @@
 // Native "phone sync" (手机同步) page: last sync time, per-type counts, failure retry, sync now, and server settings.
 // Native sync status page (+ settings). Data on the server per type and the Health permission buttons: data_status_section.dart (#163). Opened from the today page (Me → Phone sync) or the error screen.
 // Locked builds (server_lock.dart): no server rows, no scan / paste of setup info, and the server is redacted from logs and errors.
+// Sync center (server flag sync_center, or opened as watch2whoop://sync-center): titled 「同步中心」, with the forced
+// re-sync and the phone / server comparison per type (sync_center_section.dart) in place of 「服务器收到的数据」; the Today
+// page then has this one row instead of 手机同步 / 数据更新 / 数据状态. Flag off: the page is exactly as before.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -19,6 +22,7 @@ import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
 import '../raw_sync.dart';
+import '../resync.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
@@ -26,9 +30,13 @@ import 'data_status_section.dart';
 import 'permissions_page.dart';
 import 'range_picker.dart';
 import 'scan_page.dart';
+import 'sync_center_section.dart';
 
 class SyncPage extends StatefulWidget {
-  const SyncPage({super.key});
+  const SyncPage({super.key, this.center = false});
+
+  /// Opened as the sync center (the Today page's row); otherwise the server's sync_center flag decides.
+  final bool center;
 
   @override
   State<SyncPage> createState() => _SyncPageState();
@@ -45,6 +53,11 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
   int _statusReload = 0; // bumps DataStatusSection: pull to refresh, back from iOS Settings
 
   AppConfig get _config => AppState.instance.config;
+
+  bool get _center => widget.center || RawSync.instance.status.value.syncCenter;
+
+  /// The usual read range, or a running forced re-sync's (resync.dart).
+  int get _daysBack => Resync.instance.effectiveDaysBack(_config.syncDaysBack);
 
   @override
   void initState() {
@@ -120,10 +133,10 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
       await _sync.requestAuthorization();
       await AppState.instance.update(_config.copyWith(healthRequested: true));
     }
-    await _sync.startSync(_config.syncDaysBack);
+    await _sync.startSync(_daysBack);
   }, done: tr('已开始同步', 'Sync started'));
 
-  Future<void> _retry() => _run(() => _sync.retry(_config.syncDaysBack), done: tr('已重试', 'Retrying'));
+  Future<void> _retry() => _run(() => _sync.retry(_daysBack), done: tr('已重试', 'Retrying'));
 
   // -------------------------------------------------------------------------- settings
 
@@ -340,6 +353,17 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
   Future<String?> _scanText() => Navigator.of(context).push<String>(MaterialPageRoute(builder: (_) => const ScanPage()));
   Future<String?> _clipboardText() async => (await Clipboard.getData(Clipboard.kTextPlain))?.text;
 
+  /// Beat-to-beat / ECG / water never asked by iOS (sheet did not come up): ask now, then one upload pass right away.
+  Future<void> _allowRaw() => _run(() async {
+    await RawSync.instance.requestAuth();
+    await RawSync.instance.run(
+      serverUrl: _config.todayUrl,
+      daysBack: _config.syncDaysBack,
+      accountToken: AppState.instance.accountToken,
+      pageToken: RawSync.instance.ingestToken, // setup-link users: the token the Today page minted earlier
+    );
+  });
+
   Future<void> _seed() => _run(() async {
     final r = await seedHealthTestData();
     setState(() => _message = r);
@@ -367,7 +391,7 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
         : (tr('后台同步已开启', 'Background sync on'), const Color(0xFF34C759));
 
     return Scaffold(
-      appBar: AppBar(title: Text(tr('手机同步', 'Phone sync'))),
+      appBar: AppBar(title: Text(_center ? tr('同步中心', 'Sync center') : tr('手机同步', 'Phone sync'))),
       body: RefreshIndicator(
         onRefresh: () async {
           setState(() => _statusReload++);
@@ -438,8 +462,12 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
             ],
             const SizedBox(height: 24),
 
+            // ---- sync center: forced re-sync, phone / server per type (resync.dart)
+            if (_center) SyncCenterSection(load: _loadDataStatus, reloadToken: _statusReload),
+
             // ---- what the server received per type, and the Health permission buttons (#163)
             DataStatusSection(
+              showTypes: !_center,
               load: _loadDataStatus,
               askStatus: healthAskStatus,
               requestAccess: _requestAccess,
@@ -484,7 +512,13 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Row2(tr('心跳间期', 'Beat-to-beat readings'), value: raw.heartbeats == null ? '—' : '${raw.heartbeats}'),
                   Row2(tr('心电图', 'ECG recordings'), value: raw.ecgs == null ? '—' : '${raw.ecgs}'),
                   if (raw.water != null) Row2(tr('饮水记录', 'Water entries'), value: '${raw.water}'),
-                  Row2(tr('上次上传', 'Last upload'), value: ago(raw.lastUpload)),
+                  if (_center && raw.metrics != null)
+                    Row2(tr('其他类型（站立、锻炼、手腕温度等）', 'Other types (stand, exercise, wrist temperature …)'),
+                        value: '${raw.metrics}'),
+                  Row2(tr('上次上传', 'Last upload'), value: rawLastUploadText(raw)),
+                  Row2(tr('上次检查', 'Last check'), value: ago(raw.lastRun)),
+                  if (raw.stop == 'not_asked')
+                    Row2(tr('允许读取', 'Allow reading'), onTap: _busy ? null : _allowRaw),
                 ],
                 footer: raw.problem ??
                     tr('打开 app 时直接从「健康」读取，传到你的服务器。', 'Read from Health when you open the app and sent to your server.'),
@@ -560,10 +594,15 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
 
   Widget _kv(String k, String v) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
+    // The value wraps under its label's line (a failed sync carries its reason) instead of squeezing the label
     child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
-        Text(v, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+        Text(k, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(v, textAlign: TextAlign.end, style: const TextStyle(fontFeatures: [FontFeature.tabularFigures()])),
+        ),
       ],
     ),
   );

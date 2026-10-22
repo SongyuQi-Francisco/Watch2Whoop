@@ -8,7 +8,8 @@ from .. import auth
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
 from ..web import login_limit
-from . import cards, leaderboard, params as P, store
+from ..images import store as images
+from . import cards, codes, leaderboard, params as P, store
 
 # Every endpoint is behind the `friends` feature flag (docs/rollout.md): 404 while it is off for the caller
 router = APIRouter(prefix="/v1/friends", tags=["friends"], dependencies=[Depends(flags.require(auth.CIRCLES_FLAG))])
@@ -58,7 +59,7 @@ class InviteIn(BaseModel):
 
 class JoinIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    code: str | None = Field(default=None, max_length=40)
+    code: str | None = Field(default=None, max_length=80)
     invite_id: int | None = None
     scopes: list[str] = Field(max_length=30)
 
@@ -76,8 +77,10 @@ class ScopesIn(BaseModel):
 
 @router.get("")
 def overview(conn=Depends(get_conn), viewer=Depends(current_user)):
-    # first use of circles: make the personal circle and pick up a referral invite made while circles were off
+    # first use of circles: make the personal circle and pick up a referral invite made while circles were off;
+    # join the circles of activation codes used at sign-up once the consent allows it
     store.referral_offer(conn, viewer["id"])
+    codes.complete_pending(conn, viewer["id"])
     return store.overview(conn, viewer["id"])
 
 
@@ -111,11 +114,25 @@ def revoke_invite(circle_id: int, invite_id: int, conn=Depends(get_conn), viewer
     return Response(status_code=204)
 
 
+@router.get("/circles/{circle_id}/avatar")
+def avatar(circle_id: int, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The circle's avatar (WebP), for its members only: 404 for anyone else and for a circle without one."""
+    c = _run(store._circle_for_member, conn, circle_id, viewer["id"])
+    img = images.get(conn, c["avatar_image_id"]) if c["avatar_image_id"] else None
+    if img is None:
+        raise HTTPException(404, "没有头像")
+    etag = f'"{img["sha256"][:32]}"'
+    headers = {"ETag": etag, "Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=bytes(img["data"]), media_type=img["mime"], headers=headers)
+
+
 @router.get("/invite")
 def preview(code: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     """What an invite code opens, before the person picks what to share."""
     _check_limit(request, viewer["id"])
-    row = store.preview(conn, code)
+    row = _run(store.preview, conn, code)
     if row is None:
         raise _fail(request, viewer["id"])
     return row

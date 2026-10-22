@@ -91,9 +91,11 @@ def test_jobs_write_healthspan_and_stress(conn, person):
     assert h["chrono_age"] == pytest.approx((TODAY - date(2001, 6, 15)).days / 365.2425, abs=0.01)
     assert h["body_age"] == pytest.approx(h["chrono_age"] + h["delta_years"], abs=0.06)
     keys = {c["key"] for c in h["contributors"]} | {m["key"] for m in h["insufficient"]}
-    assert keys == {"sleep_duration", "sleep_regularity", "steps", "mvpa", "strength", "vo2max", "rhr", "body_comp"}
+    # v1.2 (production since 2026-10-23): steps, exercise and strength are one activity domain
+    assert keys - {"strength"} == {"sleep_duration", "sleep_regularity", "activity", "vo2max", "rhr", "body_comp"}
     by = {c["key"]: c for c in h["contributors"]}
-    assert by["steps"]["value"] == 6000 and by["steps"]["direction"] == "older"
+    parts = {p["key"]: p for p in by["activity"]["parts"]}
+    assert parts["steps"]["value"] == 6000 and parts["steps"]["years"] > 0 and h["algo_version"].startswith("hs-v1.2")
     assert by["body_comp"]["measure"] == "bmi" and by["vo2max"]["readings"] >= 2
     assert h["history"][-1]["as_of"] == h["as_of"]
     # Stress: 18:00-19:00 is training (excluded), nights are sleep (excluded); daytime 9-16 has 6 samples per hour
@@ -278,7 +280,7 @@ def test_other_aggregates_follow_each_scope(conn, person, monkeypatch):
     own, h = views.healthspan(conn, uid), views.healthspan(conn, uid, viewer_id=viewer)
     assert h["body_age"] == own["body_age"] and h["hidden"] == ["metrics", "sleep", "training", "weight"]
     keys = {i["key"] for i in h["contributors"] + h["insufficient"]}
-    assert keys <= {"sleep_duration", "mvpa"} and "steps" in {i["key"] for i in own["contributors"]}
+    assert keys <= {"sleep_duration"} and "activity" in {i["key"] for i in own["contributors"]}   # activity: metrics + training
     # trends: regularity, deep + REM and wake-ups are sleep-session data
     tz = views.user_tz(conn, uid)
     t = series.build(conn, {"id": viewer}, uid, d, 7, d, tz)

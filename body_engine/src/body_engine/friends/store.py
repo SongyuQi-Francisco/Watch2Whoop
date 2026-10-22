@@ -20,6 +20,7 @@ from datetime import datetime
 import psycopg
 
 from .. import auth, i18n
+from ..avatars import urls as avatar_store
 from ..profile import consent
 from ..web import login_codes
 from . import params as P
@@ -82,6 +83,26 @@ def _circle_for_owner(conn, circle_id: int, uid: int) -> dict:
 
 def _count_circles(conn, uid: int) -> int:
     return conn.execute("SELECT count(*) AS n FROM circle_members WHERE user_id = %s", (uid,)).fetchone()["n"]
+
+
+def max_members(circle: dict) -> int:
+    """The circle's own cap (circles.max_members, set for club circles by the admin) or params.MAX_MEMBERS."""
+    return circle.get("max_members") or P.MAX_MEMBERS
+
+
+def members_and_waiting(conn, circle_id: int) -> int:
+    """Members plus people who used one of the circle's activation codes and wait for their consent (their place is kept)."""
+    return conn.execute(
+        """SELECT (SELECT count(*) FROM circle_members WHERE circle_id = %(c)s)
+                + (SELECT count(*) FROM circle_code_uses u JOIN circle_codes k ON k.id = u.code_id
+                   WHERE k.circle_id = %(c)s AND u.joined_at IS NULL AND u.user_id IS NOT NULL) AS n""",
+        {"c": circle_id}).fetchone()["n"]
+
+
+def avatar_url(circle: dict) -> str | None:
+    """Where the page loads the circle's avatar (members only, friends/api.py); the image id makes the URL change with it."""
+    img = circle.get("avatar_image_id")
+    return f"/v1/friends/circles/{circle['id']}/avatar?v={img}" if img else None
 
 
 # ---------------------------------------------------------------- shares sync
@@ -198,7 +219,12 @@ def _live_code(conn, code: str) -> dict | None:
 
 
 def preview(conn: psycopg.Connection, code: str) -> dict | None:
-    """What a code opens (before choosing what to share): circle name, owner's name, member count. None = bad code."""
+    """What a code opens (before choosing what to share): circle name, owner's name, member count. None = bad code.
+    A circle activation code (friends/codes.py) also gives the circle's default scopes; 410 when it is used up / off."""
+    from . import codes
+    hit = codes.preview(conn, code)
+    if hit is not None:
+        return hit
     inv = _live_code(conn, code)
     if inv is None:
         return None
@@ -213,6 +239,11 @@ def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, in
     Returns the circle view; LookupError when the code / invite is not valid (the API counts it as a failure)."""
     _require_consent(conn, uid)
     scopes = clean_scopes(scopes)
+    if code is not None and invite_id is None:
+        from . import codes
+        hit = codes.redeem(conn, uid, code, scopes)
+        if hit is not None:
+            return {**circle_view(conn, uid, hit["circle_id"]), **({"already": True} if hit["already"] else {})}
     if invite_id is not None:
         inv = conn.execute("""SELECT id, circle_id FROM circle_invites WHERE id = %s AND invitee_user_id = %s
                               AND revoked_at IS NULL AND expires_at > now()""", (invite_id, uid)).fetchone()
@@ -221,13 +252,13 @@ def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, in
     if inv is None:
         raise LookupError("邀请码无效或已过期")
     cid = inv["circle_id"]
-    conn.execute("SELECT id FROM circles WHERE id = %s FOR UPDATE", (cid,))
+    circle = conn.execute("SELECT id, max_members FROM circles WHERE id = %s FOR UPDATE", (cid,)).fetchone()
     if conn.execute("SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s", (cid, uid)).fetchone():
         return {**circle_view(conn, uid, cid), "already": True}
     if _count_circles(conn, uid) >= P.MAX_CIRCLES_PER_USER:
         raise FriendsError(409, f"最多加入 {P.MAX_CIRCLES_PER_USER} 个圈子")
-    if conn.execute("SELECT count(*) AS n FROM circle_members WHERE circle_id = %s", (cid,)).fetchone()["n"] >= P.MAX_MEMBERS:
-        raise FriendsError(409, f"这个圈子已满（最多 {P.MAX_MEMBERS} 人）")
+    if members_and_waiting(conn, cid) >= max_members(circle):
+        raise FriendsError(409, f"这个圈子已满（最多 {max_members(circle)} 人）")
     conn.execute("INSERT INTO circle_members (circle_id, user_id, scopes) VALUES (%s, %s, %s)", (cid, uid, scopes))
     if invite_id is not None:   # an addressed invite is used up
         conn.execute("UPDATE circle_invites SET revoked_at = now(), used_count = used_count + 1 WHERE id = %s", (inv["id"],))
@@ -259,13 +290,20 @@ def _members(conn, circle_id: int) -> list[int]:
         "SELECT user_id FROM circle_members WHERE circle_id = %s ORDER BY joined_at, user_id", (circle_id,))]
 
 
+def _delete_circle(conn, circle_id: int) -> None:
+    """Delete a circle and its logo (the image row would stay behind otherwise: circles only point at it)."""
+    row = conn.execute("DELETE FROM circles WHERE id = %s RETURNING avatar_image_id", (circle_id,)).fetchone()
+    if row and row["avatar_image_id"]:
+        conn.execute("DELETE FROM images WHERE id = %s", (row["avatar_image_id"],))
+
+
 def _drop_member(conn, circle_id: int, member_id: int) -> None:
     """Take a member out; an owner who leaves hands the circle to the longest-standing member, the last one dissolves it."""
     circle = conn.execute("SELECT * FROM circles WHERE id = %s FOR UPDATE", (circle_id,)).fetchone()
     conn.execute("DELETE FROM circle_members WHERE circle_id = %s AND user_id = %s", (circle_id, member_id))
     rest = _members(conn, circle_id)
     if not rest:
-        conn.execute("DELETE FROM circles WHERE id = %s", (circle_id,))
+        _delete_circle(conn, circle_id)
     elif circle["owner_id"] == member_id:
         conn.execute("UPDATE circles SET owner_id = %s WHERE id = %s", (rest[0], circle_id))
     sync_user(conn, member_id)
@@ -288,7 +326,7 @@ def remove_member(conn: psycopg.Connection, uid: int, circle_id: int, member_id:
 def dissolve(conn: psycopg.Connection, uid: int, circle_id: int) -> None:
     _circle_for_owner(conn, circle_id, uid)
     members = _members(conn, circle_id)
-    conn.execute("DELETE FROM circles WHERE id = %s", (circle_id,))
+    _delete_circle(conn, circle_id)
     for m in members:
         sync_user(conn, m)
 
@@ -397,12 +435,14 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
     members = conn.execute(
         """SELECT u.id, u.display_name, m.joined_at, m.scopes FROM circle_members m JOIN users u ON u.id = m.user_id
            WHERE m.circle_id = %s ORDER BY m.joined_at, u.id""", (circle_id,)).fetchall()
+    avatars = avatar_store.urls_for(conn, uid, [m["id"] for m in members])
     out = {"id": c["id"], "name": c["name"], "owner_id": c["owner_id"], "is_owner": c["owner_id"] == uid,
-           "personal": c["personal"], "created_at": c["created_at"],
+           "personal": c["personal"], "created_at": c["created_at"], "avatar": avatar_url(c),
+           "max_members": max_members(c),
            "my_scopes": next(m["scopes"] for m in members if m["id"] == uid),
            # other members' picks are not shown here: what they share with you is in /v1/web/me → viewable
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],
-                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid} for m in members]}
+                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"])} for m in members]}
     if out["is_owner"]:
         codes = conn.execute("""SELECT id, created_at, expires_at, used_count FROM circle_invites WHERE circle_id = %s
                                 AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())

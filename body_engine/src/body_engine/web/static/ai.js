@@ -260,9 +260,12 @@
     });
   }
 
-  // Opt-in consent for sending data to DeepSeek: shown before the first fallback chat; then() runs after agreeing
+  // Opt-in consent for sending data to DeepSeek: shown before the first fallback chat; then() runs after agreeing.
+  // Flag consent_one_tap: usually already given on the one-tap first-run screen (profile.js); when it is not (older account,
+  // revised terms) the sheet is one button and one line whose 《Jarvis AI 说明》 opens the points (recorded as method one_tap).
   async function consentSheet(f, then) {
     if (!f?.points) { try { f = await C.api("/v1/users/me/ai-fallback"); } catch (e) { C.toast(e.message); return; } }
+    if (window.BodyFlags?.on("consent_one_tap")) { oneTapSheet(f, then); return; }
     C.openSheet(tr("Jarvis · 使用前确认"), `
       <ul class="small" style="padding-left:18px;line-height:1.6;margin:0">${f.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
       <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin-top:14px"><input type="checkbox" id="fb-check"> ${esc(tr("我已阅读，同意把上面的数据发给 DeepSeek"))}</label>
@@ -275,6 +278,25 @@
           await C.api("/v1/users/me/ai-fallback/consent", { method: "POST", body: { version: f.consent_version, agree: true } });
           await afterChange(); C.closeSheet(); then?.();
         } catch (e) { $("#fb-err", root).textContent = e.message; }
+      };
+    });
+  }
+
+  function oneTapSheet(f, then) {
+    const terms = `<button class="link" type="button" id="fb-terms" style="font-size:12px;padding:0;color:var(--text);font-weight:600">${esc(tr("《Jarvis AI 说明》"))}</button>`;
+    C.openSheet("Jarvis", `
+      <ul class="small" id="fb-points" style="padding-left:18px;line-height:1.6;margin:0 0 6px" hidden>${f.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
+      <div class="btns" style="margin-top:6px"><button class="btn btn-primary" id="fb-ok">${esc(tr("开始使用"))}</button></div>
+      <p style="font-size:12px;line-height:1.6;color:var(--text-2);text-align:center;margin:10px 0 0">${esc(tr("继续即表示同意{doc}")).replace("{doc}", terms)}</p>
+      <p class="login-error" id="fb-err" role="alert"></p>`, (root) => {
+      $("#fb-terms", root).onclick = () => { const l = $("#fb-points", root); l.hidden = !l.hidden; };
+      const ok = $("#fb-ok", root);
+      ok.onclick = async () => {
+        ok.disabled = true;
+        try {
+          await C.api("/v1/users/me/ai-fallback/consent", { method: "POST", body: { version: f.consent_version, agree: true, method: "one_tap" } });
+          await afterChange(); C.closeSheet(); then?.();
+        } catch (e) { $("#fb-err", root).textContent = e.message; ok.disabled = false; }
       };
     });
   }
@@ -869,7 +891,9 @@
   // page's own pages (C.go). The training card reuses the training page's exercise card heads (training-day.js).
   const rich = () => !!window.BodyFlags?.on("jarvis_rich");
   const METRIC = { recovery: tr("恢复"), strain: tr("负荷"), sleep: tr("睡眠"), hrv: "HRV", rhr: tr("静息心率"), weight: tr("体重") };
-  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天"), sleep: tr("睡眠详情"), profile: tr("设置性别") };
+  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天"), sleep: tr("睡眠详情"), profile: tr("设置性别"),
+    "food.recipes": tr("全部食谱"), "food.shopping": tr("打开采购"), recipe: tr("打开食谱"),
+    healthspan: tr("打开身体年龄"), lab: tr("全部记录"), "trends.report": tr("打开报告"), "supplements": tr("我的补剂"), "data_status": tr("数据状态") };
   // sleep card: rule findings (sleep_night/view.py notes, by key) as short labels
   const NOTE = { short_of_need: tr("睡得不够"), weak_duration: tr("时长拉分"), weak_stages: tr("阶段拉分"), weak_consistency: tr("规律性拉分"),
     weak_interruptions: tr("中途醒来拉分"), deep_low: tr("深睡偏少"), rem_low: tr("REM 偏少"), efficiency_low: tr("效率偏低"),
@@ -880,7 +904,37 @@
     next_meal: () => [tr("下一餐吃什么"), tr("下一餐吃什么合适")],
     analyze_muscles: () => [tr("分析肌群训练"), tr("请分析我的肌群训练：先用 get_muscle_load 看各肌群本周的组数，结合我的重点肌群和体态目标，告诉我哪些偏少、哪些偏多、和目标差在哪、具体怎么改（每周给哪块加几组、换哪些动作，避开我的禁用动作）。要改训练计划的话先给我看改动，我确认后再改。")],
     explain_trend: (c) => [tr("解释这个变化"), tr("解释一下{name}最近的变化", { name: METRIC[c.metric] || c.metric })],
+    // jarvis_cards_v2 (diet cards)
+    more_meals: () => [tr("换一个"), tr("换几道别的推荐")],
+    log_recipe: (c) => [tr("记下这餐"), tr("按食谱「{name}」记一份（食谱 id {id}）", { name: c.name, id: c.id })],
+    recipe_steps: (c) => [tr("怎么做"), tr("「{name}」怎么做？", { name: c.name })],
+    shopping_plan: () => [tr("还缺什么"), tr("看看这周的采购清单还缺什么")],
+    undo_meal: () => [tr("撤销"), tr("撤销刚才记的这餐")],
+    explain_recovery: () => [tr("为什么是这个分"), tr("解释一下我今天的恢复分：哪些因素拉高、哪些拉低")],
+    explain_stress: () => [tr("压力从哪来"), tr("我今天的压力从哪来，怎么降下来")],
+    improve_body_age: () => [tr("怎么变年轻"), tr("我的身体年龄哪几项拖后腿，先改哪一项最划算")],
+    improve_vo2max: () => [tr("怎么提高"), tr("我的 VO₂max 怎么提高，按我现在的训练给个计划")],
+    explain_monitor: () => [tr("要紧吗"), tr("我今天的生命体征有异常吗，要不要注意")],
+    explain_lab: (c) => [tr("解读一下"), tr("解读一下我的{name}历次化验", { name: c.test_name || "" })],
+    log_supplements: () => [tr("记今天的补剂"), tr("今天的补剂都吃了")],
+    explain_journal: () => [tr("怎么用这些"), tr("根据日记分析，哪些习惯最值得保持或改掉")],
+    explain_report: (c) => [tr("总结一下"), c.period === "month" ? tr("总结一下我这个月") : tr("总结一下我这周")],
+    explain_sleep: (c) => [tr("分析这晚"), tr("分析一下我 {d} 醒来的那晚睡眠", { d: c.date })],
   };
+  // Row buttons of the diet cards (jarvis_cards_v2): the text names the row by its own fields (the server's ids), never model text
+  const ROW = {
+    portion: (c, e, x) => tr("把 {d} 记的「{food}」改成原来的 {x} 倍（id {id}）", { d: c.date, food: e.food || "", x, id: e.id }),
+    delete: (c, e) => tr("删掉 {d} 记的「{food}」（id {id}）", { d: c.date, food: e.food || "", id: e.id }),
+    recipe: (r, slot) => (slot ? tr("按食谱「{name}」记一份{meal}（食谱 id {id}）", { name: r.name, meal: window.BodyFood?.slotName(slot) || slot, id: r.id })
+      : tr("按食谱「{name}」记一份（食谱 id {id}）", { name: r.name, id: r.id })),
+    template: (t) => tr("按快捷模板「{name}」记一次（模板 id {id}）", { name: t.name, id: t.id }),
+  };
+  // Lucide icons (https://lucide.dev, ISC): only the paths used; notices in THIRD_PARTY_NOTICES.md
+  const LUCIDE = {
+    utensils: '<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+  };
+  const lucide = (k, cls = "") => `<svg class="ai-ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${LUCIDE[k]}</svg>`;
   let cardSeq = 0;
   const n0 = (v, d = 0) => (v == null ? "—" : window.I18N.num(v, d));
 
@@ -904,7 +958,8 @@
   }
   function mealBody(c) {
     const t = c.totals || {}, g = c.goal || {};
-    const rows = (c.entries || []).map((e) => `<li><span>${esc(e.food || "")}${e.quantity ? ` <span class="muted">${esc(n0(e.quantity, 1))} ${esc(e.unit || "")}</span>` : ""}</span>
+    const tap = c.entry_actions?.length;   // v2: a row opens its portion / delete buttons (mealRowsV2)
+    const rows = (c.entries || []).map((e, i) => `<li${tap && e.id ? ` class="ai-entry" data-entry="${i}" role="button" tabindex="0"` : ""}><span>${esc(e.food || "")}${e.quantity ? ` <span class="muted">${esc(n0(e.quantity, 1))} ${esc(e.unit || "")}</span>` : ""}</span>
       <span class="num muted">${n0(e.calories)} kcal</span></li>`);
     const more = rows.length > 6 ? `<li class="muted small">${esc(tr("还有 {n} 条", { n: rows.length - 6 }))}</li>` : "";
     return `${cardHead(tr("饮食"), c.date)}
@@ -930,8 +985,177 @@
     return `${cardHead(tr("睡眠"), c.date, tier ? ` <span class="badge ${tier}">${esc(tr("睡眠分"))} ${n0(c.score)}</span>` : "")}
       <div class="ai-card-big num"><b>${t(m.asleep_min)}</b> <small>${esc(m.start)} → ${esc(m.end)}</small>
         ${c.need_min ? `<span class="small muted">${esc(tr("需求"))} ${t(c.need_min)}</span>` : ""}</div>${chart}
-      ${found.length ? `<div class="rcard-tags" style="margin-top:8px">${found.map((n) => `<span class="badge ${n.tone === "bad" ? "bad" : "mid"}">${esc(NOTE[n.key])}</span>`).join("")}</div>` : ""}`;
+      ${found.length ? `<div class="rcard-tags" style="margin-top:8px">${found.map((n) => `<span class="badge ${n.tone === "bad" ? "bad" : "mid"}">${esc(NOTE[n.key])}</span>`).join("")}</div>` : ""}
+      ${c.more ? sleepMoreHtml(c, m) : ""}`;
   }
+  // v2: efficiency, time to fall asleep, wake-ups against the 7-night average, and the sleep score's parts
+  const PART = { duration: tr("时长"), stages: tr("阶段"), consistency: tr("规律性"), interruptions: tr("中途醒来") };
+  function sleepMoreHtml(c, m) {
+    const a = c.avg7 || {}, x = c.more || {};
+    const cell = (l, v, sub) => `<div><div class="l">${esc(l)}</div><div class="v">${v}</div>${sub ? `<div class="small muted">${esc(sub)}</div>` : ""}</div>`;
+    const grid = `<div class="nut4 ai-sleep-kv">${cell(tr("效率"), m.efficiency_pct != null ? `${n0(m.efficiency_pct)}<small class="muted"> %</small>` : "—", a.efficiency_pct != null ? tr("平均 {v}%", { v: n0(a.efficiency_pct) }) : "")}
+      ${cell(tr("入睡耗时"), x.latency_min != null ? `${n0(x.latency_min)}<small class="muted"> ${tr("分")}</small>` : "—", "")}
+      ${cell(tr("夜醒"), x.awakenings != null ? `${n0(x.awakenings)}<small class="muted"> ${tr("次")}</small>` : "—", x.waso_min != null ? tr("{n} 分钟", { n: n0(x.waso_min) }) : "")}</div>
+      ${a.bedtime ? `<div class="small muted ai-card-sub num">${esc(tr("近 7 晚"))} ${esc(a.bedtime)} → ${esc(a.wake || "")}</div>` : ""}`;
+    const parts = (c.parts || []).filter((p) => p.score != null);
+    return grid + (parts.length ? parts.map((p) => meter(PART[p.key] || p.key, p.score, 100, "")).join("") : "");
+  }
+  // ---- body cards (ai/cards_body.py, flag jarvis_cards_v2): the pages' own components (app.js window.BodyCards), fed with
+  // the same data as on the page, so a card here looks like the card there. Bare cards (no frame of their own) hold them.
+  const BC = () => window.BodyCards || {};
+  const none = (title, date) => `<div class="ai-card-in">${cardHead(title, date)}<div class="small muted">${esc(tr("暂无数据"))}</div></div>`;
+  const BARE = new Set(["recovery", "strain", "stress", "healthspan", "trend", "weight", "hr_zones", "vo2max", "monitor", "report", "journal"]);
+  function recoveryBody(c) {
+    const B = BC(), tiles = [["HRV", c.hrv_ms != null ? `${n0(c.hrv_ms)}<small class="muted"> ms</small>` : null],
+      [tr("静息心率"), c.rhr != null ? `${n0(c.rhr)}<small class="muted"> bpm</small>` : null],
+      [tr("睡眠表现"), c.sleep_performance != null ? `${n0(100 * c.sleep_performance)}<small class="muted"> %</small>` : null]];
+    return `<div class="ai-hero">${B.ring ? B.ring(c.recovery, c.zone) : ""}${c.word ? `<div class="hero-word">${esc(c.word)}</div>` : ""}
+        <div class="small muted">${esc(mmdd(c.date))}</div></div>
+      <div class="tiles">${tiles.map(([l, v]) => `<div class="tile"><span class="tile-label">${esc(l)}</span><span class="tile-value">${v ?? "—"}</span></div>`).join("")}</div>
+      ${B.recoveryTrend ? B.recoveryTrend(c.trend) : ""}`;
+  }
+  const strainBody = (c) => { const B = BC(), coach = B.strainCoach?.(c.coach) || ""; return `${coach ? `<div class="ai-row">${coach}</div>` : ""}${B.strainTrend?.(c.trend) || ""}` || none(tr("负荷"), c.date); };
+  const stressBody = (c) => BC().stress?.({ days: c.days }) || none(tr("压力"), c.date);
+  const healthspanBody = (c) => { const B = BC(); return c.body_age == null ? (B.healthspan?.(c) || none(tr("身体年龄"))) : `${B.healthspan(c)}<div class="card">${B.healthspanDetail(c)}</div>`; };
+  const trendBody = (c) => BC().trend?.(c.metric, c.trend) || none(tr("趋势"));   // the page's "vs 上期" change; weight's change_kg is for the model
+  const vo2Body = (c) => BC().trend?.("vo2max", c.trend, c.level_zh || c.level_label ? { base: esc(window.I18N.lang === "en" ? c.level_label || c.level || "" : c.level_zh || "") } : {}) || none("VO₂max");
+  const hrZonesBody = (c) => BC().hrZones?.(c.zones) || none(tr("心率区间分布"), c.date);
+  const monitorBody = (c) => BC().monitor?.({ metrics: c.metrics }) || none(tr("健康监测"), c.date);
+  const reportBody = (c) => (c.current ? `<div class="ai-rep"><div class="ai-card-title">${esc(c.period === "month" ? tr("月报") : tr("周报"))}</div>${BC().report?.(c) || ""}</div>` : none(c.period === "month" ? tr("月报") : tr("周报")));
+  const journalBody = (c) => BC().behavior?.(c.results) || none(tr("行为影响 · 次日恢复"));
+  function labBody(c) { return `${cardHead(c.test_name || tr("化验"), null)}${BC().lab?.(c) || ""}`; }
+  function supplementsBody(c) {
+    const head = cardHead(tr("补剂"), c.date);
+    if (!c.items?.length) return `${head}<div class="small muted">${esc(tr("没有在吃的补剂"))}</div>`;
+    return `${head}<ul class="ai-card-list ai-shop">${c.items.map((i) => `<li class="${i.taken ? "done-ok" : ""}"><span>${i.taken ? lucide("check", "ok") : `<i class="ai-dot"></i>`}<span class="n">${esc(i.name)}</span>
+      ${i.timing ? `<span class="small muted">${esc(i.timing)}</span>` : ""}</span><span class="num muted">${esc(i.dose || "")}</span></li>`).join("")}</ul>`;
+  }
+  function waterBody(c) {
+    const pct = c.goal_ml ? Math.min(100, Math.round((100 * (c.total_ml || 0)) / c.goal_ml)) : 0;
+    const t = (iso) => String(iso || "").slice(11, 16);
+    return `${cardHead(tr("喝水"), c.date)}<div class="ai-card-big num"><b>${n0(c.total_ml)}</b> <small>/ ${n0(c.goal_ml)} ml</small><span class="small muted">${pct}%</span></div>
+      <div class="bar"><span style="width:${pct}%"></span></div>
+      ${c.entries?.length ? `<div class="small muted ai-card-cap num">${c.entries.map((e) => `${esc(t(e.at))} ${n0(e.ml)}`).join(" · ")}</div>` : ""}`;
+  }
+  const DS = { ok: ["good", tr("正常")], stale: ["mid", tr("过期")], never: ["plain", tr("没收到")] };
+  function dataStatusBody(c) {
+    const s = c.summary || {};
+    const head = cardHead(tr("数据状态"), null, `<span class="ai-card-date">${esc(tr("近 {n} 天", { n: c.window_days || 7 }))}</span>`);
+    const order = { never: 0, stale: 1, ok: 2 };
+    const rows = [...(c.types || [])].sort((a, b) => (order[a.status] ?? 3) - (order[b.status] ?? 3));
+    return `${head}<div class="rcard-tags" style="margin-bottom:6px">${Object.entries(DS).map(([k, [tone, l]]) => `<span class="badge ${tone}">${esc(l)} ${n0(s[k] || 0)}</span>`).join("")}</div>
+      <ul class="ai-card-list">${rows.slice(0, 10).map((t) => `<li><span>${esc(t.label)}</span><span class="small"><span class="badge ${(DS[t.status] || ["plain"])[0]}">${esc((DS[t.status] || ["", t.status])[1])}</span>
+        <span class="muted num">${t.last_date ? esc(mmdd(t.last_date)) : ""}</span></span></li>`).join("")}</ul>`;
+  }
+  // ---- diet cards (ai/cards_food.py, flag jarvis_cards_v2)
+  function ringMini(v, goal, label, unit) {   // the food page's progress colours (.bar): --text, --mid when over by 10 %
+    const r = 34, len = 2 * Math.PI * r, frac = goal ? Math.min(1, (v || 0) / goal) : 0, over = goal && (v || 0) > goal * 1.1;
+    return `<div class="ai-ring"><svg viewBox="0 0 84 84" role="img" aria-label="${esc(`${label} ${n0(v)}${goal ? ` / ${n0(goal)}` : ""} ${unit}`)}">
+      <circle class="track" cx="42" cy="42" r="${r}" fill="none" stroke-width="7"/>
+      ${goal ? `<circle class="arc${over ? " over" : ""}" cx="42" cy="42" r="${r}" fill="none" stroke-width="7" stroke-linecap="round"
+        stroke-dasharray="${len.toFixed(1)}" stroke-dashoffset="${(len * (1 - frac)).toFixed(1)}" transform="rotate(-90 42 42)"/>` : ""}
+      <text class="val" x="42" y="44" text-anchor="middle">${n0(v)}</text>
+      <text class="cap" x="42" y="59" text-anchor="middle">${goal ? `/ ${n0(goal)}` : esc(unit)}</text></svg>
+      <div class="ai-ring-l">${esc(label)}${goal ? ` <span class="muted">${esc(unit)}</span>` : ""}</div></div>`;
+  }
+  function goalsBody(c) {
+    const t = c.totals || {}, g = c.goal;
+    const head = cardHead(tr("饮食目标"), c.date, c.name ? ` <span class="badge plain">${esc(c.name)}</span>` : "");
+    if (!g) return `${head}<div class="small muted">${esc(tr("还没有设饮食目标"))}</div>`;
+    const cap = (label, v, max) => (max ? meter(label, v, max, "g") : "");
+    return `${head}<div class="ai-rings">${ringMini(t.calories, g.calories, tr("热量"), "kcal")}${ringMini(t.protein_g, g.protein_g, tr("蛋白"), "g")}</div>
+      ${meter(tr("碳水"), t.carbs_g, g.carbs_g, "g")}${meter(tr("脂肪"), t.fat_g, g.fat_g, "g")}
+      ${cap(tr("饱和脂肪上限"), t.saturated_fat_g, g.sat_fat_max_g)}${cap(tr("添加糖上限"), t.added_sugar_g, g.added_sugar_max_g)}${cap(tr("纤维"), t.fiber_g, g.fiber_min_g)}
+      ${c.logged ? "" : `<div class="small muted">${esc(tr("这天还没有记录"))}</div>`}`;
+  }
+  // a recipe row as the food page draws it (app.js recipeCard), with the fields a suggestion uses there
+  const rcard = (r, slot) => window.BodyFood?.recipeCard({ id: r.id, name: r.name, favorite: r.favorite, labels: r.badges || [],
+    meal_kcal: r.kcal, meal_protein_g: r.protein_g, with_staple: r.with_staple, prep_min: r.min }, slot)
+    || `<button class="rcard" data-recipe="${esc(r.id)}"><span class="rcard-name">${esc(r.name)}</span></button>`;
+  function suggestBody(c) {
+    const rem = c.remaining || {};
+    const head = cardHead(tr("推荐餐"), c.date) + (rem.kcal != null ? `<div class="small muted ai-card-sub num">${esc(tr("余 {k} kcal · {p} g 蛋白", { k: n0(Math.max(0, rem.kcal)), p: n0(Math.max(0, rem.protein_g || 0)) }))}</div>` : "");
+    const slots = (c.slots || []).filter((s) => s.items?.length || s.logged);
+    if (!slots.length) return `${head}<div class="small muted">${esc(tr("没有合适的菜"))}</div>`;
+    return `${head}${slots.map((s) => `<div class="ai-slot">
+      <div class="mp-h"><span class="row-title">${esc(window.BodyFood?.slotName(s.slot) || s.slot)}</span>
+        <span class="small muted num">${s.logged ? esc(tr("已吃 {k} kcal", { k: n0(s.logged.kcal) })) : s.target?.kcal > 0 ? `≈ ${n0(s.target.kcal)} kcal · ${n0(s.target.protein_g)} g` : ""}</span></div>
+      ${(s.items || []).map((r) => `<div class="ai-rc">${rcard(r, s.slot)}<button type="button" class="ai-q" data-cq data-row="recipe" data-slot="${esc(s.slot)}" data-rid="${esc(r.id)}"${chat.busy ? " disabled" : ""}>${esc(tr("记下这餐"))}</button></div>`).join("")}</div>`).join("")}`;
+  }
+  function recipeBody(c) {
+    const pic = c.image ? `<img class="ai-rimg" src="${esc(c.image)}" alt="" loading="lazy" decoding="async">` : `<span class="ai-rimg ph">${lucide("utensils")}</span>`;
+    const n4 = (l, v, u) => `<div><div class="l">${esc(l)}</div><div class="v">${n0(v)}<small class="muted"> ${esc(u)}</small></div></div>`;
+    const badges = (c.badges || []).map((b) => `<span class="badge ${{ good: "good", warn: "mid", bad: "bad" }[b.tone] || "plain"}">${esc(b.label)}</span>`).join("");
+    const meta = [c.min && `${c.min}′`, c.steps && tr("{n} 步", { n: c.steps }), c.per_serving && `${tr("每份")} ${c.per_serving}`].filter(Boolean).join(" · ");
+    const ings = (c.ingredients || []).map((x) => `<li><span>${esc(x.food || "")}</span><span class="num muted">${x.grams != null ? `${n0(x.grams)} g` : ""}</span></li>`).join("");
+    return `<div class="ai-recipe-top">${pic}<div class="ai-recipe-t"><div class="ai-card-title">${esc(c.name)}${c.favorite ? ` <span class="star on">★</span>` : ""}</div>
+        ${meta ? `<div class="small muted">${esc(meta)}</div>` : ""}${badges ? `<div class="rcard-tags">${badges}</div>` : ""}</div></div>
+      <div class="nut4">${n4(tr("热量"), c.kcal, "kcal")}${n4(tr("蛋白"), c.protein_g, "g")}${n4(tr("碳水"), c.carbs_g, "g")}${n4(tr("脂肪"), c.fat_g, "g")}</div>
+      ${ings ? `<div class="small muted ai-card-cap">${esc(tr("每份食材"))}</div><ul class="ai-card-list">${ings}${c.more_ingredients ? `<li class="muted small">${esc(tr("还有 {n} 样", { n: c.more_ingredients }))}</li>` : ""}</ul>` : ""}`;
+  }
+  function recipesBody(c) {
+    const head = cardHead(c.slot ? window.BodyFood?.slotName(c.slot) || tr("食谱") : tr("食谱"), null, `<span class="ai-card-date">${esc(tr("{n} 道", { n: c.total || 0 }))}</span>`);
+    if (!c.items?.length) return `${head}<div class="small muted">${esc(tr("暂无食谱"))}</div>`;
+    return `${head}<div class="ai-rlist">${c.items.map((r) => rcard(r)).join("")}</div>`;
+  }
+  function templatesBody(c) {
+    const head = cardHead(tr("快捷记录"), null, `<span class="ai-card-date">${esc(tr("{n} 个", { n: c.total || 0 }))}</span>`);
+    if (!c.items?.length) return `${head}<div class="small muted">${esc(tr("还没有快捷记餐模板"))}</div>`;
+    return `${head}<ul class="ai-card-list ai-tpl">${c.items.map((t, i) => `<li><span><b>${esc(t.name)}</b>
+        <span class="small muted num">${esc(window.BodyFood?.slotName(t.meal) || t.meal || "")} · ${n0(t.kcal)} kcal · ${esc(tr("蛋白"))} ${n0(t.protein_g)} g</span></span>
+      ${t.logged ? `<span class="small muted">${esc(tr("已记 ✓"))}</span>` : `<button type="button" class="ai-q" data-cq data-row="template" data-i="${i}"${chat.busy ? " disabled" : ""}>${esc(t.needs_confirmation ? tr("确认克数") : tr("记一次"))}</button>`}</li>`).join("")}</ul>`;
+  }
+  function shoppingBody(c) {
+    const p = c.progress || { bought: 0, total: 0 };
+    const cost = Object.entries(c.est_total || {}).map(([cur, v]) => `≈ ${cur} ${n0(v, 2)}`).join(" · ");
+    const head = cardHead(tr("采购清单"), c.week_start, "");
+    if (!p.total) return `${head}<div class="small muted">${esc(tr("这周还没有采购清单"))}</div>`;
+    const items = [...(c.items || []).filter((i) => !i.bought), ...(c.items || []).filter((i) => i.bought)];   // to buy first
+    const shown = items.slice(0, 12), more = items.length - shown.length + (c.more || 0);
+    return `${head}${meter(tr("已买"), p.bought, p.total, "")}
+      ${cost ? `<div class="small muted ai-card-sub num">${esc(cost)}</div>` : ""}
+      ${c.warnings?.length ? `<div class="rcard-tags" style="margin-bottom:6px">${c.warnings.map((w) => `<span class="badge mid">${esc(w)}</span>`).join("")}</div>` : ""}
+      <ul class="ai-card-list ai-shop">${shown.map((it) => `<li class="${it.bought ? "done" : ""}">
+        <span>${it.bought ? lucide("check", "ok") : `<i class="ai-dot"></i>`}<span class="n">${esc(it.name)}</span>${it.category_label ? `<span class="small muted">${esc(it.category_label)}</span>` : ""}</span>
+        <span class="num muted">${esc(it.qty || "")}</span></li>`).join("")}</ul>
+      ${more > 0 ? `<div class="small muted">${esc(tr("还有 {n} 样", { n: more }))}</div>` : ""}`;
+  }
+  // meal card rows (v2: the card has entry_actions): tap a row for its portion / delete buttons
+  function mealRowsV2(el, c) {
+    $$("[data-entry]", el).forEach((li) => {
+      li.onclick = () => {
+        const open = li.nextElementSibling?.classList.contains("ai-entry-acts");
+        $$(".ai-entry-acts", el).forEach((x) => x.remove());
+        if (open) return;
+        const e = c.entries[Number(li.dataset.entry)];
+        const acts = [];
+        if (c.entry_actions.includes("portion")) for (const x of [0.5, 1.5, 2]) acts.push([`×${x}`, ROW.portion(c, e, x)]);
+        if (c.entry_actions.includes("delete")) acts.push([tr("删除"), ROW.delete(c, e)]);
+        const row = document.createElement("li");
+        row.className = "ai-entry-acts";
+        row.innerHTML = acts.map(([l], i) => `<button type="button" class="ai-q" data-cq data-ea="${i}"${chat.busy ? " disabled" : ""}>${esc(l)}</button>`).join("");
+        $$("[data-ea]", row).forEach((b) => { b.onclick = (ev) => { ev.stopPropagation(); if (!chat.busy) sendQuick(acts[Number(b.dataset.ea)][1]); }; });
+        li.after(row);
+      };
+    });
+  }
+  function bindRows(el, c) {
+    if (c.type === "meal" && c.entry_actions?.length) mealRowsV2(el, c);
+    $$("[data-recipe]", el).forEach((b) => { b.onclick = () => { closeChat(); C.go?.("recipe", { id: b.dataset.recipe, slot: b.dataset.slot || null }); }; });
+    $$("[data-row]", el).forEach((b) => {
+      b.onclick = () => {
+        if (chat.busy) return;
+        if (b.dataset.row === "recipe") {
+          const s = (c.slots || []).find((x) => x.slot === b.dataset.slot), r = s?.items.find((x) => String(x.id) === b.dataset.rid);
+          if (r) sendQuick(ROW.recipe(r, s.slot));
+        } else if (b.dataset.row === "template") {
+          const t = c.items?.[Number(b.dataset.i)];
+          if (t) sendQuick(ROW.template(t));
+        }
+      };
+    });
+  }
+
   function actionButtons(c) {
     return (c.actions || []).map((a) => {
       if (a.kind === "open" && OPEN[a.page]) return { label: OPEN[a.page], run: () => { closeChat(); C.go?.(a.page, c); } };
@@ -944,13 +1168,20 @@
   }
   function showCard(c) {
     if (!c?.type) return;
-    const body = { training: trainingBody, meal: mealBody, metric: metricBody, sleep: sleepBody, actions: () => "", muscle: (m) => window.BodyMuscleLoad?.cardSvg(m) || "" }[c.type];
+    const body = { training: trainingBody, meal: mealBody, metric: metricBody, sleep: sleepBody, actions: () => "", muscle: (m) => window.BodyMuscleLoad?.cardSvg(m) || "",
+      goals: goalsBody, suggest: suggestBody, recipe: recipeBody, recipes: recipesBody, templates: templatesBody, shopping: shoppingBody,
+      recovery: recoveryBody, strain: strainBody, stress: stressBody, healthspan: healthspanBody, trend: trendBody, weight: trendBody,
+      lab: labBody, supplements: supplementsBody, water: waterBody, journal: journalBody, report: reportBody, hr_zones: hrZonesBody,
+      vo2max: vo2Body, monitor: monitorBody, data_status: dataStatusBody }[c.type];
     if (!body) return;
     const acts = actionButtons(c);
     const el = document.createElement("div");
-    el.className = `ai-card ai-card-${c.type}`;
+    el.className = `ai-card ai-card-${c.type}${BARE.has(c.type) ? " bare" : ""}`;
     el.innerHTML = body(c) + (acts.length ? `<div class="ai-card-acts">${acts.map((a, i) => `<button type="button" class="${a.send ? "ai-q" : "btn"}" data-act="${i}"${a.send ? ` data-cq${chat.busy ? " disabled" : ""}` : ""}>${esc(a.label)}</button>`).join("")}</div>` : "");
     $$("[data-act]", el).forEach((b) => { b.onclick = () => acts[Number(b.dataset.act)].run(); });
+    bindRows(el, c);
+    window.BodyCards?.detach(el);   // the page components' own sheets (BodyCards) keep working after the page re-renders
+    $$("circle.arc[data-target]", el).forEach((a) => requestAnimationFrame(() => requestAnimationFrame(() => a.setAttribute("stroke-dashoffset", a.dataset.target))));   // the ring fills like on the page
     $(".ai-welcome")?.remove();
     $("#ai-log").appendChild(el); scroll();
   }
@@ -960,6 +1191,7 @@
     init(ctx) { C = ctx; },
     handlesAsk() { return !!C && (C.ai?.mode === "api" || C.ai?.mode === "fallback"); },
     openChat, openSettings, settingsValue,
+    refreshAi: afterChange,   // after the one-tap consent (profile.js) recorded the Jarvis terms
     reset() { chat.conv = null; chat.items = []; const p = $("#ai-chat"); if (p) p.remove(); },
   };
 })();

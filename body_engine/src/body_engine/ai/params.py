@@ -72,6 +72,10 @@ PAGE_BUDGET_CHARS = 36500         # core + the page's groups + meta, for any pag
                                   # (36000 -> 36500 for the 5 nutrient fields of update_food_entry, #183)
                                   # that has been on several pages (the oldest pages' groups are dropped beyond it)
 FALLBACK_PAGE_BUDGET_CHARS = 25000  # the same cap for the fallback AI (core and pages cut to its whitelist)
+# The fallback AI with ai_parity (ai/parity.py): the same tools as everyone else, but only the core + the first group of
+# each page go with a call (the rest via find_tools), so a DeepSeek call carries about what it did before parity.
+FALLBACK_PARITY_PAGE_GROUPS = 1
+FALLBACK_PARITY_PAGE_BUDGET_CHARS = 27500
 
 FIND_TOOLS_MAX = 12               # find_tools(query) returns at most this many full schemas
 

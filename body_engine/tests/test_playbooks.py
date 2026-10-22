@@ -5,7 +5,7 @@ from importlib import resources
 
 import pytest
 
-from body_engine.ai import fallback, playbooks, web
+from body_engine.ai import fallback, parity, playbooks, web
 from body_engine.ai import params as P
 from body_engine.assistant import toolsets
 from body_engine.assistant.tools import TOOLS_BY_NAME
@@ -83,6 +83,7 @@ def test_fallback_flags(monkeypatch):
     the lite prompt lists exactly those (+ FALLBACK_WEB, possible behind ai_web); get_playbook from the fallback AI answers
     the others with FALLBACK_NO."""
     monkeypatch.setattr(web, "fallback_extra", lambda conn, uid: ())   # ai_web off
+    monkeypatch.setattr(parity, "on", lambda conn, uid: False)          # ai_parity off (on: tests/test_ai_parity.py)
     assert set(playbooks.FALLBACK) == set(playbooks.NAMES)
     lite = (resources.files("body_engine.ai") / "system_prompt_lite.md").read_text(encoding="utf-8")
     tool = TOOLS_BY_NAME["get_playbook"]

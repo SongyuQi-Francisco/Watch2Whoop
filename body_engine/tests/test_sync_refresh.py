@@ -135,7 +135,7 @@ def test_background_import_then_queued_scores(dsn, users, monkeypatch):
         st = refresh.status(conn, uid)
         assert imported == [uid] and st["status"] == "scores_queued" and st["imported_at"] and st["busy"]
         scored = []
-        out = refresh.run_queued(conn, scorer=lambda c, u, cl: scored.append(u) or {"rows": 3})
+        out = refresh.run_queued(conn, scorer=lambda c, u, cl, frm=None: scored.append(u) or {"rows": 3})
         assert scored == [uid] and out == [{"user_id": uid, "rows": 3}]
         st = refresh.status(conn, uid)
         assert st["status"] == "idle" and st["scored_at"] and not st["busy"]

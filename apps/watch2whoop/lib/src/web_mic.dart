@@ -17,7 +17,9 @@ import 'config.dart';
 const kMicSettingsMessage = 'mic-settings';
 
 /// Tells the page which native features this app has (read when the mic button is pressed; see `voicePath` in ai-media.js).
-const kFeaturesJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{mic:true});';
+/// `syncCenter`: the app has the sync center (watch2whoop://sync-center, resync.dart), so with the server flag sync_center
+/// the Me page folds 手机同步 / 数据更新 / 数据状态 into that one row (web/static/app.js).
+const kFeaturesJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{mic:true,syncCenter:true});';
 
 /// Whether to grant a WebKit media capture request: the microphone alone, asked by our own Today page.
 /// [pageUrl] is the WebView's current address; [onShell] = the kept offline copy of the page is on screen.

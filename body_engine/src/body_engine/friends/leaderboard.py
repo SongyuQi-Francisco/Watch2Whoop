@@ -20,6 +20,7 @@ from datetime import date, timedelta
 
 import psycopg
 
+from ..avatars import urls as avatar_store
 from ..goals import store as sleep_goals
 from ..web import views
 from . import cards, params as P
@@ -277,6 +278,9 @@ def board(conn: psycopg.Connection, viewer_id: int, name: str) -> dict:
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (viewer_id,)).fetchone()
     people = [{"id": viewer_id, "display_name": me["display_name"], "self": True}] + \
              [{"id": m["id"], "display_name": m["display_name"], "self": False} for m in cards.co_members(conn, viewer_id)]
+    avatars = avatar_store.urls_for(conn, viewer_id, [p["id"] for p in people])
+    for p in people:
+        p["avatar"] = avatars.get(p["id"])
     rows = []
     for p in people:
         if not p["self"] and not need <= cards.share_with(conn, viewer_id, p["id"]):
