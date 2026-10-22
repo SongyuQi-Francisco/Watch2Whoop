@@ -116,7 +116,7 @@ def _suggest_meals(conn, uid, a):
 
 
 def _memory_with_status(conn, uid, a=None):
-    st, m = status.list_status(conn, uid), memory.get_memory(conn, uid)
+    st, m = status.list_status(conn, uid, (a or {}).get("_viewer_id")), memory.get_memory(conn, uid)
     if (a or {}).get("detail"):
         return {"status": st, **m}
     # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence

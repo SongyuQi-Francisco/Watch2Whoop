@@ -27,7 +27,7 @@ def get_memory(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     owner = _owner(conn, viewer, user, "memory")
     status.refresh_if_stale(conn, owner)
     m = memory.get_memory(conn, owner)
-    return {"status": status.localize(status.list_status(conn, owner)), "profile_card": m["profile_card"],
+    return {"status": status.localize(status.list_status(conn, owner, viewer["id"])), "profile_card": m["profile_card"],
             "observations": [{k: o[k] for k in ("id", "text", "created_at", "source")} for o in m["observations"]]}
 
 

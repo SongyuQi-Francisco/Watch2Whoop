@@ -62,7 +62,7 @@ TREND_METRICS: dict[str, dict] = {
         "keywords": ["睡眠"],
     },
     "sleep_perf_whoop": {
-        "title": "睡眠表现（综合）", "scope": "scores", "series": "sleep_perf_whoop", "status": "sleep_perf_whoop", "unit": "", "digits": 0,
+        "title": "睡眠表现（综合）", "scope": "sleep", "series": "sleep_perf_whoop", "status": "sleep_perf_whoop", "unit": "", "digits": 0,
         "what": "仿 WHOOP 新版 Sleep Performance 的综合分：睡够需求 60% + 规律性 20% + 睡眠效率 20%（WHOOP 还有睡眠压力一项，这里没有数据，权重分给其他三项）。"
                 "只是对照用，不进恢复分。",
         "read": [("≥ 85", "好", "good"), ("70–84", "一般", "mid"), ("< 70", "差", "bad")],
@@ -71,7 +71,7 @@ TREND_METRICS: dict[str, dict] = {
         "keywords": ["睡眠", "规律"],
     },
     "restorative": {
-        "title": "恢复性睡眠", "scope": "scores", "series": "restorative_hours", "unit": "小时", "digits": 1,
+        "title": "恢复性睡眠", "scope": "sleep", "series": "restorative_hours", "unit": "小时", "digits": 1,
         "what": "深睡 + REM 的时长和占睡眠的比例（WHOOP 的 Restorative Sleep）。深睡修复身体，REM 和记忆、情绪有关。",
         "read": [("占比 ≥ 40%", "好", "good"), ("30–39%", "一般", "mid"), ("< 30%", "少", "bad")],
         "recovery": "恢复性睡眠少时，即使睡够了时长恢复也会打折。酒精会明显压低 REM，晚睡会丢掉前半夜的深睡。",
@@ -79,7 +79,7 @@ TREND_METRICS: dict[str, dict] = {
         "keywords": ["深睡", "REM", "睡眠"],
     },
     "awakenings": {
-        "title": "夜间醒来", "scope": "scores", "series": "awakenings", "unit": "次", "digits": 1,
+        "title": "夜间醒来", "scope": "sleep", "series": "awakenings", "unit": "次", "digits": 1,
         "what": "主睡眠中清醒超过 5 分钟的次数（不算入睡前和醒后赖床）。",
         "read": [("0–1 次", "少", "good"), ("2–3 次", "偏多", "mid"), ("≥ 4 次", "多", "bad")],
         "recovery": "醒得多会打断深睡和 REM，第二天恢复分和精神都会差。",

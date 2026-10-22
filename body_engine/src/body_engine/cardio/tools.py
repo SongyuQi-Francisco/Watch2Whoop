@@ -23,10 +23,14 @@ def slim_cardio(res: dict) -> dict:
     workouts = hrr.get("workouts") or []
     valid = [{k: w.get(k) for k in ("date", "name_zh", "peak_hr", "hrr60")} for w in workouts if w.get("valid")]
     ri = res.get("recovery_index") or {}
-    return {"start": res.get("start"), "end": res.get("end"),
-            "hrr60": {**{k: v for k, v in hrr.items() if k != "workouts"}, "workouts": len(workouts),
-                      "valid": len(valid), "recent_valid": valid[-RECENT_VALID:]},
-            "recovery_index": {"median_pct": ri.get("median_pct"), "recent": (ri.get("nights") or [])[-RECENT_NIGHTS:]}}
+    out = {"start": res.get("start"), "end": res.get("end"),
+           "recovery_index": {"median_pct": ri.get("median_pct"), "recent": (ri.get("nights") or [])[-RECENT_NIGHTS:]}}
+    if "hrr" in res:
+        out["hrr60"] = {**{k: v for k, v in hrr.items() if k != "workouts"}, "workouts": len(workouts),
+                        "valid": len(valid), "recent_valid": valid[-RECENT_VALID:]}
+    if res.get("hidden"):
+        out["hidden"] = res["hidden"]
+    return out
 
 
 def _ecg_list(conn, uid: int, limit: int) -> dict:
@@ -36,7 +40,7 @@ def _ecg_list(conn, uid: int, limit: int) -> dict:
 
 
 def _cardio(conn, uid, a):
-    res = views.cardio(conn, uid, _d(a["start"]), _d(a["end"]))
+    res = views.cardio(conn, uid, _d(a["start"]), _d(a["end"]), a.get("_viewer_id"))
     return res if a.get("detail") else slim_cardio(res)
 
 

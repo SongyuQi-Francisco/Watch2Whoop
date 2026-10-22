@@ -17,7 +17,7 @@ TOOL_SPECS: list[dict] = [
          description="身体年龄（对标 WHOOP Age）：body_age、实际年龄、差值、衰老速度、每周历史；contributors = 8 项指标各让身体年龄 ± 几年"
                      "和建议；insufficient = 数据不够的项。趋势参考，不是诊断。",
          input_schema=_schema({"user": USER, "weeks": {"type": "integer", "description": "历史几周，常用 12–26"}}),
-         handler=lambda conn, uid, a: views.healthspan(conn, uid, a["weeks"]), scope="scores"),
+         handler=lambda conn, uid, a: views.healthspan(conn, uid, a["weeks"], a.get("_viewer_id")), scope="scores"),
     dict(name="get_stress",
          description="压力（对标 WHOOP Stress Monitor）：醒着不动时心率 / HRV 偏离平静基线，0–3（< 1 低、1–2 中、≥ 2 高），"
                      "每天平均、低 / 中 / 高各几小时、最高的小时。",
@@ -31,7 +31,7 @@ TOOL_SPECS: list[dict] = [
     dict(name="get_sleep_coach",
          description="睡眠教练（对标 WHOOP Sleep Coach）：今晚睡眠需求（基线 + 睡眠债 + 负荷）、几点起、几点睡；有入睡目标时按目标。",
          input_schema=_schema({"user": USER, "date": DAY}),
-         handler=lambda conn, uid, a: views.sleep_coach(conn, uid, _d(a["date"])), scope="scores"),
+         handler=lambda conn, uid, a: views.sleep_coach(conn, uid, _d(a["date"]), a.get("_viewer_id")), scope="scores"),
     dict(name="get_health_monitor",
          description="健康监测（对标 WHOOP Health Monitor）：静息心率、HRV、呼吸频率、血氧、手腕温度的个人正常范围（60 天 ± 2 SD）"
                      "和最近一晚是否在范围内。",
@@ -44,13 +44,16 @@ TOOL_SPECS: list[dict] = [
     dict(name="get_hr_zones",
          description="心率区间：每天和每次训练在 Z1–Z5（50/60/70/80/90% HRmax）的分钟数，默认最近 7 天。",
          input_schema=_schema({"user": USER, "start": START, "end": END}),
-         handler=lambda conn, uid, a: views.hr_zones(conn, uid, _d(a["start"]), _d(a["end"])), scope="scores"),
+         handler=lambda conn, uid, a: views.hr_zones(conn, uid, _d(a["start"]), _d(a["end"]), a.get("_viewer_id")),
+         scope="scores"),
     dict(name="get_vo2max",
          description="VO₂max 趋势（每月平均、每年变化）、同龄同性别百分位和等级（FRIEND 2022）。",
          input_schema=_schema({"user": USER, "end": END, "days": {"type": "integer", "description": "常用 365"}}),
          handler=lambda conn, uid, a: views.vo2max(conn, uid, _d(a["end"]), a["days"]), scope="scores"),
     dict(name="get_report",
-         description="周报 / 月报数据：恢复、睡眠、负荷、压力、训练、体重的汇总和比上期的变化，近 90 天影响次日恢复的行为。",
+         description="周报 / 月报数据：恢复、睡眠、负荷、压力、训练、体重的汇总和比上期的变化，近 90 天影响次日恢复的行为。"
+                     "看别人的：没共享的块不返回，列在 hidden。",
          input_schema=_schema({"user": USER, "period": {"type": "string", "enum": ["week", "month"]}, "end": END}),
-         handler=lambda conn, uid, a: views.report(conn, uid, a["period"], _d(a["end"])), scope="scores"),
+         handler=lambda conn, uid, a: views.report(conn, uid, a["period"], _d(a["end"]), a.get("_viewer_id")),
+         scope="scores"),   # each block by its own scope, unshared ones in `hidden`
 ]

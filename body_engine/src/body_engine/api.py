@@ -133,7 +133,8 @@ def sleep(user: str, start: date | None = None, end: date | None = None, main_on
 def scores(user: str, start: date | None = None, end: date | None = None, details: bool = False,
            conn=Depends(get_conn), viewer=Depends(current_user)):
     owner_id = resolve_owner(conn, viewer, user, "scores")
-    return scores_store.scores(conn, owner_id, *date_range(conn, owner_id, start, end), details)
+    return scores_store.scores(conn, owner_id, *date_range(conn, owner_id, start, end), details,
+                               not details or auth.can_view(conn, viewer["id"], owner_id, "sleep"))
 
 
 app.include_router(assistant_router)
