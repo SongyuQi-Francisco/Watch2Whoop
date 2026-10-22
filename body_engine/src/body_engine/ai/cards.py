@@ -26,7 +26,7 @@ from ..toolspec import nullable, schema
 
 NAME = "show_card"
 FLAG = "jarvis_rich"
-TYPES = ("training", "meal", "metric", "actions")
+TYPES = ("training", "meal", "metric", "sleep", "actions")
 # metric -> (source, column / metric name, unit, digits)
 METRICS = {
     "recovery": ("scores", "recovery", "%", 0),
@@ -36,7 +36,7 @@ METRICS = {
     "rhr": ("metrics", "resting_heart_rate", "bpm", 0),
     "weight": ("weight", "body_mass", "kg", 1),
 }
-OPEN_PAGES = ("today", "trends", "record.training", "food")
+OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep")   # sleep: that night's sleep detail page
 SEND_KEYS = ("adjust_training", "next_meal", "explain_trend")
 MAX_DAYS, DEFAULT_DAYS = 90, 14
 MAX_BUTTONS, MAX_LABEL, MAX_TEXT = 4, 24, 200
@@ -50,7 +50,7 @@ MACROS = ("calories", "protein_g", "carbs_g", "fat_g")
 PROMPT = (
     "## 卡片（今天页对话）\n"
     "可以用 show_card 在回答里放一张用户能点的卡片：问今天 / 某天练什么 → training；问吃了多少、还差多少 → meal；"
-    "讲某个指标的变化 → metric（metric + days）；要用户在几个选项里选 → actions（2–4 个按钮，label 短，用用户的语言）。"
+    "讲某个指标的变化 → metric（metric + days）；分析某晚睡眠 → sleep（date=醒来那天）；要用户在几个选项里选 → actions（2–4 个按钮，label 短，用用户的语言）。"
     "记饮食、记训练、记体重成功后系统会自动附卡片，不用再调。一次回答最多 2 张卡片；卡片里已有的数字不要再用文字复述，"
     "文字只说结论和下一步。"
 )
@@ -58,10 +58,10 @@ PROMPT = (
 TOOL = Tool(
     name=NAME,
     description="在对话里给用户显示一张能点的卡片（数据由系统查，不用你给）。training=某天训练计划和动作；meal=某天饮食合计和"
-                "明细；metric=指标小图（metric、days）；actions=快捷按钮（buttons，点了把 text 当用户消息发回）。",
+                "明细；metric=指标小图（metric、days）；sleep=某晚睡眠（date=醒来那天）；actions=快捷按钮（buttons，点了把 text 当用户消息发回）。",
     input_schema=schema({
         "type": {"type": "string", "enum": list(TYPES)},
-        "date": nullable("string", "YYYY-MM-DD，null=今天（metric 是截止日）"),
+        "date": nullable("string", "YYYY-MM-DD，null=今天（metric 是截止日，sleep 是醒来那天）"),
         "metric": nullable("string", None, enum=[*METRICS, None]),
         "days": nullable("integer", "metric 的天数，7–90，null=14"),
         "buttons": nullable("array", "actions 用，2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
@@ -156,6 +156,21 @@ def _metric(conn, uid: int, metric: str | None, end: date, days: int | None) -> 
             "actions": [{"kind": "open", "page": "trends"}] + ([{"kind": "send", "key": "explain_trend"}] if known else [])}
 
 
+SLEEP_MAIN = ("start", "end", "in_bed_min", "asleep_min", "efficiency_pct", "composition", "stages")
+
+
+def _sleep(conn, uid: int, day: date | None) -> dict:
+    """One night (wake date; None = the latest) from the sleep detail page's own builder: times, stages, score, notes."""
+    from ..sleep_night import view
+    v = view.build(conn, uid, uid, day)
+    m = v["main"] or {}
+    return {"type": "sleep", "date": v["date"].isoformat(), "main": {k: m.get(k) for k in SLEEP_MAIN} if m else None,
+            "score": (v["score"] or {}).get("value"), "need_min": (v["score"] or {}).get("need_min"),
+            "avg7_asleep_min": (v["baseline"].get("avg7") or {}).get("asleep_min"),
+            "notes": [{k: n[k] for k in ("key", "tone")} for n in v["notes"]],
+            "actions": [{"kind": "open", "page": "sleep"}] if m else []}
+
+
 def _actions(buttons) -> dict:
     out = []
     for b in (buttons or [])[:MAX_BUTTONS]:
@@ -178,6 +193,8 @@ def build(conn: psycopg.Connection, uid: int, a: dict) -> dict:
         card = _training(conn, uid, _day(conn, uid, a.get("date")))
     elif kind == "meal":
         card = _meal(conn, uid, _day(conn, uid, a.get("date")))
+    elif kind == "sleep":
+        card = _sleep(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
     else:
         card = _metric(conn, uid, a.get("metric"), _day(conn, uid, a.get("date")), a.get("days"))
     return {"v": 1, **card}
@@ -204,6 +221,13 @@ def summary(card: dict) -> str:
         names = "、".join(e["name_zh"] or "" for e in card["exercises"][:6])
         what = f"{len(card['exercises'])} 个动作：{names}" if card["exercises"] else ("休息日" if card["rest_day"] else "没有计划")
         return f"已显示 {card['date']} 训练卡（{what}）。不要用文字复述卡片内容。"
+    if t == "sleep":
+        m = card["main"]
+        if not m:
+            return f"已显示 {card['date']} 睡眠卡：这天没有手表睡眠数据。"
+        what = "、".join(n["key"] for n in card["notes"] if n["tone"] != "good") or "无异常"
+        return (f"已显示 {card['date']} 睡眠卡：{m['start']}→{m['end']}，睡着 {m['asleep_min']} 分，睡眠分 {card['score']}；"
+                f"规则发现：{what}。不要用文字复述卡片里的数字。")
     if t == "meal":
         tot, goal = card["totals"], card["goal"] or {}
         g = f" / 目标 {goal['calories']:g}" if goal.get("calories") else ""
