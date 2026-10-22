@@ -1367,6 +1367,7 @@ I18N.addEn({
   "已从「{name}」里删除": "Deleted from “{name}”",
   // data status (#163, flag data_status)
   "数据状态": "Data status",
+  "同步中心": "Sync center",
   "很久没收到": "Not received lately",
   "从没收到": "Never received",
   "心率变异性": "Heart Rate Variability",
