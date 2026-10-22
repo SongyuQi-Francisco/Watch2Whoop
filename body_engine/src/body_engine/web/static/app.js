@@ -184,6 +184,9 @@
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
     try {
+      // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
+      // loads the real page once the network is back
+      if (window.W2W_SHELL) throw new Error("offline shell");
       r = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) {
       if (off && method === "GET") {
@@ -394,6 +397,7 @@
     try { await api("/v1/web/logout", { method: "POST" }); } catch (e) { /* clear local state even when offline */ }
     try { if (window.caches) await caches.delete("be-data"); } catch (e) { /* no Cache API */ }
     try { await window.BodyOffline?.clear(); } catch (e) { /* no IndexedDB */ }   // offline copies and queue (offline.js)
+    tellApp("offline:off");   // the app forgets its copy of the page
     S.offlineOn = false; S.offlineAt = null; showBanner();
     S.data = {}; S.me = null; pluginFiles = null;
     window.BodyAI?.reset();
@@ -406,6 +410,9 @@
   // The Friends page is behind the feature flag `friends` (docs/rollout.md). Off: the old tabs (饮食 is its own tab, no
   // 朋友 tab, 记录 has 日记 | 训练). On: 朋友 replaces 饮食 in the tab bar and 饮食 becomes the third segment of 记录.
   const friendsOn = () => (S.flags || []).includes("friends");
+  // Flag `records_v2`: the 日记 segment of 记录 is gone (记录 = 训练 | 饮食). The journal lives on the Today page (a 日记 card opening
+  // the day's editor sheet) and Trends (the 行为影响 card); journal.js. Off: 日记 | 训练 | 饮食 as before.
+  const recordsV2 = () => (S.flags || []).includes("records_v2") && !!window.BodyJournal;
   function applyTabs() {
     const on = friendsOn();
     $('.tab[data-tab="friends"]').hidden = !on;
@@ -413,6 +420,7 @@
   }
   function setTab(tab) {
     if (tab === "friends" && !friendsOn()) tab = "today";
+    if (tab === "record" && recordsV2() && S.recSub === "journal") S.recSub = "training";   // a saved 日记 segment (or an old link) -> 训练
     if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     if (tab !== S.tab) S.meSub = null;   // 「设置」 is a sub-page of 我: leaving the tab closes it
@@ -1192,13 +1200,16 @@
   const RENDER_today = async () => {
     if (S.sleepNight && sleepDetailOn()) return window.BodySleepDetail.placeholder();
     const day = viewDay(), past = isPast();
-    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday] = await Promise.all([
+    const v2 = recordsV2();
+    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday] = await Promise.all([
       load(todayKey(), todayPath()),
       (past ? load(`goal${day}`, `/v1/users/${ownerPath()}/goals/sleep?night=${day}`) : load("goal", `/v1/users/${ownerPath()}/goals/sleep`)).catch((e) => ({ error: e })),
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,   // meal templates only log today
       optional(`coach${day}`, WHOOP_API.strainCoach(day)), optional(`stress${day}`, WHOOP_API.stress(day)),
       optional(`monitor${day}`, WHOOP_API.monitor(day)), optional(`sleepcoach${day}`, WHOOP_API.sleepCoach(day)),
       optional(`tday${day}`, `/v1/users/${ownerPath()}/training/day/${day}`),   // that day's activity (steps etc., Apple Health history has it too)
+      v2 ? optional("jitems", `/v1/users/${ownerPath()}/journal/items?active_only=true`) : null,   // records_v2: the 日记 card (no journal share = no card)
+      v2 ? optional(`jday${day}`, `/v1/users/${ownerPath()}/journal?start=${day}&end=${day}`) : null,
     ]);
     S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
@@ -1207,8 +1218,19 @@
     // Activity right after the scores, so on phones it is near the first screen
     return `<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
       <div class="col col-b">${sleepCardHtml(d.sleep)}${goalCardHtml(goal, d.sleep, sleepCoach)}</div>
-      <div class="col col-c">${dayCardHtml(d, meals)}</div></div>`;
+      <div class="col col-c">${dayCardHtml(d, meals)}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
   };
+
+  // What journal.js needs from the page (records_v2): the day editor sheet and the Trends 行为影响 card
+  function journalCtx() {
+    return {
+      api, load, esc, openSheet, closeSheet, setBack, toast, sheetAttr, icon: ICON, categories: CATEGORY,
+      ownerPath, isSelf, shortDay, signed, fmtNum, xpLabel,
+      setCache: (key, value) => { S.data[`${key}:${S.owner}`] = value; },
+      invalidate: () => { for (const k of Object.keys(S.data)) if (/^(jfreq|journal-an)/.test(k)) delete S.data[k]; render(); },
+      openEvent: eventSheet, openAssistant,
+    };
+  }
 
   // That day's activity: steps, active energy, exercise minutes (daily from training/day)
   function activityHtml(dl) {
@@ -1725,12 +1747,13 @@
 
   // Trends end on the selected date (null = today, so the cache keys of today stay the same)
   const trendEnd = () => (isPast() ? S.viewDate : null);
-  const GROUPS = [["recovery", tr("恢复")], ["sleep", tr("睡眠")], ["strain", tr("负荷")], ["stress", tr("压力")], ["long", tr("长期")]];
+  const GROUPS = [["recovery", tr("恢复")], ["sleep", tr("睡眠")], ["strain", tr("负荷")], ["stress", tr("压力")], ["long", tr("长期")], ["behavior", tr("行为")]];
   const VO2_LEVEL = { excellent: tr("优秀"), good: tr("良好"), average: tr("中等"), fair: tr("一般"), poor: tr("较差") };
   async function metricsHtml() {
     const days = S.trendsDays, end = trendEnd(), q = end ? `&end=${end}` : "";
-    const [d, vo2, sd] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
-      optional(`vo2max${end || ""}`, WHOOP_API.vo2max(end)), optional(`sleepdetails${end || ""}`, WHOOP_API.sleepDetails(end))]);
+    const [d, vo2, sd, ja] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
+      optional(`vo2max${end || ""}`, WHOOP_API.vo2max(end)), optional(`sleepdetails${end || ""}`, WHOOP_API.sleepDetails(end)),
+      recordsV2() ? optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`) : null]);   // records_v2: the 行为影响 card
     CH.clear();
     const fitness = vo2?.level_zh ? tr("体能 {l}", { l: VO2_LEVEL[vo2.level] || vo2.level_zh }) : null;   // vo2max endpoint: level converted from the same-age, same-sex percentile
     const restPct = d.series.restorative_pct?.mean;
@@ -1745,6 +1768,7 @@
         hrZonesHtml(d.hr_zones), cardHtml("steps", d), cardHtml("active_kcal", d), cardHtml("total_kcal", d), cardHtml("hr_recovery", d)],
       stress: [cardHtml("stress", d), cardHtml("resilience", d)],
       long: [cardHtml("vo2max", d, { base: fitness ? esc(fitness) : undefined }), cardHtml("weight", d), cardHtml("body_age", d)],
+      behavior: [recordsV2() ? window.BodyJournal.behaviorCardHtml(journalCtx(), ja) : ""],   // journal behaviour -> next-day recovery (journal.js)
     };
     // Long ranges (or ones crossing a year) show the year, otherwise "1 year" read as "10/19 – 10/18 vs 10/19 – 10/18"
     const withYear = d.days >= 180 || String(d.prev_start).slice(0, 4) !== String(d.end).slice(0, 4);
@@ -1918,8 +1942,10 @@
   }
 
   const recSeg = () => {
-    const subs = [["journal", tr("日记")], ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
-    const cur = S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    const v2 = recordsV2();
+    const subs = [...(v2 ? [] : [["journal", tr("日记")]]), ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
+    const cur = v2 ? "training" : S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    if (subs.length < 2) return "";   // records_v2 without the Friends flag: 记录 is only 训练, nothing to switch
     return `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${subs
       .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${cur === k}">${t}</button>`).join("")}</div></div>`;
   };
@@ -1930,7 +1956,7 @@
       setTab("record");
     };
   }
-  const RENDER_record = async () => recSeg() + (S.recSub === "training" ? await trainingPageHtml() : await journalPageHtml());
+  const RENDER_record = async () => recSeg() + (S.recSub === "training" || recordsV2() ? await trainingPageHtml() : await journalPageHtml());
 
   const journalPageHtml = async () => {
     const today = S.todayDate;
@@ -2039,7 +2065,7 @@
 
   function afterRecord(view) {
     bindRecSeg(view);
-    if (S.recSub === "training") { afterTraining(view); return; }
+    if (S.recSub === "training" || recordsV2()) { afterTraining(view); return; }
     for (const b of $$("[data-rday]", view)) b.onclick = () => { S.recordDay = Number(b.dataset.rday); render(); };
     const wf = $("#w-form", view);
     if (wf) wf.onsubmit = async (e) => {
@@ -2907,7 +2933,58 @@
     });
     return `<svg class="fd-week" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(tr("最近 7 天"))}">${g}</svg>`;
   }
+  // ---- v2 member card (rollout flag friend_card_v2): today first, a labelled 7-day recovery strip you can tap, clear
+  // "not shared" / "not synced" states, and my own card marked "what friends see" (cards.seen_by_friends).
+  const cardV2 = () => !!window.BodyFlags?.on("friend_card_v2");
+  const dayName = (s) => parseDay(s).toLocaleDateString(I18N.locale(), { weekday: "short" });
+  function recoveryStrip(m, sc) {
+    const cols = sc.week.map((d, i) => `<button type="button" class="fd2-day${d.today ? " today" : ""}" data-fday="${i}" data-fuid="${m.id}"
+        aria-label="${esc(`${dayName(d.date)} ${shortDay(d.date)} ${tr("恢复")} ${d.recovery ?? "—"}`)}">
+        <span class="fd2-dot ${d.zone ? ZONE[d.zone] : "none"}"></span><i>${esc(dayName(d.date))}</i></button>`).join("");
+    return `<div class="fd2-strip"><div class="fd2-strip-t">${esc(tr("近 7 天恢复"))}</div><div class="fd2-days">${cols}</div></div>`;
+  }
+  function friendDaySheet(uid, idx) {
+    const f = S.data.friends, m = [f.me, ...f.members].find((x) => x.id === uid), d = m?.scores?.week?.[idx];
+    if (!d) return;
+    openSheet(`${dayName(d.date)} · ${shortDay(d.date)}`, `${d.recovery != null ? recoveryScale(d.recovery) : ""}
+      ${kv(tr("恢复"), d.recovery != null ? `${d.recovery} ${badge(ZONE[d.zone], ZONE_LABEL[d.zone])}` : null, tr("未同步"))}
+      ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
+      ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
+  }
+  function friendCardV2(m, kinds) {
+    const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
+    const hid = (scope) => (seen ? seen.hidden.includes(scope) : (m.hidden || []).includes(scope));
+    const sc = hid("scores") ? null : m.scores, trained = !hid("training") && m.trained;
+    const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
+    let hero, body = "";
+    if (!sc) hero = `<span class="fd2-off">${esc(tr("未共享"))}</span>`;
+    else if (!sc.synced_today) {
+      hero = `<span class="fd2-off">${esc(sc.last_date ? tr("未同步 · 上次 {d}", { d: shortDay(sc.last_date) }) : tr("未同步"))}</span>`;
+    } else {
+      hero = sc.recovery != null
+        ? `<span class="fd2-rec"><b class="tone-${ZONE[sc.zone] || "none"}">${sc.recovery}</b>${sc.label ? `<i>${esc(sc.label)}</i>` : ""}</span>`
+        : `<span class="fd2-off">—</span>`;
+    }
+    if (sc?.synced_today) {
+      body += `<div class="fd2-nums"><span><b>${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
+        <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
+        <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span>
+        ${trained ? `<span class="fd2-trained">${badge("plain", tr("已训练"))}</span>` : ""}</div>`;
+    } else if (trained) body += `<div class="fd2-nums">${badge("plain", tr("已训练"))}</div>`;
+    if (sc) body += recoveryStrip(m, sc);
+    const note = !seen ? "" : seen.count === 0 ? tr("还没有朋友看到你，加入圈子后他们才看得到")
+      : seen.varies ? tr("不同朋友看到的范围不一样，这里按所有人的并集显示") : "";
+    const foot = m.self
+      ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
+      : `<div class="fd2-foot">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
+    return `<div class="card fd-card fd2${m.self ? " fd2-self" : ""}${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
+      ${m.self ? `<div class="fd2-mark">${badge("plain", tr("朋友看到的你"))}</div>` : ""}
+      <div class="fd2-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${hero}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
+      ${body}${note ? `<p class="fd2-note">${esc(note)}</p>` : ""}${foot}</div>`;
+  }
   function friendCard(m, kinds) {
+    if (cardV2()) return friendCardV2(m, kinds);
     const sc = m.scores;
     const nums = sc ? `<div class="fd-nums">
         <span><b class="${sc.zone ? `tone-${ZONE[sc.zone]}` : ""}">${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
@@ -2983,9 +3060,10 @@
     if (n) n.onclick = () => window.BodyCircles?.open();
     if (j) j.onclick = () => window.BodyCircles?.open();
     for (const el of $$("[data-member]", view)) {
-      el.onclick = (e) => { if (!e.target.closest("[data-nudge]")) viewMember(Number(el.dataset.member)); };
-      el.onkeydown = (e) => { if (e.key === "Enter") viewMember(Number(el.dataset.member)); };
+      el.onclick = (e) => { if (!e.target.closest("[data-nudge], [data-fday]")) viewMember(Number(el.dataset.member)); };
+      el.onkeydown = (e) => { if (e.key === "Enter" && e.target === el) viewMember(Number(el.dataset.member)); };
     }
+    for (const b of $$("[data-fday]", view)) b.onclick = (e) => { e.stopPropagation(); friendDaySheet(Number(b.dataset.fuid), Number(b.dataset.fday)); };
     for (const b of $$("[data-nudge]", view)) b.onclick = async (e) => {
       e.stopPropagation();
       if (b.getAttribute("aria-pressed") === "true") return;
@@ -3549,7 +3627,7 @@
       if (err.status === 401) return;
       $("#login").hidden = true; $("#app").hidden = false;
       $("#view").innerHTML = `<div class="empty">${esc(err.status === 0 ? tr("离线，连上网络后重试") : err.message)}<div class="btns"><button class="btn" id="retry">${tr("common.retry")}</button></div></div>`;
-      $("#retry").onclick = () => boot();
+      $("#retry").onclick = () => (window.W2W_SHELL ? tellApp("reload") : boot());
       return;
     }
     // Language picked on the login page and the profile has none yet: save it to the profile (it then follows the account)
@@ -3596,6 +3674,7 @@
     const [tab, sub] = String(page || "today").split(".");
     if (!TABS[tab]) return;
     S.owner = S.me.id;
+    if (tab === "record" && sub === "journal" && recordsV2()) { setTab("today"); window.BodyJournal.openDay(journalCtx(), viewDay()); return; }   // records_v2: the old 记录 → 日记 link opens the day editor
     if (tab === "record" && sub) S.recSub = sub;
     if (tab === "food") { S.foodMode = "diet"; S.foodSub = null; }
     if (tab === "trends") S.trendsMode = "metrics";
@@ -3640,6 +3719,8 @@
         await lib.clear();
       }
     } catch (e) { /* IndexedDB trouble: the page works online as before */ }
+    // The Watch2Whoop app keeps a copy of the page for a cold start without network only while this is on (1.0.7+)
+    if (!window.W2W_SHELL) tellApp(S.offlineOn ? "offline:on" : "offline:off");
     showBanner();
   }
   // Controls that need the server: greyed out offline (app.css body.is-offline) and a tap says so
@@ -3656,6 +3737,7 @@
   window.BodyOffline?.onChange(() => { if (S.me) showBanner(); });
   window.addEventListener("offline", () => { if (OFF()) markOffline(); });
   window.addEventListener("online", () => {
+    if (window.W2W_SHELL) { tellApp("reload"); return; }   // the copy of the page: the app opens the real one
     if (!OFF() || !S.me) return;
     flushQueue();
     if (S.offlineAt !== null && S.tab !== "record" && $("#sheet").hidden) { S.data = {}; boot(true); }   // fresh data replaces the copies

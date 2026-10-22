@@ -10,12 +10,37 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.7 — 2026-10-22
+Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
+[docs/offline-plan.md](../../docs/offline-plan.md)).
+- Opening the app without network no longer stops at 「连不上今天页」 / "Cannot reach the today page" for people with
+  offline use on: the app keeps a copy of the Today page (`/app/offline-shell.html`, scripts inlined, no user data) and
+  opens it when the page cannot load. The copy shows what the page saved on this phone and queues water, weight and
+  training sets; back in the foreground (or when the page sees the network again) the app loads the real page, which
+  sends the queue. The copy is kept only while the page reports offline use on, and deleted on logout.
+- WKWebView runs no service worker in this app (no App-Bound Domains), so without this a cold start offline had no page.
+- New direct dependency `path_provider` 2.1.6 (already in the lock as a transitive one; no native pod).
+
+Health data status and permissions (#163): iOS never tells an app whether Health *read* access was granted, so users
+could not see whether their data was read or where to change the permissions after the first launch.
+- Phone sync → 「服务器收到的数据」 / "Data on the server": per type (heart rate, HRV, resting heart rate, sleep, steps,
+  active energy, workouts, weight, blood oxygen, respiratory rate, wrist temperature, VO₂ max, beat-to-beat HRV, ECG,
+  water) the last day the server received data and OK / not received lately / never received, from
+  `GET /v1/ingest/data-status` (server side in its own PR; an older server shows a short note). Tapping a type shows the
+  likely reasons and what helps.
+- 「重新申请健康权限」 / "Ask for Health access again": shows the iOS prompt only for types it never covered (asked per
+  type with `getRequestStatusForAuthorization`); when every type was asked it explains where to change them instead.
+- 「打开系统设置」 / "Open Settings" with the steps (Settings → Health → Data Access & Devices → Watch2Whoop). The app
+  changes nothing for the user.
+- 「本机最近一次同步」 / "Last sync on this phone": time and result (OK / failed with the reason) of the latest upload.
 
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
