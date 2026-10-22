@@ -687,6 +687,7 @@ def get_week_plan(
     recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError("没有授权查看该用户的训练计划（需要 training 权限）")
+    from . import plan_add
     catalog.ensure_seeded(conn)
     day = day or _user_today(conn, owner_id)
     start = day - timedelta(days=day.weekday())
@@ -760,6 +761,7 @@ def get_week_plan(
 
         # Day changes (training/day_overrides.py): a date may hold other weekdays' sessions, a free activity or rest
         ovs = load_overrides(conn, owner_id, start, end)
+        extras = plan_add.extras_for(conn, owner_id, start, end)   # exercises added to one date only (issue #154)
         vol_by_dow: dict[int, list[dict]] = {}
         for nd in normalized_days_for_vol:
             vol_by_dow.setdefault(nd["day_of_week"], []).extend(nd["exercises"])
@@ -777,6 +779,24 @@ def get_week_plan(
                     vol_items += vol_by_dow.get(int(ref["dow"]), [])
                 elif ref.get("label"):
                     planned.append({"name": ref["label"], "exercises": []})
+            if extras.get(d) and not before_start:
+                extra_exs = []
+                for raw_ex in extras[d]:
+                    item = _normalize_item(conn, owner_id, raw_ex, with_meta=with_meta)
+                    vol_items.append(item)
+                    item["suggestions"] = []
+                    loads.attach(load_ctx, item, None)
+                    item["name"] = item["name_zh"]
+                    item["exercise_id"] = item.get("app_exercise_id") or item["slug"]
+                    item["added_for_day"] = True
+                    if item["status"] != "active" and item["slug"] not in seen_caution:
+                        seen_caution.add(item["slug"])
+                        cautions.append({"exercise_id": item["exercise_id"], "slug": item["slug"], "name": item["name_zh"],
+                                         "status": item["status"], "reason": item["reason"], "cues": item["cues"]})
+                    extra_exs.append(item if detail else {
+                        "slug": item["slug"], "name": item["name_zh"], "sets_text": item["sets_text"], "load": item["load_text"],
+                        "status": item["status"], "cues": item["cues"] if item["status"] != "active" else None})
+                planned.append({"name": plan_add.extra_session_name(), "exercises": extra_exs, "added_for_day": True})
             vol_days.append({"day_of_week": dow, "exercises": vol_items})
             week_days.append({
                 "date": d,
