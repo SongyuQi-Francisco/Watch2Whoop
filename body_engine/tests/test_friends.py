@@ -399,6 +399,68 @@ def test_cards_last_sync_when_today_is_empty(client, world, dsn):
         conn.execute("DELETE FROM daily_scores")
 
 
+def test_card_week_has_weekday_today_mark_and_day_details(client, world, dsn):
+    """friend_card_v2: every day of the strip carries its weekday, a today mark and the numbers the day sheet shows."""
+    ids, tok = world
+    today = _scores(dsn, ids["Ann"], recovery=79)
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    s = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["scores"]
+    week = s["week"]
+    assert [d["today"] for d in week] == [False] * 6 + [True] and week[-1]["date"] == str(today)
+    assert all(d["weekday"] == (today - timedelta(days=6 - i)).weekday() for i, d in enumerate(week))
+    assert week[-1]["recovery"] == 79 and week[-1]["sleep_score"] == 80 and week[-1]["sleep_min"] == 420
+    assert week[-1]["strain"] == 10.0 and s["label"] == "适合高强度"
+
+
+def test_card_without_scores_shows_no_numbers_and_last_sync_date(client, world, dsn):
+    """Not shared → no number anywhere in the card; shared but not synced today → the last synced date."""
+    ids, tok = world
+    a = ids["Ann"]
+    today = _scores(dsn, a, days=1, recovery=55)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE daily_scores SET date = date - 4 WHERE user_id = %s", (a,))
+    join(client, tok["Ben"], circle(client, tok["Ann"], scopes=["sleep"])["invite"]["code"])
+    ann = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]
+    assert ann["scores"] is None and "55" not in str(ann["scores"]) and "scores" in ann["hidden"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE shares SET circle_scopes = '{scores}' WHERE owner_id = %s AND viewer_id = %s", (a, ids["Ben"]))
+    sc = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["scores"]
+    assert sc and not sc["synced_today"] and sc["recovery"] is None and sc["last_date"] == str(today - timedelta(days=4))
+    assert not any(d["today"] and d["recovery"] is not None for d in sc["week"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM daily_scores")
+
+
+def test_own_card_shows_what_friends_see(client, world, dsn):
+    """`me.seen`: the union of what my circle members may see of me; `varies` when they see different things."""
+    ids, tok = world
+    a = ids["Ann"]
+    _scores(dsn, a, recovery=79)
+    blank = {"count": 0, "scopes": [], "varies": False, "hidden": []}
+    assert client.get("/v1/friends/overview", headers=h(tok["Ann"])).json()["me"]["seen"] == blank   # nobody yet → full card
+    code = circle(client, tok["Ann"], scopes=["sleep"])["invite"]["code"]
+    join(client, tok["Ben"], code)
+    join(client, tok["Cat"], code)
+    for who in ("Ben", "Cat"):
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            conn.execute("UPDATE shares SET circle_scopes = '{sleep}' WHERE owner_id = %s AND viewer_id = %s", (a, ids[who]))
+    me = client.get("/v1/friends/overview", headers=h(tok["Ann"])).json()["me"]
+    assert me["self"] and me["scores"]["recovery"] == 79                    # the data itself is still mine in full
+    assert me["seen"] == {"count": 2, "scopes": ["sleep"], "varies": False, "hidden": ["scores", "training"]}
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:                 # Ben may also see scores → union, they differ
+        conn.execute("UPDATE shares SET circle_scopes = '{scores,sleep}' WHERE owner_id = %s AND viewer_id = %s",
+                     (a, ids["Ben"]))
+    seen = client.get("/v1/friends/overview", headers=h(tok["Ann"])).json()["me"]["seen"]
+    assert seen["scopes"] == ["scores", "sleep"] and seen["varies"] and seen["hidden"] == ["training"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM daily_scores")
+
+
+def test_card_v2_flag_is_declared():
+    from body_engine.rollout import registry
+    assert "friend_card_v2" in registry.FLAGS
+
+
 def test_nudges_once_a_day_and_only_inside_circles(client, world, dsn):
     ids, tok = world
     a = ids["Ann"]

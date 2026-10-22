@@ -926,6 +926,34 @@ button.card.trend { display: flex; flex-direction: column; justify-content: flex
 .fd-cheer button { flex: 1; border: 0; border-radius: 10px; background: var(--surface-2); min-height: 36px; font-size: 18px; }
 .fd-cheer button[aria-pressed="true"] { opacity: .35; }
 .fd-got span { font-size: 14px; background: var(--surface-2); border-radius: 8px; padding: 4px 10px; }
+/* v2 member card (rollout flag friend_card_v2, app.js friendCardV2) */
+.fd2-mark { margin-bottom: 8px; }
+.fd2-self { box-shadow: inset 0 0 0 1.5px var(--hair); }
+.fd2-head { display: flex; align-items: center; gap: 10px; }
+.fd2-head .chev { color: var(--text-2); width: 16px; height: 16px; flex: none; }
+.fd2-rec { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; flex: none; }
+.fd2-rec b { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fd2-rec b.tone-good { color: var(--good); } .fd2-rec b.tone-mid { color: var(--mid); } .fd2-rec b.tone-bad { color: var(--bad); }
+.fd2-rec i { font-style: normal; font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.fd2-off { flex: none; font-size: 12px; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 4px 9px; }
+.fd2-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 72px; align-items: end; gap: 8px; margin-top: 12px; }
+.fd2-nums span { display: flex; flex-direction: column; }
+.fd2-nums b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fd2-nums i { font-style: normal; font-size: 12px; color: var(--text-2); }
+.fd2-nums .fd2-trained { align-items: flex-end; align-self: center; }
+.fd2-strip { margin-top: 14px; }
+.fd2-strip-t { font-size: 12px; color: var(--text-2); margin-bottom: 4px; }
+.fd2-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.fd2-day { appearance: none; border: 0; background: none; padding: 6px 0 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-2); font: inherit; cursor: pointer; border-radius: 10px; min-height: 44px; }
+.fd2-day i { font-style: normal; font-size: 11px; }
+.fd2-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--surface-2); }
+.fd2-dot.good { background: var(--good); } .fd2-dot.mid { background: var(--mid); } .fd2-dot.bad { background: var(--bad); }
+.fd2-day.today { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.fd2-day.today .fd2-dot { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text-2); }
+.fd2-note { margin: 10px 0 0; font-size: 12px; color: var(--text-2); }
+.fd2-foot { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+.fd2-foot button { border: 0; border-radius: 10px; background: var(--surface-2); width: 44px; min-height: 36px; font-size: 17px; }
+.fd2-foot button[aria-pressed="true"] { opacity: .35; }
 @media (min-width: 1024px) { .fd-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .fd-grid .card + .card { margin-top: 0; } }
 .dock.viewing-other .ask { display: none; }
 .fd-bar-top { justify-content: space-between; align-items: center; }
