@@ -51,6 +51,8 @@ class Run:
             return self.events[max(seq, 0):], self.done
 
 
+TERMINAL = ("done", "confirm", "error")   # the last event of every turn
+
 _runs: dict[int, Run] = {}                    # conversation id -> its latest turn
 _lock = threading.Lock()
 
@@ -114,6 +116,9 @@ def _work(run: Run, gen: Iterator[dict], cm) -> None:
             cm.__exit__(None, None, None)      # commits the completed part, returns the connection to the pool
         except Exception:
             log.exception("chat run: returning the connection failed")
+        # The page treats a stream that ends without one of these as cut off and picks it up again (ai.js)
+        if not run.events or run.events[-1]["event"] not in TERMINAL:
+            run.add({"event": "done", "data": {"conversation_id": run.conv_id}})
         run.finish()
 
 

@@ -537,7 +537,7 @@
   // resume: { conv, seq, cur, wrote, body } of a turn whose connection dropped (#114); path is then its events URL
   async function stream(path, body, resume = null) {
     chat.busy = true; $("#ai-send").disabled = true;
-    let cur = resume?.cur || null, wrote = resume?.wrote || false, seq = resume?.seq || 0, lost = null;
+    let cur = resume?.cur || null, wrote = resume?.wrote || false, seq = resume?.seq || 0, lost = null, ended = false;
     const wait = resume ? tr("接着回答…") : "…";
     const status = note(wait, "faint");
     const ctrl = new AbortController(); chat.live = { ctrl, hidden: document.visibilityState === "hidden", started: () => seq > 0 };
@@ -561,7 +561,9 @@
       let buf = "";
       for (;;) {
         const { value, done } = await reader.read();
-        if (done) break;
+        // A stream cut without its last event (a proxy or the server closing it, iOS ending the socket cleanly) is a
+        // dropped connection too, not the end of the answer: pick the turn up like a network error (#114)
+        if (done) { if (!ended) throw new Error("stream ended early"); break; }
         buf += dec.decode(value, { stream: true });
         let i;
         while ((i = buf.indexOf("\n\n")) >= 0) {
@@ -578,12 +580,12 @@
             status.textContent = { running: tr("查看 {name}…", { name: d.name }), done: `✓ ${d.name}`, error: `✗ ${d.name}`, rejected: tr("已取消 {name}", { name: d.name }) }[d.status] || d.name;
             if (d.status === "done" && body.call_id) wrote = true;
           }
-          else if (ev === "confirm") { status.remove(); d.calls.forEach(confirmCard); }
+          else if (ev === "confirm") { ended = true; status.remove(); d.calls.forEach(confirmCard); }
           else if (ev === "usage") { usageLine(d); }
           else if (ev === "notice") note(d.message, "warn");
-          else if (ev === "error") { status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
-          else if (ev === "done") { status.remove(); paint(cur, true); }
-          else if (ev === "resync") { status.remove(); await resync(d.conversation_id, cur); }
+          else if (ev === "error") { ended = true; status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
+          else if (ev === "done") { ended = true; status.remove(); paint(cur, true); }
+          else if (ev === "resync") { ended = true; status.remove(); await resync(d.conversation_id, cur); }
         }
       }
     } catch (e) {

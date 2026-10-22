@@ -323,3 +323,18 @@ def test_running_turns_are_capped_per_user_and_per_server(client, world, dsn, mo
     FakeAdapter.script = [{"text": "好"}]
     monkeypatch.setitem(adapters.ADAPTERS, "anthropic_api", lambda: FakeAdapter)
     assert client.post("/v1/assistant/chat", headers=H(tok["A"]), json={"message": "又可以了"}).status_code == 200
+
+
+def test_every_turn_ends_with_a_terminal_event():
+    """The page treats a stream without done / confirm / error at its end as cut off and resumes it (ai.js): a turn whose
+    generator stops early still ends with one."""
+    class CM:
+        def __exit__(self, *a):
+            pass
+
+    run = runs.start(99001, 99001, iter([{"event": "text", "data": {"delta": "半"}}]), CM())
+    assert turn_done(99001)
+    assert [e["event"] for e in run.events] == ["text", "done"]
+    run = runs.start(99001, 99002, iter([{"event": "done", "data": {}}]), CM())
+    assert turn_done(99002)
+    assert [e["event"] for e in run.events] == ["done"]
