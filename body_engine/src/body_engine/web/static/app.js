@@ -166,7 +166,7 @@
   // flag on) switch it on until /v1/web/me answers.
   const OFF = () => (S.offlineOn && window.BodyOffline ? window.BodyOffline : null);
   function markOffline(at) {
-    if (at !== undefined && (S.offlineAt == null || at < S.offlineAt)) S.offlineAt = at;   // the oldest copy on screen
+    if (at !== undefined && (!S.offlineAt || at < S.offlineAt)) S.offlineAt = at;   // the oldest copy on screen ("" = offline, no copy yet)
     else if (S.offlineAt === null) S.offlineAt = "";
     showBanner();
   }
