@@ -1,0 +1,170 @@
+{
+ "results": {
+  "read": {
+   "is_error": false,
+   "text": {
+    "id": "<volatile>",
+    "display_name": "示例A",
+    "birth_date": "1990-01-01",
+    "sex": "male",
+    "height_cm": 180,
+    "timezone": "Australia/Sydney",
+    "age": "<clock>",
+    "now_local": "<clock>",
+    "weekday": "<clock>"
+   }
+  },
+  "write": {
+   "is_error": false,
+   "text": {
+    "id": "<volatile>",
+    "occurred_at": "2026-01-01T08:00+11:00",
+    "title": "示例事件"
+   }
+  },
+  "meta_write": {
+   "is_error": false,
+   "text": {
+    "id": "<volatile>",
+    "occurred_at": "2026-01-02T08:00+11:00",
+    "title": "示例二"
+   }
+  },
+  "cross_user_read": {
+   "is_error": true,
+   "text": "PermissionError: 没有查看用户 <other> 的 profile 的授权"
+  },
+  "handler_error": {
+   "is_error": true,
+   "text": "ValueError: Invalid isoformat string: 'not-a-date'"
+  }
+ },
+ "assistant_audit": [
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "get_profile",
+   "args": {},
+   "ok": true,
+   "error": null,
+   "provider_id": null,
+   "model": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "add_event",
+   "args": {
+    "title": "示例事件",
+    "category": "other",
+    "occurred_at": "2026-01-01T08:00"
+   },
+   "ok": true,
+   "error": null,
+   "provider_id": null,
+   "model": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "add_event",
+   "args": {
+    "title": "示例二",
+    "occurred_at": "2026-01-02T08:00"
+   },
+   "ok": true,
+   "error": null,
+   "provider_id": null,
+   "model": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "get_profile",
+   "args": {
+    "user": "<other>"
+   },
+   "ok": false,
+   "error": "没有查看用户 <other> 的 profile 的授权",
+   "provider_id": null,
+   "model": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "get_sleep",
+   "args": {
+    "end": "2026-01-01",
+    "start": "not-a-date"
+   },
+   "ok": false,
+   "error": "Invalid isoformat string: 'not-a-date'",
+   "provider_id": null,
+   "model": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "chat:snapshot",
+   "tool": "list_metrics",
+   "args": {
+    "user": "me"
+   },
+   "ok": true,
+   "error": null,
+   "provider_id": null,
+   "model": "example-model"
+  }
+ ],
+ "ai_write_log": [
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "add_event",
+   "kind": "other",
+   "action": "other",
+   "target": null,
+   "before": null,
+   "after": {
+    "args": {
+     "note": null,
+     "title": "示例事件",
+     "category": "other",
+     "severity": null,
+     "body_part": null,
+     "occurred_at": "2026-01-01T08:00"
+    },
+    "result": {
+     "id": "<volatile>",
+     "title": "示例事件",
+     "occurred_at": "2026-01-01 08:00:00+11:00"
+    }
+   },
+   "rolled_back_at": null
+  },
+  {
+   "user_id": "<viewer>",
+   "channel": "mcp:snapshot",
+   "tool": "add_event",
+   "kind": "other",
+   "action": "other",
+   "target": null,
+   "before": null,
+   "after": {
+    "args": {
+     "note": null,
+     "title": "示例二",
+     "category": null,
+     "severity": null,
+     "body_part": null,
+     "occurred_at": "2026-01-02T08:00"
+    },
+    "result": {
+     "id": "<volatile>",
+     "title": "示例二",
+     "occurred_at": "2026-01-02 08:00:00+11:00"
+    }
+   },
+   "rolled_back_at": null
+  }
+ ]
+}
