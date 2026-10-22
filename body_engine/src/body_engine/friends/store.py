@@ -6,6 +6,9 @@ shares.circle_scopes, apart from the hand-made shares.scopes, and is recomputed 
 transaction as every membership change, so leaving takes effect at once and never touches a hand-made grant.
 
 Every function acts for `uid` (the caller); only the circle's owner may invite, reset, rename, remove or dissolve.
+Personal circles (owner decision 2026-10-22, plan A): everyone has one circle of their own (ensure_personal). Signing up
+with someone's referral code brings an invite to that person's home circle only (their personal one), never to the
+circles they are merely a member of, so friends of friends stay invisible to each other.
 Errors are FriendsError(status, Chinese message); the API turns them into HTTP errors (English in errors_en.py).
 """
 from __future__ import annotations
@@ -16,6 +19,7 @@ from datetime import datetime
 
 import psycopg
 
+from .. import auth, i18n
 from ..profile import consent
 from ..web import login_codes
 from . import params as P
@@ -274,16 +278,89 @@ def leave_all(conn: psycopg.Connection, uid: int) -> int:
     return len(ids)
 
 
+# ---------------------------------------------------------------- personal circles and referrals
+def _personal_name(conn, uid: int) -> str:
+    """「Ann 的圈子」 / "Ann's circle" in the owner's language (their profile choice, else the request's)."""
+    u = conn.execute("SELECT display_name, language FROM users WHERE id = %s", (uid,)).fetchone()
+    en = (u["language"] or i18n.lang()) == "en"
+    who = " ".join((u["display_name"] or "").split())
+    if not who:
+        return "My circle" if en else "我的圈子"
+    tail = "'s circle" if en else " 的圈子"
+    return who[:P.NAME_MAX - len(tail)] + tail
+
+
+def home_circle(conn: psycopg.Connection, uid: int) -> int | None:
+    """The circle a referral invites to: the person's own personal circle, else the oldest one they own."""
+    row = conn.execute("SELECT id FROM circles WHERE owner_id = %s ORDER BY personal DESC, created_at, id LIMIT 1",
+                       (uid,)).fetchone()
+    return row["id"] if row else None
+
+
+def ensure_personal(conn: psycopg.Connection, uid: int) -> int | None:
+    """Make the person's personal circle the first time circles are used: needs the `friends` flag on for them and the
+    circle consent, else nothing happens (and it is tried again next time). Someone who already owns a circle made by
+    hand gets none and keeps theirs as it is. Settled once (users.personal_circle_at): a dissolved one is not remade.
+    Returns home_circle()."""
+    u = conn.execute("SELECT personal_circle_at FROM users WHERE id = %s", (uid,)).fetchone()
+    if u is None:
+        return None
+    if u["personal_circle_at"] is None and auth.circles_on(conn, uid) \
+            and consent.agreed_at_least(conn, uid, P.CONSENT_VERSION):
+        u = conn.execute("SELECT personal_circle_at FROM users WHERE id = %s FOR UPDATE", (uid,)).fetchone()
+        if u["personal_circle_at"] is None:
+            if home_circle(conn, uid) is None:
+                if _count_circles(conn, uid) >= P.MAX_CIRCLES_PER_USER:
+                    return None   # no room now; tried again later
+                cid = conn.execute("INSERT INTO circles (name, owner_id, personal) VALUES (%s, %s, true) RETURNING id",
+                                   (_personal_name(conn, uid), uid)).fetchone()["id"]
+                conn.execute("INSERT INTO circle_members (circle_id, user_id, scopes) VALUES (%s, %s, %s)",
+                             (cid, uid, list(P.DEFAULT_SCOPES)))
+            conn.execute("UPDATE users SET personal_circle_at = now() WHERE id = %s", (uid,))
+    return home_circle(conn, uid)
+
+
 def referral_invites(conn: psycopg.Connection, inviter_id: int, invitee_id: int) -> int | None:
-    """#57 hook: someone signed up with `inviter_id`'s referral code → an invite to each circle the inviter owns
-    (valid params.REFERRAL_INVITE_DAYS). Nothing is shared until the invitee accepts and picks scopes. Returns the first
-    circle's id (recorded in invite_redemptions.circle_id) or None."""
-    circles = [r["id"] for r in conn.execute("SELECT id FROM circles WHERE owner_id = %s ORDER BY id", (inviter_id,))]
-    for cid in circles:
+    """#57 hook: someone signed up with `inviter_id`'s referral code → one invite to the inviter's home circle (made now if
+    circles are on for the inviter), valid params.REFERRAL_INVITE_DAYS. Made once per circle and person: a declined or
+    expired invite is not renewed. Nothing is shared until the invitee accepts and picks scopes. Returns the circle's id
+    (recorded in invite_redemptions.circle_id) or None (circles off for the inviter: referral_offer() catches up later)."""
+    cid = ensure_personal(conn, inviter_id)
+    if cid is None:
+        return None
+    if not conn.execute("""SELECT 1 FROM circle_invites WHERE circle_id = %s AND invitee_user_id = %s
+                           UNION ALL SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s""",
+                        (cid, invitee_id, cid, invitee_id)).fetchone():
         conn.execute("""INSERT INTO circle_invites (circle_id, created_by, invitee_user_id, expires_at)
                         VALUES (%s, %s, %s, now() + make_interval(days => %s))""",
                      (cid, inviter_id, invitee_id, P.REFERRAL_INVITE_DAYS))
-    return circles[0] if circles else None
+    return cid
+
+
+def referral_offer(conn: psycopg.Connection, uid: int) -> dict | None:
+    """The 「加入 XX 的圈子」 step of onboarding (and the Friends page invite list): if `uid` signed up with a referral code,
+    the open invite to the inviter's home circle. Catches up a sign-up made while circles were off for either of them
+    (the invite is made now). None = nothing to offer, also whenever circles are off for the inviter (no error, nothing
+    about the inviter is shown). Also makes the caller's own personal circle."""
+    ensure_personal(conn, uid)
+    red = conn.execute(
+        """SELECT r.id, r.inviter_user_id, r.circle_id FROM invite_redemptions r JOIN users u ON u.id = r.inviter_user_id
+           WHERE r.user_id = %s AND u.status = 'active' ORDER BY r.redeemed_at DESC LIMIT 1""", (uid,)).fetchone()
+    if red is None or not auth.circles_on(conn, red["inviter_user_id"]) \
+            or not consent.agreed_at_least(conn, uid, P.CONSENT_VERSION):
+        return None
+    cid = referral_invites(conn, red["inviter_user_id"], uid)
+    if cid is None:
+        return None
+    if red["circle_id"] is None:
+        conn.execute("UPDATE invite_redemptions SET circle_id = %s WHERE id = %s", (cid, red["id"]))
+    return conn.execute(
+        """SELECT i.id AS invite_id, i.expires_at, c.id AS circle_id, c.name, u.display_name AS inviter_name,
+                  (SELECT count(*) FROM circle_members m WHERE m.circle_id = c.id) AS members
+           FROM circle_invites i JOIN circles c ON c.id = i.circle_id LEFT JOIN users u ON u.id = c.owner_id
+           WHERE i.circle_id = %s AND i.invitee_user_id = %s AND i.revoked_at IS NULL AND i.expires_at > now()
+             AND NOT EXISTS (SELECT 1 FROM circle_members m WHERE m.circle_id = c.id AND m.user_id = %s)
+           ORDER BY i.created_at DESC LIMIT 1""", (cid, uid, uid)).fetchone()
 
 
 # ---------------------------------------------------------------- views
@@ -293,7 +370,7 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
         """SELECT u.id, u.display_name, m.joined_at, m.scopes FROM circle_members m JOIN users u ON u.id = m.user_id
            WHERE m.circle_id = %s ORDER BY m.joined_at, u.id""", (circle_id,)).fetchall()
     out = {"id": c["id"], "name": c["name"], "owner_id": c["owner_id"], "is_owner": c["owner_id"] == uid,
-           "created_at": c["created_at"],
+           "personal": c["personal"], "created_at": c["created_at"],
            "my_scopes": next(m["scopes"] for m in members if m["id"] == uid),
            # other members' picks are not shown here: what they share with you is in /v1/web/me → viewable
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],

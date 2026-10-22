@@ -25,7 +25,7 @@ from ..web import views
 from . import glossary as G
 
 METRIC_SCOPE = {"recovery": "scores", "sleep_score": "scores", "sleep_hours": "scores", "sleep_debt": "scores",
-                "sleep_consistency": "scores", "strain": "scores", "hrv": "metrics", "resting_hr": "metrics",
+                "sleep_consistency": "sleep", "strain": "scores", "hrv": "metrics", "resting_hr": "metrics",
                 "vo2max": "metrics", "sleep_efficiency": "sleep", "bedtime": "sleep", "weight": "weight"}
 TONE = {"good": "good", "warn": "mid", "bad": "bad", "neutral": "plain", "mid": "mid", "plain": "plain"}
 # (zh, en) pairs, picked with L(*pair)
@@ -709,13 +709,15 @@ def explain_metric(conn: psycopg.Connection, viewer_id: int, owner: int, key: st
     return view
 
 
-def _status_item(conn, owner: int, key: str) -> dict | None:
-    return next((i for i in status_mod.list_status(conn, owner) if i["key"] == key), None)
+def _status_item(conn, owner: int, key: str, viewer_id: int | None = None) -> dict | None:
+    """A card the viewer may not see (status.list_status: its data needs its own scope) counts as missing."""
+    return next((i for i in status_mod.list_status(conn, owner, viewer_id) if i["key"] == key), None)
 
 
 def explain_status(conn: psycopg.Connection, viewer_id: int, owner: int, key: str, day: date) -> dict | None:
-    """Caller has checked the memory scope (status items live there). None = no such status item."""
-    item = _status_item(conn, owner, key)
+    """Caller has checked the memory scope (status items live there). None = no such status item, or one built from
+    data the viewer may not see (a weight / lab / sleep card needs that scope too, issue #111)."""
+    item = _status_item(conn, owner, key, viewer_id)
     if item is None:
         return None
     text = " ".join(x for x in (item["label"], item["value"], item.get("note")) if x)

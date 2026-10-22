@@ -2,6 +2,7 @@
 read the calendar / a day, correct or hide a watch workout (overrides.py), exercise catalog, weekly splits, plan management, exercise swap, day changes (day_overrides.py)."""
 from datetime import date, datetime, timedelta
 
+from .. import auth
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
 from . import catalog, day_overrides, history, loads, overrides, params as P, plans, session_log
 
@@ -73,7 +74,7 @@ def _get_exercise(conn, uid, a):
 
 
 def _propose_plan(conn, uid, a):
-    return plans.propose_plan(
+    out = plans.propose_plan(
         conn,
         user_id=uid,
         split_type=a["split_type"],
@@ -85,6 +86,9 @@ def _propose_plan(conn, uid, a):
         start_date=a.get("start_date"),
         addons=a.get("addons"),
     )
+    if not auth.can_view(conn, a.get("_viewer_id", uid), uid, "scores"):
+        out["readiness"] = None   # recovery and sleep debt: scores data, like get_week_plan (issue #111)
+    return out
 
 
 def _save_plan(conn, uid, a):

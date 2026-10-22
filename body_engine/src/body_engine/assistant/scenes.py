@@ -202,7 +202,7 @@ def week_review_context(conn: psycopg.Connection, viewer_id: int, owner_id: int,
 
     def report() -> dict:   # one report for the score / training / food / weight sections (it reads SparkyFitness once)
         if not rep:
-            rep.update(reports.report(conn, owner_id, "week", end))
+            rep.update(reports.report(conn, owner_id, "week", end, viewer_id=viewer_id))   # blocks by shares (#111)
         return rep
 
     def block(key: str, change_key: str | None = None):

@@ -112,3 +112,12 @@ def can_view(conn: psycopg.Connection, viewer_id: int, owner_id: int, scope: str
     if viewer_id == owner_id:
         return True
     return bool(granted_scopes(conn, viewer_id, owner_id) & {scope, *IMPLIED_BY.get(scope, ())})
+
+
+def visible_scopes(conn: psycopg.Connection, viewer_id: int | None, owner_id: int, scopes) -> set[str]:
+    """Which of `scopes` `viewer_id` may see of `owner_id` (one shares lookup for the lot). For aggregates that mix
+    several kinds of data (reports, review contexts): each block is checked by its own scope. None = the owner."""
+    if viewer_id is None or viewer_id == owner_id:
+        return set(scopes)
+    granted = granted_scopes(conn, viewer_id, owner_id)
+    return {s for s in scopes if granted & {s, *IMPLIED_BY.get(s, ())}}

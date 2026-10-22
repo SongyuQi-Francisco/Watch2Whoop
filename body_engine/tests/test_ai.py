@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from body_engine import api, auth
-from body_engine.ai import adapters, crypto, providers
+from body_engine.ai import adapters, context, crypto, providers
 from body_engine.ai import chat as chat_mod
 from body_engine.ai import params as ai_params
 from body_engine.ai import playbooks
@@ -365,6 +365,86 @@ def test_budget(client, world, setup, dsn):
                         json={"monthly_budget_usd": 50}).status_code == 200
     FakeAdapter.script = [{"text": "ok"}]
     assert chat(client, tok["B"]).status_code == 200
+
+
+def test_long_conversation_folds_instead_of_too_long(client, world, setup, dsn, monkeypatch):
+    """#53: no "start a new conversation" any more. Past the budget the older turns become a stored summary the model
+    gets in the system prompt; tool calls keep working after the fold; the fold call is billed; the user still sees everything."""
+    ids, tok = world
+    monkeypatch.setattr(context, "MAX_MESSAGES", 6)
+    monkeypatch.setattr(context, "KEEP_TURNS", 2)
+    conv = None
+    for i in range(3):   # 6 messages: fits, no fold
+        FakeAdapter.script = [{"text": f"答{i}"}]
+        evs = sse(chat(client, tok["A"], f"问{i}", **({"conversation_id": conv} if conv else {})).text)
+        conv = evs[0][1]["id"]
+        assert evs[-1][0] == "done"
+    assert all(c["system"] != context.FOLD_SYSTEM for c in FakeAdapter.calls)
+    FakeAdapter.calls = []
+    # 4th message: 7 messages > 6 -> turns 0–1 are folded, then a tool round
+    FakeAdapter.script = [{"text": "- 用户问过问0、问1", "usage": {"input_tokens": 3000, "output_tokens": 200}},
+                          {"tool_calls": [{"id": "f1", "name": "get_profile", "args": {"user": "me"}}]},
+                          {"text": "你是 A。"}]
+    r = chat(client, tok["A"], "问3", conversation_id=conv)
+    assert r.status_code == 200
+    evs = sse(r.text)
+    assert evs[-1][0] == "done" and ("tool", {"name": "get_profile", "status": "done"}) in evs
+    assert [e for e, _ in evs].count("usage") == 3   # fold + 2 rounds
+    fold, first, second = FakeAdapter.calls
+    assert fold["system"] == context.FOLD_SYSTEM and fold["tools"] == []
+    assert "问0" in fold["history"][0]["content"][0]["text"] and "问2" not in fold["history"][0]["content"][0]["text"]
+    for call in (first, second):
+        assert call["system"].endswith("- 用户问过问0、问1") and call["tools"]
+        assert call["history"][0]["role"] == "user" and "问2" in call["history"][0]["content"][0]["text"]
+        assert not any("问0" in json.dumps(m["content"], ensure_ascii=False) for m in call["history"])
+    assert second["history"][-1]["role"] == "tool" and second["history"][-2]["content"][0]["name"] == "get_profile"
+    with db(dsn) as c:
+        row = c.execute("SELECT summary, summary_upto FROM ai_conversations WHERE id = %s", (conv,)).fetchone()
+        a1 = c.execute("""SELECT id FROM ai_messages WHERE conversation_id = %s AND role = 'assistant' ORDER BY id
+                          OFFSET 1 LIMIT 1""", (conv,)).fetchone()["id"]
+        assert row == {"summary": "- 用户问过问0、问1", "summary_upto": a1}
+        u = c.execute("""SELECT purpose, input_tokens, cost_usd FROM ai_usage WHERE conversation_id = %s AND purpose = 'compact'""",
+                      (conv,)).fetchall()
+        assert len(u) == 1 and u[0]["input_tokens"] == 3000 and float(u[0]["cost_usd"]) > 0
+    # The user still sees the whole conversation
+    view = client.get(f"/v1/assistant/conversations/{conv}", headers=H(tok["A"])).json()
+    assert [m["text"] for m in view["messages"] if m["role"] == "user"] == ["问0", "问1", "问2", "问3"]
+    # Next message: still over -> the old summary is folded into the new one together with the next turns
+    FakeAdapter.calls = []
+    FakeAdapter.script = [{"text": "- 合并后的摘要"}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "问4", conversation_id=conv).text)
+    assert evs[-1][0] == "done"
+    fold, answer = FakeAdapter.calls
+    assert fold["history"][0]["content"][0]["text"].startswith("之前的摘要：\n- 用户问过问0、问1")
+    assert answer["system"].endswith("- 合并后的摘要") and "问4" in answer["history"][-1]["content"][0]["text"]
+    # Within the budget again: the stored summary is reused, no fold call
+    FakeAdapter.calls = []
+    FakeAdapter.script = [{"text": "好"}]
+    sse(chat(client, tok["A"], "问5", conversation_id=conv).text)
+    assert len(FakeAdapter.calls) == 1 and FakeAdapter.calls[0]["system"].endswith("- 合并后的摘要")
+
+
+def test_failed_fold_still_answers_with_the_recent_turns(client, world, setup, dsn, monkeypatch):
+    ids, tok = world
+    monkeypatch.setattr(context, "MAX_MESSAGES", 4)
+    monkeypatch.setattr(context, "KEEP_TURNS", 1)
+    conv = None
+    for i in range(2):
+        FakeAdapter.script = [{"text": f"答{i}"}]
+        conv = sse(chat(client, tok["A"], f"问{i}", **({"conversation_id": conv} if conv else {})).text)[0][1]["id"]
+    real = FakeAdapter.stream_turn
+
+    def flaky(self, system, history, tools):
+        if system == context.FOLD_SYSTEM:
+            raise adapters.AdapterError("boom", "unavailable")
+        yield from real(self, system, history, tools)
+    monkeypatch.setattr(FakeAdapter, "stream_turn", flaky)
+    FakeAdapter.calls, FakeAdapter.script = [], [{"text": "好"}]
+    evs = sse(chat(client, tok["A"], "问2", conversation_id=conv).text)
+    assert evs[-1][0] == "done"
+    assert [m["role"] for m in FakeAdapter.calls[0]["history"]] == ["user"]
+    with db(dsn) as c:
+        assert c.execute("SELECT summary FROM ai_conversations WHERE id = %s", (conv,)).fetchone()["summary"] is None
 
 
 def test_subscription_users_get_redirect(client, world, setup, monkeypatch):

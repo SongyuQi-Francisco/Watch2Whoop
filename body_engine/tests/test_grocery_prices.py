@@ -119,7 +119,7 @@ def test_openai_and_gemini_web_tools(monkeypatch):
     for web in (False, True):
         with pytest.raises(Stop):
             list(adapters.make("openai_api", "gpt-x", "k", web=web).stream_turn("s", [], []))
-        assert ({"type": "web_search"} in seen["openai"]["tools"]) is web
+        assert ({"type": "web_search"} in seen["openai"].get("tools", [])) is web   # no tools at all: no "tools" key
 
     class Models:
         def generate_content_stream(self, model, contents, config):

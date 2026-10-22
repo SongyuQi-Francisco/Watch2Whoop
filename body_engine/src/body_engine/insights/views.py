@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
+from .. import auth
 from . import coach, fitness, healthspan_store, reports, sleep_detail, stress
 
 
@@ -16,8 +17,20 @@ def today(conn, user_id: int) -> date:
     return datetime.now(user_tz(conn, user_id)).date()
 
 
-def healthspan(conn, user_id: int, weeks: int = 26) -> dict:
+# body-age item -> the scope of the data behind it (the item's value, e.g. weight_kg or steps, is that data)
+HEALTHSPAN_SCOPE = {"sleep_duration": "scores", "sleep_regularity": "sleep", "steps": "metrics", "mvpa": "scores",
+                    "strength": "training", "vo2max": "metrics", "rhr": "metrics", "body_comp": "weight"}
+
+
+def healthspan(conn, user_id: int, weeks: int = 26, viewer_id: int | None = None) -> dict:
+    """Someone else's body age: items built from data the viewer may not see are left out, their scopes in `hidden`."""
     res = healthspan_store.read(conn, user_id, weeks)
+    if res is not None and viewer_id is not None and viewer_id != user_id:
+        can = auth.visible_scopes(conn, viewer_id, user_id, set(HEALTHSPAN_SCOPE.values()))
+        ok = lambda it: HEALTHSPAN_SCOPE.get(it.get("key"), "scores") in can
+        hidden = sorted({HEALTHSPAN_SCOPE[k] for k in HEALTHSPAN_SCOPE} - can)
+        res = {**res, "contributors": [i for i in res["contributors"] or [] if ok(i)],
+               "insufficient": [i for i in res["insufficient"] or [] if ok(i)], **({"hidden": hidden} if hidden else {})}
     if res is None:
         return {"body_age": None, "chrono_age": None, "delta_years": None, "pace_of_aging": None, "pace_raw": None,
                 "window_weeks": None, "as_of": None,
@@ -38,8 +51,15 @@ def strain_coach(conn, user_id: int, d: date | None = None) -> dict:
     return coach.strain_coach(conn, user_id, d or today(conn, user_id))
 
 
-def sleep_coach(conn, user_id: int, d: date | None = None) -> dict:
-    return coach.sleep_coach(conn, user_id, d or today(conn, user_id), user_tz(conn, user_id))
+SLEEP_COACH_NEED = ("date", "need_min", "need_parts", "sleep_debt_min", "strain_today")   # from the scores row
+
+
+def sleep_coach(conn, user_id: int, d: date | None = None, viewer_id: int | None = None) -> dict:
+    """Without the sleep share only tonight's need is given: wake times, latency and the bedtime goal are sleep data."""
+    out = coach.sleep_coach(conn, user_id, d or today(conn, user_id), user_tz(conn, user_id))
+    if "sleep" in auth.visible_scopes(conn, viewer_id, user_id, ("sleep",)):
+        return out
+    return {**{k: out[k] for k in SLEEP_COACH_NEED}, "hidden": ["sleep"]}
 
 
 def health_monitor(conn, user_id: int, d: date | None = None) -> dict:
@@ -61,14 +81,16 @@ def sleep_details(conn, user_id: int, start: date | None, end: date | None) -> d
                      "入睡潜伏期只在睡着前有手表记的「清醒」片段时才有；效率 = 睡着 /（潜伏期开始 → 醒来）"}
 
 
-def hr_zones(conn, user_id: int, start: date | None, end: date | None) -> dict:
+def hr_zones(conn, user_id: int, start: date | None, end: date | None, viewer_id: int | None = None) -> dict:
     end = end or today(conn, user_id)
-    return fitness.hr_zones(conn, user_id, start or end - timedelta(days=6), end)
+    with_workouts = "training" in auth.visible_scopes(conn, viewer_id, user_id, ("training",))
+    return fitness.hr_zones(conn, user_id, start or end - timedelta(days=6), end, with_workouts)
 
 
 def vo2max(conn, user_id: int, end: date | None = None, days: int = 365) -> dict:
     return fitness.vo2max(conn, user_id, end or today(conn, user_id), days)
 
 
-def report(conn, user_id: int, period: str = "week", end: date | None = None) -> dict:
-    return reports.report(conn, user_id, period, end or today(conn, user_id))
+def report(conn, user_id: int, period: str = "week", end: date | None = None, viewer_id: int | None = None) -> dict:
+    """viewer_id: blocks outside the viewer's shares are left out and listed in `hidden` (None = the owner)."""
+    return reports.report(conn, user_id, period, end or today(conn, user_id), viewer_id=viewer_id)
