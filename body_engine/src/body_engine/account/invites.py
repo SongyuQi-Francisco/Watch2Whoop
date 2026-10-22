@@ -13,7 +13,7 @@
   opens up to params.REFERRAL_MAX_USES accounts, at most params.REFERRAL_DAILY_REDEEMS in any 24 hours (soft cap: two
   redemptions racing for the last slot of a day may both pass; the total stays strict), never expires, and stops working
   when the admin revokes it, the inviter is disabled or deleted, or referrals are switched off (BODY_REFERRALS_ENABLED). Redeeming one records the inviter and writes a pending
-  reward (params.REFERRAL_REWARD). The new user is invited to the circles the inviter owns (friends/store.py referral_invites; invite_redemptions.circle_id = the first one).
+  reward (params.REFERRAL_REWARD). The new user is invited to the inviter's home circle, their personal one (friends/store.py referral_invites; invite_redemptions.circle_id).
 """
 from __future__ import annotations
 
@@ -216,7 +216,7 @@ def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
         conn.execute("INSERT INTO invite_redemption_identities (redemption_id, provider, identity_sha256, hint) VALUES (%s, %s, %s, %s)",
                      (red["id"], provider, sha, hint))
     if inviter is not None:
-        # invites to the inviter's circles; joining (and what to share) stays the new user's own choice
+        # an invite to the inviter's personal circle; joining (and what to share) stays the new user's own choice
         from ..friends import store as friends
         circle = friends.referral_invites(conn, inviter, user_id)
         if circle is not None:

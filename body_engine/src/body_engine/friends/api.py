@@ -74,7 +74,16 @@ class ScopesIn(BaseModel):
 
 @router.get("")
 def overview(conn=Depends(get_conn), viewer=Depends(current_user)):
+    # first use of circles: make the personal circle and pick up a referral invite made while circles were off
+    store.referral_offer(conn, viewer["id"])
     return store.overview(conn, viewer["id"])
+
+
+@router.get("/referral")
+def referral(conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Onboarding's 「加入 XX 的圈子」 step: the open invite from the person whose referral code I signed up with, or null."""
+    offer = store.referral_offer(conn, viewer["id"])
+    return {"offer": offer and {**offer, "scopes": list(P.DEFAULT_SCOPES)}}
 
 
 @router.post("/circles", status_code=201)

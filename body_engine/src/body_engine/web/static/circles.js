@@ -262,7 +262,7 @@
   }
 
   const on = () => !!window.BodyFlags?.on("friends");
-  window.BodyCircles = { open, load: () => load(), data: () => data, onChange: null };
+  window.BodyCircles = { open, load: () => load(), data: () => data, onChange: null, labels: LABEL };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init: async (ctx, me) => {
       C = ctx; ME = me?.me || null; injectCss();
