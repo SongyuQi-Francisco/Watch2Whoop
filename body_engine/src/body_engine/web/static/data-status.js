@@ -89,9 +89,11 @@
   function strengthText(st) {
     if (!st) return null;
     const sp = st.sparky === "connected" ? String(st.sessions.sparky ?? 0) : st.sparky === "not_linked" ? tr("未连接") : tr("读不到");
+    // flag ai_parity: the back end is never named in the app
+    const db = typeof window !== "undefined" && window.BodyFlags?.on("ai_parity") ? tr("底层数据库") : "SparkyFitness";
     return {
       days: tr("{d} 天有记录", { d: st.days }),
-      sources: `${tr("手表")} ${st.sessions.watch} · SparkyFitness ${sp} · Hevy ${st.sessions.hevy}`,
+      sources: `${tr("手表")} ${st.sessions.watch} · ${db} ${sp} · Hevy ${st.sessions.hevy}`,
     };
   }
   function strengthHtml(st) {
@@ -146,7 +148,9 @@
     if (v) v.textContent = shortVal();
   }
 
-  const on = () => !!ME && !!window.BodyFlags?.on("data_status");
+  // In the app with the sync center (flag sync_center) the Me page has its one row instead (app.js phoneSyncRow)
+  const inSyncCenter = () => !!window.Watch2Whoop && !!window.Watch2WhoopFeatures?.syncCenter && !!window.BodyFlags?.on("sync_center");
+  const on = () => !!ME && !!window.BodyFlags?.on("data_status") && !inSyncCenter();
 
   if (typeof module !== "undefined") module.exports = { reasonsFor, stepsFor, strengthText, IOS_NAME };
   if (typeof window === "undefined") return;
@@ -160,5 +164,6 @@
       b.onclick = () => { data = null; open(); };
       load().then(updateItem);
     },
+    openDataStatus: () => { data = null; open(); },   // a Jarvis data status card (ai.js, flag jarvis_cards_v2)
   });
 })();

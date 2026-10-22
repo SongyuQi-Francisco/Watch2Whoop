@@ -19,6 +19,28 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 ## Unreleased
 
 ## 1.0.7 — 2026-10-22
+Sync center (rollout flag `sync_center`, server side in #221) and the Health types the Open Wearables SDK cannot read.
+- Fix: stand time, exercise minutes, time in daylight, physical effort, sleeping wrist temperature, environmental /
+  headphone sound, walking heart rate, stair speed and walking steadiness stopped reaching the server once people synced
+  only through the app (OW SDK 0.15 has none of them). RawSync now reads them too (registry `lib/src/hk_types.dart`, the
+  same table as the server's `rawdata/hk_types.py`, checked by tests on both sides), each type with its own HealthKit
+  anchor, and uploads them as `quantities[]` to `POST /v1/ingest/healthkit`, only the types the server lists and only
+  while it takes them (emergency flag `app_types_pause`: the anchors stay and the samples go later). They are asked for in
+  the second, small Health sheet, which shows once more for people who already answered it (automatic asks still stop
+  after 3). Not behind a flag.
+- Sync center (flag on; the Today page's 「我」 then has one row 「同步中心」 / "Sync center" instead of 手机同步 / 数据更新 /
+  数据状态, opened as `watch2whoop://sync-center`; the app tells the page `Watch2WhoopFeatures.syncCenter`):
+  - 「立即重新同步」 / "Re-sync now" with 7 / 30 / 90 days, all, or a custom number of days (1–3650): the OW SDK stops,
+    clears its anchors and exports that range again (`startBackgroundSync(syncDaysBack:)` + `resetAnchors()`, checked in
+    its 0.15 source; every other sync of the app keeps that range until the export is done, then the usual one is stored
+    again); RawSync reads every kind of the range again with a separate set of anchors (the regular ones do not move); the
+    server then re-imports and re-scores the range. Progress and result on the page; all history asks first and warns
+    about time and battery; the screen stays on while it runs there; a closed app continues on the next open.
+  - Per data type the newest sample on the phone next to the newest on the server: 「没采集」 / "Not recorded" (none on the
+    phone, or no permission), 「没同步」 / "Not synced", 「已同步」 / "Synced"; VO₂ max notes that it is only made outdoors.
+  - Strength-training sources (#210) and when the server data was last updated; everything else of Phone sync stays.
+- Flag off: the page is exactly as before.
+
 Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
 [docs/offline-plan.md](../../docs/offline-plan.md)).
 - Opening the app without network no longer stops at 「连不上今天页」 / "Cannot reach the today page" for people with
@@ -70,6 +92,25 @@ dictation, because the WebView never let the Today page use the microphone.
   page in iOS Settings).
 - The permissions step no longer says the app never uses the microphone.
 - Older apps (1.0.6 and before) do not set the flag, so the page keeps pointing them to the keyboard's dictation.
+
+Fix: no app ever uploaded a beat-to-beat HRV reading, ECG or drink (the server had 0 rows from the app). Reproduced in the
+simulator:
+- The second, small Health sheet (beat-to-beat, ECG, water) was asked for 10 ms after the Open Wearables sheet closed.
+  iOS cannot present a sheet while another one is being dismissed ("Attempt to present
+  HKHealthPrivacyHostAuthorizationViewController … whose view is not in the window hierarchy"): the sheet never came up
+  and HealthKit never answered, so the permissions step could spin forever. The app had already noted the ask as done
+  and never asked again.
+- Those types therefore stayed undetermined; every upload pass failed reading them ("Authorization not determined",
+  HealthKit error 5) and the error ended the whole pass silently, before any request reached the server.
+- Now the native side waits until nothing is presented before asking, and answers instead of waiting when no sheet came
+  up. Whether to ask is what HealthKit says (`rawAuthStatus`), not a flag of our own: people stuck in this state see the
+  sheet once after the next sync round on open (automatic asks are counted and stop after 3, so a HealthKit crash cannot
+  repeat on every open).
+- A kind that cannot be read no longer ends the pass: the other kinds still go, and the reason shows on the sync page.
+- Phone sync → 「心跳间期、心电图和饮水」 / "Beat-to-beat HRV, ECG and water": 「上次上传」 / "Last upload" now also shows how
+  many readings that upload added (before this phone's first upload, the server's last accepted batch of the account),
+  plus 「上次检查」 / "Last check". When iOS never asked, 「允许读取」 / "Allow reading" shows the sheet and uploads right
+  away. Each pass also writes a line to the sync log.
 
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the

@@ -296,6 +296,21 @@ def healthspan_cases(m, data) -> dict:
     }
 
 
+def healthspan_v12_cases(HS, H12) -> dict:
+    """v1.2 (activity domain): the new functions and the v1.2 step curve; v1.1 cases above stay as they were."""
+    return {
+        "steps": [[HS.hr_steps(s, a, params=H12) for s in (2000, 4000, 6000, H12.STEPS_ANCHOR_UNDER60, 12000, 20000)]
+                  for a in (35, 60, 72)],
+        "moderate_equiv": [HS.moderate_equiv_minutes(30, met, params=H12) for met in (2.0, 2.99, 3.0, 3.5, 6.0, 8.0)],
+        "step_equiv": [HS.step_equivalents(m, H12.STRENGTH_MET, params=H12) for m in (0, 30, 60)]
+        + [HS.step_equivalents(45, H12.WORKOUT_MET[t], params=H12) for t in sorted(H12.NONSTEP_TYPES)],
+        "activity": [HS.hr_activity(s, w, a, params=H12) for s, w, a in
+                     ((4000, None, 30), (6000, 0, 30), (6000, 40, 30), (9000, 200, 30), (5000, 40, 70))],
+        "years": [HS.years_from_hr(x, H12.ACTIVITY_CAP_YEARS, params=H12) for x in (0.3, 0.8, 1.0, 1.3, 3.0)],
+        "version": H12.ALGO_VERSION,
+    }
+
+
 def hrv_cases(m, data) -> dict:
     X = m["hrv"]
     out = []
@@ -382,7 +397,18 @@ def body_engine_modules() -> dict:
             "healthspan": healthspan, "healthspan_params": healthspan_params, "hrv": hrv, "stress": stress}
 
 
+GOLDEN_V12 = Path(__file__).parent / "golden" / "healthspan_v12.json"
+
+
+def compute_v12() -> dict:
+    from openbodyscore import healthspan, healthspan_params_v12
+    return json.loads(json.dumps(_jsonable(healthspan_v12_cases(healthspan, healthspan_params_v12))))
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--write-v12"]:   # v1.2 is new: its golden is written from the package itself
+        GOLDEN_V12.write_text(json.dumps(compute_v12(), indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+        sys.exit(print(f"wrote {GOLDEN_V12}"))
     # --write: regenerate the golden file from the old body_engine paths (only ever done before the extraction)
     if sys.argv[1:] != ["--write"]:
         sys.exit("usage: python golden_cases.py --write   (run inside the body_engine environment)")

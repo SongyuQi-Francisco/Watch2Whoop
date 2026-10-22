@@ -121,6 +121,7 @@
     const acts = [`<button type="button" data-scopes="${c.id}">${esc(tr("改共享范围"))}</button>`];
     if (owner) acts.push(`<button type="button" data-invite="${c.id}">${esc(tr("邀请"))}</button>`,
       `<button type="button" data-reset="${c.id}">${esc(tr("重置邀请"))}</button>`);
+    if (owner && !c.personal && window.BodyAvatar?.on()) acts.push(`<button type="button" data-logo="${c.id}">${esc(tr("圈子 logo"))}</button>`);
     acts.push(`<button type="button" class="bad" data-leave="${c.id}">${esc(tr("退出"))}</button>`);
     if (owner) acts.push(`<button type="button" class="bad" data-dissolve="${c.id}">${esc(tr("解散"))}</button>`);
     const live = owner && c.invites?.live ? ` · ${esc(tr("{n} 个邀请有效", { n: c.invites.live }))}` : "";
@@ -149,6 +150,11 @@
     by("[data-decline]", async (b) => { await C.api(`/v1/friends/invites/${b.dataset.decline}`, { method: "DELETE" }); await reopen(); });
     by("[data-scopes]", async (b) => scopesSheet(find(b.dataset.scopes)));
     by("[data-invite]", async (b) => inviteSheet(find(b.dataset.invite)));
+    by("[data-logo]", async (b) => {
+      const c = find(b.dataset.logo);
+      window.BodyAvatar.editor({ title: tr("圈子 logo"), url: c.avatar, name: c.name, put: `/v1/avatars/circles/${c.id}`, del: `/v1/avatars/circles/${c.id}`,
+        onDone: () => { reopen().catch(() => {}); } });
+    });
     by("[data-reset]", async (b) => {
       if (!confirm(tr("重置后，之前发出的邀请链接立即失效。确定？"))) return;
       await mintAndShow(find(b.dataset.reset), { reset: true });

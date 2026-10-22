@@ -2,12 +2,17 @@
    and the Me page gets a "Profile" (「个人资料」) row.
    - First login (a test user who hasn't consented yet): a full-screen sheet shows the key points + full text of the health-data consent form (《健康数据使用同意书》); the user must tick "I have read and agree" (「我已阅读并同意」) to continue;
      until then the server does not process this person's health data. When the consent form is revised, people who already agreed are asked to confirm again (data is not blocked).
+   - Flag consent_one_tap (P.consent.one_tap): the sheet is one 「开始使用」 button and one line naming the two texts
+     (《数据与隐私说明》 = the consent form above, 《Jarvis AI 说明》 = the fallback AI's points when GET /v1/consent has `ai`); each name
+     opens its full text. One tap records the consent (method one_tap) and the Jarvis terms together; a revised text is
+     reconfirmed the same way. The texts and their versions are the same as with the tick box.
    - If the profile (birthday / sex / height) is empty after consenting, a "Complete your profile" (「完善个人资料」) prompt appears once; it can be postponed with "Later" (「以后再填」) (remembered on this device, can be edited any time on the Me page).
    Endpoints: GET/PATCH /v1/users/me/profile, GET /v1/consent, POST /v1/users/me/consent. */
 (() => {
   "use strict";
   let C = null;
   let P = null;              // result of the latest GET /profile
+  let MY_AVATAR = null;      // my picture (/v1/web/me, avatars.js, flag `avatars`)
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
   const tr = (k, p) => window.I18N.t(k, p);
@@ -26,6 +31,21 @@
     .consent-check input{width:22px;height:22px;flex:none;margin:0}
     .consent .btn[disabled]{opacity:.4}
     .consent-circle{background:var(--surface);border-radius:14px;padding:12px 16px;margin:10px 0;font-size:14px;line-height:1.5}
+    .consent.c1{display:flex;overflow:hidden}
+    .c1-in{flex:1;display:flex;flex-direction:column;width:100%;max-width:440px;margin:0 auto;box-sizing:border-box;
+      padding:calc(env(safe-area-inset-top) + 28px) 24px calc(env(safe-area-inset-bottom) + 20px)}
+    .c1-top{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+    .c1-top img{width:84px;height:84px}.c1-top h1{margin:0;font-size:26px}
+    .c1-join{font-size:13px;line-height:1.5;color:var(--text-2);text-align:center;margin:0 0 12px}
+    .c1-go{width:100%;flex:none;min-height:52px;font-size:17px}
+    .c1-terms{font-size:12px;line-height:1.6;color:var(--text-2);text-align:center;margin:12px 0 0}
+    .c1-terms .link{font-size:12px;padding:0;color:var(--text);font-weight:600}
+    .c1-doc{position:fixed;inset:0;z-index:61;background:var(--bg);overflow:auto;-webkit-overflow-scrolling:touch}
+    .c1-bar{position:sticky;top:0;display:flex;align-items:center;gap:6px;background:var(--bg);border-bottom:1px solid var(--hair);
+      padding:calc(env(safe-area-inset-top) + 8px) 12px 8px}
+    .c1-bar b{font-size:16px}.c1-bar .link{font-size:15px;padding:6px 8px 6px 0}
+    .c1-body{max-width:560px;margin:0 auto;padding:4px 16px calc(env(safe-area-inset-bottom) + 24px)}
+    .c1-body .consent-full{margin:12px 0}.c1-body ul{padding-left:20px;line-height:1.6}
     #pf-birth{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;box-sizing:border-box;text-align:left}`;
 
   function injectCss() {
@@ -65,6 +85,7 @@
     let c;
     try { c = await C.api("/v1/consent"); } catch (e) { C.toast(e.message); return; }
     injectCss();
+    if (P?.consent?.one_tap) { oneTap(reconfirm, c); return; }
     const el = document.createElement("div");
     el.className = "consent";
     el.id = "consent";
@@ -92,22 +113,67 @@
     if (no) no.onclick = () => {
       $("#consent-msg", el).textContent = tr("不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。");
     };
-    $("#consent-yes", el).onclick = async () => {
-      $("#consent-yes", el).disabled = true;
-      try {
-        P = await C.api("/v1/users/me/consent", { method: "POST", body: { version: c.version, agree: true, language: c.language || undefined } });   // the text that was read
-      } catch (e) {
-        $("#consent-msg", el).textContent = e.message;
-        $("#consent-yes", el).disabled = false;
-        return;
-      }
-      el.remove();
-      document.body.style.overflow = "";
-      const joined = (P.circles_joined || []).map((j) => j.name);
-      C.toast(joined.length ? tr("谢谢！已加入「{name}」", { name: joined.join(" · ") }) : tr("谢谢！同步上来的数据一小时内开始处理"));
-      if (joined.length) C.reload?.();   // the people you may view changed
-      maybePrompt();
-    };
+    $("#consent-yes", el).onclick = () => submit(el, { version: c.version, agree: true, language: c.language || undefined });   // the text that was read
+  }
+
+  async function submit(el, body) {
+    $("#consent-yes", el).disabled = true;
+    try {
+      P = await C.api("/v1/users/me/consent", { method: "POST", body });
+    } catch (e) {
+      $("#consent-msg", el).textContent = e.message;
+      $("#consent-yes", el).disabled = false;
+      return;
+    }
+    el.remove();
+    document.body.style.overflow = "";
+    const joined = (P.circles_joined || []).map((j) => j.name);
+    C.toast(joined.length ? tr("谢谢！已加入「{name}」", { name: joined.join(" · ") }) : tr("谢谢！同步上来的数据一小时内开始处理"));
+    if (joined.length) C.reload?.();   // the people you may view changed (also reloads the AI state)
+    else if (body.ai_version) window.BodyAI?.refreshAi?.();   // Jarvis no longer asks for its own consent
+    maybePrompt();
+  }
+
+  // One-tap consent (flag consent_one_tap): a single button and one line naming the texts; tapping a name opens its full text
+  function oneTap(reconfirm, c) {
+    const el = document.createElement("div");
+    el.className = "consent c1";
+    el.id = "consent";
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-modal", "true");
+    el.setAttribute("aria-labelledby", "c1-h");
+    const labels = window.BodyCircles?.labels || {};
+    const joining = (P?.circle_pending || []).map((j) => `<p class="c1-join">${esc(tr("加入圈子「{name}」，成员能看到：{list}",
+      { name: j.name, list: j.scopes.map((x) => labels[x] || x).join(" · ") || tr("什么都不共享") }))}</p>`).join("");
+    const link = (doc, name) => `<button class="link" type="button" data-doc="${doc}">${esc(name)}</button>`;
+    const data = link("data", tr("《数据与隐私说明》"));
+    const terms = c.ai
+      ? esc(tr("继续即表示同意{data}和{ai}")).replace("{data}", data).replace("{ai}", link("ai", tr("《Jarvis AI 说明》")))
+      : esc(tr("继续即表示同意{doc}")).replace("{doc}", data);
+    el.innerHTML = `<div class="c1-in">
+      <div class="c1-top"><img src="icon.svg" alt=""><h1 id="c1-h">${reconfirm ? esc(tr("说明有更新")) : "Watch2Whoop"}</h1></div>
+      ${joining}
+      <button class="btn btn-primary c1-go" id="consent-yes" type="button">${esc(reconfirm ? tr("继续") : tr("开始使用"))}</button>
+      <p class="c1-terms">${terms}</p>
+      <p class="small muted" id="consent-msg" role="alert" style="text-align:center;margin:8px 0 0"></p></div>
+      <div class="c1-doc" id="c1-doc" hidden><div class="c1-bar"><button class="link" type="button" id="c1-back">‹ ${esc(tr("返回"))}</button>
+        <b id="c1-title"></b></div><div class="c1-body" id="c1-body"></div></div>`;
+    document.body.appendChild(el);
+    document.body.style.overflow = "hidden";
+    const doc = $("#c1-doc", el);
+    el.querySelectorAll("[data-doc]").forEach((b) => {
+      b.onclick = () => {
+        const ai = b.dataset.doc === "ai";
+        $("#c1-title", el).textContent = ai ? tr("Jarvis AI 说明") : tr("数据与隐私说明");
+        $("#c1-body", el).innerHTML = ai ? `<ul>${c.ai.points.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`
+          : `<div class="consent-full">${md(c.text)}</div>`;
+        doc.hidden = false;
+        doc.scrollTop = 0;
+      };
+    });
+    $("#c1-back", el).onclick = () => { doc.hidden = true; };
+    $("#consent-yes", el).onclick = () => submit(el, { version: c.version, agree: true, language: c.language || undefined,
+      method: "one_tap", ai_version: c.ai?.version || undefined });
   }
 
   // ---------------------------------------------------------------- profile
@@ -135,6 +201,7 @@
     const v = (x) => (x == null ? "" : esc(x));
     C.openSheet(tr(first ? "profile.complete" : "profile.title"), `
       ${first ? `<p class="para" style="margin:0 0 4px">${esc(tr("profile.intro"))}</p>` : ""}
+      ${window.BodyAvatar?.profileRow(MY_AVATAR, p.display_name) || ""}
       <div class="field"><label>${tr("profile.name")}</label><input class="input" id="pf-name" maxlength="30" value="${v(p.display_name)}"></div>
       <div class="field"><label>${tr("profile.birth")}</label><input class="input" id="pf-birth" type="date" min="1920-01-01" value="${v(p.birth_date)}"></div>
       <div class="field"><label>${tr("profile.sex")}</label><select class="input" id="pf-sex">
@@ -149,6 +216,7 @@
       <p class="small muted" id="pf-msg" style="margin-top:10px"></p>
       <div class="btns"><button class="btn btn-primary" id="pf-save">${tr("common.save")}</button>${first ? `<button class="btn" id="pf-later">${tr("profile.later")}</button>` : ""}</div>`,
     (root) => {
+      window.BodyAvatar?.bindProfile(root, MY_AVATAR, p.display_name);
       const later = $("#pf-later", root);
       if (later) later.onclick = () => { laterSet(); C.closeSheet(); };
       $("#pf-save", root).onclick = async () => {
@@ -175,8 +243,9 @@
     if (el && P) el.textContent = P.missing.length ? tr("profile.incomplete") : P.display_name;
   }
 
-  async function init(ctx) {
+  async function init(ctx, me) {
     C = ctx;
+    MY_AVATAR = me?.me?.avatar || null;
     try { await load(); } catch (e) { return; }   // older servers don't have this endpoint
     if ($("#consent")) return;                     // The startup flow ran again (refresh, re-login) and the sheet is already there
     if (P.consent.required) showConsent(false);

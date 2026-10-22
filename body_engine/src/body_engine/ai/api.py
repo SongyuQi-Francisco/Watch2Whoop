@@ -246,6 +246,7 @@ class FallbackConsentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: str = Field(min_length=1, max_length=40)
     agree: Literal[True]
+    method: Literal["app", "one_tap"] = "app"   # one_tap: the one-tap Jarvis sheet (flag consent_one_tap)
 
 
 @router.get("/v1/users/{user}/ai-fallback")
@@ -261,8 +262,11 @@ def get_fallback(user: str, conn=Depends(get_conn), viewer=Depends(current_user)
 def accept_fallback(user: str, body: FallbackConsentIn, request: Request, conn=Depends(get_conn),
                     viewer=Depends(current_user)):
     uid = _self_only(viewer, user, write=True)
+    from ..profile import consent as main_consent
+    if body.method == "one_tap" and not main_consent.one_tap_on(conn, uid):
+        raise HTTPException(404, L("这个功能还没有对你开放", "This feature is not available to you yet"))
     try:
-        fallback.accept_consent(conn, uid, body.version, request.headers.get("user-agent"))
+        fallback.accept_consent(conn, uid, body.version, request.headers.get("user-agent"), method=body.method)
     except ValueError as e:
         raise HTTPException(409, str(e))
     return _fallback_view(conn, viewer) or {}

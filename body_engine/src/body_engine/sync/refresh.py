@@ -10,6 +10,11 @@
   BODY_SYNC_SCORES=inline the API thread recomputes itself (single-machine setups with room to spare).
 - status(): what the Today page shows (「同步中… / 已更新 07:42」): the row plus the time of the last OW import from any path
   (sync_state.last_synced_at, so the hourly job counts too).
+- queue_scores(): data that changed older days (the app's direct uploads, rawdata/quantities.py) asks for a recompute from
+  that day: scores_from keeps the earliest asked day, scores_queued_at the time of the last ask (a recompute that started
+  before a newer ask leaves the row queued, so the newer data is scored too). No OW import, no rate limit.
+- run_queued() also runs the server part of a forced re-sync (sync/resync.py): the re-sync marks the row scores_queued
+  while it has work, so the per-minute job that already watches this table picks it up (no new trigger needed).
 Users who have not consented (profile/consent.py) and users without an OW link are not processed.
 """
 import logging
@@ -112,13 +117,31 @@ def _run_import(user_id: int, client=None, connect=None) -> None:
             conn.commit()
 
 
+def queue_scores(conn: psycopg.Connection, user_id: int, from_date) -> None:
+    """Ask for a score recompute from `from_date` (at least the usual SCORE_DAYS window). Commits."""
+    conn.execute("INSERT INTO sync_refresh (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
+    conn.execute("""UPDATE sync_refresh SET scores_from = LEAST(coalesce(scores_from, %(d)s), %(d)s), scores_queued_at = now(),
+                           status = CASE WHEN status IN ('importing', 'scores_queued', 'scoring') THEN status
+                                         ELSE 'scores_queued' END,
+                           updated_at = now()
+                    WHERE user_id = %(u)s""", {"u": user_id, "d": from_date})
+    conn.commit()
+
+
 def run_scores(conn: psycopg.Connection, user_id: int, client=None, scorer=None) -> dict:
-    """Recompute the last SCORE_DAYS days (same as the hourly job: compute-scores + insights, then the rules)."""
+    """Recompute the last SCORE_DAYS days, or from scores_from when an upload asked for older days (same as the hourly
+    job: compute-scores + insights, then the rules)."""
+    row = conn.execute("SELECT scores_from, scores_queued_at FROM sync_refresh WHERE user_id = %s", (user_id,)).fetchone() or {}
+    t0 = conn.execute("SELECT now() AS t").fetchone()["t"]
     _set(conn, user_id, status="scoring")
     conn.commit()
     try:
-        res = (scorer or _score)(conn, user_id, client)
-        _set(conn, user_id, status="idle", scored_at=_now(), error=None)
+        res = (scorer or _score)(conn, user_id, client, row.get("scores_from"))
+        # asked again while this ran: stay queued (the next run covers the newer data); else done
+        conn.execute("""UPDATE sync_refresh SET scored_at = now(), error = NULL, updated_at = now(),
+                               status = CASE WHEN scores_queued_at > %(t)s THEN 'scores_queued' ELSE 'idle' END,
+                               scores_from = CASE WHEN scores_queued_at > %(t)s THEN scores_from ELSE NULL END
+                        WHERE user_id = %(u)s""", {"u": user_id, "t": t0})
         conn.commit()
         return res
     except Exception as e:  # noqa: BLE001
@@ -128,7 +151,7 @@ def run_scores(conn: psycopg.Connection, user_id: int, client=None, scorer=None)
         return {"error": str(e)}
 
 
-def _score(conn, user_id: int, client=None) -> dict:
+def _score(conn, user_id: int, client=None, scores_from=None) -> dict:
     from ..importers import shortcut
     from ..insights import jobs as insights_jobs
     from ..ow_client import OWClient
@@ -137,16 +160,19 @@ def _score(conn, user_id: int, client=None) -> dict:
     client = client or OWClient()
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     start = datetime.now(tz).date() - timedelta(days=SCORE_DAYS)
+    if scores_from is not None:
+        start = min(start, scores_from)
     res = scores_engine.run(conn, client, user_id, start, None, shortcut.user_archive_dir(user_id))
     res["insights"] = insights_jobs.run(conn, client, user_id)
     rules_engine.run(conn, user_id, None)
     return res
 
 
-def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None) -> list[dict]:
-    """`body-engine sync-refresh-run`: recompute scores for every user whose refresh is queued (or one user). Idempotent:
-    nothing queued = nothing done."""
+def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None, resync_kw: dict | None = None) -> list[dict]:
+    """`body-engine sync-refresh-run`: recompute scores for every user whose refresh is queued (or one user), and run one
+    budgeted step of their forced re-sync if they have one (sync/resync.py). Idempotent: nothing queued = nothing done."""
     from ..profile import consent
+    from . import resync
     rows = conn.execute("""SELECT user_id FROM sync_refresh WHERE status = 'scores_queued'
                            OR (status = 'scoring' AND updated_at < now() - %s) ORDER BY requested_at""",
                         (STALE,)).fetchall()
@@ -158,6 +184,10 @@ def run_queued(conn: psycopg.Connection, user_id: int | None = None, scorer=None
         if consent.gate(conn, uid):
             _set(conn, uid, status="idle")
             conn.commit()
+            continue
+        if resync.pending(conn, uid):
+            # its last step recomputes the scores from the start of its range, which covers the usual window too
+            out.append({"user_id": uid, "resync": resync.run_step(conn, uid, **(resync_kw or {}))})
             continue
         out.append({"user_id": uid, **run_scores(conn, uid, scorer=scorer)})
     return out

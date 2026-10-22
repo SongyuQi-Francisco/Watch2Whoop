@@ -51,21 +51,22 @@ def definition_chars(tools: Iterable[Tool]) -> int:
                               ensure_ascii=False)) for t in tools)
 
 
-def page_groups(page: str | None) -> tuple[str, ...]:
-    """ai/params.PAGE_GROUPS for a Today page id; "<tab>.<sub>" falls back to "<tab>"; unknown or empty = no extra group."""
+def page_groups(page: str | None, per_page: int | None = None) -> tuple[str, ...]:
+    """ai/params.PAGE_GROUPS for a Today page id; "<tab>.<sub>" falls back to "<tab>"; unknown or empty = no extra group.
+    per_page: only the first that many (the fallback AI with ai_parity, params.FALLBACK_PARITY_PAGE_GROUPS)."""
     if not page:
         return ()
     if page in params.PAGE_GROUPS:
-        return params.PAGE_GROUPS[page]
-    return params.PAGE_GROUPS.get(page.split(".", 1)[0], ())
+        return params.PAGE_GROUPS[page][:per_page]
+    return params.PAGE_GROUPS.get(page.split(".", 1)[0], ())[:per_page]
 
 
-def for_page(tools: Iterable[Tool], page: str | list[str] | None) -> list[Tool]:
+def for_page(tools: Iterable[Tool], page: str | list[str] | None, per_page: int | None = None) -> list[Tool]:
     """In-page chat: core + the groups of the page (or of every page the conversation has been on), in `tools` order so
     the same pages always give the same list, then the meta tools. Adding a page only inserts tools: the ones already
     sent keep their relative order."""
     pages = [page] if isinstance(page, str) else (page or [])
-    groups = {g for p in pages for g in page_groups(p)}
+    groups = {g for p in pages for g in page_groups(p, per_page)}
     return [t for t in tools if t.name in params.CORE_TOOLS or t.group in groups] + META_TOOLS
 
 
@@ -74,22 +75,23 @@ def known_page(page: str | None) -> bool:
     return bool(page) and (page in params.PAGE_GROUPS or page.split(".", 1)[0] in params.PAGE_GROUPS)
 
 
-def fit_pages(tools: Iterable[Tool], pages: list[str], budget: int) -> list[str]:
+def fit_pages(tools: Iterable[Tool], pages: list[str], budget: int, per_page: int | None = None) -> list[str]:
     """Pages oldest -> newest (the last is the current one). Drop the oldest until core + their groups + meta fit the
     budget; the current page always stays. Dropped groups are still reachable through find_tools."""
     tools = list(tools)
     pages = list(pages)
-    while len(pages) > 1 and definition_chars(for_page(tools, pages)) > budget:
+    while len(pages) > 1 and definition_chars(for_page(tools, pages, per_page)) > budget:
         pages = pages[1:]
     return pages
 
 
-def visit_page(tools: Iterable[Tool], pages: list[str], page: str | None, budget: int) -> list[str]:
+def visit_page(tools: Iterable[Tool], pages: list[str], page: str | None, budget: int,
+               per_page: int | None = None) -> list[str]:
     """The conversation's pages after a message from `page`: a known page moves to the end (most recent), then the oldest
     ones are dropped while over budget. Moving or re-visiting never changes the tool set; adding or dropping does once."""
     if not known_page(page):
         return list(pages)
-    return fit_pages(tools, [p for p in pages if p != page] + [page], budget)
+    return fit_pages(tools, [p for p in pages if p != page] + [page], budget, per_page)
 
 
 def for_mcp(can_write: bool) -> list[Tool]:
