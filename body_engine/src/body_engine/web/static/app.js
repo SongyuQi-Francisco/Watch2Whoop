@@ -184,6 +184,9 @@
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
     try {
+      // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
+      // loads the real page once the network is back
+      if (window.W2W_SHELL) throw new Error("offline shell");
       r = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
     } catch (e) {
       if (off && method === "GET") {
@@ -394,6 +397,7 @@
     try { await api("/v1/web/logout", { method: "POST" }); } catch (e) { /* clear local state even when offline */ }
     try { if (window.caches) await caches.delete("be-data"); } catch (e) { /* no Cache API */ }
     try { await window.BodyOffline?.clear(); } catch (e) { /* no IndexedDB */ }   // offline copies and queue (offline.js)
+    tellApp("offline:off");   // the app forgets its copy of the page
     S.offlineOn = false; S.offlineAt = null; showBanner();
     S.data = {}; S.me = null; pluginFiles = null;
     window.BodyAI?.reset();
@@ -3523,7 +3527,7 @@
       if (err.status === 401) return;
       $("#login").hidden = true; $("#app").hidden = false;
       $("#view").innerHTML = `<div class="empty">${esc(err.status === 0 ? tr("离线，连上网络后重试") : err.message)}<div class="btns"><button class="btn" id="retry">${tr("common.retry")}</button></div></div>`;
-      $("#retry").onclick = () => boot();
+      $("#retry").onclick = () => (window.W2W_SHELL ? tellApp("reload") : boot());
       return;
     }
     // Language picked on the login page and the profile has none yet: save it to the profile (it then follows the account)
@@ -3608,6 +3612,8 @@
         await lib.clear();
       }
     } catch (e) { /* IndexedDB trouble: the page works online as before */ }
+    // The Watch2Whoop app keeps a copy of the page for a cold start without network only while this is on (1.0.7+)
+    if (!window.W2W_SHELL) tellApp(S.offlineOn ? "offline:on" : "offline:off");
     showBanner();
   }
   // Controls that need the server: greyed out offline (app.css body.is-offline) and a tap says so
@@ -3624,6 +3630,7 @@
   window.BodyOffline?.onChange(() => { if (S.me) showBanner(); });
   window.addEventListener("offline", () => { if (OFF()) markOffline(); });
   window.addEventListener("online", () => {
+    if (window.W2W_SHELL) { tellApp("reload"); return; }   // the copy of the page: the app opens the real one
     if (!OFF() || !S.me) return;
     flushQueue();
     if (S.offlineAt !== null && S.tab !== "record" && $("#sheet").hidden) { S.data = {}; boot(true); }   // fresh data replaces the copies

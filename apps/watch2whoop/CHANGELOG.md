@@ -10,12 +10,24 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.7 — 2026-10-22
+Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
+[docs/offline-plan.md](../../docs/offline-plan.md)).
+- Opening the app without network no longer stops at 「连不上今天页」 / "Cannot reach the today page" for people with
+  offline use on: the app keeps a copy of the Today page (`/app/offline-shell.html`, scripts inlined, no user data) and
+  opens it when the page cannot load. The copy shows what the page saved on this phone and queues water, weight and
+  training sets; back in the foreground (or when the page sees the network again) the app loads the real page, which
+  sends the queue. The copy is kept only while the page reports offline use on, and deleted on logout.
+- WKWebView runs no service worker in this app (no App-Bound Domains), so without this a cold start offline had no page.
+- New direct dependency `path_provider` 2.1.6 (already in the lock as a transitive one; no native pod).
 
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
