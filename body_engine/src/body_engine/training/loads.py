@@ -70,21 +70,25 @@ def working_sets(sets: list[dict]) -> list[dict]:
 
 
 def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[list[dict], str | None, bool]:
-    """The owner's SparkyFitness sessions in the lookback window (cached briefly), the reason when SparkyFitness is linked
-    but could not be read, and whether it is linked at all (not linked = no history, no error)."""
+    """The owner's SparkyFitness sessions plus imported ones (Hevy, hevy_import.py) in the lookback window (cached briefly),
+    the reason when SparkyFitness is linked but could not be read, and whether there is any history source at all
+    (none = no history, no error)."""
+    from . import hevy_import
     start = day - timedelta(days=P.LOAD_LOOKBACK_DAYS)
     key = (conn.info.dbname, owner_id, start, day)
     hit = _HISTORY_CACHE.get(key)
     if hit and time.monotonic() - hit[0] < P.LOAD_HISTORY_TTL_S:
         return hit[1], None, True
+    imported = hevy_import.imported_sessions(conn, owner_id, start, day)
     try:
         client = sparky_client.client_for_user(conn, owner_id)
     except (sparky_client.SparkyError, ValueError):
-        return [], None, False
+        return imported, None, bool(imported)
     try:
         sessions = sparky_client.training_log(client, start, day)
     except sparky_client.SparkyError as e:
-        return [], str(e), True
+        return imported, str(e), True
+    sessions = sorted(sessions + imported, key=lambda s: s["date"])
     _HISTORY_CACHE[key] = (time.monotonic(), sessions)
     return sessions, None, True
 
@@ -136,8 +140,8 @@ def history_by_slug(index: Index, sessions: list[dict], day: date) -> dict[str, 
             ws = working_sets(e.get("sets") or [])
             if not ws:
                 continue
-            slug = index.slug_for(e.get("exercise_id"), e.get("name"))
-            key = slug or f"app:{e.get('exercise_id')}"
+            slug = e.get("slug") or index.slug_for(e.get("exercise_id"), e.get("name"))   # imported rows carry their slug
+            key = slug or (f"app:{e['exercise_id']}" if e.get("exercise_id") else f"name:{catalog.norm(e.get('name'))}")
             entry = out.setdefault(key, {}).setdefault(d, {"date": d, "sets": [], "exercise_id": e.get("exercise_id")})
             entry["sets"] += ws
     return {k: [v[d] for d in sorted(v, reverse=True)] for k, v in out.items()}

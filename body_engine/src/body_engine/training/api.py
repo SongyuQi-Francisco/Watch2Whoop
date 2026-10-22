@@ -3,18 +3,22 @@ Authorization:
 - Read endpoints require shares scope `training` (per-user restrictions additionally check `exercises`, readiness checks `scores`).
 - Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
 - Add to plan (`/plan/add-options`, `/plan/add-exercise`, rollout flag exercise_add_to_plan, issue #154) is self-only.
+- Hevy import (`/import/hevy`, rollout flag hevy_import, issue #161) is self-only; uploading needs `write`.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
 """
 from datetime import date
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..rollout import flags
-from . import catalog, history, loads, plan_add, plans, session_log
+from ..i18n import L
+from . import catalog, hevy_import, history, loads, plan_add, plans, session_log
+from . import params as P
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
 
@@ -353,3 +357,57 @@ def submit_training_session(user: str, day: date, body: SessionSubmitIn | None =
         raise HTTPException(422, str(e))
     except sparky_client.SparkyError as e:
         raise HTTPException(502, str(e))
+
+
+# ---------------------------------------------------------------- Hevy CSV import (issue #161, rollout flag hevy_import)
+HEVY = [Depends(flags.require("hevy_import"))]
+
+
+class HevyMapIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)          # the exercise name as in the Hevy file
+    exercise: str | None = Field(default=None, max_length=120)   # a catalog slug or name; empty = forget the answer
+
+
+def _hevy_self(viewer: dict, user: str) -> int:
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能查看自己的导入", "You can only see your own imports"))
+    return viewer["id"]
+
+
+@router.get("/import/hevy", dependencies=HEVY)
+def hevy_import_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The last Hevy import's summary, the imported exercise names not matched to the library yet, and the upload limits."""
+    return hevy_import.status(conn, _hevy_self(viewer, user))
+
+
+@router.post("/import/hevy", dependencies=HEVY)
+async def hevy_import_upload(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Import a Hevy workout export: the request body is the CSV, gzip-compressed (the page does it) or plain.
+    Idempotent; returns workouts / sets imported, unmatched exercise names and skipped rows."""
+    uid = _self(viewer, user)
+    too_big = HTTPException(413, L(f"文件太大：压缩后最多 {P.HEVY_MAX_UPLOAD_BYTES // 1024} KB",
+                                   f"The file is too large: at most {P.HEVY_MAX_UPLOAD_BYTES // 1024} KB compressed"))
+    if int(request.headers.get("content-length") or 0) > P.HEVY_MAX_UPLOAD_BYTES:
+        raise too_big
+    body = bytearray()
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > P.HEVY_MAX_UPLOAD_BYTES:
+            raise too_big
+    if not body:
+        raise HTTPException(422, L("没有收到文件", "No file received"))
+    try:
+        return await run_in_threadpool(hevy_import.run, conn, uid, bytes(body))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.put("/import/hevy/map", dependencies=HEVY)
+def hevy_import_map(user: str, body: HevyMapIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Match an imported exercise name to a library exercise (every imported set with that name follows)."""
+    uid = _self(viewer, user)
+    try:
+        return hevy_import.set_mapping(conn, uid, body.name, body.exercise)
+    except LookupError as e:
+        raise HTTPException(404, str(e))

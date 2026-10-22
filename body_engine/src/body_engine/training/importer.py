@@ -138,6 +138,8 @@ def _is_dup(a: dict, b: dict) -> bool:
     overlap = (min(a["end_at"], b["end_at"]) - max(a["start_at"], b["start_at"])).total_seconds()
     shorter = min((a["end_at"] - a["start_at"]).total_seconds(), (b["end_at"] - b["start_at"]).total_seconds())
     same_type = a["type"] == b["type"] or a["type"] in P.GENERIC_TYPES or b["type"] in P.GENERIC_TYPES
+    if "hevy" in (a.get("source"), b.get("source")):   # a Hevy log is "strength" whatever the watch called that workout
+        same_type = same_type or (a["type"] in P.STRENGTH_TYPES and b["type"] in P.STRENGTH_TYPES)
     return same_type and shorter > 0 and overlap / shorter >= P.DUP_OVERLAP
 
 

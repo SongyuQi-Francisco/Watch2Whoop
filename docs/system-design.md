@@ -578,6 +578,13 @@ CREATE TABLE sync_state (
   - 草稿存表 `training_session_logs`（迁移 585，`(user_id, date)` 一行，`exercises = [{slug, sets: [{reps, weight_kg, duration_s, rir, done}]}]`），改完 0.7 秒自动保存，app 的 WebView 和浏览器看到的一样。
   - 「提交」把勾了的组用和 AI 的 `log_workout` 同一条路径写进 SparkyFitness（一次训练，禁用动作拒绝、同天同动作当重复先问），记下条目 id；提交后再改就回到草稿，重新提交会替换那次训练而不是再加一次。手表训练（`workouts`）不动，照第 16 节和 SparkyFitness 的记录合并。
   - 接口（都在开关后面，关着时 404）：`GET /v1/users/{user}/training/session?date=`（scope training）、`PUT /training/session/{date}`、`POST /training/session/{date}/submit`（只能写自己的）。
+
+### 16.2 从 Hevy 导入（2026-10-22，#161，开关 `hevy_import`，默认关）
+
+- 「我 → 设置 → 导入 → 从 Hevy 导入」上传 Hevy 导出的训练 CSV（页面先 gzip，压缩后 ≤ 1.9 MB、解压后 ≤ 10 MB），格式和规则见 [`hevy-benchmark.md`](hevy-benchmark.md) 第 6 节，代码 `training/hevy_import.py`。
+- 每次训练写 `workouts`（source=hevy，按开始时间幂等；和手表同一时段的训练去重时保留手表那次，Hevy 的组显示在它上面）；组写 `training_session_logs`（迁移 615 加了 `source`：page = 训练页自己记的，hevy = 导入的，主键 `(user_id, date, source)`，导入永远不碰训练页记的那天）。
+- 动作名对不上的保留原名（`unmatched`），用户在导入弹层里对应到动作库（表 `imported_exercise_maps`，以后再导入也沿用）。
+- 导入的组进入训练历史（月历、单日、AI 的 `get_training_day` / `get_training_calendar`）、上次成绩和推荐重量（`loads.load_history`）、肌肉负荷（导入后立即重算受影响的天，每晚评分也带上）。不写进 SparkyFitness。
   - AI：提交后的训练照常从 `get_training_log` / `get_training_day` 读；还没提交的草稿在 `get_training_day` 的 `page_draft` 里。
 
 ## 17. Watch2Whoop iOS app（2026-10-17，采集层 + 手机的单一入口）

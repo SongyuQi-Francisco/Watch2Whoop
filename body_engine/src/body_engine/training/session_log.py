@@ -33,7 +33,8 @@ def _today(conn: psycopg.Connection, user_id: int) -> date:
 
 
 def _row(conn: psycopg.Connection, user_id: int, day: date) -> dict | None:
-    return conn.execute("SELECT * FROM training_session_logs WHERE user_id = %s AND date = %s", (user_id, day)).fetchone()
+    return conn.execute("SELECT * FROM training_session_logs WHERE user_id = %s AND date = %s AND source = 'page'",
+                        (user_id, day)).fetchone()
 
 
 def _log_out(row: dict | None) -> dict | None:
@@ -198,7 +199,7 @@ def save_draft(conn: psycopg.Connection, user_id: int, day: date, exercises: lis
     row = conn.execute(
         """INSERT INTO training_session_logs (user_id, date, exercises, notes, status)
            VALUES (%s, %s, %s::jsonb, %s, 'draft')
-           ON CONFLICT (user_id, date) DO UPDATE SET exercises = EXCLUDED.exercises, notes = EXCLUDED.notes,
+           ON CONFLICT (user_id, date, source) DO UPDATE SET exercises = EXCLUDED.exercises, notes = EXCLUDED.notes,
              status = 'draft', updated_at = now()
            RETURNING *""",
         (user_id, day, json.dumps(ex, ensure_ascii=False), (notes or "").strip()[:500] or None),
@@ -264,7 +265,7 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
             pass   # deleted in SparkyFitness already
     row = conn.execute(
         """UPDATE training_session_logs SET status = 'submitted', sparky_entry_id = %s, submitted_at = now(), updated_at = now()
-           WHERE user_id = %s AND date = %s RETURNING *""", (str(new_id), user_id, day)).fetchone()
+           WHERE user_id = %s AND date = %s AND source = 'page' RETURNING *""", (str(new_id), user_id, day)).fetchone()
     loads.clear_history_cache(user_id)
     briefing.invalidate(user_id)
     return {"submitted": True, "replaced": bool(old_id), "exercises": len(exercises),

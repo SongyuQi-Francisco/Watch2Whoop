@@ -20,7 +20,7 @@ from .. import auth, sparky_client
 from ..i18n import is_en, tl
 from ..rules import params as RP
 from ..rules.context import Ctx
-from . import params as P
+from . import hevy_import, params as P
 from .importer import avg_hr_trimp, hr_max_for, type_name
 
 MAX_RANGE_DAYS = 92
@@ -110,13 +110,16 @@ def _exercise_view(e: dict, ctx: Ctx | None) -> dict:
             "duration_min": e.get("duration_minutes") or None,
             "sets": [{"set": s.get("set"), "type": s.get("type"), "reps": s.get("reps"), "weight_kg": s.get("weight_kg"),
                       "rir": s.get("rir"), "rpe": s.get("rpe"), "duration_s": s.get("duration_s"),
-                      "distance_km": s.get("distance_km"), "notes": s.get("notes")} for s in e["sets"]]}
+                      "distance_km": s.get("distance_km"), "notes": s.get("notes")} for s in e["sets"]],
+            **({"slug": e["slug"]} if e.get("slug") else {}), **({"unmatched": True} if e.get("unmatched") else {})}
 
 
 # ---------------------------------------------------------------- merge
 def source_label(w: dict) -> str:
     if w["source"] == "shortcut":
         return "快捷指令"
+    if w["source"] == "hevy":
+        return "Hevy"
     if "watch" in (w.get("device") or "").lower():
         return "Apple Watch"
     if w.get("origin") and w["origin"] != "apple_health_xml":
@@ -134,7 +137,7 @@ def _from_workout(w: dict, tz: ZoneInfo) -> dict:
             "distance_km": None if w["distance_km"] is None else round(w["distance_km"], 2),
             "avg_hr": _r(w["avg_hr"]), "max_hr": _r(w["max_hr"]), "hr_zone_min": w["hr_zone_min"], "trimp": w["trimp"],
             "hr_max": w["hr_max_used"], "device": w.get("device"),
-            "flags": {k: v for k, v in (w["flags"] or {}).items() if k not in ("computed", "basal_kcal")},
+            "flags": {k: v for k, v in (w["flags"] or {}).items() if k not in ("computed", "basal_kcal", "note")},
             "exercises": [], "volume_kg": None, "working_sets": None, "notes": None, "sparky_id": None,
             "_cat": _category(w["type"])}
 
@@ -163,9 +166,29 @@ def _attach(sess: dict, s: dict, exercises: list[dict], rename: str | None = Non
         sess["name"] = rename
 
 
-def merge_day(workouts: list[dict], sparky: list[dict], tz: ZoneInfo) -> list[dict]:
-    """One day's watch workouts + SparkyFitness workouts -> merged workout list (by start time; SparkyFitness-only ones last)."""
+def _attach_imported(sessions: list[dict], imported: list[dict], targets: dict[str, int]) -> None:
+    """Imported (Hevy) sets go onto their own workouts row, or onto the watch copy it duplicates (targets: external_id -> workouts id)."""
+    by_id = {x["workout_id"]: x for x in sessions if x["workout_id"]}
+    for s in imported:
+        sess = by_id.get(targets.get(s["workout"]))
+        if sess is None:
+            continue   # the workout was hidden by the user
+        sess["exercises"] += s["exercises"]
+        if sess["source"] != "hevy" and "hevy" not in sess["source"]:
+            sess["source"] = f"{sess['source']}+hevy"
+            sess["source_label"] = f"{sess['source_label']} + Hevy"
+            if s.get("name"):
+                sess["name"] = f"{sess['type_name']} · {s['name']}"
+        if s.get("notes") and s["notes"] not in (sess["notes"] or ""):
+            sess["notes"] = (sess["notes"] + "\n" if sess["notes"] else "") + s["notes"]
+
+
+def merge_day(workouts: list[dict], sparky: list[dict], tz: ZoneInfo, imported: list[dict] | None = None,
+              targets: dict[str, int] | None = None) -> list[dict]:
+    """One day's watch workouts + SparkyFitness workouts (+ imported Hevy sets) -> merged workout list (by start time; SparkyFitness-only ones last)."""
     sessions = [_from_workout(w, tz) for w in workouts]
+    if imported:
+        _attach_imported(sessions, imported, targets or {})
     extra = []
     used_strength, used_cardio = set(), set()
     for s in sparky:
@@ -281,6 +304,12 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
     can_metrics = auth.can_view(conn, viewer_id, owner_id, "metrics")
     workouts = load_workouts(conn, owner_id, start, end)
     sparky, exercises, sparky_error = load_sparky(conn, owner_id, start, end, with_exercises)
+    imported_by_day: dict[date, list] = {}
+    for s in hevy_import.imported_sessions(conn, owner_id, start, end):
+        imported_by_day.setdefault(date.fromisoformat(s["date"]), []).append(s)
+    targets = {r["external_id"]: r["dup_of"] or r["id"] for r in conn.execute(
+        """SELECT id, external_id, dup_of FROM workouts WHERE user_id = %s AND source = 'hevy' AND local_date BETWEEN %s AND %s""",
+        (owner_id, start, end))} if imported_by_day else {}
     ctx = None
     if with_exercises:
         ctx = Ctx(user_id=owner_id, day=end, exercises=exercises)
@@ -305,7 +334,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
     today = datetime.now(tz).date()
     days = []
     for d in _days(start, end):
-        sessions = merge_day(by_day_w.get(d, []), by_day_s.get(d, []), tz)
+        sessions = merge_day(by_day_w.get(d, []), by_day_s.get(d, []), tz, imported_by_day.get(d), targets)
         hr_max = (scores.get(d) or {}).get("hr_max")
         if hr_max is None and any(s.get("avg_hr") and not s.get("hr_max") for s in sessions):
             hr_max = hr_max_for(conn, owner_id, d)

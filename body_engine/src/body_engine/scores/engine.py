@@ -267,17 +267,30 @@ def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date,
     return len(rows)
 
 
-def load_muscle(conn: psycopg.Connection, inp: Inputs, user_id: int, start: date, end: date, sparky=None) -> str:
-    """Compute daily muscle load from SparkyFitness workout records into inp.muscle; returns a one-line note. Users not connected to SparkyFitness are skipped."""
+def muscle_sessions(conn: psycopg.Connection, user_id: int, start: date, end: date, sparky=None) -> tuple[list[dict], str | None, bool]:
+    """Strength records for the muscle load in [start, end]: SparkyFitness workouts + imported ones (Hevy, training/hevy_import.py).
+    Returns (sessions, error, linked): error = linked to SparkyFitness but unreadable; linked = SparkyFitness is linked."""
+    from ..training import hevy_import
+    imported = hevy_import.imported_sessions(conn, user_id, start, end)
     try:
         sparky = sparky or sparky_client.client_for_user(conn, user_id)
-    except sparky_client.SparkyError as e:
-        return f"没连 SparkyFitness，肌肉负荷不算（{e}）"
+    except sparky_client.SparkyError:
+        return imported, None, False
     try:
-        inp.muscle = daily_muscle_load(sparky_client.training_log(sparky, start, end))
-    except Exception as e:  # connected but unreadable: flag muscle_load_unavailable each day, other scores still computed
-        inp.muscle_error = f"{type(e).__name__}: {e}"
+        return sparky_client.training_log(sparky, start, end) + imported, None, True
+    except Exception as e:  # connected but unreadable
+        return imported, f"{type(e).__name__}: {e}", True
+
+
+def load_muscle(conn: psycopg.Connection, inp: Inputs, user_id: int, start: date, end: date, sparky=None) -> str:
+    """Compute daily muscle load from SparkyFitness workout records and imported (Hevy) sets into inp.muscle; returns a one-line note."""
+    sessions, error, linked = muscle_sessions(conn, user_id, start, end, sparky)
+    if error:  # flag muscle_load_unavailable each day, other scores still computed
+        inp.muscle_error = error
         return f"读不到 SparkyFitness 训练记录：{inp.muscle_error}"
+    inp.muscle = daily_muscle_load(sessions)
+    if not linked and not sessions:
+        return "没连 SparkyFitness，肌肉负荷不算"
     return f"{len(inp.muscle)} 天有训练记录"
 
 

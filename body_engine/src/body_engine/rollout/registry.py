@@ -21,5 +21,6 @@ FLAGS: dict[str, str] = {
     "jarvis_ui_v2": "Jarvis 对话面板新版式：和今天页同一套标题栏、卡片、输入框（#53）；关着时保持现在的样子",
     "ai_web": "今天页 AI 联网查价：托底 AI 和兼容接口用服务器的 web_search / web_fetch（遵守 robots.txt、碰到拦截就停），托底 AI 加上存商品和出清单的工具（#150）；关着时不能联网",
     "exercise_add_to_plan": "动作库 / 动作详情的「加入训练计划」：加到某个训练组（每次都有）或只加到某一天，禁用动作拦住（#154）；关着时详情页没有这个按钮（返回按钮不受开关控制）",
+    "hevy_import": "「我 → 设置 → 导入 → 从 Hevy 导入」：上传 Hevy 导出的训练 CSV，写进训练记录（workouts + training_session_logs），动作名对到动作库，重算肌肉负荷（#161）；关着时没有入口、接口 404",
     "jarvis_rich": "Jarvis 回答里的互动卡片：训练卡、饮食卡、指标小图、快捷按钮（show_card + 记录后自动附卡，#53）；关着时纯文字",
 }
