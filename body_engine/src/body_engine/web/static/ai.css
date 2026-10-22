@@ -136,6 +136,43 @@
 .ai-card:not(.ai-card-actions) .ai-card-acts .ai-q { height: 38px; border: 0; background: var(--surface-2); }
 .ai-card-acts .ai-q { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
+/* ---------- Cards v2: diet (rollout flag jarvis_cards_v2, ai.js goalsBody / suggestBody / ...; built by ai/cards_food.py) ----------
+   Recipe rows are the food page's own .rcard (app.js recipeCard) on --bg inside the card; rings use the .bar colours. */
+.ai-ic { width: 18px; height: 18px; flex: none; }
+.ai-rings { display: flex; gap: 12px; margin: 2px 0 12px; }
+.ai-ring { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ai-ring svg { width: 92px; height: 92px; }
+.ai-ring .track { stroke: var(--surface-2); }
+.ai-ring .arc { stroke: var(--text); }
+.ai-ring .arc.over { stroke: var(--mid); }
+.ai-ring .val { font-size: 19px; font-weight: 650; fill: var(--text); font-variant-numeric: tabular-nums; }
+.ai-ring .cap { font-size: 10px; fill: var(--text-2); font-variant-numeric: tabular-nums; }
+.ai-ring-l { font-size: 13px; color: var(--text-2); }
+.ai-card .rcard { background: var(--bg); width: 100%; }
+.ai-slot + .ai-slot { margin-top: 12px; }
+.ai-rc { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ai-card .ai-rc .ai-q { align-self: flex-start; height: 34px; border: 0; background: var(--surface-2); }
+.ai-rlist { display: flex; flex-direction: column; gap: 6px; }
+.ai-recipe-top { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.ai-recipe-t { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ai-rimg { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; flex: none; background: var(--surface-2); }
+.ai-rimg.ph { display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+.ai-rimg.ph .ai-ic { width: 24px; height: 24px; }
+.ai-card .nut4 { margin-bottom: 4px; }
+.ai-tpl li { align-items: center; }
+.ai-tpl li > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ai-card .ai-tpl .ai-q { flex: none; height: 32px; border: 0; background: var(--surface-2); }
+.ai-shop li > span:first-child { display: flex; align-items: center; gap: 8px; }
+.ai-shop li.done .n { color: var(--text-2); text-decoration: line-through; }
+.ai-shop .ai-ic.ok { width: 14px; height: 14px; color: var(--good); }
+.ai-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--text-3); flex: none; }
+.ai-entry { cursor: pointer; }
+.ai-entry:active { background: var(--surface-2); }
+.ai-card-list li.ai-entry-acts { justify-content: flex-start; flex-wrap: wrap; gap: 6px; border-top: 0; padding-top: 0; }
+.ai-card .ai-entry-acts .ai-q { height: 32px; border: 0; background: var(--surface-2); }
+.ai-card-cap { margin: 10px 0 0; }
+.ai-card-recipe .ai-card-acts .btn, .ai-card-recipe .ai-card-acts .ai-q { white-space: nowrap; }
+
 /* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
    Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
    top bar (.top: 26px bold title, 34px round buttons), the intro's empty state (icon tile, bold title, muted line) and its cards:
@@ -183,40 +220,3 @@
 @media (min-width: 1024px) {
   .ai-chat.v2 { border-left: 1px solid var(--hair); box-shadow: -12px 0 40px rgba(0,0,0,.08); }
 }
-
-/* ---------- Cards v2: diet (rollout flag jarvis_cards_v2, ai.js goalsBody / suggestBody / ...; built by ai/cards_food.py) ----------
-   Recipe rows are the food page's own .rcard (app.js recipeCard) on --bg inside the card; rings use the .bar colours. */
-.ai-ic { width: 18px; height: 18px; flex: none; }
-.ai-rings { display: flex; gap: 12px; margin: 2px 0 12px; }
-.ai-ring { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
-.ai-ring svg { width: 92px; height: 92px; }
-.ai-ring .track { stroke: var(--surface-2); }
-.ai-ring .arc { stroke: var(--text); }
-.ai-ring .arc.over { stroke: var(--mid); }
-.ai-ring .val { font-size: 19px; font-weight: 650; fill: var(--text); font-variant-numeric: tabular-nums; }
-.ai-ring .cap { font-size: 10px; fill: var(--text-2); font-variant-numeric: tabular-nums; }
-.ai-ring-l { font-size: 13px; color: var(--text-2); }
-.ai-card .rcard { background: var(--bg); width: 100%; }
-.ai-slot + .ai-slot { margin-top: 12px; }
-.ai-rc { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.ai-card .ai-rc .ai-q { align-self: flex-start; height: 34px; border: 0; background: var(--surface-2); }
-.ai-rlist { display: flex; flex-direction: column; gap: 6px; }
-.ai-recipe-top { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
-.ai-recipe-t { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.ai-rimg { width: 56px; height: 56px; border-radius: 14px; object-fit: cover; flex: none; background: var(--surface-2); }
-.ai-rimg.ph { display: flex; align-items: center; justify-content: center; color: var(--text-2); }
-.ai-rimg.ph .ai-ic { width: 24px; height: 24px; }
-.ai-card .nut4 { margin-bottom: 4px; }
-.ai-tpl li { align-items: center; }
-.ai-tpl li > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.ai-card .ai-tpl .ai-q { flex: none; height: 32px; border: 0; background: var(--surface-2); }
-.ai-shop li > span:first-child { display: flex; align-items: center; gap: 8px; }
-.ai-shop li.done .n { color: var(--text-2); text-decoration: line-through; }
-.ai-shop .ai-ic.ok { width: 14px; height: 14px; color: var(--good); }
-.ai-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--text-3); flex: none; }
-.ai-entry { cursor: pointer; }
-.ai-entry:active { background: var(--surface-2); }
-.ai-card-list li.ai-entry-acts { justify-content: flex-start; flex-wrap: wrap; gap: 6px; border-top: 0; padding-top: 0; }
-.ai-card .ai-entry-acts .ai-q { height: 32px; border: 0; background: var(--surface-2); }
-.ai-card-cap { margin: 10px 0 0; }
-.ai-card-recipe .ai-card-acts .btn, .ai-card-recipe .ai-card-acts .ai-q { white-space: nowrap; }
