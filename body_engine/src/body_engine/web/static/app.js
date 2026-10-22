@@ -49,7 +49,7 @@
     emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
   };
   let lastPage = "";
-  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
+  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
   function featureOf(el) {
     const named = el.closest("[data-feature]")?.dataset.feature;
     if (named) return named;
@@ -294,6 +294,7 @@
     if (tab === "friends" && !friendsOn()) tab = "today";
     if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
+    if (tab !== S.tab) S.meSub = null;   // 「设置」 is a sub-page of 我: leaving the tab closes it
     S.tab = tab;
     const lit = tab === "food" && friendsOn() ? "record" : tab;
     for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
@@ -2102,7 +2103,44 @@
     toast(tr("common.saved"));
   }
 
+  // 「我」 page v2 behind the rollout flag me_settings (issue #140, docs/rollout.md): the four record rows fold into one
+  // 「健康档案」 entry, rarely used account-level rows move to the 「设置」 sub-page (S.meSub = "settings"). Plugin rows
+  // (meItem) are routed by their element id; a plugin can also say meGroup: "main" | "settings-account" | "settings-ai" |
+  // "settings-danger". Rows nobody routed (e.g. a server's private admin plugin) stay at the bottom of the main page.
+  const meSettingsOn = () => (S.flags || []).includes("me_settings");
+  const ME_ROUTE = { "me-profile": "profile", "me-circles": "main", "me-feedback": "settings-ai", "me-signin": "settings-account",
+                     "me-invite": "settings-account", "me-delete-account": "settings-danger" };
+  function pluginRows(chev) {
+    const out = {};
+    for (const p of PLUGINS()) {
+      const h = p.meItem?.(chev);
+      if (!h) continue;
+      const g = p.meGroup || ME_ROUTE[/\bid="([^"]+)"/.exec(h)?.[1]] || "other";
+      (out[g] ||= []).push(h);
+    }
+    return out;
+  }
+  const meSection = (title, rows) => (rows.filter(Boolean).length
+    ? `<div class="section">${title ? `<div class="section-head"><h2>${title}</h2></div>` : ""}<div class="group">${rows.join("")}</div></div>` : "");
+
+  function meSettingsHtml(who) {
+    const chev = `<span class="chev">${ICON.chev}</span>`;
+    const rows = pluginRows(chev);
+    const item = (title, val, attr = "", tail = chev) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
+    const ver = [S.version?.web, S.version?.api && `API ${S.version.api}`].filter(Boolean).join(" · ");
+    return `<div class="me-settings"><div class="sub-head"><button class="sub-back" id="me-back" aria-label="${tr("返回「我」")}">${ICON.chev}<span>${tr("tab.me")}</span></button><h2>${tr("设置")}</h2></div>
+      ${meSection(tr("账号"), [isSelf() ? langRow() : "", ...(rows["settings-account"] || [])])}
+      ${meSection("AI", rows["settings-ai"] || [])}
+      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""])}
+      ${meSection(tr("关于"), [`<div class="item"><span class="row-title">${tr("版本")}</span><span class="val">${esc(ver || "—")}</span></div>`])}
+      ${meSection("", [`<button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>`, ...(rows["settings-danger"] || [])])}
+      ${who.self ? "" : `<p class="small faint" style="margin:14px 2px 0">${tr("这里是你自己账号的设置")}</p>`}</div>`;
+  }
+
   const RENDER_me = async () => {
+    if (meSettingsOn() && S.meSub === "settings") {
+      return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true });
+    }
     const [mem, supps, events, d, hs, labs, tlog] = await Promise.all([
       load("memory", memPath()).catch((e) => ({ error: e })),
       load("supps", `/v1/users/${ownerPath()}/supplements`).catch((e) => ({ error: e })),
@@ -2115,6 +2153,31 @@
     const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true };
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
+    const updatedVal = computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+    if (meSettingsOn()) {
+      const chev = `<span class="chev">${ICON.chev}</span>`;
+      const rows = who.self ? pluginRows(chev) : {};
+      const archive = [
+        item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps))),
+        item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events))),
+        item(tr("me.labs"), labs.error ? "—" : tr("me.labsN", { n: labs.length }), labs.error ? "" : sheetAttr(() => labsSheet(labs))),
+        tlog ? item(tr("训练记录"), tlogBadge(tlog), sheetAttr(() => trainingLogSheet(tlog))) : "",
+      ].join("");
+      const archiveVal = [supps.error ? null : tr("补剂 {n}", { n: supps.filter((x) => x.status === "active").length }),
+        labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
+      return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
+          <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
+        ${healthspanHtml(hs)}
+        <div class="cols2"><div>${statusHtml(mem)}</div><div>${observationsHtml(mem)}
+        ${meSection("", [...(rows.profile || []),
+          item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
+        ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
+          IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : "",
+          item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
+          S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""])}
+        ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
+        </div></div>`;
+    }
     return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
         <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
       ${healthspanHtml(hs)}
@@ -2233,13 +2296,18 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
-    $("#me-refresh", view).onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
+    const upd = $("#me-refresh", view);
+    if (upd) upd.onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
+    const settings = $("#me-settings", view), back = $("#me-back", view);   // 「设置」 sub-page (me_settings flag)
+    if (settings) settings.onclick = () => { S.meSub = "settings"; render(); window.scrollTo(0, 0); };
+    if (back) back.onclick = () => { S.meSub = null; render(); window.scrollTo(0, 0); };
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
-    $("#me-logout", view).onclick = logout;
-    $("#me-handbook", view).onclick = () => openHandbook();
+    const out = $("#me-logout", view), hb = $("#me-handbook", view);
+    if (out) out.onclick = logout;
+    if (hb) hb.onclick = () => openHandbook();
     const intro = $("#me-intro", view);
     if (intro) intro.onclick = () => window.BodyIntro.open();   // intro.js (issue #60)
   }
