@@ -21,7 +21,10 @@ PRICE_OUTPUT_CNY = 8.0                    # per million output tokens
 MONTHLY_QUOTA_CNY = 3.0                   # per person per natural month (user's time zone); admin can override per person
 MAX_OUTPUT_TOKENS = 2048                  # per model call (short Chinese answers; log_food arguments fit easily)
 MAX_ROUNDS = 6                            # model calls chained for one user message (the general chat allows 8)
-MAX_MESSAGES = 40                         # per conversation: history is resent every call, longer = dearer
+# Context (ai/context.py): history is resent on every call, so past this budget the older turns are folded into a summary
+CONTEXT_MAX_CHARS = 24_000                # history after the summary, as JSON text (~8–12k tokens, ≈ ¥0.02 per call at cache-miss price)
+CONTEXT_MAX_MESSAGES = 40                 # or this many messages (tool calls and results count)
+KEEP_TURNS = 4                            # recent turns kept verbatim at most
 CHARS_PER_TOKEN = 2.0                     # pre-call estimate of prompt tokens (Chinese ~1–1.5 chars/token, JSON ~3–4): errs high
 RATE_PER_MINUTE = 10                      # model calls per person per minute (one message is usually 1–3 calls)
 RATE_PER_DAY = 150                        # model calls per person per day (local day)

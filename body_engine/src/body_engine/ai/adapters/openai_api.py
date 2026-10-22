@@ -89,11 +89,12 @@ class OpenAIResponsesAdapter(Adapter):
         client = openai.OpenAI(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
         final = None
         try:
+            tool_defs = [{"type": "function", "name": t.name, "description": t.description,
+                          "parameters": t.input_schema, "strict": False} for t in tools] \
+                + ([{"type": "web_search"}] if self.web else [])   # OpenAI's own web search (ai_providers.web_tools)
             stream = client.responses.create(
                 model=self.model, instructions=system, input=self._input(history),
-                tools=[{"type": "function", "name": t.name, "description": t.description,
-                        "parameters": t.input_schema, "strict": False} for t in tools]
-                + ([{"type": "web_search"}] if self.web else []),   # OpenAI's own web search (ai_providers.web_tools)
+                **({"tools": tool_defs} if tool_defs else {}),     # none for the history fold call (ai/context.py)
                 store=False, include=["reasoning.encrypted_content"], max_output_tokens=MAX_OUTPUT_TOKENS,
                 stream=True)
             for event in stream:
@@ -176,8 +177,9 @@ class OpenAICompatAdapter(Adapter):
         try:
             stream = client.chat.completions.create(
                 model=self.model, messages=self._messages(system, history),
-                tools=[{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                         "parameters": t.input_schema}} for t in tools],
+                **({"tools": [{"type": "function", "function": {"name": t.name, "description": t.description,
+                                                                "parameters": t.input_schema}} for t in tools]}
+                   if tools else {}),   # an empty list is rejected; none for the history fold call (ai/context.py)
                 max_tokens=self.max_tokens, stream=True, stream_options={"include_usage": True},
                 **({"extra_body": self.extra_body} if self.extra_body else {}))
             for chunk in stream:
