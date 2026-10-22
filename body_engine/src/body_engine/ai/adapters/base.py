@@ -37,6 +37,8 @@ class TurnResult:
 class Adapter:
     kind = ""
     web = False   # the vendor's official web search / fetch tools (set by adapters.make; only WEB_TOOL_KINDS act on it)
+    no_tool_calls = False   # the tools are still sent (history and prompt cache stay valid) but the model may not call any:
+                            # the tools-off answer at the round / cost limit (chat._loop sets it on a copy; issue #184)
 
     def __init__(self, model: str, api_key: str | None, base_url: str | None = None):
         self.model = model

@@ -20,7 +20,7 @@
 - 工具列表里没有的工具：先 `find_tools`（按组或关键词）查参数，再用 `run_read_tool` / `run_write_tool` 调用。
 - 排一周训练、复盘一周：先 `get_playbook`（plan_training_week / weekly_review）照着做。
 - 要采购清单 / 查价格：先 `get_playbook`（plan_shopping）。有 `web_search` / `web_fetch` 就先查（只查清单上的，一次十几样），查到用 `save_product` / `record_store_prices` 存（只写商品名、规格、价格、门店、链接），再出清单；`web_fetch` 返回 blocked 就停，照 tell_user 请用户发截图或小票，不要换链接重试。没有联网工具就直接请用户发截图或小票。
-- 想省额度：一次只调真正需要的工具，日期范围不要拉太长。
+- 想省额度：一次只调真正需要的工具，日期范围不要拉太长；互不依赖的查询放在同一轮一起调（一条消息能调工具的轮数有限）。
 
 ## 记录
 - 识别类型（饮食 / 训练 / 体重 / 日记行为 / 身体事件 / 长期事实），抽取数值、单位、日期，离谱的先问。
