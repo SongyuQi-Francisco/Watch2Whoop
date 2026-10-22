@@ -3094,7 +3094,8 @@
     if (board === "activity") return `${tr("负荷比 {r}", { r: fmtNum(s.acwr, 2) })} · ${tr("训练 {n} 天", { n: s.training_days })}`;
     if (board === "lifestyle") return `${tr("按时睡 {n}/{d}", { n: s.on_time, d: s.days })} · ${tr("饮食达标 {n}/{d}", { n: s.food_met, d: s.days })}`;
     if (board === "recomp") return `${tr("{v}%/周", { v: signed(s.rate_pct_week, 2) })} · ${tr("训练量 ×{v}", { v: fmtNum(s.volume_ratio, 2) })} · ${tr("蛋白 {n}/{d}", { n: s.protein_met, d: s.days })}`;
-    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) })   // the change over the board window, not the current gap (that is on the Me page), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
+    // longevity: the change of the body-age gap over the board window, not the current gap (that is on the Me page)
+    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) }), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
     return "";
   }
   async function boardHtml() {
