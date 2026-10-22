@@ -86,3 +86,17 @@
 .ai-switch[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
 .ai-switcher { margin: 4px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left)); max-height: 50vh; overflow: auto; }
 .ai-switcher[hidden] { display: none; }
+/* Quick tasks for the current page (#101): .chip-style pills; under the greeting before the first message, then a row above the input */
+.ai-quick { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 92%; }
+.ai-quick-row {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  padding: 2px max(20px, env(safe-area-inset-right)) 8px max(20px, env(safe-area-inset-left));
+}
+.ai-quick-row::-webkit-scrollbar { display: none; }
+.ai-quick-row[hidden] { display: none; }
+.ai-q {
+  flex: none; height: 32px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--surface);
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.ai-q:active { background: var(--surface-2); }
+.ai-q:disabled { opacity: .45; cursor: default; }

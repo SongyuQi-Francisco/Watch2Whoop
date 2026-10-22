@@ -14,7 +14,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 _ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
-ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water"}
+ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water", "pantry"}
 # kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries)
 ONLY_ACTION = {"merge": "merge", "template": "create"}
 
@@ -97,6 +97,10 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
     elif kind == "water":
         from ..water import store as water_store
         result = water_store.rollback(conn, user_id, row["action"], before, after)
+    elif kind == "pantry":   # what a logged meal took from the pantry goes back; the food entry stays (issue #104)
+        from ..grocery import pantry_auto
+        back = pantry_auto.restore(conn, user_id, row["target"])
+        result = {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
     else:
         result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
     new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None

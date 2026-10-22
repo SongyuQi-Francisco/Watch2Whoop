@@ -19,7 +19,7 @@ TOOL_SPECS: list[dict] = [
                     "「一晚」按入睡前的傍晚算。没设目标时 target_bedtime 为空。",
         input_schema=_schema({"user": USER, "night": nullable("string", "入睡前的傍晚 YYYY-MM-DD，null = 今晚")}),
         handler=lambda conn, uid, a: store.view(conn, uid, date.fromisoformat(a["night"]) if a["night"] else None),
-        scope="sleep",
+        group="body", scope="sleep",
     ),
     dict(
         name="set_sleep_goal",
@@ -33,7 +33,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: store.set_goal(conn, uid, a["target_bedtime"], a["target_wake"],
                                                     a["pace_min_per_step"], a["step_days"]),
-        scope="sleep",
+        group="body", scope="sleep",
         writes=True,
     ),
     dict(
@@ -42,7 +42,7 @@ TOOL_SPECS: list[dict] = [
                     "添加糖没设上限时默认 25g。",
         input_schema=_schema({"user": USER, "date": OPT_DAY}),
         handler=lambda conn, uid, a: nutrition.view(conn, uid, date.fromisoformat(a["date"]) if a["date"] else None),
-        scope="nutrition",
+        group="nutrition", scope="nutrition",
     ),
     dict(
         name="set_nutrition_goals",
@@ -61,7 +61,7 @@ TOOL_SPECS: list[dict] = [
             effective_from=date.fromisoformat(a["effective_from"]) if a["effective_from"] else None,
             name=a["name"], reason=a["reason"], set_by=a.get("_channel") or "assistant",
             actor_user_id=a.get("_viewer_id")),
-        scope="nutrition",
+        group="nutrition", scope="nutrition",
         writes=True,
     ),
 ]

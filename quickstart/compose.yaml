@@ -36,7 +36,10 @@ services:
     restart: unless-stopped
 
   body-engine:
-    build: ../body_engine
+    build:
+      context: ../body_engine
+      additional_contexts:   # the scoring algorithms (path dependency, see body_engine/Dockerfile); needs Compose >= 2.17
+        openbodyscore: ../packages/openbodyscore
     image: watch2whoop-body-engine:quickstart
     environment:
       BODY_DB_HOST: body-db

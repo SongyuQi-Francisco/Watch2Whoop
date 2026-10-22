@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..assistant.memory_api import _meal_call
 from ..records.api import _owner, _self, current_user, get_conn
-from . import prices, store
+from . import pantry_auto, prices, store
 from .sync import offers as store_offers
 
 router = APIRouter(prefix="/v1/users/{user}/grocery", tags=["grocery"])
@@ -66,7 +66,14 @@ class PlanEntry(BaseModel):
 class GenerateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     week: dt.date | None = Field(None, description="这周任一天，默认本周")
-    plan: list[PlanEntry] = Field(min_length=1)
+    plan: list[PlanEntry] = Field(default_factory=list, description="empty = only the usual items that are due (needs some)")
+
+
+class StapleIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    every_days: int | None = Field(None, ge=1, le=180)
+    qty: float | None = Field(None, gt=0)
+    unit: Literal["pack", "g", "ml", "pcs"] | None = None
 
 
 class ItemIn(BaseModel):
@@ -96,6 +103,12 @@ class PantryEntry(BaseModel):
     quantity: float = Field(ge=0)
     unit: Unit
     product_id: int | None = None
+    best_before: dt.date | None = None   # None = keep (issue #104)
+
+
+class PantryAutoIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
 
 
 class StoresIn(BaseModel):
@@ -213,6 +226,17 @@ def delete_product(user: str, product_id: int, conn=Depends(get_conn), viewer=De
     return Response(status_code=204)
 
 
+@router.put("/products/{product_id}/staple")
+def put_staple(user: str, product_id: int, body: StapleIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Mark a usual item (issue #103): interval, amount each time. Own products only."""
+    return _meal_call(store.set_staple, conn, _self(viewer, user), product_id, body.model_dump())
+
+
+@router.delete("/products/{product_id}/staple")
+def delete_staple(user: str, product_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(store.remove_staple, conn, _self(viewer, user), product_id)
+
+
 @router.get("/list")
 def get_list(user: str, week: dt.date | None = None, pantry: bool = False,
              conn=Depends(get_conn), viewer=Depends(current_user)):
@@ -248,6 +272,17 @@ def delete_item(user: str, item_id: int, conn=Depends(get_conn), viewer=Depends(
 @router.get("/pantry")
 def get_pantry(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     return store.list_pantry(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.get("/pantry-auto")
+def get_pantry_auto(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Whether logged meals take from the pantry (issue #104); the Today page only shows it."""
+    return pantry_auto.status(conn, _owner(conn, viewer, user, "nutrition"))
+
+
+@router.put("/pantry-auto")
+def put_pantry_auto(user: str, body: PantryAutoIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _meal_call(pantry_auto.set_enabled, conn, _self(viewer, user), body.enabled)
 
 
 @router.put("/pantry")

@@ -20,6 +20,6 @@ TOOL_SPECS: list[dict] = [
         name="log_water",
         description="记喝水（ml；一杯≈250）。at=HH:MM，null=现在。",
         input_schema=schema({"ml": {"type": "number"}, "at": nullable("string")}),
-        handler=_log, scope="nutrition", writes=True,
+        handler=_log, group="nutrition", scope="nutrition", writes=True,
     ),
 ]

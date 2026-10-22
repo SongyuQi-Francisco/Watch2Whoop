@@ -160,6 +160,9 @@ def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[s
         extras.save(conn, user_id, new["id"], day, {f: food.get(f) for f in extras.OPTIONAL}, None)
         for r in raw:
             client.request("DELETE", sparky_write._entry_path("food", r))
+        from ..grocery import pantry_auto   # grocery imports assistant
+        for r in raw:   # what the originals took from the pantry follows the merged entry (issue #104)
+            pantry_auto.merge_into(conn, user_id, r["id"], new["id"])
         row = conn.execute(
             """INSERT INTO food_merges (user_id, date, entry_id, name, originals, totals, channel)
                VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
@@ -188,6 +191,8 @@ def split(conn: psycopg.Connection, user_id: int, merge_id: int, client=None, lo
         new = sparky_write._recreate_food(client, o)
         extras.carry_over(conn, user_id, str(o["id"]), str(new["id"]), row["date"])
         restored.append(str(new["id"]))
+    from ..grocery import pantry_auto   # grocery imports assistant
+    pantry_auto.split_back(conn, user_id, row["entry_id"], {str(o["id"]): rid for o, rid in zip(row["originals"], restored)})
     conn.execute("UPDATE food_merges SET undone_at = now(), restored_ids = %s WHERE id = %s", (restored, merge_id))
     if log:
         writelog.record(conn, "merge", "split", merge_id, {"entry_id": row["entry_id"]}, {"entry_ids": restored})

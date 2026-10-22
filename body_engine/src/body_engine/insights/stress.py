@@ -1,4 +1,4 @@
-"""Stress monitor (matching WHOOP Stress Monitor): while awake and not moving, how far heart rate / HRV deviates from a personal calm baseline, scored 0–3.
+"""Stress monitor (matching WHOOP Stress Monitor; the formulas are in openbodyscore.stress): while awake and not moving, how far heart rate / HRV deviates from a personal calm baseline, scored 0–3.
 
 - Only heart-rate readings while awake (not in any sleep segment), not during a workout (OW workout records), and with no walking from 5 minutes before to 2 minutes after (steps < 20).
   WHOOP excludes activity using acceleration; we have no acceleration, so we substitute steps and workout records.
@@ -10,8 +10,6 @@
 - Per day: mean score of the scored hours, hours in low / medium / high, and the highest hour.
 No raw heart rate (the Shortcut only has hour-summed heart rate) -> no score for that day, with the reason stated.
 """
-import bisect
-import math
 import statistics
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
@@ -20,87 +18,14 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
+# the pure scoring part moved to the openbodyscore package (issue #115); re-exported so existing imports keep working
+from openbodyscore.stress import (BANDS, BASELINE_DAYS, HR_WEIGHT, HRV_WEIGHT, MAX_SCORE, MIN_BASELINE_SAMPLES,  # noqa: F401
+                                  MIN_HOUR_SAMPLES, OFFSET, SPREAD_FLOOR, STEP_ACTIVE, STEP_WINDOW, STRESS_VERSION, band,
+                                  calm_samples, override, robust_baseline, score_day)
+
 from ..importers import ow as ow_imp
 
-STRESS_VERSION = "v1.0-2026-10-17"
-BASELINE_DAYS = 14
-MIN_BASELINE_SAMPLES = 50
-SPREAD_FLOOR = 3.0
-STEP_WINDOW = (timedelta(minutes=5), timedelta(minutes=2))   # from 5 minutes before to 2 minutes after the reading
-STEP_ACTIVE = 20                                              # >= 20 steps in that span counts as moving
-MIN_HOUR_SAMPLES = 3
-HR_WEIGHT, HRV_WEIGHT = 0.7, 0.3
-OFFSET, MAX_SCORE = 0.5, 3.0
-BANDS = ((2.0, "high"), (1.0, "medium"), (0.0, "low"))
 DEFAULT_DAYS = 90                                             # compute-scores recomputes the last 90 days by default
-
-
-def band(score: float | None) -> str | None:
-    if score is None:
-        return None
-    return next(name for lo, name in BANDS if score >= lo)
-
-
-def robust_baseline(values: list[float]) -> tuple[float, float] | None:
-    if len(values) < MIN_BASELINE_SAMPLES:
-        return None
-    med = statistics.median(values)
-    mad = statistics.median(abs(v - med) for v in values)
-    return med, max(1.4826 * mad, SPREAD_FLOOR)
-
-
-def calm_samples(hr: list[tuple[datetime, float]], sleep: list[tuple[datetime, datetime]],
-                 workouts: list[tuple[datetime, datetime]], steps: list[tuple[datetime, float]]) -> list[tuple[datetime, float]]:
-    """Heart-rate readings while awake, not in a workout, not walking. Each list sorted by time."""
-    busy = sorted(sleep + workouts)
-    out, j = [], 0
-    step_times = [t for t, _ in steps]
-    for t, v in hr:
-        while j < len(busy) and busy[j][1] < t:
-            j += 1
-        if any(a <= t <= b for a, b in busy[j:j + 3]):
-            continue
-        lo = bisect.bisect_left(step_times, t - STEP_WINDOW[0])
-        hi = bisect.bisect_right(step_times, t + STEP_WINDOW[1])
-        if sum(v2 for _, v2 in steps[lo:hi]) >= STEP_ACTIVE:
-            continue
-        out.append((t, v))
-    return out
-
-
-def score_day(calm: list[tuple[datetime, float]], hrv: list[tuple[datetime, float]], d: date, tz: ZoneInfo,
-              hr_base: tuple[float, float], hrv_base: tuple[float, float] | None) -> dict:
-    """calm: heart-rate readings while awake and still that day; hrv: HRV readings (ms) during the day (awake)."""
-    by_hour: dict[int, list[float]] = defaultdict(list)
-    for t, v in calm:
-        lt = t.astimezone(tz)
-        if lt.date() == d:
-            by_hour[lt.hour].append(v)
-    hrv_hour: dict[int, list[float]] = defaultdict(list)
-    for t, v in hrv:
-        lt = t.astimezone(tz)
-        if lt.date() == d and v > 0:
-            hrv_hour[lt.hour].append(math.log(v))
-    hours = []
-    for h in range(24):
-        xs = by_hour.get(h, [])
-        if len(xs) < MIN_HOUR_SAMPLES:
-            continue
-        z = (statistics.median(xs) - hr_base[0]) / hr_base[1]
-        zh = None
-        if hrv_base and hrv_hour.get(h):
-            zh = (hrv_base[0] - statistics.fmean(hrv_hour[h])) / max(hrv_base[1], 0.05)
-            z = HR_WEIGHT * z + HRV_WEIGHT * zh
-        s = max(0.0, min(MAX_SCORE, OFFSET + z))
-        hours.append({"hour": h, "score": round(s, 2), "level": band(s), "hr": round(statistics.median(xs), 1),
-                      "samples": len(xs), "hrv_z": None if zh is None else round(zh, 2)})
-    if not hours:
-        return {"score": None, "level": None, "hours": [], "low_h": 0, "medium_h": 0, "high_h": 0, "peak_hour": None}
-    mean = statistics.fmean(x["score"] for x in hours)
-    peak = max(hours, key=lambda x: x["score"])
-    count = lambda lv: sum(1 for x in hours if x["level"] == lv)
-    return {"score": round(mean, 2), "level": band(mean), "hours": hours, "low_h": count("low"),
-            "medium_h": count("medium"), "high_h": count("high"), "peak_hour": peak["hour"]}
 
 
 # ---------------------------------------------------------------- read data, compute day by day, write to the database
