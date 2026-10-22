@@ -89,6 +89,7 @@ FEED_SCOPE = "training"             # a member's posts go to a circle only when 
 FEED_PAGE = 10                      # posts per page (the page loads more when scrolling down)
 FEED_LOOKBACK_DAYS = 14             # days looked at when posts are made on the fly (a post follows the day's training)
 FEED_PREVIEW_EXERCISES = 3          # exercises shown before 「show all」
+COMMENT_PREVIEW = 2                 # newest comments shown under a post before 「view all」
 COMMENT_MAX = 300                   # characters; text only
 COMMENTS_PER_HOUR = 30              # per person, against floods (429)
 COMMENTS_SHOWN = 100                # newest comments returned for one post
