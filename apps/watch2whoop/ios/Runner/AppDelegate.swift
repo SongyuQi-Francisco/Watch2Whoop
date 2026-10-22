@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 import OpenWearablesHealthSDK
 import open_wearables_health_sdk
 #if DEBUG && targetEnvironment(simulator)
@@ -24,6 +25,8 @@ import HealthKit
     if let host = (creds["host"] ?? nil) as? String, !host.isEmpty, sdk.isSyncActive {
       sdk.configure(host: host)
     }
+    // Push notifications (#175): set before launch finishes so a tap that cold-starts the app reaches didReceive
+    UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -46,6 +49,10 @@ import HealthKit
     // watch2whoop://setup?… (opened by scanning the setup QR code with the camera): store it first, Dart picks it up later
     LinkInbox.shared.channel = native
     registrar.addSceneDelegate(LinkInbox.shared)
+    // Push notifications (#175): permission, the APNs device token, taps (PushBridge below)
+    let push = FlutterMethodChannel(name: "watch2whoop/push", binaryMessenger: registrar.messenger())
+    PushBridge.shared.channel = push
+    push.setMethodCallHandler { call, result in PushBridge.shared.handle(call, result) }
     #if DEBUG && targetEnvironment(simulator)
     let debug = FlutterMethodChannel(name: "watch2whoop/debug", binaryMessenger: registrar.messenger())
     debug.setMethodCallHandler { call, result in
@@ -64,6 +71,109 @@ import HealthKit
     completionHandler: @escaping () -> Void
   ) {
     OpenWearablesHealthSdkPlugin.setBackgroundCompletionHandler(completionHandler)
+  }
+
+  override func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    PushBridge.shared.received(token: deviceToken)
+    super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
+  }
+
+  override func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    PushBridge.shared.channel?.invokeMethod("error", arguments: error.localizedDescription)
+    super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
+  }
+
+  // A notification while the app is open: show it as a banner too, and let the page refresh its unread count
+  override func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                       withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+    PushBridge.shared.channel?.invokeMethod("received", arguments: nil)
+    completionHandler([.banner, .list, .sound, .badge])
+  }
+
+  // Tapped: open its page in the Today page (the payload's "url", a path on the server)
+  override func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                       withCompletionHandler completionHandler: @escaping () -> Void) {
+    PushBridge.shared.opened(response.notification.request.content.userInfo)
+    completionHandler()
+  }
+}
+
+/// Push notifications for Dart (lib/src/push.dart) over the channel "watch2whoop/push":
+/// status / request / register / takeOpened / setBadge; calls back token / error / opened / received.
+final class PushBridge {
+  static let shared = PushBridge()
+  var channel: FlutterMethodChannel?
+  private var pendingOpened: [String] = []
+  private var lastToken: [String: String]?
+
+  func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+    switch call.method {
+    case "status": status { result($0) }
+    case "request":
+      // iOS shows its dialog only while the user never decided; afterwards this just answers granted / denied
+      UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) { granted, _ in
+        DispatchQueue.main.async {
+          if granted { UIApplication.shared.registerForRemoteNotifications() }
+          self.status { result($0) }
+        }
+      }
+    case "register":
+      // Already allowed: ask APNs for the (possibly new) device token again; it arrives through "token"
+      status { s in
+        if s == "granted" { UIApplication.shared.registerForRemoteNotifications() }
+        result(s)
+      }
+    case "takeToken": result(lastToken)
+    case "takeOpened":
+      result(pendingOpened)
+      pendingOpened.removeAll()
+    case "setBadge":
+      let n = (call.arguments as? Int) ?? 0
+      if #available(iOS 16.0, *) {
+        UNUserNotificationCenter.current().setBadgeCount(n) { _ in }
+      } else {
+        UIApplication.shared.applicationIconBadgeNumber = n
+      }
+      result(nil)
+    default: result(FlutterMethodNotImplemented)
+    }
+  }
+
+  func status(_ done: @escaping (String) -> Void) {
+    UNUserNotificationCenter.current().getNotificationSettings { s in
+      let v: String
+      switch s.authorizationStatus {
+      case .authorized, .provisional, .ephemeral: v = "granted"
+      case .denied: v = "denied"
+      default: v = "unknown"
+      }
+      DispatchQueue.main.async { done(v) }
+    }
+  }
+
+  func received(token: Data) {
+    let t = ["token": token.map { String(format: "%02x", $0) }.joined(), "environment": PushBridge.environment()]
+    lastToken = t
+    channel?.invokeMethod("token", arguments: t)
+  }
+
+  func opened(_ userInfo: [AnyHashable: Any]) {
+    pendingOpened.append((userInfo["url"] as? String) ?? "/app/#notifications")
+    channel?.invokeMethod("opened", arguments: nil)
+  }
+
+  /// APNs environment of this build: Xcode / development builds embed a provisioning profile whose aps-environment is
+  /// "development" (sandbox); TestFlight and App Store builds have none, ad hoc ones say "production".
+  static func environment() -> String {
+    guard let path = Bundle.main.path(forResource: "embedded", ofType: "mobileprovision"),
+          let data = FileManager.default.contents(atPath: path),
+          let text = String(data: data, encoding: .isoLatin1),
+          let start = text.range(of: "<?xml"), let end = text.range(of: "</plist>") else { return "production" }
+    let xml = Data(text[start.lowerBound..<end.upperBound].utf8)
+    guard let plist = try? PropertyListSerialization.propertyList(from: xml, format: nil) as? [String: Any],
+          let ent = plist["Entitlements"] as? [String: Any],
+          let env = ent["aps-environment"] as? String else { return "production" }
+    return env == "development" ? "sandbox" : "production"
   }
 }
 

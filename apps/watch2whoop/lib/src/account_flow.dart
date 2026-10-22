@@ -10,6 +10,7 @@ import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
+import 'push.dart';
 import 'raw_sync.dart';
 
 /// Short device label the server shows in the token list.
@@ -88,6 +89,7 @@ Future<Uri?> freshWebLoginEntry() async {
 Future<void> signOutToOnboarding({bool revoke = true}) async {
   final state = AppState.instance;
   final token = state.accountToken;
+  if (token != null) await PushService.instance.unregister(token); // no more pushes to this phone for the account (#175)
   if (revoke && token != null) {
     try {
       await accountApiFor(state.config.todayUrl).logout(token);

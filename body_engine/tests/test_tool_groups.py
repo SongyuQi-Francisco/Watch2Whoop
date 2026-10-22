@@ -292,7 +292,8 @@ EXPLICIT_ARGS = {
 }
 # Read tools that need what the test database does not have (SparkyFitness, a saved recipe): they may fail here with
 # their own error, and read tools behind a rollout flag that is off in the test database (FlagOff); everything else must run.
-MAY_FAIL = {"get_training_log", "get_nutrition", "get_weight", "suggest_meals", "get_recipe", "get_friends_overview"}
+MAY_FAIL = {"get_training_log", "get_nutrition", "get_weight", "suggest_meals", "get_recipe", "get_friends_overview",
+            "get_muscle_load"}   # get_friends_overview / get_muscle_load: their rollout flag is off in this test database
 
 
 def _args_for(tool, today: date) -> dict:

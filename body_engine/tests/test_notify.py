@@ -426,26 +426,26 @@ def test_page_links_and_times():
              " '2026-10-20T12:00:00Z'].map((x) => P.timeAgo(x, now))}));")
     out = json.loads(subprocess.run([node, "-e", probe], capture_output=True, text=True, check=True).stdout)
     assert out["a"] == {"tab": "friends", "post": "9"} and out["b"] == {"notifications": ""} and out["c"] == {}
-    assert out["d"] == {"tab": "friends", "feed": "3"}   # the circle feed's links use the query (friends/feed_notify.py)
+    assert out["d"] == {"tab": "friends", "feed": "3"}   # the circle feed's links use the query (friends/feed.py)
     assert out["t"] == ["刚刚", "5 分钟前", "3 小时前", "2 天前"]
 
 
 def test_circle_feed_kinds(client, dsn, users, fake):
-    """The circle feed (#176, friends/feed_notify.py) sends circle_feed_like / circle_feed_comment with ?tab=friends links."""
+    """The circle feed (#176, friends/feed.py) sends circle.like / circle.comment with ?tab=friends links."""
     ids, t = users
     reset(dsn, ids["a"])
     register(client, t["a"], tok())
     assert core.category_of("circle_feed_like") == "circle" and core.category_of("circle.like") == "circle"
     assert core.category_of("circlex") == "circlex"
     with conn_of(dsn) as conn:
-        r = notify(conn, ids["a"], "circle_feed_like", "小明 给你的训练点了 ❤️", "今天的训练动态",
+        r = notify(conn, ids["a"], "circle.like", "小明 给你的训练点了 ❤️", "今天的训练动态",
                    url="/app/?tab=friends&feed=3", data={"post_id": 3, "actor_id": 9}, now=NOON)
-        notify(conn, ids["a"], "circle_feed_like", "小红 给你的训练点了 ❤️", "", url="/app/?tab=friends&feed=3",
+        notify(conn, ids["a"], "circle.like", "小红 给你的训练点了 ❤️", "", url="/app/?tab=friends&feed=3",
                data={"post_id": 3, "actor_id": 8}, now=NOON)
     assert r["push"] == "pushed" and fake.sent[0]["payload"]["url"] == "/app/?tab=friends&feed=3"
     assert fake.sent[-1]["payload"]["aps"]["alert"]["title"] == "2 个人给你点了 ❤️"
     # switching 圈子互动 off covers them; marking the category read too
     client.put("/v1/users/me/notification-settings", json={"categories": {"circle": False}}, headers=H(t["a"]))
     with conn_of(dsn) as conn:
-        assert notify(conn, ids["a"], "circle_feed_comment", "x", "y", now=NOON)["push"] == "off"
+        assert notify(conn, ids["a"], "circle.comment", "x", "y", now=NOON)["push"] == "off"
     assert client.post("/v1/users/me/notifications/read", json={"kind": "circle"}, headers=H(t["a"])).json() == {"marked": 3, "unread": 0}

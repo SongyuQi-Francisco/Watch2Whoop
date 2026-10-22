@@ -201,6 +201,27 @@ class AccountApi {
     return code;
   }
 
+  /// Registers this phone's APNs device token for push notifications (#175); only ever for the signed-in account.
+  Future<void> registerPushDevice(String token, {required String deviceToken, required String environment,
+      String? appVersion, String? lang}) async {
+    final r = await _send('POST', '/v1/users/me/push-devices', token: token, body: {
+      'token': deviceToken,
+      'environment': environment,
+      'app_version': ?appVersion,
+      'lang': ?lang,
+    });
+    if (r.statusCode == 404) throw AccountApiException('unavailable', status: 404); // server without notify/
+    _json(r);
+  }
+
+  /// Stops pushes to this phone (sign-out). Without [deviceToken]: every device registered with [token].
+  Future<void> removePushDevice(String token, {String? deviceToken}) async {
+    final r = await _send('DELETE', '/v1/users/me/push-devices', token: token,
+        body: deviceToken == null ? null : {'token': deviceToken});
+    if (r.statusCode == 401 || r.statusCode == 404) return; // already signed out / server without notify/
+    _json(r);
+  }
+
   Future<void> logout(String token) async {
     final r = await _send('POST', '/v1/account/logout', token: token);
     if (r.statusCode == 401) return; // already revoked

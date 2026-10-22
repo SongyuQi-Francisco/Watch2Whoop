@@ -20,10 +20,8 @@ CATEGORIES: dict[str, dict] = {
 MERGE_MINUTES = 30
 MAX_PUSHES_PER_WINDOW = 10      # after this many updates in one window the rest stay in-app only
 MERGED: dict[str, tuple[str, str]] = {
-    "circle.like": ("{n} 个人给你点了 ❤️", "{n} people ❤️ your workout"),
+    "circle.like": ("{n} 个人给你点了 ❤️", "{n} people ❤️ your workout"),          # friends/feed.py (#176)
     "circle.comment": ("{n} 个人评论了你的训练", "{n} people commented on your workout"),
-    "circle_feed_like": ("{n} 个人给你点了 ❤️", "{n} people ❤️ your workout"),          # friends/feed_notify.py (#176)
-    "circle_feed_comment": ("{n} 个人评论了你的训练", "{n} people commented on your workout"),
 }
 DEFAULT_MERGED = ("{n} 条新的{label}", "{n} new · {label}")
 MERGED_BODY = ("点开查看", "Tap to see them")

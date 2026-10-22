@@ -6,6 +6,9 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!-- Push (#175): "development" here; exporting for App Store Connect / TestFlight signs it as "production" -->
+	<key>aps-environment</key>
+	<string>development</string>
 	<key>com.apple.developer.healthkit</key>
 	<true/>
 	<key>com.apple.developer.healthkit.access</key>
