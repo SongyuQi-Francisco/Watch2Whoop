@@ -11,6 +11,7 @@ import pytest
 from body_engine.insights import coach, fitness, reports, sleep_detail, stress
 from body_engine.insights import healthspan as HS
 from body_engine.insights import healthspan_params as H
+from body_engine.insights import healthspan_params_v12 as H12
 from body_engine.insights import healthspan_store as store
 from body_engine.scores.engine import _latency_efficiency
 from body_engine.scores.inputs import Night
@@ -155,7 +156,7 @@ def make_data(days: int = 180, as_of: date = date(2026, 10, 17), **over) -> Simp
 
 
 def test_snapshot_typical_person_close_to_chrono_age():
-    snap = store.snapshot(make_data(), date(2026, 10, 17))
+    snap = store.snapshot(make_data(), date(2026, 10, 17), H)   # v1.1 (kept for comparison and rollback)
     assert snap["insufficient"] == []
     assert len(snap["contributors"]) == 8
     by = {c["key"]: c for c in snap["contributors"]}
@@ -170,7 +171,7 @@ def test_snapshot_insufficient_items_are_listed_with_reasons():
     as_of = date(2026, 10, 17)
     data = make_data(sleep={as_of - timedelta(days=k): 7.0 for k in range(10)}, sex=None, vo2={}, weight={},
                      steps={}, strength_from=None)
-    snap = store.snapshot(data, as_of)
+    snap = store.snapshot(data, as_of, H)
     miss = {m["key"]: m["reason"] for m in snap["insufficient"]}
     assert set(miss) == {"sleep_duration", "steps", "strength", "vo2max", "body_comp"}
     assert "10 晚" in miss["sleep_duration"] and "性别" in miss["vo2max"]
@@ -189,12 +190,114 @@ def test_snapshot_waist_preferred_and_vo2_readings_rule():
 def test_snapshot_worse_habits_older():
     as_of = date(2026, 10, 17)
     good = store.snapshot(make_data(steps={as_of - timedelta(days=k): 12000.0 for k in range(180)},
-                                    rhr={as_of - timedelta(days=k): 50.0 for k in range(180)}), as_of)
+                                    rhr={as_of - timedelta(days=k): 50.0 for k in range(180)}), as_of, H)
     bad = store.snapshot(make_data(steps={as_of - timedelta(days=k): 3000.0 for k in range(180)},
-                                   rhr={as_of - timedelta(days=k): 80.0 for k in range(180)}), as_of)
+                                   rhr={as_of - timedelta(days=k): 80.0 for k in range(180)}), as_of, H)
     assert bad["body_age"] > good["body_age"]
     steps_bad = next(c for c in bad["contributors"] if c["key"] == "steps")
     assert steps_bad["years"] == 4.0 and steps_bad["direction"] == "older"
+
+
+# ================================================================== body age v1.2: activity domain
+def _v12(**over):
+    return store.snapshot(make_data(**over), date(2026, 10, 17), H12)
+
+
+def _activity(snap):
+    return next(c for c in snap["contributors"] if c["key"] == "activity")
+
+
+def test_v12_activity_is_one_domain_and_typical_person_is_neutral():
+    snap = _v12(steps={date(2026, 10, 17) - timedelta(days=k): H12.STEPS_ANCHOR_UNDER60 for k in range(180)})
+    keys = {c["key"] for c in snap["contributors"]}
+    assert "activity" in keys and not keys & {"steps", "mvpa", "strength"}
+    assert len(snap["contributors"]) == 6
+    act = _activity(snap)
+    assert abs(act["years"]) < 0.01 and act["category"] == "activity"
+    parts = {p["key"]: p for p in act["parts"]}
+    assert set(parts) >= {"steps", "exercise_equiv", "strength"} and parts["exercise_equiv"]["value"] == 0
+    # the other items are scored exactly as in v1.1
+    v11 = {c["key"]: c for c in store.snapshot(make_data(), date(2026, 10, 17), H)["contributors"]}
+    for c in snap["contributors"]:
+        if c["key"] != "activity":
+            assert c == v11[c["key"]]
+
+
+def test_v12_domain_cap_is_once_for_all_activity():
+    as_of = date(2026, 10, 17)
+    low = {as_of - timedelta(days=k): 1500.0 for k in range(180)}
+    v11 = store.snapshot(make_data(steps=low, mvpa={as_of - timedelta(days=k): 0.0 for k in range(180)}), as_of, H)
+    v12 = store.snapshot(make_data(steps=low, mvpa={as_of - timedelta(days=k): 0.0 for k in range(180)}), as_of, H12)
+    old = sum(c["years"] for c in v11["contributors"] if c["category"] == "activity")
+    act = _activity(v12)
+    assert act["years"] <= H12.ACTIVITY_CAP_YEARS and act["years_uncapped"] >= act["years"]
+    assert old > act["years"]                                  # v1.1 counted low activity in up to three items
+
+
+def test_v12_training_without_steps_counts_as_step_equivalents():
+    as_of = date(2026, 10, 17)
+    steps = {as_of - timedelta(days=k): 6000.0 for k in range(180)}
+    lifting = defaultdict(float, {as_of - timedelta(days=k): 60.0 for k in range(180) if k % 7 < 5})
+    swim = defaultdict(list, {as_of - timedelta(days=k): [("swimming", 45.0, None)] for k in range(180) if k % 7 == 5})
+    walk = defaultdict(list, {as_of - timedelta(days=k): [("walking", 45.0, None)] for k in range(180) if k % 7 == 5})
+    base = _activity(_v12(steps=steps))
+    lift = _activity(_v12(steps=steps, strength=lifting))
+    swam = _activity(_v12(steps=steps, workouts=swim))
+    walked = _activity(_v12(steps=steps, workouts=walk))
+    part = lambda a, k: next(p for p in a["parts"] if p["key"] == k)
+    assert swam["years"] < base["years"] and part(swam, "exercise_equiv")["value"] > 0
+    assert walked["years"] == base["years"]                    # a walk's steps are already in the step count
+    # strength: its own curve, not step equivalents (default); Lee 2022's way (also as volume) is an option
+    assert lift["years"] < base["years"] and part(lift, "exercise_equiv")["value"] == 0 and lift["value"] == 6000
+    assert part(lift, "strength")["years"] < 0
+    both = _activity(store.snapshot(make_data(steps=steps, strength=lifting), as_of, H12.override(STRENGTH_IN_VOLUME=True)))
+    per_day = HS.step_equivalents(60, H12.STRENGTH_MET, params=H12) * 5 / 7
+    eq = part(both, "exercise_equiv")
+    assert eq["value"] == pytest.approx(per_day, rel=0.03)    # 5 of 7 days (the recent-30-day weighting shifts it a little)
+    assert both["value"] == 6000 + eq["value"] and both["years"] < lift["years"]
+
+
+def test_v12_without_steps_the_domain_is_strength_alone():
+    as_of = date(2026, 10, 17)
+    lifting = defaultdict(float, {as_of - timedelta(days=k): 20.0 for k in range(180) if k % 7 < 2})   # ~40 min / week
+    snap = _v12(steps={}, strength=lifting)
+    act = _activity(snap)
+    assert act["value"] is None and [p["key"] for p in act["parts"]] == ["strength"]
+    assert act["hr"] == pytest.approx(HS.hr_strength(next(p for p in act["parts"])["value"], params=H12), abs=0.01)
+    assert act["years"] < 0 and "steps" in {m["key"] for m in snap["insufficient"]}
+    none = _v12(steps={}, strength_from=None)
+    assert "activity" in {m["key"] for m in none["insufficient"]}
+
+
+def test_v12_step_equivalents_follow_met_and_moderate_threshold():
+    assert HS.moderate_equiv_minutes(30, 6.0) == pytest.approx(60)          # vigorous minute = 2 moderate minutes
+    assert HS.moderate_equiv_minutes(30, 3.5) == pytest.approx(30)
+    assert HS.moderate_equiv_minutes(30, 2.5) == 0 and HS.step_equivalents(30, 2.5) == 0   # light activity is not MVPA
+    assert HS.step_equivalents(10, 3.0) == pytest.approx(1000)               # CADENCE: 100 steps/min ≈ 3 MET
+    assert HS.step_equivalents(10, 6.0) == pytest.approx(1300) == HS.step_equivalents(10, 9.0)   # 130 ≈ 6 MET, no more above
+    assert HS.step_equivalents(10, 4.5) == pytest.approx(1150)
+    r = HS.hr_activity(H12.STEPS_ANCHOR_UNDER60, 40, 30)
+    assert r["hr_volume"] == pytest.approx(1.0) and r["hr"] == pytest.approx(r["hr_strength"]) and r["hr"] < 1
+
+
+def test_v12_mvpa_reference_counts_workouts_at_their_met_and_is_not_counted():
+    as_of = date(2026, 10, 17)
+    zones = {as_of - timedelta(days=k): [40.0, 10.0, 0.0, 0.0, 0.0] for k in range(180)}
+    lifting = defaultdict(float, {as_of - timedelta(days=k): 60.0 for k in range(180) if k % 7 < 5})
+    workouts = defaultdict(list, {d: [("strength_training", 60.0, [30.0, 5.0, 0.0, 0.0, 0.0])] for d in lifting})
+    act = _activity(_v12(zones=zones, strength=lifting, workouts=workouts))
+    mvpa = next(p for p in act["parts"] if p["key"] == "mvpa")
+    assert mvpa["counted"] is False
+    hr_only = 7 * 10.0
+    assert mvpa["value"] > hr_only                             # the strength hour counts at its MET, not its heart rate
+
+
+def test_v12_versions_and_write_tag():
+    assert store.VERSIONS["v1.1"] is H and store.VERSIONS["v1.2"] is H12
+    assert store.CURRENT is H12                                # production writes v1.2 (2026-10-23)
+    assert _activity(store.snapshot(make_data(), date(2026, 10, 17)))   # default = CURRENT
+    assert H.ALGO_VERSION.startswith("hs-v1.1") and H12.ALGO_VERSION.startswith("hs-v1.2")
+    assert getattr(H, "ACTIVITY_MODEL", "items") == "items" and H12.ACTIVITY_MODEL == "domain"
 
 
 def test_week_ends_sunday_and_partial_current_week():

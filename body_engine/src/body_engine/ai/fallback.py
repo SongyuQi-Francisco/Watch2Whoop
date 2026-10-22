@@ -58,6 +58,14 @@ TOOL_NAMES = (
     "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
     "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
 )
+# Behind the rollout flag ai_parity (ai/parity.py): the fallback gets every tool the other channels have for the user's own
+# data, except what its consent (CONSENT_POINTS: 「不发：心电图、逐拍心跳、家人的数据」) keeps from DeepSeek. Nothing else may
+# be left out (tests/test_ai_parity.py); a tool that ought to be is a consent question for the owner, not a whitelist edit.
+CONSENT_EXCLUDED = {
+    "get_cardio": "逐拍心跳",   # raw heart data (cardio/: recovery after workouts, nightly recovery index); out since the first consent
+    "get_ecg_list": "心电图",
+    "get_friends_overview": "家人的数据",   # circle members' shared data
+}
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
@@ -126,11 +134,18 @@ def _own_schema(schema: dict) -> dict:
     return {**schema, "properties": props, "required": [r for r in schema.get("required", []) if r != "user"]}
 
 
-@lru_cache(maxsize=1)
-def tools(extra: tuple = ()) -> tuple:
-    """The whitelist as own-data-only tools; `extra`: names added behind a rollout flag (ai/web.fallback_extra)."""
+def parity_names() -> tuple:
+    """ai_parity: every tool of the registry (the other channels' set) minus CONSENT_EXCLUDED, in registry order."""
+    return tuple(n for n in ALL_TOOLS if n not in CONSENT_EXCLUDED)
+
+
+@lru_cache(maxsize=4)
+def tools(extra: tuple = (), parity: bool = False) -> tuple:
+    """The whitelist as own-data-only tools; `extra`: names added behind a rollout flag (ai/web.fallback_extra).
+    parity (rollout flag ai_parity): parity_names() instead, `extra` is then already in it."""
+    names = parity_names() if parity else (*TOOL_NAMES, *(n for n in extra if n not in TOOL_NAMES))
     return tuple(dataclasses.replace(ALL_TOOLS[n], input_schema=_own_schema(ALL_TOOLS[n].input_schema))
-                 for n in (*TOOL_NAMES, *(n for n in extra if n not in TOOL_NAMES)) if n in ALL_TOOLS)
+                 for n in names if n in ALL_TOOLS)
 
 
 # ---------------------------------------------------------------- money
