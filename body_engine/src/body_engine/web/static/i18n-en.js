@@ -1523,6 +1523,7 @@ I18N.addEn({
   "头像已更新": "Picture updated",
   "头像已删除": "Picture removed",
   "更换头像": "Change picture",
+  "打开个人资料": "Open profile",
   "设置头像": "Set a picture",
   "头像": "Picture",
   "圈子 logo": "Circle logo",
