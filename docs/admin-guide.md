@@ -319,3 +319,39 @@ body-engine invite-code revoke --batch N | --code-id N
 body-engine invite-code list --kind referral   # 谁邀请了谁：每个用户的码、已用 / 剩余，每次使用的人、身份（打码）、时间
 body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N 从上面的列表 --batch 看）
 ```
+
+### 圈子激活码（团体推广，#199）
+
+给俱乐部、社团这类团体用：一个可读的码（比如团体的名字），新用户凭它注册开通，并自动进入这个团体的圈子；已经有账号的人在「圈子」→「用邀请码加入」里输同一个码，只加入圈子。设计见 [`friends-social-plan.md`](friends-social-plan.md) 第 10 节。
+
+1. **建圈子**（圈主是第一个成员，会和以后加入的每个人共享圈子的默认范围，所以选同意这样做的人，通常是部署者本人或团体负责人；圈主要先确认过含「圈子共享」的同意书）：
+
+   ```bash
+   body-engine circle-admin create --name "Example Lifting Club" --owner-user-id 1 \
+     --avatar logo.png --max-members 60 [--scopes scores,sleep,training,nutrition_summary]
+   body-engine circle-admin list                                   # 团体圈子：id、圈主、人数、上限、有没有头像
+   body-engine circle-admin avatar --circle 12 --file logo.png     # 换头像；--clear 去掉（没有头像时显示首字母）
+   ```
+
+   - `--max-members` 要大于等于「现有成员 + 码的次数」（默认 `friends/params.py` 的 `MAX_MEMBERS`，30）；还没确认同意书的新用户也占名额。
+   - 头像只收 PNG / JPEG / WebP，最大 5 MB（`images/params.py`），服务器上裁成 256×256 的方形 WebP 并去掉 EXIF / GPS 等全部元数据；只有圈子成员能看到。
+   - `--scopes`：新成员加入时默认共享什么（不填 = 评分、睡眠、训练、饮食达标率），心电图永远不行。
+
+2. **建激活码**（匹配时不分大小写，忽略空格和连字符，所以 `example-lifting-club` 也能用）：
+
+   ```bash
+   body-engine circle-code create --circle 12 --code 'Example Lifting Club' --max-uses 50 [--expires 2026-12-31 | --days 90] [--label 迎新周]
+   body-engine circle-code list [--circle 12]   # 每个码一行：状态、「已开户 N / 50」「老用户加入 M」、等同意书的人数
+   body-engine circle-code uses --id 3          # 分「新开户」「老用户加入」两组：谁、什么时候、什么时候真正进圈、现在还在不在
+   body-engine circle-code disable --id 3       # 停用；已经进圈的人不受影响
+   ```
+
+   - **`--max-uses` 只限制新开户**：已经有账号的人用这个码加入不占次数，次数用满后老用户仍能加入，新用户会被拒（状态显示 `used_up`）。停用或过期后谁都不能用。
+   - `--expires` 给日期时，到圈主时区那一天结束为止；也可以给完整的 ISO 时间。
+   - 同一段文字同时只能有一个没停用的码；停用后可以用同样的文字再建一个。
+
+3. **发给团体**：把码本身发出去即可；也可以发链接 `<BODY_PUBLIC_URL>/app/?invite=Example%20Lifting%20Club`（新用户注册时自动填好，已经有账号的人打开后直接弹出加入圈子）。iPhone app 1.0.7 起在激活步骤里也能输圈子激活码，更早的版本只认 10 位内测码：让新用户先在浏览器里注册，再在 app 里登录。
+
+隐私规则（不用管理员操作，代码里保证）：新用户用码注册后，**确认电子同意书之前不会进圈**，圈子里看不到他的名字和任何数据；同意书页面会写明要加入哪个圈子、共享什么；同意后才以圈子默认范围加入。之后他随时可以改共享范围或退出，退出后其他人立即看不到。码本身不替任何人同意共享。
+
+新开户次数用完（只挡新用户）、码停用或过期时，注册页和 app 会直接提示（「这个圈子激活码已经用完了」等）；圈子满了提示「这个圈子已满」。

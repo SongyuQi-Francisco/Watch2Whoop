@@ -517,6 +517,8 @@ I18N.addEn({
   "不同意": "Disagree",
   "不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；请告诉管理员删除你的账号和暂存的数据。改主意了随时回来点「同意并继续」。": "Without your consent you can't use Watch2Whoop. Your health data is only held, not processed; ask your admin to delete your account and the held data. If you change your mind, come back any time and tap \"Agree and continue\".",
   "谢谢！同步上来的数据一小时内开始处理": "Thank you! Your synced data will be processed within an hour",
+  "同意后你会加入圈子「{name}」，圈子里的人能看到你的：{list}。随时可以在「圈子」里修改或退出。": "Once you agree you join the circle “{name}”; its members will see your: {list}. You can change that or leave any time under Circles.",
+  "谢谢！已加入「{name}」": "Thank you! You joined “{name}”",
   "解析中": "Reading",
   "写入中": "Saving",
   "重算评分": "Recalculating scores",
@@ -862,6 +864,8 @@ I18N.addEn({
   "链接已复制": "Link copied",
   "激活码": "Activation code",
   "管理员给的激活码，或好友的邀请码": "An activation code from the admin, or a friend's invite code",
+  "管理员给的激活码、好友的邀请码，或团体的圈子激活码": "An activation code from the admin, a friend's invite code, or a group's circle code",
+  "已填好圈子激活码": "The circle code is filled in",
   // sign-in methods (#70)
   "{n} 种": "{n}",
   "在 Watch2Whoop app 里绑定 Apple 登录": "Add Sign in with Apple inside the Watch2Whoop app",
