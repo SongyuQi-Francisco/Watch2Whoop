@@ -271,6 +271,25 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
 .sheet-head h2 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
 .close { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--surface); color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; }
 .close svg { width: 14px; height: 14px; }
+.sheet-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.sheet-title h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.close.back { flex: none; }
+/* "Add to plan" on the exercise detail (exercise-plan.js, flag exercise_add_to_plan) */
+.ap-name { font-weight: 600; font-size: 16px; margin: 0 0 10px; }
+.ap-note { font-size: 14px; padding: 12px 14px; border-radius: 12px; background: var(--in-sheet, var(--surface)); }
+.ap-bad { color: var(--bad); }
+.ap-seg { display: flex; width: 100%; margin-bottom: 10px; }
+.ap-seg button { flex: 1; padding: 8px 6px; }
+.ap-list { max-height: 36vh; overflow-y: auto; }
+.ap-opt { display: flex; align-items: center; gap: 12px; width: 100%; }
+.ap-opt[disabled] { opacity: .45; }
+.ap-dot { flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--text-3); }
+.ap-opt[aria-pressed="true"] .ap-dot { background: var(--text); box-shadow: inset 0 0 0 4px var(--bg); border: 2px solid var(--text); }
+.ap-nums { display: flex; gap: 12px; margin-top: 12px; }
+.ap-f { flex: 1; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-2); min-width: 0; }
+.ap-f .input { text-align: center; padding: 10px 6px; }
+.ap-reps { display: flex; align-items: center; gap: 4px; }
+.ap-reps i { font-style: normal; color: var(--text-3); }
 .kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 11px 0; border-top: 1px solid var(--hair); }
 .kv:first-child { border-top: 0; }
 .kv .k { color: var(--text-2); font-size: 14px; flex-shrink: 0; }

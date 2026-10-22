@@ -37,6 +37,11 @@
 演示图轮播（free-exercise-db 的起始 / 结束两张，自动交替，滑动后停止）、主 / 次肌群、肌群示意图（正面 + 背面，主肌群深色、次肌群浅色；人体多边形数据来自 MIT 许可的 react-body-highlighter，见 [LICENSES.md](LICENSES.md)）、推荐重量、要点、最近记录、同模式安全替代。只放标签和数字。
 - 导入的上游动作若是受限动作的变体（直立划船、颈后推举 / 下拉、双杠臂屈伸的各种器械版本，`params.HAZARD_FAMILIES`），会记下 `family_slug`：用户对原动作的禁用 / 注意同样作用到变体；同模式替代只从精选层里选（上游条目没有经过关节压力标注）。
 
+### 动作库的返回和「加入训练计划」（#154）
+- **返回**（修 bug，不加开关）：从动作库点开动作详情，弹层标题左边出现返回箭头，回到动作库列表，搜索词、肌群筛选和滚动位置都保留（`web/static/exercise-plan.js` 的 `createNav`）；详情里点「同模式安全替代」再进别的动作，返回回到前一个动作。
+- **加入训练计划**（开关 `exercise_add_to_plan`，默认关）：动作详情里的按钮打开一个弹层，选「训练组（每周都有）」——加进当前周计划的某个训练组（上肢 B 等，`training_plans.days`，同步到训练记录和 `swap_exercise` 同一条路），或「只加到某一天」——今天起 7 天里的某一天（表 `training_day_extras`，迁移 610；和 `training_day_overrides` 并列：后者整个训练换天，这个只多一个动作，重排本周不会动它，`get_week_plan` 在那天多出一个「加入的动作」训练组，训练页新版 / `get_training_day` 都读得到）。组数 / 次数默认 3 × 8–12（计时类动作按时长，`params.ADD_*`），可以改；同一个动作不能重复加到同一个训练组 / 同一天；日期范围和按日调整一样（今天前 7 天到后 28 天）。**禁用动作**（`exercise_meta`）两种范围都 409 拦住并给出替代；详情页里按钮置灰。
+- 接口：`GET /v1/users/me/training/plan/add-options?exercise=`（训练组、可选日期、默认数字、是否禁用）、`POST /v1/users/me/training/plan/add-exercise`（`scope: template | day`），只能管自己的。没有 Body Engine 周计划的人（只用训练记录里的旧计划）会得到「先创建周计划」。
+
 ## 数据来源与许可证
 | 来源 | 许可 | 用法 |
 |---|---|---|
