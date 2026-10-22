@@ -294,6 +294,7 @@
   const ICON = {
     photo: `<svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.8l1.4-2h4.6l1.4 2h1.8A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`,
     video: `<svg viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15.5 10.5l5-3v9l-5-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
+    spark: `<svg viewBox="0 0 24 24"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,   // Tabler "sparkles" (MIT), as the Jarvis button
     mic: `<svg viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
   };
 
@@ -301,7 +302,7 @@
     let p = $("#ai-chat");
     if (p) return p;
     p = document.createElement("div");
-    p.id = "ai-chat"; p.className = "panel ai-chat"; p.hidden = true;
+    p.id = "ai-chat"; p.className = `panel ai-chat${window.BodyFlags?.on("jarvis_ui_v2") ? " v2" : ""}`; p.hidden = true;   // rollout flag jarvis_ui_v2 (#53): the look is all in ai.css under .ai-chat.v2
     p.setAttribute("role", "dialog"); p.setAttribute("aria-modal", "true"); p.setAttribute("aria-label", "Jarvis");
     p.innerHTML = `
       <div class="panel-head">
@@ -446,14 +447,27 @@
     setTimeout(() => { if (!p.classList.contains("open")) p.hidden = true; }, 280);
   }
   function hello() {
-    bubble("assistant", [tr("你好，我是你的身体管家。问我今天怎么样，或者告诉我吃了什么、练了什么、哪里不舒服，我帮你记下来。"),
-      C.ai?.vision === false ? "" : tr("拍照、发视频也可以。"), micOn() ? tr("按住麦克风说话。") : ""].filter(Boolean).join(window.I18N.lang === "en" ? " " : ""));
+    const extra = [C.ai?.vision === false ? "" : tr("拍照、发视频也可以。"), micOn() ? tr("按住麦克风说话。") : ""].filter(Boolean);
+    const sep = window.I18N.lang === "en" ? " " : "";
+    if ($("#ai-chat")?.classList.contains("v2")) { welcome(extra.join(sep), sep); return; }
+    bubble("assistant", [tr("你好，我是你的身体管家。问我今天怎么样，或者告诉我吃了什么、练了什么、哪里不舒服，我帮你记下来。"), ...extra].join(sep));
+  }
+  // Jarvis UI v2: an empty state in the intro's visual language (icon tile, bold title, muted line) instead of a chat bubble;
+  // it goes away with the first message (bubble())
+  function welcome(extra, sep) {
+    const el = document.createElement("div");
+    el.className = "ai-welcome";
+    el.innerHTML = `<div class="ai-welcome-ic" aria-hidden="true">${ICON.spark}</div>
+      <h3>${esc(tr("你好，我是你的身体管家"))}</h3>
+      <p>${esc(tr("问我今天怎么样，或者告诉我吃了什么、练了什么、哪里不舒服，我帮你记下来。"))}${esc(extra ? sep + extra : "")}</p>`;
+    $("#ai-log").appendChild(el);
   }
 
   function bubble(role, text, cls = "") {
     const el = document.createElement("div");
     el.className = `ai-msg ${role} ${cls}`;
     el.textContent = text;
+    if (role === "user") $(".ai-welcome")?.remove();
     $("#ai-log").appendChild(el);
     scroll();
     return el;
