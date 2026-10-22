@@ -32,7 +32,7 @@ Every parameter carries one of four labels. **We claim only what we can back up*
 ### 0.3 Inputs
 Raw samples an Apple Watch writes to HealthKit (via the iOS app / Open Wearables, the iOS Shortcut, or the full Health export): sleep stage
 segments, heart rate, HRV (Apple's SDNN, plus about one minute of beat-to-beat times per reading), respiratory rate, SpO₂, wrist temperature,
-Apple's all-day resting heart rate, workouts, steps; weight, waist, VO₂max; strength sessions from SparkyFitness. **Apple's own readiness and sleep
+Apple's all-day resting heart rate, workouts, steps; weight, waist, VO₂max; strength sessions from SparkyFitness and imported workouts (Hevy CSV). **Apple's own readiness and sleep
 scores are not readable through HealthKit**, so they cannot be compared directly.
 
 ---
@@ -259,6 +259,15 @@ activity part.
 - Sensitivity is analytic: when nothing is capped, the years are proportional to the doubling time and to the 0.6 factor, so ±20% on either moves
   the gap between body age and chronological age by ±20%.
 - No external validation (e.g. against WHOOP Age or epigenetic clocks).
+- **Strength training counts only what is recorded** (#210): the watch's strength workouts, SparkyFitness sessions (the Today page's
+  set-by-set log lands there once submitted) and imported workouts (Hevy), per day the largest of them (SparkyFitness has no start
+  time, so sessions cannot be matched one by one; the largest never counts one twice, but two different sessions on one day in two
+  sources are under-counted); without a duration, 3 minutes per set. A session the watch did not record and nobody logged is
+  invisible, and from when the watch was first worn a day without records counts as 0 minutes. The anchor is 0 minutes, so missing
+  records only remove "younger" credit; they never make body age older. When the journal has strength training on ≥ 2 days of the
+  last 4 weeks without a record, or fewer than half of the active plan's sessions have one, the item is labelled "records may be
+  incomplete" (value unchanged; only the label and the tip change, to logging the missing sessions). Parameters in
+  `insights/healthspan_params.py` (design choices, not validated).
 
 
 ### 8.1 v1.2: activity as one domain (`hs-v1.2-2026-10-23`, in production since 2026-10-23; v1.1 kept for comparison and rollback)
@@ -326,6 +335,8 @@ includes months of less training — on purpose (long-term habits).
   (Lee 2019 and Saint-Maurice 2020 found little extra association for cadence / intensity once steps are adjusted for; del Pozo Cruz 2022
   found some). No study was found with MVPA minutes and steps in the same model.
 - Swimming / cycling not recorded as a workout is not converted (visible in the heart-rate reference, not counted).
+- Strength training likewise counts only what is recorded (#210, see the known limits above); when the records look incomplete the
+  "records may be incomplete" label sits on the activity domain and its strength part, the numbers unchanged.
 - Ding 2025 has no sensitivity analysis excluding early deaths; its curve is flatter than Paluch's, in the direction of Hansen 2020's and
   Lee 2019's estimates after excluding early deaths, but that is indirect evidence.
 - The ±4-year domain cap, multiplying volume and strength, and converting only three workout types are design choices, not validated.

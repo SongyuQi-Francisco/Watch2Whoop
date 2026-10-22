@@ -94,7 +94,9 @@ class Data:
         # sleep regularity: minute-by-minute state for each wake date
         mains, intervals = sleep_detail.load_intervals(conn, user_id, start, end)
         self.sleep_days = {d: sleep_detail.asleep_minutes(intervals, d, self.tz) for d in mains if start <= d <= end}
-        # strength-training minutes: watch workout records (workouts table) and SparkyFitness workout records, take the larger on the same day
+        # strength-training minutes: watch workout records (workouts table, Hevy imports included), SparkyFitness workout records and
+        # imported sessions (Hevy); per day the largest of them (SparkyFitness sessions carry no start time, so they cannot be
+        # matched workout by workout; the larger value never counts one workout twice and never drops a source)
         self.strength: dict[date, float] = defaultdict(float)
         # v1.2: every watch workout by day, [(type, minutes, heart-rate zone minutes)], for the activity domain
         # (strength minutes still come from self.strength, the larger of watch and SparkyFitness)
@@ -111,13 +113,10 @@ class Data:
         try:
             sparky = sparky or sparky_client.client_for_user(conn, user_id)
             for s in sparky_client.training_log(sparky, start, end):
-                d = date.fromisoformat(s["date"][:10])
-                ex = [e for e in s["exercises"] if (e.get("category") or "strength") == "strength"]
-                if not ex:
+                minutes = session_strength_minutes(s)
+                if minutes is None:
                     continue
-                minutes = s.get("total_duration_minutes") or sum(e.get("duration_minutes") or 0 for e in ex)
-                if not minutes:   # no duration in SparkyFitness: estimate from the working set count
-                    minutes = H.STRENGTH_MIN_PER_SET * sum(len(e["sets"]) for e in ex)
+                d = date.fromisoformat(s["date"][:10])
                 sparky_days[d] = sparky_days.get(d, 0) + minutes
             for r in sparky_client.weight(sparky, start, end):
                 d = date.fromisoformat(r["date"])
@@ -129,8 +128,12 @@ class Data:
                     self.height = r["height_cm"]
         except Exception as e:  # SparkyFitness not connected / unreadable: strength training uses only watch records
             self.notes.append(f"SparkyFitness 读不到（{type(e).__name__}），力量训练只看手表训练记录、体重只看 Apple 健康")
-        for d, m in sparky_days.items():
-            self.strength[d] = max(self.strength.get(d, 0.0), m)
+        # imported workouts (Hevy CSV, issue #210): most are already in `workouts` as source 'hevy', but one that is a duplicate
+        # of a watch copy whose type is not counted above (e.g. fitness_equipment) was lost; same per-day rule as SparkyFitness
+        hevy_days = imported_strength_days(conn, user_id, start, end)
+        for days in (sparky_days, hevy_days):
+            for d, m in days.items():
+                self.strength[d] = max(self.strength.get(d, 0.0), m)
         if self.strength:
             first_track.append(min(self.strength))
         origin = scoring_origin(conn, user_id)
@@ -138,6 +141,94 @@ class Data:
             first_track.append(origin)
         # before the first recorded day it is unknown whether the user trained; from when they started wearing the watch (or first logged a workout), days without records count as 0 minutes
         self.strength_from = min(first_track) if first_track else None
+        # evidence that the user trained (journal, active plan), only to label the strength item (strength_coverage)
+        self.strength_journal = {r["date"] for r in conn.execute(
+            """SELECT DISTINCT date FROM journal_entries WHERE user_id = %s AND key = ANY(%s) AND value > 0
+               AND date BETWEEN %s AND %s""", (user_id, list(H.STRENGTH_JOURNAL_KEYS), start, end))}
+        self.strength_plan = conn.execute(
+            """SELECT days_per_week, start_date FROM training_plans WHERE user_id = %s AND active
+               ORDER BY updated_at DESC, id DESC LIMIT 1""", (user_id,)).fetchone()
+
+
+def session_strength_minutes(s: dict) -> float | None:
+    """Strength minutes of one session in the shape of sparky_client.training_log (SparkyFitness or an import):
+    its duration, else the duration of its strength exercises, else H.STRENGTH_MIN_PER_SET per set; None without strength exercises."""
+    ex = [e for e in s["exercises"] if (e.get("category") or "strength") == "strength"]
+    if not ex:
+        return None
+    minutes = s.get("total_duration_minutes") or sum(e.get("duration_minutes") or 0 for e in ex)
+    if not minutes:   # no duration: estimate from the working set count
+        minutes = H.STRENGTH_MIN_PER_SET * sum(len(e["sets"]) for e in ex)
+    return minutes
+
+
+def _imported(conn: psycopg.Connection, user_id: int, start: date, end: date) -> list[dict]:
+    """Imported sessions (training/hevy_import.imported_sessions) with a strength part; an implausible duration (an unfinished
+    workout, which the workouts table excludes) is replaced by the set estimate."""
+    from ..training import hevy_import, params as TP   # imported here: training imports insights modules indirectly
+    if not _table_exists(conn, "training_session_logs"):
+        return []
+    out = []
+    for s in hevy_import.imported_sessions(conn, user_id, start, end):
+        if (s.get("total_duration_minutes") or 0) > TP.MAX_DURATION.total_seconds() / 60:
+            s = {**s, "total_duration_minutes": None}
+        if (m := session_strength_minutes(s)) is not None:
+            out.append({**s, "strength_min": m})
+    return out
+
+
+def imported_strength_days(conn: psycopg.Connection, user_id: int, start: date, end: date) -> dict[date, float]:
+    days: dict[date, float] = {}
+    for s in _imported(conn, user_id, start, end):
+        d = date.fromisoformat(s["date"])
+        days[d] = days.get(d, 0.0) + s["strength_min"]
+    return days
+
+
+def strength_sources(conn: psycopg.Connection, user_id: int, start: date, end: date, sparky=None,
+                     timeout: float | None = None) -> dict:
+    """Strength-training records in [start, end] by source, for the data status page (issue #210): sessions per source
+    (watch = workouts not imported from Hevy, not duplicates, not excluded), the days with any record, and whether
+    SparkyFitness could be read (connected / not_linked / unreadable). timeout: seconds for SparkyFitness when the client is made here."""
+    days: set[date] = set()
+    watch = 0
+    for r in conn.execute("""SELECT local_date, type FROM workouts WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL
+                             AND source <> 'hevy' AND local_date BETWEEN %s AND %s""", (user_id, start, end)):
+        if r["type"] in STRENGTH_TYPES:
+            watch += 1
+            days.add(r["local_date"])
+    hevy = _imported(conn, user_id, start, end)
+    days |= {date.fromisoformat(s["date"]) for s in hevy}
+    sparky_n, state = None, "connected"
+    if sparky is None and sparky_client.link_state(conn, user_id)["state"] == "not_linked":
+        state = "not_linked"
+    else:
+        try:
+            if sparky is None:
+                sparky = sparky_client.client_for_user(conn, user_id)
+                if timeout is not None:
+                    sparky.timeout = timeout
+            sessions = [s for s in sparky_client.training_log(sparky, start, end) if session_strength_minutes(s) is not None]
+            sparky_n = len(sessions)
+            days |= {date.fromisoformat(s["date"][:10]) for s in sessions}
+        except Exception:  # noqa: BLE001 - SparkyFitness down or the key broken: the rest still counts
+            state = "unreadable"
+    return {"days": len(days), "sessions": {"watch": watch, "sparky": sparky_n, "hevy": len(hevy)}, "sparky": state}
+
+
+def strength_coverage(data: Data, as_of: date) -> str | None:
+    """Why the strength records of the last H.STRENGTH_COVERAGE_WEEKS weeks look incomplete (Chinese, for the AI), or None.
+    Only a label: the minutes are not changed (healthspan_params.py, issue #210)."""
+    weeks = H.STRENGTH_COVERAGE_WEEKS
+    lo = as_of - timedelta(days=7 * weeks - 1)
+    recorded = {d for d, m in data.strength.items() if lo <= d <= as_of and m > 0}
+    missed = [d for d in getattr(data, "strength_journal", ()) if lo <= d <= as_of and d not in recorded]
+    if len(missed) >= H.STRENGTH_JOURNAL_MISSED_MIN:
+        return f"近 {weeks} 周日记里有 {len(missed)} 天记了力量训练，这些天没有训练记录"
+    plan = getattr(data, "strength_plan", None)
+    if plan and plan["start_date"] <= lo and len(recorded) < H.STRENGTH_PLAN_MIN_SHARE * plan["days_per_week"] * weeks:
+        return f"训练计划每周练 {plan['days_per_week']} 天，近 {weeks} 周只有 {len(recorded)} 天有力量训练记录"
+    return None
 
 
 def _sri_weighted(days: dict[date, bytearray], as_of: date, params=H) -> tuple[float | None, int]:
@@ -173,10 +264,11 @@ def _activity_domain(data: Data, as_of: date, age: float | None, params, add, mi
     """v1.2: steps, exercise and strength training as one domain with one cap (healthspan.hr_activity).
     The HR-zone MVPA is kept as a reference part (counted = false): its walking is in the steps and its exercise in the
     step equivalents, so counting it again would be the double counting v1.1 shrank with × 0.6."""
-    steps, n = HS.weighted_mean(data.steps, as_of, params=params)
-    if n < params.MIN_DAYS or age is None:
-        missing("activity", f"只有 {n} 天步数（要 ≥ {params.MIN_DAYS}）")
+    if age is None:
+        missing("activity", "没有生日，没法对照同龄人")
         return
+    steps, n = HS.weighted_mean(data.steps, as_of, params=params)
+    has_steps = n >= params.MIN_DAYS
     days = _tracked_days(data, as_of, params)
     workouts = getattr(data, "workouts", {})
     eq, strength, mvpa = {}, {}, {}
@@ -199,41 +291,59 @@ def _activity_domain(data: Data, as_of: date, age: float | None, params, add, mi
     eq_mean, n_eq = HS.weighted_mean(eq, as_of, params=params)
     tracked = n_eq >= params.MIN_DAYS
     str_week = HS.weighted_mean(strength, as_of, params=params)[0] * 7 if tracked else None
-    wrist = steps * params.WRIST_STEPS_FACTOR
-    total = wrist + (eq_mean if tracked else 0.0)
-    r = HS.hr_activity(total, str_week, age, params=params)
+    if not has_steps and not tracked:
+        missing("activity", f"只有 {n} 天步数（要 ≥ {params.MIN_DAYS}），也还没有训练记录")
+        return
     raw = lambda hr: HS.years_from_hr(hr, math.inf, params=params)
-    y_steps = raw(HS.hr_steps(wrist, age, params=params))
-    parts = [{"key": "steps", "value": round(steps), "unit": PART_LABELS["steps"][2], "data_days": n,
-              "years": round(y_steps, 2), **({"wrist_factor": params.WRIST_STEPS_FACTOR}
-                                             if params.WRIST_STEPS_FACTOR != 1 else {})}]
+    parts = []
+    if has_steps:
+        wrist = steps * params.WRIST_STEPS_FACTOR
+        total = wrist + (eq_mean if tracked else 0.0)
+        r = HS.hr_activity(total, str_week, age, params=params)
+        y_steps = raw(HS.hr_steps(wrist, age, params=params))
+        parts.append({"key": "steps", "value": round(steps), "unit": PART_LABELS["steps"][2], "data_days": n,
+                      "years": round(y_steps, 2), **({"wrist_factor": params.WRIST_STEPS_FACTOR}
+                                                     if params.WRIST_STEPS_FACTOR != 1 else {})})
+    else:   # volume unknown (HR 1): the domain is the strength curve alone, as v1.1's strength item was without steps
+        missing("steps", f"只有 {n} 天步数（要 ≥ {params.MIN_DAYS}），活动只看力量训练")
+        total = None
+        hs = HS.hr_strength(str_week, params=params)
+        r = {"hr": hs, "hr_volume": 1.0, "hr_strength": hs}
     if tracked:
-        parts.append({"key": "exercise_equiv", "value": round(eq_mean), "unit": PART_LABELS["exercise_equiv"][2],
-                      "data_days": n_eq, "years": round(raw(r["hr_volume"]) - y_steps, 2)})
+        if has_steps:
+            parts.append({"key": "exercise_equiv", "value": round(eq_mean), "unit": PART_LABELS["exercise_equiv"][2],
+                          "data_days": n_eq, "years": round(raw(r["hr_volume"]) - y_steps, 2)})
         parts.append({"key": "strength", "value": round(str_week), "unit": PART_LABELS["strength"][2],
                       "data_days": n_eq, "hr": round(r["hr_strength"], 3), "years": round(raw(r["hr_strength"]), 2)})
     else:
         missing("strength", f"开始记录训练只有 {n_eq} 天（要 ≥ {params.MIN_DAYS}），活动只看步数")
+    # issue #210: strength records that look incomplete label the domain (and its strength part); the minutes are unchanged
+    why = strength_coverage(data, as_of) if tracked else None
+    cover = {"coverage": "possibly_incomplete", "coverage_reason": why} if why else {}
+    if why:
+        next(p for p in parts if p["key"] == "strength").update(cover)
     v_m, n_m = HS.weighted_mean(mvpa, as_of, params=params)
     if n_m >= params.MIN_DAYS:
         parts.append({"key": "mvpa", "value": round(v_m * 7), "unit": PART_LABELS["mvpa"][2], "data_days": n_m,
                       "counted": False})
     for pt in parts:
         pt["label"] = PART_LABELS[pt["key"]][0]
-    add("activity", round(total), r["hr"], n, {"years_uncapped": round(raw(r["hr"]), 2), "parts": parts},
-        years=HS.years_from_hr(r["hr"], params.ACTIVITY_CAP_YEARS, params=params))
+    add("activity", None if total is None else round(total), r["hr"], n if has_steps else n_eq,
+        {"years_uncapped": round(raw(r["hr"]), 2), "parts": parts, **cover},
+        years=HS.years_from_hr(r["hr"], params.ACTIVITY_CAP_YEARS, params=params),
+        tip=H.TIPS["strength_incomplete"] if why else None)
 
 
 def snapshot(data: Data, as_of: date, params=CURRENT) -> dict:
     """Body age on one day (window = 180 days back from as_of). params: a VERSIONS entry (default CURRENT, v1.2)."""
     items, insufficient = [], []
 
-    def add(key, value, hr, data_days, extra=None, years=None, goal_kg=None):
+    def add(key, value, hr, data_days, extra=None, years=None, goal_kg=None, tip=None):
         label, cat, unit = LABELS[key]
         years = HS.years_from_hr(hr, params=params) if years is None else years
         items.append({"key": key, "label": label, "category": cat, "value": value, "unit": unit, "hr": round(hr, 3),
                       "years": round(years, 2), "direction": "younger" if years < 0 else "older" if years > 0 else "neutral",
-                      "tip": HS.tip(key, years, value, goal_kg), "data_days": data_days, **(extra or {})})
+                      "tip": tip or HS.tip(key, years, value, goal_kg), "data_days": data_days, **(extra or {})})
 
     def missing(key, reason):
         insufficient.append({"key": key, "label": LABELS[key][0], "category": LABELS[key][1], "reason": reason})
@@ -269,6 +379,8 @@ def snapshot(data: Data, as_of: date, params=CURRENT) -> dict:
         v, n = HS.weighted_mean({d: data.strength.get(d, 0.0) for d in days}, as_of, params=params) if days else (None, 0)
         if n >= params.MIN_DAYS:
             add("strength", round(v * 7), HS.hr_strength(v * 7, params=params), n)
+            if why := strength_coverage(data, as_of):   # label only: the value stays what the records show
+                items[-1].update(coverage="possibly_incomplete", coverage_reason=why, tip=H.TIPS["strength_incomplete"])
         else:
             missing("strength", f"开始记录训练只有 {n} 天（要 ≥ {params.MIN_DAYS}）")
     # ---- fitness

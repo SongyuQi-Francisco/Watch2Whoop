@@ -257,6 +257,18 @@ def test_v12_training_without_steps_counts_as_step_equivalents():
     assert both["value"] == 6000 + eq["value"] and both["years"] < lift["years"]
 
 
+def test_v12_without_steps_the_domain_is_strength_alone():
+    as_of = date(2026, 10, 17)
+    lifting = defaultdict(float, {as_of - timedelta(days=k): 20.0 for k in range(180) if k % 7 < 2})   # ~40 min / week
+    snap = _v12(steps={}, strength=lifting)
+    act = _activity(snap)
+    assert act["value"] is None and [p["key"] for p in act["parts"]] == ["strength"]
+    assert act["hr"] == pytest.approx(HS.hr_strength(next(p for p in act["parts"])["value"], params=H12), abs=0.01)
+    assert act["years"] < 0 and "steps" in {m["key"] for m in snap["insufficient"]}
+    none = _v12(steps={}, strength_from=None)
+    assert "activity" in {m["key"] for m in none["insufficient"]}
+
+
 def test_v12_step_equivalents_follow_met_and_moderate_threshold():
     assert HS.moderate_equiv_minutes(30, 6.0) == pytest.approx(60)          # vigorous minute = 2 moderate minutes
     assert HS.moderate_equiv_minutes(30, 3.5) == pytest.approx(30)
