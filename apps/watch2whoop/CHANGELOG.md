@@ -26,6 +26,11 @@ pull request.
   the server is deployed).
 - Fix: Jarvis → video → 「拍摄视频」 / "Take Video" records sound, which needs `NSMicrophoneUsageDescription`; the key is
   added. The camera description now also names photo / video capture for the AI, not only the setup QR code.
+- Apple Health water (#135): the app reads `dietaryWater` (read only; one more Health permission sheet, 「水」 / "Water")
+  and uploads it with the beat-to-beat readings to `POST /v1/ingest/healthkit` `water[]`: incremental (HealthKit anchor,
+  moved only after the server stored the batch), idempotent by UUID, deletions in Health passed on. Only while the
+  server's `water` flag is on for the account (`water_enabled`); while it is off nothing is read or sent and nothing is
+  lost. A missing new consent for beat-to-beat readings no longer holds back water.
 - ECG upload: a non-finite voltage sample no longer traps when converted to an integer (`RawSync.swift`).
 - Tests (`test/ios_config_test.dart`): every privacy service the app or the Today page can reach has a usage
   description in `Info.plist` and in both `InfoPlist.strings`; HealthKit series types are requested together with their

@@ -12,7 +12,9 @@ SDNN for each reading and the ECG R peaks / heart rate / RMSSD are computed on i
   confirmed the new consent on the Today page. Other health data is not affected.
 - water[]: Apple Health drinks (HKQuantityTypeIdentifierDietaryWater, issue #125; Open Wearables 0.9 does not carry it)
   -> water_intake (water/store.py, source apple_health), deduplicated by UUID. A batch with only water needs the ordinary
-  consent; deleted[] also removes water samples. Skipped while the water rollout flag is off for the user.
+  consent; deleted[] also removes water samples. Skipped while the water rollout flag is off for the user; every answer
+  (and GET status) carries water_enabled, so the app reads and sends water only while it is on and keeps its water anchor
+  when a batch was skipped (nothing is lost while the flag is off; an older server without the field counts as off).
 """
 import base64
 import binascii
@@ -77,8 +79,10 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
         raise PermissionError("consent_required")
     done = conn.execute("SELECT counts FROM rawdata_uploads WHERE user_id = %s AND batch_id = %s",
                         (user_id, batch["batch_id"])).fetchone()
+    from .. import water
+    water_on = water.enabled(conn, user_id)
     if done is not None:
-        return {**done["counts"], "duplicate_batch": True}
+        return {**done["counts"], "duplicate_batch": True, "water_enabled": water_on}
     # Decode every ECG first: a bad recording rejects the whole batch before anything is written
     ecgs = [(it, _ecg(it)) for it in batch.get("ecgs") or []]
     hb = batch.get("heartbeats") or []
@@ -101,8 +105,7 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
             n_del += len(conn.execute(f"""DELETE FROM {table} WHERE user_id = %s AND origin = 'app'
                                           AND hk_uuid = ANY(%s::uuid[]) RETURNING 1""", (user_id, deleted)).fetchall())
     n_water = n_water_skip = 0
-    from .. import water
-    if water.enabled(conn, user_id):
+    if water_on:
         from ..water import store as water_store
         n_del += water_store.delete_hk(conn, user_id, deleted)
         for w in batch.get("water") or []:
@@ -116,14 +119,16 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
                  (user_id, batch["batch_id"], (batch.get("device") or "")[:80] or None,
                   (batch.get("app_version") or "")[:40] or None, Jsonb(counts), size))
     conn.commit()
-    return counts
+    return {**counts, "water_enabled": water_on}
 
 
 def status(conn: psycopg.Connection, user_id: int) -> dict:
     """What the app has uploaded so far (shown on its sync page and in the admin's checks)."""
+    from .. import water
     r = conn.execute("""SELECT (SELECT count(*) FROM heartbeat_series WHERE user_id = %(u)s AND origin = 'app') AS heartbeats,
                                (SELECT count(*) FROM ecg_recordings WHERE user_id = %(u)s AND origin = 'app') AS ecgs,
+                               (SELECT count(*) FROM water_intake WHERE user_id = %(u)s AND hk_uuid IS NOT NULL) AS water,
                                (SELECT max(received_at) FROM rawdata_uploads WHERE user_id = %(u)s) AS last_upload_at""",
                      {"u": user_id}).fetchone()
-    return {"heartbeats": r["heartbeats"], "ecgs": r["ecgs"],
+    return {"heartbeats": r["heartbeats"], "ecgs": r["ecgs"], "water": r["water"], "water_enabled": water.enabled(conn, user_id),
             "last_upload_at": r["last_upload_at"].isoformat(timespec="seconds") if r["last_upload_at"] else None}

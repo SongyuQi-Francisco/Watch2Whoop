@@ -2,12 +2,13 @@ import Flutter
 import Foundation
 import HealthKit
 
-/// Reads the two HealthKit types the OW SDK (iOS 0.15) does not sync, for upload straight to Body Engine
+/// Reads the HealthKit types the OW SDK (iOS 0.15) does not sync, for upload straight to Body Engine
 /// (POST /v1/ingest/healthkit, done in Dart: lib/src/raw_sync.dart):
 /// - beat-to-beat series of each HRV reading (HKHeartbeatSeriesSample + HKHeartbeatSeriesQuery): seconds since the
 ///   series start and precededByGap per beat;
 /// - ECG recordings (HKElectrocardiogram + HKElectrocardiogramQuery): Lead I-like voltage in µV as int16 little-endian
-///   (base64), sampling frequency, Apple's classification, average heart rate, symptoms status.
+///   (base64), sampling frequency, Apple's classification, average heart rate, symptoms status;
+/// - drinks (HKQuantityTypeIdentifierDietaryWater, issue #135): start time and millilitres (read only).
 /// Incremental with one HKAnchoredObjectQuery anchor per type. The anchor of a read is handed to Dart and only stored
 /// (`rawCommit`) after the server accepted that batch, so an interrupted upload is read again next time (the server skips
 /// UUIDs it already has). Anchors live in UserDefaults (app container, gone with the app).
@@ -21,16 +22,17 @@ final class RawSync {
     return f
   }()
 
-  private enum Kind: String {
-    case heartbeat, ecg
+  private enum Kind: String, CaseIterable {
+    case heartbeat, ecg, water
   }
 
   /// HRV SDNN is the parent type of the heartbeat series: HealthKit raises NSInvalidArgumentException (an uncatchable
   /// crash in Swift) when the series is requested without its parent in the same call ("Authorization for
   /// HKQuantityTypeIdentifierHeartRateVariabilitySDNN should also be requested…"), which made build 1.0.0+4 crash on open.
-  /// The OW sheet already asks for HRV SDNN, so repeating it here adds nothing to the sheet.
+  /// The OW sheet already asks for HRV SDNN, so repeating it here adds nothing to the sheet. Dietary water has no parent type.
   private var readTypes: Set<HKObjectType> {
-    [HKQuantityType(.heartRateVariabilitySDNN), HKSeriesType.heartbeat(), HKObjectType.electrocardiogramType()]
+    [HKQuantityType(.heartRateVariabilitySDNN), HKSeriesType.heartbeat(), HKObjectType.electrocardiogramType(),
+     HKQuantityType(.dietaryWater)]
   }
 
   /// Handles the raw* methods of the watch2whoop/native channel; false = not one of them.
@@ -53,7 +55,7 @@ final class RawSync {
       }
       result(nil)
     case "rawReset":
-      for k in [Kind.heartbeat, .ecg] { UserDefaults.standard.removeObject(forKey: anchorKey + k.rawValue) }
+      for k in Kind.allCases { UserDefaults.standard.removeObject(forKey: anchorKey + k.rawValue) }
       result(nil)
     default:
       return false
@@ -73,7 +75,11 @@ final class RawSync {
 
   /// One page of new samples after the stored anchor: {items, deleted, anchor, more} or a FlutterError.
   private func read(_ kind: Kind, daysBack: Int, limit: Int, done: @escaping (Any) -> Void) {
-    let type: HKSampleType = kind == .heartbeat ? HKSeriesType.heartbeat() : HKObjectType.electrocardiogramType()
+    let type: HKSampleType = switch kind {
+    case .heartbeat: HKSeriesType.heartbeat()
+    case .ecg: HKObjectType.electrocardiogramType()
+    case .water: HKQuantityType(.dietaryWater)
+    }
     let predicate = daysBack > 0
       ? HKQuery.predicateForSamples(withStart: Date().addingTimeInterval(-Double(daysBack) * 86400), end: nil)
       : nil
@@ -96,6 +102,7 @@ final class RawSync {
       switch kind {
       case .heartbeat: self.beats(samples.compactMap { $0 as? HKHeartbeatSeriesSample }, finish)
       case .ecg: self.ecgs(samples.compactMap { $0 as? HKElectrocardiogram }, finish)
+      case .water: finish(self.drinks(samples.compactMap { $0 as? HKQuantitySample }))
       }
     }
     store.execute(q)
@@ -173,6 +180,18 @@ final class RawSync {
       store.execute(q)
     }
     next(0)
+  }
+
+  /// Drinks as {uuid, start, ml}. Samples the server would refuse (rawdata/api.py WaterSampleIn: 0 < ml <= 5000) are left
+  /// out here, otherwise one odd entry would block the whole page forever; doubleValue is only called on a compatible unit.
+  private func drinks(_ list: [HKQuantitySample]) -> [[String: Any]] {
+    let ml = HKUnit.literUnit(with: .milli)
+    return list.compactMap { s in
+      guard s.quantity.is(compatibleWith: ml) else { return nil }
+      let v = s.quantity.doubleValue(for: ml)
+      guard v.isFinite, v > 0, v <= 5000 else { return nil }
+      return ["uuid": s.uuid.uuidString.lowercased(), "start": self.iso.string(from: s.startDate), "ml": (v * 10).rounded() / 10]
+    }
   }
 
   /// Case names as in rawdata/ecg.py CLASS_ZH (the server maps anything else to "unrecognized").

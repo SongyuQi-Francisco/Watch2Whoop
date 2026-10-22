@@ -150,7 +150,9 @@ def test_apple_health_upload_dedup_and_delete(client, users, dsn):
     batch = {"batch_id": str(uuid.uuid4()), "water": [
         {"uuid": s1, "start": start.isoformat(), "ml": 330}, {"uuid": s2, "start": start.isoformat(), "ml": 200.4}]}
     r = client.post("/v1/ingest/healthkit", json=batch, headers=H(tok["c"])).json()
-    assert r["water"] == 2 and r["skipped"] == 0
+    assert r["water"] == 2 and r["skipped"] == 0 and r["water_enabled"] is True
+    st = client.get("/v1/ingest/healthkit", headers=H(tok["c"])).json()
+    assert st["water"] == 2 and st["water_enabled"] is True          # what the app checks before it reads water
     r2 = client.post("/v1/ingest/healthkit", json={**batch, "batch_id": str(uuid.uuid4())}, headers=H(tok["c"])).json()
     assert r2["water"] == 0 and r2["skipped"] == 2
     d = client.get("/v1/users/me/water", headers=H(tok["c"])).json()
@@ -192,7 +194,9 @@ def test_flag_off_and_beta_cohort(client, users, dsn):
         assert client.post("/v1/users/me/water", json={"ml": 250}, headers=H(tok["a"])).status_code == 404
         up = client.post("/v1/ingest/healthkit", json={"batch_id": str(uuid.uuid4()), "water": [
             {"uuid": str(uuid.uuid4()), "start": datetime.now(TZ).isoformat(), "ml": 300}]}, headers=H(tok["b"])).json()
-        assert up["water"] == 0
+        assert up["water"] == 0 and up["water_enabled"] is False   # the app keeps its water anchor (nothing lost)
+        st = client.get("/v1/ingest/healthkit", headers=H(tok["b"])).json()
+        assert st["water_enabled"] is False                       # ... and does not read water while the flag is off
         with conn_of(dsn) as conn:
             with pytest.raises(Exception):
                 run_tool(conn, ids["a"], "mcp", "log_water", {"ml": 250, "at": None})
@@ -205,6 +209,8 @@ def test_flag_off_and_beta_cohort(client, users, dsn):
         flags.invalidate()
         assert client.get("/v1/users/me/water", headers=H(tok["a"])).status_code == 404
         assert client.get("/v1/users/me/water", headers=H(tok["b"])).status_code == 200
+        assert client.get("/v1/ingest/healthkit", headers=H(tok["b"])).json()["water_enabled"] is True
+        assert client.get("/v1/ingest/healthkit", headers=H(tok["a"])).json()["water_enabled"] is False
     finally:
         with conn_of(dsn) as conn:
             flags.set_flag(conn, P.FEATURE, "all", actor="test")
