@@ -21,6 +21,7 @@ EXACT: dict[str, str] = {
     "只有圈主能这样做": "Only the circle's owner can do that",
     "邀请码无效或已过期": "The invite code is invalid or expired",
     "这个邀请已失效": "This invite is no longer valid",
+    "有效期和「永久有效」只能选一个": "Pick either a validity period or “never expires”, not both",
     "不能移除自己，用退出": "You can't remove yourself; leave the circle instead",
     "这个人不在圈子里": "This person is not in the circle",
     "要给邀请码或邀请 ID（只给一个）": "Give an invite code or an invite ID (just one)",
@@ -261,6 +262,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("不认识的鼓励：{}", "Unknown cheer: {}"),
     ("排行榜只能是 {}", "Board must be one of: {}"),
     ("圈子名称 1–{} 字", "Circle name: 1–{} characters"),
+    ("邀请有效期只能是 {} 天或永久有效", "Invite validity must be {} days, or never expires"),
     ("最多加入 {} 个圈子", "You can be in at most {} circles"),
     ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),
     # ---- authorization
