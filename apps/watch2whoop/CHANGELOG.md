@@ -1,22 +1,23 @@
 # Changelog — Watch2Whoop Flutter app (iOS; Android later)
 
-One section per store build, newest first: `## <version from pubspec.yaml> — <date>`. Bump `version:` in
-`pubspec.yaml` and add the section in the same pull request; after it is merged a maintainer tags the commit with
-`tools/app_release.sh --push` (`app-ios-v<version>`, `app-android-v<version>`), and the workflow `app-release.yml`
+One section per store build, newest first: `## <marketing version> — <date>` (e.g. `## 1.0.6 — 2026-10-22`; the build
+number after `+` in `pubspec.yaml` is not part of the public name). Bump `version:` in `pubspec.yaml` (both parts) and
+add the section in the same pull request; after it is merged a maintainer tags the commit with
+`tools/app_release.sh --push` (`app-ios-v<marketing version>`, `app-android-v<marketing version>`), and the workflow `app-release.yml`
 publishes the GitHub pre-release with the source zip; this section becomes its notes. Builds are made only from that
 Release (zip checked against its `.sha256`) or `git clone --branch <tag>`, never from `main` or a zip sent by hand.
 Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
-| Build | Tag | Commit | Store |
+| Version | Tag | Commit | Store |
 |---|---|---|---|
-| 1.0.6+6 | `app-ios-v1.0.6+6` | (set when tagged) | TestFlight (iOS) |
+| 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
 
-## 1.0.6+6 — 2026-10-22
+## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.
 - Fix: long press on an image on the Today page (exercise pictures, handbook screenshots, chat thumbnails) →
