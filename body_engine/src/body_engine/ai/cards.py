@@ -58,15 +58,15 @@ PROMPT = (
 
 TOOL = Tool(
     name=NAME,
-    description="在对话里给用户显示一张卡片（数据系统查，不用你给）。training=某天训练；muscle=肌肉图（range）；meal=某天饮食；"
-                "metric=指标小图（metric、days）；actions=快捷按钮（buttons，点了发回 text）。",
+    description="在对话里给用户显示一张卡片（数据系统查）。training=某天训练；muscle=肌肉图（range）；meal=某天饮食；"
+                "metric=指标小图；actions=快捷按钮（buttons，text 点了发回）。",
     input_schema=schema({
         "type": {"type": "string", "enum": list(TYPES)},
-        "date": nullable("string", "YYYY-MM-DD，null=今天（metric 是截止日）"),
+        "date": nullable("string", "YYYY-MM-DD，null=今天"),
         "metric": nullable("string", None, enum=[*METRICS, None]),
         "days": nullable("integer", "metric 的天数，7–90，null=14"),
         "range": nullable("string", None, enum=["today", "week", "last7", None]),
-        "buttons": nullable("array", "actions 用，2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
+        "buttons": nullable("array", "2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
     }),
     handler=lambda conn, uid, a: None,   # dispatched by ai/chat.py (build), never through run_tool
     scope="", group="ui",
