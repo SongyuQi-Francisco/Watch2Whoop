@@ -1,0 +1,35 @@
+// Hold-to-talk inside the app (#171): the Today page records with getUserMedia + Web Audio (web/static/ai-media.js), packs
+// 16 kHz WAV and posts it to its own server (POST /v1/assistant/transcribe, local SenseVoice; nothing kept, per-user daily
+// limit on the server). WKWebView only lets a page capture once the app answers WebKit's media capture request
+// (WKUIDelegate, iOS 15+; the app's deployment target is 15.0), so:
+// - microphone only, and only for our own Today page (same origin as the configured address, not the kept offline copy);
+//   cameras stay denied (photos / videos for the AI go through the file picker, not getUserMedia);
+// - the page learns that the app answers these requests from `window.Watch2WhoopFeatures.mic` (until then it points to
+//   the keyboard's dictation key, as in 1.0.6 and older);
+// - iOS shows its own microphone prompt (NSMicrophoneUsageDescription) the first time; when it was declined the page
+//   posts [kMicSettingsMessage] and the app opens its page in iOS Settings.
+import 'package:webview_flutter/webview_flutter.dart';
+
+import 'config.dart';
+
+/// Bridge message from the page: the microphone is off for this app, open its page in iOS Settings
+/// (keep in sync with `mic-settings` in body_engine/.../web/static/ai-media.js).
+const kMicSettingsMessage = 'mic-settings';
+
+/// Tells the page which native features this app has (read when the mic button is pressed; see `voicePath` in ai-media.js).
+const kFeaturesJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{mic:true});';
+
+/// Whether to grant a WebKit media capture request: the microphone alone, asked by our own Today page.
+/// [pageUrl] is the WebView's current address; [onShell] = the kept offline copy of the page is on screen.
+bool allowMediaCapture({
+  required Set<WebViewPermissionResourceType> types,
+  required String? pageUrl,
+  required Uri todayEntry,
+  required bool onShell,
+}) {
+  if (onShell || types.isEmpty) return false;
+  if (types.any((t) => t != WebViewPermissionResourceType.microphone)) return false;
+  final page = pageUrl == null ? null : Uri.tryParse(pageUrl);
+  if (page == null || (page.scheme != 'https' && page.scheme != 'http')) return false;
+  return sameOrigin(page, todayEntry);
+}

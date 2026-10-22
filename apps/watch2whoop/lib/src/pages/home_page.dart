@@ -29,6 +29,7 @@ import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
 import '../ui.dart';
+import '../web_mic.dart';
 import 'permissions_page.dart';
 import 'sync_page.dart';
 
@@ -168,7 +169,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // Media types that can play without a user gesture: none
       mediaTypesRequiringUserAction: const {PlaybackMediaTypes.audio, PlaybackMediaTypes.video},
     );
-    _web = WebViewController.fromPlatformCreationParams(params)
+    // Hold-to-talk: WebKit asks the app before the page may use the microphone (web_mic.dart, #171)
+    _web = WebViewController.fromPlatformCreationParams(params, onPermissionRequest: _onMediaCapture)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('Watch2Whoop', onMessageReceived: (m) => _onBridge(m.message))
       // Without these WKWebView shows nothing and confirm() is always false (js_dialogs.dart)
@@ -181,6 +183,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           onPageStarted: (_) => setState(() => _loading = true),
           onPageFinished: (_) {
             setState(() => _loading = false);
+            _announceFeatures();
             _maybeCheckLogin();
             Future<void>.delayed(const Duration(seconds: 3), _reportRange);
           },
@@ -364,6 +367,27 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// Tells the loaded page which native features the app has (`window.Watch2WhoopFeatures`, web_mic.dart).
+  Future<void> _announceFeatures() async {
+    if (_onShell) return; // the kept copy cannot reach the server, so no voice there
+    try {
+      await _web.runJavaScript(kFeaturesJs);
+    } catch (e) {
+      debugPrint('features call failed: $e');
+    }
+  }
+
+  /// WebKit's media capture request: the microphone for our own Today page only; everything else is denied.
+  Future<void> _onMediaCapture(WebViewPermissionRequest req) async {
+    String? page;
+    try {
+      page = await _web.currentUrl();
+    } catch (_) {}
+    final ok = allowMediaCapture(
+        types: req.types, pageUrl: page, todayEntry: AppState.instance.config.todayEntry, onShell: _onShell);
+    await (ok ? req.grant() : req.deny());
+  }
+
   void _onBridge(String message) {
     if (message.startsWith(_kIngestPrefix)) {
       final t = message.substring(_kIngestPrefix.length);
@@ -372,6 +396,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();
+    if (message == kMicSettingsMessage) openAppSettings(); // microphone declined: this app's page in iOS Settings
     // Offline use (docs/offline-plan.md): keep / drop the copy of the page; the copy asks for the real page once online
     if (message == 'offline:on' && !_onShell) _shell.save(AppState.instance.config.todayEntry);
     if (message == 'offline:off') _shell.forget();

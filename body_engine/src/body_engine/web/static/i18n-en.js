@@ -669,6 +669,8 @@ I18N.addEn({
   "钥匙串": "Keychain",
   "问问题或记点什么": "Ask or log something",
   "麦克风不可用：在系统设置里允许，或用键盘上的 🎤 听写": "Microphone unavailable: allow it in Settings, or use the 🎤 dictation key on the keyboard",
+  "麦克风没打开：在系统设置里允许 Watch2Whoop 使用麦克风": "The microphone is off: allow Watch2Whoop to use it in Settings",
+  "打开设置": "Open Settings",
   "（现在：…{last4}，留空不改）": " (now …{last4}; leave empty to keep it)",
   "［图片 {n} 张］": "[Images: {n}]",
   "［视频 {n} 帧，约 {s} 秒］": "[Video: {n} frames, about {s}s]",

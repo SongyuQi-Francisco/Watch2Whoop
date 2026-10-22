@@ -2,5 +2,5 @@
 "NSCameraUsageDescription" = "Used to scan the setup QR code, and to take a photo or video when you choose to send one to your AI on the Today page.";
 "NSHealthShareUsageDescription" = "Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up.";
 "NSHealthUpdateUsageDescription" = "Release builds never write to Health; only debug builds write test data in the simulator.";
-"NSMicrophoneUsageDescription" = "Used only while you record a video to send to your AI on the Today page; its sound is transcribed on your server and not kept.";
+"NSMicrophoneUsageDescription" = "Used only while you hold the mic button to talk to your AI, or record a video for it, on the Today page; the sound is transcribed on your server and not kept.";
 "NSPhotoLibraryAddUsageDescription" = "Used only when you long-press an image and choose to save it to Photos. Watch2Whoop never reads your photo library.";
