@@ -1,6 +1,7 @@
 """Circle training feed (flag circle_feed, migration 635): a Hevy / Instagram-style post per person per local day.
 
-- Auto posting: a person's training of a day (sets ticked done in training_session_logs, watch / shortcut workouts) appears in
+- Auto posting: a person's training of a day (sets ticked done in training_session_logs — the page's own row and, with the
+  Hevy import, the imported row of that day, merged into the one post; watch / shortcut workouts) appears in
   the feed of every circle where they ticked the `training` scope — no prompt. The consent text already covers it ("circle
   members see what I tick"), so nothing is posted to a circle without that scope. One post per person per day; the row in
   circle_feed_posts only anchors ❤️ and comments, the content is computed live at read time, so new sets update the post.
@@ -22,6 +23,7 @@ from ..i18n import L
 from ..training import catalog
 from ..web import views
 from ..notify import notify
+from ..rules import params as RP
 from . import params as P
 from .store import FriendsError
 
@@ -72,45 +74,65 @@ def _post_for(conn, viewer_id: int, post_id: int) -> dict:
 
 
 # ---------------------------------------------------------------- the content of one day
-def _done_sets(ex: dict) -> list[dict]:
-    return [s for s in ex.get("sets") or [] if s.get("done") and any(s.get(k) is not None for k in ("reps", "weight_kg", "duration_s"))]
+def _done_sets(ex: dict, imported: bool = False) -> list[dict]:
+    """Sets that count: on the page's own row the ones ticked done; on an imported row (Hevy, status 'imported', no done
+    ticks) every set except warm-ups, the same rule as the muscle load and the training history volume."""
+    if imported:
+        sets = [s for s in ex.get("sets") or [] if str(s.get("type") or "").lower() not in RP.WARMUP_SET_TYPES]
+    else:
+        sets = [s for s in ex.get("sets") or [] if s.get("done")]
+    return [s for s in sets if any(s.get(k) is not None for k in ("reps", "weight_kg", "duration_s"))]
+
+
+def _key(ex: dict) -> str:
+    """An exercise's identity for records: its catalog slug, else (an unmatched imported name) the name."""
+    return ex.get("slug") or f"name:{ex.get('name')}"
+
+
+def _rows(conn, user_id: int, cond: str, args: tuple) -> list[dict]:
+    """training_session_logs rows (page first, then imported) with an `imported` flag."""
+    return [{**r, "imported": r["status"] == "imported"} for r in conn.execute(
+        f"SELECT date, exercises, status FROM training_session_logs WHERE user_id = %s AND {cond} ORDER BY date, source DESC",
+        (user_id, *args))]
 
 
 def _prev_best(conn, user_id: int, day: date) -> dict[str, float]:
-    """Heaviest ticked weight per exercise on earlier days, for the 🏆 personal record."""
+    """Heaviest counted weight per exercise on earlier days (page and imported rows alike), for the 🏆 personal record."""
     best: dict[str, float] = {}
-    for r in conn.execute("SELECT exercises FROM training_session_logs WHERE user_id = %s AND date < %s", (user_id, day)):
+    for r in _rows(conn, user_id, "date < %s", (day,)):
         for ex in r["exercises"] or []:
-            for s in _done_sets(ex):
+            for s in _done_sets(ex, r["imported"]):
                 if s.get("weight_kg"):
-                    best[ex["slug"]] = max(best.get(ex["slug"], 0.0), float(s["weight_kg"]))
+                    best[_key(ex)] = max(best.get(_key(ex), 0.0), float(s["weight_kg"]))
     return best
 
 
 def content(conn: psycopg.Connection, user_id: int, day: date, names: dict | None = None) -> dict | None:
     """What the post of `user_id` on `day` shows right now, None when that day has no training. Total load (kg) = the sum of
     reps × weight over the sets ticked done."""
-    row = conn.execute("SELECT exercises FROM training_session_logs WHERE user_id = %s AND date = %s", (user_id, day)).fetchone()
+    rows = _rows(conn, user_id, "date = %s", (day,))   # the page's row and an imported row of the same day -> one post
     works = conn.execute(
         """SELECT name_zh, type, duration_min FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
            AND excluded IS NULL ORDER BY start_at""", (user_id, day)).fetchall()
     exercises = []
-    if row:
+    if rows:
         names = names if names is not None else {r["slug"]: r for r in catalog.catalog_rows(conn)}
         prev = _prev_best(conn, user_id, day)
-        for ex in row["exercises"] or []:
-            sets = _done_sets(ex)
-            if not sets:
-                continue
-            cat = names.get(ex["slug"]) or {}
-            top = max((float(s["weight_kg"]) for s in sets if s.get("weight_kg")), default=0.0)
-            exercises.append({
-                "slug": ex["slug"],
-                "name": L(ex.get("name") or cat.get("name_zh") or ex["slug"], cat.get("name_en") or ex.get("name") or ex["slug"]),
-                "sets": [{k: s[k] for k in ("reps", "weight_kg", "duration_s") if s.get(k) is not None} for s in sets],
-                "volume_kg": round(sum((s.get("reps") or 0) * float(s.get("weight_kg") or 0) for s in sets), 1),
-                "pr": bool(top and ex["slug"] in prev and top > prev[ex["slug"]]),   # a first lift is no record
-            })
+        for row in rows:
+            for ex in row["exercises"] or []:
+                sets = _done_sets(ex, row["imported"])
+                if not sets:
+                    continue
+                cat = names.get(ex.get("slug")) or {}
+                label = ex.get("name") or cat.get("name_zh") or ex.get("slug")
+                top = max((float(s["weight_kg"]) for s in sets if s.get("weight_kg")), default=0.0)
+                exercises.append({
+                    "slug": ex.get("slug"),
+                    "name": L(label, cat.get("name_en") or label),
+                    "sets": [{k: s[k] for k in ("reps", "weight_kg", "duration_s") if s.get(k) is not None} for s in sets],
+                    "volume_kg": round(sum((s.get("reps") or 0) * float(s.get("weight_kg") or 0) for s in sets), 1),
+                    "pr": bool(top and _key(ex) in prev and top > prev[_key(ex)]),   # a first lift is no record
+                })
     if not exercises and not works:
         return None
     lead = next((w for w in works if "strength" in (w["type"] or "")), works[0] if works else None)
@@ -128,8 +150,8 @@ def ensure_recent(conn: psycopg.Connection, user_id: int, today: date | None = N
     """Make the posts of the last FEED_LOOKBACK_DAYS days that have training and no post yet; returns how many."""
     today = today or views.local_today(conn, user_id)
     since = today - timedelta(days=P.FEED_LOOKBACK_DAYS)
-    days = {r["date"] for r in conn.execute("SELECT date, exercises FROM training_session_logs WHERE user_id = %s AND date >= %s", (user_id, since))
-            if any(_done_sets(e) for e in r["exercises"] or [])}
+    days = {r["date"] for r in _rows(conn, user_id, "date >= %s", (since,))
+            if any(_done_sets(e, r["imported"]) for e in r["exercises"] or [])}
     days |= {r["local_date"] for r in conn.execute(
         "SELECT DISTINCT local_date FROM workouts WHERE user_id = %s AND local_date >= %s AND dup_of IS NULL AND excluded IS NULL",
         (user_id, since))}

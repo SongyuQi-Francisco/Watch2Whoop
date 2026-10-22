@@ -70,16 +70,17 @@ def working_sets(sets: list[dict]) -> list[dict]:
 
 
 def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[list[dict], str | None, bool]:
-    """The owner's SparkyFitness sessions plus imported ones (Hevy, hevy_import.py) in the lookback window (cached briefly),
-    the reason when SparkyFitness is linked but could not be read, and whether there is any history source at all
-    (none = no history, no error)."""
+    """The owner's SparkyFitness sessions plus imported ones (Hevy, hevy_import.py) in the lookback window, the reason when
+    SparkyFitness is linked but could not be read, and whether there is any history source at all (none = no history, no error).
+    Only the SparkyFitness part is cached (muscle_load._sparky shares the cache and adds the imported sets itself, so they
+    must never be in it); the imported part is a local query, read every time."""
     from . import hevy_import
     start = day - timedelta(days=P.LOAD_LOOKBACK_DAYS)
+    imported = hevy_import.imported_sessions(conn, owner_id, start, day)
     key = (conn.info.dbname, owner_id, start, day)
     hit = _HISTORY_CACHE.get(key)
     if hit and time.monotonic() - hit[0] < P.LOAD_HISTORY_TTL_S:
-        return hit[1], None, True
-    imported = hevy_import.imported_sessions(conn, owner_id, start, day)
+        return sorted(hit[1] + imported, key=lambda s: s["date"]), None, True
     try:
         client = sparky_client.client_for_user(conn, owner_id)
     except (sparky_client.SparkyError, ValueError):
@@ -88,9 +89,8 @@ def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[li
         sessions = sparky_client.training_log(client, start, day)
     except sparky_client.SparkyError as e:
         return imported, str(e), True
-    sessions = sorted(sessions + imported, key=lambda s: s["date"])
     _HISTORY_CACHE[key] = (time.monotonic(), sessions)
-    return sessions, None, True
+    return sorted(sessions + imported, key=lambda s: s["date"]), None, True
 
 
 def clear_history_cache(owner_id: int | None = None) -> None:

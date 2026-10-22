@@ -466,3 +466,30 @@ HEVY_ALIASES = {
 EST_SET_WORK_SEC = 40
 EST_DEFAULT_REST_SEC = 90
 EST_ROUND_MIN = 5
+
+
+# ---------- muscle load map (rollout flag muscle_load, training/muscle_load.py) ----------
+MUSCLE_LOAD_VERSION = "v1.0-2026-10-22"
+PRIMARY_FACTOR, SECONDARY_FACTOR = 1.0, 0.5   # a set counts fully for the primary muscles of the exercise, half for the secondary ones
+                                              # (the usual "fractional sets" bookkeeping: Pelland et al. 2024 preprint, Krieger / Israetel practice)
+MUSCLE_LOAD_BASELINE_DAYS = 28                # "last trained" looks back this far; the week-over-week comparison needs the previous week
+# Recommended EFFECTIVE sets per muscle per week (primary sets + 0.5 x secondary sets, warm-ups excluded): (low, high).
+# Below `low` = "low", between = "ok", above `high` = "high". Defaults follow the dose-response meta-analyses:
+#   Schoenfeld, Ogborn & Krieger (2017) J Sports Sci 35(11):1073 — >= 10 weekly sets per muscle group gave clearly more hypertrophy than < 10;
+#   Schoenfeld et al. (2019) Sports Med / Krieger (2010) — gains keep rising to ~20 sets for most muscles, with diminishing returns.
+# Smaller / heavily-assisted muscles use lower numbers, rounded from the volume landmarks (MEV–MAV) in Israetel, Hoffmann & Smith,
+# "Scientific Principles of Hypertrophy Training" (Renaissance Periodization, 2019). These are population guides, not a prescription:
+# the user can change them (per-user overrides are a later step), and the AI weighs them against recovery, injuries and goals.
+WEEKLY_SETS_RANGE_DEFAULT = (10, 20)
+WEEKLY_SETS_RANGE = {
+    "lower back": (4, 10), "neck": (4, 10), "forearms": (6, 14), "adductors": (4, 12), "abductors": (4, 12),
+    "abdominals": (6, 16), "traps": (6, 16), "calves": (8, 16),
+}
+MUSCLE_SIDE_BY_REGION = {   # body-map region (muscle-body-data.js) -> catalog muscles drawn there; documented here for the tests
+    "chest": ["chest"], "upper-back": ["lats", "middle back"], "lower-back": ["lower back"], "trapezius": ["traps"],
+    "deltoids": ["shoulders"], "quadriceps": ["quadriceps"], "hamstring": ["hamstrings"], "gluteal": ["glutes", "abductors"],
+    "calves": ["calves"], "biceps": ["biceps"], "triceps": ["triceps"], "forearm": ["forearms"],
+    "abs": ["abdominals"], "obliques": ["abdominals"], "adductors": ["adductors"], "neck": ["neck"],
+}
+RECOMMEND_LIMIT = 5                           # exercises suggested for a tapped muscle
+MUSCLE_RANGES = ("today", "week", "last7")
