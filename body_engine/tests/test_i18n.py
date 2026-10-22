@@ -30,7 +30,7 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "training-day.js", "feedback.js", "circles.js", "identities.js", "intro.js", "sync.js", "activate.js", "ios-web.js", "oauth.js", "sw.js"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "exercise-plan.js", "training-day.js", "feedback.js", "circles.js", "identities.js", "intro.js", "sync.js", "activate.js", "ios-web.js", "oauth.js", "sw.js"]
 PAGES = ["index.html", "activate.html", "install.html", "oauth.html"]
 
 

@@ -2,10 +2,11 @@
 Authorization:
 - Read endpoints require shares scope `training` (per-user restrictions additionally check `exercises`, readiness checks `scores`).
 - Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
+- Add to plan (`/plan/add-options`, `/plan/add-exercise`, rollout flag exercise_add_to_plan, issue #154) is self-only.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
 """
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..rollout import flags
-from . import catalog, history, loads, plans, session_log
+from . import catalog, history, loads, plan_add, plans, session_log
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
 
@@ -237,6 +238,50 @@ def swap_plan_exercise(user: str, body: SwapExerciseIn, conn=Depends(get_conn), 
             session_name=body.session_name,
             sync_sparky=body.sync_sparky,
         )
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+# ---------------------------------------------------------------- add to plan (issue #154, rollout flag exercise_add_to_plan)
+ADD = [Depends(flags.require("exercise_add_to_plan"))]
+
+
+class AddExerciseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exercise: str = Field(min_length=1)
+    scope: Literal["template", "day"]
+    day_of_week: int | None = Field(default=None, ge=1, le=7)   # template: which session (with session_name)
+    session_name: str | None = None
+    day: date | None = None                                     # day: which date
+    sets: int | None = Field(default=None, ge=1, le=20)         # left out = the recommendation (params.ADD_*)
+    rep_low: int | None = Field(default=None, ge=1, le=100)
+    rep_high: int | None = Field(default=None, ge=1, le=100)
+    duration_sec: int | None = Field(default=None, ge=1, le=7200)
+    rest_sec: int | None = Field(default=None, ge=0, le=600)
+    sync_sparky: bool = True
+
+
+@router.get("/plan/add-options", dependencies=ADD)
+def add_to_plan_options(user: str, exercise: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """What the exercise detail's "add to plan" sheet offers: the plan's sessions, the next days, default sets / reps, banned or not."""
+    uid = _self(viewer, user)
+    try:
+        return plan_add.options(conn, uid, exercise)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.post("/plan/add-exercise", dependencies=ADD)
+def add_plan_exercise(user: str, body: AddExerciseIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Add an exercise to one session of the weekly plan (scope template, every week) or to one date only (scope day).
+    A banned exercise (exercise_meta) is refused with 409 and the alternatives."""
+    uid = _self(viewer, user)
+    try:
+        return plan_add.add(conn, uid, body.scope, body.exercise, day_of_week=body.day_of_week, session_name=body.session_name,
+                            day=body.day, sets=body.sets, rep_low=body.rep_low, rep_high=body.rep_high,
+                            duration_sec=body.duration_sec, rest_sec=body.rest_sec, sync_sparky=body.sync_sparky)
     except PermissionError as e:
         raise HTTPException(409, str(e))
     except ValueError as e:
