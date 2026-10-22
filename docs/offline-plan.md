@@ -43,7 +43,11 @@
 ## 5. iOS app（WKWebView）
 - **结论：app 里没有 service worker。** WKWebView 只在 app 声明 App-Bound Domains（Info.plist `WKAppBoundDomains` + `limitsNavigationsToAppBoundDomains`）时才开放 service worker；Watch2Whoop 没声明（服务器地址是设置二维码给的，不是固定域名；声明后还会限制 JS 注入和跳转），所以 `navigator.serviceWorker` 不存在，`sw.js` 在 app 里从来没生效过。
 - 所以第一期的离线能力全部做在页面里（IndexedDB 在 WKWebView 里可用、跟着默认的持久化网站数据存储）。**app 已经打开着时断网**（最常见：地铁、电梯、信号差）不需要新版 app，部署服务器后对开了开关的人立刻生效。
-- **断网时冷启动 app**：WKWebView 加载主页面失败，显示原生的「连不上今天页」。要在这种情况下也能看缓存 / 记录，需要 app 保存一份页面外壳，断网时用它打开（同源 baseUrl，能读到同一个 IndexedDB）。这要改原生代码 → 单独的 app PR，放进 1.0.7。
+- **断网时冷启动 app**（app 1.0.7，`lib/src/offline_shell.dart`）：1.0.6 及以前 WKWebView 加载主页面失败，只显示原生的「连不上今天页」。1.0.7 起：
+  - 页面在开关打开时通过 JS bridge 发 `offline:on`，app 下载服务器的 `/app/offline-shell.html`（`index.html` 把所有本地脚本和样式内联进去，加上 `window.W2W_SHELL` 标记；公开文件，不含用户数据）存到 Application Support，每次启动最多下载一次；`offline:off`（开关关、退出登录）删掉。
+  - 主页面加载失败时，有同一服务器的副本就用 `loadHtmlString(副本, baseUrl: 今天页地址)` 打开：同源，读得到 offline.js 存的 IndexedDB，能看缓存、能把记录放进队列。
+  - 副本里的页面**不发任何请求**（不用担心 cookie 是否带上、不会因为 401 清掉缓存）；回到前台或页面检测到联网（发 `reload`）时，app 重新加载真页面，由真页面发送队列。
+  - 老版本 app 收到这几个 bridge 消息会忽略，不受影响；老服务器没有这个接口时 app 什么都不存。
 
 ## 6. 上线
 1. 合并、部署（`deploy/ali/push.sh code` → 重建 body-engine）。开关默认关，部署本身不改变任何人的页面（#77 的离线提示除外：只是网络失败时的文字和重试按钮）。
