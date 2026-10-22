@@ -171,6 +171,10 @@ from .diet_profile_tools import TOOL_SPECS as DIET_PROFILE_TOOL_SPECS  # noqa: E
 TOOLS += [Tool(**spec) for spec in DIET_PROFILE_TOOL_SPECS]  # 「我的饮食档案」: targets rationale, constraints, day plan, versions
 from .diet_profile_tools import CONSTRAINT_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in CONSTRAINT_TOOL_SPECS]  # per-user diet constraints (nutrition/constraints.py, issue #76)
+from ..friends.tools import TOOL_SPECS as FRIENDS_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in FRIENDS_TOOL_SPECS]  # Friends page: circle members' shared status and leaderboard ranks
+from ..water.tools import TOOL_SPECS as WATER_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in WATER_TOOL_SPECS]  # daily water intake (issue #125)
 from ..feedback.tools import TOOL_SPECS as FEEDBACK_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in FEEDBACK_TOOL_SPECS]  # root rules: bugs and feature requests to the developers
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}

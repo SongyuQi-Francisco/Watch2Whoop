@@ -8,7 +8,8 @@ No default provider (and no body butler link): the fallback AI (fallback.py, the
 short prompt and tool subset that can only read the caller's own data.
 All queries carry user_id = the logged-in person: conversations, pending writes, providers and keys never leak to anyone else.
 
-Events (produced by chat_events, converted to SSE by api.py): conversation, text, tool, confirm, usage, error, done.
+Events (produced by chat_events / start_chat, run to the end in the background and numbered by runs.py, streamed as SSE by api.py):
+conversation, text, tool, confirm, usage, notice, error, done.
 """
 import base64
 import binascii
@@ -375,6 +376,13 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
     content = [{"type": "text", "text": f"{prompt.time_prefix(conn, viewer['id'])}\n{message}"}] + imgs
     return provider, adapter, conv, content
+
+
+def start_chat(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
+               conversation_id: int | None) -> tuple[int, Iterator[dict]]:
+    """chat_events for the Today page: also returns the conversation id, which keys the background turn (runs.py, #114)."""
+    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id)
+    return conv["id"], _run(conn, viewer, provider, adapter, conv, content)
 
 
 def _run(conn, viewer, provider, adapter, conv, content) -> Iterator[dict]:
