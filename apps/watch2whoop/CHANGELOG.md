@@ -10,12 +10,27 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.7 — 2026-10-22
+Health data status and permissions (#163): iOS never tells an app whether Health *read* access was granted, so users
+could not see whether their data was read or where to change the permissions after the first launch.
+- Phone sync → 「服务器收到的数据」 / "Data on the server": per type (heart rate, HRV, resting heart rate, sleep, steps,
+  active energy, workouts, weight, blood oxygen, respiratory rate, wrist temperature, VO₂ max, beat-to-beat HRV, ECG,
+  water) the last day the server received data and OK / not received lately / never received, from
+  `GET /v1/ingest/data-status` (server side in its own PR; an older server shows a short note). Tapping a type shows the
+  likely reasons and what helps.
+- 「重新申请健康权限」 / "Ask for Health access again": shows the iOS prompt only for types it never covered (asked per
+  type with `getRequestStatusForAuthorization`); when every type was asked it explains where to change them instead.
+- 「打开系统设置」 / "Open Settings" with the steps (Settings → Health → Data Access & Devices → Watch2Whoop). The app
+  changes nothing for the user.
+- 「本机最近一次同步」 / "Last sync on this phone": time and result (OK / failed with the reason) of the latest upload.
 
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
