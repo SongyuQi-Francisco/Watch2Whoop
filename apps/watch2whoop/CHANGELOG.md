@@ -20,6 +20,8 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.
+- In-page chat: back in the foreground the app tells the Today page (`watch2whoop:foreground`), so an answer cut off
+  while the app was in the background is picked up again instead of showing 「连不上」 (#114, server side in the same PR).
 - Fix: long press on an image on the Today page (exercise pictures, handbook screenshots, chat thumbnails) →
   「存储到照片」 / "Save to Photos" killed the app: WebKit writes to the photo library from the app process and iOS ends
   apps without `NSPhotoLibraryAddUsageDescription` (`OS_REASON_TCC`, reproduced in the simulator). The key is added.
