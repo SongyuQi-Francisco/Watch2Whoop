@@ -12,7 +12,10 @@ NEVER_SHARED = ("ecg",)
 # Circle sharing needs the consent version that has the circle clause (consent §2 "圈子共享", the owner-approved text of 2026-10-22.2)
 CONSENT_VERSION = "2026-10-22.2"
 
-INVITE_HOURS = 72             # an invite code / link works for 72 hours; the owner can reset it any time
+# How long a new invite code / link works: the owner picks one of INVITE_DAYS_CHOICES (days) or "never expires" (#156).
+# An invite can always be revoked early (one by one, or all at once with reset). Wrong values → 400.
+INVITE_DAYS_CHOICES = (1, 3, 7, 30)
+INVITE_DEFAULT_DAYS = 3
 REFERRAL_INVITE_DAYS = 30     # invite to the inviter's circles after signing up with their referral code (#57)
 MAX_LIVE_CODES = 5            # live codes per circle; minting one more revokes the oldest
 MAX_CIRCLES_PER_USER = 10
