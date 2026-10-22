@@ -73,7 +73,11 @@ Parameter categories:
 - **Design choice** — v1 value, not yet validated: anchors ("typical adult") per item; 180-day window with the last 30
   days weighted ×2 and ≥ 30 days of data; item cap ±4 years; shrinkage × 0.6 for correlated items; total cap ±10
   years; pace of aging over 26 weeks with a 4-week moving average.
-- Known limits: _to be written (#118)._
+- Known limits (more to be written, #118):
+  - The items take whatever the caller measured or recorded. Strength minutes in particular are only the logged
+    sessions: missing records read as fewer minutes. With the anchor at 0 minutes this only removes "younger" credit,
+    it never adds years. Watch2Whoop counts its sources per day and labels an item whose records look incomplete
+    (issue #210); the curve and the conversion here do not change.
 
 ## Validation done so far
 - One person's 415-day back-calculation, spot-checked against their diary (fatigue periods, low-blood-sugar days).

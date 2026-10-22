@@ -32,7 +32,7 @@ Every parameter carries one of four labels. **We claim only what we can back up*
 ### 0.3 Inputs
 Raw samples an Apple Watch writes to HealthKit (via the iOS app / Open Wearables, the iOS Shortcut, or the full Health export): sleep stage
 segments, heart rate, HRV (Apple's SDNN, plus about one minute of beat-to-beat times per reading), respiratory rate, SpO₂, wrist temperature,
-Apple's all-day resting heart rate, workouts, steps; weight, waist, VO₂max; strength sessions from SparkyFitness. **Apple's own readiness and sleep
+Apple's all-day resting heart rate, workouts, steps; weight, waist, VO₂max; strength sessions from SparkyFitness and imported workouts (Hevy CSV). **Apple's own readiness and sleep
 scores are not readable through HealthKit**, so they cannot be compared directly.
 
 ---
@@ -257,6 +257,15 @@ Code `insights/healthspan.py`; parameters with full citations in `insights/healt
 - Sensitivity is analytic: when nothing is capped, the years are proportional to the doubling time and to the 0.6 factor, so ±20% on either moves
   the gap between body age and chronological age by ±20%.
 - No external validation (e.g. against WHOOP Age or epigenetic clocks).
+- **Strength training counts only what is recorded** (#210): the watch's strength workouts, SparkyFitness sessions (the Today page's
+  set-by-set log lands there once submitted) and imported workouts (Hevy), per day the largest of them (SparkyFitness has no start
+  time, so sessions cannot be matched one by one; the largest never counts one twice, but two different sessions on one day in two
+  sources are under-counted); without a duration, 3 minutes per set. A session the watch did not record and nobody logged is
+  invisible, and from when the watch was first worn a day without records counts as 0 minutes. The anchor is 0 minutes, so missing
+  records only remove "younger" credit; they never make body age older. When the journal has strength training on ≥ 2 days of the
+  last 4 weeks without a record, or fewer than half of the active plan's sessions have one, the item is labelled "records may be
+  incomplete" (value unchanged; only the label and the tip change, to logging the missing sessions). Parameters in
+  `insights/healthspan_params.py` (design choices, not validated).
 
 ## 9. Features derived from these scores (brief)
 - **Strain target** (`insights/coach.py`): green 14–18, yellow 10–14, red 0–10; yesterday's TSB < −30 shifts down by 2; illness warning 0–8. Ranges fit
