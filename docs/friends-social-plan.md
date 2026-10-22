@@ -89,7 +89,7 @@
 ## 4. 数据与接口
 
 新迁移（编号 ≥ 470，开发时确认没被占）：
-- `circles (id, name, owner_id, created_at)`
+- `circles (id, name, owner_id, created_at)`；迁移 655 加了 `avatar_image_id`、`default_scopes`、`max_members`（第 10 节）
 - `circle_members (circle_id, user_id, scopes TEXT[], joined_at, PRIMARY KEY (circle_id, user_id))`：`scopes` 只能是 `friends/params.CIRCLE_SCOPES` 里的（不含 `ecg`）。
 - `circle_invites (id, circle_id, created_by, code_sha256 UNIQUE NULL, invitee_user_id NULL, expires_at, revoked_at, used_count, created_at)`：邀请码（有效期自选，`expires_at` 为空 = 永久有效，迁移 605）或指定用户的邀请（#57 推荐注册，30 天）。
 - `shares` 加列 `circle_scopes TEXT[] NOT NULL DEFAULT '{}'`；鉴权看 `scopes`（手动，受 `expires_at` 约束）∪ `circle_scopes`。
@@ -107,6 +107,7 @@
 | `GET /v1/friends/overview` | 成员卡片（今天 + 近 7 天，按 scope） |
 | `GET /v1/friends/leaderboard?board=` | 排行榜（PR C） |
 | `POST /v1/friends/nudges` | 一键鼓励 |
+| `GET /v1/friends/circles/{id}/avatar` | 圈子头像（只给成员，#199，见第 10 节） |
 
 ## 5. 隐私与安全要点
 - 邀请码只存 sha256，有效期自选、可作废 / 重置；加入失败按 IP / 用户限次数（沿用 `web/login_limit.py` 的做法）。
@@ -147,3 +148,17 @@
 - **通知**：有人 ❤️（第一次点）/ 评论时直接调用 `notify.notify(...)` 通知帖子作者（kind = `circle.like` / `circle.comment`，属于通知设置里的「圈子互动」；给自己的帖子点赞 / 评论不通知）。跳转链接 `/app/?tab=friends&feed=<帖子 id>`：打开朋友 tab 的「动态」，滚到那条帖子并展开评论（`circle-feed.js` 监听 `body:link`）。
 - 接口：`GET /v1/friends/feed?before=&limit=`（`before` = 上一页返回的 `next`，按日期倒序，往下滑加载更多）、`GET|POST /feed/posts/{id}/comments`、`DELETE /feed/comments/{id}`、`POST /feed/comments/{id}/report`。
 - 手机宽度截图（合成数据）：`docs/images/circle-feed/`。
+
+## 10. 圈子激活码与圈子头像（#199，2026-10-23，不加灰度开关）
+
+给俱乐部、社团推广用：一个码 = 开通账号 + 进指定圈子。代码：`friends/codes.py`（码）、`friends/admin.py`（管理员建圈子、设头像）、`images/`（通用的图片校验和缩放，#200 的用户头像复用），迁移 `655_circle_codes_avatars.sql`；管理员命令见 [`admin-guide.md`](admin-guide.md)「圈子激活码」。
+
+- **码**：管理员自定义的可读文字（`circle_codes.code`，4–40 个字符，去掉空格 / 连字符后），匹配时 NFKC + 不分大小写 + 忽略空格和连字符（`code_norm`）。它是推广码不是密钥，明文存着方便列表查看；输错仍按 IP 计失败次数。有次数上限 `max_uses`、可选有效期、可以停用；同一段文字同时只能有一个没停用的码。
+- **每次使用一条记录**（`circle_code_uses`）：谁、什么时候、是不是新账号、什么时候真正进圈（`joined_at`，空 = 等同意书）。同一个人对同一个码只算一次。退出圈子不退还次数。
+- **并发**：兑换时先 `SELECT … FOR UPDATE` 锁住这一行码，再用 `uses < max_uses` 的条件加一，同一时刻注册的人不会超用（测试里 8 个人抢 3 次）。
+- **新用户**（自助注册的 `pending` 账号，在注册页 / app 的「输入激活码」一步输入，`POST /v1/account/redeem-invite`）：先开通账号（`active` + 开始建同步账号），只记一条「等同意书」的使用；**这时不进圈**：圈子成员看不到他的名字和任何数据，`shares` 里也没有他。同意书页面（`GET /v1/users/me/profile` → `circle_pending`）写明要加入哪个圈子、共享哪些范围；他确认同意书（版本 ≥ `friends/params.CONSENT_VERSION`）后（`POST /v1/users/me/consent` → `circles_joined`，或下一次打开朋友页），才以**圈子的默认范围**（`circles.default_scopes`，不填 = `DEFAULT_SCOPES`）加入。
+- **老用户**：在「圈子」→「用邀请码加入」里输同一个码（`GET /v1/friends/invite` → `circle_code: true` + 圈子的默认范围，`POST /v1/friends/join`），和普通邀请一样自己勾选共享范围（默认勾圈子的默认范围），要求已确认含「圈子共享」的同意书。已经在圈子里的人再用不扣次数。
+- **之后和普通成员一样**：随时改共享范围、退出；退出后对方立即看不到（`shares.circle_scopes` 当场重算）。码只决定进哪个圈子，不替用户同意任何共享。
+- **人数上限**：`circles.max_members`（管理员建的团体圈子可以设到 1000，不填 = `MAX_MEMBERS`）；算名额时把「已用码、还在等同意书」的人也算进去，不会出现注册成功却进不了圈的情况。
+- **提示**：用完 / 停用 / 过期 → 410「这个圈子激活码已经用完了 / 已停用 / 已过期」；圈子满了 / 个人圈子数到上限 → 409。中英文都有（`errors_en.py`，app 里 `onboarding_page.dart`）。
+- **圈子头像**：管理员用 CLI 上传（`circle-admin create --avatar` / `circle-admin avatar`）。只收 PNG / JPEG / WebP（按文件头判断，不信扩展名），最大 5 MB、最多 4000 万像素、至少 32×32；服务器上按 EXIF 方向摆正后居中裁成 256×256，画到一张新图上再存成 WebP，EXIF / GPS / ICC 等元数据全部去掉（`images/store.py`）。图片存在库里（表 `images`，带上传人 `user_id`，备份跟着数据库走）。访问 `GET /v1/friends/circles/{id}/avatar` 只给圈子成员（别人 404），`Cache-Control: private` + ETag；`circle_view.avatar` 给出带图片 id 的地址，换图后地址跟着变。显示在圈子列表、加入弹层（还不是成员，只显示首字母）、训练动态的圈子名旁边（`circle_refs`）；没有头像时显示圈子名的首字母。

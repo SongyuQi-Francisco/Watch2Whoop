@@ -262,18 +262,22 @@ class _OnboardingPageState extends State<OnboardingPage> {
   }
 
   Future<void> _redeem() async {
-    final code = normalizeInviteCode(_invite.text);
+    final code = inviteStepCode(_invite.text);
     if (code == null) {
-      setState(() => _error = tr('激活码是 10 位字母和数字', 'The invite code has 10 letters/digits'));
+      setState(() => _error = tr('激活码是 10 位字母和数字，或团体给的圈子激活码', 'Enter the 10-character invite code, or the circle code your group gave you'));
       return;
     }
     await _run(() async {
       final status = await accountApiFor(_config.todayUrl).redeemInvite(_state.accountToken!, code);
       _invite.clear();
       _afterStatus(status == AccountStatus.unknown ? AccountStatus.active : status);
-    }, onError: (e) => e.code == 'invalid'
-        ? tr('激活码无效、已用完或已过期', 'Invite code is invalid, used up or expired')
-        : accountError(e));
+    }, onError: (e) => switch (e.code) {
+          'invalid' => tr('激活码无效、已用完或已过期', 'Invite code is invalid, used up or expired'),
+          // a circle activation code (server friends/codes.py): 410 used up / disabled / expired, 409 circle full
+          'gone' => tr('这个圈子激活码已用完、已停用或已过期', 'This circle code is used up, disabled or expired'),
+          'conflict' => tr('这个圈子已满', 'This circle is full'),
+          _ => accountError(e),
+        });
   }
 
   /// Sync connected (server-minted invitation code); a note for the user when it could not be.
@@ -498,7 +502,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   ];
 
   List<Widget> _inviteStep() => [
-    _title(tr('输入激活码', 'Enter invite code'), tr('内测期间需要激活码，向邀请你的人要。', 'During the beta you need an invite code from whoever invited you.')),
+    _title(tr('输入激活码', 'Enter invite code'), tr('内测期间需要激活码，向邀请你的人要；团体给的圈子激活码也可以。', 'During the beta you need an invite code from whoever invited you, or the circle code your group gave you.')),
     TextField(
       controller: _invite,
       autofocus: true,

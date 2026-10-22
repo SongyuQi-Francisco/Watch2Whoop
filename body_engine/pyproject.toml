@@ -14,6 +14,7 @@ dependencies = [
     "cryptography>=50.0.2",
     "openbodyscore",
     "httpx[http2]>=0.28",
+    "pillow>=11",
 ]
 
 [project.scripts]

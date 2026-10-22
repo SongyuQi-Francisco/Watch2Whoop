@@ -3,7 +3,8 @@
 - GET   /v1/users/{user}/profile   -> profile + missing + consent (required / version / accepted_at / reconfirm)
 - PATCH /v1/users/{user}/profile   {display_name?, birth_date?, sex?, height_cm?, timezone?, goal_weight_kg?, language?}(null = clear; language null = follow the device)
 - GET   /v1/consent                 -> {version, summary, text} (full consent form in Markdown)
-- POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents)
+- POST  /v1/users/{user}/consent   {version, agree: true} -> records time and version (table user_consents); then joins the
+                                    circles of activation codes used at sign-up (circles_joined, friends/codes.py)
 - PUT   /v1/users/{user}/intro     {seen: bool} -> the first-run intro was finished / skipped (true) or is to be shown again (false);
                                     users.intro_seen_at, read back as /v1/web/me -> me.intro_seen (issue #60)
 """
@@ -38,7 +39,10 @@ def _self(viewer: dict, user: str, write: bool = False) -> int:
 
 
 def _out(conn, uid: int) -> dict:
-    return {**store.get(conn, uid), "consent": consent.status(conn, uid)}
+    from ..friends import codes
+    # circle_pending: circles of activation codes used at sign-up, joined once the consent is given (the consent sheet
+    # lists them with what will be shared there)
+    return {**store.get(conn, uid), "consent": consent.status(conn, uid), "circle_pending": codes.pending_for(conn, uid)}
 
 
 class ProfileIn(BaseModel):
@@ -97,7 +101,9 @@ def post_consent(user: str, body: ConsentIn, request: Request, conn=Depends(get_
         consent.accept(conn, uid, body.version, "app", request.headers.get("user-agent"), language=body.language)
     except ValueError as e:
         raise HTTPException(409, str(e)) from e
-    return _out(conn, uid)
+    from ..friends import codes
+    joined = codes.complete_pending(conn, uid)   # circles of activation codes used at sign-up (friends/codes.py)
+    return {**_out(conn, uid), "circles_joined": joined}
 
 
 @router.put("/v1/users/{user}/intro")

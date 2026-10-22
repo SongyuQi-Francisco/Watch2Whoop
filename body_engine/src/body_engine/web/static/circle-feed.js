@@ -25,6 +25,7 @@
   const CSS = `.cf-list{display:flex;flex-direction:column;gap:12px}
 .cf-post{position:relative;background:var(--surface);border-radius:16px;padding:14px 14px 6px;min-width:0}
 .cf-head{display:flex;align-items:center;gap:10px}.cf-av{flex:none;width:38px;height:38px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px}
+.cf-circ{display:inline-flex;align-items:center;gap:4px;vertical-align:bottom}.cf-circ .cc-av{font-size:8px}
 .cf-who{flex:1;min-width:0}.cf-who b{display:block;font-size:15px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cf-who i{display:block;font-style:normal;font-size:12.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cf-title{font-size:18px;font-weight:700;margin:12px 0 10px;line-height:1.25;overflow-wrap:anywhere}
 .cf-stats{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 18px;margin:0 0 12px}.cf-stat{flex:none}.cf-stat small{display:block;font-size:12px;color:var(--text-2)}
@@ -175,13 +176,20 @@
     return `<div class="cf-act"><button type="button" data-cf="like" data-p="${p.id}" aria-pressed="${p.likes.mine}" aria-label="${esc(tr("点赞"))}">${svg(HEART)}</button>
       <button type="button" data-cf="cm" data-p="${p.id}" aria-expanded="${open}" aria-label="${esc(tr("评论"))}">${svg(BUBBLE)}</button></div>${likes}${pv}${all}`;
   }
+  // the circles a post came through, each with its avatar (or initial) from circles.js
+  function circlesHtml(p) {
+    const refs = p.circle_refs || (p.circles || []).map((name) => ({ name }));
+    if (!refs.length) return "";
+    const av = window.BodyCircles?.avatar;
+    return " · " + refs.map((c) => `<span class="cf-circ">${av ? av(c, 14) : ""}${esc(c.name)}</span>`).join(" · ");
+  }
   function postHtml(p) {
     const all = st.more.has(p.id), shown = all ? p.exercises : p.exercises.slice(0, st.preview);
     const rest = p.exercises.length - st.preview;
     const toggle = rest > 0 ? `<button type="button" class="cf-toggle" data-cf="more" data-p="${p.id}">${esc(all ? tr("收起") : tr("查看另外 {n} 个动作", { n: rest }))}</button>` : "";
     const open = st.open.has(p.id);
     return `<article class="cf-post" data-id="${p.id}"><div class="cf-head"><span class="cf-av">${esc((p.user.name || "?").slice(0, 1).toUpperCase())}</span>
-        <div class="cf-who"><b>${esc(p.user.self ? tr("who.me", { name: p.user.name }) : p.user.name)}</b><i>${esc(ago(p))}${p.circles?.length ? ` · ${esc(p.circles.join(" · "))}` : ""}</i></div></div>
+        <div class="cf-who"><b>${esc(p.user.self ? tr("who.me", { name: p.user.name }) : p.user.name)}</b><i>${esc(ago(p))}${circlesHtml(p)}</i></div></div>
       <div class="cf-body"><div class="cf-title">${esc(p.title)}</div><div class="cf-stats">${statsHtml(p)}</div>
       ${(p.activities || []).map((a, _, all) => activityHtml(a, all.length > 1)).join("")}
       ${p.no_exercises ? `<div class="cf-none">${svg(DUMBBELL)}${esc(tr("没有记录动作"))}</div>` : ""}
