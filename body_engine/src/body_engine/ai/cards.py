@@ -28,13 +28,16 @@ from .. import queries, sparky_client
 from ..assistant.tools import Tool
 from ..rollout import flags
 from ..toolspec import nullable, schema
-from . import cards_food
+from . import cards_body, cards_food
 
 NAME = "show_card"
 FLAG = "jarvis_rich"
 FLAG_V2 = "jarvis_cards_v2"
 TYPES = ("training", "meal", "metric", "sleep", "actions", "muscle")
-TYPES_V2 = ("goals", "suggest", "recipe", "recipes", "templates", "shopping")
+FOOD_TYPES = ("goals", "suggest", "recipe", "recipes", "templates", "shopping")
+BODY_TYPES = ("recovery", "strain", "stress", "healthspan", "trend", "weight", "lab", "supplements", "water", "journal",
+              "report", "hr_zones", "vo2max", "monitor", "data_status")
+TYPES_V2 = (*FOOD_TYPES, *BODY_TYPES)
 # metric -> (source, column / metric name, unit, digits)
 METRICS = {
     "recovery": ("scores", "recovery", "%", 0),
@@ -45,9 +48,12 @@ METRICS = {
     "weight": ("weight", "body_mass", "kg", 1),
 }
 OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep", "profile",   # sleep: that night's sleep detail page; profile: 个人资料
-              "food.recipes", "food.shopping", "recipe")                          # v2; recipe: the card's recipe sheet (its id)
+              "food.recipes", "food.shopping", "recipe",                          # v2; recipe: the card's recipe sheet (its id)
+              "healthspan", "lab", "trends.report", "supplements", "data_status")   # lab: that test's trend sheet
 SEND_KEYS = ("adjust_training", "next_meal", "explain_trend", "analyze_muscles",
-             "more_meals", "log_recipe", "recipe_steps", "shopping_plan", "undo_meal")   # v2
+             "more_meals", "log_recipe", "recipe_steps", "shopping_plan", "undo_meal",   # v2
+             "explain_recovery", "explain_stress", "improve_body_age", "improve_vo2max", "explain_monitor", "explain_lab",
+             "log_supplements", "explain_journal", "explain_report", "explain_sleep")
 # v2 per-row buttons the page draws on a card's rows (their text is built by the page from the row's own fields)
 ENTRY_ACTIONS = ("portion", "delete")
 MAX_DAYS, DEFAULT_DAYS = 90, 14
@@ -69,9 +75,16 @@ PROMPT = (
 )
 
 PROMPT_V2 = (
-    "show_card 的参数：date=YYYY-MM-DD（sleep 是醒来那天），range 给 muscle，metric+days 给 metric，slot 给 suggest / recipes，"
-    "id 给 recipe，buttons 给 actions。饮食相关还可以：吃了多少 / 离目标还差多少 → goals（热量环 + 蛋白环）；推荐吃什么 → suggest（slot，all=全天每餐）；"
-    "讲一道菜 → recipe（id=食谱 id）；有哪些菜 → recipes（slot）；快捷记餐模板 → templates；采购清单 → shopping。"
+    "show_card 的参数：date=YYYY-MM-DD（sleep 是醒来那天，null=今天 / 最近），metric+days 给 metric / trend / weight，"
+    "range 给 muscle（today/week/last7）和 report（week/month），slot 给 suggest / recipes，id 给 recipe，buttons 给 actions。\n"
+    "饮食：吃了多少 / 离目标还差多少 → goals；推荐吃什么 → suggest（slot，all=全天每餐）；讲一道菜 → recipe（id=食谱 id）；"
+    "有哪些菜 → recipes；快捷记餐模板 → templates；采购清单 → shopping。\n"
+    "身体：恢复 → recovery；负荷和今天的目标 → strain；压力 → stress；身体年龄和各项贡献 → healthspan；"
+    "任意指标一段时间的变化（和上一期比）→ trend（metric 用趋势指标 key，如 hrv、resting_hr、sleep_hours、sleep_efficiency、"
+    "steps、strain、vo2max、weight，days 7–90）；体重 → weight；化验单项历史 → lab（metric=化验项 key 或名字）；"
+    "补剂和今天打卡 → supplements；喝水 → water；日记里的行为对第二天恢复的影响 → journal（metric=日记项 key，null=全部）；"
+    "周报 / 月报 → report（range）；心率区间 → hr_zones；VO₂max → vo2max；五项生命体征是否正常 → monitor；"
+    "数据有没有同步上来 → data_status；某晚睡眠（阶段、效率、入睡和醒来时间）→ sleep。\n"
     "讲解某个数值或某天的情况时，先发卡片，再用两三句话解释。"
 )
 
@@ -95,10 +108,10 @@ TOOL_V2 = Tool(
     description="给用户显示一张卡片，数据由系统按用户自己的数据生成；各 type 用法见系统提示「卡片」一节。",
     input_schema=schema({
         "type": {"type": "string", "enum": [*TYPES, *TYPES_V2]},
-        "date": nullable("string", "YYYY-MM-DD，null=今天"),
-        "metric": nullable("string", None, enum=[*METRICS, None]),
-        "days": nullable("integer", "metric 的天数，7–90，null=14"),
-        "range": nullable("string", None, enum=["today", "week", "last7", None]),
+        "date": nullable("string", None),
+        "metric": nullable("string", None),
+        "days": nullable("integer", None),
+        "range": nullable("string", None, enum=["today", "week", "last7", "month", None]),
         "slot": nullable("string", None, enum=[*cards_food.SLOTS_ALL, None]),
         "id": nullable("integer", None),
         "buttons": nullable("array", "2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
@@ -128,6 +141,10 @@ AUTO_V2 = {
     "generate_shopping_list": ("shopping", lambda a: {"date": a.get("week")}),
     "add_shopping_items": ("shopping", lambda a: {"date": a.get("week")}),
     "mark_bought": ("shopping", lambda a: {}),
+    "log_water": ("water", lambda a: {}),
+    "add_supplement": ("supplements", lambda a: {}),
+    "update_supplement": ("supplements", lambda a: {}),
+    "add_lab_results": ("lab", lambda a: _first_lab(a)),
 }
 # ... and reads, for the fallback AI only (a weak model that rarely calls show_card itself; ai/chat.py): the card of what it
 # just looked up. A strong model gets the prompt instead, so its reads (often several days, for its own analysis) stay quiet.
@@ -139,7 +156,26 @@ READ_AUTO = {
     "list_recipes": ("recipes", lambda a: {"slot": a.get("slot")}),
     "get_meal_templates": ("templates", lambda a: {}),
     "get_shopping_list": ("shopping", lambda a: {"date": a.get("week")}),
+    "get_sleep": ("sleep", lambda a: {"date": a.get("end")}),
+    "get_sleep_details": ("sleep", lambda a: {"date": a.get("end")}),
+    "get_scores": ("recovery", lambda a: {"date": a.get("end")}),
+    "get_strain_coach": ("strain", lambda a: {"date": a.get("date")}),
+    "get_stress": ("stress", lambda a: {"date": a.get("end")}),
+    "get_healthspan": ("healthspan", lambda a: {}),
+    "get_weight": ("weight", lambda a: {"date": a.get("end")}),
+    "get_lab_history": ("lab", lambda a: {"metric": a.get("test")} if a.get("test") else None),
+    "list_supplements": ("supplements", lambda a: {}),
+    "analyze_journal": ("journal", lambda a: {"date": a.get("end"), "metric": a.get("key")}),
+    "get_report": ("report", lambda a: {"date": a.get("end"), "range": a.get("period")}),
+    "get_hr_zones": ("hr_zones", lambda a: {"date": a.get("end")}),
+    "get_vo2max": ("vo2max", lambda a: {"date": a.get("end")}),
+    "get_health_monitor": ("monitor", lambda a: {"date": a.get("date")}),
 }
+
+
+def _first_lab(a: dict) -> dict | None:
+    r = next((x for x in a.get("results") or [] if isinstance(x, dict) and (x.get("test_key") or x.get("test"))), None)
+    return {"metric": r.get("test_key") or r.get("test")} if r else None
 
 
 def enabled(conn: psycopg.Connection, user_id: int) -> bool:
@@ -252,16 +288,29 @@ def _muscle(conn, uid: int, rng) -> dict:
 SLEEP_MAIN = ("start", "end", "in_bed_min", "asleep_min", "efficiency_pct", "composition", "stages")
 
 
-def _sleep(conn, uid: int, day: date | None) -> dict:
-    """One night (wake date; None = the latest) from the sleep detail page's own builder: times, stages, score, notes."""
+SLEEP_MAIN_V2 = ("latency_min", "waso_min", "awakenings", "deep_pct", "rem_pct")
+
+
+def _sleep(conn, uid: int, day: date | None, v2: bool = False) -> dict:
+    """One night (wake date; None = the latest) from the sleep detail page's own builder: times, stages, score, notes.
+    v2 also: latency, time awake, wake-ups, the score's parts and the 7-night bedtime / wake / efficiency."""
     from ..sleep_night import view
     v = view.build(conn, uid, uid, day)
     m = v["main"] or {}
-    return {"type": "sleep", "date": v["date"].isoformat(), "main": {k: m.get(k) for k in SLEEP_MAIN} if m else None,
+    extra = {}
+    if v2:
+        a7 = (v["baseline"].get("avg7") or {})
+        extra = {"more": {k: m.get(k) for k in SLEEP_MAIN_V2} if m else None,
+                 "parts": [{k: p.get(k) for k in ("key", "score")} for p in (v["score"] or {}).get("parts") or []],
+                 "avg7": {k: a7.get(k) for k in ("bedtime", "wake", "efficiency_pct", "asleep_min")} if a7 else None}
+    card = {"type": "sleep", "date": v["date"].isoformat(), "main": {k: m.get(k) for k in SLEEP_MAIN} if m else None,
             "score": (v["score"] or {}).get("value"), "need_min": (v["score"] or {}).get("need_min"),
             "avg7_asleep_min": (v["baseline"].get("avg7") or {}).get("asleep_min"),
             "notes": [{k: n[k] for k in ("key", "tone")} for n in v["notes"]],
             "actions": [{"kind": "open", "page": "sleep"}] if m else []}
+    if v2 and m:
+        card["actions"].append({"kind": "send", "key": "explain_sleep"})
+    return {**card, **extra}
 
 
 def _actions(buttons) -> dict:
@@ -286,7 +335,27 @@ def _build_v2(conn, uid: int, kind: str, a: dict) -> dict:
         return cards_food.recipe_list(conn, uid, a.get("slot"))
     if kind == "templates":
         return cards_food.templates(conn, uid)
-    return cards_food.shopping(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
+    if kind == "shopping":
+        return cards_food.shopping(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
+    day = _day(conn, uid, a.get("date"))
+    body = {
+        "recovery": lambda: cards_body.recovery(conn, uid, day),
+        "strain": lambda: cards_body.strain(conn, uid, day),
+        "stress": lambda: cards_body.stress(conn, uid, day),
+        "healthspan": lambda: cards_body.healthspan(conn, uid),
+        "trend": lambda: cards_body.trend(conn, uid, a.get("metric"), day, a.get("days")),
+        "weight": lambda: cards_body.weight(conn, uid, day, a.get("days")),
+        "lab": lambda: cards_body.lab(conn, uid, a.get("metric")),
+        "supplements": lambda: cards_body.supplements(conn, uid, day),
+        "water": lambda: cards_body.water(conn, uid, day),
+        "journal": lambda: cards_body.journal(conn, uid, a.get("metric"), day, a.get("days")),
+        "report": lambda: cards_body.report(conn, uid, a.get("range"), day),
+        "hr_zones": lambda: cards_body.hr_zones(conn, uid, day, a.get("days")),
+        "vo2max": lambda: cards_body.vo2max(conn, uid, day, a.get("days")),
+        "monitor": lambda: cards_body.monitor(conn, uid, day),
+        "data_status": lambda: cards_body.data_status(conn, uid),
+    }
+    return body[kind]()
 
 
 def _jsonable(v):
@@ -320,7 +389,7 @@ def build(conn: psycopg.Connection, uid: int, a: dict, v2: bool = False, auto: b
     elif kind == "muscle":
         card = _muscle(conn, uid, a.get("range"))
     elif kind == "sleep":
-        card = _sleep(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
+        card = _sleep(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None, v2)
     else:
         card = _metric(conn, uid, a.get("metric"), _day(conn, uid, a.get("date")), a.get("days"))
     return plain({"v": 1, **card})
@@ -354,8 +423,10 @@ def spec_key(a: dict) -> tuple:
 def summary(card: dict) -> str:
     """The tool result the model gets (AI-facing): what is on screen, so it can refer to it without repeating it."""
     t = card["type"]
-    if t in TYPES_V2:
+    if t in FOOD_TYPES:
         return cards_food.summary(card)
+    if t in BODY_TYPES:
+        return cards_body.summary(card)
     if t == "actions":
         return f"已显示 {len(card['actions'])} 个按钮；用户点了会作为一条新消息发回。"
     if t == "training":

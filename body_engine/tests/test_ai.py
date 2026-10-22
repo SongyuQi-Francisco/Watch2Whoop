@@ -688,6 +688,37 @@ def test_v2_meal_card_after_a_log_can_undo(dsn, world, monkeypatch, v2):
         assert card["type"] == "meal" and {"kind": "send", "key": "undo_meal"} not in card["actions"]
 
 
+def test_v2_body_cards_build_without_data(dsn, world, v2):
+    """Every body card builds for a user with (almost) no data, or fails with a ValueError the model can read."""
+    ids, _ = world
+    with db(dsn) as c:
+        today = queries.local_today(c, ids["A"])
+        c.execute("""INSERT INTO daily_scores (user_id, date, recovery, strain, algo_version) VALUES (%s, %s, 71, 9.5, 'test')
+                     ON CONFLICT (user_id, date) DO UPDATE SET recovery = 71, strain = 9.5""", (ids["A"], today))
+        built = {}
+        for t in cards.BODY_TYPES + ("sleep",):
+            a = {"type": t, "date": None, "metric": {"trend": "hrv", "lab": "uric_acid"}.get(t), "days": None, "range": None}
+            try:
+                built[t] = cards.build(c, ids["A"], a, v2=True)
+            except ValueError as e:
+                built[t] = str(e)
+        assert isinstance(built["lab"], str) and isinstance(built["water"], str), built   # no readings; water flag off
+        for t in set(cards.BODY_TYPES) - {"lab", "water"}:
+            card = built[t]
+            assert isinstance(card, dict) and card["type"] == t, (t, card)
+            assert json.loads(json.dumps(card)) == card   # plain JSON
+            assert cards.summary(card).startswith("已显示"), t
+            assert all(a["kind"] == "send" and a["key"] in cards.SEND_KEYS or a["kind"] == "open" and a["page"] in cards.OPEN_PAGES
+                       for a in card["actions"]), t
+        assert built["recovery"]["recovery"] == 71 and built["recovery"]["trend"]["series"]["recovery"]["values"][-1] == 71
+        assert built["strain"]["trend"]["series"]["strain"]["values"][-1] == 9.5
+        assert not {t["key"] for t in built["data_status"]["types"]} & {"ecg", "heartbeats"}
+        with pytest.raises(ValueError):
+            cards.build(c, ids["A"], {"type": "trend", "metric": "not_a_metric"}, v2=True)
+        with pytest.raises(ValueError):
+            cards.build(c, ids["A"], {"type": "recovery"})   # v2 off
+
+
 def test_subscription_users_get_redirect(client, world, setup, monkeypatch):
     ids, tok = world
     monkeypatch.setenv("BODY_ASSISTANT_USER_ID", str(ids["C"]))

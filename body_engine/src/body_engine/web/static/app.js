@@ -1400,20 +1400,24 @@
     return ` <span class="muted">${esc(v)}</span>`;
   };
   function healthspanSheet(h) {
+    openSheet(tr("身体年龄"), `${historySvg(h.history)}
+      ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
+      ${healthspanDetailHtml(h)}`);
+  }
+  // Each item's contribution in years, grouped by domain (the sheet above, Jarvis' body age card)
+  function healthspanDetailHtml(h) {
     const cs = h.contributors || [], max = Math.max(0.5, ...cs.map((c) => Math.abs(c.years || 0)));
     const groups = new Map();
     for (const c of cs) { const g = c.category || "other"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c); }
     const lack = Array.isArray(h.insufficient) ? h.insufficient : [];
-    openSheet(tr("身体年龄"), `${historySvg(h.history)}
-      ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
-      ${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
+    return `${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
         const y = c.years || 0, w = (Math.abs(y) / max) * 50;
         const partial = c.coverage === "possibly_incomplete" ? ` <span class="badge mid" style="white-space:nowrap">${esc(tr("记录可能不全"))}</span>` : "";   // #210
         return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}${partial}</span>
           <span class="y ${y > 0 ? "bad" : y < 0 ? "good" : "muted"}">${tr("{n} 年", { n: signed(y) })}</span></div>
           <div class="dbar"><span class="${y > 0 ? "older" : "younger"}" style="width:${w.toFixed(1)}%"></span></div></div>`;
       }).join("")}`).join("")}
-      ${lack.length ? `<div class="cat" style="margin-top:16px">${tr("数据不足")}</div>${tags(lack.map((x) => badge("plain", x.label)))}` : ""}`);
+      ${lack.length ? `<div class="cat" style="margin-top:16px">${tr("数据不足")}</div>${tags(lack.map((x) => badge("plain", x.label)))}` : ""}`;
   }
   function healthspanHtml(h) {
     if (!h) return "";
@@ -1445,6 +1449,10 @@
       optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`)]);
     const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("报告周期")}">${[["week", tr("周报")], ["month", tr("月报")]].map(([k, t]) => `<button data-rperiod="${k}" aria-pressed="${k === p}">${t}</button>`).join("")}</div></div>`;
     if (!r?.current) return seg + `<div class="empty">${tr("暂无")}</div>`;
+    return seg + reportBodyHtml(r) + behaviorHtml(ja);
+  }
+  // The report's head, highlights and tiles (the report page above, Jarvis' report card)
+  function reportBodyHtml(r) {
     const cur = r.current, ch = { ...(r.change || {}), __weight: cur.weight?.change_kg };
     const prevBed = r.previous_values?.sleep?.avg_bedtime;
     const cards = REPORT_CARDS.map(([label, get, fmt, getCh, fmtCh, good]) => {
@@ -1456,9 +1464,9 @@
       return `<div class="mini rep-card"><span class="tile-label">${label}</span><span class="v">${fmt(v)}</span>${delta ? `<span class="d ${tone}">${delta}</span>` : ""}</div>`;
     }).join("");
     const finds = (r.journal_findings || []).slice(0, 3);
-    return seg + `<div class="rep-head">${esc(`${shortDay(r.start)} – ${shortDay(r.end)}`)}<span class="muted"> vs ${esc(`${shortDay(r.previous.start)} – ${shortDay(r.previous.end)}`)}</span></div>
+    return `<div class="rep-head">${esc(`${shortDay(r.start)} – ${shortDay(r.end)}`)}${r.previous ? `<span class="muted"> vs ${esc(`${shortDay(r.previous.start)} – ${shortDay(r.previous.end)}`)}</span>` : ""}</div>
       ${finds.length ? `<div class="card"><ul class="rep-hl">${finds.map((f) => `<li class="row"><span>${esc(f.label)}</span><span class="${f.diff_recovery > 0 ? "good" : f.diff_recovery < 0 ? "bad" : "muted"}">${tr("次日恢复")} ${signed(f.diff_recovery)}</span></li>`).join("")}</ul></div><div style="height:8px"></div>` : ""}
-      <div class="rep-grid">${cards}</div>${behaviorHtml(ja)}`;
+      <div class="rep-grid">${cards}</div>`;
   }
 
   // Behavior insights (WHOOP): each journal item with ≥ 5 "yes" and ≥ 5 "no" days in the last 90 days, and its link to next-day recovery
@@ -2262,6 +2270,21 @@
     return { svg: `<svg class="chart lab-chart" id="lab-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(h.test_name)}">${g}</svg>`, cx, sy };
   }
 
+  // One test in a Jarvis card (flag jarvis_cards_v2): the sheet's head, chart and legend, the last few readings; tap -> the sheet
+  function labCardHtml(h) {
+    const pts = (h.rows || []).filter((r) => r.value != null), dig = labDig(h.rows || []), last = (h.rows || [])[h.rows.length - 1];
+    if (!last) return "";
+    const [tone, word] = LAB_ST[last.status] || ["plain", ""];
+    const ch = pts.length ? labChart(h, pts, dig).svg.replace(/ id="lab-[a-z]+"/g, "") : "";
+    const ref = h.ref_low != null && h.ref_high != null ? `${fmtNum(h.ref_low, dig)}–${fmtNum(h.ref_high, dig)}` : h.ref_high != null ? `≤ ${fmtNum(h.ref_high, dig)}` : h.ref_low != null ? `≥ ${fmtNum(h.ref_low, dig)}` : "";
+    const rows = [...h.rows].reverse().slice(0, 4).map((r) => `<div class="lab-row"><span class="lr-d">${esc(labDay(r.collected_on))}</span>
+        <span class="lr-v">${r.value != null ? fmtNum(r.value, dig) : esc(r.value_text || "—")}${r.value != null && r.unit ? `<small> ${esc(r.unit)}</small>` : ""}</span>
+        <span class="lr-t">${labTags(r)}</span><span class="lr-c">${labDelta(r, h.good_direction, dig)}</span></div>`).join("");
+    return `<div class="xp-cur"><span class="xp-v">${last.value != null ? fmtNum(last.value, dig) : esc(last.value_text || "—")}${last.value != null && h.unit ? `<small>${esc(h.unit)}</small>` : ""}</span>
+        ${word ? badge(tone, word) : ""}</div>${tags([badge("plain", labDay(last.collected_on)), labTags(last)])}${ch}
+      <div class="legend"><span><i class="k-lab"></i>${tr("化验")}</span><span><i class="k-home"></i>${tr("家测")}</span>${ref ? `<span><i class="tgt-key"></i>${tr("参考")} ${esc(ref)}</span>` : ""}</div>
+      <div class="lab-rows">${rows}</div>`;
+  }
   async function labSheet(key, title) {
     openSheet(title || tr("化验"), `<div class="empty faint">…</div>`);
     let h;
@@ -3799,6 +3822,12 @@
   function goPage(page, card) {
     if (page === "profile") { window.BodyProfile?.open(); return; }   // a Jarvis muscle card without a sex in the profile (#189)
     if (page === "recipe") { goRecipe(card); return; }
+    // Jarvis cards v2 (flag jarvis_cards_v2): the module's own page or sheet
+    if (page === "lab") { if (card?.test_key) labSheet(card.test_key, card.test_name); return; }
+    if (page === "healthspan") { S.owner = S.me.id; S.meSub = null; setTab("me"); return; }
+    if (page === "data_status") { PLUGINS().find((p) => p.openDataStatus)?.openDataStatus(); return; }
+    if (page === "supplements") { load("supps", `/v1/users/${ownerPath()}/supplements`).then(suppSheet).catch((e) => toast(e.message)); return; }
+    if (page === "trends.report") { S.owner = S.me.id; S.trendsMode = "report"; setTab("trends"); return; }
     if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
       S.owner = S.me.id;
       if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }
@@ -3827,6 +3856,22 @@
   };
   // The food page's own pieces for Jarvis' diet cards (ai.js, flag jarvis_cards_v2): the recipe card and the meal names
   window.BodyFood = { recipeCard, slotName: (k) => SLOT_NAME[k] || k };
+  // ... and the Today / Trends / Me pages' own components for Jarvis' body cards, fed with the same data as on the page
+  // (ai/cards_body.py keeps the fields they read). detach(el): their sheets are kept on the element itself, so a
+  // re-render of the page (which empties the sheet registry) does not leave the chat's copies dead.
+  window.BodyCards = {
+    ring, recoveryScale, hm,
+    trend: (key, d, opts) => cardHtml(key, d, opts), recoveryTrend: recoveryTrendHtml, strainTrend: strainTrendHtml,
+    hrZones: hrZonesHtml, stress: stressHtml, monitor: monitorHtml, strainCoach: strainCoachHtml,
+    healthspan: healthspanHtml, healthspanDetail: healthspanDetailHtml, lab: labCardHtml, report: reportBodyHtml, behavior: behaviorHtml,
+    detach(el) {
+      for (const b of el.querySelectorAll("[data-sheet]")) {
+        const fn = SH.get(b.dataset.sheet);
+        b.removeAttribute("data-sheet");
+        if (fn) b.addEventListener("click", (e) => { e.preventDefault(); fn(); });
+      }
+    },
+  };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
   // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per

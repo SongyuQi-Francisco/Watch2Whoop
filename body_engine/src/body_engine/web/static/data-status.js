@@ -160,5 +160,6 @@
       b.onclick = () => { data = null; open(); };
       load().then(updateItem);
     },
+    openDataStatus: () => { data = null; open(); },   // a Jarvis data status card (ai.js, flag jarvis_cards_v2)
   });
 })();
