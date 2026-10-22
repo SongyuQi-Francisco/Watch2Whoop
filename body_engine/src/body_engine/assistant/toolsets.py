@@ -31,14 +31,15 @@ def definition_chars(tools: Iterable[Tool]) -> int:
     return _ts.definition_chars(tools, OPTIONAL_DEFAULTS)
 
 
-def page_groups(page: str | None) -> tuple[str, ...]:
-    """ai/params.PAGE_GROUPS for a Today page id; "<tab>.<sub>" falls back to "<tab>"; unknown or empty = no extra group."""
-    return _ts.context_groups(_cfg(), page)
+def page_groups(page: str | None, per_page: int | None = None) -> tuple[str, ...]:
+    """ai/params.PAGE_GROUPS for a Today page id; "<tab>.<sub>" falls back to "<tab>"; unknown or empty = no extra group.
+    per_page: only the first that many (the fallback AI with ai_parity, params.FALLBACK_PARITY_PAGE_GROUPS)."""
+    return _ts.context_groups(_cfg(), page, per_page)
 
 
-def for_page(tools: Iterable[Tool], page: str | list[str] | None) -> list[Tool]:
+def for_page(tools: Iterable[Tool], page: str | list[str] | None, per_page: int | None = None) -> list[Tool]:
     """In-page chat: core + the groups of the page (or of every page the conversation has been on), then the meta tools."""
-    return _ts.for_context(_cfg(), tools, page)
+    return _ts.for_context(_cfg(), tools, page, per_page)
 
 
 def known_page(page: str | None) -> bool:
@@ -46,14 +47,15 @@ def known_page(page: str | None) -> bool:
     return _ts.known_context(_cfg(), page)
 
 
-def fit_pages(tools: Iterable[Tool], pages: list[str], budget: int) -> list[str]:
+def fit_pages(tools: Iterable[Tool], pages: list[str], budget: int, per_page: int | None = None) -> list[str]:
     """Pages oldest -> newest; drop the oldest until core + their groups + meta fit the budget (the current page stays)."""
-    return _ts.fit_contexts(_cfg(), tools, pages, budget)
+    return _ts.fit_contexts(_cfg(), tools, pages, budget, per_page)
 
 
-def visit_page(tools: Iterable[Tool], pages: list[str], page: str | None, budget: int) -> list[str]:
+def visit_page(tools: Iterable[Tool], pages: list[str], page: str | None, budget: int,
+               per_page: int | None = None) -> list[str]:
     """The conversation's pages after a message from `page` (moved to the end, then trimmed to the budget)."""
-    return _ts.visit_context(_cfg(), tools, pages, page, budget)
+    return _ts.visit_context(_cfg(), tools, pages, page, budget, per_page)
 
 
 def for_mcp(can_write: bool) -> list[Tool]:

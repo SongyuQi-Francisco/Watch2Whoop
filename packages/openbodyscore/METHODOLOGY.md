@@ -73,7 +73,17 @@ Parameter categories:
 - **Design choice** — v1 value, not yet validated: anchors ("typical adult") per item; 180-day window with the last 30
   days weighted ×2 and ≥ 30 days of data; item cap ±4 years; shrinkage × 0.6 for correlated items; total cap ±10
   years; pace of aging over 26 weeks with a 4-week moving average.
-- Known limits: _to be written (#118)._
+- Known limits (more to be written, #118):
+  - The items take whatever the caller measured or recorded. Strength minutes in particular are only the logged
+    sessions: missing records read as fewer minutes. With the anchor at 0 minutes this only removes "younger" credit,
+    it never adds years. Watch2Whoop counts its sources per day and labels an item whose records look incomplete
+    (issue #210); the curve and the conversion here do not change.
+- **v1.2** (`healthspan_params_v12.py`, `hs-v1.2-2026-10-23`; Watch2Whoop uses it since 2026-10-23, while this package's
+  `healthspan_params` stays the v1.1 set and the functions' default): steps, exercise and strength training become one
+  activity domain with one ±4-year cap. Volume = wrist steps + step equivalents of swimming / cycling / rowing (minutes × the cadence of a
+  walk / run at the same MET: 100 steps/min ≈ 3 MET, 130 ≈ 6 MET — CADENCE-Adults; MET from the 2024 Adult Compendium) on the
+  Ding et al. 2025 (Lancet Public Health) step curve under 60; × Momma's strength curve. Heart-rate MVPA becomes a reference only.
+  Full rationale, parameter labels and synthetic examples: section 8.1 of docs/scoring-methodology.en.md.
 
 ## Validation done so far
 - One person's 415-day back-calculation, spot-checked against their diary (fatigue periods, low-blood-sugar days).

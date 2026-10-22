@@ -66,21 +66,23 @@ def definition_chars(tools: Iterable[Tool], optional_defaults: Mapping[str, Any]
                               ensure_ascii=False)) for t in tools)
 
 
-def context_groups(cfg: ToolsetConfig, context: str | None) -> tuple[str, ...]:
-    """cfg.contexts for a context id; "<a>.<b>" falls back to "<a>"; unknown or empty = no extra group."""
+def context_groups(cfg: ToolsetConfig, context: str | None, per_context: int | None = None) -> tuple[str, ...]:
+    """cfg.contexts for a context id; "<a>.<b>" falls back to "<a>"; unknown or empty = no extra group.
+    per_context: only the first that many groups (None = all)."""
     if not context:
         return ()
     if context in cfg.contexts:
-        return cfg.contexts[context]
-    return cfg.contexts.get(context.split(".", 1)[0], ())
+        return cfg.contexts[context][:per_context]
+    return cfg.contexts.get(context.split(".", 1)[0], ())[:per_context]
 
 
-def for_context(cfg: ToolsetConfig, tools: Iterable[Tool], context: str | list[str] | None) -> list[Tool]:
+def for_context(cfg: ToolsetConfig, tools: Iterable[Tool], context: str | list[str] | None,
+                per_context: int | None = None) -> list[Tool]:
     """Core + the groups of the context (or of every context the conversation has been in), in `tools` order so the
     same contexts always give the same list, then the meta tools. Adding a context only inserts tools: the ones already
     sent keep their relative order."""
     contexts = [context] if isinstance(context, str) else (context or [])
-    groups = {g for c in contexts for g in context_groups(cfg, c)}
+    groups = {g for c in contexts for g in context_groups(cfg, c, per_context)}
     return [t for t in tools if t.name in cfg.core or t.group in groups] + cfg.meta
 
 
@@ -89,23 +91,25 @@ def known_context(cfg: ToolsetConfig, context: str | None) -> bool:
     return bool(context) and (context in cfg.contexts or context.split(".", 1)[0] in cfg.contexts)
 
 
-def fit_contexts(cfg: ToolsetConfig, tools: Iterable[Tool], contexts: list[str], budget: int) -> list[str]:
+def fit_contexts(cfg: ToolsetConfig, tools: Iterable[Tool], contexts: list[str], budget: int,
+                 per_context: int | None = None) -> list[str]:
     """Contexts oldest -> newest (the last is the current one). Drop the oldest until core + their groups + meta fit the
     budget; the current one always stays. Dropped groups are still reachable through find_tools."""
     tools = list(tools)
     contexts = list(contexts)
-    while len(contexts) > 1 and definition_chars(for_context(cfg, tools, contexts), cfg.optional_defaults) > budget:
+    while len(contexts) > 1 and definition_chars(for_context(cfg, tools, contexts, per_context),
+                                                 cfg.optional_defaults) > budget:
         contexts = contexts[1:]
     return contexts
 
 
 def visit_context(cfg: ToolsetConfig, tools: Iterable[Tool], contexts: list[str], context: str | None,
-                  budget: int) -> list[str]:
+                  budget: int, per_context: int | None = None) -> list[str]:
     """The conversation's contexts after a message from `context`: a known one moves to the end (most recent), then the
     oldest are dropped while over budget. Moving or re-visiting never changes the tool set; adding or dropping does once."""
     if not known_context(cfg, context):
         return list(contexts)
-    return fit_contexts(cfg, tools, [c for c in contexts if c != context] + [context], budget)
+    return fit_contexts(cfg, tools, [c for c in contexts if c != context] + [context], budget, per_context)
 
 
 def for_listing(cfg: ToolsetConfig, tools: Iterable[Tool], can_write: bool) -> list[Tool]:

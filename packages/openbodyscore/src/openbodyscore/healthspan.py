@@ -6,12 +6,15 @@
    the sum × 0.6 (items are correlated, to avoid double counting), total Δ capped at ±10 years. Body age = chronological age + total Δ.
 4. Pace of aging: one Δ per week, first a 4-week moving average, then regressed against time (years) over the last 26 weeks (all of them if fewer, >= 8 weeks):
    pace = 1 + dΔ/dt (= slope of body age), limited to −1 ~ 3.
-Every function takes `params=` (default: healthspan_params); healthspan_params.override(**changes) builds a modified copy.
+Every function takes `params=` (default: healthspan_params, v1.1); healthspan_params.override(**changes) builds a modified copy.
+v1.2 (healthspan_params_v12) merges steps, exercise and strength training into one activity domain (hr_activity) with one cap;
+the other items are unchanged.
 """
 import math
 from datetime import date, timedelta
 
 from . import healthspan_params as H
+from . import healthspan_params_v12 as H12
 
 
 def weighted_mean(values: dict[date, float], as_of: date, *, params=H) -> tuple[float | None, int]:
@@ -78,6 +81,33 @@ def hr_strength(min_week: float, *, params=H) -> float:
     return _rel(min_week, params.STRENGTH_KNOTS, params.STRENGTH_ANCHOR)
 
 
+def moderate_equiv_minutes(minutes: float, met: float, *, params=H12) -> float:
+    """v1.2 MVPA reference: an activity's minutes counted like a questionnaire (Lee 2022): moderate (3–6 MET) × 1,
+    vigorous (>= 6 MET) × VIGOROUS_FACTOR, light (< 3 MET) not at all."""
+    if met < params.MODERATE_MET:
+        return 0.0
+    return minutes * (params.VIGOROUS_FACTOR if met >= params.VIGOROUS_MET else 1.0)
+
+
+def step_equivalents(minutes: float, met: float, *, params=H12) -> float:
+    """v1.2: the steps a walk / run of the same MET would take in those minutes (CADENCE-Adults: 100 steps/min ≈ 3 MET,
+    130 ≈ 6 MET, linear between, flat above), for exercise the wrist counts almost no steps for. Light activity = 0."""
+    if met < params.MODERATE_MET:
+        return 0.0
+    (m0, s0), (m1, s1) = params.CADENCE_MET_KNOTS
+    return minutes * (s0 + (s1 - s0) * (min(met, m1) - m0) / (m1 - m0))
+
+
+def hr_activity(steps_equiv: float, strength_min_week: float | None, age: float, *, params=H12) -> dict:
+    """v1.2 activity domain: one hazard ratio for steps, exercise and strength training together.
+    volume = wrist steps + step equivalents of exercise the wrist does not count, on the step curve;
+    × the strength-training curve, whose association holds after adjusting for aerobic activity (parameters module).
+    Returns {hr, hr_volume, hr_strength}; the caller caps the domain's years once (ACTIVITY_CAP_YEARS)."""
+    hv = hr_steps(steps_equiv, age, params=params)   # v1.2 step curve when params is v1.2
+    hs = 1.0 if strength_min_week is None else hr_strength(strength_min_week, params=params)
+    return {"hr": hv * hs, "hr_volume": hv, "hr_strength": hs}
+
+
 def _by_age(table: dict, age: float):
     """Linear interpolation at age-band midpoints (the value can be a number or a list of the same length)."""
     pts = sorted(table.items())
@@ -134,9 +164,11 @@ def hr_whtr(whtr: float, *, params=H) -> float:
     return _rel(whtr, params.WHTR_KNOTS, params.WHTR_ANCHOR)
 
 
-def years_from_hr(hr: float, *, params=H) -> float:
+def years_from_hr(hr: float, cap: float | None = None, *, params=H) -> float:
+    """cap: the ±years limit (default ITEM_CAP_YEARS; math.inf gives the uncapped value)."""
+    cap = params.ITEM_CAP_YEARS if cap is None else cap
     y = math.log(hr) / math.log(2) * params.MORTALITY_DOUBLING_YEARS
-    return max(-params.ITEM_CAP_YEARS, min(params.ITEM_CAP_YEARS, y))
+    return max(-cap, min(cap, y))
 
 
 def combine(items: list[dict], *, params=H) -> float:

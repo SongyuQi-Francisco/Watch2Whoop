@@ -18,6 +18,15 @@
   if (IN_APP) document.documentElement.classList.add("in-app");
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
+  // Pictures people uploaded (avatars.js): the picture inside an avatar circle, or the initial. The flag only gates the upload controls.
+  const avInner = (url, name) => window.BodyAvatar?.inner(url, name) ?? esc((name || "?").slice(0, 1).toUpperCase());
+  const avatarsOn = () => !!window.BodyFlags?.on("avatars");
+  // Sync center (flag sync_center, iPhone app with window.Watch2WhoopFeatures.syncCenter): 手机同步 / 数据更新 / 数据状态
+  // become one row that opens the app's native sync center (re-sync, phone / server per type). Elsewhere unchanged.
+  const syncCenterOn = () => IN_APP && !!window.Watch2WhoopFeatures?.syncCenter && !!window.BodyFlags?.on("sync_center");
+  const phoneSyncRow = () => syncCenterOn()
+    ? `<a class="item" href="watch2whoop://sync-center"><span class="row-title">${tr("同步中心")}</span><span class="chev">${ICON.chev}</span></a>`
+    : `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>`;
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view), onTab(tab) after a tab switch; grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
@@ -475,8 +484,8 @@
     $("#day-next").disabled = !past;
     $("#back-today").hidden = !past;
     const btn = $("#who");
-    btn.hidden = S.viewable.length < 2;
-    btn.textContent = (who?.display_name || "?").slice(0, 1).toUpperCase();
+    btn.hidden = S.viewable.length < 2 && !avatarsOn();   // avatars flag: the picture is always at the top right, it opens my profile
+    btn.innerHTML = avInner(who?.avatar, who?.display_name);
     btn.classList.toggle("other", !!who && !who.self);
     const ro = $("#viewing"), other = !!who && !who.self;
     $(".dock").classList.toggle("viewing-other", other);   // no AI chat on someone else's pages
@@ -487,7 +496,7 @@
     }
     window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
   }
-  $("#who").onclick = () => whoSheet();
+  $("#who").onclick = () => (S.viewable.length < 2 && window.BodyProfile ? window.BodyProfile.open() : whoSheet());
 
   // ---- Look-back: switch the date of the dated tabs (in-SPA state + replaceState, no full reload); `tab` jumps to that tab as well
   function setViewDate(day, dir, tab) {
@@ -1400,19 +1409,24 @@
     return ` <span class="muted">${esc(v)}</span>`;
   };
   function healthspanSheet(h) {
+    openSheet(tr("身体年龄"), `${historySvg(h.history)}
+      ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
+      ${healthspanDetailHtml(h)}`);
+  }
+  // Each item's contribution in years, grouped by domain (the sheet above, Jarvis' body age card)
+  function healthspanDetailHtml(h) {
     const cs = h.contributors || [], max = Math.max(0.5, ...cs.map((c) => Math.abs(c.years || 0)));
     const groups = new Map();
     for (const c of cs) { const g = c.category || "other"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(c); }
     const lack = Array.isArray(h.insufficient) ? h.insufficient : [];
-    openSheet(tr("身体年龄"), `${historySvg(h.history)}
-      ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
-      ${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
+    return `${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
         const y = c.years || 0, w = (Math.abs(y) / max) * 50;
-        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}</span>
+        const partial = c.coverage === "possibly_incomplete" ? ` <span class="badge mid" style="white-space:nowrap">${esc(tr("记录可能不全"))}</span>` : "";   // #210
+        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}${partial}</span>
           <span class="y ${y > 0 ? "bad" : y < 0 ? "good" : "muted"}">${tr("{n} 年", { n: signed(y) })}</span></div>
           <div class="dbar"><span class="${y > 0 ? "older" : "younger"}" style="width:${w.toFixed(1)}%"></span></div></div>`;
       }).join("")}`).join("")}
-      ${lack.length ? `<div class="cat" style="margin-top:16px">${tr("数据不足")}</div>${tags(lack.map((x) => badge("plain", x.label)))}` : ""}`);
+      ${lack.length ? `<div class="cat" style="margin-top:16px">${tr("数据不足")}</div>${tags(lack.map((x) => badge("plain", x.label)))}` : ""}`;
   }
   function healthspanHtml(h) {
     if (!h) return "";
@@ -1444,6 +1458,10 @@
       optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`)]);
     const seg = `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("报告周期")}">${[["week", tr("周报")], ["month", tr("月报")]].map(([k, t]) => `<button data-rperiod="${k}" aria-pressed="${k === p}">${t}</button>`).join("")}</div></div>`;
     if (!r?.current) return seg + `<div class="empty">${tr("暂无")}</div>`;
+    return seg + reportBodyHtml(r) + behaviorHtml(ja);
+  }
+  // The report's head, highlights and tiles (the report page above, Jarvis' report card)
+  function reportBodyHtml(r) {
     const cur = r.current, ch = { ...(r.change || {}), __weight: cur.weight?.change_kg };
     const prevBed = r.previous_values?.sleep?.avg_bedtime;
     const cards = REPORT_CARDS.map(([label, get, fmt, getCh, fmtCh, good]) => {
@@ -1455,9 +1473,9 @@
       return `<div class="mini rep-card"><span class="tile-label">${label}</span><span class="v">${fmt(v)}</span>${delta ? `<span class="d ${tone}">${delta}</span>` : ""}</div>`;
     }).join("");
     const finds = (r.journal_findings || []).slice(0, 3);
-    return seg + `<div class="rep-head">${esc(`${shortDay(r.start)} – ${shortDay(r.end)}`)}<span class="muted"> vs ${esc(`${shortDay(r.previous.start)} – ${shortDay(r.previous.end)}`)}</span></div>
+    return `<div class="rep-head">${esc(`${shortDay(r.start)} – ${shortDay(r.end)}`)}${r.previous ? `<span class="muted"> vs ${esc(`${shortDay(r.previous.start)} – ${shortDay(r.previous.end)}`)}</span>` : ""}</div>
       ${finds.length ? `<div class="card"><ul class="rep-hl">${finds.map((f) => `<li class="row"><span>${esc(f.label)}</span><span class="${f.diff_recovery > 0 ? "good" : f.diff_recovery < 0 ? "bad" : "muted"}">${tr("次日恢复")} ${signed(f.diff_recovery)}</span></li>`).join("")}</ul></div><div style="height:8px"></div>` : ""}
-      <div class="rep-grid">${cards}</div>${behaviorHtml(ja)}`;
+      <div class="rep-grid">${cards}</div>`;
   }
 
   // Behavior insights (WHOOP): each journal item with ≥ 5 "yes" and ≥ 5 "no" days in the last 90 days, and its link to next-day recovery
@@ -2261,6 +2279,21 @@
     return { svg: `<svg class="chart lab-chart" id="lab-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(h.test_name)}">${g}</svg>`, cx, sy };
   }
 
+  // One test in a Jarvis card (flag jarvis_cards_v2): the sheet's head, chart and legend, the last few readings; tap -> the sheet
+  function labCardHtml(h) {
+    const pts = (h.rows || []).filter((r) => r.value != null), dig = labDig(h.rows || []), last = (h.rows || [])[h.rows.length - 1];
+    if (!last) return "";
+    const [tone, word] = LAB_ST[last.status] || ["plain", ""];
+    const ch = pts.length ? labChart(h, pts, dig).svg.replace(/ id="lab-[a-z]+"/g, "") : "";
+    const ref = h.ref_low != null && h.ref_high != null ? `${fmtNum(h.ref_low, dig)}–${fmtNum(h.ref_high, dig)}` : h.ref_high != null ? `≤ ${fmtNum(h.ref_high, dig)}` : h.ref_low != null ? `≥ ${fmtNum(h.ref_low, dig)}` : "";
+    const rows = [...h.rows].reverse().slice(0, 4).map((r) => `<div class="lab-row"><span class="lr-d">${esc(labDay(r.collected_on))}</span>
+        <span class="lr-v">${r.value != null ? fmtNum(r.value, dig) : esc(r.value_text || "—")}${r.value != null && r.unit ? `<small> ${esc(r.unit)}</small>` : ""}</span>
+        <span class="lr-t">${labTags(r)}</span><span class="lr-c">${labDelta(r, h.good_direction, dig)}</span></div>`).join("");
+    return `<div class="xp-cur"><span class="xp-v">${last.value != null ? fmtNum(last.value, dig) : esc(last.value_text || "—")}${last.value != null && h.unit ? `<small>${esc(h.unit)}</small>` : ""}</span>
+        ${word ? badge(tone, word) : ""}</div>${tags([badge("plain", labDay(last.collected_on)), labTags(last)])}${ch}
+      <div class="legend"><span><i class="k-lab"></i>${tr("化验")}</span><span><i class="k-home"></i>${tr("家测")}</span>${ref ? `<span><i class="tgt-key"></i>${tr("参考")} ${esc(ref)}</span>` : ""}</div>
+      <div class="lab-rows">${rows}</div>`;
+  }
   async function labSheet(key, title) {
     openSheet(title || tr("化验"), `<div class="empty faint">…</div>`);
     let h;
@@ -2453,7 +2486,7 @@
   const RENDER_me = async () => {
     if (muscleOn()) muscleCtx();   // 我 → 训练设置 row
     if (meSettingsOn() && S.meSub === "settings") {
-      return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true });
+      return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, avatar: S.me.avatar, self: true });
     }
     const [mem, supps, events, d, hs, labs, tlog] = await Promise.all([
       load("memory", memPath()).catch((e) => ({ error: e })),
@@ -2464,7 +2497,7 @@
       load("labs", `/v1/users/${ownerPath()}/labs/summary`).catch((e) => ({ error: e })),
       load("tlog", `/v1/users/${ownerPath()}/training/sparky`).catch(() => null),
     ]);
-    const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true };
+    const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, avatar: S.me.avatar, self: true };
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
     const updatedVal = computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
@@ -2479,20 +2512,20 @@
       ].join("");
       const archiveVal = [supps.error ? null : tr("补剂 {n}", { n: supps.filter((x) => x.status === "active").length }),
         labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
-      return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
+      return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
           <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
         ${healthspanHtml(hs)}
         <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
         ${meSection("", [...(rows.profile || []),
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
-          IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : "",
-          item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
+          IN_APP ? phoneSyncRow() : "",
+          syncCenterOn() ? "" : item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
           S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""])}
         ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
         </div></div>`;
     }
-    return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
+    return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
         <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
       ${healthspanHtml(hs)}
       <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
@@ -2506,11 +2539,11 @@
         ${isSelf() ? langRow() : ""}
         ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
-        ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : ""}
+        ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
-        ${item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
+        ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
       </div></div>
       <div class="version">${esc(tr("me.version", { web: S.version?.web || "", api: S.version?.api || "" }))}</div></div></div>`;
@@ -3061,7 +3094,7 @@
       : `<div class="fd2-foot">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
     return `<div class="card fd-card fd2${m.self ? " fd2-self" : ""}${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
       ${m.self ? `<div class="fd2-mark">${badge("plain", tr("朋友看到的你"))}</div>` : ""}
-      <div class="fd2-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+      <div class="fd2-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
         <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${hero}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${body}${note ? `<p class="fd2-note">${esc(note)}</p>` : ""}${foot}</div>`;
   }
@@ -3081,7 +3114,7 @@
       ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
       : `<div class="fd-cheer">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
     return `<div class="card fd-card${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
-      <div class="fd-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+      <div class="fd-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
         <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${tagsH.length ? `<div class="rcard-tags">${tagsH.join("")}</div>` : ""}${nums}${cheers}</div>`;
   }
@@ -3094,7 +3127,8 @@
     if (board === "activity") return `${tr("负荷比 {r}", { r: fmtNum(s.acwr, 2) })} · ${tr("训练 {n} 天", { n: s.training_days })}`;
     if (board === "lifestyle") return `${tr("按时睡 {n}/{d}", { n: s.on_time, d: s.days })} · ${tr("饮食达标 {n}/{d}", { n: s.food_met, d: s.days })}`;
     if (board === "recomp") return `${tr("{v}%/周", { v: signed(s.rate_pct_week, 2) })} · ${tr("训练量 ×{v}", { v: fmtNum(s.volume_ratio, 2) })} · ${tr("蛋白 {n}/{d}", { n: s.protein_met, d: s.days })}`;
-    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) })   // the change over the board window, not the current gap (that is on the Me page), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
+    // longevity: the change of the body-age gap over the board window, not the current gap (that is on the Me page)
+    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) }), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
     return "";
   }
   async function boardHtml() {
@@ -3105,7 +3139,7 @@
       const ok = r.status === "ok";
       const note = ok ? boardSub(b.board, r.sub) : r.status === "not_shared" ? tr("未共享") : tr("数据不足");
       return `<div class="fd-row${ok ? "" : " off"}${r.self ? " fd-self" : ""}"><span class="fd-rank">${ok ? r.rank : "·"}</span>
-        <span class="fd-av">${esc((r.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-av">${avInner(r.avatar, r.display_name)}</span>
         <span class="fd-rn"><b>${esc(r.self ? tr("who.me", { name: r.display_name }) : r.display_name)}</b><i>${esc(note)}</i></span>
         <span class="fd-sc">${ok ? r.score : "—"}</span>${ok ? `<span class="fd-sbar"><span style="width:${Math.max(2, r.score)}%"></span></span>` : ""}</div>`;
     }).join("");
@@ -3796,6 +3830,13 @@
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
   function goPage(page, card) {
     if (page === "profile") { window.BodyProfile?.open(); return; }   // a Jarvis muscle card without a sex in the profile (#189)
+    if (page === "recipe") { goRecipe(card); return; }
+    // Jarvis cards v2 (flag jarvis_cards_v2): the module's own page or sheet
+    if (page === "lab") { if (card?.test_key) labSheet(card.test_key, card.test_name); return; }
+    if (page === "healthspan") { S.owner = S.me.id; S.meSub = null; setTab("me"); return; }
+    if (page === "data_status") { PLUGINS().find((p) => p.openDataStatus)?.openDataStatus(); return; }
+    if (page === "supplements") { load("supps", `/v1/users/${ownerPath()}/supplements`).then(suppSheet).catch((e) => toast(e.message)); return; }
+    if (page === "trends.report") { S.owner = S.me.id; S.trendsMode = "report"; setTab("trends"); return; }
     if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
       S.owner = S.me.id;
       if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }
@@ -3806,15 +3847,39 @@
     S.owner = S.me.id;
     if (tab === "record" && sub === "journal" && recordsV2()) { setTab("today"); window.BodyJournal.openDay(journalCtx(), viewDay()); return; }   // records_v2: the old 记录 → 日记 link opens the day editor
     if (tab === "record" && sub) S.recSub = sub;
-    if (tab === "food") { S.foodMode = "diet"; S.foodSub = null; }
+    if (tab === "food") { S.foodMode = sub === "shopping" ? "shopping" : "diet"; S.foodSub = sub === "recipes" ? "recipes" : null; }
     if (tab === "trends") S.trendsMode = "metrics";
     setTab(tab);
+  }
+  // A Jarvis recipe card (flag jarvis_cards_v2): the food page with that recipe's sheet (servings, meal, 记 n 份) on top
+  function goRecipe(card) {
+    S.owner = S.me.id; S.foodMode = "diet"; S.foodSub = null;
+    setTab("food");
+    if (card?.id != null) recipeSheet(card.id, card.slot || undefined);
   }
   // The Today page's own SVG charts for plugins (ai.js cards): a line chart on a day axis, and the status card sparkline
   window.BodyCharts = {
     line: (id, dates, values, opts = {}) => tChart(id, dates, [{ type: "avg", values, main: true }, { type: "dots", values }], opts),
     spark: sparkSvg,
     hypno: hypnoSvg,   // the sleep stage timeline (sleep card, Jarvis sleep card)
+  };
+  // The food page's own pieces for Jarvis' diet cards (ai.js, flag jarvis_cards_v2): the recipe card and the meal names
+  window.BodyFood = { recipeCard, slotName: (k) => SLOT_NAME[k] || k };
+  // ... and the Today / Trends / Me pages' own components for Jarvis' body cards, fed with the same data as on the page
+  // (ai/cards_body.py keeps the fields they read). detach(el): their sheets are kept on the element itself, so a
+  // re-render of the page (which empties the sheet registry) does not leave the chat's copies dead.
+  window.BodyCards = {
+    ring, recoveryScale, hm,
+    trend: (key, d, opts) => cardHtml(key, d, opts), recoveryTrend: recoveryTrendHtml, strainTrend: strainTrendHtml,
+    hrZones: hrZonesHtml, stress: stressHtml, monitor: monitorHtml, strainCoach: strainCoachHtml,
+    healthspan: healthspanHtml, healthspanDetail: healthspanDetailHtml, lab: labCardHtml, report: reportBodyHtml, behavior: behaviorHtml,
+    detach(el) {
+      for (const b of el.querySelectorAll("[data-sheet]")) {
+        const fn = SH.get(b.dataset.sheet);
+        b.removeAttribute("data-sheet");
+        if (fn) b.addEventListener("click", (e) => { e.preventDefault(); fn(); });
+      }
+    },
   };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws

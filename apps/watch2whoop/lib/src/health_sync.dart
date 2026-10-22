@@ -108,6 +108,16 @@ class HealthSync {
     await _save();
   }
 
+  /// A line of the app's own (not from the SDK) for the sync log, e.g. the beat-to-beat upload pass (raw_sync.dart).
+  Future<void> note(String msg) async {
+    final t = DateTime.now();
+    recentLog.add('${t.month}/${t.day} ${t.toIso8601String().substring(11, 19)} $msg');
+    if (recentLog.length > _maxLog) recentLog.removeRange(0, recentLog.length - _maxLog);
+    try {
+      await (await SharedPreferences.getInstance()).setStringList(_logKey, recentLog);
+    } catch (_) {}
+  }
+
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_statsKey, stats.value.encode());
@@ -186,6 +196,15 @@ class HealthSync {
       await OpenWearablesHealthSdk.stopBackgroundSync();
       await OpenWearablesHealthSdk.resetAnchors();
     }
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
+
+  /// Forced re-sync (resync.dart): send everything from the start of the day [syncDaysBack] days ago again (0 = all).
+  /// Same sequence as going to "All history": stop (cancels a running pass, which would make the export skip), clear
+  /// every anchor, then start with the range stored, which runs a full export of it (newest first, resumable).
+  Future<void> resyncFrom(int syncDaysBack) async {
+    await OpenWearablesHealthSdk.stopBackgroundSync();
+    await OpenWearablesHealthSdk.resetAnchors();
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
   }
 

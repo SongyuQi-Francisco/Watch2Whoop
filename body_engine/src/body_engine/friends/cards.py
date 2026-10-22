@@ -13,6 +13,7 @@ import psycopg
 
 from .. import auth
 from ..web import views
+from ..avatars import urls as avatar_store
 from . import params as P, store
 
 NUDGE_KINDS = ("clap", "sleep", "train")   # 👏 / 💤 / 💪
@@ -105,11 +106,13 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
     """Friends tab: my own card first (with cheers received in the last 24 hours), then every co-member."""
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (uid,)).fetchone()
     sent, got = _nudges(conn, uid)
-    mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid)}
+    co = co_members(conn, uid)
+    avatars = avatar_store.urls_for(conn, uid, [uid, *(m["id"] for m in co)])
+    mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid), "avatar": avatars.get(uid)}
     members = []
-    for m in co_members(conn, uid):
+    for m in co:
         c = card(conn, uid, m["id"], m["display_name"])
-        members.append({**c, "circles": m["circles"], "sent": sent.get(m["id"], [])})
+        members.append({**c, "circles": m["circles"], "sent": sent.get(m["id"], []), "avatar": avatars.get(m["id"])})
     return {"me": mine, "members": members, "nudge_kinds": list(NUDGE_KINDS),
             "has_circles": conn.execute("SELECT 1 FROM circle_members WHERE user_id = %s", (uid,)).fetchone() is not None}
 

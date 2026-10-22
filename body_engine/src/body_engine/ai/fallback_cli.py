@@ -39,9 +39,16 @@ def _table(s: dict) -> str:
              f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8}  同意  额度卡  Jarvis 用"]
     for u in s["users"]:
         lines.append(f"{u['user_id']:>3}  {u['name'][:10]:<10} ¥{u['spent_cny']:>7.3f} ¥{u['quota_cny']:>5g} {u['calls']:>5} "
-                     f"{u['input_tokens']:>9} {u['output_tokens']:>8}  {'✓' if u['consent'] else '—':<4}  "
+                     f"{u['input_tokens']:>9} {u['output_tokens']:>8}  {_consent(u):<4}  "
                      f"{_cards(u):<6}  {u['uses']}")
     return "\n".join(lines)
+
+
+def _consent(u: dict) -> str:
+    """✓ = agreed on the Jarvis sheet, 一键 = on the one-tap screen / sheet (flag consent_one_tap), — = not agreed."""
+    if not u["consent"]:
+        return "—"
+    return "一键" if u.get("consent_method") == "one_tap" else "✓"
 
 
 def _cards(u: dict) -> str:
