@@ -63,7 +63,7 @@ CONFIRM_EN = {"undo_sparky_entry": "Delete a food entry / strength workout / set
               "delete_supplement": "Delete a supplement and its journal item", "remove_product": "Remove a product",
               "remove_shopping_items": "Remove shopping list items", "remove_staple": "Stop treating a product as a usual item",
               "delete_workout": "Hide a duplicate / wrong workout",
-              "rollback_write": "Roll back an AI change"}
+              "rollback_write": "Roll back an AI change", "delete_custom_exercise": "Delete one of your own exercises"}
 
 
 class ChatError(Exception):

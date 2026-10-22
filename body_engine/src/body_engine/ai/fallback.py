@@ -47,6 +47,7 @@ TOOL_NAMES = (
     "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
+    "add_custom_exercise",   # 「让 Jarvis 补进动作库」 on the muscle load map (#189)
     "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
     # The read tool behind every Today page card (issue #58; tests/test_fallback_coverage.py maps cards -> tools):
     # computed metrics, the 饮食 page and 采购.

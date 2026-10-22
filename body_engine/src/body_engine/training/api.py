@@ -3,6 +3,7 @@ Authorization:
 - Read endpoints require shares scope `training` (per-user restrictions additionally check `exercises`, readiness checks `scores`).
 - Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
 - Muscle load map (`/muscle-load`, `/muscle-load/{muscle}`, rollout flag muscle_load): needs `training` (a friend with the share can look); `/goals` is self-only.
+- Own custom exercises (`/custom-exercises`, rollout flag muscle_load, issue #189): self-only, nobody else ever sees them.
 - Add to plan (`/plan/add-options`, `/plan/add-exercise`, rollout flag exercise_add_to_plan, issue #154) is self-only.
 - Hevy import (`/import/hevy`, rollout flag hevy_import, issue #161) is self-only; uploading needs `write`.
 - Remove a planned exercise (`/plan/remove-exercise`, `/plan/restore-exercise`, issue #172; no flag) is self-only.
@@ -19,7 +20,7 @@ from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
 from ..i18n import L
 from ..rollout import flags
-from . import catalog, goals, hevy_import, history, loads, muscle_load, plan_add, plan_remove, plans, session_log
+from . import catalog, custom, goals, hevy_import, history, loads, muscle_load, plan_add, plan_remove, plans, session_log
 from . import params as P
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
@@ -500,3 +501,52 @@ def save_training_goals(user: str, body: TrainingGoalsIn, conn=Depends(get_conn)
         return goals.save(conn, uid, body.focus_muscles, body.physique_goal)
     except ValueError as e:
         raise HTTPException(422, str(e))
+
+
+# ---------------------------------------------------------------- own custom exercises (issue #189, rollout flag muscle_load)
+class CustomExerciseIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name_zh: str | None = Field(default=None, max_length=custom.MAX_NAME)
+    name_en: str | None = Field(default=None, max_length=custom.MAX_NAME)
+    aliases: list[str] | None = Field(default=None, max_length=custom.MAX_ALIASES)
+    primary_muscles: list[str] | None = Field(default=None, max_length=8)
+    secondary_muscles: list[str] | None = Field(default=None, max_length=8)
+    equipment: list[str] | None = Field(default=None, max_length=8)
+
+
+@router.get("/custom-exercises", dependencies=MUSCLE)
+def list_custom_exercises(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user's own exercises (动作库 → 我的动作) and the muscle / equipment keys the form may use. Self-only."""
+    owner_id = _owner(conn, viewer, user, "training")
+    if owner_id != viewer["id"]:
+        raise HTTPException(403, L("自定义动作只能看自己的", "Custom exercises are private"))
+    return {"exercises": custom.list_mine(conn, owner_id), **custom.options()}
+
+
+@router.post("/custom-exercises", dependencies=MUSCLE)
+def add_custom_exercise(user: str, body: CustomExerciseIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user)
+    try:
+        return custom.add(conn, uid, body.model_dump(), source="manual")
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.patch("/custom-exercises/{cid}", dependencies=MUSCLE)
+def update_custom_exercise(user: str, cid: int, body: CustomExerciseIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user)
+    try:
+        return custom.update(conn, uid, cid, body.model_dump(exclude_unset=True))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@router.delete("/custom-exercises/{cid}", dependencies=MUSCLE)
+def delete_custom_exercise(user: str, cid: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user)
+    try:
+        return custom.delete(conn, uid, cid)
+    except LookupError as e:
+        raise HTTPException(404, str(e))

@@ -869,7 +869,7 @@
   // page's own pages (C.go). The training card reuses the training page's exercise card heads (training-day.js).
   const rich = () => !!window.BodyFlags?.on("jarvis_rich");
   const METRIC = { recovery: tr("恢复"), strain: tr("负荷"), sleep: tr("睡眠"), hrv: "HRV", rhr: tr("静息心率"), weight: tr("体重") };
-  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天"), sleep: tr("睡眠详情") };
+  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天"), sleep: tr("睡眠详情"), profile: tr("设置性别") };
   // sleep card: rule findings (sleep_night/view.py notes, by key) as short labels
   const NOTE = { short_of_need: tr("睡得不够"), weak_duration: tr("时长拉分"), weak_stages: tr("阶段拉分"), weak_consistency: tr("规律性拉分"),
     weak_interruptions: tr("中途醒来拉分"), deep_low: tr("深睡偏少"), rem_low: tr("REM 偏少"), efficiency_low: tr("效率偏低"),

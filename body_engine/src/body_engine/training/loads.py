@@ -99,10 +99,11 @@ def clear_history_cache(owner_id: int | None = None) -> None:
 
 
 class Index:
-    """Catalog lookups for logged exercises: normalized name / alias -> slug, SparkyFitness id -> slug (exercise_meta)."""
+    """Catalog lookups for logged exercises: normalized name / alias -> slug, SparkyFitness id -> slug (exercise_meta).
+    The owner's own custom exercises (custom.py) are in it too, after the shared rows (their names never clash: custom.add refuses)."""
 
     def __init__(self, conn: psycopg.Connection, owner_id: int):
-        rows = catalog.catalog_rows(conn)
+        rows = catalog.rows_for(conn, owner_id)
         self.rows = {r["slug"]: r for r in rows}
         self.by_name: dict[str, str] = {}
         for r in rows:   # curated rows first so a shared alias resolves to the curated exercise

@@ -58,7 +58,8 @@ PAGE_MAX_LEN = 40
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Judged by the real tool name, also behind run_write_tool.
 ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
-                  "delete_supplement", "remove_product", "remove_shopping_items", "remove_staple", "delete_workout", "rollback_write"}
+                  "delete_supplement", "remove_product", "remove_shopping_items", "remove_staple", "delete_workout", "rollback_write",
+                  "delete_custom_exercise"}
 
 # Size budgets in characters of {name, description, relaxed input_schema} JSON (what tools/list sends).
 # Before #99 all 106 tools were sent every time: 58,539 chars.

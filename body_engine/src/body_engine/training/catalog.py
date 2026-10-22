@@ -1,7 +1,8 @@
 """Exercise catalog management, bilingual search, and biomechanical alternative recommendation (Training V2).
 
 Maintains `exercise_catalog` (shared read-only dictionary) and joins it with each user's `exercise_meta`
-(banned / caution / active, personal cues, reason, app_exercise_id).
+(banned / caution / active, personal cues, reason, app_exercise_id). For a known user the user's own custom exercises
+(custom.py, issue #189) are appended to the shared rows (rows_for); nobody else sees them.
 """
 import functools
 import json
@@ -374,8 +375,16 @@ def catalog_rows(conn: psycopg.Connection) -> list[dict]:
     return hit[1]
 
 
+def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
+    """The shared catalog plus the user's own custom exercises (only the shared rows for None)."""
+    if user_id is None:
+        return catalog_rows(conn)
+    from . import custom
+    return catalog_rows(conn) + custom.rows(conn, user_id)
+
+
 def _load_catalog_and_meta(conn: psycopg.Connection, user_id: int | None, with_meta: bool = True) -> tuple[list[dict], dict[str, dict]]:
-    cat_rows = catalog_rows(conn)
+    cat_rows = rows_for(conn, user_id if with_meta else None)
     meta_by_ref: dict[str, dict] = {}
     if user_id is not None and with_meta:
         for m in records_store.list_exercises(conn, user_id):

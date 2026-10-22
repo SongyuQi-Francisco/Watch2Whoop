@@ -1,11 +1,13 @@
 """AI assistant tool specs for training history and Training V2 (wrapped into Tool and registered by assistant/tools.py):
-read the calendar / a day, correct or hide a watch workout (overrides.py), exercise catalog, weekly splits, plan management, exercise swap, day changes (day_overrides.py)."""
+read the calendar / a day, correct or hide a watch workout (overrides.py), exercise catalog, weekly splits, plan management, exercise swap, day changes (day_overrides.py),
+the muscle load map and the user's own custom exercises (custom.py, rollout flag muscle_load)."""
 from datetime import date, datetime, timedelta
 
 from .. import auth
 from ..rollout import flags
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, day_overrides, goals, history, loads, muscle_load, overrides, params as P, plans, session_log
+from . import catalog_data as CD
+from . import catalog, custom, day_overrides, goals, history, loads, muscle_load, overrides, params as P, plans, session_log
 
 
 def _d(s: str | None) -> date | None:
@@ -78,15 +80,42 @@ def _muscle_load(conn, uid, a):
         r = m["ranges"][rng]
         rows.append({"key": m["key"], "name": m["name"], "sets": r["sets"], "kg": r["volume_kg"], "prev_week_sets": m["prev_week"]["sets"],
                      "target": f"{m['target']['low']}-{m['target']['high']}", "status": m["status"][basis],
+                     "sport_min": m["sport_min"][rng] or None,
                      "trained_today": m["trained_today"] or None, "last": m["last"] and m["last"]["date"]})
     out = {"range": rng, "today": full["today"], "week_start": full["week_start"], "muscles": rows,
-           "note": "sets=有效组数（主要肌群 1 组计 1，次要计 0.5，热身不算）；status 按本周（range=last7 时近 7 天）对比 target 每周推荐组数：none 没练 / low 偏少 / ok 合适 / high 偏多；kg=组×次×重量",
+           "sports": [{k: x[k] for k in ("name", "min", "mapped")} for x in full["sports"][rng]] or None,
+           "note": "sets=有效组数（主要肌群 1 组计 1，次要计 0.5，热身不算）；status 按本周（range=last7 时近 7 天）对比 target 每周推荐组数：none 没练 / low 偏少 / ok 合适 / high 偏多；kg=组×次×重量；"
+                   "sport_min=手表运动（篮球、游泳…）练到这块的分钟（主要 1、次要 0.5），单独一层，不算组数、不影响 status；sports=这段时间的运动（mapped=false 不计入肌群）；"
+                   "unmatched_exercises=没对上动作库、没计入的动作，可用 add_custom_exercise 补",
            "source": full["source"], "unmatched_exercises": full["unmatched"] or None}
     if viewer == uid:   # the goals are not part of the training share: only the person themself
         g = goals.get(conn, uid)
         out["focus_muscles"] = g["focus_muscles"]
         out["physique_goal"] = g["physique_goal"]
     return out
+
+
+def _add_custom_exercise(conn, uid, a):
+    flags.guard(conn, uid, "muscle_load")
+    return custom.add(conn, uid, a, source="ai")
+
+
+def _delete_custom_exercise(conn, uid, a):
+    flags.guard(conn, uid, "muscle_load")
+    cid = custom.id_of(a["exercise"]) or (int(a["exercise"]) if str(a["exercise"]).isdigit() else None)
+    if cid is None:   # by name: only among the user's own
+        hit = next((x for x in custom.list_mine(conn, uid) if catalog.norm(a["exercise"]) in
+                    {catalog.norm(n) for n in [x["name_zh"], x["name_en"], *x["aliases"]] if n}), None)
+        if hit is None:
+            raise ValueError(f"你的自定义动作里没有「{a['exercise']}」")
+        cid = hit["id"]
+    try:
+        return custom.delete(conn, uid, cid)
+    except LookupError as e:
+        raise ValueError(str(e)) from None
+
+
+MUSCLES = {"type": "array", "items": {"type": "string"}, "description": "动作库肌群 key：" + "/".join(CD.MUSCLE_ZH)}
 
 
 def _get_exercise(conn, uid, a):
@@ -186,10 +215,31 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_muscle_load",
-        description="肌肉负荷：每块肌群的有效组数、训练量(kg)、上周组数、推荐区间和偏少/合适/偏多、最近练的日期；自己的另带重点肌群和体态目标。调计划前先看，改动要用户确认。",
+        description="肌肉负荷：每块肌群的有效组数、训练量(kg)、上周组数、推荐区间和偏少/合适/偏多、最近练的日期、运动分钟、没对上动作库的动作；自己的另带重点肌群和体态目标。调计划前先看，改动要用户确认。",
         input_schema=_schema({"user": USER, "range": nullable("string", "today / week(默认，周一起) / last7", enum=["today", "week", "last7", None])}),
         handler=_muscle_load,
         group="training", scope="training",
+    ),
+    dict(
+        name="add_custom_exercise",
+        description="把动作库没有的动作加进用户自己的动作库（如 get_muscle_load 的 unmatched_exercises），之后这些组会计入肌肉图。肌群按动作判断，拿不准先问用户。",
+        input_schema=_schema({
+            "name_zh": {"type": "string", "description": "和记录里的名字一致"},
+            "name_en": _n("string"),
+            "aliases": {"type": ["array", "null"], "items": {"type": "string"}},
+            "primary_muscles": MUSCLES,
+            "secondary_muscles": {"type": ["array", "null"], "items": {"type": "string"}},
+            "equipment": {"type": ["array", "null"], "items": {"type": "string"}, "description": "barbell/dumbbell/cable/machine/body only…"},
+        }),
+        handler=_add_custom_exercise,
+        group="training", scope="training", writes=True,
+    ),
+    dict(
+        name="delete_custom_exercise",
+        description="删除用户自己的一个自定义动作（slug my_N 或名字）。",
+        input_schema=_schema({"exercise": {"type": "string"}}),
+        handler=_delete_custom_exercise,
+        group="training", scope="training", writes=True,
     ),
     dict(
         name="get_exercise",

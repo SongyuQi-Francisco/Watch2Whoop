@@ -3343,6 +3343,8 @@
     }, ex);
   }
 
+  // 我的动作 (issue #189): the user's own exercises, with the muscle load map's flag; only for oneself
+  const customOn = () => isSelf() && (S.flags || []).includes("muscle_load") && !!window.BodyCustomExercises;
   // The library's search text, muscle filter and scroll position outlive the detail sheet opened from it: 「返回」 re-opens the list as it was (#154).
   const exNav = window.BodyExercisePlan.createNav();
   async function exerciseLibrarySheet(keep) {
@@ -3365,10 +3367,11 @@
     const draw = () => {
       const shown = list;
       $("#sheet-body").innerHTML = `
+        ${customOn() ? `<div class="btns" style="margin:0 0 8px"><button class="btn" id="ex-mine">${tr("我的动作")}</button></div>` : ""}
         <input class="search" id="ex-q" type="search" placeholder="${esc(tr("搜中英文动作名、别名…"))}" value="${esc(q)}" style="margin-bottom:8px">
         <div class="tags" style="margin-bottom:10px">${GROUPS_FILTER.map(([k, t]) => `<button class="tag ${grp === k ? "on" : ""}" data-exgrp="${k}"><span>${t}</span></button>`).join("")}</div>
         <div class="card list" id="ex-list">${shown.map((x) => `<button class="item" data-ex-open="${esc(x.slug)}">
-          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(x.name_zh)} ${x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : ""}</div>
+          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(x.name_zh)} ${x.source === "user_custom" ? badge("plain", tr("我的")) : ""}${x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : ""}</div>
             <div class="small muted">${esc([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])].join(" · "))}</div></div>
           <span class="chev">${ICON.chev}</span></button>`).join("") || `<div class="empty faint">${tr("没有匹配的动作")}</div>`}</div>`;
       const root = $("#sheet-body");
@@ -3376,6 +3379,12 @@
       for (const b of $$("[data-ex-open]", root)) b.onclick = () => {
         exNav.set({ q, grp, scroll: $("#sheet .sheet-card").scrollTop });
         exerciseDetailSheet(b.dataset.exOpen, () => exerciseLibrarySheet(true));
+      };
+      const mine = $("#ex-mine", root);
+      if (mine) mine.onclick = () => {
+        exNav.set({ q, grp, scroll: $("#sheet .sheet-card").scrollTop });
+        window.BodyCustomExercises.openList({ api, esc, openSheet, closeSheet, toast, setBack, back: () => exerciseLibrarySheet(true),
+          onChange: () => { for (const k of Object.keys(S.data)) if (/^(exlib|mload)/.test(k)) delete S.data[k]; } });
       };
       const inp = $("#ex-q", root);
       if (inp) {
@@ -3747,6 +3756,7 @@
 
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
   function goPage(page, card) {
+    if (page === "profile") { window.BodyProfile?.open(); return; }   // a Jarvis muscle card without a sex in the profile (#189)
     if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
       S.owner = S.me.id;
       if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }

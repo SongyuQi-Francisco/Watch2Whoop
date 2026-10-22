@@ -48,6 +48,7 @@ READ = {
     "training/exercises/{x}": ["get_exercise"],
     "training/muscle-load": ["get_muscle_load"],   # muscle load map (flag muscle_load); the card and the details are the same tool
     "training/muscle-load/{x}": ["get_muscle_load"],
+    "training/custom-exercises": ["search_exercises"],   # own exercises (#189): search_exercises lists them too (source user_custom)
     "training/session": ["get_week_plan", "get_training_day"],   # FB-5: today's cards = the plan; the page's draft is in get_training_day
     "diet-profile": ["get_diet_profile", "get_nutrition_goals"],
     "meal-templates": ["get_meal_templates"],

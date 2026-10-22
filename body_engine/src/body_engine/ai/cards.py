@@ -36,7 +36,7 @@ METRICS = {
     "rhr": ("metrics", "resting_heart_rate", "bpm", 0),
     "weight": ("weight", "body_mass", "kg", 1),
 }
-OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep")   # sleep: that night's sleep detail page
+OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep", "profile")   # sleep: that night's sleep detail page; profile: 个人资料
 SEND_KEYS = ("adjust_training", "next_meal", "explain_trend", "analyze_muscles")
 MAX_DAYS, DEFAULT_DAYS = 90, 14
 MAX_BUTTONS, MAX_LABEL, MAX_TEXT = 4, 24, 200
@@ -166,9 +166,12 @@ def _muscle(conn, uid: int, rng) -> dict:
     m = muscle_load.compute(conn, uid)
     basis = "last7" if rng == "last7" else "week"
     rows = [{"key": x["key"], "name": x["name"], "sets": x["ranges"][rng]["sets"], "kg": x["ranges"][rng]["volume_kg"],
-             "status": x["status"][basis], "today": x["trained_today"]} for x in m["muscles"]]
+             "status": x["status"][basis], "today": x["trained_today"], "sport_min": x["sport_min"][rng]} for x in m["muscles"]]
+    actions = [{"kind": "open", "page": "record.training"}, {"kind": "send", "key": "analyze_muscles"}]
+    if not m["sex"]:   # drawn as the male body until the profile says otherwise (#189)
+        actions.append({"kind": "open", "page": "profile"})
     return {"type": "muscle", "range": rng, "sex": m["sex"], "week_start": m["week_start"], "muscles": rows,
-            "actions": [{"kind": "open", "page": "record.training"}, {"kind": "send", "key": "analyze_muscles"}]}
+            "sports": [{k: x[k] for k in ("type", "name", "min")} for x in m["sports"][rng]], "actions": actions}
 
 SLEEP_MAIN = ("start", "end", "in_bed_min", "asleep_min", "efficiency_pct", "composition", "stages")
 
@@ -239,7 +242,9 @@ def summary(card: dict) -> str:
         return f"已显示 {card['date']} 训练卡（{what}）。不要用文字复述卡片内容。"
     if t == "muscle":
         low = "、".join(x["name"] for x in card["muscles"] if x["status"] in ("none", "low"))[:60]
-        return f"已显示肌肉负荷图（{card['range']}）。偏少 / 没练：{low or '无'}。不要用文字复述卡片里的数字。"
+        sports = "、".join(f"{x['name']} {x['min']} 分钟" for x in card.get("sports") or [])[:80]
+        return (f"已显示肌肉负荷图（{card['range']}）。偏少 / 没练（按力量组数）：{low or '无'}。"
+                f"{f'运动（单独一层，不算组数）：{sports}。' if sports else ''}不要用文字复述卡片里的数字。")
     if t == "sleep":
         m = card["main"]
         if not m:
