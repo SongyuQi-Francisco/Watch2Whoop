@@ -46,10 +46,11 @@ class GeminiAdapter(Adapter):
         client = genai.Client(api_key=self.api_key, http_options=types.HttpOptions(timeout=TIMEOUT_S * 1000))
         config = types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=MAX_OUTPUT_TOKENS,
-            tools=[types.Tool(function_declarations=[
+            tools=(([types.Tool(function_declarations=[
                 types.FunctionDeclaration(name=t.name, description=t.description, parameters_json_schema=t.input_schema)
-                for t in tools])]
-            + ([types.Tool(google_search=types.GoogleSearch()), types.Tool(url_context=types.UrlContext())] if self.web else []),
+                for t in tools])] if tools else [])   # none for the history fold call (ai/context.py)
+                + ([types.Tool(google_search=types.GoogleSearch()), types.Tool(url_context=types.UrlContext())] if self.web else []))
+            or None,
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
         parts: list[types.Part] = []
         usage, finish = None, None

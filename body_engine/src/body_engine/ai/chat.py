@@ -4,6 +4,8 @@ One turn: user message -> model (streamed text) -> does it want a tool?
   - read tool: run directly (run_tool, same authorization as MCP: reading another user's data needs shares, writing only for the caller), result goes back to the model, continue;
   - write tool: runs directly, except deleting / undoing (ALWAYS_CONFIRM): not run, recorded as pending, a confirm event is sent so the frontend stops; user confirms -> run, user declines -> tell the model "not written", then keep looping.
 Before each model call the budget is checked (this user, this provider, this month); over budget stops with a notice. Each model call records ai_usage (tokens and estimated cost).
+No conversation is ever too long to continue (issue #53): past a budget the older turns are folded into a stored summary
+(context.py, _context); the model gets the summary + the recent turns, the user still sees every message.
 No default provider (and no body butler link): the fallback AI (fallback.py, the admin's DeepSeek) with its own CNY quota, rate limits,
 short prompt and tool subset that can only read the caller's own data.
 All queries carry user_id = the logged-in person: conversations, pending writes, providers and keys never leak to anyone else.
@@ -18,6 +20,7 @@ conversation, text, tool, confirm, usage, notice, error, done.
 """
 import base64
 import binascii
+import copy
 import json
 from typing import Iterator
 
@@ -27,14 +30,13 @@ from psycopg.types.json import Jsonb
 from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..i18n import L, is_en
-from . import adapters, catalog, choice, crypto, fallback, prompt, providers
+from . import adapters, catalog, choice, context, crypto, fallback, prompt, providers
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
 from .params import ALWAYS_CONFIRM  # only deleting / undoing asks first (tests patch it here)
 
 MAX_ROUNDS = 8                 # Max model calls chained for one user message (stops the tool loop from running forever)
-MAX_MESSAGES = 160             # Max messages in one conversation; beyond it ask the user to start a new one (history is append-only, longer costs more)
 MAX_TOOL_RESULT_CHARS = 30000  # Truncate overly long tool results (same order of magnitude as Claude Code's MAX_MCP_OUTPUT_TOKENS)
 MAX_IMAGES = 8                 # photos, or the frames the page takes from one video
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -112,7 +114,7 @@ def check_budget(conn: psycopg.Connection, user_id: int, provider: dict) -> tupl
     return spent, budget
 
 
-def _record_usage(conn, user_id, provider, conv_id, usage) -> float:
+def _record_usage(conn, user_id, provider, conv_id, usage, purpose: str = "chat") -> float:
     """Returns the cost in the provider's budget currency: USD for the user's own providers, CNY for the fallback
     (cost_usd stays 0 there: it is not the user's money and must not count against their own budgets)."""
     if fallback.is_fallback(provider):
@@ -121,10 +123,10 @@ def _record_usage(conn, user_id, provider, conv_id, usage) -> float:
         cost = cost_usd = catalog.cost_usd(provider["model"], usage, provider["price_in_per_mtok"], provider["price_out_per_mtok"])
         cost_cny = None
     conn.execute("""INSERT INTO ai_usage (user_id, provider_id, conversation_id, kind, model, input_tokens, output_tokens,
-                      cache_read_tokens, cache_write_tokens, cost_usd, cost_cny) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                      cache_read_tokens, cache_write_tokens, cost_usd, cost_cny, purpose) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                  (user_id, provider["id"], conv_id, provider["kind"], provider["model"], usage.get("input_tokens", 0),
                   usage.get("output_tokens", 0), usage.get("cache_read_tokens", 0), usage.get("cache_write_tokens", 0),
-                  round(cost_usd, 6), round(cost_cny, 6) if cost_cny is not None else None))
+                  round(cost_usd, 6), round(cost_cny, 6) if cost_cny is not None else None, purpose))
     return cost
 
 
@@ -164,9 +166,48 @@ def _add_message(conn, conv_id: int, user_id: int, role: str, content: list, nat
     return mid
 
 
-def _history(conn, conv_id: int, user_id: int) -> list[dict]:
-    return conn.execute("""SELECT role, content, native, native_key FROM ai_messages
-                           WHERE conversation_id = %s AND user_id = %s ORDER BY id""", (conv_id, user_id)).fetchall()
+def _history(conn, conv_id: int, user_id: int, after: int | None = None) -> list[dict]:
+    """Messages after `after` (the summary's last message id), oldest first."""
+    return conn.execute("""SELECT id, role, content, native, native_key FROM ai_messages
+                           WHERE conversation_id = %s AND user_id = %s AND id > %s ORDER BY id""",
+                        (conv_id, user_id, after or 0)).fetchall()
+
+
+def _context(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter):
+    """What the next model call sees (context.py): the system prompt with the stored summary, and the messages after it.
+    Over the budget, the older turns are folded into the summary first (one tools-less call, billed like any other: usage
+    event + ai_usage purpose 'compact'). Generator: yields that usage event, returns (system, history)."""
+    fb = fallback.is_fallback(provider)
+    state = conn.execute("SELECT summary, summary_upto FROM ai_conversations WHERE id = %s AND user_id = %s",
+                         (conv["id"], viewer["id"])).fetchone()
+    summary = state["summary"]
+    history = _history(conn, conv["id"], viewer["id"], state["summary_upto"])
+    cut = context.fold_point(history, fb)
+    if cut is not None:
+        request = context.fold_request(summary, history[:cut])
+        try:
+            if fb:
+                spent, budget = fallback.precheck(conn, viewer["id"], context.FOLD_SYSTEM, request, [])
+            else:
+                spent, budget = check_budget(conn, viewer["id"], provider)
+            folder, result = copy.copy(adapter), None
+            folder.web = False   # no tools at all, not even the vendor's web search
+            for kind, val in folder.stream_turn(context.FOLD_SYSTEM, request, []):
+                if kind == "result":
+                    result = val
+        except (ChatError, adapters.AdapterError):
+            result = None   # go on with the old summary + the recent turns; the budget check of the real call reports quota
+        if result is not None:
+            cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage, purpose="compact")
+            yield _usage_event(provider, result.usage, cost, spent, budget)
+            new = context.clean_summary(result.text)
+            if new:
+                conn.execute("""UPDATE ai_conversations SET summary = %s, summary_upto = %s, summary_at = now()
+                                WHERE id = %s AND user_id = %s""", (new, history[cut - 1]["id"], conv["id"], viewer["id"]))
+                summary = new
+            conn.commit()
+        history = history[cut:]
+    return context.with_summary(conv["system_prompt"], summary), history
 
 
 def _close_open_calls(conn, conv: dict, reason: str) -> None:
@@ -289,10 +330,10 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
     access = toolsets.Access({t.name: t for t in allowed}, can_write)
     tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider)))
     for _ in range(fp.MAX_ROUNDS if fb else MAX_ROUNDS):
-        history = _history(conn, conv["id"], viewer["id"])
+        system, history = yield from _context(conn, viewer, provider, conv, adapter)
         try:
             if fb:
-                spent, budget = fallback.precheck(conn, viewer["id"], conv["system_prompt"], history, tools)
+                spent, budget = fallback.precheck(conn, viewer["id"], system, history, tools)
             else:
                 spent, budget = check_budget(conn, viewer["id"], provider)
         except ChatError as e:
@@ -300,7 +341,7 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             return
         result = None
         try:
-            for kind, val in adapter.stream_turn(conv["system_prompt"], history, tools):
+            for kind, val in adapter.stream_turn(system, history, tools):
                 if kind == "text":
                     yield ev("text", delta=val)
                 else:
@@ -405,10 +446,6 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
                              [page] if toolsets.known_page(page) else [])).fetchone()
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
-        n = conn.execute("SELECT count(*) AS n FROM ai_messages WHERE conversation_id = %s", (conv["id"],)).fetchone()["n"]
-        if n >= (fp.MAX_MESSAGES if fb else MAX_MESSAGES):
-            raise ChatError("too_long", L("这个对话太长了，开一个新对话吧（长期记忆不受影响）",
-                                          "This conversation is too long; start a new one (long-term memory is kept)"))
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
         allowed = fallback.tools() if fb else TOOLS
         pages = toolsets.visit_page(allowed, conv["pages"], page, _page_budget(provider))
