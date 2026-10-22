@@ -274,3 +274,46 @@ def test_flag_off_changes_nothing(client, conn, world, sessions, dsn):
     # the plain training endpoints still answer as before
     assert client.get("/v1/users/me/training/calendar", headers=H(tok["A"])).status_code == 200
     _set_flag(dsn, "all")
+
+
+def test_page_and_imported_rows_counted_once(conn, world, monkeypatch):
+    """#161: a day can hold the page's own row (its submitted sets reach SparkyFitness, a draft is not counted) and a Hevy-imported
+    row. Imported sets are counted once — also when loads.load_history (last session / recommended weights) has just filled the
+    shared SparkyFitness cache for the very same window, which must therefore never contain the imported sets."""
+    import json
+    from body_engine import sparky_client
+    ids, _, today = world
+    c = ids["C"]
+    submitted = [{"id": "s1", "date": today.isoformat(), "name": "推", "exercises": [
+        {"exercise_id": None, "name": "x", "slug": "machine_chest_press", "category": "strength",
+         "sets": [{"reps": 10, "weight_kg": 40}, {"reps": 8, "weight_kg": 45}]}]}]
+    monkeypatch.setattr(sparky_client, "client_for_user", lambda conn, uid: object())
+    monkeypatch.setattr(sparky_client, "training_log", lambda client, start, end: [dict(s) for s in submitted])
+    conn.execute("""INSERT INTO training_session_logs (user_id, date, source, exercises, status) VALUES (%s, %s, 'page', %s::jsonb, 'draft')""",
+                 (c, today, json.dumps([{"slug": "barbell_back_squat", "sets": [{"reps": 5, "weight_kg": 100, "done": True}]}])))
+    conn.execute("""INSERT INTO workouts (user_id, source, external_id, type, name_zh, local_date, start_at, end_at, duration_min)
+                    VALUES (%s, 'hevy', 'h1', 'strength_training', 'Pull', %s, now() - interval '1 hour', now(), 50)""", (c, today))
+    conn.execute("""INSERT INTO training_session_logs (user_id, date, source, exercises, status) VALUES (%s, %s, 'hevy', %s::jsonb, 'imported')""",
+                 (c, today, json.dumps([{"workout": "h1", "slug": "lat_pulldown", "name": "Lat Pulldown (Cable)", "category": "strength",
+                                         "sets": [{"set": 1, "type": "warmup", "reps": 12, "weight_kg": 30},
+                                                  {"set": 2, "type": "normal", "reps": 10, "weight_kg": 50},
+                                                  {"set": 3, "type": "dropset", "reps": 10, "weight_kg": 40}]}])))
+    try:
+        start = min(today - timedelta(days=P.MUSCLE_LOAD_BASELINE_DAYS - 1), ML.windows(today)["prev_week"][0])
+        monkeypatch.setattr(P, "LOAD_LOOKBACK_DAYS", (today - start).days)   # same cache key as the muscle map
+        loads.clear_history_cache(c)
+        hist, err, linked = loads.load_history(conn, c, today)
+        assert err is None and linked and sorted(s["id"] for s in hist) == ["hevy:h1", "s1"]
+        assert all(s.get("source") != "hevy" for s in loads._HISTORY_CACHE[(conn.info.dbname, c, start, today)][1])
+        m = {x["key"]: x for x in ML.compute(conn, c, today)["muscles"]}
+        assert m["lats"]["ranges"]["today"]["sets"] == 2                       # warm-up out, counted once
+        assert m["lats"]["ranges"]["today"]["volume_kg"] == 10 * 50 + 10 * 40
+        assert m["chest"]["ranges"]["today"]["sets"] == 2                      # the submitted page sets (via SparkyFitness)
+        assert m["quadriceps"]["ranges"]["today"]["sets"] == 0                 # the unsubmitted page draft
+        # read again from the warm cache: still once
+        assert {x["key"]: x for x in ML.compute(conn, c, today)["muscles"]}["lats"]["ranges"]["today"]["sets"] == 2
+    finally:
+        conn.execute("DELETE FROM training_session_logs WHERE user_id = %s", (c,))
+        conn.execute("DELETE FROM workouts WHERE user_id = %s", (c,))
+        conn.commit()
+        loads.clear_history_cache(c)

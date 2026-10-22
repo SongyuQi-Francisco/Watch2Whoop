@@ -2355,7 +2355,7 @@
   // 「我」 page v2 behind the rollout flag me_settings (issue #140, docs/rollout.md): the four record rows fold into one
   // 「健康档案」 entry, rarely used account-level rows move to the 「设置」 sub-page (S.meSub = "settings"). Plugin rows
   // (meItem) are routed by their element id; a plugin can also say meGroup: "main" | "settings-account" | "settings-ai" |
-  // "settings-danger". Rows nobody routed (e.g. a server's private admin plugin) stay at the bottom of the main page.
+  // "settings-danger" | "settings-import". Rows nobody routed (e.g. a server's private admin plugin) stay at the bottom of the main page.
   const meSettingsOn = () => (S.flags || []).includes("me_settings");
   const ME_ROUTE = { "me-profile": "profile", "me-circles": "main", "me-feedback": "settings-ai", "me-signin": "settings-account",
                      "me-invite": "settings-account", "me-delete-account": "settings-danger" };
@@ -2380,6 +2380,7 @@
     return `<div class="me-settings"><div class="sub-head"><button class="sub-back" id="me-back" aria-label="${tr("返回「我」")}">${ICON.chev}<span>${tr("tab.me")}</span></button><h2>${tr("设置")}</h2></div>
       ${meSection(tr("账号"), [isSelf() ? langRow() : "", ...(rows["settings-account"] || [])])}
       ${meSection("AI", rows["settings-ai"] || [])}
+      ${meSection(tr("导入"), rows["settings-import"] || [])}
       ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""])}
       ${meSection(tr("关于"), [`<div class="item"><span class="row-title">${tr("版本")}</span><span class="val">${esc(ver || "—")}</span></div>`])}
       ${meSection("", [`<button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>`, ...(rows["settings-danger"] || [])])}

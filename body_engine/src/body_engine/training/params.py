@@ -84,7 +84,8 @@ DEFAULT_BASAL_KCAL_PER_MIN = 1.45      # fallback when estimating active energy 
 # Priority: OW > Shortcut; live sync > export.xml import; watch > phone > other (consistent with the rules in importers/ow.py).
 DUP_SAME_TIME = timedelta(minutes=2)
 DUP_OVERLAP = 0.8
-SOURCE_RANK = {"ow": 0, "shortcut": 1, "apple_export": 2}   # apple_export: the export.zip uploaded by the user (history/)
+SOURCE_RANK = {"ow": 0, "shortcut": 1, "apple_export": 2, "hevy": 3}   # apple_export: the export.zip uploaded by the user (history/);
+# hevy: a Hevy CSV import (hevy_import.py) has no heart rate, so a watch copy of the same workout is kept and the Hevy sets are shown on it
 DEVICE_RANK = {"watch": 0, "phone": 1}
 
 # ---------- intensity grading (per workout) ----------
@@ -424,6 +425,40 @@ ADD_DEFAULT_REST_SEC = 90
 ADD_DEFAULT_DURATION_SEC = {"cardio": 600, "stretching": 30}   # timed exercises (modality duration): seconds per set
 ADD_DAY_OPTIONS = 7                  # days offered for "only this day": today + 6
 
+# ---------- Hevy CSV import (issue #161, rollout flag hevy_import, hevy_import.py, docs/hevy-benchmark.md §6) ----------
+# Format: the export's 14 columns (title, start_time, end_time, description, exercise_title, superset_id, exercise_notes,
+# set_index, set_type, weight_kg, reps, distance_km, duration_seconds, rpe), checked against real exports in public repos
+# (the help centre lists only the export path, not the columns). Imperial accounts export weight_lbs / distance_miles.
+HEVY_MAX_UPLOAD_BYTES = 1900 * 1024      # what one request may carry: the public nginx allows 2 MB (the page gzips the CSV first)
+HEVY_MAX_CSV_BYTES = 10 * 1024 * 1024    # the CSV after gunzip (~100k sets); also guards against a gzip bomb
+HEVY_MAX_ROWS = 200_000
+HEVY_SET_TYPES = {"normal": "normal", "warmup": "warmup", "warm_up": "warmup", "dropset": "dropset", "drop_set": "dropset",
+                  "failure": "failure"}   # anything else -> normal
+HEVY_LIMITS = {"weight_kg": 1000.0, "reps": 1000, "duration_s": 24 * 3600, "distance_km": 500.0, "rpe": 10.0}
+HEVY_IMPORTS_KEPT = 20                   # hevy_imports rows kept per user (the result summaries)
+# Hevy writes the equipment in brackets ("Bench Press (Dumbbell)"): a catalog match on the bare name must have that equipment
+# (else "Incline Bench Press (Dumbbell)" would land on the barbell version and its weights would mislead the load advice).
+HEVY_EQUIPMENT = {"barbell": "barbell", "dumbbell": "dumbbell", "cable": "cable", "machine": "machine",
+                  "smith machine": "smith machine", "kettlebell": "kettlebell", "band": "bands", "resistance band": "bands",
+                  "ez bar": "ez curl bar", "bodyweight": "body only", "weighted": "body only"}
+# Names commonly seen in Hevy exports that the catalog calls differently (lower case, as in the file). A best-effort list:
+# anything missed stays unmatched and the user maps it once (imported_exercise_maps).
+HEVY_ALIASES = {
+    "bench press (dumbbell)": "dumbbell_bench_press", "incline bench press (dumbbell)": "incline_dumbbell_press",
+    "incline bench press (smith machine)": "smith_incline_press", "chest press (machine)": "machine_chest_press",
+    "chest fly (machine)": "pec_deck_fly", "butterfly (pec deck)": "pec_deck_fly", "chest fly (dumbbell)": "dumbbell_fly",
+    "shoulder press (machine)": "machine_shoulder_press", "lateral raise (machine)": "machine_lateral_raise",
+    "lateral raise (cable)": "cable_lateral_raise", "rear delt reverse fly (machine)": "reverse_pec_deck",
+    "lat pulldown (machine)": "lat_pulldown", "seated row (machine)": "machine_row", "dumbbell row": "one_arm_dumbbell_row",
+    "t bar row": "t_bar_row", "pull up (assisted)": "assisted_pull_up", "romanian deadlift (dumbbell)": "dumbbell_romanian_deadlift",
+    "walking lunge (dumbbell)": "dumbbell_walking_lunge", "lunge (dumbbell)": "reverse_lunge",
+    "leg extension (machine)": "seated_leg_extension", "seated leg curl (machine)": "seated_leg_curl",
+    "hip abduction (machine)": "hip_abduction_machine", "hip adduction (machine)": "hip_adduction_machine",
+    "seated calf raise": "seated_calf_raise", "standing calf raise": "standing_calf_raise",
+    "skullcrusher (barbell)": "skull_crusher", "skullcrusher (dumbbell)": "skull_crusher",
+    "preacher curl (barbell)": "preacher_curl", "ez bar biceps curl": "ez_bar_curl", "bicep curl (cable)": "cable_bicep_curl",
+    "triceps extension (cable)": "overhead_cable_triceps_extension", "hack squat (machine)": "hack_squat",
+}
 
 # ---- Plan card estimate (issue #172): "约 N 分钟" on the collapsed 「今日训练计划」 card -------------------------------------
 # A planned set takes about EST_SET_WORK_SEC of work (timed exercises: their own duration) plus the prescribed rest;

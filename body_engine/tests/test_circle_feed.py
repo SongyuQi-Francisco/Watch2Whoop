@@ -96,8 +96,8 @@ def log_sets(dsn, uid, exercises, day=None):
     day = day or today(dsn, uid)
     ex = [{"slug": s, "sets": [{"reps": r, "weight_kg": w, "done": d} for r, w, d in sets]} for s, sets in exercises]
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        conn.execute("""INSERT INTO training_session_logs (user_id, date, exercises) VALUES (%s, %s, %s::jsonb)
-                        ON CONFLICT (user_id, date) DO UPDATE SET exercises = EXCLUDED.exercises""", (uid, day, json.dumps(ex)))
+        conn.execute("""INSERT INTO training_session_logs (user_id, date, source, exercises) VALUES (%s, %s, 'page', %s::jsonb)
+                        ON CONFLICT (user_id, date, source) DO UPDATE SET exercises = EXCLUDED.exercises""", (uid, day, json.dumps(ex)))
 
 
 def get_feed(client, tok, **params):
@@ -182,6 +182,37 @@ def test_personal_record_and_watch_workout(client, world, dsn, pair):
     newest = posts[0]
     assert newest["duration_min"] == 62 and newest["pr_count"] == 1
     assert {e["slug"]: e["pr"] for e in newest["exercises"]} == {"bench-press": True, "squat": False}
+
+
+def log_imported(dsn, uid, exercises, day):
+    """An imported (Hevy, #161) day: exercises = [(slug or None, name, [(reps, kg, type)])]; imported sets carry no done tick."""
+    ex = [{"workout": "2026-01-01T00:00:00Z", "slug": s, "name": n, **({"unmatched": True} if s is None else {}),
+           "sets": [{"set": i + 1, "type": t, "reps": r, "weight_kg": w} for i, (r, w, t) in enumerate(sets)]} for s, n, sets in exercises]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("""INSERT INTO training_session_logs (user_id, date, source, exercises, status) VALUES (%s, %s, 'hevy', %s::jsonb, 'imported')
+                        ON CONFLICT (user_id, date, source) DO UPDATE SET exercises = EXCLUDED.exercises""", (uid, day, json.dumps(ex)))
+
+
+def test_page_and_imported_rows_make_one_post(client, world, dsn, pair):
+    """A day with the page's own row and a Hevy-imported row (#161): one post, each set counted once; imported sets count
+    without a done tick but not their warm-ups; records compare against imported history too; unmatched names stay apart."""
+    ids, tok, _ = pair
+    from datetime import timedelta
+    d = today(dsn, ids["Ann"])
+    log_imported(dsn, ids["Ann"], [("bench-press", "Bench Press (Barbell)", [(8, 60, "normal")])], d - timedelta(days=1))
+    log_sets(dsn, ids["Ann"], [("bench-press", [(8, 65, True), (8, 70, False)])], day=d)
+    log_imported(dsn, ids["Ann"], [("squat", "Squat (Barbell)", [(10, 40, "warmup"), (5, 100, "normal"), (5, 100, "failure")]),
+                                   (None, "Gizmo Press", [(12, 30, "normal")])], d)
+    posts = get_feed(client, tok["Ben"])["posts"]
+    assert [p["date"] for p in posts] == [d.isoformat(), (d - timedelta(days=1)).isoformat()]   # one post per day
+    today_post = posts[0]
+    assert today_post["exercise_count"] == 3 and today_post["set_count"] == 1 + 2 + 1   # page done + imported minus warm-up
+    assert today_post["volume_kg"] == 8 * 65 + 5 * 100 * 2 + 12 * 30
+    assert {e["name"]: e["pr"] for e in today_post["exercises"]} == {"bench-press": True, "Squat (Barbell)": False, "Gizmo Press": False}
+    assert posts[1]["set_count"] == 1 and posts[1]["volume_kg"] == 480                   # the imported-only day posts too
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM circle_feed_posts WHERE user_id = %s AND date = %s",
+                            (ids["Ann"], d)).fetchone()["n"] == 1
 
 
 def test_outside_the_circle_nothing(client, world, dsn, pair):
