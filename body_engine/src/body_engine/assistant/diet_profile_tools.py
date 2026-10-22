@@ -41,7 +41,7 @@ TOOL_SPECS: list[dict] = [
                     "调整规则、版本记录。",
         input_schema=schema({"user": USER}),
         handler=lambda conn, uid, a: diet_profile.view(conn, a.get("_viewer_id", uid), uid, versions=5),
-        scope="memory",
+        group="nutrition", scope="memory",
     ),
     dict(
         name="update_diet_profile",
@@ -49,7 +49,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=INPUT,
         handler=lambda conn, uid, a: diet_profile.update(
             conn, uid, {s: a.get(s) for s in diet_profile.SECTIONS}, a.get("changes"), a.get("reason"), a.get("version")),
-        scope="memory", writes=True,
+        group="nutrition", scope="memory", writes=True,
     ),
 ]
 
@@ -64,7 +64,7 @@ CONSTRAINT_TOOL_SPECS: list[dict] = [
         description="用户自己的饮食约束（提醒、菜谱、采购按它执行；没有 = 不限制）、可设的种类和参考值；history=true 含历次版本。",
         input_schema=schema({"user": USER, "history": {"type": "boolean"}}),
         handler=lambda conn, uid, a: constraints.listing(conn, uid, bool(a.get("history"))),
-        scope="nutrition",
+        group="nutrition", scope="nutrition",
     ),
     dict(
         name="set_diet_constraint",
@@ -79,7 +79,7 @@ CONSTRAINT_TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: constraints.set_constraint(
             conn, uid, a["kind"], a.get("value"), a.get("target"), a.get("match"), a.get("basis"), _d(a.get("effective_from"))),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="end_diet_constraint",
@@ -90,6 +90,6 @@ CONSTRAINT_TOOL_SPECS: list[dict] = [
             "effective_from": _n("string", "YYYY-MM-DD，默认今天"),
         }),
         handler=lambda conn, uid, a: constraints.end_constraint(conn, uid, a["kind"], a.get("target"), _d(a.get("effective_from"))),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
 ]

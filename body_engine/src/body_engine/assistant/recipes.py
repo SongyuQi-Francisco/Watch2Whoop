@@ -336,12 +336,16 @@ def log_recipe(conn: psycopg.Connection, user_id: int, recipe_id: int, day: date
             "fat_g": round(ps["fat_g"] * k, 1), "saturated_fat_g": round(ps["sat_fat_g"] * k, 1), "alcohol_g": None,
             **{f: None if ps[f] is None else round(ps[f] * k, 1) for f in extras.OPTIONAL}, "sugary_drink": None,
             "notes": f"食谱「{row['name']}」"}
-    res = sparky_write.log_food(conn, user_id, [item], allow_duplicates, client=client)
+    res = sparky_write.log_food(conn, user_id, [item], allow_duplicates, client=client, deduct=False)
     if not res["created"]:
         raise meals.DuplicateMealError(f"{day} 的{SLOT_ZH[slot]}已经记过「{row['name']}」，没有重复记"
                                        "（确实又吃了一份就用 allow_duplicates）")
     entries = [{"id": c["id"], "food": c["food"]} for c in res["created"]]
     logged = [{"food": name, "servings": servings, **{f: round(ps[f] * k, 1) for f in NUTRIENTS}}]
+    from ..grocery import pantry_auto   # the dish is one entry; its ingredients x servings / pot servings come off the pantry (#104)
+    share = servings / _servings(row)
+    pantry = pantry_auto.deduct(conn, user_id, entries[0]["id"], day,
+                                [(i["food"], float(i["grams"]) * share, "g") for i in row["ingredients"] if i.get("grams")])
     log = conn.execute(
         """INSERT INTO meal_logs (user_id, template_id, recipe_id, date, meal, items, entries, channel)
            VALUES (%s, NULL, %s, %s, %s, %s, %s, %s) RETURNING id""",
@@ -357,7 +361,7 @@ def log_recipe(conn: psycopg.Connection, user_id: int, recipe_id: int, day: date
     return {"log_id": log["id"], "recipe_id": row["id"], "name": row["name"], "date": day.isoformat(), "time": time,
             "meal": sparky_meal(slot), "servings": servings, "entries": entries,
             "totals": {f: round(ps[f] * k, 1) for f in ("kcal", "protein_g", "carbs_g", "fat_g", "sat_fat_g", "red_meat_g")},
-            "warnings": warnings}
+            "warnings": warnings, **({"pantry_used": pantry} if pantry else {})}
 
 
 def refresh_last_cooked(conn, recipe_id: int) -> None:

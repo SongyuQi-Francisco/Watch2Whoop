@@ -288,7 +288,7 @@
 
   // ---------------------------------------------------------------- chat panel
   // items: what goes with the next message: {kind: "photo", img} or {kind: "video", frames, seconds}. Frames count as images (at most MAX_IMAGES).
-  const chat = { conv: null, busy: false, items: [], photoQuick: null };   // photoQuick: a photo quick task waiting for the picker
+  const chat = { conv: null, busy: false, items: [], live: null, lost: null, photoQuick: null };   // live: the open stream; lost: a turn to pick up (#114); photoQuick: a photo quick task waiting for the picker
   const MAX_IMAGES = 8;
   const imageCount = () => chat.items.reduce((n, it) => n + (it.kind === "video" ? it.frames.length : 1), 0);
   const ICON = {
@@ -366,6 +366,7 @@
   // photo: opens the photo picker and sends the text with the photos picked there.
   // None while viewing someone else (the chat answers about the signed-in user), none on a page without a list.
   function quickList() {
+    if (!window.BodyFlags?.on("jarvis_quick")) return [];   // rollout flag (docs/rollout.md): off -> no quick tasks, as before
     if (C.isSelf && !C.isSelf()) return [];
     const page = C.page?.() || "today", tab = page.split(".")[0];
     const Q = {
@@ -458,6 +459,21 @@
     return el;
   }
   function note(text, tone = "") { return bubble("note", text, tone); }
+
+  // The AI's answer as safe Markdown (md.js, issue #92). While it streams, repaint at most once per frame and with
+  // partial=true (a dangling ** or ` stays hidden until its closer arrives); the final paint renders everything.
+  function paint(el, final) {
+    if (!el) return;
+    if (final) el._final = true;
+    const draw = () => {
+      el._queued = false;
+      if (window.BodyMarkdown) { el.classList.add("md"); el.innerHTML = window.BodyMarkdown.render(el._raw || "", { partial: !el._final }); }
+      else el.textContent = el._raw || "";
+      scroll();
+    };
+    if (final) { draw(); return; }
+    if (!el._queued) { el._queued = true; requestAnimationFrame(draw); }
+  }
   function scroll() { const l = $("#ai-log"); l.scrollTop = l.scrollHeight; }
 
   // ---------------------------------------------------------------- photos / video / voice (helpers in ai-media.js)
@@ -578,16 +594,21 @@
     bubble("user", (ta.value.trim() + (shown ? `${ta.value.trim() ? "\n" : ""}${shown}` : "")));
     if ($("#ai-quick")) drawQuick();  // first message: the quick tasks move to the row above the input
     ta.value = ""; ta.style.height = "auto";
-    await stream("/v1/assistant/chat", { message: text, images, conversation_id: chat.conv });
+    await stream("/v1/assistant/chat", { message: text, images, conversation_id: chat.conv, page: C.page?.() || null });   // page: extra tool groups (#99)
   }
 
-  async function stream(path, body) {
+  // resume: { conv, seq, cur, wrote, body } of a turn whose connection dropped (#114); path is then its events URL
+  async function stream(path, body, resume = null) {
     chat.busy = true; $("#ai-send").disabled = true; quickBusy(true);
-    let cur = null, wrote = false;
-    const status = note("…", "faint");
+    let cur = resume?.cur || null, wrote = resume?.wrote || false, seq = resume?.seq || 0, lost = null, ended = false;
+    const wait = resume ? tr("接着回答…") : "…";
+    const status = note(wait, "faint");
+    const ctrl = new AbortController(); chat.live = { ctrl, hidden: document.visibilityState === "hidden", started: () => seq > 0 };
+    if (!resume) chat.lost = null;   // a new message replaces a turn that was still waiting to be picked up
     try {
-      const r = await fetch(path, { method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Body-Web": "1", ...window.I18N.headers() }, body: JSON.stringify(body) });
+      const r = await fetch(path, resume ? { credentials: "same-origin", signal: ctrl.signal, headers: { Accept: "text/event-stream", ...window.I18N.headers() } }
+        : { method: "POST", credentials: "same-origin", signal: ctrl.signal,
+          headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Body-Web": "1", ...window.I18N.headers() }, body: JSON.stringify(body) });
       if (!r.ok) {
         let d = null; try { d = (await r.json()).detail; } catch (e) { /* no body */ }
         status.remove();
@@ -603,36 +624,92 @@
       let buf = "";
       for (;;) {
         const { value, done } = await reader.read();
-        if (done) break;
+        // A stream cut without its last event (a proxy or the server closing it, iOS ending the socket cleanly) is a
+        // dropped connection too, not the end of the answer: pick the turn up like a network error (#114)
+        if (done) { if (!ended) throw new Error("stream ended early"); break; }
         buf += dec.decode(value, { stream: true });
         let i;
         while ((i = buf.indexOf("\n\n")) >= 0) {
           const block = buf.slice(0, i); buf = buf.slice(i + 2);
           const ev = /^event: (.*)$/m.exec(block)?.[1], data = /^data: (.*)$/m.exec(block)?.[1];
           if (!ev || data == null) continue;
+          seq = Number(/^id: (\d+)$/m.exec(block)?.[1] || seq);
           const d = JSON.parse(data);
           if (ev === "conversation") { chat.conv = d.id; if (d.quota) quotaLine(d.quota); }
-          else if (ev === "text") { if (!cur) { status.remove(); cur = bubble("assistant", ""); } cur.textContent += d.delta; scroll(); }
+          else if (ev === "text") { if (!cur) { status.remove(); cur = bubble("assistant", ""); cur._raw = ""; } cur._raw += d.delta; paint(cur); }
           else if (ev === "tool") {
+            paint(cur, true);
             cur = null;
             status.textContent = { running: tr("查看 {name}…", { name: d.name }), done: `✓ ${d.name}`, error: `✗ ${d.name}`, rejected: tr("已取消 {name}", { name: d.name }) }[d.status] || d.name;
             if (d.status === "done" && body.call_id) wrote = true;
           }
-          else if (ev === "confirm") { status.remove(); d.calls.forEach(confirmCard); }
+          else if (ev === "confirm") { ended = true; status.remove(); d.calls.forEach(confirmCard); }
           else if (ev === "usage") { usageLine(d); }
           else if (ev === "notice") note(d.message, "warn");
-          else if (ev === "error") { status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
-          else if (ev === "done") { status.remove(); }
+          else if (ev === "error") { ended = true; status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
+          else if (ev === "done") { ended = true; status.remove(); paint(cur, true); }
+          else if (ev === "resync") { ended = true; status.remove(); await resync(d.conversation_id, cur); }
         }
       }
     } catch (e) {
-      status.remove(); note(tr("连不上（没联网，或 Tailscale 没开）"), "warn");
+      status.remove();
+      // The turn goes on on the server (#114): once it started (an event arrived), pick it up instead of reporting an error
+      if (seq > 0 && chat.conv) lost = { conv: chat.conv, seq, cur, wrote, body, tries: seq > (resume?.seq || 0) ? 0 : resume?.tries || 0 };
+      else note(navigator.onLine === false ? tr("离线，连上网络后重试") : tr("连不上（没联网，或 Tailscale 没开）"), "warn");
     } finally {
-      if (status.isConnected && status.textContent === "…") status.remove();
+      if (!lost) paint(cur, true);   // a turn that is picked up again keeps streaming into the same bubble
+      if (status.isConnected && status.textContent === wait) status.remove();
+      if (chat.live?.ctrl === ctrl) chat.live = null;
       chat.busy = false; $("#ai-send").disabled = false; quickBusy(false);
-      if (wrote) C.refresh?.();  // Something was written to the database: refresh the Today page data
+      if (lost) carryOn(lost);
+      else if (wrote) C.refresh?.();  // Something was written to the database: refresh the Today page data
     }
   }
+
+  // ---------------------------------------------------------------- picking a turn up again (#114)
+  // iOS suspends the WebView (and drops its connections) when the app goes to the background; the server finishes the
+  // turn anyway and keeps its numbered events. Back in the foreground the page asks for the events after the last one it got.
+  function carryOn(run) {
+    chat.lost = run; chat.busy = true; $("#ai-send").disabled = true;   // nothing new is sent before the turn is shown
+    if (document.visibilityState !== "hidden") resumeTurn();
+  }
+  async function resumeTurn() {
+    const run = chat.lost;
+    if (!run || chat.live) return;
+    if (run.conv !== chat.conv) { chat.lost = null; return; }   // the user moved on to another conversation
+    if (navigator.onLine === false) {   // tried again by the "online" event
+      if (!run.offline) { run.offline = note(tr("离线，连上网络后重试"), "warn"); }
+      chat.busy = false; $("#ai-send").disabled = false;
+      return;
+    }
+    chat.lost = null; run.offline?.remove(); run.offline = null;
+    if (run.tries > 0) await new Promise((ok) => setTimeout(ok, 1500));   // the network may need a moment after waking up
+    if (run.tries >= 3) { note(tr("连不上（没联网，或 Tailscale 没开）"), "warn"); chat.busy = false; $("#ai-send").disabled = false; return; }
+    await stream(`/v1/assistant/chat/${run.conv}/events?after=${run.seq}`, run.body, { ...run, tries: run.tries + 1 });
+  }
+  // The turn is no longer kept on the server (it restarted, or the turn ended long ago): show what the database has
+  async function resync(id, cur) {
+    let v = null;
+    try { v = await C.api(`/v1/assistant/conversations/${id}`); } catch (e) { note(e.message || tr("出错了"), "warn"); return; }
+    const msgs = v.messages || [], from = msgs.map((m) => m.role).lastIndexOf("user") + 1;
+    const text = msgs.slice(from).filter((m) => m.role === "assistant" && m.text).map((m) => m.text).join("\n\n");
+    if (text) { const el = cur || bubble("assistant", ""); el._raw = text; paint(el, true); }   // rendered like a finished answer (md.js)
+    (v.pending || []).forEach(confirmCard);
+  }
+  function onForeground() {
+    if (document.visibilityState === "hidden") return;
+    // A stream that lived through the background may hang on a dead socket: drop it and resume from the last event
+    // (only once it has one: before the first event there is nothing to resume from)
+    if (chat.live?.hidden && chat.live.started()) { chat.live.ctrl.abort(); return; }
+    if (chat.lost) resumeTurn();
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { if (chat.live) chat.live.hidden = true; }
+    else onForeground();
+  });
+  window.addEventListener("pageshow", onForeground);
+  window.addEventListener("online", onForeground);
+  window.addEventListener("watch2whoop:foreground", onForeground);   // sent by the iOS app on resume (apps/watch2whoop)
 
   function usageLine(d) {
     if (d.currency === "CNY") {

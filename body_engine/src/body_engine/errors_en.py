@@ -14,7 +14,21 @@ EXACT: dict[str, str] = {
     # ---- auth / sessions (api.py, records/api.py, web/)
     # ---- grocery-sync (sync/wws.py)
     "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
+    # ---- circles (friends/)
+    "心电图不能通过圈子共享": "ECGs can't be shared through circles",
+    "先在今天页重新确认同意书（新增了「圈子共享」一节）": "First confirm the updated consent on the Today page (it adds a section on circle sharing)",
+    "没有这个圈子（或你不在里面）": "No such circle (or you are not in it)",
+    "只有圈主能这样做": "Only the circle's owner can do that",
+    "邀请码无效或已过期": "The invite code is invalid or expired",
+    "这个邀请已失效": "This invite is no longer valid",
+    "不能移除自己，用退出": "You can't remove yourself; leave the circle instead",
+    "这个人不在圈子里": "This person is not in the circle",
+    "要给邀请码或邀请 ID（只给一个）": "Give an invite code or an invite ID (just one)",
+    "这个人不在你的圈子里": "This person is not in any of your circles",
+    "今天已经点过了": "Already sent today",
     # ---- AI feedback (feedback/api.py)
+    # ---- water (water/api.py, issue #125)
+    "没有这条喝水记录": "No such water entry",
     "反馈记录只能看自己的": "You can only see your own feedback",
     "没有这条反馈（或不是你的）": "No such feedback (or it is not yours)",
     "缺少 Bearer token": "Missing Bearer token",
@@ -146,6 +160,9 @@ EXACT: dict[str, str] = {
     # ---- grocery (grocery/store.py)
     "nutrition 要是对象（每 100g）": "nutrition must be an object (per 100 g)",
     "package_unit 只能是 g / ml / pcs": "package_unit must be g / ml / pcs",
+    "qty 要是 > 0 的数": "qty must be a number > 0",                       # usual items (grocery/staples.py, #103)
+    "unit 只能是 pack / g / ml / pcs": "unit must be pack / g / ml / pcs",
+    "best_before 要是 YYYY-MM-DD": "best_before must be YYYY-MM-DD",       # pantry best before (#104)
     "purine_level 只能是 low / medium / high": "purine_level must be low / medium / high",
     "没有这个商品（或不是你的）": "Product not found (or not yours)",
     "至少给一样": "Give at least one item",
@@ -212,12 +229,20 @@ TERMS: dict[str, str] = {
     "心电图": "ECG",
     "评分": "scores", "提醒": "reminders", "训练": "training", "饮食": "nutrition", "睡眠": "sleep", "每日指标": "daily metrics",
     "体重": "weight", "日记": "journal", "身体事件": "body events", "动作限制": "exercise rules", "记忆": "memory",
+    "饮食达标率": "nutrition adherence", "化验": "lab results", "长期记忆": "long-term memory",
 }
 
 _TEMPLATES: list[tuple[str, str]] = [
+    # ---- memory recent notes (assistant/memory.py, #112)
+    ("until 写 YYYY-MM-DD（近况的最后一天）或 recent（默认 {} 天），长期事实不填",
+     "until: YYYY-MM-DD (the last day of the recent note) or recent (default {} days); leave it empty for a lasting fact"),
+    ("until {} 已经过去了（今天 {}），过去的事写日记或事件", "until {} has already passed (today is {}); past events go in the journal or events"),
+    ("近况最长 {} 天；更长的是长期事实（不填 until）或档案卡",
+     "A recent note lasts at most {} days; anything longer is a lasting fact (no until) or a profile card item"),
     # ---- grocery (links.py, off.py)
     ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
+    ("every_days 要是 {}–{} 的整数（天）", "every_days must be a whole number of days, {}–{}"),
     ("商品链接 1–{} 字", "Product link: 1–{} characters"),
     ("超市只能是 {}", "Supermarkets can only be: {}"),
     # ---- grocery-sync (sync/coles.py, sync/http.py; admin CLI / run records)
@@ -232,6 +257,13 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("不认识的超市：{}（可用 {}）", "Unknown supermarket: {} (available: {})"),
     ("不认识的超市：{}", "Unknown supermarket: {}"),
     ("不是 {} 的商品页（要 /product/… 或 /shop/productdetails/<编号>/…）", "Not a {} product page (needs /product/… or /shop/productdetails/<id>/…)"),
+    # ---- circles (friends/)
+    ("不认识的共享范围：{}", "Unknown sharing scope: {}"),
+    ("不认识的鼓励：{}", "Unknown cheer: {}"),
+    ("排行榜只能是 {}", "Board must be one of: {}"),
+    ("圈子名称 1–{} 字", "Circle name: 1–{} characters"),
+    ("最多加入 {} 个圈子", "You can be in at most {} circles"),
+    ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),
     # ---- authorization
     ("没有查看用户 {} 的 {} 的授权", "No permission to view the {2} of user {1}"),
     ("没有查看用户 {} 的授权", "No permission to view user {}"),

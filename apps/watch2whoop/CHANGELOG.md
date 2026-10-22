@@ -1,18 +1,58 @@
 # Changelog — Watch2Whoop Flutter app (iOS; Android later)
 
-One section per store build, newest first: `## <version from pubspec.yaml> — <date>`. Bump `version:` in
-`pubspec.yaml` and add the section in the same pull request; after it is merged a maintainer tags the commit with
-`tools/app_release.sh --push` (`app-ios-v<version>`, `app-android-v<version>`), and the workflow `app-release.yml`
+One section per store build, newest first: `## <marketing version> — <date>` (e.g. `## 1.0.6 — 2026-10-22`; the build
+number after `+` in `pubspec.yaml` is not part of the public name). Bump `version:` in `pubspec.yaml` (both parts) and
+add the section in the same pull request; after it is merged a maintainer tags the commit with
+`tools/app_release.sh --push` (`app-ios-v<marketing version>`, `app-android-v<marketing version>`), and the workflow `app-release.yml`
 publishes the GitHub pre-release with the source zip; this section becomes its notes. Builds are made only from that
 Release (zip checked against its `.sha256`) or `git clone --branch <tag>`, never from `main` or a zip sent by hand.
 Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
-| Build | Tag | Commit | Store |
+| Version | Tag | Commit | Store |
 |---|---|---|---|
-| 1.0.0+2 | `app-ios-v1.0.0+2` | (set when tagged) | TestFlight (iOS) |
+| 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
+| 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
+| 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.6 — 2026-10-22
+Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
+pull request.
+- In-page chat: back in the foreground the app tells the Today page (`watch2whoop:foreground`), so an answer cut off
+  while the app was in the background is picked up again instead of showing 「连不上」 (#114, server side in the same PR).
+- Fix: long press on an image on the Today page (exercise pictures, handbook screenshots, chat thumbnails) →
+  「存储到照片」 / "Save to Photos" killed the app: WebKit writes to the photo library from the app process and iOS ends
+  apps without `NSPhotoLibraryAddUsageDescription` (`OS_REASON_TCC`, reproduced in the simulator). The key is added.
+  The Today page also turns the long-press menu off on images inside the app (server side, so 1.0.5 is covered once
+  the server is deployed).
+- Fix: Jarvis → video → 「拍摄视频」 / "Take Video" records sound, which needs `NSMicrophoneUsageDescription`; the key is
+  added. The camera description now also names photo / video capture for the AI, not only the setup QR code.
+- Apple Health water (#135): the app reads `dietaryWater` (read only; one more Health permission sheet, 「水」 / "Water")
+  and uploads it with the beat-to-beat readings to `POST /v1/ingest/healthkit` `water[]`: incremental (HealthKit anchor,
+  moved only after the server stored the batch), idempotent by UUID, deletions in Health passed on. Only while the
+  server's `water` flag is on for the account (`water_enabled`); while it is off nothing is read or sent and nothing is
+  lost. A missing new consent for beat-to-beat readings no longer holds back water.
+- ECG upload: a non-finite voltage sample no longer traps when converted to an integer (`RawSync.swift`).
+- Tests (`test/ios_config_test.dart`): every privacy service the app or the Today page can reach has a usage
+  description in `Info.plist` and in both `InfoPlist.strings`; HealthKit series types are requested together with their
+  parent types.
+- Fix: every confirm() on the Today page was false inside the app (webview_flutter's default without a handler), so
+  deleting an AI provider, disconnecting / revoking an AI client, withdrawing the fallback-AI consent, resetting an
+  invite link, removing a member, leaving or dissolving a circle did nothing. alert() / confirm() / prompt() now show
+  native iOS dialogs (`js_dialogs.dart`); the buttons follow the app language.
+
+## 1.0.5+5 — 2026-10-22
+- Fix: the app crashed on open (SIGABRT) once Health access had been asked, in build 1.0.0 (4) made from
+  `app-ios-v1.0.0+2`. The permission request for beat-to-beat HRV and ECG (`RawSync.swift`) asked for the heartbeat
+  series without its parent type HRV SDNN; HealthKit rejects such a request with an `NSInvalidArgumentException`
+  ("Authorization for HKQuantityTypeIdentifierHeartRateVariabilitySDNN should also be requested when requesting
+  authorization to read HKDataTypeIdentifierHeartbeatSeries"), which Swift cannot catch. The request now includes HRV
+  SDNN. Checked every HealthKit request in the app: none of the types the OW SDK asks for has a parent type.
+- The automatic ask for these two permissions is remembered before the system sheet is requested, so a failure in
+  HealthKit can no longer repeat on every open; the permissions step still asks on demand.
+- Marketing version 1.0.5 (a bug-fix release; TestFlight shows "1.0.5 (5)"). The build number stays above build 4, which TestFlight already has (the upload of `app-ios-v1.0.0+2`).
 
 ## 1.0.0+2 — 2026-10-21
 - Self-service sign-up: Sign in with Apple, e-mail code, invite code; existing setup links keep working (#16).

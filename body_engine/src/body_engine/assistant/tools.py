@@ -27,10 +27,12 @@ class Tool:
     handler: Callable[[psycopg.Connection, int, dict], Any]  # (conn, owner_id, args) -> result
     scope: str            # shares authorization needed when viewing someone else's data
     writes: bool = False  # write operations need user confirmation before running
+    group: str = ""       # domain group (ai/params.GROUPS): which tools are sent on each call, the rest via find_tools
+    strict: bool = True   # Claude strict tools; only the meta tools with a free-form `args` object are not strict
 
     def api_definition(self) -> dict:
         return {"name": self.name, "description": self.description,
-                "input_schema": self.input_schema, "strict": True}
+                "input_schema": self.input_schema, "strict": self.strict}
 
 
 def _with_now(profile: dict | None) -> dict | None:
@@ -89,21 +91,21 @@ TOOLS: list[Tool] = [
                     "档案卡要点、最近的观察笔记、禁用 / 注意动作。需要细节再调对应工具。",
         input_schema=_schema({"user": USER}),
         handler=_briefing,
-        scope="profile",
+        group="body", scope="profile",
     ),
     Tool(
         name="get_profile",
         description="基本资料：年龄、身高、性别、时区和当地时间 now_local。",
         input_schema=_schema({"user": USER}),
         handler=lambda conn, uid, a: _with_now(queries.profile(conn, uid)),
-        scope="profile",
+        group="body", scope="profile",
     ),
     Tool(
         name="list_metrics",
         description="有哪些每日指标：名称、单位、sum / avg、覆盖日期。指标名不确定时先查。",
         input_schema=_schema({"user": USER}),
         handler=lambda conn, uid, a: queries.metric_names(conn, uid),
-        scope="metrics",
+        group="body", scope="metrics",
     ),
     Tool(
         name="get_daily_metrics",
@@ -112,14 +114,14 @@ TOOLS: list[Tool] = [
         input_schema=_range_schema(metrics={"type": "array", "items": {"type": "string"}, "description": "如 step_count"},
                                    detail={**DETAIL, "description": "true=逐行带 n / min / max"}),
         handler=_daily_metrics,
-        scope="metrics",
+        group="body", scope="metrics",
     ),
     Tool(
         name="get_sleep",
         description="睡眠记录：入睡、醒来、各阶段分钟，按醒来日期。is_main=false 是小睡。",
         input_schema=_range_schema(main_only={"type": "boolean", "description": "只要主睡眠"}),
         handler=lambda conn, uid, a: queries.sleep_sessions(conn, uid, _d(a["start"]), _d(a["end"]), a["main_only"]),
-        scope="sleep",
+        group="body", scope="sleep",
     ),
     Tool(
         name="get_scores",
@@ -127,14 +129,14 @@ TOOLS: list[Tool] = [
                     "静息心率、负荷 strain 0–21、TRIMP、CTL / ATL / TSB。分数为空看 flags。",
         input_schema=_range_schema(details={"type": "boolean", "description": "附分项、z 分数、基线（大）"}),
         handler=_scores,
-        scope="scores",
+        group="body", scope="scores",
     ),
     Tool(
         name="list_events",
         description="身体事件（伤病、疼痛、低血糖、生病、看医生），按本地日期。",
         input_schema=_range_schema(),
         handler=lambda conn, uid, a: queries.events(conn, uid, _d(a["start"]), _d(a["end"])),
-        scope="events",
+        group="records", scope="events",
     ),
     Tool(
         name="add_event",
@@ -149,7 +151,7 @@ TOOLS: list[Tool] = [
         }),
         handler=lambda conn, uid, a: queries.add_event(conn, uid, a["occurred_at"], a["title"], a["category"],
                                                       a["body_part"], a["severity"], a["note"]),
-        scope="events",
+        group="records", scope="events",
         writes=True,
     ),
 ]
@@ -171,8 +173,14 @@ from .diet_profile_tools import TOOL_SPECS as DIET_PROFILE_TOOL_SPECS  # noqa: E
 TOOLS += [Tool(**spec) for spec in DIET_PROFILE_TOOL_SPECS]  # 「我的饮食档案」: targets rationale, constraints, day plan, versions
 from .diet_profile_tools import CONSTRAINT_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in CONSTRAINT_TOOL_SPECS]  # per-user diet constraints (nutrition/constraints.py, issue #76)
+from ..friends.tools import TOOL_SPECS as FRIENDS_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in FRIENDS_TOOL_SPECS]  # Friends page: circle members' shared status and leaderboard ranks
+from ..water.tools import TOOL_SPECS as WATER_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in WATER_TOOL_SPECS]  # daily water intake (issue #125)
 from ..feedback.tools import TOOL_SPECS as FEEDBACK_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in FEEDBACK_TOOL_SPECS]  # root rules: bugs and feature requests to the developers
+from .scene_tools import TOOL_SPECS as SCENE_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in SCENE_TOOL_SPECS]  # scene context tools + playbooks (issue #100)
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 

@@ -1,5 +1,6 @@
-# App releases (docs/apps.md, section 4). A maintainer pushes a tag app-<platform>-vX.Y.Z+N (tools/app_release.sh --push);
-# this workflow checks it again (version in pubspec.yaml = tag, CHANGELOG section, on main, build number goes up) and
+# App releases (docs/apps.md, section 4). A maintainer pushes a tag app-<platform>-vX.Y.Z (tools/app_release.sh --push;
+# the build number N of pubspec.yaml's X.Y.Z+N is not in the tag); this workflow checks it again (marketing version in
+# pubspec.yaml = tag, not released before, build number higher than every earlier tag's, CHANGELOG section, on main) and
 # publishes the GitHub pre-release with the source zip of the app directory and its sha256. The person who builds for
 # TestFlight / Play takes the source ONLY from that release (or `git clone --branch <tag>`). Nothing here needs a secret:
 # GITHUB_TOKEN with contents: write creates the release. Actions are pinned to a commit.

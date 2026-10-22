@@ -6,7 +6,8 @@ Changes need a token with write (Today page cookie writes also need X-Body-Web: 
 
 - GET/POST /v1/users/{user}/ai-providers, PATCH/DELETE /v1/users/{user}/ai-providers/{id}: provider config (the key is returned as its last 4 chars only)
 - GET/POST /v1/users/{user}/ai-tokens, DELETE /v1/users/{user}/ai-tokens/{id}: tokens for AI clients to connect to the remote MCP (plaintext returned once)
-- POST /v1/assistant/chat, POST /v1/assistant/chat/confirm: in-Today-page chat (SSE stream)
+- POST /v1/assistant/chat, POST /v1/assistant/chat/confirm: in-Today-page chat (SSE stream; the turn runs on without the connection, runs.py)
+- GET /v1/assistant/chat/{conversation_id}/events?after=N: resume a turn's stream after the page was in the background
 - GET /v1/assistant/conversations, GET/DELETE /v1/assistant/conversations/{id}
 - GET /v1/users/{user}/ai-fallback, POST/DELETE /v1/users/{user}/ai-fallback/consent: the fallback AI (fallback.py): quota, consent
 - GET/PUT /v1/users/{user}/ai-choice: which AI Jarvis uses (choice.py): own provider / fallback / butler; takes effect at once
@@ -15,16 +16,16 @@ Changes need a token with write (Today page cookie writes also need X-Body-Web: 
 import json
 import logging
 import os
-import sys
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
-from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, tokens
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, runs, tokens
+from . import params as ai_params
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["ai"])
@@ -39,6 +40,15 @@ def get_conn():
 def current_user(request: Request, conn=Depends(get_conn)) -> dict:
     from .. import api
     return api.current_user(request, conn, request.headers.get("authorization"))
+
+
+def stream_user(request: Request) -> dict:
+    """current_user on a connection of its own, committed and returned at once, for the chat streams. A stream stays open
+    for minutes; holding the login's transaction that long keeps the row lock of its session / token (last_seen_at) and
+    blocks every other request of the same login, the resume of the same turn included (#114)."""
+    from .. import api
+    with api.pool.connection() as conn:
+        return api.current_user(request, conn, request.headers.get("authorization"))
 
 
 def _self_only(viewer: dict, user: str, write: bool = False) -> int:
@@ -299,6 +309,7 @@ class ChatIn(BaseModel):
     message: str = Field("", max_length=chat.MAX_TEXT)
     images: list[ImageIn] = Field(default_factory=list, max_length=chat.MAX_IMAGES)
     conversation_id: int | None = None
+    page: str | None = Field(None, max_length=ai_params.PAGE_MAX_LEN)   # Today page id: picks extra tool groups (ai/params.PAGE_GROUPS)
 
 
 class ConfirmIn(BaseModel):
@@ -307,54 +318,66 @@ class ConfirmIn(BaseModel):
     approve: bool
 
 
-def _sse(gen, cm):
-    """Turn events into SSE; on error also send an error event; finally return the connection (committing the completed part)."""
-    try:
-        for e in gen:
-            yield f"event: {e['event']}\ndata: {json.dumps(e['data'], ensure_ascii=False, default=str)}\n\n"
-    except Exception as e:  # Do not send internal details (may contain paths etc.) to the frontend
-        log.exception("chat stream failed")
-        print(f"chat stream failed: {type(e).__name__}: {e}", file=sys.stderr)
-        msg = L("出错了，稍后再试", "Something went wrong; try again later")
-        yield f"event: error\ndata: {json.dumps({'code': 'internal', 'message': msg}, ensure_ascii=False)}\n\n"
-    finally:
-        cm.__exit__(None, None, None)
-
-
-def _stream(start):
-    """start(conn) does the pre-checks and returns the event generator; a failed check returns an HTTP error directly. The connection follows the stream and is returned only when the stream ends."""
+def _start_run(viewer: dict, start):
+    """start(conn) does the pre-checks and returns (conversation id, event generator); a failed check returns an HTTP error
+    directly. The turn then runs to the end in the background (runs.py, #114) and this response only streams its events:
+    a dropped connection no longer stops it. The connection belongs to the turn and is returned when the turn ends."""
     from .. import api
     cm = api.pool.connection()
     conn = cm.__enter__()
     try:
-        gen = start(conn)
+        conv_id, gen = start(conn)
+        run = runs.start(viewer["id"], conv_id, gen, cm)
     except chat.ChatError as e:
         cm.__exit__(type(e), e, e.__traceback__)
         raise HTTPException(e.status, {"code": e.code, "message": e.message, **e.extra})
     except BaseException as e:
         cm.__exit__(type(e), e, e.__traceback__)
         raise
-    return StreamingResponse(_sse(gen, cm), media_type="text/event-stream",
+    return _sse_response(runs.sse(run))
+
+
+def _sse_response(body) -> StreamingResponse:
+    return StreamingResponse(body, media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"})
 
 
 @router.post("/v1/assistant/chat")
-def post_chat(body: ChatIn, viewer=Depends(current_user)):
+def post_chat(body: ChatIn, viewer=Depends(stream_user)):
     """In-Today-page chat: uses the current user's own default API provider. Returns text/event-stream:
     conversation -> text (many) -> tool / usage -> confirm (a write awaits confirmation, the stream ends here) or done; error on failure.
     Not set up / subscription type / budget used up: 409 / 402, detail = {code, message, assistant_url?}."""
     # A read-only login can chat too (read tools work as usual), write tools are rejected (chat.py decides by token_scopes)
-    return _stream(lambda conn: chat.chat_events(conn, viewer, body.message,
-                                                 [i.model_dump() for i in body.images], body.conversation_id))
+    return _start_run(viewer, lambda conn: chat.start_chat(conn, viewer, body.message,
+                                                           [i.model_dump() for i in body.images], body.conversation_id,
+                                                           page=body.page))
 
 
 @router.post("/v1/assistant/chat/confirm")
-def post_confirm(body: ConfirmIn, viewer=Depends(current_user)):
+def post_confirm(body: ConfirmIn, viewer=Depends(stream_user)):
     """Confirm / reject a pending write, then continue the conversation (also SSE)."""
     def start(conn):
         row, conv, provider, adapter = chat.prepare_confirm(conn, viewer, body.call_id, body.approve)
-        return chat.confirm_events(conn, viewer, row, conv, provider, adapter, body.approve)
-    return _stream(start)
+        return conv["id"], chat.confirm_events(conn, viewer, row, conv, provider, adapter, body.approve)
+    return _start_run(viewer, start)
+
+
+@router.get("/v1/assistant/chat/{conv_id}/events")
+def chat_events_after(conv_id: int, after: int = Query(0, ge=0), viewer=Depends(stream_user)):
+    """Resume a turn (#114): the events numbered above `after` (the SSE `id:` of the last one received), live while the turn
+    still runs, then to its end (done / confirm / error). Only your own conversations (404 otherwise). When the turn is no
+    longer in memory (ended over run_params.KEEP_SECONDS ago, or the server restarted) a single `resync` event: reload the
+    conversation from GET /v1/assistant/conversations/{id}."""
+    run = runs.get(viewer["id"], conv_id)
+    if run is not None:
+        return _sse_response(runs.sse(run, after))
+    from .. import api
+    with api.pool.connection() as conn:
+        try:
+            chat.conversation_view(conn, viewer["id"], conv_id)   # 404 for a conversation that is not yours
+        except chat.ChatError as e:
+            raise HTTPException(e.status, e.message)
+    return _sse_response(runs.resync(conv_id))
 
 
 @router.post("/v1/assistant/transcribe")

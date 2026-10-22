@@ -29,7 +29,8 @@ class DuplicateMealError(ValueError):
     pass
 
 
-def check_items(items: list[dict]) -> list[dict]:
+def check_items(items: list[dict], strict_energy: bool = True) -> list[dict]:
+    """strict_energy=False: items copied from entries already logged (food_combine) keep their nutrition as logged."""
     if not items:
         raise ValueError("模板至少要有一样食物")
     out, names = [], set()
@@ -55,7 +56,7 @@ def check_items(items: list[dict]) -> list[dict]:
         if clean["sat_fat_g"] > clean["fat_g"] + 0.5:
             raise ValueError(f"{food}：饱和脂肪不能多于总脂肪")
         est = 4 * clean["protein_g"] + 4 * clean["carbs_g"] + 9 * clean["fat_g"]
-        if abs(est - clean["kcal"]) > max(15, 0.25 * clean["kcal"]):
+        if strict_energy and abs(est - clean["kcal"]) > max(15, 0.25 * clean["kcal"]):
             raise ValueError(f"{food}：热量 {clean['kcal']:g} kcal 和三大营养素算出来的 {est:.0f} kcal 差太多")
         clean.update(extras.check_optional(food, it, clean["carbs_g"]))   # null = unknown, kept as null
         purine = it.get("purine_level")
@@ -109,7 +110,7 @@ def _get(conn, user_id: int, template_id: int) -> dict:
 
 
 def create_template(conn, user_id: int, name: str, meal: str, items: list[dict], needs_confirmation: bool,
-                    note: str | None = None) -> dict:
+                    note: str | None = None, strict_energy: bool = True) -> dict:
     if meal not in sparky_write.MEALS:
         raise ValueError(f"meal 只能是 {', '.join(sparky_write.MEALS)}")
     name = (name or "").strip()
@@ -121,7 +122,7 @@ def create_template(conn, user_id: int, name: str, meal: str, items: list[dict],
     row = conn.execute(
         """INSERT INTO meal_templates (user_id, name, meal, items, needs_confirmation, note)
            VALUES (%s, %s, %s, %s, %s, %s) RETURNING *""",
-        (user_id, name, meal, Jsonb(check_items(items)), needs_confirmation, note)).fetchone()
+        (user_id, name, meal, Jsonb(check_items(items, strict_energy)), needs_confirmation, note)).fetchone()
     return _view(row)
 
 
@@ -199,13 +200,19 @@ def log_template(conn: psycopg.Connection, user_id: int, template_id: int, day: 
              "notes": "；".join(x for x in (f"快捷记餐「{tpl['name']}」", PURINE_ZH.get(i.get("purine_level")),
                                            i.get("note"), "克数待确认" if tpl["needs_confirmation"] else None) if x)}
             for i in items]
-    res = sparky_write.log_food(conn, user_id, food, allow_duplicates, client=client)
+    res = sparky_write.log_food(conn, user_id, food, allow_duplicates, client=client, deduct=False)
     if not res["created"]:
         raise DuplicateMealError(f"{day} 的{sparky_write.MEALS[tpl['meal']]}已经记过「{tpl['name']}」，没有重复记"
                                  "（确实又吃了一份就用 allow_duplicates）")
     entries = [{"id": c["id"], "food": c["food"]} for c in res["created"]]
     logged_names = {c["food"] for c in res["created"]}
     logged_items = [i for i in items if entry_name(i) in logged_names]
+    from ..grocery import pantry_auto   # grocery imports assistant
+    pantry = []
+    for c in res["created"]:   # each item is one entry: its raw food name and grams against the pantry (issue #104)
+        i = next((x for x in items if entry_name(x).strip() == c["food"]), None)
+        if i is not None and i["grams"]:
+            pantry += pantry_auto.deduct(conn, user_id, c["id"], day, [(i["food"], float(i["grams"]), "g")])
     row = conn.execute(
         """INSERT INTO meal_logs (user_id, template_id, date, meal, items, entries, channel)
            VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id, created_at""",
@@ -215,7 +222,8 @@ def log_template(conn: psycopg.Connection, user_id: int, template_id: int, day: 
                             "模板克数还没确认，是估算值" if tpl["needs_confirmation"] else None) if w]
     return {"log_id": row["id"], "template_id": tpl["id"], "name": tpl["name"], "date": day.isoformat(), "time": time,
             "meal": tpl["meal"], "entries": entries, "totals": totals(logged_items),
-            "skipped_duplicates": [s["food"] for s in res["skipped_duplicates"]], "warnings": warnings + res["warnings"]}
+            "skipped_duplicates": [s["food"] for s in res["skipped_duplicates"]], "warnings": warnings + res["warnings"],
+            **({"pantry_used": pantry} if pantry else {})}
 
 
 def undo_log(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -> dict:

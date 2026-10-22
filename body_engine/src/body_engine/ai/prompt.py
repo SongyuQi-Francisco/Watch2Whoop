@@ -16,6 +16,7 @@ from .. import queries
 from ..feedback import store as feedback_store
 from . import root_rules
 from ..assistant import memory, status
+from ..assistant import memory_params as mp
 
 MAX_MEMORY_CHARS = 12000
 
@@ -30,28 +31,56 @@ def base_prompt(lite: bool = False) -> str:
     return root_rules.text() + "\n\n" + re.sub(r"<!--.*?-->\s*", "", text, flags=re.S).strip()
 
 
-def _memory_block(conn: psycopg.Connection, user_id: int, limit: int = MAX_MEMORY_CHARS) -> str:
+TRUNCATED = "\n…（记忆太长，后面的省略了，需要时调 get_memory）"
+EMPTY = "（还没有长期记忆：多问几句、学到长期有用的事实就用 add_observation 记下来。）"
+
+
+def _memory_sections(conn: psycopg.Connection, user_id: int) -> list[tuple[str, list[str], bool]]:
+    """(heading, lines, must_keep) in priority order (issue #112): communication -> health constraints -> injuries ->
+    recent notes in effect -> status card -> other profile card items -> lasting observation notes, newest first.
+    must_keep lines are cut to fit rather than dropped."""
     try:
         status.refresh_if_stale(conn, user_id)
     except Exception:  # If the auto status cannot be computed, the conversation is unaffected
         pass
     m = memory.get_memory(conn, user_id)
-    lines = []
-    st = status.list_status(conn, user_id)
-    if st:
-        lines.append("### 状态卡")
-        lines += [f"- {s['label']}：{s['value']}{s.get('unit') or ''}" + (f"（{s['note']}）" if s.get("note") else "")
-                  for s in st]
-    if m["profile_card"]:
-        lines.append("### 身体档案卡")
-        lines += [f"**{c['label']}**（{c['updated_at']:%Y-%m-%d}）：{c['value']}" for c in m["profile_card"]]
-    if m["observations"]:
-        lines.append("### 观察笔记")
-        lines += [f"- [{o['id']}] {o['created_at']:%Y-%m-%d} {o['text']}" for o in m["observations"][-60:]]
-    text = "\n".join(lines) or "（还没有长期记忆：多问几句、学到长期有用的事实就用 add_observation 记下来。）"
-    if len(text) > limit:
-        text = text[:limit] + "\n…（太长截断了，需要时调 get_memory）"
-    return text
+    card = {c["key"]: c for c in m["profile_card"]}
+    line = lambda c: f"**{c['label']}**（{c['updated_at']:%Y-%m-%d}）：{c['value']}"
+    out = [("### 身体档案卡（优先）", [line(card[k]) for k in mp.PRIORITY_KEYS if k in card], True)]
+    recent = [o for o in m["observations"] if o["kind"] == "recent"]
+    out.append(("### 近况（到期后自动不再出现）",
+                [f"- [{o['id']}] 到 {o['valid_until']:%Y-%m-%d}：{o['text']}" for o in recent], False))
+    out.append(("### 状态卡", [f"- {s['label']}：{s['value']}{s.get('unit') or ''}" + (f"（{s['note']}）" if s.get("note") else "")
+                              for s in status.list_status(conn, user_id)], False))
+    out.append(("### 身体档案卡", [line(c) for c in m["profile_card"] if c["key"] not in mp.PRIORITY_KEYS], False))
+    facts = [o for o in m["observations"] if o["kind"] != "recent"][::-1][:mp.PROMPT_FACTS_MAX]
+    out.append(("### 观察笔记（新的在前）", [f"- [{o['id']}] {o['created_at']:%Y-%m-%d} {o['text']}" for o in facts], False))
+    return out
+
+
+def _memory_block(conn: psycopg.Connection, user_id: int, limit: int = MAX_MEMORY_CHARS) -> str:
+    """Fills the memory up to `limit` characters in priority order instead of cutting the tail: a line that does not
+    fit is skipped (a must_keep one is cut to the room left), lower-priority lines still get the room that is left."""
+    sections = _memory_sections(conn, user_id)
+    if not any(lines for _, lines, _ in sections):
+        return EMPTY
+    room = limit - len(TRUNCATED)
+    parts, cut = [], False
+    for head, lines, must in sections:
+        kept = []
+        for ln in lines:
+            hdr = 0 if kept else len(head) + 1
+            if hdr + len(ln) + 1 <= room:
+                kept.append(ln)
+                room -= hdr + len(ln) + 1
+            else:
+                cut = True
+                if must and room - hdr - 2 > 40:
+                    kept.append(ln[:room - hdr - 2] + "…")
+                    room = 0
+        if kept:
+            parts += [head, *kept]
+    return "\n".join(parts) + (TRUNCATED if cut else "")
 
 
 def build_system_prompt(conn: psycopg.Connection, user_id: int, lite: bool = False) -> str:

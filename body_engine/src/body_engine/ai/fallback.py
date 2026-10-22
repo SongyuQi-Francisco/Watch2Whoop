@@ -42,7 +42,7 @@ TOOL_NAMES = (
     "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
     "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
     "list_events", "list_journal_items", "get_journal", "get_memory",
-    "log_food", "log_workout", "log_weight", "undo_sparky_entry", "log_journal", "add_event",
+    "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
     "add_observation", "update_profile_card",
     "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
     "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
@@ -53,9 +53,10 @@ TOOL_NAMES = (
     "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
     "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
     "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
+    "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
 )
 CONSENT_POINTS = [
-    "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司，服务器在中国），费用管理员出，每人每月 ¥{quota:g} 额度。",
+    "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
     "以及回答需要时读的你的评分、睡眠、训练、饮食、体重、呼吸频率 / 血氧 / 手腕温度等每日指标、化验、补剂、日记、提醒，"
     "还有采购清单、家里存货、已连接的超市、商品价格和购买记录。",
@@ -69,7 +70,7 @@ CONSENT_POINTS = [
 # English translation of CONSENT_POINTS for the page (X-Body-Lang: en). The Chinese list is the authoritative text and
 # CONSENT_VERSION is set by hand when the Chinese changes; this list never changes the version (change it together with the Chinese).
 CONSENT_POINTS_EN = [
-    "The backup AI is DeepSeek (a Chinese company, servers in China), provided and paid for by the admin, "
+    "The backup AI is DeepSeek (a Chinese company), provided and paid for by the admin, "
     "with ¥{quota:g} per person per month.",
     "When you ask something, DeepSeek receives: your message, your name / age / sex / height / time zone, your long-term "
     "memory (profile card, observation notes, status card), and, when the answer needs them, your scores, sleep, workouts, "
@@ -126,10 +127,6 @@ def _own_schema(schema: dict) -> dict:
 def tools() -> tuple:
     return tuple(dataclasses.replace(ALL_TOOLS[n], input_schema=_own_schema(ALL_TOOLS[n].input_schema))
                  for n in TOOL_NAMES if n in ALL_TOOLS)
-
-
-def tools_by_name() -> dict:
-    return {t.name: t for t in tools()}
 
 
 # ---------------------------------------------------------------- money
@@ -334,8 +331,9 @@ def _quota_extra(s: dict) -> dict:
             "reset_on": s["reset_on"]}
 
 
-def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict]) -> tuple[float, float]:
-    """Before each model call: monthly quota, worst-case cost of this call, per-minute / per-day limits. Returns (spent, quota)."""
+def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict], tool_list=None) -> tuple[float, float]:
+    """Before each model call: monthly quota, worst-case cost of this call, per-minute / per-day limits. Returns (spent, quota).
+    tool_list: the tools this call sends (core + page groups, ai/chat.py); None = the whole whitelist."""
     from .chat import ChatError
     s = summary(conn, user_id)
     if s["reason"] in ("fallback_off", "fallback_paused"):
@@ -347,7 +345,7 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
                                    "也可以在「我 → AI 设置」接入自己的 AI",
                                    f"This month's quota is used up (¥{spent:.2f} / ¥{quota:g}); it resets on {s['reset_on']}. "
                                    "You can also connect your own AI in Me → AI settings"), status=402, **extra)
-    if estimate_call_cny(system, history, tools()) > quota - spent:
+    if estimate_call_cny(system, history, tools() if tool_list is None else tool_list) > quota - spent:
         raise ChatError("quota", L(f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
                                    "开一个新对话会省一些",
                                    f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "

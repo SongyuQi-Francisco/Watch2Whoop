@@ -487,13 +487,18 @@ def purchases_for_items(conn, user_id: int, item_ids: list[int]) -> dict[int, di
 
 
 # ---------------------------------------------------------------- context for the user's AI
+# Usual-item suggestions (issue #103, owner's decision on #108): no "declined" column; the AI remembers within the conversation.
+STAPLE_RULE = "staple_suggestions 只是推荐：问过用户、同意了才 set_staple；同一个推荐用户在对话里拒绝过就不要再提。"
+PANTRY_AUTO_HINT = "记餐自动扣存货没开：存货只在买了时增加，吃掉的不会减，清单可能少买；用户说要开再用 set_pantry_auto 打开。"
 GUARDRAILS = ("只查 needs_price 里的商品（这个用户自己清单上的），一次最多 {n} 样，不要整站抓取、不要翻目录页。",
               "用已连接超市的商品页 / 搜索页；打不开、要登录或被拦截（403 / 验证码），就告诉用户，改用截图，不要尝试绕过。",
               "查到后用 record_store_prices 一次写回（带商品页 URL、规格、价格、是否特价和原价、查询时间）。")
 
 
 def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = None) -> dict:
-    from . import store   # store imports this module
+    from . import pantry_auto, store   # store imports this module
+    from ..rollout import flags
+    staples_on = flags.enabled(conn, user_id, P.STAPLES_FLAG)
     lst = store.get_list(conn, user_id, day, with_pantry=True)
     connected = _connected(conn, user_id)
     hc = conn.execute("SELECT value FROM assistant_profile WHERE user_id = %s AND key = 'health_constraints'", (user_id,)).fetchone()
@@ -521,5 +526,13 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
                    # the user's own limits (nutrition/constraints.py, issue #76); [] = none
                    "diet_constraints": [c["text"] for c in diet_constraints.listing(conn, user_id)["constraints"]],
                    "warnings": [w["label"] for w in lst["warnings"]]},
-        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS],
+        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS] + ([STAPLE_RULE] if staples_on else []),
+        # usual-item candidates from this user's own purchases (issue #103): ask before set_staple, never mark on your own
+        **({"staple_suggestions": store.staple_suggestions(conn, user_id)} if staples_on else {}),
+        # best before within a few days or past (issue #104): suggest using them up; pantry_auto = the switch
+        # (all behind the rollout flag pantry_auto: off -> none of these keys)
+        **({"expiring": pantry_auto.expiring(conn, user_id), "pantry_auto": pantry_auto.enabled(conn, user_id),
+            # switched off (the default): say so once, the AI turns it on only when the user asks (owner's decision on #110)
+            **({} if pantry_auto.enabled(conn, user_id) else {"pantry_auto_hint": PANTRY_AUTO_HINT})}
+           if pantry_auto.available(conn, user_id) else {}),
     }
