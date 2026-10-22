@@ -70,6 +70,7 @@ NO_DATA = {
     "training/plan/swap": "write: swap an exercise (swap_exercise)",
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
+    "weight": "write: the day's weight from 记录 → 日记 (log_weight; offline_mode)",
     "journal/{x}/{x}": "write: one journal answer (log_journal)",
     "meal-logs/{x}": "write: undo a quick meal",
     "meal-templates/{x}/log": "write: log a quick meal",
