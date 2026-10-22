@@ -240,6 +240,25 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 
 **2026-10-21（issue #58）补齐今天页的读工具**：托底 AI 被问「衰老速度什么意思」时答「你的数据里没有」，因为白名单里没有身体年龄、压力、健康监测等本系统自己算的指标的读工具。`TOOL_NAMES` 从 44 个加到 63 个：`get_healthspan`、`get_stress`、`get_health_monitor`、`get_hr_zones`、`get_vo2max`、`get_report`、`get_sleep_details`、`get_lab_history`、`get_metric_snapshots`、`analyze_journal`、`get_diet_profile`、`get_nutrition_goals`、`get_meal_templates`、`list_recipes`、`get_recipe`、`suggest_meals`、`get_shopping_list`、`get_weekly_specials`、`find_products`（仍然不加 `get_cardio` / `get_ecg_list`）。`system_prompt_lite.md` 加了一句「今天页上的指标都由本系统计算，先调工具，不要说没有」。`tests/test_fallback_coverage.py` 把今天页脚本调用的每个接口、每个讲解 key 对到托底的读工具，新加卡片忘了加白名单时 CI 会失败。固定开销：工具定义 26.6k → 34.2k 字符（按 DeepSeek 的估算规则约 +2.6k token），设定 +0.1k token；每次模型调用缓存未命中多 ¥0.005，命中多 ¥0.0001。趋势页的几张状态卡（HRV 状态、训练状态、身体电量、恢复时间、韧性、生病风险、生物钟等）目前**没有任何 AI 工具**能读（只在 `/trends` 里算），测试里列为 `NO_TOOL_YET`，留作后续。
 
+#### 9.10.1 额度卡（2026-10-23，issue #182，`ai/quota_cards.py`、迁移 `645_ai_quota_cards.sql`，开关 `ai_cards`）
+> 负责人提出：托底额度用完要等下个月 1 号，需要「额度卡」让管理员提前给人恢复或增加额度：定期发、作为奖励送、单独补偿。私有部署以后的付费扩充也调同一个发放函数（公开仓库不做支付）。
+
+| 项 | 做法 |
+|---|---|
+| 卡的种类 | `reset` 重置卡：本月已用额度清零（用卡之前的花费不再算进这个人的额度）；`extend` 扩充卡：本月额度 + X 元（每张最多 ¥50，`quota_cards_params.MAX_EXTEND_CNY`）。卡在**用掉的那个月**生效，没用的卡留到过期 |
+| 额度怎么算 | `fallback.allowance()`：本月可用 = 月额度 + 本月用过的扩充卡合计 − 本月最后一次用重置卡之后的花费（没用过重置卡就从月初算）。`summary` / `precheck` / 联网搜索（`ai/web`）都用它；`month_spent_cny` 仍是管理员这个月为这个人实际付的钱（`ai-fallback status` 的「本月」列） |
+| 来源和状态 | 来源 `admin` / `periodic` / `reward` / `other`；状态 未用 → 已用 / 过期 / 撤销（不会回到未用）。默认 30 天有效（`--expires 30d / 2w / 2026-11-30 / never`）；过期由每小时任务和每次读的时候标记 |
+| 表 | `ai_quota_cards`（卡：发放人 `granted_by`、原因、`grant_key` 幂等键、有效期、用掉 / 撤销的时间和人）；`ai_quota_ledger`（只追加的流水：发放 / 使用 / 过期 / 撤销，谁做的，用卡时记下用前已用和用前额度——重置卡清掉的金额就是「用前已用」）；`ai_quota_card_rules`（定期发放规则）。三张表都给 `grafana_ro` 读（管理员看板） |
+| 发放函数（给别的模块和插件用） | `quota_cards.grant(conn, user_id, kind, source=, reason=, actor=, amount_cny=, count=, expires_at=, key=)`：参数校验（种类、来源、金额、张数 1–10、原因必填 ≤ 200 字、用户存在）、带 `key` 时幂等（同一个人同一个 key 只发一次；多张时每张 `key#i`）、写流水、发站内通知；在调用方的事务里，调用方提交。`quota_cards.reward(conn, user_id, reason, module=, key=)` = `source=reward`、key 为 `reward:<module>:<key>`、`actor=module:<module>`，例如「反馈被采纳」`reward(conn, uid, "反馈被采纳", module="feedback", key=f"adopted:{id}")`。私有插件（包括以后的付费扩充）调同一个函数，用自己的 `actor`（如 `plugin:<名字>`）和 key（如订单号）保证不重复发 |
+| 管理员 CLI | `body-engine ai-cards grant --user N \| --all --kind reset\|extend [--amount X] --count 1 --expires 30d --reason … [--key K] [--no-notify] [--by 名字]`（`--all` = 开关对他开着、托底额度 > 0 的人）；`list [--user N] [--status unused]`、`ledger [--user N]`、`revoke --card ID … \| --user N --reason …`（只收回没用的卡）；`ai-fallback status` 多一列「额度卡」（R = 重置卡、E = 扩充卡张数） |
+| 定期发放 | 规则在表里，可以随时改：`ai-cards rule-set <名字> --period monthly --day 1 --kind reset --count 1 --expires-days 30 --active-days 30 --reason "每月一张"`（例：每月 1 号给近 30 天用过 Jarvis 的人各 1 张）；`--period weekly --day 1` = 每周一；`rule-on / rule-off`、`rules`。每小时 `ai-cards periodic`（`deploy/ops/ops.py` 的 hourly；私有部署的定时任务要加同一行）：先标过期，再按**每个人的本地日期**看规则在当前周期是否到期，用 key `rule:<名字>:<周期>`（`2026-10` / `2026-W43`）发，所以同一周期不会重复发，漏跑的会在同一周期内补发；`--dry-run` 只列出会发给谁。只发给开关对他开着、托底额度 > 0 的人 |
+| 管理员看板 | Grafana「身体管理 · Jarvis 额度卡」（`deploy/grafana/build_dashboards.py` → `06-ai-cards.json`）：没用的卡总数、时段内发出 / 用掉、每人没用的卡（重置 / 扩充 / 扩充合计 / 最早到期 / 累计用过）、额度流水、定期规则 |
+| 用户端（开关 `ai_cards`） | 「我 → AI 设置」里 Jarvis 那行和对话面板顶部的额度行后面显示「额度卡 ×N」；点额度行或 Jarvis 详情里的「额度卡」打开卡片列表（重置卡 / 扩充卡 +N%、来源、原因、到期日，下面是用过 / 过期 / 收回的记录）；额度用完时提示里多一句「可以用一张额度卡」，对话里出现「用一张额度卡」按钮。**界面上只有「Jarvis」和百分比**：扩充卡按月额度换算成 +N%，不显示金额和提供商 |
+| 用卡 | `POST /v1/users/me/ai-cards/{id}/use`：先弹确认（「本月 Jarvis 额度回到 100%（现在剩 N%）」）；只能用自己的卡（别人的卡 404，家人授权不包括 AI）；**连点只算一次**：行加锁后只有「未用」才会变「已用」，同一张卡再点返回 `already: true`、不改任何东西、不写第二条流水；按钮在请求期间也禁用。返回新的额度，页面立即刷新百分比。本月还没用就不让用重置卡（免得白费）；额度为 0（管理员不给用）的人不能用卡 |
+| 通知 | 收到卡（新发出的才发，幂等重放不发）时 `notify.notify(conn, uid, "ai_card", …, url="/app/?tab=me&ai_cards=1")`，通知类型「Jarvis 额度卡」登记在 `notify/params.py`，用户可以在通知设置里关推送；开关没对他开时不发通知（卡照样发，开了以后能看到） |
+| 安全和成本 | **卡绕不过全体暂停**：DeepSeek 余额低于停用线（或管理员关掉）时 `precheck` 先拦，用卡也被拒绝（「Jarvis 现在暂停了，卡先留着」）。`ai-fallback status --json` 的 `month_remaining_cny`（doctor 的「本月最多还会花」）= 每个可用的人本月剩下的额度 + 没用的卡最多还能加的钱：所有扩充卡合计 + 每张重置卡 ×（月额度 + 本月已扩充 + 没用的扩充卡合计）——先用完扩充卡再用重置卡时的最坏情况；另外给出 `month_cards_max_cny`。私有部署的 doctor 直接读这个字段，不用改 |
+| 验证 | `tests/test_ai_quota_cards.py`：校验、幂等、通知、奖励、重置 / 扩充的额度计算、连点、拒绝的几种情况、暂停时绕不过、过期和收回、doctor 金额、定期规则（干跑、同一周期只发一次、下个周期再发、关规则、关开关）、CLI、接口（开关关着 404、别人的卡、英文提示） |
+
 ### 9.11 多模态：照片、视频、语音（2026-10-18）
 > 用户原话的意思：托底 AI 不能发语音、照片、视频是有问题的；所有 API 都走 DeepSeek，模型不支持的能力自己搭配。产品本来就是「没有输入框，所有记录靠跟 AI 对话」。
 

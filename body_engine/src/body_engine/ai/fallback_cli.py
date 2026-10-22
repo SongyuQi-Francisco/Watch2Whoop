@@ -33,13 +33,21 @@ def _table(s: dict) -> str:
              f"key {'有' if s['key'] else '没有'}；开关 {'开' if s['enabled'] else '关'}",
              f"余额 {bal}（停用线 ¥{s['stop_cny']:g}，告警线 ¥{s['warn_cny']:g}）"
              + (f"；余额查询失败 {s['balance_error']}" if s["balance_error"] else ""),
-             f"本月合计 ¥{s['month_spent_cny']:.2f}；{s['eligible_users']} 人可用，本月最多还会花 ¥{s['month_remaining_cny']:.2f}",
+             f"本月合计 ¥{s['month_spent_cny']:.2f}；{s['eligible_users']} 人可用，本月最多还会花 ¥{s['month_remaining_cny']:.2f}"
+             f"（其中没用的额度卡最多 ¥{s['month_cards_max_cny']:.2f}）",
              f"价格：{s['price_source']}", "",
-             f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8}  同意  Jarvis 用"]
+             f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8}  同意  额度卡  Jarvis 用"]
     for u in s["users"]:
         lines.append(f"{u['user_id']:>3}  {u['name'][:10]:<10} ¥{u['spent_cny']:>7.3f} ¥{u['quota_cny']:>5g} {u['calls']:>5} "
-                     f"{u['input_tokens']:>9} {u['output_tokens']:>8}  {'✓' if u['consent'] else '—':<4}  {u['uses']}")
+                     f"{u['input_tokens']:>9} {u['output_tokens']:>8}  {'✓' if u['consent'] else '—':<4}  "
+                     f"{_cards(u):<6}  {u['uses']}")
     return "\n".join(lines)
+
+
+def _cards(u: dict) -> str:
+    """Unused quota cards: R = reset, E = extend (ai-cards list for details)."""
+    parts = ([f"R{u['cards_reset']}"] if u["cards_reset"] else []) + ([f"E{u['cards_extend']}"] if u["cards_extend"] else [])
+    return " ".join(parts) or "—"
 
 
 def run(conn: psycopg.Connection, args: argparse.Namespace) -> None:

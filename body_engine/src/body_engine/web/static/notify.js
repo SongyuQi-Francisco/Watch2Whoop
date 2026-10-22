@@ -228,7 +228,7 @@
 
   // A link opened from a push (the app loads its url) or typed: act once, then drop its parameters so a reload does not
   // open it again (other query parameters such as ?date= stay)
-  const LINK_KEYS = ["tab", "notifications", "feed", "post"];
+  const LINK_KEYS = ["tab", "notifications", "feed", "post", "ai_cards"];   // ai_cards: Jarvis allowance cards (ai.js, #182)
   function fromLocation() {
     const p = parseLink(location.search + location.hash);
     if (!LINK_KEYS.some((k) => k in p)) return;

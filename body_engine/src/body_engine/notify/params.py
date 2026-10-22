@@ -12,6 +12,7 @@ FEATURE = "notifications"   # rollout flag: the Today page list / settings, and 
 CATEGORIES: dict[str, dict] = {
     "circle": {"zh": "圈子互动", "en": "Circle activity", "default": True},   # likes / comments on the training feed
     "system": {"zh": "系统消息", "en": "System", "default": True},
+    "ai_card": {"zh": "Jarvis 额度卡", "en": "Jarvis allowance cards", "default": True},   # ai/quota_cards.py (#182)
 }
 
 # Same kind to the same person within MERGE_MINUTES while unread: one notification on the phone, updated in place

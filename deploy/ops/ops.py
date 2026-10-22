@@ -401,6 +401,8 @@ def job_scores(log: Log, full: bool) -> list:
         engine_step(log, errors, "history-import-run", "history-import-run")
     if "oauth-cleanup" in help_text:   # MCP OAuth: expired codes / tokens, clients that were never approved
         engine_step(log, errors, "oauth-cleanup", "oauth-cleanup")
+    if "ai-cards" in help_text:   # Jarvis quota cards: expiry + periodic grant rules (idempotent per period, #182)
+        engine_step(log, errors, "ai-cards periodic", "ai-cards", "periodic")
     users = list_users()
     log("用户：" + ", ".join(f"{u['id']} {u['name']}" for u in users))
     for u in users:

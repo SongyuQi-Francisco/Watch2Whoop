@@ -1,0 +1,450 @@
+{
+ "uid": "body-ai-cards",
+ "title": "身体管理 · Jarvis 额度卡",
+ "description": "管理员看：每人没用的额度卡、额度流水、定期发放规则（Body Engine ai/quota_cards.py）。",
+ "tags": [
+  "身体管理",
+  "管理"
+ ],
+ "timezone": "Australia/Sydney",
+ "weekStart": "monday",
+ "editable": false,
+ "graphTooltip": 1,
+ "time": {
+  "from": "now-90d",
+  "to": "now"
+ },
+ "refresh": "",
+ "schemaVersion": 41,
+ "version": 1,
+ "fiscalYearStartMonth": 0,
+ "liveNow": false,
+ "timepicker": {
+  "refresh_intervals": [
+   "5m",
+   "15m",
+   "1h"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "user",
+    "label": "用户",
+    "type": "query",
+    "datasource": {
+     "type": "grafana-postgresql-datasource",
+     "uid": "body-engine"
+    },
+    "refresh": 1,
+    "hide": 0,
+    "query": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "definition": "SELECT id AS __value, display_name AS __text FROM users ORDER BY id",
+    "current": {
+     "text": "Alex",
+     "value": "1"
+    },
+    "includeAll": false,
+    "multi": false,
+    "sort": 0,
+    "options": []
+   }
+  ]
+ },
+ "annotations": {
+  "list": []
+ },
+ "links": [
+  {
+   "title": "身体管理",
+   "type": "dashboards",
+   "tags": [
+    "身体管理"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true,
+   "icon": "external link"
+  }
+ ],
+ "panels": [
+  {
+   "type": "stat",
+   "title": "没用的卡（所有人）",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT count(*) AS value FROM ai_quota_cards WHERE status = 'unused' AND (expires_at IS NULL OR expires_at > now())"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "id": 1
+  },
+  {
+   "type": "stat",
+   "title": "这段时间发出",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT count(*) AS value FROM ai_quota_ledger WHERE event = 'grant' AND at BETWEEN $__timeFrom()::timestamptz AND $__timeTo()::timestamptz"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "id": 2
+  },
+  {
+   "type": "stat",
+   "title": "这段时间用掉",
+   "description": "",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT count(*) AS value FROM ai_quota_ledger WHERE event = 'use' AND at BETWEEN $__timeFrom()::timestamptz AND $__timeTo()::timestamptz"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "thresholds"
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "blue",
+        "value": null
+       }
+      ]
+     },
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "graphMode": "area",
+    "colorMode": "value",
+    "justifyMode": "center",
+    "textMode": "value",
+    "orientation": "auto",
+    "showPercentChange": false
+   },
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 8,
+    "h": 4
+   },
+   "id": 3
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "每人没用的卡",
+   "description": "ai_quota_cards：未用、没过期的卡。扩充卡的金额只有管理员看得到（用户只看到百分比）。`body-engine ai-cards list / ledger` 看明细，`ai-cards revoke` 收回。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT u.id AS \"id\", u.display_name AS \"用户\", count(c.id) FILTER (WHERE c.kind = 'reset') AS \"重置卡\", count(c.id) FILTER (WHERE c.kind = 'extend') AS \"扩充卡\", coalesce(sum(c.amount_cny), 0) AS \"扩充合计 ¥\", min(c.expires_at)::date::text AS \"最早到期\", (SELECT count(*) FROM ai_quota_cards x WHERE x.user_id = u.id AND x.status = 'used') AS \"累计用过\" FROM users u LEFT JOIN ai_quota_cards c ON c.user_id = u.id AND c.status = 'unused' AND (c.expires_at IS NULL OR c.expires_at > now()) GROUP BY u.id ORDER BY u.id"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 4,
+    "w": 24,
+    "h": 8
+   },
+   "id": 4
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "额度流水",
+   "description": "ai_quota_ledger：每次发放 / 使用 / 过期 / 收回一行（只追加）。用重置卡时「用前已用」就是清掉的金额。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT to_char(l.at, 'YYYY-MM-DD HH24:MI') AS \"时间\", u.display_name AS \"用户\", CASE l.event WHEN 'grant' THEN '发放' WHEN 'use' THEN '使用' WHEN 'expire' THEN '过期' WHEN 'revoke' THEN '收回' END AS \"事件\", CASE l.kind WHEN 'reset' THEN '重置卡' ELSE '扩充卡' END AS \"卡\", l.card_id AS \"卡号\", l.amount_cny AS \"金额 ¥\", round(l.spent_before_cny, 3) AS \"用前已用 ¥\", round(l.allowance_before_cny, 2) AS \"用前额度 ¥\", l.actor AS \"谁\", l.note AS \"说明\" FROM ai_quota_ledger l JOIN users u ON u.id = l.user_id WHERE l.at BETWEEN $__timeFrom()::timestamptz AND $__timeTo()::timestamptz ORDER BY l.at DESC LIMIT 500"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 24,
+    "h": 10
+   },
+   "id": 5
+  },
+  {
+   "type": "table",
+   "transformations": [],
+   "title": "定期发放规则",
+   "description": "`body-engine ai-cards rule-set / rule-on / rule-off` 改；每小时 `ai-cards periodic` 按用户本地日期发，同一周期只发一次。",
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
+     },
+     "rawQuery": true,
+     "editorMode": "code",
+     "format": "table",
+     "rawSql": "SELECT name AS \"规则\", CASE WHEN enabled THEN '开' ELSE '关' END AS \"状态\", period AS \"周期\", day AS \"日\", kind AS \"卡\", amount_cny AS \"金额 ¥\", count AS \"张数\", expires_days AS \"有效天数\", active_within_days AS \"近 N 天用过\", reason AS \"原因\", updated_by AS \"改动人\", to_char(updated_at, 'YYYY-MM-DD HH24:MI') AS \"改动时间\" FROM ai_quota_card_rules ORDER BY name"
+    }
+   ],
+   "datasource": {
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      }
+     },
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "sortBy": [],
+    "footer": {
+     "show": false,
+     "reducer": [
+      "sum"
+     ],
+     "fields": ""
+    }
+   },
+   "gridPos": {
+    "x": 0,
+    "y": 22,
+    "w": 24,
+    "h": 6
+   },
+   "id": 6
+  }
+ ]
+}

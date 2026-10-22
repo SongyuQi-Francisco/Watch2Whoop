@@ -129,6 +129,23 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 - **余额低于停用线全体自动暂停**，`status` 第二行显示余额、停用线、告警线；充值后下次查余额时恢复。
 - 第一次用前用户要在 app 里单独同意。
 
+### Jarvis 额度卡（灰度开关 `ai_cards`，#182）
+
+重置卡把某人本月已用的 Jarvis 额度清零，扩充卡给本月加额度。用户只看到「额度卡 ×N」和百分比。设计见 `docs/ai-assistant-plan.md` 9.10.1。
+
+```bash
+body-engine ai-cards grant --user 3 --kind reset --count 1 --expires 30d --reason "补偿：服务中断"
+body-engine ai-cards grant --all --kind extend --amount 1 --reason "活动" --key event-2026-11   # --key：重跑也不重复发
+body-engine ai-cards list --user 3 / ledger --user 3       # 卡 / 流水（谁发的、谁用的、用前已用多少）
+body-engine ai-cards revoke --card 12 --reason "发错了"     # 只收回没用的
+body-engine ai-cards rule-set monthly-active --period monthly --day 1 --kind reset --active-days 30 --reason "每月一张"
+body-engine ai-cards rules / rule-off monthly-active / periodic --dry-run
+```
+
+- `ai-cards periodic` 每小时跑（过期 + 定期规则，同一周期只发一次）。
+- 余额低于停用线时卡也用不了；`ai-fallback status` 的「本月最多还会花」已包含没用的卡。
+- 看板：Grafana「身体管理 · Jarvis 额度卡」。
+
 ### Jarvis 联网查价（灰度开关 `ai_web`，#150）
 
 托底 AI 和「OpenAI 兼容接口」自己不能联网；打开 `ai_web` 后它们用服务器的 `web_search`（搜索 API，管理员付费，计入每人的托底额度）和 `web_fetch`（读一个公开网页，遵守 robots.txt，碰到反爬 / 验证码 / 登录就停，Coles / Woolworths 不读）。Anthropic / OpenAI / Gemini key 的用户用各家官方联网（「AI 设置」→「允许联网」，费用算他自己的）。

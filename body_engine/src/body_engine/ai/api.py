@@ -10,6 +10,7 @@ Changes need a token with write (Today page cookie writes also need X-Body-Web: 
 - GET /v1/assistant/chat/{conversation_id}/events?after=N: resume a turn's stream after the page was in the background
 - GET /v1/assistant/conversations, GET/DELETE /v1/assistant/conversations/{id}
 - GET /v1/users/{user}/ai-fallback, POST/DELETE /v1/users/{user}/ai-fallback/consent: the fallback AI (fallback.py): quota, consent
+- GET /v1/users/{user}/ai-cards, POST /v1/users/{user}/ai-cards/{id}/use: Jarvis quota cards (quota_cards.py, flag ai_cards, #182)
 - GET/PUT /v1/users/{user}/ai-choice: which AI Jarvis uses (choice.py): own provider / fallback / butler; takes effect at once
 - POST /v1/assistant/transcribe: voice -> text (asr.py, local recognition; body = 16 kHz mono WAV made by the page)
 """
@@ -24,7 +25,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
-from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, runs, tokens
+from ..rollout import flags
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, quota_cards, runs, tokens
+from . import quota_cards_params as qcp
 from . import params as ai_params
 
 log = logging.getLogger(__name__)
@@ -269,6 +272,42 @@ def accept_fallback(user: str, body: FallbackConsentIn, request: Request, conn=D
 def revoke_fallback(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     fallback.revoke_consent(conn, _self_only(viewer, user, write=True))
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- Jarvis quota cards (quota_cards.py, #182)
+def _quota_view(conn, uid: int) -> dict | None:
+    """The numbers the page redraws after a card is used (percent only on screen)."""
+    if fallback.read_key() is None:
+        return None
+    s = fallback.summary(conn, uid)
+    return {k: s[k] for k in ("spent_cny", "quota_cny", "remaining_cny", "remaining_pct", "reset_on", "available",
+                              "reason", "message", "cards") if k in s}
+
+
+def _cards_user(conn, viewer: dict, user: str, write: bool = False) -> int:
+    """Own cards only, 404 while the flag is off (flags.require would open a second login connection in this router)."""
+    uid = _self_only(viewer, user, write)
+    if not flags.enabled(conn, uid, qcp.FLAG):
+        raise HTTPException(404, L("这个功能还没有对你开放", "This feature is not available to you yet"))
+    return uid
+
+
+@router.get("/v1/users/{user}/ai-cards")
+def list_ai_cards(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _cards_user(conn, viewer, user)
+    return {**quota_cards.user_view(conn, uid), "fallback": _quota_view(conn, uid)}
+
+
+@router.post("/v1/users/{user}/ai-cards/{card_id}/use")
+def use_ai_card(user: str, card_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Only your own cards; a second tap on the same card returns already=true and changes nothing."""
+    uid = _cards_user(conn, viewer, user, write=True)
+    try:
+        r = quota_cards.use(conn, uid, card_id)
+    except quota_cards.CardError as e:
+        raise HTTPException(e.status, {"code": e.code, "message": e.message})
+    return {"card_id": card_id, "kind": r["card"]["kind"], "already": r["already"], "fallback": _quota_view(conn, uid),
+            "counts": quota_cards.counts(conn, uid)}
 
 
 # ---------------------------------------------------------------- AI client tokens (remote MCP)
