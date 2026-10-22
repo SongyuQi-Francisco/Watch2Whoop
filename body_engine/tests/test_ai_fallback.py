@@ -309,7 +309,7 @@ def test_quota_used_up_and_admin_override(client, world, dsn):
                   (ids["F1"], fp.MODEL, fp.MONTHLY_QUOTA_CNY))
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
     d = r.json()["detail"]
-    assert r.status_code == 402 and d["code"] == "quota" and "本月额度已用完" in d["message"] and d["reset_on"].endswith("-01")
+    assert r.status_code == 402 and d["code"] == "quota" and "额度用完了" in d["message"] and "¥" not in d["message"] and d["reset_on"].endswith("-01")
     me = client.get("/v1/web/me", headers=H(tok["F1"])).json()["ai"]
     assert me["available"] is False and me["reason"] == "quota" and me["remaining_cny"] == 0
     with db(dsn) as c:

@@ -123,7 +123,9 @@ def test_catalog_mcp_and_fallback_view(client, world):
     assert f_zh["points_lang"] == "zh" and f_zh["points_translated"] is False
     assert len(f_en["points"]) == len(f_zh["points"]) == len(fallback.CONSENT_POINTS)
     assert f_zh["points"] == [p.format(quota=f_zh["quota_cny"]) for p in fallback.CONSENT_POINTS]
-    assert f_zh["display_name"].startswith("托底 AI") and f_zh["message"] == "第一次用托底 AI 要先同意"
+    assert f_zh["display_name"] == f_en["display_name"] == "Jarvis" and f_zh["message"] == "第一次用 Jarvis 要先同意"
+    assert "DeepSeek" in f_zh["points"][0] and "DeepSeek" in f_en["points"][0]   # the consent still names where data goes
+    assert 0 <= f_zh["remaining_pct"] <= 100
     # The consent version is the Chinese text's, in both languages; agreeing on the English page records that version
     assert f_en["consent_version"] == f_zh["consent_version"] == fallback.CONSENT_VERSION
     assert fallback.CONSENT_VERSION == "2026-10-22"
