@@ -23,12 +23,15 @@ class ProfileIn(BaseModel):
 @router.get("/memory")
 def get_memory(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Status cards (status, ordered by group) + body profile card (the butler's underlying memory) + observation notes.
-    Auto items computed by the backend in the status cards are refreshed first if older than 30 minutes."""
+    Auto items computed by the backend in the status cards are refreshed first if older than 30 minutes.
+    Observations carry kind (fact / recent) and valid_until; expired recent notes are left out and only counted (#112)."""
     owner = _owner(conn, viewer, user, "memory")
     status.refresh_if_stale(conn, owner)
     m = memory.get_memory(conn, owner)
     return {"status": status.localize(status.list_status(conn, owner, viewer["id"])), "profile_card": m["profile_card"],
-            "observations": [{k: o[k] for k in ("id", "text", "created_at", "source")} for o in m["observations"]]}
+            "observations": [{k: o[k] for k in ("id", "text", "created_at", "source", "kind", "valid_until")}
+                             for o in m["observations"]],
+            "expired_recent": m["expired_recent"]}
 
 
 @router.put("/memory/profile/{key}")

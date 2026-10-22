@@ -53,6 +53,7 @@ TOOL_NAMES = (
     "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
     "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
     "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
+    "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
 )
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司），费用管理员出，每人每月 ¥{quota:g} 额度。",
@@ -126,10 +127,6 @@ def _own_schema(schema: dict) -> dict:
 def tools() -> tuple:
     return tuple(dataclasses.replace(ALL_TOOLS[n], input_schema=_own_schema(ALL_TOOLS[n].input_schema))
                  for n in TOOL_NAMES if n in ALL_TOOLS)
-
-
-def tools_by_name() -> dict:
-    return {t.name: t for t in tools()}
 
 
 # ---------------------------------------------------------------- money
@@ -334,8 +331,9 @@ def _quota_extra(s: dict) -> dict:
             "reset_on": s["reset_on"]}
 
 
-def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict]) -> tuple[float, float]:
-    """Before each model call: monthly quota, worst-case cost of this call, per-minute / per-day limits. Returns (spent, quota)."""
+def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict], tool_list=None) -> tuple[float, float]:
+    """Before each model call: monthly quota, worst-case cost of this call, per-minute / per-day limits. Returns (spent, quota).
+    tool_list: the tools this call sends (core + page groups, ai/chat.py); None = the whole whitelist."""
     from .chat import ChatError
     s = summary(conn, user_id)
     if s["reason"] in ("fallback_off", "fallback_paused"):
@@ -347,7 +345,7 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
                                    "也可以在「我 → AI 设置」接入自己的 AI",
                                    f"This month's quota is used up (¥{spent:.2f} / ¥{quota:g}); it resets on {s['reset_on']}. "
                                    "You can also connect your own AI in Me → AI settings"), status=402, **extra)
-    if estimate_call_cny(system, history, tools()) > quota - spent:
+    if estimate_call_cny(system, history, tools() if tool_list is None else tool_list) > quota - spent:
         raise ChatError("quota", L(f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
                                    "开一个新对话会省一些",
                                    f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "

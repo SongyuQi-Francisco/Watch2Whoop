@@ -22,9 +22,11 @@ from psycopg.types.json import Jsonb
 from ..assistant import meals, recipes
 from ..i18n import L as Li, tl
 from ..nutrition import constraints as diet_constraints
+from ..rollout import flags
 from ..rules.nutrition import red_meat_estimate
 from . import links as L, params as P
 from . import prices as PR
+from . import staples as ST
 from .sync import offers as SO
 
 PURINE = ("low", "medium", "high")
@@ -213,7 +215,19 @@ def product_view(row: dict, connected: list[str] | tuple = ()) -> dict:
             "nutrition": row["nutrition"] or {}, "purine_level": row["purine_level"], "red_meat": row["red_meat"],
             "barcode": row["barcode"], "matches": row["matches"], "note": row["note"], "flags": flag_labels(product_flags(row)),
             "product_url": row["product_url"], "store_sku": row["store_sku"], "nutrition_source": row["nutrition_source"],
-            "links": product_links(row, connected)}
+            "links": product_links(row, connected), "staple": bool(row.get("staple")), "staple_info": None}
+
+
+def _add_staple_info(conn, user_id: int, views: list[dict], rows: list[dict]) -> None:
+    """Usual items (issue #103): every_days, qty / unit, last_bought, next_due ("下次该买"), due."""
+    staples = [r for r in rows if r.get("staple")]
+    if not staples:
+        return
+    hist, day = ST.purchase_dates(conn, user_id, staples), today(conn, user_id)
+    by = {r["id"]: r for r in staples}
+    for v in views:
+        if v["id"] in by:
+            v["staple_info"] = ST.view(by[v["id"]], hist.get(v["id"], []), day)
 
 
 def product_links(row: dict, connected: list[str] | tuple = ()) -> list[dict]:
@@ -231,7 +245,7 @@ def list_products(conn: psycopg.Connection, user_id: int, q: str | None = None, 
     qq = _key(q or "")
     con = connected_stores(conn, user_id)
     vis = SO.visible_stores(conn, user_id)
-    out = []
+    out, rows = [], []
     for r in _products(conn, user_id):
         if category and r["category"] != category:
             continue
@@ -241,6 +255,8 @@ def list_products(conn: psycopg.Connection, user_id: int, q: str | None = None, 
         if vis and (off := SO.find_offer(conn, vis, r["name"], r)):
             v["offer"] = off
         out.append(v)
+        rows.append(r)
+    _add_staple_info(conn, user_id, out, rows)
     return out
 
 
@@ -299,6 +315,7 @@ def save_product(conn: psycopg.Connection, user_id: int, data: dict, product_id:
 def _saved(conn, user_id: int, row: dict, created: bool) -> dict:
     con = connected_stores(conn, user_id)
     out = {**product_view(row, con), "created": created}
+    _add_staple_info(conn, user_id, [out], [row])
     key = L.parse_product_url(row["product_url"])["store"] if row["product_url"] else None
     if key and key not in con:   # saved, but its link stays hidden until the user connects that supermarket
         out["store_not_connected"] = P.STORES[key]["label"]
@@ -309,6 +326,37 @@ def remove_product(conn: psycopg.Connection, user_id: int, product_id: int) -> d
     row = _product_row(conn, user_id, product_id)
     conn.execute("UPDATE grocery_products SET active = FALSE, updated_at = now() WHERE id = %s", (row["id"],))
     return {"removed": {"id": row["id"], "name": row["name"], "brand": row["brand"]}}
+
+
+def set_staple(conn: psycopg.Connection, user_id: int, product_id: int, data: dict | None = None) -> dict:
+    """Mark a product as a usual item (only after the user confirmed). every_days None -> this user's own median gap between
+    purchases, else weekly; qty / unit None -> one package each time (kept when already set)."""
+    flags.guard(conn, user_id, P.STAPLES_FLAG)
+    row = _product_row(conn, user_id, product_id)
+    f = ST.check(data or {})
+    if "staple_every_days" not in f and not row["staple_every_days"]:
+        f["staple_every_days"] = ST.typical_gap(ST.purchase_dates(conn, user_id, [row]).get(row["id"], [])) \
+            or P.STAPLE_DEFAULT_EVERY_DAYS
+    if "staple_qty" not in f and row["staple_qty"] is None:
+        f["staple_qty"] = 1
+    if "staple_unit" not in f and row["staple_unit"] is None:
+        f["staple_unit"] = "pack"
+    sets = ", ".join(f"{k} = %s" for k in f)
+    row = conn.execute(f"UPDATE grocery_products SET staple = TRUE{', ' + sets if sets else ''}, updated_at = now() "
+                       "WHERE id = %s AND user_id = %s RETURNING *", (*f.values(), row["id"], user_id)).fetchone()
+    return _saved(conn, user_id, row, False)
+
+
+def remove_staple(conn: psycopg.Connection, user_id: int, product_id: int) -> dict:
+    """No longer a usual item (the interval / amount are kept for a later set_staple). Lines already on a list stay."""
+    row = _product_row(conn, user_id, product_id)
+    row = conn.execute("UPDATE grocery_products SET staple = FALSE, updated_at = now() WHERE id = %s AND user_id = %s RETURNING *",
+                       (row["id"], user_id)).fetchone()
+    return _saved(conn, user_id, row, False)
+
+
+def staple_suggestions(conn: psycopg.Connection, user_id: int) -> list[dict]:
+    return ST.suggestions(conn, user_id, _products(conn, user_id), today(conn, user_id))
 
 
 def match_product(products: list[dict], name: str) -> dict | None:
@@ -327,15 +375,30 @@ def match_product(products: list[dict], name: str) -> dict | None:
 
 
 # ---------------------------------------------------------------- pantry
-def _pantry_view(r: dict) -> dict:
+def _pantry_view(r: dict, tz: ZoneInfo) -> dict:
+    """days_ago: whole days since the last change in the user's time zone (the Today page shows 「x 天前更新」).
+    best_before / days_left / expiring (within params.PANTRY_EXPIRY_DAYS or past; the page shows 「x 天后到期」, issue #104)."""
+    cat = r.get("category") or guess_category(r["name"])
+    day = datetime.now(tz).date()
+    left = (r["best_before"] - day).days if r.get("best_before") else None
     return {"id": r["id"], "name": r["name"], "quantity": float(r["quantity"]), "unit": r["unit"],
             "label": fmt_qty(float(r["quantity"]), r["unit"]), "product_id": r["product_id"],
-            "updated_at": r["updated_at"]}
+            "category": cat, "category_label": category_label(cat), "updated_at": r["updated_at"],
+            "days_ago": max(0, (day - r["updated_at"].astimezone(tz).date()).days),
+            "best_before": r["best_before"].isoformat() if r.get("best_before") else None, "days_left": left,
+            "expiring": left is not None and left <= P.PANTRY_EXPIRY_DAYS}
 
 
 def list_pantry(conn: psycopg.Connection, user_id: int) -> list[dict]:
-    return [_pantry_view(r) for r in conn.execute(
-        "SELECT * FROM pantry_items WHERE user_id = %s ORDER BY lower(name)", (user_id,))]
+    """What is at home, sorted by category (the product's, else guessed from the name) then name."""
+    tz = _tz(conn, user_id)
+    rows = conn.execute("""SELECT pi.*, gp.category FROM pantry_items pi
+                           LEFT JOIN grocery_products gp ON gp.id = pi.product_id AND gp.user_id = pi.user_id AND gp.active
+                           WHERE pi.user_id = %s""", (user_id,)).fetchall()
+    order = list(P.CATEGORIES)
+    out = [_pantry_view(r, tz) for r in rows]
+    out.sort(key=lambda p: (order.index(p["category"]) if p["category"] in order else 99, p["name"].lower()))
+    return out
 
 
 def _pantry_row(conn, user_id: int, name: str):
@@ -343,8 +406,18 @@ def _pantry_row(conn, user_id: int, name: str):
                         (user_id, name.strip())).fetchone()
 
 
+def _best_before(v) -> date | None:
+    if v is None or isinstance(v, date):
+        return v
+    try:
+        return date.fromisoformat(str(v).strip())
+    except ValueError:
+        raise ValueError("best_before 要是 YYYY-MM-DD") from None
+
+
 def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> list[dict]:
-    """items: [{name, quantity, unit, product_id?}]: set what is at home now; quantity 0 = used up (row removed)."""
+    """items: [{name, quantity, unit, product_id?, best_before?}]: set what is at home now; quantity 0 = used up (row removed).
+    best_before None / missing = keep what is stored (issue #104)."""
     if not items:
         raise ValueError("至少给一样")
     for it in items:
@@ -357,15 +430,21 @@ def set_pantry(conn: psycopg.Connection, user_id: int, items: list[dict]) -> lis
         if not isinstance(q, (int, float)) or q < 0:
             raise ValueError(f"{name}：quantity 要是 ≥ 0 的数")
         pid = it.get("product_id")
-        if pid is not None:
-            _product_row(conn, user_id, pid)
+        if pid is not None:   # must be this user's; a product removed meanwhile (e.g. undoing 用完了) just drops the link
+            prod = conn.execute("SELECT active FROM grocery_products WHERE id = %s AND user_id = %s", (pid, user_id)).fetchone()
+            if prod is None:
+                raise LookupError("没有这个商品（或不是你的）")
+            if not prod["active"]:
+                pid = None
         if q == 0:
             conn.execute("DELETE FROM pantry_items WHERE user_id = %s AND lower(name) = lower(%s)", (user_id, name))
             continue
-        conn.execute("""INSERT INTO pantry_items (user_id, name, product_id, quantity, unit) VALUES (%s, %s, %s, %s, %s)
+        bb = _best_before(it.get("best_before"))
+        conn.execute("""INSERT INTO pantry_items (user_id, name, product_id, quantity, unit, best_before) VALUES (%s, %s, %s, %s, %s, %s)
                         ON CONFLICT (user_id, lower(name)) DO UPDATE SET quantity = EXCLUDED.quantity, unit = EXCLUDED.unit,
-                          product_id = coalesce(EXCLUDED.product_id, pantry_items.product_id), updated_at = now()""",
-                     (user_id, name, pid, q, unit))
+                          product_id = coalesce(EXCLUDED.product_id, pantry_items.product_id),
+                          best_before = coalesce(EXCLUDED.best_before, pantry_items.best_before), updated_at = now()""",
+                     (user_id, name, pid, q, unit, bb))
     return list_pantry(conn, user_id)
 
 
@@ -381,6 +460,9 @@ def _convert(qty: float, frm: str, to: str, piece_g: float | None) -> float | No
 
 def _pantry_change(conn, user_id: int, name: str, product_id: int | None, qty: float, unit: str, piece_g=None) -> None:
     row = _pantry_row(conn, user_id, name)
+    if row is not None and qty > 0 and row["best_before"] and row["best_before"] < today(conn, user_id):
+        # bought again while the stored best before has passed: the new pack's date is unknown until the AI fills it (#104)
+        conn.execute("UPDATE pantry_items SET best_before = NULL WHERE id = %s", (row["id"],))
     if row is None:
         if qty > 0:
             conn.execute("INSERT INTO pantry_items (user_id, name, product_id, quantity, unit) VALUES (%s, %s, %s, %s, %s)",
@@ -455,7 +537,7 @@ def _needs(conn, user_id: int, plan: list[dict]) -> tuple[dict, dict]:
             food_times[target] += times
 
     def add(name, qty, unit, used_by, store=None):
-        n = needs.setdefault(_key(name), {"name": name.strip(), "g": 0.0, "pcs": 0.0, "store": None, "used_by": []})
+        n = needs.setdefault(_key(name), {"name": name.strip(), "g": 0.0, "pcs": 0.0, "store": None, "used_by": [], "plan": True})
         n["pcs" if unit == "pcs" else "g"] += qty
         n["store"] = n["store"] or store
         if used_by and used_by not in n["used_by"]:
@@ -484,23 +566,47 @@ def _needs(conn, user_id: int, plan: list[dict]) -> tuple[dict, dict]:
 
 
 def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: list[dict]) -> dict:
-    plan = _check_plan(plan)
+    """Plan -> lines (source plan), plus the usual items due by the end of the week (source staple, issue #103): a usual item
+    the plan also needs becomes one line with the larger amount; one the pantry already covers is left off.
+    An empty plan (allowed only with usual items) tops up the due usual items and keeps this week's plan lines and plan."""
+    products = _products(conn, user_id)
+    staples_on = flags.enabled(conn, user_id, P.STAPLES_FLAG)   # rollout flag off: usual items are ignored, as before #103
+    staples_only = staples_on and not plan and any(p["staple"] for p in products)
+    if not staples_only:
+        plan = _check_plan(plan)
     ws = week_start(conn, user_id, day)
     needs, summary = _needs(conn, user_id, plan)
-    products = _products(conn, user_id)
+    matched = {k: match_product(products, n["name"]) for k, n in needs.items()}
+    by_pid = {p["id"]: k for k, p in matched.items() if p}
+    for d in ST.due(conn, user_id, products, ws + timedelta(days=6), today(conn, user_id)) if staples_on else []:
+        p = d["product"]
+        k = by_pid.get(p["id"])
+        if k is None:
+            k = _key(p["name"])
+            needs[k] = {"name": p["name"], "g": 0.0, "pcs": 0.0, "store": None, "used_by": [], "plan": False}
+            matched[k] = p
+        needs[k]["staple"] = d
     pantry = {_key(r["name"]): r for r in conn.execute("SELECT * FROM pantry_items WHERE user_id = %s", (user_id,))}
+    day0 = today(conn, user_id)
     pantry_by_product = {r["product_id"]: r for r in pantry.values() if r["product_id"]}
     lst = _list_row(conn, user_id, ws, create=True)
-    conn.execute("DELETE FROM shopping_items WHERE list_id = %s AND source = 'plan' AND bought_at IS NULL", (lst["id"],))
-    manual = {_key(r["name"]) for r in conn.execute(
-        "SELECT name FROM shopping_items WHERE list_id = %s AND source = 'manual' AND bought_at IS NULL", (lst["id"],))}
+    conn.execute(f"""DELETE FROM shopping_items WHERE list_id = %s AND bought_at IS NULL
+                     AND source IN ({"'staple'" if staples_only else "'plan', 'staple'"})""", (lst["id"],))
+    kept = conn.execute(f"""SELECT name, product_id FROM shopping_items WHERE list_id = %s AND bought_at IS NULL
+                            AND source IN ({"'manual', 'plan'" if staples_only else "'manual'"})""", (lst["id"],)).fetchall()
+    manual = {_key(r["name"]) for r in kept}   # unbought lines that stay: not added twice
+    kept_pids = {r["product_id"] for r in kept if r["product_id"]} if staples_only else set()   # a kept plan line covers the product
     covered, added = [], 0
     for k, n in needs.items():
-        if k in manual:
+        prod = matched[k]
+        if k in manual or (prod and prod["id"] in kept_pids):
             continue
-        prod = match_product(products, n["name"])
         piece_g = _num(prod["piece_g"]) if prod else None
-        unit = prod["package_unit"] if prod and prod["package_unit"] else ("pcs" if n["g"] == 0 else "g")
+        st = n.get("staple")
+        if prod and prod["package_unit"]:
+            unit = prod["package_unit"]
+        else:
+            unit = st["unit"] if st and not n["plan"] else ("pcs" if n["g"] == 0 else "g")
         conv = [_convert(q, u, unit, piece_g) for q, u in ((n["g"], "g"), (n["pcs"], "pcs")) if q]
         note = None
         if any(c is None for c in conv):   # e.g. grams of eggs but the product is sold by count without piece_g
@@ -509,25 +615,34 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
             note = f"另 {n['pcs']:g} 个" if n["g"] and n["pcs"] else None
         else:
             need = sum(conv)
+        if st:   # a usual item: at least one purchase's worth (not plan + staple: the plan's amount already restocks it)
+            sn = _convert(st["need"], st["unit"], unit, piece_g)
+            if sn is not None:
+                need = max(need, sn)
         stock = pantry.get(k) or (pantry_by_product.get(prod["id"]) if prod else None)
+        if stock and stock["best_before"] and stock["best_before"] < day0:   # expired stock does not count (#104)
+            stock = None
+        used = None   # how much the pantry covered (shown on the line as 「家里有 …」, issue #102)
         if stock:
             have = _convert(float(stock["quantity"]), stock["unit"], unit, piece_g)
             if have:
+                used = round(min(have, need), 1)
                 need -= have
         if need <= 0:
             covered.append(n["name"])
             continue
         s = _sized(prod, need, unit)
         conn.execute("""INSERT INTO shopping_items (list_id, user_id, name, product_id, category, store, need_qty, unit, packages,
-                          buy_qty, est_cost, currency, source, used_by, note)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'plan',%s,%s)""",
+                          buy_qty, est_cost, currency, source, used_by, note, pantry_qty)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                      (lst["id"], user_id, n["name"], prod["id"] if prod else None,
                       prod["category"] if prod else guess_category(n["name"]),
                       (prod["store"] if prod else None) or n["store"], s["need_qty"], s["unit"], s["packages"], s["buy_qty"],
-                      s["est_cost"], s["currency"], n["used_by"], note))
+                      s["est_cost"], s["currency"], "plan" if n["plan"] else "staple", n["used_by"], note, used or None))
         added += 1
-    conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
-                 (Jsonb(plan), Jsonb(summary), lst["id"]))
+    if not staples_only:   # a staples-only top-up keeps the week's plan and its health totals
+        conn.execute("UPDATE shopping_lists SET plan = %s, summary = %s, generated_at = now() WHERE id = %s",
+                     (Jsonb(plan), Jsonb(summary), lst["id"]))
     out = {**get_list(conn, user_id, ws), "added": added, "covered_by_pantry": covered}
     if out.get("connected_stores"):   # this week's half price that fits the health rules, for swapping things in (AI)
         sp = SO.weekly_specials(conn, user_id, limit=8, red_meat_left=SO.red_meat_left(conn, user_id, summary))
@@ -543,6 +658,9 @@ def _item_view(r: dict, prod: dict | None = None, connected: list[str] | tuple =
             "need_qty": _num(r["need_qty"]), "unit": unit, "packages": r["packages"], "buy_qty": buy, "qty_label": label,
             "est_cost": _num(r["est_cost"]), "currency": r["currency"], "source": r["source"], "used_by": r["used_by"],
             "note": r["note"], "bought": r["bought_at"] is not None, "paid_price": _num(r["paid_price"]),
+            "pantry_qty": _num(r["pantry_qty"]), "staple": bool(prod and prod.get("staple")),
+            "pantry_label": Li(f"家里有 {fmt_qty(float(r['pantry_qty']), unit)}", f"{fmt_qty(float(r['pantry_qty']), unit)} at home")
+            if r["pantry_qty"] else None,
             "links": product_links(prod, connected) if prod else L.links(r["name"], r["store"], connected=connected)}
 
 

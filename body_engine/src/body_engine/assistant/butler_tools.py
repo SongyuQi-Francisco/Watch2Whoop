@@ -4,8 +4,9 @@ every property is in `required`, optional ones use null. Write tools (writes=Tru
 Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
 
+from ..rollout import flags
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import food_combine, meals, memory, recipes, snapshots, sparky_write, status, writelog
+from . import food_combine, meals, memory, memory_params, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -115,16 +116,23 @@ def _suggest_meals(conn, uid, a):
     return plan
 
 
+def _obs_brief(o: dict) -> dict:
+    out = {"id": o["id"], "date": f"{o['created_at']:%Y-%m-%d}", "text": o["text"]}
+    return out | ({"until": f"{o['valid_until']}"} if o.get("kind") == "recent" else {})
+
+
 def _memory_with_status(conn, uid, a=None):
-    st, m = status.list_status(conn, uid, (a or {}).get("_viewer_id")), memory.get_memory(conn, uid)
-    if (a or {}).get("detail"):
+    a = a or {}
+    st = status.list_status(conn, uid, a.get("_viewer_id"))
+    m = memory.get_memory(conn, uid, history=bool(a.get("history")))
+    if a.get("detail"):
         return {"status": st, **m}
-    # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence
+    # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence.
+    # Recent notes carry `until`; expired ones only with history=true (otherwise just counted).
     return {"status": [{k: s.get(k) for k in STATUS_BRIEF} for s in st],
             "profile_card": [{"key": c["key"], "label": c["label"], "value": c["value"],
                               "updated": f"{c['updated_at']:%Y-%m-%d}"} for c in m["profile_card"]],
-            "observations": [{"id": o["id"], "date": f"{o['created_at']:%Y-%m-%d}", "text": o["text"]}
-                             for o in m["observations"]]}
+            "observations": [_obs_brief(o) for o in m["observations"]], "expired_recent": m["expired_recent"]}
 
 
 TOOL_SPECS: list[dict] = [
@@ -142,7 +150,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: sparky_write.search_exercises(
             conn, uid, a.get("query") or "", muscle=a.get("muscle"),
             equipment=a.get("equipment"), pattern=a.get("pattern")),
-        scope="training",
+        group="training", scope="training",
     ),
     dict(
         name="log_food",
@@ -153,7 +161,7 @@ TOOL_SPECS: list[dict] = [
             "allow_duplicates": {"type": "boolean", "description": "用户确认是另一份才 true"},
         }),
         handler=lambda conn, uid, a: sparky_write.log_food(conn, uid, a["items"], a["allow_duplicates"]),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="log_workout",
@@ -168,7 +176,7 @@ TOOL_SPECS: list[dict] = [
             "create_missing_exercises": {"type": "boolean", "description": "用户确认是新动作才 true"},
         }),
         handler=lambda conn, uid, a: sparky_write.log_workout(conn, uid, a),
-        scope="training", writes=True,
+        group="training", scope="training", writes=True,
     ),
     dict(
         name="log_weight",
@@ -186,7 +194,7 @@ TOOL_SPECS: list[dict] = [
             "overwrite": {"type": "boolean"},
         }),
         handler=lambda conn, uid, a: sparky_write.log_weight(conn, uid, a),
-        scope="weight", writes=True,
+        group="body", scope="weight", writes=True,
     ),
     dict(
         name="undo_sparky_entry",
@@ -202,7 +210,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"],
                                                              meal=a["meal"], food=a["food"], time=a["time"]),
-        scope="training", writes=True,
+        group="training", scope="training", writes=True,
     ),
     dict(
         name="update_food_entry",
@@ -218,7 +226,7 @@ TOOL_SPECS: list[dict] = [
             "calories": _n("number"), "protein_g": _n("number"), "carbs_g": _n("number"), "fat_g": _n("number"),
         }),
         handler=lambda conn, uid, a: sparky_write.update_food_entry(conn, uid, a),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="update_training_set",
@@ -230,21 +238,21 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: sparky_write.update_set(conn, uid, a["date"], a["set_id"], a["reps"],
                                                             a["weight_kg"], a["rir"]),
-        scope="training", writes=True,
+        group="training", scope="training", writes=True,
     ),
     dict(
         name="get_write_log",
         description="AI 写操作日志（新 → 旧，改前 / 改后）；rollback=ok 的可 rollback_write。",
         input_schema=_schema({"days": _n("integer")}),
         handler=lambda conn, uid, a: writelog.list_log(conn, uid, a["days"] or 14),
-        scope="memory",
+        group="memory", scope="memory",
     ),
     dict(
         name="rollback_write",
         description="按日志 id 把一次 AI 修改改回原样。",
         input_schema=_schema({"log_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: writelog.rollback(conn, uid, a["log_id"]),
-        scope="memory", writes=True,
+        group="memory", scope="memory", writes=True,
     ),
     # ---------- screenshot metrics ----------
     dict(
@@ -263,7 +271,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: snapshots.log_snapshot(conn, uid, date.fromisoformat(a["date"]), a["source_app"],
                                                             a["metrics"], a["note"]),
-        scope="metrics", writes=True,
+        group="body", scope="metrics", writes=True,
     ),
     dict(
         name="get_metric_snapshots",
@@ -274,16 +282,17 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: snapshots.list_snapshots(conn, uid, date.fromisoformat(a["start"]),
                                                               date.fromisoformat(a["end"]), a["metrics"] or None),
-        scope="metrics",
+        group="body", scope="metrics",
     ),
     # ---------- long-term memory ----------
     dict(
         name="get_memory",
         description="完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、"
                     "有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
-        input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带趋势数组、时间戳、来源和依据"}}),
+        input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带趋势数组、时间戳、来源和依据"},
+                              "history": _n("boolean", "true=也带已过期的近况")}),
         handler=lambda conn, uid, a: _memory_with_status(conn, uid, a),
-        scope="memory",
+        group="memory", scope="memory",
     ),
     dict(
         name="update_profile_card",
@@ -295,17 +304,20 @@ TOOL_SPECS: list[dict] = [
             "label": _n("string", "中文名；标准键 null"),
         }),
         handler=lambda conn, uid, a: memory.update_profile(conn, uid, a["key"], a["value"], a["label"]),
-        scope="memory", writes=True,
+        group="memory", scope="memory", writes=True,
     ),
     dict(
         name="add_observation",
-        description="记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）。一句话一个事实，不重复记。",
+        description="记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
         input_schema=_schema({
             "text": {"type": "string", "description": "≤ 1000 字"},
             "evidence": _n("string", "用户原话 / 哪些数据"),
+            "until": _n("string", f"近况最后一天 YYYY-MM-DD；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
         }),
-        handler=lambda conn, uid, a: memory.add_observation(conn, uid, a["text"], a["evidence"]),
-        scope="memory", writes=True,
+        handler=lambda conn, uid, a: memory.add_observation(
+            conn, uid, a["text"], a["evidence"],
+            until=a["until"] if flags.enabled(conn, uid, "memory_recent") else None),   # flag off: a lasting fact, as before
+        group="memory", scope="memory", writes=True,
     ),
     dict(
         name="set_status_items",
@@ -316,7 +328,7 @@ TOOL_SPECS: list[dict] = [
             "remove_keys": {"type": "array", "items": {"type": "string"}},
         }),
         handler=lambda conn, uid, a: status.set_items(conn, uid, a["items"], a["remove_keys"]),
-        scope="memory", writes=True,
+        group="memory", scope="memory", writes=True,
     ),
     # ---------- quick meal logging (meal templates) ----------
     dict(
@@ -324,7 +336,7 @@ TOOL_SPECS: list[dict] = [
         description="快捷记餐模板（例：固定早餐）：每样食物克数和营养、合计、克数是否待确认、今天记过没有。",
         input_schema=_schema({"user": USER}),
         handler=lambda conn, uid, a: meals.list_templates(conn, uid),
-        scope="nutrition",
+        group="nutrition", scope="nutrition",
     ),
     dict(
         name="create_meal_template",
@@ -339,7 +351,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: meals.create_template(conn, uid, a["name"], a["meal"], a["items"],
                                                            a["needs_confirmation"], a["note"]),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="update_meal_template",
@@ -356,7 +368,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: meals.update_template(conn, uid, a["template_id"], {
             k: a[k] for k in ("name", "meal", "items", "needs_confirmation", "note", "active")}),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="log_meal_template",
@@ -373,14 +385,14 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: meals.log_template(
             conn, uid, a["template_id"], date.fromisoformat(a["date"]) if a["date"] else None, a["time"],
             a["overrides"] or None, a["allow_duplicates"], channel="butler"),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="undo_meal_log",
         description="撤销一次快捷记餐（log_meal_template / log_recipe / 今天页按钮返回的 log_id）。",
         input_schema=_schema({"log_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: meals.undo_log(conn, uid, a["log_id"]),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     dict(
         name="combine_food_entries",
@@ -394,7 +406,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: food_combine.combine(conn, uid, date.fromisoformat(a["date"]), a["entry_ids"], a["action"],
                                                           a["name"], a["meal"], channel="ai"),
-        scope="nutrition", writes=True,
+        group="nutrition", scope="nutrition", writes=True,
     ),
     # ---------- recipes ----------
     dict(
@@ -408,14 +420,14 @@ TOOL_SPECS: list[dict] = [
             "q": _n("string", "搜菜名、菜系、标签、食材"),
         }),
         handler=_recipe_list,
-        scope="nutrition",
+        group="recipes", scope="nutrition",
     ),
     dict(
         name="get_recipe",
         description="一道菜的全部信息：食材（整锅，每样营养、嘌呤、红肉、采购单位）、做法、几份。",
         input_schema=_schema({"user": USER, "recipe_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: recipes.get_recipe(conn, uid, a["recipe_id"]),
-        scope="nutrition",
+        group="recipes", scope="nutrition",
     ),
     dict(
         name="suggest_meals",
@@ -428,7 +440,7 @@ TOOL_SPECS: list[dict] = [
             "slot": {"type": ["string", "null"], "enum": [*recipes.SLOTS, "all", None], "description": "null = 按现在时间"},
         }),
         handler=_suggest_meals,
-        scope="nutrition",
+        group="recipes", scope="nutrition",
     ),
     dict(
         name="create_recipe",
@@ -451,7 +463,7 @@ TOOL_SPECS: list[dict] = [
             "can_make": {"type": "boolean"},
         }),
         handler=lambda conn, uid, a: recipes.create_recipe(conn, uid, a),
-        scope="nutrition", writes=True,
+        group="recipes", scope="nutrition", writes=True,
     ),
     dict(
         name="update_recipe",
@@ -476,7 +488,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: recipes.update_recipe(conn, uid, a["recipe_id"],
                                                            {k: v for k, v in a.items() if k != "recipe_id"}),
-        scope="nutrition", writes=True,
+        group="recipes", scope="nutrition", writes=True,
     ),
     dict(
         name="log_recipe",
@@ -493,14 +505,14 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: recipes.log_recipe(conn, uid, a["recipe_id"],
                                                         date.fromisoformat(a["date"]) if a["date"] else None, a["meal"],
                                                         a["servings"], a["time"], a["allow_duplicates"], channel="butler"),
-        scope="nutrition", writes=True,
+        group="recipes", scope="nutrition", writes=True,
     ),
     dict(
         name="delete_observation",
         description="删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
         input_schema=_schema({"observation_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _deleted(memory.delete_observation(conn, uid, a["observation_id"])),
-        scope="memory", writes=True,
+        group="memory", scope="memory", writes=True,
     ),
 ]
 

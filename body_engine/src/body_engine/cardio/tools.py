@@ -51,10 +51,10 @@ TOOL_SPECS: list[dict] = [
          input_schema=_schema({"user": USER, "start": nullable("string", "YYYY-MM-DD，null = 近 90 天"),
                                "end": nullable("string", "YYYY-MM-DD，null = 今天"),
                                "detail": {**DETAIL, "description": "true=每次训练和每晚的明细、无效原因"}}),
-         handler=_cardio, scope="scores"),
+         handler=_cardio, group="body", scope="scores"),
     dict(name="get_ecg_list",
          description="Apple Watch 心电图：时间、Apple 的分类（窦性心律 / 房颤迹象 / 心率过高或过低 / 记录不佳）、心率、症状。"
                      "没有波形；只转述 Apple 的结果，不诊断，房颤迹象或有症状建议看 GP。",
          input_schema=_schema({"user": USER, "limit": {"type": "integer", "description": "常用 10–50"}}),
-         handler=lambda conn, uid, a: _ecg_list(conn, uid, a["limit"]), scope="ecg"),
+         handler=lambda conn, uid, a: _ecg_list(conn, uid, a["limit"]), group="body", scope="ecg"),
 ]

@@ -32,7 +32,7 @@ CACHE_TTL_S = 600
 CACHE_MAX_USERS = 512
 # Profile card items shown (their first N characters) -- the ones nearly every answer depends on; the rest are listed by key
 # (full text: get_memory)
-CARD_KEYS = {"health_constraints": 90, "injuries": 90, "current_plan": 90, "goals": 60}
+CARD_KEYS = {"communication": 90, "health_constraints": 90, "injuries": 90, "current_plan": 90, "goals": 60}
 OBS_RECENT = 5
 OBS_CHARS = 60
 RECOVERY_GREEN, RECOVERY_RED = 67, 34
@@ -77,10 +77,11 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
              (SELECT row(count(*), max(updated_at), max(status_changed_at))::text FROM reminders
                WHERE user_id = %(u)s AND date >= %(s)s) AS r,
              (SELECT row(count(*), max(updated_at))::text FROM assistant_profile WHERE user_id = %(u)s) AS p,
-             (SELECT row(count(*), max(id))::text FROM assistant_observations WHERE user_id = %(u)s) AS o,
+             (SELECT row(count(*), max(id), max(valid_until))::text FROM assistant_observations WHERE user_id = %(u)s) AS o,
              (SELECT row(count(*), max(updated_at))::text FROM assistant_status WHERE user_id = %(u)s) AS st,
              (SELECT row(count(*), max(updated_at))::text FROM exercise_meta WHERE user_id = %(u)s) AS ex,
-             (SELECT row(count(*), max(id), max(effective_to))::text FROM diet_constraints WHERE user_id = %(u)s) AS dc""",
+             (SELECT row(count(*), max(id), max(effective_to))::text FROM diet_constraints WHERE user_id = %(u)s) AS dc,
+             (SELECT row(count(*), max(updated_at), max(best_before))::text FROM pantry_items WHERE user_id = %(u)s) AS pa""",
         {"u": user_id, "s": since}).fetchone()
     return tuple(row.values())
 
@@ -157,14 +158,17 @@ STATUS_IN_SCORES = ("recovery", "sleep_debt", "bedtime", "sleep_hours")  # auto 
 
 def _memory(conn, uid: int, skip: tuple = (), viewer_id: int | None = None) -> dict:
     st = [s for s in status.list_status(conn, uid, viewer_id) if s["key"] not in skip]
-    m = memory.get_memory(conn, uid)
-    obs = m["observations"]
+    m = memory.get_memory(conn, uid)   # expired recent notes are already left out
+    obs = [o for o in m["observations"] if o["kind"] != "recent"]
+    recent = [f"#{o['id']} 到 {o['valid_until']:%m-%d} {_cut(o['text'], OBS_CHARS)}"
+              for o in m["observations"] if o["kind"] == "recent"]
     return {
         "status": [f"{s['label']} {s['value']}{s.get('unit') or ''}" + (f"（{s['note']}）" if s.get("note") else "")
                    + (f" [{s['tone']}]" if s.get("tone") in ("warn", "bad") else "") for s in st],
         "profile_card": {c["key"]: _cut(c["value"], CARD_KEYS[c["key"]]) for c in m["profile_card"] if c["key"] in CARD_KEYS},
         "profile_card_more": [c["key"] for c in m["profile_card"] if c["key"] not in CARD_KEYS],
         "observations": {"total": len(obs), "recent": [f"#{o['id']} {_cut(o['text'], OBS_CHARS)}" for o in obs[-OBS_RECENT:]]},
+        **({"recent_context": recent} if recent else {}),
     }
 
 
@@ -189,10 +193,16 @@ def _water(conn, uid: int, today) -> dict | None:
     return {"ml": d["total_ml"], "goal_ml": d["goal"]["ml"]}
 
 
+def _pantry_expiring(conn, uid: int) -> list[str]:
+    from ..grocery import pantry_auto   # grocery imports assistant
+    return pantry_auto.briefing_lines(conn, uid)
+
+
 SECTIONS = (  # (key, scope)
     ("me", "profile"), ("scores", "scores"), ("bedtimes", "sleep"), ("training", "training"),
     ("reminders", "reminders"), ("memory", "memory"), ("exercises", "exercises"), ("diet_constraints", "nutrition"),
     ("water", "nutrition"),
+    ("pantry_expiring", "nutrition"),
 )
 NEXT = "档案卡只有要点（其余项见 profile_card_more），全文 get_memory；饮食、体重不在摘要里"
 
@@ -212,6 +222,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
         "exercises": lambda: _exercises(conn, owner_id),
         "diet_constraints": lambda: _diet(conn, owner_id),
         "water": lambda: _water(conn, owner_id, today),
+        "pantry_expiring": lambda: _pantry_expiring(conn, owner_id),
     }
     out: dict = {"timezone": str(tz), "date": today}
     hidden = []
@@ -224,6 +235,8 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
                 out[key] = fns[key]()
         except Exception as e:
             out[key] = {"error": f"{type(e).__name__}: {e}"}
+    if not out.get("pantry_expiring"):   # only when something is about to expire (issue #104)
+        out.pop("pantry_expiring", None)
     beds = out.pop("bedtimes", None)
     if isinstance(beds, dict) and isinstance(out.get("scores"), dict) and "error" not in beds:
         for row in out["scores"].get("days", []):  # bed–wake as one more column of the 7-day table

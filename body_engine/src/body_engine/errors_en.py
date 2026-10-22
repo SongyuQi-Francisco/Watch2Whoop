@@ -160,6 +160,9 @@ EXACT: dict[str, str] = {
     # ---- grocery (grocery/store.py)
     "nutrition 要是对象（每 100g）": "nutrition must be an object (per 100 g)",
     "package_unit 只能是 g / ml / pcs": "package_unit must be g / ml / pcs",
+    "qty 要是 > 0 的数": "qty must be a number > 0",                       # usual items (grocery/staples.py, #103)
+    "unit 只能是 pack / g / ml / pcs": "unit must be pack / g / ml / pcs",
+    "best_before 要是 YYYY-MM-DD": "best_before must be YYYY-MM-DD",       # pantry best before (#104)
     "purine_level 只能是 low / medium / high": "purine_level must be low / medium / high",
     "没有这个商品（或不是你的）": "Product not found (or not yours)",
     "至少给一样": "Give at least one item",
@@ -230,9 +233,16 @@ TERMS: dict[str, str] = {
 }
 
 _TEMPLATES: list[tuple[str, str]] = [
+    # ---- memory recent notes (assistant/memory.py, #112)
+    ("until 写 YYYY-MM-DD（近况的最后一天）或 recent（默认 {} 天），长期事实不填",
+     "until: YYYY-MM-DD (the last day of the recent note) or recent (default {} days); leave it empty for a lasting fact"),
+    ("until {} 已经过去了（今天 {}），过去的事写日记或事件", "until {} has already passed (today is {}); past events go in the journal or events"),
+    ("近况最长 {} 天；更长的是长期事实（不填 until）或档案卡",
+     "A recent note lasts at most {} days; anything longer is a lasting fact (no until) or a profile card item"),
     # ---- grocery (links.py, off.py)
     ("今天的条码查询用完了（每人每天 {} 次）", "No barcode lookups left today ({} per person per day)"),
     ("Open Food Facts 暂时查不了（HTTP {}）", "Open Food Facts is unavailable right now (HTTP {})"),
+    ("every_days 要是 {}–{} 的整数（天）", "every_days must be a whole number of days, {}–{}"),
     ("商品链接 1–{} 字", "Product link: 1–{} characters"),
     ("超市只能是 {}", "Supermarkets can only be: {}"),
     # ---- grocery-sync (sync/coles.py, sync/http.py; admin CLI / run records)
