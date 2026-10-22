@@ -19,6 +19,28 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 ## Unreleased
 
 ## 1.0.7 — 2026-10-22
+Sync center (rollout flag `sync_center`, server side in #221) and the Health types the Open Wearables SDK cannot read.
+- Fix: stand time, exercise minutes, time in daylight, physical effort, sleeping wrist temperature, environmental /
+  headphone sound, walking heart rate, stair speed and walking steadiness stopped reaching the server once people synced
+  only through the app (OW SDK 0.15 has none of them). RawSync now reads them too (registry `lib/src/hk_types.dart`, the
+  same table as the server's `rawdata/hk_types.py`, checked by tests on both sides), each type with its own HealthKit
+  anchor, and uploads them as `quantities[]` to `POST /v1/ingest/healthkit`, only the types the server lists and only
+  while it takes them (emergency flag `app_types_pause`: the anchors stay and the samples go later). They are asked for in
+  the second, small Health sheet, which shows once more for people who already answered it (automatic asks still stop
+  after 3). Not behind a flag.
+- Sync center (flag on; the Today page's 「我」 then has one row 「同步中心」 / "Sync center" instead of 手机同步 / 数据更新 /
+  数据状态, opened as `watch2whoop://sync-center`; the app tells the page `Watch2WhoopFeatures.syncCenter`):
+  - 「立即重新同步」 / "Re-sync now" with 7 / 30 / 90 days, all, or a custom number of days (1–3650): the OW SDK stops,
+    clears its anchors and exports that range again (`startBackgroundSync(syncDaysBack:)` + `resetAnchors()`, checked in
+    its 0.15 source; every other sync of the app keeps that range until the export is done, then the usual one is stored
+    again); RawSync reads every kind of the range again with a separate set of anchors (the regular ones do not move); the
+    server then re-imports and re-scores the range. Progress and result on the page; all history asks first and warns
+    about time and battery; the screen stays on while it runs there; a closed app continues on the next open.
+  - Per data type the newest sample on the phone next to the newest on the server: 「没采集」 / "Not recorded" (none on the
+    phone, or no permission), 「没同步」 / "Not synced", 「已同步」 / "Synced"; VO₂ max notes that it is only made outdoors.
+  - Strength-training sources (#210) and when the server data was last updated; everything else of Phone sync stays.
+- Flag off: the page is exactly as before.
+
 Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
 [docs/offline-plan.md](../../docs/offline-plan.md)).
 - Opening the app without network no longer stops at 「连不上今天页」 / "Cannot reach the today page" for people with
