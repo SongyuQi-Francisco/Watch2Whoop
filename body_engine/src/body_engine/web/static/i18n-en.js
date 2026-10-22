@@ -1068,7 +1068,7 @@ I18N.addEn({
   "训练 {n} 天": "{n} training days",
   "训练量 ×{v}": "Volume ×{v}",
   "负荷比 {r}": "Load ratio {r}",
-  "身体年龄差 {v} 岁": "Body age gap {v} y",
+  "近 4 周身体年龄 {v} 岁": "Body age {v} y over 4 weeks",
   "身体状态": "Body status",
   "运动": "Activity",
   "近 4 周 · 和自己的基线比": "Last 4 weeks · against your own baseline",
