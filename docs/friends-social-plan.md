@@ -175,3 +175,15 @@
 - **页面上的流程**：「我 → 个人资料」顶部「更换头像」→ 拍照 / 从相册选 → 拖动和缩放裁成方形 → 保存（页面用 canvas 重画成 512×512 JPEG 再上传，服务器再校验、缩成 256×256 WebP、去掉全部元数据）。圈主在「圈子」里的「圈子 logo」同样的流程。删除后回到首字母。
 - **清理**：换图 / 删除时旧图片行一起删；圈子解散（或最后一人退出）时 logo 图片一起删；删除账号时账号上传过的图片行随 `user_id` 一并删除。
 - 图标：Lucide 的 camera / image / trash-2（`THIRD_PARTY_NOTICES.md`）。测试 `tests/test_avatars.py`。
+
+## 12. 给圈子成员设备注（#212，2026-10-23，开关 `member_remarks`，先给内测组）
+
+代码：`friends/remarks.py`（设置 / 清除、`for_viewer` 只给本人看的备注）、接口在 `friends/api.py`、今天页 `web/static/remarks.js`；迁移 685：表 `circle_member_remarks (viewer_id, target_id, remark, updated_at)`，主键 `(viewer_id, target_id)`，两列都 `ON DELETE CASCADE`，不授权给 `grafana_ro`。
+
+- **只有自己看得到**：A 给 B 的备注只出现在 A 自己的响应里；B 和圈子里的其他人看不到，也不会收到通知。
+- **按人设，不按圈子设**：设一次，所有显示 B 的地方都换成备注，旁边小字显示原名：朋友页成员卡片、排行榜、训练动态的帖子和评论（含评论预览）、圈子成员列表、只读查看 B 时顶部那一行（以及右上角切换查看的列表、「我」页顶部），还有自己卡片上「今天收到的 👏」的名字。和 #200 带头像的地方一致（每处 `avatars/urls.urls_for` 旁边都有 `remarks.for_viewer`）。
+- **只能给有共同圈子的人设**：`PUT /v1/friends/remarks/{user_id}` `{"remark": "…"}`（空 = 清除）、`DELETE /v1/friends/remarks/{user_id}`；没有共同圈子返回 404，和「没有这个人」一样；不能给自己设（400）。退出圈子后备注留着但不显示，也改不了；重新同圈后恢复显示。删号时两个方向的备注都删掉。
+- **长度**：去掉首尾空格、换行变空格后最多 `REMARK_MAX = 20` 个字（`friends/params.py`），超出 400。
+- **入口**：成员卡片名字右边的「⋯」→「设置备注」→ 一个输入框（改备注是用户自己的操作，不是录入健康数据）。
+- **AI**：`get_friends_overview` 的成员行里，有备注时多一个 `nickname`，`name` 仍是原名；工具描述里写了「有 nickname 就用它称呼」。
+- **开关关着时**：接口 404，所有响应里都没有 `remark`，页面显示原名、没有「⋯」。测试 `tests/test_member_remarks.py`。
