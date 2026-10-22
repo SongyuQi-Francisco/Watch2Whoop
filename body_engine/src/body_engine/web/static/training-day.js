@@ -186,7 +186,10 @@
     clearTimeout(saveTimer);
     saveTimer = null;
     try {
-      const r = await C.api(`/v1/users/me/training/session/${V.date}`, { method: "PUT", body: payload() });
+      // offline_mode (offline.js): kept on the device while offline; a later save of the same day replaces the kept one
+      const r = await C.api(`/v1/users/me/training/session/${V.date}`, { method: "PUT", body: payload(),
+        queue: { kind: "training-save", label: tr("训练 {day} · 逐组", { day: V.date }), group: `t:${V.date}`, coalesce: `ts:${V.date}` } });
+      if (r.queued) { setState(tr("离线，已存在本机")); return true; }
       V.log = r.log;
       saveState = tr("已保存");
       redrawFoot();
@@ -204,7 +207,9 @@
     if (btn) btn.disabled = true;
     try {
       if (!(await save())) return;
-      const r = await C.api(`/v1/users/me/training/session/${V.date}/submit`, { method: "POST", body: { allow_duplicate: !!allowDuplicate } });
+      const r = await C.api(`/v1/users/me/training/session/${V.date}/submit`, { method: "POST", body: { allow_duplicate: !!allowDuplicate },
+        queue: { kind: "training-submit", label: tr("训练 {day} · 提交", { day: V.date }), group: `t:${V.date}` } });
+      if (r.queued) { C.toast(tr("离线，联网后自动提交")); return; }
       if (r.duplicate) {
         C.toast(tr("今天已经记过这些动作"), tr("仍然提交"), () => submit(true));
         return;
@@ -286,6 +291,9 @@
       box.innerHTML = `<div class="section-head"><h2>${C.esc(tr("今天"))}</h2></div><div class="empty faint">${C.esc(e.status === 0 ? tr("离线，连上网络后重试") : e.message)}</div>`;
       return;
     }
+    // Sets kept on this device while offline (offline.js) are newer than the server's draft: show them
+    const kept = (window.BodyOffline?.pending("training-save") || []).filter((it) => it.group === `t:${V.date}`).pop();
+    if (kept && C.self) V = { ...V, log: { ...(V.log || {}), status: "draft", exercises: kept.body.exercises } };
     initRows();
     if (!open.size) {   // open the first exercise not done yet
       const next = cards().find((c) => loggable(c) && !(rows[c.slug] || []).every((s) => s.done));
