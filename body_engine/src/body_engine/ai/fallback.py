@@ -311,8 +311,8 @@ def summary(conn: psycopg.Connection, user_id: int, refresh: bool = False) -> di
     if reason is None and quota <= 0:
         reason = ("fallback_off", L("你的账号没有 Jarvis 额度", "Your account has no Jarvis allowance"))
     if reason is None and spent >= quota:
-        reason = ("quota", L(f"本月额度已用完，{out['reset_on'][5:]} 重置",
-                             f"This month's quota is used up; it resets on {out['reset_on']}"))
+        reason = ("quota", L(f"Jarvis 本月的额度用完了，{out['reset_on'][5:]} 重置",
+                             f"Jarvis has used up this month's allowance; it resets on {out['reset_on']}"))
     if reason is None and c is None:
         reason = ("fallback_consent", L("第一次用 Jarvis 要先同意", "Agree to the terms before using Jarvis for the first time"))
     out["available"] = reason is None

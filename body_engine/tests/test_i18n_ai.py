@@ -189,7 +189,7 @@ def test_web_me_ai_state(client, world):
     ids, tok = world
     ai = client.get("/v1/web/me", headers=H(tok["F"], True)).json()["ai"]
     assert ai["mode"] == "fallback" and not cjk([ai["display_name"], ai.get("message")])
-    assert client.get("/v1/web/me", headers=H(tok["F"])).json()["ai"]["display_name"].startswith("托底 AI")
+    assert client.get("/v1/web/me", headers=H(tok["F"])).json()["ai"]["display_name"] == "Jarvis"
 
 
 # ---------------------------------------------------------------- chat
