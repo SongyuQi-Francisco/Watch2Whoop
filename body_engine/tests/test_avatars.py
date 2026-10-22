@@ -197,3 +197,13 @@ def test_read_only_token_cannot_upload_and_rate_limit(client, dsn, monkeypatch):
         assert put(client, atok, "/v1/avatars/me", b"junk").status_code == 400             # refused uploads count too
     r = put(client, atok, "/v1/avatars/me", png())
     assert r.status_code == 429 and int(r.headers["retry-after"]) > 0
+
+
+def test_deleting_the_account_removes_the_picture(client, dsn):
+    from body_engine.account import delete
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        ann, atok = member(conn, "Ann")
+    assert put(client, atok, "/v1/avatars/me", png()).status_code == 200
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        delete._delete_rows(conn, ann)
+        assert conn.execute("SELECT count(*) AS n FROM images").fetchone()["n"] == 0

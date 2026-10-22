@@ -28,7 +28,7 @@
     .av-ed{display:flex;flex-direction:column;align-items:center;gap:14px}
     .av-big{width:112px;height:112px;border-radius:50%;overflow:hidden;background:var(--surface-2);color:var(--text-2);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:600}
     .av-btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%}
-    .av-btns .btn{display:inline-flex;align-items:center;gap:6px}
+    .av-btns .btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding-left:14px;padding-right:14px}
     .av-crop{position:relative;width:240px;height:240px;border-radius:50%;overflow:hidden;background:var(--surface-2);touch-action:none;cursor:grab;
       box-shadow:0 0 0 3px var(--surface-2)}
     .av-crop canvas{width:100%;height:100%;display:block}
@@ -122,7 +122,7 @@
       root.innerHTML = `<div class="av-ed"><div class="av-big">${inner(o.url, o.name)}</div>
         <div class="av-btns"><button class="btn" type="button" data-av="cam">${ICON.camera}<span>${esc(tr("拍照"))}</span></button>
           <button class="btn" type="button" data-av="lib">${ICON.image}<span>${esc(tr("从相册选"))}</span></button>
-          ${o.url ? `<button class="btn btn-danger" type="button" data-av="del">${ICON.trash}<span>${esc(tr("删除头像"))}</span></button>` : ""}</div>
+          ${o.url ? `<button class="btn btn-danger" type="button" data-av="del">${ICON.trash}<span>${esc(tr("删除图片"))}</span></button>` : ""}</div>
         <input class="av-file" type="file" accept="image/*" capture="user" data-f="cam" aria-label="${esc(tr("拍照"))}">
         <input class="av-file" type="file" accept="image/png,image/jpeg,image/webp,image/heic,image/heif" data-f="lib" aria-label="${esc(tr("从相册选"))}">
         <p class="av-err" role="alert"></p></div>`;
