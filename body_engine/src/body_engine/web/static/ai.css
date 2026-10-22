@@ -86,6 +86,20 @@
 .ai-switch[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
 .ai-switcher { margin: 4px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left)); max-height: 50vh; overflow: auto; }
 .ai-switcher[hidden] { display: none; }
+/* Quick tasks for the current page (#101): .chip-style pills; under the greeting before the first message, then a row above the input */
+.ai-quick { display: flex; flex-wrap: wrap; gap: 8px; align-self: flex-start; max-width: 92%; }
+.ai-quick-row {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  padding: 2px max(20px, env(safe-area-inset-right)) 8px max(20px, env(safe-area-inset-left));
+}
+.ai-quick-row::-webkit-scrollbar { display: none; }
+.ai-quick-row[hidden] { display: none; }
+.ai-q {
+  flex: none; height: 32px; padding: 0 14px; border: 1px solid var(--hair); border-radius: 999px; background: var(--surface);
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer;
+}
+.ai-q:active { background: var(--surface-2); }
+.ai-q:disabled { opacity: .45; cursor: default; }
 
 /* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
    Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
@@ -110,6 +124,11 @@
 .ai-chat.v2 .ai-welcome-ic svg { width: 28px; height: 28px; }
 .ai-chat.v2 .ai-welcome h3 { margin: 18px 0 6px; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 .ai-chat.v2 .ai-welcome p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+/* Quick tasks (#101, flag jarvis_quick): the main pages' .chip look (no border), the row above the input in the same column as the input */
+.ai-chat.v2 .ai-quick { max-width: 100%; margin-top: 4px; }
+.ai-chat.v2 .ai-quick-row { width: 100%; max-width: 720px; align-self: center; }
+.ai-chat.v2 .ai-q { height: 34px; border: 0; background: var(--surface); }
+.ai-chat.v2 .ai-q:active { background: var(--surface-2); }
 .ai-chat.v2 .ai-thumbs, .ai-chat.v2 .ai-rec { width: 100%; max-width: 680px; align-self: center; }
 /* Input: one card, the text on the first row, camera / video on the left of the second row, mic / send on the right */
 .ai-chat.v2 .ai-composer {

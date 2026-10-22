@@ -72,6 +72,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "mcp" },
     { name = "openai" },
+    { name = "openbodyscore" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -90,6 +91,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=2.31.0" },
     { name = "mcp", specifier = ">=1.20" },
     { name = "openai", specifier = ">=3.33.0" },
+    { name = "openbodyscore", editable = "../packages/openbodyscore" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
@@ -537,6 +539,16 @@ sdist = { url = "https://files.pythonhosted.org/packages/34/8d/ff5a4348116f667d0
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/af/afcdd2ddb36b1e015e72ae4150e70f5bd5e1655ac9aea77444f5cd23aab5/openai-3.33.0-py3-none-any.whl", hash = "sha256:a29d04e07dabcd9c94362e6339eb243c1181fd73d2d0432e1ff885a520b71664", size = 2258124, upload-time = "2026-10-17T00:30:18.691Z" },
 ]
+
+[[package]]
+name = "openbodyscore"
+version = "0.1.0"
+source = { editable = "../packages/openbodyscore" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "opentelemetry-api"

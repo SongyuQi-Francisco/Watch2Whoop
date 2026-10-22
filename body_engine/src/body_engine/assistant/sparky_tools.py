@@ -72,7 +72,7 @@ SPARKY_TOOLS = [
                     "每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
         input_schema=_range_schema(detail={**DETAIL, "description": "true=每组一个对象、带动作 ID"}),
         handler=_training,
-        scope="training",
+        group="training", scope="training",
     ),
     Tool(
         name="get_nutrition",
@@ -80,13 +80,13 @@ SPARKY_TOOLS = [
                     "含糖饮料数、当天生效的目标和达标（adherence）；logged=false = 没记录（不等于没吃）。",
         input_schema=_range_schema(include_entries={"type": "boolean", "description": "附每条记录（含 id、source）"}),
         handler=_nutrition,
-        scope="nutrition",
+        group="nutrition", scope="nutrition",
     ),
     Tool(
         name="get_weight",
         description="称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
         input_schema=_range_schema(),
         handler=_weight,
-        scope="weight",
+        group="body", scope="weight",
     ),
 ]

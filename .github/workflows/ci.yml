@@ -61,7 +61,8 @@ jobs:
           [ -n "$files" ] || all "no changed files listed"
           echo "Changed files:"; echo "$files" | sed 's/^/  /'
           grep -qx '\.github/workflows/ci\.yml' <<< "$files" && all "workflow changed"
-          # Server = anything outside apps/ (docs included: tests compare some documents with server copies).
+          # Server = anything outside apps/ (docs included: tests compare some documents with server copies;
+          # packages/ included: Body Engine depends on packages/openbodyscore).
           if grep -qv '^apps/' <<< "$files"; then server=true; else server=false; fi
           if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
           other="$(jq -c --arg files "$files" \
@@ -99,6 +100,11 @@ jobs:
           version: "0.12.19"
       - name: Database password file
         run: printf '%s' 'ci-only-not-a-secret' > "$RUNNER_TEMP/body_db_password"
+      # The scoring algorithms on their own (issue #115): own lock, no database, no Body Engine. Part of this job so the
+      # required check names stay the same.
+      - name: openbodyscore tests
+        working-directory: packages/openbodyscore
+        run: uv run --locked pytest -q
       - name: pytest
         working-directory: body_engine
         env:

@@ -51,6 +51,7 @@ READ = {
     "recipes/{x}": ["get_recipe"],
     "recipes/meal-plan": ["suggest_meals"],
     "grocery/list": ["get_shopping_list"],
+    "grocery/pantry": ["get_shopping_list"],                  # 「家里存货」 (issue #102); get_shopping_list returns pantry
     "grocery/products": ["find_products"],
     "grocery/specials": ["get_weekly_specials"],
     "grocery/store-products": ["get_price_history"],          # 「价格记录」 (prices from the user's own AI)
@@ -75,6 +76,7 @@ NO_DATA = {
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
     "grocery/stores": "setting: which supermarkets are connected",
+    "grocery/pantry-auto": "setting: whether logged meals come off the pantry (issue #104)",
     "nutrition/combine": "write: selected food entries -> a template / one entry (issue #93)",
     "nutrition/merges/{x}": "write: split a merge back into its entries",
     "grocery/list/items/{x}": "write: tick an item",

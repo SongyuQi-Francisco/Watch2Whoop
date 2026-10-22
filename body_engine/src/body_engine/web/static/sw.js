@@ -2,7 +2,7 @@
    - Page files (/app/) and API data (GET /v1/) are both "network first, fall back to cache on failure": always fresh when online.
    - Cached data gets X-Cached-At (save time); when returned offline it gets X-Offline: 1, which the page uses to show the "offline" (「离线」) banner.
    - On 401 (not logged in / logged out) the data cache is cleared; the page also deletes it on logout. Writes (POST / PUT / PATCH / DELETE) are not cached. */
-const SHELL = "be-shell-v78";
+const SHELL = "be-shell-v84";
 const DATA = "be-data";
 const SHELL_FILES = ["./", "index.html", "app.css", "app.js", "ai.css", "ai.js", "md.js", "ai-media.js", "profile.js", "identities.js", "circles.js", "account.js", "feedback.js", "grocery.js", "grocery.css", "diet-profile.js", "diet-profile.css", "water.js", "muscle-map.js", "intro.js", "sync.js", "i18n.js", "i18n-en.js", "ios-web.js", "install.html", "manifest.webmanifest", "icon.svg", "apple-touch-icon.png"];
 const TIMEOUT_MS = 8000;
