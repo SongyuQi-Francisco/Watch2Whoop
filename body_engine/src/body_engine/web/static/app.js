@@ -3449,12 +3449,43 @@
       <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
 
+  // A future day's plan. Own plan: each exercise has a remove button (this day only, or never again; issue #172) and the
+  // ones removed for this day can be put back.
   function planSheet(iso, day) {
+    const mine = isSelf() && !!(day?.planned?.length || day?.removed?.length);
+    const row = (p, x) => {
+      const rm = isSelf() && x.slug ? `<button type="button" class="td-rm" data-prm="${esc(x.slug)}" data-ps="${esc(p.name)}" data-pd="${p.day_of_week || ""}" data-pa="${p.added_for_day ? 1 : 0}" aria-label="${esc(tr("移除这个动作"))}" style="float:right;border:0;background:none;color:var(--text-3);font-size:20px;min-width:44px;min-height:44px">×</button>` : "";
+      return `<div>${rm}${exerciseRow(x)}</div>`;
+    };
+    const gone = (day?.removed || []).map((r) => `<button type="button" class="btn" data-prestore="${esc(r.slug)}" style="min-height:32px;padding:4px 12px;margin:4px 6px 0 0">${esc(I18N.lang === "en" && r.name_en ? r.name_en : r.name_zh || r.slug)} · ${tr("恢复")}</button>`).join("");
     const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
-      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
-    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`);
-    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, bindExRows);
+      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map((x) => row(p, x)).join("")}`;
+    }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`)
+      + (gone ? `<div class="cat">${tr("已移除")}</div><div>${gone}</div>` : "");
+    openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, (root) => {
+      bindExRows(root);
+      if (!mine || !window.BodyTrainingDay?.askRemove) return;
+      const ctx = { api, esc, toast, openSheet, closeSheet };
+      const again = async (kind) => {   // the week strip and the sheet follow the new plan (an undo from the toast only refreshes the page)
+        dropTrainingCaches();
+        await render();
+        if (kind === "restore") return;
+        const wk = S.data[`tweek${S.todayDate}:${S.owner}`];
+        planSheet(iso, (wk?.days || []).find((d) => d.date === iso));
+      };
+      for (const b of $$("[data-prm]", root)) b.onclick = (e) => {
+        e.stopPropagation();
+        const ex = day.planned.flatMap((p) => p.exercises).find((x) => x.slug === b.dataset.prm);
+        window.BodyTrainingDay.askRemove(ctx, { slug: b.dataset.prm, name: ex?.name || b.dataset.prm, date: iso, isToday: false,
+          dayOfWeek: Number(b.dataset.pd) || null, sessionName: b.dataset.ps, addedForDay: b.dataset.pa === "1" }, again);
+      };
+      for (const b of $$("[data-prestore]", root)) b.onclick = async () => {
+        try { await api(`/v1/users/me/training/plan/restore-exercise`, { method: "POST", body: { exercise: b.dataset.prestore, day: iso } }); }
+        catch (e) { toast(e.message); return; }
+        again("restored");
+      };
+    });
   }
 
   function afterTraining(view) {
@@ -3462,7 +3493,7 @@
     const planDays = Object.fromEntries((wk?.days || []).map((d) => [d.date, d]));
     for (const b of $$("[data-wday]", view)) b.onclick = () => {
       const iso = b.dataset.wday;
-      if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso, planDays[iso]);
+      if (iso > S.todayDate) planSheet(iso, planDays[iso]); else daySheet(iso);
     };
     const pick = $("#pick-split", view);
     if (pick && wk) pick.onclick = () => splitPickerSheet(wk);
@@ -3478,11 +3509,14 @@
     if (td) window.BodyTrainingDay.mount(td, {
       api, esc, toast, owner: ownerPath(), self: isSelf(), date: S.todayDate, openDetail: exerciseDetailSheet,
       openTrainingLog: () => wk && trainingLogSheet(wk.sparky),
-      onSubmitted: () => {   // the week strip, the history calendar and the Today card show the new workout
-        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
-        delete S.data[todayKey()];
-      },
+      openSheet, closeSheet,
+      onSubmitted: dropTrainingCaches,   // the week strip, the history calendar and the Today card show the new workout
+      onPlanChanged: dropTrainingCaches, // ... or the plan without the removed exercise (issue #172)
     });
+  }
+  function dropTrainingCaches() {
+    for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
+    delete S.data[todayKey()];
   }
 
   function zonesHtml(z) {
@@ -3515,22 +3549,20 @@
 </div>`;
   }
 
-  async function daySheet(iso, plan) {
+  // The day card shows what was actually trained (exercises, sets x reps x weight, volume, the watch's numbers); the plan is not
+  // mixed in (issue #172): a past or today's plan lives on the training page's 「今日训练计划」 card, a future day's in planSheet.
+  async function daySheet(iso) {
     openSheet(fmtDay(iso), `<div class="empty faint">…</div>`);
     let d;
     try { d = await load(`tday${iso}`, `/v1/users/${ownerPath()}/training/day/${iso}`); }
     catch (e) {
-      if (e.status === 0) offlineInto($("#sheet-body"), () => daySheet(iso, plan));
+      if (e.status === 0) offlineInto($("#sheet-body"), () => daySheet(iso));
       else $("#sheet-body").innerHTML = `<div class="empty faint">${tr("暂无")}</div>`;
       return;
     }
     const dl = d.daily || {};
     const sessions = d.sessions || [];
-    // FB-5: the plan first (it was below that day's stats, easy to miss)
-    const planHtml = (plan?.change ? kv(tr("原计划"), esc(plan.change.from?.join(" · ") || tr("休息"))) : "")
-      + (plan?.planned?.length ? `<div class="cat">${tr("计划")}</div>${plan.planned.map((p) => p.exercises.map(exerciseRow).join("")).join("")}` : "");
-    $("#sheet-body").innerHTML = planHtml + (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
-      + (plan?.planned?.length ? `<div class="cat">${tr("已练")}</div>` : "")
+    $("#sheet-body").innerHTML = (d.sparky_error ? tags([badge("mid", tr("力量 —"))]) : "")
       + (sessions.length ? sessions.map(sessionHtml).join("") : `<div class="empty faint" style="padding:12px">${tr("无训练")}</div>`)
       + `<div style="height:14px"></div><div>`
       + [[tr("训练消耗"), dl.workout_kcal != null ? `${fmtNum(dl.workout_kcal)} kcal` : null],

@@ -70,6 +70,8 @@ NO_DATA = {
     "training/plan/swap": "write: swap an exercise (swap_exercise)",
     "training/plan/add-options": "the add-to-plan sheet's choices (sessions, days, default sets / reps; flag exercise_add_to_plan, #154)",
     "training/plan/add-exercise": "write: add an exercise to a session or one day of the plan (#154)",
+    "training/plan/remove-exercise": "write: remove a planned exercise for one day or from a session (#172)",
+    "training/plan/restore-exercise": "write: undo a one-day removal (#172)",
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "weight": "write: the day's weight from 记录 → 日记 (log_weight; offline_mode)",

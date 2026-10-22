@@ -40,6 +40,7 @@
 ### 动作库的返回和「加入训练计划」（#154）
 - **返回**（修 bug，不加开关）：从动作库点开动作详情，弹层标题左边出现返回箭头，回到动作库列表，搜索词、肌群筛选和滚动位置都保留（`web/static/exercise-plan.js` 的 `createNav`）；详情里点「同模式安全替代」再进别的动作，返回回到前一个动作。
 - **加入训练计划**（开关 `exercise_add_to_plan`，默认关）：动作详情里的按钮打开一个弹层，选「训练组（每周都有）」——加进当前周计划的某个训练组（上肢 B 等，`training_plans.days`，同步到训练记录和 `swap_exercise` 同一条路），或「只加到某一天」——今天起 7 天里的某一天（表 `training_day_extras`，迁移 610；和 `training_day_overrides` 并列：后者整个训练换天，这个只多一个动作，重排本周不会动它，`get_week_plan` 在那天多出一个「加入的动作」训练组，训练页新版 / `get_training_day` 都读得到）。组数 / 次数默认 3 × 8–12（计时类动作按时长，`params.ADD_*`），可以改；同一个动作不能重复加到同一个训练组 / 同一天；日期范围和按日调整一样（今天前 7 天到后 28 天）。**禁用动作**（`exercise_meta`）两种范围都 409 拦住并给出替代；详情页里按钮置灰。
+- **移除计划动作 + 计划卡 + 日卡**（issue #172，没有灰度开关，对所有人生效）：训练页的计划收进一张默认收起的「今日训练计划」卡（训练组名 · N 个动作 · 约 N 分钟，估算见 `params.EST_*`），点开才列出全部动作，每个动作有 ×：**只删这一天**（默认，表 `training_day_removals`，迁移 625，按用户 + 日期 + 动作；`get_week_plan` 那天不再列出它，同时在那天的 `removed` 里列出，AI 的计划场景写成 `removed_by_user`，排计划 / 重排不要放回去；Toast 和计划卡下方的「已移除 · 恢复」都能撤销，今天到后 28 天内，同样的动作在别的日子不受影响）或 **以后都不要这个动作**（改训练组模板 `training_plans.days` 并同步 SparkyFitness，要二次确认，接口要 `confirm=true`，一个训练组至少留一个动作）。接口 `POST /v1/users/me/training/plan/remove-exercise`（`scope` = `day` / `template`）、`/plan/restore-exercise`，只能管自己的。未来某天的计划弹层也有 ×。日卡（点开某一天）只显示已完成的内容（动作、每组次数 × 重量、训练量、手表数据），不再混入计划；计划只在计划卡和未来日的计划弹层里。
 - 接口：`GET /v1/users/me/training/plan/add-options?exercise=`（训练组、可选日期、默认数字、是否禁用）、`POST /v1/users/me/training/plan/add-exercise`（`scope: template | day`），只能管自己的。没有 Body Engine 周计划的人（只用训练记录里的旧计划）会得到「先创建周计划」。
 
 ## 数据来源与许可证

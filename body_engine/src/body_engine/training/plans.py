@@ -687,7 +687,7 @@ def get_week_plan(
     recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError("没有授权查看该用户的训练计划（需要 training 权限）")
-    from . import plan_add
+    from . import plan_add, plan_remove
     catalog.ensure_seeded(conn)
     day = day or _user_today(conn, owner_id)
     start = day - timedelta(days=day.weekday())
@@ -756,12 +756,13 @@ def get_week_plan(
                     })
                 else:
                     exs.append(item)
-            raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], "exercises": exs})
+            raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], "day_of_week": dow, "exercises": exs})
             normalized_days_for_vol.append({"day_of_week": dow, "name": d_obj["name"], "exercises": vol_items})
 
         # Day changes (training/day_overrides.py): a date may hold other weekdays' sessions, a free activity or rest
         ovs = load_overrides(conn, owner_id, start, end)
         extras = plan_add.extras_for(conn, owner_id, start, end)   # exercises added to one date only (issue #154)
+        removals = plan_remove.removals_for(conn, owner_id, start, end)   # planned exercises the user removed for one date (issue #172)
         vol_by_dow: dict[int, list[dict]] = {}
         for nd in normalized_days_for_vol:
             vol_by_dow.setdefault(nd["day_of_week"], []).extend(nd["exercises"])
@@ -797,6 +798,10 @@ def get_week_plan(
                         "slug": item["slug"], "name": item["name_zh"], "sets_text": item["sets_text"], "load": item["load_text"],
                         "status": item["status"], "cues": item["cues"] if item["status"] != "active" else None})
                 planned.append({"name": plan_add.extra_session_name(), "exercises": extra_exs, "added_for_day": True})
+            gone = {r["slug"] for r in removals.get(d, [])}
+            if gone and not before_start:   # the user removed these for this date only; sessions are shared between days: copy
+                planned = [{**p, "exercises": [e for e in p["exercises"] if e.get("slug") not in gone]} for p in planned]
+                vol_items = [x for x in vol_items if x.get("slug") not in gone]
             vol_days.append({"day_of_week": dow, "exercises": vol_items})
             week_days.append({
                 "date": d,
@@ -805,6 +810,7 @@ def get_week_plan(
                 "planned": planned,
                 "rest_day": len(planned) == 0 and not before_start,
                 **({"before_start": True} if before_start else {}),
+                **({"removed": removals[d]} if removals.get(d) and not before_start else {}),
                 "change": None if before_start else ov and {"from": [p["name"] for p in raw_days_by_dow.get(dow, [])],
                                   "source": ov["source"], "reason": ov.get("reason")},
             })
