@@ -49,7 +49,7 @@
     emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
   };
   let lastPage = "";
-  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
+  const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub, today: S.sleepNight ? "sleep" : null }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
   function featureOf(el) {
     const named = el.closest("[data-feature]")?.dataset.feature;
     if (named) return named;
@@ -424,6 +424,7 @@
     if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     if (tab !== S.tab) S.meSub = null;   // 「设置」 is a sub-page of 我: leaving the tab closes it
+    S.sleepNight = null;                 // so is the sleep detail page of 今天 (tapping 今天 again also goes back)
     S.tab = tab;
     const lit = tab === "food" && friendsOn() ? "record" : tab;
     for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
@@ -467,6 +468,7 @@
   function setViewDate(day, dir, tab) {
     if (!day || !S.todayDate) return;
     if (day > S.todayDate) day = S.todayDate;
+    S.sleepNight = null;
     S.viewDate = day === S.todayDate ? null : day;
     const q = new URLSearchParams(location.search);
     if (S.viewDate) q.set("date", S.viewDate); else q.delete("date");
@@ -610,7 +612,7 @@
     }
   }
 
-  async function refresh() { S.data = {}; await boot(true); }
+  async function refresh() { S.data = {}; window.BodySleepDetail?.reset(); await boot(true); }
 
   // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
   for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
@@ -781,7 +783,7 @@
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
     return `<button class="hero" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
       <div class="tiles">
-        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => sleepSheet(sc))}
+        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)))}
         ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc))}
         ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc))}
       </div>
@@ -946,12 +948,32 @@
     const m = sl.main;
     const stat = (st, v) => `<div><div class="stage-l"><i class="k-${st}"></i>${HYP_NAME[st]}</div><div class="stage-v">${hm(v) ?? "—"}</div></div>`;
     const chart = sl.stages.length ? hypnoSvg(m, sl.stages) : "";
-    return `<div class="section">${head}<button class="card" ${sheetAttr(() => sleepDetailSheet(sl))}>
+    return `<div class="section">${head}<button class="card" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
       <div class="sleep-head"><div><div class="sub-l">${tr("入睡 → 醒来")}</div><div class="sleep-times">${m.start}<span class="arrow">→</span>${m.end}</div></div>
         <div class="sleep-total"><div class="sub-l">${tr("睡着")}</div><div class="v">${hm(m.asleep_min)}</div></div></div>
       ${chart}
       <div class="stages4">${stat("deep", m.deep_min)}${stat("core", m.core_min)}${stat("rem", m.rem_min)}${stat("awake", m.awake_min)}</div>
     </button></div>`;
+  }
+
+  // ---- Sleep detail page (sleep-detail.js, rollout flag sleep_detail): a sub-page of 今天 for one night, opened from the sleep card
+  // or the 睡眠 tile; S.sleepNight = that night's wake date ("latest" when unknown). Flag off: the sheets above, as before.
+  const sleepDetailOn = () => !!window.BodySleepDetail && (S.flags || []).includes("sleep_detail");
+  function openSleepDetail(date) {
+    closeSheet();
+    S.sleepNight = date || "latest";
+    $("#view").dataset.shown = "";
+    window.scrollTo(0, 0);
+    render();
+  }
+  function mountSleepDetail(el) {
+    window.BodySleepDetail.mount(el, {
+      api, owner: ownerPath(), date: S.sleepNight === "latest" ? null : S.sleepNight,
+      hypno: hypnoSvg, fmtDay: (d) => fmtDay(d, d.slice(0, 4) !== String(S.todayDate || "").slice(0, 4)),
+      canAsk: canAskAI, askAI, explain: (key, title) => explainSheet("metric", key, title),
+      back: () => { S.sleepNight = null; $("#view").dataset.shown = ""; render(); },
+      onDate: (d) => { if (S.sleepNight) S.sleepNight = d; },
+    });
   }
 
   // ---- Bedtime goal (GET / PUT /v1/users/{u}/goals/sleep from the rules session; when the endpoint is missing the last 7 nights are still shown)
@@ -1176,6 +1198,7 @@
   }
 
   const RENDER_today = async () => {
+    if (S.sleepNight && sleepDetailOn()) return window.BodySleepDetail.placeholder();
     const day = viewDay(), past = isPast();
     const v2 = recordsV2();
     const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday] = await Promise.all([
@@ -1188,6 +1211,7 @@
       v2 ? optional("jitems", `/v1/users/${ownerPath()}/journal/items?active_only=true`) : null,   // records_v2: the 日记 card (no journal share = no card)
       v2 ? optional(`jday${day}`, `/v1/users/${ownerPath()}/journal?start=${day}&end=${day}`) : null,
     ]);
+    S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
     // Stacked on phones; two / three columns on wide screens (.dash in app.css)
@@ -1217,6 +1241,8 @@
   }
 
   function afterToday(view) {
+    const sd = $("#sleep-detail", view);
+    if (sd) { mountSleepDetail(sd); return; }
     const arc = $(".ring .arc", view);
     if (arc) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
     bindMeals(view);
@@ -3671,7 +3697,12 @@
   }
 
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
-  function goPage(page) {
+  function goPage(page, card) {
+    if (page === "sleep") {   // a Jarvis sleep card: that night's detail page (flag off: the 14-night sleep view)
+      S.owner = S.me.id;
+      if (!sleepDetailOn()) { S.trendsMode = "sleep"; setTab("trends"); return; }
+      setTab("today"); openSleepDetail(card?.date); return;
+    }
     const [tab, sub] = String(page || "today").split(".");
     if (!TABS[tab]) return;
     S.owner = S.me.id;
@@ -3685,6 +3716,7 @@
   window.BodyCharts = {
     line: (id, dates, values, opts = {}) => tChart(id, dates, [{ type: "avg", values, main: true }, { type: "dots", values }], opts),
     spark: sparkSvg,
+    hypno: hypnoSvg,   // the sleep stage timeline (sleep card, Jarvis sleep card)
   };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
