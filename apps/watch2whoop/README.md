@@ -27,6 +27,8 @@ The app only connects to the servers given in the setup information, and has **n
 | `lib/src/pages/scan_page.dart` | In-app setup QR scanner (mobile_scanner; on iOS it uses the system AVFoundation, without Google ML Kit) |
 | `lib/src/setup_flow.dart` | Applies setup info in one step (server → connect sync → store the login code); receives `watch2whoop://` links |
 | `lib/src/health_sync.dart` | Wraps the OW SDK: invitation code redemption, authorization, start / stop sync, status |
+| `lib/src/raw_sync.dart`, `lib/src/hk_types.dart` | HealthKit types the OW SDK cannot read (beat-to-beat, ECG, water, and the registry: stand time, exercise minutes, wrist temperature …) read by the app itself with one anchor per type and uploaded to Body Engine |
+| `lib/src/resync.dart`, `lib/src/resync_flow.dart`, `lib/src/pages/sync_center_section.dart` | Sync center (server flag `sync_center`): forced re-sync of a range, phone / server newest sample per type |
 | `lib/src/sync_stats.dart`, `lib/src/config.dart` | Sync log statistics; configuration, address validation, invitation / login codes, setup-info parsing (pure Dart, unit-tested) |
 | `ios/Runner/AppDelegate.swift` | Starts the OW SDK natively first (BGTask, background wake-up); SDK log buffer; setup-link inbox; the simulator debug build writes test data |
 | `ios/Flutter/Watch2Whoop.xcconfig` | Bundle ID / Team ID / display name (**placeholder values in the repository**) |
