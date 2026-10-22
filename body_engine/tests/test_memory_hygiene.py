@@ -218,7 +218,7 @@ def test_backfill_topics(conn, users):
     assert topics[o["id"]] == "health_constraints" and topics[n["id"]] is None
     assert conn.execute("SELECT topic FROM assistant_profile WHERE user_id = %s AND key = 'diet_day_plan'",
                         (a,)).fetchone()["topic"] == "diet_preferences"
-    assert conn.execute("SELECT 1 FROM schema_migrations WHERE name = '660_memory_hygiene_data'").fetchone()
+    assert conn.execute("SELECT 1 FROM schema_migrations WHERE name = '665_memory_hygiene_data'").fetchone()
 
 
 def test_truncation_order_keeps_priority_items(conn, users):

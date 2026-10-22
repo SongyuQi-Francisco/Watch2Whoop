@@ -124,9 +124,27 @@ def people(dsn):
 
 
 def _strength(conn, uid: int, sparky=None) -> tuple[HSS.Data, dict | None]:
+    """The v1.1 strength item (v1.1 is kept for comparison and rollback; v1.2 is tested in test_v12_* below)."""
     data = HSS.Data(conn, uid, ORIGIN - timedelta(days=1), TODAY, sparky or FakeSparky())
-    snap = HSS.snapshot(data, TODAY)
+    snap = HSS.snapshot(data, TODAY, HSS.VERSIONS["v1.1"])
     return data, next((c for c in snap["contributors"] if c["key"] == "strength"), None)
+
+
+def _activity(conn, uid: int, sparky=None) -> dict:
+    """The v1.2 activity domain (production since 2026-10-23, issue #118): strength is one of its parts."""
+    data = HSS.Data(conn, uid, ORIGIN - timedelta(days=1), TODAY, sparky or FakeSparky())
+    return next(c for c in HSS.snapshot(data, TODAY)["contributors"] if c["key"] == "activity")
+
+
+def test_v12_incomplete_records_label_the_activity_domain(conn, people):
+    act = _activity(conn, people["journal"])
+    part = next(p for p in act["parts"] if p["key"] == "strength")
+    assert act["coverage"] == part["coverage"] == "possibly_incomplete" and "日记" in act["coverage_reason"]
+    assert act["tip"] == H.TIPS["strength_incomplete"] and part["value"] == 0   # labelled, the minutes are not changed
+    none = _activity(conn, people["none"])
+    assert "coverage" not in none and "coverage" not in next(p for p in none["parts"] if p["key"] == "strength")
+    hevy = next(p for p in _activity(conn, people["hevy"])["parts"] if p["key"] == "strength")
+    assert hevy["value"] > 0                                   # imported (Hevy) sessions reach the v1.2 strength part too
 
 
 def test_hevy_only_user_counts_every_imported_session(conn, people):

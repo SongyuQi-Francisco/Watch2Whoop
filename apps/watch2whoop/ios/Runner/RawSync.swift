@@ -1,6 +1,7 @@
 import Flutter
 import Foundation
 import HealthKit
+import UIKit
 
 /// Reads the HealthKit types the OW SDK (iOS 0.15) does not sync, for upload straight to Body Engine
 /// (POST /v1/ingest/healthkit, done in Dart: lib/src/raw_sync.dart):
@@ -39,9 +40,11 @@ final class RawSync {
   func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) -> Bool {
     let args = call.arguments as? [String: Any] ?? [:]
     switch call.method {
+    case "rawAuthStatus":
+      authStatus { s in DispatchQueue.main.async { result(s) } }
     case "rawRequestAuth":
-      guard HKHealthStore.isHealthDataAvailable() else { result(false); return true }
-      store.requestAuthorization(toShare: nil, read: readTypes) { ok, _ in DispatchQueue.main.async { result(ok) } }
+      guard HKHealthStore.isHealthDataAvailable() else { result(["asked": false, "error": "unavailable"]); return true }
+      requestAuth { out in result(out) }
     case "rawRead":
       guard let kind = Kind(rawValue: args["kind"] as? String ?? "") else {
         result(FlutterError(code: "bad_args", message: "kind", details: nil)); return true
@@ -103,6 +106,66 @@ final class RawSync {
       }
     }
     group.notify(queue: .global()) { done(out) }
+  }
+
+  /// Whether iOS still has to show the sheet for readTypes: "unnecessary" (already asked; what the user chose stays
+  /// unknown), "shouldRequest" or "unknown". Reading a type that was never asked fails with "Authorization not
+  /// determined" (HKError 5), so this, not a flag of our own, decides whether to ask.
+  private func authStatus(_ done: @escaping (String) -> Void) {
+    guard HKHealthStore.isHealthDataAvailable() else { done("unknown"); return }
+    store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, error in
+      switch status {
+      case .unnecessary where error == nil: done("unnecessary")
+      case .shouldRequest where error == nil: done("shouldRequest")
+      default: done("unknown")
+      }
+    }
+  }
+
+  /// The sheet for readTypes: {asked: Bool (iOS no longer needs to ask), error: String?}, on the main thread.
+  /// Called right after the OW sheet closed, HealthKit cannot present the second sheet while the first one is still being
+  /// dismissed ("Attempt to present HKHealthPrivacyHostAuthorizationViewController … whose view is not in the window
+  /// hierarchy") and never calls the completion: the permissions step then waited forever and the types stayed undetermined.
+  /// So: wait until nothing is presented, and when no sheet came up shortly after the request, answer instead of waiting.
+  private func requestAuth(_ done: @escaping ([String: Any]) -> Void) {
+    var answered = false
+    let finish = { (error: String?) in
+      self.authStatus { s in
+        DispatchQueue.main.async {
+          guard !answered else { return }
+          answered = true
+          var out: [String: Any] = ["asked": s == "unnecessary"]
+          if let error { out["error"] = error }
+          done(out)
+        }
+      }
+    }
+    whenNothingPresented { [self] in
+      store.requestAuthorization(toShare: nil, read: readTypes) { _, error in finish(error?.localizedDescription) }
+      // No answer and still no sheet after this long: the presentation failed (the sheet itself took ~2.5 s to come up on
+      // a cold start in the simulator).
+      DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+        if !answered && Self.topPresented() == nil { finish("not_presented") }
+      }
+    }
+  }
+
+  /// The view controller presented over the app's root (the Health sheet while it is up), nil when nothing is.
+  private static func topPresented() -> UIViewController? {
+    let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap { $0.windows }
+    return (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController?.presentedViewController
+  }
+
+  /// Runs [then] on the main thread once no view controller is presented or being dismissed (at most ~8 s), plus a short
+  /// pause for the dismissal animation to finish.
+  private func whenNothingPresented(_ then: @escaping () -> Void, tries: Int = 40) {
+    DispatchQueue.main.async {
+      if Self.topPresented() != nil, tries > 0 {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { self.whenNothingPresented(then, tries: tries - 1) }
+        return
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: then)
+    }
   }
 
   private func storedAnchor(_ kind: Kind) -> HKQueryAnchor? {

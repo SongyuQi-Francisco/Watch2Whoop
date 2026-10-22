@@ -14,8 +14,10 @@ def _is_fallback(a: dict) -> bool:
 
 
 def _playbook(conn, uid: int, a: dict) -> dict:
-    fb = _is_fallback(a)
-    if not fb:
+    if not _is_fallback(a):
+        return playbooks.get(a["name"])
+    from ..ai import parity   # with ai_parity the fallback has every tool a playbook names
+    if parity.on(conn, a.get("_viewer_id", uid)):
         return playbooks.get(a["name"])
     from ..ai import web   # the fallback can plan shopping once ai_web gives it the web and grocery tools (#150)
     return playbooks.get(a["name"], for_fallback=True, web=bool(web.fallback_extra(conn, uid)))

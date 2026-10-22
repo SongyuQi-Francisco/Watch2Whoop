@@ -12,6 +12,10 @@
 //   logged while the flag is off are sent once it is on. That is not an error and is not retried within the pass.
 // - Beat-to-beat readings and ECGs need consent 2026-10-22.1 (409 otherwise); water only the ordinary consent, so a 409 on
 //   those skips to water instead of ending the pass.
+// - Permission: whether to ask is what HealthKit says (`rawAuthStatus`), not a flag of our own. Up to 1.0.6 a flag was set
+//   before asking, and the ask right after the OW sheet never showed (iOS cannot present a second sheet while the first is
+//   being dismissed): the types stayed undetermined, every read failed with HealthKit error 5 and the whole pass ended
+//   silently, so no app ever uploaded a beat. A read error now skips only that kind and shows on the sync page and its log.
 // The runner is pure Dart with an injected source / uploader (test/raw_sync_test.dart).
 import 'dart:async';
 import 'dart:convert';
@@ -25,6 +29,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'health_range.dart';
 import 'i18n.dart';
+import 'ui.dart' show ago;
 
 const List<String> kRawKinds = ['heartbeat', 'ecg', 'water'];
 
@@ -57,8 +62,40 @@ class RawPage {
       );
 }
 
+/// HealthKit error code "Authorization not determined" (HKError.Code.errorAuthorizationNotDetermined): the type was never
+/// asked for, so reading it fails instead of returning nothing (a refused read returns nothing).
+const int kHealthKitNotDetermined = 5;
+
+/// Automatic permission asks while iOS still says the sheet is needed; counted before the native call, so a build that
+/// crashes in HealthKit (as 1.0.0+4 did) does not crash on every open. The sync page asks on demand without this limit.
+const int kRawMaxAutoAsks = 3;
+
+/// Answer of the native permission ask.
+class RawAuth {
+  const RawAuth({this.asked = false, this.error});
+
+  /// iOS no longer needs to ask (the user answered the sheet now or earlier; what was chosen stays unknown).
+  final bool asked;
+
+  /// e.g. `not_presented`: the sheet did not come up (another sheet was still closing).
+  final String? error;
+
+  factory RawAuth.fromMap(Map<Object?, Object?>? m) => RawAuth(asked: m?['asked'] == true, error: m?['error'] as String?);
+}
+
+/// Read failure of one kind: [notAsked] = the permission was never asked (HealthKit error 5).
+({bool notAsked, String message}) readProblemOf(Object e) {
+  if (e is PlatformException) {
+    final notAsked = e.code == 'healthkit' && '${e.details}' == '$kHealthKitNotDetermined';
+    return (notAsked: notAsked, message: e.message ?? e.code);
+  }
+  return (notAsked: false, message: '$e');
+}
+
 abstract class RawSource {
-  Future<bool> requestAuth();
+  /// `unnecessary` (already asked), `shouldRequest` (the sheet would show) or `unknown`.
+  Future<String> authStatus();
+  Future<RawAuth> requestAuth();
   Future<RawPage> read(String kind, int daysBack, int limit);
   Future<void> commit(String kind, String anchor);
   Future<void> reset();
@@ -68,7 +105,10 @@ class NativeRawSource implements RawSource {
   static const _ch = MethodChannel('watch2whoop/native');
 
   @override
-  Future<bool> requestAuth() async => (await _ch.invokeMethod<bool>('rawRequestAuth')) ?? false;
+  Future<String> authStatus() async => (await _ch.invokeMethod<String>('rawAuthStatus')) ?? 'unknown';
+
+  @override
+  Future<RawAuth> requestAuth() async => RawAuth.fromMap(await _ch.invokeMapMethod<Object?, Object?>('rawRequestAuth'));
 
   @override
   Future<RawPage> read(String kind, int daysBack, int limit) async => RawPage.fromMap(
@@ -173,6 +213,9 @@ class RawSyncResult {
 
   /// null = everything read; unauthorized / consent / failed / budget
   String? stop;
+
+  /// A kind could not be read from HealthKit (the others still went): `not_asked` or `healthkit`, with [readError].
+  String? readProblem, readError;
   Map<String, Object?>? serverStatus;
 }
 
@@ -227,7 +270,15 @@ class RawSyncRunner {
           out.stop = 'budget'; // the rest next time (the anchor is where the last accepted page ended)
           return out;
         }
-        final page = await source.read(kind, daysBack, limit);
+        final RawPage page;
+        try {
+          page = await source.read(kind, daysBack, limit);
+        } catch (e) {
+          final p = readProblemOf(e);
+          if (out.readProblem != 'not_asked') out.readProblem = p.notAsked ? 'not_asked' : 'healthkit';
+          out.readError ??= p.message;
+          continue kinds; // the anchor stays; the next kind may still be readable
+        }
         if (page.isEmpty) {
           // nothing new (or only samples the reader drops, e.g. a series with < 2 beats)
           if (page.anchor != null) await source.commit(kind, page.anchor!);
@@ -280,17 +331,48 @@ class RawSyncRunner {
 
 /// What the sync page shows (shared_preferences; counts are the server's totals of app uploads).
 class RawSyncStatus {
-  const RawSyncStatus({this.heartbeats, this.ecgs, this.water, this.lastUpload, this.lastRun, this.stop});
+  const RawSyncStatus({
+    this.heartbeats,
+    this.ecgs,
+    this.water,
+    this.lastUpload,
+    this.lastRun,
+    this.stop,
+    this.lastHeartbeats,
+    this.lastEcgs,
+    this.serverLastUpload,
+    this.error,
+  });
+
+  /// The server's totals of app uploads.
   final int? heartbeats, ecgs, water;
+
+  /// Last pass that uploaded something from this phone / last pass at all.
   final DateTime? lastUpload, lastRun;
+
+  /// Why the last pass did not get everything: consent / unauthorized / failed (upload), not_asked / healthkit (reading).
   final String? stop;
 
-  String? get problem => switch (stop) {
-        'consent' => tr('在今天页确认新版同意书后开始上传', 'Starts after you accept the new consent on the Today page'),
-        'unauthorized' => tr('登录失效，打开今天页后重试', 'Signed out; open the Today page to retry'),
-        'failed' => tr('上次上传失败，下次打开 app 重试', 'Last upload failed; retries next time you open the app'),
-        _ => null,
-      };
+  /// What the last uploading pass added (beat-to-beat readings, ECGs).
+  final int? lastHeartbeats, lastEcgs;
+
+  /// The server's last accepted batch of this account (any phone).
+  final DateTime? serverLastUpload;
+
+  /// HealthKit's message for `healthkit`.
+  final String? error;
+
+  String? get problem {
+    final why = error ?? '-';
+    return switch (stop) {
+      'consent' => tr('在今天页确认新版同意书后开始上传', 'Starts after you accept the new consent on the Today page'),
+      'unauthorized' => tr('登录失效，打开今天页后重试', 'Signed out; open the Today page to retry'),
+      'failed' => tr('上次上传失败，下次打开 app 重试', 'Last upload failed; retries next time you open the app'),
+      'not_asked' => tr('「健康」还没问过这几项的读取权限，点「允许读取」', 'Health has not asked for these yet; tap "Allow reading"'),
+      'healthkit' => tr('读取「健康」出错：$why。下次打开 app 重试', 'Reading Health failed: $why. Retries next time you open the app'),
+      _ => null,
+    };
+  }
 
   Map<String, Object?> toJson() => {
         'heartbeats': heartbeats,
@@ -299,6 +381,10 @@ class RawSyncStatus {
         'last_upload': lastUpload?.toIso8601String(),
         'last_run': lastRun?.toIso8601String(),
         'stop': stop,
+        'last_heartbeats': lastHeartbeats,
+        'last_ecgs': lastEcgs,
+        'server_last_upload': serverLastUpload?.toIso8601String(),
+        'error': error,
       };
 
   factory RawSyncStatus.fromJson(Map<String, Object?> j) => RawSyncStatus(
@@ -308,8 +394,49 @@ class RawSyncStatus {
         lastUpload: DateTime.tryParse('${j['last_upload'] ?? ''}')?.toLocal(),
         lastRun: DateTime.tryParse('${j['last_run'] ?? ''}')?.toLocal(),
         stop: j['stop'] as String?,
+        lastHeartbeats: (j['last_heartbeats'] as num?)?.toInt(),
+        lastEcgs: (j['last_ecgs'] as num?)?.toInt(),
+        serverLastUpload: DateTime.tryParse('${j['server_last_upload'] ?? ''}')?.toLocal(),
+        error: j['error'] as String?,
       );
 }
+
+/// The status after one pass: the server's totals when it answered, what this pass added, and why it stopped.
+RawSyncStatus nextRawStatus(RawSyncStatus old, RawSyncResult res, DateTime now) {
+  final s = res.serverStatus;
+  final uploaded = res.batches > 0 && res.stop != 'failed' && res.stop != 'consent' && res.stop != 'unauthorized';
+  final stop = res.stop == 'budget' ? null : res.stop;
+  return RawSyncStatus(
+    heartbeats: (s?['heartbeats'] as num?)?.toInt() ?? old.heartbeats,
+    ecgs: (s?['ecgs'] as num?)?.toInt() ?? old.ecgs,
+    water: s?['water_enabled'] == true ? (s?['water'] as num?)?.toInt() ?? old.water : null,
+    lastUpload: uploaded ? now : old.lastUpload,
+    lastRun: now,
+    stop: stop ?? res.readProblem,
+    lastHeartbeats: uploaded ? res.heartbeats : old.lastHeartbeats,
+    lastEcgs: uploaded ? res.ecgs : old.lastEcgs,
+    serverLastUpload: DateTime.tryParse('${s?['last_upload_at'] ?? ''}')?.toLocal() ?? old.serverLastUpload,
+    error: stop == null && res.readProblem == 'healthkit' ? res.readError : null,
+  );
+}
+
+/// 「上次上传」 on the sync page: when this phone last uploaded and what that pass added (beat-to-beat readings, ECGs);
+/// before its first upload the server's last accepted batch of the account (e.g. from another phone).
+String rawLastUploadText(RawSyncStatus s) {
+  final at = s.lastUpload ?? s.serverLastUpload;
+  if (at == null) return '—';
+  final ecg = (s.lastEcgs ?? 0) > 0 ? tr(' / 心电图 +${s.lastEcgs}', ' / ECG +${s.lastEcgs}') : '';
+  final added = s.lastUpload == null || s.lastHeartbeats == null ? '' : ' · +${s.lastHeartbeats}$ecg';
+  return '${ago(at)}$added';
+}
+
+/// One line for the sync log (English, like the SDK's lines).
+String rawLogLine(RawSyncResult r) => [
+      'Beat-to-beat/ECG/water: ${r.heartbeats} readings, ${r.ecgs} ECGs, ${r.water} drinks in ${r.batches} batches',
+      if (r.stop != null) 'stopped: ${r.stop}',
+      if (r.readProblem != null) 'HealthKit: ${r.readProblem == 'not_asked' ? 'access not asked yet' : r.readError}',
+      if (r.waterOff) 'water off on the server',
+    ].join('; ');
 
 /// Range the anchors were read with: "All history" after 90 days needs fresh anchors (they only see newer samples).
 bool needsAnchorReset(int? previousDaysBack, int daysBack) =>
@@ -321,7 +448,7 @@ class RawSync {
 
   static const _statusKey = 'w2w.raw.status.v1';
   static const _rangeKey = 'w2w.raw.range.v1';
-  static const _authKey = 'w2w.raw.authAsked.v2'; // v2: dietary water added (#135), asked once more
+  static const _authTriesKey = 'w2w.raw.authTries.v1'; // automatic asks while iOS says shouldRequest (kRawMaxAutoAsks)
   static const _tokenKey = 'w2w.ingest.token.v1';
   static const _storage = FlutterSecureStorage(
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
@@ -330,6 +457,14 @@ class RawSync {
   final ValueNotifier<RawSyncStatus> status = ValueNotifier(const RawSyncStatus());
   RawSource source = NativeRawSource();
   bool _running = false;
+
+  /// The sync page's log (HealthSync.note, set in main.dart).
+  void Function(String line)? onLog;
+
+  void _log(String line) {
+    debugPrint(line);
+    onLog?.call(line);
+  }
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -341,17 +476,32 @@ class RawSync {
     }
   }
 
-  /// Asks HealthKit for the read permissions (the second, small sheet after the OW one). Remembered, so people who
-  /// granted Health before this version see it once on the next open. Remembered before the native call: if HealthKit
-  /// aborts the app (as build 1.0.0+4 did), the automatic ask is not repeated on every open; the permissions step still
-  /// asks on demand.
-  Future<void> requestAuth() async {
+  /// Asks HealthKit for the read permissions (the second, small sheet after the OW one; the native side waits until the
+  /// first one has closed). The try is counted before the native call: if HealthKit aborts the app (as build 1.0.0+4 did),
+  /// the automatic ask in [run] stops after kRawMaxAutoAsks; this call itself (permissions step, sync page) always asks.
+  /// Returns whether iOS no longer needs to ask.
+  Future<bool> requestAuth() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool(_authKey, true);
-      await source.requestAuth();
+      await prefs.setInt(_authTriesKey, (prefs.getInt(_authTriesKey) ?? 0) + 1);
+      final r = await source.requestAuth().timeout(const Duration(minutes: 3), onTimeout: () => const RawAuth(error: 'timeout'));
+      if (r.asked) await prefs.setInt(_authTriesKey, 0);
+      _log('Beat-to-beat/ECG/water Health access: ${r.asked ? 'asked' : 'not asked (${r.error ?? '-'})'}');
+      return r.asked;
     } catch (e) {
-      debugPrint('raw auth failed: $e');
+      _log('Beat-to-beat/ECG/water Health access failed: $e');
+      return false;
+    }
+  }
+
+  /// Whether [run] asks by itself: iOS says the sheet is needed and the automatic tries are not used up.
+  Future<bool> shouldAutoAsk() async {
+    final prefs = await SharedPreferences.getInstance();
+    if ((prefs.getInt(_authTriesKey) ?? 0) >= kRawMaxAutoAsks) return false;
+    try {
+      return await source.authStatus() == 'shouldRequest';
+    } catch (_) {
+      return false;
     }
   }
 
@@ -368,7 +518,7 @@ class RawSync {
     _running = true;
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (prefs.getBool(_authKey) != true) await requestAuth();
+      if (await shouldAutoAsk()) await requestAuth();
       var token = accountToken;
       final ingest = token == null;
       if (ingest) {
@@ -390,22 +540,14 @@ class RawSync {
         appVersion: appVersion,
       ).run(daysBack);
       if (res.stop == 'unauthorized' && ingest) await _deleteToken(); // a fresh one from the page next time
-      final s = res.serverStatus;
-      final old = status.value;
-      status.value = RawSyncStatus(
-        heartbeats: (s?['heartbeats'] as num?)?.toInt() ?? old.heartbeats,
-        ecgs: (s?['ecgs'] as num?)?.toInt() ?? old.ecgs,
-        water: s?['water_enabled'] == true ? (s?['water'] as num?)?.toInt() ?? old.water : null,
-        lastUpload: res.batches > 0 && res.stop != 'failed' && res.stop != 'consent' && res.stop != 'unauthorized'
-            ? DateTime.now()
-            : old.lastUpload,
-        lastRun: DateTime.now(),
-        stop: res.stop == 'budget' ? null : res.stop,
-      );
+      // Nothing reached the server this pass (e.g. Health not readable): still show its totals and last upload
+      if (res.serverStatus == null && res.stop != 'unauthorized') res.serverStatus = await uploader.status(token);
+      _log(rawLogLine(res));
+      status.value = nextRawStatus(status.value, res, DateTime.now());
       await prefs.setString(_statusKey, jsonEncode(status.value.toJson()));
       return res;
     } catch (e) {
-      debugPrint('raw sync failed: $e');
+      _log('Beat-to-beat/ECG/water upload failed: $e');
       return null;
     } finally {
       _running = false;
@@ -440,7 +582,7 @@ class RawSync {
       await source.reset();
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
-    for (final k in [_statusKey, _rangeKey]) { // the Health permission belongs to the app, not the account
+    for (final k in [_statusKey, _rangeKey]) { // the Health permission (and _authTriesKey) belongs to the app, not the account
       await prefs.remove(k);
     }
     status.value = const RawSyncStatus();

@@ -58,6 +58,20 @@ def _user(args) -> str:
     return out
 
 
+def _healthspan(args) -> str:
+    import json
+
+    from .. import db
+    from . import healthspan_compare
+
+    with db.connect() as conn:
+        res = healthspan_compare.compare(conn, args.user_id, args.weeks, not args.no_sensitivity)
+    if res is None:
+        raise SystemExit("no watch data or no birth date for this user")
+    return json.dumps(res, default=str, ensure_ascii=False, indent=1) + "\n" if args.json \
+        else healthspan_compare.markdown(res)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m body_engine.validation")
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -72,8 +86,13 @@ def main(argv=None) -> None:
     u.add_argument("--kinds", default="sdnn", help="sdnn, or sdnn,rmssd to add the agreement of the two")
     u.add_argument("--no-ow", action="store_true")
     u.add_argument("--no-sensitivity", action="store_true")
+    h = sub.add_parser("healthspan", help="body age v1.1 vs v1.2; reads the database only (keep the output out of git)")
+    h.add_argument("--user-id", type=int, required=True)
+    h.add_argument("--weeks", type=int, default=26)
+    h.add_argument("--json", action="store_true")
+    h.add_argument("--no-sensitivity", action="store_true")
     args = ap.parse_args(argv)
-    sys.stdout.write(_synthetic(args) if args.mode == "synthetic" else _user(args))
+    sys.stdout.write({"synthetic": _synthetic, "user": _user, "healthspan": _healthspan}[args.mode](args))
 
 
 if __name__ == "__main__":

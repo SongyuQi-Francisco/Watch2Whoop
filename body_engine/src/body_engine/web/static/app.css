@@ -83,7 +83,7 @@ a { color: inherit; }
 .top-date { font-size: 12px; color: var(--text-2); font-weight: 500; }
 .top-title { margin: 1px 0 0; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; }
 .avatar {
-  width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--surface-2);
+  width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--surface-2); overflow: hidden; padding: 0; color: inherit;
   font-weight: 600; font-size: 14px; display: inline-flex; align-items: center; justify-content: center;
 }
 .avatar.other { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--text-2); }
@@ -947,7 +947,7 @@ button.card.trend { display: flex; flex-direction: column; justify-content: flex
 .fd-grid .card + .card { margin-top: 8px; }
 .fd-card.tap { cursor: pointer; }
 .fd-head { display: flex; align-items: center; gap: 10px; }
-.fd-av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 600; flex: none; }
+.fd-av { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: var(--surface-2); font-weight: 600; flex: none; }
 .fd-name { flex: 1; min-width: 0; font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fd-head .chev { color: var(--text-2); width: 16px; height: 16px; }
 .fd-card .rcard-tags { margin-top: 10px; }

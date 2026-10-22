@@ -35,6 +35,8 @@ EXACT: dict[str, str] = {
     "有效期已经过去了": "That expiry date has already passed",
     "已经有一个同样的圈子激活码（不分大小写、空格和连字符）：先停用它": "The same circle code already exists (ignoring case, spaces and dashes): disable it first",
     "没有头像": "No avatar",
+    "上传太频繁，请稍后再试": "Too many uploads, please try again later",
+    "个人圈子没有 logo": "A personal circle has no logo",
     "图片是空的": "The image is empty",
     "只支持 PNG、JPEG、WebP 图片": "Only PNG, JPEG and WebP images are supported",
     "图片像素太多": "The image has too many pixels",

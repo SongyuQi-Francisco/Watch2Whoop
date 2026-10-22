@@ -15,6 +15,7 @@ class FakeAdapter(Adapter):
     def stream_turn(self, system, history, tools):
         FakeAdapter.calls.append({"api_key": self.api_key, "model": self.model, "base_url": self.base_url,
                                   "system": system, "history": history, "tools": [t.name for t in tools],
+                                  "tool_defs": [t.api_definition() for t in tools],
                                   "no_tool_calls": self.no_tool_calls})
         turn = FakeAdapter.script.pop(0) if FakeAdapter.script else {"text": "好的。"}
         for piece in (turn.get("text") or "").split("|"):
