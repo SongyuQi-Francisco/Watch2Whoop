@@ -306,7 +306,11 @@ def test_intro_page_wiring(client):
     js = client.get("/app/intro.js").text
     assert "/v1/users/me/intro" in js and "intro_seen" in js and "window.BodyIntro" in js and "/app/handbook/" not in js.split("*/", 1)[1]
     app_js = client.get("/app/app.js").text
-    assert 'id="me-handbook"' in app_js and app_js.index('id="me-handbook"') < app_js.index('id="me-intro"')
+    # classic Me page (me_settings flag off, rendered last in the file): 「新手引导」 right after 「使用手册」;
+    # with the flag on it lives in the 「设置」 sub-page (meSettingsHtml, issue #140)
+    assert 'id="me-handbook"' in app_js and app_js.rindex('id="me-handbook"') < app_js.rindex('id="me-intro"')
+    settings = app_js[app_js.index("function meSettingsHtml"):app_js.index("const RENDER_me")]
+    assert 'id="me-intro"' in settings and 'id="me-logout"' in settings
     assert "openHandbook, openAiSettings" in app_js
     assert '"intro.js"' in client.get("/app/sw.js").text
     assert "家人" not in js

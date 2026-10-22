@@ -874,6 +874,16 @@ I18N.addEn({
   "练了腿，深蹲 5 组": "Leg day, 5 sets of squats",
   "已记进训练": "Added to training",
   "你的服务器": "Your server",
+  // 「我」 page v2 + 设置 (issue #140, flag me_settings)
+  "返回「我」": "Back to Me",
+  "设置": "Settings",
+  "帮助": "Help",
+  "关于": "About",
+  "版本": "Version",
+  "这里是你自己账号的设置": "These are the settings of your own account",
+  "健康档案": "Health records",
+  "补剂 {n}": "{n} supplements",
+  "化验 {n}": "{n} labs",
   // water.js (daily water, issue #125)
   "今天喝水": "Water today",
   "目标来自饮食档案": "Goal from your diet profile",
