@@ -88,6 +88,8 @@ class AnthropicAdapter(Adapter):
         tool_defs = [t.api_definition() for t in tools] + self._web_tools()
         if tool_defs:   # none for the history fold call (ai/context.py)
             kwargs["tools"] = tool_defs
+            if self.no_tool_calls:
+                kwargs["tool_choice"] = {"type": "none"}
         if self.model in EFFORT_MODELS:
             kwargs["output_config"] = {"effort": "medium"}
         if self.model in FALLBACK_MODELS:

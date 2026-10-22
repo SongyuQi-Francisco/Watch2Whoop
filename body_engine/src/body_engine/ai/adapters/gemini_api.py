@@ -51,6 +51,8 @@ class GeminiAdapter(Adapter):
                 for t in tools])] if tools else [])   # none for the history fold call (ai/context.py)
                 + ([types.Tool(google_search=types.GoogleSearch()), types.Tool(url_context=types.UrlContext())] if self.web else []))
             or None,
+            tool_config=(types.ToolConfig(function_calling_config=types.FunctionCallingConfig(mode="NONE"))
+                         if tools and self.no_tool_calls else None),
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
         parts: list[types.Part] = []
         usage, finish = None, None

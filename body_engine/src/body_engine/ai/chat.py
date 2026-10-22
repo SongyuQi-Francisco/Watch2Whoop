@@ -4,6 +4,9 @@ One turn: user message -> model (streamed text) -> does it want a tool?
   - read tool: run directly (run_tool, same authorization as MCP: reading another user's data needs shares, writing only for the caller), result goes back to the model, continue;
   - write tool: runs directly, except deleting / undoing (ALWAYS_CONFIRM): not run, recorded as pending, a confirm event is sent so the frontend stops; user confirms -> run, user declines -> tell the model "not written", then keep looping.
 Before each model call the budget is checked (this user, this provider, this month); over budget stops with a notice. Each model call records ai_usage (tokens and estimated cost).
+A message never ends half way through its tool calls (issue #184): the last call allowed (MAX_ROUNDS, or for the fallback
+also MAX_TURN_CNY spent on this message) gets the same tools with calls switched off plus WRAP_UP, so the model answers from
+what it has found, and a notice says why and that "继续" goes on.
 No conversation is ever too long to continue (issue #53): past a budget the older turns are folded into a stored summary
 (context.py, _context); the model gets the summary + the recent turns, the user still sees every message.
 No default provider (and no body butler link): the fallback AI (fallback.py, the admin's DeepSeek) with its own CNY quota, rate limits,
@@ -43,7 +46,11 @@ from . import fallback_params as fp
 from . import params as ai_params
 from .params import ALWAYS_CONFIRM  # only deleting / undoing asks first (tests patch it here)
 
-MAX_ROUNDS = 8                 # Max model calls chained for one user message (stops the tool loop from running forever)
+MAX_ROUNDS = 8                 # Max model calls chained for one user message (stops the tool loop from running forever); the last is a tools-off answer
+# Appended (not stored) to the history of that last call: AI-facing, so Chinese
+WRAP_UP = ("（系统提示，不是用户说的）这条消息查资料 / 调工具的次数到上限了，这一轮不能再调工具。"
+           "用已经查到的信息直接给出尽量完整的回答，不要说「稍等」或「我再查一下」；"
+           "还没查到或没做完的部分，最后用一句话说清楚，并告诉用户回「继续」就接着做。")
 MAX_TOOL_RESULT_CHARS = 30000  # Truncate overly long tool results (same order of magnitude as Claude Code's MAX_MCP_OUTPUT_TOKENS)
 MAX_IMAGES = 8                 # photos, or the frames the page takes from one video
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
@@ -393,10 +400,18 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
     rich = cards.enabled(conn, viewer["id"])
     if rich:
         tools = [*tools, cards.TOOL]
-    for _ in range(fp.MAX_ROUNDS if fb else MAX_ROUNDS):
+    rounds, turn_cost = (fp.MAX_ROUNDS if fb else MAX_ROUNDS), 0.0
+    for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         if rich:
             system = f"{system}\n\n{cards.PROMPT}"
+        # The last call allowed: same tools (history and prompt cache stay valid), calls switched off, an answer now
+        last = rnd > 0 and (rnd == rounds - 1 or (fb and turn_cost >= fp.MAX_TURN_CNY))
+        caller = adapter
+        if last:
+            history = [*history, {"role": "user", "content": [{"type": "text", "text": WRAP_UP}]}]
+            caller = copy.copy(adapter)
+            caller.no_tool_calls = True
         try:
             if fb:
                 spent, budget = fallback.precheck(conn, viewer["id"], system, history, tools)
@@ -407,7 +422,7 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             return
         result = None
         try:
-            for kind, val in adapter.stream_turn(system, history, tools):
+            for kind, val in caller.stream_turn(system, history, tools):
                 if kind == "text":
                     yield ev("text", delta=val)
                 else:
@@ -416,7 +431,10 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             yield ev("error", code=e.code, message=str(e))
             return
         cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage)
+        turn_cost += cost
         yield _usage_event(provider, result.usage, cost, spent, budget)
+        if last and result.tool_calls:   # a model that ignored tool_choice: the calls are dropped, never run, and so is the
+            result.tool_calls, result.native = [], None   # native reply holding them (replaying it would need their results)
         content = ([{"type": "text", "text": result.text}] if result.text else []) + [
             {"type": "tool_call", "id": c["id"], "name": c["name"], "args": c["args"]} for c in result.tool_calls]
         if not content:
@@ -425,8 +443,16 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
         conn.commit()
         if result.stop == "refusal":
             yield ev("notice", message=L("模型拒绝回答这个问题", "The model declined to answer this"))
-        if result.stop == "max_tokens":
-            yield ev("notice", message=L("回答太长被截断了", "The answer was too long and got cut off"))
+        if result.stop == "max_tokens":   # the adapters drop a tool call cut off half way: no text usually means that
+            yield ev("notice", message=L("回答太长被截断了；回「继续」让它接着说", "The answer was too long and got cut off; "
+                                         "reply \u201ccontinue\u201d for the rest") if result.text.strip() else
+                     L("这一步要写的内容太长，超过了单次输出的上限，没有写成；可以让它分几次写",
+                       "What it tried to write in one go was too long and was not saved; ask it to do it in smaller steps"))
+        if last:
+            yield ev("notice", code="round_limit", message=L(
+                f"这条消息查了 {rnd + 1} 轮资料，先按已经查到的回答；没答全的部分回「继续」接着查",
+                f"It looked things up {rnd + 1} times for this message, so it answered with what it found; "
+                "reply \u201ccontinue\u201d to look further"))
         if not result.tool_calls:
             conn.execute("UPDATE ai_conversations SET state = 'idle' WHERE id = %s", (conv["id"],))
             conn.commit()
@@ -486,10 +512,6 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             return
         _finish_tool_message(conn, conv, mid, [b for b in content if b["type"] == "tool_call"])
         conn.commit()
-    n = fp.MAX_ROUNDS if fb else MAX_ROUNDS
-    yield ev("error", code="too_many_rounds",
-             message=L(f"连续调了 {n} 次模型还没说完，先停一下；可以接着问",
-                       f"Still not done after {n} model calls in a row, so it stopped here; you can ask it to go on"))
 
 
 def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,

@@ -173,6 +173,32 @@ def test_compat_adapter_passes_reasoning_back_and_deepseek_disables_thinking():
     assert d.base_url == fp.BASE_URL and d.kind == "system_fallback"
 
 
+def test_compat_adapter_switches_tool_calls_off(monkeypatch):
+    """#184: the last call of a message sends the same tools with tool_choice none (prompt cache and history stay valid)."""
+    import openai
+    sent = []
+
+    class Completions:
+        def create(self, **kw):
+            sent.append(kw)
+            return iter(())
+
+    class Client:
+        def __init__(self, **kw):
+            self.chat = type("Chat", (), {"completions": Completions()})()
+
+    monkeypatch.setattr(openai, "OpenAI", Client)
+    tool = fallback.tools()[0]
+    hist = [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
+    d = DeepSeekFallbackAdapter(fp.MODEL, "k")
+    list(d.stream_turn("sys", hist, [tool]))
+    d.no_tool_calls = True
+    list(d.stream_turn("sys", hist, [tool]))
+    list(d.stream_turn("sys", hist, []))   # no tools at all (history fold): no tool_choice either
+    assert "tool_choice" not in sent[0] and sent[1]["tool_choice"] == "none" and sent[1]["tools"] == sent[0]["tools"]
+    assert "tool_choice" not in sent[2] and "tools" not in sent[2]
+
+
 # ---------------------------------------------------------------- status / consent
 def test_status_modes(client, world):
     ids, tok = world
@@ -286,6 +312,75 @@ def test_playbooks_the_fallback_cannot_do(client, world, dsn):
     assert "get_training_context" in results["p2"]
     assert fallback.TOOL_NAMES.count("set_nutrition_goals") == 0   # weekly_review is for the fallback without widening it
 
+def _rows(dsn, uid, conv_id):
+    with db(dsn) as c:
+        msgs = c.execute("SELECT role, content, native FROM ai_messages WHERE user_id = %s AND conversation_id = %s ORDER BY id",
+                         (uid, conv_id)).fetchall()
+        calls = c.execute("SELECT tool, status FROM ai_tool_calls WHERE user_id = %s AND conversation_id = %s",
+                          (uid, conv_id)).fetchall()
+    return msgs, calls
+
+
+def test_multi_step_question_is_answered_at_the_round_limit(client, world, dsn):
+    """#184: a question that needs more lookups than MAX_ROUNDS used to end with a too_many_rounds error and no answer.
+    Now the last call allowed sends the same tools with calls switched off plus WRAP_UP (not stored): the model answers,
+    calls it makes anyway are dropped (never run), a notice says why and that 继续 goes on, and 继续 does."""
+    from body_engine.ai import chat as chat_mod
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    look = [{"tool_calls": [{"id": f"r{i}", "name": "get_profile", "args": {}}]} for i in range(fp.MAX_ROUNDS - 1)]
+    FakeAdapter.script = look + [{"text": "清单：鸡蛋、牛奶；价格还没查", "tool_calls": [
+        {"id": "x", "name": "log_weight", "args": {"weight_kg": 80, "date": "2026-10-22"}}]}]
+    evs = sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "按饮食结构列采购清单"}).text)
+    names = [e for e, _ in evs]
+    assert "error" not in names and names[-1] == "done"
+    assert len(FakeAdapter.calls) == fp.MAX_ROUNDS
+    assert [c["no_tool_calls"] for c in FakeAdapter.calls] == [False] * (fp.MAX_ROUNDS - 1) + [True]
+    final = FakeAdapter.calls[-1]
+    assert final["tools"] == FakeAdapter.calls[0]["tools"]   # same tools: the prompt cache prefix stays the same
+    assert final["history"][-1]["role"] == "user" and final["history"][-1]["content"][0]["text"] == chat_mod.WRAP_UP
+    assert final["history"][-2]["role"] == "tool"
+    notice = next(d for e, d in evs if e == "notice" and d.get("code") == "round_limit")
+    assert f"{fp.MAX_ROUNDS} 轮" in notice["message"] and "继续" in notice["message"]
+    conv_id = next(d for e, d in evs if e == "conversation")["id"]
+    msgs, calls = _rows(dsn, ids["F1"], conv_id)
+    assert [c["tool"] for c in calls] == ["get_profile"] * (fp.MAX_ROUNDS - 1)   # log_weight from the last call never ran
+    assert msgs[-1]["role"] == "assistant" and msgs[-1]["native"] is None
+    assert [b["type"] for b in msgs[-1]["content"]] == ["text"]
+    assert not any(chat_mod.WRAP_UP in json.dumps(m["content"], ensure_ascii=False) for m in msgs)   # never stored
+    # 继续: a fresh set of rounds on a valid history (every tool call has its result, the answer is a plain assistant message)
+    FakeAdapter.calls, FakeAdapter.script = [], [{"tool_calls": [{"id": "p1", "name": "get_profile", "args": {}}]},
+                                                 {"text": "价格：鸡蛋 6 元"}]
+    evs = sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]),
+                          json={"message": "继续", "conversation_id": conv_id}).text)
+    assert [e for e, _ in evs][-1] == "done" and not any(e == "notice" for e, _ in evs)
+    assert [c["no_tool_calls"] for c in FakeAdapter.calls] == [False, False]
+    hist = FakeAdapter.calls[0]["history"]
+    assert [m["role"] for m in hist[-3:]] == ["tool", "assistant", "user"]
+
+
+def test_message_cost_cap_ends_with_an_answer(client, world, dsn, monkeypatch):
+    """#184: the fallback also stops looking things up once one message cost MAX_TURN_CNY; the next call is the answer."""
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    monkeypatch.setattr(fp, "MAX_TURN_CNY", 0.001)
+    usage = {"input_tokens": 1000, "output_tokens": 100}   # ≈ ¥0.0028 at the peak price
+    FakeAdapter.script = [{"tool_calls": [{"id": "c1", "name": "get_profile", "args": {}}], "usage": usage},
+                          {"text": "先这样", "usage": usage}]
+    evs = sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "规划一周"}).text)
+    assert [c["no_tool_calls"] for c in FakeAdapter.calls] == [False, True]
+    assert any(e == "notice" and d.get("code") == "round_limit" for e, d in evs) and evs[-1][0] == "done"
+
+
+def test_cut_off_tool_call_says_so(client, world, dsn):
+    """A tool call cut off at max_tokens is dropped by the adapter (no text): the notice says it was not saved, not "too long"."""
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    FakeAdapter.script = [{"text": "", "stop": "max_tokens"}]
+    evs = sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "保存这周计划"}).text)
+    assert "没有写成" in next(d for e, d in evs if e == "notice")["message"]
+
+
 def test_write_needs_confirmation(client, world, dsn, monkeypatch):
     ids, tok = world
     from body_engine.ai import chat as chat_mod
@@ -327,7 +422,7 @@ def test_quota_used_up_and_admin_override(client, world, dsn):
 def test_worst_case_estimate_blocks_last_call(client, world, dsn):
     ids, tok = world
     reset(dsn, ids["F1"])
-    with db(dsn) as c:  # ¥0.005 left: less than one worst-case call (max output alone is ¥0.016)
+    with db(dsn) as c:  # ¥0.005 left: less than one worst-case call (max output alone is ¥0.033)
         c.execute("INSERT INTO ai_usage (user_id, kind, model, cost_cny) VALUES (%s, 'system_fallback', %s, %s)",
                   (ids["F1"], fp.MODEL, fp.MONTHLY_QUOTA_CNY - 0.005))
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
@@ -484,6 +579,13 @@ def test_own_provider_wins(client, world, dsn):
     assert client.get("/v1/web/me", headers=H(tok["A"])).json()["ai"]["mode"] == "api"
     assert client.post("/v1/assistant/chat", headers=H(tok["A"]), json={"message": "hi"}).status_code == 200
     assert FakeAdapter.calls[0]["api_key"] == "sk-ant-test-own-key-AAAA"
+    # #184: the general chat (own provider) also answers at its own round limit instead of stopping with an error
+    from body_engine.ai import chat as chat_mod
+    FakeAdapter.calls = []
+    FakeAdapter.script = [{"tool_calls": [{"id": f"o{i}", "name": "get_profile", "args": {}}]} for i in range(chat_mod.MAX_ROUNDS)]
+    evs = sse(client.post("/v1/assistant/chat", headers=H(tok["A"]), json={"message": "多查几样"}).text)
+    assert len(FakeAdapter.calls) == chat_mod.MAX_ROUNDS and FakeAdapter.calls[-1]["no_tool_calls"]
+    assert evs[-1][0] == "done" and not any(e == "error" for e, _ in evs)
     view = client.get("/v1/users/me/ai-providers", headers=H(tok["A"])).json()["fallback"]
     assert view["used"] is False
 
