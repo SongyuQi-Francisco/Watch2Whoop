@@ -1333,6 +1333,12 @@ I18N.addEn({
   "{d} 天 · {n} 条": "{d} days · {n} records",
   "可能的原因": "Possible reasons",
   "在 iPhone 上打开": "Switch it on on the iPhone",
+  "力量训练记录（近 {n} 周）": "Strength training records (last {n} weeks)",
+  "{d} 天有记录": "{d} days with a record",
+  "来源（次）": "Sources (sessions)",
+  "天数": "Days",
+  "手表": "Watch",
+  "记录可能不全": "May be incomplete",
   // muscle-load.js (muscle load map, flag muscle_load)
   "{a}–{b} 组": "{a}–{b} sets",
   "{n} 个动作没对上动作库，没有计入": "{n} exercises are not in the exercise library and were not counted",

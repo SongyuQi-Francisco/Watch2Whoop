@@ -1411,7 +1411,8 @@
       ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
       ${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
         const y = c.years || 0, w = (Math.abs(y) / max) * 50;
-        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}</span>
+        const partial = c.coverage === "possibly_incomplete" ? ` <span class="badge mid" style="white-space:nowrap">${esc(tr("记录可能不全"))}</span>` : "";   // #210
+        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}${partial}</span>
           <span class="y ${y > 0 ? "bad" : y < 0 ? "good" : "muted"}">${tr("{n} 年", { n: signed(y) })}</span></div>
           <div class="dbar"><span class="${y > 0 ? "older" : "younger"}" style="width:${w.toFixed(1)}%"></span></div></div>`;
       }).join("")}`).join("")}
