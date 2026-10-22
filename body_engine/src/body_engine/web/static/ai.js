@@ -380,6 +380,8 @@
       "food.shopping": [{ t: tr("按下周菜单列清单并查价") }, { t: tr("这周有什么半价适合我") }],
       me: [{ t: tr("我的数据都共享给了谁") }, { t: tr("你都记得我哪些事") }],
     };
+    // records_v2: the journal moved into Trends (行为影响), so its quick question goes with it
+    if (window.BodyFlags?.on("records_v2")) Q.trends = [{ t: tr("复盘这一周") }, { t: tr("最近哪些习惯影响恢复") }, { t: tr("最近睡得够吗") }];
     return (Q[page] || Q[tab] || []).filter((q) => !(q.photo && C.ai?.vision === false));
   }
   function drawQuick() {
