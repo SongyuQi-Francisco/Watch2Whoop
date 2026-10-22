@@ -52,6 +52,8 @@ class RenameIn(BaseModel):
 class InviteIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reset: bool = False
+    days: int | None = None          # params.INVITE_DAYS_CHOICES; none = params.INVITE_DEFAULT_DAYS
+    permanent: bool = False          # never expires (not together with days)
 
 
 class JoinIn(BaseModel):
@@ -98,7 +100,15 @@ def rename(circle_id: int, body: RenameIn, conn=Depends(get_conn), viewer=Depend
 
 @router.post("/circles/{circle_id}/invite")
 def invite(circle_id: int, body: InviteIn | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return _run(store.mint_invite, conn, _self(viewer, "me"), circle_id, bool(body and body.reset))
+    body = body or InviteIn()
+    return _run(store.mint_invite, conn, _self(viewer, "me"), circle_id, body.reset, days=body.days, permanent=body.permanent)
+
+
+@router.delete("/circles/{circle_id}/invites/{invite_id}", status_code=204)
+def revoke_invite(circle_id: int, invite_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Owner: stop one live invite code early."""
+    _run(store.revoke_invite, conn, _self(viewer, "me"), circle_id, invite_id)
+    return Response(status_code=204)
 
 
 @router.get("/invite")

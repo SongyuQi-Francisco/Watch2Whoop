@@ -478,7 +478,8 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 | `GET /v1/friends` | My circles (members, `my_scopes`, for the owner the number of live invite codes), invites addressed to me (from a referral sign-up), the scope choices and defaults, `consent_ok` |
 | `POST /v1/friends/circles {name, scopes}` | New circle, I am owner and first member; returns the first invite code (plaintext only here) |
 | `PATCH /v1/friends/circles/{id} {name}` · `DELETE /v1/friends/circles/{id}` | Owner: rename / dissolve |
-| `POST /v1/friends/circles/{id}/invite {reset}` | Owner: a new 72-hour code (`reset: true` first revokes every live code); at most 5 live codes |
+| `POST /v1/friends/circles/{id}/invite {reset, days, permanent}` | Owner: a new code valid `days` (1 / 3 / 7 / 30, default 3; `permanent: true` = never expires; anything else → 400; `reset: true` first revokes every live code); at most 5 live codes. Returns `{id, code, expires_at}` (null = never) |
+| `DELETE /v1/friends/circles/{id}/invites/{invite_id}` | Owner: revoke one live code early (the owner's circle view lists the live codes with `expires_at` and `used_count`, never the plaintext) |
 | `GET /v1/friends/invite?code=` | What a code opens (name, owner, member count) |
 | `POST /v1/friends/join {code \| invite_id, scopes}` | Join with the scopes I pick; joining twice changes nothing |
 | `PATCH /v1/friends/circles/{id}/me {scopes}` · `DELETE /v1/friends/circles/{id}/me` | Change what I share / leave (an owner who leaves hands over to the longest-standing member) |
