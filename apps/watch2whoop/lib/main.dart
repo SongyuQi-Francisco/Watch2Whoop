@@ -9,6 +9,7 @@ import 'src/health_sync.dart';
 import 'src/i18n.dart';
 import 'src/pages/home_page.dart';
 import 'src/pages/onboarding_page.dart';
+import 'src/push.dart';
 import 'src/raw_sync.dart';
 import 'src/setup_flow.dart';
 
@@ -24,6 +25,7 @@ Future<void> main() async {
   }
   await RawSync.instance.load(); // last upload of beat-to-beat HRV / ECG, for the sync page
   SetupLinks.instance.start(); // watch2whoop://setup?… passed in when the app is opened by scanning the setup QR code with the camera
+  PushService.instance.start(); // device token, taps on notifications (#175); never asks for permission here
   langOverride.addListener(_rebuildAll);
   runApp(const Watch2WhoopApp());
 }

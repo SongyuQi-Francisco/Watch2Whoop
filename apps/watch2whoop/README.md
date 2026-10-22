@@ -106,6 +106,19 @@ open -e config/defaults.json
    - Tell the server owner your bundle ID: the server's `BODY_APPLE_AUDIENCES` must equal it exactly, otherwise Apple sign-ins are rejected (401).
    - You should now also see **Sign in with Apple** under Signing & Capabilities.
 
+5. **Push Notifications** (needed since 1.0.7; the entitlement `aps-environment` is already in `ios/Runner/Runner.entitlements`):
+   - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → your app's bundle ID → tick **Push Notifications** → **Save**. If it offers to create certificates, skip that: the server uses a key (next point), not certificates.
+   - Refresh the provisioning profile as for Sign in with Apple (automatic signing does it on the next build). You should then see **Push Notifications** under Signing & Capabilities (if not: **+ Capability** → Push Notifications).
+   - Create the APNs key (once per team; one key works for all your apps): **Keys** → **+** → name it e.g. `Watch2Whoop push` → tick **Apple Push Notifications service (APNs)** → if asked, environment **Sandbox & Production** and **Team Scoped (All Topics)** → **Continue** → **Register** → **Download** `AuthKey_<KeyID>.p8` (Apple lets you download it **only once**). Note the **Key ID** (10 characters, shown on the key) and your **Team ID** (Membership details).
+   - The key is for the server, not the app: building does not need it. Hand it to the server owner as described in "Handing over the APNs key" below.
+
+#### Handing over the APNs key (push)
+The server owner needs four things: the `.p8` file, its **Key ID**, your **Team ID** and the app's **Bundle ID**. Only the `.p8` is secret; the other three can go in any message.
+- **Never** put the `.p8` (or its text) in git, a chat (WeChat, iMessage, Slack …), an e-mail body, a shared-folder link, a screenshot or an issue / pull request.
+- Send it one of these ways: a password manager share that expires and opens once (1Password "Share", Bitwarden Send: 1 view, 1 day), or AirDrop in person. Without those: `zip -e apns.zip AuthKey_<KeyID>.p8`, send the zip, and tell the password over a phone call (never in the same channel).
+- Afterwards keep the `.p8` only in your password manager (or delete it). If it may have leaked: **Keys** → the key → **Revoke**, create a new one and hand that over; old devices keep working once the server has the new key.
+- Server owner: put it at `secrets/apns_key.p8` (mode 600) on the server, mount it as a docker secret and set `BODY_APNS_KEY_FILE`, `BODY_APNS_KEY_ID`, `BODY_APNS_TEAM_ID`, `BODY_APNS_BUNDLE_ID` (example in `compose.yaml`), then check with `body-engine notify status` and `body-engine notify test --user-id N`. TestFlight builds use Apple's production push service, Xcode runs the sandbox; the app tells the server which one.
+
 #### 4. Create the app in App Store Connect
 App Store Connect → **Apps** → **+** → **New App**: platform iOS; name unique across the App Store (e.g. `Watch2Whoop <your name>`); bundle ID the one from step 2; SKU anything. TestFlight only, no App Store release.
 
@@ -228,6 +241,19 @@ open -e config/defaults.json
    - 更新描述文件（provisioning profile）：勾了「Automatically manage signing」时 Xcode 下次编译会自动更新（还报错就把这个勾去掉再勾上，或 Xcode → Settings → Accounts → Download Manual Profiles）；手动签名的话给这个 App ID 重新生成 App Store 描述文件并下载。
    - 把你的 Bundle ID 告诉服务器管理员：服务器的 `BODY_APPLE_AUDIENCES` 必须和它一字不差，否则 Apple 登录会被拒（401）。
    - 之后在 Signing & Capabilities 里也能看到 **Sign in with Apple**。
+
+5. **推送通知**（1.0.7 起需要；权限 `aps-environment` 已经写在 `ios/Runner/Runner.entitlements` 里）：
+   - developer.apple.com → **Certificates, Identifiers & Profiles** → **Identifiers** → 点这个 app 的 Bundle ID → 勾 **Push Notifications** → **Save**。如果提示创建证书（Certificates），跳过：服务器用的是 key（下一条），不用证书。
+   - 和「通过 Apple 登录」一样更新描述文件（自动签名下次编译会自动更新）。之后在 Signing & Capabilities 里能看到 **Push Notifications**（没有的话点 **+ Capability** → Push Notifications）。
+   - 生成 APNs key（每个团队做一次，一个 key 所有 app 都能用）：**Keys** → **+** → 名字例如 `Watch2Whoop push` → 勾 **Apple Push Notifications service (APNs)** → 如果要选，环境选 **Sandbox & Production**、选 **Team Scoped (All Topics)** → **Continue** → **Register** → **Download** 下载 `AuthKey_<KeyID>.p8`（Apple **只让下载一次**）。记下 **Key ID**（10 位，key 页面上有）和你的 **Team ID**（Membership details 里）。
+   - 这个 key 给服务器用，不放进 app，编译不需要它。按下面「APNs key 怎么交给服务器管理员」交出去。
+
+### APNs key 怎么交给服务器管理员（推送用）
+服务器管理员需要四样：`.p8` 文件、它的 **Key ID**、你的 **Team ID**、app 的 **Bundle ID**。只有 `.p8` 是机密，另外三样可以随便发。
+- `.p8`（或里面的文字）**绝对不要**放进 git、聊天（微信、iMessage、Slack……）、邮件正文、共享文件夹链接、截图、issue / PR。
+- 用下面任一种方式交：密码管理器的限时分享（1Password「共享」、Bitwarden Send：只能打开 1 次、1 天过期），或者见面时 AirDrop。都没有的话：`zip -e apns.zip AuthKey_<KeyID>.p8` 加密压缩后发压缩包，密码**打电话**告诉对方（不要和压缩包走同一个渠道）。
+- 交完以后 `.p8` 只留在你的密码管理器里（或者删掉）。怀疑泄露时：**Keys** → 这个 key → **Revoke**，再生成一个新的按同样方式交；服务器换上新 key 后，已有的手机照常收推送。
+- 服务器管理员：放到服务器的 `secrets/apns_key.p8`（权限 600），挂成 docker secret，设好 `BODY_APNS_KEY_FILE`、`BODY_APNS_KEY_ID`、`BODY_APNS_TEAM_ID`、`BODY_APNS_BUNDLE_ID`（`compose.yaml` 里有示例），然后用 `body-engine notify status`、`body-engine notify test --user-id N` 检查。TestFlight 的构建走 Apple 正式推送环境，Xcode 直接运行的走沙盒环境；app 会告诉服务器用哪个。
 
 ### 4. 在 App Store Connect 建 app
 App Store Connect → **App** → **+** → **新建 App**：平台 iOS；名称全 App Store 唯一（例如 `Watch2Whoop <你的名字>`）；套装 ID 选第 2 步那个；SKU 随便填。只走 TestFlight，不上架。
