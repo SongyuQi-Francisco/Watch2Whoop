@@ -388,3 +388,24 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - `system_prompt.md`、`assistant/CLAUDE.md`、`system_prompt_lite.md`、MCP `INSTRUCTIONS` 各加一行，说明有哪些 playbook。
 
 **测试**：`tests/test_scenes.py`（两个 context 工具有数据 / 没数据、另一个结束日期、没有 share 读不到、只共享 profile + scores 时其余部分在 `hidden` 里）、`tests/test_playbooks.py`（文件和名单一致、提到的工具都存在、每份有步骤 / 先问用户 / 护栏三节、`get_playbook` 和 prompt 同一份文本、托底白名单不含心电图）、`tests/test_ai.py::test_mcp_playbook_prompts`（`prompts/list`、`prompts/get`、`get_playbook` 走真实的 `/mcp`）。
+
+### 9.19 回答里的互动卡片（2026-10-22，#53；`ai/cards.py`、迁移 `595_ai_tool_call_cards.sql`，灰度开关 `jarvis_rich`）
+- **模型不写 HTML，也不给数据**：卡片是服务端从用户自己的数据生成的 JSON 块（`{"v": 1, "type", ..., "actions"}`），页面按 type 渲染（`ai.js` 的 `showCard`），所有文字都经过转义。
+- **两种来源**：
+  - 模型调 `show_card(type, date, metric, days, buttons)`，只说要显示什么。
+  - 写工具成功后自动附卡（`cards.AUTO`）：`log_food` / `update_food_entry` / `log_meal_template` / `log_recipe` → 当天饮食卡；`log_workout` → 当天训练卡；`log_weight` → 体重 30 天小图。同一轮里同一天的卡只出一张，等这一轮的写入都跑完再生成，所以合计是最新的。
+- **卡片类型**：
+  - `training`：当天计划、准备度和动作卡头部，复用训练页（FB-5，`training-day.js` 的 `summaryHtml`）的同一套样式和数据（`training/session_log.view`）。
+  - `meal`：热量 / 蛋白和目标进度、碳水脂肪、明细。
+  - `metric`：恢复 / 负荷 / 睡眠 / HRV / 静息心率 / 体重的小图，复用今天页的 `tChart`（`window.BodyCharts`）。
+  - `actions`：2–4 个快捷按钮。
+  - 确认卡（删除 / 撤销）照旧。
+- **点击怎么回传**：
+  - `open`：打开今天页自己的页面（`record.training` / `food` / `trends` / `today`），记录走那边现有的接口。
+  - `send`：作为一条用户消息发回 AI。固定按钮的文字由页面翻译（`key`），`actions` 卡的按钮是模型写的 label / text。
+  - 卡片里不会出现模型给的 URL。
+- **各家 AI**：卡片就是一个普通的工具（四家 adapter 都支持工具调用），托底 AI 也能用。自动卡片不依赖模型，弱模型也有卡片。开关打开时，系统提示末尾会加一段说明（`cards.PROMPT`），告诉模型什么时候用卡片、不要复述卡片里的数字。
+- **远程 MCP 不受影响**：`show_card` 不在 `assistant/tools.TOOLS` 里，只在页内对话、开关打开时追加到工具列表；MCP 的 tools/list 和工具预算不变。Claude / ChatGPT 连接器照常拿文字和工具返回。
+- **图片**：照片 / 截图理解照旧（识别后 `log_food` 等），写入成功自动附卡，用户直接在卡上看到结果、点「打开饮食」核对。
+- **存储**：卡片存在 `ai_tool_calls.card`，`GET /v1/assistant/conversations/{id}` 的每条消息带 `cards`，断线重连（resync）时重画。卡片是显示时的快照，点进去的页面是实时的。
+- **模型拿到什么**：工具结果只给一句摘要（「已显示 10-22 饮食卡：1850 kcal / 目标 2000…」），不重复卡片数据，省 token。
