@@ -1,6 +1,7 @@
 /* 「我 → 数据状态」 (issue #163, flag data_status): per health data type what the server actually received, because iOS
    never tells an app whether Health read access was granted. GET /v1/users/me/data-status (sync/data_status.py): the
-   latest day, days / records of the last 7 days, sources, status ok / stale / never. Tapping a type that is stale or never
+   latest day, days / records of the last 7 days, sources, status ok / stale / never; plus the strength-training records of
+   the last weeks by source (#210). Tapping a type that is stale or never
    received shows likely reasons and the steps to switch it on in iOS Settings (the user taps them; nothing is changed for
    them). Works in a desktop browser too; inside the Watch2Whoop app there is also a link to its native Phone sync page.
    Separate from app.js: registered in window.BodyPlugins (init / meItem / bindMe). reasonsFor / stepsFor are pure
@@ -84,6 +85,21 @@
   const kv = (k, v) => `<div class="kv"><span class="k">${C.esc(k)}</span><span class="v">${C.esc(v)}</span></div>`;
   const shortVal = () => (data ? `${data.summary.ok}/${data.types.length}` : "");
 
+  /** Strength-training records of the last weeks by source (#210): the same records body age counts. */
+  function strengthText(st) {
+    if (!st) return null;
+    const sp = st.sparky === "connected" ? String(st.sessions.sparky ?? 0) : st.sparky === "not_linked" ? tr("未连接") : tr("读不到");
+    return {
+      days: tr("{d} 天有记录", { d: st.days }),
+      sources: `${tr("手表")} ${st.sessions.watch} · SparkyFitness ${sp} · Hevy ${st.sessions.hevy}`,
+    };
+  }
+  function strengthHtml(st) {
+    const t = strengthText(st);
+    if (!t) return "";
+    return `<div class="ds-h">${C.esc(tr("力量训练记录（近 {n} 周）", { n: st.weeks }))}</div>${kv(tr("天数"), t.days)}${kv(tr("来源（次）"), t.sources)}`;
+  }
+
   function listHtml() {
     if (!data) return `<p class="empty">${C.esc(tr("读取失败"))}</p>`;
     const s = data.summary;
@@ -94,7 +110,7 @@
     const chan = [kv(tr("手机同步：最新数据"), when(ch.ow_last_sample_at)), kv(tr("app 直传：最近上传"), when(ch.app_upload_at)),
       ch.shortcut_upload_at ? kv(tr("快捷指令：最近上传"), when(ch.shortcut_upload_at)) : ""].join("");
     const inApp = window.Watch2Whoop ? `<div class="btns"><a class="btn" href="watch2whoop://sync">${C.esc(tr("me.phoneSync"))}</a></div>` : "";
-    return `${sum}<div class="group">${rows}</div><div class="ds-h">${C.esc(tr("收到时间"))}</div>${chan}${inApp}`;
+    return `${sum}<div class="group">${rows}</div><div class="ds-h">${C.esc(tr("收到时间"))}</div>${chan}${strengthHtml(data.strength)}${inApp}`;
   }
 
   function detail(t) {
@@ -132,7 +148,7 @@
 
   const on = () => !!ME && !!window.BodyFlags?.on("data_status");
 
-  if (typeof module !== "undefined") module.exports = { reasonsFor, stepsFor, IOS_NAME };
+  if (typeof module !== "undefined") module.exports = { reasonsFor, stepsFor, strengthText, IOS_NAME };
   if (typeof window === "undefined") return;
   (window.BodyPlugins = window.BodyPlugins || []).push({
     meGroup: "main",

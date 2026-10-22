@@ -25,13 +25,17 @@
 .ref-code{font:600 28px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-align:center;margin:18px 0 6px;user-select:all;-webkit-user-select:all}
 .ref-count{text-align:center;margin:0 0 4px}`;
 
-  // ?invite=XXXXX-XXXXX (a friend's share link): remembered through e-mail / Apple sign-in for the invite step.
+  // ?invite=XXXXX-XXXXX (a friend's share link) or ?invite=<a group's circle activation code, e.g. "Example Club">:
+  // remembered through e-mail / Apple sign-in for the invite step (an account that is already active gets the circle
+  // code on the Friends page instead, circles.js).
   const INVITE_KEY = "w2w-invite";
+  const isShortCode = (v) => /^[A-Z0-9]{10}$/.test(v.toUpperCase().replace(/[\s-]/g, ""));
   (function rememberInvite() {
     let v = "";
     try { v = new URLSearchParams(location.search).get("invite") || ""; } catch (e) { /* old browser */ }
-    v = v.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10);
-    if (v.length === 10) { try { sessionStorage.setItem(INVITE_KEY, v); } catch (e) { /* storage blocked */ } }
+    v = v.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (isShortCode(v)) v = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (v.replace(/[\s-]/g, "").length >= 4) { try { sessionStorage.setItem(INVITE_KEY, v); } catch (e) { /* storage blocked */ } }
   })();
   const pendingInvite = () => { try { return sessionStorage.getItem(INVITE_KEY) || ""; } catch (e) { return ""; } };
 
@@ -253,22 +257,24 @@
     const pre = pendingInvite();
     window.I18N.apply($("#ls-invite"));
     if (pre && !$("#ap-code").value) {
-      $("#ap-code").value = `${pre.slice(0, 5)}-${pre.slice(5)}`;
-      setError("#ap-error", tr("已填好好友的邀请码"), true);
+      $("#ap-code").value = isShortCode(pre) ? `${pre.slice(0, 5)}-${pre.slice(5)}` : pre;
+      setError("#ap-error", isShortCode(pre) ? tr("已填好好友的邀请码") : tr("已填好圈子激活码"), true);
     }
     $("#ls-invite").onsubmit = async (e) => {
       e.preventDefault();
       const v = $("#ap-code").value.trim();
       setError("#ap-error", "");
-      if (v.replace(/[\s-]/g, "").length < 6) { setError("#ap-error", () => (v ? tr("激活码不完整") : tr("请输入激活码"))); $("#ap-code").focus(); return; }
+      if (v.replace(/[\s-]/g, "").length < 4) { setError("#ap-error", () => (v ? tr("激活码不完整") : tr("请输入激活码"))); $("#ap-code").focus(); return; }
       const btn = $("#ap-btn");
       btn.disabled = true;
       try {
+        // a circle activation code also keeps a place in its circle: joined after the consent (profile.js lists it there)
         await call("/v1/account/redeem-invite", "POST", { code: v });
         $("#ap-code").value = "";
         try { sessionStorage.removeItem(INVITE_KEY); } catch (e2) { /* storage blocked */ }
         onActive?.();
       } catch (err) {
+        // 410 / 409: a circle activation code that is used up, disabled, expired, or its circle is full (server message)
         setError("#ap-error", () => (err.status === 401 ? tr("激活码无效、已用完或已过期") : err.status === 429 ? tr("尝试太多次，过一会儿再试") : err.message));
       } finally { btn.disabled = false; }
     };

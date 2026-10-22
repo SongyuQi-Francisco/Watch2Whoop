@@ -19,6 +19,7 @@ WINDOW_DAYS: the "last N days" of the counts (today included).
 SOURCES_DAYS: how far back the list of sources looks.
 """
 WINDOW_DAYS = 7
+SPARKY_TIMEOUT_S = 8   # the strength-training row (#210) asks SparkyFitness; a slow server must not hold the page for its 60 s default
 SOURCES_DAYS = 30
 
 # key -> days; the order is the order on the page and in the app

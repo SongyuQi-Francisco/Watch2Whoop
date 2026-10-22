@@ -21,6 +21,18 @@ String? normalizeInviteCode(String input) {
   return c;
 }
 
+/// What the invite step sends: a 10-character invite code normalized as above, otherwise the text as typed when it has
+/// 4–40 characters without spaces / dashes (a group's circle activation code, e.g. "Example Club"; the server matches it
+/// ignoring case, spaces and dashes). null when it is too short or too long.
+String? inviteStepCode(String input) {
+  final invite = normalizeInviteCode(input);
+  if (invite != null) return invite;
+  final text = input.trim().replaceAll(RegExp(r'\s+'), ' ');
+  final bare = text.replaceAll(RegExp(r'[\s\-‐-―]'), '');
+  if (bare.length < 4 || bare.length > 40 || text.length > 60) return null;
+  return text;
+}
+
 /// E-mail login code: 6 digits (spaces allowed while typing / pasting).
 String? normalizeEmailCode(String input) {
   final c = input.replaceAll(RegExp(r'\s'), '');
@@ -85,7 +97,7 @@ class OwInvitation {
 class AccountApiException implements Exception {
   AccountApiException(this.code, {this.status, this.retryAfter, this.detail});
 
-  /// network / rate_limited / bad_request / invalid / pending / provisioning / unavailable / server / bad_response
+  /// network / rate_limited / bad_request / invalid / pending / provisioning / conflict / gone / unavailable / server / bad_response
   final String code;
   final int? status;
   final Duration? retryAfter;
@@ -259,6 +271,7 @@ AccountApiException errorFor(int status, String body, [Map<String, String> heade
     403 => 'forbidden',
     409 when detail == 'provisioning' => 'provisioning',
     409 => 'conflict',
+    410 => 'gone',
     429 => 'rate_limited',
     503 => 'unavailable',
     _ => 'server',
