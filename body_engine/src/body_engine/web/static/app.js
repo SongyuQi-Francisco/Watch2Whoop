@@ -13,6 +13,9 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const IN_APP = !!window.Watch2Whoop;  // the WebView of the Watch2Whoop iOS app
+  // In the app, long press on an image offers "Save to Photos", which kills app builds without NSPhotoLibraryAddUsageDescription
+  // (1.0.5 and older): app.css turns the long-press menu off under html.in-app; loadHandbook adds the same rule to its shadow root.
+  if (IN_APP) document.documentElement.classList.add("in-app");
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
@@ -2281,7 +2284,7 @@
       for (const el of doc.querySelectorAll("[src]")) el.setAttribute("src", new URL(el.getAttribute("src"), url).href);
       for (const el of doc.querySelectorAll("a[href]:not([href^='#'])")) el.setAttribute("href", new URL(el.getAttribute("href"), url).href);
       const css = [...doc.querySelectorAll("style")].map((x) => x.textContent).join("\n").replace(/:root\b/g, ":host").replace(/(^|[}\s])body\s*\{/g, "$1.hb{");
-      root.innerHTML = `<style>${css}\n:host{display:block;min-height:100%;background:var(--bg)}</style><div class="hb">${doc.querySelector("main")?.outerHTML || doc.body.innerHTML}</div>`;
+      root.innerHTML = `<style>${css}\n:host{display:block;min-height:100%;background:var(--bg)}${IN_APP ? "img{-webkit-touch-callout:none}" : ""}</style><div class="hb">${doc.querySelector("main")?.outerHTML || doc.body.innerHTML}</div>`;
       $("#hb-body").scrollTop = 0;
     } catch (err) {
       root.innerHTML = `<p style="text-align:center;padding:28px 0">${esc(tr("打不开手册（{err}）", { err: err.message }))}</p>`;

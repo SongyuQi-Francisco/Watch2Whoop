@@ -9,11 +9,27 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 
 | Build | Tag | Commit | Store |
 |---|---|---|---|
-| 1.0.5+5 | `app-ios-v1.0.5+5` | (set when tagged) | TestFlight (iOS) |
+| 1.0.6+6 | `app-ios-v1.0.6+6` | (set when tagged) | TestFlight (iOS) |
+| 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+
+## 1.0.6+6 — 2026-10-22
+Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
+pull request.
+- Fix: long press on an image on the Today page (exercise pictures, handbook screenshots, chat thumbnails) →
+  「存储到照片」 / "Save to Photos" killed the app: WebKit writes to the photo library from the app process and iOS ends
+  apps without `NSPhotoLibraryAddUsageDescription` (`OS_REASON_TCC`, reproduced in the simulator). The key is added.
+  The Today page also turns the long-press menu off on images inside the app (server side, so 1.0.5 is covered once
+  the server is deployed).
+- Fix: Jarvis → video → 「拍摄视频」 / "Take Video" records sound, which needs `NSMicrophoneUsageDescription`; the key is
+  added. The camera description now also names photo / video capture for the AI, not only the setup QR code.
+- ECG upload: a non-finite voltage sample no longer traps when converted to an integer (`RawSync.swift`).
+- Tests (`test/ios_config_test.dart`): every privacy service the app or the Today page can reach has a usage
+  description in `Info.plist` and in both `InfoPlist.strings`; HealthKit series types are requested together with their
+  parent types.
 
 ## 1.0.5+5 — 2026-10-22
 - Fix: the app crashed on open (SIGABRT) once Health access had been asked, in build 1.0.0 (4) made from

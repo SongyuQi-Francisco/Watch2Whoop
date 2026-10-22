@@ -145,7 +145,8 @@ final class RawSync {
         switch result {
         case .measurement(let m):
           let uv = m.quantity(for: .appleWatchSimilarToLeadI)?.doubleValue(for: microvolt) ?? 0
-          var v = Int16(clamping: Int(uv.rounded())).littleEndian
+          // Int(Double) traps on NaN / ±inf / beyond Int's range: clamp in Double first.
+          var v = Int16(uv.isFinite ? max(-32768, min(32767, uv.rounded())) : 0).littleEndian
           withUnsafeBytes(of: &v) { data.append(contentsOf: $0) }
         case .done:
           if let hz = e.samplingFrequency?.doubleValue(for: .hertz()), hz > 0, !data.isEmpty {
