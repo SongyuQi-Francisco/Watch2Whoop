@@ -1,5 +1,5 @@
 /* Circle training feed (body_engine/friends/feed.py, flag circle_feed): the Friends tab's 「动态」 segment — a Hevy / Instagram
-   style post per person per day — laid out like a Hevy post (header, training name, time / volume / sets / 🏆 row, the first 3
+   style post per person per day — laid out like a Hevy post (header, training name, time / volume / sets / PR row, the first 3
    exercises with a picture or muscle icon, "view N more", tap an exercise for its sets) with Instagram-style line icons
    (heart fills red with a bounce, double-tap to like, "N likes", "view all N comments", the newest comments as a preview);
    comments (delete your own, report others'), newest first, more when you scroll down, refreshed every minute while open, and a
@@ -34,13 +34,14 @@
 .cf-th img{width:100%;height:100%;object-fit:cover;display:block}
 .cf-th .mm{padding:0;border:0;gap:0}.cf-th .mm-view{margin:0}.cf-th .mm-view svg{width:44px;height:44px}.cf-th .mm-off{fill:var(--text-3);fill-opacity:.3}.cf-th .mm-view figcaption{display:none}.cf-th.back .mm-view:first-child,.cf-th:not(.back) .mm-view:last-child{display:none}
 .cf-ext{flex:1;min-width:0;font-size:15px;line-height:1.3;overflow-wrap:anywhere}.cf-ext span{color:var(--text-2);margin-right:6px;font-variant-numeric:tabular-nums}
-.cf-pr{flex:none;font-size:12px;background:var(--mid-soft);color:var(--mid);border-radius:8px;padding:1px 7px;font-weight:600}
+.cf-pr{flex:none;display:inline-flex;background:var(--mid-soft);color:var(--mid);border-radius:8px;padding:3px 7px}.cf-pr svg,.cf-tro svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cf-tro{display:inline-flex;vertical-align:-1px;margin-right:5px;color:var(--mid)}.cf-ic{color:var(--text-2)}.cf-ic svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .cf-chev{flex:none;color:var(--text-3);transition:transform .15s}.cf-exb[aria-expanded="true"] .cf-chev{transform:rotate(180deg)}
 .cf-sets{margin:0 0 8px 56px;font-size:14px;font-variant-numeric:tabular-nums}.cf-sets div{display:flex;gap:14px;padding:3px 0}.cf-sets i{flex:none;width:18px;font-style:normal;color:var(--text-2);text-align:right}
 .cf-toggle{display:flex;align-items:center;min-height:44px;border:0;border-top:1px solid var(--hair);background:none;color:var(--text-2);font-size:14px;padding:0;width:100%}
 .cf-act{display:flex;align-items:center;gap:2px;margin:0 -8px}
 .cf-act button{border:0;background:none;color:var(--text);width:44px;height:44px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;-webkit-tap-highlight-color:transparent}
-.cf-act svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;display:block}
+.cf-act svg{width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;display:block}
 .cf-act [data-cf="like"][aria-pressed="true"]{color:#f0364b}.cf-act [data-cf="like"][aria-pressed="true"] svg{fill:currentColor}
 .cf-act .pop svg{animation:cf-pop .38s ease-out}
 .cf-likes{font-size:14px;font-weight:600;margin:0 0 2px}
@@ -90,14 +91,18 @@
     return `<div class="cf-cm">${rows}<form class="cf-new" data-p="${p.id}"><input type="text" maxlength="${st.comment_max}" placeholder="${esc(tr("写评论…"))}" aria-label="${esc(tr("写评论…"))}" enterkeyhint="send">
       <button class="btn btn-primary" type="submit">${esc(tr("发送"))}</button></form></div>`;
   }
-  // own line icons (24 × 24, stroke = currentColor); the liked heart is the same path filled
-  const HEART = '<path d="M12 20.4C6.2 16.3 3 13.2 3 9.3 3 6.6 5 4.6 7.5 4.6c1.7 0 3.4.9 4.5 2.5 1.1-1.6 2.8-2.5 4.5-2.5C19 4.6 21 6.6 21 9.3c0 3.9-3.2 7-9 11.1z"/>';
-  const BUBBLE = '<path d="M4.2 19.8l1.1-3.9A8.4 8.4 0 1 1 8.3 19l-4.1.8z"/>';
-  const CHEV = '<svg class="cf-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  // Line icons from Lucide (https://lucide.dev, ISC; chevron-down derived from Feather, MIT): only the paths of the icons used
+  // are inlined, nothing is loaded at runtime. Notices: THIRD_PARTY_NOTICES.md
+  const HEART = '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/>';
+  const BUBBLE = '<path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/>';
+  const TROPHY = '<path d="M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2"/><path d="M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2"/><path d="M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3"/><path d="M4 22h16"/><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"/><path d="M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3"/>';
+  const DUMBBELL = '<path d="M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z"/><path d="m2.5 21.5 1.4-1.4"/><path d="m20.1 3.9 1.4-1.4"/><path d="M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z"/><path d="m9.6 14.4 4.8-4.8"/>';
+  const CHEV = '<svg class="cf-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
   const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
   const BACK_MUSCLES = new Set(["lats", "middle back", "lower back", "traps", "hamstrings", "glutes", "triceps", "calves"]);
   const LEG_MUSCLES = new Set(["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"]);
   function thumbHtml(e) {
+    if (!e.thumb && !(e.muscles || []).length) return `<span class="cf-th cf-ic" aria-hidden="true">${svg(DUMBBELL)}</span>`;   // cardio, an unmatched imported name
     if (e.thumb) return `<span class="cf-th"><img src="${esc(e.thumb)}" alt="" loading="lazy" decoding="async"></span>`;
     const ms = e.muscles || [];
     // no picture: the muscle map of the exercise (muscle-map.js), one side, cropped to the legs or the upper body so it is readable at 44 px
@@ -120,14 +125,14 @@
     return [p.duration_min ? cell(tr("时长"), esc(durText(p.duration_min))) : "",
       p.volume_kg ? cell(tr("训练量"), `${num(p.volume_kg)}<em>kg</em>`) : "",
       p.set_count ? cell(tr("组数"), num(p.set_count)) : "",
-      p.pr_count ? cell(tr("纪录"), `🏆 ${num(p.pr_count)}`) : ""].join("");
+      p.pr_count ? cell(tr("纪录"), `<span class="cf-tro">${svg(TROPHY)}</span>${num(p.pr_count)}`) : ""].join("");
   }
   function exerciseHtml(p, e, i) {
     const open = st.sets.has(`${p.id}:${i}`);
     const n = e.sets.length;
     const rows = open ? `<div class="cf-sets">${e.sets.map((s, k) => `<div><i>${k + 1}</i><span>${esc(setText(s))}</span></div>`).join("")}</div>` : "";
     return `<button type="button" class="cf-exb" data-cf="sets" data-p="${p.id}" data-i="${i}" aria-expanded="${open}">${thumbHtml(e)}
-      <span class="cf-ext"><span>${esc(n === 1 ? tr("1 组") : tr("{n} 组", { n }))}</span>${esc(e.name)}</span>${e.pr ? `<span class="cf-pr" title="${esc(tr("个人纪录"))}">🏆</span>` : ""}${CHEV}</button>${rows}`;
+      <span class="cf-ext"><span>${esc(n === 1 ? tr("1 组") : tr("{n} 组", { n }))}</span>${esc(e.name)}</span>${e.pr ? `<span class="cf-pr" title="${esc(tr("个人纪录"))}" aria-label="${esc(tr("个人纪录"))}">${svg(TROPHY)}</span>` : ""}${CHEV}</button>${rows}`;
   }
   function actionsHtml(p, open) {
     const n = p.likes.count, shown = p.preview_comments || [];
