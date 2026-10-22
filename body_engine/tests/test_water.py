@@ -146,7 +146,8 @@ def test_ai_tool_rollback_and_briefing(dsn, users):
 def test_apple_health_upload_dedup_and_delete(client, users, dsn):
     ids, tok = users
     s1, s2 = str(uuid.uuid4()), str(uuid.uuid4())
-    start = datetime.now(TZ).replace(second=0, microsecond=0) - timedelta(hours=1)
+    now = datetime.now(TZ).replace(second=0, microsecond=0)
+    start = max(now - timedelta(hours=1), now.replace(hour=0, minute=0))   # still today when run just after midnight
     batch = {"batch_id": str(uuid.uuid4()), "water": [
         {"uuid": s1, "start": start.isoformat(), "ml": 330}, {"uuid": s2, "start": start.isoformat(), "ml": 200.4}]}
     r = client.post("/v1/ingest/healthkit", json=batch, headers=H(tok["c"])).json()
