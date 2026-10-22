@@ -3354,7 +3354,7 @@
     S.flags = me.flags || []; S.experiments = me.experiments || {};
     applyTabs();
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
-    window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
+    window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
     PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
     setupAssistant();
@@ -3367,6 +3367,22 @@
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
     setTab(TABS[tab] ? tab : "today");
   }
+
+  // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
+  function goPage(page) {
+    const [tab, sub] = String(page || "today").split(".");
+    if (!TABS[tab]) return;
+    S.owner = S.me.id;
+    if (tab === "record" && sub) S.recSub = sub;
+    if (tab === "food") { S.foodMode = "diet"; S.foodSub = null; }
+    if (tab === "trends") S.trendsMode = "metrics";
+    setTab(tab);
+  }
+  // The Today page's own SVG charts for plugins (ai.js cards): a line chart on a day axis, and the status card sparkline
+  window.BodyCharts = {
+    line: (id, dates, values, opts = {}) => tChart(id, dates, [{ type: "avg", values, main: true }, { type: "dots", values }], opts),
+    spark: sparkSvg,
+  };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
   // its entry only when BodyFlags.on("key"); an experiment asks BodyFlags.variant("key") when it renders: one exposure per

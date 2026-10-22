@@ -1,0 +1,213 @@
+"""Interactive cards in the in-page chat (issue #53, rollout flag jarvis_rich; docs/ai-assistant-plan.md §9.19).
+
+The model never writes HTML or chart data. A card is a small JSON block the server builds from the user's own data:
+- the model asks for one with the show_card tool, naming WHAT to show (type + date / metric / buttons), never the numbers.
+  The tool is sent only in the in-page chat while the flag is on (ai/chat.py); it is not in assistant/tools.TOOLS, so remote
+  MCP clients (Claude / ChatGPT connectors) never see it and keep their plain-text answers;
+- write tools in AUTO get their card without asking (log_food -> that day's meal card, ...), so a weak model (the fallback)
+  still shows one.
+Cards go to the page as an SSE `card` event and are stored on their ai_tool_calls row (column card, migration 595), so a
+reopened conversation draws them again. The model gets one line back (summary()), so it does not repeat the card in words.
+
+Payload: {"v": 1, "type": ..., "actions": [...]}. Actions are either
+  {"kind": "open", "page": one of OPEN_PAGES}                       -> the page goes there (no URL ever comes from the model);
+  {"kind": "send", "key": one of SEND_KEYS}                         -> the page sends its own (translated) text as the user's message;
+  {"kind": "send", "label": ..., "text": ...}                       -> buttons of an `actions` card, written by the model.
+Data of a card is a snapshot from when it was shown; the pages it opens show the live state.
+"""
+from datetime import date, timedelta
+
+import psycopg
+
+from .. import queries, sparky_client
+from ..assistant.tools import Tool
+from ..rollout import flags
+from ..toolspec import nullable, schema
+
+NAME = "show_card"
+FLAG = "jarvis_rich"
+TYPES = ("training", "meal", "metric", "actions")
+# metric -> (source, column / metric name, unit, digits)
+METRICS = {
+    "recovery": ("scores", "recovery", "%", 0),
+    "strain": ("scores", "strain", "", 1),
+    "sleep": ("scores", "sleep_actual_min", "h", 1),
+    "hrv": ("metrics", "heart_rate_variability_sdnn", "ms", 0),
+    "rhr": ("metrics", "resting_heart_rate", "bpm", 0),
+    "weight": ("weight", "body_mass", "kg", 1),
+}
+OPEN_PAGES = ("today", "trends", "record.training", "food")
+SEND_KEYS = ("adjust_training", "next_meal", "explain_trend")
+MAX_DAYS, DEFAULT_DAYS = 90, 14
+MAX_BUTTONS, MAX_LABEL, MAX_TEXT = 4, 24, 200
+MAX_EXERCISES, MAX_ENTRIES = 12, 20
+EXERCISE_KEYS = ("slug", "name_zh", "name_en", "status", "reason", "cues", "modality", "per_side", "load", "target",
+                 "primary_muscles", "secondary_muscles", "thumb")
+ENTRY_KEYS = ("id", "time", "meal_type", "food", "quantity", "unit", "calories", "protein_g")
+MACROS = ("calories", "protein_g", "carbs_g", "fat_g")
+
+# AI-facing (Chinese). Appended to the system prompt while the flag is on (chat._loop).
+PROMPT = (
+    "## 卡片（今天页对话）\n"
+    "可以用 show_card 在回答里放一张用户能点的卡片：问今天 / 某天练什么 → training；问吃了多少、还差多少 → meal；"
+    "讲某个指标的变化 → metric（metric + days）；要用户在几个选项里选 → actions（2–4 个按钮，label 短，用用户的语言）。"
+    "记饮食、记训练、记体重成功后系统会自动附卡片，不用再调。一次回答最多 2 张卡片；卡片里已有的数字不要再用文字复述，"
+    "文字只说结论和下一步。"
+)
+
+TOOL = Tool(
+    name=NAME,
+    description="在对话里给用户显示一张能点的卡片（数据由系统查，不用你给）。training=某天训练计划和动作；meal=某天饮食合计和"
+                "明细；metric=指标小图（metric、days）；actions=快捷按钮（buttons，点了把 text 当用户消息发回）。",
+    input_schema=schema({
+        "type": {"type": "string", "enum": list(TYPES)},
+        "date": nullable("string", "YYYY-MM-DD，null=今天（metric 是截止日）"),
+        "metric": nullable("string", None, enum=[*METRICS, None]),
+        "days": nullable("integer", "metric 的天数，7–90，null=14"),
+        "buttons": nullable("array", "actions 用，2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
+    }),
+    handler=lambda conn, uid, a: None,   # dispatched by ai/chat.py (build), never through run_tool
+    scope="", group="ui",
+)
+
+# write tool -> the card it shows after a successful run: (type, how to find the date in its args)
+AUTO = {
+    "log_food": ("meal", lambda a: ((a.get("items") or [{}])[0] or {}).get("date")),
+    "update_food_entry": ("meal", lambda a: a.get("date")),
+    "log_meal_template": ("meal", lambda a: a.get("date")),
+    "log_recipe": ("meal", lambda a: a.get("date")),
+    "log_workout": ("training", lambda a: a.get("date")),
+    "log_weight": ("metric", lambda a: a.get("date")),
+}
+
+
+def enabled(conn: psycopg.Connection, user_id: int) -> bool:
+    return flags.enabled(conn, user_id, FLAG)
+
+
+def _day(conn, uid: int, value) -> date:
+    if not value:
+        return queries.local_today(conn, uid)
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        raise ValueError(f"date 要 YYYY-MM-DD：{value}") from None
+
+
+def _training(conn, uid: int, day: date) -> dict:
+    from ..training import session_log
+    v = session_log.view(conn, uid, uid, day)
+    exercises = [{k: c.get(k) for k in EXERCISE_KEYS} for s in v["sessions"] for c in s["exercises"]][:MAX_EXERCISES]
+    log = v.get("log") or {}
+    done = sum(1 for e in log.get("exercises") or [] for s in e.get("sets") or [] if s.get("done"))
+    actions = [{"kind": "open", "page": "record.training"}] if v["can_log"] and exercises else []
+    if exercises and v["is_today"]:
+        actions.append({"kind": "send", "key": "adjust_training"})
+    return {"type": "training", "date": day.isoformat(), "is_today": v["is_today"],
+            "plan": (v.get("plan") or {}).get("name"), "sessions": [s["name"] for s in v["sessions"]],
+            "rest_day": bool(v.get("rest_day")), "readiness": v.get("readiness") or None,
+            "exercises": exercises, "log": {"status": log.get("status"), "done_sets": done} if log else None,
+            "actions": actions}
+
+
+def _meal(conn, uid: int, day: date) -> dict:
+    from ..nutrition import daily
+    n = daily.nutrition(conn, uid, day, day, include_entries=True)
+    d = n["days"][0]
+    goal = d.get("goal") or {}
+    return {"type": "meal", "date": day.isoformat(), "logged": d["logged"],
+            "totals": {k: d.get(k) for k in MACROS},
+            "goal": {k: goal.get(k) for k in MACROS} if goal else None,
+            "entries": [{k: e.get(k) for k in ENTRY_KEYS} for e in n.get("entries") or []][:MAX_ENTRIES],
+            "actions": [{"kind": "open", "page": "food"}, {"kind": "send", "key": "next_meal"}]}
+
+
+def _series(conn, uid: int, metric: str, start: date, end: date) -> dict[date, float]:
+    src, col, _, _ = METRICS[metric]
+    if src == "scores":
+        rows = conn.execute(f"SELECT date, {col} AS v FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s"
+                            f" AND {col} IS NOT NULL", (uid, start, end)).fetchall()
+        return {r["date"]: float(r["v"]) / (60 if col == "sleep_actual_min" else 1) for r in rows}
+    if src == "weight":
+        from ..trends import series
+        try:
+            return series.weights(conn, uid, start, end)
+        except sparky_client.SparkyError:
+            pass   # no SparkyFitness link: Apple Health's body mass only
+    return {r["date"]: float(r["value"]) for r in conn.execute(
+        "SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = %s AND date BETWEEN %s AND %s",
+        (uid, col, start, end))}
+
+
+def _metric(conn, uid: int, metric: str | None, end: date, days: int | None) -> dict:
+    if metric not in METRICS:
+        raise ValueError(f"metric 只能是 {' / '.join(METRICS)}")
+    days = max(7, min(MAX_DAYS, int(days or DEFAULT_DAYS)))
+    start = end - timedelta(days=days - 1)
+    by = _series(conn, uid, metric, start, end)
+    dates = [start + timedelta(days=k) for k in range(days)]
+    _, _, unit, digits = METRICS[metric]
+    values = [None if by.get(d) is None else round(by[d], digits) for d in dates]
+    known = [v for v in values if v is not None]
+    return {"type": "metric", "metric": metric, "unit": unit, "digits": digits,
+            "dates": [d.isoformat() for d in dates], "values": values,
+            "latest": known[-1] if known else None,
+            "avg": round(sum(known) / len(known), digits) if known else None,
+            "actions": [{"kind": "open", "page": "trends"}] + ([{"kind": "send", "key": "explain_trend"}] if known else [])}
+
+
+def _actions(buttons) -> dict:
+    out = []
+    for b in (buttons or [])[:MAX_BUTTONS]:
+        label, text = str((b or {}).get("label") or "").strip(), str((b or {}).get("text") or "").strip()
+        if label and text:
+            out.append({"kind": "send", "label": label[:MAX_LABEL], "text": text[:MAX_TEXT]})
+    if not out:
+        raise ValueError("actions 要 1–4 个按钮，每个有 label 和 text")
+    return {"type": "actions", "actions": out}
+
+
+def build(conn: psycopg.Connection, uid: int, a: dict) -> dict:
+    """The card for show_card's arguments (the user's own data only). ValueError / PermissionError / SparkyError on failure."""
+    kind = a.get("type")
+    if kind not in TYPES:
+        raise ValueError(f"type 只能是 {' / '.join(TYPES)}")
+    if kind == "actions":
+        card = _actions(a.get("buttons"))
+    elif kind == "training":
+        card = _training(conn, uid, _day(conn, uid, a.get("date")))
+    elif kind == "meal":
+        card = _meal(conn, uid, _day(conn, uid, a.get("date")))
+    else:
+        card = _metric(conn, uid, a.get("metric"), _day(conn, uid, a.get("date")), a.get("days"))
+    return {"v": 1, **card}
+
+
+def auto_spec(tool: str, args: dict) -> dict | None:
+    """show_card arguments for the card a successful write tool gets, or None."""
+    if tool not in AUTO:
+        return None
+    kind, when = AUTO[tool]
+    try:
+        day = when(args or {})
+    except (AttributeError, TypeError, IndexError):
+        day = None
+    return {"type": kind, "date": day, **({"metric": "weight", "days": 30} if kind == "metric" else {})}
+
+
+def summary(card: dict) -> str:
+    """The tool result the model gets (AI-facing): what is on screen, so it can refer to it without repeating it."""
+    t = card["type"]
+    if t == "actions":
+        return f"已显示 {len(card['actions'])} 个按钮；用户点了会作为一条新消息发回。"
+    if t == "training":
+        names = "、".join(e["name_zh"] or "" for e in card["exercises"][:6])
+        what = f"{len(card['exercises'])} 个动作：{names}" if card["exercises"] else ("休息日" if card["rest_day"] else "没有计划")
+        return f"已显示 {card['date']} 训练卡（{what}）。不要用文字复述卡片内容。"
+    if t == "meal":
+        tot, goal = card["totals"], card["goal"] or {}
+        g = f" / 目标 {goal['calories']:g}" if goal.get("calories") else ""
+        return (f"已显示 {card['date']} 饮食卡：{tot['calories'] or 0:g} kcal{g}，蛋白 {tot['protein_g'] or 0:g} g，"
+                f"{len(card['entries'])} 条。不要用文字复述卡片内容。")
+    return (f"已显示 {card['metric']} 近 {len(card['dates'])} 天小图：最新 {card['latest']}，均值 {card['avg']} {card['unit']}。"
+            "不要用文字复述卡片里的数字。")

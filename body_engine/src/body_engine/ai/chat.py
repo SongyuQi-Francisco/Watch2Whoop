@@ -15,8 +15,11 @@ most recent last; beyond PAGE_BUDGET_CHARS the oldest are dropped, the current p
 (assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
 the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go by the real tool name.
 
+Cards (cards.py, rollout flag jarvis_rich): the model may call show_card, and the write tools in cards.AUTO get one by
+themselves; each becomes a `card` event and is kept on its ai_tool_calls row for conversation_view.
+
 Events (produced by chat_events / start_chat, run to the end in the background and numbered by runs.py, streamed as SSE by api.py):
-conversation, text, tool, confirm, usage, notice, error, done.
+conversation, text, tool, card, confirm, usage, notice, error, done.
 """
 import base64
 import binascii
@@ -27,10 +30,11 @@ from typing import Iterator
 import psycopg
 from psycopg.types.json import Jsonb
 
+from .. import sparky_client
 from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..i18n import L, is_en
-from . import adapters, catalog, choice, context, crypto, fallback, prompt, providers
+from . import adapters, cards, catalog, choice, context, crypto, fallback, prompt, providers
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
@@ -319,6 +323,34 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
     return name, args, tool, None if tool else f"没有这个工具：{name}"
 
 
+def _card(conn, user_id: int, args: dict) -> tuple[dict | None, str, str]:
+    """(card, status, text for the model) for show_card. A failure only costs the card: the savepoint keeps the turn's transaction."""
+    try:
+        with conn.transaction():
+            card = cards.build(conn, user_id, args)
+        return card, "done", cards.summary(card)
+    except (ValueError, PermissionError, sparky_client.SparkyError) as e:
+        return None, "error", f"{type(e).__name__}: {e}"
+    except Exception as e:  # noqa: BLE001  a card never breaks the answer
+        return None, "error", f"卡片没显示出来（{type(e).__name__}）"
+
+
+def _auto_cards(conn, user_id: int, done_writes: list[tuple]) -> Iterator[dict]:
+    """One card per distinct cards.AUTO spec among this round's successful writes (three log_food calls -> one meal card),
+    built after all of them ran so it shows the final totals; kept on the first matching call's row."""
+    seen = set()
+    for row_id, name, args in done_writes:
+        spec = cards.auto_spec(name, args)
+        key = spec and (spec["type"], spec["date"])
+        if not spec or key in seen:
+            continue
+        seen.add(key)
+        card, status, _ = _card(conn, user_id, spec)
+        if card:
+            conn.execute("UPDATE ai_tool_calls SET card = %s WHERE id = %s AND user_id = %s", (Jsonb(card), row_id, user_id))
+            yield ev("card", card=card, call_id=row_id)
+
+
 def _page_budget(provider: dict) -> int:
     return ai_params.FALLBACK_PAGE_BUDGET_CHARS if fallback.is_fallback(provider) else ai_params.PAGE_BUDGET_CHARS
 
@@ -329,8 +361,13 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
     allowed = fallback.tools() if fb else TOOLS   # the fallback only ever reaches its own whitelist, also through the meta tools
     access = toolsets.Access({t.name: t for t in allowed}, can_write)
     tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider)))
+    rich = cards.enabled(conn, viewer["id"])
+    if rich:
+        tools = [*tools, cards.TOOL]
     for _ in range(fp.MAX_ROUNDS if fb else MAX_ROUNDS):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
+        if rich:
+            system = f"{system}\n\n{cards.PROMPT}"
         try:
             if fb:
                 spent, budget = fallback.precheck(conn, viewer["id"], system, history, tools)
@@ -367,9 +404,18 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
             yield ev("done", conversation_id=conv["id"])
             return
 
-        pending = False
+        pending, done_writes = False, []
         for c in result.tool_calls:
             args = c["args"] if isinstance(c["args"], dict) else {}
+            if rich and c["name"] == cards.NAME:   # not a data tool: builds a card from the user's own data (no audit)
+                card, status, text = _card(conn, viewer["id"], args)
+                row_id = conn.execute(
+                    """INSERT INTO ai_tool_calls (conversation_id, message_id, user_id, call_id, tool, args, writes, status, result, card)
+                       VALUES (%s,%s,%s,%s,%s,%s,false,%s,%s,%s) RETURNING id""",
+                    (conv["id"], mid, viewer["id"], c["id"], c["name"], Jsonb(args), status, text,
+                     Jsonb(card) if card else None)).fetchone()["id"]
+                yield ev("card", card=card, call_id=row_id) if card else ev("tool", name=c["name"], status=status)
+                continue
             if c["name"] == toolsets.FIND:   # only lists tool definitions: no user data, no audit
                 try:
                     status, text = "done", _result_text(toolsets.find(access, args.get("group"), args.get("query")))
@@ -399,6 +445,10 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
                 yield ev("tool", name=name, status="running")
                 status, _ = _exec(conn, viewer, provider, row_id, name, args)
                 yield ev("tool", name=name, status=status)
+                if status == "done":
+                    done_writes.append((row_id, name, args))
+        if rich:
+            yield from _auto_cards(conn, viewer["id"], done_writes)
         conn.commit()
         if pending:
             conn.execute("UPDATE ai_conversations SET state = 'awaiting_confirmation' WHERE id = %s", (conv["id"],))
@@ -519,6 +569,10 @@ def list_conversations(conn, user_id: int, limit: int = 30) -> list[dict]:
 def conversation_view(conn, user_id: int, conv_id: int) -> dict:
     """For the frontend to reopen a conversation: text, tool names, images only as a count (image data is not returned), and writes still awaiting confirmation."""
     conv = _conversation(conn, user_id, conv_id)
+    cards_of: dict[int, list] = {}
+    for r in conn.execute("""SELECT message_id, card FROM ai_tool_calls WHERE conversation_id = %s AND user_id = %s
+                             AND card IS NOT NULL ORDER BY id""", (conv_id, user_id)):
+        cards_of.setdefault(r["message_id"], []).append(r["card"])
     msgs = []
     for m in conn.execute("SELECT id, role, content, created_at FROM ai_messages WHERE conversation_id = %s AND user_id = %s"
                           " ORDER BY id", (conv_id, user_id)):
@@ -529,7 +583,8 @@ def conversation_view(conn, user_id: int, conv_id: int) -> dict:
             text = text.split("\n", 1)[1] if "\n" in text else ""
         msgs.append({"id": m["id"], "role": m["role"], "text": text, "created_at": m["created_at"],
                      "images": sum(1 for b in m["content"] if b["type"] == "image"),
-                     "tools": [b["name"] for b in m["content"] if b["type"] == "tool_call"]})
+                     "tools": [b["name"] for b in m["content"] if b["type"] == "tool_call"],
+                     "cards": cards_of.get(m["id"], [])})
     last_asst = conn.execute("""SELECT id FROM ai_messages WHERE conversation_id = %s AND user_id = %s AND role = 'assistant'
                                 ORDER BY id DESC LIMIT 1""", (conv_id, user_id)).fetchone()
     pending = _pending_payload(conn, user_id, last_asst["id"]) if last_asst else []

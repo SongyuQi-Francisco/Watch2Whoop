@@ -1,5 +1,5 @@
 /* AI integration for the Today page (docs/ai-assistant-plan.md §9). Separate from app.js, which calls into this file in only 3 places:
-   1. After startup BodyAI.init(ctx): ctx = { api, openSheet, closeSheet, toast, esc, refresh, page, isSelf, me, ai, assistantUrl }
+   1. After startup BodyAI.init(ctx): ctx = { api, openSheet, closeSheet, toast, esc, refresh, page, isSelf, go, me, ai, assistantUrl }
    2. "Ask the butler" (「问管家」): when BodyAI.handlesAsk() is true (the default provider is an API type) open the in-page chat panel, otherwise keep the original redirect
    3. "AI settings" (「AI 设置」) on the Me page: BodyAI.openSettings(), BodyAI.settingsValue()
    Endpoints: /v1/users/me/ai-providers, /v1/users/me/ai-tokens, POST /v1/assistant/chat (SSE), POST /v1/assistant/chat/confirm (SSE),
@@ -395,7 +395,7 @@
     $$("[data-q]", p).forEach((b) => { b.onclick = () => askQuick(list[Number(b.dataset.q)]); });
     if (hadFocus) $("#ai-text", p).focus();  // keyboard use: the pressed button is gone (and the row is disabled while replying)
   }
-  function quickBusy(on) { $$("#ai-chat [data-q]").forEach((b) => { b.disabled = on; }); }
+  function quickBusy(on) { $$("#ai-chat [data-q], #ai-chat [data-cq]").forEach((b) => { b.disabled = on; }); }   // data-cq: card buttons that send
   // Send text (+ items) as the user's message without touching the draft or the photos already attached
   function sendQuick(text, items = []) {
     const ta = $("#ai-text"), draft = ta.value, kept = chat.items;
@@ -657,6 +657,7 @@
             status.textContent = { running: tr("查看 {name}…", { name: d.name }), done: `✓ ${d.name}`, error: `✗ ${d.name}`, rejected: tr("已取消 {name}", { name: d.name }) }[d.status] || d.name;
             if (d.status === "done" && body.call_id) wrote = true;
           }
+          else if (ev === "card") { if (rich()) { status.remove(); paint(cur, true); cur = null; showCard(d.card); } }
           else if (ev === "confirm") { ended = true; status.remove(); d.calls.forEach(confirmCard); }
           else if (ev === "usage") { usageLine(d); }
           else if (ev === "notice") note(d.message, "warn");
@@ -708,6 +709,7 @@
     const msgs = v.messages || [], from = msgs.map((m) => m.role).lastIndexOf("user") + 1;
     const text = msgs.slice(from).filter((m) => m.role === "assistant" && m.text).map((m) => m.text).join("\n\n");
     if (text) { const el = cur || bubble("assistant", ""); el._raw = text; paint(el, true); }   // rendered like a finished answer (md.js)
+    if (rich()) msgs.slice(from).forEach((m) => (m.cards || []).forEach(showCard));
     (v.pending || []).forEach(confirmCard);
   }
   function onForeground() {
@@ -748,6 +750,80 @@
     };
     $("[data-yes]", el).onclick = () => decide(true);
     $("[data-no]", el).onclick = () => decide(false);
+  }
+
+  // ---------------------------------------------------------------- cards (ai/cards.py, rollout flag jarvis_rich)
+  // The server builds every card from the user's own data; the model only picks which. Nothing here renders model HTML:
+  // all text goes through esc(), and buttons can only send a text back as the user's message or open one of the Today
+  // page's own pages (C.go). The training card reuses the training page's exercise card heads (training-day.js).
+  const rich = () => !!window.BodyFlags?.on("jarvis_rich");
+  const METRIC = { recovery: tr("恢复"), strain: tr("负荷"), sleep: tr("睡眠"), hrv: "HRV", rhr: tr("静息心率"), weight: tr("体重") };
+  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天") };
+  const SEND = {
+    adjust_training: () => [tr("按恢复调整"), tr("按今天的恢复调整一下训练")],
+    next_meal: () => [tr("下一餐吃什么"), tr("下一餐吃什么合适")],
+    explain_trend: (c) => [tr("解释这个变化"), tr("解释一下{name}最近的变化", { name: METRIC[c.metric] || c.metric })],
+  };
+  let cardSeq = 0;
+  const n0 = (v, d = 0) => (v == null ? "—" : window.I18N.num(v, d));
+
+  function cardHead(title, date, extra = "") {
+    return `<div class="ai-card-head"><span class="ai-card-title">${esc(title)}</span>${date ? `<span class="ai-card-date">${esc(mmdd(date))}</span>` : ""}${extra}</div>`;
+  }
+  function meter(label, v, goal, unit) {
+    const pct = goal ? Math.min(100, Math.round((100 * (v || 0)) / goal)) : 0;
+    return `<div class="ai-meter"><div class="ai-meter-top"><span>${esc(label)}</span><span class="num"><b>${n0(v)}</b>${goal ? ` / ${n0(goal)}` : ""} ${esc(unit)}</span></div>
+      ${goal ? `<div class="bar${(v || 0) > goal * 1.1 ? " over" : ""}"><span style="width:${pct}%"></span></div>` : ""}</div>`;
+  }
+  function trainingBody(c) {
+    const sub = [c.plan, ...(c.sessions || [])].filter(Boolean).join(" · ");
+    const tier = { red: "bad", yellow: "mid", green: "good" }[c.readiness?.tier];
+    const head = cardHead(tr("训练"), c.date, tier && c.readiness?.label ? ` <span class="badge ${tier}">${esc(c.readiness.label)}</span>` : "");
+    const log = c.log?.status === "submitted" ? tr("已提交") : c.log?.done_sets ? tr("已记 {n} 组", { n: c.log.done_sets }) : "";
+    const list = !c.exercises?.length ? `<div class="small muted">${esc(c.rest_day ? tr("休息日") : tr("这天没有训练计划"))}</div>`
+      : window.BodyTrainingDay?.summaryHtml ? window.BodyTrainingDay.summaryHtml(c.exercises)
+        : `<ul class="ai-card-list">${c.exercises.map((e) => `<li>${esc(window.I18N.lang === "en" && e.name_en ? e.name_en : e.name_zh)}</li>`).join("")}</ul>`;
+    return `${head}${sub ? `<div class="small muted ai-card-sub">${esc(sub)}${log ? ` · ${esc(log)}` : ""}</div>` : ""}${list}`;
+  }
+  function mealBody(c) {
+    const t = c.totals || {}, g = c.goal || {};
+    const rows = (c.entries || []).map((e) => `<li><span>${esc(e.food || "")}${e.quantity ? ` <span class="muted">${esc(n0(e.quantity, 1))} ${esc(e.unit || "")}</span>` : ""}</span>
+      <span class="num muted">${n0(e.calories)} kcal</span></li>`);
+    const more = rows.length > 6 ? `<li class="muted small">${esc(tr("还有 {n} 条", { n: rows.length - 6 }))}</li>` : "";
+    return `${cardHead(tr("饮食"), c.date)}
+      ${meter(tr("热量"), t.calories, g.calories, "kcal")}${meter(tr("蛋白"), t.protein_g, g.protein_g, "g")}
+      <div class="small muted ai-card-sub num">${esc(tr("碳水"))} ${n0(t.carbs_g)} g · ${esc(tr("脂肪"))} ${n0(t.fat_g)} g</div>
+      ${rows.length ? `<ul class="ai-card-list">${rows.slice(0, 6).join("")}${more}</ul>` : `<div class="small muted">${esc(tr("这天还没有记录"))}</div>`}`;
+  }
+  function metricBody(c) {
+    const name = METRIC[c.metric] || c.metric, d = c.digits ?? 0;
+    const chart = window.BodyCharts?.line ? window.BodyCharts.line(`aic-${++cardSeq}`, c.dates, c.values, { h: 72, label: name })
+      : window.BodyCharts?.spark?.(c.values) || "";
+    return `${cardHead(name, null, `<span class="ai-card-date">${esc(tr("近 {n} 天", { n: c.dates.length }))}</span>`)}
+      <div class="ai-card-big num"><b>${n0(c.latest, d)}</b> <small>${esc(c.unit || "")}</small>
+        <span class="small muted">${esc(tr("均值"))} ${n0(c.avg, d)}</span></div>${chart}`;
+  }
+  function actionButtons(c) {
+    return (c.actions || []).map((a) => {
+      if (a.kind === "open" && OPEN[a.page]) return { label: OPEN[a.page], run: () => { closeChat(); C.go?.(a.page); } };
+      if (a.kind === "send") {
+        const [label, text] = a.key ? (SEND[a.key]?.(c) || []) : [a.label, a.text];
+        if (label && text) return { label, run: () => { if (!chat.busy) sendQuick(text); }, send: true };
+      }
+      return null;
+    }).filter(Boolean);
+  }
+  function showCard(c) {
+    if (!c?.type) return;
+    const body = { training: trainingBody, meal: mealBody, metric: metricBody, actions: () => "" }[c.type];
+    if (!body) return;
+    const acts = actionButtons(c);
+    const el = document.createElement("div");
+    el.className = `ai-card ai-card-${c.type}`;
+    el.innerHTML = body(c) + (acts.length ? `<div class="ai-card-acts">${acts.map((a, i) => `<button type="button" class="${a.send ? "ai-q" : "btn"}" data-act="${i}"${a.send ? ` data-cq${chat.busy ? " disabled" : ""}` : ""}>${esc(a.label)}</button>`).join("")}</div>` : "");
+    $$("[data-act]", el).forEach((b) => { b.onclick = () => acts[Number(b.dataset.act)].run(); });
+    $(".ai-welcome")?.remove();
+    $("#ai-log").appendChild(el); scroll();
   }
 
   // ---------------------------------------------------------------- towards app.js

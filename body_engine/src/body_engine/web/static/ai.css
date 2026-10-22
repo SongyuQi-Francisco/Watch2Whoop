@@ -101,6 +101,38 @@
 .ai-q:active { background: var(--surface-2); }
 .ai-q:disabled { opacity: .45; cursor: default; }
 
+/* ---------- Cards in answers (issue #53, rollout flag jarvis_rich, ai.js showCard; built by ai/cards.py) ----------
+   A --surface card like the confirm card, full width of the log; the training card nests the training page's .td2 heads. */
+.ai-card { align-self: stretch; background: var(--surface); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.ai-card-actions { padding: 0; background: none; }
+.ai-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ai-card-title { font-size: 15px; font-weight: 650; }
+.ai-card-date { margin-left: auto; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ai-card-head .badge { margin-left: 0; }
+.ai-card-sub { margin: -4px 0 8px; }
+.ai-card .td2 .td-ex { background: var(--bg); margin-top: 8px; }
+.ai-card .td2 .td-ex:first-child { margin-top: 0; }
+.ai-card .td2 .td-head { padding: 10px 12px; }
+.ai-card .td2 .td-thumb, .ai-card .td2 .td-ph { width: 40px; height: 40px; }
+.ai-card-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 14px; }
+.ai-card-list li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--hair); overflow-wrap: anywhere; }
+.ai-card-list li:first-child { border-top: 0; }
+.ai-card-list .num { flex: none; }
+.ai-meter { margin-bottom: 8px; }
+.ai-meter-top { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.ai-meter-top b { color: var(--text); font-weight: 650; }
+.ai-card .num { font-variant-numeric: tabular-nums; }
+.ai-card-big { display: flex; align-items: baseline; gap: 6px; }
+.ai-card-big b { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+.ai-card-big small { color: var(--text-2); }
+.ai-card-big .small { margin-left: auto; }
+.ai-card .chart { margin-top: 6px; }
+.ai-card-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ai-card-actions .ai-card-acts { margin-top: 0; }
+.ai-card-acts .btn { min-height: 38px; border-radius: 999px; font-size: 14px; background: var(--surface-2); padding: 0 14px; }
+.ai-card:not(.ai-card-actions) .ai-card-acts .ai-q { height: 38px; border: 0; background: var(--surface-2); }
+.ai-card-acts .ai-q { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+
 /* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
    Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
    top bar (.top: 26px bold title, 34px round buttons), the intro's empty state (icon tile, bold title, muted line) and its cards:

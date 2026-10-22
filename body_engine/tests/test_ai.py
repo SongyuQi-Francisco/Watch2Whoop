@@ -9,14 +9,15 @@ B shares all of their data with A (all shares scopes) -- AI config and conversat
 """
 import json
 import os
+from datetime import timedelta
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
-from body_engine import api, auth
-from body_engine.ai import adapters, context, crypto, providers
+from body_engine import api, auth, queries
+from body_engine.ai import adapters, cards, context, crypto, providers
 from body_engine.ai import chat as chat_mod
 from body_engine.ai import params as ai_params
 from body_engine.ai import playbooks
@@ -25,6 +26,7 @@ from body_engine.assistant import toolsets
 from body_engine.assistant.tools import TOOLS
 from body_engine.config import Settings
 from body_engine.db import migrate
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_ai")
 CSRF = {"X-Body-Web": "1"}
@@ -445,6 +447,112 @@ def test_failed_fold_still_answers_with_the_recent_turns(client, world, setup, d
     assert [m["role"] for m in FakeAdapter.calls[0]["history"]] == ["user"]
     with db(dsn) as c:
         assert c.execute("SELECT summary FROM ai_conversations WHERE id = %s", (conv,)).fetchone()["summary"] is None
+
+
+# ---------------------------------------------------------------- cards (ai/cards.py, flag jarvis_rich, #53)
+@pytest.fixture
+def rich(dsn):
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG, "all", actor="test")
+    yield
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG, "off", actor="test")
+
+
+def SC(**a):
+    return {"type": None, "date": None, "metric": None, "days": None, "buttons": None, **a}
+
+
+def test_cards_need_the_flag(client, world, setup):
+    ids, tok = world
+    FakeAdapter.script = [{"tool_calls": [{"id": "x1", "name": "show_card", "args": SC(type="metric", metric="recovery")}]},
+                          {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "恢复怎么样").text)
+    assert "card" not in [e for e, _ in evs] and evs[-1][0] == "done"
+    first = FakeAdapter.calls[0]
+    assert cards.NAME not in first["tools"] and cards.PROMPT not in first["system"]
+    assert FakeAdapter.calls[1]["history"][-1]["content"][0]["is_error"]   # an unknown tool for this user
+
+
+def test_show_card_metric_actions_and_reopen(client, world, setup, dsn, rich):
+    ids, tok = world
+    with db(dsn) as c:
+        today = queries.local_today(c, ids["A"])
+        for k in range(3):
+            c.execute("""INSERT INTO daily_scores (user_id, date, recovery, algo_version) VALUES (%s, %s, %s, 'test')
+                         ON CONFLICT (user_id, date) DO UPDATE SET recovery = EXCLUDED.recovery""",
+                      (ids["A"], today - timedelta(days=k), 60 + k))
+    FakeAdapter.script = [
+        {"text": "看图", "tool_calls": [
+            {"id": "s1", "name": "show_card", "args": SC(type="metric", metric="recovery", days=7)},
+            {"id": "s2", "name": "show_card", "args": SC(type="actions", buttons=[{"label": "看睡眠", "text": "昨晚睡得怎么样"}])},
+            {"id": "s3", "name": "show_card", "args": SC(type="html")}]},
+        {"text": "就这样"}]
+    evs = sse(chat(client, tok["A"], "恢复趋势").text)
+    assert evs[-1][0] == "done"
+    first = FakeAdapter.calls[0]
+    assert first["tools"][-1] == cards.NAME and first["system"].endswith(cards.PROMPT)
+    got = [d for e, d in evs if e == "card"]
+    assert [c["card"]["type"] for c in got] == ["metric", "actions"]
+    m = got[0]["card"]
+    assert m["v"] == 1 and len(m["dates"]) == 7 and m["values"][-3:] == [62, 61, 60] and m["latest"] == 60
+    assert {"kind": "open", "page": "trends"} in m["actions"]
+    assert got[1]["card"]["actions"] == [{"kind": "send", "label": "看睡眠", "text": "昨晚睡得怎么样"}]
+    assert ("tool", {"name": "show_card", "status": "error"}) in evs
+    results = {r["id"]: r for r in FakeAdapter.calls[1]["history"][-1]["content"]}
+    assert results["s1"]["content"].startswith("已显示 recovery") and not results["s1"]["is_error"]
+    assert results["s3"]["is_error"]
+    conv = evs[0][1]["id"]
+    with db(dsn) as c:
+        rows = c.execute("SELECT call_id, card IS NOT NULL AS has FROM ai_tool_calls WHERE conversation_id = %s ORDER BY id",
+                         (conv,)).fetchall()
+        assert [(r["call_id"], r["has"]) for r in rows] == [("s1", True), ("s2", True), ("s3", False)]
+    view = client.get(f"/v1/assistant/conversations/{conv}", headers=H(tok["A"])).json()
+    asst = next(m for m in view["messages"] if m["role"] == "assistant" and m["cards"])
+    assert [c["type"] for c in asst["cards"]] == ["metric", "actions"]
+
+
+def test_training_and_meal_cards(client, world, setup, monkeypatch, rich):
+    ids, tok = world
+    from body_engine.nutrition import daily
+    monkeypatch.setattr(daily, "nutrition", lambda conn, uid, start, end, include_entries=True: {
+        "days": [{"date": start.isoformat(), "logged": True, "calories": 1500.0, "protein_g": 90.0, "carbs_g": 150.0,
+                  "fat_g": 50.0, "goal": {"calories": 2000, "protein_g": 150}}],
+        "entries": [{"id": "e1", "time": "12:30", "meal_type": "lunch", "food": "鸡胸肉", "quantity": 200, "unit": "g",
+                     "calories": 330.0, "protein_g": 62.0, "source": "x", "notes": "不发给页面"}]})
+    FakeAdapter.script = [{"tool_calls": [{"id": "t1", "name": "show_card", "args": SC(type="training", date="2026-10-20")},
+                                          {"id": "t2", "name": "show_card", "args": SC(type="meal")}]},
+                          {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "今天练什么吃什么").text)
+    got = {d["card"]["type"]: d["card"] for e, d in evs if e == "card"}
+    assert set(got) == {"training", "meal"}, evs
+    t = got["training"]
+    assert t["date"] == "2026-10-20" and isinstance(t["exercises"], list)
+    meal = got["meal"]
+    assert meal["totals"]["calories"] == 1500.0 and meal["goal"] == {"calories": 2000, "protein_g": 150, "carbs_g": None, "fat_g": None}
+    assert meal["entries"] == [{"id": "e1", "time": "12:30", "meal_type": "lunch", "food": "鸡胸肉", "quantity": 200,
+                                "unit": "g", "calories": 330.0, "protein_g": 62.0}]
+    assert {"kind": "open", "page": "food"} in meal["actions"] and {"kind": "send", "key": "next_meal"} in meal["actions"]
+
+
+def test_auto_card_after_writes_once_per_day(client, world, setup, dsn, monkeypatch, rich):
+    ids, tok = world
+    monkeypatch.setattr(cards, "auto_spec", lambda name, a: {"type": "metric", "date": a["occurred_at"][:10], "metric": "recovery",
+                                                              "days": 7} if name == "add_event" else None)
+
+    def ev(i, day):
+        return {"id": f"a{i}", "name": "add_event", "args": {"occurred_at": f"{day}T08:00", "title": f"测试：膝盖{i}",
+                                                             "category": "pain", "body_part": "膝", "severity": 2, "note": None}}
+    FakeAdapter.script = [{"tool_calls": [ev(1, "2026-10-19"), ev(2, "2026-10-19"), ev(3, "2026-10-18")]}, {"text": "记好了"}]
+    evs = sse(chat(client, tok["A"], "膝盖疼了两天").text)
+    got = [d for e, d in evs if e == "card"]
+    assert [g["card"]["dates"][-1] for g in got] == ["2026-10-19", "2026-10-18"]
+    names = [e for e, _ in evs]
+    assert names.index("card") > max(i for i, (e, d) in enumerate(evs) if e == "tool")   # after all writes ran
+    with db(dsn) as c:
+        rows = c.execute("""SELECT call_id, card IS NOT NULL AS has FROM ai_tool_calls WHERE conversation_id = %s
+                            ORDER BY id""", (evs[0][1]["id"],)).fetchall()
+        assert [(r["call_id"], r["has"]) for r in rows] == [("a1", True), ("a2", False), ("a3", True)]
 
 
 def test_subscription_users_get_redirect(client, world, setup, monkeypatch):
