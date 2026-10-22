@@ -5,7 +5,9 @@
    Numbers, charts and short labels only: the notes are the one place with sentences, longer explanations open in the
    explain sheets. app.js draws placeholder() as a sub-page of 今天 while a night is open and calls mount(el, ctx).
    ctx: { api, owner, date, hypno(main, stages), fmtDay(date), canAsk(), askAI(prompt), explain(key, title), back(), onDate(date) }.
-   Swipe left / right (or ‹ ›) to the next / previous night with data. */
+   Swipe left / right (or ‹ ›) to the next / previous night with data.
+   Offline (offline_mode, #77): the owner's own nights seen before come back from the page's offline copies (api() in app.js,
+   with the offline banner); a night never loaded says it needs a connection with a retry; the Jarvis button is [data-online]. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -117,7 +119,7 @@
 
   function aiHtml(d) {
     const notes = (d.notes || []).map((n) => `<div class="xp-a xp-t-${esc(n.tone)}"><i></i><span>${esc(n.text)}</span></div>`).join("");
-    const ask = C.canAsk() ? `<div class="btns"><button class="btn btn-primary btn-block" id="sd-ask">${SPARK}<span>${esc(tr("让 Jarvis 详细分析这晚的睡眠"))}</span></button></div>` : "";
+    const ask = C.canAsk() ? `<div class="btns"><button class="btn btn-primary btn-block" id="sd-ask" data-online>${SPARK}<span>${esc(tr("让 Jarvis 详细分析这晚的睡眠"))}</span></button></div>` : "";
     if (!notes && !ask) return "";
     return `<div class="section"><div class="section-head"><h2>${esc(tr("AI 分析"))}</h2><span class="small faint">${esc(tr("规则要点"))}</span></div>
       <div class="card">${notes ? `<div class="xp-adv">${notes}</div>` : ""}${ask}</div></div>`;
@@ -153,8 +155,15 @@
       bind(d);
     } catch (e) {
       if (e.status === 404) { C.back(); return; }   // the flag was turned off meanwhile
-      if (box.isConnected) box.innerHTML = `${nav(null)}<div class="card row"><span class="dash">—</span><span class="small faint">${esc(e.status === 403 ? tr("无权限") : e.message)}</span></div>`;
+      if (!box.isConnected) return;
+      // Offline (status 0) with no saved copy of this night: say so and offer a retry (#77; nights seen before come from the
+      // page's offline copies or the memory cache above, with the app's offline banner)
+      box.innerHTML = e.status === 0
+        ? `${nav(null)}<div class="empty faint">${esc(tr("离线，连上网络后重试"))}</div><div class="btns" style="justify-content:center;margin-top:4px"><button class="btn" id="sd-retry">${esc(tr("common.retry"))}</button></div>`
+        : `${nav(null)}<div class="card row"><span class="dash">—</span><span class="small faint">${esc(e.status === 403 ? tr("无权限") : e.message)}</span></div>`;
       bindNav(null);
+      const retry = $("#sd-retry", box);
+      if (retry) retry.onclick = () => show(date, dir);
     } finally { busy = false; }
   }
 

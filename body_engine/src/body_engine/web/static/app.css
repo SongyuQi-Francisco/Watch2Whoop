@@ -90,6 +90,9 @@ a { color: inherit; }
 .ios-banner { position: sticky; top: 0; z-index: 60; padding: 10px 16px; padding-top: calc(10px + env(safe-area-inset-top)); font-size: 13px; text-align: center; background: var(--surface); color: var(--text); }   /* ios-web.js */
 .ios-banner a { color: inherit; font-weight: 600; }
 .banner { margin: 0 20px; padding: 7px 12px; border-radius: 10px; font-size: 12px; background: var(--surface); color: var(--text-2); }
+.banner.tap { cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }   /* offline_mode: opens the queue of kept writes */
+/* offline_mode (offline.js): controls that need the server are greyed out while offline; a tap says "needs a connection" */
+body.is-offline :is(#ask, .tab[data-tab="friends"], #me-ai, [data-online]) { opacity: .4; }
 .ptr { height: 0; overflow: hidden; display: flex; justify-content: center; align-items: flex-end; color: var(--text-3); transition: height .2s var(--ease); }
 .ptr svg { width: 18px; height: 18px; margin-bottom: 6px; }
 .ptr.spin svg { animation: spin .8s linear infinite; }
