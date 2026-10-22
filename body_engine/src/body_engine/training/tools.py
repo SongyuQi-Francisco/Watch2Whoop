@@ -201,7 +201,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_week_plan",
-        description="当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。",
+        description="当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。某天的 removed = 用户手动删掉的动作，排计划 / 重排时不要放回。",
         input_schema=_schema({"user": USER, "date": _n("string", "YYYY-MM-DD"), "detail": DETAIL}),
         handler=_get_week_plan,
         group="training", scope="training",

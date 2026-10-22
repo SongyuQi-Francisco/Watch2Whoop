@@ -74,6 +74,8 @@ def _plan_section(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                                               for e in s["exercises"]]} for s in d["planned"]]
         if d.get("change"):
             row["changed_from"] = d["change"]["from"]
+        if d.get("removed"):
+            row["removed_by_user"] = [r["name_zh"] or r["slug"] for r in d["removed"]]   # the user took these off that day (issue #172): do not put back
         days.append(row)
     plan = wk["plan"]
     row = plans._active_plan_row(conn, owner_id) if plan else None
