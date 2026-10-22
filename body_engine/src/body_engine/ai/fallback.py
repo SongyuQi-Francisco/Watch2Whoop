@@ -111,7 +111,7 @@ def provider() -> dict:
 
 
 def display_name() -> str:
-    return L(f"托底 AI · {fp.DISPLAY_NAME}", f"Backup AI · {fp.DISPLAY_NAME}")
+    return L("Jarvis", "Jarvis")   # users never see the provider / model (owner, 2026-10-22); admins: ai-fallback status
 
 
 def is_fallback(p: dict | None) -> bool:
@@ -213,7 +213,7 @@ def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
 
 def accept_consent(conn: psycopg.Connection, user_id: int, version: str, user_agent: str | None = None) -> None:
     if version != CONSENT_VERSION:
-        raise ValueError(L("托底 AI 的说明更新了，请刷新后再看一遍", "The backup AI terms were updated; reload and read them again"))
+        raise ValueError(L("Jarvis 的说明更新了，请刷新后再看一遍", "Jarvis's terms were updated; reload and read them again"))
     if consent(conn, user_id) is None:
         conn.execute("INSERT INTO ai_fallback_consents (user_id, version, user_agent) VALUES (%s, %s, %s)",
                      (user_id, version, (user_agent or "")[:300] or None))
@@ -279,17 +279,17 @@ def refresh_balance(conn: psycopg.Connection, force: bool = False) -> dict:
 def paused_reason(conn: psycopg.Connection, refresh: bool = True) -> tuple[str, str] | None:
     """Reasons that stop the fallback for everyone: (code, message) or None."""
     if read_key() is None:
-        return "fallback_off", L("托底 AI 还没开通", "The backup AI is not set up yet")
+        return "fallback_off", L("Jarvis 还没开通", "Jarvis is not set up yet")
     st = refresh_balance(conn) if refresh else state(conn)
     if not st.get("enabled"):
-        return "fallback_off", L("托底 AI 已被管理员暂停", "The admin has paused the backup AI")
+        return "fallback_off", L("Jarvis 已被管理员暂停", "The admin has paused Jarvis")
     if st.get("balance_error") == "HTTP 401":
-        return "fallback_paused", L("托底 AI 暂停了（管理员的 key 失效，已经提醒他）",
-                                    "The backup AI is paused (the admin's key stopped working; they have been told)")
+        return "fallback_paused", L("Jarvis 暂停了，管理员已经在处理",
+                                    "Jarvis is paused; the admin is on it")
     bal = st.get("balance_cny")
     if bal is not None and float(bal) < fp.BALANCE_STOP_CNY:
-        return "fallback_paused", L("托底 AI 暂停了（管理员的余额不足，已经提醒他充值）",
-                                    "The backup AI is paused (the admin's balance is low; they have been told to top up)")
+        return "fallback_paused", L("Jarvis 暂停了，管理员已经在处理",
+                                    "Jarvis is paused; the admin is on it")
     return None
 
 
@@ -302,18 +302,19 @@ def summary(conn: psycopg.Connection, user_id: int, refresh: bool = False) -> di
     out = {"mode": "fallback", "kind": KIND, "display_name": display_name(), "model": fp.MODEL,
            "status": "active", "vision": fp.VISION, "spent_cny": round(spent, 4), "quota_cny": quota,
            "remaining_cny": round(max(quota - spent, 0), 4), "reset_on": reset_on(conn, user_id).isoformat(),
+           "remaining_pct": max(0, min(100, round(100 * (quota - spent) / quota))) if quota else 0,   # what users see
            "consent": c is not None, "consent_version": CONSENT_VERSION,
            "consented_at": c.get("accepted_at") if c else None}
     reason = paused_reason(conn, refresh)
     if reason is None and main_consent.needs_consent(conn, user_id):
         reason = ("needs_consent", L("先在今天页同意健康数据使用同意书", "First accept the health data consent on the Today page"))
     if reason is None and quota <= 0:
-        reason = ("fallback_off", L("你的账号没有托底 AI 额度", "Your account has no backup AI quota"))
+        reason = ("fallback_off", L("你的账号没有 Jarvis 额度", "Your account has no Jarvis allowance"))
     if reason is None and spent >= quota:
-        reason = ("quota", L(f"本月额度已用完，{out['reset_on'][5:]} 重置",
-                             f"This month's quota is used up; it resets on {out['reset_on']}"))
+        reason = ("quota", L(f"Jarvis 本月的额度用完了，{out['reset_on'][5:]} 重置",
+                             f"Jarvis has used up this month's allowance; it resets on {out['reset_on']}"))
     if reason is None and c is None:
-        reason = ("fallback_consent", L("第一次用托底 AI 要先同意", "Agree to the terms before using the backup AI for the first time"))
+        reason = ("fallback_consent", L("第一次用 Jarvis 要先同意", "Agree to the terms before using Jarvis for the first time"))
     out["available"] = reason is None
     out["reason"], out["message"] = reason if reason else (None, None)
     return out
@@ -331,7 +332,7 @@ def require_available(conn: psycopg.Connection, user_id: int, need_quota: bool =
 
 def _quota_extra(s: dict) -> dict:
     return {"spent_cny": s["spent_cny"], "quota_cny": s["quota_cny"], "remaining_cny": s["remaining_cny"],
-            "reset_on": s["reset_on"]}
+            "remaining_pct": s["remaining_pct"], "reset_on": s["reset_on"]}
 
 
 def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict], tool_list=None) -> tuple[float, float]:
@@ -344,14 +345,14 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
     spent, quota = s["spent_cny"], s["quota_cny"]
     extra = _quota_extra(s)
     if spent >= quota:
-        raise ChatError("quota", L(f"本月额度已用完（¥{spent:.2f} / ¥{quota:g}），{s['reset_on'][5:]} 重置；"
+        raise ChatError("quota", L(f"Jarvis 本月的额度用完了，{s['reset_on'][5:]} 重置；"
                                    "也可以在「我 → AI 设置」接入自己的 AI",
-                                   f"This month's quota is used up (¥{spent:.2f} / ¥{quota:g}); it resets on {s['reset_on']}. "
+                                   f"Jarvis has used up this month's allowance; it resets on {s['reset_on']}. "
                                    "You can also connect your own AI in Me → AI settings"), status=402, **extra)
     if estimate_call_cny(system, history, tools() if tool_list is None else tool_list) > quota - spent:
-        raise ChatError("quota", L(f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
+        raise ChatError("quota", L(f"Jarvis 本月剩下的额度不够再问一轮，{s['reset_on'][5:]} 重置；"
                                    "也可以在「我 → AI 设置」接入自己的 AI",
-                                   f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "
+                                   f"What is left of Jarvis's allowance this month is not enough for another round; "
                                    f"it resets on {s['reset_on']}. You can also connect your own AI in Me → AI settings"),
                         status=402, **extra)
     if _calls_since(conn, user_id, _now() - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:

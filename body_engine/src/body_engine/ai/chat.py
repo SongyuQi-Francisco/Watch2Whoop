@@ -308,7 +308,7 @@ def make_adapter(provider: dict, user_id: int) -> adapters.Adapter:
     if fallback.is_fallback(provider):
         key = fallback.read_key()
         if key is None:
-            raise ChatError("fallback_off", L("托底 AI 还没开通", "The backup AI is not set up yet"), status=409)
+            raise ChatError("fallback_off", L("Jarvis 还没开通", "Jarvis is not set up yet"), status=409)
         return adapters.make(provider["kind"], provider["model"], key, provider["base_url"])
     try:
         key = providers.decrypt_secret(provider, user_id)
@@ -513,7 +513,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     fb = fallback.is_fallback(provider)
     vision = fp.VISION if fb else catalog.kind_info(provider["kind"]).get("vision")
     if imgs and vision is False:
-        raise ChatError("no_vision", L("托底 AI 暂不支持图片，用文字描述一下", "The backup AI can't read images yet; describe it in words")
+        raise ChatError("no_vision", L("Jarvis 暂不支持图片，用文字描述一下", "Jarvis can't read images yet; describe it in words")
                         if fb else L("这个提供商的模型不支持图片", "This provider's model can't read images"), status=422)
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
