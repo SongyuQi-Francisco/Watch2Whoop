@@ -63,7 +63,7 @@
 	<key>NSHealthUpdateUsageDescription</key>
 	<string>Release builds never write to Health; only debug builds write test data in the simulator.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Used only while you record a video to send to your AI on the Today page; its sound is transcribed on your server and not kept.</string>
+	<string>Used only while you hold the mic button to talk to your AI, or record a video for it, on the Today page; the sound is transcribed on your server and not kept.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Used only when you long-press an image and choose to save it to Photos. Watch2Whoop never reads your photo library.</string>
 	<key>UIApplicationSceneManifest</key>

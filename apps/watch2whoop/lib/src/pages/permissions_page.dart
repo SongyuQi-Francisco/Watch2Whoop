@@ -1,6 +1,7 @@
 // Permissions step of the first-run flow (issue #60), also re-openable from Phone sync → Permissions.
-// Only what the app really uses: Health (read). The app sends no notifications and has no microphone access; the camera is
-// only asked for by iOS when a setup QR code is scanned (unlocked builds), so none of those get a card here.
+// Only what the app really uses: Health (read). The app sends no notifications; iOS asks for the microphone only when the
+// mic button on the Today page is first held (hold-to-talk, #171) and for the camera only when a setup QR code is scanned
+// (unlocked builds) or a photo / video is taken for the AI, so none of those get a card here.
 // Per permission: why, what happens if declined, a button that shows the system prompt, and (once asked) a button that opens
 // this app's page in iOS Settings. Nothing is switched on for the user. iOS never tells an app whether Health *read* access
 // was granted, so "asked" is all that can be shown.
@@ -117,9 +118,10 @@ class _PermissionsPanelState extends State<PermissionsPanel> {
         const SizedBox(height: 12),
         Hint(
           serverLocked
-              ? tr('这个 app 不发通知，也不用麦克风和相机。', 'This app sends no notifications and uses neither the microphone nor the camera.')
-              : tr('这个 app 不发通知，也不用麦克风；相机只在扫设置二维码时由 iOS 询问。',
-                  'This app sends no notifications and does not use the microphone; iOS asks for the camera only when you scan a setup code.'),
+              ? tr('这个 app 不发通知；麦克风只在你按住 🎤 和 AI 说话时由 iOS 询问。',
+                  'This app sends no notifications; iOS asks for the microphone only when you hold 🎤 to talk to your AI.')
+              : tr('这个 app 不发通知；麦克风只在你按住 🎤 和 AI 说话时、相机只在扫设置二维码时由 iOS 询问。',
+                  'This app sends no notifications; iOS asks for the microphone only when you hold 🎤 to talk to your AI, and for the camera only when you scan a setup code.'),
           icon: Icons.info_outline,
         ),
       ],

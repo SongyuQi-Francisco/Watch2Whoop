@@ -58,6 +58,19 @@ the APNs key goes to the server owner, never into the app or git.
 - Works with older servers: without the notification module nothing is asked or registered (the page never sends
   `push:ask`), and a 404 from the registration is ignored.
 
+Hold-to-talk with our own speech recognition (#171): inside the app 🎤 on the Jarvis chat pointed to the keyboard's
+dictation, because the WebView never let the Today page use the microphone.
+- The app answers WebKit's media capture request (`WKUIDelegate`, iOS 15+): the microphone only, and only for the Today
+  page's own origin (not the kept offline copy, never cameras or other sites); then tells the page
+  `window.Watch2WhoopFeatures.mic`. The page's existing recorder works as on the web: hold to talk, release to recognise
+  on the user's own server (`POST /v1/assistant/transcribe`, local SenseVoice, audio not kept, the same daily limit), the
+  text goes into the box to be checked before sending. Nothing goes to Apple's or any other speech service.
+- iOS asks for the microphone the first time 🎤 is held (`NSMicrophoneUsageDescription` now names hold-to-talk). When it
+  was declined the page shows 「麦克风没打开」 / "The microphone is off" with 「打开设置」 / "Open Settings" (this app's
+  page in iOS Settings).
+- The permissions step no longer says the app never uses the microphone.
+- Older apps (1.0.6 and before) do not set the flag, so the page keeps pointing them to the keyboard's dictation.
+
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.

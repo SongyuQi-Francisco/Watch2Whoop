@@ -529,10 +529,11 @@
   }
 
   // Voice: hold the mic button, release to recognise (local, on the server); the text goes into the box to be checked, never sent directly.
-  // Inside the Watch2Whoop app the WebView can only record once the app grants microphone access (window.Watch2WhoopFeatures.mic);
-  // otherwise, and where voice is off on the server, a tap explains the keyboard's dictation key instead.
+  // Inside the Watch2Whoop app the WebView can only record once the app grants microphone access (window.Watch2WhoopFeatures.mic,
+  // app 1.0.7+, #171); otherwise, and where voice is off on the server, a tap explains the keyboard's dictation key instead
+  // (BodyMedia.voicePath in ai-media.js).
   const asrOn = () => !!C.ai?.asr?.enabled;
-  const micOn = () => asrOn() && window.BodyMedia?.micSupported() && (!window.Watch2Whoop || !!window.Watch2WhoopFeatures?.mic);
+  const micOn = () => window.BodyMedia?.voicePath(asrOn()) === "record";
 
   async function transcribeInto(wavBlob, prefix = tr("［语音］")) {
     const ta = $("#ai-text");
@@ -571,8 +572,14 @@
       startY = e.clientY; cancelled = false;
       rec = window.BodyMedia.recorder();
       show(true); hint.textContent = tr("松开识别 · 上滑取消"); tick();
-      starting = rec.start().then(() => { timer = setInterval(tick, 250); }).catch(() => {
-        rec = null; show(false); note(tr("麦克风不可用：在系统设置里允许，或用键盘上的 🎤 听写"), "warn");
+      starting = rec.start().then(() => { timer = setInterval(tick, 250); }).catch((err) => {
+        rec = null; show(false);
+        if (!window.BodyMedia.micBlockedInApp(err)) { note(tr("麦克风不可用：在系统设置里允许，或用键盘上的 🎤 听写"), "warn"); return; }
+        // Inside the app with the microphone declined in iOS: a button to the app's page in Settings
+        const el = note(tr("麦克风没打开：在系统设置里允许 Watch2Whoop 使用麦克风"), "warn");
+        const b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.textContent = tr("打开设置");
+        b.onclick = () => window.BodyMedia.openMicSettings();
+        el.appendChild(b);
       });
     }
     async function finish() {
