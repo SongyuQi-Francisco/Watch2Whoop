@@ -73,13 +73,21 @@ def get(user_id: int, conv_id: int) -> Run | None:
 def start(user_id: int, conv_id: int, gen: Iterator[dict], cm) -> Run:
     """Run gen to the end in a background thread. cm is the pool connection context gen uses: it is owned by the thread
     from here on (committed and returned when the turn ends). Raises ChatError (and owns nothing) when the conversation
-    is still answering; the caller then rolls back and returns cm."""
+    is still answering, or too many turns run already (run_params.MAX_RUNNING_PER_USER / MAX_RUNNING: each holds a pool
+    connection, and parallel turns of one person each pass the budget check before the other's call is recorded); the caller then
+    rolls back (nothing of the message is stored) and returns cm."""
     run = Run(user_id, conv_id)
     with _lock:
         _prune(time.monotonic())
         cur = _runs.get(conv_id)
         if cur is not None and not cur.done:
             raise ChatError("busy", L("上一条还在回答，等它说完再发", "Still answering the last message; wait for it to finish"))
+        running = [r for r in _runs.values() if not r.done]
+        if sum(r.user_id == user_id for r in running) >= rp.MAX_RUNNING_PER_USER:
+            raise ChatError("busy", L("你还有别的对话在回答，等它说完再发", "Another chat of yours is still answering; wait for it to finish"))
+        if len(running) >= rp.MAX_RUNNING:
+            raise ChatError("server_busy", L("现在问的人有点多，稍等一下再发", "Many people are asking right now; try again in a moment"),
+                            status=503)
         _runs[conv_id] = run
     ctx = contextvars.copy_context()      # the request's language (X-Body-Lang) for the texts the turn produces
     threading.Thread(target=ctx.run, args=(_work, run, gen, cm), name=f"chat-run-{conv_id}", daemon=True).start()

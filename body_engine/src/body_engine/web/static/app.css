@@ -49,6 +49,8 @@
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; }
+/* iOS app: no long-press menu on images ("Save to Photos" kills app builds 1.0.5 and older, see app.js IN_APP) */
+html.in-app, html.in-app img { -webkit-touch-callout: none; }
 /* Fixed app-like layout on phones: only the content scrolls vertically; no pinch / double-tap zoom, no whole-page sideways drag,
    no rubber-band of the whole page showing blank edges. Horizontal strips and charts still scroll inside themselves. */
 html, body { overflow-x: hidden; overflow-x: clip; max-width: 100%; overscroll-behavior-y: none; touch-action: manipulation; }   /* pinch zoom is blocked in app.js */
@@ -896,3 +898,59 @@ button.card.trend { display: flex; flex-direction: column; justify-content: flex
 .pv-card .btns { margin-top: 14px; }
 .pv-card .btns .btn { flex: 1; }
 .pv-card .btn:not(.btn-primary) { background: var(--in-sheet); }
+
+/* Friends tab (friends/cards.py) and the read-only banner when viewing someone else */
+.viewing { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; margin: 0 20px 8px; padding: 8px 12px; border-radius: 10px; font-size: 13px; background: var(--mid-soft); color: var(--text); }
+.viewing span { flex: 1; min-width: 0; }
+.viewing button { border: 0; background: none; padding: 0; color: var(--text); font-weight: 600; text-decoration: underline; font-size: 13px; }
+.fd-bar-top { justify-content: flex-end; }
+.fd-bar-top .btn { flex: none; min-height: 34px; padding: 0 14px; font-size: 14px; }
+.fd-grid .card + .card { margin-top: 8px; }
+.fd-card.tap { cursor: pointer; }
+.fd-head { display: flex; align-items: center; gap: 10px; }
+.fd-av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); font-weight: 600; flex: none; }
+.fd-name { flex: 1; min-width: 0; font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-head .chev { color: var(--text-2); width: 16px; height: 16px; }
+.fd-card .rcard-tags { margin-top: 10px; }
+.fd-nums { display: flex; gap: 8px; margin-top: 12px; }
+.fd-nums span { flex: 1; display: flex; flex-direction: column; }
+.fd-nums b { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fd-nums b.tone-good { color: var(--good); } .fd-nums b.tone-mid { color: var(--mid); } .fd-nums b.tone-bad { color: var(--bad); }
+.fd-nums i { font-style: normal; font-size: 12px; color: var(--text-2); }
+.fd-week { display: block; width: 100%; height: 44px; margin-top: 10px; }
+.fd-dot.good { fill: var(--good); } .fd-dot.mid { fill: var(--mid); } .fd-dot.bad { fill: var(--bad); } .fd-dot.none { fill: var(--surface-2); }
+.fd-bar { fill: var(--text-2); opacity: .45; }
+.fd-none { margin: 10px 0 0; font-size: 13px; color: var(--text-2); }
+.fd-cheer, .fd-got { display: flex; gap: 8px; margin-top: 12px; }
+.fd-cheer button { flex: 1; border: 0; border-radius: 10px; background: var(--surface-2); min-height: 36px; font-size: 18px; }
+.fd-cheer button[aria-pressed="true"] { opacity: .35; }
+.fd-got span { font-size: 14px; background: var(--surface-2); border-radius: 8px; padding: 4px 10px; }
+@media (min-width: 1024px) { .fd-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .fd-grid .card + .card { margin-top: 0; } }
+.dock.viewing-other .ask { display: none; }
+.fd-bar-top { justify-content: space-between; align-items: center; }
+.fd-boards { overflow-x: auto; scrollbar-width: none; }
+.fd-boards button { white-space: nowrap; }
+.fd-win { font-size: 12px; color: var(--text-2); margin: 0 0 8px; }
+.fd-board { padding: 4px 16px; }
+.fd-row { display: grid; grid-template-columns: 22px 34px 1fr auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 12px 0; border-top: 1px solid var(--hair); }
+.fd-row:first-child { border-top: 0; }
+.fd-row.off { opacity: .55; }
+.fd-rank { font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; color: var(--text-2); }
+.fd-row.fd-self .fd-rn b { color: var(--good); }
+.fd-rn { min-width: 0; display: flex; flex-direction: column; }
+.fd-rn b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-rn i { font-style: normal; font-size: 12px; color: var(--text-2); }
+.fd-sc { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fd-sbar { grid-column: 3 / 5; height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+.fd-sbar span { display: block; height: 100%; background: var(--good); border-radius: 2px; }
+/* 饮食 day detail: select entries -> 存成模板 / 合并成一条 (issue #93) */
+.pick-btn { font: inherit; font-size: 13px; font-weight: 600; color: var(--text-2); background: none; border: 0; padding: 4px 2px; cursor: pointer; }
+.food-entry.pick { gap: 10px; }
+.pchk { width: 20px; height: 20px; border-radius: 50%; border: 1.6px solid var(--text-3); flex-shrink: 0; position: relative; }
+.food-entry.pick[aria-pressed="true"] .pchk { background: var(--good); border-color: var(--good); }
+.food-entry.pick[aria-pressed="true"] .pchk::after { content: ""; position: absolute; left: 6px; top: 2.5px; width: 5px; height: 9px; border: solid var(--surface); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.pickbar { position: sticky; z-index: 5; bottom: calc(var(--tabbar-h) + var(--ask-h) + env(safe-area-inset-bottom) + 12px); display: flex; align-items: center; gap: 8px;
+  margin-top: 12px; padding: 10px 12px; border-radius: 16px; background: var(--surface-2); box-shadow: 0 6px 24px rgba(0, 0, 0, .25); }
+.pickbar .small { flex: 1; min-width: 0; }
+.pickbar .btn { margin: 0; padding: 8px 12px; font-size: 13px; }
+.pickbar .btn[disabled] { opacity: .45; }

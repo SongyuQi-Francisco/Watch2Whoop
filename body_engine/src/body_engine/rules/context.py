@@ -45,8 +45,14 @@ class Ctx:
     sleep_duration_min: int | None = None          # target sleep duration (from the goal, or the score's sleep need)
     overrides: dict[date, dict] = field(default_factory=dict)  # training_day_overrides rows by date (training/day_overrides.py)
     diet: Any = None                               # this user's diet constraints in effect (nutrition/constraints.Constraints)
+    water: dict[date, int] | None = None           # water drunk per day [day - 1, day] in ml (water/store.py); None = feature off
+    water_goal: int | None = None                  # the day's water goal in ml
+    now: datetime | None = None                    # evaluation time (tests set it); None = the real clock
     errors: dict[str, str] = field(default_factory=dict)    # source -> reason the read failed
     missing: dict[str, str] = field(default_factory=dict)   # source -> reason it is not connected / not available
+
+    def now_local(self) -> datetime:
+        return (self.now or datetime.now(self.tz)).astimezone(self.tz)
 
     # ---------- Exercises ----------
     @property
@@ -199,6 +205,11 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     ctx.overrides = load_overrides(conn, user_id, day - timedelta(days=7), day + timedelta(days=7))
     from ..nutrition import constraints as diet_constraints
     ctx.diet = diet_constraints.for_user(conn, user_id, day)
+    from .. import water
+    if water.enabled(conn, user_id):
+        from ..water import store as water_store
+        ctx.water = water_store.totals(conn, user_id, day - timedelta(days=1), day)
+        ctx.water_goal = water_store.goal(conn, user_id, day)["ml"]
     body_mass = conn.execute(
         """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
            AND date BETWEEN %s AND %s""", (user_id, day - timedelta(days=WEIGHT_DAYS - 1), day)).fetchall()

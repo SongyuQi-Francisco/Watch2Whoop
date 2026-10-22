@@ -9,13 +9,14 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, queries
+from . import auth, errors_en, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
 from .ai.oauth_api import router as oauth_router, well_known as oauth_well_known
 from .ai.oauth_http import oauth_app
+from .rollout.api import router as rollout_router
 from .assistant.memory_api import router as memory_router
 from .assistant.diet_profile_api import router as diet_profile_router
 from .assistant.recipes_api import router as recipes_router
@@ -32,9 +33,11 @@ from .profile.api import router as profile_router
 from .explain.api import router as explain_router
 from .rawdata.api import ingest_router as rawdata_ingest_router, router as rawdata_router
 from .cardio.api import router as cardio_router
+from .water.api import router as water_router
 from .training.api import router as training_router
 from .grocery.api import router as grocery_router
 from .feedback.api import router as feedback_router
+from .friends.api import router as friends_router
 from .web import api as web_api, session as web_session
 
 pool: ConnectionPool | None = None
@@ -45,7 +48,7 @@ async def lifespan(app: FastAPI):
     global pool
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
-    async with mcp_app.lifespan():  # session manager of the remote MCP (/mcp)
+    async with mcp_app.lifespan(), plugins.scheduler():  # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins
         yield
     pool.close()
 
@@ -144,6 +147,7 @@ app.include_router(recipes_router)
 app.include_router(training_router)
 app.include_router(grocery_router)
 app.include_router(feedback_router)
+app.include_router(friends_router)
 app.include_router(ai_router)
 app.include_router(history_router)
 app.include_router(profile_router)
@@ -151,11 +155,14 @@ app.include_router(explain_router)
 app.include_router(rawdata_router)
 app.include_router(rawdata_ingest_router)   # uploads from the app (rawdata/ingest.py)
 app.include_router(cardio_router)
+app.include_router(water_router)   # daily water intake (water/, issue #125)
 app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
+app.include_router(rollout_router)       # feature flags / A/B variants of the signed-in user (rollout/api.py)
 app.include_router(oauth_router)        # MCP OAuth: consent step and connections (ai/oauth_api.py)
 app.include_router(oauth_well_known)    # RFC 9728 / RFC 8414 discovery documents
 app.mount("/oauth", oauth_app)          # /oauth/authorize, /token, /register, /revoke (mcp.server.auth, ai/oauth_http.py)
+plugins.install(app)   # optional BODY_PLUGIN_DIR plugins: their routers and /app/plugins/… (before the /app mount)
 web_api.install(app)

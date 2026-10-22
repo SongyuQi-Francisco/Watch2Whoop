@@ -133,6 +133,8 @@ def pre_workout_fuel(ctx) -> RuleResult:
     lines.append(f"练前 2 小时喝 500ml 水，练中每 15–20 分钟小口喝 150–250ml，1 小时内不超过约 1L。")
     en.append("Drink 500 ml of water 2 h before; during training sip 150–250 ml every 15–20 min, no more than about 1 L an hour.")
     water = ctx.journal.get((ctx.day - timedelta(days=1), "water_l"))
+    if water is None and ctx.water and ctx.water.get(ctx.day - timedelta(days=1)):   # the water log (issue #125)
+        water = round(ctx.water[ctx.day - timedelta(days=1)] / 1000, 1)
     if water is not None and water < P.WATER_TARGET_L:
         lines.append(f"昨天只喝了 {water:g}L（吃肌酸期间目标 3–3.5L）。")
         en.append(f"Yesterday you drank only {water:g} L (target 3–3.5 L while taking creatine).")

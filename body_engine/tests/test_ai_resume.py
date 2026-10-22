@@ -291,3 +291,35 @@ def test_open_stream_does_not_block_the_same_login(client, world, monkeypatch):
     finally:
         SlowAdapter.go.set()
         t.join(10)
+
+
+def test_running_turns_are_capped_per_user_and_per_server(client, world, dsn, monkeypatch):
+    """Each running turn holds a pool connection until it ends (the page may be gone): one person cannot start many
+    conversations at once, and the server keeps connections free for everything else. A refused message stores nothing."""
+    ids, tok = world
+    monkeypatch.setitem(adapters.ADAPTERS, "anthropic_api", lambda: SlowAdapter)
+    SlowAdapter.go.clear()
+    FakeAdapter.script = [{"text": "一|二"}, {"text": "三|四"}]
+    started = [sse(post_then_disconnect("/v1/assistant/chat", tok["A"], {"message": f"第{i}个"}))[0][1]["id"] for i in (1, 2)]
+    try:
+        assert all(not runs._runs[c].done for c in started)
+
+        def conversations(user):
+            with db(dsn) as conn:
+                return conn.execute("SELECT count(*) AS n FROM ai_conversations WHERE user_id = %s", (user,)).fetchone()["n"]
+
+        before = conversations(ids["A"])
+        r = client.post("/v1/assistant/chat", headers={**H(tok["A"]), "X-Body-Lang": "en"}, json={"message": "第三个"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "busy"
+        assert "Another chat of yours" in r.json()["detail"]["message"]
+        assert conversations(ids["A"]) == before          # rolled back: no new conversation, no user message
+        monkeypatch.setattr(run_params, "MAX_RUNNING", 2)  # B is under its own limit, the server is full
+        r = client.post("/v1/assistant/chat", headers={**H(tok["B"]), "X-Body-Lang": "en"}, json={"message": "hi"})
+        assert r.status_code == 503 and r.json()["detail"]["code"] == "server_busy"
+    finally:
+        SlowAdapter.go.set()
+        for c in started:
+            assert turn_done(c)
+    FakeAdapter.script = [{"text": "好"}]
+    monkeypatch.setitem(adapters.ADAPTERS, "anthropic_api", lambda: FakeAdapter)
+    assert client.post("/v1/assistant/chat", headers=H(tok["A"]), json={"message": "又可以了"}).status_code == 200
