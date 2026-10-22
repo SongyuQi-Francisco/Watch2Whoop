@@ -23,6 +23,7 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../js_dialogs.dart';
 import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
@@ -165,6 +166,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _web = WebViewController.fromPlatformCreationParams(params)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('Watch2Whoop', onMessageReceived: (m) => _onBridge(m.message))
+      // Without these WKWebView shows nothing and confirm() is always false (js_dialogs.dart)
+      ..setOnJavaScriptAlertDialog((r) => showJsAlert(context, r.message))
+      ..setOnJavaScriptConfirmDialog((r) => showJsConfirm(context, r.message))
+      ..setOnJavaScriptTextInputDialog((r) => showJsPrompt(context, r.message, r.defaultText))
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: _onNavigation,
