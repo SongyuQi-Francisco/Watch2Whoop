@@ -7,6 +7,4 @@ import golden_cases
 def test_matches_golden():
     want = json.loads(golden_cases.GOLDEN.read_text())
     got = golden_cases.compute(golden_cases.package_modules())
-    for key in want:
-        assert got[key] == want[key], key
-    assert got == want
+    assert golden_cases.mismatch(got, want) is None, golden_cases.mismatch(got, want)

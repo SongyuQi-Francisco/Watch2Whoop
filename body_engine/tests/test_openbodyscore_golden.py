@@ -49,7 +49,7 @@ def _load(name: str, path: Path):
 
 
 def _dump(x) -> object:
-    """Round trip through JSON: floats compare exactly, dates / datetimes as ISO strings."""
+    """Round trip through JSON: dates / datetimes as ISO strings, so the result compares with the golden file (golden_cases.mismatch)."""
     return json.loads(json.dumps(x, default=lambda v: v.isoformat() if hasattr(v, "isoformat") else str(v),
                                  sort_keys=True, ensure_ascii=False))
 
@@ -57,7 +57,8 @@ def _dump(x) -> object:
 # ---------------------------------------------------------------- 1. pure functions via the old import paths
 def test_old_import_paths_match_golden():
     cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
-    assert cases.compute(cases.body_engine_modules()) == json.loads(cases.GOLDEN.read_text())
+    diff = cases.mismatch(cases.compute(cases.body_engine_modules()), json.loads(cases.GOLDEN.read_text()))
+    assert diff is None, diff
 
 
 def test_old_import_paths_are_the_package():
@@ -153,5 +154,6 @@ def test_end_to_end_matches_golden(conn, tmp_path, hrv_kind):
     assert sum(d["recovery"] is not None for d in days) >= 30 and sum(d["strain"] is not None for d in days) >= 50
     assert sum(d["sleep_score"] is not None for d in days) >= 50
     assert want["healthspan"] and sum(r["score"] is not None for r in want["stress"]) >= 10
-    for key in want:
-        assert got[key] == want[key], key
+    cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
+    diff = cases.mismatch(got, want)
+    assert diff is None, diff

@@ -346,6 +346,28 @@ def compute(m: dict) -> dict:
     return json.loads(json.dumps(_jsonable(out)))   # floats round-trip exactly through repr
 
 
+# Floats may differ in the last bit between platforms (libm's exp / log on macOS vs Linux), so goldens compare floats with
+# a relative tolerance far below any rounding the product shows; everything else (keys, None, ints, strings) exactly.
+FLOAT_REL_TOL = 1e-12
+
+
+def mismatch(got, want, path: str = "") -> str | None:
+    """None when got matches want (floats within FLOAT_REL_TOL), else the path of the first difference."""
+    if isinstance(want, float) or isinstance(got, float):
+        ok = (isinstance(got, (int, float)) and isinstance(want, (int, float)) and not isinstance(got, bool)
+              and math.isclose(got, want, rel_tol=FLOAT_REL_TOL, abs_tol=FLOAT_REL_TOL))
+        return None if ok else f"{path}: {got!r} != {want!r}"
+    if isinstance(want, dict) and isinstance(got, dict):
+        if got.keys() != want.keys():
+            return f"{path}: keys {sorted(set(got) ^ set(want))} differ"
+        return next((m for k in want if (m := mismatch(got[k], want[k], f"{path}/{k}"))), None)
+    if isinstance(want, list) and isinstance(got, list):
+        if len(got) != len(want):
+            return f"{path}: length {len(got)} != {len(want)}"
+        return next((m for i, (g, w) in enumerate(zip(got, want)) if (m := mismatch(g, w, f"{path}[{i}]"))), None)
+    return None if got == want else f"{path}: {got!r} != {want!r}"
+
+
 def package_modules() -> dict:
     from openbodyscore import healthspan, healthspan_params, hrv, muscle, params, recovery, sleep, strain, stress
     return {"params": params, "sleep": sleep, "recovery": recovery, "strain": strain, "muscle": muscle,

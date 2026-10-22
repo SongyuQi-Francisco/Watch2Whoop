@@ -58,7 +58,8 @@ calibration (a skeleton; the full text is #118).
    same shape as `quickstart/demo_data.py`) and runs every public function on it, including edge cases and error
    messages. `tests/golden/scores.json` was written by running it against the **old** `body_engine` modules in a
    separate commit before anything moved. `tests/test_golden.py` (package) and
-   `body_engine/tests/test_openbodyscore_golden.py` (old import paths) compare exactly (floats round-trip through JSON).
+   `body_engine/tests/test_openbodyscore_golden.py` (old import paths) compare keys, ints and strings exactly and floats
+   to a relative 1e-12 (`golden_cases.mismatch`: libm's exp / log differ in the last bit between macOS and Linux).
 2. End to end: `quickstart/demo_data.py`'s export (seed 7, 60 days, fixed date) → the real Apple export importer →
    scoring engine, body age and stress → `body_engine/tests/fixtures/golden_e2e_sdnn.json` (one file per HRV kind; the RMSSD one is added with #117), also
    written before the move.
