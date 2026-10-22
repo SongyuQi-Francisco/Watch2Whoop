@@ -12,11 +12,16 @@ dependencies = [
     "openai>=3.33.0",
     "google-genai>=2.31.0",
     "cryptography>=50.0.2",
+    "openbodyscore",
 ]
 
 [project.scripts]
 body-engine = "body_engine.cli:main"
 body-engine-mcp = "body_engine.mcp_server:main"
+
+[tool.uv.sources]
+# the scoring algorithms (Apache-2.0), developed in this repository; the Docker build copies it in (Dockerfile)
+openbodyscore = { path = "../packages/openbodyscore", editable = true }
 
 [dependency-groups]
 dev = ["pytest>=8", "httpx>=0.27"]
