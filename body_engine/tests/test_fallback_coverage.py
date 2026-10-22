@@ -28,6 +28,7 @@ READ = {
     "sleep-coach": ["get_sleep_coach"],
     "sleep/nights": ["get_sleep"],
     "sleep/details": ["get_sleep_details"],
+    "sleep/night": ["get_sleep", "get_sleep_details", "get_scores", "get_health_monitor"],   # sleep detail page (flag sleep_detail)
     "goals/sleep": ["get_sleep_goal"],
     "reports": ["get_report"],
     "events": ["list_events"],
