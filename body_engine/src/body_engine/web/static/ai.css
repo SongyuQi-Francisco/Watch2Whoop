@@ -86,3 +86,46 @@
 .ai-switch[aria-expanded="true"] { background: var(--surface-2); color: var(--text); }
 .ai-switcher { margin: 4px max(20px, env(safe-area-inset-right)) 10px max(20px, env(safe-area-inset-left)); max-height: 50vh; overflow: auto; }
 .ai-switcher[hidden] { display: none; }
+
+/* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
+   Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
+   top bar (.top: 26px bold title, 34px round buttons), the intro's empty state (icon tile, bold title, muted line) and its cards:
+   no bubble tails, assistant answers as full-width --surface cards, the input as one --surface card (text on top, tools below). */
+.ai-chat.v2 .panel-head { width: 100%; max-width: 720px; margin: 0 auto; gap: 12px; padding: calc(env(safe-area-inset-top) + 10px) max(20px, env(safe-area-inset-right)) 8px max(20px, env(safe-area-inset-left)); }
+/* Like .top-date over .top-title: the AI source is the small caption over the title (the DOM has the title first) */
+.ai-chat.v2 .panel-head h2 { flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; font-size: 26px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; }
+.ai-chat.v2 .panel-head .close { width: 34px; height: 34px; flex: none; background: var(--surface-2); }
+.ai-chat.v2 .ai-switch { order: -1; max-width: 100%; height: 24px; padding: 0 9px; font-size: 12px; letter-spacing: 0; line-height: 1; }
+.ai-chat.v2 .ai-switcher { max-width: 680px; margin-left: auto; margin-right: auto; width: calc(100% - 40px); }
+.ai-chat.v2 .ai-usage { padding: 0 20px 4px; }
+.ai-chat.v2 .ai-log { gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; padding-top: 8px; }
+.ai-chat.v2 .ai-msg { border-radius: var(--radius); }
+.ai-chat.v2 .ai-msg.user { max-width: 84%; }
+.ai-chat.v2 .ai-msg.assistant { max-width: 100%; }
+.ai-chat.v2 .ai-msg.note { border-radius: 0; }
+.ai-chat.v2 .ai-msg.note.warn { border-radius: 14px; }
+.ai-chat.v2 .ai-confirm { padding: 16px; }
+.ai-chat.v2 .ai-welcome { margin: 5vh 0 4px; padding: 0 2px; }
+.ai-chat.v2 .ai-welcome-ic { width: 56px; height: 56px; border-radius: 18px; background: var(--surface); display: flex; align-items: center; justify-content: center; }
+.ai-chat.v2 .ai-welcome-ic svg { width: 28px; height: 28px; }
+.ai-chat.v2 .ai-welcome h3 { margin: 18px 0 6px; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+.ai-chat.v2 .ai-welcome p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--text-2); }
+.ai-chat.v2 .ai-thumbs, .ai-chat.v2 .ai-rec { width: 100%; max-width: 680px; align-self: center; }
+/* Input: one card, the text on the first row, camera / video on the left of the second row, mic / send on the right */
+.ai-chat.v2 .ai-composer {
+  display: grid; grid-template-columns: auto auto 1fr auto auto; grid-template-areas: "text text text text text" "photo video . mic send";
+  align-items: center; gap: 2px 6px; align-self: center; border: 0; border-radius: 22px; background: var(--surface);
+  -webkit-backdrop-filter: none; backdrop-filter: none; padding: 6px 8px 8px 8px; transition: box-shadow .15s;
+  width: min(680px, calc(100% - max(12px, env(safe-area-inset-left)) - max(12px, env(safe-area-inset-right))));
+  margin-bottom: calc(env(safe-area-inset-bottom) + 10px);
+}
+.ai-chat.v2 .ai-composer:focus-within { box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.ai-chat.v2 .ai-composer .input { grid-area: text; min-height: 40px; padding: 8px 8px 4px; border-radius: 0; background: none; box-shadow: none; }
+.ai-chat.v2 #ai-photo { grid-area: photo; } .ai-chat.v2 #ai-video { grid-area: video; }
+.ai-chat.v2 #ai-mic { grid-area: mic; } .ai-chat.v2 #ai-send { grid-area: send; }
+.ai-chat.v2 .ai-attach { background: none; color: var(--text-2); }
+.ai-chat.v2 .ai-attach:active { background: var(--surface-2); }
+.ai-chat.v2 .ai-mic.on { background: var(--bad-soft); color: var(--bad); }
+@media (min-width: 1024px) {
+  .ai-chat.v2 { border-left: 1px solid var(--hair); box-shadow: -12px 0 40px rgba(0,0,0,.08); }
+}
