@@ -37,7 +37,7 @@ CONSENT_VERSION = "2026-10-22"   # daily metrics and grocery named; 10-20: write
 # get_ecg_list: excluded by the consent below), no family data, no recipe editing.
 TOOL_NAMES = (
     "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
-    "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_exercise_rules",
+    "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_muscle_load", "get_exercise_rules",
     "search_exercises", "get_exercise", "get_week_plan", "propose_plan", "save_plan", "swap_exercise",
     "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
     "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",

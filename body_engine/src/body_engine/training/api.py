@@ -2,6 +2,7 @@
 Authorization:
 - Read endpoints require shares scope `training` (per-user restrictions additionally check `exercises`, readiness checks `scores`).
 - Training day v2 (`/session`, rollout flag training_day_v2, FB-5): reading needs `training`; the draft and submit are self-only.
+- Muscle load map (`/muscle-load`, `/muscle-load/{muscle}`, rollout flag muscle_load): needs `training` (a friend with the share can look); `/goals` is self-only.
 - Add to plan (`/plan/add-options`, `/plan/add-exercise`, rollout flag exercise_add_to_plan, issue #154) is self-only.
 - Remove a planned exercise (`/plan/remove-exercise`, `/plan/restore-exercise`, issue #172; no flag) is self-only.
 - Write endpoints (`PUT /plan`, `POST /plan/swap`) are self-only and require `write` token scope (plus `X-Body-Web: 1` for cookie sessions, enforced globally).
@@ -14,8 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth, sparky_client
 from ..records.api import _owner, _self, current_user, get_conn
+from ..i18n import L
 from ..rollout import flags
-from . import catalog, history, loads, plan_add, plan_remove, plans, session_log
+from . import catalog, goals, history, loads, muscle_load, plan_add, plan_remove, plans, session_log
 
 router = APIRouter(prefix="/v1/users/{user}/training", tags=["training"])
 
@@ -393,3 +395,51 @@ def submit_training_session(user: str, day: date, body: SessionSubmitIn | None =
         raise HTTPException(422, str(e))
     except sparky_client.SparkyError as e:
         raise HTTPException(502, str(e))
+
+
+# ---------------------------------------------------------------- muscle load map (rollout flag muscle_load)
+MUSCLE = [Depends(flags.require("muscle_load"))]
+
+
+class TrainingGoalsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    focus_muscles: list[str] = Field(default_factory=list, max_length=goals.MAX_FOCUS)
+    physique_goal: str | None = Field(default=None, max_length=goals.MAX_GOAL_CHARS)
+
+
+@router.get("/muscle-load", dependencies=MUSCLE)
+def muscle_load_map(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Effective sets and volume per muscle for today / this week / the last 7 days, the weekly range and colour status, last trained.
+    The owner also gets their own training goals (they are not part of the training share)."""
+    owner_id = _owner(conn, viewer, user, "training")
+    out = muscle_load.compute(conn, owner_id)
+    if owner_id == viewer["id"]:
+        out["goals"] = goals.get(conn, owner_id)
+    return out
+
+
+@router.get("/muscle-load/{muscle}", dependencies=MUSCLE)
+def muscle_load_detail(user: str, muscle: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """One muscle: its numbers, the last session and recommended exercises (banned ones left out)."""
+    owner_id = _owner(conn, viewer, user, "training")
+    try:
+        return muscle_load.detail(conn, owner_id, muscle)
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.get("/goals", dependencies=MUSCLE)
+def training_goals(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    owner_id = _owner(conn, viewer, user, "training")
+    if owner_id != viewer["id"]:
+        raise HTTPException(403, L("训练目标只能看自己的", "Training goals are private"))
+    return goals.get(conn, owner_id)
+
+
+@router.put("/goals", dependencies=MUSCLE)
+def save_training_goals(user: str, body: TrainingGoalsIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _self(viewer, user)
+    try:
+        return goals.save(conn, uid, body.focus_muscles, body.physique_goal)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
