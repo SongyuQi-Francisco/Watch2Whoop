@@ -258,6 +258,74 @@ Code `insights/healthspan.py`; parameters with full citations in `insights/healt
   the gap between body age and chronological age by ±20%.
 - No external validation (e.g. against WHOOP Age or epigenetic clocks).
 
+
+### 8.1 v1.2: activity as one domain (`hs-v1.2-2026-10-23`, alongside v1.1; production still runs v1.1)
+Parameters and sources in `healthspan_params_v12.py` (anything not set there is v1.1's); `healthspan_store.snapshot(data, as_of, params)`
+scores with either set, `healthspan_store.VERSIONS` lists both. Comparison tool: `python -m body_engine.validation healthspan --user-id N`
+(reads the database only).
+
+**Why**
+1. v1.1 scored steps, moderate-to-vigorous activity (MVPA) and strength training as three items, each capped at ±4 years, then × 0.6.
+   Lee 2022's MVPA already includes walking and weightlifting and steps are mostly walking, so the same activity counted up to three times.
+2. The under-60 step curve (Paluch 2022 quartiles) falls from HR 1.00 to 0.59 between 4849 and 7245 steps — its least precise segment
+   (CI 0.39–0.88) and the one most open to reverse causation (people who walk little include the ill). The larger Ding 2025
+   meta-analysis is almost flat between 5000 and 10000 steps.
+3. Strength training, swimming, cycling and rowing give the wrist few steps, so people who train a lot but walk little lost out on steps.
+
+**Computation (activity only)**
+1. Volume = mean wrist steps × wrist factor (1.0) + mean step equivalents of exercise without steps. Conversion: minutes × the steps per
+   minute of a walk / run at the same MET (3 MET ≈ 100 steps/min, 6 MET ≈ 130, linear between, no more above 6 MET; yoga, pilates,
+   stretching < 3 MET count 0). Only swimming, cycling and rowing machine are converted (general-intensity Compendium MET each); walking,
+   running, basketball, tennis, hiking, stairs and elliptical already produce steps and are not added again.
+2. HR_volume = the step curve (under 60: Ding 2025; 60+: still Paluch 2022), relative to the age group's anchor.
+3. HR_activity = HR_volume × HR_strength (Momma 2022's J curve, unchanged). Strength is **not** also converted to steps (below).
+4. Activity years = ln(HR_activity)/ln 2 × 8, capped at ±4 **for the whole domain**; the other items are unchanged, the sum is still × 0.6 and
+   capped at ±10.
+5. Heart-rate MVPA is a reference only (`counted: false` in `parts`): its walking is in the steps, its exercise in the conversion. Its
+   definition changed too: strength, swimming, cycling and rowing count at their MET (moderate × 1, ≥ 6 MET × 2, as in questionnaires),
+   everything else by heart-rate zone.
+
+**Why MVPA read low (the v1.1 definition)**: v1.1 counts all-day heart rate ≥ 60% HRmax. Most of a strength session (rests between sets)
+sits at 50–60% HRmax, so only a small part of a session counts; and at a given %HRmax resistance exercise uses less oxygen than running
+(Collins 1991), so "by heart rate" is neither the absolute intensity questionnaires use nor oxygen uptake. Apple's exercise minutes are not
+a fix: the ring starts at about 30% VO₂ reserve, below the 40% moderate threshold (Abt 2018), so they read high. The 180-day window also
+includes months of less training — on purpose (long-term habits).
+
+**Parameters**
+
+| Parameter | Value | Label |
+|---|---|---|
+| Step curve under 60 | vs 2000 steps: 3000 0.77, 4000 0.64, 5000 0.57, 6000 0.54, 7000 0.53, 8000–10000 0.52, 11000 0.49, 12000 0.45, flat beyond (Ding 2025 Table 2) | Literature |
+| Anchor under 60 | 7803 steps (Paluch 2022, median of the under-60 cohorts, as printed) | Literature (its use as anchor: design choice) |
+| Step curve and anchor 60+ | unchanged (Paluch 2022, 6167 steps) | Literature / design choice |
+| Wrist factor | 1.0: no consistent bias of the Apple Watch vs waist / hip research devices at group level (Breteler 2019 about 4–5% fewer, Spartano 2024 near-identical medians); a raw accelerometer moved to the wrist counts ~2500 more (Tudor-Locke 2015), but that is not Apple's algorithm | Literature |
+| Cadence ↔ MET | 100 steps/min ≈ 3 MET, 130 ≈ 6 MET (CADENCE-Adults 2019 / 2020); linear between, flat above 6 MET | Literature / design choice |
+| MET per workout type | swimming 5.8 [18240], cycling 7.0 [01014], indoor cycling 6.8 [01200], rowing machine 5.0 [02071], strength 3.5 [02054] (2024 Compendium) | Literature |
+| Which types are converted | swimming, cycling, rowing machine | Design choice |
+| Strength only on its own curve (`STRENGTH_IN_VOLUME = False`) | Momma 2022's association is the part beyond aerobic activity (all included studies considered aerobic or other activity; GRADE very low); converting it to steps as well would count it twice. Lee 2022's way (weightlifting = moderate activity) is kept as an alternative for comparison | Design choice |
+| Volume × strength multiplied | step studies are not adjusted for strength training; the product is an approximation | Design choice |
+| Domain cap | ±4 years (v1.1's item cap; activity can no longer reach ±12) | Design choice — v1 value, not yet validated |
+| Personal calibration | none | — |
+
+**Synthetic examples** (made-up people, activity only, years before × 0.6)
+
+| Example | v1.1 (steps / MVPA / strength = sum) | v1.2 activity domain |
+|---|---|---|
+| 25, 6000 steps, MVPA 80 min/week, strength 40 min/week | +4.0 / +0.7 / −2.1 = +2.6 | −1.8 (volume +0.4, strength −2.1) |
+| 25, 6000 steps, swims 3 × 45 min a week | +4.0 / +0.1 / 0 = +4.1 | 0.0 (swimming ≈ 2500 steps/day) |
+| 25, 3000 steps, no exercise | +4.0 / +2.0 / 0 = +6.0 | +4.0 (+4.5 before the cap) |
+| 35, 10500 steps, MVPA 350, strength 120 | −0.8 / −1.2 / −1.2 = −3.2 | −1.6 (volume −0.4, strength −1.2) |
+| 70, 5000 steps, MVPA 100 | +1.5 / +0.5 / 0 = +2.0 | +1.5 |
+
+**Known limits of v1.2**
+- Very active people get less credit: v1.1's MVPA curve kept rewarding up to 600 min/week, v1.2 no longer rewards intensity on its own
+  (Lee 2019 and Saint-Maurice 2020 found little extra association for cadence / intensity once steps are adjusted for; del Pozo Cruz 2022
+  found some). No study was found with MVPA minutes and steps in the same model.
+- Swimming / cycling not recorded as a workout is not converted (visible in the heart-rate reference, not counted).
+- Ding 2025 has no sensitivity analysis excluding early deaths; its curve is flatter than Paluch's, in the direction of Hansen 2020's and
+  Lee 2019's estimates after excluding early deaths, but that is indirect evidence.
+- The ±4-year domain cap, multiplying volume and strength, and converting only three workout types are design choices, not validated.
+
 ## 9. Features derived from these scores (brief)
 - **Strain target** (`insights/coach.py`): green 14–18, yellow 10–14, red 0–10; yesterday's TSB < −30 shifts down by 2; illness warning 0–8. Ranges fit
   strain with K = 170; design choice.
@@ -313,6 +381,10 @@ DOIs checked against Crossref on 2026-10-22 (title, authors, journal, year, volu
   Momma 2022 (doi:10.1136/bjsports-2021-105061), Kodama 2009 (doi:10.1001/jama.2009.681), Kaminsky 2022 (doi:10.1016/j.mayocp.2021.08.020),
   Jensen 2013 (doi:10.1136/heartjnl-2012-303375), Zhang 2016 (doi:10.1503/cmaj.150535), Quer 2020 (doi:10.1371/journal.pone.0227709),
   Global BMI Mortality Collaboration 2016 (doi:10.1016/S0140-6736(16)30175-1), Jayedi 2020 (doi:10.1136/bmj.m3324), Kirkwood 2015 (doi:10.1098/rstb.2014.0379)
+- Body age v1.2: Ding 2025 (doi:10.1016/S2468-2667(25)00164-1), Hansen 2020 (doi:10.1111/sms.13726), Lee IM 2019 (doi:10.1001/jamainternmed.2019.0899),
+  Saint-Maurice 2020 (doi:10.1001/jama.2020.1382), del Pozo Cruz 2022 (doi:10.1001/jamainternmed.2022.4000), Tudor-Locke 2015 (doi:10.1249/MSS.0000000000000476),
+  Breteler 2019 (doi:10.2196/11489), Spartano 2024 (doi:10.2196/54631), Tudor-Locke 2011 (doi:10.1186/1479-5868-8-79), CADENCE-Adults 2019 (doi:10.1186/s12966-019-0769-6) / 2020 (doi:10.1186/s12966-020-01045-z),
+  Herrmann 2024 Compendium (doi:10.1016/j.jshs.2023.10.010), Collins 1991 (doi:10.1249/00005768-199105000-00018), Abt 2018 (doi:10.2196/cardio.8574)
 - Ported spec: Open Wearables 0.9.0, `backend/app/algorithms/sleep.py`, `config_algorithms.py` (MIT; `vendor/open-wearables` in this repository)
 - Public documentation: WHOOP Developer Platform, "Recovery" (developer.whoop.com/docs/developing/user-data/recovery; fields `hrv_rmssd_milli`,
   `resting_heart_rate`); Apple HealthKit `HKQuantityTypeIdentifier.heartRateVariabilitySDNN`, `HKHeartbeatSeriesSample` (developer.apple.com)

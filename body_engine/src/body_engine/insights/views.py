@@ -19,17 +19,30 @@ def today(conn, user_id: int) -> date:
 
 # body-age item -> the scope of the data behind it (the item's value, e.g. weight_kg or steps, is that data)
 HEALTHSPAN_SCOPE = {"sleep_duration": "scores", "sleep_regularity": "sleep", "steps": "metrics", "mvpa": "scores",
-                    "strength": "training", "vo2max": "metrics", "rhr": "metrics", "body_comp": "weight"}
+                    "strength": "training", "vo2max": "metrics", "rhr": "metrics", "body_comp": "weight",
+                    "activity": ("metrics", "training")}   # v1.2 domain: steps + training minutes
+ACTIVITY_PART_SCOPE = {"steps": "metrics", "exercise_equiv": "training", "strength": "training", "mvpa": "scores"}
+
+
+def _scopes(key) -> set[str]:
+    s = HEALTHSPAN_SCOPE.get(key, "scores")
+    return {s} if isinstance(s, str) else set(s)
 
 
 def healthspan(conn, user_id: int, weeks: int = 26, viewer_id: int | None = None) -> dict:
     """Someone else's body age: items built from data the viewer may not see are left out, their scopes in `hidden`."""
     res = healthspan_store.read(conn, user_id, weeks)
     if res is not None and viewer_id is not None and viewer_id != user_id:
-        can = auth.visible_scopes(conn, viewer_id, user_id, set(HEALTHSPAN_SCOPE.values()))
-        ok = lambda it: HEALTHSPAN_SCOPE.get(it.get("key"), "scores") in can
-        hidden = sorted({HEALTHSPAN_SCOPE[k] for k in HEALTHSPAN_SCOPE} - can)
-        res = {**res, "contributors": [i for i in res["contributors"] or [] if ok(i)],
+        every = set().union(*(_scopes(k) for k in HEALTHSPAN_SCOPE))
+        can = auth.visible_scopes(conn, viewer_id, user_id, every | set(ACTIVITY_PART_SCOPE.values()))
+        ok = lambda it: _scopes(it.get("key")) <= can
+        hidden = sorted(every - can)
+
+        def parts(it):
+            if not it.get("parts"):
+                return it
+            return {**it, "parts": [p for p in it["parts"] if ACTIVITY_PART_SCOPE.get(p.get("key"), "scores") in can]}
+        res = {**res, "contributors": [parts(i) for i in res["contributors"] or [] if ok(i)],
                "insufficient": [i for i in res["insufficient"] or [] if ok(i)], **({"hidden": hidden} if hidden else {})}
     if res is None:
         return {"body_age": None, "chrono_age": None, "delta_years": None, "pace_of_aging": None, "pace_raw": None,

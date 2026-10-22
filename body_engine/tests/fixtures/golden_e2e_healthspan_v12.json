@@ -1,0 +1,662 @@
+[
+ {
+  "as_of": "2026-09-06",
+  "body_age": 34.2,
+  "chrono_age": 36.68,
+  "contributors": [
+   {
+    "category": "activity",
+    "data_days": 37,
+    "direction": "younger",
+    "hr": 0.855,
+    "key": "activity",
+    "label": "活动（步数 + 训练）",
+    "parts": [
+     {
+      "data_days": 37,
+      "key": "steps",
+      "label": "手腕步数",
+      "unit": "步",
+      "value": 10649,
+      "years": -0.49
+     },
+     {
+      "data_days": 37,
+      "key": "exercise_equiv",
+      "label": "不产生步数的训练（折算）",
+      "unit": "步当量",
+      "value": 0,
+      "years": 0.0
+     },
+     {
+      "data_days": 37,
+      "hr": 0.892,
+      "key": "strength",
+      "label": "每周力量训练",
+      "unit": "分钟",
+      "value": 110,
+      "years": -1.32
+     },
+     {
+      "counted": false,
+      "data_days": 37,
+      "key": "mvpa",
+      "label": "每周中高强度运动（参考，不重复计入）",
+      "unit": "分钟",
+      "value": 545
+     }
+    ],
+    "tip": "活动量充足，保持",
+    "unit": "步当量",
+    "value": 10649,
+    "years": -1.81,
+    "years_uncapped": -1.81
+   },
+   {
+    "category": "fitness",
+    "data_days": 5,
+    "direction": "younger",
+    "hr": 0.857,
+    "key": "vo2max",
+    "label": "VO₂max",
+    "norm_median": 39.0,
+    "percentile": 61.2,
+    "readings": 5,
+    "tip": "心肺能力好，保持",
+    "unit": "mL/kg/min",
+    "value": 42.8,
+    "years": -1.78
+   },
+   {
+    "category": "fitness",
+    "data_days": 37,
+    "direction": "younger",
+    "hr": 0.966,
+    "key": "rhr",
+    "label": "静息心率",
+    "tip": "静息心率低，保持",
+    "unit": "bpm",
+    "value": 62.7,
+    "years": -0.4
+   },
+   {
+    "category": "sleep",
+    "data_days": 36,
+    "direction": "younger",
+    "hr": 0.971,
+    "key": "sleep_regularity",
+    "label": "作息规律性（SRI）",
+    "tip": "作息规律，保持",
+    "unit": "",
+    "value": 84.0,
+    "years": -0.34
+   },
+   {
+    "category": "sleep",
+    "data_days": 37,
+    "direction": "older",
+    "hr": 1.015,
+    "key": "sleep_duration",
+    "label": "平均睡眠时长",
+    "self_report_equiv_h": 7.12,
+    "tip": "睡眠时长合适，保持",
+    "unit": "h",
+    "value": 6.63,
+    "years": 0.17
+   },
+   {
+    "category": "fitness",
+    "data_days": 1,
+    "direction": "older",
+    "hr": 1.008,
+    "key": "body_comp",
+    "label": "身体成分",
+    "measure": "bmi",
+    "measured_on": "2026-09-06",
+    "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+    "tip": "按计划减脂，先到 80kg",
+    "unit": "",
+    "value": 25.3,
+    "weight_kg": 82.0,
+    "years": 0.1
+   }
+  ],
+  "delta_years": -2.44,
+  "insufficient": [],
+  "notes": [
+   "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+  ],
+  "pace_of_aging": null,
+  "pace_raw": null,
+  "pace_window_weeks": null,
+  "week_start": "2026-08-31"
+ },
+ {
+  "as_of": "2026-09-13",
+  "body_age": 34.2,
+  "chrono_age": 36.7,
+  "contributors": [
+   {
+    "category": "fitness",
+    "data_days": 6,
+    "direction": "younger",
+    "hr": 0.849,
+    "key": "vo2max",
+    "label": "VO₂max",
+    "norm_median": 39.0,
+    "percentile": 62.0,
+    "readings": 6,
+    "tip": "心肺能力好，保持",
+    "unit": "mL/kg/min",
+    "value": 43.1,
+    "years": -1.89
+   },
+   {
+    "category": "activity",
+    "data_days": 44,
+    "direction": "younger",
+    "hr": 0.853,
+    "key": "activity",
+    "label": "活动（步数 + 训练）",
+    "parts": [
+     {
+      "data_days": 44,
+      "key": "steps",
+      "label": "手腕步数",
+      "unit": "步",
+      "value": 10738,
+      "years": -0.55
+     },
+     {
+      "data_days": 44,
+      "key": "exercise_equiv",
+      "label": "不产生步数的训练（折算）",
+      "unit": "步当量",
+      "value": 0,
+      "years": 0.0
+     },
+     {
+      "data_days": 44,
+      "hr": 0.894,
+      "key": "strength",
+      "label": "每周力量训练",
+      "unit": "分钟",
+      "value": 112,
+      "years": -1.29
+     },
+     {
+      "counted": false,
+      "data_days": 44,
+      "key": "mvpa",
+      "label": "每周中高强度运动（参考，不重复计入）",
+      "unit": "分钟",
+      "value": 540
+     }
+    ],
+    "tip": "活动量充足，保持",
+    "unit": "步当量",
+    "value": 10738,
+    "years": -1.84,
+    "years_uncapped": -1.84
+   },
+   {
+    "category": "fitness",
+    "data_days": 44,
+    "direction": "younger",
+    "hr": 0.962,
+    "key": "rhr",
+    "label": "静息心率",
+    "tip": "静息心率低，保持",
+    "unit": "bpm",
+    "value": 62.4,
+    "years": -0.44
+   },
+   {
+    "category": "sleep",
+    "data_days": 43,
+    "direction": "younger",
+    "hr": 0.967,
+    "key": "sleep_regularity",
+    "label": "作息规律性（SRI）",
+    "tip": "作息规律，保持",
+    "unit": "",
+    "value": 84.5,
+    "years": -0.39
+   },
+   {
+    "category": "sleep",
+    "data_days": 44,
+    "direction": "older",
+    "hr": 1.021,
+    "key": "sleep_duration",
+    "label": "平均睡眠时长",
+    "self_report_equiv_h": 7.17,
+    "tip": "睡眠时长合适，保持",
+    "unit": "h",
+    "value": 6.71,
+    "years": 0.24
+   },
+   {
+    "category": "fitness",
+    "data_days": 1,
+    "direction": "older",
+    "hr": 1.007,
+    "key": "body_comp",
+    "label": "身体成分",
+    "measure": "bmi",
+    "measured_on": "2026-09-12",
+    "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+    "tip": "按计划减脂，先到 80kg",
+    "unit": "",
+    "value": 25.2,
+    "weight_kg": 81.8,
+    "years": 0.08
+   }
+  ],
+  "delta_years": -2.54,
+  "insufficient": [],
+  "notes": [
+   "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+  ],
+  "pace_of_aging": null,
+  "pace_raw": null,
+  "pace_window_weeks": null,
+  "week_start": "2026-09-07"
+ },
+ {
+  "as_of": "2026-09-20",
+  "body_age": 34.1,
+  "chrono_age": 36.72,
+  "contributors": [
+   {
+    "category": "fitness",
+    "data_days": 7,
+    "direction": "younger",
+    "hr": 0.838,
+    "key": "vo2max",
+    "label": "VO₂max",
+    "norm_median": 38.9,
+    "percentile": 63.1,
+    "readings": 7,
+    "tip": "心肺能力好，保持",
+    "unit": "mL/kg/min",
+    "value": 43.4,
+    "years": -2.05
+   },
+   {
+    "category": "activity",
+    "data_days": 51,
+    "direction": "younger",
+    "hr": 0.856,
+    "key": "activity",
+    "label": "活动（步数 + 训练）",
+    "parts": [
+     {
+      "data_days": 51,
+      "key": "steps",
+      "label": "手腕步数",
+      "unit": "步",
+      "value": 10668,
+      "years": -0.5
+     },
+     {
+      "data_days": 51,
+      "key": "exercise_equiv",
+      "label": "不产生步数的训练（折算）",
+      "unit": "步当量",
+      "value": 0,
+      "years": 0.0
+     },
+     {
+      "data_days": 51,
+      "hr": 0.894,
+      "key": "strength",
+      "label": "每周力量训练",
+      "unit": "分钟",
+      "value": 112,
+      "years": -1.29
+     },
+     {
+      "counted": false,
+      "data_days": 51,
+      "key": "mvpa",
+      "label": "每周中高强度运动（参考，不重复计入）",
+      "unit": "分钟",
+      "value": 536
+     }
+    ],
+    "tip": "活动量充足，保持",
+    "unit": "步当量",
+    "value": 10668,
+    "years": -1.79,
+    "years_uncapped": -1.79
+   },
+   {
+    "category": "fitness",
+    "data_days": 51,
+    "direction": "younger",
+    "hr": 0.959,
+    "key": "rhr",
+    "label": "静息心率",
+    "tip": "静息心率低，保持",
+    "unit": "bpm",
+    "value": 62.2,
+    "years": -0.48
+   },
+   {
+    "category": "sleep",
+    "data_days": 50,
+    "direction": "younger",
+    "hr": 0.969,
+    "key": "sleep_regularity",
+    "label": "作息规律性（SRI）",
+    "tip": "作息规律，保持",
+    "unit": "",
+    "value": 84.3,
+    "years": -0.37
+   },
+   {
+    "category": "sleep",
+    "data_days": 51,
+    "direction": "older",
+    "hr": 1.024,
+    "key": "sleep_duration",
+    "label": "平均睡眠时长",
+    "self_report_equiv_h": 7.19,
+    "tip": "睡太久，固定起床时间",
+    "unit": "h",
+    "value": 6.75,
+    "years": 0.27
+   },
+   {
+    "category": "fitness",
+    "data_days": 1,
+    "direction": "older",
+    "hr": 1.006,
+    "key": "body_comp",
+    "label": "身体成分",
+    "measure": "bmi",
+    "measured_on": "2026-09-18",
+    "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+    "tip": "按计划减脂，先到 80kg",
+    "unit": "",
+    "value": 25.2,
+    "weight_kg": 81.7,
+    "years": 0.07
+   }
+  ],
+  "delta_years": -2.61,
+  "insufficient": [],
+  "notes": [
+   "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+  ],
+  "pace_of_aging": null,
+  "pace_raw": null,
+  "pace_window_weeks": null,
+  "week_start": "2026-09-14"
+ },
+ {
+  "as_of": "2026-09-27",
+  "body_age": 34.0,
+  "chrono_age": 36.74,
+  "contributors": [
+   {
+    "category": "fitness",
+    "data_days": 8,
+    "direction": "younger",
+    "hr": 0.832,
+    "key": "vo2max",
+    "label": "VO₂max",
+    "norm_median": 38.9,
+    "percentile": 63.7,
+    "readings": 8,
+    "tip": "心肺能力好，保持",
+    "unit": "mL/kg/min",
+    "value": 43.6,
+    "years": -2.12
+   },
+   {
+    "category": "activity",
+    "data_days": 58,
+    "direction": "younger",
+    "hr": 0.861,
+    "key": "activity",
+    "label": "活动（步数 + 训练）",
+    "parts": [
+     {
+      "data_days": 58,
+      "key": "steps",
+      "label": "手腕步数",
+      "unit": "步",
+      "value": 10574,
+      "years": -0.44
+     },
+     {
+      "data_days": 58,
+      "key": "exercise_equiv",
+      "label": "不产生步数的训练（折算）",
+      "unit": "步当量",
+      "value": 0,
+      "years": 0.0
+     },
+     {
+      "data_days": 58,
+      "hr": 0.894,
+      "key": "strength",
+      "label": "每周力量训练",
+      "unit": "分钟",
+      "value": 112,
+      "years": -1.29
+     },
+     {
+      "counted": false,
+      "data_days": 58,
+      "key": "mvpa",
+      "label": "每周中高强度运动（参考，不重复计入）",
+      "unit": "分钟",
+      "value": 536
+     }
+    ],
+    "tip": "活动量充足，保持",
+    "unit": "步当量",
+    "value": 10574,
+    "years": -1.73,
+    "years_uncapped": -1.73
+   },
+   {
+    "category": "fitness",
+    "data_days": 58,
+    "direction": "younger",
+    "hr": 0.955,
+    "key": "rhr",
+    "label": "静息心率",
+    "tip": "静息心率低，保持",
+    "unit": "bpm",
+    "value": 61.9,
+    "years": -0.53
+   },
+   {
+    "category": "sleep",
+    "data_days": 57,
+    "direction": "younger",
+    "hr": 0.959,
+    "key": "sleep_regularity",
+    "label": "作息规律性（SRI）",
+    "tip": "作息规律，保持",
+    "unit": "",
+    "value": 85.4,
+    "years": -0.48
+   },
+   {
+    "category": "sleep",
+    "data_days": 58,
+    "direction": "older",
+    "hr": 1.022,
+    "key": "sleep_duration",
+    "label": "平均睡眠时长",
+    "self_report_equiv_h": 7.18,
+    "tip": "睡眠时长合适，保持",
+    "unit": "h",
+    "value": 6.72,
+    "years": 0.25
+   },
+   {
+    "category": "fitness",
+    "data_days": 1,
+    "direction": "older",
+    "hr": 1.006,
+    "key": "body_comp",
+    "label": "身体成分",
+    "measure": "bmi",
+    "measured_on": "2026-09-27",
+    "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+    "tip": "按计划减脂，先到 80kg",
+    "unit": "",
+    "value": 25.2,
+    "weight_kg": 81.7,
+    "years": 0.07
+   }
+  ],
+  "delta_years": -2.72,
+  "insufficient": [],
+  "notes": [
+   "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+  ],
+  "pace_of_aging": null,
+  "pace_raw": null,
+  "pace_window_weeks": null,
+  "week_start": "2026-09-21"
+ },
+ {
+  "as_of": "2026-09-30",
+  "body_age": 34.0,
+  "chrono_age": 36.75,
+  "contributors": [
+   {
+    "category": "fitness",
+    "data_days": 9,
+    "direction": "younger",
+    "hr": 0.827,
+    "key": "vo2max",
+    "label": "VO₂max",
+    "norm_median": 38.9,
+    "percentile": 64.2,
+    "readings": 9,
+    "tip": "心肺能力好，保持",
+    "unit": "mL/kg/min",
+    "value": 43.7,
+    "years": -2.19
+   },
+   {
+    "category": "activity",
+    "data_days": 60,
+    "direction": "younger",
+    "hr": 0.859,
+    "key": "activity",
+    "label": "活动（步数 + 训练）",
+    "parts": [
+     {
+      "data_days": 60,
+      "key": "steps",
+      "label": "手腕步数",
+      "unit": "步",
+      "value": 10647,
+      "years": -0.49
+     },
+     {
+      "data_days": 61,
+      "key": "exercise_equiv",
+      "label": "不产生步数的训练（折算）",
+      "unit": "步当量",
+      "value": 0,
+      "years": 0.0
+     },
+     {
+      "data_days": 61,
+      "hr": 0.896,
+      "key": "strength",
+      "label": "每周力量训练",
+      "unit": "分钟",
+      "value": 115,
+      "years": -1.26
+     },
+     {
+      "counted": false,
+      "data_days": 61,
+      "key": "mvpa",
+      "label": "每周中高强度运动（参考，不重复计入）",
+      "unit": "分钟",
+      "value": 526
+     }
+    ],
+    "tip": "活动量充足，保持",
+    "unit": "步当量",
+    "value": 10647,
+    "years": -1.75,
+    "years_uncapped": -1.75
+   },
+   {
+    "category": "fitness",
+    "data_days": 61,
+    "direction": "younger",
+    "hr": 0.956,
+    "key": "rhr",
+    "label": "静息心率",
+    "tip": "静息心率低，保持",
+    "unit": "bpm",
+    "value": 62.0,
+    "years": -0.52
+   },
+   {
+    "category": "sleep",
+    "data_days": 60,
+    "direction": "younger",
+    "hr": 0.966,
+    "key": "sleep_regularity",
+    "label": "作息规律性（SRI）",
+    "tip": "作息规律，保持",
+    "unit": "",
+    "value": 84.5,
+    "years": -0.4
+   },
+   {
+    "category": "sleep",
+    "data_days": 61,
+    "direction": "older",
+    "hr": 1.021,
+    "key": "sleep_duration",
+    "label": "平均睡眠时长",
+    "self_report_equiv_h": 7.17,
+    "tip": "睡眠时长合适，保持",
+    "unit": "h",
+    "value": 6.71,
+    "years": 0.24
+   },
+   {
+    "category": "fitness",
+    "data_days": 1,
+    "direction": "older",
+    "hr": 1.006,
+    "key": "body_comp",
+    "label": "身体成分",
+    "measure": "bmi",
+    "measured_on": "2026-09-27",
+    "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+    "tip": "按计划减脂，先到 80kg",
+    "unit": "",
+    "value": 25.2,
+    "weight_kg": 81.7,
+    "years": 0.07
+   }
+  ],
+  "delta_years": -2.73,
+  "insufficient": [],
+  "notes": [
+   "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+  ],
+  "pace_of_aging": null,
+  "pace_raw": null,
+  "pace_window_weeks": null,
+  "week_start": "2026-09-28"
+ }
+]

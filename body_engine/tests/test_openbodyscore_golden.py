@@ -157,3 +157,23 @@ def test_end_to_end_matches_golden(conn, tmp_path, hrv_kind):
     cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
     diff = cases.mismatch(got, want)
     assert diff is None, diff
+
+
+def test_end_to_end_healthspan_v12_matches_golden(conn, tmp_path):
+    """Body age v1.2 (activity domain, issue #118) on the same synthetic export; v1.1 above is unchanged.
+    Rewrite after an intentional v1.2 change with BODY_WRITE_GOLDEN=1, like the file above."""
+    from body_engine.insights import healthspan_params_v12 as H12
+    find = lambda: conn.execute("SELECT max(id) AS id FROM users WHERE display_name = 'golden-sdnn'").fetchone()["id"]
+    if find() is None:   # run on its own: import the export first (the v1.1 test above already did otherwise)
+        e2e(conn, tmp_path, "sdnn")
+    uid = find()
+    got = _dump(healthspan_store.compute(conn, uid, today=NOW.date(), params=H12))
+    golden = FIXTURES / "golden_e2e_healthspan_v12.json"
+    if os.environ.get("BODY_WRITE_GOLDEN") == "1":
+        golden.write_text(json.dumps(got, indent=1, ensure_ascii=False, sort_keys=True) + "\n")
+        pytest.skip(f"wrote {golden}")
+    want = json.loads(golden.read_text())
+    assert want and all(any(c["key"] == "activity" for c in w["contributors"]) for w in want)
+    cases = _load("openbodyscore_golden_cases", PKG_TESTS / "golden_cases.py")
+    diff = cases.mismatch(got, want)
+    assert diff is None, diff
