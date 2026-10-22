@@ -1,6 +1,7 @@
 /* Circle training feed (body_engine/friends/feed.py, flag circle_feed): the Friends tab's 「动态」 segment — a Hevy / Instagram
-   style post per person per day — laid out like a Hevy post (header, training name, time / volume / sets / PR row, the first 3
-   exercises with a picture or muscle icon, "view N more", tap an exercise for its sets) with Instagram-style line icons
+   style post per person per day — laid out like a Hevy post (header, training name, time / energy / volume / sets / PR row, per
+   watch workout a line of average / max heart rate, distance and load with a heart-rate zone bar (#194), the first 3 exercises
+   with a picture, muscle icon or dumbbell, "view N more", tap an exercise for its sets) with Instagram-style line icons
    (heart fills red with a bounce, double-tap to like, "N likes", "view all N comments", the newest comments as a preview);
    comments (delete your own, report others'), newest first, more when you scroll down, refreshed every minute while open, and a
    red dot on the Friends tab / the segment when someone liked or commented on my post since I last looked.
@@ -28,6 +29,13 @@
 .cf-title{font-size:18px;font-weight:700;margin:12px 0 10px;line-height:1.25;overflow-wrap:anywhere}
 .cf-stats{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px 18px;margin:0 0 12px}.cf-stat{flex:none}.cf-stat small{display:block;font-size:12px;color:var(--text-2)}
 .cf-stat b{display:block;font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}.cf-stat b em{font-style:normal;font-size:13px;font-weight:500;color:var(--text-2);margin-left:2px}
+.cf-wk{margin:-2px 0 12px}.cf-wk+.cf-wk{margin-top:-4px}.cf-wkn{font-size:13px;font-weight:600;margin:0 0 4px}
+.cf-chips{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px;font-variant-numeric:tabular-nums}.cf-chips span{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.cf-chips svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;color:var(--text-2)}
+.cf-chips em{font-style:normal;font-size:12px;color:var(--text-2)}
+.cf-zb{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--surface-2);margin-top:8px}.cf-zb span{display:block;height:100%;background:var(--train)}
+.cf-zl{display:flex;justify-content:space-between;gap:4px;margin-top:4px;font-size:11px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.cf-none{display:flex;align-items:center;gap:8px;border-top:1px solid var(--hair);min-height:44px;font-size:14px;color:var(--text-2)}.cf-none svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .cf-exs{border-top:1px solid var(--hair)}
 .cf-exb{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:6px 0;border:0;background:none;color:var(--text);text-align:left;font:inherit}
 .cf-th{flex:none;width:44px;height:44px;border-radius:10px;background:var(--surface-2);overflow:hidden;display:flex;align-items:center;justify-content:center}
@@ -97,6 +105,10 @@
   const BUBBLE = '<path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"/>';
   const TROPHY = '<path d="M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2"/><path d="M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2"/><path d="M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3"/><path d="M4 22h16"/><path d="M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z"/><path d="M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3"/>';
   const DUMBBELL = '<path d="M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z"/><path d="m2.5 21.5 1.4-1.4"/><path d="m20.1 3.9 1.4-1.4"/><path d="M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z"/><path d="m9.6 14.4 4.8-4.8"/>';
+  const FLAME = '<path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"/>';
+  const PULSE = '<path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/><path d="M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27"/>';
+  const PIN = '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>';
+  const ACTIVITY = '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>';
   const CHEV = '<svg class="cf-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
   const svg = (inner) => `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`;
   const BACK_MUSCLES = new Set(["lats", "middle back", "lower back", "traps", "hamstrings", "glutes", "triceps", "calves"]);
@@ -123,9 +135,29 @@
   function statsHtml(p) {
     const cell = (label, v) => `<div class="cf-stat"><small>${esc(label)}</small><b>${v}</b></div>`;
     return [p.duration_min ? cell(tr("时长"), esc(durText(p.duration_min))) : "",
+      p.active_kcal ? cell(tr("消耗"), `${num(p.active_kcal)}<em>kcal</em>`) : "",
       p.volume_kg ? cell(tr("训练量"), `${num(p.volume_kg)}<em>kg</em>`) : "",
       p.set_count ? cell(tr("组数"), num(p.set_count)) : "",
       p.pr_count ? cell(tr("纪录"), `<span class="cf-tro">${svg(TROPHY)}</span>${num(p.pr_count)}`) : ""].join("");
+  }
+  // one watch workout's summary under the stats row (#194): average / max heart rate, distance, load (TRIMP), minutes per zone;
+  // with several workouts that day each gets its name, duration and energy too
+  function zonesHtml(z) {
+    const total = (z || []).reduce((a, b) => a + (Number(b) || 0), 0);
+    if (!total) return "";
+    const seg = z.map((v, i) => `<span style="width:${((Number(v) || 0) / total * 100).toFixed(1)}%;opacity:${(0.25 + i * 0.18).toFixed(2)}" title="${esc(tr("区间 {i}：{n} 分钟", { i: i + 1, n: Math.round(v) }))}"></span>`).join("");
+    return `<div class="cf-zb" role="img" aria-label="${esc(tr("心率区间"))}">${seg}</div><div class="cf-zl">${z.map((v, i) => `<span>Z${i + 1} ${Math.round(Number(v) || 0)}′</span>`).join("")}</div>`;
+  }
+  function activityHtml(a, many) {
+    const chip = (icon, label, v) => `<span title="${esc(label)}" aria-label="${esc(label)}">${svg(icon)}${v}</span>`;
+    const chips = [many && a.active_kcal ? chip(FLAME, tr("消耗"), `${num(a.active_kcal)}<em>kcal</em>`) : "",
+      a.avg_hr || a.max_hr ? chip(PULSE, tr("平均 / 最高心率"), `${a.avg_hr ? num(a.avg_hr) : "—"} / ${a.max_hr ? num(a.max_hr) : "—"}<em>bpm</em>`) : "",
+      a.distance_km ? chip(PIN, tr("距离"), `${num(a.distance_km, a.distance_km < 10 ? 2 : 1)}<em>km</em>`) : "",
+      a.load ? chip(ACTIVITY, tr("训练负荷"), `${num(a.load)}<em>TRIMP</em>`) : ""].join("");
+    const zones = zonesHtml(a.hr_zones);
+    if (!chips && !zones && !many) return "";
+    const head = many ? `<p class="cf-wkn">${esc(a.name)}${a.duration_min ? ` · ${esc(durText(a.duration_min))}` : ""}</p>` : "";
+    return `<div class="cf-wk">${head}${chips ? `<div class="cf-chips">${chips}</div>` : ""}${zones}</div>`;
   }
   function exerciseHtml(p, e, i) {
     const open = st.sets.has(`${p.id}:${i}`);
@@ -151,7 +183,9 @@
     return `<article class="cf-post" data-id="${p.id}"><div class="cf-head"><span class="cf-av">${esc((p.user.name || "?").slice(0, 1).toUpperCase())}</span>
         <div class="cf-who"><b>${esc(p.user.self ? tr("who.me", { name: p.user.name }) : p.user.name)}</b><i>${esc(ago(p))}${p.circles?.length ? ` · ${esc(p.circles.join(" · "))}` : ""}</i></div></div>
       <div class="cf-body"><div class="cf-title">${esc(p.title)}</div><div class="cf-stats">${statsHtml(p)}</div>
-      <div class="cf-exs">${shown.map((e, i) => exerciseHtml(p, e, i)).join("")}</div>${toggle}</div>
+      ${(p.activities || []).map((a, _, all) => activityHtml(a, all.length > 1)).join("")}
+      ${p.no_exercises ? `<div class="cf-none">${svg(DUMBBELL)}${esc(tr("没有记录动作"))}</div>` : ""}
+      ${shown.length ? `<div class="cf-exs">${shown.map((e, i) => exerciseHtml(p, e, i)).join("")}</div>` : ""}${toggle}</div>
       ${actionsHtml(p, open)}${open ? commentsHtml(p) : ""}</article>`;
   }
   function listHtml() {
