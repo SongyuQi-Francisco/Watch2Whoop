@@ -148,7 +148,7 @@ enum DebugHealthSeeder {
     let q = { (id: HKQuantityTypeIdentifier) in HKQuantityType(id) }
     let types: Set<HKSampleType> = [
       q(.heartRate), q(.restingHeartRate), q(.heartRateVariabilitySDNN), q(.stepCount),
-      q(.activeEnergyBurned), q(.oxygenSaturation), q(.respiratoryRate), q(.bodyMass),
+      q(.activeEnergyBurned), q(.oxygenSaturation), q(.respiratoryRate), q(.bodyMass), q(.dietaryWater),
       HKCategoryType(.sleepAnalysis), HKObjectType.workoutType(), HKSeriesType.heartbeat(),
     ]
     store.requestAuthorization(toShare: types, read: nil) { ok, error in
@@ -179,6 +179,9 @@ enum DebugHealthSeeder {
         qs(.activeEnergyBurned, .kilocalorie(), Double(20 + h), s, s.addingTimeInterval(3000))
       }
       qs(.bodyMass, .gramUnit(with: .kilo), 99.9, now.addingTimeInterval(-1800))
+      // Two drinks today (330 mL, 0.5 L), for RawSync's water upload (#135)
+      qs(.dietaryWater, .literUnit(with: .milli), 330, now.addingTimeInterval(-5400))
+      qs(.dietaryWater, .liter(), 0.5, now.addingTimeInterval(-2700))
       // Last night sleep: from 01:30, alternating core / deep / REM / awake
       let cal = Calendar.current
       let bed = cal.date(bySettingHour: 1, minute: 30, second: 0, of: now)!.addingTimeInterval(now < cal.date(bySettingHour: 9, minute: 0, second: 0, of: now)! ? -86400 : 0)

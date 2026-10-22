@@ -226,7 +226,7 @@ Idempotent: the page's `client_id` and HealthKit UUIDs are stored once.
   2.1 L women), plus 500 ml on a day with a 30+ min workout and 500 ml after a sauna (journal item `sauna`); sources there.
 - AI: `log_water` (undo with `rollback_write`, write-log kind `water`); today's total is in `get_briefing` (`water`).
 - Apple Health: `water[]` in `POST /v1/ingest/healthkit` (HealthKit `dietaryWater`; Open Wearables 0.9 maps only
-  Android's hydration). The app's reader comes with the next iOS version.
+  Android's hydration). The app reads it itself (iOS 1.0.6, `RawSync.swift` / `raw_sync.dart`, #135), only while `water_enabled`.
 - Reminder: rule `water_halfway` (`rules/hydration.py`): from 15:00 local time, under half of the goal -> one info reminder that day.
 - Rollout: feature flag `water` (`rollout/registry.py`, docs/rollout.md), off until an admin turns it on; off = the
   endpoints 404 (`flags.require`), no Today page card (`BodyFlags.on`), `log_water` refuses, no briefing / rule / Apple
@@ -262,7 +262,7 @@ the OW sync (90 days / all history).
 | Endpoint | Auth | Description |
 |---|---|---|
 | `POST /v1/ingest/healthkit` | Bearer: account token (write) or upload-only token (scope `ingest`) | One batch `{batch_id, heartbeats[{uuid, start, end, source, beats (s since the first beat), gaps}], ecgs[{uuid, start, sample_hz, voltage_b64 (int16 LE µV), classification, symptoms_status, avg_hr, device, software_version}], deleted[uuid]}`; ≤ 2 MB, ≤ 500 readings / 20 ECGs. Stored with `store.py` (RMSSD / SDNN and ECG R peaks computed on insert), origin `app`. Idempotent: known HealthKit UUIDs are skipped, a re-sent `batch_id` is answered from `rawdata_uploads`. `deleted` removes app copies the person deleted in Health. 409 `consent_required` until the person agreed to consent version `RAW_CONSENT_VERSION` (2026-10-22.1, the first that names ECGs and beat-to-beat intervals) or later; older or paper consent counts as not agreed, nothing is stored and the app retries after the new consent is confirmed on the Today page (the owner is exempt) |
-| `GET /v1/ingest/healthkit` | same | `{heartbeats, ecgs, last_upload_at}` uploaded by the app |
+| `GET /v1/ingest/healthkit` | same | `{heartbeats, ecgs, water, water_enabled, last_upload_at}` uploaded by the app. `water_enabled` (also in every POST answer) is the `water` flag for this account: the app reads and sends `water[]` only while it is true and keeps its water anchor when a batch was skipped (#135) |
 | `POST /v1/web/ingest-token` `{device}` | Today page cookie session with write | Mints the upload-only token for setup-link users (no account token in the app); a new one for the same device revokes the old one. It cannot read anything or log in to the Today page |
 
 ECG keeps its own share scope and the AI still only gets summaries. Tests: `tests/test_rawdata_ingest.py`.
