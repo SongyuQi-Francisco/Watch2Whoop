@@ -2,17 +2,21 @@
 
 - The profile card is read first in every conversation (get_memory); the butler edits it with update_profile_card, the user edits it on the Today page with PUT .../memory/profile/{key}.
 - Observation notes are new facts learned in conversation, with source and date; the user can delete them (DELETE .../memory/observations/{id}).
+  kind='recent' notes are current circumstances with an end date (valid_until, user-local, inclusive; default
+  memory_params.RECENT_DEFAULT_DAYS): once past it they leave get_memory / the conversation memory / get_briefing but are kept
+  for get_memory(history=True) and week reviews (recent_during). Migration 520, issue #112.
 - memory-init generates the initial profile card from existing database data (lab results, exercise rules, supplements, basic info) and body-management.md (transcribed in memory_seed.py);
   it only fills missing keys and never overwrites later changes.
 The caller is responsible for authorization (reading needs can_view(scope=memory), writing only for the caller); here we only read / write by user_id.
 """
 import re
-from datetime import date
+from datetime import date, timedelta
 
 import psycopg
 
 from .. import queries
 from ..records import store as records_store
+from . import memory_params as mp
 
 KEY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 MAX_VALUE = 4000
@@ -32,17 +36,37 @@ STANDARD_KEYS: dict[str, tuple[str, int]] = {
     "current_plan": ("当前训练和饮食计划", 100),
     "supplements": ("补剂", 110),
     "follow_ups": ("复查和待办", 120),
+    "communication": ("沟通方式", 5),   # answer length, numbers vs explanations, tone, emoji, reminder frequency, topics not to raise
 }
+OBS_COLS = "id, text, created_at, source, evidence, kind, valid_from, valid_until"
 
 
-def get_memory(conn: psycopg.Connection, user_id: int) -> dict:
+def get_memory(conn: psycopg.Connection, user_id: int, history: bool = False, today: date | None = None) -> dict:
+    """Profile card + observation notes (oldest first). Recent notes whose end date is before the user's local today are
+    left out (counted in expired_recent) unless history=True."""
     card = conn.execute(
         """SELECT key, label, value, updated_at, source FROM assistant_profile
            WHERE user_id = %s ORDER BY sort, key""", (user_id,)).fetchall()
+    today = today or queries.local_today(conn, user_id)
     obs = conn.execute(
-        """SELECT id, text, created_at, source, evidence FROM assistant_observations
-           WHERE user_id = %s ORDER BY created_at, id""", (user_id,)).fetchall()
-    return {"profile_card": card, "observations": obs}
+        f"""SELECT {OBS_COLS} FROM assistant_observations
+            WHERE user_id = %s ORDER BY created_at, id""", (user_id,)).fetchall()
+    expired = [o for o in obs if is_expired(o, today)]
+    if not history:
+        obs = [o for o in obs if not is_expired(o, today)]
+    return {"profile_card": card, "observations": obs, "expired_recent": len(expired)}
+
+
+def is_expired(o: dict, today: date) -> bool:
+    return o.get("kind") == "recent" and o["valid_until"] is not None and o["valid_until"] < today
+
+
+def recent_during(conn: psycopg.Connection, user_id: int, start: date, end: date) -> list[dict]:
+    """Recent notes that were in effect on any day of [start, end] (e.g. the week a review looks back on), oldest first."""
+    return conn.execute(
+        f"""SELECT {OBS_COLS} FROM assistant_observations
+            WHERE user_id = %s AND kind = 'recent' AND valid_until >= %s AND COALESCE(valid_from, created_at::date) <= %s
+            ORDER BY COALESCE(valid_from, created_at::date), id""", (user_id, start, end)).fetchall()
 
 
 def _check_key(key: str) -> None:
@@ -79,23 +103,54 @@ def delete_profile(conn: psycopg.Connection, user_id: int, key: str) -> bool:
                         (user_id, key)).rowcount > 0
 
 
+def _until(conn: psycopg.Connection, user_id: int, until: str | date | None) -> tuple[date, date] | None:
+    """until -> (valid_from, valid_until) of a recent note, or None for a lasting fact. "recent" = the default length."""
+    if until is None or until == "":
+        return None
+    today = queries.local_today(conn, user_id)
+    if until == "recent":
+        return today, today + timedelta(days=mp.RECENT_DEFAULT_DAYS)
+    try:
+        end = until if isinstance(until, date) else date.fromisoformat(str(until))
+    except ValueError:
+        raise ValueError("until 写 YYYY-MM-DD（近况的最后一天）或 recent（默认 "
+                         f"{mp.RECENT_DEFAULT_DAYS} 天），长期事实不填")
+    if end < today:
+        raise ValueError(f"until {end} 已经过去了（今天 {today}），过去的事写日记或事件")
+    if end > today + timedelta(days=mp.RECENT_MAX_DAYS):
+        raise ValueError(f"近况最长 {mp.RECENT_MAX_DAYS} 天；更长的是长期事实（不填 until）或档案卡")
+    return today, end
+
+
 def add_observation(conn: psycopg.Connection, user_id: int, text: str, evidence: str | None = None,
-                    source: str = "assistant") -> dict:
-    """Record an observation. If the same text was already recorded, do not repeat it (return the old one, duplicate=true)."""
+                    source: str = "assistant", until: str | date | None = None) -> dict:
+    """Record an observation. If the same text was already recorded, do not repeat it (return the old one, duplicate=true).
+    With `until` it is a recent note (kind=recent) ending that day; the same text again as a recent note moves its dates
+    (so "still travelling" extends it instead of being dropped as a duplicate of the expired one)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("text 不能为空")
     if len(text) > MAX_OBSERVATION:
         raise ValueError(f"观察笔记不超过 {MAX_OBSERVATION} 字，写成一句话的事实")
+    span = _until(conn, user_id, until)
+    kind, vfrom, vuntil = ("recent", *span) if span else ("fact", None, None)
     row = conn.execute(
-        """INSERT INTO assistant_observations (user_id, text, evidence, source) VALUES (%s, %s, %s, %s)
-           ON CONFLICT (user_id, md5(btrim(text))) DO NOTHING
-           RETURNING id, text, created_at, source, evidence""", (user_id, text, evidence, source)).fetchone()
+        f"""INSERT INTO assistant_observations (user_id, text, evidence, source, kind, valid_from, valid_until)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id, md5(btrim(text))) DO NOTHING
+            RETURNING {OBS_COLS}""", (user_id, text, evidence, source, kind, vfrom, vuntil)).fetchone()
     if row is not None:
         return {**row, "duplicate": False}
+    if span:
+        old = conn.execute(
+            f"""UPDATE assistant_observations SET kind = 'recent', valid_from = %s, valid_until = %s,
+                  evidence = COALESCE(%s, evidence)
+                WHERE user_id = %s AND md5(btrim(text)) = md5(btrim(%s)) RETURNING {OBS_COLS}""",
+            (vfrom, vuntil, evidence, user_id, text)).fetchone()
+        return {**old, "duplicate": True, "dates_updated": True}
     old = conn.execute(
-        """SELECT id, text, created_at, source, evidence FROM assistant_observations
-           WHERE user_id = %s AND md5(btrim(text)) = md5(btrim(%s))""", (user_id, text)).fetchone()
+        f"""SELECT {OBS_COLS} FROM assistant_observations
+            WHERE user_id = %s AND md5(btrim(text)) = md5(btrim(%s))""", (user_id, text)).fetchone()
     return {**old, "duplicate": True}
 
 

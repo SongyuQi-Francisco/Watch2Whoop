@@ -101,7 +101,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"user": USER, "statuses": {"type": "array", "items": {"type": "string", "enum": SUPP_STATUS},
                                                          "description": "空 = 全部"}}),
         handler=lambda conn, uid, a: store.list_supplements(conn, uid, a["statuses"] or None),
-        scope="supplements",
+        group="records", scope="supplements",
     ),
     dict(
         name="add_supplement",
@@ -118,7 +118,7 @@ TOOL_SPECS: list[dict] = [
             "journal_key": _nullable("string", "小写字母下划线"),
         }),
         handler=lambda conn, uid, a: store.add_supplement(conn, uid, _changes(a)),
-        scope="supplements", writes=True,
+        group="records", scope="supplements", writes=True,
     ),
     dict(
         name="update_supplement",
@@ -136,14 +136,14 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: _require(store.update_supplement(conn, uid, a["supplement_id"],
                                                                       _changes(a, "supplement_id")), "补剂"),
-        scope="supplements", writes=True,
+        group="records", scope="supplements", writes=True,
     ),
     dict(
         name="delete_supplement",
         description="删除录错 / 重复的补剂及它的日记项，不可恢复。不再吃用 update_supplement status=stopped。",
         input_schema=_schema({"supplement_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _require(store.delete_supplement(conn, uid, a["supplement_id"]), "补剂"),
-        scope="supplements", writes=True,
+        group="records", scope="supplements", writes=True,
     ),
     # ---------- Lab results ----------
     dict(
@@ -153,7 +153,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"user": USER, "tests": {"type": "array", "items": {"type": "string"},
                                                       "description": "test_key（uric_acid、alt…）或中文名；空 = 全部"}}),
         handler=lambda conn, uid, a: store.lab_report(conn, uid, a["tests"] or None),
-        scope="labs",
+        group="records", scope="labs",
     ),
     dict(
         name="add_lab_results",
@@ -182,7 +182,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: lab_catalog.add_results(conn, uid, date.fromisoformat(a["collected_on"]), a["lab"],
                                                              a["results"], a["overwrite"],
                                                              a.get("source") or "lab", a.get("fasting")),
-        scope="labs", writes=True,
+        group="records", scope="labs", writes=True,
     ),
     dict(
         name="get_lab_history",
@@ -192,7 +192,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"user": USER, "test": {"type": "string", "description": "test_key（如 uric_acid）或中文名"},
                               "limit": _nullable("integer", "只要最近几次；null = 全部")}),
         handler=_lab_history,
-        scope="labs",
+        group="records", scope="labs",
     ),
     dict(
         name="delete_lab_results",
@@ -203,7 +203,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: lab_catalog.delete_results(conn, uid, date.fromisoformat(a["collected_on"]),
                                                                 a["test_keys"]),
-        scope="labs", writes=True,
+        group="records", scope="labs", writes=True,
     ),
     # ---------- Journal ----------
     dict(
@@ -212,7 +212,7 @@ TOOL_SPECS: list[dict] = [
                     "记日记前先确认 key。",
         input_schema=_schema({"user": USER}),
         handler=lambda conn, uid, a: store.list_journal_items(conn, uid, active_only=True),
-        scope="journal",
+        group="records", scope="journal",
     ),
     dict(
         name="log_journal",
@@ -226,7 +226,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: store.log_journal(conn, uid, date.fromisoformat(a["date"]), a["key"],
                                                        a["value"], a["note"], source="assistant"),
-        scope="journal", writes=True,
+        group="records", scope="journal", writes=True,
     ),
     dict(
         name="delete_journal_entry",
@@ -234,7 +234,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"date": DATE, "key": {"type": "string"}}),
         handler=lambda conn, uid, a: _deleted_journal(store.delete_journal_entry(conn, uid, date.fromisoformat(a["date"]),
                                                                                 a["key"]), a),
-        scope="journal", writes=True,
+        group="records", scope="journal", writes=True,
     ),
     dict(
         name="get_journal",
@@ -246,7 +246,7 @@ TOOL_SPECS: list[dict] = [
             "keys": {"type": "array", "items": {"type": "string"}, "description": "空 = 全部"},
         }),
         handler=_journal,
-        scope="journal",
+        group="records", scope="journal",
     ),
     dict(
         name="analyze_journal",
@@ -260,7 +260,7 @@ TOOL_SPECS: list[dict] = [
             "detail": DETAIL,
         }),
         handler=_analyze,
-        scope="journal",
+        group="records", scope="journal",
     ),
     # ---------- Body events (list_events / add_event are in assistant/tools.py) ----------
     dict(
@@ -278,7 +278,7 @@ TOOL_SPECS: list[dict] = [
             "resolved_on": _nullable("string", "YYYY-MM-DD"),
         }),
         handler=lambda conn, uid, a: _require(store.update_event(conn, uid, a["event_id"], _changes(a, "event_id")), "事件"),
-        scope="events", writes=True,
+        group="records", scope="events", writes=True,
     ),
     # ---------- Exercises ----------
     dict(
@@ -287,7 +287,7 @@ TOOL_SPECS: list[dict] = [
                     "给训练建议前先查，不推荐 banned。",
         input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带别名、英文名、app 动作 ID、正常动作要点"}}),
         handler=_exercise_rules,
-        scope="exercises",
+        group="training", scope="exercises",
     ),
     dict(
         name="set_exercise_rule",
@@ -302,6 +302,6 @@ TOOL_SPECS: list[dict] = [
             "app_exercise_id": _nullable("string", "SparkyFitness 动作 ID"),
         }),
         handler=lambda conn, uid, a: store.upsert_exercise(conn, uid, a["exercise_ref"], _changes(a, "exercise_ref")),
-        scope="exercises", writes=True,
+        group="training", scope="exercises", writes=True,
     ),
 ]
