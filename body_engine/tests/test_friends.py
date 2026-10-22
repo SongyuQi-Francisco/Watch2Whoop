@@ -43,10 +43,13 @@ def dsn():
 
 @pytest.fixture(scope="module")
 def world(dsn):
-    """Ann, Ben, Cat, Dan agreed to the circle consent; Eve agreed only to an older version."""
+    """Ann, Ben, Cat, Dan agreed to the circle consent; Eve agreed only to an older version. Their personal circles are
+    settled (personal_circle_at set, none made), so these tests see only the circles they make; personal circles have
+    their own users below."""
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        ids = {n: conn.execute("""INSERT INTO users (display_name, birth_date, height_cm, consent_at, consent_version)
-                                  VALUES (%s, '1990-01-01', 175, now(), %s) RETURNING id""",
+        ids = {n: conn.execute("""INSERT INTO users (display_name, birth_date, height_cm, consent_at, consent_version,
+                                                     personal_circle_at)
+                                  VALUES (%s, '1990-01-01', 175, now(), %s, now()) RETURNING id""",
                                (n, "2026-10-22.1" if n == "Eve" else P.CONSENT_VERSION)).fetchone()["id"] for n in NAMES}
         tok = {n: auth.create_token(conn, ids[n], "t", ["read", "write"]) for n in ids}
         tok["ann_ro"] = auth.create_token(conn, ids["Ann"], "ro", ["read"])
@@ -287,7 +290,8 @@ def test_referral_signup_gets_invite_but_shares_nothing_until_accepting(client, 
         conn.execute("UPDATE users SET consent_at = now(), consent_version = %s WHERE id = %s", (P.CONSENT_VERSION, new["id"]))
         t = auth.create_token(conn, new["id"], "t", ["read", "write"])
     over = client.get("/v1/friends", headers=h(t)).json()
-    assert over["circles"] == [] and [i["circle_id"] for i in over["invites"]] == [cid]
+    assert [(c["name"], c["personal"]) for c in over["circles"]] == [("friend 的圈子", True)]
+    assert [i["circle_id"] for i in over["invites"]] == [cid]
     assert over["invites"][0]["from_name"] == "Ann"
     assert sees(client, t, ids["Ann"], "scores") == 403 and sees(client, tok["Ann"], new["id"], "scores") == 403
     inv = over["invites"][0]["id"]
@@ -607,3 +611,148 @@ def test_flag_off_closes_leaderboard_and_ai_tool(client, world, dsn):
         _flag(dsn, "all")
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         assert run_tool(conn, ids["Ben"], "mcp:test", "get_friends_overview", {})["members"]
+
+
+# ---------------------------------------------------------------- personal circles + referral onboarding (plan A, 2026-10-22)
+def _person(dsn, name, language=None, consent_version=P.CONSENT_VERSION):
+    """A fresh user whose personal circle is not settled yet; returns (id, write token)."""
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        uid = conn.execute("""INSERT INTO users (display_name, language, consent_at, consent_version) VALUES (%s, %s, now(), %s)
+                              RETURNING id""", (name, language, consent_version)).fetchone()["id"]
+        return uid, auth.create_token(conn, uid, "t", ["read", "write"])
+
+
+def _referred(dsn, inviter, name):
+    """`name` signs up with `inviter`'s referral code (#57), then confirms the consent; returns (id, write token)."""
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        code = invites.referral_code(conn, inviter)["code"]
+        new, _ = signin.find_or_create_user(conn, "email", f"{name}@example.com", f"{name}@example.com", True)
+        assert invites.redeem(conn, new["id"], code)
+        conn.execute("UPDATE users SET display_name = %s, consent_at = now(), consent_version = %s WHERE id = %s",
+                     (name, P.CONSENT_VERSION, new["id"]))
+        return new["id"], auth.create_token(conn, new["id"], "t", ["read", "write"])
+
+
+def _offer(client, tok):
+    r = client.get("/v1/friends/referral", headers=h(tok))
+    assert r.status_code == 200, r.text
+    return r.json()["offer"]
+
+
+def test_personal_circle_made_once_on_first_use(client, dsn):
+    pia, tok = _person(dsn, "Pia")
+    over = client.get("/v1/friends", headers=h(tok)).json()
+    assert [(c["name"], c["personal"], c["is_owner"], c["my_scopes"]) for c in over["circles"]] == \
+        [("Pia 的圈子", True, True, list(P.DEFAULT_SCOPES))]
+    assert len(client.get("/v1/friends", headers=h(tok)).json()["circles"]) == 1   # no second one
+    cid = over["circles"][0]["id"]
+    assert client.post(f"/v1/friends/circles/{cid}/invite", headers=h(tok)).status_code == 200   # a normal circle
+    # dissolved by its owner: not made again
+    assert client.delete(f"/v1/friends/circles/{cid}", headers=h(tok)).status_code == 204
+    assert client.get("/v1/friends", headers=h(tok)).json()["circles"] == []
+    # the owner's language
+    _, tok_en = _person(dsn, "Quinn", language="en")
+    assert [c["name"] for c in client.get("/v1/friends", headers=h(tok_en)).json()["circles"]] == ["Quinn's circle"]
+    # no consent for circles yet: nothing made, tried again after confirming
+    roy, tok_roy = _person(dsn, "Roy", consent_version="2026-10-22.1")
+    assert client.get("/v1/friends", headers=h(tok_roy)).json()["circles"] == []
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE users SET consent_version = %s WHERE id = %s", (P.CONSENT_VERSION, roy))
+    assert [c["name"] for c in client.get("/v1/friends", headers=h(tok_roy)).json()["circles"]] == ["Roy 的圈子"]
+
+
+def test_owner_of_a_hand_made_circle_gets_no_personal_one(client, dsn):
+    sam, tok = _person(dsn, "Sam")
+    made = circle(client, tok, name="篮球")["circle"]
+    c = client.get("/v1/friends", headers=h(tok)).json()["circles"]
+    assert [(x["id"], x["name"], x["personal"]) for x in c] == [(made["id"], "篮球", False)]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT personal_circle_at FROM users WHERE id = %s", (sam,)).fetchone()["personal_circle_at"]
+        assert store.home_circle(conn, sam) == made["id"]   # referrals invite to it
+    # a member (not owner) of someone else's circle still gets their own
+    tia, tok_tia = _person(dsn, "Tia")
+    join(client, tok_tia, client.post(f"/v1/friends/circles/{made['id']}/invite", headers=h(tok)).json()["code"])
+    names = [x["name"] for x in client.get("/v1/friends", headers=h(tok_tia)).json()["circles"]]
+    assert sorted(names) == ["Tia 的圈子", "篮球"]
+
+
+def test_referral_onboarding_join_or_not(client, dsn, monkeypatch):
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    una, tok_una = _person(dsn, "Una")
+    vic, tok_vic = _referred(dsn, una, "Vic")
+    offer = _offer(client, tok_vic)
+    assert (offer["name"], offer["inviter_name"], offer["members"], offer["scopes"]) == \
+        ("Una 的圈子", "Una", 1, list(P.DEFAULT_SCOPES))
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:   # made for Una when Vic signed up
+        assert conn.execute("SELECT circle_id FROM invite_redemptions WHERE user_id = %s", (vic,)).fetchone()["circle_id"] \
+            == offer["circle_id"]
+    assert not can(dsn, una, vic, "scores") and not can(dsn, vic, una, "scores")   # nothing before the tap
+    # 「下一步」 with 「加入」 ticked: joins with the default scopes
+    r = client.post("/v1/friends/join", headers=h(tok_vic), json={"invite_id": offer["invite_id"], "scopes": offer["scopes"]})
+    assert r.status_code == 200 and r.json()["name"] == "Una 的圈子"
+    assert can(dsn, una, vic, "scores") and can(dsn, vic, una, "training") and not can(dsn, una, vic, "weight")
+    assert not can(dsn, una, vic, "ecg")
+    assert _offer(client, tok_vic) is None
+    # 「加入」 unticked: nothing happens, nothing shared; the invite waits on the Friends page until declined
+    wes, tok_wes = _referred(dsn, una, "Wes")
+    offer = _offer(client, tok_wes)
+    assert offer and not can(dsn, una, wes, "scores") and not can(dsn, wes, vic, "scores")
+    assert [i["id"] for i in client.get("/v1/friends", headers=h(tok_wes)).json()["invites"]] == [offer["invite_id"]]
+    assert client.delete(f"/v1/friends/invites/{offer['invite_id']}", headers=h(tok_wes)).status_code == 204
+    assert _offer(client, tok_wes) is None and client.get("/v1/friends", headers=h(tok_wes)).json()["invites"] == []
+
+
+def test_friends_of_friends_stay_invisible(client, dsn, monkeypatch):
+    """A invites B, B joins A's circle; B invites C, C joins B's circle: A and C never see each other."""
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    a, tok_a = _person(dsn, "Abe")
+    b, tok_b = _referred(dsn, a, "Bea")
+    ob = _offer(client, tok_b)
+    assert client.post("/v1/friends/join", headers=h(tok_b), json={"invite_id": ob["invite_id"], "scopes": ob["scopes"]}).status_code == 200
+    c, tok_c = _referred(dsn, b, "Cy")
+    oc = _offer(client, tok_c)
+    assert oc["name"] == "Bea 的圈子" and oc["circle_id"] != ob["circle_id"]   # B's own circle, not A's
+    assert client.post("/v1/friends/join", headers=h(tok_c), json={"invite_id": oc["invite_id"], "scopes": list(P.CIRCLE_SCOPES)}).status_code == 200
+    assert can(dsn, a, b, "scores") and can(dsn, b, c, "scores") and can(dsn, c, b, "scores")
+    for scope in P.CIRCLE_SCOPES:
+        assert not can(dsn, a, c, scope) and not can(dsn, c, a, scope)
+    assert sees(client, tok_a, c, "scores") == 403 and sees(client, tok_c, a, "scores") == 403
+    members = lambda tok, cid: [m["display_name"] for m in next(x for x in client.get("/v1/friends", headers=h(tok)).json()["circles"] if x["id"] == cid)["members"]]
+    assert members(tok_a, ob["circle_id"]) == ["Abe", "Bea"] and members(tok_c, oc["circle_id"]) == ["Bea", "Cy"]
+    names_a = {m["display_name"] for m in client.get("/v1/friends/overview", headers=h(tok_a)).json()["members"]}
+    assert names_a == {"Bea"}
+
+
+def test_flag_off_referral_changes_nothing_then_catches_up(client, dsn, monkeypatch):
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    try:
+        _flag(dsn, "off")
+        xia, tok_xia = _person(dsn, "Xia")
+        yan, tok_yan = _referred(dsn, xia, "Yan")
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert conn.execute("SELECT circle_id FROM invite_redemptions WHERE user_id = %s", (yan,)).fetchone()["circle_id"] is None
+            assert conn.execute("SELECT count(*) AS n FROM circles WHERE owner_id = ANY(%s)", ([xia, yan],)).fetchone()["n"] == 0
+            assert conn.execute("SELECT count(*) AS n FROM circle_invites WHERE invitee_user_id = %s", (yan,)).fetchone()["n"] == 0
+            assert conn.execute("SELECT count(*) AS n FROM users WHERE id = ANY(%s) AND personal_circle_at IS NOT NULL",
+                                ([xia, yan],)).fetchone()["n"] == 0
+        assert client.get("/v1/friends/referral", headers=h(tok_yan)).status_code == 404
+        # on for the invitee only: no offer, nothing made for the inviter, no error
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.cohort_add(conn, yan, "beta", actor="test")
+        _flag(dsn, "cohort", cohort="beta")
+        assert _offer(client, tok_yan) is None
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert conn.execute("SELECT count(*) AS n FROM circles WHERE owner_id = %s", (xia,)).fetchone()["n"] == 0
+        # on for both: the invite is made now and onboarding / the Friends page can offer it
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.cohort_add(conn, xia, "beta", actor="test")
+        offer = _offer(client, tok_yan)
+        assert offer["name"] == "Xia 的圈子" and offer["inviter_name"] == "Xia"
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert conn.execute("SELECT circle_id FROM invite_redemptions WHERE user_id = %s", (yan,)).fetchone()["circle_id"] \
+                == offer["circle_id"]
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            for u in (xia, yan):
+                flags.cohort_remove(conn, u, "beta", actor="test")
+        _flag(dsn, "all")
