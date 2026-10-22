@@ -49,11 +49,11 @@ def test_flag_declared_and_the_scripts_are_shipped():
 
 
 # ---------------------------------------------------------------- 记录 page: two segments with the flag, three without
-def seg_labels(v2: bool, friends: bool, rec_sub: str = "training"):
-    start = APP.index("const recSeg = () => {")
+def seg_labels(v2: bool, friends: bool, rec_sub: str = "training", tab: str = "record"):
+    start = APP.index("const recCur = () => {")   # recCur (which segment is lit) + recSeg
     code = APP[start:APP.index("function bindRecSeg", start)].rstrip().rstrip(";")
     return node_run(f"""
-      const S = {{ recSub: {json.dumps(rec_sub)} }};
+      const S = {{ tab: {json.dumps(tab)}, recSub: {json.dumps(rec_sub)} }};
       const tr = (k) => k, recordsV2 = () => {str(v2).lower()}, friendsOn = () => {str(friends).lower()};
       {code};
       const html = recSeg();
@@ -68,6 +68,9 @@ def test_flag_on_records_has_only_training_and_food():
     assert out["labels"][0][1] == "true"                              # 训练 is the selected one
     # a saved 日记 segment (localStorage) can never be the selected one
     assert seg_labels(v2=True, friends=True, rec_sub="journal")["labels"][0][:2] == ["training", "true"]
+    # the food page (its own tab under the Friends flag) lights 饮食, not 训练
+    food = seg_labels(v2=True, friends=True, tab="food")["labels"]
+    assert [l[:2] for l in food] == [["training", "false"], ["food", "true"]]
 
 
 def test_flag_on_without_friends_has_a_single_page_and_no_switch():

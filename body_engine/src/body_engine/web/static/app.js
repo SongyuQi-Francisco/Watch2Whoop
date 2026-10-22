@@ -1982,10 +1982,18 @@
     return `<button class="tag ${v === 1 ? "on" : v === 0 ? "no" : ""}" data-jkey="${esc(it.key)}" aria-pressed="${v === 1}" ${self ? "" : "disabled"}><span>${esc(shortLabel(it))}</span></button>`;
   }
 
+  // The one place that decides which 记录 segment is lit, from the page actually shown: with the Friends flag 饮食 is its own
+  // tab (S.tab === "food") rendered under the same segment, whatever S.recSub still holds from an earlier visit.
+  const recCur = () => {
+    if (S.tab === "food" && friendsOn()) return "food";
+    if (S.recSub === "food" && !friendsOn()) return recordsV2() ? "training" : "journal";
+    if (S.recSub === "journal" && recordsV2()) return "training";
+    return S.recSub;
+  };
   const recSeg = () => {
     const v2 = recordsV2();
     const subs = [...(v2 ? [] : [["journal", tr("日记")]]), ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
-    const cur = v2 ? "training" : S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    const cur = recCur();
     if (subs.length < 2) return "";   // records_v2 without the Friends flag: 记录 is only 训练, nothing to switch
     return `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${subs
       .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${cur === k}">${t}</button>`).join("")}</div></div>`;
