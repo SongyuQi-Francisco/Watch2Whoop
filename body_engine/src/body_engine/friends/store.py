@@ -20,6 +20,7 @@ from datetime import datetime
 import psycopg
 
 from .. import auth, i18n
+from ..avatars import urls as avatar_store
 from ..profile import consent
 from ..web import login_codes
 from . import params as P
@@ -289,13 +290,20 @@ def _members(conn, circle_id: int) -> list[int]:
         "SELECT user_id FROM circle_members WHERE circle_id = %s ORDER BY joined_at, user_id", (circle_id,))]
 
 
+def _delete_circle(conn, circle_id: int) -> None:
+    """Delete a circle and its logo (the image row would stay behind otherwise: circles only point at it)."""
+    row = conn.execute("DELETE FROM circles WHERE id = %s RETURNING avatar_image_id", (circle_id,)).fetchone()
+    if row and row["avatar_image_id"]:
+        conn.execute("DELETE FROM images WHERE id = %s", (row["avatar_image_id"],))
+
+
 def _drop_member(conn, circle_id: int, member_id: int) -> None:
     """Take a member out; an owner who leaves hands the circle to the longest-standing member, the last one dissolves it."""
     circle = conn.execute("SELECT * FROM circles WHERE id = %s FOR UPDATE", (circle_id,)).fetchone()
     conn.execute("DELETE FROM circle_members WHERE circle_id = %s AND user_id = %s", (circle_id, member_id))
     rest = _members(conn, circle_id)
     if not rest:
-        conn.execute("DELETE FROM circles WHERE id = %s", (circle_id,))
+        _delete_circle(conn, circle_id)
     elif circle["owner_id"] == member_id:
         conn.execute("UPDATE circles SET owner_id = %s WHERE id = %s", (rest[0], circle_id))
     sync_user(conn, member_id)
@@ -318,7 +326,7 @@ def remove_member(conn: psycopg.Connection, uid: int, circle_id: int, member_id:
 def dissolve(conn: psycopg.Connection, uid: int, circle_id: int) -> None:
     _circle_for_owner(conn, circle_id, uid)
     members = _members(conn, circle_id)
-    conn.execute("DELETE FROM circles WHERE id = %s", (circle_id,))
+    _delete_circle(conn, circle_id)
     for m in members:
         sync_user(conn, m)
 
@@ -427,13 +435,14 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
     members = conn.execute(
         """SELECT u.id, u.display_name, m.joined_at, m.scopes FROM circle_members m JOIN users u ON u.id = m.user_id
            WHERE m.circle_id = %s ORDER BY m.joined_at, u.id""", (circle_id,)).fetchall()
+    avatars = avatar_store.urls_for(conn, uid, [m["id"] for m in members])
     out = {"id": c["id"], "name": c["name"], "owner_id": c["owner_id"], "is_owner": c["owner_id"] == uid,
            "personal": c["personal"], "created_at": c["created_at"], "avatar": avatar_url(c),
            "max_members": max_members(c),
            "my_scopes": next(m["scopes"] for m in members if m["id"] == uid),
            # other members' picks are not shown here: what they share with you is in /v1/web/me → viewable
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],
-                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid} for m in members]}
+                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"])} for m in members]}
     if out["is_owner"]:
         codes = conn.execute("""SELECT id, created_at, expires_at, used_count FROM circle_invites WHERE circle_id = %s
                                 AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
