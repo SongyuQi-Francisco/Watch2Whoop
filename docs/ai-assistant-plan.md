@@ -398,6 +398,7 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
   - `training`：当天计划、准备度和动作卡头部，复用训练页（FB-5，`training-day.js` 的 `summaryHtml`）的同一套样式和数据（`training/session_log.view`）。
   - `meal`：热量 / 蛋白和目标进度、碳水脂肪、明细。
   - `metric`：恢复 / 负荷 / 睡眠 / HRV / 静息心率 / 体重的小图，复用今天页的 `tChart`（`window.BodyCharts`）。
+  - `sleep`（2026-10-22，睡眠详情页 PR）：某晚（`date` = 醒来那天，null = 最近一晚）的入睡 → 醒来、睡着时长、阶段时间轴（`BodyCharts.hypno`）、睡眠分、需求和规则要点的短标签；数据来自睡眠详情页同一个 `sleep_night/view.build`，按钮「睡眠详情」打开那晚的详情页（`sleep_detail` 关着时打开趋势 → 睡眠）。今天页详情页底部「让 Jarvis 详细分析这晚的睡眠」只预填问题，用户自己发出去才调用 AI。
   - `actions`：2–4 个快捷按钮。
   - 确认卡（删除 / 撤销）照旧。
 - **点击怎么回传**：
