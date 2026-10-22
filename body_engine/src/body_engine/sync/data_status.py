@@ -11,6 +11,8 @@ keeps one), the days and records of the last WINDOW_DAYS days, the sources of th
 Read only, own data only (sync/api.py). Tables: daily_metrics / daily_metric_sources (OW, the Shortcut, the Apple Health
 export), sleep_sessions, workouts (not duplicates, not excluded), heartbeat_series / ecg_recordings (the app's direct
 upload or the export), water_intake (only drinks from Apple Health). `channels` says when each way in last delivered.
+`strength` (issue #210): the strength-training records of the last few weeks by source (watch / SparkyFitness / Hevy), the
+same records body age counts, so the user can check them (insights/healthspan_store.strength_sources).
 """
 from __future__ import annotations
 
@@ -121,8 +123,15 @@ def _channels(conn: psycopg.Connection, user_id: int, tz: ZoneInfo) -> dict:
     return {"ow_last_sample_at": _iso(r["ow"], tz), "app_upload_at": _iso(r["app"], tz), "shortcut_upload_at": _iso(r["shortcut"], tz)}
 
 
-def collect(conn: psycopg.Connection, user_id: int, today: date | None = None) -> dict:
-    """{today, window_days, types: [...], summary: {ok, stale, never}, channels}."""
+def _strength(conn: psycopg.Connection, user_id: int, today: date, sparky=None) -> dict:
+    from ..insights import healthspan_params as H, healthspan_store   # insights imports sync modules indirectly
+    weeks = H.STRENGTH_COVERAGE_WEEKS
+    return {"weeks": weeks, **healthspan_store.strength_sources(conn, user_id, today - timedelta(days=7 * weeks - 1), today,
+                                                                sparky, timeout=params.SPARKY_TIMEOUT_S)}
+
+
+def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, sparky=None) -> dict:
+    """{today, window_days, types: [...], summary: {ok, stale, never}, channels, strength}."""
     from .. import water
     tz_name = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"]
     tz = ZoneInfo(tz_name)
@@ -149,4 +158,4 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None) -
             "stale_after_days": stale_after, "notes": notes,
         })
     return {"today": today.isoformat(), "window_days": params.WINDOW_DAYS, "types": types, "summary": summary,
-            "channels": _channels(conn, user_id, tz)}
+            "channels": _channels(conn, user_id, tz), "strength": _strength(conn, user_id, today, sparky)}

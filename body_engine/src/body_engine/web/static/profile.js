@@ -25,6 +25,7 @@
     .consent-check{display:flex;gap:10px;align-items:flex-start;margin:18px 0 4px;font-size:15px;line-height:1.4}
     .consent-check input{width:22px;height:22px;flex:none;margin:0}
     .consent .btn[disabled]{opacity:.4}
+    .consent-circle{background:var(--surface);border-radius:14px;padding:12px 16px;margin:10px 0;font-size:14px;line-height:1.5}
     #pf-birth{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;box-sizing:border-box;text-align:left}`;
 
   function injectCss() {
@@ -69,10 +70,14 @@
     el.id = "consent";
     el.setAttribute("role", "dialog");
     el.setAttribute("aria-modal", "true");
+    // circles of activation codes used at sign-up: joined after this consent, with these scopes (friends/codes.py)
+    const labels = window.BodyCircles?.labels || {};
+    const joining = (P?.circle_pending || []).map((j) => `<p class="consent-circle">${esc(tr("同意后你会加入圈子「{name}」，圈子里的人能看到你的：{list}。随时可以在「圈子」里修改或退出。",
+      { name: j.name, list: j.scopes.map((x) => labels[x] || x).join(" · ") || tr("什么都不共享") }))}</p>`).join("");
     el.innerHTML = `<div class="consent-in">
       <h1>${esc(reconfirm ? tr("同意书更新了") : tr("使用前请确认"))}</h1>
       <p class="para" style="margin:0">${esc(reconfirm ? tr("《健康数据使用同意书》有了新版本，请再看一遍。") : tr("Watch2Whoop 会处理你的健康数据。请先看完下面的要点（或全文），同意后才开始处理。"))}</p>
-      <ul>${c.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>
+      <ul>${c.summary.map((s) => `<li>${esc(s)}</li>`).join("")}</ul>${joining}
       <button class="link" id="consent-more" type="button">${esc(tr("阅读完整同意书（版本 {v}）", { v: c.version }))}</button>
       <div class="consent-full" id="consent-full" hidden>${md(c.text)}</div>
       <label class="consent-check"><input type="checkbox" id="consent-ok"><span>${esc(tr("我已阅读并同意《健康数据使用同意书》"))}</span></label>
@@ -98,7 +103,9 @@
       }
       el.remove();
       document.body.style.overflow = "";
-      C.toast(tr("谢谢！同步上来的数据一小时内开始处理"));
+      const joined = (P.circles_joined || []).map((j) => j.name);
+      C.toast(joined.length ? tr("谢谢！已加入「{name}」", { name: joined.join(" · ") }) : tr("谢谢！同步上来的数据一小时内开始处理"));
+      if (joined.length) C.reload?.();   // the people you may view changed
       maybePrompt();
     };
   }

@@ -1,5 +1,5 @@
 -- Long-term memory hygiene, phase 1 (issue #113). Columns only; existing rows are backfilled here (confirmed_at, origin)
--- and by the data step 655_memory_hygiene_data (topics: a standard key's own, else inferred from the text; db.py).
+-- and by the data step 660_memory_hygiene_data (topics: a standard key's own, else inferred from the text; db.py).
 --   topic        one of the profile card's standard keys (memory.STANDARD_KEYS, incl. communication); NULL = not known yet
 --   confirmed_at last time the entry was written or confirmed (「还准确」 on the Today page); profile items show
 --                the later of this and updated_at, so writers that do not set it (diet profile) still count

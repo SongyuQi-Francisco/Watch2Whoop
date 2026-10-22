@@ -19,7 +19,7 @@ KEY_PREFIX_TOPIC = {"diet_": "diet_preferences"}
 # Other keys code writes on its own (training/goals.py physique_goal, ai/params.py EQUIPMENT_CARD_KEY).
 KEY_TOPIC = {"physique_goal": "goals", "equipment": "training_preferences"}
 
-# Topic inference for notes the AI gave no topic, and for the backfill of existing entries (data step 655): the first topic
+# Topic inference for notes the AI gave no topic, and for the backfill of existing entries (data step 660): the first topic
 # (in this order) one of whose words is in the text, lower-cased. No match = NULL (phase 2 lets the AI fill it in).
 # Specific topics come before the broad ones ("膝盖疼，不做深蹲" is an injury, not a training preference). Plain word lists, a
 # judgement call, not from a study; the order and words are what to tune.

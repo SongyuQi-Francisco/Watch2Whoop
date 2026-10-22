@@ -26,7 +26,7 @@ def _memory_topics_data(conn: psycopg.Connection) -> None:
 # (name, the SQL migration it needs, function); names sort after their SQL file
 DATA_STEPS = [
     ("450_diet_constraints_data", "450_diet_constraints.sql", _diet_constraints_data),
-    ("655_memory_hygiene_data", "655_memory_hygiene.sql", _memory_topics_data),
+    ("660_memory_hygiene_data", "660_memory_hygiene.sql", _memory_topics_data),
 ]
 
 

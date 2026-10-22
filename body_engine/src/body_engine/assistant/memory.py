@@ -5,7 +5,7 @@
   kind='recent' notes are current circumstances with an end date (valid_until, user-local, inclusive; default
   memory_params.RECENT_DEFAULT_DAYS): once past it they leave get_memory / the conversation memory / get_briefing but are kept
   for get_memory(history=True) and week reviews (recent_during). Migration 520, issue #112.
-- Hygiene, phase 1 (issue #113, migration 655): every entry has topic / confirmed_at / origin / status. Archived entries
+- Hygiene, phase 1 (issue #113, migration 660): every entry has topic / confirmed_at / origin / status. Archived entries
   (status=archived) leave the memory and only come back with archived=True (restore_*); add_observation first looks for
   similar notes (similar(), memory_params.SIMILAR_*) and lets the AI rewrite one (update_observation) instead of adding a
   near-duplicate; profile card and note rewrites by the AI are logged with before / after (writelog kinds profile /
@@ -401,7 +401,7 @@ def restore_observation(conn: psycopg.Connection, user_id: int, observation_id: 
 
 
 def backfill_topics(conn: psycopg.Connection) -> dict:
-    """Data step 655 (db.py): topics of existing entries, inferred from the key / the text; NULL where nothing fits."""
+    """Data step 660 (db.py): topics of existing entries, inferred from the key / the text; NULL where nothing fits."""
     n_card = n_obs = 0
     for c in conn.execute("SELECT user_id, key, label, value FROM assistant_profile WHERE topic IS NULL").fetchall():
         if (t := topic_for_key(c["key"], c["label"], c["value"])):
