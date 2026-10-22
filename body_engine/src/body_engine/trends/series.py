@@ -28,13 +28,13 @@ SERIES = [
     ("sleep_need_hours", "睡眠需求", "h", "scores", "sleep"),
     ("sleep_debt_hours", "睡眠债", "h", "scores", "sleep"),
     ("sleep_performance", "睡眠表现", "%", "scores", "sleep"),
-    ("sleep_perf_whoop", "睡眠表现（综合）", "", "scores", "sleep"),
-    ("restorative_hours", "恢复性睡眠", "h", "scores", "sleep"),
-    ("restorative_pct", "恢复性睡眠占比", "%", "scores", "sleep"),
+    ("sleep_perf_whoop", "睡眠表现（综合）", "", "sleep", "sleep"),
+    ("restorative_hours", "恢复性睡眠", "h", "sleep", "sleep"),
+    ("restorative_pct", "恢复性睡眠占比", "%", "sleep", "sleep"),
     ("sleep_efficiency", "睡眠效率", "%", "sleep", "sleep"),
     ("sleep_score", "睡眠分", "", "scores", "sleep"),
-    ("sleep_consistency", "睡眠规律性", "", "scores", "sleep"),
-    ("awakenings", "夜间醒来", "次", "scores", "sleep"),
+    ("sleep_consistency", "睡眠规律性", "", "sleep", "sleep"),
+    ("awakenings", "夜间醒来", "次", "sleep", "sleep"),
     ("daylight", "日照时间", "分钟", "metrics", "sleep"),
     ("strain", "负荷 strain", "", "scores", "strain"),
     ("strain_combined", "负荷（含肌肉）", "", "scores", "strain"),
@@ -307,6 +307,10 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         except sparky_client.SparkyError as e:
             unavailable["weight"] = str(e)
 
+    for key in [k for k in raw if not can.get(SCOPE.get(k), True)]:
+        del raw[key]   # sleep-session details kept in the scores row (bedtime, stages, regularity) need sleep (issue #111)
+    if not can["sleep"]:
+        status.pop("sleep_perf_whoop", None)
     series = {}
     for key, label, unit, scope, group in SERIES:
         if key not in raw:

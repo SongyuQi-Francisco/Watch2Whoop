@@ -13,7 +13,7 @@ router = APIRouter(prefix="/v1/users/{user}", tags=["insights"])
 @router.get("/healthspan")
 def healthspan(user: str, weeks: int = Query(26, ge=1, le=260), conn=Depends(get_conn), viewer=Depends(current_user)):
     """Body age, pace of aging, per-item contributions (computed weekly, history holds the weekly values)."""
-    return views.healthspan(conn, _owner(conn, viewer, user, "scores"), weeks)
+    return views.healthspan(conn, _owner(conn, viewer, user, "scores"), weeks, viewer["id"])
 
 
 @router.get("/stress")
@@ -32,7 +32,7 @@ def strain_coach(user: str, date: date | None = None, conn=Depends(get_conn), vi
 @router.get("/sleep-coach")
 def sleep_coach(user: str, date: date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Sleep coach: how long to sleep tonight and when to go to bed (combined with the bedtime goal)."""
-    return views.sleep_coach(conn, _owner(conn, viewer, user, "scores"), date)
+    return views.sleep_coach(conn, _owner(conn, viewer, user, "scores"), date, viewer["id"])
 
 
 @router.get("/health-monitor")
@@ -52,7 +52,7 @@ def sleep_details(user: str, start: date | None = None, end: date | None = None,
 def hr_zones(user: str, start: date | None = None, end: date | None = None,
              conn=Depends(get_conn), viewer=Depends(current_user)):
     """Heart-rate zone distribution: Z1–Z5 minutes per day and per workout (default the last 7 days)."""
-    return views.hr_zones(conn, _owner(conn, viewer, user, "scores"), start, end)
+    return views.hr_zones(conn, _owner(conn, viewer, user, "scores"), start, end, viewer["id"])
 
 
 @router.get("/vo2max")
@@ -65,8 +65,9 @@ def vo2max(user: str, end: date | None = None, days: int = Query(365, ge=30, le=
 @router.get("/reports")
 def reports(user: str, period: Literal["week", "month"] = "week", end: date | None = None,
             conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Weekly / monthly report (structured data, the butler writes the text): this period's summary, previous period, change, journal findings."""
+    """Weekly / monthly report (structured data, the butler writes the text): this period's summary, previous period, change, journal findings.
+    Needs scores; every other block only with its own scope (reports.py), the rest is listed in `hidden`."""
     try:
-        return views.report(conn, _owner(conn, viewer, user, "scores"), period, end)
+        return views.report(conn, _owner(conn, viewer, user, "scores"), period, end, viewer["id"])
     except ValueError as e:
         raise HTTPException(422, str(e))

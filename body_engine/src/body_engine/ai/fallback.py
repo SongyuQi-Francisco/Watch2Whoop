@@ -347,9 +347,10 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
                                    "You can also connect your own AI in Me → AI settings"), status=402, **extra)
     if estimate_call_cny(system, history, tools() if tool_list is None else tool_list) > quota - spent:
         raise ChatError("quota", L(f"本月剩余额度（¥{quota - spent:.2f}）不够再问一轮，{s['reset_on'][5:]} 重置；"
-                                   "开一个新对话会省一些",
+                                   "也可以在「我 → AI 设置」接入自己的 AI",
                                    f"What is left this month (¥{quota - spent:.2f}) is not enough for another round; "
-                                   f"it resets on {s['reset_on']}. A new conversation costs less"), status=402, **extra)
+                                   f"it resets on {s['reset_on']}. You can also connect your own AI in Me → AI settings"),
+                        status=402, **extra)
     if _calls_since(conn, user_id, _now() - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
         raise ChatError("rate_limit", L("问得太快了，歇一分钟再问", "Too many questions at once; wait a minute"), status=429)
     if calls_today(conn, user_id) >= fp.RATE_PER_DAY:

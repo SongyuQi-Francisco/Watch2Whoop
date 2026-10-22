@@ -207,7 +207,6 @@ EXACT: dict[str, str] = {
     "托底 AI 还没开通": "The backup AI is not enabled",
     "这个提供商不属于你": "This provider is not yours",
     "保存的 API key 解不开了，请在「AI 设置」里重新填一次": "The saved API key can't be decrypted; enter it again in AI settings",
-    "这个对话太长了，开一个新对话吧（长期记忆不受影响）": "This conversation is too long; start a new one (long-term memory is kept)",
     "图片数据不是有效的 base64": "Image data is not valid base64",
     # ---- voice input (ai/asr.py)
     "录音格式要是 16 位单声道 WAV": "Audio must be 16-bit mono WAV",

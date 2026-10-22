@@ -145,3 +145,8 @@ def test_cross_user_by_shares(conn, world):
     r = run_tool(conn, c, "test", "get_week_review_context", {"user": str(a)})
     assert set(r["hidden"]) == {"training", "nutrition", "weight", "journal", "events"}
     assert r["scores"]["recovery"]["week"]["days"] == 7 and "膝盖" not in compact.dumps(r) and "啤酒" not in compact.dumps(r)
+    # issue #111: bedtime / wake time / regularity are sleep data, not part of a scores-only viewer's sleep block
+    timing = {"avg_bedtime", "avg_wake", "consistency_pct"}
+    assert not timing & set(r["scores"]["sleep"]["week"]) and not timing & set(r["scores"]["sleep"]["vs_previous"] or {})
+    own = run_tool(conn, a, "test", "get_week_review_context", {})
+    assert {"avg_bedtime", "avg_wake", "consistency_pct"} <= set(own["scores"]["sleep"]["week"])

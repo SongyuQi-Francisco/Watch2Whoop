@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from body_engine import api, auth
-from body_engine.ai import adapters, crypto, fallback, providers
+from body_engine.ai import adapters, context, crypto, fallback, providers
 from body_engine.ai import fallback_params as fp
 from body_engine.ai import params as ai_params
 from body_engine.ai.adapters.fake import FakeAdapter
@@ -333,6 +333,50 @@ def test_worst_case_estimate_blocks_last_call(client, world, dsn):
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
     assert r.status_code == 200  # the pre-checks pass (quota not used up), the loop refuses before calling the model
     err = next(d for e, d in sse(r.text) if e == "error")
+    assert err["code"] == "quota" and "不够再问一轮" in err["message"] and not FakeAdapter.calls
+
+
+def test_long_fallback_conversation_folds_and_the_fold_is_billed(client, world, dsn, monkeypatch):
+    """#53: the fallback used to stop at 40 messages ("start a new conversation"); now older turns are folded into a
+    summary. The fold call costs CNY from the same monthly quota, and when the quota cannot pay, the usual quota error shows."""
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    monkeypatch.setattr(fp, "CONTEXT_MAX_MESSAGES", 4)
+    monkeypatch.setattr(fp, "KEEP_TURNS", 1)
+
+    def say(message, conv=None):
+        r = client.post("/v1/assistant/chat", headers=H(tok["F1"]),
+                        json={"message": message, **({"conversation_id": conv} if conv else {})})
+        assert r.status_code == 200, r.text
+        return sse(r.text)
+    FakeAdapter.script = [{"text": "答0"}]
+    conv = say("问0")[0][1]["id"]
+    FakeAdapter.script = [{"text": "答1"}]
+    say("问1", conv)
+    FakeAdapter.calls = []
+    FakeAdapter.script = [{"text": "- 摘要", "usage": {"input_tokens": 2000, "output_tokens": 100}}, {"text": "答2"}]
+    evs = say("问2", conv)
+    assert evs[-1][0] == "done"
+    fold, answer = FakeAdapter.calls
+    assert fold["system"] == context.FOLD_SYSTEM and fold["tools"] == [] and fold["model"] == fp.MODEL
+    assert [m["role"] for m in answer["history"]] == ["user"] and answer["system"].endswith("- 摘要")
+    usages = [d for e, d in evs if e == "usage"]
+    expect_fold = (2000 * 2 + 100 * 8) / 1e6
+    assert usages[0]["cost_cny"] == pytest.approx(expect_fold, abs=1e-4)
+    with db(dsn) as c:
+        rows = c.execute("""SELECT purpose, cost_cny, cost_usd FROM ai_usage WHERE user_id = %s AND conversation_id = %s
+                            ORDER BY id""", (ids["F1"], conv)).fetchall()
+        assert [r["purpose"] for r in rows] == ["chat", "chat", "compact", "chat"]
+        compact = rows[2]
+        assert float(compact["cost_cny"]) == pytest.approx(expect_fold, abs=1e-6) and float(compact["cost_usd"]) == 0
+        assert fallback.month_spent_cny(c, ids["F1"]) == pytest.approx(sum(float(r["cost_cny"]) for r in rows), abs=1e-6)
+    # Quota almost gone: neither the fold nor the answer is attempted, and the user gets the usual quota message
+    with db(dsn) as c:
+        c.execute("INSERT INTO ai_usage (user_id, kind, model, cost_cny) VALUES (%s, 'system_fallback', %s, %s)",
+                  (ids["F1"], fp.MODEL, fp.MONTHLY_QUOTA_CNY - fallback.month_spent_cny(c, ids["F1"]) - 0.005))
+    FakeAdapter.calls = []
+    evs = say("问3", conv)
+    err = next(d for e, d in evs if e == "error")
     assert err["code"] == "quota" and "不够再问一轮" in err["message"] and not FakeAdapter.calls
 
 

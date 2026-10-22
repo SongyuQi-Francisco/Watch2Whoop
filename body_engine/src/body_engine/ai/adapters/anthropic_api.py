@@ -78,9 +78,10 @@ class AnthropicAdapter(Adapter):
     def stream_turn(self, system, history, tools):
         client = anthropic.Anthropic(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
         messages = self._messages(history)
-        kwargs = dict(model=self.model, max_tokens=MAX_OUTPUT_TOKENS, system=system,
-                      tools=[t.api_definition() for t in tools] + self._web_tools(),
-                      cache_control={"type": "ephemeral"})
+        kwargs = dict(model=self.model, max_tokens=MAX_OUTPUT_TOKENS, system=system, cache_control={"type": "ephemeral"})
+        tool_defs = [t.api_definition() for t in tools] + self._web_tools()
+        if tool_defs:   # none for the history fold call (ai/context.py)
+            kwargs["tools"] = tool_defs
         if self.model in EFFORT_MODELS:
             kwargs["output_config"] = {"effort": "medium"}
         if self.model in FALLBACK_MODELS:

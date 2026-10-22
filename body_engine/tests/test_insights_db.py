@@ -168,3 +168,139 @@ def test_api_and_tools_respect_shares(conn, person, monkeypatch):
         run_tool(conn, other, "mcp", "get_sleep_details", {"user": str(uid), "start": None, "end": None})
     r = run_tool(conn, uid, "mcp", "get_report", {"user": "me", "period": "week", "end": "2026-09-30"})
     assert r["period"] == "week"
+
+
+def test_report_blocks_follow_each_scope(conn, person, monkeypatch):
+    """Issue #111: a report read by someone else carries only the blocks their shares cover, the rest named in `hidden`;
+    the owner and a viewer with every scope get the same report. Same through the API, the AI tool and circle grants."""
+    from fastapi.testclient import TestClient
+
+    from body_engine import api
+    from body_engine.assistant.tools import run_tool
+    from body_engine.rollout import flags
+
+    uid, _ = person
+    viewer = conn.execute("INSERT INTO users (display_name) VALUES ('朋友') RETURNING id").fetchone()["id"]
+    d = date(2026, 9, 30)
+
+    def share(*scopes, circle=()):
+        conn.execute("""INSERT INTO shares (owner_id, viewer_id, scopes, circle_scopes) VALUES (%s, %s, %s, %s)
+                        ON CONFLICT (owner_id, viewer_id) DO UPDATE SET scopes = EXCLUDED.scopes,
+                        circle_scopes = EXCLUDED.circle_scopes""", (uid, viewer, list(scopes), list(circle)))
+
+    own = views.report(conn, uid, "week", d)
+    assert own == views.report(conn, uid, "week", d, viewer_id=uid) and "hidden" not in own
+    assert own["current"]["sleep"]["avg_bedtime"] and own["current"]["sleep"]["consistency_pct"] is not None
+    assert {"training", "weight", "nutrition"} <= set(own["current"]) and "journal_findings" in own
+
+    share("scores")
+    r = views.report(conn, uid, "week", d, viewer_id=viewer)
+    assert r["hidden"] == ["sleep", "training", "weight", "nutrition", "journal"]
+    for part in (r["current"], r["previous_values"], r["change"]):
+        assert not {"training", "weight", "nutrition"} & set(part)
+    assert not set(r["current"]["sleep"]) & {"avg_bedtime", "avg_wake", "consistency_pct"}
+    assert "consistency_pct" not in r["previous_values"]["sleep"] and "consistency_pct" not in r["change"]["sleep"]
+    assert "journal_findings" not in r
+    assert r["current"]["recovery"] == own["current"]["recovery"] and r["current"]["load"] == own["current"]["load"]
+    assert r["current"]["sleep"]["avg_actual_min"] == own["current"]["sleep"]["avg_actual_min"]   # in the scores row
+
+    share("scores", "sleep")
+    r = views.report(conn, uid, "week", d, viewer_id=viewer)
+    assert r["hidden"] == ["training", "weight", "nutrition", "journal"]
+    assert r["current"]["sleep"] == own["current"]["sleep"] and r["change"]["sleep"] == own["change"]["sleep"]
+    assert not {"training", "weight", "nutrition"} & set(r["current"])
+
+    share("scores", "nutrition_summary")
+    r = views.report(conn, uid, "week", d, viewer_id=viewer)
+    assert "nutrition" in r["hidden"] and set(r["current"]["nutrition"]) <= {
+        "days_logged", "calories_on_target_days", "calories_judged_days", "protein_on_target_days",
+        "protein_judged_days", "error"}
+
+    share("scores", "sleep", "training", "weight", "nutrition", "journal")
+    assert views.report(conn, uid, "week", d, viewer_id=viewer) == own
+
+    # circle grants count like hand-made ones while the Friends flag is on for both
+    flags.set_flag(conn, "friends", "all", actor="test")
+    share(circle=("scores", "training"))
+    r = views.report(conn, uid, "week", d, viewer_id=viewer)
+    assert r["hidden"] == ["sleep", "weight", "nutrition", "journal"] and "training" in r["current"]
+    flags.set_flag(conn, "friends", "off", actor="test")
+
+    # the HTTP endpoint and the AI tool pass the viewer through
+    share("scores")
+    tok = auth.create_token(conn, viewer, "t", ["read"])
+    monkeypatch.setattr(api, "settings", TEST_SETTINGS)
+    with TestClient(api.app) as http:
+        res = http.get(f"/v1/users/{uid}/reports?period=week&end=2026-09-30",
+                       headers={"Authorization": f"Bearer {tok}"}).json()
+    assert res["hidden"] == ["sleep", "training", "weight", "nutrition", "journal"]
+    assert "training" not in res["current"] and "avg_bedtime" not in res["current"]["sleep"]
+    r = run_tool(conn, viewer, "mcp", "get_report", {"user": str(uid), "period": "week", "end": "2026-09-30"})
+    assert r["hidden"] == ["sleep", "training", "weight", "nutrition", "journal"] and "weight" not in r["current"]
+    r = run_tool(conn, uid, "mcp", "get_report", {"user": "me", "period": "week", "end": "2026-09-30"})
+    assert "hidden" not in r and "weight" in r["current"]
+
+
+def test_other_aggregates_follow_each_scope(conn, person, monkeypatch):
+    """Issue #111, the same check on the other aggregates: a scores-only viewer gets no sleep-session details, workout
+    lists, weight / metrics behind body age, or status cards built from data they may not see. The owner is unchanged."""
+    from body_engine.assistant import status
+    from body_engine.assistant.tools import run_tool
+    from body_engine.cardio import views as cardio_views
+    from body_engine.explain import personal
+    from body_engine.training import plans
+    from body_engine.trends import series
+
+    uid, _ = person
+    viewer = conn.execute("INSERT INTO users (display_name) VALUES ('朋友') RETURNING id").fetchone()["id"]
+    d = date(2026, 9, 30)
+
+    def share(*scopes):
+        conn.execute("""INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)
+                        ON CONFLICT (owner_id, viewer_id) DO UPDATE SET scopes = EXCLUDED.scopes""",
+                     (uid, viewer, list(scopes)))
+
+    share("scores", "memory")
+    # scores?details: the night's bedtime / stages are sleep data
+    args = {"user": str(uid), "start": "2026-09-29", "end": "2026-09-30", "details": True}
+    assert all("sleep" in r["details"] for r in run_tool(conn, uid, "mcp", "get_scores", {**args, "user": "me"}))
+    assert not any("sleep" in r["details"] for r in run_tool(conn, viewer, "mcp", "get_scores", args))
+    # heart-rate zones without the workout list, cardio without per-workout recovery
+    z = views.hr_zones(conn, uid, d, d, viewer_id=viewer)
+    assert "workouts" not in z and z["hidden"] == ["training"] and z["days"] == views.hr_zones(conn, uid, d, d)["days"]
+    c = cardio_views.cardio(conn, uid, None, d, viewer_id=viewer)
+    assert "hrr" not in c and c["hidden"] == ["training"] and "hrr" in cardio_views.cardio(conn, uid, None, d)
+    # sleep coach: tonight's need only
+    sc = views.sleep_coach(conn, uid, d, viewer_id=viewer)
+    assert sc["hidden"] == ["sleep"] and sc["need_min"] == views.sleep_coach(conn, uid, d)["need_min"]
+    assert "wake_time" not in sc and "recommended_bedtime" not in sc
+    # body age: items behind other scopes are left out (steps / VO2max / weight / regularity / strength)
+    own, h = views.healthspan(conn, uid), views.healthspan(conn, uid, viewer_id=viewer)
+    assert h["body_age"] == own["body_age"] and h["hidden"] == ["metrics", "sleep", "training", "weight"]
+    keys = {i["key"] for i in h["contributors"] + h["insufficient"]}
+    assert keys <= {"sleep_duration", "mvpa"} and "steps" in {i["key"] for i in own["contributors"]}
+    # trends: regularity, deep + REM and wake-ups are sleep-session data
+    tz = views.user_tz(conn, uid)
+    t = series.build(conn, {"id": viewer}, uid, d, 7, d, tz)
+    assert not {"sleep_consistency", "awakenings", "restorative_hours", "sleep_perf_whoop"} & set(t["series"])
+    assert "sleep_hours" in t["series"] and "sleep_perf_whoop" not in t["status"]
+    assert "sleep_consistency" in series.build(conn, {"id": uid}, uid, d, 7, d, tz)["series"]
+    # status cards (memory): an auto card needs its own data's scope, the butler's own cards need memory only
+    for key, label, group, source in (("weight", "体重", "身体", "auto"), ("bedtime", "入睡时间", "作息", "auto"),
+                                      ("recovery", "恢复", "身体", "auto"), ("phase", "阶段", "目标", "assistant")):
+        conn.execute("""INSERT INTO assistant_status (user_id, key, label, value, tone, "group", source, sort)
+                        VALUES (%s, %s, %s, '1', 'neutral', %s, %s, 1)""", (uid, key, label, group, source))
+    assert {i["key"] for i in status.list_status(conn, uid)} == {"weight", "bedtime", "recovery", "phase"}
+    assert {i["key"] for i in status.list_status(conn, uid, viewer)} == {"recovery", "phase"}
+    assert personal.explain_status(conn, viewer, uid, "weight", d) is None
+    assert personal.explain_status(conn, uid, uid, "weight", d) is not None
+    r = run_tool(conn, viewer, "mcp", "get_memory", {"user": str(uid), "detail": False})
+    assert {s["key"] for s in r["status"]} == {"recovery", "phase"}
+    share("scores", "memory", "weight", "sleep")
+    assert {i["key"] for i in status.list_status(conn, uid, viewer)} == {"weight", "bedtime", "recovery", "phase"}
+    # a training-only viewer planning for someone gets no readiness (recovery / sleep debt)
+    monkeypatch.setattr(plans, "propose_plan", lambda conn, **kw: {"readiness": {"recovery": 80}})
+    share("training")
+    args = {"user": str(uid), "split_type": "4_day_upper_lower"}
+    assert run_tool(conn, viewer, "mcp", "propose_plan", args)["readiness"] is None
+    assert run_tool(conn, uid, "mcp", "propose_plan", {**args, "user": "me"})["readiness"] == {"recovery": 80}

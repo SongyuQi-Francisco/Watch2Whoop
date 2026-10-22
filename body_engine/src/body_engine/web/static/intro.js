@@ -9,6 +9,11 @@
    your server with swappable AIs), a large title with a numbered accent eyebrow, segmented progress at the top and a pill
    button at the bottom. The stage stays dark in both themes; the page around it follows the light / dark tokens. Each screen
    has its own accent. The numbers in the pictures are examples. Motion is short and off under prefers-reduced-motion.
+   Friends (flag `friends`, docs/friends-social-plan.md; both looks): two more screens before the tips, 「邀请好友」 (where
+   the invite code is: 我 → 设置 → 邀请好友 with me_settings, 我 → 邀请好友 without; 我 → 圈子 → 邀请 when the server has no
+   referral codes) and 「朋友圈子」; someone who signed up with a friend's referral code (GET /v1/friends/referral) also gets
+   「加入 XX 的圈子」: 「加入」 is ticked, the default scopes (friends/params.py) are listed, and only 「下一步」 joins
+   (POST /v1/friends/join with the invite); unticked or 跳过 = not joined, the invite stays on the Friends page.
    Registered in window.BodyPlugins (init) and window.BodyIntro (open, used by the Me page row). */
 (() => {
   "use strict";
@@ -27,8 +32,88 @@
     back: '<path d="M14.5 6l-6 6 6 6"/>',
     check: '<path d="M6 12.5l4 4 8-9"/>',
     spark: '<path d="M12 4l1.8 4.7L18.5 10l-4.7 1.8L12 16.5l-1.8-4.7L5.5 10l4.7-1.3z"/>',
+    users: '<circle cx="9" cy="9" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><circle cx="17" cy="10" r="2.5"/><path d="M15.5 14.6A4.5 4.5 0 0 1 21 19"/>',
+    send: '<path d="M20 4L3 11l7 2.5L12.5 20z"/><path d="M20 4l-10 9.5"/>',
   };
   const icon = (n, cls = "") => `<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+
+  // ---- friends screens (flag `friends`): what loadFriends() found when the intro opened
+  let F = { on: false, referrals: false, meSettings: false, offer: null, joined: false };
+  let joinTick = true, joining = false;
+  const DEFAULT_SCOPES = ["scores", "sleep", "training", "nutrition_summary"];   // friends/params.py DEFAULT_SCOPES
+  const scopeLabel = (k) => window.BodyCircles?.labels?.[k] || k;
+
+  async function loadFriends() {
+    F = { on: !!window.BodyFlags?.on("friends"), referrals: false, meSettings: !!window.BodyFlags?.on("me_settings"),
+          offer: null, joined: false };
+    joinTick = true;
+    if (!F.on) return;
+    const [m, r] = await Promise.all([
+      fetch("/v1/auth/methods", { credentials: "same-origin", headers: { ...window.I18N.headers() } })
+        .then((x) => (x.ok ? x.json() : {})).catch(() => ({})),
+      C.api("/v1/friends/referral").catch(() => null)]);
+    F.referrals = !!m.referrals;
+    F.offer = r?.offer || null;
+  }
+
+  // Where the invite code lives, as path steps
+  const invitePath = () => (!F.referrals ? [tr("我"), tr("圈子"), tr("邀请")]
+    : F.meSettings ? [tr("我"), tr("设置"), tr("邀请好友")] : [tr("我"), tr("邀请好友")]);
+  const inviteText = () => (!F.referrals ? tr("在「我 → 圈子」点「邀请」，把邀请码或链接发给朋友，72 小时内有效。")
+    : F.meSettings ? tr("在「我 → 设置 → 邀请好友」复制邀请码或分享链接，发给朋友；朋友用它注册后，会收到加入你圈子的邀请。")
+      : tr("在「我 → 邀请好友」复制邀请码或分享链接，发给朋友；朋友用它注册后，会收到加入你圈子的邀请。"));
+  const circlesText = () => tr("圈子里的人互相看到各自选择共享的部分，默认是评分、睡眠、训练和饮食达标率，心电图永远不共享。在「我 → 圈子」随时「改共享范围」或「退出」。");
+  const joinTitle = () => tr("加入「{name}」", { name: F.offer.name });
+  const joinText = () => tr("{who} 邀请你加入。共享范围之后可以在「我 → 圈子」改，也可以随时退出。", { who: F.offer.inviter_name || "" });
+
+  function friendScreens(v2) {
+    if (!F.on) return [];
+    const out = v2
+      ? [{ accent: "#ff8a5c", stage: stageInvite, title: tr("邀请好友"), text: inviteText() },
+         { accent: "#ff6fa8", stage: stageCircles, title: tr("朋友圈子"), text: circlesText() }]
+      : [{ icon: "send", title: tr("邀请好友"), text: inviteText() },
+         { icon: "users", title: tr("朋友圈子"), text: circlesText() }];
+    if (F.offer) out.push(v2 ? { accent: "#5ad1e6", stage: stageJoin, join: true, title: joinTitle(), text: joinText() }
+      : { icon: "users", join: true, title: joinTitle(), text: joinText() });
+    return out;
+  }
+
+  // The tick box and what joining shares (both looks)
+  function joinBox() {
+    const sc = (F.offer.scopes || DEFAULT_SCOPES).map(scopeLabel).join(" · ");
+    return `<label class="intro-join"><input type="checkbox" id="intro-join"${joinTick || F.joined ? " checked" : ""}${F.joined ? " disabled" : ""}>
+        <span>${C.esc(F.joined ? tr("已加入") : tr("加入「{name}」", { name: F.offer.name }))}</span></label>
+      <div class="intro-jsc"><em>${C.esc(tr("共享"))}</em><span>${C.esc(sc)}</span></div>`;
+  }
+
+  // 「下一步」 on the join screen joins when ticked; a failed join stays on the screen
+  async function advance(screens, redraw) {
+    const s = screens[step];
+    if (s.join && joinTick && !F.joined) {
+      if (joining) return;
+      joining = true;
+      const btn = $("#intro-next");
+      if (btn) btn.disabled = true;
+      try {
+        await C.api("/v1/friends/join", { method: "POST", body: { invite_id: F.offer.invite_id, scopes: F.offer.scopes || DEFAULT_SCOPES } });
+        F.joined = true;
+        C.toast?.(tr("已加入「{name}」", { name: F.offer.name }));
+        window.BodyCircles?.load?.().then(() => window.BodyCircles?.onChange?.());
+      } catch (e) {
+        C.toast?.(e.message || tr("读取失败"));
+        if (btn) btn.disabled = false;
+        return;
+      } finally {
+        joining = false;
+      }
+    }
+    if (step === screens.length - 1) close(true); else { step++; redraw(); }
+  }
+
+  function bindJoin(el) {
+    const box = $("#intro-join", el);
+    if (box) box.onchange = () => { joinTick = box.checked; };
+  }
 
   // Screens: accent, stage picture, title, text. The last one is the tips list.
   const SCREENS = () => [
@@ -41,6 +126,7 @@
     { accent: "#5aa9ff", stage: stageServer,
       title: tr("数据在你的服务器上"),
       text: tr("数据存在你自己的账号和服务器里；AI 只负责读写，换一个 AI，数据还在。") },
+    ...friendScreens(true),
     { accent: "#f2b84b", tips: true, title: tr("用得更好") },
   ];
   const TIPS = () => [
@@ -90,6 +176,32 @@
         <div class="is-db"><svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="24" cy="11" rx="15" ry="5.5"/>
           <path d="M9 11v26c0 3 6.7 5.5 15 5.5S39 40 39 37V11"/><path d="M9 20c0 3 6.7 5.5 15 5.5S39 23 39 20M9 28.5c0 3 6.7 5.5 15 5.5s15-2.5 15-5.5"/></svg>
           <span>${C.esc(tr("你的服务器"))}</span></div>
+      </div>`;
+  }
+
+  function stageInvite() {
+    const path = invitePath();
+    return `<div class="is-inv">
+        <div class="is-path">${path.map((p, i) => (i === path.length - 1 ? `<b>${C.esc(p)}</b>` : `<span>${C.esc(p)}</span><i>›</i>`)).join("")}</div>
+        <div class="is-card"><div class="is-code">K7M2P-QX4RT</div>
+          <div class="is-btns"><span>${C.esc(tr("复制邀请码"))}</span><span class="pri">${icon("send")}${C.esc(tr("分享链接"))}</span></div></div>
+      </div>`;
+  }
+
+  function stageCircles() {
+    const sc = DEFAULT_SCOPES.map((k) => `<span>${C.esc(scopeLabel(k))}</span>`).join("");
+    return `<div class="is-cir">
+        <div class="is-orbit"><div class="is-hub">${icon("users")}</div>
+          <i class="is-av is-a1">A</i><i class="is-av is-a2">B</i><i class="is-av is-a3">C</i><i class="is-av is-a4 is-you">${C.esc(tr("你"))}</i></div>
+        <div class="is-scopes">${sc}<span class="no">${C.esc(tr("心电图"))}</span></div>
+      </div>`;
+  }
+
+  function stageJoin() {
+    const o = F.offer, who = (o.inviter_name || o.name || "?").trim();
+    return `<div class="is-jn">
+        <div class="is-jav"><i>${C.esc(who.slice(0, 1).toUpperCase())}</i><i class="is-you">${C.esc(tr("你"))}</i></div>
+        <b>${C.esc(o.name)}</b><small>${C.esc(tr("{n} 人", { n: o.members }))}</small>
       </div>`;
   }
 
@@ -175,6 +287,52 @@
     .intro.v2 .is-n1{left:8%;top:12%}.intro.v2 .is-n2{right:8%;top:12%}.intro.v2 .is-n3{left:50%;bottom:5%;transform:translateX(-50%)}
     .intro.v2.intro-anim .is-n2{animation:introSwap 3.2s 1s ease-in-out infinite}
 
+    .intro.v2 /* stage: invite code */
+    .is-inv{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:18px}
+    .intro.v2 .is-path{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:center;font-size:13px;font-weight:600}
+    .intro.v2 .is-path span{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.75)}
+    .intro.v2 .is-path i{font-style:normal;color:rgba(255,255,255,.45)}
+    .intro.v2 .is-path b{padding:5px 11px;border-radius:999px;background:var(--ia);color:#2a130a}
+    .intro.v2 .is-card{width:min(260px,100%);padding:16px;border-radius:20px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+    .intro.v2 .is-code{font:700 22px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-align:center;margin:4px 0 14px}
+    .intro.v2 .is-btns{display:flex;gap:8px}
+    .intro.v2 .is-btns span{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 6px;border-radius:999px;font-size:12.5px;font-weight:600;
+      background:rgba(255,255,255,.10);white-space:nowrap}
+    .intro.v2 .is-btns .pri{background:var(--ia);color:#2a130a}
+    .intro.v2 .is-btns svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round}
+    .intro.v2.intro-anim .is-card{animation-delay:.2s}
+
+    .intro.v2 /* stage: a circle of friends + what is shared */
+    .is-cir{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:14px}
+    .intro.v2 .is-orbit{--os:min(136px,36vw,19vh);position:relative;width:var(--os);height:var(--os);border-radius:50%;border:1.5px dashed var(--ia-55)}
+    .intro.v2 .is-hub{position:absolute;inset:0;margin:auto;width:54px;height:54px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(160deg,var(--ia-d70),var(--ia-d35));box-shadow:0 8px 30px var(--ia-45)}
+    .intro.v2 .is-hub svg{width:28px;height:28px;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round}
+    .intro.v2 .is-av{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+      font-style:normal;font-size:13px;font-weight:700;background:#2a2f37;box-shadow:0 0 0 2px #0f1216}
+    .intro.v2 .is-a1{left:50%;top:0}.intro.v2 .is-a2{left:100%;top:50%}.intro.v2 .is-a3{left:50%;top:100%}.intro.v2 .is-a4{left:0;top:50%}
+    .intro.v2 .is-you{background:var(--ia);color:#2a0f1c;font-size:11px}
+    .intro.v2 .is-scopes{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;max-width:300px}
+    .intro.v2 .is-scopes span{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:600;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.10)}
+    .intro.v2 .is-scopes .no{text-decoration:line-through;color:rgba(255,255,255,.45);background:none}
+    .intro.v2.intro-anim .is-av{animation:introUp .45s var(--ease) both}
+    .intro.v2.intro-anim .is-a2{animation-delay:.15s}.intro.v2.intro-anim .is-a3{animation-delay:.3s}.intro.v2.intro-anim .is-a4{animation-delay:.45s}
+
+    .intro.v2 /* stage: the inviter's circle */
+    .is-jn{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:18px;text-align:center}
+    .intro.v2 .is-jav{display:flex;margin-bottom:12px}
+    .intro.v2 .is-jav i{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:24px;font-weight:700;
+      background:linear-gradient(160deg,var(--ia-d70),var(--ia-d35));box-shadow:0 0 0 3px #0f1216}
+    .intro.v2 .is-jav .is-you{margin-left:-14px;background:var(--ia);color:#06232a;font-size:16px}
+    .intro.v2 .is-jn b{font-size:20px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .intro.v2 .is-jn small{font-size:13px;color:rgba(255,255,255,.6)}
+    .intro.v2.intro-anim .is-jav .is-you{animation:introUp .5s .3s var(--ease) both}
+
+    .intro.v2 .intro-join{display:flex;align-items:center;gap:12px;margin:18px 0 0;padding:14px;border-radius:18px;background:var(--surface);font-size:16px;font-weight:600}
+    .intro.v2 .intro-join input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--ia)}
+    .intro.v2 .intro-jsc{display:flex;gap:8px;font-size:13px;color:var(--text-2);margin:10px 4px 0;line-height:1.45}
+    .intro.v2 .intro-jsc em{font-style:normal;font-weight:600;flex:none}
+
     @keyframes introUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
     @keyframes introFill{from{transform:translateX(-100%)}to{transform:none}}
     @keyframes introArc{from{stroke-dashoffset:var(--c)}to{stroke-dashoffset:var(--o)}}
@@ -190,6 +348,8 @@
     watch: '<rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l.5-3h5l.5 3M9 18l.5 3h5l.5-3M10 12h1.5l1-2 1 4 1-2H15"/>',
     chat: '<path d="M4 5h16v10H9l-5 4z"/><path d="M8 9h8M8 12h5"/>',
     lock: '<rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+    send: ICONS.send,
+    users: ICONS.users,
     star: '<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.5 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>',
   };
   const SCREENS_V1 = () => [
@@ -199,6 +359,7 @@
       text: tr("吃了什么、练了什么、感觉怎样，告诉你自己的 AI（Claude、ChatGPT 等），它直接记进来，不用填表。") },
     { icon: "lock", title: tr("数据在你的服务器上"),
       text: tr("数据存在你自己的账号和服务器里；AI 只负责读写，换一个 AI，数据还在。") },
+    ...friendScreens(false),
     { icon: "star", title: tr("用得更好"), tips: true },
   ];
   const CSS_V1 = `
@@ -218,7 +379,11 @@
     .intro.v1 .intro-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 18px}
     .intro.v1 .intro-dots i{width:7px;height:7px;border-radius:50%;background:var(--surface-2)}
     .intro.v1 .intro-dots i.on{background:var(--text);width:18px;border-radius:4px}
-    .intro.v1 .intro-nav{display:flex;gap:10px}.intro.v1 .intro-nav .btn{flex:1;margin:0}`;
+    .intro.v1 .intro-nav{display:flex;gap:10px}.intro.v1 .intro-nav .btn{flex:1;margin:0}
+    .intro.v1 .intro-join{display:flex;align-items:center;gap:12px;margin:20px 0 0;padding:13px 14px;border-radius:14px;background:var(--surface);font-size:16px;font-weight:600}
+    .intro.v1 .intro-join input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--text)}
+    .intro.v1 .intro-jsc{display:flex;gap:8px;font-size:13px;color:var(--text-2);margin:10px 4px 0;line-height:1.45}
+    .intro.v1 .intro-jsc em{font-style:normal;font-weight:600;flex:none}`;
 
   function injectCss(v2) {
     const id = v2 ? "intro-css-v2" : "intro-css-v1";
@@ -262,7 +427,7 @@
          <ul class="intro-tips">${TIPS().map((t) => `<li><div class="ti">${icon(t.icon)}</div><span>${C.esc(t.text)}</span>${t.action
            ? `<button type="button" class="btn" data-intro-act="${t.action}">${C.esc(t.label)}</button>` : ""}</li>`).join("")}</ul>`
       : `<div class="intro-stage" aria-hidden="true">${s.stage()}</div>
-         <div class="intro-copy"><div class="intro-eyebrow">${eyebrow}</div><h1 id="intro-title" tabindex="-1">${C.esc(s.title)}</h1><p>${C.esc(s.text)}</p></div>`;
+         <div class="intro-copy"><div class="intro-eyebrow">${eyebrow}</div><h1 id="intro-title" tabindex="-1">${C.esc(s.title)}</h1><p>${C.esc(s.text)}</p>${s.join ? joinBox() : ""}</div>`;
     el.innerHTML = `<div class="intro-in">
         <div class="intro-top"><div class="intro-prog" aria-hidden="true">${screens.map((_, i) =>
           `<i class="${i <= step ? "on" : ""}${i === step ? " cur" : ""}"></i>`).join("")}</div>
@@ -279,7 +444,8 @@
     if (skip) skip.onclick = () => close(true);
     const prev = $("#intro-prev", el);
     if (prev) prev.onclick = () => { step--; drawV2(); };
-    $("#intro-next", el).onclick = () => { if (last) close(true); else { step++; drawV2(); } };
+    $("#intro-next", el).onclick = () => advance(screens, drawV2);
+    bindJoin(el);
     for (const b of el.querySelectorAll("[data-intro-act]")) b.onclick = () => {
       close(true);
       if (b.dataset.introAct === "ai") C.openAiSettings?.(); else C.openHandbook?.();
@@ -293,7 +459,7 @@
     const screens = SCREENS_V1(), s = screens[step], last = step === screens.length - 1;
     const body = s.tips
       ? `<ul class="intro-tips">${TIPS().map((t) => `<li><span>${C.esc(t.text)}</span>${t.action ? `<button type="button" class="btn" data-intro-act="${t.action}">${C.esc(t.label)}</button>` : ""}</li>`).join("")}</ul>`
-      : `<p>${C.esc(s.text)}</p>`;
+      : `<p>${C.esc(s.text)}</p>${s.join ? joinBox() : ""}`;
     el.innerHTML = `<div class="intro-in">
         <div class="intro-top">${last ? "" : `<button type="button" class="intro-skip" id="intro-skip">${C.esc(tr("跳过"))}</button>`}</div>
         <div class="intro-body"><div class="intro-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS_V1[s.icon]}</svg></div>
@@ -306,7 +472,8 @@
     if (skip) skip.onclick = () => close(true);
     const prev = $("#intro-prev", el);
     if (prev) prev.onclick = () => { step--; drawV1(); };
-    $("#intro-next", el).onclick = () => { if (last) close(true); else { step++; drawV1(); } };
+    $("#intro-next", el).onclick = () => advance(screens, drawV1);
+    bindJoin(el);
     for (const b of el.querySelectorAll("[data-intro-act]")) b.onclick = () => {
       close(true);
       if (b.dataset.introAct === "ai") C.openAiSettings?.(); else C.openHandbook?.();
@@ -318,9 +485,10 @@
   let isV2 = false;
   const draw = () => (isV2 ? drawV2() : drawV1());
 
-  function open() {
+  async function open() {
     if (!C) return;
     isV2 = !!window.BodyFlags?.on("intro_v2");
+    await loadFriends();
     injectCss(isV2);
     step = 0;
     let el = $("#intro");
