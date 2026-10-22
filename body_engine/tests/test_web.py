@@ -568,7 +568,9 @@ def test_static_pages(client):
     assert r.status_code in (302, 307) and r.headers["location"] == "/app/"
     r = client.get("/app/")
     assert r.status_code == 200 and "今天" in r.text
-    assert r.text.count('data-tab="') == 5                    # Today / Trends / Nutrition / Records / Me
+    # Today / Trends / Nutrition / Records / Me, plus the hidden Friends tab that replaces Nutrition when the flag
+    # `friends` is on (app.js applyTabs): five are shown either way
+    assert r.text.count('data-tab="') == 6 and r.text.count('class="tab" hidden>') == 1
     js = client.get("/app/app.js").text
     assert "sparky_url" not in js and "sparkyfitness" not in js.lower() and ":8444" not in js   # Single entry point: the front end doesn't jump to SparkyFitness (sparky_error of the read-only endpoints)
     assert "Jarvis" in r.text and 'id="ask"' in r.text           # a permanent "Jarvis" (AI assistant) entry

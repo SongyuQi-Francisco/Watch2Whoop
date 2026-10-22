@@ -18,6 +18,7 @@ from body_engine.assistant.tools import TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.grocery import pantry_auto, params as P, prices, store
+from body_engine.rollout import flags
 from test_ai_writes import Fake
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_PANTRY_AUTO", "body_test_pantry_auto")
@@ -69,6 +70,9 @@ def world(dsn):
         conn.execute("INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)", (ids["A"], ids["B"], ["nutrition"]))
         pr = {u: store.save_product(conn, ids[u], dict(name="鸡蛋", package_size=12, package_unit="pcs", piece_g=50,
                                                          matches=["egg", "eggs"]))["id"] for u in ("A", "B")}
+        flags.set_flag(conn, P.PANTRY_AUTO_FLAG, "all", actor="test")   # the rollout flag (default off) is on for these tests
+        flags.set_flag(conn, "meal_merge", "all", actor="test")         # merging entries (#93), for the merge / split test
+    flags.invalidate()
     return ids, tok, pr
 
 
@@ -120,6 +124,73 @@ def test_switch_off_by_default_then_log_and_undo(conn, world, fake):
     assert out["pantry_restored"][0]["qty"] == 2 and _pantry(conn, a)["鸡蛋"]["quantity"] == 6
     # undoing twice does not add twice
     assert pantry_auto.restore(conn, a, res["created"][0]["id"]) == {"restored": [], "not_restored": []}
+    conn.commit()
+
+
+def _set_flag(conn, state):
+    flags.set_flag(conn, P.PANTRY_AUTO_FLAG, state, actor="test")
+    conn.commit()
+    flags.invalidate()
+
+
+def test_flag_off_nothing_deducted_or_reminded(conn, world, fake):
+    """Rollout flag pantry_auto off: the user's switch does not count, set_pantry_auto is refused, no expiry reminders."""
+    ids, _, _ = world
+    a = ids["A"]
+    assert pantry_auto.enabled(conn, a)   # switched on by the previous test
+    before = _pantry(conn, a)["鸡蛋"]["quantity"]
+    store.set_pantry(conn, a, [{"name": "牛奶", "quantity": 1000, "unit": "ml", "best_before": sparky_write.user_today(conn, a).isoformat()}])
+    conn.commit()
+    _set_flag(conn, "off")
+    try:
+        assert not pantry_auto.enabled(conn, a)
+        run_tool(conn, a, "butler", "log_food", {"items": [_food(conn, a, "鸡蛋", "1 个", "snacks")], "allow_duplicates": True})
+        assert _pantry(conn, a)["鸡蛋"]["quantity"] == before
+        with pytest.raises(flags.FlagOff):
+            run_tool(conn, a, "butler", "set_pantry_auto", {"enabled": False})
+        ctx = prices.shopping_context(conn, a)
+        assert "expiring" not in ctx and "pantry_auto_hint" not in ctx and pantry_auto.briefing_lines(conn, a) == []
+    finally:
+        conn.rollback()
+        store.set_pantry(conn, a, [{"name": "牛奶", "quantity": 0, "unit": "ml"}])
+        _set_flag(conn, "all")
+
+
+def test_merge_and_split_move_the_deductions(conn, world, fake):
+    """Entries merged into one (#93): deleting the merged entry puts back what all of them took; splitting it again gives each
+    recreated original its own share back."""
+    from body_engine.assistant import food_combine as FC
+    ids, _, _ = world
+    a = ids["A"]
+    day = sparky_write.user_today(conn, a)
+    start = _pantry(conn, a)["鸡蛋"]["quantity"]
+
+    def two():
+        res = run_tool(conn, a, "butler", "log_food", {"items": [_food(conn, a, "鸡蛋", "2 个", "lunch"),
+                                                                 _food(conn, a, "egg", "1 pcs", "lunch")], "allow_duplicates": True})
+        assert _pantry(conn, a)["鸡蛋"]["quantity"] == start - 3
+        return [str(e["id"]) for e in res["created"]]
+
+    def open_rows():
+        return conn.execute("SELECT entry_id, merged_from, qty FROM pantry_deductions WHERE user_id = %s AND restored_at IS NULL",
+                            (a,)).fetchall()
+
+    # merge, then delete the merged entry: everything the two took comes back
+    e = two()
+    m = FC.combine(conn, a, day, e, "merge", "早餐蛋", client=fake)["merge"]
+    assert {r["entry_id"] for r in open_rows()} == {m["entry_id"]} and {r["merged_from"] for r in open_rows()} == set(e)
+    assert sum(x["qty"] for x in pantry_auto.restore(conn, a, m["entry_id"])["restored"]) == 3
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == start
+    # merge, then split: each recreated original has its own share; undoing one puts back only that
+    e = two()
+    m = FC.combine(conn, a, day, e, "merge", "早餐蛋", client=fake)["merge"]
+    FC.split(conn, a, m["id"], client=fake)
+    restored = conn.execute("SELECT restored_ids FROM food_merges WHERE id = %s", (m["id"],)).fetchone()["restored_ids"]
+    assert {r["entry_id"]: float(r["qty"]) for r in open_rows()} == {restored[0]: 2.0, restored[1]: 1.0}
+    assert pantry_auto.restore(conn, a, restored[0])["restored"][0]["qty"] == 2
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == start - 1
+    pantry_auto.restore(conn, a, restored[1])
+    assert _pantry(conn, a)["鸡蛋"]["quantity"] == start and not open_rows()
     conn.commit()
 
 

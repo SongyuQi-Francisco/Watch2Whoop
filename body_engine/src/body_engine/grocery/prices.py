@@ -497,6 +497,8 @@ GUARDRAILS = ("只查 needs_price 里的商品（这个用户自己清单上的�
 
 def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = None) -> dict:
     from . import pantry_auto, store   # store imports this module
+    from ..rollout import flags
+    staples_on = flags.enabled(conn, user_id, P.STAPLES_FLAG)
     lst = store.get_list(conn, user_id, day, with_pantry=True)
     connected = _connected(conn, user_id)
     hc = conn.execute("SELECT value FROM assistant_profile WHERE user_id = %s AND key = 'health_constraints'", (user_id,)).fetchone()
@@ -524,12 +526,13 @@ def shopping_context(conn: psycopg.Connection, user_id: int, day: date | None = 
                    # the user's own limits (nutrition/constraints.py, issue #76); [] = none
                    "diet_constraints": [c["text"] for c in diet_constraints.listing(conn, user_id)["constraints"]],
                    "warnings": [w["label"] for w in lst["warnings"]]},
-        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS] + [STAPLE_RULE],
+        "rules": [g.format(n=P.CONTEXT_NEEDS_MAX) for g in GUARDRAILS] + ([STAPLE_RULE] if staples_on else []),
         # usual-item candidates from this user's own purchases (issue #103): ask before set_staple, never mark on your own
-        "staple_suggestions": store.staple_suggestions(conn, user_id),
+        **({"staple_suggestions": store.staple_suggestions(conn, user_id)} if staples_on else {}),
         # best before within a few days or past (issue #104): suggest using them up; pantry_auto = the switch
-        "expiring": pantry_auto.expiring(conn, user_id),
-        "pantry_auto": pantry_auto.enabled(conn, user_id),
-        # switched off (the default): say so once, the AI turns it on only when the user asks (owner's decision on #110)
-        **({} if pantry_auto.enabled(conn, user_id) else {"pantry_auto_hint": PANTRY_AUTO_HINT}),
+        # (all behind the rollout flag pantry_auto: off -> none of these keys)
+        **({"expiring": pantry_auto.expiring(conn, user_id), "pantry_auto": pantry_auto.enabled(conn, user_id),
+            # switched off (the default): say so once, the AI turns it on only when the user asks (owner's decision on #110)
+            **({} if pantry_auto.enabled(conn, user_id) else {"pantry_auto_hint": PANTRY_AUTO_HINT})}
+           if pantry_auto.available(conn, user_id) else {}),
     }

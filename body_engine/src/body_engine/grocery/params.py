@@ -96,6 +96,7 @@ VERDICT_SPECIAL_CHEAP = 1.02 # paying within 2 % of the recent special (or less)
 # eggs / milk / bananas shop the issue describes, and enough points for a usable interval (2 gaps). A judgement call, not a
 # published threshold; tune here. Only suggested: the user confirms (set_staple) before anything is marked.
 STAPLE_SUGGEST_WEEKS = 8
+STAPLES_FLAG = "grocery_staples"   # rollout flag (rollout/registry.py): off -> no suggestions, set_staple refused, generate adds none
 STAPLE_SUGGEST_MIN = 3
 STAPLE_SUGGEST_MAX = 8            # suggestions returned at once (get_shopping_context)
 # Interval when set_staple is not given one: the median gap between this user's own purchases (rounded to whole days, at
@@ -109,6 +110,9 @@ STAPLE_UNITS = ("pack", "g", "ml", "pcs")   # pack = whole packages of the produ
 # Default of the per-user switch (grocery_settings.pantry_auto NULL). Off: changing someone's pantry without asking is the bigger
 # surprise, and the pantry is rough (docs/grocery-plan.md §3); each user (or the AI on their word) turns it on. Owner's call (PR).
 PANTRY_AUTO_DEFAULT = False
+# Rollout flag (rollout/registry.py) over all of #104: off -> nothing is deducted whatever the switch says, set_pantry_auto is
+# refused, no best-before reminders (best_before is still stored).
+PANTRY_AUTO_FLAG = "pantry_auto"
 # Best before: items within this many days (or already past) are listed in get_shopping_context / get_briefing and get the short
 # 「x 天后到期」 label on the Today page. 3 days ≈ the "use within a few days" window of chilled food once it is close; a
 # judgement call, tune here.

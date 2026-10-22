@@ -50,14 +50,14 @@ TOOL_SPECS: list[dict] = [
             "detail": {**DETAIL, "description": "true=带依据数据 evidence（大）"},
         }),
         handler=_get,
-        scope="reminders",
+        group="body", scope="reminders",
     ),
     dict(
         name="dismiss_reminder",
         description="把一条提醒标成「不再提醒」（id 从 get_reminders），同一件事以后不再出现。",
         input_schema=_schema({"reminder_id": {"type": "integer"}}),
         handler=_dismiss,
-        scope="reminders",
+        group="body", scope="reminders",
         writes=True,
     ),
 ]

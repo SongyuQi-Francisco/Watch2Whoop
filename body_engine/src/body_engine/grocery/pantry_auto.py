@@ -17,6 +17,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from ..i18n import L as Li
+from ..rollout import flags
 from . import params as P
 from . import store
 
@@ -26,7 +27,14 @@ _FRACTION = re.compile(r"\d\s*/\s*\d|[½⅓⅔¼¾⅕⅙⅛]")   # 「1/2 个」
 
 
 # ---------------------------------------------------------------- switch
+def available(conn: psycopg.Connection, user_id: int) -> bool:
+    """The rollout flag pantry_auto (docs/rollout.md) is on for this user."""
+    return flags.enabled(conn, user_id, P.PANTRY_AUTO_FLAG)
+
+
 def enabled(conn: psycopg.Connection, user_id: int) -> bool:
+    if not available(conn, user_id):
+        return False
     row = conn.execute("SELECT pantry_auto FROM grocery_settings WHERE user_id = %s", (user_id,)).fetchone()
     return P.PANTRY_AUTO_DEFAULT if row is None or row["pantry_auto"] is None else row["pantry_auto"]
 
@@ -39,6 +47,7 @@ def status(conn: psycopg.Connection, user_id: int) -> dict:
 
 
 def set_enabled(conn: psycopg.Connection, user_id: int, on: bool) -> dict:
+    flags.guard(conn, user_id, P.PANTRY_AUTO_FLAG)
     conn.execute("""INSERT INTO grocery_settings (user_id, pantry_auto) VALUES (%s, %s)
                     ON CONFLICT (user_id) DO UPDATE SET pantry_auto = EXCLUDED.pantry_auto, updated_at = now()""",
                  (user_id, bool(on)))
@@ -164,9 +173,28 @@ def rekey(conn: psycopg.Connection, user_id: int, old_id, new_id) -> None:
                     WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL""", (str(new_id), user_id, str(old_id)))
 
 
+def merge_into(conn: psycopg.Connection, user_id: int, old_id, merged_id) -> None:
+    """Food entries merged into one (assistant/food_combine.combine, #93): the originals' deductions follow the merged entry, so
+    deleting it puts them all back; merged_from remembers which original each came from, for split_back."""
+    conn.execute("""UPDATE pantry_deductions SET origin_entry_id = coalesce(origin_entry_id, entry_id), merged_from = entry_id,
+                      entry_id = %s
+                    WHERE user_id = %s AND entry_id = %s AND restored_at IS NULL""", (str(merged_id), user_id, str(old_id)))
+
+
+def split_back(conn: psycopg.Connection, user_id: int, merged_id, restored: dict) -> None:
+    """A merge split again (food_combine.split): restored = {original entry id: its recreated id}; each deduction goes back to
+    the recreated original it came from, so undoing one of them puts back only its share."""
+    for old, new in restored.items():
+        conn.execute("""UPDATE pantry_deductions SET entry_id = %s, merged_from = NULL
+                        WHERE user_id = %s AND entry_id = %s AND merged_from = %s AND restored_at IS NULL""",
+                     (str(new), user_id, str(merged_id), str(old)))
+
+
 # ---------------------------------------------------------------- best before
 def expiring(conn: psycopg.Connection, user_id: int, days: int | None = None) -> list[dict]:
     """Pantry items with a best before within `days` (default PANTRY_EXPIRY_DAYS) or already past, soonest first."""
+    if not available(conn, user_id):
+        return []
     days = P.PANTRY_EXPIRY_DAYS if days is None else days
     today = datetime.now(store._tz(conn, user_id)).date()
     rows = conn.execute("""SELECT name, quantity, unit, best_before FROM pantry_items

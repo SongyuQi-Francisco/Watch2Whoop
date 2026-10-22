@@ -19,11 +19,14 @@
    「家里存货」 (issue #102) lists the pantry (GET …/grocery/pantry: by category, quantity, 「x 天前更新」); on the own page each row has
    「用完了」 (PUT …/pantry with quantity 0, undo in the toast puts the old quantity back). Changing amounts stays with the AI (set_pantry).
    List lines the pantry covered part of carry pantry_label (「家里有 6 个」) to explain why less is bought.
+   Both behind the rollout flag pantry_view (docs/rollout.md): off -> no pantry section, no chip, no GET …/pantry.
    Usual items (issue #103): list lines of a usual-item product (item.staple; source staple = added because it is due) get 「常买」;
    products carry staple_info.next_due -> 「下次该买 10/28」 on the row and in the sheet. Marking is done by the AI after the user
    confirms (set_staple); the page only shows it.
+   Usual items are behind the rollout flag grocery_staples: off -> no 「常买」 chip / 「下次该买」 badge.
    Pantry follows logged meals (issue #104): GET …/grocery/pantry-auto -> one status line under 「家里存货」 (switched by the AI,
-   set_pantry_auto); pantry rows with a best before close by (expiring) get 「x 天后到期」 / 「今天到期」 / 「已过期」. */
+   set_pantry_auto); pantry rows with a best before close by (expiring) get 「x 天后到期」 / 「今天到期」 / 「已过期」.
+   Behind the rollout flag pantry_auto: off -> no status line, no expiry badges. */
 (() => {
   "use strict";
   let C = null;
@@ -35,6 +38,9 @@
   let sprods = null;    // last GET /grocery/store-products (this user's own store products and latest prices)
   let pantry = null;    // last GET /grocery/pantry (what is at home)
   let pantryAuto = null; // last GET /grocery/pantry-auto ({enabled, label})
+  const pantryOn = () => !!window.BodyFlags?.on("pantry_view");   // rollout flag
+  const staplesOn = () => !!window.BodyFlags?.on("grocery_staples");   // rollout flag
+  const autoOn = () => !!window.BodyFlags?.on("pantry_auto");   // rollout flag
   let q = "";
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
@@ -63,8 +69,8 @@
     const age = !i.bought && i.offer?.age_days > 0   // list rows are tight at phone width: only prices from earlier days show their age
       ? `<small class="gage${i.offer.stale ? " old" : ""}">${esc(ageLabel(i.offer.age_days))}</small>` : "";
     const attrs = info.self ? `data-gi="${esc(i.id)}"` : "disabled";
-    const home = !i.bought && i.pantry_label ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
-    const usual = i.staple ? badge("plain", tr("常买")) : "";
+    const home = !i.bought && i.pantry_label && pantryOn() ? badge("plain", i.pantry_label) : "";   // why less is bought (the pantry covered part)
+    const usual = i.staple && staplesOn() ? badge("plain", tr("常买")) : "";
     return `<div class="grow"><button class="item gitem" ${attrs} aria-pressed="${i.bought}" aria-label="${esc(i.bought ? tr("{name}，已买", { name: i.name }) : i.name)}">
       <span class="gchk" aria-hidden="true"></span><span class="row-title">${esc(i.name)}</span>${hb}${usual}${home}<span class="val">${esc(val)}${age}</span></button>${i.bought ? "" : storeLinks(i.links, i.name)}</div>`;
   }
@@ -166,7 +172,7 @@
 
   function productRow(p) {
     const val = [p.size_label, p.price != null ? money(p.price, p.currency) : ""].filter(Boolean).join(" · ");
-    const s = p.staple && p.staple_info;
+    const s = p.staple && p.staple_info && staplesOn();
     const usual = s ? badge(s.due ? "mid" : "plain", nextBuy(s)) : "";   // a badge does not shrink: the date stays readable at phone width
     return `<div class="grow"><button class="item" data-gp="${esc(p.id)}"><span class="row-title">${esc(p.name)}${p.brand ? `<span class="small muted"> ${esc(p.brand)}</span>` : ""}</span>
       ${usual}${halfBadge(p.offer)}${p.flags?.length ? badge("mid", p.flags[0]) : ""}<span class="val">${esc(val)}</span></button>${storeLinks(p.links, p.name)}</div>`;
@@ -188,7 +194,7 @@
     const per = p.package_unit === "ml" ? "100 ml" : "100 g";
     const unitP = p.unit_price != null ? `${money(p.unit_price, p.currency)} / ${p.package_unit === "pcs" ? tr("个") : p.package_unit === "ml" ? "L" : "kg"}` : null;
     const flags = (p.flags || []).map((f) => badge("mid", f)).join("");
-    const s = p.staple && p.staple_info;
+    const s = p.staple && p.staple_info && staplesOn();
     const amount = s ? (s.unit === "pack" ? tr("{n} 包", { n: s.qty }) : `${s.qty} ${s.unit === "pcs" ? tr("个") : s.unit}`) : "";
     const usual = s ? `${kv(tr("常买"), tr("每 {n} 天 · {amount}", { n: s.every_days, amount }))}${kv(tr("下次该买"), md(s.next_due))}` : "";
     C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}${usual}
@@ -205,7 +211,7 @@
   function pantryRow(p) {
     const age = p.days_ago == null ? "" : p.days_ago <= 0 ? tr("今天更新") : tr("{n} 天前更新", { n: p.days_ago });
     const left = p.days_left;
-    const exp = p.expiring && left != null
+    const exp = p.expiring && left != null && autoOn()
       ? badge(left <= 0 ? "bad" : "mid", left < 0 ? tr("已过期") : left === 0 ? tr("今天到期") : tr("{n} 天后到期", { n: left })) : "";
     const btn = info.self ? `<span class="glinks"><button class="gstore" data-gpu="${esc(p.id)}" aria-label="${esc(tr("{name} 用完了", { name: p.name }))}">${esc(tr("用完了"))}</button></span>` : "";
     return `<div class="grow"><div class="item"><span class="row-title">${esc(p.name)}</span>${exp}
@@ -214,7 +220,7 @@
 
   function pantryHtml() {
     const xs = Array.isArray(pantry) ? pantry : [];
-    const auto = pantryAuto && !pantryAuto.error
+    const auto = pantryAuto && !pantryAuto.error && autoOn()
       ? `<div class="small muted gauto">${esc(pantryAuto.enabled ? tr("记餐自动扣存货：开") : tr("记餐自动扣存货：关"))}</div>` : "";
     const head = `<div class="section-head"><h2>${esc(tr("家里存货"))}</h2><span class="small muted">${xs.length || ""}</span></div>${auto}`;
     if (!xs.length) return `${head}<div class="card"><div class="empty">${esc(tr("暂无存货"))}</div></div>`;
@@ -226,7 +232,7 @@
 
   function paintPantry() {
     const el = $("#g-pantry");
-    if (!el) return;
+    if (!el || !pantryOn()) return;
     el.innerHTML = pantryHtml();
     bind(el);
   }
@@ -298,8 +304,10 @@
     try {
       list = await C.api(`/v1/users/me/grocery/list/items/${encodeURIComponent(id)}`, { method: "PATCH", body: { bought: item.bought } });
       paint();
-      pantry = await C.api(`${base()}/pantry`).catch(() => pantry);   // ticking adds to the pantry, unticking takes it back
-      paintPantry();
+      if (pantryOn()) {   // ticking adds to the pantry, unticking takes it back
+        pantry = await C.api(`${base()}/pantry`).catch(() => pantry);
+        paintPantry();
+      }
     } catch (e) {
       item.bought = !item.bought;
       list.progress.bought += item.bought ? 1 : -1;
@@ -325,11 +333,11 @@
       i.self ? C.api(`${base()}/stores`).catch((e) => ({ error: e })) : null,
       C.api(`${base()}/specials?limit=8`).catch((e) => ({ error: e })),
       C.api(`${base()}/store-products`).catch(() => null),
-      C.api(`${base()}/pantry`).catch(() => null),
-      C.api(`${base()}/pantry-auto`).catch((e) => ({ error: e })),
+      pantryOn() ? C.api(`${base()}/pantry`).catch(() => null) : null,
+      pantryOn() && autoOn() ? C.api(`${base()}/pantry-auto`).catch((e) => ({ error: e })) : null,
     ]);
     return `<div id="grocery"><div class="section" id="g-list">${listHtml()}</div>
-      <div class="section" id="g-pantry">${pantryHtml()}</div>
+      ${pantryOn() ? `<div class="section" id="g-pantry">${pantryHtml()}</div>` : ""}
       <div class="section" id="g-specials">${specialsHtml()}</div>
       <div class="section" id="g-sprods">${sprodsHtml()}</div>
       <div class="section"><div class="section-head"><h2>${esc(tr("商品库"))}</h2><span class="small muted">${Array.isArray(products) ? products.length : ""}</span></div>

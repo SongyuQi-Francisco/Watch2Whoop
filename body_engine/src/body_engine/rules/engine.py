@@ -9,7 +9,7 @@ from datetime import date
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import nutrition, params as P, progression, safety, sleep_goal
+from . import hydration, nutrition, params as P, progression, safety, sleep_goal
 from .base import Reminder, RuleResult, jsonable
 from .context import Ctx, load
 
@@ -22,6 +22,7 @@ RULES = [
     (safety.EXERCISES, safety.exercise_restrictions),
     (safety.READINESS, safety.readiness),
     (sleep_goal.KEY, sleep_goal.evaluate),
+    (hydration.KEY, hydration.evaluate),
 ]
 RULE_KEYS = [k for k, _ in RULES]
 

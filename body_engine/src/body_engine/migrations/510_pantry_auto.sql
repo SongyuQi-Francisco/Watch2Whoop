@@ -13,7 +13,8 @@ CREATE TABLE pantry_deductions (
   id BIGSERIAL PRIMARY KEY,
   user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   entry_id TEXT NOT NULL,                      -- SparkyFitness food entry id (follows the entry when it is replaced)
-  origin_entry_id TEXT,                        -- the first entry id, once replaced (update_food_entry; later #97 merges)
+  origin_entry_id TEXT,                        -- the first entry id, once replaced (update_food_entry, #93 merges)
+  merged_from TEXT,                            -- while merged into one entry (#93): the original entry it came from (split puts it back)
   entry_date DATE NOT NULL,
   food TEXT NOT NULL CHECK (char_length(food) BETWEEN 1 AND 200),    -- the logged food / ingredient name that matched
   pantry_name TEXT NOT NULL,
