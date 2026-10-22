@@ -369,11 +369,11 @@ def _tool_sets(conn, user_id: int, provider: dict) -> tuple[tuple, list]:
     return tuple(allowed), web.server_tools(conn, user_id, provider)
 
 
-def _card(conn, user_id: int, args: dict) -> tuple[dict | None, str, str]:
+def _card(conn, user_id: int, args: dict, v2: bool = False, auto: bool = False) -> tuple[dict | None, str, str]:
     """(card, status, text for the model) for show_card. A failure only costs the card: the savepoint keeps the turn's transaction."""
     try:
         with conn.transaction():
-            card = cards.build(conn, user_id, args)
+            card = cards.build(conn, user_id, args, v2, auto)
         return card, "done", cards.summary(card)
     except (ValueError, PermissionError, sparky_client.SparkyError) as e:
         return None, "error", f"{type(e).__name__}: {e}"
@@ -381,17 +381,19 @@ def _card(conn, user_id: int, args: dict) -> tuple[dict | None, str, str]:
         return None, "error", f"卡片没显示出来（{type(e).__name__}）"
 
 
-def _auto_cards(conn, user_id: int, done_writes: list[tuple]) -> Iterator[dict]:
+def _auto_cards(conn, user_id: int, done_writes: list[tuple], v2: bool = False, reads: bool = False,
+                seen: set | None = None) -> Iterator[dict]:
     """One card per distinct cards.AUTO spec among this round's successful writes (three log_food calls -> one meal card),
-    built after all of them ran so it shows the final totals; kept on the first matching call's row."""
-    seen = set()
+    built after all of them ran so it shows the final totals; kept on the first matching call's row.
+    v2: cards.AUTO_V2 too, and with reads (the fallback AI) cards.READ_AUTO; seen: the cards already shown this turn."""
+    seen = set() if seen is None else seen
     for row_id, name, args in done_writes:
-        spec = cards.auto_spec(name, args)
-        key = spec and (spec["type"], spec["date"])
+        spec = cards.auto_spec(name, args, v2, reads)
+        key = spec and cards.spec_key(spec)
         if not spec or key in seen:
             continue
         seen.add(key)
-        card, status, _ = _card(conn, user_id, spec)
+        card, status, _ = _card(conn, user_id, spec, v2, auto=name in cards.AUTO)
         if card:
             conn.execute("UPDATE ai_tool_calls SET card = %s WHERE id = %s AND user_id = %s", (Jsonb(card), row_id, user_id))
             yield ev("card", card=card, call_id=row_id)
@@ -408,13 +410,15 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
     access = toolsets.Access({t.name: t for t in (*allowed, *web_tools)}, can_write)
     tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider))) + web_tools
     rich = cards.enabled(conn, viewer["id"])
+    v2 = rich and cards.v2_enabled(conn, viewer["id"])
+    shown: set = set()   # cards of this turn (an automatic card does not repeat one already shown)
     if rich:
-        tools = [*tools, cards.TOOL]
+        tools = [*tools, cards.tool(v2)]
     rounds, turn_cost = (fp.MAX_ROUNDS if fb else MAX_ROUNDS), 0.0
     for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         if rich:
-            system = f"{system}\n\n{cards.PROMPT}"
+            system = f"{system}\n\n{cards.prompt(v2)}"
         # The last call allowed: same tools (history and prompt cache stay valid), calls switched off, an answer now
         last = rnd > 0 and (rnd == rounds - 1 or (fb and turn_cost >= fp.MAX_TURN_CNY))
         caller = adapter
@@ -473,7 +477,9 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
         for c in result.tool_calls:
             args = c["args"] if isinstance(c["args"], dict) else {}
             if rich and c["name"] == cards.NAME:   # not a data tool: builds a card from the user's own data (no audit)
-                card, status, text = _card(conn, viewer["id"], args)
+                card, status, text = _card(conn, viewer["id"], args, v2)
+                if card:
+                    shown.add(cards.spec_key(args))
                 row_id = conn.execute(
                     """INSERT INTO ai_tool_calls (conversation_id, message_id, user_id, call_id, tool, args, writes, status, result, card)
                        VALUES (%s,%s,%s,%s,%s,%s,false,%s,%s,%s) RETURNING id""",
@@ -513,7 +519,7 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
                 if status == "done":
                     done_writes.append((row_id, name, args))
         if rich:
-            yield from _auto_cards(conn, viewer["id"], done_writes)
+            yield from _auto_cards(conn, viewer["id"], done_writes, v2, reads=fb, seen=shown)
         conn.commit()
         if pending:
             conn.execute("UPDATE ai_conversations SET state = 'awaiting_confirmation' WHERE id = %s", (conv["id"],))
