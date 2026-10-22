@@ -25,6 +25,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../offline_shell.dart';
 import '../page_events.dart';
+import '../push.dart';
 import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
@@ -210,6 +211,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
+    PushService.instance.opened.addListener(_openTapped);
+    PushService.instance.received.addListener(_onPushReceived);
     _load();
     _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportRange());
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -228,6 +231,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _rangeTimer?.cancel();
     AppState.instance.removeListener(_onConfig);
     SetupLinks.instance.pending.removeListener(_onLink);
+    PushService.instance.opened.removeListener(_openTapped);
+    PushService.instance.received.removeListener(_onPushReceived);
     super.dispose();
   }
 
@@ -282,6 +287,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
     _tellPageForeground();
+    PushService.instance.refresh(); // allowed in iOS Settings meanwhile, or a new device token: register again
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     if (_onShell) {
       _load(); // showing the kept copy of the page: try the real one again
@@ -360,8 +366,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // from the address bar right away. It stays saved until the page reports `logged-in` / `login-failed` (_onBridge).
       await _web.loadRequest(withLangFragment(config.todayEntry.replace(fragment: 'login=$code')));
     } else {
-      await _web.loadRequest(withLangFragment(Uri.parse(url))); // #lang=…: the language picked on the native sign-in screen
+      // A tapped notification that started the app opens its page right away (#175)
+      final tapped = _takeTapped();
+      await _web.loadRequest(tapped ?? withLangFragment(Uri.parse(url))); // #lang=…: the language picked on the native sign-in screen
     }
+  }
+
+  /// The page of a tapped notification (a path on the server, checked by [notificationTarget]), or null.
+  Uri? _takeTapped() {
+    final path = PushService.instance.opened.value;
+    if (path == null) return null;
+    PushService.instance.opened.value = null;
+    return notificationTarget(AppState.instance.config.todayEntry, path);
+  }
+
+  /// A notification tapped while the app was running: open its page (a change of query reloads, of # only scrolls the page).
+  void _openTapped() {
+    if (!mounted || _onShell || AppState.instance.config.pendingLoginCode != null) return; // _load() picks it up
+    final target = _takeTapped();
+    if (target != null) _web.loadRequest(target);
+  }
+
+  void _onPushReceived() {
+    _web.runJavaScript(kPushReceivedJs).catchError((_) {});
   }
 
   void _onBridge(String message) {
@@ -372,6 +399,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();
+    // Push (#175): the page asks on the first Friends visit / in its notification settings; it also reports the unread count
+    if (message == kPushAskMessage) {
+      PushService.instance.ask().then((s) => _web.runJavaScript(pushStateJs(s))).catchError((_) {});
+      return;
+    }
+    final badge = parseBadgeMessage(message);
+    if (badge != null) {
+      PushService.instance.setBadge(badge);
+      return;
+    }
     // Offline use (docs/offline-plan.md): keep / drop the copy of the page; the copy asks for the real page once online
     if (message == 'offline:on' && !_onShell) _shell.save(AppState.instance.config.todayEntry);
     if (message == 'offline:off') _shell.forget();
