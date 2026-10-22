@@ -8,7 +8,8 @@
   author ticked `training`, and auth.can_view agrees. Leaving a circle therefore hides everything at once. ECGs, labs and
   weight never enter a post (only exercise names, sets, reps, weight, duration).
 - ❤️ (apart from the one-tap cheers 👏 💤 💪), text comments (the writer deletes their own, anyone can report), a count of ❤️ /
-  comments on my posts since I last opened the feed (the red dot), and a notification to the author via feed_notify.py.
+  comments on my posts since I last opened the feed (the red dot), and a notification to the author through notify/
+  (kinds circle.like / circle.comment, linking to the post; never for one's own post).
 """
 from __future__ import annotations
 
@@ -20,8 +21,17 @@ from .. import auth
 from ..i18n import L
 from ..training import catalog
 from ..web import views
-from . import feed_notify, params as P
+from ..notify import notify
+from . import params as P
 from .store import FriendsError
+
+LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
+
+
+def post_url(post_id: int) -> str:
+    """Where a notification opens: the Friends tab's feed, scrolled to this post (circle-feed.js listens for body:link)."""
+    return f"/app/?tab=friends&feed={post_id}"
+
 
 # a ❤️ / comment counts while its writer is the post's author or still shares a circle with the author
 _WRITER_OK = """({w} = p.user_id OR EXISTS (SELECT 1 FROM circle_members x JOIN circle_members y ON y.circle_id = x.circle_id
@@ -198,7 +208,9 @@ def like(conn: psycopg.Connection, uid: int, post_id: int) -> dict:
         """INSERT INTO circle_feed_likes (post_id, user_id) VALUES (%s, %s) ON CONFLICT (post_id, user_id)
            DO UPDATE SET active = TRUE WHERE NOT circle_feed_likes.active RETURNING (xmax = 0) AS inserted""", (post_id, uid)).fetchone()
     if new is not None and new["inserted"] and p["user_id"] != uid:   # only the first time: liking again does not notify again
-        feed_notify.push(conn, p["user_id"], feed_notify.LIKE, _name(conn, uid), post_id=post_id)
+        name = _name(conn, uid)
+        notify(conn, p["user_id"], LIKE, {"zh": f"{name} 给你的训练点了 ❤️", "en": f"{name} ❤️ your workout"}, "",
+               url=post_url(post_id), data={"actor_id": uid, "post_id": post_id})
     return _likes_of(conn, uid, p)
 
 
@@ -251,7 +263,8 @@ def add_comment(conn: psycopg.Connection, uid: int, post_id: int, text: str) -> 
                      (post_id, uid, text)).fetchone()
     name = _name(conn, uid)
     if p["user_id"] != uid:
-        feed_notify.push(conn, p["user_id"], feed_notify.COMMENT, name, text, post_id=post_id)
+        notify(conn, p["user_id"], COMMENT, {"zh": f"{name} 评论了你的训练", "en": f"{name} commented on your workout"},
+               text[:120], url=post_url(post_id), data={"actor_id": uid, "post_id": post_id})
     return {"id": c["id"], "user": {"id": uid, "name": name, "self": True}, "body": text, "created_at": c["created_at"]}
 
 

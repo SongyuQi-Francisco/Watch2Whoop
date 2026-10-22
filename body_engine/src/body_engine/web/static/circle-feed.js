@@ -4,6 +4,7 @@
    red dot on the Friends tab / the segment when someone liked or commented on my post since I last looked.
    Posts are made by the server for people who ticked the training scope; there is no way to delete or edit one.
    Separate from app.js: window.BodyCircleFeed { shell(), bind(view, active), count() } + BodyPlugins init.
+   A notification link /app/?tab=friends&feed=<post id> (notify.js fires "body:link") opens 「动态」 at that post, comments open.
    Endpoints: GET /v1/friends/feed?before=&limit=, GET …/unread, POST …/seen, PUT|DELETE …/posts/{id}/like,
    GET|POST …/posts/{id}/comments, DELETE …/comments/{id}, POST …/comments/{id}/report. */
 (() => {
@@ -15,6 +16,7 @@
   let C = null;
   let unread = 0;
   let timer = null;
+  let focus = null;   // post to scroll to once the feed is drawn (from a notification link)
   const st = { posts: [], next: null, loading: false, open: new Set(), more: new Set(), comments: {}, comment_max: 300, preview: 3, loaded: false, err: null };
 
   const CSS = `.cf-list{display:flex;flex-direction:column;gap:12px}
@@ -97,11 +99,33 @@
     if (!root) return;
     const typing = root.contains(document.activeElement) && document.activeElement.tagName === "INPUT";
     if (typing) return;   // never rebuild under someone's typing; the next refresh paints
+    const target = focus && st.loaded ? st.posts.find((p) => p.id === focus) : null;
+    if (target) st.open.add(target.id);
     const y = window.scrollY;
     root.innerHTML = listHtml();
     window.scrollTo(0, y);
     watchEnd();
+    if (st.loaded && focus) {
+      focus = null;
+      if (target) {
+        $(`.cf-post[data-id="${target.id}"]`, root)?.scrollIntoView({ block: "start" });
+        if (!st.comments[target.id]) loadComments(target.id);
+      }
+    }
   }
+  function openPost(id) {   // switch the Friends tab to 「动态」 (the tab itself is switched by notify.js)
+    focus = id;
+    const t0 = Date.now();
+    const tick = () => {
+      const seg = $('[data-fmode2="feed"]');
+      if (seg && seg.getAttribute("aria-pressed") !== "true") seg.click();
+      else if ($("#cf-root") && st.loaded) paint();
+      if ((seg && seg.getAttribute("aria-pressed") === "true") || Date.now() - t0 > 5000) return;
+      setTimeout(tick, 150);
+    };
+    tick();
+  }
+  window.addEventListener("body:link", (e) => { const id = Number(e.detail?.feed); if (id) openPost(id); });
 
   // ---- data
   async function fetchPage(before) {

@@ -4,8 +4,6 @@ permissions, no way to delete a post, comments deletable by their writer and rep
 Test database body_test_circle_feed (BODY_TEST_DB_NAME_CIRCLE_FEED), recreated on every run; skipped without Postgres."""
 import json
 import os
-import sys
-import types
 
 import psycopg
 import pytest
@@ -16,7 +14,7 @@ from psycopg_pool import ConnectionPool
 from body_engine import api, auth
 from body_engine.config import Settings
 from body_engine.db import migrate
-from body_engine.friends import api as friends_api, feed, feed_notify, params as P
+from body_engine.friends import api as friends_api, feed, params as P
 from body_engine.rollout import flags
 from body_engine.web import views
 
@@ -318,33 +316,38 @@ def test_red_dot_and_seen(client, world, dsn, pair):
     assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json() == {"count": 0}
 
 
-def test_notifications_go_through_notify_when_it_exists(client, world, dsn, pair, monkeypatch):
+def inbox(dsn, uid):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        return conn.execute("SELECT kind, title, title_en, body, url, data FROM notifications WHERE user_id = %s ORDER BY id",
+                            (uid,)).fetchall()
+
+
+def test_like_and_comment_notify_the_author(client, world, dsn, pair):
     ids, tok, _ = pair
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("DELETE FROM notifications")
     log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
     pid = get_feed(client, tok["Ben"])["posts"][0]["id"]
-    assert not feed_notify.available()                                    # not merged yet: nothing happens, nothing fails
+    # my own ❤️ and comment on my own post: no notification
+    client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ann"]))
+    client.post(f"{FEED}/posts/{pid}/comments", headers=h(tok["Ann"]), json={"body": "me"})
+    assert inbox(dsn, ids["Ann"]) == []
+    # Ben's ❤️: one in-app notification for Ann, linking to the post
     assert client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"])).status_code == 200
-    calls = []
-    mod = types.ModuleType("body_engine.notify")
-    mod.notify = lambda conn, user_id, kind, title, body, url=None, data=None: calls.append((user_id, kind, title, body, url, data))
-    monkeypatch.setitem(sys.modules, "body_engine.notify", mod)
-    monkeypatch.setattr(feed_notify, "available", lambda: True)
+    got = inbox(dsn, ids["Ann"])
+    assert len(got) == 1 and got[0]["kind"] == feed.LIKE == "circle.like"
+    assert "Ben" in got[0]["title"] and "Ben" in got[0]["title_en"]
+    assert got[0]["url"] == f"/app/?tab=friends&feed={pid}" and got[0]["data"] == {"actor_id": ids["Ben"], "post_id": pid}
+    # unlike + like again: not told twice
     client.delete(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"]))
-    client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"]))        # liked before: not told again
-    assert calls == []
-    client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ann"]))   # the author's own ❤️: no notification
+    client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"]))
+    assert len(inbox(dsn, ids["Ann"])) == 1
+    # Ben's comment: one more, with the text
     client.post(f"{FEED}/posts/{pid}/comments", headers=h(tok["Ben"]), json={"body": "strong!"})
-    assert len(calls) == 1 and calls[0][:2] == (ids["Ann"], "circle_feed_comment") and "Ben" in calls[0][2] and calls[0][3] == "strong!"
-    assert calls[0][5] == {"post_id": pid}
-    # a failing push never breaks the comment
-    mod.notify = lambda *a, **k: 1 / 0
-    assert client.post(f"{FEED}/posts/{pid}/comments", headers=h(tok["Ben"]), json={"body": "again"}).status_code == 201
-    # a fresh like sends one
-    mod.notify = lambda conn, user_id, kind, title, body, url=None, data=None: calls.append((user_id, kind, title))
-    log_sets(dsn, ids["Ben"], [("squat", [(5, 100, True)])])
-    bpid = next(p["id"] for p in get_feed(client, tok["Ann"])["posts"] if p["user"]["name"] == "Ben")
-    client.put(f"{FEED}/posts/{bpid}/like", headers=h(tok["Ann"]))
-    assert calls[-1][:2] == (ids["Ben"], "circle_feed_like")
+    got = inbox(dsn, ids["Ann"])
+    assert [g["kind"] for g in got] == ["circle.like", "circle.comment"] and got[1]["body"] == "strong!"
+    assert got[1]["url"] == f"/app/?tab=friends&feed={pid}"
+    assert inbox(dsn, ids["Ben"]) == []                                  # the one who liked / commented gets nothing
 
 
 def test_privacy_nothing_but_training_in_a_post(client, world, dsn, pair):

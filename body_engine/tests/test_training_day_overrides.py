@@ -196,9 +196,15 @@ def test_save_plan_clears_future_day_changes(conn, world):
     ids, _tok, mon = world
     a = ids["A"]
     OV.reschedule_day(conn, a, mon, "下肢 A", replan=False)
+    # Besides this change, saving a plan mid-week leaves start-week changes (plan_start, source replan) from today on;
+    # how many depends on the weekday the test runs, so count what is there instead of assuming 1
+    before = conn.execute("SELECT count(*) AS n FROM training_day_overrides WHERE user_id = %s AND date >= %s",
+                          (a, plans._user_today(conn, a))).fetchone()["n"]
+    assert before >= 1
     saved = plans.save_plan(conn, a, split_type="4_day_upper_lower", sync_sparky=False)
-    assert saved["day_changes_cleared"] == 1
-    assert conn.execute("SELECT 1 FROM training_day_overrides WHERE user_id = %s", (a,)).fetchone() is None
+    assert saved["day_changes_cleared"] == before
+    left = conn.execute("SELECT date, source FROM training_day_overrides WHERE user_id = %s", (a,)).fetchall()
+    assert all(r["date"] < mon and r["source"] == "replan" for r in left)   # only the new plan's own start week
 
 
 def test_tools_write_only_for_oneself_and_share_reads(conn, world, client):
