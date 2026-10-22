@@ -12,6 +12,8 @@
 - /app/: PWA static files (static/, no build step); / redirects to /app/.
 - /app/media/: exercise demo images in the deployment's own media storage (BODY_MEDIA_DIR; training/media.py downloads them once).
 """
+import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -28,7 +30,7 @@ from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.88-2026-10-22"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.92-2026-10-22"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -152,6 +154,36 @@ def logout(request: Request, conn=Depends(get_conn)):
     response = Response(status_code=204)
     session.clear_cookie(response, request)
     return response
+
+
+# ---- offline shell for the Watch2Whoop app (docs/offline-plan.md, section 5)
+# The app's WKWebView has no service worker, so a cold start without network cannot open /app/. The app keeps this one
+# file (index.html with every local stylesheet and script inlined) and opens it with loadHtmlString(baseUrl = the page's
+# address): same origin, so the page reads the copies offline.js kept in IndexedDB. window.W2W_SHELL tells the page it
+# runs from the copy: it sends nothing and asks the app to load the real page once the network is back. Public like the
+# other static files; no user data in it.
+_SCRIPT = re.compile(r'<script src="([\w.-]+\.js)"( defer)?></script>')
+_STYLE = re.compile(r'<link rel="stylesheet" href="([\w.-]+\.css)">')
+_shell_cache: dict[str, str] = {}
+
+
+def offline_shell_html() -> str:
+    if WEB_VERSION not in _shell_cache:
+        def read(m: re.Match, tag: str) -> str:   # a closing tag inside the text would end the element early
+            return (STATIC / m.group(1)).read_text(encoding="utf-8").replace(f"</{tag}", f"<\\/{tag}")
+        html = (STATIC / "index.html").read_text(encoding="utf-8")
+        html = _SCRIPT.sub(lambda m: f"<script>{read(m, 'script')}\n</script>", html)
+        html = _STYLE.sub(lambda m: f"<style>{read(m, 'style')}</style>", html)
+        marker = f'<script>window.W2W_SHELL = {json.dumps(WEB_VERSION)};</script>\n'
+        _shell_cache.clear()
+        _shell_cache[WEB_VERSION] = html.replace("</head>", marker + "</head>", 1)
+    return _shell_cache[WEB_VERSION]
+
+
+@router.get("/app/offline-shell.html", include_in_schema=False)
+def offline_shell():
+    return Response(offline_shell_html(), media_type="text/html; charset=utf-8",
+                    headers={"X-Web-Version": WEB_VERSION})
 
 
 @router.get("/v1/web/me")

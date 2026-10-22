@@ -25,6 +25,8 @@ dependencies:
   url_launcher: 6.3.3
   shared_preferences: 2.5.6
   http: 1.6.0
+  # Application Support directory for the kept copy of the Today page (offline_shell.dart)
+  path_provider: 2.1.6
   # Sign in with Apple (native button + ASAuthorization); CocoaPods podspec, iOS 13+
   sign_in_with_apple: 8.2.0
   # Keychain storage for the Body Engine account token (never in shared_preferences)

@@ -322,8 +322,9 @@ def journal_analysis(user: str, key: str | None = None, end: date | None = None,
                      conn=Depends(get_conn), viewer=Depends(current_user)):
     """Effect of a behavior on next-day recovery score, resting heart rate and ln HRV (two-group mean comparison). Without key, analyze all enabled journal items."""
     owner_id = _owner(conn, viewer, user, "journal")
-    if key is None:
-        return analysis.analyze_all(conn, owner_id, end, days)
+    if key is None:   # the item carries `label` (its name in the request's language) like the other Today page journal endpoints
+        return [{**a, "item": defaults.with_label([a["item"]])[0]} if isinstance(a.get("item"), dict) else a
+                for a in analysis.analyze_all(conn, owner_id, end, days)]
     return _found(_bad_request(analysis.analyze, conn, owner_id, key, end, days, threshold), "日记项")
 
 

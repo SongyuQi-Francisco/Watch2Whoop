@@ -1,7 +1,7 @@
 """Member cards on the Friends tab (docs/friends-social-plan.md §3.3) and one-tap cheers (nudges).
 
 A card shows one person: today (status label from the recovery zone, recovery / sleep / strain, trained today, last
-synced day when today has no data) and the last 7 days (recovery zone per day, strain per day). Every block is checked
+synced day when today has no data) and the last 7 days (per day: weekday, today mark, recovery zone, sleep, strain). Every block is checked
 against the viewer's grant for that person (auth.can_view): scores → numbers, dots and bars; training → the trained badge.
 A block the person did not share is null and listed in `hidden`. Dates are each person's own local dates.
 """
@@ -48,8 +48,9 @@ def _scores_block(conn, uid: int, today) -> dict:
     for i in range(6, -1, -1):
         d = today - timedelta(days=i)
         r = rows.get(d) or {}
-        week.append({"date": d, "recovery": r.get("recovery"), "zone": views.recovery_zone(r.get("recovery")),
-                     "strain": r.get("strain")})
+        week.append({"date": d, "weekday": d.weekday(), "today": d == today, "recovery": r.get("recovery"),
+                     "zone": views.recovery_zone(r.get("recovery")), "sleep_score": r.get("sleep_score"),
+                     "sleep_min": r.get("sleep_actual_min"), "strain": r.get("strain")})
     return {"recovery": t.get("recovery"), "zone": zone, "label": views._recovery_word(zone),
             "sleep_score": t.get("sleep_score"), "sleep_min": t.get("sleep_actual_min"), "strain": t.get("strain"),
             "last_date": last, "synced_today": last == today, "week": week}
@@ -59,6 +60,16 @@ def _trained_today(conn, uid: int, today) -> bool:
     return conn.execute("""SELECT 1 FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
                            AND excluded IS NULL LIMIT 1""",
                         (uid, today)).fetchone() is not None
+
+
+def seen_by_friends(conn: psycopg.Connection, uid: int) -> dict:
+    """What my friends see of me, for my own card ("what friends see", flag friend_card_v2): a block is shown when at
+    least one circle member may see it (the union of the scopes I grant), `varies` when not everyone sees the same.
+    With no circle members yet nobody sees anything, so `count` is 0 and the page shows the full card."""
+    sets = [frozenset(share_with(conn, m["id"], uid)) for m in co_members(conn, uid)]
+    union = set().union(*sets) if sets else set()
+    return {"count": len(sets), "scopes": sorted(union), "varies": len(set(sets)) > 1,
+            "hidden": [s for s in ("scores", "training") if s not in union] if sets else []}
 
 
 def card(conn: psycopg.Connection, viewer_id: int, owner_id: int, name: str) -> dict:
@@ -94,7 +105,7 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
     """Friends tab: my own card first (with cheers received in the last 24 hours), then every co-member."""
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (uid,)).fetchone()
     sent, got = _nudges(conn, uid)
-    mine = {**card(conn, uid, uid, me["display_name"]), "received": got}
+    mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid)}
     members = []
     for m in co_members(conn, uid):
         c = card(conn, uid, m["id"], m["display_name"])

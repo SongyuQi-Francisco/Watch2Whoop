@@ -19,6 +19,16 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 ## Unreleased
 
 ## 1.0.7 — 2026-10-22
+Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
+[docs/offline-plan.md](../../docs/offline-plan.md)).
+- Opening the app without network no longer stops at 「连不上今天页」 / "Cannot reach the today page" for people with
+  offline use on: the app keeps a copy of the Today page (`/app/offline-shell.html`, scripts inlined, no user data) and
+  opens it when the page cannot load. The copy shows what the page saved on this phone and queues water, weight and
+  training sets; back in the foreground (or when the page sees the network again) the app loads the real page, which
+  sends the queue. The copy is kept only while the page reports offline use on, and deleted on logout.
+- WKWebView runs no service worker in this app (no App-Bound Domains), so without this a cold start offline had no page.
+- New direct dependency `path_provider` 2.1.6 (already in the lock as a transitive one; no native pod).
+
 Health data status and permissions (#163): iOS never tells an app whether Health *read* access was granted, so users
 could not see whether their data was read or where to change the permissions after the first launch.
 - Phone sync → 「服务器收到的数据」 / "Data on the server": per type (heart rate, HRV, resting heart rate, sleep, steps,
