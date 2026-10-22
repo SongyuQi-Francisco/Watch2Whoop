@@ -7,6 +7,7 @@
   (written by import-shortcut; hour-summed heart rate agg = hour is unused, only ungrouped raw readings); if this user has no rows in the table yet, fall back to reading the archive.
   Only one sample per (type + start time) is kept, non-XML preferred.
 - The export.zip uploaded by the user (history/): raw samples and sleep stages in export_samples, treated as an XML source.
+- The types the app reads from HealthKit itself (hk_samples, rawdata/hk_types.py; sleeping wrist temperature): a live source.
 - HRV: hrv_kind = 'sdnn' (Apple's SDNN from OW / Shortcut / export_samples) or 'rmssd' (computed from Apple's beat-to-beat
   series in heartbeat_series, rawdata/hrv.py; the app copy wins over the export.xml copy). The two are never mixed.
 """
@@ -206,6 +207,20 @@ def load_export_db(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: 
     return segs
 
 
+def load_app_db(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date, merger: _Merger) -> None:
+    """Raw samples the app read from HealthKit itself (hk_samples, rawdata/hk_types.py: the types with a `score` field,
+    e.g. sleeping wrist temperature -> temp), as a live source (they win over an export.xml copy of the same sample)."""
+    from ..rawdata import hk_types
+    if not hk_types.SCORE_TYPES:
+        return
+    lo = datetime.combine(start - timedelta(days=1), time.min, tz)
+    hi = datetime.combine(end + timedelta(days=2), time.min, tz)
+    for r in conn.execute("""SELECT type, start_at, value FROM hk_samples
+                             WHERE user_id = %s AND type = ANY(%s) AND start_at >= %s AND start_at < %s""",
+                          (user_id, list(hk_types.SCORE_TYPES), lo, hi)):
+        merger.add(hk_types.SCORE_TYPES[r["type"]], r["start_at"], r["value"], xml=False)
+
+
 def rmssd_hrv(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date) -> Samples:
     """Per-reading RMSSD from heartbeat_series (the app copy already replaced the export copy of the same reading)."""
     lo = datetime.combine(start - timedelta(days=1), time.min, tz)
@@ -227,6 +242,7 @@ def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
         segs += db_segs
     elif archive_dir is not None:
         segs += load_shortcut(archive_dir, merger, shortcut_types(hrv_kind))
+    load_app_db(conn, user_id, inp.tz, start, end, merger)
     # export.zip sleep stages only fill nights other sources lack (two sets of segments for one night do not line up in time, and mixing them would double-count awake time)
     taken = {(s.end - WAKE_SHIFT).astimezone(inp.tz).date() for s in segs}
     segs += [s for s in load_export_db(conn, user_id, inp.tz, start, end, merger, hrv_kind)
