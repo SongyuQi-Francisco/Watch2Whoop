@@ -3,8 +3,11 @@
    user's own cue — and set-by-set logging in the same card: each set its own reps and weight, a done tick, add / remove sets.
    The rows are a server draft (PUT /training/session/{date}, saved a moment after each change), so the app's WebView and a
    browser show the same rows; 「提交」 writes the ticked sets to the training log (POST …/submit), a resubmit replaces it.
+   The plan sits in one collapsible 「今日训练计划」 card (collapsed by default: session names, exercise count, about N minutes);
+   opened, it lists every exercise, each with a remove button (issue #172): only this day (undo in the toast and under 「已移除」),
+   or from the session template ("never again": asks twice). askRemove() is also used by the future-day plan sheet in app.js.
    app.js draws placeholder() in the training page and calls mount(el, ctx) after rendering, only while the flag is on.
-   ctx: { api, esc, toast, owner, self, date, openDetail(slug), openTrainingLog(), onSubmitted() }. */
+   ctx: { api, esc, toast, owner, self, date, openDetail(slug), openTrainingLog(), openSheet, closeSheet, onSubmitted(), onPlanChanged() }. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -15,6 +18,7 @@
   let C = null, V = null, box = null;
   let rows = {};          // slug -> [{reps, weight_kg, duration_s, done}]
   const open = new Set();
+  let planOpen = false;   // the plan card is collapsed until the user opens it
   let saveTimer = null, saveState = "", busy = false;
 
   const CSS = `
@@ -50,7 +54,20 @@
     .td2 .td-last{font-size:12px;color:var(--text-3);margin-top:8px;font-variant-numeric:tabular-nums}
     .td2 .td-foot{margin-top:12px}
     .td2 .td-st{font-size:12px;color:var(--text-3);text-align:center;margin-top:6px;min-height:16px}
-    .td2 .td-ex.banned .td-name>span:first-child{text-decoration:line-through;color:var(--text-2)}`;
+    .td2 .td-ex.banned .td-name>span:first-child{text-decoration:line-through;color:var(--text-2)}
+    .td2 .td-plan{padding:0;overflow:hidden}
+    .td2 .td-plan>.td-head .td-chev{flex:none;color:var(--text-3);transition:transform .15s}
+    .td2 .td-plan[data-open="true"]>.td-head .td-chev{transform:rotate(90deg)}
+    .td2 .td-plan-body{padding:0 12px 12px}
+    .td2 .td-plan-body .td-ex{background:var(--bg);box-shadow:none}
+    .td2 .td-hrow{display:flex;align-items:center}
+    .td2 .td-hrow .td-head{flex:1;min-width:0}
+    .td2 .td-rm{flex:none;width:44px;height:44px;border:0;background:none;color:var(--text-3);font-size:20px;line-height:1}
+    .td2 .td-removed{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:10px;font-size:13px;color:var(--text-2)}
+    .td2 .td-removed button{border:0;background:var(--bg);color:var(--text);border-radius:999px;padding:6px 12px;min-height:32px;font-size:13px}
+    .td-rmsheet .btn{width:100%;margin-top:10px}
+    .td-rmsheet .btn.warn{color:var(--bad)}
+    .td-rmsheet p{margin:0 0 4px;color:var(--text-2);font-size:14px}`;
 
   function injectCss() {
     if ($("#td2-css")) return;
@@ -135,10 +152,11 @@
       <div class="td-acts">${loggable(c) && canLog() ? `<button type="button" class="btn" data-add>${C.esc(tr("+ 一组"))}</button>` : ""}
         <button type="button" class="btn" data-guide>${C.esc(loggable(c) ? tr("动作指导") : tr("看替代动作"))}</button></div></div>`;
     return `<div class="card td-ex ${c.status === "banned" ? "banned" : ""}" data-slug="${C.esc(c.slug)}">
-      <button type="button" class="td-head" data-toggle aria-expanded="${isOpen}">${pic}
+      <div class="td-hrow"><button type="button" class="td-head" data-toggle aria-expanded="${isOpen}">${pic}
         <span class="td-title"><span class="td-name"><span>${C.esc(name(c))}</span>${statusBadge(c)}</span>
           <span class="td-rx" style="display:block">${C.esc(loggable(c) ? rxText(c) : tr("不要做"))}</span></span>
-        ${loggable(c) && sets.length ? `<span class="td-cnt ${done && done >= sets.length ? "all" : ""}">${done}/${sets.length}</span>` : ""}</button>${body}</div>`;
+        ${loggable(c) && sets.length ? `<span class="td-cnt ${done && done >= sets.length ? "all" : ""}">${done}/${sets.length}</span>` : ""}</button>
+        ${V.can_edit_plan ? `<button type="button" class="td-rm" data-rm aria-label="${C.esc(tr("移除这个动作"))}">×</button>` : ""}</div>${body}</div>`;
   }
 
   const doneSets = () => cards().filter(loggable).reduce((a, c) => a + (rows[c.slug] || []).filter((s) => s.done && (s.reps != null || s.weight_kg != null || s.duration_s != null)).length, 0);
@@ -153,18 +171,40 @@
       <div class="td-st" aria-live="polite">${C.esc(saveState)}</div></div>`;
   }
 
-  function draw() {
-    if (!box) return;
-    const sess = V.sessions || [];
-    const head = sess.map((s) => s.name).join(" · ");   // i18n-ok: plan names are data
+  const planSub = () => {   // "上肢 B · 8 个动作 · 约 60 分钟"
+    const n = cards().length;
+    return [(V.sessions || []).map((x) => x.name).join(" · "), tr("{n} 个动作", { n }), V.minutes ? tr("约 {n} 分钟", { n: V.minutes }) : ""].filter(Boolean).join(" · ");   // i18n-ok: plan names are data
+  };
+
+  function removedHtml() {
+    const gone = V.removed || [];
+    if (!gone.length) return "";
+    return `<div class="td-removed"><span>${C.esc(tr("已移除"))}</span>${gone.map((r) => `<button type="button" data-restore="${C.esc(r.slug)}">${C.esc(window.I18N.lang === "en" && r.name_en ? r.name_en : r.name_zh || r.slug)} · ${C.esc(tr("恢复"))}</button>`).join("")}</div>`;
+  }
+
+  function planCardHtml() {
     const rd = V.readiness;
     const rdTag = V.is_today && rd && (rd.tier === "red" || rd.tier === "yellow")
       ? `<div class="rcard-tags" style="margin:0 0 10px"><span class="badge ${rd.tier === "red" ? "bad" : "mid"}">${C.esc(rd.label || "")}</span></div>` : "";
+    const list = cards();
+    const sets = list.filter(loggable).reduce((a, c) => a + (rows[c.slug] || []).length, 0);
+    const done = list.filter(loggable).reduce((a, c) => a + (rows[c.slug] || []).filter((s) => s.done).length, 0);
+    const body = !planOpen ? "" : `<div class="td-plan-body">${rdTag}${list.map(cardHtml).join("")}${removedHtml()}${footHtml()}</div>`;
+    return `<div class="card td-plan" data-open="${planOpen}">
+      <button type="button" class="td-head" data-plan-toggle aria-expanded="${planOpen}">
+        <span class="td-title"><span class="td-name"><span>${C.esc(V.is_today ? tr("今日训练计划") : tr("{day} 训练计划", { day: V.date.slice(5) }))}</span></span>
+          <span class="td-rx" style="display:block">${C.esc(planSub())}</span></span>
+        ${sets ? `<span class="td-cnt ${done >= sets ? "all" : ""}">${done}/${sets}</span>` : ""}<span class="td-chev" aria-hidden="true">›</span></button>${body}</div>`;
+  }
+
+  function draw() {
+    if (!box) return;
+    const sess = V.sessions || [];
     const body = !sess.length
       ? `<div class="card"><div class="empty faint" style="padding:8px">${C.esc(V.rest_day ? tr("休息") : tr("无计划"))}</div></div>`
-      : rdTag + cards().map(cardHtml).join("") + footHtml();
+      : planCardHtml();
     box.innerHTML = `<div class="section-head"><h2>${C.esc(V.is_today ? tr("今天") : V.date)}</h2>
-      <span class="small muted">${C.esc(head)}${V.change ? ` <span class="badge mid">${C.esc(tr("已调整"))}</span>` : ""}</span></div>${body}`;
+      <span class="small muted">${V.change ? `<span class="badge mid">${C.esc(tr("已调整"))}</span>` : ""}</span></div>${body}`;
   }
 
   // ---- saving: one PUT a moment after the last change; submit flushes first
@@ -230,7 +270,78 @@
     if (foot) foot.outerHTML = footHtml();
   }
 
+  // ---- removing a planned exercise (issue #172)
+
+  function planChanged() {
+    (C.onPlanChanged || C.onSubmitted)?.();
+  }
+
+  // The remove sheet: this day only (default, undo in the toast) or out of the session template (second confirmation).
+  // info: { slug, name, date, dayOfWeek, sessionName, addedForDay }; done(kind) runs after the server accepted it.
+  function askRemove(ctx, info, done) {
+    const E = ctx.esc;
+    const fail = (e) => ctx.toast(e.status === 0 ? tr("离线，连上网络后重试") : e.message);
+    const first = () => `<div class="td-rmsheet"><p>${E(info.name)}</p>
+      <button type="button" class="btn btn-primary" data-rm-day>${E(info.isToday ? tr("只删今天的") : tr("只删这一天的"))}</button>
+      ${info.addedForDay || !info.dayOfWeek ? "" : `<button type="button" class="btn warn" data-rm-tpl>${E(tr("以后都不要这个动作…"))}</button>`}</div>`;
+    const second = () => `<div class="td-rmsheet"><p>${E(tr("会从训练组「{name}」里删掉，以后每周都不再出现。", { name: info.sessionName }))}</p>
+      <button type="button" class="btn warn" data-rm-tpl-ok>${E(tr("确定，以后都不要"))}</button>
+      <button type="button" class="btn" data-rm-back>${E(tr("返回"))}</button></div>`;
+    const bind = (root) => {
+      const on = (sel, fn) => { const b = root.querySelector(sel); if (b) b.onclick = fn; };
+      on("[data-rm-day]", async () => {
+        try {
+          await ctx.api(`/v1/users/me/training/plan/remove-exercise`, { method: "POST", body: { exercise: info.slug, scope: "day", day: info.date } });
+        } catch (e) { fail(e); return; }
+        ctx.closeSheet();
+        done("day");
+        ctx.toast(tr("已移除「{name}」", { name: info.name }), tr("撤销"), async () => {
+          try {
+            await ctx.api(`/v1/users/me/training/plan/restore-exercise`, { method: "POST", body: { exercise: info.slug, day: info.date } });
+            done("restore");
+          } catch (e) { fail(e); }
+        });
+      });
+      on("[data-rm-tpl]", () => { root.innerHTML = second(); bind(root); });
+      on("[data-rm-back]", () => { root.innerHTML = first(); bind(root); });
+      on("[data-rm-tpl-ok]", async () => {
+        try {
+          await ctx.api(`/v1/users/me/training/plan/remove-exercise`, { method: "POST", body: { exercise: info.slug, scope: "template", confirm: true,
+            day_of_week: info.dayOfWeek, session_name: info.sessionName } });
+        } catch (e) { fail(e); return; }
+        ctx.closeSheet();
+        done("template");
+        ctx.toast(tr("已从「{name}」里删除", { name: info.sessionName }));
+      });
+    };
+    ctx.openSheet(tr("移除这个动作"), first(), bind);
+  }
+
+  async function reload() {   // after the plan changed: the server's view of the day (the typed-in sets were saved first)
+    if (saveTimer) await save();
+    try { V = await C.api(`/v1/users/${C.owner}/training/session?date=${C.date}`); } catch (e) { C.toast(e.message); return; }
+    initRows();
+    draw();
+  }
+
+  function removeCard(c) {
+    const s = (V.sessions || []).find((x) => x.exercises.includes(c));
+    askRemove(C, { slug: c.slug, name: name(c), date: V.date, isToday: V.is_today, dayOfWeek: s?.day_of_week,
+      sessionName: s?.name, addedForDay: c.added_for_day || s?.added_for_day }, (kind) => { planChanged(); reload(); });
+  }
+
+  async function restore(slug) {
+    try {
+      await C.api(`/v1/users/me/training/plan/restore-exercise`, { method: "POST", body: { exercise: slug, day: V.date } });
+    } catch (e) { C.toast(e.message); return; }
+    planChanged();
+    reload();
+  }
+
   function onClick(e) {
+    if (e.target.closest("[data-plan-toggle]")) { planOpen = !planOpen; draw(); return; }
+    const rs = e.target.closest("[data-restore]");
+    if (rs) { restore(rs.dataset.restore); return; }
     const card = e.target.closest(".td-ex");
     if (!card) {
       if (e.target.closest("[data-submit]")) submit(false);
@@ -238,6 +349,7 @@
       return;
     }
     const slug = card.dataset.slug, c = cards().find((x) => x.slug === slug), sets = rows[slug];
+    if (e.target.closest("[data-rm]")) { if (c) removeCard(c); return; }
     if (e.target.closest("[data-toggle]")) {
       if (open.has(slug)) open.delete(slug); else open.add(slug);
       draw();
@@ -295,15 +407,11 @@
     const kept = (window.BodyOffline?.pending("training-save") || []).filter((it) => it.group === `t:${V.date}`).pop();
     if (kept && C.self) V = { ...V, log: { ...(V.log || {}), status: "draft", exercises: kept.body.exercises } };
     initRows();
-    if (!open.size) {   // open the first exercise not done yet
-      const next = cards().find((c) => loggable(c) && !(rows[c.slug] || []).every((s) => s.done));
-      if (next) open.add(next.slug);
-    }
     saveState = V.log?.status === "submitted" ? tr("已提交") : V.log ? tr("已保存") : "";
     draw();
     box.onclick = onClick;
     box.oninput = onInput;
   }
 
-  window.BodyTrainingDay = { placeholder, mount, summaryHtml, pending: () => saveTimer !== null, flush: () => (saveTimer ? save() : null) };
+  window.BodyTrainingDay = { placeholder, mount, summaryHtml, askRemove, pending: () => saveTimer !== null, flush: () => (saveTimer ? save() : null) };
 })();
