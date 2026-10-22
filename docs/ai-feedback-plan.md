@@ -63,7 +63,7 @@
 
 **查重**：`fingerprint = sha256(kind + where + 规范化的 error_text 或标题关键词)`（规范化 = 去数字、去占位符、小写、去标点）。命中未关闭的报告 → 不新建，记一票（`feedback_votes`），返回原编号。
 
-**限流**：每人每天 5 条、每月 30 条；全服务器每天 100 条；同一对话同一 fingerprint 1 次。超了返回 `rate_limited`。开关 `BODY_FEEDBACK_MODE=off | queue | private_issue`（第 2 期）。管理员可单独封某人（`feedback-ban`）。
+**限流**：不限每人的条数（2026-10-22 负责人决定）；全服务器每天 1000 条，只防 AI 失控或提示注入刷屏；同一对话同一 fingerprint 1 次。超了返回 `rate_limited`。开关 `BODY_FEEDBACK_MODE=off | queue | private_issue`（第 2 期）。管理员可单独封某人（`feedback-ban`）。
 
 **附件**：第 1 期**不收**。截图几乎都带健康数值，而去敏对图片做不到可靠。以后要收：只存服务器、只给管理员看，永不出服务器。
 

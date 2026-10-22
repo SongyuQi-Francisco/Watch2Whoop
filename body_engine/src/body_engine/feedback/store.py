@@ -96,9 +96,9 @@ def _limits(conn, user_id: int) -> str | None:
                                count(*) FILTER (WHERE user_id = %(u)s) AS month,
                                count(*) FILTER (WHERE created_at >= now() - interval '1 day') AS all_day
                         FROM feedback_reports WHERE created_at >= now() - interval '30 days'""", {"u": user_id}).fetchone()
-    if c["day"] >= P.PER_USER_DAY:
+    if P.PER_USER_DAY is not None and c["day"] >= P.PER_USER_DAY:
         return f"每人每天最多 {P.PER_USER_DAY} 条"
-    if c["month"] >= P.PER_USER_MONTH:
+    if P.PER_USER_MONTH is not None and c["month"] >= P.PER_USER_MONTH:
         return f"每人 30 天最多 {P.PER_USER_MONTH} 条"
     if c["all_day"] >= P.GLOBAL_DAY:
         return "今天全服务器的反馈已满"
