@@ -28,6 +28,7 @@ READ = {
     "sleep-coach": ["get_sleep_coach"],
     "sleep/nights": ["get_sleep"],
     "sleep/details": ["get_sleep_details"],
+    "sleep/night": ["get_sleep", "get_sleep_details", "get_scores", "get_health_monitor"],   # sleep detail page (flag sleep_detail)
     "goals/sleep": ["get_sleep_goal"],
     "reports": ["get_report"],
     "events": ["list_events"],
@@ -45,6 +46,8 @@ READ = {
     "training/week": ["get_week_plan"],
     "training/exercises": ["search_exercises"],
     "training/exercises/{x}": ["get_exercise"],
+    "training/muscle-load": ["get_muscle_load"],   # muscle load map (flag muscle_load); the card and the details are the same tool
+    "training/muscle-load/{x}": ["get_muscle_load"],
     "training/session": ["get_week_plan", "get_training_day"],   # FB-5: today's cards = the plan; the page's draft is in get_training_day
     "diet-profile": ["get_diet_profile", "get_nutrition_goals"],
     "meal-templates": ["get_meal_templates"],
@@ -72,6 +75,7 @@ NO_DATA = {
     "training/plan/add-exercise": "write: add an exercise to a session or one day of the plan (#154)",
     "training/plan/remove-exercise": "write: remove a planned exercise for one day or from a session (#172)",
     "training/plan/restore-exercise": "write: undo a one-day removal (#172)",
+    "training/goals": "own training settings (focus muscles, physique goal): the physique goal is in the memory card, both come with get_muscle_load",
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "weight": "write: the day's weight from 记录 → 日记 (log_weight; offline_mode)",
