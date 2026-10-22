@@ -21,7 +21,11 @@ NEUTRAL = {"hair", "head", "hands", "feet", "ankles", "knees", "tibialis"}   # d
 
 
 def short(d: str) -> str:
-    return re.sub(r"-?\d+\.\d+", lambda m: f"{float(m.group()):.1f}".rstrip("0").rstrip("."), d)
+    d = re.sub(r"-?\d+\.\d+", lambda m: f"{float(m.group()):.1f}".rstrip("0").rstrip("."), d)
+    # "1.2.64" is two numbers in SVG path shorthand; spell the separator out (also keeps it from looking like an IP address)
+    while (n := re.sub(r"(\d\.\d+)(?=\.\d)", r"\1 ", d)) != d:
+        d = n
+    return d
 
 
 def strings(block: str) -> list[str]:
