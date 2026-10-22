@@ -1183,4 +1183,8 @@ I18N.addEn({
   "离线，已存在本机": "Offline: kept on this device",
   "训练 {day} · 提交": "Workout {day} · submit",
   "离线，联网后自动提交": "Offline: submits once you're connected",
+  // journal moved off the 记录 page (records_v2): the Today 日记 card and the Trends 行为影响 card
+  "行为影响": "Behavior impact",
+  "行为": "Behaviors",
+  "已记录 {n} 项": "{n} logged",
 });
