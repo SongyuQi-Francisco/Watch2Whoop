@@ -36,6 +36,8 @@ CARD_KEYS = {"communication": 90, "health_constraints": 90, "injuries": 90, "cur
 OBS_RECENT = 5
 OBS_CHARS = 60
 RECOVERY_GREEN, RECOVERY_RED = 67, 34
+STRENGTH_RECORDS_HINT = ("身体年龄里的力量训练记录可能不全（只按记录算，漏记的不算）。提醒用户补记：练完让你用 log_workout 记，"
+                         "或在今天页逐组记录并提交，或导入 Hevy 历史；用手表练力量时选「传统力量训练」")
 
 _lock = threading.Lock()
 _cache: "OrderedDict[int, tuple[tuple, float, dict]]" = OrderedDict()
@@ -142,6 +144,12 @@ def _training(conn, viewer: int, uid: int, today: date) -> dict:
     out = {"days_28": {"training": s["training_days"], "rest": s["rest_days"], "by_type": s["by_type"],
                        "by_intensity": {k: v for k, v in s["by_intensity"].items() if v and k != "rest"}},
            "streak_days": streak, "last_7": last7}
+    hs = conn.execute("SELECT contributors FROM healthspan_weekly WHERE user_id = %s ORDER BY week_start DESC LIMIT 1",
+                      (uid,)).fetchone()
+    strength = next((c for c in (hs or {}).get("contributors") or [] if c.get("key") == "strength"), None)
+    if strength and strength.get("coverage") == "possibly_incomplete":   # issue #210: ask the user to fill in the records
+        out["strength_records"] = {"state": "possibly_incomplete", "why": strength.get("coverage_reason"),
+                                   "tell_user": STRENGTH_RECORDS_HINT}
     if cal.get("sparky_error"):   # issue #66 FB-4: say it plainly so the AI tells the user (no admin commands)
         link = sparky_client.link_state(conn, uid)
         out["training_log"] = {"state": link["state"], "tell_user": link.get("hint") or cal["sparky_error"][:200]}

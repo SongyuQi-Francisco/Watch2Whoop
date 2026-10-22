@@ -34,6 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
+from ..friends import codes as circle_codes, store as friends_store
 from ..web import activation, login_codes, login_limit, session
 from . import delete as account_delete, identities, invites, mailer, params, provision, signin
 
@@ -230,7 +231,7 @@ def get_account(conn=Depends(get_conn), viewer=Depends(current_user)):
 
 class RedeemIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    code: str = Field(min_length=4, max_length=40)
+    code: str = Field(min_length=4, max_length=80)
 
 
 def _provision_in_background(user_id: int) -> None:
@@ -321,6 +322,18 @@ def redeem_invite(body: RedeemIn, request: Request, response: Response, conn=Dep
     """An invite code activates this (pending) account. An existing account's activation code / login code instead moves
     the identity this person signed in with to that account and signs them in there ({claimed: true, token for the app})."""
     ip = _check_ip(request)
+    try:   # a circle activation code (friends/codes.py): opens the account and keeps a place in that circle
+        circle = circle_codes.redeem(conn, viewer["id"], body.code)
+    except friends_store.FriendsError as e:
+        conn.rollback()
+        raise HTTPException(e.status, str(e))
+    if circle is not None:
+        conn.commit()
+        if circle["new_account"] and provision.status(conn, viewer["id"])["state"] != "done":
+            start_provisioning(viewer["id"])
+        user = conn.execute("SELECT * FROM users WHERE id = %s", (viewer["id"],)).fetchone()
+        return {"status": user["status"], "provisioning": provision.status(conn, viewer["id"]),
+                "circle": {"id": circle["circle_id"], "name": circle["name"], "joined": circle["joined"]}}
     if viewer.get("status") == "pending" and len(login_codes.normalize(body.code)) in (activation.LENGTH, login_codes.LENGTH):
         target = _existing_account_for_code(conn, body.code)
         user = conn.execute("SELECT * FROM users WHERE id = %s", (target,)).fetchone() if target else None

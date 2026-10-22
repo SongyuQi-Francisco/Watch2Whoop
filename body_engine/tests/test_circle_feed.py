@@ -419,7 +419,7 @@ def test_privacy_nothing_but_training_in_a_post(client, world, dsn, pair):
     text = json.dumps(get_feed(client, tok["Ben"]), ensure_ascii=False, default=str)
     for word in ("ecg", "lab", "weight_kg_body", "body_weight"):
         assert word not in text
-    assert set(get_feed(client, tok["Ben"])["posts"][0]) == {"id", "date", "user", "circles", "title", "duration_min", "exercise_count",
+    assert set(get_feed(client, tok["Ben"])["posts"][0]) == {"id", "date", "user", "circles", "circle_refs", "title", "duration_min", "exercise_count",
                                                             "set_count", "volume_kg", "pr_count", "exercises", "likes", "comment_count",
                                                             "started_at", "preview_comments", "active_kcal", "avg_hr", "max_hr",
                                                             "activities", "no_exercises"}

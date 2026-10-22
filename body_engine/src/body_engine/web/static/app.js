@@ -1408,7 +1408,8 @@
       ${kv(tr("实际年龄"), h.chrono_age != null ? fmtNum(h.chrono_age, 1) : null)}${kv(tr("衰老速度"), h.pace_of_aging != null ? `${signed(h.pace_of_aging, 1)}×` : null)}
       ${[...groups].map(([g, list]) => `<div class="cat" style="margin-top:16px">${esc(CAT_NAME[g] || g)}</div>${list.map((c) => {
         const y = c.years || 0, w = (Math.abs(y) / max) * 50;
-        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}</span>
+        const partial = c.coverage === "possibly_incomplete" ? ` <span class="badge mid" style="white-space:nowrap">${esc(tr("记录可能不全"))}</span>` : "";   // #210
+        return `<div class="contrib"><div class="contrib-head"><span>${esc(c.label)}${contribValue(c)}${partial}</span>
           <span class="y ${y > 0 ? "bad" : y < 0 ? "good" : "muted"}">${tr("{n} 年", { n: signed(y) })}</span></div>
           <div class="dbar"><span class="${y > 0 ? "older" : "younger"}" style="width:${w.toFixed(1)}%"></span></div></div>`;
       }).join("")}`).join("")}
@@ -3094,7 +3095,8 @@
     if (board === "activity") return `${tr("负荷比 {r}", { r: fmtNum(s.acwr, 2) })} · ${tr("训练 {n} 天", { n: s.training_days })}`;
     if (board === "lifestyle") return `${tr("按时睡 {n}/{d}", { n: s.on_time, d: s.days })} · ${tr("饮食达标 {n}/{d}", { n: s.food_met, d: s.days })}`;
     if (board === "recomp") return `${tr("{v}%/周", { v: signed(s.rate_pct_week, 2) })} · ${tr("训练量 ×{v}", { v: fmtNum(s.volume_ratio, 2) })} · ${tr("蛋白 {n}/{d}", { n: s.protein_met, d: s.days })}`;
-    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) })   // the change over the board window, not the current gap (that is on the Me page), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
+    // longevity: the change of the body-age gap over the board window, not the current gap (that is on the Me page)
+    if (board === "longevity") return [tr("近 4 周身体年龄 {v} 岁", { v: signed(s.gap_change_years, 1) }), s.pace != null ? tr("衰老速度 {v}", { v: fmtNum(s.pace, 2) }) : ""].filter(Boolean).join(" · ");
     return "";
   }
   async function boardHtml() {

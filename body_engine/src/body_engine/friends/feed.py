@@ -30,7 +30,7 @@ from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
-from . import params as P
+from . import params as P, store
 from .store import FriendsError
 
 LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
@@ -64,11 +64,17 @@ def visible_authors(conn: psycopg.Connection, viewer_id: int) -> list[int]:
                   or auth.can_view(conn, viewer_id, r["user_id"], P.FEED_SCOPE))
 
 
-def _circles_between(conn, viewer_id: int, author_id: int) -> list[str]:
-    return [r["name"] for r in conn.execute(
-        """SELECT DISTINCT c.name FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
+def _circles_between(conn, viewer_id: int, author_id: int) -> list[dict]:
+    """The circles a post reaches the viewer through: [{id, name, avatar}] (avatar URL or null: the page shows the initial)."""
+    return [{"id": r["id"], "name": r["name"], "avatar": store.avatar_url(r)} for r in conn.execute(
+        """SELECT DISTINCT c.id, c.name, c.avatar_image_id FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
            JOIN circles c ON c.id = a.circle_id WHERE a.user_id = %s AND b.user_id = %s AND %s = ANY(b.scopes)
-           ORDER BY c.name""", (viewer_id, author_id, P.FEED_SCOPE))]
+           ORDER BY c.name, c.id""", (viewer_id, author_id, P.FEED_SCOPE))]
+
+
+def _circle_fields(refs: list[dict]) -> dict:
+    # circles: names (as before); circle_refs: the same circles with id and avatar
+    return {"circles": [c["name"] for c in refs], "circle_refs": refs}
 
 
 def _post_for(conn, viewer_id: int, post_id: int) -> dict:
@@ -303,7 +309,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
                 continue
             lk = likes.get(r["id"]) or {}
             out.append({"id": r["id"], "date": r["date"], "user": {"id": r["user_id"], "name": users.get(r["user_id"], ""), "self": r["user_id"] == viewer_id},
-                        "circles": _circles_between(conn, viewer_id, r["user_id"]), **body,
+                        **_circle_fields(_circles_between(conn, viewer_id, r["user_id"])), **body,
                         "likes": {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}, "comment_count": comments.get(r["id"], 0),
                         "preview_comments": previews.get(r["id"], [])})
             if len(out) == limit:

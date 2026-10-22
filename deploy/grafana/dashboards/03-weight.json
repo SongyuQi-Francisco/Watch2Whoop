@@ -70,7 +70,7 @@
   {
    "type": "timeseries",
    "title": "体重（SparkyFitness）",
-   "description": "来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust 要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。目标：3 个月内到 80kg。",
+   "description": "来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust 要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。",
    "targets": [
     {
      "refId": "A",
