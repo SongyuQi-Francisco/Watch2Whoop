@@ -521,10 +521,51 @@ GROUP BY 1 ORDER BY 2 DESC""", ds=OW, fmt="table"),
                      "各来源每天的数据量、心率覆盖、评分 flags、最近同步时间。", L, ow=True)
 
 
+# ---------------------------------------------------------------- 6. Jarvis allowance cards (admin, all users)
+def ai_cards() -> dict:
+    """Body Engine ai/quota_cards.py (#182): unused cards per person, the ledger, periodic rules. Every user, not $user."""
+    L = Layout()
+    ts = "at BETWEEN $__timeFrom()::timestamptz AND $__timeTo()::timestamptz"
+    unused = "status = 'unused' AND (expires_at IS NULL OR expires_at > now())"
+    L.row(4, [
+        (8, stat("没用的卡（所有人）", sql(f"SELECT count(*) AS value FROM ai_quota_cards WHERE {unused}", fmt="table"), decimals=0)),
+        (8, stat("这段时间发出", sql(f"SELECT count(*) AS value FROM ai_quota_ledger WHERE event = 'grant' AND {ts}", fmt="table"),
+                 decimals=0)),
+        (8, stat("这段时间用掉", sql(f"SELECT count(*) AS value FROM ai_quota_ledger WHERE event = 'use' AND {ts}", fmt="table"),
+                 decimals=0)),
+    ])
+    L.row(8, [(24, table("每人没用的卡", sql(f"""
+SELECT u.id AS "id", u.display_name AS "用户",
+  count(c.id) FILTER (WHERE c.kind = 'reset') AS "重置卡", count(c.id) FILTER (WHERE c.kind = 'extend') AS "扩充卡",
+  coalesce(sum(c.amount_cny), 0) AS "扩充合计 ¥", min(c.expires_at)::date::text AS "最早到期",
+  (SELECT count(*) FROM ai_quota_cards x WHERE x.user_id = u.id AND x.status = 'used') AS "累计用过"
+FROM users u LEFT JOIN ai_quota_cards c ON c.user_id = u.id AND c.status = 'unused'
+  AND (c.expires_at IS NULL OR c.expires_at > now())
+GROUP BY u.id ORDER BY u.id""", fmt="table"),
+        desc="ai_quota_cards：未用、没过期的卡。扩充卡的金额只有管理员看得到（用户只看到百分比）。"
+             "`body-engine ai-cards list / ledger` 看明细，`ai-cards revoke` 收回。"))])
+    L.row(10, [(24, table("额度流水", sql(f"""
+SELECT to_char(l.at, 'YYYY-MM-DD HH24:MI') AS "时间", u.display_name AS "用户",
+  CASE l.event WHEN 'grant' THEN '发放' WHEN 'use' THEN '使用' WHEN 'expire' THEN '过期' WHEN 'revoke' THEN '收回' END AS "事件",
+  CASE l.kind WHEN 'reset' THEN '重置卡' ELSE '扩充卡' END AS "卡", l.card_id AS "卡号", l.amount_cny AS "金额 ¥",
+  round(l.spent_before_cny, 3) AS "用前已用 ¥", round(l.allowance_before_cny, 2) AS "用前额度 ¥", l.actor AS "谁", l.note AS "说明"
+FROM ai_quota_ledger l JOIN users u ON u.id = l.user_id WHERE l.{ts}
+ORDER BY l.at DESC LIMIT 500""", fmt="table"),
+        desc="ai_quota_ledger：每次发放 / 使用 / 过期 / 收回一行（只追加）。用重置卡时「用前已用」就是清掉的金额。"))])
+    L.row(6, [(24, table("定期发放规则", sql("""
+SELECT name AS "规则", CASE WHEN enabled THEN '开' ELSE '关' END AS "状态", period AS "周期", day AS "日",
+  kind AS "卡", amount_cny AS "金额 ¥", count AS "张数", expires_days AS "有效天数", active_within_days AS "近 N 天用过",
+  reason AS "原因", updated_by AS "改动人", to_char(updated_at, 'YYYY-MM-DD HH24:MI') AS "改动时间"
+FROM ai_quota_card_rules ORDER BY name""", fmt="table"),
+        desc="`body-engine ai-cards rule-set / rule-on / rule-off` 改；每小时 `ai-cards periodic` 按用户本地日期发，同一周期只发一次。"))])
+    return dashboard("body-ai-cards", "身体管理 · Jarvis 额度卡",
+                     "管理员看：每人没用的额度卡、额度流水、定期发放规则（Body Engine ai/quota_cards.py）。", L, tags=["管理"])
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     for name, build in [("01-overview", overview), ("02-physiology", physiology), ("03-weight", weight_activity),
-                        ("04-journal", journal_reminders), ("05-data-quality", data_quality)]:
+                        ("04-journal", journal_reminders), ("05-data-quality", data_quality), ("06-ai-cards", ai_cards)]:
         path = OUT / f"{name}.json"
         path.write_text(json.dumps(build(), ensure_ascii=False, indent=1) + "\n")
         print(f"写入 {path.relative_to(OUT.parent)}")

@@ -8,7 +8,7 @@ Grafana OSS 13.2.4 runs in local Docker and is **for the owner only** (docs/syst
 | Phone / other computers (HTTPS inside the tailnet) | https://your-server.your-tailnet.ts.net:8445 |
 | Account | Username `admin`, password in `secrets/grafana_admin_password` (`cat ~/Watch2Whoop/secrets/grafana_admin_password`) |
 | Changing the password | Avatar at the top right of the web UI → Profile → Change password. **After changing it, write the new password back to `secrets/grafana_admin_password`** (the doctor's data source check and the backup's dashboard export need it; that file only decides the initial password when the database is first created) |
-| Dashboards | Left sidebar "Dashboards" (仪表板) → folder 「身体管理」 ("Body management"): 总览 (Overview), 生理指标 (Physiology), 体重和活动 (Weight and activity), 日记和提醒 (Journal and reminders), 数据质量 (Data quality) |
+| Dashboards | Left sidebar "Dashboards" (仪表板) → folder 「身体管理」 ("Body management"): 总览 (Overview), 生理指标 (Physiology), 体重和活动 (Weight and activity), 日记和提醒 (Journal and reminders), 数据质量 (Data quality), Jarvis 额度卡 (Jarvis allowance cards, admin) |
 
 ## Dashboards
 Time zone Australia/Sydney, default range the last 90 days (change the time range at the top right); the "用户" (user) selector at the top left switches between Body Engine users (currently only the owner).
@@ -20,6 +20,7 @@ Time zone Australia/Sydney, default range the last 90 days (change the time rang
 | Weight and activity (体重和活动) | Body weight and its 7-day mean, weigh-in records, daily steps, active energy (each with a 7-day mean) | SparkyFitness API, `daily_metrics` |
 | Journal and reminders (日记和提醒) | Which behaviours were logged each day, the next-day recovery score for them, a behaviour → next-day recovery comparison table; reminder counts by rule / level, rule evaluation results, latest reminders | `journal_*`, `daily_scores`, `reminders`, `rule_runs` |
 | Data quality (数据质量) | Per day, metric count per source (ow / apple_export / shortcut), sleep segment count, OW raw sample count, hours with heart rate, scoring flags, latest sync / compute time | Body Engine + OW databases |
+| Jarvis allowance cards (Jarvis 额度卡) | Admin view of every user: unused quota cards per person, the card ledger (grant / use / expire / revoke, who did it), periodic grant rules (Body Engine `ai/quota_cards.py`, #182) | Body Engine database |
 
 **Why weight comes from SparkyFitness and not from Body Engine's `body_mass`**: the owner normally logs weight in SparkyFitness (the `calorie_adjust` rule also relies on it first); `daily_metrics.body_mass` comes from HealthKit, its latest row is 2025-08-28, and the last 90 days are empty. Once a smart scale writes into HealthKit, the SparkyFitness iOS app syncs it into SparkyFitness and it will show up here as well. Grafana reads SparkyFitness through its API (Infinity plugin + the owner's read-only API key) and no database role is created, for the same reason as docs/system-design.md section 9 (row-level security).
 
