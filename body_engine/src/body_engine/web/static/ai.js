@@ -260,9 +260,12 @@
     });
   }
 
-  // Opt-in consent for sending data to DeepSeek: shown before the first fallback chat; then() runs after agreeing
+  // Opt-in consent for sending data to DeepSeek: shown before the first fallback chat; then() runs after agreeing.
+  // Flag consent_one_tap: usually already given on the one-tap first-run screen (profile.js); when it is not (older account,
+  // revised terms) the sheet is one button and one line whose 《Jarvis AI 说明》 opens the points (recorded as method one_tap).
   async function consentSheet(f, then) {
     if (!f?.points) { try { f = await C.api("/v1/users/me/ai-fallback"); } catch (e) { C.toast(e.message); return; } }
+    if (window.BodyFlags?.on("consent_one_tap")) { oneTapSheet(f, then); return; }
     C.openSheet(tr("Jarvis · 使用前确认"), `
       <ul class="small" style="padding-left:18px;line-height:1.6;margin:0">${f.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
       <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin-top:14px"><input type="checkbox" id="fb-check"> ${esc(tr("我已阅读，同意把上面的数据发给 DeepSeek"))}</label>
@@ -275,6 +278,25 @@
           await C.api("/v1/users/me/ai-fallback/consent", { method: "POST", body: { version: f.consent_version, agree: true } });
           await afterChange(); C.closeSheet(); then?.();
         } catch (e) { $("#fb-err", root).textContent = e.message; }
+      };
+    });
+  }
+
+  function oneTapSheet(f, then) {
+    const terms = `<button class="link" type="button" id="fb-terms" style="font-size:12px;padding:0;color:var(--text);font-weight:600">${esc(tr("《Jarvis AI 说明》"))}</button>`;
+    C.openSheet("Jarvis", `
+      <ul class="small" id="fb-points" style="padding-left:18px;line-height:1.6;margin:0 0 6px" hidden>${f.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
+      <div class="btns" style="margin-top:6px"><button class="btn btn-primary" id="fb-ok">${esc(tr("开始使用"))}</button></div>
+      <p style="font-size:12px;line-height:1.6;color:var(--text-2);text-align:center;margin:10px 0 0">${esc(tr("继续即表示同意{doc}")).replace("{doc}", terms)}</p>
+      <p class="login-error" id="fb-err" role="alert"></p>`, (root) => {
+      $("#fb-terms", root).onclick = () => { const l = $("#fb-points", root); l.hidden = !l.hidden; };
+      const ok = $("#fb-ok", root);
+      ok.onclick = async () => {
+        ok.disabled = true;
+        try {
+          await C.api("/v1/users/me/ai-fallback/consent", { method: "POST", body: { version: f.consent_version, agree: true, method: "one_tap" } });
+          await afterChange(); C.closeSheet(); then?.();
+        } catch (e) { $("#fb-err", root).textContent = e.message; ok.disabled = false; }
       };
     });
   }
@@ -1093,6 +1115,7 @@
     init(ctx) { C = ctx; },
     handlesAsk() { return !!C && (C.ai?.mode === "api" || C.ai?.mode === "fallback"); },
     openChat, openSettings, settingsValue,
+    refreshAi: afterChange,   // after the one-tap consent (profile.js) recorded the Jarvis terms
     reset() { chat.conv = null; chat.items = []; const p = $("#ai-chat"); if (p) p.remove(); },
   };
 })();

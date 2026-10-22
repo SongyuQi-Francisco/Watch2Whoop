@@ -6,6 +6,12 @@ both pairs and the version). Shown in the request's language (X-Body-Lang); the 
 - Until consent is given, this person's health data is not processed (gate(): import / scoring commands skip; history import is refused). Data synced to OW by the app and uploaded by the iOS Shortcut is stored as-is,
   and processing starts at the next hourly job after consent (import-ow pulls from the earliest data when there is no cursor; import-shortcut imports files not yet imported).
 - After the consent form is revised (version changed), people who agreed to an older version are asked to reconfirm in the app, but data processing is not interrupted (only people who never consented are blocked).
+- One-tap consent (rollout flag consent_one_tap): the first-run screen is a single 「开始使用」 button with one line naming this
+  text (《数据与隐私说明》) and, when the fallback AI is set up, the Jarvis terms (ai/fallback.py CONSENT_POINTS, 《Jarvis AI 说明》);
+  both open in full. One tap records this consent (method one_tap, the current version, the page's language) and the Jarvis
+  consent (fallback.accept_consent, its current CONSENT_VERSION, method one_tap) in one transaction; reconfirming a revised
+  text works the same way. Neither text nor version changes, and the gate above is the same: nothing is processed before the
+  tap, and after it everything works as after the electronic consent (users.consent_at / consent_version are set the same way).
 """
 import re
 from functools import lru_cache
@@ -80,6 +86,8 @@ def display_text(language: str | None = None) -> str:
 
 
 BASE_SETTING = "consent_base_version"
+ONE_TAP_FLAG = "consent_one_tap"
+METHODS = ("app", "one_tap", "paper")   # user_consents.method (CHECK in migrations 140 / 665)
 
 
 def vkey(v: str) -> tuple:
@@ -113,13 +121,15 @@ def status(conn: psycopg.Connection, user_id: int) -> dict:
     cur = version()
     required = u["role"] != "owner" and u["consent_at"] is None
     need = required_version(conn, user_id)
-    last = conn.execute("SELECT language FROM user_consents WHERE user_id = %s ORDER BY accepted_at DESC, id DESC LIMIT 1",
+    last = conn.execute("SELECT language, method FROM user_consents WHERE user_id = %s ORDER BY accepted_at DESC, id DESC LIMIT 1",
                         (user_id,)).fetchone()
     agreed = u["consent_version"]
     return {"required": required, "version": cur, "required_version": need, "accepted_at": u["consent_at"],
             "accepted_version": agreed, "accepted_language": last["language"] if last else None,
+            "accepted_method": last["method"] if last else None,
             # paper consent is never asked again in the app (the admin collects a new signature)
-            "reconfirm": (not required and u["role"] != "owner" and agreed not in (None, "paper") and vkey(agreed) < vkey(need))}
+            "reconfirm": (not required and u["role"] != "owner" and agreed not in (None, "paper") and vkey(agreed) < vkey(need)),
+            "one_tap": u["role"] != "owner" and one_tap_on(conn, user_id)}   # the page asks with the one-tap screen
 
 
 def needs_consent(conn: psycopg.Connection, user_id: int) -> bool:
@@ -127,10 +137,19 @@ def needs_consent(conn: psycopg.Connection, user_id: int) -> bool:
     return u is not None and u["role"] != "owner" and u["consent_at"] is None
 
 
+def one_tap_on(conn: psycopg.Connection, user_id: int) -> bool:
+    """Rollout flag consent_one_tap. It has no min_consent_version, so `--state all` reaches people who never consented."""
+    from ..rollout import flags
+    return flags.enabled(conn, user_id, ONE_TAP_FLAG)
+
+
 def accept(conn: psycopg.Connection, user_id: int, ver: str, method: str = "app", user_agent: str | None = None,
            at=None, language: str | None = None) -> dict:
-    """`language` = the text the person read (zh / en); default the request's language. Both texts carry the same version."""
-    if method == "app" and ver != version():
+    """`language` = the text the person read (zh / en); default the request's language. Both texts carry the same version.
+    method: app (read the sheet, ticked the box), one_tap (the one-tap screen) or paper (recorded by the admin)."""
+    if method not in METHODS:
+        raise ValueError(f"unknown consent method {method!r}")
+    if method in ("app", "one_tap") and ver != version():
         raise ValueError(L(f"同意书已经更新到 {version()}，请刷新后再看一遍",
                            f"The consent was updated to {version()}; reload and read it again"))
     language = language if language in FILES else lang()

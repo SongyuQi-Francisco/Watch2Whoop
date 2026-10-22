@@ -118,11 +118,11 @@
 
 ![全部打开](images/tester-handbook/health-permission.jpg)
 
-### ④ 同意
+### ④ 开始使用
 
-勾选同意 →「同意并继续」→ 填资料 →「保存」。
+点「开始使用」→ 填资料 →「保存」。下面那行小字里的《数据与隐私说明》《Jarvis AI 说明》点开是全文。
 
-![同意](images/tester-handbook/consent.jpg) ![个人资料](images/tester-handbook/profile.jpg)
+![开始使用](images/tester-handbook/consent.jpg) ![个人资料](images/tester-handbook/profile.jpg)
 
 ### ⑤ 连接你的 AI
 
@@ -150,7 +150,7 @@
 
 ### 方式 1：Jarvis 托底 AI（最省事）
 
-不用申请任何账号，开通后直接用。底层是 DeepSeek，每月约 ¥3。第一次使用时会问你是否同意把你的身体数据发给 DeepSeek 处理，同意后才能用。
+不用申请任何账号，开通后直接用。底层是 DeepSeek，每月约 ¥3。用它时你的身体数据会发给 DeepSeek 处理，这一点写在《Jarvis AI 说明》里，点「开始使用」时已经一起同意；随时可以在「AI 设置」里撤回。
 
 ### 方式 2：填你自己的 API key
 
@@ -211,7 +211,7 @@ AI 要写入数据前都会先问你「确认吗」，你点确认才会记。
 
 **换手机 / 重装 app**：再点一次同一个激活链接，同意和资料不用重填。
 
-**隐私**：数据只有你自己能看，详见同意书。用 AI 时，对话内容会发给你选的那家 AI 服务。
+**隐私**：数据只有你自己能看，详见《数据与隐私说明》。用 AI 时，对话内容会发给你选的那家 AI 服务。
 
 **删除数据**：找管理员。
 

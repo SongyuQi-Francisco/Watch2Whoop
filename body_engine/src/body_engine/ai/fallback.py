@@ -12,6 +12,9 @@ Limits (numbers and sources in fallback_params.py):
 - quota cards (quota_cards.py, flag ai_cards): a reset card clears this month's used allowance, an extend card adds to it
   (allowance()); they never get past the pause above.
 Privacy: a separate opt-in consent (ai_fallback_consents) before the first use, because the data goes to DeepSeek (servers in China).
+With the rollout flag consent_one_tap it is given on the one-tap first-run screen together with the data consent
+(profile/consent.py, one_tap_needed()) or on a one-tap Jarvis sheet; the text (CONSENT_POINTS) and CONSENT_VERSION are the
+same, only ai_fallback_consents.method says how (app / one_tap, migration 665).
 Tools only ever read the caller's own data: the `user` argument is removed from the schemas and forced to "me" (no shares).
 The key file is read only when needed and never logged or returned.
 """
@@ -242,18 +245,36 @@ def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
     """The current (not revoked, current version) consent, or None. The owner (the admin who pays for it) needs none."""
     u = conn.execute("SELECT role FROM users WHERE id = %s", (user_id,)).fetchone()
     if u and u["role"] == "owner":
-        return {"version": CONSENT_VERSION, "accepted_at": None, "implicit": True}
-    return conn.execute("""SELECT version, accepted_at FROM ai_fallback_consents
+        return {"version": CONSENT_VERSION, "accepted_at": None, "implicit": True, "method": None}
+    return conn.execute("""SELECT version, accepted_at, method FROM ai_fallback_consents
                            WHERE user_id = %s AND revoked_at IS NULL AND version = %s
                            ORDER BY accepted_at DESC LIMIT 1""", (user_id, CONSENT_VERSION)).fetchone()
 
 
-def accept_consent(conn: psycopg.Connection, user_id: int, version: str, user_agent: str | None = None) -> None:
+CONSENT_METHODS = ("app", "one_tap")   # ai_fallback_consents.method (migration 665)
+
+
+def accept_consent(conn: psycopg.Connection, user_id: int, version: str, user_agent: str | None = None,
+                   method: str = "app") -> None:
+    """method: app = its own sheet (tick + agree), one_tap = the one-tap screen / sheet (flag consent_one_tap)."""
+    if method not in CONSENT_METHODS:
+        raise ValueError(f"unknown consent method {method!r}")
     if version != CONSENT_VERSION:
         raise ValueError(L("Jarvis 的说明更新了，请刷新后再看一遍", "Jarvis's terms were updated; reload and read them again"))
     if consent(conn, user_id) is None:
-        conn.execute("INSERT INTO ai_fallback_consents (user_id, version, user_agent) VALUES (%s, %s, %s)",
-                     (user_id, version, (user_agent or "")[:300] or None))
+        conn.execute("INSERT INTO ai_fallback_consents (user_id, version, user_agent, method) VALUES (%s, %s, %s, %s)",
+                     (user_id, version, (user_agent or "")[:300] or None, method))
+
+
+def one_tap_needed(conn: psycopg.Connection, user_id: int) -> bool:
+    """Whether the one-tap screen (flag consent_one_tap) also carries the Jarvis terms: the fallback is set up on this server
+    and the person may use it, has no current consent, and did not withdraw their last one (only they undo a withdrawal,
+    in Me → AI settings). Otherwise the screen names the data consent alone and records only that."""
+    if read_key() is None or quota_cny(conn, user_id) <= 0 or consent(conn, user_id) is not None:
+        return False
+    last = conn.execute("""SELECT revoked_at FROM ai_fallback_consents WHERE user_id = %s
+                           ORDER BY accepted_at DESC, id DESC LIMIT 1""", (user_id,)).fetchone()
+    return last is None or last["revoked_at"] is None
 
 
 def revoke_consent(conn: psycopg.Connection, user_id: int) -> int:
@@ -428,12 +449,14 @@ def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
                          (u["id"], KIND, providers.month_start(conn, u["id"]))).fetchone()
         from .choice import effective
         e = effective(conn, u["id"])
+        agreed = consent(conn, u["id"])
         users.append({"user_id": u["id"], "name": u["display_name"], "role": u["role"], "spent_cny": round(spent, 4),
                       "quota_cny": quota, "allowance_cny": round(a["quota_cny"], 4), "left_cny": round(left, 4),
                       "cards_reset": cards["reset"], "cards_extend": cards["extend"], "cards_extend_cny": cards["extend_cny"],
                       "cards_max_cny": quota_cards.max_extra_cny(conn, u["id"], a["quota_cny"]) if quota > 0 else 0.0,
                       "calls": n["n"], "input_tokens": int(n["i"]), "output_tokens": int(n["o"]),
-                      "consent": consent(conn, u["id"]) is not None,
+                      "consent": agreed is not None,
+                      "consent_method": agreed.get("method") if agreed else None,   # app / one_tap (None: owner or not agreed)
                       "uses": e["provider"]["kind"] if e["source"] == "provider" else e["source"]})
     eligible = [u for u in users if u["uses"] == "fallback" and u["quota_cny"] > 0]
     reason = paused_reason(conn, refresh=False)

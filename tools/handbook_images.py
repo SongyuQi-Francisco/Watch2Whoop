@@ -6,7 +6,8 @@
 Sources: docs/images/tester-handbook/src/ (iOS 27 simulator in Simplified Chinese, iPhone 17, half size; the Today
 page screens use a placeholder test account with Quick Start's synthetic data, never a real user). The spec below
 is in iPhone points (402 x 874, what `idb ui describe-all` reports), so new captures can be re-annotated without
-measuring pixels. Output: 420 px wide JPEG (~30-60 KB each) so the single-file personal handbook stays < 2 MB.
+measuring pixels. consent.jpg (the one-tap first-run screen) is a headless Chrome capture of the Today page at 402 x 874
+CSS px, 1.5x (same size, no status bar). Output: 420 px wide JPEG (~30-60 KB each) so the single-file personal handbook stays < 2 MB.
 Needs Pillow (`pip install pillow`; macOS /usr/bin/python3 has it).
 """
 from pathlib import Path
@@ -28,7 +29,7 @@ SPEC = {
     "add-home":      [("box", 318, 88, 388, 132)],
     "home-icon":     [("box", 212, 184, 284, 276)],
     "login-code":    [("box", 24, 396, 378, 450), ("arrow", 201, 560, 201, 506)],
-    "consent":       [("box", 14, 584, 386, 624), ("box", 18, 630, 198, 680)],
+    "consent":       [("box", 18, 756, 384, 821)],
     "profile":       [("box", 18, 774, 198, 822)],
     "shortcut-open": [("box", 24, 758, 378, 806)],
     "shortcut-url":  [("box", 8, 284, 394, 326)],
