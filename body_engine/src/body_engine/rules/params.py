@@ -2,7 +2,7 @@
 those marked "inferred" are values where body-management.md was unclear, taken from the most conservative reading (collected in the system design "rule engine" section).
 Bump RULES_VERSION whenever a parameter that affects results changes."""
 
-RULES_VERSION = "v1.3-2026-10-22"   # v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py); v1.2: sugar caps, goals from nutrition_goal_versions; v1.3: red meat / food caps from the user's own diet constraints (#76)
+RULES_VERSION = "v1.4-2026-10-22"   # v1.4: afternoon water reminder (rules/hydration.py, issue #125); v1.1: added bedtime goal (sleep_goal, parameters in goals/params.py); v1.2: sugar caps, goals from nutrition_goal_versions; v1.3: red meat / food caps from the user's own diet constraints (#76)
 
 # ---------- Double progression (body-management.md 4.5; rep ranges and increments come from SparkyFitness workout templates, migrated from 4.4) ----------
 # 4.5: when all sets of an exercise reach the top of the rep range -> add one increment next time (upper body +1-2.5kg, lower body +2.5-5kg) and go back to the bottom of the range.

@@ -23,6 +23,7 @@ from psycopg import sql
 from ..config import REPO_ROOT, settings
 from ..ow_client import OWClient, OWError
 from ..sparky_client import SparkyClient, SparkyError
+from ..friends import store as friends
 from . import invites
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ def delete_account(conn: psycopg.Connection, user_id: int, ow_client: OWClient |
     for item in leftovers:
         log.error("account deletion of user %s: %s user %s not deleted: %s", user_id, item["system"], item["id"], item["error"])
     invites.revoke_owned(conn, user_id)
+    friends.leave_all(conn, user_id)   # circles this person owned pass on to the next member instead of vanishing
     conn.commit()
     tables = _delete_rows(conn, user_id)
     conn.commit()

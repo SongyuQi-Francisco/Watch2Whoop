@@ -177,7 +177,7 @@
     else maybePrompt();
   }
 
-  window.BodyProfile = { open: () => openProfile(false) };
+  window.BodyProfile = { open: () => openProfile(false), consent: (reconfirm) => showConsent(reconfirm) };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init,
     meItem: (chev) => `<button class="item" id="me-profile"><span class="row-title">${tr("profile.title")}</span><span class="val" id="me-profile-val">${P ? esc(P.missing.length ? tr("profile.incomplete") : P.display_name) : ""}</span>${chev || ""}</button>`,

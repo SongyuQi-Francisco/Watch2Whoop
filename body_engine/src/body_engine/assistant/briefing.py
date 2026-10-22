@@ -179,9 +179,20 @@ def _diet(conn, uid: int) -> list[str]:
     return [c["text"] for c in constraints.listing(conn, uid)["constraints"]]
 
 
+def _water(conn, uid: int, today) -> dict | None:
+    """Today's water so far vs the goal (issue #125); None while the rollout flag is off for this user."""
+    from .. import water
+    if not water.enabled(conn, uid):
+        return None
+    from ..water import store as water_store
+    d = water_store.day_view(conn, uid, today)
+    return {"ml": d["total_ml"], "goal_ml": d["goal"]["ml"]}
+
+
 SECTIONS = (  # (key, scope)
     ("me", "profile"), ("scores", "scores"), ("bedtimes", "sleep"), ("training", "training"),
     ("reminders", "reminders"), ("memory", "memory"), ("exercises", "exercises"), ("diet_constraints", "nutrition"),
+    ("water", "nutrition"),
 )
 NEXT = "档案卡只有要点（其余项见 profile_card_more），全文 get_memory；饮食、体重不在摘要里"
 
@@ -200,6 +211,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
         "memory": lambda: _memory(conn, owner_id, STATUS_IN_SCORES if allowed["scores"] else ()),
         "exercises": lambda: _exercises(conn, owner_id),
         "diet_constraints": lambda: _diet(conn, owner_id),
+        "water": lambda: _water(conn, owner_id, today),
     }
     out: dict = {"timezone": str(tz), "date": today}
     hidden = []

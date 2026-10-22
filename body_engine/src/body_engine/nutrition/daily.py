@@ -26,6 +26,12 @@ def entries(conn: psycopg.Connection, user_id: int, start: date, end: date, clie
     """Food entries in [start, end] with sugar / fiber / sodium merged in (extras.merge), oldest first."""
     client = client or sparky_client.client_for_user(conn, user_id)
     rows = sparky_client.food_entries(client, start, end)
+    merged = {r["entry_id"]: r["id"] for r in conn.execute(   # entries merged from several (issue #93): the page can split them
+        "SELECT id, entry_id FROM food_merges WHERE user_id = %s AND date BETWEEN %s AND %s AND undone_at IS NULL",
+        (user_id, start, end))}
+    for r in rows:
+        if str(r.get("id")) in merged:
+            r["merge_id"] = merged[str(r["id"])]
     return sorted(extras.merge(rows, extras.load(conn, user_id, start, end)), key=lambda r: (r["date"], r.get("time") or ""))
 
 

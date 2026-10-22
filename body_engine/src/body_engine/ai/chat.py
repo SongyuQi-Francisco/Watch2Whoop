@@ -13,7 +13,8 @@ most recent last; beyond PAGE_BUDGET_CHARS the oldest are dropped, the current p
 (assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
 the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go by the real tool name.
 
-Events (produced by chat_events, converted to SSE by api.py): conversation, text, tool, confirm, usage, error, done.
+Events (produced by chat_events / start_chat, run to the end in the background and numbered by runs.py, streamed as SSE by api.py):
+conversation, text, tool, confirm, usage, notice, error, done.
 """
 import base64
 import binascii
@@ -415,6 +416,13 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
                                 (pages, conv["id"])).fetchone()
     content = [{"type": "text", "text": f"{prompt.time_prefix(conn, viewer['id'])}\n{message}"}] + imgs
     return provider, adapter, conv, content
+
+
+def start_chat(conn: psycopg.Connection, viewer: dict, message: str, images: list[dict] | None,
+               conversation_id: int | None, page: str | None = None) -> tuple[int, Iterator[dict]]:
+    """chat_events for the Today page: also returns the conversation id, which keys the background turn (runs.py, #114)."""
+    provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, page=page)
+    return conv["id"], _run(conn, viewer, provider, adapter, conv, content)
 
 
 def _run(conn, viewer, provider, adapter, conv, content) -> Iterator[dict]:

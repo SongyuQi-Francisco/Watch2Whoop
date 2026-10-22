@@ -71,6 +71,7 @@ def test_tool_definitions_budget():
     55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md).
         55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9).
     57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint).
+        59k -> 59.5k for combine_food_entries (issue #93).
     From #99 on not every tool is sent: only the resident core (+ the page's groups in the in-page chat) and three meta tools
     (find_tools / run_read_tool / run_write_tool). The budget is now per set: core ≤ 30k, a cap per group, meta, MCP tools/list
     ≤ 35k, each page (ai/params.py; all checked in tests/test_tool_groups.py::test_budgets)."""

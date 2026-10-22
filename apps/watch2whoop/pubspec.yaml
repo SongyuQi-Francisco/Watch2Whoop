@@ -2,9 +2,9 @@ name: watch2whoop
 description: "Watch2Whoop: background Apple Health sync to a self-hosted Open Wearables server + the Body Engine today page in one app."
 publish_to: 'none'
 
-# Bump the build number after the + for every TestFlight upload (e.g. 1.0.0+1 → 1.0.0+2).
-# Bump the build number after "+" for every TestFlight upload.
-version: 1.0.0+2
+# <marketing version>+<build number>. The public name (tag, release, CHANGELOG) is the marketing version only (1.0.6);
+# the build number after "+" is what the stores need and goes up with every upload (docs/apps.md, section 4).
+version: 1.0.6+6
 
 environment:
   sdk: ^3.13.5

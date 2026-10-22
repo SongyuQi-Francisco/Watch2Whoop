@@ -246,6 +246,17 @@ body-engine activation-code create --user-id 7 --email someone@example.com   # �
 - 用激活链接 / 登录码进来、账号还没有任何登录方式的，进去后会提示「绑定 Apple / 邮箱」；本人也可以在「我」→「登录方式」自己绑（邮箱用验证码确认，Apple 要在 Watch2Whoop app 里）。
 - Apple 登录只有一种情况会自动进老账号：Apple 确认过的、不是隐藏转发（`@privaterelay.appleid.com`）的邮箱，正好等于**唯一一个**已开通账号绑定的邮箱。其他情况（转发邮箱、对不上、对上多个）一律当新账号，不会猜着合并。每次自动绑定、移动、解绑都记在 `identity_events`（只存打码后的地址）。
 
+## 灰度发布（功能开关、内测分组、A/B 测试）
+
+新功能默认关着部署，先对 `beta` 分组打开、在线验收，再全量或关掉。命令和标准流程见 [rollout.md](rollout.md)：
+
+```bash
+body-engine cohort add --user-id N --cohort beta          # 加内测用户（名单只在数据库里）
+body-engine flags list                                    # 每个开关的状态
+body-engine flags set <key> --state cohort|percent|all|off [--percent N] [--min-consent 版本]
+body-engine flags audit                                   # 谁改了什么
+```
+
 ## 内测码（自助注册上线后）
 
 自助注册的人用 Apple / 邮箱登录后要输一个内测码才能开通。
