@@ -71,6 +71,25 @@ dictation, because the WebView never let the Today page use the microphone.
 - The permissions step no longer says the app never uses the microphone.
 - Older apps (1.0.6 and before) do not set the flag, so the page keeps pointing them to the keyboard's dictation.
 
+Fix: no app ever uploaded a beat-to-beat HRV reading, ECG or drink (the server had 0 rows from the app). Reproduced in the
+simulator:
+- The second, small Health sheet (beat-to-beat, ECG, water) was asked for 10 ms after the Open Wearables sheet closed.
+  iOS cannot present a sheet while another one is being dismissed ("Attempt to present
+  HKHealthPrivacyHostAuthorizationViewController … whose view is not in the window hierarchy"): the sheet never came up
+  and HealthKit never answered, so the permissions step could spin forever. The app had already noted the ask as done
+  and never asked again.
+- Those types therefore stayed undetermined; every upload pass failed reading them ("Authorization not determined",
+  HealthKit error 5) and the error ended the whole pass silently, before any request reached the server.
+- Now the native side waits until nothing is presented before asking, and answers instead of waiting when no sheet came
+  up. Whether to ask is what HealthKit says (`rawAuthStatus`), not a flag of our own: people stuck in this state see the
+  sheet once after the next sync round on open (automatic asks are counted and stop after 3, so a HealthKit crash cannot
+  repeat on every open).
+- A kind that cannot be read no longer ends the pass: the other kinds still go, and the reason shows on the sync page.
+- Phone sync → 「心跳间期、心电图和饮水」 / "Beat-to-beat HRV, ECG and water": 「上次上传」 / "Last upload" now also shows how
+  many readings that upload added (before this phone's first upload, the server's last accepted batch of the account),
+  plus 「上次检查」 / "Last check". When iOS never asked, 「允许读取」 / "Allow reading" shows the sheet and uploads right
+  away. Each pass also writes a line to the sync log.
+
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.

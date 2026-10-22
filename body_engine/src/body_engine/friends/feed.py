@@ -24,6 +24,7 @@ from datetime import date, timedelta
 import psycopg
 
 from .. import auth
+from ..avatars import urls as avatar_store
 from ..i18n import L
 from ..training import catalog, custom, loads, params as TP
 from ..training.history import display_name
@@ -267,16 +268,19 @@ def _counts(conn, viewer_id: int, ids: list[int]) -> tuple[dict, dict]:
     return likes, comments
 
 
-def _previews(conn, ids: list[int]) -> dict[int, list[dict]]:
+def _previews(conn, viewer_id: int, ids: list[int]) -> dict[int, list[dict]]:
     """The newest P.COMMENT_PREVIEW comments of each post (oldest first), shown under the post like Instagram does."""
     out: dict[int, list[dict]] = {}
-    for r in conn.execute(
+    rows = conn.execute(
             f"""SELECT * FROM (SELECT c.post_id, c.id, c.user_id, c.body, u.display_name,
                        row_number() OVER (PARTITION BY c.post_id ORDER BY c.id DESC) AS rn
                 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
                 WHERE c.post_id = ANY(%s) AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}) t
-                WHERE rn <= %s ORDER BY post_id, id""", (ids, P.COMMENT_PREVIEW)):
-        out.setdefault(r["post_id"], []).append({"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"]}, "body": r["body"]})
+                WHERE rn <= %s ORDER BY post_id, id""", (ids, P.COMMENT_PREVIEW)).fetchall()
+    avatars = avatar_store.urls_for(conn, viewer_id, [r["user_id"] for r in rows])
+    for r in rows:
+        out.setdefault(r["post_id"], []).append({"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"],
+                                                                         "avatar": avatars.get(r["user_id"])}, "body": r["body"]})
     return out
 
 
@@ -293,6 +297,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
             ensure_recent(conn, a, author=who[a])
     cur = _cursor(before)
     users = {r["id"]: r["display_name"] for r in conn.execute("SELECT id, display_name FROM users WHERE id = ANY(%s)", (authors,))}
+    avatars = avatar_store.urls_for(conn, viewer_id, authors)
     out: list[dict] = []
     exhausted = False
     while len(out) < limit and not exhausted:
@@ -301,14 +306,15 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
                ORDER BY date DESC, id DESC LIMIT %s""", (authors, *(cur[0] if cur else None,) * 2, cur[1] if cur else None, limit * 2)).fetchall()
         exhausted = len(rows) < limit * 2
         likes, comments = _counts(conn, viewer_id, [r["id"] for r in rows])
-        previews = _previews(conn, [r["id"] for r in rows])
+        previews = _previews(conn, viewer_id, [r["id"] for r in rows])
         for r in rows:
             cur = (r["date"], r["id"])
             body = content(conn, r["user_id"], r["date"], who[r["user_id"]])
             if body is None:
                 continue
             lk = likes.get(r["id"]) or {}
-            out.append({"id": r["id"], "date": r["date"], "user": {"id": r["user_id"], "name": users.get(r["user_id"], ""), "self": r["user_id"] == viewer_id},
+            out.append({"id": r["id"], "date": r["date"], "user": {"id": r["user_id"], "name": users.get(r["user_id"], ""), "self": r["user_id"] == viewer_id,
+                                                                             "avatar": avatars.get(r["user_id"])},
                         **_circle_fields(_circles_between(conn, viewer_id, r["user_id"])), **body,
                         "likes": {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}, "comment_count": comments.get(r["id"], 0),
                         "preview_comments": previews.get(r["id"], [])})
@@ -371,7 +377,9 @@ def comments(conn: psycopg.Connection, uid: int, post_id: int) -> list[dict]:
             JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
             WHERE c.post_id = %s AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}
             ORDER BY c.id DESC LIMIT %s""", (post_id, P.COMMENTS_SHOWN)).fetchall()
-    return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid},
+    avatars = avatar_store.urls_for(conn, uid, [r["user_id"] for r in rows])
+    return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid,
+                                     "avatar": avatars.get(r["user_id"])},
              "body": r["body"], "created_at": r["created_at"]} for r in reversed(rows)]
 
 

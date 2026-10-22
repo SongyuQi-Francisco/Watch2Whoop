@@ -127,7 +127,7 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 ```
 
 - **余额低于停用线全体自动暂停**，`status` 第二行显示余额、停用线、告警线；充值后下次查余额时恢复。
-- 第一次用前用户要在 app 里单独同意。
+- 第一次用前用户要在 app 里单独同意。开关 `consent_one_tap` 开着时，新用户第一次打开 app 点「开始使用」就一起同意了（见「灰度发布」），`status` 的「同意」列显示「一键」。
 
 ### Jarvis 额度卡（灰度开关 `ai_cards`，#182）
 
@@ -292,6 +292,12 @@ body-engine cohort add --user-id N --cohort beta          # 加内测用户（�
 body-engine flags list                                    # 每个开关的状态
 body-engine flags set <key> --state cohort|percent|all|off [--percent N] [--min-consent 版本]
 body-engine flags audit                                   # 谁改了什么
+```
+
+**一键同意（`consent_one_tap`）**：第一次打开只有「开始使用」和一行小字（《数据与隐私说明》《Jarvis AI 说明》能点开看全文），点一下同时记下数据同意书和托底 AI 的同意（`method` = `one_tap`，版本都是当前的；两份正文和版本号不变）。没点之前照样不处理这个人的健康数据。还没同意的新用户不在任何分组里，所以要用 `--state all` 打开（不要加 `--min-consent`，否则还没同意的人永远打不开）：
+
+```bash
+body-engine flags set consent_one_tap --state all --by 管理员
 ```
 
 ## 内测码（自助注册上线后）
