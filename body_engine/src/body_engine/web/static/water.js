@@ -4,7 +4,8 @@
    Buttons only for one's own account on today's date; a past day or a family member's day is read-only. The card stays
    out while the "water" rollout flag is off for the signed-in user (BodyFlags.on; the endpoints answer 404 then too) and
    hidden when the request fails. Each button press carries a client_id, so a retry or
-   a double tap is stored once. */
+   a double tap is stored once. With offline_mode (offline.js) a press while offline is kept on the device with its time
+   (`at`) and sent later; the card counts the kept drinks in at once. */
 (() => {
   "use strict";
   let C = null;
@@ -16,6 +17,19 @@
   const path = () => `/v1/users/${info.owner}/water`;
   const clientId = () => (window.crypto?.randomUUID ? window.crypto.randomUUID() : `w${Date.now()}${Math.random().toString(36).slice(2, 10)}`);
   const EXTRA = { training: () => tr("训练日"), sauna: () => tr("桑拿") };
+  const offlineOn = () => !!window.BodyFlags?.on("offline_mode");
+  const pad = (n) => String(n).padStart(2, "0");
+  const localAt = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // Drinks kept offline for this day, not on the server yet
+  const keptMl = (date) => (offlineOn() && info.self ? window.BodyOffline?.pending("water") || [] : [])
+    .filter((it) => String(it.body?.at || "").startsWith(date)).reduce((n, it) => n + (it.body.ml || 0), 0);
+  const withKept = (d) => {
+    const ml = keptMl(info.date);
+    if (!ml) return d;
+    const total = d.total_ml + ml;
+    return { ...d, total_ml: total, percent: d.goal?.ml ? Math.round((100 * total) / d.goal.ml) : d.percent, undo: null };
+  };
+  let server = null;   // the day as the server last sent it (kept drinks are added on top when drawing)
 
   const CSS = `
     .water .w-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
@@ -56,11 +70,13 @@
         <div class="w-sub">${C.esc(sub)}</div>
         ${canWrite ? `<div class="w-btns">${(d.quick_ml || [250, 500]).map((ml) =>
           `<button type="button" class="btn" data-water-add="${ml}">+${num(ml)} ml</button>`).join("")}
-          ${d.undo ? `<button type="button" class="btn w-undo" data-water-undo="${d.undo.id}"
+          ${d.undo ? `<button type="button" class="btn w-undo" data-online data-water-undo="${d.undo.id}"
             aria-label="${C.esc(tr("撤销最近一次（{ml} ml）", { ml: num(d.undo.ml) }))}">${C.esc(tr("撤销"))}</button>` : ""}</div>` : ""}
       </div>`;
     box.hidden = false;
-    for (const b of box.querySelectorAll("[data-water-add]")) b.onclick = () => write(box, "POST", path(), { ml: +b.dataset.waterAdd, source: "button", client_id: clientId() });
+    for (const b of box.querySelectorAll("[data-water-add]")) {
+      b.onclick = () => write(box, "POST", path(), { ml: +b.dataset.waterAdd, source: "button", client_id: clientId(), ...(offlineOn() ? { at: localAt() } : {}) });
+    }
     const u = $("[data-water-undo]", box);
     if (u) u.onclick = () => write(box, "DELETE", `${path()}/${u.dataset.waterUndo}`);
   }
@@ -70,8 +86,15 @@
     busy = true;
     for (const b of box.querySelectorAll("button")) b.disabled = true;
     try {
-      const r = await C.api(url, body ? { method, body } : { method });
-      draw(box, r.day);
+      const queue = method === "POST" ? { kind: "water", label: tr("喝水 {ml} ml", { ml: num(body.ml) }) } : undefined;
+      const r = await C.api(url, body ? { method, body, queue } : { method });
+      if (r.queued) {   // kept offline (offline.js): count it in now, it is sent once the network is back
+        draw(box, withKept(server));
+        C.toast?.(tr("离线，已存在本机，联网后自动提交"));
+        return;
+      }
+      server = r.day;
+      draw(box, withKept(server));
       if (method === "DELETE") C.toast?.(tr("已撤销"));
     } catch (e) {
       C.toast?.(tr("没记上，再试一次"));
@@ -87,7 +110,8 @@
     let d = null;
     try { d = await C.api(`${path()}?date=${info.date}`); } catch (e) { return; }   // feature_off / no share: stay hidden
     if (!box.isConnected || `${info.owner}|${info.date}` !== want) return;
-    draw(box, d);
+    server = d;
+    draw(box, withKept(server));
   }
 
   (window.BodyPlugins = window.BodyPlugins || []).push({
