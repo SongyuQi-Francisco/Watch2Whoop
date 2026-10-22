@@ -11,6 +11,7 @@
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
   const tr = (k, p) => window.I18N.t(k, p);
   const num = (v, d = 1) => window.I18N.num(v, d);
+  const escape = (v) => String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
   let C = null, V = null, box = null;
   let rows = {};          // slug -> [{reps, weight_kg, duration_s, done}]
   const open = new Set();
@@ -89,8 +90,8 @@
   }
 
   function statusBadge(c) {
-    if (c.status === "banned") return `<span class="badge bad">${C.esc(tr("禁用"))}</span>`;
-    if (c.status === "caution") return `<span class="badge mid">${C.esc(tr("注意"))}</span>`;
+    if (c.status === "banned") return `<span class="badge bad">${escape(tr("禁用"))}</span>`;
+    if (c.status === "caution") return `<span class="badge mid">${escape(tr("注意"))}</span>`;
     return "";
   }
 
@@ -104,11 +105,24 @@
       ${ro ? "<span></span>" : `<button type="button" class="td-del" data-del="${i}" aria-label="${C.esc(tr("删掉这组"))}">×</button>`}</div>`;
   }
 
+  function picHtml(c) {
+    const mm = !c.thumb && window.BodyMuscleMap ? window.BodyMuscleMap.html(c.primary_muscles, c.secondary_muscles) : "";
+    return c.thumb ? `<img class="td-thumb" src="${escape(c.thumb)}" alt="" loading="lazy" decoding="async">`
+      : mm ? `<span class="td-ph td-mm" aria-hidden="true">${mm}</span>` : `<span class="td-ph"></span>`;
+  }
+
+  // Read-only card heads in the training page's look (picture, name + restriction badge, prescription), for Jarvis' training
+  // card (ai.js, rollout flag jarvis_rich). exercises: the exercise cards of a session view (ai/cards.py keeps their fields).
+  function summaryHtml(exercises) {
+    injectCss();
+    return `<div class="td2">${(exercises || []).map((c) => `<div class="card td-ex ${c.status === "banned" ? "banned" : ""}"><div class="td-head">${picHtml(c)}
+      <span class="td-title"><span class="td-name"><span>${escape(name(c))}</span>${statusBadge(c)}</span>
+        <span class="td-rx" style="display:block">${escape(loggable(c) ? rxText(c) : tr("不要做"))}</span></span></div></div>`).join("")}</div>`;
+  }
+
   function cardHtml(c) {
     const sets = rows[c.slug] || [], done = sets.filter((s) => s.done).length;
-    const mm = !c.thumb && window.BodyMuscleMap ? window.BodyMuscleMap.html(c.primary_muscles, c.secondary_muscles) : "";
-    const pic = c.thumb ? `<img class="td-thumb" src="${C.esc(c.thumb)}" alt="" loading="lazy" decoding="async">`
-      : mm ? `<span class="td-ph td-mm" aria-hidden="true">${mm}</span>` : `<span class="td-ph"></span>`;
+    const pic = picHtml(c);
     const isOpen = open.has(c.slug);
     const note = c.status !== "active" && (c.reason || c.cues)
       ? `<div class="td-note">${statusBadge(c)}${C.esc(c.reason || c.cues)}</div>` : "";
@@ -283,5 +297,5 @@
     box.oninput = onInput;
   }
 
-  window.BodyTrainingDay = { placeholder, mount, pending: () => saveTimer !== null, flush: () => (saveTimer ? save() : null) };
+  window.BodyTrainingDay = { placeholder, mount, summaryHtml, pending: () => saveTimer !== null, flush: () => (saveTimer ? save() : null) };
 })();

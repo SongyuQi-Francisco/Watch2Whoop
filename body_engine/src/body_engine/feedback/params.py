@@ -2,9 +2,9 @@
 user's AI (or a prompt injection in a screenshot) cannot flood the maintainer, while a real user hitting several bugs in a
 day still gets them through. Change here only."""
 
-PER_USER_DAY = 5           # new reports per user in a rolling 24 h (votes on an existing report do not count)
-PER_USER_MONTH = 30        # rolling 30 days
-GLOBAL_DAY = 100           # whole server, rolling 24 h
+PER_USER_DAY = None        # no per-user limit (owner, 2026-10-22: users may report as many bugs / wishes as they like)
+PER_USER_MONTH = None      # no per-user limit
+GLOBAL_DAY = 1000          # whole server, rolling 24 h: only a runaway guard (an AI looping or a prompt injection)
 
 MAX_TITLE = 80             # characters, after sanitising (the root rule asks for ≤ 60)
 MAX_FIELD = {"what": 1000, "expected": 500, "steps": 800, "error_text": 500, "area": 60}

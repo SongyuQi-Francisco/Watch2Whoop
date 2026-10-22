@@ -95,7 +95,7 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 
 
 ## 9. 价格交给用户自己的 AI（2026-10-22，迁移 420）
-负责人定的方向：**我们的服务器不访问超市网站**（grocery-sync 保持关闭，见第 8 节），查价格交给用户自己的 AI，用它自带的联网能力；我们只提供结构和存储（`grocery/prices.py`）。自己不能联网的今天页 AI（托底、OpenAI 兼容接口）在灰度开关 `ai_web` 后面用服务器的 `web_search` / `web_fetch`（#150，`docs/ai-assistant-plan.md` 9.19）：只在用户这次要时查，遵守 robots.txt，Coles / Woolworths 这类有反爬的网站一律不读、请用户发截图或小票。
+负责人定的方向：**我们的服务器不访问超市网站**（grocery-sync 保持关闭，见第 8 节），查价格交给用户自己的 AI，用它自带的联网能力；我们只提供结构和存储（`grocery/prices.py`）。自己不能联网的今天页 AI（托底、OpenAI 兼容接口）在灰度开关 `ai_web` 后面用服务器的 `web_search` / `web_fetch`（#150，`docs/ai-assistant-plan.md` 9.20）：只在用户这次要时查，遵守 robots.txt，Coles / Woolworths 这类有反爬的网站一律不读、请用户发截图或小票。
 
 **流程**
 1. `get_shopping_context`：本周计划和清单、健康约束（档案卡 health_constraints、红肉周上限、清单 warnings）、已连接超市（含搜索地址）、存货、`needs_price`（缺价或超过 7 天的，最多 15 样）、`rules`（查价规则）。

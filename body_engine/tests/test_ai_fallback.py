@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 
 from body_engine import api, auth
-from body_engine.ai import adapters, context, crypto, fallback, providers
+from body_engine.ai import adapters, cards, context, crypto, fallback, providers
 from body_engine.ai import fallback_params as fp
 from body_engine.ai import params as ai_params
 from body_engine.ai.adapters.fake import FakeAdapter
@@ -378,6 +378,25 @@ def test_long_fallback_conversation_folds_and_the_fold_is_billed(client, world, 
     evs = say("问3", conv)
     err = next(d for e, d in evs if e == "error")
     assert err["code"] == "quota" and "不够再问一轮" in err["message"] and not FakeAdapter.calls
+
+
+def test_fallback_gets_cards_too(client, world, dsn):
+    """#53: cards are a plain tool, so the fallback (DeepSeek, compat adapter) shows them like any other provider."""
+    from body_engine.rollout import flags
+    ids, tok = world
+    reset(dsn, ids["F1"])
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG, "all", actor="test")
+    try:
+        FakeAdapter.script = [{"tool_calls": [{"id": "c1", "name": "show_card", "args": {
+            "type": "actions", "date": None, "metric": None, "days": None, "buttons": [{"label": "再问", "text": "然后呢"}]}}]},
+                              {"text": "好"}]
+        evs = sse(client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "给我几个选项"}).text)
+        assert FakeAdapter.calls[0]["tools"][-1] == cards.NAME
+        assert [d["card"]["type"] for e, d in evs if e == "card"] == ["actions"] and evs[-1][0] == "done"
+    finally:
+        with db(dsn) as c:
+            flags.set_flag(c, cards.FLAG, "off", actor="test")
 
 
 def test_rate_limits(client, world, dsn, monkeypatch):

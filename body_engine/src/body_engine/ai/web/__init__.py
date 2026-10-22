@@ -1,4 +1,4 @@
-"""Server-side web tools for the in-page chat (issue #150, docs/ai-assistant-plan.md §9.19): web_search and web_fetch.
+"""Server-side web tools for the in-page chat (issue #150, docs/ai-assistant-plan.md §9.20): web_search and web_fetch.
 
 Who gets them (server_tools): users with the rollout flag ai_web whose chat AI has no web access of its own, i.e. the fallback
 AI (the admin's DeepSeek) and openai_compatible providers. Anthropic / OpenAI / Gemini keys use the vendor's own web tools
