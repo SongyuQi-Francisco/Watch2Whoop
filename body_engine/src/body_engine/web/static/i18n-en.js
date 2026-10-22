@@ -785,6 +785,8 @@ I18N.addEn({
   "训练记录": "Training log",
   "训练记录已连接": "Training log connected",
   "读不到": "Unreadable",
+  // the back end's name in the app (flag ai_parity)
+  "底层数据库": "our database",
   "连接": "Connect",
   "连接中…": "Connecting…",
   // recommended weights, muscle map (#47)

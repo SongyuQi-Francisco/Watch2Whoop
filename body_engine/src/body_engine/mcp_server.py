@@ -8,6 +8,8 @@ Two transports, the same tools (assistant/tools.py, the same copy the in-Today-p
 Write tools are marked read_only_hint=False, so the MCP client asks the user for approval before running them.
 tools/list sends only the resident core, the delete / undo tools and the meta tools (assistant/toolsets.py, issue #99);
 every other tool is found with find_tools and runs through run_read_tool / run_write_tool, which call run_tool with the real name.
+Rollout flag ai_parity (ai/parity.py), per signed-in user: tool descriptions, results, errors and the butler prompt go
+through ai/naming.scrub, so the back end's name never reaches the AI (the server instructions never contain it).
 """
 import os
 from contextlib import AbstractContextManager
@@ -21,7 +23,7 @@ from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
 from . import auth
-from .ai import root_rules
+from .ai import naming, parity, root_rules
 from .assistant import compact
 from .ai import params as ai_params
 from .ai import playbooks
@@ -64,6 +66,11 @@ def _call(identity: Identity, name: str, args: dict, connect_fn: Callable[[], Ab
     return compact.dumps(result)  # token-lean text for the model (assistant/compact.py)
 
 
+def _parity_on(identity: Identity, connect_fn: Callable[[], AbstractContextManager] = connect) -> bool:
+    with connect_fn() as conn:
+        return parity.on(conn, identity.viewer_id)
+
+
 def build_server(identity_of: Callable[[object], Identity],
                  connect_fn: Callable[[], AbstractContextManager] = connect) -> Server:
     """identity_of(ctx) -> whom this request represents. stdio fixes one person; HTTP parses the Bearer header of each request (mcp_http.py).
@@ -71,23 +78,28 @@ def build_server(identity_of: Callable[[object], Identity],
 
     async def list_tools(ctx, params) -> types.ListToolsResult:
         ident = identity_of(ctx)
+        on = await anyio.to_thread.run_sync(_parity_on, ident, connect_fn)
         return types.ListToolsResult(tools=[
-            types.Tool(name=t.name, description=t.description, input_schema=relaxed(t.input_schema),
+            types.Tool(name=t.name, description=naming.scrub(t.description) if on else t.description,
+                       input_schema=naming.scrub_schema(relaxed(t.input_schema)) if on else relaxed(t.input_schema),
                        annotations=types.ToolAnnotations(read_only_hint=not t.writes, destructive_hint=False,
                                                          open_world_hint=False))
             for t in toolsets.for_mcp(ident.can_write)])
-
-    def _error(text: str) -> types.CallToolResult:
-        return types.CallToolResult(content=[types.TextContent(text=text)], is_error=True)
 
     async def call_tool(ctx, params) -> types.CallToolResult:
         ident = identity_of(ctx)
         name, args = params.name, params.arguments or {}
         access = toolsets.Access(TOOLS_BY_NAME, ident.can_write, frozenset(ai_params.ALWAYS_CONFIRM))
+        on = await anyio.to_thread.run_sync(_parity_on, ident, connect_fn)
+
+        def _text(text: str, error: bool = False) -> types.CallToolResult:
+            return types.CallToolResult(content=[types.TextContent(text=naming.scrub(text) if on else text)], is_error=error)
+
+        def _error(text: str) -> types.CallToolResult:
+            return _text(text, True)
         try:
             if name == toolsets.FIND:
-                return types.CallToolResult(content=[types.TextContent(
-                    text=compact.dumps(toolsets.find(access, args.get("group"), args.get("query"))))])
+                return _text(compact.dumps(toolsets.find(access, args.get("group"), args.get("query"))))
             if name in toolsets.RUN_NAMES:  # run the real tool: same checks, the audit records the real name
                 tool, args = toolsets.resolve(access, name, args)
                 name = tool.name
@@ -102,7 +114,7 @@ def build_server(identity_of: Callable[[object], Identity],
             text = await anyio.to_thread.run_sync(_call, ident, name, args, connect_fn)
         except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
             return _error(f"{type(e).__name__}: {e}")
-        return types.CallToolResult(content=[types.TextContent(text=text)])
+        return _text(text)
 
     async def list_prompts(ctx, params) -> types.ListPromptsResult:
         return types.ListPromptsResult(prompts=[types.Prompt(
@@ -116,8 +128,11 @@ def build_server(identity_of: Callable[[object], Identity],
         if params.name != PROMPT_NAME:
             raise ValueError(f"没有这个 prompt：{params.name}")
         from .ai.prompt import base_prompt
+        text = base_prompt()
+        if await anyio.to_thread.run_sync(_parity_on, identity_of(ctx), connect_fn):
+            text = f"{naming.scrub(text)}\n\n{parity.prompt(False)}"
         return types.GetPromptResult(description="身体管家", messages=[
-            types.PromptMessage(role="user", content=types.TextContent(text=base_prompt()))])
+            types.PromptMessage(role="user", content=types.TextContent(text=text))])
 
     return Server("body-engine", instructions=INSTRUCTIONS + "\n\n" + root_rules.text(), on_list_tools=list_tools, on_call_tool=call_tool,
                   on_list_prompts=list_prompts, on_get_prompt=get_prompt)

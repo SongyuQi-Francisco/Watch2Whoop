@@ -20,6 +20,11 @@ the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go
 Behind the rollout flag ai_web, chats whose AI cannot go online itself (the fallback, openai_compatible) also get the server's
 web_search / web_fetch (ai/web, issue #150), sent after the meta tools and run by web.run instead of run_tool.
 
+Rollout flag ai_parity (parity.py): the fallback reaches the same tools as everyone else (minus what its consent excludes),
+and the back end's name never reaches the model or the user: the system prompt, tool definitions, tool results and the
+history sent are scrubbed (naming.scrub), the streamed answer, errors and stored answers too (naming.StreamScrubber,
+_scrub_events). The vendor-native replies (`native`) are kept as returned: thinking signatures need them unchanged.
+
 Cards (cards.py, rollout flag jarvis_rich): the model may call show_card, and the write tools in cards.AUTO get one by
 themselves; each becomes a `card` event and is kept on its ai_tool_calls row for conversation_view.
 
@@ -29,6 +34,7 @@ conversation, text, tool, card, confirm, usage, notice, error, done.
 import base64
 import binascii
 import copy
+import dataclasses
 import json
 from typing import Iterator
 
@@ -40,7 +46,7 @@ from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..assistant.tools import _audit as run_audit
 from ..i18n import L, is_en
-from . import adapters, cards, catalog, choice, context, crypto, fallback, prompt, providers, web
+from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, web
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
@@ -272,6 +278,8 @@ def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args:
         status, text = "done", _result_text(res)
     except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
         status, text = "error", f"{type(e).__name__}: {e}"
+    if parity.on(conn, viewer["id"]):
+        text = naming.scrub(text)
     conn.execute("UPDATE ai_tool_calls SET status = %s, result = %s, decided_at = now() WHERE id = %s AND user_id = %s",
                  (status, text, call_row_id, viewer["id"]))
     return status, text
@@ -364,8 +372,13 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
 
 def _tool_sets(conn, user_id: int, provider: dict) -> tuple[tuple, list]:
     """(the tools this chat may reach, the server web tools): the fallback only ever reaches its own whitelist (+ the
-    grocery tools behind ai_web), also through the meta tools."""
-    allowed = fallback.tools(web.fallback_extra(conn, user_id)) if fallback.is_fallback(provider) else TOOLS
+    grocery tools behind ai_web; with ai_parity everything but fallback.CONSENT_EXCLUDED), also through the meta tools."""
+    if not fallback.is_fallback(provider):
+        allowed = TOOLS
+    elif parity.on(conn, user_id):
+        allowed = fallback.tools(parity=True)
+    else:
+        allowed = fallback.tools(web.fallback_extra(conn, user_id))
     return tuple(allowed), web.server_tools(conn, user_id, provider)
 
 
@@ -397,24 +410,103 @@ def _auto_cards(conn, user_id: int, done_writes: list[tuple]) -> Iterator[dict]:
             yield ev("card", card=card, call_id=row_id)
 
 
-def _page_budget(provider: dict) -> int:
-    return ai_params.FALLBACK_PAGE_BUDGET_CHARS if fallback.is_fallback(provider) else ai_params.PAGE_BUDGET_CHARS
+def _page_cut(conn, user_id: int, provider: dict) -> tuple[int, int | None]:
+    """(budget in characters, groups per page) for the tools sent with each call."""
+    if not fallback.is_fallback(provider):
+        return ai_params.PAGE_BUDGET_CHARS, None
+    if parity.on(conn, user_id):
+        return ai_params.FALLBACK_PARITY_PAGE_BUDGET_CHARS, ai_params.FALLBACK_PARITY_PAGE_GROUPS
+    return ai_params.FALLBACK_PAGE_BUDGET_CHARS, None
+
+
+_scrubbed_tools: dict[int, tuple] = {}
+
+
+def _scrub_tool(t):
+    """The tool as the model sees it with ai_parity: description and schema descriptions scrubbed (cached per Tool object)."""
+    hit = _scrubbed_tools.get(id(t))
+    if hit is None or hit[0] is not t:
+        hit = (t, dataclasses.replace(t, description=naming.scrub(t.description),
+                                      input_schema=naming.scrub_schema(t.input_schema)))
+        _scrubbed_tools[id(t)] = hit
+    return hit[1]
+
+
+def _scrub_history(history: list[dict]) -> list[dict]:
+    """Older turns (before the flag, or summaries) as the model reads them: text and tool results scrubbed."""
+    def block(b):
+        if b.get("type") == "text":
+            return {**b, "text": naming.scrub(b.get("text"))}
+        if b.get("type") == "tool_result":
+            return {**b, "content": naming.scrub(b.get("content"))}
+        return b
+    return [{**m, "content": [block(b) for b in m["content"]]} for m in history]
+
+
+_KEEP = ("name", "tool", "code", "provider", "model", "kind", "args", "card", "call_id", "conversation_id", "id")
+
+
+def _scrub_event(e: dict) -> dict:
+    """An event for the page with ai_parity (not text): the texts the user reads, never names or codes the page acts on."""
+    if e["event"] in ("card", "usage", "done", "conversation", "text"):
+        return e
+    def clean(v, key=None):
+        if key in _KEEP:
+            return v
+        if isinstance(v, dict):
+            return {k: clean(x, k) for k, x in v.items()}
+        if isinstance(v, list):
+            return [clean(x) for x in v]
+        return naming.scrub(v, output=True)
+    return ev(e["event"], **clean(e["data"]))
+
+
+def _scrub_events(events: Iterator[dict]) -> Iterator[dict]:
+    """The streamed answer through naming.StreamScrubber (a name may be split across deltas); the held-back tail goes out
+    before the next other event, which is where one model call's text ends."""
+    s = naming.StreamScrubber()
+    for e in events:
+        if e["event"] == "text":
+            d = s.feed(e["data"]["delta"])
+            if d:
+                yield ev("text", delta=d)
+            continue
+        rest = s.flush()
+        if rest:
+            yield ev("text", delta=rest)
+        yield _scrub_event(e)
+    rest = s.flush()
+    if rest:
+        yield ev("text", delta=rest)
 
 
 def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter) -> Iterator[dict]:
+    if parity.on(conn, viewer["id"]):
+        yield from _scrub_events(_turns(conn, viewer, provider, conv, adapter, True))
+    else:
+        yield from _turns(conn, viewer, provider, conv, adapter, False)
+
+
+def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter, scrub: bool) -> Iterator[dict]:
     can_write = "write" in (viewer.get("token_scopes") or [])
     fb = fallback.is_fallback(provider)
     allowed, web_tools = _tool_sets(conn, viewer["id"], provider)
     access = toolsets.Access({t.name: t for t in (*allowed, *web_tools)}, can_write)
-    tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider))) + web_tools
+    budget, per_page = _page_cut(conn, viewer["id"], provider)
+    tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], budget, per_page),
+                              per_page) + web_tools
     rich = cards.enabled(conn, viewer["id"])
     if rich:
         tools = [*tools, cards.TOOL]
+    if scrub:
+        tools = [_scrub_tool(t) for t in tools]
     rounds, turn_cost = (fp.MAX_ROUNDS if fb else MAX_ROUNDS), 0.0
     for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         if rich:
             system = f"{system}\n\n{cards.PROMPT}"
+        if scrub:
+            system, history = f"{naming.scrub(system)}\n\n{parity.prompt(fb)}", _scrub_history(history)
         # The last call allowed: same tools (history and prompt cache stay valid), calls switched off, an answer now
         last = rnd > 0 and (rnd == rounds - 1 or (fb and turn_cost >= fp.MAX_TURN_CNY))
         caller = adapter
@@ -440,6 +532,8 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
         except adapters.AdapterError as e:
             yield ev("error", code=e.code, message=str(e))
             return
+        if scrub:   # stored as the user saw it streamed (_scrub_events gives the same text)
+            result.text = naming.scrub(result.text, output=True)
         cost = _record_usage(conn, viewer["id"], provider, conv["id"], result.usage)
         turn_cost += cost
         yield _usage_event(provider, result.usage, cost, spent, budget)
@@ -486,6 +580,8 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
                     status, text = "done", _result_text(toolsets.find(access, args.get("group"), args.get("query")))
                 except ValueError as e:
                     status, text = "error", f"ValueError: {e}"
+                if scrub:
+                    text = naming.scrub(text)
                 conn.execute("""INSERT INTO ai_tool_calls (conversation_id, message_id, user_id, call_id, tool, args, writes, status, result)
                                 VALUES (%s,%s,%s,%s,%s,%s,false,%s,%s)""",
                              (conv["id"], mid, viewer["id"], c["id"], c["name"], Jsonb(args), status, text))
@@ -559,7 +655,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
         conv = _conversation(conn, viewer["id"], conversation_id)
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
         allowed, _ = _tool_sets(conn, viewer["id"], provider)
-        pages = toolsets.visit_page(allowed, conv["pages"], page, _page_budget(provider))
+        pages = toolsets.visit_page(allowed, conv["pages"], page, *_page_cut(conn, viewer["id"], provider))
         if pages != conv["pages"]:   # a new page adds its groups; over the cap the oldest pages' groups are dropped
             conv = conn.execute("UPDATE ai_conversations SET pages = %s WHERE id = %s RETURNING *",
                                 (pages, conv["id"])).fetchone()
@@ -601,6 +697,11 @@ def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
 
 
 def confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) -> Iterator[dict]:
+    events = _confirm_events(conn, viewer, row, conv, provider, adapter, approve)
+    return _scrub_events(events) if parity.on(conn, viewer["id"]) else events
+
+
+def _confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) -> Iterator[dict]:
     if approve:
         yield ev("tool", name=row["tool"], status="running")
         status, text = _exec(conn, viewer, provider, row["id"], row["tool"], row["args"])
@@ -618,7 +719,7 @@ def confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) ->
                        (row["message_id"], viewer["id"])).fetchone()
     _finish_tool_message(conn, conv, row["message_id"], [b for b in msg["content"] if b["type"] == "tool_call"])
     conn.commit()
-    yield from _loop(conn, viewer, provider, conv, adapter)
+    yield from _turns(conn, viewer, provider, conv, adapter, parity.on(conn, viewer["id"]))
 
 
 # ---------------------------------------------------------------- list / read back
@@ -649,6 +750,9 @@ def conversation_view(conn, user_id: int, conv_id: int) -> dict:
     last_asst = conn.execute("""SELECT id FROM ai_messages WHERE conversation_id = %s AND user_id = %s AND role = 'assistant'
                                 ORDER BY id DESC LIMIT 1""", (conv_id, user_id)).fetchone()
     pending = _pending_payload(conn, user_id, last_asst["id"]) if last_asst else []
+    if parity.on(conn, user_id):   # also conversations from before the flag
+        msgs = [{**m, "text": naming.scrub(m["text"], output=True)} if m["role"] == "assistant" else m for m in msgs]
+        pending = [{**p, "summary": naming.scrub(p["summary"], output=True)} for p in pending]
     return {"id": conv["id"], "title": conv["title"], "state": conv["state"], "messages": msgs, "pending": pending}
 
 

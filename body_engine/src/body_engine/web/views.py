@@ -52,7 +52,8 @@ def section(conn, viewer_id: int, owner_id: int, scope: str, fn):
     try:
         return fn()
     except sparky_client.SparkyError as e:
-        return {"error": str(e), "code": "sparky"}
+        from ..ai import naming, parity   # ai_parity: the page never names the back end
+        return {"error": naming.scrub(str(e), output=True) if parity.on(conn, viewer_id) else str(e), "code": "sparky"}
 
 
 def has_any_share(conn, viewer_id: int, owner_id: int) -> bool:
