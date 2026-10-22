@@ -5,7 +5,7 @@ from importlib import resources
 
 import pytest
 
-from body_engine.ai import fallback, playbooks
+from body_engine.ai import fallback, playbooks, web
 from body_engine.ai import params as P
 from body_engine.assistant import toolsets
 from body_engine.assistant.tools import TOOLS_BY_NAME
@@ -78,9 +78,11 @@ def test_tools_not_listed_are_reachable_through_find_tools(name):
         assert found[tool]["run"] in (toolsets.RUN_READ, toolsets.RUN_WRITE), tool
 
 
-def test_fallback_flags():
+def test_fallback_flags(monkeypatch):
     """Owner's decision: the whitelist is not widened. A playbook marked for the fallback names only whitelisted tools;
-    the lite prompt lists exactly those; get_playbook from the fallback AI answers the others with FALLBACK_NO."""
+    the lite prompt lists exactly those (+ FALLBACK_WEB, possible behind ai_web); get_playbook from the fallback AI answers
+    the others with FALLBACK_NO."""
+    monkeypatch.setattr(web, "fallback_extra", lambda conn, uid: ())   # ai_web off
     assert set(playbooks.FALLBACK) == set(playbooks.NAMES)
     lite = (resources.files("body_engine.ai") / "system_prompt_lite.md").read_text(encoding="utf-8")
     tool = TOOLS_BY_NAME["get_playbook"]
@@ -89,11 +91,20 @@ def test_fallback_flags():
         assert optional <= playbooks.tools_mentioned(n)
         missing = playbooks.tools_mentioned(n) - set(fallback.TOOL_NAMES) - optional
         assert (not missing) if ok else missing, (n, missing)        # the flag matches the whitelist exactly
-        assert (n in lite) == ok, n
+        assert (n in lite) == (ok or n in playbooks.FALLBACK_WEB), n
         got = tool.handler(None, 1, {"name": n, "_channel": f"api:{fallback.KIND}"})
         assert got["text"] == (playbooks.text(n) if ok else playbooks.FALLBACK_NO)
         assert tool.handler(None, 1, {"name": n, "_channel": "mcp"})["text"] == playbooks.text(n)
     assert [n for n, ok in playbooks.FALLBACK.items() if ok] == ["plan_training_week", "weekly_review"]
+    # behind ai_web (#150) the fallback also gets ai/web.FALLBACK_GROCERY: exactly enough for FALLBACK_WEB
+    for n in playbooks.FALLBACK_WEB:
+        assert not playbooks.FALLBACK[n]
+        assert not playbooks.tools_mentioned(n) - set(fallback.TOOL_NAMES) - set(web.FALLBACK_GROCERY), n
+    assert set(web.FALLBACK_GROCERY) <= set(TOOLS_BY_NAME) and not set(web.FALLBACK_GROCERY) & set(fallback.TOOL_NAMES)
+    monkeypatch.setattr(web, "fallback_extra", lambda conn, uid: web.FALLBACK_GROCERY)   # ai_web on
+    got = tool.handler(None, 1, {"name": "plan_shopping", "_channel": f"api:{fallback.KIND}"})
+    assert got["text"] == playbooks.text("plan_shopping")
+    assert tool.handler(None, 1, {"name": "log_meal_from_photo", "_channel": f"api:{fallback.KIND}"})["text"] == playbooks.FALLBACK_NO
     for n, tools in playbooks.OPTIONAL_TOOLS.items():                # each optional tool: the text says what to do without it
         for t in tools:
             assert f"没有 `{t}` 时" in playbooks.text(n), (n, t)

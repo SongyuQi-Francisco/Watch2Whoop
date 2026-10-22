@@ -47,7 +47,9 @@ def test_anthropic_web_tools_and_pause_turn(monkeypatch):
     a = adapters.make("anthropic_api", "claude-opus-5-5", "k", web=True)
     assert [t["type"] for t in a._web_tools()] == ["web_search_20260209", "web_fetch_20260209"]
     old = adapters.make("anthropic_api", "claude-haiku-4-5", "k", web=True)
-    assert [t["type"] for t in old._web_tools()] == ["web_search_20250305"]
+    assert [t["type"] for t in old._web_tools()] == ["web_search_20250305", "web_fetch_20250910"]   # basic fetch too (#150)
+    assert all(t["max_content_tokens"] == A.WEB_FETCH_MAX_TOKENS for t in old._web_tools() + a._web_tools()
+               if t["name"] == "web_fetch")
 
     class Block:
         def __init__(self, **d):

@@ -212,7 +212,7 @@ def test_chat_needs_fallback_consent_then_works(client, world, dsn):
     assert conv["provider"] == "system_fallback" and conv["quota"]["quota_cny"] == fp.MONTHLY_QUOTA_CNY
     call = FakeAdapter.calls[0]
     assert call["api_key"] == DS_KEY and call["model"] == fp.MODEL and call["base_url"] == fp.BASE_URL
-    assert call["system"].startswith("## 根规则 v2") and "# 身体管家（精简版）" in call["system"]   # root rules first
+    assert call["system"].startswith("## 根规则 v3") and "# 身体管家（精简版）" in call["system"]   # root rules first
     assert "F1 喜欢早上练" in call["system"]
     # core ∩ whitelist + the meta tools (no page sent); the rest of the whitelist via find_tools (#99)
     assert call["tools"] == [t.name for t in toolsets.for_page(fallback.tools(), None)]

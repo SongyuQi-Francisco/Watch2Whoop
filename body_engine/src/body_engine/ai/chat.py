@@ -14,6 +14,8 @@ Tools sent with each call: the resident core + the groups of the pages the conve
 most recent last; beyond PAGE_BUDGET_CHARS the oldest are dropped, the current page always stays) + the meta tools
 (assistant/toolsets.py, issue #99). run_read_tool / run_write_tool are resolved to the real tool before anything runs, so
 the read-only check, ALWAYS_CONFIRM, the fallback whitelist and the audit all go by the real tool name.
+Behind the rollout flag ai_web, chats whose AI cannot go online itself (the fallback, openai_compatible) also get the server's
+web_search / web_fetch (ai/web, issue #150), sent after the meta tools and run by web.run instead of run_tool.
 
 Cards (cards.py, rollout flag jarvis_rich): the model may call show_card, and the write tools in cards.AUTO get one by
 themselves; each becomes a `card` event and is kept on its ai_tool_calls row for conversation_view.
@@ -33,8 +35,9 @@ from psycopg.types.json import Jsonb
 from .. import sparky_client
 from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
+from ..assistant.tools import _audit as run_audit
 from ..i18n import L, is_en
-from . import adapters, cards, catalog, choice, context, crypto, fallback, prompt, providers
+from . import adapters, cards, catalog, choice, context, crypto, fallback, prompt, providers, web
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
@@ -252,6 +255,8 @@ def _result_text(result) -> str:
 
 def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args: dict) -> tuple[str, str]:
     """Run one tool (read tools automatically, write tools after confirmation); returns (status, result text)."""
+    if name in web.NAMES:
+        return _exec_web(conn, viewer, provider, call_row_id, name, args)
     if fallback.is_fallback(provider):  # the fallback reads / writes only the caller's own data, never through shares
         args = {**args, "user": "me"} if "user" in TOOLS_BY_NAME[name].input_schema.get("properties", {}) else args
     try:
@@ -260,6 +265,23 @@ def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args:
         status, text = "done", _result_text(res)
     except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
         status, text = "error", f"{type(e).__name__}: {e}"
+    conn.execute("UPDATE ai_tool_calls SET status = %s, result = %s, decided_at = now() WHERE id = %s AND user_id = %s",
+                 (status, text, call_row_id, viewer["id"]))
+    return status, text
+
+
+def _exec_web(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args: dict) -> tuple[str, str]:
+    """The server's web_search / web_fetch (ai/web): usage and limits per user, audited like any other tool."""
+    conv_id = conn.execute("SELECT conversation_id FROM ai_tool_calls WHERE id = %s AND user_id = %s",
+                           (call_row_id, viewer["id"])).fetchone()["conversation_id"]
+    channel = f"api:{provider['kind']}"
+    try:   # no savepoint: a page read that fails after its ai_usage row still counts (no retry loops)
+        res = web.run(conn, viewer["id"], provider, conv_id, name, args)
+        status, text = "done", _result_text(res)
+        run_audit(conn, viewer["id"], channel, name, args, True, None, provider["id"], provider["model"])
+    except Exception as e:  # limits, search API errors, bad URLs: passed to the model as they are
+        status, text = "error", f"{type(e).__name__}: {e}"
+        run_audit(conn, viewer["id"], channel, name, args, False, str(e), provider["id"], provider["model"])
     conn.execute("UPDATE ai_tool_calls SET status = %s, result = %s, decided_at = now() WHERE id = %s AND user_id = %s",
                  (status, text, call_row_id, viewer["id"]))
     return status, text
@@ -323,6 +345,13 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
     return name, args, tool, None if tool else f"没有这个工具：{name}"
 
 
+def _tool_sets(conn, user_id: int, provider: dict) -> tuple[tuple, list]:
+    """(the tools this chat may reach, the server web tools): the fallback only ever reaches its own whitelist (+ the
+    grocery tools behind ai_web), also through the meta tools."""
+    allowed = fallback.tools(web.fallback_extra(conn, user_id)) if fallback.is_fallback(provider) else TOOLS
+    return tuple(allowed), web.server_tools(conn, user_id, provider)
+
+
 def _card(conn, user_id: int, args: dict) -> tuple[dict | None, str, str]:
     """(card, status, text for the model) for show_card. A failure only costs the card: the savepoint keeps the turn's transaction."""
     try:
@@ -358,9 +387,9 @@ def _page_budget(provider: dict) -> int:
 def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter) -> Iterator[dict]:
     can_write = "write" in (viewer.get("token_scopes") or [])
     fb = fallback.is_fallback(provider)
-    allowed = fallback.tools() if fb else TOOLS   # the fallback only ever reaches its own whitelist, also through the meta tools
-    access = toolsets.Access({t.name: t for t in allowed}, can_write)
-    tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider)))
+    allowed, web_tools = _tool_sets(conn, viewer["id"], provider)
+    access = toolsets.Access({t.name: t for t in (*allowed, *web_tools)}, can_write)
+    tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], _page_budget(provider))) + web_tools
     rich = cards.enabled(conn, viewer["id"])
     if rich:
         tools = [*tools, cards.TOOL]
@@ -497,7 +526,7 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
-        allowed = fallback.tools() if fb else TOOLS
+        allowed, _ = _tool_sets(conn, viewer["id"], provider)
         pages = toolsets.visit_page(allowed, conv["pages"], page, _page_budget(provider))
         if pages != conv["pages"]:   # a new page adds its groups; over the cap the oldest pages' groups are dropped
             conv = conn.execute("UPDATE ai_conversations SET pages = %s WHERE id = %s RETURNING *",

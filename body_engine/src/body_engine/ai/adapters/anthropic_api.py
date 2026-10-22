@@ -7,7 +7,9 @@
 - Tools use strict=True (api_definition in tools.py); eager_input_streaming is off: tool arguments are short, strict validation matters more than streaming them while generating.
 - The assistant's raw content (including thinking blocks) is stored as native and passed back as-is when the same model continues the conversation (preserved thinking requires history to be append-only and unchanged).
 - web (ai_providers.web_tools, off by default): Anthropic's own server tools web_search + web_fetch (the _20260209 variants with
-  dynamic filtering on the models that support them, basic web search otherwise), billed on the user's key. Server tool blocks
+  dynamic filtering on the models that support them, the basic web_search_20250305 + web_fetch_20250910 otherwise; checked
+  against platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool and web-fetch-tool on 2026-10-22), billed on the
+  user's key ($10 / 1,000 searches + tokens; fetch has no extra charge, page text capped by WEB_FETCH_MAX_TOKENS). Server tool blocks
   (server_tool_use, web_search_tool_result, web_fetch_tool_result) stay in native as returned. A turn that stops with pause_turn
   (the server-side loop hit its limit) is continued by re-sending the partial assistant content, up to MAX_CONTINUE times.
 """
@@ -20,6 +22,7 @@ FALLBACK_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "
 WEB_NEW_MODELS = {"claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-5-5",
                   "claude-sonnet-5", "claude-sonnet-4-6"}   # web_search_20260209 / web_fetch_20260209
 WEB_MAX_USES = 8      # searches + page reads per request (a dozen items from one list)
+WEB_FETCH_MAX_TOKENS = 20000   # max_content_tokens per fetched page: a product page fits, a huge one doesn't burn the user's key
 MAX_CONTINUE = 3      # pause_turn continuations per turn
 EFFORT_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-opus-5",
                  "claude-sonnet-5"}
@@ -72,8 +75,11 @@ class AnthropicAdapter(Adapter):
             return []
         if self.model in WEB_NEW_MODELS:
             return [{"type": "web_search_20260209", "name": "web_search", "max_uses": WEB_MAX_USES},
-                    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": WEB_MAX_USES}]
-        return [{"type": "web_search_20250305", "name": "web_search", "max_uses": WEB_MAX_USES}]
+                    {"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": WEB_MAX_USES,
+                     "max_content_tokens": WEB_FETCH_MAX_TOKENS}]
+        return [{"type": "web_search_20250305", "name": "web_search", "max_uses": WEB_MAX_USES},
+                {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": WEB_MAX_USES,
+                 "max_content_tokens": WEB_FETCH_MAX_TOKENS}]
 
     def stream_turn(self, system, history, tools):
         client = anthropic.Anthropic(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)

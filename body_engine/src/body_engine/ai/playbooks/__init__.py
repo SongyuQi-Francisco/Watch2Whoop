@@ -15,6 +15,9 @@ NAMES = ("plan_shopping", "plan_training_week", "weekly_review", "log_meal_from_
 # The whitelist is not widened for them (owner's decision); the others answer the fallback with FALLBACK_NO.
 # plan_shopping / log_meal_from_photo need several grocery / meal tools the fallback does not have.
 FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review": True, "log_meal_from_photo": False}
+# Playbooks the fallback AI can carry out once the rollout flag ai_web gives it the web tools and ai/web.FALLBACK_GROCERY
+# (issue #150; tests/test_playbooks.py checks the tools against that list too).
+FALLBACK_WEB = {"plan_shopping"}
 # Tools a playbook can do without: it says what to do when they are missing (weekly_review: suggest the numbers instead of
 # changing the nutrition goals). Not counted when checking FALLBACK against the whitelist.
 OPTIONAL_TOOLS = {"weekly_review": {"set_nutrition_goals"}}
@@ -52,9 +55,9 @@ def tools_mentioned(name: str) -> set[str]:
     return set(TOOL_RE.findall(text(name)))
 
 
-def get(name: str, for_fallback: bool = False) -> dict:
+def get(name: str, for_fallback: bool = False, web: bool = False) -> dict:
     """What get_playbook returns: the same text as the MCP prompt of that name; the fallback AI gets FALLBACK_NO for the
-    playbooks it cannot carry out."""
-    if for_fallback and not FALLBACK[name]:
+    playbooks it cannot carry out (web: ai_web is on for the caller, FALLBACK_WEB become possible)."""
+    if for_fallback and not FALLBACK[name] and not (web and name in FALLBACK_WEB):
         return {"name": name, "title": title(name), "fallback": False, "text": FALLBACK_NO}
     return {"name": name, "title": title(name), "text": text(name)}

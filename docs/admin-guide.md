@@ -129,6 +129,22 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 - **余额低于停用线全体自动暂停**，`status` 第二行显示余额、停用线、告警线；充值后下次查余额时恢复。
 - 第一次用前用户要在 app 里单独同意。
 
+### Jarvis 联网查价（灰度开关 `ai_web`，#150）
+
+托底 AI 和「OpenAI 兼容接口」自己不能联网；打开 `ai_web` 后它们用服务器的 `web_search`（搜索 API，管理员付费，计入每人的托底额度）和 `web_fetch`（读一个公开网页，遵守 robots.txt，碰到反爬 / 验证码 / 登录就停，Coles / Woolworths 不读）。Anthropic / OpenAI / Gemini key 的用户用各家官方联网（「AI 设置」→「允许联网」，费用算他自己的）。
+
+1. 选搜索服务、拿 key，存成 `secrets/web_search_api_key`（600），容器里用 `BODY_WEB_SEARCH_API_KEY_FILE` 指向它；服务用 `BODY_WEB_SEARCH_PROVIDER=brave|tavily|serper`（默认 brave）。没有 key：只有 `web_fetch`，不报错。
+2. `body-engine flags set ai_web --state cohort`（先给 beta），验收后 `--state all`。
+3. 限制在 `body_engine/src/body_engine/ai/web/params.py`：每人每天搜索 20 次、读网页 40 次，全体每月搜索 3000 次；`body-engine ai-fallback status` 的本月花费已包含搜索。
+
+### Jarvis 联网查价（灰度开关 `ai_web`，#150）
+
+托底 AI 和「OpenAI 兼容接口」自己不能联网；打开 `ai_web` 后它们用服务器的 `web_search`（搜索 API，管理员付费，计入每人的托底额度）和 `web_fetch`（读一个公开网页，遵守 robots.txt，碰到反爬 / 验证码 / 登录就停，Coles / Woolworths 不读）。Anthropic / OpenAI / Gemini key 的用户用各家官方联网（「AI 设置」→「允许联网」，费用算他自己的）。
+
+1. 选搜索服务、拿 key，存成 `secrets/web_search_api_key`（600），容器里用 `BODY_WEB_SEARCH_API_KEY_FILE` 指向它；服务用 `BODY_WEB_SEARCH_PROVIDER=brave|tavily|serper`（默认 brave）。没有 key：只有 `web_fetch`，不报错。
+2. `body-engine flags set ai_web --state cohort`（先给 beta），验收后 `--state all`。
+3. 限制在 `body_engine/src/body_engine/ai/web/params.py`：每人每天搜索 20 次、读网页 40 次，全体每月搜索 3000 次；`body-engine ai-fallback status` 的本月花费已包含搜索。
+
 ## AI 自动反馈
 用户的 AI 发现 bug、听到新需求时会用 `report_feedback` 报进服务器的反馈队列（根规则，`docs/ai-feedback-plan.md`）。服务器先去敏、查重、限流；原话只在服务器上。
 
@@ -197,6 +213,8 @@ deploy/ops/install.sh                      # 装定时任务（macOS LaunchAgent
 | `body_db_password`、`open_wearables.env`、`sparkyfitness.env` | 服务连不上库 |
 | `ow_invite_signing.json` | 激活链接不带同步邀请码（泄露 = OW 全部数据泄露） |
 | `deepseek_api_key` | 托底 AI 停用 |
+| `web_search_api_key` | Jarvis 的服务器搜索（`web_search`）不出现；读网页照常 |
+| `web_search_api_key` | Jarvis 的服务器搜索（`web_search`）不出现；读网页照常 |
 
 ## 常见问题
 
