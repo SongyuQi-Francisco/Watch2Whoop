@@ -18,6 +18,9 @@
   if (IN_APP) document.documentElement.classList.add("in-app");
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
+  // Pictures people uploaded (avatars.js): the picture inside an avatar circle, or the initial. The flag only gates the upload controls.
+  const avInner = (url, name) => window.BodyAvatar?.inner(url, name) ?? esc((name || "?").slice(0, 1).toUpperCase());
+  const avatarsOn = () => !!window.BodyFlags?.on("avatars");
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view), onTab(tab) after a tab switch; grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
@@ -475,8 +478,8 @@
     $("#day-next").disabled = !past;
     $("#back-today").hidden = !past;
     const btn = $("#who");
-    btn.hidden = S.viewable.length < 2;
-    btn.textContent = (who?.display_name || "?").slice(0, 1).toUpperCase();
+    btn.hidden = S.viewable.length < 2 && !avatarsOn();   // avatars flag: the picture is always at the top right, it opens my profile
+    btn.innerHTML = avInner(who?.avatar, who?.display_name);
     btn.classList.toggle("other", !!who && !who.self);
     const ro = $("#viewing"), other = !!who && !who.self;
     $(".dock").classList.toggle("viewing-other", other);   // no AI chat on someone else's pages
@@ -487,7 +490,7 @@
     }
     window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
   }
-  $("#who").onclick = () => whoSheet();
+  $("#who").onclick = () => (S.viewable.length < 2 && window.BodyProfile ? window.BodyProfile.open() : whoSheet());
 
   // ---- Look-back: switch the date of the dated tabs (in-SPA state + replaceState, no full reload); `tab` jumps to that tab as well
   function setViewDate(day, dir, tab) {
@@ -2477,7 +2480,7 @@
   const RENDER_me = async () => {
     if (muscleOn()) muscleCtx();   // 我 → 训练设置 row
     if (meSettingsOn() && S.meSub === "settings") {
-      return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true });
+      return meSettingsHtml(S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, avatar: S.me.avatar, self: true });
     }
     const [mem, supps, events, d, hs, labs, tlog] = await Promise.all([
       load("memory", memPath()).catch((e) => ({ error: e })),
@@ -2488,7 +2491,7 @@
       load("labs", `/v1/users/${ownerPath()}/labs/summary`).catch((e) => ({ error: e })),
       load("tlog", `/v1/users/${ownerPath()}/training/sparky`).catch(() => null),
     ]);
-    const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, self: true };
+    const who = S.viewable.find((v) => v.id === S.owner) || { display_name: S.me.display_name, avatar: S.me.avatar, self: true };
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
     const updatedVal = computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
@@ -2503,7 +2506,7 @@
       ].join("");
       const archiveVal = [supps.error ? null : tr("补剂 {n}", { n: supps.filter((x) => x.status === "active").length }),
         labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
-      return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
+      return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
           <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
         ${healthspanHtml(hs)}
         <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
@@ -2516,7 +2519,7 @@
         ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
         </div></div>`;
     }
-    return `<div class="me"><span class="avatar">${esc(who.display_name.slice(0, 1).toUpperCase())}</span>
+    return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
         <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
       ${healthspanHtml(hs)}
       <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
@@ -3085,7 +3088,7 @@
       : `<div class="fd2-foot">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
     return `<div class="card fd-card fd2${m.self ? " fd2-self" : ""}${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
       ${m.self ? `<div class="fd2-mark">${badge("plain", tr("朋友看到的你"))}</div>` : ""}
-      <div class="fd2-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+      <div class="fd2-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
         <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${hero}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${body}${note ? `<p class="fd2-note">${esc(note)}</p>` : ""}${foot}</div>`;
   }
@@ -3105,7 +3108,7 @@
       ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
       : `<div class="fd-cheer">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
     return `<div class="card fd-card${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
-      <div class="fd-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+      <div class="fd-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
         <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${tagsH.length ? `<div class="rcard-tags">${tagsH.join("")}</div>` : ""}${nums}${cheers}</div>`;
   }
@@ -3130,7 +3133,7 @@
       const ok = r.status === "ok";
       const note = ok ? boardSub(b.board, r.sub) : r.status === "not_shared" ? tr("未共享") : tr("数据不足");
       return `<div class="fd-row${ok ? "" : " off"}${r.self ? " fd-self" : ""}"><span class="fd-rank">${ok ? r.rank : "·"}</span>
-        <span class="fd-av">${esc((r.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-av">${avInner(r.avatar, r.display_name)}</span>
         <span class="fd-rn"><b>${esc(r.self ? tr("who.me", { name: r.display_name }) : r.display_name)}</b><i>${esc(note)}</i></span>
         <span class="fd-sc">${ok ? r.score : "—"}</span>${ok ? `<span class="fd-sbar"><span style="width:${Math.max(2, r.score)}%"></span></span>` : ""}</div>`;
     }).join("");

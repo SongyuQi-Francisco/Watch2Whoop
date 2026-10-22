@@ -695,6 +695,9 @@ def test_v2_body_cards_build_without_data(dsn, world, v2):
         today = queries.local_today(c, ids["A"])
         c.execute("""INSERT INTO daily_scores (user_id, date, recovery, strain, algo_version) VALUES (%s, %s, 71, 9.5, 'test')
                      ON CONFLICT (user_id, date) DO UPDATE SET recovery = 71, strain = 9.5""", (ids["A"], today))
+        with pytest.raises(ValueError):   # its own flag is off
+            cards.build(c, ids["A"], {"type": "data_status"}, v2=True)
+        flags.set_flag(c, "data_status", "all", actor="test")
         built = {}
         for t in cards.BODY_TYPES + ("sleep",):
             a = {"type": t, "date": None, "metric": {"trend": "hrv", "lab": "uric_acid"}.get(t), "days": None, "range": None}
@@ -717,6 +720,9 @@ def test_v2_body_cards_build_without_data(dsn, world, v2):
             cards.build(c, ids["A"], {"type": "trend", "metric": "not_a_metric"}, v2=True)
         with pytest.raises(ValueError):
             cards.build(c, ids["A"], {"type": "recovery"})   # v2 off
+        flags.set_flag(c, "data_status", "off", actor="test")
+        v1 = cards.build(c, ids["A"], {"type": "sleep"})   # v1 sleep card: exactly the old fields
+        assert not {"more", "parts", "avg7"} & set(v1) and {"more", "parts", "avg7"} <= set(built["sleep"])
 
 
 def test_subscription_users_get_redirect(client, world, setup, monkeypatch):

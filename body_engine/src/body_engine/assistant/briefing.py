@@ -146,7 +146,8 @@ def _training(conn, viewer: int, uid: int, today: date) -> dict:
            "streak_days": streak, "last_7": last7}
     hs = conn.execute("SELECT contributors FROM healthspan_weekly WHERE user_id = %s ORDER BY week_start DESC LIMIT 1",
                       (uid,)).fetchone()
-    strength = next((c for c in (hs or {}).get("contributors") or [] if c.get("key") == "strength"), None)
+    # the v1.1 strength item, or the v1.2 activity domain (it carries the strength label, issue #118)
+    strength = next((c for c in (hs or {}).get("contributors") or [] if c.get("key") in ("strength", "activity")), None)
     if strength and strength.get("coverage") == "possibly_incomplete":   # issue #210: ask the user to fill in the records
         out["strength_records"] = {"state": "possibly_incomplete", "why": strength.get("coverage_reason"),
                                    "tell_user": STRENGTH_RECORDS_HINT}
