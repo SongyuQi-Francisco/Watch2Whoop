@@ -19,7 +19,7 @@
   // i18n.js (loaded first): tr(key, params) -> text in the user's language. Named tr because many locals here are called t.
   const I18N = window.I18N, tr = I18N.t;
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
-  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view); grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
+  // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view), onTab(tab) after a tab switch; grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
@@ -106,7 +106,7 @@
     recordDay: 0, recSub: (() => { try { const v = localStorage.getItem("be.recSub"); return ["training", "food"].includes(v) ? v : "journal"; } catch (e) { return "journal"; } })(), showAll: false, trendsDays: (() => { try { const v = Number(localStorage.getItem("be.trendsDays")); return [7, 30, 90, 180, 365].includes(v) ? v : 30; } catch (e) { return 30; } })(), trendsMode: "metrics", data: {}, offlineAt: null,
     assistantUrl: null, version: null,
     backTab: "friends",     // where 「返回」 on the read-only banner goes (viewing a friend's pages)
-    friendsMode: "cards",   // Friends tab: member cards / leaderboard
+    friendsMode: "cards",   // Friends tab: member cards / feed (flag circle_feed) / leaderboard
     board: (() => { try { return localStorage.getItem("be.board") || "body"; } catch (e) { return "body"; } })(),
     mealLogs: {},
     calMonth: null,
@@ -431,6 +431,7 @@
     try { localStorage.setItem("be.tab", tab); } catch (e) { /* private mode */ }
     window.scrollTo(0, 0);
     render();
+    PLUGINS().forEach((p) => p.onTab?.(tab));   // notify.js: the first Friends visit asks the app for push permission
   }
   for (const b of $$(".tab")) b.onclick = () => setTab(b.dataset.tab);
 
@@ -3031,7 +3032,9 @@
     return `${seg}<p class="fd-win">${esc(b.window_days === 28 ? tr("近 4 周 · 和自己的基线比") : tr("近 7 天 · 和自己的基线比"))}</p><div class="card fd-board">${rows}</div>`;
   }
   const RENDER_friends = async () => {
-    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ["board", tr("排行榜")]].map(([k, t]) =>
+    const feedOn = !!window.BodyCircleFeed && window.BodyFlags.on("circle_feed");   // 成员 | 动态 | 排行榜 (circle-feed.js)
+    if (!feedOn && S.friendsMode === "feed") S.friendsMode = "cards";
+    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ...(feedOn ? [["feed", tr("动态")]] : []), ["board", tr("排行榜")]].map(([k, t]) =>
       `<button data-fmode2="${k}" aria-pressed="${S.friendsMode === k}">${esc(t)}</button>`).join("")}</div>`;
     const manage = `<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
     const ov = await api("/v1/friends/overview");
@@ -3040,6 +3043,7 @@
       return `${manage}<div class="empty">${esc(tr("还没有圈子"))}<div class="btns"><button class="btn btn-primary" id="fd-new">${esc(tr("建圈子"))}</button><button class="btn" id="fd-join">${esc(tr("用邀请码加入"))}</button></div></div>`;
     }
     if (S.friendsMode === "board") return manage + await boardHtml();
+    if (S.friendsMode === "feed") return manage + window.BodyCircleFeed.shell();
     const kinds = ov.nudge_kinds || Object.keys(NUDGE);
     return `${manage}<div class="fd-grid">${[ov.me, ...ov.members].map((m) => friendCard(m, kinds)).join("")}</div>`;
   };
@@ -3049,6 +3053,7 @@
   }
   function afterFriends(view) {
     window.BodyCircles && (window.BodyCircles.onChange = () => { S.data = {}; refresh(); });
+    window.BodyCircleFeed?.bind(view, S.friendsMode === "feed");
     for (const b of $$("[data-fmode2]", view)) b.onclick = () => { S.friendsMode = b.dataset.fmode2; render(); };
     for (const b of $$("[data-board]", view)) b.onclick = () => {
       S.board = b.dataset.board;
@@ -3685,7 +3690,7 @@
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh }, me));
+    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;

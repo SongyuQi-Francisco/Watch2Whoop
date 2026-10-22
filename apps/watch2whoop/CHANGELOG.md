@@ -42,6 +42,22 @@ could not see whether their data was read or where to change the permissions aft
   changes nothing for the user.
 - 「本机最近一次同步」 / "Last sync on this phone": time and result (OK / failed with the reason) of the latest upload.
 
+Push notifications (#175; server side: the notification module `notify/` and the Today page bell, rollout flag
+`notifications`). **The builder has to switch on Push Notifications for the Bundle ID once** (README, step 3, item 5);
+the APNs key goes to the server owner, never into the app or git.
+- New capability Push Notifications (`aps-environment` in `ios/Runner/Runner.entitlements`; Xcode signs TestFlight builds
+  as `production`). No new pod or Dart package: the native side is `PushBridge` in `AppDelegate.swift` (channel
+  `watch2whoop/push`), the Dart side `lib/src/push.dart`.
+- The app never asks at launch: the Today page asks it the first time someone opens the Friends tab or the notification
+  settings (`push:ask`); iOS shows its dialog once. Once allowed, the device token is registered for the signed-in
+  account (`POST /v1/users/me/push-devices`) on every start (sent again when it changes or after a day); sign-out removes
+  it before the account token is revoked.
+- Tapping a notification opens its page in the Today page (a path on the same server only; anything else opens the
+  notification list). Notifications that arrive while the app is open show as a banner and refresh the page's unread
+  count; the app icon badge follows the page's unread count.
+- Works with older servers: without the notification module nothing is asked or registered (the page never sends
+  `push:ask`), and a 404 from the registration is ignored.
+
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.

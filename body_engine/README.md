@@ -472,6 +472,36 @@ None by default. Set `BODY_PLUGIN_DIR` to a directory of plugin packages (`<dir>
 
 The Today page loads the listed files before initialising `window.BodyPlugins` and offers `window.BodyHooks.on(name, fn)`: `"page"` (`{page}`, when the visible page changes) and `"action"` (`{feature, page}`, when a control is used; `feature` is the control's `data-feature`, id or data-attribute name, never typed text or record values). `body-engine plugins list | run <plugin> <job>`.
 
+## Notifications and push (`src/body_engine/notify/`, migration 630, issue #175)
+
+One entry point for every feature: `notify(conn, user_id, kind, title, body, url=None, data=None)`
+(`from body_engine.notify import notify`). It writes an in-app notification in the caller's transaction and, unless
+the push is off, pushes to the user's registered iPhones through APNs from a background thread.
+
+- `kind` is `<category>.<event>` (e.g. `circle.like`, `circle.comment`); categories are declared in `notify/params.py`
+  (`CATEGORIES`, unknown ones raise) and are what users switch on / off. `title` / `body` are a string (Chinese) or
+  `{"zh": …, "en": …}`; the push uses the recipient's language, the list the page's. `url` is a path of the Today page:
+  `/app/#tab=friends` switches the tab, `/app/#notifications` opens the list, every link is also the window event
+  `body:link` (detail = the hash parameters, e.g. `{tab: "friends", post: "9"}`). `data` stays on the server
+  (`data.actor_id` counts people when merging).
+- No push (only in-app) when: the rollout flag `notifications` is off for the user (`flag_off`), the category is off
+  (`off`), quiet hours (`quiet`, default 23:00–07:00 in the user's time zone), no device (`no_device`), or the server
+  has no APNs key (`no_key`). The decision is stored in `notifications.push_status`.
+- Merging: the same kind to the same person within 30 minutes while unread is one notification on the phone
+  (`apns-collapse-id` = kind), its text a count ("3 个人给你点了 ❤️"); only the first one makes a sound, at most 10
+  updates per window. Texts per kind in `params.MERGED`.
+- Devices: the app registers its APNs token (`POST /v1/users/me/push-devices`), only for itself; a token moves to
+  whoever registers it last; sign-out (`POST /v1/account/logout` or `DELETE /v1/users/me/push-devices`) removes it;
+  tokens Apple reports as invalid (410, BadDeviceToken, …) are removed; a token only valid in the other environment
+  (sandbox / production) is retried there once and corrected.
+- APNs: token-based auth over HTTP/2 (`notify/apns.py`): `BODY_APNS_KEY_FILE` (the .p8, a secret file), `BODY_APNS_KEY_ID`,
+  `BODY_APNS_TEAM_ID`, `BODY_APNS_BUNDLE_ID`. Check after deploying: `body-engine notify status`,
+  `body-engine notify test --user-id N` (pushes now, ignoring quiet hours and settings). `notify prune --days 90`.
+- In-app API (behind the flag): `GET /v1/users/me/notifications`, `/notifications/unread`, `POST /notifications/read`,
+  `GET / PUT /notification-settings`. Today page: `web/static/notify.js` (bell in the header, list, settings; in the app it
+  asks for push permission on the first visit to the Friends tab or the settings).
+- Tests: `tests/test_notify.py` (fake APNs client, never Apple).
+
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
 Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
 | Endpoint (acts for the caller only; changes need write) | Description |

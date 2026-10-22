@@ -100,6 +100,8 @@ NO_DATA = {
     "consent": "account", "intro": "account", "invite-code": "account",
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
     "data-status": "sync control: which health data types reached the server (#163)",
+    "notifications": "notification list (#175)", "notifications/unread": "notification list", "notifications/read": "notification list",
+    "notification-settings": "setting: push per category, quiet hours (#175)",
 }
 
 # explanation key -> fallback read tool(s) carrying that number

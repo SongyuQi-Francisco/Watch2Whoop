@@ -60,11 +60,11 @@ def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
     row = conn.execute(
         """UPDATE api_tokens SET last_used_at = now()
            WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
-           RETURNING user_id, scopes""", (hash_token(token), RESTRICTED_SCOPES)).fetchone()
+           RETURNING id, user_id, scopes""", (hash_token(token), RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
-    return {**user, "token_scopes": row["scopes"]}
+    return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
 
 
 def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
