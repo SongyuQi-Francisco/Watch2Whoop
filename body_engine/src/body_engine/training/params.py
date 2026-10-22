@@ -416,3 +416,10 @@ SESSION_NAME_GROUPS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("肩", "shoulder"), ("shoulders",)),
     (("全身", "full"), ("chest", "back", "legs", "shoulders")),
 )
+
+# ---------- "add to plan" from the exercise detail (issue #154, rollout flag exercise_add_to_plan) ----------
+ADD_DEFAULT_SETS = 3                 # working sets when the user leaves the recommendation: the library's usual 3 x 8-12
+ADD_DEFAULT_REPS = LOAD_DEFAULT_REPS  # same rep range the exercise detail uses for the recommended weight
+ADD_DEFAULT_REST_SEC = 90
+ADD_DEFAULT_DURATION_SEC = {"cardio": 600, "stretching": 30}   # timed exercises (modality duration): seconds per set
+ADD_DAY_OPTIONS = 7                  # days offered for "only this day": today + 6

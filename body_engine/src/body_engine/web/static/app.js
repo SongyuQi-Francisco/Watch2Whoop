@@ -313,10 +313,17 @@
     if (b && !b.onclick && b.closest("#view")) { S.data = {}; render(); }
   });
 
+  // Back arrow in the sheet header (issue #154): a sheet opened from another sheet (exercise library → detail → add to plan) sets it
+  // with setBack(fn) right after openSheet; openSheet clears it, so a sheet opened from the page never shows a stale arrow.
+  let sheetBack = null;
+  function setBack(fn) { sheetBack = fn || null; $("#sheet-back").hidden = !sheetBack; }
+  $("#sheet-back").onclick = () => { const fn = sheetBack; if (fn) fn(); };
+
   let sheetTimer = 0;  // closeSheet's hide timer: cancelled when another sheet opens right away (close one, open the next)
   function openSheet(title, html, after) {
     const sh = $("#sheet");
     clearTimeout(sheetTimer);
+    setBack(null);
     $("#sheet-title").textContent = title;
     $("#sheet-body").innerHTML = html;
     sh.hidden = false;
@@ -3100,21 +3107,25 @@
     el.addEventListener("click", (e) => {
       const act = e.target.closest("[data-pv]")?.dataset.pv;
       if (e.target === el || act === "close") closeAltPreview();
-      else if (act === "detail") { closeAltPreview(); exerciseDetailSheet(a.slug); }
+      else if (act === "detail") { closeAltPreview(); const from = curDetail; exerciseDetailSheet(a.slug, () => exerciseDetailSheet(from.slug, from.back)); }
       else if (act === "swap") swapInPlan(fromSlug, a.slug, e.target.closest("button"));
     });
     document.body.appendChild(el);
     $(".pv-card .btn", el)?.focus({ preventScroll: true });
   }
 
-  async function exerciseDetailSheet(slugOrName) {
+  const addPlanOn = () => !!window.BodyExercisePlan && (S.flags || []).includes("exercise_add_to_plan");   // flag exercise_add_to_plan (#154)
+  let curDetail = { slug: "", back: null };   // the exercise sheet on screen and where its back arrow goes (library list, or the exercise it was opened from)
+  async function exerciseDetailSheet(slugOrName, back) {
     openSheet(tr("动作详情"), `<div class="empty faint">…</div>`);
+    setBack(back);
+    curDetail = { slug: slugOrName, back: back || null };
     let ex;
     try { ex = await load(`ex:${slugOrName}`, `/v1/users/${ownerPath()}/training/exercises/${encodeURIComponent(slugOrName)}`); }
     catch (e) {
       $("#sheet-body").innerHTML = e.status === 0 ? offlineHtml() : `<div class="empty faint">${esc(e.message || tr("暂无详情"))}</div>`;
       const retry = $("[data-retry]", $("#sheet-body"));
-      if (retry) retry.onclick = () => exerciseDetailSheet(slugOrName);
+      if (retry) retry.onclick = () => exerciseDetailSheet(slugOrName, back);
       return;
     }
     $("#sheet-title").textContent = ex.name_zh || slugOrName;
@@ -3143,6 +3154,8 @@
       ${ex.name_en && ex.name_en !== ex.name_zh ? `<div class="small muted" style="margin:-4px 0 8px">${esc(ex.name_en)}</div>` : ""}
       ${carousel}
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
+      ${addPlanOn() && isSelf() ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
+        ${ex.status === "banned" ? `<div class="small muted" style="margin:-2px 0 8px">${tr("这是禁用动作，不能加入训练计划")}</div>` : ""}` : ""}
       ${ex.reason ? kv(tr("限制原因"), esc(ex.reason)) : ""}
       ${loadV ? kv(tr("推荐重量"), loadV) : ""}
       ${basisV ? kv(tr("依据"), basisV) : ""}
@@ -3168,11 +3181,24 @@
       car.addEventListener("pointerdown", stop);
     }
     for (const b of $$("[data-alt]", root)) b.onclick = () => altPreview(ex.alternatives[Number(b.dataset.alt)], ex.slug);
+    const add = $("#ex-add", root);
+    if (add) add.onclick = () => window.BodyExercisePlan.openAdd({
+      api, esc, toast, openSheet, setBack, back: () => exerciseDetailSheet(slugOrName, back), openDetail: exerciseDetailSheet,
+      onAdded: () => {   // the week strip, the training page's today block and the Today card show the new exercise
+        for (const k of Object.keys(S.data)) if (/^(tweek|tcal|cal|tday)/.test(k)) delete S.data[k];
+        delete S.data[todayKey()];
+        render();
+      },
+    }, ex);
   }
 
-  async function exerciseLibrarySheet() {
+  // The library's search text, muscle filter and scroll position outlive the detail sheet opened from it: 「返回」 re-opens the list as it was (#154).
+  const exNav = window.BodyExercisePlan.createNav();
+  async function exerciseLibrarySheet(keep) {
     openSheet(tr("动作库"), `<div class="empty faint">…</div>`);
-    let list = [], q = "", grp = "", seq = 0, timer = null;
+    if (!keep) exNav.reset();
+    let { q, grp, scroll: restoreScroll } = exNav.get();
+    let list = [], seq = 0, timer = null, typing = false;
     const GROUPS_FILTER = [["", tr("全部")], ["back", tr("背")], ["chest", tr("胸")], ["legs", tr("腿")], ["shoulders", tr("肩")], ["arms", tr("手臂")], ["core", tr("核心")]];
     const fetchList = async () => {   // searched on the server: the catalog has ~950 exercises (curated + free-exercise-db)
       const my = ++seq, qs = new URLSearchParams({ limit: "100" });
@@ -3195,13 +3221,17 @@
             <div class="small muted">${esc([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])].join(" · "))}</div></div>
           <span class="chev">${ICON.chev}</span></button>`).join("") || `<div class="empty faint">${tr("没有匹配的动作")}</div>`}</div>`;
       const root = $("#sheet-body");
-      for (const b of $$("[data-exgrp]", root)) b.onclick = () => { grp = b.dataset.exgrp; fetchList(); };
-      for (const b of $$("[data-ex-open]", root)) b.onclick = () => exerciseDetailSheet(b.dataset.exOpen);
+      for (const b of $$("[data-exgrp]", root)) b.onclick = () => { grp = b.dataset.exgrp; exNav.set({ grp }); typing = false; fetchList(); };
+      for (const b of $$("[data-ex-open]", root)) b.onclick = () => {
+        exNav.set({ q, grp, scroll: $("#sheet .sheet-card").scrollTop });
+        exerciseDetailSheet(b.dataset.exOpen, () => exerciseLibrarySheet(true));
+      };
       const inp = $("#ex-q", root);
       if (inp) {
-        inp.oninput = () => { q = inp.value; clearTimeout(timer); timer = setTimeout(fetchList, 250); };
-        if (q) { inp.focus(); inp.setSelectionRange(q.length, q.length); }
+        inp.oninput = () => { q = inp.value; exNav.set({ q }); typing = true; clearTimeout(timer); timer = setTimeout(fetchList, 250); };
+        if (q && typing) { inp.focus(); inp.setSelectionRange(q.length, q.length); }   // only while typing: coming back must not raise the keyboard
       }
+      if (restoreScroll != null) { $("#sheet .sheet-card").scrollTop = restoreScroll; restoreScroll = null; }
     };
     fetchList();
   }

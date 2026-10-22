@@ -409,7 +409,7 @@ def test_preview_card_page_contract():
     en = (STATIC / "i18n-en.js").read_text(encoding="utf-8")
     assert 'data-alt="${i}"' in js and "altPreview(ex.alternatives[" in js
     body = js[js.index("function altPreview"):js.index("async function exerciseDetailSheet")]
-    assert 'data-pv="detail"' in body and 'data-pv="swap"' in body and "exerciseDetailSheet(a.slug)" in body
+    assert 'data-pv="detail"' in body and 'data-pv="swap"' in body and "exerciseDetailSheet(a.slug, () =>" in body
     assert "swapInPlan(fromSlug, a.slug" in body and 'isSelf() && a.status !== "banned"' in body
     assert "/training/plan/swap" in js[js.index("async function swapInPlan"):js.index("function closeAltPreview")]
     card = re.search(r"\.pv-card \{([^}]*)\}", css).group(1)
