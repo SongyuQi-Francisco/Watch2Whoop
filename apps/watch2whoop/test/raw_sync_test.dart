@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -33,13 +34,28 @@ class FakeSource implements RawSource {
   final limits = <int>[];
   final _pos = <String, int>{};
 
+  /// What HealthKit says about the sheet (`rawAuthStatus`) and what the sheet answers.
+  String auth = 'unnecessary';
+  RawAuth answer = const RawAuth(asked: true);
+  int asks = 0;
+
+  /// kind -> what the native read throws (e.g. HealthKit error 5 for a type iOS never asked about)
+  final Map<String, Object> failing = {};
+
   @override
-  Future<bool> requestAuth() async => true;
+  Future<String> authStatus() async => auth;
+
+  @override
+  Future<RawAuth> requestAuth() async {
+    asks++;
+    return answer;
+  }
 
   @override
   Future<RawPage> read(String kind, int daysBack, int limit) async {
     reads.add(kind);
     limits.add(limit);
+    if (failing[kind] != null) throw failing[kind]!;
     final i = _pos[kind] ?? 0;
     final list = pages[kind] ?? const [];
     return i < list.length ? list[i] : const RawPage();
@@ -56,17 +72,20 @@ class FakeSource implements RawSource {
   Future<void> reset() async => _pos.clear();
 }
 
-/// Records whether the "asked" flag was already stored when the native sheet was requested.
+/// Records the try counter already stored when the native sheet was requested.
 class AuthProbe extends FakeSource {
   AuthProbe() : super(const {});
-  bool? askedBeforeCall;
+  int? triesBeforeCall;
 
   @override
-  Future<bool> requestAuth() async {
-    askedBeforeCall = (await SharedPreferences.getInstance()).getBool('w2w.raw.authAsked.v2');
-    return true;
+  Future<RawAuth> requestAuth() async {
+    triesBeforeCall = (await SharedPreferences.getInstance()).getInt('w2w.raw.authTries.v1');
+    return answer;
   }
 }
+
+/// What RawSync.swift's read hands back for a type iOS never asked about.
+PlatformException notDetermined() => PlatformException(code: 'healthkit', message: 'Authorization not determined', details: 5);
 
 RawPage waterPage(String anchor, {bool more = false}) => RawPage(items: [
       {'uuid': '1b4e28ba-2fa1-11d2-883f-0016d3cca427', 'start': '2026-10-22T03:00:00.000Z', 'ml': 330.0},
@@ -87,12 +106,98 @@ RawPage ecgPage(String anchor) => RawPage(items: [
     ], anchor: anchor);
 
 void main() {
-  test('the automatic permission ask is remembered before the native call (no crash on every open)', () async {
+  test('the automatic permission ask is counted before the native call (no crash on every open)', () async {
     SharedPreferences.setMockInitialValues({});
-    final probe = AuthProbe();
+    final probe = AuthProbe()..answer = const RawAuth(error: 'not_presented');
     RawSync.instance.source = probe;
-    await RawSync.instance.requestAuth();
-    expect(probe.askedBeforeCall, isTrue);
+    expect(await RawSync.instance.requestAuth(), isFalse);
+    expect(probe.triesBeforeCall, 1);
+  });
+
+  test('asks while HealthKit says the sheet is needed, at most kRawMaxAutoAsks times, again after it was answered', () async {
+    SharedPreferences.setMockInitialValues({});
+    final src = FakeSource(const {})..auth = 'unnecessary';
+    RawSync.instance.source = src;
+    expect(await RawSync.instance.shouldAutoAsk(), isFalse, reason: 'already asked: no sheet, whatever the user chose');
+
+    // 1.0.6: the sheet never came up after the OW one, the types stayed undetermined
+    src
+      ..auth = 'shouldRequest'
+      ..answer = const RawAuth(error: 'not_presented');
+    for (var i = 0; i < kRawMaxAutoAsks; i++) {
+      expect(await RawSync.instance.shouldAutoAsk(), isTrue, reason: 'try ${i + 1}');
+      await RawSync.instance.requestAuth();
+    }
+    expect(await RawSync.instance.shouldAutoAsk(), isFalse, reason: 'then only on demand (sync page)');
+
+    // On demand it always asks; once answered the counter starts over
+    src.answer = const RawAuth(asked: true);
+    expect(await RawSync.instance.requestAuth(), isTrue);
+    expect(src.asks, kRawMaxAutoAsks + 1);
+    expect(await RawSync.instance.shouldAutoAsk(), isTrue);
+    expect(RawAuth.fromMap({'asked': true}).asked, isTrue);
+    expect(RawAuth.fromMap(null).asked, isFalse);
+    expect(RawAuth.fromMap({'asked': false, 'error': 'not_presented'}).error, 'not_presented');
+  });
+
+  test('a kind HealthKit cannot read (never asked) no longer ends the pass silently', () async {
+    // Before: the PlatformException ended the whole pass, nothing was sent and nothing shown (0 app uploads on the server)
+    final src = FakeSource({'water': [waterPage('W1')]})
+      ..failing['heartbeat'] = notDetermined()
+      ..failing['ecg'] = notDetermined();
+    final res = await RawSyncRunner(source: src, status: () async => {'water_enabled': true},
+        upload: (b) async => okAnswer(b, on: true)).run(90);
+    expect(res.readProblem, 'not_asked');
+    expect(res.stop, isNull);
+    expect(src.reads, ['heartbeat', 'ecg', 'water'], reason: 'each kind tried once, the others still go');
+    expect(src.commits, ['water:W1'], reason: 'the anchors of the unread kinds stay');
+    expect(res.water, 1);
+
+    final st = nextRawStatus(const RawSyncStatus(), res, DateTime(2026, 10, 23, 9));
+    expect(st.stop, 'not_asked');
+    expect(st.problem, isNotNull);
+    expect(rawLogLine(res), contains('access not asked yet'));
+
+    // Any other HealthKit error: shown with its message, retried next time
+    final other = FakeSource(const {})..failing['heartbeat'] = PlatformException(code: 'healthkit', message: 'Protected data unavailable', details: 6);
+    final r2 = await RawSyncRunner(source: other, upload: (b) async => okAnswer(b, on: false)).run(90);
+    expect(r2.readProblem, 'healthkit');
+    expect(r2.readError, 'Protected data unavailable');
+    final st2 = nextRawStatus(const RawSyncStatus(), r2, DateTime(2026, 10, 23, 9));
+    expect(st2.stop, 'healthkit');
+    expect(st2.problem, contains('Protected data unavailable'));
+    expect(readProblemOf(StateError('x')).notAsked, isFalse);
+  });
+
+  test('the status keeps the last upload time, what it added and the server totals', () {
+    final t = DateTime(2026, 10, 23, 9);
+    final res = RawSyncResult()
+      ..heartbeats = 37
+      ..ecgs = 1
+      ..batches = 2
+      ..serverStatus = {'heartbeats': 412, 'ecgs': 3, 'last_upload_at': '2026-10-23T09:00:00+11:00'};
+    final s = nextRawStatus(const RawSyncStatus(), res, t);
+    expect(s.heartbeats, 412);
+    expect(s.lastUpload, t);
+    expect(s.lastHeartbeats, 37);
+    expect(s.lastEcgs, 1);
+    expect(s.serverLastUpload, DateTime.parse('2026-10-23T09:00:00+11:00').toLocal());
+    expect(s.stop, isNull);
+    expect(rawLastUploadText(s), endsWith('+37 / ECG +1'));
+
+    // A pass with nothing new keeps the last upload and its count; the totals follow the server
+    final quiet = RawSyncResult()..serverStatus = {'heartbeats': 412, 'ecgs': 3};
+    final s2 = nextRawStatus(s, quiet, t.add(const Duration(hours: 3)));
+    expect(s2.lastUpload, t);
+    expect(s2.lastHeartbeats, 37);
+    expect(s2.lastRun, t.add(const Duration(hours: 3)));
+    final back = RawSyncStatus.fromJson(jsonDecode(jsonEncode(s2.toJson())) as Map<String, Object?>);
+    expect(back.lastHeartbeats, 37);
+    expect(back.serverLastUpload, s.serverLastUpload);
+
+    // Never uploaded from this phone: the server's last batch of the account, without a count
+    expect(rawLastUploadText(RawSyncStatus(serverLastUpload: t)), isNot(contains('+')));
+    expect(rawLastUploadText(const RawSyncStatus()), '—');
   });
 
   test('native page parses into the server batch format', () {
