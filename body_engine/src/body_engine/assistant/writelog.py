@@ -14,9 +14,11 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 _ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
-ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water", "pantry"}
-# kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries)
-ONLY_ACTION = {"merge": "merge", "template": "create"}
+ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water", "pantry",
+                  "profile", "observation"}
+# kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries;
+# observation: a rewrite of a note, issue #113)
+ONLY_ACTION = {"merge": "merge", "template": "create", "observation": "update"}
 
 
 def _can_roll(kind: str, action: str) -> bool:
@@ -101,6 +103,12 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
         from ..grocery import pantry_auto
         back = pantry_auto.restore(conn, user_id, row["target"])
         result = {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
+    elif kind == "profile":   # a profile card item the AI created / replaced (issue #113): the old value comes back
+        from . import memory
+        result = memory.rollback_profile(conn, user_id, row["target"], before, after)
+    elif kind == "observation":
+        from . import memory
+        result = memory.rollback_observation(conn, user_id, int(row["target"]), before, after)
     else:
         result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
     new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None

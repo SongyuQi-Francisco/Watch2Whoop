@@ -76,8 +76,10 @@ def _fingerprint(conn: psycopg.Connection, user_id: int, since: date) -> tuple:
              (SELECT row(count(*), max(updated_at))::text FROM workouts WHERE user_id = %(u)s AND start_at >= %(s)s::date - 1) AS w,
              (SELECT row(count(*), max(updated_at), max(status_changed_at))::text FROM reminders
                WHERE user_id = %(u)s AND date >= %(s)s) AS r,
-             (SELECT row(count(*), max(updated_at))::text FROM assistant_profile WHERE user_id = %(u)s) AS p,
-             (SELECT row(count(*), max(id), max(valid_until))::text FROM assistant_observations WHERE user_id = %(u)s) AS o,
+             (SELECT row(count(*) FILTER (WHERE status = 'active'), max(updated_at))::text
+               FROM assistant_profile WHERE user_id = %(u)s) AS p,
+             (SELECT row(count(*) FILTER (WHERE status = 'active'), max(id), max(valid_until), max(confirmed_at))::text
+               FROM assistant_observations WHERE user_id = %(u)s) AS o,
              (SELECT row(count(*), max(updated_at))::text FROM assistant_status WHERE user_id = %(u)s) AS st,
              (SELECT row(count(*), max(updated_at))::text FROM exercise_meta WHERE user_id = %(u)s) AS ex,
              (SELECT row(count(*), max(id), max(effective_to))::text FROM diet_constraints WHERE user_id = %(u)s) AS dc,

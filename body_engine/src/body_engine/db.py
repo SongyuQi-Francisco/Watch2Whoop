@@ -18,9 +18,15 @@ def _diet_constraints_data(conn: psycopg.Connection) -> None:
     constraints.carry_over(conn)
 
 
+def _memory_topics_data(conn: psycopg.Connection) -> None:
+    from .assistant import memory
+    memory.backfill_topics(conn)
+
+
 # (name, the SQL migration it needs, function); names sort after their SQL file
 DATA_STEPS = [
     ("450_diet_constraints_data", "450_diet_constraints.sql", _diet_constraints_data),
+    ("655_memory_hygiene_data", "655_memory_hygiene.sql", _memory_topics_data),
 ]
 
 
