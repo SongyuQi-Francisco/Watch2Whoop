@@ -421,6 +421,9 @@ class RawSync {
     }
   }
 
+  /// The stored upload-only token (setup-link users), for reading the data status (data_status.dart); null when none yet.
+  Future<String?> ingestToken() => _readToken();
+
   /// Also called on a fresh install (AppState.load): Keychain items survive deleting the app.
   Future<void> deleteToken() => _deleteToken();
 

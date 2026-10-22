@@ -97,6 +97,7 @@ NO_DATA = {
     "ai-connections/{x}": "setting: disconnect an OAuth connection (ai/oauth.py)",
     "consent": "account", "intro": "account", "invite-code": "account",
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
+    "data-status": "sync control: which health data types reached the server (#163)",
 }
 
 # explanation key -> fallback read tool(s) carrying that number
