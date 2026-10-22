@@ -4,7 +4,8 @@
    the tab, notifications opens the list; every link is also announced as the window event "body:link" (detail = the
    parameters, e.g. {tab: "friends", feed: "3"}) so the feature that sent it can open its own detail (e.g. a post).
    In the Watch2Whoop app: the first visit to the Friends tab or to these settings sends "push:ask" to the app, which asks
-   iOS for permission (once) and registers the device; the app answers with the event "watch2whoop:push" {state}.
+   iOS for permission (once) and registers the device; the app answers with the event "watch2whoop:push" {state}. The
+   page sends "badge:<unread>" for the app icon; the app fires "watch2whoop:notification" when a push arrives while open.
    Separate from app.js: registered in window.BodyPlugins (init / onTab). timeAgo / parseLink are pure (module.exports). */
 (() => {
   "use strict";
@@ -71,9 +72,11 @@
   const tellApp = (msg) => { try { window.Watch2Whoop?.postMessage(msg); } catch (e) { /* older app */ } };
 
   // ---------------------------------------------------------------- bell
+  let badgeSent = null;
   function drawBell() {
     let b = $("#nt-bell");
     if (!on()) { b?.remove(); return; }
+    if (unread !== badgeSent) { badgeSent = unread; tellApp(`badge:${unread}`); }   // the app icon's badge (app 1.0.8)
     if (!b) {
       b = document.createElement("button");
       b.id = "nt-bell";
@@ -242,6 +245,7 @@
   });
   window.addEventListener("hashchange", fromLocation);
   window.addEventListener("watch2whoop:foreground", refreshCount);
+  window.addEventListener("watch2whoop:notification", refreshCount);   // the app got a push while open
   document.addEventListener("visibilitychange", refreshCount);
   setInterval(refreshCount, POLL_MS);
   (window.BodyPlugins = window.BodyPlugins || []).push({
