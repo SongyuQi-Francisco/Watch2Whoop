@@ -246,6 +246,16 @@ def test_chat_tool_cannot_read_unshared_or_write_others(client, world, setup, ds
     assert "没有查看用户" in FakeAdapter.calls[1]["history"][-1]["content"][0]["content"]
 
 
+def test_failed_tool_event_carries_the_validation_reason():
+    """#183: a ValueError is a validation failure with a readable reason (field, excess); other errors stay a bare ✗,
+    so the page can tell them from a network failure."""
+    from body_engine.ai.chat import _tool_event
+    zh = "蘑菇：添加糖不能多于总糖（added_sugar_g 9 g，sugar_g 5 g，超出 4 g）"
+    assert _tool_event("log_food", "error", f"ValueError: {zh}")["data"] == {"name": "log_food", "status": "error", "message": zh}
+    assert "message" not in _tool_event("get_profile", "error", "PermissionError: 没有查看用户 4 的权限")["data"]
+    assert "message" not in _tool_event("log_food", "done", "{}")["data"]
+
+
 def test_chat_write_needs_confirmation(client, world, setup, dsn, monkeypatch):
     ids, tok = world
     monkeypatch.setattr(chat_mod, "ALWAYS_CONFIRM", chat_mod.ALWAYS_CONFIRM | {"add_event"})   # exercise the confirm flow with a simple tool

@@ -214,7 +214,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="update_food_entry",
-        description="改一条饮食（任何来源，null = 不改）。改名称 / 营养会换成新 id。",
+        description="改一条饮食（任何来源，null = 不改）。改名称 / 营养会换成新 id；没给的营养按份量 / 热量的同一比例缩放。",
         input_schema=_schema({
             "date": {"type": "string"},
             "id": {"type": "string"},
@@ -224,6 +224,8 @@ TOOL_SPECS: list[dict] = [
             "portion": _n("number", "0.5 = 一半"),
             "food": _n("string"), "amount": _n("string"),
             "calories": _n("number"), "protein_g": _n("number"), "carbs_g": _n("number"), "fat_g": _n("number"),
+            "saturated_fat_g": _n("number"), "sodium_mg": _n("number"), "sugar_g": _n("number"),
+            "added_sugar_g": _n("number"), "fiber_g": _n("number"),
         }),
         handler=lambda conn, uid, a: sparky_write.update_food_entry(conn, uid, a),
         group="nutrition", scope="nutrition", writes=True,

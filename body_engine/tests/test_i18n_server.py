@@ -246,3 +246,12 @@ def test_memory_status_by_language(client, world):
     assert (zh["weight"]["label"], zh["weight"]["group"]) == ("体重", "身体")
     assert (en["weight"]["label"], en["weight"]["group"], en["weight"]["note"]) == ("Weight", "Body", "Weekly avg -0.4 kg")
     assert (en["phase"]["label"], en["phase"]["value"], en["phase"]["note"]) == ("Current phase", "减脂期", "管家写的")
+
+
+def test_nutrition_validation_errors_in_english():
+    """#183: the added-sugar / carbs errors name the field and the excess; the English version keeps the numbers."""
+    from body_engine import errors_en
+    assert errors_en.translate("蘑菇：添加糖不能多于总糖（added_sugar_g 9 g，sugar_g 5 g，超出 4 g）") == \
+        "蘑菇: added sugar cannot be more than total sugar (added_sugar_g 9 g, sugar_g 5 g, 4 g over)"
+    assert errors_en.translate("蘑菇：sugar_g 不能多于碳水（sugar_g 30 g，碳水 20 g，超出 10 g）") == \
+        "蘑菇: sugar_g cannot be more than carbs (sugar_g 30 g, carbs 20 g, 10 g over)"

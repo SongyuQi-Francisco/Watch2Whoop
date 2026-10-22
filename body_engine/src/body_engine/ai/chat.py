@@ -32,7 +32,7 @@ from typing import Iterator
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .. import sparky_client
+from .. import errors_en, sparky_client
 from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..assistant.tools import _audit as run_audit
@@ -287,6 +287,16 @@ def _exec_web(conn, viewer: dict, provider: dict, call_row_id: int, name: str, a
     return status, text
 
 
+def _tool_event(name: str, status: str, text: str | None = None, **kw) -> dict:
+    """A tool event for the page. A failed one carries the reason (a ValueError is a validation failure the user can read:
+    which field, how much over; other errors keep only the ✗) so the page tells it apart from a network failure (#183)."""
+    if status == "error" and text:
+        kind, _, msg = text.partition(": ")
+        if kind == "ValueError" and msg:
+            return ev("tool", name=name, status=status, message=errors_en.localize(msg), **kw)
+    return ev("tool", name=name, status=status, **kw)
+
+
 def _summary(name: str, args: dict) -> str:
     tool = TOOLS_BY_NAME.get(name)
     shown = {k: v for k, v in args.items() if k != "user" and v not in (None, "", [])}
@@ -472,8 +482,8 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
                 pending = True
             else:
                 yield ev("tool", name=name, status="running")
-                status, _ = _exec(conn, viewer, provider, row_id, name, args)
-                yield ev("tool", name=name, status=status)
+                status, text = _exec(conn, viewer, provider, row_id, name, args)
+                yield _tool_event(name, status, text)
                 if status == "done":
                     done_writes.append((row_id, name, args))
         if rich:
@@ -571,8 +581,8 @@ def prepare_confirm(conn, viewer: dict, call_id: int, approve: bool):
 def confirm_events(conn, viewer, row, conv, provider, adapter, approve: bool) -> Iterator[dict]:
     if approve:
         yield ev("tool", name=row["tool"], status="running")
-        status, _ = _exec(conn, viewer, provider, row["id"], row["tool"], row["args"])
-        yield ev("tool", name=row["tool"], status=status, call_id=row["id"])
+        status, text = _exec(conn, viewer, provider, row["id"], row["tool"], row["args"])
+        yield _tool_event(row["tool"], status, text, call_id=row["id"])
     else:
         conn.execute("""UPDATE ai_tool_calls SET status = 'rejected', result = '用户拒绝了这次写入，没有执行。',
                         decided_at = now() WHERE id = %s AND user_id = %s""", (row["id"], viewer["id"]))
