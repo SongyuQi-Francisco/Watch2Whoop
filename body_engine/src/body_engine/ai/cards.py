@@ -18,7 +18,9 @@ Payload: {"v": 1, "type": ..., "actions": [...]}. Actions are either
   {"kind": "send", "label": ..., "text": ...}                       -> buttons of an `actions` card, written by the model.
 Data of a card is a snapshot from when it was shown; the pages it opens show the live state.
 """
-from datetime import date, timedelta
+import json
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import psycopg
 
@@ -287,6 +289,19 @@ def _build_v2(conn, uid: int, kind: str, a: dict) -> dict:
     return cards_food.shopping(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
 
 
+def _jsonable(v):
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    raise TypeError(f"{type(v).__name__} in a card")
+
+
+def plain(card: dict) -> dict:
+    """The card as plain JSON (dates as ISO strings, decimals as floats): it is stored as jsonb and sent as an SSE event."""
+    return json.loads(json.dumps(card, default=_jsonable))
+
+
 def build(conn: psycopg.Connection, uid: int, a: dict, v2: bool = False, auto: bool = False) -> dict:
     """The card for show_card's arguments (the user's own data only). ValueError / PermissionError / SparkyError on failure.
     v2: the jarvis_cards_v2 types and buttons; auto: the card follows a write (cards.AUTO), not a show_card call."""
@@ -308,7 +323,7 @@ def build(conn: psycopg.Connection, uid: int, a: dict, v2: bool = False, auto: b
         card = _sleep(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
     else:
         card = _metric(conn, uid, a.get("metric"), _day(conn, uid, a.get("date")), a.get("days"))
-    return {"v": 1, **card}
+    return plain({"v": 1, **card})
 
 
 def auto_spec(tool: str, args: dict, v2: bool = False, reads: bool = False) -> dict | None:

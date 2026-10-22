@@ -608,7 +608,8 @@ def test_v2_diet_cards(client, world, setup, dsn, monkeypatch, v2):
             "name": "测试鸡胸饭", "slots": ["lunch"], "tags": ["鸡肉"], "prep_min": 10, "cook_min": 15, "servings": 2,
             "steps": ["煎鸡胸", "装盘"], "ingredients": [recipe_seed.ingredient("鸡胸肉", 300), recipe_seed.ingredient("米（生）", 180)]},
             sync=False)
-        c.execute("UPDATE recipe_meta SET image = 'https://example.com/x.jpg' WHERE id = %s", (r["id"],))
+        c.execute("UPDATE recipe_meta SET image = 'https://example.com/x.jpg', last_cooked_on = '2026-10-20' WHERE id = %s",
+                  (r["id"],))
         meals.create_template(c, ids["A"], "测试早餐", "breakfast", meals.FIXED_BREAKFAST["items"], False)
     brief = {**{k: r[k] for k in ("id", "name", "favorite", "prep_min", "cook_min")}, "meal_kcal": 600, "meal_protein_g": 50,
              "with_staple": True, "labels": [{"label": "常吃", "tone": "neutral"}], "image": "/app/x.webp"}
@@ -634,6 +635,7 @@ def test_v2_diet_cards(client, world, setup, dsn, monkeypatch, v2):
     assert {"kind": "send", "key": "more_meals"} in got["suggest"]["actions"]
     rc = got["recipe"]
     assert rc["id"] == r["id"] and rc["image"] is None   # a third-party image never reaches a card
+    assert rc["last_cooked_on"] == "2026-10-20"   # stored as jsonb: dates become ISO strings
     assert rc["steps"] == 2 and [i["grams"] for i in rc["ingredients"]] == [150, 90]   # per serving
     assert {"kind": "open", "page": "recipe"} in rc["actions"] and {"kind": "send", "key": "log_recipe"} in rc["actions"]
     t = got["templates"]
