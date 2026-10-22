@@ -1526,4 +1526,14 @@ I18N.addEn({
   "设置头像": "Set a picture",
   "头像": "Picture",
   "圈子 logo": "Circle logo",
+  // profile.js, ai.js: one-tap consent (flag consent_one_tap)
+  "继续即表示同意{data}和{ai}": "By continuing you agree to the {data} and the {ai}.",
+  "继续即表示同意{doc}": "By continuing you agree to the {doc}.",
+  "《数据与隐私说明》": "Data & Privacy Notice",
+  "《Jarvis AI 说明》": "Jarvis AI Notice",
+  "数据与隐私说明": "Data & Privacy Notice",
+  "Jarvis AI 说明": "Jarvis AI Notice",
+  "说明有更新": "Our terms have changed",
+  "继续": "Continue",
+  "加入圈子「{name}」，成员能看到：{list}": "Joining “{name}”; members see: {list}",
 });

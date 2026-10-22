@@ -120,11 +120,11 @@ Server, health sync and Today page sign-in are all set up in one go — **no cod
 
 ![Turn On All](images/tester-handbook/health-permission.jpg)
 
-### ④ Consent
+### ④ Get started
 
-Tick the consent box → "Agree and continue" → fill in your profile → "Save".
+Tap "Get started" → fill in your profile → "Save". The Data & Privacy Notice and the Jarvis AI Notice in the small line below the button open in full.
 
-![Consent](images/tester-handbook/consent.jpg) ![Profile](images/tester-handbook/profile.jpg)
+![Get started](images/tester-handbook/consent.jpg) ![Profile](images/tester-handbook/profile.jpg)
 
 ### ⑤ Connect your AI
 
@@ -152,7 +152,7 @@ Once the app is set up (steps above), tap "Me" at the bottom → "AI settings" a
 
 ### Option 1: Jarvis fallback AI (the easiest)
 
-No account to sign up for; it works as soon as it's enabled. It runs on DeepSeek, about ¥3 a month. The first time you use it, it asks whether you agree to send your body data to DeepSeek for processing; it only works after you agree.
+No account to sign up for; it works as soon as it's enabled. It runs on DeepSeek, about ¥3 a month. When you use it, your body data is sent to DeepSeek for processing; the Jarvis AI Notice says so, and you agreed to it when you tapped "Get started". You can withdraw at any time under "AI settings".
 
 ### Option 2: your own API key
 
@@ -213,7 +213,7 @@ Speech is transcribed on the server, never sent to a third party, and the record
 
 **New phone / reinstalled the app**: tap the same activation link again; your consent and profile carry over.
 
-**Privacy**: only you can see your data; see the consent form for details. When you use an AI, the conversation is sent to the AI service you chose.
+**Privacy**: only you can see your data; see the Data & Privacy Notice for details. When you use an AI, the conversation is sent to the AI service you chose.
 
 **Delete your data**: ask your admin.
 
