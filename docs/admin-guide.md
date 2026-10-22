@@ -133,6 +133,8 @@ body-engine ai-fallback try --user-id 3 --message "今天恢复怎么样"   # �
 
 重置卡把某人本月已用的 Jarvis 额度清零，扩充卡给本月加额度。用户只看到「额度卡 ×N」和百分比。设计见 `docs/ai-assistant-plan.md` 9.10.1。
 
+**目前保持关闭（负责人 2026-10-23 决定，先不上线）**：开关关着时页面上没有任何卡片入口、`periodic` 什么也不做；`grant --user N` 仍然能发（用来测试），不发通知。上线时 `body-engine flags set ai_cards --state cohort --cohort beta`，验收后 `--state all`。
+
 ```bash
 body-engine ai-cards grant --user 3 --kind reset --count 1 --expires 30d --reason "补偿：服务中断"
 body-engine ai-cards grant --all --kind extend --amount 1 --reason "活动" --key event-2026-11   # --key：重跑也不重复发

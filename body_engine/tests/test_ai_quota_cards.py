@@ -336,7 +336,9 @@ def test_periodic_rules(dsn, world):
         # the flag off for everyone: nobody is eligible
         qc.set_rule_enabled(c, "monthly-active", True, "test")
         flags.set_flag(c, P.FLAG, "off", actor="test")
-        assert qc.run_periodic(c, now=nxt + timedelta(days=80))["granted"] == []
+        off = qc.run_periodic(c, now=nxt + timedelta(days=80))
+        assert off["granted"] == [] and off["skipped"] and off["expired"] == 0
+        assert qc.run_periodic(c, now=nxt + timedelta(days=80), dry_run=True)["would_grant"] == []
 
 
 def test_cli(dsn, world, capsys):
@@ -400,6 +402,30 @@ def test_endpoints(client, dsn, world):
     assert client.get("/v1/users/me/ai-cards", headers=H(tok["F"])).status_code == 404
     assert client.post(f"/v1/users/me/ai-cards/{card['id']}/use", headers=H(tok["F"])).status_code == 404
     assert "cards" not in client.get("/v1/web/me", headers=H(tok["F"])).json()["ai"]
+
+
+def test_flag_off_is_invisible(client, dsn, world):
+    """Off (the default after a deploy): no card entry anywhere on the page, the hourly job does nothing,
+    the admin CLI still grants (for testing) but sends no notification."""
+    ids, tok = world
+    with db(dsn) as c:
+        flags.set_flag(c, "notifications", "all", actor="test")
+    on = client.get("/v1/users/me/notification-settings", headers=H(tok["F"])).json()
+    assert "ai_card" in on["categories"] and on["labels"]["ai_card"]
+    with db(dsn) as c:
+        flags.set_flag(c, P.FLAG, "off", actor="test")
+        qc.set_rule(c, "monthly", period="monthly", day=1, kind="reset", reason="每月", actor="test")
+    off = client.get("/v1/users/me/notification-settings", headers=H(tok["F"])).json()
+    assert "ai_card" not in off["categories"] and "ai_card" not in off["labels"]
+    assert set(off["categories"]) >= {"circle", "system"}
+    spend(dsn, ids["F"], fp.MONTHLY_QUOTA_CNY)
+    r = give(dsn, ids["F"])   # what `ai-cards grant --user N` calls
+    assert r["created"] and r["notified"] is None
+    ai = client.get("/v1/web/me", headers=H(tok["F"])).json()["ai"]
+    assert "cards" not in ai and "额度卡" not in (ai["message"] or "")
+    with db(dsn) as c:
+        assert qc.run_periodic(c)["skipped"] and c.execute("SELECT count(*) AS n FROM ai_quota_cards").fetchone()["n"] == 1
+        flags.set_flag(c, "notifications", "off", actor="test")
 
 
 def qc_unused(dsn, uid):

@@ -8,11 +8,11 @@ from datetime import time
 
 FEATURE = "notifications"   # rollout flag: the Today page list / settings, and whether pushes go out at all
 
-# category -> label (zh, en), default on
+# category -> label (zh, en), default on; "flag": the category only shows in the settings while that rollout flag is on for the user
 CATEGORIES: dict[str, dict] = {
     "circle": {"zh": "圈子互动", "en": "Circle activity", "default": True},   # likes / comments on the training feed
     "system": {"zh": "系统消息", "en": "System", "default": True},
-    "ai_card": {"zh": "Jarvis 额度卡", "en": "Jarvis allowance cards", "default": True},   # ai/quota_cards.py (#182)
+    "ai_card": {"zh": "Jarvis 额度卡", "en": "Jarvis allowance cards", "default": True, "flag": "ai_cards"},   # ai/quota_cards.py (#182)
 }
 
 # Same kind to the same person within MERGE_MINUTES while unread: one notification on the phone, updated in place

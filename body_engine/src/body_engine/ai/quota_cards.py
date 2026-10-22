@@ -357,9 +357,12 @@ def _eligible(conn, user_id: int, rule: dict) -> bool:
 
 
 def run_periodic(conn: psycopg.Connection, now: datetime | None = None, dry_run: bool = False) -> dict:
-    """Hourly (`body-engine ai-cards periodic`): expire due cards, then every enabled rule that is due in the person's
+    """Hourly (`body-engine ai-cards periodic`); does nothing while the flag is off for everyone. Expire due cards, then every enabled rule that is due in the person's
     current period (their local date) grants under the key rule:<name>:<period> — a period never grants twice,
     a missed run catches up later in the same period. dry_run: only list who would get cards. Commits per grant."""
+    from ..rollout import flags
+    if flags.rows(conn).get(P.FLAG, {}).get("state", "off") == "off":
+        return {"skipped": "flag ai_cards is off", "expired": 0, "granted": [], "would_grant": []}   # off for everyone: do nothing
     now = now or _now()
     out = {"expired": 0 if dry_run else expire_due(conn), "granted": [], "would_grant": []}
     if not dry_run:
