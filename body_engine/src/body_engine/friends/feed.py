@@ -1,13 +1,18 @@
 """Circle training feed (flag circle_feed, migration 635): a Hevy / Instagram-style post per person per local day.
 
 - Auto posting: a person's training of a day (sets ticked done in training_session_logs — the page's own row and, with the
-  Hevy import, the imported row of that day, merged into the one post; watch / shortcut workouts) appears in
+  Hevy import, the imported row of that day — plus the SparkyFitness workouts of that day, e.g. the ones the AI logged, all
+  merged into the one post; watch / shortcut workouts with their summary numbers) appears in
   the feed of every circle where they ticked the `training` scope — no prompt. The consent text already covers it ("circle
   members see what I tick"), so nothing is posted to a circle without that scope. One post per person per day; the row in
   circle_feed_posts only anchors ❤️ and comments, the content is computed live at read time, so new sets update the post.
 - A post cannot be deleted. Who may see one is decided at every read: the viewer shares a circle with the author in which the
   author ticked `training`, and auth.can_view agrees. Leaving a circle therefore hides everything at once. ECGs, labs and
-  weight never enter a post (only exercise names, sets, reps, weight, duration).
+  weight never enter a post (only exercise names, sets, reps, weight, duration, and per watch workout its summary: energy,
+  average / maximum heart rate, distance, minutes per heart-rate zone and the TRIMP load — never a heart-rate series).
+- Exercises: the page's row first, then the Hevy import, then SparkyFitness (the session the page submitted is skipped: the
+  page's row is the same sets, or newer). A name is matched to the catalog and the owner's custom exercises (#192) through
+  training/loads.Index; an unmatched name is shown as logged (the page draws a dumbbell) and counts in sets and volume (#194).
 - ❤️ (apart from the one-tap cheers 👏 💤 💪), text comments (the writer deletes their own, anyone can report), a count of ❤️ /
   comments on my posts since I last opened the feed (the red dot), and a notification to the author through notify/
   (kinds circle.like / circle.comment, linking to the post; never for one's own post).
@@ -20,7 +25,8 @@ import psycopg
 
 from .. import auth
 from ..i18n import L
-from ..training import catalog
+from ..training import catalog, custom, loads, params as TP
+from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
@@ -76,7 +82,7 @@ def _post_for(conn, viewer_id: int, post_id: int) -> dict:
 # ---------------------------------------------------------------- the content of one day
 def _done_sets(ex: dict, imported: bool = False) -> list[dict]:
     """Sets that count: on the page's own row the ones ticked done; on an imported row (Hevy, status 'imported', no done
-    ticks) every set except warm-ups, the same rule as the muscle load and the training history volume."""
+    ticks) or a SparkyFitness workout every set except warm-ups, the same rule as the muscle load and the training history volume."""
     if imported:
         sets = [s for s in ex.get("sets") or [] if str(s.get("type") or "").lower() not in RP.WARMUP_SET_TYPES]
     else:
@@ -84,77 +90,158 @@ def _done_sets(ex: dict, imported: bool = False) -> list[dict]:
     return [s for s in sets if any(s.get(k) is not None for k in ("reps", "weight_kg", "duration_s"))]
 
 
-def _key(ex: dict) -> str:
-    """An exercise's identity for records: its catalog slug, else (an unmatched imported name) the name."""
-    return ex.get("slug") or f"name:{ex.get('name')}"
+class Author:
+    """What one author's posts need, read once per feed request: the catalog index with their custom exercises and their
+    SparkyFitness workouts (training/loads.load_history: the LOAD_LOOKBACK_DAYS window, cached for LOAD_HISTORY_TTL_S)."""
+
+    def __init__(self, conn: psycopg.Connection, user_id: int, today: date | None = None):
+        self.conn, self.uid = conn, user_id
+        self.today = today or views.local_today(conn, user_id)
+        self._index: loads.Index | None = None
+        self._sparky: dict[date, list[dict]] = {}
+
+    @property
+    def index(self) -> loads.Index:
+        if self._index is None:
+            self._index = loads.Index(self.conn, self.uid)
+        return self._index
+
+    def sparky(self, day: date) -> list[dict]:
+        """SparkyFitness workouts of the window holding `day` (Hevy rows are read from training_session_logs, not from here)."""
+        end = self.today if self.today - timedelta(days=TP.LOAD_LOOKBACK_DAYS) <= day <= self.today else day
+        if end not in self._sparky:
+            hist, _err, _linked = loads.load_history(self.conn, self.uid, end)   # unlinked / unreadable: the local rows only
+            self._sparky[end] = [x for x in hist if not str(x.get("id") or "").startswith("hevy:")]
+        return self._sparky[end]
+
+    def sparky_on(self, day: date, skip: set[str]) -> list[dict]:
+        return [x for x in self.sparky(day) if x["date"][:10] == day.isoformat() and str(x.get("id")) not in skip]
+
+    def sparky_before(self, day: date) -> list[dict]:
+        return [x for x in self.sparky(day) if x["date"][:10] < day.isoformat()]
+
+    def resolve(self, ex: dict) -> str | None:
+        """The catalog / custom slug of a logged exercise: its own slug, else its SparkyFitness id or name (#194)."""
+        return ex.get("slug") or self.index.slug_for(ex.get("exercise_id"), ex.get("name"))
+
+
+def _key(slug: str | None, ex: dict) -> str:
+    """An exercise's identity for records: its catalog slug, else (an unmatched name) the normalized name."""
+    return slug or f"name:{catalog.norm(ex.get('name'))}"
 
 
 def _rows(conn, user_id: int, cond: str, args: tuple) -> list[dict]:
     """training_session_logs rows (page first, then imported) with an `imported` flag."""
     return [{**r, "imported": r["status"] == "imported"} for r in conn.execute(
-        f"SELECT date, exercises, status FROM training_session_logs WHERE user_id = %s AND {cond} ORDER BY date, source DESC",
-        (user_id, *args))]
+        f"""SELECT date, exercises, status, source, sparky_entry_id FROM training_session_logs WHERE user_id = %s AND {cond}
+            ORDER BY date, source DESC""", (user_id, *args))]
 
 
-def _prev_best(conn, user_id: int, day: date) -> dict[str, float]:
-    """Heaviest counted weight per exercise on earlier days (page and imported rows alike), for the 🏆 personal record."""
+def _logged(rows: list[dict], sparky: list[dict]) -> list[tuple[dict, list[dict]]]:
+    """(exercise, counted sets) of the local rows and the SparkyFitness workouts, in that order; exercises without sets dropped."""
+    out = [(ex, _done_sets(ex, r["imported"])) for r in rows for ex in r["exercises"] or []]
+    out += [(ex, _done_sets(ex, True)) for s in sparky for ex in s.get("exercises") or []]
+    return [(ex, sets) for ex, sets in out if sets]
+
+
+def _prev_best(conn, a: Author, day: date) -> dict[str, float]:
+    """Heaviest counted weight per exercise on earlier days (page, imported and SparkyFitness alike), for the 🏆 personal record."""
     best: dict[str, float] = {}
-    for r in _rows(conn, user_id, "date < %s", (day,)):
-        for ex in r["exercises"] or []:
-            for s in _done_sets(ex, r["imported"]):
-                if s.get("weight_kg"):
-                    best[_key(ex)] = max(best.get(_key(ex), 0.0), float(s["weight_kg"]))
+    for ex, sets in _logged(_rows(conn, a.uid, "date < %s", (day,)), a.sparky_before(day)):
+        k = _key(a.resolve(ex), ex)
+        for s in sets:
+            if s.get("weight_kg"):
+                best[k] = max(best.get(k, 0.0), float(s["weight_kg"]))
     return best
 
 
-def content(conn: psycopg.Connection, user_id: int, day: date, names: dict | None = None) -> dict | None:
-    """What the post of `user_id` on `day` shows right now, None when that day has no training. Total load (kg) = the sum of
-    reps × weight over the sets ticked done."""
-    rows = _rows(conn, user_id, "date = %s", (day,))   # the page's row and an imported row of the same day -> one post
-    works = conn.execute(
-        """SELECT name_zh, type, duration_min, start_at FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
-           AND excluded IS NULL ORDER BY start_at""", (user_id, day)).fetchall()
-    exercises = []
-    if rows:
-        names = names if names is not None else {r["slug"]: r for r in catalog.catalog_rows(conn)}
-        prev = _prev_best(conn, user_id, day)
-        for row in rows:
-            for ex in row["exercises"] or []:
-                sets = _done_sets(ex, row["imported"])
-                if not sets:
-                    continue
-                cat = names.get(ex.get("slug")) or {}
-                label = ex.get("name") or cat.get("name_zh") or ex.get("slug")
-                top = max((float(s["weight_kg"]) for s in sets if s.get("weight_kg")), default=0.0)
-                exercises.append({
-                    "slug": ex.get("slug"),
-                    "name": L(label, cat.get("name_en") or label),
-                    "thumb": next(iter(catalog.image_urls(cat.get("images") or [])[:1]), None),   # the demo picture, else the page draws the muscle
-                    "muscles": list(cat.get("primary_muscles") or []),
-                    "sets": [{k: s[k] for k in ("reps", "weight_kg", "duration_s") if s.get(k) is not None} for s in sets],
-                    "volume_kg": round(sum((s.get("reps") or 0) * float(s.get("weight_kg") or 0) for s in sets), 1),
-                    "pr": bool(top and _key(ex) in prev and top > prev[_key(ex)]),   # a first lift is no record
-                })
-    if not exercises and not works:
-        return None
-    lead = next((w for w in works if "strength" in (w["type"] or "")), works[0] if works else None)
+def _kind(t: str | None) -> str:
+    t = t or ""
+    return "strength" if t in TP.STRENGTH_TYPES or "strength" in t else "sport" if t in TP.SPORT_TYPES \
+        else "cardio" if t in TP.CARDIO_TYPES else "other"
+
+
+def _r(x):
+    return None if x is None else round(x)
+
+
+def _activity(w: dict) -> dict:
+    """One watch / Shortcut workout as the post shows it: its summary numbers only (no heart-rate series)."""
+    zones = [round(float(z or 0), 1) for z in (w["hr_zone_min"] or [])]
+    return {"type": w["type"], "kind": _kind(w["type"]), "name": display_name(w["name_zh"]),
+            "duration_min": _r(w["duration_min"]), "active_kcal": _r(w["active_kcal"]),
+            "avg_hr": _r(w["avg_hr"]), "max_hr": _r(w["max_hr"]),
+            "distance_km": round(w["distance_km"], 2) if w["distance_km"] else None,
+            "hr_zones": zones if sum(zones) > 0 else None, "load": _r(w["trimp"])}
+
+
+def _exercise(a: Author, ex: dict, sets: list[dict], prev: dict[str, float]) -> dict:
+    slug = a.resolve(ex)
+    cat = a.index.rows.get(slug or "") or {}
+    if custom.id_of(slug) is not None:          # the owner's own exercise of the same name (#192): shown as they defined it
+        zh, en = cat.get("name_zh"), cat.get("name_en") or cat.get("name_zh")
+    else:                                       # as logged (an unmatched name included, #194), else the catalog's name
+        zh = ex.get("name") or cat.get("name_zh") or slug
+        en = cat.get("name_en") or zh
+    top = max((float(s["weight_kg"]) for s in sets if s.get("weight_kg")), default=0.0)
+    k = _key(slug, ex)
     return {
-        "title": lead["name_zh"] if lead else L("力量训练", "Strength training"),
+        "slug": slug,
+        "name": L(zh, en),
+        "thumb": next(iter(catalog.image_urls(cat.get("images") or [])[:1]), None),   # the demo picture, else the page draws the muscle
+        "muscles": list(cat.get("primary_muscles") or []),                            # neither: a dumbbell (cardio, an unmatched name)
+        "sets": [{k2: s[k2] for k2 in ("reps", "weight_kg", "duration_s") if s.get(k2) is not None} for s in sets],
+        "volume_kg": round(sum((s.get("reps") or 0) * float(s.get("weight_kg") or 0) for s in sets), 1),
+        "pr": bool(top and k in prev and top > prev[k]),   # a first lift is no record
+    }
+
+
+def content(conn: psycopg.Connection, user_id: int, day: date, author: Author | None = None) -> dict | None:
+    """What the post of `user_id` on `day` shows right now, None when that day has no training. Total load (kg) = the sum of
+    reps × weight over the counted sets; the watch workouts give the time, energy, heart rate, zones and load."""
+    a = author or Author(conn, user_id)
+    rows = _rows(conn, user_id, "date = %s", (day,))   # the page's row and an imported row of the same day -> one post
+    submitted = {str(r["sparky_entry_id"]) for r in rows if r.get("sparky_entry_id")}
+    works = conn.execute(
+        """SELECT name_zh, type, duration_min, start_at, active_kcal, avg_hr, max_hr, distance_km, hr_zone_min, trimp
+           FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL AND excluded IS NULL ORDER BY start_at""",
+        (user_id, day)).fetchall()
+    logged = _logged(rows, a.sparky_on(day, submitted))
+    if not logged and not works:
+        return None
+    prev = _prev_best(conn, a, day) if logged else {}
+    exercises = [_exercise(a, ex, sets, prev) for ex, sets in logged]
+    acts = sorted((_activity(w) for w in works), key=lambda x: x["kind"] != "strength")   # the strength workout leads
+    names = list(dict.fromkeys(x["name"] for x in acts))
+    if exercises and not any(x["kind"] == "strength" for x in acts):
+        names.insert(0, L("力量训练", "Strength training"))
+    hr = [(x["avg_hr"], x["duration_min"] or 0) for x in acts if x["avg_hr"]]
+    return {
+        "title": " + ".join(names[:3]) if names else L("力量训练", "Strength training"),
         "duration_min": round(sum(w["duration_min"] for w in works)) if works else None,
         "started_at": works[0]["start_at"] if works else None,   # for the "3 h ago" in the post header
         "exercise_count": len(exercises), "set_count": sum(len(e["sets"]) for e in exercises),
         "volume_kg": round(sum(e["volume_kg"] for e in exercises), 1),
         "pr_count": sum(1 for e in exercises if e["pr"]),
         "exercises": exercises,
+        # the watch's summary of the day's workouts (#194): totals for the stats row, one entry per workout for its detail line
+        "active_kcal": round(sum(x["active_kcal"] for x in acts if x["active_kcal"])) if any(x["active_kcal"] for x in acts) else None,
+        "avg_hr": round(sum(h * m for h, m in hr) / sum(m for _, m in hr)) if hr and sum(m for _, m in hr) else (hr[0][0] if hr else None),
+        "max_hr": max((x["max_hr"] for x in acts if x["max_hr"]), default=None),
+        "activities": acts,
+        "no_exercises": not exercises and any(x["kind"] == "strength" for x in acts),   # a watch strength workout, no sets logged
     }
 
 
-def ensure_recent(conn: psycopg.Connection, user_id: int, today: date | None = None) -> int:
+def ensure_recent(conn: psycopg.Connection, user_id: int, today: date | None = None, author: Author | None = None) -> int:
     """Make the posts of the last FEED_LOOKBACK_DAYS days that have training and no post yet; returns how many."""
-    today = today or views.local_today(conn, user_id)
+    a = author or Author(conn, user_id, today)
+    today = today or a.today
     since = today - timedelta(days=P.FEED_LOOKBACK_DAYS)
     days = {r["date"] for r in _rows(conn, user_id, "date >= %s", (since,))
             if any(_done_sets(e, r["imported"]) for e in r["exercises"] or [])}
+    days |= {date.fromisoformat(x["date"][:10]) for x in a.sparky(today) if x["date"][:10] >= since.isoformat()
+             and any(_done_sets(e, True) for e in x.get("exercises") or [])}
     days |= {r["local_date"] for r in conn.execute(
         "SELECT DISTINCT local_date FROM workouts WHERE user_id = %s AND local_date >= %s AND dup_of IS NULL AND excluded IS NULL",
         (user_id, since))}
@@ -194,11 +281,11 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
     limit = max(1, min(int(limit), 30))
     if not authors:
         return {"posts": [], "next": None, "has_circles": _has_circles(conn, viewer_id)}
+    who = {a: Author(conn, a) for a in authors}   # one catalog index / SparkyFitness read per author for the whole page
     if before is None:
         for a in authors:
-            ensure_recent(conn, a)
+            ensure_recent(conn, a, author=who[a])
     cur = _cursor(before)
-    names = {r["slug"]: r for r in catalog.catalog_rows(conn)}
     users = {r["id"]: r["display_name"] for r in conn.execute("SELECT id, display_name FROM users WHERE id = ANY(%s)", (authors,))}
     out: list[dict] = []
     exhausted = False
@@ -211,7 +298,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
         previews = _previews(conn, [r["id"] for r in rows])
         for r in rows:
             cur = (r["date"], r["id"])
-            body = content(conn, r["user_id"], r["date"], names)
+            body = content(conn, r["user_id"], r["date"], who[r["user_id"]])
             if body is None:
                 continue
             lk = likes.get(r["id"]) or {}
