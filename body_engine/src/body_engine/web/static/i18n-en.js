@@ -1155,4 +1155,8 @@ I18N.addEn({
   "次数要在 1–100 之间，下限不能大于上限": "Reps must be between 1 and 100, low not above high",
   "时长要在 1 秒到 2 小时之间": "Duration must be between 1 second and 2 hours",
   "周一": "Mon", "周二": "Tue", "周三": "Wed", "周四": "Thu", "周五": "Fri", "周六": "Sat", "周日": "Sun",
+  // journal moved off the 记录 page (records_v2): the Today 日记 card and the Trends 行为影响 card
+  "行为影响": "Behavior impact",
+  "行为": "Behaviors",
+  "已记录 {n} 项": "{n} logged",
 });

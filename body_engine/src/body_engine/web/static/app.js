@@ -295,6 +295,9 @@
   // The Friends page is behind the feature flag `friends` (docs/rollout.md). Off: the old tabs (饮食 is its own tab, no
   // 朋友 tab, 记录 has 日记 | 训练). On: 朋友 replaces 饮食 in the tab bar and 饮食 becomes the third segment of 记录.
   const friendsOn = () => (S.flags || []).includes("friends");
+  // Flag `records_v2`: the 日记 segment of 记录 is gone (记录 = 训练 | 饮食). The journal lives on the Today page (a 日记 card opening
+  // the day's editor sheet) and Trends (the 行为影响 card); journal.js. Off: 日记 | 训练 | 饮食 as before.
+  const recordsV2 = () => (S.flags || []).includes("records_v2") && !!window.BodyJournal;
   function applyTabs() {
     const on = friendsOn();
     $('.tab[data-tab="friends"]').hidden = !on;
@@ -302,6 +305,7 @@
   }
   function setTab(tab) {
     if (tab === "friends" && !friendsOn()) tab = "today";
+    if (tab === "record" && recordsV2() && S.recSub === "journal") S.recSub = "training";   // a saved 日记 segment (or an old link) -> 训练
     if (tab === "record" && S.recSub === "food" && friendsOn()) tab = "food";
     if (tab === "friends" && S.me) S.owner = S.me.id;   // the Friends tab is always about me and my circles
     if (tab !== S.tab) S.meSub = null;   // 「设置」 is a sub-page of 我: leaving the tab closes it
@@ -1057,13 +1061,16 @@
 
   const RENDER_today = async () => {
     const day = viewDay(), past = isPast();
-    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday] = await Promise.all([
+    const v2 = recordsV2();
+    const [d, goal, meals, coach, stress, monitor, sleepCoach, tday, jitems, jday] = await Promise.all([
       load(todayKey(), todayPath()),
       (past ? load(`goal${day}`, `/v1/users/${ownerPath()}/goals/sleep?night=${day}`) : load("goal", `/v1/users/${ownerPath()}/goals/sleep`)).catch((e) => ({ error: e })),
       isSelf() && !past ? load("meals", `/v1/users/${ownerPath()}/meal-templates`).catch(() => null) : null,   // meal templates only log today
       optional(`coach${day}`, WHOOP_API.strainCoach(day)), optional(`stress${day}`, WHOOP_API.stress(day)),
       optional(`monitor${day}`, WHOOP_API.monitor(day)), optional(`sleepcoach${day}`, WHOOP_API.sleepCoach(day)),
       optional(`tday${day}`, `/v1/users/${ownerPath()}/training/day/${day}`),   // that day's activity (steps etc., Apple Health history has it too)
+      v2 ? optional("jitems", `/v1/users/${ownerPath()}/journal/items?active_only=true`) : null,   // records_v2: the 日记 card (no journal share = no card)
+      v2 ? optional(`jday${day}`, `/v1/users/${ownerPath()}/journal?start=${day}&end=${day}`) : null,
     ]);
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
@@ -1071,8 +1078,19 @@
     // Activity right after the scores, so on phones it is near the first screen
     return `<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
       <div class="col col-b">${sleepCardHtml(d.sleep)}${goalCardHtml(goal, d.sleep, sleepCoach)}</div>
-      <div class="col col-c">${dayCardHtml(d, meals)}</div></div>`;
+      <div class="col col-c">${dayCardHtml(d, meals)}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
   };
+
+  // What journal.js needs from the page (records_v2): the day editor sheet and the Trends 行为影响 card
+  function journalCtx() {
+    return {
+      api, load, esc, openSheet, closeSheet, setBack, toast, sheetAttr, icon: ICON, categories: CATEGORY,
+      ownerPath, isSelf, shortDay, signed, fmtNum, xpLabel,
+      setCache: (key, value) => { S.data[`${key}:${S.owner}`] = value; },
+      invalidate: () => { for (const k of Object.keys(S.data)) if (/^(jfreq|journal-an)/.test(k)) delete S.data[k]; render(); },
+      openEvent: eventSheet, openAssistant,
+    };
+  }
 
   // That day's activity: steps, active energy, exercise minutes (daily from training/day)
   function activityHtml(dl) {
@@ -1587,12 +1605,13 @@
 
   // Trends end on the selected date (null = today, so the cache keys of today stay the same)
   const trendEnd = () => (isPast() ? S.viewDate : null);
-  const GROUPS = [["recovery", tr("恢复")], ["sleep", tr("睡眠")], ["strain", tr("负荷")], ["stress", tr("压力")], ["long", tr("长期")]];
+  const GROUPS = [["recovery", tr("恢复")], ["sleep", tr("睡眠")], ["strain", tr("负荷")], ["stress", tr("压力")], ["long", tr("长期")], ["behavior", tr("行为")]];
   const VO2_LEVEL = { excellent: tr("优秀"), good: tr("良好"), average: tr("中等"), fair: tr("一般"), poor: tr("较差") };
   async function metricsHtml() {
     const days = S.trendsDays, end = trendEnd(), q = end ? `&end=${end}` : "";
-    const [d, vo2, sd] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
-      optional(`vo2max${end || ""}`, WHOOP_API.vo2max(end)), optional(`sleepdetails${end || ""}`, WHOOP_API.sleepDetails(end))]);
+    const [d, vo2, sd, ja] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
+      optional(`vo2max${end || ""}`, WHOOP_API.vo2max(end)), optional(`sleepdetails${end || ""}`, WHOOP_API.sleepDetails(end)),
+      recordsV2() ? optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`) : null]);   // records_v2: the 行为影响 card
     CH.clear();
     const fitness = vo2?.level_zh ? tr("体能 {l}", { l: VO2_LEVEL[vo2.level] || vo2.level_zh }) : null;   // vo2max endpoint: level converted from the same-age, same-sex percentile
     const restPct = d.series.restorative_pct?.mean;
@@ -1607,6 +1626,7 @@
         hrZonesHtml(d.hr_zones), cardHtml("steps", d), cardHtml("active_kcal", d), cardHtml("total_kcal", d), cardHtml("hr_recovery", d)],
       stress: [cardHtml("stress", d), cardHtml("resilience", d)],
       long: [cardHtml("vo2max", d, { base: fitness ? esc(fitness) : undefined }), cardHtml("weight", d), cardHtml("body_age", d)],
+      behavior: [recordsV2() ? window.BodyJournal.behaviorCardHtml(journalCtx(), ja) : ""],   // journal behaviour -> next-day recovery (journal.js)
     };
     // Long ranges (or ones crossing a year) show the year, otherwise "1 year" read as "10/19 – 10/18 vs 10/19 – 10/18"
     const withYear = d.days >= 180 || String(d.prev_start).slice(0, 4) !== String(d.end).slice(0, 4);
@@ -1757,8 +1777,10 @@
   }
 
   const recSeg = () => {
-    const subs = [["journal", tr("日记")], ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
-    const cur = S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    const v2 = recordsV2();
+    const subs = [...(v2 ? [] : [["journal", tr("日记")]]), ["training", tr("训练")], ...(friendsOn() ? [["food", tr("饮食")]] : [])];
+    const cur = v2 ? "training" : S.recSub === "food" && !friendsOn() ? "journal" : S.recSub;
+    if (subs.length < 2) return "";   // records_v2 without the Friends flag: 记录 is only 训练, nothing to switch
     return `<div class="toolbar"><div class="seg seg-range" role="group" aria-label="${tr("记录")}">${subs
       .map(([k, t]) => `<button data-rsub="${k}" aria-pressed="${cur === k}">${t}</button>`).join("")}</div></div>`;
   };
@@ -1769,7 +1791,7 @@
       setTab("record");
     };
   }
-  const RENDER_record = async () => recSeg() + (S.recSub === "training" ? await trainingPageHtml() : await journalPageHtml());
+  const RENDER_record = async () => recSeg() + (S.recSub === "training" || recordsV2() ? await trainingPageHtml() : await journalPageHtml());
 
   const journalPageHtml = async () => {
     const today = S.todayDate;
@@ -1878,7 +1900,7 @@
 
   function afterRecord(view) {
     bindRecSeg(view);
-    if (S.recSub === "training") { afterTraining(view); return; }
+    if (S.recSub === "training" || recordsV2()) { afterTraining(view); return; }
     for (const b of $$("[data-rday]", view)) b.onclick = () => { S.recordDay = Number(b.dataset.rday); render(); };
     const all = $("#show-all", view);
     if (all) all.onclick = () => { S.showAll = !S.showAll; render(); };
@@ -3403,6 +3425,7 @@
     const [tab, sub] = String(page || "today").split(".");
     if (!TABS[tab]) return;
     S.owner = S.me.id;
+    if (tab === "record" && sub === "journal" && recordsV2()) { setTab("today"); window.BodyJournal.openDay(journalCtx(), viewDay()); return; }   // records_v2: the old 记录 → 日记 link opens the day editor
     if (tab === "record" && sub) S.recSub = sub;
     if (tab === "food") { S.foodMode = "diet"; S.foodSub = null; }
     if (tab === "trends") S.trendsMode = "metrics";

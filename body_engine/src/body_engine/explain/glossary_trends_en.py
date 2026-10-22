@@ -196,7 +196,7 @@ TREND_METRICS_EN: dict[str, dict] = {
                 "certain (few samples or large swings).",
         "read": [("Positive", "Linked to better recovery"), ("Negative", "Linked to worse recovery")],
         "recovery": "Correlation, not causation, but logging consistently shows which habits really hold you back.",
-        "tips": ["Spend 10 seconds a day checking in under Log; the more days, the more accurate"],
+        "tips": ["Spend 10 seconds a day checking in under Journal (or tell your AI); the more days, the more accurate"],
     },
     "hrv_status": {
         "title": "HRV status",
