@@ -58,7 +58,8 @@ SCORE_DETAIL_ONLY = ("hrv_kind", "hrv_night_ln", "hr_max", "algo_version")
 
 
 def _scores(conn, uid, a):
-    rows = scores_store.scores(conn, uid, _d(a["start"]), _d(a["end"]), a["details"])
+    rows = scores_store.scores(conn, uid, _d(a["start"]), _d(a["end"]), a["details"],
+                               not a["details"] or auth.can_view(conn, a.get("_viewer_id", uid), uid, "sleep"))
     if a["details"]:
         return rows
     return [{k: v for k, v in r.items() if k not in SCORE_DETAIL_ONLY} for r in rows]

@@ -1,10 +1,12 @@
-"""GET /v1/users/{user}/cardio: heart rate recovery after workouts + recovery index per night (shares scope 'scores')."""
+"""GET /v1/users/{user}/cardio: heart rate recovery after workouts + recovery index per night (shares scope 'scores';
+the per-workout heart rate recovery is workout data and needs 'training' too, else it is left out and listed in `hidden`)."""
 import statistics
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import psycopg
 
+from .. import auth
 from . import hrr as H
 
 
@@ -12,7 +14,8 @@ def _mean(xs):
     return round(statistics.mean(xs), 1) if xs else None
 
 
-def cardio(conn: psycopg.Connection, user_id: int, start: date | None = None, end: date | None = None) -> dict:
+def cardio(conn: psycopg.Connection, user_id: int, start: date | None = None, end: date | None = None,
+           viewer_id: int | None = None) -> dict:
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     end = end or datetime.now(tz).date()
     start = start or end - timedelta(days=89)
@@ -40,7 +43,11 @@ def cardio(conn: psycopg.Connection, user_id: int, start: date | None = None, en
             pct = round(min(max(off / span, 0), 1) * 100) if span > 0 else None
         nights.append({"date": r["date"], "offset_min": off, "pct": pct})
     pcts = [n["pct"] for n in nights if n["pct"] is not None]
-    return {"start": start, "end": end, "algo": H.ALGO,
-            "hrr": {"workouts": workouts, "last30_mean": _mean(last), "last30_n": len(last), "prev30_mean": _mean(prev),
-                    "prev30_n": len(prev), "peak_min_pct": H.PEAK_MIN_PCT},
-            "recovery_index": {"nights": nights, "median_pct": round(statistics.median(pcts)) if pcts else None}}
+    out = {"start": start, "end": end, "algo": H.ALGO,
+           "hrr": {"workouts": workouts, "last30_mean": _mean(last), "last30_n": len(last), "prev30_mean": _mean(prev),
+                   "prev30_n": len(prev), "peak_min_pct": H.PEAK_MIN_PCT},
+           "recovery_index": {"nights": nights, "median_pct": round(statistics.median(pcts)) if pcts else None}}
+    if "training" not in auth.visible_scopes(conn, viewer_id, user_id, ("training",)):
+        del out["hrr"]
+        out["hidden"] = ["training"]
+    return out

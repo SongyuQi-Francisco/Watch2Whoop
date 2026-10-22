@@ -12,6 +12,9 @@
   wrote, e.g. ldl) gets value / unit / tone / trend / good_direction / spark / date from the lab table at read time (list_status,
   records/lab_history.py; latest reading of any source, home meters included) plus lab_key (the Today page opens the lab trend sheet).
   The butler's own note is kept after the lab note. Lab writes / deletes also call sync_labs so the auto lab rows appear / disappear at once.
+- Viewing someone else's cards (shares scope memory, issue #111): an auto item is computed from another kind of data, so it
+  also needs that data's own scope (AUTO_SCOPE; lab-linked items need labs). list_status(viewer_id=...) leaves the
+  others out; the butler's own items are memory only.
 """
 import json
 import re
@@ -22,7 +25,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .. import sparky_client
+from .. import auth, sparky_client
 from ..nutrition import constraint_params as CP, constraints as diet_constraints
 from ..records import lab_history
 from ..rules import params as rule_params
@@ -36,13 +39,24 @@ SPARK_MAX = 30
 GOAL_KEY = "goal_weight"            # Goal weight written by the butler (value is a number, unit kg); auto to_goal uses it
 AUTO_KEYS = ("weight", "to_goal", "recovery", "sleep_debt", "bedtime", "sleep_hours", "uric_acid", "alt",
              "triglycerides", "training_week", "red_meat_week", "added_sugar_today", "added_sugar_7d")
+AUTO_SCOPE = {"weight": "weight", "to_goal": "weight", "recovery": "scores", "sleep_debt": "scores", "sleep_hours": "scores",
+              "bedtime": "sleep", "training_week": "training", "red_meat_week": "nutrition",
+              "added_sugar_today": "nutrition", "added_sugar_7d": "nutrition"}   # lab items: labs (item_scope)
 LAB_ITEMS = {"uric_acid": ("尿酸", 10), "alt": ("ALT", 20), "triglycerides": ("甘油三酯", 30)}
 FIELDS = ("key", "label", "value", "unit", "tone", "trend", "good_direction", "group", "spark", "note",
           "updated_at", "source")
 
 
 # ---------------------------------------------------------------- read
-def list_status(conn: psycopg.Connection, user_id: int) -> list[dict]:
+def item_scope(item: dict) -> str | None:
+    """The scope a card needs on top of memory (None = memory is enough)."""
+    if item.get("lab_key"):
+        return "labs"
+    return AUTO_SCOPE.get(item["key"]) if item.get("source") == "auto" else None
+
+
+def list_status(conn: psycopg.Connection, user_id: int, viewer_id: int | None = None) -> list[dict]:
+    """viewer_id = who reads the cards (None = the owner): cards whose data the viewer may not see are left out."""
     rows = conn.execute(f"""SELECT key, label, value, unit, tone, trend, good_direction, "group", spark, note,
                                    updated_at, source, sort FROM assistant_status WHERE user_id = %s""",
                         (user_id,)).fetchall()
@@ -60,6 +74,9 @@ def list_status(conn: psycopg.Connection, user_id: int) -> list[dict]:
             item.update({k: lab[k] for k in ("value", "unit", "tone", "trend", "good_direction", "spark")},
                         note=f"{lab['note']} · {own}" if own else lab["note"], lab_key=lab["lab_key"])
         out.append(item)
+    if viewer_id is not None and viewer_id != user_id:
+        can = auth.visible_scopes(conn, viewer_id, user_id, set(AUTO_SCOPE.values()) | {"labs"})
+        out = [i for i in out if item_scope(i) in can or item_scope(i) is None]
     return out
 
 

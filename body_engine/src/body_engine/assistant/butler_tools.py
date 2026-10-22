@@ -123,7 +123,8 @@ def _obs_brief(o: dict) -> dict:
 
 def _memory_with_status(conn, uid, a=None):
     a = a or {}
-    st, m = status.list_status(conn, uid), memory.get_memory(conn, uid, history=bool(a.get("history")))
+    st = status.list_status(conn, uid, a.get("_viewer_id"))
+    m = memory.get_memory(conn, uid, history=bool(a.get("history")))
     if a.get("detail"):
         return {"status": st, **m}
     # Default: what the AI needs to read and maintain the memory, without sparklines / timestamps / evidence.

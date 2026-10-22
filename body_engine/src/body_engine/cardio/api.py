@@ -16,4 +16,4 @@ def cardio(user: str, start: date | None = None, end: date | None = None, conn=D
     uid = _owner(conn, viewer, user, "scores")
     if start and end and (start > end or (end - start).days > 730):
         raise HTTPException(422, "start 要早于 end，最多 2 年")
-    return views.cardio(conn, uid, start, end)
+    return views.cardio(conn, uid, start, end, viewer["id"])

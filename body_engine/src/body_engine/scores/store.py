@@ -9,6 +9,12 @@ FIELDS = """date, sleep_score, sleep_performance, sleep_actual_min, sleep_need_m
             flags, algo_version"""
 
 
-def scores(conn: psycopg.Connection, user_id: int, start: date, end: date, details: bool = False) -> list[dict]:
+def scores(conn: psycopg.Connection, user_id: int, start: date, end: date, details: bool = False,
+           with_sleep: bool = True) -> list[dict]:
+    """with_sleep=False (a viewer without the sleep share): details.sleep is left out, it holds the night's bedtime, wake
+    time, stages and wake-ups, which are sleep data (issue #111)."""
+    if details and not with_sleep:
+        return [{**r, "details": {k: v for k, v in (r["details"] or {}).items() if k != "sleep"}}
+                for r in scores(conn, user_id, start, end, True)]
     sql = f"SELECT {FIELDS}{', details' if details else ''} FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date"
     return conn.execute(sql, (user_id, start, end)).fetchall()

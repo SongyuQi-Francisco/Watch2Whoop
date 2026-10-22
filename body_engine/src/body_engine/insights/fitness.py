@@ -13,7 +13,8 @@ LEVELS = ((80, "excellent", "优秀"), (60, "good", "良好"), (40, "average", "
 LEVELS_EN = {"excellent": "Excellent", "good": "Good", "average": "Average", "fair": "Fair", "poor": "Poor"}
 
 
-def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date) -> dict:
+def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date, with_workouts: bool = True) -> dict:
+    """with_workouts=False: the viewer has no training share, the per-workout list is left out (`hidden`)."""
     days = []
     for r in conn.execute("""SELECT date, strain, hr_max, details->'load'->'zone_minutes' AS z, flags->>'no_raw_hr' AS missing
                              FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""",
@@ -21,13 +22,15 @@ def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date) -> 
         days.append({"date": r["date"], "zone_minutes": r["z"], "hr_max": r["hr_max"], "strain": r["strain"],
                      "missing_reason": r["missing"] if r["z"] is None else None})
     workouts = None
-    if _table_exists(conn, "workouts"):
+    if with_workouts and _table_exists(conn, "workouts"):
         workouts = [dict(r) for r in conn.execute(
             """SELECT id, local_date AS date, name_zh, type, start_at, duration_min, avg_hr, max_hr, trimp,
                       hr_zone_min AS zone_minutes, flags FROM workouts
                WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s
                ORDER BY start_at""", (user_id, start, end))]
     total = [round(sum((d["zone_minutes"] or [0] * 5)[i] for d in days), 1) for i in range(5)]
+    if not with_workouts:
+        return {"zones": ZONES, "start": start, "end": end, "days": days, "total_minutes": total, "hidden": ["training"]}
     return {"zones": ZONES, "start": start, "end": end, "days": days, "total_minutes": total, "workouts": workouts,
             "workouts_note": None if workouts is not None else "训练记录表（workouts）还没建，只有每天的区间分钟"}
 

@@ -1,6 +1,13 @@
 """Weekly / monthly reports (matching WHOOP Performance Assessment): summary of recovery, sleep, strain, stress, training, weight,
 nutrition (calorie / protein adherence against the goal in effect each day, added sugar, sugary drinks) and journal findings, compared with the previous period.
-Outputs only structured data; the text summary is written by the body butler. Week = 7 days back from end, month = 30 days back from end, previous period = the immediately preceding span of the same length."""
+Outputs only structured data; the text summary is written by the body butler. Week = 7 days back from end, month = 30 days back from end, previous period = the immediately preceding span of the same length.
+
+Viewing someone else's report (issue #111): every block is authorized by its own shares scope, like the Today page's
+per-block sections: recovery / sleep / load / stress need scores, training training, weight weight, nutrition nutrition,
+journal_findings journal. A block the viewer may not see is not computed, left out of current / previous_values /
+change and its scope is listed in `hidden`. Sleep is split like the Today page: duration / score / debt come with the
+scores row, bedtime, wake time and regularity (from the sleep sessions) need `sleep`. With only `nutrition_summary`
+the nutrition block keeps just the goal adherence counts."""
 import math
 import statistics
 from datetime import date, datetime, timedelta
@@ -8,11 +15,15 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from .. import sparky_client
+from .. import auth, sparky_client
 from ..records import analysis
 from . import sleep_detail
 
 PERIOD_DAYS = {"week": 7, "month": 30}
+SLEEP_TIMING = ("avg_bedtime", "avg_wake", "consistency_pct")   # from the sleep sessions: scope sleep
+NUTRITION_SUMMARY = ("days_logged", "calories_on_target_days", "calories_judged_days", "protein_on_target_days",
+                     "protein_judged_days")                     # all that scope nutrition_summary shows
+REPORT_SCOPES = ("scores", "sleep", "training", "weight", "nutrition", "nutrition_summary", "journal")
 
 
 def _mean(xs):
@@ -165,32 +176,54 @@ def _delta(cur, prev):
     return None
 
 
-def report(conn: psycopg.Connection, user_id: int, period: str, end: date, sparky=None) -> dict:
+def report(conn: psycopg.Connection, user_id: int, period: str, end: date, sparky=None,
+           viewer_id: int | None = None) -> dict:
+    """`viewer_id` = who reads it (None = the owner): blocks outside the viewer's shares are left out (module docstring)."""
     if period not in PERIOD_DAYS:
         raise ValueError("period 要写 week 或 month")
     n = PERIOD_DAYS[period]
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     start, pstart, pend = end - timedelta(days=n - 1), end - timedelta(days=2 * n - 1), end - timedelta(days=n)
+    can = auth.visible_scopes(conn, viewer_id, user_id, REPORT_SCOPES)
+    nutrition = "full" if "nutrition" in can else "summary" if "nutrition_summary" in can else None
 
     def block(a, b):
-        out = _scores_block(conn, user_id, a, b)
-        reg = sleep_detail.sri_for(conn, user_id, tz, a, b)
-        out["sleep"]["consistency_pct"] = sleep_detail.consistency_pct(reg["sri"])
-        out["stress"] = _stress_block(conn, user_id, a, b)
+        out = {}
+        if "scores" in can:
+            out = _scores_block(conn, user_id, a, b)
+            out["stress"] = _stress_block(conn, user_id, a, b)
+            if "sleep" in can:
+                reg = sleep_detail.sri_for(conn, user_id, tz, a, b)
+                out["sleep"]["consistency_pct"] = sleep_detail.consistency_pct(reg["sri"])
+            else:
+                for k in SLEEP_TIMING:
+                    out["sleep"].pop(k, None)
         return out
 
     cur, prev = block(start, end), block(pstart, pend)
-    try:
-        sparky = sparky or sparky_client.client_for_user(conn, user_id)
-    except Exception:
-        sparky = None
-    cur["training"], prev["training"] = _training_block(conn, user_id, start, end, sparky), \
-        _training_block(conn, user_id, pstart, pend, sparky)
-    cur["weight"] = _weight_block(conn, user_id, start, end, sparky)
-    cur["nutrition"], prev["nutrition"] = _nutrition_block(conn, user_id, start, end, sparky), \
-        _nutrition_block(conn, user_id, pstart, pend, sparky)
-    return {"period": period, "start": start, "end": end, "previous": {"start": pstart, "end": pend},
-            "current": cur, "previous_values": prev,
-            "change": {k: _delta(cur[k], prev.get(k)) for k in ("recovery", "sleep", "load", "stress", "training",
-                                                                "nutrition")},
-            "journal_findings": _journal_block(conn, user_id, end)}
+    if {"training", "weight"} & can or nutrition:
+        try:
+            sparky = sparky or sparky_client.client_for_user(conn, user_id)
+        except Exception:
+            sparky = None
+    if "training" in can:
+        cur["training"], prev["training"] = _training_block(conn, user_id, start, end, sparky), \
+            _training_block(conn, user_id, pstart, pend, sparky)
+    if "weight" in can:
+        cur["weight"] = _weight_block(conn, user_id, start, end, sparky)
+    if nutrition:
+        cur["nutrition"], prev["nutrition"] = _nutrition_block(conn, user_id, start, end, sparky), \
+            _nutrition_block(conn, user_id, pstart, pend, sparky)
+        if nutrition == "summary":
+            cur["nutrition"], prev["nutrition"] = ({k: v for k, v in x.items() if k in NUTRITION_SUMMARY or k == "error"}
+                                                   for x in (cur["nutrition"], prev["nutrition"]))
+    out = {"period": period, "start": start, "end": end, "previous": {"start": pstart, "end": pend},
+           "current": cur, "previous_values": prev,
+           "change": {k: _delta(cur[k], prev.get(k)) for k in ("recovery", "sleep", "load", "stress", "training",
+                                                               "nutrition") if k in cur}}
+    if "journal" in can:
+        out["journal_findings"] = _journal_block(conn, user_id, end)
+    hidden = [s for s in ("scores", "sleep", "training", "weight", "nutrition", "journal") if s not in can]
+    if hidden:
+        out["hidden"] = hidden   # not shared with this viewer: left out, not an error
+    return out

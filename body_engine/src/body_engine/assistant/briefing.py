@@ -156,8 +156,8 @@ def _reminders(conn, uid: int, today: date) -> list[str]:
 STATUS_IN_SCORES = ("recovery", "sleep_debt", "bedtime", "sleep_hours")  # auto status items the scores section already has
 
 
-def _memory(conn, uid: int, skip: tuple = ()) -> dict:
-    st = [s for s in status.list_status(conn, uid) if s["key"] not in skip]
+def _memory(conn, uid: int, skip: tuple = (), viewer_id: int | None = None) -> dict:
+    st = [s for s in status.list_status(conn, uid, viewer_id) if s["key"] not in skip]
     m = memory.get_memory(conn, uid)   # expired recent notes are already left out
     obs = [o for o in m["observations"] if o["kind"] != "recent"]
     recent = [f"#{o['id']} 到 {o['valid_until']:%m-%d} {_cut(o['text'], OBS_CHARS)}"
@@ -218,7 +218,7 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
         "bedtimes": lambda: _bedtimes(conn, owner_id, today, tz),
         "training": lambda: _training(conn, viewer_id, owner_id, today),
         "reminders": lambda: _reminders(conn, owner_id, today),
-        "memory": lambda: _memory(conn, owner_id, STATUS_IN_SCORES if allowed["scores"] else ()),
+        "memory": lambda: _memory(conn, owner_id, STATUS_IN_SCORES if allowed["scores"] else (), viewer_id),
         "exercises": lambda: _exercises(conn, owner_id),
         "diet_constraints": lambda: _diet(conn, owner_id),
         "water": lambda: _water(conn, owner_id, today),
