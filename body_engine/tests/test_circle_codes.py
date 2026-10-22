@@ -1,5 +1,5 @@
-"""Circle activation codes and circle avatars (#199, friends/codes.py, friends/admin.py, images/): matching rules, the use cap
-(also under concurrent sign-ups), expiry / disable, the new-account path (nothing reaches the circle before the consent,
+"""Circle activation codes and circle avatars (#199, friends/codes.py, friends/admin.py, images/): matching rules, the cap on
+new accounts (also under concurrent sign-ups; existing accounts join without taking a place), expiry / disable, the new-account path (nothing reaches the circle before the consent,
 then the circle's default scopes) and the existing-account path (Friends page), leaving, the member cap, the CLI helpers,
 and avatars (type / size checks, metadata removed, members only).
 Test database body_test_circle_codes (BODY_TEST_DB_NAME_CIRCLE_CODES), recreated on every run; skipped without Postgres.
@@ -238,11 +238,56 @@ def test_existing_account_joins_on_friends_page(client, dsn):
         assert auth.can_view(conn, owner, ann, "scores") and not auth.can_view(conn, owner, ann, "sleep")
         [use] = codes.uses(conn, code["id"])
         assert not use["new_account"] and use["joined_at"] is not None and use["member"]
-    # again: already in, nothing consumed
-    r = client.post("/v1/friends/join", headers=h(tok), json={"code": CODE, "scopes": ["scores"]})
-    assert r.status_code == 200 and r.json()["already"]
+        # an existing account takes no new-account place
+        listed = codes.list_codes(conn)[0]
+        assert listed["uses"] == 0 and listed["remaining"] == 50 and listed["existing_joins"] == 1
+        assert "已开户 0 / 50 · 老用户加入 1" in codes.summary(listed)
+    # entering it again: no error, no second membership or use row, still nothing consumed
+    for again in (CODE, "EXAMPLE-LIFTING-CLUB"):
+        r = client.post("/v1/friends/join", headers=h(tok), json={"code": again, "scopes": ["scores", "sleep"]})
+        assert r.status_code == 200 and r.json()["already"] and r.json()["my_scopes"] == ["scores"]
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        assert codes.find(conn, CODE)["uses"] == 1
+        assert codes.find(conn, CODE)["uses"] == 0 and len(codes.uses(conn, code["id"])) == 1
+        assert conn.execute("SELECT count(*) AS n FROM circle_members WHERE circle_id = %s AND user_id = %s",
+                            (cid, ann)).fetchone()["n"] == 1
+    # after leaving, entering it on the Friends page brings them back (same use row, no place taken)
+    assert client.delete(f"/v1/friends/circles/{cid}/me", headers=h(tok)).status_code == 204
+    r = client.post("/v1/friends/join", headers=h(tok), json={"code": CODE, "scopes": ["sleep"]})
+    assert r.status_code == 200 and r.json()["my_scopes"] == ["sleep"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert codes.find(conn, CODE)["uses"] == 0 and len(codes.uses(conn, code["id"])) == 1
+        assert auth.can_view(conn, owner, ann, "sleep")
+
+
+def test_used_up_still_lets_existing_accounts_join(client, dsn):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        cid, code, owner, _ = club(conn, max_uses=1)
+        (_, t1), (u2, t2) = newcomer(conn, 40), newcomer(conn, 41)
+        ann, atok = member(conn, "Ann")
+        ben, btok = member(conn, "Ben")
+    assert client.post("/v1/account/redeem-invite", headers=h(t1), json={"code": CODE}).status_code == 200
+    # the only new-account place is gone: the next new person is refused …
+    r = client.post("/v1/account/redeem-invite", headers=h(t2), json={"code": CODE})
+    assert r.status_code == 410 and r.json()["detail"] == "这个圈子激活码已经用完了"
+    # … existing accounts still join, and the count stays
+    for tok in (atok, btok):
+        pv = client.get("/v1/friends/invite", params={"code": CODE}, headers=h(tok))
+        assert pv.status_code == 200 and pv.json()["circle_code"]
+        assert client.post("/v1/friends/join", headers=h(tok), json={"code": CODE, "scopes": ["scores"]}).status_code == 200
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        listed = codes.list_codes(conn)[0]
+        assert (listed["state"], listed["uses"], listed["remaining"], listed["new_accounts"], listed["existing_joins"]) \
+            == ("used_up", 1, 0, 1, 2)
+        assert auth.can_view(conn, owner, ann, "scores") and auth.can_view(conn, owner, ben, "scores")
+        assert conn.execute("SELECT status FROM users WHERE id = %s", (u2,)).fetchone()["status"] == "pending"
+        kinds = [u["kind"] for u in codes.uses(conn, code["id"])]
+        assert sorted(kinds) == ["existing", "existing", "new_account"]
+        # disabled: nobody, not even existing accounts
+        codes.disable(conn, code["id"])
+        cat, ctok = member(conn, "Cat")
+    assert client.get("/v1/friends/invite", params={"code": CODE}, headers=h(ctok)).status_code == 410
+    r = client.post("/v1/friends/join", headers=h(ctok), json={"code": CODE, "scopes": ["scores"]})
+    assert r.status_code == 410 and r.json()["detail"] == "这个圈子激活码已停用"
 
 
 def test_existing_account_without_circle_consent_is_asked_first(client, dsn):
@@ -268,11 +313,12 @@ def test_used_up_disabled_expired_give_clear_messages(client, dsn):
     assert r.status_code == 410 and r.json()["detail"] == "这个圈子激活码已经用完了"
     r = client.post("/v1/account/redeem-invite", headers=h(t2, **{"X-Body-Lang": "en"}), json={"code": CODE})
     assert r.json()["detail"] == "This circle code has been used up"
-    assert client.get("/v1/friends/invite", params={"code": CODE}, headers=h(ann)).status_code == 410
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("UPDATE circle_codes SET max_uses = 5, expires_at = now() - interval '1 second' WHERE id = %s", (code["id"],))
     r = client.post("/v1/account/redeem-invite", headers=h(t2), json={"code": CODE})
     assert r.status_code == 410 and r.json()["detail"] == "这个圈子激活码已过期"
+    # expired: existing accounts cannot join either
+    assert client.get("/v1/friends/invite", params={"code": CODE}, headers=h(ann)).status_code == 410
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("UPDATE circle_codes SET expires_at = NULL WHERE id = %s", (code["id"],))
         codes.disable(conn, code["id"])

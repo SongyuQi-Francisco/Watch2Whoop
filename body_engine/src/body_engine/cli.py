@@ -92,9 +92,14 @@ def _circle_admin(conn, args, p) -> None:
             print(f"code {row['id']} · 「{row['code']}」 → circle {cid} · {row['max_uses']} uses · expires "
                   f"{row['expires_at'].isoformat() if row['expires_at'] else 'never'}")
         elif args.cc_cmd == "list":
-            show(circle_codes.list_codes(conn, circle_admin.find_circle(conn, args.circle) if args.circle else None))
+            for r in circle_codes.list_codes(conn, circle_admin.find_circle(conn, args.circle) if args.circle else None):
+                print(circle_codes.summary(r))
         elif args.cc_cmd == "uses":
-            show(circle_codes.uses(conn, args.id))
+            rows = circle_codes.uses(conn, args.id)
+            for kind, title in (("new_account", "新开户"), ("existing", "老用户加入")):
+                part = [r for r in rows if r["kind"] == kind]
+                print(f"# {title} {len(part)}")
+                show(part)
         else:
             print("disabled" if circle_codes.disable(conn, args.id) else "not found / already disabled")
     except (ValueError, FriendsError) as e:
@@ -214,15 +219,15 @@ def main() -> None:
     ccc = ccs.add_parser("create", help="bind a code to a circle; matching ignores case, spaces and dashes")
     ccc.add_argument("--circle", required=True, help="circle id (or its exact name)")
     ccc.add_argument("--code", required=True, help="the code as people will type it, e.g. 'Example Club 2026'")
-    ccc.add_argument("--max-uses", type=int, required=True)
+    ccc.add_argument("--max-uses", type=int, required=True, help="how many NEW accounts it may open (existing accounts join without limit)")
     ccx = ccc.add_mutually_exclusive_group()
     ccx.add_argument("--expires", help="ISO date (end of that day in the circle owner's time zone) or ISO date-time")
     ccx.add_argument("--days", type=int, help="valid for D days")
     ccc.add_argument("--label", help="free text shown in list")
     ccc.add_argument("--created-by", help="free text recorded with the code")
-    ccl = ccs.add_parser("list", help="codes with state, uses / remaining, new accounts, waiting for consent")
+    ccl = ccs.add_parser("list", help="one line per code: state, new accounts N / max_uses, existing accounts joined, waiting for consent")
     ccl.add_argument("--circle", help="only this circle (id or exact name)")
-    ccu = ccs.add_parser("uses", help="every use of one code: who, when, new account, joined, still a member")
+    ccu = ccs.add_parser("uses", help="every use of one code, new accounts and existing accounts apart: who, when, joined, still a member")
     ccu.add_argument("--id", type=int, required=True)
     ccd = ccs.add_parser("disable", help="stop a code (people who joined stay)")
     ccd.add_argument("--id", type=int, required=True)

@@ -4,9 +4,12 @@ circle. The admin makes them (`body-engine circle-code create`); docs/friends-so
 - Matching ignores case, spaces and dashes (normalize()): "Thin Muscle Club" = "thin-muscle-club" = "THINMUSCLECLUB".
   The code is a promo code, not a secret: it is stored as typed (listings show it); wrong guesses still count against
   the per-IP failure limits of the endpoints that take it.
-- A code has max_uses, an optional expiry and can be disabled. Every use is one row in circle_code_uses (who, when,
-  new account or not, when they joined). The code row is locked (SELECT … FOR UPDATE) for the whole redemption and the
-  use is counted with `uses < max_uses`, so people signing up at the same moment can never exceed max_uses.
+- A code has max_uses, an optional expiry and can be disabled. **max_uses limits new accounts only** (owner decision
+  2026-10-23): `circle_codes.uses` counts the accounts the code opened; someone who already has an account joins with
+  it without using one up, also after the new-account places are gone. A disabled or expired code works for nobody.
+  Every use is one row in circle_code_uses (who, when, new account or existing one, when they joined). The code row is
+  locked (SELECT … FOR UPDATE) for the whole redemption and a new account is counted with `uses < max_uses`, so people
+  signing up at the same moment can never exceed max_uses.
 - A new person (account `pending`) redeems it in the sign-up invite step (POST /v1/account/redeem-invite): the account
   becomes active and a use is recorded with joined_at NULL. Nothing about them reaches the circle yet: they join
   (complete_pending) only after they agreed to the consent version with the circle clause (params.CONSENT_VERSION),
@@ -14,7 +17,8 @@ circle. The admin makes them (`body-engine circle-code create`); docs/friends-so
   (circles.default_scopes, else params.DEFAULT_SCOPES), which the consent sheet listed beforehand; they can change
   that or leave at any time like any member, and leaving ends the sharing at once (store.leave).
 - Someone who already has an account types the code on the Friends page (preview / join in store.py); they pick what to
-  share in the join sheet, as with any invite. A member who uses it again consumes nothing.
+  share in the join sheet, as with any invite. This consumes no place. A member who enters it again changes nothing
+  (no error, no second row); someone who left and enters it again on the Friends page joins again.
 - A circle's member cap counts members plus uses still waiting for consent, so the 50th person cannot be turned away
   after they signed up.
 Errors are FriendsError(status, Chinese message); errors_en.py has the English.
@@ -50,7 +54,8 @@ def _clean_code(code: str) -> tuple[str, str]:
 
 
 def state(row: dict) -> str:
-    """ok / disabled / expired / used_up (in that order of precedence)."""
+    """ok / disabled / expired / used_up (in that order of precedence). used_up = no new-account places left (existing
+    accounts can still join)."""
     if row["disabled_at"] is not None:
         return "disabled"
     if row["expires_at"] is not None and row["expires_at"] <= datetime.now().astimezone():
@@ -63,9 +68,10 @@ def state(row: dict) -> str:
 _STATE_ERRORS = {"disabled": "这个圈子激活码已停用", "expired": "这个圈子激活码已过期", "used_up": "这个圈子激活码已经用完了"}
 
 
-def _check(row: dict) -> None:
+def _check(row: dict, new_account: bool) -> None:
+    """410 when the code is disabled / expired (for everyone) or has no new-account places left (for new accounts)."""
     s = state(row)
-    if s != "ok":
+    if s in ("disabled", "expired") or (s == "used_up" and new_account):
         raise store.FriendsError(410, _STATE_ERRORS[s])
 
 
@@ -104,17 +110,28 @@ def list_codes(conn: psycopg.Connection, circle_id: int | None = None) -> list[d
         """SELECT k.id, k.code, k.label, k.circle_id, c.name AS circle, k.uses, k.max_uses, k.expires_at, k.disabled_at,
                   k.created_at, k.created_by,
                   (SELECT count(*) FROM circle_code_uses u WHERE u.code_id = k.id AND u.new_account) AS new_accounts,
+                  (SELECT count(*) FROM circle_code_uses u WHERE u.code_id = k.id AND NOT u.new_account) AS existing_joins,
                   (SELECT count(*) FROM circle_code_uses u WHERE u.code_id = k.id AND u.joined_at IS NULL
                      AND u.user_id IS NOT NULL) AS waiting_consent
            FROM circle_codes k JOIN circles c ON c.id = k.circle_id
            WHERE %(c)s::int IS NULL OR k.circle_id = %(c)s::int ORDER BY k.id""", {"c": circle_id}).fetchall()
+    # uses = new accounts opened (what max_uses limits); remaining = new-account places left; existing_joins = accounts
+    # that existed already and joined with the code (not limited)
     return [{**r, "state": state(r), "remaining": max(0, r["max_uses"] - r["uses"])} for r in rows]
+
+
+def summary(r: dict) -> str:
+    """One line per code for the CLI: 已开户 N / max · 老用户加入 M · 等同意书 K."""
+    exp = r["expires_at"].isoformat() if r["expires_at"] else "never"
+    return (f"#{r['id']} 「{r['code']}」 → circle {r['circle_id']} {r['circle']} · {r['state']} · "
+            f"已开户 {r['uses']} / {r['max_uses']} · 老用户加入 {r['existing_joins']} · 等同意书 {r['waiting_consent']} · expires {exp}")
 
 
 def uses(conn: psycopg.Connection, code_id: int) -> list[dict]:
     """Every use of one code: who (id + name; NULL = account deleted), when, new account or not, joined when, still in."""
     return conn.execute(
-        """SELECT u.id, u.user_id, us.display_name AS name, u.used_at, u.new_account, u.joined_at,
+        """SELECT u.id, u.user_id, us.display_name AS name, u.used_at, u.new_account,
+                  CASE WHEN u.new_account THEN 'new_account' ELSE 'existing' END AS kind, u.joined_at,
                   EXISTS (SELECT 1 FROM circle_members m JOIN circle_codes k ON k.circle_id = m.circle_id
                           WHERE k.id = u.code_id AND m.user_id = u.user_id) AS member
            FROM circle_code_uses u LEFT JOIN users us ON us.id = u.user_id WHERE u.code_id = %s ORDER BY u.used_at, u.id""",
@@ -142,7 +159,7 @@ def preview(conn: psycopg.Connection, code: str) -> dict | None:
     row = find(conn, code)
     if row is None:
         return None
-    _check(row)
+    _check(row, new_account=False)   # the Friends page: accounts that exist already
     c = _circle_info(conn, row["circle_id"])
     return {"id": c["id"], "name": c["name"], "owner_name": c["owner_name"], "members": c["members"],
             "default_scopes": [s for s in P.CIRCLE_SCOPES if s in set(c["default_scopes"])], "circle_code": True}
@@ -166,40 +183,48 @@ def _ready(conn, uid: int) -> bool:
 def redeem(conn: psycopg.Connection, uid: int, code: str, scopes=None) -> dict | None:
     """Use a circle code for `uid`. None = no circle code has this text (the caller tries its other kinds of codes).
     Returns {circle_id, name, new_account, joined, already}: joined False = waiting for consent (complete_pending).
-    `scopes`: what to share (Friends page join sheet); None = the circle's defaults. A pending account becomes active."""
+    `scopes`: what to share (Friends page join sheet); None = the circle's defaults. A pending account becomes active and
+    takes one of max_uses; an existing account takes none."""
     row = find(conn, code, lock=True)   # the row lock serialises everyone redeeming this code
     if row is None:
         return None
-    _check(row)
     if scopes is not None:
         scopes = store.clean_scopes(scopes)
     user = conn.execute("SELECT id, status FROM users WHERE id = %s FOR UPDATE", (uid,)).fetchone()
     if user is None or user["status"] == "disabled":
         raise store.FriendsError(403, "这个账号已停用")
+    new_account = user["status"] == "pending"
+    _check(row, new_account)
     cid = row["circle_id"]
     c = conn.execute("SELECT id, name, max_members FROM circles WHERE id = %s FOR UPDATE", (cid,)).fetchone()
     out = {"circle_id": cid, "name": c["name"], "new_account": False, "joined": False, "already": False}
     if conn.execute("SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s", (cid, uid)).fetchone():
         return {**out, "joined": True, "already": True}
-    prior = conn.execute("SELECT id, new_account FROM circle_code_uses WHERE code_id = %s AND user_id = %s",
+    prior = conn.execute("SELECT id, new_account, joined_at FROM circle_code_uses WHERE code_id = %s AND user_id = %s",
                          (row["id"], uid)).fetchone()
-    if prior is None:
-        if store.members_and_waiting(conn, cid) >= (c["max_members"] or P.MAX_MEMBERS):
-            raise store.FriendsError(409, f"这个圈子已满（最多 {c['max_members'] or P.MAX_MEMBERS} 人）")
-        if store._count_circles(conn, uid) + _pending_count(conn, user_id=uid) >= P.MAX_CIRCLES_PER_USER:
-            raise store.FriendsError(409, f"最多加入 {P.MAX_CIRCLES_PER_USER} 个圈子")
-        if conn.execute("UPDATE circle_codes SET uses = uses + 1 WHERE id = %s AND uses < max_uses RETURNING id",
-                        (row["id"],)).fetchone() is None:
+    if prior is not None and prior["joined_at"] is None:   # used before, still waiting for consent: same place
+        return {**out, "new_account": prior["new_account"],
+                "joined": bool(complete_pending(conn, uid, scopes=scopes, only_circle=cid))}
+    if prior is not None and scopes is None:
+        return {**out, "new_account": prior["new_account"]}  # left the circle: only the Friends page brings them back
+    if store.members_and_waiting(conn, cid) >= store.max_members(c):
+        raise store.FriendsError(409, f"这个圈子已满（最多 {store.max_members(c)} 人）")
+    if store._count_circles(conn, uid) + _pending_count(conn, user_id=uid) >= P.MAX_CIRCLES_PER_USER:
+        raise store.FriendsError(409, f"最多加入 {P.MAX_CIRCLES_PER_USER} 个圈子")
+    if prior is not None:   # left, and joins again from the Friends page: the old row, no new place
+        conn.execute("UPDATE circle_code_uses SET joined_at = NULL WHERE id = %s", (prior["id"],))
+        out["new_account"] = prior["new_account"]
+    else:
+        if new_account and conn.execute(
+                "UPDATE circle_codes SET uses = uses + 1 WHERE id = %s AND uses < max_uses RETURNING id",
+                (row["id"],)).fetchone() is None:
             raise store.FriendsError(410, _STATE_ERRORS["used_up"])
-        new_account = user["status"] == "pending"
         conn.execute("INSERT INTO circle_code_uses (code_id, user_id, new_account) VALUES (%s, %s, %s)",
                      (row["id"], uid, new_account))
         if new_account:
             conn.execute("UPDATE users SET status = 'active' WHERE id = %s", (uid,))
             conn.execute("INSERT INTO user_provisioning (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (uid,))
         out["new_account"] = new_account
-    else:
-        out["new_account"] = prior["new_account"]
     out["joined"] = bool(complete_pending(conn, uid, scopes=scopes, only_circle=cid))
     return out
 

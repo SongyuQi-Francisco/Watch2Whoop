@@ -341,11 +341,12 @@ body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N
 
    ```bash
    body-engine circle-code create --circle 12 --code 'Example Lifting Club' --max-uses 50 [--expires 2026-12-31 | --days 90] [--label 迎新周]
-   body-engine circle-code list [--circle 12]   # 状态（ok / disabled / expired / used_up）、已用 / 剩余、新开账号数、等待同意书的人数
-   body-engine circle-code uses --id 3          # 每次使用：谁、什么时候、是不是新账号、什么时候真正进圈、现在还在不在
+   body-engine circle-code list [--circle 12]   # 每个码一行：状态、「已开户 N / 50」「老用户加入 M」、等同意书的人数
+   body-engine circle-code uses --id 3          # 分「新开户」「老用户加入」两组：谁、什么时候、什么时候真正进圈、现在还在不在
    body-engine circle-code disable --id 3       # 停用；已经进圈的人不受影响
    ```
 
+   - **`--max-uses` 只限制新开户**：已经有账号的人用这个码加入不占次数，次数用满后老用户仍能加入，新用户会被拒（状态显示 `used_up`）。停用或过期后谁都不能用。
    - `--expires` 给日期时，到圈主时区那一天结束为止；也可以给完整的 ISO 时间。
    - 同一段文字同时只能有一个没停用的码；停用后可以用同样的文字再建一个。
 
@@ -353,4 +354,4 @@ body-engine invite-code revoke --code-id N     # 停掉某个人的邀请码（N
 
 隐私规则（不用管理员操作，代码里保证）：新用户用码注册后，**确认电子同意书之前不会进圈**，圈子里看不到他的名字和任何数据；同意书页面会写明要加入哪个圈子、共享什么；同意后才以圈子默认范围加入。之后他随时可以改共享范围或退出，退出后其他人立即看不到。码本身不替任何人同意共享。
 
-次数用完、码停用或过期时，注册页和 app 会直接提示（「这个圈子激活码已经用完了」等）；圈子满了提示「这个圈子已满」。
+新开户次数用完（只挡新用户）、码停用或过期时，注册页和 app 会直接提示（「这个圈子激活码已经用完了」等）；圈子满了提示「这个圈子已满」。
