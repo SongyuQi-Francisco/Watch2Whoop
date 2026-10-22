@@ -547,7 +547,7 @@ def test_training_and_meal_cards(client, world, setup, monkeypatch, rich):
 
 def test_auto_card_after_writes_once_per_day(client, world, setup, dsn, monkeypatch, rich):
     ids, tok = world
-    monkeypatch.setattr(cards, "auto_spec", lambda name, a: {"type": "metric", "date": a["occurred_at"][:10], "metric": "recovery",
+    monkeypatch.setattr(cards, "auto_spec", lambda name, a, *_: {"type": "metric", "date": a["occurred_at"][:10], "metric": "recovery",
                                                               "days": 7} if name == "add_event" else None)
 
     def ev(i, day):
@@ -563,6 +563,129 @@ def test_auto_card_after_writes_once_per_day(client, world, setup, dsn, monkeypa
         rows = c.execute("""SELECT call_id, card IS NOT NULL AS has FROM ai_tool_calls WHERE conversation_id = %s
                             ORDER BY id""", (evs[0][1]["id"],)).fetchall()
         assert [(r["call_id"], r["has"]) for r in rows] == [("a1", True), ("a2", False), ("a3", True)]
+
+
+# ---------------------------------------------------------------- cards v2 (ai/cards_food.py, flag jarvis_cards_v2)
+@pytest.fixture
+def v2(dsn, rich):
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG_V2, "all", actor="test")
+    yield
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG_V2, "off", actor="test")
+
+
+def _fake_day(monkeypatch, entries=True):
+    from body_engine.nutrition import daily
+    monkeypatch.setattr(daily, "nutrition", lambda conn, uid, start, end, include_entries=True, client=None: {
+        "days": [{"date": start.isoformat(), "logged": True, "calories": 1500.0, "protein_g": 90.0, "carbs_g": 150.0,
+                  "fat_g": 50.0, "saturated_fat_g": 12.0, "added_sugar_g": 8.0, "fiber_g": 20.0,
+                  "goal": {"name": "训练日", "day_type": "training", "calories": 2000, "protein_g": 150, "carbs_g": 200,
+                           "fat_g": 60, "sat_fat_max_g": 20, "added_sugar_max_g": 25, "fiber_min_g": None}}],
+        **({"entries": [{"id": "e1", "time": "12:30", "meal_type": "lunch", "food": "鸡胸肉", "quantity": 200, "unit": "g",
+                         "calories": 330.0, "protein_g": 62.0}]} if entries else {})})
+
+
+def test_v2_types_need_the_second_flag(client, world, setup, monkeypatch, rich):
+    ids, tok = world
+    _fake_day(monkeypatch)
+    FakeAdapter.script = [{"tool_calls": [{"id": "g1", "name": "show_card", "args": SC(type="goals")},
+                                          {"id": "m1", "name": "show_card", "args": SC(type="meal")}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "还差多少").text)
+    first = FakeAdapter.calls[0]
+    assert first["system"].endswith(cards.PROMPT) and cards.PROMPT_V2 not in first["system"]
+    got = [d["card"] for e, d in evs if e == "card"]
+    assert [c["type"] for c in got] == ["meal"] and "entry_actions" not in got[0]   # exactly as before
+    assert ("tool", {"name": "show_card", "status": "error"}) in evs
+
+
+def test_v2_diet_cards(client, world, setup, dsn, monkeypatch, v2):
+    ids, tok = world
+    from body_engine.assistant import meals, recipe_seed, recipes
+    _fake_day(monkeypatch)
+    with db(dsn) as c:
+        r = recipes.create_recipe(c, ids["A"], {
+            "name": "测试鸡胸饭", "slots": ["lunch"], "tags": ["鸡肉"], "prep_min": 10, "cook_min": 15, "servings": 2,
+            "steps": ["煎鸡胸", "装盘"], "ingredients": [recipe_seed.ingredient("鸡胸肉", 300), recipe_seed.ingredient("米（生）", 180)]},
+            sync=False)
+        c.execute("UPDATE recipe_meta SET image = 'https://example.com/x.jpg', last_cooked_on = '2026-10-20' WHERE id = %s",
+                  (r["id"],))
+        meals.create_template(c, ids["A"], "测试早餐", "breakfast", meals.FIXED_BREAKFAST["items"], False)
+    brief = {**{k: r[k] for k in ("id", "name", "favorite", "prep_min", "cook_min")}, "meal_kcal": 600, "meal_protein_g": 50,
+             "with_staple": True, "labels": [{"label": "常吃", "tone": "neutral"}], "image": "/app/x.webp"}
+    monkeypatch.setattr(recipes, "suggest", lambda conn, uid, day, slot: {
+        "date": day.isoformat(), "slot": slot or "lunch", "remaining": {"kcal": 500, "protein_g": 60},
+        "meal_target": {"kcal": 500, "protein_g": 60}, "suggestions": [brief]})
+    FakeAdapter.script = [{"tool_calls": [
+        {"id": "c1", "name": "show_card", "args": SC(type="goals")},
+        {"id": "c2", "name": "show_card", "args": SC(type="suggest", slot="lunch")},
+        {"id": "c3", "name": "show_card", "args": SC(type="recipe", id=r["id"])},
+        {"id": "c4", "name": "show_card", "args": SC(type="templates")},
+        {"id": "c5", "name": "show_card", "args": SC(type="recipe", id=999999)},
+        {"id": "c6", "name": "show_card", "args": SC(type="meal")}]}, {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "吃什么").text)
+    first = FakeAdapter.calls[0]
+    assert cards.PROMPT_V2 in first["system"] and FakeAdapter.calls[0]["tools"][-1] == cards.NAME
+    got = {d["card"]["type"]: d["card"] for e, d in evs if e == "card"}
+    assert set(got) == {"goals", "suggest", "recipe", "templates", "meal"}, evs
+    g = got["goals"]
+    assert g["totals"]["calories"] == 1500.0 and g["goal"]["calories"] == 2000 and g["name"] == "训练日"
+    sg = got["suggest"]["slots"][0]
+    assert sg["slot"] == "lunch" and sg["items"][0]["kcal"] == 600 and sg["items"][0]["image"] == "/app/x.webp"
+    assert {"kind": "send", "key": "more_meals"} in got["suggest"]["actions"]
+    rc = got["recipe"]
+    assert rc["id"] == r["id"] and rc["image"] is None   # a third-party image never reaches a card
+    assert rc["last_cooked_on"] == "2026-10-20"   # stored as jsonb: dates become ISO strings
+    assert rc["steps"] == 2 and [i["grams"] for i in rc["ingredients"]] == [150, 90]   # per serving
+    assert {"kind": "open", "page": "recipe"} in rc["actions"] and {"kind": "send", "key": "log_recipe"} in rc["actions"]
+    t = got["templates"]
+    assert t["items"][0]["name"] == "测试早餐" and t["items"][0]["logged"] is False
+    m = got["meal"]
+    assert m["entry_actions"] == ["portion", "delete"] and {"kind": "send", "key": "undo_meal"} not in m["actions"]
+    results = {x["id"]: x for x in FakeAdapter.calls[1]["history"][-1]["content"]}
+    assert results["c5"]["is_error"] and results["c3"]["content"].startswith("已显示食谱卡")
+    for a in [a for c in got.values() for a in c["actions"]]:   # only known pages and keys
+        assert (a["kind"] == "open" and a["page"] in cards.OPEN_PAGES) or (a["kind"] == "send" and a["key"] in cards.SEND_KEYS)
+
+
+def test_v2_shopping_card_and_auto_after_write(client, world, setup, dsn, v2):
+    ids, tok = world
+    FakeAdapter.script = [{"tool_calls": [{"id": "w1", "name": "add_shopping_items", "args": {
+        "week": None, "items": [{"name": "测试鸡蛋", "product_id": None, "qty": 12, "unit": "pcs", "note": None}]}}]},
+        {"text": "加好了"}]
+    evs = sse(chat(client, tok["A"], "清单加一盒鸡蛋").text)
+    got = [d["card"] for e, d in evs if e == "card"]
+    assert [c["type"] for c in got] == ["shopping"], evs
+    s = got[0]
+    assert s["progress"]["total"] >= 1 and any(i["name"] == "测试鸡蛋" and not i["bought"] for i in s["items"])
+    assert {"kind": "open", "page": "food.shopping"} in s["actions"]
+
+
+def test_v2_read_auto_cards_only_for_the_fallback(dsn, world, monkeypatch, v2):
+    ids, _ = world
+    from body_engine.ai import chat as chat_mod
+    _fake_day(monkeypatch)
+    reads = [(None, "get_nutrition_goals", {"date": None}), (None, "get_nutrition_goals", {"date": None}),
+             (None, "get_nutrition", {"start": "2026-10-01", "end": "2026-10-07"})]
+    with db(dsn) as c:
+        assert list(chat_mod._auto_cards(c, ids["A"], reads, v2=True, reads=False)) == []
+        got = list(chat_mod._auto_cards(c, ids["A"], reads, v2=True, reads=True))
+        assert [e["data"]["card"]["type"] for e in got] == ["goals"]   # once; a week of nutrition gets no card
+        seen = {cards.spec_key({"type": "goals", "date": None})}   # already shown by the model this turn
+        assert list(chat_mod._auto_cards(c, ids["A"], reads, v2=True, reads=True, seen=seen)) == []
+        assert list(chat_mod._auto_cards(c, ids["A"], reads, v2=False, reads=True)) == []   # v2 off: as before
+
+
+def test_v2_meal_card_after_a_log_can_undo(dsn, world, monkeypatch, v2):
+    ids, _ = world
+    from body_engine.ai import chat as chat_mod
+    _fake_day(monkeypatch)
+    with db(dsn) as c:
+        got = list(chat_mod._auto_cards(c, ids["A"], [(0, "log_food", {"items": [{"date": None}]})], v2=True))
+        assert {"kind": "send", "key": "undo_meal"} in got[0]["data"]["card"]["actions"]
+        got = list(chat_mod._auto_cards(c, ids["A"], [(0, "undo_sparky_entry", {"kind": "food", "date": None})], v2=True))
+        card = got[0]["data"]["card"]
+        assert card["type"] == "meal" and {"kind": "send", "key": "undo_meal"} not in card["actions"]
 
 
 def test_subscription_users_get_redirect(client, world, setup, monkeypatch):

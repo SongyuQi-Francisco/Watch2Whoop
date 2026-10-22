@@ -9,13 +9,18 @@ The model never writes HTML or chart data. A card is a small JSON block the serv
 Cards go to the page as an SSE `card` event and are stored on their ai_tool_calls row (column card, migration 595), so a
 reopened conversation draws them again. The model gets one line back (summary()), so it does not repeat the card in words.
 
+Behind the second flag jarvis_cards_v2 (needs jarvis_rich too) the tool takes more types, built in cards_food.py (diet) and
+the meal card gets per-entry buttons; with it off, the tool, the prompt and every card are exactly as before.
+
 Payload: {"v": 1, "type": ..., "actions": [...]}. Actions are either
   {"kind": "open", "page": one of OPEN_PAGES}                       -> the page goes there (no URL ever comes from the model);
   {"kind": "send", "key": one of SEND_KEYS}                         -> the page sends its own (translated) text as the user's message;
   {"kind": "send", "label": ..., "text": ...}                       -> buttons of an `actions` card, written by the model.
 Data of a card is a snapshot from when it was shown; the pages it opens show the live state.
 """
-from datetime import date, timedelta
+import json
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 import psycopg
 
@@ -23,10 +28,13 @@ from .. import queries, sparky_client
 from ..assistant.tools import Tool
 from ..rollout import flags
 from ..toolspec import nullable, schema
+from . import cards_food
 
 NAME = "show_card"
 FLAG = "jarvis_rich"
+FLAG_V2 = "jarvis_cards_v2"
 TYPES = ("training", "meal", "metric", "sleep", "actions", "muscle")
+TYPES_V2 = ("goals", "suggest", "recipe", "recipes", "templates", "shopping")
 # metric -> (source, column / metric name, unit, digits)
 METRICS = {
     "recovery": ("scores", "recovery", "%", 0),
@@ -36,8 +44,12 @@ METRICS = {
     "rhr": ("metrics", "resting_heart_rate", "bpm", 0),
     "weight": ("weight", "body_mass", "kg", 1),
 }
-OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep", "profile")   # sleep: that night's sleep detail page; profile: 个人资料
-SEND_KEYS = ("adjust_training", "next_meal", "explain_trend", "analyze_muscles")
+OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep", "profile",   # sleep: that night's sleep detail page; profile: 个人资料
+              "food.recipes", "food.shopping", "recipe")                          # v2; recipe: the card's recipe sheet (its id)
+SEND_KEYS = ("adjust_training", "next_meal", "explain_trend", "analyze_muscles",
+             "more_meals", "log_recipe", "recipe_steps", "shopping_plan", "undo_meal")   # v2
+# v2 per-row buttons the page draws on a card's rows (their text is built by the page from the row's own fields)
+ENTRY_ACTIONS = ("portion", "delete")
 MAX_DAYS, DEFAULT_DAYS = 90, 14
 MAX_BUTTONS, MAX_LABEL, MAX_TEXT = 4, 24, 200
 MAX_EXERCISES, MAX_ENTRIES = 12, 20
@@ -56,6 +68,13 @@ PROMPT = (
     "文字只说结论和下一步。"
 )
 
+PROMPT_V2 = (
+    "show_card 的参数：date=YYYY-MM-DD（sleep 是醒来那天），range 给 muscle，metric+days 给 metric，slot 给 suggest / recipes，"
+    "id 给 recipe，buttons 给 actions。饮食相关还可以：吃了多少 / 离目标还差多少 → goals（热量环 + 蛋白环）；推荐吃什么 → suggest（slot，all=全天每餐）；"
+    "讲一道菜 → recipe（id=食谱 id）；有哪些菜 → recipes（slot）；快捷记餐模板 → templates；采购清单 → shopping。"
+    "讲解某个数值或某天的情况时，先发卡片，再用两三句话解释。"
+)
+
 TOOL = Tool(
     name=NAME,
     description="给用户显示一张卡片。training=某天训练；muscle=肌肉图（range）；meal=饮食；"
@@ -71,6 +90,22 @@ TOOL = Tool(
     handler=lambda conn, uid, a: None,   # dispatched by ai/chat.py (build), never through run_tool
     scope="", group="ui",
 )
+TOOL_V2 = Tool(
+    name=NAME,
+    description="给用户显示一张卡片，数据由系统按用户自己的数据生成；各 type 用法见系统提示「卡片」一节。",
+    input_schema=schema({
+        "type": {"type": "string", "enum": [*TYPES, *TYPES_V2]},
+        "date": nullable("string", "YYYY-MM-DD，null=今天"),
+        "metric": nullable("string", None, enum=[*METRICS, None]),
+        "days": nullable("integer", "metric 的天数，7–90，null=14"),
+        "range": nullable("string", None, enum=["today", "week", "last7", None]),
+        "slot": nullable("string", None, enum=[*cards_food.SLOTS_ALL, None]),
+        "id": nullable("integer", None),
+        "buttons": nullable("array", "2–4 个", items=schema({"label": {"type": "string"}, "text": {"type": "string"}})),
+    }),
+    handler=lambda conn, uid, a: None,
+    scope="", group="ui",
+)
 
 # write tool -> the card it shows after a successful run: (type, how to find the date in its args)
 AUTO = {
@@ -81,10 +116,46 @@ AUTO = {
     "log_workout": ("training", lambda a: a.get("date")),
     "log_weight": ("metric", lambda a: a.get("date")),
 }
+# v2 only: (type, the show_card arguments from the tool's args). Writes:
+AUTO_V2 = {
+    "undo_sparky_entry": ("meal", lambda a: {"date": a.get("date")} if a.get("kind") == "food" else None),
+    "undo_meal_log": ("meal", lambda a: {}),
+    "combine_food_entries": ("meal", lambda a: {"date": a.get("date")}),
+    "set_nutrition_goals": ("goals", lambda a: {}),
+    "create_meal_template": ("templates", lambda a: {}),
+    "update_meal_template": ("templates", lambda a: {}),
+    "update_recipe": ("recipe", lambda a: {"id": a.get("recipe_id")}),
+    "generate_shopping_list": ("shopping", lambda a: {"date": a.get("week")}),
+    "add_shopping_items": ("shopping", lambda a: {"date": a.get("week")}),
+    "mark_bought": ("shopping", lambda a: {}),
+}
+# ... and reads, for the fallback AI only (a weak model that rarely calls show_card itself; ai/chat.py): the card of what it
+# just looked up. A strong model gets the prompt instead, so its reads (often several days, for its own analysis) stay quiet.
+READ_AUTO = {
+    "get_nutrition": ("meal", lambda a: {"date": a.get("end")} if a.get("end") and a.get("start") in (None, a.get("end")) else None),
+    "get_nutrition_goals": ("goals", lambda a: {"date": a.get("date")}),
+    "suggest_meals": ("suggest", lambda a: {"date": a.get("date"), "slot": a.get("slot")}),
+    "get_recipe": ("recipe", lambda a: {"id": a.get("recipe_id")}),
+    "list_recipes": ("recipes", lambda a: {"slot": a.get("slot")}),
+    "get_meal_templates": ("templates", lambda a: {}),
+    "get_shopping_list": ("shopping", lambda a: {"date": a.get("week")}),
+}
 
 
 def enabled(conn: psycopg.Connection, user_id: int) -> bool:
     return flags.enabled(conn, user_id, FLAG)
+
+
+def v2_enabled(conn: psycopg.Connection, user_id: int) -> bool:
+    return enabled(conn, user_id) and flags.enabled(conn, user_id, FLAG_V2)
+
+
+def tool(v2: bool) -> Tool:
+    return TOOL_V2 if v2 else TOOL
+
+
+def prompt(v2: bool) -> str:
+    return f"{PROMPT}\n{PROMPT_V2}" if v2 else PROMPT
 
 
 def _day(conn, uid: int, value) -> date:
@@ -112,16 +183,21 @@ def _training(conn, uid: int, day: date) -> dict:
             "actions": actions}
 
 
-def _meal(conn, uid: int, day: date) -> dict:
+def _meal(conn, uid: int, day: date, v2: bool = False, auto: bool = False) -> dict:
     from ..nutrition import daily
     n = daily.nutrition(conn, uid, day, day, include_entries=True)
     d = n["days"][0]
     goal = d.get("goal") or {}
-    return {"type": "meal", "date": day.isoformat(), "logged": d["logged"],
+    card = {"type": "meal", "date": day.isoformat(), "logged": d["logged"],
             "totals": {k: d.get(k) for k in MACROS},
             "goal": {k: goal.get(k) for k in MACROS} if goal else None,
             "entries": [{k: e.get(k) for k in ENTRY_KEYS} for e in n.get("entries") or []][:MAX_ENTRIES],
             "actions": [{"kind": "open", "page": "food"}, {"kind": "send", "key": "next_meal"}]}
+    if v2:   # tap an entry: change its portion / delete it (the page sends a message naming the entry; deleting asks to confirm)
+        card["entry_actions"] = list(ENTRY_ACTIONS) if any(e.get("id") for e in card["entries"]) else []
+        if auto and d["logged"]:   # the card right after a log: undo what was just logged
+            card["actions"].append({"kind": "send", "key": "undo_meal"})
+    return card
 
 
 def _series(conn, uid: int, metric: str, start: date, end: date) -> dict[date, float]:
@@ -199,41 +275,87 @@ def _actions(buttons) -> dict:
     return {"type": "actions", "actions": out}
 
 
-def build(conn: psycopg.Connection, uid: int, a: dict) -> dict:
-    """The card for show_card's arguments (the user's own data only). ValueError / PermissionError / SparkyError on failure."""
+def _build_v2(conn, uid: int, kind: str, a: dict) -> dict:
+    if kind == "goals":
+        return cards_food.goals(conn, uid, _day(conn, uid, a.get("date")))
+    if kind == "suggest":
+        return cards_food.suggest(conn, uid, _day(conn, uid, a.get("date")), a.get("slot"))
+    if kind == "recipe":
+        return cards_food.recipe(conn, uid, a.get("id"))
+    if kind == "recipes":
+        return cards_food.recipe_list(conn, uid, a.get("slot"))
+    if kind == "templates":
+        return cards_food.templates(conn, uid)
+    return cards_food.shopping(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
+
+
+def _jsonable(v):
+    if isinstance(v, (date, datetime)):
+        return v.isoformat()
+    if isinstance(v, Decimal):
+        return float(v)
+    raise TypeError(f"{type(v).__name__} in a card")
+
+
+def plain(card: dict) -> dict:
+    """The card as plain JSON (dates as ISO strings, decimals as floats): it is stored as jsonb and sent as an SSE event."""
+    return json.loads(json.dumps(card, default=_jsonable))
+
+
+def build(conn: psycopg.Connection, uid: int, a: dict, v2: bool = False, auto: bool = False) -> dict:
+    """The card for show_card's arguments (the user's own data only). ValueError / PermissionError / SparkyError on failure.
+    v2: the jarvis_cards_v2 types and buttons; auto: the card follows a write (cards.AUTO), not a show_card call."""
     kind = a.get("type")
-    if kind not in TYPES:
-        raise ValueError(f"type 只能是 {' / '.join(TYPES)}")
-    if kind == "actions":
+    types = (*TYPES, *TYPES_V2) if v2 else TYPES
+    if kind not in types:
+        raise ValueError(f"type 只能是 {' / '.join(types)}")
+    if kind in TYPES_V2:
+        card = _build_v2(conn, uid, kind, a)
+    elif kind == "actions":
         card = _actions(a.get("buttons"))
     elif kind == "training":
         card = _training(conn, uid, _day(conn, uid, a.get("date")))
     elif kind == "meal":
-        card = _meal(conn, uid, _day(conn, uid, a.get("date")))
+        card = _meal(conn, uid, _day(conn, uid, a.get("date")), v2, auto)
     elif kind == "muscle":
         card = _muscle(conn, uid, a.get("range"))
     elif kind == "sleep":
         card = _sleep(conn, uid, _day(conn, uid, a.get("date")) if a.get("date") else None)
     else:
         card = _metric(conn, uid, a.get("metric"), _day(conn, uid, a.get("date")), a.get("days"))
-    return {"v": 1, **card}
+    return plain({"v": 1, **card})
 
 
-def auto_spec(tool: str, args: dict) -> dict | None:
-    """show_card arguments for the card a successful write tool gets, or None."""
-    if tool not in AUTO:
+def auto_spec(tool: str, args: dict, v2: bool = False, reads: bool = False) -> dict | None:
+    """show_card arguments for the card a successful write tool gets (v2: AUTO_V2 too; reads: READ_AUTO too), or None."""
+    if tool in AUTO:
+        kind, when = AUTO[tool]
+        try:
+            day = when(args or {})
+        except (AttributeError, TypeError, IndexError):
+            day = None
+        return {"type": kind, "date": day, **({"metric": "weight", "days": 30} if kind == "metric" else {})}
+    table = {**AUTO_V2, **(READ_AUTO if reads else {})} if v2 else {}
+    if tool not in table:
         return None
-    kind, when = AUTO[tool]
+    kind, spec = table[tool]
     try:
-        day = when(args or {})
-    except (AttributeError, TypeError, IndexError):
-        day = None
-    return {"type": kind, "date": day, **({"metric": "weight", "days": 30} if kind == "metric" else {})}
+        extra = spec(args or {})
+    except (AttributeError, TypeError):
+        extra = {}
+    return None if extra is None else {"type": kind, "date": None, **extra}
+
+
+def spec_key(a: dict) -> tuple:
+    """What makes two cards the same within a turn (show_card arguments or an automatic spec)."""
+    return tuple((a or {}).get(k) for k in ("type", "date", "metric", "id", "slot", "range"))
 
 
 def summary(card: dict) -> str:
     """The tool result the model gets (AI-facing): what is on screen, so it can refer to it without repeating it."""
     t = card["type"]
+    if t in TYPES_V2:
+        return cards_food.summary(card)
     if t == "actions":
         return f"已显示 {len(card['actions'])} 个按钮；用户点了会作为一条新消息发回。"
     if t == "training":

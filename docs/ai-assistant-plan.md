@@ -433,6 +433,12 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **图片**：照片 / 截图理解照旧（识别后 `log_food` 等），写入成功自动附卡，用户直接在卡上看到结果、点「打开饮食」核对。
 - **存储**：卡片存在 `ai_tool_calls.card`，`GET /v1/assistant/conversations/{id}` 的每条消息带 `cards`，断线重连（resync）时重画。卡片是显示时的快照，点进去的页面是实时的。
 - **模型拿到什么**：工具结果只给一句摘要（「已显示 10-22 饮食卡：1850 kcal / 目标 2000…」），不重复卡片数据，省 token。
+- **第二版：所有模块（2026-10-23，T0；`ai/cards_food.py`，灰度开关 `jarvis_cards_v2`，要 `jarvis_rich` 也开着）**。开关关着时工具、提示、每张卡都和上面一样；开着时 `show_card` 换成 `cards.TOOL_V2`（更多 type，加 `slot` / `id` 参数；各 type 的用法写在提示 `cards.PROMPT_V2` 里，工具描述只有一句，工具预算不变）。
+  - 饮食（第一个 PR）：`goals`（某天热量环 + 蛋白环，碳水 / 脂肪 / 饱和脂肪上限 / 添加糖上限 / 纤维进度条，数据来自 `nutrition/daily`）、`suggest`（`suggest_meals` 的推荐，`slot=all` 是全天每餐计划；每道菜是饮食页自己的 `recipeCard`，下面「记下这餐」）、`recipe`（一道菜：每份宏量、每份食材克数、步数、约束标签；只显示同源图片 `/…`，第三方图片地址不进卡片；「打开食谱」打开饮食页上这道菜的弹层，在那里改份数 / 餐次再记）、`recipes`（食谱列表，按 slot）、`templates`（快捷记餐模板，「记一次」）、`shopping`（本周采购清单：未买在前、已买划掉、进度、估价、警告）。
+  - `meal` 卡在 v2 里带 `entry_actions`：点一条出现「×0.5 / ×1.5 / ×2 / 删除」；写工具后的自动卡多一个「撤销」。
+  - 行内按钮也是 `send`：页面用这一行自己的字段（服务器给的名字和 id）拼一句话发回 AI，例如「按快捷模板「固定早餐」记一次（模板 id 3）」「删掉 2026-10-22 记的「鸡胸肉饭」（id e1）」；删除 / 撤销照旧走确认卡（`ALWAYS_CONFIRM`）。模型给不了 URL、HTML 或数字。
+  - 自动卡：写工具多了 `cards.AUTO_V2`（`set_nutrition_goals` → goals，`create/update_meal_template` → templates，`update_recipe` → recipe，`add_shopping_items` / `generate_shopping_list` / `mark_bought` → shopping，`undo_sparky_entry`（饮食）/ `undo_meal_log` / `combine_food_entries` → meal）；**读工具**的 `cards.READ_AUTO`（`get_nutrition`（单日）、`get_nutrition_goals`、`suggest_meals`、`get_recipe`、`list_recipes`、`get_meal_templates`、`get_shopping_list`）**只给托底 AI**：弱模型很少自己调 show_card，查了什么就自动出那张卡；强模型常为了分析查好几天，不自动出卡，靠提示自己决定。一轮对话里同一张卡（type + date + id + slot …）只出一次，模型自己发过的也不再自动出。
+  - 图标：只用 Lucide（`utensils` 是没有图片的食谱占位、`check` 是已买），内联路径，记在 `THIRD_PARTY_NOTICES.md`。
 
 ### 9.20 页内对话联网：服务器的 web_search / web_fetch（2026-10-22，#150；`ai/web/`、迁移 `600_ai_web.sql`，灰度开关 `ai_web`）
 **问题**：采购（查价 → `save_product` / `record_store_prices` → 清单）靠 AI 自己联网。用 Claude / ChatGPT 连接器（MCP）和 Anthropic / OpenAI / Gemini 自己 key 的人有联网能力；托底 AI（管理员的 DeepSeek）和 `openai_compatible` 没有，于是永远用不了采购清单。
