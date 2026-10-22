@@ -575,6 +575,8 @@ I18N.addEn({
   "一次最多 {n} 张": "Up to {n} images at a time",
   "不可用": "Unavailable",
   "不要": "No",
+  "你好，我是你的身体管家": "Hi, I'm Jarvis",
+  "问我今天怎么样，或者告诉我吃了什么、练了什么、哪里不舒服，我帮你记下来。": "Ask me how you're doing today, or tell me what you ate, how you trained or what hurts, and I'll log it.",
   "你好，我是你的身体管家。问我今天怎么样，或者告诉我吃了什么、练了什么、哪里不舒服，我帮你记下来。": "Hi, I'm Jarvis. Ask me how you're doing today, or tell me what you ate, how you trained or what hurts, and I'll log it.",
   "例：deepseek-chat、qwen-plus、llama3.1": "e.g. deepseek-chat, qwen-plus, llama3.1",
   "已停用": "Disabled",
