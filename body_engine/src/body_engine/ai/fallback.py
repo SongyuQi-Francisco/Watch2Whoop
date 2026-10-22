@@ -8,7 +8,9 @@ Limits (numbers and sources in fallback_params.py):
   cost = DeepSeek's CNY price list at the peak price, from the call's cache hit / miss / output tokens, stored in ai_usage.cost_cny;
 - before every model call: the worst case of this call (whole prompt as cache miss + max output) must fit in what is left;
 - per person per minute / per day model-call limits; short system prompt (system_prompt_lite.md), a subset of tools, smaller max_tokens;
-- the DeepSeek account balance is checked (at most every BALANCE_MAX_AGE_S); below BALANCE_STOP_CNY the fallback pauses for everyone.
+- the DeepSeek account balance is checked (at most every BALANCE_MAX_AGE_S); below BALANCE_STOP_CNY the fallback pauses for everyone;
+- quota cards (quota_cards.py, flag ai_cards): a reset card clears this month's used allowance, an extend card adds to it
+  (allowance()); they never get past the pause above.
 Privacy: a separate opt-in consent (ai_fallback_consents) before the first use, because the data goes to DeepSeek (servers in China).
 Tools only ever read the caller's own data: the `user` argument is removed from the schemas and forced to "me" (no shares).
 The key file is read only when needed and never logged or returned.
@@ -172,11 +174,30 @@ def set_quota(conn: psycopg.Connection, user_id: int, cny: float | None, note: s
                     updated_at = now()""", (user_id, cny, note))
 
 
-def month_spent_cny(conn: psycopg.Connection, user_id: int) -> float:
-    """What the admin paid for this person this month: fallback model calls + server web searches (ai/web, issue #150)."""
+def month_spent_cny(conn: psycopg.Connection, user_id: int, since: datetime | None = None) -> float:
+    """What the admin paid for this person this month: fallback model calls + server web searches (ai/web, issue #150).
+    since: count only from then (a reset card used this month, allowance())."""
     return float(conn.execute("""SELECT coalesce(sum(cost_cny), 0) AS c FROM ai_usage
                                  WHERE user_id = %s AND (kind = %s OR purpose IN ('web_search', 'web_fetch')) AND at >= %s""",
-                              (user_id, KIND, providers.month_start(conn, user_id))).fetchone()["c"])
+                              (user_id, KIND, since or providers.month_start(conn, user_id))).fetchone()["c"])
+
+
+def allowance(conn: psycopg.Connection, user_id: int) -> dict:
+    """This month's allowance with the quota cards used this month (quota_cards.py): quota_cny = monthly quota + extend
+    cards, spent_cny = spend since the last reset card (or the month start). base_cny = the monthly quota alone."""
+    from . import quota_cards
+    start = providers.month_start(conn, user_id)
+    base = quota_cny(conn, user_id)
+    eff = quota_cards.month_effects(conn, user_id, start)
+    since = max(start, eff["reset_at"]) if eff["reset_at"] else start
+    return {"base_cny": base, "extended_cny": eff["extended_cny"], "quota_cny": base + eff["extended_cny"],
+            "spent_cny": month_spent_cny(conn, user_id, since), "reset_at": eff["reset_at"]}
+
+
+def cards_on(conn: psycopg.Connection, user_id: int) -> bool:
+    from ..rollout import flags
+    from .quota_cards_params import FLAG
+    return flags.enabled(conn, user_id, FLAG)
 
 
 def reset_on(conn: psycopg.Connection, user_id: int) -> date:
@@ -298,22 +319,31 @@ def paused_reason(conn: psycopg.Connection, refresh: bool = True) -> tuple[str, 
 def summary(conn: psycopg.Connection, user_id: int, refresh: bool = False) -> dict:
     """For the Today page (/v1/web/me ai, AI settings): short numbers + whether it can be used now and why not."""
     from ..profile import consent as main_consent
-    spent, quota = month_spent_cny(conn, user_id), quota_cny(conn, user_id)
+    a = allowance(conn, user_id)
+    spent, quota, base = a["spent_cny"], a["quota_cny"], a["base_cny"]
     c = consent(conn, user_id)
+    cards = None
+    if cards_on(conn, user_id):
+        from . import quota_cards
+        cards = quota_cards.counts(conn, user_id)
     out = {"mode": "fallback", "kind": KIND, "display_name": display_name(), "model": fp.MODEL,
            "status": "active", "vision": fp.VISION, "spent_cny": round(spent, 4), "quota_cny": quota,
            "remaining_cny": round(max(quota - spent, 0), 4), "reset_on": reset_on(conn, user_id).isoformat(),
            "remaining_pct": max(0, min(100, round(100 * (quota - spent) / quota))) if quota else 0,   # what users see
            "consent": c is not None, "consent_version": CONSENT_VERSION,
-           "consented_at": c.get("accepted_at") if c else None}
+           "consented_at": c.get("accepted_at") if c else None,
+           **({"cards": {k: cards[k] for k in ("reset", "extend", "total")}} if cards is not None else {})}
+    has_cards = bool(cards and cards["total"])
     reason = paused_reason(conn, refresh)
     if reason is None and main_consent.needs_consent(conn, user_id):
         reason = ("needs_consent", L("先在今天页同意健康数据使用同意书", "First accept the health data consent on the Today page"))
-    if reason is None and quota <= 0:
+    if reason is None and base <= 0:
         reason = ("fallback_off", L("你的账号没有 Jarvis 额度", "Your account has no Jarvis allowance"))
     if reason is None and spent >= quota:
-        reason = ("quota", L(f"Jarvis 本月的额度用完了，{out['reset_on'][5:]} 重置",
-                             f"Jarvis has used up this month's allowance; it resets on {out['reset_on']}"))
+        reason = ("quota", L(f"Jarvis 本月的额度用完了，可以用一张额度卡，或等 {out['reset_on'][5:]} 重置",
+                             f"Jarvis has used up this month's allowance; use an allowance card or wait until {out['reset_on']}")
+                  if has_cards else L(f"Jarvis 本月的额度用完了，{out['reset_on'][5:]} 重置",
+                                      f"Jarvis has used up this month's allowance; it resets on {out['reset_on']}"))
     if reason is None and c is None:
         reason = ("fallback_consent", L("第一次用 Jarvis 要先同意", "Agree to the terms before using Jarvis for the first time"))
     out["available"] = reason is None
@@ -333,7 +363,7 @@ def require_available(conn: psycopg.Connection, user_id: int, need_quota: bool =
 
 def _quota_extra(s: dict) -> dict:
     return {"spent_cny": s["spent_cny"], "quota_cny": s["quota_cny"], "remaining_cny": s["remaining_cny"],
-            "remaining_pct": s["remaining_pct"], "reset_on": s["reset_on"]}
+            "remaining_pct": s["remaining_pct"], "reset_on": s["reset_on"], **({"cards": s["cards"]} if "cards" in s else {})}
 
 
 def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[dict], tool_list=None) -> tuple[float, float]:
@@ -345,16 +375,18 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
         raise ChatError(s["reason"], s["message"], status=409)
     spent, quota = s["spent_cny"], s["quota_cny"]
     extra = _quota_extra(s)
+    card = (L("可以用一张额度卡，或等 ", "use an allowance card or wait: ")
+            if s.get("cards", {}).get("total") else "")
     if spent >= quota:
-        raise ChatError("quota", L(f"Jarvis 本月的额度用完了，{s['reset_on'][5:]} 重置；"
+        raise ChatError("quota", L(f"Jarvis 本月的额度用完了，{card}{s['reset_on'][5:]} 重置；"
                                    "也可以在「我 → AI 设置」接入自己的 AI",
-                                   f"Jarvis has used up this month's allowance; it resets on {s['reset_on']}. "
+                                   f"Jarvis has used up this month's allowance; {card}it resets on {s['reset_on']}. "
                                    "You can also connect your own AI in Me → AI settings"), status=402, **extra)
     if estimate_call_cny(system, history, tools() if tool_list is None else tool_list) > quota - spent:
-        raise ChatError("quota", L(f"Jarvis 本月剩下的额度不够再问一轮，{s['reset_on'][5:]} 重置；"
+        raise ChatError("quota", L(f"Jarvis 本月剩下的额度不够再问一轮，{card}{s['reset_on'][5:]} 重置；"
                                    "也可以在「我 → AI 设置」接入自己的 AI",
                                    f"What is left of Jarvis's allowance this month is not enough for another round; "
-                                   f"it resets on {s['reset_on']}. You can also connect your own AI in Me → AI settings"),
+                                   f"{card}it resets on {s['reset_on']}. You can also connect your own AI in Me → AI settings"),
                         status=402, **extra)
     if _calls_since(conn, user_id, _now() - timedelta(minutes=1)) >= fp.RATE_PER_MINUTE:
         raise ChatError("rate_limit", L("问得太快了，歇一分钟再问", "Too many questions at once; wait a minute"), status=429)
@@ -365,18 +397,27 @@ def precheck(conn: psycopg.Connection, user_id: int, system: str, history: list[
 
 # ---------------------------------------------------------------- admin
 def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
-    """For body-engine ai-fallback status and the Ali doctor: global switch, balance, this month per user."""
+    """For body-engine ai-fallback status and the Ali doctor: global switch, balance, this month per user.
+    month_remaining_cny ("本月最多还会花") = what eligible users may still spend this month: the rest of their allowance
+    (with the cards used this month) + the most their unused quota cards can add (quota_cards.max_extra_cny)."""
+    from . import quota_cards
     st = refresh_balance(conn, force=refresh) if read_key() else state(conn)
     users = []
-    for u in conn.execute("SELECT id, display_name, role FROM users ORDER BY id"):
+    for u in conn.execute("SELECT id, display_name, role FROM users ORDER BY id").fetchall():
         spent, quota = month_spent_cny(conn, u["id"]), quota_cny(conn, u["id"])
+        a = allowance(conn, u["id"])
+        left = max(a["quota_cny"] - a["spent_cny"], 0)
+        cards = quota_cards.counts(conn, u["id"])
         n = conn.execute("SELECT count(*) AS n, coalesce(sum(input_tokens + cache_read_tokens), 0) AS i, "
                          "coalesce(sum(output_tokens), 0) AS o FROM ai_usage WHERE user_id = %s AND kind = %s AND at >= %s",
                          (u["id"], KIND, providers.month_start(conn, u["id"]))).fetchone()
         from .choice import effective
         e = effective(conn, u["id"])
         users.append({"user_id": u["id"], "name": u["display_name"], "role": u["role"], "spent_cny": round(spent, 4),
-                      "quota_cny": quota, "calls": n["n"], "input_tokens": int(n["i"]), "output_tokens": int(n["o"]),
+                      "quota_cny": quota, "allowance_cny": round(a["quota_cny"], 4), "left_cny": round(left, 4),
+                      "cards_reset": cards["reset"], "cards_extend": cards["extend"], "cards_extend_cny": cards["extend_cny"],
+                      "cards_max_cny": quota_cards.max_extra_cny(conn, u["id"], a["quota_cny"]) if quota > 0 else 0.0,
+                      "calls": n["n"], "input_tokens": int(n["i"]), "output_tokens": int(n["o"]),
                       "consent": consent(conn, u["id"]) is not None,
                       "uses": e["provider"]["kind"] if e["source"] == "provider" else e["source"]})
     eligible = [u for u in users if u["uses"] == "fallback" and u["quota_cny"] > 0]
@@ -387,6 +428,7 @@ def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
             "balance_cny": float(bal) if bal is not None else None, "balance_checked_at": st.get("balance_checked_at"),
             "balance_error": st.get("balance_error"),
             "month_spent_cny": round(sum(u["spent_cny"] for u in users), 4),
-            "month_remaining_cny": round(sum(max(u["quota_cny"] - u["spent_cny"], 0) for u in eligible), 4),
+            "month_remaining_cny": round(sum(u["left_cny"] + u["cards_max_cny"] for u in eligible), 4),
+            "month_cards_max_cny": round(sum(u["cards_max_cny"] for u in eligible), 4),
             "eligible_users": len(eligible), "stop_cny": fp.BALANCE_STOP_CNY, "warn_cny": fp.BALANCE_WARN_CNY,
             "topup_url": fp.TOPUP_URL, "model": fp.MODEL, "price_source": fp.PRICE_SOURCE, "users": users}

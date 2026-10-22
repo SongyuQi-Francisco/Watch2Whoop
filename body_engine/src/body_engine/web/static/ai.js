@@ -4,6 +4,7 @@
    3. "AI settings" (「AI 设置」) on the Me page: BodyAI.openSettings(), BodyAI.settingsValue()
    Endpoints: /v1/users/me/ai-providers, /v1/users/me/ai-tokens, POST /v1/assistant/chat (SSE), POST /v1/assistant/chat/confirm (SSE),
    /v1/users/me/ai-fallback (+ /consent): the fallback AI (admin's DeepSeek, CNY quota) for people without their own AI; opt-in consent sheet first.
+   /v1/users/me/ai-cards (+ /{id}/use): Jarvis allowance cards (#182, flag ai_cards): count next to the allowance, the card list, use after a confirm.
    The API key is sent to the backend only once (afterwards only the last 4 characters are visible); write actions in a chat run only after tapping "Confirm" (「确认」) on the confirmation card. */
 (() => {
   "use strict";
@@ -26,7 +27,7 @@
   function settingsValue() {
     const a = C.ai || {};
     if (a.mode === "none" || !a.mode) return tr("jarvis.unset");
-    if (a.mode === "fallback") return `Jarvis · ${quotaText(a)}`;
+    if (a.mode === "fallback") return `Jarvis · ${quotaText(a)}${cardCount(a) ? ` · ${cardsText(a)}` : ""}`;
     if (a.mode === "butler") return tr("身体管家");
     return a.mode === "api" || /订阅|subscription/i.test(a.display_name || "") ? `${a.display_name}` : tr("{name}（订阅）", { name: a.display_name });   // i18n-ok (matches the server's name)
   }
@@ -77,7 +78,7 @@
         <span class="small muted" style="display:block;font-weight:400">${subLine(p)}</span></span></button>`;
     const f = d.fallback;
     const fbRow = f ? `<button class="item" id="ai-fb"><span class="row-title">${esc(f.display_name)}${fbBadge(f)}
-        <span class="small muted" style="display:block;font-weight:400">${esc(tr("本月{quota} · {day} 重置", { quota: quotaText(f), day: mmdd(f.reset_on) }))}</span></span></button>` : "";
+        <span class="small muted" style="display:block;font-weight:400">${esc(tr("本月{quota} · {day} 重置", { quota: quotaText(f), day: mmdd(f.reset_on) }))}${cardCount(f) ? ` · ${esc(cardsText(f))}` : ""}</span></span></button>` : "";
     C.openSheet(tr("me.aiSettings"), `
       <div class="small muted ai-sec">${esc(tr("Jarvis 用"))}</div>
       ${ch.options.length ? `<div class="group" role="radiogroup">${optionRows(ch.options)}</div>` : `<div class="group"><div class="item"><span class="row-title faint">${esc(tr("jarvis.unset"))}</span></div></div>`}
@@ -241,11 +242,13 @@
     const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
     C.openSheet("Jarvis", `
       ${kv(tr("本月剩余"), `${leftPct(f) ?? "—"}%`)}${kv(tr("重置"), mmdd(f.reset_on))}
+      ${cardsOn() ? `<button class="item" id="fb-cards"><span class="row-title">${esc(tr("额度卡"))}</span><span class="v">${cardCount(f)} ›</span></button>` : ""}
       ${kv(tr("已同意"), f.consent ? (f.consented_at ? esc(new Date(f.consented_at).toLocaleDateString(window.I18N.locale())) : "✓") : "—")}
       ${f.message ? `<div class="notice" style="margin-top:12px">${esc(f.message)}</div>` : ""}
       <div class="rcard-tags" style="margin-top:10px"><span class="badge plain">${esc(tr("自己的默认 AI 优先"))}</span></div>
       <p class="login-error" id="fb-err" role="alert"></p>
       <div class="btns">${f.used ? "" : `<button class="btn btn-primary" id="fb-use">${esc(tr("用这个"))}</button>`}${f.consent ? (f.consented_at ? `<button class="btn" id="fb-revoke">${esc(tr("撤回同意"))}</button>` : "") : (f.used ? `<button class="btn btn-primary" id="fb-agree">${esc(tr("查看并同意"))}</button>` : "")}</div>`, (root) => {
+      const cb = $("#fb-cards", root); if (cb) cb.onclick = () => cardsSheet();
       const u = $("#fb-use", root); if (u) u.onclick = () => pick({ key: "fallback", consent: f.consent }, () => { C.toast(tr("Jarvis 用：{name}", { name: "Jarvis" })); openSettings(); });
       const a = $("#fb-agree", root); if (a) a.onclick = () => consentSheet(f, openSettings);
       const r = $("#fb-revoke", root);
@@ -280,8 +283,70 @@
     const el = $("#ai-quota");
     if (!el) return;
     el.hidden = !q;
-    if (q) el.textContent = tr("Jarvis · 本月剩余 {p}% · {day} 重置", { p: leftPct(q) ?? "—", day: mmdd(q.reset_on) });
+    if (!q) return;
+    if (q.cards == null && C.ai?.cards) q = { ...q, cards: C.ai.cards };   // stream events carry no card counts
+    el.textContent = tr("Jarvis · 本月剩余 {p}% · {day} 重置", { p: leftPct(q) ?? "—", day: mmdd(q.reset_on) })
+      + (cardCount(q) ? ` · ${cardsText(q)}` : "");
+    el.classList.toggle("ai-quota-link", cardsOn());
+    el.onclick = cardsOn() ? () => cardsSheet() : null;
   }
+
+  // ---------------------------------------------------------------- Jarvis allowance cards (#182, flag ai_cards; ai/quota_cards.py)
+  // reset = this month's used allowance back to 0, extend = +N% this month. Shown as percentages only (no amounts, no provider).
+  // Using one asks first; the server counts a card once however often it is tapped, and the new percentage is drawn at once.
+  const cardsOn = () => !!window.BodyFlags?.on("ai_cards");
+  const cardCount = (f) => (cardsOn() && f?.cards?.total) || 0;
+  const cardsText = (f) => tr("额度卡 ×{n}", { n: cardCount(f) });
+  const cardName = (c) => (c.kind === "reset" ? tr("重置卡") : tr("扩充卡 +{p}%", { p: c.pct ?? "—" }));
+  const SOURCE = () => ({ admin: tr("管理员发放"), periodic: tr("定期发放"), reward: tr("奖励"), other: tr("其他") });
+  let cardBusy = false;
+
+  function applyQuota(f, counts) {
+    if (!f) return;
+    if (counts) f = { ...f, cards: { reset: counts.reset, extend: counts.extend, total: counts.total } };
+    if (C.ai?.mode === "fallback") Object.assign(C.ai, f);
+    quotaLine({ ...(C.ai?.mode === "fallback" ? C.ai : {}), ...f });
+    C.onAiChange?.(C.ai, C.assistantUrl);
+  }
+
+  async function cardsSheet() {
+    let d;
+    try { d = await C.api("/v1/users/me/ai-cards"); } catch (e) { C.toast(e.message); return; }
+    applyQuota(d.fallback, d.counts);
+    const left = d.fallback ? leftPct(d.fallback) : null;
+    const until = (c) => (c.expires_on ? tr("{day} 到期", { day: mmdd(c.expires_on) }) : tr("长期有效"));
+    const sub = (c, tail) => [SOURCE()[c.source] || "", c.reason, tail].filter(Boolean).map(esc).join(" · ");
+    const card = (c) => `<div class="item ai-cardrow"><span class="row-title">${esc(cardName(c))}
+        <span class="small muted" style="display:block;font-weight:400">${sub(c, until(c))}</span></span>
+        <button class="btn btn-primary ai-card-use" data-use="${c.id}">${esc(tr("使用"))}</button></div>`;
+    const STATUS = { used: tr("已用"), expired: tr("已过期"), revoked: tr("已收回") };
+    const past = (c) => `<div class="item ai-cardrow"><span class="row-title faint">${esc(cardName(c))}
+        <span class="small muted" style="display:block;font-weight:400">${sub(c, c.used_on ? `${STATUS.used} ${mmdd(c.used_on)}` : STATUS[c.status])}</span></span></div>`;
+    C.openSheet(tr("Jarvis 额度卡"), `
+      ${left != null ? `<div class="kv"><span class="k">${esc(tr("本月剩余"))}</span><span class="v">${left}%</span></div>` : ""}
+      <div class="group">${d.cards.length ? d.cards.map(card).join("") : `<div class="item"><span class="row-title faint">${esc(tr("还没有额度卡"))}</span></div>`}</div>
+      ${d.history.length ? `<div class="small muted ai-sec">${esc(tr("记录"))}</div><div class="group">${d.history.map(past).join("")}</div>` : ""}
+      <p class="login-error" id="ac-err" role="alert"></p>`, (root) => {
+      $$("[data-use]", root).forEach((b) => { b.onclick = () => useCard(d.cards.find((c) => String(c.id) === b.dataset.use), b, left, root); });
+    });
+  }
+
+  async function useCard(c, btn, left, root) {
+    if (cardBusy || !c) return;
+    const ask = c.kind === "reset" ? tr("用一张重置卡？本月 Jarvis 额度回到 100%（现在剩 {p}%）", { p: left ?? "—" })
+      : tr("用一张扩充卡？本月 Jarvis 额度 +{p}%", { p: c.pct ?? "—" });
+    if (!confirm(ask)) return;
+    cardBusy = true; btn.disabled = true;
+    try {
+      const r = await C.api(`/v1/users/me/ai-cards/${c.id}/use`, { method: "POST" });
+      applyQuota(r.fallback, r.counts);
+      C.toast(tr("已用卡：Jarvis 本月剩 {p}%", { p: leftPct(r.fallback) ?? "—" }));
+      cardsSheet();
+    } catch (e) { $("#ac-err", root).textContent = e.message; btn.disabled = false; }
+    finally { cardBusy = false; }
+  }
+  // A notification about new cards links to /app/?tab=me&ai_cards=1 (notify.js announces it as "body:link")
+  window.addEventListener("body:link", (e) => { if (e.detail && "ai_cards" in e.detail && C && cardsOn()) cardsSheet(); });
 
   async function afterChange() {
     try { const me = await C.api("/v1/web/me"); applyAi(me.ai, me.assistant_url); } catch (e) { /* refresh on next startup */ }
@@ -662,6 +727,7 @@
         if (d?.code === "fallback_consent") { closeChat(); consentSheet(null, () => openChat()); return; }
         if (d?.quota_cny != null) quotaLine(d);
         const el = note(msg, "warn");
+        if (d?.code === "quota") cardButton(el, d);
         if (restart) retryButton(el, path, body);
         if (d?.assistant_url) { const a = document.createElement("a"); a.href = d.assistant_url; a.target = "_blank"; a.rel = "noopener"; a.className = "btn"; a.textContent = tr("打开"); el.appendChild(a); }
         if (r.status === 401) C.toast(tr("登录过期了，请重新登录"));
@@ -696,7 +762,7 @@
           else if (ev === "confirm") { ended = true; status.remove(); d.calls.forEach(confirmCard); }
           else if (ev === "usage") { usageLine(d); }
           else if (ev === "notice") note(d.message, "warn");
-          else if (ev === "error") { ended = true; status.remove(); note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); }
+          else if (ev === "error") { ended = true; status.remove(); const el = note(d.message || tr("出错了"), "warn"); if (d.quota_cny != null) quotaLine(d); if (d.code === "quota") cardButton(el, d); }
           else if (ev === "done") { ended = true; status.remove(); paint(cur, true); }
           else if (ev === "resync") { ended = true; status.remove(); await resync(d.conversation_id, cur); }
         }
@@ -764,6 +830,13 @@
   window.addEventListener("pageshow", onForeground);
   window.addEventListener("online", onForeground);
   window.addEventListener("watch2whoop:foreground", onForeground);   // sent by the iOS app on resume (apps/watch2whoop)
+
+  // Allowance used up while there are cards: a button under the message opens the card list (the sheet sits above this panel)
+  function cardButton(el, d) {
+    if (!cardCount(d.cards ? d : C.ai)) return;
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn"; b.textContent = tr("用一张额度卡");
+    b.onclick = () => cardsSheet(); el.appendChild(b);
+  }
 
   function usageLine(d) {
     if (d.currency === "CNY") {

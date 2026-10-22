@@ -105,7 +105,8 @@ def _limit_error(conn, user_id: int, name: str) -> str | None:
         if _month_searches(conn) >= P.SEARCHES_PER_MONTH_ALL:
             return "这个月服务器的联网搜索总额度用完了；请用户发商品页截图或小票"
         p = S.provider()
-        if fallback.month_spent_cny(conn, user_id) + search_cost_cny(p.name) > fallback.quota_cny(conn, user_id):
+        a = fallback.allowance(conn, user_id)   # with the quota cards used this month (#182)
+        if a["spent_cny"] + search_cost_cny(p.name) > a["quota_cny"]:
             return "本月 AI 额度不够再搜索了；请用户发商品页截图或小票"
     elif used_today(conn, user_id, "web_fetch") >= P.FETCHES_PER_DAY:
         return f"今天读网页的次数用完了（{P.FETCHES_PER_DAY} 次），明天再查；现在请用户发商品页截图或小票"

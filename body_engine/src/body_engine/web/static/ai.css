@@ -39,6 +39,9 @@
 .ai-confirm .btn { min-height: 44px; background: var(--surface-2); }
 .ai-confirm .btn-primary { background: var(--text); color: var(--bg); }
 .ai-usage { text-align: center; padding: 2px 20px 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ai-usage.ai-quota-link { cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }   /* opens the allowance cards (#182) */
+.ai-cardrow .row-title { flex: 1; white-space: normal; }   /* allowance card list: the reason / expiry line may wrap */
+.ai-card-use { flex: none; min-height: 34px; padding: 0 16px; font-size: 14px; border-radius: 12px; }
 .ai-thumbs { display: flex; gap: 8px; padding: 2px max(20px, env(safe-area-inset-right)) 8px max(20px, env(safe-area-inset-left)); }
 .ai-thumbs:empty { display: none; }
 .ai-thumb { position: relative; border: 0; padding: 0; background: var(--surface); width: 52px; height: 52px; border-radius: 12px; overflow: hidden; }

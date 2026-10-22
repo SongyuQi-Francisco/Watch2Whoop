@@ -95,9 +95,12 @@ def mark_read(user: str, body: ReadIn, conn=Depends(get_conn), viewer=Depends(cu
 
 
 def _settings_view(conn, uid: int) -> dict:
+    """Categories behind a rollout flag that is off for this user are left out (no switch for a feature they cannot see)."""
     en = is_en()
     st = core.settings(conn, uid)
-    return {**st, "labels": {k: c["en" if en else "zh"] for k, c in P.CATEGORIES.items()},
+    shown = {k: c for k, c in P.CATEGORIES.items() if not c.get("flag") or flags.enabled(conn, uid, c["flag"])}
+    st = {**st, "categories": {k: v for k, v in st["categories"].items() if k in shown}}
+    return {**st, "labels": {k: c["en" if en else "zh"] for k, c in shown.items()},
             "push_configured": core.configured(), "devices": len(store.devices(conn, uid))}
 
 
