@@ -10,7 +10,7 @@
 
 1. **有 Developer 账号也拿不到「最原始」的数据**：光电传感器的 PPG 波形、原始 ECG 流只在 SensorKit 里，而 SensorKit 的 entitlement 只发给经 Apple 批准的研究项目（Apple 文档原话 "only grants the entitlement for approved research studies"），个人 app 申请不到。手表端算法（高血压通知、睡眠呼吸紊乱、心肺适能、睡眠分）也不开放，只能读它们写进「健康」的**结果**，睡眠分连结果都不写。
 2. **但「健康」里还有一大块我们没同步的「次原始」数据，有账号就能拿**，价值最大的四样：
-   - **心跳间期（HKHeartbeatSeriesSample）**：Apple 每次测 HRV 都存了约 1 分钟的逐拍时间。**实测**：本机 export.xml 里 2025-08-28 以来 1,927 次 HRV 读数全部带逐拍数据（中位数 52 拍），用它重算的 SDNN 和 Apple 的 SDNN 相关 0.90，说明可以自己算 **RMSSD**（WHOOP 口径）。不用等 OW 发版，**历史也能回算**。
+   - **心跳间期（HKHeartbeatSeriesSample）**：Apple 每次测 HRV 都存了约 1 分钟的逐拍时间。**实测**：一份一年多的真实 export.xml 里，HRV 读数全部带逐拍数据（每次约 50 拍），用它重算的 SDNN 和 Apple 的 SDNN 相关约 0.9，说明可以自己算 **RMSSD**（WHOOP 口径）。不用等 OW 发版，**历史也能回算**。
    - **Apple 自己的 RMSSD（`heartRateVariabilityRMSSD`，iOS 27 新类型，已在 Apple 文档核实）**：OW SDK 0.15 还不支持，自己的插件可以马上读。Series 12 多久写一次 Apple 没说，要真机实测；和上一条自算的对照着用。
    - **心电图（HKElectrocardiogram）**：用户自己在手表上测的 30 秒单导联 ECG，512 Hz 电压（本机导出的 csv 是 512 Hz）+ Apple 的分类（窦性心律 / 房颤 / 心率过低或过高无法判断 / 读数差）。能做「看得见的 ECG 波形 + 历史」，并从波形里算心率、RR 间期。本机导出里有 1 条（2025-08-28，窦性心律）。
    - **OW SDK 和快捷指令都没同步的类型**：运动后 1 分钟心率恢复、睡眠呼吸紊乱、**高血压通知事件**（iOS 26.2 新类型）、日照时间、房颤负荷、体力消耗（physicalEffort）、手腕温度（app 用户目前没有）、步行稳定性、音频暴露、心率过高 / 过低 / 心律不齐通知等。
@@ -38,7 +38,7 @@
 | export.xml（OW 导入 + 今天页「导入健康历史」） | 「健康」里的全部记录，包括每条 HRV 读数的逐拍数据（`<HeartRateVariabilityMetadataList>`）、`electrocardiograms/*.csv`、`workout-routes/*.gpx` | 只能手动导出，不是实时；我们的导入器现在**丢掉了逐拍数据和 ECG** |
 
 **本机 export.xml 实测（2026-10-14 导出，Series 10 时代的数据为主）**：
-- HRV 读数 2,002 条，其中 1,928 条带 ≥ 20 拍的逐拍数据（中位数 52 拍）；用逐拍时间重算 SDNN 和 Apple 的 SDNN 相关 **r = 0.90**（说明解析和去伪迹是对的），同一批读数的 RMSSD 中位数 32 ms（Apple SDNN 中位数 40 ms）。
+- HRV 读数绝大多数带 ≥ 20 拍的逐拍数据（每次约 50 拍）；用逐拍时间重算 SDNN 和 Apple 的 SDNN 相关 **r = 0.90**（说明解析和去伪迹是对的），同一批读数也能算出 RMSSD。
 - 夜间（23:00–09:00）HRV 读数：每晚 1 次 116 晚、2 次 227 晚、3 次 94 晚、4 次 3 晚——**换成 RMSSD 不会多出读数**。
 - 夜间（02:00–07:00）心率样本中位间隔 **261 秒**（四分位 152–355 秒）；白天中位 8 秒（多为训练）。
 - 训练结束后 Apple 仍按约 5 秒记录心率：2026-06 以来 30 次训练有 28 次能算「结束后 60 秒心率下降」。
@@ -261,7 +261,7 @@ GRANT SELECT ON hk_samples, heartbeat_series, workout_details TO grafana_ro;   -
 | P0 ① 心跳序列 → RMSSD（`rawdata/`、迁移 150、`import-raw`、`raw-slim`，历史导入自动带上） | ✅ 2026-10-18 |
 | P0 ② SDNN vs RMSSD 对比（`hrv-compare`） | ✅ 命令完成；本机 export.xml（到 2026-10-14）的报告已交中控，Ali 上全量数据的报告待部署后跑；**评分仍是 SDNN，等用户确认再切** |
 | P0 ③ ECG 导入、接口（scope `ecg`）、管家摘要工具 | ✅ |
-| P0 ④ HRR60（`cardio/hrr.py`，`workout_hrr`）、Recovery Index 展示（`/cardio`，算法沿用评分引擎的 `rhr_low_offset_min`） | ✅ 本机实测 40 次训练 9 次够强度可算，均值 23 bpm |
+| P0 ④ HRR60（`cardio/hrr.py`，`workout_hrr`）、Recovery Index 展示（`/cardio`，算法沿用评分引擎的 `rhr_low_offset_min`） | ✅ 在本机数据上实测过：只有一部分训练够强度可算 |
 | P0 ⑤ RawSync + ingest 接口 + 同意书改版 | 心跳序列和心电图 ✅（app 直读，`RawSync.swift`、`raw_sync.dart`、`POST /v1/ingest/healthkit`、迁移 430）；同意书 2026-10-22.1 已加心电图和心跳间期（第 1、2、4、6 条），上传只接受同意了这一版或更新版本的用户；其余类型（手腕温度、Apple RMSSD、心律 / 高血压事件等）未做 |
 | P1 今天页卡片、心肺年龄估算（和身体年龄并列）、watchOS 智能闹钟 | 未开始 |
 

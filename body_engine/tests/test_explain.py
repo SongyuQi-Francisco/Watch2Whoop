@@ -80,17 +80,17 @@ def world(dsn):
             start = datetime.combine(d, datetime.min.time(), TZ) + timedelta(hours=2, minutes=30)
             conn.execute("""INSERT INTO sleep_sessions (user_id, wake_date, start_at, end_at, asleep_min, is_main, source)
                             VALUES (%s, %s, %s, %s, 330, true, 'ow')""", (a, d, start, start + timedelta(hours=6, minutes=30)))
-        _status(conn, a, "right_shoulder", "肩", "内旋受限", "健康", note="无痛弹响 · 避开禁用动作")
+        _status(conn, a, "shoulder", "肩", "内旋受限", "健康", note="避开禁用动作")
         _status(conn, a, "sleep_issue", "作息", "睡眠障碍", "作息", tone="bad")
-        _status(conn, a, "uric_acid", "尿酸", "偏高 550", "健康", tone="bad", unit="μmol/L", source="auto")
+        _status(conn, a, "uric_acid", "尿酸", "偏高 535", "健康", tone="bad", unit="μmol/L", source="auto")
         _status(conn, a, "sleep_hours", "睡眠时长", "5.5", "作息", tone="bad", unit="h", source="auto")
         _status(conn, a, "mystery", "其他", "待观察", "其他", tone="neutral", note="管家写的")
         conn.execute("""INSERT INTO lab_results (user_id, collected_on, category, test_key, test_name, value, unit, ref_low, ref_high)
-                        VALUES (%s, %s, 'chem', 'uric_acid', '尿酸', 550, 'μmol/L', 200, 420)""",
+                        VALUES (%s, %s, 'chem', 'uric_acid', '尿酸', 535, 'μmol/L', 200, 420)""",
                      (a, TODAY - timedelta(days=120)))
         conn.execute("""INSERT INTO assistant_profile (user_id, key, label, value, sort, source) VALUES
                         (%s, 'goals', '目标和进度', '增肌 + 减脂；肩膀不紧张、改善圆肩（1）。', 20, 'seed'),
-                        (%s, 'injuries', '伤病和禁用动作', '肩内旋受限（后关节囊偏紧），内旋时无痛弹响；推类动作手肘约 45°（2.3、4.3）。', 40, 'seed'),
+                        (%s, 'injuries', '伤病和禁用动作', '肩内旋受限（示例）；推类动作手肘约 45°（2.3、4.3）。', 40, 'seed'),
                         (%s, 'schedule', '作息规律', '作息不规律，常凌晨 1 点左右入睡。', 50, 'seed')""", (a, a, a))
         conn.execute("""INSERT INTO exercise_meta (user_id, exercise_ref, name_zh, status, reason, cues) VALUES
                         (%s, 'upright_row', '直立划船', 'banned', '肩内旋位上举', NULL),
@@ -186,7 +186,7 @@ def test_no_data_gives_reason_not_numbers(client, world):
 
 def test_shoulder_status(client, world):
     _, tok = world
-    r = get(client, tok["A"], "/v1/users/me/explain/status/right_shoulder").json()
+    r = get(client, tok["A"], "/v1/users/me/explain/status/shoulder").json()
     assert r["title"] == "肩关节内旋受限" and "内旋" in r["what"]
     assert r["avoid"] and any("45°" in t for t in r["tips"])
     assert [x["name"] for x in r["exercises"]["banned"]] == ["直立划船"]
@@ -209,8 +209,8 @@ def test_sleep_problem_status_attaches_own_sleep(client, world):
 def test_lab_status(client, world):
     _, tok = world
     r = get(client, tok["A"], "/v1/users/me/explain/status/uric_acid").json()
-    assert r["title"] == "尿酸" and r["current"]["value"] == 550 and r["current"]["tone"] == "bad"
-    assert "高于上限 31%" in r["advice"][0]["text"] and any("复查" in a["text"] for a in r["advice"][1:])
+    assert r["title"] == "尿酸" and r["current"]["value"] == 535 and r["current"]["tone"] == "bad"
+    assert "高于上限 27%" in r["advice"][0]["text"] and any("复查" in a["text"] for a in r["advice"][1:])
 
 
 def test_status_metric_and_unknown(client, world):
@@ -230,7 +230,7 @@ def test_family_sees_only_shared_blocks(client, world):
     assert hrv["current"] is None and hrv["facts"] == [] and "metrics" in hrv["hidden"] and hrv["what"]
     sleep = get(client, tok["B"], f"/v1/users/{a}/explain/metric/sleep_hours").json()   # scores shared
     assert sleep["current"]["value"] == 5.5
-    assert get(client, tok["B"], f"/v1/users/{a}/explain/status/right_shoulder").status_code == 403   # memory not shared
+    assert get(client, tok["B"], f"/v1/users/{a}/explain/status/shoulder").status_code == 403   # memory not shared
     assert get(client, tok["C"], f"/v1/users/{a}/explain/metric/sleep_hours").status_code == 403
     assert get(client, tok["A"], f"/v1/users/{ids['B']}/explain/metric/hrv").status_code == 403
 
@@ -239,7 +239,7 @@ def test_own_account_gets_own_numbers(client, world):
     _, tok = world
     r = get(client, tok["B"], "/v1/users/me/explain/metric/hrv").json()
     assert r["current"]["value"] == 80 and r["current"]["tone"] == "plain"   # B's single reading, no baseline yet
-    assert get(client, tok["B"], "/v1/users/me/explain/status/right_shoulder").status_code == 404
+    assert get(client, tok["B"], "/v1/users/me/explain/status/shoulder").status_code == 404
 
 
 def test_page_uses_explain_endpoints():
@@ -333,7 +333,7 @@ def test_metric_sheets_in_english(client, world):
 
 def test_status_and_lab_sheets_in_english(client, world):
     _, tok = world
-    r = client.get("/v1/users/me/explain/status/right_shoulder", headers=HE(tok["A"])).json()
+    r = client.get("/v1/users/me/explain/status/shoulder", headers=HE(tok["A"])).json()
     assert r["title"] == "Limited shoulder internal rotation" and r["avoid"] and any("45°" in t for t in r["tips"])
     no_cjk(*static_texts(r), *[a["text"] for a in r["advice"]])
     assert [x["name"] for x in r["exercises"]["banned"]] == ["直立划船"]      # the owner's own data stays as written
@@ -342,7 +342,7 @@ def test_status_and_lab_sheets_in_english(client, world):
     s = client.get("/v1/users/me/explain/status/sleep_issue", headers=HE(tok["A"])).json()
     assert s["title"] == "Sleep problems" and {"Bedtime", "Sleep duration"} <= {f["label"] for f in s["facts"]}
     u = client.get("/v1/users/me/explain/status/uric_acid", headers=HE(tok["A"])).json()
-    assert u["title"] == "Uric acid" and "31% above the upper limit" in u["advice"][0]["text"]
+    assert u["title"] == "Uric acid" and "27% above the upper limit" in u["advice"][0]["text"]
     no_cjk(*static_texts(u), *[a["text"] for a in u["advice"]], *[f["label"] for f in u["facts"]], *[f["value"] for f in u["facts"]])
     lab = client.get("/v1/users/me/explain/lab/uric_acid", headers=HE(tok["A"])).json()
     assert lab["title"] == "Uric acid" and {"Source", "Reference range"} <= {f["label"] for f in lab["facts"]}

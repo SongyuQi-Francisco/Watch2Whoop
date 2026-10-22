@@ -28,7 +28,7 @@ GOOD_DIRECTION: dict[str, str] = {
 }
 
 # Trend of the last two readings: a change smaller than this share of the previous value counts as flat.
-# 1% only absorbs rounding (e.g. 2.25 vs 2.24); it is not a claim about measurement error.
+# 1% only absorbs rounding (e.g. 2.05 vs 2.04); it is not a claim about measurement error.
 TREND_FLAT_FRACTION = 0.01
 
 # Status card spark: at most this many readings (old -> new). Lab tests are months apart, 12 covers several years.

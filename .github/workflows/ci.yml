@@ -134,6 +134,13 @@ jobs:
         run: git ls-files -z '*.sh' | xargs -0 -r -n1 bash -n
       - name: example app config points at example.com, server lock off
         run: python tools/check_example_config.py
+      # Generic rules only (no private word list here): e-mails, public IPs, tailnet names, token-shaped strings,
+      # licences, and health numbers that look like a real person's. The maintainer's pre-push hook adds the private lists.
+      - name: public-repo privacy scan (tracked files)
+        run: |
+          tree="$(mktemp -d)"
+          git archive HEAD | tar -x -C "$tree"
+          python tools/export_public.py --scan "$tree"
 
   flutter:
     name: Flutter tests

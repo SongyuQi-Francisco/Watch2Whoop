@@ -14,8 +14,9 @@ What it does
    which never leaves the private repository: --private, else secrets/public_export.json, else
    tools/public/private_replacements.json (tracked here, excluded from the export), else tools/public/private.local.json.
 5. Scans the result and fails on any hit: the private config's replaced strings and `deny` words, the words in
-   secrets/shortcut_deny.txt, e-mail addresses, public / Tailscale IPv4 addresses, tailnet host names, token-shaped
-   strings (known key prefixes and long high-entropy strings), file names that look like keys or databases, and missing
+   secrets/shortcut_deny.txt and secrets/public_deny.txt, e-mail addresses, public / Tailscale IPv4 addresses, tailnet host names, token-shaped
+   strings (known key prefixes and long high-entropy strings), health numbers that look like a real person's (lab values in
+   prose, numbers attributed to the maintainer / "user 1" / "real data"), file names that look like keys or databases, and missing
    licence files (LICENSE = AGPL-3.0, apps/watch2whoop/LICENSE and shortcuts/LICENSE = MIT; copied verbatim).
    Findings show the file, line and rule, never the matched private word itself.
 6. `git init` + one commit (author from --author, default a neutral placeholder) unless --no-git.
@@ -36,6 +37,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Private deny lists under secrets/ (never in git; one word or phrase per line, # comments): the Shortcut's words, and
+# the maintainer's own health values / personal details that must never appear in the public repository.
+DENY_FILES = ("shortcut_deny.txt", "public_deny.txt")
 PUBLIC = ROOT / "tools" / "public"
 OVERRIDES = PUBLIC / "overrides"
 
@@ -116,6 +120,52 @@ LOCK_FILES = ("uv.lock", "pubspec.lock", "package-lock.json", "project.pbxproj",
 BAD_NAMES = ["*.pem", "*.key", "*.p12", "*.mobileprovision", "*.sqlite", "*.db", ".env", "*.env", "*_password",
              "*api_key*", "*token*.txt", "export.zip", "export.xml"]
 BAD_NAME_OK = {"deploy/open-wearables/.env.example"}
+# Personal health data (generic heuristics, no private words; also run in CI). The public repository must not carry
+# anyone's real health values: design notes describe results in words, tests and examples use fictional numbers.
+# - LAB_VALUE: a lab value with its unit in prose (Markdown / HTML / text);
+# - SELF + METRIC on one line: a line attributing a health number to a real person (the maintainer, "user 1", "real data");
+# - in Markdown, a block (until the next blank line or heading) whose heading / bold lead-in introduces real data or
+#   back-fill results: every line with a health number or a table row of 3+ numbers.
+# A line that says it is an example (EXAMPLE_MARK) or carries the marker `privacy-ok` (an HTML / code comment) is skipped.
+LAB_VALUE = re.compile(r"(?<![\w.])\d+(?:\.\d+)?\s?(?:μmol/L|umol/L|mmol/L|U/L|mg/dL)(?![\w/])")
+SELF_REF = re.compile(r"本人|用户 ?1(?!\d)|\buser 1\b|负责人|部署者|真实数据|本机(?:实测|数据|导出)"
+                      r"|my own data|the owner'?s|the maintainer'?s", re.I)
+REAL_DATA_BLOCK = re.compile(r"真实数据|回算结果|回填结果|本机\S{0,20}\s?实测|real[- ]data results", re.I)
+HEALTH_NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?\s?(?:kg|bpm|ms|岁|cm|μmol/L|umol/L|mmol/L|U/L|mg/dL)(?![\w/])"
+                           r"|(?:身体年龄|恢复分?|HRV|SDNN|RMSSD|静息心率|体重|睡眠分|BMI|VO₂max|尿酸|ALT|甘油三酯|体脂"
+                           r"|步数|strain|TRIMP|入睡|起床)\s?[:：=]?\s?\d")
+NUMBERS_ROW = re.compile(r"(?:(?<![\w.])[−-]?\d+(?:\.\d+)?(?![\w.]).*?){3}")
+EXAMPLE_MARK = re.compile(r"示例|例如|例：|虚构|合成|e\.g\.|example|fictional|synthetic|privacy-ok", re.I)
+PROSE_SUFFIXES = (".md", ".html", ".txt")
+# (path glob, regex on the line): fictional examples the heuristics cannot tell from real values
+PERSONAL_DATA_ALLOW = [
+    ("docs/tester-handbook*.md", r"430 μmol/L"),                         # handbook chat demo (fictional lab photo)
+    ("docs/archive/tester-handbook-*.md", r"430 μmol/L"),
+    ("body_engine/src/body_engine/web/static/handbook/*", r"430 μmol/L"),  # rendered from the handbook Markdown
+]
+
+
+def personal_data_findings(rel: str, text: str) -> list[str]:
+    """Lines that look like someone's real health values (see the rules above)."""
+    out, block = [], False
+    md, prose = rel.endswith(".md"), rel.endswith(PROSE_SUFFIXES)
+    allow = [rx for g, rx in PERSONAL_DATA_ALLOW if fnmatch.fnmatch(rel, g)]
+    for n, line in enumerate(text.splitlines(), 1):
+        if md and (not line.strip() or line.lstrip().startswith("#")):
+            block = False
+        selfref = bool(SELF_REF.search(line))
+        if not EXAMPLE_MARK.search(line) and not any(re.search(rx, line) for rx in allow):
+            if prose and LAB_VALUE.search(line):
+                out.append(f"{rel}:{n}: lab value with unit (use a fictional example and say so, or describe it in words)")
+            elif selfref and HEALTH_NUMBER.search(line):
+                out.append(f"{rel}:{n}: health number attributed to a real person")
+            elif block and (HEALTH_NUMBER.search(line) or (line.lstrip().startswith("|") and NUMBERS_ROW.search(line))):
+                out.append(f"{rel}:{n}: health number in a real-data block")
+        if md and line.lstrip().startswith(("#", "**")) and REAL_DATA_BLOCK.search(line):
+            block = True   # a heading / bold lead-in introducing real data
+    return out
+
+
 # (path glob, regex on the finding's line) for known-harmless hits: test fixtures and documentation examples
 SCAN_ALLOW = [
     ("apps/watch2whoop/test/*", r"\b(172\.32\.0\.1|192\.169\.0\.1|100\.64\.\d+\.\d+)\b"),  # private-range boundary tests
@@ -187,6 +237,8 @@ def scan(tree: Path, private: dict, deny_files: list[Path]) -> list[str]:
             findings.append(f"{rel}: not UTF-8")
             continue
         lock = path.name in LOCK_FILES
+        if rel != "tools/export_public.py" and not lock:
+            findings += personal_data_findings(rel, text)
         for n, line in enumerate(text.splitlines(), 1):
             if rel in LICENSES and COPYRIGHT_LINE.match(line):
                 continue  # the intended copyright notice
@@ -241,7 +293,7 @@ def load_private(arg: str | None) -> tuple[dict, Path | None]:
 def deny_files() -> list[Path]:
     env = os.environ.get("BODY_ROOT")
     roots = [ROOT] + ([Path(env)] if env else [])
-    return [r / "secrets" / "shortcut_deny.txt" for r in roots]
+    return [r / "secrets" / name for r in roots for name in DENY_FILES]
 
 
 def tracked_files() -> list[str]:

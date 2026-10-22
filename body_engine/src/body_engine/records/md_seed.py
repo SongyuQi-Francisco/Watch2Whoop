@@ -48,16 +48,16 @@ EVENTS: list[tuple[str, dict]] = [
         "occurred_at": "2026-08-30T12:00", "time_precision": "approx", "category": "medical",
         "title": "体检（示例）", "note": "示例数据。",
     }),
-    ("hypoglycemia_2026_10_15", {
-        "occurred_at": "2026-10-15T12:00", "time_precision": "day", "category": "symptom", "severity": 2,
-        "title": "练腿时轻微低血糖感（示例）", "resolved_on": date(2026, 10, 15),
+    ("hypoglycemia_example", {
+        "occurred_at": "2026-10-08T12:00", "time_precision": "day", "category": "symptom", "severity": 2,
+        "title": "练腿时轻微低血糖感（示例）", "resolved_on": date(2026, 10, 8),
         "note": "示例：空腹训练时出现，很快缓解。练前 1.5–2 小时吃正餐。",
     }),
 ]
 
 # ---------- Exercises (4.3 protected areas and contraindications, 4.4 V3.0 exercise table, 4.7) ----------
 # exercise_ref uses a stable English slug first; the SparkyFitness exercise ID is filled into app_exercise_id later.
-_SHOULDER = "肩前侧（内旋受限 + 无痛弹响）：推举 / 卧推时肩前卡压"
+_SHOULDER = "肩前侧不适（示例）：推举 / 卧推时肩前卡压"
 _PRESS_CUE = "手肘与身体约 45°，不要外展到 90°；优先哑铃和中立握；出现肩前疼痛立刻换动作（只有弹响不疼可以继续）"
 _TRAP = "每组留 1–2 次余力；先沉肩再拉；肩膀往耳朵跑就停组"
 _KNEE = "膝盖和脚尖同方向；下蹲控制 2 秒"
@@ -66,22 +66,22 @@ EXERCISES: list[tuple[str, dict]] = [
     ("upright_row", {"name_zh": "杠铃提拉 / 直立划船", "name_en": "Upright Row", "status": "banned",
                      "aliases": ["直立划船", "杠铃提拉", "哑铃提拉", "绳索提拉", "Barbell Upright Row",
                                  "Dumbbell Upright Row", "Cable Upright Row"],
-                     "reason": "永久不做：练大上斜方；肩内旋受限、圆肩。9 月和侧平举做超级组时在练上斜方",
+                     "reason": "永久不做：容易练大上斜方；肩内旋位上举（示例）",
                      "cues": "肩中束用哑铃侧平举代替"}),
     ("behind_neck_press", {"name_zh": "颈后推举", "name_en": "Behind the Neck Press", "status": "banned",
                            "aliases": ["颈后推举", "颈后杠铃推举", "Behind-the-Neck Press"],
                            "reason": "永久不做：" + _SHOULDER, "cues": "推举用 landmine press 或轻重量哑铃推举代替"}),
     ("behind_neck_pulldown", {"name_zh": "颈后下拉", "name_en": "Behind the Neck Lat Pulldown", "status": "banned",
                               "aliases": ["颈后下拉", "颈后高位下拉", "Behind-the-Neck Pulldown"],
-                              "reason": "永久不做：肩内旋受限、圆肩", "cues": "高位下拉拉到身前锁骨"}),
+                              "reason": "永久不做：肩内旋位受压（示例）", "cues": "高位下拉拉到身前锁骨"}),
     ("dips", {"name_zh": "双杠臂屈伸", "name_en": "Dips", "status": "banned",
               "aliases": ["双杠臂屈伸", "臂屈伸", "Chest Dip", "Triceps Dip", "Parallel Bar Dips"],
               "reason": "永久不做：" + _SHOULDER, "cues": "三头用绳索下压，胸用哑铃卧推 / 龙门架夹胸代替"}),
     # Use caution
     ("cable_face_pull", {"name_zh": "绳索面拉 + 外旋", "name_en": "Cable Face Pull", "status": "caution",
                          "aliases": ["面拉", "绳索面拉", "Face Pull"],
-                         "reason": "大重量绳索面拉永久不做：9–10 月用过 23–32kg，在练上斜方",
-                         "cues": "轻重量（V3.0 起始 18kg），3 × 15；拉到额头高度，结尾「投降」姿势停 1 秒；" + _TRAP}),
+                         "reason": "大重量绳索面拉容易变成练上斜方（示例）",
+                         "cues": "轻重量，3 × 15；拉到额头高度，结尾「投降」姿势停 1 秒；" + _TRAP}),
     ("dumbbell_shoulder_press", {"name_zh": "哑铃推举", "name_en": "Dumbbell Shoulder Press", "status": "caution",
                                  "aliases": ["哑铃推肩", "推肩", "Seated Dumbbell Press"],
                                  "reason": _SHOULDER, "cues": "只做轻重量，或用 landmine press 代替；" + _PRESS_CUE}),
@@ -134,7 +134,7 @@ EXERCISES: list[tuple[str, dict]] = [
                             "cues": "下巴微收，顶峰夹臀 1 秒，肋骨不外翻"}),
     ("bulgarian_split_squat", {"name_zh": "保加利亚分腿蹲", "name_en": "Bulgarian Split Squat", "per_side": True,
                                "status": "caution",
-                               "reason": "膝盖；2026-10-15 做这个动作时出现轻微低血糖感（练前吃够、手边备快糖，见 4.2.1）",
+                               "reason": "膝盖（示例）",
                                "cues": "前脚离凳一大步，身体略前倾练臀；" + _KNEE}),
     ("seated_leg_extension", {"name_zh": "坐姿腿屈伸", "name_en": "Seated Leg Extension", "cues": "顶峰停 1 秒，下放控制"}),
     ("back_extension_45", {"name_zh": "俯身 / 45° 背部伸展", "name_en": "45° Back Extension",
@@ -146,6 +146,6 @@ EXERCISES: list[tuple[str, dict]] = [
 # ---------- Journal backfill ----------
 JOURNAL_BACKFILL: list[tuple[str, str, float, str]] = [
     ("2026-10-13", "training_upper", 1, "训练日志：上肢（示例）"),
-    ("2026-10-15", "training_legs", 1, "训练日志：腿（示例）"),
-    ("2026-10-15", "low_blood_sugar", 1, "练腿时轻微低血糖感（示例）"),
+    ("2026-10-08", "training_legs", 1, "训练日志：腿（示例）"),
+    ("2026-10-08", "low_blood_sugar", 1, "练腿时轻微低血糖感（示例）"),
 ]

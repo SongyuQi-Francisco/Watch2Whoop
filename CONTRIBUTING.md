@@ -11,6 +11,12 @@ algorithms against published research, an Android client, UI polish.
   review fixes, version bumps), test / CI results, and the deploy status (merged / deployed / needs a new app build).
   每个 PR 都在评论里留记录：开发了什么、之后每一轮提交改了什么（rebase、review 修改、版本号）、测试 / CI 结果、部署状态
   （已合并 / 已部署 / 需要新的 app 构建）。
+- **No real personal health data in the repository.** Docs, comments, tests and examples never carry a real person's
+  values (weight, lab results, HRV, sleep times, injuries, supplements…), the maintainers' included: describe results in
+  words, use obviously fictional numbers in tests and examples (say 「示例」 / "example"). CI runs
+  `tools/export_public.py --scan` with generic rules (lab values in prose, numbers attributed to a real person or to a
+  real-data block); maintainers' pre-push hooks add private deny lists kept under `secrets/`.
+  仓库里不放任何真人的健康数据（包括维护者本人）：文档用文字描述结果，测试和示例用明显虚构的数值并标「示例」。
 
 ## Bilingual UI / 双语界面
 **Every new feature and every change ships in both Chinese and English.** A PR that adds or changes user-facing text

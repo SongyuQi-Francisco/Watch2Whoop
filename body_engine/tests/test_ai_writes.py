@@ -155,7 +155,7 @@ def dsn():
 @pytest.fixture(scope="module")
 def ids(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        return {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '2001-06-15', 184) "
+        return {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '2001-06-15', 180) "
                                 "RETURNING id", (n,)).fetchone()["id"] for n in ("A", "B")}
 
 
@@ -329,18 +329,18 @@ def test_weight_delete_and_log_rollback(conn, ids, fake):
 def test_delete_migrated_lab_and_rollback(conn, ids):
     a = ids["A"]
     conn.execute("""INSERT INTO lab_results (user_id, collected_on, test_key, test_name, category, value, unit, ref_high,
-                    flag, import_key) VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 550, 'μmol/L', 420, 'H',
+                    flag, import_key) VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 535, 'μmol/L', 420, 'H',
                     'md:lab:2026-08:uric_acid')""", (a,))
     run_tool(conn, a, "butler", "delete_lab_results", {"collected_on": "2026-08-30", "test_keys": ["uric_acid"]})
     n = lambda: conn.execute("SELECT count(*) n FROM lab_results WHERE user_id = %s AND test_key = 'uric_acid'",
                              (a,)).fetchone()["n"]
     assert n() == 0
     log = _log(conn, a, "delete_lab_results")
-    assert log["before"][0]["value"] == 550
+    assert log["before"][0]["value"] == 535
     run_tool(conn, a, "butler", "rollback_write", {"log_id": log["id"]})
     r = conn.execute("SELECT value, import_key FROM lab_results WHERE user_id = %s AND test_key = 'uric_acid'",
                      (a,)).fetchone()
-    assert r == {"value": 550, "import_key": "md:lab:2026-08:uric_acid"}
+    assert r == {"value": 535, "import_key": "md:lab:2026-08:uric_acid"}
 
 
 # ---------- audit ----------

@@ -162,7 +162,7 @@ CREATE TABLE sync_state (
 
 **恢复（0–100）**
 - HRV：**Series 12 优先用 RMSSD**（iOS 27 新类型，Bevel 等已在读取，Apple 没有正式说明哪些表会写入，要实测确认）；没有就用 SDNN。同一个人不混用两种。
-  - **2026-10-18 更新**（`docs/raw-data-plan.md`）：RMSSD 不必等 OW / iOS 新类型——Apple 每次 HRV 读数都存了约 1 分钟的逐拍时间，`rawdata/hrv.py` 用它算 RMSSD（表 `heartbeat_series`，迁移 150；历史从 export.xml 回算，`import-raw` / 历史导入）。`params.HRV_KIND` 可选 `sdnn` / `rmssd`，切换前先跑 `hrv-compare` 给用户看（本机 2025-08-28 到 2026-10-13：相邻两晚相关 SDNN 0.04 → RMSSD 0.28，恢复分和静息心率的相关 −0.40 → −0.53）。每晚读数次数不会变多（Apple 决定，实测 1–4 次）。
+  - **2026-10-18 更新**（`docs/raw-data-plan.md`）：RMSSD 不必等 OW / iOS 新类型——Apple 每次 HRV 读数都存了约 1 分钟的逐拍时间，`rawdata/hrv.py` 用它算 RMSSD（表 `heartbeat_series`，迁移 150；历史从 export.xml 回算，`import-raw` / 历史导入）。`params.HRV_KIND` 可选 `sdnn` / `rmssd`，切换前先跑 `hrv-compare` 给用户看（在开发者本人的数据上，RMSSD 的相邻两晚相关和恢复分 / 静息心率相关都比 SDNN 好；具体数值不公开）。每晚读数次数不会变多（Apple 决定，实测 1–4 次）。
   - 训练后心率恢复 HRR60（`cardio/hrr.py`，表 `workout_hrr`）：训练最后 2 分钟最高心率 − 结束后 60 秒心率，峰值 ≥ 75% HRmax 才算有效；`compute-scores` 顺带写。
 - 当晚 HRV = 睡眠窗口内读数取 ln 后的中位数；当晚静息心率 = 睡眠期最低 5 分钟均值。
 - 各项和 60 天基线比算 z 分数：HRV 0.6、静息心率 0.2（反向）、睡眠表现 0.15、呼吸频率 0.05（反向），再用 logistic 映射到 0–100。
@@ -185,7 +185,7 @@ CREATE TABLE sync_state (
 - 默认日记项（`records/defaults.py`，每人一套，`journal-init` 建）：饮食（咖啡、12 点后咖啡因、喝酒、晚饭太晚、红肉 g、喝水 L、练前没吃够）、训练（上肢、练腿、爬坡、篮球、游泳、睡前 3 小时内练完、肩部 routine）、生活（桑拿、早上晒太阳、午睡、睡前看手机、压力大）、症状（低血糖感、极度口渴、生病、肩疼）；每种补剂一项（`supp_*`，加补剂时自动建）。
 
 ### 实现说明（v1.0-2026-10-16）
-**运行**：`body-engine compute-scores --user-id N [--start --end]`。每次都从评分起点（第一天有 `resting_heart_rate` = 开始戴手表，Alex 是 2025-08-28）整段重算，只删除并重写 `--start`～`--end` 的行，所以重复跑结果一样（幂等）、部分重写和整段重写一致。整段约 20 秒（大头是从 OW 拉 17 万条心率）。每天都写一行，算不出的分数留空，原因写在 `flags`（`{代码: 中文说明}`），各分项、z 分数、基线、心率区间分钟数在 `details`。
+**运行**：`body-engine compute-scores --user-id N [--start --end]`。每次都从评分起点（第一天有 `resting_heart_rate` = 开始戴手表）整段重算，只删除并重写 `--start`～`--end` 的行，所以重复跑结果一样（幂等）、部分重写和整段重写一致。整段约 20 秒（大头是从 OW 拉 17 万条心率）。每天都写一行，算不出的分数留空，原因写在 `flags`（`{代码: 中文说明}`），各分项、z 分数、基线、心率区间分钟数在 `details`。
 **数据来源**：睡眠段读 `sleep_sessions`（导入器已切好段）；睡眠阶段明细、原始心率 / HRV / 呼吸 / 血氧 / 手腕温度从 OW 拉（`/timeseries?resolution=raw`、`/events/sleep?include=stages`），OW 没有的天用快捷指令存档补（HRV、呼吸、血氧、睡眠阶段；快捷指令的心率是按小时求和，不用）。同一条样本（类型 + 开始时间）只留一条，OW iPhone app 同步的优先于 export.xml。
 
 | 部分 | 实现 / 和设计的差异 | 参数 |
@@ -199,41 +199,19 @@ CREATE TABLE sync_state (
 | 当晚静息心率 | 睡眠期最低 5 分钟均值：手表睡觉时约 4–5 分钟才一条心率，每条代表到下一条（最多 10 分钟），按时间加权；窗口里被覆盖不到一半不算，都不够时取最低单条。没有睡眠期原始心率时退回当天 Apple 的 `resting_heart_rate`，**和它自己的 60 天基线比**（Apple 全天值比睡眠最低值高约 6 bpm，混着比会误报生病），标 `rhr_from_daily` | — |
 | 恢复分 | 前 60 天（不含当天）的均值 / 标准差算 z，标准差有下限、z 截断在 ±3；缺的项把权重按比例分给其他项（HRV 必须有）；recovery = 100 / (1 + e^−(1.6 × 加权 z + 0.3))：和基线持平 57，+0.5 → 75，−0.5 → 38。前 60 天 HRV 不满 14 晚不出分（`baseline_insufficient`） | 权重 HRV 0.6、静息心率 0.2、睡眠表现 0.15、呼吸 0.05；标准差下限 ln HRV 0.05、心率 1、表现 0.05、呼吸 0.5 |
 | 异常标记 | 生病（`illness_warning`）照设计；手腕温度比 60 天中位数偏 ≥ 0.6°C（至少 5 晚基线）；当晚血氧中位数 < 94% 或 < 90% 的读数 ≥ 2 条（`spo2_low`）。只标记，不进分数 | — |
-| HRmax | 观测 99.5 百分位用前 365 天（含当天）的全部心率读数；读数大多是静息，百分位只有 160 左右，实际一直是公式值（25 岁 190.5） | — |
+| HRmax | 观测 99.5 百分位用前 365 天（含当天）的全部心率读数；读数大多是静息，百分位只有 160 左右，实际一直是公式值（例如 30 岁 = 187） | — |
 | TRIMP | 用 %HRmax 五区（设计里的 %HRR 没用上）。每条心率代表到下一条、最多 5 分钟（平时 2–5 分钟一条，训练中 5 秒一条）；按本地日期算整天，不只算训练时段 | 区间 50/60/70/80/90% HRmax，权重 1–5 |
-| strain | **K = 170**：Alex 有手表训练记录的力量 / 篮球 / 游泳日（20 天）整天 TRIMP 中位数约 145 → strain 12；四分位约 87–220 → 8.3–15。休息日 TRIMP 中位数约 20 → 2.3（WHOOP 把低心率也算进去，休息日会高一些） | — |
+| strain | **K = 170**：让常规训练日（整天 TRIMP 约 145）落在 strain 12 左右、TRIMP 87–220 落在 8–15；休息日 TRIMP 约 20 → 2.3（WHOOP 把低心率也算进去，休息日会高一些） | — |
 | 覆盖不足 | 一天里有心率的小时数 < 12：录到训练（TRIMP ≥ 40）的照常出分、标 `hr_coverage_low`（可能偏低）；否则 strain 留空（`no_raw_hr`，部分值在 `details.load.trimp_recorded`）。今天（`day_in_progress`）照常出分 | — |
 | CTL / ATL / TSB | 用 TRIMP；α = 1 − e^(−1/τ)；初值 = 最初 14 个有数据日的 TRIMP 均值，前 42 天标 `ctl_warmup`；没 TRIMP 的天沿用前一天（`load_missing`） | τ = 42 / 7 天 |
 | 肌肉负荷（v1.1） | **从 SparkyFitness 训练记录算**（`scores/muscle.py`；OW 0.9.0 没有 workoutEffortScore）：`muscle_load` = 当天力量动作工作组 Σ 次数 × 重量（kg，训练容量）。重量按记录的数（哑铃单只、单侧动作按每侧），是同一个人前后可比的相对量；热身组不算，自重组只计组数。有 RPE + 时长时另算 session RPE（平均 RPE × 分钟）放 `details.muscle.srpe`，单位不同不相加（现在的记录都没有 RPE）。`details.muscle` 还有工作组数、各肌群组数。当天没有训练记录 → 留空（没记录 ≠ 没练）；连了 SparkyFitness 但读不到 → 标 `muscle_load_unavailable`，其他分数照算；没连的用户不算。`compute-scores` 每次一起重算 | — |
-| 手腕温度 / 血氧 | 只做标记；手腕温度一年只有 21 晚数据 | — |
+| 手腕温度 / 血氧 | 只做标记；手腕温度读数往往很少 | — |
 
-**回算结果（2025-08-28 → 2026-10-16，415 天）**
-| 分数 | 有值天数 | P5 | P25 | 中位数 | P75 | P90 |
-|---|---|---|---|---|---|---|
-| 睡眠分 | 336 | 45 | 69 | 82 | 91 | 95 |
-| 睡眠表现 | 336 | 0.41 | 0.59 | 0.75 | 0.88 | 1.00 |
-| 实际睡眠（分钟） | 336 | 227 | 330 | 410 | 475 | 542 |
-| 睡眠债（分钟） | 336 | 0 | 36 | 67 | 112 | 147 |
-| 睡眠需求（分钟） | 336 | 480 | 519 | 550 | 594 | 600 |
-| 恢复分 | 317 | 17 | 36 | 58 | 75 | 86 |
-| 当晚 HRV（SDNN, ms） | 331 | 25 | 34 | 43 | 57 | 75 |
-| 当晚静息心率 | 336 | 44 | 47 | 49 | 52 | 53 |
-| strain | 366 | 0 | 0.6 | 2.3 | 6.1 | 11.2 |
-| TSB | 415 | −49 | −11 | 3 | 13 | 21 |
-
-- 恢复分：绿（≥ 67）121 天、黄 124 天、红（< 34）72 天。
-- 缺失：没有手表睡眠 79 天（其中 22 天只有非手表的睡眠）→ 睡眠分、恢复分都空；HRV 基线不满 14 晚 14 天（最开始两周）、睡眠窗口没有 HRV 5 天；strain 空 49 天（14 天完全没心率，35 天心率不足 12 小时又没录到训练），另有 12 天覆盖不足但录到训练照常出分。2026-10-14 之后：10-14 只有凌晨的 export.xml 心率 → 空；10-15、10-16 有 OW iPhone app 同步的部分心率（10-15 只录到晚上训练那 2 小时，strain 4.4 偏低）。
-- 生病提示 4 天：2025-12-30、2026-01-06、05-04、07-24。血氧偏低 9 晚（集中在 2026-07-20～26）。手腕温度没有触发。
-
-**抽查（对照 `body-management.md`）**
-- 9/7～9/30「训练一开始就全身疲惫、早醒、减重太快」：这段睡眠分均值 62（8 月 74、10 月 75），主睡眠 4.9h（另有白天小睡，实际 6.2h），strain 均值 7.5（8 月 3.4、10 月 3.3），TSB 均值 −26，9-16 低到 −70（9-13～9-16 连续四天 strain 15–16）。恢复分在连续高强度后从 9-13 的 95 掉到 9-14 的 17。和记录的疲劳期对得上。
-- 训练日：9-13 肩 16.2、9-15 背 15.2、9-16 腿（爬坡 40 分钟）15.5、9-18 胸 12.2、10-10 背 10.4；9-21 / 9-24 / 9-30 的短训练（25–30 分钟、平均心率约 100）只有 4.4 / 6.2 / 8.4——心率低估力量训练，要靠以后的肌肉负荷。10-12 肩：手表没数据，空。
-- 10-13 只睡 4.6h（早上 9 点才睡）：睡眠分 45、表现 0.56、恢复 42（黄）。10-14「凌晨 4 点还没睡」（6:30 才睡）：规律性 0，睡眠分 73。
-- 10-15 练腿时低血糖：当天早上恢复 80（绿）、睡 7.9h，说明低血糖和恢复无关，和 4.2.1 的判断（空腹训练、没吃主食）一致。
+**回算验证**：在开发者本人一年多的数据上整段回算过，并对照训练日志抽查（疲劳期、连续高强度训练日、熬夜、空腹训练等情况都对得上）。具体数值属于个人健康数据，不放进公开仓库。
 
 **已知问题 / 以后**
-- SDNN 每晚只有 1–3 条读数，偶尔一条很高（如 9-30 的 183 ms）会把恢复分推到 90 以上，即使睡眠很差（9-24：睡眠分 37、恢复 93）。等 OW 0.10 的 RMSSD（夜间读数更多）切过去：改 `HRV_KIND`、升 `ALGO_VERSION`、整段重算，基线自然重建，不混用。
-- 规律性分经常是 0（入睡时间常在凌晨 1 点到早上 9 点之间跳），这是 OW 规格本身对作息不规律很严格，符合实际。
+- SDNN 每晚只有 1–3 条读数，偶尔一条很高的读数会把恢复分推到 90 以上，即使睡眠很差。等 OW 0.10 的 RMSSD（夜间读数更多）切过去：改 `HRV_KIND`、升 `ALGO_VERSION`、整段重算，基线自然重建，不混用。
+- 入睡时间前后跳几个小时的人，规律性分经常是 0：OW 规格本身对作息不规律很严格，符合实际。
 - 睡眠需求基线 8h、K = 170、恢复 logistic 的 1.6 / 0.3 都是第一版取值，攒够 1–2 个月 RMSSD 和主观感受后再校准。
 - 2026-10-14 之后要有 strain，需要原始心率：OW iPhone app 稳定同步，或者按 `docs/shortcut-raw-heart-rate.md` 让快捷指令上传原始心率（未实施）。
 - 增量：现在每次整段重算（约 20 秒）；数据多几年后再改成从上次结果续算。
@@ -258,7 +236,7 @@ CREATE TABLE sync_state (
 | 静息心率（体能） | `daily_metrics.resting_heart_rate`（Apple 全天口径，和文献的静坐测量接近） | 每高 10 bpm HR 1.16（Jensen 2013 Heart，已校正 VO₂max，所以选它而不是 Zhang 2016 CMAJ 的 1.09）；45 bpm 以下持平（Zhang 2016：从 45 起线性） | 65（Quer 2020 PLoS One：9 万可穿戴用户的平均） |
 | 身体成分（体能） | 有腰围用腰围身高比，没有用 BMI（SparkyFitness 的称重优先，身高 users.height_cm） | BMI：17 → 1.51、19.25 → 1.13、21.25 → 1.00、23.75 → 1.00、26.25 → 1.07、28.75 → 1.20、32.5 → 1.45、37.5 → 1.94、45 → 2.76（GBMC 2016 Lancet 从不吸烟者）；腰围身高比：每 0.1 HR 1.24，J 形最低 0.50（Jayedi 2020 BMJ） | BMI 25；腰围身高比 0.50 |
 
-每项还给一句 ≤ 20 字的建议（`healthspan_params.TIPS`，按方向选；睡眠时长分「多睡」和「睡太久」）。用户 1 的 `users.sex` 原来是空的，按 body-management.md 5.2「男、25 岁」填成 `male`（只填空值）。
+每项还给一句 ≤ 20 字的建议（`healthspan_params.TIPS`，按方向选；睡眠时长分「多睡」和「睡太久」）。
 
 **其他功能**
 - **压力**（`stress.py`）：只看醒着（不在任何睡眠段）、不在训练（OW 训练记录）、前 5 分钟到后 2 分钟走路 < 20 步的心率；平静基线 = 前 14 天这些读数的中位数，离散度 = 1.4826 × MAD（≥ 3 bpm，读数 ≥ 50 条才出）；每小时 ≥ 3 条才出分：z = (中位数 − 基线) / 离散度，有白天 HRV 读数时 z = 0.7 × 心率 z + 0.3 × HRV z（HRV 基线 = 前 60 天夜间 ln HRV）；分数 = clip(0.5 + z, 0, 3)，< 1 低、1–2 中、≥ 2 高；每天 = 有分小时的平均。没有加速度，步数和训练记录是代替。
@@ -281,23 +259,15 @@ CREATE TABLE sync_state (
 - `GET /vo2max?end=&days=365` → `{current, current_basis, latest: {date, value}, readings, trend_per_year, monthly: [{month, avg, n}], norm_median, percentile, level (excellent / good / average / fair / poor), level_zh, norm_source, missing_reason}`。
 - `GET /reports?period=week|month&end=` → `{period, start, end, previous: {start, end}, current: {recovery, sleep, load, stress, training, weight}, previous_values: {…同结构，无 weight}, change: {recovery, sleep, load, stress, training}（数值字段的差）, journal_findings: [{key, label, direction, diff_recovery, cohens_d, reliable, days_yes, days_no}]}`；period 不对返回 422。
 
-**2026-10-17 真实数据（用户 1）**
-- **身体年龄 28.8**（实际 25.2，+3.6）。贡献（年，合计前）：步数 5754 步 +4.0（封顶；< 60 岁组队列中位数约 8078）、作息规律性 SRI 67.8 +2.7、VO₂max 43.4（同龄中位数 46.4，第 40 百分位）+1.4、中高强度 67 分钟 / 周 +0.9、BMI 26.3 +0.4、睡眠 6.5h（≈ 自报 7.1h）+0.1；静息心率 56.7 −1.4、力量训练 37 分钟 / 周 −2.0。合计 6.0 × 0.6 = 3.6。8 项都够数据。
-- 每周历史：2025-10 约 25.5，2026-01 升到 29，2026-04～07 约 30.3（最高 30.5），8 月开始练、作息改善后降到 28.8。**衰老速度 −1.0（没截断 −1.79，26 周窗口）**：最近 26 周的平滑 Δ 从 4 月的 5.5 降到现在的 3.6，后两个月降得快，还是略低于下限；按周看 8-30 是 2.64、9-13 是 1.06、9-27 是 −0.31、10-11 起到 −1。
-- 压力：最近 90 天 85 天有分（5 天没有原始心率）；10-15 均值 1.82（中，22 点那小时高）、10-16 0.47（低），平静基线约 66 bpm、离散度约 15。
-- 今日负荷目标（10-17）：恢复 87 → 绿 14–18；今天只有快捷指令，当前 strain 空。
-- 睡眠教练（10-17）：需求 509 分钟（睡眠债 29），最近起床中位数 14:01 → 要睡够 05:16 前睡；入睡目标合并后（今晚 06:45）会推荐 06:45、建议 15:29 起。
-- 健康监测：全部在范围内（静息心率今天是 Apple 全天值 58.2，范围 46–65）；手腕温度最近一晚没有读数。
-- 睡眠规律性 7 天 77%、30 天 66%；VO₂max 43.1（第 39 百分位，一般），每年 −1.4。
-- 周报（10-11～10-17 对 10-04～10-10）：恢复均值 64 对 74.5，睡眠 427 对 489 分钟，平均入睡 07:04 对 01:55，压力 0.65 对 0.98，力量训练 2 次对 1 次。日记发现：没有（日记记录还不够）。
+**验证（2026-10-17）**：在开发者本人的数据上跑通了身体年龄各项、衰老速度、压力、今日负荷目标、睡眠教练、健康监测、睡眠规律性和周报。具体数值属于个人健康数据，不放进公开仓库。
 
 **已知问题 / 以后**
-- **衰老速度**：改成 26 周 + 4 周滑动平均后，没截断的值从 −8.9 降到 −1.8，但身体年龄这几个月变化大，仍会顶到边界。最早几个月（2025-11～2026-08）是 3.0（没截断 3.4–13.4），部分原因是数据刚开始积累：各项陆续够 30 天才计入，Δ 随之上升，这不全是习惯变差。参数 `PACE_WEEKS`、`PACE_SMOOTH_WEEKS`、`PACE_MIN_WEEKS`。
-- 步数项对 < 60 岁很陡（Paluch 的 Q1 → Q2 HR 0.59），5754 步就顶到 +4 年；快捷指令天的步数没去重（偏高），影响很小。
+- **衰老速度**：改成 26 周 + 4 周滑动平均后，没截断的值明显收敛，但身体年龄变化大的几个月仍会顶到边界。最早几个月偏高，部分原因是数据刚开始积累：各项陆续够 30 天才计入，Δ 随之上升，这不全是习惯变差。参数 `PACE_WEEKS`、`PACE_SMOOTH_WEEKS`、`PACE_MIN_WEEKS`。
+- 步数项对 < 60 岁很陡（Paluch 的 Q1 → Q2 HR 0.59），日均 6000 步左右就顶到 +4 年；快捷指令天的步数没去重（偏高），影响很小。
 - 中高强度用的是全天心率区间，不只训练，和问卷的「休闲运动」口径不完全一样；VO₂max 用 Apple 估计值（偏低几个单位，没校正）；静息心率口径是 Apple 全天值。
 - 力量训练分钟是估的（SparkyFitness 没记时长）；workouts 表合并后会更准。
 - 压力没有加速度，不动但在做事（开车、打字）和真的放松分不开；要原始心率，快捷指令改上传原始心率后 2026-10-14 之后的天才有。
-- 健康监测的手腕温度一年只有 21 晚，基本出不了范围。
+- 手腕温度读数少的人，健康监测的手腕温度基本出不了范围。
 - 身体年龄只是趋势参考：各项风险比来自不同人群的观察性研究，合计用 0.6 收缩是经验值，不是医学诊断。
 
 ## 8. 数据量
@@ -332,7 +302,7 @@ CREATE TABLE sync_state (
 - **Grafana**（2026-10-17 部署，只给你本人，`deploy/grafana/`，详见那里的 README）：OSS 13.2.4（钉版本 + digest；`docker pull` 卡住，用 `deploy/ops/fetch_image.py` 直接下载再 `docker load`）。
   - 端口 127.0.0.1:8400；tailnet 内 HTTPS `tailscale serve --https=8445`。关闭匿名访问、注册、建组织、公开看板、外部快照、遥测（使用统计、查新版本 / 插件更新、新闻）和默认预装插件；只装 Infinity 4.1.1。账号 `admin`，密码 `secrets/grafana_admin_password`。
   - 数据源全只读：Body Engine 库、OW 库各一个 `grafana_ro` 角色（`default_transaction_read_only`、30 秒超时、最多 10 连接、只授权看板要用的表；Body Engine 的不含 `api_tokens`、`assistant_audit`、`shares`、补剂 / 化验 / 事件，OW 的不含 `user`、`api_key` 等）。Body Engine 的角色用迁移 `050_grafana_ro.sql` 建（迁移进 git、不放密码：只建 NOLOGIN 角色和授权），OW 的表归它自己的 alembic 管，所以用部署脚本的 `ow_grafana_ro.sql` 建；两边的 LOGIN 密码都由 `bootstrap.py` 设，它同时验证读得到、敏感表读不到、写和建表都被拒。Grafana 连 `host.docker.internal:5433 / 5434`，不加入其他 compose 项目的网络。
-  - 体重读 SparkyFitness API（Infinity 插件 + 你本人的只读 key），不建 SparkyFitness 数据库角色（理由同上，行级安全）。没用 Body Engine 的 `body_mass`：它来自 HealthKit，最近一条是 2025-08-28。
+  - 体重读 SparkyFitness API（Infinity 插件 + 你本人的只读 key），不建 SparkyFitness 数据库角色（理由同上，行级安全）。没用 Body Engine 的 `body_mass`：HealthKit 里的体重常常不全。
   - 看板 5 个（中文、时区 Australia/Sydney、默认 90 天）：总览、生理指标（60 天基线带）、体重和活动、日记和提醒、数据质量。由 `deploy/grafana/build_dashboards.py` 生成 JSON，provisioning 加载，网页上不能保存修改。
   - 内存上限 768MB（打开几个看板后约 380MB）。
 
@@ -347,12 +317,12 @@ CREATE TABLE sync_state (
 
 ### 进度（2026-10-16）
 - 第 0 阶段：Docker Desktop、Tailscale（Mac）已装好；`git init` 完成。**还要你做**：iPhone 装 Tailscale。（插电防睡眠已打开。）
-- 第 1 阶段：OW 的 fork 以 git submodule 引入（`vendor/open-wearables`，钉在 0.9.0）；**已在本机部署**（`deploy/open-wearables/`），给你建了 OW user（Body Engine 的 `users.ow_user_id`），export.xml 已导入 OW（155 万条时间序列、102 次训练、796 段睡眠，条数核对见 `deploy/open-wearables/README.md`）。**还要你做**：按那份 README 的「让 iPhone 上的 OW app 连到这台 Mac」配好 Tailscale serve 和 app。之后和快捷指令并行 1–2 周对账。
+- 第 1 阶段：OW 的 fork 以 git submodule 引入（`vendor/open-wearables`，钉在 0.9.0）；**已在本机部署**（`deploy/open-wearables/`），给你建了 OW user（Body Engine 的 `users.ow_user_id`），export.xml 已导入 OW（条数核对方法见 `deploy/open-wearables/README.md`）。**还要你做**：按那份 README 的「让 iPhone 上的 OW app 连到这台 Mac」配好 Tailscale serve 和 app。之后和快捷指令并行 1–2 周对账。
 - 第 2 阶段：Body Engine 的 OW 导入器（`body-engine import-ow`）已完成，历史每日指标和睡眠已改为以 OW 为准（source=`ow`）。
-- 第 2 阶段（续）：**健康档案**（2026-10-16）：补剂、化验、日记、身体事件、动作补充信息的 API 和助手工具已完成；`body-engine import-records` 把 body-management.md 的记录迁进来（补剂 8、化验 8、事件 5、动作 32〔禁用 4、要小心 8、正常 20〕、日记项 27、日记回填 16），幂等、不覆盖之后的修改。2026-08 体检的日期按「8 月 30 日起复查」推断为 08-30，原始报告找到后要核对。迁移完成前，新的补剂 / 化验 / 事件仍同时写进 body-management.md。
+- 第 2 阶段（续）：**健康档案**（2026-10-16）：补剂、化验、日记、身体事件、动作补充信息的 API 和助手工具已完成；`body-engine import-records` 把 body-management.md 的记录迁进来（补剂、化验、事件、动作的禁用 / 小心 / 正常标记、日记项和日记回填），幂等、不覆盖之后的修改。迁移完成前，新的补剂 / 化验 / 事件仍同时写进 body-management.md。
 - 第 2 阶段（续）：Body Engine 底座已跑起来（`compose.yaml`：`body-db` Postgres 17.11 + `body-engine`，端口 127.0.0.1:5433 / 8100）；全量导出（到 2026-10-13）和快捷指令（10-14 起）的每日指标、睡眠已导入。
 - 第 2 阶段（续，2026-10-17）：**Grafana 已上线**（第 9 节，`deploy/grafana/`）：5 个看板都有真实数据，tailnet 内 https://your-server.your-tailnet.ts.net:8445。doctor 和每晚备份已纳入。**还要你做**：用 `admin` + `secrets/grafana_admin_password` 登录看一遍，建议登录后改密码并存进密码管理器（改了以后把新密码写回那个文件，doctor 和备份要用）。
-- 第 3 阶段（2026-10-16）：SparkyFitness v1.8.0 已在本机部署，tailnet 内 https://your-server.your-tailnet.ts.net:8444；给你建了账号（owner@example.com，管理员）。`body-management.md` 的数据已迁移并核对（`deploy/sparkyfitness/migrate_body_md.py`）：动作库 46 个（含 4 个禁用动作、10 个"注意"）、训练模板 5 个（上肢 A / 下肢 A / 上肢 B / 下肢 B / 肩部 routine）、每周训练计划 V3.0、训练日志 10 次 / 37 个动作 / 145 组、营养目标 V2.1（训练日 / 休息日按星期自动切换）、菜谱 25 个、饮食记录 1 条、体重 4 条。Body Engine 的 AI 助手可以读训练、饮食、体重（`get_training_log` / `get_nutrition` / `get_weight`）。**还要你做**：iPhone 装 SparkyFitness app 并登录（`deploy/sparkyfitness/README.md`）；确认 10-15 的"上斜卧推 23kg"是哪种器械。之后训练和饮食记在 SparkyFitness，确认没问题再停止往 `body-management.md` 里写。
+- 第 3 阶段（2026-10-16）：SparkyFitness v1.8.0 已在本机部署，tailnet 内 https://your-server.your-tailnet.ts.net:8444；给你建了账号（owner@example.com，管理员）。`body-management.md` 的数据已迁移并核对（`deploy/sparkyfitness/migrate_body_md.py`）：动作库（含禁用 / 注意标记）、训练模板、每周训练计划、训练日志、营养目标（训练日 / 休息日按星期自动切换）、菜谱、饮食记录、体重。Body Engine 的 AI 助手可以读训练、饮食、体重（`get_training_log` / `get_nutrition` / `get_weight`）。**还要你做**：iPhone 装 SparkyFitness app 并登录（`deploy/sparkyfitness/README.md`）。之后训练和饮食记在 SparkyFitness，确认没问题再停止往 `body-management.md` 里写。
 
 ### 历史数据导入规则
 - 来源优先级：`ow` > `apple_export` > `shortcut`，高的覆盖低的。OW 部署后从 OW 重算，覆盖前两者。
@@ -441,27 +411,21 @@ CREATE TABLE sync_state (
 **对接**
 - **动作 ID**：`body-engine link-exercises --user-id N [--dry-run]`（`records/exercise_link.py`）按 source_id（迁移脚本的 `bm:<key>`）→ 名称 / 别名 → 去掉末尾括号注释后的名称三档对，一对一，同档有歧义不写，已填的不覆盖。用户 1：32 个 exercise_meta 全部对上（source_id 18、名称 / 别名 13、去括号 1），5 个已知禁用 / 注意动作 ID 核对一致；SparkyFitness 里 14 个动作没有 exercise_meta（肩部 routine 5 个、爬坡、篮球、9 月历史动作 4 个、腿举（高脚位）、上斜卧推（器械未注明）——它去括号后能对上 `incline_dumbbell_press` 的别名「上斜卧推」，但那个已经被「上斜哑铃卧推（30°）」精确对上，不抢）。规则对没对上的动作看 SparkyFitness 描述标记。
 - **日记分析**：结局加「次日恢复分」（`next_recovery`，排第一），D 的行为对 D+1 的 `daily_scores.recovery`。
-- **肌肉负荷**：见第 7 节实现说明（algo v1.1）；10 个训练日有值，例：9-21 背 strain 4.4、容量 7020kg，9-15 背 strain 15.2、容量 7020kg。
+- **肌肉负荷**：见第 7 节实现说明（algo v1.1）。
 
-**2026-10-16 真实数据的结果**（`evaluate-rules --user-id 1`，8 条）
-- `progression`（检查 7 个有记录的计划动作）：高位下拉、坐姿划船（窄握）、反手窄距下拉 39 → 41.5kg；保加利亚分腿蹲 5 → 7.5kg（10-15 做了 4 × 12，超过区间 8–10；提醒里引用了当天备注「回到计划的 3 × 8–10，先用 5kg」，两者不一致以备注 / 自己感觉为准）。上斜哑铃卧推、杠铃臀推等 15 个计划动作还没练过；哑铃侧平举、龙门架夹胸、坐姿腿屈伸还没到上限。最近 28 天做过但不在 V3.0 计划里的 7 个动作（9 月部位分化的哑铃推肩、前平举等）不提示；10-15 的「上斜卧推（器械未注明）」也不在计划里，没有次数区间，不提示（日志里写的「做满 12 次 → 加 2–2.5kg」要等确认器械后并进计划动作）。
-- `pre_workout_fuel`：周五下肢 B → warning（10-15 有低血糖感）。
-- `exercise_restrictions`：10-12 做了直立划船（禁用）warning；10-12 绳索面拉 32kg > 18kg warning；今天计划里的保加利亚分腿蹲（注意）info。
-- **没触发**：`frequency_caps`（近 7 天只有 10-15 一天有饮食记录，估红肉 30g〔培根〕、1 顿）；`readiness`（恢复 60、睡眠债 12 分钟）。
-- **数据不足**：`calorie_adjust`（SparkyFitness 只有 9-07、9-23、9-25、10-14 四次称重，Body Engine 的 body_mass 最近一条是 2025-08-28；每个 7 天窗口要 ≥ 2 次称重）。
-- 回溯 10-15：多一条「今天记录的碳水只有 45g」warning，和当天练腿低血糖对得上。
+**验证（2026-10-16）**：在开发者本人的真实数据上跑过一次 `evaluate-rules`，覆盖加重量、练前进食、禁用 / 注意动作、没触发和数据不足几类情况，并回溯核对了一次空腹训练的提醒。具体内容属于个人数据，不放进公开仓库。
 
 **已知问题 / 以后**
 - 要每天自动跑：`compute-scores` 之后跑 `evaluate-rules`（调度交给运维；没跑的那天 API 当天列表为空）。
-- 体重数据太少，调热量规则要每周至少称 2 次（最好每天早上）才会工作。
-- 饮食记录只有一条，红肉克数大多只能按菜名估；准确的话在日记里记 `red_meat_g`。
-- SparkyFitness 的 `/reports/nutrition-trends-with-goals` 返回的目标是默认 2000 kcal，不跟每周目标计划（训练日 2400 / 休息日 2200）走；规则改用 `/goals/by-date`。`get_nutrition` 工具里的 goal 还是那个默认值，以后要改。
+- 调热量规则要每周至少称 2 次（最好每天早上）才会工作。
+- 饮食记录少时，红肉克数大多只能按菜名估；准确的话在日记里记 `red_meat_g`。
+- SparkyFitness 的 `/reports/nutrition-trends-with-goals` 返回的目标是默认 2000 kcal，不跟每周目标计划（训练日 / 休息日不同）走；规则改用 `/goals/by-date`。`get_nutrition` 工具里的 goal 还是那个默认值，以后要改。
 - 训练记录没有 RIR / RPE / 时长，「力竭先保持」和 session RPE 暂时用不上。
 
 ### 13.1 入睡时间目标（2026-10-17）
 用户最近基本早上 6–7 点才睡（10-10～10-16 七晚平均 07:04，起床 13:00–15:44），想逐步提到 0 点。代码 `body_engine/src/body_engine/goals/`（参数和依据在 `goals/params.py`），表 `sleep_goals`（`070_sleep_goals.sql`，每人一个当前目标），接口 `GET / PUT /v1/users/{user}/goals/sleep`（shares scope `sleep`），助手工具 `get_sleep_goal`、`set_sleep_goal`*，命令 `body-engine set-sleep-goal --user-id N --bedtime 00:00 [--wake --pace --step-days]`，规则 `sleep_goal`（`rules/sleep_goal.py`，`RULES_VERSION` 升到 v1.1-2026-10-17）。
 
-**睡眠日**：一晚归到入睡前的那个傍晚（night = 入睡时刻 − 12h 的日期；10-17 07:39 入睡算 10-16 那晚），时间用「相对这晚之后那个午夜的分钟数」：00:00 = 0、23:00 = −60、06:30 = +390，所以 06:30 比 00:00 晚 6.5 小时；起床同样相对那个午夜（15:02 = +902）。「今晚」= 现在 − 12h 的日期（凌晨 3 点还没睡，今晚仍是昨天傍晚那晚）。
+**睡眠日**：一晚归到入睡前的那个傍晚（night = 入睡时刻 − 12h 的日期；某天 07:30 入睡算前一天那晚），时间用「相对这晚之后那个午夜的分钟数」：00:00 = 0、23:00 = −60、06:30 = +390，所以 06:30 比 00:00 晚 6.5 小时；起床同样相对那个午夜（15:02 = +902）。「今晚」= 现在 − 12h 的日期（凌晨 3 点还没睡，今晚仍是昨天傍晚那晚）。
 
 **计划**：设目标时取最近 7 晚（≥ 3 晚有数据）平均入睡、取整到 5 分钟为起点；第 k 档 = max(起点 − (k+1) × 每档分钟, 目标)，从 start_date + k × step_days 那晚起，到目标为止。默认每 3 天提前 20 分钟（`goals/params.py`：生物钟每天大约只能前移 15–30 分钟；body-management.md 6.2.2「每 2–3 天提前 30–60 分钟，不要一夜硬调」，默认取更慢更稳的，用户可以在今天页改快，每档上限 60 分钟）。改目标 = 从当时的 7 晚平均重新定起点。
 **今晚的目标** = 计划这一档和「最近 7 晚平均 − 一档」里更晚的那个：落后计划时不要求一夜追回来。起床目标 = `target_wake`，没设就 = 今晚目标 + 睡眠时长（目标里的，否则评分的睡眠需求，否则 8h）。
@@ -491,7 +455,7 @@ CREATE TABLE sync_state (
 没设目标时 `target_bedtime` 等目标字段为 null、`plan` 为 []，`progress` 里平均 / 趋势照给，`on_target_nights_7d`、`gap_min`、`eta_date`、`behind_plan_min` 为 null。时间都是本地 HH:MM，日期 YYYY-MM-DD。
 `PUT /v1/users/{user}/goals/sleep` body `{"target_bedtime": "00:00", "target_wake": null, "pace_min_per_step": null, "step_days": null, "target_duration_min": null, "status": null}`：`target_bedtime` 必填（HH:MM，24 小时制），其余可省（沿用旧目标，没有就默认）；`status` = active / paused。只能改自己的、token 要有 write；cookie 登录要带 `X-Body-Web: 1`。返回同 GET。格式错 422。
 
-**用户 1 的默认目标（2026-10-17 设）**：00:00，每 3 天提前 20 分钟；起点 07:05（10-10～10-16 六晚平均 07:04），今晚 06:45，22 档，2026-12-19 那晚到 00:00。最近 14 晚的趋势是每周晚 236 分钟（10-03 前后还在 0–3 点），所以现在 eta 为空。
+**默认目标示例**：目标 00:00，每 3 天提前 20 分钟；起点 = 最近几晚的平均入睡时间，按档逐步提前到目标。最近 14 晚的趋势在变晚时 eta 为空。
 
 ## 14. 今天页（PWA，2026-10-17，需求 2）
 手机优先的网页前台，日常查看和记录不用再通过对话。代码 `body_engine/src/body_engine/web/`，由 Body Engine 的 FastAPI 直接提供（`/app/`），**没有前端构建链**：原生 JS + CSS，图表手写 SVG，不依赖 CDN（离线可用）。用法和 iPhone 步骤见 `body_engine/README.md`「今天页」。
@@ -565,12 +529,12 @@ CREATE TABLE sync_state (
 | strain、肌肉负荷、恢复分 | `daily_scores`（第 7 节） | — |
 
 **导入（`training/importer.py`）**：`import-ow` 每次顺带拉同一个日期范围的训练（每小时任务自动跑，`--full` 从头）；`import-workouts` 只拉训练（回填 / 重算用）；`import-shortcut`（接收器收到上传后自动跑）导入快捷指令的训练行（`training/shortcut_workouts.py`；时长是秒、能量是活动能量 kcal，也认带单位 / 千位分隔符的写法，空字段可以）。都是幂等的。
-- **单位**：OW 的 XML 导入把 export.xml 的 kJ 原样存成 kcal（和每日指标同一个问题），除以 4.184；实时同步的是 kcal。用样本核对：OW 的 `calories_kcal` 是**总能量**（活动 + 基础）——2026-09-04 力量训练 302.9 = 活动样本 213.3 + 基础 90.5。
+- **单位**：OW 的 XML 导入把 export.xml 的 kJ 原样存成 kcal（和每日指标同一个问题），除以 4.184；实时同步的是 kcal。用样本核对：OW 的 `calories_kcal` 是**总能量**（活动 + 基础）（一次训练的 `calories_kcal` = 同时段活动样本 + 基础样本之和）。
 - **活动能量**：训练时段内活动 + 基础能量样本之和 ≥ 总能量 85% 时，按样本比例分出活动能量；样本没同步全时用 总能量 − 基础代谢 × 时长（基础代谢 = 本人核对得上的训练里的中位数，约 1.94 kcal/分钟；没有就用每日基础能量 / 1440），标 `active_kcal_estimated`。
 - **心率 / TRIMP**：按训练时段拉 OW 原始心率（XML 副本去掉），和评分模块同一套 Edwards 五区（50/60/70/80/90% HRmax，权重 1–5）；HRmax 用当天 `daily_scores.hr_max`（没有就 208 − 0.7 × 年龄）；一条心率最多代表到下一条或 5 分钟、不超过训练结束。被心率覆盖不到 60% 的不出 TRIMP（标 `hr_coverage_low`），强度改用平均心率估。存 `trimp`、`hr_zone_min`（五区分钟）、`hr_samples`、`hr_max_used`。
 - **去重**：同一次训练的副本（OW 里 XML 导入的 + 实时同步的；OW + 快捷指令）：开始、结束都在 2 分钟内，或同类型、时间重叠 ≥ 较短那次的 80%。优先级 OW > 快捷指令、实时同步 > XML、手表 > 手机 > 其他；低的 `dup_of` 指向保留的那条。每次导入整段重算。
 - **不计入**：时长 > 12 小时的（2024-07 有一条 74 小时、一条 10 天的，没结束的记录），`excluded = implausible_duration`。
-- **时间**：一律用用户时区；`local_date` = 开始那天（跨午夜的训练算开始那天）。设备记录的时区偏移另存 `zone_offset`（2025-08、2026-07～09 有 +08:00 的，人在国内时；日期仍按 Australia/Sydney，和其他所有数据一致）。
+- **时间**：一律用用户时区；`local_date` = 开始那天（跨午夜的训练算开始那天）。设备记录的时区偏移另存 `zone_offset`（出行时设备会记下当地偏移；日期仍按用户时区，和其他所有数据一致）。
 - **删除**：OW 里删掉的训练，下次拉到那个范围时这边也删（只删 source=ow、在拉取范围内的）。快捷指令的存档是累积的，不删。
 - **类型中文名**：力量训练、篮球、游泳、跑步、骑行、爬楼梯、有氧训练……；**walking 一律写「步行 / 爬坡」**：跑步机爬坡在 HealthKit 里记成步行、没有坡度，单看手表分不出（不猜）；同一天 SparkyFitness 记了「爬坡（跑步机）」的，合并后用那个名字。
 
@@ -582,7 +546,7 @@ CREATE TABLE sync_state (
 **强度分级（每次训练，阈值在 `params.py`）**：rest / light / moderate / hard / max（休息 / 轻松 / 中等 / 高强度 / 极限）。
 | 依据（按顺序） | 规则 |
 |---|---|
-| 1. TRIMP（训练时段的原始心率） | < 50 light、50–120 moderate、120–200 hard、≥ 200 max。依据：本人 36 次心率完整的手表训练四分位 26 / 59 / 110；40 分钟爬坡（心率 140）约 120、1 小时爬坡约 180、1 小时篮球 160–180、2 小时篮球 210。换成单次 strain（K = 170）：50 → 5.4、120 → 10.6、200 → 14.6（WHOOP「strenuous」下沿） |
+| 1. TRIMP（训练时段的原始心率） | < 50 light、50–120 moderate、120–200 hard、≥ 200 max。依据：开发时一批心率完整的手表训练的四分位，和常见训练的量级（40 分钟中等强度有氧约 120、1 小时球类约 160–180）。换成单次 strain（K = 170）：50 → 5.4、120 → 10.6、200 → 14.6（WHOOP「strenuous」下沿） |
 | 2. 平均心率（快捷指令、心率没同步全） | 估 TRIMP = 分钟 × 平均心率所在区的权重 × 0.94（0.94 = 那 36 次里 真实 / 估计 的中位数，四分位 0.79–1.06），同一组阈值 |
 | 3. 力量训练量（有 SparkyFitness 记录） | 心率会低估力量训练（第 7 节），取心率那档和训练量那档里**高的**：Σ 次数 × 重量 ≥ 2,500 moderate、≥ 6,000 hard、≥ 12,000 max；或工作组 ≥ 10 moderate、≥ 20 hard |
 | 4. 只有时长 | 球类 / 游泳 / 跑步 ≥ 30 分钟 moderate、≥ 75 hard；力量 ≥ 40 / ≥ 75；有氧和其他 ≥ 60 moderate；其余 light |
@@ -597,17 +561,7 @@ CREATE TABLE sync_state (
   - `daily`：`active_kcal, basal_kcal, total_kcal, workout_kcal, exercise_min, steps, strain, muscle_load, recovery, recovery_next_day（第二天早上的恢复分）, intensity, intensity_label, duration_min, flags`
 - 身体管家工具 `get_training_calendar`（`month` 或 `start` / `end`，默认最近 28 天）、`get_training_day`，只读、scope training；`assistant/CLAUDE.md` 要求安排训练前先看最近 2–4 周的日历和恢复。`run_tool` 把查看者 ID 传给处理函数（`_viewer_id`，不进审计），分块授权和接口一致。
 
-**回填结果（2026-10-17，用户 1）**：OW 152 次（XML 102、手表实时 41、Keep 9）→ 副本 49、不计入 2、保留 101（2016–2025-06 的 60 次是 iPhone / Keep 记的步行、跑步、骑行，没有心率）。2025-08-28 开始戴手表后 41 次：步行 / 爬坡 18（平均 39 分钟、活动 265 kcal）、力量训练 12（51 分钟、277 kcal）、篮球 6（55 分钟、484 kcal、TRIMP 均值 140）、游泳 2、有氧 / 骑行 / 跑步各 1。有 TRIMP 的 37 次；活动能量是估算的 14 次。
-| 月份 | 训练天 | 次数 | 时长（分钟） | 训练活动能量 | 日均活动能量 | 类型 |
-|---|---|---|---|---|---|---|
-| 2025-09 | 6 | 6 | 205 | 1,172 | 597 | 步行 / 爬坡 5、跑步 1 |
-| 2025-10 ～ 2026-06 | 每月 0–1 | — | — | — | 312–634 | 零星步行、骑行 |
-| 2026-07 | 2 | 4 | 254 | 1,900 | 292 | 篮球 3、有氧 1 |
-| 2026-08 | 7 | 7 | 297 | 2,159 | 307 | 篮球 2、游泳 2、力量 2、步行 1 |
-| 2026-09 | 12 | 17 | 839 | 5,709 | 586 | 力量 9、步行 / 爬坡 7、篮球 1；最长连续 5 天；中等 6 天、高强度 5 天 |
-| 2026-10（到 17 日） | 4 | 4 | 95 | 499 | 331 | 力量 3（10-10、10-12 只有 SparkyFitness）、步行 1 |
-
-**抽查（对照 `body-management.md` 第 7 节训练日志，10 次全部对上）**：9-13 肩（手表 78 分钟 + 动作 6 个，直立划船标「禁用」、面拉 / 推肩标「注意」，训练量 2,976 + 24 组 → 高强度）+ 训练后 41 分钟步行 / 爬坡（心率 143）；9-15 背（5 个动作 7,020 → 高强度；手表心率只有 TRIMP 33，正是「心率低估力量训练」）+ 爬坡 43 分钟；9-16 腿：手表的 44 分钟步行 = SparkyFitness 的「爬坡 40 分钟」→ 合并成「爬坡（跑步机）」，后面 22 分钟力量 = 弓步蹲 + 腿屈伸；9-18 胸 + 爬坡 30 分钟；9-21 / 9-24 / 9-30 的短训练（25–30 分钟）；10-10 背、10-12 肩：手表没数据，只有 SparkyFitness（和第 7 节「10-12 肩：手表没数据」一致）；10-15 胸 + 腿：手表 61 分钟、平均心率 118，心率只同步了 24% → 按平均心率估为中等。
+**验证（2026-10-17）**：在开发者本人的数据上回填（OW 的 XML / 手表实时 / 第三方 app 的训练去重合并），按月统计后对照训练日志抽查 10 次全部对上，也确认了「心率低估力量训练」和心率同步不全时按平均心率估强度的情况。具体次数和内容属于个人数据，不放进公开仓库。
 
 **已知问题 / 以后**
 - ~~10-14～10-16 的每日活动能量 / 步数偏低~~（2026-10-18 已修）：累计型指标不再「ow 一律优先」，每个来源的日值存 `daily_metric_sources`，`importers/common.py resolve_daily` 在完整、去重的来源里取最大；能量只同步了一部分的来源（基础代谢不到平常一半，或活动能量比当天训练还少 = 日历的 `daily_incomplete`）和快捷指令按小时合计的值（iPhone + 手表直接相加，`flags.hourly_sum`）只在没有干净来源时才用。10-14 / 10-15 的能量改用快捷指令（基础 2,247 / 2,089、活动 584 / 844 kcal），步数仍是 OW 的 8,260 / 6,818。规则见 `docs/shortcut-sync-spec.md` 第 5 节。
