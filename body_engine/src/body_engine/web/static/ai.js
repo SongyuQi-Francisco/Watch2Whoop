@@ -13,8 +13,10 @@
   const esc = (v) => C.esc(v);
   const tr = (k, p) => window.I18N.t(k, p);
   const money = (v) => (v == null ? "—" : `$${Number(v).toFixed(Number(v) < 1 ? 3 : 2)}`);
-  const yuan = (v) => (v == null ? "—" : `¥${Number(v).toFixed(2)}`);
-  const quotaText = (f) => `${yuan(f.spent_cny)} / ¥${Number(f.quota_cny)}`;
+  // The fallback quota is shown to users as a remaining percentage only (no amounts, no provider / model name; owner, 2026-10-22)
+  const leftPct = (f) => (f?.remaining_pct != null ? f.remaining_pct
+    : f?.quota_cny ? Math.max(0, Math.min(100, Math.round(100 * (f.remaining_cny ?? (f.quota_cny - (f.spent_cny || 0))) / f.quota_cny))) : null);
+  const quotaText = (f) => tr("剩 {p}%", { p: leftPct(f) ?? "—" });
   const mmdd = (iso) => (iso ? window.I18N.monthDay(new Date(`${iso.slice(0, 10)}T12:00:00`)) : "");
   const CLIENTS = [["claude-code", tr("Claude Code / Claude 桌面版")], ["codex", "Codex CLI"], ["antigravity", "Antigravity"], ["gemini-cli", tr("Gemini CLI（API key）")], ["other", tr("其他 MCP 客户端")]];
 
@@ -24,13 +26,13 @@
   function settingsValue() {
     const a = C.ai || {};
     if (a.mode === "none" || !a.mode) return tr("jarvis.unset");
-    if (a.mode === "fallback") return tr("托底 · {quota}", { quota: quotaText(a) });
+    if (a.mode === "fallback") return `Jarvis · ${quotaText(a)}`;
     if (a.mode === "butler") return tr("身体管家");
     return a.mode === "api" || /订阅|subscription/i.test(a.display_name || "") ? `${a.display_name}` : tr("{name}（订阅）", { name: a.display_name });   // i18n-ok (matches the server's name)
   }
   // Short name for the chat panel's switcher
   function shortName(a = C.ai || {}) {
-    if (a.mode === "fallback") return tr("托底");
+    if (a.mode === "fallback") return "Jarvis";
     if (a.mode === "butler") return tr("身体管家");
     return a.display_name || tr("jarvis.unset");
   }
@@ -75,7 +77,7 @@
         <span class="small muted" style="display:block;font-weight:400">${subLine(p)}</span></span></button>`;
     const f = d.fallback;
     const fbRow = f ? `<button class="item" id="ai-fb"><span class="row-title">${esc(f.display_name)}${fbBadge(f)}
-        <span class="small muted" style="display:block;font-weight:400">${esc(tr("本月 {quota} · {day} 重置", { quota: quotaText(f), day: mmdd(f.reset_on) }))}</span></span></button>` : "";
+        <span class="small muted" style="display:block;font-weight:400">${esc(tr("本月{quota} · {day} 重置", { quota: quotaText(f), day: mmdd(f.reset_on) }))}</span></span></button>` : "";
     C.openSheet(tr("me.aiSettings"), `
       <div class="small muted ai-sec">${esc(tr("Jarvis 用"))}</div>
       ${ch.options.length ? `<div class="group" role="radiogroup">${optionRows(ch.options)}</div>` : `<div class="group"><div class="item"><span class="row-title faint">${esc(tr("jarvis.unset"))}</span></div></div>`}
@@ -237,19 +239,18 @@
 
   function fallbackSheet(f) {
     const kv = (k, v) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${v}</span></div>`;
-    C.openSheet(tr("托底 AI"), `
-      ${kv(tr("模型"), esc(f.model))}${kv(tr("本月"), quotaText(f))}${kv(tr("剩余"), yuan(f.remaining_cny))}${kv(tr("重置"), mmdd(f.reset_on))}
-      ${f.balance_cny !== undefined ? kv(tr("账户余额"), yuan(f.balance_cny)) : ""}
+    C.openSheet("Jarvis", `
+      ${kv(tr("本月剩余"), `${leftPct(f) ?? "—"}%`)}${kv(tr("重置"), mmdd(f.reset_on))}
       ${kv(tr("已同意"), f.consent ? (f.consented_at ? esc(new Date(f.consented_at).toLocaleDateString(window.I18N.locale())) : "✓") : "—")}
       ${f.message ? `<div class="notice" style="margin-top:12px">${esc(f.message)}</div>` : ""}
       <div class="rcard-tags" style="margin-top:10px"><span class="badge plain">${esc(tr("自己的默认 AI 优先"))}</span></div>
       <p class="login-error" id="fb-err" role="alert"></p>
       <div class="btns">${f.used ? "" : `<button class="btn btn-primary" id="fb-use">${esc(tr("用这个"))}</button>`}${f.consent ? (f.consented_at ? `<button class="btn" id="fb-revoke">${esc(tr("撤回同意"))}</button>` : "") : (f.used ? `<button class="btn btn-primary" id="fb-agree">${esc(tr("查看并同意"))}</button>` : "")}</div>`, (root) => {
-      const u = $("#fb-use", root); if (u) u.onclick = () => pick({ key: "fallback", consent: f.consent }, () => { C.toast(tr("Jarvis 用：{name}", { name: tr("托底 AI") })); openSettings(); });
+      const u = $("#fb-use", root); if (u) u.onclick = () => pick({ key: "fallback", consent: f.consent }, () => { C.toast(tr("Jarvis 用：{name}", { name: "Jarvis" })); openSettings(); });
       const a = $("#fb-agree", root); if (a) a.onclick = () => consentSheet(f, openSettings);
       const r = $("#fb-revoke", root);
       if (r) r.onclick = async () => {
-        if (!confirm(tr("撤回后托底 AI 不再发送你的数据，也就不能用了。确定？"))) return;
+        if (!confirm(tr("撤回后 Jarvis 不再发送你的数据，也就不能用了。确定？"))) return;
         try { await C.api("/v1/users/me/ai-fallback/consent", { method: "DELETE" }); await afterChange(); C.toast(tr("已撤回")); openSettings(); }
         catch (e) { $("#fb-err", root).textContent = e.message; }
       };
@@ -259,7 +260,7 @@
   // Opt-in consent for sending data to DeepSeek: shown before the first fallback chat; then() runs after agreeing
   async function consentSheet(f, then) {
     if (!f?.points) { try { f = await C.api("/v1/users/me/ai-fallback"); } catch (e) { C.toast(e.message); return; } }
-    C.openSheet(tr("托底 AI · 使用前确认"), `
+    C.openSheet(tr("Jarvis · 使用前确认"), `
       <ul class="small" style="padding-left:18px;line-height:1.6;margin:0">${f.points.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
       <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin-top:14px"><input type="checkbox" id="fb-check"> ${esc(tr("我已阅读，同意把上面的数据发给 DeepSeek"))}</label>
       <p class="login-error" id="fb-err" role="alert"></p>
@@ -279,7 +280,7 @@
     const el = $("#ai-quota");
     if (!el) return;
     el.hidden = !q;
-    if (q) el.textContent = tr("托底 · 剩 {left} / {quota} · {day} 重置", { left: yuan(q.remaining_cny), quota: `¥${Number(q.quota_cny)}`, day: mmdd(q.reset_on) });
+    if (q) el.textContent = tr("Jarvis · 本月剩余 {p}% · {day} 重置", { p: leftPct(q) ?? "—", day: mmdd(q.reset_on) });
   }
 
   async function afterChange() {

@@ -309,7 +309,7 @@ def test_quota_used_up_and_admin_override(client, world, dsn):
                   (ids["F1"], fp.MODEL, fp.MONTHLY_QUOTA_CNY))
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
     d = r.json()["detail"]
-    assert r.status_code == 402 and d["code"] == "quota" and "本月额度已用完" in d["message"] and d["reset_on"].endswith("-01")
+    assert r.status_code == 402 and d["code"] == "quota" and "用完" in d["message"] and "¥" not in d["message"] and d["reset_on"].endswith("-01")
     me = client.get("/v1/web/me", headers=H(tok["F1"])).json()["ai"]
     assert me["available"] is False and me["reason"] == "quota" and me["remaining_cny"] == 0
     with db(dsn) as c:
@@ -449,7 +449,8 @@ def test_balance_pause_and_admin_switch(client, world, dsn, monkeypatch):
     reset(dsn, ids["F1"])
     monkeypatch.setattr(fallback, "fetch_balance", lambda key, timeout=8: 1.5)
     r = client.post("/v1/assistant/chat", headers=H(tok["F1"]), json={"message": "hi"})
-    assert r.status_code == 409 and r.json()["detail"]["code"] == "fallback_paused" and "余额" in r.json()["detail"]["message"]
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "fallback_paused" and "Jarvis 暂停" in r.json()["detail"]["message"] \
+        and "余额" not in r.json()["detail"]["message"]   # users are not told about the admin's balance
     with db(dsn) as c:
         s = fallback.admin_status(c)
         assert s["balance_cny"] == 1.5 and s["available"] is False
