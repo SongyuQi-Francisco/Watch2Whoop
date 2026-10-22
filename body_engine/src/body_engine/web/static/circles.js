@@ -1,11 +1,11 @@
-/* Circles (body_engine/friends/, docs/friends-social-plan.md §3.2): create a circle, invite with a 72-hour link, join with
+/* Circles (body_engine/friends/, docs/friends-social-plan.md §3.2): create a circle, invite with a link (the owner picks 1 / 3 / 7 / 30 days or never, and can revoke one early), join with
    a code (or an invite from a friend's referral sign-up), pick what to share (scopes; ECGs never), change it, leave; the owner
    can reset invites, remove members and dissolve. Opening /app/?circle=CODE shows the join sheet after sign-in.
    Separate from app.js: registered in window.BodyPlugins (init / meItem / bindMe); window.BodyCircles.open() for other pages.
    Behind the `friends` feature flag (docs/rollout.md): while it is off nothing is drawn and the API answers 404.
    Endpoints: GET /v1/friends, POST /v1/friends/circles, …/circles/{id}/invite, GET /v1/friends/invite?code=,
    POST /v1/friends/join, PATCH|DELETE /v1/friends/circles/{id}/me, DELETE …/members/{u}, DELETE …/circles/{id},
-   DELETE /v1/friends/invites/{id}. */
+   DELETE …/circles/{id}/invites/{invite_id} (revoke one code), DELETE /v1/friends/invites/{id} (decline one addressed to me). */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -36,6 +36,13 @@
 .cc-code{font:600 26px/1.2 ui-monospace,Menlo,monospace;letter-spacing:.06em;text-align:center;margin:16px 0 4px;user-select:all;-webkit-user-select:all}
 .cc-inv{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:12px 14px;margin:0 0 12px}
 .cc-inv .f{flex:1;min-width:0;font-size:14px}.cc-inv .btn{flex:none;min-height:36px;padding:0 14px;font-size:14px}
+.cc-h{font-size:12px;color:var(--text-2);font-weight:600;margin:14px 0 6px}
+.cc-dur{display:flex;gap:6px}
+.cc-dur button{flex:1;min-width:0;border:0;border-radius:10px;background:var(--surface);color:var(--text-2);padding:9px 0;font-size:14px;font-weight:500}
+.cc-dur button[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.cc-live{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--hair);font-size:14px}
+.cc-live:first-of-type{border-top:0}.cc-live .f{flex:1;min-width:0}.cc-live .u{color:var(--text-2);font-size:12px}
+.cc-live button{border:0;background:none;padding:4px 0 4px 8px;color:var(--bad);text-decoration:underline;font-size:13px}
 .cc-err{color:var(--bad);font-size:13px;min-height:1.2em;margin:8px 0 0}`;
 
   function injectCss() {
@@ -125,10 +132,10 @@
     by("[data-accept]", async (b) => joinSheet({ invite_id: Number(b.dataset.accept), name: b.dataset.name }));
     by("[data-decline]", async (b) => { await C.api(`/v1/friends/invites/${b.dataset.decline}`, { method: "DELETE" }); await reopen(); });
     by("[data-scopes]", async (b) => scopesSheet(find(b.dataset.scopes)));
-    by("[data-invite]", async (b) => inviteSheet(find(b.dataset.invite), false));
+    by("[data-invite]", async (b) => inviteSheet(find(b.dataset.invite)));
     by("[data-reset]", async (b) => {
       if (!confirm(tr("重置后，之前发出的邀请链接立即失效。确定？"))) return;
-      await inviteSheet(find(b.dataset.reset), true);
+      await mintAndShow(find(b.dataset.reset), { reset: true });
     });
     by("[data-remove]", async (b) => {
       if (!confirm(tr("把 {name} 移出圈子？你们立即互相看不到。", { name: b.dataset.name }))) return;
@@ -179,18 +186,62 @@
     });
   }
 
-  async function inviteSheet(c, reset) {
-    const r = await C.api(`/v1/friends/circles/${c.id}/invite`, { method: "POST", body: { reset } });
+  // time left on a code, from its expires_at (null = never)
+  function timeLeft(exp) {
+    if (!exp) return tr("永久有效");
+    const h = (new Date(exp) - Date.now()) / 36e5;
+    if (h < 1) return tr("剩不到 1 小时");
+    return h < 48 ? tr("剩 {n} 小时", { n: Math.floor(h) }) : tr("剩 {n} 天", { n: Math.ceil(h / 24) });
+  }
+  const daysLabel = (n) => (n === 1 ? tr("1 天") : tr("{n} 天", { n }));
+
+  async function mintAndShow(c, body) {
+    const r = await C.api(`/v1/friends/circles/${c.id}/invite`, { method: "POST", body });
     await load();
     showCode(c, r);
   }
 
+  // the owner's invite sheet: pick how long a new code works, and see / revoke the live ones
+  function inviteSheet(c) {
+    const lim = data.limits || {};
+    const choices = lim.invite_days || [1, 3, 7, 30];
+    let pick = lim.invite_default_days || 3;          // a number of days, or 0 = never expires
+    const codes = c.invites?.codes || [];
+    const rows = codes.map((i) => `<div class="cc-live"><span class="f">${esc(timeLeft(i.expires_at))}${i.used_count ? ` <span class="u">· ${esc(tr("已用 {n} 次", { n: i.used_count }))}</span>` : ""}</span>
+      <button type="button" data-revoke="${i.id}">${esc(tr("作废"))}</button></div>`).join("");
+    C.openSheet(c.name, `<p class="cc-h" style="margin-top:0">${esc(tr("有效期"))}</p>
+      <div class="cc-dur" id="cc-dur" role="group" aria-label="${esc(tr("有效期"))}">${choices.map((n) => `<button type="button" data-days="${n}">${esc(daysLabel(n))}</button>`).join("")}<button type="button" data-days="0">${esc(tr("永久"))}</button></div>
+      <div class="btns"><button class="btn btn-primary" id="cc-make">${esc(tr("生成邀请"))}</button></div>
+      ${rows ? `<p class="cc-h">${esc(tr("{n} 个邀请有效", { n: codes.length }))}</p>${rows}` : ""}
+      <p class="cc-err" id="cc-error" role="alert"></p>
+      <div class="btns"><button class="btn" id="cc-back">${esc(tr("返回"))}</button></div>`, (root) => {
+      const err = (e) => { $("#cc-error", root).textContent = e.message; };
+      const mark = () => root.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.days) === pick)));
+      root.querySelectorAll("[data-days]").forEach((b) => { b.onclick = () => { pick = Number(b.dataset.days); mark(); }; });
+      mark();
+      $("#cc-make", root).onclick = async () => {
+        $("#cc-make", root).disabled = true;
+        try { await mintAndShow(c, pick ? { days: pick } : { permanent: true }); } catch (e) { err(e); $("#cc-make", root).disabled = false; }
+      };
+      root.querySelectorAll("[data-revoke]").forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm(tr("作废这个邀请？已发出的链接立即失效，已经加入的人不受影响。"))) return;
+          try {
+            await C.api(`/v1/friends/circles/${c.id}/invites/${b.dataset.revoke}`, { method: "DELETE" });
+            await load();
+            inviteSheet(data.circles.find((x) => x.id === c.id) || c);
+          } catch (e) { err(e); }
+        };
+      });
+      $("#cc-back", root).onclick = open;
+    });
+  }
+
   function showCode(c, inv) {
     const link = `${location.origin}/app/?circle=${encodeURIComponent(inv.code)}`;
-    const until = new Date(inv.expires_at);
     const text = tr("加入我在 Watch2Whoop 的圈子「{name}」：邀请码 {code}", { name: c.name, code: inv.code });
     C.openSheet(c.name, `<p class="para muted" style="margin:0">${esc(tr("邀请"))}</p><div class="cc-code">${esc(inv.code)}</div>
-      <p class="para small muted" style="text-align:center;margin:0">${esc(tr("{when} 前有效", { when: until.toLocaleString(window.I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) }))}</p>
+      <p class="para small muted" style="text-align:center;margin:0">${esc(inv.expires_at ? tr("{when} 前有效", { when: new Date(inv.expires_at).toLocaleString(window.I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) }) : tr("永久有效"))}</p>
       <div class="btns"><button class="btn" id="cc-copy">${esc(tr("复制邀请码"))}</button><button class="btn btn-primary" id="cc-share">${esc(tr("分享链接"))}</button></div>
       <div class="btns"><button class="btn" id="cc-back">${esc(tr("返回"))}</button></div>`, (root) => {
       const copy = async (t, msg) => { try { await navigator.clipboard.writeText(t); C.toast(msg); } catch (e) { C.toast(t); } };
