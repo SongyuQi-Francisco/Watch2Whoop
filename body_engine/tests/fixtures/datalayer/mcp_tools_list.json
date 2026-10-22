@@ -2674,5 +2674,2681 @@
     "openWorldHint": false
    }
   }
+ ],
+ "write_ai_parity": [
+  {
+   "name": "get_briefing",
+   "description": "对话开始先调它（约 1.5k token，一次代替好几个工具）：现在时间、资料、最新恢复 / 睡眠 / HRV / 静息心率、最近 7 天评分和入睡时间、7 天 vs 60 天均值、28 天训练概况和最近 7 天训练、今天的提醒、状态卡、档案卡要点、最近的观察笔记、禁用 / 注意动作。需要细节再调对应工具。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "list_metrics",
+   "description": "有哪些每日指标：名称、单位、sum / avg、覆盖日期。指标名不确定时先查。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_daily_metrics",
+   "description": "每日健康指标（步数、能量、静息心率、HRV、血氧、体重…），按指标返回 {unit, source, values: {日期: 值}}。metrics 尽量指定（空 = 全部，量大）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "metrics": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "如 step_count"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=逐行带 n / min / max"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "metrics"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_sleep",
+   "description": "睡眠记录：入睡、醒来、各阶段分钟，按醒来日期。is_main=false 是小睡。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "main_only": {
+      "type": "boolean",
+      "description": "只要主睡眠"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "main_only"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_scores",
+   "description": "每日评分（日期 = 醒来那天）：睡眠分、睡眠表现 / 需求 / 睡眠债（分钟）、恢复分 0–100、当晚 HRV（ms，SDNN）、静息心率、负荷 strain 0–21、TRIMP、CTL / ATL / TSB。分数为空看 flags。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "details": {
+      "type": "boolean",
+      "description": "附分项、z 分数、基线（大）"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "list_events",
+   "description": "身体事件（伤病、疼痛、低血糖、生病、看医生），按本地日期。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "add_event",
+   "description": "记一条身体事件（伤病、疼痛、低血糖、生病、看医生）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "occurred_at": {
+      "type": "string",
+      "description": "ISO 8601，不带时区按用户时区"
+     },
+     "title": {
+      "type": "string",
+      "description": "一句话标题"
+     },
+     "category": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "injury / pain / illness / symptom / medical / other"
+     },
+     "body_part": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "severity": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "1–5"
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "occurred_at",
+     "title"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_log",
+   "description": "力量训练记录（底层数据库）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=每组一个对象、带动作 ID"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_nutrition",
+   "description": "饮食：每天热量、三大营养素、糖 / 添加糖 / 纤维 / 钠合计（known = 有数的条数，null = 未知不是 0）、含糖饮料数、当天生效的目标和达标（adherence）；logged=false = 没记录（不等于没吃）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "include_entries": {
+      "type": "boolean",
+      "description": "附每条记录（含 id、source）"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "include_entries"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_weight",
+   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_supplement",
+   "description": "删除录错 / 重复的补剂及它的日记项，不可恢复。不再吃用 update_supplement status=stopped。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "supplement_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "supplement_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_lab_results",
+   "description": "删除某采样日期的化验结果（按 test_key，任何来源）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "collected_on": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "test_keys": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    },
+    "required": [
+     "collected_on",
+     "test_keys"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "log_journal",
+   "description": "记某天某项日记（日期 = 行为发生那天），已记过会覆盖。bool 项 1 / 0，number 项填数值。没记 ≠ 否：用户明确说没做才记 0。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "key": {
+      "type": "string"
+     },
+     "value": {
+      "type": "number"
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "date",
+     "key",
+     "value"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_journal_entry",
+   "description": "撤销某天某项日记（变回「没记录」，不是记成「否」）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "key": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "date",
+     "key"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_journal",
+   "description": "日记记录（没出现的日子 = 没记录，不是「否」）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null = end 前 30 天"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     },
+     "keys": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "空 = 全部"
+     }
+    },
+    "required": [
+     "keys"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_exercise_rules",
+   "description": "动作限制：banned（永久不做）、caution（要小心，附原因和做法）、active（正常动作名）。给训练建议前先查，不推荐 banned。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带别名、英文名、app 动作 ID、正常动作要点"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_reminders",
+   "description": "规则提醒（每天生成，只是建议）：加重 / 减重、按周均体重调热量、练前进食、用户自己设的红肉 / 食物次数上限、禁用 / 注意动作、恢复分低 / 睡眠债高。级别 alert > warning > info，状态 new / seen / dismissed；rule_runs = 结束那天每条规则的结果（没触发 / 数据不足的原因）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null = 只看 end 那天（够用）"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     },
+     "include_dismissed": {
+      "type": "boolean"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带依据数据 evidence（大）"
+     }
+    },
+    "required": [
+     "include_dismissed"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_calendar",
+   "description": "训练日历（手表 + 底层数据库 合并）：每天强度、时长、strain、恢复分、活动能量、步数与汇总（默认最近 28 天）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "month": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=完整明细（大），默认 false 摘要"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_custom_exercise",
+   "description": "删除用户自己的一个自定义动作（slug my_N 或名字）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "exercise": {
+      "type": "string"
+     }
+    },
+    "required": [
+     "exercise"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_week_plan",
+   "description": "当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。某天的 removed = 用户手动删掉的动作，排计划 / 重排时不要放回。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=完整明细（大），默认 false 摘要"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_workout",
+   "description": "删掉（隐藏）重复 / 错误的手表训练，不计入日历、周报、负荷，同步也不回来。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "workout_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "workout_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "undo_day_changes",
+   "description": "撤销按日期的训练调整（默认今天到周日）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "search_exercises",
+   "description": "在动作库（+ 底层数据库）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "query": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "muscle": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "chest/back/shoulders/legs/arms/core 或中文"
+     },
+     "equipment": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "dumbbell/barbell/cable/machine/body only 或中文"
+     },
+     "pattern": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "log_food",
+   "description": "饮食记进 底层数据库（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "date": {
+         "type": "string",
+         "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
+        },
+        "meal": {
+         "type": "string",
+         "enum": [
+          "breakfast",
+          "lunch",
+          "dinner",
+          "snacks"
+         ]
+        },
+        "time": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "HH:MM"
+        },
+        "food": {
+         "type": "string",
+         "description": "具体到能估营养，例：照烧鸡腿（鸡腿 150g）"
+        },
+        "amount": {
+         "type": "string",
+         "description": "份量，例 200 g、1 碗（约 250g 熟饭）"
+        },
+        "calories": {
+         "type": "number",
+         "description": "这一份的总 kcal"
+        },
+        "protein_g": {
+         "type": "number"
+        },
+        "carbs_g": {
+         "type": "number"
+        },
+        "fat_g": {
+         "type": "number"
+        },
+        "saturated_fat_g": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "alcohol_g": {
+         "type": [
+          "number",
+          "null"
+         ],
+         "description": "酒类填"
+        },
+        "sugar_g": {
+         "type": [
+          "number",
+          "null"
+         ],
+         "description": "总糖；不知道 null，不是 0"
+        },
+        "added_sugar_g": {
+         "type": [
+          "number",
+          "null"
+         ],
+         "description": "添加糖（加的糖、蜂蜜、糖浆、甜饮料）"
+        },
+        "fiber_g": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "sodium_mg": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "sugary_drink": {
+         "type": [
+          "boolean",
+          "null"
+         ],
+         "description": "含糖饮料 true"
+        },
+        "notes": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "估算依据、拿不准的地方"
+        }
+       },
+       "required": [
+        "date",
+        "meal",
+        "food",
+        "amount",
+        "calories",
+        "protein_g",
+        "carbs_g",
+        "fat_g"
+       ]
+      }
+     },
+     "allow_duplicates": {
+      "type": "boolean",
+      "description": "用户确认是另一份才 true"
+     }
+    },
+    "required": [
+     "items",
+     "allow_duplicates"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "log_workout",
+   "description": "一次训练记进 底层数据库（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
+     },
+     "name": {
+      "type": "string",
+      "description": "例 上肢 A"
+     },
+     "notes": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "感受、低血糖、心率等"
+     },
+     "exercises": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "exercise": {
+         "type": "string",
+         "description": "动作名，会对上动作库"
+        },
+        "exercise_id": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "search_exercises 查到的 ID，比名字准"
+        },
+        "sets": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "properties": {
+           "reps": {
+            "type": [
+             "integer",
+             "null"
+            ]
+           },
+           "weight_kg": {
+            "type": [
+             "number",
+             "null"
+            ],
+            "description": "哑铃单只、绳索每侧、杠铃总重"
+           },
+           "rir": {
+            "type": [
+             "number",
+             "null"
+            ],
+            "description": "离力竭还剩几次"
+           },
+           "duration_s": {
+            "type": [
+             "integer",
+             "null"
+            ],
+            "description": "平板 / 有氧"
+           },
+           "set_type": {
+            "type": [
+             "string",
+             "null"
+            ],
+            "description": "Working Set（默认）/ Warm-up"
+           },
+           "notes": {
+            "type": [
+             "string",
+             "null"
+            ]
+           }
+          }
+         }
+        },
+        "notes": {
+         "type": [
+          "string",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "exercise",
+        "sets"
+       ]
+      },
+      "description": "按做的顺序"
+     },
+     "allow_duplicate": {
+      "type": "boolean"
+     },
+     "create_missing_exercises": {
+      "type": "boolean",
+      "description": "用户确认是新动作才 true"
+     }
+    },
+    "required": [
+     "date",
+     "name",
+     "exercises",
+     "allow_duplicate",
+     "create_missing_exercises"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "log_weight",
+   "description": "称重 / 体成分记进 底层数据库 check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string",
+      "description": "行为发生那天 YYYY-MM-DD（凌晨睡前的事算前一天）"
+     },
+     "weight_kg": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "早上空腹"
+     },
+     "body_fat_pct": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "waist_cm": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "肚脐一圈"
+     },
+     "muscle_mass_kg": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "body_water_pct": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "bone_mass_kg": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "bmr_kcal": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "overwrite": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "date",
+     "overwrite"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "undo_sparky_entry",
+   "description": "删一条饮食 / 一次力量训练 / 一组 / 某天称重（任何来源；id 在 get_nutrition / get_training_log）。饮食也可按 meal+food(+time) 匹配。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "food",
+       "workout",
+       "set",
+       "weight"
+      ]
+     },
+     "date": {
+      "type": "string",
+      "description": "YYYY-MM-DD"
+     },
+     "id": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "meal": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "food": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "time": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "HH:MM"
+     }
+    },
+    "required": [
+     "kind",
+     "date"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "update_food_entry",
+   "description": "改一条饮食（任何来源，null = 不改）。改名称 / 营养会换成新 id；没给的营养按份量 / 热量的同一比例缩放。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "date": {
+      "type": "string"
+     },
+     "id": {
+      "type": "string"
+     },
+     "new_date": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "meal": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "breakfast",
+       "lunch",
+       "dinner",
+       "snacks",
+       null
+      ]
+     },
+     "time": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "HH:MM"
+     },
+     "portion": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "0.5 = 一半"
+     },
+     "food": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "amount": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "calories": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "protein_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "carbs_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "fat_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "saturated_fat_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "sodium_mg": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "sugar_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "added_sugar_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     },
+     "fiber_g": {
+      "type": [
+       "number",
+       "null"
+      ]
+     }
+    },
+    "required": [
+     "date",
+     "id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_write_log",
+   "description": "AI 写操作日志（新 → 旧，改前 / 改后）；rollback=ok 的可 rollback_write。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "days": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "rollback_write",
+   "description": "按日志 id 把一次 AI 修改改回原样。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "log_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "log_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_memory",
+   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带趋势数组、时间戳、来源和依据"
+     },
+     "history": {
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "true=也带已过期的近况"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "update_profile_card",
+   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁的事实，带日期和依据。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "key": {
+      "type": "string"
+     },
+     "value": {
+      "type": "string",
+      "description": "≤ 4000 字"
+     },
+     "label": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "中文名；标准键 null"
+     }
+    },
+    "required": [
+     "key",
+     "value"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "add_observation",
+   "description": "记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "text": {
+      "type": "string",
+      "description": "≤ 1000 字"
+     },
+     "evidence": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "用户原话 / 哪些数据"
+     },
+     "until": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+     }
+    },
+    "required": [
+     "text"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_meal_templates",
+   "description": "快捷记餐模板（例：固定早餐）：每样食物克数和营养、合计、克数是否待确认、今天记过没有。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "log_meal_template",
+   "description": "按模板记一餐进 底层数据库。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "template_id": {
+      "type": "integer"
+     },
+     "date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null = 今天（凌晨睡前吃的要明确给前一天）"
+     },
+     "time": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "HH:MM，null = 现在"
+     },
+     "overrides": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "food": {
+         "type": "string"
+        },
+        "grams": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "food",
+        "grams"
+       ]
+      },
+      "description": "不改就空数组"
+     },
+     "allow_duplicates": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "template_id",
+     "overrides",
+     "allow_duplicates"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "undo_meal_log",
+   "description": "撤销一次快捷记餐（log_meal_template / log_recipe / 今天页按钮返回的 log_id）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "log_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "log_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "delete_observation",
+   "description": "删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "observation_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "observation_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_shopping_context",
+   "description": "查价前先调：本周计划和清单、健康约束、已连接超市、存货、needs_price（缺价或超过 7 天的，最多 15 样）、rules（查价规则，必须遵守）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "week": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "这周任一天 YYYY-MM-DD，null=本周"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "record_store_prices",
+   "description": "写回你在超市商品页 / 截图里看到的价格（一次 ≤30 样，只写清单上的）。price 每包 AUD；special+was_price=特价和原价；for_item=对应的清单项；bought=true 记成用户实际买了（paid_total 实付）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "store": {
+         "type": "string",
+         "enum": [
+          "coles",
+          "woolworths"
+         ]
+        },
+        "url": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "商品页"
+        },
+        "name": {
+         "type": "string"
+        },
+        "brand": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "size": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "规格，如 500g"
+        },
+        "price": {
+         "type": "number"
+        },
+        "unit_price": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "unit_price_unit": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "enum": [
+          "kg",
+          "L",
+          "ea",
+          null
+         ]
+        },
+        "was_price": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "special": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "enum": [
+          "half_price",
+          "price_drop",
+          "multibuy",
+          "special",
+          null
+         ]
+        },
+        "special_label": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "barcode": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "image_url": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "超市图片地址（只存引用）"
+        },
+        "observed_at": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "ISO，null=现在"
+        },
+        "source": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "enum": [
+          "ai",
+          "screenshot",
+          "manual",
+          null
+         ],
+         "description": "ai=网页 screenshot=截图"
+        },
+        "for_item": {
+         "type": [
+          "string",
+          "null"
+         ]
+        },
+        "bought": {
+         "type": [
+          "boolean",
+          "null"
+         ]
+        },
+        "packages": {
+         "type": [
+          "number",
+          "null"
+         ]
+        },
+        "paid_total": {
+         "type": [
+          "number",
+          "null"
+         ]
+        }
+       },
+       "required": [
+        "store",
+        "name",
+        "price"
+       ]
+      }
+     }
+    },
+    "required": [
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "remove_product",
+   "description": "从商品库删掉一个商品。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "product_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "product_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "remove_shopping_items",
+   "description": "从清单删掉几行。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "item_ids": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      }
+     }
+    },
+    "required": [
+     "item_ids"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "remove_staple",
+   "description": "取消常买。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "product_id": {
+      "type": "integer"
+     }
+    },
+    "required": [
+     "product_id"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "report_feedback",
+   "description": "把系统 bug / 用户的新需求报告给开发者（根规则）。只写产品行为，不写健康数值、名字、联系方式。照返回的 tell_user 告诉用户。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "enum": [
+       "bug",
+       "feature"
+      ]
+     },
+     "title": {
+      "type": "string",
+      "description": "≤ 60 字"
+     },
+     "what": {
+      "type": "string",
+      "description": "现象 / 想要什么"
+     },
+     "expected": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "steps": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "复现步骤"
+     },
+     "area": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "工具名或页面"
+     },
+     "error_text": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "错误原文"
+     }
+    },
+    "required": [
+     "kind",
+     "title",
+     "what"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_context",
+   "description": "排 / 调整一周训练先调它：本周计划、恢复和准备度、禁用 / 注意动作、最近 14 天训练和负荷、能练的日子和器械；rules（必须遵守）、needs（缺什么，先问用户）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_week_review_context",
+   "description": "复盘一周先调它：7 天（到 end）的恢复、睡眠、负荷、压力、训练、饮食达标、体重、日记和身体事件，和上一周比（vs_previous）；rules、needs。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_playbook",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "enum": [
+       "plan_shopping",
+       "plan_training_week",
+       "weekly_review",
+       "log_meal_from_photo"
+      ]
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "find_tools",
+   "description": "找这次没加载的工具，返回完整参数说明；再用 run_read_tool / run_write_tool 调用（看 run 字段）。group、query 都不填 = 列出所有组和工具名。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "group": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+     },
+     "query": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "关键词，空格分开，如「化验 趋势」"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "run_read_tool",
+   "description": "调用一个只读工具（find_tools 查到的）。name = 工具名。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "args": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "description": "它的参数，和直接调用一样（user 不填 = 自己）"
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "run_write_tool",
+   "description": "调用一个写工具（find_tools 查到的），规矩和直接调用一样：只写给自己，先一句话说要写什么。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "args": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "description": "它的参数，和直接调用一样（user 不填 = 自己）"
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  }
+ ],
+ "read_only_ai_parity": [
+  {
+   "name": "get_briefing",
+   "description": "对话开始先调它（约 1.5k token，一次代替好几个工具）：现在时间、资料、最新恢复 / 睡眠 / HRV / 静息心率、最近 7 天评分和入睡时间、7 天 vs 60 天均值、28 天训练概况和最近 7 天训练、今天的提醒、状态卡、档案卡要点、最近的观察笔记、禁用 / 注意动作。需要细节再调对应工具。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "list_metrics",
+   "description": "有哪些每日指标：名称、单位、sum / avg、覆盖日期。指标名不确定时先查。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_daily_metrics",
+   "description": "每日健康指标（步数、能量、静息心率、HRV、血氧、体重…），按指标返回 {unit, source, values: {日期: 值}}。metrics 尽量指定（空 = 全部，量大）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "metrics": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "如 step_count"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=逐行带 n / min / max"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "metrics"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_sleep",
+   "description": "睡眠记录：入睡、醒来、各阶段分钟，按醒来日期。is_main=false 是小睡。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "main_only": {
+      "type": "boolean",
+      "description": "只要主睡眠"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "main_only"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_scores",
+   "description": "每日评分（日期 = 醒来那天）：睡眠分、睡眠表现 / 需求 / 睡眠债（分钟）、恢复分 0–100、当晚 HRV（ms，SDNN）、静息心率、负荷 strain 0–21、TRIMP、CTL / ATL / TSB。分数为空看 flags。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "details": {
+      "type": "boolean",
+      "description": "附分项、z 分数、基线（大）"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "list_events",
+   "description": "身体事件（伤病、疼痛、低血糖、生病、看医生），按本地日期。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_log",
+   "description": "力量训练记录（底层数据库）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=每组一个对象、带动作 ID"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_nutrition",
+   "description": "饮食：每天热量、三大营养素、糖 / 添加糖 / 纤维 / 钠合计（known = 有数的条数，null = 未知不是 0）、含糖饮料数、当天生效的目标和达标（adherence）；logged=false = 没记录（不等于没吃）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "include_entries": {
+      "type": "boolean",
+      "description": "附每条记录（含 id、source）"
+     }
+    },
+    "required": [
+     "start",
+     "end",
+     "include_entries"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_weight",
+   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     },
+     "end": {
+      "type": "string",
+      "description": "YYYY-MM-DD 含"
+     }
+    },
+    "required": [
+     "start",
+     "end"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_journal",
+   "description": "日记记录（没出现的日子 = 没记录，不是「否」）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null = end 前 30 天"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     },
+     "keys": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      },
+      "description": "空 = 全部"
+     }
+    },
+    "required": [
+     "keys"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_exercise_rules",
+   "description": "动作限制：banned（永久不做）、caution（要小心，附原因和做法）、active（正常动作名）。给训练建议前先查，不推荐 banned。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带别名、英文名、app 动作 ID、正常动作要点"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_reminders",
+   "description": "规则提醒（每天生成，只是建议）：加重 / 减重、按周均体重调热量、练前进食、用户自己设的红肉 / 食物次数上限、禁用 / 注意动作、恢复分低 / 睡眠债高。级别 alert > warning > info，状态 new / seen / dismissed；rule_runs = 结束那天每条规则的结果（没触发 / 数据不足的原因）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null = 只看 end 那天（够用）"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     },
+     "include_dismissed": {
+      "type": "boolean"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带依据数据 evidence（大）"
+     }
+    },
+    "required": [
+     "include_dismissed"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_calendar",
+   "description": "训练日历（手表 + 底层数据库 合并）：每天强度、时长、strain、恢复分、活动能量、步数与汇总（默认最近 28 天）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "month": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM"
+     },
+     "start": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=完整明细（大），默认 false 摘要"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_week_plan",
+   "description": "当前生效的周训练计划（周一至周日）：每天动作、组数处方与推荐重量 load（按进阶/同上次/换算/估算）、肌群周组数、近期加减重建议、今日恢复分自调节建议。某天的 removed = 用户手动删掉的动作，排计划 / 重排时不要放回。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=完整明细（大），默认 false 摘要"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "search_exercises",
+   "description": "在动作库（+ 底层数据库）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "query": {
+      "type": [
+       "string",
+       "null"
+      ]
+     },
+     "muscle": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "chest/back/shoulders/legs/arms/core 或中文"
+     },
+     "equipment": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "dumbbell/barbell/cable/machine/body only 或中文"
+     },
+     "pattern": {
+      "type": [
+       "string",
+       "null"
+      ]
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_write_log",
+   "description": "AI 写操作日志（新 → 旧，改前 / 改后）；rollback=ok 的可 rollback_write。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "days": {
+      "type": [
+       "integer",
+       "null"
+      ]
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_memory",
+   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "detail": {
+      "type": "boolean",
+      "description": "true=带趋势数组、时间戳、来源和依据"
+     },
+     "history": {
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "true=也带已过期的近况"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_meal_templates",
+   "description": "快捷记餐模板（例：固定早餐）：每样食物克数和营养、合计、克数是否待确认、今天记过没有。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_shopping_context",
+   "description": "查价前先调：本周计划和清单、健康约束、已连接超市、存货、needs_price（缺价或超过 7 天的，最多 15 样）、rules（查价规则，必须遵守）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "week": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "这周任一天 YYYY-MM-DD，null=本周"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_training_context",
+   "description": "排 / 调整一周训练先调它：本周计划、恢复和准备度、禁用 / 注意动作、最近 14 天训练和负荷、能练的日子和器械；rules（必须遵守）、needs（缺什么，先问用户）。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "date": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_week_review_context",
+   "description": "复盘一周先调它：7 天（到 end）的恢复、睡眠、负荷、压力、训练、饮食达标、体重、日记和身体事件，和上一周比（vs_previous）；rules、needs。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "user": {
+      "type": "string",
+      "description": "me 或授权给你的家人 ID"
+     },
+     "end": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "YYYY-MM-DD，null=今天"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "get_playbook",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string",
+      "enum": [
+       "plan_shopping",
+       "plan_training_week",
+       "weekly_review",
+       "log_meal_from_photo"
+      ]
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "find_tools",
+   "description": "找这次没加载的工具，返回完整参数说明；再用 run_read_tool / run_write_tool 调用（看 run 字段）。group、query 都不填 = 列出所有组和工具名。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "group": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+     },
+     "query": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "关键词，空格分开，如「化验 趋势」"
+     }
+    }
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "run_read_tool",
+   "description": "调用一个只读工具（find_tools 查到的）。name = 工具名。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "name": {
+      "type": "string"
+     },
+     "args": {
+      "type": [
+       "object",
+       "null"
+      ],
+      "description": "它的参数，和直接调用一样（user 不填 = 自己）"
+     }
+    },
+    "required": [
+     "name"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": true,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  }
  ]
 }

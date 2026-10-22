@@ -46,5 +46,9 @@
  "unknown_group": {
   "is_error": true,
   "text": "ValueError: 没有这个组：no_such_group；可用的组：body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+ },
+ "ai_parity_confirm_tool_through_run_write_tool": {
+  "is_error": true,
+  "text": "PermissionError: undo_sparky_entry 要直接调用（删除 / 撤销类，客户端会先请用户确认）"
  }
 }

@@ -438,5 +438,363 @@
    }
   ],
   "hint": "用 find_tools(group=…) 拿完整参数说明"
+ },
+ "mcp_write_ai_parity": {
+  "groups": {
+   "cols": [
+    "group",
+    "about",
+    "tools"
+   ],
+   "rows": [
+    [
+     "body",
+     "身体数据和评分：资料、每日指标、睡眠、恢复 / 负荷、压力、身体年龄、心率区间、VO₂max、周报月报、心肺、心电图、提醒、睡眠目标、体重、截图指标、圈子成员概况",
+     [
+      "get_briefing",
+      "get_profile",
+      "list_metrics",
+      "get_daily_metrics",
+      "get_sleep",
+      "get_scores",
+      "get_weight",
+      "get_reminders",
+      "dismiss_reminder",
+      "get_sleep_goal",
+      "set_sleep_goal",
+      "get_healthspan",
+      "get_stress",
+      "get_strain_coach",
+      "get_sleep_coach",
+      "get_health_monitor",
+      "get_sleep_details",
+      "get_hr_zones",
+      "get_vo2max",
+      "get_report",
+      "get_cardio",
+      "get_ecg_list",
+      "log_weight",
+      "log_metric_snapshot",
+      "get_metric_snapshots",
+      "get_friends_overview",
+      "get_week_review_context"
+     ]
+    ],
+    [
+     "training",
+     "训练：日历、某天详情、周计划（排 / 改 / 换动作 / 挪日子）、动作库、禁用动作、记训练、改 / 删训练",
+     [
+      "get_training_log",
+      "get_exercise_rules",
+      "set_exercise_rule",
+      "get_training_calendar",
+      "get_training_day",
+      "get_muscle_load",
+      "add_custom_exercise",
+      "delete_custom_exercise",
+      "get_exercise",
+      "propose_plan",
+      "save_plan",
+      "get_week_plan",
+      "swap_exercise",
+      "update_workout",
+      "delete_workout",
+      "reschedule_day",
+      "swap_days",
+      "replan_week",
+      "undo_day_changes",
+      "search_exercises",
+      "log_workout",
+      "undo_sparky_entry",
+      "update_training_set",
+      "get_training_context"
+     ]
+    ],
+    [
+     "nutrition",
+     "饮食：每日摄入、记饮食、改 / 合并饮食记录、营养目标、快捷记餐模板、饮食档案、饮食约束、喝水",
+     [
+      "get_nutrition",
+      "get_nutrition_goals",
+      "set_nutrition_goals",
+      "log_food",
+      "update_food_entry",
+      "get_meal_templates",
+      "create_meal_template",
+      "update_meal_template",
+      "log_meal_template",
+      "undo_meal_log",
+      "combine_food_entries",
+      "get_diet_profile",
+      "update_diet_profile",
+      "get_diet_constraints",
+      "set_diet_constraint",
+      "end_diet_constraint",
+      "log_water"
+     ]
+    ],
+    [
+     "recipes",
+     "食谱：查 / 推荐 / 新建 / 修改食谱，按份数记一餐",
+     [
+      "list_recipes",
+      "get_recipe",
+      "suggest_meals",
+      "create_recipe",
+      "update_recipe",
+      "log_recipe"
+     ]
+    ],
+    [
+     "grocery",
+     "采购：商品库、条码、超市、特价、查价写回、价格记录、采购清单、家里存货",
+     [
+      "find_products",
+      "save_product",
+      "lookup_barcode",
+      "set_stores",
+      "get_weekly_specials",
+      "get_shopping_context",
+      "record_store_prices",
+      "get_price_history",
+      "remove_product",
+      "generate_shopping_list",
+      "get_shopping_list",
+      "add_shopping_items",
+      "mark_bought",
+      "remove_shopping_items",
+      "set_staple",
+      "remove_staple",
+      "set_pantry",
+      "set_pantry_auto"
+     ]
+    ],
+    [
+     "records",
+     "健康档案：补剂、化验单和历次趋势、日记项和日记、身体事件（伤病、疼痛…）",
+     [
+      "list_events",
+      "add_event",
+      "list_supplements",
+      "add_supplement",
+      "update_supplement",
+      "delete_supplement",
+      "get_lab_results",
+      "add_lab_results",
+      "get_lab_history",
+      "delete_lab_results",
+      "list_journal_items",
+      "log_journal",
+      "delete_journal_entry",
+      "get_journal",
+      "analyze_journal",
+      "update_event"
+     ]
+    ],
+    [
+     "memory",
+     "长期记忆：档案卡、观察笔记、状态卡；AI 写入记录和回滚",
+     [
+      "get_write_log",
+      "rollback_write",
+      "get_memory",
+      "update_profile_card",
+      "add_observation",
+      "set_status_items",
+      "delete_observation"
+     ]
+    ],
+    [
+     "feedback",
+     "给开发者报 bug / 提需求，查看已报的",
+     [
+      "report_feedback",
+      "list_feedback"
+     ]
+    ],
+    [
+     "help",
+     "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
+     [
+      "get_playbook"
+     ]
+    ]
+   ]
+  },
+  "hint": "用 find_tools(group=…) 拿完整参数说明"
+ },
+ "fallback_ai_parity": {
+  "groups": [
+   {
+    "group": "body",
+    "about": "身体数据和评分：资料、每日指标、睡眠、恢复 / 负荷、压力、身体年龄、心率区间、VO₂max、周报月报、心肺、心电图、提醒、睡眠目标、体重、截图指标、圈子成员概况",
+    "tools": [
+     "get_briefing",
+     "get_profile",
+     "list_metrics",
+     "get_daily_metrics",
+     "get_sleep",
+     "get_scores",
+     "get_weight",
+     "get_reminders",
+     "dismiss_reminder",
+     "get_sleep_goal",
+     "set_sleep_goal",
+     "get_healthspan",
+     "get_stress",
+     "get_strain_coach",
+     "get_sleep_coach",
+     "get_health_monitor",
+     "get_sleep_details",
+     "get_hr_zones",
+     "get_vo2max",
+     "get_report",
+     "log_weight",
+     "log_metric_snapshot",
+     "get_metric_snapshots",
+     "get_week_review_context"
+    ]
+   },
+   {
+    "group": "training",
+    "about": "训练：日历、某天详情、周计划（排 / 改 / 换动作 / 挪日子）、动作库、禁用动作、记训练、改 / 删训练",
+    "tools": [
+     "get_training_log",
+     "get_exercise_rules",
+     "set_exercise_rule",
+     "get_training_calendar",
+     "get_training_day",
+     "get_muscle_load",
+     "add_custom_exercise",
+     "delete_custom_exercise",
+     "get_exercise",
+     "propose_plan",
+     "save_plan",
+     "get_week_plan",
+     "swap_exercise",
+     "update_workout",
+     "delete_workout",
+     "reschedule_day",
+     "swap_days",
+     "replan_week",
+     "undo_day_changes",
+     "search_exercises",
+     "log_workout",
+     "undo_sparky_entry",
+     "update_training_set",
+     "get_training_context"
+    ]
+   },
+   {
+    "group": "nutrition",
+    "about": "饮食：每日摄入、记饮食、改 / 合并饮食记录、营养目标、快捷记餐模板、饮食档案、饮食约束、喝水",
+    "tools": [
+     "get_nutrition",
+     "get_nutrition_goals",
+     "set_nutrition_goals",
+     "log_food",
+     "update_food_entry",
+     "get_meal_templates",
+     "create_meal_template",
+     "update_meal_template",
+     "log_meal_template",
+     "undo_meal_log",
+     "combine_food_entries",
+     "get_diet_profile",
+     "update_diet_profile",
+     "get_diet_constraints",
+     "set_diet_constraint",
+     "end_diet_constraint",
+     "log_water"
+    ]
+   },
+   {
+    "group": "recipes",
+    "about": "食谱：查 / 推荐 / 新建 / 修改食谱，按份数记一餐",
+    "tools": [
+     "list_recipes",
+     "get_recipe",
+     "suggest_meals",
+     "create_recipe",
+     "update_recipe",
+     "log_recipe"
+    ]
+   },
+   {
+    "group": "grocery",
+    "about": "采购：商品库、条码、超市、特价、查价写回、价格记录、采购清单、家里存货",
+    "tools": [
+     "find_products",
+     "save_product",
+     "lookup_barcode",
+     "set_stores",
+     "get_weekly_specials",
+     "get_shopping_context",
+     "record_store_prices",
+     "get_price_history",
+     "remove_product",
+     "generate_shopping_list",
+     "get_shopping_list",
+     "add_shopping_items",
+     "mark_bought",
+     "remove_shopping_items",
+     "set_staple",
+     "remove_staple",
+     "set_pantry",
+     "set_pantry_auto"
+    ]
+   },
+   {
+    "group": "records",
+    "about": "健康档案：补剂、化验单和历次趋势、日记项和日记、身体事件（伤病、疼痛…）",
+    "tools": [
+     "list_events",
+     "add_event",
+     "list_supplements",
+     "add_supplement",
+     "update_supplement",
+     "delete_supplement",
+     "get_lab_results",
+     "add_lab_results",
+     "get_lab_history",
+     "delete_lab_results",
+     "list_journal_items",
+     "log_journal",
+     "delete_journal_entry",
+     "get_journal",
+     "analyze_journal",
+     "update_event"
+    ]
+   },
+   {
+    "group": "memory",
+    "about": "长期记忆：档案卡、观察笔记、状态卡；AI 写入记录和回滚",
+    "tools": [
+     "get_write_log",
+     "rollback_write",
+     "get_memory",
+     "update_profile_card",
+     "add_observation",
+     "set_status_items",
+     "delete_observation"
+    ]
+   },
+   {
+    "group": "feedback",
+    "about": "给开发者报 bug / 提需求，查看已报的",
+    "tools": [
+     "report_feedback",
+     "list_feedback"
+    ]
+   },
+   {
+    "group": "help",
+    "about": "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
+    "tools": [
+     "get_playbook"
+    ]
+   }
+  ],
+  "hint": "用 find_tools(group=…) 拿完整参数说明"
  }
 }
