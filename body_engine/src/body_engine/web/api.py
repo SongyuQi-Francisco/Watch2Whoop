@@ -24,13 +24,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
+from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
 from . import activation, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.108-2026-10-23"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.109-2026-10-23"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -193,7 +194,9 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     from .. import api
     from ..ai.api import ai_status  # AI integration layer: which AI Jarvis uses (ai/choice.py); the butler link only when that is the pick
     ai = ai_status(conn, viewer)
-    return {"me": _me(viewer), "viewable": views.viewable(conn, viewer),
+    me = _me(viewer)
+    me["avatar"] = avatar_urls.urls_for(conn, viewer["id"], [viewer["id"]]).get(viewer["id"])   # my own picture (#200)
+    return {"me": me, "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
             **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)

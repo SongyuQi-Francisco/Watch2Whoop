@@ -8,6 +8,7 @@
   "use strict";
   let C = null;
   let P = null;              // result of the latest GET /profile
+  let MY_AVATAR = null;      // my picture (/v1/web/me, avatars.js, flag `avatars`)
   const $ = (s, r = document) => r.querySelector(s);
   const esc = (v) => C.esc(v);
   const tr = (k, p) => window.I18N.t(k, p);
@@ -135,6 +136,7 @@
     const v = (x) => (x == null ? "" : esc(x));
     C.openSheet(tr(first ? "profile.complete" : "profile.title"), `
       ${first ? `<p class="para" style="margin:0 0 4px">${esc(tr("profile.intro"))}</p>` : ""}
+      ${window.BodyAvatar?.profileRow(MY_AVATAR, p.display_name) || ""}
       <div class="field"><label>${tr("profile.name")}</label><input class="input" id="pf-name" maxlength="30" value="${v(p.display_name)}"></div>
       <div class="field"><label>${tr("profile.birth")}</label><input class="input" id="pf-birth" type="date" min="1920-01-01" value="${v(p.birth_date)}"></div>
       <div class="field"><label>${tr("profile.sex")}</label><select class="input" id="pf-sex">
@@ -149,6 +151,7 @@
       <p class="small muted" id="pf-msg" style="margin-top:10px"></p>
       <div class="btns"><button class="btn btn-primary" id="pf-save">${tr("common.save")}</button>${first ? `<button class="btn" id="pf-later">${tr("profile.later")}</button>` : ""}</div>`,
     (root) => {
+      window.BodyAvatar?.bindProfile(root, MY_AVATAR, p.display_name);
       const later = $("#pf-later", root);
       if (later) later.onclick = () => { laterSet(); C.closeSheet(); };
       $("#pf-save", root).onclick = async () => {
@@ -175,8 +178,9 @@
     if (el && P) el.textContent = P.missing.length ? tr("profile.incomplete") : P.display_name;
   }
 
-  async function init(ctx) {
+  async function init(ctx, me) {
     C = ctx;
+    MY_AVATAR = me?.me?.avatar || null;
     try { await load(); } catch (e) { return; }   // older servers don't have this endpoint
     if ($("#consent")) return;                     // The startup flow ran again (refresh, re-login) and the sheet is already there
     if (P.consent.required) showConsent(false);

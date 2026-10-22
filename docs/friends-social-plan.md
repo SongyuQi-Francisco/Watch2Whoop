@@ -163,3 +163,15 @@
 - **人数上限**：`circles.max_members`（管理员建的团体圈子可以设到 1000，不填 = `MAX_MEMBERS`）；算名额时把「已用码、还在等同意书」的人也算进去，不会出现注册成功却进不了圈的情况。
 - **提示**：新开户名额用完（只对新用户）/ 停用 / 过期 → 410「这个圈子激活码已经用完了 / 已停用 / 已过期」；圈子满了 / 个人圈子数到上限 → 409。中英文都有（`errors_en.py`，app 里 `onboarding_page.dart`）。
 - **圈子头像**：管理员用 CLI 上传（`circle-admin create --avatar` / `circle-admin avatar`）。只收 PNG / JPEG / WebP（按文件头判断，不信扩展名），最大 5 MB、最多 4000 万像素、至少 32×32；服务器上按 EXIF 方向摆正后居中裁成 256×256，画到一张新图上再存成 WebP，EXIF / GPS / ICC 等元数据全部去掉（`images/store.py`）。图片存在库里（表 `images`，带上传人 `user_id`，备份跟着数据库走）。访问 `GET /v1/friends/circles/{id}/avatar` 只给圈子成员（别人 404），`Cache-Control: private` + ETag；`circle_view.avatar` 给出带图片 id 的地址，换图后地址跟着变。显示在圈子列表、加入弹层（还不是成员，只显示首字母）、训练动态的圈子名旁边（`circle_refs`）；没有头像时显示圈子名的首字母。
+
+## 11. 用户自己上传头像和圈子 logo（#200，2026-10-23，开关 `avatars`，先给内测组）
+
+代码：`avatars/`（`urls.py` 谁能看到哪张图的链接、`store.py` 设置 / 清除、`api.py` 接口）、今天页 `web/static/avatars.js`；图片的校验、方形裁剪、缩小、去元数据复用 `images/`（#199）。迁移 660：`users.avatar_image_id`。
+
+- **接口**：`PUT / DELETE /v1/avatars/me`（个人头像）、`PUT / DELETE /v1/avatars/circles/{id}`（圈主；每人自己的个人圈子没有 logo）、`GET /v1/avatars/users/{id}`（只有本人和同圈成员能取，别人 404）。上传的请求体就是图片文件本身，要写 token；最大 5 MB（边收边拦）；每人每小时最多上传 10 次（含被拒的），超过 429。
+- **开关只管上传和删除**：关着时没有入口、这几个写接口 404；已经存在的头像和管理员用 CLI 设好的圈子头像照常显示。
+- **谁能看到**：个人头像 = 本人 + 同一个圈子的成员；圈子 logo = 圈子成员（`GET /v1/friends/circles/{id}/avatar`，#199）。其他页面的接口只把「看得到」的人的头像地址带出来（`avatars/urls.py urls_for`），看不到的人没有 `avatar` 字段值，页面显示首字母。
+- **显示位置**：今天页右上角（开关开着时只有一个人也显示，点开是个人资料；多人时点开是切换查看的人）、朋友页成员卡片、排行榜、训练动态的帖子和评论、「我」页顶部。
+- **页面上的流程**：「我 → 个人资料」顶部「更换头像」→ 拍照 / 从相册选 → 拖动和缩放裁成方形 → 保存（页面用 canvas 重画成 512×512 JPEG 再上传，服务器再校验、缩成 256×256 WebP、去掉全部元数据）。圈主在「圈子」里的「圈子 logo」同样的流程。删除后回到首字母。
+- **清理**：换图 / 删除时旧图片行一起删；圈子解散（或最后一人退出）时 logo 图片一起删；删除账号时账号上传过的图片行随 `user_id` 一并删除。
+- 图标：Lucide 的 camera / image / trash-2（`THIRD_PARTY_NOTICES.md`）。测试 `tests/test_avatars.py`。

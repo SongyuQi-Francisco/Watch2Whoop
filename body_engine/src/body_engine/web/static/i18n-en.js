@@ -1478,4 +1478,18 @@ I18N.addEn({
   "别名（逗号分隔）": "Aliases (comma separated)",
   "主要肌群": "Primary muscles",
   "次要肌群": "Secondary muscles",
+  // avatars.js, circles.js (#200)
+  "上传失败，请稍后再试": "Upload failed, please try again later",
+  "拍照": "Take a photo",
+  "从相册选": "Choose from library",
+  "删除图片": "Remove picture",
+  "读不出这张图片": "Can't read this picture",
+  "缩放": "Zoom",
+  "重选": "Choose another",
+  "头像已更新": "Picture updated",
+  "头像已删除": "Picture removed",
+  "更换头像": "Change picture",
+  "设置头像": "Set a picture",
+  "头像": "Picture",
+  "圈子 logo": "Circle logo",
 });

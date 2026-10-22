@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import auth, queries, sparky_client
+from ..avatars import urls as avatar_urls
 from ..config import settings
 from ..i18n import L
 from ..importers import ow as ow_imp, shortcut as sc_imp
@@ -69,6 +70,10 @@ def viewable(conn, viewer: dict) -> list[dict]:
         scopes = auth.granted_scopes(conn, viewer["id"], r["owner_id"])
         if scopes:
             out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": sorted(scopes)})
+    avatars = avatar_urls.urls_for(conn, viewer["id"], [p["id"] for p in out])   # only people who share a circle with the viewer
+    for p in out:
+        if p["id"] in avatars:
+            p["avatar"] = avatars[p["id"]]
     return out
 
 
