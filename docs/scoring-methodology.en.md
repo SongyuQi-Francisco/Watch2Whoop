@@ -221,6 +221,8 @@ never compared with perceived stress or cortisol.
 
 ## 8. Body age and pace of aging
 Code `insights/healthspan.py`; parameters with full citations in `insights/healthspan_params.py` (each checked against the paper's tables, 2026-10-17).
+**Production runs v1.2 since 2026-10-23** (activity as one domain, section 8.1); this section describes v1.1, and v1.2 changes only the
+activity part.
 
 1. Each item is the mean of the last 180 days with the last 30 days weighted × 2; at least 30 days of data (regularity: 30 pairs of adjacent nights;
    VO₂max: ≥ 2 readings in 180 days, the latest within 120; weight / waist: one within 90 days).
@@ -259,10 +261,12 @@ Code `insights/healthspan.py`; parameters with full citations in `insights/healt
 - No external validation (e.g. against WHOOP Age or epigenetic clocks).
 
 
-### 8.1 v1.2: activity as one domain (`hs-v1.2-2026-10-23`, alongside v1.1; production still runs v1.1)
+### 8.1 v1.2: activity as one domain (`hs-v1.2-2026-10-23`, in production since 2026-10-23; v1.1 kept for comparison and rollback)
 Parameters and sources in `healthspan_params_v12.py` (anything not set there is v1.1's); `healthspan_store.snapshot(data, as_of, params)`
-scores with either set, `healthspan_store.VERSIONS` lists both. Comparison tool: `python -m body_engine.validation healthspan --user-id N`
-(reads the database only).
+scores with either set, `healthspan_store.VERSIONS` lists both and `healthspan_store.CURRENT` is the one written to `healthspan_weekly` (v1.2).
+The maintainer switched after reviewing the comparison (2026-10-23), with both options at their defaults: strength is not converted into
+volume, intensity gets no separate credit; the × 0.6 shrinkage is unchanged. Rollback: set `CURRENT` back to `VERSIONS["v1.1"]`, deploy,
+recompute every user. Comparison tool: `python -m body_engine.validation healthspan --user-id N` (reads the database only).
 
 **Why**
 1. v1.1 scored steps, moderate-to-vigorous activity (MVPA) and strength training as three items, each capped at ±4 years, then × 0.6.

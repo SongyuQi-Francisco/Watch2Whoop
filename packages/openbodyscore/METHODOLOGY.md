@@ -74,7 +74,8 @@ Parameter categories:
   days weighted ×2 and ≥ 30 days of data; item cap ±4 years; shrinkage × 0.6 for correlated items; total cap ±10
   years; pace of aging over 26 weeks with a 4-week moving average.
 - Known limits: _to be written (#118)._
-- **v1.2** (`healthspan_params_v12.py`, `hs-v1.2-2026-10-23`, not the default yet): steps, exercise and strength training become one
+- **v1.2** (`healthspan_params_v12.py`, `hs-v1.2-2026-10-23`; Watch2Whoop uses it since 2026-10-23, while this package's
+  `healthspan_params` stays the v1.1 set and the functions' default): steps, exercise and strength training become one
   activity domain with one ±4-year cap. Volume = wrist steps + step equivalents of swimming / cycling / rowing (minutes × the cadence of a
   walk / run at the same MET: 100 steps/min ≈ 3 MET, 130 ≈ 6 MET — CADENCE-Adults; MET from the 2024 Adult Compendium) on the
   Ding et al. 2025 (Lancet Public Health) step curve under 60; × Momma's strength curve. Heart-rate MVPA becomes a reference only.

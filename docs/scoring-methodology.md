@@ -213,6 +213,7 @@ SparkyFitness 的力量训练记录。**Apple 自己的 Readiness / 睡眠分 He
 
 ## 8. 身体年龄和衰老速度
 代码 `insights/healthspan.py`，参数和完整出处在 `insights/healthspan_params.py`（逐条核对过原文表格，2026-10-17）。
+**线上从 2026-10-23 起用 v1.2**（活动合成一个域，见 8.1）；本节写的是 v1.1，v1.2 只改了活动部分，其余都照本节。
 
 **计算**
 1. 每项取最近 180 天的均值，最近 30 天的天数权重 × 2；每项至少 30 天数据（规律性 = 30 对相邻两晚；VO₂max 180 天内 ≥ 2 次且最近一次 ≤ 120 天；体重 / 腰围最近 90 天有一次）。
@@ -246,9 +247,11 @@ SparkyFitness 的力量训练记录。**Apple 自己的 Readiness / 睡眠分 He
 - 没有任何外部验证（比如和 WHOOP Age、表观遗传年龄比）。
 
 
-### 8.1 v1.2：活动合成一个域（`hs-v1.2-2026-10-23`，和 v1.1 并存，线上默认仍是 v1.1）
+### 8.1 v1.2：活动合成一个域（`hs-v1.2-2026-10-23`，2026-10-23 起线上使用；v1.1 保留用于对比和回滚）
 参数和出处在 `healthspan_params_v12.py`（没写的全部沿用 v1.1）；`healthspan_store.snapshot(data, as_of, params)` 按参数集算，
-`healthspan_store.VERSIONS` 列出两个版本。对比工具：`python -m body_engine.validation healthspan --user-id N`（只读数据库）。
+`healthspan_store.VERSIONS` 列出两个版本，`healthspan_store.CURRENT` 是写进 `healthspan_weekly` 的版本（v1.2）。
+负责人看过对比后决定切换（2026-10-23），两个可选项都用默认值：力量训练不折算进量、高强度不单独加分；合计 × 0.6 不变。
+回滚：`CURRENT` 改回 `VERSIONS["v1.1"]`，部署后重算所有用户。对比工具：`python -m body_engine.validation healthspan --user-id N`（只读数据库）。
 
 **为什么改**
 1. v1.1 把步数、中高强度运动（MVPA）、力量训练当成三项，各自 ±4 年再 × 0.6。Lee 2022 的 MVPA 本身就包括走路和举重，
