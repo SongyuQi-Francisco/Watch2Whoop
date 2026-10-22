@@ -3,7 +3,7 @@ read the calendar / a day, correct or hide a watch workout (overrides.py), exerc
 from datetime import date, datetime, timedelta
 
 from ..toolspec import DATE, DETAIL, USER, nullable, schema
-from . import catalog, day_overrides, history, loads, overrides, params as P, plans
+from . import catalog, day_overrides, history, loads, overrides, params as P, plans, session_log
 
 
 def _d(s: str | None) -> date | None:
@@ -56,7 +56,11 @@ def _calendar(conn, uid, a):
 
 
 def _day(conn, uid, a):
-    return history.day(conn, a.get("_viewer_id", uid), uid, date.fromisoformat(a["date"]))
+    d = date.fromisoformat(a["date"])
+    out = history.day(conn, a.get("_viewer_id", uid), uid, d)
+    if draft := session_log.draft_for_ai(conn, uid, d):   # FB-5: sets ticked on the training page, not submitted yet
+        out["page_draft"] = draft
+    return out
 
 
 def _get_exercise(conn, uid, a):
@@ -146,7 +150,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_training_day",
-        description="某天训练详情：来源、起止、时长、能量、心率五区、TRIMP、强度，力量动作与每组次数/重量/RIR，全天指标。",
+        description="某天训练详情：来源、起止、时长、能量、心率五区、TRIMP、强度，力量动作与每组次数/重量/RIR，全天指标；page_draft=今天页勾了还没提交的组。",
         input_schema=_schema({"user": USER, "date": DATE}),
         handler=_day,
         group="training", scope="training",
@@ -200,7 +204,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="swap_exercise",
-        description="替换周计划中的动作：to_exercise=null 仅返回安全替代列表；指定非禁用动作则替换并同步 SparkyFitness。",
+        description="替换周计划中的动作（from_exercise 用 get_week_plan 的 slug）：to_exercise=null 仅返回安全替代列表；指定非禁用动作则替换并同步 SparkyFitness。",
         input_schema=_schema({
             "from_exercise": {"type": "string"},
             "to_exercise": _n("string"),

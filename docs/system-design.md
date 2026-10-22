@@ -617,6 +617,15 @@ CREATE TABLE sync_state (
 - 2016–2025-06 iPhone / Keep 记的历史训练没有心率，强度只能按时长。
 - 今天页的训练日历界面由今天页会话按上面的字段做。
 
+### 16.1 训练页的「今天」和逐组记录（2026-10-22，FB-5）
+
+- **修复（不在开关后面）**：「记录 → 训练」页最上面直接显示今天的计划动作（以前只在周条里有一个短标签，点开后计划压在当天数据下面）；点某天的弹层里计划放在最前面。「建议」只列当前计划里的动作（规则引擎的加重提醒也会写给旧的 SparkyFitness 计划，名字不同时按动作库 slug 对上），计划已经写到那个重量的不再重复建议。`swap_exercise` 在指定的那天找不到动作时，按同一动作模式在那天唯一的动作上替换（`matched_by: movement_pattern`，比如 cable_face_pull → 计划里的 band_face_pull_er）；还找不到就报出那天全部动作的 slug。
+- **训练页新版（开关 `training_day_v2`，默认关）**：今天的每个动作一张卡（示意图，没有就用肌群图；推荐组数 × 次数 · 重量，来自计划和 `training/loads.py`，红 / 黄区按 `set_factor` 少做几组；禁用 / 注意标记和用户自己的要点来自 `exercise_meta`；上次记录；「动作指导」打开动作详情）。展开后逐组填次数和重量（每组可以不同），勾「做完」，增删组。
+  - 草稿存表 `training_session_logs`（迁移 585，`(user_id, date)` 一行，`exercises = [{slug, sets: [{reps, weight_kg, duration_s, rir, done}]}]`），改完 0.7 秒自动保存，app 的 WebView 和浏览器看到的一样。
+  - 「提交」把勾了的组用和 AI 的 `log_workout` 同一条路径写进 SparkyFitness（一次训练，禁用动作拒绝、同天同动作当重复先问），记下条目 id；提交后再改就回到草稿，重新提交会替换那次训练而不是再加一次。手表训练（`workouts`）不动，照第 16 节和 SparkyFitness 的记录合并。
+  - 接口（都在开关后面，关着时 404）：`GET /v1/users/{user}/training/session?date=`（scope training）、`PUT /training/session/{date}`、`POST /training/session/{date}/submit`（只能写自己的）。
+  - AI：提交后的训练照常从 `get_training_log` / `get_training_day` 读；还没提交的草稿在 `get_training_day` 的 `page_draft` 里。
+
 ## 17. Watch2Whoop iOS app（2026-10-17，采集层 + 手机的单一入口）
 用户原话：「先用朋友的 Apple Developer 账号发 TestFlight，开始做 Watch2Whoop iOS app。」快捷指令限制太大（锁屏读不到、只能汇总、量大吃力），OW 官方 TestFlight 版（iOS SDK 0.14）首次同步会被打断（0.15 已修）。代码 `apps/watch2whoop/`（Flutter），给朋友的编译上传步骤（中英双语）在 `apps/watch2whoop/README.md`。
 

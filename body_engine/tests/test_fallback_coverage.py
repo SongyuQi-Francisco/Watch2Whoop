@@ -45,6 +45,7 @@ READ = {
     "training/week": ["get_week_plan"],
     "training/exercises": ["search_exercises"],
     "training/exercises/{x}": ["get_exercise"],
+    "training/session": ["get_week_plan", "get_training_day"],   # FB-5: today's cards = the plan; the page's draft is in get_training_day
     "diet-profile": ["get_diet_profile", "get_nutrition_goals"],
     "meal-templates": ["get_meal_templates"],
     "recipes": ["list_recipes"],
@@ -67,6 +68,8 @@ NO_DATA = {
     "training/sparky/connect": "write: connect the training log app",
     "training/plan": "write: save / change the week plan (save_plan, reschedule_day)",
     "training/plan/swap": "write: swap an exercise (swap_exercise)",
+    "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
+    "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "journal/{x}/{x}": "write: one journal answer (log_journal)",
     "meal-logs/{x}": "write: undo a quick meal",
     "meal-templates/{x}/log": "write: log a quick meal",

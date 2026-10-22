@@ -346,7 +346,10 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                     seen.add(x["exercise_id"])
                     cautions.append({k2: x[k2] for k2 in ("exercise_id", "name", "status", "reason", "cues")})
     suggestions = []
+    in_plan = set(ctx.plan_prescriptions()) | {x["exercise_id"] for d in days for p in d["planned"] for x in p["exercises"]}
     for ex_id, items in sugg.items():
+        if ex_id not in in_plan:   # FB-5: suggestions only for exercises of the current plan
+            continue
         latest = max(items, key=lambda r: (str(r.get("date") or ""), r["id"]))
         suggestions.append({"exercise_id": ex_id, "name": ctx.exercise_name(ex_id, latest.get("exercise")), **latest})
     suggestions.sort(key=lambda r: (str(r.get("date") or ""), r["id"]), reverse=True)
