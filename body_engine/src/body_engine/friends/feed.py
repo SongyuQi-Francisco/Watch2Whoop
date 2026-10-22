@@ -112,7 +112,7 @@ def content(conn: psycopg.Connection, user_id: int, day: date, names: dict | Non
     reps × weight over the sets ticked done."""
     rows = _rows(conn, user_id, "date = %s", (day,))   # the page's row and an imported row of the same day -> one post
     works = conn.execute(
-        """SELECT name_zh, type, duration_min FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
+        """SELECT name_zh, type, duration_min, start_at FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
            AND excluded IS NULL ORDER BY start_at""", (user_id, day)).fetchall()
     exercises = []
     if rows:
@@ -129,6 +129,8 @@ def content(conn: psycopg.Connection, user_id: int, day: date, names: dict | Non
                 exercises.append({
                     "slug": ex.get("slug"),
                     "name": L(label, cat.get("name_en") or label),
+                    "thumb": next(iter(catalog.image_urls(cat.get("images") or [])[:1]), None),   # the demo picture, else the page draws the muscle
+                    "muscles": list(cat.get("primary_muscles") or []),
                     "sets": [{k: s[k] for k in ("reps", "weight_kg", "duration_s") if s.get(k) is not None} for s in sets],
                     "volume_kg": round(sum((s.get("reps") or 0) * float(s.get("weight_kg") or 0) for s in sets), 1),
                     "pr": bool(top and _key(ex) in prev and top > prev[_key(ex)]),   # a first lift is no record
@@ -139,6 +141,7 @@ def content(conn: psycopg.Connection, user_id: int, day: date, names: dict | Non
     return {
         "title": lead["name_zh"] if lead else L("力量训练", "Strength training"),
         "duration_min": round(sum(w["duration_min"] for w in works)) if works else None,
+        "started_at": works[0]["start_at"] if works else None,   # for the "3 h ago" in the post header
         "exercise_count": len(exercises), "set_count": sum(len(e["sets"]) for e in exercises),
         "volume_kg": round(sum(e["volume_kg"] for e in exercises), 1),
         "pr_count": sum(1 for e in exercises if e["pr"]),
@@ -171,6 +174,19 @@ def _counts(conn, viewer_id: int, ids: list[int]) -> tuple[dict, dict]:
     return likes, comments
 
 
+def _previews(conn, ids: list[int]) -> dict[int, list[dict]]:
+    """The newest P.COMMENT_PREVIEW comments of each post (oldest first), shown under the post like Instagram does."""
+    out: dict[int, list[dict]] = {}
+    for r in conn.execute(
+            f"""SELECT * FROM (SELECT c.post_id, c.id, c.user_id, c.body, u.display_name,
+                       row_number() OVER (PARTITION BY c.post_id ORDER BY c.id DESC) AS rn
+                FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
+                WHERE c.post_id = ANY(%s) AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}) t
+                WHERE rn <= %s ORDER BY post_id, id""", (ids, P.COMMENT_PREVIEW)):
+        out.setdefault(r["post_id"], []).append({"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"]}, "body": r["body"]})
+    return out
+
+
 def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, limit: int = P.FEED_PAGE) -> dict:
     """Newest first: posts of everyone whose circles show me their training (and mine). `before` = the `next` of the
     previous page ("date:id"). A post whose day has no training any more is skipped."""
@@ -192,6 +208,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
                ORDER BY date DESC, id DESC LIMIT %s""", (authors, *(cur[0] if cur else None,) * 2, cur[1] if cur else None, limit * 2)).fetchall()
         exhausted = len(rows) < limit * 2
         likes, comments = _counts(conn, viewer_id, [r["id"] for r in rows])
+        previews = _previews(conn, [r["id"] for r in rows])
         for r in rows:
             cur = (r["date"], r["id"])
             body = content(conn, r["user_id"], r["date"], names)
@@ -200,13 +217,14 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
             lk = likes.get(r["id"]) or {}
             out.append({"id": r["id"], "date": r["date"], "user": {"id": r["user_id"], "name": users.get(r["user_id"], ""), "self": r["user_id"] == viewer_id},
                         "circles": _circles_between(conn, viewer_id, r["user_id"]), **body,
-                        "likes": {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}, "comment_count": comments.get(r["id"], 0)})
+                        "likes": {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}, "comment_count": comments.get(r["id"], 0),
+                        "preview_comments": previews.get(r["id"], [])})
             if len(out) == limit:
                 break
     more = len(out) == limit and cur is not None and conn.execute(
         "SELECT 1 FROM circle_feed_posts WHERE user_id = ANY(%s) AND (date, id) < (%s, %s) LIMIT 1", (authors, *cur)).fetchone()
     return {"posts": out, "next": f"{cur[0].isoformat()}:{cur[1]}" if more else None, "has_circles": True,
-            "preview_exercises": P.FEED_PREVIEW_EXERCISES, "comment_max": P.COMMENT_MAX}
+            "preview_exercises": P.FEED_PREVIEW_EXERCISES, "comment_preview": P.COMMENT_PREVIEW, "comment_max": P.COMMENT_MAX}
 
 
 def _cursor(before: str | None):

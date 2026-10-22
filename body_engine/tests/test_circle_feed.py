@@ -66,6 +66,7 @@ def clean(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         for t in ("circles", "shares", "circle_feed_posts", "circle_feed_seen", "training_session_logs", "workouts"):
             conn.execute(f"DELETE FROM {t}")
+        conn.execute("DELETE FROM exercise_catalog WHERE slug = 'bench-press' AND source_ref IS NULL AND name_en = 'Bench press'")   # a test's own row
         flags.set_flag(conn, P.FEED_FLAG, "all", actor="test")
     yield
 
@@ -168,8 +169,12 @@ def test_one_post_per_day_and_content_follows_sets(client, world, dsn, pair):
     assert [x["user"]["name"] for x in get_feed(client, tok["Ann"])["posts"]] == ["Ann"]
 
 
-def test_personal_record_and_watch_workout(client, world, dsn, pair):
+def test_personal_record_and_watch_workout(client, world, dsn, pair, monkeypatch):
     ids, tok, _ = pair
+    monkeypatch.setenv("BODY_EXERCISE_IMAGE_BASE_URL", "https://img.example/ex")
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("""INSERT INTO exercise_catalog (slug, name_zh, name_en, primary_muscles, images) VALUES ('bench-press', '卧推', 'Bench press', '{chest}', '{bench/0.jpg}')
+                        ON CONFLICT (slug) DO UPDATE SET primary_muscles = EXCLUDED.primary_muscles, images = EXCLUDED.images, updated_at = now()""")
     from datetime import timedelta
     d = today(dsn, ids["Ann"])
     log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])], day=d - timedelta(days=1))
@@ -182,6 +187,11 @@ def test_personal_record_and_watch_workout(client, world, dsn, pair):
     newest = posts[0]
     assert newest["duration_min"] == 62 and newest["pr_count"] == 1
     assert {e["slug"]: e["pr"] for e in newest["exercises"]} == {"bench-press": True, "squat": False}
+    assert newest["started_at"] is not None and posts[1]["started_at"] is None          # the header's "1 h ago" needs a watch time
+    for e in newest["exercises"]:                                                       # what the post's exercise row draws
+        assert set(e) >= {"thumb", "muscles"} and isinstance(e["muscles"], list)
+    bench = next(e for e in newest["exercises"] if e["slug"] == "bench-press")
+    assert bench["muscles"] == ["chest"] and bench["thumb"] == "https://img.example/ex/bench/0.jpg"
 
 
 def log_imported(dsn, uid, exercises, day):
@@ -309,6 +319,24 @@ def test_comments_text_only_limit_delete_report(client, world, dsn, pair):
     assert client.delete(f"{FEED}/comments/{cid}", headers=h(tok["Ben"])).status_code == 404
 
 
+def test_newest_comments_preview_under_the_post(client, world, dsn, pair):
+    ids, tok, _ = pair
+    log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
+    feed0 = get_feed(client, tok["Ben"])
+    assert feed0["comment_preview"] == P.COMMENT_PREVIEW and feed0["posts"][0]["preview_comments"] == []
+    pid = feed0["posts"][0]["id"]
+    url = f"{FEED}/posts/{pid}/comments"
+    made = [client.post(url, headers=h(tok[w]), json={"body": f"c{i}"}).json()["id"] for i, w in enumerate(("Ben", "Ann", "Ben"))]
+    post = get_feed(client, tok["Ann"])["posts"][0]
+    assert post["comment_count"] == 3                                                    # the total, the preview is only the newest
+    assert [(c["id"], c["user"]["name"], c["body"]) for c in post["preview_comments"]] == [(made[1], "Ann", "c1"), (made[2], "Ben", "c2")]
+    assert set(post["preview_comments"][0]) == {"id", "user", "body"} and set(post["preview_comments"][0]["user"]) == {"id", "name"}
+    client.delete(f"{FEED}/comments/{made[2]}", headers=h(tok["Ben"]))
+    assert [c["body"] for c in get_feed(client, tok["Ann"])["posts"][0]["preview_comments"]] == ["c0", "c1"]   # a deleted one drops out
+    # nothing from outside the circle reaches the preview: Cat is not in the circle, and a member who left is gone
+    assert get_feed(client, tok["Cat"])["posts"] == []
+
+
 def test_comment_rate_limit(client, world, dsn, pair, monkeypatch):
     ids, tok, _ = pair
     log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
@@ -388,4 +416,5 @@ def test_privacy_nothing_but_training_in_a_post(client, world, dsn, pair):
     for word in ("ecg", "lab", "weight_kg_body", "body_weight"):
         assert word not in text
     assert set(get_feed(client, tok["Ben"])["posts"][0]) == {"id", "date", "user", "circles", "title", "duration_min", "exercise_count",
-                                                            "set_count", "volume_kg", "pr_count", "exercises", "likes", "comment_count"}
+                                                            "set_count", "volume_kg", "pr_count", "exercises", "likes", "comment_count",
+                                                            "started_at", "preview_comments"}
