@@ -57,7 +57,7 @@ The Mac version uses the public `https://body.example.com/mcp` (the default in `
 | `disableClaudeAiConnectors`, `mcp__claude_ai_*` / `mcp__claude-in-chrome__*` deny, `enabledMcpjsonServers: [body-engine]`, stock plugin turned off | Connect only the body-engine MCP; no claude.ai connectors such as Gmail / Drive and no browser |
 | `autoMemoryEnabled: false`, `claudeMdExcludes` excludes the repo root `CLAUDE.md` (Mac main repo, worktrees, Ali's `/opt/body-management/CLAUDE.md`) | Does not read the development notes and auto-memory (those are for development sessions); long-term memory lives in the database tables `assistant_profile` / `assistant_observations` |
 | `UserPromptSubmit` hook: appends the current local time to every message | The butler has no shell; to decide which day "tonight / the small hours" belongs to it needs the current time (`get_profile` also returns `now_local`) |
-| `ENABLE_TOOL_SEARCH=false` | All tools (65, about 14k tokens since the 2026-10-18 slimming) are loaded up front, no search needed first |
+| `ENABLE_TOOL_SEARCH=false` | The MCP `tools/list` is small enough to load up front: since #99 it holds only the resident core, the delete / undo tools and the meta tools `find_tools` / `run_read_tool` / `run_write_tool` (44 tools, about 20k characters); the other tools are found and run through those (`docs/ai-assistant-plan.md` section 9.17) |
 
 MCP identity: the AI-only token `secrets/body_ai_token_butler` (user 1, scope `mcp`, usable only on `/mcp`, can be revoked separately; `ai-token-list / revoke`), audit channel `mcp:butler`. On Ali `butler.sh install` turns it into systemd's `secrets/body_butler.env`; re-run `install` after replacing the token.
 

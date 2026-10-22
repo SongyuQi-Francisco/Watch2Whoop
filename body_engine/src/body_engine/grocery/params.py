@@ -96,6 +96,7 @@ VERDICT_SPECIAL_CHEAP = 1.02 # paying within 2 % of the recent special (or less)
 # eggs / milk / bananas shop the issue describes, and enough points for a usable interval (2 gaps). A judgement call, not a
 # published threshold; tune here. Only suggested: the user confirms (set_staple) before anything is marked.
 STAPLE_SUGGEST_WEEKS = 8
+STAPLES_FLAG = "grocery_staples"   # rollout flag (rollout/registry.py): off -> no suggestions, set_staple refused, generate adds none
 STAPLE_SUGGEST_MIN = 3
 STAPLE_SUGGEST_MAX = 8            # suggestions returned at once (get_shopping_context)
 # Interval when set_staple is not given one: the median gap between this user's own purchases (rounded to whole days, at

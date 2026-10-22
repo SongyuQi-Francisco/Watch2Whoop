@@ -20,6 +20,7 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.nutrition import constraints
 from body_engine.records import lab_catalog
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_butler")
 
@@ -183,7 +184,7 @@ def test_memory_api_auth(client, world):
     r = client.get(f"/v1/users/{a}/memory", headers=h(tok["B"]))
     assert r.status_code == 200
     body = r.json()
-    assert set(body) == {"status", "profile_card", "observations"}
+    assert set(body) == {"status", "profile_card", "observations", "expired_recent"}
     assert {"key", "label", "value", "updated_at", "source"} == set(body["profile_card"][0])
     assert client.put(f"/v1/users/{a}/memory/profile/goals", headers=h(tok["B"]), json={"value": "x"}).status_code == 403
     # C has no share
@@ -194,9 +195,143 @@ def test_memory_api_auth(client, world):
     assert client.delete(f"/v1/users/{a}/memory/observations/{oid}", headers=h(tok["B"])).status_code == 403
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["B"])).status_code == 404
     obs = client.get("/v1/users/me/memory", headers=h(tok["A"])).json()["observations"]
-    assert [o["id"] for o in obs] == [oid] and set(obs[0]) == {"id", "text", "created_at", "source"}
+    assert [o["id"] for o in obs] == [oid]
+    assert set(obs[0]) == {"id", "text", "created_at", "source", "kind", "valid_until"} and obs[0]["kind"] == "fact"
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["A"])).status_code == 204
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["A"])).status_code == 404
+
+
+# ---------- recent notes, communication, priority truncation (#112) ----------
+WED = datetime(2026, 10, 21, 10, 0, tzinfo=ZoneInfo("Australia/Sydney"))   # a Wednesday; Friday = 10-23
+
+
+@pytest.fixture()
+def memory_users(conn):
+    """D owns the memory; E has a memory share from D; F has none. All in Sydney."""
+    ids = {n: conn.execute("INSERT INTO users (display_name, timezone) VALUES (%s, 'Australia/Sydney') RETURNING id",
+                           (n,)).fetchone()["id"] for n in ("D", "E", "F")}
+    conn.execute("INSERT INTO shares (owner_id, viewer_id, scopes) VALUES (%s, %s, %s)", (ids["D"], ids["E"], ["memory"]))
+    flags.set_flag(conn, "memory_recent", "all", actor="test")   # the rollout flag (default off) is on for these tests
+    conn.commit()
+    flags.invalidate()
+    return ids
+
+
+def _at(monkeypatch, when):
+    from body_engine import queries
+    monkeypatch.setattr(queries, "_now", lambda: when)
+
+
+def test_recent_note_expires_but_stays_in_history(conn, memory_users, monkeypatch):
+    from body_engine.ai import prompt
+    from body_engine.assistant import briefing
+    d = memory_users["D"]
+    _at(monkeypatch, WED)
+    # "away on business until Friday" -> a recent note ending that Friday, through the AI tool
+    o = run_tool(conn, d, "butler", "add_observation",
+                 {"text": "这周出差到周五，酒店没有健身房", "evidence": "用户原话", "until": "2026-10-23"})
+    assert (o["kind"], o["valid_from"], o["valid_until"]) == ("recent", date(2026, 10, 21), date(2026, 10, 23))
+    fact = run_tool(conn, d, "butler", "add_observation", {"text": "喝咖啡后睡得差", "evidence": None, "until": None})
+    assert fact["kind"] == "fact" and fact["valid_until"] is None
+    for day in (WED, WED + timedelta(days=2, hours=13)):   # Wednesday and Friday 23:00: still in effect
+        _at(monkeypatch, day)
+        assert "出差到周五" in prompt._memory_block(conn, d)
+    out = run_tool(conn, d, "butler", "get_memory", {"user": "me", "detail": False, "history": None})
+    assert {"id": o["id"], "date": f"{o['created_at']:%Y-%m-%d}", "text": o["text"], "until": "2026-10-23"} in out["observations"]
+    # Saturday: gone from the conversation memory, get_memory and get_briefing, still readable with history
+    _at(monkeypatch, WED + timedelta(days=3))
+    briefing.clear()
+    assert "出差" not in prompt._memory_block(conn, d) and "喝咖啡" in prompt._memory_block(conn, d)
+    assert "出差" not in str(briefing.build(conn, d, d)["memory"])
+    out = run_tool(conn, d, "butler", "get_memory", {"user": "me", "detail": False, "history": None})
+    assert [x["text"] for x in out["observations"]] == ["喝咖啡后睡得差"] and out["expired_recent"] == 1
+    out = run_tool(conn, d, "butler", "get_memory", {"user": "me", "detail": False, "history": True})
+    assert [x["text"] for x in out["observations"]] == ["这周出差到周五，酒店没有健身房", "喝咖啡后睡得差"]
+    # The week a review looks back on still sees what was in effect then
+    assert [r["id"] for r in memory.recent_during(conn, d, date(2026, 10, 19), date(2026, 10, 25))] == [o["id"]]
+    assert memory.recent_during(conn, d, date(2026, 10, 26), date(2026, 11, 1)) == []
+    # The same text again as a recent note moves its dates instead of being dropped as a duplicate
+    again = memory.add_observation(conn, d, "这周出差到周五，酒店没有健身房", until="recent")
+    assert again["duplicate"] and again["id"] == o["id"] and again["valid_until"] == date(2026, 10, 24) + timedelta(days=14)
+    assert memory.get_memory(conn, d)["expired_recent"] == 0
+
+
+def test_recent_note_flag_off_keeps_a_lasting_fact(conn, memory_users, monkeypatch):
+    """Rollout flag memory_recent off (the default): until is ignored and the note is a lasting fact, as before #112."""
+    d = memory_users["D"]
+    _at(monkeypatch, WED)
+    flags.set_flag(conn, "memory_recent", "off", actor="test")
+    conn.commit()
+    flags.invalidate()
+    try:
+        o = run_tool(conn, d, "butler", "add_observation", {"text": "这周在外地", "evidence": None, "until": "2026-10-23"})
+        assert (o["kind"], o["valid_until"]) == ("fact", None)
+    finally:
+        flags.set_flag(conn, "memory_recent", "all", actor="test")
+        conn.commit()
+        flags.invalidate()
+
+
+def test_recent_note_until_is_checked(conn, memory_users, monkeypatch):
+    d = memory_users["D"]
+    _at(monkeypatch, WED)
+    with pytest.raises(ValueError, match="已经过去"):
+        memory.add_observation(conn, d, "上周感冒", until="2026-10-20")
+    with pytest.raises(ValueError, match="最长"):
+        memory.add_observation(conn, d, "备考", until="2027-12-01")
+    with pytest.raises(ValueError, match="YYYY-MM-DD"):
+        memory.add_observation(conn, d, "备考", until="周五")
+    assert memory.add_observation(conn, d, "感冒第 3 天", until="recent")["valid_until"] == date(2026, 11, 4)
+
+
+def test_recent_notes_are_per_user(client, conn, memory_users, monkeypatch):
+    ids = memory_users
+    _at(monkeypatch, WED)
+    o = memory.add_observation(conn, ids["D"], "下周一考试", until="2026-10-26")
+    conn.commit()
+    # E (memory share) reads D's recent note; F cannot; nobody writes into D's memory (add_observation has no user)
+    assert any(x["id"] == o["id"] for x in run_tool(conn, ids["E"], "butler", "get_memory",
+                                                    {"user": str(ids["D"]), "detail": False, "history": None})["observations"])
+    with pytest.raises(PermissionError):
+        run_tool(conn, ids["F"], "butler", "get_memory", {"user": str(ids["D"]), "detail": False, "history": True})
+    assert "user" not in TOOLS_BY_NAME["add_observation"].input_schema["properties"]   # writes only go to the caller
+    assert memory.delete_observation(conn, ids["E"], o["id"]) is None
+    assert memory.recent_during(conn, ids["E"], date(2026, 10, 19), date(2026, 10, 30)) == []
+    tok_e = auth.create_token(conn, ids["E"], "test", ["read", "write"])
+    tok_f = auth.create_token(conn, ids["F"], "test", ["read", "write"])
+    conn.commit()
+    body = client.get(f"/v1/users/{ids['D']}/memory", headers=h(tok_e)).json()
+    assert [(x["kind"], x["valid_until"]) for x in body["observations"] if x["id"] == o["id"]] == [("recent", "2026-10-26")]
+    assert client.get(f"/v1/users/{ids['D']}/memory", headers=h(tok_f)).status_code == 403
+    assert client.delete(f"/v1/users/{ids['D']}/memory/observations/{o['id']}", headers=h(tok_e)).status_code == 403
+
+
+def test_memory_block_keeps_communication_first_when_truncated(conn, memory_users, monkeypatch):
+    from body_engine.ai import prompt
+    d = memory_users["D"]
+    _at(monkeypatch, WED)
+    for key, n in (("what_works", 3000), ("current_plan", 3000), ("schedule", 3000)):
+        memory.update_profile(conn, d, key, "很长" * (n // 2))
+    memory.update_profile(conn, d, "health_constraints", "尿酸高，少吃内脏和啤酒")
+    memory.update_profile(conn, d, "injuries", "右肩撞击，不做直立划船")
+    memory.update_profile(conn, d, "communication", "回答简短，先给数字；不要表情；不主动提体重")
+    memory.add_observation(conn, d, "感冒第 2 天", until="2026-10-25")
+    for i in range(80):
+        memory.add_observation(conn, d, f"观察 {i:02d}：" + "细节" * 40)
+    for limit in (prompt.LITE_MEMORY_CHARS, prompt.MAX_MEMORY_CHARS):
+        block = prompt._memory_block(conn, d, limit)
+        assert len(block) <= limit and block.endswith(prompt.TRUNCATED)
+        pos = [block.index(t) for t in ("回答简短", "尿酸高", "右肩撞击", "感冒第 2 天")]
+        assert pos == sorted(pos) and pos[0] < 40   # communication leads, then the priority order
+    lite = prompt.build_system_prompt(conn, d, lite=True)
+    assert "回答简短，先给数字" in lite and "感冒第 2 天" in lite
+    # Lasting notes come newest first: the newest survive, the oldest are what gets cut
+    full = prompt._memory_block(conn, d)
+    assert "观察 79" in full and "观察 00" not in full
+    # A communication item longer than the whole budget is cut to fit, never dropped
+    memory.update_profile(conn, d, "communication", "简短" * 2000)
+    block = prompt._memory_block(conn, d, prompt.LITE_MEMORY_CHARS)
+    assert len(block) <= prompt.LITE_MEMORY_CHARS and "**沟通方式**" in block
 
 
 def test_run_tool_memory_scope_and_audit(conn, world):

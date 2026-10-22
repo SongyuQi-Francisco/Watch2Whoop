@@ -53,29 +53,30 @@ python3 deploy/open-wearables/invite.py --create-user "Mum" --body-user-id <Body
 - If `xcode-select -p` prints `/Library/Developer/CommandLineTools`, run `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer` once (required: a dependency's native build hook calls `xcrun --sdk iphoneos` and fails with "Bad state: No element" otherwise).
 
 #### 1. Get the code — only from the GitHub Release of a tag, never from `main` or a zip sent by hand
-Every store build is made from a tag the project owner creates, e.g. `app-ios-v1.0.0+2` (version 1.0.0, build 2;
-[docs/apps.md](../../docs/apps.md#4-versioning-and-releases)). Pushing the tag makes GitHub Actions publish a
+Every store build is made from a tag the project owner creates, named after the version, e.g. `app-ios-v1.0.6`
+(the build number, e.g. 6, is only in `pubspec.yaml`: `version: 1.0.6+6`;
+[docs/apps.md](../../docs/apps.md#4-versioning-and-releases)). Older tags still carry it in the name (`app-ios-v1.0.5+5`). Pushing the tag makes GitHub Actions publish a
 **pre-release** of that name on the repository's **Releases** page, with a source zip of this directory, its `.sha256`
 and the changes ([CHANGELOG.md](CHANGELOG.md)). The owner sends you the tag and the Release link. `main` may contain
 unfinished work and a version number that was never released; a zip from anywhere else is not a source for a build.
 
 **A. From the Release zip** (no git needed):
 ```bash
-gh release download app-ios-v1.0.0+2 --repo <owner>/<repo> --dir w2w-1.0.0+2   # or download both files from the Release page
-cd w2w-1.0.0+2
-shasum -a 256 -c watch2whoop-ios-app-v1.0.0-build2.zip.sha256   # must print "OK"
-unzip -z watch2whoop-ios-app-v1.0.0-build2.zip | tail -1        # must print the commit shown on the Release page
-unzip -q watch2whoop-ios-app-v1.0.0-build2.zip && cd watch2whoop-ios-app-v1.0.0-build2/apps/watch2whoop
+gh release download app-ios-v1.0.6 --repo <owner>/<repo> --dir w2w-1.0.6   # or download both files from the Release page
+cd w2w-1.0.6
+shasum -a 256 -c watch2whoop-ios-app-v1.0.6.zip.sha256   # must print "OK"
+unzip -z watch2whoop-ios-app-v1.0.6.zip | tail -1        # must print the commit shown on the Release page
+unzip -q watch2whoop-ios-app-v1.0.6.zip && cd watch2whoop-ios-app-v1.0.6/apps/watch2whoop
 ```
 **B. With git:**
 ```bash
-git clone --branch app-ios-v1.0.0+2 --depth 1 <repository URL> watch2whoop-src
+git clone --branch app-ios-v1.0.6 --depth 1 <repository URL> watch2whoop-src
 cd watch2whoop-src/apps/watch2whoop
 git describe --tags --exact-match        # must print the tag you were given
 ```
 Then, either way:
 ```bash
-grep '^version:' pubspec.yaml            # must match the tag (1.0.0+2); do not edit it
+grep '^version:' pubspec.yaml            # 1.0.6+6: the part before + matches the tag, + is the build number; do not edit it
 flutter pub get
 cd ios && pod install && cd ..
 grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # should be 0.15.x, not 0.14
@@ -109,8 +110,8 @@ open -e config/defaults.json
 App Store Connect → **Apps** → **+** → **New App**: platform iOS; name unique across the App Store (e.g. `Watch2Whoop <your name>`); bundle ID the one from step 2; SKU anything. TestFlight only, no App Store release.
 
 #### 5. Build and upload
-Do **not** change the version: the tag already has the right `version:` in `pubspec.yaml` (a new build number needs a
-new tag from the project owner). Upload exactly the tag you were given and tell the owner when it is in TestFlight.
+Do **not** change the version: the tag already has the right `version:` in `pubspec.yaml`, build number included (a
+new build needs a new tag from the project owner). TestFlight shows it as "1.0.6 (6)". Upload exactly the tag you were given and tell the owner when it is in TestFlight.
 ```bash
 flutter build ipa --release --dart-define-from-file=config/defaults.json
 ```
@@ -130,8 +131,8 @@ App Store Connect → **Users and Access** → **+**, invite them by their Apple
 - You can also turn on a "public link", but anyone with the link can install (it is useless without a setup QR code, though); inviting family by email is safer.
 
 #### 7. Maintenance
-- **TestFlight builds expire after 90 days**: before that, ask the project owner for a new tag (they bump the build
-  number in a PR and tag it; you get a new Release link), then do steps 1 and 5 again. The Bundle ID stays the same; after family members update, their data, login and sync progress are kept, and TestFlight reminds them to update.
+- **TestFlight builds expire after 90 days**: before that, ask the project owner for a new tag (they bump to the next
+  patch version and build number in a PR, e.g. 1.0.6+6 → 1.0.7+7, and tag it; you get a new Release link), then do steps 1 and 5 again. The Bundle ID stays the same; after family members update, their data, login and sync progress are kept, and TestFlight reminds them to update.
 - To follow a new version: get the new Release (step 1 A, or `git fetch --tags && git checkout <tag>` in your existing clone) → `flutter pub get` → `cd ios && pod install` → step 5. Keep your local `Watch2Whoop.local.xcconfig` and `config/defaults.json` (they are not in git).
 
 #### What changed in 1.0.0+2 (self-service sign-up)
@@ -177,28 +178,28 @@ License: not chosen yet (the repository is private for now; the owner decides be
 - `xcode-select -p` 显示 `/Library/Developer/CommandLineTools` 时运行一次 `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`（必须：有个依赖的原生构建脚本会调 `xcrun --sdk iphoneos`，不设会报「Bad state: No element」）。
 
 ### 1. 拿代码——只从 tag 的 GitHub Release 拿，不用 `main`，也不用别人手发的 zip
-每个商店构建都对应项目所有者打的一个 tag，例如 `app-ios-v1.0.0+2`（版本 1.0.0、构建号 2）。tag 推上去后，GitHub Actions
+每个商店构建都对应项目所有者打的一个 tag，tag 只写版本号，例如 `app-ios-v1.0.6`；构建号（例如 6）只在 `pubspec.yaml` 里：`version: 1.0.6+6`。以前的 tag 名字里还带构建号（`app-ios-v1.0.5+5`）。tag 推上去后，GitHub Actions
 会在仓库的 **Releases** 页面自动发布同名的 **pre-release**：附带这个目录的源码 zip、它的 `.sha256` 和改动说明
 （[CHANGELOG.md](CHANGELOG.md)）。项目所有者会把 tag 和 Release 链接发给你。`main` 上可能有没做完的改动和没发布过的
 版本号；其他来源的 zip 都不能拿来编译。
 
 **A. 用 Release 里的 zip**（不需要 git）：
 ```bash
-gh release download app-ios-v1.0.0+2 --repo <owner>/<repo> --dir w2w-1.0.0+2   # 或者在 Release 页面下载那两个文件
-cd w2w-1.0.0+2
-shasum -a 256 -c watch2whoop-ios-app-v1.0.0-build2.zip.sha256   # 必须显示 OK
-unzip -z watch2whoop-ios-app-v1.0.0-build2.zip | tail -1        # 必须是 Release 页面上写的那个 commit
-unzip -q watch2whoop-ios-app-v1.0.0-build2.zip && cd watch2whoop-ios-app-v1.0.0-build2/apps/watch2whoop
+gh release download app-ios-v1.0.6 --repo <owner>/<repo> --dir w2w-1.0.6   # 或者在 Release 页面下载那两个文件
+cd w2w-1.0.6
+shasum -a 256 -c watch2whoop-ios-app-v1.0.6.zip.sha256   # 必须显示 OK
+unzip -z watch2whoop-ios-app-v1.0.6.zip | tail -1        # 必须是 Release 页面上写的那个 commit
+unzip -q watch2whoop-ios-app-v1.0.6.zip && cd watch2whoop-ios-app-v1.0.6/apps/watch2whoop
 ```
 **B. 用 git：**
 ```bash
-git clone --branch app-ios-v1.0.0+2 --depth 1 <repository URL> watch2whoop-src
+git clone --branch app-ios-v1.0.6 --depth 1 <repository URL> watch2whoop-src
 cd watch2whoop-src/apps/watch2whoop
 git describe --tags --exact-match        # 必须显示给你的那个 tag
 ```
 两种方式之后都一样：
 ```bash
-grep '^version:' pubspec.yaml            # 必须和 tag 一致（1.0.0+2），不要改
+grep '^version:' pubspec.yaml            # 1.0.6+6：+ 前面和 tag 一致，+ 后面是构建号；不要改
 flutter pub get
 cd ios && pod install && cd ..
 grep -A1 "OpenWearablesHealthSDK (" ios/Podfile.lock   # 应该是 0.15.x，不能是 0.14
@@ -234,7 +235,7 @@ App Store Connect → **App** → **+** → **新建 App**：平台 iOS；名称
 ### 5. 编译和上传
 **1.0.0+2 的变化（自助注册）**：首屏换成「通过 Apple 登录 / 用邮箱登录 → 输入激活码 → 健康权限」，原来的设置链接 / 二维码仍可用（首屏「我有设置链接」）；需要服务器已经部署了自助账号接口（`/v1/auth/*`、`/v1/account/*`），上传前先问服务器管理员；需要新的 TestFlight 构建（`pubspec.yaml` 的构建号已经改成 `+2`）。Beta 审核时在「审核备注」里给审核员一个激活码（问服务器管理员要），账号可以在 app 里删除（今天页「我」→「删除账号」，审核指南 5.1.1(v)）。
 
-**不要改**版本号：tag 里的 `pubspec.yaml` 已经是正确的 `version:`（要新构建号就请项目所有者打新 tag）。上传给你的那个 tag，进 TestFlight 后告诉项目所有者。
+**不要改**版本号：tag 里的 `pubspec.yaml` 已经是正确的 `version:`，构建号也在里面（要新构建就请项目所有者打新 tag）。TestFlight 里显示为「1.0.6 (6)」。上传给你的那个 tag，进 TestFlight 后告诉项目所有者。
 ```bash
 flutter build ipa --release --dart-define-from-file=config/defaults.json
 ```
@@ -254,7 +255,7 @@ App Store Connect → **用户和访问** → **+**，用对方的 Apple ID 邮�
 - 也可以开「公开链接」，但任何拿到链接的人都能装（没有设置二维码也用不了），家人用邮箱邀请更稳妥。
 
 ### 7. 维护
-- **TestFlight 构建 90 天过期**：过期前请项目所有者打一个新 tag（他在 PR 里把构建号加 1、合并后打 tag，你会收到新的 Release 链接），再做第 1、5 步。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
+- **TestFlight 构建 90 天过期**：过期前请项目所有者打一个新 tag（他在 PR 里升一个补丁版本，例如 1.0.6 → 1.0.7，构建号也加 1，合并后打 tag，你会收到新的 Release 链接），再做第 1、5 步。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
 - 跟新版本：拿到新的 Release（第 1 步 A，或在已有目录里 `git fetch --tags && git checkout <tag>`）→ `flutter pub get` → `cd ios && pod install` → 第 5 步。本地的 `Watch2Whoop.local.xcconfig` 和 `config/defaults.json` 不在 git 里，保留即可。
 
 ## License

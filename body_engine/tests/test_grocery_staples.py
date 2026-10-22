@@ -17,6 +17,7 @@ from body_engine.assistant.tools import run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.grocery import params as P, prices, staples, store
+from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_STAPLES", "body_test_grocery_staples")
 
@@ -72,6 +73,8 @@ def world(dsn):
         bp = store.save_product(conn, b, dict(name="面包", package_size=650, package_unit="g"))["id"]
         for days in (20, 13, 6, 1):   # B's purchases never count for A
             _buy(conn, b, "面包", bp, days)
+        flags.set_flag(conn, P.STAPLES_FLAG, "all", actor="test")   # the rollout flag (default off) is on for these tests
+    flags.invalidate()
     return ids, tok, pr
 
 
@@ -159,6 +162,30 @@ def test_users_without_staples_unchanged(conn, world):
     out = store.generate(conn, c, None, [{"kind": "food", "food": "鸡蛋", "amount": 6, "unit": "pcs"}])
     assert [(i["name"], i["source"], i["staple"]) for i in out["items"]] == [("鸡蛋", "plan", False)]
     conn.rollback()
+
+
+def test_flag_off_no_usual_items(conn, world):
+    """Rollout flag grocery_staples off: no suggestions, set_staple refused, generate ignores marked usual items."""
+    ids, _, pr = world
+    a = ids["A"]
+    store.set_staple(conn, a, pr["鸡蛋"], {})   # a marked usual item (already one after test_due_staples_on_the_list)
+    conn.commit()
+    flags.set_flag(conn, P.STAPLES_FLAG, "off", actor="test")
+    conn.commit()
+    flags.invalidate()
+    try:
+        assert "staple_suggestions" not in prices.shopping_context(conn, a)
+        with pytest.raises(flags.FlagOff):
+            run_tool(conn, a, "butler", "set_staple", {"product_id": pr["牛奶"], "every_days": None, "qty": None, "unit": None})
+        with pytest.raises(ValueError):
+            store.generate(conn, a, None, [])   # an empty plan is an error again: usual items do not count
+        out = store.generate(conn, a, None, [{"kind": "food", "food": "香蕉", "amount": 500, "unit": "g"}])
+        assert "staple" not in {i["source"] for i in out["items"]} and not any(i["staple"] and i["source"] == "staple" for i in out["items"])
+    finally:
+        conn.rollback()
+        flags.set_flag(conn, P.STAPLES_FLAG, "all", actor="test")
+        conn.commit()
+        flags.invalidate()
 
 
 def test_tools(conn, world):

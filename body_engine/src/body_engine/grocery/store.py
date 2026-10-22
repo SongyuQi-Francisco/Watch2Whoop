@@ -22,6 +22,7 @@ from psycopg.types.json import Jsonb
 from ..assistant import meals, recipes
 from ..i18n import L as Li, tl
 from ..nutrition import constraints as diet_constraints
+from ..rollout import flags
 from ..rules.nutrition import red_meat_estimate
 from . import links as L, params as P
 from . import prices as PR
@@ -330,6 +331,7 @@ def remove_product(conn: psycopg.Connection, user_id: int, product_id: int) -> d
 def set_staple(conn: psycopg.Connection, user_id: int, product_id: int, data: dict | None = None) -> dict:
     """Mark a product as a usual item (only after the user confirmed). every_days None -> this user's own median gap between
     purchases, else weekly; qty / unit None -> one package each time (kept when already set)."""
+    flags.guard(conn, user_id, P.STAPLES_FLAG)
     row = _product_row(conn, user_id, product_id)
     f = ST.check(data or {})
     if "staple_every_days" not in f and not row["staple_every_days"]:
@@ -548,14 +550,15 @@ def generate(conn: psycopg.Connection, user_id: int, day: date | None, plan: lis
     the plan also needs becomes one line with the larger amount; one the pantry already covers is left off.
     An empty plan (allowed only with usual items) tops up the due usual items and keeps this week's plan lines and plan."""
     products = _products(conn, user_id)
-    staples_only = not plan and any(p["staple"] for p in products)
+    staples_on = flags.enabled(conn, user_id, P.STAPLES_FLAG)   # rollout flag off: usual items are ignored, as before #103
+    staples_only = staples_on and not plan and any(p["staple"] for p in products)
     if not staples_only:
         plan = _check_plan(plan)
     ws = week_start(conn, user_id, day)
     needs, summary = _needs(conn, user_id, plan)
     matched = {k: match_product(products, n["name"]) for k, n in needs.items()}
     by_pid = {p["id"]: k for k, p in matched.items() if p}
-    for d in ST.due(conn, user_id, products, ws + timedelta(days=6), today(conn, user_id)):
+    for d in ST.due(conn, user_id, products, ws + timedelta(days=6), today(conn, user_id)) if staples_on else []:
         p = d["product"]
         k = by_pid.get(p["id"])
         if k is None:

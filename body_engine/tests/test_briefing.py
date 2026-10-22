@@ -13,7 +13,8 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
-from body_engine.assistant import briefing, compact
+from body_engine.ai import params as P
+from body_engine.assistant import briefing, compact, toolsets
 from body_engine.assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
@@ -70,11 +71,13 @@ def test_tool_definitions_budget():
     55k -> 55.5k for report_feedback / list_feedback (root rules, docs/ai-feedback-plan.md).
         55.5k -> 57.5k for get_shopping_context / record_store_prices / get_price_history (prices from the user's AI, grocery-plan §9).
     57.5k -> 59k for the per-user diet constraint tools (#76: get_diet_constraints, set_diet_constraint, end_diet_constraint).
-    59k -> 59.2k for the usual-item tools (#103: set_staple, remove_staple; the smallest step that fits). Tool groups (#99) are not
-    merged yet; once they are, these move into the grocery group and the limit can come back down."""
-    size = sum(len(json.dumps({"name": t.name, "description": t.description, "input_schema": relaxed(t.input_schema)},
-                              ensure_ascii=False)) for t in TOOLS)
-    assert size < 59200, size
+        59k -> 59.5k for combine_food_entries (issue #93).
+    From #99 on not every tool is sent: only the resident core (+ the page's groups in the in-page chat) and three meta tools
+    (find_tools / run_read_tool / run_write_tool). The budget is now per set: core ≤ 30k, a cap per group, meta, MCP tools/list
+    ≤ 35k, each page (ai/params.py; all checked in tests/test_tool_groups.py::test_budgets)."""
+    core = [t for t in TOOLS if t.name in P.CORE_TOOLS]
+    assert toolsets.definition_chars(core) <= P.CORE_BUDGET_CHARS
+    assert toolsets.definition_chars(toolsets.for_mcp(True)) <= P.MCP_LIST_BUDGET_CHARS
     assert TOOLS[0].name == "get_briefing" and not TOOLS[0].writes
 
 

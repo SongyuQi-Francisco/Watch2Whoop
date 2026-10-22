@@ -18,7 +18,7 @@ TOOL_SPECS: list[dict] = [
         }),
         handler=lambda conn, uid, a: store.report(conn, uid, a["kind"], a["title"], a["what"], a["expected"], a["steps"],
                                                   a["area"], a["error_text"], channel=a.get("_channel")),
-        scope="memory",
+        group="feedback", scope="memory",
         writes=True,
     ),
     dict(
@@ -26,6 +26,6 @@ TOOL_SPECS: list[dict] = [
         description="用户报过（或 +1）的反馈和进展。",
         input_schema=schema({}),
         handler=lambda conn, uid, a: store.list_for_user(conn, uid),
-        scope="memory",
+        group="feedback", scope="memory",
     ),
 ]

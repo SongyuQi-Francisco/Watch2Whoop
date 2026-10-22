@@ -1,5 +1,5 @@
-// Beat-to-beat HRV series and ECG recordings straight from HealthKit to Body Engine (POST /v1/ingest/healthkit), not through
-// Open Wearables: OW SDK 0.15 syncs neither type. The native side (ios/Runner/RawSync.swift) reads one page after the stored
+// Beat-to-beat HRV series, ECG recordings and drinks (dietary water, #135) straight from HealthKit to Body Engine
+// (POST /v1/ingest/healthkit), not through Open Wearables: OW SDK 0.15 syncs none of these types. The native side (ios/Runner/RawSync.swift) reads one page after the stored
 // HealthKit anchor; this file uploads it and only then lets the native side store the new anchor, so nothing is lost when an
 // upload fails and nothing is sent twice once it succeeded (the server also skips UUIDs it already has).
 // - Runs after each sync-on-open round (home_page.dart), in the foreground: HealthKit cannot be read while the phone is locked.
@@ -7,6 +7,11 @@
 //   the samples already on the server are skipped there by UUID.
 // - Token: the self-service account token (Keychain), or for setup-link users an upload-only token the logged-in Today page
 //   mints (POST /v1/web/ingest-token), also kept in the Keychain.
+// - Water is behind the server's `water` rollout flag: the app reads it only while the server says water_enabled (GET status
+//   or an earlier answer of this pass) and keeps the water anchor when a batch comes back with water_enabled false, so drinks
+//   logged while the flag is off are sent once it is on. That is not an error and is not retried within the pass.
+// - Beat-to-beat readings and ECGs need consent 2026-10-22.1 (409 otherwise); water only the ordinary consent, so a 409 on
+//   those skips to water instead of ending the pass.
 // The runner is pure Dart with an injected source / uploader (test/raw_sync_test.dart).
 import 'dart:async';
 import 'dart:convert';
@@ -21,10 +26,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'health_range.dart';
 import 'i18n.dart';
 
-const List<String> kRawKinds = ['heartbeat', 'ecg'];
+const List<String> kRawKinds = ['heartbeat', 'ecg', 'water'];
 
-/// Records per HealthKit page: a reading is ~1 minute (~50 beats, ~1 KB as JSON), an ECG ~40 KB as base64 int16.
-const Map<String, int> kRawPageSize = {'heartbeat': 200, 'ecg': 8};
+/// Records per HealthKit page: a reading is ~1 minute (~50 beats, ~1 KB as JSON), an ECG ~40 KB as base64 int16, a drink
+/// ~100 bytes (the server takes up to 2000 per batch).
+const Map<String, int> kRawPageSize = {'heartbeat': 200, 'ecg': 8, 'water': 500};
+
+/// The field of the request body each kind goes into (rawdata/api.py IngestIn).
+const Map<String, String> kRawBatchField = {'heartbeat': 'heartbeats', 'ecg': 'ecgs', 'water': 'water'};
 
 /// One page from the native reader.
 class RawPage {
@@ -92,6 +101,22 @@ class RawUploader {
     return Uri(scheme: b.scheme, host: b.host, port: b.hasPort ? b.port : null, path: '/v1/ingest/healthkit');
   }
 
+  /// GET the same path: what this account uploaded so far and whether the server takes water (`water_enabled`); null when
+  /// the server cannot be reached.
+  Future<Map<String, Object?>?> status(String token) async {
+    final c = client ?? http.Client();
+    try {
+      final res = await c.get(_uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(timeout);
+      if (res.statusCode != 200) return null;
+      final j = jsonDecode(res.body);
+      return j is Map ? j.map((k, v) => MapEntry('$k', v)) : null;
+    } catch (_) {
+      return null;
+    } finally {
+      if (client == null) c.close();
+    }
+  }
+
   Future<RawUploadResult> upload(String token, Map<String, Object?> batch) async {
     final c = client ?? http.Client();
     try {
@@ -135,13 +160,16 @@ Map<String, Object?> buildBatch(String kind, RawPage page, {required String batc
       'batch_id': batchId,
       'device': ?device,
       'app_version': ?appVersion,
-      kind == 'ecg' ? 'ecgs' : 'heartbeats': page.items,
+      kRawBatchField[kind]!: page.items,
       'deleted': page.deleted,
     };
 
 class RawSyncResult {
   RawSyncResult();
-  int heartbeats = 0, ecgs = 0, deleted = 0, batches = 0;
+  int heartbeats = 0, ecgs = 0, water = 0, deleted = 0, batches = 0;
+
+  /// The server's water flag was off (water not read or not taken; the anchor stays): not an error.
+  bool waterOff = false;
 
   /// null = everything read; unauthorized / consent / failed / budget
   String? stop;
@@ -152,6 +180,7 @@ class RawSyncRunner {
   RawSyncRunner({
     required this.source,
     required this.upload,
+    this.status,
     this.device,
     this.appVersion,
     this.maxBatches = 40,
@@ -164,6 +193,9 @@ class RawSyncRunner {
 
   final RawSource source;
   final Future<RawUploadResult> Function(Map<String, Object?> batch) upload;
+
+  /// GET status (RawUploader.status): asked before water is read, unless an answer of this pass already said.
+  final Future<Map<String, Object?>?> Function()? status;
   final String? device, appVersion;
   final int maxBatches, maxBytes;
   final Duration budget;
@@ -173,7 +205,22 @@ class RawSyncRunner {
   Future<RawSyncResult> run(int daysBack) async {
     final out = RawSyncResult();
     final t0 = _now();
+    var rawConsent = true;
+    kinds:
     for (final kind in kRawKinds) {
+      if (kind != 'water' && !rawConsent) continue; // the ECG would get the same 409 as the beats
+      if (kind == 'water') {
+        var on = out.serverStatus?['water_enabled'];
+        if (on == null && status != null) {
+          final st = await status!();
+          on = st?['water_enabled'];
+          if (st != null) out.serverStatus = {...?out.serverStatus, ...st};
+        }
+        if (on != true) {
+          out.waterOff = true; // flag off, an older server, or unreachable: try again next pass
+          continue;
+        }
+      }
       var limit = kRawPageSize[kind]!;
       while (true) {
         if (out.batches >= maxBatches || _now().difference(t0) > budget) {
@@ -196,12 +243,17 @@ class RawSyncRunner {
         out.batches++;
         switch (res.outcome) {
           case RawUpload.ok:
-            if (page.anchor != null) await source.commit(kind, page.anchor!);
             final b = res.body ?? const {};
+            if (b['status'] is Map) out.serverStatus = (b['status'] as Map).map((k, v) => MapEntry('$k', v));
+            if (kind == 'water' && b['water_enabled'] != true) {
+              out.waterOff = true; // the flag went off meanwhile: the drinks were not stored, keep the anchor
+              continue kinds;
+            }
+            if (page.anchor != null) await source.commit(kind, page.anchor!);
             out.heartbeats += (b['heartbeats'] as num?)?.toInt() ?? 0;
             out.ecgs += (b['ecgs'] as num?)?.toInt() ?? 0;
+            out.water += (b['water'] as num?)?.toInt() ?? 0;
             out.deleted += (b['deleted'] as num?)?.toInt() ?? 0;
-            if (b['status'] is Map) out.serverStatus = (b['status'] as Map).map((k, v) => MapEntry('$k', v));
           case RawUpload.tooLarge when limit > 1:
             limit = max(1, limit ~/ 2);
             continue;
@@ -210,7 +262,9 @@ class RawSyncRunner {
             return out;
           case RawUpload.consent:
             out.stop = 'consent';
-            return out;
+            if (kind == 'water') return out;
+            rawConsent = false; // the new consent is not accepted yet: water still goes
+            continue kinds;
           default:
             out.stop = 'failed';
             return out;
@@ -226,8 +280,8 @@ class RawSyncRunner {
 
 /// What the sync page shows (shared_preferences; counts are the server's totals of app uploads).
 class RawSyncStatus {
-  const RawSyncStatus({this.heartbeats, this.ecgs, this.lastUpload, this.lastRun, this.stop});
-  final int? heartbeats, ecgs;
+  const RawSyncStatus({this.heartbeats, this.ecgs, this.water, this.lastUpload, this.lastRun, this.stop});
+  final int? heartbeats, ecgs, water;
   final DateTime? lastUpload, lastRun;
   final String? stop;
 
@@ -241,6 +295,7 @@ class RawSyncStatus {
   Map<String, Object?> toJson() => {
         'heartbeats': heartbeats,
         'ecgs': ecgs,
+        'water': water,
         'last_upload': lastUpload?.toIso8601String(),
         'last_run': lastRun?.toIso8601String(),
         'stop': stop,
@@ -249,6 +304,7 @@ class RawSyncStatus {
   factory RawSyncStatus.fromJson(Map<String, Object?> j) => RawSyncStatus(
         heartbeats: (j['heartbeats'] as num?)?.toInt(),
         ecgs: (j['ecgs'] as num?)?.toInt(),
+        water: (j['water'] as num?)?.toInt(),
         lastUpload: DateTime.tryParse('${j['last_upload'] ?? ''}')?.toLocal(),
         lastRun: DateTime.tryParse('${j['last_run'] ?? ''}')?.toLocal(),
         stop: j['stop'] as String?,
@@ -265,7 +321,7 @@ class RawSync {
 
   static const _statusKey = 'w2w.raw.status.v1';
   static const _rangeKey = 'w2w.raw.range.v1';
-  static const _authKey = 'w2w.raw.authAsked.v1';
+  static const _authKey = 'w2w.raw.authAsked.v2'; // v2: dietary water added (#135), asked once more
   static const _tokenKey = 'w2w.ingest.token.v1';
   static const _storage = FlutterSecureStorage(
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
@@ -285,13 +341,15 @@ class RawSync {
     }
   }
 
-  /// Asks HealthKit for the two read permissions (the second, small sheet after the OW one). Remembered, so people who
-  /// granted Health before this version see it once on the next open.
+  /// Asks HealthKit for the read permissions (the second, small sheet after the OW one). Remembered, so people who
+  /// granted Health before this version see it once on the next open. Remembered before the native call: if HealthKit
+  /// aborts the app (as build 1.0.0+4 did), the automatic ask is not repeated on every open; the permissions step still
+  /// asks on demand.
   Future<void> requestAuth() async {
     try {
-      await source.requestAuth();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_authKey, true);
+      await source.requestAuth();
     } catch (e) {
       debugPrint('raw auth failed: $e');
     }
@@ -327,6 +385,7 @@ class RawSync {
       final res = await RawSyncRunner(
         source: source,
         upload: (b) => uploader.upload(token!, b),
+        status: () => uploader.status(token!),
         device: 'iPhone',
         appVersion: appVersion,
       ).run(daysBack);
@@ -336,6 +395,7 @@ class RawSync {
       status.value = RawSyncStatus(
         heartbeats: (s?['heartbeats'] as num?)?.toInt() ?? old.heartbeats,
         ecgs: (s?['ecgs'] as num?)?.toInt() ?? old.ecgs,
+        water: s?['water_enabled'] == true ? (s?['water'] as num?)?.toInt() ?? old.water : null,
         lastUpload: res.batches > 0 && res.stop != 'failed' && res.stop != 'consent' && res.stop != 'unauthorized'
             ? DateTime.now()
             : old.lastUpload,

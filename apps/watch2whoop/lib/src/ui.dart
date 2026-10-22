@@ -7,6 +7,7 @@ import 'i18n.dart';
 import 'server_lock.dart';
 
 export 'server_lock.dart' show redactServer, serverLocked;
+export 'js_dialogs.dart'; // the Today page's alert / confirm / prompt (home_page.dart)
 
 class Group extends StatelessWidget {
   const Group({super.key, this.title, required this.rows, this.footer});
