@@ -29,6 +29,19 @@ Offline use (rollout flag `offline_mode`, server side in the Today page pull req
 - WKWebView runs no service worker in this app (no App-Bound Domains), so without this a cold start offline had no page.
 - New direct dependency `path_provider` 2.1.6 (already in the lock as a transitive one; no native pod).
 
+Health data status and permissions (#163): iOS never tells an app whether Health *read* access was granted, so users
+could not see whether their data was read or where to change the permissions after the first launch.
+- Phone sync → 「服务器收到的数据」 / "Data on the server": per type (heart rate, HRV, resting heart rate, sleep, steps,
+  active energy, workouts, weight, blood oxygen, respiratory rate, wrist temperature, VO₂ max, beat-to-beat HRV, ECG,
+  water) the last day the server received data and OK / not received lately / never received, from
+  `GET /v1/ingest/data-status` (server side in its own PR; an older server shows a short note). Tapping a type shows the
+  likely reasons and what helps.
+- 「重新申请健康权限」 / "Ask for Health access again": shows the iOS prompt only for types it never covered (asked per
+  type with `getRequestStatusForAuthorization`); when every type was asked it explains where to change them instead.
+- 「打开系统设置」 / "Open Settings" with the steps (Settings → Health → Data Access & Devices → Watch2Whoop). The app
+  changes nothing for the user.
+- 「本机最近一次同步」 / "Last sync on this phone": time and result (OK / failed with the reason) of the latest upload.
+
 ## 1.0.6 — 2026-10-22
 Crash audit of the whole iOS app after the 1.0.0 (4) launch crash (owner request); the findings and evidence are in the
 pull request.

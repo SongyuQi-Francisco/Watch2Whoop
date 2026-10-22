@@ -1,5 +1,5 @@
 // Native "phone sync" (手机同步) page: last sync time, per-type counts, failure retry, sync now, and server settings.
-// Native sync status page (+ settings). Opened from the today page (Me → Phone sync) or the error screen.
+// Native sync status page (+ settings). Data on the server per type and the Health permission buttons: data_status_section.dart (#163). Opened from the today page (Me → Phone sync) or the error screen.
 // Locked builds (server_lock.dart): no server rows, no scan / paste of setup info, and the server is redacted from logs and errors.
 import 'dart:async';
 
@@ -13,6 +13,7 @@ import '../account_api.dart';
 import '../account_flow.dart';
 import '../app_state.dart';
 import '../config.dart';
+import '../data_status.dart';
 import '../debug_seed.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
@@ -21,6 +22,7 @@ import '../raw_sync.dart';
 import '../setup_flow.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
+import 'data_status_section.dart';
 import 'permissions_page.dart';
 import 'range_picker.dart';
 import 'scan_page.dart';
@@ -32,7 +34,7 @@ class SyncPage extends StatefulWidget {
   State<SyncPage> createState() => _SyncPageState();
 }
 
-class _SyncPageState extends State<SyncPage> {
+class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
   final _sync = HealthSync.instance;
   SdkSyncStatus _status = const SdkSyncStatus();
   Timer? _poll;
@@ -40,12 +42,14 @@ class _SyncPageState extends State<SyncPage> {
   bool _wake = false;
   String? _version;
   String? _message;
+  int _statusReload = 0; // bumps DataStatusSection: pull to refresh, back from iOS Settings
 
   AppConfig get _config => AppState.instance.config;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refresh();
     _poll = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
     _sync.stats.addListener(_onStats);
@@ -57,9 +61,25 @@ class _SyncPageState extends State<SyncPage> {
   @override
   void dispose() {
     _poll?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _sync.stats.removeListener(_onStats);
     if (_wake) WakelockPlus.disable();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) setState(() => _statusReload++);
+  }
+
+  Future<DataStatusResult> _loadDataStatus() async => fetchDataStatus(
+      serverUrl: _config.todayUrl, token: AppState.instance.accountToken ?? await RawSync.instance.ingestToken());
+
+  /// "Ask for Health access again": the iOS prompts (only types never asked appear), then one sync round.
+  Future<void> _requestAccess() async {
+    await _sync.requestAuthorization();
+    await AppState.instance.update(_config.copyWith(healthRequested: true));
+    if (_config.owConnected && _sync.isSignedIn) await _sync.startSync(_config.syncDaysBack);
   }
 
   void _onStats() {
@@ -349,7 +369,10 @@ class _SyncPageState extends State<SyncPage> {
     return Scaffold(
       appBar: AppBar(title: Text(tr('手机同步', 'Phone sync'))),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: () async {
+          setState(() => _statusReload++);
+          await _refresh();
+        },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
           children: [
@@ -368,6 +391,7 @@ class _SyncPageState extends State<SyncPage> {
                       ],
                     ),
                     const SizedBox(height: 14),
+                    _kv(tr('本机最近一次同步', 'Last sync on this phone'), _lastSyncText(lastSyncOf(stats, RawSync.instance.status.value))),
                     _kv(tr('上次上传', 'Last upload'), ago(stats.lastUploadAt)),
                     _kv(tr('上次完整同步', 'Last full pass'), ago(stats.lastCompleteAt)),
                     if (connected && !_status.initialExportDone)
@@ -413,6 +437,15 @@ class _SyncPageState extends State<SyncPage> {
               Hint(_message!, icon: Icons.check_circle_outline),
             ],
             const SizedBox(height: 24),
+
+            // ---- what the server received per type, and the Health permission buttons (#163)
+            DataStatusSection(
+              load: _loadDataStatus,
+              askStatus: healthAskStatus,
+              requestAccess: _requestAccess,
+              openSettings: openAppSettings,
+              reloadToken: _statusReload,
+            ),
 
             // ---- read range (health_range.dart): 90 days or the whole history, with the history progress
             Group(
@@ -512,6 +545,12 @@ class _SyncPageState extends State<SyncPage> {
       ),
     );
   }
+
+  String _lastSyncText(LastSync l) => l.at == null
+      ? '—'
+      : l.ok
+          ? tr('${ago(l.at)} · 成功', '${ago(l.at)} · OK')
+          : redactServer(tr('${ago(l.at)} · 失败${l.error == null ? '' : '（${l.error}）'}', '${ago(l.at)} · failed${l.error == null ? '' : ' (${l.error})'}'));
 
   String _noticeText(SyncNotice n, DateTime at) => switch (n) {
     SyncNotice.locked => tr('${ago(at)} 因为锁屏暂停，解锁后自动继续。', 'Paused ${ago(at)} because the phone was locked.'),

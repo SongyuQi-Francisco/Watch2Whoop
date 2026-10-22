@@ -54,6 +54,8 @@ final class RawSync {
         UserDefaults.standard.set(anchor, forKey: anchorKey + kind.rawValue)
       }
       result(nil)
+    case "healthAskStatus":
+      askStatus { out in DispatchQueue.main.async { result(out) } }
     case "rawReset":
       for k in Kind.allCases { UserDefaults.standard.removeObject(forKey: anchorKey + k.rawValue) }
       result(nil)
@@ -61,6 +63,46 @@ final class RawSync {
       return false
     }
     return true
+  }
+
+  /// The data-status types (lib/src/data_status.dart) -> the HealthKit types the app asks for. The heartbeat series goes
+  /// with its parent HRV SDNN, as in readTypes. Wrist temperature is left out: the app never asks for it (SDK 0.15).
+  private var askTypes: [String: Set<HKObjectType>] {
+    [
+      "heart_rate": [HKQuantityType(.heartRate)],
+      "hrv": [HKQuantityType(.heartRateVariabilitySDNN)],
+      "resting_heart_rate": [HKQuantityType(.restingHeartRate)],
+      "sleep": [HKCategoryType(.sleepAnalysis)],
+      "steps": [HKQuantityType(.stepCount)],
+      "active_energy": [HKQuantityType(.activeEnergyBurned)],
+      "workouts": [HKObjectType.workoutType()],
+      "weight": [HKQuantityType(.bodyMass)],
+      "blood_oxygen": [HKQuantityType(.oxygenSaturation)],
+      "respiratory_rate": [HKQuantityType(.respiratoryRate)],
+      "vo2max": [HKQuantityType(.vo2Max)],
+      "heartbeats": [HKQuantityType(.heartRateVariabilitySDNN), HKSeriesType.heartbeat()],
+      "ecg": [HKObjectType.electrocardiogramType()],
+      "water": [HKQuantityType(.dietaryWater)],
+    ]
+  }
+
+  /// Per type: was the iOS prompt already shown for it (true) or would asking show the sheet (false)? HealthKit says
+  /// nothing about what the user chose for reading; types it cannot answer are left out.
+  private func askStatus(_ done: @escaping ([String: Bool]) -> Void) {
+    guard HKHealthStore.isHealthDataAvailable() else { done([:]); return }
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var out: [String: Bool] = [:]
+    for (key, types) in askTypes {
+      group.enter()
+      store.getRequestStatusForAuthorization(toShare: [], read: types) { status, error in
+        lock.lock()
+        if error == nil && status != .unknown { out[key] = status == .unnecessary }
+        lock.unlock()
+        group.leave()
+      }
+    }
+    group.notify(queue: .global()) { done(out) }
   }
 
   private func storedAnchor(_ kind: Kind) -> HKQueryAnchor? {
