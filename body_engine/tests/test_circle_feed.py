@@ -16,6 +16,8 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.friends import api as friends_api, feed, params as P
 from body_engine.rollout import flags
+from body_engine import sparky_client
+from body_engine.training import loads
 from body_engine.web import views
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_CIRCLE_FEED", "body_test_circle_feed")
@@ -64,11 +66,13 @@ def client(dsn):
 def clean(dsn):
     friends_api._failures._events.clear()
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        for t in ("circles", "shares", "circle_feed_posts", "circle_feed_seen", "training_session_logs", "workouts"):
+        for t in ("circles", "shares", "circle_feed_posts", "circle_feed_seen", "training_session_logs", "workouts", "custom_exercises"):
             conn.execute(f"DELETE FROM {t}")
         conn.execute("DELETE FROM exercise_catalog WHERE slug = 'bench-press' AND source_ref IS NULL AND name_en = 'Bench press'")   # a test's own row
         flags.set_flag(conn, P.FEED_FLAG, "all", actor="test")
+    loads.clear_history_cache()
     yield
+    loads.clear_history_cache()
 
 
 def h(t):
@@ -417,4 +421,141 @@ def test_privacy_nothing_but_training_in_a_post(client, world, dsn, pair):
         assert word not in text
     assert set(get_feed(client, tok["Ben"])["posts"][0]) == {"id", "date", "user", "circles", "title", "duration_min", "exercise_count",
                                                             "set_count", "volume_kg", "pr_count", "exercises", "likes", "comment_count",
-                                                            "started_at", "preview_comments"}
+                                                            "started_at", "preview_comments", "active_kcal", "avg_hr", "max_hr",
+                                                            "activities", "no_exercises"}
+
+
+# ---------------------------------------------------------------- #194: watch summary, SparkyFitness sets, unmatched names
+ACTIVITY_KEYS = {"type", "kind", "name", "duration_min", "active_kcal", "avg_hr", "max_hr", "distance_km", "hr_zones", "load"}
+
+
+def add_workout(dsn, uid, day, type_, name, minutes, ext, **cols):
+    """A watch workout with synthetic summary numbers (active_kcal, avg_hr, max_hr, distance_km, hr_zone_min, trimp)."""
+    cols = {"active_kcal": None, "avg_hr": None, "max_hr": None, "distance_km": None, "hr_zone_min": None, "trimp": None, **cols}
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute(f"""INSERT INTO workouts (user_id, source, external_id, type, name_zh, local_date, start_at, end_at, duration_min,
+                                               {", ".join(cols)})
+                         VALUES (%s, 'ow', %s, %s, %s, %s, now() - interval '2 hours', now() - interval '1 hour', %s,
+                                 {", ".join(["%s"] * len(cols))})""", (uid, ext, type_, name, day, minutes, *cols.values()))
+
+
+def fake_sparky(monkeypatch, sessions_by_user):
+    """SparkyFitness as linked for these users, returning synthetic workouts (shape of sparky_client.training_log)."""
+    def client_for_user(conn, uid):
+        if uid not in sessions_by_user:
+            raise sparky_client.SparkyError("not linked")
+        return uid
+    monkeypatch.setattr(sparky_client, "client_for_user", client_for_user)
+    monkeypatch.setattr(sparky_client, "training_log", lambda client, start, end: [
+        s for s in sessions_by_user[client] if start.isoformat() <= s["date"][:10] <= end.isoformat()])
+
+
+def sparky_session(sid, day, exercises, name=None):
+    """exercises = [(name, exercise_id, [(reps, kg, duration_s, type)])]"""
+    return {"id": sid, "date": day.isoformat(), "name": name, "notes": None, "source": "body_assistant", "total_duration_minutes": None,
+            "exercises": [{"exercise_id": xid, "name": n, "category": "strength",
+                           "sets": [{"set": i + 1, "type": t, "reps": r, "weight_kg": w, "duration_s": d}
+                                    for i, (r, w, d, t) in enumerate(sets)]} for n, xid, sets in exercises]}
+
+
+def test_sport_post_shows_the_watch_summary(client, world, dsn, pair):
+    """A basketball post carries energy, average / maximum heart rate, distance, zone minutes and load of the workout: summary
+    numbers only, no heart-rate series; a workout without them shows only its duration."""
+    ids, tok, _ = pair
+    d = today(dsn, ids["Ann"])
+    add_workout(dsn, ids["Ann"], d, "basketball", "篮球", 70, "b1", active_kcal=600.4, avg_hr=140.2, max_hr=180,
+                distance_km=4.567, hr_zone_min=[5, 10, 20, 25, 10], trimp=150.6)
+    post = get_feed(client, tok["Ben"])["posts"][0]
+    assert post["title"] == "篮球" and post["duration_min"] == 70 and post["exercises"] == []
+    assert (post["active_kcal"], post["avg_hr"], post["max_hr"]) == (600, 140, 180) and post["no_exercises"] is False
+    [act] = post["activities"]
+    assert set(act) == ACTIVITY_KEYS and act["kind"] == "sport"
+    assert act["distance_km"] == 4.57 and act["hr_zones"] == [5, 10, 20, 25, 10] and act["load"] == 151
+    text = json.dumps(post, default=str)
+    for word in ("hr_samples", "heart_rate_series", "samples", "ecg", "hr_max_used"):
+        assert word not in text
+    # English: the type part of the name follows the language
+    en = client.get(FEED, headers={**h(tok["Ben"]), "X-Body-Lang": "en"}).json()["posts"][0]
+    assert en["title"] == "Basketball" and en["activities"][0]["name"] == "Basketball"
+    # a second workout the same day without watch numbers: still one post; totals over the workouts that have them
+    add_workout(dsn, ids["Ann"], d, "swimming", "游泳", 30, "s1")
+    post = get_feed(client, tok["Ben"])["posts"][0]
+    assert post["title"] == "篮球 + 游泳" and post["duration_min"] == 100 and post["active_kcal"] == 600
+    swim = post["activities"][1]
+    assert (swim["active_kcal"], swim["avg_hr"], swim["hr_zones"], swim["load"], swim["distance_km"]) == (None,) * 5
+
+
+def test_strength_post_merges_watch_page_and_sparky_sets(client, world, dsn, pair, monkeypatch):
+    """The watch's strength workout, the page's sets and the SparkyFitness workouts of the day (e.g. logged by the AI) make one
+    post; the SparkyFitness copy of what the page submitted is not counted twice; a name the catalog does not know is shown as
+    logged with no picture (the page draws a dumbbell) and counts in sets and volume (#194)."""
+    ids, tok, _ = pair
+    d = today(dsn, ids["Ann"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("""INSERT INTO exercise_catalog (slug, name_zh, name_en, primary_muscles) VALUES ('t194-split-squat', '测试分腿蹲', 'Test split squat', '{quadriceps}')
+                        ON CONFLICT (slug) DO NOTHING""")
+    log_sets(dsn, ids["Ann"], [("squat", [(10, 40, True), (10, 40, True)])])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE training_session_logs SET sparky_entry_id = 'page-entry' WHERE user_id = %s AND date = %s", (ids["Ann"], d))
+    fake_sparky(monkeypatch, {ids["Ann"]: [
+        sparky_session("page-entry", d, [("Squat", "x-squat", [(10, 40, None, "Working Set")] * 2)]),   # the page's own submission
+        sparky_session("ai-1", d, [("测试椅子夹腿静力", "x-hold", [(None, None, 45, "Working Set")] * 3)]),  # not in the catalog, timed
+        sparky_session("ai-2", d, [("测试分腿蹲", "x-split", [(8, 20, None, "Warm-up"), (8, 30, None, "Working Set"),
+                                                              (8, 30, None, "Working Set")])]),
+    ]})
+    add_workout(dsn, ids["Ann"], d, "strength_training", "力量训练", 45, "st1", active_kcal=250, avg_hr=110, max_hr=150, trimp=40)
+    post = get_feed(client, tok["Ben"])["posts"][0]
+    assert post["title"] == "力量训练" and post["duration_min"] == 45 and post["active_kcal"] == 250
+    assert post["avg_hr"] == 110 and post["max_hr"] == 150 and post["no_exercises"] is False
+    by = {e["name"]: e for e in post["exercises"]}
+    assert list(by) == ["squat", "测试椅子夹腿静力", "测试分腿蹲"]             # page first, then SparkyFitness; no second squat
+    hold = by["测试椅子夹腿静力"]
+    assert hold["slug"] is None and hold["thumb"] is None and hold["muscles"] == [] and hold["sets"] == [{"duration_s": 45}] * 3
+    assert by["测试分腿蹲"]["slug"] == "t194-split-squat" and by["测试分腿蹲"]["muscles"] == ["quadriceps"]
+    assert len(by["测试分腿蹲"]["sets"]) == 2                                  # the warm-up does not count
+    assert post["exercise_count"] == 3 and post["set_count"] == 2 + 3 + 2
+    assert post["volume_kg"] == 2 * 400 + 2 * 240
+    en = client.get(FEED, headers={**h(tok["Ben"]), "X-Body-Lang": "en"}).json()["posts"][0]
+    assert [e["name"] for e in en["exercises"]] == ["squat", "测试椅子夹腿静力", "Test split squat"]   # an unmatched name stays as logged
+
+
+def test_sparky_only_day_posts_and_records_and_scope(client, world, dsn, pair, monkeypatch):
+    """A day with only SparkyFitness sets gets its post (no watch, no page row); records compare against earlier SparkyFitness
+    days too; someone outside the circle with SparkyFitness sets is still invisible."""
+    ids, tok, _ = pair
+    from datetime import timedelta
+    d = today(dsn, ids["Ann"])
+    fake_sparky(monkeypatch, {
+        ids["Ann"]: [sparky_session("a0", d - timedelta(days=3), [("测试划船", None, [(10, 50, None, "Working Set")])]),
+                     sparky_session("a1", d, [("测试划船", None, [(10, 55, None, "Working Set")])])],
+        ids["Dan"]: [sparky_session("d1", d, [("测试划船", None, [(10, 99, None, "Working Set")])])],
+    })
+    posts = get_feed(client, tok["Ben"])["posts"]
+    assert [(p["user"]["name"], p["date"]) for p in posts] == [("Ann", d.isoformat()), ("Ann", (d - timedelta(days=3)).isoformat())]
+    newest = posts[0]
+    assert newest["title"] == "力量训练" and newest["duration_min"] is None and newest["activities"] == []
+    assert newest["exercises"][0]["pr"] is True and newest["pr_count"] == 1 and newest["volume_kg"] == 550
+    assert posts[1]["exercises"][0]["pr"] is False                            # the first time is no record
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT count(*) AS n FROM circle_feed_posts WHERE user_id = %s", (ids["Dan"],)).fetchone()["n"] == 0
+
+
+def test_custom_exercise_of_the_same_name_and_watch_only_strength(client, world, dsn, pair, monkeypatch):
+    """A logged name that is one of the owner's custom exercises (#192) is shown as that exercise (its muscles); a watch strength
+    workout without sets says so (no_exercises) and still shows energy and heart rate."""
+    ids, tok, _ = pair
+    from datetime import timedelta
+    d = today(dsn, ids["Ann"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("""INSERT INTO custom_exercises (user_id, name_zh, name_en, primary_muscles, source)
+                        VALUES (%s, '测试自定义夹腿', 'Test custom squeeze', '{adductors}', 'manual')""", (ids["Ann"],))
+    fake_sparky(monkeypatch, {ids["Ann"]: [sparky_session("c1", d, [("测试自定义夹腿", "x-c", [(12, None, None, "Working Set")])])]})
+    add_workout(dsn, ids["Ann"], d - timedelta(days=1), "strength_training", "力量训练", 40, "w-only", active_kcal=200, avg_hr=105, max_hr=140)
+    posts = get_feed(client, tok["Ben"])["posts"]
+    ex = posts[0]["exercises"][0]
+    assert ex["slug"].startswith("my_") and ex["muscles"] == ["adductors"] and ex["name"] == "测试自定义夹腿"
+    en = client.get(FEED, headers={**h(tok["Ben"]), "X-Body-Lang": "en"}).json()["posts"][0]
+    assert en["exercises"][0]["name"] == "Test custom squeeze"
+    watch_only = posts[1]
+    assert watch_only["no_exercises"] is True and watch_only["exercises"] == []
+    assert (watch_only["active_kcal"], watch_only["avg_hr"], watch_only["max_hr"]) == (200, 105, 140)
