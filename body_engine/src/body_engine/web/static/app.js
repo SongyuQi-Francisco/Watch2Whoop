@@ -1790,6 +1790,29 @@
   const trendEnd = () => (isPast() ? S.viewDate : null);
   const GROUPS = [["recovery", tr("恢复")], ["sleep", tr("睡眠")], ["strain", tr("负荷")], ["stress", tr("压力")], ["long", tr("长期")], ["behavior", tr("行为")]];
   const VO2_LEVEL = { excellent: tr("优秀"), good: tr("良好"), average: tr("中等"), fair: tr("一般"), poor: tr("较差") };
+  // trends_v2: each category can fold; a folded category keeps its item count and, when it has one, its status. Lucide icons
+  // (https://lucide.dev, ISC), inlined paths only; notices: THIRD_PARTY_NOTICES.md
+  const trendsV2 = () => (S.flags || []).includes("trends_v2");
+  const CHEV_ATTR = 'width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const CHEV_DOWN = `<svg class="tg-down" ${CHEV_ATTR}><path d="m6 9 6 6 6-6"/></svg>`;
+  const CHEV_UP = `<svg class="tg-up" ${CHEV_ATTR}><path d="m18 15-6-6-6 6"/></svg>`;
+  const TG_KEY = "be.trendsFolded";
+  const trendsFolded = () => { try { const v = JSON.parse(localStorage.getItem(TG_KEY) || "[]"); return new Set(Array.isArray(v) ? v : []); } catch (e) { return new Set(); } };   // unreadable = all open
+  const saveTrendsFolded = (set) => { try { localStorage.setItem(TG_KEY, JSON.stringify([...set])); } catch (e) { /* private mode */ } };
+  function groupSummary(g, st) {
+    if (!st) return null;
+    const pick = { recovery: ["hrv_status", st.hrv_status, (x) => ST_TONE.hrv_status[x.status]], strain: ["training_status", st.training_status, (x) => ST_TONE.training_status[x.status]],
+      stress: ["resilience", st.resilience, (x) => ST_TONE.resilience[x.level]], sleep: ["chronotype", st.chronotype, () => ""] }[g];
+    return pick && pick[1]?.label ? { text: pick[1].label, tone: pick[2](pick[1]) } : null;
+  }
+  function bindTrendsFold(view) {
+    for (const b of $$("[data-tg-toggle]", view)) b.onclick = () => {
+      const sec = b.closest(".tg-section"), off = !sec.classList.contains("tg-off"), set = trendsFolded();
+      sec.classList.toggle("tg-off", off); b.setAttribute("aria-expanded", String(!off));
+      off ? set.add(b.dataset.tgToggle) : set.delete(b.dataset.tgToggle);
+      saveTrendsFolded(set);
+    };
+  }
   async function metricsHtml() {
     const days = S.trendsDays, end = trendEnd(), q = end ? `&end=${end}` : "";
     const [d, vo2, sd, ja] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
@@ -1817,9 +1840,17 @@
     const range = `<div class="rep-head">${esc(`${day(d.start)} – ${day(d.end)}`)}<span class="muted"> vs ${esc(`${day(d.prev_start)} – ${day(addDays(String(d.start), -1))}`)}</span></div>`;
     // Status tiles describe "now" (as of the end date) and do not change with the range: keep them below the range-dependent charts
     const now = statusTiles(d.status);
+    const v2 = trendsV2();
+    const folded = v2 ? trendsFolded() : null;
     return range + GROUPS.map(([g, t]) => {
-      const html = cards[g].filter(Boolean).join("");
-      return html ? `<div class="section"><div class="section-head"><h2>${t}</h2></div><div class="trend-grid">${html}</div></div>` : "";
+      const list = cards[g].filter(Boolean);
+      if (!list.length) return "";
+      if (!v2) return `<div class="section"><div class="section-head"><h2>${t}</h2></div><div class="trend-grid">${list.join("")}</div></div>`;
+      const off = folded.has(g), sum = groupSummary(g, d.status);
+      return `<div class="section tg-section${off ? " tg-off" : ""}" data-tg="${g}"><div class="section-head tg-bar"><h2><button type="button" class="tg-head" data-tg-toggle="${g}" aria-expanded="${!off}" aria-controls="tg-${g}">
+        <span class="tg-title">${t}</span><span class="tg-count">${tr("{n} 项", { n: list.length })}</span>${sum ? `<span class="tg-sum ${sum.tone ? `t-${sum.tone}` : ""}">${esc(sum.text)}</span>` : ""}
+        <span class="tg-chev" aria-hidden="true">${CHEV_UP}${CHEV_DOWN}</span></button></h2></div>
+        <div class="tg-body" id="tg-${g}"><div class="tg-inner"><div class="trend-grid">${list.join("")}</div></div></div></div>`;
     }).join("") + (now ? `<div class="section"><div class="section-head"><h2>${tr("当前状态")}</h2><span class="small muted">${esc(shortDay(String(d.end)))}</span></div>${now}</div>` : "");
   }
 
@@ -1935,7 +1966,7 @@
     for (const b of $$("[data-mode]", view)) b.onclick = () => { S.trendsMode = b.dataset.mode; render(); };
     for (const b of $$("[data-days]", view)) b.onclick = () => { S.trendsDays = Number(b.dataset.days); try { localStorage.setItem("be.trendsDays", S.trendsDays); } catch (e) { /* private mode */ } render(); };
     for (const b of $$("[data-rperiod]", view)) b.onclick = () => { S.reportPeriod = b.dataset.rperiod; render(); };
-    if (S.trendsMode === "metrics") bindCharts(view);
+    if (S.trendsMode === "metrics") { bindCharts(view); bindTrendsFold(view); }
   }
 
   // ------------------------------------------------------------------ log

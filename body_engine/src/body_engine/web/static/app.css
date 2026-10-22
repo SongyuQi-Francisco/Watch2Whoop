@@ -1051,3 +1051,39 @@ button.card.trend { display: flex; flex-direction: column; justify-content: flex
 @keyframes sd-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
 @keyframes sd-in-r { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
 @media (min-width: 900px) { .sd { max-width: 640px; margin: 0 auto; } }
+
+/* ---------- Trends v2 (flag trends_v2, #195): foldable categories, two metric cards per row ---------- */
+.tg-section .section-head { margin-bottom: 0; }
+.tg-section .section-head h2 { flex: 1; min-width: 0; }
+.tg-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0 2px; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.tg-title { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.tg-count { font-size: 12px; font-weight: 500; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tg-sum { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tg-chev { flex: none; display: inline-flex; color: var(--text-2); margin-left: auto; }
+.tg-sum.t-good { color: var(--good); } .tg-sum.t-mid { color: var(--mid); } .tg-sum.t-bad { color: var(--bad); }
+.tg-sum + .tg-chev { margin-left: 0; }
+.tg-chev svg { display: block; }
+.tg-chev .tg-down { display: none; }
+.tg-off .tg-chev .tg-up { display: none; }
+.tg-off .tg-chev .tg-down { display: block; }
+.tg-body { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .22s var(--ease, ease); }
+.tg-off .tg-body { grid-template-rows: 0fr; }
+.tg-section { margin-top: 14px; }
+.tg-inner { overflow: hidden; min-height: 0; }
+.tg-inner > .trend-grid { padding-top: 8px; }
+.tg-off .tg-inner { visibility: hidden; transition: visibility 0s .22s; }
+.tg-section .trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tg-section .trend-grid .card + .card { margin-top: 0; }
+.tg-section .card.trend { padding: 12px 12px 8px; min-width: 0; margin-left: 0; }   /* a legacy .trend rule (margin-left: 2px) also matches the cards */
+.tg-section .trend-head { flex-direction: column; align-items: stretch; gap: 2px; }
+.tg-section .trend-value { font-size: 22px; overflow-wrap: anywhere; }
+.tg-section .trend-tip { text-align: left; min-height: 0; }
+.tg-section .card.trend.trend-wide { grid-column: 1 / -1; }
+@media (min-width: 1024px) {
+  .tg-section .trend-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .tg-section .card.trend { padding: 16px 18px 12px; }
+  .tg-section .trend-head { flex-direction: row; align-items: flex-end; gap: 8px; }
+  .tg-section .trend-value { font-size: 28px; }
+  .tg-section .trend-tip { text-align: right; }
+}
+@media (prefers-reduced-motion: reduce) { .tg-body, .tg-off .tg-inner { transition: none; } }
