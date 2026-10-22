@@ -423,3 +423,11 @@ ADD_DEFAULT_REPS = LOAD_DEFAULT_REPS  # same rep range the exercise detail uses 
 ADD_DEFAULT_REST_SEC = 90
 ADD_DEFAULT_DURATION_SEC = {"cardio": 600, "stretching": 30}   # timed exercises (modality duration): seconds per set
 ADD_DAY_OPTIONS = 7                  # days offered for "only this day": today + 6
+
+
+# ---- Plan card estimate (issue #172): "约 N 分钟" on the collapsed 「今日训练计划」 card -------------------------------------
+# A planned set takes about EST_SET_WORK_SEC of work (timed exercises: their own duration) plus the prescribed rest;
+# the sum is rounded to EST_ROUND_MIN minutes. A rough planning figure, not a measurement.
+EST_SET_WORK_SEC = 40
+EST_DEFAULT_REST_SEC = 90
+EST_ROUND_MIN = 5
