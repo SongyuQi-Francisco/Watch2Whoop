@@ -761,7 +761,12 @@
   // page's own pages (C.go). The training card reuses the training page's exercise card heads (training-day.js).
   const rich = () => !!window.BodyFlags?.on("jarvis_rich");
   const METRIC = { recovery: tr("恢复"), strain: tr("负荷"), sleep: tr("睡眠"), hrv: "HRV", rhr: tr("静息心率"), weight: tr("体重") };
-  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天") };
+  const OPEN = { "record.training": tr("去记录"), food: tr("打开饮食"), trends: tr("看趋势"), today: tr("回到今天"), sleep: tr("睡眠详情") };
+  // sleep card: rule findings (sleep_night/view.py notes, by key) as short labels
+  const NOTE = { short_of_need: tr("睡得不够"), weak_duration: tr("时长拉分"), weak_stages: tr("阶段拉分"), weak_consistency: tr("规律性拉分"),
+    weak_interruptions: tr("中途醒来拉分"), deep_low: tr("深睡偏少"), rem_low: tr("REM 偏少"), efficiency_low: tr("效率偏低"),
+    latency_long: tr("入睡慢"), waso_long: tr("夜里醒得多"), bedtime_late: tr("睡得晚"), hrv_low: tr("HRV 偏低"), rhr_high: tr("心率偏高"),
+    resp_high: tr("呼吸偏快"), temp_off: tr("体温异常"), spo2_low: tr("血氧偏低"), illness: tr("可能生病") };
   const SEND = {
     adjust_training: () => [tr("按恢复调整"), tr("按今天的恢复调整一下训练")],
     next_meal: () => [tr("下一餐吃什么"), tr("下一餐吃什么合适")],
@@ -806,9 +811,21 @@
       <div class="ai-card-big num"><b>${n0(c.latest, d)}</b> <small>${esc(c.unit || "")}</small>
         <span class="small muted">${esc(tr("均值"))} ${n0(c.avg, d)}</span></div>${chart}`;
   }
+  function sleepBody(c) {
+    const m = c.main;
+    if (!m) return `${cardHead(tr("睡眠"), c.date)}<div class="small muted">${esc(tr("这晚没有手表睡眠数据"))}</div>`;
+    const t = (v) => (v == null ? "—" : `${Math.floor(v / 60)}:${String(Math.round(v % 60)).padStart(2, "0")}`);
+    const tier = c.score == null ? "" : c.score >= 80 ? "good" : c.score >= 60 ? "mid" : "bad";
+    const chart = m.stages?.length && window.BodyCharts?.hypno ? window.BodyCharts.hypno(m, m.stages) : "";
+    const found = (c.notes || []).filter((n) => n.tone !== "good" && NOTE[n.key]).slice(0, 3);
+    return `${cardHead(tr("睡眠"), c.date, tier ? ` <span class="badge ${tier}">${esc(tr("睡眠分"))} ${n0(c.score)}</span>` : "")}
+      <div class="ai-card-big num"><b>${t(m.asleep_min)}</b> <small>${esc(m.start)} → ${esc(m.end)}</small>
+        ${c.need_min ? `<span class="small muted">${esc(tr("需求"))} ${t(c.need_min)}</span>` : ""}</div>${chart}
+      ${found.length ? `<div class="rcard-tags" style="margin-top:8px">${found.map((n) => `<span class="badge ${n.tone === "bad" ? "bad" : "mid"}">${esc(NOTE[n.key])}</span>`).join("")}</div>` : ""}`;
+  }
   function actionButtons(c) {
     return (c.actions || []).map((a) => {
-      if (a.kind === "open" && OPEN[a.page]) return { label: OPEN[a.page], run: () => { closeChat(); C.go?.(a.page); } };
+      if (a.kind === "open" && OPEN[a.page]) return { label: OPEN[a.page], run: () => { closeChat(); C.go?.(a.page, c); } };
       if (a.kind === "send") {
         const [label, text] = a.key ? (SEND[a.key]?.(c) || []) : [a.label, a.text];
         if (label && text) return { label, run: () => { if (!chat.busy) sendQuick(text); }, send: true };
@@ -818,7 +835,7 @@
   }
   function showCard(c) {
     if (!c?.type) return;
-    const body = { training: trainingBody, meal: mealBody, metric: metricBody, actions: () => "" }[c.type];
+    const body = { training: trainingBody, meal: mealBody, metric: metricBody, sleep: sleepBody, actions: () => "" }[c.type];
     if (!body) return;
     const acts = actionButtons(c);
     const el = document.createElement("div");

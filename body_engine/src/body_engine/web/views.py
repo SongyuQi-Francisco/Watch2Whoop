@@ -471,6 +471,23 @@ def recent_bedtimes(conn, owner_id: int, day: date, tz: ZoneInfo, nights: int = 
     return out
 
 
+def night_stages(conn, owner_id: int, tz: ZoneInfo, start: datetime, end: datetime) -> tuple[list[dict], str | None, str | None]:
+    """The stage timeline of one night: OW first, then the Shortcut samples, then the imported Apple Health history.
+    Returns (stages, source, reason when there are none)."""
+    problems = []
+    for name, fetch in (("ow", lambda: ow_segments(conn, owner_id, tz, start, end)),
+                        ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
+                        ("export", lambda: export_segments(conn, owner_id, start, end))):
+        try:
+            stages = hypnogram(fetch(), start, end, tz)
+        except Exception as e:  # OW is off, has no key, or the archive is unreadable: try the next source
+            problems.append(f"{name}: {type(e).__name__}")
+            continue
+        if stages:
+            return stages, name, None
+    return [], None, "这晚没有阶段明细" + (f"（{'；'.join(problems)}）" if problems else "")
+
+
 def sleep_today(conn, owner_id: int, day: date) -> dict:
     """The main sleep that ended on wake date `day` (if none, the most recent night within the last 7 days, latest=True): bedtime / wake time (user timezone),
     minutes per stage (sleep_sessions), stage chart (OW first, otherwise the Shortcut archive)."""
@@ -485,26 +502,14 @@ def sleep_today(conn, owner_id: int, day: date) -> dict:
     if row is None:
         return {"date": day, "main": None, "reason": "最近 7 天没有手表睡眠数据", "recent": recent}
     start, end = row["start_at"], row["end_at"]
-    stages, source, problems = [], None, []
-    for name, fetch in (("ow", lambda: ow_segments(conn, owner_id, tz, start, end)),
-                        ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
-                        ("export", lambda: export_segments(conn, owner_id, start, end))):
-        try:
-            stages = hypnogram(fetch(), start, end, tz)
-        except Exception as e:  # OW is off, has no key, or the archive is unreadable: try the next source
-            problems.append(f"{name}: {type(e).__name__}")
-            continue
-        if stages:
-            source = name
-            break
+    stages, source, stages_reason = night_stages(conn, owner_id, tz, start, end)
     return {"date": row["wake_date"], "latest": row["wake_date"] != day, "main": {
                 "start": start.astimezone(tz).strftime("%H:%M"), "end": end.astimezone(tz).strftime("%H:%M"),
                 "start_at": start.astimezone(tz).isoformat(), "end_at": end.astimezone(tz).isoformat(),
                 "in_bed_min": round((end - start).total_seconds() / 60),
                 **{k: row[k] for k in ("asleep_min", "deep_min", "core_min", "rem_min", "awake_min", "unspecified_min")},
                 "source": row["source"]},
-            "stages": stages, "stages_source": source, "recent": recent,
-            "stages_reason": None if stages else ("这晚没有阶段明细" + (f"（{'；'.join(problems)}）" if problems else ""))}
+            "stages": stages, "stages_source": source, "recent": recent, "stages_reason": stages_reason}
 
 
 # ---------------------------------------------------------------- log page: frequent journal items
