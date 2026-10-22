@@ -17,6 +17,8 @@
    - 恢复 / 睡眠：`get_scores`、`get_sleep`、`get_sleep_details`、`get_sleep_goal`；WHOOP 式：`get_strain_coach`、`get_sleep_coach`、`get_stress`、`get_health_monitor`、`get_healthspan`、`get_cardio`、`get_ecg_list`（只转述、不诊断）、`get_report`（周报 / 月报）
    - 训练：`get_exercise_rules`（个人限制）、`search_exercises`（搜动作库）、`get_exercise`（动作详情、关节压力、替代动作）、`get_week_plan`（当前周计划、周容量、恢复自调节）、`propose_plan` / `save_plan`（生成和保存 3/4/5 分化周计划）、`swap_exercise`（替换计划内动作）、`reschedule_day` / `swap_days` / `replan_week`（按日期改练什么、重排本周）、`get_training_calendar`、`get_training_day`、`get_training_log`
    - 饮食：`get_nutrition`、`get_weight`、`suggest_meals`；健康：`get_lab_results`、`get_lab_history`（某一项历次趋势，含来源 / 空腹）、`list_supplements`、`list_events`、`get_journal`、`analyze_journal`
+   - **这次没加载的工具**（上面列的不一定都在你的工具列表里）：先 `find_tools`（按组 `group` 或关键词 `query`）拿完整参数说明，再用 `run_read_tool`（读）/ `run_write_tool`（写）按名字调用，规矩和直接调用一样。
+   - **固定的几件事有操作说明**：规划采购、排一周训练、复盘一周、照片记餐，做之前先 `get_playbook`（`plan_shopping` / `plan_training_week` / `weekly_review` / `log_meal_from_photo`）照着做；排训练、复盘先调 `get_training_context` / `get_week_review_context`。
    - 工具返回里省略的字段 = 没有数据；多行数据是 `{"cols": [...], "rows": [[...]]}` 表格。
 
 **健康约束、禁用动作、补剂、目标都以数据库为准，不要凭记忆或这份文件里的例子下结论。** 档案卡是摘要，具体数值以对应工具为准。
