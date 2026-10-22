@@ -18,7 +18,10 @@ from . import healthspan_params as H
 from . import healthspan_params_v12 as H12
 from . import sleep_detail
 
-VERSIONS = {"v1.1": H, "v1.2": H12}   # healthspan_weekly is written with H (v1.1) until the maintainer switches
+VERSIONS = {"v1.1": H, "v1.2": H12}
+# The version written to healthspan_weekly (switched to v1.2 on 2026-10-23 by the maintainer's decision, issue #118).
+# v1.1 stays for the comparison tool and as the rollback: set CURRENT = VERSIONS["v1.1"], deploy, recompute every user.
+CURRENT = H12
 
 LABELS = {  # key: (Chinese name, category, unit)
     "sleep_duration": ("平均睡眠时长", "sleep", "h"),
@@ -221,8 +224,8 @@ def _activity_domain(data: Data, as_of: date, age: float | None, params, add, mi
         years=HS.years_from_hr(r["hr"], params.ACTIVITY_CAP_YEARS, params=params))
 
 
-def snapshot(data: Data, as_of: date, params=H) -> dict:
-    """Body age on one day (window = 180 days back from as_of). params: healthspan_params (v1.1) or healthspan_params_v12."""
+def snapshot(data: Data, as_of: date, params=CURRENT) -> dict:
+    """Body age on one day (window = 180 days back from as_of). params: a VERSIONS entry (default CURRENT, v1.2)."""
     items, insufficient = [], []
 
     def add(key, value, hr, data_days, extra=None, years=None, goal_kg=None):
@@ -329,7 +332,7 @@ def load(conn: psycopg.Connection, user_id: int, today: date | None = None, spar
     return Data(conn, user_id, origin - timedelta(days=1), today, sparky), origin, today
 
 
-def weekly(data: Data, origin: date, today: date, params=H) -> list[dict]:
+def weekly(data: Data, origin: date, today: date, params=CURRENT) -> list[dict]:
     rows, history = [], []
     for week_start, as_of in week_ends(origin + timedelta(days=params.MIN_DAYS), today):
         snap = snapshot(data, as_of, params)
@@ -342,12 +345,12 @@ def weekly(data: Data, origin: date, today: date, params=H) -> list[dict]:
     return rows
 
 
-def compute(conn: psycopg.Connection, user_id: int, today: date | None = None, sparky=None, params=H) -> list[dict]:
+def compute(conn: psycopg.Connection, user_id: int, today: date | None = None, sparky=None, params=CURRENT) -> list[dict]:
     loaded = load(conn, user_id, today, sparky)
     return weekly(*loaded, params) if loaded else []
 
 
-def write(conn: psycopg.Connection, user_id: int, rows: list[dict], params=H) -> int:
+def write(conn: psycopg.Connection, user_id: int, rows: list[dict], params=CURRENT) -> int:
     with conn.transaction():
         conn.execute("DELETE FROM healthspan_weekly WHERE user_id = %s", (user_id,))
         with conn.cursor() as cur:

@@ -156,7 +156,7 @@ def make_data(days: int = 180, as_of: date = date(2026, 10, 17), **over) -> Simp
 
 
 def test_snapshot_typical_person_close_to_chrono_age():
-    snap = store.snapshot(make_data(), date(2026, 10, 17))
+    snap = store.snapshot(make_data(), date(2026, 10, 17), H)   # v1.1 (kept for comparison and rollback)
     assert snap["insufficient"] == []
     assert len(snap["contributors"]) == 8
     by = {c["key"]: c for c in snap["contributors"]}
@@ -171,7 +171,7 @@ def test_snapshot_insufficient_items_are_listed_with_reasons():
     as_of = date(2026, 10, 17)
     data = make_data(sleep={as_of - timedelta(days=k): 7.0 for k in range(10)}, sex=None, vo2={}, weight={},
                      steps={}, strength_from=None)
-    snap = store.snapshot(data, as_of)
+    snap = store.snapshot(data, as_of, H)
     miss = {m["key"]: m["reason"] for m in snap["insufficient"]}
     assert set(miss) == {"sleep_duration", "steps", "strength", "vo2max", "body_comp"}
     assert "10 晚" in miss["sleep_duration"] and "性别" in miss["vo2max"]
@@ -190,9 +190,9 @@ def test_snapshot_waist_preferred_and_vo2_readings_rule():
 def test_snapshot_worse_habits_older():
     as_of = date(2026, 10, 17)
     good = store.snapshot(make_data(steps={as_of - timedelta(days=k): 12000.0 for k in range(180)},
-                                    rhr={as_of - timedelta(days=k): 50.0 for k in range(180)}), as_of)
+                                    rhr={as_of - timedelta(days=k): 50.0 for k in range(180)}), as_of, H)
     bad = store.snapshot(make_data(steps={as_of - timedelta(days=k): 3000.0 for k in range(180)},
-                                   rhr={as_of - timedelta(days=k): 80.0 for k in range(180)}), as_of)
+                                   rhr={as_of - timedelta(days=k): 80.0 for k in range(180)}), as_of, H)
     assert bad["body_age"] > good["body_age"]
     steps_bad = next(c for c in bad["contributors"] if c["key"] == "steps")
     assert steps_bad["years"] == 4.0 and steps_bad["direction"] == "older"
@@ -217,7 +217,7 @@ def test_v12_activity_is_one_domain_and_typical_person_is_neutral():
     parts = {p["key"]: p for p in act["parts"]}
     assert set(parts) >= {"steps", "exercise_equiv", "strength"} and parts["exercise_equiv"]["value"] == 0
     # the other items are scored exactly as in v1.1
-    v11 = {c["key"]: c for c in store.snapshot(make_data(), date(2026, 10, 17))["contributors"]}
+    v11 = {c["key"]: c for c in store.snapshot(make_data(), date(2026, 10, 17), H)["contributors"]}
     for c in snap["contributors"]:
         if c["key"] != "activity":
             assert c == v11[c["key"]]
@@ -226,7 +226,7 @@ def test_v12_activity_is_one_domain_and_typical_person_is_neutral():
 def test_v12_domain_cap_is_once_for_all_activity():
     as_of = date(2026, 10, 17)
     low = {as_of - timedelta(days=k): 1500.0 for k in range(180)}
-    v11 = store.snapshot(make_data(steps=low, mvpa={as_of - timedelta(days=k): 0.0 for k in range(180)}), as_of)
+    v11 = store.snapshot(make_data(steps=low, mvpa={as_of - timedelta(days=k): 0.0 for k in range(180)}), as_of, H)
     v12 = store.snapshot(make_data(steps=low, mvpa={as_of - timedelta(days=k): 0.0 for k in range(180)}), as_of, H12)
     old = sum(c["years"] for c in v11["contributors"] if c["category"] == "activity")
     act = _activity(v12)
@@ -282,6 +282,8 @@ def test_v12_mvpa_reference_counts_workouts_at_their_met_and_is_not_counted():
 
 def test_v12_versions_and_write_tag():
     assert store.VERSIONS["v1.1"] is H and store.VERSIONS["v1.2"] is H12
+    assert store.CURRENT is H12                                # production writes v1.2 (2026-10-23)
+    assert _activity(store.snapshot(make_data(), date(2026, 10, 17)))   # default = CURRENT
     assert H.ALGO_VERSION.startswith("hs-v1.1") and H12.ALGO_VERSION.startswith("hs-v1.2")
     assert getattr(H, "ACTIVITY_MODEL", "items") == "items" and H12.ACTIVITY_MODEL == "domain"
 

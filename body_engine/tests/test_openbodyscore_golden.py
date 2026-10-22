@@ -134,7 +134,7 @@ def e2e(conn, tmp_path, hrv_kind: str) -> dict:
     inp = engine.load(conn, None, uid, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), today, None, hrv_kind=hrv_kind)
     rows = engine.score_days(inp, origin, today, today)
     engine.write(conn, uid, rows, origin, today)
-    weeks = healthspan_store.compute(conn, uid, today=today)
+    weeks = healthspan_store.compute(conn, uid, today=today, params=healthspan_store.VERSIONS["v1.1"])   # v1.1: rollback reference
     stress_rows = stress.compute(conn, ExportOW(conn, uid), uid, today - timedelta(days=29), today)
     return _dump({"import": {k: imported[k] for k in ("records", "days", "nights", "workouts")},
                   "origin": origin, "daily_scores": rows, "healthspan": weeks, "stress": stress_rows})
