@@ -89,7 +89,7 @@ def options(conn: psycopg.Connection, user_id: int) -> list[dict]:
     if fallback.read_key() is not None:
         s = fallback.summary(conn, user_id)
         out.append({"key": "fallback", "label": s["display_name"], "kind": "fallback", "available": s["available"] or s["reason"] == "fallback_consent",  # consent is asked when picked
-                    "note": f"¥{s['spent_cny']:.2f} / ¥{s['quota_cny']:g}", "consent": s["consent"]})
+                    "note": L(f"剩 {s['remaining_pct']}%", f"{s['remaining_pct']}% left"), "consent": s["consent"]})
     for r in conn.execute("SELECT * FROM ai_providers WHERE user_id = %s ORDER BY is_default DESC, id", (user_id,)):
         mcp = catalog.is_mcp(r["kind"])
         out.append({"key": f"p:{r['id']}", "label": catalog.display_name(r), "kind": "mcp" if mcp else "api",
@@ -106,7 +106,7 @@ def choose(conn: psycopg.Connection, user_id: int, key: str) -> None:
     """The user's pick from AI settings or the chat panel's switcher. Raises ValueError with a short message (request language)."""
     if key == "fallback":
         if fallback.read_key() is None:
-            raise ValueError(L("这台服务器没有开通托底 AI", "This server has no backup AI"))
+            raise ValueError(L("这台服务器没有开通 Jarvis", "This server has no Jarvis"))
         set_pref(conn, user_id, "fallback")
     elif key == "butler":
         if not owner_assistant_url(user_id):
