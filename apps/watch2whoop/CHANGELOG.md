@@ -38,6 +38,10 @@ pull request.
 - Tests (`test/ios_config_test.dart`): every privacy service the app or the Today page can reach has a usage
   description in `Info.plist` and in both `InfoPlist.strings`; HealthKit series types are requested together with their
   parent types.
+- Fix: every confirm() on the Today page was false inside the app (webview_flutter's default without a handler), so
+  deleting an AI provider, disconnecting / revoking an AI client, withdrawing the fallback-AI consent, resetting an
+  invite link, removing a member, leaving or dissolving a circle did nothing. alert() / confirm() / prompt() now show
+  native iOS dialogs (`js_dialogs.dart`); the buttons follow the app language.
 
 ## 1.0.5+5 — 2026-10-22
 - Fix: the app crashed on open (SIGABRT) once Health access had been asked, in build 1.0.0 (4) made from
