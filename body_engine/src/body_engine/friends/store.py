@@ -129,7 +129,7 @@ def sync_user(conn, uid: int, extra: tuple[int, ...] = ()) -> None:
 
 # ---------------------------------------------------------------- circles
 def create(conn: psycopg.Connection, uid: int, name: str, scopes=P.DEFAULT_SCOPES) -> dict:
-    """New circle with the caller as owner and first member; returns {circle, invite} (the code only this once)."""
+    """New circle with the caller as owner and first member; returns {circle, invite} (the code only this once; valid params.INVITE_DEFAULT_DAYS)."""
     _require_consent(conn, uid)
     name, scopes = _clean_name(name), clean_scopes(scopes)
     if _count_circles(conn, uid) >= P.MAX_CIRCLES_PER_USER:
@@ -140,9 +140,25 @@ def create(conn: psycopg.Connection, uid: int, name: str, scopes=P.DEFAULT_SCOPE
     return {"circle": circle_view(conn, uid, cid), "invite": invite}
 
 
-def mint_invite(conn: psycopg.Connection, uid: int, circle_id: int, reset: bool = False) -> dict:
-    """A new 72-hour code for the circle (owner only). reset=True first revokes every live code (old links stop at once).
+def invite_days(days: int | None, permanent: bool = False) -> int | None:
+    """Validated expiry of a new code in days; None = never expires. No choice = params.INVITE_DEFAULT_DAYS."""
+    if permanent:
+        if days is not None:
+            raise FriendsError(400, "有效期和「永久有效」只能选一个")
+        return None
+    if days is None:
+        return P.INVITE_DEFAULT_DAYS
+    if isinstance(days, bool) or days not in P.INVITE_DAYS_CHOICES:
+        raise FriendsError(400, "邀请有效期只能是 " + " / ".join(map(str, P.INVITE_DAYS_CHOICES)) + " 天或永久有效")
+    return days
+
+
+def mint_invite(conn: psycopg.Connection, uid: int, circle_id: int, reset: bool = False,
+                days: int | None = None, permanent: bool = False) -> dict:
+    """A new code for the circle (owner only), valid `days` (params.INVITE_DAYS_CHOICES, default INVITE_DEFAULT_DAYS) or for
+    good (`permanent`: expires_at stays NULL). reset=True first revokes every live code (old links stop at once).
     At most params.MAX_LIVE_CODES live codes: the oldest goes. The plaintext exists only in this return value."""
+    days = invite_days(days, permanent)
     _circle_for_owner(conn, circle_id, uid)
     if reset:
         conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE circle_id = %s AND code_sha256 IS NOT NULL
@@ -150,15 +166,27 @@ def mint_invite(conn: psycopg.Connection, uid: int, circle_id: int, reset: bool 
     conn.execute(
         """UPDATE circle_invites SET revoked_at = now() WHERE id IN (
              SELECT id FROM circle_invites WHERE circle_id = %s AND code_sha256 IS NOT NULL AND revoked_at IS NULL
-               AND expires_at > now() ORDER BY created_at DESC, id DESC OFFSET %s)""", (circle_id, P.MAX_LIVE_CODES - 1))
+               AND (expires_at IS NULL OR expires_at > now()) ORDER BY created_at DESC, id DESC OFFSET %s)""",
+        (circle_id, P.MAX_LIVE_CODES - 1))
     while True:
         code = "".join(secrets.choice(login_codes.ALPHABET) for _ in range(CODE_LENGTH))
         row = conn.execute(
             """INSERT INTO circle_invites (circle_id, created_by, code_sha256, expires_at)
-               VALUES (%s, %s, %s, now() + make_interval(hours => %s)) ON CONFLICT (code_sha256) DO NOTHING
-               RETURNING expires_at""", (circle_id, uid, _sha(code), P.INVITE_HOURS)).fetchone()
+               VALUES (%s, %s, %s, CASE WHEN %s::int IS NULL THEN NULL ELSE now() + make_interval(days => %s::int) END)
+               ON CONFLICT (code_sha256) DO NOTHING
+               RETURNING id, expires_at""", (circle_id, uid, _sha(code), days, days)).fetchone()
         if row:
-            return {"code": _pretty(code), "expires_at": row["expires_at"]}
+            return {"id": row["id"], "code": _pretty(code), "expires_at": row["expires_at"]}
+
+
+def revoke_invite(conn: psycopg.Connection, uid: int, circle_id: int, invite_id: int) -> None:
+    """Owner: stop one live code early (a code that was already used keeps its members). 404 when it is not a live code of this circle."""
+    _circle_for_owner(conn, circle_id, uid)
+    if conn.execute(
+            """UPDATE circle_invites SET revoked_at = now() WHERE id = %s AND circle_id = %s AND code_sha256 IS NOT NULL
+               AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now()) RETURNING id""",
+            (invite_id, circle_id)).fetchone() is None:
+        raise FriendsError(404, "这个邀请已失效")
 
 
 def _live_code(conn, code: str) -> dict | None:
@@ -166,7 +194,7 @@ def _live_code(conn, code: str) -> dict | None:
         return None
     return conn.execute(
         """SELECT i.id, i.circle_id FROM circle_invites i WHERE i.code_sha256 = %s AND i.revoked_at IS NULL
-           AND i.expires_at > now()""", (_sha(code),)).fetchone()
+           AND (i.expires_at IS NULL OR i.expires_at > now())""", (_sha(code),)).fetchone()
 
 
 def preview(conn: psycopg.Connection, code: str) -> dict | None:
@@ -376,10 +404,13 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],
                         "owner": m["id"] == c["owner_id"], "me": m["id"] == uid} for m in members]}
     if out["is_owner"]:
-        live = conn.execute("""SELECT count(*) AS n, max(expires_at) AS until FROM circle_invites WHERE circle_id = %s
-                               AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND expires_at > now()""",
-                            (circle_id,)).fetchone()
-        out["invites"] = {"live": live["n"], "until": live["until"]}
+        codes = conn.execute("""SELECT id, created_at, expires_at, used_count FROM circle_invites WHERE circle_id = %s
+                                AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+                                ORDER BY created_at DESC, id DESC""", (circle_id,)).fetchall()
+        # `codes`: the live codes (no plaintext is kept), expires_at null = never expires; `until`: when the last one
+        # ends, null when there is none or one of them never expires
+        until = None if any(c["expires_at"] is None for c in codes) else max((c["expires_at"] for c in codes), default=None)
+        out["invites"] = {"live": len(codes), "codes": codes, "until": until}
     return out
 
 
@@ -397,5 +428,6 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
     return {"circles": [circle_view(conn, uid, cid) for cid in ids], "invites": invites,
             "scopes": list(P.CIRCLE_SCOPES), "default_scopes": list(P.DEFAULT_SCOPES),
             "consent_ok": consent.agreed_at_least(conn, uid, P.CONSENT_VERSION),
-            "limits": {"circles": P.MAX_CIRCLES_PER_USER, "members": P.MAX_MEMBERS, "invite_hours": P.INVITE_HOURS},
+            "limits": {"circles": P.MAX_CIRCLES_PER_USER, "members": P.MAX_MEMBERS, "invite_days": list(P.INVITE_DAYS_CHOICES),
+                       "invite_default_days": P.INVITE_DEFAULT_DAYS},
             "now": datetime.now().astimezone()}

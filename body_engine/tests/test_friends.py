@@ -253,7 +253,7 @@ def test_invite_codes_expire_reset_and_rate_limit(client, world, dsn):
     assert client.get("/v1/friends", headers=h(tok["Ann"])).json()["circles"][0]["invites"]["live"] == 1
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("UPDATE circle_invites SET expires_at = now() - interval '1 minute' WHERE circle_id = %s", (cid,))
-    assert join(client, tok["Ben"], new).status_code == 404                # 72 hours are over
+    assert join(client, tok["Ben"], new).status_code == 404                # the 3 days are over
     # live codes are capped: the oldest goes
     codes = [client.post(f"/v1/friends/circles/{cid}/invite", headers=h(tok["Ann"])).json()["code"]
              for _ in range(P.MAX_LIVE_CODES + 1)]
@@ -264,6 +264,114 @@ def test_invite_codes_expire_reset_and_rate_limit(client, world, dsn):
         assert join(client, tok["Cat"], "AAAAA-BBBBB").status_code == 404
     assert join(client, tok["Cat"], codes[-1]).status_code == 429
     assert client.get("/v1/friends/invite", params={"code": codes[-1]}, headers=h(tok["Cat"])).status_code == 429
+
+
+def _mint(client, tok, cid, **body):
+    return client.post(f"/v1/friends/circles/{cid}/invite", headers=h(tok), json=body)
+
+
+def _expiry_days(dsn, cid, code_id):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        r = conn.execute("""SELECT expires_at, extract(epoch FROM expires_at - created_at) / 86400 AS days
+                            FROM circle_invites WHERE id = %s""", (code_id,)).fetchone()
+    return None if r["expires_at"] is None else round(float(r["days"]), 2)
+
+
+def test_invite_expiry_choices(client, world, dsn):
+    """#156: the owner picks 1 / 3 / 7 / 30 days or never; no choice = 3 days; the creation invite is 3 days."""
+    ids, tok = world
+    res = circle(client, tok["Ann"])
+    cid = res["circle"]["id"]
+    assert _expiry_days(dsn, cid, res["invite"]["id"]) == P.INVITE_DEFAULT_DAYS == 3
+    assert tuple(client.get("/v1/friends", headers=h(tok["Ann"])).json()["limits"]["invite_days"]) == P.INVITE_DAYS_CHOICES
+    for days in P.INVITE_DAYS_CHOICES:
+        r = _mint(client, tok["Ann"], cid, days=days)
+        assert r.status_code == 200, r.text
+        assert _expiry_days(dsn, cid, r.json()["id"]) == days
+        assert join(client, tok["Ben"], r.json()["code"]).status_code == 200      # a fresh code works
+        client.delete(f"/v1/friends/circles/{cid}/me", headers=h(tok["Ben"]))
+    r = _mint(client, tok["Ann"], cid)                                             # no body at all → the default
+    assert _expiry_days(dsn, cid, r.json()["id"]) == 3
+    r = client.post(f"/v1/friends/circles/{cid}/invite", headers=h(tok["Ann"]))
+    assert _expiry_days(dsn, cid, r.json()["id"]) == 3
+
+
+def test_invite_expiry_invalid_values_are_400(client, world):
+    ids, tok = world
+    cid = circle(client, tok["Ann"])["circle"]["id"]
+    for bad in (0, 2, 5, 31, 365, -1):
+        r = _mint(client, tok["Ann"], cid, days=bad)
+        assert r.status_code == 400 and "有效期" in r.json()["detail"], (bad, r.text)
+    r = _mint(client, tok["Ann"], cid, days=7, permanent=True)
+    assert r.status_code == 400
+    en = client.post(f"/v1/friends/circles/{cid}/invite", headers=h(tok["Ann"]) | {"X-Body-Lang": "en"}, json={"days": 2})
+    assert en.status_code == 400 and "1 / 3 / 7 / 30" in en.json()["detail"] and "有效" not in en.json()["detail"]
+    # nothing was minted by the bad requests: only the creation invite is live
+    assert client.get("/v1/friends", headers=h(tok["Ann"])).json()["circles"][0]["invites"]["live"] == 1
+
+
+def test_permanent_invite_never_expires(client, world, dsn):
+    ids, tok = world
+    cid = circle(client, tok["Ann"])["circle"]["id"]
+    r = _mint(client, tok["Ann"], cid, permanent=True)
+    assert r.status_code == 200 and r.json()["expires_at"] is None
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:      # years later it still works; the 3-day one is long over
+        conn.execute("UPDATE circle_invites SET created_at = now() - interval '5 years' WHERE id = %s", (r.json()["id"],))
+        conn.execute("UPDATE circle_invites SET expires_at = now() - interval '1 minute' WHERE circle_id = %s AND expires_at IS NOT NULL", (cid,))
+    inv = client.get("/v1/friends", headers=h(tok["Ann"])).json()["circles"][0]["invites"]
+    assert inv["live"] == 1 and inv["until"] is None and inv["codes"][0]["expires_at"] is None
+    assert client.get("/v1/friends/invite", params={"code": r.json()["code"]}, headers=h(tok["Ben"])).status_code == 200
+    assert join(client, tok["Ben"], r.json()["code"]).status_code == 200
+    # an addressed invite (referral) can't be made permanent
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute("INSERT INTO circle_invites (circle_id, created_by, invitee_user_id) VALUES (%s, %s, %s)",
+                         (cid, ids["Ann"], ids["Dan"]))
+
+
+def test_revoke_one_invite_and_remaining_time(client, world, dsn):
+    ids, tok = world
+    res = circle(client, tok["Ann"])
+    cid, first = res["circle"]["id"], res["invite"]
+    seven = _mint(client, tok["Ann"], cid, days=7).json()
+    forever = _mint(client, tok["Ann"], cid, permanent=True).json()
+    shown = client.get("/v1/friends", headers=h(tok["Ann"])).json()["circles"][0]["invites"]
+    assert shown["live"] == 3 and [c["id"] for c in shown["codes"]] == [forever["id"], seven["id"], first["id"]]
+    assert shown["until"] is None and all("code" not in c for c in shown["codes"])    # no plaintext, one is permanent
+    # only the owner; an outsider doesn't even see the circle
+    url = lambda i: f"/v1/friends/circles/{cid}/invites/{i}"
+    assert client.delete(url(seven["id"]), headers=h(tok["Cat"])).status_code == 404
+    join(client, tok["Ben"], first["code"])
+    assert client.delete(url(seven["id"]), headers=h(tok["Ben"])).status_code == 403
+    # revoke the 7-day and the permanent one: they stop working, the other keeps working
+    assert client.delete(url(seven["id"]), headers=h(tok["Ann"])).status_code == 204
+    assert client.delete(url(forever["id"]), headers=h(tok["Ann"])).status_code == 204
+    assert join(client, tok["Cat"], seven["code"]).status_code == 404
+    assert join(client, tok["Dan"], forever["code"]).status_code == 404
+    assert client.get("/v1/friends/invite", params={"code": forever["code"]}, headers=h(tok["Dan"])).status_code == 404
+    assert join(client, tok["Cat"], first["code"]).status_code == 200
+    # twice, an unknown id and another circle's id are all 404
+    assert client.delete(url(seven["id"]), headers=h(tok["Ann"])).status_code == 404
+    assert client.delete(url(999999), headers=h(tok["Ann"])).status_code == 404
+    other = circle(client, tok["Ben"], name="别的")
+    assert client.delete(url(other["invite"]["id"]), headers=h(tok["Ann"])).status_code == 404
+    assert join(client, tok["Dan"], other["invite"]["code"]).status_code == 200            # untouched
+    # the members who joined with the revoked code's sibling stay
+    assert len(client.get("/v1/friends", headers=h(tok["Ann"])).json()["circles"][0]["members"]) == 3
+    # wrong codes still count towards the limit
+    friends_api._failures._events.clear()
+    for _ in range(P.JOIN_MAX_FAILURES):
+        assert join(client, tok["Eve"], forever["code"]).status_code in (404, 409)
+
+
+def test_referral_invite_stays_30_days(client, world, dsn):
+    ids, tok = world
+    cid = circle(client, tok["Ann"])["circle"]["id"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        store.referral_invites(conn, ids["Ann"], ids["Dan"])
+        days = conn.execute("""SELECT extract(epoch FROM expires_at - created_at) / 86400 AS d FROM circle_invites
+                               WHERE invitee_user_id = %s""", (ids["Dan"],)).fetchone()["d"]
+    assert round(float(days)) == P.REFERRAL_INVITE_DAYS == 30
 
 
 def test_consent_gate(client, world):

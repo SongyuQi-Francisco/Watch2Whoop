@@ -59,7 +59,7 @@
   // Where the invite code lives, as path steps
   const invitePath = () => (!F.referrals ? [tr("我"), tr("圈子"), tr("邀请")]
     : F.meSettings ? [tr("我"), tr("设置"), tr("邀请好友")] : [tr("我"), tr("邀请好友")]);
-  const inviteText = () => (!F.referrals ? tr("在「我 → 圈子」点「邀请」，把邀请码或链接发给朋友，72 小时内有效。")
+  const inviteText = () => (!F.referrals ? tr("在「我 → 圈子」点「邀请」，把邀请码或链接发给朋友，有效期自己选。")
     : F.meSettings ? tr("在「我 → 设置 → 邀请好友」复制邀请码或分享链接，发给朋友；朋友用它注册后，会收到加入你圈子的邀请。")
       : tr("在「我 → 邀请好友」复制邀请码或分享链接，发给朋友；朋友用它注册后，会收到加入你圈子的邀请。"));
   const circlesText = () => tr("圈子里的人互相看到各自选择共享的部分，默认是评分、睡眠、训练和饮食达标率，心电图永远不共享。在「我 → 圈子」随时「改共享范围」或「退出」。");

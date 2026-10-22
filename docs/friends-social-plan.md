@@ -30,7 +30,7 @@
 
 ### 3.2 圈子与邀请（2026-10-22 已确认）
 - 任何已同意同意书的用户都可以建圈子（名称自定，每人最多建 / 加入的圈子数见 `friends/params.py`）。
-- 邀请：圈主生成邀请码 / 链接 `…/app/?circle=CODE`（二维码由 app 生成），**72 小时有效**，可以随时「重置」（旧码立即失效）。邀请码只存 sha256，明文只在生成 / 重置时出现一次。
+- 邀请：圈主生成邀请码 / 链接 `…/app/?circle=CODE`（二维码由 app 生成），**有效期圈主自己选（1 / 3 / 7 / 30 天或永久有效，默认 3 天，#156）**，可以随时单个「作废」或全部「重置」（旧码立即失效）。邀请码只存 sha256，明文只在生成 / 重置时出现一次。
 - 加入时弹层让本人勾选共享范围（按 scope），**默认勾选**：
   - `scores`、`sleep`（评分：恢复、睡眠、负荷等）
   - `training`（训练）
@@ -91,7 +91,7 @@
 新迁移（编号 ≥ 470，开发时确认没被占）：
 - `circles (id, name, owner_id, created_at)`
 - `circle_members (circle_id, user_id, scopes TEXT[], joined_at, PRIMARY KEY (circle_id, user_id))`：`scopes` 只能是 `friends/params.CIRCLE_SCOPES` 里的（不含 `ecg`）。
-- `circle_invites (id, circle_id, created_by, code_sha256 UNIQUE NULL, invitee_user_id NULL, expires_at, revoked_at, used_count, created_at)`：邀请码（72 小时）或指定用户的邀请（#57 推荐注册，30 天）。
+- `circle_invites (id, circle_id, created_by, code_sha256 UNIQUE NULL, invitee_user_id NULL, expires_at, revoked_at, used_count, created_at)`：邀请码（有效期自选，`expires_at` 为空 = 永久有效，迁移 605）或指定用户的邀请（#57 推荐注册，30 天）。
 - `shares` 加列 `circle_scopes TEXT[] NOT NULL DEFAULT '{}'`；鉴权看 `scopes`（手动，受 `expires_at` 约束）∪ `circle_scopes`。
 - `circle_nudges (id, from_user_id, to_user_id, kind, date, created_at, UNIQUE (from_user_id, to_user_id, kind, date))`：只能发给和自己有共同圈子的人。
 - 都不 `GRANT` 给 `grafana_ro`（不是健康数据）。
@@ -109,7 +109,7 @@
 | `POST /v1/friends/nudges` | 一键鼓励 |
 
 ## 5. 隐私与安全要点
-- 邀请码只存 sha256，72 小时过期、可重置；加入失败按 IP / 用户限次数（沿用 `web/login_limit.py` 的做法）。
+- 邀请码只存 sha256，有效期自选、可作废 / 重置；加入失败按 IP / 用户限次数（沿用 `web/login_limit.py` 的做法）。
 - 写操作只能对自己；圈主只能移除成员、不能改别人的共享范围；`nudges` 只能发给同圈成员。
 - 圈子成员不是管理员，看不到未授权的任何数据；退出 / 被移出 / 解散时**立即**收回由圈子产生的共享。
 - 心电图永远不进圈子；AI 配置、反馈、AI 对话本来就不在 shares 里。
