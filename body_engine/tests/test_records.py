@@ -167,7 +167,7 @@ def test_supplement_edit_stop_delete(client, world):
 
 def test_labs_compare_and_trend(client, world):
     ids, tok = world
-    for d, v in (("2026-08-30", 550), ("2026-11-20", 470)):
+    for d, v in (("2026-08-30", 535), ("2026-11-20", 460)):
         r = client.post("/v1/users/me/labs", headers=h(tok["A"]), json={
             "collected_on": d, "test_key": "uric_acid", "test_name": "尿酸", "value": v, "unit": "μmol/L",
             "ref_high": 420, "category": "blood"})
@@ -179,9 +179,9 @@ def test_labs_compare_and_trend(client, world):
         "collected_on": "2026-08-30", "test_name": "空"}).status_code == 422
     summary = client.get(f"/v1/users/{ids['A']}/labs/summary", headers=h(tok["B"])).json()
     ua = next(s for s in summary if s["test_key"] == "uric_acid")
-    assert ua["status"] == "high" and ua["latest"]["value"] == 470
-    assert [x["value"] for x in ua["history"]] == [550, 470]
-    assert ua["change_from_previous"]["delta"] == -80
+    assert ua["status"] == "high" and ua["latest"]["value"] == 460
+    assert [x["value"] for x in ua["history"]] == [535, 460]
+    assert ua["change_from_previous"]["delta"] == -75
     assert next(s for s in summary if s["test_key"] == "ecg")["status"] == "abnormal"
     assert len(client.get("/v1/users/me/labs?test=uric_acid&start=2026-11-01", headers=h(tok["A"])).json()) == 1
 
@@ -334,7 +334,7 @@ def test_import_records_idempotent(dsn):
         banned = {r["exercise_ref"] for r in conn.execute(
             "SELECT exercise_ref FROM exercise_meta WHERE user_id = %s AND status = 'banned'", (uid,))}
         assert banned == {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
-        # The hypoglycemia event lands on 10-15 in the user's time zone
+        # The hypoglycemia example event lands on 10-08 in the user's time zone
         ev = conn.execute("""SELECT (occurred_at AT TIME ZONE 'Australia/Sydney')::date AS d FROM events
-                             WHERE user_id = %s AND import_key = 'md:event:hypoglycemia_2026_10_15'""", (uid,)).fetchone()
-        assert ev["d"] == date(2026, 10, 15)
+                             WHERE user_id = %s AND import_key = 'md:event:hypoglycemia_example'""", (uid,)).fetchone()
+        assert ev["d"] == date(2026, 10, 8)

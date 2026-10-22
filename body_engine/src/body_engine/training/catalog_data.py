@@ -795,7 +795,7 @@ CURATED_EXERCISES: list[dict] = [
         force="push", mechanic="compound", pattern="vertical_push",
         equipment=["dumbbell"], primary=["shoulders"], secondary=["triceps"],
         joint_stress=["shoulder_anterior", "shoulder_ir"], inc=2.0,
-        cues="起始掌心朝己，上推同时向外旋转；右肩内旋受限者慎做，优先选 Landmine press。",
+        cues="起始掌心朝己，上推同时向外旋转；肩内旋受限者慎做，优先选 Landmine press。",
         images=["Arnold_Dumbbell_Press/0.jpg", "Arnold_Dumbbell_Press/1.jpg"]),
     _ex("conventional_deadlift", "传统杠铃硬拉", "Barbell Deadlift",
         aliases=["硬拉", "传统硬拉", "Deadlift"],

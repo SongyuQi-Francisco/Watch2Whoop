@@ -47,7 +47,7 @@ Parameter categories:
   (208 − 0.7 × age); CTL / ATL / TSB after Banister's fitness-fatigue model (42 / 7-day time constants).
 - **Design choice** — v1 value, not yet validated: HRmax = max(formula, observed 99.5th percentile over 365 days);
   heart-rate sample hold of 5 min; coverage rules (12 h of heart rate, TRIMP ≥ 40); 14-day seed for CTL / ATL.
-- **Personal calibration**: K = 170 in `strain = 21 × (1 − e^(−TRIMP / K))`, calibrated on the owner's training days.
+- **Personal calibration**: K = 170 in `strain = 21 × (1 − e^(−TRIMP / K))`, calibrated on a single person's training days (one maintainer's).
   Does not meet the project rule of never hard-coding one person's data; to be replaced (#118).
 - Known limits: _to be written (#118)._
 

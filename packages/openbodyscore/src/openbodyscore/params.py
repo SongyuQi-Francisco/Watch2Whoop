@@ -68,7 +68,7 @@ HRMAX_PERCENTILE = 99.5
 HRMAX_WINDOW_DAYS = 365
 EDWARDS_ZONES = ((0.90, 5), (0.80, 4), (0.70, 3), (0.60, 2), (0.50, 1))   # (%HRmax lower bound, weight)
 STRAIN_MAX = 21.0
-STRAIN_K = 170.0                       # strain = 21 × (1 − e^(−TRIMP/K)); K puts the owner's median TRIMP on strength / basketball days (about 145) at 12, see system design §7
+STRAIN_K = 170.0                       # strain = 21 × (1 − e^(−TRIMP/K)); K puts a typical training day (whole-day TRIMP about 145) at 12, see system design §7
 MIN_HR_HOURS = 12                      # fewer than 12 hours with heart rate counts as insufficient coverage (watch not worn / not fully synced):
 MIN_PARTIAL_TRIMP = 40.0               # insufficient coverage but a workout was recorded (TRIMP >= 40): score as usual and flag "may be low"; otherwise leave strain empty and keep it out of CTL / ATL
 CTL_DAYS, ATL_DAYS = 42, 7

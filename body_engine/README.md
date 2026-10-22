@@ -240,7 +240,7 @@ uv run body-engine raw-slim --file export.xml --out raw.zip          # Mac: 700 
 uv run body-engine import-raw --user-id 1 --file raw.zip             # heartbeat_series + ecg_recordings only, idempotent (also works on the full export)
 uv run body-engine hrv-compare --user-id 1 --out ../health_data/reports/hrv-compare.md   # SDNN vs RMSSD recovery, computes only (personal data: keep out of git)
 ```
-- `rawdata/hrv.py` (alias of `openbodyscore.hrv`): RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r = 0.89 on the owner's 1,999 readings.
+- `rawdata/hrv.py` (alias of `openbodyscore.hrv`): RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r ≈ 0.9 on about 2,000 real readings from one person.
 - The admin history import (`import-apple-zip`) reads the beat lists and `electrocardiograms/*.csv` in the same pass. App copies (below) replace export copies of the same readings (HealthKit has full-precision beat times).
 - Scoring: `scores/params.HRV_KIND` = `sdnn` (default) or `rmssd` (heartbeat_series only, never mixed). Switch only after the user has read `hrv-compare`; then bump `ALGO_VERSION` and recompute everything.
 - `cardio/hrr.py`: HRR60 = peak in the last 2 min of a workout − heart rate 60 s after the end; valid only if the peak ≥ 75% HRmax. Written by `compute-scores` for the days it writes (from the raw heart rate it already loads).

@@ -48,9 +48,9 @@ EVENTS: list[tuple[str, dict]] = [
         "occurred_at": "2026-08-30T12:00", "time_precision": "approx", "category": "medical",
         "title": "体检（示例）", "note": "示例数据。",
     }),
-    ("hypoglycemia_2026_10_15", {
-        "occurred_at": "2026-10-15T12:00", "time_precision": "day", "category": "symptom", "severity": 2,
-        "title": "练腿时轻微低血糖感（示例）", "resolved_on": date(2026, 10, 15),
+    ("hypoglycemia_example", {
+        "occurred_at": "2026-10-08T12:00", "time_precision": "day", "category": "symptom", "severity": 2,
+        "title": "练腿时轻微低血糖感（示例）", "resolved_on": date(2026, 10, 8),
         "note": "示例：空腹训练时出现，很快缓解。练前 1.5–2 小时吃正餐。",
     }),
 ]
@@ -60,6 +60,6 @@ EVENTS: list[tuple[str, dict]] = [
 # ---------- Journal backfill ----------
 JOURNAL_BACKFILL: list[tuple[str, str, float, str]] = [
     ("2026-10-13", "training_upper", 1, "训练日志：上肢（示例）"),
-    ("2026-10-15", "training_legs", 1, "训练日志：腿（示例）"),
-    ("2026-10-15", "low_blood_sugar", 1, "练腿时轻微低血糖感（示例）"),
+    ("2026-10-08", "training_legs", 1, "训练日志：腿（示例）"),
+    ("2026-10-08", "low_blood_sugar", 1, "练腿时轻微低血糖感（示例）"),
 ]

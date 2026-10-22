@@ -54,14 +54,14 @@ def test_lab_catalog_units_and_aliases():
     assert lab_catalog.resolve_key("谷丙转氨酶", None, set()) == "alt"
     assert lab_catalog.resolve_key("LDL-C (calc)", None, set()) == "ldl"
     assert lab_catalog.resolve_key("某个新指标", None, set()) is None
-    v, u, lo, hi, note = lab_catalog.normalize_unit("uric_acid", 9.25, "mg/dL", None, 7.0)
-    assert u == "μmol/L" and round(v) == 550 and round(hi) == 416 and "mg/dL" in note
-    v, u, *_ = lab_catalog.normalize_unit("uric_acid", 0.55, "mmol/L", None, None)
-    assert round(v) == 550
+    v, u, lo, hi, note = lab_catalog.normalize_unit("uric_acid", 9.0, "mg/dL", None, 7.0)
+    assert u == "μmol/L" and round(v) == 535 and round(hi) == 416 and "mg/dL" in note
+    v, u, *_ = lab_catalog.normalize_unit("uric_acid", 0.535, "mmol/L", None, None)
+    assert round(v) == 535
     with pytest.raises(ValueError, match="单位"):
-        lab_catalog.normalize_unit("uric_acid", 550, "g/L", None, None)
+        lab_catalog.normalize_unit("uric_acid", 535, "g/L", None, None)
     with pytest.raises(ValueError, match="单位或小数点"):
-        lab_catalog.check_plausible("triglycerides", 225)  # 2.25 mistaken for 225
+        lab_catalog.check_plausible("triglycerides", 205)  # 2.05 mistaken for 205
 
 
 def test_food_macro_consistency():
@@ -99,7 +99,7 @@ def dsn():
 def world(dsn):
     """Three users A, B, C: A shares memory with B; C shares nothing. A has a banned exercise and one lab result."""
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        ids = {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '2001-06-15', 184) "
+        ids = {n: conn.execute("INSERT INTO users (display_name, birth_date, height_cm) VALUES (%s, '2001-06-15', 180) "
                                "RETURNING id", (n,)).fetchone()["id"] for n in ("A", "B", "C")}
         tokens = {
             "A": auth.create_token(conn, ids["A"], "test", ["read", "write"]),
@@ -114,7 +114,7 @@ def world(dsn):
                                (%s, 'lat_pulldown', '高位下拉', 'active', '{高位下拉,Lat Pulldown}', NULL, 'ex-lat')""",
                      (ids["A"], ids["A"]))
         conn.execute("""INSERT INTO lab_results (user_id, collected_on, test_key, test_name, category, value, unit, ref_high, flag)
-                        VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 550, 'μmol/L', 420, 'H')""", (ids["A"],))
+                        VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 535, 'μmol/L', 420, 'H')""", (ids["A"],))
     return ids, tokens
 
 
@@ -158,10 +158,10 @@ def test_memory_profile_and_observations(conn, world):
 def test_memory_init_from_database_is_idempotent(conn, world):
     ids, _ = world
     c = ids["C"]
-    res = memory.init_profile(conn, c, {"schedule": "常凌晨 2 点睡"})
+    res = memory.init_profile(conn, c, {"schedule": "常凌晨 1 点睡"})
     assert {"basics", "schedule"} <= set(res["created"])
     memory.update_profile(conn, c, "schedule", "改成 12 点睡", source="user")
-    res2 = memory.init_profile(conn, c, {"schedule": "常凌晨 2 点睡"})
+    res2 = memory.init_profile(conn, c, {"schedule": "常凌晨 1 点睡"})
     assert res2["created"] == [] and "schedule" in res2["kept"]
     card = {p["key"]: p for p in memory.get_memory(conn, c)["profile_card"]}
     assert card["schedule"]["value"] == "改成 12 点睡" and card["schedule"]["source"] == "user"
@@ -313,7 +313,7 @@ def test_memory_block_keeps_communication_first_when_truncated(conn, memory_user
     for key, n in (("what_works", 3000), ("current_plan", 3000), ("schedule", 3000)):
         memory.update_profile(conn, d, key, "很长" * (n // 2))
     memory.update_profile(conn, d, "health_constraints", "尿酸高，少吃内脏和啤酒")
-    memory.update_profile(conn, d, "injuries", "右肩撞击，不做直立划船")
+    memory.update_profile(conn, d, "injuries", "肩撞击，不做直立划船")
     memory.update_profile(conn, d, "communication", "回答简短，先给数字；不要表情；不主动提体重")
     memory.add_observation(conn, d, "感冒第 2 天", until="2026-10-25")
     for i in range(80):
@@ -321,7 +321,7 @@ def test_memory_block_keeps_communication_first_when_truncated(conn, memory_user
     for limit in (prompt.LITE_MEMORY_CHARS, prompt.MAX_MEMORY_CHARS):
         block = prompt._memory_block(conn, d, limit)
         assert len(block) <= limit and block.endswith(prompt.TRUNCATED)
-        pos = [block.index(t) for t in ("回答简短", "尿酸高", "右肩撞击", "感冒第 2 天")]
+        pos = [block.index(t) for t in ("回答简短", "尿酸高", "肩撞击", "感冒第 2 天")]
         assert pos == sorted(pos) and pos[0] < 40   # communication leads, then the priority order
     lite = prompt.build_system_prompt(conn, d, lite=True)
     assert "回答简短，先给数字" in lite and "感冒第 2 天" in lite
@@ -361,18 +361,18 @@ def test_add_lab_results(conn, world):
     again = lab_catalog.add_results(conn, a, day, None, [dict(test="尿酸", test_key=None, value=480, value_text=None,
                                     unit="μmol/L", ref_low=None, ref_high=None, flag=None, note=None)], overwrite=False)
     assert [r["test_key"] for r in again["unchanged"]] == ["uric_acid"]
-    diff = [dict(test="尿酸", test_key=None, value=470, value_text=None, unit="μmol/L", ref_low=None, ref_high=420,
+    diff = [dict(test="尿酸", test_key=None, value=460, value_text=None, unit="μmol/L", ref_low=None, ref_high=420,
                  flag=None, note=None)]
     assert lab_catalog.add_results(conn, a, day, None, diff, overwrite=False)["conflicts"][0]["existing"] == 480
     assert lab_catalog.add_results(conn, a, day, None, diff, overwrite=True)["updated"][0]["previous"] == 480
     trend = run_tool(conn, a, "butler", "get_lab_results", {"user": "me", "tests": ["uric_acid"]})[0]
-    assert [h["value"] for h in trend["history"]] == [550, 470]
+    assert [h["value"] for h in trend["history"]] == [535, 460]
     # Delete (issue #30: any source; the tool asks first)
     with pytest.raises(ValueError, match="没有这些项目"):
         lab_catalog.delete_results(conn, a, date(2026, 8, 30), ["alt"])
     assert lab_catalog.delete_results(conn, a, day, ["uric_acid", "alt"])["deleted"]["test_keys"]
     assert [h["value"] for h in run_tool(conn, a, "butler", "get_lab_results",
-                                         {"user": "me", "tests": ["uric_acid"]})[0]["history"]] == [550]
+                                         {"user": "me", "tests": ["uric_acid"]})[0]["history"]] == [535]
     with pytest.raises(ValueError, match="test_key"):
         lab_catalog.add_results(conn, a, day, None, [dict(test="某新指标", test_key=None, value=1, value_text=None,
                                 unit=None, ref_low=None, ref_high=None, flag=None, note=None)], overwrite=False)
@@ -718,9 +718,9 @@ def test_status_item_validation(conn, world):
         status.set_items(conn, c, [_item(key="weight")], [])
     with pytest.raises(ValueError, match="自动算"):
         status.set_items(conn, c, [], ["recovery"])
-    res = status.set_items(conn, c, [_item(), _item(key="right_shoulder", label="肩", value="内旋受限", tone="warn",
-                                                    group="健康", note="无痛弹响")], [])
-    assert res["written"] == ["phase", "right_shoulder"]
+    res = status.set_items(conn, c, [_item(), _item(key="shoulder", label="肩", value="内旋受限", tone="warn",
+                                                    group="健康", note="示例")], [])
+    assert res["written"] == ["phase", "shoulder"]
     got = status.list_status(conn, c)
     assert [g["group"] for g in got] == ["健康", "训练"]  # in GROUPS order
     assert set(got[0]) == set(status.FIELDS)
@@ -749,8 +749,8 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
         conn.execute("""INSERT INTO sleep_sessions (user_id, wake_date, start_at, end_at, asleep_min, is_main, source)
                         VALUES (%s, %s, %s, %s, 400, true, 'ow')""", (b, d, start, start + timedelta(hours=7)))
     conn.execute("""INSERT INTO lab_results (user_id, collected_on, test_key, test_name, category, value, unit, ref_high)
-                    VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 550, 'μmol/L', 420),
-                           (%s, '2026-10-10', 'uric_acid', '尿酸', 'blood', 470, 'μmol/L', 420)""", (b, b))
+                    VALUES (%s, '2026-08-30', 'uric_acid', '尿酸', 'blood', 535, 'μmol/L', 420),
+                           (%s, '2026-10-10', 'uric_acid', '尿酸', 'blood', 460, 'μmol/L', 420)""", (b, b))
     status.set_items(conn, b, [_item(key="goal_weight", label="目标体重", value="80", unit="kg", group="目标")], [])
     constraints.set_constraint(conn, b, "red_meat_g_per_week", 300, effective_from=today - timedelta(days=30))   # the card needs a limit (#76)
     weights = {today - timedelta(days=k): 89.0 + k * 0.1 for k in range(14)}  # drops 0.1 per day over two weeks
@@ -773,7 +773,7 @@ def test_refresh_auto_computes_and_keeps_old_on_errors(conn, world, monkeypatch)
     assert (got["bedtime"]["value"], got["bedtime"]["tone"]) == ("凌晨 2:30", "bad")
     assert (got["sleep_hours"]["value"], got["sleep_hours"]["trend"]) == ("7.0", "up")
     u = got["uric_acid"]
-    assert (u["value"], u["unit"], u["trend"], u["tone"], u["spark"]) == ("偏高 470", "μmol/L", "down", "warn", [550, 470])
+    assert (u["value"], u["unit"], u["trend"], u["tone"], u["spark"]) == ("偏高 460", "μmol/L", "down", "warn", [535, 460])
     assert (got["training_week"]["value"], got["training_week"]["tone"]) == ("3", "warn")
     assert (got["red_meat_week"]["value"], got["red_meat_week"]["tone"]) == ("40", "good")
     assert got["red_meat_week"]["note"].startswith("上限 300 g")

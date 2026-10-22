@@ -58,7 +58,7 @@ class FakeOW2(FakeOW):
 def person(conn):
     inp = make_inputs(NIGHTS)
     uid = seed(conn, inp)
-    conn.execute("UPDATE users SET sex = 'male', height_cm = 184 WHERE id = %s", (uid,))
+    conn.execute("UPDATE users SET sex = 'male', height_cm = 180 WHERE id = %s", (uid,))
     for k in range(NIGHTS):
         d = date(2026, 9, 1) + timedelta(days=k)
         for metric, value in (("step_count", 6000.0), ("vo2_max", 44.0 if k % 10 == 0 else None), ("body_mass", 89.0 if k == NIGHTS - 1 else None)):

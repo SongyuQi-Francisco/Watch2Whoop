@@ -170,7 +170,7 @@ def test_draft_submit_resubmit_and_ai(conn, world):
     draft = [{"slug": "machine_chest_press", "sets": [
         {"reps": 10, "weight_kg": 25, "done": True}, {"reps": 8, "weight_kg": 27.5, "done": True}, {"reps": 8, "weight_kg": 27.5}]},
         {"slug": "lat_pulldown", "sets": [{"reps": 10, "weight_kg": 41.5}]}]
-    out = session_log.save_draft(conn, a, today, draft, "右肩没事")
+    out = session_log.save_draft(conn, a, today, draft, "膝盖没事")
     assert out["log"]["status"] == "draft" and len(out["log"]["exercises"][0]["sets"]) == 3
 
     # the AI sees the ticked, unsubmitted sets
@@ -181,7 +181,7 @@ def test_draft_submit_resubmit_and_ai(conn, world):
     res = session_log.submit(conn, a, today, client=fake)
     assert res["submitted"] and res["exercises"] == 1 and res["sets"] == 2 and not res["replaced"]
     entry = fake.entries[0]
-    assert entry["notes"] == "右肩没事" and [s["weight"] for s in entry["exercises"][0]["sets"]] == [25, 27.5]
+    assert entry["notes"] == "膝盖没事" and [s["weight"] for s in entry["exercises"][0]["sets"]] == [25, 27.5]
     assert [s["reps"] for s in entry["exercises"][0]["sets"]] == [10, 8]
     assert session_log.draft_for_ai(conn, a, today) is None
 

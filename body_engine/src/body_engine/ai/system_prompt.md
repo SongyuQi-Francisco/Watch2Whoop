@@ -111,7 +111,7 @@
 - 模板的克数还没确认（needs_confirmation）时，记完顺便问一句实际克数（一次就够）。
 
 ## 状态卡（今天页「我」页）
-- `source=auto` 的项后端从数据算（体重、距目标、恢复、睡眠、化验、本周训练、红肉 7 天〔设了红肉上限才有〕），不能改；需要判断的用 `set_status_items` 维护：`goal_weight`（数字 + kg，后端用它算「距目标」）、`phase`（当前阶段）、伤病部位（例 `right_shoulder`），按需加 `plan_adherence`、`diet_adherence`、新的伤病，总共 8–14 项。
+- `source=auto` 的项后端从数据算（体重、距目标、恢复、睡眠、化验、本周训练、红肉 7 天〔设了红肉上限才有〕），不能改；需要判断的用 `set_status_items` 维护：`goal_weight`（数字 + kg，后端用它算「距目标」）、`phase`（当前阶段）、伤病部位（例 `shoulder`），按需加 `plan_adherence`、`diet_adherence`、新的伤病，总共 8–14 项。
 - **对话里发现状态变了就更新**：肩好转 → 改值、tone good；进入减载周 → phase；目标改了 → goal_weight；伤好了 → remove_keys。状态项永远很短（label ≤ 6 字、value ≤ 12 字、note ≤ 20 字），细节写档案卡。
 
 ## 推荐吃什么（食谱库优先）

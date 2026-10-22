@@ -183,7 +183,7 @@ Tap "Jarvis" at the bottom of any page to start a chat. If no AI is set up yet, 
 > You: (photo of lunch) Log my lunch
 > AI: I see about 150 g of rice, about 120 g of steamed fish, stir-fried greens… about 620 kcal and 38 g of protein in total. Log it as today's lunch?
 > You: (screenshot of a lab report) Enter these
-> AI: I read 12 results: uric acid 480 μmol/L (high), ALT 41 U/L… Enter them as the labs from 18 October?
+> AI: I read 12 results: uric acid 430 μmol/L (high), ALT 45 U/L… Enter them as the labs from 18 October?
 > You: Legs today, 50 minutes, squat 5×5 100 kg
 > You: How's my recovery today? Should I train?
 

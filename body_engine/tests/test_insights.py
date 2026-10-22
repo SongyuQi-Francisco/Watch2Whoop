@@ -126,7 +126,7 @@ def make_data(days: int = 180, as_of: date = date(2026, 10, 17), **over) -> Simp
     ds = [as_of - timedelta(days=k) for k in range(days)]
     regular = {d: sleep_detail.asleep_minutes([(at((d - timedelta(days=1)).isoformat(), "23:30"),
                                                 at(d.isoformat(), "07:00"))], d, SYD) for d in ds}
-    base = dict(tz=SYD, birth=date(2001, 6, 15), sex="male", height=184.0, notes=[],
+    base = dict(tz=SYD, birth=date(2001, 6, 15), sex="male", height=180.0, notes=[],
                 sleep={d: 7.0 for d in ds}, sleep_days=regular, steps={d: 8078.0 for d in ds},
                 mvpa={d: 150 / 7 for d in ds}, strength=defaultdict(float), strength_from=as_of - timedelta(days=days - 1),
                 vo2={as_of - timedelta(days=10): 46.5, as_of - timedelta(days=50): 46.5},
@@ -162,7 +162,7 @@ def test_snapshot_waist_preferred_and_vo2_readings_rule():
     as_of = date(2026, 10, 17)
     snap = store.snapshot(make_data(waist={as_of - timedelta(days=3): 101.0}), as_of)
     bc = next(c for c in snap["contributors"] if c["key"] == "body_comp")
-    assert bc["measure"] == "waist_to_height" and bc["value"] == pytest.approx(101 / 184, abs=0.001)
+    assert bc["measure"] == "waist_to_height" and bc["value"] == pytest.approx(101 / 180, abs=0.001)
     old = store.snapshot(make_data(vo2={as_of - timedelta(days=150): 50.0, as_of - timedelta(days=170): 50.0}), as_of)
     assert any(m["key"] == "vo2max" and "120" in m["reason"] for m in old["insufficient"])
 
