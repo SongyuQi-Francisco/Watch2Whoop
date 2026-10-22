@@ -2907,7 +2907,58 @@
     });
     return `<svg class="fd-week" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(tr("最近 7 天"))}">${g}</svg>`;
   }
+  // ---- v2 member card (rollout flag friend_card_v2): today first, a labelled 7-day recovery strip you can tap, clear
+  // "not shared" / "not synced" states, and my own card marked "what friends see" (cards.seen_by_friends).
+  const cardV2 = () => !!window.BodyFlags?.on("friend_card_v2");
+  const dayName = (s) => parseDay(s).toLocaleDateString(I18N.locale(), { weekday: "short" });
+  function recoveryStrip(m, sc) {
+    const cols = sc.week.map((d, i) => `<button type="button" class="fd2-day${d.today ? " today" : ""}" data-fday="${i}" data-fuid="${m.id}"
+        aria-label="${esc(`${dayName(d.date)} ${shortDay(d.date)} ${tr("恢复")} ${d.recovery ?? "—"}`)}">
+        <span class="fd2-dot ${d.zone ? ZONE[d.zone] : "none"}"></span><i>${esc(dayName(d.date))}</i></button>`).join("");
+    return `<div class="fd2-strip"><div class="fd2-strip-t">${esc(tr("近 7 天恢复"))}</div><div class="fd2-days">${cols}</div></div>`;
+  }
+  function friendDaySheet(uid, idx) {
+    const f = S.data.friends, m = [f.me, ...f.members].find((x) => x.id === uid), d = m?.scores?.week?.[idx];
+    if (!d) return;
+    openSheet(`${dayName(d.date)} · ${shortDay(d.date)}`, `${d.recovery != null ? recoveryScale(d.recovery) : ""}
+      ${kv(tr("恢复"), d.recovery != null ? `${d.recovery} ${badge(ZONE[d.zone], ZONE_LABEL[d.zone])}` : null, tr("未同步"))}
+      ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
+      ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
+  }
+  function friendCardV2(m, kinds) {
+    const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
+    const hid = (scope) => (seen ? seen.hidden.includes(scope) : (m.hidden || []).includes(scope));
+    const sc = hid("scores") ? null : m.scores, trained = !hid("training") && m.trained;
+    const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
+    let hero, body = "";
+    if (!sc) hero = `<span class="fd2-off">${esc(tr("未共享"))}</span>`;
+    else if (!sc.synced_today) {
+      hero = `<span class="fd2-off">${esc(sc.last_date ? tr("未同步 · 上次 {d}", { d: shortDay(sc.last_date) }) : tr("未同步"))}</span>`;
+    } else {
+      hero = sc.recovery != null
+        ? `<span class="fd2-rec"><b class="tone-${ZONE[sc.zone] || "none"}">${sc.recovery}</b>${sc.label ? `<i>${esc(sc.label)}</i>` : ""}</span>`
+        : `<span class="fd2-off">—</span>`;
+    }
+    if (sc?.synced_today) {
+      body += `<div class="fd2-nums"><span><b>${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
+        <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
+        <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span>
+        ${trained ? `<span class="fd2-trained">${badge("plain", tr("已训练"))}</span>` : ""}</div>`;
+    } else if (trained) body += `<div class="fd2-nums">${badge("plain", tr("已训练"))}</div>`;
+    if (sc) body += recoveryStrip(m, sc);
+    const note = !seen ? "" : seen.count === 0 ? tr("还没有朋友看到你，加入圈子后他们才看得到")
+      : seen.varies ? tr("不同朋友看到的范围不一样，这里按所有人的并集显示") : "";
+    const foot = m.self
+      ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
+      : `<div class="fd2-foot">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
+    return `<div class="card fd-card fd2${m.self ? " fd2-self" : ""}${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
+      ${m.self ? `<div class="fd2-mark">${badge("plain", tr("朋友看到的你"))}</div>` : ""}
+      <div class="fd2-head"><span class="fd-av">${esc((m.display_name || "?").slice(0, 1).toUpperCase())}</span>
+        <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${hero}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
+      ${body}${note ? `<p class="fd2-note">${esc(note)}</p>` : ""}${foot}</div>`;
+  }
   function friendCard(m, kinds) {
+    if (cardV2()) return friendCardV2(m, kinds);
     const sc = m.scores;
     const nums = sc ? `<div class="fd-nums">
         <span><b class="${sc.zone ? `tone-${ZONE[sc.zone]}` : ""}">${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
@@ -2983,9 +3034,10 @@
     if (n) n.onclick = () => window.BodyCircles?.open();
     if (j) j.onclick = () => window.BodyCircles?.open();
     for (const el of $$("[data-member]", view)) {
-      el.onclick = (e) => { if (!e.target.closest("[data-nudge]")) viewMember(Number(el.dataset.member)); };
-      el.onkeydown = (e) => { if (e.key === "Enter") viewMember(Number(el.dataset.member)); };
+      el.onclick = (e) => { if (!e.target.closest("[data-nudge], [data-fday]")) viewMember(Number(el.dataset.member)); };
+      el.onkeydown = (e) => { if (e.key === "Enter" && e.target === el) viewMember(Number(el.dataset.member)); };
     }
+    for (const b of $$("[data-fday]", view)) b.onclick = (e) => { e.stopPropagation(); friendDaySheet(Number(b.dataset.fuid), Number(b.dataset.fday)); };
     for (const b of $$("[data-nudge]", view)) b.onclick = async (e) => {
       e.stopPropagation();
       if (b.getAttribute("aria-pressed") === "true") return;
