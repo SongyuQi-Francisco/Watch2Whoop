@@ -1,4 +1,4 @@
-"""One-tap consent (rollout flag consent_one_tap; profile/consent.py, profile/api.py, ai/fallback.py, migration 665).
+"""One-tap consent (rollout flag consent_one_tap; profile/consent.py, profile/api.py, ai/fallback.py, migration 680).
 
 One 「开始使用」 tap records the data consent (method one_tap, current version, the page's language) and the Jarvis
 (fallback AI) consent (method one_tap, current CONSENT_VERSION) in one transaction. Covered here: the flag off keeps the old
@@ -143,7 +143,7 @@ def test_methods_allowed_by_the_database(dsn):
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute("INSERT INTO user_consents (user_id, version, method) VALUES (%s, 'x', 'tap')", (uid,))
         conn.execute("INSERT INTO ai_fallback_consents (user_id, version) VALUES (%s, 'x')", (uid,))
-        assert rows(conn, "ai_fallback_consents", uid)[0]["method"] == "app"   # rows from before migration 665
+        assert rows(conn, "ai_fallback_consents", uid)[0]["method"] == "app"   # rows from before migration 680
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute("INSERT INTO ai_fallback_consents (user_id, version, method) VALUES (%s, 'x', 'paper')", (uid,))
         with pytest.raises(ValueError):

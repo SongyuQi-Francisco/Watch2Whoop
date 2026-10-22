@@ -14,7 +14,7 @@ Limits (numbers and sources in fallback_params.py):
 Privacy: a separate opt-in consent (ai_fallback_consents) before the first use, because the data goes to DeepSeek (servers in China).
 With the rollout flag consent_one_tap it is given on the one-tap first-run screen together with the data consent
 (profile/consent.py, one_tap_needed()) or on a one-tap Jarvis sheet; the text (CONSENT_POINTS) and CONSENT_VERSION are the
-same, only ai_fallback_consents.method says how (app / one_tap, migration 665).
+same, only ai_fallback_consents.method says how (app / one_tap, migration 680).
 Tools only ever read the caller's own data: the `user` argument is removed from the schemas and forced to "me" (no shares).
 The key file is read only when needed and never logged or returned.
 """
@@ -251,7 +251,7 @@ def consent(conn: psycopg.Connection, user_id: int) -> dict | None:
                            ORDER BY accepted_at DESC LIMIT 1""", (user_id, CONSENT_VERSION)).fetchone()
 
 
-CONSENT_METHODS = ("app", "one_tap")   # ai_fallback_consents.method (migration 665)
+CONSENT_METHODS = ("app", "one_tap")   # ai_fallback_consents.method (migration 680)
 
 
 def accept_consent(conn: psycopg.Connection, user_id: int, version: str, user_agent: str | None = None,

@@ -87,7 +87,7 @@ def display_text(language: str | None = None) -> str:
 
 BASE_SETTING = "consent_base_version"
 ONE_TAP_FLAG = "consent_one_tap"
-METHODS = ("app", "one_tap", "paper")   # user_consents.method (CHECK in migrations 140 / 665)
+METHODS = ("app", "one_tap", "paper")   # user_consents.method (CHECK in migrations 140 / 680)
 
 
 def vkey(v: str) -> tuple:
