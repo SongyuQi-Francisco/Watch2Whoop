@@ -7,6 +7,10 @@
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
+- GET  /v1/users/{user}/data-status -> per health data type what the server received (data_status.py, issue #163): the
+  Today page's 「我 → 数据状态」 (flag data_status). Own data only, read scope is enough.
+- GET  /v1/ingest/data-status -> the same for the Watch2Whoop app's sync page: Bearer only, its account token or its
+  upload-only token (like GET /v1/ingest/healthkit; dates and counts, no health values).
 """
 from typing import Literal
 
@@ -15,7 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
-from . import history, refresh
+from ..rawdata.api import ingest_user
+from . import data_status, history, refresh
 
 router = APIRouter(tags=["sync"])
 
@@ -58,3 +63,15 @@ def put_health_history(user: str, body: HealthHistoryIn, conn=Depends(get_conn),
 @router.get("/v1/users/{user}/health-history")
 def get_health_history(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     return history.status(conn, _own(viewer, user))
+
+
+@router.get("/v1/users/{user}/data-status")
+def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的数据状态", "You can only see your own data status"))
+    return data_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/ingest/data-status")
+def get_ingest_data_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
+    return data_status.collect(conn, viewer["id"])
