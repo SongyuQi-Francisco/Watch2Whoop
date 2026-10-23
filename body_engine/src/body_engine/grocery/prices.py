@@ -365,6 +365,33 @@ def list_products(conn: psycopg.Connection, user_id: int, q: str | None = None) 
     return [{**product_view(r), "offer": offer_of(r, today, tz)} for r in _with_latest(conn, user_id, q=q)]
 
 
+def offers_for(conn: psycopg.Connection, user_id: int, product: dict | None = None, q: str | None = None,
+               limit: int = 6) -> list[dict]:
+    """This user's own recorded prices for one product (connected stores only), cheapest first: the library product `product`
+    (matched the way the shopping list matches it), or without one the linked store products whose name / barcode matches `q`.
+    Only this user's observations (never the public catalogue's); [] when nothing was recorded. The product card's store rows."""
+    stores = _connected(conn, user_id)
+    if not stores or (product is None and not (q or "").strip()):
+        return []
+    tz = _tz(conn, user_id)
+    today = datetime.now(tz).date()
+    cands = _with_latest(conn, user_id, stores=stores, q=None if product else q)
+    rows = _match(cands, product["name"], product) if product else cands
+    offers = [o for o in (offer_of(r, today, tz) for r in rows) if o]
+    offers.sort(key=lambda o: (o["unit_price"] is None, o["unit_price"] if o["unit_price"] is not None else o["price"], o["age_days"]))
+    return offers[:limit]
+
+
+def purchase_points(conn: psycopg.Connection, user_id: int, product_id: int) -> list[dict]:
+    """What the user actually paid for a library product that no store product was linked to (ticking a list line without a
+    recorded price): estimated amounts left out. Oldest first, like _points."""
+    return [{"date": r["bought_on"].isoformat(), "price": float(r["unit_paid"]), "special": "special" if r["on_special"] else None,
+             "kind": "paid", "store": r["store"]}
+            for r in conn.execute("""SELECT bought_on, unit_paid, on_special, store FROM grocery_purchases
+                                     WHERE user_id = %s AND product_id = %s AND store_product_id IS NULL AND unit_paid IS NOT NULL
+                                       AND NOT paid_estimated ORDER BY bought_on, id""", (user_id, product_id))]
+
+
 # ---------------------------------------------------------------- the shopping list: which store, totals, savings
 def _match(cands: list[dict], name: str, product: dict | None) -> list[dict]:
     if product and product.get("store_sku"):

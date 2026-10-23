@@ -11,6 +11,8 @@ reopened conversation draws them again. The model gets one line back (summary())
 
 Behind the second flag jarvis_cards_v2 (needs jarvis_rich too) the tool takes more types, built in cards_food.py (diet) and
 the meal card gets per-entry buttons; with it off, the tool, the prompt and every card are exactly as before.
+Behind the third flag product_card (needs jarvis_cards_v2) the tool also takes type=product (cards_product.py, FB-12): one product's
+nutrition, the user's own recorded store prices and price history, and what is at home; with it off, nothing changes.
 
 Payload: {"v": 1, "type": ..., "actions": [...]}. Actions are either
   {"kind": "open", "page": one of OPEN_PAGES}                       -> the page goes there (no URL ever comes from the model);
@@ -19,6 +21,7 @@ Payload: {"v": 1, "type": ..., "actions": [...]}. Actions are either
 Data of a card is a snapshot from when it was shown; the pages it opens show the live state.
 """
 import json
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -28,11 +31,13 @@ from .. import queries, sparky_client
 from ..assistant.tools import Tool
 from ..rollout import flags
 from ..toolspec import nullable, schema
-from . import cards_body, cards_food
+from . import cards_body, cards_food, cards_product
 
 NAME = "show_card"
 FLAG = "jarvis_rich"
 FLAG_V2 = "jarvis_cards_v2"
+FLAG_PRODUCT = cards_product.FLAG   # product_card
+PRODUCT_TYPE = cards_product.PRODUCT
 TYPES = ("training", "meal", "metric", "sleep", "actions", "muscle")
 FOOD_TYPES = ("goals", "suggest", "recipe", "recipes", "templates", "shopping")
 BODY_TYPES = ("recovery", "strain", "stress", "healthspan", "trend", "weight", "lab", "supplements", "water", "journal",
@@ -53,7 +58,8 @@ OPEN_PAGES = ("today", "trends", "record.training", "food", "sleep", "profile", 
 SEND_KEYS = ("adjust_training", "next_meal", "explain_trend", "analyze_muscles",
              "more_meals", "log_recipe", "recipe_steps", "shopping_plan", "undo_meal",   # v2
              "explain_recovery", "explain_stress", "improve_body_age", "improve_vo2max", "explain_monitor", "explain_lab",
-             "log_supplements", "explain_journal", "explain_report", "explain_sleep")
+             "log_supplements", "explain_journal", "explain_report", "explain_sleep",
+             "log_product", "record_price")   # product card (flag product_card)
 # v2 per-row buttons the page draws on a card's rows (their text is built by the page from the row's own fields)
 ENTRY_ACTIONS = ("portion", "delete")
 MAX_DAYS, DEFAULT_DAYS = 90, 14
@@ -88,6 +94,13 @@ PROMPT_V2 = (
     "讲解某个数值或某天的情况时，先发卡片，再用两三句话解释。"
 )
 
+PROMPT_PRODUCT = (
+    "商品卡：用户保存了商品、问某个商品的价格 / 营养 / 哪家有卖 / 家里还有没有 → 先调 show_card(type=product)，"
+    "id=商品库里的商品 id（find_products / save_product 返回的），不知道 id 就用 metric=商品名或条码，再用一两句话说结论。"
+    "卡片只显示有数据的块（营养、各超市最近价、价格走势、家里库存），价格都是用户自己记录的小票 / 价签截图，不是实时价，"
+    "出这张卡不需要联网，不要为它去 Coles / Woolworths 网站查价（它们拦截自动访问，不要尝试绕过）；卡片上没有价格时，请用户「拍价签或小票发给我，我帮你记价格」，收到后用 record_store_prices 记。"
+)
+
 TOOL = Tool(
     name=NAME,
     description="给用户显示一张卡片。training=某天训练；muscle=肌肉图（range）；meal=饮食；"
@@ -120,6 +133,11 @@ TOOL_V2 = Tool(
     scope="", group="ui",
 )
 
+# Same tool with type=product (flag product_card): a separate definition, so with the flag off the definition sent is TOOL_V2 as before
+TOOL_PRODUCT = replace(TOOL_V2, input_schema={**TOOL_V2.input_schema, "properties": {
+    **TOOL_V2.input_schema["properties"],
+    "type": {"type": "string", "enum": [*TYPES, *TYPES_V2, PRODUCT_TYPE]}}})
+
 # write tool -> the card it shows after a successful run: (type, how to find the date in its args)
 AUTO = {
     "log_food": ("meal", lambda a: ((a.get("items") or [{}])[0] or {}).get("date")),
@@ -145,6 +163,10 @@ AUTO_V2 = {
     "add_supplement": ("supplements", lambda a: {}),
     "update_supplement": ("supplements", lambda a: {}),
     "add_lab_results": ("lab", lambda a: _first_lab(a)),
+    # the product card (flag product_card; build refuses without it): after saving a product, or recording the price of one
+    "save_product": ("product", lambda a: _product_spec(a.get("product_id"), a.get("barcode") or a.get("name"))),
+    "record_store_prices": ("product", lambda a: _product_spec(None, (a["items"][0] or {}).get("name"))
+                            if len(a.get("items") or []) == 1 else None),
 }
 # ... and reads, for the fallback AI only (a weak model that rarely calls show_card itself; ai/chat.py): the card of what it
 # just looked up. A strong model gets the prompt instead, so its reads (often several days, for its own analysis) stay quiet.
@@ -170,7 +192,16 @@ READ_AUTO = {
     "get_hr_zones": ("hr_zones", lambda a: {"date": a.get("end")}),
     "get_vo2max": ("vo2max", lambda a: {"date": a.get("end")}),
     "get_health_monitor": ("monitor", lambda a: {"date": a.get("date")}),
+    "find_products": ("product", lambda a: _product_spec(None, a.get("q"))),
+    "get_price_history": ("product", lambda a: _product_spec(None, a.get("q"))),
 }
+
+
+def _product_spec(product_id, text) -> dict | None:
+    """show_card arguments for a product: its library id, else a name / barcode; None when the call named neither."""
+    if product_id is None and not (isinstance(text, str) and text.strip()):
+        return None
+    return {"id": product_id, "metric": text.strip() if isinstance(text, str) and text.strip() else None}
 
 
 def _first_lab(a: dict) -> dict | None:
@@ -186,12 +217,18 @@ def v2_enabled(conn: psycopg.Connection, user_id: int) -> bool:
     return enabled(conn, user_id) and flags.enabled(conn, user_id, FLAG_V2)
 
 
-def tool(v2: bool) -> Tool:
-    return TOOL_V2 if v2 else TOOL
+def product_enabled(conn: psycopg.Connection, user_id: int) -> bool:
+    return v2_enabled(conn, user_id) and flags.enabled(conn, user_id, FLAG_PRODUCT)
 
 
-def prompt(v2: bool) -> str:
-    return f"{PROMPT}\n{PROMPT_V2}" if v2 else PROMPT
+def tool(v2: bool, product: bool = False) -> Tool:
+    return TOOL_PRODUCT if v2 and product else TOOL_V2 if v2 else TOOL
+
+
+def prompt(v2: bool, product: bool = False) -> str:
+    if not v2:
+        return PROMPT
+    return f"{PROMPT}\n{PROMPT_V2}" + (f"\n{PROMPT_PRODUCT}" if product else "")
 
 
 def _day(conn, uid: int, value) -> date:
@@ -375,10 +412,14 @@ def build(conn: psycopg.Connection, uid: int, a: dict, v2: bool = False, auto: b
     """The card for show_card's arguments (the user's own data only). ValueError / PermissionError / SparkyError on failure.
     v2: the jarvis_cards_v2 types and buttons; auto: the card follows a write (cards.AUTO), not a show_card call."""
     kind = a.get("type")
-    types = (*TYPES, *TYPES_V2) if v2 else TYPES
+    types = (*TYPES, *TYPES_V2, PRODUCT_TYPE) if v2 else TYPES
     if kind not in types:
         raise ValueError(f"type 只能是 {' / '.join(types)}")
-    if kind in TYPES_V2:
+    if kind == PRODUCT_TYPE:
+        if not flags.enabled(conn, uid, FLAG_PRODUCT):
+            raise ValueError("商品卡还没有对这个用户开放")
+        card = cards_product.product(conn, uid, a.get("id"), a.get("metric"))
+    elif kind in TYPES_V2:
         card = _build_v2(conn, uid, kind, a)
     elif kind == "actions":
         card = _actions(a.get("buttons"))
@@ -427,6 +468,8 @@ def summary(card: dict) -> str:
         return cards_food.summary(card)
     if t in BODY_TYPES:
         return cards_body.summary(card)
+    if t == PRODUCT_TYPE:
+        return cards_product.summary(card)
     if t == "actions":
         return f"已显示 {len(card['actions'])} 个按钮；用户点了会作为一条新消息发回。"
     if t == "training":

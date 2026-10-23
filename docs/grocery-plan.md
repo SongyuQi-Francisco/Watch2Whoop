@@ -111,6 +111,8 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 - **统计**（`prices.stats`，接口 `GET …/store-products/{id}`，工具 `get_price_history`）：价格曲线（观察 + 实付）、最低 / 平均 / 最近、打过几次折、大约多久一次；上次买的 verdict：和这个用户自己 180 天的平均比，低 8% 以上 = 买得便宜、高 12% 以上 = 买贵了；最近 21 天见过特价、自己没赶上特价且贵 25% 以上也算买贵了（阈值在 `grocery/params.py`）。
 - **图片不复制**：只存超市图片的 URL 引用，不下载、不存储；今天页的 CSP 只加载自己的图片，所以不显示。商品图版权归超市。用户截图的缩略图这一期没做。
 
+**Jarvis 里的商品卡（FB-12，灰度开关 `product_card`，`docs/ai-assistant-plan.md` 9.19）**：保存 / 问到某个商品时发一张卡：每 100 g 营养和供能占比、各超市**用户自己记录的**最近价格（几天前、特价、最低）、价格走势（`prices.stats`，3 天以上才画线）、家里库存，按钮「记一次」和「拍价签 / 小票」。价格只来自这一节的来源（`record_store_prices` 写回的小票 / 价签截图 / 用户自己 AI 看到的商品页、勾清单时的实付），不用 grocery-sync 的每周目录，也不去访问 Coles / Woolworths；没有价格的块不显示，引导用户拍价签或小票。
+
 **页内对话联网**：API 类（Anthropic / OpenAI / Gemini）可以在「AI 设置」里打开各家**官方**的联网工具（`ai_providers.web_tools`，默认关，费用算在用户自己的 key 上）：Anthropic `web_search_20260209` + `web_fetch_20260209`（老模型只有 `web_search_20250305`，`pause_turn` 自动续），OpenAI Responses `web_search`，Gemini `google_search` + `url_context`。托底 AI、OpenAI 兼容接口用服务器的 `web_search` / `web_fetch`（灰度开关 `ai_web`，#150）。订阅类（Claude / ChatGPT / Gemini app）本来就有自己的联网，通过 MCP 用同样的工具。
 
 **接口**（scope nutrition，读别人的要 shares 授权，写只能写自己的）：`GET …/grocery/context`、`POST …/grocery/store-prices`、`GET …/grocery/store-products?q=`、`GET …/grocery/store-products/{id}`。今天页「采购」：行上「x 天前」和特价 / 半价角标，已买的行显示「买得便宜 / 买贵了」，统计下面是每家合计、特价省多少、缺价 / 旧价几样；新的「价格记录」列出自己的超市商品，点开看价格走势、最低 / 平均 / 最近、打折频率、上次买的判断。
