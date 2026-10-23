@@ -43,8 +43,17 @@ STRAIN_NEED_MIN_PER_POINT = 3.0        # ... adds 3 minutes per point (strain 21
 
 # ---------- recovery ----------
 HRV_KIND = "sdnn"                      # "sdnn" (Apple's value) or "rmssd" (computed from heartbeat_series, rawdata/hrv.py).
-                                       # Switch only after the user has seen `body-engine hrv-compare` (docs/raw-data-plan.md);
-                                       # on switching, bump ALGO_VERSION and recompute the whole range; never mix the two
+                                       # The default for every user. Watch2Whoop picks the kind per user (scores/hrv_kind.py,
+                                       # issue #117): rmssd only for a user switched on for it AND with enough beat-to-beat data
+                                       # (below); one kind per user over the whole history, never mixed. Each stored row and its
+                                       # details carry hrv_kind, so ALGO_VERSION is not bumped for the per-user choice
+# Enough beat-to-beat data to switch a user to rmssd (#117). Design choice, v1 value, not yet validated: RMSSD needs the
+# app's RawSync uploads to keep arriving (#117: history from export.xml alone stops at the export date), so the check is
+# about recent, regular coverage. A night counts when it has >= 1 RMSSD reading between RMSSD_NIGHT_HOURS (local time).
+RMSSD_COVERAGE_DAYS = 28               # look back this many nights from the scoring end
+RMSSD_MIN_NIGHTS = 21                  # ... at least this many of them (75%) with an RMSSD reading
+RMSSD_MAX_GAP_DAYS = 3                 # and the newest RMSSD reading at most this many days before the scoring end
+RMSSD_NIGHT_HOURS = (18, 12)           # a reading from 18:00 to 12:00 the next day belongs to the night ending that morning
 BASELINE_DAYS = 60
 MIN_BASELINE_NIGHTS = 14               # the recovery score needs a full 14 nights of HRV
 RHR_WINDOW = timedelta(minutes=5)      # that night's resting heart rate = lowest 5-minute mean during sleep
