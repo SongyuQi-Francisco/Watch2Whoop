@@ -504,16 +504,17 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
     rich = cards.enabled(conn, viewer["id"])
     v2 = rich and cards.v2_enabled(conn, viewer["id"])
     scoped = fb and scope_guard.on(conn, viewer["id"])   # jarvis_scope_guard: the scope rules join the system prompt
+    product = v2 and cards.product_enabled(conn, viewer["id"])   # FB-12: show_card also takes type=product
     shown: set = set()   # cards of this turn (an automatic card does not repeat one already shown)
     if rich:
-        tools = [*tools, cards.tool(v2)]
+        tools = [*tools, cards.tool(v2, product)]
     if scrub:
         tools = [_scrub_tool(t) for t in tools]
     rounds, turn_cost = (fp.MAX_ROUNDS if fb else MAX_ROUNDS), 0.0
     for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         if rich:
-            system = f"{system}\n\n{cards.prompt(v2)}"
+            system = f"{system}\n\n{cards.prompt(v2, product)}"
         if scoped:
             system = f"{system}\n\n{scope_guard.PROMPT}"
         if scrub:

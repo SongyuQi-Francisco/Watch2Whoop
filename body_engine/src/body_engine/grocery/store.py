@@ -374,6 +374,25 @@ def match_product(products: list[dict], name: str) -> dict | None:
     return None
 
 
+def find_product(conn: psycopg.Connection, user_id: int, product_id: int | None = None, q: str | None = None) -> dict | None:
+    """One of this user's library products (the raw row): by id (LookupError when it is not theirs), else by q: a barcode,
+    then the name / matches (match_product), then every word of q somewhere in the name, brand or matches. None = no such product."""
+    if product_id is not None:
+        return _product_row(conn, user_id, product_id)
+    text = (q or "").strip()
+    if not text:
+        return None
+    rows = _products(conn, user_id)
+    code = re.sub(r"\s", "", text)
+    if re.fullmatch(r"[0-9]{6,14}", code):
+        return next((r for r in rows if r["barcode"] == code), None)
+    hit = match_product(rows, text)
+    if hit:
+        return hit
+    words = [w for w in re.findall(r"[a-z0-9]+|[一-鿿]+", text.lower()) if w]
+    return next((r for r in rows if words and all(w in _key(" ".join([r["name"], r["brand"] or "", *r["matches"]])) for w in words)), None)
+
+
 # ---------------------------------------------------------------- pantry
 def _pantry_view(r: dict, tz: ZoneInfo) -> dict:
     """days_ago: whole days since the last change in the user's time zone (the Today page shows 「x 天前更新」).

@@ -443,6 +443,16 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
   - **和页面长得一样**：服务端调用页面接口背后的同一个函数、保留页面组件读的字段；`app.js` 导出 `window.BodyCards`（`cardHtml`、`recoveryTrendHtml`、`strainTrendHtml`、`hrZonesHtml`、`stressHtml`、`monitorHtml`、`healthspanHtml` / `healthspanDetailHtml`、`labCardHtml`、`reportBodyHtml`、`behaviorHtml`、`ring`），聊天里的卡片直接用它们画；这些组件自带的弹层用 `BodyCards.detach` 挂在元素上，页面重新渲染后照样能点。卡片按钮打开对应页面：`healthspan` →「我」、`lab` → 那一项的化验弹层、`trends.report` → 趋势 → 报告、`supplements` → 补剂弹层、`data_status` → 数据状态弹层。
   - 读工具自动卡（只给托底 AI）也覆盖这些：`get_sleep` / `get_sleep_details` → sleep，`get_scores` → recovery，`get_strain_coach` → strain，`get_stress` → stress，`get_healthspan`，`get_weight`，`get_lab_history` → lab，`list_supplements`，`analyze_journal` → journal，`get_report`，`get_hr_zones`，`get_vo2max`，`get_health_monitor` → monitor；写工具 `log_water` → water，`add_supplement` / `update_supplement` → supplements，`add_lab_results` → 第一项的 lab。没有心电图 / 逐拍心跳的卡片，托底 AI 通过卡片拿不到这两类数据。
   - 两份设定（`system_prompt.md`、`system_prompt_lite.md`）各加一条：有 `show_card` 时讲解数值先发卡片，再两三句解释。远程 MCP 没有这个工具，这条不起作用。
+- **商品卡（2026-10-24，FB-12；`ai/cards_product.py`，灰度开关 `product_card`，要 `jarvis_rich` 和 `jarvis_cards_v2` 也开着）**：保存商品或问到某个商品的价格 / 营养时发一张 `product` 卡。开关关着时 `show_card` 还是 `TOOL_V2`、提示里没有商品卡那一段（`cards.PROMPT_PRODUCT`）、`build` 拒绝 `product`、写 / 读工具也不自动出，所以现有的工具定义快照不变；开着时工具换成 `cards.TOOL_PRODUCT`（只是 type 的枚举多一个 `product`），参数用现有的：`id` = 商品库里的商品 id，或 `metric` = 商品名 / 条码。
+  - **只用用户自己的数据**，没有数据的块不画、不编：
+    - 营养：商品库的每 100 g（ml）热量和蛋白 / 碳水 / 脂肪（有饱和脂肪、糖、钠也列出）、三大营养素的供能占比条（4 / 4 / 9 kcal/g，三项都有才画）、每个（`piece_g`）或整包的热量和宏量、高糖 / 高钠 / 高饱和脂肪标签；来自条码查询的营养保留 Open Food Facts（ODbL）署名（`nutrition_source`）。
+    - 价格：各超市（已连接的）最近一条**用户自己记录的**价格（小票 / 价签截图 / 他自己的 AI 在商品页看到的，`record_store_prices`），带规格、单价、特价和原价、来源和「x 天前」，7 天以上标旧价，同单位单价能比较时（至少两条新价）标「最低」；再加商品库里随商品存的价格（那家超市没有记录时）。**不读 grocery-sync 的每周目录、不访问任何超市网站**：Coles / Woolworths 有反爬虫防护，grocery-sync 2026-10-24 试跑一家 403、另一家拿不到数据（`ai/web/params.NO_FETCH_HOSTS`），我们不绕过；没有记录就不显示价格，卡片上写「拍一张价签或小票发给我，我帮你记价格」，「拍价签 / 小票」按钮打开相机 / 相册，照片连同「这是 x 的价签或小票」一起发给 Jarvis（没有视觉的模型不显示这个按钮）。
+    - 价格走势：沿用 `prices.stats`（观察 + 实付），取天数最多的那家（或没有绑定超市价时用实付记录）；至少 2 天才有这一块，**3 天以上才画折线**（`TREND_MIN_POINTS`），不够只显示最低 / 平均 / 最近价；特价日和实付日各有一个点，另有打折次数和上次买的判断（买得便宜 / 买贵了）。
+    - 家里库存：商品库商品绑定的、或名字和商品名 / `matches` 完全一致的存货行，临近 / 已过保质期有标签。
+    - 「记一次」：发一条消息让 Jarvis 按商品库的营养走现有的记饮食流程（`log_food`），有每个 / 整包的份量就带上；没有营养数据时不显示这个按钮。
+  - **自动出卡**：`save_product`（`AUTO_V2`，有条码用条码找、否则用名字）、只带一样东西的 `record_store_prices`（整张小票不出卡）；托底 AI 查了 `find_products`（带关键词）/ `get_price_history`（带关键词）也自动出（`READ_AUTO`）；强模型靠提示自己决定。卡片按用户自己的数据找，别人的商品 id 和不存在的回答一样（`没有这个商品`）。
+
+测试在 `tests/test_ai_product_card.py`（构造、各块的取舍、隔离、目录行不进卡片、开关）和 `tests/test_ai.py` 的商品卡几条（页内对话）。
 
 ### 9.20 页内对话联网：服务器的 web_search / web_fetch（2026-10-22，#150；`ai/web/`、迁移 `600_ai_web.sql`，灰度开关 `ai_web`）
 **问题**：采购（查价 → `save_product` / `record_store_prices` → 清单）靠 AI 自己联网。用 Claude / ChatGPT 连接器（MCP）和 Anthropic / OpenAI / Gemini 自己 key 的人有联网能力；托底 AI（管理员的 DeepSeek）和 `openai_compatible` 没有，于是永远用不了采购清单。

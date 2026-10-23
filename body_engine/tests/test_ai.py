@@ -688,6 +688,71 @@ def test_v2_meal_card_after_a_log_can_undo(dsn, world, monkeypatch, v2):
         assert card["type"] == "meal" and {"kind": "send", "key": "undo_meal"} not in card["actions"]
 
 
+# ---------------------------------------------------------------- product card (FB-12, flag product_card; ai/cards_product.py)
+@pytest.fixture
+def product_card(dsn, v2):
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG_PRODUCT, "all", actor="test")
+    yield
+    with db(dsn) as c:
+        flags.set_flag(c, cards.FLAG_PRODUCT, "off", actor="test")
+
+
+def _save_product_args(**kw):
+    nutrition = {"kcal": 97, "protein_g": 9, "carbs_g": 4, "fat_g": 5, "sat_fat_g": None, "sugar_g": None, "sodium_mg": None}
+    return {"product_id": None, "name": "测试希腊酸奶", "brand": "Chobani", "store": None, "category": "dairy_eggs",
+            "package_size": 500, "package_unit": "g", "piece_g": None, "price": None, "currency": None, "nutrition": nutrition,
+            "purine_level": None, "red_meat": None, "barcode": None, "matches": None, "note": None, "product_url": None,
+            "nutrition_source": None, **kw}
+
+
+def test_product_card_needs_its_own_flag(client, world, setup, v2):
+    ids, tok = world
+    FakeAdapter.script = [{"tool_calls": [{"id": "sp", "name": "save_product", "args": _save_product_args()},
+                                          {"id": "p1", "name": "show_card", "args": SC(type="product", metric="测试希腊酸奶")}]},
+                          {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "存一下这个酸奶").text)
+    first = FakeAdapter.calls[0]
+    assert cards.PROMPT_PRODUCT not in first["system"] and first["system"].endswith(cards.PROMPT_V2)   # exactly as before
+    assert "card" not in [e for e, _ in evs] and ("tool", {"name": "save_product", "status": "done"}) in evs
+    results = {r["id"]: r for r in FakeAdapter.calls[1]["history"][-1]["content"]}
+    assert results["p1"]["is_error"] and "还没有对这个用户开放" in results["p1"]["content"]
+
+
+def test_product_card_after_save_product_and_on_request(client, world, setup, dsn, product_card):
+    ids, tok = world
+    FakeAdapter.script = [{"tool_calls": [{"id": "sp", "name": "save_product", "args": _save_product_args(name="测试希腊酸奶二号")}]},
+                          {"tool_calls": [{"id": "p1", "name": "show_card", "args": SC(type="product", metric="测试希腊酸奶二号")}]},
+                          {"text": "好"}]
+    evs = sse(chat(client, tok["A"], "存一下这个酸奶，再给我看看").text)
+    first = FakeAdapter.calls[0]
+    assert first["system"].endswith(cards.PROMPT_PRODUCT) and first["tools"][-1] == cards.NAME
+    got = [d["card"] for e, d in evs if e == "card"]
+    assert [c["type"] for c in got] == ["product", "product"]            # after the save, and the one the model asked for
+    for c in got:
+        assert c["name"] == "测试希腊酸奶二号" and c["nutrition"]["per100"]["kcal"] == 97 and c["nutrition"]["serving"]["kind"] == "pack"
+        assert c["stores"] == [] and c["history"] is None and c["pantry"] == []          # nothing recorded: the blocks are not there
+        assert {"kind": "send", "key": "record_price"} in c["actions"] and {"kind": "send", "key": "log_product"} in c["actions"]
+    last = {r["id"]: r for r in FakeAdapter.calls[2]["history"][-1]["content"]}["p1"]
+    assert last["content"].startswith("已显示商品卡「测试希腊酸奶二号」") and "拍价签或小票" in last["content"] and not last["is_error"]
+    with db(dsn) as c:
+        rows = c.execute("SELECT tool, card IS NOT NULL AS has FROM ai_tool_calls WHERE conversation_id = %s ORDER BY id",
+                         (evs[0][1]["id"],)).fetchall()
+    assert [(r["tool"], r["has"]) for r in rows] == [("save_product", True), ("show_card", True)]   # stored: a reopened chat draws them
+
+
+def test_product_card_for_the_fallback_after_a_lookup(dsn, world, product_card):
+    from body_engine.grocery import store
+    ids, _ = world
+    from body_engine.ai import chat as chat_mod
+    with db(dsn) as c:
+        store.save_product(c, ids["A"], _save_product_args(name="Lookup Yoghurt", brand="X", nutrition={"kcal": 60, "protein_g": 5}))
+        reads = [(0, "find_products", {"q": "lookup yoghurt", "category": None}), (0, "find_products", {"q": None, "category": "snacks"})]
+        assert list(chat_mod._auto_cards(c, ids["A"], reads, v2=True, reads=False)) == []
+        got = list(chat_mod._auto_cards(c, ids["A"], reads, v2=True, reads=True))
+        assert [e["data"]["card"]["type"] for e in got] == ["product"] and got[0]["data"]["card"]["name"] == "Lookup Yoghurt"
+
+
 def test_v2_body_cards_build_without_data(dsn, world, v2):
     """Every body card builds for a user with (almost) no data, or fails with a ValueError the model can read."""
     ids, _ = world

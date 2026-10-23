@@ -94,6 +94,50 @@ def validity(rows: list[dict], truth: dict[date, float] | None = None, illness: 
     return out
 
 
+LOAD_OUTCOMES = ("recovery", "hrv_night_ln", "rhr_night")
+
+
+def load_regression(rows: list[dict], weekday: bool = False, outcomes=LOAD_OUTCOMES) -> dict:
+    """Construct validity, regression version (docs/scoring-validation.md 2.4): for each outcome on day D+1, OLS on the
+    strain of day D and the sleep hours of the night before D+1 (+ weekday of D when `weekday`), Newey-West standard errors
+    (7-day lag, records/regression.py), Benjamini-Hochberg over every strain and sleep coefficient of the call.
+    Returns {outcome: {"n", "strain": {...}, "sleep_h": {...}}} with estimate, ci95, p, q per coefficient."""
+    from ..records import analysis_params as AP
+    from ..records import regression as RG
+
+    by = {r["date"]: r for r in rows}
+    out, tests = {}, []
+    for key in outcomes:
+        days, y, x = [], [], []
+        for d, r in by.items():
+            nxt = by.get(d + timedelta(days=1))
+            if nxt is None or r.get("strain") is None or nxt.get(key) is None or nxt.get("sleep_actual_min") is None:
+                continue
+            row = [r["strain"], nxt["sleep_actual_min"] / 60]
+            if weekday:
+                row += [1.0 if d.weekday() == k else 0.0 for k in range(1, 7)]
+            days.append(d)
+            y.append(nxt[key])
+            x.append(row)
+        names = ["strain", "sleep_h"] + ([f"wd{k}" for k in range(1, 7)] if weekday else [])
+        if len(y) - len(names) - 1 < AP.REG_MIN_DF:
+            out[key] = {"n": len(y), "insufficient": True}
+            continue
+        try:
+            fit = RG.ols_hac(days, y, x, names)
+        except RG.Singular:
+            out[key] = {"n": len(y), "collinear": True}
+            continue
+        out[key] = {"n": fit["n"]}
+        for name in ("strain", "sleep_h"):
+            c = fit["coef"][name]
+            out[key][name] = {"estimate": c["estimate"], "ci95": c["ci95"], "p": c["p"]}
+            tests.append(out[key][name])
+    for t, q in zip(tests, RG.bh([t["p"] for t in tests])):
+        t["q"] = q
+    return out
+
+
 def agreement(a: list[dict], b: list[dict], key: str = "recovery") -> dict:
     """Two scorings of the same days: coverage, correlation, zone agreement and 3×3 matrix (rows = a, columns = b),
     Bland-Altman mean difference (b − a) and 95% limits of agreement."""
