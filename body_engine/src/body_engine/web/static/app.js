@@ -2212,7 +2212,8 @@
   // The body status card and observation notes come from the body butler's long-term memory (docs/ai-assistant-plan.md 2.2). The detailed profile text is the butler's underlying memory,
   // not shown or edited in the front end; here only status (short status items) and observation notes (deletable) are shown.
   // GET /memory → {status: [{key, label, value, unit, tone, trend, good_direction, group, spark, note, updated_at, source}],
-  //               observations: [{id, text, created_at, source, kind, valid_until}], expired_recent, profile_card (unused)};
+  //               observations: [{id, text, created_at, source, kind, valid_until, topic, confirmed_days, stale}], expired_recent,
+  //               profile_card (used by 长期记忆, #113), archived (flag memory_hygiene)};
   // DELETE /memory/observations/{id}. kind=recent notes (with an end date, #112) get their own 「近况」 block; expired ones are only counted.
   const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }); };
   const memPath = () => `/v1/users/${ownerPath()}/memory`;
@@ -2440,6 +2441,93 @@
       ${obs.length ? `<div class="group">${obs.slice(0, 3).map(obsRow).join("")}</div>` : none}</div>`;
   }
 
+  // 长期记忆 (issue #113 phase 1, rollout flag memory_hygiene): profile card items and lasting notes grouped by topic, each
+  // with 「x 天前确认」 (amber once stale, per-topic days on the server), 「还准确」 and delete (second tap confirms); archived
+  // entries folded at the bottom, restorable. Recent notes keep their own 「近况」 block. Flag off -> 「观察笔记」 as before.
+  // POST /memory/observations/{id}/confirm|restore, POST /memory/profile/{key}/confirm|restore, DELETE /memory/profile/{key}.
+  const hygieneOn = () => (S.flags || []).includes("memory_hygiene");
+  const TOPIC_LABEL = {
+    communication: tr("沟通方式"), health_constraints: tr("健康约束"), injuries: tr("伤病和禁用动作"), goals: tr("目标和进度"),
+    current_plan: tr("当前训练和饮食计划"), schedule: tr("作息规律"), training_preferences: tr("训练偏好和条件"),
+    diet_preferences: tr("饮食偏好"), supplements: tr("补剂"), follow_ups: tr("复查和待办"), what_works: tr("对你有效的做法"),
+    what_doesnt: tr("无效 / 要避免的做法"), basics: tr("基本情况"),
+  };
+  const TOPIC_ORDER = Object.keys(TOPIC_LABEL);   // same order as the AI's memory: how to talk, then what keeps advice safe
+  // standard items show the topic name in the page language; other keys their own label (stored data)
+  const cardEntry = (c) => ({ ...c, card: true, uid: `p:${c.key}`, title: TOPIC_LABEL[c.key] || c.label, text: c.value });
+  const obsEntry = (o) => ({ ...o, card: false, uid: `o:${o.id}`, title: "" });
+  const memEntries = (mem) => [...(Array.isArray(mem?.profile_card) ? mem.profile_card : []).map(cardEntry),
+    ...(Array.isArray(mem?.observations) ? mem.observations : []).filter((o) => !recentOn() || o.kind !== "recent").map(obsEntry)];
+  const archEntries = (mem) => [...(mem?.archived?.profile_card || []).map(cardEntry), ...(mem?.archived?.observations || []).map(obsEntry)];
+  const memPathOf = (e) => (e.card ? `profile/${encodeURIComponent(e.key)}` : `observations/${encodeURIComponent(e.id)}`);
+  const ageLabel = (e) => (e.confirmed_days ? tr("{n} 天前确认", { n: e.confirmed_days }) : tr("今天确认"));
+  const ageBadge = (e) => `<span class="mem-age${e.stale ? " stale" : ""}">${esc(ageLabel(e))}</span>`;
+
+  function memRow(e, self) {
+    const title = e.card && !TOPIC_LABEL[e.key] ? e.title : "";   // a standard item's name is already the group heading
+    return `<div class="mem-row" data-uid="${esc(e.uid)}">
+      <div class="obs-text">${title ? `<b>${esc(title)}</b> · ` : ""}${esc(e.text)}</div>
+      <div class="mem-foot">${ageBadge(e)}${self ? `<span class="mem-acts">
+        <button type="button" class="mem-btn" data-act="confirm">${tr("还准确")}</button>
+        <button type="button" class="mem-btn danger" data-act="delete">${tr("删除")}</button></span>` : ""}</div></div>`;
+  }
+  function archRow(e, self) {
+    return `<div class="mem-row" data-uid="${esc(e.uid)}"><div class="obs-text">${e.title ? `<b>${esc(e.title)}</b> · ` : ""}${esc(e.text)}</div>
+      <div class="mem-foot"><span class="mem-age">${esc(e.archived_reason || tr("已归档"))}</span>${self ? `<span class="mem-acts">
+        <button type="button" class="mem-btn" data-act="restore">${tr("恢复")}</button></span>` : ""}</div></div>`;
+  }
+
+  function memorySheetHtml(mem) {
+    const self = isSelf(), list = memEntries(mem), groups = new Map();
+    for (const e of list) { const t = TOPIC_LABEL[e.topic] ? e.topic : ""; if (!groups.has(t)) groups.set(t, []); groups.get(t).push(e); }
+    const order = [...TOPIC_ORDER, ""].filter((t) => groups.has(t));
+    const body = order.map((t) => `<div class="cat">${esc(t ? TOPIC_LABEL[t] : tr("其他"))}</div>
+      <div class="group">${groups.get(t).map((e) => memRow(e, self)).join("")}</div>`).join("");
+    const arch = archEntries(mem);
+    const archH = arch.length ? `<details class="mem-arch"><summary>${tr("已归档 {n} 条", { n: arch.length })}</summary>
+      <div class="group">${arch.map((e) => archRow(e, self)).join("")}</div></details>` : "";
+    return (body || `<div class="empty faint">${tr("common.none")}</div>`) + archH;
+  }
+
+  async function memAct(root, btn, entry) {
+    const act = btn.dataset.act;
+    if (act === "delete" && !btn.classList.contains("armed")) {   // first tap arms, the second deletes
+      btn.classList.add("armed"); btn.textContent = tr("确定删除？");
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api(`/v1/users/me/memory/${memPathOf(entry)}${act === "delete" ? "" : `/${act}`}`, { method: act === "delete" ? "DELETE" : "POST" });
+      const k = `memory:${S.owner}`;
+      S.data[k] = await api(memPath());
+      root.innerHTML = memorySheetHtml(S.data[k]);
+      toast(act === "delete" ? tr("已删除") : act === "restore" ? tr("已恢复") : tr("已确认"));
+      render();
+    } catch (err) { toast(err.status === 404 ? tr("这条已经不在了") : err.message); btn.disabled = false; }
+  }
+
+  function memorySheet(mem) {
+    openSheet(tr("长期记忆"), memorySheetHtml(mem), (root) => {
+      root.onclick = (ev) => {
+        const btn = ev.target.closest("[data-act]");
+        const row = btn?.closest("[data-uid]");
+        if (!row) return;
+        const m = S.data[`memory:${S.owner}`] || mem;
+        const entry = [...memEntries(m), ...archEntries(m)].find((x) => x.uid === row.dataset.uid);
+        if (entry) memAct(root, btn, entry);
+      };
+    });
+  }
+
+  function memoryHtml(mem) {
+    const list = memEntries(mem), stale = list.filter((e) => e.stale).length;
+    return `<div class="section"><div class="group">
+      <button class="item" id="me-memory" ${sheetAttr(() => memorySheet(S.data[`memory:${S.owner}`] || mem))}><span class="row-title">${tr("长期记忆")}</span>
+        <span class="val">${stale ? `<span class="mem-age stale">${esc(tr("{n} 条该确认了", { n: stale }))}</span> · ` : ""}${esc(tr("{n} 条", { n: list.length }))}</span>
+        <span class="chev">${ICON.chev}</span></button></div></div>`;
+  }
+  const notesHtml = (mem) => (hygieneOn() && !mem?.error ? memoryHtml(mem) : observationsHtml(mem));
+
   // Language switch (Me page, own account only): saved as the profile's `language`, the page reloads in it at once
   const LANG_LABEL = "语言 / Language";   // i18n-ok: both names, readable whichever language the page is in
   const LANGS = [["zh", "中文"], ["en", "English"]];   // i18n-ok: language names shown natively
@@ -2532,7 +2620,7 @@
         labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
       return `${meHead(who)}
         ${healthspanHtml(hs)}
-        <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
+        <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
         ${meSection("", [...(rows.profile || []),
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
@@ -2544,7 +2632,7 @@
     }
     return `${meHead(who)}
       ${healthspanHtml(hs)}
-      <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
+      <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
       <div class="section"><div class="group">
         ${item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
         ${item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}

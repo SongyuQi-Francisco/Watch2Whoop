@@ -135,6 +135,31 @@ def _memory_with_status(conn, uid, a=None):
             "observations": [_obs_brief(o) for o in m["observations"]], "expired_recent": m["expired_recent"]}
 
 
+PROFILE_MERGE_HINT = "整段替换了；原来的在 previous。原来还有效、新内容漏了的，合并后再写一次；写错了 rollback_write 撤回"
+
+
+def _hygiene(conn, uid) -> bool:
+    return flags.enabled(conn, uid, "memory_hygiene")   # issue #113 phase 1: similar check + previous value
+
+
+def _update_profile_card(conn, uid, a):
+    row = memory.update_profile(conn, uid, a["key"], a["value"], a["label"])
+    prev = row.pop("previous")
+    if _hygiene(conn, uid) and prev and prev["value"] != row["value"]:
+        row |= {"previous": prev["value"], "hint": PROFILE_MERGE_HINT}
+    return row
+
+
+def _add_observation(conn, uid, a):
+    until = a["until"] if flags.enabled(conn, uid, "memory_recent") else None   # flag off: a lasting fact, as before
+    # replace_id: rewrite that note (similar); 0 = the AI looked at `similar` and this is another fact. The topic is
+    # inferred from the text (memory_params.TOPIC_KEYWORDS) and AI writes keep origin NULL (unknown): both stay out of the
+    # schema to keep the per-call tool definitions small (#113 phase 1; phase 2 lets the AI set them while tidying up).
+    if a.get("replace_id"):
+        return memory.update_observation(conn, uid, a["replace_id"], a["text"], a["evidence"], until)
+    return memory.add_observation(conn, uid, a["text"], a["evidence"], until=until, check_similar=_hygiene(conn, uid) and a.get("replace_id") is None)
+
+
 TOOL_SPECS: list[dict] = [
     # ---------- SparkyFitness writes ----------
     dict(
@@ -305,20 +330,19 @@ TOOL_SPECS: list[dict] = [
             "value": {"type": "string", "description": "≤ 4000 字"},
             "label": _n("string", "中文名；标准键 null"),
         }),
-        handler=lambda conn, uid, a: memory.update_profile(conn, uid, a["key"], a["value"], a["label"]),
+        handler=_update_profile_card,
         group="memory", scope="memory", writes=True,
     ),
     dict(
         name="add_observation",
-        description="记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
+        description="记观察笔记：以后有用的新事实（偏好、习惯、身体反应），一句话一个；近况（出差、感冒）给 until。",
         input_schema=_schema({
             "text": {"type": "string", "description": "≤ 1000 字"},
             "evidence": _n("string", "用户原话 / 哪些数据"),
             "until": _n("string", f"近况最后一天 YYYY-MM-DD；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
+            "replace_id": _n("integer", "改写 similar 里这条；0=照样新建"),
         }),
-        handler=lambda conn, uid, a: memory.add_observation(
-            conn, uid, a["text"], a["evidence"],
-            until=a["until"] if flags.enabled(conn, uid, "memory_recent") else None),   # flag off: a lasting fact, as before
+        handler=_add_observation,
         group="memory", scope="memory", writes=True,
     ),
     dict(

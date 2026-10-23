@@ -80,6 +80,9 @@ EXACT: dict[str, str] = {
     "没有这条心电图": "ECG not found",
     "没有这条提醒（或不是你的）": "Reminder not found (or not yours)",
     "没有这条观察笔记（或不是你的）": "Note not found (or not yours)",
+    "没有这条已归档的笔记（或不是你的）": "No such archived note (or not yours)",
+    "档案卡里没有这一项（或不是你的）": "No such profile card item (or not yours)",
+    "档案卡里没有这一项已归档的（或不是你的）": "No such archived profile card item (or not yours)",
     "这天没有记这一项": "Nothing logged for this item on this day",
     # ---- records (records/api.py, records/store.py)
     "status 不能为空": "status cannot be empty",
@@ -317,6 +320,13 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("value 太长（{} 字），档案卡每项不超过 {} 字，写摘要", "value too long ({} characters); at most {} per profile item"),
     ("{} 不是标准键（{}），新键要给 label（中文名）", "{} is not a standard key ({}); a new key needs a label"),
     ("观察笔记不超过 {} 字，写成一句话的事实", "Notes: at most {} characters, one sentence of fact"),
+    ("topic 写档案卡标准键之一：{}；拿不准写 null", "topic must be one of the profile card's standard keys: {}; null if unsure"),
+    ("origin 写 {} 或 null", "origin must be {} or null"),
+    ("档案卡 {} 在这次修改之后又改过（或删了），不能自动撤回；用 update_profile_card 手动改回",
+     "Profile item {} was changed (or deleted) after this edit, so it can't be undone automatically; change it back by hand"),
+    ("观察笔记 {} 不存在（或不是你的、已归档）", "Note {} not found (or not yours, or archived)"),
+    ("#{} 已经是一模一样的文字；保留那条、删掉这条就行", "#{} already has exactly this text; keep that one and delete this one"),
+    ("观察笔记 {} 在这次修改之后又改过（或删了），不能自动撤回", "Note {} was changed (or deleted) after this edit, so it can't be undone automatically"),
     # ---- nutrition goals / food values (label = 训练日 / 休息日 or a food name)
     ("{}：缺 {}（第一版要给全热量和三大营养素）", "{}: missing {} (the first version needs calories and all three macros)"),
     ("{}：饱和脂肪上限不能高于总脂肪", "{}: saturated fat cap cannot be above total fat"),
