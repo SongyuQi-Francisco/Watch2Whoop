@@ -1,4 +1,5 @@
-"""SDNN vs RMSSD recovery report (`body-engine hrv-compare`): the evidence the user looks at before scores/params.HRV_KIND switches.
+"""SDNN vs RMSSD recovery report (`body-engine hrv-compare`): the evidence the user looks at before their HRV kind switches
+(per user since #117: scores/hrv_kind.py, `body-engine hrv-kind`).
 
 Loads the scoring inputs once, scores every day twice (HRV = Apple's SDNN / RMSSD from heartbeat_series) without writing anything,
 and compares coverage, nightly noise, recovery distributions, agreement and the nights that differ most. Output is Chinese Markdown;
@@ -14,6 +15,7 @@ import psycopg
 
 from .. import queries
 from ..scores import engine as SE
+from ..scores import hrv_kind as SK
 from ..scores import inputs as SI
 from ..scores import params as P
 
@@ -102,9 +104,11 @@ def compare(conn: psycopg.Connection, client, user_id: int, start: date | None =
     both = [(a, b) for a, b in zip(rows_s, rows_r) if a["recovery"] is not None and b["recovery"] is not None]
     diffs = sorted(both, key=lambda ab: -abs(ab[0]["recovery"] - ab[1]["recovery"]))
     tz = inp.tz
+    stored = SK.stored_kinds(conn, user_id)   # the kind this user's stored scores use (scores/hrv_kind.py)
     lo, hi = datetime.combine(start, datetime.min.time(), tz), datetime.combine(end + timedelta(days=1), datetime.min.time(), tz)
     return {
-        "user_id": user_id, "start": start, "end": end, "algo_version": P.ALGO_VERSION, "current_kind": P.HRV_KIND,
+        "user_id": user_id, "start": start, "end": end, "algo_version": P.ALGO_VERSION,
+        "current_kind": stored.pop() if len(stored) == 1 else P.HRV_KIND,
         "sdnn": _summary(inp, rows_s), "rmssd": _summary(inp_r, rows_r), "check": reading_check(conn, user_id, lo, hi),
         "both_days": len(both),
         "recovery_corr": _corr([a["recovery"] for a, _ in both], [b["recovery"] for _, b in both]),
@@ -159,5 +163,6 @@ def markdown(res: dict) -> str:
     L += ["", "## 5. 怎么看",
           "- RMSSD 是 WHOOP / Oura 的口径，主要反映副交感（迷走）活动；SDNN 还混着呼吸和慢波，单条 1 分钟读数更吵。",
           "- 每晚读数次数由 Apple 决定，换口径不会变多；看第 2 节「相邻两晚的相关」「同一晚离散」哪边更稳，以及恢复分和睡眠分 / 静息心率的关系是否更合理。",
-          "- 确认切换后：`scores/params.py` 的 `HRV_KIND = \"rmssd\"`、升 `ALGO_VERSION`、`compute-scores` 全量重算；基线随之重建（前 14 晚没有恢复分）。"]
+          "- 确认切换后：`body-engine hrv-kind --user-id N --enable-rmssd`（只对这个人；还要有足够的逐拍数据，阈值见 `scores/params.py` 的 `RMSSD_*`），"
+          "下一次完整的 `compute-scores`（夜间任务）整段重算；基线随之重建（前 14 晚没有恢复分）。"]
     return "\n".join(L) + "\n"

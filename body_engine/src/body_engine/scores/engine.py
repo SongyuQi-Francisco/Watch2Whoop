@@ -17,6 +17,7 @@ from . import params as P
 from . import recovery as R
 from . import sleep as S
 from . import strain as L
+from . import hrv_kind as HK
 from .inputs import Inputs, Night, load, segments_in
 from .muscle import daily_muscle_load
 from .. import sparky_client
@@ -80,6 +81,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
         details: dict = {}
         row = {c: None for c in COLUMNS}
         row.update(date=d, hrv_kind=inp.hrv_kind, algo_version=P.ALGO_VERSION)
+        details["hrv_kind"] = inp.hrv_kind   # also in the column; kept with the rest of the inputs (#117)
         if d == today:
             flags["day_in_progress"] = "今天还没过完，负荷是到目前为止的"
 
@@ -189,7 +191,8 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
                 rec["rhr_low_offset_min"] = round((rhr_at - night.start).total_seconds() / 60)
             hrv_base = R.baseline(base["hrv"])
             if hrv_ln is None:
-                flags["hrv_missing"] = "睡眠窗口内没有 HRV 读数，算不了恢复分"
+                flags["hrv_missing"] = ("睡眠窗口内没有 HRV 读数，算不了恢复分" if inp.hrv_kind == "sdnn" else
+                                        "睡眠窗口内没有逐拍数据算出的 RMSSD，算不了恢复分（这个人用 RMSSD，不拿 SDNN 补）")
             elif hrv_base is None:
                 flags["baseline_insufficient"] = f"前 60 天只有 {len(base['hrv'])} 晚 HRV，满 {P.MIN_BASELINE_NIGHTS} 晚才出恢复分"
             else:
@@ -303,8 +306,10 @@ def run(conn: psycopg.Connection, client, user_id: int, start: date | None = Non
     today = datetime.now(tz).date()
     end = end or today
     start = max(start or origin, origin)
+    # HRV kind of this user (hrv_kind.py): SDNN unless switched on for RMSSD with enough beat data; never mixed
+    kind, kind_reason = HK.choose(conn, user_id, tz, start, end)
     # pull one extra year back: the 365-day HRmax window; one extra day for sleep (the night before the first day)
-    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir)
+    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind)
     muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
     rows = score_days(inp, origin, end, today)
     n = write(conn, user_id, rows, start, end)
@@ -315,6 +320,7 @@ def run(conn: psycopg.Connection, client, user_id: int, start: date | None = Non
     except Exception as e:  # noqa: BLE001
         hrr = {"error": f"{type(e).__name__}: {e}"}
     return {"origin": origin, "start": start, "end": end, "rows": n, "algo_version": P.ALGO_VERSION,
+            "hrv_kind": kind, "hrv_kind_reason": kind_reason,
             "with_sleep_score": sum(r["sleep_score"] is not None for r in written),
             "with_recovery": sum(r["recovery"] is not None for r in written),
             "with_strain": sum(r["strain"] is not None for r in written),
