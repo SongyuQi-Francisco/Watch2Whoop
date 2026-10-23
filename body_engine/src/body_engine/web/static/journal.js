@@ -46,13 +46,20 @@
     return Object.entries(groups);
   }
 
-  // GET /journal/analysis -> rows for the 行为影响 card: items with a result, biggest effect first, and how many lack samples
+  // GET /journal/analysis -> rows for the 行为影响 card: items with a result, biggest effect first, and how many lack samples.
+  // With regression=true (flag journal_regression) every outcome carries `regression` (second version): the card then shows
+  // its adjusted effect and its Benjamini-Hochberg direction instead of the raw group difference (adjusted: true).
   function behaviorModel(list) {
     if (!Array.isArray(list)) return null;
-    const ok = list.map((a) => ({ a, o: a.outcomes?.next_recovery })).filter(({ o }) => o?.status === "ok")
-      .sort((x, y) => Math.abs(y.o.diff_yes_minus_no || 0) - Math.abs(x.o.diff_yes_minus_no || 0));
-    return { rows: ok.map(({ a, o }) => ({ item: a.item, diff: o.diff_yes_minus_no || 0, direction: o.direction, reliable: !!o.reliable })),
-      lack: list.length - ok.length, max: Math.max(5, ...ok.map(({ o }) => Math.abs(o.diff_yes_minus_no || 0))) };
+    const adjusted = list.some((a) => a.outcomes?.next_recovery?.regression);
+    const pick = (a) => {
+      const o = a.outcomes?.next_recovery;
+      const r = adjusted ? o?.regression : o;
+      return r?.status === "ok" ? { diff: (adjusted ? r.estimate : r.diff_yes_minus_no) || 0, direction: r.direction, reliable: !!r.reliable } : null;
+    };
+    const ok = list.map((a) => ({ a, o: pick(a) })).filter(({ o }) => o).sort((x, y) => Math.abs(y.o.diff) - Math.abs(x.o.diff));
+    return { rows: ok.map(({ a, o }) => ({ item: a.item, ...o })), adjusted,
+      lack: list.length - ok.length, max: Math.max(5, ...ok.map(({ o }) => Math.abs(o.diff))) };
   }
 
   // ------------------------------------------------------------------ Trends: the 行为影响 card (same card as the other trend cards)
@@ -66,7 +73,7 @@
     }).join("");
     const lack = m.lack ? `<div class="rcard-tags" style="margin-top:8px"><span class="badge plain">${ctx.esc(tr("{n} 项样本不足", { n: m.lack }))}</span></div>` : "";
     return `<div class="card trend trend-wide" id="behavior-card"><div class="trend-head"><div>${ctx.xpLabel("behavior", tr("行为影响"))}
-        <div class="trend-value">${m.rows.length}<small>${tr("项")}</small></div></div><div class="trend-tip">${tr("次日恢复")} · ${tr("{n} 天", { n: 90 })}</div></div>
+        <div class="trend-value">${m.rows.length}<small>${tr("项")}</small></div></div><div class="trend-tip">${tr("次日恢复")}${m.adjusted ? ` · ${tr("已控制负荷、睡眠、星期")}` : ""} · ${tr("{n} 天", { n: 90 })}</div></div>
       ${rows || `<div class="empty faint" style="padding:8px">—</div>`}${lack}</div>`;
   }
 

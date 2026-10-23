@@ -32,7 +32,9 @@ Parameter categories:
   respiratory rate 0.05; logistic slope 1.6 and offset 0.3; baseline length and minimum nights; SD floors; z clip ±3;
   illness flag thresholds (RHR > baseline + 5 and HRV < 85%); wrist temperature ±0.6 °C; SpO₂ flags (median < 94%,
   ≥ 2 readings < 90%); resting HR as the lowest 5-minute mean during sleep.
-- Current HRV input is Apple's SDNN (`HRV_KIND = "sdnn"`); switching to RMSSD is issue #117.
+- HRV input: Apple's SDNN by default (`HRV_KIND = "sdnn"`). Watch2Whoop picks SDNN or RMSSD per user (issue #117); the
+  thresholds for "enough beat-to-beat data" (`RMSSD_COVERAGE_DAYS`, `RMSSD_MIN_NIGHTS`, `RMSSD_MAX_GAP_DAYS`,
+  `RMSSD_NIGHT_HOURS`) are a **design choice** — v1 value, not yet validated. One kind per person, never mixed.
 - Known limits: _to be written (#118)._
 
 ## HRV from beat-to-beat times (`hrv.py`)

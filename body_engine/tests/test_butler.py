@@ -185,7 +185,8 @@ def test_memory_api_auth(client, world):
     assert r.status_code == 200
     body = r.json()
     assert set(body) == {"status", "profile_card", "observations", "expired_recent"}
-    assert {"key", "label", "value", "updated_at", "source"} == set(body["profile_card"][0])
+    assert {"key", "label", "value", "updated_at", "source", "topic", "confirmed", "confirmed_days", "stale",
+            "origin"} == set(body["profile_card"][0])
     assert client.put(f"/v1/users/{a}/memory/profile/goals", headers=h(tok["B"]), json={"value": "x"}).status_code == 403
     # C has no share
     assert client.get(f"/v1/users/{a}/memory", headers=h(tok["C"])).status_code == 403
@@ -196,7 +197,8 @@ def test_memory_api_auth(client, world):
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["B"])).status_code == 404
     obs = client.get("/v1/users/me/memory", headers=h(tok["A"])).json()["observations"]
     assert [o["id"] for o in obs] == [oid]
-    assert set(obs[0]) == {"id", "text", "created_at", "source", "kind", "valid_until"} and obs[0]["kind"] == "fact"
+    assert set(obs[0]) == {"id", "text", "created_at", "source", "kind", "valid_until", "topic", "confirmed", "confirmed_days",
+                           "stale", "origin"} and obs[0]["kind"] == "fact"
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["A"])).status_code == 204
     assert client.delete(f"/v1/users/me/memory/observations/{oid}", headers=h(tok["A"])).status_code == 404
 

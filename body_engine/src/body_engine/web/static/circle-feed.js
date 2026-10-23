@@ -95,10 +95,12 @@
   // personal pictures (avatars.js, shown when the server sent one) or the initial
   const avInner = (url, name) => window.BodyAvatar?.inner(url, name) ?? esc((name || "?").slice(0, 1).toUpperCase());
   const avSmall = (user, px = 20) => (user?.avatar ? window.BodyAvatar?.small(user, px) ?? "" : "");
+  // what I call this person (remarks.js, #212) with the original name in small type; just the name without a remark
+  const who = (user) => window.BodyRemarks?.html(user?.remark, user?.name) ?? esc(user?.name);
   function commentsHtml(p) {
     const list = st.comments[p.id];
     if (!list) return `<div class="cf-cm"><p class="muted">${esc(tr("加载中…"))}</p></div>`;
-    const rows = list.map((c) => `<div class="cf-c"><span class="t">${avSmall(c.user)}<b>${esc(c.user.name)}</b>${esc(c.body)}</span>
+    const rows = list.map((c) => `<div class="cf-c"><span class="t">${avSmall(c.user)}<b>${who(c.user)}</b>${esc(c.body)}</span>
       <button type="button" data-cf="${c.user.self ? "cdel" : "crep"}" data-c="${c.id}" data-p="${p.id}">${esc(c.user.self ? tr("删除") : tr("举报"))}</button></div>`).join("");
     return `<div class="cf-cm">${rows}<form class="cf-new" data-p="${p.id}"><input type="text" maxlength="${st.comment_max}" placeholder="${esc(tr("写评论…"))}" aria-label="${esc(tr("写评论…"))}" enterkeyhint="send">
       <button class="btn btn-primary" type="submit">${esc(tr("发送"))}</button></form></div>`;
@@ -175,7 +177,7 @@
     const likes = n ? `<p class="cf-likes">${esc(n === 1 ? tr("1 次赞") : tr("{n} 次赞", { n: num(n) }))}</p>` : "";
     const all = !open && p.comment_count > shown.length
       ? `<button type="button" class="cf-all" data-cf="cm" data-p="${p.id}">${esc(p.comment_count === 1 ? tr("查看 1 条评论") : tr("查看全部 {n} 条评论", { n: num(p.comment_count) }))}</button>` : "";
-    const pv = open ? "" : shown.map((c) => `<p class="cf-pv">${avSmall(c.user, 16)}<b>${esc(c.user.name)}</b>${esc(c.body)}</p>`).join("");
+    const pv = open ? "" : shown.map((c) => `<p class="cf-pv">${avSmall(c.user, 16)}<b>${who(c.user)}</b>${esc(c.body)}</p>`).join("");
     return `<div class="cf-act"><button type="button" data-cf="like" data-p="${p.id}" aria-pressed="${p.likes.mine}" aria-label="${esc(tr("点赞"))}">${svg(HEART)}</button>
       <button type="button" data-cf="cm" data-p="${p.id}" aria-expanded="${open}" aria-label="${esc(tr("评论"))}">${svg(BUBBLE)}</button></div>${likes}${pv}${all}`;
   }
@@ -192,7 +194,7 @@
     const toggle = rest > 0 ? `<button type="button" class="cf-toggle" data-cf="more" data-p="${p.id}">${esc(all ? tr("收起") : tr("查看另外 {n} 个动作", { n: rest }))}</button>` : "";
     const open = st.open.has(p.id);
     return `<article class="cf-post" data-id="${p.id}"><div class="cf-head"><span class="cf-av">${avInner(p.user.avatar, p.user.name)}</span>
-        <div class="cf-who"><b>${esc(p.user.self ? tr("who.me", { name: p.user.name }) : p.user.name)}</b><i>${esc(ago(p))}${circlesHtml(p)}</i></div></div>
+        <div class="cf-who"><b>${p.user.self ? esc(tr("who.me", { name: p.user.name })) : who(p.user)}</b><i>${esc(ago(p))}${circlesHtml(p)}</i></div></div>
       <div class="cf-body"><div class="cf-title">${esc(p.title)}</div><div class="cf-stats">${statsHtml(p)}</div>
       ${(p.activities || []).map((a, _, all) => activityHtml(a, all.length > 1)).join("")}
       ${p.no_exercises ? `<div class="cf-none">${svg(DUMBBELL)}${esc(tr("没有记录动作"))}</div>` : ""}

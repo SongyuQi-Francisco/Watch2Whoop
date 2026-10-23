@@ -103,8 +103,9 @@ dependencies: `zipfile`, `xml.etree.iterparse`, `csv`). What has to be separated
 3. **Own repository** (`openbodyscore`, Apache-2.0), with history of the package directory (`git filter-repo
    --path packages/openbodyscore`), its own CI and releases; this repository then depends on a pinned version from
    PyPI (or a git tag) instead of the path source, and the old import paths keep working.
-   Order: #117 (HRV switched to RMSSD) comes after this step is merged; it bumps `ALGO_VERSION` and adds an `rmssd`
-   golden file next to the `sdnn` one (`body_engine/tests/test_openbodyscore_golden.py`, `HRV_KINDS`).
+   Order: #117 (HRV per user, SDNN or RMSSD) comes after this step is merged. Its preparation added an `rmssd` golden file
+   next to the unchanged `sdnn` one (`body_engine/tests/test_openbodyscore_golden.py`, `HRV_KINDS`); the per-user choice
+   keeps `ALGO_VERSION` (the stored `hrv_kind` tells the two apart).
 4. **PyPI**: tagged releases, semantic versions; a score change is at least a minor version and is listed in a CHANGELOG.
 
 ## 4. Release checklist (before the first public release)

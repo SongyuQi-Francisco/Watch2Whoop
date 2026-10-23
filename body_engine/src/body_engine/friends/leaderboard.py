@@ -23,7 +23,7 @@ import psycopg
 from ..avatars import urls as avatar_store
 from ..goals import store as sleep_goals
 from ..web import views
-from . import cards, params as P
+from . import cards, params as P, remarks
 
 _CACHE: dict[tuple[int, str, date], tuple[float, dict]] = {}
 
@@ -279,8 +279,10 @@ def board(conn: psycopg.Connection, viewer_id: int, name: str) -> dict:
     people = [{"id": viewer_id, "display_name": me["display_name"], "self": True}] + \
              [{"id": m["id"], "display_name": m["display_name"], "self": False} for m in cards.co_members(conn, viewer_id)]
     avatars = avatar_store.urls_for(conn, viewer_id, [p["id"] for p in people])
+    nick = remarks.for_viewer(conn, viewer_id, [p["id"] for p in people])
     for p in people:
         p["avatar"] = avatars.get(p["id"])
+        p["remark"] = nick.get(p["id"])
     rows = []
     for p in people:
         if not p["self"] and not need <= cards.share_with(conn, viewer_id, p["id"]):
@@ -309,6 +311,8 @@ def ai_overview(conn: psycopg.Connection, viewer_id: int) -> dict:
         sc = m["scores"]
         week = [d["recovery"] for d in sc["week"] if d["recovery"] is not None] if sc else []
         row = {"name": m["display_name"], "self": m["self"]}
+        if m.get("remark"):
+            row["nickname"] = m["remark"]   # what the user calls this person (#212): use it when talking about them
         if sc:
             row.update(status=sc["label"], recovery=sc["recovery"], strain=sc["strain"],
                        recovery_7d=round(statistics.fmean(week)) if week else None,
