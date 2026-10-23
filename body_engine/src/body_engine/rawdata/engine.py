@@ -91,9 +91,14 @@ def enabled(conn: psycopg.Connection, user_id: int) -> bool:
     return flags.enabled(conn, user_id, FLAG)
 
 
+MODES = ("ow", "shadow", "app")      # = importers/common.SYNC_MODES
+
+
 def mode(conn: psycopg.Connection, user_id: int) -> str:
-    """ow = only Open Wearables feeds the scores; shadow = the engine uploads too, stored for comparison (§3.2.3). The
-    `app` mode (engine primary) comes with the cut-over step S5."""
+    """ow = only Open Wearables feeds the scores; shadow = the engine uploads too, stored for comparison (§3.2.3).
+    `app` (the engine's values take part, above ow; D4) is already handled by the derivation (rawdata/derive.py),
+    resolve_daily (importers/common.py) and the workout duplicates (training/importer.refresh_duplicates); the cut-over
+    step S5 adds the flag apple_sync_primary that turns it on here."""
     return "shadow" if enabled(conn, user_id) else "ow"
 
 

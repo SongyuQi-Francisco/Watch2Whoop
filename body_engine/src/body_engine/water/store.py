@@ -100,6 +100,7 @@ def goal(conn: psycopg.Connection, user_id: int, day: date) -> dict:
         base, source = P.DEFAULT_GOAL_ML.get(sex or "", P.DEFAULT_GOAL_UNKNOWN_ML), "default"
     extras = []
     if conn.execute("""SELECT 1 FROM workouts WHERE user_id = %s AND local_date = %s AND dup_of IS NULL
+                       AND excluded IS DISTINCT FROM 'shadow'
                        AND duration_min >= %s LIMIT 1""", (user_id, day, P.TRAINING_MIN_MINUTES)).fetchone():
         extras.append({"kind": "training", "ml": P.TRAINING_EXTRA_ML})
     if conn.execute("""SELECT 1 FROM journal_entries WHERE user_id = %s AND date = %s AND key = %s AND value > 0""",

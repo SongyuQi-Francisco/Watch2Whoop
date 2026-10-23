@@ -1,7 +1,7 @@
 # 评分方法论（中文版）
 
-> 对应 issue #118。英文版是评分库的 `METHODOLOGY.md`（#115 / #123 合并以后放在 `packages/openbodyscore/METHODOLOGY.md`，
-> 合并之前暂放在 [scoring-methodology.en.md](scoring-methodology.en.md)）。验证实验的方案和结果见 [scoring-validation.md](scoring-validation.md)。
+> 对应 issue #118。英文版是评分库的 [`METHODOLOGY.md`](../packages/openbodyscore/METHODOLOGY.md)（按库的模块名写，内容和本文对应）。
+> 验证实验的方案和结果见 [scoring-validation.md](scoring-validation.md)。
 > 本文只描述代码现在的做法（`ALGO_VERSION = v1.1-2026-10-16`，身体年龄 `hs-v1.1-2026-10-17`，压力 `v1.0-2026-10-17`，
 > HRV 去伪迹 `rr-v1`）。**这些分数是 WHOOP 式的健康参考，不是医疗诊断，与 WHOOP 公司无关。**
 
@@ -31,6 +31,21 @@
 Apple Watch 写进 HealthKit 的原始样本（经 iOS app / Open Wearables、快捷指令或「健康」全量导出进来）：睡眠阶段段、心率、HRV（Apple 给的是
 SDNN，另有每次读数约 1 分钟的逐拍时间）、呼吸频率、血氧、手腕温度、Apple 的全天静息心率、训练记录、步数；体重、腰围、VO₂max；
 SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple 自己的 Readiness / 睡眠分 HealthKit 读不到**，不能直接对照。
+
+### 0.4 每个分数验证到哪一步
+| 分数 | 依据 | 合成数据 | 真实数据（只写结论） | 外部对照 |
+|---|---|---|---|---|
+| 睡眠分 | 移植的规格 | 敏感性 | 一个人：敏感性 | 无（没有多导睡眠图、没有 WHOOP） |
+| 睡眠需求 / 睡眠债 | 设计选择 | 敏感性 | 一个人：敏感性 | 无 |
+| 由逐拍算 HRV | Task Force 1996 的定义 | 去伪迹用已知伪迹检查过（发现一处可改进，第 3 节） | 重算的 SDNN 和 Apple 的 SDNN 相关约 0.9（一个人）；SDNN vs RMSSD（两个人） | 没有心电图 |
+| 恢复分 | 方法有文献，参数是设计选择 | 稳定性、结构效度（相关；回归版部分通过）、敏感性、单条读数噪声、合成人群 | 一个人：稳定性、敏感性 | 没有 WHOOP |
+| 负荷 strain | Edwards、Tanaka、Banister；**K 是个人校准** | 敏感性；合成人群（按个人校准的 K 相差 4 倍多） | 一个人：敏感性 | 无 |
+| 肌肉负荷 | 设计选择 + Foster | 无 | 无 | 无 |
+| 压力 | 设计选择 | 无 | 无 | 无 |
+| 身体年龄 | 文献曲线 | 解析的敏感性、合成例子 | v1.1 vs v1.2 对比（一个人） | 无 |
+
+「合成数据」检查的是实现和一个已知的编造真值是否一致、噪声的代价多大，**不是**真实世界的效度。多用户和 WHOOP 对比的预注册方案在
+验证文档第 5 节，还没执行。
 
 ---
 
@@ -85,7 +100,10 @@ SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple �
 | 睡眠债上限 | 120 分钟 | 设计选择，第一版，未验证 |
 | 负荷加成 | strain > 7 的部分每点 3 分钟 | 设计选择，第一版，未验证 |
 
-**已知局限**：所有人都用同一个 8 h 基线；睡眠需求个体差异很大。WHOOP 说它的睡眠需求会按个人数据调整，我们还没做。
+**已知局限**
+- 所有人都用同一个 8 h 基线；睡眠需求个体差异很大。WHOOP 说它的睡眠需求会按个人数据调整，我们还没做。
+- 睡眠需求随前一天 strain 增加、睡眠表现又进恢复分，所以练得狠的第二天恢复分会**因为公式本身**低一点。合成数据上这条路径约是
+  模型里负荷效应的十分之一；用恢复分本身去验证「负荷降低恢复」有一部分是循环的（验证文档 2.4 / 3.5）。
 
 ## 3. 由逐拍时间算 HRV
 代码 `rawdata/hrv.py`（`rr-v1`）。Apple Watch 每次后台测 HRV 时存了约 1 分钟的逐拍时间（`HKHeartbeatSeriesSample`），夜里 1–4 次。
@@ -99,11 +117,20 @@ SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple �
 |---|---|---|
 | RMSSD / SDNN 定义 | — | 文献（Task Force ESC/NASPE 1996） |
 | 有效 RR 范围 | 300–2000 ms | 设计选择（对应 30–200 bpm） |
-| 偏离中位数 | 25% | 设计选择（常见做法是 20–30%，没有拟合） |
+| 偏离中位数 | 25% | 设计选择（按相对偏差剔除是常见做法，综述见 Peltola 2012；没有拟合。合成数据上 20% 更好，见下） |
 | 最少差值数 | 20 | 设计选择 |
 
-**已有的检查**：用同一批逐拍时间重算的 SDNN 和 Apple 自己给的 SDNN 相关约 0.9（`docs/raw-data-plan.md` 第 1 节），说明解析和去伪迹
-没有系统性错误。**没有和心电图（ECG）真值比过**。export.xml 里的拍时间只有 10 ms 精度，RMSSD 有约 ±1–2 ms 的量化误差；app 直读是双精度。
+**已有的检查**
+- 用同一批逐拍时间重算的 SDNN 和 Apple 自己给的 SDNN 相关约 0.9（`docs/raw-data-plan.md` 第 1 节），说明解析和去伪迹没有系统性错误。
+- **合成逐拍序列 + 已知伪迹**（验证文档 2.5 / 3.6；四档 HRV，漏检 / 多检 / 提前的异位搏动占 2% 和 5% 的拍）：漏检、多检和明显提前的
+  异位搏动都能去掉；2% 伪迹时每一档 RMSSD 误差的中位数都 < 1%（不做中位数过滤是 12–895%），没有伪迹时不误删正常间期。
+  **发现的弱点**：提前不到 25% 的轻度异位搏动能通过过滤，那条读数的 RMSSD 会被高估几倍（2% 伪迹时误差的 95 百分位：低 HRV 约 +400%、
+  正常 HRV 约 +90%）；20% 阈值在每一档的 95 百分位都更小，只在 HRV 很高时误删 0.3% 的正常间期。**没有改**（会改结果，见 11.1 节）；
+  现在不影响任何分数（恢复分默认用 Apple 的 SDNN）。
+- **没有和心电图（ECG）真值比过**。
+- **精度**：export.xml 里的拍时间只有 10 ms 精度。取整让 RMSSD **单向偏高**，近似 √(RMSSD² + 50 ms²)（取整误差的方差 0.01² / 12 s²，
+  间期的连续差分把它放大 6 倍）：真 RMSSD 约 10 ms 时偏高约 25%，约 30 ms 时 2.5%，70 ms 以上 < 1%（合成检查，验证文档 3.6）。
+  app 直读是双精度。同一个人的历史混着两种来源时，RMSSD 基线可能被抬高。
 
 **已知局限**
 - 读数次数由 Apple 决定，第三方不能触发；换算法不会多出读数。
@@ -148,6 +175,9 @@ SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple �
 - 权重、logistic 参数都没有拟合；不同人的分数分布可能差别很大（例如一个人长期偏黄）。
 - 基线跟着人走：长期变好或变差会被基线吸收，恢复分只反映「相对最近 60 天」。
 - 生病提示在合成数据上会有假阳性（验证文档第 3.2 节），只能当提示。
+- 合成数据上的其他结果（验证文档第 3 节）：回归版结构效度**部分通过**（不控制星期几：负荷效应在 88% 的合成人里检出，但无效应时误报
+  12–14%；控制星期几：误报 4–6%，检出率降到 36–50%）。合成人群（40 个 HRV 水平、耦合、噪声、读数次数、年龄、训练量各不相同的人）：
+  固定参数下绿天数比例 33–46%、红 15–30%，和 HRV / 静息心率的绝对水平基本无关（|ρ| ≤ 0.25），主要取决于几个输入跟状态走得有多一致。
 
 ## 5. 负荷 strain（0–21）和训练负荷
 代码 `scores/strain.py`。
@@ -178,6 +208,9 @@ SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple �
 - 整天的心率都算进去，久坐但心率偏高（压力、咖啡、天热）也会累积少量 TRIMP。
 - 读数大多在静息，观测 99.5 百分位通常低于公式，实际几乎总是公式值；Tanaka 公式本身的个体误差约 ±10 bpm，会整体移动五个区。
 - K 来自一个人；不同人、不同运动的分布不一样。验证文档里的敏感性分析：K ±20% → strain 平均变化约 1 分。
+- 合成人群里按每个人自己的训练日校准 K，结果在 85–370 之间。strain 是绝对刻度（同样的心率负荷，不同人应该得到可比的分），
+  所以 **K 不应该按个人校准**；可选的是多人数据定一个全局值，或者用不依赖任何人的参考训练定义（例如「60 分钟全在 70–80% HRmax」=
+  Edwards TRIMP 180，K = 170 时是 13.7）。见验证文档 R6。
 
 ## 6. 肌肉负荷
 代码 `scores/muscle.py`。
@@ -339,7 +372,16 @@ SparkyFitness 的力量训练记录、导入的训练（Hevy CSV）。**Apple �
 3. HRV 读数稀疏（Apple 决定），单条读数噪声是恢复分最大的误差来源。
 4. 训练、压力没有加速度，靠步数和训练记录代替。
 5. 身体年龄的曲线是队列关联，不是个人的因果效应。
-6. 所有分数都只作为健康参考，不用于诊断或治疗决定。
+6. 所有分数都只作为健康参考（基于医学研究文献和我们的设计选择），不用于诊断或治疗决定。
+
+### 11.1 验证中发现、还没改的问题
+改任何一条都会改变结果，所以都要负责人先看新旧对比、升算法版本、更新 golden（验证文档第 6、7 节）。
+1. **strain 的 K**（第 5 节）：把一个人的校准换成多人的全局值或参考训练定义；不要按个人。
+2. **恢复分校准**（第 4 节）：用多人数据定 logistic 斜率 / 偏移（权重影响小），或按个人分布；先要选目标（例如有 WHOOP 对比时贴近 WHOOP）。
+3. **去伪迹阈值**（第 3 节）：25% 会漏过轻度提前的异位搏动；合成数据上 20% 或按相邻间期差值的方法（例如 Lipponen & Tarvainen 2019）更好。
+   用 RMSSD 算恢复分以后才有影响。
+4. **export.xml 精度**（第 3 节）：10 ms 取整的 RMSSD 偏高；同一个基线里混两种来源要先检查。
+5. **睡眠需求基线**（第 2 节）：所有人同一个 8 h。
 
 ## 12. 参考文献
 DOI 在 2026-10-22 用 Crossref 核对过（标题、作者、期刊、年份）。身体年龄的文献另见 `insights/healthspan_params.py`（逐条对照过原文表格）。
@@ -348,6 +390,8 @@ DOI 在 2026-10-22 用 Crossref 核对过（标题、作者、期刊、年份）
 - Shaffer F, Ginsberg JP. An overview of heart rate variability metrics and norms. *Front Public Health* 2017;5:258. doi:10.3389/fpubh.2017.00258
 - Munoz ML et al. Validity of (ultra-)short recordings for heart rate variability measurements. *PLoS One* 2015;10:e0138921. doi:10.1371/journal.pone.0138921
 - Hernando D et al. Validation of the Apple Watch for heart rate variability measurements during relax and mental stress in healthy subjects. *Sensors* 2018;18:2619. doi:10.3390/s18082619
+- Peltola MA. Role of editing of R–R intervals in the analysis of heart rate variability. *Front Physiol* 2012;3:148. doi:10.3389/fphys.2012.00148（2026-10-24 核对）
+- Lipponen JA, Tarvainen MP. A robust algorithm for heart rate variability time series artefact correction using novel beat classification. *J Med Eng Technol* 2019;43:173–181. doi:10.1080/03091902.2019.1640306（2026-10-24 核对）
 - Kiviniemi AM et al. Endurance training guided individually by daily heart rate variability measurements. *Eur J Appl Physiol* 2007;101:743–751. doi:10.1007/s00421-007-0552-2
 - Plews DJ et al. Heart rate variability in elite triathletes, is variation in variability the key to effective training? A case comparison. *Eur J Appl Physiol* 2012;112:3729–3741. doi:10.1007/s00421-012-2354-4
 - Plews DJ et al. Training adaptation and heart rate variability in elite endurance athletes: opening the door to effective monitoring. *Sports Med* 2013;43:773–781. doi:10.1007/s40279-013-0071-8
