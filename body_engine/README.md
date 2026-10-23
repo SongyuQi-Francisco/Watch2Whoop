@@ -489,7 +489,8 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   and native Sign in with Apple (identity token verified against Apple's JWKS, audience `BODY_APPLE_AUDIENCES`).
 - New accounts are `pending` (403 `account_pending` everywhere except `/v1/account*`, `/v1/web/me`) until they redeem an
   invite code (`account/invites.py`; `body-engine invite-code create | batch | list [--kind referral] | revoke`; `create --uses N`
-  = one code for N people, each redemption bound to the account's sign-in identities, one redemption per identity ever).
+  = one code for N people, each redemption bound to the account's sign-in identities, one redemption per identity ever;
+  `create --code TEXT` = a readable code such as a channel name, 4–40 letters / digits, not 12 or 16 long).
   User referral codes (migration 350, on with `BODY_REFERRALS_ENABLED=1`, default off): Me → 邀请好友 shows the user's own
   code, a share link `/app/?invite=CODE` (pre-fills the invite step) and how many joined (`GET /v1/users/{user}/invite-code`);
   limits in `account/params.py` (10 friends, 3 per 24 h, no expiry); a disabled / deleted inviter's code stops; each

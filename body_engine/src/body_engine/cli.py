@@ -187,6 +187,7 @@ def main() -> None:
     ivc.add_argument("--uses", type=int, required=True, help="how many accounts it can open")
     ivc.add_argument("--days", type=int, help="valid for D days (default: no expiry)")
     ivc.add_argument("--created-by", help="free text recorded with the code")
+    ivc.add_argument("--code", help="a readable code instead of a random one (4-40 letters / digits, not 12 or 16 long)")
     ivb = ivs.add_parser("batch", help="create a batch; prints CSV code,batch_id,label,expires_at,max_uses (plaintext shown only once)")
     ivb.add_argument("--count", type=int, required=True)
     ivb.add_argument("--label", required=True, help="who / which channel the batch is for")
@@ -534,8 +535,8 @@ def main() -> None:
         elif args.cmd == "invite-code":
             from .account import invites
             if args.iv_cmd == "create":
-                res = invites.create_code(conn, args.label, args.uses, args.days, args.created_by)
-                print(invites.pretty(res["code"]))
+                res = invites.create_code(conn, args.label, args.uses, args.days, args.created_by, args.code)
+                print(res["code"] if args.code else invites.pretty(res["code"]))
                 print(f"batch {res['batch_id']} · {res['label']} · {res['max_uses']} uses · "
                       f"expires {res['expires_at'].isoformat() if res['expires_at'] else 'never'} · plaintext shown only this once")
             elif args.iv_cmd == "batch":

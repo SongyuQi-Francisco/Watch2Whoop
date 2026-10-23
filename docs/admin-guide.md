@@ -306,6 +306,7 @@ body-engine flags set consent_one_tap --state all --by 管理员
 
 ```bash
 body-engine invite-code create --label 群-1020 --uses 20 [--days 30]   # 一个码，最多开 20 个账号；明文只打印这一次
+body-engine invite-code create --label 渠道 --uses 50 --code 渠道名   # 指定好记的码（4–40 个英文字母或数字，不能正好 12 / 16 位；不分大小写）
 body-engine invite-code batch --count 50 --label 渠道-1020 [--days 30] [--max-uses 1]   # 一批一次性码（CSV）
 body-engine invite-code list [--batch N]   # 已用 / 剩余次数；每次使用绑定的身份（Apple / 邮箱，打码显示）和时间
 body-engine invite-code revoke --batch N | --code-id N

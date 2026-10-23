@@ -380,6 +380,35 @@ def test_one_code_many_people_then_exhausted_and_listed(dsn):
     assert invites.mask_email("John.Doe@Mail.Example.org") == "j***@m***.org" and invites.mask_email("x") == "***"
 
 
+def test_readable_code_chosen_by_the_admin(client, dsn, _env):
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        res = invites.create_code(conn, "channel", 2, text="Sample Note")
+        assert res["code"] == "SAMPLENOTE" and res["max_uses"] == 2
+        assert invites.list_codes(conn, res["batch_id"])[0]["hint"] == "OTE"
+        users = [_pending(conn, "email", f"note{i}@example.com", f"note{i}@example.com") for i in range(3)]
+        # matched like random codes: case, spaces and dashes do not matter; max_uses still holds
+        assert [invites.redeem(conn, u, t) for u, t in zip(users, ["samplenote", " Sample-Note ", "SAMPLENOTE"])] \
+            == [True, True, False]
+        for bad in ("abc", "x" * 41, "note_1!", "笔记笔记", "ABCDEFGHJKLM", "A" * 16):   # short, long, symbols, 12 / 16
+            with pytest.raises(ValueError):
+                invites.create_code(conn, "bad", 5, text=bad)
+        with pytest.raises(ValueError):   # the same text again, in any spelling
+            invites.create_code(conn, "again", 5, text="sample note")
+        with pytest.raises(ValueError):
+            invites.create_batch(conn, 2, "two", text="TwoCodes")
+        conn.commit()
+    # through the sign-up endpoint: a 7-letter code reaches the invite codes (not the login / activation-code path)
+    client.cookies.clear()
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        invites.create_code(conn, "short", 1, text="redwood")
+        conn.commit()
+    s = _email_login(client, "readable@example.com", "app", "iPhone")
+    h = {"Authorization": f"Bearer {s['token']}"}
+    r = client.post("/v1/account/redeem-invite", headers=h, json={"code": "Red Wood"})
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "active"
+
+
 def test_last_use_race_only_one_wins(dsn):
     import threading
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
