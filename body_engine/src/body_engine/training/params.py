@@ -84,9 +84,85 @@ DEFAULT_BASAL_KCAL_PER_MIN = 1.45      # fallback when estimating active energy 
 # Priority: OW > Shortcut; live sync > export.xml import; watch > phone > other (consistent with the rules in importers/ow.py).
 DUP_SAME_TIME = timedelta(minutes=2)
 DUP_OVERLAP = 0.8
-SOURCE_RANK = {"ow": 0, "shortcut": 1, "apple_export": 2, "hevy": 3}   # apple_export: the export.zip uploaded by the user (history/);
+SOURCE_RANK = {"ow": 0, "app": 0.5, "shortcut": 1, "apple_export": 2, "hevy": 3}   # apple_export: the export.zip uploaded by the user (history/);
 # hevy: a Hevy CSV import (hevy_import.py) has no heart rate, so a watch copy of the same workout is kept and the Hevy sets are shown on it
+# app: the app's own sync engine (rawdata/derive.py, docs/apple-sync-engine.md D4). In the ow / shadow sync modes right
+# after ow; those app workouts are stored with excluded = 'shadow' anyway, so they hold no duplicates and are never kept.
+# In the app mode (after the cut-over, step S5) it ranks first: SOURCE_RANK_APP.
+SOURCE_RANK_APP = {**SOURCE_RANK, "app": -1}
 DEVICE_RANK = {"watch": 0, "phone": 1}
+
+# ---------- HealthKit workout activity -> type (the app's sync engine, rawdata/derive.py) ----------
+# Ported from Open Wearables (MIT, THIRD_PARTY_NOTICES.md), so an app workout gets exactly the `type` the OW import gives
+# the same HKWorkout: the iOS SDK names the activity (OpenWearablesHealthSDK 0.15.0, Internal/Types.swift
+# `_workoutTypeString`), the backend maps that name to its unified type (vendor/open-wearables, backend/app/constants/
+# workout_types/sdk.py `SDK_WORKOUT_TYPE_MAPPINGS`), which is what /events/workouts returns as `type` (TYPE_NAMES keys).
+# HKWorkoutActivityType raw value -> (Swift case name, the OW SDK's name). Unknown values are "other" in the SDK.
+HK_WORKOUT_ACTIVITIES: dict[int, tuple[str, str]] = {
+    1: ("americanFootball", "american_football"), 2: ("archery", "archery"),
+    3: ("australianFootball", "australian_football"), 4: ("badminton", "badminton"), 5: ("baseball", "baseball"),
+    6: ("basketball", "basketball"), 7: ("bowling", "bowling"), 8: ("boxing", "boxing"), 9: ("climbing", "climbing"),
+    10: ("cricket", "cricket"), 11: ("crossTraining", "cross_training"), 12: ("curling", "curling"),
+    13: ("cycling", "cycling"), 14: ("dance", "dance"), 15: ("danceInspiredTraining", "dance_inspired_training"),
+    16: ("elliptical", "elliptical"), 17: ("equestrianSports", "equestrian"), 18: ("fencing", "fencing"),
+    19: ("fishing", "fishing"), 20: ("functionalStrengthTraining", "functional_strength_training"), 21: ("golf", "golf"),
+    22: ("gymnastics", "gymnastics"), 23: ("handball", "handball"), 24: ("hiking", "hiking"), 25: ("hockey", "hockey"),
+    26: ("hunting", "hunting"), 27: ("lacrosse", "lacrosse"), 28: ("martialArts", "martial_arts"),
+    29: ("mindAndBody", "mind_and_body"), 30: ("mixedMetabolicCardioTraining", "mixed_metabolic_cardio_training"),
+    31: ("paddleSports", "paddle_sports"), 32: ("play", "play"), 33: ("preparationAndRecovery", "preparation_and_recovery"),
+    34: ("racquetball", "racquetball"), 35: ("rowing", "rowing"), 36: ("rugby", "rugby"), 37: ("running", "running"),
+    38: ("sailing", "sailing"), 39: ("skatingSports", "skating"), 40: ("snowSports", "snow_sports"), 41: ("soccer", "soccer"),
+    42: ("softball", "softball"), 43: ("squash", "squash"), 44: ("stairClimbing", "stair_climbing"),
+    45: ("surfingSports", "surfing"), 46: ("swimming", "swimming"), 47: ("tableTennis", "table_tennis"),
+    48: ("tennis", "tennis"), 49: ("trackAndField", "track_and_field"), 50: ("traditionalStrengthTraining", "strength_training"),
+    51: ("volleyball", "volleyball"), 52: ("walking", "walking"), 53: ("waterFitness", "water_fitness"),
+    54: ("waterPolo", "water_polo"), 55: ("waterSports", "water_sports"), 56: ("wrestling", "wrestling"), 57: ("yoga", "yoga"),
+    58: ("barre", "barre"), 59: ("coreTraining", "core_training"), 60: ("crossCountrySkiing", "cross_country_skiing"),
+    61: ("downhillSkiing", "downhill_skiing"), 62: ("flexibility", "flexibility"),
+    63: ("highIntensityIntervalTraining", "hiit"), 64: ("jumpRope", "jump_rope"), 65: ("kickboxing", "kickboxing"),
+    66: ("pilates", "pilates"), 67: ("snowboarding", "snowboarding"), 68: ("stairs", "stairs"),
+    69: ("stepTraining", "step_training"), 70: ("wheelchairWalkPace", "wheelchair_walk"),
+    71: ("wheelchairRunPace", "wheelchair_run"), 72: ("taiChi", "tai_chi"), 73: ("mixedCardio", "mixed_cardio"),
+    74: ("handCycling", "hand_cycling"), 75: ("discSports", "disc_sports"), 76: ("fitnessGaming", "fitness_gaming"),
+    77: ("cardioDance", "cardio_dance"), 78: ("socialDance", "social_dance"), 79: ("pickleball", "pickleball"),
+    80: ("cooldown", "cooldown"), 82: ("swimBikeRun", "swim_bike_run"), 83: ("transition", "transition"),
+    84: ("underwaterDiving", "underwater_diving"), 3000: ("other", "other"),
+}
+# The OW SDK's activity name -> OW unified type (the HealthKit part of SDK_WORKOUT_TYPE_MAPPINGS); a name not listed is
+# "other" there (get_unified_workout_type), and "other" itself is "generic"
+OW_SDK_WORKOUT_TYPES: dict[str, str] = {
+    "walking": "walking", "running": "running", "cycling": "cycling", "wheelchair_walk": "walking",
+    "wheelchair_run": "running", "hand_cycling": "cycling", "elliptical": "elliptical", "stair_climbing": "stair_climbing",
+    "stairs": "stair_climbing", "jump_rope": "cardio_training", "core_training": "strength_training",
+    "functional_strength_training": "strength_training", "strength_training": "strength_training",
+    "cross_training": "cardio_training", "mixed_cardio": "cardio_training", "hiit": "cardio_training",
+    "step_training": "aerobics", "fitness_gaming": "gaming", "preparation_and_recovery": "stretching",
+    "flexibility": "stretching", "cooldown": "stretching", "barre": "aerobics", "cardio_dance": "dance",
+    "social_dance": "dance", "yoga": "yoga", "mind_and_body": "stretching", "pilates": "pilates",
+    "american_football": "american_football", "australian_football": "football", "baseball": "baseball",
+    "basketball": "basketball", "cricket": "cricket", "disc_sports": "disc_sports", "handball": "handball",
+    "hockey": "hockey", "lacrosse": "lacrosse", "rugby": "rugby", "soccer": "soccer", "softball": "baseball",
+    "volleyball": "volleyball", "badminton": "badminton", "pickleball": "pickleball", "racquetball": "racquetball",
+    "squash": "squash", "table_tennis": "table_tennis", "tennis": "tennis", "climbing": "rock_climbing",
+    "equestrian": "horseback_riding", "fishing": "fishing", "golf": "golf", "hiking": "hiking", "hunting": "hunting",
+    "play": "play", "cross_country_skiing": "cross_country_skiing", "curling": "curling",
+    "downhill_skiing": "alpine_skiing", "snow_sports": "snow_sports", "snowboarding": "snowboarding",
+    "skating": "ice_skating", "paddle_sports": "paddling", "rowing": "rowing", "sailing": "sailing",
+    "surfing": "surfing", "swimming": "swimming", "underwater_diving": "diving", "water_fitness": "swimming",
+    "water_polo": "water_polo", "water_sports": "water_sports", "boxing": "boxing", "kickboxing": "boxing",
+    "martial_arts": "martial_arts", "tai_chi": "martial_arts", "wrestling": "martial_arts", "archery": "archery",
+    "bowling": "bowling", "fencing": "fencing", "gymnastics": "fitness_equipment", "track_and_field": "running",
+    "swim_bike_run": "triathlon", "transition": "transition", "dance": "dance", "dance_inspired_training": "dance",
+    "mixed_metabolic_cardio_training": "cardio_training", "other": "generic",
+}
+_HK_ACTIVITY_BY_NAME = {case: sdk for case, sdk in HK_WORKOUT_ACTIVITIES.values()}
+
+
+def hk_workout_type(activity: int | None, activity_name: str | None = None) -> str:
+    """The type the Open Wearables import gives this HKWorkout: by the raw activity value, else by its Swift case name."""
+    sdk = (HK_WORKOUT_ACTIVITIES.get(activity) or (None, None))[1] if activity is not None else None
+    sdk = sdk or _HK_ACTIVITY_BY_NAME.get(activity_name or "", "other")
+    return OW_SDK_WORKOUT_TYPES.get(sdk, "other")
 
 # ---------- intensity grading (per workout) ----------
 INTENSITY_LEVELS = ("rest", "light", "moderate", "hard", "max")

@@ -15,6 +15,8 @@
   before a newer ask leaves the row queued, so the newer data is scored too). No OW import, no rate limit.
 - run_queued() also runs the server part of a forced re-sync (sync/resync.py): the re-sync marks the row scores_queued
   while it has work, so the per-minute job that already watches this table picks it up (no new trigger needed).
+- run_scores() first derives the app sync engine's queued days of the user (rawdata/derive.py, hk-derive-run's work for
+  one user), so the recompute sees them when the engine's values count (sync mode app).
 Users who have not consented (profile/consent.py) and users without an OW link are not processed.
 """
 import logging
@@ -128,9 +130,23 @@ def queue_scores(conn: psycopg.Connection, user_id: int, from_date) -> None:
     conn.commit()
 
 
+def derive_engine_days(conn: psycopg.Connection, user_id: int) -> dict:
+    """The app sync engine's queued days of this user (rawdata/derive.py), so a recompute sees them; in the app sync mode
+    that also moves scores_from back to the earliest derived day. A failure is logged, never stops the recompute."""
+    try:
+        import time as _time
+        from ..rawdata import derive, params as rparams
+        return derive.run_user(conn, user_id, deadline=_time.monotonic() + rparams.REFRESH_TIME_BUDGET_S)
+    except Exception as e:  # noqa: BLE001  the days stay queued for the next hk-derive-run
+        conn.rollback()
+        log.warning("hk derive failed for user %s: %s", user_id, e)
+        return {"error": str(e)[:300]}
+
+
 def run_scores(conn: psycopg.Connection, user_id: int, client=None, scorer=None) -> dict:
     """Recompute the last SCORE_DAYS days, or from scores_from when an upload asked for older days (same as the hourly
-    job: compute-scores + insights, then the rules)."""
+    job: compute-scores + insights, then the rules). The sync engine's queued days are derived first."""
+    derive_engine_days(conn, user_id)
     row = conn.execute("SELECT scores_from, scores_queued_at FROM sync_refresh WHERE user_id = %s", (user_id,)).fetchone() or {}
     t0 = conn.execute("SELECT now() AS t").fetchone()["t"]
     _set(conn, user_id, status="scoring")
