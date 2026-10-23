@@ -6,6 +6,11 @@
 - Single use by default; `--max-uses M` lets one code open M accounts (e.g. a code posted in a group). A batch can expire
   (`--days`) and can be revoked as a whole; single codes can be revoked too.
 - Redeeming is one atomic UPDATE (uses < max_uses), so two people racing for the last use cannot both get in.
+- Readable codes: `invite-code create --code TEXT` uses TEXT (4–40 letters or digits, e.g. a channel name) instead of a
+  random code. It is a promo code, not a secret, matched like the others (case, spaces and dashes ignored); wrong
+  guesses still count against the per-IP failure limit. Lengths 12 and 16 are refused: redeem-invite reads those as an
+  existing account's login / activation code first. A text an active circle code already uses is refused too (circle
+  codes are tried first).
 - One code, many people: `invite-code create --label X --uses N` is a batch of one code with max_uses N. Every
   redemption records the sign-in identities (Apple / e-mail) of the account as a hash plus a masked hint; an identity
   can redeem only once, ever (the record outlives the account), so one person cannot open several accounts with it.
@@ -22,13 +27,15 @@ import secrets
 
 import psycopg
 
-from ..web import login_codes
+from ..web import activation, login_codes
 from . import params
 
 ALPHABET = login_codes.ALPHABET
 LENGTH = 10
 MAX_COUNT = 1000
 MAX_DAYS = 365
+TEXT_MIN, TEXT_MAX = 4, 40                                         # readable codes (`--code`)
+RESERVED_LENGTHS = (login_codes.LENGTH, activation.LENGTH)         # redeem-invite tries these kinds first
 
 
 def normalize(code: str) -> str:
@@ -43,11 +50,29 @@ def pretty(code: str) -> str:
     return f"{code[:5]}-{code[5:]}"
 
 
+def _readable(conn: psycopg.Connection, text: str) -> str:
+    """The normalized form of an admin-chosen code, or ValueError."""
+    norm = normalize(text)
+    if not (TEXT_MIN <= len(norm) <= TEXT_MAX and norm.isascii() and norm.isalnum()):
+        raise ValueError(f"激活码要 {TEXT_MIN}–{TEXT_MAX} 个英文字母或数字（空格和短横线会被忽略）")
+    if len(norm) in RESERVED_LENGTHS:
+        raise ValueError(f"激活码不能正好是 {' 或 '.join(map(str, RESERVED_LENGTHS))} 位（会被当成登录码 / 账号激活码）")
+    if conn.execute("SELECT 1 FROM circle_codes WHERE code_norm = %s AND disabled_at IS NULL", (norm.lower(),)).fetchone():
+        raise ValueError("已经有同名的圈子激活码")
+    if conn.execute("SELECT 1 FROM invite_codes WHERE code_sha256 = %s", (_sha(norm),)).fetchone():
+        raise ValueError("这个激活码已经存在（包括已撤销的）")
+    return norm
+
+
 def create_batch(conn: psycopg.Connection, count: int, label: str, days: int | None = None, max_uses: int = 1,
-                 created_by: str | None = None) -> dict:
-    """Create a batch; returns {batch_id, label, expires_at, max_uses, codes: [plaintext…]} (plaintext only this once)."""
+                 created_by: str | None = None, text: str | None = None) -> dict:
+    """Create a batch; returns {batch_id, label, expires_at, max_uses, codes: [plaintext…]} (plaintext only this once).
+    `text`: one readable code chosen by the admin instead of random ones (count must be 1)."""
     if not 1 <= count <= MAX_COUNT:
         raise ValueError(f"数量 1–{MAX_COUNT}")
+    if text is not None and count != 1:
+        raise ValueError("指定激活码时只能建 1 个")
+    readable = _readable(conn, text) if text is not None else None
     if days is not None and not 1 <= days <= MAX_DAYS:
         raise ValueError(f"有效期 1–{MAX_DAYS} 天，或不填（不过期）")
     if not 1 <= max_uses <= 10_000:
@@ -61,19 +86,22 @@ def create_batch(conn: psycopg.Connection, count: int, label: str, days: int | N
            RETURNING id, expires_at""", (label, (created_by or "")[:60] or None, days, days, max_uses)).fetchone()
     codes = []
     while len(codes) < count:
-        code = "".join(secrets.choice(ALPHABET) for _ in range(LENGTH))
+        code = readable or "".join(secrets.choice(ALPHABET) for _ in range(LENGTH))
         row = conn.execute("""INSERT INTO invite_codes (batch_id, code_sha256, hint, max_uses) VALUES (%s, %s, %s, %s)
                               ON CONFLICT (code_sha256) DO NOTHING RETURNING id""",
                            (batch["id"], _sha(code), code[-3:], max_uses)).fetchone()
         if row:
             codes.append(code)
+        elif readable:
+            raise ValueError("这个激活码已经存在（包括已撤销的）")
     return {"batch_id": batch["id"], "label": label, "expires_at": batch["expires_at"], "max_uses": max_uses, "codes": codes}
 
 
 def create_code(conn: psycopg.Connection, label: str, uses: int, days: int | None = None,
-                created_by: str | None = None) -> dict:
-    """One code that opens up to `uses` accounts (a batch of one): {batch_id, label, expires_at, max_uses, code}."""
-    res = create_batch(conn, 1, label, days, uses, created_by)
+                created_by: str | None = None, text: str | None = None) -> dict:
+    """One code that opens up to `uses` accounts (a batch of one): {batch_id, label, expires_at, max_uses, code}.
+    `text`: the admin's readable code (returned normalized) instead of a random one."""
+    res = create_batch(conn, 1, label, days, uses, created_by, text)
     return {**{k: v for k, v in res.items() if k != "codes"}, "code": res["codes"][0]}
 
 
@@ -187,7 +215,7 @@ def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
         return False
     if user["status"] == "active":
         return True
-    if len(normalize(code)) != LENGTH:
+    if not TEXT_MIN <= len(normalize(code)) <= TEXT_MAX:   # random codes are LENGTH, readable ones TEXT_MIN–TEXT_MAX
         return False
     idents = [(i["provider"], _identity_sha(i["provider"], i["subject"]), identity_hint(i["provider"], i["subject"], i["email"]))
               for i in conn.execute("SELECT provider, subject, email FROM user_identities WHERE user_id = %s ORDER BY id",
