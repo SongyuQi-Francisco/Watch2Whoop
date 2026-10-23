@@ -2472,6 +2472,16 @@
   const meSection = (title, rows) => (rows.filter(Boolean).length
     ? `<div class="section">${title ? `<div class="section-head"><h2>${title}</h2></div>` : ""}<div class="group">${rows.join("")}</div></div>` : "");
 
+  // Avatar + name at the top of 我 (#213): on my own page the whole row is one button that opens the profile sheet (the
+  // same sheet as 我 → 个人资料, where the picture is changed); viewing someone else (read-only) it is plain text, no link.
+  function meHead(who) {
+    const inner = `<span class="avatar">${avInner(who.avatar, who.display_name)}</span>
+      <span><span class="me-name">${esc(who.display_name)}</span><span class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</span></span>`;
+    return who.self && window.BodyProfile
+      ? `<button type="button" class="me me-open" id="me-open" aria-label="${esc(tr("打开个人资料"))}">${inner}<span class="chev">${ICON.chev}</span></button>`
+      : `<div class="me">${inner}</div>`;
+  }
+
   function meSettingsHtml(who) {
     const chev = `<span class="chev">${ICON.chev}</span>`;
     const rows = pluginRows(chev);
@@ -2516,8 +2526,7 @@
       ].join("");
       const archiveVal = [supps.error ? null : tr("补剂 {n}", { n: supps.filter((x) => x.status === "active").length }),
         labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
-      return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
-          <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
+      return `${meHead(who)}
         ${healthspanHtml(hs)}
         <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
         ${meSection("", [...(rows.profile || []),
@@ -2529,8 +2538,7 @@
         ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
         </div></div>`;
     }
-    return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
-        <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
+    return `${meHead(who)}
       ${healthspanHtml(hs)}
       <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
       <div class="section"><div class="group">
@@ -2647,6 +2655,8 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
+    const prof = $("#me-open", view);   // #213: avatar / name row -> profile sheet
+    if (prof) prof.onclick = () => window.BodyProfile?.open();
     const upd = $("#me-refresh", view);
     if (upd) upd.onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
     const settings = $("#me-settings", view), back = $("#me-back", view);   // 「设置」 sub-page (me_settings flag)
