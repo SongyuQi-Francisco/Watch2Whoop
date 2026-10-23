@@ -189,6 +189,7 @@ I18N.addEn({
   "暂无": "None yet",
   "上期": "Prev.",
   "次日恢复": "Next-day recovery",
+  "已控制负荷、睡眠、星期": "adjusted for strain, sleep, weekday",
   "行为影响 · 次日恢复": "Behavior impact · next-day recovery",
   "{n} 天": "{n} days",
   "{n} 项样本不足": "{n} with too few samples",

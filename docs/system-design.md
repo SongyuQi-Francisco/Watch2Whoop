@@ -183,6 +183,7 @@ CREATE TABLE sync_state (
 - 结局：次日恢复分（或 ln HRV 的 z 分数）。先比较两组均值；再做 OLS（控制前一天负荷、睡眠时长、星期几），用 Newey-West（HAC）处理自相关；多个行为一起检验时做 BH 校正。
 - 90 天内「是」「否」各 ≥ 5 次才显示，15–20 次以上才可信；天天吃的补剂（如肌酸）无法分析。
 - **第一版已实现（2026-10-16，`records/analysis.py`）**：两组均值比较，结局 = 次日静息心率、次日 ln HRV（SDNN 日均值）；给出差值、Welch t、Cohen's d、正态近似 95% 区间；各 < 5 天不出结果，各 ≥ 15 天标 reliable。没记录的日子不算「否」。次日恢复分已加进 `OUTCOMES`（2026-10-16，排第一）；OLS + Newey-West + BH 是第二版。
+- **第二版已实现（2026-10-22，#118，`records/regression.py`）**：`analyze(..., regression=True)` / 接口 `regression=true` 给每个结局加 `regression` 字段：OLS（行为 是 1 / 否 0；控制行为日 D 的 strain、D→D+1 那晚的睡眠时长、D 的星期几），Newey-West 标准误（滞后 7 个日历天），不带 key 时按结局在各行为之间做 BH（FDR 5%）；只用协变量齐全的日子；剩余自由度 < 20 不出结果。只用标准库，参数和出处在 `records/analysis_params.py`。第一版的字段不变；今天页趋势的「行为影响」卡在开关 `journal_regression` 后面改用第二版。
 - 默认日记项（`records/defaults.py`，每人一套，`journal-init` 建）：饮食（咖啡、12 点后咖啡因、喝酒、晚饭太晚、红肉 g、喝水 L、练前没吃够）、训练（上肢、练腿、爬坡、篮球、游泳、睡前 3 小时内练完、肩部 routine）、生活（桑拿、早上晒太阳、午睡、睡前看手机、压力大）、症状（低血糖感、极度口渴、生病、肩疼）；每种补剂一项（`supp_*`，加补剂时自动建）。
 
 ### 实现说明（v1.0-2026-10-16）
