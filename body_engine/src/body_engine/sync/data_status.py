@@ -142,8 +142,12 @@ def _metric_rows(conn: psycopg.Connection, user_id: int, since: date, src_since:
             o["last_date"] = r["last_date"]
         o["dates"] |= set(r["dates"] or ())
         o["count"] += int(r["count"])
+    from ..importers import common
+    app_mode = common.AppMode(conn, user_id)   # the sync engine's values count only in its app mode (as resolve_daily)
     for r in conn.execute("""SELECT DISTINCT metric, source FROM daily_metric_sources
                              WHERE user_id = %(u)s AND metric = ANY(%(m)s) AND date >= %(src)s""", p):
+        if not common.takes_part(r, app_mode):
+            continue
         out.setdefault(metric_kind[r["metric"]], {"last_date": None, "dates": set(), "count": 0, "sources": set()})["sources"].add(r["source"])
     return {k: {"last_date": o["last_date"], "last_at": None, "days": len(o["dates"]), "count": o["count"],
                 "sources": sorted(o["sources"])} for k, o in out.items()}

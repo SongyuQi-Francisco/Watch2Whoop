@@ -14,6 +14,15 @@ import psycopg
 # "app" = the types the Watch2Whoop app reads from HealthKit itself (rawdata/hk_types.py, rawdata/quantities.py): straight from
 # HealthKit with the export import's daily definitions, while Open Wearables has these types only from an old export.xml copy.
 SOURCE_PRIORITY = {"shortcut": 1, "apple_export": 2, "ow": 3, "app": 4}
+# The app's own sync engine (rawdata/derive.py) also writes source 'app', for the metrics it derives (every quantity type of
+# its registry except the phase-1 types above, rawdata/hk_types.HK_TYPES, whose 'app' value keeps its place in every mode).
+# Those values rank by the user's sync mode (rawdata/engine.mode; docs/apple-sync-engine.md D4):
+# - ow / shadow: below every source and not taking part in the choice at all (stored only for the comparison, step S4),
+#   so daily_metrics stays exactly what the other sources give;
+# - app (after the cut-over, step S5): SOURCE_PRIORITY as above, app > ow > apple_export > shortcut for non-cumulative
+#   values and sleep; cumulative ones are again the largest clean candidate.
+APP_SOURCE = "app"
+SYNC_MODES = ("ow", "shadow", "app")
 
 # ---- choosing cumulative daily values (docs/shortcut-sync-spec.md §5) ----
 # Every source de-duplicates devices itself (OW: HealthKit-style overlap; export.xml / Shortcut raw samples: largest single device),
@@ -108,10 +117,36 @@ def sessionize(segments: list[Segment]) -> list[SleepSession]:
     return out
 
 
+def engine_metric(metric: str) -> bool:
+    """A metric whose 'app' value comes from the sync engine (rawdata/derive.py), i.e. not a phase-1 direct-upload type."""
+    from ..rawdata import hk_types   # rawdata.hk_types imports this module
+    return metric not in hk_types.BY_METRIC
+
+
+class AppMode:
+    """Whether the user's engine-derived 'app' values take part (sync mode 'app'). The mode is looked up once and only when
+    such a value is actually met, so users without the engine pay nothing and keep exactly the old behaviour."""
+
+    def __init__(self, conn: psycopg.Connection, user_id: int, mode: str | None = None):
+        self.conn, self.user_id, self.mode = conn, user_id, mode
+
+    def __call__(self) -> bool:
+        if self.mode is None:
+            from ..rawdata import engine
+            self.mode = engine.mode(self.conn, self.user_id)
+        return self.mode == "app"
+
+
+def takes_part(c: dict, app_mode) -> bool:
+    """Whether this daily_metric_sources candidate may be chosen (app_mode: AppMode or a callable returning a bool)."""
+    return c["source"] != APP_SOURCE or not engine_metric(c["metric"]) or app_mode()
+
+
 def upsert_daily(conn: psycopg.Connection, user_id: int, source: str, rows: list[dict],
-                 today: date | None = None) -> int:
+                 today: date | None = None, resolve: bool = True) -> int:
     """rows: date, metric, value, unit, agg, n, min_value, max_value[, flags]. Stores this source's value per (date, metric) in
-    daily_metric_sources (a newer import of the same source replaces it), then re-chooses daily_metrics for those dates."""
+    daily_metric_sources (a newer import of the same source replaces it), then re-chooses daily_metrics for those dates
+    (resolve=False: only stored, e.g. the sync engine's values outside the app mode, which take no part anyway)."""
     if not rows:
         return 0
     with conn.cursor() as cur:
@@ -124,18 +159,23 @@ def upsert_daily(conn: psycopg.Connection, user_id: int, source: str, rows: list
                  min_value = EXCLUDED.min_value, max_value = EXCLUDED.max_value, flags = EXCLUDED.flags, updated_at = now()""",
             [{**r, "user_id": user_id, "source": source, "flags": json.dumps(r.get("flags") or {}, ensure_ascii=False)}
              for r in rows])
-    resolve_daily(conn, user_id, {r["date"] for r in rows}, today)
+    if resolve:
+        resolve_daily(conn, user_id, {r["date"] for r in rows}, today)
     return len(rows)
 
 
-def _basal_reference(conn: psycopg.Connection, user_id: int, first: date, last: date) -> dict[date, float]:
+def _basal_reference(conn: psycopg.Connection, user_id: int, first: date, last: date,
+                     app_mode=lambda: False) -> dict[date, float]:
     """The usual basal energy before each day: median over the previous BASAL_REF_DAYS days of that day's largest
-    candidate that was not summed by hour."""
-    per_day = {r["date"]: r["v"] for r in conn.execute(
-        """SELECT date, max(value) AS v FROM daily_metric_sources
-           WHERE user_id = %s AND metric = 'basal_energy_burned' AND date >= %s AND date < %s AND value > 0
-             AND NOT flags ? 'hourly_sum' GROUP BY date""",
-        (user_id, first - timedelta(days=BASAL_REF_DAYS), last))}
+    candidate that was not summed by hour (the sync engine's value only when it takes part, app_mode)."""
+    per_day: dict[date, float] = {}
+    for r in conn.execute(
+            """SELECT date, source, max(value) AS v FROM daily_metric_sources
+               WHERE user_id = %s AND metric = 'basal_energy_burned' AND date >= %s AND date < %s AND value > 0
+                 AND NOT flags ? 'hourly_sum' GROUP BY date, source""",
+            (user_id, first - timedelta(days=BASAL_REF_DAYS), last)):
+        if takes_part({"source": r["source"], "metric": "basal_energy_burned"}, app_mode):
+            per_day[r["date"]] = max(per_day.get(r["date"], r["v"]), r["v"])
     out = {}
     d = first
     while d <= last:
@@ -184,20 +224,28 @@ def choose(cands: list[dict], incomplete: dict[tuple[date, str], str]) -> tuple[
     return win, flags_of(win)
 
 
-def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | None = None) -> int:
-    """Re-choose daily_metrics for these dates from daily_metric_sources (idempotent). Returns the number of (date, metric) chosen."""
+def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | None = None, mode: str | None = None) -> int:
+    """Re-choose daily_metrics for these dates from daily_metric_sources (idempotent). Returns the number of (date, metric) chosen.
+    mode: the user's sync mode when the caller knows it (else looked up only if a sync-engine value is met, AppMode).
+    Sync-engine values that take no part are skipped; a (date, metric) that has only such values has no chosen value."""
     dates = sorted(set(dates))
     if not dates:
         return 0
     if today is None:
         tz = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"]
         today = datetime.now(ZoneInfo(tz)).date()
-    cands = conn.execute("SELECT * FROM daily_metric_sources WHERE user_id = %s AND date = ANY(%s)",
-                         (user_id, dates)).fetchall()
+    app_mode = AppMode(conn, user_id, mode)
+    cands, hidden = [], set()
+    for c in conn.execute("SELECT * FROM daily_metric_sources WHERE user_id = %s AND date = ANY(%s)",
+                          (user_id, dates)).fetchall():
+        if takes_part(c, app_mode):
+            cands.append(c)
+        else:
+            hidden.add((c["date"], c["metric"]))
     workout_kcal = {r["local_date"]: r["kcal"] for r in conn.execute(
         """SELECT local_date, sum(active_kcal) AS kcal FROM workouts WHERE user_id = %s AND local_date = ANY(%s)
            AND dup_of IS NULL AND excluded IS NULL AND active_kcal IS NOT NULL GROUP BY local_date""", (user_id, dates))}
-    incomplete = incomplete_days(cands, _basal_reference(conn, user_id, dates[0], dates[-1]), workout_kcal, today)
+    incomplete = incomplete_days(cands, _basal_reference(conn, user_id, dates[0], dates[-1], app_mode), workout_kcal, today)
     groups = defaultdict(list)
     for c in cands:
         groups[(c["date"], c["metric"])].append(c)
@@ -215,6 +263,12 @@ def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | N
                  value = EXCLUDED.value, unit = EXCLUDED.unit, agg = EXCLUDED.agg, n = EXCLUDED.n,
                  min_value = EXCLUDED.min_value, max_value = EXCLUDED.max_value, source = EXCLUDED.source,
                  flags = EXCLUDED.flags, updated_at = now()""", out)
+    # only sync-engine values that take no part (e.g. back from the app mode): an 'app' value chosen before goes
+    gone = hidden - {(c["date"], c["metric"]) for c in cands}
+    if gone:
+        with conn.cursor() as cur:
+            cur.executemany("DELETE FROM daily_metrics WHERE user_id = %s AND date = %s AND metric = %s AND source = %s",
+                            [(user_id, d, m, APP_SOURCE) for d, m in sorted(gone)])
     return len(out)
 
 

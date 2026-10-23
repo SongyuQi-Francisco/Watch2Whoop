@@ -2,6 +2,7 @@
 
 > 状态：设计稿，等维护者确认（#219）。只描述方案，不含代码改动。标「待查」的地方写这份文档时没查清，拆 PR 时先确认。
 > 文中出现的数字都是示例或估算，不是任何真人的数据。
+> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）已实现，和设计不同的地方见第 3.2 节开头的说明。
 
 ## 0. 摘要
 
@@ -221,6 +222,15 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 > - 按范围重新同步：每页带 `range: {id, start, end, types}`，最后 `range_done: id`；删的是范围开始前收到、这次没再出现的样本（范围进行中增量上传的新样本不会被误删）。
 > - `mode` 目前只有 `ow` / `shadow`；`app` 模式和 `apple_sync_primary` 开关留给 S5。
 > - 第 1 阶段的直传类型（站立、锻炼分钟……）经 `samples[]` 上传时，日值照旧立即重算、`app_types_pause` 照旧生效；其他类型只记 `hk_dirty_days`，日值 / 睡眠 / 训练由 S2 派生。
+>
+> **S2 已实现（`rawdata/derive.py`、参数和出处 `rawdata/params.py`，命令 `hk-derive-run`，没有新迁移）**，和下文不同的地方以代码为准：
+> - 模块放在 `rawdata/derive.py`（不是 `healthkit/derive.py`）。队列按天处理：每天一个事务（锁住这一天的 `hk_dirty_days` 行 + 每个用户一把 advisory 锁），派生完删掉这一行；一次最多 240 秒，剩下的留给下一次；没同意的用户留在队列里。
+> - 日值：非累计型 = 当天全部原始样本的平均 / 最小 / 最大 / 条数（和 `importers/ow.daily_rows` 一样）；累计型 = 当天 15 分钟统计桶之和。**第 1 阶段的直传类型不由 S2 派生**：上传时 `rawdata/quantities.rebuild_days` 已经按它们自己的口径算过，在 `resolve_daily` 里的位置也不随模式变。
+> - 睡眠：OW 的状态机按**用户**拼一晚（不分来源，会话来源取第一条样本），我们按**来源**分组，用 OW 自己的规则（间隔 > 2 小时切开、会话只能由睡着 / 在床开始、阶段清理：有核心 / 深睡 / REM 时去掉「在床」「睡着」，只有在床时在床算睡着，重叠的阶段从上一段结束处截断）拼成会话，再走同一个 `ow.sleep_segments`（和更高优先级的会话重叠就整段丢掉：手表 > 手机 > 其他）+ `common.sessionize`。只有手表、或手机「在床」包着手表阶段时两边一样；多个来源互相穿插时的差异算 `source_priority`。
+> - 训练：类型表在 `training/params.py`（`HK_WORKOUT_ACTIVITIES`：HealthKit 原始值 → OW SDK 的名字；`OW_SDK_WORKOUT_TYPES`：SDK 名字 → OW 统一类型，`hk_workout_type()`）；`training/importer.parse_app` 按 `parse_ow` 的口径（HealthKit 时长、总能量 = 活动 + 基础、活动能量直接用训练统计值）。训练心率 / TRIMP（`enrich`）还是读 OW，留给 S3。
+> - 同步模式：`shadow`（以及开关关掉后的 `ow`）下日值只写 `daily_metric_sources`、不重选 `daily_metrics`，不写 `sleep_sessions`，训练 `excluded = 'shadow'`；`resolve_daily` 遇到派生类型的 `app` 候选时才查模式，非 `app` 模式跳过它们（基础代谢参考值同样跳过），只剩这种候选的那一项删掉以前选中的 `app` 值（从 `app` 回退时用）。`app` 模式下 `SOURCE_PRIORITY` 照旧（app > ow），训练 `SOURCE_RANK_APP`（app 第一），写睡眠、重选日值、派生完排队算分。`app` 模式已经在派生、`resolve_daily`、`refresh_duplicates` 里预留好，`engine.mode()` 还只返回 ow / shadow，`apple_sync_primary` 留给 S5。
+> - 接入：`deploy/ops/ops.py` 每小时任务先跑 `hk-derive-run`；`sync/refresh.run_scores`（`sync-refresh-run` 和 inline 模式）算分前先派生这个用户的脏天（60 秒预算）。部署机每分钟的导入任务要加一条「`hk_dirty_days` 有行时跑 `hk-derive-run`」（部署者自己的运维脚本，开 `apple_sync_engine` 给内测组之前加）。
+> - 影子期用户看到的东西不变：`water/store.py` 训练日加水量也排除 `excluded = 'shadow'`（其他读 `workouts` 的地方本来就要 `excluded IS NULL`）；数据状态页（`sync/data_status.py`）的「来源」不列不参与选值的 `app` 值。
 
 #### 3.2.1 接口
 

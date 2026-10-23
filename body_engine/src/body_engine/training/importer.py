@@ -10,6 +10,8 @@
     Active energy: when active + basal samples in the window sum to >= 85% of total energy, split by sample ratio; otherwise (samples not fully synced) use total energy − estimated basal energy, flagged active_kcal_estimated.
 - Times are always converted to the user's time zone; local_date = the start day (a workout crossing midnight counts for its start day).
 - OW incremental: import-ow re-pulls whole workouts within the days pulled each time, and anything already deleted in OW is deleted here too (only source=ow within the pulled range).
+- The app's own sync engine (source=app, docs/apple-sync-engine.md §3.2.4): parse_app turns its HKWorkouts (hk_samples) into the same
+  rows (rawdata/derive.py writes them); outside the app sync mode they are stored with excluded = 'shadow'.
 """
 import statistics
 from collections import defaultdict
@@ -24,6 +26,8 @@ from ..scores import strain as L
 from . import params as P
 
 KJ_PER_KCAL = 4.184
+APP_SOURCE = "app"     # the app's own sync engine (rawdata/derive.py)
+SHADOW = "shadow"      # excluded value of the engine's workouts outside the app sync mode (docs/apple-sync-engine.md D4)
 FIELDS = ["origin", "is_xml", "device", "type", "name_zh", "local_date", "start_at", "end_at", "duration_min",
           "active_kcal", "total_kcal", "distance_km", "avg_hr", "max_hr", "zone_offset", "excluded"]
 
@@ -70,6 +74,45 @@ def parse_ow(raw: dict, tz: ZoneInfo, xml_energy_unit: str = P.XML_ENERGY_UNIT) 
                distance_km=None if raw.get("distance_meters") is None else round(raw["distance_meters"] / 1000, 3),
                avg_hr=raw.get("avg_heart_rate_bpm"), max_hr=raw.get("max_heart_rate_bpm"),
                zone_offset=raw.get("zone_offset"), device_type=src.get("device_type"))
+    return row
+
+
+# ---------------------------------------------------------------- the app's sync engine (hk_samples)
+def _zone_offset(at: datetime, tz: ZoneInfo) -> str:
+    off = at.astimezone(tz).utcoffset() or timedelta(0)
+    sign, minutes = ("-" if off < timedelta(0) else "+"), abs(int(off.total_seconds())) // 60
+    return f"{sign}{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def parse_app(r: dict, tz: ZoneInfo, shadow: bool) -> dict:
+    """One HKWorkout the app's sync engine uploaded (an hk_samples row joined with its hk_sources row: value = duration in
+    minutes without pauses, value_text = activity name, meta = {activity, stats, events, meta}) -> a workouts row, with
+    the same definitions as parse_ow: the OW type of that activity (P.hk_workout_type), HealthKit's duration, total energy
+    = active + basal (OW's calories_kcal). Active energy comes straight from the workout's statistics (the OW import has
+    to split it from samples, enrich). shadow: stored with excluded = 'shadow' (not shown, not in any total)."""
+    meta = r.get("meta") or {}
+    stats = meta.get("stats") or {}
+    row = _base_row(tz, r["start_at"], r["end_at"])
+    if r["value"] and not row["excluded"]:
+        row["duration_min"] = round(r["value"], 2)   # HealthKit's duration (paused time excluded), like OW's duration_seconds
+    active, basal = stats.get("active_kcal"), stats.get("basal_kcal")
+    total = None if active is None and basal is None else (active or 0.0) + (basal or 0.0)
+    t = P.hk_workout_type(meta.get("activity"), r.get("value_text"))
+    zone = r.get("tz")
+    try:
+        ztz = ZoneInfo(zone) if zone else tz
+    except (ValueError, KeyError):
+        ztz = tz
+    dist = stats.get("distance_m")
+    row.update(source=APP_SOURCE, external_id=str(r["uuid"]), origin=r.get("source_name") or r.get("source") or None,
+               is_xml=False, device=r.get("device_name") or r.get("source_name") or r.get("source") or None, type=t,
+               name_zh=type_name(t), total_kcal=None if total is None else round(total, 1),
+               active_kcal=None if active is None else round(active, 1),
+               distance_km=None if dist is None else round(dist / 1000, 3),
+               avg_hr=stats.get("avg_hr"), max_hr=stats.get("max_hr"),
+               zone_offset=_zone_offset(r["start_at"], ztz), device_type=r.get("device_type") or None)
+    if shadow:
+        row["excluded"] = SHADOW
     return row
 
 
@@ -123,12 +166,12 @@ def _differs(a, b) -> bool:
     return a != b
 
 
-def _rank(w: dict) -> tuple:
+def _rank(w: dict, ranks: dict = P.SOURCE_RANK) -> tuple:
     dev = (w.get("device") or "").lower()
     device = 0 if "watch" in dev else 1 if ("iphone" in dev or "phone" in dev) else 2
     # a copy with a real activity type wins over one the source only knew as generic (e.g. a Shortcut workout inferred
     # from exercise minutes + heart rate vs. the OW / Apple workout that arrives later)
-    return (1 if w["type"] in P.GENERIC_TYPES else 0, P.SOURCE_RANK.get(w["source"], 9), 1 if w["is_xml"] else 0,
+    return (1 if w["type"] in P.GENERIC_TYPES else 0, ranks.get(w["source"], 9), 1 if w["is_xml"] else 0,
             device, w["id"])
 
 
@@ -143,15 +186,24 @@ def _is_dup(a: dict, b: dict) -> bool:
     return same_type and shorter > 0 and overlap / shorter >= P.DUP_OVERLAP
 
 
-def refresh_duplicates(conn: psycopg.Connection, user_id: int) -> dict:
+def refresh_duplicates(conn: psycopg.Connection, user_id: int, mode: str | None = None) -> dict:
     """Recompute dup_of for all of this user's workouts: from highest priority down, one that duplicates an already-kept workout points to it. Returns {kept, duplicates, changed}.
-    Runs after every import, whichever copy arrived first. A dup_of set by hand (flags.manual_dup) is never changed."""
+    Runs after every import, whichever copy arrived first. A dup_of set by hand (flags.manual_dup) is never changed.
+    mode: the user's sync mode (rawdata/engine.mode), looked up only when the app's sync engine has workouts here: in the
+    app mode its copies rank first (P.SOURCE_RANK_APP), otherwise they are excluded ('shadow') and take no part."""
     rows = conn.execute("""SELECT id, source, is_xml, device, type, start_at, end_at, dup_of, excluded, flags FROM workouts
                            WHERE user_id = %s""", (user_id,)).fetchall()
+    ranks = P.SOURCE_RANK
+    if any(w["source"] == APP_SOURCE for w in rows):
+        if mode is None:
+            from ..rawdata import engine
+            mode = engine.mode(conn, user_id)
+        if mode == "app":
+            ranks = P.SOURCE_RANK_APP
     kept: list[dict] = []
     target: dict[int, int | None] = {}
     manual = {w["id"]: w["dup_of"] for w in rows if (w["flags"] or {}).get("manual_dup") and w["dup_of"]}
-    for w in sorted(rows, key=_rank):
+    for w in sorted(rows, key=lambda w: _rank(w, ranks)):
         if w["id"] in manual:
             target[w["id"]] = manual[w["id"]]
             continue
