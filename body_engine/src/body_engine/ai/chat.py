@@ -25,6 +25,10 @@ and the back end's name never reaches the model or the user: the system prompt, 
 history sent are scrubbed (naming.scrub), the streamed answer, errors and stored answers too (naming.StreamScrubber,
 _scrub_events). The vendor-native replies (`native`) are kept as returned: thinking signatures need them unchanged.
 
+Rollout flag jarvis_scope_guard (scope_guard.py, issue #170), fallback AI only: a message that is clearly off-topic and costly
+(code, homework, long writing / translation) is answered with a fixed polite text by _decline, with no model call, no tools and
+no quota used, and the system prompt of every fallback call gets the scope rules. Off, or on a person's own AI: nothing changes.
+
 Cards (cards.py, rollout flag jarvis_rich): the model may call show_card, and the write tools in cards.AUTO get one by
 themselves; each becomes a `card` event and is kept on its ai_tool_calls row for conversation_view.
 
@@ -46,7 +50,7 @@ from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..assistant.tools import _audit as run_audit
 from ..i18n import L, is_en
-from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, web
+from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, scope_guard, web
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
 from . import params as ai_params
@@ -499,6 +503,7 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
                               per_page) + web_tools
     rich = cards.enabled(conn, viewer["id"])
     v2 = rich and cards.v2_enabled(conn, viewer["id"])
+    scoped = fb and scope_guard.on(conn, viewer["id"])   # jarvis_scope_guard: the scope rules join the system prompt
     shown: set = set()   # cards of this turn (an automatic card does not repeat one already shown)
     if rich:
         tools = [*tools, cards.tool(v2)]
@@ -509,6 +514,8 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
         if rich:
             system = f"{system}\n\n{cards.prompt(v2)}"
+        if scoped:
+            system = f"{system}\n\n{scope_guard.PROMPT}"
         if scrub:
             system, history = f"{naming.scrub(system)}\n\n{parity.prompt(fb)}", _scrub_history(history)
         # The last call allowed: same tools (history and prompt cache stay valid), calls switched off, an answer now
@@ -633,7 +640,7 @@ def chat_events(conn: psycopg.Connection, viewer: dict, message: str, images: li
     page: the Today page id the message is sent from (ai/params.PAGE_GROUPS); a page new to the conversation adds its groups
     (unknown ids are ignored; over the budget the oldest pages' groups are dropped)."""
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback, page)
-    return _run(conn, viewer, provider, adapter, conv, content)
+    return _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
 
 def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fallback=False, page=None):
@@ -673,10 +680,28 @@ def start_chat(conn: psycopg.Connection, viewer: dict, message: str, images: lis
                conversation_id: int | None, page: str | None = None) -> tuple[int, Iterator[dict]]:
     """chat_events for the Today page: also returns the conversation id, which keys the background turn (runs.py, #114)."""
     provider, adapter, conv, content = prepare_chat(conn, viewer, message, images, conversation_id, page=page)
-    return conv["id"], _run(conn, viewer, provider, adapter, conv, content)
+    return conv["id"], _run(conn, viewer, provider, adapter, conv, content, _scope_check(conn, viewer, provider, message, content))
 
 
-def _run(conn, viewer, provider, adapter, conv, content) -> Iterator[dict]:
+def _scope_check(conn, viewer: dict, provider: dict, message: str, content: list) -> str | None:
+    """jarvis_scope_guard: the category when the fallback AI is not to answer this message (content = the time prefix + images)."""
+    if not scope_guard.applies(conn, viewer["id"], provider):
+        return None
+    return scope_guard.check(message, images=len(content) - 1)
+
+
+def _decline(conn, viewer: dict, conv: dict, category: str) -> Iterator[dict]:
+    """The fixed polite answer to an off-topic message: stored as the assistant's message, no model call, nothing billed."""
+    text = scope_guard.decline_text()
+    scope_guard.record(conn, viewer["id"], category)
+    _add_message(conn, conv["id"], viewer["id"], "assistant", [{"type": "text", "text": text}])
+    conn.execute("UPDATE ai_conversations SET state = 'idle' WHERE id = %s", (conv["id"],))
+    conn.commit()
+    yield ev("text", delta=text)
+    yield ev("done", conversation_id=conv["id"])
+
+
+def _run(conn, viewer, provider, adapter, conv, content, declined: str | None = None) -> Iterator[dict]:
     yield ev("conversation", id=conv["id"], provider=provider["kind"], model=provider["model"],
              display_name=catalog.display_name(provider),
              **({"quota": {k: v for k, v in fallback.summary(conn, viewer["id"]).items()
@@ -684,6 +709,9 @@ def _run(conn, viewer, provider, adapter, conv, content) -> Iterator[dict]:
     _close_open_calls(conn, conv, "用户没有确认就发了新消息，这次没有写入")
     _add_message(conn, conv["id"], viewer["id"], "user", content)
     conn.commit()
+    if declined:
+        yield from _decline(conn, viewer, conv, declined)
+        return
     yield from _loop(conn, viewer, provider, conv, adapter)
 
 

@@ -82,6 +82,9 @@ def world(dsn):
                      (a, datetime.combine(today - timedelta(days=2), datetime.min.time(), TZ) + timedelta(hours=20)))
         conn.commit()
         plans.save_plan(conn, a, split_type="4_day_upper_lower", sync_sparky=False)
+        # A plan saved on a Friday / Saturday / Sunday starts today (issue #65): the rest of that week holds no session, and the
+        # test below looks at the current week. Let the plan have started two weeks ago so it passes on every weekday.
+        conn.execute("UPDATE training_plans SET start_date = start_date - 14 WHERE user_id = %s AND active", (a,))
         conn.commit()
     return ids
 
