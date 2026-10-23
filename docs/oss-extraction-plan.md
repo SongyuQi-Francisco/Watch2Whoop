@@ -51,7 +51,7 @@ so calls without it behave exactly as before. `params.override(NAME=value, …)`
 itself is never modified, so overrides are safe in a multi-threaded server. Arguments that had a parameter as their
 default (`window`, `hold`, `cap`, `k`, `weeks`) now default to `None` and read the parameter at call time. The
 source of every parameter is in the docstring / comment next to it; `packages/openbodyscore/METHODOLOGY.md` labels each one literature / ported spec / design choice / personal
-calibration (a skeleton; the full text is #118).
+calibration, with formulas, known limits and the validation status (#118).
 
 ### Proof that no number changed
 1. `packages/openbodyscore/tests/golden_cases.py` builds 60 days of synthetic data for a made-up person (seeded, the
@@ -128,6 +128,9 @@ dependencies: `zipfile`, `xml.etree.iterparse`, `csv`). What has to be separated
 - [ ] **Methodology and validation (#118) complete**: `METHODOLOGY.md` filled in (inputs, formulas, every parameter with its
       category and a verified source, known limits), the validation studies of #118 done, and the README states only
       validated claims ("v1 value, not yet validated" otherwise). Includes replacing the one-person calibration (strain K).
+      Status 2026-10-24: `METHODOLOGY.md` filled in and the synthetic-data studies done; still open are the real-data
+      studies (pre-registered in `docs/scoring-validation.md` §5) and replacing K, both waiting for the maintainer's
+      decisions (§6 there: research consent, WHOOP comparison, calibration approach).
 - [ ] **Docs**: README with install, example; a CHANGELOG; supported Python versions tested in CI.
 - [ ] Remove `Private :: Do Not Upload`.
 
