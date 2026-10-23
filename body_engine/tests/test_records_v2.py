@@ -127,12 +127,42 @@ def test_behavior_card_is_a_trend_card_sorted_by_effect():
 
 def test_trends_page_draws_the_card_only_with_the_flag():
     metrics = APP[APP.index("async function metricsHtml"):APP.index("function regularityHtml")]
-    assert 'recordsV2() ? optional(`journal-an' in metrics and "journal/analysis?days=90" in metrics
+    assert "recordsV2() ? journalAnalysis() : null" in metrics
+    fetch = APP[APP.index("const journalAnalysis = "):APP.index("const journalAnalysis = ") + 600]
+    assert 'includes("journal_regression")' in fetch and "journal/analysis?days=90" in fetch
+    assert "&regression=true" in fetch and "journal-anr" in fetch                  # second version: own cache key
     assert 'behavior: [recordsV2() ? window.BodyJournal.behaviorCardHtml(journalCtx(), ja) : ""]' in metrics
     assert '["behavior", tr("行为")]' in APP
 
 
 # ---------------------------------------------------------------- Today: the 日记 card → editor sheet → save
+ADJUSTED = [
+    {"item": {"key": "alcohol", "label_zh": "喝酒"}, "outcomes": {"next_recovery": {
+        "status": "ok", "diff_yes_minus_no": -12.4, "direction": "worse", "reliable": True,
+        "regression": {"status": "ok", "estimate": -3.2, "direction": "unclear", "reliable": True}}}},
+    {"item": {"key": "sauna", "label_zh": "桑拿"}, "outcomes": {"next_recovery": {
+        "status": "ok", "diff_yes_minus_no": 4.1, "direction": "better", "reliable": False,
+        "regression": {"status": "ok", "estimate": 5.5, "direction": "better", "reliable": False}}}},
+    {"item": {"key": "coffee", "label_zh": "咖啡"}, "outcomes": {"next_recovery": {
+        "status": "ok", "diff_yes_minus_no": 1.0, "direction": "unclear", "reliable": False,
+        "regression": {"status": "collinear"}}}},
+]
+
+
+def test_behavior_card_second_version():
+    """journal_regression: the adjusted estimate and its BH direction replace the raw difference; no result = lacking."""
+    out = node_run(f"""
+      const ctx = {{ esc: (s) => s, signed: (v, d) => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d),
+                    xpLabel: (key, label) => label }};
+      console.log(JSON.stringify({{ html: J.behaviorCardHtml(ctx, {json.dumps(ADJUSTED)}), model: J.behaviorModel({json.dumps(ADJUSTED)}),
+                                   v1: J.behaviorModel({json.dumps(ANALYSIS)}) }}));
+    """)
+    m = out["model"]
+    assert m["adjusted"] is True and out["v1"]["adjusted"] is False
+    assert [(r["item"]["key"], r["diff"], r["direction"]) for r in m["rows"]] == [("sauna", 5.5, "better"), ("alcohol", -3.2, "unclear")]
+    assert m["lack"] == 1 and "已控制负荷、睡眠、星期" in out["html"] and "咖啡" not in out["html"]
+
+
 def test_pure_helpers():
     out = node_run("""
       const items = [{ key: "alcohol", kind: "bool", label_zh: "喝酒" }, { key: "water_l", kind: "number", unit: "L", label_zh: "喝水" },

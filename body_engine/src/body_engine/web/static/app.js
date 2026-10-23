@@ -450,6 +450,10 @@
   // Flag `records_v2`: the 日记 segment of 记录 is gone (记录 = 训练 | 饮食). The journal lives on the Today page (a 日记 card opening
   // the day's editor sheet) and Trends (the 行为影响 card); journal.js. Off: 日记 | 训练 | 饮食 as before.
   const recordsV2 = () => (S.flags || []).includes("records_v2") && !!window.BodyJournal;
+  // journal_regression (#118): the 行为影响 card on Trends uses the second version (adjusted for strain / sleep / weekday); own cache key
+  const journalAnalysis = () => (S.flags || []).includes("journal_regression")
+    ? optional(`journal-anr${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}&regression=true`)
+    : optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`);
   function applyTabs() {
     const on = friendsOn();
     $('.tab[data-tab="friends"]').hidden = !on;
@@ -1839,7 +1843,7 @@
     const days = S.trendsDays, end = trendEnd(), q = end ? `&end=${end}` : "";
     const [d, vo2, sd, ja] = await Promise.all([load(`trends${days}${end || ""}`, `/v1/users/${ownerPath()}/trends?days=${days}${q}`),
       optional(`vo2max${end || ""}`, WHOOP_API.vo2max(end)), optional(`sleepdetails${end || ""}`, WHOOP_API.sleepDetails(end)),
-      recordsV2() ? optional(`journal-an${trendEnd() || ""}`, `/v1/users/${ownerPath()}/journal/analysis?days=90&end=${viewDay()}`) : null]);   // records_v2: the 行为影响 card
+      recordsV2() ? journalAnalysis() : null]);   // records_v2: the 行为影响 card (journal/analysis?days=90, journal_regression adds &regression=true)
     CH.clear();
     const fitness = vo2?.level_zh ? tr("体能 {l}", { l: VO2_LEVEL[vo2.level] || vo2.level_zh }) : null;   // vo2max endpoint: level converted from the same-age, same-sex percentile
     const restPct = d.series.restorative_pct?.mean;
