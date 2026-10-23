@@ -8,9 +8,10 @@
 Both golden files were written from the code before the extraction. To rewrite the end-to-end file after an
 intentional algorithm change (bump ALGO_VERSION): BODY_WRITE_GOLDEN=1 uv run pytest tests/test_openbodyscore_golden.py
 
-HRV kinds: one end-to-end golden file per entry of HRV_KINDS (scores/params.HRV_KIND). Only "sdnn" exists today; the
-RMSSD switch (#117) adds "rmssd" here plus its file. RMSSD needs beat-to-beat series (heartbeat_series), which the
-demo export does not contain yet, so #117 also has to add them to the synthetic data.
+HRV kinds: one end-to-end golden file per entry of HRV_KINDS (scores/hrv_kind.py picks one per user, #117). The demo
+export has no beat-to-beat series, so for "rmssd" the test adds a synthetic one per HRV reading (synthetic_beats; the
+export itself and the "sdnn" file are untouched). details.hrv_kind (added with #117) is checked against the kind and then
+removed before comparing, so golden_e2e_sdnn.json is still the file written before the per-user choice existed.
 """
 import importlib.util
 import io
@@ -35,7 +36,7 @@ from body_engine.scores import engine
 REPO = Path(__file__).resolve().parents[2]
 PKG_TESTS = REPO / "packages" / "openbodyscore" / "tests"
 FIXTURES = Path(__file__).parent / "fixtures"
-HRV_KINDS = ["sdnn"]   # add "rmssd" with #117
+HRV_KINDS = ["sdnn", "rmssd"]
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_golden")
 TZ = ZoneInfo("Australia/Sydney")
 NOW = datetime(2026, 9, 30, 9, 0, tzinfo=TZ)
@@ -118,6 +119,28 @@ class ExportOW:
             yield from self.workouts
 
 
+def synthetic_beats(conn, uid) -> int:
+    """A made-up beat series for most imported HRV readings (example data): alternating RR intervals around 1000 ms, so
+    every successive difference is the same and RMSSD = factor × the reading's SDNN, with a factor from 0.6 to 1.05 that
+    varies from reading to reading (so the RMSSD scores differ from the SDNN ones, not just by a constant). Readings of
+    the nights ending on the 3rd and 13th of a month get no series, so those nights have SDNN but no RMSSD (hrv_missing,
+    no recovery: SDNN never fills in). Written through
+    rawdata/store.save_heartbeats like an export.xml import."""
+    from body_engine.rawdata import store as rx_store
+    items = []
+    for r in conn.execute("""SELECT start_at, value FROM export_samples WHERE user_id = %s AND kind = 'hrv'
+                             ORDER BY start_at""", (uid,)).fetchall():
+        if (r["start_at"].astimezone(TZ) + timedelta(hours=12)).day in (3, 13):
+            continue
+        factor = 0.6 + 0.05 * ((r["start_at"].minute * 7 + r["start_at"].hour) % 10)
+        half = factor * r["value"] / 2000
+        rr = [1.0 + (half if k % 2 else -half) for k in range(60)]
+        beats = [sum(rr[:i]) for i in range(len(rr) + 1)]
+        items.append({"start_at": r["start_at"], "end_at": r["start_at"] + timedelta(seconds=beats[-1]),
+                      "source": "Example Watch", "origin": "apple_export", "beats_s": beats, "apple_sdnn": r["value"]})
+    return rx_store.save_heartbeats(conn, uid, items)
+
+
 def e2e(conn, tmp_path, hrv_kind: str) -> dict:
     demo = _load("quickstart_demo_data", REPO / "quickstart" / "demo_data.py")
     buf = io.BytesIO()
@@ -126,15 +149,19 @@ def e2e(conn, tmp_path, hrv_kind: str) -> dict:
     path = tmp_path / "demo-export.zip"
     path.write_bytes(buf.getvalue())
     uid = conn.execute("""INSERT INTO users (display_name, timezone, birth_date, sex, height_cm, ow_user_id, consent_at)
-                          VALUES (%s, 'Australia/Sydney', '1990-01-01', 'male', 180, 'ow-golden', now())
-                          RETURNING id""", (f"golden-{hrv_kind}",)).fetchone()["id"]
+                          VALUES (%s, 'Australia/Sydney', '1990-01-01', 'male', 180, %s, now())
+                          RETURNING id""", (f"golden-{hrv_kind}", f"ow-golden-{hrv_kind}")).fetchone()["id"]
     imported = apple_zip.run(conn, uid, path)
+    if hrv_kind == "rmssd":
+        assert synthetic_beats(conn, uid) > 50
     today = NOW.date()
     origin = engine.scoring_origin(conn, uid)
     from body_engine.scores import params as P
     inp = engine.load(conn, None, uid, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), today, None, hrv_kind=hrv_kind)
     rows = engine.score_days(inp, origin, today, today)
     engine.write(conn, uid, rows, origin, today)
+    for r in rows:   # recorded since #117; checked here, left out of the comparison (see the module docstring)
+        assert r["details"].pop("hrv_kind") == hrv_kind == r["hrv_kind"]
     weeks = healthspan_store.compute(conn, uid, today=today)   # the production version (healthspan_store.CURRENT, v1.2)
     stress_rows = stress.compute(conn, ExportOW(conn, uid), uid, today - timedelta(days=29), today)
     return _dump({"import": {k: imported[k] for k in ("records", "days", "nights", "workouts")},
