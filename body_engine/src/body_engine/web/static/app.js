@@ -2769,6 +2769,8 @@
   // Inside the iOS app the WebView has no back gesture and the home-screen PWA has no browser bar, so leaving the page would strand the user;
   // an iframe is blocked by CSP (frame-ancestors 'none'). The handbook is static HTML rendered by the deployer's handbook.py: its <style> and
   // <main> go into a shadow root (its CSS stays isolated), relative image / link URLs are resolved against the handbook's address.
+  // Two editions: handbook/ (Chinese) and handbook/en/ (English); the panel opens the one in the page language, and the language
+  // link at the top of each edition switches to the other inside the panel.
   function handbookPanel() {
     let p = $("#handbook");
     if (p) return p;
@@ -2789,12 +2791,13 @@
       const href = a.getAttribute("href");
       if (href.startsWith("#")) { a.getRootNode().getElementById(decodeURIComponent(href.slice(1)))?.scrollIntoView({ behavior: "smooth" }); return; }
       const url = new URL(href, HANDBOOK_URL);
-      if (url.origin === location.origin && url.pathname.startsWith(new URL(HANDBOOK_URL).pathname)) loadHandbook(url.href);   // the web edition (handbook/web/)
+      if (url.origin === location.origin && url.pathname.startsWith(new URL(HANDBOOK_URL).pathname)) loadHandbook(url.href);   // the other language (handbook/en/) or the old web edition (handbook/web/)
       else window.open(url.href, "_blank", "noopener");   // outside: the iOS app hands it to the system
     });
     return p;
   }
   const HANDBOOK_URL = new URL("handbook/", location.href).href;
+  const handbookStart = () => (I18N.lang === "en" ? new URL("en/", HANDBOOK_URL).href : HANDBOOK_URL);
   async function loadHandbook(url) {
     const root = $("#hb-body").shadowRoot;
     root.innerHTML = `<p style="text-align:center;opacity:.5;padding:28px 0">…</p>`;
@@ -2815,7 +2818,7 @@
     const p = handbookPanel();
     p.hidden = false;
     requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add("open")));
-    loadHandbook(HANDBOOK_URL);
+    loadHandbook(handbookStart());
   }
   function closeHandbook() {
     const p = $("#handbook");
