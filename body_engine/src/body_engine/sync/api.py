@@ -11,6 +11,10 @@
   Today page's 「我 → 数据状态」 (flag data_status). Own data only, read scope is enough.
 - GET  /v1/ingest/data-status -> the same for the Watch2Whoop app's sync page: Bearer only, its account token or its
   upload-only token (like GET /v1/ingest/healthkit; dates and counts, no health values).
+- /v1/ingest/resync (flag sync_center, 404 when off; Bearer like the above): the app's forced re-sync (resync.py).
+  GET -> the job + the refresh status; POST {days: 1–3650 | null} -> 202 {accepted: true, …} or 200 {accepted: false,
+  reason: busy | throttled | consent, retry_after?} (Retry-After header when throttled); PUT {phone_percent?, counts?,
+  phone_done?} -> the phone's progress; DELETE -> cancel before the server part started.
 """
 from typing import Literal
 
@@ -20,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..i18n import L
 from ..records.api import current_user, get_conn
 from ..rawdata.api import ingest_user
-from . import data_status, history, refresh
+from . import data_status, history, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -75,3 +79,49 @@ def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_us
 @router.get("/v1/ingest/data-status")
 def get_ingest_data_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
     return data_status.collect(conn, viewer["id"])
+
+
+# ---------------------------------------------------------------- forced re-sync (the app's sync center)
+def _resync_user(conn=Depends(get_conn), viewer=Depends(ingest_user)) -> dict:
+    from ..rollout import flags
+    if not flags.enabled(conn, viewer["id"], "sync_center"):
+        raise HTTPException(404, L("这个功能还没有对你开放", "This feature is not available to you yet"))
+    return viewer
+
+
+class ResyncIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days: int | None = Field(None, ge=1, le=3650)   # null = all history
+
+
+class ResyncProgressIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    phone_percent: int | None = Field(None, ge=0, le=100)
+    counts: dict[str, int] | None = Field(None, max_length=20)
+    phone_done: bool = False
+
+
+@router.get("/v1/ingest/resync")
+def get_resync(conn=Depends(get_conn), viewer=Depends(_resync_user)):
+    resync.wake_if_waiting(conn, viewer["id"])
+    return resync.status(conn, viewer["id"])
+
+
+@router.post("/v1/ingest/resync", status_code=202)
+def post_resync(body: ResyncIn, response: Response, conn=Depends(get_conn), viewer=Depends(_resync_user)):
+    res = resync.request(conn, viewer["id"], body.days)
+    if not res["accepted"]:
+        response.status_code = 200
+        if res.get("retry_after"):
+            response.headers["Retry-After"] = str(res["retry_after"])
+    return res
+
+
+@router.put("/v1/ingest/resync")
+def put_resync(body: ResyncProgressIn, conn=Depends(get_conn), viewer=Depends(_resync_user)):
+    return resync.progress(conn, viewer["id"], body.phone_percent, body.counts, body.phone_done)
+
+
+@router.delete("/v1/ingest/resync")
+def delete_resync(conn=Depends(get_conn), viewer=Depends(_resync_user)):
+    return resync.cancel(conn, viewer["id"])

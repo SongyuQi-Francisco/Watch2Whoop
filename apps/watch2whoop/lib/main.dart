@@ -11,6 +11,7 @@ import 'src/pages/home_page.dart';
 import 'src/pages/onboarding_page.dart';
 import 'src/push.dart';
 import 'src/raw_sync.dart';
+import 'src/resync.dart';
 import 'src/setup_flow.dart';
 
 Future<void> main() async {
@@ -24,6 +25,7 @@ Future<void> main() async {
     debugPrint('HealthSync.start failed: $e');
   }
   await RawSync.instance.load(); // last upload of beat-to-beat HRV / ECG, for the sync page
+  await Resync.instance.load(); // a forced re-sync still running (resync.dart)
   RawSync.instance.onLog = HealthSync.instance.note; // its passes show in the sync page's log
   SetupLinks.instance.start(); // watch2whoop://setup?… passed in when the app is opened by scanning the setup QR code with the camera
   PushService.instance.start(); // device token, taps on notifications (#175); never asks for permission here

@@ -27,6 +27,8 @@ import '../offline_shell.dart';
 import '../page_events.dart';
 import '../push.dart';
 import '../raw_sync.dart';
+import '../resync.dart';
+import '../resync_flow.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
 import '../ui.dart';
@@ -73,7 +75,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn;
     },
     startRound: () async {
-      await HealthSync.instance.startSync(AppState.instance.config.syncDaysBack);
+      await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
     },
     isSyncing: () async => (await HealthSync.instance.status()).isSyncing,
     onDone: _afterSyncRound,
@@ -113,6 +115,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     await _reportRange();
     await _rawSync();
+    await stepResync(pageToken: _pageIngestToken); // a forced re-sync still running (resync_flow.dart): continue it
   }
 
   /// Beat-to-beat HRV series and ECG recordings, straight to Body Engine (raw_sync.dart), after each sync-on-open round.
@@ -270,7 +273,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final r = await applySetup(info);
       if (r.owConnected) {
         await HealthSync.instance.requestAuthorization();
-        await HealthSync.instance.startSync(AppState.instance.config.syncDaysBack);
+        await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
       }
       if (r.owError != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(connectError(r.owError!))));
@@ -477,6 +480,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (uri == null) return NavigationDecision.prevent;
     if (uri.scheme == 'watch2whoop') {
       if (uri.host == 'sync' || uri.host == 'settings') _openSync();
+      if (uri.host == 'sync-center') _openSync(center: true); // the Today page's one row for sync (resync.dart)
       if (uri.host == kAccountDeletedHost) _onAccountDeleted();
       return NavigationDecision.prevent;
     }
@@ -491,8 +495,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return NavigationDecision.prevent;
   }
 
-  void _openSync() {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SyncPage()));
+  void _openSync({bool center = false}) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => SyncPage(center: center)));
   }
 
   @override

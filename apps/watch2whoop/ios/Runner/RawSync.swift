@@ -9,8 +9,11 @@ import UIKit
 ///   series start and precededByGap per beat;
 /// - ECG recordings (HKElectrocardiogram + HKElectrocardiogramQuery): Lead I-like voltage in µV as int16 little-endian
 ///   (base64), sampling frequency, Apple's classification, average heart rate, symptoms status;
-/// - drinks (HKQuantityTypeIdentifierDietaryWater, issue #135): start time and millilitres (read only).
-/// Incremental with one HKAnchoredObjectQuery anchor per type. The anchor of a read is handed to Dart and only stored
+/// - drinks (HKQuantityTypeIdentifierDietaryWater, issue #135): start time and millilitres (read only);
+/// - the quantity types of the registry (lib/src/hk_types.dart: stand time, exercise minutes, wrist temperature …): kind =
+///   the HealthKit identifier, read in the unit Dart passes, {uuid, start, end, value, source} per sample.
+/// Incremental with one HKAnchoredObjectQuery anchor per type. A kind "set:kind" (e.g. "resync:heartbeat") reads with a
+/// separate anchor set: the forced re-sync reads a range again from scratch without moving the regular anchors. The anchor of a read is handed to Dart and only stored
 /// (`rawCommit`) after the server accepted that batch, so an interrupted upload is read again next time (the server skips
 /// UUIDs it already has). Anchors live in UserDefaults (app container, gone with the app).
 final class RawSync {
@@ -31,36 +34,63 @@ final class RawSync {
   /// crash in Swift) when the series is requested without its parent in the same call ("Authorization for
   /// HKQuantityTypeIdentifierHeartRateVariabilitySDNN should also be requested…"), which made build 1.0.0+4 crash on open.
   /// The OW sheet already asks for HRV SDNN, so repeating it here adds nothing to the sheet. Dietary water has no parent type.
-  private var readTypes: Set<HKObjectType> {
+  private var baseReadTypes: Set<HKObjectType> {
     [HKQuantityType(.heartRateVariabilitySDNN), HKSeriesType.heartbeat(), HKObjectType.electrocardiogramType(),
      HKQuantityType(.dietaryWater)]
   }
+
+  /// The registry's quantity types (identifiers from Dart) this iOS knows; unknown ones (older iOS) are left out.
+  private static func quantityTypes(_ ids: [String]) -> Set<HKObjectType> {
+    Set(ids.compactMap { HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: $0)) })
+  }
+
+  private func readTypes(_ args: [String: Any]) -> Set<HKObjectType> {
+    baseReadTypes.union(Self.quantityTypes(args["types"] as? [String] ?? []))
+  }
+
+  /// Anchor of a kind: "heartbeat" / "ecg" / "water" / an identifier, optionally "set:kind" for a separate set.
+  private func anchorName(_ kind: String) -> String { anchorKey + kind }
 
   /// Handles the raw* methods of the watch2whoop/native channel; false = not one of them.
   func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) -> Bool {
     let args = call.arguments as? [String: Any] ?? [:]
     switch call.method {
     case "rawAuthStatus":
-      authStatus { s in DispatchQueue.main.async { result(s) } }
+      authStatus(readTypes(args)) { s in DispatchQueue.main.async { result(s) } }
     case "rawRequestAuth":
       guard HKHealthStore.isHealthDataAvailable() else { result(["asked": false, "error": "unavailable"]); return true }
-      requestAuth { out in result(out) }
+      requestAuth(readTypes(args)) { out in result(out) }
     case "rawRead":
-      guard let kind = Kind(rawValue: args["kind"] as? String ?? "") else {
-        result(FlutterError(code: "bad_args", message: "kind", details: nil)); return true
-      }
-      read(kind, daysBack: args["daysBack"] as? Int ?? 90, limit: max(1, args["limit"] as? Int ?? 100)) { out in
-        DispatchQueue.main.async { result(out) }
+      let name = args["kind"] as? String ?? ""
+      let base = name.split(separator: ":").last.map(String.init) ?? name
+      let limit = max(1, args["limit"] as? Int ?? 100), days = args["daysBack"] as? Int ?? 90
+      if let kind = Kind(rawValue: base) {
+        read(kind, anchor: name, daysBack: days, limit: limit) { out in DispatchQueue.main.async { result(out) } }
+      } else if base.hasPrefix("HKQuantityTypeIdentifier"),
+                let type = HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: base)) {
+        readQuantity(type, unit: HKUnit(from: args["unit"] as? String ?? "count"), anchor: name, daysBack: days, limit: limit) {
+          out in DispatchQueue.main.async { result(out) }
+        }
+      } else if base.hasPrefix("HKQuantityTypeIdentifier") {
+        result(["items": [], "deleted": [], "anchor": NSNull(), "more": false, "unsupported": true])   // older iOS
+      } else {
+        result(FlutterError(code: "bad_args", message: "kind", details: nil))
       }
     case "rawCommit":
-      if let kind = Kind(rawValue: args["kind"] as? String ?? ""), let anchor = args["anchor"] as? String {
-        UserDefaults.standard.set(anchor, forKey: anchorKey + kind.rawValue)
+      if let kind = args["kind"] as? String, !kind.isEmpty, let anchor = args["anchor"] as? String {
+        UserDefaults.standard.set(anchor, forKey: anchorName(kind))
       }
       result(nil)
     case "healthAskStatus":
       askStatus { out in DispatchQueue.main.async { result(out) } }
+    case "healthLatest":
+      latest(args["types"] as? [String] ?? []) { out in DispatchQueue.main.async { result(out) } }
     case "rawReset":
-      for k in Kind.allCases { UserDefaults.standard.removeObject(forKey: anchorKey + k.rawValue) }
+      // set: only that anchor set ("resync"); none: every regular anchor (sign out, range change)
+      let prefix = anchorKey + ((args["set"] as? String).map { $0 + ":" } ?? "")
+      for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+        if args["set"] != nil || !key.dropFirst(anchorKey.count).contains(":") { UserDefaults.standard.removeObject(forKey: key) }
+      }
       result(nil)
     default:
       return false
@@ -69,7 +99,7 @@ final class RawSync {
   }
 
   /// The data-status types (lib/src/data_status.dart) -> the HealthKit types the app asks for. The heartbeat series goes
-  /// with its parent HRV SDNN, as in readTypes. Wrist temperature is left out: the app never asks for it (SDK 0.15).
+  /// with its parent HRV SDNN, as in readTypes. The registry types (wrist temperature …) go with the RawSync sheet.
   private var askTypes: [String: Set<HKObjectType>] {
     [
       "heart_rate": [HKQuantityType(.heartRate)],
@@ -111,9 +141,9 @@ final class RawSync {
   /// Whether iOS still has to show the sheet for readTypes: "unnecessary" (already asked; what the user chose stays
   /// unknown), "shouldRequest" or "unknown". Reading a type that was never asked fails with "Authorization not
   /// determined" (HKError 5), so this, not a flag of our own, decides whether to ask.
-  private func authStatus(_ done: @escaping (String) -> Void) {
+  private func authStatus(_ types: Set<HKObjectType>, _ done: @escaping (String) -> Void) {
     guard HKHealthStore.isHealthDataAvailable() else { done("unknown"); return }
-    store.getRequestStatusForAuthorization(toShare: [], read: readTypes) { status, error in
+    store.getRequestStatusForAuthorization(toShare: [], read: types) { status, error in
       switch status {
       case .unnecessary where error == nil: done("unnecessary")
       case .shouldRequest where error == nil: done("shouldRequest")
@@ -127,10 +157,10 @@ final class RawSync {
   /// dismissed ("Attempt to present HKHealthPrivacyHostAuthorizationViewController … whose view is not in the window
   /// hierarchy") and never calls the completion: the permissions step then waited forever and the types stayed undetermined.
   /// So: wait until nothing is presented, and when no sheet came up shortly after the request, answer instead of waiting.
-  private func requestAuth(_ done: @escaping ([String: Any]) -> Void) {
+  private func requestAuth(_ types: Set<HKObjectType>, _ done: @escaping ([String: Any]) -> Void) {
     var answered = false
     let finish = { (error: String?) in
-      self.authStatus { s in
+      self.authStatus(types) { s in
         DispatchQueue.main.async {
           guard !answered else { return }
           answered = true
@@ -141,7 +171,7 @@ final class RawSync {
       }
     }
     whenNothingPresented { [self] in
-      store.requestAuthorization(toShare: nil, read: readTypes) { _, error in finish(error?.localizedDescription) }
+      store.requestAuthorization(toShare: nil, read: types) { _, error in finish(error?.localizedDescription) }
       // No answer and still no sheet after this long: the presentation failed (the sheet itself took ~2.5 s to come up on
       // a cold start in the simulator).
       DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
@@ -168,8 +198,8 @@ final class RawSync {
     }
   }
 
-  private func storedAnchor(_ kind: Kind) -> HKQueryAnchor? {
-    guard let s = UserDefaults.standard.string(forKey: anchorKey + kind.rawValue), let data = Data(base64Encoded: s) else { return nil }
+  private func storedAnchor(_ name: String) -> HKQueryAnchor? {
+    guard let s = UserDefaults.standard.string(forKey: anchorName(name)), let data = Data(base64Encoded: s) else { return nil }
     return try? NSKeyedUnarchiver.unarchivedObject(ofClass: HKQueryAnchor.self, from: data)
   }
 
@@ -179,7 +209,7 @@ final class RawSync {
   }
 
   /// One page of new samples after the stored anchor: {items, deleted, anchor, more} or a FlutterError.
-  private func read(_ kind: Kind, daysBack: Int, limit: Int, done: @escaping (Any) -> Void) {
+  private func read(_ kind: Kind, anchor name: String, daysBack: Int, limit: Int, done: @escaping (Any) -> Void) {
     let type: HKSampleType = switch kind {
     case .heartbeat: HKSeriesType.heartbeat()
     case .ecg: HKObjectType.electrocardiogramType()
@@ -188,7 +218,7 @@ final class RawSync {
     let predicate = daysBack > 0
       ? HKQuery.predicateForSamples(withStart: Date().addingTimeInterval(-Double(daysBack) * 86400), end: nil)
       : nil
-    let q = HKAnchoredObjectQuery(type: type, predicate: predicate, anchor: storedAnchor(kind), limit: limit) {
+    let q = HKAnchoredObjectQuery(type: type, predicate: predicate, anchor: storedAnchor(name), limit: limit) {
       [weak self] _, samples, deleted, newAnchor, error in
       guard let self else { return }
       if let error {
@@ -211,6 +241,75 @@ final class RawSync {
       }
     }
     store.execute(q)
+  }
+
+  /// One page of a registry quantity type after its anchor: {uuid, start, end, value (in `unit`), source}. A sample in an
+  /// incompatible unit is left out (doubleValue would raise an uncatchable exception).
+  private func readQuantity(_ type: HKQuantityType, unit: HKUnit, anchor name: String, daysBack: Int, limit: Int,
+                            done: @escaping (Any) -> Void) {
+    guard type.is(compatibleWith: unit) else {
+      done(FlutterError(code: "bad_unit", message: "\(type.identifier) / \(unit.unitString)", details: nil)); return
+    }
+    let predicate = daysBack > 0
+      ? HKQuery.predicateForSamples(withStart: Date().addingTimeInterval(-Double(daysBack) * 86400), end: nil)
+      : nil
+    let q = HKAnchoredObjectQuery(type: type, predicate: predicate, anchor: storedAnchor(name), limit: limit) {
+      [weak self] _, samples, deleted, newAnchor, error in
+      guard let self else { return }
+      if let error {
+        done(FlutterError(code: "healthkit", message: error.localizedDescription, details: (error as NSError).code))
+        return
+      }
+      let samples = samples ?? []
+      let items: [[String: Any]] = samples.compactMap { $0 as? HKQuantitySample }.compactMap { s in
+        guard s.quantity.is(compatibleWith: unit) else { return nil }
+        let v = s.quantity.doubleValue(for: unit)
+        guard v.isFinite else { return nil }
+        return ["uuid": s.uuid.uuidString.lowercased(), "start": self.iso.string(from: s.startDate),
+                "end": self.iso.string(from: s.endDate), "value": v, "source": s.sourceRevision.source.name]
+      }
+      done([
+        "items": items,
+        "deleted": (deleted ?? []).map { $0.uuid.uuidString.lowercased() },
+        "anchor": self.encode(newAnchor) ?? NSNull(),
+        "more": samples.count >= limit,
+      ])
+    }
+    store.execute(q)
+  }
+
+  /// The newest sample on the phone per type identifier (ISO 8601 of its start; missing = none, or not allowed to read):
+  /// the sync center's "on the phone" column.
+  private func latest(_ ids: [String], _ done: @escaping ([String: String]) -> Void) {
+    guard HKHealthStore.isHealthDataAvailable() else { done([:]); return }
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var out: [String: String] = [:]
+    for id in ids {
+      let type: HKSampleType?
+      switch id {
+      case "HKWorkoutTypeIdentifier": type = HKObjectType.workoutType()
+      case "HKDataTypeIdentifierHeartbeatSeries": type = HKSeriesType.heartbeat()
+      case "HKDataTypeIdentifierElectrocardiogram": type = HKObjectType.electrocardiogramType()
+      default:
+        type = HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: id))
+          ?? HKCategoryType.categoryType(forIdentifier: HKCategoryTypeIdentifier(rawValue: id))
+      }
+      guard let type else { continue }
+      group.enter()
+      let q = HKSampleQuery(sampleType: type, predicate: nil, limit: 1,
+                            sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) {
+        _, samples, _ in
+        if let s = samples?.first {
+          lock.lock()
+          out[id] = self.iso.string(from: s.startDate)
+          lock.unlock()
+        }
+        group.leave()
+      }
+      store.execute(q)
+    }
+    group.notify(queue: .global()) { done(out) }
   }
 
   /// Beat times of each series, one HKHeartbeatSeriesQuery after the other.

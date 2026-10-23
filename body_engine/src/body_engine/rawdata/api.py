@@ -100,6 +100,21 @@ class WaterSampleIn(_In):
     ml: float = Field(gt=0, le=5000)
 
 
+class QuantitySampleIn(_In):
+    uuid: UUID
+    start: AwareDatetime
+    end: AwareDatetime
+    value: float = Field(allow_inf_nan=False)
+    source: str = Field("", max_length=120)
+
+
+class QuantityGroupIn(_In):
+    """Samples of one HealthKit quantity type, in the unit of the registry (rawdata/hk_types.py; checked)."""
+    type: str = Field(max_length=100)
+    unit: str = Field(max_length=40)
+    items: list[QuantitySampleIn] = Field(default_factory=list, max_length=I.MAX_QUANTITIES)
+
+
 class IngestIn(_In):
     batch_id: UUID
     device: str | None = Field(None, max_length=80)
@@ -107,6 +122,7 @@ class IngestIn(_In):
     heartbeats: list[HeartbeatIn] = Field(default_factory=list, max_length=I.MAX_HEARTBEATS)
     ecgs: list[EcgIn] = Field(default_factory=list, max_length=I.MAX_ECGS)
     water: list[WaterSampleIn] = Field(default_factory=list, max_length=I.MAX_WATER)   # Apple Health drinks (issue #125)
+    quantities: list[QuantityGroupIn] = Field(default_factory=list, max_length=I.MAX_QUANTITY_GROUPS)   # rawdata/hk_types.py
     deleted: list[UUID] = Field(default_factory=list, max_length=I.MAX_DELETED)
 
 
