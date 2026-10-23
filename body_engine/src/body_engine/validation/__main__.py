@@ -1,6 +1,8 @@
-"""`python -m body_engine.validation synthetic | user` (see __init__.py). Prints Markdown to stdout."""
+"""`python -m body_engine.validation synthetic | regression | beats | population | user | healthspan` (see __init__.py).
+Prints Markdown to stdout."""
 import argparse
 import dataclasses
+import statistics
 import sys
 from datetime import timedelta
 
@@ -25,6 +27,47 @@ def _synthetic(args) -> str:
     title = (f"Synthetic person ({args.days} days, seed {args.seed}, single-reading ln HRV noise {args.reading_noise})")
     return study.markdown(title, base, p.readiness, sens, agree, (f"noise {args.reading_noise}", "noise 0.08"),
                           p.illness) + out_noise
+
+
+def _regression(args) -> str:
+    """Construct validity, regression version (scoring-validation 2.4 / 3.5): over many seeds, how often the strain coefficient
+    comes out negative (resting heart rate: positive) at q <= 0.05 when the synthetic person has a load effect (power),
+    and how often it is significant at all when the load effect is 0 (false positives)."""
+    out = [f"# Construct validity, regression version ({args.seeds} synthetic persons × {args.days} days per row)", "",
+           "Share of persons whose strain coefficient is significant (q ≤ 0.05) in the expected direction / in either "
+           "direction; mean estimate (recovery in points, ln HRV in ln units, resting HR in bpm, per strain point).", "",
+           "| model | load effect | outcome | expected direction, q ≤ 0.05 | either direction, q ≤ 0.05 | mean strain estimate | "
+           "sleep hours, expected direction, q ≤ 0.05 |", "|---|---|---|---|---|---|---|"]
+    expect = {"recovery": -1, "hrv_night_ln": -1, "rhr_night": 1}
+    for label, traits in (("as modelled (0.35)", synthetic.Traits()), ("none (0)", synthetic.Traits(load_effect=0.0))):
+        for weekday in (False, True):
+            res = {k: [] for k in study.LOAD_OUTCOMES}
+            for seed in range(1, args.seeds + 1):
+                p = synthetic.make_person(args.days, seed, args.reading_noise, traits)
+                fit = study.load_regression(study.score(p.inputs, p.first, p.last), weekday=weekday)
+                for k in study.LOAD_OUTCOMES:
+                    if "strain" in fit[k]:
+                        res[k].append(fit[k])
+            for k in study.LOAD_OUTCOMES:
+                s, sl, n = [f["strain"] for f in res[k]], [f["sleep_h"] for f in res[k]], len(res[k])
+                hit = sum(c["q"] <= 0.05 and c["estimate"] * expect[k] > 0 for c in s) / n
+                any_ = sum(c["q"] <= 0.05 for c in s) / n
+                sleep_hit = sum(c["q"] <= 0.05 and c["estimate"] * -expect[k] > 0 for c in sl) / n
+                out.append(f"| {'+ weekday' if weekday else 'strain + sleep'} | {label} | {k} | {hit:.0%} | {any_:.0%} | "
+                           f"{statistics.fmean(c['estimate'] for c in s):.4g} | {sleep_hit:.0%} |")
+    return "\n".join(out) + "\n"
+
+
+def _beats(args) -> str:
+    from . import beats
+    rows = beats.run(n=args.n, seed=args.seed)
+    q = beats.run(n=args.n, seed=args.seed, filters=beats.FILTERS[:1], quantised=True)
+    return beats.markdown(rows) + "\n" + beats.markdown(q, quantised=True)
+
+
+def _population(args) -> str:
+    from . import population
+    return population.markdown(population.run(args.n, args.days, args.seed), args.days, args.seed)
 
 
 def _user(args) -> str:
@@ -81,6 +124,17 @@ def main(argv=None) -> None:
     s.add_argument("--reading-noise", type=float, default=0.30)
     s.add_argument("--no-sensitivity", action="store_true")
     s.add_argument("--noise-sweep", action="store_true")
+    g = sub.add_parser("regression", help="construct validity, regression version, on synthetic persons")
+    g.add_argument("--seeds", type=int, default=50)
+    g.add_argument("--days", type=int, default=180)
+    g.add_argument("--reading-noise", type=float, default=0.30)
+    b = sub.add_parser("beats", help="HRV artifact filter on synthetic beat series")
+    b.add_argument("--n", type=int, default=300)
+    b.add_argument("--seed", type=int, default=11)
+    pp = sub.add_parser("population", help="synthetic population: recovery zones and strain K across different persons")
+    pp.add_argument("--n", type=int, default=40)
+    pp.add_argument("--days", type=int, default=180)
+    pp.add_argument("--seed", type=int, default=1)
     u = sub.add_parser("user", help="reads the database only; prints aggregates (keep the output out of git)")
     u.add_argument("--user-id", type=int, required=True)
     u.add_argument("--kinds", default="sdnn", help="sdnn, or sdnn,rmssd to add the agreement of the two")
@@ -92,7 +146,9 @@ def main(argv=None) -> None:
     h.add_argument("--json", action="store_true")
     h.add_argument("--no-sensitivity", action="store_true")
     args = ap.parse_args(argv)
-    sys.stdout.write({"synthetic": _synthetic, "user": _user, "healthspan": _healthspan}[args.mode](args))
+    modes = {"synthetic": _synthetic, "regression": _regression, "beats": _beats, "population": _population,
+             "user": _user, "healthspan": _healthspan}
+    sys.stdout.write(modes[args.mode](args))
 
 
 if __name__ == "__main__":

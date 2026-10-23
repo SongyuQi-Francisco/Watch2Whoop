@@ -59,12 +59,13 @@ where a function looks at clock time (bedtime, hour of day).
 ## Methodology
 
 Every score, its inputs and where each parameter comes from — **literature**, **ported spec**, **design choice** or
-**personal calibration** — are listed in [METHODOLOGY.md](METHODOLOGY.md) (a skeleton for now; the full text and the
-validation studies are Watch2Whoop issue #118). In short: the sleep score is ported from Open Wearables 0.9.0, strain
+**personal calibration** — are described in [METHODOLOGY.md](METHODOLOGY.md), with formulas, known limits and how far
+each score has been validated (Watch2Whoop issue #118). In short: the sleep score is ported from Open Wearables 0.9.0, strain
 uses Edwards TRIMP and the Tanaka HRmax formula, HRV from beat times follows the ESC / NASPE Task Force (1996), and body
 age uses published dose-response curves (DOIs in [`healthspan_params.py`](src/openbodyscore/healthspan_params.py)).
 The recovery and stress weights, the sleep-need baseline and several thresholds are **v1 values, not yet validated**,
-and the strain constant K = 170 was calibrated on one person's data. Nothing has been compared with a WHOOP device yet.
+and the strain constant K = 170 was calibrated on one person's data. Validation so far is on synthetic data and on one
+person's data; nothing has been compared with a WHOOP device, ECG or polysomnography, and there is no multi-user validation yet.
 
 Parameters live in [`params.py`](src/openbodyscore/params.py), [`healthspan_params.py`](src/openbodyscore/healthspan_params.py)
 and at the top of [`stress.py`](src/openbodyscore/stress.py) and [`hrv.py`](src/openbodyscore/hrv.py). Each score module
