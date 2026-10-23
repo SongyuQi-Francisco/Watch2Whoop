@@ -175,7 +175,30 @@ The token is shown only once; when you no longer need it, "Revoke" it in the sam
 
 ## Talk to Jarvis
 
-Tap "Jarvis" at the bottom of any page to start a chat. If no AI is set up yet, it points you to "AI settings".
+At the bottom centre of every page is a round Jarvis icon button, with no text on it. Tapping it, holding it and the 4 keys it opens all start there.
+
+**Tap once**: a light runs once round the button and brings out 4 keys, always in the same places:
+
+| Key | What it does |
+|---|---|
+| Chat | Opens the full chat page |
+| Voice | No need to keep holding: starts recording straight away; tap "Done" when you've finished |
+| Photo | Opens the camera; the photo you take goes straight to Jarvis, handled as "log this meal from a photo" |
+| Quick log | A half sheet: your 3 most-used quick meals, "workout done as planned", weight (it only fills the box; add the number, then send), and water 250 ml if you have the water feature. One tap sends it to Jarvis to log |
+
+Tap the button again, or the empty space beside it, to close the menu.
+
+**Hold to talk**: no need to open the menu first. Hold the icon button for about half a second and it starts recording, with a waveform and a timer on screen (up to 60 seconds):
+
+- Let go when you're done: it turns your speech into text.
+- Slide up-left to "Cancel" and let go: the recording is thrown away and nothing is sent.
+- Slide up-right to "Lock" and let go: locked, so you can take your finger off and keep talking; tap "Done" when you're finished.
+
+The text appears first under "Check the text". **You can fix any mistakes, and nothing goes to Jarvis until you tap "Send"**; "Cancel" or a tap on the dimmed area beside it sends nothing. It also corrects look-alike words using your own exercises, quick meals, supplements, recipes and product names (it only reads your own data and keeps nothing).
+
+**Half-sheet answers**: for what you send by voice, photo or quick log, Jarvis's answer rises from the bottom as a half sheet (as tall as its content, at most 80% of the screen), with the same cards as the chat page; what you said shows as a bubble with a waveform icon and the length. Tap "Continue" or drag it up to go to the full chat page (still the same conversation); drag it down or tap the dimmed area to close it. Reopen it within 10 minutes and you carry on with the same conversation.
+
+That is how it works with the Jarvis fallback AI. If you picked your own AI (an API key or a subscription), the icon button just looks different: one tap opens the chat page, there is no menu, and you can't hold the icon button to talk. If no AI is set up yet, it points you to "AI settings".
 
 ![Jarvis](images/tester-handbook/jarvis-none.jpg)
 
@@ -202,9 +225,17 @@ Three buttons next to the input box:
 |---|---|
 | 📷 Photo | Take a photo or pick from the library, up to 8 at a time (meals, the scale, lab reports, watch screenshots) |
 | 🎬 Video | Pick a video; up to 8 frames are extracted, and any speech in it is transcribed into the input box first |
-| 🎤 Hold to talk | Hold to speak, release to transcribe (up to 60 seconds); the text goes into the input box so you can check and fix it before sending; slide up to cancel |
+| 🎤 Hold to talk | Hold to speak, release to transcribe (up to 60 seconds). With the Jarvis fallback AI it works like the icon button: slide up-left to cancel, up-right to lock, and the text shows first under "Check the text" for you to fix, sent only when you tap "Send"; with your own AI the text goes into the input box so you can check and fix it before sending, and sliding up cancels |
 
-Speech is transcribed on the server, never sent to a third party, and the recording is deleted right after. In the app, iOS asks for the microphone the first time you hold 🎤: choose Allow. If you chose Don't Allow, the page says the microphone is off; tap Open Settings and turn the microphone on. **If the app is 1.0.6 or older, or the page says recording isn't available here**: tap the input box and use the 🎤 dictation key on the keyboard (after updating the app, your server transcribes).
+Speech is transcribed on the server, never sent to a third party, and the recording is deleted right after. In the app, iOS asks for the microphone the first time you hold to talk: choose Allow. If you chose Don't Allow, the page says the microphone is off; tap Open Settings and turn the microphone on. How it differs between app versions:
+
+| App version | How voice works |
+|---|---|
+| 1.0.6 | Holding the icon button is the same as a tap, so it only opens the menu; the "Voice" key opens the half sheet and says recording isn't available here. Use the 🎤 dictation key on the keyboard: tap the input box, then the 🎤 on the keyboard |
+| 1.0.7 and later | Holding the icon button, the "Voice" key and the 🎤 in the chat page are all transcribed on the server; the result shows first, you can edit it, and it is sent only when you tap "Send" |
+| A later version | Adds recognition on the phone itself, with words appearing as you talk instead of after you let go; it isn't released yet |
+
+Whenever the page says recording isn't available here, use the 🎤 dictation key on the keyboard, whatever the app version.
 
 ## Pages at a glance
 
