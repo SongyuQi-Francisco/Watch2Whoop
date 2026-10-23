@@ -11,7 +11,9 @@ import psycopg
 
 # Source priority for sleep and for the non-cumulative daily metrics (heart rate, HRV, weight ...): higher wins, lower never overwrites higher.
 # Also the tie-break between cumulative candidates with the same value. Cumulative metrics are chosen by resolve_daily (below), not by this order.
-SOURCE_PRIORITY = {"shortcut": 1, "apple_export": 2, "ow": 3}
+# "app" = the types the Watch2Whoop app reads from HealthKit itself (rawdata/hk_types.py, rawdata/quantities.py): straight from
+# HealthKit with the export import's daily definitions, while Open Wearables has these types only from an old export.xml copy.
+SOURCE_PRIORITY = {"shortcut": 1, "apple_export": 2, "ow": 3, "app": 4}
 
 # ---- choosing cumulative daily values (docs/shortcut-sync-spec.md §5) ----
 # Every source de-duplicates devices itself (OW: HealthKit-style overlap; export.xml / Shortcut raw samples: largest single device),

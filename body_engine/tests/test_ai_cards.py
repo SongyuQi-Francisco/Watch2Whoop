@@ -97,3 +97,28 @@ def test_v2_summaries_are_short():
     for c in cs:
         s = cards.summary(c)
         assert s.startswith("已显示") and len(s) < 160, s
+
+
+def test_every_card_action_is_drawn_by_the_page():
+    """Each open page / send key a card can carry has its label in ai.js and (pages) a route in app.js goPage."""
+    from pathlib import Path
+    static = Path(cards.__file__).parent.parent / "web" / "static"
+    ai_js, app_js = (static / "ai.js").read_text(encoding="utf-8"), (static / "app.js").read_text(encoding="utf-8")
+    for key in cards.SEND_KEYS:
+        assert f"    {key}: " in ai_js, key
+    for page in cards.OPEN_PAGES:
+        assert f'"{page}": tr(' in ai_js or f"{page}: tr(" in ai_js, page
+        tab = page.split(".")[0]
+        assert f'page === "{page}"' in app_js or f'"{tab}"' in app_js, page
+
+
+def test_v2_read_auto_covers_the_common_reads_and_no_ecg():
+    for tool in ("get_sleep", "get_scores", "get_healthspan", "get_weight", "get_lab_history", "get_report",
+                 "get_health_monitor", "get_vo2max", "get_hr_zones", "get_stress", "list_supplements", "analyze_journal"):
+        assert tool in cards.READ_AUTO, tool
+    assert not {t for t in cards.READ_AUTO if "ecg" in t or "cardio" in t or "heartbeat" in t}
+    assert cards.auto_spec("get_lab_history", {"test": "尿酸"}, v2=True, reads=True) == {"type": "lab", "date": None, "metric": "尿酸"}
+    assert cards.auto_spec("get_report", {"period": "month", "end": None}, v2=True, reads=True)["range"] == "month"
+    assert cards.auto_spec("add_lab_results", {"results": [{"test": "尿酸", "test_key": "uric_acid"}]}, v2=True) == \
+        {"type": "lab", "date": None, "metric": "uric_acid"}
+    assert "ecg" not in cards.TYPES_V2 and "cardio" not in cards.TYPES_V2
