@@ -256,11 +256,12 @@ enum DebugHealthSeeder {
 
   static func seed(_ done: @escaping (String) -> Void) {
     let q = { (id: HKQuantityTypeIdentifier) in HKQuantityType(id) }
-    let types: Set<HKSampleType> = [
+    let extra = writableRegistry()
+    let types: Set<HKSampleType> = Set<HKSampleType>([
       q(.heartRate), q(.restingHeartRate), q(.heartRateVariabilitySDNN), q(.stepCount),
       q(.activeEnergyBurned), q(.oxygenSaturation), q(.respiratoryRate), q(.bodyMass), q(.dietaryWater),
       HKCategoryType(.sleepAnalysis), HKObjectType.workoutType(), HKSeriesType.heartbeat(),
-    ]
+    ]).union(extra.map { $0.type })
     store.requestAuthorization(toShare: types, read: nil) { ok, error in
       guard ok else { DispatchQueue.main.async { done("auth failed: \(error?.localizedDescription ?? "-")") }; return }
       let now = Date()
@@ -320,8 +321,10 @@ enum DebugHealthSeeder {
               builder.endCollection(withEnd: ws.addingTimeInterval(3000)) { _, _ in
                 builder.finishWorkout { w, error in
                   heartbeats(now) { n in
-                    DispatchQueue.main.async {
-                      done("saved \(samples.count) samples + \(w == nil ? 0 : 1) workout + \(n) heartbeat series\(error.map { " (\($0.localizedDescription))" } ?? "")")
+                    registry(extra, now) { r in
+                      DispatchQueue.main.async {
+                        done("saved \(samples.count) samples + \(w == nil ? 0 : 1) workout + \(n) heartbeat series\(error.map { " (\($0.localizedDescription))" } ?? ""); \(r)")
+                      }
                     }
                   }
                 }
@@ -330,6 +333,73 @@ enum DebugHealthSeeder {
           }
         }
       }
+    }
+  }
+
+  /// The quantity types RawSync reads itself (lib/src/hk_types.dart), each with a plausible value in its registry unit.
+  static let registryValues: [(id: String, unit: String, value: Double)] = [
+    ("HKQuantityTypeIdentifierAppleStandTime", "min", 6),
+    ("HKQuantityTypeIdentifierAppleExerciseTime", "min", 12),
+    ("HKQuantityTypeIdentifierTimeInDaylight", "min", 18),
+    ("HKQuantityTypeIdentifierPhysicalEffort", "kcal/hr·kg", 3.2),
+    ("HKQuantityTypeIdentifierAppleSleepingWristTemperature", "degC", 34.6),
+    ("HKQuantityTypeIdentifierEnvironmentalAudioExposure", "dBASPL", 64),
+    ("HKQuantityTypeIdentifierHeadphoneAudioExposure", "dBASPL", 71),
+    ("HKQuantityTypeIdentifierWalkingHeartRateAverage", "count/min", 96),
+    ("HKQuantityTypeIdentifierStairAscentSpeed", "m/s", 0.42),
+    ("HKQuantityTypeIdentifierStairDescentSpeed", "m/s", 0.51),
+    ("HKQuantityTypeIdentifierAppleWalkingSteadiness", "%", 0.88),
+  ]
+
+  /// The registry types this simulator lets an app write. The Apple-computed ones (stand / exercise minutes, wrist
+  /// temperature, walking heart rate, walking steadiness …) are read-only: asking to share them raises an Objective-C
+  /// exception, so each is probed on its own first (no sheet) and left out.
+  static func writableRegistry() -> [(type: HKQuantityType, unit: HKUnit, value: Double)] {
+    registryValues.compactMap { r in
+      guard let t = HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: r.id)) else { return nil }
+      let answered = DispatchSemaphore(value: 0)
+      var failed = false
+      let raised = W2WCatchException {
+        store.getRequestStatusForAuthorization(toShare: [t], read: []) { _, error in
+          failed = error != nil
+          answered.signal()
+        }
+      }
+      if raised != nil || answered.wait(timeout: .now() + 2) == .timedOut || failed { return nil }
+      return (t, HKUnit(from: r.unit), r.value)
+    }
+  }
+
+  /// Two samples a day of each writable registry type for the last 3 days, the newest one hour ago (the sync center's
+  /// "on the phone" column), saved per type so a type HealthKit refuses does not hold back the others.
+  static func registry(_ types: [(type: HKQuantityType, unit: HKUnit, value: Double)], _ now: Date,
+                       _ done: @escaping (String) -> Void) {
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var saved: [String] = [], failed: [String] = []
+    for (type, unit, value) in types {
+      var samples: [HKQuantitySample] = []
+      for d in 0..<3 {
+        for (k, hours) in [1.0, 3.0].enumerated() {
+          let start = now.addingTimeInterval(-Double(d) * 86400 - hours * 3600)
+          let v = value * (1 + 0.05 * Double(d) - 0.02 * Double(k))
+          samples.append(HKQuantitySample(type: type, quantity: HKQuantity(unit: unit, doubleValue: v), start: start,
+                                          end: start.addingTimeInterval(600), metadata: ["W2WTestData": 1]))
+        }
+      }
+      let name = type.identifier.replacingOccurrences(of: "HKQuantityTypeIdentifier", with: "")
+      group.enter()
+      store.save(samples) { ok, error in
+        lock.lock()
+        if ok { saved.append(name) } else { failed.append("\(name) (\(error?.localizedDescription ?? "-"))") }
+        lock.unlock()
+        group.leave()
+      }
+    }
+    group.notify(queue: .global()) {
+      let readOnly = registryValues.count - types.count
+      done("registry types: \(saved.count) saved [\(saved.sorted().joined(separator: ", "))], \(readOnly) read-only"
+           + (failed.isEmpty ? "" : ", failed: \(failed.joined(separator: "; "))"))
     }
   }
 
