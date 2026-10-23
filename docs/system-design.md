@@ -163,6 +163,7 @@ CREATE TABLE sync_state (
 **恢复（0–100）**
 - HRV：**Series 12 优先用 RMSSD**（iOS 27 新类型，Bevel 等已在读取，Apple 没有正式说明哪些表会写入，要实测确认）；没有就用 SDNN。同一个人不混用两种。
   - **2026-10-18 更新**（`docs/raw-data-plan.md`）：RMSSD 不必等 OW / iOS 新类型——Apple 每次 HRV 读数都存了约 1 分钟的逐拍时间，`rawdata/hrv.py` 用它算 RMSSD（表 `heartbeat_series`，迁移 150；历史从 export.xml 回算，`import-raw` / 历史导入）。`params.HRV_KIND` 可选 `sdnn` / `rmssd`，切换前先跑 `hrv-compare` 给用户看（在开发者本人的数据上，RMSSD 的相邻两晚相关和恢复分 / 静息心率相关都比 SDNN 好；具体数值不公开）。每晚读数次数不会变多（Apple 决定，实测 1–4 次）。
+  - **2026-10-22（#117 准备）**：口径改成按用户选（`scores/hrv_kind.py`，表 `score_settings`，迁移 670）：默认全体 SDNN；被打开 RMSSD（`body-engine hrv-kind --enable-rmssd`）并且逐拍数据够（`params.RMSSD_*`）的人才用 RMSSD；同一个人整段历史一种口径，只在完整重算时切换；`details.hrv_kind` 记录口径，`ALGO_VERSION` 不变。还没有打开任何人。
   - 训练后心率恢复 HRR60（`cardio/hrr.py`，表 `workout_hrr`）：训练最后 2 分钟最高心率 − 结束后 60 秒心率，峰值 ≥ 75% HRmax 才算有效；`compute-scores` 顺带写。
 - 当晚 HRV = 睡眠窗口内读数取 ln 后的中位数；当晚静息心率 = 睡眠期最低 5 分钟均值。
 - 各项和 60 天基线比算 z 分数：HRV 0.6、静息心率 0.2（反向）、睡眠表现 0.15、呼吸频率 0.05（反向），再用 logistic 映射到 0–100。
@@ -182,6 +183,7 @@ CREATE TABLE sync_state (
 - 结局：次日恢复分（或 ln HRV 的 z 分数）。先比较两组均值；再做 OLS（控制前一天负荷、睡眠时长、星期几），用 Newey-West（HAC）处理自相关；多个行为一起检验时做 BH 校正。
 - 90 天内「是」「否」各 ≥ 5 次才显示，15–20 次以上才可信；天天吃的补剂（如肌酸）无法分析。
 - **第一版已实现（2026-10-16，`records/analysis.py`）**：两组均值比较，结局 = 次日静息心率、次日 ln HRV（SDNN 日均值）；给出差值、Welch t、Cohen's d、正态近似 95% 区间；各 < 5 天不出结果，各 ≥ 15 天标 reliable。没记录的日子不算「否」。次日恢复分已加进 `OUTCOMES`（2026-10-16，排第一）；OLS + Newey-West + BH 是第二版。
+- **第二版已实现（2026-10-22，#118，`records/regression.py`）**：`analyze(..., regression=True)` / 接口 `regression=true` 给每个结局加 `regression` 字段：OLS（行为 是 1 / 否 0；控制行为日 D 的 strain、D→D+1 那晚的睡眠时长、D 的星期几），Newey-West 标准误（滞后 7 个日历天），不带 key 时按结局在各行为之间做 BH（FDR 5%）；只用协变量齐全的日子；剩余自由度 < 20 不出结果。只用标准库，参数和出处在 `records/analysis_params.py`。第一版的字段不变；今天页趋势的「行为影响」卡在开关 `journal_regression` 后面改用第二版。
 - 默认日记项（`records/defaults.py`，每人一套，`journal-init` 建）：饮食（咖啡、12 点后咖啡因、喝酒、晚饭太晚、红肉 g、喝水 L、练前没吃够）、训练（上肢、练腿、爬坡、篮球、游泳、睡前 3 小时内练完、肩部 routine）、生活（桑拿、早上晒太阳、午睡、睡前看手机、压力大）、症状（低血糖感、极度口渴、生病、肩疼）；每种补剂一项（`supp_*`，加补剂时自动建）。
 
 ### 实现说明（v1.0-2026-10-16）

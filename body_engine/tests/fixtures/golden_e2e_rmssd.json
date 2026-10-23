@@ -1,0 +1,9898 @@
+{
+ "daily_scores": [
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 343.2,
+   "ctl": 344.7,
+   "date": "2026-08-01",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 269,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 166.0,
+     "trimp_recorded": 331.0,
+     "zone_minutes": [
+      55.0,
+      0.0,
+      18.0,
+      48.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 0,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 140,
+     "spo2_night": 96.0,
+     "spo2_readings": 6,
+     "wrist_temp": 35.5
+    },
+    "sleep": {
+     "asleep_min": 477,
+     "awakenings": 0,
+     "bedtime": "2026-08-01T00:11+10:00",
+     "consistency": 0,
+     "deep_min": 93,
+     "duration": 100,
+     "efficiency": 0.99,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 0,
+     "need_from_strain": 0,
+     "rem_min": 106,
+     "source": "apple_export",
+     "stages": 100,
+     "wake_time": "2026-08-01T08:13+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 0 晚 HRV，满 14 晚才出恢复分",
+    "consistency_no_history": "前 15 天没有主睡眠，规律性按 OW 规格给 0",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+    "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.8006,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 14.6,
+   "rhr_night": 53.0,
+   "sleep_actual_min": 477,
+   "sleep_debt_min": 0,
+   "sleep_need_min": 480,
+   "sleep_performance": 0.9938,
+   "sleep_score": 80,
+   "strain": 18.0,
+   "trimp": 331.0,
+   "tsb": 1.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 354.7,
+   "ctl": 346.7,
+   "date": "2026-08-02",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 267,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 429.6,
+     "zone_minutes": [
+      251.7,
+      62.0,
+      18.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 1,
+     "hrv_readings": 3,
+     "rhr_low_offset_min": 55,
+     "spo2_night": 96.3,
+     "spo2_readings": 5,
+     "wrist_temp": 35.78
+    },
+    "sleep": {
+     "asleep_min": 300,
+     "awakenings": 2,
+     "bedtime": "2026-08-02T00:57+10:00",
+     "consistency": 70,
+     "deep_min": 73,
+     "duration": 52,
+     "efficiency": 0.949,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 3,
+     "need_from_strain": 33,
+     "rem_min": 62,
+     "source": "apple_export",
+     "stages": 74,
+     "wake_time": "2026-08-02T06:13+10:00",
+     "waso_min": 16.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 1 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.0155,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.2,
+   "rhr_night": 62.0,
+   "sleep_actual_min": 300,
+   "sleep_debt_min": 3,
+   "sleep_need_min": 516,
+   "sleep_performance": 0.5814,
+   "sleep_score": 68,
+   "strain": 19.32,
+   "trimp": 429.6,
+   "tsb": -8.0
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 369.8,
+   "ctl": 349.6,
+   "date": "2026-08-03",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 248,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 162.0,
+     "trimp_recorded": 468.0,
+     "zone_minutes": [
+      300.0,
+      51.0,
+      22.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 2,
+     "hrv_readings": 0,
+     "rhr_low_offset_min": 185,
+     "spo2_night": 97.0,
+     "spo2_readings": 6,
+     "wrist_temp": 35.73
+    },
+    "sleep": {
+     "asleep_min": 389,
+     "awakenings": 0,
+     "bedtime": "2026-08-02T22:55+10:00",
+     "consistency": 80,
+     "deep_min": 81,
+     "duration": 94,
+     "efficiency": 0.982,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 104,
+     "need_from_strain": 37,
+     "rem_min": 103,
+     "source": "apple_export",
+     "stages": 95,
+     "wake_time": "2026-08-03T05:31+10:00",
+     "waso_min": 7.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+    "hrv_missing": "睡眠窗口内没有逐拍数据算出的 RMSSD，算不了恢复分（这个人用 RMSSD，不拿 SDNN 补）"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": null,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.8,
+   "rhr_night": 63.0,
+   "sleep_actual_min": 389,
+   "sleep_debt_min": 104,
+   "sleep_need_min": 621,
+   "sleep_performance": 0.6263,
+   "sleep_score": 92,
+   "strain": 19.66,
+   "trimp": 468.0,
+   "tsb": -20.2
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 380.2,
+   "ctl": 351.9,
+   "date": "2026-08-04",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 252,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 166.0,
+     "trimp_recorded": 448.0,
+     "zone_minutes": [
+      290.0,
+      15.0,
+      2.0,
+      18.0,
+      10.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 2,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 180,
+     "spo2_night": 96.8,
+     "spo2_readings": 6,
+     "wrist_temp": 36.04
+    },
+    "sleep": {
+     "asleep_min": 411,
+     "awakenings": 2,
+     "bedtime": "2026-08-04T00:21+10:00",
+     "consistency": 100,
+     "deep_min": 91,
+     "duration": 98,
+     "efficiency": 0.972,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 98,
+     "need_from_strain": 38,
+     "rem_min": 77,
+     "source": "apple_export",
+     "stages": 92,
+     "wake_time": "2026-08-04T07:24+10:00",
+     "waso_min": 12.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 2 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 2.7882,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.95,
+   "rhr_night": 64.0,
+   "sleep_actual_min": 411,
+   "sleep_debt_min": 98,
+   "sleep_need_min": 616,
+   "sleep_performance": 0.6667,
+   "sleep_score": 96,
+   "strain": 19.49,
+   "trimp": 448.0,
+   "tsb": -28.3
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 354.9,
+   "ctl": 348.1,
+   "date": "2026-08-05",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 251,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 165.0,
+     "trimp_recorded": 190.0,
+     "zone_minutes": [
+      180.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 3,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 315,
+     "spo2_night": 96.4,
+     "spo2_readings": 6,
+     "wrist_temp": 35.67
+    },
+    "sleep": {
+     "asleep_min": 399,
+     "awakenings": 2,
+     "bedtime": "2026-08-04T23:57+10:00",
+     "consistency": 96,
+     "deep_min": 75,
+     "duration": 96,
+     "efficiency": 0.952,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 88,
+     "need_from_strain": 37,
+     "rem_min": 71,
+     "source": "apple_export",
+     "stages": 80,
+     "wake_time": "2026-08-05T06:56+10:00",
+     "waso_min": 20.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 3 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 2.9214,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.35,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 399,
+   "sleep_debt_min": 88,
+   "sleep_need_min": 605,
+   "sleep_performance": 0.6593,
+   "sleep_score": 92,
+   "strain": 14.13,
+   "trimp": 190.0,
+   "tsb": -6.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 352.6,
+   "ctl": 347.8,
+   "date": "2026-08-06",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 255,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 338.0,
+     "zone_minutes": [
+      190.0,
+      26.0,
+      32.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 4,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 180,
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "wrist_temp": 36.04
+    },
+    "sleep": {
+     "asleep_min": 388,
+     "awakenings": 1,
+     "bedtime": "2026-08-05T23:20+10:00",
+     "consistency": 80,
+     "deep_min": 81,
+     "duration": 94,
+     "efficiency": 0.975,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 85,
+     "need_from_strain": 21,
+     "rem_min": 82,
+     "source": "apple_export",
+     "stages": 90,
+     "wake_time": "2026-08-06T05:58+10:00",
+     "waso_min": 10.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 4 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3393,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.35,
+   "rhr_night": 60.0,
+   "sleep_actual_min": 388,
+   "sleep_debt_min": 85,
+   "sleep_need_min": 587,
+   "sleep_performance": 0.6611,
+   "sleep_score": 91,
+   "strain": 18.12,
+   "trimp": 338.0,
+   "tsb": -4.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 327.6,
+   "ctl": 343.5,
+   "date": "2026-08-07",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 222,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 165.0,
+     "zone_minutes": [
+      155.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 5,
+     "hrv_readings": 3,
+     "rhr_low_offset_min": 235,
+     "spo2_night": 96.5,
+     "spo2_readings": 5,
+     "wrist_temp": 36.04
+    },
+    "sleep": {
+     "asleep_min": 318,
+     "awakenings": 0,
+     "bedtime": "2026-08-06T23:48+10:00",
+     "consistency": 99,
+     "deep_min": 56,
+     "duration": 64,
+     "efficiency": 0.978,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 87,
+     "need_from_strain": 33,
+     "rem_min": 51,
+     "source": "apple_export",
+     "stages": 59,
+     "wake_time": "2026-08-07T05:13+10:00",
+     "waso_min": 7.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 5 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5553,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.3,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 318,
+   "sleep_debt_min": 87,
+   "sleep_need_min": 601,
+   "sleep_performance": 0.5293,
+   "sleep_score": 77,
+   "strain": 13.04,
+   "trimp": 165.0,
+   "tsb": 15.9
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 349.4,
+   "ctl": 347.0,
+   "date": "2026-08-08",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 261,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 491.0,
+     "zone_minutes": [
+      175.0,
+      5.0,
+      20.0,
+      54.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 6,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 205,
+     "spo2_night": 95.9,
+     "spo2_readings": 6,
+     "wrist_temp": 35.99
+    },
+    "sleep": {
+     "asleep_min": 408,
+     "awakenings": 3,
+     "bedtime": "2026-08-08T01:07+10:00",
+     "consistency": 47,
+     "deep_min": 92,
+     "duration": 98,
+     "efficiency": 0.953,
+     "interruptions": 90,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 109,
+     "need_from_strain": 18,
+     "rem_min": 88,
+     "source": "apple_export",
+     "stages": 98,
+     "wake_time": "2026-08-08T08:15+10:00",
+     "waso_min": 20.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 6 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3821,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.4,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 408,
+   "sleep_debt_min": 109,
+   "sleep_need_min": 607,
+   "sleep_performance": 0.6721,
+   "sleep_score": 86,
+   "strain": 19.83,
+   "trimp": 491.0,
+   "tsb": -2.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 370.1,
+   "ctl": 350.7,
+   "date": "2026-08-09",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 268,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 505.0,
+     "zone_minutes": [
+      289.0,
+      81.0,
+      18.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 7,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 195,
+     "spo2_night": 96.2,
+     "spo2_readings": 6,
+     "wrist_temp": 36.07
+    },
+    "sleep": {
+     "asleep_min": 362,
+     "awakenings": 1,
+     "bedtime": "2026-08-09T00:07+10:00",
+     "consistency": 100,
+     "deep_min": 71,
+     "duration": 86,
+     "efficiency": 0.976,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 99,
+     "need_from_strain": 38,
+     "rem_min": 81,
+     "source": "apple_export",
+     "stages": 84,
+     "wake_time": "2026-08-09T06:18+10:00",
+     "waso_min": 9.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 7 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.2698,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.9,
+   "rhr_night": 63.0,
+   "sleep_actual_min": 362,
+   "sleep_debt_min": 99,
+   "sleep_need_min": 617,
+   "sleep_performance": 0.5865,
+   "sleep_score": 91,
+   "strain": 19.92,
+   "trimp": 505.0,
+   "tsb": -19.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 366.9,
+   "ctl": 350.6,
+   "date": "2026-08-10",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 266,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 346.0,
+     "zone_minutes": [
+      212.0,
+      31.0,
+      24.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 8,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 105,
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "wrist_temp": 35.86
+    },
+    "sleep": {
+     "asleep_min": 389,
+     "awakenings": 2,
+     "bedtime": "2026-08-10T00:05+10:00",
+     "consistency": 100,
+     "deep_min": 82,
+     "duration": 94,
+     "efficiency": 0.965,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 104,
+     "need_from_strain": 39,
+     "rem_min": 70,
+     "source": "apple_export",
+     "stages": 84,
+     "wake_time": "2026-08-10T06:48+10:00",
+     "waso_min": 14.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 8 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 2.8458,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.95,
+   "rhr_night": 61.0,
+   "sleep_actual_min": 389,
+   "sleep_debt_min": 104,
+   "sleep_need_min": 623,
+   "sleep_performance": 0.6247,
+   "sleep_score": 93,
+   "strain": 18.26,
+   "trimp": 346.0,
+   "tsb": -16.3
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 375.7,
+   "ctl": 352.5,
+   "date": "2026-08-11",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 247,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 165.0,
+     "trimp_recorded": 433.0,
+     "zone_minutes": [
+      235.0,
+      10.0,
+      0.0,
+      32.0,
+      10.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 9,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 45,
+     "spo2_night": 96.4,
+     "spo2_readings": 6,
+     "wrist_temp": 36.06
+    },
+    "sleep": {
+     "asleep_min": 360,
+     "awakenings": 1,
+     "bedtime": "2026-08-10T23:29+10:00",
+     "consistency": 80,
+     "deep_min": 69,
+     "duration": 85,
+     "efficiency": 0.978,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 100,
+     "need_from_strain": 34,
+     "rem_min": 66,
+     "source": "apple_export",
+     "stages": 74,
+     "wake_time": "2026-08-11T05:37+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 9 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4355,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.2,
+   "rhr_night": 64.0,
+   "sleep_actual_min": 360,
+   "sleep_debt_min": 100,
+   "sleep_need_min": 614,
+   "sleep_performance": 0.5861,
+   "sleep_score": 84,
+   "strain": 19.36,
+   "trimp": 433.0,
+   "tsb": -23.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 357.6,
+   "ctl": 349.9,
+   "date": "2026-08-12",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 231,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 240.0,
+     "zone_minutes": [
+      230.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 10,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 120,
+     "spo2_night": 96.8,
+     "spo2_readings": 6,
+     "wrist_temp": 36.03
+    },
+    "sleep": {
+     "asleep_min": 369,
+     "awakenings": 0,
+     "bedtime": "2026-08-11T23:33+10:00",
+     "consistency": 84,
+     "deep_min": 65,
+     "duration": 89,
+     "efficiency": 0.969,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 106,
+     "need_from_strain": 37,
+     "rem_min": 73,
+     "source": "apple_export",
+     "stages": 76,
+     "wake_time": "2026-08-12T05:54+10:00",
+     "waso_min": 12.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 10 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.0861,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.75,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 369,
+   "sleep_debt_min": 106,
+   "sleep_need_min": 623,
+   "sleep_performance": 0.5926,
+   "sleep_score": 87,
+   "strain": 15.88,
+   "trimp": 240.0,
+   "tsb": -7.7
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 343.4,
+   "ctl": 347.6,
+   "date": "2026-08-13",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 274,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 251.0,
+     "zone_minutes": [
+      125.0,
+      24.0,
+      26.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 11,
+     "hrv_readings": 0,
+     "rhr_low_offset_min": 50,
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "wrist_temp": 35.8
+    },
+    "sleep": {
+     "asleep_min": 464,
+     "awakenings": 0,
+     "bedtime": "2026-08-13T00:02+10:00",
+     "consistency": 100,
+     "deep_min": 99,
+     "duration": 100,
+     "efficiency": 0.989,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 107,
+     "need_from_strain": 27,
+     "rem_min": 83,
+     "source": "apple_export",
+     "stages": 96,
+     "wake_time": "2026-08-13T07:51+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+    "hrv_missing": "睡眠窗口内没有逐拍数据算出的 RMSSD，算不了恢复分（这个人用 RMSSD，不拿 SDNN 补）"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": null,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 14.85,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 464,
+   "sleep_debt_min": 107,
+   "sleep_need_min": 614,
+   "sleep_performance": 0.7562,
+   "sleep_score": 99,
+   "strain": 16.2,
+   "trimp": 251.0,
+   "tsb": 4.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 323.7,
+   "ctl": 344.0,
+   "date": "2026-08-14",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 241,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 195.0,
+     "zone_minutes": [
+      195.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 11,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 240,
+     "spo2_night": 96.1,
+     "spo2_readings": 6,
+     "wrist_temp": 36.05
+    },
+    "sleep": {
+     "asleep_min": 392,
+     "awakenings": 3,
+     "bedtime": "2026-08-13T23:08+10:00",
+     "consistency": 80,
+     "deep_min": 76,
+     "duration": 95,
+     "efficiency": 0.949,
+     "interruptions": 88,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 84,
+     "need_from_strain": 28,
+     "rem_min": 55,
+     "source": "apple_export",
+     "stages": 72,
+     "wake_time": "2026-08-14T06:01+10:00",
+     "waso_min": 21.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 11 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6775,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.4,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 392,
+   "sleep_debt_min": 84,
+   "sleep_need_min": 591,
+   "sleep_performance": 0.663,
+   "sleep_score": 86,
+   "strain": 14.33,
+   "trimp": 195.0,
+   "tsb": 20.3
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 328.8,
+   "ctl": 344.4,
+   "date": "2026-08-15",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 261,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 362.0,
+     "zone_minutes": [
+      120.0,
+      5.0,
+      10.0,
+      48.0,
+      2.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 12,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 270,
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "wrist_temp": 35.8
+    },
+    "sleep": {
+     "asleep_min": 437,
+     "awakenings": 0,
+     "bedtime": "2026-08-14T23:19+10:00",
+     "consistency": 80,
+     "deep_min": 85,
+     "duration": 100,
+     "efficiency": 0.989,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 85,
+     "need_from_strain": 22,
+     "rem_min": 102,
+     "source": "apple_export",
+     "stages": 97,
+     "wake_time": "2026-08-15T06:41+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 12 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6353,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.25,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 437,
+   "sleep_debt_min": 85,
+   "sleep_need_min": 587,
+   "sleep_performance": 0.7448,
+   "sleep_score": 95,
+   "strain": 18.5,
+   "trimp": 362.0,
+   "tsb": 15.6
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 342.8,
+   "ctl": 346.5,
+   "date": "2026-08-16",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 259,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 434.0,
+     "zone_minutes": [
+      246.0,
+      67.0,
+      18.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 13,
+     "hrv_readings": 4,
+     "rhr_low_offset_min": 150,
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "wrist_temp": 36.17
+    },
+    "sleep": {
+     "asleep_min": 341,
+     "awakenings": 0,
+     "bedtime": "2026-08-15T23:58+10:00",
+     "consistency": 100,
+     "deep_min": 66,
+     "duration": 77,
+     "efficiency": 0.98,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 75,
+     "need_from_strain": 34,
+     "rem_min": 74,
+     "source": "apple_export",
+     "stages": 77,
+     "wake_time": "2026-08-16T05:46+10:00",
+     "waso_min": 7.0
+    }
+   },
+   "flags": {
+    "baseline_insufficient": "前 60 天只有 13 晚 HRV，满 14 晚才出恢复分",
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4924,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 16.0,
+   "rhr_night": 61.0,
+   "sleep_actual_min": 341,
+   "sleep_debt_min": 75,
+   "sleep_need_min": 589,
+   "sleep_performance": 0.5789,
+   "sleep_score": 86,
+   "strain": 19.37,
+   "trimp": 434.0,
+   "tsb": 3.7
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 344.1,
+   "ctl": 346.7,
+   "date": "2026-08-17",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 274,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 353.0,
+     "zone_minutes": [
+      179.0,
+      42.0,
+      30.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 14,
+     "hrv_baseline": [
+      3.3032,
+      0.325
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4531,
+      0.4093
+     ],
+     "rhr_baseline": [
+      59.75,
+      3.0659
+     ],
+     "rhr_low_offset_min": 120,
+     "sleep_performance_baseline": [
+      0.6577,
+      0.1082
+     ],
+     "spo2_night": 97.4,
+     "spo2_readings": 6,
+     "weighted_z": -0.316,
+     "wrist_temp": 36.07,
+     "z": {
+      "hrv": -0.414,
+      "resp_rate": -0.494,
+      "rhr": -0.734,
+      "sleep_performance": 0.691
+     }
+    },
+    "sleep": {
+     "asleep_min": 445,
+     "awakenings": 0,
+     "bedtime": "2026-08-17T00:14+10:00",
+     "consistency": 93,
+     "deep_min": 89,
+     "duration": 100,
+     "efficiency": 0.989,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 90,
+     "need_from_strain": 37,
+     "rem_min": 80,
+     "source": "apple_export",
+     "stages": 93,
+     "wake_time": "2026-08-17T07:44+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.1688,
+   "muscle_load": null,
+   "recovery": 45,
+   "resp_rate_night": 15.7,
+   "rhr_night": 62.0,
+   "sleep_actual_min": 445,
+   "sleep_debt_min": 90,
+   "sleep_need_min": 608,
+   "sleep_performance": 0.7324,
+   "sleep_score": 97,
+   "strain": 18.37,
+   "trimp": 353.0,
+   "tsb": 2.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 346.4,
+   "ctl": 347.0,
+   "date": "2026-08-18",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 253,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 165.0,
+     "trimp_recorded": 361.0,
+     "zone_minutes": [
+      205.0,
+      0.0,
+      2.0,
+      20.0,
+      14.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 15,
+     "hrv_baseline": [
+      3.2943,
+      0.3151
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4676,
+      0.4008
+     ],
+     "rhr_baseline": [
+      59.8824,
+      3.0183
+     ],
+     "rhr_low_offset_min": 125,
+     "sleep_performance_baseline": [
+      0.6621,
+      0.1063
+     ],
+     "spo2_night": 96.0,
+     "spo2_readings": 6,
+     "weighted_z": 0.572,
+     "wrist_temp": 36.01,
+     "z": {
+      "hrv": 1.015,
+      "resp_rate": -0.465,
+      "rhr": -0.37,
+      "sleep_performance": 0.4
+     }
+    },
+    "sleep": {
+     "asleep_min": 416,
+     "awakenings": 1,
+     "bedtime": "2026-08-17T23:16+10:00",
+     "consistency": 80,
+     "deep_min": 79,
+     "duration": 99,
+     "efficiency": 0.977,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 76,
+     "need_from_strain": 34,
+     "rem_min": 72,
+     "source": "apple_export",
+     "stages": 83,
+     "wake_time": "2026-08-18T06:22+10:00",
+     "waso_min": 10.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6142,
+   "muscle_load": null,
+   "recovery": 77,
+   "resp_rate_night": 15.7,
+   "rhr_night": 61.0,
+   "sleep_actual_min": 416,
+   "sleep_debt_min": 76,
+   "sleep_need_min": 590,
+   "sleep_performance": 0.7046,
+   "sleep_score": 92,
+   "strain": 18.49,
+   "trimp": 361.0,
+   "tsb": 0.6
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 330.2,
+   "ctl": 344.1,
+   "date": "2026-08-19",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 227,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 225.0,
+     "zone_minutes": [
+      205.0,
+      10.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 16,
+     "hrv_baseline": [
+      3.3142,
+      0.3148
+     ],
+     "hrv_readings": 3,
+     "resp_rate_baseline": [
+      15.4806,
+      0.3926
+     ],
+     "rhr_baseline": [
+      59.9444,
+      2.94
+     ],
+     "rhr_low_offset_min": 205,
+     "sleep_performance_baseline": [
+      0.6644,
+      0.1036
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 5,
+     "weighted_z": 0.747,
+     "wrist_temp": 36.04,
+     "z": {
+      "hrv": 1.6,
+      "resp_rate": -0.639,
+      "rhr": 0.321,
+      "sleep_performance": -1.634
+     }
+    },
+    "sleep": {
+     "asleep_min": 291,
+     "awakenings": 1,
+     "bedtime": "2026-08-18T23:41+10:00",
+     "consistency": 100,
+     "deep_min": 65,
+     "duration": 46,
+     "efficiency": 0.967,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 73,
+     "need_from_strain": 34,
+     "rem_min": 55,
+     "source": "apple_export",
+     "stages": 66,
+     "wake_time": "2026-08-19T04:42+10:00",
+     "waso_min": 10.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.8179,
+   "muscle_load": null,
+   "recovery": 82,
+   "resp_rate_night": 15.8,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 291,
+   "sleep_debt_min": 73,
+   "sleep_need_min": 588,
+   "sleep_performance": 0.4952,
+   "sleep_score": 71,
+   "strain": 15.41,
+   "trimp": 225.0,
+   "tsb": 13.9
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 324.5,
+   "ctl": 342.8,
+   "date": "2026-08-20",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 262,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 287.0,
+     "zone_minutes": [
+      145.0,
+      22.0,
+      30.0,
+      2.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 17,
+     "hrv_baseline": [
+      3.3439,
+      0.3284
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4974,
+      0.3885
+     ],
+     "rhr_baseline": [
+      59.8947,
+      2.8654
+     ],
+     "rhr_low_offset_min": 125,
+     "sleep_performance_baseline": [
+      0.6555,
+      0.1079
+     ],
+     "spo2_night": 96.0,
+     "spo2_readings": 6,
+     "weighted_z": 0.723,
+     "wrist_temp": 35.69,
+     "z": {
+      "hrv": 0.655,
+      "resp_rate": 0.995,
+      "rhr": 1.01,
+      "sleep_performance": 0.526
+     }
+    },
+    "sleep": {
+     "asleep_min": 433,
+     "awakenings": 1,
+     "bedtime": "2026-08-19T23:11+10:00",
+     "consistency": 82,
+     "deep_min": 85,
+     "duration": 100,
+     "efficiency": 0.964,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 103,
+     "need_from_strain": 25,
+     "rem_min": 117,
+     "source": "apple_export",
+     "stages": 97,
+     "wake_time": "2026-08-20T06:40+10:00",
+     "waso_min": 16.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5588,
+   "muscle_load": null,
+   "recovery": 81,
+   "resp_rate_night": 15.0,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 433,
+   "sleep_debt_min": 103,
+   "sleep_need_min": 608,
+   "sleep_performance": 0.7123,
+   "sleep_score": 95,
+   "strain": 17.12,
+   "trimp": 287.0,
+   "tsb": 18.3
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 303.9,
+   "ctl": 338.7,
+   "date": "2026-08-21",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 244,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 170.0,
+     "zone_minutes": [
+      170.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 18,
+     "hrv_baseline": [
+      3.3558,
+      0.3226
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4725,
+      0.3942
+     ],
+     "rhr_baseline": [
+      59.75,
+      2.8631
+     ],
+     "rhr_low_offset_min": 165,
+     "sleep_performance_baseline": [
+      0.6584,
+      0.1058
+     ],
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "weighted_z": -0.037,
+     "wrist_temp": 35.93,
+     "z": {
+      "hrv": -0.271,
+      "resp_rate": 0.245,
+      "rhr": 0.262,
+      "sleep_performance": 0.406
+     }
+    },
+    "sleep": {
+     "asleep_min": 420,
+     "awakenings": 2,
+     "bedtime": "2026-08-20T23:40+10:00",
+     "consistency": 100,
+     "deep_min": 94,
+     "duration": 100,
+     "efficiency": 0.963,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 89,
+     "need_from_strain": 30,
+     "rem_min": 69,
+     "source": "apple_export",
+     "stages": 88,
+     "wake_time": "2026-08-21T06:56+10:00",
+     "waso_min": 16.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.2684,
+   "muscle_load": null,
+   "recovery": 56,
+   "resp_rate_night": 15.35,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 420,
+   "sleep_debt_min": 89,
+   "sleep_need_min": 599,
+   "sleep_performance": 0.7013,
+   "sleep_score": 96,
+   "strain": 13.27,
+   "trimp": 170.0,
+   "tsb": 34.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 316.3,
+   "ctl": 340.1,
+   "date": "2026-08-22",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 267,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 397.0,
+     "zone_minutes": [
+      85.0,
+      0.0,
+      22.0,
+      54.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 19,
+     "hrv_baseline": [
+      3.3512,
+      0.3141
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4667,
+      0.3851
+     ],
+     "rhr_baseline": [
+      59.7143,
+      2.7954
+     ],
+     "rhr_low_offset_min": 180,
+     "sleep_performance_baseline": [
+      0.6604,
+      0.1036
+     ],
+     "spo2_night": 96.6,
+     "spo2_readings": 6,
+     "weighted_z": 1.709,
+     "wrist_temp": 35.66,
+     "z": {
+      "hrv": 1.989,
+      "resp_rate": 1.533,
+      "rhr": 2.044,
+      "sleep_performance": 0.202
+     }
+    },
+    "sleep": {
+     "asleep_min": 395,
+     "awakenings": 0,
+     "bedtime": "2026-08-22T01:03+10:00",
+     "consistency": 35,
+     "deep_min": 88,
+     "duration": 96,
+     "efficiency": 0.963,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 81,
+     "need_from_strain": 19,
+     "rem_min": 71,
+     "source": "apple_export",
+     "stages": 87,
+     "wake_time": "2026-08-22T07:53+10:00",
+     "waso_min": 15.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.976,
+   "muscle_load": null,
+   "recovery": 95,
+   "resp_rate_night": 14.7,
+   "rhr_night": 54.0,
+   "sleep_actual_min": 395,
+   "sleep_debt_min": 81,
+   "sleep_need_min": 580,
+   "sleep_performance": 0.6813,
+   "sleep_score": 82,
+   "strain": 18.97,
+   "trimp": 397.0,
+   "tsb": 23.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 329.8,
+   "ctl": 341.9,
+   "date": "2026-08-23",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 269,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 418.0,
+     "zone_minutes": [
+      248.0,
+      52.0,
+      22.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 20,
+     "hrv_baseline": [
+      3.3825,
+      0.3361
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4318,
+      0.4099
+     ],
+     "rhr_baseline": [
+      59.4545,
+      2.9877
+     ],
+     "rhr_low_offset_min": 315,
+     "sleep_performance_baseline": [
+      0.6614,
+      0.1012
+     ],
+     "spo2_night": 96.1,
+     "spo2_readings": 6,
+     "weighted_z": -0.369,
+     "wrist_temp": 36.05,
+     "z": {
+      "hrv": -0.524,
+      "resp_rate": -0.136,
+      "rhr": -0.183,
+      "sleep_performance": -0.073
+     }
+    },
+    "sleep": {
+     "asleep_min": 391,
+     "awakenings": 1,
+     "bedtime": "2026-08-22T23:31+10:00",
+     "consistency": 100,
+     "deep_min": 72,
+     "duration": 95,
+     "efficiency": 0.968,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 82,
+     "need_from_strain": 36,
+     "rem_min": 81,
+     "source": "apple_export",
+     "stages": 85,
+     "wake_time": "2026-08-23T06:15+10:00",
+     "waso_min": 13.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.2063,
+   "muscle_load": null,
+   "recovery": 43,
+   "resp_rate_night": 15.5,
+   "rhr_night": 60.0,
+   "sleep_actual_min": 391,
+   "sleep_debt_min": 82,
+   "sleep_need_min": 598,
+   "sleep_performance": 0.6539,
+   "sleep_score": 95,
+   "strain": 19.2,
+   "trimp": 418.0,
+   "tsb": 12.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 327.7,
+   "ctl": 341.3,
+   "date": "2026-08-24",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 261,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 314.0,
+     "zone_minutes": [
+      172.0,
+      35.0,
+      24.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 21,
+     "hrv_baseline": [
+      3.3741,
+      0.3299
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4348,
+      0.4007
+     ],
+     "rhr_baseline": [
+      59.4783,
+      2.9212
+     ],
+     "rhr_low_offset_min": 35,
+     "sleep_performance_baseline": [
+      0.661,
+      0.0988
+     ],
+     "spo2_night": 96.0,
+     "spo2_readings": 6,
+     "weighted_z": -0.802,
+     "wrist_temp": 35.79,
+     "z": {
+      "hrv": -1.318,
+      "resp_rate": -1.23,
+      "rhr": -0.179,
+      "sleep_performance": 0.577
+     }
+    },
+    "sleep": {
+     "asleep_min": 431,
+     "awakenings": 1,
+     "bedtime": "2026-08-23T23:34+10:00",
+     "consistency": 100,
+     "deep_min": 94,
+     "duration": 100,
+     "efficiency": 0.982,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 84,
+     "need_from_strain": 37,
+     "rem_min": 87,
+     "source": "apple_export",
+     "stages": 98,
+     "wake_time": "2026-08-24T06:53+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 2.9391,
+   "muscle_load": null,
+   "recovery": 27,
+   "resp_rate_night": 16.05,
+   "rhr_night": 60.0,
+   "sleep_actual_min": 431,
+   "sleep_debt_min": 84,
+   "sleep_need_min": 600,
+   "sleep_performance": 0.7181,
+   "sleep_score": 99,
+   "strain": 17.69,
+   "trimp": 314.0,
+   "tsb": 13.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 323.9,
+   "ctl": 340.3,
+   "date": "2026-08-25",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 247,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 299.0,
+     "zone_minutes": [
+      145.0,
+      0.0,
+      6.0,
+      24.0,
+      8.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 22,
+     "hrv_baseline": [
+      3.3543,
+      0.335
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4604,
+      0.4115
+     ],
+     "rhr_baseline": [
+      59.5,
+      2.859
+     ],
+     "rhr_low_offset_min": 105,
+     "sleep_performance_baseline": [
+      0.6634,
+      0.0974
+     ],
+     "spo2_night": 97.0,
+     "spo2_readings": 6,
+     "weighted_z": 0.094,
+     "wrist_temp": 35.59,
+     "z": {
+      "hrv": 0.009,
+      "resp_rate": -0.379,
+      "rhr": 0.175,
+      "sleep_performance": 0.484
+     }
+    },
+    "sleep": {
+     "asleep_min": 417,
+     "awakenings": 1,
+     "bedtime": "2026-08-25T01:02+10:00",
+     "consistency": 29,
+     "deep_min": 67,
+     "duration": 99,
+     "efficiency": 0.981,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 75,
+     "need_from_strain": 32,
+     "rem_min": 99,
+     "source": "apple_export",
+     "stages": 87,
+     "wake_time": "2026-08-25T08:07+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3572,
+   "muscle_load": null,
+   "recovery": 61,
+   "resp_rate_night": 15.65,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 417,
+   "sleep_debt_min": 75,
+   "sleep_need_min": 587,
+   "sleep_performance": 0.7106,
+   "sleep_score": 82,
+   "strain": 17.38,
+   "trimp": 299.0,
+   "tsb": 16.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 305.4,
+   "ctl": 336.6,
+   "date": "2026-08-26",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 247,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 185.0,
+     "zone_minutes": [
+      185.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 23,
+     "hrv_baseline": [
+      3.3544,
+      0.3273
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.468,
+      0.4046
+     ],
+     "rhr_baseline": [
+      59.48,
+      2.8006
+     ],
+     "rhr_low_offset_min": 290,
+     "sleep_performance_baseline": [
+      0.6653,
+      0.0958
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": 0.172,
+     "wrist_temp": 35.93,
+     "z": {
+      "hrv": -0.105,
+      "resp_rate": -0.564,
+      "rhr": 1.243,
+      "sleep_performance": 0.095
+     }
+    },
+    "sleep": {
+     "asleep_min": 393,
+     "awakenings": 0,
+     "bedtime": "2026-08-26T00:14+10:00",
+     "consistency": 79,
+     "deep_min": 79,
+     "duration": 95,
+     "efficiency": 0.98,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 72,
+     "need_from_strain": 31,
+     "rem_min": 67,
+     "source": "apple_export",
+     "stages": 80,
+     "wake_time": "2026-08-26T06:55+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3201,
+   "muscle_load": null,
+   "recovery": 64,
+   "resp_rate_night": 15.75,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 393,
+   "sleep_debt_min": 72,
+   "sleep_need_min": 583,
+   "sleep_performance": 0.6744,
+   "sleep_score": 89,
+   "strain": 13.93,
+   "trimp": 185.0,
+   "tsb": 31.2
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 294.6,
+   "ctl": 334.0,
+   "date": "2026-08-27",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 263,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 224.0,
+     "zone_minutes": [
+      52.0,
+      33.0,
+      30.0,
+      4.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 24,
+     "hrv_baseline": [
+      3.353,
+      0.3202
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4788,
+      0.4003
+     ],
+     "rhr_baseline": [
+      59.3462,
+      2.8276
+     ],
+     "rhr_low_offset_min": 300,
+     "sleep_performance_baseline": [
+      0.6656,
+      0.0939
+     ],
+     "spo2_night": 96.9,
+     "spo2_readings": 6,
+     "weighted_z": 0.983,
+     "wrist_temp": 35.52,
+     "z": {
+      "hrv": 0.771,
+      "resp_rate": 1.558,
+      "rhr": 1.537,
+      "sleep_performance": 0.897
+     }
+    },
+    "sleep": {
+     "asleep_min": 432,
+     "awakenings": 0,
+     "bedtime": "2026-08-26T23:30+10:00",
+     "consistency": 100,
+     "deep_min": 70,
+     "duration": 100,
+     "efficiency": 1.0,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 75,
+     "need_from_strain": 21,
+     "rem_min": 83,
+     "source": "apple_export",
+     "stages": 84,
+     "wake_time": "2026-08-27T06:42+10:00",
+     "waso_min": 0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6,
+   "muscle_load": null,
+   "recovery": 87,
+   "resp_rate_night": 14.7,
+   "rhr_night": 55.0,
+   "sleep_actual_min": 432,
+   "sleep_debt_min": 75,
+   "sleep_need_min": 576,
+   "sleep_performance": 0.7499,
+   "sleep_score": 96,
+   "strain": 15.38,
+   "trimp": 224.0,
+   "tsb": 39.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 282.7,
+   "ctl": 330.9,
+   "date": "2026-08-28",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 242,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 205.0,
+     "zone_minutes": [
+      195.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 25,
+     "hrv_baseline": [
+      3.3629,
+      0.3173
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.45,
+      0.4202
+     ],
+     "rhr_baseline": [
+      59.1852,
+      2.8961
+     ],
+     "rhr_low_offset_min": 385,
+     "sleep_performance_baseline": [
+      0.6688,
+      0.0935
+     ],
+     "spo2_night": 96.1,
+     "spo2_readings": 6,
+     "weighted_z": 0.885,
+     "wrist_temp": 36.11,
+     "z": {
+      "hrv": 1.057,
+      "resp_rate": 0.7,
+      "rhr": 0.755,
+      "sleep_performance": 0.434
+     }
+    },
+    "sleep": {
+     "asleep_min": 407,
+     "awakenings": 0,
+     "bedtime": "2026-08-28T00:02+10:00",
+     "consistency": 90,
+     "deep_min": 77,
+     "duration": 98,
+     "efficiency": 0.995,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 69,
+     "need_from_strain": 25,
+     "rem_min": 89,
+     "source": "apple_export",
+     "stages": 91,
+     "wake_time": "2026-08-28T06:51+10:00",
+     "waso_min": 2.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6984,
+   "muscle_load": null,
+   "recovery": 85,
+   "resp_rate_night": 15.1,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 407,
+   "sleep_debt_min": 69,
+   "sleep_need_min": 574,
+   "sleep_performance": 0.7093,
+   "sleep_score": 95,
+   "strain": 14.71,
+   "trimp": 205.0,
+   "tsb": 48.3
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 293.6,
+   "ctl": 331.7,
+   "date": "2026-08-29",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 264,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 365.0,
+     "zone_minutes": [
+      65.0,
+      0.0,
+      24.0,
+      52.0,
+      4.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 26,
+     "hrv_baseline": [
+      3.3758,
+      0.3178
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4375,
+      0.4176
+     ],
+     "rhr_baseline": [
+      59.1071,
+      2.8718
+     ],
+     "rhr_low_offset_min": 165,
+     "sleep_performance_baseline": [
+      0.6702,
+      0.092
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": 0.517,
+     "wrist_temp": 35.67,
+     "z": {
+      "hrv": 0.192,
+      "resp_rate": 0.575,
+      "rhr": 1.082,
+      "sleep_performance": 1.045
+     }
+    },
+    "sleep": {
+     "asleep_min": 439,
+     "awakenings": 1,
+     "bedtime": "2026-08-29T00:51+10:00",
+     "consistency": 47,
+     "deep_min": 85,
+     "duration": 100,
+     "efficiency": 0.978,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 70,
+     "need_from_strain": 23,
+     "rem_min": 66,
+     "source": "apple_export",
+     "stages": 83,
+     "wake_time": "2026-08-29T08:20+10:00",
+     "waso_min": 10.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4368,
+   "muscle_load": null,
+   "recovery": 76,
+   "resp_rate_night": 15.15,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 439,
+   "sleep_debt_min": 70,
+   "sleep_need_min": 573,
+   "sleep_performance": 0.7664,
+   "sleep_score": 86,
+   "strain": 18.55,
+   "trimp": 365.0,
+   "tsb": 38.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 302.6,
+   "ctl": 332.4,
+   "date": "2026-08-30",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 268,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 361.0,
+     "zone_minutes": [
+      189.0,
+      71.0,
+      10.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 27,
+     "hrv_baseline": [
+      3.378,
+      0.3118
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4276,
+      0.4135
+     ],
+     "rhr_baseline": [
+      59.0,
+      2.8785
+     ],
+     "rhr_low_offset_min": 175,
+     "sleep_performance_baseline": [
+      0.6735,
+      0.0921
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": -0.411,
+     "wrist_temp": 36.07,
+     "z": {
+      "hrv": -0.415,
+      "resp_rate": -0.845,
+      "rhr": -0.347,
+      "sleep_performance": -0.333
+     }
+    },
+    "sleep": {
+     "asleep_min": 371,
+     "awakenings": 0,
+     "bedtime": "2026-08-30T00:07+10:00",
+     "consistency": 97,
+     "deep_min": 61,
+     "duration": 89,
+     "efficiency": 0.961,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 62,
+     "need_from_strain": 35,
+     "rem_min": 92,
+     "source": "apple_export",
+     "stages": 83,
+     "wake_time": "2026-08-30T06:33+10:00",
+     "waso_min": 15.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.2485,
+   "muscle_load": null,
+   "recovery": 41,
+   "resp_rate_night": 15.85,
+   "rhr_night": 60.0,
+   "sleep_actual_min": 371,
+   "sleep_debt_min": 62,
+   "sleep_need_min": 577,
+   "sleep_performance": 0.6428,
+   "sleep_score": 91,
+   "strain": 18.49,
+   "trimp": 361.0,
+   "tsb": 29.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 296.3,
+   "ctl": 330.6,
+   "date": "2026-08-31",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 267,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 255.0,
+     "zone_minutes": [
+      135.0,
+      30.0,
+      20.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 28,
+     "hrv_baseline": [
+      3.3734,
+      0.307
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4417,
+      0.4136
+     ],
+     "rhr_baseline": [
+      59.0333,
+      2.8343
+     ],
+     "rhr_low_offset_min": 310,
+     "sleep_performance_baseline": [
+      0.6725,
+      0.0907
+     ],
+     "spo2_night": 96.8,
+     "spo2_readings": 6,
+     "weighted_z": 0.422,
+     "wrist_temp": 36.11,
+     "z": {
+      "hrv": 0.407,
+      "resp_rate": -0.117,
+      "rhr": 1.07,
+      "sleep_performance": -0.201
+     }
+    },
+    "sleep": {
+     "asleep_min": 385,
+     "awakenings": 0,
+     "bedtime": "2026-08-31T00:05+10:00",
+     "consistency": 100,
+     "deep_min": 99,
+     "duration": 93,
+     "efficiency": 1.0,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 74,
+     "need_from_strain": 34,
+     "rem_min": 76,
+     "source": "apple_export",
+     "stages": 92,
+     "wake_time": "2026-08-31T06:30+10:00",
+     "waso_min": 0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4983,
+   "muscle_load": null,
+   "recovery": 73,
+   "resp_rate_night": 15.5,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 385,
+   "sleep_debt_min": 74,
+   "sleep_need_min": 588,
+   "sleep_performance": 0.6543,
+   "sleep_score": 95,
+   "strain": 16.31,
+   "trimp": 255.0,
+   "tsb": 34.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 305.4,
+   "ctl": 331.4,
+   "date": "2026-09-01",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 242,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 365.0,
+     "zone_minutes": [
+      175.0,
+      0.0,
+      0.0,
+      30.0,
+      14.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 29,
+     "hrv_baseline": [
+      3.3777,
+      0.3024
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4435,
+      0.4068
+     ],
+     "rhr_baseline": [
+      58.9355,
+      2.8394
+     ],
+     "rhr_low_offset_min": 350,
+     "sleep_performance_baseline": [
+      0.6719,
+      0.0892
+     ],
+     "spo2_night": 96.2,
+     "spo2_readings": 6,
+     "weighted_z": 0.057,
+     "wrist_temp": 35.82,
+     "z": {
+      "hrv": 0.165,
+      "resp_rate": -0.713,
+      "rhr": -0.023,
+      "sleep_performance": -0.014
+     }
+    },
+    "sleep": {
+     "asleep_min": 394,
+     "awakenings": 0,
+     "bedtime": "2026-08-31T22:57+10:00",
+     "consistency": 80,
+     "deep_min": 80,
+     "duration": 95,
+     "efficiency": 0.99,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 80,
+     "need_from_strain": 28,
+     "rem_min": 82,
+     "source": "apple_export",
+     "stages": 89,
+     "wake_time": "2026-09-01T05:35+10:00",
+     "waso_min": 4.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4277,
+   "muscle_load": null,
+   "recovery": 60,
+   "resp_rate_night": 15.8,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 394,
+   "sleep_debt_min": 80,
+   "sleep_need_min": 587,
+   "sleep_performance": 0.6707,
+   "sleep_score": 91,
+   "strain": 18.55,
+   "trimp": 365.0,
+   "tsb": 26.0
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 284.0,
+   "ctl": 327.0,
+   "date": "2026-09-02",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 244,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 145.0,
+     "zone_minutes": [
+      145.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 30,
+     "hrv_baseline": [
+      3.3794,
+      0.2972
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4547,
+      0.4051
+     ],
+     "rhr_baseline": [
+      58.9375,
+      2.7933
+     ],
+     "rhr_low_offset_min": 50,
+     "sleep_performance_baseline": [
+      0.6719,
+      0.0878
+     ],
+     "spo2_night": 97.1,
+     "spo2_readings": 6,
+     "weighted_z": -0.701,
+     "wrist_temp": 35.92,
+     "z": {
+      "hrv": -1.127,
+      "resp_rate": -0.791,
+      "rhr": -0.022,
+      "sleep_performance": 0.127
+     }
+    },
+    "sleep": {
+     "asleep_min": 407,
+     "awakenings": 1,
+     "bedtime": "2026-09-02T00:10+10:00",
+     "consistency": 96,
+     "deep_min": 87,
+     "duration": 98,
+     "efficiency": 0.955,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 81,
+     "need_from_strain": 35,
+     "rem_min": 69,
+     "source": "apple_export",
+     "stages": 86,
+     "wake_time": "2026-09-02T07:16+10:00",
+     "waso_min": 19.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.0445,
+   "muscle_load": null,
+   "recovery": 31,
+   "resp_rate_night": 15.85,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 407,
+   "sleep_debt_min": 81,
+   "sleep_need_min": 596,
+   "sleep_performance": 0.683,
+   "sleep_score": 95,
+   "strain": 12.05,
+   "trimp": 145.0,
+   "tsb": 43.0
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 279.4,
+   "ctl": 325.2,
+   "date": "2026-09-03",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 259,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 249.0,
+     "zone_minutes": [
+      87.0,
+      24.0,
+      38.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 31,
+     "hrv_readings": 0,
+     "rhr_low_offset_min": 230,
+     "spo2_night": 96.4,
+     "spo2_readings": 6,
+     "wrist_temp": 35.98
+    },
+    "sleep": {
+     "asleep_min": 340,
+     "awakenings": 1,
+     "bedtime": "2026-09-03T00:15+10:00",
+     "consistency": 100,
+     "deep_min": 69,
+     "duration": 76,
+     "efficiency": 0.971,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 79,
+     "need_from_strain": 15,
+     "rem_min": 75,
+     "source": "apple_export",
+     "stages": 79,
+     "wake_time": "2026-09-03T06:05+10:00",
+     "waso_min": 10.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+    "hrv_missing": "睡眠窗口内没有逐拍数据算出的 RMSSD，算不了恢复分（这个人用 RMSSD，不拿 SDNN 补）"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": null,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.15,
+   "rhr_night": 54.0,
+   "sleep_actual_min": 340,
+   "sleep_debt_min": 79,
+   "sleep_need_min": 574,
+   "sleep_performance": 0.5925,
+   "sleep_score": 86,
+   "strain": 16.15,
+   "trimp": 249.0,
+   "tsb": 45.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 261.5,
+   "ctl": 321.0,
+   "date": "2026-09-04",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 243,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 145.0,
+     "zone_minutes": [
+      145.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 31,
+     "hrv_baseline": [
+      3.3686,
+      0.2984
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4574,
+      0.4021
+     ],
+     "rhr_baseline": [
+      58.7941,
+      2.8368
+     ],
+     "rhr_low_offset_min": 215,
+     "sleep_performance_baseline": [
+      0.6699,
+      0.0862
+     ],
+     "spo2_night": 95.9,
+     "spo2_readings": 6,
+     "weighted_z": 0.421,
+     "wrist_temp": 35.94,
+     "z": {
+      "hrv": 0.576,
+      "resp_rate": 0.015,
+      "rhr": -0.073,
+      "sleep_performance": 0.594
+     }
+    },
+    "sleep": {
+     "asleep_min": 434,
+     "awakenings": 2,
+     "bedtime": "2026-09-03T23:25+10:00",
+     "consistency": 80,
+     "deep_min": 109,
+     "duration": 100,
+     "efficiency": 0.967,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 94,
+     "need_from_strain": 27,
+     "rem_min": 90,
+     "source": "apple_export",
+     "stages": 100,
+     "wake_time": "2026-09-04T06:54+10:00",
+     "waso_min": 15.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5404,
+   "muscle_load": null,
+   "recovery": 73,
+   "resp_rate_night": 15.45,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 434,
+   "sleep_debt_min": 94,
+   "sleep_need_min": 602,
+   "sleep_performance": 0.7211,
+   "sleep_score": 95,
+   "strain": 12.05,
+   "trimp": 145.0,
+   "tsb": 59.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 273.9,
+   "ctl": 321.8,
+   "date": "2026-09-05",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 259,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 355.0,
+     "zone_minutes": [
+      115.0,
+      0.0,
+      14.0,
+      42.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 32,
+     "hrv_baseline": [
+      3.3739,
+      0.2951
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4571,
+      0.3961
+     ],
+     "rhr_baseline": [
+      58.8,
+      2.795
+     ],
+     "rhr_low_offset_min": 385,
+     "sleep_performance_baseline": [
+      0.6713,
+      0.0854
+     ],
+     "spo2_night": 96.4,
+     "spo2_readings": 6,
+     "weighted_z": 0.927,
+     "wrist_temp": 35.59,
+     "z": {
+      "hrv": 0.79,
+      "resp_rate": 1.014,
+      "rhr": 1.002,
+      "sleep_performance": 1.347
+     }
+    },
+    "sleep": {
+     "asleep_min": 454,
+     "awakenings": 1,
+     "bedtime": "2026-09-05T00:43+10:00",
+     "consistency": 78,
+     "deep_min": 76,
+     "duration": 100,
+     "efficiency": 0.976,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 82,
+     "need_from_strain": 15,
+     "rem_min": 94,
+     "source": "apple_export",
+     "stages": 92,
+     "wake_time": "2026-09-05T08:28+10:00",
+     "waso_min": 11.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.607,
+   "muscle_load": null,
+   "recovery": 86,
+   "resp_rate_night": 14.95,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 454,
+   "sleep_debt_min": 82,
+   "sleep_need_min": 577,
+   "sleep_performance": 0.7863,
+   "sleep_score": 94,
+   "strain": 18.4,
+   "trimp": 355.0,
+   "tsb": 47.8
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 286.5,
+   "ctl": 322.8,
+   "date": "2026-09-06",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 276,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 368.0,
+     "zone_minutes": [
+      218.0,
+      54.0,
+      14.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 33,
+     "hrv_baseline": [
+      3.381,
+      0.2933
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4431,
+      0.3995
+     ],
+     "rhr_baseline": [
+      58.7222,
+      2.794
+     ],
+     "rhr_low_offset_min": 150,
+     "sleep_performance_baseline": [
+      0.6745,
+      0.0863
+     ],
+     "spo2_night": 96.8,
+     "spo2_readings": 6,
+     "weighted_z": -0.777,
+     "wrist_temp": 36.24,
+     "z": {
+      "hrv": -1.064,
+      "resp_rate": -0.414,
+      "rhr": -0.099,
+      "sleep_performance": -0.65
+     }
+    },
+    "sleep": {
+     "asleep_min": 360,
+     "awakenings": 1,
+     "bedtime": "2026-09-06T00:14+10:00",
+     "consistency": 100,
+     "deep_min": 80,
+     "duration": 85,
+     "efficiency": 0.981,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 68,
+     "need_from_strain": 34,
+     "rem_min": 72,
+     "source": "apple_export",
+     "stages": 84,
+     "wake_time": "2026-09-06T06:21+10:00",
+     "waso_min": 7.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.0689,
+   "muscle_load": null,
+   "recovery": 28,
+   "resp_rate_night": 15.65,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 360,
+   "sleep_debt_min": 68,
+   "sleep_need_min": 582,
+   "sleep_performance": 0.6184,
+   "sleep_score": 90,
+   "strain": 18.59,
+   "trimp": 368.0,
+   "tsb": 36.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 297.3,
+   "ctl": 323.9,
+   "date": "2026-09-07",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 250,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 368.0,
+     "zone_minutes": [
+      210.0,
+      37.0,
+      28.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 34,
+     "hrv_baseline": [
+      3.3718,
+      0.2937
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4486,
+      0.3954
+     ],
+     "rhr_baseline": [
+      58.7297,
+      2.7553
+     ],
+     "rhr_low_offset_min": 5,
+     "sleep_performance_baseline": [
+      0.673,
+      0.0856
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": -0.255,
+     "wrist_temp": 36.02,
+     "z": {
+      "hrv": 0.089,
+      "resp_rate": -1.003,
+      "rhr": -1.187,
+      "sleep_performance": -0.138
+     }
+    },
+    "sleep": {
+     "asleep_min": 394,
+     "awakenings": 0,
+     "bedtime": "2026-09-06T22:56+10:00",
+     "consistency": 80,
+     "deep_min": 84,
+     "duration": 95,
+     "efficiency": 0.985,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 81,
+     "need_from_strain": 35,
+     "rem_min": 77,
+     "source": "apple_export",
+     "stages": 89,
+     "wake_time": "2026-09-07T05:36+10:00",
+     "waso_min": 6.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.398,
+   "muscle_load": null,
+   "recovery": 47,
+   "resp_rate_night": 15.95,
+   "rhr_night": 62.0,
+   "sleep_actual_min": 394,
+   "sleep_debt_min": 81,
+   "sleep_need_min": 596,
+   "sleep_performance": 0.6612,
+   "sleep_score": 91,
+   "strain": 18.59,
+   "trimp": 368.0,
+   "tsb": 26.6
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 294.1,
+   "ctl": 322.7,
+   "date": "2026-09-08",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 258,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 273.0,
+     "zone_minutes": [
+      105.0,
+      0.0,
+      2.0,
+      28.0,
+      10.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 35,
+     "hrv_baseline": [
+      3.3726,
+      0.2894
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4618,
+      0.3984
+     ],
+     "rhr_baseline": [
+      58.8158,
+      2.7691
+     ],
+     "rhr_low_offset_min": 190,
+     "sleep_performance_baseline": [
+      0.6727,
+      0.0844
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": 0.485,
+     "wrist_temp": 36.08,
+     "z": {
+      "hrv": 0.573,
+      "resp_rate": -0.576,
+      "rhr": 0.295,
+      "sleep_performance": 0.738
+     }
+    },
+    "sleep": {
+     "asleep_min": 439,
+     "awakenings": 0,
+     "bedtime": "2026-09-07T23:48+10:00",
+     "consistency": 94,
+     "deep_min": 96,
+     "duration": 100,
+     "efficiency": 0.984,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 82,
+     "need_from_strain": 35,
+     "rem_min": 91,
+     "source": "apple_export",
+     "stages": 100,
+     "wake_time": "2026-09-08T07:14+10:00",
+     "waso_min": 7.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5384,
+   "muscle_load": null,
+   "recovery": 75,
+   "resp_rate_night": 15.75,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 439,
+   "sleep_debt_min": 82,
+   "sleep_need_min": 597,
+   "sleep_performance": 0.735,
+   "sleep_score": 98,
+   "strain": 16.79,
+   "trimp": 273.0,
+   "tsb": 28.6
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 282.9,
+   "ctl": 320.1,
+   "date": "2026-09-09",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 242,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 210.0,
+     "zone_minutes": [
+      210.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 36,
+     "hrv_baseline": [
+      3.3772,
+      0.2865
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4692,
+      0.3958
+     ],
+     "rhr_baseline": [
+      58.7949,
+      2.7355
+     ],
+     "rhr_low_offset_min": 210,
+     "sleep_performance_baseline": [
+      0.6743,
+      0.0839
+     ],
+     "spo2_night": 96.2,
+     "spo2_readings": 6,
+     "weighted_z": 0.446,
+     "wrist_temp": 36.15,
+     "z": {
+      "hrv": 1.041,
+      "resp_rate": -0.462,
+      "rhr": -0.806,
+      "sleep_performance": 0.041
+     }
+    },
+    "sleep": {
+     "asleep_min": 394,
+     "awakenings": 0,
+     "bedtime": "2026-09-09T00:14+10:00",
+     "consistency": 100,
+     "deep_min": 68,
+     "duration": 95,
+     "efficiency": 0.985,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 72,
+     "need_from_strain": 29,
+     "rem_min": 77,
+     "source": "apple_export",
+     "stages": 80,
+     "wake_time": "2026-09-09T06:54+10:00",
+     "waso_min": 6.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6755,
+   "muscle_load": null,
+   "recovery": 73,
+   "resp_rate_night": 15.7,
+   "rhr_night": 61.0,
+   "sleep_actual_min": 394,
+   "sleep_debt_min": 72,
+   "sleep_need_min": 581,
+   "sleep_performance": 0.6777,
+   "sleep_score": 94,
+   "strain": 14.89,
+   "trimp": 210.0,
+   "tsb": 37.2
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 272.3,
+   "ctl": 317.3,
+   "date": "2026-09-10",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 260,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 203.0,
+     "zone_minutes": [
+      67.0,
+      26.0,
+      28.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 37,
+     "hrv_baseline": [
+      3.3853,
+      0.2868
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.475,
+      0.3924
+     ],
+     "rhr_baseline": [
+      58.85,
+      2.7226
+     ],
+     "rhr_low_offset_min": 40,
+     "sleep_performance_baseline": [
+      0.6744,
+      0.0828
+     ],
+     "spo2_night": 96.1,
+     "spo2_readings": 6,
+     "weighted_z": 0.867,
+     "wrist_temp": 35.85,
+     "z": {
+      "hrv": 0.764,
+      "resp_rate": 0.55,
+      "rhr": 2.149,
+      "sleep_performance": -0.325
+     }
+    },
+    "sleep": {
+     "asleep_min": 375,
+     "awakenings": 1,
+     "bedtime": "2026-09-09T23:50+10:00",
+     "consistency": 99,
+     "deep_min": 52,
+     "duration": 91,
+     "efficiency": 0.977,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 76,
+     "need_from_strain": 24,
+     "rem_min": 80,
+     "source": "apple_export",
+     "stages": 72,
+     "wake_time": "2026-09-10T06:14+10:00",
+     "waso_min": 9.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6043,
+   "muscle_load": null,
+   "recovery": 84,
+   "resp_rate_night": 15.2,
+   "rhr_night": 53.0,
+   "sleep_actual_min": 375,
+   "sleep_debt_min": 76,
+   "sleep_need_min": 579,
+   "sleep_performance": 0.6475,
+   "sleep_score": 90,
+   "strain": 14.64,
+   "trimp": 203.0,
+   "tsb": 45.0
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 266.0,
+   "ctl": 315.1,
+   "date": "2026-09-11",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 244,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 225.0,
+     "zone_minutes": [
+      215.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 38,
+     "hrv_baseline": [
+      3.391,
+      0.2851
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4683,
+      0.3898
+     ],
+     "rhr_baseline": [
+      58.7073,
+      2.8394
+     ],
+     "rhr_low_offset_min": 85,
+     "sleep_performance_baseline": [
+      0.6737,
+      0.0819
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": 0.172,
+     "wrist_temp": 35.84,
+     "z": {
+      "hrv": -0.128,
+      "resp_rate": -0.063,
+      "rhr": 0.601,
+      "sleep_performance": 0.878
+     }
+    },
+    "sleep": {
+     "asleep_min": 437,
+     "awakenings": 1,
+     "bedtime": "2026-09-10T23:30+10:00",
+     "consistency": 80,
+     "deep_min": 87,
+     "duration": 100,
+     "efficiency": 0.973,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 83,
+     "need_from_strain": 23,
+     "rem_min": 77,
+     "source": "apple_export",
+     "stages": 90,
+     "wake_time": "2026-09-11T06:59+10:00",
+     "waso_min": 12.0
+    }
+   },
+   "flags": {
+    "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3546,
+   "muscle_load": null,
+   "recovery": 64,
+   "resp_rate_night": 15.5,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 437,
+   "sleep_debt_min": 83,
+   "sleep_need_min": 586,
+   "sleep_performance": 0.7457,
+   "sleep_score": 94,
+   "strain": 15.41,
+   "trimp": 225.0,
+   "tsb": 49.2
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 279.9,
+   "ctl": 316.4,
+   "date": "2026-09-12",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 261,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 371.0,
+     "zone_minutes": [
+      115.0,
+      0.0,
+      20.0,
+      44.0,
+      4.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 39,
+     "hrv_baseline": [
+      3.3901,
+      0.2814
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.469,
+      0.3851
+     ],
+     "rhr_baseline": [
+      58.6667,
+      2.8169
+     ],
+     "rhr_low_offset_min": 70,
+     "sleep_performance_baseline": [
+      0.6754,
+      0.0816
+     ],
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "weighted_z": 0.589,
+     "wrist_temp": 35.67,
+     "z": {
+      "hrv": 0.398,
+      "resp_rate": 1.038,
+      "rhr": 0.947,
+      "sleep_performance": 0.73
+     }
+    },
+    "sleep": {
+     "asleep_min": 425,
+     "awakenings": 1,
+     "bedtime": "2026-09-12T00:43+10:00",
+     "consistency": 79,
+     "deep_min": 91,
+     "duration": 100,
+     "efficiency": 0.982,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 73,
+     "need_from_strain": 25,
+     "rem_min": 75,
+     "source": "apple_export",
+     "stages": 91,
+     "wake_time": "2026-09-12T07:56+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.502,
+   "muscle_load": null,
+   "recovery": 78,
+   "resp_rate_night": 14.95,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 425,
+   "sleep_debt_min": 73,
+   "sleep_need_min": 578,
+   "sleep_performance": 0.735,
+   "sleep_score": 94,
+   "strain": 18.63,
+   "trimp": 371.0,
+   "tsb": 36.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 287.9,
+   "ctl": 317.0,
+   "date": "2026-09-13",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 274,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 340.0,
+     "zone_minutes": [
+      154.0,
+      66.0,
+      18.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 40,
+     "hrv_readings": 0,
+     "rhr_low_offset_min": 410,
+     "spo2_night": 96.6,
+     "spo2_readings": 6,
+     "wrist_temp": 35.74
+    },
+    "sleep": {
+     "asleep_min": 481,
+     "awakenings": 1,
+     "bedtime": "2026-09-13T00:23+10:00",
+     "consistency": 98,
+     "deep_min": 92,
+     "duration": 100,
+     "efficiency": 0.966,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 69,
+     "need_from_strain": 35,
+     "rem_min": 124,
+     "source": "apple_export",
+     "stages": 100,
+     "wake_time": "2026-09-13T08:41+10:00",
+     "waso_min": 17.0
+    }
+   },
+   "flags": {
+    "hrv_missing": "睡眠窗口内没有逐拍数据算出的 RMSSD，算不了恢复分（这个人用 RMSSD，不拿 SDNN 补）"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": null,
+   "muscle_load": null,
+   "recovery": null,
+   "resp_rate_night": 15.6,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 481,
+   "sleep_debt_min": 69,
+   "sleep_need_min": 583,
+   "sleep_performance": 0.8244,
+   "sleep_score": 99,
+   "strain": 18.16,
+   "trimp": 340.0,
+   "tsb": 29.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 289.0,
+   "ctl": 316.5,
+   "date": "2026-09-14",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 261,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 296.0,
+     "zone_minutes": [
+      160.0,
+      32.0,
+      24.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 40,
+     "hrv_baseline": [
+      3.3929,
+      0.2783
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4602,
+      0.3847
+     ],
+     "rhr_baseline": [
+      58.6136,
+      2.7805
+     ],
+     "rhr_low_offset_min": 245,
+     "sleep_performance_baseline": [
+      0.6802,
+      0.0833
+     ],
+     "spo2_night": 96.7,
+     "spo2_readings": 6,
+     "weighted_z": -0.172,
+     "wrist_temp": 35.94,
+     "z": {
+      "hrv": -0.22,
+      "resp_rate": -0.78,
+      "rhr": -0.139,
+      "sleep_performance": 0.176
+     }
+    },
+    "sleep": {
+     "asleep_min": 392,
+     "awakenings": 2,
+     "bedtime": "2026-09-13T23:57+10:00",
+     "consistency": 100,
+     "deep_min": 77,
+     "duration": 95,
+     "efficiency": 0.954,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 51,
+     "need_from_strain": 33,
+     "rem_min": 61,
+     "source": "apple_export",
+     "stages": 76,
+     "wake_time": "2026-09-14T06:48+10:00",
+     "waso_min": 19.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3317,
+   "muscle_load": null,
+   "recovery": 51,
+   "resp_rate_night": 15.85,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 392,
+   "sleep_debt_min": 51,
+   "sleep_need_min": 564,
+   "sleep_performance": 0.6949,
+   "sleep_score": 92,
+   "strain": 17.32,
+   "trimp": 296.0,
+   "tsb": 27.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 295.5,
+   "ctl": 317.0,
+   "date": "2026-09-15",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 243,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 338.0,
+     "zone_minutes": [
+      200.0,
+      5.0,
+      2.0,
+      18.0,
+      10.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 41,
+     "hrv_baseline": [
+      3.3914,
+      0.275
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4689,
+      0.3847
+     ],
+     "rhr_baseline": [
+      58.6222,
+      2.7493
+     ],
+     "rhr_low_offset_min": 30,
+     "sleep_performance_baseline": [
+      0.6805,
+      0.0823
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.26,
+     "wrist_temp": 36.01,
+     "z": {
+      "hrv": 0.544,
+      "resp_rate": -1.362,
+      "rhr": 0.59,
+      "sleep_performance": -0.777
+     }
+    },
+    "sleep": {
+     "asleep_min": 352,
+     "awakenings": 1,
+     "bedtime": "2026-09-15T00:38+10:00",
+     "consistency": 81,
+     "deep_min": 65,
+     "duration": 82,
+     "efficiency": 0.978,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 60,
+     "need_from_strain": 31,
+     "rem_min": 91,
+     "source": "apple_export",
+     "stages": 86,
+     "wake_time": "2026-09-15T06:38+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5409,
+   "muscle_load": null,
+   "recovery": 67,
+   "resp_rate_night": 16.15,
+   "rhr_night": 57.0,
+   "sleep_actual_min": 352,
+   "sleep_debt_min": 60,
+   "sleep_need_min": 571,
+   "sleep_performance": 0.6166,
+   "sleep_score": 86,
+   "strain": 18.12,
+   "trimp": 338.0,
+   "tsb": 21.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 275.5,
+   "ctl": 313.0,
+   "date": "2026-09-16",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 246,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 145.0,
+     "zone_minutes": [
+      135.0,
+      5.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 42,
+     "hrv_baseline": [
+      3.3949,
+      0.2726
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4837,
+      0.3934
+     ],
+     "rhr_baseline": [
+      58.587,
+      2.7291
+     ],
+     "rhr_low_offset_min": 215,
+     "sleep_performance_baseline": [
+      0.6791,
+      0.082
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.752,
+     "wrist_temp": 35.96,
+     "z": {
+      "hrv": 0.584,
+      "resp_rate": -1.133,
+      "rhr": 1.314,
+      "sleep_performance": 1.301
+     }
+    },
+    "sleep": {
+     "asleep_min": 464,
+     "awakenings": 2,
+     "bedtime": "2026-09-15T23:55+10:00",
+     "consistency": 98,
+     "deep_min": 91,
+     "duration": 100,
+     "efficiency": 0.967,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 77,
+     "need_from_strain": 33,
+     "rem_min": 88,
+     "source": "apple_export",
+     "stages": 98,
+     "wake_time": "2026-09-16T07:55+10:00",
+     "waso_min": 16.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5541,
+   "muscle_load": null,
+   "recovery": 82,
+   "resp_rate_night": 16.05,
+   "rhr_night": 55.0,
+   "sleep_actual_min": 464,
+   "sleep_debt_min": 77,
+   "sleep_need_min": 591,
+   "sleep_performance": 0.7857,
+   "sleep_score": 98,
+   "strain": 12.05,
+   "trimp": 145.0,
+   "tsb": 37.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 275.0,
+   "ctl": 312.0,
+   "date": "2026-09-17",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 274,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 272.0,
+     "zone_minutes": [
+      132.0,
+      34.0,
+      24.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 43,
+     "hrv_baseline": [
+      3.3986,
+      0.2704
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4957,
+      0.3978
+     ],
+     "rhr_baseline": [
+      58.5106,
+      2.7495
+     ],
+     "rhr_low_offset_min": 160,
+     "sleep_performance_baseline": [
+      0.6814,
+      0.0825
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.894,
+     "wrist_temp": 35.88,
+     "z": {
+      "hrv": 0.972,
+      "resp_rate": 0.791,
+      "rhr": 0.186,
+      "sleep_performance": 1.559
+     }
+    },
+    "sleep": {
+     "asleep_min": 451,
+     "awakenings": 0,
+     "bedtime": "2026-09-17T00:45+10:00",
+     "consistency": 76,
+     "deep_min": 73,
+     "duration": 100,
+     "efficiency": 0.989,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 62,
+     "need_from_strain": 15,
+     "rem_min": 110,
+     "source": "apple_export",
+     "stages": 90,
+     "wake_time": "2026-09-17T08:21+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6616,
+   "muscle_load": null,
+   "recovery": 85,
+   "resp_rate_night": 15.1,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 451,
+   "sleep_debt_min": 62,
+   "sleep_need_min": 557,
+   "sleep_performance": 0.81,
+   "sleep_score": 93,
+   "strain": 16.76,
+   "trimp": 272.0,
+   "tsb": 37.0
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 257.1,
+   "ctl": 308.0,
+   "date": "2026-09-18",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 232,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 140.0,
+     "zone_minutes": [
+      140.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 44,
+     "hrv_baseline": [
+      3.4046,
+      0.2702
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4875,
+      0.3977
+     ],
+     "rhr_baseline": [
+      58.5,
+      2.7211
+     ],
+     "rhr_low_offset_min": 170,
+     "sleep_performance_baseline": [
+      0.6841,
+      0.0837
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": -0.128,
+     "wrist_temp": 36.04,
+     "z": {
+      "hrv": -0.277,
+      "resp_rate": -0.825,
+      "rhr": -0.184,
+      "sleep_performance": 0.773
+     }
+    },
+    "sleep": {
+     "asleep_min": 421,
+     "awakenings": 2,
+     "bedtime": "2026-09-17T22:47+10:00",
+     "consistency": 80,
+     "deep_min": 86,
+     "duration": 100,
+     "efficiency": 0.972,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 53,
+     "need_from_strain": 29,
+     "rem_min": 92,
+     "source": "apple_export",
+     "stages": 97,
+     "wake_time": "2026-09-18T06:00+10:00",
+     "waso_min": 12.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3297,
+   "muscle_load": null,
+   "recovery": 52,
+   "resp_rate_night": 15.9,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 421,
+   "sleep_debt_min": 53,
+   "sleep_need_min": 562,
+   "sleep_performance": 0.7488,
+   "sleep_score": 94,
+   "strain": 11.78,
+   "trimp": 140.0,
+   "tsb": 50.9
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 275.6,
+   "ctl": 310.0,
+   "date": "2026-09-19",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 266,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 396.0,
+     "zone_minutes": [
+      90.0,
+      0.0,
+      12.0,
+      60.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 45,
+     "hrv_baseline": [
+      3.403,
+      0.2673
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4959,
+      0.3979
+     ],
+     "rhr_baseline": [
+      58.5102,
+      2.6935
+     ],
+     "rhr_low_offset_min": 30,
+     "sleep_performance_baseline": [
+      0.6854,
+      0.0834
+     ],
+     "spo2_night": 95.8,
+     "spo2_readings": 6,
+     "weighted_z": 1.302,
+     "wrist_temp": 36.06,
+     "z": {
+      "hrv": 1.241,
+      "resp_rate": 0.892,
+      "rhr": 2.046,
+      "sleep_performance": 0.695
+     }
+    },
+    "sleep": {
+     "asleep_min": 408,
+     "awakenings": 2,
+     "bedtime": "2026-09-19T00:28+10:00",
+     "consistency": 92,
+     "deep_min": 82,
+     "duration": 98,
+     "efficiency": 0.967,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 55,
+     "need_from_strain": 14,
+     "rem_min": 76,
+     "source": "apple_export",
+     "stages": 87,
+     "wake_time": "2026-09-19T07:30+10:00",
+     "waso_min": 14.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.7346,
+   "muscle_load": null,
+   "recovery": 92,
+   "resp_rate_night": 15.05,
+   "rhr_night": 53.0,
+   "sleep_actual_min": 408,
+   "sleep_debt_min": 55,
+   "sleep_need_min": 549,
+   "sleep_performance": 0.7434,
+   "sleep_score": 94,
+   "strain": 18.96,
+   "trimp": 396.0,
+   "tsb": 34.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 276.3,
+   "ctl": 309.3,
+   "date": "2026-09-20",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 271,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 281.0,
+     "zone_minutes": [
+      135.0,
+      64.0,
+      6.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 46,
+     "hrv_baseline": [
+      3.4102,
+      0.2688
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.487,
+      0.3988
+     ],
+     "rhr_baseline": [
+      58.4,
+      2.7775
+     ],
+     "rhr_low_offset_min": 65,
+     "sleep_performance_baseline": [
+      0.6865,
+      0.0829
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": 0.132,
+     "wrist_temp": 35.84,
+     "z": {
+      "hrv": -0.164,
+      "resp_rate": -0.326,
+      "rhr": 0.864,
+      "sleep_performance": 0.487
+     }
+    },
+    "sleep": {
+     "asleep_min": 418,
+     "awakenings": 0,
+     "bedtime": "2026-09-20T00:10+10:00",
+     "consistency": 100,
+     "deep_min": 83,
+     "duration": 99,
+     "efficiency": 0.97,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 59,
+     "need_from_strain": 36,
+     "rem_min": 91,
+     "source": "apple_export",
+     "stages": 96,
+     "wake_time": "2026-09-20T07:21+10:00",
+     "waso_min": 13.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.3662,
+   "muscle_load": null,
+   "recovery": 62,
+   "resp_rate_night": 15.65,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 418,
+   "sleep_debt_min": 59,
+   "sleep_need_min": 575,
+   "sleep_performance": 0.727,
+   "sleep_score": 98,
+   "strain": 16.98,
+   "trimp": 281.0,
+   "tsb": 33.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 271.8,
+   "ctl": 307.8,
+   "date": "2026-09-21",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 260,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 243.0,
+     "zone_minutes": [
+      97.0,
+      40.0,
+      22.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 47,
+     "hrv_baseline": [
+      3.4092,
+      0.2659
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4902,
+      0.3955
+     ],
+     "rhr_baseline": [
+      58.3529,
+      2.77
+     ],
+     "rhr_low_offset_min": 10,
+     "sleep_performance_baseline": [
+      0.6873,
+      0.0823
+     ],
+     "spo2_night": 96.2,
+     "spo2_readings": 6,
+     "weighted_z": 0.243,
+     "wrist_temp": 36.04,
+     "z": {
+      "hrv": 0.244,
+      "resp_rate": -0.02,
+      "rhr": 0.849,
+      "sleep_performance": -0.479
+     }
+    },
+    "sleep": {
+     "asleep_min": 369,
+     "awakenings": 1,
+     "bedtime": "2026-09-21T00:15+10:00",
+     "consistency": 100,
+     "deep_min": 75,
+     "duration": 89,
+     "efficiency": 0.984,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 60,
+     "need_from_strain": 30,
+     "rem_min": 76,
+     "source": "apple_export",
+     "stages": 83,
+     "wake_time": "2026-09-21T06:30+10:00",
+     "waso_min": 6.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4741,
+   "muscle_load": null,
+   "recovery": 67,
+   "resp_rate_night": 15.5,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 369,
+   "sleep_debt_min": 60,
+   "sleep_need_min": 570,
+   "sleep_performance": 0.6479,
+   "sleep_score": 92,
+   "strain": 15.97,
+   "trimp": 243.0,
+   "tsb": 35.9
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 279.9,
+   "ctl": 308.4,
+   "date": "2026-09-22",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 248,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 332.0,
+     "zone_minutes": [
+      180.0,
+      0.0,
+      4.0,
+      10.0,
+      20.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 48,
+     "hrv_baseline": [
+      3.4106,
+      0.2633
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4904,
+      0.3916
+     ],
+     "rhr_baseline": [
+      58.3077,
+      2.7621
+     ],
+     "rhr_low_offset_min": 135,
+     "sleep_performance_baseline": [
+      0.6866,
+      0.0817
+     ],
+     "spo2_night": 96.5,
+     "spo2_readings": 6,
+     "weighted_z": -1.351,
+     "wrist_temp": 36.02,
+     "z": {
+      "hrv": -1.919,
+      "resp_rate": -0.219,
+      "rhr": -0.251,
+      "sleep_performance": -0.926
+     }
+    },
+    "sleep": {
+     "asleep_min": 354,
+     "awakenings": 1,
+     "bedtime": "2026-09-21T23:47+10:00",
+     "consistency": 90,
+     "deep_min": 80,
+     "duration": 83,
+     "efficiency": 0.959,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 73,
+     "need_from_strain": 27,
+     "rem_min": 63,
+     "source": "apple_export",
+     "stages": 79,
+     "wake_time": "2026-09-22T05:56+10:00",
+     "waso_min": 15.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 2.9055,
+   "muscle_load": null,
+   "recovery": 13,
+   "resp_rate_night": 15.6,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 354,
+   "sleep_debt_min": 73,
+   "sleep_need_min": 579,
+   "sleep_performance": 0.6109,
+   "sleep_score": 87,
+   "strain": 18.02,
+   "trimp": 332.0,
+   "tsb": 28.5
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 261.9,
+   "ctl": 304.5,
+   "date": "2026-09-23",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 235,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 145.0,
+     "zone_minutes": [
+      145.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 49,
+     "hrv_baseline": [
+      3.4003,
+      0.2703
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4925,
+      0.3881
+     ],
+     "rhr_baseline": [
+      58.3208,
+      2.737
+     ],
+     "rhr_low_offset_min": 370,
+     "sleep_performance_baseline": [
+      0.6852,
+      0.0815
+     ],
+     "spo2_night": 97.2,
+     "spo2_readings": 6,
+     "weighted_z": 0.475,
+     "wrist_temp": 36.04,
+     "z": {
+      "hrv": 1.043,
+      "resp_rate": -0.315,
+      "rhr": -0.248,
+      "sleep_performance": -0.566
+     }
+    },
+    "sleep": {
+     "asleep_min": 383,
+     "awakenings": 2,
+     "bedtime": "2026-09-22T23:37+10:00",
+     "consistency": 80,
+     "deep_min": 74,
+     "duration": 93,
+     "efficiency": 0.958,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 86,
+     "need_from_strain": 33,
+     "rem_min": 74,
+     "source": "apple_export",
+     "stages": 82,
+     "wake_time": "2026-09-23T06:17+10:00",
+     "waso_min": 17.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6821,
+   "muscle_load": null,
+   "recovery": 74,
+   "resp_rate_night": 15.65,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 383,
+   "sleep_debt_min": 86,
+   "sleep_need_min": 599,
+   "sleep_performance": 0.639,
+   "sleep_score": 88,
+   "strain": 12.05,
+   "trimp": 145.0,
+   "tsb": 42.6
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 256.5,
+   "ctl": 302.5,
+   "date": "2026-09-24",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 259,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 221.0,
+     "zone_minutes": [
+      95.0,
+      18.0,
+      30.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 50,
+     "hrv_baseline": [
+      3.4059,
+      0.2705
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4954,
+      0.385
+     ],
+     "rhr_baseline": [
+      58.3333,
+      2.7127
+     ],
+     "rhr_low_offset_min": 290,
+     "sleep_performance_baseline": [
+      0.6843,
+      0.081
+     ],
+     "spo2_night": 96.0,
+     "spo2_readings": 6,
+     "weighted_z": 0.343,
+     "wrist_temp": 35.76,
+     "z": {
+      "hrv": 0.297,
+      "resp_rate": 0.291,
+      "rhr": 0.86,
+      "sleep_performance": -0.143
+     }
+    },
+    "sleep": {
+     "asleep_min": 393,
+     "awakenings": 2,
+     "bedtime": "2026-09-24T00:13+10:00",
+     "consistency": 100,
+     "deep_min": 68,
+     "duration": 95,
+     "efficiency": 0.959,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 89,
+     "need_from_strain": 15,
+     "rem_min": 77,
+     "source": "apple_export",
+     "stages": 80,
+     "wake_time": "2026-09-24T07:03+10:00",
+     "waso_min": 17.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.4862,
+   "muscle_load": null,
+   "recovery": 70,
+   "resp_rate_night": 15.35,
+   "rhr_night": 56.0,
+   "sleep_actual_min": 393,
+   "sleep_debt_min": 89,
+   "sleep_need_min": 584,
+   "sleep_performance": 0.6728,
+   "sleep_score": 93,
+   "strain": 15.28,
+   "trimp": 221.0,
+   "tsb": 46.1
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 235.0,
+   "ctl": 297.7,
+   "date": "2026-09-25",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 245,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 95.0,
+     "zone_minutes": [
+      95.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 51,
+     "hrv_baseline": [
+      3.4075,
+      0.268
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4927,
+      0.3819
+     ],
+     "rhr_baseline": [
+      58.2909,
+      2.7058
+     ],
+     "rhr_low_offset_min": 245,
+     "sleep_performance_baseline": [
+      0.6841,
+      0.0803
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.749,
+     "wrist_temp": 35.8,
+     "z": {
+      "hrv": 0.512,
+      "resp_rate": 0.185,
+      "rhr": 1.955,
+      "sleep_performance": 0.276
+     }
+    },
+    "sleep": {
+     "asleep_min": 419,
+     "awakenings": 1,
+     "bedtime": "2026-09-24T23:56+10:00",
+     "consistency": 99,
+     "deep_min": 79,
+     "duration": 99,
+     "efficiency": 0.981,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 88,
+     "need_from_strain": 25,
+     "rem_min": 104,
+     "source": "apple_export",
+     "stages": 93,
+     "wake_time": "2026-09-25T07:03+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5448,
+   "muscle_load": null,
+   "recovery": 82,
+   "resp_rate_night": 15.4,
+   "rhr_night": 53.0,
+   "sleep_actual_min": 419,
+   "sleep_debt_min": 88,
+   "sleep_need_min": 593,
+   "sleep_performance": 0.7063,
+   "sleep_score": 98,
+   "strain": 8.99,
+   "trimp": 95.0,
+   "tsb": 62.7
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 255.3,
+   "ctl": 299.8,
+   "date": "2026-09-26",
+   "details": {
+    "load": {
+     "hr_hours": 23,
+     "hr_samples": 272,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 388.0,
+     "zone_minutes": [
+      60.0,
+      0.0,
+      10.0,
+      72.0,
+      2.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 52,
+     "hrv_baseline": [
+      3.4101,
+      0.2661
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4911,
+      0.3786
+     ],
+     "rhr_baseline": [
+      58.1964,
+      2.7727
+     ],
+     "rhr_low_offset_min": 250,
+     "sleep_performance_baseline": [
+      0.6845,
+      0.0796
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.99,
+     "wrist_temp": 36.07,
+     "z": {
+      "hrv": 0.706,
+      "resp_rate": 1.782,
+      "rhr": 1.153,
+      "sleep_performance": 1.648
+     }
+    },
+    "sleep": {
+     "asleep_min": 463,
+     "awakenings": 2,
+     "bedtime": "2026-09-26T00:17+10:00",
+     "consistency": 100,
+     "deep_min": 94,
+     "duration": 100,
+     "efficiency": 0.965,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 82,
+     "need_from_strain": 6,
+     "rem_min": 83,
+     "source": "apple_export",
+     "stages": 96,
+     "wake_time": "2026-09-26T08:17+10:00",
+     "waso_min": 17.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5979,
+   "muscle_load": null,
+   "recovery": 87,
+   "resp_rate_night": 14.6,
+   "rhr_night": 55.0,
+   "sleep_actual_min": 463,
+   "sleep_debt_min": 82,
+   "sleep_need_min": 568,
+   "sleep_performance": 0.8157,
+   "sleep_score": 98,
+   "strain": 18.86,
+   "trimp": 388.0,
+   "tsb": 44.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 268.7,
+   "ctl": 301.1,
+   "date": "2026-09-27",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 287,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 355.9,
+     "zone_minutes": [
+      159.9,
+      74.0,
+      16.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 53,
+     "hrv_baseline": [
+      3.4137,
+      0.2647
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4754,
+      0.3934
+     ],
+     "rhr_baseline": [
+      58.1404,
+      2.7803
+     ],
+     "rhr_low_offset_min": 5,
+     "sleep_performance_baseline": [
+      0.6868,
+      0.0808
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": 0.419,
+     "wrist_temp": 35.91,
+     "z": {
+      "hrv": 0.735,
+      "resp_rate": 0.051,
+      "rhr": 0.05,
+      "sleep_performance": -0.233
+     }
+    },
+    "sleep": {
+     "asleep_min": 388,
+     "awakenings": 0,
+     "bedtime": "2026-09-27T00:53+10:00",
+     "consistency": 74,
+     "deep_min": 78,
+     "duration": 94,
+     "efficiency": 0.987,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 65,
+     "need_from_strain": 36,
+     "rem_min": 81,
+     "source": "apple_export",
+     "stages": 88,
+     "wake_time": "2026-09-27T07:26+10:00",
+     "waso_min": 5.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.6082,
+   "muscle_load": null,
+   "recovery": 73,
+   "resp_rate_night": 15.45,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 388,
+   "sleep_debt_min": 65,
+   "sleep_need_min": 581,
+   "sleep_performance": 0.6679,
+   "sleep_score": 90,
+   "strain": 18.41,
+   "trimp": 355.9,
+   "tsb": 32.4
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 280.7,
+   "ctl": 302.5,
+   "date": "2026-09-28",
+   "details": {
+    "load": {
+     "hr_hours": 22,
+     "hr_samples": 242,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 163.0,
+     "trimp_recorded": 359.0,
+     "zone_minutes": [
+      205.0,
+      32.0,
+      30.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 54,
+     "hrv_baseline": [
+      3.4173,
+      0.2636
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.475,
+      0.3899
+     ],
+     "rhr_baseline": [
+      58.1379,
+      2.7558
+     ],
+     "rhr_low_offset_min": 220,
+     "sleep_performance_baseline": [
+      0.6865,
+      0.0801
+     ],
+     "spo2_night": 97.2,
+     "spo2_readings": 6,
+     "weighted_z": 0.149,
+     "wrist_temp": 35.9,
+     "z": {
+      "hrv": 0.569,
+      "resp_rate": -0.45,
+      "rhr": -0.313,
+      "sleep_performance": -0.717
+     }
+    },
+    "sleep": {
+     "asleep_min": 369,
+     "awakenings": 1,
+     "bedtime": "2026-09-27T22:29+10:00",
+     "consistency": 80,
+     "deep_min": 66,
+     "duration": 89,
+     "efficiency": 0.976,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 72,
+     "need_from_strain": 34,
+     "rem_min": 82,
+     "source": "apple_export",
+     "stages": 82,
+     "wake_time": "2026-09-28T04:47+10:00",
+     "waso_min": 9.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.5673,
+   "muscle_load": null,
+   "recovery": 63,
+   "resp_rate_night": 15.7,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 369,
+   "sleep_debt_min": 72,
+   "sleep_need_min": 587,
+   "sleep_performance": 0.629,
+   "sleep_score": 88,
+   "strain": 18.46,
+   "trimp": 359.0,
+   "tsb": 21.7
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 289.8,
+   "ctl": 303.6,
+   "date": "2026-09-29",
+   "details": {
+    "load": {
+     "hr_hours": 24,
+     "hr_samples": 266,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 349.0,
+     "zone_minutes": [
+      185.0,
+      0.0,
+      2.0,
+      32.0,
+      6.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 55,
+     "hrv_baseline": [
+      3.42,
+      0.2619
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4788,
+      0.3877
+     ],
+     "rhr_baseline": [
+      58.1525,
+      2.7343
+     ],
+     "rhr_low_offset_min": 215,
+     "sleep_performance_baseline": [
+      0.6855,
+      0.0798
+     ],
+     "spo2_night": 96.2,
+     "spo2_readings": 6,
+     "weighted_z": -1.025,
+     "wrist_temp": 35.84,
+     "z": {
+      "hrv": -1.398,
+      "resp_rate": -0.342,
+      "rhr": -0.31,
+      "sleep_performance": -0.713
+     }
+    },
+    "sleep": {
+     "asleep_min": 375,
+     "awakenings": 2,
+     "bedtime": "2026-09-28T23:44+10:00",
+     "consistency": 87,
+     "deep_min": 69,
+     "duration": 91,
+     "efficiency": 0.952,
+     "interruptions": 95,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 82,
+     "need_from_strain": 34,
+     "rem_min": 95,
+     "source": "apple_export",
+     "stages": 88,
+     "wake_time": "2026-09-29T06:18+10:00",
+     "waso_min": 19.0
+    }
+   },
+   "flags": {},
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.0538,
+   "muscle_load": null,
+   "recovery": 21,
+   "resp_rate_night": 15.65,
+   "rhr_night": 59.0,
+   "sleep_actual_min": 375,
+   "sleep_debt_min": 82,
+   "sleep_need_min": 597,
+   "sleep_performance": 0.6286,
+   "sleep_score": 90,
+   "strain": 18.3,
+   "trimp": 349.0,
+   "tsb": 13.7
+  },
+  {
+   "algo_version": "v1.1-2026-10-16",
+   "atl": 251.2,
+   "ctl": 296.4,
+   "date": "2026-09-30",
+   "details": {
+    "load": {
+     "hr_hours": 6,
+     "hr_samples": 70,
+     "hrmax_formula": 182.8,
+     "hrmax_observed_p995": 164.0,
+     "trimp_recorded": 0.0,
+     "zone_minutes": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+     ]
+    },
+    "recovery": {
+     "baseline_nights": 56,
+     "hrv_baseline": [
+      3.4135,
+      0.2641
+     ],
+     "hrv_readings": 4,
+     "resp_rate_baseline": [
+      15.4817,
+      0.385
+     ],
+     "rhr_baseline": [
+      58.1667,
+      2.7132
+     ],
+     "rhr_low_offset_min": 125,
+     "sleep_performance_baseline": [
+      0.6845,
+      0.0794
+     ],
+     "spo2_night": 96.3,
+     "spo2_readings": 6,
+     "weighted_z": -0.257,
+     "wrist_temp": 36.06,
+     "z": {
+      "hrv": -0.47,
+      "resp_rate": -0.637,
+      "rhr": 0.061,
+      "sleep_performance": 0.296
+     }
+    },
+    "sleep": {
+     "asleep_min": 426,
+     "awakenings": 0,
+     "bedtime": "2026-09-29T22:39+10:00",
+     "consistency": 80,
+     "deep_min": 83,
+     "duration": 100,
+     "efficiency": 0.982,
+     "interruptions": 100,
+     "latency_min": null,
+     "nap_min": 0,
+     "need_from_debt": 88,
+     "need_from_strain": 34,
+     "rem_min": 103,
+     "source": "apple_export",
+     "stages": 96,
+     "wake_time": "2026-09-30T05:53+10:00",
+     "waso_min": 8.0
+    }
+   },
+   "flags": {
+    "day_in_progress": "今天还没过完，负荷是到目前为止的"
+   },
+   "hr_max": 182.8,
+   "hrv_kind": "rmssd",
+   "hrv_night_ln": 3.2893,
+   "muscle_load": null,
+   "recovery": 47,
+   "resp_rate_night": 15.8,
+   "rhr_night": 58.0,
+   "sleep_actual_min": 426,
+   "sleep_debt_min": 88,
+   "sleep_need_min": 602,
+   "sleep_performance": 0.708,
+   "sleep_score": 95,
+   "strain": 0.0,
+   "trimp": 0.0,
+   "tsb": 45.2
+  }
+ ],
+ "healthspan": [
+  {
+   "as_of": "2026-09-06",
+   "body_age": 34.2,
+   "chrono_age": 36.68,
+   "contributors": [
+    {
+     "category": "activity",
+     "data_days": 37,
+     "direction": "younger",
+     "hr": 0.855,
+     "key": "activity",
+     "label": "活动（步数 + 训练）",
+     "parts": [
+      {
+       "data_days": 37,
+       "key": "steps",
+       "label": "手腕步数",
+       "unit": "步",
+       "value": 10649,
+       "years": -0.49
+      },
+      {
+       "data_days": 37,
+       "key": "exercise_equiv",
+       "label": "不产生步数的训练（折算）",
+       "unit": "步当量",
+       "value": 0,
+       "years": 0.0
+      },
+      {
+       "data_days": 37,
+       "hr": 0.892,
+       "key": "strength",
+       "label": "每周力量训练",
+       "unit": "分钟",
+       "value": 110,
+       "years": -1.32
+      },
+      {
+       "counted": false,
+       "data_days": 37,
+       "key": "mvpa",
+       "label": "每周中高强度运动（参考，不重复计入）",
+       "unit": "分钟",
+       "value": 545
+      }
+     ],
+     "tip": "活动量充足，保持",
+     "unit": "步当量",
+     "value": 10649,
+     "years": -1.81,
+     "years_uncapped": -1.81
+    },
+    {
+     "category": "fitness",
+     "data_days": 5,
+     "direction": "younger",
+     "hr": 0.857,
+     "key": "vo2max",
+     "label": "VO₂max",
+     "norm_median": 39.0,
+     "percentile": 61.2,
+     "readings": 5,
+     "tip": "心肺能力好，保持",
+     "unit": "mL/kg/min",
+     "value": 42.8,
+     "years": -1.78
+    },
+    {
+     "category": "fitness",
+     "data_days": 37,
+     "direction": "younger",
+     "hr": 0.966,
+     "key": "rhr",
+     "label": "静息心率",
+     "tip": "静息心率低，保持",
+     "unit": "bpm",
+     "value": 62.7,
+     "years": -0.4
+    },
+    {
+     "category": "sleep",
+     "data_days": 36,
+     "direction": "younger",
+     "hr": 0.971,
+     "key": "sleep_regularity",
+     "label": "作息规律性（SRI）",
+     "tip": "作息规律，保持",
+     "unit": "",
+     "value": 84.0,
+     "years": -0.34
+    },
+    {
+     "category": "sleep",
+     "data_days": 37,
+     "direction": "older",
+     "hr": 1.015,
+     "key": "sleep_duration",
+     "label": "平均睡眠时长",
+     "self_report_equiv_h": 7.12,
+     "tip": "睡眠时长合适，保持",
+     "unit": "h",
+     "value": 6.63,
+     "years": 0.17
+    },
+    {
+     "category": "fitness",
+     "data_days": 1,
+     "direction": "older",
+     "hr": 1.008,
+     "key": "body_comp",
+     "label": "身体成分",
+     "measure": "bmi",
+     "measured_on": "2026-09-06",
+     "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+     "tip": "按计划减脂",
+     "unit": "",
+     "value": 25.3,
+     "weight_kg": 82.0,
+     "years": 0.1
+    }
+   ],
+   "delta_years": -2.44,
+   "insufficient": [],
+   "notes": [
+    "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+   ],
+   "pace_of_aging": null,
+   "pace_raw": null,
+   "pace_window_weeks": null,
+   "week_start": "2026-08-31"
+  },
+  {
+   "as_of": "2026-09-13",
+   "body_age": 34.2,
+   "chrono_age": 36.7,
+   "contributors": [
+    {
+     "category": "fitness",
+     "data_days": 6,
+     "direction": "younger",
+     "hr": 0.849,
+     "key": "vo2max",
+     "label": "VO₂max",
+     "norm_median": 39.0,
+     "percentile": 62.0,
+     "readings": 6,
+     "tip": "心肺能力好，保持",
+     "unit": "mL/kg/min",
+     "value": 43.1,
+     "years": -1.89
+    },
+    {
+     "category": "activity",
+     "data_days": 44,
+     "direction": "younger",
+     "hr": 0.853,
+     "key": "activity",
+     "label": "活动（步数 + 训练）",
+     "parts": [
+      {
+       "data_days": 44,
+       "key": "steps",
+       "label": "手腕步数",
+       "unit": "步",
+       "value": 10738,
+       "years": -0.55
+      },
+      {
+       "data_days": 44,
+       "key": "exercise_equiv",
+       "label": "不产生步数的训练（折算）",
+       "unit": "步当量",
+       "value": 0,
+       "years": 0.0
+      },
+      {
+       "data_days": 44,
+       "hr": 0.894,
+       "key": "strength",
+       "label": "每周力量训练",
+       "unit": "分钟",
+       "value": 112,
+       "years": -1.29
+      },
+      {
+       "counted": false,
+       "data_days": 44,
+       "key": "mvpa",
+       "label": "每周中高强度运动（参考，不重复计入）",
+       "unit": "分钟",
+       "value": 540
+      }
+     ],
+     "tip": "活动量充足，保持",
+     "unit": "步当量",
+     "value": 10738,
+     "years": -1.84,
+     "years_uncapped": -1.84
+    },
+    {
+     "category": "fitness",
+     "data_days": 44,
+     "direction": "younger",
+     "hr": 0.962,
+     "key": "rhr",
+     "label": "静息心率",
+     "tip": "静息心率低，保持",
+     "unit": "bpm",
+     "value": 62.4,
+     "years": -0.44
+    },
+    {
+     "category": "sleep",
+     "data_days": 43,
+     "direction": "younger",
+     "hr": 0.967,
+     "key": "sleep_regularity",
+     "label": "作息规律性（SRI）",
+     "tip": "作息规律，保持",
+     "unit": "",
+     "value": 84.5,
+     "years": -0.39
+    },
+    {
+     "category": "sleep",
+     "data_days": 44,
+     "direction": "older",
+     "hr": 1.021,
+     "key": "sleep_duration",
+     "label": "平均睡眠时长",
+     "self_report_equiv_h": 7.17,
+     "tip": "睡眠时长合适，保持",
+     "unit": "h",
+     "value": 6.71,
+     "years": 0.24
+    },
+    {
+     "category": "fitness",
+     "data_days": 1,
+     "direction": "older",
+     "hr": 1.007,
+     "key": "body_comp",
+     "label": "身体成分",
+     "measure": "bmi",
+     "measured_on": "2026-09-12",
+     "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+     "tip": "按计划减脂",
+     "unit": "",
+     "value": 25.2,
+     "weight_kg": 81.8,
+     "years": 0.08
+    }
+   ],
+   "delta_years": -2.54,
+   "insufficient": [],
+   "notes": [
+    "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+   ],
+   "pace_of_aging": null,
+   "pace_raw": null,
+   "pace_window_weeks": null,
+   "week_start": "2026-09-07"
+  },
+  {
+   "as_of": "2026-09-20",
+   "body_age": 34.1,
+   "chrono_age": 36.72,
+   "contributors": [
+    {
+     "category": "fitness",
+     "data_days": 7,
+     "direction": "younger",
+     "hr": 0.838,
+     "key": "vo2max",
+     "label": "VO₂max",
+     "norm_median": 38.9,
+     "percentile": 63.1,
+     "readings": 7,
+     "tip": "心肺能力好，保持",
+     "unit": "mL/kg/min",
+     "value": 43.4,
+     "years": -2.05
+    },
+    {
+     "category": "activity",
+     "data_days": 51,
+     "direction": "younger",
+     "hr": 0.856,
+     "key": "activity",
+     "label": "活动（步数 + 训练）",
+     "parts": [
+      {
+       "data_days": 51,
+       "key": "steps",
+       "label": "手腕步数",
+       "unit": "步",
+       "value": 10668,
+       "years": -0.5
+      },
+      {
+       "data_days": 51,
+       "key": "exercise_equiv",
+       "label": "不产生步数的训练（折算）",
+       "unit": "步当量",
+       "value": 0,
+       "years": 0.0
+      },
+      {
+       "data_days": 51,
+       "hr": 0.894,
+       "key": "strength",
+       "label": "每周力量训练",
+       "unit": "分钟",
+       "value": 112,
+       "years": -1.29
+      },
+      {
+       "counted": false,
+       "data_days": 51,
+       "key": "mvpa",
+       "label": "每周中高强度运动（参考，不重复计入）",
+       "unit": "分钟",
+       "value": 536
+      }
+     ],
+     "tip": "活动量充足，保持",
+     "unit": "步当量",
+     "value": 10668,
+     "years": -1.79,
+     "years_uncapped": -1.79
+    },
+    {
+     "category": "fitness",
+     "data_days": 51,
+     "direction": "younger",
+     "hr": 0.959,
+     "key": "rhr",
+     "label": "静息心率",
+     "tip": "静息心率低，保持",
+     "unit": "bpm",
+     "value": 62.2,
+     "years": -0.48
+    },
+    {
+     "category": "sleep",
+     "data_days": 50,
+     "direction": "younger",
+     "hr": 0.969,
+     "key": "sleep_regularity",
+     "label": "作息规律性（SRI）",
+     "tip": "作息规律，保持",
+     "unit": "",
+     "value": 84.3,
+     "years": -0.37
+    },
+    {
+     "category": "sleep",
+     "data_days": 51,
+     "direction": "older",
+     "hr": 1.024,
+     "key": "sleep_duration",
+     "label": "平均睡眠时长",
+     "self_report_equiv_h": 7.19,
+     "tip": "睡太久，固定起床时间",
+     "unit": "h",
+     "value": 6.75,
+     "years": 0.27
+    },
+    {
+     "category": "fitness",
+     "data_days": 1,
+     "direction": "older",
+     "hr": 1.006,
+     "key": "body_comp",
+     "label": "身体成分",
+     "measure": "bmi",
+     "measured_on": "2026-09-18",
+     "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+     "tip": "按计划减脂",
+     "unit": "",
+     "value": 25.2,
+     "weight_kg": 81.7,
+     "years": 0.07
+    }
+   ],
+   "delta_years": -2.61,
+   "insufficient": [],
+   "notes": [
+    "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+   ],
+   "pace_of_aging": null,
+   "pace_raw": null,
+   "pace_window_weeks": null,
+   "week_start": "2026-09-14"
+  },
+  {
+   "as_of": "2026-09-27",
+   "body_age": 34.0,
+   "chrono_age": 36.74,
+   "contributors": [
+    {
+     "category": "fitness",
+     "data_days": 8,
+     "direction": "younger",
+     "hr": 0.832,
+     "key": "vo2max",
+     "label": "VO₂max",
+     "norm_median": 38.9,
+     "percentile": 63.7,
+     "readings": 8,
+     "tip": "心肺能力好，保持",
+     "unit": "mL/kg/min",
+     "value": 43.6,
+     "years": -2.12
+    },
+    {
+     "category": "activity",
+     "data_days": 58,
+     "direction": "younger",
+     "hr": 0.861,
+     "key": "activity",
+     "label": "活动（步数 + 训练）",
+     "parts": [
+      {
+       "data_days": 58,
+       "key": "steps",
+       "label": "手腕步数",
+       "unit": "步",
+       "value": 10574,
+       "years": -0.44
+      },
+      {
+       "data_days": 58,
+       "key": "exercise_equiv",
+       "label": "不产生步数的训练（折算）",
+       "unit": "步当量",
+       "value": 0,
+       "years": 0.0
+      },
+      {
+       "data_days": 58,
+       "hr": 0.894,
+       "key": "strength",
+       "label": "每周力量训练",
+       "unit": "分钟",
+       "value": 112,
+       "years": -1.29
+      },
+      {
+       "counted": false,
+       "data_days": 58,
+       "key": "mvpa",
+       "label": "每周中高强度运动（参考，不重复计入）",
+       "unit": "分钟",
+       "value": 536
+      }
+     ],
+     "tip": "活动量充足，保持",
+     "unit": "步当量",
+     "value": 10574,
+     "years": -1.73,
+     "years_uncapped": -1.73
+    },
+    {
+     "category": "fitness",
+     "data_days": 58,
+     "direction": "younger",
+     "hr": 0.955,
+     "key": "rhr",
+     "label": "静息心率",
+     "tip": "静息心率低，保持",
+     "unit": "bpm",
+     "value": 61.9,
+     "years": -0.53
+    },
+    {
+     "category": "sleep",
+     "data_days": 57,
+     "direction": "younger",
+     "hr": 0.959,
+     "key": "sleep_regularity",
+     "label": "作息规律性（SRI）",
+     "tip": "作息规律，保持",
+     "unit": "",
+     "value": 85.4,
+     "years": -0.48
+    },
+    {
+     "category": "sleep",
+     "data_days": 58,
+     "direction": "older",
+     "hr": 1.022,
+     "key": "sleep_duration",
+     "label": "平均睡眠时长",
+     "self_report_equiv_h": 7.18,
+     "tip": "睡眠时长合适，保持",
+     "unit": "h",
+     "value": 6.72,
+     "years": 0.25
+    },
+    {
+     "category": "fitness",
+     "data_days": 1,
+     "direction": "older",
+     "hr": 1.006,
+     "key": "body_comp",
+     "label": "身体成分",
+     "measure": "bmi",
+     "measured_on": "2026-09-27",
+     "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+     "tip": "按计划减脂",
+     "unit": "",
+     "value": 25.2,
+     "weight_kg": 81.7,
+     "years": 0.07
+    }
+   ],
+   "delta_years": -2.72,
+   "insufficient": [],
+   "notes": [
+    "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+   ],
+   "pace_of_aging": null,
+   "pace_raw": null,
+   "pace_window_weeks": null,
+   "week_start": "2026-09-21"
+  },
+  {
+   "as_of": "2026-09-30",
+   "body_age": 34.0,
+   "chrono_age": 36.75,
+   "contributors": [
+    {
+     "category": "fitness",
+     "data_days": 9,
+     "direction": "younger",
+     "hr": 0.827,
+     "key": "vo2max",
+     "label": "VO₂max",
+     "norm_median": 38.9,
+     "percentile": 64.2,
+     "readings": 9,
+     "tip": "心肺能力好，保持",
+     "unit": "mL/kg/min",
+     "value": 43.7,
+     "years": -2.19
+    },
+    {
+     "category": "activity",
+     "data_days": 60,
+     "direction": "younger",
+     "hr": 0.859,
+     "key": "activity",
+     "label": "活动（步数 + 训练）",
+     "parts": [
+      {
+       "data_days": 60,
+       "key": "steps",
+       "label": "手腕步数",
+       "unit": "步",
+       "value": 10647,
+       "years": -0.49
+      },
+      {
+       "data_days": 61,
+       "key": "exercise_equiv",
+       "label": "不产生步数的训练（折算）",
+       "unit": "步当量",
+       "value": 0,
+       "years": 0.0
+      },
+      {
+       "data_days": 61,
+       "hr": 0.896,
+       "key": "strength",
+       "label": "每周力量训练",
+       "unit": "分钟",
+       "value": 115,
+       "years": -1.26
+      },
+      {
+       "counted": false,
+       "data_days": 61,
+       "key": "mvpa",
+       "label": "每周中高强度运动（参考，不重复计入）",
+       "unit": "分钟",
+       "value": 526
+      }
+     ],
+     "tip": "活动量充足，保持",
+     "unit": "步当量",
+     "value": 10647,
+     "years": -1.75,
+     "years_uncapped": -1.75
+    },
+    {
+     "category": "fitness",
+     "data_days": 61,
+     "direction": "younger",
+     "hr": 0.956,
+     "key": "rhr",
+     "label": "静息心率",
+     "tip": "静息心率低，保持",
+     "unit": "bpm",
+     "value": 62.0,
+     "years": -0.52
+    },
+    {
+     "category": "sleep",
+     "data_days": 60,
+     "direction": "younger",
+     "hr": 0.966,
+     "key": "sleep_regularity",
+     "label": "作息规律性（SRI）",
+     "tip": "作息规律，保持",
+     "unit": "",
+     "value": 84.5,
+     "years": -0.4
+    },
+    {
+     "category": "sleep",
+     "data_days": 61,
+     "direction": "older",
+     "hr": 1.021,
+     "key": "sleep_duration",
+     "label": "平均睡眠时长",
+     "self_report_equiv_h": 7.17,
+     "tip": "睡眠时长合适，保持",
+     "unit": "h",
+     "value": 6.71,
+     "years": 0.24
+    },
+    {
+     "category": "fitness",
+     "data_days": 1,
+     "direction": "older",
+     "hr": 1.006,
+     "key": "body_comp",
+     "label": "身体成分",
+     "measure": "bmi",
+     "measured_on": "2026-09-27",
+     "note": "没有腰围，用 BMI（分不清肌肉和脂肪）",
+     "tip": "按计划减脂",
+     "unit": "",
+     "value": 25.2,
+     "weight_kg": 81.7,
+     "years": 0.07
+    }
+   ],
+   "delta_years": -2.73,
+   "insufficient": [],
+   "notes": [
+    "SparkyFitness 读不到（SparkyError），力量训练只看手表训练记录、体重只看 Apple 健康"
+   ],
+   "pace_of_aging": null,
+   "pace_raw": null,
+   "pace_window_weeks": null,
+   "week_start": "2026-09-28"
+  }
+ ],
+ "import": {
+  "days": 61,
+  "nights": 61,
+  "records": 21374,
+  "workouts": 44
+ },
+ "origin": "2026-08-01",
+ "stress": [
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.378,
+    "spread": 8.9
+   },
+   "date": "2026-09-01",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 8,
+     "hr": 89.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.12
+    },
+    {
+     "hour": 9,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 10,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 11,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 12,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 13,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 14,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 15,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 16,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 17,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.5
+    },
+    {
+     "hour": 18,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.28
+    },
+    {
+     "hour": 19,
+     "hr": 90.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 20,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 21,
+     "hr": 89.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 22,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    }
+   ],
+   "level": "low",
+   "low_h": 12,
+   "medium_h": 4,
+   "peak_hour": 19,
+   "score": 0.62
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.379,
+    "spread": 8.9
+   },
+   "date": "2026-09-02",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.95
+    },
+    {
+     "hour": 8,
+     "hr": 76.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 9,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 10,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 11,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 12,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 13,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 14,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 15,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 16,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 17,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 18,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 19,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 20,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 21,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 22,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 20,
+   "score": 0.49
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.369,
+    "spread": 8.9
+   },
+   "date": "2026-09-03",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 8,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 9,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 10,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 11,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 13,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 14,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 15,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 16,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 17,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 8,
+     "score": 0.05
+    },
+    {
+     "hour": 19,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 20,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 21,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 22,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 0,
+   "peak_hour": 19,
+   "score": 0.2
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.369,
+    "spread": 8.9
+   },
+   "date": "2026-09-04",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 9,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 10,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 11,
+     "hr": 89.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.17
+    },
+    {
+     "hour": 12,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 13,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 14,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 15,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 16,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 17,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 18,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 19,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 20,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 21,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 22,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 2,
+   "peak_hour": 15,
+   "score": 0.54
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.374,
+    "spread": 8.9
+   },
+   "date": "2026-09-05",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.72
+    },
+    {
+     "hour": 9,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 10,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 5,
+     "score": 1.4
+    },
+    {
+     "hour": 11,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 4,
+     "score": 0.72
+    },
+    {
+     "hour": 12,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 13,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 14,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 15,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 16,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 17,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 18,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 19,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 20,
+     "hr": 76.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 21,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 22,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    }
+   ],
+   "level": "low",
+   "low_h": 12,
+   "medium_h": 3,
+   "peak_hour": 10,
+   "score": 0.68
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.381,
+    "spread": 8.9
+   },
+   "date": "2026-09-06",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 8,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 9,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 10,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.39
+    },
+    {
+     "hour": 12,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 13,
+     "hr": 92.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.51
+    },
+    {
+     "hour": 14,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 15,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 16,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 17,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 18,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 19,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 20,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 21,
+     "hr": 91.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.46
+    },
+    {
+     "hour": 22,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    }
+   ],
+   "level": "low",
+   "low_h": 13,
+   "medium_h": 2,
+   "peak_hour": 13,
+   "score": 0.76
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.372,
+    "spread": 8.9
+   },
+   "date": "2026-09-07",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 8,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 9,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 10,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 11,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 12,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 13,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 14,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 15,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.4
+    },
+    {
+     "hour": 16,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 17,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 18,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.72
+    },
+    {
+     "hour": 19,
+     "hr": 93.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 5,
+     "score": 1.62
+    },
+    {
+     "hour": 20,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 21,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 22,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    }
+   ],
+   "level": "low",
+   "low_h": 10,
+   "medium_h": 6,
+   "peak_hour": 19,
+   "score": 0.94
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.373,
+    "spread": 8.9
+   },
+   "date": "2026-09-08",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.84
+    },
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 9,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 10,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 11,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 12,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 13,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 14,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 15,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 16,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 17,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 18,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 8,
+     "score": 0.95
+    },
+    {
+     "hour": 19,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.28
+    },
+    {
+     "hour": 20,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 21,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 22,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 16,
+   "score": 0.56
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.377,
+    "spread": 8.9
+   },
+   "date": "2026-09-09",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 9,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 10,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 11,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 12,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 13,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 14,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 15,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 16,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 17,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 18,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.4
+    },
+    {
+     "hour": 19,
+     "hr": 89.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 20,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 21,
+     "hr": 91.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.46
+    },
+    {
+     "hour": 22,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    }
+   ],
+   "level": "low",
+   "low_h": 11,
+   "medium_h": 5,
+   "peak_hour": 21,
+   "score": 0.84
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.385,
+    "spread": 8.9
+   },
+   "date": "2026-09-10",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 8,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 9,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 10,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 11,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 13,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 14,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 15,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 16,
+     "hr": 76.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 17,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 9,
+     "score": 0.0
+    },
+    {
+     "hour": 19,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 20,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 21,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 22,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 0,
+   "peak_hour": 19,
+   "score": 0.17
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.391,
+    "spread": 8.9
+   },
+   "date": "2026-09-11",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 90.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 8,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 9,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 10,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 11,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 12,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 13,
+     "hr": 90.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 14,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 15,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 16,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 17,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 18,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 19,
+     "hr": 90.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 20,
+     "hr": 93.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.57
+    },
+    {
+     "hour": 21,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 22,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    }
+   ],
+   "level": "low",
+   "low_h": 12,
+   "medium_h": 4,
+   "peak_hour": 20,
+   "score": 0.68
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.39,
+    "spread": 8.9
+   },
+   "date": "2026-09-12",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 9,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 10,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 4,
+     "score": 0.95
+    },
+    {
+     "hour": 11,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.84
+    },
+    {
+     "hour": 12,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 13,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 14,
+     "hr": 75.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 15,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 16,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 17,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 18,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 19,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 20,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 21,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 22,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 1,
+   "peak_hour": 19,
+   "score": 0.55
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.393,
+    "spread": 8.9
+   },
+   "date": "2026-09-13",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 3,
+     "score": 0.61
+    },
+    {
+     "hour": 9,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 11,
+     "hr": 90.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 3,
+     "score": 1.17
+    },
+    {
+     "hour": 12,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 13,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 14,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 15,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 16,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 17,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 18,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 19,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 20,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 21,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 22,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    }
+   ],
+   "level": "low",
+   "low_h": 12,
+   "medium_h": 2,
+   "peak_hour": 11,
+   "score": 0.57
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.393,
+    "spread": 8.9
+   },
+   "date": "2026-09-14",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 8,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 9,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 10,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 11,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 12,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 13,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 14,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 15,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 16,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 17,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 18,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.05
+    },
+    {
+     "hour": 19,
+     "hr": 73.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 4,
+     "score": 0.0
+    },
+    {
+     "hour": 20,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 21,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 22,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 16,
+   "score": 0.45
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.391,
+    "spread": 8.9
+   },
+   "date": "2026-09-15",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 95.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.79
+    },
+    {
+     "hour": 8,
+     "hr": 90.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 9,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 10,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 11,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.29
+    },
+    {
+     "hour": 12,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 13,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 14,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 15,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 16,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 17,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 18,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.72
+    },
+    {
+     "hour": 19,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 20,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 21,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 22,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    }
+   ],
+   "level": "low",
+   "low_h": 13,
+   "medium_h": 3,
+   "peak_hour": 7,
+   "score": 0.75
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.395,
+    "spread": 8.9
+   },
+   "date": "2026-09-16",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 9,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 10,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 11,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 13,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 14,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 15,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 16,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 17,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 18,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 19,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 20,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 21,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 22,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 0,
+   "peak_hour": 10,
+   "score": 0.27
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.399,
+    "spread": 8.9
+   },
+   "date": "2026-09-17",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.95
+    },
+    {
+     "hour": 9,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 10,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 11,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 12,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 13,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 14,
+     "hr": 89.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.12
+    },
+    {
+     "hour": 15,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 16,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 17,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 18,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.39
+    },
+    {
+     "hour": 19,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 4,
+     "score": 0.0
+    },
+    {
+     "hour": 20,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 21,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 22,
+     "hr": 76.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 8,
+     "score": 0.0
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 1,
+   "peak_hour": 14,
+   "score": 0.47
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.405,
+    "spread": 8.9
+   },
+   "date": "2026-09-18",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 9,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 10,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 11,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 12,
+     "hr": 89.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 13,
+     "hr": 76.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 14,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 15,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 16,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 17,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 18,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 19,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 20,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 21,
+     "hr": 75.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 22,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 12,
+   "score": 0.39
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.403,
+    "spread": 8.9
+   },
+   "date": "2026-09-19",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 4,
+     "score": 0.89
+    },
+    {
+     "hour": 8,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 9,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 11,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 13,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 14,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 15,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 16,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 17,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 18,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 19,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 20,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 21,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 22,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 1,
+   "peak_hour": 12,
+   "score": 0.42
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.41,
+    "spread": 8.9
+   },
+   "date": "2026-09-20",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.0
+    },
+    {
+     "hour": 8,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 9,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 10,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.95
+    },
+    {
+     "hour": 12,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 13,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 14,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 15,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 16,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 17,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 18,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 19,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 20,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 21,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 22,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 0,
+   "peak_hour": 8,
+   "score": 0.4
+  },
+  {
+   "baseline": {
+    "calm_hr": 84.0,
+    "hrv_ln": 3.409,
+    "spread": 8.9
+   },
+   "date": "2026-09-21",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 89.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 8,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 9,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 10,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 11,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 12,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 13,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 14,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 15,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 16,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 17,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 18,
+     "hr": 76.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 3,
+     "score": 0.0
+    },
+    {
+     "hour": 19,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.44
+    },
+    {
+     "hour": 20,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 21,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 22,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 7,
+   "score": 0.28
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.411,
+    "spread": 8.9
+   },
+   "date": "2026-09-22",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 89.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.23
+    },
+    {
+     "hour": 8,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 9,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 10,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 11,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 13,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 14,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 15,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 16,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 17,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 18,
+     "hr": 76.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.0
+    },
+    {
+     "hour": 19,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 9,
+     "score": 0.95
+    },
+    {
+     "hour": 20,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 21,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 22,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    }
+   ],
+   "level": "low",
+   "low_h": 15,
+   "medium_h": 1,
+   "peak_hour": 7,
+   "score": 0.53
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.4,
+    "spread": 8.9
+   },
+   "date": "2026-09-23",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 8,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.4
+    },
+    {
+     "hour": 9,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 10,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 11,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 12,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 13,
+     "hr": 78.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 14,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 15,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 16,
+     "hr": 87.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.01
+    },
+    {
+     "hour": 17,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 18,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 19,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 20,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 21,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 22,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 2,
+   "peak_hour": 8,
+   "score": 0.62
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.406,
+    "spread": 8.9
+   },
+   "date": "2026-09-24",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 9,
+     "score": 0.5
+    },
+    {
+     "hour": 8,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 9,
+     "hr": 77.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 10,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 11,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 12,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 13,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 14,
+     "hr": 75.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 15,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 16,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 17,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 18,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 3,
+     "score": 0.84
+    },
+    {
+     "hour": 19,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 9,
+     "score": 0.5
+    },
+    {
+     "hour": 20,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 21,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 22,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    }
+   ],
+   "level": "low",
+   "low_h": 16,
+   "medium_h": 0,
+   "peak_hour": 18,
+   "score": 0.42
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.407,
+    "spread": 8.9
+   },
+   "date": "2026-09-25",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 9,
+     "score": 0.16
+    },
+    {
+     "hour": 8,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 9,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 10,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 11,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.06
+    },
+    {
+     "hour": 12,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 13,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 14,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 15,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 16,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 17,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 18,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 19,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 20,
+     "hr": 78.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 21,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 22,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.12
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 2,
+   "peak_hour": 22,
+   "score": 0.39
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.41,
+    "spread": 8.9
+   },
+   "date": "2026-09-26",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 8,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 7,
+     "score": 0.28
+    },
+    {
+     "hour": 9,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.61
+    },
+    {
+     "hour": 11,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 12,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 13,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.12
+    },
+    {
+     "hour": 14,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 15,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    },
+    {
+     "hour": 16,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 17,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 18,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 19,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 20,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 21,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 22,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    }
+   ],
+   "level": "low",
+   "low_h": 13,
+   "medium_h": 1,
+   "peak_hour": 13,
+   "score": 0.4
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.414,
+    "spread": 8.9
+   },
+   "date": "2026-09-27",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 75.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.0
+    },
+    {
+     "hour": 8,
+     "hr": 80.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.22
+    },
+    {
+     "hour": 9,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 12,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 13,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 14,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 15,
+     "hr": 76.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 16,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 17,
+     "hr": 79.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.05
+    },
+    {
+     "hour": 18,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 19,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 20,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 21,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 22,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.72
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 0,
+   "peak_hour": 9,
+   "score": 0.47
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.417,
+    "spread": 8.9
+   },
+   "date": "2026-09-28",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 8,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.4
+    },
+    {
+     "hour": 9,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 10,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 11,
+     "hr": 75.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 12,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 13,
+     "hr": 85.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.78
+    },
+    {
+     "hour": 14,
+     "hr": 84.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.61
+    },
+    {
+     "hour": 15,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 16,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.89
+    },
+    {
+     "hour": 17,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.39
+    },
+    {
+     "hour": 18,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.72
+    },
+    {
+     "hour": 19,
+     "hr": 82.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 5,
+     "score": 0.39
+    },
+    {
+     "hour": 20,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 21,
+     "hr": 88.5,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.12
+    },
+    {
+     "hour": 22,
+     "hr": 81.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.33
+    }
+   ],
+   "level": "low",
+   "low_h": 14,
+   "medium_h": 2,
+   "peak_hour": 8,
+   "score": 0.68
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.42,
+    "spread": 8.9
+   },
+   "date": "2026-09-29",
+   "flags": {
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [
+    {
+     "hour": 7,
+     "hr": 87.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.95
+    },
+    {
+     "hour": 8,
+     "hr": 93.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 10,
+     "score": 1.62
+    },
+    {
+     "hour": 9,
+     "hr": 82.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.44
+    },
+    {
+     "hour": 10,
+     "hr": 81.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.28
+    },
+    {
+     "hour": 11,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 12,
+     "hr": 79.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.11
+    },
+    {
+     "hour": 13,
+     "hr": 84.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.67
+    },
+    {
+     "hour": 14,
+     "hr": 83.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.56
+    },
+    {
+     "hour": 15,
+     "hr": 86.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.84
+    },
+    {
+     "hour": 16,
+     "hr": 85.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.72
+    },
+    {
+     "hour": 17,
+     "hr": 77.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.0
+    },
+    {
+     "hour": 18,
+     "hr": 91.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 7,
+     "score": 1.4
+    },
+    {
+     "hour": 19,
+     "hr": 88.0,
+     "hrv_z": null,
+     "level": "medium",
+     "samples": 6,
+     "score": 1.06
+    },
+    {
+     "hour": 20,
+     "hr": 80.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.16
+    },
+    {
+     "hour": 21,
+     "hr": 83.0,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 10,
+     "score": 0.5
+    },
+    {
+     "hour": 22,
+     "hr": 86.5,
+     "hrv_z": null,
+     "level": "low",
+     "samples": 6,
+     "score": 0.89
+    }
+   ],
+   "level": "low",
+   "low_h": 13,
+   "medium_h": 3,
+   "peak_hour": 8,
+   "score": 0.69
+  },
+  {
+   "baseline": {
+    "calm_hr": 83.0,
+    "hrv_ln": 3.413,
+    "spread": 8.9
+   },
+   "date": "2026-09-30",
+   "flags": {
+    "no_calm_hours": "醒着不动、每小时至少 3 条心率的时段一个都没有",
+    "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+   },
+   "high_h": 0,
+   "hours": [],
+   "level": null,
+   "low_h": 0,
+   "medium_h": 0,
+   "peak_hour": null,
+   "score": null
+  }
+ ]
+}

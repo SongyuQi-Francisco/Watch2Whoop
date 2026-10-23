@@ -14,7 +14,7 @@ import psycopg
 from .. import auth
 from ..web import views
 from ..avatars import urls as avatar_store
-from . import params as P, store
+from . import params as P, remarks, store
 
 NUDGE_KINDS = ("clap", "sleep", "train")   # 👏 / 💤 / 💪
 
@@ -96,9 +96,11 @@ def _nudges(conn, uid: int) -> tuple[dict, dict]:
         sent.setdefault(r["to_user_id"], []).append(r["kind"])
     got = {k: [] for k in NUDGE_KINDS}
     for r in conn.execute(
-            """SELECT n.kind, u.display_name FROM circle_nudges n JOIN users u ON u.id = n.from_user_id
+            """SELECT n.kind, n.from_user_id, u.display_name FROM circle_nudges n JOIN users u ON u.id = n.from_user_id
                WHERE n.to_user_id = %s AND n.created_at > now() - interval '24 hours' ORDER BY n.id""", (uid,)):
-        got[r["kind"]].append(r["display_name"])
+        got[r["kind"]].append(r)
+    nick = remarks.for_viewer(conn, uid, [r["from_user_id"] for rs in got.values() for r in rs])   # my own remarks (#212)
+    got = {k: [nick.get(r["from_user_id"], r["display_name"]) for r in rs] for k, rs in got.items()}
     return sent, got
 
 
@@ -108,12 +110,14 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
     sent, got = _nudges(conn, uid)
     co = co_members(conn, uid)
     avatars = avatar_store.urls_for(conn, uid, [uid, *(m["id"] for m in co)])
+    nick = remarks.for_viewer(conn, uid, [m["id"] for m in co])   # what I call them (#212), only for me
     mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid), "avatar": avatars.get(uid)}
     members = []
     for m in co:
         c = card(conn, uid, m["id"], m["display_name"])
-        members.append({**c, "circles": m["circles"], "sent": sent.get(m["id"], []), "avatar": avatars.get(m["id"])})
-    return {"me": mine, "members": members, "nudge_kinds": list(NUDGE_KINDS),
+        members.append({**c, "circles": m["circles"], "sent": sent.get(m["id"], []), "avatar": avatars.get(m["id"]),
+                        "remark": nick.get(m["id"])})
+    return {"me": mine, "members": members, "nudge_kinds": list(NUDGE_KINDS), "remark_max": P.REMARK_MAX,
             "has_circles": conn.execute("SELECT 1 FROM circle_members WHERE user_id = %s", (uid,)).fetchone() is not None}
 
 

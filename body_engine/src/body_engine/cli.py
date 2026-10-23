@@ -25,7 +25,7 @@ from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
 
 
-CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare",
+CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
                  "evaluate-rules", "refresh-status"}
 
 
@@ -392,6 +392,13 @@ def main() -> None:
     hc.add_argument("--end", type=date.fromisoformat)
     hc.add_argument("--out", type=Path, help="write the report here instead of stdout")
     hc.add_argument("--no-ow", action="store_true", help="do not pull raw samples from Open Wearables (only DB sources)")
+    hk = sub.add_parser("hrv-kind", help="per-user HRV kind for scoring (#117): show the rule's inputs for a user, or switch RMSSD on / off "
+                                         "for them (takes effect at the next full compute-scores, which rewrites the whole history)")
+    hk.add_argument("--user-id", type=int, required=True)
+    hk_set = hk.add_mutually_exclusive_group()
+    hk_set.add_argument("--enable-rmssd", action="store_true", help="score this user with RMSSD once they have enough beat data")
+    hk_set.add_argument("--disable-rmssd", action="store_true", help="back to SDNN")
+    hk.add_argument("--by", default=None, help="who made the change (stored with it)")
     hr = sub.add_parser("history-import-run", help="process history imports queued by Today page uploads (Ali: systemd timer every minute; Mac: hourly)")
     hr.add_argument("--max-jobs", type=int, default=5)
 
@@ -608,6 +615,22 @@ def main() -> None:
         elif args.cmd == "import-raw":
             from .rawdata import export as rx_export
             print(json.dumps(rx_export.run(conn, args.user_id, args.file), default=str, ensure_ascii=False))
+        elif args.cmd == "hrv-kind":
+            from zoneinfo import ZoneInfo
+            from .scores import hrv_kind as score_hrv_kind
+            if args.enable_rmssd or args.disable_rmssd:
+                score_hrv_kind.set_rmssd_enabled(conn, args.user_id, args.enable_rmssd, args.by)
+            tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (args.user_id,)).fetchone()["timezone"])
+            from . import queries
+            today = queries.local_today(conn, args.user_id)
+            origin = scores_engine.scoring_origin(conn, args.user_id) or today
+            kind, reason = score_hrv_kind.choose(conn, args.user_id, tz, origin, today)
+            print(json.dumps({"user_id": args.user_id, "rmssd_enabled": score_hrv_kind.rmssd_enabled(conn, args.user_id),
+                              "stored_kinds": sorted(score_hrv_kind.stored_kinds(conn, args.user_id)),
+                              "coverage": score_hrv_kind.coverage(conn, args.user_id, tz, today),
+                              "full_recompute_would_use": kind, "reason": reason,
+                              "note": "只有完整的 compute-scores（夜间任务，或不带 --start）才会切换口径并重写全部历史"},
+                             default=str, ensure_ascii=False))
         elif args.cmd == "hrv-compare":
             from .rawdata import compare as rx_compare
             res = rx_compare.compare(conn, None if args.no_ow else OWClient(), args.user_id, args.start, args.end)
