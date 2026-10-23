@@ -21,6 +21,10 @@
   // Pictures people uploaded (avatars.js): the picture inside an avatar circle, or the initial. The flag only gates the upload controls.
   const avInner = (url, name) => window.BodyAvatar?.inner(url, name) ?? esc((name || "?").slice(0, 1).toUpperCase());
   const avatarsOn = () => !!window.BodyFlags?.on("avatars");
+  // Private remarks (remarks.js, #212): what I call a circle co-member, with the original name in small type. The server
+  // sends `remark` only to the person who set it and only while the flag is on, so these just draw what came.
+  const nameHtml = (remark, name) => window.BodyRemarks?.html(remark, name) ?? esc(name);
+  const nameText = (remark, name) => remark || name;
   // Sync center (flag sync_center, iPhone app with window.Watch2WhoopFeatures.syncCenter): 手机同步 / 数据更新 / 数据状态
   // become one row that opens the app's native sync center (re-sync, phone / server per type). Elsewhere unchanged.
   const syncCenterOn = () => IN_APP && !!window.Watch2WhoopFeatures?.syncCenter && !!window.BodyFlags?.on("sync_center");
@@ -478,7 +482,7 @@
     const past = dated && isPast();
     $("#hdr-title").textContent = !onToday || !past ? TABS[S.tab] : day === addDays(S.todayDate, -1) ? tr("hdr.yesterday") : I18N.monthDay(parseDay(day));
     const otherYear = !!day && day.slice(0, 4) !== String(S.todayDate || "").slice(0, 4);
-    $("#hdr-date").innerHTML = (day ? esc(fmtDay(day, otherYear)) : "") + (who && !who.self ? ` · ${esc(who.display_name)}` : "")
+    $("#hdr-date").innerHTML = (day ? esc(fmtDay(day, otherYear)) : "") + (who && !who.self ? ` · ${esc(nameText(who.remark, who.display_name))}` : "")
       + (dated ? `<span class="pick-ic">${ICON.cal}</span>` : "");
     const pick = $("#hdr-pick");
     pick.classList.toggle("pickable", dated);
@@ -495,7 +499,7 @@
     $(".dock").classList.toggle("viewing-other", other);   // no AI chat on someone else's pages
     ro.hidden = !other || S.tab === "friends";
     if (other) {
-      ro.innerHTML = `<span>${esc(tr("正在查看：{name}（只读）", { name: who.display_name }))}</span><button type="button" id="viewing-back">${esc(tr("返回"))}</button>`;
+      ro.innerHTML = `<span>${esc(tr("正在查看：{name}（只读）", { name: nameText(who.remark, who.display_name) }))}${who.remark ? `<span class="rm-orig">${esc(who.display_name)}</span>` : ""}</span><button type="button" id="viewing-back">${esc(tr("返回"))}</button>`;
       $("#viewing-back").onclick = () => { S.owner = S.me.id; setTab(S.backTab || "friends"); };
     }
     window.BodySync?.header(onToday && !past && !!who?.self);   // 「同步中… / 已更新 07:42」 (sync.js)
@@ -614,7 +618,7 @@
 
   function whoSheet() {
     openSheet(tr("who.title"), `<div class="group">${S.viewable.map((v) => `<button class="item" data-owner="${v.id}">
-        <span class="row-title">${esc(v.self ? tr("who.me", { name: v.display_name }) : v.display_name)}</span>${v.id === S.owner ? `<span class="check">${ICON.check}</span>` : ""}</button>`).join("")}</div>`,
+        <span class="row-title">${v.self ? esc(tr("who.me", { name: v.display_name })) : nameHtml(v.remark, v.display_name)}</span>${v.id === S.owner ? `<span class="check">${ICON.check}</span>` : ""}</button>`).join("")}</div>`,
     (root) => { for (const b of $$("[data-owner]", root)) b.onclick = () => { S.owner = Number(b.dataset.owner); closeSheet(); render(); }; });
   }
 
@@ -2208,7 +2212,8 @@
   // The body status card and observation notes come from the body butler's long-term memory (docs/ai-assistant-plan.md 2.2). The detailed profile text is the butler's underlying memory,
   // not shown or edited in the front end; here only status (short status items) and observation notes (deletable) are shown.
   // GET /memory → {status: [{key, label, value, unit, tone, trend, good_direction, group, spark, note, updated_at, source}],
-  //               observations: [{id, text, created_at, source, kind, valid_until}], expired_recent, profile_card (unused)};
+  //               observations: [{id, text, created_at, source, kind, valid_until, topic, confirmed_days, stale}], expired_recent,
+  //               profile_card (used by 长期记忆, #113), archived (flag memory_hygiene)};
   // DELETE /memory/observations/{id}. kind=recent notes (with an end date, #112) get their own 「近况」 block; expired ones are only counted.
   const fmtWhen = (iso) => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString(I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }); };
   const memPath = () => `/v1/users/${ownerPath()}/memory`;
@@ -2436,6 +2441,93 @@
       ${obs.length ? `<div class="group">${obs.slice(0, 3).map(obsRow).join("")}</div>` : none}</div>`;
   }
 
+  // 长期记忆 (issue #113 phase 1, rollout flag memory_hygiene): profile card items and lasting notes grouped by topic, each
+  // with 「x 天前确认」 (amber once stale, per-topic days on the server), 「还准确」 and delete (second tap confirms); archived
+  // entries folded at the bottom, restorable. Recent notes keep their own 「近况」 block. Flag off -> 「观察笔记」 as before.
+  // POST /memory/observations/{id}/confirm|restore, POST /memory/profile/{key}/confirm|restore, DELETE /memory/profile/{key}.
+  const hygieneOn = () => (S.flags || []).includes("memory_hygiene");
+  const TOPIC_LABEL = {
+    communication: tr("沟通方式"), health_constraints: tr("健康约束"), injuries: tr("伤病和禁用动作"), goals: tr("目标和进度"),
+    current_plan: tr("当前训练和饮食计划"), schedule: tr("作息规律"), training_preferences: tr("训练偏好和条件"),
+    diet_preferences: tr("饮食偏好"), supplements: tr("补剂"), follow_ups: tr("复查和待办"), what_works: tr("对你有效的做法"),
+    what_doesnt: tr("无效 / 要避免的做法"), basics: tr("基本情况"),
+  };
+  const TOPIC_ORDER = Object.keys(TOPIC_LABEL);   // same order as the AI's memory: how to talk, then what keeps advice safe
+  // standard items show the topic name in the page language; other keys their own label (stored data)
+  const cardEntry = (c) => ({ ...c, card: true, uid: `p:${c.key}`, title: TOPIC_LABEL[c.key] || c.label, text: c.value });
+  const obsEntry = (o) => ({ ...o, card: false, uid: `o:${o.id}`, title: "" });
+  const memEntries = (mem) => [...(Array.isArray(mem?.profile_card) ? mem.profile_card : []).map(cardEntry),
+    ...(Array.isArray(mem?.observations) ? mem.observations : []).filter((o) => !recentOn() || o.kind !== "recent").map(obsEntry)];
+  const archEntries = (mem) => [...(mem?.archived?.profile_card || []).map(cardEntry), ...(mem?.archived?.observations || []).map(obsEntry)];
+  const memPathOf = (e) => (e.card ? `profile/${encodeURIComponent(e.key)}` : `observations/${encodeURIComponent(e.id)}`);
+  const ageLabel = (e) => (e.confirmed_days ? tr("{n} 天前确认", { n: e.confirmed_days }) : tr("今天确认"));
+  const ageBadge = (e) => `<span class="mem-age${e.stale ? " stale" : ""}">${esc(ageLabel(e))}</span>`;
+
+  function memRow(e, self) {
+    const title = e.card && !TOPIC_LABEL[e.key] ? e.title : "";   // a standard item's name is already the group heading
+    return `<div class="mem-row" data-uid="${esc(e.uid)}">
+      <div class="obs-text">${title ? `<b>${esc(title)}</b> · ` : ""}${esc(e.text)}</div>
+      <div class="mem-foot">${ageBadge(e)}${self ? `<span class="mem-acts">
+        <button type="button" class="mem-btn" data-act="confirm">${tr("还准确")}</button>
+        <button type="button" class="mem-btn danger" data-act="delete">${tr("删除")}</button></span>` : ""}</div></div>`;
+  }
+  function archRow(e, self) {
+    return `<div class="mem-row" data-uid="${esc(e.uid)}"><div class="obs-text">${e.title ? `<b>${esc(e.title)}</b> · ` : ""}${esc(e.text)}</div>
+      <div class="mem-foot"><span class="mem-age">${esc(e.archived_reason || tr("已归档"))}</span>${self ? `<span class="mem-acts">
+        <button type="button" class="mem-btn" data-act="restore">${tr("恢复")}</button></span>` : ""}</div></div>`;
+  }
+
+  function memorySheetHtml(mem) {
+    const self = isSelf(), list = memEntries(mem), groups = new Map();
+    for (const e of list) { const t = TOPIC_LABEL[e.topic] ? e.topic : ""; if (!groups.has(t)) groups.set(t, []); groups.get(t).push(e); }
+    const order = [...TOPIC_ORDER, ""].filter((t) => groups.has(t));
+    const body = order.map((t) => `<div class="cat">${esc(t ? TOPIC_LABEL[t] : tr("其他"))}</div>
+      <div class="group">${groups.get(t).map((e) => memRow(e, self)).join("")}</div>`).join("");
+    const arch = archEntries(mem);
+    const archH = arch.length ? `<details class="mem-arch"><summary>${tr("已归档 {n} 条", { n: arch.length })}</summary>
+      <div class="group">${arch.map((e) => archRow(e, self)).join("")}</div></details>` : "";
+    return (body || `<div class="empty faint">${tr("common.none")}</div>`) + archH;
+  }
+
+  async function memAct(root, btn, entry) {
+    const act = btn.dataset.act;
+    if (act === "delete" && !btn.classList.contains("armed")) {   // first tap arms, the second deletes
+      btn.classList.add("armed"); btn.textContent = tr("确定删除？");
+      return;
+    }
+    btn.disabled = true;
+    try {
+      await api(`/v1/users/me/memory/${memPathOf(entry)}${act === "delete" ? "" : `/${act}`}`, { method: act === "delete" ? "DELETE" : "POST" });
+      const k = `memory:${S.owner}`;
+      S.data[k] = await api(memPath());
+      root.innerHTML = memorySheetHtml(S.data[k]);
+      toast(act === "delete" ? tr("已删除") : act === "restore" ? tr("已恢复") : tr("已确认"));
+      render();
+    } catch (err) { toast(err.status === 404 ? tr("这条已经不在了") : err.message); btn.disabled = false; }
+  }
+
+  function memorySheet(mem) {
+    openSheet(tr("长期记忆"), memorySheetHtml(mem), (root) => {
+      root.onclick = (ev) => {
+        const btn = ev.target.closest("[data-act]");
+        const row = btn?.closest("[data-uid]");
+        if (!row) return;
+        const m = S.data[`memory:${S.owner}`] || mem;
+        const entry = [...memEntries(m), ...archEntries(m)].find((x) => x.uid === row.dataset.uid);
+        if (entry) memAct(root, btn, entry);
+      };
+    });
+  }
+
+  function memoryHtml(mem) {
+    const list = memEntries(mem), stale = list.filter((e) => e.stale).length;
+    return `<div class="section"><div class="group">
+      <button class="item" id="me-memory" ${sheetAttr(() => memorySheet(S.data[`memory:${S.owner}`] || mem))}><span class="row-title">${tr("长期记忆")}</span>
+        <span class="val">${stale ? `<span class="mem-age stale">${esc(tr("{n} 条该确认了", { n: stale }))}</span> · ` : ""}${esc(tr("{n} 条", { n: list.length }))}</span>
+        <span class="chev">${ICON.chev}</span></button></div></div>`;
+  }
+  const notesHtml = (mem) => (hygieneOn() && !mem?.error ? memoryHtml(mem) : observationsHtml(mem));
+
   // Language switch (Me page, own account only): saved as the profile's `language`, the page reloads in it at once
   const LANG_LABEL = "语言 / Language";   // i18n-ok: both names, readable whichever language the page is in
   const LANGS = [["zh", "中文"], ["en", "English"]];   // i18n-ok: language names shown natively
@@ -2471,6 +2563,16 @@
   }
   const meSection = (title, rows) => (rows.filter(Boolean).length
     ? `<div class="section">${title ? `<div class="section-head"><h2>${title}</h2></div>` : ""}<div class="group">${rows.join("")}</div></div>` : "");
+
+  // Avatar + name at the top of 我 (#213): on my own page the whole row is one button that opens the profile sheet (the
+  // same sheet as 我 → 个人资料, where the picture is changed); viewing someone else (read-only) it is plain text, no link.
+  function meHead(who) {
+    const inner = `<span class="avatar">${avInner(who.avatar, who.display_name)}</span>
+      <span><span class="me-name">${who.self ? esc(who.display_name) : nameHtml(who.remark, who.display_name)}</span><span class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</span></span>`;
+    return who.self && window.BodyProfile
+      ? `<button type="button" class="me me-open" id="me-open" aria-label="${esc(tr("打开个人资料"))}">${inner}<span class="chev">${ICON.chev}</span></button>`
+      : `<div class="me">${inner}</div>`;
+  }
 
   function meSettingsHtml(who) {
     const chev = `<span class="chev">${ICON.chev}</span>`;
@@ -2516,23 +2618,21 @@
       ].join("");
       const archiveVal = [supps.error ? null : tr("补剂 {n}", { n: supps.filter((x) => x.status === "active").length }),
         labs.error ? null : tr("化验 {n}", { n: labs.length })].filter(Boolean).join(" · ");
-      return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
-          <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
+      return `${meHead(who)}
         ${healthspanHtml(hs)}
-        <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
+        <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
         ${meSection("", [...(rows.profile || []),
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
           IN_APP ? phoneSyncRow() : "",
           syncCenterOn() ? "" : item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
-          S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""])}
+          S.viewable.length > 1 ? item(tr("me.switch"), esc(nameText(who.remark, who.display_name)), 'id="me-who"') : ""])}
         ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
         </div></div>`;
     }
-    return `<div class="me"><span class="avatar">${avInner(who.avatar, who.display_name)}</span>
-        <div><div class="me-name">${esc(who.display_name)}</div><div class="small muted">${tr(who.self ? ((S.me.token_scopes || []).includes("write") ? "me.rw" : "me.ro") : "me.family")}</div></div></div>
+    return `${meHead(who)}
       ${healthspanHtml(hs)}
-      <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${observationsHtml(mem)}
+      <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
       <div class="section"><div class="group">
         ${item(tr("me.supplements"), supps.error ? "—" : tr("me.activeN", { n: supps.filter((x) => x.status === "active").length }), supps.error ? "" : sheetAttr(() => suppSheet(supps)))}
         ${item(tr("me.events"), events.error ? "—" : `${events.length}`, events.error ? "" : sheetAttr(() => eventsSheet(events)))}
@@ -2546,7 +2646,7 @@
         ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
-        ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
+        ${S.viewable.length > 1 ? item(tr("me.switch"), esc(nameText(who.remark, who.display_name)), 'id="me-who"') : ""}
         ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
       </div></div>
@@ -2647,6 +2747,8 @@
     animateStatus(view);
     const w = $("#me-who", view);
     if (w) w.onclick = whoSheet;
+    const prof = $("#me-open", view);   // #213: avatar / name row -> profile sheet
+    if (prof) prof.onclick = () => window.BodyProfile?.open();
     const upd = $("#me-refresh", view);
     if (upd) upd.onclick = async () => { window.BodySync?.refresh("me"); await refresh(); toast(tr("common.refreshed")); };
     const settings = $("#me-settings", view), back = $("#me-back", view);   // 「设置」 sub-page (me_settings flag)
@@ -3070,6 +3172,7 @@
       ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
       ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
   }
+  const remarkBtn = (m) => window.BodyRemarks?.button(m.id, m.display_name, m.remark) || "";   // 「⋯」 → 设置备注 (#212)
   function friendCardV2(m, kinds) {
     const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
     const hid = (scope) => (seen ? seen.hidden.includes(scope) : (m.hidden || []).includes(scope));
@@ -3099,7 +3202,7 @@
     return `<div class="card fd-card fd2${m.self ? " fd2-self" : ""}${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
       ${m.self ? `<div class="fd2-mark">${badge("plain", tr("朋友看到的你"))}</div>` : ""}
       <div class="fd2-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
-        <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${hero}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
+        <span class="fd-name">${m.self ? esc(tr("who.me", { name: m.display_name })) : nameHtml(m.remark, m.display_name)}</span>${hero}${m.self ? "" : remarkBtn(m)}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${body}${note ? `<p class="fd2-note">${esc(note)}</p>` : ""}${foot}</div>`;
   }
   function friendCard(m, kinds) {
@@ -3119,7 +3222,7 @@
       : `<div class="fd-cheer">${kinds.map((k) => `<button type="button" data-nudge="${k}" data-to="${m.id}" aria-pressed="${(m.sent || []).includes(k)}" aria-label="${esc(NUDGE_LABEL[k])}" title="${esc(NUDGE_LABEL[k])}">${NUDGE[k]}</button>`).join("")}</div>`;
     return `<div class="card fd-card${canOpen ? " tap" : ""}"${canOpen ? ` data-member="${m.id}" role="button" tabindex="0"` : ""}>
       <div class="fd-head"><span class="fd-av">${avInner(m.avatar, m.display_name)}</span>
-        <span class="fd-name">${esc(m.self ? tr("who.me", { name: m.display_name }) : m.display_name)}</span>${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
+        <span class="fd-name">${m.self ? esc(tr("who.me", { name: m.display_name })) : nameHtml(m.remark, m.display_name)}</span>${m.self ? "" : remarkBtn(m)}${canOpen ? `<span class="chev">${ICON.chev}</span>` : ""}</div>
       ${tagsH.length ? `<div class="rcard-tags">${tagsH.join("")}</div>` : ""}${nums}${cheers}</div>`;
   }
   // Leaderboards (friends/leaderboard.py): scores 0–100 against each person's own baseline; "not shared" and "not enough
@@ -3144,7 +3247,7 @@
       const note = ok ? boardSub(b.board, r.sub) : r.status === "not_shared" ? tr("未共享") : tr("数据不足");
       return `<div class="fd-row${ok ? "" : " off"}${r.self ? " fd-self" : ""}"><span class="fd-rank">${ok ? r.rank : "·"}</span>
         <span class="fd-av">${avInner(r.avatar, r.display_name)}</span>
-        <span class="fd-rn"><b>${esc(r.self ? tr("who.me", { name: r.display_name }) : r.display_name)}</b><i>${esc(note)}</i></span>
+        <span class="fd-rn"><b>${r.self ? esc(tr("who.me", { name: r.display_name })) : nameHtml(r.remark, r.display_name)}</b><i>${esc(note)}</i></span>
         <span class="fd-sc">${ok ? r.score : "—"}</span>${ok ? `<span class="fd-sbar"><span style="width:${Math.max(2, r.score)}%"></span></span>` : ""}</div>`;
     }).join("");
     return `${seg}<p class="fd-win">${esc(b.window_days === 28 ? tr("近 4 周 · 和自己的基线比") : tr("近 7 天 · 和自己的基线比"))}</p><div class="card fd-board">${rows}</div>`;
@@ -3184,10 +3287,15 @@
     if (n) n.onclick = () => window.BodyCircles?.open();
     if (j) j.onclick = () => window.BodyCircles?.open();
     for (const el of $$("[data-member]", view)) {
-      el.onclick = (e) => { if (!e.target.closest("[data-nudge], [data-fday]")) viewMember(Number(el.dataset.member)); };
+      el.onclick = (e) => { if (!e.target.closest("[data-nudge], [data-fday], [data-remark]")) viewMember(Number(el.dataset.member)); };
       el.onkeydown = (e) => { if (e.key === "Enter" && e.target === el) viewMember(Number(el.dataset.member)); };
     }
     for (const b of $$("[data-fday]", view)) b.onclick = (e) => { e.stopPropagation(); friendDaySheet(Number(b.dataset.fuid), Number(b.dataset.fday)); };
+    for (const b of $$("[data-remark]", view)) b.onclick = (e) => {
+      e.stopPropagation();
+      window.BodyRemarks?.open({ id: Number(b.dataset.remark), name: b.dataset.name, remark: b.dataset.rm || null,
+        max: S.data.friends?.remark_max, onDone: () => { S.data = {}; refresh(); } });
+    };
     for (const b of $$("[data-nudge]", view)) b.onclick = async (e) => {
       e.stopPropagation();
       if (b.getAttribute("aria-pressed") === "true") return;

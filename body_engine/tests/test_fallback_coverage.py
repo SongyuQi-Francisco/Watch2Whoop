@@ -89,6 +89,7 @@ NO_DATA = {
     "reminders/{x}": "write: dismiss a reminder",
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",
+    "memory/{x}": "write: 「还准确」 / restore / delete one profile item or note (#113); the AI reads the same entries with get_memory",
     "grocery/stores": "setting: which supermarkets are connected",
     "grocery/pantry-auto": "setting: whether logged meals come off the pantry (issue #104)",
     "nutrition/combine": "write: selected food entries -> a template / one entry (issue #93)",
