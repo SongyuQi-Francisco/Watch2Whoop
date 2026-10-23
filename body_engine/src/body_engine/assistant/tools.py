@@ -1,14 +1,14 @@
 """Assistant tool registry. The format is the Claude API tool definition (name / description / input_schema);
 the MCP server is generated from here too, so only one copy is maintained."""
-from dataclasses import dataclass
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
-from typing import Any, Callable
+from typing import Any
 
 import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import auth, queries
+from ..datalayer.spec import Tool  # noqa: F401  (moved to the datalayer framework, issue #116; old import path)
 from ..i18n import use_lang
 from ..toolspec import DETAIL, END, START, USER, fill_defaults, nullable, schema
 from . import briefing, writelog
@@ -17,22 +17,6 @@ from ..records.tools import TOOL_SPECS as RECORD_TOOL_SPECS
 from ..rules.tools import TOOL_SPECS as RULE_TOOL_SPECS
 from ..goals.tools import TOOL_SPECS as GOAL_TOOL_SPECS
 from ..training.tools import TOOL_SPECS as TRAINING_TOOL_SPECS
-
-
-@dataclass(frozen=True)
-class Tool:
-    name: str
-    description: str
-    input_schema: dict
-    handler: Callable[[psycopg.Connection, int, dict], Any]  # (conn, owner_id, args) -> result
-    scope: str            # shares authorization needed when viewing someone else's data
-    writes: bool = False  # write operations need user confirmation before running
-    group: str = ""       # domain group (ai/params.GROUPS): which tools are sent on each call, the rest via find_tools
-    strict: bool = True   # Claude strict tools; only the meta tools with a free-form `args` object are not strict
-
-    def api_definition(self) -> dict:
-        return {"name": self.name, "description": self.description,
-                "input_schema": self.input_schema, "strict": self.strict}
 
 
 def _with_now(profile: dict | None) -> dict | None:
