@@ -7,7 +7,8 @@
        2. the Chinese source text itself (gettext style): tr("恢复"), tr("{n} 项", { n }). Chinese = the key; English = i18n-en.js.
           New UI text is written this way: the code stays readable and a parallel change only has to wrap its new strings.
      Lookup falls back to zh, then to the key itself; "{name}" placeholders are filled from params.
-   - Static HTML: data-i18n="key" (text), data-i18n-aria (aria-label), data-i18n-ph (placeholder), data-i18n-title (title);
+   - Static HTML: data-i18n="key" (text), data-i18n-aria (aria-label), data-i18n-ph (placeholder), data-i18n-title (title),
+     data-i18n-href (href: the key's text is a relative address, e.g. the handbook in the page language);
      <html data-i18n-title> sets the document title. Keys may be either kind.
    - tests/test_i18n.py: every key in both languages with the same placeholders, every tr() key used by the scripts / HTML exists,
      and no Chinese literal outside tr(...) in the page scripts (mark a deliberate one, e.g. a regex on server data, with `i18n-ok`).
@@ -104,6 +105,7 @@
     "activate.code": "激活码",
     "activate.go": "打开 App 完成设置",
     "activate.handbook": "使用手册",
+    "activate.handbookUrl": "handbook/",
     "activate.enterCode": "请输入激活码",
     "activate.invalid": "激活码无效或已停用",
     "activate.tooMany": "失败次数太多，请稍后再试",
@@ -214,6 +216,7 @@
     "activate.code": "Activation code",
     "activate.go": "Open the app to finish setup",
     "activate.handbook": "User guide",
+    "activate.handbookUrl": "handbook/en/",
     "activate.enterCode": "Please enter your activation code",
     "activate.invalid": "Invalid or disabled activation code",
     "activate.tooMany": "Too many attempts, please try again later",
@@ -289,6 +292,7 @@
     }
     for (const el of root.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
     for (const el of root.querySelectorAll("[data-i18n-aria]")) el.setAttribute("aria-label", t(el.dataset.i18nAria));
+    for (const el of root.querySelectorAll("[data-i18n-href]")) el.setAttribute("href", t(el.dataset.i18nHref));   // a link per language (the handbook)
     for (const el of root.querySelectorAll("[data-i18n-ph]")) el.setAttribute("placeholder", t(el.dataset.i18nPh));
     for (const el of root.querySelectorAll("[data-i18n-title]")) if (el !== document.documentElement) el.setAttribute("title", t(el.dataset.i18nTitle));
   }
