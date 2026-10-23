@@ -53,6 +53,10 @@ import HealthKit
     let push = FlutterMethodChannel(name: "watch2whoop/push", binaryMessenger: registrar.messenger())
     PushBridge.shared.channel = push
     push.setMethodCallHandler { call, result in PushBridge.shared.handle(call, result) }
+    // Jarvis voice input with the on-device recogniser, and the Today page's haptics (#53, VoiceInput.swift)
+    let voice = FlutterMethodChannel(name: "watch2whoop/voice", binaryMessenger: registrar.messenger())
+    VoiceBridge.shared.channel = voice
+    voice.setMethodCallHandler { call, result in VoiceBridge.shared.handle(call, result) }
     #if DEBUG && targetEnvironment(simulator)
     let debug = FlutterMethodChannel(name: "watch2whoop/debug", binaryMessenger: registrar.messenger())
     debug.setMethodCallHandler { call, result in
