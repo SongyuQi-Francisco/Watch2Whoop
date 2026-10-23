@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 final _cjk = RegExp(r'[一-鿿]');
-// Single-quoted Dart string literals (with escapes); good enough for this code base, which only uses single quotes for UI text.
-final _literal = RegExp(r"'(?:[^'\\\n]|\\.)*'");
+// Single- and double-quoted Dart string literals (with escapes); a double-quoted one with Chinese in it is a miss too (#64).
+final _literal = RegExp(r'''(?:'(?:[^'\\\n]|\\.)*')|(?:"(?:[^"\\\n]|\\.)*")''');
+// tr('中文', 'English'): the second literal.
+final _englishHalf = RegExp(r"tr\(\s*'(?:[^'\\\n]|\\.)*'\s*,\s*'((?:[^'\\\n]|\\.)*)'");
 
 String _stripComments(String src) => src.split('\n').map((l) {
       final i = l.indexOf('//');
@@ -34,5 +36,20 @@ void main() {
       }
     }
     expect(problems, isEmpty, reason: 'Chinese text outside tr(): \n${problems.join('\n')}');
+  });
+
+  test('the English half of every tr() has no Chinese in it', () {
+    final problems = <String>[];
+    final files = Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'));
+    for (final f in files) {
+      final src = _stripComments(f.readAsStringSync());
+      for (final m in _englishHalf.allMatches(src)) {
+        if (_cjk.hasMatch(m.group(1)!)) {
+          final line = '\n'.allMatches(src.substring(0, m.start)).length + 1;
+          problems.add('${f.path}:$line ${m.group(0)}');
+        }
+      }
+    }
+    expect(problems, isEmpty, reason: 'Chinese in the English text of tr(): \n${problems.join('\n')}');
   });
 }

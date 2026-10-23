@@ -50,7 +50,7 @@
         try {
           const r = await C.api(`/v1/friends/remarks/${Number(m.id)}`, { method: "PUT", body: { remark: text } });
           C.closeSheet();
-          C.toast(tr(r?.remark ? "备注已保存" : "备注已清除"));
+          C.toast(r?.remark ? tr("备注已保存") : tr("备注已清除"));
           (m.onDone || C.reload)?.();
         } catch (e) {
           $("#rm-msg", root).textContent = e.message;

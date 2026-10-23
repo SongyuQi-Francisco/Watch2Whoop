@@ -344,6 +344,9 @@ def test_status_and_lab_sheets_in_english(client, world):
     u = client.get("/v1/users/me/explain/status/uric_acid", headers=HE(tok["A"])).json()
     assert u["title"] == "Uric acid" and "27% above the upper limit" in u["advice"][0]["text"]
     no_cjk(*static_texts(u), *[a["text"] for a in u["advice"]], *[f["label"] for f in u["facts"]], *[f["value"] for f in u["facts"]])
+    # the card the sheet belongs to and the question it hands to the user's AI read as the page's own English (issue #64)
+    no_cjk(*(u["item"][k] for k in ("label", "value", "note", "group")), u["ai_prompt"], u["current"]["basis"])
+    assert u["item"]["label"] == "Uric acid" and "Uric acid" in u["ai_prompt"]
     lab = client.get("/v1/users/me/explain/lab/uric_acid", headers=HE(tok["A"])).json()
     assert lab["title"] == "Uric acid" and {"Source", "Reference range"} <= {f["label"] for f in lab["facts"]}
     m = client.get("/v1/users/me/explain/status/mystery", headers=HE(tok["A"])).json()

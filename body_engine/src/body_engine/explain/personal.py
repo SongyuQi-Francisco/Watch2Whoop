@@ -754,7 +754,8 @@ def explain_status(conn: psycopg.Connection, viewer_id: int, owner: int, key: st
             "管家根据你的记录写下的判断，相关记录见下面。", "A note Jarvis wrote from your records; related records are below.")})
         keywords = []
     view["kind"] = "status"
-    view["item"] = {k: item[k] for k in ("key", "label", "value", "unit", "tone", "note", "group", "source", "updated_at")}
+    shown = status_mod.localize([item])[0]   # what the viewer reads (English in an English request); the matching above uses the stored Chinese
+    view["item"] = {k: shown[k] for k in ("key", "label", "value", "unit", "tone", "note", "group", "source", "updated_at")}
     if cond and key not in G.STATUS_AS_METRIC:
         for m in cond.get("metrics", []):  # e.g. sleep conditions: attach the owner's own sleep numbers (one fact + advice each)
             if not auth.can_view(conn, viewer_id, owner, METRIC_SCOPE[m]):
@@ -774,11 +775,11 @@ def explain_status(conn: psycopg.Connection, viewer_id: int, owner: int, key: st
                                              "(see below). Check them before training; if the front of the shoulder hurts, switch "
                                              "exercises right away."), "mid"))
     if view["current"] is None and key not in G.STATUS_AS_METRIC:
-        view["current"] = {"value": item["value"], "unit": item.get("unit") or "", "basis": item["label"],
+        view["current"] = {"value": shown["value"], "unit": shown.get("unit") or "", "basis": shown["label"],
                            "tone": TONE.get(item["tone"], "plain")}
     own = [item["label"], *re.findall(r"[\u4e00-\u9fffA-Za-z]{2,}", item["value"] or "")]
     view["profile"] = profile_sentences(conn, owner, own, keywords)
     view["ai_prompt"] = _prompt(view["title"], view, L(f"我的「{item['label']}：{item['value']}」",
-                                                       f"my \"{item['label']}: {item['value']}\""))
+                                                       f"my \"{shown['label']}: {shown['value']}\""))
     return view
 

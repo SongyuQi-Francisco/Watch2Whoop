@@ -191,7 +191,7 @@ def withdraw(conn: psycopg.Connection, user_id: int, report_id: int) -> bool:
     if row is None:
         return False
     if row["status"] not in P.WITHDRAWABLE:
-        raise ValueError("开发者已经在处理，不能撤回了")
+        raise ValueError(L("开发者已经在处理，不能撤回了", "The developers are already working on it; it can't be withdrawn"))
     conn.execute("DELETE FROM feedback_reports WHERE id = %s", (report_id,))
     return True
 

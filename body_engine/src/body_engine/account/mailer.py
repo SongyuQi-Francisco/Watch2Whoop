@@ -45,8 +45,9 @@ def configured() -> bool:
 
 
 def code_message(code: str, minutes: int, lang: str = "zh") -> tuple[str, str]:
-    """Subject and plain-text body of the sign-in code e-mail, Chinese and English in one message."""
-    subject = f"Watch2Whoop 登录验证码 / sign-in code: {code}"
+    """Subject and plain-text body of the sign-in code e-mail: Chinese and English in one message (the language asked for
+    first); the subject of an English request is English only."""
+    subject = f"Watch2Whoop sign-in code: {code}" if lang == "en" else f"Watch2Whoop 登录验证码 / sign-in code: {code}"
     body = (f"你的 Watch2Whoop 登录验证码是：{code}\n"
             f"{minutes} 分钟内有效，只能用一次。不是你本人操作的话，忽略这封邮件即可。\n\n"
             f"Your Watch2Whoop sign-in code is: {code}\n"

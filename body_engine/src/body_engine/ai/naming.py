@@ -12,6 +12,8 @@ Code, logs, developer docs and THIRD_PARTY_NOTICES.md keep the real name; only t
 """
 import re
 
+from ..i18n import is_en
+
 ZH, EN = "底层数据库", "our database"
 HOLD = 48                                   # longer than any name ("the sparky   fitness   database")
 CONTEXT = 64                                # raw characters kept before a streamed tail (look-behinds, which language)
@@ -52,7 +54,10 @@ def _replacement(m: re.Match, text: str) -> str:
     before, after = _side(text, m.start() - 1, -1), _side(text, m.end(), 1)
     if _CJK.match(before) or _CJK.match(after) or db == "数据库":
         return ZH
-    return EN if re.match(r"[A-Za-z]", before) or re.match(r"[A-Za-z]", after) else ZH
+    if re.match(r"[A-Za-z]", before) or re.match(r"[A-Za-z]", after):
+        return EN
+    # no Chinese and no letters next to it: an English request still gets the English name ("SparkyFitness: …" at the start of a text)
+    return (EN if before else EN[0].upper() + EN[1:]) if is_en() else ZH
 
 
 def scrub(text, output: bool = False):

@@ -81,13 +81,13 @@
           return o.sessions.map((s, i) => {
             const on = f.session && f.session.day_of_week === s.day_of_week && f.session.name === s.name;
             return `<button class="item ap-opt" data-i="${i}" aria-pressed="${on}" ${s.has_exercise ? "disabled" : ""}><span class="ap-dot"></span>
-              <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(`${tr(s.weekday_zh)} · ${s.name}`)}</div>
+              <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(`${tr(s.weekday_zh)} · ${tr(s.name)}`)}</div>
               <div class="small muted">${esc(s.has_exercise ? tr("已包含") : tr("{n} 个动作", { n: s.exercise_count }))}</div></div></button>`;
           }).join("");
         }
         return o.days.map((x, i) => `<button class="item ap-opt" data-i="${i}" aria-pressed="${f.day === x.date}" ${x.has_exercise ? "disabled" : ""}><span class="ap-dot"></span>
           <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(`${tr(x.weekday_zh)} · ${x.date.slice(5)}`)}</div>
-          <div class="small muted">${esc(x.has_exercise ? tr("已包含") : x.names.length ? x.names.join(" / ") : tr("休息日"))}</div></div></button>`).join("");
+          <div class="small muted">${esc(x.has_exercise ? tr("已包含") : x.names.length ? x.names.map((n) => tr(n)).join(" / ") : tr("休息日"))}</div></div></button>`).join("");
       };
       const nums = () => timed
         ? `<label class="ap-f"><span>${esc(tr("组数"))}</span><input class="input" id="ap-sets" type="number" inputmode="numeric" min="1" max="20" value="${esc(f.sets)}"></label>
@@ -121,7 +121,7 @@
         try {
           const res = await ctx.api("/v1/users/me/training/plan/add-exercise", { method: "POST", body: req.body });
           ctx.onAdded(res);
-          const where = res.scope === "day" ? `${tr(res.weekday_zh)} ${res.date.slice(5)}` : `${tr(res.weekday_zh)} · ${res.session_name}`;
+          const where = res.scope === "day" ? `${tr(res.weekday_zh)} ${res.date.slice(5)}` : `${tr(res.weekday_zh)} · ${tr(res.session_name)}`;
           ctx.toast(tr("已加入 {where}", { where }));
           ctx.back();
         } catch (e) {

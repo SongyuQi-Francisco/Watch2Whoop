@@ -60,7 +60,19 @@ whole Today page, the server texts it shows and the app's native screens through
       text with the **same version number** (tests check both pairs, the version and the clause count); `GET /v1/consent`
       answers in the request's language; `user_consents.language` (migration 380) records which text was read.
       Deploy: the ops overlay replaces the example domains in the English files too.
-- [ ] User data stays as stored (food names, recipes, journal items, notes and status cards the AI wrote)
+- [x] What the literal scanners could not see (#64): data the page shows as it is. The exercise library's one-line cues and
+      step lists have English (`training/catalog_en.py`, used by `catalog.format_exercise` in an English request); the
+      catalog's group / pattern / joint-stress labels and the built-in plan templates' names, summaries and session names
+      are `i18n-en.js` entries that the page shows through `tr()` (`sname()`, `exTerms()`), because the stored plan keeps the
+      Chinese names the AI and the training log use (and the page posts session names back, so they must not be rewritten);
+      the training readiness text, prescription text (`3 sets × 30 s`), plan error messages and the sign-in mail subject follow
+      the request's language (`L()`); the back end's name no longer comes out as 「底层数据库」 in an English error
+      (`ai/naming.py`); `avatars.js`, `remarks.js`, `md.js`, `muscle-body-data.js` are now in the scanner's list, and the tests
+      fail on a page script or a module with Chinese raise messages nobody has classified (`test_i18n.py`,
+      `test_i18n_server.py`, `test_i18n_remnants.py`). The app's test also covers double-quoted literals and the English half
+      of `tr()`.
+- [ ] User data stays as stored (food names, recipes, journal items, notes and status cards the AI wrote); the exercise
+      detail still shows the other-language name under the title on purpose (both names, page language first)
 
 ## Stage 4: handbook and app store
 

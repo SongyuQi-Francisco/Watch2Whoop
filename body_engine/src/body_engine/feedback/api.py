@@ -4,6 +4,7 @@ with cookie login, the X-Body-Web: 1 header (web/session.py)."""
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from . import params as P, store
 
@@ -28,7 +29,7 @@ def list_feedback(user: str, conn=Depends(get_conn), viewer=Depends(current_user
     return {"mode": store.mode(conn, uid), "chosen_mode": conn.execute(
                 "SELECT feedback_mode FROM users WHERE id = %s", (uid,)).fetchone()["feedback_mode"],
             "available": store.server_mode() != "off" and not blocked,
-            "statuses": P.STATUS_LABEL, "reports": store.list_for_user(conn, uid, body=True)}
+            "statuses": {k: L(zh, P.STATUS_LABEL_EN[k]) for k, zh in P.STATUS_LABEL.items()}, "reports": store.list_for_user(conn, uid, body=True)}
 
 
 @router.put("/feedback-mode")

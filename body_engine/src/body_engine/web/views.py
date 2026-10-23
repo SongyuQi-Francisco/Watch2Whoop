@@ -280,8 +280,8 @@ def training_today(conn, viewer_id: int, owner_id: int, day: date) -> dict:
                 logged.append({"name": s["name"], "notes": s["notes"], "exercises": [
                     {**_exercise_view(ctx, e["exercise_id"], e["name"], [], None, {}, with_meta),
                      "sets_text": ", ".join(f"{x['weight_kg']:g}×{x['reps']}" if x.get("weight_kg") and x.get("reps")
-                                            else f"{x['reps']} 次" if x.get("reps")
-                                            else f"{x['duration_s']:g} 秒" if x.get("duration_s") else "—"
+                                            else L(f"{x['reps']} 次", f"{x['reps']} reps") if x.get("reps")
+                                            else L(f"{x['duration_s']:g} 秒", f"{x['duration_s']:g} s") if x.get("duration_s") else "—"
                                             for x in e["sets"])}
                     for e in s["exercises"]]})
         except sparky_client.SparkyError as e:

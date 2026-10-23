@@ -15,8 +15,9 @@ import psycopg
 
 from .. import sparky_client
 from ..config import REPO_ROOT
+from ..i18n import L, is_en
 from ..records import store as records_store
-from . import catalog_data as CD, params as P
+from . import catalog_data as CD, catalog_en as CE, params as P
 
 DEFAULT_BANNED_SLUGS = {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
 _PAREN_TAIL = re.compile(r"[（(][^（()）]*[)）]\s*$")
@@ -289,6 +290,8 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
     else:
         status = "caution" if slug in DEFAULT_BANNED_SLUGS or row.get("family_slug") in DEFAULT_BANNED_SLUGS else "active"
     cues = (meta or {}).get("cues") or row.get("cues_zh")
+    if is_en() and not (meta or {}).get("cues"):   # the user's own cue stays as written; the curated ones have English
+        cues = CE.CUES_EN.get(slug, cues)
     reason = (meta or {}).get("reason")
     grp = body_group(row)
     prim = row.get("primary_muscles") or []
@@ -344,12 +347,15 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         out["restriction_from"] = meta["inherited_from"]
     if detail:
         imgs = row.get("images") or []
+        steps = row.get("instructions_zh") or ([cues] if cues else [])
+        if is_en():   # the curated steps, or the one-line cue the steps were derived from (cues is already English here)
+            steps = CE.INSTRUCTIONS_EN.get(slug) or ([cues] if cues and steps == [row.get("cues_zh")] else steps)
         out.update(
             aliases=list(dict.fromkeys([*(row.get("aliases") or []), *((meta or {}).get("aliases") or [])])),
             force=row.get("force"),
             mechanic=row.get("mechanic"),
             level=row.get("level"),
-            instructions_zh=row.get("instructions_zh") or ([cues] if cues else []),
+            instructions_zh=steps,
             images=imgs,
             image_urls=image_urls(imgs),
         )
@@ -762,7 +768,8 @@ def get_exercise(conn: psycopg.Connection, user_id: int | None, exercise: str,
     row, meta, cands = resolve_with_candidates(conn, user_id, exercise, with_meta=with_meta)
     if row is None:
         hint = f"（相近动作：{'、'.join(cands)}）" if cands else ""
-        raise ValueError(f"动作库里找不到「{exercise}」{hint}；可先用 search_exercises 搜索")
+        raise ValueError(L(f"动作库里找不到「{exercise}」{hint}；可先用 search_exercises 搜索",
+                           f"The exercise library has no “{exercise}”" + (f" (similar: {', '.join(cands)})" if cands else "")))
     out = format_exercise(row, meta, detail=True)
     out["alternatives"] = recommend_alternatives(conn, row, user_id=user_id, limit=5, with_meta=with_meta)
     return out
