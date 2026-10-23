@@ -21,6 +21,12 @@
   // Pictures people uploaded (avatars.js): the picture inside an avatar circle, or the initial. The flag only gates the upload controls.
   const avInner = (url, name) => window.BodyAvatar?.inner(url, name) ?? esc((name || "?").slice(0, 1).toUpperCase());
   const avatarsOn = () => !!window.BodyFlags?.on("avatars");
+  // Sync center (flag sync_center, iPhone app with window.Watch2WhoopFeatures.syncCenter): 手机同步 / 数据更新 / 数据状态
+  // become one row that opens the app's native sync center (re-sync, phone / server per type). Elsewhere unchanged.
+  const syncCenterOn = () => IN_APP && !!window.Watch2WhoopFeatures?.syncCenter && !!window.BodyFlags?.on("sync_center");
+  const phoneSyncRow = () => syncCenterOn()
+    ? `<a class="item" href="watch2whoop://sync-center"><span class="row-title">${tr("同步中心")}</span><span class="chev">${ICON.chev}</span></a>`
+    : `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>`;
   // Features in separate files (profile.js profile and consent, sync.js refresh and history progress): each entry in window.BodyPlugins may have
   // init(ctx, me), meItem(chev) -> one row of HTML for the Me page, bindMe(view), onTab(tab) after a tab switch; grocery.js adds foodShop(info) / bindFoodShop(view) for 饮食 → 采购;
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
@@ -2522,8 +2528,8 @@
         ${meSection("", [...(rows.profile || []),
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
-          IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : "",
-          item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
+          IN_APP ? phoneSyncRow() : "",
+          syncCenterOn() ? "" : item(tr("me.updated"), updatedVal, 'id="me-refresh"'), ...(rows.main || []),
           S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""])}
         ${meSection("", [item(tr("使用手册"), null, 'id="me-handbook"'), ...(rows.other || []), item(tr("设置"), null, 'id="me-settings"')])}
         </div></div>`;
@@ -2541,11 +2547,11 @@
         ${isSelf() ? langRow() : ""}
         ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
-        ${IN_APP ? `<a class="item" href="watch2whoop://sync"><span class="row-title">${tr("me.phoneSync")}</span><span class="chev">${ICON.chev}</span></a>` : ""}
+        ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(who.display_name), 'id="me-who"') : ""}
-        ${item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
+        ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
       </div></div>
       <div class="version">${esc(tr("me.version", { web: S.version?.web || "", api: S.version?.api || "" }))}</div></div></div>`;

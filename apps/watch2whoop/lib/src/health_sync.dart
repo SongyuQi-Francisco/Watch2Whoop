@@ -199,6 +199,15 @@ class HealthSync {
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
   }
 
+  /// Forced re-sync (resync.dart): send everything from the start of the day [syncDaysBack] days ago again (0 = all).
+  /// Same sequence as going to "All history": stop (cancels a running pass, which would make the export skip), clear
+  /// every anchor, then start with the range stored, which runs a full export of it (newest first, resumable).
+  Future<void> resyncFrom(int syncDaysBack) async {
+    await OpenWearablesHealthSdk.stopBackgroundSync();
+    await OpenWearablesHealthSdk.resetAnchors();
+    await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
+
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {
     final s = await status();

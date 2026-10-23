@@ -17,7 +17,13 @@ are Apple's documented sampling behaviour):
 STALE_AFTER_DAYS: days since the latest data before the type counts as stale (None = never stale).
 WINDOW_DAYS: the "last N days" of the counts (today included).
 SOURCES_DAYS: how far back the list of sources looks.
+
+Forced re-sync from the app's sync center (sync/resync.py, flag sync_center): operational limits, not health rules. One
+job per user at a time; the minimum gap between accepted requests keeps a tap-happy user (or a looping app) from re-importing
+and re-scoring all day; all history re-reads years of data on the phone and the server, so at most every 6 hours.
 """
+from datetime import timedelta
+
 WINDOW_DAYS = 7
 SPARKY_TIMEOUT_S = 8   # the strength-training row (#210) asks SparkyFitness; a slow server must not hold the page for its 60 s default
 SOURCES_DAYS = 30
@@ -40,3 +46,27 @@ STALE_AFTER_DAYS: dict[str, int | None] = {
     "ecg": None,
     "water": 7,
 }
+
+# The types the app reads itself (rawdata/hk_types.py), listed by the sync center (flag sync_center) after the ones above.
+# Same reasoning: the watch records stand time, walking heart rate, physical effort and environmental sound every day it is
+# worn (2 days); exercise minutes need brisk movement and daylight time outdoors, so a quiet day can have none (3); headphone
+# sound only with headphones (7); stair speed only after climbing stairs and walking steadiness is estimated about once a
+# week (14). Wrist temperature is in the list above.
+EXTRA_STALE_AFTER_DAYS: dict[str, int | None] = {
+    "stand_time": 2,
+    "exercise_time": 3,
+    "daylight": 3,
+    "physical_effort": 2,
+    "walking_heart_rate": 2,
+    "environmental_audio": 2,
+    "headphone_audio": 7,
+    "stair_speed": 14,
+    "walking_steadiness": 14,
+}
+
+RESYNC_MAX_DAYS = 3650                          # custom range: 1–3650 days (null = all history)
+RESYNC_MIN_INTERVAL = timedelta(minutes=10)     # between accepted requests of one user
+RESYNC_ALL_MIN_INTERVAL = timedelta(hours=6)    # before an "all history" request
+RESYNC_PHONE_STALE = timedelta(hours=24)        # a phone phase without a report for this long is no longer running
+RESYNC_WINDOW_DAYS = 30                         # OW import window of the server part (same as importers/ow.WINDOW)
+RESYNC_TIME_BUDGET = 240                        # seconds per sync-refresh-run step (the next run continues)

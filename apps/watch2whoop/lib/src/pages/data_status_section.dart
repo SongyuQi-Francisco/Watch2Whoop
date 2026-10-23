@@ -17,7 +17,11 @@ class DataStatusSection extends StatefulWidget {
     required this.requestAccess,
     required this.openSettings,
     this.reloadToken = 0,
+    this.showTypes = true,
   });
+
+  /// false in the sync center, which lists the types with the phone side next to them (sync_center_section.dart).
+  final bool showTypes;
 
   final Future<DataStatusResult> Function() load;
   final Future<Map<String, bool>?> Function() askStatus;
@@ -175,7 +179,7 @@ class _DataStatusSectionState extends State<DataStatusSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Group(
+        if (widget.showTypes) Group(
           title: tr('服务器收到的数据', 'Data on the server'),
           rows: rows,
           footer: report == null
