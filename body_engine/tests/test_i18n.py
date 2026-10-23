@@ -69,7 +69,7 @@ def test_english_text_table():
         assert set(PH.findall(k)) == set(PH.findall(v)), f"i18n-en.js: placeholders differ for {k!r}"
 
 
-USE_HTML = re.compile(r'data-i18n(?:-aria|-ph|-title)?="([^"]+)"')
+USE_HTML = re.compile(r'data-i18n(?:-aria|-ph|-title|-href)?="([^"]+)"')
 DOTTED = re.compile(r"""["']((?:tab|hdr|common|login|err|banner|picker|who|me|jarvis|profile|activate)\.(?!js\b)\w+)["']""")
 
 

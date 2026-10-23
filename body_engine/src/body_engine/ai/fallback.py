@@ -447,6 +447,7 @@ def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
         n = conn.execute("SELECT count(*) AS n, coalesce(sum(input_tokens + cache_read_tokens), 0) AS i, "
                          "coalesce(sum(output_tokens), 0) AS o FROM ai_usage WHERE user_id = %s AND kind = %s AND at >= %s",
                          (u["id"], KIND, providers.month_start(conn, u["id"]))).fetchone()
+        from . import scope_guard
         from .choice import effective
         e = effective(conn, u["id"])
         agreed = consent(conn, u["id"])
@@ -455,6 +456,7 @@ def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
                       "cards_reset": cards["reset"], "cards_extend": cards["extend"], "cards_extend_cny": cards["extend_cny"],
                       "cards_max_cny": quota_cards.max_extra_cny(conn, u["id"], a["quota_cny"]) if quota > 0 else 0.0,
                       "calls": n["n"], "input_tokens": int(n["i"]), "output_tokens": int(n["o"]),
+                      "scope_blocked": scope_guard.blocked_since(conn, u["id"], providers.month_start(conn, u["id"])),   # jarvis_scope_guard
                       "consent": agreed is not None,
                       "consent_method": agreed.get("method") if agreed else None,   # app / one_tap (None: owner or not agreed)
                       "uses": e["provider"]["kind"] if e["source"] == "provider" else e["source"]})

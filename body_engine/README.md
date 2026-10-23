@@ -303,6 +303,25 @@ types, limits}`; the app sends only what it lists. Flag off = engine fields refu
 taken now = 409 `type_paused`; engine batches are rate limited per user (batches per minute, bytes per UTC day; more for
 the `backfill` / `range` phases): 429 + `Retry-After`. Nothing is stored on 409 / 422 / 429. An older app is not affected.
 
+**Sync engine, step S2** (`rawdata/derive.py`, parameters and sources `rawdata/params.py`, no migration; design §3.2.3–3.2.5):
+`uv run body-engine hk-derive-run [--user-id N] [--max-days N]` takes the queued `hk_dirty_days`, oldest first, one
+transaction per day (row-locked, a per-user advisory lock; 240 s per run, the rest stays queued; users without consent
+stay queued), and derives with the Open Wearables import's definitions, source `app`: daily values of the registry's
+quantity types into `daily_metric_sources` (`avg` = mean / min / max / count of the day's raw samples, `sum` = the day's
+15-minute buckets; the direct-upload types above are left to their own rebuild), sleep (per HealthKit source with OW's
+session rule and stage clean-up, then `importers/ow.sleep_segments` + `common.sessionize`), and workouts
+(`training/importer.parse_app`: OW's activity → type table `training/params.HK_WORKOUT_ACTIVITIES` /
+`OW_SDK_WORKOUT_TYPES`, total = active + basal energy, active energy from the workout statistics). Idempotent: whole
+days are recomputed. **Sync mode** (`rawdata/engine.mode`, D4): in `shadow` (and `ow`) the derived values are stored
+but take no part — `resolve_daily` skips them and is not re-run, no `sleep_sessions` are written, app workouts are
+stored with `excluded = 'shadow'` — so no daily value and no score changes; in `app` (reserved for the cut-over S5,
+`engine.mode()` does not return it yet) they take part (`SOURCE_PRIORITY`: app > ow; `training/params.SOURCE_RANK_APP`:
+app copies kept first), daily values are re-chosen, sleep is written and the score recompute is queued. Wired into the
+hourly job (`deploy/ops/ops.py`) and into `sync/refresh.run_scores` (a user's queued days are derived before a recompute,
+60 s budget). Tests: `tests/test_apple_sync_derive.py` (the same synthetic data through the OW import and through the
+app engine: equal by the design's §4 rules; a shadow user's daily values, sleep, workouts and scores equal the OW-only
+user's).
+
 **Forced re-sync** (flag `sync_center`, `sync/resync.py`): `POST /v1/ingest/resync {days: 1–3650 | null}` (Bearer like
 above) starts one job per user (`busy` while one runs, `throttled` within 10 minutes of the last one, 6 hours before an
 all-history one); the app re-reads Health from the range start and reports `PUT /v1/ingest/resync {phone_percent, counts,
