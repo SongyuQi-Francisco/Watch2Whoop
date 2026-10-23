@@ -38,8 +38,16 @@ Sync center (rollout flag `sync_center`, server side in #221) and the Health typ
     about time and battery; the screen stays on while it runs there; a closed app continues on the next open.
   - Per data type the newest sample on the phone next to the newest on the server: 「没采集」 / "Not recorded" (none on the
     phone, or no permission), 「没同步」 / "Not synced", 「已同步」 / "Synced"; VO₂ max notes that it is only made outdoors.
+    The row shows `phone / server` dates in the order of the group title (with the words, the server date was cut off on
+    a phone).
   - Strength-training sources (#210) and when the server data was last updated; everything else of Phone sync stays.
 - Flag off: the page is exactly as before.
+- Fix (simulator end-to-end test): before sync is connected, 「允许读取健康数据」 / "Allow Health data" and 「重新申请健康权限」
+  / "Ask for Health access again" showed the raw `NotConfiguredException` and asked for nothing (the Open Wearables SDK is
+  only configured by connecting). They now ask for the app's own types; connecting asks for the rest, as before.
+- Debug builds only: the simulator test-data button also writes the new types HealthKit lets an app write (daylight,
+  physical effort, sound levels, stair speeds); the Apple-computed ones (stand, exercise minutes, sleeping wrist
+  temperature, walking heart rate, walking steadiness) can only be checked on a device.
 
 Offline use (rollout flag `offline_mode`, server side in the Today page pull requests; design in
 [docs/offline-plan.md](../../docs/offline-plan.md)).
