@@ -63,7 +63,10 @@ jobs:
           grep -qx '\.github/workflows/ci\.yml' <<< "$files" && all "workflow changed"
           # Server = anything outside apps/ (docs included: tests compare some documents with server copies;
           # packages/ included: Body Engine depends on packages/openbodyscore).
-          if grep -qv '^apps/' <<< "$files"; then server=true; else server=false; fi
+          # Also the app's HealthKit type registries: server tests compare them with rawdata/hk_types.py.
+          if grep -qv '^apps/' <<< "$files" \
+             || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
+            server=true; else server=false; fi
           if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
           other="$(jq -c --arg files "$files" \
             '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \

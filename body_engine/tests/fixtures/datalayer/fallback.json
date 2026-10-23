@@ -1,0 +1,1249 @@
+{
+ "TOOL_NAMES": [
+  "get_briefing",
+  "get_profile",
+  "get_scores",
+  "get_sleep",
+  "get_daily_metrics",
+  "get_reminders",
+  "get_sleep_goal",
+  "get_strain_coach",
+  "get_sleep_coach",
+  "get_training_calendar",
+  "get_training_day",
+  "get_muscle_load",
+  "get_exercise_rules",
+  "search_exercises",
+  "get_exercise",
+  "get_week_plan",
+  "propose_plan",
+  "save_plan",
+  "swap_exercise",
+  "reschedule_day",
+  "swap_days",
+  "replan_week",
+  "undo_day_changes",
+  "get_training_log",
+  "get_nutrition",
+  "get_weight",
+  "get_lab_results",
+  "list_supplements",
+  "list_events",
+  "list_journal_items",
+  "get_journal",
+  "get_memory",
+  "log_food",
+  "log_workout",
+  "log_weight",
+  "log_water",
+  "undo_sparky_entry",
+  "log_journal",
+  "add_event",
+  "add_observation",
+  "update_profile_card",
+  "add_lab_results",
+  "log_metric_snapshot",
+  "add_supplement",
+  "add_custom_exercise",
+  "report_feedback",
+  "list_feedback",
+  "get_healthspan",
+  "get_stress",
+  "get_health_monitor",
+  "get_hr_zones",
+  "get_vo2max",
+  "get_report",
+  "get_sleep_details",
+  "get_lab_history",
+  "get_metric_snapshots",
+  "analyze_journal",
+  "get_diet_profile",
+  "get_nutrition_goals",
+  "get_meal_templates",
+  "list_recipes",
+  "get_recipe",
+  "suggest_meals",
+  "get_shopping_list",
+  "get_weekly_specials",
+  "find_products",
+  "get_price_history",
+  "get_diet_constraints",
+  "set_diet_constraint",
+  "end_diet_constraint",
+  "get_training_context",
+  "get_week_review_context",
+  "get_playbook"
+ ],
+ "tools": [
+  "get_briefing",
+  "get_profile",
+  "get_scores",
+  "get_sleep",
+  "get_daily_metrics",
+  "get_reminders",
+  "get_sleep_goal",
+  "get_strain_coach",
+  "get_sleep_coach",
+  "get_training_calendar",
+  "get_training_day",
+  "get_muscle_load",
+  "get_exercise_rules",
+  "search_exercises",
+  "get_exercise",
+  "get_week_plan",
+  "propose_plan",
+  "save_plan",
+  "swap_exercise",
+  "reschedule_day",
+  "swap_days",
+  "replan_week",
+  "undo_day_changes",
+  "get_training_log",
+  "get_nutrition",
+  "get_weight",
+  "get_lab_results",
+  "list_supplements",
+  "list_events",
+  "list_journal_items",
+  "get_journal",
+  "get_memory",
+  "log_food",
+  "log_workout",
+  "log_weight",
+  "log_water",
+  "undo_sparky_entry",
+  "log_journal",
+  "add_event",
+  "add_observation",
+  "update_profile_card",
+  "add_lab_results",
+  "log_metric_snapshot",
+  "add_supplement",
+  "add_custom_exercise",
+  "report_feedback",
+  "list_feedback",
+  "get_healthspan",
+  "get_stress",
+  "get_health_monitor",
+  "get_hr_zones",
+  "get_vo2max",
+  "get_report",
+  "get_sleep_details",
+  "get_lab_history",
+  "get_metric_snapshots",
+  "analyze_journal",
+  "get_diet_profile",
+  "get_nutrition_goals",
+  "get_meal_templates",
+  "list_recipes",
+  "get_recipe",
+  "suggest_meals",
+  "get_shopping_list",
+  "get_weekly_specials",
+  "find_products",
+  "get_price_history",
+  "get_diet_constraints",
+  "set_diet_constraint",
+  "end_diet_constraint",
+  "get_training_context",
+  "get_week_review_context",
+  "get_playbook"
+ ],
+ "tools_with_web": [
+  "get_briefing",
+  "get_profile",
+  "get_scores",
+  "get_sleep",
+  "get_daily_metrics",
+  "get_reminders",
+  "get_sleep_goal",
+  "get_strain_coach",
+  "get_sleep_coach",
+  "get_training_calendar",
+  "get_training_day",
+  "get_muscle_load",
+  "get_exercise_rules",
+  "search_exercises",
+  "get_exercise",
+  "get_week_plan",
+  "propose_plan",
+  "save_plan",
+  "swap_exercise",
+  "reschedule_day",
+  "swap_days",
+  "replan_week",
+  "undo_day_changes",
+  "get_training_log",
+  "get_nutrition",
+  "get_weight",
+  "get_lab_results",
+  "list_supplements",
+  "list_events",
+  "list_journal_items",
+  "get_journal",
+  "get_memory",
+  "log_food",
+  "log_workout",
+  "log_weight",
+  "log_water",
+  "undo_sparky_entry",
+  "log_journal",
+  "add_event",
+  "add_observation",
+  "update_profile_card",
+  "add_lab_results",
+  "log_metric_snapshot",
+  "add_supplement",
+  "add_custom_exercise",
+  "report_feedback",
+  "list_feedback",
+  "get_healthspan",
+  "get_stress",
+  "get_health_monitor",
+  "get_hr_zones",
+  "get_vo2max",
+  "get_report",
+  "get_sleep_details",
+  "get_lab_history",
+  "get_metric_snapshots",
+  "analyze_journal",
+  "get_diet_profile",
+  "get_nutrition_goals",
+  "get_meal_templates",
+  "list_recipes",
+  "get_recipe",
+  "suggest_meals",
+  "get_shopping_list",
+  "get_weekly_specials",
+  "find_products",
+  "get_price_history",
+  "get_diet_constraints",
+  "set_diet_constraint",
+  "end_diet_constraint",
+  "get_training_context",
+  "get_week_review_context",
+  "get_playbook",
+  "get_shopping_context",
+  "set_stores",
+  "generate_shopping_list",
+  "add_shopping_items",
+  "remove_shopping_items",
+  "set_pantry",
+  "save_product",
+  "record_store_prices",
+  "mark_bought"
+ ],
+ "FALLBACK_GROCERY": [
+  "get_shopping_context",
+  "set_stores",
+  "generate_shopping_list",
+  "add_shopping_items",
+  "remove_shopping_items",
+  "set_pantry",
+  "save_product",
+  "record_store_prices",
+  "mark_bought"
+ ],
+ "ALWAYS_CONFIRM": [
+  "delete_custom_exercise",
+  "delete_journal_entry",
+  "delete_lab_results",
+  "delete_observation",
+  "delete_supplement",
+  "delete_workout",
+  "remove_product",
+  "remove_shopping_items",
+  "remove_staple",
+  "rollback_write",
+  "undo_day_changes",
+  "undo_meal_log",
+  "undo_sparky_entry"
+ ],
+ "CORE_TOOLS": [
+  "get_briefing",
+  "list_metrics",
+  "get_daily_metrics",
+  "get_sleep",
+  "get_scores",
+  "list_events",
+  "add_event",
+  "get_training_log",
+  "get_nutrition",
+  "get_weight",
+  "get_journal",
+  "log_journal",
+  "get_reminders",
+  "get_training_calendar",
+  "get_week_plan",
+  "get_exercise_rules",
+  "search_exercises",
+  "log_food",
+  "log_workout",
+  "log_weight",
+  "undo_sparky_entry",
+  "update_food_entry",
+  "get_write_log",
+  "rollback_write",
+  "get_memory",
+  "update_profile_card",
+  "add_observation",
+  "get_meal_templates",
+  "log_meal_template",
+  "get_shopping_context",
+  "record_store_prices",
+  "report_feedback",
+  "get_training_context",
+  "get_week_review_context",
+  "get_playbook"
+ ],
+ "all_tools": [
+  {
+   "name": "get_briefing",
+   "group": "body",
+   "scope": "profile",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_profile",
+   "group": "body",
+   "scope": "profile",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "list_metrics",
+   "group": "body",
+   "scope": "metrics",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_daily_metrics",
+   "group": "body",
+   "scope": "metrics",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_sleep",
+   "group": "body",
+   "scope": "sleep",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_scores",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "list_events",
+   "group": "records",
+   "scope": "events",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "add_event",
+   "group": "records",
+   "scope": "events",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_training_log",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_nutrition",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_weight",
+   "group": "body",
+   "scope": "weight",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "list_supplements",
+   "group": "records",
+   "scope": "supplements",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "add_supplement",
+   "group": "records",
+   "scope": "supplements",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_supplement",
+   "group": "records",
+   "scope": "supplements",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "delete_supplement",
+   "group": "records",
+   "scope": "supplements",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_lab_results",
+   "group": "records",
+   "scope": "labs",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "add_lab_results",
+   "group": "records",
+   "scope": "labs",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_lab_history",
+   "group": "records",
+   "scope": "labs",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "delete_lab_results",
+   "group": "records",
+   "scope": "labs",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "list_journal_items",
+   "group": "records",
+   "scope": "journal",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "log_journal",
+   "group": "records",
+   "scope": "journal",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "delete_journal_entry",
+   "group": "records",
+   "scope": "journal",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_journal",
+   "group": "records",
+   "scope": "journal",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "analyze_journal",
+   "group": "records",
+   "scope": "journal",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "update_event",
+   "group": "records",
+   "scope": "events",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_exercise_rules",
+   "group": "training",
+   "scope": "exercises",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "set_exercise_rule",
+   "group": "training",
+   "scope": "exercises",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_reminders",
+   "group": "body",
+   "scope": "reminders",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "dismiss_reminder",
+   "group": "body",
+   "scope": "reminders",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_sleep_goal",
+   "group": "body",
+   "scope": "sleep",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "set_sleep_goal",
+   "group": "body",
+   "scope": "sleep",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_nutrition_goals",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "set_nutrition_goals",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_training_calendar",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_training_day",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_muscle_load",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "add_custom_exercise",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "delete_custom_exercise",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_exercise",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "propose_plan",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "save_plan",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_week_plan",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "swap_exercise",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_workout",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "delete_workout",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "reschedule_day",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "swap_days",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "replan_week",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "undo_day_changes",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_healthspan",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_stress",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_strain_coach",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_sleep_coach",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_health_monitor",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_sleep_details",
+   "group": "body",
+   "scope": "sleep",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_hr_zones",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_vo2max",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_report",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_cardio",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_ecg_list",
+   "group": "body",
+   "scope": "ecg",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "search_exercises",
+   "group": "training",
+   "scope": "training",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "log_food",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "log_workout",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "log_weight",
+   "group": "body",
+   "scope": "weight",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "undo_sparky_entry",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_food_entry",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_training_set",
+   "group": "training",
+   "scope": "training",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_write_log",
+   "group": "memory",
+   "scope": "memory",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "rollback_write",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "log_metric_snapshot",
+   "group": "body",
+   "scope": "metrics",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_metric_snapshots",
+   "group": "body",
+   "scope": "metrics",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_memory",
+   "group": "memory",
+   "scope": "memory",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "update_profile_card",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "add_observation",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "set_status_items",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_meal_templates",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "create_meal_template",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_meal_template",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "log_meal_template",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "undo_meal_log",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "combine_food_entries",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "list_recipes",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_recipe",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "suggest_meals",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "create_recipe",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "update_recipe",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "log_recipe",
+   "group": "recipes",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "delete_observation",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "find_products",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "save_product",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "lookup_barcode",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "set_stores",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_weekly_specials",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_shopping_context",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "record_store_prices",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_price_history",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "remove_product",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "generate_shopping_list",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_shopping_list",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "add_shopping_items",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "mark_bought",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "remove_shopping_items",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "set_staple",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "remove_staple",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "set_pantry",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "set_pantry_auto",
+   "group": "grocery",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_diet_profile",
+   "group": "nutrition",
+   "scope": "memory",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "update_diet_profile",
+   "group": "nutrition",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_diet_constraints",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "set_diet_constraint",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "end_diet_constraint",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "get_friends_overview",
+   "group": "body",
+   "scope": "scores",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "log_water",
+   "group": "nutrition",
+   "scope": "nutrition",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "report_feedback",
+   "group": "feedback",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
+   "name": "list_feedback",
+   "group": "feedback",
+   "scope": "memory",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_training_context",
+   "group": "training",
+   "scope": "profile",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_week_review_context",
+   "group": "body",
+   "scope": "profile",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "get_playbook",
+   "group": "help",
+   "scope": "profile",
+   "writes": false,
+   "strict": true
+  }
+ ],
+ "tools_ai_parity": [
+  "get_briefing",
+  "get_profile",
+  "list_metrics",
+  "get_daily_metrics",
+  "get_sleep",
+  "get_scores",
+  "list_events",
+  "add_event",
+  "get_training_log",
+  "get_nutrition",
+  "get_weight",
+  "list_supplements",
+  "add_supplement",
+  "update_supplement",
+  "delete_supplement",
+  "get_lab_results",
+  "add_lab_results",
+  "get_lab_history",
+  "delete_lab_results",
+  "list_journal_items",
+  "log_journal",
+  "delete_journal_entry",
+  "get_journal",
+  "analyze_journal",
+  "update_event",
+  "get_exercise_rules",
+  "set_exercise_rule",
+  "get_reminders",
+  "dismiss_reminder",
+  "get_sleep_goal",
+  "set_sleep_goal",
+  "get_nutrition_goals",
+  "set_nutrition_goals",
+  "get_training_calendar",
+  "get_training_day",
+  "get_muscle_load",
+  "add_custom_exercise",
+  "delete_custom_exercise",
+  "get_exercise",
+  "propose_plan",
+  "save_plan",
+  "get_week_plan",
+  "swap_exercise",
+  "update_workout",
+  "delete_workout",
+  "reschedule_day",
+  "swap_days",
+  "replan_week",
+  "undo_day_changes",
+  "get_healthspan",
+  "get_stress",
+  "get_strain_coach",
+  "get_sleep_coach",
+  "get_health_monitor",
+  "get_sleep_details",
+  "get_hr_zones",
+  "get_vo2max",
+  "get_report",
+  "search_exercises",
+  "log_food",
+  "log_workout",
+  "log_weight",
+  "undo_sparky_entry",
+  "update_food_entry",
+  "update_training_set",
+  "get_write_log",
+  "rollback_write",
+  "log_metric_snapshot",
+  "get_metric_snapshots",
+  "get_memory",
+  "update_profile_card",
+  "add_observation",
+  "set_status_items",
+  "get_meal_templates",
+  "create_meal_template",
+  "update_meal_template",
+  "log_meal_template",
+  "undo_meal_log",
+  "combine_food_entries",
+  "list_recipes",
+  "get_recipe",
+  "suggest_meals",
+  "create_recipe",
+  "update_recipe",
+  "log_recipe",
+  "delete_observation",
+  "find_products",
+  "save_product",
+  "lookup_barcode",
+  "set_stores",
+  "get_weekly_specials",
+  "get_shopping_context",
+  "record_store_prices",
+  "get_price_history",
+  "remove_product",
+  "generate_shopping_list",
+  "get_shopping_list",
+  "add_shopping_items",
+  "mark_bought",
+  "remove_shopping_items",
+  "set_staple",
+  "remove_staple",
+  "set_pantry",
+  "set_pantry_auto",
+  "get_diet_profile",
+  "update_diet_profile",
+  "get_diet_constraints",
+  "set_diet_constraint",
+  "end_diet_constraint",
+  "log_water",
+  "report_feedback",
+  "list_feedback",
+  "get_training_context",
+  "get_week_review_context",
+  "get_playbook"
+ ],
+ "CONSENT_EXCLUDED": [
+  "get_cardio",
+  "get_ecg_list",
+  "get_friends_overview"
+ ]
+}

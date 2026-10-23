@@ -21,6 +21,8 @@ SDNN for each reading and the ECG R peaks / heart rate / RMSSD are computed on i
   user nothing is stored and every answer says metrics_enabled false, so the app keeps its anchors and sends them later
   (an older server without the field counts as off, so the app sends none). A batch that changed days queues the score
   recompute from the earliest of them (sync/refresh.queue_scores, the queue sync-refresh-run works through).
+- The sync engine's fields (sources, samples, categories, workouts, stats, range, range_done, runs, phase, tz; flag
+  apple_sync_engine): rawdata/engine.py. While the flag is on, deleted[] also removes engine samples.
 The batch fields are written one after the other by their own writer (WRITERS); a field never depends on another.
 """
 import base64
@@ -32,6 +34,7 @@ from psycopg.types.json import Jsonb
 from ..profile import consent
 from ..rollout import flags
 from . import ecg as E
+from . import engine as EN
 from . import hk_types
 from . import quantities as Q
 from . import store
@@ -130,13 +133,27 @@ def _write_water(conn, user_id: int, batch: dict, ctx: dict) -> dict:
     return {"water": n, "skipped": skip}
 
 
+def _changed(ctx: dict, d) -> None:
+    if d is not None and (ctx["changed_from"] is None or d < ctx["changed_from"]):
+        ctx["changed_from"] = d
+
+
 def _write_quantities(conn, user_id: int, batch: dict, ctx: dict) -> dict:
     groups = batch.get("quantities") or []
     if not ctx["metrics_enabled"] or not (groups or ctx["deleted"]):
         return {}
     r = Q.ingest(conn, user_id, groups, ctx["deleted"], _tz(conn, user_id))
-    ctx["changed_from"] = r["changed_from"]
+    _changed(ctx, r["changed_from"])
     return {"metrics": r["metrics"], "skipped": r["skipped"], "dropped": r["dropped"], "deleted": r["deleted"]}
+
+
+def _write_engine(conn, user_id: int, batch: dict, ctx: dict) -> dict:
+    """The sync engine's fields (rawdata/engine.py); with the flag on also the engine's deletions."""
+    if not ctx["engine"] or not (ctx["uses_engine"] or ctx["deleted"]):
+        return {}
+    r = EN.write(conn, user_id, batch, _tz(conn, user_id), ctx["deleted"])
+    _changed(ctx, r.pop("changed_from"))
+    return r
 
 
 def _write_deleted(conn, user_id: int, batch: dict, ctx: dict) -> dict:
@@ -154,8 +171,10 @@ def _write_deleted(conn, user_id: int, batch: dict, ctx: dict) -> dict:
     return {"deleted": n}
 
 
-WRITERS = (_write_heartbeats, _write_ecgs, _write_deleted, _write_water, _write_quantities)
-COUNTS = ("heartbeats", "ecgs", "water", "metrics", "deleted", "skipped", "dropped")
+# the engine before quantities: it removes deleted samples of every type (and marks their days), quantities then finds none
+WRITERS = (_write_heartbeats, _write_ecgs, _write_deleted, _write_water, _write_engine, _write_quantities)
+COUNTS = ("heartbeats", "ecgs", "water", "metrics", "deleted", "skipped", "dropped",
+          "samples", "workouts", "buckets", "removed", "runs")
 
 
 def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None = None) -> dict:
@@ -169,21 +188,34 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
                         (user_id, batch["batch_id"])).fetchone()
     if done is not None:
         return {**done["counts"], "duplicate_batch": True, **flags_now}
+    engine, uses = EN.enabled(conn, user_id), EN.uses_engine(batch)
+    if uses and not engine:
+        raise EN.Refused("engine_disabled")
     try:
         Q.check_groups(batch.get("quantities") or [])
+        if uses:
+            EN.check(batch, set(EN.accepted_types(conn, user_id, flags_now["water_enabled"], flags_now["metrics_enabled"])))
     except ValueError as e:
         raise IngestError(str(e)) from e
+    if uses:
+        EN.rate_limit(conn, user_id, batch.get("phase"), size)
     # Decode every ECG first: a bad recording rejects the whole batch before anything is written
     ctx = {**flags_now, "ecgs": [(it, _ecg(it)) for it in batch.get("ecgs") or []],
-           "deleted": [str(u) for u in batch.get("deleted") or []], "changed_from": None}
+           "deleted": [str(u) for u in batch.get("deleted") or []], "changed_from": None,
+           "engine": engine, "uses_engine": uses}
     counts = dict.fromkeys(COUNTS, 0)
-    for write in WRITERS:
-        for k, v in write(conn, user_id, batch, ctx).items():
-            counts[k] += v
-    conn.execute("""INSERT INTO rawdata_uploads (user_id, batch_id, device, app_version, counts, bytes)
-                    VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+    try:
+        for write in WRITERS:
+            for k, v in write(conn, user_id, batch, ctx).items():
+                counts[k] += v
+    except EN.BadBatch as e:   # found while writing (e.g. an unknown range): nothing of the batch is kept
+        conn.rollback()
+        raise IngestError(str(e)) from e
+    conn.execute("""INSERT INTO rawdata_uploads (user_id, batch_id, device, app_version, counts, bytes, phase, tz)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
                  (user_id, batch["batch_id"], (batch.get("device") or "")[:80] or None,
-                  (batch.get("app_version") or "")[:40] or None, Jsonb(counts), size))
+                  (batch.get("app_version") or "")[:40] or None, Jsonb(counts), size, batch.get("phase"),
+                  batch.get("tz") or None))
     conn.commit()
     if ctx["changed_from"] is not None:
         from ..sync import refresh
@@ -194,7 +226,8 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
 def status(conn: psycopg.Connection, user_id: int) -> dict:
     """What the app has uploaded so far (shown on its sync page and in the admin's checks), and what the server takes:
     water_enabled, metrics_enabled + metric_types (the HealthKit types of quantities[]; the app reads only these),
-    sync_center (the app shows its sync center)."""
+    sync_center (the app shows its sync center), engine (the sync engine: enabled, mode, accepted fields, encodings,
+    types and limits; rawdata/engine.describe)."""
     from .. import water
     r = conn.execute("""SELECT (SELECT count(*) FROM heartbeat_series WHERE user_id = %(u)s AND origin = 'app') AS heartbeats,
                                (SELECT count(*) FROM ecg_recordings WHERE user_id = %(u)s AND origin = 'app') AS ecgs,
@@ -202,9 +235,9 @@ def status(conn: psycopg.Connection, user_id: int) -> dict:
                                (SELECT count(*) FROM hk_samples WHERE user_id = %(u)s) AS metrics,
                                (SELECT max(received_at) FROM rawdata_uploads WHERE user_id = %(u)s) AS last_upload_at""",
                      {"u": user_id}).fetchone()
-    on = metrics_enabled(conn, user_id)
+    on, water_on = metrics_enabled(conn, user_id), water.enabled(conn, user_id)
     return {"heartbeats": r["heartbeats"], "ecgs": r["ecgs"], "water": r["water"], "metrics": r["metrics"],
-            "water_enabled": water.enabled(conn, user_id), "metrics_enabled": on,
+            "water_enabled": water_on, "metrics_enabled": on, "engine": EN.describe(conn, user_id, water_on, on),
             "metric_types": [t.hk for t in hk_types.HK_TYPES] if on else [],
             "sync_center": flags.enabled(conn, user_id, "sync_center"),
             "last_upload_at": r["last_upload_at"].isoformat(timespec="seconds") if r["last_upload_at"] else None}

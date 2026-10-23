@@ -20,7 +20,9 @@
 | D3 | 原始样本存新表还是复用 `shortcut_samples` / `export_samples` | 新表 `hk_samples`（按 HealthKit UUID 去重、能处理删除），旧表不动 |
 | D4 | `app` 来源的优先级 | 影子期低于 `ow` 且不参与选值；切换后高于 `ow`（第 3.2.3 节） |
 | D5 | 回退期 / 只读期多长 | 切换后 30 天回退期（OW 照常运行，只是没人往里写），再 60 天只读，然后下线 |
-| D6 | 新增类型（站立、日照、音频暴露、步行稳定性等）要不要改同意书 | 待查：同意书第 1 节写的是「心率、心率变异性、睡眠、步数……等每日指标」，音频暴露这类是否需要点名，请维护者判断；需要的话按 `docs/rollout.md`「同意书跟着开关走」做 |
+| D6 | 新增类型（站立、日照、音频暴露、步行稳定性等）要不要改同意书 | **已定（2026-10-23）**：维护者认为同意书第 1 节「心率、心率变异性、睡眠、步数……等每日指标」已经涵盖同步中心补的类型（站立、锻炼分钟、日照、体能消耗、睡眠手腕温度、环境 / 耳机音量、步行平均心率、上下楼速度、步行稳定性），不改同意书，iOS 1.0.7 照常收。同步引擎注册表里更敏感的类型（血压、血糖等）在 `apple_sync_engine` 开给内测组之前再确认一次 |
+
+D1–D5：维护者 2026-10-23 决定按本文排期，先按上表的建议做，之后可以调整。
 
 ---
 
@@ -212,6 +214,14 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 
 代码放新模块 `body_engine/src/body_engine/healthkit/`：`registry.py`（类型表 + 单位换算，和 app 的 JSON 比对）、`ingest.py`（扩展现有 `rawdata/ingest.py`）、`store.py`、`derive.py`、`samples.py`（读取接口）、`shadow.py`、`params.py`（阈值和出处）。
 
+> **S1 已实现（迁移 690，开关 `apple_sync_engine`）**，和下文不同的地方以代码为准：
+> - 没有新建 `healthkit/` 模块：注册表在第 1 阶段的 `rawdata/hk_types.py`（`ENGINE_TYPES`，包含第 1 阶段的 `HK_TYPES`），接收在 `rawdata/engine.py`，接口和模型仍是 `rawdata/api.py`、`rawdata/ingest.py`。
+> - `hk_samples` 沿用迁移 675 的表，`type` 是 HealthKit 标识符（不是指标名），加了 `source_id`、`value_text`、`tz`、`meta`、`origin`、`range_id`、`batch_id` 列；训练也存在这里（`value` = 分钟）。
+> - 限流不另建 `ingest_usage`：直接按 `rawdata_uploads`（已有 `(user_id, received_at)` 索引）算每分钟批数和每个 UTC 日的字节数；只限带引擎字段的批次，旧版 app 不受影响。
+> - 按范围重新同步：每页带 `range: {id, start, end, types}`，最后 `range_done: id`；删的是范围开始前收到、这次没再出现的样本（范围进行中增量上传的新样本不会被误删）。
+> - `mode` 目前只有 `ow` / `shadow`；`app` 模式和 `apple_sync_primary` 开关留给 S5。
+> - 第 1 阶段的直传类型（站立、锻炼分钟……）经 `samples[]` 上传时，日值照旧立即重算、`app_types_pause` 照旧生效；其他类型只记 `hk_dirty_days`，日值 / 睡眠 / 训练由 S2 派生。
+
 #### 3.2.1 接口
 
 沿用 `POST /v1/ingest/healthkit`，`IngestIn` 加可选字段（旧版 app 不受影响）：
@@ -236,7 +246,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 
 （数值都是示例。）`GET /v1/ingest/healthkit` 的回答加 `engine: {accepts: [...], mode: "ow|shadow|app"}`：app 只发服务器声明接受的字段，并按 `mode` 决定开不开 OW SDK（第 5 节）。
 
-#### 3.2.2 原始样本存哪里（迁移号待定）
+#### 3.2.2 原始样本存哪里（迁移 690）
 
 `NNN_healthkit_samples.sql`（待定）：
 
@@ -503,4 +513,4 @@ GRANT SELECT ON hk_samples, hk_stats TO grafana_ro;   -- 如果 Grafana 要读
    - 夏令时用每个时刻的固定偏移（同 `ow._local`）。
    - 半小时时区靠 15 分钟桶。
 8. **版本门槛**：TestFlight 用户不一定马上更新；按 `app_version` 拒绝切换，旧版本用户继续走 OW 直到更新。
-9. **同意书**：新增类型是否在同意书范围内，见 D6（待查）。
+9. **同意书**：新增类型是否在同意书范围内，见 D6（已定：同步中心的类型已涵盖；血压、血糖等开给内测组前再确认）。

@@ -10,6 +10,7 @@ import psycopg
 
 from .. import auth, queries, sparky_client
 from ..avatars import urls as avatar_urls
+from ..friends import remarks
 from ..config import settings
 from ..i18n import L
 from ..importers import ow as ow_imp, shortcut as sc_imp
@@ -71,9 +72,12 @@ def viewable(conn, viewer: dict) -> list[dict]:
         if scopes:
             out.append({"id": r["owner_id"], "display_name": r["display_name"], "self": False, "scopes": sorted(scopes)})
     avatars = avatar_urls.urls_for(conn, viewer["id"], [p["id"] for p in out])   # only people who share a circle with the viewer
+    nick = remarks.for_viewer(conn, viewer["id"], [p["id"] for p in out])   # my private remarks (#212), circle co-members only
     for p in out:
         if p["id"] in avatars:
             p["avatar"] = avatars[p["id"]]
+        if p["id"] in nick:
+            p["remark"] = nick[p["id"]]
     return out
 
 

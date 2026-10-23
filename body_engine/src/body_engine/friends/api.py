@@ -9,7 +9,7 @@ from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
 from ..web import login_limit
 from ..images import store as images
-from . import cards, codes, leaderboard, params as P, store
+from . import cards, codes, leaderboard, params as P, remarks, store
 
 # Every endpoint is behind the `friends` feature flag (docs/rollout.md): 404 while it is off for the caller
 router = APIRouter(prefix="/v1/friends", tags=["friends"], dependencies=[Depends(flags.require(auth.CIRCLES_FLAG))])
@@ -68,6 +68,11 @@ class NudgeIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     to: int
     kind: str = Field(max_length=10)
+
+
+class RemarkIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    remark: str | None = Field(default=None, max_length=200)   # params.REMARK_MAX after trimming; empty / null clears
 
 
 class ScopesIn(BaseModel):
@@ -197,3 +202,26 @@ def leaderboard_board(board: str = "body", conn=Depends(get_conn), viewer=Depend
     if board not in P.BOARDS:
         raise HTTPException(400, f"排行榜只能是 {', '.join(P.BOARDS)}")
     return leaderboard.board(conn, viewer["id"], board)
+
+
+# ---------------------------------------------------------------- private remarks (#212, flag member_remarks)
+REMARKS = [Depends(flags.require(remarks.FLAG))]
+
+
+def _remark(fn, *args):
+    try:
+        return fn(*args)
+    except remarks.RemarkError as e:
+        raise HTTPException(e.status, str(e))
+
+
+@router.put("/remarks/{target_id}", dependencies=REMARKS)
+def set_remark(target_id: int, body: RemarkIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """What I call a circle co-member (only I see it); an empty remark clears it. 404 when we share no circle."""
+    return _remark(remarks.set_remark, conn, _self(viewer, "me"), target_id, body.remark)
+
+
+@router.delete("/remarks/{target_id}", status_code=204, dependencies=REMARKS)
+def clear_remark(target_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    _remark(remarks.set_remark, conn, _self(viewer, "me"), target_id, None)
+    return Response(status_code=204)

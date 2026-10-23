@@ -351,3 +351,24 @@ def test_resync_stale_phone_job_frees_the_slot(client, users, dsn):
     st = client.get("/v1/ingest/resync", headers=H(tok["c"])).json()
     assert st["stale"] is True and st["active"] is False
     assert client.post("/v1/ingest/resync", json={"days": 90}, headers=H(tok["c"])).json()["accepted"] is True
+
+
+def test_resync_ow_client_failure_fails_the_job_not_the_run(client, users, dsn, monkeypatch):
+    """OWClient() raising (no OW API key): the job ends in error with the reason, sync_refresh is idle again and
+    sync-refresh-run returns normally, instead of raising out of it with the job stuck queued."""
+    from body_engine import ow_client
+    ids, tok = users
+    flag_on(dsn)
+    client.put("/v1/ingest/resync", json={"phone_done": True}, headers=H(tok["c"])).raise_for_status()   # c's 90-day job
+
+    def no_key(*a, **kw):
+        raise ow_client.OWError("no OW API key")
+    monkeypatch.setattr(ow_client, "OWClient", no_key)
+    with conn_of(dsn) as conn:
+        out = refresh.run_queued(conn, ids["c"])
+        assert out == [{"user_id": ids["c"], "resync": {"status": "error", "error": "no OW API key"}}]
+        row = conn.execute("SELECT status, error FROM sync_resync WHERE user_id = %s", (ids["c"],)).fetchone()
+        assert row["status"] == "error" and row["error"] == "no OW API key"
+        assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (ids["c"],)).fetchone()["status"] == "idle"
+    st = client.get("/v1/ingest/resync", headers=H(tok["c"])).json()
+    assert st["status"] == "error" and st["active"] is False

@@ -31,7 +31,7 @@ from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
-from . import params as P, store
+from . import params as P, remarks, store
 from .store import FriendsError
 
 LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
@@ -278,9 +278,11 @@ def _previews(conn, viewer_id: int, ids: list[int]) -> dict[int, list[dict]]:
                 WHERE c.post_id = ANY(%s) AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}) t
                 WHERE rn <= %s ORDER BY post_id, id""", (ids, P.COMMENT_PREVIEW)).fetchall()
     avatars = avatar_store.urls_for(conn, viewer_id, [r["user_id"] for r in rows])
+    nick = remarks.for_viewer(conn, viewer_id, [r["user_id"] for r in rows])
     for r in rows:
         out.setdefault(r["post_id"], []).append({"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"],
-                                                                         "avatar": avatars.get(r["user_id"])}, "body": r["body"]})
+                                                                         "avatar": avatars.get(r["user_id"]),
+                                                                         "remark": nick.get(r["user_id"])}, "body": r["body"]})
     return out
 
 
@@ -298,6 +300,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
     cur = _cursor(before)
     users = {r["id"]: r["display_name"] for r in conn.execute("SELECT id, display_name FROM users WHERE id = ANY(%s)", (authors,))}
     avatars = avatar_store.urls_for(conn, viewer_id, authors)
+    nick = remarks.for_viewer(conn, viewer_id, authors)
     out: list[dict] = []
     exhausted = False
     while len(out) < limit and not exhausted:
@@ -314,7 +317,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
                 continue
             lk = likes.get(r["id"]) or {}
             out.append({"id": r["id"], "date": r["date"], "user": {"id": r["user_id"], "name": users.get(r["user_id"], ""), "self": r["user_id"] == viewer_id,
-                                                                             "avatar": avatars.get(r["user_id"])},
+                                                                             "avatar": avatars.get(r["user_id"]), "remark": nick.get(r["user_id"])},
                         **_circle_fields(_circles_between(conn, viewer_id, r["user_id"])), **body,
                         "likes": {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}, "comment_count": comments.get(r["id"], 0),
                         "preview_comments": previews.get(r["id"], [])})
@@ -378,8 +381,9 @@ def comments(conn: psycopg.Connection, uid: int, post_id: int) -> list[dict]:
             WHERE c.post_id = %s AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}
             ORDER BY c.id DESC LIMIT %s""", (post_id, P.COMMENTS_SHOWN)).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [r["user_id"] for r in rows])
+    nick = remarks.for_viewer(conn, uid, [r["user_id"] for r in rows])
     return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid,
-                                     "avatar": avatars.get(r["user_id"])},
+                                     "avatar": avatars.get(r["user_id"]), "remark": nick.get(r["user_id"])},
              "body": r["body"], "created_at": r["created_at"]} for r in reversed(rows)]
 
 
