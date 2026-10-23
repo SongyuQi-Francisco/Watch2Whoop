@@ -69,7 +69,7 @@ class FakeSource implements RawSource {
   }
 
   @override
-  Future<void> reset() async => _pos.clear();
+  Future<void> reset({String? anchorSet}) async => _pos.clear();
 }
 
 /// Records the try counter already stored when the native sheet was requested.

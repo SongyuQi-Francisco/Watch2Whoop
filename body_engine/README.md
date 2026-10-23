@@ -244,7 +244,7 @@ uv run body-engine hrv-compare --user-id 1 --out ../health_data/reports/hrv-comp
 ```
 - `rawdata/hrv.py` (alias of `openbodyscore.hrv`): RR from beat times, drops gaps / < 300 or > 2000 ms / > 25% from the series median; RMSSD needs ≥ 20 clean successive differences. Recomputed SDNN vs Apple's SDNN: r ≈ 0.9 on about 2,000 real readings from one person.
 - The admin history import (`import-apple-zip`) reads the beat lists and `electrocardiograms/*.csv` in the same pass. App copies (below) replace export copies of the same readings (HealthKit has full-precision beat times).
-- Scoring: `scores/params.HRV_KIND` = `sdnn` (default) or `rmssd` (heartbeat_series only, never mixed). Switch only after the user has read `hrv-compare`; then bump `ALGO_VERSION` and recompute everything.
+- Scoring: HRV kind per user (#117, `scores/hrv_kind.py`): `scores/params.HRV_KIND` = `sdnn` is the default for everyone; `rmssd` (heartbeat_series only) only for a user switched on with `body-engine hrv-kind --user-id N --enable-rmssd` (table `score_settings`, migration 670; no row = off) **and** with enough beat data (`RMSSD_COVERAGE_DAYS` / `RMSSD_MIN_NIGHTS` / `RMSSD_MAX_GAP_DAYS`; once on RMSSD, an upload gap does not switch back). Never mixed: a partial run (hourly job, `--start`) keeps the stored kind, only a full `compute-scores` (nightly) switches and rewrites the whole history. An RMSSD user's night without beat data gets `hrv_missing` and no recovery. `daily_scores.hrv_kind` and `details.hrv_kind` record the kind; `ALGO_VERSION` is unchanged (the kind tells the two apart). `body-engine hrv-kind --user-id N` (no switch) prints the rule's inputs. Switch a user only after they have read `hrv-compare`.
 - `cardio/hrr.py`: HRR60 = peak in the last 2 min of a workout − heart rate 60 s after the end; valid only if the peak ≥ 75% HRmax. Written by `compute-scores` for the days it writes (from the raw heart rate it already loads).
 
 | Endpoint | Scope | Description |
@@ -265,10 +265,31 @@ the OW sync (90 days / all history).
 | Endpoint | Auth | Description |
 |---|---|---|
 | `POST /v1/ingest/healthkit` | Bearer: account token (write) or upload-only token (scope `ingest`) | One batch `{batch_id, heartbeats[{uuid, start, end, source, beats (s since the first beat), gaps}], ecgs[{uuid, start, sample_hz, voltage_b64 (int16 LE µV), classification, symptoms_status, avg_hr, device, software_version}], deleted[uuid]}`; ≤ 2 MB, ≤ 500 readings / 20 ECGs. Stored with `store.py` (RMSSD / SDNN and ECG R peaks computed on insert), origin `app`. Idempotent: known HealthKit UUIDs are skipped, a re-sent `batch_id` is answered from `rawdata_uploads`. `deleted` removes app copies the person deleted in Health. 409 `consent_required` until the person agreed to consent version `RAW_CONSENT_VERSION` (2026-10-22.1, the first that names ECGs and beat-to-beat intervals) or later; older or paper consent counts as not agreed, nothing is stored and the app retries after the new consent is confirmed on the Today page (the owner is exempt) |
-| `GET /v1/ingest/healthkit` | same | `{heartbeats, ecgs, water, water_enabled, last_upload_at}` uploaded by the app. `water_enabled` (also in every POST answer) is the `water` flag for this account: the app reads and sends `water[]` only while it is true and keeps its water anchor when a batch was skipped (#135) |
+| `GET /v1/ingest/healthkit` | same | `{heartbeats, ecgs, water, metrics, water_enabled, metrics_enabled, metric_types, sync_center, last_upload_at}` uploaded by the app. `water_enabled` (also in every POST answer) is the `water` flag for this account: the app reads and sends `water[]` only while it is true and keeps its water anchor when a batch was skipped (#135) |
 | `POST /v1/web/ingest-token` `{device}` | Today page cookie session with write | Mints the upload-only token for setup-link users (no account token in the app); a new one for the same device revokes the old one. It cannot read anything or log in to the Today page |
 
 ECG keeps its own share scope and the AI still only gets summaries. Tests: `tests/test_rawdata_ingest.py`.
+
+**Types the app reads itself** (`rawdata/hk_types.py`, the registry; `rawdata/quantities.py`, migration 675): the HealthKit
+types the Open Wearables SDK cannot read (stand time, exercise minutes, time in daylight, physical effort, sleeping wrist
+temperature, environmental / headphone sound, walking heart rate, stair speed, walking steadiness) come as
+`quantities[{type, unit, items[{uuid, start, end, value, source}]}]` in the same `POST /v1/ingest/healthkit`. The registry
+row of each type (HealthKit id, metric name, unit, `sum` / `avg`, plausible range) decides everything: raw samples go to
+`hk_samples` (deduplicated by UUID, `deleted[]` honoured), and each changed (type, local day) is made again with the Apple
+Health export import's definitions and written to `daily_metric_sources` as source `app` (`resolve_daily` picks; `app`
+ranks first for non-cumulative types). A unit other than the registry's rejects the batch (422). Sleeping wrist
+temperature also feeds the scores as raw samples (`scores/inputs.load_app_db`). Changed days queue the score recompute
+from the earliest of them (`sync/refresh.queue_scores`, done by `sync-refresh-run`). The app keeps the same registry
+(`apps/watch2whoop/lib/src/hk_types.dart`); `tests/test_sync_center.py` checks both match. Emergency stop: flag
+`app_types_pause` (on = nothing stored, `metrics_enabled: false`, the app keeps its anchors).
+
+**Forced re-sync** (flag `sync_center`, `sync/resync.py`): `POST /v1/ingest/resync {days: 1–3650 | null}` (Bearer like
+above) starts one job per user (`busy` while one runs, `throttled` within 10 minutes of the last one, 6 hours before an
+all-history one); the app re-reads Health from the range start and reports `PUT /v1/ingest/resync {phone_percent, counts,
+phone_done}`; then `sync-refresh-run` imports the range from Open Wearables again (30-day windows, 240 s per run,
+resumable) and recomputes the scores from the range start. `GET` = progress (+ the refresh status), `DELETE` = cancel
+before the server part. The job wakes the per-minute job through `sync_refresh.status = 'scores_queued'`, so no new
+trigger is needed.
 
 ## Training history (`src/body_engine/training/`)
 Workouts from the watch / iOS Shortcut and SparkyFitness strength records are merged into one training history, used by the Today page's training calendar and by the body butler when planning training. For the rules, thresholds and backfill results see system design section 16.

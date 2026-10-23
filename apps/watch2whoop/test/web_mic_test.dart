@@ -45,7 +45,7 @@ void main() {
 
   test('the feature flag keeps other flags and turns mic on', () {
     expect(kFeaturesJs, contains('Object.assign(window.Watch2WhoopFeatures||{}'));
-    expect(kFeaturesJs, contains('{mic:true}'));
+    expect(kFeaturesJs, contains('{mic:true,syncCenter:true}'));
   });
 
   test('the page reads the same flag and sends the same settings message', () {

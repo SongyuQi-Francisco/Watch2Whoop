@@ -59,11 +59,14 @@ class DataTypeStatus {
 }
 
 class DataStatusReport {
-  const DataStatusReport({required this.types, this.windowDays = 7, this.owLastSampleAt, this.appUploadAt});
+  const DataStatusReport({required this.types, this.windowDays = 7, this.owLastSampleAt, this.appUploadAt, this.strength});
 
   final List<DataTypeStatus> types;
   final int windowDays;
   final DateTime? owLastSampleAt, appUploadAt;
+
+  /// Strength-training records of the last weeks by source (#210): {weeks, days, sessions: {watch, sparky, hevy}}.
+  final Map<String, Object?>? strength;
 
   int count(DataState s) => types.where((t) => t.state == s).length;
 
@@ -78,6 +81,7 @@ class DataStatusReport {
       windowDays: (j['window_days'] as num?)?.toInt() ?? 7,
       owLastSampleAt: d(ch['ow_last_sample_at']),
       appUploadAt: d(ch['app_upload_at']),
+      strength: j['strength'] is Map ? (j['strength'] as Map).map((k, v) => MapEntry('$k', v)) : null,
     );
   }
 }
