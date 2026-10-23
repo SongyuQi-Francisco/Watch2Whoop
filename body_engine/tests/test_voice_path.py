@@ -35,6 +35,11 @@ const out = {
   blockedBusy: M.micBlockedInApp(busy, app({ mic: true })),
   blockedBrowser: M.micBlockedInApp(denied, browser()),
   blockedOldApp: M.micBlockedInApp(denied, app()),
+  nativeNone: M.nativeVoice(browser()),
+  nativeOldApp: M.nativeVoice(app({ mic: true, syncCenter: true })),
+  nativeApp: M.nativeVoice(app({ mic: true, voice: { langs: ["zh", "en"], onDevice: true } })),
+  nativeEmpty: M.nativeVoice(app({ voice: { langs: [] } })),
+  nativeNoBridge: M.nativeVoice(Object.assign(browser(), { Watch2WhoopFeatures: { voice: { langs: ["en"] } } })),
 };
 M.openMicSettings(app({ mic: true }));
 M.openMicSettings(browser());
@@ -83,3 +88,11 @@ def test_chat_uses_the_shared_decision():
     js = (STATIC / "ai.js").read_text(encoding="utf-8")
     assert 'window.BodyMedia?.voicePath(asrOn()) === "record"' in js
     assert "window.BodyMedia.micBlockedInApp(err)" in js and "window.BodyMedia.openMicSettings()" in js
+
+
+def test_on_device_recognition_only_from_an_app_that_says_so():
+    """Jarvis' quick voice entry (flag jarvis_orbit) uses the app's on-device recogniser only when the app (1.0.8+) lists its
+    languages in Watch2WhoopFeatures.voice; 1.0.7 and older, browsers and a page without the app's bridge record as before."""
+    r = run_probe()
+    assert r["nativeNone"] is None and r["nativeOldApp"] is None and r["nativeEmpty"] is None and r["nativeNoBridge"] is None
+    assert r["nativeApp"] == {"langs": ["zh", "en"], "onDevice": True}

@@ -1,0 +1,158 @@
+/* Jarvis entry (issue #53, rollout flag jarvis_orbit; jarvis-entry.js). Nothing here applies with the flag off: every rule
+   is under .jv-* (made only by jarvis-entry.js), body.jv-orbit, or the chat panel's half mode (.ai-chat.jv-half, made only by
+   BodyAI.openHalf). Colours are the Today page's tokens (app.css) plus the few below; phone layout only. */
+:root {
+  --jv-key-bg: #ffffff;
+  --jv-key-shadow: 0 1px 2px rgba(0, 0, 0, .08), 0 6px 18px rgba(0, 0, 0, .10);
+  --jv-soft-shadow: 0 0 0 1px rgba(0, 0, 0, .07), 0 6px 16px rgba(0, 0, 0, .10);
+  --jv-fan-scrim: rgba(246, 246, 248, .86);
+  --jv-line: rgba(0, 0, 0, .10);
+  --jv-glow: rgba(17, 17, 19, .30);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --jv-key-bg: #232326;
+    --jv-key-shadow: 0 0 0 1px rgba(255, 255, 255, .07), 0 8px 22px rgba(0, 0, 0, .6);
+    --jv-soft-shadow: 0 0 0 1px rgba(255, 255, 255, .09), 0 6px 16px rgba(0, 0, 0, .6);
+    --jv-fan-scrim: rgba(0, 0, 0, .74);
+    --jv-line: rgba(255, 255, 255, .12);
+    --jv-glow: rgba(244, 244, 246, .35);
+  }
+}
+
+/* ---------- the key: a 56 pt circle in the middle of the dock, 18 pt above its top edge, clear of the tabs ---------- */
+body.jv-orbit { --ask-h: 50px; }   /* the toast, 「回到今天」 and the pick bar float above the raised key */
+.jv-row { position: relative; height: 44px; }
+.dock.viewing-other .jv-row { display: none; }   /* no Jarvis on someone else's pages, as the pill */
+.jv {
+  position: absolute; left: 50%; top: -18px; z-index: 2; width: 56px; height: 56px; margin-left: -28px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--jv-key-bg); color: var(--text); box-shadow: var(--jv-soft-shadow);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  transition: transform .16s var(--ease), background-color .2s, color .2s;
+}
+.jv.pressed { transform: scale(.93); }
+.jv-ic { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; transition: opacity .2s, transform .3s var(--ease); }
+.jv-ic svg { width: 26px; height: 26px; }
+.jv-ic-x, .jv-ic-mic { opacity: 0; transform: rotate(-90deg) scale(.6); }
+.jv.open .jv-ic-main { opacity: 0; transform: rotate(90deg) scale(.6); }
+.jv.open .jv-ic-x { opacity: 1; transform: none; }
+.jv.rec { background: var(--bad); color: #fff; }
+.jv.rec .jv-ic-main, .jv.rec .jv-ic-x { opacity: 0; }
+.jv.rec .jv-ic-mic { opacity: 1; transform: none; }
+.jv-ring { position: absolute; left: -10px; top: -10px; width: 76px; height: 76px; pointer-events: none; overflow: visible; fill: none; }
+.jv-ring .trk { stroke: var(--jv-line); stroke-width: 1.2; }
+.jv-ring .swp { stroke: var(--text); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 219.91; stroke-dashoffset: 219.91; opacity: 0; }
+.jv-ring .hold { stroke: var(--text-2); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 219.91; stroke-dashoffset: 219.91; }
+.jv.rec .jv-ring .trk { stroke: transparent; }
+.jv-comet { position: absolute; left: -10px; top: -10px; width: 76px; height: 76px; pointer-events: none; opacity: 0; }
+.jv-comet::after { content: ""; position: absolute; left: 50%; top: -.5px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: var(--text); box-shadow: 0 0 10px 3px var(--jv-glow); }
+.jv-halo { position: absolute; left: 50%; top: -18px; z-index: 1; width: 56px; height: 56px; margin-left: -28px; border-radius: 50%; background: var(--bad-soft); opacity: 0; transition: opacity .2s; pointer-events: none; }
+.jv-halo.on { opacity: 1; }
+.dock.jv-dim .tabbar { opacity: .25; transition: opacity .2s; }
+.jv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+
+/* ---------- tap: the ring menu ---------- */
+.jv-scrim { position: fixed; inset: 0; z-index: 11; background: var(--jv-fan-scrim); opacity: 0; }   /* under the dock (12) */
+.jv-fan { position: fixed; inset: 0; z-index: 13; pointer-events: none; }
+.jv-key {
+  pointer-events: auto; position: fixed; width: 52px; height: 52px; margin: -26px 0 0 -26px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--jv-key-bg); color: var(--text); box-shadow: var(--jv-key-shadow); display: grid; place-items: center; opacity: 0;
+}
+.jv-key svg { width: 22px; height: 22px; pointer-events: none; }
+.jv-key .lbl { position: absolute; top: 57px; left: 50%; transform: translateX(-50%); font-size: 11.5px; font-weight: 650; white-space: nowrap; color: var(--text); opacity: 0; pointer-events: none; }
+.jv-key:active { background: var(--surface-2); }
+
+/* ---------- hold: voice input (hold / locked / final / review) ---------- */
+.jv-vscrim { position: fixed; inset: 0; z-index: 11; background: var(--jv-fan-scrim); opacity: 0; transition: opacity .2s; pointer-events: none; }
+.jv-vscrim.on { opacity: 1; }
+.jv-vscrim.tap { pointer-events: auto; }
+.jv-vpanel {
+  position: fixed; left: max(16px, env(safe-area-inset-left)); right: max(16px, env(safe-area-inset-right)); z-index: 45;
+  background: var(--sheet); border-radius: 24px; padding: 14px 16px 12px; box-shadow: 0 10px 40px rgba(0, 0, 0, .18), 0 0 0 1px var(--hair);
+  opacity: 0; transform: translateY(8px); transition: opacity .18s, transform .22s var(--ease);
+}
+.jv-vpanel.on { opacity: 1; transform: none; }
+.jv-vpanel.review { top: calc(env(safe-area-inset-top) + 64px); bottom: auto; }   /* clear of the keyboard when the text is edited */
+.jv-vp-top { display: flex; align-items: center; gap: 8px; font-weight: 650; }
+.jv-vp-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); animation: jv-blink 1s ease-in-out infinite; }
+.jv-vpanel.final .jv-vp-dot, .jv-vpanel.review .jv-vp-dot { background: var(--text-3); animation: none; }
+@keyframes jv-blink { 50% { opacity: .3; } }
+.jv-vp-lang { margin-left: auto; height: 26px; border: 0; border-radius: 999px; padding: 0 10px; background: var(--in-sheet); font-size: 12px; font-weight: 650; color: var(--text-2); }
+.jv-vpanel.hold .jv-vp-lang { pointer-events: none; }   /* a holding finger cannot tap: switch when locked */
+.jv-vp-time { margin-left: auto; color: var(--text-2); font-weight: 600; min-width: 34px; text-align: right; }
+.jv-vp-lang:not([hidden]) + .jv-vp-time { margin-left: 0; }
+.jv-wave { display: flex; align-items: center; gap: 3px; height: 34px; margin: 10px 0 8px; }
+.jv-wave i { flex: 1; height: 100%; border-radius: 2px; background: var(--text); transform: scaleY(.06); opacity: .85; }
+.jv-vpanel.z-cancel .jv-wave i { background: var(--text-3); }
+.jv-vp-cap { margin: 0; min-height: 46px; max-height: 132px; overflow-y: auto; font-size: 17px; line-height: 1.45; font-weight: 500; overflow-wrap: anywhere; }
+.jv-vp-cap .pend { color: var(--text-3); }
+.jv-vp-cap:empty::before { content: attr(data-empty); color: var(--text-3); font-size: 14px; font-weight: 400; }
+.jv-vp-edit { width: 100%; margin: 10px 0 0; min-height: 84px; max-height: 40vh; font-size: 17px; line-height: 1.45; resize: none; background: var(--in-sheet); }
+.jv-vp-hint { margin: 8px 0 0; text-align: center; font-size: 13px; color: var(--text-2); font-weight: 600; }
+.jv-vpanel.z-cancel .jv-vp-hint { color: var(--bad); }
+.jv-vp-acts { display: flex; gap: 8px; margin-top: 10px; }
+.jv-vp-acts button { flex: 1; min-height: 44px; border: 0; border-radius: 14px; background: var(--in-sheet); font-weight: 650; font-size: 15px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.jv-vp-acts .pri { background: var(--text); color: var(--bg); }
+.jv-vp-acts svg { width: 18px; height: 18px; }
+.jv-vt {
+  position: fixed; z-index: 45; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 50%; background: var(--sheet); color: var(--text-2);
+  box-shadow: var(--jv-key-shadow); display: grid; place-items: center; transition: background-color .15s, color .15s;
+}
+.jv-vt svg { width: 22px; height: 22px; }
+.jv-vt .lbl { position: absolute; bottom: 66px; left: 50%; transform: translateX(-50%); white-space: nowrap; font-size: 12px; font-weight: 650; color: var(--text-2); }
+.jv-vt.hot.jv-vt-cancel { background: var(--bad); color: #fff; }
+.jv-vt.hot.jv-vt-lock { background: var(--text); color: var(--bg); }
+.jv-vt.hot .lbl { color: var(--text); }
+
+/* ---------- the half sheet: the chat panel (ai.js) with the class "jv-half" ---------- */
+.ai-half-scrim { position: fixed; inset: 0; z-index: 24; background: var(--scrim); opacity: 0; transition: opacity .22s; }
+.ai-half-scrim.on { opacity: 1; }
+.ai-chat.jv-half {
+  top: auto; max-height: 80vh; max-height: 80dvh; background: var(--sheet); border-radius: 24px 24px 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, .14); transform: translateY(100%); transition: transform .3s var(--ease);
+}
+.ai-chat.jv-half.open { transform: none; }
+.ai-chat.jv-to-full { transition: none; }
+.ai-chat.jv-half > :is(.ai-grab, .ai-half-head, .ai-quicklog, .ai-log, .ai-thumbs, .ai-rec, .ai-composer) { align-self: stretch; width: auto; max-width: none; }
+.ai-chat.jv-half :is(.panel-head, #ai-quota, .ai-switcher, .ai-quick-row, .ai-quick, .ai-welcome, #ai-photo, #ai-video, #ai-usage) { display: none !important; }
+.ai-chat.jv-half .ai-grab { padding: 8px 0 2px; touch-action: none; }
+.ai-chat.jv-half .ai-grab i { display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--surface-2); margin: 0 auto; }
+.ai-chat.jv-half .ai-half-head { display: flex; align-items: center; gap: 8px; padding: 4px 14px 8px 20px; touch-action: none; }
+.ai-chat.jv-half .ai-half-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 17px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ai-chat.jv-half .ai-half-head .close { width: 32px; height: 32px; flex: none; background: var(--in-sheet); }
+.ai-more { flex: none; height: 32px; border: 0; border-radius: 999px; padding: 0 10px 0 12px; background: var(--in-sheet); color: var(--text); font-size: 13px; font-weight: 650; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.ai-more svg { width: 14px; height: 14px; }
+.ai-chat.jv-half .ai-log { flex: 0 1 auto; min-height: 0; padding: 4px max(18px, env(safe-area-inset-right)) 12px max(18px, env(safe-area-inset-left)); }
+.ai-chat.jv-half .ai-msg.assistant, .ai-chat.jv-half .ai-card, .ai-chat.jv-half .ai-confirm { background: var(--in-sheet); }
+.ai-quicklog { padding: 2px 20px 8px; }
+.ai-quicklog-l { font-size: 12px; color: var(--text-2); font-weight: 650; margin: 2px 2px 8px; }
+.ai-quicklog-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-quicklog .ai-q { height: auto; min-height: 34px; padding: 6px 14px; border: 0; background: var(--in-sheet); white-space: normal; text-align: left; }
+.ai-chat.jv-half .ai-composer {
+  display: flex; align-items: center; gap: 8px; width: auto; margin: 0; border: 0; border-top: 1px solid var(--hair); border-radius: 0; box-shadow: none;
+  background: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+  padding: 10px max(14px, env(safe-area-inset-right)) calc(env(safe-area-inset-bottom) + 12px) max(14px, env(safe-area-inset-left));
+}
+.ai-chat.jv-half .ai-composer .input { flex: 1; min-width: 0; min-height: 42px; padding: 10px 14px; border-radius: 21px; background: var(--in-sheet); }
+.ai-chat.jv-half #ai-mic { order: -1; width: 42px; height: 42px; background: var(--in-sheet); color: var(--text); }
+.ai-chat.jv-half #ai-mic svg { width: 20px; height: 20px; }
+.ai-chat.jv-half #ai-send { width: 42px; height: 42px; min-height: 42px; }
+#ai-mic.rec { background: var(--bad); color: #fff; }
+/* a voice message: the length in front of the recognised text (nothing of the recording is kept, so nothing to play) */
+.ai-voice-tag { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; font-size: 12px; font-weight: 600; opacity: .7; font-variant-numeric: tabular-nums; vertical-align: 1px; }
+.ai-voice-tag svg { width: 14px; height: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .jv-ic { transform: none !important; }
+  .jv-vp-dot { animation: none; }
+  .jv-vpanel { transform: none; }
+  .ai-chat.jv-half { transform: none; opacity: 0; }
+  .ai-chat.jv-half.open { opacity: 1; }
+}
+
+/* Computers are not designed for (iPhone app only); the key just sits in the side column there */
+@media (min-width: 1024px) {
+  .jv-row { order: 2; height: 64px; }
+  .jv { top: 4px; }
+  .jv-halo { top: 4px; }
+}

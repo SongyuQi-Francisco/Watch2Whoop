@@ -2,6 +2,8 @@
 /* Issue #53 step 1: the panel uses the main pages' tokens and components (app.css): --surface cards with --radius, the 13px pill
    of .chip / .seg, .btn sizes, the frosted --chrome bar of the top / tab bar, 20px side margins (safe areas included). */
 .ai-chat .panel-head h2 { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px; }
+/* The half sheet's own grab handle, title row and quick-log chips exist only in half mode (flag jarvis_orbit, jarvis-entry.css) */
+.ai-chat:not(.jv-half) :is(.ai-grab, .ai-half-head, .ai-quicklog) { display: none; }
 .ai-log { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; padding-bottom: 12px; }
 .ai-msg { max-width: 86%; padding: 11px 14px; border-radius: var(--radius); font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .ai-msg.user { align-self: flex-end; background: var(--text); color: var(--bg); border-bottom-right-radius: 6px; }

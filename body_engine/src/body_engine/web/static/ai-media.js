@@ -81,21 +81,42 @@
   }
   function openMicSettings(w = window) { w.Watch2Whoop?.postMessage("mic-settings"); }
 
-  // Hold-to-talk recorder. start() must be called from the press (user gesture); stop() -> {wav, seconds} or null (too short / silent)
+  // Where Jarvis' quick voice entry (jarvis-entry.js, flag jarvis_orbit) can recognise on the phone itself: the Watch2Whoop app
+  // 1.0.8+ sets window.Watch2WhoopFeatures.voice = {langs: ["zh", "en"], onDevice: true} (Apple's on-device recogniser, the
+  // sound never leaves the phone for it); null = no such app, the page records and the server recognises (voicePath "record").
+  function nativeVoice(w = window) {
+    const v = w.Watch2Whoop && w.Watch2WhoopFeatures?.voice;
+    return v && Array.isArray(v.langs) && v.langs.length ? v : null;
+  }
+
+  // Hold-to-talk recorder. start() (or prime(), when the recording starts a moment later, as on a long press) must be called
+  // from the press itself (user gesture: iOS lets a page start audio only there); stop() -> {wav, seconds} or null (too short /
+  // silent); level() = the loudness of the last chunk, 0–1, for a waveform.
   function recorder() {
-    let ctx = null, stream = null, node = null, chunks = [], rate = 48000, t0 = 0;
+    let ctx = null, stream = null, node = null, chunks = [], rate = 48000, t0 = 0, lvl = 0, gone = false;
     return {
+      prime() { if (!ctx) { ctx = audioContext(); ctx?.resume?.()?.catch?.(() => {}); } },
       async start() {
-        ctx = audioContext();
+        ctx = ctx || audioContext();
         await ctx.resume?.();
         stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+        if (gone) {   // cancelled while iOS was still asking for the microphone: let it go at once
+          stream.getTracks().forEach((t) => t.stop());
+          throw Object.assign(new Error("cancelled"), { name: "AbortError" });
+        }
         rate = ctx.sampleRate;
         const srcNode = ctx.createMediaStreamSource(stream);
         node = ctx.createScriptProcessor(4096, 1, 1);
-        node.onaudioprocess = (e) => { chunks.push(e.inputBuffer.getChannelData(0).slice(0)); };
+        node.onaudioprocess = (e) => {
+          const d = e.inputBuffer.getChannelData(0);
+          chunks.push(d.slice(0));
+          let s = 0; for (let i = 0; i < d.length; i += 8) s += d[i] * d[i];
+          lvl = Math.min(1, Math.sqrt(Math.sqrt(s / Math.max(1, d.length / 8))) * 2);
+        };
         srcNode.connect(node); node.connect(ctx.destination);
         t0 = performance.now();
       },
+      level() { return lvl; },
       elapsed() { return t0 ? (performance.now() - t0) / 1000 : 0; },
       async stop() {
         const seconds = this.elapsed();
@@ -113,7 +134,7 @@
         if (!pcm || seconds < 0.5 || !loud(pcm)) return null;
         return { wav: wav(pcm), seconds };
       },
-      cancel() { try { node?.disconnect(); } catch (e) { /* */ } stream?.getTracks().forEach((t) => t.stop()); chunks = []; ctx?.close?.(); },
+      cancel() { gone = true; try { node?.disconnect(); } catch (e) { /* */ } stream?.getTracks().forEach((t) => t.stop()); chunks = []; ctx?.close?.()?.catch?.(() => {}); },
     };
   }
 
@@ -170,5 +191,5 @@
     } finally { ctx.close?.(); }
   }
 
-  window.BodyMedia = { shrinkImage, recorder, micSupported, voicePath, micBlockedInApp, openMicSettings, videoFrames, videoAudio, MAX_SECONDS };
+  window.BodyMedia = { shrinkImage, recorder, micSupported, voicePath, nativeVoice, micBlockedInApp, openMicSettings, videoFrames, videoAudio, wav, RATE, MAX_SECONDS };
 })();

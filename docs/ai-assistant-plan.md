@@ -497,3 +497,16 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 **误伤怎么办**：用户补一句和健康的关联（命中词表就放行），或换个说法重发；词表在 `scope_guard_params.py`，加词即可。**统计**：每次被规则拦下写一行 `assistant_audit`（`tool = scope_guard`，`args = {"category": …}`，不存消息内容），`body-engine ai-fallback status` 每人一列「被拦」（本月）；模型自己婉拒的没法计数。
 
 **灰度**：`jarvis_scope_guard` 默认关，先给内测组（`body-engine flags set jarvis_scope_guard --state cohort --cohort beta`），线上验收后再开给所有人。**测试**：`tests/test_ai_scope_guard.py`（放行 / 拦截的例子、边界、开关关着和以前完全一样、用户自己的 AI 不受影响）。
+
+### 9.22 Jarvis 入口改版：圆环菜单、按住说话、半屏回答（2026-10-24，#53；`web/static/jarvis-entry.js`、`ai/voice_fix.py`，灰度开关 `jarvis_orbit`、`jarvis_voice_direct`）
+**只给 Jarvis（托底 AI）**：选了自己 AI（API / 订阅 / 身体管家）的人只换按钮外观，点一下和以前一样。只按 iPhone 设计。
+
+- **按钮**：dock 正中 56 pt 圆键（Lucide `orbit`，无文字），比 dock 上沿高 18 pt；`<button id="ask">`（WKWebView 里长按链接会弹预览），离线置灰照旧。
+- **点一下**：光点沿圆环顺时针转一圈，依次引出「对话 / 语音 / 拍照 / 快记」（位置固定）。对话 = 完整对话页；语音 = 不用按住、直接进锁定；拍照 = 相机（`capture="environment"`），照片带「拍照记一餐」发给 Jarvis；快记 = 半屏，常用 = 最常用的 3 个快捷记餐模板、喝水 250 ml（`water` 开着时）、训练按计划完成、体重（只填输入框），点一下发一句话给 Jarvis，由它调工具记。
+- **按住**（0.35 秒）直接说话：往左上滑取消，往右上滑锁定（可以松手，说完点按钮）；太短（< 0.6 秒）或没听到不发；系统打断（来电、第一次弹麦克风权限）当取消。半屏和完整对话页里的麦克风键对 Jarvis 也是这一套（按下立即开始）。
+- **识别**：app 有本机识别时（1.0.8+，`window.Watch2WhoopFeatures.voice = {langs, onDevice}`）边说边出字；中文松手后同一段录音再交服务器 SenseVoice 定稿，英文只在手机上识别、只把文字交服务器纠错。没有时页面录音、松手后 `POST /v1/assistant/transcribe`（和对话页一样）。识别语言默认跟界面语言，浮层里「中文 / English」一键切换（只在有本机识别时显示，按人记在本机）。桥接协议在 `jarvis-entry.js` 的 `nativeEngine` 注释里。
+- **个人词表纠错**（`ai/voice_fix.py`）：用户自己的动作（近 180 天练过的、当前计划、自定义动作）、快捷记餐模板、在吃的补剂、食谱、商品 / 品牌 / 超市，最多 300 条；英文按拼写 + 读音（Levenshtein × 0.7 + Metaphone × 0.3 ≥ 0.72，6 个字母以内的词 ≥ 0.78），中文按拼音（两个字的词还要声调一致，免得「不及」变成「补剂」）。`transcribe?fix=1` 和 `POST /v1/assistant/voice-fix`（只收文字）返回 `{text, fixed, raw?}`，只读本人数据、不存。用 2026-10-23 的识别调研里的 108 条合成语音核对过：和调研的纠错结果 429 / 432 条一致，不同的 3 条里 2 条是调研版的误改（「信誉有」→「信鱼油」）、1 条是声调规则挡掉的正确改动。
+- **发送**：识别出的文字作为用户消息（模型看到「［语音］…」，提示词里本来就说明了可能有同音错字），气泡上有麦克风波形和时长，录音不保存。**同意书现在写「确认文字后才发送」**，所以 `jarvis_voice_direct` 关着时松手后先显示文字（可以改），点「发送」才发；同意书改好、升版本后再打开它，松手直接发送。
+- **半屏**：就是对话面板加 `jv-half`（同一段对话、同一套卡片），高度跟内容、最高 80%；「继续对话」/ 上拉 = 完整对话页，下拉 / 点压暗处 = 关；关掉 10 分钟内再打开接着同一段对话。
+- **无障碍**：菜单是 `role="menu"`，键盘方向键可走；读屏双击 = 点按，「语音」键 = 不用按住的完整路径；状态变化用播报区；`prefers-reduced-motion` 时在 JS 里分支（不转、不飞，原位淡入）。触觉只在 app 声明 `Watch2WhoopFeatures.haptics` 时发 `haptic:<light|medium|selection|success|warning>`。
+- **测试**：`tests/test_voice_fix.py`（匹配规则、只用本人的词、两个接口跟开关走）、`tests/test_jarvis_orbit.py`（开关关着不改任何东西、文件接线、确认后才发、只给 Jarvis、减弱动态效果、图标出处）、`tests/test_voice_path.py`（本机识别只认 app 的声明）。
