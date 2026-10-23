@@ -12,7 +12,7 @@ def _overview(conn, uid: int, a: dict) -> dict:
 
 TOOL_SPECS: list[dict] = [
     dict(name="get_friends_overview",
-         description="圈子成员（家人 / 朋友）今天状态、近 7 天恢复和 5 个排行榜名次；只含对方共享给我的部分。",
+         description="圈子成员（家人 / 朋友）今天状态、近 7 天恢复和 5 个排行榜名次；只含对方共享给我的部分。有 nickname 就用它称呼。",
          input_schema=schema({}),
          handler=_overview, group="body", scope="scores"),
 ]

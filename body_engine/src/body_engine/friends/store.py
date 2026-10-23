@@ -23,7 +23,7 @@ from .. import auth, i18n
 from ..avatars import urls as avatar_store
 from ..profile import consent
 from ..web import login_codes
-from . import params as P
+from . import params as P, remarks
 
 CODE_LENGTH = 10
 
@@ -436,13 +436,15 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
         """SELECT u.id, u.display_name, m.joined_at, m.scopes FROM circle_members m JOIN users u ON u.id = m.user_id
            WHERE m.circle_id = %s ORDER BY m.joined_at, u.id""", (circle_id,)).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [m["id"] for m in members])
+    nick = remarks.for_viewer(conn, uid, [m["id"] for m in members])
     out = {"id": c["id"], "name": c["name"], "owner_id": c["owner_id"], "is_owner": c["owner_id"] == uid,
            "personal": c["personal"], "created_at": c["created_at"], "avatar": avatar_url(c),
            "max_members": max_members(c),
            "my_scopes": next(m["scopes"] for m in members if m["id"] == uid),
            # other members' picks are not shown here: what they share with you is in /v1/web/me → viewable
            "members": [{"id": m["id"], "display_name": m["display_name"], "joined_at": m["joined_at"],
-                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"])} for m in members]}
+                        "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"]),
+                        "remark": nick.get(m["id"])} for m in members]}
     if out["is_owner"]:
         codes = conn.execute("""SELECT id, created_at, expires_at, used_count FROM circle_invites WHERE circle_id = %s
                                 AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
