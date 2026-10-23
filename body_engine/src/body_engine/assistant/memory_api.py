@@ -20,18 +20,32 @@ class ProfileIn(BaseModel):
     label: str | None = Field(None, max_length=50, description="中文名；标准键不用填，新键必填")
 
 
+CARD_OUT = ("key", "label", "value", "updated_at", "source", "topic", "confirmed", "confirmed_days", "stale", "origin")
+OBS_OUT = ("id", "text", "created_at", "source", "kind", "valid_until", "topic", "confirmed", "confirmed_days", "stale",
+           "origin")
+ARCH_OUT = ("archived_at", "archived_reason", "merged_into")
+
+
 @router.get("/memory")
 def get_memory(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Status cards (status, ordered by group) + body profile card (the butler's underlying memory) + observation notes.
     Auto items computed by the backend in the status cards are refreshed first if older than 30 minutes.
-    Observations carry kind (fact / recent) and valid_until; expired recent notes are left out and only counted (#112)."""
+    Observations carry kind (fact / recent) and valid_until; expired recent notes are left out and only counted (#112).
+    Every entry carries topic, confirmed (last confirmed), confirmed_days and stale; with the rollout flag memory_hygiene
+    (#113) also `archived` (archived entries, newest first, restorable). Read access needs a memory share; writes are self only."""
     owner = _owner(conn, viewer, user, "memory")
     status.refresh_if_stale(conn, owner)
-    m = memory.get_memory(conn, owner)
-    return {"status": status.localize(status.list_status(conn, owner, viewer["id"])), "profile_card": m["profile_card"],
-            "observations": [{k: o[k] for k in ("id", "text", "created_at", "source", "kind", "valid_until")}
-                             for o in m["observations"]],
-            "expired_recent": m["expired_recent"]}
+    hygiene = flags.enabled(conn, viewer["id"], "memory_hygiene")
+    m = memory.get_memory(conn, owner, archived=hygiene)
+    out = {"status": status.localize(status.list_status(conn, owner, viewer["id"])),
+           "profile_card": [{k: c[k] for k in CARD_OUT} for c in m["profile_card"]],
+           "observations": [{k: o[k] for k in OBS_OUT} for o in m["observations"]],
+           "expired_recent": m["expired_recent"]}
+    if hygiene:
+        a = m["archived"]
+        out["archived"] = {"profile_card": [{k: c[k] for k in CARD_OUT + ARCH_OUT} for c in a["profile_card"]],
+                           "observations": [{k: o[k] for k in OBS_OUT + ARCH_OUT} for o in a["observations"]]}
+    return out
 
 
 @router.put("/memory/profile/{key}")
@@ -39,15 +53,65 @@ def put_profile(user: str, body: ProfileIn, key: str = Path(pattern=r"^[a-z][a-z
                 conn=Depends(get_conn), viewer=Depends(current_user)):
     """The user edits one profile card item themselves (replaced whole), source recorded as user."""
     try:
-        return memory.update_profile(conn, _self(viewer, user), key, body.value, body.label, source="user")
+        row = memory.update_profile(conn, _self(viewer, user), key, body.value, body.label, source="user")
     except ValueError as e:
         raise HTTPException(422, str(e))
+    row.pop("previous", None)
+    return row
 
 
 @router.delete("/memory/observations/{observation_id}", status_code=204)
 def delete_observation(user: str, observation_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     if memory.delete_observation(conn, _self(viewer, user), observation_id) is None:
         raise HTTPException(404, "没有这条观察笔记（或不是你的）")
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- 「还准确」 / delete / restore (issue #113 phase 1)
+HYGIENE = [Depends(flags.require("memory_hygiene"))]
+KEY = Path(pattern=r"^[a-z][a-z0-9_]*$")
+
+
+def _done(conn, owner: int, row, missing: str):
+    if row is None:
+        raise HTTPException(404, missing)
+    briefing.invalidate(owner)
+    return row
+
+
+@router.post("/memory/observations/{observation_id}/confirm", dependencies=HYGIENE)
+def confirm_observation(user: str, observation_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user says the note is still right: confirmed_at = now."""
+    owner = _self(viewer, user)
+    return _done(conn, owner, memory.confirm_observation(conn, owner, observation_id), "没有这条观察笔记（或不是你的）")
+
+
+@router.post("/memory/observations/{observation_id}/restore", dependencies=HYGIENE)
+def restore_observation(user: str, observation_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """An archived note comes back into the memory."""
+    owner = _self(viewer, user)
+    return _done(conn, owner, memory.restore_observation(conn, owner, observation_id), "没有这条已归档的笔记（或不是你的）")
+
+
+@router.post("/memory/profile/{key}/confirm", dependencies=HYGIENE)
+def confirm_profile(user: str, key: str = KEY, conn=Depends(get_conn), viewer=Depends(current_user)):
+    owner = _self(viewer, user)
+    return _done(conn, owner, memory.confirm_profile(conn, owner, key), "档案卡里没有这一项（或不是你的）")
+
+
+@router.post("/memory/profile/{key}/restore", dependencies=HYGIENE)
+def restore_profile(user: str, key: str = KEY, conn=Depends(get_conn), viewer=Depends(current_user)):
+    owner = _self(viewer, user)
+    return _done(conn, owner, memory.restore_profile(conn, owner, key), "档案卡里没有这一项已归档的（或不是你的）")
+
+
+@router.delete("/memory/profile/{key}", status_code=204, dependencies=HYGIENE)
+def delete_profile(user: str, key: str = KEY, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The user deletes one profile card item (a real delete, as for notes)."""
+    owner = _self(viewer, user)
+    if not memory.delete_profile(conn, owner, key):
+        raise HTTPException(404, "档案卡里没有这一项（或不是你的）")
+    briefing.invalidate(owner)
     return Response(status_code=204)
 
 

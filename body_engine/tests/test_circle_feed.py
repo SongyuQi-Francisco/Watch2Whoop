@@ -334,7 +334,7 @@ def test_newest_comments_preview_under_the_post(client, world, dsn, pair):
     post = get_feed(client, tok["Ann"])["posts"][0]
     assert post["comment_count"] == 3                                                    # the total, the preview is only the newest
     assert [(c["id"], c["user"]["name"], c["body"]) for c in post["preview_comments"]] == [(made[1], "Ann", "c1"), (made[2], "Ben", "c2")]
-    assert set(post["preview_comments"][0]) == {"id", "user", "body"} and set(post["preview_comments"][0]["user"]) == {"id", "name", "avatar"}
+    assert set(post["preview_comments"][0]) == {"id", "user", "body"} and set(post["preview_comments"][0]["user"]) == {"id", "name", "avatar", "remark"}
     client.delete(f"{FEED}/comments/{made[2]}", headers=h(tok["Ben"]))
     assert [c["body"] for c in get_feed(client, tok["Ann"])["posts"][0]["preview_comments"]] == ["c0", "c1"]   # a deleted one drops out
     # nothing from outside the circle reaches the preview: Cat is not in the circle, and a member who left is gone

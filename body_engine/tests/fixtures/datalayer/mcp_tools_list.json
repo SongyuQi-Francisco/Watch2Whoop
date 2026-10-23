@@ -1332,7 +1332,7 @@
   },
   {
    "name": "add_observation",
-   "description": "记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
+   "description": "记观察笔记：以后有用的新事实（偏好、习惯、身体反应），一句话一个；近况（出差、感冒）给 until。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1353,6 +1353,13 @@
        "null"
       ],
       "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+     },
+     "replace_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "改写 similar 里这条；0=照样新建"
      }
     },
     "required": [
@@ -4008,7 +4015,7 @@
   },
   {
    "name": "add_observation",
-   "description": "记一条观察笔记：对话里学到的、以后有用的新事实（偏好、习惯、身体反应）；暂时的近况（出差、感冒）给 until。一句话一个事实，不重复记。",
+   "description": "记观察笔记：以后有用的新事实（偏好、习惯、身体反应），一句话一个；近况（出差、感冒）给 until。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4029,6 +4036,13 @@
        "null"
       ],
       "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+     },
+     "replace_id": {
+      "type": [
+       "integer",
+       "null"
+      ],
+      "description": "改写 similar 里这条；0=照样新建"
      }
     },
     "required": [

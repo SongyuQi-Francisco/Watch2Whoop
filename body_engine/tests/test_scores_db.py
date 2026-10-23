@@ -73,6 +73,7 @@ def test_compute_write_idempotent_and_query(conn):
     out = engine.run(conn, client, uid, end=date(2026, 9, 21))
     assert out["origin"] == date(2026, 9, 1) and out["rows"] == 21
     assert out["with_recovery"] == 6 and out["with_strain"] == 20      # full 14 nights from 9-15; no data on 9-21
+    assert out["hrv_kind"] == "sdnn" and out["hrv_kind_reason"] == "default"   # nobody is switched to RMSSD (#117)
     before = conn.execute("SELECT date, recovery, strain, ctl FROM daily_scores WHERE user_id = %s ORDER BY date",
                           (uid,)).fetchall()
     engine.run(conn, client, uid, end=date(2026, 9, 21))                # running again gives exactly the same result
@@ -90,7 +91,8 @@ def test_compute_write_idempotent_and_query(conn):
                for d in (date(2026, 9, 10), date(2026, 9, 11), date(2026, 9, 12)))
     r = fixed[date(2026, 9, 15)]
     assert r["algo_version"] and r["hrv_kind"] == "sdnn" and r["hrv_night_ms"] == pytest.approx(55, abs=0.1)
-    assert "details" not in r and "details" in store.scores(conn, uid, date(2026, 9, 15), date(2026, 9, 15), True)[0]
+    assert "details" not in r
+    assert store.scores(conn, uid, date(2026, 9, 15), date(2026, 9, 15), True)[0]["details"]["hrv_kind"] == "sdnn"
     # Has stage details (FakeOW's /events/sleep), no missing-data reasons, only the CTL warm-up hint remains
     assert r["flags"] == {"ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"}
 
