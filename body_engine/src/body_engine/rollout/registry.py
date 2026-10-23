@@ -47,4 +47,8 @@ FLAGS: dict[str, str] = {
                    "关着时和以前一样（接口 404）",
     "app_types_pause": "暂停 app 直传的补充健康类型（站立、锻炼分钟、日照、体能消耗、睡眠手腕温度、音量、步行心率、上下楼速度、步行稳定性，"
                        "rawdata/hk_types.py）：开着时服务器不收、app 不读（锚点不动，关掉后补传）。这是应急开关：默认关 = 正常收",
+    "apple_sync_engine": "自建 Apple 健康同步引擎（#219，docs/apple-sync-engine.md）：服务器接收 app 同步引擎上传的原始样本、"
+                         "训练、睡眠阶段、15 分钟统计桶、按范围重新同步和同步记录（rawdata/engine.py），GET /v1/ingest/healthkit "
+                         "的 engine 块告诉 app 收哪些字段和类型、同步模式 shadow（只存着做对比，不影响分数）；关着时 = ow 模式，"
+                         "这些字段一律 409 不收，旧版 app 不受影响",
 }

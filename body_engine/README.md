@@ -283,6 +283,25 @@ from the earliest of them (`sync/refresh.queue_scores`, done by `sync-refresh-ru
 (`apps/watch2whoop/lib/src/hk_types.dart`); `tests/test_sync_center.py` checks both match. Emergency stop: flag
 `app_types_pause` (on = nothing stored, `metrics_enabled: false`, the app keeps its anchors).
 
+**Sync engine, step S1** (flag `apple_sync_engine`, `rawdata/engine.py`, migration 690, design
+`docs/apple-sync-engine.md` §3.2, #219): the app's own HealthKit sync engine uploads through the same endpoint. The
+registry is `rawdata/hk_types.ENGINE_TYPES` (every type it reads: HealthKit id, Body Engine name, kind, read unit ×
+`factor` = stored unit, `raw` / `stats` upload, aggregation, plausible range, background frequency, order, page sizes); the
+app ships it as `apps/watch2whoop/assets/healthkit_types.json` = `python -m body_engine.rawdata.hk_types`, and
+`tests/test_apple_sync_engine.py` compares the two. New optional batch fields, columnar (UTC seconds; one entry per
+sample in each list; `src` indexes `sources[]`): `sources[]` → `hk_sources`; `samples[]` (quantities), `categories[]`
+(e.g. sleep stages, value = HealthKit integer), `workouts[]` (statistics, events, metadata) → `hk_samples`, deduplicated by
+UUID; `stats[]` 15-minute UTC-aligned buckets of cumulative types → `hk_stats` (the sent span is replaced); `range` +
+`range_done` (re-sync of a date range: stored samples of the range's types inside it, received before the range started
+and not sent again, are removed); `runs[]` (sync rounds, counts only) → `sync_runs`; `phase`, `tz` → `rawdata_uploads`.
+With the flag on, `deleted[]` also removes engine samples. Changed (type, local day) pairs are queued in `hk_dirty_days`
+for the derivation step (S2); the direct-upload types above keep their behaviour (daily value remade at once, score
+recompute queued, stopped by `app_types_pause`). The body may be gzip (`Content-Encoding: gzip`, ≤ 2 MB on the wire,
+≤ 16 MB decompressed). `GET` (and every `POST` answer) carries `engine: {enabled, mode (ow / shadow), accepts, encodings,
+types, limits}`; the app sends only what it lists. Flag off = engine fields refused with 409 `engine_disabled`; a type not
+taken now = 409 `type_paused`; engine batches are rate limited per user (batches per minute, bytes per UTC day; more for
+the `backfill` / `range` phases): 429 + `Retry-After`. Nothing is stored on 409 / 422 / 429. An older app is not affected.
+
 **Forced re-sync** (flag `sync_center`, `sync/resync.py`): `POST /v1/ingest/resync {days: 1–3650 | null}` (Bearer like
 above) starts one job per user (`busy` while one runs, `throttled` within 10 minutes of the last one, 6 hours before an
 all-history one); the app re-reads Health from the range start and reports `PUT /v1/ingest/resync {phone_percent, counts,

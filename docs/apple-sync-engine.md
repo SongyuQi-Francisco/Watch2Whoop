@@ -212,6 +212,14 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 
 代码放新模块 `body_engine/src/body_engine/healthkit/`：`registry.py`（类型表 + 单位换算，和 app 的 JSON 比对）、`ingest.py`（扩展现有 `rawdata/ingest.py`）、`store.py`、`derive.py`、`samples.py`（读取接口）、`shadow.py`、`params.py`（阈值和出处）。
 
+> **S1 已实现（迁移 690，开关 `apple_sync_engine`）**，和下文不同的地方以代码为准：
+> - 没有新建 `healthkit/` 模块：注册表在第 1 阶段的 `rawdata/hk_types.py`（`ENGINE_TYPES`，包含第 1 阶段的 `HK_TYPES`），接收在 `rawdata/engine.py`，接口和模型仍是 `rawdata/api.py`、`rawdata/ingest.py`。
+> - `hk_samples` 沿用迁移 675 的表，`type` 是 HealthKit 标识符（不是指标名），加了 `source_id`、`value_text`、`tz`、`meta`、`origin`、`range_id`、`batch_id` 列；训练也存在这里（`value` = 分钟）。
+> - 限流不另建 `ingest_usage`：直接按 `rawdata_uploads`（已有 `(user_id, received_at)` 索引）算每分钟批数和每个 UTC 日的字节数；只限带引擎字段的批次，旧版 app 不受影响。
+> - 按范围重新同步：每页带 `range: {id, start, end, types}`，最后 `range_done: id`；删的是范围开始前收到、这次没再出现的样本（范围进行中增量上传的新样本不会被误删）。
+> - `mode` 目前只有 `ow` / `shadow`；`app` 模式和 `apple_sync_primary` 开关留给 S5。
+> - 第 1 阶段的直传类型（站立、锻炼分钟……）经 `samples[]` 上传时，日值照旧立即重算、`app_types_pause` 照旧生效；其他类型只记 `hk_dirty_days`，日值 / 睡眠 / 训练由 S2 派生。
+
 #### 3.2.1 接口
 
 沿用 `POST /v1/ingest/healthkit`，`IngestIn` 加可选字段（旧版 app 不受影响）：
@@ -236,7 +244,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 
 （数值都是示例。）`GET /v1/ingest/healthkit` 的回答加 `engine: {accepts: [...], mode: "ow|shadow|app"}`：app 只发服务器声明接受的字段，并按 `mode` 决定开不开 OW SDK（第 5 节）。
 
-#### 3.2.2 原始样本存哪里（迁移号待定）
+#### 3.2.2 原始样本存哪里（迁移 690）
 
 `NNN_healthkit_samples.sql`（待定）：
 
