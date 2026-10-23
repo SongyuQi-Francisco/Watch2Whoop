@@ -178,7 +178,10 @@ class HealthSync {
   /// Shows the HealthKit authorization prompt (the user taps it). true = at least one item was allowed.
   /// HealthKit does not tell the app which read permissions were denied, so all we can know is that the prompt was shown.
   /// The beat-to-beat HRV series and ECG that the app reads itself (raw_sync.dart) follow in a second, small sheet.
+  /// Not connected to sync yet (the SDK is only configured by connecting): its sheet would throw NotConfiguredException, so
+  /// only the app's own types are asked now; connecting asks for the rest.
   Future<bool> requestAuthorization() async {
+    if (!OpenWearablesHealthSdk.isConfigured) return RawSync.instance.requestAuth();
     final ok = await OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
     await RawSync.instance.requestAuth();
     return ok;

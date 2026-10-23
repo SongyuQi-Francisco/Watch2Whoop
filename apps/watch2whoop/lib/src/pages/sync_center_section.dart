@@ -215,8 +215,8 @@ class _SyncCenterSectionState extends State<SyncCenterSection> {
               : [
                   for (final r in rows)
                     Row2(r.type.label,
-                        value: tr('手机 ${shortDay(r.phone)} · 服务器 ${shortDay(r.type.lastAt ?? DateTime.tryParse(r.type.lastDate ?? ''))}',
-                            'Phone ${shortDay(r.phone)} · server ${shortDay(r.type.lastAt ?? DateTime.tryParse(r.type.lastDate ?? ''))}'),
+                        // phone / server, in the order of the group title (with the words it did not fit a phone row)
+                        value: '${shortDay(r.phone)} / ${shortDay(r.type.lastAt ?? DateTime.tryParse(r.type.lastDate ?? ''))}',
                         trailing: _VerdictTag(r.verdict),
                         onTap: verdictNote(r.type.key, r.verdict) == null
                             ? null
