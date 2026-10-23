@@ -25,7 +25,7 @@
     s = s.replace(/`([^`\n]+)`/g, (_, c) => hold(`<code>${c}</code>`));
     s = s.replace(/\[([^\]\n]+)\]\(([^()\s]+)\)/g, (m, text, url) => (/^https?:\/\//i.test(url)
       ? hold(`<a href="${url}" target="_blank" rel="noopener noreferrer nofollow">${emph(text)}</a>`) : m));
-    s = s.replace(/(^|[\s(（：:，,])(https?:\/\/(?:(?!&(?:quot|lt|gt|#39);)[^\s）)，。])+)/g, (_, pre, raw) => {
+    s = s.replace(/(^|[\s(（：:，,])(https?:\/\/(?:(?!&(?:quot|lt|gt|#39);)[^\s）)，。])+)/g, (_, pre, raw) => {   // i18n-ok: Chinese punctuation that ends a bare link, not UI text
       const url = raw.replace(/[.,;:!?]+$/, "");   // sentence punctuation after a bare link is not part of it
       return pre + hold(`<a href="${url}" target="_blank" rel="noopener noreferrer nofollow">${url}</a>`) + raw.slice(url.length);
     });

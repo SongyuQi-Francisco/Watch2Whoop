@@ -30,8 +30,17 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js"]
 PAGES = ["index.html", "activate.html", "install.html", "oauth.html"]
+
+
+def test_every_page_script_and_page_is_checked():
+    """A page script or HTML page that is not listed above escapes every check below (avatars.js and remarks.js did, #64):
+    all of them are in the lists. i18n.js and i18n-en.js are the tables themselves."""
+    scripts = {p.name for p in STATIC.glob("*.js")} - {"i18n.js", "i18n-en.js"}
+    assert scripts == set(SCRIPTS), {"not listed": sorted(scripts - set(SCRIPTS)), "no such file": sorted(set(SCRIPTS) - scripts)}
+    pages = {p.name for p in STATIC.glob("*.html")}
+    assert pages == set(PAGES), {"not listed": sorted(pages - set(PAGES)), "no such file": sorted(set(PAGES) - pages)}
 
 
 def en_text() -> dict[str, str]:

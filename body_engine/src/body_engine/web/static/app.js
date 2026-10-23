@@ -157,6 +157,7 @@
     [/力量训练|strength/i, "无力量"], [/负荷|沿用|strain|load/i, "无负荷"],   // i18n-ok
     [/进行中|还没结束|in progress|not over/i, "进行中"], [/连不上|超时|timeout|offline|connect/i, "离线"],   // i18n-ok
   ].map(([re, label]) => [re, tr(label)]);
+  const sname = (n) => (n ? tr(String(n)) : n);   // a plan / session name: the built-in templates are translated (i18n-en.js), a user's own is shown as written
   const short = (text, fallback = tr("无数据")) => { const t = String(text || ""); const hit = SHORT.find(([re]) => re.test(t)); return hit ? hit[1] : fallback; };
   const kv = (k, v, reason) => `<div class="kv"><span class="k">${esc(k)}</span>${v != null ? `<span class="v">${v}</span>` : `<span class="v r">${esc(reason ? short(reason) : "—")}</span>`}</div>`;
   const badge = (cls, text) => `<span class="badge ${cls}">${esc(text)}</span>`;
@@ -853,7 +854,7 @@
   function loadBadge(ld) {
     if (ld?.reason === "no_body_weight") return `<span class="small muted">${esc(tr("缺体重"))}</span>`;
     if (!ld || (ld.kg == null && ld.basis !== "bodyweight")) return "";
-    if (ld.kg == null) return badge("plain", ld.label);
+    if (ld.kg == null) return badge("plain", tr(ld.label));
     const kg = `${fmtNum(ld.kg, 1)} kg`;
     if (ld.basis === "estimate") return `${badge("plain", `≈ ${kg}`)}<span class="small muted">${tr("估算")}</span>`;
     const tone = ld.readiness === "red" || ld.direction === "down" ? "mid" : ld.basis === "progression" && ld.direction === "up" ? "good" : "plain";
@@ -884,10 +885,10 @@
         html += `<div class="rcard-tags" style="margin-bottom:6px">${badge(tone, t.readiness.label || tr("恢复自调节"))}</div><div class="small muted" style="margin-bottom:10px">${esc(t.readiness.advice)}</div>`;
       }
       if (t.sparky_error && t.planned.length) html += tags([badge("mid", tr("训练记录读不到 · 重量为估算"))]);
-      if (t.change) html += kv(tr("原计划"), esc(t.change.from?.join(" · ") || tr("休息")));
+      if (t.change) html += kv(tr("原计划"), esc(t.change.from?.map(sname).join(" · ") || tr("休息")));
       html += t.planned.length ? t.planned.map((p) => {
         const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
-        return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
+        return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(sname(p.name))}</div>`}${p.exercises.map(exerciseRow).join("")}`;
       }).join("") : `<div class="empty faint" style="padding:12px">${t.rest_day ? tr("休息") : tr("无计划")}</div>`;
       if (t.logged.length) html += `<div class="cat">${tr("已记录")}</div>` + t.logged.map((s) => s.exercises.map(exerciseRow).join("")).join("");
       if (trainingDayV2() && isSelf() && !isPast() && t.planned.length)
@@ -920,7 +921,7 @@
       sub = badge("plain", tr("{n} 动作", { n: t.logged.reduce((a, x) => a + x.exercises.length, 0) }));
     } else if (!t.planned.length) title = t.rest_day ? tr("休息日") : tr("无计划");
     else {
-      title = t.planned.map((p) => p.name).join(" · ");
+      title = t.planned.map((p) => sname(p.name)).join(" · ");
       const ex = t.planned.flatMap((p) => p.exercises);
       const caution = ex.filter((x) => x.status !== "active").length, up = ex.filter((x) => x.suggestions?.length).length;
       sub = [badge("plain", tr("{n} 动作", { n: ex.length })), caution ? badge("mid", tr("注意 {n}", { n: caution })) : "", up ? badge("good", tr("加重 {n}", { n: up })) : ""].join("");
@@ -3400,7 +3401,10 @@
   // /training/week?date= → {start, end, plan, days[{date, planned[{name, exercises}], rest_day, change{from[], source, reason}|null}], suggestions[{name, level, title, next_weight_kg}], cautions[{name, status, reason, cues}]};
   // what was trained this week comes from /training/calendar?start=&end=.
   const weekStart = (iso) => addDays(iso, -((parseDay(iso).getDay() + 6) % 7));
-  const planShort = (planned) => planned[0].name.replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || planned[0].name;   // week strip: first session, short (i18n-ok: plan names are data)
+  const planShort = (planned) => sname(planned[0].name).replace(/（[^）]*）|\([^)]*\)/g, "").split(" / ")[0].trim() || sname(planned[0].name);   // week strip: first session, short (i18n-ok: plan names are data)
+
+  const exName = (x) => (I18N.lang === "en" && x.name_en) || x.name_zh;   // an exercise's name in the page language (both names are in the response)
+  const exTerms = (list) => (list || []).map((x) => tr(x));   // catalog vocabulary (muscles, equipment, patterns…): English in i18n-en.js
 
   async function swapInPlan(fromSlug, toSlug, btn) {
     btn.disabled = true;
@@ -3409,7 +3413,7 @@
       delete S.data[`tweek${S.todayDate}:${S.owner}`];
       delete S.data[todayKey()];
       closeAltPreview(); closeSheet(); render();
-      toast(tr("已替换为 {name}", { name: res.to_exercise?.name_zh || toSlug }));
+      toast(tr("已替换为 {name}", { name: (res.to_exercise && exName(res.to_exercise)) || toSlug }));
     } catch (err) { toast(err.status === 0 ? tr("离线，连上网络后重试") : err.message); btn.disabled = false; }
   }
 
@@ -3426,13 +3430,13 @@
     const ld = a.load;
     const weight = ld && a.status !== "banned" && (ld.kg != null || ld.reason === "no_body_weight" || ld.basis === "bodyweight")
       ? (ld.kg != null ? `${fmtNum(ld.kg, 1)} kg${ld.basis === "estimate" ? ` <small class="muted">${esc(tr("估算"))}</small>` : ""}` : esc(tr(ld.label))) : null;
-    const pic = a.thumb ? `<img class="pv-img" src="${esc(a.thumb)}" alt="${esc(a.name_zh)}" loading="lazy" decoding="async">`
+    const pic = a.thumb ? `<img class="pv-img" src="${esc(a.thumb)}" alt="${esc(exName(a))}" loading="lazy" decoding="async">`
       : window.BodyMuscleMap ? `<div class="pv-map">${window.BodyMuscleMap.html(a.primary_muscles, a.secondary_muscles)}</div>` : "";
     const st = a.status === "banned" ? badge("bad", tr("禁用")) : a.status === "caution" ? badge("mid", tr("注意")) : "";
     const [main, other] = I18N.lang === "en" && a.name_en ? [a.name_en, a.name_zh] : [a.name_zh, a.name_en];   // both names, page language first
     const el = document.createElement("div");
     el.className = "pv-scrim";
-    el.innerHTML = `<div class="pv-card" role="dialog" aria-modal="true" aria-label="${esc(a.name_zh)}">
+    el.innerHTML = `<div class="pv-card" role="dialog" aria-modal="true" aria-label="${esc(exName(a))}">
       <button class="pv-x" data-pv="close" aria-label="${esc(tr("common.close"))}">×</button>
       ${pic}
       <div class="pv-name">${esc(main)} ${st}</div>
@@ -3467,30 +3471,31 @@
       if (retry) retry.onclick = () => exerciseDetailSheet(slugOrName, back);
       return;
     }
-    $("#sheet-title").textContent = ex.name_zh || slugOrName;
+    const [exMain, exOther] = I18N.lang === "en" && ex.name_en ? [ex.name_en, ex.name_zh] : [ex.name_zh, ex.name_en];   // both names, page language first (as in the alternatives card)
+    $("#sheet-title").textContent = exMain || slugOrName;
     const stBadge = ex.status === "banned" ? badge("bad", tr("禁用")) : ex.status === "caution" ? badge("mid", tr("注意")) : badge("good", tr("正常"));
-    const muscles = [...(ex.equipment_zh || []).map((q) => badge("plain", q)),
-      ex.movement_pattern_zh ? badge("plain", ex.movement_pattern_zh) : ""].filter(Boolean).join("");
+    const muscles = [...exTerms(ex.equipment_zh).map((q) => badge("plain", q)),
+      ex.movement_pattern_zh ? badge("plain", tr(ex.movement_pattern_zh)) : ""].filter(Boolean).join("");
     const imgs = ex.image_urls || [];
-    const carousel = imgs.length ? `<div class="ex-car" id="ex-car">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(`${ex.name_zh} ${i + 1}`)}" loading="lazy" decoding="async">`).join("")}</div>
+    const carousel = imgs.length ? `<div class="ex-car" id="ex-car">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(`${exMain} ${i + 1}`)}" loading="lazy" decoding="async">`).join("")}</div>
       ${imgs.length > 1 ? `<div class="ex-dots">${imgs.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}` : "";
     const map = window.BodyMuscleMap ? window.BodyMuscleMap.html(ex.primary_muscles, ex.secondary_muscles) : "";
     const ld = ex.load;
     const loadV = ld && ex.status !== "banned" && (ld.kg != null || ld.basis === "bodyweight")
-      ? `${ld.kg != null ? `${fmtNum(ld.kg, 1)} kg` : esc(ld.label)}${ld.kg != null ? ` <small class="muted">${esc([ld.per, `× ${ld.target_reps}`, ld.label].filter(Boolean).join(" · "))}</small>` : ""}` : null;
+      ? `${ld.kg != null ? `${fmtNum(ld.kg, 1)} kg` : esc(tr(ld.label))}${ld.kg != null ? ` <small class="muted">${esc([ld.per, `× ${ld.target_reps}`, ld.label].filter(Boolean).map((x) => tr(x)).join(" · "))}</small>` : ""}` : null;
     const basis = ld && ex.status !== "banned" ? loadBasisText(ld) : null;
     const basisV = basis ? `${esc(basis)}${ld.body_weight_kg ? ` <small class="muted">${esc(`${fmtNum(ld.body_weight_kg, 1)} kg × ${ld.bw_fraction}`)}</small>` : ""}` : null;
     const recent = (ex.recent || []).map((r) => kv(shortDay(r.date), esc(r.sets.join(" · ")))).join("");
-    const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${k}${v === "high" ? tr("高") : tr("中")}`)).join("");
+    const joints = Object.entries(ex.joint_flags_zh || {}).map(([k, v]) => badge(v === "high" ? "bad" : "mid", `${tr(k)}${I18N.lang === "en" ? " · " : ""}${v === "high" ? tr("高") : tr("中")}`)).join("");
     const steps = (ex.instructions_zh || []).map((s) => `<li>${esc(s)}</li>`).join("");
     const alts = (ex.alternatives || []).map((a, i) => `<button class="item alt-row" data-alt="${i}">
       ${a.thumb ? `<img class="alt-thumb" src="${esc(a.thumb)}" alt="" loading="lazy" decoding="async">` : `<span class="alt-thumb"></span>`}
-      <div style="flex:1;min-width:0"><div class="row-title">${esc(a.name_zh)}</div>
-        <div class="small muted">${esc([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])].map((x) => tr(x)).join(" · "))}</div></div>
+      <div style="flex:1;min-width:0"><div class="row-title">${esc(exName(a))}</div>
+        <div class="small muted">${esc(exTerms([...(a.equipment_zh || []), ...(a.primary_muscles_zh || [])]).join(" · "))}</div></div>
       ${a.load_text && a.status !== "banned" ? `<span class="val">${esc(a.load?.kg != null ? `${a.load.basis === "estimate" ? "≈ " : ""}${fmtNum(a.load.kg, 1)} kg` : tr(a.load_text))}</span>` : ""}
       <span class="chev">${ICON.chev}</span></button>`).join("");
     $("#sheet-body").innerHTML = `
-      ${ex.name_en && ex.name_en !== ex.name_zh ? `<div class="small muted" style="margin:-4px 0 8px">${esc(ex.name_en)}</div>` : ""}
+      ${exOther && exOther !== exMain ? `<div class="small muted" style="margin:-4px 0 8px">${esc(exOther)}</div>` : ""}
       ${carousel}
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
       ${addPlanOn() && isSelf() ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
@@ -3498,8 +3503,8 @@
       ${ex.reason ? kv(tr("限制原因"), esc(ex.reason)) : ""}
       ${loadV ? kv(tr("推荐重量"), loadV) : ""}
       ${basisV ? kv(tr("依据"), basisV) : ""}
-      ${(ex.primary_muscles_zh || []).length ? kv(tr("主肌群"), esc(ex.primary_muscles_zh.join(tr("、")))) : ""}
-      ${(ex.secondary_muscles_zh || []).length ? kv(tr("次肌群"), esc(ex.secondary_muscles_zh.join(tr("、")))) : ""}
+      ${(ex.primary_muscles_zh || []).length ? kv(tr("主肌群"), esc(exTerms(ex.primary_muscles_zh).join(tr("、")))) : ""}
+      ${(ex.secondary_muscles_zh || []).length ? kv(tr("次肌群"), esc(exTerms(ex.secondary_muscles_zh).join(tr("、")))) : ""}
       ${map}
       ${ex.cues ? kv(tr("动作要点"), esc(ex.cues)) : ""}
       ${recent ? `<div class="cat" style="margin-top:12px">${tr("最近")}</div>${recent}` : ""}
@@ -3559,8 +3564,8 @@
         <input class="search" id="ex-q" type="search" placeholder="${esc(tr("搜中英文动作名、别名…"))}" value="${esc(q)}" style="margin-bottom:8px">
         <div class="tags" style="margin-bottom:10px">${GROUPS_FILTER.map(([k, t]) => `<button class="tag ${grp === k ? "on" : ""}" data-exgrp="${k}"><span>${t}</span></button>`).join("")}</div>
         <div class="card list" id="ex-list">${shown.map((x) => `<button class="item" data-ex-open="${esc(x.slug)}">
-          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(x.name_zh)} ${x.source === "user_custom" ? badge("plain", tr("我的")) : ""}${x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : ""}</div>
-            <div class="small muted">${esc([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])].join(" · "))}</div></div>
+          <div style="flex:1;min-width:0;text-align:left"><div class="row-title">${esc(exName(x))} ${x.source === "user_custom" ? badge("plain", tr("我的")) : ""}${x.status === "banned" ? badge("bad", tr("禁用")) : x.status === "caution" ? badge("mid", tr("注意")) : ""}</div>
+            <div class="small muted">${esc(exTerms([...(x.primary_muscles_zh || []), ...(x.equipment_zh || [])]).join(" · "))}</div></div>
           <span class="chev">${ICON.chev}</span></button>`).join("") || `<div class="empty faint">${tr("没有匹配的动作")}</div>`}</div>`;
       const root = $("#sheet-body");
       for (const b of $$("[data-exgrp]", root)) b.onclick = () => { grp = b.dataset.exgrp; exNav.set({ grp }); typing = false; fetchList(); };
@@ -3590,9 +3595,9 @@
     const draw = () => {
       const cur = splits.find((s) => s.split_type === chosen) || splits[0];
       openSheet(tr("周训练分化计划"), `
-        <div class="tags" style="margin-bottom:10px">${splits.map((s) => `<button class="tag ${s.split_type === chosen ? "on" : ""}" data-split="${esc(s.split_type)}"><span>${esc(s.name)}</span></button>`).join("")}</div>
-        ${cur ? `<div class="small muted" style="margin-bottom:10px">${esc(cur.summary)}</div>
-          <div class="card list">${(cur.days || []).map((d) => kv(`${d.weekday_zh} · ${d.name}`, tr("{n} 动作", { n: d.exercise_count }))).join("")}</div>` : ""}
+        <div class="tags" style="margin-bottom:10px">${splits.map((s) => `<button class="tag ${s.split_type === chosen ? "on" : ""}" data-split="${esc(s.split_type)}"><span>${esc(sname(s.name))}</span></button>`).join("")}</div>
+        ${cur ? `<div class="small muted" style="margin-bottom:10px">${esc(sname(cur.summary))}</div>
+          <div class="card list">${(cur.days || []).map((d) => kv(`${tr(d.weekday_zh)} · ${sname(d.name)}`, tr("{n} 动作", { n: d.exercise_count }))).join("")}</div>` : ""}
         <div class="btns"><button class="btn btn-primary" id="save-split">${tr("启用该周计划（自动避开禁用动作）")}</button></div>`,
       (root) => {
         for (const b of $$("[data-split]", root)) b.onclick = () => { chosen = b.dataset.split; draw(); };
@@ -3679,9 +3684,9 @@
       ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)"><div class="rcard-tags">${badge(rd.tier === "green" ? "good" : rd.tier === "red" ? "bad" : "mid", rd.label)}</div><div class="small muted" style="margin-top:4px">${esc(rd.advice)}</div></div>` : "";
     const volEntries = Object.values(wk.volume_by_group || {});
     const volHtml = volEntries.length
-      ? `<div class="rcard-tags" style="margin-top:10px">${volEntries.map((g) => badge(g.status === "optimal" ? "good" : "plain", `${g.name_zh} ${tr("{n}组", { n: g.direct_sets })}`)).join("")}</div>` : "";
+      ? `<div class="rcard-tags" style="margin-top:10px">${volEntries.map((g) => badge(g.status === "optimal" ? "good" : "plain", `${tr(g.name_zh)} ${tr("{n}组", { n: g.direct_sets })}`)).join("")}</div>` : "";
     const headActions = `<span style="display:flex;gap:10px;align-items:center">
-      ${wk.plan ? `<span class="small muted">${esc(wk.plan.name)}</span>` : ""}
+      ${wk.plan ? `<span class="small muted">${esc(sname(wk.plan.name))}</span>` : ""}
       ${isSelf() && wk.available_splits?.length ? `<button class="link" id="pick-split">${wk.plan ? tr("切换分化") : tr("选周计划")}</button>` : ""}
       <button class="link" id="open-exlib">${tr("动作库")}</button></span>`;
     const tlog = wk.sparky && wk.sparky.state !== "connected"
@@ -3713,9 +3718,9 @@
     const planned = day?.planned || [];
     const rows = planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
-      return `${single || planned.length < 2 ? "" : `<div class="small muted" style="margin:10px 0 2px">${esc(p.name)}</div>`}${p.exercises.map(exerciseRow).join("")}`;
+      return `${single || planned.length < 2 ? "" : `<div class="small muted" style="margin:10px 0 2px">${esc(sname(p.name))}</div>`}${p.exercises.map(exerciseRow).join("")}`;
     }).join("");
-    const head = planned.map((p) => p.name).join(" · ");
+    const head = planned.map((p) => sname(p.name)).join(" · ");
     return `<div class="section" id="today-plan"><div class="section-head"><h2>${tr("今天")}</h2><span class="small muted">${esc(head)}${day?.change ? ` ${badge("mid", tr("已调整"))}` : ""}</span></div>
       <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
@@ -3729,9 +3734,9 @@
       return `<div>${rm}${exerciseRow(x)}</div>`;
     };
     const gone = (day?.removed || []).map((r) => `<button type="button" class="btn" data-prestore="${esc(r.slug)}" style="min-height:32px;padding:4px 12px;margin:4px 6px 0 0">${esc(I18N.lang === "en" && r.name_en ? r.name_en : r.name_zh || r.slug)} · ${tr("恢复")}</button>`).join("");
-    const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
+    const html = (day?.change ? kv(tr("原计划"), esc(day.change.from?.map(sname).join(" · ") || tr("休息"))) : "") + (day?.planned?.length ? day.planned.map((p) => {
       const single = p.exercises.length === 1 && p.exercises[0].name === p.name;
-      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(p.name)}</div>`}${p.exercises.map((x) => row(p, x)).join("")}`;
+      return `${single ? "" : `<div class="small muted" style="margin:14px 0 2px">${esc(sname(p.name))}</div>`}${p.exercises.map((x) => row(p, x)).join("")}`;
     }).join("") : `<div class="empty faint" style="padding:12px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`)
       + (gone ? `<div class="cat">${tr("已移除")}</div><div>${gone}</div>` : "");
     openSheet(`${tr("计划")} · ${fmtDay(iso)}`, html, (root) => {

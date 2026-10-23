@@ -17,6 +17,8 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+- Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
+  Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
 
 ## 1.0.7 — 2026-10-22
 Sync center (rollout flag `sync_center`, server side in #221) and the Health types the Open Wearables SDK cannot read.

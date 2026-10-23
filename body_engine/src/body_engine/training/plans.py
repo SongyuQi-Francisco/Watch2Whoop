@@ -15,12 +15,20 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import auth, sparky_client
+from ..i18n import L, use_lang
 from ..rules import params as RP, store as rules_store
 from ..rules.context import load_overrides
 from . import catalog, loads, params as P
 from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 
 WEEKDAY_ZH = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
+WEEKDAY_EN = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"}
+BANNED_REASON_ZH, BANNED_REASON_EN = "该动作在用户的禁用名单中", "This exercise is on the user's banned list"   # a banned exercise without a reason of its own
+
+
+def _shown_name(item: dict) -> str:
+    """The exercise name the page shows: the English one in an English request (when the catalog has it), else the Chinese one."""
+    return L(item["name_zh"], item.get("name_en") or item["name_zh"])
 
 
 def _user_today(conn: psycopg.Connection, user_id: int) -> date:
@@ -32,21 +40,22 @@ def _user_today(conn: psycopg.Connection, user_id: int) -> date:
 def format_sets_text(sets: int | None, rep_low: int | None, rep_high: int | None,
                      duration_sec: int | None = None, weight_kg: float | None = None,
                      note: str | None = None) -> str:
-    """Human-readable Chinese prescription string, e.g. '4 × 8–12 · 20 kg' or '3 组 × 30 秒'."""
+    """Human-readable prescription string, e.g. '4 × 8–12 · 20 kg' or '3 组 × 30 秒' (English request: '3 sets × 30 s')."""
     n = sets or 1
+    en_sets = f"{n} set" if n == 1 else f"{n} sets"
     if duration_sec and not rep_low and not rep_high:
-        base = f"{n} 组 × {duration_sec:g} 秒"
+        base = L(f"{n} 组 × {duration_sec:g} 秒", f"{en_sets} × {duration_sec:g} s")
     elif rep_low and rep_high and rep_low != rep_high:
         base = f"{n} × {rep_low}–{rep_high}"
     elif rep_low or rep_high:
         r = rep_low or rep_high
         base = f"{n} × {r}"
     else:
-        base = f"{n} 组"
+        base = L(f"{n} 组", en_sets)
     if weight_kg:
         base += f" · {weight_kg:g} kg"
     if note:
-        base += f"（{note}）"
+        base += L(f"（{note}）", f" ({note.replace('每侧', 'per side').replace(' 秒', ' s')})")   # the templates' notes: 每侧 / 每侧 30 秒
     return base
 
 
@@ -87,28 +96,36 @@ def readiness_advice(conn: psycopg.Connection, user_id: int, day: date | None = 
             "date": day.isoformat(),
             "score_date": None,
             "tier": "unknown",
-            "label": "暂无恢复分",
+            "label": L("暂无恢复分", "No recovery score"),
             "recovery": None,
             "sleep_debt_min": None,
             "set_factor": 1.0,
             "rir_delta": 0,
-            "advice": "今日暂无恢复评分：按计划正常热身，根据热身组体感决定正式组重量（目标 RIR 1–2）。",
+            "advice": L("今日暂无恢复评分：按计划正常热身，根据热身组体感决定正式组重量（目标 RIR 1–2）。",
+                        "No recovery score today: warm up as planned and pick the working weight by feel (target RIR 1–2)."),
         }
     rec = float(row["recovery"])
     debt = float(row["sleep_debt_min"]) if row.get("sleep_debt_min") is not None else 0.0
     if rec < P.RECOVERY_RED:
-        tier, label, factor, rir_delta = "red", "恢复红区 · 建议减量或改恢复日", 0.65, 2
-        advice = (f"恢复分 {rec:.0f}（红区）：建议改为肩部康复激活 / 低强度有氧；"
-                  "若坚持力量训练，正式组数减 30%–50%、重量下调 10%–15%，全程保留 RIR ≥ 3，不做大重量下肢复合动作。")
+        tier, label, factor, rir_delta = "red", L("恢复红区 · 建议减量或改恢复日", "Red recovery · cut volume or make it a recovery day"), 0.65, 2
+        advice = L(f"恢复分 {rec:.0f}（红区）：建议改为肩部康复激活 / 低强度有氧；"
+                   "若坚持力量训练，正式组数减 30%–50%、重量下调 10%–15%，全程保留 RIR ≥ 3，不做大重量下肢复合动作。",
+                   f"Recovery {rec:.0f} (red): switch to shoulder rehab activation or easy cardio. If you still lift, "
+                   "cut working sets by 30%–50% and weights by 10%–15%, keep RIR ≥ 3 throughout, and skip heavy lower-body compounds.")
     elif rec < P.RECOVERY_GREEN or debt >= P.AUTOREG_SLEEP_DEBT_MIN:
-        reason_str = f"恢复分 {rec:.0f}" + (f"、睡眠债 {debt:.0f} 分钟" if debt >= P.AUTOREG_SLEEP_DEBT_MIN else "")
-        tier, label, factor, rir_delta = "yellow", "恢复黄区 · 稳态执行", 0.85, 1
-        advice = (f"{reason_str}（黄区）：维持计划重量，前两个复合动作可减 1 组或保留 RIR 2–3，"
-                  "今天不强行冲击次数上限或加重量。")
+        reason_str = L(f"恢复分 {rec:.0f}" + (f"、睡眠债 {debt:.0f} 分钟" if debt >= P.AUTOREG_SLEEP_DEBT_MIN else ""),
+                       f"Recovery {rec:.0f}" + (f", sleep debt {debt:.0f} min" if debt >= P.AUTOREG_SLEEP_DEBT_MIN else ""))
+        tier, label, factor, rir_delta = "yellow", L("恢复黄区 · 稳态执行", "Yellow recovery · steady work"), 0.85, 1
+        advice = L(f"{reason_str}（黄区）：维持计划重量，前两个复合动作可减 1 组或保留 RIR 2–3，"
+                   "今天不强行冲击次数上限或加重量。",
+                   f"{reason_str} (yellow): keep the planned weights; the first two compounds can drop a set or keep RIR 2–3. "
+                   "Don't push rep ceilings or add weight today.")
     else:
-        tier, label, factor, rir_delta = "green", "恢复绿区 · 适合渐进超负荷", 1.0, 0
-        advice = (f"恢复分 {rec:.0f}（绿区）：状态良好，按计划组数与目标重量执行；"
-                  "若所有工作组都达到次数上限且动作不变形，下次可按增量进阶。")
+        tier, label, factor, rir_delta = "green", L("恢复绿区 · 适合渐进超负荷", "Green recovery · good for progressive overload"), 1.0, 0
+        advice = L(f"恢复分 {rec:.0f}（绿区）：状态良好，按计划组数与目标重量执行；"
+                   "若所有工作组都达到次数上限且动作不变形，下次可按增量进阶。",
+                   f"Recovery {rec:.0f} (green): you're in good shape. Do the planned sets at the target weights; "
+                   "if every working set hits the rep ceiling with clean form, add weight next time.")
     return {
         "date": day.isoformat(),
         "score_date": row["date"].isoformat(),
@@ -287,7 +304,8 @@ def propose_plan(
     else:
         if split_type not in P.SPLIT_TEMPLATES:
             valid = "、".join(P.SPLIT_TEMPLATES)
-            raise ValueError(f"不支持的 split_type={split_type!r}；可选：{valid}，或传入 custom_days 自定义")
+            raise ValueError(L(f"不支持的 split_type={split_type!r}；可选：{valid}，或传入 custom_days 自定义",
+                               f"Unsupported split_type={split_type!r}; choose one of {valid.replace('、', ', ')}, or pass custom_days"))
         tpl = P.SPLIT_TEMPLATES[split_type]
         tpl_name = name or tpl["name"]
         tpl_summary = tpl["summary"]
@@ -303,7 +321,8 @@ def propose_plan(
 
     for dow, sname, ex_list in raw_days:
         if not 1 <= int(dow) <= 7:
-            raise ValueError(f"day_of_week 必须在 1（周一）到 7（周日）之间，收到 {dow}")
+            raise ValueError(L(f"day_of_week 必须在 1（周一）到 7（周日）之间，收到 {dow}",
+                               f"day_of_week must be between 1 (Mon) and 7 (Sun), got {dow}"))
         ex_items: list[dict] = []
         for raw_ex in ex_list:
             item = _normalize_item(conn, user_id, raw_ex, with_meta=True)
@@ -338,9 +357,10 @@ def propose_plan(
                         "session_name": sname,
                         "slug": item["slug"],
                         "name_zh": item["name_zh"],
-                        "reason": item["reason"] or "该动作在用户的禁用名单中",
+                        "name_en": item.get("name_en"),
+                        "reason": item["reason"] or BANNED_REASON_ZH,
                         "alternatives": [
-                            {"slug": a["slug"], "name_zh": a["name_zh"], "cues": a["cues"],
+                            {"slug": a["slug"], "name_zh": a["name_zh"], "name_en": a.get("name_en"), "cues": a["cues"],
                              "equipment_zh": a["equipment_zh"], "status": a["status"]}
                             for a in alts
                         ],
@@ -559,29 +579,35 @@ def save_plan(
     """Validate and persist an active weekly training plan in `training_plans`, blocking any banned exercises.
     The AI calls this only after the user confirmed the propose_plan draft (start day, rest of this week, weekdays)."""
     from . import plan_start
-    proposal = propose_plan(
-        conn,
-        user_id=user_id,
-        split_type=split_type,
-        custom_days=days,
-        name=name,
-        notes=notes,
-        auto_swap_banned=auto_swap_banned,
-        training_days=training_days,
-        start_date=start_date,
-        addons=addons,
-        log_client=log_client,
-        with_loads=False,
-    )
+    with use_lang("zh"):   # what is stored is the Chinese catalog / template text; names are shown in the request's language later
+        proposal = propose_plan(
+            conn,
+            user_id=user_id,
+            split_type=split_type,
+            custom_days=days,
+            name=name,
+            notes=notes,
+            auto_swap_banned=auto_swap_banned,
+            training_days=training_days,
+            start_date=start_date,
+            addons=addons,
+            log_client=log_client,
+            with_loads=False,
+        )
     if proposal["banned_conflicts"]:
         reasons = [
-            f"{c['weekday_zh']}「{c['name_zh']}」（{c['reason']}；可换："
-            + ("、".join(a["name_zh"] for a in c["alternatives"]) or "无") + "）"
+            L(f"{c['weekday_zh']}「{c['name_zh']}」（{c['reason']}；可换："
+              + ("、".join(a["name_zh"] for a in c["alternatives"]) or "无") + "）",
+              f"{WEEKDAY_EN.get(c['day_of_week'], c['weekday_zh'])} “{c.get('name_en') or c['name_zh']}” "
+              f"({BANNED_REASON_EN if c['reason'] == BANNED_REASON_ZH else c['reason']}; alternatives: "
+              + (", ".join(a.get("name_en") or a["name_zh"] for a in c["alternatives"]) or "none") + ")")
             for c in proposal["banned_conflicts"]
         ]
         raise PermissionError(
-            "拒绝保存周训练计划：计划中包含禁用动作 —— " + "；".join(reasons)
-            + "。请先替换禁用动作，或传 auto_swap_banned=true 自动替换为安全动作后再保存。"
+            L("拒绝保存周训练计划：计划中包含禁用动作 —— " + "；".join(reasons)
+              + "。请先替换禁用动作，或传 auto_swap_banned=true 自动替换为安全动作后再保存。",
+              "The plan was not saved because it contains banned exercises: " + "; ".join(reasons)
+              + ". Replace them first, or switch on automatic safe swaps, then save again.")
         )
 
     start_d = date.fromisoformat(proposal["start_date"])
@@ -686,7 +712,8 @@ def get_week_plan(
     """Return the active weekly training plan for [Monday..Sunday] around `day`, enriched with exercise metadata,
     recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
-        raise PermissionError("没有授权查看该用户的训练计划（需要 training 权限）")
+        raise PermissionError(L("没有授权查看该用户的训练计划（需要 training 权限）",
+                                "No permission to view this user's training plan (needs the training scope)"))
     from . import plan_add, plan_remove
     catalog.ensure_seeded(conn)
     day = day or _user_today(conn, owner_id)
@@ -733,14 +760,14 @@ def get_week_plan(
                         break
                 item["suggestions"] = matched_sugg
                 loads.attach(load_ctx, item, matched_sugg[0] if matched_sugg else None)
-                item["name"] = item["name_zh"]
+                item["name"] = _shown_name(item)
                 item["exercise_id"] = item.get("app_exercise_id") or item["slug"]
                 if item["status"] != "active" and item["slug"] not in seen_caution:
                     seen_caution.add(item["slug"])
                     cautions.append({
                         "exercise_id": item["exercise_id"],
                         "slug": item["slug"],
-                        "name": item["name_zh"],
+                        "name": _shown_name(item),
                         "status": item["status"],
                         "reason": item["reason"],
                         "cues": item["cues"],
@@ -748,7 +775,7 @@ def get_week_plan(
                 if not detail:
                     exs.append({
                         "slug": item["slug"],
-                        "name": item["name_zh"],
+                        "name": _shown_name(item),
                         "sets_text": item["sets_text"],
                         "load": item["load_text"],
                         "status": item["status"],
@@ -787,15 +814,15 @@ def get_week_plan(
                     vol_items.append(item)
                     item["suggestions"] = []
                     loads.attach(load_ctx, item, None)
-                    item["name"] = item["name_zh"]
+                    item["name"] = _shown_name(item)
                     item["exercise_id"] = item.get("app_exercise_id") or item["slug"]
                     item["added_for_day"] = True
                     if item["status"] != "active" and item["slug"] not in seen_caution:
                         seen_caution.add(item["slug"])
-                        cautions.append({"exercise_id": item["exercise_id"], "slug": item["slug"], "name": item["name_zh"],
+                        cautions.append({"exercise_id": item["exercise_id"], "slug": item["slug"], "name": _shown_name(item),
                                          "status": item["status"], "reason": item["reason"], "cues": item["cues"]})
                     extra_exs.append(item if detail else {
-                        "slug": item["slug"], "name": item["name_zh"], "sets_text": item["sets_text"], "load": item["load_text"],
+                        "slug": item["slug"], "name": _shown_name(item), "sets_text": item["sets_text"], "load": item["load_text"],
                         "status": item["status"], "cues": item["cues"] if item["status"] != "active" else None})
                 planned.append({"name": plan_add.extra_session_name(), "exercises": extra_exs, "added_for_day": True})
             gone = {r["slug"] for r in removals.get(d, [])}
@@ -906,7 +933,8 @@ def swap_exercise(
     catalog.ensure_seeded(conn)
     plan_row = _active_plan_row(conn, user_id)
     if plan_row is None:
-        raise ValueError("当前没有生效的周训练计划；请先用 propose_plan / save_plan 创建周计划")
+        raise ValueError(L("当前没有生效的周训练计划；请先用 propose_plan / save_plan 创建周计划",
+                           "There is no active weekly plan yet; create one first"))
 
     from_resolved = catalog.resolve(conn, from_exercise, user_id=user_id)
     from_slug = from_resolved["slug"] if from_resolved else catalog.norm(from_exercise)
@@ -961,16 +989,19 @@ def swap_exercise(
     if to_resolved is None:
         cands = catalog.search(conn, user_id=user_id, query=to_exercise, limit=5)
         cand_names = [c["name_zh"] for c in cands]
-        raise ValueError(f"动作库里找不到替代动作「{to_exercise}」"
-                         + (f"；相近动作：{'、'.join(cand_names)}" if cand_names else ""))
+        cand_en = [c.get("name_en") or c["name_zh"] for c in cands]
+        raise ValueError(L(f"动作库里找不到替代动作「{to_exercise}」" + (f"；相近动作：{'、'.join(cand_names)}" if cand_names else ""),
+                           f"The exercise library has no replacement “{to_exercise}”" + (f"; similar: {', '.join(cand_en)}" if cand_en else "")))
 
     if to_resolved["status"] == "banned":
         safe_alts = catalog.recommend_alternatives(conn, to_resolved["slug"], user_id=user_id, limit=3)
-        raise PermissionError(
+        raise PermissionError(L(
             f"拒绝替换：「{to_resolved['name_zh']}」是禁用动作"
             + (f"（{to_resolved['reason']}）" if to_resolved.get("reason") else "")
-            + (f"；建议改用：{'、'.join(a['name_zh'] for a in safe_alts)}" if safe_alts else "")
-        )
+            + (f"；建议改用：{'、'.join(a['name_zh'] for a in safe_alts)}" if safe_alts else ""),
+            f"Swap refused: “{to_resolved.get('name_en') or to_resolved['name_zh']}” is a banned exercise"
+            + (f" ({to_resolved['reason']})" if to_resolved.get("reason") else "")
+            + (f"; use one of these instead: {', '.join(a.get('name_en') or a['name_zh'] for a in safe_alts)}" if safe_alts else "")))
 
     replaced_in = []
     for d_idx, e_idx, d_obj, old_ex in matches:

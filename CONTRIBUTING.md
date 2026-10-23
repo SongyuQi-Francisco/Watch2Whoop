@@ -27,12 +27,19 @@ without both languages is not merged.
 - **Server texts the page shows** (labels, reminders, explain sheets, error details): use `L("中文", "English")` /
   `tl()` from `body_engine/i18n.py`, picked by the request's `X-Body-Lang`. New `HTTPException` details also get
   their English in `errors_en.py`. AI-facing texts (tool results, prompts) stay Chinese.
+  **Data the page shows as it is** is the part the scanners cannot see (a name the server sends, a stored value): translate
+  it where it is built (`L()` in the builder) or show it through `tr(value)` when it is a fixed vocabulary (catalog labels,
+  built-in plan names; the page keeps the stored Chinese value for the AI). Check the new screen in English before you open
+  the PR, and say so in the PR.
 - **iOS app**: write `tr('中文', 'English')` (`lib/src/i18n.dart`).
 - **Enforced in CI**:
-  - `body_engine/tests/test_i18n.py` fails on any Chinese literal outside `tr()`, on a key without English, and on
-    unmarked Chinese in the HTML;
-  - `test_i18n_server.py` fails on an error detail without English;
-  - `apps/watch2whoop/test/i18n_test.dart` fails on a Chinese literal outside `tr()`.
+  - `body_engine/tests/test_i18n.py` fails on any Chinese literal outside `tr()`, on a key without English, on unmarked
+    Chinese in the HTML, and on a page script or page that is not in its lists (a new `.js` file must be added there);
+  - `test_i18n_server.py` fails on an error detail without English, and on a module that raises a Chinese message and is
+    in neither `REACHABLE` (its messages reach the page: translate them) nor `AI_OR_ADMIN_ONLY` (the AI or the CLI read them);
+  - `test_i18n_remnants.py` checks the data tables the page shows (exercise cues, catalog vocabulary, plan templates);
+  - `apps/watch2whoop/test/i18n_test.dart` fails on a Chinese literal outside `tr()` (single or double quoted) and on
+    Chinese in the English half of a `tr()`.
 - Details: [docs/i18n-plan.md](docs/i18n-plan.md).
 
 每个新功能、每次改动都要同时有中文和英文：今天页的文字走 `tr("中文")` 并在 `i18n-en.js` 加英文；服务器给页面的文字用

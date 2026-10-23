@@ -33,7 +33,19 @@ REACHABLE = ("account/api.py", "ai/api.py", "ai/chat.py", "ai/asr.py", "api.py",
              "assistant/sparky_write.py", "cardio/", "explain/api.py", "friends/", "goals/", "grocery/", "history/", "insights/api.py",
              "insights/reports.py", "nutrition/extras.py", "profile/api.py", "profile/store.py", "rawdata/api.py",
              "records/api.py", "records/store.py", "records/analysis.py", "rules/api.py", "training/api.py",
-             "training/history.py", "web/", "sparky_client.py")
+             "training/history.py", "training/plans.py", "training/catalog.py", "avatars/", "images/", "water/api.py",
+             "web/", "sparky_client.py")
+# Modules with Chinese raise messages that stay Chinese because only the AI (tool arguments, tool results), the command line or
+# the admin ever read them. A module that is in neither list fails test_every_chinese_raise_is_classified (issue #64): decide
+# whether a page user can see its messages (then translate and add it to REACHABLE) or not (then add it here).
+AI_OR_ADMIN_ONLY = (
+    "account/identities.py", "account/invites.py", "feedback/cli.py", "feedback/store.py", "ai/cards", "ai/crypto.py", "ai/fallback", "ai/mcp_http.py", "ai/root_rules.py",
+    "ai/web/", "assistant/butler_tools.py", "assistant/diet_profile.py", "assistant/snapshots.py", "assistant/sparky_tools.py",
+    "assistant/status.py", "assistant/tools.py", "assistant/writelog.py", "cli.py", "config.py", "importers/", "mcp_server.py",
+    "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "records/importer.py",
+    "records/lab_catalog.py", "records/tools.py", "rules/context.py", "rules/store.py", "rules/tools.py", "scores/inputs.py",
+    "sync/history.py", "training/day_overrides.py", "training/importer.py", "training/media.py", "training/overrides.py",
+    "training/plan_start.py", "training/tools.py", "water/store.py")
 
 
 def _sample(node) -> str | None:
@@ -74,6 +86,23 @@ def _messages(reachable_only: bool):
 def test_every_chinese_detail_has_english():
     missing = [f"{where}: {s}" for where, s in _messages(True) if CJK.search(errors_en.translate(s))]
     assert not missing, "add these to errors_en.py (EXACT / _TEMPLATES):\n" + "\n".join(missing)
+
+
+def test_every_chinese_raise_is_classified():
+    """A module that raises a Chinese message must be in REACHABLE (checked above: its messages reach the page as an error
+    detail, so they need English) or in AI_OR_ADMIN_ONLY (the AI, the CLI or the admin read them). Several modules once had
+    Chinese messages a page user could meet and no test looked at them (issue #64)."""
+    seen = set()
+    for p in sorted(SRC.rglob("*.py")):
+        rel = p.relative_to(SRC).as_posix()
+        if rel.startswith(("migrations/", "tests/")) or rel.startswith(REACHABLE) or rel.startswith(AI_OR_ADMIN_ONLY):
+            continue
+        for n in ast.walk(ast.parse(p.read_text())):
+            if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call) and getattr(n.exc.func, "id", None) != "HTTPException":
+                for a in [*n.exc.args, *(k.value for k in n.exc.keywords)]:   # (HTTPException details are all checked above)
+                    if (s := _sample(a)) and CJK.search(s):
+                        seen.add(rel)
+    assert not seen, f"decide for {sorted(seen)}: translate and add to REACHABLE, or add to AI_OR_ADMIN_ONLY (see the comment)"
 
 
 def test_patterns_keep_values_and_terms():

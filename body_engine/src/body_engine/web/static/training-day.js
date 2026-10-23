@@ -173,7 +173,7 @@
 
   const planSub = () => {   // "上肢 B · 8 个动作 · 约 60 分钟"
     const n = cards().length;
-    return [(V.sessions || []).map((x) => x.name).join(" · "), tr("{n} 个动作", { n }), V.minutes ? tr("约 {n} 分钟", { n: V.minutes }) : ""].filter(Boolean).join(" · ");   // i18n-ok: plan names are data
+    return [(V.sessions || []).map((x) => (x.name ? tr(x.name) : x.name)).join(" · "), tr("{n} 个动作", { n }), V.minutes ? tr("约 {n} 分钟", { n: V.minutes }) : ""].filter(Boolean).join(" · ");   // i18n-ok: plan names are data
   };
 
   function removedHtml() {

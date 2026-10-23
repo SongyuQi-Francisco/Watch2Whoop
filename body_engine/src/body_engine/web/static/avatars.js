@@ -159,7 +159,7 @@
         } catch (e) { $(".av-err", root).textContent = e.message; $("#av-ok", root).disabled = false; }
       };
     };
-    const done = (url) => { C.closeSheet(); C.toast(tr(url ? "头像已更新" : "头像已删除")); o.onDone?.(url); };
+    const done = (url) => { C.closeSheet(); C.toast(url ? tr("头像已更新") : tr("头像已删除")); o.onDone?.(url); };
     C.openSheet(o.title, "", show);
   }
 
@@ -167,7 +167,7 @@
   function profileRow(url, name) {
     if (!on()) return "";
     return `<div class="field av-row"><span class="av-big">${inner(url, name)}</span>
-      <button class="btn" type="button" id="pf-avatar">${ICON.camera}<span>${esc(tr(url ? "更换头像" : "设置头像"))}</span></button></div>`;
+      <button class="btn" type="button" id="pf-avatar">${ICON.camera}<span>${esc(url ? tr("更换头像") : tr("设置头像"))}</span></button></div>`;
   }
   function bindProfile(root, url, name) {
     const b = $("#pf-avatar", root);
