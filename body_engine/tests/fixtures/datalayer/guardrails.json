@@ -1,0 +1,54 @@
+{
+ "read_only_direct_write": {
+  "is_error": true,
+  "text": "这个 token 是只读的，不能写"
+ },
+ "read_only_run_write_tool": {
+  "is_error": true,
+  "text": "PermissionError: 这个 token / 这次登录是只读的，不能写"
+ },
+ "read_only_hidden_from_find": {
+  "is_error": false,
+  "text": "{\"query\":\"add_event\",\"hint\":\"没找到：不填参数调 find_tools 看所有组，或按 group 查\"}"
+ },
+ "write_through_run_read_tool": {
+  "is_error": true,
+  "text": "PermissionError: add_event 是写工具，要用 run_write_tool"
+ },
+ "read_through_run_write_tool": {
+  "is_error": true,
+  "text": "PermissionError: get_profile 是只读工具，要用 run_read_tool"
+ },
+ "confirm_tool_through_run_write_tool": {
+  "is_error": true,
+  "text": "PermissionError: delete_journal_entry 要直接调用（删除 / 撤销类，客户端会先请用户确认）"
+ },
+ "unknown_tool": {
+  "is_error": true,
+  "text": "没有这个工具：no_such_tool"
+ },
+ "unknown_tool_through_meta": {
+  "is_error": true,
+  "text": "ValueError: 没有这个工具，或这里不能用：no_such_tool（先用 find_tools 查）"
+ },
+ "meta_tool_through_meta": {
+  "is_error": true,
+  "text": "ValueError: name 要填一个工具名（find_tools 查到的）"
+ },
+ "args_not_an_object": {
+  "is_error": true,
+  "text": "ValueError: args 要是一个对象（JSON）"
+ },
+ "missing_args": {
+  "is_error": true,
+  "text": "ValueError: add_event 缺少参数：occurred_at（参数说明用 find_tools 查）"
+ },
+ "unknown_group": {
+  "is_error": true,
+  "text": "ValueError: 没有这个组：no_such_group；可用的组：body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+ },
+ "ai_parity_confirm_tool_through_run_write_tool": {
+  "is_error": true,
+  "text": "PermissionError: undo_sparky_entry 要直接调用（删除 / 撤销类，客户端会先请用户确认）"
+ }
+}
