@@ -5,10 +5,14 @@ and by the tool get_playbook(name) (clients that do not show prompts, the in-pag
 title, the `> …` line under it the one-line description; HTML comments are for developers and are stripped.
 Every `tool_name` a playbook mentions must exist (tests/test_playbooks.py). FIND_LINE is put under the description of every
 playbook (tools not in the client's list are reached with find_tools); FALLBACK marks the ones the fallback AI can do.
+Loading and parsing are the datalayer framework's (datalayer/playbooks.py, issue #116); the names, the markers and
+the texts stay here.
 """
 import re
-from functools import lru_cache
 from importlib import resources
+
+from ...datalayer.playbooks import PlaybookSource
+from ..datalayer_texts import MESSAGES
 
 NAMES = ("plan_shopping", "plan_training_week", "weekly_review", "log_meal_from_photo")
 # Playbooks the fallback AI can carry out: every tool they name is in ai/fallback.TOOL_NAMES (tests/test_playbooks.py).
@@ -29,30 +33,11 @@ TOOL_RE = re.compile(r"`((?:get|log|list|set|add|update|delete|remove|undo|save|
                      r"suggest|swap|reschedule|replan|analyze|lookup|rollback|report|create|end|dismiss)_[a-z_]+)`")
 
 
-def _check(name: str) -> None:
-    if name not in NAMES:
-        raise ValueError(f"没有这个 playbook：{name}；有：{' / '.join(NAMES)}")
-
-
-@lru_cache(maxsize=None)
-def text(name: str) -> str:
-    _check(name)
-    raw = resources.files("body_engine.ai.playbooks").joinpath(f"{name}.md").read_text(encoding="utf-8")
-    body = re.sub(r"<!--.*?-->\s*", "", raw, flags=re.S).strip()
-    return re.sub(r"^(> .+)$", lambda m: f"{m.group(1)}\n\n{FIND_LINE}", body, count=1, flags=re.M)
-
-
-def title(name: str) -> str:
-    return text(name).splitlines()[0].lstrip("# ").strip()
-
-
-def description(name: str) -> str:
-    m = re.search(r"^> (.+)$", text(name), flags=re.M)
-    return m.group(1).strip() if m else title(name)
-
-
-def tools_mentioned(name: str) -> set[str]:
-    return set(TOOL_RE.findall(text(name)))
+_SOURCE = PlaybookSource(resources.files(__name__), NAMES, messages=MESSAGES, find_line=FIND_LINE, tool_re=TOOL_RE)
+text = _SOURCE.text
+title = _SOURCE.title
+description = _SOURCE.description
+tools_mentioned = _SOURCE.tools_mentioned
 
 
 def get(name: str, for_fallback: bool = False, web: bool = False) -> dict:
