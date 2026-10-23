@@ -81,10 +81,10 @@ def world(dsn):
                         VALUES (%s, %s, 'pain', '膝', 2, '打球后膝盖疼')""",
                      (a, datetime.combine(today - timedelta(days=2), datetime.min.time(), TZ) + timedelta(hours=20)))
         conn.commit()
-        # the plan starts today (#65), so give it training days that include today: with the template's Mon / Tue / Thu / Fri a
-        # run on a Saturday or Sunday would have no session left in the current Mon–Sun week
-        days = sorted({(today.isoweekday() - 1 + k) % 7 + 1 for k in (0, 1, 2, 3)})
-        plans.save_plan(conn, a, split_type="4_day_upper_lower", training_days=days, sync_sparky=False)
+        plans.save_plan(conn, a, split_type="4_day_upper_lower", sync_sparky=False)
+        # A plan saved on a Friday / Saturday / Sunday starts today (issue #65): the rest of that week holds no session, and the
+        # test below looks at the current week. Let the plan have started two weeks ago so it passes on every weekday.
+        conn.execute("UPDATE training_plans SET start_date = start_date - 14 WHERE user_id = %s AND active", (a,))
         conn.commit()
     return ids
 
