@@ -36,10 +36,10 @@ def _table(s: dict) -> str:
              f"本月合计 ¥{s['month_spent_cny']:.2f}；{s['eligible_users']} 人可用，本月最多还会花 ¥{s['month_remaining_cny']:.2f}"
              f"（其中没用的额度卡最多 ¥{s['month_cards_max_cny']:.2f}）",
              f"价格：{s['price_source']}", "",
-             f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8}  同意  额度卡  Jarvis 用"]
+             f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8} {'被拦':>4}  同意  额度卡  Jarvis 用"]
     for u in s["users"]:
         lines.append(f"{u['user_id']:>3}  {u['name'][:10]:<10} ¥{u['spent_cny']:>7.3f} ¥{u['quota_cny']:>5g} {u['calls']:>5} "
-                     f"{u['input_tokens']:>9} {u['output_tokens']:>8}  {_consent(u):<4}  "
+                     f"{u['input_tokens']:>9} {u['output_tokens']:>8} {u['scope_blocked']:>4}  {_consent(u):<4}  "
                      f"{_cards(u):<6}  {u['uses']}")
     return "\n".join(lines)
 
