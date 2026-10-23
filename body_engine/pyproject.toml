@@ -15,6 +15,8 @@ dependencies = [
     "openbodyscore",
     "httpx[http2]>=0.28",
     "pillow>=11",
+    "pypinyin>=0.53",
+    "jellyfish>=1.1,<1.3",
 ]
 
 [project.scripts]

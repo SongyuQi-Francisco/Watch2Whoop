@@ -3935,7 +3935,7 @@
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab }, me));
+    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet }, me));
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;

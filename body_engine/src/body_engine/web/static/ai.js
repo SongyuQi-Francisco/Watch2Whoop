@@ -384,6 +384,8 @@
     video: `<svg viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M15.5 10.5l5-3v9l-5-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
     spark: `<svg viewBox="0 0 24 24"><path d="M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2zm-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`,   // Tabler "sparkles" (MIT), as the Jarvis button
     mic: `<svg viewBox="0 0 24 24"><rect x="9" y="3.5" width="6" height="11" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+    // Lucide "audio-lines" (https://lucide.dev, ISC; THIRD_PARTY_NOTICES.md): the tag of a voice message (flag jarvis_orbit)
+    audio: `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>`,
   };
 
   function panel() {
@@ -392,7 +394,16 @@
     p = document.createElement("div");
     p.id = "ai-chat"; p.className = `panel ai-chat${window.BodyFlags?.on("jarvis_ui_v2") ? " v2" : ""}`; p.hidden = true;   // rollout flag jarvis_ui_v2 (#53): the look is all in ai.css under .ai-chat.v2
     p.setAttribute("role", "dialog"); p.setAttribute("aria-modal", "true"); p.setAttribute("aria-label", "Jarvis");
+    // The half sheet (flag jarvis_orbit, jarvis-entry.js) is this same panel with the class "jv-half": its own grab handle and
+    // title row (「继续对话」 = the full panel, same conversation), the quick-log chips; the rest is hidden by jarvis-entry.css.
     p.innerHTML = `
+      <div class="ai-grab" id="ai-grab" aria-hidden="true"><i></i></div>
+      <div class="ai-half-head" id="ai-half-head">
+        <h2 id="ai-half-title">Jarvis</h2>
+        <button type="button" class="ai-more" id="ai-more">${esc(tr("继续对话"))}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button type="button" class="close" id="ai-half-x" aria-label="${esc(tr("common.close"))}"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
+      </div>
+      <div class="ai-quicklog" id="ai-quicklog" role="group" hidden></div>
       <div class="panel-head">
         <button class="close" id="ai-close" aria-label="${esc(tr("返回"))}"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
         <h2>Jarvis <button type="button" class="ai-switch small muted" id="ai-model" aria-haspopup="true" aria-expanded="false"></button></h2>
@@ -424,6 +435,10 @@
     $("#ai-photo", p).addEventListener("click", (e) => { if (e.target.id !== "ai-file") chat.photoQuick = null; });
     $("#ai-vfile", p).onchange = (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) addVideo(f); };
     setupMic($("#ai-mic", p));
+    window.BodyJarvis?.bindMic($("#ai-mic", p));   // Jarvis (flag jarvis_orbit): hold the mic, release to send (jarvis-entry.js)
+    $("#ai-more", p).onclick = () => toFull();
+    $("#ai-half-x", p).onclick = () => closeChat();
+    halfDrag(p);
     return p;
   }
 
@@ -431,6 +446,7 @@
   function openChat(draft) {
     if (C.ai?.mode === "fallback" && !C.ai.consent) { consentSheet(null, () => openChat(draft)); return; }
     const p = panel();
+    if (p.classList.contains("jv-half")) { p.classList.remove("jv-half"); halfScrim(false); quickLog(null); }   // the full panel, never the half sheet
     $("#ai-switcher", p).hidden = true;
     if (typeof draft === "string" && draft) $("#ai-text", p).value = draft;
     header();
@@ -472,7 +488,7 @@
     return (Q[page] || Q[tab] || []).filter((q) => !(q.photo && C.ai?.vision === false));
   }
   function drawQuick() {
-    const p = panel(), list = quickList(), started = !!$(".ai-msg.user", p), row = $("#ai-quick-row", p);
+    const p = panel(), list = p.classList.contains("jv-half") ? [] : quickList(), started = !!$(".ai-msg.user", p), row = $("#ai-quick-row", p);
     const hadFocus = !!$("#ai-quick", p)?.contains(document.activeElement) && document.activeElement.matches(":focus-visible");
     $("#ai-quick", p)?.remove();
     const html = list.map((q, i) => `<button type="button" class="ai-q" data-q="${i}"${chat.busy ? " disabled" : ""}>${esc(q.t)}</button>`).join("");
@@ -534,9 +550,98 @@
 
   function closeChat() {
     const p = panel(); p.classList.remove("open");
-    setTimeout(() => { if (!p.classList.contains("open")) p.hidden = true; }, 280);
+    if (p.classList.contains("jv-half")) { half.closedAt = Date.now(); halfScrim(false); }
+    setTimeout(() => { if (!p.classList.contains("open")) { p.hidden = true; p.classList.remove("jv-half"); } }, 280);
+  }
+
+  // ---------------------------------------------------------------- half sheet (rollout flag jarvis_orbit, jarvis-entry.js)
+  // Jarvis' quick answers (voice, photo, quick log) rise from the bottom: the same panel and conversation as the full chat,
+  // shorter (its height follows the content, at most 80 %), with 「继续对话」 / drag up for the full panel and drag down / the dimmed
+  // page to close. Opened again within HALF_RESUME_MS it goes on with the same conversation, later a new one starts.
+  const HALF_RESUME_MS = 10 * 60 * 1000;
+  const half = { closedAt: 0 };
+  function halfScrim(on) {
+    let s = $("#ai-half-scrim");
+    if (!s) {
+      s = document.createElement("div"); s.id = "ai-half-scrim"; s.className = "ai-half-scrim"; s.hidden = true;
+      s.addEventListener("click", () => closeChat());
+      document.body.appendChild(s);
+    }
+    if (on) { s.hidden = false; requestAnimationFrame(() => s.classList.add("on")); }
+    else { s.classList.remove("on"); setTimeout(() => { if (!s.classList.contains("on")) s.hidden = true; }, 240); }
+  }
+  // opts: {title, chips: [{label, send} | {label, prefill}], placeholder}; returns false when the consent sheet came first
+  function openHalf(opts = {}) {
+    if (C.ai?.mode === "fallback" && !C.ai.consent) { consentSheet(null, () => openHalf(opts)); return false; }
+    const p = panel();
+    const wasOpen = !p.hidden && p.classList.contains("open");
+    if (wasOpen && !p.classList.contains("jv-half")) return true;   // the full chat is open: answers go there
+    if (!wasOpen) { p.classList.add("jv-half"); p.style.transform = ""; }
+    if (!wasOpen && !chat.busy && !chat.lost && chat.conv && Date.now() - half.closedAt > HALF_RESUME_MS) newConversation();
+    $("#ai-switcher", p).hidden = true;
+    header();
+    $("#ai-half-title", p).textContent = opts.title || "Jarvis";
+    $("#ai-text", p).placeholder = opts.placeholder || tr("问问题或记点什么");
+    quickLog(opts.chips || null);
+    drawQuick();
+    if (!wasOpen) {
+      p.hidden = false; halfScrim(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => p.classList.add("open")));
+    }
+    scroll();
+    return true;
+  }
+  function toFull() {
+    const p = panel();
+    if (!p.classList.contains("jv-half")) return;
+    halfScrim(false);
+    p.classList.add("jv-to-full"); p.classList.remove("jv-half"); p.style.transform = "";
+    requestAnimationFrame(() => requestAnimationFrame(() => p.classList.remove("jv-to-full")));
+    $("#ai-text", p).placeholder = tr("问问题或记点什么");
+    quickLog(null);
+    if (!$(".ai-msg, .ai-card, .ai-confirm, .ai-welcome", $("#ai-log", p))) hello();
+    header(); drawQuick(); scroll();
+  }
+  function quickLog(chips) {
+    const box = $("#ai-quicklog");
+    box.hidden = !chips?.length;
+    box.setAttribute("aria-label", tr("常用"));
+    box.innerHTML = chips?.length ? `<div class="ai-quicklog-l">${esc(tr("常用"))}</div><div class="ai-quicklog-chips">${chips.map((c, i) => `<button type="button" class="ai-q" data-ql="${i}">${esc(c.label)}</button>`).join("")}</div>` : "";
+    $$("[data-ql]", box).forEach((b) => { b.onclick = () => {
+      const c = chips[Number(b.dataset.ql)];
+      if (c.prefill) { const ta = $("#ai-text"); ta.value = c.prefill; ta.dispatchEvent(new Event("input")); ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); return; }
+      if (chat.busy) return;
+      leaveQuickLog();
+      sendQuick(c.send);
+    }; });
+  }
+  // Drag the grab handle / title row: up = the full panel, down = close (the content scrolls on its own)
+  function halfDrag(p) {
+    let d = null;
+    const start = (e) => {
+      if (!p.classList.contains("jv-half") || e.target.closest("button")) return;
+      d = { id: e.pointerId, y: e.clientY, dy: 0 };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
+      p.style.transition = "none";
+    };
+    const move = (e) => {
+      if (!d || e.pointerId !== d.id) return;
+      d.dy = e.clientY - d.y;
+      p.style.transform = `translateY(${d.dy > 0 ? d.dy : d.dy / 3}px)`;
+    };
+    const end = (e) => {
+      if (!d || e.pointerId !== d.id) return;
+      const dy = d.dy; d = null;
+      p.style.transition = ""; p.style.transform = "";
+      if (dy > 100) closeChat(); else if (dy < -60) toFull();
+    };
+    for (const el of [$("#ai-grab", p), $("#ai-half-head", p)]) {
+      el.addEventListener("pointerdown", start); el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+    }
   }
   function hello() {
+    if ($("#ai-chat")?.classList.contains("jv-half")) return;   // the half sheet starts empty (jarvis_orbit); 「继续对话」 adds the greeting
     const extra = [C.ai?.vision === false ? "" : tr("拍照、发视频也可以。"), micOn() ? tr("按住麦克风说话。") : ""].filter(Boolean);
     const sep = window.I18N.lang === "en" ? " " : "";
     if ($("#ai-chat")?.classList.contains("v2")) { welcome(extra.join(sep), sep); return; }
@@ -648,6 +753,7 @@
       if (s >= window.BodyMedia.MAX_SECONDS) finish();
     };
     async function begin(e) {
+      if (window.BodyJarvis?.ownsMic()) return;   // Jarvis with flag jarvis_orbit: jarvis-entry.js takes the press (release = send)
       if (!micOn()) {
         note(asrOn() ? tr("这里不能录音：点输入框，用键盘上的 🎤 听写") : tr("语音识别没开通：点输入框，用键盘上的 🎤 听写"), "warn");
         $("#ai-text").focus();
@@ -703,9 +809,46 @@
     if (tags) text = `${tags}${text ? "\n" : ""}${text}`;
     const shown = [photos.length ? tr("［图片 {n} 张］", { n: photos.length }) : "", tags].filter(Boolean).join("");
     bubble("user", (ta.value.trim() + (shown ? `${ta.value.trim() ? "\n" : ""}${shown}` : "")));
+    leaveQuickLog();
     if ($("#ai-quick")) drawQuick();  // first message: the quick tasks move to the row above the input
     ta.value = ""; ta.style.height = "auto";
     await stream("/v1/assistant/chat", { message: text, images, conversation_id: chat.conv, page: C.page?.() || null });   // page: extra tool groups (#99)
+  }
+  function leaveQuickLog() {
+    const box = $("#ai-quicklog");
+    if (box && !box.hidden) { box.hidden = true; $("#ai-half-title").textContent = "Jarvis"; $("#ai-text").placeholder = tr("问问题或记点什么"); }
+  }
+
+  // Jarvis voice input (flag jarvis_orbit, jarvis-entry.js): the recognised text goes out as the user's message (marked ［语音］ for
+  // the model, which knows such text may have homophone errors); the bubble shows a voice tag with the length. Nothing of the
+  // recording is kept. While Jarvis is still answering, the text waits in the input box instead.
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  function sendVoice(v) {
+    const text = (v?.text || "").trim();
+    if (!text) return false;
+    panel();
+    if (chat.busy) {
+      const ta = $("#ai-text");
+      ta.value = `${ta.value.trim() ? `${ta.value.trim()}\n` : ""}${text}`; ta.dispatchEvent(new Event("input"));
+      C.toast(tr("Jarvis 还在回答，你说的话放在输入框里了"));
+      return false;
+    }
+    const el = bubble("user", text, "voice");
+    const tag = document.createElement("span");
+    tag.className = "ai-voice-tag"; tag.setAttribute("aria-label", tr("语音 {t}", { t: mmss(Math.max(1, Math.round(v.seconds || 0))) }));
+    tag.innerHTML = `${ICON.audio}<span>${esc(mmss(Math.max(1, Math.round(v.seconds || 0))))}</span>`;
+    el.prepend(tag);
+    leaveQuickLog();
+    if ($("#ai-quick")) drawQuick();
+    stream("/v1/assistant/chat", { message: `${tr("［语音］")}${text}`, images: [], conversation_id: chat.conv, page: C.page?.() || null });
+    return true;
+  }
+  // The 拍照 key: the camera's photo goes out with the photo quick task's text
+  async function sendPhoto(file, text) {
+    let img;
+    try { img = await window.BodyMedia.shrinkImage(file); } catch (e) { C.toast(tr("这张图读不了")); return; }
+    if (chat.busy) { chat.items.push({ kind: "photo", img }); drawThumbs(); C.toast(tr("照片放在输入框上面了，Jarvis 回答完再发")); return; }
+    sendQuick(text || tr("拍照记一餐"), [{ kind: "photo", img }]);
   }
 
   const RESTART_WAITS = [3000, 6000];
@@ -1267,6 +1410,15 @@
     init(ctx) { C = ctx; },
     handlesAsk() { return !!C && (C.ai?.mode === "api" || C.ai?.mode === "fallback"); },
     openChat, openSettings, settingsValue,
+    // for jarvis-entry.js (flag jarvis_orbit): Jarvis = the built-in fallback AI; the quick entry is only for it
+    isJarvis() { return !!C && C.ai?.mode === "fallback"; },
+    ai() { return C?.ai || { mode: "none" }; },
+    ensureJarvis(then) { if (C.ai?.mode === "fallback" && !C.ai.consent) { consentSheet(null, then); return false; } return true; },
+    voicePath() { return window.BodyMedia?.voicePath(asrOn()) || "off"; },
+    busy() { return chat.busy; },
+    chatOpen() { const p = $("#ai-chat"); return !!p && !p.hidden && p.classList.contains("open"); },
+    openHalf, toFull, close: closeChat, sendVoice, sendPhoto,
+    draft(text) { panel(); const ta = $("#ai-text"); ta.value = text; ta.dispatchEvent(new Event("input")); ta.focus(); },
     refreshAi: afterChange,   // after the one-tap consent (profile.js) recorded the Jarvis terms
     reset() { chat.conv = null; chat.items = []; const p = $("#ai-chat"); if (p) p.remove(); },
   };

@@ -12,7 +12,8 @@ Changes need a token with write (Today page cookie writes also need X-Body-Web: 
 - GET /v1/users/{user}/ai-fallback, POST/DELETE /v1/users/{user}/ai-fallback/consent: the fallback AI (fallback.py): quota, consent
 - GET /v1/users/{user}/ai-cards, POST /v1/users/{user}/ai-cards/{id}/use: Jarvis quota cards (quota_cards.py, flag ai_cards, #182)
 - GET/PUT /v1/users/{user}/ai-choice: which AI Jarvis uses (choice.py): own provider / fallback / butler; takes effect at once
-- POST /v1/assistant/transcribe: voice -> text (asr.py, local recognition; body = 16 kHz mono WAV made by the page)
+- POST /v1/assistant/transcribe: voice -> text (asr.py, local recognition; body = 16 kHz mono WAV made by the page);
+  ?fix=1 and POST /v1/assistant/voice-fix: correction with the user's own terms (voice_fix.py, flag jarvis_orbit)
 """
 import json
 import logging
@@ -26,7 +27,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..i18n import L, lang
 from ..rollout import flags
-from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, quota_cards, runs, tokens
+from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, quota_cards, runs, tokens, voice_fix
 from . import quota_cards_params as qcp
 from . import params as ai_params
 
@@ -424,16 +425,35 @@ def chat_events_after(conv_id: int, after: int = Query(0, ge=0), viewer=Depends(
 
 
 @router.post("/v1/assistant/transcribe")
-async def transcribe(request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
+async def transcribe(request: Request, fix: bool = Query(False), conn=Depends(get_conn), viewer=Depends(current_user)):
     """Voice -> text. Body: audio/wav (PCM16 mono, <= 60 s). Returns {text, seconds, used_today, per_day}; the page puts the text
-    in the input box for the user to check before sending. The audio is never stored. Errors: detail = {code, message}."""
+    in the input box for the user to check before sending. The audio is never stored. Errors: detail = {code, message}.
+    fix=1 (Jarvis voice input, flag jarvis_orbit): the text is corrected with the user's own terms (voice_fix.py) and the
+    answer adds `fixed` (the replacements) and `raw` (the text before, when something changed)."""
     if int(request.headers.get("content-length") or 0) > asr.MAX_BYTES:
         raise HTTPException(413, {"code": "too_large", "message": asr.too_large_message()})
     data = await request.body()
     try:
-        return await run_in_threadpool(asr.transcribe, conn, viewer["id"], data)
+        out = await run_in_threadpool(asr.transcribe, conn, viewer["id"], data)
     except asr.AsrError as e:
         raise HTTPException(e.status, {"code": e.code, "message": e.message})
+    if fix and out.get("text") and flags.enabled(conn, viewer["id"], "jarvis_orbit"):
+        out.update(await run_in_threadpool(voice_fix.fix_for, conn, viewer["id"], out["text"]))
+    return out
+
+
+class VoiceFixIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(..., max_length=voice_fix.MAX_TEXT)
+
+
+@router.post("/v1/assistant/voice-fix")
+def voice_fix_text(body: VoiceFixIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Text recognised on the phone itself (the app's on-device recogniser, app 1.0.8+) -> the same correction with the user's
+    own terms as transcribe?fix=1: {text, fixed, raw?}. Only text comes in; nothing is stored. 404 while jarvis_orbit is off."""
+    if not flags.enabled(conn, viewer["id"], "jarvis_orbit"):
+        raise HTTPException(404, L("没有这个功能", "Not available"))
+    return voice_fix.fix_for(conn, viewer["id"], body.text)
 
 
 @router.get("/v1/assistant/conversations")
