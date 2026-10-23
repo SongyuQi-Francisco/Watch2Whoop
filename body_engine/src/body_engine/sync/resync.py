@@ -202,9 +202,6 @@ def _first_day(conn, user_id: int, client) -> date | None:
 def run_step(conn: psycopg.Connection, user_id: int, client=None, importer=None, scorer=None, first_day=None,
              budget: float = P.RESYNC_TIME_BUDGET, clock=_time.monotonic) -> dict:
     """One budgeted step of the server part. Keeps sync_refresh queued while unfinished, idle when done. Commits."""
-    if client is None:
-        from ..ow_client import OWClient
-        client = OWClient()
     if importer is None:
         from ..importers import ow
         importer = lambda c, cl, uid, s, e: ow.run(c, cl, uid, s, e)   # noqa: E731
@@ -214,6 +211,9 @@ def run_step(conn: psycopg.Connection, user_id: int, client=None, importer=None,
     t0 = clock()
     windows = 0
     try:
+        if client is None:   # inside the try: an OW client that cannot start (no API key) fails this job, shown in the
+            from ..ow_client import OWClient   # app, instead of raising out of sync-refresh-run with the job stuck queued
+            client = OWClient()
         row = _row(conn, user_id)
         if row.get("status") == "queued":
             linked = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()["ow_user_id"]
