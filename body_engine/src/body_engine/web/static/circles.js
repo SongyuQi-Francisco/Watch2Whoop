@@ -116,7 +116,7 @@
   // ---------------------------------------------------------------- sheets
   function circleCard(c) {
     const owner = c.is_owner;
-    const mem = c.members.map((m) => `<span>${esc(m.display_name)}${m.owner ? ` <b class="badge plain">${esc(tr("圈主"))}</b>` : ""}${owner && !m.me
+    const mem = c.members.map((m) => `<span>${m.me ? esc(m.display_name) : window.BodyRemarks?.html(m.remark, m.display_name) ?? esc(m.display_name)}${m.owner ? ` <b class="badge plain">${esc(tr("圈主"))}</b>` : ""}${owner && !m.me
       ? `<button type="button" data-remove="${m.id}" data-name="${esc(m.display_name)}" aria-label="${esc(tr("移除"))}">×</button>` : ""}</span>`).join("");
     const acts = [`<button type="button" data-scopes="${c.id}">${esc(tr("改共享范围"))}</button>`];
     if (owner) acts.push(`<button type="button" data-invite="${c.id}">${esc(tr("邀请"))}</button>`,

@@ -250,6 +250,10 @@ span.dash { color: var(--text-3); }   /* Only for the "—" placeholder; the out
 .me { display: flex; align-items: center; gap: 14px; padding: 8px 2px 4px; }
 .me .avatar { width: 52px; height: 52px; font-size: 20px; }
 .me-name { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.me > span:not(.avatar):not(.chev) > span { display: block; }
+.me-open { width: 100%; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: var(--radius); -webkit-tap-highlight-color: transparent; }
+.me-open > span:nth-child(2) { flex: 1; min-width: 0; }
+.me-open:active { opacity: .6; }
 .group { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
 .item { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 14px 16px; text-align: left; text-decoration: none; }
 .item + .item { border-top: 1px solid var(--hair); }

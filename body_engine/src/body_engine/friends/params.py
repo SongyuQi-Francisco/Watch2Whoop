@@ -21,6 +21,8 @@ MAX_LIVE_CODES = 5            # live codes per circle; minting one more revokes 
 MAX_CIRCLES_PER_USER = 10
 MAX_MEMBERS = 30
 NAME_MAX = 40
+# Private nickname for a circle member (#212, friends/remarks.py): at most this many characters after trimming; empty clears it
+REMARK_MAX = 20
 
 # Wrong invite codes per client IP before a pause (same sliding window idea as web/login_limit.py)
 JOIN_MAX_FAILURES = 10
