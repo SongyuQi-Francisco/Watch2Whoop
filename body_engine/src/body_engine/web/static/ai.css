@@ -193,6 +193,36 @@
 .ai-card-lab .lab-rows { margin-top: 6px; }
 .ai-shop li.done-ok .n { color: var(--text); }
 
+/* ---------- Product card (flag product_card, FB-12; ai.js productBody, built by ai/cards_product.py) ----------
+   Sections of the user's own data (nutrition, recorded prices, price trend, pantry) in one --surface card, the .nut4 grid of the food
+   page for numbers; the energy split is one bar in three greys of the text colour, the trend line the price history sheet's. */
+.ai-prod-sec { margin-top: 14px; }
+.ai-card-title + .ai-prod-sec, .ai-card-sub + .ai-prod-sec { margin-top: 4px; }
+.ai-prod-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.ai-prod-h .badge { margin-left: 0; }
+.ai-prod-h .ai-card-date { font-weight: 500; }
+.ai-split { display: flex; gap: 2px; height: 8px; margin: 6px 0 0; border-radius: 999px; overflow: hidden; background: var(--surface-2); }
+.ai-split span { display: block; min-width: 3px; }
+.ai-split .p, .ai-split-key .p { background: var(--text); }
+.ai-split .c, .ai-split-key .c { background: var(--text-2); }
+.ai-split .f, .ai-split-key .f { background: var(--text-3); }
+.ai-split-key { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 6px; }
+.ai-split-key i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
+.ai-prices li { align-items: center; }
+.ai-price-l { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ai-price-l .n { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.ai-price-l .badge { margin-left: 0; }
+.ai-price-r { display: flex; align-items: baseline; gap: 6px; flex: none; }
+.ai-price-r b { font-size: 17px; font-weight: 650; }
+.ai-price-r s { text-decoration: line-through; }
+.ai-prices li.stale .ai-price-r b { color: var(--text-2); font-weight: 600; }
+.ai-pspark { display: block; width: 100%; height: 56px; margin: 2px 0 0; }
+.ai-pspark polyline { stroke: var(--text-2); stroke-width: 1.6; }
+.ai-pspark .sp { fill: var(--good); }
+.ai-pspark .pd { fill: var(--text); }
+.ai-pspark-d { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.ai-prod-nums .v { font-size: 15px; }
+
 /* ---------- Jarvis UI v2 (issue #53, rollout flag jarvis_ui_v2) ----------
    Everything below is scoped under .ai-chat.v2, so with the flag off the panel looks exactly as above. Same language as the Today page's
    top bar (.top: 26px bold title, 34px round buttons), the intro's empty state (icon tile, bold title, muted line) and its cards:

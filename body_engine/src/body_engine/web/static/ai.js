@@ -920,6 +920,14 @@
     explain_journal: () => [tr("怎么用这些"), tr("根据日记分析，哪些习惯最值得保持或改掉")],
     explain_report: (c) => [tr("总结一下"), c.period === "month" ? tr("总结一下我这个月") : tr("总结一下我这周")],
     explain_sleep: (c) => [tr("分析这晚"), tr("分析一下我 {d} 醒来的那晚睡眠", { d: c.date })],
+    // product card (flag product_card): log it once with the library's nutrition; record_price opens the photo picker (actionButtons)
+    log_product: (c) => {
+      const s = c.nutrition?.serving;
+      const amount = !s ? "" : s.kind === "piece" ? tr("1 个（约 {g} {u}）", { g: n0(s.amount, 1), u: s.unit }) : tr("1 包（{g} {u}）", { g: n0(s.amount, 1), u: s.unit });
+      return [tr("记一次"), amount ? tr("按商品库「{name}」（商品 id {id}）的营养记一次：{amount}", { name: c.name, id: c.id, amount })
+        : tr("按商品库「{name}」（商品 id {id}）的营养记一次，先问我吃了多少", { name: c.name, id: c.id })];
+    },
+    record_price: (c) => [tr("拍价签 / 小票"), tr("这是「{name}」的价签或小票，帮我记价格", { name: c.name })],
   };
   // Row buttons of the diet cards (jarvis_cards_v2): the text names the row by its own fields (the server's ids), never model text
   const ROW = {
@@ -1120,6 +1128,72 @@
         <span class="num muted">${esc(it.qty || "")}</span></li>`).join("")}</ul>
       ${more > 0 ? `<div class="small muted">${esc(tr("还有 {n} 样", { n: more }))}</div>` : ""}`;
   }
+  // ---- product card (ai/cards_product.py, flags jarvis_cards_v2 + product_card, FB-12): the user's own data only; a block with no
+  // data is not drawn. Prices are what the user recorded (receipts, shelf-label screenshots), never a live store price.
+  const CUR = { AUD: "A$", CNY: "¥", USD: "$", NZD: "NZ$", EUR: "€", GBP: "£", JPY: "¥", MYR: "RM" };
+  const cash = (v, cur) => (v == null ? "—" : `${CUR[cur || "AUD"] || `${cur} `}${Number(v).toFixed(Number(v) >= 100 ? 0 : 2)}`);
+  const ago = (d) => (d == null ? "" : d <= 0 ? tr("今天") : tr("{n} 天前", { n: d }));
+  const PSOURCE = { screenshot: tr("截图"), manual: tr("手动记的"), ai: tr("AI 查的"), library: tr("随商品存的价") };
+  const pbadge = (cls, t) => `<span class="badge ${cls}">${esc(t)}</span>`;
+  const psec = (title, inner, right = "") => `<div class="ai-prod-sec"><div class="ai-prod-h"><span>${esc(title)}</span>${right}</div>${inner}</div>`;
+  function productNutrition(n) {
+    const p = n.per100 || {}, u = n.unit === "ml" ? "ml" : "g", sp = n.split, s = n.serving;
+    const cell = (l, v, unit, d = 0) => (v == null ? "" : `<div><div class="l">${esc(l)}</div><div class="v">${n0(v, d)}<small class="muted"> ${unit}</small></div></div>`);
+    const seg = sp ? [["p", sp.protein_g], ["c", sp.carbs_g], ["f", sp.fat_g]].filter(([, v]) => v) : [];
+    const split = sp ? `<div class="ai-split" role="img" aria-label="${esc(`${tr("蛋白")} ${sp.protein_g}% · ${tr("碳水")} ${sp.carbs_g}% · ${tr("脂肪")} ${sp.fat_g}%`)}">${seg.map(([k, v]) => `<span class="${k}" style="flex:${v} 1 0"></span>`).join("")}</div>
+      <div class="ai-split-key small muted"><span>${esc(tr("热量来源"))}</span><span><i class="p"></i>${esc(tr("蛋白"))} ${sp.protein_g}%</span><span><i class="c"></i>${esc(tr("碳水"))} ${sp.carbs_g}%</span><span><i class="f"></i>${esc(tr("脂肪"))} ${sp.fat_g}%</span></div>` : "";
+    const rest = [[tr("饱和脂肪"), p.sat_fat_g, "g", 1], [tr("糖"), p.sugar_g, "g", 1], [tr("钠"), p.sodium_mg, "mg", 0]].filter(([, v]) => v != null)
+      .map(([l, v, unit, d]) => `${esc(l)} ${n0(v, d)} ${unit}`);
+    const per = !s ? "" : `<div class="small muted ai-card-cap num">${esc(s.kind === "piece" ? tr("每个（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }) : tr("整包（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }))}: ${
+      [s.kcal != null ? `${n0(s.kcal)} kcal` : "", s.protein_g != null ? `${esc(tr("蛋白"))} ${n0(s.protein_g, 1)} g` : "", s.carbs_g != null ? `${esc(tr("碳水"))} ${n0(s.carbs_g, 1)} g` : "",
+        s.fat_g != null ? `${esc(tr("脂肪"))} ${n0(s.fat_g, 1)} g` : ""].filter(Boolean).join(" · ")}</div>`;
+    return psec(tr("每 100 {u}", { u }), `<div class="nut4">${cell(tr("热量"), p.kcal, "kcal")}${cell(tr("蛋白"), p.protein_g, "g", 1)}${cell(tr("碳水"), p.carbs_g, "g", 1)}${cell(tr("脂肪"), p.fat_g, "g", 1)}</div>
+      ${split}${rest.length ? `<div class="small muted ai-card-cap num">${rest.join(" · ")}</div>` : ""}${per}
+      ${n.source ? `<div class="small muted ai-card-cap">${esc(tr("营养来源：{s}", { s: n.source }))}</div>` : ""}`, (n.flags || []).map((f) => pbadge("mid", f)).join(""));
+  }
+  function productStores(c) {
+    const rows = c.stores || [];
+    if (!rows.length) return psec(tr("价格"), `<div class="small muted">${esc(tr("还没有价格记录。拍一张价签或小票发给我，我帮你记价格"))}</div>`);
+    const li = (r) => {
+      const meta = [r.name && r.name !== c.name ? r.name : "", r.size, r.unit_price != null ? `${cash(r.unit_price, r.currency)}/${r.unit_price_unit}` : "", PSOURCE[r.source], ago(r.age_days)].filter(Boolean).join(" · ");
+      const tags = (r.lowest ? pbadge("good", tr("最低")) : "") + (r.half_price ? pbadge("good", tr("半价")) : r.special ? pbadge("good", tr("特价")) : "");
+      return `<li class="${r.stale ? "stale" : ""}"><span class="ai-price-l"><span class="n"><b>${esc(r.label || "—")}</b>${tags}</span><span class="small muted">${esc(meta)}</span></span>
+        <span class="ai-price-r num"><b>${esc(cash(r.price, r.currency))}</b>${r.was_price ? `<s class="small muted">${esc(cash(r.was_price, r.currency))}</s>` : ""}</span></li>`;
+    };
+    return psec(tr("价格"), `<ul class="ai-card-list ai-prices">${rows.map(li).join("")}</ul>
+      <div class="small muted ai-card-cap">${esc(tr("价格来自你记录的小票 / 截图，不是实时价"))}</div>`);
+  }
+  // the price history sheet's line (grocery.js spark): the price per package, a green dot on a special day, a dark one on a day you paid
+  function priceSpark(points) {
+    const W = 300, H = 56, pad = 6, ps = points.map((p) => p.price), lo = Math.min(...ps), span = Math.max(...ps) - lo || 1;
+    const x = (i) => pad + (i * (W - 2 * pad)) / (points.length - 1), y = (v) => H - pad - ((v - lo) * (H - 2 * pad)) / span;
+    const line = points.map((p, i) => `${x(i).toFixed(1)},${y(p.price).toFixed(1)}`).join(" ");
+    const dots = points.map((p, i) => (p.special || p.paid ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.price).toFixed(1)}" r="3" class="${p.special ? "sp" : "pd"}"/>` : "")).join("");
+    return `<svg class="ai-pspark" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(tr("价格走势"))}"><polyline points="${line}" fill="none"/>${dots}</svg>
+      <div class="ai-pspark-d small muted num"><span>${esc(mmdd(points[0].date))}</span><span>${esc(mmdd(points[points.length - 1].date))}</span></div>`;
+  }
+  function productHistory(c) {
+    const h = c.history;
+    if (!h) return "";
+    const lp = h.last_purchase, v = lp?.verdict === "cheap" ? pbadge("good", tr("买得便宜")) : lp?.verdict === "dear" ? pbadge("bad", tr("买贵了")) : "";
+    const nums = [[tr("最低"), h.min], [tr("平均"), h.avg], [tr("最近价"), h.latest]].filter(([, x]) => x != null)
+      .map(([l, x]) => `<div><div class="l">${esc(l)}</div><div class="v">${esc(cash(x))}</div></div>`).join("");
+    return psec(tr("价格走势"), `${h.points?.length ? priceSpark(h.points) : ""}<div class="nut4 ai-prod-nums">${nums}</div>
+      ${h.specials ? `<div class="small muted ai-card-cap">${esc(tr("见过打折：{n} 次", { n: h.specials.count }))}</div>` : ""}
+      ${lp ? `<div class="small muted ai-card-cap num">${esc(tr("上次买"))} ${esc(mmdd(lp.date))} · ${esc(cash(lp.unit_paid))}${lp.on_special ? ` · ${esc(tr("特价"))}` : ""} ${v}</div>` : ""}`,
+    h.store ? `<span class="ai-card-date">${esc(h.store)}</span>` : "");
+  }
+  function productPantry(c) {
+    if (!c.pantry?.length) return "";
+    const exp = (x) => (x.expiring && x.days_left != null ? pbadge("mid", x.days_left < 0 ? tr("已过期") : x.days_left === 0 ? tr("今天到期") : tr("{n} 天后到期", { n: x.days_left })) : "");
+    return psec(tr("家里存货"), `<ul class="ai-card-list">${c.pantry.map((x) => `<li><span>${esc(x.name)}${exp(x)}</span>
+      <span class="num muted">${esc(x.label)}${x.days_ago ? ` · ${esc(tr("{n} 天前更新", { n: x.days_ago }))}` : ""}</span></li>`).join("")}</ul>`);
+  }
+  function productBody(c) {
+    const sub = [c.brand, c.size].filter(Boolean).join(" · ");
+    return `<div class="ai-card-title">${esc(c.name)}</div>${sub ? `<div class="small muted ai-card-sub">${esc(sub)}</div>` : ""}
+      ${c.nutrition ? productNutrition(c.nutrition) : ""}${productStores(c)}${productHistory(c)}${productPantry(c)}`;
+  }
   // meal card rows (v2: the card has entry_actions): tap a row for its portion / delete buttons
   function mealRowsV2(el, c) {
     $$("[data-entry]", el).forEach((li) => {
@@ -1161,6 +1235,8 @@
       if (a.kind === "open" && OPEN[a.page]) return { label: OPEN[a.page], run: () => { closeChat(); C.go?.(a.page, c); } };
       if (a.kind === "send") {
         const [label, text] = a.key ? (SEND[a.key]?.(c) || []) : [a.label, a.text];
+        if (label && text && a.key === "record_price")   // the photo of the label / receipt goes with the text (the photo quick task, photoQuickDone)
+          return C.ai?.vision === false ? null : { label, run: () => { if (!chat.busy) { chat.photoQuick = { text, before: chat.items.length }; $("#ai-file").click(); } }, send: true };
         if (label && text) return { label, run: () => { if (!chat.busy) sendQuick(text); }, send: true };
       }
       return null;
@@ -1172,7 +1248,7 @@
       goals: goalsBody, suggest: suggestBody, recipe: recipeBody, recipes: recipesBody, templates: templatesBody, shopping: shoppingBody,
       recovery: recoveryBody, strain: strainBody, stress: stressBody, healthspan: healthspanBody, trend: trendBody, weight: trendBody,
       lab: labBody, supplements: supplementsBody, water: waterBody, journal: journalBody, report: reportBody, hr_zones: hrZonesBody,
-      vo2max: vo2Body, monitor: monitorBody, data_status: dataStatusBody }[c.type];
+      vo2max: vo2Body, monitor: monitorBody, data_status: dataStatusBody, product: productBody }[c.type];
     if (!body) return;
     const acts = actionButtons(c);
     const el = document.createElement("div");
