@@ -64,8 +64,9 @@ whole Today page, the server texts it shows and the app's native screens through
 
 ## Stage 4: handbook and app store
 
-- [ ] `docs/tester-handbook.en.md`, rendered to `/app/handbook/en/` by `deploy/ali/handbook.py`; activation page links
-      to the handbook in the page language
+- [x] `docs/tester-handbook.en.md`, rendered to `/app/handbook/en/` by `deploy/ali/handbook.py`; the activation page
+      (`activate.html` / `install.html`, `data-i18n-href`) and the Today page's 「我 → 使用手册」 open the handbook in the page
+      language, and the two editions link to each other (#50). Screenshots in the English edition still show the Chinese UI
 - [x] iOS permission prompts (#64): `ios/Runner/en.lproj` / `zh-Hans.lproj` `InfoPlist.strings` (variant group in the Xcode
       project), English is the development language (`CFBundleDevelopmentRegion = en`, Info.plist holds the English)
 - [ ] App Store English listing and review notes
