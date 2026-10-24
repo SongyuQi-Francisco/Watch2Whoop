@@ -41,7 +41,7 @@
 
 读的函数虽然多，形状只有四种：`training_log` 的会话列表、`food_entries` 的条目列表、`weight` 的称重列表、`exercises` 的动作库。第 3 期只要让这四个函数（和 `nutrition`）从新表返回**一模一样的形状**，调用方基本不用改。
 
-## 2. 表结构（迁移 730）
+## 2. 表结构（迁移 735）
 
 共同约定：
 
@@ -218,7 +218,7 @@ user_exercises          …
 
 ## 8. Grafana
 
-- 第 3 期：体重看板（`deploy/grafana/build_dashboards.py` 里用 Infinity 数据源读 SparkyFitness API 的面板）改成 SQL 读 `body_measurements`；可以顺便加饮食（`food_entries` 每日合计）和训练量（`logged_workout_sets`）面板。新表在迁移 730 里已经给 `grafana_ro` 授了 SELECT。
+- 第 3 期：体重看板（`deploy/grafana/build_dashboards.py` 里用 Infinity 数据源读 SparkyFitness API 的面板）改成 SQL 读 `body_measurements`；可以顺便加饮食（`food_entries` 每日合计）和训练量（`logged_workout_sets`）面板。新表在迁移 735 里已经给 `grafana_ro` 授了 SELECT。
 - 第 4 期：删掉 Infinity 数据源（`provisioning/datasources/datasources.yaml`、`quickstart/grafana/datasources/datasources.yaml`）和 Grafana 用的 SparkyFitness 只读 key；`ops.py` 的 `GRAFANA_DATASOURCES` 去掉 sparkyfitness。
 
 ## 9. 下线 SparkyFitness 的步骤（第 4 期）
@@ -236,7 +236,7 @@ user_exercises          …
 | 期 | 内容 | 估计 |
 |---|---|---|
 | 1 | 本设计文档 | 0.5 天 |
-| 2 | 迁移 730（7 张表 + 迁移记录表）、`ownstore/mapping.py`（映射）、`ownstore/mirror.py`（双写同步）、在 `sparky_write` / `food_combine` / `session_log` 的写入点挂同步、`sparky-migrate` 命令（预演、核对、记录）、单测（假客户端） | 1.5–2 天 |
+| 2 | 迁移 735（7 张表 + 迁移记录表）、`ownstore/mapping.py`（映射）、`ownstore/mirror.py`（双写同步）、在 `sparky_write` / `food_combine` / `session_log` 的写入点挂同步、`sparky-migrate` 命令（预演、核对、记录）、单测（假客户端） | 1.5–2 天 |
 | 3 | 新表读者（4 个形状）+ 约 20 个调用方改成 `logs_for`、写入拆「检查 + 后端」、新表后端、`store` 分派的回滚、`own_food_read` 开关、Grafana 体重面板、对每个用户正式迁移和核对 | 3–4 天 + 迁移当天 0.5 天 |
 | 4 | `own_food_only`、反向同步命令、停镜像、删代码、部署和文档清理、两段观察期 | 2–3 天（不含观察期） |
 
@@ -268,7 +268,7 @@ SparkyFitness 的许可证不允许商业使用。它的第 2 条还规定：修
 
 Food, food library, weight and workout logs live in SparkyFitness today, whose licence forbids commercial use; this plan moves them into Body Engine's own tables without changing any tool or endpoint behaviour.
 
-- **Tables (migration 730)**: `foods`, `food_entries` (per-entry totals; absorbs `food_entry_extras`' added sugar / sugary drink), `body_measurements` (one row per user and day), `logged_workouts` / `logged_workout_exercises` / `logged_workout_sets` (named apart from the watch `workouts` table), `user_exercises` (the per-user exercise library the logs reference), and `own_store_migrations` (one row per real migration run with its per-table check). Every table has `user_id`; local dates; kg and kcal; `grafana_ro` gets SELECT. **Primary keys are text and keep the SparkyFitness ids** (new rows get a uuid), so every table already keyed by entry id (pantry deductions, extras, merges, the AI write log, training-page submits, `exercise_meta.app_exercise_id`) stays valid and undo works across the switch.
+- **Tables (migration 735)**: `foods`, `food_entries` (per-entry totals; absorbs `food_entry_extras`' added sugar / sugary drink), `body_measurements` (one row per user and day), `logged_workouts` / `logged_workout_exercises` / `logged_workout_sets` (named apart from the watch `workouts` table), `user_exercises` (the per-user exercise library the logs reference), and `own_store_migrations` (one row per real migration run with its per-table check). Every table has `user_id`; local dates; kg and kcal; `grafana_ro` gets SELECT. **Primary keys are text and keep the SparkyFitness ids** (new rows get a uuid), so every table already keyed by entry id (pantry deductions, extras, merges, the AI write log, training-page submits, `exercise_meta.app_exercise_id`) stays valid and undo works across the switch.
 - **Phases**: (1) this design; (2) the tables, dual write behind flag `own_food_store` (after each SparkyFitness write the affected dates are read back and synced into the new tables; off = exactly as before) and `body-engine sparky-migrate --user-id N [--dry-run | --confirm]` (idempotent upsert by id, deletes rows SparkyFitness no longer has, per-table check against SparkyFitness, the owner confirms before production runs); (3) read path switch behind `own_food_read` (same-shape readers for `training_log` / `food_entries` / `nutrition` / `weight` / `exercises`, only for users whose last migration was ok), write split into checks + storage backend, rollback dispatched by a `store` marker, Grafana weight panel on SQL; (4) `own_food_only`, stop mirroring plans / recipes, remove SparkyFitness from code, compose, quickstart, ops and docs after a 4-week fallback window.
 - **Rollback**: turn the flags off (dual write keeps SparkyFitness complete until phase 4); after phase 4 a push-back command restores SparkyFitness from rows written meanwhile.
 - **Effort**: about 0.5 + 2 + 4 + 3 days.
