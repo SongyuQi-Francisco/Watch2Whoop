@@ -235,7 +235,7 @@ def complete_pending(conn: psycopg.Connection, uid: int, scopes=None, only_circl
     if not _ready(conn, uid):
         return []
     rows = conn.execute(
-        """SELECT u.id, k.circle_id FROM circle_code_uses u JOIN circle_codes k ON k.id = u.code_id
+        """SELECT u.id, u.code_id, k.circle_id FROM circle_code_uses u JOIN circle_codes k ON k.id = u.code_id
            WHERE u.user_id = %s AND u.joined_at IS NULL AND (%s::int IS NULL OR k.circle_id = %s::int)
            ORDER BY u.used_at, u.id FOR UPDATE OF u""", (uid, only_circle, only_circle)).fetchall()
     joined = []
@@ -243,7 +243,8 @@ def complete_pending(conn: psycopg.Connection, uid: int, scopes=None, only_circl
         c = conn.execute("SELECT id, name, default_scopes FROM circles WHERE id = %s FOR UPDATE", (r["circle_id"],)).fetchone()
         if not conn.execute("SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s", (c["id"], uid)).fetchone():
             chosen = scopes if scopes is not None else store.clean_scopes(c["default_scopes"] or P.DEFAULT_SCOPES)
-            conn.execute("INSERT INTO circle_members (circle_id, user_id, scopes) VALUES (%s, %s, %s)", (c["id"], uid, chosen))
+            conn.execute("""INSERT INTO circle_members (circle_id, user_id, scopes, join_via, circle_code_id)
+                            VALUES (%s, %s, %s, 'circle_code', %s)""", (c["id"], uid, chosen, r["code_id"]))
             joined.append({"circle_id": c["id"], "name": c["name"]})
         conn.execute("UPDATE circle_code_uses SET joined_at = now() WHERE id = %s", (r["id"],))
     if joined:
