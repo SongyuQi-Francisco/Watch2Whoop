@@ -173,7 +173,7 @@ def test_last_import_counts_the_hourly_job(dsn, users):
 def test_today_page_wiring(client):
     """sync.js: loaded and cached; the status line on Today; pull to refresh and 「数据更新」 ask the server too."""
     html = client.get("/app/").text
-    assert html.index('src="sync.js"') < html.index('src="app.js"')
+    assert html.index('src="sync.js?') < html.index('src="app.js?')   # linked as name?v=<fingerprint>
     js = client.get("/app/sync.js").text
     assert "/v1/users/me/sync/refresh" in js and "/v1/users/me/sync/status" in js and "window.BodySync" in js
     app_js = client.get("/app/app.js").text
