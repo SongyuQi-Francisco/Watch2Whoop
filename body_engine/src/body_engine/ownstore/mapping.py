@@ -4,6 +4,8 @@ The dual write (mirror.py) and `body-engine sparky-migrate` (migrate.py) both us
 same thing. Only fields sparky_client / assistant/sparky_write already rely on are read; nutrients without a column here
 go into `nutrients` (unknown keys are kept, not dropped). Food entry nutrition is stored as the entry's total, computed
 exactly like sparky_client._food_entry (per serving × quantity / serving size, unrounded).
+The SparkyFitness field names below are only the keys of its API responses being read; the tables use our own names
+(independent implementation, see the package docstring).
 """
 from datetime import date
 
