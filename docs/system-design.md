@@ -164,6 +164,7 @@ CREATE TABLE sync_state (
 - HRV：**Series 12 优先用 RMSSD**（iOS 27 新类型，Bevel 等已在读取，Apple 没有正式说明哪些表会写入，要实测确认）；没有就用 SDNN。同一个人不混用两种。
   - **2026-10-18 更新**（`docs/raw-data-plan.md`）：RMSSD 不必等 OW / iOS 新类型——Apple 每次 HRV 读数都存了约 1 分钟的逐拍时间，`rawdata/hrv.py` 用它算 RMSSD（表 `heartbeat_series`，迁移 150；历史从 export.xml 回算，`import-raw` / 历史导入）。`params.HRV_KIND` 可选 `sdnn` / `rmssd`，切换前先跑 `hrv-compare` 给用户看（在开发者本人的数据上，RMSSD 的相邻两晚相关和恢复分 / 静息心率相关都比 SDNN 好；具体数值不公开）。每晚读数次数不会变多（Apple 决定，实测 1–4 次）。
   - **2026-10-22（#117 准备）**：口径改成按用户选（`scores/hrv_kind.py`，表 `score_settings`，迁移 670）：默认全体 SDNN；被打开 RMSSD（`body-engine hrv-kind --enable-rmssd`）并且逐拍数据够（`params.RMSSD_*`）的人才用 RMSSD；同一个人整段历史一种口径，只在完整重算时切换；`details.hrv_kind` 记录口径，`ALGO_VERSION` 不变。还没有打开任何人。
+  - **2026-10-24（#117 切换）**：负责人看过 `hrv-compare` 的对比后决定全体改用 RMSSD：迁移 715 把默认改成打开（没有设置行 = 打开），逐拍数据不够的人自动仍用 SDNN；下一次夜间完整重算时各人整段历史按新口径重写。
   - 训练后心率恢复 HRR60（`cardio/hrr.py`，表 `workout_hrr`）：训练最后 2 分钟最高心率 − 结束后 60 秒心率，峰值 ≥ 75% HRmax 才算有效；`compute-scores` 顺带写。
 - 当晚 HRV = 睡眠窗口内读数取 ln 后的中位数；当晚静息心率 = 睡眠期最低 5 分钟均值。
 - 各项和 60 天基线比算 z 分数：HRV 0.6、静息心率 0.2（反向）、睡眠表现 0.15、呼吸频率 0.05（反向），再用 logistic 映射到 0–100。

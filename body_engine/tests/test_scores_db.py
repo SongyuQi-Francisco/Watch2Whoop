@@ -73,7 +73,7 @@ def test_compute_write_idempotent_and_query(conn):
     out = engine.run(conn, client, uid, end=date(2026, 9, 21))
     assert out["origin"] == date(2026, 9, 1) and out["rows"] == 21
     assert out["with_recovery"] == 6 and out["with_strain"] == 20      # full 14 nights from 9-15; no data on 9-21
-    assert out["hrv_kind"] == "sdnn" and out["hrv_kind_reason"] == "default"   # nobody is switched to RMSSD (#117)
+    assert out["hrv_kind"] == "sdnn" and out["hrv_kind_reason"] == "rmssd_insufficient_beats"   # RMSSD by default (#117), no beat data here
     before = conn.execute("SELECT date, recovery, strain, ctl FROM daily_scores WHERE user_id = %s ORDER BY date",
                           (uid,)).fetchall()
     engine.run(conn, client, uid, end=date(2026, 9, 21))                # running again gives exactly the same result
