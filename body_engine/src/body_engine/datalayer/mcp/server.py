@@ -7,7 +7,8 @@ connection of its own. Write tools are marked read_only_hint=False, so the clien
 Errors (permission, parameters, database) go back to the model as tool errors with their text.
 
 The application injects everything that is its own: the server name and instructions, who a request is (identity_of),
-the database connection, the prompts, and an optional per-caller text filter (Watch2Whoop: ai_parity's name scrub)."""
+the database connection, the prompts, an optional per-caller text filter (Watch2Whoop: ai_parity's name scrub) and
+optional per-caller extra tools that run outside the Executor (CallerTools; Watch2Whoop: the server's web tools)."""
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Callable, Protocol, Sequence
@@ -27,6 +28,18 @@ class TextFilter(Protocol):
     """Applied to everything one caller reads: tool descriptions, schemas and results."""
     def text(self, text: str) -> str: ...
     def schema(self, schema: dict) -> dict: ...
+
+
+class CallerTools(Protocol):
+    """Tools only some callers get, run by the application instead of the Executor (Watch2Whoop: the server's
+    web_search / web_fetch behind a rollout flag, ai/web/mcp.py). Both methods run in a worker thread (they may read the
+    database).
+    tools(caller): the extra tools this caller may reach now. They are never in tools/list: find_tools shows them in
+    their group and run_read_tool / run_write_tool (or their own name) runs them, with the same read-only rules. A name
+    the registry already has is ignored.
+    run(caller, name, args): run one of them -> the result (its own connection, audit and commit)."""
+    def tools(self, caller: Caller) -> Sequence[Tool]: ...
+    def run(self, caller: Caller, name: str, args: dict) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -55,10 +68,12 @@ def call(executor: Executor, connect_fn: Callable[[], AbstractContextManager], c
 def build_server(name: str, instructions: str, identity_of: Callable[[object], Caller], *, executor: Executor,
                  tools: Sequence[Tool], toolset: Callable[[], ts.ToolsetConfig],
                  connect_fn: Callable[[], AbstractContextManager], prompts: Sequence[PromptSpec] = (),
-                 text_filter: Callable[[Caller], TextFilter | None] | None = None) -> Server:
+                 text_filter: Callable[[Caller], TextFilter | None] | None = None,
+                 caller_tools: CallerTools | None = None) -> Server:
     """identity_of(ctx) -> whom this request represents (stdio: one fixed caller; HTTP: from the request's Bearer token).
     tools: every tool in registration order (executor.tools is the same set by name); toolset() -> the configuration,
-    read on every request; text_filter(caller) runs in a worker thread (it may read the database), None = no filter."""
+    read on every request; text_filter(caller) runs in a worker thread (it may read the database), None = no filter;
+    caller_tools: see CallerTools (None = the registry only)."""
     prompts_by_name = {p.name: p for p in prompts}
 
     async def _filter(caller: Caller) -> TextFilter | None:
@@ -81,7 +96,12 @@ def build_server(name: str, instructions: str, identity_of: Callable[[object], C
         name, args = params.name, params.arguments or {}
         cfg = toolset()
         m = cfg.messages
-        access = ts.Access(executor.tools, caller.can_write, frozenset(cfg.confirm))
+        extra: dict = {}
+        if caller_tools is not None and (name == ts.FIND or name in ts.RUN_NAMES or name not in executor.tools):
+            extra = {t.name: t for t in await anyio.to_thread.run_sync(caller_tools.tools, caller)
+                     if t.name not in executor.tools}
+        access = ts.Access({**executor.tools, **extra} if extra else executor.tools, caller.can_write,
+                           frozenset(cfg.confirm))
         f = await _filter(caller)
 
         def _text(text: str, error: bool = False) -> types.CallToolResult:
@@ -97,6 +117,14 @@ def build_server(name: str, instructions: str, identity_of: Callable[[object], C
                 name = tool.name
         except (PermissionError, ValueError) as e:
             return _error(f"{type(e).__name__}: {e}")
+        if name in extra:   # an extra tool: same read-only rule, run by the application
+            if extra[name].writes and not caller.can_write:
+                return _error(m.mcp_read_only)
+            try:
+                result = await anyio.to_thread.run_sync(caller_tools.run, caller, name, args)
+            except Exception as e:  # limits, bad arguments, network: passed to the model as they are
+                return _error(f"{type(e).__name__}: {e}")
+            return _text(compact.dumps(result))
         tool = executor.tools.get(name)
         if tool is None:
             return _error(m.mcp_no_such_tool.format(name=name))

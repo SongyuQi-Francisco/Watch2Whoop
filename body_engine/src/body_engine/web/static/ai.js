@@ -197,6 +197,7 @@
     C.openSheet(tr("连接客户端（MCP）"), `
       <div class="kv"><span class="k">${esc(tr("地址"))}</span><span class="v" style="word-break:break-all">${esc(mcp.url)}</span></div>
       ${d.mcp?.oauth ? `<p class="small muted" style="margin:8px 0 0">${esc(d.mcp.oauth)}</p>` : ""}
+      ${d.web ? `<p class="small muted" style="margin:8px 0 0">${esc(d.web.search ? tr("外接 AI 也能用服务器联网：搜索、读网页（每天有上限）") : tr("外接 AI 也能用服务器读网页（每天有上限）"))}</p>` : ""}
       ${conns.length ? `<p class="small muted" style="margin:14px 0 0">${esc(tr("已连接的应用"))}</p><div class="group" style="margin-top:6px">${conns.map((c) => `<div class="item"><span class="row-title">${esc(c.client_name || tr("未命名的应用"))}${c.scopes.includes("write") ? "" : ` <span class="badge plain">${esc(tr("me.ro"))}</span>`}
           <span class="small muted" style="display:block;font-weight:400">${esc(c.redirect_host)} · ${esc(c.last_used_at ? tr("最近使用 {when}", { when: when(c.last_used_at) }) : tr("还没用过"))}</span></span>
           <button class="btn btn-danger" style="flex:none;min-height:34px" data-disconnect="${c.id}">${esc(tr("断开"))}</button></div>`).join("")}</div>` : ""}

@@ -3,7 +3,8 @@
 Who gets them (server_tools): users with the rollout flag ai_web whose chat AI has no web access of its own, i.e. the fallback
 AI (the admin's DeepSeek) and openai_compatible providers. Anthropic / OpenAI / Gemini keys use the vendor's own web tools
 instead (ai_providers.web_tools, "allow web access" in AI settings, billed on the user's key). web_search only when a search API
-key is configured (search.configured); web_fetch needs no key. MCP clients never get these: they browse with their own tools.
+key is configured (search.configured); web_fetch needs no key. MCP clients (and the body butler, which connects through MCP)
+get the same two tools behind their own flag mcp_web (ai/web/mcp.py): through find_tools in the grocery group, never in tools/list.
 Behind the same flag the fallback AI also gets the grocery tools it needs to store what it found and build the list
 (FALLBACK_GROCERY).
 
@@ -12,6 +13,7 @@ recorded in ai_usage (purpose web_search, cost_cny) and counted against the pers
 counts the model calls and these together); a monthly cap for all users together. Pages are read only when the user's request
 needs them, robots.txt is obeyed, and a block of any kind stops the attempt (fetch.py). Only an excerpt goes back to the model;
 what is kept is what the model writes with save_product / record_store_prices (name, size, price, store, URL, date).
+Every excerpt (search snippets, page text) carries params.UNTRUSTED_NOTE: page content is data for the model, not instructions.
 """
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -116,7 +118,9 @@ def _limit_error(conn, user_id: int, name: str) -> str | None:
 # ---------------------------------------------------------------- run
 def run(conn: psycopg.Connection, user_id: int, provider: dict, conv_id: int | None, name: str, args: dict) -> dict:
     """Run web_search / web_fetch for the caller (always their own request). Limits refused -> PermissionError (the chat
-    loop passes the text to the model); a blocked page is a normal result with blocked=true and tell_user."""
+    loop / the MCP server passes the text to the model); a blocked page is a normal result with blocked=true and tell_user.
+    provider: the chat's provider row, or ai/web/mcp.PROVIDER for MCP (ai_usage.kind 'mcp', no provider_id). The limits
+    count every row of this user whatever the channel, so the chat and MCP share one daily allowance and one quota."""
     if name not in NAMES:
         raise ValueError(f"没有这个工具：{name}")
     error = _limit_error(conn, user_id, name)
@@ -128,10 +132,11 @@ def run(conn: psycopg.Connection, user_id: int, provider: dict, conv_id: int | N
             raise ValueError("query 不能为空")
         p, results = S.search(query, S.country_for(_tz(conn, user_id)))   # SearchError: nothing billed, nothing counted
         _record(conn, user_id, provider, conv_id, "web_search", p.name, search_cost_cny(p.name))
-        return {"query": query, "results": results}
+        return {"query": query, "results": results, "note": P.UNTRUSTED_NOTE}
     _record(conn, user_id, provider, conv_id, "web_fetch", "fetch", 0.0)   # every attempt counts: no retry loops
     try:
         page = F.fetch(str(args.get("url") or ""))
     except F.Blocked as e:
         return {"url": args.get("url"), "blocked": True, "reason": e.reason, "tell_user": TELL_USER}
-    return {**page, "store_only": "存库只写商品名、规格、价格、门店、这个链接和日期（save_product / record_store_prices）"}
+    return {**page, "note": P.UNTRUSTED_NOTE,
+            "store_only": "存库只写商品名、规格、价格、门店、这个链接和日期（save_product / record_store_prices）"}
