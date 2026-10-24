@@ -118,17 +118,28 @@ def estimate(rows: list[dict], batch: int, provider: str) -> dict:
     """Size and cost before any call, from the real prompts of every group. Output = the Chinese the sample suggests
     (ZH_PER_EN_CHAR) plus ~40 tokens of JSON per exercise. Claude: Message Batches price and, for comparison, synchronous."""
     groups = [rows[i:i + batch] for i in range(0, len(rows), batch)]
-    tin = sum(_tokens("".join(build_prompt(g))) for g in groups)
     src = sum(len(" ".join([x["name"], x["description"], *x["steps"]])) for x in map(T.src_text, rows))
     tout = src * ZH_PER_EN_CHAR * 1.3 + len(rows) * 40
-    out = {"exercises": len(rows), "requests": len(groups), "english_chars": src, "input_tokens": round(tin), "output_tokens": round(tout)}
-    if provider == "claude":
-        full = tin / 1e6 * CLAUDE_PRICE_IN + tout / 1e6 * CLAUDE_PRICE_OUT
-        out.update(model=CLAUDE_MODEL, cost_usd_batch=round(full * BATCH_DISCOUNT, 2), cost_usd_sync=round(full, 2),
-                   prices=f"${CLAUDE_PRICE_IN}/M in, ${CLAUDE_PRICE_OUT}/M out, Message Batches ×{BATCH_DISCOUNT}",
+    out = {"exercises": len(rows), "requests": len(groups), "english_chars": src, "output_tokens": round(tout)}
+    if provider == "claude" and groups:
+        prefix = _tokens(full_glossary_system())             # the cached system block, the same in every request
+        var = sum(_tokens(user_text(g)) for g in groups)     # what changes per request
+        n, pi, po = len(groups), CLAUDE_PRICE_IN / 1e6, CLAUDE_PRICE_OUT / 1e6
+        best = var * pi + prefix * pi * (CACHE_WRITE_1H + (n - 1) * CACHE_READ) + tout * po   # one write, then cache reads
+        worst = var * pi + prefix * pi * CACHE_WRITE_1H * n + tout * po                       # every request writes the prefix again
+        sync = var * pi + prefix * pi * (CACHE_WRITE_5M + (n - 1) * CACHE_READ) + tout * po
+        out.update(model=CLAUDE_MODEL, cached_prefix_tokens=round(prefix), input_tokens_per_request=round(var / n),
+                   cost_usd_batch=round(best * BATCH_DISCOUNT, 2), cost_usd_batch_if_no_cache_hits=round(worst * BATCH_DISCOUNT, 2),
+                   cost_usd_sync=round(sync, 2),
+                   prices=f"${CLAUDE_PRICE_IN}/M in, ${CLAUDE_PRICE_OUT}/M out; cache read ×{CACHE_READ}, 1h write ×{CACHE_WRITE_1H}; "
+                          f"Message Batches ×{BATCH_DISCOUNT} (cache hits inside a batch are best effort)",
                    time="Message Batches: most batches end within 1 hour, at most 24 hours")
+    elif provider == "claude":
+        out.update(model=CLAUDE_MODEL, cost_usd_batch=0.0)
     else:   # DeepSeek's tokenizer is denser for Chinese (~0.6 token / character)
+        tin = sum(_tokens("".join(build_prompt(g))) for g in groups)
         dout = src * ZH_PER_EN_CHAR * 0.75 + len(rows) * 30
+        out["input_tokens"] = round(tin)
         out.update(model=FP.MODEL, output_tokens=round(dout), cost_cny=round(tin * 0.8 / 1e6 * FP.PRICE_CACHE_MISS_CNY + dout / 1e6 * FP.PRICE_OUTPUT_CNY, 2),
                    prices=f"input ¥{FP.PRICE_CACHE_MISS_CNY}/M, output ¥{FP.PRICE_OUTPUT_CNY}/M ({FP.PRICE_SOURCE})")
     return out
@@ -144,8 +155,25 @@ def _glossary_block(rows: list[dict]) -> str:
     return "\n".join(f"{t} = {'|'.join(g[t])}" for t in sorted(terms))
 
 
+def full_glossary_system() -> str:
+    """The prompt plus the WHOLE glossary: byte-identical for every request, so Claude can serve it from the prompt cache."""
+    g = T.glossary()
+    return PROMPT + "\n\n术语表：\n" + "\n".join(f"{t} = {'|'.join(g[t])}" for t in sorted(g))
+
+
+def user_text(rows: list[dict], hints: dict[str, list[str]] | None = None) -> str:
+    items = []
+    for r in rows:
+        src = T.src_text(r)
+        it = {"id": r["slug"], "name": src["name"], "description": src["description"], "steps": src["steps"]}
+        if hints and hints.get(r["slug"]):
+            it["必须用的译法"] = hints[r["slug"]]
+        items.append(it)
+    return json.dumps({"items": items}, ensure_ascii=False)
+
+
 def build_prompt(rows: list[dict], hints: dict[str, list[str]] | None = None) -> tuple[str, str]:
-    """(system, user) for one group of exercises; the same for every provider."""
+    """(system, user) for one group of exercises with only the glossary terms that group uses (DeepSeek: no prompt cache)."""
     items = []
     for r in rows:
         src = T.src_text(r)
@@ -167,6 +195,7 @@ def _items(text: str | None) -> dict[str, dict]:
 # Claude: Anthropic's list prices for claude-sonnet-5-5 (USD per million tokens, checked 2026-10-25); the Message Batches API bills 50%.
 CLAUDE_MODEL = "claude-sonnet-5-5"
 CLAUDE_PRICE_IN, CLAUDE_PRICE_OUT, BATCH_DISCOUNT = 2.0, 10.0, 0.5
+CACHE_READ, CACHE_WRITE_5M, CACHE_WRITE_1H = 0.1, 1.25, 2.0   # × the input price (prompt caching)
 ITEMS_SCHEMA = {   # structured output (output_config.format): the reply is exactly this JSON
     "type": "object",
     "properties": {"items": {"type": "array", "items": {
@@ -178,11 +207,14 @@ ITEMS_SCHEMA = {   # structured output (output_config.format): the reply is exac
 }
 
 
-def claude_params(rows: list[dict], model: str, hints: dict[str, list[str]] | None = None) -> dict:
-    """One Messages request. Thinking off (between_tools, the lowest setting on Sonnet 5.5) at low effort: translation needs no
-    reasoning, and thinking tokens would be billed as output."""
-    system, user = build_prompt(rows, hints)
-    return {"model": model, "max_tokens": 16000, "system": system, "messages": [{"role": "user", "content": user}],
+def claude_params(rows: list[dict], model: str, hints: dict[str, list[str]] | None = None, ttl: str | None = None) -> dict:
+    """One Messages request. The system block (prompt + whole glossary) is identical in every request and carries the prompt-cache
+    breakpoint; only the exercises change. ttl "1h" for Message Batches (its requests can be spread over a long time), the default
+    5 minutes for synchronous calls. Thinking off (between_tools, the lowest setting on Sonnet 5.5) at low effort: translation needs
+    no reasoning, and thinking tokens would be billed as output."""
+    cache = {"type": "ephemeral", **({"ttl": ttl} if ttl else {})}
+    system = [{"type": "text", "text": full_glossary_system(), "cache_control": cache}]
+    return {"model": model, "max_tokens": 16000, "system": system, "messages": [{"role": "user", "content": user_text(rows, hints)}],
             "thinking": {"type": "between_tools"},
             "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": ITEMS_SCHEMA}}}
 
@@ -235,11 +267,27 @@ class ClaudeTranslator:
         self.model = model
         self.tokens_in = self.tokens_out = 0
         self.batch_in = self.batch_out = 0
+        self.usd = 0.0                                  # counted per response from its usage (cache reads / writes included)
+        self.cache = {"read": 0, "write": 0}
 
     def cost(self) -> float:
-        full = self.tokens_in / 1e6 * CLAUDE_PRICE_IN + self.tokens_out / 1e6 * CLAUDE_PRICE_OUT
-        batch = self.batch_in / 1e6 * CLAUDE_PRICE_IN + self.batch_out / 1e6 * CLAUDE_PRICE_OUT
-        return full + batch * BATCH_DISCOUNT
+        return self.usd
+
+    def count(self, usage, batch: bool, ttl: str | None) -> None:
+        read = usage.cache_read_input_tokens or 0
+        write = usage.cache_creation_input_tokens or 0
+        self.cache["read"] += read
+        self.cache["write"] += write
+        usd = (usage.input_tokens * CLAUDE_PRICE_IN + read * CLAUDE_PRICE_IN * CACHE_READ
+               + write * CLAUDE_PRICE_IN * (CACHE_WRITE_1H if ttl == "1h" else CACHE_WRITE_5M)
+               + usage.output_tokens * CLAUDE_PRICE_OUT) / 1e6
+        self.usd += usd * (BATCH_DISCOUNT if batch else 1.0)
+        if batch:
+            self.batch_in += usage.input_tokens + read + write
+            self.batch_out += usage.output_tokens
+        else:
+            self.tokens_in += usage.input_tokens + read + write
+            self.tokens_out += usage.output_tokens
 
     def _text(self, msg) -> str | None:
         if msg.stop_reason == "refusal":   # a safety classifier declined: the rows are reported as failed, nothing is guessed
@@ -257,8 +305,7 @@ class ClaudeTranslator:
                 print(f"  retry after {type(e).__name__}", file=sys.stderr)
                 time.sleep(30)
                 continue
-            self.tokens_in += msg.usage.input_tokens
-            self.tokens_out += msg.usage.output_tokens
+            self.count(msg.usage, batch=False, ttl=None)
             got = _items(self._text(msg))
             if got or attempt == 1:
                 return got
@@ -273,7 +320,7 @@ def run_claude_batch(tr: ClaudeTranslator, groups: list[list[dict]], state: Path
     doc = json.loads(state.read_text(encoding="utf-8")) if state.is_file() else {}
     slugs = [[r["slug"] for r in g] for g in groups]
     if doc.get("groups") != slugs:
-        reqs = [Request(custom_id=f"g{i:05d}", params=MessageCreateParamsNonStreaming(**claude_params(g, tr.model)))
+        reqs = [Request(custom_id=f"g{i:05d}", params=MessageCreateParamsNonStreaming(**claude_params(g, tr.model, ttl="1h")))
                 for i, g in enumerate(groups)]
         batch = tr.client.messages.batches.create(requests=reqs)
         doc = {"batch_id": batch.id, "groups": slugs, "model": tr.model}
@@ -291,8 +338,7 @@ def run_claude_batch(tr: ClaudeTranslator, groups: list[list[dict]], state: Path
         if res.result.type != "succeeded":
             continue
         msg = res.result.message
-        tr.batch_in += msg.usage.input_tokens
-        tr.batch_out += msg.usage.output_tokens
+        tr.count(msg.usage, batch=True, ttl="1h")
         group = set(doc["groups"][int(res.custom_id[1:])])
         got.update({k: v for k, v in _items(tr._text(msg)).items() if k in group})
     return got
@@ -368,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sample", type=int, help="translate only a stratified sample of N exercises")
     ap.add_argument("--slugs", nargs="*", help="only these slugs")
     ap.add_argument("--redo", action="store_true", help="with --slugs: translate them again even when their line is up to date")
-    ap.add_argument("--batch", type=int, default=12, help="exercises per request")
+    ap.add_argument("--batch", type=int, help="exercises per request (default 20 for claude, 12 for deepseek)")
     ap.add_argument("--same-model", action="store_true", help="also translate again the lines another model made (one model "
                                                                "for the whole library)")
     ap.add_argument("--workers", type=int, default=4)
@@ -379,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--key-file", type=Path, help="default <repo>/secrets/anthropic_api_key or deepseek_api_key")
     a = ap.parse_args(argv)
     claude = a.provider == "claude"
+    a.batch = a.batch or (20 if claude else 12)
     model = a.model or (CLAUDE_MODEL if claude else FP.MODEL)
     budget = a.budget if a.budget is not None else (20.0 if claude else 30.0)
     secrets = Path(os.environ.get("BODY_ROOT", ROOT)) / "secrets"

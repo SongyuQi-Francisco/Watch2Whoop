@@ -188,9 +188,14 @@ def test_claude_request_shape():
     assert p["model"] == "claude-sonnet-5-5" and p["thinking"] == {"type": "between_tools"}
     assert "temperature" not in p and p["output_config"]["format"]["type"] == "json_schema"
     assert p["output_config"]["format"]["schema"]["additionalProperties"] is False
-    assert "romanian deadlift = 罗马尼亚硬拉" in p["system"] and json.loads(p["messages"][0]["content"])["items"][0]["id"] == "og_1"
-    est = tool.estimate([row], 12, "claude")
-    assert est["requests"] == 1 and est["input_tokens"] > 100 and est["cost_usd_batch"] <= est["cost_usd_sync"]
+    (sysblock,) = p["system"]
+    assert "romanian deadlift = 罗马尼亚硬拉" in sysblock["text"] and json.loads(p["messages"][0]["content"])["items"][0]["id"] == "og_1"
+    assert sysblock["cache_control"] == {"type": "ephemeral"}
+    other = tool.claude_params([{**row, "slug": "og_2", "name_en": "Cable Fly"}], tool.CLAUDE_MODEL, ttl="1h")
+    assert other["system"][0]["text"] == sysblock["text"] and other["system"][0]["cache_control"]["ttl"] == "1h"   # cacheable prefix
+    est = tool.estimate([row], 20, "claude")
+    assert est["requests"] == 1 and est["cached_prefix_tokens"] > 1000
+    assert est["cost_usd_batch"] <= est["cost_usd_batch_if_no_cache_hits"] and est["cost_usd_batch"] <= est["cost_usd_sync"]
 
 
 # ---------------------------------------------------------------- licensed media + quality gate (database)
