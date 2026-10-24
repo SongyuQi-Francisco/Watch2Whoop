@@ -18,7 +18,7 @@ from ..config import REPO_ROOT
 from ..i18n import L, is_en
 from ..records import store as records_store
 from ..rollout import flags
-from . import catalog_data as CD, catalog_en as CE, params as P
+from . import catalog_data as CD, catalog_en as CE, params as P, translations as TR
 from .opengym import mapping as OGM
 
 DEFAULT_BANNED_SLUGS = {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
@@ -141,7 +141,7 @@ def convert_free_exercise_db_entry(raw: dict) -> dict:
     mechanic = (raw.get("mechanic") or "").lower()
     level = (raw.get("level") or "intermediate").lower()
     instructions = [str(x).strip() for x in (raw.get("instructions") or []) if str(x).strip()]
-    return {
+    row = {
         "slug": slug,
         "name_zh": raw.get("name_zh") or raw["name"],
         "name_en": raw["name"],
@@ -160,12 +160,16 @@ def convert_free_exercise_db_entry(raw: dict) -> dict:
         "default_increment_kg": raw.get("default_increment_kg", 2.5 if modality == "weight_reps" else None),
         "cues_zh": raw.get("cues_zh") or (instructions[0] if instructions else None),
         "instructions_zh": instructions,
+        "instructions_en": instructions,
+        "zh_source": "human" if TR.has_chinese(raw.get("name_zh")) else None,
         "images": list(raw.get("images") or []),
         "source": "free-exercise-db",
         "license": "Unlicense",
         "source_ref": raw.get("id"),
         "family_slug": family_of(raw.get("name")),
     }
+    TR.apply(row)   # the committed machine Chinese (translations/), when it was made from this very English
+    return row
 
 
 def _curated_rows() -> dict[str, dict]:
@@ -174,7 +178,7 @@ def _curated_rows() -> dict[str, dict]:
         imgs = item.get("images") or []
         out[item["slug"]] = {**item, "aliases": list(item.get("aliases") or []),
                              "source_ref": imgs[0].split("/", 1)[0] if imgs else None, "family_slug": None,
-                             "license": "AGPL-3.0"}
+                             "license": "AGPL-3.0", "instructions_en": [], "zh_source": "human"}
     return out
 
 
@@ -226,13 +230,14 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
             """INSERT INTO exercise_catalog (
                  slug, name_zh, name_en, aliases, category, modality, force, mechanic, level,
                  movement_pattern, equipment, primary_muscles, secondary_muscles, joint_stress,
-                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref, family_slug, license, updated_at
+                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref, family_slug, license,
+                 instructions_en, zh_source, updated_at
                ) VALUES (
                  %(slug)s, %(name_zh)s, %(name_en)s, %(aliases)s, %(category)s, %(modality)s,
                  %(force)s, %(mechanic)s, %(level)s, %(movement_pattern)s, %(equipment)s,
                  %(primary_muscles)s, %(secondary_muscles)s, %(joint_stress)s, %(per_side)s,
                  %(default_increment_kg)s, %(cues_zh)s, %(instructions_zh)s, %(images)s, %(source)s,
-                 %(source_ref)s, %(family_slug)s, %(license)s, now()
+                 %(source_ref)s, %(family_slug)s, %(license)s, %(instructions_en)s, %(zh_source)s, now()
                )
                ON CONFLICT (slug) DO UPDATE SET
                  name_zh = EXCLUDED.name_zh,
@@ -257,6 +262,9 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
                  source_ref = EXCLUDED.source_ref,
                  family_slug = EXCLUDED.family_slug,
                  license = EXCLUDED.license,
+                 instructions_en = CASE WHEN EXCLUDED.instructions_en = '{}' THEN exercise_catalog.instructions_en
+                                        ELSE EXCLUDED.instructions_en END,
+                 zh_source = EXCLUDED.zh_source,
                  updated_at = now()""",
             rows,
         )
@@ -294,9 +302,10 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         status = meta["status"]
     else:
         status = "caution" if slug in DEFAULT_BANNED_SLUGS or row.get("family_slug") in DEFAULT_BANNED_SLUGS else "active"
-    cues = (meta or {}).get("cues") or row.get("cues_zh") or row.get("description_en")   # imported rows only have English text
+    first_en = (row.get("instructions_en") or [None])[0]
+    cues = (meta or {}).get("cues") or row.get("cues_zh") or row.get("description_en") or first_en   # imported rows may only have English
     if is_en() and not (meta or {}).get("cues"):   # the user's own cue stays as written; the curated ones have English
-        cues = CE.CUES_EN.get(slug) or row.get("description_en") or cues
+        cues = CE.CUES_EN.get(slug) or row.get("description_en") or first_en or cues
     reason = (meta or {}).get("reason")
     grp = body_group(row)
     prim = row.get("primary_muscles") or []
@@ -363,6 +372,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             level=row.get("level"),
             instructions_zh=steps,
             license=row.get("license"),
+            zh_source=row.get("zh_source"),
             images=imgs,
             image_urls=image_urls(imgs),
         )
@@ -391,19 +401,37 @@ def catalog_rows(conn: psycopg.Connection) -> list[dict]:
 OPENGYM_FLAG = "exercise_opengym"
 
 
+def _flag_on(conn: psycopg.Connection, user_id: int | None, flag: str) -> bool:
+    """A rollout flag for this user; with no user: only when it is on for everyone."""
+    if user_id is not None:
+        return flags.enabled(conn, user_id, flag)
+    row = flags.rows(conn).get(flag)
+    return bool(row and row["state"] == "all")
+
+
 def imported_visible(conn: psycopg.Connection, user_id: int | None) -> bool:
     """Whether the exercises imported from openGym (#248) show up for this user; with no user: only when the flag is on for everyone.
     The flag is the emergency switch: off hides the imported rows from search / lookup, the data stays (logged workouts still resolve)."""
-    if user_id is not None:
-        return flags.enabled(conn, user_id, OPENGYM_FLAG)
-    row = flags.rows(conn).get(OPENGYM_FLAG)
-    return bool(row and row["state"] == "all")
+    return _flag_on(conn, user_id, OPENGYM_FLAG)
+
+
+_EN_CACHE: dict[str, tuple] = {}
+
+
+def _english_rows(conn: psycopg.Connection) -> list[dict]:
+    """catalog_rows with the machine Chinese taken out (translations.english_view), cached alongside catalog_rows."""
+    rows = catalog_rows(conn)
+    key = conn.info.dbname
+    hit = _EN_CACHE.get(key)
+    if hit is None or hit[0] is not rows:
+        hit = _EN_CACHE[key] = (rows, [TR.english_view(r) for r in rows])
+    return hit[1]
 
 
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
-    flag is on for the user."""
-    rows = catalog_rows(conn)
+    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise)."""
+    rows = catalog_rows(conn) if _flag_on(conn, user_id, TR.FLAG) else _english_rows(conn)
     if not imported_visible(conn, user_id):
         rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
     if user_id is None:

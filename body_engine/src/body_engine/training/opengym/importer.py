@@ -20,7 +20,7 @@ from pathlib import Path
 import psycopg
 from psycopg.types.json import Jsonb
 
-from .. import catalog, catalog_data as CD
+from .. import catalog, catalog_data as CD, translations as TR
 from . import COMMIT, REPO, mapping as M
 
 SNAPSHOT = Path(__file__).with_name("snapshot.json.gz")
@@ -92,14 +92,17 @@ def convert(e: dict, unmapped: Counter | None = None) -> dict:
     steps = [str(s).strip() for s in e.get("instructions") or [] if str(s).strip()]
     ref = {"source": source, "license": licence, "ref": e["id"], "commit": COMMIT, "body_part": e.get("bodyPart"),
            "target": target, "category": cat_raw, "equipment": eq_raw}
-    return {
+    row = {
         "slug": f"og_{e['id']}", "name_zh": name, "name_en": name, "aliases": [], "category": category, "modality": modality,
         "force": None, "mechanic": None, "level": "intermediate", "movement_pattern": pattern, "equipment": [eq],
         "primary_muscles": prim, "secondary_muscles": sec, "joint_stress": _family_stress(fam), "per_side": False,
         "default_increment_kg": 2.5 if modality == "weight_reps" else None, "cues_zh": None, "instructions_zh": [], "images": [],
         "source": source, "source_ref": e["id"], "family_slug": fam, "license": licence,
         "description_en": (e.get("description") or "").strip() or None, "instructions_en": steps, "text_sources": [ref],
+        "zh_source": None,
     }
+    TR.apply(row)   # the committed machine Chinese (training/translations/), when it was made from this very English
+    return row
 
 
 def _group(entries: list[dict]) -> list[list[dict]]:
@@ -138,13 +141,17 @@ _PRIORITY = {"curated": 0, "free-exercise-db": 1}
 _INSERT = """INSERT INTO exercise_catalog (
       slug, name_zh, name_en, aliases, category, modality, force, mechanic, level, movement_pattern, equipment, primary_muscles,
       secondary_muscles, joint_stress, per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref,
-      family_slug, license, description_en, instructions_en, text_sources, updated_at)
+      family_slug, license, description_en, instructions_en, text_sources, zh_source, updated_at)
     VALUES (%(slug)s, %(name_zh)s, %(name_en)s, %(aliases)s, %(category)s, %(modality)s, %(force)s, %(mechanic)s, %(level)s,
       %(movement_pattern)s, %(equipment)s, %(primary_muscles)s, %(secondary_muscles)s, %(joint_stress)s, %(per_side)s,
       %(default_increment_kg)s, %(cues_zh)s, %(instructions_zh)s, %(images)s, %(source)s, %(source_ref)s, %(family_slug)s,
-      %(license)s, %(description_en)s, %(instructions_en)s, %(text_sources)s, now())
+      %(license)s, %(description_en)s, %(instructions_en)s, %(text_sources)s, %(zh_source)s, now())
     ON CONFLICT (slug) DO UPDATE SET
-      name_zh = CASE WHEN exercise_catalog.name_zh = exercise_catalog.name_en THEN EXCLUDED.name_zh ELSE exercise_catalog.name_zh END,
+      name_zh = CASE WHEN exercise_catalog.zh_source IS DISTINCT FROM 'human' THEN EXCLUDED.name_zh ELSE exercise_catalog.name_zh END,
+      cues_zh = CASE WHEN exercise_catalog.zh_source IS DISTINCT FROM 'human' THEN EXCLUDED.cues_zh ELSE exercise_catalog.cues_zh END,
+      instructions_zh = CASE WHEN exercise_catalog.zh_source IS DISTINCT FROM 'human' THEN EXCLUDED.instructions_zh
+                             ELSE exercise_catalog.instructions_zh END,
+      zh_source = CASE WHEN exercise_catalog.zh_source IS DISTINCT FROM 'human' THEN EXCLUDED.zh_source ELSE 'human' END,
       name_en = EXCLUDED.name_en, category = EXCLUDED.category, modality = EXCLUDED.modality,
       movement_pattern = EXCLUDED.movement_pattern, equipment = EXCLUDED.equipment, primary_muscles = EXCLUDED.primary_muscles,
       secondary_muscles = EXCLUDED.secondary_muscles, joint_stress = EXCLUDED.joint_stress, family_slug = EXCLUDED.family_slug,
@@ -154,10 +161,14 @@ _INSERT = """INSERT INTO exercise_catalog (
     WHERE (exercise_catalog.name_en, exercise_catalog.category, exercise_catalog.modality, exercise_catalog.movement_pattern,
            exercise_catalog.equipment, exercise_catalog.primary_muscles, exercise_catalog.secondary_muscles,
            exercise_catalog.joint_stress, exercise_catalog.family_slug, exercise_catalog.source, exercise_catalog.license,
-           exercise_catalog.description_en, exercise_catalog.instructions_en, exercise_catalog.text_sources)
+           exercise_catalog.description_en, exercise_catalog.instructions_en, exercise_catalog.text_sources,
+           CASE WHEN exercise_catalog.zh_source = 'human' THEN NULL ELSE
+             (exercise_catalog.name_zh, exercise_catalog.cues_zh, exercise_catalog.instructions_zh, exercise_catalog.zh_source) END)
       IS DISTINCT FROM (EXCLUDED.name_en, EXCLUDED.category, EXCLUDED.modality, EXCLUDED.movement_pattern, EXCLUDED.equipment,
            EXCLUDED.primary_muscles, EXCLUDED.secondary_muscles, EXCLUDED.joint_stress, EXCLUDED.family_slug, EXCLUDED.source,
-           EXCLUDED.license, EXCLUDED.description_en, EXCLUDED.instructions_en, EXCLUDED.text_sources)"""
+           EXCLUDED.license, EXCLUDED.description_en, EXCLUDED.instructions_en, EXCLUDED.text_sources,
+           CASE WHEN exercise_catalog.zh_source = 'human' THEN NULL ELSE
+             (EXCLUDED.name_zh, EXCLUDED.cues_zh, EXCLUDED.instructions_zh, EXCLUDED.zh_source) END)"""
 
 
 def run(conn: psycopg.Connection, snapshot: tuple[dict, list[dict]] | None = None, *, dry_run: bool = False) -> dict:
@@ -230,6 +241,7 @@ def run(conn: psycopg.Connection, snapshot: tuple[dict, list[dict]] | None = Non
     return {
         "dry_run": dry_run, "source": REPO, "commit": COMMIT, "entries": len(entries), "variant_stubs_skipped": skipped_stubs,
         "internal_duplicates_merged": internal_dups, "new_rows": len(new_rows), "new_by_source": dict(by_src),
+        "machine_chinese": sum(1 for c in new_rows if c.get("zh_source") == "machine"),
         "merged_into_existing": sum(merged_pairs.values()), "merged_by_existing_source": dict(merged_pairs), "merged_by_match": dict(merged_how),
         "existing_rows_updated": len(merges) if dry_run else updated_existing,   # dry run: rows an import would look at
         "unmapped": [{"kind": k, "name": n, "entries": c} for (k, n), c in sorted(unmapped.items(), key=lambda kv: (kv[0][0], -kv[1]))],
@@ -243,7 +255,8 @@ def format_report(rep: dict) -> str:
              + (" [dry run]" if rep["dry_run"] else ""),
              f"  new rows {rep['new_rows']} {rep['new_by_source']}, merged into existing {rep['merged_into_existing']} "
              f"{rep['merged_by_existing_source']}, duplicates inside openGym {rep['internal_duplicates_merged']}, "
-             f"existing rows touched {rep['existing_rows_updated']}, catalog total {rep['catalog_total']}"]
+             f"existing rows touched {rep['existing_rows_updated']}, catalog total {rep['catalog_total']}, "
+             f"with machine Chinese {rep['machine_chinese']}"]
     if rep["unmapped"]:
         lines.append(f"  unmapped ({len(rep['unmapped'])} names, {rep['unmapped_entries']} uses; kept as raw / left out):")
         lines += [f"    {u['kind']}: {u['name']} ×{u['entries']}" for u in rep["unmapped"]]

@@ -143,7 +143,8 @@ def test_licence_source_and_text_only_columns(conn, report):
     assert len(rows) == report[2]["new_rows"]
     for r in rows:
         assert (r["source"], r["license"]) in (("exercisedb", "MIT"), ("opengym", "AGPL-3.0"))
-        assert r["images"] == [] and r["name_zh"] == r["name_en"] and not CJK.search(r["name_en"])
+        assert r["images"] == [] and not CJK.search(r["name_en"])
+        assert r["name_zh"] == r["name_en"] or r["zh_source"] == "machine"   # Chinese only from the committed translations
         assert r["text_sources"][0]["commit"] == COMMIT and r["text_sources"][0]["source"] == r["source"]
     assert conn.execute("SELECT count(*) AS n FROM exercise_catalog WHERE license IS NULL").fetchone()["n"] == 0   # curated rows too
 
