@@ -42,9 +42,15 @@ def post_url(post_id: int) -> str:
     return f"/app/?tab=friends&feed={post_id}"
 
 
-# a ❤️ / comment counts while its writer is the post's author or still shares a circle with the author
-_WRITER_OK = """({w} = p.user_id OR EXISTS (SELECT 1 FROM circle_members x JOIN circle_members y ON y.circle_id = x.circle_id
-                                              WHERE x.user_id = {w} AND y.user_id = p.user_id))"""
+# Who sees a ❤️ / comment (#269): the viewer's own, or one whose writer is in a circle with the viewer that is also a circle
+# the post reaches the viewer through (the author is in it and ticked `training` there). So when the author is in two
+# circles, the people of one never see the names or comments of the other. With the viewer = the author (their own red
+# dot) it is every writer who shares such a circle with them. Placeholders: {w} the writer's column, {v} the viewer's
+# parameter; `p` is the post.
+_SEEN_BY = """({w} = {v} OR EXISTS (SELECT 1 FROM circle_members sv
+                JOIN circle_members sw ON sw.circle_id = sv.circle_id AND sw.user_id = {w}
+                JOIN circle_members sa ON sa.circle_id = sv.circle_id AND sa.user_id = p.user_id
+                WHERE sv.user_id = {v} AND '""" + P.FEED_SCOPE + """' = ANY(sa.scopes)))"""
 
 
 # ---------------------------------------------------------------- who sees what
@@ -259,12 +265,14 @@ def ensure_recent(conn: psycopg.Connection, user_id: int, today: date | None = N
 # ---------------------------------------------------------------- the feed
 def _counts(conn, viewer_id: int, ids: list[int]) -> tuple[dict, dict]:
     likes = {r["post_id"]: r for r in conn.execute(
-        f"""SELECT l.post_id, count(*) AS n, bool_or(l.user_id = %s) AS mine FROM circle_feed_likes l
+        f"""SELECT l.post_id, count(*) AS n, bool_or(l.user_id = %(v)s) AS mine FROM circle_feed_likes l
             JOIN circle_feed_posts p ON p.id = l.post_id
-            WHERE l.post_id = ANY(%s) AND l.active AND {_WRITER_OK.format(w='l.user_id')} GROUP BY l.post_id""", (viewer_id, ids))}
+            WHERE l.post_id = ANY(%(ids)s) AND l.active AND {_SEEN_BY.format(w='l.user_id', v='%(v)s')} GROUP BY l.post_id""",
+        {"v": viewer_id, "ids": ids})}
     comments = {r["post_id"]: r["n"] for r in conn.execute(
         f"""SELECT c.post_id, count(*) AS n FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
-            WHERE c.post_id = ANY(%s) AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')} GROUP BY c.post_id""", (ids,))}
+            WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}
+            GROUP BY c.post_id""", {"v": viewer_id, "ids": ids})}
     return likes, comments
 
 
@@ -275,8 +283,8 @@ def _previews(conn, viewer_id: int, ids: list[int]) -> dict[int, list[dict]]:
             f"""SELECT * FROM (SELECT c.post_id, c.id, c.user_id, c.body, u.display_name,
                        row_number() OVER (PARTITION BY c.post_id ORDER BY c.id DESC) AS rn
                 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-                WHERE c.post_id = ANY(%s) AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}) t
-                WHERE rn <= %s ORDER BY post_id, id""", (ids, P.COMMENT_PREVIEW)).fetchall()
+                WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}) t
+                WHERE rn <= %(n)s ORDER BY post_id, id""", {"ids": ids, "v": viewer_id, "n": P.COMMENT_PREVIEW}).fetchall()
     avatars = avatar_store.urls_for(conn, viewer_id, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, viewer_id, [r["user_id"] for r in rows])
     for r in rows:
@@ -378,8 +386,8 @@ def comments(conn: psycopg.Connection, uid: int, post_id: int) -> list[dict]:
     rows = conn.execute(
         f"""SELECT c.id, c.user_id, c.body, c.created_at, u.display_name FROM circle_feed_comments c
             JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-            WHERE c.post_id = %s AND c.deleted_at IS NULL AND {_WRITER_OK.format(w='c.user_id')}
-            ORDER BY c.id DESC LIMIT %s""", (post_id, P.COMMENTS_SHOWN)).fetchall()
+            WHERE c.post_id = %(p)s AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}
+            ORDER BY c.id DESC LIMIT %(n)s""", {"p": post_id, "v": uid, "n": P.COMMENTS_SHOWN}).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, uid, [r["user_id"] for r in rows])
     return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid,
@@ -426,6 +434,10 @@ def report_comment(conn: psycopg.Connection, uid: int, comment_id: int, reason: 
     if c is None:
         raise FriendsError(404, L("没有这条评论", "No such comment"))
     _post_for(conn, uid, c["post_id"])
+    if conn.execute(f"""SELECT 1 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
+                        WHERE c.id = %(c)s AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}""",
+                    {"c": comment_id, "v": uid}).fetchone() is None:   # a comment this person is not shown
+        raise FriendsError(404, L("没有这条评论", "No such comment"))
     if c["user_id"] == uid:
         raise FriendsError(400, L("不能举报自己的评论（可以直接删除）", "You can't report your own comment (delete it instead)"))
     reason = (reason or "").strip()[:P.REPORT_REASON_MAX] or None
@@ -443,10 +455,10 @@ def unread(conn: psycopg.Connection, uid: int) -> int:
     seen = conn.execute("SELECT seen_at FROM circle_feed_seen WHERE user_id = %s", (uid,)).fetchone()["seen_at"]
     n = conn.execute(
         f"""SELECT (SELECT count(*) FROM circle_feed_likes l JOIN circle_feed_posts p ON p.id = l.post_id
-                    WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_WRITER_OK.format(w='l.user_id')})
+                    WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_SEEN_BY.format(w='l.user_id', v='%(u)s')})
                  + (SELECT count(*) FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
                     WHERE p.user_id = %(u)s AND c.user_id <> %(u)s AND c.deleted_at IS NULL AND c.created_at > %(t)s
-                      AND {_WRITER_OK.format(w='c.user_id')}) AS n""", {"u": uid, "t": seen}).fetchone()["n"]
+                      AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')}) AS n""", {"u": uid, "t": seen}).fetchone()["n"]
     return int(n)
 
 
