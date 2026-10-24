@@ -2,8 +2,9 @@
 # the build number N of pubspec.yaml's X.Y.Z+N is not in the tag); this workflow checks it again (marketing version in
 # pubspec.yaml = tag, not released before, build number higher than every earlier tag's, CHANGELOG section, on main) and
 # publishes the GitHub pre-release with the source zip of the app directory and its sha256. The person who builds for
-# TestFlight / Play takes the source ONLY from that release (or `git clone --branch <tag>`). Nothing here needs a secret:
-# GITHUB_TOKEN with contents: write creates the release. Actions are pinned to a commit.
+# TestFlight / Play takes the source ONLY from that release (or `git clone --branch <tag>`). The release needs no secret:
+# GITHUB_TOKEN with contents: write creates it. Actions are pinned to a commit. Android tags also build the signed APK
+# (android-apk.yml, with the W2W_ANDROID_* keystore secrets) and attach it to the release.
 name: App release
 
 on:
@@ -41,5 +42,40 @@ jobs:
             echo
             echo '```'
             cat dist/*.sha256
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Android (#253): the signed APK for the family, built from the tag and attached to the same pre-release
+  # (android-apk.yml; it fails without the release keystore secrets). iOS tags skip both jobs.
+  android-apk:
+    name: Android APK
+    needs: release
+    if: startsWith(github.ref_name, 'app-android-v')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/android-apk.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets: inherit
+
+  attach-apk:
+    name: Attach the APK
+    needs: android-apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.android-apk.outputs.name }}
+          path: dist
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" dist/*.apk dist/*.apk.sha256 --clobber --repo "$GITHUB_REPOSITORY"
+          {
+            echo "### APK attached to ${GITHUB_REF_NAME}"
+            echo '```'
+            cat dist/*.apk.sha256
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

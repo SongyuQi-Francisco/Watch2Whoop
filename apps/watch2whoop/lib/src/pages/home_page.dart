@@ -12,12 +12,15 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../account_flow.dart';
+import '../android_bridge.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../health_range.dart';
@@ -25,6 +28,7 @@ import '../health_sync.dart';
 import '../i18n.dart';
 import '../offline_shell.dart';
 import '../page_events.dart';
+import '../platform_features.dart';
 import '../push.dart';
 import '../raw_sync.dart';
 import '../resync.dart';
@@ -168,11 +172,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final params = WebKitWebViewControllerCreationParams(
-      allowsInlineMediaPlayback: true,
-      // Media types that can play without a user gesture: none
-      mediaTypesRequiringUserAction: const {PlaybackMediaTypes.audio, PlaybackMediaTypes.video},
-    );
+    final PlatformWebViewControllerCreationParams params = isAndroid
+        ? AndroidWebViewControllerCreationParams()
+        : WebKitWebViewControllerCreationParams(
+            allowsInlineMediaPlayback: true,
+            // Media types that can play without a user gesture: none
+            mediaTypesRequiringUserAction: const {PlaybackMediaTypes.audio, PlaybackMediaTypes.video},
+          );
     // Hold-to-talk: WebKit asks the app before the page may use the microphone (web_mic.dart, #171)
     _web = WebViewController.fromPlatformCreationParams(params, onPermissionRequest: _onMediaCapture)
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
@@ -214,6 +220,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       wk.setAllowsBackForwardNavigationGestures(false);
       // Debug builds can inspect the page from the Safari "Develop" menu on the Mac.
       wk.setInspectable(kDebugMode);
+    }
+    if (wk is AndroidWebViewController) {
+      // Android (#253): file inputs (meal photos, videos, avatar, CSV import) need the app to pick the files
+      wk.setOnShowFileSelector(_pickFiles);
+      wk.setMediaPlaybackRequiresUserGesture(true);
+      // Debug builds can inspect the page from chrome://inspect.
+      AndroidWebViewController.enableDebugging(kDebugMode);
     }
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
@@ -382,7 +395,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   Future<void> _announceFeatures() async {
     if (_onShell) return; // the kept copy cannot reach the server, so no voice there
     try {
-      await _web.runJavaScript(kFeaturesJs);
+      await _web.runJavaScript(!isAndroid || await AndroidBridge.hasMic() ? kFeaturesJs : kFeaturesNoMicJs);
     } catch (e) {
       debugPrint('features call failed: $e');
     }
@@ -394,9 +407,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     try {
       page = await _web.currentUrl();
     } catch (_) {}
-    final ok = allowMediaCapture(
+    var ok = allowMediaCapture(
         types: req.types, pageUrl: page, todayEntry: AppState.instance.config.todayEntry, onShell: _onShell);
+    // Android: the app itself needs RECORD_AUDIO first (system dialog); declined = the page offers the settings
+    if (ok && isAndroid) ok = await AndroidBridge.requestMic();
     await (ok ? req.grant() : req.deny());
+  }
+
+  /// Android file inputs: the system picker (camera offered next to it, or straight to the camera for `capture`), only
+  /// for our own Today page.
+  Future<List<String>> _pickFiles(FileSelectorParams p) async {
+    if (p.mode == FileSelectorMode.save) return const [];
+    String? page;
+    try {
+      page = await _web.currentUrl();
+    } catch (_) {}
+    final u = page == null ? null : Uri.tryParse(page);
+    if (u == null || !sameOrigin(u, AppState.instance.config.todayEntry)) return const [];
+    return AndroidBridge.pickFiles(
+        acceptTypes: p.acceptTypes, multiple: p.mode == FileSelectorMode.openMultiple, capture: p.isCaptureEnabled);
+  }
+
+  /// Android back button / gesture: back in the page's history first, then leave the app.
+  Future<void> _onBack() async {
+    if (_error == null && await _web.canGoBack()) {
+      await _web.goBack();
+    } else {
+      await SystemNavigator.pop();
+    }
   }
 
   /// The page of a tapped notification (a path on the server, checked by [notificationTarget]), or null.
@@ -502,7 +540,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    return Scaffold(
+    final page = Scaffold(
       backgroundColor: dark ? Colors.black : Colors.white,
       body: Stack(
         children: [
@@ -517,6 +555,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           if (_error != null) Positioned.fill(child: _errorView(context)),
         ],
       ),
+    );
+    if (!isAndroid) return page;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack();
+      },
+      child: page,
     );
   }
 

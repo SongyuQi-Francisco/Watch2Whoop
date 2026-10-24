@@ -4,6 +4,7 @@
 // Sync center (server flag sync_center, or opened as watch2whoop://sync-center): titled 「同步中心」, with the forced
 // re-sync and the phone / server comparison per type (sync_center_section.dart) in place of 「服务器收到的数据」; the Today
 // page then has this one row instead of 手机同步 / 数据更新 / 数据状态. Flag off: the page is exactly as before.
+// Android (#253): no phone health sync yet, so the page only says so and keeps the setup / server / sign-out rows.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -21,6 +22,7 @@ import '../debug_seed.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../platform_features.dart';
 import '../raw_sync.dart';
 import '../resync.dart';
 import '../setup_flow.dart';
@@ -63,8 +65,10 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _refresh();
-    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+    if (hasHealthSync) {
+      _refresh();
+      _poll = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
+    }
     _sync.stats.addListener(_onStats);
     PackageInfo.fromPlatform().then((p) {
       if (mounted) setState(() => _version = '${p.version} (${p.buildNumber})');
@@ -289,8 +293,11 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(tr('退出登录？', 'Sign out?')),
-        content: Text(tr('这台 iPhone 停止同步并退出账号；服务器上的数据不受影响，之后用同一个 Apple ID / 邮箱登录即可。',
-            'This iPhone stops syncing and signs out. Your data on the server is kept; sign in again with the same Apple ID / e-mail.')),
+        content: Text(isAndroid
+            ? tr('这台手机退出账号；服务器上的数据不受影响，之后用同一个邮箱登录即可。',
+                'This phone signs out. Your data on the server is kept; sign in again with the same e-mail.')
+            : tr('这台 iPhone 停止同步并退出账号；服务器上的数据不受影响，之后用同一个 Apple ID / 邮箱登录即可。',
+                'This iPhone stops syncing and signs out. Your data on the server is kept; sign in again with the same Apple ID / e-mail.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
           TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('退出', 'Sign out'))),
@@ -371,8 +378,64 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
 
   // -------------------------------------------------------------------------- UI
 
+  /// Android: what is there instead of the sync status (the watch data comes later, #253).
+  Widget _withoutHealthSync(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: Text(_center ? tr('同步中心', 'Sync center') : tr('手机同步', 'Phone sync'))),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.watch_outlined, size: 22, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(watchDataPending, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Hint(watchDataPendingHint),
+                ],
+              ),
+            ),
+          ),
+          if (_message != null) ...[
+            const SizedBox(height: 10),
+            Hint(_message!, icon: Icons.check_circle_outline),
+          ],
+          const SizedBox(height: 24),
+          Group(
+            title: tr('设置', 'Settings'),
+            rows: [
+              if (!serverLocked) ...[
+                Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
+                Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
+                Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
+              ],
+              Row2(tr('权限', 'Permissions'), onTap: openAppSettings),
+              if (_hasAccount) Row2(tr('退出登录', 'Sign out'), danger: true, onTap: _busy ? null : _signOut),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text('Watch2Whoop ${_version ?? ''}', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!hasHealthSync) return _withoutHealthSync(context);
     final cs = Theme.of(context).colorScheme;
     final stats = _sync.stats.value;
     final connected = _config.owConnected && _sync.isSignedIn;

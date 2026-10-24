@@ -1,4 +1,4 @@
-# Changelog — Watch2Whoop Flutter app (iOS; Android later)
+# Changelog — Watch2Whoop Flutter app (iOS and Android)
 
 One section per store build, newest first: `## <marketing version> — <date>` (e.g. `## 1.0.6 — 2026-10-22`; the build
 number after `+` in `pubspec.yaml` is not part of the public name). Bump `version:` in `pubspec.yaml` (both parts) and
@@ -7,9 +7,12 @@ add the section in the same pull request; after it is merged a maintainer tags t
 publishes the GitHub pre-release with the source zip; this section becomes its notes. Builds are made only from that
 Release (zip checked against its `.sha256`) or `git clone --branch <tag>`, never from `main` or a zip sent by hand.
 Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
+A platform-only section is `## Android <marketing version> — <date>`: `tools/app_release.sh android` takes it before the
+shared `## <marketing version>` section, and the iOS release never sees it.
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| Android 1.0.7 | `app-android-v1.0.7` | (set when tagged) | APK on the GitHub Release (Android, sideloaded) |
 | 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
 | 1.0.5+5 | `app-ios-v1.0.5+5` | `e1a93cc` | TestFlight (iOS) |
@@ -19,6 +22,22 @@ Versioning rules: [docs/apps.md](../../docs/apps.md#4-versioning-and-releases).
 ## Unreleased
 - Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
   Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
+
+## Android 1.0.7 — (set when tagged)
+First Android build (#253), for Huawei phones on HarmonyOS 4.x and older (Android compatible, no Google services),
+installed as an APK from the GitHub Release. Same code base and version as iOS 1.0.7 plus the Android target; the iOS
+app is unchanged. Needs Android 10 / HarmonyOS 2 or newer (32- or 64-bit ARM).
+- Works: e-mail sign-in, setup QR code (in-app scanner) / pasted setup text / `watch2whoop://` links, invite and circle
+  codes, the Today page with all tabs, the AI chat (Jarvis) with hold-to-talk (microphone asked on first use; without a
+  microphone the page keeps the keyboard's dictation key), photos and videos for the AI and the meal log (gallery, or
+  the camera for the camera buttons), Chinese / English following the system or the profile, the Android back button
+  (back in the page first).
+- Not yet: phone health sync (the sync page says 「华为手表数据接入开发中」 / "Huawei watch data support is in
+  development"; how to read Huawei watch data is #253), push notifications (no FCM without Google services), Sign in
+  with Apple (iOS only). A setup link's sync invitation code is left unused.
+- No server is compiled in: the first start asks for the setup QR code / link. No cloud backup of the app's data.
+- Built by GitHub Actions (`.github/workflows/android-apk.yml`), signed with the project's fixed release key so later
+  APKs install over it.
 
 ## 1.0.7 — 2026-10-22
 Sync center (rollout flag `sync_center`, server side in #221) and the Health types the Open Wearables SDK cannot read.

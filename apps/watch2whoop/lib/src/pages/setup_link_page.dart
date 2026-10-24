@@ -12,6 +12,7 @@ import '../app_state.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../platform_features.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
 import 'permissions_page.dart';
@@ -104,7 +105,9 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
         });
         return;
       }
-      if (r.owConnected) {
+      if (!hasHealthSync) {
+        setState(() => _step = 3); // Android (#253): no sync to connect, no Health step yet
+      } else if (r.owConnected) {
         setState(() => _step = 2);
       } else {
         setState(() {
@@ -136,7 +139,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     await AppState.instance.update(_config.copyWith(todayUrl: t.url, owHost: o.url));
     setState(() {
       _error = null;
-      _step = 1;
+      _step = hasHealthSync ? 1 : 3;
     });
   }
 
@@ -247,8 +250,11 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
   List<Widget> _setupStep() => serverLocked ? _lockedSetupStep() : [
     _title(
       tr('开始使用', 'Get started'),
-      tr('家人会给你一个「设置二维码」：用 iPhone 相机扫一下就能自动设置好。也可以在这里扫码，或粘贴设置信息。',
-          'You will get a setup QR code: scan it with the iPhone Camera and everything is set up. You can also scan it here or paste the setup text.'),
+      isAndroid
+          ? tr('家人会给你一个「设置二维码」：点下面「扫描设置二维码」扫一下就能自动设置好，也可以粘贴设置信息。',
+              'You will get a setup QR code: tap Scan setup code below and everything is set up. You can also paste the setup text.')
+          : tr('家人会给你一个「设置二维码」：用 iPhone 相机扫一下就能自动设置好。也可以在这里扫码，或粘贴设置信息。',
+              'You will get a setup QR code: scan it with the iPhone Camera and everything is set up. You can also scan it here or paste the setup text.'),
     ),
     BigButton(tr('扫描设置二维码', 'Scan setup code'), onPressed: _busy ? null : _scan, busy: _busy),
     const SizedBox(height: 10),
@@ -380,12 +386,17 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
     return [
       _title(
         tr('设置好了', 'All set'),
-        auto
+        !hasHealthSync
+            ? (auto
+                ? tr('打开今天页会自动登录。', 'The today page signs you in automatically.')
+                : tr('打开今天页后，输入家人给你的 token 登录（只需一次）。', 'On the today page, sign in once with the token you were given.'))
+            : auto
             ? tr('打开今天页会自动登录。以后同步状态在「我」→「手机同步」里看。',
                 'The today page signs you in automatically. Sync status lives under Me → Phone sync.')
             : tr('打开今天页后，输入家人给你的 token 登录（只需一次）。以后同步状态在「我」→「手机同步」里看。',
                 'On the today page, sign in once with the token you were given. Sync status lives under Me → Phone sync.'),
       ),
+      if (!hasHealthSync) Hint(watchDataPendingHint),
       if (_config.owConnected) Hint(tr('首次同步可能要几分钟，保持 app 打开会更快。', 'The first sync can take a few minutes; keep the app open.')),
       const SizedBox(height: 24),
       BigButton(tr('打开今天页', 'Open today page'), onPressed: _finish),

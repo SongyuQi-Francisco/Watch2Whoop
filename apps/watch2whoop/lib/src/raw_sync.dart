@@ -37,6 +37,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'health_range.dart';
 import 'hk_types.dart';
 import 'i18n.dart';
+import 'platform_features.dart';
 import 'ui.dart' show ago;
 
 const List<String> kRawKinds = ['heartbeat', 'ecg', 'water'];
@@ -570,6 +571,7 @@ class RawSync {
   /// the automatic ask in [run] stops after kRawMaxAutoAsks; this call itself (permissions step, sync page) always asks.
   /// Returns whether iOS no longer needs to ask.
   Future<bool> requestAuth() async {
+    if (!hasHealthSync) return false; // Android (#253): no HealthKit
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_authTriesKey, (prefs.getInt(_authTriesKey) ?? 0) + 1);
@@ -604,7 +606,7 @@ class RawSync {
     String? appVersion,
     String anchorSet = '',
   }) async {
-    if (_running || serverUrl.isEmpty) return null;
+    if (_running || serverUrl.isEmpty || !hasHealthSync) return null;
     _running = true;
     try {
       final prefs = await SharedPreferences.getInstance();

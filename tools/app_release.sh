@@ -152,20 +152,28 @@ changelog_section() {  # <rev> → the app's CHANGELOG.md at that revision
     git show "$1:$d/CHANGELOG.md" 2>/dev/null && return
   done
 }
-# "## X.Y.Z" (or "## X.Y.Z — date"); sections from before the marketing-only names are "## X.Y.Z+N …"
+# "## X.Y.Z" (or "## X.Y.Z — date"); sections from before the marketing-only names are "## X.Y.Z+N …".
+# A platform can have its own section "## Android X.Y.Z" (the first Android build shares 1.0.7 with iOS, #253); it is
+# taken first for that platform, and never matches "## X.Y.Z", so the other platform's notes are unchanged.
 section() {
   awk -v a="## $marketing" -v b="## $version" '
     $0 == a || index($0, a " ") == 1 || $0 == b || index($0, b " ") == 1 {on = 1; next}
     on && /^## / {exit} on {print}'
 }
+platform_section() {
+  awk -v a="## $label $marketing" '
+    $0 == a || index($0, a " ") == 1 {on = 1; next}
+    on && /^## / {exit} on {print}'
+}
 has_text() { [ -n "$(echo "$1" | tr -d '[:space:]')" ]; }
-notes="$(changelog_section "$commit" | section)" || true
+notes="$(changelog_section "$commit" | platform_section)" || true
+has_text "$notes" || notes="$(changelog_section "$commit" | section)" || true
 if ! has_text "$notes" && [ "$mode" != "publish" ]; then
   # Tagging an older build retroactively (before the changelog existed at that commit): take the notes from main.
   notes="$(changelog_section origin/main | section)" || true
   if has_text "$notes"; then echo "⚠ CHANGELOG.md at $short has no \"## $marketing\" section; using the one on origin/main"; fi
 fi
-check "CHANGELOG.md has a section \"## $marketing\"" 'has_text "$notes"'
+check "CHANGELOG.md has a section \"## $marketing\" (or \"## $label $marketing\")" 'has_text "$notes"'
 
 [ "$ok" = 1 ] || die "checks failed; nothing changed"
 
@@ -203,7 +211,12 @@ if [ "$mode" = "publish" ]; then
     echo "- \`grep '^version:' $app_dir/pubspec.yaml\` prints \`version: $version\` (the store build number $build is"
     echo "  the part after +; TestFlight shows $marketing ($build)). Do not change it."
     echo
-    echo "Steps: \`$app_dir/README.md\`, \"Building and shipping via TestFlight\"."
+    if [ "$platform" = android ]; then
+      echo "Steps: \`$app_dir/README.md\`, \"Android\". The workflow attaches the signed APK and its .sha256 to this release"
+      echo "(family install guide: \`$app_dir/android-install.zh-CN.md\`)."
+    else
+      echo "Steps: \`$app_dir/README.md\`, \"Building and shipping via TestFlight\"."
+    fi
     echo
     echo "## Changes"
     echo "$notes"

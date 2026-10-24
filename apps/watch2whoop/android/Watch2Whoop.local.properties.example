@@ -1,0 +1,11 @@
+# Copy to Watch2Whoop.local.properties (git-ignored) and fill in. Never commit the real file or the keystore.
+# The application ID cannot change once family members installed the app (a new ID = a second app, the old login is lost).
+W2W_APPLICATION_ID=com.example.watch2whoop
+W2W_DISPLAY_NAME=Watch2Whoop
+
+# Release signing (keep the keystore and its passwords outside the repository, e.g. in your password manager).
+# Generate the keystore once: apps/watch2whoop/README.md, "Android" → "Signing key".
+W2W_ANDROID_KEYSTORE=/absolute/path/to/watch2whoop-release.jks
+W2W_ANDROID_KEYSTORE_PASSWORD=
+W2W_ANDROID_KEY_ALIAS=watch2whoop
+W2W_ANDROID_KEY_PASSWORD=
