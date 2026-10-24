@@ -8,17 +8,21 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../android_bridge.dart';
 import '../app_state.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../platform_features.dart';
 import '../ui.dart';
 
 /// The step shows on its own once: first run (inside onboarding), or after an update for someone who was never asked.
-bool shouldShowPermissions(AppConfig c) => c.onboardingDone && !c.permissionsSeen && !c.healthRequested;
+bool shouldShowPermissions(AppConfig c) => hasHealthSync && c.onboardingDone && !c.permissionsSeen && !c.healthRequested;
 
-/// Opens this app's page in iOS Settings (UIApplication.openSettingsURLString).
-Future<void> openAppSettings() => launchUrl(Uri.parse('app-settings:'), mode: LaunchMode.externalApplication);
+/// Opens this app's page in iOS Settings (UIApplication.openSettingsURLString), on Android its app info page.
+Future<void> openAppSettings() => isAndroid
+    ? AndroidBridge.openAppSettings()
+    : launchUrl(Uri.parse('app-settings:'), mode: LaunchMode.externalApplication);
 
 /// The permission cards. [onRequestHealth] shows the Health prompt (the onboarding flows connect sync first);
 /// default: ask and start syncing when sync is connected.

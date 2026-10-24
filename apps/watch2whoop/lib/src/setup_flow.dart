@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
+import 'platform_features.dart';
 import 'server_lock.dart';
 
 class SetupResult {
@@ -49,7 +50,8 @@ Future<SetupResult> applySetup(SetupInfo setup) async {
 
   var owConnected = false;
   Object? owError;
-  if (info.code != null && c.owHost.isNotEmpty) {
+  // Android (#253): the sync invitation code is kept unused (no phone health sync yet), the rest still applies
+  if (info.code != null && c.owHost.isNotEmpty && hasHealthSync) {
     try {
       final userId = await HealthSync.instance.connect(owHost: c.owHost, code: info.code!);
       await AppState.instance.update(AppState.instance.config.copyWith(owUserId: userId));

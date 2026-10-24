@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'account_flow.dart';
 import 'app_state.dart';
 import 'i18n.dart';
+import 'platform_features.dart';
 
 const _kRegisteredKey = 'w2w.pushRegistered';
 
@@ -61,6 +62,7 @@ class PushService {
   final ValueNotifier<int> received = ValueNotifier(0);
 
   void start() {
+    if (!hasPush) return; // Android (#253): no FCM on Huawei phones without Google services
     _ch.setMethodCallHandler((call) async {
       switch (call.method) {
         case 'token':
@@ -80,6 +82,7 @@ class PushService {
   }
 
   Future<String> _call(String method) async {
+    if (!hasPush) return 'unsupported';
     try {
       return (await _ch.invokeMethod<String>(method)) ?? 'unknown';
     } on MissingPluginException {
@@ -105,6 +108,7 @@ class PushService {
   }
 
   Future<void> setBadge(int n) async {
+    if (!hasPush) return;
     try {
       await _ch.invokeMethod('setBadge', n < 0 ? 0 : n);
     } on MissingPluginException {
@@ -150,6 +154,7 @@ class PushService {
 
   /// Sign-out: the server stops pushing to this phone for the account (before the account token is revoked).
   Future<void> unregister(String accountToken) async {
+    if (!hasPush) return; // nothing was registered
     final prefs = await SharedPreferences.getInstance();
     String? deviceToken;
     try {

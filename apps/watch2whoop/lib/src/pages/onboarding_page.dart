@@ -18,6 +18,7 @@ import '../app_state.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../platform_features.dart';
 import '../setup_flow.dart';
 import '../ui.dart';
 import 'permissions_page.dart';
@@ -159,7 +160,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           _error = tr('这个账号已停用，请联系管理员。', 'This account is disabled. Contact the administrator.');
         case AccountStatus.active:
         case AccountStatus.unknown:
-          _step = _Step.health;
+          _step = hasHealthSync ? _Step.health : _Step.done; // Android (#253): no Health step yet
       }
     });
   }
@@ -398,7 +399,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
   List<Widget> _welcome() {
     final dark = Theme.of(context).brightness == Brightness.dark;
     return [
-      _title('Watch2Whoop', tr('登录后开始同步 Apple 健康数据。', 'Sign in to start syncing your Apple Health data.')),
+      _title('Watch2Whoop', hasHealthSync
+          ? tr('登录后开始同步 Apple 健康数据。', 'Sign in to start syncing your Apple Health data.')
+          : tr('登录后打开你的今天页。', 'Sign in to open your Today page.')),
       if (serverLocked)
         const SizedBox.shrink()
       else if (_editServer)
@@ -558,7 +561,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   List<Widget> _doneStep() => [
     _title(
       tr('设置好了', 'All set'),
-      tr('以后同步状态在「我」→「手机同步」里看。', 'Sync status lives under Me → Phone sync.'),
+      hasHealthSync ? tr('以后同步状态在「我」→「手机同步」里看。', 'Sync status lives under Me → Phone sync.') : watchDataPendingHint,
     ),
     if (_config.owConnected) Hint(tr('首次同步可能要几分钟，保持 app 打开会更快。', 'The first sync can take a few minutes; keep the app open.')),
     const SizedBox(height: 24),
