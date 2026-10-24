@@ -236,10 +236,10 @@ GeoDNS 按「人在哪」分，但数据是按「账号在哪」放的：
 | 8 | 迁移工具 | `region-move plan / freeze / unfreeze / export / import / verify / switch / rollback / purge`；三个库按外键导出和导入；校验和；一次性迁移密钥转 AI key；上传文件；审计；用临时 Postgres 跑的端到端测试（两个库模拟两个区域：迁过去 → 核对 → 回退 → 再迁 → 删除） | 5–6 天 |
 | 9 | 同步暂存 | 冻结期间收下的上传（快捷指令、#219 引擎、OW 的 webhook 侧）放进暂存队列，切换时转交 | 1 天 |
 | 10 | app | 内置区域表 `W2W_REGIONS`；第一屏选区域 / 先输码；`resolve-code`；处理 410 `account_moved`（检查地址在表内 → 改配置 → 静默重连 → 新今天页登录码）；「我」页显示数据存放地点；中英文案；测试 | 3–4 天（1.0.8 或之后的版本，和 #247 的原生化一起排） |
-| 11 | 今天页 | 「我」页显示区域；老 app 收到 410 时的「重新设置」提示页；中英 | 0.5 天 |
-| 12 | 部署脚本（通用部分） | `deploy/` 里的 compose 和 doctor 支持「不装 Grafana / 不装管家」的区域；镜像离线导入的说明（`docker save` / `docker load`，或镜像仓库） | 1 天 |
+| 11 | 今天页 | 「我」页显示区域；老 app 收到 410 时的「重新设置」提示页；可选配置 `BODY_ICP_NUMBER` / `BODY_PSB_NUMBER`，配了就在激活页、手册、「我 → 关于」底部显示备案号（内地区要求）；中英 | 1 天 |
+| 12 | 部署脚本（通用部分） | `deploy/` 里的 compose 和 doctor 支持「不装 Grafana / 不装管家」的区域；访问日志保留天数做成可配置（有的地区要求至少 6 个月）；镜像离线导入的说明（`docker save` / `docker load`，或镜像仓库） | 1 天 |
 | 13 | 文档 | 管理员指南加多区域一节；手册加「数据存放地点」；本方案根据实现更新 | 0.5 天 |
-| | **合计** | | **约 17–20 天**（服务端约 12 天，app 约 4 天，其余约 2 天） |
+| | **合计** | | **约 18–21 天**（服务端约 13 天，app 约 4 天，其余约 2 天） |
 
 建议拆成 4 个 PR：
 1. 第 1–3、7、12 项：内地区能独立部署。
@@ -291,4 +291,4 @@ Issue #249 plan: **multi-region deployment** (an international region and a main
   - Each step is idempotent and audited; the export carries checksums, and verification compares tables and recomputed scores.
   - Rollback before purge is a reverse move. Purge needs the user's and the owner's confirmation.
   - AI keys are re-encrypted through a one-time transfer key.
-- **Work estimate.** About 17–20 days, in four PRs: region config, ID ranges and deployability; tombstones, code resolution and cross-region guards; the move tool; the app.
+- **Work estimate.** About 18–21 days, in four PRs: region config, ID ranges and deployability; tombstones, code resolution and cross-region guards; the move tool; the app.
