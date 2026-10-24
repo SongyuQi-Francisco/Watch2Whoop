@@ -26,7 +26,7 @@ from ..ai import root_rules
 from ..feedback import store as feedback_store
 from ..records import store as records_store
 from ..rules import store as rules_store
-from . import memory, memory_review, status
+from . import compact, memory, memory_review, status
 
 CACHE_TTL_S = 600
 CACHE_MAX_USERS = 512
@@ -282,8 +282,47 @@ def _updates(conn: psycopg.Connection, user_id: int) -> dict:
 
 def get(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
     """The briefing, from the cache when the caller reads their own and nothing changed; root rules always added fresh."""
-    return {**_get(conn, viewer_id, owner_id), "system_rules": _rules(conn, viewer_id),
-            **(_updates(conn, viewer_id) if viewer_id == owner_id else {})}
+    res = {**_get(conn, viewer_id, owner_id), "system_rules": _rules(conn, viewer_id),
+           **(_updates(conn, viewer_id) if viewer_id == owner_id else {})}
+    if viewer_id == owner_id:
+        _count(conn, owner_id, bool(res.get("cached")), len(compact.dumps(res)))
+    return res
+
+
+def _count(conn: psycopg.Connection, user_id: int, hit: bool, chars: int) -> None:
+    """briefing_stats: one more call (cache hit or miss) and its size. Counting never spoils the briefing."""
+    try:
+        with conn.transaction():
+            conn.execute(
+                """INSERT INTO briefing_stats (user_id, day, hits, misses, chars_total, chars_max)
+                   VALUES (%s, (now() AT TIME ZONE COALESCE((SELECT timezone FROM users WHERE id = %s), 'UTC'))::date,
+                           %s, %s, %s, %s)
+                   ON CONFLICT (user_id, day) DO UPDATE SET hits = briefing_stats.hits + EXCLUDED.hits,
+                     misses = briefing_stats.misses + EXCLUDED.misses,
+                     chars_total = briefing_stats.chars_total + EXCLUDED.chars_total,
+                     chars_max = GREATEST(briefing_stats.chars_max, EXCLUDED.chars_max)""",
+                (user_id, user_id, int(hit), int(not hit), chars, chars))
+    except Exception:
+        pass
+
+
+def stats(conn: psycopg.Connection, days: int = 7) -> dict:
+    """Admin view over the last `days` local days: calls, hit rate, characters per call (all users together, counts only)."""
+    rows = conn.execute(
+        """SELECT day, sum(hits) AS hits, sum(misses) AS misses, sum(chars_total) AS chars_total, max(chars_max) AS chars_max,
+                  count(*) AS users
+           FROM briefing_stats WHERE day >= (now() AT TIME ZONE 'UTC')::date - %s GROUP BY day ORDER BY day DESC""",
+        (max(1, days),)).fetchall()
+    per_day = [{"day": r["day"].isoformat(), "calls": r["hits"] + r["misses"], "hits": r["hits"], "users": r["users"],
+                "hit_rate": round(r["hits"] / (r["hits"] + r["misses"]), 3),
+                "avg_chars": round(r["chars_total"] / (r["hits"] + r["misses"])), "max_chars": r["chars_max"]}
+               for r in rows if r["hits"] + r["misses"]]
+    calls = sum(d["calls"] for d in per_day)
+    hits = sum(d["hits"] for d in per_day)
+    chars = sum(r["chars_total"] for r in rows)
+    return {"days": days, "calls": calls, "hits": hits, "hit_rate": round(hits / calls, 3) if calls else None,
+            "avg_chars": round(chars / calls) if calls else None,
+            "max_chars": max((d["max_chars"] for d in per_day), default=None), "per_day": per_day}
 
 
 def _get(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:

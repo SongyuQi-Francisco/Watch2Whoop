@@ -34,6 +34,7 @@ uv run body-engine nutrition-sugar-backfill --user-id 1 --start 2026-09-01 --end
 uv run body-engine memory-init --user-id 1 --from-md    # the body butler's initial profile card + status card + the "fixed breakfast" template (transcribed from the database + body-management.md; only fills what is missing)
 uv run body-engine recipes-init --user-id 1             # recipe metadata: fill in the 25 dishes migrated into SparkyFitness according to body-management.md (existing ones are left alone)
 uv run body-engine memory-review-run                    # long-term memory review (#113 phase 2): refresh the review state behind the briefing reminder and delete archived entries older than 90 days, for every user the flag memory_hygiene is on for (the nightly job runs it)
+uv run body-engine briefing-stats [--days 7] [--json]   # get_briefing calls, cache hit rate and size in characters per day (counts only; table briefing_stats, #78)
 uv run body-engine refresh-status --user-id 1           # recompute the automatically computed items of the status card (the hourly job runs it; the Today page also refreshes it on read when older than 30 minutes)
 uv run pytest                                           # each database test uses its own body_test_* database (rebuilt every time); skipped if it cannot connect
 ```

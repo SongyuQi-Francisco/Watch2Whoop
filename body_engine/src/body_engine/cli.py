@@ -380,6 +380,9 @@ def main() -> None:
     ar = sub.add_parser("ai-token-revoke", help="revoke an AI client token (takes effect immediately)")
     ar.add_argument("--user-id", type=int, required=True)
     ar.add_argument("--token-id", type=int, required=True)
+    bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
+    bs.add_argument("--days", type=int, default=7)
+    bs.add_argument("--json", action="store_true")
     oc = sub.add_parser("oauth-cleanup", help="MCP OAuth housekeeping: expired requests / codes / refresh and access tokens, clients never approved (idempotent, hourly)")
     oc.add_argument("--json", action="store_true")
     ol = sub.add_parser("oauth-connections", help="a user's approved OAuth connections to /mcp (Claude, ChatGPT, …)")
@@ -594,6 +597,17 @@ def main() -> None:
                 print(json.dumps(r, default=str, ensure_ascii=False))
         elif args.cmd == "ai-token-revoke":
             print("revoked" if ai_tokens.revoke(conn, args.user_id, args.token_id) else "not found / already revoked")
+        elif args.cmd == "briefing-stats":
+            from .assistant import briefing
+            st = briefing.stats(conn, args.days)
+            if args.json:
+                print(json.dumps(st, ensure_ascii=False))
+            else:
+                rate = "-" if st["hit_rate"] is None else f"{st['hit_rate']:.0%}"
+                print(f"近 {st['days']} 天 get_briefing：{st['calls']} 次，缓存命中 {st['hits']} 次（{rate}），"
+                      f"平均 {st['avg_chars'] or 0} 字符，最大 {st['max_chars'] or 0} 字符")
+                for d in st["per_day"]:
+                    print(f"  {d['day']}  {d['calls']:>4} 次  命中 {d['hit_rate']:.0%}  平均 {d['avg_chars']} / 最大 {d['max_chars']} 字符  {d['users']} 人")
         elif args.cmd == "oauth-cleanup":
             from .ai import oauth
             print(json.dumps(oauth.cleanup(conn)))

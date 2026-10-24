@@ -217,3 +217,34 @@ def test_slim_defaults_and_detail(conn, world):
     sc = run_tool(conn, a, "mcp", "get_scores", {"user": "me", "start": str(_today()), "end": str(_today()),
                                                  "details": False})
     assert "algo_version" not in sc[0] and "hrv_night_ms" in sc[0]
+
+
+def test_briefing_stats_count_hits_misses_and_size(conn, world):
+    """briefing_stats (migration 720): own briefings only, counts and sizes, never content; family views are not counted."""
+    a, b = world["A"], world["B"]
+    conn.execute("DELETE FROM briefing_stats")
+    briefing.clear()
+    first = run_tool(conn, a, "mcp", "get_briefing", {"user": "me"})
+    run_tool(conn, a, "mcp", "get_briefing", {"user": "me"})
+    run_tool(conn, a, "mcp", "get_briefing", {"user": "me"})
+    run_tool(conn, b, "mcp", "get_briefing", {"user": str(a)})   # B looks at A: not counted for anyone
+    st = briefing.stats(conn, 7)
+    assert st["calls"] == 3 and st["hits"] == 2 and st["hit_rate"] == round(2 / 3, 3)
+    assert st["max_chars"] >= len(compact.dumps(first)) - 200 and st["avg_chars"] > 500
+    assert len(st["per_day"]) == 1 and st["per_day"][0]["users"] == 1
+    row = conn.execute("SELECT user_id, hits, misses FROM briefing_stats").fetchall()
+    assert [(r["user_id"], r["hits"], r["misses"]) for r in row] == [(a, 2, 1)]
+    cols = {r["column_name"] for r in conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = 'briefing_stats'")}
+    assert not ({"content", "text", "briefing", "payload"} & cols)
+
+
+def test_briefing_stats_never_break_the_briefing(conn, world, monkeypatch):
+    """A failing counter (table missing, permissions) is swallowed inside its own savepoint."""
+    a = world["A"]
+    conn.execute("ALTER TABLE briefing_stats RENAME TO briefing_stats_off")
+    try:
+        briefing.clear()
+        assert run_tool(conn, a, "mcp", "get_briefing", {"user": "me"})["me"]["display_name"] == "A"
+    finally:
+        conn.execute("ALTER TABLE briefing_stats_off RENAME TO briefing_stats")

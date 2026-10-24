@@ -322,6 +322,8 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **提示词**：`ai/system_prompt.md`、`assistant/CLAUDE.md`（两份同步）、`system_prompt_lite.md`、MCP instructions：开局先 `get_briefing`，不再先调 `get_memory` + `get_profile`；按问题深入、日期范围按需、大结果默认摘要；去掉重复的工具清单、压缩状态卡和长期记忆两节。托底 AI 的工具子集加了 `get_briefing`。
 - **没改**：授权 / 隔离逻辑、`chat.py` 的 ALWAYS_CONFIRM、管家 `settings.json` 的 allow / ask（新工具只读，`mcp__body-engine__*` 自动覆盖）。
 
+**命中率统计（#78，迁移 720 `briefing_stats`）**：每次读自己的 `get_briefing` 按用户 + 本地日期记一次（命中 / 未命中、返回字符数合计和最大值，只存次数和长度，不存内容；看别人的不记；记失败不影响开局）。`body-engine briefing-stats [--days N] [--json]` 汇总：调用次数、命中率、平均 / 最大字符数。先用它看真实数字，再决定要不要做「增量版 get_briefing」（只给上次之后变了的块）；命中率已经很高、体量稳定在约 1.5k token 时就不做。
+
 **以后可以考虑**：管家 `settings.json` 里 `ENABLE_TOOL_SEARCH=false`（工具定义全部预加载）；打开工具搜索后固定开销还能再降一大截，但每个工具第一次用要多一次搜索往返，要实测再定。今天页内对话的系统提示仍附完整长期记忆（≤ 12000 字），和 `get_briefing` 的记忆要点有少量重复。
 
 **验证**：`tests/test_briefing.py`（压缩、宽松 schema 和补齐、工具定义预算、开局摘要只含自己的数据、家人按 shares 只看授权的块、缓存命中 / 写工具清缓存 / 外部改数据指纹变化 / 过期 / 别人写不影响、默认摘要 vs detail）、`tests/test_ai.py` 新增远程 MCP 的宽松 schema + `get_briefing` 用例。
