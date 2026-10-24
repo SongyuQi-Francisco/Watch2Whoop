@@ -283,6 +283,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("圈子名称 1–{} 字", "Circle name: 1–{} characters"),
     ("邀请有效期只能是 {} 天或永久有效", "Invite validity must be {} days, or never expires"),
     ("最多加入 {} 个圈子", "You can be in at most {} circles"),
+    ("没有这个圈子：{}（可选：{}）", "No such circle: {} (choose from: {})"),
     ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),
     ("圈子激活码去掉空格和连字符后要 {}–{} 个字符", "A circle code needs {}–{} characters without spaces and dashes"),
     ("次数 1–{}", "Uses: 1–{}"),
