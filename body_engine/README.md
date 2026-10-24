@@ -27,6 +27,7 @@ uv run body-engine link-exercises --user-id 1           # write SparkyFitness ex
 uv run body-engine fetch-exercise-db [--images]          # download the pinned free-exercise-db JSON (+ ~1,750 demo images, ~110 MB) into BODY_MEDIA_DIR (default <repo>/media); idempotent
 uv run body-engine seed-exercises [--free-db | --free-db-json PATH] # seed exercise_catalog: curated bilingual overlay + free-exercise-db merged by name / alias (Training V2, issue #41)
 uv run body-engine seed-exercises [--free-exercise-db PATH] # seed exercise_catalog from curated bilingual exercises + optional free-exercise-db JSON (Training V2)
+uv run body-engine exercises-import-opengym [--dry-run] [--report PATH] # import openGym exercise text (pinned commit, text only, MIT / AGPL-3.0 per row) into exercise_catalog; idempotent; run after seed-exercises (#248, ../docs/exercise-library-opengym.md)
 uv run body-engine evaluate-rules --user-id 1           # rule reminders → reminders (today by default, --date to choose; runs after compute-scores every day)
 uv run body-engine set-sleep-goal --user-id 1 --bedtime 00:00   # bedtime target (moves earlier step by step starting from the last 7 nights' average; --wake / --pace / --step-days optional)
 uv run body-engine nutrition-goals-import --user-id 1   # backfill nutrition goal versions from the SparkyFitness weekly goal plans (active + inactive; idempotent; dry run, --apply writes)

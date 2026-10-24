@@ -588,7 +588,7 @@ def test_methods_and_page_assets(client, monkeypatch):
     monkeypatch.delenv("BODY_APPLE_AUDIENCES")
     monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
     assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False, "referrals": True, "ios_web": "warn"}
-    assert '<script src="account.js" defer></script>' in client.get("/app/").text
+    assert '<script src="account.js?v=' in client.get("/app/").text   # linked as name?v=<fingerprint>
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text
 
@@ -843,7 +843,7 @@ def test_identity_texts_are_bilingual(client):
     ids = client.get("/app/identities.js").text
     en = dict(re.findall(r'^\s*"([^"]+)": "([^"]+)",$', client.get("/app/i18n-en.js").text, re.M))   # #20's English table
     keys = set(re.findall(r'\btr\("([^"]+)"', ids)) | set(re.findall(r'\btr\("([^"]+)"', client.get("/app/account.js").text))
-    html = client.get("/app/").text
+    html = re.sub(r"\?v=[0-9a-f]+", "", client.get("/app/").text)   # files are linked as name?v=<fingerprint>
     keys |= {k for k in re.findall(r'data-i18n="([^"]+)"', html)}
     keys = {k for k in keys if re.search(r"[一-鿿]", k)}   # dotted keys live in i18n.js
     assert keys and keys <= set(en), keys - set(en)
