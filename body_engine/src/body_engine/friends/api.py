@@ -186,9 +186,10 @@ def decline(invite_id: int, conn=Depends(get_conn), viewer=Depends(current_user)
 
 
 @router.get("/overview")
-def member_cards(conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Friends tab: my card and every co-member's (today + last 7 days), each block only if shared with me."""
-    return cards.overview(conn, viewer["id"])
+def member_cards(circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Friends tab: my card and every co-member's (today + last 7 days), each block only if shared with me.
+    `circle` (flag circles_by_circle): only that circle's members and what they picked there."""
+    return _run(cards.overview, conn, viewer["id"], circle)
 
 
 @router.post("/nudges")
@@ -197,11 +198,12 @@ def nudge(body: NudgeIn, conn=Depends(get_conn), viewer=Depends(current_user)):
 
 
 @router.get("/leaderboard")
-def leaderboard_board(board: str = "body", conn=Depends(get_conn), viewer=Depends(current_user)):
-    """One board (body / activity / lifestyle / recomp / longevity): me + circle members, ranked among those who share."""
+def leaderboard_board(board: str = "body", circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """One board (body / activity / lifestyle / recomp / longevity): me + circle members, ranked among those who share.
+    `circle` (flag circles_by_circle): only that circle's members, with what they picked there."""
     if board not in P.BOARDS:
         raise HTTPException(400, f"排行榜只能是 {', '.join(P.BOARDS)}")
-    return leaderboard.board(conn, viewer["id"], board)
+    return _run(leaderboard.board, conn, viewer["id"], board, circle)
 
 
 # ---------------------------------------------------------------- private remarks (#212, flag member_remarks)

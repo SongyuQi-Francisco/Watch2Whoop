@@ -121,6 +121,8 @@
     backTab: "friends",     // where 「返回」 on the read-only banner goes (viewing a friend's pages)
     friendsMode: "cards",   // Friends tab: member cards / feed (flag circle_feed) / leaderboard
     board: (() => { try { return localStorage.getItem("be.board") || "body"; } catch (e) { return "body"; } })(),
+    // Friends tab, one circle at a time (flag circles_by_circle, #269): the chosen circle's id, null = all circles
+    fcircle: (() => { try { return Number(localStorage.getItem("be.fcircle")) || null; } catch (e) { return null; } })(),
     mealLogs: {},
     calMonth: null,
     foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
@@ -3456,7 +3458,7 @@
     return "";
   }
   async function boardHtml() {
-    const b = await api(`/v1/friends/leaderboard?board=${encodeURIComponent(S.board)}`);
+    const b = await api(`/v1/friends/leaderboard?board=${encodeURIComponent(S.board)}${S.fcircle ? `&circle=${S.fcircle}` : ""}`);
     const seg = `<div class="toolbar"><div class="seg seg-range fd-boards" role="group" aria-label="${esc(tr("排行榜"))}">${b.boards.map((k) =>
       `<button data-board="${k}" aria-pressed="${k === b.board}">${esc(BOARD[k] || k)}</button>`).join("")}</div></div>`;
     const rows = b.rows.map((r) => {
@@ -3469,13 +3471,30 @@
     }).join("");
     return `${seg}<p class="fd-win">${esc(b.window_days === 28 ? tr("近 4 周 · 和自己的基线比") : tr("近 7 天 · 和自己的基线比"))}</p><div class="card fd-board">${rows}</div>`;
   }
+  // The circle switcher (flag circles_by_circle): 「全部」 + one chip per circle; the chosen circle narrows members, feed and leaderboards
+  function circleBar(list) {
+    const chip = (id, name, n) => `<button type="button" data-fcircle="${id ?? ""}" aria-pressed="${(S.fcircle ?? null) === id}">${esc(name)}${n != null ? `<i>${n}</i>` : ""}</button>`;
+    return `<div class="fd-cbar" role="group" aria-label="${esc(tr("圈子"))}">${chip(null, tr("全部"))}${list.map((c) => chip(c.id, c.name, c.members)).join("")}</div>`;
+  }
   const RENDER_friends = async () => {
     const feedOn = !!window.BodyCircleFeed && window.BodyFlags.on("circle_feed");   // 成员 | 动态 | 排行榜 (circle-feed.js)
+    const byCircle = window.BodyFlags.on("circles_by_circle");
+    if (!byCircle) S.fcircle = null;
     if (!feedOn && S.friendsMode === "feed") S.friendsMode = "cards";
-    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ...(feedOn ? [["feed", tr("动态")]] : []), ["board", tr("排行榜")]].map(([k, t]) =>
+    let ov;
+    try { ov = await api(`/v1/friends/overview${S.fcircle ? `?circle=${S.fcircle}` : ""}`); } catch (e) {
+      if (!S.fcircle) throw e;
+      S.fcircle = null;   // left / dissolved since: back to all circles
+      ov = await api("/v1/friends/overview");
+    }
+    if (S.fcircle && !(ov.circles || []).some((c) => c.id === S.fcircle)) S.fcircle = null;
+    // all circles: no leaderboard (people of different circles don't know each other, docs/circles-redesign.md §9 point 1)
+    const boardOn = !byCircle || !!S.fcircle;
+    if (!boardOn && S.friendsMode === "board") S.friendsMode = "cards";
+    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ...(feedOn ? [["feed", tr("动态")]] : []), ...(boardOn ? [["board", tr("排行榜")]] : [])].map(([k, t]) =>
       `<button data-fmode2="${k}" aria-pressed="${S.friendsMode === k}">${esc(t)}</button>`).join("")}</div>`;
-    const manage = `<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
-    const ov = await api("/v1/friends/overview");
+    const bar = byCircle && ov.circles?.length ? circleBar(ov.circles) : "";
+    const manage = `${bar}<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
     S.data.friends = ov;
     if (!ov.has_circles) {
       return `${manage}<div class="empty">${esc(tr("还没有圈子"))}<div class="btns"><button class="btn btn-primary" id="fd-new">${esc(tr("建圈子"))}</button><button class="btn" id="fd-join">${esc(tr("用邀请码加入"))}</button></div></div>`;
@@ -3491,8 +3510,13 @@
   }
   function afterFriends(view) {
     window.BodyCircles && (window.BodyCircles.onChange = () => { S.data = {}; refresh(); });
-    window.BodyCircleFeed?.bind(view, S.friendsMode === "feed");
+    window.BodyCircleFeed?.bind(view, S.friendsMode === "feed", S.fcircle);
     for (const b of $$("[data-fmode2]", view)) b.onclick = () => { S.friendsMode = b.dataset.fmode2; render(); };
+    for (const b of $$("[data-fcircle]", view)) b.onclick = () => {
+      S.fcircle = Number(b.dataset.fcircle) || null;
+      try { localStorage.setItem("be.fcircle", S.fcircle ? String(S.fcircle) : ""); } catch (e) { /* private mode */ }
+      render();
+    };
     for (const b of $$("[data-board]", view)) b.onclick = () => {
       S.board = b.dataset.board;
       try { localStorage.setItem("be.board", S.board); } catch (e) { /* private mode */ }

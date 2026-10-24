@@ -12,6 +12,7 @@ from datetime import timedelta
 import psycopg
 
 from .. import auth
+from ..rollout import flags
 from ..web import views
 from ..avatars import urls as avatar_store
 from . import params as P, remarks, store
@@ -19,13 +20,56 @@ from . import params as P, remarks, store
 NUDGE_KINDS = ("clap", "sleep", "train")   # 👏 / 💤 / 💪
 
 
-def co_members(conn: psycopg.Connection, uid: int) -> list[dict]:
-    """Everyone who shares at least one circle with `uid`, with the names of those circles."""
+# ---------------------------------------------------------------- one circle at a time (#269 P1, flag circles_by_circle)
+def by_circle_on(conn: psycopg.Connection, uid: int) -> bool:
+    return flags.enabled(conn, uid, P.BY_CIRCLE_FLAG)
+
+
+def expand(scopes) -> set[str]:
+    """A member's picks in one circle as grants: nutrition implies nutrition_summary (like share_with); never ecg."""
+    out = set(scopes or ())
+    for narrow, wide in auth.IMPLIED_BY.items():
+        if out & set(wide):
+            out.add(narrow)
+    return out - set(P.NEVER_SHARED)
+
+
+def one_circle(conn: psycopg.Connection, viewer_id: int, circle_id) -> dict | None:
+    """The circle a Friends view is narrowed to: {id, name, picks: {member id: scopes picked there}}. None = all circles
+    (no circle asked for, or the flag is off for the viewer: then the old merged views). 404 when not a member."""
+    if circle_id in (None, "") or not by_circle_on(conn, viewer_id):
+        return None
+    try:
+        cid = int(circle_id)
+    except (TypeError, ValueError):
+        raise store.FriendsError(400, "圈子 id 不对") from None
+    c = conn.execute("""SELECT c.id, c.name FROM circles c JOIN circle_members m ON m.circle_id = c.id AND m.user_id = %s
+                        WHERE c.id = %s""", (viewer_id, cid)).fetchone()
+    if c is None:
+        raise store.FriendsError(404, "没有这个圈子（或你不在里面）")
+    picks = {r["user_id"]: expand(r["scopes"]) for r in conn.execute(
+        "SELECT user_id, scopes FROM circle_members WHERE circle_id = %s", (cid,))}
+    return {"id": c["id"], "name": c["name"], "picks": picks}
+
+
+def circle_list(conn: psycopg.Connection, uid: int) -> list[dict]:
+    """The switcher on the Friends tab: my circles (oldest first), with member count and avatar."""
+    return [{"id": r["id"], "name": r["name"], "personal": r["personal"], "members": r["n"], "avatar": store.avatar_url(r)}
+            for r in conn.execute(
+                """SELECT c.id, c.name, c.personal, c.avatar_image_id, c.created_at,
+                          (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS n
+                   FROM circles c JOIN circle_members m ON m.circle_id = c.id AND m.user_id = %s
+                   ORDER BY c.created_at, c.id""", (uid,))]
+
+
+def co_members(conn: psycopg.Connection, uid: int, circle_id: int | None = None) -> list[dict]:
+    """Everyone who shares at least one circle with `uid` (only circle `circle_id` when given), with the names of those circles."""
     return conn.execute(
         """SELECT u.id, u.display_name, array_agg(DISTINCT c.name ORDER BY c.name) AS circles, min(o.joined_at) AS since
            FROM circle_members m JOIN circle_members o ON o.circle_id = m.circle_id AND o.user_id <> m.user_id
            JOIN circles c ON c.id = m.circle_id JOIN users u ON u.id = o.user_id
-           WHERE m.user_id = %s GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""", (uid,)).fetchall()
+           WHERE m.user_id = %s AND (%s::int IS NULL OR m.circle_id = %s::int)
+           GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""", (uid, circle_id, circle_id)).fetchall()
 
 
 def share_with(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> set[str]:
@@ -63,19 +107,25 @@ def _trained_today(conn, uid: int, today) -> bool:
                         (uid, today)).fetchone() is not None
 
 
-def seen_by_friends(conn: psycopg.Connection, uid: int) -> dict:
+def seen_by_friends(conn: psycopg.Connection, uid: int, one: dict | None = None) -> dict:
     """What my friends see of me, for my own card ("what friends see", flag friend_card_v2): a block is shown when at
     least one circle member may see it (the union of the scopes I grant), `varies` when not everyone sees the same.
-    With no circle members yet nobody sees anything, so `count` is 0 and the page shows the full card."""
-    sets = [frozenset(share_with(conn, m["id"], uid)) for m in co_members(conn, uid)]
+    With no circle members yet nobody sees anything, so `count` is 0 and the page shows the full card.
+    `one` (one_circle): only that circle's members and what I picked there."""
+    limit = one["picks"].get(uid, set()) if one else None
+    sets = [frozenset(share_with(conn, m["id"], uid) & limit if one else share_with(conn, m["id"], uid))
+            for m in co_members(conn, uid, one and one["id"])]
     union = set().union(*sets) if sets else set()
     return {"count": len(sets), "scopes": sorted(union), "varies": len(set(sets)) > 1,
             "hidden": [s for s in ("scores", "training") if s not in union] if sets else []}
 
 
-def card(conn: psycopg.Connection, viewer_id: int, owner_id: int, name: str) -> dict:
+def card(conn: psycopg.Connection, viewer_id: int, owner_id: int, name: str, limit: set[str] | None = None) -> dict:
+    """`limit`: in one circle's view, only what the owner picked in that circle (on top of what they grant the viewer)."""
     today = views.local_today(conn, owner_id)
     scopes = None if viewer_id == owner_id else share_with(conn, viewer_id, owner_id)
+    if scopes is not None and limit is not None:
+        scopes &= limit
     can = (lambda s: True) if scopes is None else (lambda s: s in scopes)
     out = {"id": owner_id, "display_name": name, "self": viewer_id == owner_id, "date": today,
            "shared": sorted(scopes) if scopes is not None else None, "hidden": []}
@@ -104,21 +154,29 @@ def _nudges(conn, uid: int) -> tuple[dict, dict]:
     return sent, got
 
 
-def overview(conn: psycopg.Connection, uid: int) -> dict:
-    """Friends tab: my own card first (with cheers received in the last 24 hours), then every co-member."""
+def overview(conn: psycopg.Connection, uid: int, circle_id=None) -> dict:
+    """Friends tab: my own card first (with cheers received in the last 24 hours), then every co-member.
+    With the circles_by_circle flag: `circles` (the switcher) and, for `circle_id`, only that circle's members, each card
+    showing only what they picked there (`circle` = its id; null = all circles, merged)."""
+    one = one_circle(conn, uid, circle_id)
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (uid,)).fetchone()
     sent, got = _nudges(conn, uid)
-    co = co_members(conn, uid)
+    co = co_members(conn, uid, one and one["id"])
     avatars = avatar_store.urls_for(conn, uid, [uid, *(m["id"] for m in co)])
     nick = remarks.for_viewer(conn, uid, [m["id"] for m in co])   # what I call them (#212), only for me
-    mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid), "avatar": avatars.get(uid)}
+    mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid, one),
+            "avatar": avatars.get(uid)}
     members = []
     for m in co:
-        c = card(conn, uid, m["id"], m["display_name"])
+        c = card(conn, uid, m["id"], m["display_name"], one["picks"].get(m["id"], set()) if one else None)
         members.append({**c, "circles": m["circles"], "sent": sent.get(m["id"], []), "avatar": avatars.get(m["id"]),
                         "remark": nick.get(m["id"])})
-    return {"me": mine, "members": members, "nudge_kinds": list(NUDGE_KINDS), "remark_max": P.REMARK_MAX,
-            "has_circles": conn.execute("SELECT 1 FROM circle_members WHERE user_id = %s", (uid,)).fetchone() is not None}
+    out = {"me": mine, "members": members, "nudge_kinds": list(NUDGE_KINDS), "remark_max": P.REMARK_MAX,
+           "has_circles": conn.execute("SELECT 1 FROM circle_members WHERE user_id = %s", (uid,)).fetchone() is not None}
+    if by_circle_on(conn, uid):
+        out["circles"] = circle_list(conn, uid)
+        out["circle"] = one and one["id"]
+    return out
 
 
 def nudge(conn: psycopg.Connection, uid: int, to_id: int, kind: str) -> dict:

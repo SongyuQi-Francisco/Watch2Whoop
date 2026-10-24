@@ -18,6 +18,7 @@ EXACT: dict[str, str] = {
     "心电图不能通过圈子共享": "ECGs can't be shared through circles",
     "先在今天页重新确认同意书（新增了「圈子共享」一节）": "First confirm the updated consent on the Today page (it adds a section on circle sharing)",
     "没有这个圈子（或你不在里面）": "No such circle (or you are not in it)",
+    "圈子 id 不对": "Bad circle id",
     "只有圈主能这样做": "Only the circle's owner can do that",
     "邀请码无效或已过期": "The invite code is invalid or expired",
     "这个邀请已失效": "This invite is no longer valid",

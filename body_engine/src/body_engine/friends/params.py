@@ -9,6 +9,10 @@ CIRCLE_SCOPES = ("scores", "sleep", "training", "nutrition_summary",
 DEFAULT_SCOPES = ("scores", "sleep", "training", "nutrition_summary")
 NEVER_SHARED = ("ecg",)
 
+# One circle at a time on the Friends tab (#269 P1, docs/circles-redesign.md §2): members / feed / leaderboards per circle,
+# plus an "all" view (no leaderboard there)
+BY_CIRCLE_FLAG = "circles_by_circle"
+
 # Circle sharing needs the consent version that has the circle clause (consent §2 "圈子共享", the owner-approved text of 2026-10-22.2)
 CONSENT_VERSION = "2026-10-22.2"
 
