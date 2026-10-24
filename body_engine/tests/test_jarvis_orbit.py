@@ -83,5 +83,26 @@ def test_lucide_icons_and_notice():
     orbit = '<path d="M20.341 6.484A10 10 0 0 1 10.266 21.85"/><path d="M3.659 17.516A10 10 0 0 1 13.74 2.152"/><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/>'
     assert orbit in JS
     notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
-    for name in ("orbit", "message-circle", "mic", "camera", "square-pen", "x", "lock", "arrow-up", "audio-lines", "chevron-right"):
+    for name in ("orbit", "bot-message-square", "audio-waveform", "scan-eye", "zap", "chevron-down", "mic", "x", "lock", "arrow-up", "audio-lines", "chevron-right"):
         assert f"lucide/blob/main/icons/{name}.svg" in notices, name
+
+
+def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
+    """The HUD open / close (#53): Web Animations only move transform and opacity (the compositor runs them in the app's
+    WKWebView); the idle breathing and turning run only while the menu is open and pause while the page is hidden; the
+    open key shows chevron-down with a clear label, never the x."""
+    for fn in ("function openMenu", "function closeMenu"):
+        body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
+        for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
+            for prop in re.findall(r"(\w+):", props):
+                assert prop in ("offset", "opacity", "transform"), (fn, prop)
+        assert "strokeDashoffset" not in body, fn
+    assert 'const EXIT_ICON = "chevron-down";' in JS and '${lu(EXIT_ICON, 2.2)}' in JS
+    assert 'tr("收起 Jarvis 菜单")' in JS
+    assert 'document.addEventListener("visibilitychange", pause)' in JS
+    assert "body.jv-paused :is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation-play-state: paused; }" in CSS
+    # infinite animations only inside the fan (display:none while closed) or the open key, and off with reduced motion
+    for m in re.finditer(r"([^{}]+)\{[^{}]*infinite[^{}]*\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
+        sel = m.group(1).strip()
+        assert sel.startswith((".jv-fan", ".jv.open")) or "jv-vp-dot" in sel, sel
+    assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
