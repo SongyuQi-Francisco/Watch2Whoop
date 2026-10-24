@@ -7,8 +7,8 @@ last start-up (app.js, "boot bundle"); dates in them are templates resolved agai
 
 Each path is answered by running that very endpoint inside this request (same cookie / Bearer header, same language,
 same share checks, same body and status), so nothing here re-implements authorisation and an old endpoint keeps working
-on its own. /v1/web/me runs first (its `today` resolves the templates, its flags decide whether this endpoint is on), the
-rest in parallel; one path failing or timing out only leaves that item with its error status, never the whole answer.
+on its own. /v1/web/me runs first (signed in at all, its `today` resolves the templates, its flags decide whether this
+endpoint is on), the rest in parallel; one path failing or timing out only leaves that item with its error status, never the whole answer.
 Only GET paths of the signed-in user's own data are accepted (PATHS_RE), at most MAX_PATHS.
 """
 import asyncio
@@ -94,18 +94,14 @@ async def _item(request: Request, path: str) -> dict:
 @router.post("/v1/web/boot")
 async def boot(request: Request, body: BootIn):
     """The page's start-up reads in one round trip (rollout flag boot_api; 404 while off: the page then asks one by one)."""
-    templates = list(dict.fromkeys(p for p in body.paths if p != ME))
-    first = [t for t in templates if not TEMPLATE_RE.search(t)]
-    later = [t for t in templates if TEMPLATE_RE.search(t)]
-    plain = [p for p in (resolve(t, date.today()) for t in first) if p]   # no date in them: start with /v1/web/me
-    me, *rest = await asyncio.gather(_item(request, ME), *(_item(request, p) for p in plain))
+    me = await _item(request, ME)   # first: signed in, flag on, the user's today; nothing else runs for a signed-out caller
     if me["status"] != 200 or not isinstance(me["body"], dict):
         return JSONResponse(me["body"] or {"detail": "boot"}, status_code=me["status"] if me["status"] >= 400 else 500)
     if FEATURE not in (me["body"].get("flags") or []):
         raise HTTPException(404, "Not Found")
     today = date.fromisoformat(str(me["body"]["today"]))
-    dated = list(dict.fromkeys(p for p in (resolve(t, today) for t in later) if p and p not in plain))
-    rest += await asyncio.gather(*(_item(request, p) for p in dated))
+    paths = list(dict.fromkeys(p for p in (resolve(t, today) for t in body.paths) if p and p != ME))
+    rest = await asyncio.gather(*(_item(request, p) for p in paths))
     items = [me, *rest]
     resp = JSONResponse({"today": today.isoformat(),
                          "items": [{k: it[k] for k in ("path", "status", "body")} for it in items]})
