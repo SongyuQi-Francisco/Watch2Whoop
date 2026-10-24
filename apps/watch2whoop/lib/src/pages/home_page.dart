@@ -32,6 +32,7 @@ import '../resync_flow.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
 import '../ui.dart';
+import '../voice_bridge.dart';
 import '../web_mic.dart';
 import 'permissions_page.dart';
 import 'sync_page.dart';
@@ -215,6 +216,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       // Debug builds can inspect the page from the Safari "Develop" menu on the Mac.
       wk.setInspectable(kDebugMode);
     }
+    // Jarvis voice input on the phone (voice_bridge.dart, #53): the recogniser's events go to the page as they come
+    VoiceBridge.instance
+      ..attach()
+      ..onEvent = (e) => _web.runJavaScript(voiceEventJs(e)).catchError((_) {});
     AppState.instance.addListener(_onConfig);
     SetupLinks.instance.pending.addListener(_onLink);
     PushService.instance.opened.addListener(_openTapped);
@@ -239,6 +244,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     SetupLinks.instance.pending.removeListener(_onLink);
     PushService.instance.opened.removeListener(_openTapped);
     PushService.instance.received.removeListener(_onPushReceived);
+    VoiceBridge.instance.onEvent = null;
+    VoiceBridge.instance.cancelAll();
     super.dispose();
   }
 
@@ -290,6 +297,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
     _foreground = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.paused) VoiceBridge.instance.cancelAll(); // the microphone never stays on in the background
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
     _tellPageForeground();
@@ -378,11 +386,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
-  /// Tells the loaded page which native features the app has (`window.Watch2WhoopFeatures`, web_mic.dart).
+  /// Tells the loaded page which native features the app has (`window.Watch2WhoopFeatures`, web_mic.dart, voice_bridge.dart).
   Future<void> _announceFeatures() async {
     if (_onShell) return; // the kept copy cannot reach the server, so no voice there
     try {
-      await _web.runJavaScript(kFeaturesJs);
+      await _web.runJavaScript(featuresJs(voiceLangs: await VoiceBridge.instance.langs()));
     } catch (e) {
       debugPrint('features call failed: $e');
     }
@@ -423,6 +431,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final t = message.substring(_kIngestPrefix.length);
       final w = _ingestWait;
       if (w != null && !w.isCompleted) w.complete(t.isEmpty ? null : t);
+      return;
+    }
+    // Jarvis voice input and haptics (voice_bridge.dart): only for the real page, never the kept offline copy
+    final voice = parseVoiceMessage(message);
+    if (voice != null) {
+      if (!_onShell) VoiceBridge.instance.command(voice);
+      return;
+    }
+    final haptic = parseHapticMessage(message);
+    if (haptic != null) {
+      VoiceBridge.instance.haptic(haptic);
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();

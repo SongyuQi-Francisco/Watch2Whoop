@@ -2,5 +2,6 @@
 "NSCameraUsageDescription" = "用来扫描「设置二维码」，以及你在今天页选择拍照或拍视频发给 AI 时使用。";
 "NSHealthShareUsageDescription" = "Watch2Whoop 读取你的健康数据（心率、HRV 和心跳间期、心电图、睡眠、训练等），只同步到你自己设置的服务器。";
 "NSHealthUpdateUsageDescription" = "正式版不写入健康数据（只有开发调试版在模拟器里写测试数据）。";
-"NSMicrophoneUsageDescription" = "只在你在今天页按住麦克风和 AI 说话、或录视频发给 AI 时使用；声音只在你的服务器上转成文字，不保存录音。";
+"NSMicrophoneUsageDescription" = "只在你在今天页按住麦克风和 AI 说话、或录视频发给 AI 时使用；声音在这台 iPhone 上或你的服务器上转成文字，不保存录音。";
+"NSSpeechRecognitionUsageDescription" = "只在你在今天页和 Jarvis 说话时使用：声音在这台 iPhone 上转成文字（本机识别），不会为此发给苹果。";
 "NSPhotoLibraryAddUsageDescription" = "只在你长按图片、选择存到「照片」时使用；Watch2Whoop 不读取你的相册。";
