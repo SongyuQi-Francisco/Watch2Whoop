@@ -234,18 +234,31 @@ def test_media_fetch_and_licensed_view(conn, tmp_path, monkeypatch):
     d = catalog.get_exercise(conn, None, "goblet_squat")
     assert [u.rsplit("/exercises/", 1)[1] for u in d["image_urls"]] == [m["file"] for m in media]
     assert d["media_credits"][0]["author"] == "Ann" and d["no_demo"] is False
-    other = catalog.get_exercise(conn, None, "leg_press")    # medium match only, and its free-exercise-db pictures are hidden
-    assert other["image_urls"] == [] and other["no_demo"] is True
-    assert catalog.shown_images(conn, next(r for r in catalog.catalog_rows(conn) if r["slug"] == "leg_press")) == []
-    flags.set_flag(conn, "exercise_media_licensed", "off", actor="test")
+    lp = next(r for r in catalog.catalog_rows(conn) if r["slug"] == "leg_press")   # medium match only: its free-exercise-db pictures
+    for img in lp["images"]:
+        (tmp_path / "exercises" / img).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "exercises" / img).write_bytes(b"\xff\xd8\xff")
+    other = catalog.get_exercise(conn, None, "leg_press")    # kept while testing (owner's decision B), credited as such
+    assert other["image_urls"] and other["no_demo"] is False
+    assert {c["source"] for c in other["media_credits"]} == {"free-exercise-db"} and "出处不明" in other["media_credits"][0]["license"]
+    flags.set_flag(conn, "exercise_media_free_db_off", "all", actor="test")   # the one-step switch before commercial use
     flags.invalidate()
+    other = catalog.get_exercise(conn, None, "leg_press")
+    assert other["image_urls"] == [] and other["no_demo"] is True and catalog.shown_images(conn, lp) == []
+    assert catalog.get_exercise(conn, None, "goblet_squat")["image_urls"]          # licensed pictures stay
+    flags.set_flag(conn, "exercise_media_licensed", "off", actor="test")         # the kill switch works without the other flag too
+    flags.invalidate()
+    assert catalog.get_exercise(conn, None, "leg_press")["no_demo"] is True and catalog.shown_images(conn, lp) == []
+    flags.set_flag(conn, "exercise_media_free_db_off", "off", actor="test")
+    flags.invalidate()
+    assert catalog.shown_images(conn, lp) == lp["images"] and "media_credits" not in catalog.get_exercise(conn, None, "leg_press")
 
 
 def test_quality_gate_hides_rows_below_the_bar(conn, tmp_path, monkeypatch):
     monkeypatch.setenv("BODY_MEDIA_DIR", str(tmp_path))
     (tmp_path / "exercises" / "licensed" / "x").mkdir(parents=True)
     (tmp_path / "exercises" / "licensed" / "x" / "a.png").write_bytes(_png("a"))
-    conn.execute("""UPDATE exercise_catalog SET media = '[{"file": "licensed/x/a.png", "source": "x"}]'::jsonb WHERE slug = 'goblet_squat'""")
+    conn.execute("""UPDATE exercise_catalog SET media = '[{"file": "licensed/x/a.png", "source": "x"}]'::jsonb, updated_at = now() WHERE slug = 'goblet_squat'""")
     flags.set_flag(conn, "exercise_media_licensed", "all", actor="test")
     flags.set_flag(conn, "exercise_quality_gate", "off", actor="test")
     flags.invalidate()

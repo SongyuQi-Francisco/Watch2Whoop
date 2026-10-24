@@ -376,10 +376,11 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             images=imgs,
             image_urls=image_urls(imgs),
         )
-        if row.get("_licensed"):   # the credit each shown picture needs; no picture -> the page says there is no demo yet
+        if "_media" in row:   # the credit each shown picture needs; no picture -> the page says there is no demo yet
             shown = {u.rsplit("/exercises/", 1)[-1] for u in out["image_urls"]}
-            out["media_credits"] = [{k: m.get(k) for k in ("source", "author", "license", "license_url", "origin_url")}
-                                    for m in row.get("media") or [] if m["file"] in shown]
+            out["media_credits"] = [{**{k: m.get(k) for k in ("source", "author", "license_url", "origin_url")},
+                                     "license": L(m["license_zh"], m["license_en"]) if "license_zh" in m else m.get("license")}
+                                    for m in row["_media"] if m["file"] in shown]
             out["no_demo"] = not out["image_urls"]
     return out
 
@@ -421,39 +422,61 @@ def imported_visible(conn: psycopg.Connection, user_id: int | None) -> bool:
 
 
 MEDIA_FLAG = "exercise_media_licensed"
+FREE_DB_OFF_FLAG = "exercise_media_free_db_off"
+# The free-exercise-db pictures: kept while the product is in testing (owner's decision, 2026-10-25). The repository is Unlicense,
+# but its maintainer does not know where the pictures came from and the upstream exercises.json says they were collected from the
+# web (THIRD_PARTY_NOTICES.md). exercise_media_free_db_off turns them all into "no demo yet" in one step (e.g. before commercial use).
+FREE_DB_CREDIT = {"source": "free-exercise-db", "author": None, "license_url": "https://unlicense.org/",
+                  "origin_url": "https://github.com/yuhonas/free-exercise-db",
+                  "license_zh": "Unlicense（上游声明，图片原始出处不明）",
+                  "license_en": "Unlicense (as declared upstream; the pictures' original source is unknown)"}
+
+
+def media_policy(conn: psycopg.Connection) -> tuple[bool, bool]:
+    """(licensed pictures with credits, free-exercise-db pictures). Deployment-wide (a licence question, not a per-person
+    rollout): only the flags' "all" state counts."""
+    return _flag_on(conn, None, MEDIA_FLAG), not _flag_on(conn, None, FREE_DB_OFF_FLAG)
+
+
+def media_view(row: dict, licensed: bool, free_db: bool) -> dict:
+    """The row with `images` = the pictures this policy shows: the licensed ones (exercise_catalog.media) first, then the
+    free-exercise-db ones. `_media` = the credit of each shown picture. The legacy policy (licensed off, free-exercise-db on)
+    returns the row unchanged."""
+    if free_db and not licensed:
+        return row
+    media = [*(row.get("media") or [] if licensed else []),
+             *({"file": img, **FREE_DB_CREDIT} for img in (row.get("images") or [] if free_db else []))]
+    seen: set[str] = set()
+    media = [m for m in media if not (m["file"] in seen or seen.add(m["file"]))]
+    return {**row, "images": [m["file"] for m in media], "_media": media}
 
 
 def licensed_media_on(conn: psycopg.Connection) -> bool:
-    """Deployment-wide (a licence question, not a per-person rollout): on = only the pictures whose licence we checked
-    (exercise_catalog.media) are shown and the free-exercise-db pictures (`images`, licence unclear) are not."""
-    return _flag_on(conn, None, MEDIA_FLAG)
-
-
-def licensed_view(row: dict) -> dict:
-    """The row with `images` = its licensed pictures only (no free-exercise-db picture); `_licensed` marks the view."""
-    return {**row, "images": [m["file"] for m in row.get("media") or []], "_licensed": True}
+    return media_policy(conn)[0]
 
 
 def shown_images(conn: psycopg.Connection, row: dict) -> list[str]:
     """The pictures the page may show for a catalog row, for callers that read catalog_rows directly."""
-    if row.get("_licensed"):
+    if "_media" in row:
         return list(row.get("images") or [])
-    return [m["file"] for m in row.get("media") or []] if licensed_media_on(conn) else list(row.get("images") or [])
+    return list(media_view(row, *media_policy(conn)).get("images") or [])
 
 
 _VIEW_CACHE: dict[tuple, tuple] = {}
 
 
-def _view(conn: psycopg.Connection, zh: bool, licensed: bool) -> list[dict]:
-    """catalog_rows as one viewer sees them (machine Chinese or not, licensed pictures or not), cached with catalog_rows."""
+def _view(conn: psycopg.Connection, zh: bool, policy: tuple[bool, bool] | None = None) -> list[dict]:
+    """catalog_rows as one viewer sees them (machine Chinese or not; pictures per media_policy), cached with catalog_rows."""
     rows = catalog_rows(conn)
-    if zh and not licensed:
+    licensed, free_db = policy or media_policy(conn)
+    legacy = free_db and not licensed
+    if zh and legacy:
         return rows
-    key = (conn.info.dbname, zh, licensed)
+    key = (conn.info.dbname, zh, licensed, free_db)
     hit = _VIEW_CACHE.get(key)
     if hit is None or hit[0] is not rows:
         out = rows if zh else [TR.english_view(r) for r in rows]
-        hit = _VIEW_CACHE[key] = (rows, [licensed_view(r) for r in out] if licensed else out)
+        hit = _VIEW_CACHE[key] = (rows, out if legacy else [media_view(r, licensed, free_db) for r in out])
     return hit[1]
 
 
@@ -463,16 +486,16 @@ _GRADE_CACHE: dict[tuple, tuple] = {}
 
 def grades_for(conn: psycopg.Connection, user_id: int | None) -> dict[str, dict] | None:
     """slug -> quality grade (training/quality.py) of the shared rows as this viewer sees them, or None while the gate is off for
-    them. A picture counts when the viewer's view shows one (only licensed ones while exercise_media_licensed is on)."""
+    them. A picture counts when the viewer's view shows one (media_policy)."""
     if not _flag_on(conn, user_id, QUALITY_FLAG):
         return None
     from . import quality as Q
-    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG), licensed_media_on(conn))
+    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG))
     key = (conn.info.dbname, id(rows))
     hit = _GRADE_CACHE.get(key)
     if hit is None or hit[0] is not rows:
-        def media(r):
-            return bool(r.get("images"))
+        def media(r):   # a picture the page can really show (downloaded into this deployment, or on the configured image host)
+            return bool(image_urls(r.get("images") or []))
         dups = Q.duplicates(rows, media)
         hit = _GRADE_CACHE[key] = (rows, {r["slug"]: Q.grade(r, media(r), dups.get(r["slug"])) for r in rows})
     return hit[1]
@@ -485,9 +508,9 @@ def offered(grades: dict[str, dict] | None, slug: str) -> bool:
 
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
-    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); only the
-    licensed pictures while exercise_media_licensed is on for everyone."""
-    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG), licensed_media_on(conn))
+    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); pictures per
+    media_policy (exercise_media_licensed, exercise_media_free_db_off; both deployment-wide)."""
+    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG))
     if not imported_visible(conn, user_id):
         rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
     if user_id is None:

@@ -140,8 +140,8 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
         except sparky_client.SparkyError:
             sessions = []
         plan, rest_day, change, removed = None, False, None, []
-    lic = catalog.licensed_media_on(conn)   # which demo pictures may be shown (exercise_media_licensed)
-    rows = {r["slug"]: catalog.licensed_view(r) if lic else r for r in catalog.catalog_rows(conn)}
+    policy = catalog.media_policy(conn)   # which demo pictures may be shown (exercise_media_licensed / _free_db_off)
+    rows = {r["slug"]: catalog.media_view(r, *policy) for r in catalog.catalog_rows(conn)}
     out_sessions = []
     for p in sessions:
         exs = []

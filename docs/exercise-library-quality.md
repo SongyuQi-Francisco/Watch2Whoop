@@ -16,6 +16,7 @@
 **最要紧的一件事**：free-exercise-db 的图不在它的 Unlicense 范围内——维护者说不知道图从哪来、"usage would be at your own risk"；
 它的上游 exercises.json 写明这些图是网上抓的，作者不拥有版权，建议不要用于商业项目；有人反查到来源是 bodybuilding.com。
 我们现在每个部署都下载并展示这 871 条的图。需要负责人决定：马上停用，还是在合法图补上之前暂时保留（第 4 节）。
+**已决定（2026-10-25）**：内测阶段照旧展示、算达标，逐张标注来源和风险；商用前用开关 `exercise_media_free_db_off` 一键切成「暂无演示」（第 5 节）。
 
 ## 1. 中英双语
 
@@ -100,7 +101,7 @@ Stairmaster = 爬楼机（模型给了登山机）。50 条里术语表遗漏 0 
 |---|---|---|
 | 中英名称 | 20 | 中文名有汉字（人工或机翻）且有英文名。**必须** |
 | 文字 | 20 / 10 | 中英文各有 ≥ 2 条步骤 20 分；只有一句描述 / 要点（两种语言都有）10 分。至少要有一句：**必须** |
-| 演示图 / 视频 | 25 | 来源许可证允许我们用（第 2 节；free-exercise-db 的图算不算，等负责人决定）。**必须** |
+| 演示图 / 视频 | 25 | 页面真能显示的图：wger / Everkinetic，以及内测阶段照旧展示的 free-exercise-db 图（第 5 节）。**必须** |
 | 主肌群 | 15 | 有；有氧类不要求。**必须** |
 | 次肌群 | 5 | 有 |
 | 器械 | 5 | 每种器械都有中文标签 |
@@ -149,19 +150,25 @@ Stairmaster = 爬楼机（模型给了登山机）。50 条里术语表遗漏 0 
     `cd body_engine && uv run python ../tools/translate_exercises.py --slugs <50 条> --redo`（样本，约 0.13 美元同步）→ 看效果 →
     `uv run python ../tools/translate_exercises.py --same-model --batch-api --budget 20`（全量）。
 - **演示图不买付费版**，只用免费又能合法使用的来源；openGym / Gym visual 的图仍然一张不用。没有合法图的动作显示「暂无演示」，按质量规则不主动推荐。
-  free-exercise-db 现有的图怎么处理（停用 / 暂时保留）已问中控，代码按「停用」写在开关后面。
+  free-exercise-db 现有的 871 张图：**照旧展示，也算达标**（中控 2026-10-25 回复：内测阶段效果优先，以后商用再补授权；发布方以 Unlicense 公开，
+  不像 Gym visual 有明确禁用条款）。每张图标来源 free-exercise-db、许可证「Unlicense（上游声明，图片原始出处不明）」，风险写在
+  `THIRD_PARTY_NOTICES.md`；开关 `exercise_media_free_db_off` 一打开，这批图一键全部变成「暂无演示」（商用前用）。
 
 第二轮实现（开关都默认关）：
 - `exercise_media_licensed`（只看「所有人」这一档，因为是版权问题）：迁移 760 `exercise_catalog.media`；`body-engine exercises-media-fetch`
   按 `media_matches.json` 的高置信匹配下载 wger（跳过 AI 生成、没写作者的图，只从 wger.de 下载）和 Everkinetic（钉住的 commit）的图到
-  `<media>/exercises/licensed/`，每张图的作者 / 许可证 / 来源写进 `media`；图不改尺寸、不裁剪。打开后详情页只显示这些图，下面一行写来源，
-  没有图的显示「暂无演示」；训练卡片、朋友动态的缩略图同样只用这些图。free-exercise-db 的图不再显示（文件还在，关掉开关即恢复）。
+  `<media>/exercises/licensed/`，每张图的作者 / 许可证 / 来源写进 `media`；图不改尺寸、不裁剪。打开后详情页先显示这些图、再显示
+  free-exercise-db 的图，下面一行写每张图的来源和许可证，没有图的显示「暂无演示」；训练卡片、朋友动态的缩略图同样处理。
+- `exercise_media_free_db_off`（只看「所有人」这一档，内测阶段保持关闭）：打开后 free-exercise-db 的图全部不再显示（文件还在，关掉即恢复），
+  没有别的图的动作显示「暂无演示」，质量分级里也不再算有图。
 - `exercise_quality_gate`（按人）：搜索、浏览、替换动作只给达标的动作；精确搜名字仍能找到不达标的；用户自己设置过的动作照常显示。
-  注意：打开后替换动作的候选只剩有合法图的精选动作（现在约 37 个），这是规则的直接后果。
+  有图 = 页面真能显示的图（已下载到本部署）。free-exercise-db 的图照旧算（决定 B），所以替换动作的候选基本不变（精选 100 条里 97 条有图）；
+  一旦打开 `exercise_media_free_db_off`，候选只剩有 wger / Everkinetic 图的精选动作（约 37 个）。
 - RepDB 免费层（再多约 240 条）只能放私有部署：匹配表和下载走 ops overlay，还没做。
 
 部署（合并后）：`body-engine migrate`（755、760）→ `seed-exercises --free-db` → `exercises-import-opengym` → `exercises-media-fetch`
-（出网 wger.de、raw.githubusercontent.com，约 600 张图、几十 MB）→ 中控按顺序打开 `exercise_zh_machine`、`exercise_media_licensed`、`exercise_quality_gate`。
+（出网 wger.de、raw.githubusercontent.com，约 600 张图、几十 MB）→ 中控按顺序打开 `exercise_zh_machine`、`exercise_media_licensed`、`exercise_quality_gate`
+（`exercise_media_free_db_off` 保持关闭，商用前再开）。
 
 ## 6. 还没做
 - 翻译全量（等 key）；器械 / 肌群标签补中文；精选动作的分步步骤；wger 的 46 段视频（1080p HEVC，约 3 GB，先不下）；RepDB 走 ops overlay；
