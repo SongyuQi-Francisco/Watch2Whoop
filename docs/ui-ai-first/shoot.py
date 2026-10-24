@@ -43,18 +43,6 @@ async def main():
         await shot("08-finding", setup=run("Proto.demoFind()", 700))
         await shot("09-circles", setup=run("Proto.go('circles')", 200))
         await shot("10-all-features", setup=run("Proto.go('all')", 200))
-        # visual directions (#279 v0.3): every page in both looks; look A is the full holographic HUD
-        pages = [("1-today", None), ("2-body", "Proto.go('body')"), ("3-jarvis-menu", "Proto.setOrbit(true)"), ("4-jarvis-chat", "Proto.demoGrow(false)"),
-                 ("5-circles", "Proto.go('circles')"), ("6-me", "Proto.go('me')"), ("7-all-features", "Proto.go('all')"), ("8-food", "Proto.go('food')")]
-        for lk in ("a", "b"):
-            for name, js in pages:
-                wait = 3600 if "chat" in name else 1700
-                await shot(f"look-{lk}-{name}", look=lk, setup=run(js, wait) if js else None, wait=1700 if not js else 300)
-        # core-score layouts (D13), look A
-        for i, h in enumerate(("single", "concentric", "three", "cells", "bars"), 1):
-            await pg.goto(f"{URL}?p=week2&look=a&hero={h}")
-            await pg.wait_for_timeout(1800)
-            await pg.locator("#phone").screenshot(path=f"{OUT}/hero-{i}-{h}.jpg", type="jpeg", quality=82)
         print("errors:", errs)
         await b.close()
 

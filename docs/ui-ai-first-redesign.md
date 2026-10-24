@@ -1,24 +1,24 @@
-# AI 优先、功能随使用长出来：app UI 重构方案（v0.3，2026-10-25）
+# AI 优先、功能随使用长出来：app UI 重构方案（v0.4，2026-10-25）
 
 > 依据：[`ui-ai-first-research.md`](ui-ai-first-research.md)（同类产品调研）、现有今天页（`body_engine/src/body_engine/web/static/`）、
 > [`ios-native-plan.md`](ios-native-plan.md)（#255，SwiftUI 原生化，已确认）、[`circles-redesign.md`](circles-redesign.md)（#269，圈子重构）。Issue：#279。
-> 可点击原型：[`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)（单文件，合成数据，直接用浏览器打开）；截图在 [`ui-ai-first/`](ui-ai-first/)。
-> 这一版只有设计，不改线上代码。第 12 节是决定点：**D1–D11 负责人 2026-10-25 已全部按推荐通过**；D12（视觉方向）、D13（核心区版式）、D14（底栏方案）待选。
+> **预览（以此为准）**：用线上现有的样式表和真实页面组件做的 7 个页面截图，第 13.1 节；做法见 [`ui-ai-first/preview.py`](ui-ai-first/preview.py)。交互流程原型 [`ui-ai-first/prototype.html`](ui-ai-first/prototype.html) 只用来看流程（第 1 天、模块上首页），它的样式不代表最终视觉。
+> 这一版只有设计，不改线上代码。第 12 节是决定点：**D1–D11 负责人 2026-10-25 已全部按推荐通过；D13 定为并排三环；D12、D14 作废（视觉不变）。**
 >
 > v0.2 按负责人的两条修正改写：
 > 1. 用户第一天就导入完整的 Apple 健康历史，趋势、基线、恢复分从第一天起都算得出来，所以**解锁不按「数据攒够了」来卡**；渐进是为了控制注意力和学习负担，不是控制数据。
 > 2. 圈子是核心功能和推广抓手，**保持一级入口**，首页也要有圈子的露出和邀请入口。
 >
-> v0.3 按负责人的两条修正：
-> 3. 今天页保持原来的风格：**一进来先看到恢复 / 睡眠 / 负荷三个核心分数的圆环**，放在最上面；AI 的晨报、重点、圈子、模块都排在圆环区下面。
-> 4. 整体视觉要有明显的科技感，面向追求身材管理、健康和抗衰老、拥抱 AI 的精英用户；风格定为全息 HUD 式的交互（第 7.6 节），每个分页都出截图；核心指标区比较 5 种版式（第 7.7 节）。
+> v0.3 按负责人的修正：今天页保持原来的风格，**一进来先看到恢复 / 睡眠 / 负荷三个核心分数的圆环**，放在最上面；AI 的晨报、重点、圈子、模块都排在圆环区下面。
+>
+> **v0.4 负责人决定：视觉保持当前线上的风格不变**（颜色、字体、卡片、图标、底栏外观都沿用现在的 `web/static` 样式）。v0.3 试过的全息 HUD、石墨精工两套视觉和底栏动态方案都不采用（D12、D14 作废，相关截图已删除）。今天页核心区定为**并排三环**（D13），用现在的环形样式和配色。这次重构**只改信息架构和交互**：结构、顺序、入口、交互方式。
 
 ## 0. 摘要
 
 - **新范式一句话：打开 app 最上面是恢复 / 睡眠 / 负荷三个圆环，下面是「今天的 1–3 件事 + 圈子」，记录和提问都通过 Jarvis；首页上的模块由你的关注、Jarvis 在数据里的发现、你和 Jarvis 的互动决定，其他功能一个不锁，在「全部功能」里随时能看。**
 - **底栏 5 格**：今天 · 身体 · Jarvis（中间的圆键，不变）· 圈子 · 我。饮食、记录变成模块和二级页。
-- **今天页最上面是圆环区**：恢复（大环，居中）+ 睡眠、负荷（小环，两侧）+ 一行 HRV / 静息心率 / 呼吸 / 血氧；AI 的东西都在下面，不取代它。
-- **视觉**：全息 HUD 风格（青蓝主光 + 少量琥珀、同心刻度环、扫描线、悬浮半透明面板、光影线条图标、Jarvis 键按下后同心弧扇形展开），动画只用 transform / opacity，尊重减少动态效果，低端机降级；两套方向 A「全息 HUD」/ B「石墨精工」各 8 页截图待选，推荐 A（第 7.6 节）；核心区 5 种版式待选，推荐并排三环（第 7.7 节）；底栏 3 个动态方案待选，推荐圆形仪表组（第 7.8 节）。
+- **今天页最上面是圆环区**：恢复（大环，居中）+ 睡眠、负荷（小环，两侧），用现在的环形样式和配色；环下是现在的状态词和负荷状态；AI 的东西都在下面，不取代它。
+- **视觉不变**：颜色、字体、卡片、图标、底栏外观全部沿用现在的样式，只改结构、顺序、入口和交互（第 7 节）。
 - **第 1 天**：导入历史 → Jarvis 给一份「你的身体概况」（3 个最重要的发现）→ 问你最关心什么（多选）→ 按回答和发现摆首页（3 个模块）→ 首页。
 - **什么决定首页上有什么**（第 4 节）：① 关注点；② 数据里值得说的事（拐点、异常、里程碑），Jarvis 带出对应模块；③ 互动：问过的、Jarvis 用过的模块固定下来；④ 主动探索：「全部功能」随时打开任何模块；⑤ 使用天数只管节奏：每天最多主动介绍 1–2 个新模块。
 - **不堆也不藏**（第 5 节）：首页最多 6 个模块，每个模块标出「为什么在这里」（关注 / 发现 / 用过 / 固定）；所有指标在「身体」页从第一天就全部打开，按关注展开、其余折叠成一行摘要；「全部功能」显示每个模块的状态（首页 / 看过 / 新），没有锁、没有进度条。
@@ -91,7 +91,7 @@
 │ 今天                                 │
 │   ◯7:12      ◯◯ 72 ◯◯      ◯6.0      │ ← 圆环区：恢复大环居中，睡眠 / 负荷两侧
 │   睡眠          恢复          负荷     │    点开 = 三层详情
-│ [HRV 52] [静息 56] [呼吸 15] [血氧 97] │ ← 一行生命体征
+│        适合高强度 · 负荷 新鲜          │ ← 现在的状态词和负荷状态
 │ ✦ 恢复 72 · 适合练腿              ›  │ ← 晨报一句（点开 = 问 Jarvis）
 │ 重点 · 3 件                          │
 │   练腿 · 45 分钟          0/10  ›    │
@@ -196,7 +196,7 @@
 
 ### 4.4 今天页的内容和顺序
 
-1. **圆环区**（始终在最上面）：恢复大环居中、睡眠和负荷小环在两侧，环下一行小字（基线、需求、目标）；下面一行 HRV / 静息心率 / 呼吸 / 血氧。
+1. **圆环区**（始终在最上面）：恢复大环居中、睡眠和负荷小环在两侧（现在的 `.ring` 样式，恢复按分区上色，睡眠 `--sleep`，负荷 `--train`）；环下是现在的状态词和负荷状态 chip。
 2. **晨报一句**（1 行，规则生成：恢复状态词 / 当天最重要的发现）。
 3. **重点 1–3 件**：来源按优先级：临时异常和高级别规则提醒 → 今天的训练 / 负荷目标 → 入睡目标 → 饮食差额（记过饭的人）→ 第一天的「说说你今天吃了什么」。同一来源一天最多 1 件；做完划掉，不补新的。
 4. **圈子卡**（常驻）。
@@ -278,11 +278,13 @@
 
 ## 7. 数据展示规范
 
+> **视觉不变**（负责人 2026-10-25）：本节只规定「放什么、放多少」，样式全部沿用现在的 `app.css` / `ai.css` / `jarvis-entry.css`：卡片 `.card`、分区 `.section`、列表 `.group` / `.item`、标签 `.badge`、环 `.ring`、底栏 `.tabbar` + Jarvis 圆键。新增的东西（重点列表、圈子卡、原因标签、全部功能列表）只用现有的类拼，不新增颜色、字体和图标风格。
+
 ### 7.1 卡片
 
 | 类型 | 用在 | 内容上限 |
 |---|---|---|
-| 圆环区 | 首页最上面 | 恢复大环（约 176 pt）+ 睡眠 / 负荷小环（约 104 pt），每个环一个数 + 单位 + 2 字标签 + 一行小字；下面 4 个生命体征小块 |
+| 圆环区 | 首页最上面 | 恢复大环（约 164 pt）+ 睡眠 / 负荷小环（约 92 pt），都是现在的 `.ring`；环下状态词 + 负荷状态 chip |
 | 重点行 | 首页重点 | 图标 + ≤12 字标签 + 一行 ≤12 字副标签 + 一个数 |
 | 模块卡（2 列） | 首页「我的首页」 | 标题 + 原因标签 + **一个大数** + 一个小图 + 最多一行小字 |
 | 圈子卡（整宽） | 首页 | 圈子名 + 新动态数 + 头像 + 排行一行 + 最新一条 + 两个按钮 |
@@ -298,10 +300,10 @@
 
 ### 7.3 颜色
 
-- 沿用现有 `app.css` 的语义色 `--good` / `--mid` / `--bad` / `--sleep`；新增 `--strain`（负荷，蓝）和 `--ai`（AI，紫，和 Jarvis 键一致）。
+- 只用现有 `app.css` 的颜色：`--good` / `--mid` / `--bad`（好坏）、`--sleep`（睡眠）、`--train`（负荷 / 训练），不新增颜色。
 - **颜色只表示好坏方向或类别，从不单独表达数值**；有颜色的地方旁边一定有数字或标签（调研第 4 节）。
-- 一张卡最多一个强调色；AI 色只用在 Jarvis 相关的东西上（晨报、发现卡、「新」标签、AI 记的来源标记）。圈子卡的头像用各人自己的颜色，不用语义色。
-- 浅色 / 深色两套。
+- 一张卡最多一个强调色。原因标签（关注 / 发现 / 用过 / 固定）用现在的 `.badge.plain`；全部功能里的状态用 `.badge.good`（首页）/ `.badge.plain`（看过）/ `.badge.mid`（新）。
+- 浅色 / 深色沿用现在的两套 token。
 
 ### 7.4 图表
 
@@ -318,92 +320,12 @@
 
 ### 7.5 动效
 
-- 模块放到首页：从小到大 + 一圈 AI 色光晕（0.9 s）；减少动态效果时关掉。
+- 沿用现在的动效：页面元素的 `rise` 入场、环的描弧、Jarvis 键的四键弹出（#53 / #258）。模块放到首页时用现在的 `rise` 淡入；减少动态效果时关掉。
 - 原生端用 `matchedGeometryEffect` 让对话里的卡片「飞」到首页的位置（网页版只淡入）。
 
-### 7.6 视觉方向（D12，待负责人选）
+### 7.6 视觉（v0.4 决定：不变）
 
-用户画像：社会高层级的精英，追求身材管理、健康保障和抗衰老，拥抱 AI、有科创精神。对标 WHOOP、Oura、Apple Fitness+、Tesla / Nothing 这一档的质感，不做普通健康 app 的卡片风。负责人定下的风格是**全息 HUD 式的交互**（只借鉴风格，产品里不出现任何电影 / 漫画的名字或素材）。两套方向共用同一个结构，原型左边可以切换；**A 按全息 HUD 完整实现**，B 保留做对照。
-
-共同的基础：深色优先（浅色以后再做）；数字是主角（大号、等宽 / 表格数字）；细线图表；HUD 式等宽短标签；图标只用开源线条图标（Lucide），不自己画。
-
-#### A · 全息 HUD（推荐，完整实现）
-
-| 元素 | 做法 |
-|---|---|
-| 颜色 | 近黑底；**青蓝主光**（`#5ff3ff` → `#2b8cff`）；**琥珀**（`#ffb547`）只做少量强调：负荷环、需要注意的数、Jarvis 发现、新动态红点 |
-| 底纹 | 很淡的 28 pt 网格 + 扫描线纹理（静态）；页面出现数据时一道扫描光从上到下扫过一次 |
-| 面板 | 悬浮、半透明：渐变底 + 1 px 青色细边 + 内高光 + 阴影 + 轻模糊；模块卡带 HUD 角标 |
-| 圆环 | 渐变弧 + 微光；外圈刻度表圈；内外两圈虚线同心环反向慢转；出现时旋入 |
-| 图标（光影线条） | Lucide 线条图标，描边换成青蓝渐变（需要注意的用琥珀渐变）+ 外发光；放在 HUD 框里，数据出现时一道高光扫过图标框 |
-| 底栏 | 悬浮的 HUD 条（圆角、细边、内高光）；当前 tab 的图标套在一个慢转的虚线准星圈里并发光 |
-| Jarvis 键 | 发光的青色核心 + 两圈反向转动的虚线环（一圈琥珀）；按下后**同心弧扇形展开**，四个键（对话 / 语音 / 拍照 / 快记）沿弧线飞出，每个键外面一圈转动的虚线环——延续现在负责人喜欢的四键弹出动画（#258） |
-| 主要入口 | 「我」的头像、圆环、Jarvis 键用同一套同心虚线环；主按钮是青色细边 + 内发光 |
-| 文字 | 标题无衬线；标签、单位、时间、数字用等宽字体加字距 |
-
-| 今天 | 身体 | Jarvis 环形菜单 | Jarvis 对话 |
-|---|---|---|---|
-| <img src="ui-ai-first/look-a-1-today.jpg" width="170" alt="今天"> | <img src="ui-ai-first/look-a-2-body.jpg" width="170" alt="身体"> | <img src="ui-ai-first/look-a-3-jarvis-menu.jpg" width="170" alt="Jarvis 环形菜单"> | <img src="ui-ai-first/look-a-4-jarvis-chat.jpg" width="170" alt="Jarvis 对话"> |
-
-| 圈子 | 我 | 全部功能 | 饮食（二级页） |
-|---|---|---|---|
-| <img src="ui-ai-first/look-a-5-circles.jpg" width="170" alt="圈子"> | <img src="ui-ai-first/look-a-6-me.jpg" width="170" alt="我"> | <img src="ui-ai-first/look-a-7-all-features.jpg" width="170" alt="全部功能"> | <img src="ui-ai-first/look-a-8-food.jpg" width="170" alt="饮食（二级页）"> |
-
-#### B · 石墨精工（对照）
-
-哑光石墨、细线刻度环、细体大数字、单一信号橙；没有光效、没有模糊。冷静克制，但 AI 的存在感和科技感都弱于 A。
-
-| 今天 | 身体 | Jarvis 环形菜单 | Jarvis 对话 |
-|---|---|---|---|
-| <img src="ui-ai-first/look-b-1-today.jpg" width="170" alt="今天"> | <img src="ui-ai-first/look-b-2-body.jpg" width="170" alt="身体"> | <img src="ui-ai-first/look-b-3-jarvis-menu.jpg" width="170" alt="Jarvis 环形菜单"> | <img src="ui-ai-first/look-b-4-jarvis-chat.jpg" width="170" alt="Jarvis 对话"> |
-
-| 圈子 | 我 | 全部功能 | 饮食（二级页） |
-|---|---|---|---|
-| <img src="ui-ai-first/look-b-5-circles.jpg" width="170" alt="圈子"> | <img src="ui-ai-first/look-b-6-me.jpg" width="170" alt="我"> | <img src="ui-ai-first/look-b-7-all-features.jpg" width="170" alt="全部功能"> | <img src="ui-ai-first/look-b-8-food.jpg" width="170" alt="饮食（二级页）"> |
-
-#### 动画和性能规则（两套都遵守）
-
-- **只动 transform 和 opacity**：入场是位移 + 淡入（逐个错开 50 ms）；圆环旋入是 rotate + scale；迷你图「展开」是 scaleX；扫描光、图标高光是 translate；虚线环是 rotate；电量格「充放电」是 opacity。描线效果用这些方式模拟，**不动画 stroke-dashoffset、宽高、模糊、阴影**。
-- 系统打开「减少动态效果」时：所有动画关闭，页面直接是最终状态（现有 `app.css` 的全局规则 + Jarvis 的 JS 判断）。
-- **低端机降级**（`.lite`）：保持配色和布局，去掉背景模糊、外发光和持续旋转；判断依据是设备性能（原型里用 CPU 核数 / 内存，原生端用 app 报告的机型档位），也可以在设置里手动打开「省电视觉」。
-- 持续动画只有慢转的虚线环（30–40 秒一圈）和身体电量的充电闪烁，页面在后台时暂停。
-- 原生端（SwiftUI）对应：`rotationEffect` / `scaleEffect` / `opacity` + `withAnimation`，发光用预渲染的模糊图层而不是实时阴影，`accessibilityReduceMotion` 关闭动画。
-
-### 7.7 核心区版式（D13，待负责人选）
-
-今天页最上面的核心指标区，在全息 HUD 下比较 5 种版式（只换顶部，下面相同）。分档和颜色统一：恢复 0–33 红、34–66 琥珀、67–100 青绿（和现有恢复分区一致），负荷 0–21，睡眠对比当晚需求，身体电量 0–100。
-
-| 单环 | 同心三环 | 并排三环 | 环形电池 | 横向电池 |
-|---|---|---|---|---|
-| <img src="ui-ai-first/hero-1-single.jpg" width="150" alt="单环"> | <img src="ui-ai-first/hero-2-concentric.jpg" width="150" alt="同心三环"> | <img src="ui-ai-first/hero-3-three.jpg" width="150" alt="并排三环"> | <img src="ui-ai-first/hero-4-cells.jpg" width="150" alt="环形电池"> | <img src="ui-ai-first/hero-5-bars.jpg" width="150" alt="横向电池"> |
-| 只有恢复一个大环，睡眠 / 负荷 / 身体电量是环下的小数字 | 恢复（外）/ 负荷（中）/ 睡眠（内）一圈套一圈，下面带图例 | 恢复大环居中，睡眠 / 负荷小环在两侧（现在的布局） | 恢复做成 20 格分段，一格一格亮起 | 左边大数字 + 状态词，右边恢复 / 负荷 / 睡眠 / 身体电量 4 条分段电量条，身体电量最后一格闪烁表示在充电 |
-
-**推荐并排三环**：三个分数一眼都看得到、大小有主次（WHOOP、Oura 首页都是三个分），也是负责人说的「原来的风格」。环形电池的分段格可以作为恢复大环的一种样式备选；横向电池最有「电量」的直觉，但右侧文字多，适合以后单独做「身体电量」详情页。
-
-### 7.8 底栏方案（D14，待负责人选）
-
-底部分页栏（今天 · 身体 · Jarvis · 圈子 · 我）的动态交互，参考概念车数字仪表盘的交互方式（只借鉴交互，不出现任何品牌的名字、标志或素材），在全息 HUD 下做了 3 个方案。中间的 Jarvis 键在三个方案里都保留四键弹出的环形菜单。每个方案一张静态图 + 一段「今天 → 身体」的切换过程（8 帧，0–950 ms，用 Web Animations API 暂停后逐帧取，时间是准的）和 GIF。
-
-| | 1 · 圆形仪表组 | 2 · 弧形悬浮条 | 3 · 视差景深 |
-|---|---|---|---|
-| 静态 | <img src="ui-ai-first/bar-1-dials.jpg" width="200" alt="圆形仪表组"> | <img src="ui-ai-first/bar-2-arc.jpg" width="200" alt="弧形悬浮条"> | <img src="ui-ai-first/bar-3-depth.jpg" width="200" alt="视差景深（倾斜时）"> |
-| 交互 | 4 个 tab 是一排小圆形仪表（270° 刻度弧）；选中的放大成主表盘、上浮，琥珀指针带回弹扫到它的读数；相邻两个缩小后退，更远的再小一点 | 底栏是一条向上弯的玻璃弧带，tab 沿弧排列并跟着弧倾斜；一束高光和一根琥珀指针绕同一个轴心（在屏幕下方）转到选中项，像表针一样带回弹；Jarvis 键在弧顶 | 底栏分层：底板、图标、选中项各有不同的视差深度，跟随手指滑动 / 陀螺仪轻微移动；选中项浮到前景（放大、上浮、下面出现投影和光晕）；切页时内容从屏幕中心环形展开（两道同心环扩散，内容从 0.82 放大淡入） |
-| 切换过程 | [8 帧](ui-ai-first/bar-1-dials-frames.jpg) · [GIF](ui-ai-first/bar-1-dials.gif) | [8 帧](ui-ai-first/bar-2-arc-frames.jpg) · [GIF](ui-ai-first/bar-2-arc.gif) | [8 帧](ui-ai-first/bar-3-depth-frames.jpg) · [GIF](ui-ai-first/bar-3-depth.gif) |
-| 优点 | 最像仪表盘，「选中」一眼可见；高度和现在的底栏差不多 | 最有辨识度，弧形 + 指针的动势最强 | 最克制，有空间感；页面切换的环形展开很有「换模式」的感觉 |
-| 缺点 | 5 个圆形挤在一行，图标要小一号 | 高约 124 pt，比现在高 40 pt，内容区变少；弧两端的点按区域偏斜 | 视差要读陀螺仪（耗电、要权限说明），静态截图看不出特点 |
-
-切换过程（8 帧，左上到右下）：
-
-<img src="ui-ai-first/bar-1-dials-frames.jpg" width="640" alt="圆形仪表组切换过程">
-
-<img src="ui-ai-first/bar-2-arc-frames.jpg" width="640" alt="弧形悬浮条切换过程">
-
-<img src="ui-ai-first/bar-3-depth-frames.jpg" width="520" alt="视差景深切换过程">
-
-- 三个方案的动画都只用 transform / opacity（缩放、位移、旋转、淡入）；「减少动态效果」打开时没有过渡、没有视差；低端机（`.lite`）去掉光晕和持续旋转。
-- 视差在原型里跟随鼠标 / 手指，在手机上用陀螺仪（`deviceorientation`，原生端 Core Motion，限幅 ±1、每帧最多更新一次）。
-
-**推荐 1 · 圆形仪表组**，并借用方案 3 的「切页从中心环形展开」：仪表组最贴合「仪表盘」的定位、选中状态最清楚、不增加底栏高度；环形展开让切页也有换模式的感觉。弧形条留作以后的大屏（iPad）方案。
+v0.3 试过两套新视觉（全息 HUD、石墨精工）、今天页核心区的 5 种版式和底栏的 3 个动态方案（仪表组 / 弧形条 / 视差景深）。负责人看过后决定：**都不采用，保持当前线上的视觉风格**；核心区用并排三环（D13）；底栏外观保持现在的样子（4 个 tab + 中间浮起的 Jarvis 圆键），只是 tab 换成 今天 · 身体 · 圈子 · 我。相关截图和脚本已从仓库删除（git 历史里还有）。
 
 ---
 
@@ -486,7 +408,7 @@
 
 ## 12. 要负责人决定的点
 
-> 负责人 2026-10-25：**D1–D11 全部按推荐通过**。D12、D13、D14 待选。
+> 负责人 2026-10-25：**D1–D11 全部按推荐通过**；D12、D14 作废（视觉和底栏外观不变）；D13 定为并排三环。
 
 | # | 问题 | 推荐 |
 |---|---|---|
@@ -501,41 +423,45 @@
 | D9 | 「Jarvis 自动整理首页」开关默认开还是关 | **默认开**，在全部功能顶部能关 |
 | D10 | 先网页还是直接原生 | **网页先做**（开关 `ui_ai_first`），1.1.0 的原生今天直接按新设计 |
 | D11 | 外部 AI（Claude / ChatGPT 通过 MCP）用过的工具算不算「用过」 | **算**：看的是数据层的工具调用，和用哪家 AI 无关 |
-| D12 | 视觉方向 | **A · 全息 HUD**（完整实现，和 Jarvis 动画同一套语言；第 7.6 节） |
-| D13 | 今天页核心区版式 | **并排三环**（恢复大环居中，睡眠 / 负荷两侧；第 7.7 节） |
-| D14 | 底栏方案 | **圆形仪表组**，切页借用视差景深方案的「中心环形展开」（第 7.8 节） |
+| D12 | 视觉方向 | **作废**：保持当前线上的视觉风格（第 7.6 节） |
+| D13 | 今天页核心区版式 | **已定：并排三环**（恢复大环居中，睡眠 / 负荷两侧，现在的环形样式和配色） |
+| D14 | 底栏动态方案 | **作废**：底栏外观保持现在的样子 |
+| D15 | 可在手机上点的预览（线上页面加开关 `ui_ai_first`，只给负责人自己打开） | **单独做一个 PR**：先做不依赖新服务端的部分（第 13.2 节），约 4–5 人日 |
 
 ---
 
-## 13. 原型
+## 13. 预览
 
-单文件 [`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)，用浏览器直接打开（不连服务器，全是合成数据），左边切换视觉方向（A / B，见第 7.6 节；下面这组结构截图用的是不带视觉方向的默认样式）、三种用户状态（**三种都已导入完整历史，区别只在首页放了多少、介绍到哪一步**）和三段演示。截图由 [`ui-ai-first/shoot.py`](ui-ai-first/shoot.py)（Playwright + WebKit）生成。图标都来自 Lucide（ISC）。
+### 13.1 现有样式下的新结构（以此为准）
 
-**第 1 天：导入历史 → 身体概况 → 选关注 → 首页**
+用线上现有的样式表和真实页面组件做的：在本机起一套 Quick Start（合成数据，开关和线上一致），浏览器打开真实的今天页（用这个分支的 `web/static`），再由 [`ui-ai-first/preview-compose.js`](ui-ai-first/preview-compose.js) 把真实页面已经渲染好的组件（环、卡片、分区、列表、Jarvis 圆键）按新的信息架构重新排列；新增的部分只用现有的样式类。截图脚本 [`ui-ai-first/preview.py`](ui-ai-first/preview.py)。数据是 Quick Start 的合成数据，演示账号还没有圈子，所以圈子卡显示的是邀请卡。
 
-| 身体概况（3 个发现） | 你最关心哪些 | 首页按关注摆好 |
-|---|---|---|
-| <img src="ui-ai-first/01-day1-overview.jpg" width="240" alt="导入完成和 3 个发现"> | <img src="ui-ai-first/02-day1-goals.jpg" width="240" alt="多选关注点"> | <img src="ui-ai-first/03-day1-today.jpg" width="240" alt="首页 3 个模块带新标记，圈子邀请卡"> |
+| 现在的今天页（对照） | 新的今天页（并排三环） | 今天页往下 | 身体 |
+|---|---|---|---|
+| <img src="ui-ai-first/v04-0-now-today.jpg" width="200" alt="现在的今天页"> | <img src="ui-ai-first/v04-1-today.jpg" width="200" alt="新的今天页：三环、重点、圈子卡"> | <img src="ui-ai-first/v04-1b-today-more.jpg" width="200" alt="我的首页：模块带原因标签"> | <img src="ui-ai-first/v04-2-body.jpg" width="200" alt="身体：关注的恢复、睡眠展开，其余折叠"> |
 
-**使用 2 周、老用户**
+| Jarvis（四键弹出不变） | 圈子（一级 tab） | 我 | 全部功能 | 饮食（二级页） |
+|---|---|---|---|---|
+| <img src="ui-ai-first/v04-3-jarvis.jpg" width="160" alt="Jarvis 四键菜单"> | <img src="ui-ai-first/v04-4-circles.jpg" width="160" alt="圈子"> | <img src="ui-ai-first/v04-5-me.jpg" width="160" alt="我：全部功能和全部记录入口"> | <img src="ui-ai-first/v04-6-all-features.jpg" width="160" alt="全部功能：按领域列出，带首页 / 看过 / 新"> | <img src="ui-ai-first/v04-7-food.jpg" width="160" alt="饮食二级页"> |
 
-| 使用 2 周 | 老用户（健康监测临时出现） |
-|---|---|
-| <img src="ui-ai-first/04-week2-today.jpg" width="240" alt="使用 2 周的首页：重点和圈子卡"> | <img src="ui-ai-first/05-veteran-today.jpg" width="240" alt="老用户首页"> |
+要点：底栏是现在的样子，只是 tab 变成 今天 · 身体 · 圈子 · 我（Jarvis 圆键在中间，四键弹出不变）；今天页把现在的大环拆成并排三环，去掉了和环重复的三块数字，提醒并进「重点」，下面是常驻的圈子卡和「我的首页」（每块带原因标签）；身体页就是现在的趋势页，只是按关注展开、其余折叠；记录、饮食从底栏移到二级页，「我」里多了「全部功能」「全部记录」。
 
-**互动和发现把模块带到首页**
+### 13.2 可在手机上点的预览（D15）
 
-| Jarvis 记了喝水 | 「喝水」上首页 | Jarvis 发现体重平台期 |
-|---|---|---|
-| <img src="ui-ai-first/06-grow-card.jpg" width="240" alt="对话里的喝水卡带放到首页按钮"> | <img src="ui-ai-first/07-grow-today.jpg" width="240" alt="喝水模块带新标记出现"> | <img src="ui-ai-first/08-finding.jpg" width="240" alt="体重 3 周没变的发现卡"> |
+负责人希望在手机上点一点：在线上页面加开关 `ui_ai_first`，只给自己的账号打开。这一步要改线上代码，不放在这个文档 PR 里，建议单独开 PR，分两段：
 
-**圈子（一级 tab）和全部功能（没有锁）**
+1. **不依赖新服务端的部分（约 4–5 人日）**：5 格底栏、今天页并排三环、重点（现有提醒 + 负荷目标 + 入睡目标）、圈子卡（读现有圈子接口）、「我的首页」先按「有数据 + 最近用过」在页面里摆、「全部功能」页、记录 / 饮食改成二级页。开关打开时生效，关掉就是现在的页面。
+2. **依赖 P1 服务端的部分**：关注点、发现、模块状态（第 8.1 节），第 1 天的概况对话，Jarvis「放到首页」。
 
-| 圈子 | 全部功能 |
-|---|---|
-| <img src="ui-ai-first/09-circles.jpg" width="240" alt="圈子 tab：圈子切换、成员 / 动态 / 排行榜"> | <img src="ui-ai-first/10-all-features.jpg" width="240" alt="全部功能：按领域列出，带首页 / 看过 / 新"> |
+### 13.3 交互流程原型（只看流程）
 
-原型里的人名、数字都是虚构的示例，不来自任何真人。
+单文件 [`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)，浏览器直接打开（合成数据），演示第 1 天、Jarvis 用过的模块上首页、Jarvis 发现带出模块这几段流程。**它的样式是早期的草图，不代表最终视觉**，最终视觉以第 13.1 节为准。截图由 [`ui-ai-first/shoot.py`](ui-ai-first/shoot.py) 生成：
+
+| 第 1 天：身体概况 | 选关注 | 首页按关注摆好 | Jarvis 记了喝水 | 「喝水」上首页 | Jarvis 发现 |
+|---|---|---|---|---|---|
+| <img src="ui-ai-first/01-day1-overview.jpg" width="130" alt="身体概况"> | <img src="ui-ai-first/02-day1-goals.jpg" width="130" alt="选关注"> | <img src="ui-ai-first/03-day1-today.jpg" width="130" alt="首页"> | <img src="ui-ai-first/06-grow-card.jpg" width="130" alt="喝水卡"> | <img src="ui-ai-first/07-grow-today.jpg" width="130" alt="喝水上首页"> | <img src="ui-ai-first/08-finding.jpg" width="130" alt="发现"> |
+
+其他：`04-week2-today.jpg`、`05-veteran-today.jpg`、`09-circles.jpg`、`10-all-features.jpg`。原型和预览里的人名、数字都是虚构的示例，不来自任何真人。
 
 ---
 
@@ -546,5 +472,5 @@
 **Day 1**: history import → "your body at a glance" (three findings) → "what do you care about?" (multi-select) → Today laid out with three modules.
 **Navigation**: five slots: Today · Body · Jarvis · Circles · Me. **Circles stay a first-level tab** (inside it follows `circles-redesign.md`, same APIs), and Today always carries a circles card (new posts, weekly ranking, invite) or an invite card.
 **Neither cluttered nor hidden**: at most six modules on Today, each tagged with why it is there (focus / found / used / pinned); Body shows every metric from day 1 with the user's focus expanded and other groups folded into one-line summaries; "All features" lists all 24 modules with their state (on Today / seen / new), no locks or progress bars; an "auto-arrange" switch lets users take over.
-**v0.3**: owner approved D1–D11; Today keeps the three score rings (recovery large in the centre, sleep and strain at the sides) at the very top, with AI items below; the visual style is a holographic HUD (cyan light with a little amber, concentric tick rings, scan lines, floating translucent panels, glowing line icons built on Lucide, the Jarvis key fanning out concentric arcs); direction A implements it on every page, B ("graphite instrument") is kept for comparison; five core-score layouts are compared (single ring, concentric, three rings, cell ring, horizontal batteries). Motion is transform / opacity only, honours reduced motion and degrades on low-end devices. Three tab-bar concepts inspired by concept-car instrument clusters (round gauges, an arc strip with a needle, parallax depth), each with a still, 8 exact frames and a GIF. See sections 7.6–7.8 (decisions D12–D14).
+**v0.4**: owner approved D1–D11. **The visual style stays exactly as it is in production** (colours, fonts, cards, icons, tab bar look from `web/static`); the HUD / graphite looks and the tab bar motion concepts tried in v0.3 are dropped (D12, D14 void). Today's core is three rings side by side in the current ring style (D13). Only structure, order, entry points and interaction change. The preview in section 13.1 is the real page (Quick Start, synthetic data) with its real components rearranged; a clickable preview behind a `ui_ai_first` flag is proposed as a separate PR (D15).
 **Implementation**: server-driven layout shared by web and native (`ui/params.py`, `ui/findings.py`, tables `ui_modules` / `ui_findings`, `GET /home`, `/overview`, `/modules`, `manage_modules`, `ui.suggest` in the briefing); web first behind `ui_ai_first`; the SwiftUI Today in 1.1.0 (#255) is built to this design. Owner decisions D1–D11 are in section 12; the prototype and screenshots are in `docs/ui-ai-first/`.

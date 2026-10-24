@@ -633,7 +633,7 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
 <div class="stage">
   <aside class="ctl">
     <h1>AI 优先 · 渐进解锁</h1>
-    <p>原型（合成数据）。见 docs/ui-ai-first-redesign.md。点手机里的卡片、tab 和中间的 Jarvis 键。没有任何功能被锁住：底部「全部功能」随时能看全部。</p>
+    <p>交互流程原型（合成数据），只看流程；样式是早期草图，最终视觉 = 线上现有样式，见 docs/ui-ai-first-redesign.md 第 13.1 节。点手机里的卡片、tab 和中间的 Jarvis 键。没有任何功能被锁住：底部「全部功能」随时能看全部。</p>
     <h2>用户状态（都已导入完整历史）</h2>
     <div class="opts" id="personas">
       <button class="opt" data-p="day1">新用户 · 第 1 天<small>选了「睡得更好、训练和恢复」，首页 3 个模块</small></button>
@@ -645,27 +645,6 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
       <button class="opt" id="demo-onboard">第 1 天：身体概况 → 选关注 → 摆首页<small>导入历史后的第一次对话</small></button>
       <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」上首页<small>互动：AI 用过的模块</small></button>
       <button class="opt" id="demo-find">Jarvis 发现 → 带出「体重」<small>数据里值得说的事</small></button>
-    </div>
-    <h2>核心区版式（D13，待选）</h2>
-    <div class="opts" id="heroes">
-      <button class="opt" data-hero-set="three">并排三环<small>恢复大环居中，睡眠 / 负荷在两侧</small></button>
-      <button class="opt" data-hero-set="single">单环<small>只有恢复一个大环，其他是环下的小数字</small></button>
-      <button class="opt" data-hero-set="concentric">同心三环<small>恢复 / 负荷 / 睡眠一圈套一圈</small></button>
-      <button class="opt" data-hero-set="cells">环形电池<small>20 格分段，一格一格亮</small></button>
-      <button class="opt" data-hero-set="bars">横向电池<small>左边大数字，右边 4 条分段电量条</small></button>
-    </div>
-    <h2>底栏方案（D14，待选）</h2>
-    <div class="opts" id="bars">
-      <button class="opt" data-bar-set="hud">基础 HUD 条<small>第四轮的悬浮条（对照）</small></button>
-      <button class="opt" data-bar-set="dials">1 · 圆形仪表组<small>选中的放大成主表盘，指针扫过，两侧后退</small></button>
-      <button class="opt" data-bar-set="arc">2 · 弧形悬浮条<small>向上弯的玻璃弧，高光和指针绕同一个轴转到选中项</small></button>
-      <button class="opt" data-bar-set="depth">3 · 视差景深<small>跟随滑动 / 陀螺仪轻微视差，选中项浮到前景，切页从中心环形展开</small></button>
-    </div>
-    <h2>视觉方向（D12，待选）</h2>
-    <div class="opts" id="looks">
-      <button class="opt" data-look-set="a">A · 全息 HUD<small>青蓝主光 + 琥珀强调、同心刻度环、扫描线、悬浮半透明面板、光影线条图标</small></button>
-      <button class="opt" data-look-set="b">B · 石墨精工<small>哑光石墨、细线刻度环、细体大数字、单一信号橙</small></button>
-      <button class="opt" data-look-set="">原型默认（v0.2，仅看结构）</button>
     </div>
   </aside>
   <div class="phone" id="phone"><div class="screen">
@@ -1219,7 +1198,7 @@ $("#oscrim").onclick = () => setOrbit(false);
 window.Proto = { setPersona, setLook, setHero, setBar, parallax, setOrbit, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
 const q = new URLSearchParams(location.search);
 if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
-setLook(q.get("look") ?? "a");
+setLook(q.get("look") ?? "");   // the HUD / graphite looks (v0.3) were dropped in v0.4; the visual is the production one
 function setBar(b) { S.bar = b; for (const x of $$("#bars .opt")) x.setAttribute("aria-pressed", x.dataset.barSet === b); render(); }
 for (const x of $$("[data-bar-set]")) x.onclick = () => setBar(x.dataset.barSet);
 let parallaxRaf = 0;
