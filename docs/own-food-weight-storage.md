@@ -49,6 +49,7 @@
 - `origin`：`sparky`（从 SparkyFitness 来的：迁移或双写）/ `own`（直接写进新表的，第 3 期起）。双写和迁移只会改、删 `origin = 'sparky'` 的行。
 - `synced_at`：最后一次从 SparkyFitness 同步的时间（`origin = 'own'` 时为空）。
 - 写入时的用户校验：`INSERT … ON CONFLICT (id) DO UPDATE … WHERE t.user_id = EXCLUDED.user_id`，冲突行属于别的用户时报错，不会覆盖。
+- 食物库和动作库例外：主键是 `(user_id, id)`。SparkyFitness 的公共食物 / 动作会被多个用户引用，每人各存一行，互不影响。
 - 所有表 `GRANT SELECT … TO grafana_ro`（角色存在时）。
 
 ### 2.1 `foods` 食物库
@@ -57,13 +58,13 @@
 
 | 列 | 说明 |
 |---|---|
-| `id TEXT PK` | SparkyFitness food id / 新 uuid |
+| `id TEXT`，主键 `(user_id, id)` | SparkyFitness food id / 新 uuid |
 | `user_id` | |
 | `name`, `brand` | |
 | `serving_size NUMERIC`, `serving_unit TEXT` | 一份是多少（AI 建的食物：1 份 = 那次的份量文字） |
 | `calories`, `protein_g`, `carbs_g`, `fat_g`, `saturated_fat_g`, `sugar_g`, `fiber_g`, `sodium_mg`, `alcohol_g` | **每份**的营养，kcal / g / mg，空 = 不知道 |
 | `nutrients JSONB` | SparkyFitness 有、这里没单独列的营养素（胆固醇、钾、维生素……），原样按每份保存，不丢数据 |
-| `provider_type`, `provider_external_id` | AI 建的是 `custom` + `ba:<内容哈希>`（`log_food` 按它复用同一食物），唯一索引 `(user_id, provider_external_id)` |
+| `provider_type`, `provider_external_id` | AI 建的是 `custom` + `ba:<内容哈希>`（`log_food` 按它复用同一食物）。索引 `(user_id, provider_external_id)`：SparkyFitness 里可能有重复，第 3 期核对完再改成唯一 |
 | `is_custom`, `notes`, `origin`, `synced_at`, `created_at`, `updated_at` | |
 
 ### 2.2 `food_entries` 饮食记录
@@ -75,12 +76,12 @@
 | `id TEXT PK` | SparkyFitness entry id / 新 uuid |
 | `user_id`, `date DATE`, `time TIME` | 用户本地日期 / 时间 |
 | `meal TEXT` | breakfast / lunch / dinner / snacks（和 `sparky_write.MEALS` 一致） |
-| `food_id TEXT → foods(id) ON DELETE SET NULL`, `food_name` | 名字单独存一份：食物改名或删掉，历史记录不变 |
+| `food_id TEXT`（外键 `(user_id, food_id) → foods`，删食物时置空）, `food_name` | 名字单独存一份：食物改名或删掉，历史记录不变 |
 | `quantity NUMERIC`, `unit TEXT`, `serving_size NUMERIC` | 份数、单位、一份的大小（改份量时按比例换算） |
 | `calories`, `protein_g`, `carbs_g`, `fat_g`, `saturated_fat_g`, `sugar_g`, `fiber_g`, `sodium_mg`, `alcohol_g` | 这一条的合计 |
 | `added_sugar_g`, `sugary_drink` | 原来只在 `food_entry_extras` 里（SparkyFitness 没这两个字段）；双写和迁移时从 `food_entry_extras` 带过来 |
 | `nutrients JSONB` | 其他营养素的合计 |
-| `notes`, `source`（body_assistant / manual / …）, `source_id`（幂等键，唯一索引 `(user_id, source_id)`） | |
+| `notes`, `source`（body_assistant / manual / …）, `source_id`（幂等键，索引 `(user_id, source_id)`，第 3 期改成唯一） | |
 | `origin`, `synced_at`, `created_at`, `updated_at` | 索引 `(user_id, date)` |
 
 `food_entry_extras` 第 3 期之后只读不写（新条目的加糖等直接写在 `food_entries`），第 4 期删表前确认已全部带进来。
@@ -92,7 +93,7 @@
 | 列 | 说明 |
 |---|---|
 | `user_id`, `date` | 主键 `(user_id, date)` |
-| `id TEXT UNIQUE` | SparkyFitness check-in id / 新 uuid（撤销日志里用日期，不依赖它） |
+| `id TEXT`，`(user_id, id)` 唯一 | SparkyFitness check-in id / 新 uuid（撤销日志里用日期，不依赖它） |
 | `weight_kg`, `body_fat_pct`, `waist_cm`, `neck_cm`, `hips_cm`, `height_cm`, `muscle_mass_kg`, `bone_mass_kg`, `body_water_pct`, `bmr_kcal` | 空 = 这天没记这项 |
 | `origin`, `synced_at`, `created_at`, `updated_at` | |
 
@@ -112,7 +113,7 @@
 
 SparkyFitness 里每人「我的动作」（迁移来的 + 记训练时新建的）。保留 id，因为 `exercise_meta.app_exercise_id`、训练记录、计划镜像都引用它。
 
-列：`id TEXT PK`、`user_id`、`name`、`category`、`modality`、`primary_muscles TEXT[]`、`description`、`catalog_slug`（对上 `exercise_catalog` 的动作，`link-exercises` 会填）、`origin`、`synced_at`、时间戳。
+列：`id TEXT`（主键 `(user_id, id)`）、`user_id`、`name`、`category`、`modality`、`primary_muscles TEXT[]`、`description`、`catalog_slug`（对上 `exercise_catalog` 的动作，`link-exercises` 会填）、`origin`、`synced_at`、时间戳。
 
 和现有动作表的关系：`exercise_catalog` 是共享字典，`custom_exercises`（#189）是用户用 AI / 页面加的自己的动作，`exercise_meta` 是每人的禁用 / 小心标记。第 3 期起动作匹配（`exercise_index`）读 `user_exercises` 代替 SparkyFitness 动作库；第 4 期之后新建的「记录用动作」直接写 `custom_exercises`，`user_exercises` 只留历史（以后可以合并成一张，不在本次范围）。
 
