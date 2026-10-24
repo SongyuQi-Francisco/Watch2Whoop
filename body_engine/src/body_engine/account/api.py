@@ -20,6 +20,9 @@ Account (Bearer or cookie; also for `pending` accounts):
                                            BODY_REFERRALS_ENABLED (the Me page entry hides itself: /v1/auth/methods → referrals)
   POST /v1/account/redeem-invite takes admin invite codes and users' referral codes alike (same 10-character format).
 A `pending` account gets 403 {"detail": "account_pending"} everywhere else (api.current_user → gate()).
+Open sign-up (account/open_signup.py, flag open_signup): below the account cap a pending account is activated at sign-in
+and on any later request (gate()), with the same provisioning as a redeemed code; GET /v1/account then says
+invite_required false, and invite_optional true while it may still enter one invite / referral code.
 
 Limits: verification / redemption failures count against the shared per-IP login failure limit (web/login_limit.py);
 code e-mails are limited per address (EMAIL_SENDS_PER_ADDRESS per hour, one per RESEND_SECONDS) and per IP.
@@ -36,7 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import auth
 from ..friends import codes as circle_codes, store as friends_store
 from ..web import activation, login_codes, login_limit, session
-from . import delete as account_delete, identities, invites, mailer, params, provision, signin
+from . import delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -53,10 +56,13 @@ _per_ip = login_limit.Limiter(EMAIL_SENDS_PER_IP, 3600)
 PENDING_OK = ("/v1/account", "/v1/web/me", "/v1/me", "/v1/web/logout")
 
 
-def gate(user: dict, path: str) -> None:
-    """Called for every authenticated request (api.current_user)."""
+def gate(user: dict, path: str, conn=None) -> None:
+    """Called for every authenticated request (api.current_user). With conn, a pending account is first offered open
+    sign-up (activated in place: user["status"] becomes active)."""
     status = user.get("status") or "active"
     if status == "active":
+        return
+    if status == "pending" and conn is not None and activate_open(conn, user) == "activated":
         return
     if status == "disabled":
         raise HTTPException(403, "account_disabled")
@@ -86,6 +92,21 @@ def _check_ip(request: Request) -> str:
     return ip
 
 
+def activate_open(conn, user: dict, ip: str | None = None, new: bool = False) -> str:
+    """Open sign-up for a pending account (open_signup.try_activate), committed; on success the same follow-up as a redeemed
+    invite code (redeem_invite): provisioning starts in the background, and `user` (the dict) becomes active."""
+    if user.get("status") != "pending":
+        return "not_pending"
+    res = open_signup.try_activate(conn, user["id"], ip=ip, new=new)
+    conn.commit()
+    if res == "activated":
+        user["status"] = "active"
+        log.info("open sign-up: user %s activated (%s)", user["id"], "new" if new else "was pending")
+        if provision.status(conn, user["id"])["state"] != "done":
+            start_provisioning(user["id"])
+    return res
+
+
 def me_dict(user: dict) -> dict:
     return {k: user.get(k) for k in ("id", "display_name", "role", "timezone", "status")}
 
@@ -110,10 +131,11 @@ def ios_web_mode() -> str:
 
 
 @router.get("/v1/auth/methods")
-def methods():
-    """Which sign-in methods this server offers (the login pages hide the others), and the iOS-Safari mode."""
+def methods(conn=Depends(get_conn)):
+    """Which sign-in methods this server offers (the login pages hide the others), the iOS-Safari mode, and whether a new
+    account opens without an invite code right now (open_signup)."""
     return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled(),
-            "ios_web": ios_web_mode()}
+            "ios_web": ios_web_mode(), "open_signup": open_signup.is_open(conn)}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail
@@ -170,6 +192,7 @@ def email_verify(body: EmailVerifyIn, request: Request, response: Response, conn
         user, new_user = signin.find_or_create_user(conn, "email", email, email, True)
     except signin.SignInError:
         raise HTTPException(403, "account_disabled")
+    activate_open(conn, user, ip, new_user)
     return _session_response(conn, request, response, user, new_user, body.client, body.device)
 
 
@@ -208,6 +231,7 @@ def apple(body: AppleIn, request: Request, response: Response, conn=Depends(get_
         user, new_user = signin.find_or_create_user(conn, "apple", claims["sub"], email, verified, name)
     except signin.SignInError:
         raise HTTPException(403, "account_disabled")
+    activate_open(conn, user, ip, new_user)
     out = _session_response(conn, request, response, user, new_user, body.client, body.device)
     if new_user:   # no existing account found: the app / page suggests binding Apple from the old account instead
         out["hint"] = "existing_account_bind_apple"
@@ -221,6 +245,8 @@ def account_info(conn, user: dict) -> dict:
     # identities: [{provider, email}] (Me → 「登录方式」); apple_link: this server can verify Apple tokens
     return {**me_dict(user), "identities": ids, "apple_link": bool(signin.apple_audiences()),
             "invite_required": user.get("status") == "pending",
+            # opened by open sign-up and may still enter one invite / referral code (Me page 「填写邀请码」)
+            "invite_optional": user.get("status") == "active" and open_signup.code_window(conn, user["id"]),
             "provisioning": provision.status(conn, user["id"])}
 
 

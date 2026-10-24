@@ -141,7 +141,22 @@ body-engine mail-test --to you@example.com        # 用当前配置发一封测�
 - **防滥用**：注册和兑换都走登录失败限流；`pending` 账号 7 天不开通自动删除（`provision-run`）；以后可以加总人数上限。
 - **成本**：每个新开通的人都会用到托底 AI 额度和服务器内存；发码前心里有数。
 - **隐私**：同意书之前不处理健康数据（和现在一样）；邮箱只用来登录，不传给 SparkyFitness / OW。
-- 公开发布时可以把激活码这一步改成可选（开关），还没做。
+- 激活码这一步可以按人数上限暂时关掉：见下面「开放注册」。
+
+## 开放注册（flag `open_signup`）
+
+注册后不用激活码，直到活跃账号数到上限；到了上限自动恢复成要激活码。代码 `account/open_signup.py`，参数 `account/params.py`（`OPEN_SIGNUP_*`），迁移 760。
+
+- **开关**：`body-engine flags set open_signup --state all` 开、`--state off` 关；全局开关，只认 `all`（cohort / percent 当作关）。代码默认关。
+- **上限** `OPEN_SIGNUP_MAX_ACTIVE`（默认 200）：按 `users.status = 'active'` 计数，部署者和管理员开的账号都算；`pending`、`disabled`、已删除的不算；`OPEN_SIGNUP_EXCLUDE_COHORTS`（默认 `demo`）里的不算——App Review 演示账号要先 `body-engine cohort add --user-id N --cohort demo`。
+- **开着且没满时**：新注册（邮箱 / Apple，app 和今天页）的账号直接 `active`；已经卡在 `pending` 的账号下次访问任何接口时自动开通。开通做的事和兑换激活码完全一样：登录身份记录（同一 Apple ID / 邮箱只能免费开一个账号，删号再注册不行）、`status = active`、`user_provisioning` 排队并在后台开户（OW、SparkyFitness、日记项、长期记忆）。`/v1/account` 的 `invite_required` = false，`/v1/auth/methods` 多一个 `open_signup`。
+- **满额**：新账号回到 `pending`，走原来的激活码步骤；有人删号 / 停用、或者调高上限后又自动开放。
+- **老版本 app**：1.0.6 / 1.0.7 按登录返回和 `GET /v1/account` 的 `status` 决定下一步（`active` 直接到健康权限，`pending` 才显示激活码），不读 `invite_required`，所以不用发新版。
+- **激活码照样有效**：开放期间开通的账号 `OPEN_SIGNUP_CODE_DAYS`（默认 14）天内还能补填一个邀请码 / 推荐码（今天页「我 → 设置 → 填写邀请码」，或带 `?invite=` 的链接登录后自动提交），照样记录邀请人、圈子邀请和奖励；圈子码和任何已有账号一样在朋友页加入（不占新账号名额）。
+- **同意书照旧**：开通不改同意状态，第一次登录仍要在 app 里电子确认，同意前不处理健康数据。
+- **防刷**：同一 IP 24 小时内最多 `OPEN_SIGNUP_PER_IP_DAY`（默认 5）个账号免码开通，超出的留在 `pending`（可以用激活码）、以后也不会自动开通；IP 只存 sha256，48 小时后清掉。并发注册用 advisory lock 串行，不会超过上限。
+- **管理命令**：`body-engine open-signup status`（开关、活跃数 / 上限、超限数、托底 AI 每月最多花多少、余额能撑几个月；`--refresh` 现查余额）、`body-engine open-signup list [--days N] [--all]`（开放期间开通的账号，登录方式打码）。`ai-fallback status` 在开放注册开着时也多一行满额费用；`--json` 里有 `open_signup` 块。`user-stats` 里这些账号的 method 是 `open`。
+- **托底 AI 费用**：每人每月额度 `MONTHLY_QUOTA_CNY`（¥3）× 上限 200 ≈ 每月最多 ¥600（额度卡另算）；余额能撑的月数 = （余额 − 停用线）÷ 每月最多。
 
 ## 待定
 
