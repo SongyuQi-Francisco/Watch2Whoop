@@ -18,7 +18,7 @@ from ..config import REPO_ROOT
 from ..i18n import L, is_en
 from ..records import store as records_store
 from ..rollout import flags
-from . import catalog_data as CD, catalog_en as CE, params as P
+from . import catalog_data as CD, catalog_en as CE, params as P, translations as TR
 from .opengym import mapping as OGM
 
 DEFAULT_BANNED_SLUGS = {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
@@ -32,7 +32,7 @@ _MUSCLE_BY_ZH = {v: k for k, v in CD.MUSCLE_ZH.items()} | {
     "臀": "glutes", "臀大肌": "glutes", "臀中肌": "abductors", "小腿": "calves", "二头": "biceps",
     "三头": "triceps", "手臂": "biceps", "核心": "abdominals", "腹": "abdominals", "腹肌": "abdominals",
 }
-_EQUIP_BY_ZH = {v: k for k, v in CD.EQUIPMENT_ZH.items()} | {
+_EQUIP_BY_ZH = {v: k for k, v in {**CD.EQUIPMENT_ZH_EXTRA, **CD.EQUIPMENT_ZH}.items()} | {
     "龙门架": "cable", "绳索": "cable", "器械": "machine", "徒手": "body only", "曲杆": "ez curl bar",
     "史密斯": "smith machine", "body weight": "body only", "bodyweight": "body only",
 }
@@ -141,7 +141,7 @@ def convert_free_exercise_db_entry(raw: dict) -> dict:
     mechanic = (raw.get("mechanic") or "").lower()
     level = (raw.get("level") or "intermediate").lower()
     instructions = [str(x).strip() for x in (raw.get("instructions") or []) if str(x).strip()]
-    return {
+    row = {
         "slug": slug,
         "name_zh": raw.get("name_zh") or raw["name"],
         "name_en": raw["name"],
@@ -160,12 +160,16 @@ def convert_free_exercise_db_entry(raw: dict) -> dict:
         "default_increment_kg": raw.get("default_increment_kg", 2.5 if modality == "weight_reps" else None),
         "cues_zh": raw.get("cues_zh") or (instructions[0] if instructions else None),
         "instructions_zh": instructions,
+        "instructions_en": instructions,
+        "zh_source": "human" if TR.has_chinese(raw.get("name_zh")) else None,
         "images": list(raw.get("images") or []),
         "source": "free-exercise-db",
         "license": "Unlicense",
         "source_ref": raw.get("id"),
         "family_slug": family_of(raw.get("name")),
     }
+    TR.apply(row)   # the committed machine Chinese (translations/), when it was made from this very English
+    return row
 
 
 def _curated_rows() -> dict[str, dict]:
@@ -174,7 +178,7 @@ def _curated_rows() -> dict[str, dict]:
         imgs = item.get("images") or []
         out[item["slug"]] = {**item, "aliases": list(item.get("aliases") or []),
                              "source_ref": imgs[0].split("/", 1)[0] if imgs else None, "family_slug": None,
-                             "license": "AGPL-3.0"}
+                             "license": "AGPL-3.0", "instructions_en": [], "zh_source": "human"}
     return out
 
 
@@ -226,13 +230,14 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
             """INSERT INTO exercise_catalog (
                  slug, name_zh, name_en, aliases, category, modality, force, mechanic, level,
                  movement_pattern, equipment, primary_muscles, secondary_muscles, joint_stress,
-                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref, family_slug, license, updated_at
+                 per_side, default_increment_kg, cues_zh, instructions_zh, images, source, source_ref, family_slug, license,
+                 instructions_en, zh_source, updated_at
                ) VALUES (
                  %(slug)s, %(name_zh)s, %(name_en)s, %(aliases)s, %(category)s, %(modality)s,
                  %(force)s, %(mechanic)s, %(level)s, %(movement_pattern)s, %(equipment)s,
                  %(primary_muscles)s, %(secondary_muscles)s, %(joint_stress)s, %(per_side)s,
                  %(default_increment_kg)s, %(cues_zh)s, %(instructions_zh)s, %(images)s, %(source)s,
-                 %(source_ref)s, %(family_slug)s, %(license)s, now()
+                 %(source_ref)s, %(family_slug)s, %(license)s, %(instructions_en)s, %(zh_source)s, now()
                )
                ON CONFLICT (slug) DO UPDATE SET
                  name_zh = EXCLUDED.name_zh,
@@ -257,6 +262,9 @@ def seed_catalog(conn: psycopg.Connection, extra_json: Path | None = None) -> di
                  source_ref = EXCLUDED.source_ref,
                  family_slug = EXCLUDED.family_slug,
                  license = EXCLUDED.license,
+                 instructions_en = CASE WHEN EXCLUDED.instructions_en = '{}' THEN exercise_catalog.instructions_en
+                                        ELSE EXCLUDED.instructions_en END,
+                 zh_source = EXCLUDED.zh_source,
                  updated_at = now()""",
             rows,
         )
@@ -294,9 +302,10 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         status = meta["status"]
     else:
         status = "caution" if slug in DEFAULT_BANNED_SLUGS or row.get("family_slug") in DEFAULT_BANNED_SLUGS else "active"
-    cues = (meta or {}).get("cues") or row.get("cues_zh") or row.get("description_en")   # imported rows only have English text
+    first_en = (row.get("instructions_en") or [None])[0]
+    cues = (meta or {}).get("cues") or row.get("cues_zh") or row.get("description_en") or first_en   # imported rows may only have English
     if is_en() and not (meta or {}).get("cues"):   # the user's own cue stays as written; the curated ones have English
-        cues = CE.CUES_EN.get(slug) or row.get("description_en") or cues
+        cues = CE.CUES_EN.get(slug) or row.get("description_en") or first_en or cues
     reason = (meta or {}).get("reason")
     grp = body_group(row)
     prim = row.get("primary_muscles") or []
@@ -330,7 +339,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         "pattern_zh": pat_zh,
         "movement_pattern_zh": pat_zh,
         "equipment": eq,
-        "equipment_zh": [CD.EQUIPMENT_ZH.get(x, x) for x in eq],
+        "equipment_zh": [CD.EQUIPMENT_ZH.get(x) or (None if row.get("_plain_labels") else CD.EQUIPMENT_ZH_EXTRA.get(x)) or x for x in eq],
         "primary_muscles": prim,
         "primary_muscles_zh": [CD.MUSCLE_ZH.get(x, x) for x in prim],
         "secondary_muscles": sec,
@@ -354,7 +363,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         imgs = row.get("images") or []
         steps = row.get("instructions_zh") or row.get("instructions_en") or ([cues] if cues else [])
         if is_en():   # the curated steps, or the one-line cue the steps were derived from (cues is already English here)
-            steps = (CE.INSTRUCTIONS_EN.get(slug) or row.get("instructions_en")
+            steps = ((row.get("instructions_en") if row.get("steps_source") else None) or CE.INSTRUCTIONS_EN.get(slug) or row.get("instructions_en")
                      or ([cues] if cues and steps == [row.get("cues_zh")] else steps))
         out.update(
             aliases=list(dict.fromkeys([*(row.get("aliases") or []), *((meta or {}).get("aliases") or [])])),
@@ -363,9 +372,17 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             level=row.get("level"),
             instructions_zh=steps,
             license=row.get("license"),
+            zh_source=row.get("zh_source"),
+            steps_source=row.get("steps_source"),
             images=imgs,
             image_urls=image_urls(imgs),
         )
+        if "_media" in row:   # the credit each shown picture needs; no picture -> the page says there is no demo yet
+            shown = {u.rsplit("/exercises/", 1)[-1] for u in out["image_urls"]}
+            out["media_credits"] = [{**{k: m.get(k) for k in ("source", "author", "license_url", "origin_url")},
+                                     "license": L(m["license_zh"], m["license_en"]) if "license_zh" in m else m.get("license")}
+                                    for m in row["_media"] if m["file"] in shown]
+            out["no_demo"] = not out["image_urls"]
     return out
 
 
@@ -391,19 +408,118 @@ def catalog_rows(conn: psycopg.Connection) -> list[dict]:
 OPENGYM_FLAG = "exercise_opengym"
 
 
+def _flag_on(conn: psycopg.Connection, user_id: int | None, flag: str) -> bool:
+    """A rollout flag for this user; with no user: only when it is on for everyone."""
+    if user_id is not None:
+        return flags.enabled(conn, user_id, flag)
+    row = flags.rows(conn).get(flag)
+    return bool(row and row["state"] == "all")
+
+
 def imported_visible(conn: psycopg.Connection, user_id: int | None) -> bool:
     """Whether the exercises imported from openGym (#248) show up for this user; with no user: only when the flag is on for everyone.
     The flag is the emergency switch: off hides the imported rows from search / lookup, the data stays (logged workouts still resolve)."""
-    if user_id is not None:
-        return flags.enabled(conn, user_id, OPENGYM_FLAG)
-    row = flags.rows(conn).get(OPENGYM_FLAG)
-    return bool(row and row["state"] == "all")
+    return _flag_on(conn, user_id, OPENGYM_FLAG)
+
+
+MEDIA_FLAG = "exercise_media_licensed"
+FREE_DB_OFF_FLAG = "exercise_media_free_db_off"
+# The free-exercise-db pictures: kept while the product is in testing (owner's decision, 2026-10-25). The repository is Unlicense,
+# but its maintainer does not know where the pictures came from and the upstream exercises.json says they were collected from the
+# web (THIRD_PARTY_NOTICES.md). exercise_media_free_db_off turns them all into "no demo yet" in one step (e.g. before commercial use).
+FREE_DB_CREDIT = {"source": "free-exercise-db", "author": None, "license_url": "https://unlicense.org/",
+                  "origin_url": "https://github.com/yuhonas/free-exercise-db",
+                  "license_zh": "Unlicense（上游声明，图片原始出处不明）",
+                  "license_en": "Unlicense (as declared upstream; the pictures' original source is unknown)"}
+
+
+def media_policy(conn: psycopg.Connection) -> tuple[bool, bool]:
+    """(licensed pictures with credits, free-exercise-db pictures). Deployment-wide (a licence question, not a per-person
+    rollout): only the flags' "all" state counts."""
+    return _flag_on(conn, None, MEDIA_FLAG), not _flag_on(conn, None, FREE_DB_OFF_FLAG)
+
+
+def media_view(row: dict, licensed: bool, free_db: bool) -> dict:
+    """The row with `images` = the pictures this policy shows: the licensed ones (exercise_catalog.media) first, then the
+    free-exercise-db ones. `_media` = the credit of each shown picture. The legacy policy (licensed off, free-exercise-db on)
+    returns the row unchanged."""
+    if free_db and not licensed:
+        return row
+    media = [*(row.get("media") or [] if licensed else []),
+             *({"file": img, **FREE_DB_CREDIT} for img in (row.get("images") or [] if free_db else []))]
+    seen: set[str] = set()
+    media = [m for m in media if not (m["file"] in seen or seen.add(m["file"]))]
+    return {**row, "images": [m["file"] for m in media], "_media": media}
+
+
+def licensed_media_on(conn: psycopg.Connection) -> bool:
+    return media_policy(conn)[0]
+
+
+def shown_images(conn: psycopg.Connection, row: dict) -> list[str]:
+    """The pictures the page may show for a catalog row, for callers that read catalog_rows directly."""
+    if "_media" in row:
+        return list(row.get("images") or [])
+    return list(media_view(row, *media_policy(conn)).get("images") or [])
+
+
+_VIEW_CACHE: dict[tuple, tuple] = {}
+
+
+def _view(conn: psycopg.Connection, zh: bool, steps: bool = False, policy: tuple[bool, bool] | None = None) -> list[dict]:
+    """catalog_rows as one viewer sees them (machine Chinese or not; the curated library's written steps or not; pictures per
+    media_policy), cached with catalog_rows."""
+    rows = catalog_rows(conn)
+    licensed, free_db = policy or media_policy(conn)
+    legacy = free_db and not licensed
+    if zh and legacy and not steps:
+        return rows
+    key = (conn.info.dbname, zh, steps, licensed, free_db)
+    hit = _VIEW_CACHE.get(key)
+    if hit is None or hit[0] is not rows:
+        out = rows if zh else [TR.english_view(r) for r in rows]
+        if steps:
+            out = [TR.with_curated_steps(r) for r in out]
+        hit = _VIEW_CACHE[key] = (rows, out if legacy else [media_view(r, licensed, free_db) for r in out])
+    return hit[1]
+
+
+def _user_view(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
+    return _view(conn, _flag_on(conn, user_id, TR.FLAG), _flag_on(conn, user_id, TR.STEPS_FLAG))
+
+
+QUALITY_FLAG = "exercise_quality_gate"
+_GRADE_CACHE: dict[tuple, tuple] = {}
+
+
+def grades_for(conn: psycopg.Connection, user_id: int | None) -> dict[str, dict] | None:
+    """slug -> quality grade (training/quality.py) of the shared rows as this viewer sees them, or None while the gate is off for
+    them. A picture counts when the viewer's view shows one (media_policy)."""
+    if not _flag_on(conn, user_id, QUALITY_FLAG):
+        return None
+    from . import quality as Q
+    rows = _user_view(conn, user_id)
+    key = (conn.info.dbname, id(rows))
+    hit = _GRADE_CACHE.get(key)
+    if hit is None or hit[0] is not rows:
+        def media(r):   # a picture the page can really show (downloaded into this deployment, or on the configured image host)
+            return bool(image_urls(r.get("images") or []))
+        dups = Q.duplicates(rows, media)
+        hit = _GRADE_CACHE[key] = (rows, {r["slug"]: Q.grade(r, media(r), dups.get(r["slug"])) for r in rows})
+    return hit[1]
+
+
+def offered(grades: dict[str, dict] | None, slug: str) -> bool:
+    """Whether search results / browsing / alternatives may offer this row (always, while the gate is off; custom rows always)."""
+    return grades is None or slug not in grades or grades[slug]["passed"]
 
 
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
-    flag is on for the user."""
-    rows = catalog_rows(conn)
+    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); pictures per
+    media_policy (exercise_media_licensed, exercise_media_free_db_off; both deployment-wide); the curated library's written
+    steps while exercise_curated_steps is on."""
+    rows = _user_view(conn, user_id)
     if not imported_visible(conn, user_id):
         rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
     if user_id is None:
@@ -595,6 +711,7 @@ def search(
 
     scored: list[tuple[int, str, dict]] = []
     seen_sparky_ids: set[str] = set()
+    grades = grades_for(conn, user_id)   # quality gate (exercise_quality_gate): None = everything is offered
 
     for r in cat_rows:
         m = meta_by_slug.get(r["slug"])
@@ -644,7 +761,11 @@ def search(
                 rank = 25
             else:
                 continue
+            if rank < 100 and m is None and not offered(grades, r["slug"]):   # below the bar: only an exact name finds it
+                continue
         else:
+            if m is None and not offered(grades, r["slug"]):
+                continue
             # Prefer user's configured / linked exercises first, then the curated overlay, then common compound exercises
             rank = (30 if m else 0) + (20 if r.get("source") == "curated" else 0) + (10 if r.get("mechanic") == "compound" else 0)
         if q and r.get("source") == "curated":
@@ -727,6 +848,7 @@ def recommend_alternatives(
         target_row = target
 
     f_equip = _normalize_filter_equip(equipment)
+    grades = grades_for(conn, user_id if with_meta else None)
     t_slug = target_row["slug"]
     t_pat = target_row.get("movement_pattern")
     t_prim = set(target_row.get("primary_muscles") or [])
@@ -741,7 +863,7 @@ def recommend_alternatives(
             continue
         m = meta_by_slug.get(slug)
         status = (m or {}).get("status") or "active"
-        if status == "banned":
+        if status == "banned" or not offered(grades, slug):
             continue
         if f_equip and f_equip not in (r.get("equipment") or []):
             continue
