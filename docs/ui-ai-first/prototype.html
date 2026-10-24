@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 优先 UI 原型</title>
+<!-- Clickable prototype for docs/ui-ai-first-redesign.md (issue #279). Synthetic data only; nothing here talks to a server.
+     Icons: Lucide (ISC), SVG paths inlined from github.com/lucide-icons/lucide main. -->
+<style>
+:root {
+  --bg: #ffffff; --surface: #f4f4f6; --surface-2: #e9e9ed; --text: #111113; --text-2: #6c6c73; --text-3: #a3a3aa;
+  --hair: rgba(0,0,0,.06); --good: #4e9a6b; --mid: #b58a34; --bad: #be5a44; --sleep: #6870c4; --strain: #3d7fd1;
+  --ai: #6f6cf0; --ai-soft: rgba(111,108,240,.10); --good-soft: rgba(78,154,107,.12); --mid-soft: rgba(181,138,52,.13);
+  --bad-soft: rgba(190,90,68,.12); --sheet: #ffffff; --scrim: rgba(0,0,0,.28); --chrome: rgba(255,255,255,.88);
+  --page: #e8e8ec; --radius: 18px; --ease: cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #000; --surface: #121214; --surface-2: #1d1d20; --text: #f4f4f6; --text-2: #8d8d94; --text-3: #55555b; --hair: rgba(255,255,255,.07);
+  --good: #72bf8e; --mid: #d3ae63; --bad: #de7f69; --sleep: #8d93e4; --strain: #6aa7ee; --ai: #a3a6ff; --ai-soft: rgba(163,166,255,.13);
+  --good-soft: rgba(114,191,142,.14); --mid-soft: rgba(211,174,99,.14); --bad-soft: rgba(222,127,105,.14); --sheet: #161618;
+  --scrim: rgba(0,0,0,.6); --chrome: rgba(0,0,0,.84); --page: #0c0c0e; } }
+:root[data-theme="dark"] {
+  --bg: #000; --surface: #121214; --surface-2: #1d1d20; --text: #f4f4f6; --text-2: #8d8d94; --text-3: #55555b; --hair: rgba(255,255,255,.07);
+  --good: #72bf8e; --mid: #d3ae63; --bad: #de7f69; --sleep: #8d93e4; --strain: #6aa7ee; --ai: #a3a6ff; --ai-soft: rgba(163,166,255,.13);
+  --good-soft: rgba(114,191,142,.14); --mid-soft: rgba(211,174,99,.14); --bad-soft: rgba(222,127,105,.14); --sheet: #161618;
+  --scrim: rgba(0,0,0,.6); --chrome: rgba(0,0,0,.84); --page: #0c0c0e; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--text); font: 15px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---- page around the phone */
+.stage { display: flex; gap: 32px; justify-content: center; align-items: flex-start; padding: 28px 16px; flex-wrap: wrap; }
+.ctl { width: 300px; max-width: 100%; }
+.ctl h1 { font-size: 20px; margin: 0 0 6px; }
+.ctl p { color: var(--text-2); font-size: 13px; margin: 0 0 14px; }
+.ctl h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); margin: 18px 0 8px; }
+.ctl .opts { display: flex; flex-direction: column; gap: 6px; }
+.ctl .opt { background: var(--surface); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.ctl .opt small { display: block; color: var(--text-2); font-size: 12px; }
+.ctl .opt[aria-pressed="true"] { outline: 2px solid var(--ai); }
+.ctl .row { display: flex; gap: 6px; flex-wrap: wrap; }
+.ctl .row .opt { flex: 1; text-align: center; }
+
+.phone { width: 390px; height: 844px; border-radius: 54px; padding: 0; background: var(--bg); position: relative; overflow: hidden;
+  box-shadow: 0 0 0 10px #1b1b1e, 0 0 0 11px #3a3a3f, 0 30px 80px rgba(0,0,0,.35); flex: none; }
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+.statusbar { height: 50px; flex: none; display: flex; align-items: flex-end; justify-content: space-between; padding: 0 30px 6px 34px; font-weight: 600; font-size: 15px; }
+.statusbar .isl { position: absolute; left: 50%; top: 11px; width: 120px; height: 34px; margin-left: -60px; background: #000; border-radius: 20px; }
+.statusbar .bat { width: 25px; height: 12px; border: 1.5px solid currentColor; border-radius: 4px; opacity: .8; position: relative; }
+.statusbar .bat::after { content: ""; position: absolute; inset: 1.5px 6px 1.5px 1.5px; background: currentColor; border-radius: 1.5px; }
+.view { flex: 1; overflow-y: auto; padding: 4px 16px 120px; scrollbar-width: none; scroll-behavior: smooth; }
+.view::-webkit-scrollbar { display: none; }
+
+/* ---- header */
+.top { display: flex; align-items: flex-end; justify-content: space-between; margin: 6px 0 12px; }
+.top .date { color: var(--text-2); font-size: 13px; }
+.top h1 { font-size: 30px; margin: 0; letter-spacing: -.01em; }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center; color: var(--text-2); }
+
+/* ---- AI brief line */
+.brief { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 12px; border-radius: 14px; background: var(--ai-soft); color: var(--text); margin-bottom: 14px; }
+.brief .i { color: var(--ai); }
+.brief span { flex: 1; font-weight: 600; font-size: 15px; }
+.brief .chev { color: var(--text-3); width: 16px; height: 16px; }
+
+/* ---- the three core dials */
+.core { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+.dial { background: var(--surface); border-radius: var(--radius); padding: 12px 6px 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.dial svg { width: 86px; height: 86px; }
+.dial .track { stroke: var(--surface-2); }
+.dial text.v { font-size: 25px; font-weight: 700; fill: var(--text); font-variant-numeric: tabular-nums; }
+.dial text.u { font-size: 11px; fill: var(--text-2); }
+.dial .cap { font-size: 13px; color: var(--text-2); }
+.dial .cap b { color: var(--text); font-weight: 600; }
+
+/* ---- sections */
+.sh { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 2px 8px; }
+.sh h2 { font-size: 17px; margin: 0; }
+.sh small { color: var(--text-2); font-size: 13px; }
+
+/* focus: today's 1–3 things */
+.focus { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.fi { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; }
+.fi + .fi { border-top: 1px solid var(--hair); }
+.fi .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--surface-2); flex: none; }
+.fi .ic .i { width: 18px; height: 18px; }
+.fi .t { flex: 1; min-width: 0; }
+.fi .t b { display: block; font-weight: 600; font-size: 15px; }
+.fi .t small { color: var(--text-2); font-size: 12px; }
+.fi .v { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fi .chev { color: var(--text-3); width: 16px; height: 16px; }
+.fi.done .t b { color: var(--text-2); text-decoration: line-through; }
+.tone-good { color: var(--good); } .tone-mid { color: var(--mid); } .tone-bad { color: var(--bad); } .tone-sleep { color: var(--sleep); } .tone-ai { color: var(--ai); } .tone-strain { color: var(--strain); }
+.bg-good { background: var(--good-soft) !important; } .bg-mid { background: var(--mid-soft) !important; } .bg-bad { background: var(--bad-soft) !important; } .bg-ai { background: var(--ai-soft) !important; }
+
+/* module cards */
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mod { background: var(--surface); border-radius: var(--radius); padding: 12px; min-height: 108px; display: flex; flex-direction: column; gap: 6px; position: relative; text-align: left; }
+.mod .mh { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+.mod .mh .i { width: 15px; height: 15px; }
+.mod .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.mod .big small { font-size: 13px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+.mod .sub { font-size: 12px; color: var(--text-2); margin-top: auto; }
+.mod .chip { position: absolute; top: 10px; right: 10px; font-size: 11px; padding: 2px 7px; border-radius: 99px; background: var(--ai-soft); color: var(--ai); font-weight: 600; }
+.mod.ghost { background: transparent; border: 1.5px dashed var(--text-3); justify-content: center; align-items: center; text-align: center; color: var(--text-2); }
+.mod.ghost .i { color: var(--ai); width: 22px; height: 22px; }
+.mod.ghost b { color: var(--text); font-size: 14px; }
+.mod.wide { grid-column: span 2; min-height: 0; }
+.mod.temp { outline: 1.5px solid var(--mid); }
+.mod.grow { animation: grow .9s var(--ease) both, glow 2.4s ease-out .5s 1; }
+@keyframes grow { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes glow { 0% { box-shadow: 0 0 0 0 var(--ai); } 40% { box-shadow: 0 0 0 6px var(--ai-soft); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.spark { width: 100%; height: 30px; overflow: visible; }
+.spark path { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+.spark .area { fill: currentColor; opacity: .12; stroke: none; }
+.meter { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 3px; background: currentColor; }
+.dots { display: flex; gap: 4px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-2); }
+.dots i.on { background: currentColor; }
+.foot { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 16px 0 0; color: var(--text-2); font-size: 13px; width: 100%; }
+.foot .i { width: 15px; height: 15px; }
+
+/* ---- tab bar + Jarvis key */
+.tabbar { position: absolute; left: 0; right: 0; bottom: 0; height: 84px; padding: 0 12px 26px; display: flex; align-items: center; justify-content: space-around;
+  background: var(--chrome); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--hair); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10.5px; color: var(--text-3); width: 62px; }
+.tab[aria-current="page"] { color: var(--text); }
+.tab .i { width: 23px; height: 23px; }
+.tab.grow { animation: grow .8s var(--ease) both; }
+.jkey { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; margin-top: -26px; color: #fff;
+  background: radial-gradient(circle at 50% 40%, #8a87ff, #4b47d6 70%); box-shadow: 0 0 0 4px var(--bg), 0 0 0 5.5px var(--ai-soft), 0 8px 24px rgba(80,76,220,.45); }
+.jkey .i { width: 27px; height: 27px; stroke-width: 1.9; }
+
+/* ---- sheet (Jarvis half sheet, detail sheets) */
+.scrim { position: absolute; inset: 0; background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .25s; z-index: 5; }
+.scrim.on { opacity: 1; pointer-events: auto; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 86%; min-height: 56%; background: var(--sheet); border-radius: 22px 22px 0 0; z-index: 6;
+  transform: translateY(105%); transition: transform .35s var(--ease); display: flex; flex-direction: column; }
+.sheet.on { transform: none; }
+.sheet .grab { width: 38px; height: 5px; border-radius: 3px; background: var(--surface-2); margin: 8px auto 4px; flex: none; }
+.sheet .shd { display: flex; align-items: center; justify-content: space-between; padding: 4px 16px 8px; flex: none; }
+.sheet .shd h3 { margin: 0; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+.sheet .shd h3 .i { color: var(--ai); }
+.sheet .x { width: 30px; height: 30px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; }
+.sheet .x .i { width: 16px; height: 16px; }
+.sheet .sb { flex: 1; overflow-y: auto; padding: 0 16px 16px; scrollbar-width: none; }
+
+/* chat */
+.msgs { display: flex; flex-direction: column; gap: 10px; }
+.bub { max-width: 84%; padding: 9px 12px; border-radius: 16px; font-size: 15px; }
+.bub.me { align-self: flex-end; background: var(--ai); color: #fff; border-bottom-right-radius: 5px; }
+.bub.me .vt { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; opacity: .8; margin-bottom: 2px; }
+.bub.me .vt .i { width: 12px; height: 12px; }
+.bub.ai { align-self: flex-start; background: var(--surface); border-bottom-left-radius: 5px; }
+.ccard { align-self: stretch; background: var(--surface); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.ccard .ch { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.ccard .ch .i { width: 15px; height: 15px; }
+.ccard .ch .ok { margin-left: auto; color: var(--good); display: flex; align-items: center; gap: 3px; font-weight: 600; }
+.ccard .ch .ok .i { width: 14px; height: 14px; }
+.ccard .row2 { display: flex; align-items: baseline; gap: 14px; }
+.ccard .row2 div { display: flex; flex-direction: column; }
+.ccard .row2 b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.ccard .row2 small { color: var(--text-2); font-size: 12px; }
+.acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; background: var(--surface-2); font-size: 13px; font-weight: 600; }
+.pill .i { width: 15px; height: 15px; }
+.pill.pri { background: var(--ai); color: #fff; }
+.pill.on { background: var(--good-soft); color: var(--good); }
+.typing { display: flex; gap: 4px; padding: 12px; }
+.typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: blink 1s infinite; }
+.typing i:nth-child(2) { animation-delay: .15s; } .typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes blink { 50% { opacity: .3; } }
+.compose { display: flex; align-items: center; gap: 8px; padding: 8px 12px 30px; border-top: 1px solid var(--hair); flex: none; }
+.compose .in { flex: 1; background: var(--surface); border-radius: 20px; padding: 9px 14px; color: var(--text-3); font-size: 15px; }
+.compose .mic { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--ai); color: #fff; }
+.sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.sugg button { padding: 7px 11px; border-radius: 99px; border: 1px solid var(--hair); background: var(--surface); font-size: 13px; }
+
+/* detail sheet layers */
+.layer { margin-top: 14px; }
+.layer h4 { margin: 0 0 6px; font-size: 12px; color: var(--text-2); font-weight: 600; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
+.layer h4 .lv { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--text-2); }
+.glance { display: flex; align-items: baseline; gap: 10px; }
+.glance .big { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; font-weight: 600; }
+.chart { width: 100%; height: 120px; }
+.chart .band { fill: currentColor; opacity: .09; }
+.chart .ln { fill: none; stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart .base { stroke: var(--text-3); stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.chart text { font-size: 9px; fill: var(--text-3); }
+table.raw { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.raw th { text-align: left; color: var(--text-2); font-weight: 500; font-size: 12px; padding: 4px 0; }
+table.raw td { padding: 6px 0; border-top: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+table.raw td:last-child, table.raw th:last-child { text-align: right; color: var(--text-2); }
+
+/* segmented control, lists */
+.seg { display: flex; background: var(--surface); border-radius: 10px; padding: 2px; margin: 0 0 12px; }
+.seg button { flex: 1; text-align: center; padding: 6px 0; border-radius: 8px; font-size: 13px; color: var(--text-2); }
+.seg button[aria-pressed="true"] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.tcard { background: var(--surface); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 8px; display: block; width: 100%; }
+.tcard .th { display: flex; justify-content: space-between; align-items: baseline; }
+.tcard .th b { font-size: 15px; }
+.tcard .th span { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tcard .th span small { font-size: 12px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+.tcard .delta { font-size: 12px; color: var(--text-2); }
+.mini3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mini3 .mod { min-height: 84px; }
+.locked { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: var(--radius); border: 1.5px dashed var(--surface-2); color: var(--text-2); width: 100%; }
+.locked .i { color: var(--text-3); }
+.locked b { color: var(--text); display: block; font-size: 14px; }
+.locked small { font-size: 12px; }
+.prog { height: 4px; border-radius: 2px; background: var(--surface-2); margin-top: 6px; overflow: hidden; }
+.prog i { display: block; height: 100%; background: var(--ai); border-radius: 2px; }
+.list { background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.li { display: flex; align-items: center; gap: 12px; padding: 12px 14px; width: 100%; }
+.li + .li { border-top: 1px solid var(--hair); }
+.li .i.lead { width: 18px; height: 18px; color: var(--text-2); }
+.li .t { flex: 1; min-width: 0; }
+.li .t b { display: block; font-weight: 500; }
+.li .t small { color: var(--text-2); font-size: 12px; }
+.li .v { color: var(--text-2); font-size: 14px; }
+.li .chev { color: var(--text-3); width: 16px; height: 16px; }
+.st { font-size: 11px; padding: 2px 7px; border-radius: 99px; font-weight: 600; white-space: nowrap; }
+.st.pinned { background: var(--ai-soft); color: var(--ai); }
+.st.open { background: var(--good-soft); color: var(--good); }
+.st.ready { background: var(--mid-soft); color: var(--mid); }
+.st.locked { background: var(--surface-2); color: var(--text-2); }
+.switch { width: 46px; height: 28px; border-radius: 14px; background: var(--surface-2); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: left .2s; }
+.switch.on { background: var(--good); }
+.switch.on::after { left: 21px; }
+.me-head { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; }
+.me-head .avatar { width: 54px; height: 54px; }
+.me-head b { font-size: 20px; display: block; }
+.me-head small { color: var(--text-2); }
+/* timeline */
+.tl { position: relative; padding-left: 16px; }
+.tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 1.5px; background: var(--surface-2); }
+.te { position: relative; margin-bottom: 8px; }
+.te::before { content: ""; position: absolute; left: -15px; top: 18px; width: 9px; height: 9px; border-radius: 50%; background: var(--surface-2); border: 2px solid var(--bg); }
+.te .tcard { margin: 0; display: flex; gap: 10px; align-items: center; }
+.te .tm { font-size: 12px; color: var(--text-2); width: 40px; flex: none; font-variant-numeric: tabular-nums; }
+.te .src { font-size: 11px; color: var(--text-3); display: flex; align-items: center; gap: 3px; }
+.te .src .i { width: 11px; height: 11px; }
+.chips { display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto; scrollbar-width: none; }
+.chips button { padding: 6px 12px; border-radius: 99px; background: var(--surface); font-size: 13px; white-space: nowrap; }
+.chips button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+.toast { position: absolute; left: 16px; right: 16px; bottom: 100px; background: var(--text); color: var(--bg); border-radius: 14px; padding: 11px 14px; font-size: 14px;
+  opacity: 0; transform: translateY(10px); transition: all .3s var(--ease); z-index: 9; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.toast.on { opacity: 1; transform: none; }
+.toast .i { color: var(--ai); width: 18px; height: 18px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@media (max-width: 440px) { .stage { padding: 12px 0; } .phone { transform: scale(.92); transform-origin: top center; } .ctl { padding: 0 16px; } }
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="ctl">
+    <h1>AI 优先 · 渐进解锁</h1>
+    <p>原型（合成数据）。见 docs/ui-ai-first-redesign.md。点手机里的卡片、tab 和中间的 Jarvis 键。</p>
+    <h2>用户状态</h2>
+    <div class="opts" id="personas">
+      <button class="opt" data-p="day1">新用户 · 第 1 天<small>3 个数 + 起步 3 件事；模块区是空的</small></button>
+      <button class="opt" data-p="week2">使用 2 周<small>Jarvis 用过的模块已长出来；有一个「就绪」</small></button>
+      <button class="opt" data-p="veteran">老用户<small>模块多、可固定；异常时临时出现</small></button>
+    </div>
+    <h2>演示</h2>
+    <div class="opts">
+      <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」长出来<small>从「使用 2 周」开始，自动播放</small></button>
+      <button class="opt" id="demo-intro">就绪模块由 Jarvis 介绍<small>点今天页的虚线卡片</small></button>
+    </div>
+    <h2>外观</h2>
+    <div class="row"><button class="opt" data-theme-set="light">浅色</button><button class="opt" data-theme-set="dark">深色</button></div>
+  </aside>
+  <div class="phone" id="phone"><div class="screen">
+    <div class="statusbar"><span class="num">9:41</span><span class="isl"></span><span class="bat"></span></div>
+    <main class="view" id="view"></main>
+    <nav class="tabbar" id="tabbar"></nav>
+    <div class="scrim" id="scrim"></div>
+    <section class="sheet" id="sheet" aria-modal="true" role="dialog"><div class="grab"></div>
+      <div class="shd"><h3 id="sh-t"></h3><button class="x" id="sh-x" aria-label="关闭"></button></div>
+      <div class="sb" id="sh-b"></div><div id="sh-f"></div></section>
+    <div class="toast" id="toast"></div>
+  </div></div>
+</div>
+<script>
+"use strict";
+const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"/> <path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>"};
+const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------------------------------------------------------------- synthetic data (seeded, the same every load)
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const R = rng(279);
+const series = (n, base, amp, lo, hi) => Array.from({ length: n }, (_, i) => Math.max(lo, Math.min(hi, Math.round(base + Math.sin(i / 2.3) * amp * .5 + (R() - .5) * amp))));
+const D = {
+  recovery: series(30, 62, 34, 18, 96), hrv: series(30, 58, 14, 38, 82), rhr: series(30, 56, 5, 49, 63),
+  sleepMin: series(30, 420, 70, 300, 520), strain: series(30, 11, 7, 3, 19), weight: [74.1, 74.0, 73.8, 73.9, 73.6, 73.5, 73.4, 73.2, 73.3, 73.0, 72.9, 72.8, 72.8, 72.6],
+  stress: series(14, 12, 8, 3, 25).map((v) => v / 10), resp: series(30, 150, 8, 140, 162).map((v) => v / 10),
+};
+D.recovery[29] = 72; D.sleepMin[29] = 432; D.strain[29] = 6;
+const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+
+// ---------------------------------------------------------------- module catalogue (same keys and conditions as the design doc, section 4)
+// how: data = enough data; ai = an AI used the tool; time = days of use; event = something happened; user = pinned by hand
+const CATALOG = [
+  { k: "food", n: "饮食", icon: "utensils", tab: "记录", how: "ai", cond: "Jarvis 第一次帮你记一餐" },
+  { k: "water", n: "喝水", icon: "droplet", tab: "记录", how: "ai", cond: "第一次记喝水" },
+  { k: "training", n: "训练", icon: "dumbbell", tab: "记录", how: "data", cond: "有 1 次训练（手表或 Jarvis）" },
+  { k: "weight", n: "体重", icon: "scale", tab: "身体", how: "ai", cond: "第一次记体重 / 体重秤同步" },
+  { k: "sleepgoal", n: "入睡目标", icon: "moon", tab: "今天", how: "ai", cond: "Jarvis 帮你设了入睡目标" },
+  { k: "coach", n: "负荷目标", icon: "target", tab: "今天", how: "data", cond: "恢复分出来（14 晚 HRV）", need: 14 },
+  { k: "activity", n: "活动", icon: "footprints", tab: "身体", how: "data", cond: "7 天步数", need: 7 },
+  { k: "hrv", n: "HRV · 静息心率", icon: "heart-pulse", tab: "身体", how: "data", cond: "14 晚 HRV", need: 14 },
+  { k: "regularity", n: "睡眠规律", icon: "bed", tab: "身体", how: "data", cond: "14 晚入睡时间", need: 14 },
+  { k: "stress", n: "压力", icon: "brain-circuit", tab: "身体", how: "data", cond: "14 天心率基线", need: 14 },
+  { k: "monitor", n: "健康监测", icon: "bell", tab: "身体", how: "data", cond: "14 天基线；异常时临时上今天页", need: 14 },
+  { k: "report", n: "周报", icon: "clipboard-list", tab: "身体", how: "time", cond: "用满第一周（第 8 天）", need: 8 },
+  { k: "muscle", n: "肌肉负荷", icon: "dumbbell", tab: "记录", how: "data", cond: "14 天里 3 次力量训练" },
+  { k: "journal", n: "日记", icon: "notebook-pen", tab: "记录", how: "ai", cond: "Jarvis 第一次记日记" },
+  { k: "recipes", n: "食谱", icon: "clipboard-list", tab: "记录", how: "ai", cond: "Jarvis 第一次存食谱" },
+  { k: "grocery", n: "采购", icon: "layout-grid", tab: "记录", how: "ai", cond: "Jarvis 第一次列采购清单" },
+  { k: "labs", n: "化验", icon: "flask-conical", tab: "身体", how: "ai", cond: "Jarvis 第一次录化验单" },
+  { k: "supps", n: "补剂", icon: "pill", tab: "我", how: "ai", cond: "Jarvis 第一次记补剂" },
+  { k: "load", n: "训练负荷", icon: "trending-up", tab: "身体", how: "data", cond: "21 天负荷", need: 21 },
+  { k: "vo2", n: "VO₂max", icon: "flame", tab: "身体", how: "data", cond: "手表测到 VO₂max" },
+  { k: "healthspan", n: "身体年龄", icon: "sun", tab: "身体", how: "data", cond: "28 天步数 + 睡眠", need: 28 },
+  { k: "behavior", n: "行为影响", icon: "trending-up", tab: "身体", how: "data", cond: "30 天日记", need: 30 },
+  { k: "advanced", n: "深入指标", icon: "layout-grid", tab: "身体", how: "time", cond: "用满 30 天，或手动打开", need: 30 },
+  { k: "circles", n: "圈子", icon: "users", tab: "我", how: "event", cond: "加入或建了圈子" },
+];
+const HOW = { data: "数据够了", ai: "AI 用过", time: "用的天数", event: "发生了", user: "手动" };
+
+// ---------------------------------------------------------------- three personas
+const PERSONAS = {
+  day1: {
+    day: 1, nights: 3, brief: "欢迎。先和 Jarvis 说一句",
+    focus: [
+      { icon: "mic", t: "说说你今天吃了什么", s: "按住 Jarvis 键说话", tone: "ai", ask: "start-food" },
+      { icon: "moon", t: "今晚戴着手表睡", s: "恢复分校准中", v: "3/14", tone: "sleep" },
+      { icon: "target", t: "定一个目标", s: "减脂 / 增肌 / 睡得更好", tone: "ai", ask: "start-goal" },
+    ],
+    state: { training: "open" }, pinned: [],
+  },
+  week2: {
+    day: 15, nights: 15, brief: "恢复 72 · 适合练腿",
+    focus: [
+      { icon: "dumbbell", t: "练腿 · 45 分钟", s: "负荷目标 10–14", v: "0/10", tone: "strain" },
+      { icon: "moon", t: "00:30 前上床", s: "近 7 晚 4 次达成", v: "00:30", tone: "sleep" },
+      { icon: "utensils", t: "蛋白质还差", s: "午饭后", v: "46 g", tone: "mid" },
+    ],
+    state: { food: "pinned", training: "pinned", sleepgoal: "pinned", weight: "pinned", coach: "open", hrv: "open", activity: "open", report: "open", regularity: "ready", stress: "open", monitor: "open" },
+    pinned: ["food", "training", "sleepgoal", "weight"],
+  },
+  veteran: {
+    day: 120, nights: 118, brief: "呼吸率偏高 · 今天轻松点",
+    focus: [
+      { icon: "bell", t: "健康监测 · 1 项偏高", s: "呼吸率 +1.2 次/分", v: "注意", tone: "mid", temp: true },
+      { icon: "dumbbell", t: "改成 30 分钟爬坡", s: "原计划：上肢力量", v: "Z2", tone: "strain" },
+      { icon: "moon", t: "00:00 前上床", s: "睡眠债 1:40", v: "00:00", tone: "sleep" },
+    ],
+    state: Object.fromEntries(CATALOG.map((m) => [m.k, "open"])),
+    pinned: ["monitor", "food", "training", "water", "sleepgoal", "weight", "stress", "muscle", "labs", "circles"],
+  },
+};
+for (const k of PERSONAS.veteran.pinned) PERSONAS.veteran.state[k] = "pinned";
+
+// ---------------------------------------------------------------- app state
+const S = { p: "week2", tab: "today", pinned: [], state: {}, extraPinned: [], showAll: false, grown: null, chatLog: [], detail: null };
+function setPersona(p) {
+  S.p = p; S.tab = "today"; S.grown = null; S.chatLog = [];
+  const P = PERSONAS[p];
+  S.pinned = [...P.pinned]; S.state = { ...P.state }; S.showAll = false;
+  for (const b of $$("#personas .opt")) b.setAttribute("aria-pressed", b.dataset.p === p);
+  closeSheet(true); render();
+}
+const P = () => PERSONAS[S.p];
+const mstate = (k) => S.state[k] || "locked";
+
+// ---------------------------------------------------------------- small charts
+function spark(vals, opt = {}) {
+  const w = 100, h = 30, lo = Math.min(...vals), hi = Math.max(...vals), x = (i) => (i / (vals.length - 1)) * w, y = (v) => h - 3 - ((v - lo) / (hi - lo || 1)) * (h - 6);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  return `<svg class="spark ${opt.cls || ""}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${opt.area ? `<path class="area" d="${d}L${w},${h}L0,${h}Z"/>` : ""}<path d="${d}"/></svg>`;
+}
+function bars(vals, max, cls, h = 30) {
+  const w = 100, bw = w / vals.length;
+  return `<svg class="spark ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${vals.map((v, i) => `<rect x="${(i * bw + bw * .18).toFixed(1)}" width="${(bw * .64).toFixed(1)}" y="${(h - (v / max) * h).toFixed(1)}" height="${((v / max) * h).toFixed(1)}" rx="1" fill="currentColor" opacity="${i === vals.length - 1 ? 1 : .45}"/>`).join("")}</svg>`;
+}
+function dial(frac, color, value, unit, opt = {}) {
+  const r = 38, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="${r}" fill="none" stroke-width="8" ${opt.calib ? 'stroke-dasharray="3 4"' : ""}/>
+    <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/>
+    <text class="v" x="50" y="${unit ? 53 : 58}" text-anchor="middle">${value}</text>${unit ? `<text class="u" x="50" y="69" text-anchor="middle">${unit}</text>` : ""}</svg>`;
+}
+function lineChart(vals, color, opt = {}) {
+  const w = 300, h = 110, pad = 14, lo = Math.min(...vals) * .92, hi = Math.max(...vals) * 1.04;
+  const x = (i) => pad + (i / (vals.length - 1)) * (w - pad * 2), y = (v) => h - 16 - ((v - lo) / (hi - lo)) * (h - 26);
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length, sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
+  const d = vals.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" style="color:${color}" aria-hidden="true">
+    <rect class="band" x="${pad}" width="${w - pad * 2}" y="${y(mean + sd).toFixed(1)}" height="${(y(mean - sd) - y(mean + sd)).toFixed(1)}"/>
+    <line class="base" x1="${pad}" x2="${w - pad}" y1="${y(mean).toFixed(1)}" y2="${y(mean).toFixed(1)}"/>
+    <path class="ln" d="${d}"/><circle cx="${x(vals.length - 1)}" cy="${y(vals[vals.length - 1])}" r="3.5" fill="currentColor"/>
+    <text x="${pad}" y="${h - 2}">30 天前</text><text x="${w - pad}" y="${h - 2}" text-anchor="end">今天</text>
+    <text x="${w - pad}" y="${(y(mean + sd) - 3).toFixed(1)}" text-anchor="end">你的基线</text></svg>`;
+}
+
+// ---------------------------------------------------------------- module cards (one big number, one small chart, at most one short line)
+const MOD = {
+  food: () => `<div class="big num">1,240<small>/ 2,100 kcal</small></div><div class="meter tone-good"><i style="width:59%"></i></div><div class="sub">蛋白 84 g · 午餐已记</div>`,
+  water: () => `<div class="big num">500<small>/ 2,500 ml</small></div><div class="meter tone-strain"><i style="width:20%"></i></div><div class="sub">刚刚 +500 ml</div>`,
+  training: () => `<div class="big num">3<small>次 · 本周</small></div><div class="dots tone-strain">${[1, 0, 1, 0, 1, 0, 0].map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div><div class="sub">今天：练腿</div>`,
+  weight: () => `<div class="big num">72.6<small>kg</small></div><span class="tone-good">${spark(D.weight)}</span><div class="sub">14 天 −1.5</div>`,
+  sleepgoal: () => `<div class="big num">00:30</div><div class="dots tone-sleep">${[1, 1, 0, 1, 0, 1, 0].map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div><div class="sub">近 7 晚 4 次</div>`,
+  monitor: () => `<div class="big num tone-mid">1<small>项偏高</small></div><span class="tone-mid">${spark(D.resp.slice(-14))}</span><div class="sub">呼吸率 · 其他 4 项正常</div>`,
+  stress: () => `<div class="big num">1.2<small>/ 3 低</small></div><span class="tone-good">${spark(D.stress, { area: true })}</span>`,
+  muscle: () => `<div class="big num">6<small>个肌群 · 7 天</small></div>${bars([8, 12, 4, 10, 6, 9, 3], 12, "tone-strain")}`,
+  labs: () => `<div class="big num">12<small>项</small></div><div class="sub">2 项偏高 · 3 个月前</div>`,
+  circles: () => `<div class="big num">3<small>条新动态</small></div><div class="sub">2 个圈子</div>`,
+  regularity: () => `<div class="big num">78<small>%</small></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7], 7, "tone-sleep")}</span>`,
+  coach: () => `<div class="big num">0<small>/ 10–14</small></div><div class="meter tone-strain"><i style="width:2%"></i></div>`,
+  hrv: () => `<div class="big num">62<small>ms</small></div><span class="tone-good">${spark(D.hrv.slice(-14))}</span>`,
+};
+const catalog = (k) => CATALOG.find((m) => m.k === k);
+function modCard(k, cls = "") {
+  const m = catalog(k);
+  const chip = S.grown === k ? `<span class="chip">新</span>` : "";
+  return `<button class="mod ${cls}" data-mod="${k}"><div class="mh">${ic(m.icon)}<span>${m.n}</span></div>${chip}${(MOD[k] || (() => ""))()}</button>`;
+}
+
+// ---------------------------------------------------------------- pages
+function header(title) {
+  return `<div class="top"><div><div class="date">10月25日 周日</div><h1>${title}</h1></div><button class="avatar" data-go="me" aria-label="我">${ic("user")}</button></div>`;
+}
+function todayHtml() {
+  const p = P();
+  const rec = p.nights < 14 ? dial(p.nights / 14, "var(--text-3)", `${p.nights}/14`, "晚", { calib: true }) : dial(.72, "var(--good)", "72", "%");
+  const recCap = p.nights < 14 ? "恢复 · <b>校准中</b>" : "恢复";
+  const core = `<div class="core">
+    <button class="dial" data-detail="recovery">${rec}<span class="cap">${recCap}</span></button>
+    <button class="dial" data-detail="sleep">${dial(432 / 480, "var(--sleep)", "7:12", "")}<span class="cap">睡眠</span></button>
+    <button class="dial" data-detail="strain">${dial(p.day === 1 ? 8.4 / 21 : 6 / 21, "var(--strain)", p.day === 1 ? "8.4" : "6.0", "/ 21")}<span class="cap">负荷</span></button></div>`;
+  const focus = `<div class="sh"><h2>${p.day === 1 ? "起步" : "重点"}</h2><small>${p.focus.length} 件</small></div><div class="focus">${p.focus.map((f, i) => `
+    <button class="fi" data-focus="${i}"><span class="ic ${f.temp ? "bg-mid" : f.tone === "ai" ? "bg-ai" : ""} tone-${f.tone}">${ic(f.icon)}</span>
+      <span class="t"><b>${f.t}</b><small>${f.s}</small></span>${f.v ? `<span class="v num tone-${f.tone}">${f.v}</span>` : ""}${ic("chevron-right", "chev")}</button>`).join("")}</div>`;
+  const pinned = S.pinned.filter((k) => !(S.p === "veteran" && k === "monitor"));
+  const ready = Object.entries(S.state).filter(([, v]) => v === "ready").map(([k]) => k);
+  const total = CATALOG.length, open = Object.values(S.state).filter((v) => v !== "locked" && v !== "ready").length;
+  let mods = "";
+  if (S.p === "day1") {
+    mods = `<div class="sh"><h2>我的模块</h2><small>0</small></div><div class="grid">
+      <div class="mod ghost wide">${ic("sparkles")}<b>和 Jarvis 聊得越多，这里长出来的越多</b><span class="sub">记一餐 → 饮食 · 记体重 → 体重 · 14 晚 → 恢复趋势</span></div></div>`;
+  } else {
+    const temp = S.p === "veteran" ? modCard("monitor", "temp") : "";
+    mods = `<div class="sh"><h2>我的模块</h2><small>${pinned.length + (temp ? 1 : 0)}</small></div><div class="grid">${temp}${pinned.map((k) => modCard(k, S.grown === k ? "grow" : "")).join("")}
+      ${ready.map((k) => `<button class="mod ghost" data-intro="${k}">${ic("sparkles")}<b>${catalog(k).n}</b><span class="sub">已就绪 · 让 Jarvis 介绍</span></button>`).join("")}</div>`;
+  }
+  return header("今天") + `<button class="brief" data-ask="brief">${ic("sparkles")}<span>${p.brief}</span>${ic("chevron-right", "chev")}</button>`
+    + core + focus + mods + logHtml() + `<button class="foot" data-go="me" data-sub="modules">${ic("layout-grid")}已解锁 ${open} / ${total} 个模块</button>`;
+}
+
+const viaJ = () => `${ic("sparkles")}Jarvis · 语音`;
+function entry(tm, icon, title, val, src, tone) {
+  return `<div class="te"><div class="tcard"><span class="tm">${tm}</span><span class="tone-${tone}">${ic(icon)}</span><span style="flex:1;min-width:0"><b style="display:block;font-weight:500">${title}</b><span class="src">${src}</span></span><b class="num">${val}</b></div></div>`;
+}
+function todayEntries() {
+  if (S.p === "day1") return [];
+  return [S.grown === "water" ? entry("12:41", "droplet", "喝水", "500 ml", viaJ(), "strain") : "",
+    entry("12:40", "utensils", "牛肉面", "620 kcal", viaJ(), "good"),
+    entry("08:10", "utensils", "燕麦 + 鸡蛋 ×2", "620 kcal", `${ic("sparkles")}Jarvis · 快捷记餐`, "good"),
+    entry("07:32", "scale", "体重", "72.6 kg", `${ic("sparkles")}Jarvis · 拍照`, "plain")].filter(Boolean);
+}
+// Today's log: only when something was logged (no empty cards); the full history is the 记录 page
+function logHtml() {
+  const es = todayEntries();
+  if (!es.length) return "";
+  return `<div class="sh"><h2>今天的记录</h2><button data-go="record" style="color:var(--ai);font-size:13px">全部 ›</button></div><div class="tl">${es.slice(0, 3).join("")}</div>`;
+}
+const back = (label, to, sub = "") => `<button class="date" data-go="${to}" data-sub="${sub}" style="color:var(--ai)">‹ ${label}</button>`;
+
+function bodyHtml() {
+  const vet = S.p === "veteran";
+  const t = (title, val, unit, delta, chart, key) => `<button class="tcard" data-detail="${key}"><div class="th"><b>${title}</b><span class="num">${val}<small>${unit}</small></span></div>${chart}<div class="delta">${delta}</div></button>`;
+  const lvl2 = ["hrv", "rhr", "debt"].map((k) => ({ hrv: ["HRV", "62", "ms", D.hrv, "var(--good)"], rhr: ["静息心率", "54", "bpm", D.rhr, "var(--good)"], debt: ["睡眠债", "0:45", "", D.sleepMin, "var(--sleep)"] })[k])
+    .map(([n, v, u, s, c], i) => `<button class="mod" data-detail="${["hrv", "rhr", "sleep"][i]}"><div class="mh"><span>${n}</span></div><div class="big num">${v}<small>${u}</small></div><span style="color:${c}">${spark(s.slice(-14))}</span></button>`).join("");
+  const deep = vet ? `<div class="sh"><h2>深入</h2><small>14 项</small></div><div class="list">${["呼吸率", "血氧", "手腕温度", "生病风险", "心率区间", "VO₂max", "身体年龄", "行为影响"].map((n) => `<div class="li"><span class="t"><b>${n}</b></span>${ic("chevron-right", "chev")}</div>`).join("")}</div>`
+    : `<div class="sh"><h2>深入</h2><small>14 项</small></div><button class="locked" data-go="me" data-sub="modules">${ic("lock")}<span style="flex:1"><b>呼吸率、血氧、手腕温度、VO₂max…</b><small>再用 15 天自动打开 · 或在模块库打开</small><div class="prog"><i style="width:50%"></i></div></span></button>`;
+  if (S.p === "day1") return header("身体") + `<div class="sh" style="margin-top:4px"><h2>核心</h2><small>3 晚数据</small></div>
+    ${t("睡眠", "7:05", " 均值", "3 晚", `<span class="tone-sleep">${bars(D.sleepMin.slice(-3), 540, "tone-sleep")}</span>`, "sleep")}
+    ${t("负荷", "9.1", " 均值", "3 天", `<span class="tone-strain">${bars(D.strain.slice(-3), 21, "tone-strain")}</span>`, "strain")}
+    <button class="locked" data-detail="recovery">${ic("lock")}<span style="flex:1"><b>恢复趋势</b><small>14 晚 HRV 后出现 · 还差 11 晚</small><div class="prog"><i style="width:21%"></i></div></span></button>
+    <div class="sh"><h2>进阶 · 深入</h2><small>0 / 23 项</small></div><button class="locked" data-go="me" data-sub="modules">${ic("lock")}<span style="flex:1"><b>HRV、静息心率、压力、睡眠规律…</b><small>数据够了 Jarvis 会一个一个介绍</small></span></button>`;
+  return header("身体") + `<div class="seg"><button aria-pressed="false">7 天</button><button aria-pressed="true">30 天</button><button aria-pressed="false">90 天</button></div>
+    <div class="sh" style="margin-top:4px"><h2>核心</h2><small>3 项</small></div>
+    ${t("恢复", "64", "% 均值", "vs 上 30 天 +5", `<span style="color:var(--good)">${spark(D.recovery, { area: true })}</span>`, "recovery")}
+    ${t("睡眠", "7:04", " 均值", "vs 上 30 天 +0:12", `<span class="tone-sleep">${bars(D.sleepMin.slice(-14), 540, "tone-sleep")}</span>`, "sleep")}
+    ${t("负荷", "10.8", " 均值", "vs 上 30 天 +1.4", `<span class="tone-strain">${bars(D.strain.slice(-14), 21, "tone-strain")}</span>`, "strain")}
+    <div class="sh"><h2>进阶</h2><small>${vet ? "9" : "3"} 项</small></div><div class="mini3">${lvl2}</div>${deep}`;
+}
+
+function recordHtml() {
+  return `<div class="top"><div>${back("今天", "today")}<h1>记录</h1></div></div><div class="chips"><button aria-pressed="true">全部</button><button>训练</button><button>饮食</button><button>身体</button><button>日记</button></div>
+    <div class="sh" style="margin-top:4px"><h2>今天</h2><small>1,240 kcal</small></div><div class="tl">${todayEntries().join("")}</div>
+    <div class="sh"><h2>昨天</h2><small>2,050 kcal · 1 次训练</small></div><div class="tl">
+    ${entry("19:05", "dumbbell", "上肢力量 · 14 组", "52 分钟", `${ic("activity")}手表`, "strain")}
+    ${entry("13:10", "utensils", "鸡胸饭", "710 kcal", viaJ(), "good")}
+    ${entry("01:50", "notebook-pen", "日记 · 睡前看手机", "是", `${ic("sparkles")}Jarvis`, "sleep")}</div>`;
+}
+
+function meHtml() {
+  if (S.meSub === "modules") return modulesHtml();
+  const open = Object.values(S.state).filter((v) => v !== "locked" && v !== "ready").length;
+  const li = (icon, t, v, attr = "") => `<button class="li" ${attr}>${ic(icon, "lead")}<span class="t"><b>${t}</b></span>${v ? `<span class="v">${v}</span>` : ""}${ic("chevron-right", "chev")}</button>`;
+  return `<div class="top"><div>${back("今天", "today")}<h1>我</h1></div></div><div class="me-head"><span class="avatar">${ic("user")}</span><div><b>示例用户</b><small>使用第 ${P().day} 天</small></div></div>
+    <div class="list">${li("sparkles", "AI 设置", "Jarvis")}${li("layout-grid", "模块", `${open} / ${CATALOG.length}`, 'data-sub="modules"')}${li("clipboard-list", "健康档案", S.p === "veteran" ? "化验 12 · 补剂 3" : "")}
+    ${S.p === "veteran" ? li("users", "圈子", "2") : ""}</div><div style="height:12px"></div>
+    <div class="list">${li("notebook-pen", "全部记录", "", 'data-go="record"')}${li("activity", "手机同步", "刚刚")}${li("notebook-pen", "使用手册")}${li("lock", "设置")}</div>`;
+}
+
+function modulesHtml() {
+  const row = (m) => {
+    const st = mstate(m.k);
+    const lab = { pinned: "今天页", open: "已解锁", ready: "就绪", locked: "未解锁" }[st];
+    const prog = st === "locked" && m.need ? `<div class="prog"><i style="width:${Math.min(100, (P().nights / m.need) * 100)}%"></i></div>` : "";
+    return `<div class="li">${ic(m.icon, "lead")}<span class="t"><b>${m.n}</b><small>${HOW[m.how]} · ${m.cond}</small>${prog}</span><span class="st ${st}">${lab}</span></div>`;
+  };
+  const groups = [["今天页上", (s) => s === "pinned"], ["已解锁", (s) => s === "open"], ["就绪 · Jarvis 会介绍", (s) => s === "ready"], ["还没解锁", (s) => s === "locked"]];
+  return `<div class="top"><div>${back("我", "me")}<h1>模块</h1></div></div>
+    <div class="list"><div class="li"><span class="t"><b>显示全部模块</b><small>不等解锁，所有模块都放出来</small></span><button class="switch ${S.showAll ? "on" : ""}" id="show-all" aria-label="显示全部模块"></button></div></div>
+    ${groups.map(([t, f]) => { const ms = CATALOG.filter((m) => f(mstate(m.k))); return ms.length ? `<div class="sh"><h2>${t}</h2><small>${ms.length}</small></div><div class="list">${ms.map(row).join("")}</div>` : ""; }).join("")}`;
+}
+
+// ---------------------------------------------------------------- tab bar (tabs grow too: day 1 has 今天 · Jarvis · 我)
+// Three slots: 今天 · Jarvis · 身体. 我 is the avatar (top right); 记录 is a page opened from Today.
+const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"] };
+function tabbar() {
+  const b = (t) => `<button class="tab" data-tab="${t}" ${S.tab === t ? 'aria-current="page"' : ""}>${ic(TABS[t][0])}<span>${TABS[t][1]}</span></button>`;
+  $("#tabbar").innerHTML = b("today") + `<button class="jkey" id="jkey" aria-label="Jarvis">${ic("orbit")}</button>` + b("body");
+}
+
+function render() {
+  const v = $("#view");
+  v.innerHTML = { today: todayHtml, body: bodyHtml, record: recordHtml, me: meHtml }[S.tab]();
+  tabbar(); bind();
+}
+function go(tab, sub) { S.tab = tab; S.meSub = sub || ""; $("#view").scrollTop = 0; render(); }
+
+// ---------------------------------------------------------------- sheets
+function openSheet(title, body, foot = "") { $("#sh-t").innerHTML = title; $("#sh-b").innerHTML = body; $("#sh-f").innerHTML = foot; $("#sheet").classList.add("on"); $("#scrim").classList.add("on"); }
+function closeSheet(now) { $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on"); }
+function toast(html) { const t = $("#toast"); t.innerHTML = html; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2600); }
+
+// layered detail: glance -> trend -> raw
+const DETAIL = {
+  recovery: { n: "恢复", v: "72", u: "%", tone: "good", badge: "好", vals: D.recovery, color: "var(--good)", raw: (i) => `${D.recovery[29 - i]}%`, src: "手表 HRV + 静息心率" },
+  sleep: { n: "睡眠", v: "7:12", u: "", tone: "good", badge: "够", vals: D.sleepMin, color: "var(--sleep)", raw: (i) => hm(D.sleepMin[29 - i]), src: "手表 · 睡眠阶段" },
+  strain: { n: "负荷", v: "6.0", u: "/ 21", tone: "mid", badge: "偏低", vals: D.strain, color: "var(--strain)", raw: (i) => `${D.strain[29 - i]}`, src: "手表心率" },
+  hrv: { n: "HRV", v: "62", u: "ms", tone: "good", badge: "平衡", vals: D.hrv, color: "var(--good)", raw: (i) => `${D.hrv[29 - i]} ms`, src: "手表 · 睡眠中" },
+  rhr: { n: "静息心率", v: "54", u: "bpm", tone: "good", badge: "正常", vals: D.rhr, color: "var(--good)", raw: (i) => `${D.rhr[29 - i]}`, src: "手表 · 睡眠中" },
+};
+function detailSheet(k) {
+  const d = DETAIL[k]; if (!d) return;
+  if (k === "recovery" && P().nights < 14) {
+    openSheet("恢复 · 校准中", `<div class="layer"><h4><span class="lv">L1</span>一眼</h4><div class="glance"><span class="big num">${P().nights}/14</span><span class="badge bg-ai tone-ai">晚</span></div>
+      <div class="prog" style="height:8px;margin-top:10px"><i style="width:${(P().nights / 14) * 100}%"></i></div></div>
+      <div class="layer"><h4><span class="lv">L2</span>为什么</h4><div class="list"><div class="li"><span class="t"><b>需要 14 晚 HRV 建立你的基线</b><small>每晚戴着手表睡就行</small></span></div></div></div>
+      <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="calib">${ic("sparkles")}问 Jarvis</button></div>`);
+    return;
+  }
+  const rows = Array.from({ length: 7 }, (_, i) => `<tr><td>10/${25 - i}</td><td>${d.raw(i)}</td><td>${d.src}</td></tr>`).join("");
+  openSheet(d.n, `<div class="layer"><h4><span class="lv">L1</span>一眼</h4><div class="glance"><span class="big num">${d.v}<small style="font-size:16px;color:var(--text-2)"> ${d.u}</small></span><span class="badge bg-${d.tone} tone-${d.tone}">${d.badge}</span></div></div>
+    <div class="layer"><h4><span class="lv">L2</span>趋势 · 30 天</h4>${lineChart(d.vals, d.color)}</div>
+    <div class="layer"><h4><span class="lv">L3</span>原始数据</h4><table class="raw"><tr><th>日期</th><th>值</th><th>来源</th></tr>${rows}</table></div>
+    <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="explain">${ic("sparkles")}问 Jarvis 为什么</button><button class="pill">${ic("pin")}固定到今天</button></div>`);
+}
+
+// Jarvis half sheet (simplified: the real one is the existing ai.js chat)
+function jarvisSheet(msgs = "", sugg = true) {
+  const s = S.p === "day1" ? ["今天吃了什么", "我想减脂", "这个 app 能做什么"] : ["今天该练什么", "记一顿饭", "我睡得怎么样"];
+  openSheet(`${ic("orbit")}Jarvis`, `<div class="msgs" id="msgs">${msgs}</div>${sugg && !msgs ? `<div class="sugg">${s.map((x) => `<button>${x}</button>`).join("")}</div>` : ""}`,
+    `<div class="compose"><span class="in">说点什么，或按住说话</span><span class="mic">${ic("mic")}</span></div>`);
+}
+async function addMsg(html) { const m = $("#msgs"); if (!m) return; m.insertAdjacentHTML("beforeend", html); $("#sh-b").scrollTop = 1e4; }
+async function typing(ms) { await addMsg(`<div class="bub ai typing" id="typing"><i></i><i></i><i></i></div>`); await sleep(ms); $("#typing")?.remove(); }
+
+// ---------------------------------------------------------------- demo 1: Jarvis logs water for the first time -> the 喝水 module grows on Today
+let demoRun = 0;
+async function demoGrow(auto = true) {
+  const run = ++demoRun;
+  setPersona("week2");
+  await sleep(auto ? 700 : 0);
+  jarvisSheet("", false);
+  await sleep(500); if (run !== demoRun) return;
+  await addMsg(`<div class="bub me"><div class="vt">${ic("audio-waveform")}语音 · 0:04</div>中午吃了一碗牛肉面，喝了一瓶水</div>`);
+  await typing(1100); if (run !== demoRun) return;
+  await addMsg(`<div class="ccard"><div class="ch">${ic("utensils")}午餐<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">620</b><small>kcal</small></div><div><b class="num">28 g</b><small>蛋白</small></div><div><b class="num">1,240</b><small>今天</small></div></div></div>`);
+  await sleep(500);
+  await addMsg(`<div class="ccard" id="wcard"><div class="ch">${ic("droplet")}喝水<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">500 ml</b><small>今天 / 2,500</small></div></div>
+    <div class="acts"><button class="pill pri" id="pin-water">${ic("pin")}放到今天页</button><button class="pill">不用</button></div></div>`);
+  await sleep(300);
+  await addMsg(`<div class="bub ai">记好了。这是你第一次记喝水，要不要把「喝水」放到今天页？以后说一句「喝了一杯」就行。</div>`);
+  const pin = $("#pin-water");
+  const done = new Promise((res) => { pin.onclick = res; if (auto) setTimeout(res, 2200); });
+  await done; if (run !== demoRun) return;
+  pin.classList.add("on"); pin.classList.remove("pri"); pin.innerHTML = `${ic("check")}已放到今天页`;
+  await sleep(700);
+  closeSheet();
+  S.state.water = "pinned"; S.pinned.unshift("water"); S.grown = "water"; render();
+  await sleep(350);
+  $(".mod.grow")?.scrollIntoView({ block: "center" });
+  toast(`${ic("sparkles")}「喝水」已放到今天页 · 长按可移走`);
+}
+
+// ---------------------------------------------------------------- demo 2: a ready module is introduced by Jarvis
+async function demoIntro(k = "regularity") {
+  if (S.p !== "week2") setPersona("week2");
+  jarvisSheet("", false);
+  await sleep(250);
+  await addMsg(`<div class="ccard"><div class="ch">${ic("bed")}睡眠规律 · 14 晚</div><div class="row2"><div><b class="num">78%</b><small>规律度</small></div><div><b class="num">01:12</b><small>平均入睡</small></div></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7, 6, 5, 7, 6, 4, 7, 6], 7, "tone-sleep")}</span>
+    <div class="acts"><button class="pill pri" id="pin-reg">${ic("pin")}放到今天页</button><button class="pill" id="later">先不用</button></div></div>`);
+  await addMsg(`<div class="bub ai">你已经有 14 晚的入睡时间了，可以看「睡眠规律」：周末比平时晚睡 1 小时，周一的恢复会低一些。</div>`);
+  $("#pin-reg").onclick = async () => { closeSheet(); S.state[k] = "pinned"; S.pinned.push(k); S.grown = k; render(); await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" }); toast(`${ic("sparkles")}「睡眠规律」已放到今天页`); };
+  $("#later").onclick = () => { closeSheet(); S.state[k] = "open"; render(); toast(`${ic("layout-grid")}在 身体 → 进阶 里随时能看`); };
+}
+
+// ---------------------------------------------------------------- events
+function bind() {
+  for (const b of $$("[data-tab]")) b.onclick = () => go(b.dataset.tab);
+  for (const b of $$("[data-go]")) b.onclick = () => go(b.dataset.go, b.dataset.sub);
+  for (const b of $$("[data-sub]:not([data-go])")) b.onclick = () => go("me", b.dataset.sub);
+  for (const b of $$("[data-detail]")) b.onclick = () => detailSheet(b.dataset.detail);
+  for (const b of $$("[data-intro]")) b.onclick = () => demoIntro(b.dataset.intro);
+  for (const b of $$("[data-focus], [data-ask], [data-mod]")) b.onclick = () => jarvisSheet();
+  $("#jkey").onclick = () => jarvisSheet();
+  const sa = $("#show-all");
+  if (sa) sa.onclick = () => { S.showAll = !S.showAll; for (const m of CATALOG) if (S.showAll && mstate(m.k) === "locked") S.state[m.k] = "open"; if (!S.showAll) S.state = { ...P().state, ...Object.fromEntries(S.pinned.map((k) => [k, "pinned"])) }; render(); };
+}
+$("#sh-x").innerHTML = ic("x");
+$("#sh-x").onclick = () => closeSheet();
+$("#scrim").onclick = () => closeSheet();
+for (const b of $$("#personas .opt")) b.onclick = () => { demoRun++; setPersona(b.dataset.p); };
+$("#demo-grow").onclick = () => demoGrow(true);
+$("#demo-intro").onclick = () => { demoRun++; demoIntro(); };
+for (const b of $$("[data-theme-set]")) b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; };
+window.Proto = { setPersona, go, demoGrow, demoIntro, detailSheet, jarvisSheet, closeSheet, S };
+const q = new URLSearchParams(location.search);
+if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+setPersona(q.get("p") || "week2");
+</script>
+</body>
+</html>
