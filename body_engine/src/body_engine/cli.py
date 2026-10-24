@@ -367,6 +367,14 @@ def main() -> None:
     rc.add_argument("--user-id", type=int, required=True)
     sub.add_parser("memory-review-run", help="long-term memory review (issue #113): for every user with the flag memory_hygiene on, purge archived entries older than "
                    "memory_params.ARCHIVE_PURGE_DAYS and refresh the review state behind the briefing reminder (idempotent, nightly)")
+    hbt = sub.add_parser("hourly-batch", help="the hourly / nightly job for all users in one process (import-ow, compute-scores, evaluate-rules; "
+                         "users isolated, optional worker processes, unchanged inputs skipped; last line BATCH_RESULT {json}; exit 1 on any failure)")
+    hbt.add_argument("--workers", type=int, default=1, help="worker processes (each its own database connection), default 1")
+    hbt.add_argument("--full", action="store_true", help="nightly: full compute-scores from the scoring start, nothing skipped")
+    hbt.add_argument("--steps", default="import-ow,compute-scores,evaluate-rules", help="comma list of: import-ow, compute-scores, evaluate-rules, refresh-status")
+    hbt.add_argument("--user-id", type=int, help="only this user")
+    hbt.add_argument("--no-skip", action="store_true", help="do not skip users whose inputs did not change")
+    hbt.add_argument("--max-age-hours", type=float, default=6.0, help="recompute an unchanged step after this many hours at the latest (default 6; from 4 h on in the user's turn)")
     rs = sub.add_parser("refresh-status", help="recompute the status card items the backend computes automatically (weight, recovery, sleep debt, bedtime, lab results, workout count, red meat)")
     rs.add_argument("--user-id", type=int, required=True)
 
@@ -471,6 +479,9 @@ def main() -> None:
         path, created = ai_crypto.init_master_key()
         print(("created: " if created else "exists (unchanged): ") + str(path))
         return
+    if args.cmd == "hourly-batch":  # opens its own connection per user
+        from . import batch
+        raise SystemExit(batch.main(args))
     with connect() as conn:
         # Tester users who have not consented in the app: health data is stored but not processed (profile/consent.py)
         if args.cmd in CONSENT_GATED and getattr(args, "user_id", None) is not None:
