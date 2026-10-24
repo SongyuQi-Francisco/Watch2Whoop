@@ -545,7 +545,7 @@ EST_ROUND_MIN = 5
 
 
 # ---------- muscle load map (rollout flag muscle_load, training/muscle_load.py) ----------
-MUSCLE_LOAD_VERSION = "v1.1-2026-10-23"   # v1.1: sports layer by duration, own custom exercises (#189)
+MUSCLE_LOAD_VERSION = "v1.2-2026-10-25"   # v1.2: every workout credits muscles, equivalent sets count for the colours; v1.1: sports layer, custom exercises (#189)
 PRIMARY_FACTOR, SECONDARY_FACTOR = 1.0, 0.5   # a set counts fully for the primary muscles of the exercise, half for the secondary ones
                                               # (the usual "fractional sets" bookkeeping: Pelland et al. 2024 preprint, Krieger / Israetel practice)
 MUSCLE_LOAD_BASELINE_DAYS = 28                # "last trained" looks back this far; the week-over-week comparison needs the previous week
@@ -570,55 +570,26 @@ MUSCLE_SIDE_BY_REGION = {   # body-map region (muscle-body-data.js) -> catalog m
 RECOMMEND_LIMIT = 5                           # exercises suggested for a tapped muscle
 MUSCLE_RANGES = ("today", "week", "last7")
 
-# ---- Sports layer of the muscle load map (issue #189) ----------------------------------------------------------------------
-# Watch workouts (workouts table: basketball, swimming, running, ...) are counted by DURATION in their own layer: never turned into
-# sets and never part of the set-based colours, because a sport has no accepted "equivalent sets" and a conversion would distort them.
-# Minutes count fully for the primary muscles and half for the secondary ones (same weighting idea as PRIMARY_FACTOR / SECONDARY_FACTOR).
-# Types not listed here count for no muscle and only show up in the overall list; strength types (STRENGTH_TYPES) are left out
-# entirely: their sets are already counted from the logged exercises. A coarse classification of which muscles do most of the work,
-# not a measured dose; muscle keys are the catalog's (catalog_data.MUSCLE_ZH). Basis per entry:
-# - running / treadmill: stance-phase work of the hip and knee extensors and the plantar flexors, hamstrings decelerate the swing
-#   (Novacheck 1998, Gait Posture 7:77, "The biomechanics of running").
-# - walking / hiking / stair climbing (incline walking is recorded as walking): glutes, hamstrings, quadriceps and calves, their
-#   activation rising with the grade (Franz & Kram 2012, Gait Posture 36:381, grade and speed vs leg muscle activation).
-# - cycling / indoor cycling / elliptical: quadriceps and glutes produce most of the power, calves transfer it, hamstrings help
-#   in the upstroke (Hug & Dorel 2009, J Electromyogr Kinesiol 19:182, EMG of pedalling: a review).
-# - rowing machine: legs drive (quadriceps, glutes), then the back and arms pull (Turpin et al. 2011, Eur J Appl Physiol 111:3017,
-#   muscle coordination during rowing).
-# - swimming: propulsion mainly from the latissimus dorsi, shoulders and triceps, the legs and trunk stabilise and kick
-#   (Martens, Figueiredo & Daly 2015, J Electromyogr Kinesiol 25:273, EMG in the four competitive strokes: a systematic review).
-# - basketball / soccer / volleyball / court and field sports: repeated sprints, jumps and changes of direction load the lower body
-#   (Stojanovic et al. 2018, Sports Med 48:111, activity demands of basketball match-play: a systematic review).
-# - tennis / badminton / squash / pickleball / table tennis: footwork as above plus the hitting arm and trunk rotation
-#   (Kovacs 2007, Sports Med 37:189, tennis physiology).
-# - boxing / martial arts: punches from the shoulders and triceps driven by the legs and trunk; climbing: grip and pulling
-#   (forearms, lats, biceps); jump rope: plantar flexors. Rated from the movement itself; change them when better data is at hand.
-SPORT_MUSCLES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {   # type -> (primary, secondary)
-    "running": (("quadriceps", "glutes", "calves"), ("hamstrings", "abdominals")),
-    "treadmill": (("quadriceps", "glutes", "calves"), ("hamstrings", "abdominals")),
-    "walking": (("glutes", "calves"), ("quadriceps", "hamstrings")),
-    "hiking": (("glutes", "quadriceps", "calves"), ("hamstrings", "lower back")),
-    "stair_climbing": (("quadriceps", "glutes"), ("calves", "hamstrings")),
-    "cycling": (("quadriceps", "glutes"), ("calves", "hamstrings")),
-    "indoor_cycling": (("quadriceps", "glutes"), ("calves", "hamstrings")),
-    "elliptical": (("quadriceps", "glutes"), ("hamstrings", "calves", "shoulders")),
-    "rowing_machine": (("quadriceps", "glutes", "lats", "middle back"), ("hamstrings", "biceps", "lower back", "shoulders")),
-    "swimming": (("lats", "shoulders", "triceps"), ("chest", "abdominals", "quadriceps", "glutes")),
-    "pool_swimming": (("lats", "shoulders", "triceps"), ("chest", "abdominals", "quadriceps", "glutes")),
-    "open_water_swimming": (("lats", "shoulders", "triceps"), ("chest", "abdominals", "quadriceps", "glutes")),
-    "basketball": (("quadriceps", "glutes", "calves"), ("hamstrings", "adductors", "abdominals", "shoulders")),
-    "soccer": (("quadriceps", "hamstrings", "glutes", "calves"), ("adductors", "abductors", "abdominals")),
-    "australian_football": (("quadriceps", "hamstrings", "glutes", "calves"), ("adductors", "abdominals", "shoulders")),
-    "rugby": (("quadriceps", "glutes", "hamstrings"), ("calves", "shoulders", "traps", "abdominals")),
-    "volleyball": (("quadriceps", "glutes", "calves"), ("shoulders", "abdominals")),
-    "tennis": (("quadriceps", "glutes", "calves"), ("shoulders", "forearms", "abdominals")),
-    "badminton": (("quadriceps", "glutes", "calves"), ("shoulders", "forearms", "abdominals")),
-    "squash": (("quadriceps", "glutes", "calves"), ("shoulders", "forearms", "abdominals")),
-    "pickleball": (("quadriceps", "calves"), ("glutes", "shoulders", "forearms")),
-    "table_tennis": (("calves",), ("quadriceps", "shoulders", "forearms")),
-    "boxing": (("shoulders", "triceps"), ("chest", "abdominals", "calves")),
-    "martial_arts": (("quadriceps", "glutes"), ("shoulders", "abdominals", "hamstrings")),
-    "climbing": (("forearms", "lats", "biceps"), ("middle back", "shoulders", "abdominals")),
-    "jump_rope": (("calves",), ("quadriceps", "shoulders", "forearms")),
-}
+# ---- Sports layer of the muscle load map (issue #189, coverage: every workout credits muscles) ----------------------------------
+# Watch workouts (workouts table: cycling, swimming, basketball, strength training without logged sets ...) are converted to two numbers per
+# muscle: MINUTES (primary x SPORT_PRIMARY_FACTOR, secondary x SPORT_SECONDARY_FACTOR; shown as "sport_min") and EQUIVALENT SETS on the
+# same scale as logged sets, so the colours and the weekly range count them (formula: muscle_load.sport_load):
+#   equivalent sets of a muscle = minutes x SPORT_SETS_PER_MIN x resistance(type) x INTENSITY_MULT[level] x (1 | 0.5 for primary | secondary)
+# The type -> muscles table with its basis is training/sport_muscles.py (SPORT_MUSCLES, FALLBACK: a type that is not listed credits the
+# whole body at a low rating, so no workout is ever left without muscles).
+from .sport_muscles import SPORT_MUSCLES  # noqa: E402,F401  (re-export: the table used to live here)
+SET_CYCLE_MIN = 3.0            # minutes one working set takes in a gym session incl. rest, exercise changes and warm-up
+                               # (40 s of work + 90 s rest = EST_SET_WORK_SEC + EST_DEFAULT_REST_SEC, plus changes and warm-up)
+SPORT_SETS_PER_MIN = 1 / SET_CYCLE_MIN   # a minute of pure lifting is 1/3 working set; sport_muscles.RESISTANCE scales it per type
+# Intensity of the workout (INTENSITY_LEVELS by TRIMP / average heart rate / duration, the same grading as the training calendar) -> multiplier.
+# Scaled like session-RPE categories (light / moderate / hard / very hard ~ RPE 3 / 5 / 7 / 9, divided by 5; Foster 2001, J Strength Cond Res
+# 15:109): the same minutes of a harder effort load the muscles more.
+INTENSITY_MULT = {"rest": 0.4, "light": 0.6, "moderate": 1.0, "hard": 1.4, "max": 1.8}
+# A strength workout with no logged sets (the watch only knows time and heart rate; heart rate underestimates lifting, so the intensity
+# multiplier is not applied): working sets = minutes / SET_CYCLE_MIN, spread over the muscles of that weekday's planned session (the
+# primary muscles of its strength exercises), else over the whole-body mapping. Each set credits on average STRENGTH_PRIMARIES_PER_SET
+# primary muscles (compound lifts hit 1-3), so a muscle in a target of n muscles gets sets x STRENGTH_PRIMARIES_PER_SET / n, and the
+# secondary muscles of the target half of that (SPORT_SECONDARY_FACTOR).
+STRENGTH_PRIMARIES_PER_SET = 1.5
+STRENGTH_FALLBACK_RESISTANCE = 1.0
 SPORT_PRIMARY_FACTOR, SPORT_SECONDARY_FACTOR = 1.0, 0.5   # minutes count fully for primary muscles, half for secondary ones
