@@ -131,7 +131,7 @@
 | 触发 | 例子 | 我们能用的信号 |
 |---|---|---|
 | 完成一个动作 | Duolingo 第一节课后提示注册；Linear 清单每完成一项露出一块界面 | AI 调过某个工具（`assistant_audit` 记了所有渠道的工具调用） |
-| 数据够了 | Apple Vitals 7 晚；Oura 两周学基线；WHOOP 约 4 天出分、约 3 周校准 | 评分模块的基线（恢复要 14 晚 HRV、负荷状态要 21 天等） |
+| 数据够了 | Apple Vitals 7 晚；Oura 两周学基线；WHOOP 约 4 天出分、约 3 周校准 | **对我们基本不适用**：用户第一天就导入完整历史（和 Athlytic 一样没有校准期），只对没有历史的新手表有用 |
 | 用户主动 | Apple 健康的 Pinned；Arc Max 手动开；Garmin Edit Home | 「固定到今天」「显示全部模块」 |
 | 时间 | 文章里提到，但没找到具体产品案例 | 使用天数（第一周结束才有周报） |
 | 事件 | Apple Vitals 超出范围才通知；Gentler Streak 手动设生病 | 规则提醒、生病风险、健康监测异常 |
@@ -175,13 +175,13 @@
 
 1. **做得好的首页只有 3–4 个核心数，tab 在收缩**：Oura 从 5 个 tab 合到 3 个、把 Today 做成「头条」；WHOOP / Oura 首页都是三个分。我们的今天页有约 13 张卡、6 个 tab，是同类里最多的。
 2. **AI 不单独占 tab，而是一个随处可达的按钮，并且越来越主动**：Oura 的「+」、Fitbit 的浮动按钮、WHOOP 的 Coach 都是这样；同时都在加记忆、主动 check-in、在对话里直接画图。ChatGPT 的规范给了对话里卡片的边界：一卡一事、最多两个动作、可展开；主动推送要有终点。
-3. **渐进解锁的触发要看得见、和用户刚做的事挂钩**：Apple Vitals 7 晚、Oura 两周、WHOOP 约 3 周是「数据够了才出现」，Duolingo / Linear 是「完成一个动作就露出一块」。这次调研的产品里没看到「AI 用过某个功能，这个模块才出现」的做法（最接近的是 WHOOP 的 AI 会建议你追踪哪些行为[^whoop-4]），这是我们可以做的差异点；但要像 Apple 的 Pinned 一样让用户能自己固定和全部打开，安全类控制一直可见。
+3. **渐进要和用户刚做的事挂钩，并且看得见、不上锁**：Duolingo / Linear 是「完成一个动作就露出一块」，Apple 健康的 Pinned 让用户自己决定首页放什么。Apple Vitals 7 晚、Oura 两周、WHOOP 约 3 周是「数据够了才出现」，但我们的用户第一天就导入完整历史，数据门槛对我们没有意义，渐进只能用来控制注意力（先看什么、谁来介绍）。这次调研的产品里没看到「AI 用过某个功能，这个模块才出现」的做法（最接近的是 WHOOP 的 AI 会建议你追踪哪些行为[^whoop-4]），这是我们可以做的差异点；但要像 Apple 的 Pinned 一样让用户能自己固定和全部打开，安全类控制一直可见。
 
 ---
 
 ## English summary
 
-Desk research for the AI-first redesign (#279), public sources only. **Takeaways:** (1) good health home screens show 3–4 core numbers and tab bars are shrinking (Oura went from 5 tabs to 3 and treats Today as "top stories"); ours has about 13 cards on Today and up to 6 tabs. (2) The AI is a button reachable everywhere (Oura's "+", Fitbit's floating "Ask Coach", WHOOP Coach), increasingly proactive (memory, check-ins, charts in chat); ChatGPT's Apps SDK guidelines bound in-chat cards to one purpose and at most two actions, and Pulse is deliberately finite. (3) Progressive unlocking works when the trigger is visible and tied to what the user just did: data-gated reveals (Apple Vitals after 7 nights, Oura's two-week baseline, WHOOP's ~3-week calibration) and action-gated reveals (Duolingo, Linear). None of the products reviewed reveals a module because the AI used it — that is our angle — but users must still be able to pin modules and turn everything on, and safety controls must always stay visible.
+Desk research for the AI-first redesign (#279), public sources only. **Takeaways:** (1) good health home screens show 3–4 core numbers and tab bars are shrinking (Oura went from 5 tabs to 3 and treats Today as "top stories"); ours has about 13 cards on Today and up to 6 tabs. (2) The AI is a button reachable everywhere (Oura's "+", Fitbit's floating "Ask Coach", WHOOP Coach), increasingly proactive (memory, check-ins, charts in chat); ChatGPT's Apps SDK guidelines bound in-chat cards to one purpose and at most two actions, and Pulse is deliberately finite. (3) Progressive disclosure works when it is tied to what the user just did (Duolingo, Linear) and the user can pin things themselves (Apple Health). Data-gated reveals (Apple Vitals after 7 nights, Oura's two-week baseline, WHOOP's ~3-week calibration) do not apply to us: users import their full history on day 1, so disclosure can only manage attention. None of the products reviewed reveals a module because the AI used it — that is our angle — but users must still be able to pin modules and turn everything on, and safety controls must always stay visible.
 
 ---
 

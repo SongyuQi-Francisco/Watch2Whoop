@@ -253,6 +253,37 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
   opacity: 0; transform: translateY(10px); transition: all .3s var(--ease); z-index: 9; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .toast.on { opacity: 1; transform: none; }
 .toast .i { color: var(--ai); width: 18px; height: 18px; }
+.why { position: absolute; top: 10px; right: 10px; font-size: 10.5px; padding: 1px 6px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); }
+.goalchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.goalchips button { padding: 8px 13px; border-radius: 99px; border: 1.5px solid var(--surface-2); font-size: 14px; }
+.goalchips button[aria-pressed="true"] { border-color: var(--ai); background: var(--ai-soft); color: var(--ai); font-weight: 600; }
+.ccard.find .ft { font-size: 15px; }
+.ccard.find .row2 { align-items: center; }
+.sheet.tall { min-height: 88%; max-height: 92%; }
+.mod.circ { gap: 8px; min-height: 0; }
+.crow { display: flex; align-items: center; gap: 10px; }
+.avs { display: flex; }
+.avs i, .av { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-size: 12px; font-style: normal; font-weight: 600; border: 2px solid var(--surface); flex: none; }
+.avs i + i { margin-left: -8px; }
+.rk { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-2); }
+.rk .i { width: 15px; height: 15px; color: var(--mid); }
+.rk b { color: var(--text); }
+.post1 { font-size: 13px; color: var(--text-2); }
+.post1 b { color: var(--text); font-weight: 600; }
+.post .ph { display: flex; align-items: center; gap: 8px; }
+.post .ph span { display: flex; flex-direction: column; }
+.post .ph small { color: var(--text-2); font-size: 12px; }
+.post .pb { margin: 8px 0 6px; font-size: 15px; }
+.post .pb b { font-size: 18px; }
+.post .pf { display: flex; gap: 14px; color: var(--text-2); font-size: 13px; }
+.post .pf span { display: flex; align-items: center; gap: 4px; }
+.post .pf .i { width: 15px; height: 15px; }
+.tab { position: relative; }
+.badge-dot { position: absolute; top: 0; right: 18px; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); }
+.search { display: flex; align-items: center; gap: 8px; background: var(--surface); border-radius: 12px; padding: 9px 12px; color: var(--text-3); margin-bottom: 12px; }
+.search .i { width: 17px; height: 17px; }
+.muted { color: var(--text-2); font-weight: 400; font-size: 13px; }
+.top .pill { margin-bottom: 6px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 440px) { .stage { padding: 12px 0; } .phone { transform: scale(.92); transform-origin: top center; } .ctl { padding: 0 16px; } }
 </style>
@@ -261,17 +292,18 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
 <div class="stage">
   <aside class="ctl">
     <h1>AI 优先 · 渐进解锁</h1>
-    <p>原型（合成数据）。见 docs/ui-ai-first-redesign.md。点手机里的卡片、tab 和中间的 Jarvis 键。</p>
-    <h2>用户状态</h2>
+    <p>原型（合成数据）。见 docs/ui-ai-first-redesign.md。点手机里的卡片、tab 和中间的 Jarvis 键。没有任何功能被锁住：底部「全部功能」随时能看全部。</p>
+    <h2>用户状态（都已导入完整历史）</h2>
     <div class="opts" id="personas">
-      <button class="opt" data-p="day1">新用户 · 第 1 天<small>3 个数 + 起步 3 件事；模块区是空的</small></button>
-      <button class="opt" data-p="week2">使用 2 周<small>Jarvis 用过的模块已长出来；有一个「就绪」</small></button>
-      <button class="opt" data-p="veteran">老用户<small>模块多、可固定；异常时临时出现</small></button>
+      <button class="opt" data-p="day1">新用户 · 第 1 天<small>选了「睡得更好、训练和恢复」，首页 3 个模块</small></button>
+      <button class="opt" data-p="week2">使用 2 周<small>Jarvis 用过的、发现的模块上了首页</small></button>
+      <button class="opt" data-p="veteran">老用户<small>首页只放常用的 6 个；异常时临时出现</small></button>
     </div>
     <h2>演示</h2>
     <div class="opts">
-      <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」长出来<small>从「使用 2 周」开始，自动播放</small></button>
-      <button class="opt" id="demo-intro">就绪模块由 Jarvis 介绍<small>点今天页的虚线卡片</small></button>
+      <button class="opt" id="demo-onboard">第 1 天：身体概况 → 选关注 → 摆首页<small>导入历史后的第一次对话</small></button>
+      <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」上首页<small>互动：AI 用过的模块</small></button>
+      <button class="opt" id="demo-find">Jarvis 发现 → 带出「体重」<small>数据里值得说的事</small></button>
     </div>
     <h2>外观</h2>
     <div class="row"><button class="opt" data-theme-set="light">浅色</button><button class="opt" data-theme-set="dark">深色</button></div>
@@ -289,99 +321,102 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
 </div>
 <script>
 "use strict";
-const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "lock": "<rect width=\"18\" height=\"11\" x=\"3\" y=\"11\" rx=\"2\" ry=\"2\"/> <path d=\"M7 11V7a5 5 0 0 1 10 0v4\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>"};
+const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "message-circle": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "search": "<path d=\"m21 21-4.34-4.34\"/> <circle cx=\"11\" cy=\"11\" r=\"8\"/>", "sliders-horizontal": "<path d=\"M10 5H3\"/> <path d=\"M12 19H3\"/> <path d=\"M14 3v4\"/> <path d=\"M16 17v4\"/> <path d=\"M21 12h-9\"/> <path d=\"M21 19h-5\"/> <path d=\"M21 5h-7\"/> <path d=\"M8 10v4\"/> <path d=\"M8 12H3\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "trophy": "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\"/> <path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\"/> <path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\"/> <path d=\"M4 22h16\"/> <path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\"/> <path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "user-plus": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/> <line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\"/> <line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>"};
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---------------------------------------------------------------- synthetic data (seeded, the same every load)
+// ---------------------------------------------------------------- synthetic data (seeded, the same every load). Every persona has the full history:
+// the app imports Apple Health history on day 1, so trends and baselines exist from the start; personas differ only in what is shown.
 function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const R = rng(279);
 const series = (n, base, amp, lo, hi) => Array.from({ length: n }, (_, i) => Math.max(lo, Math.min(hi, Math.round(base + Math.sin(i / 2.3) * amp * .5 + (R() - .5) * amp))));
 const D = {
   recovery: series(30, 62, 34, 18, 96), hrv: series(30, 58, 14, 38, 82), rhr: series(30, 56, 5, 49, 63),
-  sleepMin: series(30, 420, 70, 300, 520), strain: series(30, 11, 7, 3, 19), weight: [74.1, 74.0, 73.8, 73.9, 73.6, 73.5, 73.4, 73.2, 73.3, 73.0, 72.9, 72.8, 72.8, 72.6],
+  sleepMin: series(30, 420, 70, 300, 520), strain: series(30, 11, 7, 3, 19), weight: [73.0, 72.8, 72.9, 72.7, 72.9, 72.8, 72.6, 72.9, 72.7, 72.8, 72.6, 72.8, 72.7, 72.6],
   stress: series(14, 12, 8, 3, 25).map((v) => v / 10), resp: series(30, 150, 8, 140, 162).map((v) => v / 10),
+  hrvDrop: [61, 60, 62, 59, 60, 58, 57, 58, 56, 55, 56, 54, 53, 52],
 };
 D.recovery[29] = 72; D.sleepMin[29] = 432; D.strain[29] = 6;
 const hm = (m) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 
-// ---------------------------------------------------------------- module catalogue (same keys and conditions as the design doc, section 4)
-// how: data = enough data; ai = an AI used the tool; time = days of use; event = something happened; user = pinned by hand
+// ---------------------------------------------------------------- module catalogue (same keys as the design doc, section 4.3). Nothing is locked:
+// every module is in 全部功能 from day 1. "bring" says when Jarvis brings it to Today.
 const CATALOG = [
-  { k: "food", n: "饮食", icon: "utensils", tab: "记录", how: "ai", cond: "Jarvis 第一次帮你记一餐" },
-  { k: "water", n: "喝水", icon: "droplet", tab: "记录", how: "ai", cond: "第一次记喝水" },
-  { k: "training", n: "训练", icon: "dumbbell", tab: "记录", how: "data", cond: "有 1 次训练（手表或 Jarvis）" },
-  { k: "weight", n: "体重", icon: "scale", tab: "身体", how: "ai", cond: "第一次记体重 / 体重秤同步" },
-  { k: "sleepgoal", n: "入睡目标", icon: "moon", tab: "今天", how: "ai", cond: "Jarvis 帮你设了入睡目标" },
-  { k: "coach", n: "负荷目标", icon: "target", tab: "今天", how: "data", cond: "恢复分出来（14 晚 HRV）", need: 14 },
-  { k: "activity", n: "活动", icon: "footprints", tab: "身体", how: "data", cond: "7 天步数", need: 7 },
-  { k: "hrv", n: "HRV · 静息心率", icon: "heart-pulse", tab: "身体", how: "data", cond: "14 晚 HRV", need: 14 },
-  { k: "regularity", n: "睡眠规律", icon: "bed", tab: "身体", how: "data", cond: "14 晚入睡时间", need: 14 },
-  { k: "stress", n: "压力", icon: "brain-circuit", tab: "身体", how: "data", cond: "14 天心率基线", need: 14 },
-  { k: "monitor", n: "健康监测", icon: "bell", tab: "身体", how: "data", cond: "14 天基线；异常时临时上今天页", need: 14 },
-  { k: "report", n: "周报", icon: "clipboard-list", tab: "身体", how: "time", cond: "用满第一周（第 8 天）", need: 8 },
-  { k: "muscle", n: "肌肉负荷", icon: "dumbbell", tab: "记录", how: "data", cond: "14 天里 3 次力量训练" },
-  { k: "journal", n: "日记", icon: "notebook-pen", tab: "记录", how: "ai", cond: "Jarvis 第一次记日记" },
-  { k: "recipes", n: "食谱", icon: "clipboard-list", tab: "记录", how: "ai", cond: "Jarvis 第一次存食谱" },
-  { k: "grocery", n: "采购", icon: "layout-grid", tab: "记录", how: "ai", cond: "Jarvis 第一次列采购清单" },
-  { k: "labs", n: "化验", icon: "flask-conical", tab: "身体", how: "ai", cond: "Jarvis 第一次录化验单" },
-  { k: "supps", n: "补剂", icon: "pill", tab: "我", how: "ai", cond: "Jarvis 第一次记补剂" },
-  { k: "load", n: "训练负荷", icon: "trending-up", tab: "身体", how: "data", cond: "21 天负荷", need: 21 },
-  { k: "vo2", n: "VO₂max", icon: "flame", tab: "身体", how: "data", cond: "手表测到 VO₂max" },
-  { k: "healthspan", n: "身体年龄", icon: "sun", tab: "身体", how: "data", cond: "28 天步数 + 睡眠", need: 28 },
-  { k: "behavior", n: "行为影响", icon: "trending-up", tab: "身体", how: "data", cond: "30 天日记", need: 30 },
-  { k: "advanced", n: "深入指标", icon: "layout-grid", tab: "身体", how: "time", cond: "用满 30 天，或手动打开", need: 30 },
-  { k: "circles", n: "圈子", icon: "users", tab: "我", how: "event", cond: "加入或建了圈子" },
+  { k: "hrv", n: "HRV · 静息心率", icon: "heart-pulse", area: "恢复", bring: "关注恢复 / 发现 HRV 拐点" },
+  { k: "coach", n: "负荷目标", icon: "target", area: "恢复", bring: "关注训练 / 今天有训练" },
+  { k: "load", n: "训练负荷", icon: "trending-up", area: "恢复", bring: "关注训练 / 发现负荷过高" },
+  { k: "monitor", n: "健康监测", icon: "bell", area: "恢复", bring: "异常时临时上首页" },
+  { k: "stress", n: "压力", icon: "brain-circuit", area: "恢复", bring: "问过压力 / 发现连续高压" },
+  { k: "sleepgoal", n: "入睡目标", icon: "moon", area: "睡眠", bring: "关注睡眠 / 设了目标" },
+  { k: "regularity", n: "睡眠规律", icon: "bed", area: "睡眠", bring: "关注睡眠 / 发现作息乱" },
+  { k: "training", n: "训练", icon: "dumbbell", area: "训练", bring: "关注增肌 / 记过训练" },
+  { k: "muscle", n: "肌肉负荷", icon: "dumbbell", area: "训练", bring: "关注增肌 / 记过力量训练" },
+  { k: "activity", n: "活动", icon: "footprints", area: "训练", bring: "关注减脂" },
+  { k: "vo2", n: "VO₂max", icon: "flame", area: "训练", bring: "发现变化 / 问过" },
+  { k: "food", n: "饮食", icon: "utensils", area: "饮食", bring: "Jarvis 记过饭" },
+  { k: "water", n: "喝水", icon: "droplet", area: "饮食", bring: "记过喝水" },
+  { k: "recipes", n: "食谱", icon: "clipboard-list", area: "饮食", bring: "存过食谱" },
+  { k: "grocery", n: "采购", icon: "layout-grid", area: "饮食", bring: "列过采购清单" },
+  { k: "weight", n: "体重", icon: "scale", area: "身体", bring: "关注减脂 / 记过体重 / 发现平台期" },
+  { k: "healthspan", n: "身体年龄", icon: "sun", area: "身体", bring: "关注健康指标 / 里程碑" },
+  { k: "report", n: "周报", icon: "clipboard-list", area: "身体", bring: "每周一" },
+  { k: "behavior", n: "行为影响", icon: "trending-up", area: "身体", bring: "记过日记 / 问过原因" },
+  { k: "advanced", n: "深入指标", icon: "layout-grid", area: "身体", bring: "随时在「身体」里" },
+  { k: "labs", n: "化验", icon: "flask-conical", area: "健康档案", bring: "录过化验单" },
+  { k: "supps", n: "补剂", icon: "pill", area: "健康档案", bring: "记过补剂" },
+  { k: "journal", n: "日记", icon: "notebook-pen", area: "健康档案", bring: "记过日记" },
+  { k: "circles", n: "圈子", icon: "users", area: "圈子", bring: "一级入口 · 首页常驻" },
 ];
-const HOW = { data: "数据够了", ai: "AI 用过", time: "用的天数", event: "发生了", user: "手动" };
+const GOALS = [["fat", "减脂"], ["muscle", "增肌"], ["sleep", "睡得更好"], ["recover", "训练和恢复"], ["markers", "健康指标"]];
 
-// ---------------------------------------------------------------- three personas
+// ---------------------------------------------------------------- three personas: all with full history; they differ in what is on Today and how much has been introduced
+// pinned: [key, why]  why = 关注 (the user's goal) / 发现 (Jarvis found something in the data) / 用过 (the AI used it, or the user asked) / 固定 (pinned by hand)
 const PERSONAS = {
   day1: {
-    day: 1, nights: 3, brief: "欢迎。先和 Jarvis 说一句",
+    day: 1, goals: ["sleep", "recover"], brief: "HRV 连续 2 周下降 · 今天轻松点",
     focus: [
-      { icon: "mic", t: "说说你今天吃了什么", s: "按住 Jarvis 键说话", tone: "ai", ask: "start-food" },
-      { icon: "moon", t: "今晚戴着手表睡", s: "恢复分校准中", v: "3/14", tone: "sleep" },
-      { icon: "target", t: "定一个目标", s: "减脂 / 增肌 / 睡得更好", tone: "ai", ask: "start-goal" },
+      { icon: "heart-pulse", t: "HRV 连续 2 周下降", s: "今天练 Z2，别上大重量", v: "−12%", tone: "mid" },
+      { icon: "moon", t: "01:30 前上床", s: "过去 90 天平均 01:24 入睡", v: "01:30", tone: "sleep" },
+      { icon: "mic", t: "说说你今天吃了什么", s: "按住 Jarvis 键说话", tone: "ai" },
     ],
-    state: { training: "open" }, pinned: [],
+    pinned: [["hrv", "发现"], ["regularity", "关注"], ["sleepgoal", "关注"]], seen: [], circles: false,
   },
   week2: {
-    day: 15, nights: 15, brief: "恢复 72 · 适合练腿",
+    day: 15, goals: ["sleep", "recover"], brief: "恢复 72 · 适合练腿",
     focus: [
       { icon: "dumbbell", t: "练腿 · 45 分钟", s: "负荷目标 10–14", v: "0/10", tone: "strain" },
       { icon: "moon", t: "00:30 前上床", s: "近 7 晚 4 次达成", v: "00:30", tone: "sleep" },
       { icon: "utensils", t: "蛋白质还差", s: "午饭后", v: "46 g", tone: "mid" },
     ],
-    state: { food: "pinned", training: "pinned", sleepgoal: "pinned", weight: "pinned", coach: "open", hrv: "open", activity: "open", report: "open", regularity: "ready", stress: "open", monitor: "open" },
-    pinned: ["food", "training", "sleepgoal", "weight"],
+    pinned: [["food", "用过"], ["training", "用过"], ["sleepgoal", "关注"], ["hrv", "发现"], ["regularity", "关注"]],
+    seen: ["coach", "activity", "stress", "report"], finding: "weight", circles: true,
   },
   veteran: {
-    day: 120, nights: 118, brief: "呼吸率偏高 · 今天轻松点",
+    day: 120, goals: ["fat", "markers"], brief: "呼吸率偏高 · 今天轻松点", temp: "monitor",
     focus: [
       { icon: "bell", t: "健康监测 · 1 项偏高", s: "呼吸率 +1.2 次/分", v: "注意", tone: "mid", temp: true },
       { icon: "dumbbell", t: "改成 30 分钟爬坡", s: "原计划：上肢力量", v: "Z2", tone: "strain" },
       { icon: "moon", t: "00:00 前上床", s: "睡眠债 1:40", v: "00:00", tone: "sleep" },
     ],
-    state: Object.fromEntries(CATALOG.map((m) => [m.k, "open"])),
-    pinned: ["monitor", "food", "training", "water", "sleepgoal", "weight", "stress", "muscle", "labs", "circles"],
+    pinned: [["food", "用过"], ["weight", "关注"], ["training", "用过"], ["water", "固定"], ["labs", "关注"], ["stress", "发现"]],
+    seen: CATALOG.map((m) => m.k), circles: true,
   },
 };
-for (const k of PERSONAS.veteran.pinned) PERSONAS.veteran.state[k] = "pinned";
 
 // ---------------------------------------------------------------- app state
-const S = { p: "week2", tab: "today", pinned: [], state: {}, extraPinned: [], showAll: false, grown: null, chatLog: [], detail: null };
+const S = { p: "week2", tab: "today", pinned: [], why: {}, seen: new Set(), grown: new Set(), sub: "", circMode: "feed", goals: [] };
 function setPersona(p) {
-  S.p = p; S.tab = "today"; S.grown = null; S.chatLog = [];
+  S.p = p; S.tab = "today"; S.sub = ""; S.grown = new Set();
   const P = PERSONAS[p];
-  S.pinned = [...P.pinned]; S.state = { ...P.state }; S.showAll = false;
+  S.pinned = P.pinned.map(([k]) => k); S.why = Object.fromEntries(P.pinned); S.seen = new Set([...P.seen, ...S.pinned]);
+  S.finding = P.finding || null; S.goals = [...P.goals];
   for (const b of $$("#personas .opt")) b.setAttribute("aria-pressed", b.dataset.p === p);
-  closeSheet(true); render();
+  closeSheet(); render();
 }
 const P = () => PERSONAS[S.p];
-const mstate = (k) => S.state[k] || "locked";
+const mstate = (k) => (S.pinned.includes(k) ? "pinned" : S.seen.has(k) ? "seen" : "new");
 
 // ---------------------------------------------------------------- small charts
 function spark(vals, opt = {}) {
@@ -393,13 +428,13 @@ function bars(vals, max, cls, h = 30) {
   const w = 100, bw = w / vals.length;
   return `<svg class="spark ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${vals.map((v, i) => `<rect x="${(i * bw + bw * .18).toFixed(1)}" width="${(bw * .64).toFixed(1)}" y="${(h - (v / max) * h).toFixed(1)}" height="${((v / max) * h).toFixed(1)}" rx="1" fill="currentColor" opacity="${i === vals.length - 1 ? 1 : .45}"/>`).join("")}</svg>`;
 }
-function dial(frac, color, value, unit, opt = {}) {
+function dial(frac, color, value, unit) {
   const r = 38, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
-  return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="${r}" fill="none" stroke-width="8" ${opt.calib ? 'stroke-dasharray="3 4"' : ""}/>
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="track" cx="50" cy="50" r="${r}" fill="none" stroke-width="8"/>
     <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/>
     <text class="v" x="50" y="${unit ? 53 : 58}" text-anchor="middle">${value}</text>${unit ? `<text class="u" x="50" y="69" text-anchor="middle">${unit}</text>` : ""}</svg>`;
 }
-function lineChart(vals, color, opt = {}) {
+function lineChart(vals, color) {
   const w = 300, h = 110, pad = 14, lo = Math.min(...vals) * .92, hi = Math.max(...vals) * 1.04;
   const x = (i) => pad + (i / (vals.length - 1)) * (w - pad * 2), y = (v) => h - 16 - ((v - lo) / (hi - lo)) * (h - 26);
   const mean = vals.reduce((a, b) => a + b, 0) / vals.length, sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length);
@@ -411,59 +446,61 @@ function lineChart(vals, color, opt = {}) {
     <text x="${pad}" y="${h - 2}">30 天前</text><text x="${w - pad}" y="${h - 2}" text-anchor="end">今天</text>
     <text x="${w - pad}" y="${(y(mean + sd) - 3).toFixed(1)}" text-anchor="end">你的基线</text></svg>`;
 }
+const dots = (arr, tone) => `<div class="dots tone-${tone}">${arr.map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div>`;
 
 // ---------------------------------------------------------------- module cards (one big number, one small chart, at most one short line)
 const MOD = {
   food: () => `<div class="big num">1,240<small>/ 2,100 kcal</small></div><div class="meter tone-good"><i style="width:59%"></i></div><div class="sub">蛋白 84 g · 午餐已记</div>`,
   water: () => `<div class="big num">500<small>/ 2,500 ml</small></div><div class="meter tone-strain"><i style="width:20%"></i></div><div class="sub">刚刚 +500 ml</div>`,
-  training: () => `<div class="big num">3<small>次 · 本周</small></div><div class="dots tone-strain">${[1, 0, 1, 0, 1, 0, 0].map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div><div class="sub">今天：练腿</div>`,
-  weight: () => `<div class="big num">72.6<small>kg</small></div><span class="tone-good">${spark(D.weight)}</span><div class="sub">14 天 −1.5</div>`,
-  sleepgoal: () => `<div class="big num">00:30</div><div class="dots tone-sleep">${[1, 1, 0, 1, 0, 1, 0].map((x) => `<i class="${x ? "on" : ""}"></i>`).join("")}</div><div class="sub">近 7 晚 4 次</div>`,
+  training: () => `<div class="big num">3<small>次 · 本周</small></div>${dots([1, 0, 1, 0, 1, 0, 0], "strain")}<div class="sub">今天：练腿</div>`,
+  weight: () => `<div class="big num">72.6<small>kg</small></div><span class="tone-mid">${spark(D.weight)}</span><div class="sub">3 周 ±0.2</div>`,
+  sleepgoal: () => `<div class="big num">${S.p === "day1" ? "01:30" : "00:30"}</div>${dots([1, 1, 0, 1, 0, 1, 0], "sleep")}<div class="sub">${S.p === "day1" ? "先比平时早 15 分钟" : "近 7 晚 4 次"}</div>`,
   monitor: () => `<div class="big num tone-mid">1<small>项偏高</small></div><span class="tone-mid">${spark(D.resp.slice(-14))}</span><div class="sub">呼吸率 · 其他 4 项正常</div>`,
   stress: () => `<div class="big num">1.2<small>/ 3 低</small></div><span class="tone-good">${spark(D.stress, { area: true })}</span>`,
-  muscle: () => `<div class="big num">6<small>个肌群 · 7 天</small></div>${bars([8, 12, 4, 10, 6, 9, 3], 12, "tone-strain")}`,
   labs: () => `<div class="big num">12<small>项</small></div><div class="sub">2 项偏高 · 3 个月前</div>`,
-  circles: () => `<div class="big num">3<small>条新动态</small></div><div class="sub">2 个圈子</div>`,
-  regularity: () => `<div class="big num">78<small>%</small></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7], 7, "tone-sleep")}</span>`,
-  coach: () => `<div class="big num">0<small>/ 10–14</small></div><div class="meter tone-strain"><i style="width:2%"></i></div>`,
-  hrv: () => `<div class="big num">62<small>ms</small></div><span class="tone-good">${spark(D.hrv.slice(-14))}</span>`,
+  regularity: () => `<div class="big num">78<small>%</small></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7], 7, "tone-sleep")}</span><div class="sub">周末晚 1:10</div>`,
+  hrv: () => `<div class="big num">52<small>ms · 基线 59</small></div><span class="tone-mid">${spark(D.hrvDrop)}</span><div class="sub">2 周 −12%</div>`,
 };
 const catalog = (k) => CATALOG.find((m) => m.k === k);
 function modCard(k, cls = "") {
-  const m = catalog(k);
-  const chip = S.grown === k ? `<span class="chip">新</span>` : "";
-  return `<button class="mod ${cls}" data-mod="${k}"><div class="mh">${ic(m.icon)}<span>${m.n}</span></div>${chip}${(MOD[k] || (() => ""))()}</button>`;
+  const m = catalog(k), grown = S.grown.has(k);
+  const chip = grown ? `<span class="chip">新</span>` : S.why[k] ? `<span class="why">${S.why[k]}</span>` : "";
+  return `<button class="mod ${cls} ${grown ? "grow" : ""}" data-mod="${k}"><div class="mh">${ic(m.icon)}<span>${m.n}</span></div>${chip}${(MOD[k] || (() => ""))()}</button>`;
+}
+
+// ---------------------------------------------------------------- circles: a first-level tab, and always on Today (feed / ranking or an invite)
+const PEOPLE = [["鹿", "#d98a5f"], ["木", "#5f9bd9"], ["K", "#7cb36b"], ["禾", "#b07cd9"]];
+const avs = (n = 4) => `<span class="avs">${PEOPLE.slice(0, n).map(([t, c]) => `<i style="background:${c}">${t}</i>`).join("")}</span>`;
+function circleCard() {
+  if (!P().circles) {
+    return `<div class="mod wide circ"><div class="mh">${ic("users")}<span>圈子</span></div>
+      <div class="crow"><b style="font-size:16px">和朋友一起看恢复和排行</b></div>
+      <div class="acts"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill" data-go="circles">输入邀请码</button></div></div>`;
+  }
+  return `<div class="mod wide circ" data-go="circles"><div class="mh">${ic("users")}<span>圈子 · 跑步搭子</span><span class="chip" style="position:static;margin-left:auto">3 条新</span></div>
+    <div class="crow">${avs()}<span class="rk">${ic("trophy")}本周恢复排行 <b class="num">第 2</b> / 8</span></div>
+    <div class="post1"><b>小鹿</b> 跑了 10 km · 12 分钟前</div>
+    <div class="acts"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill" data-go="circles">看动态</button></div></div>`;
 }
 
 // ---------------------------------------------------------------- pages
-function header(title) {
-  return `<div class="top"><div><div class="date">10月25日 周日</div><h1>${title}</h1></div><button class="avatar" data-go="me" aria-label="我">${ic("user")}</button></div>`;
-}
+function header(title) { return `<div class="top"><div><div class="date">10月25日 周日</div><h1>${title}</h1></div></div>`; }
+const back = (label, to, sub = "") => `<button class="date" data-go="${to}" data-sub="${sub}" style="color:var(--ai)">‹ ${label}</button>`;
 function todayHtml() {
   const p = P();
-  const rec = p.nights < 14 ? dial(p.nights / 14, "var(--text-3)", `${p.nights}/14`, "晚", { calib: true }) : dial(.72, "var(--good)", "72", "%");
-  const recCap = p.nights < 14 ? "恢复 · <b>校准中</b>" : "恢复";
   const core = `<div class="core">
-    <button class="dial" data-detail="recovery">${rec}<span class="cap">${recCap}</span></button>
+    <button class="dial" data-detail="recovery">${dial(.72, "var(--good)", "72", "%")}<span class="cap">恢复</span></button>
     <button class="dial" data-detail="sleep">${dial(432 / 480, "var(--sleep)", "7:12", "")}<span class="cap">睡眠</span></button>
-    <button class="dial" data-detail="strain">${dial(p.day === 1 ? 8.4 / 21 : 6 / 21, "var(--strain)", p.day === 1 ? "8.4" : "6.0", "/ 21")}<span class="cap">负荷</span></button></div>`;
-  const focus = `<div class="sh"><h2>${p.day === 1 ? "起步" : "重点"}</h2><small>${p.focus.length} 件</small></div><div class="focus">${p.focus.map((f, i) => `
+    <button class="dial" data-detail="strain">${dial(6 / 21, "var(--strain)", "6.0", "/ 21")}<span class="cap">负荷</span></button></div>`;
+  const focus = `<div class="sh"><h2>重点</h2><small>${p.focus.length} 件</small></div><div class="focus">${p.focus.map((f, i) => `
     <button class="fi" data-focus="${i}"><span class="ic ${f.temp ? "bg-mid" : f.tone === "ai" ? "bg-ai" : ""} tone-${f.tone}">${ic(f.icon)}</span>
       <span class="t"><b>${f.t}</b><small>${f.s}</small></span>${f.v ? `<span class="v num tone-${f.tone}">${f.v}</span>` : ""}${ic("chevron-right", "chev")}</button>`).join("")}</div>`;
-  const pinned = S.pinned.filter((k) => !(S.p === "veteran" && k === "monitor"));
-  const ready = Object.entries(S.state).filter(([, v]) => v === "ready").map(([k]) => k);
-  const total = CATALOG.length, open = Object.values(S.state).filter((v) => v !== "locked" && v !== "ready").length;
-  let mods = "";
-  if (S.p === "day1") {
-    mods = `<div class="sh"><h2>我的模块</h2><small>0</small></div><div class="grid">
-      <div class="mod ghost wide">${ic("sparkles")}<b>和 Jarvis 聊得越多，这里长出来的越多</b><span class="sub">记一餐 → 饮食 · 记体重 → 体重 · 14 晚 → 恢复趋势</span></div></div>`;
-  } else {
-    const temp = S.p === "veteran" ? modCard("monitor", "temp") : "";
-    mods = `<div class="sh"><h2>我的模块</h2><small>${pinned.length + (temp ? 1 : 0)}</small></div><div class="grid">${temp}${pinned.map((k) => modCard(k, S.grown === k ? "grow" : "")).join("")}
-      ${ready.map((k) => `<button class="mod ghost" data-intro="${k}">${ic("sparkles")}<b>${catalog(k).n}</b><span class="sub">已就绪 · 让 Jarvis 介绍</span></button>`).join("")}</div>`;
-  }
+  const temp = p.temp ? modCard(p.temp, "temp") : "";
+  const find = S.finding ? `<button class="mod ghost" data-intro="${S.finding}">${ic("sparkles")}<b>Jarvis 发现</b><span class="sub">体重 3 周没变 · 看看</span></button>` : "";
+  const mods = S.onboarding ? "" : `<div class="sh"><h2>我的首页</h2><small>${S.pinned.length + (temp ? 1 : 0)}</small></div><div class="grid">${temp}${S.pinned.map((k) => modCard(k)).join("")}${find}</div>`;
   return header("今天") + `<button class="brief" data-ask="brief">${ic("sparkles")}<span>${p.brief}</span>${ic("chevron-right", "chev")}</button>`
-    + core + focus + mods + logHtml() + `<button class="foot" data-go="me" data-sub="modules">${ic("layout-grid")}已解锁 ${open} / ${total} 个模块</button>`;
+    + core + focus + `<div class="sh"><h2>圈子</h2></div>${circleCard()}` + mods + logHtml()
+    + `<button class="foot" data-go="all">${ic("layout-grid")}全部功能 · ${CATALOG.length} 个，随时能看</button>`;
 }
 
 const viaJ = () => `${ic("sparkles")}Jarvis · 语音`;
@@ -472,7 +509,7 @@ function entry(tm, icon, title, val, src, tone) {
 }
 function todayEntries() {
   if (S.p === "day1") return [];
-  return [S.grown === "water" ? entry("12:41", "droplet", "喝水", "500 ml", viaJ(), "strain") : "",
+  return [S.grown.has("water") ? entry("12:41", "droplet", "喝水", "500 ml", viaJ(), "strain") : "",
     entry("12:40", "utensils", "牛肉面", "620 kcal", viaJ(), "good"),
     entry("08:10", "utensils", "燕麦 + 鸡蛋 ×2", "620 kcal", `${ic("sparkles")}Jarvis · 快捷记餐`, "good"),
     entry("07:32", "scale", "体重", "72.6 kg", `${ic("sparkles")}Jarvis · 拍照`, "plain")].filter(Boolean);
@@ -483,26 +520,20 @@ function logHtml() {
   if (!es.length) return "";
   return `<div class="sh"><h2>今天的记录</h2><button data-go="record" style="color:var(--ai);font-size:13px">全部 ›</button></div><div class="tl">${es.slice(0, 3).join("")}</div>`;
 }
-const back = (label, to, sub = "") => `<button class="date" data-go="${to}" data-sub="${sub}" style="color:var(--ai)">‹ ${label}</button>`;
 
+// 身体: everything is open from day 1 (full history); goals decide what is expanded, the rest is folded with a one-line summary
 function bodyHtml() {
-  const vet = S.p === "veteran";
   const t = (title, val, unit, delta, chart, key) => `<button class="tcard" data-detail="${key}"><div class="th"><b>${title}</b><span class="num">${val}<small>${unit}</small></span></div>${chart}<div class="delta">${delta}</div></button>`;
-  const lvl2 = ["hrv", "rhr", "debt"].map((k) => ({ hrv: ["HRV", "62", "ms", D.hrv, "var(--good)"], rhr: ["静息心率", "54", "bpm", D.rhr, "var(--good)"], debt: ["睡眠债", "0:45", "", D.sleepMin, "var(--sleep)"] })[k])
-    .map(([n, v, u, s, c], i) => `<button class="mod" data-detail="${["hrv", "rhr", "sleep"][i]}"><div class="mh"><span>${n}</span></div><div class="big num">${v}<small>${u}</small></div><span style="color:${c}">${spark(s.slice(-14))}</span></button>`).join("");
-  const deep = vet ? `<div class="sh"><h2>深入</h2><small>14 项</small></div><div class="list">${["呼吸率", "血氧", "手腕温度", "生病风险", "心率区间", "VO₂max", "身体年龄", "行为影响"].map((n) => `<div class="li"><span class="t"><b>${n}</b></span>${ic("chevron-right", "chev")}</div>`).join("")}</div>`
-    : `<div class="sh"><h2>深入</h2><small>14 项</small></div><button class="locked" data-go="me" data-sub="modules">${ic("lock")}<span style="flex:1"><b>呼吸率、血氧、手腕温度、VO₂max…</b><small>再用 15 天自动打开 · 或在模块库打开</small><div class="prog"><i style="width:50%"></i></div></span></button>`;
-  if (S.p === "day1") return header("身体") + `<div class="sh" style="margin-top:4px"><h2>核心</h2><small>3 晚数据</small></div>
-    ${t("睡眠", "7:05", " 均值", "3 晚", `<span class="tone-sleep">${bars(D.sleepMin.slice(-3), 540, "tone-sleep")}</span>`, "sleep")}
-    ${t("负荷", "9.1", " 均值", "3 天", `<span class="tone-strain">${bars(D.strain.slice(-3), 21, "tone-strain")}</span>`, "strain")}
-    <button class="locked" data-detail="recovery">${ic("lock")}<span style="flex:1"><b>恢复趋势</b><small>14 晚 HRV 后出现 · 还差 11 晚</small><div class="prog"><i style="width:21%"></i></div></span></button>
-    <div class="sh"><h2>进阶 · 深入</h2><small>0 / 23 项</small></div><button class="locked" data-go="me" data-sub="modules">${ic("lock")}<span style="flex:1"><b>HRV、静息心率、压力、睡眠规律…</b><small>数据够了 Jarvis 会一个一个介绍</small></span></button>`;
-  return header("身体") + `<div class="seg"><button aria-pressed="false">7 天</button><button aria-pressed="true">30 天</button><button aria-pressed="false">90 天</button></div>
+  const mine = [["hrv", "HRV", "52", "ms", D.hrvDrop, "var(--mid)"], ["rhr", "静息心率", "56", "bpm", D.rhr, "var(--good)"], ["sleep", "睡眠规律", "78", "%", D.sleepMin, "var(--sleep)"]]
+    .map(([k, n, v, u, s, c]) => `<button class="mod" data-detail="${k}"><div class="mh"><span>${n}</span></div><div class="big num">${v}<small>${u}</small></div><span style="color:${c}">${spark(s.slice(-14))}</span></button>`).join("");
+  const groups = [["恢复", 8, "HRV 下降 · 其他正常", "mid"], ["睡眠", 10, "规律 78%"], ["负荷", 12, "TSB −18 · 偏累", "mid"], ["压力", 2, "低"], ["长期", 3, "VO₂max 46 · 身体年龄 −1.8"], ["行为影响", 1, "睡前看手机 → 恢复 −6"]];
+  return header("身体") + `<div class="seg"><button aria-pressed="false">7 天</button><button aria-pressed="true">30 天</button><button aria-pressed="false">90 天</button><button aria-pressed="false">1 年</button></div>
     <div class="sh" style="margin-top:4px"><h2>核心</h2><small>3 项</small></div>
-    ${t("恢复", "64", "% 均值", "vs 上 30 天 +5", `<span style="color:var(--good)">${spark(D.recovery, { area: true })}</span>`, "recovery")}
+    ${t("恢复", "64", "% 均值", "vs 上 30 天 −5", `<span style="color:var(--good)">${spark(D.recovery, { area: true })}</span>`, "recovery")}
     ${t("睡眠", "7:04", " 均值", "vs 上 30 天 +0:12", `<span class="tone-sleep">${bars(D.sleepMin.slice(-14), 540, "tone-sleep")}</span>`, "sleep")}
     ${t("负荷", "10.8", " 均值", "vs 上 30 天 +1.4", `<span class="tone-strain">${bars(D.strain.slice(-14), 21, "tone-strain")}</span>`, "strain")}
-    <div class="sh"><h2>进阶</h2><small>${vet ? "9" : "3"} 项</small></div><div class="mini3">${lvl2}</div>${deep}`;
+    <div class="sh"><h2>你关注的</h2><small>睡眠 · 恢复</small></div><div class="mini3">${mine}</div>
+    <div class="sh"><h2>全部指标</h2><small>36 项 · 都已打开</small></div><div class="list">${groups.map(([n, c, s, tone]) => `<div class="li"><span class="t"><b>${n} <span class="muted">${c} 项</span></b><small class="${tone ? `tone-${tone}` : ""}">${s}</small></span>${ic("chevron-right", "chev")}</div>`).join("")}</div>`;
 }
 
 function recordHtml() {
@@ -514,47 +545,59 @@ function recordHtml() {
     ${entry("01:50", "notebook-pen", "日记 · 睡前看手机", "是", `${ic("sparkles")}Jarvis`, "sleep")}</div>`;
 }
 
+// 圈子 tab: entry and layout only; inside it follows docs/circles-redesign.md (circle strip, 成员 | 动态 | 排行榜), same APIs
+function circlesHtml() {
+  const top = `<div class="top"><div><div class="date">2 个圈子</div><h1>圈子</h1></div><button class="pill pri" data-invite>${ic("user-plus")}邀请</button></div>`;
+  if (!P().circles) {
+    return top.replace("2 个圈子", "还没有圈子") + `<div class="mod wide circ" style="align-items:center;text-align:center;padding:26px 16px">${ic("users")}
+      <b style="font-size:17px">和朋友一起看恢复、训练和排行</b><span class="sub">每个圈子单独选分享什么，心电图永远不分享</span>
+      <div class="acts" style="justify-content:center"><button class="pill pri" data-invite>${ic("user-plus")}邀请好友</button><button class="pill">建圈子</button><button class="pill">输入邀请码</button></div></div>`;
+  }
+  const strip = `<div class="chips"><button aria-pressed="false">全部</button><button aria-pressed="true">跑步搭子</button><button aria-pressed="false">家人</button><button aria-pressed="false">▾</button></div>`;
+  const seg = `<div class="seg">${[["members", "成员"], ["feed", "动态"], ["board", "排行榜"]].map(([k, t]) => `<button data-cmode="${k}" aria-pressed="${S.circMode === k}">${t}</button>`).join("")}</div>`;
+  const post = (who, c, what, val, ago, likes, cm) => `<div class="tcard post"><div class="ph"><i class="av" style="background:${c}">${who[0]}</i><span><b>${who}</b><small>${ago}</small></span></div>
+    <div class="pb">${what}<b class="num">${val}</b></div><div class="pf"><span>${ic("heart")}${likes}</span><span>${ic("message-circle")}${cm}</span></div></div>`;
+  const board = `<div class="list">${[["阿木", "#5f9bd9", 84], ["你", "var(--ai)", 72], ["小鹿", "#d98a5f", 69], ["Kai", "#7cb36b", 61]].map(([n, c, v], i) => `<div class="li"><span class="num" style="width:18px;color:var(--text-2)">${i + 1}</span><i class="av" style="background:${c}">${n[0]}</i><span class="t"><b>${n}</b></span><b class="num">${v}%</b></div>`).join("")}</div>`;
+  const body = S.circMode === "board" ? `<div class="sh" style="margin-top:4px"><h2>本周恢复</h2><small>相对自己的基线</small></div>${board}`
+    : S.circMode === "members" ? board
+    : post("小鹿", "#d98a5f", "跑步 · ", "10.2 km", "12 分钟前", 5, 2) + post("阿木", "#5f9bd9", "恢复 ", "84%", "今天 07:10", 3, 0) + post("Kai", "#7cb36b", "力量训练 · ", "16 组", "昨天", 4, 1);
+  return top + strip + seg + body;
+}
+
 function meHtml() {
-  if (S.meSub === "modules") return modulesHtml();
-  const open = Object.values(S.state).filter((v) => v !== "locked" && v !== "ready").length;
   const li = (icon, t, v, attr = "") => `<button class="li" ${attr}>${ic(icon, "lead")}<span class="t"><b>${t}</b></span>${v ? `<span class="v">${v}</span>` : ""}${ic("chevron-right", "chev")}</button>`;
-  return `<div class="top"><div>${back("今天", "today")}<h1>我</h1></div></div><div class="me-head"><span class="avatar">${ic("user")}</span><div><b>示例用户</b><small>使用第 ${P().day} 天</small></div></div>
-    <div class="list">${li("sparkles", "AI 设置", "Jarvis")}${li("layout-grid", "模块", `${open} / ${CATALOG.length}`, 'data-sub="modules"')}${li("clipboard-list", "健康档案", S.p === "veteran" ? "化验 12 · 补剂 3" : "")}
-    ${S.p === "veteran" ? li("users", "圈子", "2") : ""}</div><div style="height:12px"></div>
-    <div class="list">${li("notebook-pen", "全部记录", "", 'data-go="record"')}${li("activity", "手机同步", "刚刚")}${li("notebook-pen", "使用手册")}${li("lock", "设置")}</div>`;
+  return header("我") + `<div class="me-head"><span class="avatar">${ic("user")}</span><div><b>示例用户</b><small>使用第 ${P().day} 天</small></div></div>
+    <div class="list">${li("sparkles", "AI 设置", "Jarvis")}${li("layout-grid", "全部功能", `${CATALOG.length}`, 'data-go="all"')}${li("clipboard-list", "健康档案", S.p === "veteran" ? "化验 12 · 补剂 3" : "")}${li("notebook-pen", "全部记录", "", 'data-go="record"')}</div><div style="height:12px"></div>
+    <div class="list">${li("activity", "手机同步", "刚刚")}${li("notebook-pen", "使用手册")}${li("sliders-horizontal", "设置")}</div>`;
 }
 
-function modulesHtml() {
-  const row = (m) => {
-    const st = mstate(m.k);
-    const lab = { pinned: "今天页", open: "已解锁", ready: "就绪", locked: "未解锁" }[st];
-    const prog = st === "locked" && m.need ? `<div class="prog"><i style="width:${Math.min(100, (P().nights / m.need) * 100)}%"></i></div>` : "";
-    return `<div class="li">${ic(m.icon, "lead")}<span class="t"><b>${m.n}</b><small>${HOW[m.how]} · ${m.cond}</small>${prog}</span><span class="st ${st}">${lab}</span></div>`;
-  };
-  const groups = [["今天页上", (s) => s === "pinned"], ["已解锁", (s) => s === "open"], ["就绪 · Jarvis 会介绍", (s) => s === "ready"], ["还没解锁", (s) => s === "locked"]];
-  return `<div class="top"><div>${back("我", "me")}<h1>模块</h1></div></div>
-    <div class="list"><div class="li"><span class="t"><b>显示全部模块</b><small>不等解锁，所有模块都放出来</small></span><button class="switch ${S.showAll ? "on" : ""}" id="show-all" aria-label="显示全部模块"></button></div></div>
-    ${groups.map(([t, f]) => { const ms = CATALOG.filter((m) => f(mstate(m.k))); return ms.length ? `<div class="sh"><h2>${t}</h2><small>${ms.length}</small></div><div class="list">${ms.map(row).join("")}</div>` : ""; }).join("")}`;
+// 全部功能: nothing locked; grouped by area, each with its state on this account; search; Jarvis may tidy Today automatically
+function allHtml() {
+  const tag = { pinned: ["首页", "pinned"], seen: ["看过", "open"], new: ["新", "ready"] };
+  const row = (m) => { const [lab, cls] = tag[mstate(m.k)]; return `<div class="li">${ic(m.icon, "lead")}<span class="t"><b>${m.n}</b><small>${m.bring}</small></span><span class="st ${cls}">${lab}</span></div>`; };
+  const areas = [...new Set(CATALOG.map((m) => m.area))];
+  return `<div class="top"><div>${back("我", "me")}<h1>全部功能</h1></div></div>
+    <div class="search">${ic("search")}<span>搜功能，或直接问 Jarvis</span></div>
+    <div class="list"><div class="li"><span class="t"><b>Jarvis 自动整理首页</b><small>按你的关注和最近用过的</small></span><span class="switch on"></span></div></div>
+    ${areas.map((a) => { const ms = CATALOG.filter((m) => m.area === a); return `<div class="sh"><h2>${a}</h2><small>${ms.length}</small></div><div class="list">${ms.map(row).join("")}</div>`; }).join("")}`;
 }
 
-// ---------------------------------------------------------------- tab bar (tabs grow too: day 1 has 今天 · Jarvis · 我)
-// Three slots: 今天 · Jarvis · 身体. 我 is the avatar (top right); 记录 is a page opened from Today.
-const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"] };
+// ---------------------------------------------------------------- tab bar: 今天 · 身体 · Jarvis · 圈子 · 我
+const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"], circles: ["users", "圈子"], me: ["user", "我"] };
 function tabbar() {
-  const b = (t) => `<button class="tab" data-tab="${t}" ${S.tab === t ? 'aria-current="page"' : ""}>${ic(TABS[t][0])}<span>${TABS[t][1]}</span></button>`;
-  $("#tabbar").innerHTML = b("today") + `<button class="jkey" id="jkey" aria-label="Jarvis">${ic("orbit")}</button>` + b("body");
+  const cur = S.tab === "all" || S.tab === "record" ? (S.from || "me") : S.tab;
+  const b = (t) => `<button class="tab" data-tab="${t}" ${cur === t ? 'aria-current="page"' : ""}>${ic(TABS[t][0])}<span>${TABS[t][1]}</span>${t === "circles" && P().circles ? '<i class="badge-dot"></i>' : ""}</button>`;
+  $("#tabbar").innerHTML = b("today") + b("body") + `<button class="jkey" id="jkey" aria-label="Jarvis">${ic("orbit")}</button>` + b("circles") + b("me");
 }
-
 function render() {
-  const v = $("#view");
-  v.innerHTML = { today: todayHtml, body: bodyHtml, record: recordHtml, me: meHtml }[S.tab]();
+  $("#view").innerHTML = { today: todayHtml, body: bodyHtml, circles: circlesHtml, me: meHtml, all: allHtml, record: recordHtml }[S.tab]();
   tabbar(); bind();
 }
-function go(tab, sub) { S.tab = tab; S.meSub = sub || ""; $("#view").scrollTop = 0; render(); }
+function go(tab) { if (tab === "all" || tab === "record") S.from = S.tab === "all" || S.tab === "record" ? S.from : S.tab; S.tab = tab; $("#view").scrollTop = 0; render(); }
 
 // ---------------------------------------------------------------- sheets
 function openSheet(title, body, foot = "") { $("#sh-t").innerHTML = title; $("#sh-b").innerHTML = body; $("#sh-f").innerHTML = foot; $("#sheet").classList.add("on"); $("#scrim").classList.add("on"); }
-function closeSheet(now) { $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on"); }
+function closeSheet() { $("#sheet").classList.remove("on"); $("#scrim").classList.remove("on"); }
 function toast(html) { const t = $("#toast"); t.innerHTML = html; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), 2600); }
 
 // layered detail: glance -> trend -> raw
@@ -562,94 +605,120 @@ const DETAIL = {
   recovery: { n: "恢复", v: "72", u: "%", tone: "good", badge: "好", vals: D.recovery, color: "var(--good)", raw: (i) => `${D.recovery[29 - i]}%`, src: "手表 HRV + 静息心率" },
   sleep: { n: "睡眠", v: "7:12", u: "", tone: "good", badge: "够", vals: D.sleepMin, color: "var(--sleep)", raw: (i) => hm(D.sleepMin[29 - i]), src: "手表 · 睡眠阶段" },
   strain: { n: "负荷", v: "6.0", u: "/ 21", tone: "mid", badge: "偏低", vals: D.strain, color: "var(--strain)", raw: (i) => `${D.strain[29 - i]}`, src: "手表心率" },
-  hrv: { n: "HRV", v: "62", u: "ms", tone: "good", badge: "平衡", vals: D.hrv, color: "var(--good)", raw: (i) => `${D.hrv[29 - i]} ms`, src: "手表 · 睡眠中" },
-  rhr: { n: "静息心率", v: "54", u: "bpm", tone: "good", badge: "正常", vals: D.rhr, color: "var(--good)", raw: (i) => `${D.rhr[29 - i]}`, src: "手表 · 睡眠中" },
+  hrv: { n: "HRV", v: "52", u: "ms", tone: "mid", badge: "下降", vals: D.hrv.slice(0, 16).concat(D.hrvDrop), color: "var(--mid)", raw: (i) => `${D.hrvDrop[13 - i] ?? D.hrv[29 - i]} ms`, src: "手表 · 睡眠中" },
+  rhr: { n: "静息心率", v: "56", u: "bpm", tone: "good", badge: "正常", vals: D.rhr, color: "var(--good)", raw: (i) => `${D.rhr[29 - i]}`, src: "手表 · 睡眠中" },
 };
 function detailSheet(k) {
   const d = DETAIL[k]; if (!d) return;
-  if (k === "recovery" && P().nights < 14) {
-    openSheet("恢复 · 校准中", `<div class="layer"><h4><span class="lv">L1</span>一眼</h4><div class="glance"><span class="big num">${P().nights}/14</span><span class="badge bg-ai tone-ai">晚</span></div>
-      <div class="prog" style="height:8px;margin-top:10px"><i style="width:${(P().nights / 14) * 100}%"></i></div></div>
-      <div class="layer"><h4><span class="lv">L2</span>为什么</h4><div class="list"><div class="li"><span class="t"><b>需要 14 晚 HRV 建立你的基线</b><small>每晚戴着手表睡就行</small></span></div></div></div>
-      <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="calib">${ic("sparkles")}问 Jarvis</button></div>`);
-    return;
-  }
   const rows = Array.from({ length: 7 }, (_, i) => `<tr><td>10/${25 - i}</td><td>${d.raw(i)}</td><td>${d.src}</td></tr>`).join("");
   openSheet(d.n, `<div class="layer"><h4><span class="lv">L1</span>一眼</h4><div class="glance"><span class="big num">${d.v}<small style="font-size:16px;color:var(--text-2)"> ${d.u}</small></span><span class="badge bg-${d.tone} tone-${d.tone}">${d.badge}</span></div></div>
     <div class="layer"><h4><span class="lv">L2</span>趋势 · 30 天</h4>${lineChart(d.vals, d.color)}</div>
     <div class="layer"><h4><span class="lv">L3</span>原始数据</h4><table class="raw"><tr><th>日期</th><th>值</th><th>来源</th></tr>${rows}</table></div>
-    <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="explain">${ic("sparkles")}问 Jarvis 为什么</button><button class="pill">${ic("pin")}固定到今天</button></div>`);
+    <div class="acts" style="margin-top:14px"><button class="pill pri" data-ask="explain">${ic("sparkles")}问 Jarvis 为什么</button><button class="pill">${ic("pin")}固定到首页</button></div>`);
 }
 
 // Jarvis half sheet (simplified: the real one is the existing ai.js chat)
 function jarvisSheet(msgs = "", sugg = true) {
-  const s = S.p === "day1" ? ["今天吃了什么", "我想减脂", "这个 app 能做什么"] : ["今天该练什么", "记一顿饭", "我睡得怎么样"];
+  const s = ["今天该练什么", "记一顿饭", "我睡得怎么样"];
   openSheet(`${ic("orbit")}Jarvis`, `<div class="msgs" id="msgs">${msgs}</div>${sugg && !msgs ? `<div class="sugg">${s.map((x) => `<button>${x}</button>`).join("")}</div>` : ""}`,
     `<div class="compose"><span class="in">说点什么，或按住说话</span><span class="mic">${ic("mic")}</span></div>`);
 }
-async function addMsg(html) { const m = $("#msgs"); if (!m) return; m.insertAdjacentHTML("beforeend", html); $("#sh-b").scrollTop = 1e4; }
-async function typing(ms) { await addMsg(`<div class="bub ai typing" id="typing"><i></i><i></i><i></i></div>`); await sleep(ms); $("#typing")?.remove(); }
+function addMsg(html) { const m = $("#msgs"); if (!m) return; m.insertAdjacentHTML("beforeend", html); $("#sh-b").scrollTop = 1e4; }
+async function typing(ms) { addMsg(`<div class="bub ai typing" id="typing"><i></i><i></i><i></i></div>`); await sleep(ms); $("#typing")?.remove(); }
+const findCard = (icon, area, title, big, unit, chart, tone) => `<div class="ccard find"><div class="ch">${ic(icon)}${area}</div><b class="ft">${title}</b><div class="row2"><div><b class="num tone-${tone}">${big}</b><small>${unit}</small></div><div style="flex:1">${chart}</div></div></div>`;
 
-// ---------------------------------------------------------------- demo 1: Jarvis logs water for the first time -> the 喝水 module grows on Today
+// ---------------------------------------------------------------- demo 0: day 1. History is imported -> "your body at a glance" (3 findings) -> what do you care about -> Today is laid out
 let demoRun = 0;
+async function demoOnboard(auto = true) {
+  const run = ++demoRun;
+  setPersona("day1");
+  S.onboarding = true; S.pinned = []; render();
+  jarvisSheet("", false);
+  $("#sheet").classList.add("tall");
+  addMsg(`<div class="ccard"><div class="ch">${ic("check")}Apple 健康历史已导入</div><div class="row2"><div><b class="num">3.2 年</b><small>数据</small></div><div><b class="num">1,140</b><small>晚睡眠</small></div><div><b class="num">412</b><small>次训练</small></div></div></div>`);
+  await typing(auto ? 900 : 300); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">先给你看 3 个最重要的发现：</div>`);
+  addMsg(findCard("heart-pulse", "恢复", "HRV 近 2 周下降 12%", "52", "ms · 基线 59", `<span class="tone-mid">${spark(D.hrvDrop)}</span>`, "mid"));
+  addMsg(findCard("moon", "睡眠", "平均 01:24 入睡，周末再晚 1 小时", "01:24", "平均入睡", `<span class="tone-sleep">${bars([6, 7, 5, 7, 4, 3, 2], 7, "tone-sleep")}</span>`, "sleep"));
+  addMsg(findCard("dumbbell", "训练", "每周 4 次，力量为主，最近偏累", "−18", "TSB", `<span class="tone-strain">${bars([9, 12, 14, 13, 15, 16, 17], 18, "tone-strain")}</span>`, "strain"));
+  $("#sh-b").scrollTop = 0;
+  await sleep(auto ? 2200 : 600); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">你最关心哪些？可以多选，以后随时能改。</div><div class="goalchips" id="goals">${GOALS.map(([k, t]) => `<button data-goal="${k}" aria-pressed="false">${t}</button>`).join("")}</div>
+    <div class="acts"><button class="pill pri" id="goal-ok">好了</button><button class="pill">先跳过</button></div>`);
+  const picked = new Set();
+  for (const b of $$("[data-goal]")) b.onclick = () => { picked.has(b.dataset.goal) ? picked.delete(b.dataset.goal) : picked.add(b.dataset.goal); b.setAttribute("aria-pressed", picked.has(b.dataset.goal)); };
+  await sleep(600);
+  for (const k of ["sleep", "recover"]) { $(`[data-goal="${k}"]`).click(); await sleep(300); }
+  const ok = $("#goal-ok");
+  await new Promise((res) => { ok.onclick = res; if (auto) setTimeout(res, 1600); }); if (run !== demoRun) return;
+  ok.parentElement.remove();
+  addMsg(`<div class="bub me">睡得更好、训练和恢复</div>`);
+  await typing(800); if (run !== demoRun) return;
+  addMsg(`<div class="bub ai">好。首页先放 3 个：HRV（它在下降）、睡眠规律、入睡目标。其他功能都在「全部功能」里，随时能看。</div>`);
+  await sleep(auto ? 1800 : 400); if (run !== demoRun) return;
+  closeSheet(); $("#sheet").classList.remove("tall");
+  S.onboarding = false; S.pinned = ["hrv", "regularity", "sleepgoal"]; S.grown = new Set(S.pinned); render();
+  await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" });
+}
+
+// ---------------------------------------------------------------- demo 1: Jarvis logs water for the first time -> 喝水 goes to Today
 async function demoGrow(auto = true) {
   const run = ++demoRun;
   setPersona("week2");
   await sleep(auto ? 700 : 0);
   jarvisSheet("", false);
   await sleep(500); if (run !== demoRun) return;
-  await addMsg(`<div class="bub me"><div class="vt">${ic("audio-waveform")}语音 · 0:04</div>中午吃了一碗牛肉面，喝了一瓶水</div>`);
+  addMsg(`<div class="bub me"><div class="vt">${ic("audio-waveform")}语音 · 0:04</div>中午吃了一碗牛肉面，喝了一瓶水</div>`);
   await typing(1100); if (run !== demoRun) return;
-  await addMsg(`<div class="ccard"><div class="ch">${ic("utensils")}午餐<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">620</b><small>kcal</small></div><div><b class="num">28 g</b><small>蛋白</small></div><div><b class="num">1,240</b><small>今天</small></div></div></div>`);
+  addMsg(`<div class="ccard"><div class="ch">${ic("utensils")}午餐<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">620</b><small>kcal</small></div><div><b class="num">28 g</b><small>蛋白</small></div><div><b class="num">1,240</b><small>今天</small></div></div></div>`);
   await sleep(500);
-  await addMsg(`<div class="ccard" id="wcard"><div class="ch">${ic("droplet")}喝水<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">500 ml</b><small>今天 / 2,500</small></div></div>
-    <div class="acts"><button class="pill pri" id="pin-water">${ic("pin")}放到今天页</button><button class="pill">不用</button></div></div>`);
+  addMsg(`<div class="ccard"><div class="ch">${ic("droplet")}喝水<span class="ok">${ic("check")}已记</span></div><div class="row2"><div><b class="num">500 ml</b><small>今天 / 2,500</small></div></div>
+    <div class="acts"><button class="pill pri" id="pin-water">${ic("pin")}放到首页</button><button class="pill">不用</button></div></div>`);
   await sleep(300);
-  await addMsg(`<div class="bub ai">记好了。这是你第一次记喝水，要不要把「喝水」放到今天页？以后说一句「喝了一杯」就行。</div>`);
+  addMsg(`<div class="bub ai">记好了。第一次记喝水，要把「喝水」放到首页吗？以后说一句「喝了一杯」就行。</div>`);
   const pin = $("#pin-water");
-  const done = new Promise((res) => { pin.onclick = res; if (auto) setTimeout(res, 2200); });
-  await done; if (run !== demoRun) return;
-  pin.classList.add("on"); pin.classList.remove("pri"); pin.innerHTML = `${ic("check")}已放到今天页`;
+  await new Promise((res) => { pin.onclick = res; if (auto) setTimeout(res, 2200); }); if (run !== demoRun) return;
+  pin.classList.add("on"); pin.classList.remove("pri"); pin.innerHTML = `${ic("check")}已放到首页`;
   await sleep(700);
   closeSheet();
-  S.state.water = "pinned"; S.pinned.unshift("water"); S.grown = "water"; render();
+  S.pinned.unshift("water"); S.why.water = "用过"; S.seen.add("water"); S.grown = new Set(["water"]); render();
   await sleep(350);
   $(".mod.grow")?.scrollIntoView({ block: "center" });
-  toast(`${ic("sparkles")}「喝水」已放到今天页 · 长按可移走`);
+  toast(`${ic("sparkles")}「喝水」已放到首页 · 长按可移走`);
 }
 
-// ---------------------------------------------------------------- demo 2: a ready module is introduced by Jarvis
-async function demoIntro(k = "regularity") {
+// ---------------------------------------------------------------- demo 2: Jarvis finds something in the data and brings the module out
+async function demoFind(k = "weight") {
   if (S.p !== "week2") setPersona("week2");
   jarvisSheet("", false);
   await sleep(250);
-  await addMsg(`<div class="ccard"><div class="ch">${ic("bed")}睡眠规律 · 14 晚</div><div class="row2"><div><b class="num">78%</b><small>规律度</small></div><div><b class="num">01:12</b><small>平均入睡</small></div></div><span class="tone-sleep">${bars([6, 7, 5, 7, 4, 6, 7, 6, 5, 7, 6, 4, 7, 6], 7, "tone-sleep")}</span>
-    <div class="acts"><button class="pill pri" id="pin-reg">${ic("pin")}放到今天页</button><button class="pill" id="later">先不用</button></div></div>`);
-  await addMsg(`<div class="bub ai">你已经有 14 晚的入睡时间了，可以看「睡眠规律」：周末比平时晚睡 1 小时，周一的恢复会低一些。</div>`);
-  $("#pin-reg").onclick = async () => { closeSheet(); S.state[k] = "pinned"; S.pinned.push(k); S.grown = k; render(); await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" }); toast(`${ic("sparkles")}「睡眠规律」已放到今天页`); };
-  $("#later").onclick = () => { closeSheet(); S.state[k] = "open"; render(); toast(`${ic("layout-grid")}在 身体 → 进阶 里随时能看`); };
+  addMsg(`<div class="ccard"><div class="ch">${ic("scale")}体重 · 3 周</div><div class="row2"><div><b class="num">72.6</b><small>kg</small></div><div><b class="num">±0.2</b><small>3 周波动</small></div></div><span class="tone-mid">${spark(D.weight)}</span>
+    <div class="acts"><button class="pill pri" id="pin-f">${ic("pin")}放到首页</button><button class="pill" id="later">先不用</button></div></div>`);
+  addMsg(`<div class="bub ai">我注意到你的体重 3 周没怎么变，而这 3 周平均每天比目标多吃 180 kcal。要把「体重」放到首页一起盯着吗？</div>`);
+  $("#pin-f").onclick = async () => { closeSheet(); S.finding = null; S.pinned.push(k); S.why[k] = "发现"; S.seen.add(k); S.grown = new Set([k]); render(); await sleep(300); $(".mod.grow")?.scrollIntoView({ block: "center" }); toast(`${ic("sparkles")}「体重」已放到首页`); };
+  $("#later").onclick = () => { closeSheet(); S.finding = null; S.seen.add(k); render(); toast(`${ic("layout-grid")}在「全部功能」和「身体」里随时能看`); };
 }
 
 // ---------------------------------------------------------------- events
 function bind() {
   for (const b of $$("[data-tab]")) b.onclick = () => go(b.dataset.tab);
-  for (const b of $$("[data-go]")) b.onclick = () => go(b.dataset.go, b.dataset.sub);
-  for (const b of $$("[data-sub]:not([data-go])")) b.onclick = () => go("me", b.dataset.sub);
+  for (const b of $$("[data-go]")) b.onclick = (e) => { e.stopPropagation(); go(b.dataset.go); };
   for (const b of $$("[data-detail]")) b.onclick = () => detailSheet(b.dataset.detail);
-  for (const b of $$("[data-intro]")) b.onclick = () => demoIntro(b.dataset.intro);
+  for (const b of $$("[data-intro]")) b.onclick = () => demoFind(b.dataset.intro);
+  for (const b of $$("[data-cmode]")) b.onclick = () => { S.circMode = b.dataset.cmode; render(); };
+  for (const b of $$("[data-invite]")) b.onclick = (e) => { e.stopPropagation(); toast(`${ic("user-plus")}邀请链接已复制 · 7 天内有效`); };
   for (const b of $$("[data-focus], [data-ask], [data-mod]")) b.onclick = () => jarvisSheet();
   $("#jkey").onclick = () => jarvisSheet();
-  const sa = $("#show-all");
-  if (sa) sa.onclick = () => { S.showAll = !S.showAll; for (const m of CATALOG) if (S.showAll && mstate(m.k) === "locked") S.state[m.k] = "open"; if (!S.showAll) S.state = { ...P().state, ...Object.fromEntries(S.pinned.map((k) => [k, "pinned"])) }; render(); };
 }
 $("#sh-x").innerHTML = ic("x");
 $("#sh-x").onclick = () => closeSheet();
 $("#scrim").onclick = () => closeSheet();
 for (const b of $$("#personas .opt")) b.onclick = () => { demoRun++; setPersona(b.dataset.p); };
+$("#demo-onboard").onclick = () => demoOnboard(true);
 $("#demo-grow").onclick = () => demoGrow(true);
-$("#demo-intro").onclick = () => { demoRun++; demoIntro(); };
+$("#demo-find").onclick = () => { demoRun++; demoFind(); };
 for (const b of $$("[data-theme-set]")) b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; };
-window.Proto = { setPersona, go, demoGrow, demoIntro, detailSheet, jarvisSheet, closeSheet, S };
+window.Proto = { setPersona, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
 const q = new URLSearchParams(location.search);
 if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
 setPersona(q.get("p") || "week2");
