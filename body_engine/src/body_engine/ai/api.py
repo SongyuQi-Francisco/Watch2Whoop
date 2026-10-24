@@ -29,6 +29,7 @@ from ..i18n import L, lang
 from ..rollout import flags
 from . import asr, catalog, chat, choice, crypto, fallback, oauth, providers, quota_cards, runs, tokens, voice_fix
 from . import quota_cards_params as qcp
+from .web import mcp as web_mcp
 from . import params as ai_params
 
 log = logging.getLogger(__name__)
@@ -325,7 +326,8 @@ class AiTokenIn(BaseModel):
 @router.get("/v1/users/{user}/ai-tokens")
 def list_ai_tokens(user: str, request: Request, conn=Depends(get_conn), viewer=Depends(current_user)):
     uid = _self_only(viewer, user)
-    return {"tokens": tokens.list_tokens(conn, uid), "connections": oauth.list_grants(conn, uid), "mcp": mcp_setup(request)}
+    return {"tokens": tokens.list_tokens(conn, uid), "connections": oauth.list_grants(conn, uid), "mcp": mcp_setup(request),
+            "web": web_mcp.status(conn, uid)}   # the server's web tools for external AIs (rollout flag mcp_web), None = off
 
 
 @router.post("/v1/users/{user}/ai-tokens", status_code=201)

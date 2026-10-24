@@ -51,13 +51,29 @@ The Mac version uses the public `https://body.example.com/mcp` (the default in `
 | `allow`: `mcp__body-engine__get_*`, `list_*`, `analyze_journal`, `search_exercises` | Read your own data without prompts |
 | `allow`: `update_profile_card`, `add_observation`, `set_status_items` | The butler's own notes (long-term memory) and status card; you can see them any time on the Today page's "Me" tab (「我」页), every change is audited; a prompt for each would be annoying |
 | `allow`: `mcp__body-engine__*`; `ask`: only the delete / undo tools listed above (`test_every_write_tool_asks_in_butler_settings` keeps it equal to the in-page chat's `ALWAYS_CONFIRM` and makes sure every new delete / undo tool is listed) | Logging is not interrupted; anything that destroys data still needs your tap. `ask` takes precedence over `allow` |
-| `deny`: `Bash`, `Edit`, `Write`, `NotebookEdit`, `WebFetch`, `WebSearch`, `Agent`, scheduled tasks | The butler only needs the database tools; with no shell and no file writes, even instructions hidden in a photo cannot run commands or change code and configuration; no internet, so health data cannot be carried out |
+| `deny`: `Bash`, `Edit`, `Write`, `NotebookEdit`, `WebFetch`, `WebSearch`, `Agent`, scheduled tasks | The butler only needs the database tools; with no shell and no file writes, even instructions hidden in a photo cannot run commands or change code and configuration. Claude Code's own `WebFetch` / `WebSearch` stay denied: the butler goes online only through the server's `web_search` / `web_fetch` (see "Web access" below) |
 | `deny`: `Read` of `secrets/` and `health_data/` in the Mac main repo and in Ali's `/opt/body-management` (plus Ali's `.env`), `~/.ssh`, `~/.aws`, `~/.claude.json`, the keychain | Passwords, tokens and raw health data stay out of the conversation. On Ali there is a second layer: the `bodybutler` user cannot read these anyway (700 root), and `assistant/` is not owned by it, so it cannot change its own settings |
 | `disableBypassPermissionsMode`, `defaultMode: default` | You cannot switch to the "skip all confirmations" mode from the phone |
 | `disableClaudeAiConnectors`, `mcp__claude_ai_*` / `mcp__claude-in-chrome__*` deny, `enabledMcpjsonServers: [body-engine]`, stock plugin turned off | Connect only the body-engine MCP; no claude.ai connectors such as Gmail / Drive and no browser |
 | `autoMemoryEnabled: false`, `claudeMdExcludes` excludes the repo root `CLAUDE.md` (Mac main repo, worktrees, Ali's `/opt/body-management/CLAUDE.md`) | Does not read the development notes and auto-memory (those are for development sessions); long-term memory lives in the database tables `assistant_profile` / `assistant_observations` |
 | `UserPromptSubmit` hook: appends the current local time to every message | The butler has no shell; to decide which day "tonight / the small hours" belongs to it needs the current time (`get_profile` also returns `now_local`) |
 | `ENABLE_TOOL_SEARCH=false` | The MCP `tools/list` is small enough to load up front: since #99 it holds only the resident core, the delete / undo tools and the meta tools `find_tools` / `run_read_tool` / `run_write_tool` (44 tools, about 20k characters); the other tools are found and run through those (`docs/ai-assistant-plan.md` section 9.17) |
+
+### Web access (rollout flag `mcp_web`)
+With `mcp_web` on for user 1 the butler finds the server's `web_search` / `web_fetch` with `find_tools` (grocery group) and runs
+them with `run_read_tool`; `mcp__body-engine__*` in `allow` already covers both meta tools, so there is no new rule and no
+prompt (they only read). They are the same tools the in-page chat uses (`body_engine/src/body_engine/ai/web/`,
+`docs/ai-assistant-plan.md` section 9.20), chosen over Claude Code's own `WebFetch` / `WebSearch` (which stay in `deny`) because
+the server's version has what the built-in ones do not:
+- **limits and cost control**: per person per local day (searches / page reads), a monthly cap for all users together, and each
+  search billed in `ai_usage` against the person's fallback quota; the chat and MCP share one allowance;
+- **SSRF protection**: only http(s) on the default ports, public addresses only (the connection goes to the checked address),
+  every redirect hop checked again, so nothing on Ali's own network or the tailnet can be reached;
+- **polite reading**: robots.txt is obeyed, any block (403 / 429, CAPTCHA, login wall) stops the attempt with no retry, and the
+  bot-protected supermarkets in `NO_FETCH_HOSTS` are never fetched;
+- **excerpts only**: the model gets a short excerpt marked as data, not instructions, and nothing is stored;
+- **one audit**: every call is in `assistant_audit` with channel `mcp:butler`.
+Turning the flag off (`body-engine flags set mcp_web --state off`) removes them within 30 seconds; the butler then has no web access at all.
 
 MCP identity: the AI-only token `secrets/body_ai_token_butler` (user 1, scope `mcp`, usable only on `/mcp`, can be revoked separately; `ai-token-list / revoke`), audit channel `mcp:butler`. On Ali `butler.sh install` turns it into systemd's `secrets/body_butler.env`; re-run `install` after replacing the token.
 

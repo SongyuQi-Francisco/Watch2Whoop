@@ -1025,6 +1025,8 @@ I18N.addEn({
   "已同意，正在回到应用…": "Approved, returning to the app…",
   "已拒绝，正在回到应用…": "Denied, returning to the app…",
   "已连接的应用": "Connected apps",
+  "外接 AI 也能用服务器联网：搜索、读网页（每天有上限）": "Your external AI can also go online through the server: search and read pages (daily limit)",
+  "外接 AI 也能用服务器读网页（每天有上限）": "Your external AI can also read web pages through the server (daily limit)",
   "未命名的应用": "Unnamed app",
   "断开": "Disconnect",
   "断开后这个应用立即连不上，确定？": "The app loses access right away. Disconnect?",

@@ -192,7 +192,7 @@ def test_tool_definitions_are_short():
     assert {web.SEARCH_TOOL.group, web.FETCH_TOOL.group} == {"grocery"}
     assert not web.SEARCH_TOOL.writes and not web.FETCH_TOOL.writes
     from body_engine.assistant.tools import TOOLS_BY_NAME
-    assert not set(web.NAMES) & set(TOOLS_BY_NAME)       # never in the MCP tools/list: clients there browse themselves
+    assert not set(web.NAMES) & set(TOOLS_BY_NAME)       # not in the registry: MCP reaches them only behind mcp_web (test_mcp_web.py)
 
 
 # ---------------------------------------------------------------- chat (database)
