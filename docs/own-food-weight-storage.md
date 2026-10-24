@@ -16,7 +16,7 @@
 
 不做的：
 
-- 不改 SparkyFitness 本身（继续用官方镜像，不 fork）。
+- 不改 SparkyFitness 本身（继续用官方镜像，不 fork），也不复制、改写它的代码和表结构：新存储完全由我们自己实现，见第 12 节「许可证：独立实现」。
 - 训练计划（`training_plans`）、食谱（`recipe_meta`）、快捷记餐（`meal_templates`）、营养目标（`nutrition_goal_versions`）、动作字典（`exercise_catalog`、`custom_exercises`、`exercise_meta`）本来就在 Body Engine，只是有的会**镜像**到 SparkyFitness（计划 → workout preset / plan template，食谱 → meal）。第 4 期停掉这些镜像，表本身不动。
 - SparkyFitness 里的饮水、自定义测量项、运动 app 同步等功能本项目没用到，不迁。饮水已经是自己的 `water_logs`（#125）。
 
@@ -247,6 +247,21 @@ user_exercises          …
 - **id 冲突**：SparkyFitness id 是 uuid，新行也是 uuid；写入时校验 `user_id`，冲突就报错，不会写到别人名下。
 - **大用户的迁移时间**：饮食按范围一次读、训练分页读，几年数据也就几千条，几十秒内完成；整个迁移一个事务，失败全部回滚。
 
+## 12. 许可证：独立实现
+
+SparkyFitness 的许可证不允许商业使用。它的第 2 条还规定：修改版，以及包含它实质部分的新作品，都只能用同样的非商业条款发布。所以 fork 它、改写它、或把它的一部分搬进本项目，都不合规。本项目的规则：
+
+- **新存储完全是我们自己写的。** 表结构、代码、字段命名都按 Body Engine 自己的设计来。不复制、不照搬 SparkyFitness 的源码、SQL schema、迁移文件、种子数据或界面文字，写的时候也不拿它们做参照。
+- **字段按我们自己的约定命名。** 例如带单位后缀的 `protein_g`、`sodium_mg`、`weight_kg`、`body_fat_pct`，和 Body Engine 现有的表、工具一致。表的划分也按我们自己的需要来：营养存每条记录的合计；体重一人一天一行；训练分三层，和手表训练表 `workouts` 分开命名；加糖等字段并进饮食记录。
+- **和 SparkyFitness 唯一的接触面是它对外的 HTTP API**，并且只有两处：
+  - 迁移命令 `sparky-migrate` 用每个用户**自己的只读 key**，读出这个用户自己的数据；
+  - 第 2、3 期的双写在写完之后读回同一个用户自己的数据。
+  
+  映射代码（`ownstore/mapping.py`）里出现的 SparkyFitness 字段名，只是读 API 返回值时用的键，就像读任何外部服务的接口一样；不出现在我们的表结构里。
+- 读出来的是**我们用户自己的数据**。数据属于用户，不属于软件许可证的保护范围。
+- 第 4 期下线后，代码里只保留迁移命令和它用到的 API 读函数（方便晚来的部署者迁数据），其余 SparkyFitness 相关代码全部删除。部署里不再包含 SparkyFitness 的任何镜像。
+- 评审要求：涉及新存储的 PR，评审时确认没有从 SparkyFitness 仓库复制的内容（代码、SQL、注释、测试数据）。
+
 ---
 
 ## English summary
@@ -257,3 +272,4 @@ Food, food library, weight and workout logs live in SparkyFitness today, whose l
 - **Phases**: (1) this design; (2) the tables, dual write behind flag `own_food_store` (after each SparkyFitness write the affected dates are read back and synced into the new tables; off = exactly as before) and `body-engine sparky-migrate --user-id N [--dry-run | --confirm]` (idempotent upsert by id, deletes rows SparkyFitness no longer has, per-table check against SparkyFitness, the owner confirms before production runs); (3) read path switch behind `own_food_read` (same-shape readers for `training_log` / `food_entries` / `nutrition` / `weight` / `exercises`, only for users whose last migration was ok), write split into checks + storage backend, rollback dispatched by a `store` marker, Grafana weight panel on SQL; (4) `own_food_only`, stop mirroring plans / recipes, remove SparkyFitness from code, compose, quickstart, ops and docs after a 4-week fallback window.
 - **Rollback**: turn the flags off (dual write keeps SparkyFitness complete until phase 4); after phase 4 a push-back command restores SparkyFitness from rows written meanwhile.
 - **Effort**: about 0.5 + 2 + 4 + 3 days.
+- **Licence: independent implementation** (§12): clause 2 of SparkyFitness's licence keeps modified versions and works containing substantial parts of it under the same non-commercial terms, so nothing is forked, adapted or copied (source, SQL schema, migrations, seed data). Tables, code and field names are our own design. The only contact is its public HTTP API, used by the migration and the dual write to read each user's own data with that user's own read-only key.
