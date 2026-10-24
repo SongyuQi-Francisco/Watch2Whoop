@@ -7,7 +7,7 @@
 ## 0. 背景和目标
 
 - 现在只有一个部署（下面叫**海外区 `intl`**）。离服务器近的用户很流畅；中国内地用户跨境访问，延迟高、容易丢包。
-- 决定：加一个**中国内地区 `cn`**。内地用户的数据库、评分、上传文件、备份都在境内；海外用户留在原来的部署。
+- 决定：加一个**中国内地区 `cn`**。中国大陆用户的数据库、评分、上传文件、备份都放在境内；其他用户（**包括港澳台**）都留在原来的部署（海外区）。
 - 目标：
   1. **每个账号只属于一个区域**，它的健康数据只存在这个区域。
   2. 客户端（iOS app、app 里的今天页、用户自己的 AI 客户端）自动连到账号所在的区域。
@@ -40,7 +40,7 @@
     {"id": "intl", "name": {"zh": "海外", "en": "International"},
      "today_url": "https://intl.example.com", "sync_url": "https://sync-intl.example.com",
      "id_range": [1, 9999999]},
-    {"id": "cn", "name": {"zh": "中国内地", "en": "Mainland China"},
+    {"id": "cn", "name": {"zh": "中国大陆", "en": "Mainland China"},
      "today_url": "https://cn.example.com", "sync_url": "https://sync-cn.example.com",
      "id_range": [10000000, 19999999]}
   ]
@@ -57,23 +57,39 @@
   - doctor 每小时检查每个序列都还在本区间内，接近上限时报 ⚠。
   - Open Wearables 和 SparkyFitness 的主键大多是 UUID，少数自增表一样拨序列。
 
-### 1.3 新用户怎么分区域
-三种做法：
+### 1.3 谁属于哪个区域，新用户怎么判断
+**口径（负责人 2026-10-24 决定）**：
+- 常住在**中国大陆**的用户进内地区 `cn`；
+- **香港、澳门、台湾和其他所有地区**的用户都在海外区 `intl`。
+- 下面说的「内地」都指中国大陆，不含港澳台。
+- 判断看**常住地**，不看国籍，也不看此刻人在哪里。所以出差、旅行不换区；搬家（常住地变了）才通过迁移换区（第 6 节）。
 
-| 做法 | 说明 | 利 | 弊 |
+**能用的信号**（都在手机上就能拿到，不用先联网）：
+
+| 信号 | 怎么拿 | 准不准 | 问题 |
 |---|---|---|---|
-| A. 注册时选择 | app 第一屏「你主要在哪里使用？中国内地 / 其他地区」；按设备时区（`Asia/Shanghai` 等）预选 | 透明；用户自己决定数据放哪；没有码也能用 | 多一步；选错要迁移 |
-| B. 码决定区域 | 激活码 / 邀请码 / 圈子码在哪个区域生成，就属于哪个区域，兑换时自动落到那个区域 | 测试用户零选择；管理员开户时就定好 | 境外朋友邀请内地用户时，码会把他带到海外区 |
-| C. 按 IP 判断 | 服务器看来源 IP | 无感 | 出差、VPN 会判错；不透明，不建议 |
+| App Store 店面国家 | StoreKit `Storefront.current.countryCode`（`CHN` / `HKG` / `MAC` / `TWN` …） | 较准：反映 Apple ID 的国家或地区，港澳台各是各的 | 用外区 Apple ID 的内地用户会判成海外；TestFlight 下也能读，但要真机验证 |
+| 设备「地区」设置 | `Locale.current.region`（`CN` / `HK` / `MO` / `TW` …） | 中等：多数人不会改 | 有人为了用某些功能改成别的地区 |
+| 设备时区 | `TimeZone.current`：`Asia/Shanghai`、`Asia/Urumqi` 是内地；`Asia/Hong_Kong`、`Asia/Macau`、`Asia/Taipei` 不是 | 只反映此刻人在哪里，出差会错 | 只能当辅助 |
+| SIM 运营商（MCC 460） | 不能用 | — | iOS 16 起系统不再提供真实运营商信息 |
+| 来源 IP 归属地 | 服务器看 IP | 反映此刻位置；VPN、出差会错 | IP 本身是个人信息。要判断，先得把请求发到某个区域的服务器，内地用户的第一次请求就可能先到了海外区。**不推荐** |
+| 码所属区域 | 激活码 / 邀请码 / 圈子码在哪个区域生成，就属于哪个区域（用 `resolve-code` 查，见下面） | 管理员开户时已经问过本人，准 | 朋友互邀时，邀请人和被邀请人可能不在同一个区 |
+| 本人确认 | 第一屏问「你常住在哪里？中国大陆 / 其他国家和地区（含港澳台）」 | 最终以这个为准 | 多一步；选错要迁移 |
 
-**推荐 A + B**：
-- 有码时，码带出默认区域。
-- 第一屏显示这个区域，用户可以改。码的区域和用户选的区域不一致时，提示「这个邀请来自 X 区，你选了 Y 区：可以注册，但不能加入对方的圈子」（第 3 节）。
-- 没有码时，按时区预选，用户确认。
+**推荐：手机上预选，本人确认，码优先**。
+1. **有码**（管理员开户、激活链接、设置二维码）：用码所属的区域。码是管理员在问过本人后，在对应区域生成的。第一屏只显示「你的数据将存放在：中国大陆 / 海外」，不再让用户选。设置二维码本身就带区域的服务器地址（2.2）。
+2. **没有码，或者是朋友的邀请码**：第一屏让本人选常住地，按手机上的信号预选：
+   - 店面是 `CHN`，并且设备地区是 `CN` 或时区是内地 → 预选「中国大陆」；
+   - 其他情况 → 预选「其他国家和地区」；
+   - 预选只是默认值，本人点「确认」才算数。选项旁边写一句「决定你的数据存放在哪里：选中国大陆，数据存放在中国境内的服务器」。
+3. **朋友的邀请码和本人选的区域不一致**时：以本人的选择为准，可以注册，但不能加入对方的圈子（第 3 节）。app 提示「邀请你的朋友在 X 区，你选了 Y 区，注册后看不到对方的圈子」。
+4. **全过程不在服务器上做 IP 判断**：选区域之前，app 不向任何区域发送个人信息，只有 `resolve-code` 会发一个码（码不是个人信息）。
+5. **管理员开户**（`onboard`、激活码）：管理员先问本人常住地，再到对应区域的服务器上开户。区域服务器只会给本区开户，所以不会开错地方。
+6. 本人选的区域和手机信号明显矛盾时（例如选「其他地区」，但店面、地区、时区都是内地）：只多问一次「确定吗？」，不拦截。选错了可以找管理员迁移（第 6 节）。
 
-**码怎么查区域**：码本身不是个人信息。app 把码并发发给各区域的 `POST /v1/region/resolve-code`（不鉴权、限流和兑换一样）。哪个区域答「是我的」，就在那个区域注册。
-- 码的格式不变，所以 1.0.6 之后的 10 位码、可读码、桥接码都照常能用。
-- 两个区域同时认同一个码时，按 app 内置的区域顺序取第一个。生成码时各区域会检查别的区域没有同样的可读码。
+**码怎么查区域**：码本身不是个人信息。app 把码同时发给各区域的 `POST /v1/region/resolve-code`（不鉴权，限流和兑换一样），哪个区域回答「是我的」，就在那个区域注册。
+- 码的格式不变：1.0.6 之后的 10 位码、可读码、桥接码都照常能用。
+- 两个区域都认同一个码时，按 app 内置的区域顺序取第一个。生成可读码时，各区域会先检查别的区域有没有同样的码。
 
 ## 2. 客户端怎么连对服务器
 
@@ -129,7 +145,7 @@ GeoDNS 按「人在哪」分，但数据是按「账号在哪」放的：
 
 ### 2.6 今天页
 - 今天页是 app 里的 WebView，跟着 app 的 `todayUrl` 走，不需要自己切换区域。
-- 「我」页加一行只读的「数据存放：中国内地 / 海外」。
+- 「我」页加一行只读的「数据存放：中国大陆 / 海外」。
 - 换区域只能通过迁移（第 6 节），今天页上不提供「切换区域」按钮，免得用户以为切过去数据就跟着走了。
 
 ## 3. 跨区域的功能
@@ -235,7 +251,7 @@ GeoDNS 按「人在哪」分，但数据是按「账号在哪」放的：
 | 7 | AI | `BODY_AI_PROVIDERS_ALLOWED`；联网搜索可关闭；托底 AI 按区域配置（参数已经在 `fallback_params.py`，只是部署不同）；AI 设置页显示本区 MCP 地址和数据去向提示 | 1 天 |
 | 8 | 迁移工具 | `region-move plan / freeze / unfreeze / export / import / verify / switch / rollback / purge`；三个库按外键导出和导入；校验和；一次性迁移密钥转 AI key；上传文件；审计；用临时 Postgres 跑的端到端测试（两个库模拟两个区域：迁过去 → 核对 → 回退 → 再迁 → 删除） | 5–6 天 |
 | 9 | 同步暂存 | 冻结期间收下的上传（快捷指令、#219 引擎、OW 的 webhook 侧）放进暂存队列，切换时转交 | 1 天 |
-| 10 | app | 内置区域表 `W2W_REGIONS`；第一屏选区域 / 先输码；`resolve-code`；处理 410 `account_moved`（检查地址在表内 → 改配置 → 静默重连 → 新今天页登录码）；「我」页显示数据存放地点；中英文案；测试 | 3–4 天（1.0.8 或之后的版本，和 #247 的原生化一起排） |
+| 10 | app | 内置区域表 `W2W_REGIONS`；第一屏：有码先输码，没码问常住地（读 App Store 店面国家、设备地区、时区做预选，店面要一个小的原生通道）；`resolve-code`；处理 410 `account_moved`（检查地址在表内 → 改配置 → 静默重连 → 新今天页登录码）；「我」页显示数据存放地点；中英文案；测试 | 3.5–4.5 天（1.0.8 或之后的版本，和 #247 的原生化一起排） |
 | 11 | 今天页 | 「我」页显示区域；老 app 收到 410 时的「重新设置」提示页；可选配置 `BODY_ICP_NUMBER` / `BODY_PSB_NUMBER`，配了就在激活页、手册、「我 → 关于」底部显示备案号（内地区要求）；中英 | 1 天 |
 | 12 | 部署脚本（通用部分） | `deploy/` 里的 compose 和 doctor 支持「不装 Grafana / 不装管家」的区域；访问日志保留天数做成可配置（有的地区要求至少 6 个月）；镜像离线导入的说明（`docker save` / `docker load`，或镜像仓库） | 1 天 |
 | 13 | 文档 | 管理员指南加多区域一节；手册加「数据存放地点」；本方案根据实现更新 | 0.5 天 |
@@ -279,7 +295,8 @@ Issue #249 plan: **multi-region deployment** (an international region and a main
   - Every deployment gets `BODY_REGION` and a public `regions.json` (addresses only).
   - Each region owns a disjoint **ID range**, so all sequences start at the region's offset. Account moves keep every primary key, and a user id is unique across regions.
   - A moved account leaves a **tombstone** in the old region: no data, only the target region and token hashes, kept 90 days.
-- **New users** pick their region on the first screen, preselected from the device time zone. A code (activation, invite or circle code) carries its region through an unauthenticated, rate-limited `POST /v1/region/resolve-code` that the app asks every region. Sign-in goes only to the chosen region. GeoDNS is rejected because data follows the account, not the user's location.
+- **Who goes where** (owner's decision): users who live in mainland China go to `cn`; Hong Kong, Macau, Taiwan and every other place go to `intl`. The test is habitual residence, not nationality or where the user is right now.
+- **New users.** A code (activation, invite or circle code) carries its region, resolved through an unauthenticated, rate-limited `POST /v1/region/resolve-code` that the app asks every region. Without a code, the first screen asks where the user lives, preselected on the device from the App Store storefront, the device region and the time zone. The user's confirmation decides; there is no IP-based detection. Sign-in goes only to the chosen region. GeoDNS is rejected because data follows the account, not the user's location.
 - **Clients.** The app ships a built-in region table; server lock only allows those hosts. Setup links already carry the server address.
   - The old region answers moved accounts with `410 account_moved` plus the new public addresses. A new app switches silently and re-uses its token, which was migrated as a hash.
   - Old apps get a one-tap re-setup link.
