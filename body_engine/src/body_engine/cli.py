@@ -329,6 +329,9 @@ def main() -> None:
     og.add_argument("--file", type=Path, help="another snapshot (.json / .json.gz built by tools/build_opengym_snapshot.py); default: the one in the repository")
     og.add_argument("--dry-run", action="store_true", help="only plan: write nothing")
     og.add_argument("--report", type=Path, help="also write the full report (including every unmapped name) as JSON")
+    sbp = sub.add_parser("static-bundle-pack", help="write the versioned static data bundle (exercise library, labels, glossary, split templates) for the app: bundle-v<N>.json.gz + manifest.json (#248)")
+    sbp.add_argument("--out", type=Path, required=True, help="output directory (created)")
+    sbp.add_argument("--since", type=int, help="also write the delta from this version")
     fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
                         "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
     fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
@@ -730,6 +733,11 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "static-bundle-pack":
+            from .static_bundle import pack as sb_pack
+            man = sb_pack.pack(conn, args.out, args.since)
+            print(f"version {man['version']}: " + ", ".join(f"{f['file']} {f['bytes'] / 1024:.0f} KiB (raw {f['uncompressed_bytes'] / 1024:.0f} KiB)" for f in man["files"])
+                  + f"; modules {man['modules']}")
         elif args.cmd == "exercises-import-opengym":
             from .training.opengym import importer as og_importer
             rep = og_importer.run(conn, og_importer.load_snapshot(args.file) if args.file else None, dry_run=args.dry_run)
