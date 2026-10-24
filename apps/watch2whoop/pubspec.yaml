@@ -22,6 +22,8 @@ dependencies:
   open_wearables_health_sdk: 0.0.25
   webview_flutter: 4.14.1
   webview_flutter_wkwebview: 3.27.0
+  # Android WebView (#253): file inputs and the platform params; same version the lock already had transitively
+  webview_flutter_android: 4.14.1
   url_launcher: 6.3.3
   shared_preferences: 2.5.6
   http: 1.6.0

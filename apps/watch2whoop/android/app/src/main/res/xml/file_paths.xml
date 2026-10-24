@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider (manifest): only the camera folder in the app's cache, for photos / videos taken for a file input. -->
+<paths>
+    <cache-path name="camera" path="camera/" />
+</paths>

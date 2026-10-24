@@ -10,6 +10,7 @@ import 'app_state.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
+import 'platform_features.dart';
 import 'push.dart';
 import 'raw_sync.dart';
 
@@ -17,6 +18,7 @@ import 'raw_sync.dart';
 String get deviceLabel {
   if (kIsWeb) return 'Watch2Whoop web';
   if (Platform.isIOS) return 'iPhone (Watch2Whoop)';
+  if (Platform.isAndroid) return 'Android (Watch2Whoop)';
   return 'Watch2Whoop ${Platform.operatingSystem}';
 }
 
@@ -42,6 +44,7 @@ class SyncConnectResult {
 Future<SyncConnectResult> connectSyncViaAccount() async {
   final state = AppState.instance;
   final token = state.accountToken;
+  if (!hasHealthSync) return const SyncConnectResult(); // Android (#253): nothing to connect yet
   if (token == null) return const SyncConnectResult(manualNeeded: true);
   final api = accountApiFor(state.config.todayUrl);
   final OwInvitation inv;
