@@ -151,20 +151,35 @@ def list_meal_templates(user: str, conn=Depends(get_conn), viewer=Depends(curren
     return meals.list_templates(conn, _owner(conn, viewer, user, "nutrition"))
 
 
+def _with_today(conn, owner: int, out: dict) -> dict:
+    """optimistic_writes (#247 3.4): the write's answer carries the Today page's nutrition block of that day, so the page
+    replaces just that block instead of loading the whole /today again. Left out when it cannot be read right now."""
+    if not flags.enabled(conn, owner, "optimistic_writes") or not out.get("date"):
+        return out
+    from ..web import views
+    try:
+        out["today"] = {"nutrition": views.nutrition_today(conn, owner, dt.date.fromisoformat(out["date"]))}
+    except sparky_client.SparkyError:
+        pass
+    return out
+
+
 @router.post("/meal-templates/{template_id}/log", status_code=201)
 def log_meal_template(user: str, template_id: int, body: MealLogIn | None = None,
                       conn=Depends(get_conn), viewer=Depends(current_user)):
     """One tap logs a meal: one SparkyFitness food entry per food. Duplicate (this meal already logged on this day) -> 409."""
     b = body or MealLogIn()
     owner = _self(viewer, user)
-    return _meal_call(meals.log_template, conn, owner, template_id, b.date, b.time,
-                      [o.model_dump() for o in b.items] if b.items else None, b.allow_duplicates, channel="web")
+    return _with_today(conn, owner, _meal_call(meals.log_template, conn, owner, template_id, b.date, b.time,
+                                               [o.model_dump() for o in b.items] if b.items else None, b.allow_duplicates,
+                                               channel="web"))
 
 
 @router.delete("/meal-logs/{log_id}")
 def undo_meal_log(user: str, log_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Undo one quick meal logging: delete the entries this logging wrote into SparkyFitness."""
-    return _meal_call(meals.undo_log, conn, _self(viewer, user), log_id)
+    owner = _self(viewer, user)
+    return _with_today(conn, owner, _meal_call(meals.undo_log, conn, owner, log_id))
 
 
 # ---------------------------------------------------------------- several entries -> a template / one entry (issue #93)
