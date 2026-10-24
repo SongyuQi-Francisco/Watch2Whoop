@@ -227,7 +227,9 @@
     "against wall": "靠墙",
     "on floor": "地面",
     "with towel": "毛巾",
-    "with chest support": "胸部支撑"
+    "with chest support": "胸部支撑",
+    "semi squat": "半蹲",
+    "half squat": "半蹲"
   },
   "movements": {
     "bench press": "卧推",

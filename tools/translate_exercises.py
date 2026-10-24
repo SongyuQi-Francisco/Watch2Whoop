@@ -396,6 +396,8 @@ def translate_batch(tr, rows: list[dict], model: str, got: dict[str, dict] | Non
 
 
 def write(path: Path, table: dict[str, dict]) -> None:
+    for e in table.values():   # against the current glossary, so a glossary edit never leaves a stale flag
+        e["glossary_misses"] = T.glossary_misses(e["name_en"], e["name_zh"])
     tmp = path.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(table[s], ensure_ascii=False, sort_keys=True) + "\n" for s in sorted(table)), encoding="utf-8")
     tmp.replace(path)
@@ -450,7 +452,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.estimate or not todo:
         return 0
-    key = key_file.read_text(encoding="utf-8").strip()   # never printed or logged
+    key = key_file.read_text(encoding="utf-8").strip() if key_file.is_file() else ""   # never printed or logged
+    if not key:
+        raise SystemExit(f"no key in {key_file}: put it there first (the run stopped before any request)")
     tr = ClaudeTranslator(key, model) if claude else DeepSeekTranslator(key, a.base_url, model)
     del key
     failed: list[str] = []
@@ -485,6 +489,7 @@ def main(argv: list[str] | None = None) -> int:
                     break
     misses = sum(1 for s in table.values() if s.get("glossary_misses"))
     print(json.dumps({"translated": done, "failed": failed, "cost": round(tr.cost(), 3), "currency": tr.currency,
+                      "cache_tokens": getattr(tr, "cache", None),
                       "tokens_in": tr.tokens_in + getattr(tr, "batch_in", 0), "tokens_out": tr.tokens_out + getattr(tr, "batch_out", 0),
                       "lines_in_file": len(table), "lines_with_glossary_misses": misses}, ensure_ascii=False, indent=1))
     return 0 if not failed else 1
