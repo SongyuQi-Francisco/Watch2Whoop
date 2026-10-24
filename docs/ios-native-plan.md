@@ -170,6 +170,30 @@
 
 只做服务端部分时，重开 app 到看到今天的数字：150 ms 约 1.6–1.9 s → **0.9–1.2 s**，300 ms 约 2.9 s → **1.6–2.0 s**；加上 1.0.8 的外壳：先出上次的数据约 **0.3 s**，刷新完 0.6–0.8 / 1.0–1.3 s。
 
+### 3.9 第 1 期 3.2–3.5 实测
+
+方法同第 1.1 / 1.5 节：本机 Body Engine（这个分支）、hypercorn + 自签名 TLS（HTTP/2）、测试库 `body_test_perf`（`demo_data.py` 合成用户 90 天 + 一个快捷记餐模板）、系统 Chrome 无头 390 × 844、CDP 给每个请求加 RTT。除 `friends` 外其他开关全开（`friends` 关着，饮食才是独立的 tab，和 #255 一致）。「前」= 四个开关全关（和 main 一样），「后」= 四个全开；每组 2 轮取中位数。首屏 = 今天页恢复环出现的时间（从开始导航算）。切 tab 是稳态：每个 tab 之前打开过一次（学到路径）、重开后空闲预取已完成。记一餐的 POST 正式环境要写 SparkyFitness，这里用「一个 RTT + 250 ms」的假响应（不带 `today` 块）。**只测本地，没有对正式服务器发任何请求。**
+
+| 操作 | 150 ms 前 | 150 ms 后 | 300 ms 前 | 300 ms 后 |
+|---|---|---|---|---|
+| 冷启动（缓存全空）首屏 | 0.66 s | 0.52 s | 1.27 s | 0.97 s |
+| 冷启动网络结束 / 接口请求数 | 0.80 s / 19 | 0.50 s / 1 | 1.57 s / 19 | 0.94 s / 1 |
+| **热启动（重开 app）首屏** | 0.49 s | **0.19 s**（上次的数据，标「更新中」） | 0.95 s | **0.33 s** |
+| 热启动换成新数据 | 0.49 s | 0.35 s | 0.95 s | 0.63 s |
+| 热启动网络结束 / 接口请求数 | 0.64 s / 18 | 0.52 s / 2 | 1.25 s / 18 | 0.93 s / 2 |
+| 切到趋势 | 0.35 s（5 个，2 层） | 0（0 个） | 0.64 s | 0 |
+| 切到记录 | 0.34 s（5 个，2 层） | 0.20 s（1 个） | 0.63 s | 0.35 s |
+| 切到我 | 0.33 s（7 个，2 层） | 0（0 个） | 0.63 s | 0 |
+| 切到饮食 | 0.38 s（4 个，2 层） | 0（0 个） | 0.68 s | 0 |
+| 记一餐到「已记 ✓」 | 0.41 s | **0**（点下去即显示） | 0.56 s | **0** |
+| 记一餐网络结束 | 0.79 s | 1.02 s | 1.25 s | 1.46 s |
+
+说明：
+- 热启动后的 2 个请求 = `boot` + `/v1/friends/feed/unread`（同一路径有两处读取，启动包只答一次）；记录页剩下的 1 个是 `training/muscle-load`（今天页已读过一次、记录页的脚本又自己读一次）。都是单层、不影响首屏。
+- 记一餐网络结束变长：先显示时饮食页重画一次（饮食档案、喝水卡跟着重读），本地的假响应又不带 `today.nutrition`，所以回来后再重拉一次 `/today`。正式环境 POST 返回 `today.nutrition`，今天页数字一致时不再重画；这一项只影响后台流量，不影响看到「已记」的时间。
+- 第一次启动（或刚打开开关后的那一次）、每个 tab 第一次打开时还是原来的速度，同时学路径；之后才是上表的数字。
+- 真机还要加新连接（约 0.5–0.66 s）和手机上解析脚本的时间（第 1.2 节）；这些不受这次改动影响，3.6（1.0.8 先开本机外壳）去掉的是页面那一层。
+
 ---
 
 ## 4. 第 2 期：本地数据层
@@ -328,4 +352,6 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 - *Phase 3+, SwiftUI:* 1.1.0 replaces the Flutter shell with SwiftUI (same bundle ID, same WebView pages, migrated Keychain / defaults), then tabs move one at a time — Today, Record, Trends, Food, Me, Jarvis — each behind a server kill switch that falls back to the WebView. ~110–150 person-days in total.
 - *Releases:* 1.0.8 (last Flutter build, small) → 1.1.0 → 1.2.0 → 1.3.0 → 1.4.0; one Beta review per version number, fixes as new builds.
 
-**Decisions for the owner** (section 8): pure SwiftUI (recommended), server-side speed-ups first (recommended), offline write scope, keeping 1.0.8 small, local storage limits, one review per version, the fail2ban 401 rule, minimum iOS 17 from 1.1.0, web-first client for phase 2, and the exercise-library licence question (#248).
+**Phase 1 status.** 3.1 is live (#257); 3.2–3.5 are implemented behind the flags `boot_api`, `tab_prefetch`, `optimistic_writes` and `cached_first_paint` (off by default). Measured locally at 150 / 300 ms RTT (section 3.9): re-opening the app shows the last data after 0.19 / 0.33 s instead of 0.49 / 0.95 s and fresh data after 0.35 / 0.63 s; start-up sends 1 API request instead of 18–19; tab switches after the idle prefetch take 0 round trips; a quick meal shows as logged at once.
+
+**Decisions for the owner** (section 8, all taken as recommended on 2026-10-25): pure SwiftUI (recommended), server-side speed-ups first (recommended), offline write scope, keeping 1.0.8 small, local storage limits, one review per version, the fail2ban 401 rule, minimum iOS 17 from 1.1.0, web-first client for phase 2, and the exercise-library licence question (#248).
