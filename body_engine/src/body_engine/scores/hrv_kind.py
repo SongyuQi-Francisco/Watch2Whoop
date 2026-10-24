@@ -1,8 +1,8 @@
-"""Which HRV kind scores a user: Apple's SDNN or RMSSD from beat-to-beat series (issue #117). Default: SDNN for everyone.
+"""Which HRV kind scores a user: Apple's SDNN or RMSSD from beat-to-beat series (issue #117). Default: RMSSD for everyone with enough beat data (owner decision 2026-10-24); SDNN otherwise.
 
 Rules (thresholds in scores/params.py = openbodyscore params, RMSSD_*):
 1. A user is scored with rmssd only if switched on for it (score_settings.rmssd_enabled, set with `body-engine hrv-kind`;
-   no row = off) AND either already scored with rmssd or has enough recent beat data: >= RMSSD_MIN_NIGHTS of the last
+   no row = on, migration 715) AND either already scored with rmssd or has enough recent beat data: >= RMSSD_MIN_NIGHTS of the last
    RMSSD_COVERAGE_DAYS nights with an RMSSD reading, the newest at most RMSSD_MAX_GAP_DAYS old. Otherwise sdnn.
    Once a user is on rmssd, a gap in uploads does not switch them back: those nights simply have no HRV.
 2. Never mixed within one person: a run that writes only part of the history (compute-scores --start, the hourly job)
@@ -23,7 +23,7 @@ KINDS = ("sdnn", "rmssd")
 
 def rmssd_enabled(conn: psycopg.Connection, user_id: int) -> bool:
     row = conn.execute("SELECT rmssd_enabled FROM score_settings WHERE user_id = %s", (user_id,)).fetchone()
-    return bool(row and row["rmssd_enabled"])
+    return True if row is None else bool(row["rmssd_enabled"])
 
 
 def set_rmssd_enabled(conn: psycopg.Connection, user_id: int, enabled: bool, by: str | None = None) -> None:

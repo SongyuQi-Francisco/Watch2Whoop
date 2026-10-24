@@ -1,4 +1,4 @@
-"""Per-user HRV kind (scores/hrv_kind.py, issue #117): SDNN by default; RMSSD only when switched on and with enough
+"""Per-user HRV kind (scores/hrv_kind.py, issue #117): RMSSD by default; RMSSD only when switched on and with enough
 beat data; never mixed within one person (a partial run keeps the stored kind, only a full recompute switches).
 
 Synthetic data only. Own database body_test_hrv_kind (BODY_TEST_DB_NAME_HRV_KIND), recreated on every run; skipped
@@ -64,12 +64,12 @@ def scores(conn, uid, first: date, last: date, kind: str) -> None:
         d += timedelta(days=1)
 
 
-def test_default_is_sdnn_for_everyone(conn):
-    """No score_settings row (every existing user after the migration): SDNN, whatever beat data there is."""
+def test_default_is_rmssd_with_enough_beats(conn):
+    """No score_settings row: switched on by default (migration 715), so enough beat data means RMSSD."""
     uid = user(conn, "example-default")
     beats_at(conn, uid, nightly(END - timedelta(days=40), END))
-    assert not HK.rmssd_enabled(conn, uid) and HK.coverage(conn, uid, TZ, END)["enough"]
-    assert HK.choose(conn, uid, TZ, END - timedelta(days=90), END) == ("sdnn", "default")
+    assert HK.rmssd_enabled(conn, uid) and HK.coverage(conn, uid, TZ, END)["enough"]
+    assert HK.choose(conn, uid, TZ, END - timedelta(days=90), END) == ("rmssd", "rmssd_enabled")
     assert conn.execute("SELECT count(*) AS n FROM score_settings").fetchone()["n"] == 0
 
 
