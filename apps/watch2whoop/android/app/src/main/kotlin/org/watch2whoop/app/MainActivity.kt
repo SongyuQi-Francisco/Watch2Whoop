@@ -173,7 +173,7 @@ class MainActivity : FlutterActivity() {
         null
     }
 
-    /** `image/*`, `.csv` … → MIME types the system pickers understand (unknown extensions are dropped). */
+    // Accept entries (image types, `.csv` …) → MIME types the system pickers understand (unknown extensions dropped)
     private fun mimeTypes(accept: List<String>): List<String> = accept.mapNotNull { a ->
         when {
             a.startsWith(".") -> MimeTypeMap.getSingleton().getMimeTypeFromExtension(a.substring(1))
