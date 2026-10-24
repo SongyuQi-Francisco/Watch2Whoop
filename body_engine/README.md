@@ -322,6 +322,21 @@ hourly job (`deploy/ops/ops.py`) and into `sync/refresh.run_scores` (a user's qu
 app engine: equal by the design's §4 rules; a shadow user's daily values, sleep, workouts and scores equal the OW-only
 user's).
 
+**Sync engine, step S3** (`rawdata/samples.py`, `rawdata/side_by_side.py`, no migration; design §5.4, §6): the read
+layer over the engine's uploads, shaped like the Open Wearables reads it replaces (OW series codes, `importers/ow.Sample`,
+OW's session rule for the stages; active / basal energy from the 15-minute buckets, prorated). Only in the sync mode
+`app` do the remaining live OW reads use it — `scores/inputs.load` (compute-scores, hrv-compare), `insights/stress`,
+`training/importer.enrich` (workout heart rate, TRIMP, energy split) and the Today page's stage chart
+(`web/views.night_stages`, `stages_source = app`): the engine first, OW only for what it lacks (nights / sample types /
+days the app has none of; an OW workout with no energy samples anywhere keeps its active energy) until step S6 moves
+OW's history. In `ow` and `shadow` nothing reads the engine's samples: every value is computed as before. The two paths
+side by side, per day (daily values of sources `ow` / `app` with app − ow and the relative difference, the OW nights
+stored and the app's nights computed from the stage samples, both workout copies): `uv run body-engine sync-shadow-day
+--user-id N --date D [--end D] [--json] [--out file]` (Chinese Markdown with health values: terminal or
+`health_data/reports/` only) and `GET /v1/users/{user}/sync/engine/days?date=&end=` (own data only, ≤ 31 days, 404 while
+`apple_sync_engine` is off for the user). Tests: `tests/test_apple_sync_read.py` (an app-mode user without any OW
+client reads what the OW-only user reads from OW; shadow / OW users never read the engine).
+
 **Forced re-sync** (flag `sync_center`, `sync/resync.py`): `POST /v1/ingest/resync {days: 1–3650 | null}` (Bearer like
 above) starts one job per user (`busy` while one runs, `throttled` within 10 minutes of the last one, 6 hours before an
 all-history one); the app re-reads Health from the range start and reports `PUT /v1/ingest/resync {phone_percent, counts,
