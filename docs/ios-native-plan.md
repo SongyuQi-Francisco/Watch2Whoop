@@ -1,6 +1,6 @@
 # App 流畅度：本地优先 + iOS 原生化（SwiftUI）方案
 
-> 状态：方案稿，等维护者确认（#247）。这一版只有测量和分期，不改 app 代码；第 1 期里纯服务端、低风险的两项在单独的 PR 里先做好（第 3.1 节）。
+> 状态：方案稿，等维护者确认（#247）。这一版只有测量和分期，不改 app 代码；第 1 期里纯服务端、低风险的两项（静态长缓存、`Server-Timing`）在 #257 里先做好（第 3.1 节）。
 > 文中的数字都来自合成数据（quickstart 的 `demo_data.py`，一个虚构用户的 90 天）和公开的静态页面，不来自任何真人的账号或数据。
 > 相关：#248（动作库打进 app）、#219（自建同步引擎，`apple-sync-engine.md`）、#77（离线，`offline-plan.md`）、`apps.md`（版本号和发版）。
 
@@ -9,7 +9,7 @@
 - **卡在往返次数，不在渲染。** 本地服务器零延迟时，冷启动 0.25 s、记一餐 0.33 s；给每个请求加 150 ms 往返后变成 0.80 s、0.78 s，加 300 ms 变成 1.55 s、1.24 s，几乎全部是「串行往返层数 × RTT」。真机上还要再加新连接（DNS + TCP + TLS，实测约 0.5–0.66 s）、手机上解析 1.15 MB 脚本和样式的时间、正式服务器读 SparkyFitness / OW 的时间。
 - **启动要 5 层串行往返**：页面 → 38 个静态文件（每次都要 304 确认）→ 脚本跑起来后 `/v1/web/me` → 11 个今天页接口 → `/health-history`。切到趋势 / 饮食 / 我各要 2 层，记一餐 3 层。
 - **四期**：
-  1. **不重写就能见效**（服务端为主，部署即生效；1.0.8 加一项）：静态文件带版本号长缓存、启动接口合并成一次、切 tab 的两层并成一层并空闲预取、记一餐乐观更新、先显示上次的数据、app 先打开本机保存的页面外壳。重开 app 到看到今天的数字：150 ms 往返下约 1.6–1.9 s → 约 0.3 s 先出上次的数据、0.6–0.8 s 刷新完。
+  1. **不重写就能见效**（服务端为主，部署即生效；1.0.8 加一项）：静态文件带版本号长缓存（#257）、启动接口合并成一次、切 tab 的两层并成一层并空闲预取、记一餐乐观更新、先显示上次的数据、app 先打开本机保存的页面外壳。重开 app 到看到今天的数字：150 ms 往返下约 1.6–1.9 s → 约 0.3 s 先出上次的数据、0.6–0.8 s 刷新完。
   2. **本地数据层**：按「文档」增量同步（今天 / 每天 / 趋势 / 训练 / 饮食 / 静态包），写操作离线排队，服务端协议先做、今天页先用，之后原生 app 用同一个协议。
   3. **SwiftUI 原生化**：先用 SwiftUI 重写 app 外壳替换 Flutter（页面仍是 WebView，看起来不变），再按 今天 → 记录 → 趋势 → 饮食 → 我 → Jarvis 的顺序一个 tab 一个 tab 换成原生；每个原生 tab 都有服务器开关，关掉就回到 WebView。
   4. 发版：1.0.8（小，Flutter）→ 1.1.0（SwiftUI 外壳 + 本地数据层 + 原生今天）→ 1.2.0 → 1.3.0 → 1.4.0，每个版本号只过一次 Beta 审核，修复用同一版本号的新 build。
@@ -107,13 +107,13 @@
 
 目标：不等原生化，先把串行往返从 5 层降到 1–2 层，用户先看到上次的数据。大部分是服务端和页面的改动，**部署就生效，不用等 app 发版**；只有「先打开本机的页面外壳」要 1.0.8。
 
-### 3.1 静态文件带版本号 + 长缓存（服务端，已做好，单独 PR）
+### 3.1 静态文件带版本号 + 长缓存（服务端，已做好：#257）
 
 - `/app/` 和 `/app/index.html` 改成程序生成：每个 `<script src>`、`<link rel="stylesheet">` 后面加 `?v=<文件内容的 sha256 前 12 位>`，HTML 自己仍然 `no-cache`，带 ETag，没变就 304。
 - 请求带的 `v` 等于这个文件**现在**的指纹时回 `Cache-Control: public, max-age=31536000, immutable`；不带 `v` 或者 `v` 对不上（旧页面请求新文件）仍然是 `no-cache`，不会把新内容长期缓存在旧地址下。
 - 离线副本（`offline-shell.html`）、service worker 的文件列表、按需加载的插件脚本都不变（它们读原文件名）。
 - 每个 `/v1/` 响应加 `Server-Timing: app;dur=<毫秒>`：只有一个耗时数字，不含用户数据；nginx 日志或者页面自己都能看每个接口在服务器上花了多久，用来补第 1.2 节测不到的部分。
-- **效果**：热启动 38 个 304 → 0，少一层串行往返（150 / 300 ms 下省约 0.15 / 0.3 s），请求数 55 → 17；冷启动第一次不变。手机上 38 个文件的解析不变。
+- **效果**（#257 实测，同第 1.1 节的方法）：热启动 38 个 304 → 0，少一层串行往返：150 ms 下 0.79 → 0.64 s，300 ms 下 1.55 → 1.25 s；冷启动第一次不变。手机上 38 个文件的解析不变。
 - **风险**：低。浏览器 / WKWebView 只会多缓存文件；回退 = revert，下次打开就回到 `no-cache`。
 
 ### 3.2 启动接口合并：一次 `boot`（服务端 + 页面）
@@ -156,7 +156,7 @@
 
 | 项 | 改哪里 | 要发 app 吗 | 预计效果（150 / 300 ms） | 现在能做吗 |
 |---|---|---|---|---|
-| 3.1 静态长缓存 + `Server-Timing` | 服务端 | 不用 | 启动 −0.15 / −0.3 s，请求 −38 | **已做好**（单独 PR） |
+| 3.1 静态长缓存 + `Server-Timing` | 服务端 | 不用 | 启动 −0.15 / −0.3 s（实测），38 个 304 → 0 | **已做好**（#257） |
 | 3.2 `boot` 合并 | 服务端 + 页面 | 不用 | 启动 −0.3 / −0.6 s | 能，约 2–3 人日 |
 | 3.3 切 tab 并层 + 预取 | 页面 | 不用 | 切 tab −0.15 / −0.3 s，预取后 ≈ 0 | 能，约 1–2 人日 |
 | 3.4 乐观更新 | 页面 + 服务端返回 | 不用 | 记一餐感知 ≈ 0 | 能，约 1–2 人日 |
@@ -268,7 +268,7 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 | 时间（目标） | 版本 | 内容 | Beta 审核 |
 |---|---|---|---|
 | 10-25 | 1.0.7 | 已定，不加东西 | 1 次（已排） |
-| 10-26 起 | 服务器 | 第 1 期服务端部分：3.1（已做好）、3.2、3.3、3.4、3.5；fail2ban 规则；第 2 期服务端协议开始 | 不用 |
+| 10-26 起 | 服务器 | 第 1 期服务端部分：3.1（#257）、3.2、3.3、3.4、3.5；fail2ban 规则；第 2 期服务端协议开始 | 不用 |
 | 约 11-08 | **1.0.8**（Flutter，最后一个 Flutter 版本） | 3.6 先开本机外壳（开关）+ 包内副本；#219 A1 / A2（开关）；bridge `data:changed` | 1 次 |
 | 约 12-06 | **1.1.0**（SwiftUI） | 外壳替换 Flutter、本地数据层、原生今天（开关）、#219 A3 / A4 | 1 次 |
 | 约 1 月中 | 1.2.0 | 原生记录 + 趋势 | 1 次 |
@@ -298,7 +298,7 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 | # | 问题 | 推荐 |
 |---|---|---|
 | D1 | 纯 SwiftUI，还是在 Flutter 里加原生页面 | **纯 SwiftUI**：1.1.0 先换外壳（看起来不变），再按 tab 换；Flutter 1.0.8 之后冻结 |
-| D2 | 第一期先做服务端提速吗 | **先做**：3.1（已做好）、3.2–3.5、fail2ban 规则，不等 1.0.8；预计重开 app 从约 1.7 s 到约 1.0 s（150 ms 往返） |
+| D2 | 第一期先做服务端提速吗 | **先做**：3.1（#257）、3.2–3.5、fail2ban 规则，不等 1.0.8；预计重开 app 从约 1.7 s 到约 1.0 s（150 ms 往返） |
 | D3 | 离线写入的范围 | 第 2 期 = 现有的喝水、体重、训练逐组 + 快捷记餐 / 食谱记一份 + 日记 + 补剂打卡；AI、删除已提交的、朋友、设置不离线 |
 | D4 | 1.0.8 带不带原生页面 | **不带**，只带「先开本机外壳」+ #219 A1 / A2，保持 1.0.8 小、好回退 |
 | D5 | 手机上存多少、存多久 | 每天的文档 14 天全量 + 90 天按需，趋势 365 天，静态包全量；文件用 iOS 数据保护 `completeUntilFirstUserAuthentication`（后台同步要读）；退出登录清空 |
@@ -317,7 +317,7 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 **Five slowest paths.** (1) Start-up: five serial layers — the page, 38 static files revalidated every time (`no-cache`), `/v1/web/me`, 11 Today endpoints that wait for it, then `/health-history`. (2) Logging a meal: three serial layers and the "logged" tick waits for the POST. (3) First visit to Food / Trends / Me: two serial layers each. (4) Explanation sheets: the sheet opens empty and fetches afterwards. (5) Jarvis: ~0.38 s server preparation before the model starts. Side finding: the public fail2ban jail counts 401s, so signed-out page loads can ban a whole shared IP (school or club Wi-Fi) for an hour.
 
 **Plan.**
-- *Phase 1, no rewrite (mostly server-side, live on deploy):* fingerprinted static URLs with immutable caching plus a `Server-Timing` header (done, separate PR); one `boot` endpoint for start-up; parallel tab requests and idle prefetch; optimistic writes; render the last known data first (reusing the offline IndexedDB cache); in app 1.0.8, open the kept page shell first. Expected: ~1.7 s → ~1.0 s server-side only, and ~0.3 s to first (cached) content with 1.0.8.
+- *Phase 1, no rewrite (mostly server-side, live on deploy):* fingerprinted static URLs with immutable caching plus a `Server-Timing` header (done in #257: warm start 0.79 → 0.64 s at 150 ms RTT); one `boot` endpoint for start-up; parallel tab requests and idle prefetch; optimistic writes; render the last known data first (reusing the offline IndexedDB cache); in app 1.0.8, open the kept page shell first. Expected: ~1.7 s → ~1.0 s server-side only, and ~0.3 s to first (cached) content with 1.0.8.
 - *Phase 2, local data layer:* document-based incremental sync (`doc_versions` + `POST /sync/pull`), static bundles (exercise library, glossary) shipped in the app, an offline write queue extended to meals, journal and supplements; the web page is the first client, the native app reuses the protocol; the Swift sync engine (#219) feeds dirty days into it.
 - *Phase 3+, SwiftUI:* 1.1.0 replaces the Flutter shell with SwiftUI (same bundle ID, same WebView pages, migrated Keychain / defaults), then tabs move one at a time — Today, Record, Trends, Food, Me, Jarvis — each behind a server kill switch that falls back to the WebView. ~110–150 person-days in total.
 - *Releases:* 1.0.8 (last Flutter build, small) → 1.1.0 → 1.2.0 → 1.3.0 → 1.4.0; one Beta review per version number, fixes as new builds.
