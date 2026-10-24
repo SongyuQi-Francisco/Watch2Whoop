@@ -1,137 +1,178 @@
-<!-- Project name appears only in this title and in the clone commands below (git clone …/Watch2Whoop.git), so a rename only touches those lines. -->
-# Watch2Whoop
+<!-- The full repository address appears only in the stars badge and the clone command (the privacy scan allows it in
+     the two READMEs only: tools/export_public.py PRIVATE_WORD_ALLOW). Other links to releases / issues / actions are
+     relative (../../…) on purpose: GitHub resolves them to this repository, also in forks. -->
+<h1 align="center">Watch2Whoop</h1>
 
-**Your body's data layer for AI.** A self-hosted scaffold any AI (Claude, ChatGPT, Codex, Gemini, DeepSeek …) reads and writes through MCP. Your data stays; the AI is swappable.
+<p align="center">
+  <b>WHOOP-style recovery, strain and sleep analysis from the Apple Watch you already wear.</b><br>
+  No subscription, no extra band. Your data lives on your own server, and any AI can read and write it through MCP.
+</p>
 
-**给 AI 用的身体数据层。** 自托管的脚手架，任何 AI（Claude、ChatGPT、Codex、Gemini、DeepSeek……）都能通过 MCP 读写。数据留在你手里，AI 随时可以换。
+<p align="center">
+  <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/SongyuQi-Francisco/Watch2Whoop/stargazers"><img src="https://img.shields.io/github/stars/SongyuQi-Francisco/Watch2Whoop?style=flat" alt="GitHub stars"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/release-alpha-orange" alt="Releases"></a>
+  <a href="#ai-and-mcp"><img src="https://img.shields.io/badge/MCP-remote%20%2B%20stdio-6e56cf" alt="MCP server"></a>
+  <a href="apps/watch2whoop/README.md"><img src="https://img.shields.io/badge/Apple%20Watch-iOS%20app-111111" alt="Apple Watch + iOS app"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start"><b>Quick Start</b></a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="docs/tester-handbook.en.md">User handbook</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="../../releases">Releases</a> ·
+  <a href="apps/watch2whoop/CHANGELOG.md">Changelog</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
 <p align="center"><img src="docs/images/readme/hero.png" alt="Today, trends, sleep and profile screens with synthetic demo data" width="100%"></p>
 
-[English](#english) · [中文](#中文) · [Quick Start](#quick-start) · [License](#license)
-
 > [!IMPORTANT]
-> Not affiliated with WHOOP, Inc. or Apple Inc.; their names are trademarks, used only to say what this works with. Not a medical device, no medical advice. Status: **alpha**, Apple Watch first.
->
-> 与 WHOOP、Apple 无关（名称是它们的商标，只用来说明配合什么使用）。不是医疗器械，不提供医疗建议。状态：**alpha**，先支持 Apple Watch。
+> Not affiliated with WHOOP, Inc. or Apple Inc.; their names are trademarks, used only to say what this works with or resembles.
+> Not a medical device and not medical advice. Status: **alpha**, Apple Watch first. All screenshots use synthetic data.
 
----
+## Why
+Your Apple Watch already records heart rate, HRV, sleep stages, SpO₂ and workouts, but turns little of it into daily
+guidance. Subscription bands do, but the analysis stays in their app. Watch2Whoop is the missing part, and it is yours:
 
-## English
+- **WHOOP-style numbers from raw watch data** — recovery, strain, sleep need and debt, stress, body age, each against
+  your own baseline. Formulas are built from published research literature, and every parameter is documented.
+- **Any AI, through MCP** — Claude, ChatGPT / Codex, Gemini, DeepSeek, a local Ollama … connect over MCP or an API key.
+  Tools, memory and history live in your database, so switching models loses nothing.
+- **No forms** — you log food, workouts, weight, labs or how you slept by telling your AI, in text, a photo or by voice.
+- **Self-hosted and multi-user** — one server for your family, an account per person, sharing only when someone opts in.
 
-> [!NOTE]
-> **You need an AI.** There are no input forms: you log by talking to your own AI (a subscription through MCP, or an API key). Hosting for family without an AI? Configure a fallback API key on the server.
+## Quick Start
+Try it in about 5 minutes with **60 days of synthetic data**, no watch or account needed. You need Docker (Compose v2)
+and `python3` ≥ 3.9.
 
-### Why
-- **Your data, accumulated** — watch data, food, training, labs, journal and the AI's notes, structured on your own server.
-- **Bring any AI, swap any time** — tools, memory and history live in your database, not in the model.
-- **No forms** — send text, a screenshot or a photo; the AI logs it.
-- **Real numbers** — recovery, strain, sleep debt, body age and stress computed from raw watch data against your own baselines.
-
-Features, architecture and WHOOP comparison: [docs/README.md](docs/README.md) · Tester handbook: [English](docs/tester-handbook.en.md) · [中文](docs/tester-handbook.md)
-
-### Quick Start
-Needs Docker (Compose v2) and `python3` ≥ 3.9. Runs locally with 60 days of synthetic data.
 ```bash
-git clone https://github.com/<owner>/Watch2Whoop.git
+git clone https://github.com/SongyuQi-Francisco/Watch2Whoop.git
 cd Watch2Whoop
-./quickstart.sh            # prints a login link for the Today page
+./quickstart.sh                                         # prints a login link for the Today page
 ```
-Ports, options and commands: [quickstart/README.md](quickstart/README.md). Real self-hosting: [docs/README.md#self-hosting](docs/README.md#self-hosting).
 
-### Repository
+It starts Body Engine, Open Wearables and SparkyFitness on `127.0.0.1`, imports the synthetic data through the real Apple
+Health importer and computes every score. Ports, options and `status / logs / down / reset`: [quickstart/README.md](quickstart/README.md).
+There is no hosted demo.
+
+## Features
+| | |
+|---|---|
+| **Recovery** | Daily 0–100 score from overnight HRV, sleeping heart rate, sleep performance and respiratory rate vs. your 60-day baseline; illness flags |
+| **Strain** | Day strain 0–21 (Edwards TRIMP from raw heart rate), training load (CTL / ATL / TSB) and a daily target from the Strain Coach |
+| **Sleep** | Sleep score, stages, need and debt, consistency, efficiency; a Sleep Coach and a gradual bedtime-goal planner |
+| **Health monitor & stress** | Resting HR, HRV, respiratory rate, SpO₂ and wrist temperature vs. your normal range; daytime stress score |
+| **Body age** | Body age and pace of aging from 8 markers (steps, active minutes, strength training, VO₂max, resting HR, body composition, sleep duration and regularity) |
+| **Training** | Calendar that merges watch workouts (HR zones, calories) with strength sets; exercise library, 3 / 4 / 5-day splits and weekly plans adjusted by recovery; muscle-load map |
+| **Nutrition & records** | Meal templates, recipes with per-serving nutrition, lab results with reference ranges and trends, supplements, symptoms, a behaviour journal with next-day impact |
+| **Reports** | Weekly and monthly reports; rule-based reminders (load progression, calorie adjustment from the weight trend, pre-workout fueling) |
+| **Family** | Accounts per person, per-user tokens, opt-in sharing, friend circles |
+
+How every score is computed, with references and known limits: [scoring methodology](packages/openbodyscore/METHODOLOGY.md).
+The scoring code is also split out as a standalone library, [`packages/openbodyscore`](packages/openbodyscore/README.md) (Apache-2.0).
+The UI is in Chinese and English. Newer features ship behind feature flags that are off on a fresh install
+(`body-engine flags list`, see [docs/rollout.md](docs/rollout.md)).
+
+<p align="center">
+  <img src="docs/images/readme/tour.gif" alt="Tour of the Today, trends, sleep and profile pages" width="260">
+  &nbsp;
+  <img src="docs/images/muscle-load/full-male-dark.png" alt="Muscle-load map for the week" width="260">
+</p>
+
+## AI and MCP
+Watch2Whoop is a **data layer for your AI**, not another chatbot. The AI is swappable; the data stays.
+
+- **Remote MCP** at `/mcp` (Streamable HTTP, a per-user AI token) for Claude, ChatGPT / Codex, Gemini / Antigravity and any
+  other MCP client, plus a **stdio** MCP server for local use. Setup commands: [body_engine/README.md](body_engine/README.md).
+- **100+ tools** to read scores, sleep, training, nutrition, labs and memory, and to log food, workouts, weight and more.
+  Every tool call is authorized per user and audited. A compact `get_briefing` (~1.5k tokens) opens each conversation.
+- **Prompts** for common jobs: `butler` (the coach persona), `weekly_review`, `plan_training_week`, `plan_shopping`, `log_meal_from_photo`.
+- **In-app chat with your own API key**: Anthropic, OpenAI, Gemini or any OpenAI-compatible endpoint (DeepSeek, Qwen,
+  Ollama). Keys are encrypted per user; deletes ask first; photos, video and push-to-talk (speech recognition runs on your server).
+- **Long-term memory** in your own database: profile, observations, a status card the AI keeps up to date.
+
+<p align="center"><img src="docs/images/jarvis-cards/jarvis-body-cards-zh.jpg" alt="In-app AI answering questions with data cards (synthetic data)" width="640"></p>
+
+## Getting your data in
+| Source | How |
+|---|---|
+| **iOS app** | Background HealthKit sync from iPhone + Apple Watch, with the Today page inside the app ([apps/watch2whoop](apps/watch2whoop/README.md), Flutter). Build it yourself; a TestFlight beta runs for invited testers |
+| **Apple Health export** | Upload `export.zip` from the Health app in the app (chunked, resumable) to import years of history; admins can also run `body-engine import-apple-zip` |
+| **Hevy** | Upload Hevy's workout CSV export; exercise names are matched to the exercise library and muscle load is recomputed |
+| **iOS Shortcut** | No app needed: a Shortcut uploads Health samples on a schedule ([shortcuts/](shortcuts/README.md), format spec [docs/shortcut-sync-spec.md](docs/shortcut-sync-spec.md)) |
+| **Your AI** | Everything you tell it: meals, workouts, weight, labs, supplements, symptoms, journal |
+
+## How it works
+```mermaid
+flowchart LR
+  W["Apple Watch + iPhone<br/>(iOS app or Shortcut)"] --> OW["Open Wearables<br/>raw wearable data"]
+  W --> BE
+  OW --> BE["Body Engine<br/>FastAPI + PostgreSQL<br/>scores · records · rules"]
+  SF["SparkyFitness<br/>food · strength logs"] <--> BE
+  BE --> T["Today page<br/>(inside the iOS app)"]
+  BE <-->|"MCP · API key"| AI["Your AI<br/>Claude · ChatGPT · Gemini · DeepSeek …"]
+```
+Built on open source: [Open Wearables](https://github.com/the-momentum/open-wearables) for wearable sync,
+[SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness) (run unmodified as a separate service) for food and
+strength logs, PostgreSQL, FastAPI, Flutter, and optionally [Grafana](https://github.com/grafana/grafana).
+Services bind to `127.0.0.1` and are reached through Tailscale by default.
+
+**Self-hosting** on a Mac mini or a Linux VPS: [docs/README.md#self-hosting](docs/README.md#self-hosting) · Admin guide (Chinese): [docs/admin-guide.md](docs/admin-guide.md)
+
+## Roadmap
+Planned work and discussions live in [issues](../../issues); app builds and notes in [releases](../../releases) and the [app changelog](apps/watch2whoop/CHANGELOG.md).
+
+- [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
+- [x] One-command local Quick Start with synthetic data
+- [x] Remote MCP + API-key chat for any AI, per-user AI isolation
+- [x] Training module v2: exercise library, splits, weekly plans, recovery-based adjustments ([design](docs/training-v2-plan.md))
+- [x] Hevy CSV import, Apple Health history import
+- [x] Self-service sign-up with invite codes ([design](docs/self-signup-plan.md))
+- [x] Chinese and English UI (remaining gaps: [#64](../../issues/64))
+- [ ] *In progress*: friends page and circles ([design](docs/friends-social-plan.md))
+- [ ] *In progress*: own Apple Health sync engine to replace Open Wearables on iOS ([#219](../../issues/219))
+- [ ] RMSSD-based recovery ([#117](../../issues/117))
+- [ ] Publish the scoring library `openbodyscore`
+- [ ] One-command Linux VPS installer
+- [ ] **Other watches**: Garmin, Oura, Polar, Android Health Connect … (help wanted)
+
+## Contributing
+Contributions are welcome. Every change is a pull request from your own branch or fork; CI must pass and a maintainer
+reviews. Read [CONTRIBUTING.md](CONTRIBUTING.md) first (new UI text is always bilingual, Chinese + English).
+
+Good places to start:
+- **Bring your watch** — Garmin, Oura, Polar or Health Connect data into the same scores ([roadmap](#roadmap)).
+- **Scoring** — review the [methodology](packages/openbodyscore/METHODOLOGY.md) and the [validation plan](docs/scoring-validation.md).
+- **Docs** — most design documents in [`docs/`](docs/README.md) are Chinese; English versions help a lot.
+- Issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22) and [`help wanted`](../../issues?q=is%3Aopen+label%3A%22help+wanted%22).
+
+Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pytest`, `cd apps/watch2whoop && flutter test`.
+
+## Repository
 | Path | What |
 |---|---|
 | [`body_engine/`](body_engine/README.md) | Server: scores, records, rules, AI tools, MCP, Today page |
 | [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app (Flutter) |
+| [`packages/openbodyscore/`](packages/openbodyscore/README.md) | Standalone scoring library |
 | [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (no app needed) |
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |
-| [`docs/`](docs/README.md) | Design documents |
-| [`docs/admin-guide.md`](docs/admin-guide.md) | Admin guide (Chinese): accounts, access links, AI, backups, troubleshooting |
+| [`docs/`](docs/README.md) | Design documents (mostly Chinese) |
 
-### Roadmap
-- [x] Apple Watch: recovery, strain, sleep, body age, stress, coaches, reports
-- [x] One-command local Quick Start
-- [x] **Training module v2**: bilingual exercise library, 3 / 4 / 5-day splits, weekly plans, readiness autoregulation and safe exercise swap, built by talking to your AI ([design](docs/training-v2-plan.md))
-- [ ] iOS app on TestFlight
-- [ ] English docs and UI
-- [ ] One-command Linux VPS installer
-- [ ] RMSSD-based recovery (iOS 27 / Open Wearables 0.10)
-- [ ] **Other watches**: Garmin, Oura, Polar, Huawei, Xiaomi, Android Health Connect
-- [ ] Shopping list, cycle tracking, more languages
-- [x] **Self-service sign-up** (e-mail code or Sign in with Apple) gated by admin-issued invite codes during the beta ([design](docs/self-signup-plan.md))
-- [x] **Training module v2** (first version): exercise library, 3 / 4 / 5-day splits, weekly plans, day-level changes, built by talking to your AI ([plan](docs/training-v2-plan.md))
-- [ ] *In progress*: **Friends page**: family / friend circles, today + 7-day status of everyone you share with, leaderboards against your own baseline ([plan](docs/friends-social-plan.md))
-
-### Contributing
-Every change goes through a pull request from your own branch; CI must pass and a maintainer reviews. Want to bring this to **your** watch? Start with [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### License
+## License
 | Part | Licence |
 |---|---|
 | Server and everything else | [AGPL-3.0](LICENSE) |
 | iOS app `apps/watch2whoop/` | [MIT](apps/watch2whoop/LICENSE) |
 | iOS Shortcut `shortcuts/` | [MIT](shortcuts/LICENSE) |
+| Scoring library `packages/openbodyscore/` | [Apache-2.0](packages/openbodyscore/LICENSE) |
 
 Third-party services (Open Wearables, SparkyFitness, Grafana) keep their own licences: [docs/LICENSES.md](docs/LICENSES.md).
 
----
-
-## 中文
-
-> [!NOTE]
-> **需要一个 AI。** 没有输入表单，记录靠跟你自己的 AI 对话（通过 MCP 用订阅，或用 API key）。给没有 AI 的家人用？在服务器上配一个托底 API key。
-
-### 为什么
-- **数据沉淀**：手表数据、饮食、训练、化验、日记和 AI 的笔记，结构化存在你自己的服务器上。
-- **AI 随便换**：工具、记忆和历史在你的数据库里，不在模型里。
-- **没有表单**：发文字、截图或照片，AI 帮你记。
-- **真实的数字**：恢复、负荷、睡眠债、身体年龄、压力，用手表原始数据和你自己的基线算。
-
-功能、架构和 WHOOP 对照：[docs/README.md](docs/README.md) · 测试用户手册：[中文](docs/tester-handbook.md) · [English](docs/tester-handbook.en.md)
-
-### 快速开始
-需要 Docker（Compose v2）和 `python3` ≥ 3.9。在本机用 60 天合成数据跑起来。
-```bash
-git clone https://github.com/<owner>/Watch2Whoop.git
-cd Watch2Whoop
-./quickstart.sh            # 最后打印今天页的登录链接
-```
-端口、参数和命令：[quickstart/README.md](quickstart/README.md)。正式自托管：[docs/README.md#self-hosting](docs/README.md#self-hosting)。
-
-### 目录
-| 路径 | 内容 |
-|---|---|
-| [`body_engine/`](body_engine/README.md) | 服务器：评分、记录、规则、AI 工具、MCP、今天页 |
-| [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app（Flutter） |
-| [`shortcuts/`](shortcuts/README.md) | iOS 快捷指令同步（不用装 app） |
-| [`quickstart/`](quickstart/README.md) | 一条命令的本地演示 |
-| `deploy/`、`assistant/` | 部署、运维、AI 管家工作目录 |
-| [`docs/`](docs/README.md) | 设计文档 |
-| [`docs/admin-guide.md`](docs/admin-guide.md) | 管理员手册：开户、发链接、AI、备份、排错 |
-
-### 路线图
-- [x] Apple Watch：恢复、负荷、睡眠、身体年龄、压力、教练、报告
-- [x] 一条命令的本地快速开始
-- [x] **训练模块 v2**：双语动作库、3 / 4 / 5 分化、每周计划、恢复分自调节与同模式安全换动作，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
-- [ ] iOS app 上 TestFlight
-- [ ] 英文文档和界面
-- [ ] Linux 云服务器一键安装
-- [ ] 基于 RMSSD 的恢复分（iOS 27 / Open Wearables 0.10）
-- [ ] **其他手表**：Garmin、Oura、Polar、华为、小米、安卓 Health Connect
-- [ ] 采购清单、生理周期、更多语言
-- [x] **自助注册**（邮箱验证码或通过 Apple 登录），内测期凭管理员批量发的激活码开通（[设计](docs/self-signup-plan.md)）
-- [x] **训练模块 v2**（第一版）：动作库、3 / 4 / 5 分化、每周计划、按天调整，跟 AI 对话来建（[方案](docs/training-v2-plan.md)）
-- [ ] *开发中*：**朋友页**：家庭 / 好友圈子，一屏看到共享的人今天和最近 7 天的状态，和自己基线比的排行榜（[方案](docs/friends-social-plan.md)）
-
-### 参与贡献
-所有改动都从你自己的分支提 Pull Request，CI 通过、维护者审核后合并。想把本项目带到**你的**手表上？先看 [CONTRIBUTING.md](CONTRIBUTING.md)。
-
-### 许可证
-| 部分 | 许可证 |
-|---|---|
-| 服务器和其余全部 | [AGPL-3.0](LICENSE) |
-| iOS app `apps/watch2whoop/` | [MIT](apps/watch2whoop/LICENSE) |
-| 快捷指令 `shortcuts/` | [MIT](shortcuts/LICENSE) |
-
-第三方服务（Open Wearables、SparkyFitness、Grafana）保持各自的许可证：[docs/LICENSES.md](docs/LICENSES.md)。
+Watch2Whoop is not affiliated with, endorsed by or connected to WHOOP, Inc. or Apple Inc. "WHOOP-style" only describes
+the kind of analysis; the scores are independent implementations. The numbers are for personal insight and do not
+constitute medical advice, diagnosis or treatment.
