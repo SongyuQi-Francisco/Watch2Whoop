@@ -2178,8 +2178,8 @@
   }
 
   const RENDER_trends = async () => {
-    const mode = S.trendsMode;   // its data starts together with the report check (one round instead of two, #247 3.3)
-    const early = mode === "metrics" ? metricsHtml() : mode === "sleep" ? sleepHtml() : null;
+    const mode = S.trendsMode;   // tab_prefetch: its data starts together with the report check (one round instead of two, #247 3.3)
+    const early = !tabPrefetchOn() ? null : mode === "metrics" ? metricsHtml() : mode === "sleep" ? sleepHtml() : null;
     early?.catch(() => {});
     const hasReport = !!(await optional(`report-week`, WHOOP_API.reports("week", S.todayDate)));   // show "Report" (「报告」) only once the report endpoint exists
     if (S.trendsMode === "report" && !hasReport) S.trendsMode = "metrics";
