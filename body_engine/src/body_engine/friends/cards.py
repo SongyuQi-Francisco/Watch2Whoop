@@ -15,7 +15,7 @@ from .. import auth
 from ..rollout import flags
 from ..web import views
 from ..avatars import urls as avatar_store
-from . import params as P, remarks, store
+from . import params as P, prefs, remarks, store
 
 NUDGE_KINDS = ("clap", "sleep", "train")   # 👏 / 💤 / 💪
 
@@ -53,23 +53,36 @@ def one_circle(conn: psycopg.Connection, viewer_id: int, circle_id) -> dict | No
 
 
 def circle_list(conn: psycopg.Connection, uid: int) -> list[dict]:
-    """The switcher on the Friends tab: my circles (oldest first), with member count and avatar."""
-    return [{"id": r["id"], "name": r["name"], "personal": r["personal"], "members": r["n"], "avatar": store.avatar_url(r)}
-            for r in conn.execute(
-                """SELECT c.id, c.name, c.personal, c.avatar_image_id, c.created_at,
-                          (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS n
-                   FROM circles c JOIN circle_members m ON m.circle_id = c.id AND m.user_id = %s
-                   ORDER BY c.created_at, c.id""", (uid,))]
+    """The switcher on the Friends tab: my circles (oldest first), with member count and avatar. With the circle_prefs
+    flag: my pin / mute / archive and the last activity, pinned first (in pinning order), then the most recent first."""
+    out = [{"id": r["id"], "name": r["name"], "personal": r["personal"], "members": r["n"], "avatar": store.avatar_url(r)}
+           for r in conn.execute(
+               """SELECT c.id, c.name, c.personal, c.avatar_image_id, c.created_at,
+                         (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS n
+                  FROM circles c JOIN circle_members m ON m.circle_id = c.id AND m.user_id = %s
+                  ORDER BY c.created_at, c.id""", (uid,))]
+    if not prefs.on(conn, uid):
+        return out
+    mine, last = prefs.of(conn, uid), prefs.recent(conn, [c["id"] for c in out])
+    for c in out:
+        p = mine.get(c["id"]) or {}
+        c.update(pinned=bool(p.get("pinned")), muted=bool(p.get("muted")), archived=bool(p.get("archived")),
+                 recent_at=last.get(c["id"]))
+    pinned = sorted((c for c in out if c["pinned"]), key=lambda c: mine[c["id"]]["pinned_at"])
+    rest = sorted((c for c in out if not c["pinned"]), key=lambda c: c["recent_at"].timestamp() if c["recent_at"] else 0,
+                  reverse=True)
+    return pinned + rest
 
 
-def co_members(conn: psycopg.Connection, uid: int, circle_id: int | None = None) -> list[dict]:
-    """Everyone who shares at least one circle with `uid` (only circle `circle_id` when given), with the names of those circles."""
+def co_members(conn: psycopg.Connection, uid: int, circle_id: int | None = None, skip: list[int] = ()) -> list[dict]:
+    """Everyone who shares at least one circle with `uid` (only circle `circle_id` when given; never through the circles
+    in `skip`), with the names of those circles."""
     return conn.execute(
         """SELECT u.id, u.display_name, array_agg(DISTINCT c.name ORDER BY c.name) AS circles, min(o.joined_at) AS since
            FROM circle_members m JOIN circle_members o ON o.circle_id = m.circle_id AND o.user_id <> m.user_id
            JOIN circles c ON c.id = m.circle_id JOIN users u ON u.id = o.user_id
-           WHERE m.user_id = %s AND (%s::int IS NULL OR m.circle_id = %s::int)
-           GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""", (uid, circle_id, circle_id)).fetchall()
+           WHERE m.user_id = %s AND (%s::int IS NULL OR m.circle_id = %s::int) AND NOT (m.circle_id = ANY(%s))
+           GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""", (uid, circle_id, circle_id, list(skip))).fetchall()
 
 
 def share_with(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> set[str]:
@@ -161,7 +174,8 @@ def overview(conn: psycopg.Connection, uid: int, circle_id=None) -> dict:
     one = one_circle(conn, uid, circle_id)
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (uid,)).fetchone()
     sent, got = _nudges(conn, uid)
-    co = co_members(conn, uid, one and one["id"])
+    # 「全部」 leaves out the circles I archived (#269 P2); they still share, so 「what friends see」 below still counts them
+    co = co_members(conn, uid, one and one["id"], () if one else prefs.hidden(conn, uid))
     avatars = avatar_store.urls_for(conn, uid, [uid, *(m["id"] for m in co)])
     nick = remarks.for_viewer(conn, uid, [m["id"] for m in co])   # what I call them (#212), only for me
     mine = {**card(conn, uid, uid, me["display_name"]), "received": got, "seen": seen_by_friends(conn, uid, one),

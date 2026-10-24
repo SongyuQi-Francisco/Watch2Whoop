@@ -306,6 +306,7 @@ def _drop_member(conn, circle_id: int, member_id: int) -> None:
     """Take a member out; an owner who leaves hands the circle to the longest-standing member, the last one dissolves it."""
     circle = conn.execute("SELECT * FROM circles WHERE id = %s FOR UPDATE", (circle_id,)).fetchone()
     conn.execute("DELETE FROM circle_members WHERE circle_id = %s AND user_id = %s", (circle_id, member_id))
+    conn.execute("DELETE FROM circle_member_prefs WHERE circle_id = %s AND user_id = %s", (circle_id, member_id))
     rest = _members(conn, circle_id)
     if not rest:
         _delete_circle(conn, circle_id)
@@ -339,6 +340,12 @@ def dissolve(conn: psycopg.Connection, uid: int, circle_id: int) -> None:
 def decline(conn: psycopg.Connection, uid: int, invite_id: int) -> bool:
     return conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE id = %s AND invitee_user_id = %s
                            AND revoked_at IS NULL RETURNING id""", (invite_id, uid)).fetchone() is not None
+
+
+def decline_all(conn: psycopg.Connection, uid: int) -> int:
+    """「全部忽略」 (#269 P2): every open invite addressed to the caller; returns how many."""
+    return len(conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE invitee_user_id = %s
+                               AND revoked_at IS NULL RETURNING id""", (uid,)).fetchall())
 
 
 def leave_all(conn: psycopg.Connection, uid: int) -> int:
@@ -464,6 +471,11 @@ def circle_view(conn, uid: int, circle_id: int) -> dict:
                         "owner": m["id"] == c["owner_id"], "me": m["id"] == uid, "avatar": avatars.get(m["id"]),
                         "remark": nick.get(m["id"]), **({"join": joins[m["id"]]} if m["id"] in joins else {})}
                        for m in members]}
+    from . import prefs   # (prefs imports this module)
+    if prefs.on(conn, uid):   # my own pin / mute / archive and the last activity, for the circles sheet (#269 P2)
+        mine = prefs.of(conn, uid).get(circle_id) or {}
+        out["prefs"] = {k: bool(mine.get(k)) for k in ("pinned", "muted", "archived")}
+        out["recent_at"] = prefs.recent(conn, [circle_id]).get(circle_id)
     if out["is_owner"]:
         codes = conn.execute("""SELECT id, created_at, expires_at, used_count FROM circle_invites WHERE circle_id = %s
                                 AND code_sha256 IS NOT NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())
@@ -481,12 +493,16 @@ def overview(conn: psycopg.Connection, uid: int) -> dict:
         """SELECT m.circle_id FROM circle_members m JOIN circles c ON c.id = m.circle_id WHERE m.user_id = %s
            ORDER BY c.created_at, c.id""", (uid,))]
     invites = conn.execute(
-        """SELECT i.id, i.expires_at, c.id AS circle_id, c.name, u.display_name AS from_name
+        """SELECT i.id, i.expires_at, c.id AS circle_id, c.name, u.display_name AS from_name,
+                  (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS members,
+                  coalesce(c.default_scopes, %s) AS default_scopes
            FROM circle_invites i JOIN circles c ON c.id = i.circle_id LEFT JOIN users u ON u.id = i.created_by
            WHERE i.invitee_user_id = %s AND i.revoked_at IS NULL AND i.expires_at > now()
              AND NOT EXISTS (SELECT 1 FROM circle_members m WHERE m.circle_id = i.circle_id AND m.user_id = %s)
-           ORDER BY i.created_at""", (uid, uid)).fetchall()
+           ORDER BY i.created_at""", (list(P.DEFAULT_SCOPES), uid, uid)).fetchall()
+    from . import prefs
     return {"circles": [circle_view(conn, uid, cid) for cid in ids], "invites": invites,
+            "prefs_on": prefs.on(conn, uid), "max_pinned": P.MAX_PINNED, "search_from": P.SEARCH_FROM,
             "scopes": list(P.CIRCLE_SCOPES), "default_scopes": list(P.DEFAULT_SCOPES),
             "consent_ok": consent.agreed_at_least(conn, uid, P.CONSENT_VERSION),
             "limits": {"circles": P.MAX_CIRCLES_PER_USER, "members": P.MAX_MEMBERS, "invite_days": list(P.INVITE_DAYS_CHOICES),
