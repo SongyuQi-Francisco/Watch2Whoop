@@ -1,5 +1,6 @@
 """Watch2Whoop's texts for the datalayer framework (datalayer/messages.py, issue #116): AI-facing, so Chinese.
-These are the texts assistant/toolsets.py and ai/playbooks had inline before the move; tests/fixtures/datalayer pins them."""
+These are the texts assistant/toolsets.py, ai/playbooks, assistant/tools.run_tool, assistant/writelog.py, mcp_server.py
+and ai/mcp_http.py had inline before the move; tests/fixtures/datalayer pins them."""
 from ..datalayer.messages import Messages
 
 MESSAGES = Messages(
@@ -26,4 +27,16 @@ MESSAGES = Messages(
     missing_sep="、",
     unknown_playbook="没有这个 playbook：{name}；有：{names}",
     playbook_sep=" / ",
+    write_only_self="写操作只能写给自己",
+    no_grant="没有查看用户 {owner} 的 {scope} 的授权",
+    no_write_log_row="没有这条操作日志：{id}（或不是你的）",
+    already_rolled_back="这条已经在 {at} 回滚过了",
+    cannot_roll_back="这条没有可自动回滚的前值；用对应的工具手动改回",
+    mcp_no_such_tool="没有这个工具：{name}",
+    mcp_read_only="这个 token 是只读的，不能写",
+    mcp_no_such_prompt="没有这个 prompt：{name}",
+    mcp_not_signed_in="没有登录",
+    mcp_not_started="MCP 没有启动",
+    mcp_missing_bearer="缺少 Bearer token（用今天页「AI 设置」里生成的 AI token，或用 OAuth 连接）",
+    mcp_invalid_token="token 无效、已过期、已吊销，或不是 AI 专用 token",
 )

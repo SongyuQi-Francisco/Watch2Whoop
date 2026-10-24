@@ -1,16 +1,19 @@
 """Assistant tool registry. The format is the Claude API tool definition (name / description / input_schema);
-the MCP server is generated from here too, so only one copy is maintained."""
+the MCP server is generated from here too, so only one copy is maintained. Running a tool is the datalayer framework's
+Executor (datalayer/execute.py, issue #116), configured here with Watch2Whoop's authorization, audit table and hooks."""
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 from typing import Any
 
 import psycopg
-from psycopg.types.json import Jsonb
 
 from .. import auth, queries
+from ..ai.datalayer_texts import MESSAGES
+from ..datalayer.audit import PgAudit
+from ..datalayer.execute import Executor
 from ..datalayer.spec import Tool  # noqa: F401  (moved to the datalayer framework, issue #116; old import path)
 from ..i18n import use_lang
-from ..toolspec import DETAIL, END, START, USER, fill_defaults, nullable, schema
+from ..toolspec import DETAIL, END, OPTIONAL_DEFAULTS, START, USER, nullable, schema
 from . import briefing, writelog
 from ..scores import store as scores_store
 from ..records.tools import TOOL_SPECS as RECORD_TOOL_SPECS
@@ -169,48 +172,27 @@ TOOLS += [Tool(**spec) for spec in SCENE_TOOL_SPECS]  # scene context tools + pl
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 
+AUDIT = PgAudit("assistant_audit", extra_columns=("provider_id", "model"))   # the two columns migration 110 added (in-page chat)
+
+
+class _Policy:
+    def can_view(self, conn, viewer_id, owner_id, scope):
+        return auth.can_view(conn, viewer_id, owner_id, scope)   # shares + circles (looked up at call time)
+
+
+EXECUTOR = Executor(TOOLS_BY_NAME, policy=_Policy(), audit=AUDIT, writelog=writelog.LOG, messages=MESSAGES,
+                    call_context=lambda: use_lang("zh"),   # AI-facing texts stay as they are, also when the in-page chat request carries X-Body-Lang: en
+                    after_write=lambda viewer_id: briefing.invalidate(viewer_id),   # whatever it wrote may be in the opening briefing (SparkyFitness writes are not in its fingerprint)
+                    optional_defaults=OPTIONAL_DEFAULTS)
+
+
 def run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, args: dict, *,
              provider_id: int | None = None, model: str | None = None) -> Any:
-    """Run one tool: authorize -> call -> write audit. Confirmation of writes is the caller's job (chat loop / MCP client).
+    """Run one tool: authorize -> call -> write audit (datalayer/execute.py). Confirmation of writes is the caller's job (chat loop / MCP client).
     The tool runs in a savepoint: on error only what it half-wrote is undone and the audit stays (the caller must also commit after an error, see mcp_server).
     In-Today-page chat (ai/chat.py) additionally records provider_id / model; for the MCP channel these two columns are empty."""
-    with use_lang("zh"):   # AI-facing texts stay as they are, also when the in-page chat request carries X-Body-Lang: en
-        return _run_tool(conn, viewer_id, channel, name, args, provider_id=provider_id, model=model)
-
-
-def _run_tool(conn: psycopg.Connection, viewer_id: int, channel: str, name: str, args: dict, *,
-              provider_id: int | None = None, model: str | None = None) -> Any:
-    tool = TOOLS_BY_NAME[name]
-    full = fill_defaults(tool.input_schema, args)  # MCP clients may leave out nullable / defaulted fields (toolspec.relaxed)
-    owner_id = viewer_id if full.get("user", "me") == "me" else int(full["user"])
-    try:
-        if tool.writes and owner_id != viewer_id:
-            raise PermissionError("写操作只能写给自己")
-        if not auth.can_view(conn, viewer_id, owner_id, tool.scope):
-            raise PermissionError(f"没有查看用户 {owner_id} 的 {tool.scope} 的授权")
-        with conn.transaction():
-            args_in = {**full, "_viewer_id": viewer_id, "_channel": channel}
-            if tool.writes:  # every AI write is logged with before / after values (writelog.py, rollback_write)
-                with writelog.capture(viewer_id, channel, name) as cap:
-                    result = tool.handler(conn, owner_id, args_in)
-                    if not cap["ids"]:
-                        writelog.record_generic(conn, full, result)
-            else:
-                result = tool.handler(conn, owner_id, args_in)  # training calendar blocks are further authorized per viewer
-    except Exception as e:
-        _audit(conn, viewer_id, channel, name, args, False, str(e), provider_id, model)
-        raise
-    _audit(conn, viewer_id, channel, name, args, True, None, provider_id, model)
-    if tool.writes:  # whatever it wrote may be in the opening briefing (SparkyFitness writes are not in its fingerprint)
-        briefing.invalidate(viewer_id)
-    return result
+    return EXECUTOR.run(conn, viewer_id, channel, name, args, provider_id=provider_id, model=model)
 
 
 def _audit(conn, user_id, channel, tool, args, ok, error, provider_id=None, model=None):
-    if provider_id is None and model is None:  # MCP channel: do not touch the columns added by migration 110 (databases before the migration still work)
-        conn.execute("INSERT INTO assistant_audit (user_id, channel, tool, args, ok, error) VALUES (%s,%s,%s,%s,%s,%s)",
-                     (user_id, channel, tool, Jsonb(args), ok, error))
-        return
-    conn.execute("""INSERT INTO assistant_audit (user_id, channel, tool, args, ok, error, provider_id, model)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
-                 (user_id, channel, tool, Jsonb(args), ok, error, provider_id, model))
+    AUDIT.record(conn, user_id, channel, tool, args, ok, error, provider_id=provider_id, model=model)

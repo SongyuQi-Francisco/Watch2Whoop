@@ -1,4 +1,5 @@
-"""Fixed texts the framework shows the model: meta tool descriptions, find_tools hints and guardrail errors (issue #116).
+"""Fixed texts the framework shows the model: meta tool descriptions, find_tools hints, guardrail errors and the MCP
+transports' errors (issue #116).
 
 Every field is required, so an application that forgets one fails when it builds its Messages, never by silently showing
 the model another language (docs/datalayer-design.md sections 3.8 and 7). Placeholders in braces are filled with
@@ -35,3 +36,19 @@ class Messages:
     # playbooks (datalayer/playbooks.py)
     unknown_playbook: str            # {name}, {names}
     playbook_sep: str                # joins the playbook names in unknown_playbook
+    # running a tool (datalayer/execute.py)
+    write_only_self: str
+    no_grant: str                    # {owner}, {scope}
+    # write log rollback (datalayer/writelog.py)
+    no_write_log_row: str            # {id}
+    already_rolled_back: str         # {at}: YYYY-MM-DD HH:MM
+    cannot_roll_back: str
+    # MCP server (datalayer/mcp/server.py)
+    mcp_no_such_tool: str            # {name}
+    mcp_read_only: str
+    mcp_no_such_prompt: str          # {name}
+    # MCP over HTTP (datalayer/mcp/http.py)
+    mcp_not_signed_in: str
+    mcp_not_started: str
+    mcp_missing_bearer: str
+    mcp_invalid_token: str
