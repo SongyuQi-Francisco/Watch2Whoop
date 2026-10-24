@@ -23,6 +23,7 @@ from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, quota_cards_cli as ai_cards_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
+from .account import open_signup_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
@@ -422,6 +423,7 @@ def main() -> None:
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
     rollout_cli.add_parser(sub)
+    open_signup_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -662,6 +664,8 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "open-signup":
+            open_signup_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)
