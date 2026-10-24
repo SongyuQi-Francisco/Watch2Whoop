@@ -13,7 +13,7 @@
   2. **本地数据层**：按「文档」增量同步（今天 / 每天 / 趋势 / 训练 / 饮食 / 静态包），写操作离线排队，服务端协议先做、今天页先用，之后原生 app 用同一个协议。
   3. **SwiftUI 原生化**：先用 SwiftUI 重写 app 外壳替换 Flutter（页面仍是 WebView，看起来不变），再按 今天 → 记录 → 趋势 → 饮食 → 我 → Jarvis 的顺序一个 tab 一个 tab 换成原生；每个原生 tab 都有服务器开关，关掉就回到 WebView。
   4. 发版：1.0.8（小，Flutter）→ 1.1.0（SwiftUI 外壳 + 本地数据层 + 原生今天）→ 1.2.0 → 1.3.0 → 1.4.0，每个版本号只过一次 Beta 审核，修复用同一版本号的新 build。
-- **顺带发现**（第 1.4 节）：公网 fail2ban 把 401 也算作失败，没登录 / 登录过期的页面每次打开都有几个 401；同一个出口 IP 10 分钟累计 30 次就封 1 小时。测试用户在同一个 NAT 后面（学校、社团 Wi-Fi）时可能被一起封，表现就是「app 打不开 / 一直转」。
+- **顺带发现**（第 1.4 节）：公网 fail2ban 把 401 也算作失败，没登录 / 登录过期的页面每次打开都有几个 401；同一个出口 IP 10 分钟累计 30 次就封 1 小时。上线以来只封过一次（就是这次测量），所以**不是测试用户反馈卡顿的原因**；但测试用户在同一个 NAT 后面（学校、社团 Wi-Fi）时理论上可能被一起封。是否调整由负责人决定（D7）。
 - 要负责人决定的点在第 8 节。
 
 ---
@@ -80,14 +80,14 @@
 - 登录过期后反复打开 app；
 - 多个测试用户在同一个 NAT 后面（学校、社团、公司 Wi-Fi，移动网络的运营商级 NAT）。
 
-表现就是「app 打不开 / 一直转」，用户会以为是卡。建议（ops 改动，不在这个仓库的 app 代码里）：401 不计入，或者只计登录类接口（`/v1/web/login*`、`/v1/auth/*`）的 401；其他接口只算 403 / 429，阈值调高。
+上线以来只封过这一次，测试用户反馈的卡顿不是它造成的。建议（ops 改动，由负责人决定，不在这个仓库的 app 代码里）：401 不计入，或者只计登录类接口（`/v1/web/login*`、`/v1/auth/*`）的 401；其他接口只算 403 / 429，阈值调高。
 
 ### 1.5 复测步骤
 
 1. 建测试库 `body_test_perf`（名字必须以 `body_test_` 开头），`body-engine migrate`、`user-add`、`import-apple-zip`（`demo_data.py` 生成的合成 zip）、`journal-init`、`memory-init`、`refresh-status`、`evaluate-rules`、`login-code`。
 2. `uv run --with hypercorn hypercorn body_engine.api:app --certfile … --keyfile …`（自签名证书，HTTP/2）。
 3. Playwright（系统 Chrome，`service_workers="block"`）登录一次，保存 cookie；新 context 依次做冷启动、热启动（reload）、切 tab、点卡片；有请求拦截时 Playwright 会关掉 HTTP 缓存，所以冷 / 热启动那一轮不能拦截请求，记一餐、Jarvis 另跑一轮。
-4. **不要拿正式服务器反复测没登录的页面**（第 1.4 节）。
+4. **只测本地服务器或公开的静态文件（带人为延迟）**，不要对正式服务器发会产生 401 的请求（第 1.4 节）。
 
 ---
 
@@ -314,7 +314,7 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 
 **Problem.** Testers find the app slow. Measured against a local HTTP/2 server with synthetic data and 150 ms added round-trip time, the Today page is bound by serial round trips, not rendering: with 0 ms RTT a cold start takes 0.25 s and logging a meal 0.33 s; at 150 ms they take 0.80 s / 0.78 s, at 300 ms 1.55 s / 1.24 s. A real device adds the new connection (DNS + TCP + TLS, ~0.5–0.66 s), parsing 1.15 MB of scripts and styles, and production server time. Re-opening the app costs ~1.5–1.9 s at 150 ms RTT and ~2.9 s at 300 ms.
 
-**Five slowest paths.** (1) Start-up: five serial layers — the page, 38 static files revalidated every time (`no-cache`), `/v1/web/me`, 11 Today endpoints that wait for it, then `/health-history`. (2) Logging a meal: three serial layers and the "logged" tick waits for the POST. (3) First visit to Food / Trends / Me: two serial layers each. (4) Explanation sheets: the sheet opens empty and fetches afterwards. (5) Jarvis: ~0.38 s server preparation before the model starts. Side finding: the public fail2ban jail counts 401s, so signed-out page loads can ban a whole shared IP (school or club Wi-Fi) for an hour.
+**Five slowest paths.** (1) Start-up: five serial layers — the page, 38 static files revalidated every time (`no-cache`), `/v1/web/me`, 11 Today endpoints that wait for it, then `/health-history`. (2) Logging a meal: three serial layers and the "logged" tick waits for the POST. (3) First visit to Food / Trends / Me: two serial layers each. (4) Explanation sheets: the sheet opens empty and fetches afterwards. (5) Jarvis: ~0.38 s server preparation before the model starts. Side finding: the public fail2ban jail counts 401s, so signed-out page loads can ban a whole shared IP for an hour; it has fired only once (during this measurement), so it is not the cause of the reported slowness.
 
 **Plan.**
 - *Phase 1, no rewrite (mostly server-side, live on deploy):* fingerprinted static URLs with immutable caching plus a `Server-Timing` header (done in #257: warm start 0.79 → 0.64 s at 150 ms RTT); one `boot` endpoint for start-up; parallel tab requests and idle prefetch; optimistic writes; render the last known data first (reusing the offline IndexedDB cache); in app 1.0.8, open the kept page shell first. Expected: ~1.7 s → ~1.0 s server-side only, and ~0.3 s to first (cached) content with 1.0.8.
