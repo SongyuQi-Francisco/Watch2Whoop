@@ -1,8 +1,9 @@
 """Muscle load map (rollout flag muscle_load): primary 100% / secondary 50% bookkeeping, the three time ranges (week starts Monday),
 colour status against the weekly range, who may look (own data, a friend with the training share, nobody else), and nothing
 changes while the flag is off (no endpoint, no tool, no card).
-#189: sports (watch workouts) are a separate layer in minutes that never becomes sets or colours; duplicates, excluded / hidden and
-strength workouts are left out; the body follows the profile's sex (none = male + a hint, no manual switch)."""
+Watch workouts are the sports layer: minutes per muscle plus equivalent sets on the logged-set scale (they count for the colours and
+ranges); duplicates and excluded / hidden ones are left out, a strength workout on a day with logged sets is not counted twice; the body
+follows the profile's sex (none = male + a hint, no manual switch). Coverage of every workout type: test_muscle_coverage.py."""
 import os
 from datetime import date, timedelta
 from pathlib import Path
@@ -119,31 +120,65 @@ def test_unmatched_exercise_is_reported_not_counted():
 
 
 # ---------------------------------------------------------------- pure: sports layer (#189)
-def test_sport_mapping_uses_catalog_muscles_and_leaves_strength_out():
-    for t, (prim, sec) in P.SPORT_MUSCLES.items():
+def test_sport_mapping_uses_catalog_muscles():
+    for t, (prim, sec, res) in P.SPORT_MUSCLES.items():
         assert prim and set(prim) <= set(ML.CD.MUSCLE_ZH) and set(sec) <= set(ML.CD.MUSCLE_ZH), t
         assert not set(prim) & set(sec), t
-        assert t in P.TYPE_NAMES and t in P.TYPE_NAMES_EN, t   # a known workout type with both names
-    assert not set(P.SPORT_MUSCLES) & P.STRENGTH_TYPES       # their sets are counted from the logged exercises
+        assert 0 < res <= 1, t
+        if t in P.TYPE_NAMES:
+            assert t in P.TYPE_NAMES_EN, t
     for t in ("basketball", "swimming", "running", "cycling", "hiking", "rowing_machine", "soccer", "tennis", "walking"):
         assert t in P.SPORT_MUSCLES   # the sports named in the issue
     assert (P.SPORT_PRIMARY_FACTOR, P.SPORT_SECONDARY_FACTOR) == (1.0, 0.5)
 
 
-def test_sports_counted_by_minutes_in_their_own_layer():
+def test_sports_counted_by_minutes_and_equivalent_sets():
     today = date(2026, 10, 21)   # Wednesday; the week starts on the 19th
     sports = [{"date": today, "type": "basketball", "min": 74}, {"date": today - timedelta(days=5), "type": "swimming", "min": 40},
-              {"date": today, "type": "yoga", "min": 30}, {"date": today - timedelta(days=1), "type": "basketball", "min": 60}]
+              {"date": today, "type": "core_training", "min": 30}, {"date": today - timedelta(days=1), "type": "basketball", "min": 60}]
     sp = ML.aggregate_sports(sports, today)
-    prim, sec = P.SPORT_MUSCLES["basketball"]
+    prim, sec, res = P.SPORT_MUSCLES["basketball"]
     assert sp["stats"]["quadriceps"]["today"] == 74 and sp["stats"]["quadriceps"]["week"] == 134   # primary x 1
     assert sp["stats"]["hamstrings"]["today"] == 37 and "hamstrings" in sec                         # secondary x 0.5
     assert sp["stats"]["lats"]["week"] == 0 and sp["stats"]["lats"]["last7"] == 40                  # swimming last Friday: last 7 days only
     assert sp["stats"]["biceps"]["last7"] == 0
+    # equivalent sets: minutes / 3 x resistance x intensity multiplier (no heart rate: 74 and 60 minutes of a sport are "moderate", x 1.0)
+    assert sp["sets"]["quadriceps"]["today"] == pytest.approx(74 / 3 * res)
+    assert sp["sets"]["hamstrings"]["today"] == pytest.approx(74 / 3 * res / 2)                      # secondary x 0.5
+    assert sp["sets"]["quadriceps"]["week"] == pytest.approx(134 / 3 * res) and sp["sets"]["lats"]["prev_week"] == pytest.approx(40 / 3 * 0.30)   # last Friday is last week
     today_list = sp["overall"]["today"]
-    assert [(x["type"], x["min"], x["mapped"]) for x in today_list] == [("basketball", 74, True), ("yoga", 30, False)]   # yoga: listed, no muscle
-    assert sp["by_muscle"]["quadriceps"]["week"] == [{"type": "basketball", "name": "篮球", "min": 134, "primary": True}]
+    assert [(x["type"], x["min"], x["mapped"]) for x in today_list] == [("basketball", 74, True), ("core_training", 30, True)]   # every type is mapped
+    bm = sp["by_muscle"]["quadriceps"]["week"]
+    assert [(x["type"], x["name"], x["min"], x["primary"]) for x in bm] == [("basketball", "篮球", 134, True)]
     assert sp["by_muscle"]["hamstrings"]["today"][0]["primary"] is False
+
+
+def test_intensity_level_and_multiplier():
+    hard = {"type": "cycling", "min": 60, "trimp": 150}
+    easy = {"type": "cycling", "min": 60, "trimp": 20}
+    assert ML.intensity_level(hard) == "hard" and ML.intensity_level(easy) == "light"
+    assert ML.sport_load(hard)["muscles"]["quadriceps"][0] == pytest.approx(60 / 3 * 0.25 * P.INTENSITY_MULT["hard"])
+    assert ML.sport_load(easy)["muscles"]["quadriceps"][0] == pytest.approx(60 / 3 * 0.25 * P.INTENSITY_MULT["light"])
+    assert ML.intensity_level({"type": "cycling", "min": 3, "trimp": 150}) == "light"           # a 3-minute record is always light
+    est = {"type": "walking", "min": 40, "avg_hr": 150, "hr_max": 190}                           # no TRIMP: estimated from the average heart rate
+    assert ML.intensity_level(est) in ("moderate", "hard")
+
+
+def test_strength_without_logged_sets_is_spread_over_the_target():
+    today = date(2026, 10, 21)
+    w = {"date": today, "type": "strength_training", "min": 60}
+    whole = ML.aggregate_sports([w], today)                                   # no plan: the whole-body mapping
+    sets = 60 / P.SET_CYCLE_MIN
+    per = sets * P.STRENGTH_PRIMARIES_PER_SET / 7
+    assert whole["sets"]["chest"]["today"] == pytest.approx(per) and whole["sets"]["biceps"]["today"] == pytest.approx(per / 2)
+    assert all(whole["sets"][m]["today"] > 0 for m in ("chest", "lats", "quadriceps", "glutes", "abdominals", "calves"))
+    legs = ML.aggregate_sports([w], today, strength_targets=lambda d: (["quadriceps", "glutes"], ["calves"]))   # the day's plan: legs
+    assert legs["sets"]["quadriceps"]["today"] == pytest.approx(sets * 1.5 / 2) and legs["sets"]["calves"]["today"] == pytest.approx(sets * 1.5 / 4)
+    assert legs["sets"]["chest"]["today"] == 0
+    logged = ML.aggregate_sports([w], today, logged_days={today})            # its sets are logged: not counted again
+    assert all(logged["sets"][m]["today"] == 0 for m in ML.CD.MUSCLE_ZH) and logged["overall"]["today"] == {} or logged["overall"]["today"] == []
+    other = ML.aggregate_sports([{**w, "type": "cycling"}], today, logged_days={today})   # a cycle ride that day still counts
+    assert other["sets"]["quadriceps"]["today"] > 0
 
 
 # ---------------------------------------------------------------- database: endpoints, permissions, flag
@@ -363,7 +398,8 @@ def _workout(conn, uid, ext, type_, day, minutes, **kw):
 
 
 def test_sports_layer_from_workouts(conn, world, sessions):
-    """Sport minutes come from workouts (not duplicates, not excluded, not strength) and leave sets and colours as they were."""
+    """Sport minutes and equivalent sets come from workouts (not duplicates, not excluded); a strength workout on a day with logged sets
+    is not counted again, one on a day without logged sets is."""
     ids, _, today = world
     a = ids["A"]
     before = {x["key"]: x for x in ML.compute(conn, a, today)["muscles"]}
@@ -371,24 +407,36 @@ def test_sports_layer_from_workouts(conn, world, sessions):
         kept = _workout(conn, a, "bb1", "basketball", today, 74)
         _workout(conn, a, "bb1-copy", "basketball", today, 74, dup_of=kept)            # the export.xml copy
         _workout(conn, a, "sw1", "swimming", today, 40, excluded="user_hidden")        # hidden by the user
-        _workout(conn, a, "st1", "strength_training", today, 60)                       # counted through its sets
-        _workout(conn, a, "yg1", "yoga", today, 30)                                    # no mapping: overall list only
+        _workout(conn, a, "st1", "strength_training", today, 60)                       # today has logged sets: counted through them
+        _workout(conn, a, "yg1", "core_training", today, 30)
         full = ML.compute(conn, a, today)
         m = {x["key"]: x for x in full["muscles"]}
         assert m["quadriceps"]["sport_min"] == {"today": 74, "week": 74, "last7": 74}
         assert m["hamstrings"]["sport_min"]["week"] == 37 and m["lats"]["sport_min"]["week"] == 0
-        for k, x in m.items():   # the set layer is untouched
-            assert x["ranges"] == before[k]["ranges"] and x["status"] == before[k]["status"], k
-        assert [(x["type"], x["min"], x["mapped"]) for x in full["sports"]["week"]] == [("basketball", 74, True), ("yoga", 30, False)]
+        res = P.SPORT_MUSCLES["basketball"][2]
+        q = m["quadriceps"]["ranges"]["today"]
+        assert q["logged_sets"] == before["quadriceps"]["ranges"]["today"]["logged_sets"] and q["sport_sets"] == pytest.approx(74 / 3 * res, abs=0.06)
+        assert q["sets"] == pytest.approx(q["logged_sets"] + q["sport_sets"], abs=0.06)   # one scale: the colours count both
+        assert m["quadriceps"]["trained_today"] and m["quadriceps"]["status"]["week"] != "none"
+        c = m["chest"]["ranges"]["today"]   # the chest press sets of the fixture stay as they were; the strength watch workout adds nothing
+        assert c["sets"] == before["chest"]["ranges"]["today"]["sets"] and c["sport_sets"] == 0
+        assert [(x["type"], x["min"], x["mapped"]) for x in full["sports"]["week"]] == [("basketball", 74, True), ("core_training", 30, True)]
         d = ML.detail(conn, a, "quadriceps", today)
-        assert d["sports"]["today"] == [{"type": "basketball", "name": "篮球", "min": 74, "primary": True}]
+        assert [(x["type"], x["name"], x["min"], x["primary"]) for x in d["sports"]["today"]] == [("basketball", "篮球", 74, True)]
         out = run_tool(conn, a, "test", "get_muscle_load", {"range": "today"})
         rows = {r["key"]: r for r in out["muscles"]}
         assert rows["quadriceps"]["sport_min"] == 74 and rows["lats"]["sport_min"] is None
-        assert {"name": "篮球", "min": 74, "mapped": True} in out["sports"] and "sport_min" in out["note"]
+        assert {"name": "篮球", "min": 74, "estimated": False} in out["sports"] and "sport_min" in out["note"]
         card = cards.build(conn, a, {"type": "muscle", "range": "week"})
         assert {x["key"]: x["sport_min"] for x in card["muscles"]}["quadriceps"] == 74
-        assert card["sports"][0] == {"type": "basketball", "name": "篮球", "min": 74} and "篮球 74 分钟" in cards.summary(card)
+        assert {"type": "basketball", "name": "篮球", "min": 74} in card["sports"] and "篮球 74 分钟" in cards.summary(card)
+        # a watch strength workout on a day without logged sets counts (whole body, no plan)
+        day = today - timedelta(days=2) if ML.week_start(today) <= today - timedelta(days=2) else today
+        if day != today:
+            _workout(conn, a, "st2", "strength_training", day, 45)
+            m2 = {x["key"]: x for x in ML.compute(conn, a, today)["muscles"]}
+            assert m2["chest"]["ranges"]["week"]["sport_sets"] > 0 and m2["lats"]["ranges"]["week"]["sport_sets"] > 0
+            assert m2["chest"]["ranges"]["today"]["sport_sets"] == 0
     finally:
         conn.execute("DELETE FROM workouts WHERE user_id = %s", (a,))
         conn.commit()

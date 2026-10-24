@@ -426,6 +426,8 @@ def job_scores(log: Log, full: bool) -> list:
     if full and "memory-review-run" in help_text:   # long-term memory review state + archive cleanup (#113); per user inside, idempotent
         engine_step(log, errors, "memory-review-run", "memory-review-run")
     batch_step(log, errors, full)
+    if full and "muscle-coverage-check" in help_text:   # every recent workout must credit a muscle on the muscle load map (training/muscle_coverage.py)
+        engine_step(log, errors, "muscle-coverage-check", "muscle-coverage-check")
     return errors
 
 
@@ -907,6 +909,21 @@ def doctor_checks_ali_primary(r: Report) -> None:
         (r.ok if loaded else r.fail)(f"LaunchAgent {job}", detail)
 
 
+def check_muscle_coverage(r: Report) -> None:
+    """Workouts of the last 28 days must all map to muscles (`body-engine muscle-coverage-check --json`, exit 1 = a type is missing)."""
+    p = engine("muscle-coverage-check", "--json", timeout=120)
+    try:
+        res = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        r.warn("肌肉图覆盖", f"检查命令没跑通（rc {p.returncode}）：{(p.stderr or p.stdout).strip()[-120:]}")
+        return
+    if res["ok"]:
+        r.ok("肌肉图覆盖", f"近 {res['days']} 天 {res['workouts']} 次运动都映射到了肌群")
+    else:
+        names = "、".join(f"{b['type']}（{b['workouts']} 次）" for b in res["uncovered"])
+        r.fail("肌肉图覆盖", f"这些运动类型没有映射到肌群：{names}；到 training/sport_muscles.py 补")
+
+
 def doctor_checks(r: Report) -> None:
     if PRIMARY == "ali":
         return doctor_checks_ali_primary(r)
@@ -1104,6 +1121,7 @@ def doctor_checks(r: Report) -> None:
         else:
             r.ok("每小时任务", f"{fmt_age(age)}成功")
 
+    check_muscle_coverage(r)
     check_backups(r, state, t_now)
 
     # disk
