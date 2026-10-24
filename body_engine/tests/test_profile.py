@@ -302,7 +302,7 @@ def test_intro_flag_follows_the_user(client, users):
 def test_intro_page_wiring(client):
     """intro.js is loaded and cached, re-openable from the Me page next to 「使用手册」, shown once via the server flag."""
     html = client.get("/app/").text
-    assert html.index('src="intro.js"') < html.index('src="app.js"')
+    assert html.index('src="intro.js?') < html.index('src="app.js?')   # linked as name?v=<fingerprint>
     js = client.get("/app/intro.js").text
     assert "/v1/users/me/intro" in js and "intro_seen" in js and "window.BodyIntro" in js and "/app/handbook/" not in js.split("*/", 1)[1]
     app_js = client.get("/app/app.js").text

@@ -9,11 +9,15 @@
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
   feature flags on for this user and their A/B variants (rollout/); also extends the cookie's lifetime.
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
-- /app/: PWA static files (static/, no build step); / redirects to /app/.
+- /app/: PWA static files (static/, no build step); / redirects to /app/. The page itself (/app/, /app/index.html) links
+  every script and stylesheet as name?v=<content fingerprint>; a request whose v matches the file's current fingerprint
+  may be cached for a year (docs/ios-native-plan.md, section 3.1), everything else is revalidated every time.
 - /app/media/: exercise demo images in the deployment's own media storage (BODY_MEDIA_DIR; training/media.py downloads them once).
 """
+import hashlib
 import json
 import re
+import time
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -31,7 +35,7 @@ from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.123-2026-10-24"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.124-2026-10-24"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -187,6 +191,47 @@ def offline_shell():
                     headers={"X-Web-Version": WEB_VERSION})
 
 
+# ---- fingerprinted static files (docs/ios-native-plan.md, section 3.1)
+# The page is revalidated every time (ETag, 304 when unchanged); the files it links carry ?v=<fingerprint of the content>.
+# Only a request whose v is the file's current fingerprint gets a year of caching, so an older page asking for a file that
+# changed since gets the new content without the long cache, never the reverse. The offline shell and the service worker
+# read the files by their plain names and are not affected.
+_ASSET = re.compile(r'(<script src="|<link rel="stylesheet" href=")([\w.-]+\.(?:js|css))(")')
+_fingerprints: dict[str, tuple[int, str]] = {}   # file name -> (mtime_ns, fingerprint)
+IMMUTABLE = "public, max-age=31536000, immutable"
+
+
+def fingerprint(name: str) -> str | None:
+    """First 12 hex digits of the sha256 of a top-level static file; None for anything else."""
+    if "/" in name or name.startswith("."):
+        return None
+    try:
+        mtime = (STATIC / name).stat().st_mtime_ns
+    except OSError:
+        return None
+    hit = _fingerprints.get(name)
+    if hit is None or hit[0] != mtime:
+        hit = _fingerprints[name] = (mtime, hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:12])
+    return hit[1]
+
+
+def page_html() -> str:
+    def versioned(m: re.Match) -> str:
+        v = fingerprint(m.group(2))
+        return f"{m.group(1)}{m.group(2)}?v={v}{m.group(3)}" if v else m.group(0)
+    return _ASSET.sub(versioned, (STATIC / "index.html").read_text(encoding="utf-8"))
+
+
+@router.api_route("/app/", methods=["GET", "HEAD"], include_in_schema=False)
+@router.api_route("/app/index.html", methods=["GET", "HEAD"], include_in_schema=False)
+def page(request: Request):
+    html = page_html()
+    etag = '"' + hashlib.sha256(html.encode()).hexdigest()[:20] + '"'
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers={"ETag": etag})
+    return Response(html, media_type="text/html; charset=utf-8", headers={"ETag": etag})
+
+
 @router.get("/v1/web/me")
 def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=Depends(current_user)):
     if viewer.get("auth") == "session":  # Renew: recompute the cookie Max-Age from now
@@ -274,15 +319,23 @@ class MediaFiles(StaticFiles):
 
 
 async def security_headers(request: Request, call_next):
+    started = time.perf_counter()
     response = await call_next(request)
     path = request.url.path
     if path.startswith("/app/media/"):   # exercise demo images: pinned upstream commit, never change
         response.headers["Cache-Control"] = "public, max-age=2592000, immutable"
     elif path.startswith("/app"):
         response.headers["Content-Security-Policy"] = CSP
-        response.headers["Cache-Control"] = "no-cache"  # Revalidate with the server every time (offline is covered by the service worker)
+        v = request.query_params.get("v")
+        if v and response.status_code in (200, 304) and v == fingerprint(path.removeprefix("/app/")):
+            response.headers["Cache-Control"] = IMMUTABLE   # this exact content, linked by the page as name?v=<fingerprint>
+        else:
+            response.headers["Cache-Control"] = "no-cache"  # Revalidate with the server every time (offline is covered by the service worker)
     if path.startswith("/v1/"):
         response.headers.setdefault("Cache-Control", "private, no-store")
+        # Time spent in the app (until the headers; a streamed answer goes on after it): lets nginx logs and the page see
+        # server time apart from the network (docs/ios-native-plan.md, section 1.2). A duration only, no user data.
+        response.headers["Server-Timing"] = f"app;dur={(time.perf_counter() - started) * 1000:.1f}"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
     return response

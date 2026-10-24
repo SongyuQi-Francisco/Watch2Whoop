@@ -205,7 +205,7 @@ def test_api_own_only(client, world):
     new = [x for x in client.get("/v1/users/me/feedback", headers=h(tok["Dave"])).json()["reports"] if x.get("withdrawable")][0]
     assert client.delete(f"/v1/users/me/feedback/{new['id']}", headers=h(tok["Alice"])).status_code == 404   # not hers
     assert client.delete(f"/v1/users/me/feedback/{new['id']}", headers=h(tok["Dave"])).status_code == 204
-    assert '<script src="feedback.js" defer></script>' in client.get("/app/").text
+    assert '<script src="feedback.js?v=' in client.get("/app/").text   # linked as name?v=<fingerprint>
     assert "反馈记录" in client.get("/app/feedback.js").text
 
 
