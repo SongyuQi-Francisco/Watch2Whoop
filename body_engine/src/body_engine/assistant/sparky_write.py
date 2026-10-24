@@ -13,6 +13,8 @@ They use the read-write key (sparky_client.write_client_for_user) and check befo
 Edit / delete (issue #30, any source; deletes ask the user first): update_food_entry, update_set, undo_entry (food entry by id or an exact
 date + meal + name (+ time) match, workout session, single set, one day's check-in). Every change is logged with before / after values
 (writelog.py) and rollback() puts it back. The user also deletes food entries on the Today page (delete_food_entry, not logged).
+Dual write (issue #252, flag own_food_store): every write ends with mirror.after_write for the dates it touched, which copies
+them from SparkyFitness into Body Engine's own tables (ownstore/); with the flag off it does nothing.
 """
 import hashlib
 import json
@@ -25,6 +27,7 @@ import psycopg
 from .. import sparky_client
 from ..i18n import L
 from ..nutrition import constraint_params as CP, constraints as diet_constraints, extras
+from ..ownstore import mirror
 from ..records import store as records_store
 from . import writelog
 
@@ -166,6 +169,8 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
                         "amount": it["amount"].strip(), "calories": it["calories"], "protein_g": it["protein_g"],
                         "carbs_g": it["carbs_g"], "fat_g": it["fat_g"],
                         **{k: v for k, v in opt.items() if v is not None}})
+    if created:
+        mirror.after_write(conn, user_id, client, food=days)
     return {"created": created, "skipped_duplicates": skipped, "warnings": warnings,
             **({"pantry_used": pantry} if pantry else {}),
             "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉（扣掉的存货会加回去），改用 update_food_entry"}
@@ -400,6 +405,7 @@ def log_workout(conn: psycopg.Connection, user_id: int, a: dict, client=None) ->
             "source": SOURCE, "exercises": exercises}
     row = client.request("POST", "/exercise-preset-entries", {k: v for k, v in body.items() if v is not None})
     writelog.record(conn, "session", "create", row["id"], None, {"id": row["id"], "date": d.isoformat(), "type": "preset"})
+    mirror.after_write(conn, user_id, client, workouts=[d])
     return {"created": {"id": row["id"], "date": d.isoformat(), "name": row.get("name"),
                         "exercises": [{"name": (x.get("exercise_snapshot") or {}).get("name") or x.get("name"),
                                        "sets": len(x.get("sets") or [])} for x in row.get("exercises") or []]},
@@ -445,6 +451,7 @@ def log_weight(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> 
     writelog.record(conn, "weight", "update" if cur else "create", d.isoformat(),
                     {"date": d.isoformat(), **{c: cur.get(c) for c in todo}} if cur else None,
                     {"date": d.isoformat(), **todo})
+    mirror.after_write(conn, user_id, client, weight=[d])
     return {"written": {"date": d.isoformat(), **todo}, "unchanged": same, "overwrote": conflict or None}
 
 
@@ -580,6 +587,7 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         extras.carry_over(conn, user_id, row["id"], new["id"], new_d, carry)
     if item is not None:   # the corrected values (given, or scaled) are the entry's extras; added sugar has no SparkyFitness field
         extras.set_values(conn, user_id, new["id"], new_d, {k: item.get(k) for k in extras.OPTIONAL})
+    mirror.after_write(conn, user_id, client, food=[d, new_d])
     out = sparky_client._food_entry({**new, "entry_date": str(new.get("entry_date") or new_d)})
     return {"updated": {k: v for k, v in out.items() if v is not None}, "previous_id": row["id"],
             "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删",
@@ -605,6 +613,7 @@ def update_set(conn: psycopg.Connection, user_id: int, day: str, set_id, reps, w
     client.request("PUT", f"/exercise-entries/{e['id']}", {"sets": after})
     writelog.record(conn, "sets", "update", e["id"], {"date": d.isoformat(), "entry_id": e["id"], "sets": before},
                     {"date": d.isoformat(), "entry_id": e["id"], "sets": after})
+    mirror.after_write(conn, user_id, client, workouts=[d])
     n = next(i for i, y in enumerate(sorted(e.get("sets") or [], key=lambda y: y.get("set_number") or 0))
              if str(y.get("id")) == str(set_id))
     name = (e.get("exercise_snapshot") or {}).get("name") or e.get("name")
@@ -624,6 +633,13 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
     if not entry_id and kind in ("workout", "set"):
         raise ValueError("训练 / 组要给 id（get_training_log 里有）")
     client = client or sparky_client.write_client_for_user(conn, user_id)
+    res = _undo(conn, user_id, client, kind, d, entry_id, meal, food, time)
+    target = {"food": "food", "weight": "weight"}.get(kind, "workouts")   # workout / set -> that day's workouts
+    mirror.after_write(conn, user_id, client, **{target: [d]})
+    return res
+
+
+def _undo(conn, user_id: int, client, kind: str, d: date, entry_id, meal, food, time) -> dict:
     if kind == "weight":
         return _delete_weight(conn, client, d)
     if kind == "set":
@@ -695,6 +711,7 @@ def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_i
         raise LookupError(f"{day} 没有这条饮食记录（可能已经删了）")
     client.request("DELETE", _entry_path("food", row))
     _pantry_back(conn, user_id, row["id"])
+    mirror.after_write(conn, user_id, client, food=[day])
     return {"deleted": {"id": row["id"], "date": day.isoformat(), "meal": row.get("meal_type"),
                         "food": row.get("food_name"), "source": row.get("source")}}
 
@@ -725,8 +742,26 @@ def _recreate_session(client, s: dict) -> dict:
     return client.request("POST", "/exercise-entries", {k: v for k, v in body.items() if v is not None})
 
 
+def _rollback_dates(kind: str, before, after) -> dict:
+    """The dates a rollback of this log row touches, for the dual write (mirror.after_write keywords)."""
+    rows = [r for r in (before, after) if isinstance(r, dict)]
+    if kind == "food":
+        return {"food": [r.get("entry_date") for r in rows]}
+    if kind in ("session", "sets"):
+        return {"workouts": [r.get("date") or r.get("entry_date") for r in rows]}
+    if kind == "weight":
+        return {"weight": [r.get("date") for r in rows]}
+    return {}
+
+
 def rollback(conn, user_id: int, kind: str, action: str, before, after, client=None) -> dict:
     client = client or sparky_client.write_client_for_user(conn, user_id)
+    res = _rollback(conn, user_id, client, kind, action, before, after)
+    mirror.after_write(conn, user_id, client, **_rollback_dates(kind, before, after))
+    return res
+
+
+def _rollback(conn, user_id: int, client, kind: str, action: str, before, after) -> dict:
     if kind == "food":
         if action == "create":
             row = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])

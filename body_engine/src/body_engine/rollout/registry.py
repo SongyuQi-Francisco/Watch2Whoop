@@ -56,6 +56,9 @@ FLAGS: dict[str, str] = {
                          "训练、睡眠阶段、15 分钟统计桶、按范围重新同步和同步记录（rawdata/engine.py），GET /v1/ingest/healthkit "
                          "的 engine 块告诉 app 收哪些字段和类型、同步模式 shadow（只存着做对比，不影响分数）；关着时 = ow 模式，"
                          "这些字段一律 409 不收，旧版 app 不受影响",
+    "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
+                      "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
+                      "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",
     "jarvis_scope_guard": "Jarvis 话题守门（#170，只管托底 AI，用户自己的 AI 不受影响）：明显跑题且费钱的请求（写代码、作业、长文写作 / 长篇翻译、"
                           "和健康无关的通用话题）由服务端规则直接用固定的礼貌说明回复，不调模型、不扣额度、不调工具，托底 AI 的系统提示里也加上话题范围；"
                           "健康、训练、饮食、睡眠、化验、app 用法、反馈和简短寒暄照常；关着时和以前完全一样",

@@ -22,6 +22,7 @@ import psycopg
 from .. import auth, sparky_client
 from ..assistant import briefing, sparky_write
 from ..i18n import L
+from ..ownstore import mirror
 from . import catalog, loads, params as P, plans
 
 MAX_SETS = 20
@@ -285,6 +286,7 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
             client.request("DELETE", f"/exercise-preset-entries/{old_id}")
         except sparky_client.SparkyError:
             pass   # deleted in SparkyFitness already
+        mirror.after_write(conn, user_id, client, workouts=[day])   # dual write (issue #252): the replaced one is gone
     row = conn.execute(
         """UPDATE training_session_logs SET status = 'submitted', sparky_entry_id = %s, submitted_at = now(), updated_at = now()
            WHERE user_id = %s AND date = %s AND source = 'page' RETURNING *""", (str(new_id), user_id, day)).fetchone()

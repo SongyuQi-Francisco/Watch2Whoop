@@ -21,6 +21,7 @@ uv run body-engine import-workouts --user-id 1          # pull only OW's workout
 uv run body-engine compute-scores --user-id 1           # sleep / recovery / strain / muscular load → daily_scores (recomputes everything from the scoring start date, about 20 s; --start/--end only limit which days are written)
                                                         # afterwards it also computes body age (weekly, healthspan_weekly) and stress for the last 90 days (stress_daily), about 30 s in total
 uv run body-engine sparky-link --user-id 1 --key-name owner  # connect SparkyFitness: validates secrets/sparkyfitness_api_key_owner_ro (must be a read-only key)
+uv run body-engine sparky-migrate --user-id 1 --dry-run     # #252: copy food / weight / workouts from SparkyFitness into own tables and check per table; --confirm writes (owner confirms the dry run first)
 uv run body-engine import-records --user-id 1           # backfill supplements, lab results, events, exercises and journal from body-management.md, then print a check table
 uv run body-engine journal-init --user-id 2             # create the default journal items for a family member (existing ones are left alone)
 uv run body-engine link-exercises --user-id 1           # write SparkyFitness exercise IDs into exercise_meta.app_exercise_id (--dry-run only shows the mapping table)
@@ -617,6 +618,7 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - `src/body_engine/scores/`: the scoring engine (see above)
 - `src/body_engine/insights/`: WHOOP-comparable analysis (see above)
 - `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight)
+- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
 - `src/body_engine/records/`: health records (supplements, lab results, journal and journal analysis, events, exercises, exercise ID mapping): reads/writes, API, assistant tools, migration
 - `src/body_engine/rules/`: the rule reminder engine (see above)
 - `src/body_engine/goals/`: bedtime target (see above)

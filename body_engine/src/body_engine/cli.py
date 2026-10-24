@@ -306,6 +306,15 @@ def main() -> None:
     k = sub.add_parser("sparky-link", help="link the user to a SparkyFitness account (validates the read-only API key in secrets)")
     k.add_argument("--user-id", type=int, required=True)
     k.add_argument("--key-name", required=True, help="secrets/sparkyfitness_api_key_<key-name>_ro, e.g. owner")
+    sm = sub.add_parser("sparky-migrate", help="copy one user's food, food library, weight, exercise library and workouts from "
+                        "SparkyFitness into Body Engine's own tables and check them table by table (idempotent; #252, "
+                        "docs/own-food-weight-storage.md §5). Production: dry run first, the owner confirms, then --confirm")
+    sm.add_argument("--user-id", type=int, required=True)
+    sm.add_argument("--since", type=date.fromisoformat, help="first day (default 2000-01-01)")
+    sm.add_argument("--until", type=date.fromisoformat, help="last day (default the user's today)")
+    sm.add_argument("--dry-run", action="store_true", help="do everything, check, then roll back: nothing is written")
+    sm.add_argument("--confirm", action="store_true", help="write for real (only committed when every table checks out)")
+    sm.add_argument("--json", action="store_true", help="print the full report as JSON")
 
     r = sub.add_parser("import-records", help="migrate supplements, lab results, events, banned exercises and journal backfill from body-management.md into the database (idempotent)")
     r.add_argument("--user-id", type=int, required=True)
@@ -429,6 +438,9 @@ def main() -> None:
     hr.add_argument("--max-jobs", type=int, default=5)
 
     args = p.parse_args()
+    if args.cmd == "sparky-migrate":  # manages its own connection (rolls back a dry run / a failed check, exit code)
+        from .ownstore import migrate as own_migrate
+        raise SystemExit(own_migrate.cli(args))
     if args.cmd == "history-import-run":  # manages its own connection (autocommit + global lock)
         from .history import run as history_run
         try:
