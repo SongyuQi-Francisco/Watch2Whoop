@@ -482,12 +482,17 @@ def recent_bedtimes(conn, owner_id: int, day: date, tz: ZoneInfo, nights: int = 
 
 
 def night_stages(conn, owner_id: int, tz: ZoneInfo, start: datetime, end: datetime) -> tuple[list[dict], str | None, str | None]:
-    """The stage timeline of one night: OW first, then the Shortcut samples, then the imported Apple Health history.
+    """The stage timeline of one night: OW first, then the Shortcut samples, then the imported Apple Health history; in
+    the sync mode `app` the app's own sync engine before all of them (rawdata/samples.py).
     Returns (stages, source, reason when there are none)."""
+    from ..rawdata import samples as rx_samples
     problems = []
-    for name, fetch in (("ow", lambda: ow_segments(conn, owner_id, tz, start, end)),
-                        ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
-                        ("export", lambda: export_segments(conn, owner_id, start, end))):
+    fetchers = [("ow", lambda: ow_segments(conn, owner_id, tz, start, end)),
+                ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
+                ("export", lambda: export_segments(conn, owner_id, start, end))]
+    if rx_samples.reads_app(conn, owner_id):
+        fetchers.insert(0, ("app", lambda: rx_samples.sleep_segments(conn, owner_id, tz, start, end)))
+    for name, fetch in fetchers:
         try:
             stages = hypnogram(fetch(), start, end, tz)
         except Exception as e:  # OW is off, has no key, or the archive is unreadable: try the next source

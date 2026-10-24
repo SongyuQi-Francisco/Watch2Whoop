@@ -31,8 +31,8 @@ Sync mode (rawdata/engine.mode; D4):
 - app (after the cut-over, S5): the values take part (app above ow, importers/common.SOURCE_PRIORITY), daily_metrics is
   re-chosen, the sleep is written, app workouts rank first among the duplicates, and the score recompute is queued from
   the earliest derived day (sync/refresh.queue_scores; sync-refresh-run does it).
-Not derived here: categories other than sleep (mindful sessions: no table yet), and the heart rate / TRIMP of app
-workouts (training/importer.enrich still reads OW; step S3 moves it to hk_samples).
+Not derived here: categories other than sleep (mindful sessions: no table yet). The heart rate / TRIMP of app workouts
+is training/importer.enrich's, which reads hk_samples in the app mode (rawdata/samples.py, step S3).
 """
 from __future__ import annotations
 
@@ -49,6 +49,7 @@ from ..importers import ow as ow_imp
 from . import engine as EN
 from . import hk_types as T
 from . import params as P
+from . import samples as S
 
 log = logging.getLogger(__name__)
 
@@ -186,10 +187,7 @@ def nights(conn: psycopg.Connection, user_id: int, wake_dates: set[date], tz: Zo
         return []
     lo = _midnight(min(wake_dates) - timedelta(days=P.SLEEP_DAYS_BEFORE), tz)
     hi = _midnight(max(wake_dates) + timedelta(days=P.SLEEP_DAYS_AFTER), tz)
-    rows = conn.execute("""SELECT h.start_at, h.end_at, h.value, h.source_id, h.source, s.name, s.device_type, s.device_name
-                           FROM hk_samples h LEFT JOIN hk_sources s ON s.id = h.source_id
-                           WHERE h.user_id = %s AND h.type = %s AND h.start_at >= %s AND h.start_at < %s""",
-                        (user_id, SLEEP, lo, hi)).fetchall()
+    rows = S.stage_rows(conn, user_id, lo, hi)
     return [n for n in common.sessionize(ow_imp.sleep_segments(ow_sessions(rows), tz)) if n.wake_date in wake_dates]
 
 
