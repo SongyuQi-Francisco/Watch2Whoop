@@ -23,6 +23,7 @@ from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, quota_cards_cli as ai_cards_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
+from .account import open_signup_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
@@ -341,6 +342,10 @@ def main() -> None:
     sbp = sub.add_parser("static-bundle-pack", help="write the versioned static data bundle (exercise library, labels, glossary, split templates) for the app: bundle-v<N>.json.gz + manifest.json (#248)")
     sbp.add_argument("--out", type=Path, required=True, help="output directory (created)")
     sbp.add_argument("--since", type=int, help="also write the delta from this version")
+    xm = sub.add_parser("exercises-media-fetch", help="download the licensed demo pictures (wger, Everkinetic; high-confidence matches in "
+                        "training/media_matches.json) into the media dir and store their credits in exercise_catalog.media; idempotent (#248)")
+    xm.add_argument("--dry-run", action="store_true", help="only count what would be fetched")
+    xm.add_argument("--extra", type=Path, help="a deployment's private extra source (default: BODY_EXERCISE_MEDIA_EXTRA; see training/media_licensed.py)")
     fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
                         "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
     fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
@@ -422,6 +427,7 @@ def main() -> None:
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
     rollout_cli.add_parser(sub)
+    open_signup_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -662,6 +668,8 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "open-signup":
+            open_signup_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)
@@ -771,6 +779,9 @@ def main() -> None:
             man = sb_pack.pack(conn, args.out, args.since)
             print(f"version {man['version']}: " + ", ".join(f"{f['file']} {f['bytes'] / 1024:.0f} KiB (raw {f['uncompressed_bytes'] / 1024:.0f} KiB)" for f in man["files"])
                   + f"; modules {man['modules']}")
+        elif args.cmd == "exercises-media-fetch":
+            from .training import media_licensed
+            print(json.dumps(media_licensed.run(conn, dry_run=args.dry_run, extra=args.extra), ensure_ascii=False, indent=1))
         elif args.cmd == "exercises-import-opengym":
             from .training.opengym import importer as og_importer
             rep = og_importer.run(conn, og_importer.load_snapshot(args.file) if args.file else None, dry_run=args.dry_run)

@@ -121,6 +121,7 @@ MUSCLES = {"type": "array", "items": {"type": "string"}, "description": "动作�
 def _get_exercise(conn, uid, a):
     ex = catalog.get_exercise(conn, uid, a["exercise"])
     ex.pop("image_urls", None)   # pictures are for the Today page, not the model
+    ex.pop("media_credits", None)
     out = {**ex, **loads.for_exercise(conn, a.get("_viewer_id", uid), uid, ex, plans._user_today(conn, uid))}
     for alt in out.get("alternatives") or []:
         alt.pop("thumb", None)

@@ -472,4 +472,13 @@ def admin_status(conn: psycopg.Connection, refresh: bool = True) -> dict:
             "month_remaining_cny": round(sum(u["left_cny"] + u["cards_max_cny"] for u in eligible), 4),
             "month_cards_max_cny": round(sum(u["cards_max_cny"] for u in eligible), 4),
             "eligible_users": len(eligible), "stop_cny": fp.BALANCE_STOP_CNY, "warn_cny": fp.BALANCE_WARN_CNY,
-            "topup_url": fp.TOPUP_URL, "model": fp.MODEL, "price_source": fp.PRICE_SOURCE, "users": users}
+            "topup_url": fp.TOPUP_URL, "model": fp.MODEL, "price_source": fp.PRICE_SOURCE, "users": users,
+            "open_signup": _open_signup_cost(conn)}
+
+
+def _open_signup_cost(conn: psycopg.Connection) -> dict:
+    """Open sign-up (account/open_signup.py): switch, accounts / cap, and the monthly ceiling at the cap with the runway."""
+    from ..account import open_signup, params as account_params
+    n = open_signup.active_count(conn)
+    return {"on": open_signup.flag_on(conn), "active": n, "cap": account_params.OPEN_SIGNUP_MAX_ACTIVE,
+            **open_signup.fallback_cost(conn, n)}

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'account_api.dart';
 import 'config.dart';
 import 'i18n.dart';
+import 'platform_features.dart';
 import 'server_lock.dart';
 
 export 'server_lock.dart' show redactServer, serverLocked;
@@ -137,10 +138,9 @@ String get limitsHint => tr(
 );
 
 /// Optional hint when the server is only on the private network (not needed for public https addresses).
-String get vpnHint => tr(
-  '如果你的服务器只在内网（例如家里的电脑），需要先在 iPhone 上连好 VPN。',
-  'If your server is only on a private network, connect your VPN first.',
-);
+String get vpnHint => isAndroid
+    ? tr('如果你的服务器只在内网（例如家里的电脑），需要先在手机上连好 VPN。', 'If your server is only on a private network, connect your VPN first.')
+    : tr('如果你的服务器只在内网（例如家里的电脑），需要先在 iPhone 上连好 VPN。', 'If your server is only on a private network, connect your VPN first.');
 
 String urlError(String? code) => switch (code) {
   'empty' => tr('请填写地址', 'Required'),
@@ -153,11 +153,19 @@ String urlError(String? code) => switch (code) {
 
 String connectError(Object e) {
   final code = redactServer(e is Exception ? e.toString() : '$e');
+  if (code.contains('unsupported')) return watchDataPending;
   if (code.contains('invalid_code')) return tr('邀请码无效或已用过 / 过期，请重新生成', 'Invitation code is invalid, used or expired');
   if (code.contains('network')) return tr('连不上同步服务器：检查网络和地址（服务器在内网时要先连 VPN）', 'Cannot reach the sync server: check the network and address (VPN if it is private)');
   if (code.contains('server')) return tr('服务器出错：$code', 'Server error: $code');
   return tr('连接失败：$code', 'Connection failed: $code');
 }
+
+/// Android (#253): shown where iOS has the Health sync (sync page, onboarding); reading Huawei watch data comes later.
+String get watchDataPending => tr('华为手表数据接入开发中', 'Huawei watch data support is in development');
+
+/// Android: what works meanwhile.
+String get watchDataPendingHint => tr('这台手机暂时不上传健康数据；今天页、记录、和 AI 对话、拍照记餐都能正常用。',
+    'This phone does not upload health data yet; the Today page, logging, the AI chat and meal photos all work.');
 
 /// Generic messages for account API errors (callers override the context-specific ones).
 String accountError(AccountApiException e) => switch (e.code) {

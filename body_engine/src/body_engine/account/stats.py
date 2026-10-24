@@ -6,6 +6,8 @@ Definitions (repeated in HELP, which is the command's --help epilogue):
 - activated:
   - self-signup account (has an invite redemption): the moment it redeemed an invite / referral code
     (invite_redemptions.redeemed_at). A `pending` account is never activated.
+  - opened by open sign-up (account/open_signup.py): the moment it was activated (open_signups.activated_at), also when
+    it redeemed a referral code afterwards (the inviter is still shown).
   - admin-created account: the first time one of its one-time login codes was used (web_login_codes.used_at: the app
     setup link / QR code, including the codes an activation link mints); without one, the consent time
     (users.consent_at, in-app or recorded by the admin) as the best remaining signal. The first use of a reusable
@@ -27,7 +29,7 @@ Definitions (repeated in HELP, which is the command's --help epilogue):
   re-write recent days every hour, so updated_at is no sign of the user.
 - new in the window: signed up (users.created_at) or activated within the last N days.
 - sign-up method: `invite` (admin invite code), `referral` (a user's referral code; inviter shown, once referral
-  codes exist on this server), `signup` (signed in, no code redeemed yet), `activation` (admin-created, has an
+  codes exist on this server), `open` (opened by open sign-up, no code needed), `signup` (signed in, no code redeemed yet), `activation` (admin-created, has an
   activation link), `admin` (admin-created, set up with plain login codes / tokens).
 """
 from __future__ import annotations
@@ -85,6 +87,7 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
     now = now or datetime.now(timezone.utc)
     since = now - timedelta(days=days)
     referrals = _has_column(conn, "invite_codes", "kind") and _has_column(conn, "invite_redemptions", "inviter_user_id")
+    opened = _has_column(conn, "open_signups", "activated_at")
     sig = _signal_sql()
     last = ",\n".join(f"(SELECT max(at) FROM ({sig[s]}) x WHERE x.user_id = u.id) AS last_{s}" for s in SIGNALS)
     rows = conn.execute(f"""
@@ -94,6 +97,8 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
                EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = u.id) AS has_identity,
                EXISTS (SELECT 1 FROM activation_codes a WHERE a.user_id = u.id) AS has_activation,
                r.redeemed_at,
+               {"(SELECT o.activated_at FROM open_signups o WHERE o.user_id = u.id AND o.decision = 'activated')"
+                if opened else "NULL::timestamptz"} AS open_at,
                {"c.kind AS code_kind, r.inviter_user_id, inv.display_name AS inviter_name," if referrals else
                 "NULL AS code_kind, NULL::int AS inviter_user_id, NULL AS inviter_name,"}
                (SELECT min(used_at) FROM web_login_codes l WHERE l.user_id = u.id) AS first_login_code,
@@ -107,7 +112,9 @@ def collect(conn: psycopg.Connection, days: int = 7, signals: tuple[str, ...] = 
 
     users = []
     for r in rows:
-        if r["redeemed_at"]:
+        if r["open_at"]:
+            method, activated, via = "open", r["open_at"], "open_signup"
+        elif r["redeemed_at"]:
             method = "referral" if r["code_kind"] == "referral" else "invite"
             activated, via = r["redeemed_at"], method
         elif r["has_identity"]:

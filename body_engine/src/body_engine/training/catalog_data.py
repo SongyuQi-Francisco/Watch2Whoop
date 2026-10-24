@@ -75,6 +75,31 @@ EQUIPMENT_ZH: dict[str, str] = {
     "other": "其他",
 }
 
+# Chinese for the equipment names the openGym import keeps as they are (opengym/mapping.py leaves them unmapped on purpose) and for
+# the two ball types free-exercise-db uses; the terms are the glossary's (training/translations/glossary.json). Shown while the
+# viewer has exercise_zh_machine on (catalog.format_exercise), English in i18n-en.js (#248).
+EQUIPMENT_ZH_EXTRA: dict[str, str] = {
+    "exercise ball": "瑞士球",
+    "medicine ball": "药球",
+    "weighted": "负重",
+    "suspension trainer": "悬挂训练带",
+    "weight plate": "杠铃片",
+    "assisted": "辅助器械",
+    "rope": "绳",
+    "landmine": "地雷管",
+    "bosu ball": "波速球",
+    "sandbag": "沙袋",
+    "stationary bike": "健身车",
+    "elliptical machine": "椭圆机",
+    "wheel roller": "健腹轮",
+    "macebell": "锤铃",
+    "tire": "轮胎",
+    "hammer": "大锤",
+    "upper body ergometer": "上肢功率车",
+    "skierg machine": "滑雪机",
+    "stepmill machine": "爬楼机",
+}
+
 PATTERN_ZH: dict[str, str] = {
     "horizontal_push": "水平推（胸）",
     "incline_push": "上斜推（上胸）",

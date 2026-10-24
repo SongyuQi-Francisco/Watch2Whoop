@@ -13,6 +13,7 @@ import 'package:open_wearables_health_sdk/open_wearables_health_sdk.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'config.dart';
+import 'platform_features.dart';
 import 'raw_sync.dart';
 import 'sync_stats.dart';
 
@@ -73,6 +74,7 @@ class HealthSync {
       ..clear()
       ..addAll(prefs.getStringList(_logKey) ?? const []);
     _parser = SyncLogParser(stats.value);
+    if (!hasHealthSync) return; // Android (#253): no phone health sync yet, the SDK is never touched
 
     // Release builds emit no logs by default; sync status relies on log counts, so keep them always on (logs stay on the device only).
     await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.always);
@@ -128,6 +130,7 @@ class HealthSync {
 
   /// Connects to OW with an invitation code: redeem → configure → signIn. Returns the OW user id.
   Future<String> connect({required String owHost, required String code, http.Client? client}) async {
+    if (!hasHealthSync) throw ConnectException('unsupported');
     final c = client ?? http.Client();
     final http.Response res;
     try {
@@ -158,6 +161,7 @@ class HealthSync {
   }
 
   Future<void> disconnect() async {
+    if (!hasHealthSync) return resetStats();
     try {
       await OpenWearablesHealthSdk.stopBackgroundSync();
     } catch (_) {}
@@ -181,6 +185,7 @@ class HealthSync {
   /// Not connected to sync yet (the SDK is only configured by connecting): its sheet would throw NotConfiguredException, so
   /// only the app's own types are asked now; connecting asks for the rest.
   Future<bool> requestAuthorization() async {
+    if (!hasHealthSync) return false;
     if (!OpenWearablesHealthSdk.isConfigured) return RawSync.instance.requestAuth();
     final ok = await OpenWearablesHealthSdk.requestAuthorization(types: requestedTypes);
     await RawSync.instance.requestAuth();
@@ -188,13 +193,14 @@ class HealthSync {
   }
 
   /// Starts background sync; calling it again while already on = sync one round immediately (skipped if the SDK is already syncing).
-  Future<bool> startSync(int syncDaysBack) =>
-      OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  Future<bool> startSync(int syncDaysBack) async =>
+      hasHealthSync && await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
 
   /// Changes the read range (health_range.dart). "All history" after the 90-day export: the anchors only see newer
   /// samples, so they are reset and the whole history is exported again (the last 90 days are re-sent once and stored
   /// once by Open Wearables). Back to 90 days: only later full exports are limited; nothing already read is removed.
   Future<void> changeRange(int syncDaysBack) async {
+    if (!hasHealthSync) return;
     if (syncDaysBack <= 0) {
       await OpenWearablesHealthSdk.stopBackgroundSync();
       await OpenWearablesHealthSdk.resetAnchors();
@@ -206,6 +212,7 @@ class HealthSync {
   /// Same sequence as going to "All history": stop (cancels a running pass, which would make the export skip), clear
   /// every anchor, then start with the range stored, which runs a full export of it (newest first, resumable).
   Future<void> resyncFrom(int syncDaysBack) async {
+    if (!hasHealthSync) return;
     await OpenWearablesHealthSdk.stopBackgroundSync();
     await OpenWearablesHealthSdk.resetAnchors();
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
@@ -213,6 +220,7 @@ class HealthSync {
 
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {
+    if (!hasHealthSync) return;
     final s = await status();
     if (s.hasResumableSession) {
       await OpenWearablesHealthSdk.resumeSync();
@@ -222,7 +230,7 @@ class HealthSync {
   }
 
   Future<SdkSyncStatus> status() async {
-    if (!OpenWearablesHealthSdk.isConfigured) return const SdkSyncStatus();
+    if (!hasHealthSync || !OpenWearablesHealthSdk.isConfigured) return const SdkSyncStatus();
     try {
       return SdkSyncStatus.fromMap(await OpenWearablesHealthSdk.getSyncStatus());
     } on PlatformException {
@@ -230,8 +238,8 @@ class HealthSync {
     }
   }
 
-  bool get isSyncActive => OpenWearablesHealthSdk.isSyncActive;
-  bool get isSignedIn => OpenWearablesHealthSdk.isSignedIn;
+  bool get isSyncActive => hasHealthSync && OpenWearablesHealthSdk.isSyncActive;
+  bool get isSignedIn => hasHealthSync && OpenWearablesHealthSdk.isSignedIn;
 }
 
 class RedeemedCredentials {

@@ -1,4 +1,4 @@
-# Watch2Whoop iOS app
+# Watch2Whoop app (iOS, and an Android APK for Huawei phones)
 
 [English](#english) · [中文步骤](#中文步骤)
 
@@ -176,7 +176,61 @@ xcrun simctl openurl booted "watch2whoop://setup?today=…&ow=…&code=…&login
 - The simulator has no camera, so in-app scanning can only be tested on a real device; test setup links with `simctl openurl`.
 - The debug build's "phone sync" page has "Write test data to the simulator's Health app" at the bottom (compiled only under `DEBUG && simulator`). Use a dedicated OW test user for testing (`invite.py --create-user`) and delete it afterwards.
 - When the path contains Chinese characters, the `flutter analyze` analysis server crashes (a known Dart LSP issue); copy the project to a pure-English path and run it there.
-- For Android later: `flutter create --platforms android .`; the OW SDK already supports Health Connect / Samsung Health.
+- Android: see the next section; Android code is gated on `isAndroid` (`lib/src/platform_features.dart`), so iOS behaves as before.
+
+### Android (Huawei phones on HarmonyOS 4.x and older, installed as an APK)
+The first Android build (#253) is for family members with Huawei phones that run HarmonyOS 4.x or older (Android
+compatible, **no Google services**). It is installed directly from an APK, not from a store. HarmonyOS NEXT (5+) has no
+Android runtime and needs its own app later ([docs/apps.md](../../docs/apps.md)). Family install guide (Chinese, one
+page): [android-install.zh-CN.md](android-install.zh-CN.md).
+
+| Works on Android | Not yet |
+|---|---|
+| E-mail sign-in, invite / circle codes, setup QR code (in-app scanner, bundled ML Kit without Google services), pasted setup text, `watch2whoop://` links | Phone health sync: the sync page shows 「华为手表数据接入开发中」; reading Huawei watch data is #253 |
+| Today page (all tabs), the AI chat with hold-to-talk (RECORD_AUDIO asked on first use; no microphone → the page keeps the keyboard's dictation key) | Push notifications (no FCM without Google services) |
+| Photos / videos for the AI and the meal log: system picker with the camera next to it, the camera directly for camera buttons (`MainActivity.kt`) | Sign in with Apple (iOS only) |
+| Chinese / English following the system or the profile, back button (page history first) | |
+
+Requirements: Android 10 / HarmonyOS 2 or newer (`minSdk 29`, the Open Wearables plugin's minimum), 32- or 64-bit ARM.
+No server is compiled in: on first start the person scans the setup QR code or pastes the setup link (an admin makes
+it with `invite.py` / the onboarding tools, as for iOS). The app keeps no cloud backup (`allowBackup=false`).
+
+**Building: GitHub Actions only, no Android SDK on a Mac needed** (installing the SDK means accepting Google's licence).
+Workflow [`android-apk.yml`](../../.github/workflows/android-apk.yml) builds `flutter build apk --release` on ubuntu:
+- every pull request that changes this app: a test APK as an artifact of the CI run (job "Android APK"), signed with the
+  runner's throw-away debug key (`…-debug-signed.apk`) — fine for a test phone, **not for family** (the properly signed
+  APK cannot update it; uninstall first);
+- Actions → "Android APK" → Run workflow (any branch): the same, signed with the release key when the secrets are set;
+- a release: add a `## Android X.Y.Z — date` section to [CHANGELOG.md](CHANGELOG.md) (the version is the shared one in
+  `pubspec.yaml`), then `tools/app_release.sh android --push`. The tag `app-android-vX.Y.Z` publishes the source
+  pre-release as for iOS, and `app-release.yml` builds the signed APK from the tag and attaches it and its `.sha256` to
+  that release. A tag build fails without the release key.
+
+**Signing key (the project owner, once).** Every APK must be signed with the same key, or it cannot install over the
+previous one. `keytool` comes with any JDK (no Google licence):
+```bash
+keytool -genkeypair -v -storetype PKCS12 -keystore watch2whoop-release.jks -alias watch2whoop \
+  -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Watch2Whoop"
+# PKCS12 uses one password for the store and the key: give the same one to both secrets below
+gh secret set W2W_ANDROID_KEYSTORE_BASE64 --repo <owner>/<repo> < <(base64 < watch2whoop-release.jks)
+gh secret set W2W_ANDROID_KEYSTORE_PASSWORD --repo <owner>/<repo>     # prompts for the password
+gh secret set W2W_ANDROID_KEY_PASSWORD --repo <owner>/<repo>          # the same password
+gh secret set W2W_ANDROID_KEY_ALIAS --repo <owner>/<repo> --body watch2whoop
+```
+Keep the `.jks` and its password in your password manager and delete other copies; never commit them (`*.jks`,
+`*.keystore` and `Watch2Whoop.local.properties` are git-ignored). Losing the key means every family member has to
+uninstall and set up again for the next update. Pull requests never get the secrets (forks do not, and `ci.yml` does not
+pass them), so only maintainers' manual runs and tags produce release-signed APKs.
+
+**Application ID.** The repository holds the placeholder `org.watch2whoop.app` (`android/Watch2Whoop.properties`). To use
+your own, set the repository *variable* (not a secret) `W2W_ANDROID_APPLICATION_ID`, or put it in
+`android/Watch2Whoop.local.properties` (copy the `.example`) for a local build. Decide before the first family install:
+a different ID is a different app (installed next to the old one, login lost).
+
+**Local build (optional).** Needs the Android SDK (Android Studio or the command-line tools; accept its licence
+yourself). `cp android/Watch2Whoop.local.properties.example android/Watch2Whoop.local.properties`, fill it in, then
+`flutter build apk --release --target-platform android-arm,android-arm64` (add `--dart-define-from-file=config/defaults.json`
+for a build with your servers pre-filled; never for the public APK).
 
 License: not chosen yet (the repository is private for now; the owner decides before open-sourcing). The OW SDK is MIT-licensed.
 
@@ -285,6 +339,12 @@ App Store Connect → **用户和访问** → **+**，用对方的 Apple ID 邮�
 ### 7. 维护
 - **TestFlight 构建 90 天过期**：过期前请项目所有者打一个新 tag（他在 PR 里升一个补丁版本，例如 1.0.6 → 1.0.7，构建号也加 1，合并后打 tag，你会收到新的 Release 链接），再做第 1、5 步。Bundle ID 不变，家人更新后数据、登录、同步进度都保留；TestFlight 会提醒他们更新。
 - 跟新版本：拿到新的 Release（第 1 步 A，或在已有目录里 `git fetch --tags && git checkout <tag>`）→ `flutter pub get` → `cd ios && pod install` → 第 5 步。本地的 `Watch2Whoop.local.xcconfig` 和 `config/defaults.json` 不在 git 里，保留即可。
+
+### Android 安装包（华为手机，HarmonyOS 4.x 及更早）
+给用华为手机（HarmonyOS 4.x 及更早，兼容安卓、没有谷歌服务）的家人直接装 APK，不经过应用市场。能用的：邮箱登录、设置二维码 / 设置链接、今天页全部页面、Jarvis 对话和按住说话、拍照记餐；暂时不能用：手表数据同步（同步页显示「华为手表数据接入开发中」，#253）、推送、Apple 登录。
+- 安装包只在 GitHub Actions 上构建（不用在 Mac 上装 Android SDK）：发布时在 `CHANGELOG.md` 加 `## Android X.Y.Z — 日期` 一节，`tools/app_release.sh android --push`，tag 的 Release 上会自动附上签好名的 APK 和 `.sha256`。
+- 签名用固定的 release keystore（生成命令和要设的 4 个仓库 secret 见上面英文 "Signing key"）；没设 secret 时只能出调试签名的测试包，不要发给家人。
+- 家人怎么装、怎么扫码登录：[android-install.zh-CN.md](android-install.zh-CN.md)。
 
 ## License
 MIT — see [LICENSE](LICENSE). The rest of the repository (server side) is AGPL-3.0, see [docs/LICENSES.md](../../docs/LICENSES.md).
