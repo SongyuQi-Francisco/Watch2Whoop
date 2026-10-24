@@ -69,8 +69,13 @@
   // ---------------------------------------------------------------- login: step flow
   const STEPS = ["email", "code", "invite"];
   const RESEND_SECONDS = 60;           // the server allows one code e-mail per address per minute (account/api.py)
-  const methods = fetch("/v1/auth/methods", { credentials: "same-origin", headers: { ...window.I18N.headers() } })
-    .then((r) => (r.ok ? r.json() : {})).catch(() => ({}));   // older server or offline: only the other ways
+  // Asked for when first needed: the start-up bundle (app.js, flag boot_api) usually has it already; without the bundle
+  // it starts right away as before
+  let methodsP = null;
+  const methods = () => (methodsP ??= Promise.resolve(window.BodyPre?.("/v1/auth/methods"))
+    .then((pre) => pre || fetch("/v1/auth/methods", { credentials: "same-origin", headers: { ...window.I18N.headers() } }))
+    .then((r) => (r.ok ? r.json() : {})).catch(() => ({})));   // older server or offline: only the other ways
+  try { if (!(JSON.parse(localStorage.getItem("be.fast") || "{}").flags || []).includes("boot_api")) methods(); } catch (e) { methods(); }
   const L = { step: null, sentTo: "", resendAt: 0, timer: 0 };
   const appleInApp = () => !!window.Watch2Whoop && !!window.Watch2WhoopFeatures?.appleSignIn;
 
@@ -108,7 +113,7 @@
 
   // app.js showLogin(): back to the first step; `msg` (e.g. session expired) shows there.
   async function loginShown(msg) {
-    const m = await methods;
+    const m = await methods();
     const apple = !!(m.apple && appleInApp());
     $("#le-apple").hidden = $("#le-or").hidden = !apple;
     L.apple = apple;
@@ -341,7 +346,7 @@
       const b = $("#me-invite", view);
       if (!b) return;
       b.onclick = inviteSheet;
-      if ((await methods).referrals) b.hidden = false;
+      if ((await methods()).referrals) b.hidden = false;
     },
   });
   (window.BodyPlugins = window.BodyPlugins || []).push({

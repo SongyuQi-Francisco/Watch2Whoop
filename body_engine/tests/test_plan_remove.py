@@ -98,7 +98,7 @@ def test_remove_for_one_day_only_and_undo(conn, world):
     nxt, nxt_entry = _slugs(conn, a, today + timedelta(days=7))
     assert nxt == full and "removed" not in nxt_entry
     assert _template(conn, a) == full
-    assert [e["slug"] for e in plans.get_week_plan(conn, a, a, today)["days"][(today.isoweekday() % 7)]["planned"][0]["exercises"]] == ["seated_leg_extension"]
+    assert _slugs(conn, a, today + timedelta(days=1))[0] == ["seated_leg_extension"]   # the other session (tomorrow; may be next week)
     # training day v2 reads the same day, and the volume follows
     v = session_log.view(conn, a, a, today)
     assert [x["slug"] for s in v["sessions"] for x in s["exercises"]] == ["lat_pulldown", "seated_cable_row_close"]

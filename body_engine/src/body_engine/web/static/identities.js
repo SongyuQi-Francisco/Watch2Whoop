@@ -22,7 +22,10 @@
     if (method !== "GET") headers["X-Body-Web"] = "1";
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
-    try { r = await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }); }
+    try {
+      const pre = method === "GET" ? await window.BodyPre?.(path) : null;   // the start-up bundle / an early read (app.js)
+      r = pre && pre.status < 500 ? pre : await fetch(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) });
+    }
     catch (e) { const err = new Error("offline"); err.status = 0; throw err; }
     let data = null;
     try { data = await r.json(); } catch (e) { /* no body */ }

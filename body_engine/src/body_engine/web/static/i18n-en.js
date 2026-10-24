@@ -998,6 +998,7 @@ I18N.addEn({
   "桑拿": "Sauna",
   "撤销最近一次（{ml} ml）": "Undo the last one ({ml} ml)",
   "没记上，再试一次": "Not saved, try again",
+  "没记上：{why}": "Not logged: {why}",
   // sync.js (on-demand refresh)
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",
@@ -1395,6 +1396,7 @@ I18N.addEn({
   "现在同步": "Sync now",
   "都已同步": "All synced",
   "离线 · 数据更新于 {when}": "Offline · data updated {when}",
+  "更新中 · 数据更新于 {when}": "Updating · data from {when}",
   "离线": "Offline",
   "{n} 条待同步": "{n} waiting to sync",
   "正在同步 {n} 条": "Syncing {n}",

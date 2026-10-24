@@ -215,6 +215,8 @@ def test_flag_off_leaves_the_page_as_before():
     m = re.search(r"async function api\(path.*?\n  \}\n", APP, re.S)
     body = m.group(0)
     assert "const off = OFF();" in body
+    # the one exception: the first page drawn from the copies (flag cached_first_paint, #247 3.5), only while S.stale is set
+    body = re.sub(r"\n    if \(S\.stale\) \{.*?\n    \}\n", "\n", body, count=1, flags=re.S)
     assert not re.search(r"BodyOffline", body), "api() must only reach offline.js through OFF()"
     assert re.search(r'const OFF = \(\) => \(S\.offlineOn && window\.BodyOffline', APP)
     assert 'S.offlineOn = !!lib && S.flags.includes("offline_mode")' in APP
