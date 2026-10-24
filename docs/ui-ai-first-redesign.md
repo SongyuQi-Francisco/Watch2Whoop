@@ -15,6 +15,7 @@
 
 ## 0. 摘要
 
+- **总原则（最高优先级）：让互联网老用户不需要任何教程就自然玩转 app。** 熟悉的交互就是 AI 入口（搜索框 = 问 Jarvis、长按任何卡片 = 问 Jarvis 这个、信息流 / 分享 / @ 照常）；0 屏介绍，第一屏就是自己的数据；每处放具体可点的示例问题；输入像微信（第 1 节）。
 - **新范式一句话：打开 app 最上面是恢复 / 睡眠 / 负荷三个圆环，下面是「今天的 1–3 件事 + 圈子」，记录和提问都通过 Jarvis；首页上的模块由你的关注、Jarvis 在数据里的发现、你和 Jarvis 的互动决定，其他功能一个不锁，在「全部功能」里随时能看。**
 - **底栏 5 格**：今天 · 身体 · Jarvis（中间的圆键，不变）· 圈子 · 我。饮食、记录变成模块和二级页。
 - **今天页最上面是圆环区**：恢复（大环，居中）+ 睡眠、负荷（小环，两侧），用现在的环形样式和配色；环下是现在的状态词和负荷状态；AI 的东西都在下面，不取代它。
@@ -29,7 +30,35 @@
 
 ---
 
-## 1. 问题和目标
+## 1. 总原则、问题和目标
+
+### 1.0 总原则（负责人 2026-10-25，优先级最高）
+
+**新 UI 要让一个互联网时代的资深用户无缝进入 AI 时代：不需要任何指导和教程，就能自然地玩转 app。** 这是这次重构最重要的战略目标和方针，每个页面和流程都按下面五条检查（检查结果见第 1.1 节和第 13.1 节的截图标注）：
+
+1. **熟悉的互联网交互就是 AI 的入口，不另学新范式**：
+   - 搜索框同时就是问 Jarvis（今天、身体、我、全部功能的搜索框都写着「搜索，或问 Jarvis：……」，打字就能搜也能问）；
+   - 点或长按任何卡片、数字、图表，都有「问 Jarvis 这个」（长按菜单第一项；每张卡右上角的 ⋯ 打开同一个菜单，给不习惯长按的人兜底）；
+   - 信息流、下拉刷新、左滑操作、分享、@ 好友照常可用（圈子动态是信息流，点赞 / 评论；记录左滑删除 / 撤销；任何卡片可分享到圈子；评论里 @ 圈内好友）；
+   - AI 的建议用熟悉的形式出现：通知（现有 `notify`）、卡片（「重点」、发现卡）、快捷回复按钮（对话里的示例问题、关注点选择）。
+2. **零教程**：去掉介绍屏和功能讲解弹窗（现在的 3 屏新手引导 `intro.js` 和「我 → 新手引导」都去掉）。第一屏直接就是用户自己的数据（身体概况）。需要说明的地方，用空状态里的**一个示例问题或快捷按钮**代替文字说明。
+3. **可发现性靠界面本身**：AI 能做的每件事，在用户最可能需要它的位置露出一个**具体、可点的例子**（「问：这周为什么恢复低？」），而不是抽象的「试试 AI」。例子由规则按用户自己的数据生成（和「发现」同一套），每处 1–3 个，每天换。
+4. **输入方式和微信一样直观**：打字、按住说话、拍照。Jarvis 的输入框就是聊天输入框：点一下打字；按住麦克风说话、松开发送（上滑取消）；相机键拍照或选相册。
+5. **每个页面都要回答**：一个没被教过的老用户第一眼会做什么、点哪里、能不能达成目标（第 13.1 节逐页标注）。
+
+视觉仍然保持当前线上风格不变（第 7 节）。
+
+### 1.1 按总原则检查后改掉的地方
+
+| 原来的设计（v0.1–v0.3） | 冲突 | 改成（v0.4） |
+|---|---|---|
+| 第 1 天：3 屏介绍缩成 1 屏，再开场对话 | 零教程 | **0 屏介绍**：登录、同意、导入后第一屏就是「你的身体概况」（自己的 3 个数据发现），关注点用快捷回复按钮选，可跳过（第 4.6 节、D3） |
+| 「我」里保留「新手引导」「使用手册」 | 零教程 | 去掉「新手引导」；「使用手册」留在「设置」里给想查的人，不主动推 |
+| AI 只有中间的 Jarvis 键一个入口 | 熟悉的交互就是入口 | 加上：每页的搜索框 = 问 Jarvis；任何卡片长按 / ⋯ 的第一项是「问 Jarvis 这个」；对话里的快捷回复按钮 |
+| 讲解弹层（是什么 / 怎么看 / 建议）点开就是一屏文字 | 零教程、界面本身可发现 | 点开先看数字和趋势，文字折叠；顶部一个具体问题按钮（「问：为什么我的 HRV 比上周低？」） |
+| 「Jarvis 发现」「新」等标签 | 抽象的「试试 AI」 | 发现卡直接写发现的内容（「体重 3 周没变 · 看看」），模块的原因标签用「关注 / 发现 / 用过 / 固定」 |
+| 空状态写说明文字（「还没有记录，可以……」） | 用示例代替说明 | 空状态只放一个示例按钮（「拍照记一餐」「说：中午吃了牛肉面」） |
+| Jarvis 四键里的「快记」 | 名字要一看就懂 | 保留交互，名字在实现时再确认（候选「记一笔」），属于文案，不改结构 |
 
 **问题**（现状清单见调研第 0 节）：
 
@@ -59,6 +88,8 @@
 | **说**（记、问、改计划） | 底栏中间的 Jarvis 键（现有 `jarvis_orbit`：点开 对话 / 语音 / 拍照 / 快记，按住直接说话，半屏回答） | 所有写操作：记饭、记训练、记体重、喝水、日记、化验单拍照、补剂、改计划 |
 | **看今天** | 今天页 | 一句晨报 + 3 个核心数 + 重点 1–3 件 + 圈子卡 + 我的首页（模块）+ 今天的记录 |
 | **看深入** | 身体页 | 核心 3 项的趋势 → 你关注的 → 全部指标（折叠）；每个指标三层 |
+
+**入口不止一个**（第 1.0 节）：每页的搜索框就是问 Jarvis；任何卡片、数字、图表长按（或点右上角 ⋯）的第一项是「问 Jarvis 这个」；输入方式和微信一样：点输入框打字、按住麦克风说话（松开发送、上滑取消）、相机键拍照或选相册。
 
 页面上几乎不放输入表单。现有的输入（快捷记餐、喝水加减、体重输入框、训练逐组）保留在模块页里给习惯点按的人，但不出现在今天页首屏。
 
@@ -134,7 +165,7 @@
 | 我：身体年龄 | 「身体年龄」模块 |
 | 我：状态卡、近况、长期记忆 | 我 → AI 设置 → Jarvis 记得的 |
 | 我：补剂 / 事件 / 化验 / 训练记录 | 我 → 健康档案（化验、补剂也是模块，可放首页） |
-| 我：AI 设置、手机同步、手册、新手引导、设置、退出 | 我，加「全部功能」「全部记录」两行 |
+| 我：AI 设置、手机同步、手册、新手引导、设置、退出 | 我，顶部一个搜索框（搜设置和功能，或问 Jarvis），加「全部功能」「全部记录」两行；去掉「新手引导」，「使用手册」移到设置里 |
 | 心电图、逐拍 HRV | 身体 → 全部指标 → 深入（scope `ecg`，永不自动上首页、永不进圈子） |
 
 ---
@@ -214,13 +245,13 @@
 
 ### 4.6 新用户第 1 天
 
-1. 登录 → 同意书 → app 导入 Apple 健康历史（现有：首次 90 天 + 全部历史导入）。现有的 3 屏介绍缩成 1 屏。
-2. 导入完成后 Jarvis 自动打开（大半屏）：
+1. 登录 → 同意书 → app 导入 Apple 健康历史（现有：首次 90 天 + 全部历史导入）。**没有介绍屏**（现在的 3 屏新手引导去掉）。
+2. 导入完成后第一屏就是自己的数据：今天页上弹出一张「你的身体概况」（现有的底部弹层样式）：
    - 一张「已导入」卡（几年数据、几晚睡眠、几次训练）；
    - **「你的身体概况」：3 个最重要的发现**，每个一张卡（领域、一句标签、一个大数、一个小图），例如「HRV 近 2 周下降 12%」「平均 01:24 入睡，周末再晚 1 小时」「每周 4 次训练，最近偏累」；
-   - **「你最关心哪些？」**：5 个关注点多选（减脂 / 增肌 / 睡得更好 / 训练和恢复 / 健康指标），可以跳过，以后在 我 → 资料 或对 Jarvis 说都能改；答案写进资料和长期记忆（现有工具）；
-   - Jarvis 说一句「首页先放这 3 个，其他功能都在全部功能里」。
-3. 关掉对话就是首页：核心 3 个数（第一天就有真实的恢复分）、重点（来自发现）、圈子邀请卡、3 个模块（带「新」）。
+   - **「你最关心哪些？」**：5 个关注点做成快捷回复按钮，多选（减脂 / 增肌 / 睡得更好 / 训练和恢复 / 健康指标），可以跳过，以后在 我 → 资料 或对 Jarvis 说都能改；答案写进资料和长期记忆（现有工具）；
+   - 不解释功能；选完直接回到首页，首页已经按选择摆好。
+3. 首页：三个环（第一天就有真实的恢复分）、搜索框（= 问 Jarvis）和 2–3 个按自己数据生成的示例问题、重点（来自发现）、圈子邀请卡、3 个模块（带「新」）。用户从这里开始，不需要任何讲解。
 4. 对没有历史数据的人（新手表）：概况换成「先戴一晚，明早给你第一份报告」，恢复显示「校准中」（现有逻辑），关注点照问。
 
 ### 4.7 看别人的数据时
@@ -414,7 +445,7 @@ v0.3 试过两套新视觉（全息 HUD、石墨精工）、今天页核心区�
 |---|---|---|
 | D1 | 底栏 | **5 格：今天 · 身体 · Jarvis · 圈子 · 我**；饮食、记录变成模块和二级页 |
 | D2 | 首页圈子卡 | **常驻**，在「重点」下面，不计入模块上限，内容 = 当前圈子的新动态 + 本周排行 + 邀请；没有圈子 = 邀请卡；只能静音，不能从首页移走 |
-| D3 | 第一天的流程 | **导入 → 身体概况（3 个发现）→ 选关注点（多选，可跳过）→ 首页 3 个模块**；3 屏介绍缩成 1 屏 |
+| D3 | 第一天的流程 | **导入 → 身体概况（3 个发现）→ 快捷按钮选关注点（多选，可跳过）→ 首页 3 个模块**；**0 屏介绍**（负责人 2026-10-25 按总原则修订） |
 | D4 | 关注点的选项 | 减脂 / 增肌 / 睡得更好 / 训练和恢复 / 健康指标（5 个，多选） |
 | D5 | Jarvis 用过的模块是否自动放到首页 | **自动放上并标「新」**，对话卡片上可选「不用」；首页最多 6 个，超过时 Jarvis 问收哪个 |
 | D6 | 每天主动介绍几个新模块 | **最多 2 个**（发现 + 互动合计），用户主动打开的不受限 |
@@ -436,15 +467,24 @@ v0.3 试过两套新视觉（全息 HUD、石墨精工）、今天页核心区�
 
 用线上现有的样式表和真实页面组件做的：在本机起一套 Quick Start（合成数据，开关和线上一致），浏览器打开真实的今天页（用这个分支的 `web/static`），再由 [`ui-ai-first/preview-compose.js`](ui-ai-first/preview-compose.js) 把真实页面已经渲染好的组件（环、卡片、分区、列表、Jarvis 圆键）按新的信息架构重新排列；新增的部分只用现有的样式类。截图脚本 [`ui-ai-first/preview.py`](ui-ai-first/preview.py)。数据是 Quick Start 的合成数据，演示账号还没有圈子，所以圈子卡显示的是邀请卡。
 
-| 现在的今天页（对照） | 新的今天页（并排三环） | 今天页往下 | 身体 |
-|---|---|---|---|
-| <img src="ui-ai-first/v04-0-now-today.jpg" width="200" alt="现在的今天页"> | <img src="ui-ai-first/v04-1-today.jpg" width="200" alt="新的今天页：三环、重点、圈子卡"> | <img src="ui-ai-first/v04-1b-today-more.jpg" width="200" alt="我的首页：模块带原因标签"> | <img src="ui-ai-first/v04-2-body.jpg" width="200" alt="身体：关注的恢复、睡眠展开，其余折叠"> |
+每张截图旁边是按总原则做的检查：**一个没被教过的老用户第一眼会做什么、点哪里、能不能达成目标**，以及还缺什么。
 
-| Jarvis（四键弹出不变） | 圈子（一级 tab） | 我 | 全部功能 | 饮食（二级页） |
-|---|---|---|---|---|
-| <img src="ui-ai-first/v04-3-jarvis.jpg" width="160" alt="Jarvis 四键菜单"> | <img src="ui-ai-first/v04-4-circles.jpg" width="160" alt="圈子"> | <img src="ui-ai-first/v04-5-me.jpg" width="160" alt="我：全部功能和全部记录入口"> | <img src="ui-ai-first/v04-6-all-features.jpg" width="160" alt="全部功能：按领域列出，带首页 / 看过 / 新"> | <img src="ui-ai-first/v04-7-food.jpg" width="160" alt="饮食二级页"> |
+| 截图 | 第一眼 / 会点哪里 | 能否达成目标 · 还缺什么 |
+|---|---|---|
+| <img src="ui-ai-first/v04-0-now-today.jpg" width="170" alt="现在的今天页"><br>现在的今天页（对照） | 大环和下面三块数字，再往下是一串卡片 | 能看懂今天的分数；但不知道下一步做什么，AI 只在中间圆键里 |
+| <img src="ui-ai-first/v04-1-day1-overview.jpg" width="170" alt="第 1 天：身体概况"><br>第 1 天第一屏：身体概况 | 读自己的 3 个发现（恢复变好、深睡偏少、负荷连续偏高）；点关注点按钮，点「好了」 | **能**：不看任何说明就完成设置，回到已经按关注摆好的首页；不想选可以「先跳过」 |
+| <img src="ui-ai-first/v04-2-today.jpg" width="170" alt="新的今天页"><br>今天 | 三个环（恢复居中）；看到搜索框和「为什么恢复 79？」「记一顿饭」「拍照记饭」，会直接点一个；或者点「重点」里的一条 | **能**：问原因、记饭、看今天该做的事都在第一屏；圈子卡在第一屏底部，要往下滑一点 |
+| <img src="ui-ai-first/v04-2b-today-more.jpg" width="170" alt="今天页往下"><br>今天往下：我的首页 | 每块带「关注 / 发现 / 用过」标签；睡眠下面有「为什么深睡比平时少？」 | **能**：知道这几块为什么在这里；想看别的点底部「全部功能」 |
+| <img src="ui-ai-first/v04-3-longpress.jpg" width="170" alt="长按菜单"><br>长按任意卡片 | 长按睡眠卡 → 第一项「问 Jarvis：为什么比平时睡得少？」，还有看趋势、分享到圈子、从首页移走 | **能**；不习惯长按的人用卡片右上角的 ⋯（实现时加，预览里没画） |
+| <img src="ui-ai-first/v04-4-jarvis.jpg" width="170" alt="Jarvis 四键"><br>点 Jarvis 键 | 四个键：对话、语音、拍照、快记，点语音或拍照 | **能**；「快记」的意思不够一眼明白，实现时再定名字 |
+| <img src="ui-ai-first/v04-4b-jarvis-chat.jpg" width="170" alt="Jarvis 对话"><br>Jarvis 对话 | 像聊天 app：底部输入框「问问题或记点什么」，相机、视频、麦克风；上面 3 个示例问题，点一个就开始 | **能**：打字 / 按住说话 / 拍照都和微信一样；麦克风上加一句「按住说话」提示更直白 |
+| <img src="ui-ai-first/v04-5-body.jpg" width="170" alt="身体"><br>身体 | 搜索框「搜指标，或问：这周为什么恢复低？」；关注的恢复、睡眠展开，其余折叠 | **能**：找指标靠搜索或滑动，问原因直接在搜索框里问 |
+| <img src="ui-ai-first/v04-6-circles.jpg" width="170" alt="圈子"><br>圈子 | 熟悉的信息流：好友（这里是自己）的训练帖，点赞、评论；上面「我这周在圈里排第几？」「邀请好友一起练」 | **能**：和朋友圈一样用；@ 好友在评论里实现 |
+| <img src="ui-ai-first/v04-7-me.jpg" width="170" alt="我"><br>我 | 顶部搜索框（搜设置和功能，或问 Jarvis）、全部功能、全部记录 | **能**：找设置和找功能都靠搜索 |
+| <img src="ui-ai-first/v04-8-all-features.jpg" width="170" alt="全部功能"><br>全部功能 | 搜索框「怎么记喝水？」；按领域列出所有功能，标出首页 / 看过 / 新 | **能**：没有锁，点任何一个直接打开 |
+| <img src="ui-ai-first/v04-9-food.jpg" width="170" alt="饮食"><br>饮食（二级页） | 「拍照记一餐」「晚饭吃什么能补蛋白？」；今天吃了多少、喝水 | **能**：记饭和问下一餐都在顶部 |
 
-要点：底栏是现在的样子，只是 tab 变成 今天 · 身体 · 圈子 · 我（Jarvis 圆键在中间，四键弹出不变）；今天页把现在的大环拆成并排三环，去掉了和环重复的三块数字，提醒并进「重点」，下面是常驻的圈子卡和「我的首页」（每块带原因标签）；身体页就是现在的趋势页，只是按关注展开、其余折叠；记录、饮食从底栏移到二级页，「我」里多了「全部功能」「全部记录」。
+要点：底栏是现在的样子，只是 tab 变成 今天 · 身体 · 圈子 · 我（Jarvis 圆键在中间，四键弹出不变）；今天页把现在的大环拆成并排三环，去掉了和环重复的三块数字，提醒并进「重点」，下面是常驻的圈子卡和「我的首页」（每块带原因标签）；身体页就是现在的趋势页，只是按关注展开、其余折叠；记录、饮食从底栏移到二级页，「我」里多了「全部功能」「全部记录」；每页有一个「搜索，或问 Jarvis」的搜索框和按自己数据生成的示例问题。
 
 ### 13.2 可在手机上点的预览（D15）
 
@@ -472,5 +512,6 @@ v0.3 试过两套新视觉（全息 HUD、石墨精工）、今天页核心区�
 **Day 1**: history import → "your body at a glance" (three findings) → "what do you care about?" (multi-select) → Today laid out with three modules.
 **Navigation**: five slots: Today · Body · Jarvis · Circles · Me. **Circles stay a first-level tab** (inside it follows `circles-redesign.md`, same APIs), and Today always carries a circles card (new posts, weekly ranking, invite) or an invite card.
 **Neither cluttered nor hidden**: at most six modules on Today, each tagged with why it is there (focus / found / used / pinned); Body shows every metric from day 1 with the user's focus expanded and other groups folded into one-line summaries; "All features" lists all 24 modules with their state (on Today / seen / new), no locks or progress bars; an "auto-arrange" switch lets users take over.
+**Guiding principle (owner, highest priority)**: a seasoned internet user should slide into the AI era without any guidance or tutorial. Familiar interactions are the AI's entry points (the search field is also "ask Jarvis"; long-press or ⋯ on any card offers "ask Jarvis about this"; feeds, pull to refresh, swipe, share, @ work as usual; AI suggestions arrive as notifications, cards and quick-reply buttons); zero intro screens (day 1 opens on the user's own body overview); every AI capability shows a concrete, tappable example where it is needed; typing / hold-to-talk / photo work like a chat app; every screenshot is annotated with what an untaught user would do first.
 **v0.4**: owner approved D1–D11. **The visual style stays exactly as it is in production** (colours, fonts, cards, icons, tab bar look from `web/static`); the HUD / graphite looks and the tab bar motion concepts tried in v0.3 are dropped (D12, D14 void). Today's core is three rings side by side in the current ring style (D13). Only structure, order, entry points and interaction change. The preview in section 13.1 is the real page (Quick Start, synthetic data) with its real components rearranged; a clickable preview behind a `ui_ai_first` flag is proposed as a separate PR (D15).
 **Implementation**: server-driven layout shared by web and native (`ui/params.py`, `ui/findings.py`, tables `ui_modules` / `ui_findings`, `GET /home`, `/overview`, `/modules`, `manage_modules`, `ui.suggest` in the briefing); web first behind `ui_ai_first`; the SwiftUI Today in 1.1.0 (#255) is built to this design. Owner decisions D1–D11 are in section 12; the prototype and screenshots are in `docs/ui-ai-first/`.
