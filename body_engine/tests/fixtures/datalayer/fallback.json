@@ -72,7 +72,9 @@
   "end_diet_constraint",
   "get_training_context",
   "get_week_review_context",
-  "get_playbook"
+  "get_playbook",
+  "get_memory_review",
+  "apply_memory_changes"
  ],
  "tools": [
   "get_briefing",
@@ -147,7 +149,9 @@
   "end_diet_constraint",
   "get_training_context",
   "get_week_review_context",
-  "get_playbook"
+  "get_playbook",
+  "get_memory_review",
+  "apply_memory_changes"
  ],
  "tools_with_web": [
   "get_briefing",
@@ -223,6 +227,8 @@
   "get_training_context",
   "get_week_review_context",
   "get_playbook",
+  "get_memory_review",
+  "apply_memory_changes",
   "get_shopping_context",
   "set_stores",
   "generate_shopping_list",
@@ -245,6 +251,7 @@
   "mark_bought"
  ],
  "ALWAYS_CONFIRM": [
+  "apply_memory_changes",
   "delete_custom_exercise",
   "delete_journal_entry",
   "delete_lab_results",
@@ -816,6 +823,20 @@
    "strict": true
   },
   {
+   "name": "get_memory_review",
+   "group": "memory",
+   "scope": "memory",
+   "writes": false,
+   "strict": true
+  },
+  {
+   "name": "apply_memory_changes",
+   "group": "memory",
+   "scope": "memory",
+   "writes": true,
+   "strict": true
+  },
+  {
    "name": "set_status_items",
    "group": "memory",
    "scope": "memory",
@@ -1197,6 +1218,8 @@
   "get_memory",
   "update_profile_card",
   "add_observation",
+  "get_memory_review",
+  "apply_memory_changes",
   "set_status_items",
   "get_meal_templates",
   "create_meal_template",

@@ -433,6 +433,7 @@ textarea.input { resize: none; }
 .mem-btn.danger { color: var(--bad); }
 .mem-btn.armed { background: var(--bad-soft); }
 .mem-btn:disabled { opacity: .5; }
+.mem-tidy { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .mem-arch { margin-top: 16px; }
 .mem-arch > summary { cursor: pointer; font-size: 13px; color: var(--text-2); padding: 6px 2px; }
 .mem-arch[open] > summary { margin-bottom: 6px; }

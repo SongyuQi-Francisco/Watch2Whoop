@@ -15,9 +15,9 @@ from psycopg.types.json import Jsonb
 
 _ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
 ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water", "pantry",
-                  "profile", "observation"}
+                  "profile", "observation", "memory_state"}
 # kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries;
-# observation: a rewrite of a note, issue #113)
+# observation: a rewrite of a note, issue #113; memory_state: archive / restore / confirm of a memory entry, logged as an update)
 ONLY_ACTION = {"merge": "merge", "template": "create", "observation": "update"}
 
 
@@ -109,6 +109,9 @@ def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -
     elif kind == "observation":
         from . import memory
         result = memory.rollback_observation(conn, user_id, int(row["target"]), before, after)
+    elif kind == "memory_state":   # a memory review's archive / restore / confirm (issue #113 phase 2)
+        from . import memory_review
+        result = memory_review.rollback_state(conn, user_id, row["target"], before, after)
     else:
         result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
     new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None

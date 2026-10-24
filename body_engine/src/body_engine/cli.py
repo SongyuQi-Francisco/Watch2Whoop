@@ -341,6 +341,8 @@ def main() -> None:
                    "plus the initial status-judgement items and the 「固定早餐」 (fixed breakfast) meal template")
     rc = sub.add_parser("recipes-init", help="create metadata for recipes already in SparkyFitness (per body-management.md: which meal it suits, tags, ingredients, method; existing ones are left alone)")
     rc.add_argument("--user-id", type=int, required=True)
+    sub.add_parser("memory-review-run", help="long-term memory review (issue #113): for every user with the flag memory_hygiene on, purge archived entries older than "
+                   "memory_params.ARCHIVE_PURGE_DAYS and refresh the review state behind the briefing reminder (idempotent, nightly)")
     rs = sub.add_parser("refresh-status", help="recompute the status card items the backend computes automatically (weight, recovery, sleep debt, bedtime, lab results, workout count, red meat)")
     rs.add_argument("--user-id", type=int, required=True)
 
@@ -729,6 +731,10 @@ def main() -> None:
                              default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "recipes-init":
             print(json.dumps(assistant_recipes.seed(conn, args.user_id), ensure_ascii=False))
+        elif args.cmd == "memory-review-run":
+            from .assistant import memory_review
+            for r in memory_review.run_all(conn):
+                print(json.dumps(r, ensure_ascii=False))
         elif args.cmd == "refresh-status":
             print(json.dumps(assistant_status.refresh_auto(conn, args.user_id), ensure_ascii=False))
         elif args.cmd == "journal-init":

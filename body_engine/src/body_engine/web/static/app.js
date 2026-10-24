@@ -2487,7 +2487,9 @@
     const arch = archEntries(mem);
     const archH = arch.length ? `<details class="mem-arch"><summary>${tr("已归档 {n} 条", { n: arch.length })}</summary>
       <div class="group">${arch.map((e) => archRow(e, self)).join("")}</div></details>` : "";
-    return (body || `<div class="empty faint">${tr("common.none")}</div>`) + archH;
+    // 「整理」: hands the review to the user's own AI (playbook memory_review, issue #113 phase 2); nothing is changed here
+    const tidy = self && canAskAI() && list.length ? `<div class="mem-tidy"><button type="button" class="mem-btn" data-tidy>${tr("整理")}</button></div>` : "";
+    return tidy + (body || `<div class="empty faint">${tr("common.none")}</div>`) + archH;
   }
 
   async function memAct(root, btn, entry) {
@@ -2510,6 +2512,7 @@
   function memorySheet(mem) {
     openSheet(tr("长期记忆"), memorySheetHtml(mem), (root) => {
       root.onclick = (ev) => {
+        if (ev.target.closest("[data-tidy]")) { askAI(tr("帮我整理一下长期记忆")); return; }
         const btn = ev.target.closest("[data-act]");
         const row = btn?.closest("[data-uid]");
         if (!row) return;

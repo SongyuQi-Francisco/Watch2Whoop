@@ -1373,6 +1373,73 @@
    }
   },
   {
+   "name": "apply_memory_changes",
+   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡项"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "merge 留下的那条 / promote 的 k:xxx"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后的完整内容"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意才 true"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "reason",
+        "user_ok"
+       ]
+      }
+     }
+    },
+    "required": [
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
    "name": "get_meal_templates",
    "description": "快捷记餐模板（例：固定早餐）：每样食物克数和营养、合计、克数是否待确认、今天记过没有。",
    "inputSchema": {
@@ -1852,7 +1919,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1862,7 +1929,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -2602,7 +2670,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2612,7 +2680,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -4056,6 +4125,73 @@
    }
   },
   {
+   "name": "apply_memory_changes",
+   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡项"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "merge 留下的那条 / promote 的 k:xxx"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后的完整内容"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意才 true"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "reason",
+        "user_ok"
+       ]
+      }
+     }
+    },
+    "required": [
+     "items"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
    "name": "get_meal_templates",
    "description": "快捷记餐模板（例：固定早餐）：每样食物克数和营养、合计、克数是否待确认、今天记过没有。",
    "inputSchema": {
@@ -4535,7 +4671,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4545,7 +4681,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -5285,7 +5422,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -5295,7 +5432,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },

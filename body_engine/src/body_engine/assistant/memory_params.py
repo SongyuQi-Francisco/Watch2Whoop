@@ -58,3 +58,29 @@ STALE_DAYS = {
     "what_doesnt": 180, "communication": 180, "basics": 365,
 }
 STALE_DEFAULT_DAYS = 120   # entries without a topic
+
+# ---------------------------------------------------------------- memory hygiene, phase 2: periodic review (issue #113)
+# The briefing reminds the user's AI to review the memory when the last review is older than this AND at least
+# REVIEW_MIN_CANDIDATES entries are waiting (or the memory is nearly full). A judgement call, set by the issue.
+REVIEW_INTERVAL_DAYS = 30
+REVIEW_MIN_CANDIDATES = 3
+# The memory counts as nearly full at this share of PROMPT_FACTS_MAX lasting notes (beyond it the oldest fall out of the prompt).
+NEAR_FULL_RATIO = 0.8
+# Archived entries are cleaned up (really deleted) this many days after archiving; until then the user can restore them.
+ARCHIVE_PURGE_DAYS = 90
+# An entry unconfirmed for this many times its STALE_DAYS is offered for archiving ("long_stale"), not just for a look.
+LONG_STALE_FACTOR = 2
+# Candidates handed to the AI per group (the rest wait for the next review) and notes compared for duplicates (newest first).
+REVIEW_MAX_PER_GROUP = 12
+REVIEW_COMPARE_MAX = 300
+# Contradictions can only be judged by the AI: the server puts entries of the same topic side by side (topics with the most
+# entries first), cut to this many topics / entries per topic / characters per entry.
+REVIEW_TOPICS_MAX = 4
+REVIEW_PER_TOPIC_MAX = 6
+REVIEW_TEXT_CHARS = 80
+# Items per apply_memory_changes call.
+APPLY_MAX_ITEMS = 30
+# Topics whose entries the AI changes only on the user's explicit say-so, whatever their origin.
+PROTECTED_TOPICS = ("health_constraints", "injuries")
+# Origins that count as the user's own words: NULL (unknown) is treated the same, as phase 1 decided.
+USER_ORIGINS = ("user_said", None)

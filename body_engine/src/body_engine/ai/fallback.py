@@ -60,6 +60,7 @@ TOOL_NAMES = (
     "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
     "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
     "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
+    "get_memory_review", "apply_memory_changes",                            # tidying the memory (playbook memory_review, #113)
 )
 # Behind the rollout flag ai_parity (ai/parity.py): the fallback gets every tool the other channels have for the user's own
 # data, except what its consent (CONSENT_POINTS: 「不发：心电图、逐拍心跳、家人的数据」) keeps from DeepSeek. Nothing else may

@@ -38,7 +38,8 @@
       "mcp__body-engine__remove_staple",
       "mcp__body-engine__delete_workout",
       "mcp__body-engine__rollback_write",
-      "mcp__body-engine__delete_custom_exercise"
+      "mcp__body-engine__delete_custom_exercise",
+      "mcp__body-engine__apply_memory_changes"
     ],
     "deny": [
       "Bash",

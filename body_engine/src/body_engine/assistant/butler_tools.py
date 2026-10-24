@@ -6,7 +6,7 @@ from datetime import date
 
 from ..rollout import flags
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
-from . import food_combine, meals, memory, memory_params, recipes, snapshots, sparky_write, status, writelog
+from . import food_combine, meals, memory, memory_params, memory_review, recipes, snapshots, sparky_write, status, writelog
 
 
 _schema = schema
@@ -158,6 +158,16 @@ def _add_observation(conn, uid, a):
     if a.get("replace_id"):
         return memory.update_observation(conn, uid, a["replace_id"], a["text"], a["evidence"], until)
     return memory.add_observation(conn, uid, a["text"], a["evidence"], until=until, check_similar=_hygiene(conn, uid) and a.get("replace_id") is None)
+
+
+REVIEW_ITEM = _schema({
+    "action": {"type": "string", "enum": list(memory_review.ACTIONS)},
+    "ref": {"type": "string", "description": "n12 笔记 / k:goals 档案卡项"},
+    "into": _n("string", "merge 留下的那条 / promote 的 k:xxx"),
+    "text": _n("string", "改后的完整内容"),
+    "reason": {"type": "string"},
+    "user_ok": {"type": "boolean", "description": "用户明确同意才 true"},
+})
 
 
 TOOL_SPECS: list[dict] = [
@@ -343,6 +353,21 @@ TOOL_SPECS: list[dict] = [
             "replace_id": _n("integer", "改写 similar 里这条；0=照样新建"),
         }),
         handler=_add_observation,
+        group="memory", scope="memory", writes=True,
+    ),
+    dict(
+        name="get_memory_review",
+        description="整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+        input_schema=_schema({}),
+        handler=lambda conn, uid, a: memory_review.review(conn, uid),
+        group="memory", scope="memory",
+    ),
+    dict(
+        name="apply_memory_changes",
+        description="一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。"
+                    "每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+        input_schema=_schema({"items": {"type": "array", "items": REVIEW_ITEM}}),
+        handler=lambda conn, uid, a: memory_review.apply(conn, uid, a["items"]),
         group="memory", scope="memory", writes=True,
     ),
     dict(

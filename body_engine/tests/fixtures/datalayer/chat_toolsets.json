@@ -630,6 +630,8 @@
    "get_memory",
    "update_profile_card",
    "add_observation",
+   "get_memory_review",
+   "apply_memory_changes",
    "set_status_items",
    "get_meal_templates",
    "log_meal_template",
@@ -708,6 +710,8 @@
     "get_memory",
     "update_profile_card",
     "add_observation",
+    "get_memory_review",
+    "apply_memory_changes",
     "set_status_items",
     "get_meal_templates",
     "log_meal_template",
@@ -1203,6 +1207,8 @@
    "get_training_context",
    "get_week_review_context",
    "get_playbook",
+   "get_memory_review",
+   "apply_memory_changes",
    "find_tools",
    "run_read_tool",
    "run_write_tool"
@@ -1262,6 +1268,8 @@
     "get_training_context",
     "get_week_review_context",
     "get_playbook",
+    "get_memory_review",
+    "apply_memory_changes",
     "find_tools",
     "run_read_tool",
     "run_write_tool"
@@ -1773,6 +1781,8 @@
    "get_training_context",
    "get_week_review_context",
    "get_playbook",
+   "get_memory_review",
+   "apply_memory_changes",
    "get_shopping_context",
    "record_store_prices",
    "find_tools",
@@ -1820,6 +1830,8 @@
     "get_training_context",
     "get_week_review_context",
     "get_playbook",
+    "get_memory_review",
+    "apply_memory_changes",
     "get_shopping_context",
     "record_store_prices",
     "find_tools",
@@ -5228,6 +5240,84 @@
    },
    "strict": true
   },
+  "get_memory_review": {
+   "name": "get_memory_review",
+   "description": "整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "apply_memory_changes": {
+   "name": "apply_memory_changes",
+   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡项"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "merge 留下的那条 / promote 的 k:xxx"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后的完整内容"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意才 true"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "into",
+        "text",
+        "reason",
+        "user_ok"
+       ],
+       "additionalProperties": false
+      }
+     }
+    },
+    "required": [
+     "items"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
   "set_status_items": {
    "name": "set_status_items",
    "description": "写状态卡（今天页「我」页的短卡片）：当前阶段、伤病状态、目标体重 goal_weight、计划执行等需要判断的项。整项替换，remove_keys 删过时的。细节写档案卡。后端自动算的项（weight、to_goal、recovery、sleep_debt、bedtime、sleep_hours、uric_acid、alt、triglycerides、training_week、red_meat_week、added_sugar_today、added_sugar_7d）不能写。",
@@ -7924,7 +8014,7 @@
   },
   "get_playbook": {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -7934,7 +8024,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -10845,7 +10936,7 @@
   },
   "get_playbook": {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -10855,12 +10946,91 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
     "required": [
      "name"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "get_memory_review": {
+   "name": "get_memory_review",
+   "description": "整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+   "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "apply_memory_changes": {
+   "name": "apply_memory_changes",
+   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡项"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "merge 留下的那条 / promote 的 k:xxx"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后的完整内容"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意才 true"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "into",
+        "text",
+        "reason",
+        "user_ok"
+       ],
+       "additionalProperties": false
+      }
+     }
+    },
+    "required": [
+     "items"
     ],
     "additionalProperties": false
    },
@@ -12261,6 +12431,8 @@
    "get_memory",
    "update_profile_card",
    "add_observation",
+   "get_memory_review",
+   "apply_memory_changes",
    "set_status_items",
    "get_meal_templates",
    "log_meal_template",
@@ -12307,6 +12479,8 @@
     "get_memory",
     "update_profile_card",
     "add_observation",
+    "get_memory_review",
+    "apply_memory_changes",
     "set_status_items",
     "get_meal_templates",
     "log_meal_template",
