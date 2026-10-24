@@ -143,6 +143,29 @@ def test_ai_tool_rollback_and_briefing(dsn, users):
             run_tool(conn, ids["b"], "mcp", "log_water", {"ml": -1, "at": None})
 
 
+def test_past_days_api_and_briefing_history(client, users, dsn):
+    """Looking back: GET ?date= answers that day's total and entries (not today's); get_briefing lists the 6 days before."""
+    ids, tok = users
+    today = datetime.now(TZ).date()
+    with conn_of(dsn) as conn:
+        for back, ml in ((1, 1800), (2, 2300), (9, 700)):
+            at = datetime.combine(today - timedelta(days=back), datetime.min.time().replace(hour=12), TZ)
+            store.add(conn, ids["c"], ml, "manual", at)
+        store.add(conn, ids["c"], 250, "button")
+        conn.commit()
+        b = run_tool(conn, ids["c"], "mcp", "get_briefing", {"user": "me"})
+    for back, ml in ((1, 1800), (2, 2300), (9, 700)):
+        r = client.get(f"/v1/users/me/water?date={today - timedelta(days=back)}", headers=H(tok["c"])).json()
+        assert r["total_ml"] == ml and [e["ml"] for e in r["entries"]] == [ml] and r["undo"]["ml"] == ml
+    assert client.get("/v1/users/me/water", headers=H(tok["c"])).json()["total_ml"] == 250
+    assert b["water"]["ml"] == 250
+    # the 6 previous days only (the 9-days-old drink is outside), keyed by local date
+    assert b["water"]["prev_ml"] == {str(today - timedelta(days=2)): 2300, str(today - timedelta(days=1)): 1800}
+    with conn_of(dsn) as conn:   # user c is used by the next tests
+        conn.execute("DELETE FROM water_intake WHERE user_id = %s", (ids["c"],))
+        conn.commit()
+
+
 def test_apple_health_upload_dedup_and_delete(client, users, dsn):
     ids, tok = users
     s1, s2 = str(uuid.uuid4()), str(uuid.uuid4())
