@@ -173,7 +173,7 @@ if ! has_text "$notes" && [ "$mode" != "publish" ]; then
   notes="$(changelog_section origin/main | section)" || true
   if has_text "$notes"; then echo "⚠ CHANGELOG.md at $short has no \"## $marketing\" section; using the one on origin/main"; fi
 fi
-check "CHANGELOG.md has a section \"## $marketing\"" 'has_text "$notes"'
+check "CHANGELOG.md has a section \"## $marketing\" (or \"## $label $marketing\")" 'has_text "$notes"'
 
 [ "$ok" = 1 ] || die "checks failed; nothing changed"
 
