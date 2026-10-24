@@ -284,6 +284,136 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
 .search .i { width: 17px; height: 17px; }
 .muted { color: var(--text-2); font-weight: 400; font-size: 13px; }
 .top .pill { margin-bottom: 6px; }
+/* ---- hero: the three core scores as rings, always the first thing on Today */
+.hero3 { display: grid; grid-template-columns: 1fr 1.55fr 1fr; align-items: end; gap: 4px; margin: 2px 0 10px; }
+.hr { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.hr svg { width: 100%; height: auto; overflow: visible; }
+.hr.sm svg { max-width: 104px; } .hr.lg svg { max-width: 176px; }
+.ring .track { fill: none; stroke: var(--surface-2); }
+.ring .ticks { fill: none; stroke: var(--text-3); stroke-width: 1; opacity: 0; }
+.ring .arc { fill: none; stroke-linecap: round; }
+.ring.lg .track, .ring.lg .arc { stroke-width: 12; } .ring.sm .track, .ring.sm .arc { stroke-width: 13; }
+.ring text { fill: var(--text); font-variant-numeric: tabular-nums; }
+.ring .rv { font-weight: 700; } .ring.lg .rv { font-size: 52px; } .ring.sm .rv { font-size: 40px; }
+.ring .ru { font-size: 15px; fill: var(--text-2); }
+.hr .hl { font-size: 13px; color: var(--text-2); }
+.hr .hs { font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.vitals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 14px; }
+.vitals span { background: var(--surface); border-radius: 12px; padding: 7px 8px; display: flex; flex-direction: column; }
+.vitals i { font-style: normal; font-size: 10.5px; color: var(--text-2); }
+.vitals b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.vitals b small { font-size: 10.5px; color: var(--text-2); font-weight: 500; margin-left: 2px; }
+
+/* ---- Jarvis ring menu (same four keys as jarvis-entry.js, #53 / #258) */
+.orbit { position: absolute; left: 0; right: 0; bottom: 0; height: 330px; z-index: 4; pointer-events: none; }
+.orbit .ob { position: absolute; width: 62px; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; color: var(--text);
+  opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.3); transition: transform .45s var(--ease), opacity .3s; pointer-events: auto; }
+.orbit .ob span.k { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--hair); }
+.orbit .ob .i { width: 22px; height: 22px; }
+.orbit.on .ob { opacity: 1; transform: none; }
+.orbit .ob:nth-child(1) { left: 34px; bottom: 112px; --fx: 130px; --fy: 80px; }
+.orbit .ob:nth-child(2) { left: 104px; bottom: 182px; --fx: 60px; --fy: 150px; }
+.orbit .ob:nth-child(3) { right: 104px; bottom: 182px; --fx: -60px; --fy: 150px; }
+.orbit .ob:nth-child(4) { right: 34px; bottom: 112px; --fx: -130px; --fy: 80px; }
+.orbit-scrim { position: absolute; inset: 0; z-index: 3; background: rgba(0,0,0,.6); opacity: 0; pointer-events: none; transition: opacity .3s; }
+.orbit-scrim.on { opacity: 1; pointer-events: auto; }
+.jkey .i.cd { display: none; } .jkey.open .i.cd { display: block; } .jkey.open .i.ob1 { display: none; }
+.jkey { position: relative; z-index: 5; }
+
+/* =====================================================================
+   Look A · 星环 HUD: same language as the Jarvis HUD (#258). Near-black with a violet / cyan haze, glass panels with
+   hairline borders and corner brackets, gradient rings with a soft glow and a tick bezel, monospace HUD labels.
+   ===================================================================== */
+:root[data-look="a"] {
+  --bg: #04050a; --surface: rgba(140,150,255,.055); --surface-2: rgba(140,150,255,.12); --text: #eef0ff; --text-2: #8d93b8; --text-3: #4c5170;
+  --hair: rgba(140,150,255,.16); --good: #34f5b0; --mid: #ffc24a; --bad: #ff6b6b; --sleep: #9a8cff; --strain: #38b8ff; --ai: #a7a4ff;
+  --ai-soft: rgba(167,164,255,.12); --good-soft: rgba(52,245,176,.1); --mid-soft: rgba(255,194,74,.12); --bad-soft: rgba(255,107,107,.12);
+  --sheet: #0a0b14; --chrome: rgba(5,6,12,.96); --page: #020207; --radius: 16px;
+  --g-rec-1: #34f5b0; --g-rec-2: #18c8ff; --g-sl-1: #7a6bff; --g-sl-2: #d08bff; --g-st-1: #38b8ff; --g-st-2: #6f6cff;
+}
+[data-look="a"] .screen { background: radial-gradient(120% 60% at 50% -10%, rgba(111,108,240,.22), transparent 60%), radial-gradient(80% 40% at 100% 30%, rgba(24,200,255,.07), transparent 70%), var(--bg); }
+[data-look="a"] .mod, [data-look="a"] .focus, [data-look="a"] .tcard, [data-look="a"] .list, [data-look="a"] .vitals span, [data-look="a"] .brief, [data-look="a"] .ccard,
+[data-look="a"] .bub.ai { border: 1px solid var(--hair); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+[data-look="a"] .mod::before, [data-look="a"] .mod::after { content: ""; position: absolute; width: 9px; height: 9px; border-color: rgba(167,164,255,.55); border-style: solid; pointer-events: none; }
+[data-look="a"] .mod::before { top: -1px; left: -1px; border-width: 1.5px 0 0 1.5px; border-top-left-radius: 6px; }
+[data-look="a"] .mod::after { bottom: -1px; right: -1px; border-width: 0 1.5px 1.5px 0; border-bottom-right-radius: 6px; }
+[data-look="a"] .mod.ghost::before, [data-look="a"] .mod.ghost::after { display: none; }
+[data-look="a"] .ring .arc { filter: drop-shadow(0 0 6px var(--glow, rgba(52,245,176,.55))); }
+[data-look="a"] .ring .ticks { opacity: .55; }
+[data-look="a"] .ring .rv { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; letter-spacing: -.04em; }
+[data-look="a"] .ring.lg .rv { font-size: 50px; }
+[data-look="a"] .hr .hl, [data-look="a"] .vitals i, [data-look="a"] .sh small, [data-look="a"] .date, [data-look="a"] .mod .mh, [data-look="a"] .tab span, [data-look="a"] .why {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .08em; }
+[data-look="a"] .hr .hl::before { content: "◢ "; color: var(--ai); font-size: 9px; }
+[data-look="a"] .sh h2 { font-size: 13px; letter-spacing: .14em; color: var(--text-2); font-weight: 600; }
+[data-look="a"] .sh h2::before { content: "// "; color: var(--ai); }
+[data-look="a"] .big, [data-look="a"] .vitals b, [data-look="a"] .fi .v, [data-look="a"] .num { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: -.03em; }
+[data-look="a"] .brief { background: linear-gradient(90deg, rgba(111,108,240,.20), rgba(24,200,255,.08)); }
+[data-look="a"] .brief .i { filter: drop-shadow(0 0 6px var(--ai)); }
+[data-look="a"] .spark path, [data-look="a"] .meter i { filter: drop-shadow(0 0 4px currentColor); }
+[data-look="a"] .spark path { stroke-width: 1.5; }
+[data-look="a"] .pill.pri, [data-look="a"] .compose .mic { background: linear-gradient(90deg, #6f6cf0, #18c8ff); box-shadow: 0 0 16px rgba(111,108,240,.45); }
+[data-look="a"] .tab[aria-current="page"] { color: #fff; text-shadow: 0 0 10px rgba(167,164,255,.8); }
+[data-look="a"] .tabbar { border-top: 1px solid var(--hair); }
+[data-look="a"] .jkey { background: radial-gradient(circle at 50% 38%, #b9b6ff, #5a55ea 55%, #241f9e 100%);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px rgba(167,164,255,.5), 0 0 0 11px rgba(167,164,255,.08), 0 0 28px rgba(111,108,240,.85); }
+[data-look="a"] .orbit .ob span.k { background: rgba(20,20,48,.8); border: 1px solid rgba(167,164,255,.5);
+  box-shadow: 0 0 0 5px rgba(111,108,240,.10), 0 0 18px rgba(111,108,240,.55), inset 0 0 12px rgba(111,108,240,.35); color: #dcdcff; }
+[data-look="a"] .orbit .ob { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .08em; text-shadow: 0 0 8px rgba(167,164,255,.8); }
+[data-look="a"] .orbit-scrim { background: radial-gradient(circle at 50% 95%, rgba(60,54,170,.45), rgba(2,2,8,.86) 60%); }
+[data-look="a"] .sheet { border-top: 1px solid var(--hair); box-shadow: 0 -10px 40px rgba(111,108,240,.18); }
+[data-look="a"] .seg, [data-look="a"] .chips button { border: 1px solid var(--hair); }
+[data-look="a"] .seg button[aria-pressed="true"] { background: var(--surface-2); color: #fff; box-shadow: none; }
+[data-look="a"] .chips button[aria-pressed="true"] { background: linear-gradient(90deg, #6f6cf0, #18c8ff); color: #fff; }
+
+/* =====================================================================
+   Look B · 石墨精工: a precision instrument. Matte graphite, no glow, hairlines, thin large numerals, monochrome rings
+   on a tick bezel with only recovery in colour, monospace caps labels, one signal-orange accent for the AI and actions.
+   ===================================================================== */
+:root[data-look="b"] {
+  --bg: #0b0b0c; --surface: #141415; --surface-2: #232325; --text: #f2f2f0; --text-2: #8a8a8e; --text-3: #4a4a4e; --hair: #222224;
+  --good: #b6f24a; --mid: #ffb02e; --bad: #ff4d2e; --sleep: #e7e7e4; --strain: #e7e7e4; --ai: #ff5a1f; --ai-soft: rgba(255,90,31,.12);
+  --good-soft: rgba(182,242,74,.1); --mid-soft: rgba(255,176,46,.12); --bad-soft: rgba(255,77,46,.12); --sheet: #111112; --chrome: rgba(11,11,12,.97); --page: #050505; --radius: 6px;
+  --g-rec-1: #b6f24a; --g-rec-2: #e6ff7a; --g-sl-1: #f2f2f0; --g-sl-2: #9a9a9e; --g-st-1: #f2f2f0; --g-st-2: #9a9a9e;
+}
+[data-look="b"] .mod, [data-look="b"] .focus, [data-look="b"] .tcard, [data-look="b"] .list, [data-look="b"] .vitals span, [data-look="b"] .ccard, [data-look="b"] .bub.ai {
+  border: 1px solid var(--hair); border-radius: 6px; }
+[data-look="b"] .focus, [data-look="b"] .list { border-radius: 6px; }
+[data-look="b"] .ring .ticks { opacity: .9; stroke: #3a3a3d; }
+[data-look="b"] .ring.lg .track, [data-look="b"] .ring.lg .arc { stroke-width: 5; } [data-look="b"] .ring.sm .track, [data-look="b"] .ring.sm .arc { stroke-width: 6; }
+[data-look="b"] .ring .arc { stroke-linecap: butt; }
+[data-look="b"] .ring .rv { font-weight: 200; letter-spacing: -.04em; } [data-look="b"] .ring.lg .rv { font-size: 64px; } [data-look="b"] .ring.sm .rv { font-size: 46px; }
+[data-look="b"] .big { font-weight: 300; letter-spacing: -.03em; } [data-look="b"] .vitals b { font-weight: 300; font-size: 20px; }
+[data-look="b"] .hr .hl, [data-look="b"] .vitals i, [data-look="b"] .sh small, [data-look="b"] .date, [data-look="b"] .mod .mh, [data-look="b"] .tab span, [data-look="b"] .why, [data-look="b"] .hr .hs {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; }
+[data-look="b"] .sh h2 { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; letter-spacing: .2em; color: var(--text-2); font-weight: 500; }
+[data-look="b"] .sh { border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
+[data-look="b"] .sh h2::before { content: "■ "; color: var(--ai); font-size: 8px; vertical-align: 2px; }
+[data-look="b"] .top h1 { font-weight: 300; letter-spacing: -.02em; }
+[data-look="b"] .brief { background: transparent; border: 1px solid var(--hair); border-left: 2px solid var(--ai); border-radius: 4px; }
+[data-look="b"] .brief span { font-weight: 400; }
+[data-look="b"] .fi .ic, [data-look="b"] .avatar { border-radius: 4px; }
+[data-look="b"] .pill { border-radius: 4px; background: transparent; border: 1px solid #3a3a3d; font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .06em; font-weight: 500; }
+[data-look="b"] .pill.pri, [data-look="b"] .compose .mic { background: var(--ai); border-color: var(--ai); color: #0b0b0c; }
+[data-look="b"] .meter, [data-look="b"] .meter i { border-radius: 0; height: 4px; }
+[data-look="b"] .dots i { border-radius: 1px; }
+[data-look="b"] .chip { background: var(--ai); color: #0b0b0c; border-radius: 3px; }
+[data-look="b"] .why { background: transparent; border: 1px solid #3a3a3d; border-radius: 3px; }
+[data-look="b"] .tab[aria-current="page"] { color: var(--text); }
+[data-look="b"] .tab[aria-current="page"]::after { content: ""; position: absolute; top: -9px; width: 18px; height: 2px; background: var(--ai); }
+[data-look="b"] .badge-dot { background: var(--ai); border-radius: 0; width: 6px; height: 6px; }
+[data-look="b"] .jkey { background: #0b0b0c; color: var(--text); box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px #3a3a3d, inset 0 0 0 1px #3a3a3d; }
+[data-look="b"] .jkey::after { content: ""; position: absolute; top: 9px; right: 13px; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); }
+[data-look="b"] .orbit .ob span.k { background: #0b0b0c; border: 1px solid #4a4a4e; border-radius: 50%; box-shadow: 0 0 0 4px #0b0b0c, 0 0 0 5px #222224; }
+[data-look="b"] .orbit .ob { font-family: ui-monospace, "SF Mono", Menlo, monospace; text-transform: uppercase; letter-spacing: .14em; font-size: 10.5px; }
+[data-look="b"] .orbit-scrim { background: rgba(5,5,5,.88); }
+[data-look="b"] .seg { border: 1px solid var(--hair); border-radius: 4px; } [data-look="b"] .seg button { border-radius: 2px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; letter-spacing: .1em; }
+[data-look="b"] .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); box-shadow: none; }
+[data-look="b"] .chips button { border-radius: 3px; border: 1px solid var(--hair); background: transparent; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+[data-look="b"] .chips button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+[data-look="b"] .avs i, [data-look="b"] .av { border-color: var(--surface); }
+[data-look="b"] .sheet { border-radius: 10px 10px 0 0; border-top: 1px solid #2a2a2c; }
+.tabbar { z-index: 5; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 440px) { .stage { padding: 12px 0; } .phone { transform: scale(.92); transform-origin: top center; } .ctl { padding: 0 16px; } }
 </style>
@@ -305,8 +435,12 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
       <button class="opt" id="demo-grow">Jarvis 记了喝水 → 「喝水」上首页<small>互动：AI 用过的模块</small></button>
       <button class="opt" id="demo-find">Jarvis 发现 → 带出「体重」<small>数据里值得说的事</small></button>
     </div>
-    <h2>外观</h2>
-    <div class="row"><button class="opt" data-theme-set="light">浅色</button><button class="opt" data-theme-set="dark">深色</button></div>
+    <h2>视觉方向（待负责人选）</h2>
+    <div class="opts" id="looks">
+      <button class="opt" data-look-set="a">A · 星环 HUD<small>和 Jarvis 动画同一套：玻璃、渐变环、微光、HUD 角标</small></button>
+      <button class="opt" data-look-set="b">B · 石墨精工<small>哑光石墨、细线刻度环、细体大数字、单一信号橙</small></button>
+      <button class="opt" data-look-set="">原型默认（v0.2，仅看结构）</button>
+    </div>
   </aside>
   <div class="phone" id="phone"><div class="screen">
     <div class="statusbar"><span class="num">9:41</span><span class="isl"></span><span class="bat"></span></div>
@@ -317,11 +451,18 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
       <div class="shd"><h3 id="sh-t"></h3><button class="x" id="sh-x" aria-label="关闭"></button></div>
       <div class="sb" id="sh-b"></div><div id="sh-f"></div></section>
     <div class="toast" id="toast"></div>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <linearGradient id="gRec" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-rec-1, var(--good))"/><stop offset="1" style="stop-color:var(--g-rec-2, var(--good))"/></linearGradient>
+      <linearGradient id="gSl" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-sl-1, var(--sleep))"/><stop offset="1" style="stop-color:var(--g-sl-2, var(--sleep))"/></linearGradient>
+      <linearGradient id="gSt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-st-1, var(--strain))"/><stop offset="1" style="stop-color:var(--g-st-2, var(--strain))"/></linearGradient>
+    </defs></svg>
+    <div class="orbit-scrim" id="oscrim"></div>
+    <div class="orbit" id="orbit"></div>
   </div></div>
 </div>
 <script>
 "use strict";
-const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "message-circle": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "search": "<path d=\"m21 21-4.34-4.34\"/> <circle cx=\"11\" cy=\"11\" r=\"8\"/>", "sliders-horizontal": "<path d=\"M10 5H3\"/> <path d=\"M12 19H3\"/> <path d=\"M14 3v4\"/> <path d=\"M16 17v4\"/> <path d=\"M21 12h-9\"/> <path d=\"M21 19h-5\"/> <path d=\"M21 5h-7\"/> <path d=\"M8 10v4\"/> <path d=\"M8 12H3\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "trophy": "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\"/> <path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\"/> <path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\"/> <path d=\"M4 22h16\"/> <path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\"/> <path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "user-plus": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/> <line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\"/> <line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>"};
+const ICONS = {"activity": "<path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/>", "audio-waveform": "<path d=\"M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2\"/>", "bed": "<path d=\"M2 4v16\"/> <path d=\"M2 8h18a2 2 0 0 1 2 2v10\"/> <path d=\"M2 17h20\"/> <path d=\"M6 8v9\"/>", "bell": "<path d=\"M10.268 21a2 2 0 0 0 3.464 0\"/> <path d=\"M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326\"/>", "bot-message-square": "<path d=\"M12 6V2H8\"/> <path d=\"M15 11v2\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"M20 16a2 2 0 0 1-2 2H8.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 4 20.286V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2z\"/> <path d=\"M9 11v2\"/>", "brain-circuit": "<path d=\"M12 13h4\"/> <path d=\"M12 18h6a2 2 0 012 2v1\"/> <path d=\"M12 8h8\"/> <path d=\"M12 9a4.17 4.17 0 01-3 4\"/> <path d=\"M16 8V5a2 2 0 012-2\"/> <path d=\"M6 18a4 4 0 01-2-7.465\"/> <path d=\"M6.004 5.125a4 4 0 00-2.526 5.77\"/> <path d=\"M6.294 6.294A3 3 0 1112 5v13a4 4 0 11-7.967-.518\"/> <circle cx=\"16\" cy=\"13\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"18\" cy=\"3\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"21\" r=\"0.5\" fill=\"currentColor\"/> <circle cx=\"20\" cy=\"8\" r=\"0.5\" fill=\"currentColor\"/>", "chart-line": "<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/> <path d=\"m19 9-5 5-4-4-3 3\"/>", "check": "<path d=\"M20 6 9 17l-5-5\"/>", "chevron-down": "<path d=\"m6 9 6 6 6-6\"/>", "chevron-right": "<path d=\"m9 18 6-6-6-6\"/>", "clipboard-list": "<rect width=\"8\" height=\"4\" x=\"8\" y=\"2\" rx=\"1\" ry=\"1\"/> <path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/> <path d=\"M12 11h4\"/> <path d=\"M12 16h4\"/> <path d=\"M8 11h.01\"/> <path d=\"M8 16h.01\"/>", "droplet": "<path d=\"M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z\"/>", "dumbbell": "<path d=\"M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z\"/> <path d=\"m2.5 21.5 1.4-1.4\"/> <path d=\"m20.1 3.9 1.4-1.4\"/> <path d=\"M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z\"/> <path d=\"m9.6 14.4 4.8-4.8\"/>", "flame": "<path d=\"M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4\"/>", "flask-conical": "<path d=\"M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2\"/> <path d=\"M6.453 15h11.094\"/> <path d=\"M8.5 2h7\"/>", "footprints": "<path d=\"M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z\"/> <path d=\"M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z\"/> <path d=\"M16 17h4\"/> <path d=\"M4 13h4\"/>", "heart": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/>", "heart-pulse": "<path d=\"M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5\"/> <path d=\"M3.22 13H9.5l.5-1 2 4.5 2-7 1.5 3.5h5.27\"/>", "house": "<path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/> <path d=\"M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/>", "layout-grid": "<rect width=\"7\" height=\"7\" x=\"3\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"3\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"14\" y=\"14\" rx=\"1\"/> <rect width=\"7\" height=\"7\" x=\"3\" y=\"14\" rx=\"1\"/>", "message-circle": "<path d=\"M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719\"/>", "mic": "<path d=\"M12 19v3\"/> <path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/> <rect x=\"9\" y=\"2\" width=\"6\" height=\"13\" rx=\"3\"/>", "moon": "<path d=\"M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401\"/>", "notebook-pen": "<path d=\"M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4\"/> <path d=\"M2 6h4\"/> <path d=\"M2 10h4\"/> <path d=\"M2 14h4\"/> <path d=\"M2 18h4\"/> <path d=\"M21.378 5.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z\"/>", "orbit": "<path d=\"M20.341 6.484A10 10 0 0 1 10.266 21.85\"/> <path d=\"M3.659 17.516A10 10 0 0 1 13.74 2.152\"/> <circle cx=\"12\" cy=\"12\" r=\"3\"/> <circle cx=\"19\" cy=\"5\" r=\"2\"/> <circle cx=\"5\" cy=\"19\" r=\"2\"/>", "pill": "<path d=\"m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z\"/> <path d=\"m8.5 8.5 7 7\"/>", "pin": "<path d=\"M12 17v5\"/> <path d=\"M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z\"/>", "scale": "<path d=\"M12 3v18\"/> <path d=\"m19 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M3 7h1a17 17 0 0 0 8-2 17 17 0 0 0 8 2h1\"/> <path d=\"m5 8 3 8a5 5 0 0 1-6 0zV7\"/> <path d=\"M7 21h10\"/>", "scan-eye": "<path d=\"M3 7V5a2 2 0 0 1 2-2h2\"/> <path d=\"M17 3h2a2 2 0 0 1 2 2v2\"/> <path d=\"M21 17v2a2 2 0 0 1-2 2h-2\"/> <path d=\"M7 21H5a2 2 0 0 1-2-2v-2\"/> <circle cx=\"12\" cy=\"12\" r=\"1\"/> <path d=\"M18.944 12.33a1 1 0 0 0 0-.66 7.5 7.5 0 0 0-13.888 0 1 1 0 0 0 0 .66 7.5 7.5 0 0 0 13.888 0\"/>", "search": "<path d=\"m21 21-4.34-4.34\"/> <circle cx=\"11\" cy=\"11\" r=\"8\"/>", "sliders-horizontal": "<path d=\"M10 5H3\"/> <path d=\"M12 19H3\"/> <path d=\"M14 3v4\"/> <path d=\"M16 17v4\"/> <path d=\"M21 12h-9\"/> <path d=\"M21 19h-5\"/> <path d=\"M21 5h-7\"/> <path d=\"M8 10v4\"/> <path d=\"M8 12H3\"/>", "sparkles": "<path d=\"M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z\"/> <path d=\"M20 2v4\"/> <path d=\"M22 4h-4\"/> <circle cx=\"4\" cy=\"20\" r=\"2\"/>", "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/> <path d=\"M12 2v2\"/> <path d=\"M12 20v2\"/> <path d=\"m4.93 4.93 1.41 1.41\"/> <path d=\"m17.66 17.66 1.41 1.41\"/> <path d=\"M2 12h2\"/> <path d=\"M20 12h2\"/> <path d=\"m6.34 17.66-1.41 1.41\"/> <path d=\"m19.07 4.93-1.41 1.41\"/>", "target": "<circle cx=\"12\" cy=\"12\" r=\"10\"/> <circle cx=\"12\" cy=\"12\" r=\"6\"/> <circle cx=\"12\" cy=\"12\" r=\"2\"/>", "trending-up": "<path d=\"M16 7h6v6\"/> <path d=\"m22 7-8.5 8.5-5-5L2 17\"/>", "trophy": "<path d=\"M10 14.66V17a1 1 0 0 1-1 1 2 2 0 0 0-2 2v2\"/> <path d=\"M14 14.66V17a1 1 0 0 0 1 1 2 2 0 0 1 2 2v2\"/> <path d=\"M17.916 10H19.5A2.5 2.5 0 0 0 22 7.5V5a1 1 0 0 0-1-1h-3\"/> <path d=\"M4 22h16\"/> <path d=\"M6 9a6 6 0 0 0 12 0V3a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1z\"/> <path d=\"M6.084 10H4.5A2.5 2.5 0 0 1 2 7.5V5a1 1 0 0 1 1-1h3\"/>", "user": "<path d=\"M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2\"/> <circle cx=\"12\" cy=\"7\" r=\"4\"/>", "user-plus": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/> <line x1=\"19\" x2=\"19\" y1=\"8\" y2=\"14\"/> <line x1=\"22\" x2=\"16\" y1=\"11\" y2=\"11\"/>", "users": "<path d=\"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2\"/> <path d=\"M16 3.128a4 4 0 0 1 0 7.744\"/> <path d=\"M22 21v-2a4 4 0 0 0-3-3.87\"/> <circle cx=\"9\" cy=\"7\" r=\"4\"/>", "utensils": "<path d=\"M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2\"/> <path d=\"M7 2v20\"/> <path d=\"M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7\"/>", "x": "<path d=\"M18 6 6 18\"/> <path d=\"m6 6 12 12\"/>", "zap": "<path d=\"M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z\"/>"};
 const ic = (n, cls = "") => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ""}</svg>`;
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -434,6 +575,14 @@ function dial(frac, color, value, unit) {
     <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 50 50)"/>
     <text class="v" x="50" y="${unit ? 53 : 58}" text-anchor="middle">${value}</text>${unit ? `<text class="u" x="50" y="69" text-anchor="middle">${unit}</text>` : ""}</svg>`;
 }
+// The three core scores: gradient arc on a track, a tick bezel (shown by the looks), value and unit inside
+function ring(size, frac, grad, value, unit, glow) {
+  const r = size === "lg" ? 80 : 74, c = 2 * Math.PI * r, f = Math.max(0, Math.min(1, frac));
+  return `<svg class="ring ${size}" viewBox="0 0 200 200" aria-hidden="true"><circle class="ticks" cx="100" cy="100" r="96" stroke-dasharray="1.2 4.83"/>
+    <circle class="track" cx="100" cy="100" r="${r}"/><circle class="arc" cx="100" cy="100" r="${r}" stroke="url(#${grad})" style="--glow:${glow}"
+      stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 100 100)"/>
+    <text class="rv" x="100" y="${unit ? 108 : 116}" text-anchor="middle">${value}</text>${unit ? `<text class="ru" x="100" y="136" text-anchor="middle">${unit}</text>` : ""}</svg>`;
+}
 function lineChart(vals, color) {
   const w = 300, h = 110, pad = 14, lo = Math.min(...vals) * .92, hi = Math.max(...vals) * 1.04;
   const x = (i) => pad + (i / (vals.length - 1)) * (w - pad * 2), y = (v) => h - 16 - ((v - lo) / (hi - lo)) * (h - 26);
@@ -488,18 +637,19 @@ function header(title) { return `<div class="top"><div><div class="date">10月25
 const back = (label, to, sub = "") => `<button class="date" data-go="${to}" data-sub="${sub}" style="color:var(--ai)">‹ ${label}</button>`;
 function todayHtml() {
   const p = P();
-  const core = `<div class="core">
-    <button class="dial" data-detail="recovery">${dial(.72, "var(--good)", "72", "%")}<span class="cap">恢复</span></button>
-    <button class="dial" data-detail="sleep">${dial(432 / 480, "var(--sleep)", "7:12", "")}<span class="cap">睡眠</span></button>
-    <button class="dial" data-detail="strain">${dial(6 / 21, "var(--strain)", "6.0", "/ 21")}<span class="cap">负荷</span></button></div>`;
+  const hero = `<div class="hero3">
+    <button class="hr sm" data-detail="sleep">${ring("sm", 432 / 480, "gSl", "7:12", "", "rgba(154,140,255,.6)")}<span class="hl">睡眠</span><span class="hs num">需求 7:45</span></button>
+    <button class="hr lg" data-detail="recovery">${ring("lg", .72, "gRec", "72", "%", "rgba(52,245,176,.6)")}<span class="hl">恢复</span><span class="hs num">基线 68 · +4</span></button>
+    <button class="hr sm" data-detail="strain">${ring("sm", 6 / 21, "gSt", "6.0", "/ 21", "rgba(56,184,255,.6)")}<span class="hl">负荷</span><span class="hs num">目标 10–14</span></button></div>
+    <div class="vitals"><span><i>HRV</i><b>52<small>ms</small></b></span><span><i>静息心率</i><b>56<small>bpm</small></b></span><span><i>呼吸</i><b>15.0</b></span><span><i>血氧</i><b>97<small>%</small></b></span></div>`;
   const focus = `<div class="sh"><h2>重点</h2><small>${p.focus.length} 件</small></div><div class="focus">${p.focus.map((f, i) => `
     <button class="fi" data-focus="${i}"><span class="ic ${f.temp ? "bg-mid" : f.tone === "ai" ? "bg-ai" : ""} tone-${f.tone}">${ic(f.icon)}</span>
       <span class="t"><b>${f.t}</b><small>${f.s}</small></span>${f.v ? `<span class="v num tone-${f.tone}">${f.v}</span>` : ""}${ic("chevron-right", "chev")}</button>`).join("")}</div>`;
   const temp = p.temp ? modCard(p.temp, "temp") : "";
   const find = S.finding ? `<button class="mod ghost" data-intro="${S.finding}">${ic("sparkles")}<b>Jarvis 发现</b><span class="sub">体重 3 周没变 · 看看</span></button>` : "";
   const mods = S.onboarding ? "" : `<div class="sh"><h2>我的首页</h2><small>${S.pinned.length + (temp ? 1 : 0)}</small></div><div class="grid">${temp}${S.pinned.map((k) => modCard(k)).join("")}${find}</div>`;
-  return header("今天") + `<button class="brief" data-ask="brief">${ic("sparkles")}<span>${p.brief}</span>${ic("chevron-right", "chev")}</button>`
-    + core + focus + `<div class="sh"><h2>圈子</h2></div>${circleCard()}` + mods + logHtml()
+  return header("今天") + hero + `<button class="brief" data-ask="brief">${ic("sparkles")}<span>${p.brief}</span>${ic("chevron-right", "chev")}</button>`
+    + focus + `<div class="sh"><h2>圈子</h2></div>${circleCard()}` + mods + logHtml()
     + `<button class="foot" data-go="all">${ic("layout-grid")}全部功能 · ${CATALOG.length} 个，随时能看</button>`;
 }
 
@@ -587,7 +737,7 @@ const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"], circl
 function tabbar() {
   const cur = S.tab === "all" || S.tab === "record" ? (S.from || "me") : S.tab;
   const b = (t) => `<button class="tab" data-tab="${t}" ${cur === t ? 'aria-current="page"' : ""}>${ic(TABS[t][0])}<span>${TABS[t][1]}</span>${t === "circles" && P().circles ? '<i class="badge-dot"></i>' : ""}</button>`;
-  $("#tabbar").innerHTML = b("today") + b("body") + `<button class="jkey" id="jkey" aria-label="Jarvis">${ic("orbit")}</button>` + b("circles") + b("me");
+  $("#tabbar").innerHTML = b("today") + b("body") + `<button class="jkey ${S.orbit ? "open" : ""}" id="jkey" aria-label="Jarvis">${ic("orbit", "ob1")}${ic("chevron-down", "cd")}</button>` + b("circles") + b("me");
 }
 function render() {
   $("#view").innerHTML = { today: todayHtml, body: bodyHtml, circles: circlesHtml, me: meHtml, all: allHtml, record: recordHtml }[S.tab]();
@@ -699,6 +849,16 @@ async function demoFind(k = "weight") {
   $("#later").onclick = () => { closeSheet(); S.finding = null; S.seen.add(k); render(); toast(`${ic("layout-grid")}在「全部功能」和「身体」里随时能看`); };
 }
 
+// ---------------------------------------------------------------- Jarvis ring menu
+const ORBIT = [["bot-message-square", "对话"], ["audio-waveform", "语音"], ["scan-eye", "拍照"], ["zap", "快记"]];
+function setOrbit(on) {
+  S.orbit = on;
+  $("#orbit").innerHTML = ORBIT.map(([i, t]) => `<button class="ob"><span class="k">${ic(i)}</span>${t}</button>`).join("");
+  requestAnimationFrame(() => { $("#orbit").classList.toggle("on", on); $("#oscrim").classList.toggle("on", on); });
+  $("#jkey").classList.toggle("open", on);
+  for (const b of $$("#orbit .ob")) b.onclick = () => { setOrbit(false); jarvisSheet(); };
+}
+
 // ---------------------------------------------------------------- events
 function bind() {
   for (const b of $$("[data-tab]")) b.onclick = () => go(b.dataset.tab);
@@ -708,7 +868,7 @@ function bind() {
   for (const b of $$("[data-cmode]")) b.onclick = () => { S.circMode = b.dataset.cmode; render(); };
   for (const b of $$("[data-invite]")) b.onclick = (e) => { e.stopPropagation(); toast(`${ic("user-plus")}邀请链接已复制 · 7 天内有效`); };
   for (const b of $$("[data-focus], [data-ask], [data-mod]")) b.onclick = () => jarvisSheet();
-  $("#jkey").onclick = () => jarvisSheet();
+  $("#jkey").onclick = () => setOrbit(!S.orbit);
 }
 $("#sh-x").innerHTML = ic("x");
 $("#sh-x").onclick = () => closeSheet();
@@ -717,10 +877,13 @@ for (const b of $$("#personas .opt")) b.onclick = () => { demoRun++; setPersona(
 $("#demo-onboard").onclick = () => demoOnboard(true);
 $("#demo-grow").onclick = () => demoGrow(true);
 $("#demo-find").onclick = () => { demoRun++; demoFind(); };
-for (const b of $$("[data-theme-set]")) b.onclick = () => { document.documentElement.dataset.theme = b.dataset.themeSet; };
-window.Proto = { setPersona, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
+function setLook(l) { document.documentElement.dataset.look = l; for (const b of $$("#looks .opt")) b.setAttribute("aria-pressed", b.dataset.lookSet === l); }
+for (const b of $$("[data-look-set]")) b.onclick = () => setLook(b.dataset.lookSet);
+$("#oscrim").onclick = () => setOrbit(false);
+window.Proto = { setPersona, setLook, setOrbit, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
 const q = new URLSearchParams(location.search);
 if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
+setLook(q.get("look") ?? "a");
 setPersona(q.get("p") || "week2");
 </script>
 </body>

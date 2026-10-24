@@ -1,18 +1,24 @@
-# AI 优先、功能随使用长出来：app UI 重构方案（v0.2，2026-10-25）
+# AI 优先、功能随使用长出来：app UI 重构方案（v0.3，2026-10-25）
 
 > 依据：[`ui-ai-first-research.md`](ui-ai-first-research.md)（同类产品调研）、现有今天页（`body_engine/src/body_engine/web/static/`）、
 > [`ios-native-plan.md`](ios-native-plan.md)（#255，SwiftUI 原生化，已确认）、[`circles-redesign.md`](circles-redesign.md)（#269，圈子重构）。Issue：#279。
 > 可点击原型：[`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)（单文件，合成数据，直接用浏览器打开）；截图在 [`ui-ai-first/`](ui-ai-first/)。
-> 这一版只有设计，不改线上代码。第 12 节是要负责人决定的点。
+> 这一版只有设计，不改线上代码。第 12 节是决定点：**D1–D11 负责人 2026-10-25 已全部按推荐通过**；D12（视觉方向 A / B）待选。
 >
 > v0.2 按负责人的两条修正改写：
 > 1. 用户第一天就导入完整的 Apple 健康历史，趋势、基线、恢复分从第一天起都算得出来，所以**解锁不按「数据攒够了」来卡**；渐进是为了控制注意力和学习负担，不是控制数据。
 > 2. 圈子是核心功能和推广抓手，**保持一级入口**，首页也要有圈子的露出和邀请入口。
+>
+> v0.3 按负责人的两条修正：
+> 3. 今天页保持原来的风格：**一进来先看到恢复 / 睡眠 / 负荷三个核心分数的圆环**，放在最上面；AI 的晨报、重点、圈子、模块都排在圆环区下面。
+> 4. 整体视觉要有明显的科技感，面向追求身材管理、健康和抗衰老、拥抱 AI 的精英用户；出两套视觉方向（第 7.6 节）给负责人选。
 
 ## 0. 摘要
 
-- **新范式一句话：打开 app 先看「3 个核心数 + 今天的 1–3 件事 + 圈子」，记录和提问都通过 Jarvis；首页上的模块由你的关注、Jarvis 在数据里的发现、你和 Jarvis 的互动决定，其他功能一个不锁，在「全部功能」里随时能看。**
+- **新范式一句话：打开 app 最上面是恢复 / 睡眠 / 负荷三个圆环，下面是「今天的 1–3 件事 + 圈子」，记录和提问都通过 Jarvis；首页上的模块由你的关注、Jarvis 在数据里的发现、你和 Jarvis 的互动决定，其他功能一个不锁，在「全部功能」里随时能看。**
 - **底栏 5 格**：今天 · 身体 · Jarvis（中间的圆键，不变）· 圈子 · 我。饮食、记录变成模块和二级页。
+- **今天页最上面是圆环区**：恢复（大环，居中）+ 睡眠、负荷（小环，两侧）+ 一行 HRV / 静息心率 / 呼吸 / 血氧；AI 的东西都在下面，不取代它。
+- **视觉**：深色优先、等宽大数字、细线图表、HUD 式小标签；两套方向 A「星环 HUD」（和 Jarvis 动画同一套）/ B「石墨精工」待选，推荐 A（第 7.6 节）。
 - **第 1 天**：导入历史 → Jarvis 给一份「你的身体概况」（3 个最重要的发现）→ 问你最关心什么（多选）→ 按回答和发现摆首页（3 个模块）→ 首页。
 - **什么决定首页上有什么**（第 4 节）：① 关注点；② 数据里值得说的事（拐点、异常、里程碑），Jarvis 带出对应模块；③ 互动：问过的、Jarvis 用过的模块固定下来；④ 主动探索：「全部功能」随时打开任何模块；⑤ 使用天数只管节奏：每天最多主动介绍 1–2 个新模块。
 - **不堆也不藏**（第 5 节）：首页最多 6 个模块，每个模块标出「为什么在这里」（关注 / 发现 / 用过 / 固定）；所有指标在「身体」页从第一天就全部打开，按关注展开、其余折叠成一行摘要；「全部功能」显示每个模块的状态（首页 / 看过 / 新），没有锁、没有进度条。
@@ -83,8 +89,10 @@
 ┌─────────────────────────────────────┐
 │ 10月25日 周日                         │
 │ 今天                                 │
+│   ◯7:12      ◯◯ 72 ◯◯      ◯6.0      │ ← 圆环区：恢复大环居中，睡眠 / 负荷两侧
+│   睡眠          恢复          负荷     │    点开 = 三层详情
+│ [HRV 52] [静息 56] [呼吸 15] [血氧 97] │ ← 一行生命体征
 │ ✦ 恢复 72 · 适合练腿              ›  │ ← 晨报一句（点开 = 问 Jarvis）
-│ (恢复 72) (睡眠 7:12) (负荷 6.0)       │ ← 3 个核心数，点开 = 三层详情
 │ 重点 · 3 件                          │
 │   练腿 · 45 分钟          0/10  ›    │
 │   00:30 前上床            00:30 ›    │
@@ -188,8 +196,8 @@
 
 ### 4.4 今天页的内容和顺序
 
-1. **晨报一句**（1 行，规则生成：恢复状态词 / 当天最重要的发现）。
-2. **核心 3 个数**（恢复 / 睡眠 / 负荷）。
+1. **圆环区**（始终在最上面）：恢复大环居中、睡眠和负荷小环在两侧，环下一行小字（基线、需求、目标）；下面一行 HRV / 静息心率 / 呼吸 / 血氧。
+2. **晨报一句**（1 行，规则生成：恢复状态词 / 当天最重要的发现）。
 3. **重点 1–3 件**：来源按优先级：临时异常和高级别规则提醒 → 今天的训练 / 负荷目标 → 入睡目标 → 饮食差额（记过饭的人）→ 第一天的「说说你今天吃了什么」。同一来源一天最多 1 件；做完划掉，不补新的。
 4. **圈子卡**（常驻）。
 5. **我的首页**：临时的（最前）→ 固定的（用户顺序，最多 6 个）→ 发现卡（同时最多 1 张）。
@@ -274,7 +282,7 @@
 
 | 类型 | 用在 | 内容上限 |
 |---|---|---|
-| 核心表盘 | 首页 3 个数 | 一个环 + 一个数 + 一个 2 字标签 |
+| 圆环区 | 首页最上面 | 恢复大环（约 176 pt）+ 睡眠 / 负荷小环（约 104 pt），每个环一个数 + 单位 + 2 字标签 + 一行小字；下面 4 个生命体征小块 |
 | 重点行 | 首页重点 | 图标 + ≤12 字标签 + 一行 ≤12 字副标签 + 一个数 |
 | 模块卡（2 列） | 首页「我的首页」 | 标题 + 原因标签 + **一个大数** + 一个小图 + 最多一行小字 |
 | 圈子卡（整宽） | 首页 | 圈子名 + 新动态数 + 头像 + 排行一行 + 最新一条 + 两个按钮 |
@@ -312,6 +320,36 @@
 
 - 模块放到首页：从小到大 + 一圈 AI 色光晕（0.9 s）；减少动态效果时关掉。
 - 原生端用 `matchedGeometryEffect` 让对话里的卡片「飞」到首页的位置（网页版只淡入）。
+
+### 7.6 视觉方向（D12，待负责人选）
+
+用户画像：社会高层级的精英，追求身材管理、健康保障和抗衰老，拥抱 AI、有科创精神。对标 WHOOP、Oura、Apple Fitness+、Tesla / Nothing 这一档的质感，不做普通健康 app 的卡片风。两套方向共用同一个结构（今天页、圈子页、Jarvis 入口），只换视觉；原型左边可以切换。
+
+共同的基础（两套都遵守）：
+
+- **深色优先**：近黑 / 石墨底，浅色模式以后再做（原型只做深色）。
+- **数字是主角**：大号、等宽或表格数字（`tabular-nums` / SF Mono），单位小一号灰色。
+- **细线图表**：折线 1.5 pt，柱和点阵细而规整；颜色只给关键数据，其余是灰阶。
+- **HUD 式小标签**：等宽字体、加字距的短标签，分区标题带一个小标记。
+- **图标只用 Lucide**；Jarvis 键和四个环形菜单键（对话 / 语音 / 拍照 / 快记）和 #258 一致。
+
+| | A · 星环 HUD | B · 石墨精工 |
+|---|---|---|
+| 一句话 | 和 Jarvis 科幻动画同一套语言，「驾驶舱」感 | 精密仪表，Tesla / Nothing 式的克制 |
+| 底色 | 近黑 + 顶部一层紫 / 青的雾光 | 哑光石墨，纯平 |
+| 面板 | 克制的玻璃（模糊 + 1 px 发光细边），模块卡带 HUD 角标 | 不透明面板 + 1 px 细线，小圆角（6 pt） |
+| 圆环 | 渐变弧（恢复 绿→青、睡眠 紫、负荷 蓝→紫）+ 微光 + 外圈刻度 | 细弧（5 pt）+ 刻度表圈；只有恢复是彩色（荧光绿），睡眠 / 负荷是白色 |
+| 数字 | SF Mono，偏粗 | SF Pro 细体（200–300），大 |
+| 强调色 | 紫青渐变（按钮、当前 tab 发光） | 单一信号橙（AI、按钮、当前 tab 下划线、红点） |
+| Jarvis 键 | 发光的紫色球 + 光环（= #258） | 黑色圆盘 + 细白圈 + 橙色小点；环形菜单是线框圆键 |
+| 风险 | 光效多了显得「游戏化」，要控制只在环和 Jarvis 上发光 | 冷，AI 的存在感弱一些 |
+
+| | 今天 | 圈子 | Jarvis 入口 |
+|---|---|---|---|
+| **A · 星环 HUD** | <img src="ui-ai-first/look-a-1-today.jpg" width="200" alt="A 今天"> | <img src="ui-ai-first/look-a-2-circles.jpg" width="200" alt="A 圈子"> | <img src="ui-ai-first/look-a-3-jarvis.jpg" width="200" alt="A Jarvis 环形菜单"> |
+| **B · 石墨精工** | <img src="ui-ai-first/look-b-1-today.jpg" width="200" alt="B 今天"> | <img src="ui-ai-first/look-b-2-circles.jpg" width="200" alt="B 圈子"> | <img src="ui-ai-first/look-b-3-jarvis.jpg" width="200" alt="B Jarvis 环形菜单"> |
+
+**推荐 A**：负责人要求和 Jarvis 动画（#258）是同一套视觉语言，A 直接沿用；科技感也最强。从 B 借两点克制：光效只放在圆环、Jarvis 键和主按钮上，其他卡片不发光；分区标题和小标签用 B 那样的等宽大写式短标签。选定后：第 7.1–7.5 节的颜色、圆角、字重按选中的方向更新进 `app.css` 的 token（原生端同一套 token 生成 SwiftUI 的颜色和字体），原型去掉另一套。
 
 ---
 
@@ -394,6 +432,8 @@
 
 ## 12. 要负责人决定的点
 
+> 负责人 2026-10-25：**D1–D11 全部按推荐通过**。D12 待选。
+
 | # | 问题 | 推荐 |
 |---|---|---|
 | D1 | 底栏 | **5 格：今天 · 身体 · Jarvis · 圈子 · 我**；饮食、记录变成模块和二级页 |
@@ -407,12 +447,13 @@
 | D9 | 「Jarvis 自动整理首页」开关默认开还是关 | **默认开**，在全部功能顶部能关 |
 | D10 | 先网页还是直接原生 | **网页先做**（开关 `ui_ai_first`），1.1.0 的原生今天直接按新设计 |
 | D11 | 外部 AI（Claude / ChatGPT 通过 MCP）用过的工具算不算「用过」 | **算**：看的是数据层的工具调用，和用哪家 AI 无关 |
+| D12 | 视觉方向 | **A · 星环 HUD**（和 Jarvis 动画同一套），借 B 的克制：只在圆环、Jarvis 键、主按钮上发光（第 7.6 节） |
 
 ---
 
 ## 13. 原型
 
-单文件 [`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)，用浏览器直接打开（不连服务器，全是合成数据），左边切换三种用户状态（**三种都已导入完整历史，区别只在首页放了多少、介绍到哪一步**）和三段演示。截图由 [`ui-ai-first/shoot.py`](ui-ai-first/shoot.py)（Playwright + WebKit）生成。图标都来自 Lucide（ISC）。
+单文件 [`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)，用浏览器直接打开（不连服务器，全是合成数据），左边切换视觉方向（A / B，见第 7.6 节；下面这组结构截图用的是不带视觉方向的默认样式）、三种用户状态（**三种都已导入完整历史，区别只在首页放了多少、介绍到哪一步**）和三段演示。截图由 [`ui-ai-first/shoot.py`](ui-ai-first/shoot.py)（Playwright + WebKit）生成。图标都来自 Lucide（ISC）。
 
 **第 1 天：导入历史 → 身体概况 → 选关注 → 首页**
 
@@ -449,4 +490,5 @@
 **Day 1**: history import → "your body at a glance" (three findings) → "what do you care about?" (multi-select) → Today laid out with three modules.
 **Navigation**: five slots: Today · Body · Jarvis · Circles · Me. **Circles stay a first-level tab** (inside it follows `circles-redesign.md`, same APIs), and Today always carries a circles card (new posts, weekly ranking, invite) or an invite card.
 **Neither cluttered nor hidden**: at most six modules on Today, each tagged with why it is there (focus / found / used / pinned); Body shows every metric from day 1 with the user's focus expanded and other groups folded into one-line summaries; "All features" lists all 24 modules with their state (on Today / seen / new), no locks or progress bars; an "auto-arrange" switch lets users take over.
+**v0.3**: owner approved D1–D11; Today keeps the three score rings (recovery large in the centre, sleep and strain at the sides) at the very top, with AI items below; two dark-first visual directions are proposed for the owner to choose (A "HUD", the same language as the Jarvis animation, recommended; B "graphite instrument"), see section 7.6.
 **Implementation**: server-driven layout shared by web and native (`ui/params.py`, `ui/findings.py`, tables `ui_modules` / `ui_findings`, `GET /home`, `/overview`, `/modules`, `manage_modules`, `ui.suggest` in the briefing); web first behind `ui_ai_first`; the SwiftUI Today in 1.1.0 (#255) is built to this design. Owner decisions D1–D11 are in section 12; the prototype and screenshots are in `docs/ui-ai-first/`.

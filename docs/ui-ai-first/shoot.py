@@ -14,8 +14,8 @@ async def main():
         errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)))
 
-        async def shot(name, p_="week2", setup=None, wait=400):
-            await pg.goto(f"{URL}?p={p_}&theme=light")
+        async def shot(name, p_="week2", setup=None, wait=400, look=""):
+            await pg.goto(f"{URL}?p={p_}&theme=light&look={look}")
             await pg.wait_for_timeout(300)
             if setup:
                 await setup()
@@ -43,6 +43,11 @@ async def main():
         await shot("08-finding", setup=run("Proto.demoFind()", 700))
         await shot("09-circles", setup=run("Proto.go('circles')", 200))
         await shot("10-all-features", setup=run("Proto.go('all')", 200))
+        # the two visual directions (#279 v0.3): Today, Circles, and the Jarvis ring menu open
+        for lk in ("a", "b"):
+            await shot(f"look-{lk}-1-today", look=lk)
+            await shot(f"look-{lk}-2-circles", look=lk, setup=run("Proto.go('circles')", 200))
+            await shot(f"look-{lk}-3-jarvis", look=lk, setup=run("Proto.setOrbit(true)", 700))
         print("errors:", errs)
         await b.close()
 
