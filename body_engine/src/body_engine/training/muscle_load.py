@@ -6,9 +6,13 @@ Unfinished page drafts and sets without reps or duration are not counted; warm-u
 Each set is credited to the muscles of its exercise in the catalog: primary muscles x PRIMARY_FACTOR (1.0), secondary x SECONDARY_FACTOR (0.5).
 Two numbers per muscle and range: effective sets (the weighted count) and volume in kg (reps x weight, weighted the same way; bodyweight
 sets add sets but no kg). Colours compare this week's effective sets with training/params.WEEKLY_SETS_RANGE (sources there).
-Sports (issue #189): watch workouts of the workouts table (basketball, swimming, running ...; not duplicates, not excluded / hidden,
-not strength types) are a separate layer counted in minutes: primary muscles of params.SPORT_MUSCLES x 1, secondary x 0.5. They never
-become sets and never change the colours; types without a mapping count for no muscle and only appear in the overall list.
+Workouts of the workouts table (cycling, swimming, basketball, a watch-only strength session ...; not duplicates, not excluded / hidden)
+are the sports layer and ALWAYS credit muscles: every type has a mapping in training/sport_muscles.py (an unlisted one gets a whole-body low
+rating, never nothing). Each workout gives minutes per muscle (primary x 1, secondary x 0.5, "sport_min") and equivalent sets on the same
+scale as logged sets (minutes x resistance of the type x intensity multiplier, see sport_load; formula and sources in params.py). The
+equivalent sets are added to the logged sets for the colours / ranges ("sets" = logged + sport, both also given separately). A strength
+workout on a day that has logged sets is not counted again (its sets are already there); without logged sets its minutes become estimated
+working sets spread over the muscles of that weekday's planned session, else the whole body.
 Exercises are matched against the shared catalog plus the user's own custom exercises (custom.py, through loads.Index).
 The body is drawn by the profile's sex (users.sex); the page shows the male body and a hint when it is not set.
 The result is read-only; callers do the authorization (training scope).
@@ -22,7 +26,8 @@ import psycopg
 
 from .. import sparky_client
 from ..i18n import L
-from . import catalog, loads, params as P, plans
+from . import catalog, history, loads, params as P, plans, sport_muscles
+from .importer import avg_hr_trimp
 from . import catalog_data as CD
 
 MUSCLE_EN = {
@@ -93,46 +98,126 @@ def _imported(conn: psycopg.Connection, uid: int, start: date, end: date) -> lis
 
 
 def _sports(conn: psycopg.Connection, uid: int, start: date, end: date) -> list[dict]:
-    """Watch workouts that are not strength training, one row per workout (duplicates and excluded / hidden ones left out)."""
-    rows = conn.execute("""SELECT local_date, type, duration_min FROM workouts
+    """Watch workouts, one row per workout (duplicates and excluded / hidden ones left out). Strength types are included: whether they count
+    is decided per day in aggregate_sports (only when no sets are logged that day)."""
+    rows = conn.execute("""SELECT local_date, type, duration_min, trimp, avg_hr, hr_max_used FROM workouts
                            WHERE user_id = %s AND local_date BETWEEN %s AND %s AND dup_of IS NULL AND excluded IS NULL
-                             AND NOT (type = ANY(%s)) ORDER BY start_at""",
-                        (uid, start, end, sorted(P.STRENGTH_TYPES))).fetchall()
-    return [{"date": r["local_date"], "type": r["type"], "min": float(r["duration_min"] or 0)} for r in rows if r["duration_min"]]
+                             AND duration_min > 0 ORDER BY start_at""", (uid, start, end)).fetchall()
+    return [{"date": r["local_date"], "type": r["type"], "min": float(r["duration_min"]),
+             "trimp": r["trimp"], "avg_hr": r["avg_hr"], "hr_max": r["hr_max_used"]} for r in rows]
 
 
 def sport_name(t: str) -> str:
     return L(P.TYPE_NAMES.get(t, t), P.TYPE_NAMES_EN.get(t, t))
 
 
-def aggregate_sports(sports: list[dict], today: date) -> dict:
-    """Minutes per muscle and window (primary x SPORT_PRIMARY_FACTOR, secondary x SPORT_SECONDARY_FACTOR), the sports behind
-    each muscle and the overall list per window (also the types without a muscle mapping)."""
-    win = {k: v for k, v in windows(today).items() if k in P.MUSCLE_RANGES}
-    stats = {m: {w: 0.0 for w in win} for m in CD.MUSCLE_ZH}
-    by_muscle: dict[str, dict[str, dict[str, dict]]] = {m: {w: {} for w in win} for m in CD.MUSCLE_ZH}
-    overall: dict[str, dict[str, dict]] = {w: {} for w in win}
+def intensity_level(w: dict) -> str:
+    """The workout's intensity level, graded like the training calendar (history.classify without the strength-volume step):
+    TRIMP from the raw heart rate, else a TRIMP estimated from the average heart rate, else its duration by category."""
+    minutes = w["min"]
+    if w.get("trimp") is not None:
+        level = history._level(float(w["trimp"]), P.TRIMP_THRESHOLDS)
+    elif w.get("avg_hr") and w.get("hr_max"):
+        level = history._level(avg_hr_trimp(float(w["avg_hr"]), minutes, float(w["hr_max"])) * P.AVG_HR_TRIMP_FACTOR, P.TRIMP_THRESHOLDS)
+    else:
+        level = history._level(minutes, P.DURATION_THRESHOLDS[history._category(sport_muscles.normalize(w["type"]))])
+    return "light" if minutes < P.MIN_SESSION_MIN else level
+
+
+def sport_load(w: dict, strength_target: tuple[list[str], list[str]] | None = None) -> dict:
+    """What one workout credits: {"muscles": {muscle: (equivalent sets, is_primary)}, "level", "known", "estimated"}. Never empty.
+    Sport: equivalent sets of a muscle = minutes x SPORT_SETS_PER_MIN x resistance(type) x INTENSITY_MULT[level] x (1 primary | 0.5 secondary).
+    Strength-like type with no logged sets: working sets = minutes / SET_CYCLE_MIN spread over `strength_target` (planned primary and secondary
+    muscles of that weekday) or the type's whole-body mapping; a target of n primaries gives each sets x STRENGTH_PRIMARIES_PER_SET / n."""
+    m = sport_muscles.resolve(w["type"])
+    if m["type"] in sport_muscles.STRENGTH_LIKE:
+        prim, sec = (list(strength_target[0]), list(strength_target[1])) if strength_target and strength_target[0] else (list(m["primary"]), list(m["secondary"]))
+        per = w["min"] / P.SET_CYCLE_MIN * P.STRENGTH_PRIMARIES_PER_SET / len(prim) * P.STRENGTH_FALLBACK_RESISTANCE
+        level = "moderate"
+        loads_ = {x: (per, True) for x in prim} | {x: (per * P.SPORT_SECONDARY_FACTOR, False) for x in sec if x not in prim}
+        return {"muscles": loads_, "level": level, "known": True, "estimated": True}
+    level = intensity_level(w)
+    base = w["min"] * P.SPORT_SETS_PER_MIN * m["resistance"] * P.INTENSITY_MULT[level]
+    loads_ = {x: (base, True) for x in m["primary"]} | {x: (base * P.SPORT_SECONDARY_FACTOR, False) for x in m["secondary"]}
+    return {"muscles": loads_, "level": level, "known": m["known"], "estimated": not m["known"]}
+
+
+# strength-like types whose sets are already counted when the day has logged sets (generic / other come from SparkyFitness strength records too)
+_COUNTED_BY_SETS = sport_muscles.STRENGTH_LIKE | P.STRENGTH_TYPES
+
+
+def aggregate_sports(sports: list[dict], today: date, logged_days: set[date] | frozenset = frozenset(),
+                     strength_targets=None) -> dict:
+    """Minutes and equivalent sets per muscle and window, the sports behind each muscle and the overall list per window.
+    logged_days: days that already have logged sets (their strength-type workouts are not counted again).
+    strength_targets: date -> (primary muscles, secondary muscles) of the planned session, or None (whole body)."""
+    wins = windows(today)
+    stats = {m: {w: 0.0 for w in P.MUSCLE_RANGES} for m in CD.MUSCLE_ZH}
+    eq = {m: {w: 0.0 for w in wins} for m in CD.MUSCLE_ZH}
+    by_muscle: dict[str, dict[str, dict[str, dict]]] = {m: {w: {} for w in P.MUSCLE_RANGES} for m in CD.MUSCLE_ZH}
+    overall: dict[str, dict[str, dict]] = {w: {} for w in P.MUSCLE_RANGES}
     for s in sports:
-        prim, sec = P.SPORT_MUSCLES.get(s["type"], ((), ()))
-        for wname, (a, b) in win.items():
+        if s["date"] > today or (s["date"] in logged_days and sport_muscles.normalize(s["type"]) in _COUNTED_BY_SETS):
+            continue
+        key = sport_muscles.normalize(s["type"])
+        target = strength_targets(s["date"]) if strength_targets and key in sport_muscles.STRENGTH_LIKE else None
+        load = sport_load(s, target)
+        for wname, (a, b) in wins.items():
             if not a <= s["date"] <= b:
                 continue
-            o = overall[wname].setdefault(s["type"], {"type": s["type"], "name": sport_name(s["type"]), "min": 0.0,
-                                                       "mapped": s["type"] in P.SPORT_MUSCLES})
-            o["min"] += s["min"]
-            for muscles, factor in ((prim, P.SPORT_PRIMARY_FACTOR), (sec, P.SPORT_SECONDARY_FACTOR)):
-                for m in muscles:
-                    if m not in stats:
-                        continue
+            show = wname in P.MUSCLE_RANGES
+            if show:
+                o = overall[wname].setdefault(s["type"], {"type": s["type"], "name": sport_name(s["type"]), "min": 0.0, "mapped": True,
+                                                           "estimated": False})
+                o["min"] += s["min"]
+                o["estimated"] = o["estimated"] or load["estimated"]
+            for m, (sets, primary) in load["muscles"].items():
+                if m not in eq:
+                    continue
+                eq[m][wname] += sets
+                if show:
+                    factor = P.SPORT_PRIMARY_FACTOR if primary else P.SPORT_SECONDARY_FACTOR
                     stats[m][wname] += s["min"] * factor
                     it = by_muscle[m][wname].setdefault(s["type"], {"type": s["type"], "name": sport_name(s["type"]), "min": 0.0,
-                                                                   "primary": factor == P.SPORT_PRIMARY_FACTOR})
+                                                                   "sets": 0.0, "primary": primary})
                     it["min"] += s["min"]
+                    it["sets"] += sets
 
     def done(items: dict) -> list[dict]:
-        return [{**x, "min": round(x["min"])} for x in sorted(items.values(), key=lambda x: -x["min"])]
-    return {"stats": stats, "by_muscle": {m: {w: done(v) for w, v in ws.items()} for m, ws in by_muscle.items()},
+        return [{**x, "min": round(x["min"]), **({"sets": _r(x["sets"])} if "sets" in x else {})}
+                for x in sorted(items.values(), key=lambda x: -x["min"])]
+    return {"stats": stats, "sets": eq, "by_muscle": {m: {w: done(v) for w, v in ws.items()} for m, ws in by_muscle.items()},
             "overall": {w: done(v) for w, v in overall.items()}}
+
+
+def _plan_targets(conn: psycopg.Connection, uid: int):
+    """date -> (primary, secondary muscles) of the strength exercises the active plan has on that weekday, else None. Read once, lazily;
+    any trouble reading the plan means None (whole body), never an error."""
+    cache: dict[int, tuple[list[str], list[str]] | None] = {}
+    state: dict = {}
+
+    def for_day(day: date):
+        dow = day.isoweekday()
+        if dow in cache:
+            return cache[dow]
+        try:
+            if "model" not in state:
+                from . import day_overrides
+                row = plans._active_plan_row(conn, uid)
+                state["model"] = day_overrides.model_from_plan_row(conn, uid, row) if row else None
+            wd = state["model"] and state["model"].by_dow.get(dow)
+            prim: list[str] = []
+            sec: list[str] = []
+            for it in (wd.items if wd else []):
+                if (it.get("category") or "strength") != "strength":
+                    continue
+                prim += [x for x in it.get("primary_muscles") or [] if x in CD.MUSCLE_ZH and x not in prim]
+                sec += [x for x in it.get("secondary_muscles") or [] if x in CD.MUSCLE_ZH and x not in sec]
+            cache[dow] = (prim, [x for x in sec if x not in prim]) if prim else None
+        except Exception:  # noqa: BLE001 a plan that cannot be read must not hide the workout: whole body instead
+            cache[dow] = None
+        return cache[dow]
+    return for_day
 
 
 def _muscles_of(index: loads.Index, ex: dict) -> tuple[list[str], list[str], str | None]:
@@ -164,6 +249,7 @@ def aggregate(workouts: list[dict], index: loads.Index, today: date) -> dict:
     stats: dict[str, dict[str, dict]] = {m: {w: _empty() for w in win} for m in CD.MUSCLE_ZH}
     last: dict[str, dict] = {}
     unmatched: set[str] = set()
+    logged_days: set[date] = set()   # days with at least one credited set (a watch strength workout of such a day is not counted again)
     for w in workouts:
         day = date.fromisoformat(w["date"][:10])
         if day > today:
@@ -180,6 +266,7 @@ def aggregate(workouts: list[dict], index: loads.Index, today: date) -> dict:
             if not prim and not sec:
                 unmatched.add(str(ex.get("name") or ex.get("slug") or "?"))
                 continue
+            logged_days.add(day)
             kg = sum(float(s["reps"]) * float(s["weight_kg"]) for s in sets if s.get("reps") and s.get("weight_kg"))
             top = max(((float(s["weight_kg"]), int(s["reps"])) for s in sets if s.get("reps") and s.get("weight_kg")), default=None)
             name = ex.get("name") or (index.rows.get(slug or "") or {}).get("name_zh") or slug
@@ -198,7 +285,7 @@ def aggregate(workouts: list[dict], index: loads.Index, today: date) -> dict:
                             last[m] = {"date": day, "exercises": [item]}
                         elif day == cur["date"] and not any(e["name"] == name for e in cur["exercises"]):
                             cur["exercises"].append(item)
-    return {"stats": stats, "last": last, "unmatched": sorted(unmatched)}
+    return {"stats": stats, "last": last, "unmatched": sorted(unmatched), "logged_days": logged_days}
 
 
 def _r(x: float, d: int = 1) -> float:
@@ -219,21 +306,27 @@ def _build(conn: psycopg.Connection, owner_id: int, today: date | None) -> tuple
     imported = _imported(conn, owner_id, start, today)
     index = loads.Index(conn, owner_id)
     agg = aggregate([*sessions, *imported], index, today)
-    sp = aggregate_sports(_sports(conn, owner_id, min(win["week"][0], win["last7"][0]), today), today)
+    sp = aggregate_sports(_sports(conn, owner_id, start, today), today, agg["logged_days"], _plan_targets(conn, owner_id))
     sex = (conn.execute("SELECT sex FROM users WHERE id = %s", (owner_id,)).fetchone() or {}).get("sex")
     muscles = []
     for key in CD.MUSCLE_ZH:
         st, lst = agg["stats"][key], agg["last"].get(key)
         low, high = weekly_range(key)
-        week, prev = st["week"], st["prev_week"]
+        eq = sp["sets"][key]
+
+        def total(w: str) -> float:   # logged sets + the equivalent sets of the workouts (one scale)
+            return st[w]["sets"] + eq[w] if w in st else eq[w]
+        week, prev = total("week"), total("prev_week")
         muscles.append({
             "key": key, "name": L(CD.MUSCLE_ZH[key], MUSCLE_EN.get(key, key)), "group": CD.MUSCLE_GROUP.get(key),
-            "ranges": {w: {"sets": _r(st[w]["sets"]), "volume_kg": round(st[w]["volume_kg"])} for w in P.MUSCLE_RANGES},
-            "prev_week": {"sets": _r(prev["sets"]), "volume_kg": round(prev["volume_kg"])},
-            "delta_sets": _r(week["sets"] - prev["sets"]),
+            "ranges": {w: {"sets": _r(total(w)), "logged_sets": _r(st[w]["sets"]), "sport_sets": _r(eq[w]),
+                           "volume_kg": round(st[w]["volume_kg"])} for w in P.MUSCLE_RANGES},
+            "prev_week": {"sets": _r(prev), "logged_sets": _r(st["prev_week"]["sets"]), "sport_sets": _r(eq["prev_week"]),
+                          "volume_kg": round(st["prev_week"]["volume_kg"])},
+            "delta_sets": _r(week - prev),
             "target": {"low": low, "high": high},
-            "status": {"week": status_for(key, week["sets"]), "last7": status_for(key, st["last7"]["sets"])},
-            "trained_today": st["today"]["sets"] > 0,
+            "status": {"week": status_for(key, week), "last7": status_for(key, total("last7"))},
+            "trained_today": total("today") > 0,
             "sport_min": {w: round(sp["stats"][key][w]) for w in P.MUSCLE_RANGES},
             "last": lst and {"date": lst["date"].isoformat(),
                              "exercises": [{k: v for k, v in e.items() if v is not None} for e in lst["exercises"]][:8]},
