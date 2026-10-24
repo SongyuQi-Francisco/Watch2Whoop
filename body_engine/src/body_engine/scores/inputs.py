@@ -3,7 +3,9 @@
 - Sleep segments follow sleep_sessions (the importers already split them by source priority); only watch sources are used:
   a segment counts if it has stage data (core / deep / rem) or the device name contains Watch (OW's XML import does not store the sleep source, so this is the only way to tell;
   segments with only "asleep" and no stages come from the iPhone / third-party apps and are ignored).
-- Raw samples: heart rate, HRV, respiratory rate, SpO2, wrist temperature. OW first; the Shortcut fills days OW lacks: read from shortcut_samples
+- Raw samples: heart rate, HRV, respiratory rate, SpO2, wrist temperature. In the sync mode `app` (rawdata/engine.mode,
+  step S5) the app's own sync engine first (hk_samples, rawdata/samples.py: the same series, and its sleep stages; OW's
+  nights only where the app has none), then OW. Otherwise OW first; the Shortcut fills days OW lacks: read from shortcut_samples
   (written by import-shortcut; hour-summed heart rate agg = hour is unused, only ungrouped raw readings); if this user has no rows in the table yet, fall back to reading the archive.
   Only one sample per (type + start time) is kept, non-XML preferred.
 - The export.zip uploaded by the user (history/): raw samples and sleep stages in export_samples, treated as an XML source.
@@ -22,7 +24,7 @@ import psycopg
 from ..importers import ow as ow_imp
 from ..importers.common import WAKE_DAY_SHIFT as WAKE_SHIFT, Segment
 from ..importers import shortcut as sc_imp
-from ..rawdata import store as rx_store
+from ..rawdata import samples as rx_samples, store as rx_store
 from . import params as P
 
 Samples = list[tuple[datetime, float]]
@@ -149,6 +151,19 @@ def load_ow(client, ow_user_id: str, tz: ZoneInfo, start: date, end: date, merge
     return ow_imp.sleep_segments(sessions, tz)
 
 
+def load_hk(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date, merger: _Merger,
+            types: dict) -> list:
+    """The app mode (rawdata/engine.mode): the sync engine's raw samples of the same OW series types into the merger, put
+    in before OW's so a sample both carry is the engine's (the merger keeps the first live sample of a time stamp);
+    returns the sleep-stage segments (OW's session rule on the uploaded stage samples, rawdata/samples.py)."""
+    lo = datetime.combine(start, time.min, tz)
+    hi = datetime.combine(end + timedelta(days=1), time.min, tz)
+    for code, xs in rx_samples.samples(conn, user_id, list(types), lo, hi).items():
+        for s in xs:
+            merger.add(types[code], s.ts, s.value, xml=False)
+    return rx_samples.sleep_segments(conn, user_id, tz, lo, hi)
+
+
 def load_shortcut_db(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date,
                      merger: _Merger, types: dict | None = None) -> list | None:
     """Put the raw samples in shortcut_samples into the merger; returns the sleep-stage segments. Returns None if this user has never imported (no rows in the table)."""
@@ -235,8 +250,15 @@ def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
     ow_user = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()["ow_user_id"]
     merger = _Merger()
     segs = []
+    app = rx_samples.reads_app(conn, user_id)
+    if app:   # the app's own sync engine first (rawdata/samples.py); OW then only fills what it lacks
+        segs += load_hk(conn, user_id, inp.tz, start, end, merger, ow_types(hrv_kind))
     if client is not None and ow_user:
-        segs += load_ow(client, ow_user, inp.tz, start, end, merger, ow_types(hrv_kind))
+        ow_segs = load_ow(client, ow_user, inp.tz, start, end, merger, ow_types(hrv_kind))
+        if app:
+            have = rx_samples.wake_dates(segs, inp.tz)
+            ow_segs = [s for s in ow_segs if (s.end - WAKE_SHIFT).astimezone(inp.tz).date() not in have]
+        segs += ow_segs
     db_segs = load_shortcut_db(conn, user_id, inp.tz, start, end, merger, shortcut_types(hrv_kind))
     if db_segs is not None:
         segs += db_segs

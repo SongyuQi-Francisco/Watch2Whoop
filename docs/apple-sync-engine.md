@@ -2,7 +2,7 @@
 
 > 状态：设计稿，等维护者确认（#219）。只描述方案，不含代码改动。标「待查」的地方写这份文档时没查清，拆 PR 时先确认。
 > 文中出现的数字都是示例或估算，不是任何真人的数据。
-> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）已实现，和设计不同的地方见第 3.2 节开头的说明。
+> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）、S3（读取层 + 两条链路逐日对照）已实现，和设计不同的地方见第 3.2 节开头的说明。
 
 ## 0. 摘要
 
@@ -231,6 +231,12 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 > - 同步模式：`shadow`（以及开关关掉后的 `ow`）下日值只写 `daily_metric_sources`、不重选 `daily_metrics`，不写 `sleep_sessions`，训练 `excluded = 'shadow'`；`resolve_daily` 遇到派生类型的 `app` 候选时才查模式，非 `app` 模式跳过它们（基础代谢参考值同样跳过），只剩这种候选的那一项删掉以前选中的 `app` 值（从 `app` 回退时用）。`app` 模式下 `SOURCE_PRIORITY` 照旧（app > ow），训练 `SOURCE_RANK_APP`（app 第一），写睡眠、重选日值、派生完排队算分。`app` 模式已经在派生、`resolve_daily`、`refresh_duplicates` 里预留好，`engine.mode()` 还只返回 ow / shadow，`apple_sync_primary` 留给 S5。
 > - 接入：`deploy/ops/ops.py` 每小时任务先跑 `hk-derive-run`；`sync/refresh.run_scores`（`sync-refresh-run` 和 inline 模式）算分前先派生这个用户的脏天（60 秒预算）。部署机每分钟的导入任务要加一条「`hk_dirty_days` 有行时跑 `hk-derive-run`」（部署者自己的运维脚本，开 `apple_sync_engine` 给内测组之前加）。
 > - 影子期用户看到的东西不变：`water/store.py` 训练日加水量也排除 `excluded = 'shadow'`（其他读 `workouts` 的地方本来就要 `excluded IS NULL`）；数据状态页（`sync/data_status.py`）的「来源」不列不参与选值的 `app` 值。
+>
+> **S3 已实现（`rawdata/samples.py` 读取层、`rawdata/side_by_side.py` 逐日对照，没有新迁移）**，和下文不同的地方以代码为准：
+> - 模块是 `rawdata/samples.py`（不是 `healthkit/samples.py`）。返回值做成 OW 读取的样子（OW 的序列名、`importers/ow.Sample`、睡眠走 OW 的会话规则 + `ow.sleep_segments`），调用方的算法不动；活动 / 基础能量只有 15 分钟统计桶，按和窗口重叠的比例折算。
+> - 只有 `app` 模式读它：`scores/inputs.load`（`compute-scores`、`hrv-compare`）、`insights/stress`、`training/importer.enrich`（训练心率、TRIMP、能量拆分）、今天页睡眠阶段图（`web/views.night_stages`，`stages_source = app`）。`app` 模式下新引擎优先，OW 只补它没有的（新引擎没有的那一晚、那一类样本、那一天；OW 时代的训练两边都没有能量样本时保留已存的活动能量），直到 S6 把 OW 的历史原始样本迁进来；所以 S3 不会造成第 8 节风险 1。`ow` / `shadow` 模式完全不读新引擎的样本，结果和以前一样（`tests/test_apple_sync_read.py`）。
+> - 影子对比的读取能力（第 4 节的输入，判定和每晚任务留给 S4）：同一用户每天两条链路并排——`daily_metric_sources` 的 `ow` / `app` 日值（各自的平均 / 最小 / 最大 / 条数、app − ow、相对差、`daily_metrics` 选中了谁）、`sleep_sessions` 里存的 OW 睡眠和从阶段样本现算的 app 睡眠（按醒来日期）、两份训练。命令 `body-engine sync-shadow-day --user-id N --date D [--end D] [--json]`（中文 Markdown，含健康数值，只到终端或 `health_data/reports/`），接口 `GET /v1/users/{user}/sync/engine/days?date=&end=`（只能看自己的，最多 31 天，`apple_sync_engine` 对这个用户关着时 404）。
+> - 部署机每分钟的导入任务在 `hk_dirty_days` 有行时跑 `hk-derive-run`、每小时任务也先跑一次（部署者自己的运维脚本；开关关着时上传被拒、队列一直为空，任务空跑）。
 
 #### 3.2.1 接口
 

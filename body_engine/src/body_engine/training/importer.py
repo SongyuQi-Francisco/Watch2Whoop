@@ -291,11 +291,25 @@ def session_hr_recovery(hr: list[tuple[datetime, float]], end: datetime) -> floa
     return round(last[-1] - min(after)[1], 1)
 
 
-def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str | None, tz: ZoneInfo) -> dict:
-    """Compute a workout's TRIMP / five-zone minutes / active energy / heart-rate recovery and write back to workouts. Returns flags."""
+def app_window_samples(conn: psycopg.Connection, user_id: int, w: dict, tail_end: datetime) -> dict[str, list]:
+    """The sync mode `app` (rawdata/samples.py): heart rate up to tail_end and active / basal energy (the app's 15-minute
+    statistics buckets, prorated) within the workout, from what the app's own sync engine uploaded."""
+    from ..rawdata import samples as rx_samples
+    return {**rx_samples.samples(conn, user_id, ["heart_rate"], w["start_at"], tail_end + timedelta(microseconds=1)),
+            **rx_samples.samples(conn, user_id, ["active_energy", "basal_energy"], w["start_at"], w["end_at"])}
+
+
+def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str | None, tz: ZoneInfo,
+           app: bool = False) -> dict:
+    """Compute a workout's TRIMP / five-zone minutes / active energy / heart-rate recovery and write back to workouts. Returns flags.
+    app = the user's sync mode is `app`: the app's own samples first, OW's only for the sample types the app has none of
+    in this window (OW-era workouts until step S6 moves OW's history), and an OW workout with no energy samples anywhere
+    keeps the active energy computed before."""
     flags = {k: v for k, v in (w["flags"] or {}).items() if k in IMPORT_FLAGS}
     tail_end = w["end_at"] + P.HRR_TAIL   # heart rate a few minutes past the end, for heart-rate recovery only
-    samples = window_samples(client, ow_user, w["start_at"], tail_end) if client is not None and ow_user else {}
+    samples = app_window_samples(conn, user_id, w, tail_end) if app else {}
+    if client is not None and ow_user and not (app and {"heart_rate", "active_energy", "basal_energy"} <= samples.keys()):
+        samples = {**window_samples(client, ow_user, w["start_at"], tail_end), **samples}
     for code in ("active_energy", "basal_energy"):
         if code in samples:
             samples[code] = [x for x in samples[code] if x.ts <= w["end_at"]]
@@ -334,6 +348,9 @@ def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str
             upd["active_kcal"] = round(total * act / (act + bas), 1)
             if bas:
                 flags["basal_kcal"] = round(total * bas / (act + bas), 1)
+        elif app and not act and not bas and w["active_kcal"] is not None:
+            # no energy samples from the app nor from OW: keep what was computed when OW still had them
+            flags.update({k: v for k, v in (w["flags"] or {}).items() if k in ("basal_kcal", "active_kcal_estimated")})
         elif total:
             rate = basal_rate(conn, user_id)
             upd["active_kcal"] = round(max(total - rate * w["duration_min"], 0.0), 1)
@@ -354,8 +371,12 @@ def enrich_pending(conn: psycopg.Connection, client, user_id: int, force_ids: se
     rows = conn.execute("""SELECT * FROM workouts WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL
                            ORDER BY start_at""", (user_id,)).fetchall()
     todo = [w for w in rows if (w["flags"] or {}).get("computed") != P.TRAINING_VERSION or w["id"] in (force_ids or set())]
+    if not todo:
+        return 0
+    from ..rawdata import samples as rx_samples
+    app = rx_samples.reads_app(conn, user_id)
     for w in todo:
-        enrich(conn, client, user_id, w, user["ow_user_id"], tz)
+        enrich(conn, client, user_id, w, user["ow_user_id"], tz, app)
     return len(todo)
 
 
