@@ -90,6 +90,7 @@ def test_owner_sees_how_each_member_came_in(client, dsn, world):
     assert client.post("/v1/friends/join", json={"code": made["invite"]["code"], "scopes": ["scores"]},
                        headers=h(tok["Ben"])).status_code == 200
     with psycopg.connect(dsn, row_factory=dict_row) as conn:   # Cat signed up with Ann's referral code
+        conn.execute("UPDATE circles SET personal = true WHERE id = %s", (cid,))   # referrals invite to a personal circle only
         assert store.referral_invites(conn, ids["Ann"], ids["Cat"]) == cid
         inv = conn.execute("SELECT id FROM circle_invites WHERE invitee_user_id = %s", (ids["Cat"],)).fetchone()["id"]
         k = codes.create(conn, cid, "Family Club 1", 5)

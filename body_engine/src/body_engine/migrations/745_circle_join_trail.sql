@@ -2,13 +2,14 @@
 -- shown to the circle's owner only (flag circle_join_trail), never to the other members.
 --   join_via: created      made the circle (or their personal circle was made for them)
 --             invite_code  a circle invite code / link (circle_invites with code_sha256); invited_by = who made the code
---             referral     signed up with someone's referral code and accepted the invite to their home circle
+--             referral     signed up with someone's referral code and accepted the invite to their personal circle
 --                          (circle_invites addressed to the user); invited_by = the referral code's owner
 --             circle_code  a circle activation code made by the admin (circle_codes); invited_by stays NULL
 --             NULL         not recorded (joined before this migration and the backfill below found nothing)
 -- join_inferred: backfilled invite_code rows where several codes of the circle were live when the person joined; the
 -- inviter is still right (only the owner makes codes), only which code is a guess (the latest one made before joining).
 -- Written so that running the file again only fills rows that are still empty (tests rerun the backfill).
+-- Also here: referral invites to circles that are not personal are stopped (below).
 -- No grant to grafana_ro (not health data).
 
 ALTER TABLE circle_members
@@ -17,6 +18,13 @@ ALTER TABLE circle_members
   ADD COLUMN IF NOT EXISTS invite_id INT REFERENCES circle_invites(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS circle_code_id INT REFERENCES circle_codes(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS join_inferred BOOLEAN NOT NULL DEFAULT false;
+
+-- A referral code is the person's own, not a circle's (#269): it invites only to the inviter's personal circle. Before this,
+-- an inviter without one (they owned a hand-made or club circle first) sent the invite to that circle instead. Stop such
+-- invites not yet accepted (addressed invites only ever come from referrals); joins that already happened stay.
+UPDATE circle_invites i SET revoked_at = now()
+FROM circles c
+WHERE c.id = i.circle_id AND NOT c.personal AND i.invitee_user_id IS NOT NULL AND i.revoked_at IS NULL;
 
 -- Backfill. Every join wrote its rows in one transaction, so now() is the same instant on both sides; that is what is
 -- matched on below (exact, not a time window).

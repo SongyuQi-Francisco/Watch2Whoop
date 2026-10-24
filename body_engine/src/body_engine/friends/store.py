@@ -7,8 +7,9 @@ transaction as every membership change, so leaving takes effect at once and neve
 
 Every function acts for `uid` (the caller); only the circle's owner may invite, reset, rename, remove or dissolve.
 Personal circles (owner decision 2026-10-22, plan A): everyone has one circle of their own (ensure_personal). Signing up
-with someone's referral code brings an invite to that person's home circle only (their personal one), never to the
-circles they are merely a member of, so friends of friends stay invisible to each other.
+with someone's referral code brings an invite to that person's personal circle only, never to a club or any other circle
+they made or are merely a member of (#269: no personal circle = no circle invite, only the referral itself is recorded),
+so friends of friends stay invisible to each other.
 Errors are FriendsError(status, Chinese message); the API turns them into HTTP errors (English in errors_en.py).
 """
 from __future__ import annotations
@@ -361,7 +362,8 @@ def _personal_name(conn, uid: int) -> str:
 
 
 def home_circle(conn: psycopg.Connection, uid: int) -> int | None:
-    """The circle a referral invites to: the person's own personal circle, else the oldest one they own."""
+    """The person's own personal circle, else the oldest one they own (ensure_personal: an owner gets no second circle).
+    Not where a referral invites to: that is personal_circle() only."""
     row = conn.execute("SELECT id FROM circles WHERE owner_id = %s ORDER BY personal DESC, created_at, id LIMIT 1",
                        (uid,)).fetchone()
     return row["id"] if row else None
@@ -390,12 +392,22 @@ def ensure_personal(conn: psycopg.Connection, uid: int) -> int | None:
     return home_circle(conn, uid)
 
 
+def personal_circle(conn: psycopg.Connection, uid: int) -> int | None:
+    """The circle made for the person as their personal one (circles.personal), None when they have none."""
+    row = conn.execute("SELECT id FROM circles WHERE owner_id = %s AND personal ORDER BY created_at, id LIMIT 1",
+                       (uid,)).fetchone()
+    return row["id"] if row else None
+
+
 def referral_invites(conn: psycopg.Connection, inviter_id: int, invitee_id: int) -> int | None:
-    """#57 hook: someone signed up with `inviter_id`'s referral code → one invite to the inviter's home circle (made now if
-    circles are on for the inviter), valid params.REFERRAL_INVITE_DAYS. Made once per circle and person: a declined or
-    expired invite is not renewed. Nothing is shared until the invitee accepts and picks scopes. Returns the circle's id
-    (recorded in invite_redemptions.circle_id) or None (circles off for the inviter: referral_offer() catches up later)."""
-    cid = ensure_personal(conn, inviter_id)
+    """#57 hook: someone signed up with `inviter_id`'s referral code → one invite to the inviter's personal circle (made
+    now if circles are on for the inviter), valid params.REFERRAL_INVITE_DAYS. A referral code is the person's own, not a
+    circle's: an inviter without a personal circle (they owned a hand-made or club circle first) sends no circle invite at
+    all, never one to that circle (#269). Made once per circle and person: a declined or expired invite is not renewed.
+    Nothing is shared until the invitee accepts and picks scopes. Returns the circle's id (recorded in
+    invite_redemptions.circle_id) or None (no personal circle, or circles off for the inviter: referral_offer() catches up later)."""
+    ensure_personal(conn, inviter_id)
+    cid = personal_circle(conn, inviter_id)
     if cid is None:
         return None
     if not conn.execute("""SELECT 1 FROM circle_invites WHERE circle_id = %s AND invitee_user_id = %s
@@ -409,7 +421,7 @@ def referral_invites(conn: psycopg.Connection, inviter_id: int, invitee_id: int)
 
 def referral_offer(conn: psycopg.Connection, uid: int) -> dict | None:
     """The 「加入 XX 的圈子」 step of onboarding (and the Friends page invite list): if `uid` signed up with a referral code,
-    the open invite to the inviter's home circle. Catches up a sign-up made while circles were off for either of them
+    the open invite to the inviter's personal circle. Catches up a sign-up made while circles were off for either of them
     (the invite is made now). None = nothing to offer, also whenever circles are off for the inviter (no error, nothing
     about the inviter is shown). Also makes the caller's own personal circle."""
     ensure_personal(conn, uid)
