@@ -944,6 +944,11 @@ I18N.addEn({
   "用我的邀请码 {code} 注册 Watch2Whoop": "Sign up for Watch2Whoop with my invite code {code}",
   "邀请名额已用完": "No invites left",
   "邀请好友": "Invite friends",
+  // open sign-up: a code entered after the account is open
+  "已记录好友的邀请": "Your friend's invite is recorded",
+  "填写邀请码": "Enter an invite code",
+  "好友的邀请码、管理员给的激活码或圈子激活码；只能填一次": "A friend's invite code, an activation code from the admin, or a circle code; one code only",
+  "提交邀请码": "Submit code",
   "链接已复制": "Link copied",
   "激活码": "Activation code",
   "管理员给的激活码，或好友的邀请码": "An activation code from the admin, or a friend's invite code",

@@ -35,6 +35,7 @@ def _table(s: dict) -> str:
              + (f"；余额查询失败 {s['balance_error']}" if s["balance_error"] else ""),
              f"本月合计 ¥{s['month_spent_cny']:.2f}；{s['eligible_users']} 人可用，本月最多还会花 ¥{s['month_remaining_cny']:.2f}"
              f"（其中没用的额度卡最多 ¥{s['month_cards_max_cny']:.2f}）",
+             *_open_signup_line(s.get("open_signup")),
              f"价格：{s['price_source']}", "",
              f"{'id':>3}  {'称呼':<10} {'本月':>8} {'额度':>6} {'调用':>5} {'输入 tok':>9} {'输出 tok':>8} {'被拦':>4}  同意  额度卡  Jarvis 用"]
     for u in s["users"]:
@@ -42,6 +43,15 @@ def _table(s: dict) -> str:
                      f"{u['input_tokens']:>9} {u['output_tokens']:>8} {u['scope_blocked']:>4}  {_consent(u):<4}  "
                      f"{_cards(u):<6}  {u['uses']}")
     return "\n".join(lines)
+
+
+def _open_signup_line(o: dict | None) -> list[str]:
+    """Open sign-up on: what the fallback may cost a month at the account cap and how long the balance lasts."""
+    if not o or not o["on"]:
+        return []
+    m = lambda v: "?" if v is None else f"{v:g} 个月"  # noqa: E731
+    return [f"开放注册开着（{o['active']} / {o['cap']}）：满额每月最多 ¥{o['month_max_at_cap_cny']:.2f}，"
+            f"余额可撑 {m(o['runway_months_at_cap'])}（按现在 ¥{o['month_max_now_cny']:.2f} / 月，{m(o['runway_months_now'])}）"]
 
 
 def _consent(u: dict) -> str:
