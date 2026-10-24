@@ -8,12 +8,13 @@
 
 ## 0. 摘要
 
+- **给华为手机家人的客户端（第 7 节，优先级最高）**：手表数据走服务器云侧，**客户端不需要读任何健康权限**，所以第一版壳可以不碰手表数据，不被资质卡住。分两种手机：**HarmonyOS 4.x 及以前**能装 APK（华为开发者社区文章；官方未直接表述，待确认）→ 给 Flutter 工程加 `android/` 目标出 APK 侧载，**不需要任何华为账号**，约 1–1.5 周开发；**HarmonyOS NEXT（5.0 起）**不能装 APK → 单独做 ArkTS 壳（Flutter for OpenHarmony 是社区分支，没有成熟度声明且版本落后，不建议），需要华为开发者账号（个人实名 1–2 个工作日），约 2 周开发；分发先用调试包 + `hdc`（≤ 100 台设备，个人账号可用）当面装，远程用邀请测试（≤ 10000 人，**官方 FAQ：不需要备案和资质**，首个版本要审核）。正式上架要 APP 备案和隐私材料，周期按月，不是最快路径。预计家人可用：A 线约 1.5 周，N 线当面约 3 周、远程约 4–5 周（估算）。
 - **推荐路线：云侧 REST API（服务器直连）**，不做端侧 SDK。我们只有 iOS app 和服务器；云侧接口不要求手机系统（华为运动健康 App 的 iOS 版本身就有「HUAWEI Health Kit」授权入口），也不要求我们的 app 上架华为应用市场。端侧 SDK 只支持 Android 和 HarmonyOS，我们没有这两个客户端。
 - **关键门槛不是技术，是资质**：评分需要的心率、HRV、睡眠、血氧、体温、最大摄氧量，华为都归在「高阶」数据；个人开发者拿不到高阶数据，企业（含事业单位 / 社会团体）要求**实缴注册资本 ≥ 500 万元、成立满 1 年**（中国站文档）。实缴只有 50 万元的主体只能申请「基础」数据：训练记录（含训练中心率）、步数、热量、距离，**没有睡眠、静息心率、HRV，也就算不出恢复分和睡眠分**（第 2.3 节）。所以负责人先确认主体的实缴注册资本，再决定要不要开始申请。
 - **能拿到的**：夜间 HRV 是 **RMSSD**（整数毫秒，范围 (0, 200]，仅「部分手表」，不是逐拍时间）；睡眠有清醒 / 浅睡 / REM / 深睡四个阶段和华为自己的睡眠分；训练有 100 多种类型和训练中心率明细。**拿不到的**：呼吸频率只有按夜的统计值（均值 / 最大 / 最小，没有逐条样本）；HRV 没有逐拍间期，我们现有的「由逐拍时间算 RMSSD」那条路对华为用不了；采样间隔华为文档没写（待查）；绝大多数数据的**时效是「小时」级**，不是实时（第 2 节）。
 - **和现有架构的关系**：华为作为一个独立的「外部厂商连接」，走自己的原始样本表和派生步骤，写进现有的 `daily_metric_sources` / `sleep_sessions` / `workouts`（来源 `huawei`），评分代码基本不改，只新增一个 HRV 口径 `rmssd_huawei`（第 4、5 节）。它不依赖 Open Wearables（OW 没有华为 provider），和 #219（自建 Apple 同步引擎）的原始样本表 + 脏天队列思路一致、可以共用派生队列；只部署在内地区域（#249）。
 - **工作量**：代码约 28–34 人日（分 6 个 PR），另有一个跨设备验证实验（第 5 节，接 #118）。资质审批如果一次通过，从申请到拿到正式权限约 **6 周**（3 + 10 + 15 个工作日，加上 24 小时生效），被驳回一次每次再加约 2–3 周（第 3、6 节）。
-- 需要负责人决定的 9 点和推荐见第 7 节。
+- 华为手机上的客户端（给家人用）见第 7 节；需要负责人决定的点和推荐见第 8 节。
 
 ---
 
@@ -123,7 +124,7 @@
 
 来源：[中国站·应用开发者申请资质说明](https://developer.huawei.com/consumer/cn/doc/HMSCore-Guides/application-qualification-description-0000001425636570)（2026-01 更新）、[英文站同页](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/application-qualification-description-0000001425636570)、[订阅说明](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/subscription-0000001078496860)、[接入流程](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/access-process-0000001624467736)。
 
-**对我们的结论**：我们的 iOS app 不会上架华为应用市场，个人开发者这条路基本走不通（它只能拿基础数据，而且要求上架）。要拿到睡眠 / HRV / 心率，必须是满足 500 万元实缴资本的企业或事业单位 / 社会团体名义的开发者账号。**先由负责人确认可用主体的实缴注册资本，这一条决定了整件事是否可行**（第 7 节 D1）。官方说资质有疑问可以发邮件或提工单（页面上给了华为运动健康服务的联系邮箱，邮件里要写：开发者站点、用户所在国家 / 地区、企业简介和项目场景、项目负责人联系方式）。
+**对我们的结论**：我们的 iOS app 不会上架华为应用市场，个人开发者这条路基本走不通（它只能拿基础数据，而且要求上架）。要拿到睡眠 / HRV / 心率，必须是满足 500 万元实缴资本的企业或事业单位 / 社会团体名义的开发者账号。**先由负责人确认可用主体的实缴注册资本，这一条决定了整件事是否可行**（第 8 节 D1）。官方说资质有疑问可以发邮件或提工单（页面上给了华为运动健康服务的联系邮箱，邮件里要写：开发者站点、用户所在国家 / 地区、企业简介和项目场景、项目负责人联系方式）。
 
 ### 3.2 申请步骤（云侧）
 
@@ -158,7 +159,7 @@
 
 ### 3.4 费用
 
-**官方文档里没有看到运动健康服务的收费条款**（申请、测试、验证、调用接口的页面都没写费用），但我们不能据此断定免费：开发者账号的企业认证、可能的接口调用限额，向华为确认。第 7 节 D1 的工单里一起问。
+**官方文档里没有看到运动健康服务的收费条款**（申请、测试、验证、调用接口的页面都没写费用），但我们不能据此断定免费：开发者账号的企业认证、可能的接口调用限额，向华为确认。第 8 节 D1 的工单里一起问。
 
 ---
 
@@ -294,27 +295,124 @@ REST 基址是 `https://health-api.cloud.huawei.com/healthkit/v2/…`，授权�
 | API / 类型随华为更新（HRV、呼吸频率、匹克球等都是新近加的） | 字段变化导致解析失败 | 按类型解析、未知类型存原样跳过；定期看华为的[变更记录](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/version-change-history-0000001233272401)；解析失败进数据质量告警 |
 | 刷新令牌 6 个月过期 / 用户改密码 | 悄悄断流 | 每次刷新存新令牌；`needs_reauth` 状态 + 提示；订阅事件 `REFRESH_TOKEN_INVALID` |
 | 华为抽查权限用途、测试权限一年内要验证 | 权限被收回 | 最小权限；开发完成后尽快提交验证 |
-| 华为手表用户多数是否用 iPhone | 只做 iPhone 路线可能覆盖面很小（**推断**：华为手表通常配华为 / Android 手机，我们没有查到官方的配对比例统计） | D3：先做 iPhone，同时开 issue 评估 Android / HarmonyOS 客户端 |
+| 华为手表用户多数是否用 iPhone | 只做 iPhone 路线可能覆盖面很小（**推断**：华为手表通常配华为 / Android 手机，我们没有查到官方的配对比例统计） | D3：iPhone 和华为手机客户端并行（第 7 节），不读手表数据的壳先发 |
 
 ---
 
-## 7. 要负责人决定的点
+## 7. 华为端 app：发布手续和最快路径
+
+> 背景：负责人要尽早给用华为手机的家人发一个可用版本。本节回答三件事：华为手机上能装什么 app、要办什么手续、最快怎么让家人用上。
+> 核心结论：**手表数据走云侧 REST（第 1、4 节），由服务器和华为云对接，客户端不需要读任何健康权限**，所以第一个版本可以完全不碰手表数据（今天页、AI 记录、手动记录），之后服务器侧资质通过了，不用改客户端就能加上手表数据。客户端只是「内嵌今天页的壳」，华为端的发布手续里**不涉及健康数据权限**。
+
+### 7.1 先分系统：家人的手机是哪一种
+
+| | HarmonyOS 4.x 及更早（含 4.3）/ 海外 EMUI | HarmonyOS NEXT（5.0 起，含 5.x、6.x、26.0） |
+|---|---|---|
+| 能不能装 APK | 能（有 Android 兼容层，Android 应用可以直接运行） | **不能**，只支持鸿蒙原生应用（HAP） |
+| 我们要做什么 | 给现有 Flutter 工程加 `android/` 目标（`docs/apps.md` 本来就计划做），出 APK 侧载 | 单独做一个 ArkTS 原生壳（`apps/harmony/`，`docs/apps.md` 已建议），内嵌今天页 |
+| 要华为开发者账号吗 | **不要**（侧载不经过华为） | 要（签名证书、Profile 都由华为开发者账号签发） |
+
+依据：
+- 华为开发者社区的一篇梳理文章写明：普通 HarmonyOS（到 4.3，最后一个安卓适配版本）借助兼容层可直接运行 Android 应用，HarmonyOS NEXT「不再兼容任何安卓应用，仅支持 HAP 格式的鸿蒙原生应用」（[HarmonyOS 历史版本及与 NEXT 的区别](https://developer.huawei.com/consumer/cn/blog/topic/03199548836169090)）。**注意这是社区文章，不是华为的正式政策文件**；我们没有查到华为官方文档对「NEXT 不能装 APK」的直接表述（**待确认**，家人手机上装一下就知道）。
+- 华为官方的设备清单页（2026-10 更新）列出了 HarmonyOS 5.x / 6.x / 26.0 支持的手机：Mate 60 系列及以后、Pura 70 系列及以后、nova 14 以后、畅享 90 等（[各版本支持设备型号清单](https://developer.huawei.com/consumer/cn/doc/doccenter-release-notes/support-device)）。也就是说近两三年的华为手机大概率已经是 NEXT；老机型是不是 4.x、能不能升级，要看具体机型，**先查家人的手机**。
+- 怎么查：手机「设置 → 关于手机」里看 HarmonyOS 版本号（4.x 还是 5.x / 6.x），记下手机型号和手表型号（手表型号决定能不能有 HRV，第 2 节）。
+
+### 7.2 NEXT 这一侧：Flutter 能不能用
+
+- 有社区 / 开源鸿蒙 SIG 维护的「Flutter for OpenHarmony」分支（[flutter_flutter](https://gitcode.com/CPF-Flutter/flutter_flutter/tree/br_3.27.4-ohos-1.0.4)：基于 Flutter 3.27.4，说明里提到 3.35.7 起可以从同一份源码构建；用 `flutter build hap` 出包）和插件适配仓库（[flutter_packages](https://gitcode.com/openharmony-tpc/flutter_packages)：已适配 webview_flutter、url_launcher、shared_preferences、path_provider、camera、image_picker 等，推荐版本 3.7 / 3.22 / 3.27 / 3.35 / 3.41）。仓库说明里**没有成熟度或生产可用的声明**，已知问题里有模拟器不支持 Vulkan 要关 Impeller、个别 ROM 上调试包安装失败等。
+- 我们的 app 锁在 Flutter 3.47.7，比这些分支都新；依赖里的 `sign_in_with_apple`（苹果专有）、`open_wearables_health_sdk`（OW 没有鸿蒙版）、`flutter_secure_storage`、`mobile_scanner`、`wakelock_plus` 等，没有在适配清单里（**待确认**，要逐个查）。
+- 所以**不建议用 Flutter 做鸿蒙版**，和 `docs/apps.md` 的判断一致：做一个**原生 ArkTS 壳**，用 ArkWeb 的 `Web` 组件内嵌今天页（自己实现登录、扫码、深链、文件 / 麦克风权限）。壳不依赖 OW，也不读健康数据。
+
+### 7.3 开发者账号和手续（只有 NEXT 这一侧要）
+
+| 事项 | 个人开发者 | 企业开发者 | 来源 |
+|---|---|---|---|
+| 实名认证 | 提交身份证等，**审核一般 1–2 个工作日**（周末节假日除外） | 营业执照等，人工审核或对公银行打款认证，审核同样 1–2 个工作日；打款认证的到账时间 **待确认** | [注册认证 FAQ](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/hdc-verification-faq-0000002752607795) |
+| 账号数量 | 每个个人 / 企业只能有一个实名账号；**个人账号不能直接升级成企业账号**，要用企业信息重新注册 | 同左 | 同上 |
+| 调试证书 | 实名后有效期 **1 年**（未实名只有 14 天）；每个账号最多 3 张 | 同左 | [申请调试证书](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-debug-cert-0000002283256797) |
+| 注册调试设备 | 用设备 UDID（`hdc shell bm get --udid`，要打开 USB 调试并连电脑），**一个账号最多 100 台**；调试 Profile 也最多选 100 台设备 | 同左 | [注册设备](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-add-device-0000002283189937)、[调试 Profile](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-debug-profile-0000002248181278) |
+| 费用 | 官方文档里没有看到注册 / 测试分发的收费条款（**待确认**，社区帖子说个人上架无需费用，不算官方依据） | 同左 | — |
+
+**三种不上架应用市场的分发方式**（[对比表](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-internal-test-overview-0000002253054942)）：
+
+| 方式 | 谁能用 | 人数上限 | 要审核吗 | 要备案 / 资质吗 | 适合 |
+|---|---|---|---|---|---|
+| **调试包 + hdc 安装**（调试证书 + 调试 Profile） | 个人、企业都可以（文档没有限制） | 100 台设备 | 不经过应用市场，没有审核 | 不要 | 开发期、当面给最多几位家人装；要打开 USB 调试连电脑 |
+| **指定设备发布**（自己的服务器放包，Deeplink 下载，或 hdc 安装） | **仅企业开发者**（[流程页](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-internal-test-guide-0000002295325149)明说） | 100 台设备 | 不提交应用市场 | 不要 | 有企业账号时，团队内部 |
+| **邀请测试**（AppGallery 邀请测试 / AppTest 邀请测试，用邀请链接或邀请码） | 文档没有限定企业（个人账号能不能用 **待确认**，提工单问） | 外部测试用户最多 10000 人 | **要**：首个版本全面审核，之后的构建版本通常分钟级（部分开发者开放）；审核时长官方没有给确数，应用审核指南说常规应用通常 24 小时（**待确认**邀请测试同样） | **不要**（官方 FAQ：发布邀请测试不需要先提供资质、备案） | **远程给家人**：发个链接，不用 USB、不用 UDID |
+
+两点限制：邀请测试停止后，已安装的测试版 90 天后无法启动；邀请测试和 AppTest 需要在 HarmonyOS 开发者中心里先为应用开通（AppTest 要工单申请，来源：[AppTest 邀请测试流程](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-apptest-invite-test-guide-0000002258174270)、[邀请测试 FAQ](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-invite-test-faq-0000002363660365)）。
+
+### 7.4 正式上架要什么（不建议第一版做）
+
+- **APP 备案**（工信部移动互联网应用程序备案）：未备案不能提供互联网信息服务，上架审核会核验；
+- **隐私政策**：开发者名称、应用名要和开发者中心一致，链接长期可访问；要填隐私标签；个人开发者还要提交《个人开发者承诺函》；
+- 软件著作权：**非必选**，华为建议申请，名称要和应用名一致；
+- **要小心的品类**：应用里有**生成式人工智能服务**（我们的应用内 AI 对话属于这一类）要提供算法备案和安全评估报告；医疗服务、健康体检等需要医疗机构执业许可证（我们不是医疗服务，但上架分类时要避免被归入）。**待确认**：我们的应用内 AI 是否落入「深度合成或生成式人工智能服务」的资质要求，要问华为客服。
+- 个人开发者上架的限制：需要具备资质的法律实体才能上架的品类（金融、医疗等）个人不能提交。
+
+来源：[应用资质审核要求](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/80301)、[AppGallery 审核指南](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/50104)。正式上架牵涉备案（和 #249 的内地区域域名备案是同一批材料，细节放私有运维文档），周期按月算，**不是最快路径**。
+
+### 7.5 健康数据权限（Android 侧 HMS 和 NEXT 侧）
+
+- **申请是同一套**：「运动健康服务」是一个控制台卡片，数据权限（心率、睡眠、HRV 等）按「产品 / 应用」申请，端侧 Android（HMS Core）、端侧 HarmonyOS、云侧 REST 用的是同一份资质要求和同一套审核（[接入流程](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/access-process-0000001624467736)、[端侧概述](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/dev-overview-0000001475952057)：端侧支持 Android 和 HarmonyOS）。NEXT 端侧（ArkTS，`@kit.HealthServiceKit`）有没有额外步骤（例如签名指纹、ACL 权限）**待确认**，因为我们不走端侧，所以不影响本方案。
+- **个人开发者**：只能申请「基础」数据（训练记录和训练中心率、步数、热量），而且**要求应用上架华为应用市场**；心率、睡眠、HRV 等「高阶」数据不对个人开放（第 3.1 节）。所以个人账号**读不到**家人的睡眠和 HRV。
+- **审核时间**（企业主体）：测试权限约 10 个工作日，正式验证约 15 个工作日（第 3.2 节）。**短期内（家人要用的两三周内）拿不到**。
+- **第一个版本可以不读手表数据吗**：可以，而且是推荐做法：华为端壳只做今天页 + AI 记录 + 手动记录；手表数据在资质通过后，经服务器的云侧连接器（第 4 节）加进来，授权用系统浏览器完成（华为账号 OAuth），**客户端不需要新版本**，只是今天页「我 → 数据来源」里多一个入口。
+- 如果想用个人账号提前拿到一点数据：个人开发者 + 应用上架华为应用市场（要备案）→ 基础数据（训练、步数），只能算 strain，没有恢复分和睡眠分，且要走正式上架，周期长，**不推荐**。
+
+### 7.6 最快让家人用上：推荐路径和时间
+
+> 时间是估算（工作日 / 人日），不是承诺；标「负责人」的是必须本人去办的。
+
+**第 0 步（负责人，今天，约 10 分钟）**：问清每位家人的手机型号、HarmonyOS 版本号（4.x 还是 5.x / 6.x）、手表型号。分成两组走下面两条线，两条线可以并行。
+
+**可选过渡（零开发，可能当天可用，需要负责人同意）**：今天页本身是网页，登录有「邮箱验证码 / 激活码」流程（`activate.html`、`install.html`），家人用华为浏览器打开今天页地址、添加到桌面就能用。**限制**：项目已决定「app 是唯一客户端」，网页模式不再维护；网页里没有按住说话（需要 app 注入的麦克风接口）、没有离线壳。能不能用、哪些功能缺，**待确认**（需要在一台华为手机上试）。仅作为 app 出来之前的过渡，D10。
+
+**A 线：HarmonyOS 4.x 及以前的家人 → Android APK 侧载（最快）**
+
+| 步骤 | 谁 | 预计 |
+|---|---|---|
+| A1 给 Flutter 工程加 `android/` 目标：去掉 iOS 专有部分（Apple 登录、OW 同步、HealthKit）用 `Platform` 开关隔开；WebView、扫码（`mobile_scanner` 在没有 Google 服务的机型上的表现 **待确认**，必要时换内置识别库）、账号令牌存储、深链 `watch2whoop://setup` 的 Android 意图过滤；中英文文案 | 开发会话 | **5–8 人日**（约 1–1.5 周） |
+| A2 用自己的 keystore 签名、出 release APK，写一页安装说明 | 开发会话 | 0.5 人日 |
+| A3 把 APK 发给家人，在手机上允许「外部来源应用安装」（具体设置路径和华为「纯净模式」是否拦截 **待确认**，用一台家人的手机试） | 负责人 + 家人 | 当天 |
+
+**N 线：HarmonyOS NEXT 的家人 → ArkTS 壳**
+
+| 步骤 | 谁 | 预计 |
+|---|---|---|
+| N1 注册华为开发者账号并实名认证：**个人账号 1–2 个工作日**；这个账号只用于客户端分发，不影响第 3 节的企业资质（个人和企业各自一个账号，互不冲突）。先问清是否要等 D1 的结论再决定用哪个主体（见 D11） | **负责人** | 1–2 个工作日（今天开始） |
+| N2 开发者中心创建 HarmonyOS 应用（应用名、包名；与 iOS 的包名独立）、申请调试证书（实名后 1 年有效） | 负责人 + 开发会话 | 0.5 天 |
+| N3 开发 ArkTS 壳：Stage 模型、`Web` 组件内嵌今天页（Cookie 持久化、外链用系统浏览器）、登录 / 激活码、扫设置二维码、`watch2whoop://setup` 深链、文件选择 / 麦克风权限、中英文。需要 DevEco Studio、`hdc`、一台 NEXT 真机（家人的手机可当测试机，要打开开发者模式和 USB 调试）；今天页里调用 app 注入接口（`window.Watch2Whoop`、`Watch2WhoopFeatures`）的地方要用 ArkWeb 的 JS 代理对应实现。这个仓库的开发会话**没有写过 ArkTS、也没验证过 DevEco 环境**，所以第一版留出真机迭代时间 | 开发会话 | **8–12 人日**（约 2 周） |
+| N4a **当面装**：调试证书 + 调试 Profile + 用 `hdc` 安装到最多 100 台已登记 UDID 的手机（UDID 用 `hdc shell bm get --udid` 取） | 负责人 + 家人（当面） | N3 完成后当天 |
+| N4b **远程装**：为应用开通邀请测试 / AppTest（工单），准备发布证书、发布 Profile、应用资料和隐私政策地址，创建测试群组或公开链接，首个版本过审；家人用链接 / 邀请码安装，不用 USB（**个人账号能否使用 + 审核时长待确认**，先提工单问） | 负责人 + 开发会话 | 约 1–2 周（含审核，估算） |
+
+**合计**：A 线约 **1.5 周**；N 线当面安装约 **3 周**，远程邀请测试约 **4–5 周**。两条线同时做，开发会话是瓶颈（A1 + N3 合计约 13–20 人日，顺序做大约 3.5–4 周；先 A 后 N，A 线家人 1.5 周可用）。**手表数据**是另一条线：资质审批约 6 周（第 3 节），不挡客户端发布。
+
+**排期建议**：先做 A 线 + 过渡（如果批准）；N 线的账号注册今天就开始（1–2 个工作日），让开发会话在 A1 之后接 N3；家人在身边的先用 hdc 装 N4a，等 N4b 的工单有答复再决定要不要走邀请测试。
+
+---
+
+## 8. 要负责人决定的点
 
 | 编号 | 问题 | 推荐 |
 |---|---|---|
 | **D1** | 用哪个主体申请、要不要申请：高阶数据要求实缴注册资本 ≥ 500 万元的企业 / 事业单位 / 社会团体，个人不行 | **先确认可用主体的实缴注册资本。≥ 500 万再开始；不够就不申请，也不做只有基础数据的版本**（没有恢复 / 睡眠）。同时提工单问：服务端应用 + 不上架华为应用市场是否放行、是否收费、手表型号清单。备选（待查）：用户从运动健康 App 自行导出文件再导入（像 Apple 健康导出那样），要先确认华为是否提供这种导出和格式 |
 | **D2** | 接入路线 | **云侧 REST（服务器直连）**；端侧 SDK 不做 |
-| **D3** | 目标人群：只做「华为手表 + iPhone」，还是也覆盖 Android / HarmonyOS 手机用户（需要新客户端，和「iPhone app 是唯一客户端」的决定冲突） | **第一阶段只做 iPhone 用户**；另开 issue 评估 Android / HarmonyOS 客户端，用第一阶段的真实需求（例如内测组里有多少华为手表用户）作依据 |
+| **D3** | 目标人群：只做「华为手表 + iPhone」，还是也覆盖 Android / HarmonyOS 手机用户（需要新客户端，和「iPhone app 是唯一客户端」的决定冲突）。负责人已提出要尽早给用华为手机的家人用 | **都做，而且华为手机客户端先发一个不读手表数据的版本**：4.x 手机用 Android APK 侧载、NEXT 手机用 ArkTS 壳（第 7 节）；手表数据经服务器云侧连接器后加，客户端不用改 |
 | **D4** | 区域：华为连接器只放内地区域，只服务中国站华为账号；港澳台和海外用户的华为账号不支持 | **同意**（对上 #249）；海外站点另开 issue，需要另一个开发者账号和资质 |
 | **D5** | HRV 口径：新增 `rmssd_huawei`，不和 Apple 的 SDNN 混用，换表重建基线 | **同意**（第 5 节） |
 | **D6** | 多来源规则：每个用户一个「主手表」，同一夜 / 同一指标只取一个来源，不拼接；用户已连华为时 Apple 同步忽略来源为华为运动健康的样本 | **同意**（第 4.3 节） |
 | **D7** | 同意书和隐私：华为是新的数据来源和处理方，内地版需要告知并单独同意（需法务确认），连接前再弹一次数据类型清单 | **在 #249 的内地版同意书里一起改**，连接前的弹窗本期实现；法务意见由负责人去问 |
 | **D8** | 申请的权限范围 | **最小集**（第 3.3 节：心率 / 睡眠 / 血氧 / 体温 / 肺功能 / 训练 / 步数等 / 历史一年）；不申请写权限、ECG、血压、血糖、生殖健康、体重、位置 |
 | **D9** | 跨设备验证实验（R9）要不要做、找谁做志愿者 | **做**，拿到测试权限后找 ≥ 3 位同时戴两块表的志愿者、每人 ≥ 14 晚；判定阈值由负责人在跑之前定 |
+| **D10** | 家人用哪条路、要不要先用网页过渡 | **先问清每位家人的手机型号和 HarmonyOS 版本号**，4.x → A 线（APK），5.x / 6.x → N 线（ArkTS 壳）；网页过渡只在 app 出来前用，并先在一台华为手机上确认功能缺口（会和「app 是唯一客户端」的决定冲突，需要你点头） |
+| **D11** | 华为开发者账号：个人还是企业 | **今天先注册个人账号**用于客户端分发（1–2 个工作日，个人账号不能升级成企业账号，但个人和企业各一个账号互不冲突）；第 3 节的运动健康资质用企业主体另注册，两者无关联；是否再等 D1 的结论取决于你是否想让所有东西落在企业账号下（指定设备发布只有企业账号能用） |
+| **D12** | 远程分发：邀请测试要不要走，生成式 AI 的资质怎么办 | **走邀请测试**（官方 FAQ：不需要备案和资质）；正式上架暂不做，等备案（#249 同一批材料）和「应用内 AI 是否要算法备案」问清再说 |
 
 ---
 
-## 8. 引用清单
+## 9. 引用清单
 
 华为官方开发者文档（英文站，中国站同路径把 `/en/` 换成 `/cn/`）：
 - [Health Service Kit 接入流程](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/access-process-0000001624467736)、[开放数据总览](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/data_description-0000001467889369)、[应用侧开放服务（三种路线）](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/application_description-0000001418052318)、[设备侧概述](https://developer.huawei.com/consumer/en/doc/HMSCore-Guides/dev-overview-0000001475952057)
@@ -324,6 +422,7 @@ REST 基址是 `https://health-api.cloud.huawei.com/healthkit/v2/…`，授权�
 - 睡眠算法：[TruSleep 5.0](https://consumer.huawei.com/cn/support/content/zh-cn16093496/)、[睡眠监测原理](https://consumer.huawei.com/en/support/content/en-us15963854/)
 - iOS：[华为运动健康 App Store 页面](https://apps.apple.com/cn/app/%E5%8D%8E%E4%B8%BA%E8%BF%90%E5%8A%A8%E5%81%A5%E5%BA%B7/id1325481372)、[华为官方支持页（同步步数到第三方）](https://consumer.huawei.com/cn/support/content/zh-cn01057420/)
 - 开源：[Open Wearables providers](https://github.com/the-momentum/open-wearables/tree/main/backend/app/services/providers)、[Apple 健康文档](https://github.com/the-momentum/open-wearables/blob/main/docs/providers/apple-health.mdx)
+- 华为端 app（第 7 节）：[注册认证 FAQ](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/hdc-verification-faq-0000002752607795)、[申请调试证书](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-debug-cert-0000002283256797)、[注册设备](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-add-device-0000002283189937)、[调试 Profile](https://developer.huawei.com/consumer/cn/doc/doccenter-getting-started/agc-help-debug-profile-0000002248181278)、[指定设备发布](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-internal-test-overview-0000002253054942)、[AppTest 邀请测试](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-apptest-invite-test-guide-0000002258174270)、[邀请测试 FAQ](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/agc-help-invite-test-faq-0000002363660365)、[应用资质审核要求](https://developer.huawei.com/consumer/cn/doc/doccenter-submission/80301)、[各版本支持设备型号](https://developer.huawei.com/consumer/cn/doc/doccenter-release-notes/support-device)、[HarmonyOS 与 NEXT 的区别（社区文章）](https://developer.huawei.com/consumer/cn/blog/topic/03199548836169090)、[Flutter for OpenHarmony](https://gitcode.com/CPF-Flutter/flutter_flutter/tree/br_3.27.4-ohos-1.0.4)、[插件适配](https://gitcode.com/openharmony-tpc/flutter_packages)；项目内 [docs/apps.md](apps.md)
 - 项目内：[#219 自建同步引擎](apple-sync-engine.md)、[评分方法论](scoring-methodology.md)、[评分验证](scoring-validation.md)、[原始数据方案](raw-data-plan.md)；#249 多区域方案见 PR #250（`docs/multi-region.md`，合并后可链接）
 
 ---
@@ -340,4 +439,6 @@ REST 基址是 `https://health-api.cloud.huawei.com/healthkit/v2/…`，授权�
 
 **Architecture.** A provider-neutral `ext_connections` / `ext_samples` raw layer (refresh tokens encrypted like AI keys), a derive step that shares #219's dirty-day queue and writes `source='huawei'` rows into `daily_metric_sources`, `sleep_sessions`, `workouts`; one "primary watch" per user (no cross-source merging within a night); when Huawei is linked, Apple-sync samples whose source is Huawei Health are ignored to avoid duplicates. Authorization and revocation both ways (in-app disconnect calls the consents API; Huawei-side revocation via subscription events or token failure → `needs_reauth`). Deployed only in the mainland region (#249): Huawei cloud sites are per account region and cross-site calls are rejected; UI must use Huawei's official logo, not brand text.
 
-**Plan.** Phase 0 qualification (owner, ~3–5 weeks + rejections); phases 1–3 about 28–34 person-days in 6 PRs; phase 4 validation. Nine owner decisions with recommendations are in section 7.
+**Plan.** Phase 0 qualification (owner, ~3–5 weeks + rejections); phases 1–3 about 28–34 person-days in 6 PRs; phase 4 validation. Twelve owner decisions with recommendations are in section 8.
+
+**Huawei-phone client for family (section 7, top priority).** Watch data comes through the server-side cloud API, so the client needs no health permission and the first version can ship without watch data. HarmonyOS 4.x and earlier run Android APKs (per a Huawei developer-community article; no official statement found): add an `android/` target to the Flutter app and sideload the APK, no Huawei account needed, ~1–1.5 weeks. HarmonyOS NEXT (5.0+) cannot run APKs: build a thin native ArkTS shell with an ArkWeb view (the Flutter-for-OpenHarmony fork is community-maintained, lags our Flutter version and makes no maturity claims), ~2 weeks, needs a Huawei developer account (individual real-name verification takes 1–2 working days). Distribution: debug-signed build + `hdc` on up to 100 registered devices (individual accounts allowed), or invitation testing (up to 10,000 users; Huawei's FAQ says no filing or qualification is needed; first version is reviewed); designated-device release is enterprise-only; full store listing needs ICP-style app filing, a privacy policy and possibly generative-AI filings, and takes months. Estimates: APK ~1.5 weeks, NEXT ~3 weeks in person or 4–5 weeks remote.
