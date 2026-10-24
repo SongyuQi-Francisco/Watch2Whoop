@@ -396,7 +396,7 @@ def test_ios_safari_today_page_modes(client, tmp_path, monkeypatch):
     assert client.get("/v1/auth/methods").json()["ios_web"] == "off"
     monkeypatch.setenv("BODY_IOS_WEB", "nonsense")
     assert client.get("/v1/auth/methods").json()["ios_web"] == "warn"
-    html = client.get("/app/").text
+    html = re.sub(r"\?v=[0-9a-f]+", "", client.get("/app/").text)   # files are linked as name?v=<fingerprint>
     assert html.index('src="i18n-en.js"') < html.index('src="ios-web.js"') < html.index('src="account.js"')
     guide = client.get("/app/install.html")
     assert guide.status_code == 200 and "TestFlight" in guide.text and "<script>" not in guide.text

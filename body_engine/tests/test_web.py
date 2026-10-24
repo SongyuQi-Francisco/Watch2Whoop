@@ -593,6 +593,33 @@ def test_static_pages(client):
     assert client.get("/v1/users/me/today").headers["cache-control"] == "private, no-store"
 
 
+def test_static_files_fingerprinted_and_cached(client):
+    """docs/ios-native-plan.md, section 3.1: the page links name?v=<fingerprint>; only the current fingerprint is cached for a
+    year, the page itself and any other version are revalidated; API answers carry Server-Timing."""
+    import re
+    from body_engine.web import api as web_api
+    client.cookies.clear()
+    r = client.get("/app/")
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and r.headers["etag"]
+    linked = dict(re.findall(r'(?:src|href)="([\w.-]+\.(?:js|css))\?v=([0-9a-f]{12})"', r.text))
+    plain = re.findall(r'<script src="([\w.-]+\.js)"|<link rel="stylesheet" href="([\w.-]+\.css)"',
+                       (web_api.STATIC / "index.html").read_text(encoding="utf-8"))
+    assert len(linked) == len(plain) and "app.js" in linked and "app.css" in linked   # every script and stylesheet
+    assert linked["app.js"] == web_api.fingerprint("app.js")
+    assert client.get("/app/index.html").text == r.text
+    assert client.get("/app/", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
+    ok = client.get(f"/app/app.js?v={linked['app.js']}")
+    assert ok.status_code == 200 and ok.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert "script-src 'self'" in ok.headers["content-security-policy"]
+    assert client.get("/app/app.js?v=000000000000").headers["cache-control"] == "no-cache"   # an older page: no long cache
+    assert client.get("/app/app.js").headers["cache-control"] == "no-cache"
+    assert client.get("/app/nope.js?v=000000000000").headers["cache-control"] == "no-cache"
+    assert web_api.fingerprint("../api.py") is None and web_api.fingerprint("handbook/index.html") is None
+    assert "W2W_SHELL" in client.get("/app/offline-shell.html").text   # the offline copy still inlines the plain files
+    t = client.get("/v1/users/me/today").headers["server-timing"]
+    assert re.fullmatch(r"app;dur=\d+\.\d", t)
+
+
 def test_insecure_local_cookie_only_with_flag_and_localhost(monkeypatch):
     """WKWebView doesn't store Secure cookies on http://localhost: Secure is only dropped with the dev switch + localhost."""
     from starlette.requests import Request
