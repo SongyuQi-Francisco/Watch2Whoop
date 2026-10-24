@@ -25,6 +25,10 @@
 .cc-mem{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
 .cc-mem span{display:inline-flex;align-items:center;gap:4px;font-size:13px;background:var(--surface-2);border-radius:8px;padding:3px 8px}
 .cc-mem button{border:0;background:none;color:var(--text-2);padding:0 0 0 2px;font-size:14px;line-height:1}
+.cc-mem.cc-trail{flex-direction:column;align-items:stretch;gap:0}
+.cc-trail span{display:flex;flex-wrap:wrap;background:none;border-top:1px solid var(--hair);border-radius:0;padding:7px 0;font-size:14px}
+.cc-trail span:first-child{border-top:0}.cc-trail button{margin-left:auto}
+.cc-trail i{flex-basis:100%;font-style:normal;font-size:12px;color:var(--text-2)}
 .cc-sc{font-size:12px;color:var(--text-2);margin:10px 0 0}
 .cc-act{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0}
 .cc-act button{border:0;background:none;padding:0;color:var(--text);text-decoration:underline;font-size:13px}
@@ -113,11 +117,25 @@
     return true;
   }
 
+  // How a member came in (friends/trail.py): only the owner gets m.join (flag circle_join_trail), the other members never do
+  function joinLine(m) {
+    const j = m.join;
+    const who = j.by ? (j.by.me ? tr("我自己") : j.by.remark || j.by.display_name || tr("已注销的用户")) : tr("已注销的用户");
+    const how = j.via === "created" ? tr("建圈")
+      : j.via === "invite_code" ? tr("由 {who} 邀请 · 邀请链接", { who })
+      : j.via === "referral" ? tr("用了 {who} 的推荐码", { who })
+      : j.via === "circle_code" ? tr("圈子激活码「{code}」", { code: j.code || "" })
+      : tr("来源未记录");
+    const when = m.joined_at ? new Date(m.joined_at).toLocaleDateString(window.I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }) : "";
+    return `<i>${esc(when ? tr("{how} · {when} 入圈", { how, when }) : how)}</i>`;
+  }
+
   // ---------------------------------------------------------------- sheets
   function circleCard(c) {
     const owner = c.is_owner;
+    const trail = owner && c.members.some((m) => m.join);
     const mem = c.members.map((m) => `<span>${m.me ? esc(m.display_name) : window.BodyRemarks?.html(m.remark, m.display_name) ?? esc(m.display_name)}${m.owner ? ` <b class="badge plain">${esc(tr("圈主"))}</b>` : ""}${owner && !m.me
-      ? `<button type="button" data-remove="${m.id}" data-name="${esc(m.display_name)}" aria-label="${esc(tr("移除"))}">×</button>` : ""}</span>`).join("");
+      ? `<button type="button" data-remove="${m.id}" data-name="${esc(m.display_name)}" aria-label="${esc(tr("移除"))}">×</button>` : ""}${trail && m.join ? joinLine(m) : ""}</span>`).join("");
     const acts = [`<button type="button" data-scopes="${c.id}">${esc(tr("改共享范围"))}</button>`];
     if (owner) acts.push(`<button type="button" data-invite="${c.id}">${esc(tr("邀请"))}</button>`,
       `<button type="button" data-reset="${c.id}">${esc(tr("重置邀请"))}</button>`);
@@ -126,7 +144,7 @@
     if (owner) acts.push(`<button type="button" class="bad" data-dissolve="${c.id}">${esc(tr("解散"))}</button>`);
     const live = owner && c.invites?.live ? ` · ${esc(tr("{n} 个邀请有效", { n: c.invites.live }))}` : "";
     return `<div class="cc-card"><div class="cc-head">${avatar(c, 32)}<b>${esc(c.name)}</b><span class="small muted">${esc(tr("{n} 人", { n: c.members.length }))}${live}</span></div>
-      <div class="cc-mem">${mem}</div>
+      <div class="cc-mem${trail ? " cc-trail" : ""}">${mem}</div>
       <p class="cc-sc">${esc(tr("我共享：{list}", { list: scopeList(c.my_scopes) }))}</p>
       <div class="cc-act">${acts.join("")}</div></div>`;
   }
