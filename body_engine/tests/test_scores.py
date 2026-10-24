@@ -225,10 +225,9 @@ def test_training_load_ewma():
 
 # ------------------------------------------------------------------ day-by-day orchestration (a synthetic person)
 
-def make_inputs(nights: int = 20, sick_night: int | None = None) -> Inputs:
+def make_inputs(nights: int = 20, sick_night: int | None = None, first: date = date(2026, 9, 1)) -> Inputs:
     """Sleeps 23:00-07:00 every night from 2026-09-01; 2 HRV samples per night, one heart rate sample every 4 minutes; trains 1 hour at 18:00 every day."""
     inp = Inputs(SYD, date(2001, 6, 15))
-    first = date(2026, 9, 1)
     for i in range(nights):
         wake = first + timedelta(days=i)
         start = datetime.combine(wake - timedelta(days=1), datetime.min.time(), SYD).replace(hour=23)
