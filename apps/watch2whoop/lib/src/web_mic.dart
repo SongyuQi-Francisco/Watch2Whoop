@@ -8,6 +8,8 @@
 //   the keyboard's dictation key, as in 1.0.6 and older);
 // - iOS shows its own microphone prompt (NSMicrophoneUsageDescription) the first time; when it was declined the page
 //   posts [kMicSettingsMessage] and the app opens its page in iOS Settings.
+// - Android (#253): the same rules decide; the app then also needs RECORD_AUDIO itself (asked on the first request,
+//   android_bridge.dart), and declining it opens the app's page in system settings the same way.
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'config.dart';
@@ -20,6 +22,10 @@ const kMicSettingsMessage = 'mic-settings';
 /// `syncCenter`: the app has the sync center (watch2whoop://sync-center, resync.dart), so with the server flag sync_center
 /// the Me page folds 手机同步 / 数据更新 / 数据状态 into that one row (web/static/app.js).
 const kFeaturesJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{mic:true,syncCenter:true});';
+
+/// The same with the microphone off: an Android phone without a microphone or without the native side (android_bridge.dart);
+/// the page then points to the keyboard's dictation key instead of recording.
+const kFeaturesNoMicJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{mic:false,syncCenter:true});';
 
 /// Whether to grant a WebKit media capture request: the microphone alone, asked by our own Today page.
 /// [pageUrl] is the WebView's current address; [onShell] = the kept offline copy of the page is on screen.

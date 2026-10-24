@@ -170,7 +170,14 @@ jobs:
       # config/defaults.json (your own server address) is git-ignored and not needed: the defaults compile to empty values
       - run: flutter pub get
       - run: flutter test
-      # When the Android target exists, add a build check here, e.g. `flutter build apk --debug`.
+
+  # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
+  # as an artifact of the run for a test phone. Not a required check of main yet.
+  android:
+    name: Android APK
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
+    uses: ./.github/workflows/android-apk.yml
 
   other-apps:
     name: Other apps

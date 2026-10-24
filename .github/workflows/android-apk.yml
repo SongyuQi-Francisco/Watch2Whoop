@@ -1,0 +1,145 @@
+# Android APK (#253). The first Android build is installed directly (an APK, "sideloaded") on Huawei phones on
+# HarmonyOS 4.x and older, which have no Google services. GitHub's ubuntu runner ships the Android SDK, so nobody has to
+# install it (and accept its licence) on a Mac. Steps for maintainers and family: apps/watch2whoop/README.md, "Android".
+#
+# - Manual run (Actions → "Android APK" → Run workflow): release APK as an artifact of the run.
+# - CI on every pull request that changes the app (ci.yml): the same build without secrets, as a test artifact.
+# - An app-android-v* tag (app-release.yml): signed APK + .sha256 attached to that pre-release.
+#
+# Signing: a fixed release keystore from repository secrets, so every new APK installs over the previous one (logins
+# kept). Without the secrets the APK is signed with the runner's throw-away debug key and named "…-debug-signed": fine
+# for a test phone, NOT for family (an APK signed with the real key cannot update it; uninstall first). A tag build
+# fails without the secrets. No server address is compiled in: on first start the app asks for the setup QR code / link.
+name: Android APK
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "app-android-vX.Y.Z when building for a release (signing required)"
+        type: string
+        default: ""
+    outputs:
+      name:
+        description: "artifact name (= APK file name without .apk)"
+        value: ${{ jobs.apk.outputs.name }}
+    secrets:
+      W2W_ANDROID_KEYSTORE_BASE64:
+        required: false
+      W2W_ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      W2W_ANDROID_KEY_ALIAS:
+        required: false
+      W2W_ANDROID_KEY_PASSWORD:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  APP: apps/watch2whoop
+
+jobs:
+  apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09   # v5.1.0
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+          submodules: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2.9.1
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('apps/watch2whoop/android/**/*.gradle*', 'apps/watch2whoop/android/gradle/wrapper/gradle-wrapper.properties', 'apps/watch2whoop/pubspec.lock') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - name: Signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.W2W_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.W2W_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.W2W_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.W2W_ANDROID_KEY_PASSWORD }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
+            ks="$RUNNER_TEMP/w2w-release.jks"
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ks"
+            {
+              echo "W2W_ANDROID_KEYSTORE=$ks"
+              echo "W2W_ANDROID_KEYSTORE_PASSWORD=$STORE_PASSWORD"
+              echo "W2W_ANDROID_KEY_ALIAS=$KEY_ALIAS"
+              echo "W2W_ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+            echo "signed=release" >> "$GITHUB_OUTPUT"
+            echo "✓ release keystore from the repository secrets"
+          elif [ -n "$RELEASE_TAG" ]; then
+            echo "✗ $RELEASE_TAG needs the release keystore: set the W2W_ANDROID_* repository secrets (README, Android)" >&2
+            exit 1
+          else
+            echo "signed=debug" >> "$GITHUB_OUTPUT"
+            echo "⚠ no release keystore: debug-signed APK, for test phones only"
+          fi
+          if [ -n "$RELEASE_TAG" ]; then echo "W2W_REQUIRE_RELEASE_SIGNING=true" >> "$GITHUB_ENV"; fi
+      - name: Build
+        working-directory: ${{ env.APP }}
+        env:
+          # Optional repository variable; the placeholder otherwise. Never change it once family members installed the app.
+          W2W_APPLICATION_ID: ${{ vars.W2W_ANDROID_APPLICATION_ID }}
+        run: |
+          flutter pub get
+          # 32- and 64-bit ARM only (every Huawei phone); no server compiled in (config/defaults.json is not in git)
+          flutter build apk --release --target-platform android-arm,android-arm64
+      - name: Name, checksum, signer and permissions
+        id: apk
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version:[[:space:]]*\([^[:space:]#+]*\).*/\1/p' "$APP/pubspec.yaml" | head -1)"
+          if [ -n "$RELEASE_TAG" ]; then
+            name="watch2whoop-android-v$version"
+          else
+            name="watch2whoop-android-$version-$(git rev-parse --short HEAD)"
+            [ "$SIGNED" = release ] || name="$name-debug-signed"
+          fi
+          mkdir -p dist
+          cp "$APP/build/app/outputs/flutter-apk/app-release.apk" "dist/$name.apk"
+          (cd dist && sha256sum "$name.apk" > "$name.apk.sha256")
+          bt="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          {
+            echo "### $name.apk ($SIGNED-signed)"
+            echo
+            echo '```'
+            cat "dist/$name.apk.sha256"
+            "$bt/apksigner" verify --print-certs "dist/$name.apk" | grep -E 'SHA-256|DN' || true
+            "$bt/aapt2" dump badging "dist/$name.apk" | grep -E "^package:|^uses-permission" || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
+    outputs:
+      name: ${{ steps.apk.outputs.name }}

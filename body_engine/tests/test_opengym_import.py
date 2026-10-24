@@ -61,10 +61,13 @@ def test_title_and_convert_mapping():
                                "secondaryMuscles": [], "category": "plyometrics", "description": "", "instructions": [], "textSource": "opengym"}, um)
     assert (cardio["category"], cardio["modality"], cardio["movement_pattern"], cardio["primary_muscles"]) == ("cardio", "duration", "cardio", [])
     assert cardio["license"] == "AGPL-3.0" and cardio["description_en"] is None
-    odd = importer.convert({"id": "3", "name": "sled push", "bodyPart": "upper legs", "equipment": "sled thing", "target": "levator scapulae",
+    odd = importer.convert({"id": "3", "name": "sled push", "bodyPart": "upper legs", "equipment": "sled thing", "target": "pelvic floor",
                             "secondaryMuscles": [], "category": "strength", "description": "", "instructions": [], "textSource": "opengym"}, um)
     assert odd["equipment"] == ["sled thing"] and odd["primary_muscles"] == [] and odd["movement_pattern"] is None
-    assert ("equipment", "sled thing") in um and ("muscle (target)", "levator scapulae") in um
+    assert ("equipment", "sled thing") in um and ("muscle (target)", "pelvic floor") in um
+    neck = importer.convert({"id": "4", "name": "neck side stretch", "bodyPart": "neck", "equipment": "body weight", "target": "levator scapulae",
+                             "secondaryMuscles": [], "category": "stretching", "description": "", "instructions": [], "textSource": "opengym"}, um)
+    assert neck["primary_muscles"] == ["neck"] and ("muscle (target)", "levator scapulae") not in um   # #248: openGym's own body part
 
 
 def test_mapping_targets_exist_in_the_catalog_taxonomy():
@@ -126,7 +129,8 @@ def test_import_counts_and_dry_run_matches(conn, report):
     assert rep["new_rows"] + rep["merged_into_existing"] + rep["internal_duplicates_merged"] == rep["entries"]
     assert rep["new_by_source"].keys() <= {"exercisedb", "opengym"} and rep["merged_into_existing"] > 20
     kinds = {u["kind"] for u in rep["unmapped"]}
-    assert {"equipment", "muscle (secondary)", "muscle (target)"} <= kinds and "cardiovascular system" not in {u["name"] for u in rep["unmapped"]}
+    assert {"equipment", "muscle (secondary)"} <= kinds and "cardiovascular system" not in {u["name"] for u in rep["unmapped"]}
+    assert "muscle (target)" not in kinds   # every primary muscle of the pinned snapshot maps since #248
     assert "weighted" in {u["name"] for u in rep["unmapped"] if u["kind"] == "equipment"}      # listed, not guessed
     assert "hip flexors" in {u["name"] for u in rep["unmapped"] if u["kind"] == "muscle (secondary)"}
 
@@ -143,7 +147,8 @@ def test_licence_source_and_text_only_columns(conn, report):
     assert len(rows) == report[2]["new_rows"]
     for r in rows:
         assert (r["source"], r["license"]) in (("exercisedb", "MIT"), ("opengym", "AGPL-3.0"))
-        assert r["images"] == [] and r["name_zh"] == r["name_en"] and not CJK.search(r["name_en"])
+        assert r["images"] == [] and not CJK.search(r["name_en"])
+        assert r["name_zh"] == r["name_en"] or r["zh_source"] == "machine"   # Chinese only from the committed translations
         assert r["text_sources"][0]["commit"] == COMMIT and r["text_sources"][0]["source"] == r["source"]
     assert conn.execute("SELECT count(*) AS n FROM exercise_catalog WHERE license IS NULL").fetchone()["n"] == 0   # curated rows too
 

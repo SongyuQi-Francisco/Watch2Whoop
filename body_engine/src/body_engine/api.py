@@ -95,7 +95,7 @@ def current_user(request: Request, conn=Depends(get_conn), authorization: Annota
         if user is None:
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)
-    account_api.gate(user, request.url.path)
+    account_api.gate(user, request.url.path, conn)
     request.state.ai_parity = parity.on(conn, user["id"])   # error texts without the back end's name (http_error)
     return user
 
