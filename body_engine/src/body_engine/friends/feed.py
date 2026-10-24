@@ -31,7 +31,7 @@ from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
-from . import params as P, remarks, store
+from . import cards, params as P, remarks, store
 from .store import FriendsError
 
 LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
@@ -51,6 +51,13 @@ _SEEN_BY = """({w} = {v} OR EXISTS (SELECT 1 FROM circle_members sv
                 JOIN circle_members sw ON sw.circle_id = sv.circle_id AND sw.user_id = {w}
                 JOIN circle_members sa ON sa.circle_id = sv.circle_id AND sa.user_id = p.user_id
                 WHERE sv.user_id = {v} AND '""" + P.FEED_SCOPE + """' = ANY(sa.scopes)))"""
+# In one circle's feed (#269 P1; %(c)s = its id, NULL = all circles): also only the viewer's own or that circle's members'
+_IN_CIRCLE = """(%(c)s::int IS NULL OR {w} = {v} OR EXISTS (SELECT 1 FROM circle_members sc WHERE sc.circle_id = %(c)s::int
+                                                             AND sc.user_id = {w}))"""
+
+
+def _shown(w: str, v: str) -> str:
+    return _SEEN_BY.format(w=w, v=v) + " AND " + _IN_CIRCLE.format(w=w, v=v)
 
 
 # ---------------------------------------------------------------- who sees what
@@ -263,28 +270,28 @@ def ensure_recent(conn: psycopg.Connection, user_id: int, today: date | None = N
 
 
 # ---------------------------------------------------------------- the feed
-def _counts(conn, viewer_id: int, ids: list[int]) -> tuple[dict, dict]:
+def _counts(conn, viewer_id: int, ids: list[int], circle_id: int | None = None) -> tuple[dict, dict]:
     likes = {r["post_id"]: r for r in conn.execute(
         f"""SELECT l.post_id, count(*) AS n, bool_or(l.user_id = %(v)s) AS mine FROM circle_feed_likes l
             JOIN circle_feed_posts p ON p.id = l.post_id
-            WHERE l.post_id = ANY(%(ids)s) AND l.active AND {_SEEN_BY.format(w='l.user_id', v='%(v)s')} GROUP BY l.post_id""",
-        {"v": viewer_id, "ids": ids})}
+            WHERE l.post_id = ANY(%(ids)s) AND l.active AND {_shown('l.user_id', '%(v)s')} GROUP BY l.post_id""",
+        {"v": viewer_id, "ids": ids, "c": circle_id})}
     comments = {r["post_id"]: r["n"] for r in conn.execute(
         f"""SELECT c.post_id, count(*) AS n FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
-            WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}
-            GROUP BY c.post_id""", {"v": viewer_id, "ids": ids})}
+            WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}
+            GROUP BY c.post_id""", {"v": viewer_id, "ids": ids, "c": circle_id})}
     return likes, comments
 
 
-def _previews(conn, viewer_id: int, ids: list[int]) -> dict[int, list[dict]]:
+def _previews(conn, viewer_id: int, ids: list[int], circle_id: int | None = None) -> dict[int, list[dict]]:
     """The newest P.COMMENT_PREVIEW comments of each post (oldest first), shown under the post like Instagram does."""
     out: dict[int, list[dict]] = {}
     rows = conn.execute(
             f"""SELECT * FROM (SELECT c.post_id, c.id, c.user_id, c.body, u.display_name,
                        row_number() OVER (PARTITION BY c.post_id ORDER BY c.id DESC) AS rn
                 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-                WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}) t
-                WHERE rn <= %(n)s ORDER BY post_id, id""", {"ids": ids, "v": viewer_id, "n": P.COMMENT_PREVIEW}).fetchall()
+                WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}) t
+                WHERE rn <= %(n)s ORDER BY post_id, id""", {"ids": ids, "v": viewer_id, "n": P.COMMENT_PREVIEW, "c": circle_id}).fetchall()
     avatars = avatar_store.urls_for(conn, viewer_id, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, viewer_id, [r["user_id"] for r in rows])
     for r in rows:
@@ -294,10 +301,16 @@ def _previews(conn, viewer_id: int, ids: list[int]) -> dict[int, list[dict]]:
     return out
 
 
-def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, limit: int = P.FEED_PAGE) -> dict:
+def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, limit: int = P.FEED_PAGE,
+         circle_id=None) -> dict:
     """Newest first: posts of everyone whose circles show me their training (and mine). `before` = the `next` of the
-    previous page ("date:id"). A post whose day has no training any more is skipped."""
+    previous page ("date:id"). A post whose day has no training any more is skipped. `circle_id` (flag circles_by_circle):
+    only that circle's members who ticked training there, and under each post only that circle's ❤️ and comments."""
+    one = cards.one_circle(conn, viewer_id, circle_id)
+    cid = one and one["id"]
     authors = visible_authors(conn, viewer_id)
+    if one:
+        authors = [a for a in authors if P.FEED_SCOPE in one["picks"].get(a, set())]
     limit = max(1, min(int(limit), 30))
     if not authors:
         return {"posts": [], "next": None, "has_circles": _has_circles(conn, viewer_id)}
@@ -316,8 +329,8 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
             """SELECT * FROM circle_feed_posts WHERE user_id = ANY(%s) AND (%s::date IS NULL OR (date, id) < (%s::date, %s::bigint))
                ORDER BY date DESC, id DESC LIMIT %s""", (authors, *(cur[0] if cur else None,) * 2, cur[1] if cur else None, limit * 2)).fetchall()
         exhausted = len(rows) < limit * 2
-        likes, comments = _counts(conn, viewer_id, [r["id"] for r in rows])
-        previews = _previews(conn, viewer_id, [r["id"] for r in rows])
+        likes, comments = _counts(conn, viewer_id, [r["id"] for r in rows], cid)
+        previews = _previews(conn, viewer_id, [r["id"] for r in rows], cid)
         for r in rows:
             cur = (r["date"], r["id"])
             body = content(conn, r["user_id"], r["date"], who[r["user_id"]])
@@ -352,7 +365,7 @@ def _has_circles(conn, uid: int) -> bool:
 
 
 # ---------------------------------------------------------------- ❤️
-def like(conn: psycopg.Connection, uid: int, post_id: int) -> dict:
+def like(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -> dict:
     p = _post_for(conn, uid, post_id)
     new = conn.execute(
         """INSERT INTO circle_feed_likes (post_id, user_id) VALUES (%s, %s) ON CONFLICT (post_id, user_id)
@@ -361,17 +374,19 @@ def like(conn: psycopg.Connection, uid: int, post_id: int) -> dict:
         name = _name(conn, uid)
         notify(conn, p["user_id"], LIKE, {"zh": f"{name} 给你的训练点了 ❤️", "en": f"{name} ❤️ your workout"}, "",
                url=post_url(post_id), data={"actor_id": uid, "post_id": post_id})
-    return _likes_of(conn, uid, p)
+    return _likes_of(conn, uid, p, circle_id)
 
 
-def unlike(conn: psycopg.Connection, uid: int, post_id: int) -> dict:
+def unlike(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -> dict:
     p = _post_for(conn, uid, post_id)
     conn.execute("UPDATE circle_feed_likes SET active = FALSE WHERE post_id = %s AND user_id = %s", (post_id, uid))
-    return _likes_of(conn, uid, p)
+    return _likes_of(conn, uid, p, circle_id)
 
 
-def _likes_of(conn, uid: int, p: dict) -> dict:
-    likes, _ = _counts(conn, uid, [p["id"]])
+def _likes_of(conn, uid: int, p: dict, circle_id=None) -> dict:
+    """The count as the viewer sees it (in one circle's feed: that circle's ❤️ only)."""
+    one = cards.one_circle(conn, uid, circle_id)
+    likes, _ = _counts(conn, uid, [p["id"]], one and one["id"])
     lk = likes.get(p["id"]) or {}
     return {"count": lk.get("n", 0), "mine": bool(lk.get("mine"))}
 
@@ -381,13 +396,14 @@ def _name(conn, uid: int) -> str:
 
 
 # ---------------------------------------------------------------- comments
-def comments(conn: psycopg.Connection, uid: int, post_id: int) -> list[dict]:
+def comments(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -> list[dict]:
     _post_for(conn, uid, post_id)
+    one = cards.one_circle(conn, uid, circle_id)
     rows = conn.execute(
         f"""SELECT c.id, c.user_id, c.body, c.created_at, u.display_name FROM circle_feed_comments c
             JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-            WHERE c.post_id = %(p)s AND c.deleted_at IS NULL AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}
-            ORDER BY c.id DESC LIMIT %(n)s""", {"p": post_id, "v": uid, "n": P.COMMENTS_SHOWN}).fetchall()
+            WHERE c.post_id = %(p)s AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}
+            ORDER BY c.id DESC LIMIT %(n)s""", {"p": post_id, "v": uid, "n": P.COMMENTS_SHOWN, "c": one and one["id"]}).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, uid, [r["user_id"] for r in rows])
     return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid,

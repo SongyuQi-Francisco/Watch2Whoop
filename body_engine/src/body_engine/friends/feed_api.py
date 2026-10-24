@@ -31,8 +31,10 @@ class ReportIn(BaseModel):
 
 
 @router.get("")
-def posts(before: str | None = None, limit: int = P.FEED_PAGE, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return _run(feed.feed, conn, viewer["id"], before, limit)
+def posts(before: str | None = None, limit: int = P.FEED_PAGE, circle: int | None = None, conn=Depends(get_conn),
+          viewer=Depends(current_user)):
+    """`circle` (flag circles_by_circle): one circle's feed; without it, every circle merged."""
+    return _run(feed.feed, conn, viewer["id"], before, limit, circle)
 
 
 @router.get("/unread")
@@ -47,18 +49,18 @@ def seen(conn=Depends(get_conn), viewer=Depends(current_user)):
 
 
 @router.put("/posts/{post_id}/like")
-def like(post_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return _run(feed.like, conn, _self(viewer, "me"), post_id)
+def like(post_id: int, circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _run(feed.like, conn, _self(viewer, "me"), post_id, circle)
 
 
 @router.delete("/posts/{post_id}/like")
-def unlike(post_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return _run(feed.unlike, conn, _self(viewer, "me"), post_id)
+def unlike(post_id: int, circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _run(feed.unlike, conn, _self(viewer, "me"), post_id, circle)
 
 
 @router.get("/posts/{post_id}/comments")
-def comments(post_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return {"comments": _run(feed.comments, conn, viewer["id"], post_id)}
+def comments(post_id: int, circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return {"comments": _run(feed.comments, conn, viewer["id"], post_id, circle)}
 
 
 @router.post("/posts/{post_id}/comments", status_code=201)
