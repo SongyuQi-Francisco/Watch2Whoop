@@ -14,11 +14,12 @@ from importlib import resources
 from ...datalayer.playbooks import PlaybookSource
 from ..datalayer_texts import MESSAGES
 
-NAMES = ("plan_shopping", "plan_training_week", "weekly_review", "log_meal_from_photo")
+NAMES = ("plan_shopping", "plan_training_week", "weekly_review", "log_meal_from_photo", "memory_review")
 # Playbooks the fallback AI can carry out: every tool they name is in ai/fallback.TOOL_NAMES (tests/test_playbooks.py).
 # The whitelist is not widened for them (owner's decision); the others answer the fallback with FALLBACK_NO.
 # plan_shopping / log_meal_from_photo need several grocery / meal tools the fallback does not have.
-FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review": True, "log_meal_from_photo": False}
+FALLBACK = {"plan_shopping": False, "plan_training_week": True, "weekly_review": True, "log_meal_from_photo": False,
+            "memory_review": True}
 # Playbooks the fallback AI can carry out once the rollout flag ai_web gives it the web tools and ai/web.FALLBACK_GROCERY
 # (issue #150; tests/test_playbooks.py checks the tools against that list too).
 FALLBACK_WEB = {"plan_shopping"}
@@ -30,7 +31,7 @@ FALLBACK_NO = "这件事需要用户自己的 AI（托底 AI 没有它要用的�
 FIND_LINE = "提到的工具不在你的工具列表里时，用 find_tools 找，再用 run_read_tool / run_write_tool 调。"
 # a backticked word that names a tool (verb_…); field names such as `needs_price` do not start with these verbs
 TOOL_RE = re.compile(r"`((?:get|log|list|set|add|update|delete|remove|undo|save|propose|record|generate|mark|find|search|"
-                     r"suggest|swap|reschedule|replan|analyze|lookup|rollback|report|create|end|dismiss)_[a-z_]+)`")
+                     r"suggest|swap|reschedule|replan|analyze|lookup|rollback|report|create|end|dismiss|apply)_[a-z_]+)`")
 
 
 _SOURCE = PlaybookSource(resources.files(__name__), NAMES, messages=MESSAGES, find_line=FIND_LINE, tool_re=TOOL_RE)

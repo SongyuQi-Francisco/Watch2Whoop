@@ -1591,6 +1591,9 @@ I18N.addEn({
   "确定删除？": "Delete?",
   "已归档": "Archived",
   "已归档 {n} 条": "{n} archived",
+  // 长期记忆 sheet: 「整理」 hands the review to the user's own AI (#113 phase 2)
+  "整理": "Tidy up",
+  "帮我整理一下长期记忆": "Help me tidy up my long-term memory",
   "{n} 条该确认了": "{n} to confirm",
   // avatars.js, circles.js (#200)
   "上传失败，请稍后再试": "Upload failed, please try again later",

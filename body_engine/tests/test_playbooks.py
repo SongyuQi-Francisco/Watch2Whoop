@@ -15,6 +15,7 @@ KEY_TOOLS = {
     "plan_training_week": {"get_training_context", "propose_plan", "save_plan"},
     "weekly_review": {"get_week_review_context"},
     "log_meal_from_photo": {"log_food"},
+    "memory_review": {"get_memory_review", "apply_memory_changes"},
 }
 
 
@@ -96,7 +97,7 @@ def test_fallback_flags(monkeypatch):
         got = tool.handler(None, 1, {"name": n, "_channel": f"api:{fallback.KIND}"})
         assert got["text"] == (playbooks.text(n) if ok else playbooks.FALLBACK_NO)
         assert tool.handler(None, 1, {"name": n, "_channel": "mcp"})["text"] == playbooks.text(n)
-    assert [n for n, ok in playbooks.FALLBACK.items() if ok] == ["plan_training_week", "weekly_review"]
+    assert [n for n, ok in playbooks.FALLBACK.items() if ok] == ["plan_training_week", "weekly_review", "memory_review"]
     # behind ai_web (#150) the fallback also gets ai/web.FALLBACK_GROCERY: exactly enough for FALLBACK_WEB
     for n in playbooks.FALLBACK_WEB:
         assert not playbooks.FALLBACK[n]

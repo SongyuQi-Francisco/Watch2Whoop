@@ -141,10 +141,11 @@ def test_tools_are_own_data_subset():
         return sum(len(t.description) + len(json.dumps(t.input_schema, ensure_ascii=False)) for t in tools)
     # ~28k with every Today page read tool (issue #58), ~30.5k with the scene tools (#100). Since #99 a call sends only the
     # core part of the whitelist + the page's groups (the rest via find_tools): cap what is sent, and the whole whitelist.
-    # 32000 -> 32500 for add_custom_exercise (「让 Jarvis 补进动作库」, #189).
-    assert size(fallback.tools()) < 32500, size(fallback.tools())
+    # 32000 -> 32500 for add_custom_exercise (「让 Jarvis 补进动作库」, #189); -> 33500 for get_memory_review / apply_memory_changes
+    # (the fallback AI can tidy the memory too, playbook memory_review, #113).
+    assert size(fallback.tools()) < 33500, size(fallback.tools())
     sent = max(size(toolsets.for_page(fallback.tools(), page)) for page in [None, *ai_params.PAGE_GROUPS])
-    assert sent < 25000, sent
+    assert sent < 25500, sent   # 25000 -> 25500 for get_memory_review / apply_memory_changes (#113)
 
 
 def test_cost_and_estimate():

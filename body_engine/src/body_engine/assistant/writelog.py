@@ -66,6 +66,11 @@ def _observation(conn, user_id, row, client=None):
     return memory.rollback_observation(conn, user_id, int(row["target"]), row["before"], row["after"])
 
 
+def _memory_state(conn, user_id, row, client=None):   # archive / restore / confirm of a memory entry (issue #113 phase 2)
+    from . import memory_review
+    return memory_review.rollback_state(conn, user_id, row["target"], row["before"], row["after"])
+
+
 for _kind in ("food", "session", "sets", "weight"):
     LOG.register_rollback(_kind, _sparky)
 # merge: split it again; template: remove the template made from entries; observation: a rewrite of a note (issue #113)
@@ -77,6 +82,7 @@ LOG.register_rollback("water", _water)
 LOG.register_rollback("pantry", _pantry)
 LOG.register_rollback("profile", _profile)
 LOG.register_rollback("observation", _observation, only_action="update")
+LOG.register_rollback("memory_state", _memory_state)   # logged as an update; any status change can be undone
 
 ROLLBACK_KINDS = LOG.kinds
 

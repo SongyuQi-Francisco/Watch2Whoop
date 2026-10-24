@@ -26,7 +26,7 @@ from ..ai import root_rules
 from ..feedback import store as feedback_store
 from ..records import store as records_store
 from ..rules import store as rules_store
-from . import memory, status
+from . import memory, memory_review, status
 
 CACHE_TTL_S = 600
 CACHE_MAX_USERS = 512
@@ -173,6 +173,7 @@ def _memory(conn, uid: int, skip: tuple = (), viewer_id: int | None = None) -> d
     obs = [o for o in m["observations"] if o["kind"] != "recent"]
     recent = [f"#{o['id']} 到 {o['valid_until']:%m-%d} {_cut(o['text'], OBS_CHARS)}"
               for o in m["observations"] if o["kind"] == "recent"]
+    review = memory_review.reminder_line(conn, uid) if viewer_id in (None, uid) else None   # only for the owner's own AI (#113)
     return {
         "status": [f"{s['label']} {s['value']}{s.get('unit') or ''}" + (f"（{s['note']}）" if s.get("note") else "")
                    + (f" [{s['tone']}]" if s.get("tone") in ("warn", "bad") else "") for s in st],
@@ -180,6 +181,7 @@ def _memory(conn, uid: int, skip: tuple = (), viewer_id: int | None = None) -> d
         "profile_card_more": [c["key"] for c in m["profile_card"] if c["key"] not in CARD_KEYS],
         "observations": {"total": len(obs), "recent": [f"#{o['id']} {_cut(o['text'], OBS_CHARS)}" for o in obs[-OBS_RECENT:]]},
         **({"recent_context": recent} if recent else {}),
+        **({"memory_review": review} if review else {}),
     }
 
 

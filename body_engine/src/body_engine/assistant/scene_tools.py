@@ -42,7 +42,7 @@ TOOL_SPECS: list[dict] = [
          group="body", scope="profile"),
     dict(name="get_playbook",
          description="做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、"
-                     "plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+                     "plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
          input_schema=schema({"name": {"type": "string", "enum": list(playbooks.NAMES)}}),
          handler=_playbook,
          group="help", scope="profile"),

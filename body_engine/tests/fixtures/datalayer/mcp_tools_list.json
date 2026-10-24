@@ -1271,7 +1271,7 @@
   },
   {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1300,7 +1300,7 @@
   },
   {
    "name": "update_profile_card",
-   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁的事实，带日期和依据。",
+   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁事实，带日期依据。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1352,7 +1352,7 @@
        "string",
        "null"
       ],
-      "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+      "description": "近况最后一天；不确定写 recent（14 天）；长期事实 null"
      },
      "replace_id": {
       "type": [
@@ -1364,6 +1364,73 @@
     },
     "required": [
      "text"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "apply_memory_changes",
+   "description": "提交整理结果，逐项返回，可重复提交。归档不删除。没要改的传空 items。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "并入的那条"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后全文"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "reason",
+        "user_ok"
+       ]
+      }
+     }
+    },
+    "required": [
+     "items"
     ]
    },
    "annotations": {
@@ -1470,7 +1537,7 @@
   },
   {
    "name": "delete_observation",
-   "description": "删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+   "description": "删除一条观察笔记（id 见 get_memory）。删了就没有了。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1852,7 +1919,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -1862,7 +1929,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -2480,7 +2548,7 @@
   },
   {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2602,7 +2670,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -2612,7 +2680,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -3954,7 +4023,7 @@
   },
   {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -3983,7 +4052,7 @@
   },
   {
    "name": "update_profile_card",
-   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁的事实，带日期和依据。",
+   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁事实，带日期依据。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4035,7 +4104,7 @@
        "string",
        "null"
       ],
-      "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+      "description": "近况最后一天；不确定写 recent（14 天）；长期事实 null"
      },
      "replace_id": {
       "type": [
@@ -4047,6 +4116,73 @@
     },
     "required": [
      "text"
+    ]
+   },
+   "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "openWorldHint": false
+   }
+  },
+  {
+   "name": "apply_memory_changes",
+   "description": "提交整理结果，逐项返回，可重复提交。归档不删除。没要改的传空 items。",
+   "inputSchema": {
+    "type": "object",
+    "properties": {
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "object",
+       "properties": {
+        "action": {
+         "type": "string",
+         "enum": [
+          "merge",
+          "update",
+          "archive",
+          "confirm",
+          "promote",
+          "restore"
+         ]
+        },
+        "ref": {
+         "type": "string",
+         "description": "n12 笔记 / k:goals 档案卡"
+        },
+        "into": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "并入的那条"
+        },
+        "text": {
+         "type": [
+          "string",
+          "null"
+         ],
+         "description": "改后全文"
+        },
+        "reason": {
+         "type": "string"
+        },
+        "user_ok": {
+         "type": "boolean",
+         "description": "用户明确同意"
+        }
+       },
+       "required": [
+        "action",
+        "ref",
+        "reason",
+        "user_ok"
+       ]
+      }
+     }
+    },
+    "required": [
+     "items"
     ]
    },
    "annotations": {
@@ -4153,7 +4289,7 @@
   },
   {
    "name": "delete_observation",
-   "description": "删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+   "description": "删除一条观察笔记（id 见 get_memory）。删了就没有了。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4535,7 +4671,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -4545,7 +4681,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
@@ -5163,7 +5300,7 @@
   },
   {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -5285,7 +5422,7 @@
   },
   {
    "name": "get_playbook",
-   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐。",
+   "description": "做这几件事之前先读操作说明（调哪些工具、顺序、什么时候先问用户、护栏）：plan_shopping 规划采购、plan_training_week 排一周训练、weekly_review 复盘一周、log_meal_from_photo 照片记餐、memory_review 整理记忆。",
    "inputSchema": {
     "type": "object",
     "properties": {
@@ -5295,7 +5432,8 @@
        "plan_shopping",
        "plan_training_week",
        "weekly_review",
-       "log_meal_from_photo"
+       "log_meal_from_photo",
+       "memory_review"
       ]
      }
     },
