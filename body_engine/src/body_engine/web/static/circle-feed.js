@@ -247,9 +247,12 @@
   window.addEventListener("body:link", (e) => { const id = Number(e.detail?.feed); if (id) openPost(id); });
 
   // ---- data
+  // the circle the Friends tab is narrowed to (flag circles_by_circle; null = all circles): feed, ❤️ counts and comments follow it
+  let circle = null;
+  const inCircle = (sep) => (circle ? `${sep}circle=${circle}` : "");
   async function fetchPage(before) {
-    const q = before ? `?before=${encodeURIComponent(before)}` : "";
-    return C.api(`/v1/friends/feed${q}`);
+    const q = [before ? `before=${encodeURIComponent(before)}` : "", circle ? `circle=${circle}` : ""].filter(Boolean).join("&");
+    return C.api(`/v1/friends/feed${q ? `?${q}` : ""}`);
   }
   function merge(fresh) {
     const ids = new Set(fresh.posts.map((p) => p.id));
@@ -288,7 +291,7 @@
     io.observe(end);
   }
   async function loadComments(id) {
-    try { st.comments[id] = (await C.api(`/v1/friends/feed/posts/${id}/comments`)).comments; } catch (e) { st.comments[id] = []; C.toast(e.message); }
+    try { st.comments[id] = (await C.api(`/v1/friends/feed/posts/${id}/comments${inCircle("?")}`)).comments; } catch (e) { st.comments[id] = []; C.toast(e.message); }
     paint();
   }
 
@@ -347,7 +350,7 @@
     paint();
     const guess = p.likes;
     try {
-      p.likes = await C.api(`/v1/friends/feed/posts/${p.id}/like`, { method: mine ? "PUT" : "DELETE" });
+      p.likes = await C.api(`/v1/friends/feed/posts/${p.id}/like${inCircle("?")}`, { method: mine ? "PUT" : "DELETE" });
       if (p.likes.count === guess.count && p.likes.mine === guess.mine) return;   // nothing to redraw: let the bounce finish
     } catch (e) { p.likes = was; st.pop = null; C.toast(e.message); }
     paint();
@@ -383,10 +386,14 @@
   window.BodyCircleFeed = {
     shell: () => '<div id="cf-root"></div>',
     count: () => unread,
-    bind(view, active) {
+    bind(view, active, inC = null) {
       showDot();
       const root = $("#cf-root", view);
       if (!root || !active) return;
+      if ((inC || null) !== circle) {   // another circle: start from an empty list
+        circle = inC || null;
+        st.posts = []; st.next = null; st.loaded = false; st.comments = {};
+      }
       injectCss();
       root.innerHTML = listHtml();
       root.addEventListener("click", (e) => { const b = e.target.closest("[data-cf]"); if (b) act(b); });
