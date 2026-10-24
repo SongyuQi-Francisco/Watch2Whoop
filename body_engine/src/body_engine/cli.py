@@ -408,6 +408,10 @@ def main() -> None:
     bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
     bs.add_argument("--days", type=int, default=7)
     bs.add_argument("--json", action="store_true")
+    mcc = sub.add_parser("muscle-coverage-check", help="every recent workout of every user must credit at least one muscle on the muscle load map; "
+                         "lists the workout types that are not mapped (exit 1 if any; nightly job and doctor, read-only)")
+    mcc.add_argument("--days", type=int, default=28)
+    mcc.add_argument("--json", action="store_true")
     oc = sub.add_parser("oauth-cleanup", help="MCP OAuth housekeeping: expired requests / codes / refresh and access tokens, clients never approved (idempotent, hourly)")
     oc.add_argument("--json", action="store_true")
     ol = sub.add_parser("oauth-connections", help="a user's approved OAuth connections to /mcp (Claude, ChatGPT, …)")
@@ -640,6 +644,12 @@ def main() -> None:
                       f"平均 {st['avg_chars'] or 0} 字符，最大 {st['max_chars'] or 0} 字符")
                 for d in st["per_day"]:
                     print(f"  {d['day']}  {d['calls']:>4} 次  命中 {d['hit_rate']:.0%}  平均 {d['avg_chars']} / 最大 {d['max_chars']} 字符  {d['users']} 人")
+        elif args.cmd == "muscle-coverage-check":
+            from .training import muscle_coverage
+            res = muscle_coverage.scan(conn, args.days)
+            print(json.dumps(res, ensure_ascii=False) if args.json else muscle_coverage.render(res))
+            if not res["ok"]:
+                raise SystemExit(1)
         elif args.cmd == "oauth-cleanup":
             from .ai import oauth
             print(json.dumps(oauth.cleanup(conn)))

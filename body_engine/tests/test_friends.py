@@ -364,9 +364,16 @@ def test_revoke_one_invite_and_remaining_time(client, world, dsn):
         assert join(client, tok["Eve"], forever["code"]).status_code in (404, 409)
 
 
+def _personal(dsn, cid):
+    """Referrals invite only to a personal circle (#269): these tests let Ann's circle stand for hers."""
+    with psycopg.connect(dsn) as conn:
+        conn.execute("UPDATE circles SET personal = true WHERE id = %s", (cid,))
+    return cid
+
+
 def test_referral_invite_stays_30_days(client, world, dsn):
     ids, tok = world
-    cid = circle(client, tok["Ann"])["circle"]["id"]
+    _personal(dsn, circle(client, tok["Ann"])["circle"]["id"])
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         store.referral_invites(conn, ids["Ann"], ids["Dan"])
         days = conn.execute("""SELECT extract(epoch FROM expires_at - created_at) / 86400 AS d FROM circle_invites
@@ -389,7 +396,7 @@ def test_consent_gate(client, world):
 def test_referral_signup_gets_invite_but_shares_nothing_until_accepting(client, world, dsn, monkeypatch):
     ids, tok = world
     monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
-    cid = circle(client, tok["Ann"])["circle"]["id"]
+    cid = _personal(dsn, circle(client, tok["Ann"])["circle"]["id"])
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         code = invites.referral_code(conn, ids["Ann"])["code"]
         new, _ = signin.find_or_create_user(conn, "email", "friend@example.com", "friend@example.com", True)
@@ -415,7 +422,7 @@ def test_referral_signup_gets_invite_but_shares_nothing_until_accepting(client, 
 
 def test_decline_invite(client, world, dsn):
     ids, tok = world
-    cid = circle(client, tok["Ann"])["circle"]["id"]
+    cid = _personal(dsn, circle(client, tok["Ann"])["circle"]["id"])
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         store.referral_invites(conn, ids["Ann"], ids["Dan"])
     inv = client.get("/v1/friends", headers=h(tok["Dan"])).json()["invites"][0]
@@ -838,7 +845,8 @@ def test_owner_of_a_hand_made_circle_gets_no_personal_one(client, dsn):
     assert [(x["id"], x["name"], x["personal"]) for x in c] == [(made["id"], "篮球", False)]
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         assert conn.execute("SELECT personal_circle_at FROM users WHERE id = %s", (sam,)).fetchone()["personal_circle_at"]
-        assert store.home_circle(conn, sam) == made["id"]   # referrals invite to it
+        assert store.home_circle(conn, sam) == made["id"]
+        assert store.personal_circle(conn, sam) is None
     # a member (not owner) of someone else's circle still gets their own
     tia, tok_tia = _person(dsn, "Tia")
     join(client, tok_tia, client.post(f"/v1/friends/circles/{made['id']}/invite", headers=h(tok)).json()["code"])
@@ -926,3 +934,32 @@ def test_flag_off_referral_changes_nothing_then_catches_up(client, dsn, monkeypa
             for u in (xia, yan):
                 flags.cohort_remove(conn, u, "beta", actor="test")
         _flag(dsn, "all")
+
+
+def test_referral_code_never_invites_to_a_club_circle(client, dsn, monkeypatch):
+    """#269: a referral code is the person's own, not a circle's. An inviter who owns only a club (hand-made) circle and so
+    has no personal one: the sign-up records the referral, but no circle invite is made, now or when catching up."""
+    monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
+    sam, tok = _person(dsn, "Sam")
+    club = circle(client, tok, name="俱乐部")["circle"]
+    new, t = _referred(dsn, sam, "Uma")
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        red = conn.execute("SELECT inviter_user_id, circle_id FROM invite_redemptions WHERE user_id = %s", (new,)).fetchone()
+        assert (red["inviter_user_id"], red["circle_id"]) == (sam, None)
+        assert conn.execute("SELECT 1 FROM circle_invites WHERE invitee_user_id = %s", (new,)).fetchone() is None
+    assert client.get("/v1/friends/referral", headers=h(t)).json()["offer"] is None
+    over = client.get("/v1/friends", headers=h(t)).json()
+    assert over["invites"] == [] and club["id"] not in [c["id"] for c in over["circles"]]
+
+
+def test_migration_745_stops_referral_invites_to_club_circles(client, dsn):
+    """Invites made by the old fallback (to a circle that is not personal) and not accepted yet are stopped."""
+    from importlib import resources
+    sam, tok = _person(dsn, "Sam")
+    vic, tok_vic = _person(dsn, "Vic")
+    club = circle(client, tok, name="俱乐部")["circle"]
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("""INSERT INTO circle_invites (circle_id, created_by, invitee_user_id, expires_at)
+                        VALUES (%s, %s, %s, now() + interval '30 days')""", (club["id"], sam, vic))
+        conn.execute(resources.files("body_engine.migrations").joinpath("745_circle_join_trail.sql").read_text())
+    assert client.get("/v1/friends", headers=h(tok_vic)).json()["invites"] == []
