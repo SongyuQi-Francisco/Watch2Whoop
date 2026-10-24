@@ -56,3 +56,26 @@ def test_old_import_paths_are_the_moved_objects():
     assert toolspec.schema is datalayer.schema and toolspec.nullable is datalayer.nullable
     assert (toolsets.FIND, toolsets.RUN_READ, toolsets.RUN_WRITE) == ("find_tools", "run_read_tool", "run_write_tool")
     assert isinstance(playbooks._SOURCE, datalayer.PlaybookSource)
+
+
+def test_phase_2b_old_paths_run_through_the_framework():
+    from body_engine import datalayer, mcp_server
+    from body_engine.ai import mcp_http
+    from body_engine.assistant import tools, writelog
+    from body_engine.datalayer.mcp.http import McpHttpApp
+    assert mcp_server.Identity is datalayer.Caller
+    assert isinstance(tools.EXECUTOR, datalayer.Executor) and tools.EXECUTOR.tools is tools.TOOLS_BY_NAME
+    assert isinstance(writelog.LOG, datalayer.WriteLog) and tools.EXECUTOR.writelog is writelog.LOG
+    assert isinstance(mcp_http.mcp_app, McpHttpApp) and mcp_http.mcp_app.identity_key == mcp_http.IDENTITY_KEY
+
+
+def test_rollback_kinds_are_the_ones_before_the_move():
+    """The rollback dispatch moved from one if / elif chain to handlers registered by kind (datalayer/writelog.py)."""
+    from body_engine.assistant import writelog
+    assert writelog.ROLLBACK_KINDS == {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water",
+                                       "pantry", "profile", "observation"}
+    only = {"merge": "merge", "template": "create", "observation": "update"}
+    for kind in writelog.ROLLBACK_KINDS:
+        for action in ("create", "update", "delete", "merge", "rollback"):
+            assert writelog._can_roll(kind, action) == (action != "rollback" and only.get(kind, action) == action), (kind, action)
+    assert not writelog._can_roll("other", "other")
