@@ -39,7 +39,7 @@ _SAFE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 def _get(url: str, timeout: float = 60) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": "Watch2Whoop exercise media fetch (+github.com/SongyuQi-Francisco/Watch2Whoop)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "Watch2Whoop exercise media fetch"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         data = r.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
