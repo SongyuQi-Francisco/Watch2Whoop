@@ -26,8 +26,8 @@ Never used: the openGym / Gym visual **media** — the stills and animations in 
 
 ### Demo media sources checked for #248 (2026-10-25) / 动作演示图来源核对
 
-Matches (metadata only, no picture) are in `body_engine/src/body_engine/training/media_matches.json`; nothing below is downloaded or shown yet. Details and quotes: [`docs/exercise-library-quality.md`](docs/exercise-library-quality.md).
-匹配结果（只有元数据，没有图）在 `training/media_matches.json`；下面的来源目前都还没下载、没展示。
+Matches (metadata only, no picture) are in `body_engine/src/body_engine/training/media_matches.json`. The wger and Everkinetic pictures are **not in this repository**: `body-engine exercises-media-fetch` downloads the high-confidence ones into each deployment's own media storage, unchanged, and stores every picture's author, licence and source in `exercise_catalog.media`; the exercise page shows that credit under the pictures (flag `exercise_media_licensed`). RepDB is not used by this repository. Details and quotes: [`docs/exercise-library-quality.md`](docs/exercise-library-quality.md).
+匹配结果（只有元数据）在 `training/media_matches.json`。wger、Everkinetic 的图**不在本仓库**：`body-engine exercises-media-fetch` 下载到各部署自己的媒体目录（不改图），每张图的作者、许可证、来源存在 `exercise_catalog.media`，详情页在图下显示（开关 `exercise_media_licensed`）。本仓库不使用 RepDB。
 
 | Source | Licence (as read 2026-10-25) | Attribution we must show | Public repo? |
 |---|---|---|---|

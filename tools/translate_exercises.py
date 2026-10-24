@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Offline batch: machine-translate the exercises that only have English text into Chinese (issue #248).
 
-    cd body_engine && uv run python ../tools/translate_exercises.py --estimate              # cost only, no AI call
-    cd body_engine && uv run python ../tools/translate_exercises.py --sample 50              # a stratified sample
-    cd body_engine && uv run python ../tools/translate_exercises.py --budget-cny 30          # everything still missing
+    cd body_engine && uv run python ../tools/translate_exercises.py --estimate                       # cost only, no AI call
+    cd body_engine && uv run python ../tools/translate_exercises.py --sample 50 --prepare-only req.jsonl  # look at the requests
+    cd body_engine && uv run python ../tools/translate_exercises.py --sample 50                       # a stratified sample
+    cd body_engine && uv run python ../tools/translate_exercises.py --batch-api --budget 20           # everything still missing
 
 - The library is rebuilt the way a deployment builds it (migrations, curated + free-exercise-db seed, openGym import) in a
   throwaway database whose name must start with body_test_ (default body_test_translate, dropped and recreated); the production
@@ -12,11 +13,14 @@
 - Result: body_engine/src/body_engine/training/translations/exercises_zh.jsonl (sorted by slug, committed). A line is kept while
   the English it came from is unchanged (src_sha), so re-running only translates what is missing or stale: idempotent, resumable
   (the file is rewritten after every batch).
-- Model: any OpenAI-compatible Chat Completions service, default DeepSeek deepseek-flash with thinking off. The key is read from
-  a file (default <repo>/secrets/deepseek_api_key), never from the repository or the command line.
+- Model: Claude claude-sonnet-5-5 through the official Anthropic SDK (default; --batch-api sends the bulk through the Message
+  Batches API at half price, structured JSON output, thinking off), or --provider deepseek (any OpenAI-compatible service).
+  The key is read from a file (default <repo>/secrets/anthropic_api_key or deepseek_api_key), never from the repository or
+  the command line, and is never printed.
 - Every name is checked against glossary.json: a missed term gets one retry with the term spelled out, what is still missing is
   stored in glossary_misses for a person to look at. Steps must come back one for one.
-- Costs are counted from the usage the service returns, at the prices in ai/fallback_params.py; --budget-cny stops the run.
+- Costs are counted from the usage the service returns (Claude: the list prices below; DeepSeek: ai/fallback_params.py);
+  --budget stops the run.
 """
 from __future__ import annotations
 
@@ -75,14 +79,14 @@ def build_rows(db: str, cache: Path) -> list[dict]:
     return rows
 
 
-def todo_rows(rows: list[dict], have: dict[str, dict]) -> list[dict]:
-    """Rows without human Chinese whose line is missing or stale."""
+def todo_rows(rows: list[dict], have: dict[str, dict], model: str | None = None) -> list[dict]:
+    """Rows without human Chinese whose line is missing or stale (or, with model, was made by another model)."""
     out = []
     for r in rows:
         if r.get("zh_source") == "human" or (T.has_chinese(r["name_zh"]) and r.get("zh_source") != "machine"):
             continue
         e = have.get(r["slug"])
-        if e is None or e["src_sha"] != T.src_sha(r):
+        if e is None or e["src_sha"] != T.src_sha(r) or (model and e.get("model") != model):
             out.append(r)
     return out
 
@@ -101,16 +105,33 @@ def sample(rows: list[dict], n: int) -> list[dict]:
     return picked
 
 
-def estimate(rows: list[dict], batch: int) -> dict:
-    """Token and cost estimate before any call: ~4 English chars per input token, ~0.75 output token per Chinese char and the
-    Chinese ~ 0.38 × the English length (measured on the 50-entry sample), plus the prompt and glossary of each batch."""
-    chars = sum(len(json.dumps(T.src_text(r), ensure_ascii=False)) for r in rows)
-    calls = -(-len(rows) // batch)
-    tin = chars / 4 + calls * 1500
-    tout = chars * 0.38 * 0.75 + len(rows) * 30
-    cny = tin / 1e6 * FP.PRICE_CACHE_MISS_CNY + tout / 1e6 * FP.PRICE_OUTPUT_CNY
-    return {"exercises": len(rows), "english_chars": chars, "calls": calls, "input_tokens": round(tin), "output_tokens": round(tout),
-            "cost_cny": round(cny, 2), "prices": f"input ¥{FP.PRICE_CACHE_MISS_CNY}/M, output ¥{FP.PRICE_OUTPUT_CNY}/M ({FP.PRICE_SOURCE})"}
+ZH_PER_EN_CHAR = 0.265   # Chinese characters per English character of the source, measured on the committed 50-line sample
+
+
+def _tokens(text: str) -> float:
+    """Conservative token count for Claude's tokenizer: ~3.5 ASCII characters per token, ~1.3 tokens per CJK character."""
+    cjk = sum(1 for ch in text if T.CJK.match(ch))
+    return (len(text) - cjk) / 3.5 + cjk * 1.3
+
+
+def estimate(rows: list[dict], batch: int, provider: str) -> dict:
+    """Size and cost before any call, from the real prompts of every group. Output = the Chinese the sample suggests
+    (ZH_PER_EN_CHAR) plus ~40 tokens of JSON per exercise. Claude: Message Batches price and, for comparison, synchronous."""
+    groups = [rows[i:i + batch] for i in range(0, len(rows), batch)]
+    tin = sum(_tokens("".join(build_prompt(g))) for g in groups)
+    src = sum(len(" ".join([x["name"], x["description"], *x["steps"]])) for x in map(T.src_text, rows))
+    tout = src * ZH_PER_EN_CHAR * 1.3 + len(rows) * 40
+    out = {"exercises": len(rows), "requests": len(groups), "english_chars": src, "input_tokens": round(tin), "output_tokens": round(tout)}
+    if provider == "claude":
+        full = tin / 1e6 * CLAUDE_PRICE_IN + tout / 1e6 * CLAUDE_PRICE_OUT
+        out.update(model=CLAUDE_MODEL, cost_usd_batch=round(full * BATCH_DISCOUNT, 2), cost_usd_sync=round(full, 2),
+                   prices=f"${CLAUDE_PRICE_IN}/M in, ${CLAUDE_PRICE_OUT}/M out, Message Batches ×{BATCH_DISCOUNT}",
+                   time="Message Batches: most batches end within 1 hour, at most 24 hours")
+    else:   # DeepSeek's tokenizer is denser for Chinese (~0.6 token / character)
+        dout = src * ZH_PER_EN_CHAR * 0.75 + len(rows) * 30
+        out.update(model=FP.MODEL, output_tokens=round(dout), cost_cny=round(tin * 0.8 / 1e6 * FP.PRICE_CACHE_MISS_CNY + dout / 1e6 * FP.PRICE_OUTPUT_CNY, 2),
+                   prices=f"input ¥{FP.PRICE_CACHE_MISS_CNY}/M, output ¥{FP.PRICE_OUTPUT_CNY}/M ({FP.PRICE_SOURCE})")
+    return out
 
 
 def _glossary_block(rows: list[dict]) -> str:
@@ -123,7 +144,53 @@ def _glossary_block(rows: list[dict]) -> str:
     return "\n".join(f"{t} = {'|'.join(g[t])}" for t in sorted(terms))
 
 
-class Translator:
+def build_prompt(rows: list[dict], hints: dict[str, list[str]] | None = None) -> tuple[str, str]:
+    """(system, user) for one group of exercises; the same for every provider."""
+    items = []
+    for r in rows:
+        src = T.src_text(r)
+        it = {"id": r["slug"], "name": src["name"], "description": src["description"], "steps": src["steps"]}
+        if hints and hints.get(r["slug"]):
+            it["必须用的译法"] = hints[r["slug"]]
+        items.append(it)
+    return PROMPT + "\n\n术语表：\n" + _glossary_block(rows), json.dumps({"items": items}, ensure_ascii=False)
+
+
+def _items(text: str | None) -> dict[str, dict]:
+    try:
+        out = json.loads(text or "")["items"]
+        return {x["id"]: x for x in out if isinstance(x, dict) and "id" in x}
+    except (ValueError, KeyError, TypeError):
+        return {}
+
+
+# Claude: Anthropic's list prices for claude-sonnet-5-5 (USD per million tokens, checked 2026-10-25); the Message Batches API bills 50%.
+CLAUDE_MODEL = "claude-sonnet-5-5"
+CLAUDE_PRICE_IN, CLAUDE_PRICE_OUT, BATCH_DISCOUNT = 2.0, 10.0, 0.5
+ITEMS_SCHEMA = {   # structured output (output_config.format): the reply is exactly this JSON
+    "type": "object",
+    "properties": {"items": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"id": {"type": "string"}, "name_zh": {"type": "string"}, "description_zh": {"type": "string"},
+                       "steps_zh": {"type": "array", "items": {"type": "string"}}},
+        "required": ["id", "name_zh", "description_zh", "steps_zh"], "additionalProperties": False}}},
+    "required": ["items"], "additionalProperties": False,
+}
+
+
+def claude_params(rows: list[dict], model: str, hints: dict[str, list[str]] | None = None) -> dict:
+    """One Messages request. Thinking off (between_tools, the lowest setting on Sonnet 5.5) at low effort: translation needs no
+    reasoning, and thinking tokens would be billed as output."""
+    system, user = build_prompt(rows, hints)
+    return {"model": model, "max_tokens": 16000, "system": system, "messages": [{"role": "user", "content": user}],
+            "thinking": {"type": "between_tools"},
+            "output_config": {"effort": "low", "format": {"type": "json_schema", "schema": ITEMS_SCHEMA}}}
+
+
+class DeepSeekTranslator:
+    """Any OpenAI-compatible Chat Completions service (default DeepSeek deepseek-flash, thinking off); costs in CNY."""
+    currency = "CNY"
+
     def __init__(self, key: str, base_url: str, model: str):
         from openai import OpenAI
         self.client = OpenAI(api_key=key, base_url=base_url, timeout=180)
@@ -134,15 +201,8 @@ class Translator:
         return self.tokens_in / 1e6 * FP.PRICE_CACHE_MISS_CNY + self.tokens_out / 1e6 * FP.PRICE_OUTPUT_CNY
 
     def call(self, rows: list[dict], hints: dict[str, list[str]] | None = None) -> dict[str, dict]:
-        items = []
-        for r in rows:
-            src = T.src_text(r)
-            it = {"id": r["slug"], "name": src["name"], "description": src["description"], "steps": src["steps"]}
-            if hints and hints.get(r["slug"]):
-                it["必须用的译法"] = hints[r["slug"]]
-            items.append(it)
-        msgs = [{"role": "system", "content": PROMPT + "\n\n术语表：\n" + _glossary_block(rows)},
-                {"role": "user", "content": json.dumps({"items": items}, ensure_ascii=False)}]
+        system, user = build_prompt(rows, hints)
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         for attempt in range(3):
             try:
                 resp = self.client.chat.completions.create(
@@ -151,19 +211,91 @@ class Translator:
             except Exception as e:   # network / rate limit: back off and retry
                 if attempt == 2:
                     raise
-                print(f"  retry after error: {e}", file=sys.stderr)
+                print(f"  retry after error: {type(e).__name__}", file=sys.stderr)
                 time.sleep(5 * (attempt + 1))
                 continue
             u = resp.usage
             self.tokens_in += u.prompt_tokens if u else 0
             self.tokens_out += u.completion_tokens if u else 0
-            try:
-                out = json.loads(resp.choices[0].message.content)["items"]
-                return {x["id"]: x for x in out if isinstance(x, dict) and "id" in x}
-            except (ValueError, KeyError, TypeError):
-                if attempt == 2:
-                    return {}
+            got = _items(resp.choices[0].message.content)
+            if got or attempt == 2:
+                return got
         return {}
+
+
+class ClaudeTranslator:
+    """Claude through the official Anthropic SDK; costs in USD. Synchronous calls (retries, glossary fixes) go through
+    client.messages.create; the bulk goes through the Message Batches API (run_claude_batch) at half price."""
+    currency = "USD"
+
+    def __init__(self, key: str, model: str = CLAUDE_MODEL):
+        import anthropic
+        self.anthropic = anthropic
+        self.client = anthropic.Anthropic(api_key=key, max_retries=4)
+        self.model = model
+        self.tokens_in = self.tokens_out = 0
+        self.batch_in = self.batch_out = 0
+
+    def cost(self) -> float:
+        full = self.tokens_in / 1e6 * CLAUDE_PRICE_IN + self.tokens_out / 1e6 * CLAUDE_PRICE_OUT
+        batch = self.batch_in / 1e6 * CLAUDE_PRICE_IN + self.batch_out / 1e6 * CLAUDE_PRICE_OUT
+        return full + batch * BATCH_DISCOUNT
+
+    def _text(self, msg) -> str | None:
+        if msg.stop_reason == "refusal":   # a safety classifier declined: the rows are reported as failed, nothing is guessed
+            return None
+        return next((b.text for b in msg.content if b.type == "text"), None)
+
+    def call(self, rows: list[dict], hints: dict[str, list[str]] | None = None) -> dict[str, dict]:
+        a = self.anthropic
+        for attempt in range(2):
+            try:
+                msg = self.client.messages.create(**claude_params(rows, self.model, hints))
+            except (a.RateLimitError, a.InternalServerError, a.APIConnectionError) as e:   # SDK already retried 4 times
+                if attempt == 1:
+                    raise
+                print(f"  retry after {type(e).__name__}", file=sys.stderr)
+                time.sleep(30)
+                continue
+            self.tokens_in += msg.usage.input_tokens
+            self.tokens_out += msg.usage.output_tokens
+            got = _items(self._text(msg))
+            if got or attempt == 1:
+                return got
+        return {}
+
+
+def run_claude_batch(tr: ClaudeTranslator, groups: list[list[dict]], state: Path) -> dict[str, dict]:
+    """Submit every group as one Message Batches request (custom_id = group number), wait, and return slug -> item.
+    The batch id is kept in `state`, so an interrupted run picks the same batch up again instead of paying twice."""
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+    doc = json.loads(state.read_text(encoding="utf-8")) if state.is_file() else {}
+    slugs = [[r["slug"] for r in g] for g in groups]
+    if doc.get("groups") != slugs:
+        reqs = [Request(custom_id=f"g{i:05d}", params=MessageCreateParamsNonStreaming(**claude_params(g, tr.model)))
+                for i, g in enumerate(groups)]
+        batch = tr.client.messages.batches.create(requests=reqs)
+        doc = {"batch_id": batch.id, "groups": slugs, "model": tr.model}
+        state.write_text(json.dumps(doc), encoding="utf-8")
+        print(f"  batch {batch.id}: {len(reqs)} requests submitted", flush=True)
+    while True:
+        b = tr.client.messages.batches.retrieve(doc["batch_id"])
+        if b.processing_status == "ended":
+            break
+        c = b.request_counts
+        print(f"  batch {b.id}: {c.processing} processing, {c.succeeded} done, {c.errored} errored", flush=True)
+        time.sleep(60)
+    got: dict[str, dict] = {}
+    for res in tr.client.messages.batches.results(doc["batch_id"]):   # any order: keyed by custom_id
+        if res.result.type != "succeeded":
+            continue
+        msg = res.result.message
+        tr.batch_in += msg.usage.input_tokens
+        tr.batch_out += msg.usage.output_tokens
+        group = set(doc["groups"][int(res.custom_id[1:])])
+        got.update({k: v for k, v in _items(tr._text(msg)).items() if k in group})
+    return got
 
 
 def check(r: dict, x: dict | None) -> str | None:
@@ -181,8 +313,10 @@ def check(r: dict, x: dict | None) -> str | None:
     return None
 
 
-def translate_batch(tr: Translator, rows: list[dict], model: str) -> tuple[list[dict], list[str]]:
-    got = tr.call(rows)
+def translate_batch(tr, rows: list[dict], model: str, got: dict[str, dict] | None = None) -> tuple[list[dict], list[str]]:
+    """Translate one group (or check what the Message Batches run already returned for it), fix what failed or missed a
+    glossary term with synchronous calls, and return (lines, failures)."""
+    got = dict(got) if got is not None else tr.call(rows)
     bad = [r for r in rows if check(r, got.get(r["slug"]))]
     if bad:   # once more, one by one
         for r in bad:
@@ -226,55 +360,86 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--db", default="body_test_translate", type=_db_name)
     ap.add_argument("--cache-dir", type=Path, default=ROOT / "media", help="where the pinned free-exercise-db JSON is kept")
     ap.add_argument("--out", type=Path, default=T.DATA)
+    ap.add_argument("--provider", choices=("claude", "deepseek"), default="claude")
+    ap.add_argument("--batch-api", action="store_true", help="claude: send the bulk through the Message Batches API (half price)")
     ap.add_argument("--estimate", action="store_true", help="only print the size and cost estimate")
+    ap.add_argument("--prepare-only", type=Path, metavar="FILE",
+                    help="claude: write the requests as JSON lines to FILE (to look at them) and stop; needs no key")
     ap.add_argument("--sample", type=int, help="translate only a stratified sample of N exercises")
     ap.add_argument("--slugs", nargs="*", help="only these slugs")
     ap.add_argument("--redo", action="store_true", help="with --slugs: translate them again even when their line is up to date")
-    ap.add_argument("--batch", type=int, default=12)
+    ap.add_argument("--batch", type=int, default=12, help="exercises per request")
+    ap.add_argument("--same-model", action="store_true", help="also translate again the lines another model made (one model "
+                                                               "for the whole library)")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--budget-cny", type=float, default=30.0, help="stop when the counted cost reaches this")
-    ap.add_argument("--model", default=FP.MODEL)
-    ap.add_argument("--base-url", default=FP.BASE_URL)
-    ap.add_argument("--key-file", type=Path, default=Path(os.environ.get("BODY_ROOT", ROOT)) / "secrets" / "deepseek_api_key")
+    ap.add_argument("--budget", type=float, help="stop when the counted cost reaches this (USD for claude, CNY for deepseek); "
+                                                 "default 20 USD / 30 CNY")
+    ap.add_argument("--model", help=f"default {CLAUDE_MODEL} / {FP.MODEL}")
+    ap.add_argument("--base-url", default=FP.BASE_URL, help="deepseek: the OpenAI-compatible endpoint")
+    ap.add_argument("--key-file", type=Path, help="default <repo>/secrets/anthropic_api_key or deepseek_api_key")
     a = ap.parse_args(argv)
+    claude = a.provider == "claude"
+    model = a.model or (CLAUDE_MODEL if claude else FP.MODEL)
+    budget = a.budget if a.budget is not None else (20.0 if claude else 30.0)
+    secrets = Path(os.environ.get("BODY_ROOT", ROOT)) / "secrets"
+    key_file = a.key_file or secrets / ("anthropic_api_key" if claude else "deepseek_api_key")
 
     rows = build_rows(a.db, a.cache_dir)
     table = T.load(a.out)
-    todo = todo_rows(rows, {} if a.redo and a.slugs else table)
+    todo = todo_rows(rows, {} if a.redo and a.slugs else table, model if a.same_model else None)
     if a.slugs:
         todo = [r for r in todo if r["slug"] in set(a.slugs)]
     if a.sample:
         todo = sample(todo, a.sample)
     print(json.dumps({"library": len(rows), "lines_in_file": len(table), "to_translate": len(todo),
-                      "estimate": estimate(todo, a.batch)}, ensure_ascii=False, indent=1))
+                      "estimate": estimate(todo, a.batch, a.provider)}, ensure_ascii=False, indent=1))
+    groups = [todo[i:i + a.batch] for i in range(0, len(todo), a.batch)]
+    if a.prepare_only:
+        if not claude:
+            raise SystemExit("--prepare-only is for --provider claude")
+        a.prepare_only.write_text("".join(json.dumps({"custom_id": f"g{i:05d}", "params": claude_params(g, model)},
+                                                     ensure_ascii=False) + "\n" for i, g in enumerate(groups)), encoding="utf-8")
+        print(f"{len(groups)} requests written to {a.prepare_only}")
+        return 0
     if a.estimate or not todo:
         return 0
-    key = a.key_file.read_text(encoding="utf-8").strip()
-    tr = Translator(key, a.base_url, a.model)
-    batches = [todo[i:i + a.batch] for i in range(0, len(todo), a.batch)]
+    key = key_file.read_text(encoding="utf-8").strip()   # never printed or logged
+    tr = ClaudeTranslator(key, model) if claude else DeepSeekTranslator(key, a.base_url, model)
+    del key
     failed: list[str] = []
     done = 0
-    with ThreadPoolExecutor(max_workers=a.workers) as pool:
-        futs = []
-        for b in batches:
-            futs.append(pool.submit(translate_batch, tr, b, a.model))
-        for f in futs:
-            lines, bad = f.result()
-            failed += bad
-            for ln in lines:
-                table[ln["slug"]] = ln
-            done += len(lines)
-            write(a.out, table)
-            print(f"  {done}/{len(todo)} done, ¥{tr.cost():.2f} ({tr.tokens_in} in / {tr.tokens_out} out tokens)", flush=True)
-            if tr.cost() >= a.budget_cny:
-                print(f"budget ¥{a.budget_cny} reached, stopping (re-run continues where it stopped)")
-                for g in futs:
-                    g.cancel()
+
+    def keep(lines: list[dict], bad: list[str]) -> None:
+        nonlocal done
+        failed.extend(bad)
+        for ln in lines:
+            table[ln["slug"]] = ln
+        done += len(lines)
+        write(a.out, table)
+        print(f"  {done}/{len(todo)} done, {tr.currency} {tr.cost():.3f}", flush=True)
+
+    if claude and a.batch_api:
+        got = run_claude_batch(tr, groups, a.cache_dir / f"translate_batch_{hashlib.sha256(json.dumps([[r['slug'] for r in g] for g in groups]).encode()).hexdigest()[:12]}.json")
+        print(f"  batch results in, {tr.currency} {tr.cost():.3f}; checking and fixing synchronously", flush=True)
+        for g in groups:   # retries / glossary fixes are synchronous (few)
+            keep(*translate_batch(tr, g, model, {k: v for k, v in got.items() if k in {r["slug"] for r in g}}))
+            if tr.cost() >= budget:
+                print(f"budget {tr.currency} {budget} reached, stopping (re-run continues where it stopped)")
                 break
+    else:
+        with ThreadPoolExecutor(max_workers=a.workers) as pool:
+            futs = [pool.submit(translate_batch, tr, g, model) for g in groups]
+            for f in futs:
+                keep(*f.result())
+                if tr.cost() >= budget:
+                    print(f"budget {tr.currency} {budget} reached, stopping (re-run continues where it stopped)")
+                    for g in futs:
+                        g.cancel()
+                    break
     misses = sum(1 for s in table.values() if s.get("glossary_misses"))
-    print(json.dumps({"translated": done, "failed": failed, "cost_cny": round(tr.cost(), 3), "tokens_in": tr.tokens_in,
-                      "tokens_out": tr.tokens_out, "lines_in_file": len(table), "lines_with_glossary_misses": misses},
-                     ensure_ascii=False, indent=1))
+    print(json.dumps({"translated": done, "failed": failed, "cost": round(tr.cost(), 3), "currency": tr.currency,
+                      "tokens_in": tr.tokens_in + getattr(tr, "batch_in", 0), "tokens_out": tr.tokens_out + getattr(tr, "batch_out", 0),
+                      "lines_in_file": len(table), "lines_with_glossary_misses": misses}, ensure_ascii=False, indent=1))
     return 0 if not failed else 1
 
 

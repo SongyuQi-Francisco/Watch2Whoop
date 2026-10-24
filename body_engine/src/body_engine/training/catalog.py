@@ -376,6 +376,11 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             images=imgs,
             image_urls=image_urls(imgs),
         )
+        if row.get("_licensed"):   # the credit each shown picture needs; no picture -> the page says there is no demo yet
+            shown = {u.rsplit("/exercises/", 1)[-1] for u in out["image_urls"]}
+            out["media_credits"] = [{k: m.get(k) for k in ("source", "author", "license", "license_url", "origin_url")}
+                                    for m in row.get("media") or [] if m["file"] in shown]
+            out["no_demo"] = not out["image_urls"]
     return out
 
 
@@ -415,23 +420,74 @@ def imported_visible(conn: psycopg.Connection, user_id: int | None) -> bool:
     return _flag_on(conn, user_id, OPENGYM_FLAG)
 
 
-_EN_CACHE: dict[str, tuple] = {}
+MEDIA_FLAG = "exercise_media_licensed"
 
 
-def _english_rows(conn: psycopg.Connection) -> list[dict]:
-    """catalog_rows with the machine Chinese taken out (translations.english_view), cached alongside catalog_rows."""
+def licensed_media_on(conn: psycopg.Connection) -> bool:
+    """Deployment-wide (a licence question, not a per-person rollout): on = only the pictures whose licence we checked
+    (exercise_catalog.media) are shown and the free-exercise-db pictures (`images`, licence unclear) are not."""
+    return _flag_on(conn, None, MEDIA_FLAG)
+
+
+def licensed_view(row: dict) -> dict:
+    """The row with `images` = its licensed pictures only (no free-exercise-db picture); `_licensed` marks the view."""
+    return {**row, "images": [m["file"] for m in row.get("media") or []], "_licensed": True}
+
+
+def shown_images(conn: psycopg.Connection, row: dict) -> list[str]:
+    """The pictures the page may show for a catalog row, for callers that read catalog_rows directly."""
+    if row.get("_licensed"):
+        return list(row.get("images") or [])
+    return [m["file"] for m in row.get("media") or []] if licensed_media_on(conn) else list(row.get("images") or [])
+
+
+_VIEW_CACHE: dict[tuple, tuple] = {}
+
+
+def _view(conn: psycopg.Connection, zh: bool, licensed: bool) -> list[dict]:
+    """catalog_rows as one viewer sees them (machine Chinese or not, licensed pictures or not), cached with catalog_rows."""
     rows = catalog_rows(conn)
-    key = conn.info.dbname
-    hit = _EN_CACHE.get(key)
+    if zh and not licensed:
+        return rows
+    key = (conn.info.dbname, zh, licensed)
+    hit = _VIEW_CACHE.get(key)
     if hit is None or hit[0] is not rows:
-        hit = _EN_CACHE[key] = (rows, [TR.english_view(r) for r in rows])
+        out = rows if zh else [TR.english_view(r) for r in rows]
+        hit = _VIEW_CACHE[key] = (rows, [licensed_view(r) for r in out] if licensed else out)
     return hit[1]
+
+
+QUALITY_FLAG = "exercise_quality_gate"
+_GRADE_CACHE: dict[tuple, tuple] = {}
+
+
+def grades_for(conn: psycopg.Connection, user_id: int | None) -> dict[str, dict] | None:
+    """slug -> quality grade (training/quality.py) of the shared rows as this viewer sees them, or None while the gate is off for
+    them. A picture counts when the viewer's view shows one (only licensed ones while exercise_media_licensed is on)."""
+    if not _flag_on(conn, user_id, QUALITY_FLAG):
+        return None
+    from . import quality as Q
+    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG), licensed_media_on(conn))
+    key = (conn.info.dbname, id(rows))
+    hit = _GRADE_CACHE.get(key)
+    if hit is None or hit[0] is not rows:
+        def media(r):
+            return bool(r.get("images"))
+        dups = Q.duplicates(rows, media)
+        hit = _GRADE_CACHE[key] = (rows, {r["slug"]: Q.grade(r, media(r), dups.get(r["slug"])) for r in rows})
+    return hit[1]
+
+
+def offered(grades: dict[str, dict] | None, slug: str) -> bool:
+    """Whether search results / browsing / alternatives may offer this row (always, while the gate is off; custom rows always)."""
+    return grades is None or slug not in grades or grades[slug]["passed"]
 
 
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
-    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise)."""
-    rows = catalog_rows(conn) if _flag_on(conn, user_id, TR.FLAG) else _english_rows(conn)
+    flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); only the
+    licensed pictures while exercise_media_licensed is on for everyone."""
+    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG), licensed_media_on(conn))
     if not imported_visible(conn, user_id):
         rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
     if user_id is None:
@@ -623,6 +679,7 @@ def search(
 
     scored: list[tuple[int, str, dict]] = []
     seen_sparky_ids: set[str] = set()
+    grades = grades_for(conn, user_id)   # quality gate (exercise_quality_gate): None = everything is offered
 
     for r in cat_rows:
         m = meta_by_slug.get(r["slug"])
@@ -672,7 +729,11 @@ def search(
                 rank = 25
             else:
                 continue
+            if rank < 100 and m is None and not offered(grades, r["slug"]):   # below the bar: only an exact name finds it
+                continue
         else:
+            if m is None and not offered(grades, r["slug"]):
+                continue
             # Prefer user's configured / linked exercises first, then the curated overlay, then common compound exercises
             rank = (30 if m else 0) + (20 if r.get("source") == "curated" else 0) + (10 if r.get("mechanic") == "compound" else 0)
         if q and r.get("source") == "curated":
@@ -755,6 +816,7 @@ def recommend_alternatives(
         target_row = target
 
     f_equip = _normalize_filter_equip(equipment)
+    grades = grades_for(conn, user_id if with_meta else None)
     t_slug = target_row["slug"]
     t_pat = target_row.get("movement_pattern")
     t_prim = set(target_row.get("primary_muscles") or [])
@@ -769,7 +831,7 @@ def recommend_alternatives(
             continue
         m = meta_by_slug.get(slug)
         status = (m or {}).get("status") or "active"
-        if status == "banned":
+        if status == "banned" or not offered(grades, slug):
             continue
         if f_equip and f_equip not in (r.get("equipment") or []):
             continue

@@ -138,7 +138,31 @@ Stairmaster = 爬楼机（模型给了登山机）。50 条里术语表遗漏 0 
 3. 缺口：先发邮件问 Gym visual 的私有部署价格（覆盖最广）；同时对计划模板和用户实际记录最多的动作自己拍（方案 F，可以进开源仓库）。
    不建议买 RepDB 付费版（不增加覆盖）；ExerciseDB 在拿到允许存储的书面许可之前不考虑。
 
-## 5. 后续轮次
-- 第二轮（等中控确认）：跑翻译全量；补器械 / 肌群标签的中文；精选动作的步骤；质量分级接进搜索 / 推荐 / 替换（开关 `exercise_quality_gate`，默认关）；
-  wger / Everkinetic 的图按高置信匹配下载进部署的媒体目录并带逐张署名（开关，默认关）；RepDB 走 ops overlay。
-- 按负责人决定处理 free-exercise-db 的图。
+## 5. 负责人的决定（2026-10-25）和第二轮
+- **翻译用 Claude API**：`claude-sonnet-5-5`，官方 Anthropic Python SDK，大批量走 Message Batches（半价）；key 由负责人放在本机
+  `secrets/anthropic_api_key`，脚本只读不打印。请求：结构化 JSON 输出（`output_config.format`），思考关闭（`thinking: between_tools`，
+  Sonnet 5.5 的最低档），effort low，不带 temperature。整个库用同一个模型：`--same-model` 会把 DeepSeek 做的 50 条样本也用 Claude 重翻。
+  - 估算（按真实提示词逐组算，Claude 分词按偏保守的系数）：6,168 条、510 个请求、约 131 万输入 + 121 万输出 token →
+    **Message Batches 约 7.4 美元**（同步调用约 14.8 美元）；加上少量同步重试 / 术语修正，预算给 20 美元（`--budget 20`，到了就停）。
+  - 时间：Message Batches 多数 1 小时内完成，最长 24 小时；结果回来后的校验和修正几分钟。
+  - 50 条样本的请求已经生成好（`--prepare-only`），key 放好后：
+    `cd body_engine && uv run python ../tools/translate_exercises.py --slugs <50 条> --redo`（样本，约 0.13 美元同步）→ 看效果 →
+    `uv run python ../tools/translate_exercises.py --same-model --batch-api --budget 20`（全量）。
+- **演示图不买付费版**，只用免费又能合法使用的来源；openGym / Gym visual 的图仍然一张不用。没有合法图的动作显示「暂无演示」，按质量规则不主动推荐。
+  free-exercise-db 现有的图怎么处理（停用 / 暂时保留）已问中控，代码按「停用」写在开关后面。
+
+第二轮实现（开关都默认关）：
+- `exercise_media_licensed`（只看「所有人」这一档，因为是版权问题）：迁移 760 `exercise_catalog.media`；`body-engine exercises-media-fetch`
+  按 `media_matches.json` 的高置信匹配下载 wger（跳过 AI 生成、没写作者的图，只从 wger.de 下载）和 Everkinetic（钉住的 commit）的图到
+  `<media>/exercises/licensed/`，每张图的作者 / 许可证 / 来源写进 `media`；图不改尺寸、不裁剪。打开后详情页只显示这些图，下面一行写来源，
+  没有图的显示「暂无演示」；训练卡片、朋友动态的缩略图同样只用这些图。free-exercise-db 的图不再显示（文件还在，关掉开关即恢复）。
+- `exercise_quality_gate`（按人）：搜索、浏览、替换动作只给达标的动作；精确搜名字仍能找到不达标的；用户自己设置过的动作照常显示。
+  注意：打开后替换动作的候选只剩有合法图的精选动作（现在约 37 个），这是规则的直接后果。
+- RepDB 免费层（再多约 240 条）只能放私有部署：匹配表和下载走 ops overlay，还没做。
+
+部署（合并后）：`body-engine migrate`（755、760）→ `seed-exercises --free-db` → `exercises-import-opengym` → `exercises-media-fetch`
+（出网 wger.de、raw.githubusercontent.com，约 600 张图、几十 MB）→ 中控按顺序打开 `exercise_zh_machine`、`exercise_media_licensed`、`exercise_quality_gate`。
+
+## 6. 还没做
+- 翻译全量（等 key）；器械 / 肌群标签补中文；精选动作的分步步骤；wger 的 46 段视频（1080p HEVC，约 3 GB，先不下）；RepDB 走 ops overlay；
+  中置信的 115 条匹配人工过一遍。

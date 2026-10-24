@@ -173,3 +173,93 @@ def test_free_db_rows_get_english_steps_and_translation():
     assert row["instructions_en"] == ["Stand facing a bench.", "Lower your chest."] and row["zh_source"] in (None, "machine")
     if row["zh_source"] is None:   # no committed line for this exact text: stays English
         assert row["name_zh"] == "Incline Push-Up" and row["instructions_zh"] == row["instructions_en"]
+
+
+# ---------------------------------------------------------------- the offline batch tool (Claude requests, no call)
+def test_claude_request_shape():
+    import importlib.util
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location("translate_exercises", Path(__file__).resolve().parents[2] / "tools" / "translate_exercises.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    row = {"slug": "og_1", "name_en": "Dumbbell Romanian Deadlift", "name_zh": "Dumbbell Romanian Deadlift", "description_en": "A hinge.",
+           "instructions_en": ["Stand.", "Hinge."], "instructions_zh": []}
+    p = tool.claude_params([row], tool.CLAUDE_MODEL)
+    assert p["model"] == "claude-sonnet-5-5" and p["thinking"] == {"type": "between_tools"}
+    assert "temperature" not in p and p["output_config"]["format"]["type"] == "json_schema"
+    assert p["output_config"]["format"]["schema"]["additionalProperties"] is False
+    assert "romanian deadlift = 罗马尼亚硬拉" in p["system"] and json.loads(p["messages"][0]["content"])["items"][0]["id"] == "og_1"
+    est = tool.estimate([row], 12, "claude")
+    assert est["requests"] == 1 and est["input_tokens"] > 100 and est["cost_usd_batch"] <= est["cost_usd_sync"]
+
+
+# ---------------------------------------------------------------- licensed media + quality gate (database)
+def _png(tag: str) -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + tag.encode()
+
+
+def test_media_fetch_and_licensed_view(conn, tmp_path, monkeypatch):
+    from body_engine.training import media_licensed as ML
+    monkeypatch.setenv("BODY_MEDIA_DIR", str(tmp_path))
+    matches = tmp_path / "m.json"
+    matches.write_text(json.dumps({"everkinetic_commit": "a" * 40, "matches": [
+        {"slug": "goblet_squat", "source": "wger", "source_id": 7, "confidence": "high", "images_usable": 1},
+        {"slug": "goblet_squat", "source": "everkinetic", "source_id": "0042", "confidence": "high", "images_usable": 2},
+        {"slug": "leg_press", "source": "wger", "source_id": 8, "confidence": "medium", "images_usable": 1}]}))
+    info = {"images": [
+        {"id": 1, "uuid": "u1", "image": "https://wger.de/media/u1.png", "is_main": True, "license": 2, "license_author": "Ann", "is_ai_generated": False},
+        {"id": 2, "uuid": "u2", "image": "https://wger.de/media/u2.png", "license": 2, "license_author": "", "author_history": [], "is_ai_generated": False},
+        {"id": 3, "uuid": "u3", "image": "https://wger.de/media/u3.png", "license": 2, "license_author": "Bot", "is_ai_generated": True},
+        {"id": 4, "uuid": "u4", "image": "https://evil.example/u4.png", "license": 2, "license_author": "X", "is_ai_generated": False}]}
+    calls = []
+
+    def fake_get(url, timeout=60):
+        calls.append(url)
+        return json.dumps(info).encode() if "/api/v2/" in url else _png(url)
+    rep = ML.run(conn, matches=matches, media=tmp_path, get=fake_get)
+    assert rep["updated"] == 1 and rep["failed"] == []
+    media = conn.execute("SELECT media FROM exercise_catalog WHERE slug = 'goblet_squat'").fetchone()["media"]
+    assert [m["file"] for m in media] == ["licensed/wger/u1.png", "licensed/everkinetic/0042-relaxation.png", "licensed/everkinetic/0042-tension.png"]
+    assert media[0]["author"] == "Ann" and media[0]["license"] == "CC-BY-SA-4.0" and media[1]["author"].startswith("Everkinetic")
+    assert not any("u2" in c or "u3" in c or "evil" in c for c in calls)        # no author / AI-generated / other host: not fetched
+    n = len(calls)
+    again = ML.run(conn, matches=matches, media=tmp_path, get=fake_get)
+    assert again["updated"] == 0 and again["unchanged"] == 1 and len(calls) == n + 1   # only the wger metadata again, no picture
+    flags.set_flag(conn, "exercise_media_licensed", "off", actor="test")
+    flags.invalidate()
+    row = next(r for r in catalog.rows_for(conn, None) if r["slug"] == "goblet_squat")
+    assert not row.get("_licensed") and "media_credits" not in catalog.get_exercise(conn, None, "goblet_squat")
+    flags.set_flag(conn, "exercise_media_licensed", "all", actor="test")
+    flags.invalidate()
+    d = catalog.get_exercise(conn, None, "goblet_squat")
+    assert [u.rsplit("/exercises/", 1)[1] for u in d["image_urls"]] == [m["file"] for m in media]
+    assert d["media_credits"][0]["author"] == "Ann" and d["no_demo"] is False
+    other = catalog.get_exercise(conn, None, "leg_press")    # medium match only, and its free-exercise-db pictures are hidden
+    assert other["image_urls"] == [] and other["no_demo"] is True
+    assert catalog.shown_images(conn, next(r for r in catalog.catalog_rows(conn) if r["slug"] == "leg_press")) == []
+    flags.set_flag(conn, "exercise_media_licensed", "off", actor="test")
+    flags.invalidate()
+
+
+def test_quality_gate_hides_rows_below_the_bar(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("BODY_MEDIA_DIR", str(tmp_path))
+    (tmp_path / "exercises" / "licensed" / "x").mkdir(parents=True)
+    (tmp_path / "exercises" / "licensed" / "x" / "a.png").write_bytes(_png("a"))
+    conn.execute("""UPDATE exercise_catalog SET media = '[{"file": "licensed/x/a.png", "source": "x"}]'::jsonb WHERE slug = 'goblet_squat'""")
+    flags.set_flag(conn, "exercise_media_licensed", "all", actor="test")
+    flags.set_flag(conn, "exercise_quality_gate", "off", actor="test")
+    flags.invalidate()
+    before = {x["slug"] for x in catalog.search(conn, None, "squat", with_meta=False, limit=150)}
+    assert "goblet_squat" in before and len(before) > 1
+    flags.set_flag(conn, "exercise_quality_gate", "all", actor="test")
+    flags.invalidate()
+    after = {x["slug"] for x in catalog.search(conn, None, "squat", with_meta=False, limit=150)}
+    assert after == {"goblet_squat"}                                   # the only one with a licensed picture
+    exact = catalog.search(conn, None, "Hack Squat", with_meta=False)   # below the bar, but its exact name still finds it
+    assert exact and exact[0]["slug"] == "hack_squat"
+    assert {x["slug"] for x in catalog.search(conn, None, None, with_meta=False, limit=150)} == {"goblet_squat"}
+    assert all(a["slug"] == "goblet_squat" for a in catalog.recommend_alternatives(conn, "leg_press", None, with_meta=False))
+    assert catalog.get_exercise(conn, None, "hack_squat")["slug"] == "hack_squat"   # still in the library
+    for f in ("exercise_quality_gate", "exercise_media_licensed"):
+        flags.set_flag(conn, f, "off", actor="test")
+    flags.invalidate()

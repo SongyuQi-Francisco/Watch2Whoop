@@ -3692,6 +3692,10 @@
     const imgs = ex.image_urls || [];
     const carousel = imgs.length ? `<div class="ex-car" id="ex-car">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(`${exMain} ${i + 1}`)}" loading="lazy" decoding="async">`).join("")}</div>
       ${imgs.length > 1 ? `<div class="ex-dots">${imgs.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}` : "";
+    // licensed pictures (#248, flag exercise_media_licensed): one credit per author / licence; none at all -> say so
+    const credits = [...new Set((ex.media_credits || []).map((c) => [c.author, (c.license || "").replace(/-/g, " "), c.source].filter(Boolean).join(" · ")))];
+    const creditLine = credits.length ? `<div class="small faint" style="margin:-2px 0 8px">${esc(tr("图片来源"))} · ${esc(credits.join(" / "))}</div>` : "";
+    const noDemo = ex.no_demo ? `<div class="empty faint" style="padding:10px 0;margin-bottom:8px">${tr("暂无演示")}</div>` : "";
     const map = window.BodyMuscleMap ? window.BodyMuscleMap.html(ex.primary_muscles, ex.secondary_muscles) : "";
     const ld = ex.load;
     const loadV = ld && ex.status !== "banned" && (ld.kg != null || ld.basis === "bodyweight")
@@ -3709,7 +3713,7 @@
       <span class="chev">${ICON.chev}</span></button>`).join("");
     $("#sheet-body").innerHTML = `
       ${exOther && exOther !== exMain ? `<div class="small muted" style="margin:-4px 0 8px">${esc(exOther)}</div>` : ""}
-      ${carousel}
+      ${carousel}${creditLine}${noDemo}
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
       ${addPlanOn() && isSelf() ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
         ${ex.status === "banned" ? `<div class="small muted" style="margin:-2px 0 8px">${tr("这是禁用动作，不能加入训练计划")}</div>` : ""}` : ""}

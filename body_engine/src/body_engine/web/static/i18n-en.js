@@ -187,6 +187,8 @@ I18N.addEn({
   "周报": "Weekly",
   "月报": "Monthly",
   "暂无": "None yet",
+  "暂无演示": "No demo yet",
+  "图片来源": "Images",
   "上期": "Prev.",
   "次日恢复": "Next-day recovery",
   "已控制负荷、睡眠、星期": "adjusted for strain, sleep, weekday",
