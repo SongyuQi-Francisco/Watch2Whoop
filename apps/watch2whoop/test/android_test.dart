@@ -164,7 +164,10 @@ void main() {
       ]) {
         expect(m, contains(s));
       }
-      expect(RegExp(r'FOREGROUND_SERVICE_HEALTH" tools:node="remove"').hasMatch(m), isTrue);
+      for (final p in ['FOREGROUND_SERVICE_HEALTH', 'POST_NOTIFICATIONS', 'health.READ_HEART_RATE', 'health.READ_SLEEP',
+          'health.READ_HEALTH_DATA_IN_BACKGROUND']) {
+        expect(m, contains('android.permission.$p" tools:node="remove"'), reason: p);
+      }
     });
 
     test('MainActivity answers the channels the Dart side uses', () {
