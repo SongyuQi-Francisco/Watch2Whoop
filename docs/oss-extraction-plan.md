@@ -11,7 +11,7 @@ package **inside this repository**; only when its interface is stable does it mo
 | # | Piece | Licence | Where it lives now | Next |
 |---|---|---|---|---|
 | 1 | **Scoring library** `openbodyscore` (working name; the main focus): sleep, recovery, strain, training load, muscle load, stress, body age, HRV from beat times | **Apache-2.0** | `packages/openbodyscore/` (this step) | methodology and validation (#118), RMSSD (#117), stabilise the API, then its own repository and PyPI |
-| 2 | **MCP "personal data layer" framework** (#116) | to be decided with the piece | `body_engine/` (MCP server, tools) | built and run in this project first, then extracted |
+| 2 | **MCP "personal data layer" framework** `datalayer` (working name, #116) | to be decided with the piece | `body_engine/src/body_engine/datalayer/` (phases 1–2b done: behaviour snapshots; tool definitions, toolsets, playbook loading, texts; the executor, audit, AI write log with rollback by kind, MCP stdio / HTTP transports), never importing Watch2Whoop (`tests/test_datalayer_boundary.py`); the old import paths still work | phase 3: one registration module (`dl_app.py`), `confirm` on tool definitions, the fallback AI whitelist as a view, `(ctx, args)` handlers; phase 4: English default texts and a non-health example; then a 2–4 week trial before it moves to `packages/` like `openbodyscore` ([design](datalayer-design.md) section 4) |
 | 3 | English design documents and extension-point notes in this repository | AGPL-3.0 (docs of this repository) | `docs/`, component READMEs | ongoing |
 
 Not extracted (maintainer decision, 2026-10-22): the HealthKit sync spec and the iOS Shortcut (`docs/shortcut-sync-spec.md`,
