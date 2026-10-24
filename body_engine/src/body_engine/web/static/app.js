@@ -649,6 +649,7 @@
     if (day > S.todayDate) day = S.todayDate;
     S.sleepNight = null;
     S.viewDate = day === S.todayDate ? null : day;
+    rec = null; tabRec = null;   // boot_api / tab_prefetch: paths asked for another day are not what the next start needs
     const q = new URLSearchParams(location.search);
     if (S.viewDate) q.set("date", S.viewDate); else q.delete("date");
     history.replaceState(null, "", location.pathname + (q.toString() ? `?${q}` : "") + location.hash);
@@ -3274,7 +3275,7 @@
     ]);
     const quick = isSelf() ? quickHtml(meals, true) : "";
     let html = seg + foodDayHtml(d)
-      + PLUGINS().map((p) => p.foodDiet?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate, past }) || "").join("");   // water.js
+      + PLUGINS().map((p) => p.foodDiet?.({ owner: ownerPath(), self: isSelf(), date: viewDay(), past }) || "").join("");   // water.js
     if (quick) html += `<div class="section"><div class="section-head"><h2>${tr("快捷记录")}</h2></div>${quick}</div>`;
     html += mealPlanHtml(plan);
     const n = Array.isArray(list) ? list.length : null;
