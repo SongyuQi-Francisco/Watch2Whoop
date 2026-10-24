@@ -1,4 +1,4 @@
-"""SparkyFitness rows (as its API returns them) -> rows of Body Engine's own tables (migration 730). Pure functions, no I/O.
+"""SparkyFitness rows (as its API returns them) -> rows of Body Engine's own tables (migration 735). Pure functions, no I/O.
 
 The dual write (mirror.py) and `body-engine sparky-migrate` (migrate.py) both use these, so the two paths always store the
 same thing. Only fields sparky_client / assistant/sparky_write already rely on are read; nutrients without a column here

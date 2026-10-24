@@ -1,7 +1,7 @@
 """`body-engine sparky-migrate --user-id N [--since D] [--until D] (--dry-run | --confirm)` (issue #252 phase 2).
 
 Copies one user's food library, food entries, weight / body check-ins, exercise library and workouts from SparkyFitness
-into the own tables (migration 730), then reads them back and checks them against SparkyFitness table by table.
+into the own tables (migration 735), then reads them back and checks them against SparkyFitness table by table.
 
 - Reads with the user's own read-only key (sparky_client.client_for_user): only that user's data is reachable.
 - Idempotent: upsert by id, rows SparkyFitness no longer has (origin 'sparky', inside the range) are deleted; a second run

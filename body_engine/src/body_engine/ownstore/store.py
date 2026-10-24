@@ -1,4 +1,4 @@
-"""Write mapped SparkyFitness rows into the own tables (migration 730): upsert by id, delete what SparkyFitness no longer has.
+"""Write mapped SparkyFitness rows into the own tables (migration 735): upsert by id, delete what SparkyFitness no longer has.
 
 Every apply_* call covers one user and one date range and makes the tables equal to the given SparkyFitness rows there:
 rows are upserted by id (unchanged rows are not touched), rows with origin 'sparky' in the range that are not in the input

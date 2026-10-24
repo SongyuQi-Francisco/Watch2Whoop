@@ -616,7 +616,7 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - `src/body_engine/scores/`: the scoring engine (see above)
 - `src/body_engine/insights/`: WHOOP-comparable analysis (see above)
 - `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight)
-- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 730, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
+- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
 - `src/body_engine/records/`: health records (supplements, lab results, journal and journal analysis, events, exercises, exercise ID mapping): reads/writes, API, assistant tools, migration
 - `src/body_engine/rules/`: the rule reminder engine (see above)
 - `src/body_engine/goals/`: bedtime target (see above)
