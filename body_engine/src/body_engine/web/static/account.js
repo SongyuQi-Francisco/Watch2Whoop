@@ -338,7 +338,60 @@
     });
   }
 
+  // ---------------------------------------------------------------- open sign-up: a code after the account is open
+  // While the server opens accounts without a code (account/open_signup.py) nobody sees the invite step, so a friend's code
+  // is entered afterwards: a remembered ?invite= link (10-character codes; circle codes go to the Friends page, circles.js)
+  // is sent once on its own, and 「我 → 填写邀请码」 shows while GET /v1/account says invite_optional (one code, first days).
+  async function inviteOptional() {
+    try { return !!(await call("/v1/account", "GET")).invite_optional; } catch (e) { return false; }
+  }
+  async function redeemLate(code) {
+    await call("/v1/account/redeem-invite", "POST", { code });
+    try { sessionStorage.removeItem(INVITE_KEY); } catch (e) { /* storage blocked */ }
+  }
+  async function autoRedeem() {
+    const pre = pendingInvite();
+    if (!ME || ME.status !== "active" || !pre || !isShortCode(pre) || !(await inviteOptional())) return;
+    try { await redeemLate(pre); C?.toast?.(tr("已记录好友的邀请")); }
+    catch (e) { try { sessionStorage.removeItem(INVITE_KEY); } catch (e2) { /* storage blocked */ } }
+  }
+  function lateInviteSheet(row) {
+    C.openSheet(tr("填写邀请码"), `<p class="para muted">${esc(tr("好友的邀请码、管理员给的激活码或圈子激活码；只能填一次"))}</p>
+      <input id="li-code" class="input login-code" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="60"
+        placeholder="XXXXX-XXXXX" aria-label="${esc(tr("邀请码"))}">
+      <div class="btns"><button class="btn btn-primary" id="li-go">${esc(tr("提交邀请码"))}</button></div>
+      <p class="acct-err" id="li-error" role="alert"></p>`, (root) => {
+      const input = $("#li-code", root), go = $("#li-go", root), err = $("#li-error", root);
+      go.onclick = async () => {
+        const v = input.value.trim();
+        if (v.replace(/[\s-]/g, "").length < 4) { err.textContent = tr("请输入激活码"); input.focus(); return; }
+        go.disabled = true;
+        err.textContent = "";
+        try {
+          await redeemLate(v);
+          if (row) row.hidden = !(await inviteOptional());   // a circle code keeps the entry; an invite code closes it
+          C.closeSheet?.();
+          C.toast(tr("已记录好友的邀请"));
+        } catch (e) {
+          err.textContent = e.status === 401 ? tr("激活码无效、已用完或已过期") : e.status === 429 ? tr("尝试太多次，过一会儿再试") : e.message;
+        } finally { go.disabled = false; }
+      };
+    });
+  }
+
   window.BodyAccount = { showPending, loginShown, showOther };
+  (window.BodyPlugins = window.BodyPlugins || []).push({
+    init: (ctx, me) => { if (me?.me?.status === "active") setTimeout(() => { autoRedeem(); }, 0); },
+    meGroup: "settings-account",
+    meItem: (chev) => (ME && ME.status === "active"
+      ? `<button class="item" id="me-late-invite" hidden><span class="row-title">${esc(tr("填写邀请码"))}</span>${chev || ""}</button>` : ""),
+    bindMe: async (view) => {
+      const b = $("#me-late-invite", view);
+      if (!b) return;
+      b.onclick = () => lateInviteSheet(b);
+      if (await inviteOptional()) b.hidden = false;
+    },
+  });
   // before the delete-account row on the Me page
   (window.BodyPlugins = window.BodyPlugins || []).push({
     meItem: (chev) => (ME ? `<button class="item" id="me-invite" hidden><span class="row-title">${esc(tr("邀请好友"))}</span>${chev || ""}</button>` : ""),

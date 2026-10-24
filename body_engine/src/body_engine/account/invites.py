@@ -19,6 +19,9 @@
   redemptions racing for the last slot of a day may both pass; the total stays strict), never expires, and stops working
   when the admin revokes it, the inviter is disabled or deleted, or referrals are switched off (BODY_REFERRALS_ENABLED). Redeeming one records the inviter and writes a pending
   reward (params.REFERRAL_REWARD). The new user is invited to the inviter's home circle, their personal one (friends/store.py referral_invites; invite_redemptions.circle_id).
+- Open sign-up (open_signup.py): accounts opened without a code may still redeem one code within OPEN_SIGNUP_CODE_DAYS
+  (inviter, circle invite and reward recorded, the account stays as it is); identities that opened an account there count
+  as used for codes too.
 """
 from __future__ import annotations
 
@@ -209,20 +212,26 @@ def revoke(conn: psycopg.Connection, batch_id: int | None = None, code_id: int |
 
 def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
     """Use one invite code for a pending user: True → the user is active and queued for provisioning.
-    An already active user is left alone (True, no code consumed). Any invalid / used up / expired / revoked code → False."""
+    An already active user is left alone (True, no code consumed), except an account opened by open sign-up within its code
+    window (open_signup.code_window): its one code is recorded like at sign-up (inviter, circle invite, reward) and it stays
+    active. Any invalid / used up / expired / revoked code → False."""
+    from . import open_signup
     user = conn.execute("SELECT status FROM users WHERE id = %s FOR UPDATE", (user_id,)).fetchone()
     if user is None or user["status"] == "disabled":
         return False
+    late = False
     if user["status"] == "active":
-        return True
+        if not open_signup.code_window(conn, user_id):
+            return True
+        late = True   # opened without a code: this code only records who invited them
     if not TEXT_MIN <= len(normalize(code)) <= TEXT_MAX:   # random codes are LENGTH, readable ones TEXT_MIN–TEXT_MAX
         return False
     idents = [(i["provider"], _identity_sha(i["provider"], i["subject"]), identity_hint(i["provider"], i["subject"], i["email"]))
               for i in conn.execute("SELECT provider, subject, email FROM user_identities WHERE user_id = %s ORDER BY id",
                                     (user_id,)).fetchall()]
-    if idents and conn.execute("SELECT 1 FROM invite_redemption_identities WHERE identity_sha256 = ANY(%s)",
-                               ([sha for _, sha, _ in idents],)).fetchone():
-        return False   # this Apple ID / e-mail already opened an account with an invite code
+    # this Apple ID / e-mail already opened an account with an invite code, or (for a pending account) by open sign-up
+    if open_signup.identity_used(conn, [sha for _, sha, _ in idents], open_signup_too=not late):
+        return False
     row = conn.execute(
         """UPDATE invite_codes c SET uses = c.uses + 1 FROM invite_batches b
            WHERE c.code_sha256 = %(sha)s AND c.batch_id = b.id AND c.revoked_at IS NULL AND b.revoked_at IS NULL
@@ -252,6 +261,8 @@ def redeem(conn: psycopg.Connection, user_id: int, code: str) -> bool:
         r = params.REFERRAL_REWARD
         conn.execute("""INSERT INTO invite_rewards (user_id, redemption_id, invitee_user_id, reward_type, amount, unit)
                         VALUES (%s, %s, %s, %s, %s, %s)""", (inviter, red["id"], user_id, r["type"], r["amount"], r.get("unit")))
+    if late:
+        return True
     conn.execute("UPDATE users SET status = 'active' WHERE id = %s", (user_id,))
     conn.execute("INSERT INTO user_provisioning (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING", (user_id,))
     return True

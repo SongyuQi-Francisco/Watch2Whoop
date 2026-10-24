@@ -11,6 +11,9 @@ TARGET = {
     "abs": "abdominals", "glutes": "glutes", "quads": "quadriceps", "delts": "shoulders", "pectorals": "chest", "lats": "lats",
     "biceps": "biceps", "triceps": "triceps", "calves": "calves", "upper back": "middle back", "hamstrings": "hamstrings",
     "spine": "lower back", "forearms": "forearms", "abductors": "abductors", "adductors": "adductors", "traps": "traps",
+    # #248: openGym files 63 of its 65 levator-scapulae exercises under body part "neck"; the curated library tags its own serratus
+    # exercise (Serratus Wall Slide) with shoulders. Both follow an existing classification, not a guess.
+    "levator scapulae": "neck", "serratus anterior": "shoulders",
 }
 CARDIO_TARGET = "cardiovascular system"
 
