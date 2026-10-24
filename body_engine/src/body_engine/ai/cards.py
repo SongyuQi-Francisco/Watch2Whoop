@@ -480,7 +480,7 @@ def summary(card: dict) -> str:
         low = "、".join(x["name"] for x in card["muscles"] if x["status"] in ("none", "low"))[:60]
         sports = "、".join(f"{x['name']} {x['min']} 分钟" for x in card.get("sports") or [])[:80]
         return (f"已显示肌肉负荷图（{card['range']}）。偏少 / 没练（按力量组数）：{low or '无'}。"
-                f"{f'运动（单独一层，不算组数）：{sports}。' if sports else ''}不要用文字复述卡片里的数字。")
+                f"{f'手表运动（已折成等效组数计入上面）：{sports}。' if sports else ''}不要用文字复述卡片里的数字。")
     if t == "sleep":
         m = card["main"]
         if not m:

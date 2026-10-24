@@ -197,13 +197,17 @@ def _diet(conn, uid: int) -> list[str]:
 
 
 def _water(conn, uid: int, today) -> dict | None:
-    """Today's water so far vs the goal (issue #125); None while the rollout flag is off for this user."""
+    """Today's water so far vs the goal, plus the totals of the 6 days before (issue #125); None while the rollout flag is off for this user."""
     from .. import water
     if not water.enabled(conn, uid):
         return None
     from ..water import store as water_store
     d = water_store.day_view(conn, uid, today)
-    return {"ml": d["total_ml"], "goal_ml": d["goal"]["ml"]}
+    out = {"ml": d["total_ml"], "goal_ml": d["goal"]["ml"]}
+    prev = water_store.totals(conn, uid, today - timedelta(days=6), today - timedelta(days=1))   # the 6 days before, so the AI sees history too
+    if prev:
+        out["prev_ml"] = {k.isoformat(): prev[k] for k in sorted(prev)}
+    return out
 
 
 def _pantry_expiring(conn, uid: int) -> list[str]:
