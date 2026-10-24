@@ -553,6 +553,78 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
 [data-look="b"] .avs i, [data-look="b"] .av { border-color: var(--surface); }
 [data-look="b"] .sheet { border-radius: 10px 10px 0 0; border-top: 1px solid #2a2a2c; }
 .tabbar { z-index: 5; }
+/* =====================================================================
+   Tab bar concepts (D14), interaction ideas taken from concept-car instrument clusters (no names, logos or assets):
+   1 dials · a row of small round gauges; the selected one grows into the main dial, its needle sweeps, the others step back
+   2 arc   · an upward-curved glass strip; a light and a needle turn about one pivot to the selected tab
+   3 depth · layers with parallax (pointer / gyroscope); the selected tab floats forward; pages open as a ring from the centre
+   The centre Jarvis key keeps its four-key ring menu in all three. Transform / opacity only.
+   ===================================================================== */
+.tabbar[data-bar="dials"], .tabbar[data-bar="arc"], .tabbar[data-bar="depth"] { --gz: var(--ai, #5ff3ff); }
+.tabbar[data-bar="dials"] { height: 104px; padding: 0 10px 22px; align-items: flex-end; }
+[data-look="a"] .tabbar[data-bar="dials"] { left: 8px; right: 8px; bottom: 10px; height: 96px; padding-bottom: 12px; }
+.dt { width: 64px; gap: 0; }
+.dt .g { position: relative; width: 50px; height: 50px; display: grid; place-items: center; transform: translateY(6px) scale(.78); opacity: .5;
+  transition: transform .55s var(--ease), opacity .35s; }
+.dt[aria-current] .g { transform: translateY(-10px) scale(1.3); opacity: 1; }
+.dt .gz { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.dt .ga { fill: none; stroke: var(--gz); stroke-opacity: .25; stroke-width: 2; }
+.dt .gt { fill: none; stroke: var(--gz); stroke-opacity: .6; stroke-width: 3; stroke-dasharray: 1 6.2; }
+.dt .gp { fill: none; stroke: var(--gz); stroke-width: 2.5; stroke-linecap: round; opacity: 0; transition: opacity .5s .25s; }
+.dt[aria-current] .gp { opacity: 1; }
+.dt .nd { position: absolute; left: 50%; top: 7px; width: 2px; height: 18px; margin-left: -1px; border-radius: 1px; background: var(--amber, #ffb547);
+  transform-origin: 50% 100%; transform: rotate(-135deg); transition: transform .8s cubic-bezier(.3, 1.35, .45, 1); }
+.dt[aria-current] .nd { transform: rotate(var(--deg)); }
+.dt .tf { width: 22px; height: 22px; } .dt .tf .i { width: 16px; height: 16px; }
+.dt .lb { font-size: 10px; margin-top: 2px; transition: transform .55s var(--ease), opacity .35s; opacity: .55; }
+.dt[aria-current] .lb { opacity: 1; transform: translateY(-2px); }
+[data-look] .tabbar .dt .tf::before, [data-look] .tabbar .at .tf::before, [data-look] .tabbar .dp .tf::before { display: none; }
+[data-look="a"] .dt[aria-current] .g { filter: drop-shadow(0 0 8px rgba(95,243,255,.55)); }
+[data-look="a"] .dt[aria-current] .nd { box-shadow: 0 0 8px var(--amber); }
+/* neighbours of the selected dial step back a little further */
+.tabbar[data-bar="dials"] .dt[data-near] .g { transform: translateY(4px) scale(.86); opacity: .7; }
+
+.tabbar[data-bar="arc"] { height: 124px; padding: 0; background: none !important; border: 0 !important; box-shadow: none !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+  border-radius: 0 !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; display: block; }
+.arcbar { position: absolute; left: 0; bottom: 0; width: 390px; height: 124px; overflow: visible; }
+.arcbar .band { fill: rgba(3,14,22,.88); stroke: rgba(95,243,255,.35); stroke-width: 1; }
+.arcbar .edge { fill: none; stroke: var(--gz); stroke-width: 1.5; opacity: .8; }
+.arcbar .tk { fill: none; stroke: var(--gz); stroke-opacity: .45; stroke-width: 5; stroke-dasharray: 1 9; }
+[data-look="a"] .arcbar .edge { filter: drop-shadow(0 0 6px rgba(95,243,255,.8)); }
+.at { position: absolute; width: 60px; display: flex; flex-direction: column; align-items: center; gap: 1px; font-size: 10px; opacity: .55;
+  transition: opacity .35s; }
+.at .tf { transition: transform .5s var(--ease); }
+.at[aria-current] { opacity: 1; color: var(--ai); }
+.at[aria-current] .tf { transform: scale(1.25) translateY(-2px); }
+.arcsel { position: absolute; left: 195px; top: 560px; width: 0; height: 0; transform: rotate(var(--th, 0deg)); transition: transform .75s cubic-bezier(.3, 1.3, .45, 1); }
+.arcsel .hl { position: absolute; left: -46px; top: -520px; width: 92px; height: 48px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(95,243,255,.45), rgba(95,243,255,.12) 60%, transparent); }
+.arcsel .needle { position: absolute; left: -1px; top: -526px; width: 2px; height: 14px; background: var(--amber, #ffb547); border-radius: 1px; box-shadow: 0 0 8px var(--amber, #ffb547); }
+.tabbar[data-bar="arc"] .jkey { position: absolute; left: 50%; top: 4px; margin: 0 0 0 -32px; }
+[data-look="a"] .tabbar[data-bar="arc"] .jkey { margin-top: 0; }
+
+.tabbar[data-bar="depth"] { perspective: 600px; }
+.tabbar[data-bar="depth"] .plate { position: absolute; inset: 6px 10px; border-radius: 18px; border: 1px solid rgba(95,243,255,.12); pointer-events: none;
+  transform: translate(calc(var(--px, 0) * 2px), calc(var(--py, 0) * 2px)); transition: transform .3s ease-out; }
+.dp { position: relative; transform: translate(calc(var(--px, 0) * 4px), calc(var(--py, 0) * 3px)) scale(.88); opacity: .55;
+  transition: transform .5s var(--ease), opacity .3s; }
+.dp[aria-current] { transform: translate(calc(var(--px, 0) * 10px), calc(-12px + var(--py, 0) * 7px)) scale(1.2); opacity: 1; z-index: 1; }
+.dp .glow { position: absolute; left: 50%; top: 50%; width: 70px; height: 70px; margin: -42px 0 0 -35px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(95,243,255,.38), transparent); opacity: 0; transition: opacity .4s; }
+.dp[aria-current] .glow { opacity: 1; }
+.dp .shadow { position: absolute; left: 50%; bottom: -12px; width: 34px; height: 8px; margin-left: -17px; border-radius: 50%; background: rgba(0,0,0,.7);
+  opacity: 0; transform: scale(.5); transition: opacity .4s, transform .5s var(--ease); }
+.dp[aria-current] .shadow { opacity: .8; transform: none; }
+/* page change in the depth concept: content opens from the centre like an instrument cluster changing mode */
+.ripple { position: absolute; left: 50%; top: 42%; width: 240px; height: 240px; margin: -120px 0 0 -120px; border-radius: 50%; pointer-events: none; z-index: 7;
+  border: 1.5px solid var(--ai, #5ff3ff); opacity: 0; display: none; }
+.ripple.r2 { width: 160px; height: 160px; margin: -80px 0 0 -80px; border-style: dashed; }
+.ripple.go { display: block; animation: ripple .75s var(--ease) both; }
+.ripple.r2.go { animation-delay: .08s; }
+@keyframes ripple { 0% { opacity: .9; transform: scale(.15); } 100% { opacity: 0; transform: scale(2.4); } }
+.view.ringin > * { animation: ringin .6s var(--ease) both; }
+.view.ringin > *:nth-child(2) { animation-delay: .04s; } .view.ringin > *:nth-child(3) { animation-delay: .08s; } .view.ringin > *:nth-child(n+4) { animation-delay: .12s; }
+@keyframes ringin { from { opacity: 0; transform: scale(.82); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @media (max-width: 440px) { .stage { padding: 12px 0; } .phone { transform: scale(.92); transform-origin: top center; } .ctl { padding: 0 16px; } }
 </style>
@@ -582,6 +654,13 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
       <button class="opt" data-hero-set="cells">环形电池<small>20 格分段，一格一格亮</small></button>
       <button class="opt" data-hero-set="bars">横向电池<small>左边大数字，右边 4 条分段电量条</small></button>
     </div>
+    <h2>底栏方案（D14，待选）</h2>
+    <div class="opts" id="bars">
+      <button class="opt" data-bar-set="hud">基础 HUD 条<small>第四轮的悬浮条（对照）</small></button>
+      <button class="opt" data-bar-set="dials">1 · 圆形仪表组<small>选中的放大成主表盘，指针扫过，两侧后退</small></button>
+      <button class="opt" data-bar-set="arc">2 · 弧形悬浮条<small>向上弯的玻璃弧，高光和指针绕同一个轴转到选中项</small></button>
+      <button class="opt" data-bar-set="depth">3 · 视差景深<small>跟随滑动 / 陀螺仪轻微视差，选中项浮到前景，切页从中心环形展开</small></button>
+    </div>
     <h2>视觉方向（D12，待选）</h2>
     <div class="opts" id="looks">
       <button class="opt" data-look-set="a">A · 全息 HUD<small>青蓝主光 + 琥珀强调、同心刻度环、扫描线、悬浮半透明面板、光影线条图标</small></button>
@@ -605,7 +684,7 @@ table.raw td:last-child, table.raw th:last-child { text-align: right; color: var
       <linearGradient id="gAmber" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe2a8"/><stop offset="1" stop-color="#ff9a2e"/></linearGradient>
       <linearGradient id="gSt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--g-st-1, var(--strain))"/><stop offset="1" style="stop-color:var(--g-st-2, var(--strain))"/></linearGradient>
     </defs></svg>
-    <i class="sweep" id="sweep"></i>
+    <i class="sweep" id="sweep"></i><i class="ripple" id="rip1"></i><i class="ripple r2" id="rip2"></i>
     <div class="orbit-scrim" id="oscrim"></div>
     <div class="orbit" id="orbit"></div>
   </div></div>
@@ -697,7 +776,7 @@ const PERSONAS = {
 };
 
 // ---------------------------------------------------------------- app state
-const S = { hero: "three", p: "week2", tab: "today", pinned: [], why: {}, seen: new Set(), grown: new Set(), sub: "", circMode: "feed", goals: [] };
+const S = { bar: "hud", hero: "three", p: "week2", tab: "today", pinned: [], why: {}, seen: new Set(), grown: new Set(), sub: "", circMode: "feed", goals: [] };
 function setPersona(p) {
   S.p = p; S.tab = "today"; S.sub = ""; S.grown = new Set();
   const P = PERSONAS[p];
@@ -938,18 +1017,65 @@ function allHtml() {
 
 // ---------------------------------------------------------------- tab bar: 今天 · 身体 · Jarvis · 圈子 · 我
 const TABS = { today: ["house", "今天"], body: ["chart-line", "身体"], circles: ["users", "圈子"], me: ["user", "我"] };
+const TAB_ORDER = ["today", "body", "circles", "me"];
+const TAB_VAL = { today: 72, body: 64, circles: 75, me: 50 };   // what each small gauge's needle points at (decorative)
+const ARC_ANG = { today: -16, body: -8, circles: 8, me: 16 };    // where each tab sits on the arc strip (degrees about the pivot)
+const jkeyHtml = () => `<button class="jkey" id="jkey" aria-label="Jarvis"><svg class="jr" viewBox="0 0 88 88" aria-hidden="true"><circle class="r1 spin" cx="44" cy="44" r="42" stroke-dasharray="3 5"/><circle class="r2 spin rev" cx="44" cy="44" r="37" stroke-dasharray="30 14 6 14"/></svg>${ic("orbit", "ob1")}${ic("chevron-down", "cd")}</button>`;
+const badge = (t) => (t === "circles" && P().circles ? '<i class="badge-dot"></i>' : "");
+function arcPath(cx, cy, r, a0, a1) {   // SVG angles in degrees, 0 = +x, clockwise
+  const pt = (a) => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)];
+  const [x0, y0] = pt(a0), [x1, y1] = pt(a1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+}
+const BAR = {
+  hud: () => {
+    const b = (t) => `<button class="tab" data-tab="${t}"><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`;
+    return b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+  dials: () => {
+    const deg = (v) => -135 + v / 100 * 270;
+    const b = (t) => `<button class="tab dt" data-tab="${t}" style="--deg:${deg(TAB_VAL[t])}deg"><span class="g"><svg class="gz" viewBox="0 0 60 60" aria-hidden="true">
+      <path class="ga" d="${arcPath(30, 30, 25, 135, 405)}"/><path class="gt" d="${arcPath(30, 30, 29, 135, 405)}"/><path class="gp" d="${arcPath(30, 30, 25, 135, 135 + TAB_VAL[t] / 100 * 270)}"/></svg>
+      <i class="nd"></i><span class="tf">${ic(TABS[t][0])}</span></span><span class="lb">${TABS[t][1]}</span>${badge(t)}</button>`;
+    return b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+  arc: () => {
+    const C = [195, 560], P2 = (r, a) => [C[0] + r * Math.sin(a * Math.PI / 180), C[1] - r * Math.cos(a * Math.PI / 180)];
+    const band = (() => { const [a, b2] = [P2(520, -21), P2(520, 21)], [c, d] = [P2(472, 21), P2(472, -21)];
+      return `M${a[0]} ${a[1]}A520 520 0 0 1 ${b2[0]} ${b2[1]}L${c[0]} ${c[1]}A472 472 0 0 0 ${d[0]} ${d[1]}Z`; })();
+    const arcAt = (r) => { const [a, b2] = [P2(r, -21), P2(r, 21)]; return `M${a[0]} ${a[1]}A${r} ${r} 0 0 1 ${b2[0]} ${b2[1]}`; };
+    const b = (t) => { const [x, y] = P2(496, ARC_ANG[t]);
+      return `<button class="tab at" data-tab="${t}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;transform:translate(-50%,-50%) rotate(${ARC_ANG[t]}deg)"><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`; };
+    return `<svg class="arcbar" viewBox="0 0 390 124" aria-hidden="true"><path class="band" d="${band}"/><path class="tk" d="${arcAt(508)}"/><path class="edge" d="${arcAt(520)}"/></svg>
+      <div class="arcsel"><i class="hl"></i><i class="needle"></i></div>` + b("today") + b("body") + b("circles") + b("me") + jkeyHtml();
+  },
+  depth: () => {
+    const b = (t) => `<button class="tab dp" data-tab="${t}"><span class="glow"></span><span class="shadow"></span><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${badge(t)}</button>`;
+    return `<i class="plate"></i>` + b("today") + b("body") + jkeyHtml() + b("circles") + b("me");
+  },
+};
 function tabbar() {
-  const cur = SUB.has(S.tab) ? (S.from || "me") : S.tab;
-  const b = (t) => `<button class="tab" data-tab="${t}" ${cur === t ? 'aria-current="page"' : ""}><span class="tf">${ic(TABS[t][0])}</span><span>${TABS[t][1]}</span>${t === "circles" && P().circles ? '<i class="badge-dot"></i>' : ""}</button>`;
-  $("#tabbar").innerHTML = b("today") + b("body") + `<button class="jkey ${S.orbit ? "open" : ""}" id="jkey" aria-label="Jarvis"><svg class="jr" viewBox="0 0 88 88" aria-hidden="true"><circle class="r1 spin" cx="44" cy="44" r="42" stroke-dasharray="3 5"/><circle class="r2 spin rev" cx="44" cy="44" r="37" stroke-dasharray="30 14 6 14"/></svg>${ic("orbit", "ob1")}${ic("chevron-down", "cd")}</button>` + b("circles") + b("me");
+  const cur = SUB.has(S.tab) ? (S.from || "me") : S.tab, el = $("#tabbar");
+  const key = `${S.bar}|${P().circles}`;
+  if (el.dataset.key !== key) { el.dataset.key = key; el.dataset.bar = S.bar; el.innerHTML = BAR[S.bar](); }
+  const i = TAB_ORDER.indexOf(cur);
+  for (const t of $$(".tab", el)) {
+    const j = TAB_ORDER.indexOf(t.dataset.tab);
+    if (j === i) t.setAttribute("aria-current", "page"); else t.removeAttribute("aria-current");
+    if (Math.abs(j - i) === 1) t.dataset.near = "1"; else delete t.dataset.near;
+  }
+  el.style.setProperty("--th", `${ARC_ANG[cur] ?? 0}deg`);
+  $("#jkey").classList.toggle("open", !!S.orbit);
 }
 const SUB = new Set(["all", "record", "food"]);   // second-level pages: the tab bar keeps the tab they were opened from
 function render() {
   const v = $("#view");
   v.innerHTML = { today: todayHtml, body: bodyHtml, circles: circlesHtml, me: meHtml, all: allHtml, record: recordHtml, food: foodHtml }[S.tab]();
   tabbar(); bind();
-  v.classList.remove("enter"); void v.offsetWidth; v.classList.add("enter");
-  clearTimeout(S.enterT); S.enterT = setTimeout(() => v.classList.remove("enter"), 1500);
+  const cls = S.bar === "depth" ? "ringin" : "enter";
+  v.classList.remove("enter", "ringin"); void v.offsetWidth; v.classList.add(cls);
+  if (S.bar === "depth") for (const r of [$("#rip1"), $("#rip2")]) { r.classList.remove("go"); void r.offsetWidth; r.classList.add("go"); }
+  clearTimeout(S.enterT); if (!window.__freeze) S.enterT = setTimeout(() => v.classList.remove("enter", "ringin"), 1500);
   const sw = $("#sweep"); sw.classList.remove("go"); void sw.offsetWidth; sw.classList.add("go");
 }
 function go(tab) { if (SUB.has(tab)) S.from = SUB.has(S.tab) ? S.from : S.tab; S.tab = tab; $("#view").scrollTop = 0; render(); }
@@ -1090,13 +1216,24 @@ $("#demo-find").onclick = () => { demoRun++; demoFind(); };
 function setLook(l) { document.documentElement.dataset.look = l; for (const b of $$("#looks .opt")) b.setAttribute("aria-pressed", b.dataset.lookSet === l); }
 for (const b of $$("[data-look-set]")) b.onclick = () => setLook(b.dataset.lookSet);
 $("#oscrim").onclick = () => setOrbit(false);
-window.Proto = { setPersona, setLook, setHero, setOrbit, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
+window.Proto = { setPersona, setLook, setHero, setBar, parallax, setOrbit, go, demoOnboard, demoGrow, demoFind, detailSheet, jarvisSheet, closeSheet, S };
 const q = new URLSearchParams(location.search);
 if (q.get("theme")) document.documentElement.dataset.theme = q.get("theme");
 setLook(q.get("look") ?? "a");
+function setBar(b) { S.bar = b; for (const x of $$("#bars .opt")) x.setAttribute("aria-pressed", x.dataset.barSet === b); render(); }
+for (const x of $$("[data-bar-set]")) x.onclick = () => setBar(x.dataset.barSet);
+let parallaxRaf = 0;
+function parallax(px, py) {
+  if (S.bar !== "depth" || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  cancelAnimationFrame(parallaxRaf);
+  parallaxRaf = requestAnimationFrame(() => { const t = $("#tabbar"); t.style.setProperty("--px", px.toFixed(2)); t.style.setProperty("--py", py.toFixed(2)); });
+}
+$("#phone").addEventListener("pointermove", (e) => { const r = e.currentTarget.getBoundingClientRect(); parallax(((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1); });
+window.addEventListener("deviceorientation", (e) => { if (e.gamma != null) parallax(Math.max(-1, Math.min(1, e.gamma / 30)), Math.max(-1, Math.min(1, (e.beta - 45) / 30))); });
 function setHero(h) { S.hero = h; for (const b of $$("#heroes .opt")) b.setAttribute("aria-pressed", b.dataset.heroSet === h); if (S.tab === "today") render(); }
 for (const b of $$("[data-hero-set]")) b.onclick = () => setHero(b.dataset.heroSet);
 setHero(q.get("hero") || "three");
+if (q.get("bar")) setBar(q.get("bar")); else for (const x of $$("#bars .opt")) x.setAttribute("aria-pressed", x.dataset.barSet === "hud");
 // Low-end devices keep the look but drop blur, glow and continuous rotation (the real app would use the device class it reports)
 if (q.get("lite") === "1" || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 3) document.documentElement.classList.add("lite");
 setPersona(q.get("p") || "week2");

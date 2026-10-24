@@ -3,7 +3,7 @@
 > 依据：[`ui-ai-first-research.md`](ui-ai-first-research.md)（同类产品调研）、现有今天页（`body_engine/src/body_engine/web/static/`）、
 > [`ios-native-plan.md`](ios-native-plan.md)（#255，SwiftUI 原生化，已确认）、[`circles-redesign.md`](circles-redesign.md)（#269，圈子重构）。Issue：#279。
 > 可点击原型：[`ui-ai-first/prototype.html`](ui-ai-first/prototype.html)（单文件，合成数据，直接用浏览器打开）；截图在 [`ui-ai-first/`](ui-ai-first/)。
-> 这一版只有设计，不改线上代码。第 12 节是决定点：**D1–D11 负责人 2026-10-25 已全部按推荐通过**；D12（视觉方向）、D13（核心区版式）待选。
+> 这一版只有设计，不改线上代码。第 12 节是决定点：**D1–D11 负责人 2026-10-25 已全部按推荐通过**；D12（视觉方向）、D13（核心区版式）、D14（底栏方案）待选。
 >
 > v0.2 按负责人的两条修正改写：
 > 1. 用户第一天就导入完整的 Apple 健康历史，趋势、基线、恢复分从第一天起都算得出来，所以**解锁不按「数据攒够了」来卡**；渐进是为了控制注意力和学习负担，不是控制数据。
@@ -18,7 +18,7 @@
 - **新范式一句话：打开 app 最上面是恢复 / 睡眠 / 负荷三个圆环，下面是「今天的 1–3 件事 + 圈子」，记录和提问都通过 Jarvis；首页上的模块由你的关注、Jarvis 在数据里的发现、你和 Jarvis 的互动决定，其他功能一个不锁，在「全部功能」里随时能看。**
 - **底栏 5 格**：今天 · 身体 · Jarvis（中间的圆键，不变）· 圈子 · 我。饮食、记录变成模块和二级页。
 - **今天页最上面是圆环区**：恢复（大环，居中）+ 睡眠、负荷（小环，两侧）+ 一行 HRV / 静息心率 / 呼吸 / 血氧；AI 的东西都在下面，不取代它。
-- **视觉**：全息 HUD 风格（青蓝主光 + 少量琥珀、同心刻度环、扫描线、悬浮半透明面板、光影线条图标、Jarvis 键按下后同心弧扇形展开），动画只用 transform / opacity，尊重减少动态效果，低端机降级；两套方向 A「全息 HUD」/ B「石墨精工」各 8 页截图待选，推荐 A（第 7.6 节）；核心区 5 种版式待选，推荐并排三环（第 7.7 节）。
+- **视觉**：全息 HUD 风格（青蓝主光 + 少量琥珀、同心刻度环、扫描线、悬浮半透明面板、光影线条图标、Jarvis 键按下后同心弧扇形展开），动画只用 transform / opacity，尊重减少动态效果，低端机降级；两套方向 A「全息 HUD」/ B「石墨精工」各 8 页截图待选，推荐 A（第 7.6 节）；核心区 5 种版式待选，推荐并排三环（第 7.7 节）；底栏 3 个动态方案待选，推荐圆形仪表组（第 7.8 节）。
 - **第 1 天**：导入历史 → Jarvis 给一份「你的身体概况」（3 个最重要的发现）→ 问你最关心什么（多选）→ 按回答和发现摆首页（3 个模块）→ 首页。
 - **什么决定首页上有什么**（第 4 节）：① 关注点；② 数据里值得说的事（拐点、异常、里程碑），Jarvis 带出对应模块；③ 互动：问过的、Jarvis 用过的模块固定下来；④ 主动探索：「全部功能」随时打开任何模块；⑤ 使用天数只管节奏：每天最多主动介绍 1–2 个新模块。
 - **不堆也不藏**（第 5 节）：首页最多 6 个模块，每个模块标出「为什么在这里」（关注 / 发现 / 用过 / 固定）；所有指标在「身体」页从第一天就全部打开，按关注展开、其余折叠成一行摘要；「全部功能」显示每个模块的状态（首页 / 看过 / 新），没有锁、没有进度条。
@@ -380,6 +380,31 @@
 
 **推荐并排三环**：三个分数一眼都看得到、大小有主次（WHOOP、Oura 首页都是三个分），也是负责人说的「原来的风格」。环形电池的分段格可以作为恢复大环的一种样式备选；横向电池最有「电量」的直觉，但右侧文字多，适合以后单独做「身体电量」详情页。
 
+### 7.8 底栏方案（D14，待负责人选）
+
+底部分页栏（今天 · 身体 · Jarvis · 圈子 · 我）的动态交互，参考概念车数字仪表盘的交互方式（只借鉴交互，不出现任何品牌的名字、标志或素材），在全息 HUD 下做了 3 个方案。中间的 Jarvis 键在三个方案里都保留四键弹出的环形菜单。每个方案一张静态图 + 一段「今天 → 身体」的切换过程（8 帧，0–950 ms，用 Web Animations API 暂停后逐帧取，时间是准的）和 GIF。
+
+| | 1 · 圆形仪表组 | 2 · 弧形悬浮条 | 3 · 视差景深 |
+|---|---|---|---|
+| 静态 | <img src="ui-ai-first/bar-1-dials.jpg" width="200" alt="圆形仪表组"> | <img src="ui-ai-first/bar-2-arc.jpg" width="200" alt="弧形悬浮条"> | <img src="ui-ai-first/bar-3-depth.jpg" width="200" alt="视差景深（倾斜时）"> |
+| 交互 | 4 个 tab 是一排小圆形仪表（270° 刻度弧）；选中的放大成主表盘、上浮，琥珀指针带回弹扫到它的读数；相邻两个缩小后退，更远的再小一点 | 底栏是一条向上弯的玻璃弧带，tab 沿弧排列并跟着弧倾斜；一束高光和一根琥珀指针绕同一个轴心（在屏幕下方）转到选中项，像表针一样带回弹；Jarvis 键在弧顶 | 底栏分层：底板、图标、选中项各有不同的视差深度，跟随手指滑动 / 陀螺仪轻微移动；选中项浮到前景（放大、上浮、下面出现投影和光晕）；切页时内容从屏幕中心环形展开（两道同心环扩散，内容从 0.82 放大淡入） |
+| 切换过程 | [8 帧](ui-ai-first/bar-1-dials-frames.jpg) · [GIF](ui-ai-first/bar-1-dials.gif) | [8 帧](ui-ai-first/bar-2-arc-frames.jpg) · [GIF](ui-ai-first/bar-2-arc.gif) | [8 帧](ui-ai-first/bar-3-depth-frames.jpg) · [GIF](ui-ai-first/bar-3-depth.gif) |
+| 优点 | 最像仪表盘，「选中」一眼可见；高度和现在的底栏差不多 | 最有辨识度，弧形 + 指针的动势最强 | 最克制，有空间感；页面切换的环形展开很有「换模式」的感觉 |
+| 缺点 | 5 个圆形挤在一行，图标要小一号 | 高约 124 pt，比现在高 40 pt，内容区变少；弧两端的点按区域偏斜 | 视差要读陀螺仪（耗电、要权限说明），静态截图看不出特点 |
+
+切换过程（8 帧，左上到右下）：
+
+<img src="ui-ai-first/bar-1-dials-frames.jpg" width="640" alt="圆形仪表组切换过程">
+
+<img src="ui-ai-first/bar-2-arc-frames.jpg" width="640" alt="弧形悬浮条切换过程">
+
+<img src="ui-ai-first/bar-3-depth-frames.jpg" width="520" alt="视差景深切换过程">
+
+- 三个方案的动画都只用 transform / opacity（缩放、位移、旋转、淡入）；「减少动态效果」打开时没有过渡、没有视差；低端机（`.lite`）去掉光晕和持续旋转。
+- 视差在原型里跟随鼠标 / 手指，在手机上用陀螺仪（`deviceorientation`，原生端 Core Motion，限幅 ±1、每帧最多更新一次）。
+
+**推荐 1 · 圆形仪表组**，并借用方案 3 的「切页从中心环形展开」：仪表组最贴合「仪表盘」的定位、选中状态最清楚、不增加底栏高度；环形展开让切页也有换模式的感觉。弧形条留作以后的大屏（iPad）方案。
+
 ---
 
 ## 8. 技术方案
@@ -461,7 +486,7 @@
 
 ## 12. 要负责人决定的点
 
-> 负责人 2026-10-25：**D1–D11 全部按推荐通过**。D12、D13 待选。
+> 负责人 2026-10-25：**D1–D11 全部按推荐通过**。D12、D13、D14 待选。
 
 | # | 问题 | 推荐 |
 |---|---|---|
@@ -478,6 +503,7 @@
 | D11 | 外部 AI（Claude / ChatGPT 通过 MCP）用过的工具算不算「用过」 | **算**：看的是数据层的工具调用，和用哪家 AI 无关 |
 | D12 | 视觉方向 | **A · 全息 HUD**（完整实现，和 Jarvis 动画同一套语言；第 7.6 节） |
 | D13 | 今天页核心区版式 | **并排三环**（恢复大环居中，睡眠 / 负荷两侧；第 7.7 节） |
+| D14 | 底栏方案 | **圆形仪表组**，切页借用视差景深方案的「中心环形展开」（第 7.8 节） |
 
 ---
 
@@ -520,5 +546,5 @@
 **Day 1**: history import → "your body at a glance" (three findings) → "what do you care about?" (multi-select) → Today laid out with three modules.
 **Navigation**: five slots: Today · Body · Jarvis · Circles · Me. **Circles stay a first-level tab** (inside it follows `circles-redesign.md`, same APIs), and Today always carries a circles card (new posts, weekly ranking, invite) or an invite card.
 **Neither cluttered nor hidden**: at most six modules on Today, each tagged with why it is there (focus / found / used / pinned); Body shows every metric from day 1 with the user's focus expanded and other groups folded into one-line summaries; "All features" lists all 24 modules with their state (on Today / seen / new), no locks or progress bars; an "auto-arrange" switch lets users take over.
-**v0.3**: owner approved D1–D11; Today keeps the three score rings (recovery large in the centre, sleep and strain at the sides) at the very top, with AI items below; the visual style is a holographic HUD (cyan light with a little amber, concentric tick rings, scan lines, floating translucent panels, glowing line icons built on Lucide, the Jarvis key fanning out concentric arcs); direction A implements it on every page, B ("graphite instrument") is kept for comparison; five core-score layouts are compared (single ring, concentric, three rings, cell ring, horizontal batteries). Motion is transform / opacity only, honours reduced motion and degrades on low-end devices. See sections 7.6–7.7 (decisions D12, D13).
+**v0.3**: owner approved D1–D11; Today keeps the three score rings (recovery large in the centre, sleep and strain at the sides) at the very top, with AI items below; the visual style is a holographic HUD (cyan light with a little amber, concentric tick rings, scan lines, floating translucent panels, glowing line icons built on Lucide, the Jarvis key fanning out concentric arcs); direction A implements it on every page, B ("graphite instrument") is kept for comparison; five core-score layouts are compared (single ring, concentric, three rings, cell ring, horizontal batteries). Motion is transform / opacity only, honours reduced motion and degrades on low-end devices. Three tab-bar concepts inspired by concept-car instrument clusters (round gauges, an arc strip with a needle, parallax depth), each with a still, 8 exact frames and a GIF. See sections 7.6–7.8 (decisions D12–D14).
 **Implementation**: server-driven layout shared by web and native (`ui/params.py`, `ui/findings.py`, tables `ui_modules` / `ui_findings`, `GET /home`, `/overview`, `/modules`, `manage_modules`, `ui.suggest` in the briefing); web first behind `ui_ai_first`; the SwiftUI Today in 1.1.0 (#255) is built to this design. Owner decisions D1–D11 are in section 12; the prototype and screenshots are in `docs/ui-ai-first/`.
