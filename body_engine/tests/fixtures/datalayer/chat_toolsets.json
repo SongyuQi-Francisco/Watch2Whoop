@@ -5139,7 +5139,7 @@
   },
   "get_memory": {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -5170,7 +5170,7 @@
   },
   "update_profile_card": {
    "name": "update_profile_card",
-   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁的事实，带日期和依据。",
+   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁事实，带日期依据。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -5220,7 +5220,7 @@
        "string",
        "null"
       ],
-      "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+      "description": "近况最后一天；不确定写 recent（14 天）；长期事实 null"
      },
      "replace_id": {
       "type": [
@@ -5242,7 +5242,7 @@
   },
   "get_memory_review": {
    "name": "get_memory_review",
-   "description": "整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+   "description": "整理记忆先调：重复、过时、同主题条目；rules 必须照做。",
    "input_schema": {
     "type": "object",
     "properties": {},
@@ -5253,7 +5253,7 @@
   },
   "apply_memory_changes": {
    "name": "apply_memory_changes",
-   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "description": "提交整理结果，逐项返回，可重复提交。归档不删除。没要改的传空 items。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -5275,28 +5275,28 @@
         },
         "ref": {
          "type": "string",
-         "description": "n12 笔记 / k:goals 档案卡项"
+         "description": "n12 笔记 / k:goals 档案卡"
         },
         "into": {
          "type": [
           "string",
           "null"
          ],
-         "description": "merge 留下的那条 / promote 的 k:xxx"
+         "description": "并入的那条"
         },
         "text": {
          "type": [
           "string",
           "null"
          ],
-         "description": "改后的完整内容"
+         "description": "改后全文"
         },
         "reason": {
          "type": "string"
         },
         "user_ok": {
          "type": "boolean",
-         "description": "用户明确同意才 true"
+         "description": "用户明确同意"
         }
        },
        "required": [
@@ -6482,7 +6482,7 @@
   },
   "delete_observation": {
    "name": "delete_observation",
-   "description": "删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+   "description": "删除一条观察笔记（id 见 get_memory）。删了就没有了。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9205,7 +9205,7 @@
   },
   "get_memory": {
    "name": "get_memory",
-   "description": "完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+   "description": "完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9763,7 +9763,7 @@
        "string",
        "null"
       ],
-      "description": "近况最后一天 YYYY-MM-DD；不确定写 recent（14 天）；长期事实 null"
+      "description": "近况最后一天；不确定写 recent（14 天）；长期事实 null"
      },
      "replace_id": {
       "type": [
@@ -9785,7 +9785,7 @@
   },
   "update_profile_card": {
    "name": "update_profile_card",
-   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁的事实，带日期和依据。",
+   "description": "新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：basics、goals、health_constraints、injuries、schedule、diet_preferences、training_preferences、what_works、what_doesnt、current_plan、supplements、follow_ups、communication；别的键要给 label。写简洁事实，带日期依据。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -10960,7 +10960,7 @@
   },
   "get_memory_review": {
    "name": "get_memory_review",
-   "description": "整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+   "description": "整理记忆先调：重复、过时、同主题条目；rules 必须照做。",
    "input_schema": {
     "type": "object",
     "properties": {},
@@ -10971,7 +10971,7 @@
   },
   "apply_memory_changes": {
    "name": "apply_memory_changes",
-   "description": "一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+   "description": "提交整理结果，逐项返回，可重复提交。归档不删除。没要改的传空 items。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -10993,28 +10993,28 @@
         },
         "ref": {
          "type": "string",
-         "description": "n12 笔记 / k:goals 档案卡项"
+         "description": "n12 笔记 / k:goals 档案卡"
         },
         "into": {
          "type": [
           "string",
           "null"
          ],
-         "description": "merge 留下的那条 / promote 的 k:xxx"
+         "description": "并入的那条"
         },
         "text": {
          "type": [
           "string",
           "null"
          ],
-         "description": "改后的完整内容"
+         "description": "改后全文"
         },
         "reason": {
          "type": "string"
         },
         "user_ok": {
          "type": "boolean",
-         "description": "用户明确同意才 true"
+         "description": "用户明确同意"
         }
        },
        "required": [
@@ -14356,7 +14356,7 @@
   },
   "delete_observation": {
    "name": "delete_observation",
-   "description": "删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+   "description": "删除一条观察笔记（id 见 get_memory）。删了就没有了。",
    "input_schema": {
     "type": "object",
     "properties": {

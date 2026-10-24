@@ -162,11 +162,11 @@ def _add_observation(conn, uid, a):
 
 REVIEW_ITEM = _schema({
     "action": {"type": "string", "enum": list(memory_review.ACTIONS)},
-    "ref": {"type": "string", "description": "n12 笔记 / k:goals 档案卡项"},
-    "into": _n("string", "merge 留下的那条 / promote 的 k:xxx"),
-    "text": _n("string", "改后的完整内容"),
+    "ref": {"type": "string", "description": "n12 笔记 / k:goals 档案卡"},
+    "into": _n("string", "并入的那条"),
+    "text": _n("string", "改后全文"),
     "reason": {"type": "string"},
-    "user_ok": {"type": "boolean", "description": "用户明确同意才 true"},
+    "user_ok": {"type": "boolean", "description": "用户明确同意"},
 })
 
 
@@ -324,8 +324,7 @@ TOOL_SPECS: list[dict] = [
     # ---------- long-term memory ----------
     dict(
         name="get_memory",
-        description="完整长期记忆：状态卡 status（source=auto 的后端算、不能改）、身体档案卡（目标、健康约束、伤病、作息、偏好、"
-                    "有效 / 无效做法、计划、补剂、复查待办）、观察笔记。get_briefing 里已有要点，要全文时再调。",
+        description="完整长期记忆：状态卡 status（auto 项不能改）、身体档案卡、观察笔记。get_briefing 已有要点，要全文再调。",
         input_schema=_schema({"user": USER, "detail": {**DETAIL, "description": "true=带趋势数组、时间戳、来源和依据"},
                               "history": _n("boolean", "true=也带已过期的近况")}),
         handler=lambda conn, uid, a: _memory_with_status(conn, uid, a),
@@ -334,7 +333,7 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="update_profile_card",
         description="新建或整段替换档案卡的一项（value 是完整新内容，不是追加）。标准键：" +
-                    "、".join(memory.STANDARD_KEYS) + "；别的键要给 label。写简洁的事实，带日期和依据。",
+                    "、".join(memory.STANDARD_KEYS) + "；别的键要给 label。写简洁事实，带日期依据。",
         input_schema=_schema({
             "key": {"type": "string"},
             "value": {"type": "string", "description": "≤ 4000 字"},
@@ -349,7 +348,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({
             "text": {"type": "string", "description": "≤ 1000 字"},
             "evidence": _n("string", "用户原话 / 哪些数据"),
-            "until": _n("string", f"近况最后一天 YYYY-MM-DD；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
+            "until": _n("string", f"近况最后一天；不确定写 recent（{memory_params.RECENT_DEFAULT_DAYS} 天）；长期事实 null"),
             "replace_id": _n("integer", "改写 similar 里这条；0=照样新建"),
         }),
         handler=_add_observation,
@@ -357,15 +356,14 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="get_memory_review",
-        description="整理长期记忆前先调：重复、过时、同主题的条目（可能矛盾）、记忆大小；rules 必须照做。",
+        description="整理记忆先调：重复、过时、同主题条目；rules 必须照做。",
         input_schema=_schema({}),
         handler=lambda conn, uid, a: memory_review.review(conn, uid),
         group="memory", scope="memory",
     ),
     dict(
         name="apply_memory_changes",
-        description="一次提交整理结果（逐项 merge / update / archive / confirm / promote / restore）。归档不删除。"
-                    "每项单独返回结果，可重复提交；没有要改的传空 items，记下这次整理。",
+        description="提交整理结果，逐项返回，可重复提交。归档不删除。没要改的传空 items。",
         input_schema=_schema({"items": {"type": "array", "items": REVIEW_ITEM}}),
         handler=lambda conn, uid, a: memory_review.apply(conn, uid, a["items"]),
         group="memory", scope="memory", writes=True,
@@ -560,7 +558,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="delete_observation",
-        description="删除一条观察笔记（id 从 get_memory / get_briefing），例如用户说这条不对。删了就没有了。",
+        description="删除一条观察笔记（id 见 get_memory）。删了就没有了。",
         input_schema=_schema({"observation_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _deleted(memory.delete_observation(conn, uid, a["observation_id"])),
         group="memory", scope="memory", writes=True,
