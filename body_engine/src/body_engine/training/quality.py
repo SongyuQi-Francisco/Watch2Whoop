@@ -108,7 +108,7 @@ def grade(row: dict, media_ok: bool, duplicate_of: str | None = None) -> dict:
         "media": media_ok,
         "primary_muscle": bool(row.get("primary_muscles")) or row.get("category") in NO_MUSCLE_CATEGORIES,
         "secondary_muscles": bool(row.get("secondary_muscles")) or row.get("category") in NO_MUSCLE_CATEGORIES,
-        "equipment": bool(row.get("equipment")) and all(e in CD.EQUIPMENT_ZH for e in row["equipment"]),
+        "equipment": bool(row.get("equipment")) and all(e in CD.EQUIPMENT_ZH or e in CD.EQUIPMENT_ZH_EXTRA for e in row["equipment"]),
         "not_duplicate": duplicate_of is None,
     }
     full, some = _steps_ok(row)

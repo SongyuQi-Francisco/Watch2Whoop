@@ -8,10 +8,17 @@ Files land in <media>/exercises/licensed/<source>/ and are served like the other
 exercise_catalog.media gets one entry per file with its credit. Pictures are stored unchanged (no resizing or cropping), so the
 credit needs no change note. Idempotent and resumable: files on disk are not fetched again, a row is only written when its list
 changes. Never touches `images` (free-exercise-db) and never passes a picture to any AI.
+
+A deployment may add sources whose terms allow its own use but not redistribution in this repository: a private JSON file named
+by BODY_EXERCISE_MEDIA_EXTRA (or --extra) with the credit of the source and direct picture URLs per exercise:
+  {"source": "<name>", "license": ..., "license_url": ..., "author": <the attribution text the terms ask for>, "origin_url": ...,
+   "allowed_hosts": ["<host>", ...], "matches": [{"slug": ..., "source_id": ..., "urls": ["https://<host>/...", ...]}, ...]}
+Its pictures come after the ones above; only https URLs on allowed_hosts are fetched.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.parse
 import urllib.request
@@ -112,14 +119,61 @@ def everkinetic_entries(source_id: str, commit: str, root: Path, get=_get) -> li
     return out
 
 
+def extra_path() -> Path | None:
+    p = os.environ.get("BODY_EXERCISE_MEDIA_EXTRA")
+    return Path(p) if p else None
+
+
+def load_extra(path: Path | None) -> tuple[dict, dict[str, list[dict]]]:
+    if path is None or not path.is_file():
+        return {}, {}
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if not _SAFE.match(str(doc.get("source") or "")):
+        raise ValueError(f"{path}: source must be a plain name")
+    by_slug: dict[str, list[dict]] = {}
+    for m in doc.get("matches") or []:
+        by_slug.setdefault(m["slug"], []).append(m)
+    return doc, by_slug
+
+
+def extra_entries(doc: dict, m: dict, root: Path, get=_get) -> list[dict]:
+    """The pictures of one match of the private extra source: https on an allowed host, a picture by its magic bytes."""
+    src, sid = doc["source"], str(m.get("source_id") or "")
+    if not _SAFE.match(sid):
+        return []
+    allowed = set(doc.get("allowed_hosts") or [])
+    out = []
+    for i, url in enumerate(m.get("urls") or []):
+        u = urllib.parse.urlparse(url)
+        if u.scheme != "https" or u.hostname not in allowed:
+            continue
+        have = next((p for p in (root / "licensed" / src).glob(f"{sid}-{i}.*") if not p.name.endswith(".tmp")), None)
+        if have is None:
+            data = get(url)
+            ext = _ext(data)
+            if ext is None:
+                continue
+            rel = f"licensed/{src}/{sid}-{i}{ext}"
+            _save(root, rel, data)
+        else:
+            rel = f"licensed/{src}/{have.name}"
+        out.append({"file": rel, "source": src, "source_id": sid, "license": doc.get("license"), "license_url": doc.get("license_url"),
+                    "author": doc.get("author"), "origin_url": doc.get("origin_url")})
+    return out
+
+
 def run(conn: psycopg.Connection, *, dry_run: bool = False, matches: Path | None = None, media: Path | None = None,
-        get=_get) -> dict:
+        get=_get, extra: Path | None = None) -> dict:
     doc, by_slug = high_matches(matches)
+    xdoc, x_by_slug = load_extra(extra if extra is not None else extra_path())
+    for slug in x_by_slug:
+        by_slug.setdefault(slug, [])
     root = (media or catalog.media_dir()) / "exercises"
     have = {r["slug"]: r["media"] for r in conn.execute("SELECT slug, media FROM exercise_catalog")}
-    report = {"exercises_matched": len(by_slug), "updated": 0, "unchanged": 0, "missing_rows": 0, "failed": [], "dry_run": dry_run}
+    report = {"exercises_matched": len(by_slug), "updated": 0, "unchanged": 0, "missing_rows": 0, "failed": [], "dry_run": dry_run,
+              "extra_source": xdoc.get("source"), "extra_matches": sum(len(v) for v in x_by_slug.values())}
     if dry_run:
-        report["would_fetch"] = sum(len(v) for v in by_slug.values())
+        report["would_fetch"] = sum(len(v) for v in by_slug.values()) + report["extra_matches"]
         return report
     cache: dict[tuple, list[dict]] = {}
     for slug, ms in sorted(by_slug.items()):
@@ -137,6 +191,11 @@ def run(conn: psycopg.Connection, *, dry_run: bool = False, matches: Path | None
                 report["failed"].append(f"{slug} {key}: {type(e).__name__}")
                 cache[key] = []
             entries += [e for e in cache[key] if e["file"] not in {x["file"] for x in entries}]
+        for m in x_by_slug.get(slug, []):
+            try:
+                entries += [e for e in extra_entries(xdoc, m, root, get) if e["file"] not in {x["file"] for x in entries}]
+            except (OSError, ValueError) as e:
+                report["failed"].append(f"{slug} ({xdoc['source']} {m.get('source_id')}): {type(e).__name__}")
         entries = entries[:MAX_PER_EXERCISE]
         if entries == have[slug]:
             report["unchanged"] += 1

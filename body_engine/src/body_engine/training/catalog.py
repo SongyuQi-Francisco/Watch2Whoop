@@ -32,7 +32,7 @@ _MUSCLE_BY_ZH = {v: k for k, v in CD.MUSCLE_ZH.items()} | {
     "臀": "glutes", "臀大肌": "glutes", "臀中肌": "abductors", "小腿": "calves", "二头": "biceps",
     "三头": "triceps", "手臂": "biceps", "核心": "abdominals", "腹": "abdominals", "腹肌": "abdominals",
 }
-_EQUIP_BY_ZH = {v: k for k, v in CD.EQUIPMENT_ZH.items()} | {
+_EQUIP_BY_ZH = {v: k for k, v in {**CD.EQUIPMENT_ZH_EXTRA, **CD.EQUIPMENT_ZH}.items()} | {
     "龙门架": "cable", "绳索": "cable", "器械": "machine", "徒手": "body only", "曲杆": "ez curl bar",
     "史密斯": "smith machine", "body weight": "body only", "bodyweight": "body only",
 }
@@ -339,7 +339,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         "pattern_zh": pat_zh,
         "movement_pattern_zh": pat_zh,
         "equipment": eq,
-        "equipment_zh": [CD.EQUIPMENT_ZH.get(x, x) for x in eq],
+        "equipment_zh": [CD.EQUIPMENT_ZH.get(x) or (None if row.get("_plain_labels") else CD.EQUIPMENT_ZH_EXTRA.get(x)) or x for x in eq],
         "primary_muscles": prim,
         "primary_muscles_zh": [CD.MUSCLE_ZH.get(x, x) for x in prim],
         "secondary_muscles": sec,
@@ -363,7 +363,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
         imgs = row.get("images") or []
         steps = row.get("instructions_zh") or row.get("instructions_en") or ([cues] if cues else [])
         if is_en():   # the curated steps, or the one-line cue the steps were derived from (cues is already English here)
-            steps = (CE.INSTRUCTIONS_EN.get(slug) or row.get("instructions_en")
+            steps = ((row.get("instructions_en") if row.get("steps_source") else None) or CE.INSTRUCTIONS_EN.get(slug) or row.get("instructions_en")
                      or ([cues] if cues and steps == [row.get("cues_zh")] else steps))
         out.update(
             aliases=list(dict.fromkeys([*(row.get("aliases") or []), *((meta or {}).get("aliases") or [])])),
@@ -373,6 +373,7 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
             instructions_zh=steps,
             license=row.get("license"),
             zh_source=row.get("zh_source"),
+            steps_source=row.get("steps_source"),
             images=imgs,
             image_urls=image_urls(imgs),
         )
@@ -465,19 +466,26 @@ def shown_images(conn: psycopg.Connection, row: dict) -> list[str]:
 _VIEW_CACHE: dict[tuple, tuple] = {}
 
 
-def _view(conn: psycopg.Connection, zh: bool, policy: tuple[bool, bool] | None = None) -> list[dict]:
-    """catalog_rows as one viewer sees them (machine Chinese or not; pictures per media_policy), cached with catalog_rows."""
+def _view(conn: psycopg.Connection, zh: bool, steps: bool = False, policy: tuple[bool, bool] | None = None) -> list[dict]:
+    """catalog_rows as one viewer sees them (machine Chinese or not; the curated library's written steps or not; pictures per
+    media_policy), cached with catalog_rows."""
     rows = catalog_rows(conn)
     licensed, free_db = policy or media_policy(conn)
     legacy = free_db and not licensed
-    if zh and legacy:
+    if zh and legacy and not steps:
         return rows
-    key = (conn.info.dbname, zh, licensed, free_db)
+    key = (conn.info.dbname, zh, steps, licensed, free_db)
     hit = _VIEW_CACHE.get(key)
     if hit is None or hit[0] is not rows:
         out = rows if zh else [TR.english_view(r) for r in rows]
+        if steps:
+            out = [TR.with_curated_steps(r) for r in out]
         hit = _VIEW_CACHE[key] = (rows, out if legacy else [media_view(r, licensed, free_db) for r in out])
     return hit[1]
+
+
+def _user_view(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
+    return _view(conn, _flag_on(conn, user_id, TR.FLAG), _flag_on(conn, user_id, TR.STEPS_FLAG))
 
 
 QUALITY_FLAG = "exercise_quality_gate"
@@ -490,7 +498,7 @@ def grades_for(conn: psycopg.Connection, user_id: int | None) -> dict[str, dict]
     if not _flag_on(conn, user_id, QUALITY_FLAG):
         return None
     from . import quality as Q
-    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG))
+    rows = _user_view(conn, user_id)
     key = (conn.info.dbname, id(rows))
     hit = _GRADE_CACHE.get(key)
     if hit is None or hit[0] is not rows:
@@ -509,8 +517,9 @@ def offered(grades: dict[str, dict] | None, slug: str) -> bool:
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
     flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); pictures per
-    media_policy (exercise_media_licensed, exercise_media_free_db_off; both deployment-wide)."""
-    rows = _view(conn, _flag_on(conn, user_id, TR.FLAG))
+    media_policy (exercise_media_licensed, exercise_media_free_db_off; both deployment-wide); the curated library's written
+    steps while exercise_curated_steps is on."""
+    rows = _user_view(conn, user_id)
     if not imported_visible(conn, user_id):
         rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
     if user_id is None:

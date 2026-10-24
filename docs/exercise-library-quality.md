@@ -170,6 +170,17 @@ Stairmaster = 爬楼机（模型给了登山机）。50 条里术语表遗漏 0 
 （出网 wger.de、raw.githubusercontent.com，约 600 张图、几十 MB）→ 中控按顺序打开 `exercise_zh_machine`、`exercise_media_licensed`、`exercise_quality_gate`
 （`exercise_media_free_db_off` 保持关闭，商用前再开）。
 
-## 6. 还没做
-- 翻译全量（等 key）；器械 / 肌群标签补中文；精选动作的分步步骤；wger 的 46 段视频（1080p HEVC，约 3 GB，先不下）；RepDB 走 ops overlay；
-  中置信的 115 条匹配人工过一遍。
+## 6. 第三轮（中控 2026-10-25：标签、精选步骤、RepDB）
+- **器械标签中文**：openGym 导入时原样保留的 17 种器械名 + free-exercise-db 的瑞士球 / 药球，共 19 个，中文在 `catalog_data.EQUIPMENT_ZH_EXTRA`
+  （译名和术语表一致），英文在 `i18n-en.js`。跟着开关 `exercise_zh_machine`：关着时照旧显示英文原名。中文筛选词（「悬挂训练带」等）随时能用。
+- **主肌群**：原来没有主肌群的 80 条里，levator scapulae（65 条）→ 颈部（openGym 自己把其中 63 条归在 body part「neck」），serratus anterior（15 条）
+  → 肩部（和精选库「前锯肌墙滑」的标法一致）；都按已有分类，不是猜的。导入报告里不再有 `muscle (target)` 这一类。肌群标签本来就全有中文。
+- **精选动作的分步步骤**：原来只有一句要点的 95 个精选动作，补上中英双语的 3–6 步（AI 按人工要点写、不照抄上游，限制动作加一步换动作提示；
+  人工抽查），数据 `training/translations/curated_steps.json`，开关 `exercise_curated_steps`（按人，默认关）。人工的中文名、要点、禁用 / 小心标记不动。
+- **RepDB 免费层**：只放私有 ops 仓库（`ops/exercise_media/`：生成器 + README；`ops/plugins/exercise_media/repdb.json`：307 个高置信匹配，随插件目录
+  同步到 Ali）。公开代码只认一个通用的「部署私有额外来源」文件（`BODY_EXERCISE_MEDIA_EXTRA`：来源、许可证、署名、允许的主机、每个动作的图片地址），
+  不写 RepDB 的任何数据。每张 RepDB 图的来源行显示「Exercise data by RepDB (repdb.co)」。
+
+## 7. 还没做
+- 翻译全量（等负责人定用 Claude 还是 DeepSeek）；wger 的 46 段视频（1080p HEVC，约 3 GB，先不下）；中置信的 115 条匹配人工过一遍；
+  openGym 的次肌群（hip flexors 782 次、ankles、feet 等）还没对到肌群表。

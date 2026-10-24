@@ -276,3 +276,57 @@ def test_quality_gate_hides_rows_below_the_bar(conn, tmp_path, monkeypatch):
     for f in ("exercise_quality_gate", "exercise_media_licensed"):
         flags.set_flag(conn, f, "off", actor="test")
     flags.invalidate()
+
+
+def test_equipment_labels_have_chinese_and_english_behind_the_flag():
+    import re as _re
+    from pathlib import Path
+    from body_engine.training import catalog_data as CD
+    from body_engine.training.opengym import mapping as M
+    en = (Path(__file__).resolve().parents[1] / "src" / "body_engine" / "web" / "static" / "i18n-en.js").read_text(encoding="utf-8")
+    keys = set(_re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', en, _re.M))
+    raw = set(M.EQUIPMENT) | {"weighted", "suspension trainer", "weight plate", "rope", "assisted", "landmine", "bosu ball", "sandbag",
+                              "stationary bike", "elliptical machine", "wheel roller", "macebell", "tire", "hammer", "upper body ergometer",
+                              "skierg machine", "stepmill machine"}   # every equipment name the pinned snapshot carries
+    labels = {**CD.EQUIPMENT_ZH_EXTRA, **CD.EQUIPMENT_ZH}
+    for e in raw:
+        key = M.EQUIPMENT.get(e, e)
+        assert key in labels, e
+        assert labels[key] in keys, labels[key]                       # an English label for tr()
+    row = {"slug": "x", "name_zh": "x", "name_en": "x", "category": "strength", "modality": "weight_reps", "equipment": ["sandbag"],
+           "primary_muscles": [], "secondary_muscles": []}
+    assert catalog.format_exercise(row)["equipment_zh"] == ["沙袋"]
+    assert catalog.format_exercise(T.english_view(row))["equipment_zh"] == ["sandbag"]   # flag off: as before
+
+
+def test_curated_steps_file_and_view():
+    from body_engine.training import catalog_data as CD
+    st = T.curated_steps()
+    curated = {x["slug"]: x for x in CD.CURATED_EXERCISES}
+    assert len(st) >= 90 and set(st) <= set(curated)
+    for slug, v in st.items():
+        assert 3 <= len(v["zh"]) == len(v["en"]) <= 6, slug
+        assert all(CJK.search(s) for s in v["zh"]) and not any(CJK.search(s) for s in v["en"]), slug
+    for slug in ("upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"):   # restricted: a swap hint in both languages
+        assert any("肩部不适" in s for s in st[slug]["zh"]) and any("shoulder" in s.lower() for s in st[slug]["en"]), slug
+    row = {"slug": "upright_row", "source": "curated", "instructions_zh": [curated["upright_row"]["cues_zh"]], "instructions_en": []}
+    v = T.with_curated_steps(row)
+    assert v["instructions_zh"] == st["upright_row"]["zh"] and v["steps_source"] == "ai" and row["instructions_zh"] != v["instructions_zh"]
+    assert T.with_curated_steps({**row, "source": "free-exercise-db"}) is not None
+
+
+def test_curated_steps_flag(conn):
+    flags.set_flag(conn, T.STEPS_FLAG, "off", actor="test")
+    flags.invalidate()
+    slug = next(iter(T.curated_steps()))
+    off = catalog.get_exercise(conn, None, slug)
+    assert len(off["instructions_zh"]) <= 1 and off.get("steps_source") is None
+    flags.set_flag(conn, T.STEPS_FLAG, "all", actor="test")
+    flags.invalidate()
+    on = catalog.get_exercise(conn, None, slug)
+    assert on["instructions_zh"] == T.curated_steps()[slug]["zh"] and on["steps_source"] == "ai"
+    from body_engine.i18n import use_lang
+    with use_lang("en"):
+        assert catalog.get_exercise(conn, None, slug)["instructions_zh"] == T.curated_steps()[slug]["en"]   # the English page
+    flags.set_flag(conn, T.STEPS_FLAG, "off", actor="test")
+    flags.invalidate()

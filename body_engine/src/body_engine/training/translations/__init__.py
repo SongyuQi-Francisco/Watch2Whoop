@@ -22,6 +22,8 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 DATA = HERE / "exercises_zh.jsonl"
+CURATED_STEPS = HERE / "curated_steps.json"   # {slug: {"zh": [...], "en": [...]}}: AI-written steps for the curated library
+STEPS_FLAG = "exercise_curated_steps"
 GLOSSARY = HERE / "glossary.json"
 FLAG = "exercise_zh_machine"
 CJK = re.compile(r"[一-鿿]")
@@ -81,10 +83,25 @@ def apply(row: dict, table: dict[str, dict] | None = None) -> str | None:
 
 
 def english_view(row: dict) -> dict:
-    """The row as it was before machine translation (flag off): English name, no Chinese cue or steps."""
+    """The row as it was before machine translation (flag off): English name, no Chinese cue or steps, and `_plain_labels`
+    (no Chinese for the equipment names that only got it with #248, catalog_data.EQUIPMENT_ZH_EXTRA)."""
     if row.get("zh_source") != "machine":
+        return {**row, "_plain_labels": True}
+    return {**row, "name_zh": row["name_en"], "cues_zh": None, "instructions_zh": [], "zh_source": None, "_plain_labels": True}
+
+
+@functools.cache
+def curated_steps() -> dict[str, dict]:
+    return json.loads(CURATED_STEPS.read_text(encoding="utf-8")) if CURATED_STEPS.is_file() else {}
+
+
+def with_curated_steps(row: dict) -> dict:
+    """A curated row that only has a one-line cue gets the committed step-by-step instructions in both languages (written by AI
+    from the human cue, reviewed; `steps_source` 'ai'). The human name, cue and restriction tags are untouched."""
+    st = curated_steps().get(row["slug"])
+    if not st or row.get("source") != "curated" or len(row.get("instructions_zh") or []) >= 2:
         return row
-    return {**row, "name_zh": row["name_en"], "cues_zh": None, "instructions_zh": [], "zh_source": None}
+    return {**row, "instructions_zh": list(st["zh"]), "instructions_en": list(st["en"]), "steps_source": "ai"}
 
 
 # ---------------------------------------------------------------- glossary
