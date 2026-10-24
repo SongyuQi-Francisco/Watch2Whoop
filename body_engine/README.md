@@ -21,6 +21,7 @@ uv run body-engine import-workouts --user-id 1          # pull only OW's workout
 uv run body-engine compute-scores --user-id 1           # sleep / recovery / strain / muscular load → daily_scores (recomputes everything from the scoring start date, about 20 s; --start/--end only limit which days are written)
                                                         # afterwards it also computes body age (weekly, healthspan_weekly) and stress for the last 90 days (stress_daily), about 30 s in total
 uv run body-engine sparky-link --user-id 1 --key-name owner  # connect SparkyFitness: validates secrets/sparkyfitness_api_key_owner_ro (must be a read-only key)
+uv run body-engine sparky-migrate --user-id 1 --dry-run     # #252: copy food / weight / workouts from SparkyFitness into own tables and check per table; --confirm writes (owner confirms the dry run first)
 uv run body-engine import-records --user-id 1           # backfill supplements, lab results, events, exercises and journal from body-management.md, then print a check table
 uv run body-engine journal-init --user-id 2             # create the default journal items for a family member (existing ones are left alone)
 uv run body-engine link-exercises --user-id 1           # write SparkyFitness exercise IDs into exercise_meta.app_exercise_id (--dry-run only shows the mapping table)
@@ -28,6 +29,7 @@ uv run body-engine fetch-exercise-db [--images]          # download the pinned f
 uv run body-engine seed-exercises [--free-db | --free-db-json PATH] # seed exercise_catalog: curated bilingual overlay + free-exercise-db merged by name / alias (Training V2, issue #41)
 uv run body-engine seed-exercises [--free-exercise-db PATH] # seed exercise_catalog from curated bilingual exercises + optional free-exercise-db JSON (Training V2)
 uv run body-engine exercises-import-opengym [--dry-run] [--report PATH] # import openGym exercise text (pinned commit, text only, MIT / AGPL-3.0 per row) into exercise_catalog; idempotent; run after seed-exercises (#248, ../docs/exercise-library-opengym.md)
+uv run body-engine static-bundle-pack --out DIR [--since N] # write the versioned static data bundle (exercise library, labels, glossary, split templates) for the app: bundle-v<N>.json.gz + manifest.json; GET /v1/static-bundle?since=N serves the delta (#248, ../docs/static-data-bundle.md)
 uv run body-engine evaluate-rules --user-id 1           # rule reminders → reminders (today by default, --date to choose; runs after compute-scores every day)
 uv run body-engine set-sleep-goal --user-id 1 --bedtime 00:00   # bedtime target (moves earlier step by step starting from the last 7 nights' average; --wake / --pace / --step-days optional)
 uv run body-engine nutrition-goals-import --user-id 1   # backfill nutrition goal versions from the SparkyFitness weekly goal plans (active + inactive; idempotent; dry run, --apply writes)
@@ -616,6 +618,7 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - `src/body_engine/scores/`: the scoring engine (see above)
 - `src/body_engine/insights/`: WHOOP-comparable analysis (see above)
 - `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight)
+- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
 - `src/body_engine/records/`: health records (supplements, lab results, journal and journal analysis, events, exercises, exercise ID mapping): reads/writes, API, assistant tools, migration
 - `src/body_engine/rules/`: the rule reminder engine (see above)
 - `src/body_engine/goals/`: bedtime target (see above)

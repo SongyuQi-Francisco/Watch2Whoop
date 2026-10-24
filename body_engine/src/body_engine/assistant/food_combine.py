@@ -20,6 +20,7 @@ from psycopg.types.json import Jsonb
 from .. import sparky_client
 from ..i18n import L
 from ..nutrition import extras
+from ..ownstore import mirror
 from ..rules.nutrition import RED_MEAT_MARK
 from . import meals, sparky_write, writelog
 
@@ -169,6 +170,7 @@ def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[s
             (user_id, day, str(new["id"]), food["food"], Jsonb(writelog._plain(raw)), Jsonb(out["totals"]), channel)).fetchone()
         writelog.record(conn, "merge", "merge", row["id"], {"entry_ids": [str(r["id"]) for r in raw]},
                         {"entry_id": str(new["id"]), "name": food["food"]})
+        mirror.after_write(conn, user_id, client, food=[day])   # dual write (issue #252); off: nothing
         out["merge"] = {"id": row["id"], "entry_id": str(new["id"]), "name": food["food"], "replaced": len(raw),
                         "undo": L("拆开：今天页这条的「拆开」，或 rollback_write", "Split: 「拆开」 on the Today page, or rollback_write")}
     return out
@@ -196,4 +198,5 @@ def split(conn: psycopg.Connection, user_id: int, merge_id: int, client=None, lo
     conn.execute("UPDATE food_merges SET undone_at = now(), restored_ids = %s WHERE id = %s", (restored, merge_id))
     if log:
         writelog.record(conn, "merge", "split", merge_id, {"entry_id": row["entry_id"]}, {"entry_ids": restored})
+    mirror.after_write(conn, user_id, client, food=[row["date"]])
     return {"split": merge_id, "date": row["date"].isoformat(), "restored": len(restored), "merged_entry_gone": cur is None}
