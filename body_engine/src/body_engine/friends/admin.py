@@ -33,7 +33,8 @@ def create_circle(conn: psycopg.Connection, name: str, owner_user_id: int, avata
         """INSERT INTO circles (name, owner_id, max_members, default_scopes, avatar_image_id) VALUES (%s, %s, %s, %s, %s)
            RETURNING id, name, owner_id, max_members, default_scopes, avatar_image_id""",
         (name, owner_user_id, max_members, scopes, image_id)).fetchone()
-    conn.execute("INSERT INTO circle_members (circle_id, user_id, scopes) VALUES (%s, %s, %s)", (row["id"], owner_user_id, scopes))
+    conn.execute("INSERT INTO circle_members (circle_id, user_id, scopes, join_via) VALUES (%s, %s, %s, 'created')",
+                 (row["id"], owner_user_id, scopes))
     store.sync_user(conn, owner_user_id)
     return row
 

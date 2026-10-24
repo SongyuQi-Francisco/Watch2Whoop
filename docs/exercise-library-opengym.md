@@ -49,3 +49,5 @@ uv run body-engine exercises-import-opengym --file other-snapshot.json.gz       
 ## 动作数变多之后
 - 搜索 / 查找仍是内存里的一次扫描（动作表按库缓存），6,268 行下一次搜索约 30 ms；结果条数有上限（接口 ≤ 200，工具 ≤ 150）；工具定义没有改，总长度预算测试照过。
 - 替换动作 `recommend_alternatives` 只用精选动作（只有它们有核对过的运动模式和关节压力标记），周计划模板只引用精选 slug，所以都不受影响；肌肉负荷图的「推荐动作」走搜索，精选动作加权排在前面。
+
+静态数据包（把动作库打进 app、按版本号增量更新）见 [static-data-bundle.md](static-data-bundle.md)。

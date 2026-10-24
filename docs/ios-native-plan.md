@@ -1,6 +1,6 @@
 # App 流畅度：本地优先 + iOS 原生化（SwiftUI）方案
 
-> 状态：方案稿，等维护者确认（#247）。这一版只有测量和分期，不改 app 代码；第 1 期里纯服务端、低风险的两项（静态长缓存、`Server-Timing`）在 #257 里先做好（第 3.1 节）。
+> 状态：负责人 2026-10-25 确认，第 8 节 D1–D10 全部按推荐执行。第 1 期：3.1（静态长缓存、`Server-Timing`）在 #257 上线；3.2–3.5 已实现，四个开关默认关，部署后由维护者打开（第 3.9 节）；3.6 跟 1.0.8。
 > 文中的数字都来自合成数据（quickstart 的 `demo_data.py`，一个虚构用户的 90 天）和公开的静态页面，不来自任何真人的账号或数据。
 > 相关：#248（动作库打进 app）、#219（自建同步引擎，`apple-sync-engine.md`）、#77（离线，`offline-plan.md`）、`apps.md`（版本号和发版）。
 
@@ -116,29 +116,33 @@
 - **效果**（#257 实测，同第 1.1 节的方法）：热启动 38 个 304 → 0，少一层串行往返：150 ms 下 0.79 → 0.64 s，300 ms 下 1.55 → 1.25 s；冷启动第一次不变。手机上 38 个文件的解析不变。
 - **风险**：低。浏览器 / WKWebView 只会多缓存文件；回退 = revert，下次打开就回到 `no-cache`。
 
-### 3.2 启动接口合并：一次 `boot`（服务端 + 页面）
+### 3.2 启动接口合并：一次 `boot`（服务端 + 页面，已实现，开关 `boot_api`）
 
-- 新接口 `GET /v1/users/me/boot?date=`：服务器在一个请求里并行算 `/v1/web/me` + 今天页的 11 块（`today`、`profile`、`account`、`sync/status`、`goals/sleep`、`meal-templates`、`strain-coach`、`stress`、`health-monitor`、`sleep-coach`、`training/day`、`health-history`），每块独立成功 / 失败（和现在每个接口单独报错一样），授权和现在逐个接口一样。
-- 页面：已登录（有 cookie）时直接发 `boot`，不再先发 `/v1/auth/methods`；`boot` 不存在（旧服务器）或失败时退回现在的逐个请求。
-- **效果**：启动的数据部分从 3 层（`auth/methods`+`me` → 11 个 → `health-history`）变成 1 层，14 个请求变成 1 个；150 / 300 ms 下省约 0.3 / 0.6 s。
-- **风险**：中低。服务器一次要算的多了（但本来就是同一时刻的 11 个请求），`boot` 在服务器里用线程池并行，单块超时只让那一块空着。开关 `boot_bundle`（默认对所有人开，出问题关掉）。
+- 接口 `POST /v1/web/boot {"paths": [...]}`（`web/boot.py`）：页面把**上一次启动时自己发过的 GET 路径**（只限本人的数据：`/v1/web/me`、`/v1/auth/methods`、`/v1/account`、`/v1/friends…`、`/v1/users/me/…`，最多 24 个）发过来，日期写成 `{today}` / `{d:-6}`（相对用户自己的今天）。服务器先算 `/v1/web/me`（拿用户的今天和开关），其余并行；**每一项都是在服务器里把原接口原样跑一遍**（同一个 cookie / Bearer、同一种语言、同样的 share 鉴权、同样的状态码和内容），所以不用另写鉴权，原接口照常给别处用。某一项出错 / 超时（10 s）只让那一项带着它的错误状态，页面再单独请求那一项；`/v1/web/me` 续期 cookie 的 `Set-Cookie` 也带回来。
+- 为什么用「上次发过的路径」而不是写死 11 块：开了哪些开关（日记卡、肌肉图、通知、朋友…）、插件、启动停在哪个 tab，启动时的请求都不一样；记下来的路径永远和页面实际要的一致，页面代码以后改了也不会和 `boot` 对不上（对不上的那一项只是没用上）。第一次启动（或刚打开开关后的那一次）照旧逐个请求，同时记下路径。
+- 页面（`app.js`）：`boot` 的每一项放进一个只用一次的预取表（60 秒内有效），之后 `api()` 发同一个 GET 时直接用，不再发请求；`identities.js`、`account.js` 自己发的请求也先查这张表（`window.BodyPre`）。任何写操作清空预取表。开关状态在 `/v1/web/me` 回来之前就要用，所以记在本机（`localStorage` 的 `be.fast`：开关名 + 路径，没有健康数据），退出登录和 401 时清掉；关掉开关后，下一次启动起生效（`boot` 也直接 404）。
+- **效果**：启动时的接口请求 19–20 个 → 1 个，数据部分从 3 层（`auth/methods` + `me` → 今天页各块 → `health-history`）变成 1 层，实测见第 3.9 节。
 
-### 3.3 切 tab：并成一层 + 空闲预取（页面）
+### 3.3 切 tab：并成一层 + 空闲预取（页面，已实现，开关 `tab_prefetch`）
 
-- 趋势：`/reports` 和 `/trends`、`/vo2max`、`/sleep/details` 同时发；饮食：`/recipes` 和 `/diet-profile` 同时发；我：8 个一次发完。每个 tab 少一层（150 / 300 ms 下省 0.15 / 0.3 s）。
-- 启动完成、页面空闲 2 秒后预取其他 tab 的数据（趋势 9.8 KB、记录 1.9 KB、我 1.7 KB、饮食，gzip 后合计不到 20 KB），切过去 0 往返。
-- 讲解弹层：`/v1/explain/glossary` 静态部分空闲时预取一次；首屏卡片的 `explain/metric` 在点开前预取，或者弹层先显示静态词条、个人数字回来再补上。
+- 趋势：`/reports` 和指标 / 睡眠的数据同时发（代码里直接并行）。
+- 每个 tab 第二层的请求来自 tab 画完后各脚本自己的读取（记录页的训练日、我页的数据状态 / 朋友、饮食页的饮食档案 / 喝水）。做法和 3.2 一样：记下每个 tab 上次打开时发过的 GET 路径（`be.fast.tabs`），下次切过去时**和第一层一起发出**，第二层直接用预取表里的答案。
+- 启动完成、空闲 2 秒后（`requestIdleCallback`）预取其他 tab 的这些路径，切过去 0 往返；最多 30 个请求。网络：浏览器有 `navigator.connection` 时，蜂窝、省流量（`saveData`）、2G 不预取；app 可以用 `window.Watch2WhoopFeatures.net = "wifi" | "cellular" | "constrained"`（iOS 低数据模式）告诉页面，`cellular` / `constrained` 不预取。**iOS 的 WKWebView 自己拿不到网络类型，1.0.7 也没传**，这时按第 7 节的规则只做有上限的小量预取（gzip 后约 20 KB）；1.0.8 用 `NWPathMonitor` 的 `isExpensive` / `isConstrained` 设上 `net` 后即严格不在蜂窝 / 低数据模式下预取。
+- 没做：讲解弹层的预取（点开时才请求，留到第 2 期的静态包）。
 
-### 3.4 写操作乐观更新（页面）
+### 3.4 写操作乐观更新（页面 + 服务端返回，已实现，开关 `optimistic_writes`）
 
-- 记一餐：点下去立刻显示「已记 ✓」、今天的热量 / 蛋白质先在本地加上，POST 在后台发；失败才撤回并提示。POST 直接返回更新后的「今天饮食」小块，不再删缓存重拉整份 `/today`（6.5 KB）。感知 0 往返，实际 1 层。
-- 喝水、体重、训练逐组已经有 `client_id` / 合并规则（`offline-plan.md` 第 3 节），同样先显示后提交。
+- 快捷记餐：点下去立刻「已记 ✓」、今天的热量 / 三大营养素先在本地加上（改过克数的按比例算），POST 在后台发；失败时数字和「已记」撤回，提示原因和「重试」（409 = 今天已记过，仍是「仍要记」）。POST 和撤销（`DELETE …/meal-logs/{id}`）的返回带上 `today.nutrition`（`views.nutrition_today`，开关开着时才算），页面只换这一块，不再删缓存整份重拉 `/today`。刚记完马上点「撤销」会等这次 POST 拿到记录 ID 再撤。
+- 喝水：点下去总量立刻加上，连续点几次各自提交（各自的 `client_id`），失败的那一次减回去并提示；服务器返回的当天数据以条目多的为准，晚到的旧答案不会把数字减回去。
+- 体重：点「记下」立刻提示已记录、清空输入框，后台提交；被拒（同一天已有不同的体重）时照旧提示「用这次的覆盖」。
+- 离线时的行为不变（`offline_mode` 的写入排队）。训练逐组本来就先存本机草稿，不在这次范围里。
 
-### 3.5 先显示上次的数据（页面，复用 `offline.js`）
+### 3.5 先显示上次的数据（页面，复用 `offline.js`，已实现，开关 `cached_first_paint`，需要 `offline_mode` 也开着）
 
-- 现在 IndexedDB 的副本只在网络失败时用。改成「先用副本渲染（标『更新于 hh:mm』），同时请求网络，回来后替换」（stale-while-revalidate）。只用于本人数据、不超过 14 天的副本，和现在的缓存规则一样（`offline/params.py`）。
-- 效果：重开 app 后，脚本跑起来就有内容（不用等数据那一层），数字在新数据回来时刷新。
-- 风险：用户可能看着旧数字做决定 → 时间标签醒目，超过 12 小时的副本只显示骨架。
+- 打开今天页时，如果本机有**同一个账号**的副本（`offline.js` 的 IndexedDB，只存本人数据），而且 `/v1/web/me` 的副本是**今天的、12 小时以内的**，先用副本把今天页画出来，顶部标「更新中 · 数据更新于 hh:mm」；同时 `boot`（或逐个请求）照常发出，新数据回来后原地替换（保留滚动位置；记录页和打开着的弹层不重画）。
+- 先画的这一遍不写任何东西、不通知 app（「已登录」「语言」等等新数据回来后才发），读不到副本的块等网络。副本只在内存里用一次，画完就清掉，之后的读取都是新的。
+- 退出登录清空副本（本来就有）和 `be.fast`；登录过期（401）时副本缓存也清空（本来就有）。
+- 只在启动停在今天页、没带 `#login=`、没指定日期时用。
 
 ### 3.6 app 先打开本机的页面外壳（1.0.8）
 
@@ -165,6 +169,30 @@
 | fail2ban 401 规则 | ops | 不用 | 不再误封整个出口 IP | 能（ops 仓库） |
 
 只做服务端部分时，重开 app 到看到今天的数字：150 ms 约 1.6–1.9 s → **0.9–1.2 s**，300 ms 约 2.9 s → **1.6–2.0 s**；加上 1.0.8 的外壳：先出上次的数据约 **0.3 s**，刷新完 0.6–0.8 / 1.0–1.3 s。
+
+### 3.9 第 1 期 3.2–3.5 实测
+
+方法同第 1.1 / 1.5 节：本机 Body Engine（这个分支）、hypercorn + 自签名 TLS（HTTP/2）、测试库 `body_test_perf`（`demo_data.py` 合成用户 90 天 + 一个快捷记餐模板）、系统 Chrome 无头 390 × 844、CDP 给每个请求加 RTT。除 `friends` 外其他开关全开（`friends` 关着，饮食才是独立的 tab，和 #255 一致）。「前」= 四个开关全关（和 main 一样），「后」= 四个全开；每组 2 轮取中位数。首屏 = 今天页恢复环出现的时间（从开始导航算）。切 tab 是稳态：每个 tab 之前打开过一次（学到路径）、重开后空闲预取已完成。记一餐的 POST 正式环境要写 SparkyFitness，这里用「一个 RTT + 250 ms」的假响应（不带 `today` 块）。**只测本地，没有对正式服务器发任何请求。**
+
+| 操作 | 150 ms 前 | 150 ms 后 | 300 ms 前 | 300 ms 后 |
+|---|---|---|---|---|
+| 冷启动（缓存全空）首屏 | 0.66 s | 0.52 s | 1.27 s | 0.97 s |
+| 冷启动网络结束 / 接口请求数 | 0.80 s / 19 | 0.50 s / 1 | 1.57 s / 19 | 0.94 s / 1 |
+| **热启动（重开 app）首屏** | 0.49 s | **0.19 s**（上次的数据，标「更新中」） | 0.95 s | **0.33 s** |
+| 热启动换成新数据 | 0.49 s | 0.35 s | 0.95 s | 0.63 s |
+| 热启动网络结束 / 接口请求数 | 0.64 s / 18 | 0.52 s / 2 | 1.25 s / 18 | 0.93 s / 2 |
+| 切到趋势 | 0.35 s（5 个，2 层） | 0（0 个） | 0.64 s | 0 |
+| 切到记录 | 0.34 s（5 个，2 层） | 0.20 s（1 个） | 0.63 s | 0.35 s |
+| 切到我 | 0.33 s（7 个，2 层） | 0（0 个） | 0.63 s | 0 |
+| 切到饮食 | 0.38 s（4 个，2 层） | 0（0 个） | 0.68 s | 0 |
+| 记一餐到「已记 ✓」 | 0.41 s | **0**（点下去即显示） | 0.56 s | **0** |
+| 记一餐网络结束 | 0.79 s | 1.02 s | 1.25 s | 1.46 s |
+
+说明：
+- 热启动后的 2 个请求 = `boot` + `/v1/friends/feed/unread`（同一路径有两处读取，启动包只答一次）；记录页剩下的 1 个是 `training/muscle-load`（今天页已读过一次、记录页的脚本又自己读一次）。都是单层、不影响首屏。
+- 记一餐网络结束变长：先显示时饮食页重画一次（饮食档案、喝水卡跟着重读），本地的假响应又不带 `today.nutrition`，所以回来后再重拉一次 `/today`。正式环境 POST 返回 `today.nutrition`，今天页数字一致时不再重画；这一项只影响后台流量，不影响看到「已记」的时间。
+- 第一次启动（或刚打开开关后的那一次）、每个 tab 第一次打开时还是原来的速度，同时学路径；之后才是上表的数字。
+- 真机还要加新连接（约 0.5–0.66 s）和手机上解析脚本的时间（第 1.2 节）；这些不受这次改动影响，3.6（1.0.8 先开本机外壳）去掉的是页面那一层。
 
 ---
 
@@ -285,8 +313,8 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 | 期 | 出问题时 | 怎么关 / 回退 |
 |---|---|---|
 | 3.1 静态长缓存 | 页面用到旧文件 | 只有指纹对上才长期缓存、HTML 每次确认，所以旧页面拿不到新文件的长缓存；revert 后下次打开即恢复 |
-| 3.2 `boot` | 某块报错 / 变慢 | 每块独立；开关 `boot_bundle` 关掉 = 回到逐个请求 |
-| 3.3–3.5 页面 | 预取浪费流量、显示旧数据 | 预取只在 Wi-Fi 或数据量小于 20 KB 时做；先显示旧数据有时间标签，开关 `offline_mode` 关掉就是现在的行为 |
+| 3.2 `boot` | 某块报错 / 变慢 | 每块独立；开关 `boot_api` 关掉 = 接口 404、页面逐个请求（本机记着的开关在下一次启动更新） |
+| 3.3–3.5 页面 | 预取浪费流量、显示旧数据、乐观显示后失败 | 预取有上限、已知蜂窝 / 省流量不做；先显示旧数据有「更新中 · 时间」；失败撤回并提示；开关 `tab_prefetch` / `cached_first_paint` / `optimistic_writes` 各自关掉就是以前的行为 |
 | 3.6 本机外壳（1.0.8） | 副本和服务器 API 不配套、cookie 没带上 | 开关 `app_shell_first` 关掉 = 1.0.7 行为；页面发现 `WEB_VERSION` 不一致时请 app 重载一次；服务器 API 对旧页面保持兼容 |
 | 第 2 期同步 | 文档版本漏改、显示旧数据 | 开关关掉 = 只用旧接口；本地数据库带 schema 版本，对不上就清空重拉；服务器的旧接口一直保留 |
 | 1.1.0 外壳替换 | 迁移 Keychain / 设置失败、引导流程出错 | 迁移失败时不删旧数据、显示「重新扫设置二维码」；测试用户可以在 TestFlight 装回 1.0.8；内部测试组先装一周 |
@@ -295,7 +323,9 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 
 ## 8. 要负责人决定的点
 
-| # | 问题 | 推荐 |
+> 负责人 2026-10-25 的决定：D1–D10 **全部按推荐执行**（纯 SwiftUI；先做服务端提速；1.0.8 只加「先开本机外壳」+ #219 A1 / A2；最低 iOS 17；第 2 期客户端先在页面里做；D3、D5、D6、D7、D10 同推荐），第 1 期马上开工。
+
+| # | 问题 | 推荐（= 决定） |
 |---|---|---|
 | D1 | 纯 SwiftUI，还是在 Flutter 里加原生页面 | **纯 SwiftUI**：1.1.0 先换外壳（看起来不变），再按 tab 换；Flutter 1.0.8 之后冻结 |
 | D2 | 第一期先做服务端提速吗 | **先做**：3.1（#257）、3.2–3.5、fail2ban 规则，不等 1.0.8；预计重开 app 从约 1.7 s 到约 1.0 s（150 ms 往返） |
@@ -322,4 +352,6 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
 - *Phase 3+, SwiftUI:* 1.1.0 replaces the Flutter shell with SwiftUI (same bundle ID, same WebView pages, migrated Keychain / defaults), then tabs move one at a time — Today, Record, Trends, Food, Me, Jarvis — each behind a server kill switch that falls back to the WebView. ~110–150 person-days in total.
 - *Releases:* 1.0.8 (last Flutter build, small) → 1.1.0 → 1.2.0 → 1.3.0 → 1.4.0; one Beta review per version number, fixes as new builds.
 
-**Decisions for the owner** (section 8): pure SwiftUI (recommended), server-side speed-ups first (recommended), offline write scope, keeping 1.0.8 small, local storage limits, one review per version, the fail2ban 401 rule, minimum iOS 17 from 1.1.0, web-first client for phase 2, and the exercise-library licence question (#248).
+**Phase 1 status.** 3.1 is live (#257); 3.2–3.5 are implemented behind the flags `boot_api`, `tab_prefetch`, `optimistic_writes` and `cached_first_paint` (off by default). Measured locally at 150 / 300 ms RTT (section 3.9): re-opening the app shows the last data after 0.19 / 0.33 s instead of 0.49 / 0.95 s and fresh data after 0.35 / 0.63 s; start-up sends 1 API request instead of 18–19; tab switches after the idle prefetch take 0 round trips; a quick meal shows as logged at once.
+
+**Decisions for the owner** (section 8, all taken as recommended on 2026-10-25): pure SwiftUI (recommended), server-side speed-ups first (recommended), offline write scope, keeping 1.0.8 small, local storage limits, one review per version, the fail2ban 401 rule, minimum iOS 17 from 1.1.0, web-first client for phase 2, and the exercise-library licence question (#248).

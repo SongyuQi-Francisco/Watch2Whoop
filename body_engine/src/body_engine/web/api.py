@@ -8,6 +8,7 @@
   token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
   feature flags on for this user and their A/B variants (rollout/); also extends the cookie's lifetime.
+- POST /v1/web/boot {"paths"}: the page's start-up GETs answered in one round trip (boot.py, flag boot_api).
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/. The page itself (/app/, /app/index.html) links
   every script and stylesheet as name?v=<content fingerprint>; a request whose v matches the file's current fingerprint
@@ -30,12 +31,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import auth
 from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
-from . import activation, login_codes, login_limit, session, views
+from . import activation, boot, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.124-2026-10-24"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.130-2026-10-25"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -344,6 +345,7 @@ async def security_headers(request: Request, call_next):
 def install(app: FastAPI) -> None:
     """Call once from api.py: endpoints, static files, security headers."""
     app.include_router(router)
+    app.include_router(boot.router)   # POST /v1/web/boot: start-up reads in one round trip (boot.py, flag boot_api)
     # Exercise demo images downloaded once by `body-engine fetch-exercise-db --images` (training/media.py); mounted before /app
     app.mount("/app/media", MediaFiles(), name="media")
     app.mount("/app", StaticFiles(directory=STATIC, html=True), name="web")

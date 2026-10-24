@@ -83,9 +83,9 @@ def _muscle_load(conn, uid, a):
                      "sport_min": m["sport_min"][rng] or None,
                      "trained_today": m["trained_today"] or None, "last": m["last"] and m["last"]["date"]})
     out = {"range": rng, "today": full["today"], "week_start": full["week_start"], "muscles": rows,
-           "sports": [{k: x[k] for k in ("name", "min", "mapped")} for x in full["sports"][rng]] or None,
-           "note": "sets=有效组数（主要肌群 1 组计 1，次要计 0.5，热身不算）；status 按本周（range=last7 时近 7 天）对比 target 每周推荐组数：none 没练 / low 偏少 / ok 合适 / high 偏多；kg=组×次×重量；"
-                   "sport_min=手表运动（篮球、游泳…）练到这块的分钟（主要 1、次要 0.5），单独一层，不算组数、不影响 status；sports=这段时间的运动（mapped=false 不计入肌群）；"
+           "sports": [{k: x[k] for k in ("name", "min", "estimated")} for x in full["sports"][rng]] or None,
+           "note": "sets=有效组数（逐组记录的组数 + 手表运动折算的等效组数；主要肌群 1 组计 1，次要计 0.5，热身不算）；status 按本周（range=last7 时近 7 天）对比 target 每周推荐组数：none 没练 / low 偏少 / ok 合适 / high 偏多；kg=组×次×重量；"
+                   "sport_min=手表运动（骑行、游泳、篮球、没有逐组记录的力量训练…）练到这块的分钟（主要 1、次要 0.5）；这些运动按时长×强度折成等效组数，已经计入 sets 和 status；sports=这段时间的运动（estimated=true 是估的：没有逐组明细的力量训练按计划部位或全身分配，没收录的类型按全身低强度）；"
                    "unmatched_exercises=没对上动作库、没计入的动作，可用 add_custom_exercise 补",
            "source": full["source"], "unmatched_exercises": full["unmatched"] or None}
     if viewer == uid:   # the goals are not part of the training share: only the person themself
@@ -121,6 +121,7 @@ MUSCLES = {"type": "array", "items": {"type": "string"}, "description": "动作�
 def _get_exercise(conn, uid, a):
     ex = catalog.get_exercise(conn, uid, a["exercise"])
     ex.pop("image_urls", None)   # pictures are for the Today page, not the model
+    ex.pop("media_credits", None)
     out = {**ex, **loads.for_exercise(conn, a.get("_viewer_id", uid), uid, ex, plans._user_today(conn, uid))}
     for alt in out.get("alternatives") or []:
         alt.pop("thumb", None)

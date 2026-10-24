@@ -23,6 +23,7 @@ from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, quota_cards_cli as ai_cards_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
+from .account import open_signup_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
@@ -306,6 +307,15 @@ def main() -> None:
     k = sub.add_parser("sparky-link", help="link the user to a SparkyFitness account (validates the read-only API key in secrets)")
     k.add_argument("--user-id", type=int, required=True)
     k.add_argument("--key-name", required=True, help="secrets/sparkyfitness_api_key_<key-name>_ro, e.g. owner")
+    sm = sub.add_parser("sparky-migrate", help="copy one user's food, food library, weight, exercise library and workouts from "
+                        "SparkyFitness into Body Engine's own tables and check them table by table (idempotent; #252, "
+                        "docs/own-food-weight-storage.md §5). Production: dry run first, the owner confirms, then --confirm")
+    sm.add_argument("--user-id", type=int, required=True)
+    sm.add_argument("--since", type=date.fromisoformat, help="first day (default 2000-01-01)")
+    sm.add_argument("--until", type=date.fromisoformat, help="last day (default the user's today)")
+    sm.add_argument("--dry-run", action="store_true", help="do everything, check, then roll back: nothing is written")
+    sm.add_argument("--confirm", action="store_true", help="write for real (only committed when every table checks out)")
+    sm.add_argument("--json", action="store_true", help="print the full report as JSON")
 
     r = sub.add_parser("import-records", help="migrate supplements, lab results, events, banned exercises and journal backfill from body-management.md into the database (idempotent)")
     r.add_argument("--user-id", type=int, required=True)
@@ -329,6 +339,13 @@ def main() -> None:
     og.add_argument("--file", type=Path, help="another snapshot (.json / .json.gz built by tools/build_opengym_snapshot.py); default: the one in the repository")
     og.add_argument("--dry-run", action="store_true", help="only plan: write nothing")
     og.add_argument("--report", type=Path, help="also write the full report (including every unmapped name) as JSON")
+    sbp = sub.add_parser("static-bundle-pack", help="write the versioned static data bundle (exercise library, labels, glossary, split templates) for the app: bundle-v<N>.json.gz + manifest.json (#248)")
+    sbp.add_argument("--out", type=Path, required=True, help="output directory (created)")
+    sbp.add_argument("--since", type=int, help="also write the delta from this version")
+    xm = sub.add_parser("exercises-media-fetch", help="download the licensed demo pictures (wger, Everkinetic; high-confidence matches in "
+                        "training/media_matches.json) into the media dir and store their credits in exercise_catalog.media; idempotent (#248)")
+    xm.add_argument("--dry-run", action="store_true", help="only count what would be fetched")
+    xm.add_argument("--extra", type=Path, help="a deployment's private extra source (default: BODY_EXERCISE_MEDIA_EXTRA; see training/media_licensed.py)")
     fx = sub.add_parser("fetch-exercise-db", help="download the pinned free-exercise-db exercises.json (sha256-checked) and, with --images, its demo images "
                         "into the media dir (BODY_MEDIA_DIR, default <repo>/media); idempotent, resumable")
     fx.add_argument("--images", action="store_true", help="also download the ~1,750 demo images (about 100 MB)")
@@ -355,6 +372,14 @@ def main() -> None:
     rc.add_argument("--user-id", type=int, required=True)
     sub.add_parser("memory-review-run", help="long-term memory review (issue #113): for every user with the flag memory_hygiene on, purge archived entries older than "
                    "memory_params.ARCHIVE_PURGE_DAYS and refresh the review state behind the briefing reminder (idempotent, nightly)")
+    hbt = sub.add_parser("hourly-batch", help="the hourly / nightly job for all users in one process (import-ow, compute-scores, evaluate-rules; "
+                         "users isolated, optional worker processes, unchanged inputs skipped; last line BATCH_RESULT {json}; exit 1 on any failure)")
+    hbt.add_argument("--workers", type=int, default=1, help="worker processes (each its own database connection), default 1")
+    hbt.add_argument("--full", action="store_true", help="nightly: full compute-scores from the scoring start, nothing skipped")
+    hbt.add_argument("--steps", default="import-ow,compute-scores,evaluate-rules", help="comma list of: import-ow, compute-scores, evaluate-rules, refresh-status")
+    hbt.add_argument("--user-id", type=int, help="only this user")
+    hbt.add_argument("--no-skip", action="store_true", help="do not skip users whose inputs did not change")
+    hbt.add_argument("--max-age-hours", type=float, default=6.0, help="recompute an unchanged step after this many hours at the latest (default 6; from 4 h on in the user's turn)")
     rs = sub.add_parser("refresh-status", help="recompute the status card items the backend computes automatically (weight, recovery, sleep debt, bedtime, lab results, workout count, red meat)")
     rs.add_argument("--user-id", type=int, required=True)
 
@@ -387,6 +412,10 @@ def main() -> None:
     bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
     bs.add_argument("--days", type=int, default=7)
     bs.add_argument("--json", action="store_true")
+    mcc = sub.add_parser("muscle-coverage-check", help="every recent workout of every user must credit at least one muscle on the muscle load map; "
+                         "lists the workout types that are not mapped (exit 1 if any; nightly job and doctor, read-only)")
+    mcc.add_argument("--days", type=int, default=28)
+    mcc.add_argument("--json", action="store_true")
     oc = sub.add_parser("oauth-cleanup", help="MCP OAuth housekeeping: expired requests / codes / refresh and access tokens, clients never approved (idempotent, hourly)")
     oc.add_argument("--json", action="store_true")
     ol = sub.add_parser("oauth-connections", help="a user's approved OAuth connections to /mcp (Claude, ChatGPT, …)")
@@ -398,6 +427,7 @@ def main() -> None:
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
     rollout_cli.add_parser(sub)
+    open_signup_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -426,6 +456,9 @@ def main() -> None:
     hr.add_argument("--max-jobs", type=int, default=5)
 
     args = p.parse_args()
+    if args.cmd == "sparky-migrate":  # manages its own connection (rolls back a dry run / a failed check, exit code)
+        from .ownstore import migrate as own_migrate
+        raise SystemExit(own_migrate.cli(args))
     if args.cmd == "history-import-run":  # manages its own connection (autocommit + global lock)
         from .history import run as history_run
         try:
@@ -456,6 +489,9 @@ def main() -> None:
         path, created = ai_crypto.init_master_key()
         print(("created: " if created else "exists (unchanged): ") + str(path))
         return
+    if args.cmd == "hourly-batch":  # opens its own connection per user
+        from . import batch
+        raise SystemExit(batch.main(args))
     with connect() as conn:
         # Tester users who have not consented in the app: health data is stored but not processed (profile/consent.py)
         if args.cmd in CONSENT_GATED and getattr(args, "user_id", None) is not None:
@@ -612,6 +648,12 @@ def main() -> None:
                       f"平均 {st['avg_chars'] or 0} 字符，最大 {st['max_chars'] or 0} 字符")
                 for d in st["per_day"]:
                     print(f"  {d['day']}  {d['calls']:>4} 次  命中 {d['hit_rate']:.0%}  平均 {d['avg_chars']} / 最大 {d['max_chars']} 字符  {d['users']} 人")
+        elif args.cmd == "muscle-coverage-check":
+            from .training import muscle_coverage
+            res = muscle_coverage.scan(conn, args.days)
+            print(json.dumps(res, ensure_ascii=False) if args.json else muscle_coverage.render(res))
+            if not res["ok"]:
+                raise SystemExit(1)
         elif args.cmd == "oauth-cleanup":
             from .ai import oauth
             print(json.dumps(oauth.cleanup(conn)))
@@ -626,6 +668,8 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "open-signup":
+            open_signup_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)
@@ -730,6 +774,14 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "static-bundle-pack":
+            from .static_bundle import pack as sb_pack
+            man = sb_pack.pack(conn, args.out, args.since)
+            print(f"version {man['version']}: " + ", ".join(f"{f['file']} {f['bytes'] / 1024:.0f} KiB (raw {f['uncompressed_bytes'] / 1024:.0f} KiB)" for f in man["files"])
+                  + f"; modules {man['modules']}")
+        elif args.cmd == "exercises-media-fetch":
+            from .training import media_licensed
+            print(json.dumps(media_licensed.run(conn, dry_run=args.dry_run, extra=args.extra), ensure_ascii=False, indent=1))
         elif args.cmd == "exercises-import-opengym":
             from .training.opengym import importer as og_importer
             rep = og_importer.run(conn, og_importer.load_snapshot(args.file) if args.file else None, dry_run=args.dry_run)

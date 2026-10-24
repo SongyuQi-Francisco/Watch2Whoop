@@ -207,6 +207,14 @@
   // queue: {kind, label, group?, coalesce?} = a write offline.js may keep and send later (water, weight, training sets).
   // It resolves {queued: item} when it was kept instead of sent: offline, or older writes are still waiting (they go first).
   async function api(path, { method = "GET", body, quiet401, queue } = {}) {
+    if (S.stale) {   // the first page drawn from this device's copies (cached_first_paint): reads use the copy, writes wait
+      if (method === "GET") {
+        const hit = await window.BodyOffline?.get(path, I18N.lang).catch(() => null);
+        if (hit) { if (!S.staleAt || hit.at < S.staleAt) S.staleAt = hit.at; return hit.data; }
+      }
+      await S.stale.wait;
+    }
+    if (method !== "GET" && !/\/exposure$/.test(path)) PRE.clear();   // an A/B exposure count changes no data
     const off = OFF();
     if (queue && off && off.mustQueue()) {
       const it = await off.enqueue({ ...queue, method, path, body });
@@ -220,7 +228,9 @@
       // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
       // loads the real page once the network is back
       if (window.W2W_SHELL) throw new Error("offline shell");
-      r = await fetchRetrying(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }, method === "GET");
+      const pre = method === "GET" ? await (S.stale ? prePeek(path) : preTake(path)) : null;
+      r = pre && !isRestart(pre) ? pre
+        : await fetchRetrying(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }, method === "GET");
     } catch (e) {
       if (off && method === "GET") {
         const hit = await off.get(path, I18N.lang);
@@ -245,6 +255,7 @@
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (off && method === "GET" && r.ok && r.headers.get("X-Offline") !== "1") off.put(path, I18N.lang, data).catch(() => {});
     if (r.status === 401 && off) off.clearCache().catch(() => {});   // signed out: no copies left readable; the queue waits for the same account
+    if (r.status === 401) { PRE.clear(); try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ } }
     if (r.status === 401 && !quiet401) {
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
@@ -261,6 +272,112 @@
     }
     return data;
   }
+
+  // ---- prefetched GETs (docs/ios-native-plan.md 3.2 / 3.3): answers of the start-up bundle (POST /v1/web/boot, flag
+  // boot_api) and requests started ahead of time (warm(), flag tab_prefetch). The next api() GET of the same path uses one,
+  // once; a write drops them all, so nothing older than the write is shown after it.
+  const PRE = new Map();   // path -> {at, ttl, res: Promise<Response | null>}
+  const BOOT_TTL = 60000, WARM_TTL = 5 * 60000;
+  function preTake(path) {
+    noteGet(path);
+    const e = PRE.get(path);
+    if (!e) return null;
+    PRE.delete(path);
+    return Date.now() - e.at <= e.ttl ? e.res : null;
+  }
+  // The copies' first page (cached_first_paint) only looks: the real start right after uses the answer
+  const prePeek = (path) => { const e = PRE.get(path); return e ? e.res.then((r) => r?.clone()).catch(() => null) : null; };
+  const getInit = () => ({ headers: { Accept: "application/json", ...I18N.headers() }, credentials: "same-origin" });
+  // Read to the end right away: an answer nobody ends up using does not hold its download open
+  const readAll = (r) => r.text().then((t) => new Response(r.status === 204 ? null : t, { status: r.status, headers: r.headers }));
+  function warm(path, ttl = WARM_TTL) {
+    if (path && !PRE.has(path) && !window.W2W_SHELL && !S.stale) PRE.set(path, { at: Date.now(), ttl, res: fetch(path, getInit()).then(readAll).catch(() => null) });
+  }
+  // Scripts with their own fetch (identities.js, account.js) ask here first: a Promise<Response> or null
+  window.BodyPre = (path) => preTake(path);
+
+  // The GET paths of one start-up (own data only) are kept on this device and sent as the bundle next time, dates as
+  // {today} / {d:-6} (web/boot.py). Recorded from boot() until the first page is drawn (+1.5 s for the scripts' own reads).
+  const FAST = "be.fast";   // {user, flags: [boot_api, cached_first_paint, …], boot: {tab: [paths]}}; no health data
+  const fastState = () => { try { return JSON.parse(localStorage.getItem(FAST) || "null") || {}; } catch (e) { return {}; } };
+  const saveFast = (patch) => { try { localStorage.setItem(FAST, JSON.stringify({ ...fastState(), ...patch })); } catch (e) { /* private mode */ } };
+  const REC_RE = /^\/v1\/(web\/me$|auth\/methods$|account$|friends(\/|$|\?)|users\/me\/)/;
+  let rec = null;   // {tab, paths: Set} while a start-up is recorded
+  function noteGet(path) {
+    if (!REC_RE.test(path)) return;
+    for (const r of [rec, tabRec]) if (r && r.paths.size < 24) r.paths.add(path);
+  }
+  function bootTemplate(path) {
+    let ok = true;
+    const out = path.replace(/\d{4}-\d{2}-\d{2}/g, (d) => {
+      const n = Math.round((parseDay(d) - parseDay(S.todayDate)) / 86400000);
+      if (Math.abs(n) > 400) ok = false;
+      return n ? `{d:${n}}` : "{today}";
+    });
+    return ok ? out : null;
+  }
+  const fromTemplate = (t) => t.replace(/\{(today|d:(-?\d{1,3}))\}/g, (_, k, n) => (k === "today" ? S.todayDate : addDays(S.todayDate, Number(n))));
+  function endRec() {
+    const r = rec;
+    rec = null;
+    if (!r || !S.me || S.owner !== S.me.id || isPast() || !S.flags.includes("boot_api")) return;
+    saveFast({ boot: { ...(fastState().boot || {}), [r.tab]: [...r.paths].map(bootTemplate).filter(Boolean) } });
+  }
+  const asResponse = (status, data) => new Response(status === 204 || data == null ? null : JSON.stringify(data),
+    { status, headers: { "Content-Type": "application/json" } });
+  // One round trip for the whole start-up; whatever it does not answer (old server, flag off, offline, an item that
+  // failed on the server) the page asks for one by one as before.
+  async function fetchBoot(paths) {
+    try {
+      const r = await fetch("/v1/web/boot", { method: "POST", credentials: "same-origin", body: JSON.stringify({ paths }),
+        headers: { Accept: "application/json", "Content-Type": "application/json", "X-Body-Web": "1", ...I18N.headers() } });
+      const put = (path, res) => PRE.set(path, { at: Date.now(), ttl: BOOT_TTL, res: Promise.resolve(res) });
+      if (r.status === 401) { put("/v1/web/me", asResponse(401, await r.json().catch(() => null))); return; }   // signed out: the login screen, no second 401
+      if (!r.ok) return;
+      for (const it of (await r.json()).items || []) if (it.status < 500) put(it.path, asResponse(it.status, it.body));
+    } catch (e) { /* offline / old server */ }
+  }
+
+  // ---- tab switches (docs/ios-native-plan.md 3.3, flag tab_prefetch). The GET paths a tab asked for the last time it was
+  // opened are kept (fast.tabs, dates as templates) and all asked for at once the next time it opens, so the second round
+  // (what the tab's scripts read after it is drawn) no longer waits for the first; once the start is done and the page is
+  // idle, the other tabs' paths are fetched ahead (at most PREFETCH_MAX, not on a cellular / data-saving / slow network).
+  const PREFETCH_MAX = 30, PREFETCH_TABS = ["trends", "record", "me", "food"];
+  const tabPrefetchOn = () => (S.flags || []).includes("tab_prefetch") && isSelf() && !isPast();
+  let tabRec = null;   // {tab, paths: Set} while a tab's own reads are recorded
+  const DATA_KEY = new Map();   // path -> its S.data key (load()); already in memory = nothing to fetch
+  const inMemory = (path) => { const k = DATA_KEY.get(path); return !!k && S.data[k] !== undefined; };
+  function warmTab(tab, max = PREFETCH_MAX) {
+    let n = 0;
+    for (const t of fastState().tabs?.[tab] || []) {
+      if (n >= max) break;
+      const path = fromTemplate(t);
+      if (inMemory(path) || PRE.has(path)) continue;
+      warm(path);
+      n += 1;
+    }
+    return n;
+  }
+  function endTabRec(r) {
+    if (tabRec !== r) return;
+    tabRec = null;
+    if (!r.paths.size || !tabPrefetchOn()) return;   // nothing new asked for (all in memory): keep what was learned before
+    const f = fastState();
+    saveFast({ tabs: { ...(f.tabs || {}), [r.tab]: [...r.paths].map(bootTemplate).filter(Boolean) } });
+  }
+  // The app may say what kind of network it is on (Watch2WhoopFeatures.net: "wifi" / "cellular" / "constrained" = Low Data
+  // Mode); the browser through navigator.connection. Unknown (the iOS web view on its own) = the capped prefetch.
+  function prefetchNetOk() {
+    const c = navigator.connection, net = window.Watch2WhoopFeatures?.net;
+    if (navigator.onLine === false || net === "cellular" || net === "constrained") return false;
+    return !(c && (c.saveData || c.type === "cellular" || /(^|-)2g$/.test(c.effectiveType || "")));
+  }
+  function idlePrefetch() {
+    if (!tabPrefetchOn() || !prefetchNetOk() || !S.me || window.W2W_SHELL) return;
+    let left = PREFETCH_MAX;
+    for (const tab of PREFETCH_TABS) if (tab !== S.tab && left > 0) left -= warmTab(tab, left);
+  }
+  const whenIdle = (fn) => setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 3000 }) : fn()), 2000);
 
   // ---- offline queue: send what was kept, in order, when the network is back (offline.js decides what waits / fails)
   async function sendQueued(it) {
@@ -320,6 +437,14 @@
   function showBanner() {
     const el = $("#banner");
     const off = OFF();
+    if (S.staleAt && navigator.onLine !== false && S.offlineAt === null) {   // drawn from this device's copies, fresh data on the way (3.5)
+      document.body.classList.remove("is-offline");
+      el.hidden = false;
+      el.textContent = tr("更新中 · 数据更新于 {when}", { when: savedAt(new Date(S.staleAt)) });
+      el.classList.remove("tap");
+      el.onclick = null;
+      return;
+    }
     if (off) {   // offline_mode: 「离线 · 数据更新于 hh:mm · 2 条待同步」; online with kept writes: how many wait / failed
       const offline = S.offlineAt !== null || navigator.onLine === false;
       document.body.classList.toggle("is-offline", offline);
@@ -436,6 +561,8 @@
     try { if (window.caches) await caches.delete("be-data"); } catch (e) { /* no Cache API */ }
     try { await window.BodyOffline?.clear(); } catch (e) { /* no IndexedDB */ }   // offline copies and queue (offline.js)
     tellApp("offline:off");   // the app forgets its copy of the page
+    PRE.clear(); rec = null; tabRec = null;
+    try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ }   // start-up paths and flags of this account
     S.offlineOn = false; S.offlineAt = null; showBanner();
     S.data = {}; S.me = null; pluginFiles = null;
     window.BodyAI?.reset();
@@ -472,8 +599,17 @@
     for (const b of $$(".tab")) b.setAttribute("aria-current", b.dataset.tab === lit ? "page" : "false");
     try { localStorage.setItem("be.tab", tab); } catch (e) { /* private mode */ }
     window.scrollTo(0, 0);
-    render();
+    if (rec && rec.tab !== tab) endRec();   // the start-up's own reads end where the user goes somewhere else
+    if (tabRec) endTabRec(tabRec);
+    let r = null;
+    if (S.me && tabPrefetchOn() && PREFETCH_TABS.includes(tab)) {
+      warmTab(tab);
+      r = tabRec = { tab, paths: new Set() };
+    }
+    const shown = render();
+    if (r) shown.then(() => setTimeout(() => endTabRec(r), 1500));
     PLUGINS().forEach((p) => p.onTab?.(tab));   // notify.js: the first Friends visit asks the app for push permission
+    return shown;
   }
   for (const b of $$(".tab")) b.onclick = () => setTab(b.dataset.tab);
 
@@ -513,6 +649,7 @@
     if (day > S.todayDate) day = S.todayDate;
     S.sleepNight = null;
     S.viewDate = day === S.todayDate ? null : day;
+    rec = null; tabRec = null;   // boot_api / tab_prefetch: paths asked for another day are not what the next start needs
     const q = new URLSearchParams(location.search);
     if (S.viewDate) q.set("date", S.viewDate); else q.delete("date");
     history.replaceState(null, "", location.pathname + (q.toString() ? `?${q}` : "") + location.hash);
@@ -625,6 +762,7 @@
 
   async function load(key, path) {
     const k = `${key}:${S.owner}`;
+    DATA_KEY.set(path, k);
     if (!S.data[k]) S.data[k] = await api(path);
     return S.data[k];
   }
@@ -1139,7 +1277,63 @@
   const loggedId = (t) => S.mealLogs[t.id] ?? t.today_log?.log_id ?? null;   // logged during this open, or the server remembers it was already logged today
   const mealOf = (id) => (S.data[`meals:${S.owner}`] || []).find((t) => String(t.id) === String(id));
 
+  // Writes shown at once (flag optimistic_writes, docs/ios-native-plan.md 3.4): the page shows the result, the request goes
+  // in the background, a failure puts the old state back and says so.
+  const optimisticOn = () => (S.flags || []).includes("optimistic_writes");
+  const MEAL_PENDING = {};   // template id -> the request still on its way (undo waits for its log id)
+  // What a quick meal adds to the day: the template's totals, scaled per food when its grams were changed in the sheet
+  function mealAdds(t, items) {
+    if (!items) return t.totals || {};
+    const out = {};
+    (t.items || []).forEach((x, i) => {
+      const f = x.grams ? (items[i]?.grams ?? x.grams) / x.grams : 1;
+      for (const k of ["kcal", "protein_g", "carbs_g", "fat_g"]) if (x[k] != null) out[k] = (out[k] || 0) + x[k] * f;
+    });
+    return out;
+  }
+  function withIntake(n, add) {
+    const i = { ...(n.intake || {}) }, plus = (k, v) => { if (v != null) i[k] = (i[k] || 0) + v; };
+    plus("calories", add.kcal ?? add.calories); plus("protein_g", add.protein_g); plus("carbs_g", add.carbs_g); plus("fat_g", add.fat_g);
+    return { ...n, logged: true, intake: i };
+  }
+  async function logMealNow(t, items, again) {
+    const key = `today:${S.owner}`, day = S.data[key], before = day?.nutrition;
+    const shown = () => S.tab === "today" || S.tab === "food";
+    S.mealLogs[t.id] = "pending";
+    for (const b of $$(`.qchip[data-meal="${CSS.escape(String(t.id))}"]`)) {   // at once, even while a slow block holds up the redraw
+      b.classList.add("done"); b.classList.remove("warn");
+      const k = $(".k", b);
+      if (k) k.textContent = tr("已记 ✓");
+    }
+    if (before && !before.error && before.intake) day.nutrition = withIntake(before, mealAdds(t, items));
+    if (shown()) render();
+    toast(tr("已记 · {name}", { name: t.name }), tr("撤销"), () => undoMeal(t));
+    const body = items ? { items } : {};
+    if (again) body.allow_duplicates = true;
+    const req = MEAL_PENDING[t.id] = api(`/v1/users/me/meal-templates/${encodeURIComponent(t.id)}/log`, { method: "POST", body });
+    let redraw = true;
+    try {
+      const res = await req;
+      S.mealLogs[t.id] = res?.log_id;
+      if (res?.today?.nutrition && S.data[key] === day) {   // the server's numbers for that block
+        const intake = (n) => JSON.stringify(["calories", "protein_g", "carbs_g", "fat_g"].map((k) => Math.round(n?.intake?.[k] ?? -1)));
+        redraw = S.tab === "food" || intake(day.nutrition) !== intake(res.today.nutrition);   // 饮食 also shows the meal plan
+        day.nutrition = res.today.nutrition;
+      } else delete S.data[key];
+      delete S.data[`mealplan${S.todayDate}:${S.owner}`];
+    } catch (err) {
+      delete S.mealLogs[t.id];
+      if (S.data[key] === day && before) day.nutrition = before;
+      if (err.status === 409) toast(tr("今天已记过"), tr("仍要记"), () => logMeal(t, items, true));
+      else toast(tr("没记上：{why}", { why: err.status === 404 ? tr("暂不可用") : err.status === 0 ? tr("离线，连上网络后重试") : err.message }), tr("common.retry"), () => logMeal(t, items, again));
+    } finally {
+      if (MEAL_PENDING[t.id] === req) delete MEAL_PENDING[t.id];
+      if (redraw && shown() && $("#sheet").hidden) render();
+    }
+  }
+
   async function logMeal(t, items, again) {
+    if (optimisticOn()) return logMealNow(t, items, again);
     try {
       const body = items ? { items } : {};
       if (again) body.allow_duplicates = true;
@@ -1154,13 +1348,17 @@
     }
   }
   async function undoMeal(t) {
+    if (MEAL_PENDING[t.id]) { try { await MEAL_PENDING[t.id]; } catch (e) { return; } }   // logged a moment ago: wait for its id
     const id = loggedId(t);
     if (!id) return;
     try {
-      await api(`/v1/users/me/meal-logs/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await api(`/v1/users/me/meal-logs/${encodeURIComponent(id)}`, { method: "DELETE" });
       delete S.mealLogs[t.id];
       if (t.today_log) t.today_log = null;
-      delete S.data[`today:${S.owner}`]; delete S.data[`mealplan${S.todayDate}:${S.owner}`];
+      const d = S.data[`today:${S.owner}`];
+      if (d && res?.today?.nutrition) d.nutrition = res.today.nutrition;   // optimistic_writes: the block comes back with the answer
+      else delete S.data[`today:${S.owner}`];
+      delete S.data[`mealplan${S.todayDate}:${S.owner}`];
       render();
       toast(tr("已撤销 · {name}", { name: t.name }));
     } catch (err) { toast(err.message); }
@@ -1981,11 +2179,15 @@
   }
 
   const RENDER_trends = async () => {
+    const mode = S.trendsMode;   // tab_prefetch: its data starts together with the report check (one round instead of two, #247 3.3)
+    const early = !tabPrefetchOn() ? null : mode === "metrics" ? metricsHtml() : mode === "sleep" ? sleepHtml() : null;
+    early?.catch(() => {});
     const hasReport = !!(await optional(`report-week`, WHOOP_API.reports("week", S.todayDate)));   // show "Report" (「报告」) only once the report endpoint exists
     if (S.trendsMode === "report" && !hasReport) S.trendsMode = "metrics";
     const segMode = `<div class="seg" role="group" aria-label="${tr("内容")}">${[["metrics", tr("指标")], ["sleep", tr("睡眠")], ...(hasReport ? [["report", tr("报告")]] : [])].map(([k, t]) => `<button data-mode="${k}" aria-pressed="${S.trendsMode === k}">${t}</button>`).join("")}</div>`;
     const segDays = S.trendsMode === "metrics" ? `<div class="seg seg-range" role="group" aria-label="${tr("时间范围")}">${RANGE.map(([n, t]) => `<button data-days="${n}" aria-pressed="${n === S.trendsDays}">${t}</button>`).join("")}</div>` : "";
-    const body = S.trendsMode === "metrics" ? await metricsHtml() : S.trendsMode === "report" ? await reportHtml() : await sleepHtml();
+    const body = early && S.trendsMode === mode ? await early
+      : S.trendsMode === "metrics" ? await metricsHtml() : S.trendsMode === "report" ? await reportHtml() : await sleepHtml();
     return `<div class="toolbar">${segMode}${segDays}</div>${body}`;
   };
 
@@ -2006,6 +2208,14 @@
       placeholder="kg" aria-label="${tr("体重")}" style="flex:1;margin:0"><button class="btn btn-primary" type="submit" style="margin:0">${tr("记下")}</button></form>
     <div style="height:22px"></div>`);
   async function logWeight(kg, overwrite) {
+    if (optimisticOn() && !overwrite) {   // shown as logged at once; a refusal comes back as a toast with what to do (#247 3.4)
+      toast(tr("已记录 {v}", { v: `${fmtNum(kg, 1)} kg` }));
+      logWeightNow(kg, false, true);
+      return true;
+    }
+    return logWeightNow(kg, overwrite);
+  }
+  async function logWeightNow(kg, overwrite, shown) {
     const day = recordDay();
     const body = { date: day, weight_kg: kg, client_id: window.crypto?.randomUUID?.() || `w${Date.now()}`, ...(overwrite ? { overwrite: true } : {}) };
     try {
@@ -2013,7 +2223,7 @@
         queue: { kind: "weight", label: tr("体重 {kg} kg · {day}", { kg: fmtNum(kg, 1), day: shortDay(day) }), group: `w:${day}`, coalesce: `w:${day}` } });
       if (r.queued) { toast(tr("离线，已存在本机，联网后自动提交")); return true; }
       for (const k of Object.keys(S.data)) if (/^(today|trends)/.test(k)) delete S.data[k];
-      toast(tr("已记录 {v}", { v: `${fmtNum(kg, 1)} kg` }));
+      if (!shown) toast(tr("已记录 {v}", { v: `${fmtNum(kg, 1)} kg` }));
       return true;
     } catch (err) {
       if (err.status === 409 && err.data?.detail?.conflict === "weight") toast(err.message, tr("用这次的覆盖"), () => logWeight(kg, true));
@@ -3065,7 +3275,7 @@
     ]);
     const quick = isSelf() ? quickHtml(meals, true) : "";
     let html = seg + foodDayHtml(d)
-      + PLUGINS().map((p) => p.foodDiet?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate, past }) || "").join("");   // water.js
+      + PLUGINS().map((p) => p.foodDiet?.({ owner: ownerPath(), self: isSelf(), date: viewDay(), past }) || "").join("");   // water.js
     if (quick) html += `<div class="section"><div class="section-head"><h2>${tr("快捷记录")}</h2></div>${quick}</div>`;
     html += mealPlanHtml(plan);
     const n = Array.isArray(list) ? list.length : null;
@@ -3482,6 +3692,10 @@
     const imgs = ex.image_urls || [];
     const carousel = imgs.length ? `<div class="ex-car" id="ex-car">${imgs.map((u, i) => `<img src="${esc(u)}" alt="${esc(`${exMain} ${i + 1}`)}" loading="lazy" decoding="async">`).join("")}</div>
       ${imgs.length > 1 ? `<div class="ex-dots">${imgs.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}` : "";
+    // licensed pictures (#248, flag exercise_media_licensed): one credit per author / licence; none at all -> say so
+    const credits = [...new Set((ex.media_credits || []).map((c) => [c.author, (c.license || "").replace(/-/g, " "), c.source].filter(Boolean).join(" · ")))];
+    const creditLine = credits.length ? `<div class="small faint" style="margin:-2px 0 8px">${esc(tr("图片来源"))} · ${esc(credits.join(" / "))}</div>` : "";
+    const noDemo = ex.no_demo ? `<div class="empty faint" style="padding:10px 0;margin-bottom:8px">${tr("暂无演示")}</div>` : "";
     const map = window.BodyMuscleMap ? window.BodyMuscleMap.html(ex.primary_muscles, ex.secondary_muscles) : "";
     const ld = ex.load;
     const loadV = ld && ex.status !== "banned" && (ld.kg != null || ld.basis === "bodyweight")
@@ -3499,7 +3713,7 @@
       <span class="chev">${ICON.chev}</span></button>`).join("");
     $("#sheet-body").innerHTML = `
       ${exOther && exOther !== exMain ? `<div class="small muted" style="margin:-4px 0 8px">${esc(exOther)}</div>` : ""}
-      ${carousel}
+      ${carousel}${creditLine}${noDemo}
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
       ${addPlanOn() && isSelf() ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
         ${ex.status === "banned" ? `<div class="small muted" style="margin:-2px 0 8px">${tr("这是禁用动作，不能加入训练计划")}</div>` : ""}` : ""}
@@ -3908,24 +4122,42 @@
     if (S.offlineOn === undefined) {   // first boot of this load: copies an earlier load kept (offline_mode) are usable
       try { S.offlineOn = (await window.BodyOffline?.restore()) != null; } catch (e) { S.offlineOn = false; }
     }
+    // Start-up speed (docs/ios-native-plan.md 3.2 / 3.5): what the flags were at the last start on this device decides
+    // before /v1/web/me answers; a flag turned off takes effect from the start after that one.
+    if (keepTab) PRE.clear();   // a refresh: nothing fetched ahead earlier is used
+    const fast = fastState(), flagWas = (k) => (fast.flags || []).includes(k);
+    const tab = keepTab ? S.tab : savedTab();
+    const paths = !S.viewDate && (!keepTab || S.owner === S.me?.id) ? fast.boot?.[tab] : null;
+    const bundle = flagWas("boot_api") && paths?.length ? fetchBoot(paths) : null;
+    rec = { tab, paths: new Set() };
+    const painted = !keepTab && tab === "today" && flagWas("cached_first_paint") && !S.viewDate
+      ? await paintCached(fast, bundle || Promise.resolve()) : false;
+    if (bundle) await bundle;
     try { me = await api("/v1/web/me"); }
     catch (err) {
+      S.staleAt = null;
       if (err.status === 401) return;
       $("#login").hidden = true; $("#app").hidden = false;
       $("#view").innerHTML = `<div class="empty">${esc(err.status === 0 ? tr("离线，连上网络后重试") : err.message)}<div class="btns"><button class="btn" id="retry">${tr("common.retry")}</button></div></div>`;
       $("#retry").onclick = () => (window.W2W_SHELL ? tellApp("reload") : boot());
       return;
     }
+    await start(me, keepTab || painted, plugged);
+  }
+
+  // The rest of the start once /v1/web/me is in. stale = drawn from this device's copies first (cached_first_paint):
+  // nothing is written or told to the app then, the real start follows right after.
+  async function start(me, keepTab, plugged, stale) {
     // Language picked on the login page and the profile has none yet: save it to the profile (it then follows the account)
-    const picked = I18N.unsaved();
+    const picked = stale ? null : I18N.unsaved();
     if (picked && me.me && !me.me.language) {
       try { await api("/v1/users/me/profile", { method: "PATCH", body: { language: picked } }); I18N.markSaved(); }
       catch (e) { /* e.g. account still pending: keep it on this device, try again next time */ }
       me.me.language = picked;
-    } else I18N.markSaved();
+    } else if (!stale) I18N.markSaved();
     // Profile language (null = follow the device): if it differs from what this page was drawn in, reload once in the right language
-    if (I18N.setPref(me.me?.language)) { location.reload(); return; }
-    tellApp(`lang:${me.me?.language || ""}`);   // the app's native screens follow the profile language ("" = the system language)
+    if (!stale && I18N.setPref(me.me?.language)) { location.reload(); return; }
+    if (!stale) tellApp(`lang:${me.me?.language || ""}`);   // the app's native screens follow the profile language ("" = the system language)
     if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
       $("#login").hidden = true; $("#app").hidden = true;
       window.BodyAccount.showPending(() => boot());
@@ -3933,7 +4165,10 @@
     }
     S.me = me.me; S.viewable = me.viewable; S.todayDate = me.today;
     S.flags = me.flags || []; S.experiments = me.experiments || {};
-    await setupOffline(me);
+    if (!stale) {
+      saveFast({ user: S.me.id, flags: S.flags.filter((k) => FAST_FLAGS.includes(k)) });
+      await setupOffline(me);
+    }
     applyTabs();
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
@@ -3943,13 +4178,42 @@
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
     $("#app").hidden = false;
-    tellApp("logged-in");
-    if (keepTab) { render(); return; }
+    if (!stale) tellApp("logged-in");
+    let shown;
+    if (keepTab) {   // a refresh, or the real data replacing the copies drawn a moment ago (the sheet / log page keep their input)
+      shown = stale || !S.staleAt || (S.tab !== "record" && $("#sheet").hidden) ? render() : null;
+    } else shown = setTab(savedTab());
+    await shown;
+    if (!stale) {
+      if (S.staleAt) { S.staleAt = null; showBanner(); }
+      setTimeout(endRec, 1500);
+      whenIdle(idlePrefetch);
+    }
+  }
+  const FAST_FLAGS = ["boot_api", "cached_first_paint"];
+  function savedTab() {
     let tab = "today";
     try { tab = localStorage.getItem("be.tab") || "today"; } catch (e) { /* private mode */ }
-    setTab(TABS[tab] ? tab : "today");
+    return TABS[tab] ? tab : "today";
   }
 
+  // Draw today's page from this device's copies (offline.js) while the network answers (docs/ios-native-plan.md 3.5):
+  // only the account the copies belong to, copies of today and at most STALE_MAX old; the banner says 「更新中」.
+  const STALE_MAX = 12 * 3600 * 1000;
+  const zoneToday = (tz) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined }).format(new Date()); } catch (e) { return isoDay(new Date()); } };
+  async function paintCached(fast, wait) {
+    const off = window.BodyOffline;
+    if (!S.offlineOn || !off || off.user() == null || off.user() !== fast.user || /(?:^#|&)login=/.test(location.hash)) return false;
+    const hit = await off.get("/v1/web/me", I18N.lang).catch(() => null);
+    const me = hit?.data;
+    if (!me?.me || me.me.id !== fast.user || me.me.status === "pending" || Date.now() - Date.parse(hit.at) > STALE_MAX
+      || String(me.today) !== zoneToday(me.me.timezone) || !(me.flags || []).includes("offline_mode")) return false;
+    S.stale = { wait };
+    S.staleAt = hit.at;
+    try { await start(me, false, null, true); return S.tab === "today" && !$("#app").hidden; }   // optional plugin files are not waited for
+    catch (e) { return false; }
+    finally { S.stale = null; S.data = {}; showBanner(); }   // nothing from the copies stays in memory: the next reads are fresh
+  }
   // Jarvis' card buttons (ai.js, flag jarvis_rich) open a page by its page id (pageId(): "record.training", "food", "trends", "today")
   function goPage(page, card) {
     if (page === "profile") { window.BodyProfile?.open(); return; }   // a Jarvis muscle card without a sex in the profile (#189)

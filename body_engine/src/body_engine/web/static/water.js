@@ -30,6 +30,11 @@
     return { ...d, total_ml: total, percent: d.goal?.ml ? Math.round((100 * total) / d.goal.ml) : d.percent, undo: null };
   };
   let server = null;   // the day as the server last sent it (kept drinks are added on top when drawing)
+  // optimistic_writes (#247 3.4): a drink shows at once and is sent in the background; until the answer it is counted here
+  let sending = 0;
+  const optimistic = () => !!window.BodyFlags?.on("optimistic_writes");
+  const withSending = (d) => (!sending ? d : { ...d, total_ml: d.total_ml + sending,
+    percent: d.goal?.ml ? Math.round((100 * (d.total_ml + sending)) / d.goal.ml) : d.percent, undo: null });
 
   const CSS = `
     .water .w-top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
@@ -75,7 +80,7 @@
       </div>`;
     box.hidden = false;
     for (const b of box.querySelectorAll("[data-water-add]")) {
-      b.onclick = () => write(box, "POST", path(), { ml: +b.dataset.waterAdd, source: "button", client_id: clientId(), ...(offlineOn() ? { at: localAt() } : {}) });
+      b.onclick = () => (optimistic() ? addNow : write)(box, "POST", path(), { ml: +b.dataset.waterAdd, source: "button", client_id: clientId(), ...(offlineOn() ? { at: localAt() } : {}) });
     }
     const u = $("[data-water-undo]", box);
     if (u) u.onclick = () => write(box, "DELETE", `${path()}/${u.dataset.waterUndo}`);
@@ -100,6 +105,23 @@
       C.toast?.(tr("没记上，再试一次"));
       for (const b of box.querySelectorAll("button")) b.disabled = false;
     } finally { busy = false; }
+  }
+
+  // Several taps in a row are fine: each is its own request (own client_id); the day with the most entries wins, so an
+  // answer that arrives late never takes a drink back off the card.
+  async function addNow(box, method, url, body) {
+    sending += body.ml;
+    draw(box, withSending(withKept(server)));
+    try {
+      const r = await C.api(url, { method, body, queue: { kind: "water", label: tr("喝水 {ml} ml", { ml: num(body.ml) }) } });
+      sending -= body.ml;
+      if (r.queued) C.toast?.(tr("离线，已存在本机，联网后自动提交"));
+      else if (!server || (r.day?.entries?.length ?? 0) >= (server.entries?.length ?? 0)) server = r.day;
+    } catch (e) {
+      sending -= body.ml;
+      C.toast?.(tr("没记上，再试一次"));
+    }
+    if (box.isConnected) draw(box, withSending(withKept(server)));
   }
 
   async function bindFoodDiet(view) {

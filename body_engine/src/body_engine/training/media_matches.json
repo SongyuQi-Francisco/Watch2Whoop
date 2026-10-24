@@ -1,0 +1,6236 @@
+{
+"_about": "Proposed demo-media matches (tools/match_exercise_media.py, issue #248). high = attach automatically, medium = a person decides. Metadata only: no image is in the repository.",
+"everkinetic_commit": "446bb9a3d0c3beb6b84f7c9d77dfc8af707a2ab6",
+"report": {
+"library": 6268,
+"library_by_source": {
+"free-exercise-db": 777,
+"curated": 100,
+"exercisedb": 1153,
+"opengym": 4238
+},
+"candidates": {
+"wger": 295,
+"everkinetic": 289
+},
+"matches": {
+"wger": {
+"high": 91,
+"medium": 35
+},
+"everkinetic": {
+"high": 188,
+"medium": 100
+}
+},
+"covered_high": 237,
+"covered_high_by_source": {
+"free-exercise-db": 112,
+"curated": 37,
+"exercisedb": 62,
+"opengym": 26
+},
+"covered_high_or_medium": 352,
+"missing_after_high": 6031,
+"source_items_used_high": {
+"wger": 76,
+"everkinetic": 156
+}
+},
+"matches": [
+{
+"slug": "air_bike",
+"name_en": "Air Bike",
+"source": "everkinetic",
+"source_id": "0284",
+"source_name": "Air Bike",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "alternate_hammer_curl",
+"name_en": "Alternate Hammer Curl",
+"source": "everkinetic",
+"source_id": "0213",
+"source_name": "Alternating Hammer Curl with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "alternate_hammer_curl",
+"name_en": "Alternate Hammer Curl",
+"source": "wger",
+"source_id": 1567,
+"source_name": "Alternating dumbbell hammer curl",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "alternate_incline_dumbbell_curl",
+"name_en": "Alternate Incline Dumbbell Curl",
+"source": "everkinetic",
+"source_id": "0214",
+"source_name": "Alternating Incline Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "ankle_circles",
+"name_en": "Ankle Circles",
+"source": "everkinetic",
+"source_id": "0270",
+"source_name": "Ankle Circles",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "arnold_press",
+"name_en": "Arnold Dumbbell Press",
+"source": "everkinetic",
+"source_id": "0006",
+"source_name": "Arnold Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "balance_board",
+"name_en": "Balance Board",
+"source": "everkinetic",
+"source_id": "0271",
+"source_name": "Balance Board",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_ab_rollout",
+"name_en": "Barbell Ab Rollout",
+"source": "everkinetic",
+"source_id": "0285",
+"source_name": "Ab Rollout with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_ab_rollout",
+"name_en": "Barbell Ab Rollout",
+"source": "wger",
+"source_id": 41,
+"source_name": "Barbell Ab Rollout",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "barbell_ab_rollout_on_knees",
+"name_en": "Barbell Ab Rollout - On Knees",
+"source": "everkinetic",
+"source_id": "0286",
+"source_name": "Ab Rollout on Knees with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_back_squat",
+"name_en": "Barbell Squat",
+"source": "everkinetic",
+"source_id": "0122",
+"source_name": "Barbell Squat",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_bench_press",
+"name_en": "Barbell Bench Press",
+"source": "everkinetic",
+"source_id": "0042",
+"source_name": "Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_bench_press",
+"name_en": "Barbell Bench Press",
+"source": "wger",
+"source_id": 73,
+"source_name": "Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "barbell_curls_lying_against_an_incline",
+"name_en": "Barbell Curls Lying Against An Incline",
+"source": "everkinetic",
+"source_id": "0215",
+"source_name": "Lying Incline Curl with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_hack_squat",
+"name_en": "Barbell Hack Squat",
+"source": "everkinetic",
+"source_id": "0125",
+"source_name": "Hack Squat with barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_lunge",
+"name_en": "Barbell Lunge",
+"source": "everkinetic",
+"source_id": "0114",
+"source_name": "Barbell Lunges",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_romanian_deadlift",
+"name_en": "Barbell Romanian Deadlift",
+"source": "wger",
+"source_id": 507,
+"source_name": "Romanian Deadlift",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+2
+]
+},
+{
+"slug": "barbell_seated_calf_raise",
+"name_en": "Barbell Seated Calf Raise",
+"source": "everkinetic",
+"source_id": "0272",
+"source_name": "Seated Calf Raise with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_shoulder_press",
+"name_en": "Barbell Shoulder Press",
+"source": "wger",
+"source_id": 566,
+"source_name": "Shoulder Press, Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "barbell_shrug",
+"name_en": "Barbell Shrug",
+"source": "everkinetic",
+"source_id": "0030",
+"source_name": "Barbell Shrugs",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_squat_to_a_bench",
+"name_en": "Barbell Squat To A Bench",
+"source": "everkinetic",
+"source_id": "0133",
+"source_name": "Squat to Bench with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_step_ups",
+"name_en": "Barbell Step Ups",
+"source": "everkinetic",
+"source_id": "0134",
+"source_name": "Step Ups with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "barbell_walking_lunge",
+"name_en": "Barbell Walking Lunge",
+"source": "wger",
+"source_id": 802,
+"source_name": "Barbell Lunges Walking",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "bench_dips",
+"name_en": "Bench Dips",
+"source": "everkinetic",
+"source_id": "0162",
+"source_name": "Bench Dips",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "bent_arm_dumbbell_pullover",
+"name_en": "Bent-Arm Dumbbell Pullover",
+"source": "everkinetic",
+"source_id": "0046",
+"source_name": "Dumbbell Bent Arm Pullover",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "bent_knee_hip_raise",
+"name_en": "Bent-Knee Hip Raise",
+"source": "everkinetic",
+"source_id": "0287",
+"source_name": "Bent Knee Hip Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "bird_dog",
+"name_en": "Bird Dog",
+"source": "wger",
+"source_id": 1572,
+"source_name": "Bird Dog",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "cable_hammer_curls_rope_attachment",
+"name_en": "Cable Hammer Curls - Rope Attachment",
+"source": "everkinetic",
+"source_id": "0216",
+"source_name": "Hammer Curls with Rope and Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_hip_adduction",
+"name_en": "Cable Hip Adduction",
+"source": "everkinetic",
+"source_id": "0135",
+"source_name": "Hip Adduction",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_incline_triceps_extension",
+"name_en": "Cable Incline Triceps Extension",
+"source": "everkinetic",
+"source_id": "0164",
+"source_name": "Incline Triceps Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_lying_triceps_extension",
+"name_en": "Cable Lying Triceps Extension",
+"source": "everkinetic",
+"source_id": "0165",
+"source_name": "Lying Tricep Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_preacher_curl",
+"name_en": "Cable Preacher Curl",
+"source": "everkinetic",
+"source_id": "0217",
+"source_name": "Preacher Curl with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_rear_delt_fly",
+"name_en": "Cable Rear Delt Fly",
+"source": "wger",
+"source_id": 822,
+"source_name": "Cable Rear Delt Fly",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "cable_triceps_pushdown",
+"name_en": "Cable Triceps Pushdown",
+"source": "everkinetic",
+"source_id": "0205",
+"source_name": "Triceps Pushdown with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cable_triceps_pushdown",
+"name_en": "Cable Triceps Pushdown",
+"source": "wger",
+"source_id": 1185,
+"source_name": "Triceps Pushdown",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "calf_press_on_the_leg_press_machine",
+"name_en": "Calf Press On The Leg Press Machine",
+"source": "wger",
+"source_id": 146,
+"source_name": "Calf Press Using Leg Press Machine",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "childs_pose",
+"name_en": "Child's Pose",
+"source": "wger",
+"source_id": 1002,
+"source_name": "Child's pose",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "chin_up",
+"name_en": "Chin-Up",
+"source": "everkinetic",
+"source_id": "0089",
+"source_name": "Chin Ups",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "chin_up",
+"name_en": "Chin-Up",
+"source": "wger",
+"source_id": 152,
+"source_name": "Chin Up",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "clean_and_press",
+"name_en": "Clean and Press",
+"source": "wger",
+"source_id": 1901,
+"source_name": "Clean and Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "close_grip_bench_press",
+"name_en": "Close-Grip Barbell Bench Press",
+"source": "wger",
+"source_id": 76,
+"source_name": "Bench Press Narrow Grip",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "close_grip_ez_bar_curl",
+"name_en": "Close-Grip EZ Bar Curl",
+"source": "everkinetic",
+"source_id": "0218",
+"source_name": "Close Grip EZ Bar Curl with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "close_grip_standing_barbell_curl",
+"name_en": "Close-Grip Standing Barbell Curl",
+"source": "everkinetic",
+"source_id": "0219",
+"source_name": "Close Grip Standing Biceps Curls with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "concentration_curls",
+"name_en": "Concentration Curls",
+"source": "everkinetic",
+"source_id": "0220",
+"source_name": "Concentration Curls with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cross_body_crunch",
+"name_en": "Cross-Body Crunch",
+"source": "everkinetic",
+"source_id": "0289",
+"source_name": "Cross Body Crunch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "cross_body_hammer_curl",
+"name_en": "Cross Body Hammer Curl",
+"source": "everkinetic",
+"source_id": "0221",
+"source_name": "Cross Body Hammer Curl with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "crunches",
+"name_en": "Crunches",
+"source": "everkinetic",
+"source_id": "0291",
+"source_name": "Crunches",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "crunches",
+"name_en": "Crunches",
+"source": "wger",
+"source_id": 167,
+"source_name": "Crunches",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 1,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "cuban_press",
+"name_en": "Cuban Press",
+"source": "everkinetic",
+"source_id": "0300",
+"source_name": "Cuban Dumbbell Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_barbell_bench_press",
+"name_en": "Decline Barbell Bench Press",
+"source": "everkinetic",
+"source_id": "0051",
+"source_name": "Decline Barbell Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_barbell_bench_press",
+"name_en": "Decline Barbell Bench Press",
+"source": "wger",
+"source_id": 185,
+"source_name": "Decline Bench Press Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "decline_close_grip_bench_to_skull_crusher",
+"name_en": "Decline Close-Grip Bench To Skull Crusher",
+"source": "everkinetic",
+"source_id": "0168",
+"source_name": "Decline Close Grip Bench to Skull Crusher",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_crunch",
+"name_en": "Decline Crunch",
+"source": "everkinetic",
+"source_id": "0292",
+"source_name": "Decline Crunch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_dumbbell_bench_press",
+"name_en": "Decline Dumbbell Bench Press",
+"source": "everkinetic",
+"source_id": "0052",
+"source_name": "Decline Dumbbell Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_dumbbell_triceps_extension",
+"name_en": "Decline Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0169",
+"source_name": "Decline Triceps Extension with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_ez_bar_triceps_extension",
+"name_en": "Decline EZ Bar Triceps Extension",
+"source": "everkinetic",
+"source_id": "0170",
+"source_name": "Decline EZ Bar Triceps Extension with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "decline_oblique_crunch",
+"name_en": "Decline Oblique Crunch",
+"source": "everkinetic",
+"source_id": "0293",
+"source_name": "Decline Oblique Crunch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dips",
+"name_en": "Dips",
+"source": "wger",
+"source_id": 194,
+"source_name": "Dips",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+2
+]
+},
+{
+"slug": "dips_chest_version",
+"name_en": "Dips - Chest Version",
+"source": "everkinetic",
+"source_id": "0054",
+"source_name": "Chest Dips",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "donkey_calf_raises",
+"name_en": "Donkey Calf Raises",
+"source": "everkinetic",
+"source_id": "0275",
+"source_name": "Donkey Calf Raises",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "drag_curl",
+"name_en": "Drag Curl",
+"source": "everkinetic",
+"source_id": "0222",
+"source_name": "Drag Curl with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_bench_press",
+"name_en": "Dumbbell Bench Press",
+"source": "everkinetic",
+"source_id": "0055",
+"source_name": "Bench Press Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_bicep_curl",
+"name_en": "Dumbbell Bicep Curl",
+"source": "everkinetic",
+"source_id": "0224",
+"source_name": "Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_bicep_curl",
+"name_en": "Dumbbell Bicep Curl",
+"source": "wger",
+"source_id": 92,
+"source_name": "Biceps Curls With Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "dumbbell_fly",
+"name_en": "Dumbbell Flyes",
+"source": "everkinetic",
+"source_id": "0056",
+"source_name": "Dumbbell Flys",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_fly",
+"name_en": "Dumbbell Flyes",
+"source": "wger",
+"source_id": 238,
+"source_name": "Fly With Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "dumbbell_front_raise",
+"name_en": "Dumbbell Front Raise",
+"source": "everkinetic",
+"source_id": "0010",
+"source_name": "Front Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_hammer_curl",
+"name_en": "Dumbbell Hammer Curl",
+"source": "wger",
+"source_id": 272,
+"source_name": "Hammer Curls",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "dumbbell_lateral_raise",
+"name_en": "Dumbbell Lateral Raise",
+"source": "everkinetic",
+"source_id": "0018",
+"source_name": "Lateral Dumbbell Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_lateral_raise",
+"name_en": "Dumbbell Lateral Raise",
+"source": "wger",
+"source_id": 348,
+"source_name": "Lateral Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "dumbbell_lying_one_arm_rear_lateral_raise",
+"name_en": "Dumbbell Lying One-Arm Rear Lateral Raise",
+"source": "everkinetic",
+"source_id": "0037",
+"source_name": "Lying One Arm Rear Lateral Raise",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_lying_rear_lateral_raise",
+"name_en": "Dumbbell Lying Rear Lateral Raise",
+"source": "everkinetic",
+"source_id": "0023",
+"source_name": "Lying Rear Lateral Raise",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_one_arm_shoulder_press",
+"name_en": "Dumbbell One-Arm Shoulder Press",
+"source": "everkinetic",
+"source_id": "0038",
+"source_name": "One Arm Dumbbell Shoulder Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_one_arm_shoulder_press",
+"name_en": "Dumbbell One-Arm Shoulder Press",
+"source": "wger",
+"source_id": 1968,
+"source_name": "Single-arm dumbbell shoulder press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "dumbbell_one_arm_triceps_extension",
+"name_en": "Dumbbell One-Arm Triceps Extension",
+"source": "everkinetic",
+"source_id": "0173",
+"source_name": "One Arm Triceps Extension with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_one_arm_upright_row",
+"name_en": "Dumbbell One-Arm Upright Row",
+"source": "everkinetic",
+"source_id": "0039",
+"source_name": "One Arm Upright Row",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_prone_incline_curl",
+"name_en": "Dumbbell Prone Incline Curl",
+"source": "everkinetic",
+"source_id": "0225",
+"source_name": "Prone Incline Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_raise",
+"name_en": "Dumbbell Raise",
+"source": "everkinetic",
+"source_id": "0040",
+"source_name": "Dumbbell Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_romanian_deadlift",
+"name_en": "Dumbbell Romanian Deadlift",
+"source": "wger",
+"source_id": 1652,
+"source_name": "Dumbbell Romanian Deadlift",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "dumbbell_seated_one_leg_calf_raise",
+"name_en": "Dumbbell Seated One-Leg Calf Raise",
+"source": "everkinetic",
+"source_id": "0276",
+"source_name": "Seated One Leg Calf Raise with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_seated_one_leg_calf_raise",
+"name_en": "Dumbbell Seated One-Leg Calf Raise",
+"source": "wger",
+"source_id": 1620,
+"source_name": "Seated Dumbbell Calf Raise",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "dumbbell_shoulder_press",
+"name_en": "Dumbbell Shoulder Press",
+"source": "everkinetic",
+"source_id": "0012",
+"source_name": "Dumbbell Shoulder Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_shoulder_press",
+"name_en": "Dumbbell Shoulder Press",
+"source": "wger",
+"source_id": 567,
+"source_name": "Shoulder Press, Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "dumbbell_side_bend",
+"name_en": "Dumbbell Side Bend",
+"source": "everkinetic",
+"source_id": "0294",
+"source_name": "Side Bend with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_side_bend",
+"name_en": "Dumbbell Side Bend",
+"source": "wger",
+"source_id": 1650,
+"source_name": "Dumbbell Side Bend",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "dumbbell_squat_to_a_bench",
+"name_en": "Dumbbell Squat To A Bench",
+"source": "everkinetic",
+"source_id": "0136",
+"source_name": "Squat to Bench with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "dumbbell_walking_lunge",
+"name_en": "Dumbbell Walking Lunge",
+"source": "wger",
+"source_id": 206,
+"source_name": "Dumbbell Lunges Walking",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 5,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "ez_bar_curl",
+"name_en": "EZ-Bar Curl",
+"source": "everkinetic",
+"source_id": "0226",
+"source_name": "EZ Bar Curl with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "ez_bar_skullcrusher",
+"name_en": "EZ-Bar Skullcrusher",
+"source": "wger",
+"source_id": 246,
+"source_name": "Skullcrusher SZ-bar",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "flat_bench_lying_leg_raise",
+"name_en": "Flat Bench Lying Leg Raise",
+"source": "everkinetic",
+"source_id": "0021",
+"source_name": "Flat Bench Leg Raises",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "flexor_incline_dumbbell_curls",
+"name_en": "Flexor Incline Dumbbell Curls",
+"source": "everkinetic",
+"source_id": "0228",
+"source_name": "Flexor Incline Curls with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "front_barbell_squat",
+"name_en": "Front Barbell Squat",
+"source": "everkinetic",
+"source_id": "0138",
+"source_name": "Front Squat with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "front_barbell_squat_to_a_bench",
+"name_en": "Front Barbell Squat To A Bench",
+"source": "everkinetic",
+"source_id": "0139",
+"source_name": "Front Squat to Bench with Barbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "front_raise_and_pullover",
+"name_en": "Front Raise And Pullover",
+"source": "everkinetic",
+"source_id": "0058",
+"source_name": "Barbell Front Raise and Pullover",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "gironda_sternum_chins",
+"name_en": "Gironda Sternum Chins",
+"source": "everkinetic",
+"source_id": "0088",
+"source_name": "Gironda Sternum Chins",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "hack_squat",
+"name_en": "Hack Squat",
+"source": "everkinetic",
+"source_id": "0123",
+"source_name": "Hack Squat Machine",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "hammer_grip_incline_db_bench_press",
+"name_en": "Hammer Grip Incline DB Bench Press",
+"source": "everkinetic",
+"source_id": "0059",
+"source_name": "Hammer Grip Incline Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "handstand_push_ups",
+"name_en": "Handstand Push-Ups",
+"source": "wger",
+"source_id": 282,
+"source_name": "Handstand Pushup",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "high_cable_curls",
+"name_en": "High Cable Curls",
+"source": "everkinetic",
+"source_id": "0229",
+"source_name": "High Cable Curls",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "incline_barbell_bench_press",
+"name_en": "Incline Barbell Bench Press",
+"source": "everkinetic",
+"source_id": "0043",
+"source_name": "Incline Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "incline_barbell_bench_press",
+"name_en": "Incline Barbell Bench Press",
+"source": "wger",
+"source_id": 538,
+"source_name": "Incline Bench Press - Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "incline_barbell_triceps_extension",
+"name_en": "Incline Barbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0174",
+"source_name": "Incline Triceps Extension with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "incline_dumbbell_press",
+"name_en": "Incline Dumbbell Press",
+"source": "everkinetic",
+"source_id": "0080",
+"source_name": "Incline Dumbbell Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "incline_dumbbell_press",
+"name_en": "Incline Dumbbell Press",
+"source": "wger",
+"source_id": 537,
+"source_name": "Incline Dumbbell Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "incline_inner_biceps_curl",
+"name_en": "Incline Inner Biceps Curl",
+"source": "everkinetic",
+"source_id": "0231",
+"source_name": "Incline Inner Biceps Curl with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "jm_press",
+"name_en": "JM Press",
+"source": "everkinetic",
+"source_id": "0175",
+"source_name": "JM Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "kettlebell_swing",
+"name_en": "Kettlebell Swing",
+"source": "wger",
+"source_id": 960,
+"source_name": "Kettlebell Swing",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "knee_circles",
+"name_en": "Knee Circles",
+"source": "everkinetic",
+"source_id": "0277",
+"source_name": "Knee Circles",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "kneeling_cable_triceps_extension",
+"name_en": "Kneeling Cable Triceps Extension",
+"source": "everkinetic",
+"source_id": "0177",
+"source_name": "Kneeling Triceps Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "leg_press",
+"name_en": "Leg Press",
+"source": "everkinetic",
+"source_id": "0127",
+"source_name": "Leg Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "low_cable_triceps_extension",
+"name_en": "Low Cable Triceps Extension",
+"source": "everkinetic",
+"source_id": "0178",
+"source_name": "Low Triceps Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_close_grip_barbell_triceps_extension_behind_the_head",
+"name_en": "Lying Close-Grip Barbell Triceps Extension Behind The Head",
+"source": "everkinetic",
+"source_id": "0179",
+"source_name": "Lying Close-Grip Triceps Extension Behind the Head with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_close_grip_barbell_triceps_press_to_chin",
+"name_en": "Lying Close-Grip Barbell Triceps Press To Chin",
+"source": "everkinetic",
+"source_id": "0180",
+"source_name": "Lying Close Grip Triceps Press to Chin with Barbell",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_dumbbell_tricep_extension",
+"name_en": "Lying Dumbbell Tricep Extension",
+"source": "everkinetic",
+"source_id": "0181",
+"source_name": "Lying Triceps Extension with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_high_bench_barbell_curl",
+"name_en": "Lying High Bench Barbell Curl",
+"source": "everkinetic",
+"source_id": "0234",
+"source_name": "Lying High Bench Biceps Curl with Barbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_leg_curl",
+"name_en": "Lying Leg Curl",
+"source": "everkinetic",
+"source_id": "0117",
+"source_name": "Lying Leg Curl Machine",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_machine_squat",
+"name_en": "Lying Machine Squat",
+"source": "everkinetic",
+"source_id": "0144",
+"source_name": "Lying Squat",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_one_arm_lateral_raise",
+"name_en": "Lying One-Arm Lateral Raise",
+"source": "everkinetic",
+"source_id": "0037",
+"source_name": "Lying One Arm Rear Lateral Raise",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "lying_rear_delt_raise",
+"name_en": "Lying Rear Delt Raise",
+"source": "wger",
+"source_id": 487,
+"source_name": "Rear Delt Raises",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "lying_supine_dumbbell_curl",
+"name_en": "Lying Supine Dumbbell Curl",
+"source": "everkinetic",
+"source_id": "0235",
+"source_name": "Lying Supine Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "machine_chest_press",
+"name_en": "Machine Chest Press",
+"source": "wger",
+"source_id": 129,
+"source_name": "Machine Chest Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "machine_lateral_raise",
+"name_en": "Machine Lateral Raise",
+"source": "wger",
+"source_id": 1654,
+"source_name": "Machine Lateral Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "machine_preacher_curls",
+"name_en": "Machine Preacher Curls",
+"source": "everkinetic",
+"source_id": "0236",
+"source_name": "Preacher Curl with Machine",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "machine_shoulder_press",
+"name_en": "Machine Shoulder Press",
+"source": "wger",
+"source_id": 543,
+"source_name": "Shoulder Press, on Machine",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "narrow_stance_hack_squats",
+"name_en": "Narrow Stance Hack Squats",
+"source": "everkinetic",
+"source_id": "0145",
+"source_name": "Narrow Stance Hack Squats",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "narrow_stance_leg_press",
+"name_en": "Narrow Stance Leg Press",
+"source": "everkinetic",
+"source_id": "0143",
+"source_name": "Narrow Stance Leg Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "narrow_stance_squats",
+"name_en": "Narrow Stance Squats",
+"source": "everkinetic",
+"source_id": "0146",
+"source_name": "Narrow Stance Squat with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0005",
+"name_en": "Band Alternate Biceps Curl",
+"source": "everkinetic",
+"source_id": "0261",
+"source_name": "Quick Alternating Biceps Curls with Band",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0024",
+"name_en": "Barbell Bench Front Squat",
+"source": "everkinetic",
+"source_id": "0139",
+"source_name": "Front Squat to Bench with Barbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0026",
+"name_en": "Barbell Bench Squat",
+"source": "everkinetic",
+"source_id": "0133",
+"source_name": "Squat to Bench with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0033",
+"name_en": "Barbell Decline Bench Press",
+"source": "everkinetic",
+"source_id": "0051",
+"source_name": "Decline Barbell Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0033",
+"name_en": "Barbell Decline Bench Press",
+"source": "wger",
+"source_id": 185,
+"source_name": "Decline Bench Press Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_0036",
+"name_en": "Barbell Decline Wide-grip Press",
+"source": "everkinetic",
+"source_id": "0083",
+"source_name": "Wide Grip Decline Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0041",
+"name_en": "Barbell Front Raise",
+"source": "everkinetic",
+"source_id": "0007",
+"source_name": "Front Barbell Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0042",
+"name_en": "Barbell Front Squat",
+"source": "wger",
+"source_id": 257,
+"source_name": "Front Squats",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 4,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_0054",
+"name_en": "Barbell Lunge",
+"source": "everkinetic",
+"source_id": "0114",
+"source_name": "Barbell Lunges",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0068",
+"name_en": "Barbell One Leg Squat",
+"source": "everkinetic",
+"source_id": "0132",
+"source_name": "Single Leg Squat with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0070",
+"name_en": "Barbell Preacher Curl",
+"source": "everkinetic",
+"source_id": "0239",
+"source_name": "Preacher Curl with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0089",
+"name_en": "Barbell Seated Close-grip Concentration Curl",
+"source": "everkinetic",
+"source_id": "0242",
+"source_name": "Seated Close Grip Concentration Curls with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0091",
+"name_en": "Barbell Seated Overhead Press",
+"source": "everkinetic",
+"source_id": "0004",
+"source_name": "Seated Military Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0092",
+"name_en": "Barbell Seated Overhead Triceps Extension",
+"source": "everkinetic",
+"source_id": "0193",
+"source_name": "Seated Overhead Triceps Extension with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0106",
+"name_en": "Barbell Standing Close Grip Curl",
+"source": "everkinetic",
+"source_id": "0219",
+"source_name": "Close Grip Standing Biceps Curls with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0108",
+"name_en": "Barbell Standing Leg Calf Raise",
+"source": "everkinetic",
+"source_id": "0281",
+"source_name": "Standing Barbell Calf Raise",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0109",
+"name_en": "Barbell Standing Overhead Triceps Extension",
+"source": "everkinetic",
+"source_id": "0201",
+"source_name": "Standing Overhead Triceps Extension with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0111",
+"name_en": "Barbell Standing Rocking Leg Calf Raise",
+"source": "everkinetic",
+"source_id": "0278",
+"source_name": "Rocking Standing Calf Raise with Barbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0113",
+"name_en": "Barbell Standing Wide-grip Curl",
+"source": "everkinetic",
+"source_id": "0250",
+"source_name": "Wide Grip Standing Biceps Curl with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0126",
+"name_en": "Barbell Wrist Curl",
+"source": "wger",
+"source_id": 51,
+"source_name": "Barbell Wrist Curl",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_0165",
+"name_en": "Cable Hammer Curl (with Rope)",
+"source": "everkinetic",
+"source_id": "0216",
+"source_name": "Hammer Curls with Rope and Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0176",
+"name_en": "Cable Kneeling Triceps Extension",
+"source": "everkinetic",
+"source_id": "0177",
+"source_name": "Kneeling Triceps Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0181",
+"name_en": "Cable Lying Close Grip Curl",
+"source": "everkinetic",
+"source_id": "0233",
+"source_name": "Lying Close Grip Biceps Curls with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0186",
+"name_en": "Cable Lying Triceps Extension V. 2",
+"source": "everkinetic",
+"source_id": "0165",
+"source_name": "Lying Tricep Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0192",
+"name_en": "Cable One Arm Lateral Raise",
+"source": "wger",
+"source_id": 1378,
+"source_name": "Cable Lateral Raises (Single Arm)",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0231",
+"name_en": "Cable Standing One Arm Triceps Extension",
+"source": "everkinetic",
+"source_id": "0166",
+"source_name": "One Arm Tricep Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0231",
+"name_en": "Cable Standing One Arm Triceps Extension",
+"source": "wger",
+"source_id": 803,
+"source_name": "One Arm Triceps Extensions on Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 2,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0237",
+"name_en": "Cable Straight Arm Pulldown (with Rope)",
+"source": "wger",
+"source_id": 1726,
+"source_name": "Straight-Arm Pulldown (Cable)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0241",
+"name_en": "Cable Triceps Pushdown (v-bar)",
+"source": "everkinetic",
+"source_id": "0207",
+"source_name": "Triceps Pushdown with V Bar and Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0253",
+"name_en": "Chin-ups (narrow Parallel Grip)",
+"source": "everkinetic",
+"source_id": "0090",
+"source_name": "Narrow Parallel Grip Chin-ups",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0284",
+"name_en": "Donkey Calf Raise",
+"source": "everkinetic",
+"source_id": "0275",
+"source_name": "Donkey Calf Raises",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0285",
+"name_en": "Dumbbell Alternate Biceps Curl",
+"source": "everkinetic",
+"source_id": "0223",
+"source_name": "Alternating Bicep Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0285",
+"name_en": "Dumbbell Alternate Biceps Curl",
+"source": "wger",
+"source_id": 1012,
+"source_name": "Alternating bicep curls",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0294",
+"name_en": "Dumbbell Biceps Curl",
+"source": "everkinetic",
+"source_id": "0224",
+"source_name": "Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0294",
+"name_en": "Dumbbell Biceps Curl",
+"source": "wger",
+"source_id": 92,
+"source_name": "Biceps Curls With Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_0297",
+"name_en": "Dumbbell Concentration Curl",
+"source": "everkinetic",
+"source_id": "0220",
+"source_name": "Concentration Curls with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0301",
+"name_en": "Dumbbell Decline Bench Press",
+"source": "everkinetic",
+"source_id": "0052",
+"source_name": "Decline Dumbbell Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0306",
+"name_en": "Dumbbell Decline Triceps Extension",
+"source": "everkinetic",
+"source_id": "0169",
+"source_name": "Decline Triceps Extension with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0314",
+"name_en": "Dumbbell Incline Bench Press",
+"source": "everkinetic",
+"source_id": "0061",
+"source_name": "Dumbbell Incline Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0314",
+"name_en": "Dumbbell Incline Bench Press",
+"source": "wger",
+"source_id": 537,
+"source_name": "Incline Bench Press - Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_0315",
+"name_en": "Dumbbell Incline Biceps Curl",
+"source": "everkinetic",
+"source_id": "0230",
+"source_name": "Incline Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0330",
+"name_en": "Dumbbell Incline Triceps Extension",
+"source": "everkinetic",
+"source_id": "0209",
+"source_name": "Incline Triceps Extensions with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0336",
+"name_en": "Dumbbell Lunge",
+"source": "everkinetic",
+"source_id": "0115",
+"source_name": "Dumbbell Lunges",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0337",
+"name_en": "Dumbbell Lying Extension (across Face)",
+"source": "everkinetic",
+"source_id": "0182",
+"source_name": "Lying Triceps Extension Across Face with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0344",
+"name_en": "Dumbbell Lying One Arm Pronated Triceps Extension",
+"source": "everkinetic",
+"source_id": "0186",
+"source_name": "Single Arm Pronated Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0346",
+"name_en": "Dumbbell Lying One Arm Supinated Triceps Extension",
+"source": "everkinetic",
+"source_id": "0187",
+"source_name": "Single Arm Supinated Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0350",
+"name_en": "Dumbbell Lying Supine Curl",
+"source": "everkinetic",
+"source_id": "0235",
+"source_name": "Lying Supine Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0351",
+"name_en": "Dumbbell Lying Triceps Extension",
+"source": "everkinetic",
+"source_id": "0181",
+"source_name": "Lying Triceps Extension with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0362",
+"name_en": "Dumbbell One Arm Triceps Extension (on Bench)",
+"source": "everkinetic",
+"source_id": "0173",
+"source_name": "One Arm Triceps Extension with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0380",
+"name_en": "Dumbbell Rear Lateral Raise",
+"source": "everkinetic",
+"source_id": "0023",
+"source_name": "Lying Rear Lateral Raise",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0390",
+"name_en": "Dumbbell Seated Biceps Curl (on Stability Ball)",
+"source": "everkinetic",
+"source_id": "0255",
+"source_name": "Biceps Curl Seated on Stability Ball with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0393",
+"name_en": "Dumbbell Seated Inner Biceps Curl",
+"source": "everkinetic",
+"source_id": "0244",
+"source_name": "Seated Inner Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0409",
+"name_en": "Dumbbell Single Leg Calf Raise",
+"source": "everkinetic",
+"source_id": "0276",
+"source_name": "Seated One Leg Calf Raise with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0416",
+"name_en": "Dumbbell Standing Biceps Curl",
+"source": "everkinetic",
+"source_id": "0246",
+"source_name": "Standing Inner Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0422",
+"name_en": "Dumbbell Standing One Arm Curl (over Incline Bench)",
+"source": "everkinetic",
+"source_id": "0248",
+"source_name": "Standing One Arm Curl Over Incline Bench with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0430",
+"name_en": "Dumbbell Standing Triceps Extension",
+"source": "everkinetic",
+"source_id": "0167",
+"source_name": "Standing Triceps Extension",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0433",
+"name_en": "Dumbbell Straight Arm Pullover",
+"source": "everkinetic",
+"source_id": "0079",
+"source_name": "Straight Arm Dumbbell Pullover",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0446",
+"name_en": "Ez Barbell Close-grip Curl",
+"source": "everkinetic",
+"source_id": "0218",
+"source_name": "Close Grip EZ Bar Curl with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0463",
+"name_en": "Front Plank",
+"source": "wger",
+"source_id": 1307,
+"source_name": "Front Plank",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_0466",
+"name_en": "Gironda Sternum Chin",
+"source": "everkinetic",
+"source_id": "0088",
+"source_name": "Gironda Sternum Chins",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0471",
+"name_en": "Handstand Push-up",
+"source": "wger",
+"source_id": 282,
+"source_name": "Handstand Pushup",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_0484",
+"name_en": "Hip Raise (bent Knee)",
+"source": "everkinetic",
+"source_id": "0287",
+"source_name": "Bent Knee Hip Raise",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0489",
+"name_en": "Hyperextension",
+"source": "everkinetic",
+"source_id": "0103",
+"source_name": "Hyperextensions",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0559",
+"name_en": "Knee to Chest Stretch",
+"source": "wger",
+"source_id": 1452,
+"source_name": "Knee to Chest Stretch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0576",
+"name_en": "Lever Chest Press",
+"source": "wger",
+"source_id": 129,
+"source_name": "Machine Chest Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0584",
+"name_en": "Lever Lateral Raise",
+"source": "wger",
+"source_id": 1654,
+"source_name": "Machine Lateral Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0585",
+"name_en": "Lever Leg Extension",
+"source": "everkinetic",
+"source_id": "0142",
+"source_name": "Leg Extensions",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0587",
+"name_en": "Lever Military Press",
+"source": "wger",
+"source_id": 543,
+"source_name": "Shoulder Press, on Machine",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_0603",
+"name_en": "Lever Shoulder Press",
+"source": "wger",
+"source_id": 543,
+"source_name": "Shoulder Press, on Machine",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_0612",
+"name_en": "Lunge",
+"source": "wger",
+"source_id": 984,
+"source_name": "Lunges",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_0620",
+"name_en": "Lying Leg Raise Flat Bench",
+"source": "everkinetic",
+"source_id": "0021",
+"source_name": "Flat Bench Leg Raises",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0708",
+"name_en": "Side Crunch",
+"source": "wger",
+"source_id": 576,
+"source_name": "Side Crunch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_0727",
+"name_en": "Single Leg Calf Raise (on a Dumbbell)",
+"source": "everkinetic",
+"source_id": "0276",
+"source_name": "Seated One Leg Calf Raise with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0748",
+"name_en": "Smith Bench Press",
+"source": "everkinetic",
+"source_id": "0078",
+"source_name": "Smith Machine Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0751",
+"name_en": "Smith Close-grip Bench Press",
+"source": "everkinetic",
+"source_id": "0195",
+"source_name": "Smith Machine Close Grip Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0753",
+"name_en": "Smith Decline Bench Press",
+"source": "everkinetic",
+"source_id": "0078",
+"source_name": "Smith Machine Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0757",
+"name_en": "Smith Incline Bench Press",
+"source": "everkinetic",
+"source_id": "0081",
+"source_name": "Smith Machine Incline Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0763",
+"name_en": "Smith Reverse Calf Raises",
+"source": "everkinetic",
+"source_id": "0280",
+"source_name": "Smith Machine Reverse Calf Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0770",
+"name_en": "Smith Squat",
+"source": "wger",
+"source_id": 1747,
+"source_name": "Smith machine squat",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_0775",
+"name_en": "Smith Upright Row",
+"source": "everkinetic",
+"source_id": "0013",
+"source_name": "Smith Machine Upright Row",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_0968",
+"name_en": "Band Alternating Biceps Curl",
+"source": "everkinetic",
+"source_id": "0261",
+"source_name": "Quick Alternating Biceps Curls with Band",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_10116",
+"name_en": "Smith Incline Close Grip Bench Press",
+"source": "everkinetic",
+"source_id": "0195",
+"source_name": "Smith Machine Close Grip Bench Press",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_10168",
+"name_en": "Bodyweight Box Squat",
+"source": "wger",
+"source_id": 977,
+"source_name": "Box squat",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_1048",
+"name_en": "Dumbbell Lying One Arm Rear Lateral Raise V. 2",
+"source": "everkinetic",
+"source_id": "0037",
+"source_name": "Lying One Arm Rear Lateral Raise",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1067",
+"name_en": "Cable Straight Arm Pulldown V. 3",
+"source": "wger",
+"source_id": 1726,
+"source_name": "Straight-Arm Pulldown (Cable)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1163",
+"name_en": "Lying Leg Raise",
+"source": "wger",
+"source_id": 377,
+"source_name": "Leg Raises, Lying",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_1196",
+"name_en": "Dumbbell Alternate Biceps Curl V. 2",
+"source": "everkinetic",
+"source_id": "0223",
+"source_name": "Alternating Bicep Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1196",
+"name_en": "Dumbbell Alternate Biceps Curl V. 2",
+"source": "wger",
+"source_id": 1012,
+"source_name": "Alternating bicep curls",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1233",
+"name_en": "Dumbbell Incline Alternate Hammer Curl",
+"source": "everkinetic",
+"source_id": "0213",
+"source_name": "Alternating Hammer Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1233",
+"name_en": "Dumbbell Incline Alternate Hammer Curl",
+"source": "wger",
+"source_id": 1567,
+"source_name": "Alternating dumbbell hammer curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1246",
+"name_en": "Hollow Hold",
+"source": "wger",
+"source_id": 297,
+"source_name": "Hollow Hold",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_1256",
+"name_en": "Barbell Reverse Grip Decline Bench Press",
+"source": "everkinetic",
+"source_id": "0051",
+"source_name": "Decline Barbell Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1256",
+"name_en": "Barbell Reverse Grip Decline Bench Press",
+"source": "wger",
+"source_id": 185,
+"source_name": "Decline Bench Press Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_1257",
+"name_en": "Barbell Reverse Grip Incline Bench Press",
+"source": "everkinetic",
+"source_id": "0043",
+"source_name": "Incline Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1257",
+"name_en": "Barbell Reverse Grip Incline Bench Press",
+"source": "wger",
+"source_id": 538,
+"source_name": "Incline Bench Press - Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_1273",
+"name_en": "Clap Push Up",
+"source": "wger",
+"source_id": 1554,
+"source_name": "Clap Push-UP",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1308",
+"name_en": "Smith Wide Grip Bench Press",
+"source": "everkinetic",
+"source_id": "0078",
+"source_name": "Smith Machine Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1372",
+"name_en": "Barbell Standing Calf Raise",
+"source": "everkinetic",
+"source_id": "0281",
+"source_name": "Standing Barbell Calf Raise",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1373",
+"name_en": "Bodyweight Standing Calf Raise",
+"source": "wger",
+"source_id": 622,
+"source_name": "Standing Calf Raises",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 2,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1379",
+"name_en": "Dumbbell Seated Calf Raise",
+"source": "everkinetic",
+"source_id": "0276",
+"source_name": "Seated One Leg Calf Raise with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1379",
+"name_en": "Dumbbell Seated Calf Raise",
+"source": "wger",
+"source_id": 1620,
+"source_name": "Seated Dumbbell Calf Raise",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1414",
+"name_en": "Dumbbell One Arm Reverse Preacher Curl",
+"source": "everkinetic",
+"source_id": "0237",
+"source_name": "One Arm Preacher Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1414",
+"name_en": "Dumbbell One Arm Reverse Preacher Curl",
+"source": "wger",
+"source_id": 584,
+"source_name": "Single-arm Preacher Curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1444",
+"name_en": "Dumbbell Bent Arm Pullover Hold",
+"source": "everkinetic",
+"source_id": "0046",
+"source_name": "Dumbbell Bent Arm Pullover",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1454",
+"name_en": "Lever Seated Shoulder Press",
+"source": "everkinetic",
+"source_id": "0003",
+"source_name": "Seated Shoulder Press Machine",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1553",
+"name_en": "Dumbbell Lateral Lunge with Bicep Curl",
+"source": "everkinetic",
+"source_id": "0264",
+"source_name": "Lateral Lunge with Bicep Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1557",
+"name_en": "Dumbbell Walking Lunges",
+"source": "wger",
+"source_id": 206,
+"source_name": "Dumbbell Lunges Walking",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 5,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_1605",
+"name_en": "Cable Triceps Pushdown (sz Bar)",
+"source": "everkinetic",
+"source_id": "0207",
+"source_name": "Triceps Pushdown with V Bar and Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1625",
+"name_en": "Smith Machine Decline Close Grip Bench Press",
+"source": "everkinetic",
+"source_id": "0195",
+"source_name": "Smith Machine Close Grip Bench Press",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1629",
+"name_en": "Barbell Standing Wide Grip Biceps Curl",
+"source": "everkinetic",
+"source_id": "0250",
+"source_name": "Wide Grip Standing Biceps Curl with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1631",
+"name_en": "Cable Concentration Curl",
+"source": "wger",
+"source_id": 1109,
+"source_name": "Cable Concentration Curl",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1634",
+"name_en": "Cable Lying Bicep Curl",
+"source": "everkinetic",
+"source_id": "0232",
+"source_name": "Lying Bicep Cable Curl",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1636",
+"name_en": "Cable Overhead Curl",
+"source": "everkinetic",
+"source_id": "0238",
+"source_name": "Overhead Curl with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1639",
+"name_en": "Cable Rope Hammer Preacher Curl",
+"source": "everkinetic",
+"source_id": "0216",
+"source_name": "Hammer Curls with Rope and Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1646",
+"name_en": "Dumbbell Alternate Hammer Preacher Curl",
+"source": "everkinetic",
+"source_id": "0213",
+"source_name": "Alternating Hammer Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1646",
+"name_en": "Dumbbell Alternate Hammer Preacher Curl",
+"source": "wger",
+"source_id": 1567,
+"source_name": "Alternating dumbbell hammer curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1648",
+"name_en": "Dumbbell Alternate Seated Hammer Curl",
+"source": "everkinetic",
+"source_id": "0213",
+"source_name": "Alternating Hammer Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1648",
+"name_en": "Dumbbell Alternate Seated Hammer Curl",
+"source": "wger",
+"source_id": 1567,
+"source_name": "Alternating dumbbell hammer curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1649",
+"name_en": "Dumbbell Alternating Bicep Curl with Leg Raised on Exercise Ball",
+"source": "everkinetic",
+"source_id": "0263",
+"source_name": "Bicep Curl on Stability Ball with Leg Raised",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1650",
+"name_en": "Dumbbell Alternating Seated Bicep Curl on Exercise Ball",
+"source": "everkinetic",
+"source_id": "0255",
+"source_name": "Biceps Curl Seated on Stability Ball with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1652",
+"name_en": "Dumbbell Bicep Curl on Exercise Ball with Leg Raised",
+"source": "everkinetic",
+"source_id": "0263",
+"source_name": "Bicep Curl on Stability Ball with Leg Raised",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1653",
+"name_en": "Dumbbell Bicep Curl with Stork Stance",
+"source": "everkinetic",
+"source_id": "0268",
+"source_name": "Stork Stance Bicep Curl with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1654",
+"name_en": "Dumbbell Biceps Curl Reverse",
+"source": "everkinetic",
+"source_id": "0257",
+"source_name": "Biceps Curl Reverse with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1655",
+"name_en": "Dumbbell Biceps Curl Squat",
+"source": "everkinetic",
+"source_id": "0256",
+"source_name": "Biceps Curl Squat with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1657",
+"name_en": "Dumbbell Cross Body Hammer Curl V. 2",
+"source": "everkinetic",
+"source_id": "0221",
+"source_name": "Cross Body Hammer Curl with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1658",
+"name_en": "Dumbbell Lunge with Bicep Curl",
+"source": "everkinetic",
+"source_id": "0264",
+"source_name": "Lateral Lunge with Bicep Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1661",
+"name_en": "Dumbbell Lying Supine Biceps Curl",
+"source": "everkinetic",
+"source_id": "0235",
+"source_name": "Lying Supine Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1663",
+"name_en": "Dumbbell One Arm Hammer Preacher Curl",
+"source": "everkinetic",
+"source_id": "0237",
+"source_name": "One Arm Preacher Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1663",
+"name_en": "Dumbbell One Arm Hammer Preacher Curl",
+"source": "wger",
+"source_id": 584,
+"source_name": "Single-arm Preacher Curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1668",
+"name_en": "Dumbbell One Arm Seated Bicep Curl on Exercise Ball",
+"source": "everkinetic",
+"source_id": "0255",
+"source_name": "Biceps Curl Seated on Stability Ball with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1672",
+"name_en": "Dumbbell One Arm Zottman Preacher Curl",
+"source": "everkinetic",
+"source_id": "0237",
+"source_name": "One Arm Preacher Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1672",
+"name_en": "Dumbbell One Arm Zottman Preacher Curl",
+"source": "wger",
+"source_id": 584,
+"source_name": "Single-arm Preacher Curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1677",
+"name_en": "Dumbbell Seated Bicep Curl",
+"source": "everkinetic",
+"source_id": "0243",
+"source_name": "Seated Bicep Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1684",
+"name_en": "Dumbbell Step Up Single Leg Balance with Bicep Curl",
+"source": "everkinetic",
+"source_id": "0266",
+"source_name": "Step Up Single Leg Balance with Bicep Curl using Dumbbells",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1719",
+"name_en": "Barbell Incline Close Grip Bench Press",
+"source": "wger",
+"source_id": 76,
+"source_name": "Bench Press Narrow Grip",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_1725",
+"name_en": "Cable Rope Incline Tricep Extension",
+"source": "everkinetic",
+"source_id": "0164",
+"source_name": "Incline Triceps Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1740",
+"name_en": "Dumbbell Standing Bent Over One Arm Triceps Extension",
+"source": "everkinetic",
+"source_id": "0196",
+"source_name": "Bent-Over One Arm Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1741",
+"name_en": "Dumbbell Standing Bent Over Two Arm Triceps Extension",
+"source": "everkinetic",
+"source_id": "0197",
+"source_name": "Bent-Over Two Arm Triceps Extension with Dumbbell",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_1747",
+"name_en": "Ez Bar French Press on Exercise Ball",
+"source": "wger",
+"source_id": 246,
+"source_name": "French Press SZ-bar",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_1749",
+"name_en": "Ez Bar Standing French Press",
+"source": "wger",
+"source_id": 246,
+"source_name": "French Press SZ-bar",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_1757",
+"name_en": "Dumbbell Single Leg Deadlift",
+"source": "wger",
+"source_id": 1736,
+"source_name": "Single-Leg Deadlift with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_1859",
+"name_en": "Cable Kneeling Triceps Extension V. 2",
+"source": "everkinetic",
+"source_id": "0177",
+"source_name": "Kneeling Triceps Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2186",
+"name_en": "Ez Barbell Decline Triceps Extension",
+"source": "everkinetic",
+"source_id": "0170",
+"source_name": "Decline EZ Bar Triceps Extension with Barbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2187",
+"name_en": "Barbell Reverse Close-grip Bench Press",
+"source": "wger",
+"source_id": 76,
+"source_name": "Bench Press Narrow Grip",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_2188",
+"name_en": "Dumbbell Seated Triceps Extension",
+"source": "everkinetic",
+"source_id": "0191",
+"source_name": "Seated One Arm Triceps Extension with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2189",
+"name_en": "Dumbbells Seated Triceps Extension",
+"source": "everkinetic",
+"source_id": "0191",
+"source_name": "Seated One Arm Triceps Extension with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2292",
+"name_en": "Dumbbell Rear Delt Raise",
+"source": "wger",
+"source_id": 487,
+"source_name": "Rear Delt Raises",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_2293",
+"name_en": "Dumbbell Standing Zottman Preacher Curl",
+"source": "everkinetic",
+"source_id": "0252",
+"source_name": "Zottman Preacher Curl with Dumbbells",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2321",
+"name_en": "Dumbbell Standing Inner Biceps Curl V. 2",
+"source": "everkinetic",
+"source_id": "0246",
+"source_name": "Standing Inner Biceps Curl with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2393",
+"name_en": "Dumbbell One Arm Bent Over Row",
+"source": "wger",
+"source_id": 81,
+"source_name": "Bent Over Dumbbell Rows (Single Arm)",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_2396",
+"name_en": "Cable Lying Biceps Curl V. 2",
+"source": "everkinetic",
+"source_id": "0232",
+"source_name": "Lying Bicep Cable Curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2566",
+"name_en": "Dumbbell Bent Arm Pullover with Knees Bent",
+"source": "everkinetic",
+"source_id": "0046",
+"source_name": "Dumbbell Bent Arm Pullover",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2589",
+"name_en": "Dumbbell Lying Triceps Extension V. 2",
+"source": "everkinetic",
+"source_id": "0181",
+"source_name": "Lying Triceps Extension with Dumbbells",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2738",
+"name_en": "Dumbbell Lying Triceps Extension on Floor",
+"source": "everkinetic",
+"source_id": "0181",
+"source_name": "Lying Triceps Extension with Dumbbells",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_2966",
+"name_en": "Dumbbell Front Squat",
+"source": "wger",
+"source_id": 1640,
+"source_name": "Dumbbell Front Squat",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3068",
+"name_en": "Cable Standing Biceps Curl (with Rope)",
+"source": "everkinetic",
+"source_id": "0212",
+"source_name": "Standing Biceps Curl with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3084",
+"name_en": "Dumbbell Single Arm Preacher Curl",
+"source": "everkinetic",
+"source_id": "0237",
+"source_name": "One Arm Preacher Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3084",
+"name_en": "Dumbbell Single Arm Preacher Curl",
+"source": "wger",
+"source_id": 584,
+"source_name": "Single-arm Preacher Curl",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3094",
+"name_en": "Jumping Jack",
+"source": "wger",
+"source_id": 320,
+"source_name": "Jumping Jacks",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_3322",
+"name_en": "Kettlebell Deadlift",
+"source": "wger",
+"source_id": 1003,
+"source_name": "Kettlebell deadlifts",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_3333",
+"name_en": "Dumbbell One Arm Wide Grip Bench Press",
+"source": "everkinetic",
+"source_id": "0068",
+"source_name": "One Arm Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3547",
+"name_en": "Dumbbell Seated Biceps Curl to Shoulder Press",
+"source": "everkinetic",
+"source_id": "0243",
+"source_name": "Seated Bicep Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3682",
+"name_en": "Dumbbell Incline Alternate Bicep Curl",
+"source": "everkinetic",
+"source_id": "0214",
+"source_name": "Alternating Incline Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3682",
+"name_en": "Dumbbell Incline Alternate Bicep Curl",
+"source": "wger",
+"source_id": 1012,
+"source_name": "Alternating bicep curls",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3727",
+"name_en": "Barbell Front Bench Squat",
+"source": "everkinetic",
+"source_id": "0139",
+"source_name": "Front Squat to Bench with Barbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3761",
+"name_en": "Dumbbell Seated Alternate Biceps Curl",
+"source": "everkinetic",
+"source_id": "0223",
+"source_name": "Alternating Bicep Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3761",
+"name_en": "Dumbbell Seated Alternate Biceps Curl",
+"source": "wger",
+"source_id": 1012,
+"source_name": "Alternating bicep curls",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3764",
+"name_en": "Dumbbell Incline Biceps Curl V. 2",
+"source": "everkinetic",
+"source_id": "0230",
+"source_name": "Incline Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_3869",
+"name_en": "Cable Seated Chest Fly",
+"source": "wger",
+"source_id": 1922,
+"source_name": "Seated Cable chest fly",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3912",
+"name_en": "Cable Bent Over One Arm Lateral Raise",
+"source": "wger",
+"source_id": 1378,
+"source_name": "Cable Lateral Raises (Single Arm)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_3981",
+"name_en": "Finger Push Up",
+"source": "wger",
+"source_id": 1217,
+"source_name": "Finger Pushup",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_4041",
+"name_en": "Dumbbell Russian Twist (on Stability Ball)",
+"source": "wger",
+"source_id": 1193,
+"source_name": "Russian Twist",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4046",
+"name_en": "Kettlebell Sumo Deadlift",
+"source": "wger",
+"source_id": 1612,
+"source_name": "kettlebell sumo deadlift",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 2,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_4054",
+"name_en": "Dumbbell One Arm Triceps Extension on Stability Ball",
+"source": "everkinetic",
+"source_id": "0173",
+"source_name": "One Arm Triceps Extension with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4326",
+"name_en": "Dumbbell Bent Arm Pullover",
+"source": "everkinetic",
+"source_id": "0046",
+"source_name": "Dumbbell Bent Arm Pullover",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4338",
+"name_en": "Barbell Spider Curl",
+"source": "everkinetic",
+"source_id": "0245",
+"source_name": "Spider Curl with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4349",
+"name_en": "Barbell Single Leg Squat",
+"source": "everkinetic",
+"source_id": "0132",
+"source_name": "Single Leg Squat with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4353",
+"name_en": "Cable Lying Triceps Extension (with Rope)",
+"source": "everkinetic",
+"source_id": "0165",
+"source_name": "Lying Tricep Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4355",
+"name_en": "Cable Triceps Pushdown (v Bar) V. 2",
+"source": "everkinetic",
+"source_id": "0207",
+"source_name": "Triceps Pushdown with V Bar and Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4403",
+"name_en": "Kettlebells Sumo Deadlift",
+"source": "wger",
+"source_id": 1612,
+"source_name": "kettlebell sumo deadlift",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 2,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_4422",
+"name_en": "Ez Bar Drag Bicep Curl",
+"source": "wger",
+"source_id": 94,
+"source_name": "Biceps Curls With SZ-bar",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4438",
+"name_en": "Jack Step",
+"source": "wger",
+"source_id": 1962,
+"source_name": "Step Jack",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_4730",
+"name_en": "Dumbbell Bent Over Single Arm Row V. 2",
+"source": "wger",
+"source_id": 81,
+"source_name": "Bent Over Dumbbell Rows (Single Arm)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4739",
+"name_en": "Dumbbell Hang Power Clean",
+"source": "wger",
+"source_id": 1087,
+"source_name": "Dumbbell Hang Power Cleans",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4740",
+"name_en": "Dumbbell Hang Power Clean and Jerk",
+"source": "wger",
+"source_id": 1087,
+"source_name": "Dumbbell Hang Power Cleans",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4742",
+"name_en": "Dumbbell Hip Thrust",
+"source": "wger",
+"source_id": 1642,
+"source_name": "Dumbbell Hip Thrust",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4743",
+"name_en": "Dumbbell Incline Biceps Curl V. 3",
+"source": "everkinetic",
+"source_id": "0230",
+"source_name": "Incline Biceps Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4754",
+"name_en": "Dumbbell Side Squat",
+"source": "wger",
+"source_id": 1653,
+"source_name": "Dumbbell Side Squat",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4832",
+"name_en": "Lying Rear Lateral Raise",
+"source": "everkinetic",
+"source_id": "0023",
+"source_name": "Lying Rear Lateral Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4837",
+"name_en": "Dumbbell Single Arm Bent Over Row",
+"source": "wger",
+"source_id": 81,
+"source_name": "Bent Over Dumbbell Rows (Single Arm)",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_4856",
+"name_en": "Barbell Pin Close Grip Bench Press",
+"source": "wger",
+"source_id": 76,
+"source_name": "Bench Press Narrow Grip",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_4893",
+"name_en": "Kneeling Half Triceps Extension",
+"source": "everkinetic",
+"source_id": "0177",
+"source_name": "Kneeling Triceps Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_4981",
+"name_en": "Barbell Close Grip Biceps Curl",
+"source": "everkinetic",
+"source_id": "0219",
+"source_name": "Close Grip Standing Biceps Curls with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5010",
+"name_en": "Barbell Pause Decline Bench Press",
+"source": "everkinetic",
+"source_id": "0051",
+"source_name": "Decline Barbell Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5010",
+"name_en": "Barbell Pause Decline Bench Press",
+"source": "wger",
+"source_id": 185,
+"source_name": "Decline Bench Press Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_5011",
+"name_en": "Barbell Pause Incline Bench Press",
+"source": "everkinetic",
+"source_id": "0043",
+"source_name": "Incline Bench Press",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5011",
+"name_en": "Barbell Pause Incline Bench Press",
+"source": "wger",
+"source_id": 538,
+"source_name": "Incline Bench Press - Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+1,
+2
+]
+},
+{
+"slug": "og_5239",
+"name_en": "Dumbbell Biceps Curl with Overhead Extension on Stability Ball",
+"source": "everkinetic",
+"source_id": "0260",
+"source_name": "Biceps Curl with Overhead Extension using Dumbbells on Stability Ball",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5243",
+"name_en": "Cable Lying Triceps Extension (low)",
+"source": "everkinetic",
+"source_id": "0165",
+"source_name": "Lying Tricep Extension with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5460",
+"name_en": "Explosive Push Up",
+"source": "wger",
+"source_id": 2529,
+"source_name": "explosive push ups",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_5555",
+"name_en": "Bodyweight Good Morning",
+"source": "wger",
+"source_id": 1392,
+"source_name": "Good Morning",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "og_5633",
+"name_en": "Barbell Narrow Stance Squat V. 2",
+"source": "everkinetic",
+"source_id": "0146",
+"source_name": "Narrow Stance Squat with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_5665",
+"name_en": "Dumbbell Bent Over Face Pull",
+"source": "wger",
+"source_id": 1639,
+"source_name": "Dumbbell Bent Over Face Pull",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_5921",
+"name_en": "Dumbbell Hammer Preacher Curl",
+"source": "everkinetic",
+"source_id": "0240",
+"source_name": "Preacher Hammer Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_6036",
+"name_en": "Cable Straight Arm Pulldown V. 2",
+"source": "wger",
+"source_id": 1726,
+"source_name": "Straight-Arm Pulldown (Cable)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_6147",
+"name_en": "Dumbbell Alternate Hammer Strict Curl",
+"source": "everkinetic",
+"source_id": "0213",
+"source_name": "Alternating Hammer Curl with Dumbbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_6147",
+"name_en": "Dumbbell Alternate Hammer Strict Curl",
+"source": "wger",
+"source_id": 1567,
+"source_name": "Alternating dumbbell hammer curl",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_6158",
+"name_en": "Dumbbell Seated Single Arm Overhead Triceps Extension",
+"source": "everkinetic",
+"source_id": "0191",
+"source_name": "Seated One Arm Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_7113",
+"name_en": "Dumbbell Straight Arm Pullover V. 2",
+"source": "everkinetic",
+"source_id": "0079",
+"source_name": "Straight Arm Dumbbell Pullover",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "og_7114",
+"name_en": "Ez Barbell Standing Upright Row",
+"source": "wger",
+"source_id": 693,
+"source_name": "Upright Row, SZ-bar",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "og_8192",
+"name_en": "Dumbbell Sumo Deadlift",
+"source": "wger",
+"source_id": 1088,
+"source_name": "Dumbbell sumo deadlift",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "og_8901",
+"name_en": "Cable Single Arm Lateral Raise V. 2",
+"source": "wger",
+"source_id": 1378,
+"source_name": "Cable Lateral Raises (Single Arm)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "one_arm_dumbbell_bench_press",
+"name_en": "One Arm Dumbbell Bench Press",
+"source": "everkinetic",
+"source_id": "0068",
+"source_name": "One Arm Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "one_arm_dumbbell_preacher_curl",
+"name_en": "One Arm Dumbbell Preacher Curl",
+"source": "everkinetic",
+"source_id": "0237",
+"source_name": "One Arm Preacher Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "one_arm_dumbbell_preacher_curl",
+"name_en": "One Arm Dumbbell Preacher Curl",
+"source": "wger",
+"source_id": 584,
+"source_name": "Single-arm Preacher Curl",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "one_arm_dumbbell_row",
+"name_en": "One-Arm Dumbbell Row",
+"source": "wger",
+"source_id": 81,
+"source_name": "One Arm DB Rows",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "one_arm_pronated_dumbbell_triceps_extension",
+"name_en": "One Arm Pronated Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0186",
+"source_name": "Single Arm Pronated Triceps Extension with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "one_arm_side_deadlift",
+"name_en": "One-Arm Side Deadlift",
+"source": "everkinetic",
+"source_id": "0150",
+"source_name": "One Arm Side Deadlift with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "one_arm_supinated_dumbbell_triceps_extension",
+"name_en": "One Arm Supinated Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0187",
+"source_name": "Single Arm Supinated Triceps Extension with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "one_leg_barbell_squat",
+"name_en": "One Leg Barbell Squat",
+"source": "everkinetic",
+"source_id": "0132",
+"source_name": "Single Leg Squat with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "overhead_barbell_press",
+"name_en": "Barbell Overhead Press",
+"source": "wger",
+"source_id": 566,
+"source_name": "Shoulder Press, Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "overhead_cable_curl",
+"name_en": "Overhead Cable Curl",
+"source": "everkinetic",
+"source_id": "0238",
+"source_name": "Overhead Curl with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "overhead_squat",
+"name_en": "Overhead Squat",
+"source": "everkinetic",
+"source_id": "0151",
+"source_name": "Overhead Squat with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "plank",
+"name_en": "Plank",
+"source": "wger",
+"source_id": 458,
+"source_name": "Plank",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 9,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "preacher_hammer_dumbbell_curl",
+"name_en": "Preacher Hammer Dumbbell Curl",
+"source": "everkinetic",
+"source_id": "0240",
+"source_name": "Preacher Hammer Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "pull_up",
+"name_en": "Pull-Up",
+"source": "everkinetic",
+"source_id": "0087",
+"source_name": "Pull Ups",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "pull_up",
+"name_en": "Pull-Up",
+"source": "wger",
+"source_id": 475,
+"source_name": "Pull-ups",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 1,
+"licenses": [
+2
+]
+},
+{
+"slug": "push_up",
+"name_en": "Push-Up",
+"source": "everkinetic",
+"source_id": "0077",
+"source_name": "Push Ups",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "push_up",
+"name_en": "Push-Up",
+"source": "wger",
+"source_id": 1551,
+"source_name": "Push-Up",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "push_ups_with_feet_elevated",
+"name_en": "Push-Ups With Feet Elevated",
+"source": "everkinetic",
+"source_id": "0075",
+"source_name": "Push Up with Feet Elevated",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "pushups_close_and_wide_hand_positions",
+"name_en": "Pushups (Close and Wide Hand Positions)",
+"source": "everkinetic",
+"source_id": "0073",
+"source_name": "Push Ups Close and Wide Hand Versions",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "quad_stretch",
+"name_en": "Quad Stretch",
+"source": "wger",
+"source_id": 1873,
+"source_name": "Quad Stretch",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "reverse_grip_triceps_pushdown",
+"name_en": "Reverse Grip Triceps Pushdown",
+"source": "everkinetic",
+"source_id": "0189",
+"source_name": "Reverse Grip Triceps Pushdown",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "reverse_lunge",
+"name_en": "Dumbbell Rear Lunge",
+"source": "everkinetic",
+"source_id": "0129",
+"source_name": "Rear Lunges with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "reverse_lunge",
+"name_en": "Dumbbell Rear Lunge",
+"source": "wger",
+"source_id": 1651,
+"source_name": "Dumbbell Rear Lunge",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "reverse_triceps_bench_press",
+"name_en": "Reverse Triceps Bench Press",
+"source": "everkinetic",
+"source_id": "0190",
+"source_name": "Reverse Triceps Bench Press with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "rocking_standing_calf_raise",
+"name_en": "Rocking Standing Calf Raise",
+"source": "everkinetic",
+"source_id": "0278",
+"source_name": "Rocking Standing Calf Raise with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "rope_straight_arm_pulldown",
+"name_en": "Rope Straight-Arm Pulldown",
+"source": "wger",
+"source_id": 1726,
+"source_name": "Straight-Arm Pulldown (Cable)",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "seated_barbell_military_press",
+"name_en": "Seated Barbell Military Press",
+"source": "everkinetic",
+"source_id": "0011",
+"source_name": "Seated Barbell Shoulder Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_bent_over_one_arm_dumbbell_triceps_extension",
+"name_en": "Seated Bent-Over One-Arm Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0191",
+"source_name": "Seated One Arm Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_bent_over_two_arm_dumbbell_triceps_extension",
+"name_en": "Seated Bent-Over Two-Arm Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0192",
+"source_name": "Seated Two-Arm Triceps Extension with Dumbbell",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_calf_raise",
+"name_en": "Seated Calf Raise",
+"source": "everkinetic",
+"source_id": "0279",
+"source_name": "Seated Calf Raise using Machine",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_close_grip_concentration_barbell_curl",
+"name_en": "Seated Close-Grip Concentration Barbell Curl",
+"source": "everkinetic",
+"source_id": "0242",
+"source_name": "Seated Close Grip Concentration Curls with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_dumbbell_inner_biceps_curl",
+"name_en": "Seated Dumbbell Inner Biceps Curl",
+"source": "everkinetic",
+"source_id": "0244",
+"source_name": "Seated Inner Biceps Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_leg_curl",
+"name_en": "Seated Leg Curl",
+"source": "everkinetic",
+"source_id": "0119",
+"source_name": "Seated Leg Curl",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "seated_triceps_press",
+"name_en": "Seated Triceps Press",
+"source": "everkinetic",
+"source_id": "0194",
+"source_name": "Seated Triceps Press with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "single_arm_cable_pushdown",
+"name_en": "Cable One Arm Tricep Extension",
+"source": "everkinetic",
+"source_id": "0166",
+"source_name": "One Arm Tricep Extension with Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "single_arm_cable_pushdown",
+"name_en": "Cable One Arm Tricep Extension",
+"source": "wger",
+"source_id": 803,
+"source_name": "One Arm Triceps Extensions on Cable",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 2,
+"licenses": [
+2
+]
+},
+{
+"slug": "smith_incline_press",
+"name_en": "Smith Machine Incline Bench Press",
+"source": "everkinetic",
+"source_id": "0081",
+"source_name": "Smith Machine Incline Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_bench_press",
+"name_en": "Smith Machine Bench Press",
+"source": "everkinetic",
+"source_id": "0078",
+"source_name": "Smith Machine Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_calf_raise",
+"name_en": "Smith Machine Calf Raise",
+"source": "everkinetic",
+"source_id": "0280",
+"source_name": "Smith Machine Reverse Calf Raises",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_close_grip_bench_press",
+"name_en": "Smith Machine Close-Grip Bench Press",
+"source": "everkinetic",
+"source_id": "0195",
+"source_name": "Smith Machine Close Grip Bench Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_one_arm_upright_row",
+"name_en": "Smith Machine One-Arm Upright Row",
+"source": "everkinetic",
+"source_id": "0013",
+"source_name": "Smith Machine Upright Row",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_reverse_calf_raises",
+"name_en": "Smith Machine Reverse Calf Raises",
+"source": "everkinetic",
+"source_id": "0280",
+"source_name": "Smith Machine Reverse Calf Raises",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_squat",
+"name_en": "Smith Machine Squat",
+"source": "everkinetic",
+"source_id": "0124",
+"source_name": "Smith Machine Squats",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "smith_machine_squat",
+"name_en": "Smith Machine Squat",
+"source": "wger",
+"source_id": 1747,
+"source_name": "Smith machine squat",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 1,
+"videos": 0,
+"licenses": []
+},
+{
+"slug": "speed_squats",
+"name_en": "Speed Squats",
+"source": "everkinetic",
+"source_id": "0154",
+"source_name": "Speed Squats with Barbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_barbell_calf_raise",
+"name_en": "Standing Barbell Calf Raise",
+"source": "everkinetic",
+"source_id": "0281",
+"source_name": "Standing Barbell Calf Raise",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_bent_over_one_arm_dumbbell_triceps_extension",
+"name_en": "Standing Bent-Over One-Arm Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0196",
+"source_name": "Bent-Over One Arm Triceps Extension with Dumbbell",
+"score": 0.833,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_bent_over_two_arm_dumbbell_triceps_extension",
+"name_en": "Standing Bent-Over Two-Arm Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0197",
+"source_name": "Bent-Over Two Arm Triceps Extension with Dumbbell",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_dumbbell_triceps_extension",
+"name_en": "Standing Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0167",
+"source_name": "Standing Triceps Extension",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_inner_biceps_curl",
+"name_en": "Standing Inner-Biceps Curl",
+"source": "everkinetic",
+"source_id": "0246",
+"source_name": "Standing Inner Biceps Curl with Dumbbell",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_leg_curl",
+"name_en": "Standing Leg Curl",
+"source": "everkinetic",
+"source_id": "0120",
+"source_name": "Standing Leg Curls",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_low_pulley_one_arm_triceps_extension",
+"name_en": "Standing Low-Pulley One-Arm Triceps Extension",
+"source": "everkinetic",
+"source_id": "0199",
+"source_name": "One Arm Low-Pulley Triceps Extension with Cable",
+"score": 0.857,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_one_arm_cable_curl",
+"name_en": "Standing One-Arm Cable Curl",
+"source": "everkinetic",
+"source_id": "0247",
+"source_name": "Standing One Arm Bicep Curl with Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_one_arm_dumbbell_curl_over_incline_bench",
+"name_en": "Standing One-Arm Dumbbell Curl Over Incline Bench",
+"source": "everkinetic",
+"source_id": "0248",
+"source_name": "Standing One Arm Curl Over Incline Bench with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_one_arm_dumbbell_triceps_extension",
+"name_en": "Standing One-Arm Dumbbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0167",
+"source_name": "Standing Triceps Extension",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_overhead_barbell_triceps_extension",
+"name_en": "Standing Overhead Barbell Triceps Extension",
+"source": "everkinetic",
+"source_id": "0201",
+"source_name": "Standing Overhead Triceps Extension with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "standing_towel_triceps_extension",
+"name_en": "Standing Towel Triceps Extension",
+"source": "everkinetic",
+"source_id": "0202",
+"source_name": "Standing Triceps Extension with Towel",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "step_up",
+"name_en": "Dumbbell Step Ups",
+"source": "everkinetic",
+"source_id": "0137",
+"source_name": "Step Ups with Dumbbells",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 3,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "stomach_vacuum",
+"name_en": "Stomach Vacuum",
+"source": "wger",
+"source_id": 2673,
+"source_name": "Stomach Vacuum",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "straight_arm_dumbbell_pullover",
+"name_en": "Straight-Arm Dumbbell Pullover",
+"source": "everkinetic",
+"source_id": "0079",
+"source_name": "Straight Arm Dumbbell Pullover",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "straight_arm_pulldown",
+"name_en": "Straight-Arm Pulldown",
+"source": "wger",
+"source_id": 1726,
+"source_name": "Straight-Arm Pulldown (Cable)",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 1,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+2
+]
+},
+{
+"slug": "superman",
+"name_en": "Superman",
+"source": "everkinetic",
+"source_id": "0105",
+"source_name": "Supermans",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "tate_press",
+"name_en": "Tate Press",
+"source": "everkinetic",
+"source_id": "0020",
+"source_name": "Tate Press",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "tricep_dumbbell_kickback",
+"name_en": "Tricep Dumbbell Kickback",
+"source": "everkinetic",
+"source_id": "0204",
+"source_name": "Triceps Kickback with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "tricep_dumbbell_kickback",
+"name_en": "Tricep Dumbbell Kickback",
+"source": "wger",
+"source_id": 655,
+"source_name": "Tricep Dumbbell Kickback",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 0,
+"images_no_author": 0,
+"videos": 3,
+"licenses": [
+2
+]
+},
+{
+"slug": "triceps_pushdown_v_bar_attachment",
+"name_en": "Triceps Pushdown - V-Bar Attachment",
+"source": "everkinetic",
+"source_id": "0207",
+"source_name": "Triceps Pushdown with V Bar and Cable",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "two_arm_dumbbell_preacher_curl",
+"name_en": "Two-Arm Dumbbell Preacher Curl",
+"source": "everkinetic",
+"source_id": "0249",
+"source_name": "Two-Arm Preacher Curl with Dumbbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "wide_grip_barbell_bench_press",
+"name_en": "Wide-Grip Barbell Bench Press",
+"source": "everkinetic",
+"source_id": "0082",
+"source_name": "Wide Grip Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "wide_grip_decline_barbell_bench_press",
+"name_en": "Wide-Grip Decline Barbell Bench Press",
+"source": "everkinetic",
+"source_id": "0083",
+"source_name": "Wide Grip Decline Bench Press",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "wide_grip_decline_barbell_bench_press",
+"name_en": "Wide-Grip Decline Barbell Bench Press",
+"source": "wger",
+"source_id": 185,
+"source_name": "Decline Bench Press Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+1
+]
+},
+{
+"slug": "wide_grip_decline_barbell_pullover",
+"name_en": "Wide-Grip Decline Barbell Pullover",
+"source": "everkinetic",
+"source_id": "0064",
+"source_name": "Wide Grip Decline Barbell Pullover",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "wide_grip_standing_barbell_curl",
+"name_en": "Wide-Grip Standing Barbell Curl",
+"source": "everkinetic",
+"source_id": "0250",
+"source_name": "Wide Grip Standing Biceps Curl with Barbell",
+"score": 0.8,
+"confidence": "medium",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "wide_stance_barbell_squat",
+"name_en": "Wide Stance Barbell Squat",
+"source": "everkinetic",
+"source_id": "0160",
+"source_name": "Wide Stance Squat with Barbell",
+"score": 0.97,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "zottman_curl",
+"name_en": "Zottman Curl",
+"source": "everkinetic",
+"source_id": "0251",
+"source_name": "Zottman Curl with Dumbbells",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+},
+{
+"slug": "zottman_preacher_curl",
+"name_en": "Zottman Preacher Curl",
+"source": "everkinetic",
+"source_id": "0252",
+"source_name": "Zottman Preacher Curl with Dumbbells",
+"score": 1.0,
+"confidence": "high",
+"images_usable": 2,
+"images_no_author": 0,
+"videos": 0,
+"licenses": [
+"CC-BY-SA-4.0"
+]
+}
+]
+}

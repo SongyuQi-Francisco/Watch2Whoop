@@ -164,6 +164,10 @@ body-engine ai-cards rules / rule-off monthly-active / periodic --dry-run
 2. `body-engine flags set ai_web --state cohort`（先给 beta），验收后 `--state all`。
 3. 限制在 `body_engine/src/body_engine/ai/web/params.py`：每人每天搜索 20 次、读网页 40 次，全体每月搜索 3000 次；`body-engine ai-fallback status` 的本月花费已包含搜索。
 
+### 外接 AI 联网（灰度开关 `mcp_web`）
+
+用户自己外接的 AI（MCP 连接器、Codex / Claude Code、身体管家）打开 `mcp_web` 后也能用同样的 `web_search` / `web_fetch`（在 `find_tools` 的采购组里），规则、每天次数和费用和上面一样，和页内对话合用一份额度。`body-engine flags set mcp_web --state cohort`（先给 beta），验收后 `--state all`；开 / 关 30 秒内生效。身体管家不用重装服务：工具马上能找到；改过的 `assistant/CLAUDE.md` 对新会话生效（手机上 `/clear`，或 `systemctl restart body-butler`）。
+
 ## AI 自动反馈
 用户的 AI 发现 bug、听到新需求时会用 `report_feedback` 报进服务器的反馈队列（根规则，`docs/ai-feedback-plan.md`）。服务器先去敏、查重、限流；原话只在服务器上。
 

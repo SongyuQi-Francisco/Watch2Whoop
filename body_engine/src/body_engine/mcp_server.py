@@ -8,6 +8,8 @@ Two transports, the same tools (assistant/tools.py, the same copy the in-Today-p
 Write tools are marked read_only_hint=False, so the MCP client asks the user for approval before running them.
 tools/list sends only the resident core, the delete / undo tools and the meta tools (assistant/toolsets.py, issue #99);
 every other tool is found with find_tools and runs through run_read_tool / run_write_tool, which call run_tool with the real name.
+Rollout flag mcp_web (ai/web/mcp.py), per signed-in user: the server's web_search / web_fetch join the grocery group for
+find_tools / run_read_tool (never tools/list), with the in-page chat's limits, billing and fetch rules.
 Rollout flag ai_parity (ai/parity.py), per signed-in user: tool descriptions, results, errors and the butler prompt go
 through ai/naming.scrub, so the back end's name never reaches the AI (the server instructions never contain it).
 The server itself is the datalayer framework's (datalayer/mcp/, issue #116); this module passes it Watch2Whoop's
@@ -23,6 +25,7 @@ from mcp.server.lowlevel import Server
 from . import auth
 from .ai import naming, parity, root_rules
 from .ai import playbooks
+from .ai.web.mcp import McpWebTools
 from .assistant import toolsets
 from .assistant.tools import EXECUTOR, TOOLS
 from .config import REPO_ROOT
@@ -34,7 +37,7 @@ from .db import connect
 INSTRUCTIONS = """用户自己的身体数据（Body Engine）。日期都是用户本地日期。
 对话开始先调 get_briefing（现在时间、资料、最新评分、最近 7 天、训练、提醒、状态卡、档案卡要点、禁用动作，约 1.5k token），
 需要细节再调对应工具；日期范围按问题取，不要一次拉全部历史。
-这里只列了常用工具；其余的（训练计划、食谱、采购、化验、补剂、长期记忆…）先用 find_tools 按组或关键词查到完整参数，
+这里只列了常用工具；其余的（训练计划、食谱、采购、联网搜索 / 读网页、化验、补剂、长期记忆…）先用 find_tools 按组或关键词查到完整参数，
 再用 run_read_tool（读）/ run_write_tool（写）调用，规矩和直接调用一样；删除 / 撤销类直接按名字调用。
 工具返回里省略的字段 = 没有数据；
 多行数据是 {"cols": [...], "rows": [[...]]} 表格。没记录 ≠ 没做。
@@ -89,7 +92,8 @@ def build_server(identity_of: Callable[[object], Identity],
     return dl_server.build_server(
         "body-engine", INSTRUCTIONS + "\n\n" + root_rules.text(), identity_of, executor=EXECUTOR, tools=TOOLS,
         toolset=toolsets._cfg, connect_fn=connect_fn, prompts=_prompts(connect_fn),
-        text_filter=lambda identity: _Scrub if _parity_on(identity, connect_fn) else None)
+        text_filter=lambda identity: _Scrub if _parity_on(identity, connect_fn) else None,
+        caller_tools=McpWebTools(connect_fn))
 
 
 def _viewer_id() -> int:

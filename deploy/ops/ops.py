@@ -5,9 +5,9 @@ Standard library only (works with the system /usr/bin/python3 3.9), independent 
 if Body Engine is broken, doctor and backup still run. Databases are reached through `docker exec`, so no local Postgres is needed.
 
 Usage: python3 deploy/ops/ops.py <command>
-  hourly         every hour: import-ow for each user linked to OW; compute-scores for each user with data (writes only the last 3 days);
-                 evaluate-rules (only if the command exists)
-  nightly        every night at 03:30: import-ow + full compute-scores, then backup
+  hourly         every hour: one `body-engine hourly-batch` process for all users: import-ow for each user linked to OW; compute-scores
+                 for each user with data (writes only the last 3 days); evaluate-rules; refresh-status (docs/hourly-batch.md)
+  nightly        every night at 03:30: the same with a full compute-scores (--full), then backup
   backup         pg_dump the three databases + secrets/ + Shortcut archive -> restic (encrypted) -> prune by retention policy
   restore-drill  restore from restic into a temporary database in a throwaway container and compare row counts table by table (production DBs untouched)
   restore-extract --target DIR [--snapshot ID]   extract the files of a backup (for a real restore, see README)
@@ -378,19 +378,35 @@ def engine_step(log: Log, errors: list, label: str, *args) -> bool:
     return ok
 
 
-def rules_command(log: Log) -> tuple:
-    """evaluate-rules is developed by the rule-engine session: run it only if the command exists. Returns (exists?, whether it runs per user)."""
-    p = engine("--help", timeout=300)
-    if p.returncode != 0 or "evaluate-rules" not in p.stdout:
-        log("· evaluate-rules 命令还不存在（规则引擎没合并），跳过")
-        return False, False
-    h = engine("evaluate-rules", "--help", timeout=300).stdout
-    return True, "--user-id" in h
+BATCH_RESULT = "BATCH_RESULT "
 
 
-def user_today(u: dict) -> date:
-    tz = ZoneInfo(u["tz"]) if ZoneInfo else None
-    return datetime.now(tz).date() if tz else date.today()
+def batch_step(log: Log, errors: list, full: bool) -> None:
+    """import-ow, compute-scores (last 3 days, or full), evaluate-rules and refresh-status for every user in ONE
+    `body-engine hourly-batch` process (users isolated, unchanged inputs skipped; a container / process per user and step
+    did not scale past about 100 users). Its output lines are copied to the log in the old format; the last line is the
+    JSON summary with the errors."""
+    workers = os.environ.get("BODY_BATCH_WORKERS", "2")
+    cmd = ["uv", "run", "--frozen", "--quiet", "--directory", ENGINE_DIR, "body-engine", "hourly-batch", "--workers", workers,
+           "--steps", "import-ow,compute-scores,evaluate-rules,refresh-status"] + (["--full"] if full else [])
+    t0 = time.time()
+    p = run(cmd, timeout=6 * 3600 if full else 3300, env=engine_env())
+    result = None
+    before = len(errors)
+    for line in p.stdout.splitlines():
+        if line.startswith(BATCH_RESULT):
+            try:
+                result = json.loads(line[len(BATCH_RESULT):])
+            except ValueError:
+                pass
+        else:
+            log(line)
+    if result is None:   # crashed or timed out before the summary
+        log(p.stderr.strip()[-3000:])
+        errors.append(f"hourly-batch: {(p.stderr or p.stdout).strip().splitlines()[-1:] or ['?']}")
+    else:
+        errors.extend(result["errors"])
+    log(f"{'✓' if len(errors) == before else '✗'} hourly-batch（{time.time() - t0:.0f} 秒）")
 
 
 def job_scores(log: Log, full: bool) -> list:
@@ -409,35 +425,9 @@ def job_scores(log: Log, full: bool) -> list:
         engine_step(log, errors, "ai-cards periodic", "ai-cards", "periodic")
     if full and "memory-review-run" in help_text:   # long-term memory review state + archive cleanup (#113); per user inside, idempotent
         engine_step(log, errors, "memory-review-run", "memory-review-run")
-    users = list_users()
-    log("用户：" + ", ".join(f"{u['id']} {u['name']}" for u in users))
-    for u in users:
-        uid = str(u["id"])
-        if u["ow"]:
-            engine_step(log, errors, f"import-ow user {uid}", "import-ow", "--user-id", uid)
-        else:
-            log(f"· user {uid} 没关联 Open Wearables，跳过 import-ow")
-        if not u["has_data"]:
-            log(f"· user {uid} 还没有任何数据，跳过 compute-scores")
-            continue
-        if full:
-            engine_step(log, errors, f"compute-scores user {uid}（完整）", "compute-scores", "--user-id", uid)
-        else:
-            start = (user_today(u) - timedelta(days=3)).isoformat()
-            engine_step(log, errors, f"compute-scores user {uid}（{start} 起）", "compute-scores", "--user-id", uid,
-                        "--start", start)
-    exists, per_user = rules_command(log)
-    if exists:
-        if per_user:
-            for u in users:
-                engine_step(log, errors, f"evaluate-rules user {u['id']}", "evaluate-rules", "--user-id", str(u["id"]))
-        else:
-            engine_step(log, errors, "evaluate-rules", "evaluate-rules")
-    # auto-computed items of the status card (body butler; the Today page's "Me" tab also refreshes them on demand when it reads them)
-    if "refresh-status" in help_text:
-        for u in users:
-            if u["has_data"]:
-                engine_step(log, errors, f"refresh-status user {u['id']}", "refresh-status", "--user-id", str(u["id"]))
+    batch_step(log, errors, full)
+    if full and "muscle-coverage-check" in help_text:   # every recent workout must credit a muscle on the muscle load map (training/muscle_coverage.py)
+        engine_step(log, errors, "muscle-coverage-check", "muscle-coverage-check")
     return errors
 
 
@@ -919,6 +909,21 @@ def doctor_checks_ali_primary(r: Report) -> None:
         (r.ok if loaded else r.fail)(f"LaunchAgent {job}", detail)
 
 
+def check_muscle_coverage(r: Report) -> None:
+    """Workouts of the last 28 days must all map to muscles (`body-engine muscle-coverage-check --json`, exit 1 = a type is missing)."""
+    p = engine("muscle-coverage-check", "--json", timeout=120)
+    try:
+        res = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        r.warn("肌肉图覆盖", f"检查命令没跑通（rc {p.returncode}）：{(p.stderr or p.stdout).strip()[-120:]}")
+        return
+    if res["ok"]:
+        r.ok("肌肉图覆盖", f"近 {res['days']} 天 {res['workouts']} 次运动都映射到了肌群")
+    else:
+        names = "、".join(f"{b['type']}（{b['workouts']} 次）" for b in res["uncovered"])
+        r.fail("肌肉图覆盖", f"这些运动类型没有映射到肌群：{names}；到 training/sport_muscles.py 补")
+
+
 def doctor_checks(r: Report) -> None:
     if PRIMARY == "ali":
         return doctor_checks_ali_primary(r)
@@ -1057,6 +1062,12 @@ def doctor_checks(r: Report) -> None:
                 "WHERE last_synced_at IS NOT NULL")}
         scores = {int(u): v for u, v in psql(c, "body", "body",
                   "SELECT user_id, extract(epoch FROM max(computed_at)) FROM daily_scores GROUP BY 1")}
+        try:   # hourly-batch skips users whose inputs did not change; a skip counts as a fresh check (batch_state, migration 740)
+            for u, v in psql(c, "body", "body", "SELECT user_id, extract(epoch FROM max(checked_at)) FROM batch_state "
+                             "WHERE step = 'compute-scores' GROUP BY 1"):
+                scores[int(u)] = max(float(scores.get(int(u)) or 0), float(v))
+        except Exception:  # noqa: BLE001  table not there yet
+            pass
         users = list_users()
     except Exception as e:  # noqa: BLE001
         r.fail("Body 数据库查询", str(e)[:120])
@@ -1110,6 +1121,7 @@ def doctor_checks(r: Report) -> None:
         else:
             r.ok("每小时任务", f"{fmt_age(age)}成功")
 
+    check_muscle_coverage(r)
     check_backups(r, state, t_now)
 
     # disk

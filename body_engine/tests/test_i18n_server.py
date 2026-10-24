@@ -39,9 +39,10 @@ REACHABLE = ("account/api.py", "ai/api.py", "ai/chat.py", "ai/asr.py", "api.py",
 # the admin ever read them. A module that is in neither list fails test_every_chinese_raise_is_classified (issue #64): decide
 # whether a page user can see its messages (then translate and add it to REACHABLE) or not (then add it here).
 AI_OR_ADMIN_ONLY = (
-    "account/identities.py", "account/invites.py", "feedback/cli.py", "feedback/store.py", "ai/cards", "ai/crypto.py", "ai/fallback", "ai/mcp_http.py", "ai/root_rules.py",
+    "account/identities.py", "account/invites.py", "account/open_signup_cli.py", "feedback/cli.py", "feedback/store.py", "ai/cards", "ai/crypto.py", "ai/fallback", "ai/mcp_http.py", "ai/root_rules.py",
     "ai/web/", "assistant/butler_tools.py", "assistant/diet_profile.py", "assistant/memory_review.py", "assistant/snapshots.py", "assistant/sparky_tools.py",
     "assistant/status.py", "assistant/tools.py", "assistant/writelog.py", "cli.py", "config.py", "importers/", "mcp_server.py",
+    "ownstore/migrate.py",
     "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "records/importer.py",
     "records/lab_catalog.py", "records/tools.py", "rules/context.py", "rules/store.py", "rules/tools.py", "scores/inputs.py",
     "sync/history.py", "training/day_overrides.py", "training/importer.py", "training/media.py", "training/overrides.py",
