@@ -15,14 +15,19 @@
   GET -> the job + the refresh status; POST {days: 1–3650 | null} -> 202 {accepted: true, …} or 200 {accepted: false,
   reason: busy | throttled | consent, retry_after?} (Retry-After header when throttled); PUT {phone_percent?, counts?,
   phone_done?} -> the phone's progress; DELETE -> cancel before the server part started.
+- GET  /v1/users/{user}/sync/engine/days?date=&end= (flag apple_sync_engine, 404 when off for this user): the two sync
+  paths (Open Wearables and the app's own sync engine) side by side per day, at most 31 days (rawdata/side_by_side.py,
+  for the shadow comparison of docs/apple-sync-engine.md §4). Own data only, read scope is enough.
 """
+from datetime import date
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
+from ..rawdata import engine as rx_engine, side_by_side
 from ..rawdata.api import ingest_user
 from . import data_status, history, refresh, resync
 
@@ -74,6 +79,20 @@ def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_us
     if user not in ("me", str(viewer["id"])):
         raise HTTPException(403, L("只能看自己的数据状态", "You can only see your own data status"))
     return data_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/users/{user}/sync/engine/days")
+def get_engine_days(user: str, start: date = Query(alias="date"), end: date | None = None, conn=Depends(get_conn),
+                    viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的数据", "You can only see your own data"))
+    if not rx_engine.enabled(conn, viewer["id"]):
+        raise HTTPException(404, L("没有开启", "Not enabled"))
+    try:
+        return side_by_side.days(conn, viewer["id"], start, end)
+    except ValueError:
+        raise HTTPException(422, L(f"日期范围要在 1–{side_by_side.MAX_DAYS} 天之间",
+                                   f"The date range must be 1–{side_by_side.MAX_DAYS} days")) from None
 
 
 @router.get("/v1/ingest/data-status")

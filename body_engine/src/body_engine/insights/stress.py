@@ -1,6 +1,6 @@
 """Stress monitor (matching WHOOP Stress Monitor; the formulas are in openbodyscore.stress): while awake and not moving, how far heart rate / HRV deviates from a personal calm baseline, scored 0–3.
 
-- Only heart-rate readings while awake (not in any sleep segment), not during a workout (OW workout records), and with no walking from 5 minutes before to 2 minutes after (steps < 20).
+- Only heart-rate readings while awake (not in any sleep segment), not during a workout (OW workout records; in the sync mode `app` the app's own samples and workouts first, rawdata/samples.py), and with no walking from 5 minutes before to 2 minutes after (steps < 20).
   WHOOP excludes activity using acceleration; we have no acceleration, so we substitute steps and workout records.
 - Calm baseline: median of such readings over the previous 14 days = usual awake resting heart rate; dispersion = 1.4826 × MAD (robust standard deviation, floor 3 bpm).
   HRV baseline: mean / standard deviation of night ln HRV (daily_scores.hrv_night_ln) over the previous 60 days; the occasional daytime HRV readings (Apple, every 2–4 hours)
@@ -24,7 +24,9 @@ from openbodyscore.stress import (BANDS, BASELINE_DAYS, HR_WEIGHT, HRV_WEIGHT, M
                                   calm_samples, override, robust_baseline, score_day)
 
 from ..importers import ow as ow_imp
+from ..rawdata import samples as rx_samples
 
+STRESS_TYPES = ["heart_rate", "steps", "heart_rate_variability_sdnn"]   # OW series codes (the app's samples are read by them too)
 DEFAULT_DAYS = 90                                             # compute-scores recomputes the last 90 days by default
 
 
@@ -54,6 +56,22 @@ def _workouts(client, ow_user: str, start: date, end: date, tz: ZoneInfo) -> lis
     return sorted(out)
 
 
+def _with_app(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, lo: datetime, hi: datetime, ow_samples: dict,
+              ow_workouts: list) -> tuple[dict, list]:
+    """The sync mode `app` (rawdata/samples.py): the app's own samples and workouts; OW's samples of a type only for the
+    days the app has none of that type (step counts are kept per source, so mixing both on one day would add up), and
+    the workouts of both (a duplicate window excludes nothing more)."""
+    app = rx_samples.samples(conn, user_id, STRESS_TYPES, lo, hi)
+    out = {}
+    for code in STRESS_TYPES:
+        mine = app.get(code, [])
+        k = (lambda s: (s.ts, s.source)) if code == "steps" else (lambda s: s.ts)   # as _ow_samples
+        have = {s.ts.astimezone(tz).date() for s in mine}
+        xs = {k(s): (s.ts, s.value) for s in mine}
+        out[code] = sorted([*xs.values(), *(x for x in ow_samples.get(code, []) if x[0].astimezone(tz).date() not in have)])
+    return out, sorted({*ow_workouts, *rx_samples.workout_windows(conn, user_id, lo, hi)})
+
+
 def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date) -> list[dict]:
     user = conn.execute("SELECT timezone, ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
     tz = ZoneInfo(user["timezone"])
@@ -69,8 +87,10 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
         (user_id, start, end))}
     samples, workouts = {}, []
     if client is not None and user["ow_user_id"]:
-        samples = _ow_samples(client, user["ow_user_id"], ["heart_rate", "steps", "heart_rate_variability_sdnn"], lo, hi)
+        samples = _ow_samples(client, user["ow_user_id"], STRESS_TYPES, lo, hi)
         workouts = _workouts(client, user["ow_user_id"], start - timedelta(days=BASELINE_DAYS), end, tz)
+    if rx_samples.reads_app(conn, user_id):
+        samples, workouts = _with_app(conn, user_id, tz, lo, hi, samples, workouts)
     hr, steps, hrv = samples.get("heart_rate", []), samples.get("steps", []), samples.get("heart_rate_variability_sdnn", [])
     calm = calm_samples(hr, sleep, workouts, steps)
     awake_hrv = calm_samples(hrv, sleep, workouts, steps)

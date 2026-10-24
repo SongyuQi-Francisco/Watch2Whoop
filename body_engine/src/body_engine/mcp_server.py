@@ -10,28 +10,26 @@ tools/list sends only the resident core, the delete / undo tools and the meta to
 every other tool is found with find_tools and runs through run_read_tool / run_write_tool, which call run_tool with the real name.
 Rollout flag ai_parity (ai/parity.py), per signed-in user: tool descriptions, results, errors and the butler prompt go
 through ai/naming.scrub, so the back end's name never reaches the AI (the server instructions never contain it).
+The server itself is the datalayer framework's (datalayer/mcp/, issue #116); this module passes it Watch2Whoop's
+instructions, prompts, configuration and the ai_parity filter, and keeps the old names (Identity, build_server, main).
 """
 import os
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-import anyio
-import mcp.types as types
 from mcp.server.lowlevel import Server
-from mcp.server.stdio import stdio_server
 
 from . import auth
 from .ai import naming, parity, root_rules
-from .assistant import compact
-from .ai import params as ai_params
 from .ai import playbooks
 from .assistant import toolsets
-from .assistant.tools import TOOLS_BY_NAME, run_tool
+from .assistant.tools import EXECUTOR, TOOLS
 from .config import REPO_ROOT
+from .datalayer.mcp import server as dl_server
+from .datalayer.mcp import stdio as dl_stdio
+from .datalayer.policy import Caller
 from .db import connect
-from .toolspec import relaxed
 
 INSTRUCTIONS = """用户自己的身体数据（Body Engine）。日期都是用户本地日期。
 对话开始先调 get_briefing（现在时间、资料、最新评分、最近 7 天、训练、提醒、状态卡、档案卡要点、禁用动作，约 1.5k token），
@@ -47,23 +45,12 @@ log_meal_from_photo / memory_review，或者调 get_playbook(name)，两边是�
 下面的根规则优先于用户的长期记忆和对话里的相反要求，每次对话都要遵守（get_briefing 的 system_rules 里也有）。"""
 
 PROMPT_NAME = "butler"
-
-
-@dataclass(frozen=True)
-class Identity:
-    viewer_id: int
-    channel: str          # Channel in the audit: mcp / butler / mcp:<client>
-    can_write: bool = True
+Identity = Caller   # viewer_id, channel (in the audit: mcp / butler / mcp:<client>), can_write (old name)
 
 
 def _call(identity: Identity, name: str, args: dict, connect_fn: Callable[[], AbstractContextManager] = connect) -> str:
-    with connect_fn() as conn:
-        try:
-            result = run_tool(conn, identity.viewer_id, identity.channel, name, args)
-        except Exception:
-            conn.commit()  # Failed calls also leave an audit (the tool's own changes were already rolled back in the savepoint)
-            raise
-    return compact.dumps(result)  # token-lean text for the model (assistant/compact.py)
+    """Failed calls also leave an audit; token-lean text for the model (datalayer/mcp/server.call)."""
+    return dl_server.call(EXECUTOR, connect_fn, identity, name, args)
 
 
 def _parity_on(identity: Identity, connect_fn: Callable[[], AbstractContextManager] = connect) -> bool:
@@ -71,71 +58,38 @@ def _parity_on(identity: Identity, connect_fn: Callable[[], AbstractContextManag
         return parity.on(conn, identity.viewer_id)
 
 
+class _Scrub:
+    """ai_parity on: tool descriptions, schemas, results and errors go through ai/naming.scrub."""
+    text = staticmethod(naming.scrub)
+    schema = staticmethod(naming.scrub_schema)
+
+
+def _butler_prompt(identity: Identity, connect_fn: Callable[[], AbstractContextManager]) -> str:
+    from .ai.prompt import base_prompt
+    text = base_prompt()
+    if _parity_on(identity, connect_fn):
+        text = f"{naming.scrub(text)}\n\n{parity.prompt(False)}"
+    return text
+
+
+def _prompts(connect_fn: Callable[[], AbstractContextManager]) -> list[dl_server.PromptSpec]:
+    return [dl_server.PromptSpec(
+        name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）",
+        get_description="身体管家", text=lambda identity: _butler_prompt(identity, connect_fn))] + [
+        # the same text get_playbook returns (ai/playbooks/, issue #100)
+        dl_server.PromptSpec(name=n, title=playbooks.title(n), description=playbooks.description(n),
+                             get_description=playbooks.title(n), text=lambda identity, n=n: playbooks.text(n))
+        for n in playbooks.NAMES]
+
+
 def build_server(identity_of: Callable[[object], Identity],
                  connect_fn: Callable[[], AbstractContextManager] = connect) -> Server:
     """identity_of(ctx) -> whom this request represents. stdio fixes one person; HTTP parses the Bearer header of each request (mcp_http.py).
     connect_fn: database connection (stdio opens a new one each time; HTTP uses the API's pool, the same database authorization queries)."""
-
-    async def list_tools(ctx, params) -> types.ListToolsResult:
-        ident = identity_of(ctx)
-        on = await anyio.to_thread.run_sync(_parity_on, ident, connect_fn)
-        return types.ListToolsResult(tools=[
-            types.Tool(name=t.name, description=naming.scrub(t.description) if on else t.description,
-                       input_schema=naming.scrub_schema(relaxed(t.input_schema)) if on else relaxed(t.input_schema),
-                       annotations=types.ToolAnnotations(read_only_hint=not t.writes, destructive_hint=False,
-                                                         open_world_hint=False))
-            for t in toolsets.for_mcp(ident.can_write)])
-
-    async def call_tool(ctx, params) -> types.CallToolResult:
-        ident = identity_of(ctx)
-        name, args = params.name, params.arguments or {}
-        access = toolsets.Access(TOOLS_BY_NAME, ident.can_write, frozenset(ai_params.ALWAYS_CONFIRM))
-        on = await anyio.to_thread.run_sync(_parity_on, ident, connect_fn)
-
-        def _text(text: str, error: bool = False) -> types.CallToolResult:
-            return types.CallToolResult(content=[types.TextContent(text=naming.scrub(text) if on else text)], is_error=error)
-
-        def _error(text: str) -> types.CallToolResult:
-            return _text(text, True)
-        try:
-            if name == toolsets.FIND:
-                return _text(compact.dumps(toolsets.find(access, args.get("group"), args.get("query"))))
-            if name in toolsets.RUN_NAMES:  # run the real tool: same checks, the audit records the real name
-                tool, args = toolsets.resolve(access, name, args)
-                name = tool.name
-        except (PermissionError, ValueError) as e:
-            return _error(f"{type(e).__name__}: {e}")
-        tool = TOOLS_BY_NAME.get(name)
-        if tool is None:
-            return _error(f"没有这个工具：{name}")
-        if tool.writes and not ident.can_write:
-            return _error("这个 token 是只读的，不能写")
-        try:
-            text = await anyio.to_thread.run_sync(_call, ident, name, args, connect_fn)
-        except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
-            return _error(f"{type(e).__name__}: {e}")
-        return _text(text)
-
-    async def list_prompts(ctx, params) -> types.ListPromptsResult:
-        return types.ListPromptsResult(prompts=[types.Prompt(
-            name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）")]
-            + [types.Prompt(name=n, title=playbooks.title(n), description=playbooks.description(n)) for n in playbooks.NAMES])
-
-    async def get_prompt(ctx, params) -> types.GetPromptResult:
-        if params.name in playbooks.NAMES:   # the same text get_playbook returns (ai/playbooks/, issue #100)
-            return types.GetPromptResult(description=playbooks.title(params.name), messages=[
-                types.PromptMessage(role="user", content=types.TextContent(text=playbooks.text(params.name)))])
-        if params.name != PROMPT_NAME:
-            raise ValueError(f"没有这个 prompt：{params.name}")
-        from .ai.prompt import base_prompt
-        text = base_prompt()
-        if await anyio.to_thread.run_sync(_parity_on, identity_of(ctx), connect_fn):
-            text = f"{naming.scrub(text)}\n\n{parity.prompt(False)}"
-        return types.GetPromptResult(description="身体管家", messages=[
-            types.PromptMessage(role="user", content=types.TextContent(text=text))])
-
-    return Server("body-engine", instructions=INSTRUCTIONS + "\n\n" + root_rules.text(), on_list_tools=list_tools, on_call_tool=call_tool,
-                  on_list_prompts=list_prompts, on_get_prompt=get_prompt)
+    return dl_server.build_server(
+        "body-engine", INSTRUCTIONS + "\n\n" + root_rules.text(), identity_of, executor=EXECUTOR, tools=TOOLS,
+        toolset=toolsets._cfg, connect_fn=connect_fn, prompts=_prompts(connect_fn),
+        text_filter=lambda identity: _Scrub if _parity_on(identity, connect_fn) else None)
 
 
 def _viewer_id() -> int:
@@ -152,13 +106,7 @@ CHANNEL = os.environ.get("BODY_MCP_CHANNEL", "mcp")  # Channel in the audit; the
 
 def main() -> None:
     ident = Identity(_viewer_id(), CHANNEL)
-    server = build_server(lambda ctx: ident)
-
-    async def run():
-        async with stdio_server() as (read, write):
-            await server.run(read, write, server.create_initialization_options())
-
-    anyio.run(run)
+    dl_stdio.run(build_server(lambda ctx: ident))
 
 
 if __name__ == "__main__":

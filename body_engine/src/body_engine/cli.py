@@ -26,7 +26,7 @@ from .rollout import cli as rollout_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
-                 "evaluate-rules", "refresh-status"}
+                 "evaluate-rules", "refresh-status", "sync-shadow-day"}
 
 
 def _export_date(processed_dir: Path) -> date:
@@ -287,6 +287,14 @@ def main() -> None:
                                               "first; idempotent, time-budgeted, nothing queued = nothing done")
     hd.add_argument("--user-id", type=int, default=None)
     hd.add_argument("--max-days", type=int, default=None, help="at most this many days per user in this run")
+    sd = sub.add_parser("sync-shadow-day", help="app sync engine: Open Wearables and the app's own sync engine side by side per "
+                                                "day (daily values, sleep, workouts; reads only). Chinese Markdown with personal "
+                                                "data, or --json: the terminal / health_data/reports/ only, never git")
+    sd.add_argument("--user-id", type=int, required=True)
+    sd.add_argument("--date", type=date.fromisoformat, required=True, help="first day (the user's local date)")
+    sd.add_argument("--end", type=date.fromisoformat, default=None, help="last day, default --date (at most 31 days)")
+    sd.add_argument("--json", action="store_true")
+    sd.add_argument("--out", type=Path, help="write the report here instead of stdout")
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -673,6 +681,16 @@ def main() -> None:
         elif args.cmd == "hk-derive-run":
             from .rawdata import derive as hk_derive
             print(json.dumps(hk_derive.run(conn, args.user_id, args.max_days), default=str, ensure_ascii=False))
+        elif args.cmd == "sync-shadow-day":
+            from .rawdata import side_by_side
+            res = side_by_side.days(conn, args.user_id, args.date, args.end)
+            text = json.dumps(res, default=str, ensure_ascii=False, indent=1) if args.json else side_by_side.markdown(res)
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(text, encoding="utf-8")
+                print("written:", args.out)
+            else:
+                print(text)
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,

@@ -1,120 +1,99 @@
 """Log of every AI write (table ai_write_log, migration 265) and rollback of one logged change (issue #30).
 
+The generic part (capture / record / list / rollback dispatch) lives in the datalayer framework (datalayer/writelog.py,
+issue #116); this module is Watch2Whoop's write log under the old import path and names, plus the rollback handler of
+every kind that can be rolled back.
 - run_tool opens a capture for each write tool; handlers call record(...) with the before / after values of what they changed.
   A write tool that records nothing gets one generic row (kind=other, after = the arguments), which cannot be rolled back automatically.
 - Outside run_tool (Today page, CLI) record() does nothing: only AI writes are logged here.
 - rollback(log_id) puts the before values back (one row = one change) and logs the rollback itself; a row is rolled back at most once.
 """
-import json
-from contextlib import contextmanager
-from contextvars import ContextVar
-from datetime import timedelta
-
 import psycopg
-from psycopg.types.json import Jsonb
 
-_ctx: ContextVar[dict | None] = ContextVar("ai_write_log", default=None)
-ROLLBACK_KINDS = {"food", "session", "sets", "weight", "workout", "lab", "merge", "template", "water", "pantry",
-                  "profile", "observation", "memory_state"}
-# kind -> the only action that can be rolled back (merge: split it again; template: remove the template made from entries;
-# observation: a rewrite of a note, issue #113; memory_state: archive / restore / confirm of a memory entry, logged as an update)
-ONLY_ACTION = {"merge": "merge", "template": "create", "observation": "update"}
+from ..ai.datalayer_texts import MESSAGES
+from ..datalayer.writelog import WriteLog
+from ..datalayer.writelog import plain as _plain  # noqa: F401  (old name, assistant/food_combine.py)
+
+LOG = WriteLog("ai_write_log", MESSAGES)
 
 
-def _can_roll(kind: str, action: str) -> bool:
-    return kind in ROLLBACK_KINDS and action != "rollback" and ONLY_ACTION.get(kind, action) == action
-
-
-def _plain(x):
-    """JSON-safe copy (dates, Decimals -> text / numbers)."""
-    return None if x is None else json.loads(json.dumps(x, default=str, ensure_ascii=False))
-
-
-@contextmanager
-def capture(user_id: int, channel: str, tool: str):
-    token = _ctx.set({"user_id": user_id, "channel": channel, "tool": tool, "ids": []})
-    try:
-        yield _ctx.get()
-    finally:
-        _ctx.reset(token)
-
-
-def record(conn: psycopg.Connection, kind: str, action: str, target, before=None, after=None) -> int | None:
-    c = _ctx.get()
-    if c is None:
-        return None
-    row = conn.execute("""INSERT INTO ai_write_log (user_id, channel, tool, kind, action, target, before, after)
-                          VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-                       (c["user_id"], c["channel"], c["tool"], kind, action, None if target is None else str(target),
-                        Jsonb(_plain(before)) if before is not None else None,
-                        Jsonb(_plain(after)) if after is not None else None)).fetchone()
-    c["ids"].append(row["id"])
-    return row["id"]
-
-
-def record_generic(conn, args: dict, result) -> None:
-    """Fallback for write tools without a specific record: what was asked and what came back (no rollback)."""
-    res = _plain(result)
-    if len(json.dumps(res, ensure_ascii=False)) > 4000:
-        res = {"truncated": True}
-    record(conn, "other", "other", None, None, {"args": {k: v for k, v in args.items() if not k.startswith("_")},
-                                                "result": res})
-
-
-def list_log(conn, user_id: int, days: int = 14, limit: int = 30) -> list[dict]:
-    rows = conn.execute("""SELECT id, created_at, tool, kind, action, target, before, after, rolled_back_at
-                           FROM ai_write_log WHERE user_id = %s AND created_at >= now() - %s
-                           ORDER BY id DESC LIMIT %s""", (user_id, timedelta(days=days), limit)).fetchall()
-    return [{"id": r["id"], "at": f"{r['created_at']:%Y-%m-%d %H:%M}", "tool": r["tool"], "kind": r["kind"],
-             "action": r["action"], "target": r["target"], "before": r["before"], "after": r["after"],
-             "rollback": None if not _can_roll(r["kind"], r["action"])
-             else ("done" if r["rolled_back_at"] else "ok")} for r in rows]
-
-
-# ---------------------------------------------------------------- rollback
-def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -> dict:
-    row = conn.execute("SELECT * FROM ai_write_log WHERE id = %s AND user_id = %s FOR UPDATE",
-                       (log_id, user_id)).fetchone()
-    if row is None:
-        raise ValueError(f"没有这条操作日志：{log_id}（或不是你的）")
-    if row["rolled_back_at"]:
-        raise ValueError(f"这条已经在 {row['rolled_back_at']:%Y-%m-%d %H:%M} 回滚过了")
-    if not _can_roll(row["kind"], row["action"]):
-        raise ValueError("这条没有可自动回滚的前值；用对应的工具手动改回")
+# ---------------------------------------------------------------- rollback handlers, one per kind
+# Imports are inside the handlers: these modules import this one (they call record).
+def _sparky(conn, user_id, row, client=None):
     from . import sparky_write
-    from ..records import lab_catalog
-    from ..training import overrides
-    kind, before, after = row["kind"], row["before"], row["after"]
-    if kind in ("food", "session", "sets", "weight"):
-        result = sparky_write.rollback(conn, user_id, kind, row["action"], before, after, client=client)
-    elif kind == "merge":   # food entries merged into one (assistant/food_combine.py): split them again
-        from . import food_combine
-        result = food_combine.split(conn, user_id, int(row["target"]), client=client, log=False)
-    elif kind == "template":   # a template made from logged entries: remove it
-        n = conn.execute("UPDATE meal_templates SET active = FALSE, updated_at = now() WHERE id = %s AND user_id = %s AND active",
-                         (int(row["target"]), user_id)).rowcount
-        result = {"template_removed": int(row["target"]) if n else None}
-    elif kind == "workout":
-        result = overrides.restore(conn, user_id, int(row["target"]), before, after)
-    elif kind == "water":
-        from ..water import store as water_store
-        result = water_store.rollback(conn, user_id, row["action"], before, after)
-    elif kind == "pantry":   # what a logged meal took from the pantry goes back; the food entry stays (issue #104)
-        from ..grocery import pantry_auto
-        back = pantry_auto.restore(conn, user_id, row["target"])
-        result = {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
-    elif kind == "profile":   # a profile card item the AI created / replaced (issue #113): the old value comes back
-        from . import memory
-        result = memory.rollback_profile(conn, user_id, row["target"], before, after)
-    elif kind == "observation":
-        from . import memory
-        result = memory.rollback_observation(conn, user_id, int(row["target"]), before, after)
-    elif kind == "memory_state":   # a memory review's archive / restore / confirm (issue #113 phase 2)
-        from . import memory_review
-        result = memory_review.rollback_state(conn, user_id, row["target"], before, after)
-    else:
-        result = lab_catalog.rollback(conn, user_id, row["action"], before, after)
-    new_id = record(conn, kind, "rollback", row["target"], after, before) if _ctx.get() else None
-    conn.execute("UPDATE ai_write_log SET rolled_back_at = now(), rolled_back_by = %s WHERE id = %s", (new_id, log_id))
-    return {"rolled_back": log_id, "tool": row["tool"], "kind": kind, "result": result}
+    return sparky_write.rollback(conn, user_id, row["kind"], row["action"], row["before"], row["after"], client=client)
 
+
+def _merge(conn, user_id, row, client=None):   # food entries merged into one (assistant/food_combine.py): split them again
+    from . import food_combine
+    return food_combine.split(conn, user_id, int(row["target"]), client=client, log=False)
+
+
+def _template(conn, user_id, row, client=None):   # a template made from logged entries: remove it
+    n = conn.execute("UPDATE meal_templates SET active = FALSE, updated_at = now() WHERE id = %s AND user_id = %s AND active",
+                     (int(row["target"]), user_id)).rowcount
+    return {"template_removed": int(row["target"]) if n else None}
+
+
+def _workout(conn, user_id, row, client=None):
+    from ..training import overrides
+    return overrides.restore(conn, user_id, int(row["target"]), row["before"], row["after"])
+
+
+def _lab(conn, user_id, row, client=None):
+    from ..records import lab_catalog
+    return lab_catalog.rollback(conn, user_id, row["action"], row["before"], row["after"])
+
+
+def _water(conn, user_id, row, client=None):
+    from ..water import store as water_store
+    return water_store.rollback(conn, user_id, row["action"], row["before"], row["after"])
+
+
+def _pantry(conn, user_id, row, client=None):   # what a logged meal took from the pantry goes back; the food entry stays (issue #104)
+    from ..grocery import pantry_auto
+    back = pantry_auto.restore(conn, user_id, row["target"])
+    return {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
+
+
+def _profile(conn, user_id, row, client=None):   # a profile card item the AI created / replaced (issue #113): the old value comes back
+    from . import memory
+    return memory.rollback_profile(conn, user_id, row["target"], row["before"], row["after"])
+
+
+def _observation(conn, user_id, row, client=None):
+    from . import memory
+    return memory.rollback_observation(conn, user_id, int(row["target"]), row["before"], row["after"])
+
+
+def _memory_state(conn, user_id, row, client=None):   # archive / restore / confirm of a memory entry (issue #113 phase 2)
+    from . import memory_review
+    return memory_review.rollback_state(conn, user_id, row["target"], row["before"], row["after"])
+
+
+for _kind in ("food", "session", "sets", "weight"):
+    LOG.register_rollback(_kind, _sparky)
+# merge: split it again; template: remove the template made from entries; observation: a rewrite of a note (issue #113)
+LOG.register_rollback("merge", _merge, only_action="merge")
+LOG.register_rollback("template", _template, only_action="create")
+LOG.register_rollback("workout", _workout)
+LOG.register_rollback("lab", _lab)
+LOG.register_rollback("water", _water)
+LOG.register_rollback("pantry", _pantry)
+LOG.register_rollback("profile", _profile)
+LOG.register_rollback("observation", _observation, only_action="update")
+LOG.register_rollback("memory_state", _memory_state)   # logged as an update; any status change can be undone
+
+ROLLBACK_KINDS = LOG.kinds
+
+
+# ---------------------------------------------------------------- old names
+capture = LOG.capture
+record = LOG.record
+record_generic = LOG.record_generic
+list_log = LOG.list_log
+_can_roll = LOG.can_roll
+
+
+def rollback(conn: psycopg.Connection, user_id: int, log_id: int, client=None) -> dict:
+    return LOG.rollback(conn, user_id, log_id, client=client)

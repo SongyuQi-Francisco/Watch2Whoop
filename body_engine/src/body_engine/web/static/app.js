@@ -977,7 +977,7 @@
     openSheet(`${tr("睡眠")} · ${shortDay(sl.date)}`, `
       ${kv(tr("入睡 → 醒来"), `${m.start} → ${m.end}`)}${kv(tr("在床"), hm(m.in_bed_min))}${kv(tr("睡着"), hm(m.asleep_min))}
       ${kv(tr("深睡"), hm(m.deep_min))}${kv(tr("核心"), hm(m.core_min))}${kv("REM", hm(m.rem_min))}${kv(tr("清醒"), hm(m.awake_min))}
-      ${kv(tr("阶段来源"), sl.stages_source === "ow" ? "OW" : sl.stages_source === "shortcut" ? tr("快捷指令") : sl.stages_source === "export" ? tr("导入的历史") : null)}
+      ${kv(tr("阶段来源"), sl.stages_source === "ow" ? "OW" : sl.stages_source === "app" ? "Watch2Whoop" : sl.stages_source === "shortcut" ? tr("快捷指令") : sl.stages_source === "export" ? tr("导入的历史") : null)}
       <div class="btns"><button class="btn" id="to-sleep">${tr("14 晚")}</button></div>`,
     (root) => { $("#to-sleep", root).onclick = () => { closeSheet(); S.trendsMode = "sleep"; setTab("trends"); }; });
   }
