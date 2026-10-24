@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/SongyuQi-Francisco/Watch2Whoop/stargazers"><img src="https://img.shields.io/github/stars/SongyuQi-Francisco/Watch2Whoop?style=flat" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="许可证：AGPL-3.0"></a>
   <a href="../../releases"><img src="https://img.shields.io/badge/release-alpha-orange" alt="发布"></a>
   <a href="#ai-和-mcp"><img src="https://img.shields.io/badge/MCP-remote%20%2B%20stdio-6e56cf" alt="MCP server"></a>
@@ -46,7 +47,7 @@ app 里。Watch2Whoop 补上这一块，而且归你自己：
 大约 5 分钟，用 **60 天合成数据** 在本机跑起来，不需要手表或账号。需要 Docker（Compose v2）和 `python3` ≥ 3.9。
 
 ```bash
-git clone https://github.com/<owner>/Watch2Whoop.git   # 地址见上方绿色「Code」按钮
+git clone https://github.com/SongyuQi-Francisco/Watch2Whoop.git
 cd Watch2Whoop
 ./quickstart.sh                                         # 最后打印今天页的登录链接
 ```

@@ -1,5 +1,6 @@
-<!-- The project name appears in the title, the badge alt texts and the clone commands, so a rename only touches those lines.
-     Links to releases / issues / actions are relative (../../…) on purpose: GitHub resolves them to this repository. -->
+<!-- The full repository address appears only in the stars badge and the clone command (the privacy scan allows it in
+     the two READMEs only: tools/export_public.py PRIVATE_WORD_ALLOW). Other links to releases / issues / actions are
+     relative (../../…) on purpose: GitHub resolves them to this repository, also in forks. -->
 <h1 align="center">Watch2Whoop</h1>
 
 <p align="center">
@@ -9,6 +10,7 @@
 
 <p align="center">
   <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/SongyuQi-Francisco/Watch2Whoop/stargazers"><img src="https://img.shields.io/github/stars/SongyuQi-Francisco/Watch2Whoop?style=flat" alt="GitHub stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
   <a href="../../releases"><img src="https://img.shields.io/badge/release-alpha-orange" alt="Releases"></a>
   <a href="#ai-and-mcp"><img src="https://img.shields.io/badge/MCP-remote%20%2B%20stdio-6e56cf" alt="MCP server"></a>
@@ -48,7 +50,7 @@ Try it in about 5 minutes with **60 days of synthetic data**, no watch or accoun
 and `python3` ≥ 3.9.
 
 ```bash
-git clone https://github.com/<owner>/Watch2Whoop.git   # the URL from the green "Code" button above
+git clone https://github.com/SongyuQi-Francisco/Watch2Whoop.git
 cd Watch2Whoop
 ./quickstart.sh                                         # prints a login link for the Today page
 ```

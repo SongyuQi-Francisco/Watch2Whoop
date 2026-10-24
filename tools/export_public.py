@@ -174,6 +174,11 @@ SCAN_ALLOW = [
     ("deploy/tailscale/policy.hujson", r"100\.64\.0\.\d+"),                                      # placeholder tailnet IPs
     ("tools/export_public.py", r"100\.64\.0\.0"),
 ]
+# (exact path, regex) spans cut out of a line before the private-word check: the repository's own address in the two
+# READMEs (clone command, GitHub links, shields.io badges), whose owner name is otherwise a private word (owner's decision,
+# PR #245). Only these shapes and only these files: the name anywhere else on the line, or in any other file, is a finding.
+REPO_ADDRESS = r"(?:https://)?(?:github\.com|img\.shields\.io/github/[a-z-]+)/[A-Za-z0-9-]+/Watch2Whoop\b"
+PRIVATE_WORD_ALLOW = [("README.md", REPO_ADDRESS), ("README.zh-CN.md", REPO_ADDRESS)]
 
 
 def _entropy(s: str) -> float:
@@ -243,8 +248,12 @@ def scan(tree: Path, private: dict, deny_files: list[Path]) -> list[str]:
             if rel in LICENSES and COPYRIGHT_LINE.match(line):
                 continue  # the intended copyright notice
             low = line.lower()
+            kept = line
+            for rx in (rx for path_, rx in PRIVATE_WORD_ALLOW if rel == path_):
+                kept = re.sub(rx, " ", kept)
+            kept = kept.lower()
             for i, w in enumerate(words):
-                if w in low:
+                if w in kept:
                     findings.append(f"{rel}:{n}: private word #{i}")
             if rel != "tools/export_public.py":
                 for w in TRADEMARK_DENY:
