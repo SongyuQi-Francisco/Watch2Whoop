@@ -3473,8 +3473,10 @@
   }
   // The circle switcher (flag circles_by_circle): 「全部」 + one chip per circle; the chosen circle narrows members, feed and leaderboards
   function circleBar(list) {
-    const chip = (id, name, n) => `<button type="button" data-fcircle="${id ?? ""}" aria-pressed="${(S.fcircle ?? null) === id}">${esc(name)}${n != null ? `<i>${n}</i>` : ""}</button>`;
-    return `<div class="fd-cbar" role="group" aria-label="${esc(tr("圈子"))}">${chip(null, tr("全部"))}${list.map((c) => chip(c.id, c.name, c.members)).join("")}</div>`;
+    // the order comes from the server: pinned first, then the most recent (flag circle_prefs); archived circles are not here
+    const chip = (id, name, n, cls = "") => `<button type="button" class="${cls}" data-fcircle="${id ?? ""}" aria-pressed="${(S.fcircle ?? null) === id}">${esc(name)}${n != null ? `<i>${n}</i>` : ""}</button>`;
+    return `<div class="fd-cbar" role="group" aria-label="${esc(tr("圈子"))}">${chip(null, tr("全部"))}${list.filter((c) => !c.archived).map((c) =>
+      chip(c.id, c.name, c.members, [c.pinned ? "pin" : "", c.muted ? "mute" : ""].join(" ").trim())).join("")}</div>`;
   }
   const RENDER_friends = async () => {
     const feedOn = !!window.BodyCircleFeed && window.BodyFlags.on("circle_feed");   // 成员 | 动态 | 排行榜 (circle-feed.js)
@@ -3487,7 +3489,7 @@
       S.fcircle = null;   // left / dissolved since: back to all circles
       ov = await api("/v1/friends/overview");
     }
-    if (S.fcircle && !(ov.circles || []).some((c) => c.id === S.fcircle)) S.fcircle = null;
+    if (S.fcircle && !(ov.circles || []).some((c) => c.id === S.fcircle && !c.archived)) S.fcircle = null;
     // all circles: no leaderboard (people of different circles don't know each other, docs/circles-redesign.md §9 point 1)
     const boardOn = !byCircle || !!S.fcircle;
     if (!boardOn && S.friendsMode === "board") S.friendsMode = "cards";

@@ -31,7 +31,7 @@ from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
-from . import cards, params as P, remarks, store
+from . import cards, params as P, prefs, remarks, store
 from .store import FriendsError
 
 LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
@@ -70,10 +70,12 @@ def may_see(conn: psycopg.Connection, viewer_id: int, author_id: int) -> bool:
     return ok and (viewer_id == author_id or auth.can_view(conn, viewer_id, author_id, P.FEED_SCOPE))
 
 
-def visible_authors(conn: psycopg.Connection, viewer_id: int) -> list[int]:
+def visible_authors(conn: psycopg.Connection, viewer_id: int, skip: list[int] = ()) -> list[int]:
+    """People whose posts reach the viewer (and the viewer); `skip`: circles that do not count (muted / archived in 「全部」)."""
     rows = conn.execute(
         """SELECT DISTINCT b.user_id FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
-           WHERE a.user_id = %s AND %s = ANY(b.scopes)""", (viewer_id, P.FEED_SCOPE)).fetchall()
+           WHERE a.user_id = %s AND %s = ANY(b.scopes) AND (b.user_id = a.user_id OR NOT (a.circle_id = ANY(%s)))""",
+        (viewer_id, P.FEED_SCOPE, list(skip))).fetchall()
     return sorted(r["user_id"] for r in rows if r["user_id"] == viewer_id
                   or auth.can_view(conn, viewer_id, r["user_id"], P.FEED_SCOPE))
 
@@ -308,7 +310,7 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
     only that circle's members who ticked training there, and under each post only that circle's ❤️ and comments."""
     one = cards.one_circle(conn, viewer_id, circle_id)
     cid = one and one["id"]
-    authors = visible_authors(conn, viewer_id)
+    authors = visible_authors(conn, viewer_id, () if one else prefs.hidden(conn, viewer_id, feed=True))
     if one:
         authors = [a for a in authors if P.FEED_SCOPE in one["picks"].get(a, set())]
     limit = max(1, min(int(limit), 30))
@@ -370,7 +372,8 @@ def like(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -> di
     new = conn.execute(
         """INSERT INTO circle_feed_likes (post_id, user_id) VALUES (%s, %s) ON CONFLICT (post_id, user_id)
            DO UPDATE SET active = TRUE WHERE NOT circle_feed_likes.active RETURNING (xmax = 0) AS inserted""", (post_id, uid)).fetchone()
-    if new is not None and new["inserted"] and p["user_id"] != uid:   # only the first time: liking again does not notify again
+    if new is not None and new["inserted"] and p["user_id"] != uid and not prefs.quiet(conn, p["user_id"], uid):
+        # only the first time: liking again does not notify again; nothing through circles the author muted
         name = _name(conn, uid)
         notify(conn, p["user_id"], LIKE, {"zh": f"{name} 给你的训练点了 ❤️", "en": f"{name} ❤️ your workout"}, "",
                url=post_url(post_id), data={"actor_id": uid, "post_id": post_id})
@@ -431,7 +434,7 @@ def add_comment(conn: psycopg.Connection, uid: int, post_id: int, text: str) -> 
     c = conn.execute("INSERT INTO circle_feed_comments (post_id, user_id, body) VALUES (%s, %s, %s) RETURNING id, created_at",
                      (post_id, uid, text)).fetchone()
     name = _name(conn, uid)
-    if p["user_id"] != uid:
+    if p["user_id"] != uid and not prefs.quiet(conn, p["user_id"], uid):   # not through circles the author muted
         notify(conn, p["user_id"], COMMENT, {"zh": f"{name} 评论了你的训练", "en": f"{name} commented on your workout"},
                text[:120], url=post_url(post_id), data={"actor_id": uid, "post_id": post_id})
     return {"id": c["id"], "user": {"id": uid, "name": name, "self": True}, "body": text, "created_at": c["created_at"]}
@@ -463,6 +466,11 @@ def report_comment(conn: psycopg.Connection, uid: int, comment_id: int, reason: 
 
 
 # ---------------------------------------------------------------- red dot
+# the red dot leaves out ❤️ / comments that reach me only through circles I muted or archived (#269 P2, %(hide)s)
+_LOUD = """EXISTS (SELECT 1 FROM circle_members qa JOIN circle_members qw ON qw.circle_id = qa.circle_id AND qw.user_id = {w}
+                  WHERE qa.user_id = %(u)s AND '""" + P.FEED_SCOPE + """' = ANY(qa.scopes) AND NOT (qa.circle_id = ANY(%(hide)s)))"""
+
+
 def unread(conn: psycopg.Connection, uid: int) -> int:
     """❤️ and comments by others on my posts since I last opened the feed. The first call starts the clock (no old backlog)."""
     row = conn.execute("INSERT INTO circle_feed_seen (user_id) VALUES (%s) ON CONFLICT DO NOTHING RETURNING seen_at", (uid,)).fetchone()
@@ -471,10 +479,12 @@ def unread(conn: psycopg.Connection, uid: int) -> int:
     seen = conn.execute("SELECT seen_at FROM circle_feed_seen WHERE user_id = %s", (uid,)).fetchone()["seen_at"]
     n = conn.execute(
         f"""SELECT (SELECT count(*) FROM circle_feed_likes l JOIN circle_feed_posts p ON p.id = l.post_id
-                    WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_SEEN_BY.format(w='l.user_id', v='%(u)s')})
+                    WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_SEEN_BY.format(w='l.user_id', v='%(u)s')}
+                      AND {_LOUD.format(w='l.user_id')})
                  + (SELECT count(*) FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
                     WHERE p.user_id = %(u)s AND c.user_id <> %(u)s AND c.deleted_at IS NULL AND c.created_at > %(t)s
-                      AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')}) AS n""", {"u": uid, "t": seen}).fetchone()["n"]
+                      AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')} AND {_LOUD.format(w='c.user_id')}) AS n""",
+        {"u": uid, "t": seen, "hide": prefs.hidden(conn, uid, feed=True)}).fetchone()["n"]
     return int(n)
 
 
