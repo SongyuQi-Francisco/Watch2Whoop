@@ -13,6 +13,12 @@
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
+- GET  /v1/users/{user}/sync/history -> the history top-up answer (backfill.py: days with watch data of the last 90, what a short
+  history costs the scores, the reminder state `remind`, the top-up's progress; the overview carries the same as `coverage`).
+  POST …/sync/history/seen (write) -> the card was shown as today's reminder; PUT …/sync/history/mute {muted} (write) ->
+  「不再提醒」 / on again; POST …/sync/backfill {days: 1–3650 | null} (write) -> start a top-up (the forced re-sync job, resync.py)
+  and return its status + accepted / reason + the new answer. The app (1.0.8+, Watch2WhoopFeatures.backfill) does the phone part
+  when the page opens watch2whoop://backfill?days=N|all and reports through /v1/ingest/resync (docs/sync-onboarding-app-requirements.md §10).
 - GET  /v1/users/{user}/data-status -> per health data type what the server received (data_status.py, issue #163): the
   Today page's 「我 → 数据状态」 (flag data_status). Own data only, read scope is enough.
 - GET  /v1/ingest/data-status -> the same for the Watch2Whoop app's sync page: Bearer only, its account token or its
@@ -41,7 +47,8 @@ from ..i18n import L
 from ..records.api import current_user, get_conn
 from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
-from . import broken, data_status, history, overview, refresh, resync
+from . import params as P
+from . import backfill, broken, data_status, history, overview, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -134,6 +141,52 @@ def get_health_history(user: str, conn=Depends(get_conn), viewer=Depends(current
     return history.status(conn, _own(viewer, user))
 
 
+def _write(viewer: dict) -> None:
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, L("这个登录没有 write 权限", "This sign-in cannot write"))
+
+
+@router.get("/v1/users/{user}/sync/history")
+def get_sync_history(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return backfill.evaluate(conn, _own(viewer, user))
+
+
+@router.post("/v1/users/{user}/sync/history/seen")
+def post_sync_history_seen(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    _write(viewer)
+    return backfill.mark_seen(conn, uid)
+
+
+class HistoryMuteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    muted: bool = True
+
+
+@router.put("/v1/users/{user}/sync/history/mute")
+def put_sync_history_mute(user: str, body: HistoryMuteIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    _write(viewer)
+    return backfill.set_muted(conn, uid, body.muted)
+
+
+class BackfillIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    days: int | None = Field(P.BACKFILL_TARGET_DAYS, ge=1, le=P.RESYNC_MAX_DAYS)   # null = all history
+
+
+@router.post("/v1/users/{user}/sync/backfill", status_code=202)
+def post_sync_backfill(user: str, body: BackfillIn, response: Response, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    _write(viewer)
+    res = backfill.request(conn, uid, body.days)
+    if not res.get("accepted"):
+        response.status_code = 200
+        if res.get("retry_after"):
+            response.headers["Retry-After"] = str(res["retry_after"])
+    return res
+
+
 @router.get("/v1/users/{user}/data-status")
 def get_data_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     if user not in ("me", str(viewer["id"])):
@@ -191,7 +244,7 @@ def get_ingest_data_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
 # ---------------------------------------------------------------- forced re-sync (the app's sync center)
 def _resync_user(conn=Depends(get_conn), viewer=Depends(ingest_user)) -> dict:
     from ..rollout import flags
-    if not flags.enabled(conn, viewer["id"], "sync_center"):
+    if not flags.enabled(conn, viewer["id"], "sync_center") and not backfill.allows_resync(conn, viewer["id"]):
         raise HTTPException(404, L("这个功能还没有对你开放", "This feature is not available to you yet"))
     return viewer
 
