@@ -3,6 +3,7 @@
 // credentials are stored in the SDK Keychain, the app does not keep them).
 //
 // Background sync: thin wrapper over the Open Wearables Flutter SDK.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -41,7 +42,8 @@ List<HealthDataType> get requestedTypes =>
 class ConnectException implements Exception {
   ConnectException(this.code, [this.detail]);
 
-  /// invalid_code / network / server / bad_response
+  /// invalid_code / network / server / bad_response / sign_in (the code was redeemed but the SDK did not take the new
+  /// session: sync is not connected now and the user can retry, see [HealthSync.connect])
   final String code;
   final String? detail;
   @override
@@ -61,6 +63,7 @@ class HealthSync {
   late SyncLogParser _parser;
   static const _native = MethodChannel('watch2whoop/native');
   bool _started = false;
+  StreamSubscription<Map<String, dynamic>>? _authErrors;
 
   /// Called once at app start: reads back the stats and restores the SDK session (configure() resumes background sync automatically).
   /// SDK logs are buffered first by native code (SyncLogBuffer in AppDelegate), since Dart may not be running at all during background sync;
@@ -78,6 +81,13 @@ class HealthSync {
 
     // Release builds emit no logs by default; sync status relies on log counts, so keep them always on (logs stay on the device only).
     await OpenWearablesHealthSdk.setLogLevel(OWLogLevel.always);
+    // The SDK's own signal that its session is dead (refresh rejected / 401 with an API key): the structured event, not a
+    // log text (sync_repair.dart starts the silent reconnect from stats.authProblem). Log lines stay the fallback for
+    // rounds that ran in the background while Dart was not running.
+    _authErrors ??= MethodChannelOpenWearablesHealthSdk.authErrorStream.listen(
+      (e) => markAuthProblem('HTTP ${e['statusCode'] ?? 401}'),
+      onError: (_) {},
+    );
     if (config.owConnected && config.owHost.isNotEmpty) {
       await OpenWearablesHealthSdk.configure(host: config.owHost);
     }
@@ -105,6 +115,19 @@ class HealthSync {
       _parser.handle(msg, t);
     }
     if (recentLog.length > _maxLog) recentLog.removeRange(0, recentLog.length - _maxLog);
+    // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
+    stats.notifyListeners();
+    await _save();
+  }
+
+  /// The sync server does not accept this phone's session (the SDK's auth error event): sync_repair.dart reconnects.
+  Future<void> markAuthProblem(String why) async {
+    final s = stats.value
+      ..authProblem = true
+      ..lastErrorAt = DateTime.now()
+      ..lastError = why;
+    await note('Sync server rejected the session ($why)');
+    stats.value = s;
     // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
     stats.notifyListeners();
     await _save();
@@ -149,13 +172,20 @@ class HealthSync {
     final creds = parseRedeemResponse(res.statusCode, res.body);
 
     // When switching accounts, disconnect the old one first (clears the old anchor and Keychain).
-    if (OpenWearablesHealthSdk.isSignedIn) await OpenWearablesHealthSdk.signOut();
-    await OpenWearablesHealthSdk.configure(host: owHost);
-    await OpenWearablesHealthSdk.signIn(
-      userId: creds.userId,
-      accessToken: creds.accessToken.startsWith('Bearer ') ? creds.accessToken : 'Bearer ${creds.accessToken}',
-      refreshToken: creds.refreshToken,
-    );
+    // From here on the old session is gone and the one-time code is used: a failure must not end silently in
+    // "not connected" — it is a ConnectException('sign_in') the caller shows, and connecting again mints a new code.
+    try {
+      if (OpenWearablesHealthSdk.isSignedIn) await OpenWearablesHealthSdk.signOut();
+      await OpenWearablesHealthSdk.configure(host: owHost);
+      await OpenWearablesHealthSdk.signIn(
+        userId: creds.userId,
+        accessToken: creds.accessToken.startsWith('Bearer ') ? creds.accessToken : 'Bearer ${creds.accessToken}',
+        refreshToken: creds.refreshToken,
+      );
+    } catch (e) {
+      await note('Connecting sync failed after the code was redeemed: $e');
+      throw ConnectException('sign_in', '$e');
+    }
     await resetStats();
     return creds.userId;
   }

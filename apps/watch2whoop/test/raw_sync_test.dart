@@ -304,7 +304,50 @@ void main() {
       expect((await up.upload('tok', {})).outcome, o);
     }
     final down = RawUploader('https://body.example.com', client: MockClient((_) => throw Exception('offline')));
-    expect((await down.upload('tok', {})).outcome, RawUpload.failed);
+    expect((await down.upload('tok', {})).outcome, RawUpload.offline);
+    // status: 401 is its own answer (the token is refused), no network = null; short timeout of its own
+    code = 401;
+    await expectLater(up.status('tok'), throwsA(isA<RawUnauthorized>()));
+    expect(await down.status('tok'), isNull);
+    expect(up.statusTimeout, lessThanOrEqualTo(const Duration(seconds: 10)));
+  });
+
+  test('weak network: one status request per pass, then the pass ends as offline (#295 A3)', () async {
+    var asked = 0;
+    final src = FakeSource({'water': [waterPage('W1')]});
+    final r = await RawSyncRunner(source: src, status: () async {
+      asked++;
+      return null; // timed out / no route
+    }, upload: (b) async => okAnswer(b, on: true)).run(90);
+    expect(asked, 1, reason: 'not once per type');
+    expect(r.stop, 'offline');
+    expect(src.reads, isNot(contains('water')));
+    expect(nextRawStatus(const RawSyncStatus(), r, DateTime(2026, 10, 26)).problem, contains('reach the server'));
+
+    // An upload that times out ends the pass too (the anchor stays)
+    final hbSrc = FakeSource({'heartbeat': [hb('H1')]});
+    final r2 = await RawSyncRunner(source: hbSrc, upload: (b) async => const RawUploadResult(RawUpload.offline)).run(90);
+    expect(r2.stop, 'offline');
+    expect(hbSrc.commits, isEmpty);
+
+    // A status 401 ends the pass as unauthorized
+    final r3 = await RawSyncRunner(source: FakeSource({'water': [waterPage('W1')]}),
+        status: () async => throw const RawUnauthorized(), upload: (b) async => okAnswer(b, on: true)).run(90);
+    expect(r3.stop, 'unauthorized');
+  });
+
+  test('per-kind upload times and the refused account token are kept in the status', () async {
+    final src = FakeSource({'heartbeat': [hb('H1')]});
+    final r = await RawSyncRunner(source: src, upload: (b) async => okAnswer(b, on: true)).run(90);
+    final at = DateTime(2026, 10, 26, 9);
+    final s = nextRawStatus(const RawSyncStatus(), r, at, accountRejected: true);
+    expect(s.kindsAt, {'heartbeat': at});
+    expect(s.accountRejected, isTrue);
+    final back = RawSyncStatus.fromJson(jsonDecode(jsonEncode(s.toJson())) as Map<String, Object?>);
+    expect(back.kindsAt['heartbeat'], at);
+    expect(back.accountRejected, isTrue);
+    expect(tokenFingerprint('tok'), hasLength(64));
+    expect(tokenFingerprint('tok'), isNot(contains('tok')));
   });
 
   test('helpers', () {
@@ -348,8 +391,9 @@ void main() {
         uploads++;
         return okAnswer(b, on: false);
       }).run(90);
-      expect(r.stop, isNull, reason: '$st');
-      expect(r.waterOff, isTrue);
+      // no answer at all (null): the server cannot be reached, the pass ends as offline (#295 A3)
+      expect(r.stop, st == null ? 'offline' : isNull, reason: '$st');
+      expect(r.waterOff, st != null);
       expect(off.reads, isNot(contains('water')));
       expect(uploads, 0);
     }

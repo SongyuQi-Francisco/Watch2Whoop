@@ -60,6 +60,22 @@ void main() {
       expect(s.authProblem, isFalse);
     });
 
+    test('fallback without a recognised 401: many client errors in a row count as a dead session; 5xx do not', () {
+      final s = SyncStats();
+      final p = SyncLogParser(s);
+      for (var i = 0; i < kAuthSuspectStreak * 2; i++) {
+        p.handle('upload=sync req=E$i bytes=1 sent=1/1 status=503', at(i));
+      }
+      expect(s.authProblem, isFalse, reason: 'server errors are not about the session');
+      for (var i = 0; i < kAuthSuspectStreak; i++) {
+        p.handle('upload=sync req=F$i bytes=1 sent=1/1 status=403', at(i));
+      }
+      expect(s.authProblem, isTrue);
+      p.handle('Sending 1 KB, 2 items (HeartRate: 2)', at(10));
+      p.handle('upload=sync req=G1 bytes=1 sent=1/1 status=200', at(11));
+      expect([s.authProblem, s.failStreak, s.perTypeAt['HeartRate']], [false, 0, at(11)]);
+    });
+
     test('round finished, screen locked, offline, background time used up', () {
       final s = SyncStats();
       final p = SyncLogParser(s);
@@ -76,7 +92,8 @@ void main() {
     });
 
     test('stats JSON round trip; bad data falls back to empty', () {
-      final s = SyncStats(perType: {'HeartRate': 3}, lastUploadAt: at(0), lastError: 'HTTP 500', lastErrorAt: at(1))
+      final s = SyncStats(perType: {'HeartRate': 3}, lastUploadAt: at(0), lastError: 'HTTP 500', lastErrorAt: at(1),
+          perTypeAt: {'HeartRate': at(0)}, failStreak: 2)
         ..lastNotice = SyncNotice.locked
         ..lastNoticeAt = at(2)
         ..authProblem = true;

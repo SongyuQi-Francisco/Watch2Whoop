@@ -84,7 +84,8 @@ void main() {
         uploads++;
         return const RawUploadResult(RawUpload.ok, {});
       }).run(90);
-      expect(r2.metricsOff, isTrue, reason: '$st');
+      // no answer at all (null): the server cannot be reached, the pass ends as offline (#295 A3)
+      expect(st == null ? r2.stop == 'offline' : r2.metricsOff, isTrue, reason: '$st');
       expect(off.reads.where((k) => k.startsWith('HK')), isEmpty);
       expect(uploads, 0);
     }

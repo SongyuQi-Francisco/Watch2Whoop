@@ -20,6 +20,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../account_api.dart' show AccountApiException;
 import '../account_flow.dart';
 import '../android_bridge.dart';
 import '../app_state.dart';
@@ -35,8 +36,10 @@ import '../raw_sync.dart';
 import '../resync.dart';
 import '../resync_flow.dart';
 import '../setup_flow.dart';
+import '../sync_bridge.dart';
 import '../sync_on_open.dart';
 import '../sync_repair.dart';
+import '../sync_stats.dart' show SdkSyncStatus;
 import '../ui.dart';
 import '../voice_bridge.dart';
 import '../web_mic.dart';
@@ -57,6 +60,9 @@ const String _kIngestPrefix = 'w2w-ingest:';
 
 /// The automatic sync repairs of the last days (sync_repair.dart).
 const String _kRepairKey = 'w2w.syncRepair.v1';
+
+/// Bridge message: open this app's page in iOS Settings (the sync status's `settings` action, e.g. Background App Refresh).
+const String kAppSettingsMessage = 'app-settings';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -118,6 +124,107 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _onSyncStats() => unawaited(_autoRepair.trigger());
+
+  /// The Today page's 「开启同步」 / 「立即同步」 / 「同步状态」 (sync_bridge.dart).
+  late final SyncBridge _syncBridge = SyncBridge(
+    supported: () => hasHealthSync,
+    isConnected: () => AppState.instance.config.owConnected && HealthSync.instance.isSignedIn,
+    needsReconnect: () => HealthSync.instance.stats.value.authProblem,
+    connect: _bridgeConnect,
+    askHealth: () async {
+      await HealthSync.instance.requestAuthorization();
+      final c = AppState.instance.config;
+      await AppState.instance.update(c.copyWith(healthRequested: true, permissionsSeen: true));
+    },
+    runRound: _bridgeRound,
+    status: _syncStatus,
+    progress: (e) => _web.runJavaScript(syncProgressJs(e)).catchError((_) {}),
+  );
+
+  /// Connects the background sync without a code (the account's server-minted invitation), like 「连接同步」.
+  Future<SyncConnectOutcome> _bridgeConnect() async {
+    if (AppState.instance.accountToken == null) {
+      return SyncConnectOutcome(
+          manualNeeded: true,
+          message: tr('这个账号要用设置链接里的邀请码连接同步：打开「手机同步」', 'This account connects sync with the invitation code from its setup link: open Phone sync'));
+    }
+    final r = await connectSyncViaAccount();
+    if (r.connected) await HealthSync.instance.note('Sync connected from the Today page');
+    final e = r.error;
+    return SyncConnectOutcome(
+      connected: r.connected,
+      manualNeeded: r.manualNeeded,
+      message: e == null ? null : (e is AccountApiException ? accountError(e) : connectError(e)),
+    );
+  }
+
+  /// One round now: the SDK round (no 3-minute throttle), then the app's own uploads and the page refresh
+  /// (_afterSyncRound). Progress (items sent, types done) goes to the page every 2 seconds meanwhile.
+  Future<bool> _bridgeRound() async {
+    final tick = Timer.periodic(const Duration(seconds: 2), (_) async {
+      final st = await HealthSync.instance.status();
+      if (st.isSyncing) {
+        _web.runJavaScript(syncProgressJs({
+          'step': 'upload',
+          'message': tr('正在上传…', 'Uploading…'),
+          'sent': st.sentCount,
+          'types': st.completedTypes,
+        })).catchError((_) {});
+      }
+    });
+    try {
+      if (_syncOnOpen.running) {
+        while (_syncOnOpen.running) {
+          await Future<void>.delayed(const Duration(seconds: 1));
+        }
+        return true;
+      }
+      return await _syncOnOpen.trigger(force: true);
+    } finally {
+      tick.cancel();
+    }
+  }
+
+  Future<Map<String, Object?>> _syncStatus() async {
+    final c = AppState.instance.config;
+    var ask = 'unknown';
+    SdkSyncStatus? sdk;
+    if (hasHealthSync) {
+      await HealthSync.instance.drainNativeLog();
+      try {
+        ask = await RawSync.instance.source.authStatus();
+      } catch (_) {}
+      if (c.owConnected) sdk = await HealthSync.instance.status();
+    }
+    return buildSyncStatus(SyncStatusInput(
+      supported: hasHealthSync,
+      signedIn: AppState.instance.accountToken != null,
+      connected: c.owConnected && HealthSync.instance.isSignedIn,
+      healthAsked: c.healthRequested,
+      healthNeedsAsk: ask == 'shouldRequest',
+      running: _syncOnOpen.running || (sdk?.isSyncing ?? false),
+      firstSyncDone: sdk?.initialExportDone,
+      ow: HealthSync.instance.stats.value,
+      raw: RawSync.instance.status.value,
+      device: await DeviceSyncState.read(),
+      now: DateTime.now(),
+    ));
+  }
+
+  Future<void> _onSyncCall(({String verb, String id}) m) async {
+    Map<String, Object?> res;
+    try {
+      res = switch (m.verb) {
+        'enable' => await _syncBridge.enable(),
+        'now' => await _syncBridge.now(),
+        _ => {'ok': true, 'status': await _syncStatus()},
+      };
+    } catch (e) {
+      res = {'ok': false, 'error': {'code': 'failed', 'message': redactServer('$e'), 'action': 'retry'}};
+    }
+    if (!mounted) return;
+    await _web.runJavaScript(syncReplyJs(m.id, res)).catchError((_) {});
+  }
 
   /// Read range and history progress for the server (health_range.dart), through the page (it has the login cookie):
   /// every 30 s while the app is in the foreground, after the page loads and after each sync round; only when it changed.
@@ -350,6 +457,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     HealthSync.instance.drainNativeLog();
     _tellPageForeground();
+    _announceNet();
     PushService.instance.refresh(); // allowed in iOS Settings meanwhile, or a new device token: register again
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     if (_onShell) {
@@ -443,6 +551,21 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           mic: !isAndroid || await AndroidBridge.hasMic(),
           haptics: !isAndroid, // the native side is iOS only (VoiceInput.swift); Android: no voice either (no channel)
           voiceLangs: await VoiceBridge.instance.langs()));
+      // Sync from the page (sync_bridge.dart): 「开启同步」 / 「立即同步」 / 「同步状态」
+      if (hasHealthSync) await _web.runJavaScript(kSyncBridgeJs);
+      await _announceNet();
+    } catch (e) {
+      debugPrint('features call failed: $e');
+    }
+  }
+
+  /// `Watch2WhoopFeatures.net` (wifi / cellular / constrained = Low Data Mode / offline …): the page skips its idle
+  /// prefetch on cellular and in Low Data Mode (app.js prefetchNetOk). Again on every return to the foreground.
+  Future<void> _announceNet() async {
+    if (_onShell || _loading || _error != null) return;
+    try {
+      final net = netFeatureJs((await DeviceSyncState.read()).net);
+      if (net != null) await _web.runJavaScript(net);
     } catch (e) {
       debugPrint('features call failed: $e');
     }
@@ -519,6 +642,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final haptic = parseHapticMessage(message);
     if (haptic != null) {
       VoiceBridge.instance.haptic(haptic);
+      return;
+    }
+    // Sync from the page (sync_bridge.dart): the answer goes back with the call's id
+    final sync = parseSyncMessage(message);
+    if (sync != null) {
+      _onSyncCall(sync);
+      return;
+    }
+    if (message == kAppSettingsMessage) {
+      openAppSettings();
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();
