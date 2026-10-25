@@ -101,7 +101,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 | 锚点存哪 | UserDefaults suite `com.openwearables.healthsdk.state`，键 `anchor.user.<id>.<HK 类型>`、`fullDone.user.<id>`；会话进度 `Application Support/health_sync_state/state.json`（每类已发条数、完成的类型、首次导出的 `olderThan` 游标、待提交的锚点） |
 | 分批 | 每一轮从每个未完成类型各取一块（`前台 2000 / 后台 100` 条 ÷ 类型数），合成一个 JSON 上传；后台剩余时间 < 5 秒就暂停。每轮 2000 条约 1.3 MB（SDK 注释） |
 | 重试 | 0.14 起不再写本地 outbox：游标和锚点**只在服务器 2xx 后**前进，失败的这一轮下次从 HealthKit 重新读（只剩旧版 outbox 的清理代码）。401 刷新 token 后重试一次；网络恢复（`NWPathMonitor`）、解锁（`protectedDataDidBecomeAvailable`）、回到前台时续传 |
-| 首次同步 | `syncDaysBack`（我们传 90；0 = 全部历史），从「那天 0 点」起。首次用 `HKSampleQuery` **按结束时间从新到旧**一块块往回爬（`olderThan` 游标，可续传），某类爬完后再用 `HKAnchoredObjectQuery` 从空锚点一路读到底「捕获」当前锚点，之后才转增量 |
+| 首次同步 | `syncDaysBack`（我们首次传 14，1.0.8 起；补传 90 / 全部由后台补全负责；0 = 全部历史），从「那天 0 点」起。首次用 `HKSampleQuery` **按结束时间从新到旧**一块块往回爬（`olderThan` 游标，可续传），某类爬完后再用 `HKAnchoredObjectQuery` 从空锚点一路读到底「捕获」当前锚点，之后才转增量 |
 | 去重 | SDK 不去重；服务端 `data_point_series` 唯一键是（数据源、类型、`recorded_at` = 开始时间），训练按（数据源、开始、结束）唯一 |
 | 训练格式 | `_mapWorkoutEfficient`：`type`（HKWorkoutActivityType 转 snake_case）、开始 / 结束、时区偏移（来自 `HKMetadataKeyTimeZone`）、来源、`values`（时长、活动 / 基础能量、距离、步数、划水、心率最小 / 平均 / 最大、跑步 / 骑行功率等、海拔、室内标记、天气）、`laps`（圈 / 段 / 标记事件）；`route`、`samples` 固定传空。服务端把活动 + 基础能量加成 `energy_burned`，类型经 `constants/workout_types/sdk.py` 转成统一类型 |
 | 睡眠格式 | 每个 `HKCategorySample` 一条：`stage`（0 in_bed、1 sleeping、2 awake、3 light、4 deep、5 rem）、开始 / 结束、来源。服务端用 Redis 里的睡眠状态机按 2 小时间隔拼成一晚 |

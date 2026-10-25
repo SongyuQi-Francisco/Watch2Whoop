@@ -28,6 +28,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 - **「补全历史」**：在今天页或「手机同步」页选「近 90 天」或「全部历史」，app 先照常传最新的数据，再在后台补更早的历史；app 切到后台、被系统挂起也会继续传，中途被打断（包括 app 被关掉）下次从断点接着传，不会重复，进度在页面上显示。手机空闲、连着 Wi-Fi 时补得最快，不用蜂窝流量。
 - 今天页上的「一键开启同步」：点一下，app 自己连接同步、弹出「健康」授权、马上开始第一次上传，卡片上显示进度（首次同步时显示百分比）。登录时点了「跳过」也没关系，之后从今天页一步开启。
 - 今天页上的「立即上传」「去设置」「去授权」直接在 app 里完成，不用再跳到「手机同步」页。
+- 新用户确认同意书后，今天页马上出现「开启数据同步」卡片和弹窗（以前要等下一次刷新才出现）。
 - 同步连接失效时 app 会自己重新连接，并且**重新连上后马上同步一轮**（以前要等下次打开 app）。
 - 如果「健康」授权窗口没有弹出来（以前偶尔会被别的窗口挡住），app 会发现并再弹一次。
 - app 会把手机这边影响同步的状态告诉服务器：后台 App 刷新是否打开、低电量模式、锁屏读不到健康数据、哪些健康类型还没授权、上次同步和上次成功上传的时间。今天页因此能说出具体原因，比如「后台刷新被关」「手机锁着」，而不只是「很久没收到」。不包含任何健康数值。
@@ -36,7 +37,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 - 即使后台同步还没连上，逐拍心率、心电图和「站立时间」等 app 自己读的数据，打开 app 时也会照常上传。
 
 **Jarvis（AI 助手）**
-- 按住说话改用这台 iPhone 上的语音识别：边说边出字；中文松手后再交你自己的服务器定稿，更准。声音不会为此发给苹果，也不保存录音。第一次使用会弹「语音识别」权限。
+- 按住说话改用这台 iPhone 上的语音识别：边说边出字；中文松手后再交你自己的服务器定稿，更准。识别在手机本机完成，也不保存录音。第一次使用会弹「语音识别」权限。
 - 按 Jarvis 键时有轻微震动反馈。
 
 **登录**
@@ -45,6 +46,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 **技术说明（给开发者）**
 - 页面同步协议见 `docs/sync-onboarding-app-requirements.md`（`sync-connect` / `sync-now` / `app-settings` / `health-settings`，`BodySyncStatus.onApp` 进度，`PUT /v1/ingest/sync-device` 手机状态）；另有 `Watch2WhoopSync.enableSync / syncNow / syncStatus`（`lib/src/sync_bridge.dart`）。
 - OW 登录失效改用 SDK 的 `authErrorStream`（日志匹配只作兜底）；RawSync 的账号 token 被 401 时改用今天页签发的只上传 token；status 请求 10 秒超时、每轮最多一次（#295 A2 / A3）。
+- 自己打包时旧的 `config/defaults.json` 要删掉 `"W2W_SYNC_DAYS_BACK"` 那一行（旧示例里是 90，会覆盖 14 天的默认值）；`config/defaults.example.json` 已去掉这一行。
 - 首次范围和补传参数在 `lib/src/sync_params.dart`（`kFirstSyncDays = 14`、`kBackfillDays = 90`）。补传：今天页「补全历史」按 `docs/sync-onboarding-app-requirements.md` 第 10 节——宣布 `Watch2WhoopFeatures.backfill = true`，页面建好服务器的重新同步任务后打开 `watch2whoop://backfill?days=90|all`，app `GET /v1/ingest/resync` 是 `phone` 时做手机部分、`PUT` 进度（马上报第一次）、完成时 `phone_done`，并用 `onApp({kind: "backfill", …})` 通知页面（`lib/src/backfill.dart`、`resync_flow.dart joinPageBackfill`）；服务器开了自建引擎（shadow / app）时由原生 `ios/Runner/Backfill.swift` 按天往回补：后台 URLSession 上传、BGProcessingTask `watch2whoop.sync.backfill`、游标 200 后才前移、同一批重发用同一个 batch_id；开关关着时走 Open Wearables SDK 自己的全量导出（重置锚点后最新的先传，SDK 自己的后台任务续传；导出期间新数据跟着导出一起上来，没有单独的增量轮次）。
 - 自建同步引擎 A1（#219，`lib/src/sync_engine.dart`、`ios/Runner/SyncEngine.swift`、`assets/healthkit_types.json`）：服务器开关 `apple_sync_engine` 默认关，关着时不读、不传。
 - 本机语音识别 `ios/Runner/VoiceInput.swift`（#53）；Apple 登录桥 `lib/src/apple_bridge.dart`；新增权限说明 `NSSpeechRecognitionUsageDescription`。
