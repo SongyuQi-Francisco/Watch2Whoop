@@ -4,6 +4,8 @@
   last_import_at, linked}: pull new data from Open Wearables in the background, then recompute the last 3 days (refresh.py).
   At most one accepted request per user every 2 minutes; later ones just return the status (no error, so callers can poll).
 - GET  /v1/users/{user}/sync/status -> the same status fields (「同步中… / 已更新 07:42」 on the Today page).
+- GET  /v1/users/{user}/sync/connection -> {broken, reason, last_data_at, hours, after_hours, …}: whether the phone's
+  Open Wearables sync looks broken (broken.py; 「手机同步已断开」 banner and sheet, web/static/sync-repair.js). Own data only.
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
@@ -29,7 +31,7 @@ from ..i18n import L
 from ..records.api import current_user, get_conn
 from ..rawdata import engine as rx_engine, side_by_side
 from ..rawdata.api import ingest_user
-from . import data_status, history, refresh, resync
+from . import broken, data_status, history, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -51,6 +53,15 @@ def sync_refresh(user: str, response: Response, conn=Depends(get_conn), viewer=D
 @router.get("/v1/users/{user}/sync/status")
 def sync_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
     return refresh.status(conn, _own(viewer, user))
+
+
+@router.get("/v1/users/{user}/sync/connection")
+def sync_connection(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    res = broken.check(conn, viewer["id"])
+    res.pop("user_id", None)
+    return res
 
 
 class HealthHistoryIn(BaseModel):

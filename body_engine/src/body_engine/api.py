@@ -46,6 +46,7 @@ from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
 from .notify.api import router as notify_router
+from .notices.api import router as notices_router
 from .web import api as web_api, session as web_session
 
 pool: ConnectionPool | None = None
@@ -169,6 +170,7 @@ app.include_router(friends_router)
 app.include_router(avatars_router)
 app.include_router(friends_feed_router)
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
+app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
 app.include_router(ai_router)
 app.include_router(history_router)
 app.include_router(profile_router)
