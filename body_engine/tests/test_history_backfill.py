@@ -387,6 +387,16 @@ def test_briefing_hint(conn):
     watch(conn, uid2, 14)
     anchor(conn, uid2, 5)
     assert briefing.get(conn, uid2, uid2)["history_gap"]["of"] == 90
+    # the tool runner calls the briefing inside a transaction: the hint must not commit or write
+    fresh = user(conn)
+    watch(conn, fresh, 14)
+    with conn.transaction():
+        assert briefing.get(conn, fresh, fresh)["history_gap"]["days"] == 14
+    assert conn.execute("SELECT count(*) AS n FROM history_backfill WHERE user_id = %s", (fresh,)).fetchone()["n"] == 0
+    full = user(conn)
+    watch(conn, full, 90)
+    with conn.transaction():
+        assert "history_gap" not in briefing.get(conn, full, full)
     other = user(conn)
     viewer = user(conn)
     watch(conn, other, 14)

@@ -289,9 +289,9 @@ def _history_gap(conn: psycopg.Connection, user_id: int) -> dict:
     may say so once at a fitting moment (sync/backfill.py; the Today page card does the asking)."""
     from ..sync import backfill
     try:
-        hint = backfill.briefing_hint(conn, user_id)   # commits its own small writes, so no transaction() block here
+        with conn.transaction():   # reads only
+            hint = backfill.briefing_hint(conn, user_id)
     except Exception:  # never let this spoil the briefing
-        conn.rollback()
         return {}
     return {"history_gap": hint} if hint else {}
 

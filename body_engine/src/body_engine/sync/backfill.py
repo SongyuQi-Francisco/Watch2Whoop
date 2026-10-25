@@ -199,23 +199,32 @@ def _set(conn: psycopg.Connection, user_id: int, **fields) -> None:
     conn.commit()
 
 
-def evaluate(conn: psycopg.Connection, user_id: int, now: datetime | None = None) -> dict:
-    """The whole answer for one user. Creates the row on first sight of watch data and records completion / exhaustion
-    (idempotent writes); nothing else changes."""
+def evaluate(conn: psycopg.Connection, user_id: int, now: datetime | None = None, persist: bool = True) -> dict:
+    """The whole answer for one user. persist: create the row on first sight of watch data and record completion /
+    exhaustion (idempotent writes, commits); False reads only (inside a caller's transaction: the AI briefing) and works out
+    the same state in memory."""
     from ..profile import consent
     now = now or _now()
     tz = _tz(conn, user_id)
     today = now.astimezone(tz).date()
     cov = coverage(conn, user_id, today)
-    row = _ensure(conn, user_id, now) if cov["days"] > 0 else _row(conn, user_id)
     target = P.BACKFILL_TARGET_DAYS
+    row = _row(conn, user_id)
+    if persist and cov["days"] > 0:
+        row = _ensure(conn, user_id, now)
+    elif row is None and cov["days"] > 0:
+        first = _first_sync(conn, user_id)
+        row = {"anchor_at": min(first, now) if first else now, "last_shown_at": None, "shown_count": 0, "muted_at": None,
+               "completed_at": None, "exhausted_at": None, "backfill_requested_at": None}
     if row is not None and cov["days"] >= target and row["completed_at"] is None:
-        _set(conn, user_id, completed_at=now)
-        row = _row(conn, user_id)
+        row = {**row, "completed_at": now}
+        if persist:
+            _set(conn, user_id, completed_at=now)
     if row is not None and cov["days"] < target and row["exhausted_at"] is None and row["completed_at"] is None \
             and _whole_history_done(conn, user_id):
-        _set(conn, user_id, exhausted_at=now)
-        row = _row(conn, user_id)
+        row = {**row, "exhausted_at": now}
+        if persist:
+            _set(conn, user_id, exhausted_at=now)
     prog = progress(conn, user_id, row, now)
     imp = impact(cov)
     last_shown = row["last_shown_at"].astimezone(tz).date() if row and row["last_shown_at"] else None
@@ -291,7 +300,7 @@ def allows_resync(conn: psycopg.Connection, user_id: int, now: datetime | None =
 def briefing_hint(conn: psycopg.Connection, user_id: int) -> dict | None:
     """A few words for get_briefing: the history is short and the person has not stopped the reminders. None = nothing to say
     (enough history, muted, nothing to top up, no consent)."""
-    ev = evaluate(conn, user_id)
+    ev = evaluate(conn, user_id, persist=False)   # called inside the tool's transaction: reads only
     if ev["remind"]["state"] in ("complete", "none", "exhausted", "muted", "consent"):
         return None
     out = {"days": ev["days"], "of": ev["target_days"]}
