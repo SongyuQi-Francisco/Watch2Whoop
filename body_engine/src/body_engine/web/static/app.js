@@ -924,14 +924,20 @@
 
   function recoverySheet(sc) {
     const t = sc.today || {}, r = sc.today_reasons, last = sc.last_recovery;
+    const em = t.recovery == null ? sc.recovery_empty : null;
+    const emBtn = em?.action && em.cta && isSelf() ? `<div class="btns"><button class="btn btn-primary" id="rec-next">${esc(em.cta)}</button></div>` : "";
     openSheet(tr("恢复"), t.recovery == null ? `${recoveryScale(last?.recovery)}
-      ${kv(tr("恢复分"), null, r.recovery)}
+      ${em ? kv(tr("恢复分"), esc(em.label)) : kv(tr("恢复分"), null, r.recovery)}
       ${last ? kv(tr("上次"), `${last.recovery} ${badge(ZONE[last.zone], ZONE_LABEL[last.zone])} · ${shortDay(last.date)}`) : ""}
-      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${xpBox}` : `${recoveryScale(t.recovery)}
+      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${emBtn}${xpBox}` : `${recoveryScale(t.recovery)}
       ${kv(tr("恢复分"), `${t.recovery} ${badge(ZONE[sc.recovery_zone], ZONE_LABEL[sc.recovery_zone])}`)}
       ${xkv("HRV", t.hrv_night_ms != null ? `${fmtNum(t.hrv_night_ms)} <small class="muted">ms</small>` : null, r.hrv_night_ms, "hrv")}
       ${xkv(tr("静息心率"), t.rhr_night != null ? `${fmtNum(t.rhr_night)} <small class="muted">bpm</small>` : null, r.rhr_night, "resting_hr")}
-      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => explainInto(root, "metric", "recovery", false));
+      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => {
+      const next = $("#rec-next", root);
+      if (next) next.onclick = () => { closeSheet(); recoveryNext(em.action); };
+      explainInto(root, "metric", "recovery", false);
+    });
   }
 
   function sleepSheet(sc) {
@@ -970,14 +976,33 @@
       ${sc.load_missing_days ? tags([badge("mid", tr("缺 {n} 天", { n: sc.load_missing_days }))]) : ""}`);
   }
 
+  // The next step under an empty recovery ring (empty.action from web/recovery_empty.py): the consent form, the app's sync page
+  // (a browser: the data status list), or the sleep data status with the steps to switch on sleep tracking on the watch.
+  // Only for yourself: the person you look at is the one who can fix it.
+  function recoveryNext(action) {
+    if (action === "consent") { window.BodyProfile?.consent?.(false); return; }
+    const ds = PLUGINS().find((p) => p.openDataStatus);
+    if (action === "sleep_help") ds?.openDataStatusType?.("sleep", { watchSleep: true });
+    else ds?.openDataStatus?.();   // "sync" outside the app
+  }
+  function recoveryNextHtml(empty) {
+    if (!empty.action || !empty.cta || !isSelf()) return "";
+    if (empty.action === "sync" && IN_APP)
+      return `<div class="chip-row"><a class="chip" data-feature="recovery_next" href="${syncCenterOn() ? "watch2whoop://sync-center" : "watch2whoop://sync"}">${esc(empty.cta)}</a></div>`;
+    return `<div class="chip-row"><button class="chip" data-feature="recovery_next" ${sheetAttr(() => recoveryNext(empty.action))}>${esc(empty.cta)}</button></div>`;
+  }
+
   function scoresHtml(sc) {
     if (sc.error) return `<div class="hero">${ring(null)}<div class="hero-word muted">${esc(short(sc.error))}</div></div>`;
     const t = sc.today || {}, y = sc.yesterday || {};
-    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>` : "";
+    const empty = t.recovery == null ? sc.recovery_empty : null;   // why the ring is empty (web/recovery_empty.py)
+    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>`
+      : empty ? `<div class="hero-word muted" data-empty="${esc(empty.code)}">${esc(empty.label)}</div>` : "";
     const sub = t.recovery == null && sc.last_recovery ? `<div class="hero-sub">${tr("上次")} ${sc.last_recovery.recovery} · ${shortDay(sc.last_recovery.date)}</div>` : "";
     const tile = (label, value, fn, card) => `<button class="tile" data-card="${card}" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
     return `<button class="hero" data-card="recovery" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
+      ${empty ? recoveryNextHtml(empty) : ""}
       <div class="tiles">
         ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)), "sleep")}
         ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc), "sleep_score")}
