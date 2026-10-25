@@ -24,6 +24,7 @@ import '../account_api.dart' show AccountApiException;
 import '../account_flow.dart';
 import '../android_bridge.dart';
 import '../app_state.dart';
+import '../apple_bridge.dart';
 import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
@@ -688,6 +689,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         await _web.runJavaScript(kSyncLinkFeaturesJs); // the page's 一键开启 / 立即上传 / 去设置 / 去授权 (doc §3, §5)
         _resendProgress();
       }
+      // Sign in with / bind Apple from the page's own screens (apple_bridge.dart)
+      if (await appleAvailable()) await _web.runJavaScript(kAppleFeaturesJs);
       await _announceNet();
     } catch (e) {
       debugPrint('features call failed: $e');
@@ -789,6 +792,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       openAppSettings();
       return;
     }
+    if (message == kAppleSignInMessage && !_onShell) {
+      _appleSignIn();
+      return;
+    }
+    if (message == kAppleLinkMessage && !_onShell) {
+      _appleLink();
+      return;
+    }
     if (message == 'sync' || message == 'settings') _openSync();
     if (message == kMicSettingsMessage) openAppSettings(); // microphone declined: this app's page in iOS Settings
     // Push (#175): the page asks on the first Friends visit / in its notification settings; it also reports the unread count
@@ -835,6 +846,59 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _webLoginTried = true;
     final entry = await freshWebLoginEntry();
     if (entry != null && mounted) await _web.loadRequest(withLangFragment(entry));
+  }
+
+  bool _appleBusy = false;
+
+  /// The page's 「通过 Apple 登录」: native sheet -> /v1/auth/apple -> session in the Keychain -> page logged in with a
+  /// fresh one-time code (apple_bridge.dart). Cancelling does nothing; errors show as a short message.
+  Future<void> _appleSignIn() async {
+    if (_appleBusy) return;
+    _appleBusy = true;
+    try {
+      final c = await appleCredential();
+      if (c == null) return;
+      final server = AppState.instance.config.todayUrl;
+      final s = await accountApiFor(server).signInWithApple(
+          identityToken: c.identityToken,
+          rawNonce: c.rawNonce,
+          device: deviceLabel,
+          givenName: c.givenName,
+          familyName: c.familyName);
+      await saveSession(s, server);
+      _webLoginTried = false;
+      await _load();
+    } on AccountApiException catch (e) {
+      _snack(switch (e.code) {
+        'invalid' => tr('Apple 登录验证没通过，请再试一次', 'The Apple sign-in could not be verified — try again'),
+        'unavailable' => tr('这个服务器没有开通「通过 Apple 登录」，请用邮箱登录', 'This server has no Sign in with Apple — use e-mail'),
+        _ => accountError(e),
+      });
+    } catch (e) {
+      _snack(tr('通过 Apple 登录没有成功', 'Sign in with Apple did not work'));
+      debugPrint('apple sign-in failed: $e');
+    } finally {
+      _appleBusy = false;
+    }
+  }
+
+  /// The page's 「绑定 Apple 登录」: native sheet, then the page binds the token with its own session.
+  Future<void> _appleLink() async {
+    if (_appleBusy) return;
+    _appleBusy = true;
+    AppleCredential? c;
+    try {
+      c = await appleCredential(name: false);
+    } catch (e) {
+      debugPrint('apple link failed: $e');
+    } finally {
+      _appleBusy = false;
+    }
+    await _web.runJavaScript(appleResultJs(c)).catchError((_) {});
+  }
+
+  void _snack(String text) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> _onAccountDeleted() => signOutToOnboarding(revoke: false);

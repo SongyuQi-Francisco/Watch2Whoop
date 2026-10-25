@@ -70,6 +70,13 @@ shared `## <marketing version>` section, and the iOS release never sees it.
   gets 401 it continues with the Today page's upload-only token; the status request has its own 10-second timeout and is
   asked once per pass (a dead network ends the pass as `offline` instead of waiting 60 s per type); uploads time out
   after 45 s; sync-on-open is released before the app's own uploads run.
+- Sign in with Apple from the Today page (#295 A7, `lib/src/apple_bridge.dart`): the app declares
+  `Watch2WhoopFeatures.appleSignIn` / `appleLink`, so the page's own 「通过 Apple 登录」 (login screen) and
+  「绑定 Apple 登录」 (Me → 登录方式) work inside the app with the native sheet. `test/page_features_test.dart` checks that
+  every `Watch2WhoopFeatures.*` the page reads is declared by the app.
+- Dependencies (#295 A4 / A5): `wakelock_plus` 1.8.2, `webview_flutter_wkwebview` 3.27.2. `ios/Podfile.lock` was already
+  what `pod install` gives for `pubspec.lock` (plugin pods carry their podspec's version, e.g. the OW plugin 0.0.25 says
+  0.0.24); a new non-required CI job "iOS Podfile.lock" keeps it so. `.github/dependabot.yml` for pub and GitHub Actions.
 - Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
   Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
 
