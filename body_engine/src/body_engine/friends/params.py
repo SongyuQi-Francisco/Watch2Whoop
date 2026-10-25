@@ -30,6 +30,15 @@ NAME_MAX = 40
 # Private nickname for a circle member (#212, friends/remarks.py): at most this many characters after trimming; empty clears it
 REMARK_MAX = 20
 
+# 「Not synced」 on a member card (friends/cards.py): data has not reached the server for this long. The same 36 h as the
+# Phone sync health check (sync/params.SYNC_BROKEN_AFTER): an iPhone records every day, so less than that is not a quiet day.
+# A shorter gap shows when data last arrived ("2 h ago"); while today's scores are still being computed the card says so
+# instead of "not synced". The time is coarse on purpose: to the minute, and "just now" for anything under JUST_NOW_MIN
+# minutes (the seconds, and the minute within that window, are not shown to friends).
+from ..sync import params as _sync_params
+SYNC_STALE_AFTER = _sync_params.SYNC_BROKEN_AFTER
+JUST_NOW_MIN = 2
+
 # Wrong invite codes per client IP before a pause (same sliding window idea as web/login_limit.py)
 JOIN_MAX_FAILURES = 10
 JOIN_WINDOW_SECONDS = 900
