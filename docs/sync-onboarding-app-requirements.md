@@ -120,8 +120,8 @@ window.BodySyncStatus && window.BodySyncStatus.onApp({phase: "uploading", percen
 |---|---|---|---|
 | `consent` | 没确认同意书 | 需要先确认同意书 | 去确认 |
 | `not_connected` | 从没通过任何同步收到过数据 | 还没开启数据同步 | 一键开启 |
-| `credentials` | `sync/broken.py` 判定断开，或 app 报 `last_error=auth` 且已落后 | 同步连接失效 | 重新连接 |
-| `server` | 服务器 6 小时没连上 OW | 服务器同步延迟 | 立即重试 |
+| `credentials` | `sync/broken.py` 判定断开，或 app 报 `last_error=auth` 且已落后，或 app 直传被拒（`auth`，见第 8 节） | 同步连接失效 | 重新连接 |
+| `server` | 服务器 6 小时没连上 OW，或 app 直传被服务器错误拒收 | 服务器同步延迟 | 立即重试 |
 | `app_closed` | 数据停了且 48 小时没打开 app（只在 app 外判断） | 太久没打开 app | 打开 app |
 | `background_off` | app 报后台刷新 `denied` / `restricted`（数据还新也提示） | 后台刷新被关 | 去设置、立即上传 |
 | `low_power` | 落后 6 小时以上且 app 报低电量模式 | 低电量模式暂停了同步 | 立即上传 |
@@ -140,7 +140,9 @@ app 自己的同步页如果也显示原因，请用同样的 code 和文案（`
 ## 8. 和 #219 自建同步引擎的关系
 
 - 第 3、5 节的 `sync-connect` / `sync-now` 不绑定 OW：切到自建引擎后 app 内部换实现，链接和 `onApp` 进度格式不变。
-- 服务端 `overview._engine()` 是扩展点：引擎进入 `app` 模式后跳过 OW 的断开判断，以 app 直传为准；引擎的状态接口出来后在这里接上。
+- 服务端 `overview._engine()` 已接上 #304 的同步状态（`rawdata/sync_status.collect`，即 `GET /v1/users/me/sync/engine/status`）：
+  app 直传被拒且之后没有成功上传时，`auth` → 「同步连接失效」（引擎 `app` 模式立刻，其他模式落后 6 小时后），`server` → 「服务器同步延迟」；
+  引擎进入 `app` 模式后跳过 OW 的断开判断，以 app 直传为准。overview 的 `engine_status` 带模式、最近一次被拒（只有代码和时间）和出分流水线。
 
 ## 9. 发版检查清单
 

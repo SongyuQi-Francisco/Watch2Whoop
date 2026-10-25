@@ -200,6 +200,28 @@ def test_background_off_shows_while_fresh_and_old_reports_are_ignored(conn):
     assert o["state"] == "ok" and o["device"] is None
 
 
+def test_refused_app_uploads(conn):
+    """The own sync engine's refused uploads (#304, rawdata/sync_status.py): auth once behind, server at once, until an
+    upload goes through again."""
+    from body_engine.rawdata import sync_status as rx_status
+    uid = user(conn, last=8 * H)
+    data(conn, uid)
+    rx_status.record_failure(conn, uid, 401, "token_revoked")
+    o = ov(conn, uid, in_app=True)
+    assert code(o) == "credentials" and o["engine_status"]["failure"]["code"] == "token_revoked"
+    uid2 = user(conn, last=10 * timedelta(minutes=1))
+    data(conn, uid2)
+    rx_status.record_failure(conn, uid2, 401, "token_revoked")
+    assert ov(conn, uid2, in_app=True)["state"] == "ok"   # fresh data: not yet
+    rx_status.record_failure(conn, uid2, 500, "OperationalError")
+    assert code(ov(conn, uid2, in_app=True)) == "server"
+    conn.execute("INSERT INTO rawdata_uploads (user_id, batch_id, received_at) VALUES (%s, %s, now() + interval '1 second')",
+                 (uid2, uuid.uuid4()))
+    conn.commit()
+    o = ov(conn, uid2, in_app=True)
+    assert o["state"] == "ok" and o["engine_status"]["failure"] is None and o["engine_status"]["mode"] == "ow"
+
+
 def test_only_sleep_missing(conn):
     uid = user(conn, last=30 * timedelta(minutes=1))
     data(conn, uid, skip=("sleep",))

@@ -27,7 +27,16 @@ from .account import open_signup_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
-                 "evaluate-rules", "refresh-status", "sync-shadow-day"}
+                 "evaluate-rules", "refresh-status", "sync-shadow-day", "ow-archive"}
+
+
+def _ow_or_none():
+    """An OW client, or None where OW is not configured (the app mode's readers do not need it)."""
+    from .ow_client import OWError
+    try:
+        return OWClient()
+    except OWError:
+        return None
 
 
 def _export_date(processed_dir: Path) -> date:
@@ -313,6 +322,31 @@ def main() -> None:
     sd.add_argument("--end", type=date.fromisoformat, default=None, help="last day, default --date (at most 31 days)")
     sd.add_argument("--json", action="store_true")
     sd.add_argument("--out", type=Path, help="write the report here instead of stdout")
+    sc = sub.add_parser("sync-shadow-compare", help="app sync engine (#219 S4): judge Open Wearables vs the app's own sync engine "
+                                                    "item by item for the last closed days (sync_shadow_diffs) and refresh each "
+                                                    "user's summary / cut-over readiness; nightly after import-ow, idempotent")
+    sc.add_argument("--user-id", type=int, default=None)
+    sc.add_argument("--start", type=date.fromisoformat, default=None)
+    sc.add_argument("--end", type=date.fromisoformat, default=None, help="default: the newest closed day")
+    sc.add_argument("--no-scores", action="store_true", help="skip the score recompute (faster; inputs only)")
+    sp = sub.add_parser("sync-shadow-report", help="app sync engine: the shadow comparison as Chinese Markdown (personal data: "
+                                                   "the terminal / health_data/reports/ only, never git)")
+    sp.add_argument("--user-id", type=int, default=None)
+    sp.add_argument("--since", type=date.fromisoformat, default=None)
+    sp.add_argument("--out", type=Path, help="write the report here instead of stdout")
+    sp.add_argument("--summary", action="store_true", help="one JSON line per user, counts only (doctor)")
+    sm = sub.add_parser("sync-mode", help="app sync engine (#219 S5): per-user cut-over to the app's own sync engine and back. "
+                                          "status / switch / rollback / unpin / apply (hourly, reconciles everyone) / verify")
+    sm.add_argument("action", choices=("status", "switch", "rollback", "unpin", "apply", "verify"))
+    sm.add_argument("--user-id", type=int, default=None)
+    sm.add_argument("--force", action="store_true", help="switch: skip the shadow and score gates (not the app version)")
+    sm.add_argument("--dry-run", action="store_true", help="switch: only check the gates")
+    sm.add_argument("--no-scores", action="store_true", help="switch / apply: skip the score consistency gate")
+    oa = sub.add_parser("ow-archive", help="app sync engine (#219 S6): keep this user's Open Wearables history locally (raw "
+                                           "samples in the local copy, sleep stages) so the app mode never asks OW again; "
+                                           "idempotent, resumable; --check only reports whether the archive is complete")
+    oa.add_argument("--user-id", type=int, required=True)
+    oa.add_argument("--check", action="store_true")
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -792,6 +826,39 @@ def main() -> None:
                 print("written:", args.out)
             else:
                 print(text)
+        elif args.cmd == "sync-shadow-compare":
+            from .rawdata import shadow
+            print(json.dumps(shadow.run(conn, args.user_id, _ow_or_none(), not args.no_scores, args.start, args.end),
+                             default=str, ensure_ascii=False))
+        elif args.cmd == "sync-shadow-report":
+            from .rawdata import shadow
+            if args.summary:
+                print(json.dumps(shadow.doctor_lines(conn), default=str))
+                return
+            text = shadow.markdown(conn, [args.user_id] if args.user_id else shadow.users(conn), args.since)
+            if args.out:
+                args.out.parent.mkdir(parents=True, exist_ok=True)
+                args.out.write_text(text, encoding="utf-8")
+                print("written:", args.out)
+            else:
+                print(text)
+        elif args.cmd == "sync-mode":
+            from .rawdata import cutover
+            if args.action not in ("apply",) and args.user_id is None:
+                raise SystemExit("--user-id is required")
+            client = _ow_or_none()
+            res = {"status": lambda: cutover.status(conn, args.user_id),
+                   "switch": lambda: cutover.switch(conn, args.user_id, client, args.force, args.dry_run,
+                                                    not args.no_scores, actor="cli"),
+                   "rollback": lambda: cutover.rollback(conn, args.user_id, client, actor="cli"),
+                   "unpin": lambda: cutover.unpin(conn, args.user_id),
+                   "apply": lambda: cutover.apply(conn, args.user_id, client, not args.no_scores),
+                   "verify": lambda: cutover.post_check(conn, args.user_id)}[args.action]()
+            print(json.dumps(res, default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "ow-archive":
+            from .rawdata import ow_archive
+            res = ow_archive.check(conn, args.user_id) if args.check else ow_archive.archive(conn, OWClient(), args.user_id)
+            print(json.dumps(res, default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
             # OW raw samples through the local copy (importers/ow_cache.py); a full recompute re-reads and replaces it

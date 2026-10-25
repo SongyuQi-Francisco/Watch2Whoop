@@ -487,9 +487,11 @@ def night_stages(conn, owner_id: int, tz: ZoneInfo, start: datetime, end: dateti
     """The stage timeline of one night: OW first, then the Shortcut samples, then the imported Apple Health history; in
     the sync mode `app` the app's own sync engine before all of them (rawdata/samples.py).
     Returns (stages, source, reason when there are none)."""
-    from ..rawdata import samples as rx_samples
+    from ..rawdata import ow_archive as rx_archive, samples as rx_samples
     problems = []
-    fetchers = [("ow", lambda: ow_segments(conn, owner_id, tz, start, end)),
+    archived = rx_archive.reads_archive(conn, owner_id)   # app mode, OW's history archived (step S6): OW is not asked
+    fetchers = [("ow", lambda: rx_archive.sleep_segments(conn, owner_id, start, end) if archived
+                 else ow_segments(conn, owner_id, tz, start, end)),
                 ("shortcut", lambda: shortcut_segments(conn, owner_id, start, end)),
                 ("export", lambda: export_segments(conn, owner_id, start, end))]
     if rx_samples.reads_app(conn, owner_id):

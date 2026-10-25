@@ -347,6 +347,31 @@ stored and the app's nights computed from the stage samples, both workout copies
 `apple_sync_engine` is off for the user). Tests: `tests/test_apple_sync_read.py` (an app-mode user without any OW
 client reads what the OW-only user reads from OW; shadow / OW users never read the engine).
 
+**Sync engine, steps S4–S6 and the sync status** (migration 800; design §4–5, the app's side
+`docs/apple-sync-engine-app-contract.md`; thresholds and gates with their sources in `rawdata/params.py`):
+- S4 shadow comparison (`rawdata/shadow.py`): `uv run body-engine sync-shadow-compare [--user-id N] [--start D --end D]
+  [--no-scores]` (nightly job, after import-ow) judges every closed day of every engine user item by item — daily values,
+  the main night, workouts and (without `--no-scores`) recovery / sleep score / strain recomputed without writing as the
+  app mode would — into `sync_shadow_diffs` (verdict ok / explained + reason / mismatch / missing_app / new) and a
+  counts-only `sync_shadow_summary` (clean streak, coverage, ready + blockers). `sync-shadow-report [--user-id N]
+  [--since D] [--out file]` (Chinese Markdown with health values; `--summary`: counts only, read by doctor);
+  `GET /v1/users/{user}/sync/engine/shadow?date=&end=&all=` (own data, 404 while the engine is off).
+- S5 cut-over (`rawdata/cutover.py`, flag `apple_sync_primary` = kill switch, default off): `uv run body-engine sync-mode
+  status|switch|rollback|unpin|verify --user-id N` and `sync-mode apply` (hourly job). `switch` checks the gates (app ≥
+  1.0.8 uploading engine batches, shadow ready, score consistency over 14 days; `--force` skips the last two, `--dry-run`
+  only checks), snapshots the scores, sets `sync_mode_state.mode = app`, shows the app's workouts, re-derives 90 days in
+  the app mode and queues the recompute; `rollback` pins the user to OW at once and undoes the derived data (OW's nights
+  imported again). `rawdata/engine.mode` = app only while the state says app, the flag is on and there is no pin. In the
+  app mode an engine upload queues the recompute itself and `POST /sync/refresh` imports nothing from OW.
+- S6 history (`rawdata/ow_archive.py`): `uv run body-engine ow-archive --user-id N [--check]` keeps OW's history locally
+  (the raw-sample copy `ow_sample_cache` made complete over the scoring range, sleep stages in `ow_archive_segments`); an
+  archived app-mode user's scores, stress, workout heart rate and stage chart never ask OW.
+- Status panel (`rawdata/sync_status.py`): refused uploads are recorded by reason (`ingest_failures`: auth / format /
+  refused / limit / server, codes only, repeats folded); `GET /v1/users/{user}/sync/engine/status` (Today page) and
+  `GET /v1/ingest/sync-status` (Bearer, the app) return the last upload, the newest sample per type, failures, the
+  derive → scores pipeline and the app's last sync round. Engine batches get a light `status` (no counts).
+Tests: `tests/test_apple_sync_cutover.py`.
+
 **Forced re-sync** (flag `sync_center`, `sync/resync.py`): `POST /v1/ingest/resync {days: 1–3650 | null}` (Bearer like
 above) starts one job per user (`busy` while one runs, `throttled` within 10 minutes of the last one, 6 hours before an
 all-history one); the app re-reads Health from the range start and reports `PUT /v1/ingest/resync {phone_percent, counts,

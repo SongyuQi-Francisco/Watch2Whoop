@@ -6,7 +6,8 @@
   cursor; a few seconds) under a per-user advisory lock, then queues the score recompute.
   With BODY_SYNC_IMPORT=queue (servers that run the per-minute `sync-refresh-run`, e.g. a one-off job container) the API
   process does not import at all: the row is queued with import_queued_at, as the poller does (sync/ow_watch.py), and
-  the job imports and recomputes. An import holds a window of raw samples in memory (a new user's first 30-day window is
+  the job imports and recomputes. In the sync mode `app` (rawdata/engine.mode, the app's own sync engine feeds the
+  scores) nothing is imported from OW either: the request only queues the recompute (run_scores derives first). An import holds a window of raw samples in memory (a new user's first 30-day window is
   tens of MB), which together with other work pushed the API container over its memory limit.
 - The recompute (`compute-scores` for the last SCORE_DAYS days + insights, then the rules) takes about 1–2 minutes of CPU
   and loads a year of data, too heavy for the API container: `body-engine sync-refresh-run` does it for every queued user
@@ -70,9 +71,11 @@ def _set(conn, user_id: int, **fields) -> None:
 def request(conn: psycopg.Connection, user_id: int, start_thread=None) -> dict:
     """Accept a refresh (or say why not). Returns status() plus accepted / throttled / retry_after / reason."""
     from ..profile import consent
+    from ..rawdata import engine as rx_engine
     if consent.gate(conn, user_id):
         return {**status(conn, user_id), "accepted": False, "reason": "consent"}
-    if not status(conn, user_id)["linked"]:
+    app = rx_engine.mode(conn, user_id) == "app"   # the app's own sync engine feeds the scores: nothing to import from OW
+    if not app and not status(conn, user_id)["linked"]:
         return {**status(conn, user_id), "accepted": False, "reason": "not_linked"}
     now = _now()
     conn.execute("INSERT INTO sync_refresh (user_id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
@@ -86,10 +89,11 @@ def request(conn: psycopg.Connection, user_id: int, start_thread=None) -> dict:
     if busy:
         conn.commit()
         return {**status(conn, user_id), "accepted": False, "reason": "busy"}
-    if IMPORT_QUEUED and start_thread is None:   # the per-minute sync-refresh-run imports (import_queued) and recomputes
-        conn.execute("""UPDATE sync_refresh SET status = 'scores_queued', requested_at = %s, import_queued_at = now(),
+    if app or (IMPORT_QUEUED and start_thread is None):   # the per-minute sync-refresh-run imports and recomputes
+        conn.execute("""UPDATE sync_refresh SET status = 'scores_queued', requested_at = %s,
+                               import_queued_at = CASE WHEN %s THEN import_queued_at ELSE now() END,
                                scores_queued_at = now(), error = NULL, updated_at = now() WHERE user_id = %s""",
-                     (now, user_id))
+                     (now, app, user_id))
         conn.commit()
         return {**status(conn, user_id), "accepted": True}
     _set(conn, user_id, status="importing", requested_at=now, error=None)
@@ -256,7 +260,11 @@ def _score(conn, user_id: int, client=None, scores_from=None) -> dict:
     from ..ow_client import OWClient
     from ..rules import engine as rules_engine
     from ..scores import engine as scores_engine
-    client = client or OWClient()
+    from ..ow_client import OWError
+    try:
+        client = client or OWClient()
+    except OWError:   # no OW configured (after it was retired): the app mode's readers do not need it
+        client = None
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     start = datetime.now(tz).date() - timedelta(days=SCORE_DAYS)
     if scores_from is not None:

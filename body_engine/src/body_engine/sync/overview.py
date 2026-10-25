@@ -14,9 +14,11 @@ It combines what the server already knows, read only:
 `issue` is the first match of (codes in ISSUES; `actions` are the buttons, the page has a branch for each one, ACTIONS):
   consent         the consent form is not confirmed: nothing is processed
   not_connected   nothing ever arrived through a sync (skipped the setup, or the first sync never ran)
-  credentials     the phone's OW credentials went bad (broken.py "broken"; given_up when nothing else arrives either), or
-                  the app reported an authentication error
-  server          the server has not reached OW lately (our side)
+  credentials     the phone's OW credentials went bad (broken.py "broken"; given_up when nothing else arrives either), the
+                  app reported an authentication error, or the server refused the app's own uploads with auth since its
+                  last good one (rawdata/sync_status.py; in the engine's app mode at once, otherwise once behind)
+  server          the server has not reached OW lately, or refused the app's uploads with a server error since the last
+                  good one (our side)
   app_closed      data stopped and the app was not opened for a while (only outside the app: inside it the app is open)
   background_off  the app reported Background App Refresh off for it (shown even while the data is fresh: it will stop)
   low_power       behind and the app reported Low Power Mode
@@ -24,8 +26,10 @@ It combines what the server already knows, read only:
   lagging         behind (SYNC_LAG_AFTER) without a phone report
   type_missing    heart rate arrives but one of OVERVIEW_PARTIAL does not (the Health permission of that type is off;
                   for sleep also: sleep tracking off on the watch)
-`state`: consent / off / syncing / ok / issue. The sync engine of #219 plugs in at _engine(): today every user is on the
-Open Wearables path; in the engine's app mode the OW checks are skipped and its uploads are the phone's channel.
+`state`: consent / off / syncing / ok / issue. The own sync engine (#219) comes in through rawdata/sync_status.collect()
+(GET /v1/users/me/sync/engine/status, the same data): its mode, the refused uploads and the derive -> scores pipeline
+(`engine_status` in the answer, codes and times only). In its app mode the OW checks are skipped and the engine's uploads
+are the phone's channel.
 """
 from __future__ import annotations
 
@@ -72,15 +76,15 @@ def _issue(code: str, actions: list[str], types: list[dict] | None = None) -> di
     return out
 
 
-def _engine(conn: psycopg.Connection, user_id: int) -> str:
-    """Which path feeds this user's scores: ow / shadow (OW, the engine uploads alongside) / app (the engine). #219 S5 makes
-    rawdata.engine.mode() return app; the engine's own status (per type, per batch) can be added to the answer here."""
-    from ..rawdata import engine as rx_engine
+def _engine(conn: psycopg.Connection, user_id: int) -> dict:
+    """The own sync engine's status (rawdata/sync_status.collect: mode ow / shadow / app, refused uploads, pipeline).
+    A failure (an old database without its tables) reads as the plain OW path."""
+    from ..rawdata import sync_status as rx_status
     try:
-        return rx_engine.mode(conn, user_id)
-    except Exception:  # noqa: BLE001  an unknown flag on an old database: the OW path
+        return rx_status.collect(conn, user_id)
+    except Exception:  # noqa: BLE001
         conn.rollback()
-        return "ow"
+        return {"mode": "ow", "failures": {"recovered": True, "last": None}, "pipeline": {}}
 
 
 def _channels(conn: psycopg.Connection, user_id: int) -> dict:
@@ -159,7 +163,12 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
     tz_name = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"]
     tz = ZoneInfo(tz_name)
     today = now.astimezone(tz).date()
-    engine = _engine(conn, user_id)
+    eng = _engine(conn, user_id)
+    engine = eng.get("mode") or "ow"
+    fails = eng.get("failures") or {}
+    fail = fails.get("last") if not fails.get("recovered", True) else None
+    if fail and not (fails.get("counts_24h") or {}).get(fail["reason"]):
+        fail = None   # an old refusal with no upload since: the other checks (behind, not seen) say more
     link = broken.check(conn, user_id, now, visiting=in_app)
     ch = _channels(conn, user_id)
     ow_last = link["last_data_at"] if engine != "app" else None
@@ -178,9 +187,10 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
     elif last is None:
         issue = _issue("not_connected", ["connect"])
     elif (engine != "app" and (link["reason"] == "broken" or (link["reason"] == "given_up" and behind))) \
-            or (dev and dev.get("last_error") == "auth" and behind):
+            or (dev and dev.get("last_error") == "auth" and behind) \
+            or (fail and fail["reason"] == "auth" and (behind or engine == "app")):
         issue = _issue("credentials", ["reconnect"])
-    elif engine != "app" and link["reason"] == "server_stale":
+    elif (engine != "app" and link["reason"] == "server_stale") or (fail and fail["reason"] == "server"):
         issue = _issue("server", ["retry"])
     elif behind and link["reason"] == "not_seen" and not in_app:
         issue = _issue("app_closed", ["open_app"])
@@ -221,5 +231,8 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
         "refresh": {"busy": ref["busy"], "status": ref["status"], "scored_at": _iso(ref["scored_at"], tz),
                     "linked": ref["linked"], "error": bool(ref["error"]) and ref["status"] == "error"},
         "history": {"active": hist["active"], "percent": hist["percent"]},
+        "engine_status": {"mode": engine, "failure": fail and {k: fail.get(k) for k in ("reason", "code", "at", "n")},
+                          "pending_days": (eng.get("pipeline") or {}).get("pending_days"),
+                          "up_to_date": (eng.get("pipeline") or {}).get("up_to_date")},
         "device": {k: (_iso(v, tz) if isinstance(v, datetime) else v) for k, v in dev.items()} if dev else None,
     }
