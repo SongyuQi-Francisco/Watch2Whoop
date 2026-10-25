@@ -525,16 +525,17 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
       "description": "true=带依据数据 evidence（大）"
      }
-    },
-    "required": [
-     "include_dismissed"
-    ]
+    }
    },
    "annotations": {
     "readOnlyHint": true,
@@ -2393,16 +2394,17 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
       "description": "true=带依据数据 evidence（大）"
      }
-    },
-    "required": [
-     "include_dismissed"
-    ]
+    }
    },
    "annotations": {
     "readOnlyHint": true,
@@ -3277,16 +3279,17 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
       "description": "true=带依据数据 evidence（大）"
      }
-    },
-    "required": [
-     "include_dismissed"
-    ]
+    }
    },
    "annotations": {
     "readOnlyHint": true,
@@ -5145,16 +5148,17 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
       "description": "true=带依据数据 evidence（大）"
      }
-    },
-    "required": [
-     "include_dismissed"
-    ]
+    }
    },
    "annotations": {
     "readOnlyHint": true,
