@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-i18n-title="app.title">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
@@ -122,8 +122,13 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<!-- Scripts the first screen does not need are declared type="w2w/lazy": the browser neither fetches nor runs them. The server adds
+     ?v=<fingerprint> like for the others (web/api.py page_html), app.js (lazyScript) loads one the first time it is needed, and the offline
+     copy of the page (offline_shell_html) turns them into ordinary inline scripts. i18n-en.js is loaded by lang-gate.js only when the
+     page is English. -->
 <script src="i18n.js" defer></script>
-<script src="i18n-en.js" defer></script>
+<script type="w2w/lazy" data-lang="en" src="i18n-en.js"></script>
+<script data-w2w="gate" src="lang-gate.js"></script>
 <script src="ios-web.js" defer></script>
 <script src="avatars.js" defer></script>
 <script src="ai-media.js" defer></script>
@@ -139,11 +144,11 @@
 <script src="remarks.js" defer></script>
 <script src="circles.js" defer></script>
 <script src="circle-feed.js" defer></script>
-<script src="grocery.js" defer></script>
-<script src="diet-profile.js" defer></script>
-<script src="water.js" defer></script>
+<script type="w2w/lazy" src="grocery.js"></script>
+<script type="w2w/lazy" src="diet-profile.js"></script>
+<script type="w2w/lazy" src="water.js"></script>
 <script src="muscle-map.js" defer></script>
-<script src="muscle-body-data.js" defer></script>
+<script type="w2w/lazy" src="muscle-body-data.js"></script>
 <script src="muscle-load.js" defer></script>
 <script src="custom-exercises.js" defer></script>
 <script src="journal.js" defer></script>
@@ -151,7 +156,7 @@
 <script src="training-day.js" defer></script>
 <script src="hevy-import.js" defer></script>
 <script src="sleep-detail.js" defer></script>
-<script src="intro.js" defer></script>
+<script type="w2w/lazy" src="intro.js"></script>
 <script src="sync.js" defer></script>
 <script src="sync-repair.js" defer></script>
 <script src="notices.js" defer></script>

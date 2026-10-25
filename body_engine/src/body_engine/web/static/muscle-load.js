@@ -67,7 +67,11 @@
     document.head.append(Object.assign(document.createElement("style"), { id: "mml-css", textContent: CSS }));
   }
 
-  const on = () => !!window.BodyFlags?.on("muscle_load") && !!window.BodyMuscleMap?.bodyHtml && !!window.BodyMuscleBodies;
+  const on = () => !!window.BodyFlags?.on("muscle_load") && !!window.BodyMuscleMap?.bodyHtml;
+  // The body drawings (muscle-body-data.js, 105 KB) are not part of the first screen: they load on first use (BodyLazy, app.js).
+  // ready() resolves true when window.BodyMuscleBodies is there; the page awaits it before it draws the Today card.
+  const ready = () => (window.BodyMuscleBodies ? Promise.resolve(true) : window.BodyLazy ? window.BodyLazy.script("muscle-body-data.js").then(() => !!window.BodyMuscleBodies) : Promise.resolve(false));
+  let lateN = 0;
   const STATUS = () => ({ none: tr("没练"), low: tr("偏少"), ok: tr("合适"), high: tr("偏多") });
   const RANGE_NAME = () => ({ today: tr("今天"), week: tr("本周"), last7: tr("近 7 天") });
   const badgeOf = (st) => `<span class="badge ${st === "ok" ? "good" : st === "high" ? "bad" : st === "low" ? "mid" : "plain"}">${esc(STATUS()[st])}</span>`;
@@ -105,7 +109,12 @@
   // ---------------------------------------------------------------- Jarvis card (and anything that has plain rows)
   function cardSvg(c) {
     css();
-    if (!window.BodyMuscleMap?.bodyHtml || !window.BodyMuscleBodies) return "";
+    if (!window.BodyMuscleMap?.bodyHtml) return "";
+    if (!window.BodyMuscleBodies) {   // a Jarvis card before the drawings are there: an empty box now, filled in when they have loaded
+      const id = `mml-late-${++lateN}`;
+      ready().then((ok) => { const el = ok && document.getElementById(id); if (el) el.innerHTML = cardSvg(c); });
+      return `<div id="${id}"></div>`;
+    }
     const rows = (c.muscles || []).map((m) => ({ ...m, today: m.today }));
     const low = rows.filter((m) => m.status === "none" || m.status === "low").map((m) => m.name);
     const rows2 = rows.map((m) => ({ ...m, sport: m.sport_min || 0 }));
@@ -156,7 +165,9 @@
     C = ctx; css();
     if (!on()) return;
     const box = $("#mml-box", el) || el;
+    const drawings = ready();   // fetched while the numbers are
     try { S.data = await C.api(`/v1/users/${C.owner}/training/muscle-load`); } catch (e) { box.innerHTML = ""; return; }
+    await drawings;
     draw(box);
   }
   function draw(box) {
@@ -213,7 +224,7 @@
   // ---------------------------------------------------------------- Today page card
   function card(data, ctx) {
     C = ctx || C; css();
-    if (!on() || !data?.muscles) return "";
+    if (!on() || !data?.muscles || !window.BodyMuscleBodies) return "";   // no drawings (could not be loaded): no card rather than an empty one
     const rows = rowsOf(data, "week"), sex = sexOf(data);
     const total = rows.reduce((a, r) => a + r.sets, 0);
     const trainedToday = data.muscles.filter((m) => m.trained_today).map((m) => m.name);
@@ -267,7 +278,7 @@
     });
   }
 
-  window.BodyMuscleLoad = { on, placeholder, mount, card, bindCard, cardSvg, openGoals, openMuscle, fillPrompt, setCtx: (c) => { C = c; } };
+  window.BodyMuscleLoad = { on, ready, placeholder, mount, card, bindCard, cardSvg, openGoals, openMuscle, fillPrompt, setCtx: (c) => { C = c; } };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     meGroup: "main",
     meItem: (chev) => (on() && C?.self ? `<button class="item" id="me-train-settings"><span class="row-title">${tr("训练设置")}</span>${chev || ""}</button>` : ""),

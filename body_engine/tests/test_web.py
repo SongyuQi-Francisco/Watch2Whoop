@@ -602,7 +602,7 @@ def test_static_files_fingerprinted_and_cached(client):
     r = client.get("/app/")
     assert r.status_code == 200 and r.headers["cache-control"] == "no-cache" and r.headers["etag"]
     linked = dict(re.findall(r'(?:src|href)="([\w.-]+\.(?:js|css))\?v=([0-9a-f]{12})"', r.text))
-    plain = re.findall(r'<script src="([\w.-]+\.js)"|<link rel="stylesheet" href="([\w.-]+\.css)"',
+    plain = re.findall(r'<script (?:type="w2w/lazy"(?: data-lang="\w+")? |data-w2w="gate" )?src="([\w.-]+\.js)"|<link rel="stylesheet" href="([\w.-]+\.css)"',
                        (web_api.STATIC / "index.html").read_text(encoding="utf-8"))
     assert len(linked) == len(plain) and "app.js" in linked and "app.css" in linked   # every script and stylesheet
     assert linked["app.js"] == web_api.fingerprint("app.js")
