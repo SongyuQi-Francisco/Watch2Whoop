@@ -1029,6 +1029,21 @@ I18N.addEn({
   "同步中…": "Syncing…",
   "已更新 {t}": "Updated {t}",
   "历史数据导入中 {p}%": "Importing history {p}%",
+  // sync-repair.js (phone sync stopped)
+  "手机同步已断开 · 点一下重新连接": "Phone sync stopped · Tap to reconnect",
+  "手机同步已断开": "Phone sync stopped",
+  "最后收到数据 {when}": "Last data received {when}",
+  "重新连接": "Reconnect",
+  "稍后": "Later",
+  "在 iPhone 的 Watch2Whoop app 里打开今天页，再点「重新连接」": "Open the Today page in the Watch2Whoop app on your iPhone, then tap \"Reconnect\"",
+  "现在拿不到连接码，稍后再试": "Could not get a connection code; try again later",
+  "连接码": "Connection code",
+  "复制连接码": "Copy code",
+  "打开手机同步": "Open Phone sync",
+  "点「连接同步」": "Tap \"Connect sync\"",
+  "没有这个按钮：点「重新连接」或「用邀请码连接」，粘贴连接码": "No such button: tap \"Reconnect\" or \"Connect with invitation code\" and paste the code",
+  // notices.js (messages from the admin)
+  "知道了": "OK",
   // oauth.html / oauth.js (MCP OAuth consent), ai.js connections
   "连接 AI 应用": "Connect an AI app",
   "先登录今天页": "Sign in to the Today page first",

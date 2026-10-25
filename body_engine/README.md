@@ -34,6 +34,8 @@ uv run body-engine static-bundle-pack --out DIR [--since N] # write the versione
 uv run body-engine evaluate-rules --user-id 1           # rule reminders → reminders (today by default, --date to choose; runs after compute-scores every day)
 uv run body-engine hourly-batch --workers 3          # the hourly job for ALL users in one process (import-ow → compute-scores 3 days → evaluate-rules; --full = nightly; --steps, --user-id, --no-skip; docs/hourly-batch.md)
 uv run body-engine ow-watch                            # one round of the API's poller: users who uploaded to OW lately and went quiet → import + recompute queued for sync-refresh-run (runs every 30 s inside the API; BODY_OW_WATCH=off disables; ../docs/hourly-batch.md)
+uv run body-engine sync-broken                         # read only: users whose phone sync to OW stopped (> 36 h) while they still use the app (sync/broken.py; the Today page shows them 「手机同步已断开」 with a reconnect button)
+uv run body-engine notice-send --user-id 7 --title 标题 --body 正文 [--link watch2whoop://sync --link-label 打开]   # one-time message sheet on that user's Today page (notices/; notice-list / notice-revoke; HTTP: /v1/admin/notices for BODY_ADMIN_USER_IDS)
 uv run body-engine set-sleep-goal --user-id 1 --bedtime 00:00   # bedtime target (moves earlier step by step starting from the last 7 nights' average; --wake / --pace / --step-days optional)
 uv run body-engine nutrition-goals-import --user-id 1   # backfill nutrition goal versions from the SparkyFitness weekly goal plans (active + inactive; idempotent; dry run, --apply writes)
 uv run body-engine nutrition-sugar-backfill --user-id 1 --start 2026-09-01 --end 2026-10-21   # sugar / fiber grams written in old entry notes → food_entry_extras (dry run, --apply writes)
