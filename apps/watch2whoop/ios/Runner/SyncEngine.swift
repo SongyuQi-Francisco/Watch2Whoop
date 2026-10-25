@@ -114,7 +114,7 @@ final class SyncEngine {
   }
 
   /// Columnar page with a source table (samples refer to it by index).
-  private func page(_ samples: [HKSample], unit: HKUnit?, deleted: [HKDeletedObject], anchor: HKQueryAnchor?, more: Bool)
+  func page(_ samples: [HKSample], unit: HKUnit?, deleted: [HKDeletedObject], anchor: HKQueryAnchor?, more: Bool)
     -> [String: Any] {
     var uuid: [String] = [], start: [Double] = [], end: [Double] = [], value: [Double] = [], src: [Int] = []
     var tz: [Any] = []

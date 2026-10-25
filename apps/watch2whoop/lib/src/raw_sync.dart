@@ -604,8 +604,11 @@ String rawLogLine(RawSyncResult r) => [
 String tokenFingerprint(String token) => sha256.convert(utf8.encode(token)).toString();
 
 /// Range the anchors were read with: "All history" after 90 days needs fresh anchors (they only see newer samples).
+/// The first sync reads 14 days (sync_params.dart); a backfill to 90 days needs fresh anchors too.
 bool needsAnchorReset(int? previousDaysBack, int daysBack) =>
-    previousDaysBack != null && !isAllHistory(previousDaysBack) && isAllHistory(daysBack);
+    previousDaysBack != null &&
+    !isAllHistory(previousDaysBack) &&
+    (isAllHistory(daysBack) || daysBack > previousDaysBack);
 
 class RawSync {
   RawSync._();

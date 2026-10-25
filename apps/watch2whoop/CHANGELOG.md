@@ -24,6 +24,8 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 这一版主要让「手机同步」更稳、更快、出问题时说得清楚。还在用 1.0.6 的测试用户请直接升到 1.0.8（1.0.7 的修复也都在里面）。
 
 **同步**
+- **第一次同步只读最近 14 天**（以前是 90 天）：几分钟就传完，今天页很快就有数据，不会再出现「首次同步好几天、新数据一直进不来」的情况。已经在用的测试用户保持原来的范围。
+- **「补全历史」**：在今天页或「手机同步」页选「近 90 天」或「全部历史」，app 先照常传最新的数据，再在后台补更早的历史；app 切到后台、被系统挂起也会继续传，中途被打断（包括 app 被关掉）下次从断点接着传，不会重复，进度在页面上显示。手机空闲、连着 Wi-Fi 时补得最快，不用蜂窝流量。
 - 今天页上的「一键开启同步」：点一下，app 自己连接同步、弹出「健康」授权、马上开始第一次上传，卡片上显示进度（首次同步时显示百分比）。登录时点了「跳过」也没关系，之后从今天页一步开启。
 - 今天页上的「立即上传」「去设置」「去授权」直接在 app 里完成，不用再跳到「手机同步」页。
 - 同步连接失效时 app 会自己重新连接，并且**重新连上后马上同步一轮**（以前要等下次打开 app）。
@@ -43,6 +45,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 **技术说明（给开发者）**
 - 页面同步协议见 `docs/sync-onboarding-app-requirements.md`（`sync-connect` / `sync-now` / `app-settings` / `health-settings`，`BodySyncStatus.onApp` 进度，`PUT /v1/ingest/sync-device` 手机状态）；另有 `Watch2WhoopSync.enableSync / syncNow / syncStatus`（`lib/src/sync_bridge.dart`）。
 - OW 登录失效改用 SDK 的 `authErrorStream`（日志匹配只作兜底）；RawSync 的账号 token 被 401 时改用今天页签发的只上传 token；status 请求 10 秒超时、每轮最多一次（#295 A2 / A3）。
+- 首次范围和补传参数在 `lib/src/sync_params.dart`（`kFirstSyncDays = 14`、`kBackfillDays = 90`）。补传：页面接口 `Watch2WhoopFeatures.backfill` / `Watch2WhoopBackfill.start(90 | "all")` / `.status()`（`lib/src/backfill.dart`）；服务器开了自建引擎（shadow / app）时由原生 `ios/Runner/Backfill.swift` 按天往回补：后台 URLSession 上传、BGProcessingTask `watch2whoop.sync.backfill`、游标 200 后才前移、同一批重发用同一个 batch_id；开关关着时走 Open Wearables SDK 自己的全量导出（重置锚点后最新的先传，SDK 自己的后台任务续传；导出期间新数据跟着导出一起上来，没有单独的增量轮次）。
 - 自建同步引擎 A1（#219，`lib/src/sync_engine.dart`、`ios/Runner/SyncEngine.swift`、`assets/healthkit_types.json`）：服务器开关 `apple_sync_engine` 默认关，关着时不读、不传。
 - 本机语音识别 `ios/Runner/VoiceInput.swift`（#53）；Apple 登录桥 `lib/src/apple_bridge.dart`；新增权限说明 `NSSpeechRecognitionUsageDescription`。
 - 依赖：`wakelock_plus` 1.8.2、`webview_flutter_wkwebview` 3.27.2；`ios/Podfile.lock` 与 `pubspec.lock` 一致（CI「iOS Podfile.lock」检查）；`.github/dependabot.yml`。

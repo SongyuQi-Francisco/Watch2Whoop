@@ -24,6 +24,7 @@ import '../account_api.dart' show AccountApiException;
 import '../account_flow.dart';
 import '../android_bridge.dart';
 import '../app_state.dart';
+import '../backfill.dart';
 import '../apple_bridge.dart';
 import '../config.dart';
 import '../health_range.dart';
@@ -40,6 +41,7 @@ import '../setup_flow.dart';
 import '../sync_bridge.dart';
 import '../sync_engine.dart';
 import '../sync_on_open.dart';
+import '../sync_params.dart';
 import '../sync_repair.dart';
 import '../sync_stats.dart' show SdkSyncStatus;
 import '../ui.dart';
@@ -432,10 +434,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         serverUrl: c.todayUrl,
         token: token,
         serverStatus: RawSync.instance.lastServerStatus,
-        daysBack: c.syncDaysBack,
+        daysBack: kFirstSyncDays, // older history is the backfill's job (backfill.dart), after the new data
         appVersion: version,
       );
     }
+    await _pumpBackfill();
+  }
+
+  /// A slice of the history backfill, only after this round's new data went; the page sees the progress.
+  Future<void> _pumpBackfill() async {
+    if (!hasHealthSync || !mounted) return;
+    final st = await BackfillService.instance.pump();
+    if (st != null && mounted) _web.runJavaScript(backfillProgressJs(st)).catchError((_) {});
+  }
+
+  Future<void> _onBackfillCall(({String verb, String id, int days}) m) async {
+    Map<String, Object?> res;
+    try {
+      if (m.verb == 'start') {
+        final st = await BackfillService.instance.setRange(m.days);
+        unawaited(_pumpBackfill());
+        res = {'ok': true, 'status': st};
+      } else {
+        res = {'ok': true, 'status': await BackfillService.instance.status()};
+      }
+    } catch (e) {
+      res = {'ok': false, 'error': redactServer('$e')};
+    }
+    if (mounted) await _web.runJavaScript(backfillReplyJs(m.id, res)).catchError((_) {});
+  }
+
+  /// While a backfill runs: its progress to the page with the range report (every 30 s).
+  Future<void> _tellBackfill() async {
+    if (!hasHealthSync || !mounted || _loading || _error != null || _onShell) return;
+    final st = await BackfillService.instance.status();
+    if (st['active'] == true || st['done'] == true) _web.runJavaScript(backfillProgressJs(st)).catchError((_) {});
   }
 
   /// Setup-link users have no account token: the logged-in page mints an upload-only token (cookie + X-Body-Web) and
@@ -538,7 +571,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     PushService.instance.received.addListener(_onPushReceived);
     HealthSync.instance.stats.addListener(_onSyncStats);
     _load();
-    _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportRange());
+    _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _reportRange();
+      _tellBackfill();
+    });
+    BackfillService.instance.onLog = HealthSync.instance.note;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
@@ -717,6 +754,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (hasHealthSync) {
         await _web.runJavaScript(kSyncBridgeJs);
         await _web.runJavaScript(kSyncLinkFeaturesJs); // the page's 一键开启 / 立即上传 / 去设置 / 去授权 (doc §3, §5)
+        await _web.runJavaScript(kBackfillJs); // 「补全历史」: 90 days / all history (backfill.dart)
         _resendProgress();
       }
       // Sign in with / bind Apple from the page's own screens (apple_bridge.dart)
@@ -816,6 +854,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final sync = parseSyncMessage(message);
     if (sync != null) {
       _onSyncCall(sync);
+      return;
+    }
+    final backfill = parseBackfillMessage(message);
+    if (backfill != null) {
+      if (hasHealthSync && !_onShell) _onBackfillCall(backfill);
       return;
     }
     if (message == kAppSettingsMessage) {

@@ -7,6 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'account_api.dart';
 import 'app_state.dart';
+import 'backfill.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
@@ -113,6 +114,7 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   await state.setAccountToken(null);
   await RawSync.instance.clear();
   await SyncEngine.instance.clear();
+  await BackfillService.instance.clear();
   try {
     await setLangOverride(null); // the next person starts in the system language
   } catch (e) {

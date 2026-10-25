@@ -16,6 +16,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../account_api.dart';
 import '../account_flow.dart';
 import '../app_state.dart';
+import '../backfill.dart';
 import '../config.dart';
 import '../data_status.dart';
 import '../debug_seed.dart';
@@ -244,28 +245,36 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
 
   bool get _hasAccount => AppState.instance.accountToken != null;
 
-  /// 90 days ⇄ all history. Going to all history re-reads everything (the last 90 days once more, stored once).
+  /// 14 / 90 days / all history (backfill.dart). A larger range reads the older history in the background, after the new
+  /// data; a smaller one only stops reading further back.
   Future<void> _changeRange(int days) async {
     final toAll = isAllHistory(days);
+    final grows = rangeGrows(_config.syncDaysBack, days);
     final yes = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(toAll ? tr('读取全部历史？', 'Read all history?') : tr('改回近 90 天？', 'Back to the last 90 days?')),
-        content: Text(toAll
+        title: Text(toAll
+            ? tr('读取全部历史？', 'Read all history?')
+            : grows
+                ? tr('补上近 $days 天？', 'Add the last $days days?')
+                : tr('改回近 $days 天？', 'Back to the last $days days?')),
+        content: Text(grows && !toAll
+            ? tr('新数据照常先传，更早的历史在后台补上（手机空闲、连着 Wi-Fi 时更快）；中断了会接着传。',
+                'New data still goes first; the older history is added in the background (faster while the phone is idle on Wi-Fi), and resumes if interrupted.')
+            : toAll
             ? tr('从「健康」里最早的一条开始读。数据多的话要几十分钟到几小时，保持 app 打开、手机解锁会更快；中断了下次打开接着读。读完后服务器会补算全部历史的分数。',
                 'Reads from the oldest record in Health. With a lot of data this takes tens of minutes to a few hours; it is faster with the app open and the phone unlocked, and resumes if interrupted. The server then computes the scores for the whole history.')
             : tr('已经读到的数据不会删除，只是以后不再读更早的。', 'Data already read stays; older data is just not read any more.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('取消', 'Cancel'))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(toAll ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(grows ? tr('开始读取', 'Start') : tr('改回', 'Change'))),
         ],
       ),
     );
     if (yes != true) return;
     await _run(() async {
-      if (_config.owConnected && _sync.isSignedIn) await _sync.changeRange(days);
-      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
-    }, done: toAll ? tr('开始读取全部历史', 'Reading all history') : tr('已改回近 90 天', 'Back to the last 90 days'));
+      await BackfillService.instance.setRange(days);
+    }, done: grows ? tr('开始补传历史', 'Adding the history') : tr('已改回近 $days 天', 'Back to the last $days days'));
   }
 
   /// Self-service accounts: connect sync without any code (server-minted OW invitation); fall back to the manual code dialog.
@@ -370,6 +379,12 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
       pageToken: RawSync.instance.ingestToken, // setup-link users: the token the Today page minted earlier
     );
   });
+
+  Future<void> _runBackfillTask() async {
+    setState(() => _message = 'backfill task: running');
+    final r = await runDebugBackfillTask();
+    if (mounted) setState(() => _message = 'backfill task: $r');
+  }
 
   Future<void> _seed() => _run(() async {
     final r = await seedHealthTestData();
@@ -613,7 +628,12 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
             if (kDebugMode)
               Group(
                 title: tr('开发（只在调试版出现）', 'Development (debug builds only)'),
-                rows: [Row2(tr('往模拟器的健康 app 写测试数据', 'Write test data to simulator Health'), onTap: _busy ? null : _seed)],
+                rows: [
+                  Row2(tr('往模拟器的健康 app 写测试数据', 'Write test data to simulator Health'), onTap: _busy ? null : _seed),
+                  // The backfill's BGProcessingTask body (the simulator does not run BGTaskScheduler tasks)
+                  Row2(tr('运行一次后台补传任务', 'Run the background backfill task once'),
+                      onTap: _busy ? null : _runBackfillTask),
+                ],
               ),
 
             // ---- logs
