@@ -46,7 +46,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
     html = served_page()
     lazy = re.findall(r'<script type="w2w/lazy"(?: data-lang="(\w+)")? src="([\w.-]+\.js)\?v=([0-9a-f]{12})"></script>', html)
     assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"),
-                                                        ("", "muscle-body-data.js"), ("", "intro.js")]
+                                                        ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js")]
     assert re.search(r'<script data-w2w="gate" src="lang-gate\.js\?v=[0-9a-f]{12}"></script>', html)
     # the gate comes after i18n.js (the table adds itself to it) and before the scripts that call tr() when they run
     assert html.index('src="i18n.js?') < html.index('src="i18n-en.js?') < html.index('src="lang-gate.js?') < html.index('src="ios-web.js?')
@@ -55,7 +55,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
         r = TestClient(root_api.app, base_url="https://testserver").get(f"/app/{name}?v={v}")
         assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
     # an older page that still has the tags keeps working: nothing else in the page names these files as plain scripts
-    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water)\.js', INDEX)
+    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|sync-status)\.js', INDEX)
 
 
 def test_offline_copy_has_the_lazy_scripts_inline_and_no_gate():

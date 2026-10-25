@@ -106,6 +106,7 @@ NO_DATA = {
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
     "data-status": "sync control: which health data types reached the server (#163)",
     "sync/connection": "sync control: whether the phone's sync stopped (sync/broken.py)",
+    "sync/overview": "sync control: the sync status panel (sync/overview.py)", "sync/device": "sync control: the app's phone report",
     "notices": "messages from the admin (notices/)", "notices/{x}/seen": "messages from the admin",
     "notifications": "notification list (#175)", "notifications/unread": "notification list", "notifications/read": "notification list",
     "notification-settings": "setting: push per category, quiet hours (#175)",

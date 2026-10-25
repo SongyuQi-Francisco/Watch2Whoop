@@ -6,6 +6,10 @@
 - GET  /v1/users/{user}/sync/status -> the same status fields (「同步中… / 已更新 07:42」 on the Today page).
 - GET  /v1/users/{user}/sync/connection -> {broken, reason, last_data_at, hours, after_hours, …}: whether the phone's
   Open Wearables sync looks broken (broken.py; 「手机同步已断开」 banner and sheet, web/static/sync-repair.js). Own data only.
+- GET  /v1/users/{user}/sync/overview?in_app=1 -> the 「同步状态」 panel and the 「开启数据同步」 card (overview.py): state, the
+  issue with its buttons, the newest data per main type, today's scores, refresh / history progress. Own data only.
+- PUT  /v1/users/{user}/sync/device and PUT /v1/ingest/sync-device -> the app's report on the phone side of its sync
+  (Background App Refresh, Low Power Mode, Health readable, last error; app 1.0.8+, overview.put_device). Own only, write.
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
@@ -27,7 +31,7 @@
   comparison's summary and the items of [date, end] (default the last 7 compared days; only the ones that are not ok
   unless all=true), rawdata/shadow.py. Own data only.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -37,7 +41,7 @@ from ..i18n import L
 from ..records.api import current_user, get_conn
 from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
-from . import broken, data_status, history, refresh, resync
+from . import broken, data_status, history, overview, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -68,6 +72,45 @@ def sync_connection(user: str, conn=Depends(get_conn), viewer=Depends(current_us
     res = broken.check(conn, viewer["id"])
     res.pop("user_id", None)
     return res
+
+
+@router.get("/v1/users/{user}/sync/overview")
+def sync_overview(user: str, in_app: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    return overview.collect(conn, viewer["id"], in_app=in_app)
+
+
+class SyncDeviceIn(BaseModel):
+    """What the app knows about the phone side of its sync (docs/sync-onboarding-app-requirements.md §4)."""
+    model_config = ConfigDict(extra="ignore")   # a newer app may send more; only these are kept
+    app_version: str | None = Field(None, max_length=40)
+    background_refresh: Literal["available", "denied", "restricted"] | None = None
+    low_power: bool | None = None
+    health_readable: bool | None = None
+    last_attempt_at: datetime | None = None
+    last_upload_at: datetime | None = None
+    last_error: Literal["auth", "network", "locked", "health_denied", "server", "other"] | None = None
+    unasked_types: list[str] = Field(default_factory=list, max_length=60)
+
+
+def _device_put(conn, uid: int, body: SyncDeviceIn) -> dict:
+    if any(len(t) > 60 for t in body.unasked_types):
+        raise HTTPException(422, L("类型名太长", "Type name too long"))
+    return overview.put_device(conn, uid, body.model_dump())
+
+
+@router.put("/v1/users/{user}/sync/device")
+def put_sync_device(user: str, body: SyncDeviceIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, L("这个登录没有 write 权限", "This sign-in cannot write"))
+    return _device_put(conn, uid, body)
+
+
+@router.put("/v1/ingest/sync-device")
+def put_ingest_sync_device(body: SyncDeviceIn, conn=Depends(get_conn), viewer=Depends(ingest_user)):
+    return _device_put(conn, viewer["id"], body)
 
 
 class HealthHistoryIn(BaseModel):
