@@ -337,7 +337,8 @@ def ai_overview(conn: psycopg.Connection, viewer_id: int, circle=None) -> dict:
         if sc:
             row.update(status=sc["label"], recovery=sc["recovery"], strain=sc["strain"],
                        recovery_7d=round(statistics.fmean(week)) if week else None,
-                       last_sync=sc["last_date"] if not sc["synced_today"] else None)
+                       sync=sc["state"],   # scored / pending (data in, today's scores being computed) / stale / never
+                       last_sync=sc["last_sync_at"].isoformat() if sc["last_sync_at"] else None)
         if m["trained"] is not None:
             row["trained_today"] = m["trained"]
         ranks = {}

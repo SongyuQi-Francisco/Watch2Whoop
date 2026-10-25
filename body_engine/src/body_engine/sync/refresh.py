@@ -4,6 +4,10 @@
   idempotent (one row per user in sync_refresh, concurrent requests collapse). Starts a background thread in the API
   process that runs the same import as `body-engine import-ow` (importers/ow.run: daily metrics, sleep, workouts from the
   cursor; a few seconds) under a per-user advisory lock, then queues the score recompute.
+  With BODY_SYNC_IMPORT=queue (servers that run the per-minute `sync-refresh-run`, e.g. a one-off job container) the API
+  process does not import at all: the row is queued with import_queued_at, as the poller does (sync/ow_watch.py), and
+  the job imports and recomputes. An import holds a window of raw samples in memory (a new user's first 30-day window is
+  tens of MB), which together with other work pushed the API container over its memory limit.
 - The recompute (`compute-scores` for the last SCORE_DAYS days + insights, then the rules) takes about 1–2 minutes of CPU
   and loads a year of data, too heavy for the API container: `body-engine sync-refresh-run` does it for every queued user
   (Ali: the per-minute imports timer starts it in a one-off container only when something is queued). With
@@ -37,6 +41,7 @@ SCORE_DAYS = 3                         # recompute the last 3 days, like the hou
 STALE = timedelta(minutes=15)          # a refresh stuck this long (process restarted) may start again
 LOCK_NS = 0x5359                       # advisory lock namespace ("SY") for (namespace, user_id)
 SCORES_INLINE = os.environ.get("BODY_SYNC_SCORES", "queue") == "inline"
+IMPORT_QUEUED = os.environ.get("BODY_SYNC_IMPORT", "inline") == "queue"   # see request()
 
 
 def _now() -> datetime:
@@ -81,6 +86,12 @@ def request(conn: psycopg.Connection, user_id: int, start_thread=None) -> dict:
     if busy:
         conn.commit()
         return {**status(conn, user_id), "accepted": False, "reason": "busy"}
+    if IMPORT_QUEUED and start_thread is None:   # the per-minute sync-refresh-run imports (import_queued) and recomputes
+        conn.execute("""UPDATE sync_refresh SET status = 'scores_queued', requested_at = %s, import_queued_at = now(),
+                               scores_queued_at = now(), error = NULL, updated_at = now() WHERE user_id = %s""",
+                     (now, user_id))
+        conn.commit()
+        return {**status(conn, user_id), "accepted": True}
     _set(conn, user_id, status="importing", requested_at=now, error=None)
     conn.commit()
     (start_thread or _start_thread)(user_id)

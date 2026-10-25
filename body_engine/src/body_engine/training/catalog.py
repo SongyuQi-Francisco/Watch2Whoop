@@ -19,6 +19,7 @@ from ..i18n import L, is_en
 from ..records import store as records_store
 from ..rollout import flags
 from . import catalog_data as CD, catalog_en as CE, params as P, translations as TR
+from .gym_aliases import EXTRA_ALIASES
 from .opengym import mapping as OGM
 
 DEFAULT_BANNED_SLUGS = {"upright_row", "behind_neck_press", "behind_neck_pulldown", "dips"}
@@ -63,8 +64,8 @@ def image_urls(images: list[str]) -> list[str]:
             and (root / img).is_file()]
 
 
-@functools.lru_cache(maxsize=200000)
-def norm(s: str | None) -> str:
+@functools.lru_cache(maxsize=40000)   # the whole catalog's names take ~18k; also called on free text (searches, AI writes),
+def norm(s: str | None) -> str:      # so a larger bound only grows the API process (~150 B per entry)
     s = unicodedata.normalize("NFKC", s or "").lower()
     s = s.replace("（禁用）", "").replace("(禁用)", "")
     return re.sub(r"[\s/+·・,，、.。:：\-_'\"“”‘’()（）\[\]]", "", s)
@@ -399,6 +400,9 @@ def catalog_rows(conn: psycopg.Connection) -> list[dict]:
     if hit is None or hit[0] != stamp:
         rows = conn.execute("SELECT * FROM exercise_catalog ORDER BY slug").fetchall()
         for r in rows:
+            if extra := EXTRA_ALIASES.get(r["slug"]):   # more everyday wordings (gym_aliases.py), merged here so no re-seed is needed
+                have = {norm(x) for x in [r["name_zh"], r["name_en"], *(r.get("aliases") or [])]}
+                r["aliases"] = [*(r.get("aliases") or []), *(a for a in extra if norm(a) not in have)]
             names = [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])]
             r["_names"] = {norm(x) for x in names if x} | {norm(strip_paren(x)) for x in names if x} - {""}
         hit = _ROWS_CACHE[key] = (stamp, rows)

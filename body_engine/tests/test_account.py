@@ -506,10 +506,46 @@ def test_provisioning_failure_is_retried(client, dsn, _env, monkeypatch):
     assert prov["state"] == "failed" and prov["steps"] == {"ow": "done", "sparky": "error", "journal": "done", "memory": "done"}
     _env["sparky"].fail = False
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        row = conn.execute("SELECT last_error, next_attempt_at > now() AS later FROM user_provisioning WHERE user_id = %s",
+                           (s["me"]["id"],)).fetchone()
+        assert "sparky: RuntimeError: SparkyFitness sign-up 400" in row["last_error"] and row["later"]
+        # backoff: not due yet, so the hourly run leaves it alone
+        assert not [x for x in provision.run_pending(conn) if x["user_id"] == s["me"]["id"]]
+        conn.execute("UPDATE user_provisioning SET next_attempt_at = now() - interval '1 second' WHERE user_id = %s",
+                     (s["me"]["id"],))
+        conn.commit()
         done = [x for x in provision.run_pending(conn) if x["user_id"] == s["me"]["id"]]
         assert done and done[0]["state"] == "done"
         # the password saved before the first attempt is reused (same SparkyFitness account)
         assert _env["sparky"].accounts[-1][0] == f"w2w-u{s['me']['id']}@users.watch2whoop.invalid"
+        row = conn.execute("SELECT last_error, next_attempt_at FROM user_provisioning WHERE user_id = %s",
+                           (s["me"]["id"],)).fetchone()
+        assert row["last_error"] is None and row["next_attempt_at"] is None
+
+
+def test_provisioning_backoff_and_transient_retry():
+    from datetime import timedelta
+    assert [provision.backoff(n) for n in (1, 2, 3)] == [timedelta(minutes=10), timedelta(minutes=20), timedelta(minutes=40)]
+    assert provision.backoff(20) == provision.RETRY_MAX
+    calls, slept = [], []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise ConnectionRefusedError("SparkyFitness restarting")
+        return "ok"
+    assert provision._with_retry(flaky, sleep=slept.append) == "ok" and len(calls) == 3 and slept == [2.0, 5.0]
+    calls.clear()
+
+    def bad_request():
+        calls.append(1)
+        raise RuntimeError("SparkyFitness sign-up 400")
+    with pytest.raises(RuntimeError):
+        provision._with_retry(bad_request, sleep=slept.append)
+    assert len(calls) == 1   # not transient: no second try
+    with pytest.raises(provision.TransientError):
+        provision._raise_5xx(503, "sign-up", "busy")
+    provision._raise_5xx(400, "sign-up", "no")   # 4xx is left to the caller
 
 
 def test_web_login_code_for_app_webview(client):
