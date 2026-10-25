@@ -23,11 +23,18 @@
 // - Forced re-sync (resync.dart): `run(anchorSet: 'resync')` reads every kind again from the start of the range with a
 //   separate set of anchors ("resync:heartbeat", "resync:HKQuantity…"); the regular anchors do not move, so nothing is
 //   skipped afterwards and the server drops what it already has (UUIDs).
+// - Weak network (#295 A3): the status GET has its own short timeout and is asked at most once per pass; when the
+//   server cannot be reached the pass ends at once as `offline` (before, every type asked again and waited 60 s each).
+//   Uploads time out after [kUploadTimeout]; the whole pass also ends at its budget, so sync-on-open is never held up.
+// - 401 with the account token (#295 A2): the account token was revoked (signed out elsewhere, account reset). The pass
+//   gets an upload-only token from the logged-in Today page instead (the same way setup-link users upload), keeps it in
+//   the Keychain and goes on; the account token is not tried again for uploads until it changes (a new sign-in).
 // The runner is pure Dart with an injected source / uploader (test/raw_sync_test.dart).
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -159,7 +166,18 @@ Future<Map<String, DateTime>> phoneLatest(Iterable<String> types) async {
   }
 }
 
-enum RawUpload { ok, unauthorized, consent, tooLarge, failed }
+enum RawUpload { ok, unauthorized, consent, tooLarge, failed, offline }
+
+/// The status GET: small answer, so a short timeout (a phone on a captive portal must not wait a minute per pass).
+const Duration kStatusTimeout = Duration(seconds: 10);
+
+/// One upload (≤ 1 MB).
+const Duration kUploadTimeout = Duration(seconds: 45);
+
+/// The status GET was answered with 401: the token is not valid (any longer).
+class RawUnauthorized implements Exception {
+  const RawUnauthorized();
+}
 
 class RawUploadResult {
   const RawUploadResult(this.outcome, [this.body]);
@@ -169,10 +187,10 @@ class RawUploadResult {
 
 /// POST {server}/v1/ingest/healthkit with a Bearer token.
 class RawUploader {
-  RawUploader(this.baseUrl, {this.client, this.timeout = const Duration(seconds: 60)});
+  RawUploader(this.baseUrl, {this.client, this.timeout = kUploadTimeout, this.statusTimeout = kStatusTimeout});
   final String baseUrl;
   final http.Client? client;
-  final Duration timeout;
+  final Duration timeout, statusTimeout;
 
   Uri get _uri {
     final b = Uri.parse(baseUrl);
@@ -180,14 +198,18 @@ class RawUploader {
   }
 
   /// GET the same path: what this account uploaded so far and whether the server takes water (`water_enabled`); null when
-  /// the server cannot be reached.
+  /// the server cannot be reached (or answers something else); throws [RawUnauthorized] on 401.
   Future<Map<String, Object?>?> status(String token) async {
     final c = client ?? http.Client();
     try {
-      final res = await c.get(_uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(timeout);
+      final res =
+          await c.get(_uri, headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(statusTimeout);
+      if (res.statusCode == 401) throw const RawUnauthorized();
       if (res.statusCode != 200) return null;
       final j = jsonDecode(res.body);
       return j is Map ? j.map((k, v) => MapEntry('$k', v)) : null;
+    } on RawUnauthorized {
+      rethrow;
     } catch (_) {
       return null;
     } finally {
@@ -216,7 +238,7 @@ class RawUploader {
         _ => RawUpload.failed,
       }, body);
     } catch (_) {
-      return const RawUploadResult(RawUpload.failed);
+      return const RawUploadResult(RawUpload.offline);
     } finally {
       if (client == null) c.close();
     }
@@ -259,8 +281,11 @@ class RawSyncResult {
   /// The server takes no registry types (paused, or an older server): not read, the anchors stay. Not an error.
   bool metricsOff = false;
 
-  /// null = everything read; unauthorized / consent / failed / budget
+  /// null = everything read; unauthorized / consent / failed / offline (the server could not be reached) / budget
   String? stop;
+
+  /// Kinds (heartbeat / ecg / water / a HealthKit identifier) with at least one accepted upload in this pass.
+  final Set<String> uploaded = {};
 
   /// A kind could not be read from HealthKit (the others still went): `not_asked` or `healthkit`, with [readError].
   String? readProblem, readError;
@@ -294,30 +319,49 @@ class RawSyncRunner {
   final String Function() _batchId;
 
   /// The server's answer for [key]: from an answer of this pass, else one GET status (an answer without the key = an
-  /// older server).
+  /// older server). At most one GET per pass; null afterwards = the server could not be reached ([_unreachable]).
   Future<Object?> _server(RawSyncResult out, String key) async {
     var v = out.serverStatus?[key];
-    if (v == null && status != null && out.serverStatus == null) {
+    if (v == null && status != null && out.serverStatus == null && !_asked) {
+      _asked = true;
       final st = await status!();
       v = st?[key];
       if (st != null) out.serverStatus = {...?out.serverStatus, ...st};
+      if (st == null) _unreachable = true;
     }
     return v;
   }
+
+  bool _asked = false, _unreachable = false;
 
   /// One pass over every kind: heartbeat, ECG, water, then the registry types. [anchorSet] = a separate set of anchors
   /// (the forced re-sync reads the range again without moving the regular ones).
   Future<RawSyncResult> run(int daysBack, {String anchorSet = ''}) async {
     final out = RawSyncResult();
     final t0 = _now();
+    _asked = _unreachable = false;
     var rawConsent = true;
     kinds:
     for (final kind in [...kRawKinds, for (final t in kHkTypes) t.hk]) {
       final quantity = hkTypeOf(kind) != null;
       final name = anchorSet.isEmpty ? kind : '$anchorSet:$kind';
       if (kind != 'water' && !quantity && !rawConsent) continue; // the ECG would get the same 409 as the beats
+      if (_now().difference(t0) > budget) {
+        out.stop = 'budget';
+        return out;
+      }
       if (quantity) {
-        final on = await _server(out, 'metrics_enabled');
+        final Object? on;
+        try {
+          on = await _server(out, 'metrics_enabled');
+        } on RawUnauthorized {
+          out.stop = 'unauthorized';
+          return out;
+        }
+        if (_unreachable) {
+          out.stop = 'offline'; // no answer at all: the uploads would not get through either; the next open tries again
+          return out;
+        }
         final types = out.serverStatus?['metric_types'];
         if (on != true || types is! List || !types.contains(kind)) {
           out.metricsOff = true; // paused, an older server or unreachable: the anchor stays, next pass
@@ -325,11 +369,16 @@ class RawSyncRunner {
         }
       }
       if (kind == 'water') {
-        var on = out.serverStatus?['water_enabled'];
-        if (on == null && status != null) {
-          final st = await status!();
-          on = st?['water_enabled'];
-          if (st != null) out.serverStatus = {...?out.serverStatus, ...st};
+        final Object? on;
+        try {
+          on = await _server(out, 'water_enabled');
+        } on RawUnauthorized {
+          out.stop = 'unauthorized';
+          return out;
+        }
+        if (_unreachable) {
+          out.stop = 'offline';
+          return out;
         }
         if (on != true) {
           out.waterOff = true; // flag off, an older server, or unreachable: try again next pass
@@ -377,6 +426,7 @@ class RawSyncRunner {
               continue kinds;
             }
             if (page.anchor != null) await source.commit(name, page.anchor!);
+            out.uploaded.add(kind);
             out.heartbeats += (b['heartbeats'] as num?)?.toInt() ?? 0;
             out.ecgs += (b['ecgs'] as num?)?.toInt() ?? 0;
             out.water += (b['water'] as num?)?.toInt() ?? 0;
@@ -393,6 +443,9 @@ class RawSyncRunner {
             if (kind == 'water' || quantity) return out; // the ordinary consent: nothing else goes either
             rawConsent = false; // the new consent is not accepted yet: water still goes
             continue kinds;
+          case RawUpload.offline:
+            out.stop = 'offline'; // timed out / no network: the anchor stays, the next open tries again
+            return out;
           default:
             out.stop = 'failed';
             return out;
@@ -421,7 +474,16 @@ class RawSyncStatus {
     this.error,
     this.metrics,
     this.syncCenter = false,
+    this.kindsAt = const {},
+    this.accountRejected = false,
   });
+
+  /// Last accepted upload of this phone per kind (heartbeat / ecg / water / a HealthKit identifier).
+  final Map<String, DateTime> kindsAt;
+
+  /// The account token got 401 on upload: uploads go on with the Today page's upload-only token; the app itself needs a
+  /// new sign-in for everything else (sync_bridge.dart reports it).
+  final bool accountRejected;
 
   /// The server's totals of app uploads (metrics = registry samples).
   final int? heartbeats, ecgs, water, metrics;
@@ -450,6 +512,7 @@ class RawSyncStatus {
       'consent' => tr('在今天页确认新版同意书后开始上传', 'Starts after you accept the new consent on the Today page'),
       'unauthorized' => tr('登录失效，打开今天页后重试', 'Signed out; open the Today page to retry'),
       'failed' => tr('上次上传失败，下次打开 app 重试', 'Last upload failed; retries next time you open the app'),
+      'offline' => tr('连不上服务器（网络不通或很慢），下次打开 app 重试', 'Could not reach the server (no or slow network); retries next time you open the app'),
       'not_asked' => tr('「健康」还没问过这几项的读取权限，点「允许读取」', 'Health has not asked for these yet; tap "Allow reading"'),
       'healthkit' => tr('读取「健康」出错：$why。下次打开 app 重试', 'Reading Health failed: $why. Retries next time you open the app'),
       _ => null,
@@ -469,6 +532,8 @@ class RawSyncStatus {
         'error': error,
         'metrics': metrics,
         'sync_center': syncCenter,
+        'kinds_at': kindsAt.map((k, v) => MapEntry(k, v.toIso8601String())),
+        'account_rejected': accountRejected,
       };
 
   factory RawSyncStatus.fromJson(Map<String, Object?> j) => RawSyncStatus(
@@ -484,13 +549,18 @@ class RawSyncStatus {
         error: j['error'] as String?,
         metrics: (j['metrics'] as num?)?.toInt(),
         syncCenter: j['sync_center'] == true,
+        kindsAt: {
+          for (final e in ((j['kinds_at'] as Map?) ?? const {}).entries)
+            if (DateTime.tryParse('${e.value}') != null) '${e.key}': DateTime.parse('${e.value}').toLocal(),
+        },
+        accountRejected: j['account_rejected'] == true,
       );
 }
 
 /// The status after one pass: the server's totals when it answered, what this pass added, and why it stopped.
-RawSyncStatus nextRawStatus(RawSyncStatus old, RawSyncResult res, DateTime now) {
+RawSyncStatus nextRawStatus(RawSyncStatus old, RawSyncResult res, DateTime now, {bool? accountRejected}) {
   final s = res.serverStatus;
-  final uploaded = res.batches > 0 && res.stop != 'failed' && res.stop != 'consent' && res.stop != 'unauthorized';
+  final uploaded = res.batches > 0 && res.stop != 'failed' && res.stop != 'offline' && res.stop != 'consent' && res.stop != 'unauthorized';
   final stop = res.stop == 'budget' ? null : res.stop;
   return RawSyncStatus(
     heartbeats: (s?['heartbeats'] as num?)?.toInt() ?? old.heartbeats,
@@ -505,6 +575,8 @@ RawSyncStatus nextRawStatus(RawSyncStatus old, RawSyncResult res, DateTime now) 
     error: stop == null && res.readProblem == 'healthkit' ? res.readError : null,
     metrics: (s?['metrics'] as num?)?.toInt() ?? old.metrics,
     syncCenter: s == null ? old.syncCenter : s['sync_center'] == true,
+    kindsAt: {...old.kindsAt, for (final k in res.uploaded) k: now},
+    accountRejected: accountRejected ?? old.accountRejected,
   );
 }
 
@@ -528,6 +600,9 @@ String rawLogLine(RawSyncResult r) => [
       if (r.metricsOff) 'other types off on the server',
     ].join('; ');
 
+/// What is kept about a refused account token: its sha256 (hex), never the token.
+String tokenFingerprint(String token) => sha256.convert(utf8.encode(token)).toString();
+
 /// Range the anchors were read with: "All history" after 90 days needs fresh anchors (they only see newer samples).
 bool needsAnchorReset(int? previousDaysBack, int daysBack) =>
     previousDaysBack != null && !isAllHistory(previousDaysBack) && isAllHistory(daysBack);
@@ -540,6 +615,7 @@ class RawSync {
   static const _rangeKey = 'w2w.raw.range.v1';
   static const _authTriesKey = 'w2w.raw.authTries.v1'; // automatic asks while iOS says shouldRequest (kRawMaxAutoAsks)
   static const _tokenKey = 'w2w.ingest.token.v1';
+  static const _rejectedKey = 'w2w.raw.accountRejected.v1'; // sha256 of the account token that got 401 (never the token)
   static const _storage = FlutterSecureStorage(
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
   );
@@ -611,31 +687,50 @@ class RawSync {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (await shouldAutoAsk()) await requestAuth();
-      var token = accountToken;
-      final ingest = token == null;
+      // An account token that got 401 before is not used for uploads again until it changes (a new sign-in)
+      final rejected = accountToken != null && prefs.getString(_rejectedKey) == tokenFingerprint(accountToken);
+      if (accountToken != null && !rejected) await prefs.remove(_rejectedKey);
+      var token = rejected ? null : accountToken;
+      var ingest = token == null;
       if (ingest) {
-        token = await _readToken();
-        if (token == null) {
-          token = await pageToken();
-          if (token == null) return null; // page not logged in yet: next time
-          await _storage.write(key: _tokenKey, value: token);
-        }
+        token = await _ingestOrPage(pageToken);
+        if (token == null) return null; // page not logged in yet: next time
       }
       if (needsAnchorReset(prefs.getInt(_rangeKey), daysBack)) await source.reset();
       await prefs.setInt(_rangeKey, daysBack);
       final uploader = RawUploader(serverUrl);
-      final res = await RawSyncRunner(
-        source: source,
-        upload: (b) => uploader.upload(token!, b),
-        status: () => uploader.status(token!),
-        device: 'iPhone',
-        appVersion: appVersion,
-      ).run(daysBack, anchorSet: anchorSet);
+      Future<RawSyncResult> pass(String t) => RawSyncRunner(
+            source: source,
+            upload: (b) => uploader.upload(t, b),
+            status: () => uploader.status(t),
+            device: 'iPhone',
+            appVersion: appVersion,
+          ).run(daysBack, anchorSet: anchorSet);
+      var res = await pass(token);
       if (res.stop == 'unauthorized' && ingest) await _deleteToken(); // a fresh one from the page next time
+      if (res.stop == 'unauthorized' && !ingest && accountToken != null) {
+        // The account token itself is refused: go on with the page's upload-only token (#295 A2)
+        await prefs.setString(_rejectedKey, tokenFingerprint(accountToken));
+        _log('Upload: the app sign-in was refused (401); continuing with the Today page sign-in');
+        final t = await _ingestOrPage(pageToken);
+        if (t != null) {
+          token = t;
+          ingest = true;
+          res = await pass(t);
+          if (res.stop == 'unauthorized') await _deleteToken();
+        }
+      }
       // Nothing reached the server this pass (e.g. Health not readable): still show its totals and last upload
-      if (res.serverStatus == null && res.stop != 'unauthorized') res.serverStatus = await uploader.status(token);
+      if (res.serverStatus == null && res.stop != 'unauthorized' && res.stop != 'offline') {
+        try {
+          res.serverStatus = await uploader.status(token);
+        } on RawUnauthorized {
+          // shown through res.stop / accountRejected
+        }
+      }
       _log(rawLogLine(res));
-      status.value = nextRawStatus(status.value, res, DateTime.now());
+      status.value = nextRawStatus(status.value, res, DateTime.now(),
+          accountRejected: accountToken != null && prefs.getString(_rejectedKey) == tokenFingerprint(accountToken));
       await prefs.setString(_statusKey, jsonEncode(status.value.toJson()));
       return res;
     } catch (e) {
@@ -644,6 +739,15 @@ class RawSync {
     } finally {
       _running = false;
     }
+  }
+
+  /// The kept upload-only token, or a fresh one from the logged-in Today page (kept in the Keychain).
+  Future<String?> _ingestOrPage(Future<String?> Function() pageToken) async {
+    var t = await _readToken();
+    if (t != null) return t;
+    t = await pageToken();
+    if (t != null) await _storage.write(key: _tokenKey, value: t);
+    return t;
   }
 
   Future<String?> _readToken() async {
@@ -675,7 +779,7 @@ class RawSync {
       await source.reset(anchorSet: kResyncAnchorSet);
     } catch (_) {}
     final prefs = await SharedPreferences.getInstance();
-    for (final k in [_statusKey, _rangeKey]) { // the Health permission (and _authTriesKey) belongs to the app, not the account
+    for (final k in [_statusKey, _rangeKey, _rejectedKey]) { // the Health permission (and _authTriesKey) belongs to the app, not the account
       await prefs.remove(k);
     }
     status.value = const RawSyncStatus();

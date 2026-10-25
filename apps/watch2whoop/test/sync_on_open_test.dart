@@ -115,4 +115,25 @@ void main() {
     now = now.add(const Duration(minutes: 4));
     expect(await s.trigger(), isTrue);
   });
+
+  test('force (the page\'s 「立即同步」): no 3-minute wait; a slow onDone does not hold the next round (#295 A3)', () async {
+    final f = _Fake();
+    expect(await f.s.trigger(), isTrue);
+    expect(await f.s.trigger(), isFalse, reason: 'throttled');
+    expect(await f.s.trigger(force: true), isTrue);
+    expect(f.rounds, 2);
+
+    var running = <bool>[];
+    late final SyncOnOpen s;
+    s = SyncOnOpen(
+      canSync: () => true,
+      startRound: () async {},
+      isSyncing: () async => false,
+      onDone: () async => running.add(s.running), // the app's own uploads on a slow network
+      pollEvery: Duration.zero,
+      startWait: Duration.zero,
+    );
+    await s.trigger();
+    expect(running, [false], reason: 'the round is over when onDone runs');
+  });
 }

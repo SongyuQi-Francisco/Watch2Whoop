@@ -44,6 +44,32 @@ shared `## <marketing version>` section, and the iOS release never sees it.
   `haptic:<kind>` once the app says `Watch2WhoopFeatures.haptics`.
 - New permission text `NSSpeechRecognitionUsageDescription` (English and Chinese): on-device recognition, nothing sent to
   Apple. `NSMicrophoneUsageDescription` now says the sound is turned into text on the iPhone or on your server.
+- Sync from the Today page (P0 2026-10-26, `lib/src/sync_bridge.dart`): the app declares
+  `Watch2WhoopFeatures.sync` and gives the page `Watch2WhoopSync.enableSync()` (Health permission + silent connect +
+  first round, with progress events), `syncNow()` (one round now, no 3-minute throttle) and `syncStatus()` (per-type last
+  upload, whether Health was asked, and every reason sync is held back — 401, permission, network, Background App
+  Refresh off, Low Power Mode, locked phone, server — as a short sentence with the action that fixes it). Someone who
+  skipped sync during onboarding turns it on from the page's card in one tap. The app's own uploads (beat-to-beat
+  series, ECGs, the types the Open Wearables SDK cannot read) no longer wait for the background sync to be connected:
+  they run on open / resume (at most every 3 minutes) once Health was asked, and from `syncNow()`. `Watch2WhoopFeatures.net` (wifi / cellular
+  / Low Data Mode) for the page's prefetch. Native `deviceState` in `AppDelegate.swift`.
+- The Today page's own sync protocol (docs/sync-onboarding-app-requirements.md, PR #303): `watch2whoop://sync-connect`
+  (one tap: connect with the account's own or the page's code, Health, first upload; no extra dialog), `sync-now`,
+  `app-settings`, `health-settings`, declared as `syncConnect` / `syncNow` / `appSettings` / `healthSettings`; progress
+  through `BodySyncStatus.onApp({phase, percent, error})` (the percentage of the first export while it runs), sent again
+  after the page reloads.
+- From the sync investigation of 2026-10-26: after an automatic or page-started reconnect a round runs right away (a
+  reconnected phone used to send nothing until the next open); after connecting, the app checks whether iOS still
+  wants to ask about the core Health types and shows the sheet once more (accounts that connected but never uploaded:
+  the sheet had been swallowed, #214); the phone's state (Background App Refresh, Low Power Mode, locked, last attempt /
+  upload, last error, types iOS never asked about, the SDK's sync state) goes to `PUT /v1/ingest/sync-device` after every
+  round and on return to the foreground; the sync page says "only iPhone data, no watch" apart from "sync is broken".
+- Sync robustness (#295 A2 / A3): the Open Wearables auth error is taken from the SDK's `authErrorStream` (the log text
+  stays a fallback, plus "client errors in a row without an accepted upload"); a sign-in that fails after the invitation
+  code was redeemed is now an error the user sees instead of a silent "not connected". RawSync: when the account token
+  gets 401 it continues with the Today page's upload-only token; the status request has its own 10-second timeout and is
+  asked once per pass (a dead network ends the pass as `offline` instead of waiting 60 s per type); uploads time out
+  after 45 s; sync-on-open is released before the app's own uploads run.
 - Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
   Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
 

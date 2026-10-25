@@ -1,4 +1,5 @@
 import Flutter
+import Network
 import UIKit
 import UserNotifications
 import OpenWearablesHealthSDK
@@ -36,11 +37,14 @@ import HealthKit
     SyncLogBuffer.shared.attach(to: OpenWearablesHealthSDK.shared)
 
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "Watch2WhoopNative") else { return }
+    DeviceState.shared.start()
     let native = FlutterMethodChannel(name: "watch2whoop/native", binaryMessenger: registrar.messenger())
     native.setMethodCallHandler { call, result in
       switch call.method {
       case "drainLog": result(SyncLogBuffer.shared.drain())
       case "takeLinks": result(LinkInbox.shared.take())
+      // What may hold sync back right now (sync_bridge.dart syncStatus, the page's `net`): no health values
+      case "deviceState": result(DeviceState.shared.snapshot())
       default:
         // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
         if !RawSync.shared.handle(call, result) { result(FlutterMethodNotImplemented) }
@@ -178,6 +182,59 @@ final class PushBridge {
           let ent = plist["Entitlements"] as? [String: Any],
           let env = ent["aps-environment"] as? String else { return "production" }
     return env == "development" ? "sandbox" : "production"
+  }
+}
+
+/// The phone's state that decides whether syncing can work now (for the Today page's sync status, sync_bridge.dart):
+/// Background App Refresh, Low Power Mode, whether protected data (HealthKit) is readable (locked phone), and the network
+/// path. Nothing about health data, nothing leaves the phone except through the page the user is looking at.
+final class DeviceState {
+  static let shared = DeviceState()
+  private let monitor = NWPathMonitor()
+  private let queue = DispatchQueue(label: "watch2whoop.devicestate")
+  private var path: NWPath?
+  private var started = false
+
+  func start() {
+    guard !started else { return }
+    started = true
+    monitor.pathUpdateHandler = { [weak self] p in self?.queue.async { self?.path = p } }
+    monitor.start(queue: queue)
+  }
+
+  /// net: wifi / cellular / wired / other / constrained (Low Data Mode) / offline / unknown (not known yet)
+  func snapshot() -> [String: Any] {
+    let p = queue.sync { path }
+    var net = "unknown"
+    if let p = p {
+      if p.status != .satisfied {
+        net = "offline"
+      } else if p.isConstrained {
+        net = "constrained"
+      } else if p.usesInterfaceType(.wifi) {
+        net = "wifi"
+      } else if p.usesInterfaceType(.cellular) {
+        net = "cellular"
+      } else if p.usesInterfaceType(.wiredEthernet) {
+        net = "wired"
+      } else {
+        net = "other"
+      }
+    }
+    let refresh: String
+    switch UIApplication.shared.backgroundRefreshStatus {
+    case .available: refresh = "on"
+    case .denied: refresh = "off"
+    case .restricted: refresh = "restricted"
+    @unknown default: refresh = "unknown"
+    }
+    return [
+      "net": net,
+      "expensive": p?.isExpensive ?? false,
+      "backgroundRefresh": refresh,
+      "lowPower": ProcessInfo.processInfo.isLowPowerModeEnabled,
+      "protectedData": UIApplication.shared.isProtectedDataAvailable,
+    ]
   }
 }
 
