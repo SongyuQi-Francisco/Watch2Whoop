@@ -1,6 +1,6 @@
 # Open Wearables local deployment
 
-Open Wearables (OW) 0.9.0 runs in local Docker and holds the raw wearable data of all family members. The source in `vendor/open-wearables` is not modified: it is the upstream compose file plus the `compose.override.yaml` here.
+Open Wearables (OW) 0.9.0 runs in local Docker and holds the raw wearable data of all family members. The source in `vendor/open-wearables` is not modified: it is the upstream compose file plus the `compose.override.yaml` here, which also mounts one patched backend file (see "Refresh-token patch" below).
 
 | Service | Address (bound to 127.0.0.1 only) | Notes |
 |---|---|---|
@@ -53,5 +53,25 @@ OW is bound to 127.0.0.1 only, so the iPhone reaches it through Tailscale:
 
 When a family member joins: `uv run body-engine user-add ...` → `uv run body-engine ow-link --user-id <new id>` → generate an invitation code for that user in the portal.
 
+## Refresh-token patch
+OW rotates the SDK refresh token on every refresh and revokes the old one at once. If a phone never receives the answer
+(iOS suspends the app between request and response, or the network drops), it keeps the old token, every later refresh is
+rejected and the phone uploads nothing (HTTP 401) until it is reconnected with a new invitation code. In production one
+lost answer kept a phone at 401 for four days.
+
+`patches/refresh_token_service.py` is OW 0.9.0's `backend/app/services/refresh_token_service.py` with one addition: a
+revoked SDK token whose successor was never used is answered again with that same successor and a new access token (an
+idempotent retry). Once the phone has used the successor, the old token is rejected as before. Developer tokens and tokens
+revoked through `/token/revoke` are unchanged. `W2W_REFRESH_REPLAY_GRACE_HOURS` (default 720 = 30 days, `0` = upstream
+behaviour) limits how long after the rotation this works. The compose file mounts it read-only over both copies of the
+code in the image, and sets `ACCESS_TOKEN_EXPIRE_MINUTES=1440` (24 h instead of 60 min, so a phone that wakes every few
+hours no longer starts every upload with 401 → refresh → retry, and rotations happen about once a day).
+
+Checked against the official image (one-off Postgres + Redis containers, `uv pip install` of OW's test dependencies,
+`pytest tests/services/test_refresh_token_service.py tests/api/v1/ -k "token or auth or sdk or invitation"`): 189 passed
+upstream; with the patch 188 passed and the one expected difference, `test_refresh_token_rotation_invalidates_old_token`
+(an old token reused right after rotation now gets the unused successor); with `W2W_REFRESH_REPLAY_GRACE_HOURS=0` all 189
+pass. `body_engine/tests/test_ow_refresh_replay.py` covers the logic in CI and fails when the pinned upstream file changes.
+
 ## Upgrading
-OW is pre-1.0: read the release notes first, then change the submodule and the image versions and digests in `compose.override.yaml` together. `TELEMETRY_ENABLED=false` is already in the configuration (the 0.9.0 backend has no anonymous telemetry yet; it is a placeholder); Sentry is disabled.
+OW is pre-1.0: read the release notes first, then change the submodule and the image versions and digests in `compose.override.yaml` together. The refresh-token patch is a copy of one upstream file: re-apply it to the new version (or drop it if upstream tolerates a lost refresh answer), then update the hash in the patch header and the test. `TELEMETRY_ENABLED=false` is already in the configuration (the 0.9.0 backend has no anonymous telemetry yet; it is a placeholder); Sentry is disabled.
