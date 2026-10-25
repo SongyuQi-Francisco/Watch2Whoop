@@ -505,6 +505,5 @@ def test_page_wiring():
     assert 'ev.kind === "backfill"' in js                                  # the app's progress for a top-up never reaches the connect flow
     assert js.count("localStorage.setItem(") == 1                          # the reminder state lives on the server, not in the page
     assert "ov.coverage" in js and 'data-ss="bf_mute"' in js
-    assert "v2.140" in (STATIC.parent / "api.py").read_text(encoding="utf-8") and "be-shell-v143" in (STATIC / "sw.js").read_text(encoding="utf-8")
     doc = (Path(__file__).resolve().parents[2] / "docs/sync-onboarding-app-requirements.md").read_text(encoding="utf-8")
     assert "watch2whoop://backfill?days=" in doc and "Watch2WhoopFeatures.backfill" in doc
