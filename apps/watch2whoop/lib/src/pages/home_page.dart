@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
@@ -35,6 +36,7 @@ import '../resync.dart';
 import '../resync_flow.dart';
 import '../setup_flow.dart';
 import '../sync_on_open.dart';
+import '../sync_repair.dart';
 import '../ui.dart';
 import '../web_mic.dart';
 import 'permissions_page.dart';
@@ -51,6 +53,9 @@ const String _kMePrefix = 'w2w-me:';
 
 /// Bridge message prefix for the upload-only token the page mints for setup-link users (raw_sync.dart).
 const String _kIngestPrefix = 'w2w-ingest:';
+
+/// The automatic sync repairs of the last days (sync_repair.dart).
+const String _kRepairKey = 'w2w.syncRepair.v1';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -84,6 +89,34 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     isSyncing: () async => (await HealthSync.instance.status()).isSyncing,
     onDone: _afterSyncRound,
   );
+
+  /// Open Wearables rejects this phone (HTTP 401 in the SDK log): reconnect by itself, at most 3 times a day (sync_repair.dart).
+  late final SyncAutoRepair _autoRepair = SyncAutoRepair(
+    needsRepair: () => HealthSync.instance.stats.value.authProblem,
+    canRepair: () {
+      final c = AppState.instance.config;
+      return mounted && _foreground && hasHealthSync && AppState.instance.accountToken != null && c.owConnected;
+    },
+    repair: _repairSync,
+    load: () async => (await SharedPreferences.getInstance()).getString(_kRepairKey),
+    save: (v) async => (await SharedPreferences.getInstance()).setString(_kRepairKey, v),
+  );
+
+  Future<RepairOutcome> _repairSync() async {
+    final r = await connectSyncViaAccount();
+    if (!r.connected) {
+      await HealthSync.instance.note('Auto reconnect failed: ${r.manualNeeded ? 'needs a code' : r.error}');
+      return r.manualNeeded ? RepairOutcome.notPossible : RepairOutcome.failed;
+    }
+    // Same steps as 「连接同步」 on the sync page: the SDK forgets its tracked types when it signs out
+    await HealthSync.instance.requestAuthorization();
+    await AppState.instance.update(AppState.instance.config.copyWith(healthRequested: true));
+    await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
+    await HealthSync.instance.note('Auto reconnect: connected again');
+    return RepairOutcome.connected;
+  }
+
+  void _onSyncStats() => unawaited(_autoRepair.trigger());
 
   /// Read range and history progress for the server (health_range.dart), through the page (it has the login cookie):
   /// every 30 s while the app is in the foreground, after the page loads and after each sync round; only when it changed.
@@ -232,11 +265,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     SetupLinks.instance.pending.addListener(_onLink);
     PushService.instance.opened.addListener(_openTapped);
     PushService.instance.received.addListener(_onPushReceived);
+    HealthSync.instance.stats.addListener(_onSyncStats);
     _load();
     _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportRange());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
+      _onSyncStats(); // a 401 kept from the last run
       // Someone who was never asked for Health (e.g. updated from a build without the permissions step): show it once
       if (shouldShowPermissions(AppState.instance.config)) {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PermissionsPage()));
@@ -252,6 +287,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     SetupLinks.instance.pending.removeListener(_onLink);
     PushService.instance.opened.removeListener(_openTapped);
     PushService.instance.received.removeListener(_onPushReceived);
+    HealthSync.instance.stats.removeListener(_onSyncStats);
     super.dispose();
   }
 
@@ -520,6 +556,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (uri.host == 'sync' || uri.host == 'settings') _openSync();
       if (uri.host == 'sync-center') _openSync(center: true); // the Today page's one row for sync (resync.dart)
       if (uri.host == kAccountDeletedHost) _onAccountDeleted();
+      // 「手机同步已断开 → 重新连接」 on the Today page (web/static/sync-repair.js): its sync part, asked once like a scanned link
+      final setup = uri.host == 'setup' ? pageSetupLink(req.url) : null;
+      if (setup != null) SetupLinks.instance.pending.value = setup;
       return NavigationDecision.prevent;
     }
     if (uri.scheme == 'about' || uri.scheme == 'blob' || uri.scheme == 'data') return NavigationDecision.navigate;

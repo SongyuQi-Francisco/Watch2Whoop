@@ -270,14 +270,17 @@ def member_board(conn, uid: int, board: str) -> dict:
 
 
 # ---------------------------------------------------------------- what a viewer sees
-def board(conn: psycopg.Connection, viewer_id: int, name: str) -> dict:
-    """One board for the viewer: me + everyone sharing a circle with me, ranked among those with a score."""
+def board(conn: psycopg.Connection, viewer_id: int, name: str, circle_id=None) -> dict:
+    """One board for the viewer: me + everyone sharing a circle with me, ranked among those with a score. With
+    `circle_id` (flag circles_by_circle): only that circle's members, each needing the board's scopes picked there."""
     if name not in P.BOARDS:
         raise ValueError(name)
+    one = cards.one_circle(conn, viewer_id, circle_id)
     need = set(P.BOARD_SCOPES[name])
     me = conn.execute("SELECT display_name FROM users WHERE id = %s", (viewer_id,)).fetchone()
     people = [{"id": viewer_id, "display_name": me["display_name"], "self": True}] + \
-             [{"id": m["id"], "display_name": m["display_name"], "self": False} for m in cards.co_members(conn, viewer_id)]
+             [{"id": m["id"], "display_name": m["display_name"], "self": False}
+              for m in cards.co_members(conn, viewer_id, one and one["id"])]
     avatars = avatar_store.urls_for(conn, viewer_id, [p["id"] for p in people])
     nick = remarks.for_viewer(conn, viewer_id, [p["id"] for p in people])
     for p in people:
@@ -285,7 +288,10 @@ def board(conn: psycopg.Connection, viewer_id: int, name: str) -> dict:
         p["remark"] = nick.get(p["id"])
     rows = []
     for p in people:
-        if not p["self"] and not need <= cards.share_with(conn, viewer_id, p["id"]):
+        allowed = None if p["self"] else cards.share_with(conn, viewer_id, p["id"])
+        if allowed is not None and one:
+            allowed &= one["picks"].get(p["id"], set())   # in one circle: only what they picked there
+        if allowed is not None and not need <= allowed:
             rows.append({**p, "status": "not_shared", "score": None, "sub": {}, "rank": None})
             continue
         rows.append({**p, **member_board(conn, p["id"], name), "rank": None})
@@ -298,14 +304,29 @@ def board(conn: psycopg.Connection, viewer_id: int, name: str) -> dict:
         r["score"] = round(r["score"])
     others = [r for r in rows if r["status"] != "ok"]
     window = P.LONGEVITY_WINDOW_DAYS if name == "longevity" else P.WINDOW_DAYS
-    return {"board": name, "window_days": window, "scopes": sorted(need), "boards": list(P.BOARDS),
+    return {"board": name, "window_days": window, "scopes": sorted(need), "boards": list(P.BOARDS), "circle": one and one["id"],
             "rows": ranked + sorted(others, key=lambda r: (r["status"] != "insufficient", r["display_name"]))}
 
 
-def ai_overview(conn: psycopg.Connection, viewer_id: int) -> dict:
-    """get_friends_overview: each circle member's shared status + every board rank (what the viewer may see only)."""
-    ov = cards.overview(conn, viewer_id)
-    boards = {b: {r["id"]: r for r in board(conn, viewer_id, b)["rows"]} for b in P.BOARDS}
+def _ai_circle(conn, viewer_id: int, circle) -> int | None:
+    """get_friends_overview's `circle`: one of the viewer's circles by id or by name (exact, then unique prefix)."""
+    if circle in (None, "") or not cards.by_circle_on(conn, viewer_id):
+        return None
+    mine = cards.circle_list(conn, viewer_id)
+    text = str(circle).strip()
+    hit = [c for c in mine if str(c["id"]) == text or c["name"] == text] or \
+          [c for c in mine if c["name"].casefold().startswith(text.casefold())]
+    if len(hit) != 1:
+        raise ValueError("没有这个圈子：" + text + "（可选：" + "、".join(c["name"] for c in mine) + "）")
+    return hit[0]["id"]
+
+
+def ai_overview(conn: psycopg.Connection, viewer_id: int, circle=None) -> dict:
+    """get_friends_overview: each circle member's shared status + every board rank (what the viewer may see only).
+    `circle` (id or name; flag circles_by_circle): only that circle, with what each member picked there."""
+    cid = _ai_circle(conn, viewer_id, circle)
+    ov = cards.overview(conn, viewer_id, cid)
+    boards = {b: {r["id"]: r for r in board(conn, viewer_id, b, cid)["rows"]} for b in P.BOARDS}
     out = []
     for m in [ov["me"], *ov["members"]]:
         sc = m["scores"]
@@ -316,7 +337,8 @@ def ai_overview(conn: psycopg.Connection, viewer_id: int) -> dict:
         if sc:
             row.update(status=sc["label"], recovery=sc["recovery"], strain=sc["strain"],
                        recovery_7d=round(statistics.fmean(week)) if week else None,
-                       last_sync=sc["last_date"] if not sc["synced_today"] else None)
+                       sync=sc["state"],   # scored / pending (data in, today's scores being computed) / stale / never
+                       last_sync=sc["last_sync_at"].isoformat() if sc["last_sync_at"] else None)
         if m["trained"] is not None:
             row["trained_today"] = m["trained"]
         ranks = {}
@@ -330,4 +352,8 @@ def ai_overview(conn: psycopg.Connection, viewer_id: int) -> dict:
         if not m["self"]:
             row["not_shared"] = m["hidden"]
         out.append(row)
-    return {"members": out, "boards": "body=身体状态 activity=运动 lifestyle=认真生活 recomp=瘦体增肌 longevity=抗衰老(4周)；分数和自己基线比"}
+    res = {"members": out, "boards": "body=身体状态 activity=运动 lifestyle=认真生活 recomp=瘦体增肌 longevity=抗衰老(4周)；分数和自己基线比"}
+    if "circles" in ov:
+        res["circles"] = [{"id": c["id"], "name": c["name"], "members": c["members"]} for c in ov["circles"]]
+        res["circle"] = cid
+    return res

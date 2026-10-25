@@ -29,6 +29,7 @@ from .insights.api import router as insights_router
 from .records.api import router as records_router
 from .rules.api import router as rules_router
 from .goals.api import router as goals_router
+from .sync import ow_watch
 from .sync.api import router as sync_router
 from .history.api import router as history_router
 from .profile.api import router as profile_router
@@ -45,6 +46,7 @@ from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
 from .notify.api import router as notify_router
+from .notices.api import router as notices_router
 from .web import api as web_api, session as web_session
 
 pool: ConnectionPool | None = None
@@ -55,7 +57,8 @@ async def lifespan(app: FastAPI):
     global pool
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
-    async with mcp_app.lifespan(), plugins.scheduler():  # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins
+    # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
+    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher():
         yield
     pool.close()
 
@@ -167,6 +170,7 @@ app.include_router(friends_router)
 app.include_router(avatars_router)
 app.include_router(friends_feed_router)
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
+app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
 app.include_router(ai_router)
 app.include_router(history_router)
 app.include_router(profile_router)

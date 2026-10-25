@@ -9,7 +9,7 @@ from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
 from ..web import login_limit
 from ..images import store as images
-from . import cards, codes, leaderboard, params as P, remarks, store
+from . import cards, codes, leaderboard, params as P, prefs, remarks, store
 
 # Every endpoint is behind the `friends` feature flag (docs/rollout.md): 404 while it is off for the caller
 router = APIRouter(prefix="/v1/friends", tags=["friends"], dependencies=[Depends(flags.require(auth.CIRCLES_FLAG))])
@@ -73,6 +73,13 @@ class NudgeIn(BaseModel):
 class RemarkIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     remark: str | None = Field(default=None, max_length=200)   # params.REMARK_MAX after trimming; empty / null clears
+
+
+class PrefsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pinned: bool | None = None
+    muted: bool | None = None
+    archived: bool | None = None
 
 
 class ScopesIn(BaseModel):
@@ -178,6 +185,21 @@ def dissolve(circle_id: int, conn=Depends(get_conn), viewer=Depends(current_user
     return Response(status_code=204)
 
 
+PREFS = [Depends(flags.require(prefs.FLAG))]
+
+
+@router.put("/circles/{circle_id}/prefs", dependencies=PREFS)
+def set_prefs(circle_id: int, body: PrefsIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """My own pin / mute / archive of one circle (#269 P2); changes nothing for anyone else, sharing included."""
+    return _run(prefs.set_prefs, conn, _self(viewer, "me"), circle_id, body.pinned, body.muted, body.archived)
+
+
+@router.delete("/invites", dependencies=PREFS)
+def decline_all(conn=Depends(get_conn), viewer=Depends(current_user)):
+    """「全部忽略」: every open invite addressed to me."""
+    return {"declined": store.decline_all(conn, _self(viewer, "me"))}
+
+
 @router.delete("/invites/{invite_id}", status_code=204)
 def decline(invite_id: int, conn=Depends(get_conn), viewer=Depends(current_user)):
     if not store.decline(conn, _self(viewer, "me"), invite_id):
@@ -186,9 +208,10 @@ def decline(invite_id: int, conn=Depends(get_conn), viewer=Depends(current_user)
 
 
 @router.get("/overview")
-def member_cards(conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Friends tab: my card and every co-member's (today + last 7 days), each block only if shared with me."""
-    return cards.overview(conn, viewer["id"])
+def member_cards(circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Friends tab: my card and every co-member's (today + last 7 days), each block only if shared with me.
+    `circle` (flag circles_by_circle): only that circle's members and what they picked there."""
+    return _run(cards.overview, conn, viewer["id"], circle)
 
 
 @router.post("/nudges")
@@ -197,11 +220,12 @@ def nudge(body: NudgeIn, conn=Depends(get_conn), viewer=Depends(current_user)):
 
 
 @router.get("/leaderboard")
-def leaderboard_board(board: str = "body", conn=Depends(get_conn), viewer=Depends(current_user)):
-    """One board (body / activity / lifestyle / recomp / longevity): me + circle members, ranked among those who share."""
+def leaderboard_board(board: str = "body", circle: int | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """One board (body / activity / lifestyle / recomp / longevity): me + circle members, ranked among those who share.
+    `circle` (flag circles_by_circle): only that circle's members, with what they picked there."""
     if board not in P.BOARDS:
         raise HTTPException(400, f"排行榜只能是 {', '.join(P.BOARDS)}")
-    return leaderboard.board(conn, viewer["id"], board)
+    return _run(leaderboard.board, conn, viewer["id"], board, circle)
 
 
 # ---------------------------------------------------------------- private remarks (#212, flag member_remarks)

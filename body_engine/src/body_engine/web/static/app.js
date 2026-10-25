@@ -56,6 +56,10 @@
   // Page events for plugins: BodyHooks.on(name, fn). The page emits "page" ({page}) when the visible page changes and "action"
   // ({feature, page}) when a control is used. feature = the control's data-feature, its id, or the name of its data-* attribute
   // (with the value only for data-tab / data-mode); never text the user typed or values of records. Nothing listens by default.
+  // "sheet" ({open: true, kind, key} / {open: false}) when a detail sheet opens or closes: kind "card" = opened from an element
+  // with data-card="<key>", "explain" = the explanation of a metric (key), "lab" = a lab test's history (test_key); other sheets
+  // have no key. data-card marks a data card on the page with a fixed code key (never record values); a plugin can watch which
+  // cards are on screen. Keys are lower-case [a-z0-9_.:-] only.
   const HOOKS = new Map();
   window.BodyHooks = {
     on(name, fn) { if (!HOOKS.has(name)) HOOKS.set(name, []); HOOKS.get(name).push(fn); },
@@ -68,7 +72,7 @@
     if (named) return named;
     if (/^[a-z][a-z0-9_-]{0,39}$/.test(el.id || "")) return el.id.replace(/[-_]?\d+$/, "");   // tip-3 -> tip
     for (const a of el.getAttributeNames()) {
-      const k = a.startsWith("data-") ? a.slice(5) : "";
+      const k = a.startsWith("data-") && a !== "data-card" ? a.slice(5) : "";
       if ((k === "tab" || k === "mode") && /^[a-z_-]{1,30}$/.test(el.getAttribute(a))) return `${k}:${el.getAttribute(a)}`;
       if (/^[a-z][a-z-]{0,30}$/.test(k)) return k;
     }
@@ -121,6 +125,8 @@
     backTab: "friends",     // where 「返回」 on the read-only banner goes (viewing a friend's pages)
     friendsMode: "cards",   // Friends tab: member cards / feed (flag circle_feed) / leaderboard
     board: (() => { try { return localStorage.getItem("be.board") || "body"; } catch (e) { return "body"; } })(),
+    // Friends tab, one circle at a time (flag circles_by_circle, #269): the chosen circle's id, null = all circles
+    fcircle: (() => { try { return Number(localStorage.getItem("be.fcircle")) || null; } catch (e) { return null; } })(),
     mealLogs: {},
     calMonth: null,
     foodMode: "diet", foodSub: null, foodQ: "", reportPeriod: "week",  // food page: diet / shopping, the recipes sub-page ("recipes" or null), search term  // month the training history is viewing, YYYY-MM   // meal templates logged since this open: template id -> log_id (for undo)
@@ -468,11 +474,17 @@
   const SH = new Map();
   let shSeq = 0;
   const sheetAttr = (fn) => { const id = `s${++shSeq}`; SH.set(id, fn); return `data-sheet="${id}"`; };
+  let sheetFrom = null;   // data-card key of the element whose click opens the next sheet (see the "sheet" hook)
+  const hookKey = (v) => String(v ?? "").toLowerCase().replace(/[^a-z0-9_.:-]+/g, "_").replace(/^[^a-z]+/, "").slice(0, 60);
   document.addEventListener("click", (e) => {
     const t = e.target.closest("[data-sheet]");
     if (!t) return;
     const fn = SH.get(t.dataset.sheet);
-    if (fn) { e.preventDefault(); fn(); }
+    if (fn) {
+      e.preventDefault();
+      sheetFrom = t.closest("[data-card]")?.dataset.card || null;
+      try { fn(); } finally { sheetFrom = null; }
+    }
   });
   document.addEventListener("click", (e) => {   // offlineHtml() drawn in the page itself: try the page again
     const b = e.target.closest("[data-retry]");
@@ -486,9 +498,11 @@
   $("#sheet-back").onclick = () => { const fn = sheetBack; if (fn) fn(); };
 
   let sheetTimer = 0;  // closeSheet's hide timer: cancelled when another sheet opens right away (close one, open the next)
-  function openSheet(title, html, after) {
+  function openSheet(title, html, after, hook) {
     const sh = $("#sheet");
     clearTimeout(sheetTimer);
+    const meta = hook ? { kind: hook.kind, key: hookKey(hook.key) } : sheetFrom ? { kind: "card", key: hookKey(sheetFrom) } : {};
+    window.BodyHooks.emit("sheet", { open: true, ...meta });
     setBack(null);
     $("#sheet-title").textContent = title;
     $("#sheet-body").innerHTML = html;
@@ -497,6 +511,7 @@
     after?.($("#sheet-body"));
   }
   function closeSheet() {
+    window.BodyHooks.emit("sheet", { open: false });
     closeAltPreview();
     const sh = $("#sheet");
     sh.classList.remove("open");
@@ -875,7 +890,7 @@
     if (ask) ask.onclick = () => askAI(x.ai_prompt);
   }
   const xpBox = `<div class="xp"><div class="xp-load"><span></span><span></span><span></span></div></div>`;
-  function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true)); }
+  function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true), { kind: "explain", key }); }
   // A kv row that opens the explanation of one metric
   const xkv = (k, v, reason, key) => `<button class="kv kv-btn" data-feature="explain" ${sheetAttr(() => explainSheet("metric", key, k))}><span class="k">${esc(k)}<i class="xp-i">${ICON.info}</i></span>${v != null ? `<span class="v">${v}</span>` : `<span class="v r">${esc(reason ? short(reason) : "—")}</span>`}</button>`;
 
@@ -960,15 +975,15 @@
     const t = sc.today || {}, y = sc.yesterday || {};
     const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>` : "";
     const sub = t.recovery == null && sc.last_recovery ? `<div class="hero-sub">${tr("上次")} ${sc.last_recovery.recovery} · ${shortDay(sc.last_recovery.date)}</div>` : "";
-    const tile = (label, value, fn) => `<button class="tile" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
+    const tile = (label, value, fn, card) => `<button class="tile" data-card="${card}" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
-    return `<button class="hero" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
+    return `<button class="hero" data-card="recovery" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
       <div class="tiles">
-        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)))}
-        ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc))}
-        ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc))}
+        ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)), "sleep")}
+        ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc), "sleep_score")}
+        ${tile(isPast() ? tr("前一天负荷") : tr("昨天负荷"), y.strain != null ? fmtNum(y.strain, 1) : null, () => strainSheet(sc), "strain")}
       </div>
-      ${sc.load_status ? `<div class="chip-row"><button class="chip" ${sheetAttr(() => loadSheet(sc))}>${tr("负荷")} <b>${esc(sc.load_status.label)}</b></button></div>` : ""}`;
+      ${sc.load_status ? `<div class="chip-row"><button class="chip" data-card="training_load" ${sheetAttr(() => loadSheet(sc))}>${tr("负荷")} <b>${esc(sc.load_status.label)}</b></button></div>` : ""}`;
   }
 
   // ---- Training + nutrition cards
@@ -1071,7 +1086,7 @@
       const g = n.goal || {}, i = n.intake;
       const pct = (a, b) => (b ? Math.min(100, (a / b) * 100) : 0);
       const m = (label, a, b) => `<div><div class="macro-l"><span>${label}</span><span>${fmtNum(a)}/${fmtNum(b)}</span></div><div class="bar"><span style="width:${pct(a, b).toFixed(0)}%"></span></div></div>`;
-      food = `<div class="card"><button class="food-main" ${sheetAttr(() => nutritionSheet(d))}>
+      food = `<div class="card" data-card="nutrition"><button class="food-main" ${sheetAttr(() => nutritionSheet(d))}>
           <div class="kcal" style="margin-top:0"><span class="row-sub">${tr("饮食")}${n.logged ? "" : ` ${badge("plain", tr("未记录"))}`}</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
           <div class="bar ${g.calories && i.calories > g.calories * 1.05 ? "over" : ""}"><span style="width:${pct(i.calories, g.calories).toFixed(0)}%"></span></div>
           <div class="macros">${m(tr("蛋白"), i.protein_g, g.protein_g)}${m(tr("碳水"), i.carbs_g, g.carbs_g)}${m(tr("脂肪"), i.fat_g, g.fat_g)}</div></button>
@@ -1079,7 +1094,7 @@
     }
     const calLink = t.code === "forbidden" ? "" : `<button class="link link-ic" id="to-cal">${ICON.cal}${tr("训练历史")}</button>`;
     return `<div class="section"><div class="section-head"><h2>${tr("训练与饮食")}</h2>${calLink}</div>
-      <button class="card" ${sheetAttr(() => trainingSheet(d))}>
+      <button class="card" data-card="training" ${sheetAttr(() => trainingSheet(d))}>
         <div class="row"><span class="row-title">${esc(title)}</span><span class="chev">${ICON.chev}</span></div>
         ${sub ? `<div class="rcard-tags" style="margin-top:8px">${sub}</div>` : ""}</button>${food}</div>`;
   }
@@ -1129,7 +1144,7 @@
     const m = sl.main;
     const stat = (st, v) => `<div><div class="stage-l"><i class="k-${st}"></i>${HYP_NAME[st]}</div><div class="stage-v">${hm(v) ?? "—"}</div></div>`;
     const chart = sl.stages.length ? hypnoSvg(m, sl.stages) : "";
-    return `<div class="section">${head}<button class="card" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
+    return `<div class="section">${head}<button class="card" data-card="sleep" ${sheetAttr(() => (sleepDetailOn() ? openSleepDetail(sl.date) : sleepDetailSheet(sl)))}>
       <div class="sleep-head"><div><div class="sub-l">${tr("入睡 → 醒来")}</div><div class="sleep-times">${m.start}<span class="arrow">→</span>${m.end}</div></div>
         <div class="sleep-total"><div class="sub-l">${tr("睡着")}</div><div class="v">${hm(m.asleep_min)}</div></div></div>
       ${chart}
@@ -1245,7 +1260,7 @@
     const on = g?.progress?.on_target_nights_7d, n7 = g?.progress?.nights_7d;
     const sub = planned && on != null ? tr("达标 {a}/{b}", { a: on, b: n7 || 7 }) : recent.length ? tr("{n}/7 晚", { n: recent.length }) : "";
     return `<div class="section"><div class="section-head"><h2>${planned ? tr("入睡目标") : tr("入睡")}</h2>${sub ? `<span class="small muted">${esc(sub)}</span>` : ""}</div>
-      <button class="card" ${self ? sheetAttr(() => goalSheet(goal, recent, coach)) : ""}>
+      <button class="card" data-card="sleep_goal" ${self ? sheetAttr(() => goalSheet(goal, recent, coach)) : ""}>
         <div class="row">${big}${self ? `<span class="chev">${ICON.chev}</span>` : ""}</div>${coachLine}
         ${bedChart(recent, g, viewDay())}</button></div>`;
   }
@@ -1416,7 +1431,7 @@
     if (list?.error) return list.code === "forbidden" ? "" : `<div class="section"><div class="section-head"><h2>${tr("提醒")}</h2></div><div class="card row"><span class="dash">—</span><span class="small faint">${esc(short(list.error))}</span></div></div>`;
     if (!list.length) return "";
     const top = [...list.filter((r) => r.status === "new"), ...list.filter((r) => r.status !== "new")].slice(0, 3);
-    return `<div class="section"><div class="section-head"><h2>${tr("提醒")}</h2>
+    return `<div class="section" data-card="reminders"><div class="section-head"><h2>${tr("提醒")}</h2>
         ${list.length > 3 ? `<button class="link" ${sheetAttr(() => allRemindersSheet(list))}>${tr("common.all", { n: list.length })}</button>` : ""}</div>
       ${top.map(reminderRow).join("")}</div>`;
   }
@@ -1492,7 +1507,7 @@
   function activityHtml(dl) {
     if (!dl || [dl.steps, dl.active_kcal, dl.exercise_min].every((v) => v == null)) return "";
     const t = (label, v, u) => `<div class="tile"><span class="tile-label">${label}</span><span class="tile-value">${v != null ? `${fmtNum(v)}${u ? `<small>${u}</small>` : ""}` : dash()}</span></div>`;
-    return `<div class="section"><div class="section-head"><h2>${tr("活动")}</h2></div><div class="tiles" style="margin-top:0">
+    return `<div class="section" data-card="activity"><div class="section-head"><h2>${tr("活动")}</h2></div><div class="tiles" style="margin-top:0">
       ${t(tr("步数"), dl.steps)}${t(tr("活动"), dl.active_kcal, "kcal")}${t(tr("锻炼"), dl.exercise_min, tr("分"))}</div></div>`;
   }
 
@@ -1532,7 +1547,7 @@
     const sheet = () => openSheet(tr("负荷目标"), `${scaleBar(cur, 0, 21, [c.target_low, c.target_high], ["plain", "good", "plain"], [[0, "0"], [c.target_low, fmtNum(c.target_low, 0)], [c.target_high, fmtNum(c.target_high, 0)], [21, "21"]])}
       ${kv(tr("区间"), `${fmtNum(c.target_low, 0)}–${fmtNum(c.target_high, 0)}`)}${kv(tr("现在"), has ? fmtNum(cur, 1) : null, c.current_missing_reason)}
       ${c.status ? tags([badge(c.status === "in_range" ? "good" : c.status === "above" ? "mid" : "plain", state)]) : ""}`);
-    return `<button class="mini" ${sheetAttr(sheet)}>
+    return `<button class="mini" data-card="strain_coach" ${sheetAttr(sheet)}>
       <span class="tile-label">${tr("负荷目标")}</span>
       <span class="mini-row"><svg class="coach-ring" viewBox="0 0 54 54" aria-hidden="true"><g transform="rotate(-90 27 27)">
         <circle class="track" cx="27" cy="27" r="${r}" fill="none" stroke-width="6"/>
@@ -1565,7 +1580,7 @@
         <div class="hbar-l">${hrs.map(([t, v]) => `<span><b>${fmtNum(v, 1)}</b> h ${t}</span>`).join("")}</div>` : ""}
       ${d.peak_hour != null ? kv(tr("峰值"), `${d.peak_hour}:00`) : ""}
       ${d.baseline?.calm_hr ? kv(tr("平静心率"), `${fmtNum(d.baseline.calm_hr)} <small class="muted">bpm</small>`) : ""}`);
-    return `<button class="mini" ${sheetAttr(sheet)}>
+    return `<button class="mini" data-card="stress" ${sheetAttr(sheet)}>
       <span class="tile-label">${tr("压力")}</span>${why ? `<span class="v">—</span><span class="s faint">${esc(reason)}</span>`
         : `<span class="v">${fmtNum(d.score, 1)}<small class="muted" style="font-size:12px;font-weight:500"> ${STRESS_LEVEL[d.level] || "/ 3"}</small></span>${line}`}</button>`;
   }
@@ -1592,7 +1607,7 @@
     const sheet = () => openSheet(tr("健康监测"), list.map((x) => `<div class="vrow"><div class="kv" style="border:0;padding-bottom:4px">${VITAL_XP[x.key]
         ? `<button class="k xp-label" ${sheetAttr(() => explainSheet("metric", VITAL_XP[x.key], VITAL_NAME[x.key]))}>${name(x)}<i class="xp-i">${ICON.info}</i></button>` : `<span class="k">${name(x)}</span>`}<span class="v">${x.value != null ? `${esc(fmtNum(x.value, 1))}${x.unit ? ` <small class="muted">${esc(x.unit)}</small>` : ""}` : `<span class="muted" style="font-weight:400">${esc(short(x.missing_reason))}</span>`}
       ${st(x) === "high" ? badge("bad", tr("偏高")) : st(x) === "low" ? badge("bad", tr("偏低")) : ""}</span></div>${range(x)}</div>`).join(""));
-    return `<button class="card" style="margin-top:8px" ${sheetAttr(sheet)}><div class="row"><span class="tile-label">${tr("健康监测")}</span>${off ? badge("bad", tr("{n} 异常", { n: off })) : badge("good", tr("正常"))}</div>
+    return `<button class="card" data-card="health_monitor" style="margin-top:8px" ${sheetAttr(sheet)}><div class="row"><span class="tile-label">${tr("健康监测")}</span>${off ? badge("bad", tr("{n} 异常", { n: off })) : badge("good", tr("正常"))}</div>
       <div class="vitals">${list.map((x) => `<span class="vital ${esc(st(x) || "")}"><i></i><span>${esc(VITAL_SHORT[x.key] || x.label)}</span></span>`).join("")}</div></button>`;
   }
 
@@ -1641,7 +1656,7 @@
       return `<div class="section"><div class="card age"><div><div class="age-l">${tr("身体年龄")}</div><div class="age-v">${dash()}</div></div><span class="small faint">${esc(short(h.missing_reason, tr("数据不足")))}</span></div></div>`;
     }
     const d = h.delta_years;
-    return `<div class="section"><button class="card age" ${sheetAttr(() => healthspanSheet(h))}>
+    return `<div class="section"><button class="card age" data-card="healthspan" ${sheetAttr(() => healthspanSheet(h))}>
       <div><div class="age-l">${tr("身体年龄")}</div><div class="age-v">${fmtNum(h.body_age, 1)}</div></div>
       <div class="age-side"><div class="x ${d > 0 ? "bad" : d < 0 ? "good" : ""}">${signed(d)}<small>${tr("岁")}</small></div>
         ${h.pace_of_aging != null ? `<div class="x ${paceClass(h.pace_of_aging)}">${signed(h.pace_of_aging, 1)}×<small>${tr("衰老速度")}</small></div>` : ""}</div></button></div>`;
@@ -1699,7 +1714,7 @@
         <div class="dbar"><span class="${v >= 0 ? "younger" : "older"} ${cls === "muted" ? "faint" : ""}" style="width:${(Math.abs(v) / max * 50).toFixed(1)}%"></span></div></div>`;
     }).join("");
     return `<div class="section"><div class="section-head">${xpLabel("behavior", tr("行为影响 · 次日恢复"))}<span class="small muted">${tr("{n} 天", { n: 90 })}</span></div>
-      <div class="card">${rows || `<div class="empty faint" style="padding:8px">—</div>`}${lack ? tags([badge("plain", tr("{n} 项样本不足", { n: lack }))]) : ""}</div></div>`;
+      <div class="card" data-card="behavior">${rows || `<div class="empty faint" style="padding:8px">—</div>`}${lack ? tags([badge("plain", tr("{n} 项样本不足", { n: lack }))]) : ""}</div></div>`;
   }
 
   // Heart-rate zone distribution (Trends page; data comes from the per-day five-zone minutes computed during scoring)
@@ -1708,7 +1723,7 @@
     const total = z.total_min.reduce((a, b) => a + b, 0);
     const bar = (mins) => mins.map((v, i) => `<span style="width:${(v / (mins.reduce((a, b) => a + b, 0) || 1) * 100).toFixed(2)}%;opacity:${(0.25 + i * 0.18).toFixed(2)}"></span>`).join("");
     const weeks = z.weeks.slice(-8);
-    return `<div class="card trend"><div class="trend-head"><div><div class="trend-label">${tr("心率区间分布")}</div>
+    return `<div class="card trend" data-card="hr_zones"><div class="trend-head"><div><div class="trend-label">${tr("心率区间分布")}</div>
         <div class="trend-value">${fmtNum(total / 60, 1)}<small>${tr("小时")}</small></div></div><div class="trend-tip">%HRmax</div></div>
       <div class="zbar">${bar(z.total_min)}</div>
       <div class="zleg">${z.total_min.map((v, i) => `<span><b>${Math.round((v / total) * 100)}%</b>${esc(z.labels[i])}</span>`).join("")}</div>
@@ -1858,7 +1873,7 @@
     const s = d.series[key];
     const [l0, u0, g0, b0, c0, x0] = TCARD[key] || [];
     label ??= l0; unit ??= u0 ?? s?.unit; dig ??= g0 ?? 0; better ??= b0 ?? 0; chart ??= c0 || "line"; xp ??= x0 || key;
-    if (!s) return /授权|permission|forbidden/i.test(d.unavailable?.[key] || "") ? "" : `<div class="card trend">${xpLabel(xp, label)}<div class="trend-value">${dash()}</div></div>`;   // i18n-ok: server reason
+    if (!s) return /授权|permission|forbidden/i.test(d.unavailable?.[key] || "") ? "" : `<div class="card trend" data-card="${hookKey(key)}">${xpLabel(xp, label)}<div class="trend-value">${dash()}</div></div>`;   // i18n-ok: server reason
     if (!s.n && OPTIONAL.has(key) && !s.prev_n) return "";
     const id = `ch-${key}`;
     const hv = head !== undefined ? head : headOf(key, s);
@@ -1872,7 +1887,7 @@
         <div class="trend-value">${hv != null ? fmtNum(hv, dig) : dash()}${unit && hv != null ? `<small>${esc(unit)}</small>` : ""}${sub ? `<small class="sub">${sub}</small>` : ""}</div></div>
         <div class="trend-tip" id="tip-${id}" data-base="${esc(tipBase)}">${tipBase}</div></div>
       ${s.n ? svg : `<div class="trend-tip faint" style="text-align:left">${tr("{r} 无数据", { r: rangeName(d.days) })}</div>`}${s.baseline && s.n ? `<div class="legend"><span><i class="base-key"></i>${tr("基线")}</span></div>` : ""}`;
-    return sheet ? `<button class="card trend" ${sheetAttr(sheet)}>${inner}</button>` : `<div class="card trend">${inner}</div>`;
+    return sheet ? `<button class="card trend" data-card="${hookKey(key)}" ${sheetAttr(sheet)}>${inner}</button>` : `<div class="card trend" data-card="${hookKey(key)}">${inner}</div>`;
   }
 
   // Recovery: bars coloured green / yellow / red, the day counts, contributors (z-scores vs baseline) in the sheet
@@ -1918,7 +1933,7 @@
     if (!r?.n || !s?.n) return "";
     const body = tChart("ch-rs", d.dates, [{ type: "avg", values: r.avg7, cls: "good", main: true }, { type: "avg", values: s.avg7, cls: "train", axis: "r" }],
       { min: 0, max: 100, label: tr("恢复和负荷"), noTicks: true, tip: (i) => `${shortDay(d.dates[i])} · ${tr("恢复")} ${r.values[i] ?? "—"} · ${tr("负荷")} ${s.values[i] != null ? fmtNum(s.values[i], 1) : "—"}` });
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel("recovery_vs_strain", tr("恢复 vs 负荷"))}<div class="trend-value">${fmtNum(r.mean)}<small>/ ${fmtNum(s.mean, 1)}</small></div></div>
+    return `<div class="card trend" data-card="recovery_vs_strain"><div class="trend-head"><div>${xpLabel("recovery_vs_strain", tr("恢复 vs 负荷"))}<div class="trend-value">${fmtNum(r.mean)}<small>/ ${fmtNum(s.mean, 1)}</small></div></div>
       <div class="trend-tip" id="tip-ch-rs" data-base=""></div></div>${body}
       <div class="legend"><span><i class="k-good"></i>${tr("恢复")}</span><span><i class="k-train"></i>${tr("负荷")}</span><span class="muted">${tr("7 天均")}</span></div></div>`;
   }
@@ -1939,7 +1954,7 @@
     const body = tChart("ch-ctl", d.dates, [{ type: "avg", values: c.values, cls: "train", main: true }, ...(a ? [{ type: "avg", values: a.values, cls: "fatigue" }] : [])],
       { min: 0, label: tr("训练负荷"), tip: (i) => `${shortDay(d.dates[i])} · CTL ${fmtNum(c.values[i])} · ATL ${fmtNum(a?.values[i])} · TSB ${t?.values[i] != null ? signed(t.values[i], 0) : "—"}` });
     const tsb = lastOf(t?.values);
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel("training_load", tr("训练负荷"))}<div class="trend-value">${tsb != null ? signed(tsb, 0) : dash()}<small>TSB</small></div></div>
+    return `<div class="card trend" data-card="training_load"><div class="trend-head"><div>${xpLabel("training_load", tr("训练负荷"))}<div class="trend-value">${tsb != null ? signed(tsb, 0) : dash()}<small>TSB</small></div></div>
       <div class="trend-tip" id="tip-ch-ctl" data-base="${esc(deltaHtml(lastOf(c.values), c.prev_mean, 0, 1, ""))}">${deltaHtml(lastOf(c.values), c.prev_mean, 0, 1, "")}</div></div>${body}
       <div class="legend"><span><i class="k-train"></i>CTL ${fmtNum(lastOf(c.values))}</span><span><i class="k-fatigue"></i>ATL ${fmtNum(lastOf(a?.values))}</span></div></div>`;
   }
@@ -1951,7 +1966,7 @@
     const body = tChart(id, dates, [{ type: "bar", values: vals, cls: (v) => (target && v >= target ? "good" : "train"), main: true }],
       { min: 0, max: Math.max(target || 0, ...vals) * 1.1, bars: true, guide: target ? [[target, String(target)]] : null, label, tip: (i) => `${tr("{d} 起", { d: shortDay(dates[i]) })} · ${fmtNum(vals[i])} ${unit}` });
     const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
-    return `<div class="card trend"><div class="trend-head"><div>${xpLabel(xp, label)}<div class="trend-value">${fmtNum(avg)}<small>${esc(unit)} / ${tr("周")}</small></div></div>
+    return `<div class="card trend" data-card="${hookKey(xp)}"><div class="trend-head"><div>${xpLabel(xp, label)}<div class="trend-value">${fmtNum(avg)}<small>${esc(unit)} / ${tr("周")}</small></div></div>
       <div class="trend-tip" id="tip-${id}" data-base="${target ? tr("{a}/{b} 周达标", { a: weeks.filter((w) => w.value >= target).length, b: weeks.length }) : ""}">${target ? tr("{a}/{b} 周达标", { a: weeks.filter((w) => w.value >= target).length, b: weeks.length }) : ""}</div></div>${body}</div>`;
   }
   function muscleWeeks(d) {
@@ -2089,7 +2104,7 @@
     const ticks = [[6, tr("0 点")], [12, tr("6 点")], [18, tr("12 点")]].map(([h, t]) => `<text x="${x(h * 60).toFixed(1)}" y="${H - 2}" text-anchor="middle">${t}</text>`).join("");
     const sheet = () => openSheet(tr("睡眠规律性"), `${kv(tr("近 7 天"), sd.consistency_pct_7d != null ? `${sd.consistency_pct_7d}%` : null)}${kv(tr("近 30 天"), sd.consistency_pct_30d != null ? `${sd.consistency_pct_30d}%` : null)}${xpBox}`,
       (root) => explainInto(root, "metric", "sleep_consistency", false));
-    return `<button class="card trend" ${sheetAttr(sheet)}><div class="trend-head"><div><div class="trend-label">${tr("睡眠规律性")}</div>
+    return `<button class="card trend" data-card="sleep_regularity" ${sheetAttr(sheet)}><div class="trend-head"><div><div class="trend-label">${tr("睡眠规律性")}</div>
         <div class="trend-value">${sd.consistency_pct_7d ?? sd.consistency_pct_30d}<small>%</small></div></div><div class="trend-tip">${sd.consistency_pct_7d != null ? tr("7 天") : tr("30 天")}${sd.consistency_pct_30d != null && sd.consistency_pct_7d != null ? ` · ${tr("30 天")} ${sd.consistency_pct_30d}%` : ""}</div></div>
       ${bars ? `<svg class="chart regbars" viewBox="0 0 ${W} ${H}" role="img" aria-label="${tr("最近 {n} 晚的入睡到醒来", { n: nights.length })}">${bars}${ticks}</svg>` : ""}</button>`;
   }
@@ -2515,7 +2530,7 @@
       <div class="lab-rows">${rows}</div>`;
   }
   async function labSheet(key, title) {
-    openSheet(title || tr("化验"), `<div class="empty faint">…</div>`);
+    openSheet(title || tr("化验"), `<div class="empty faint">…</div>`, null, { kind: "lab", key });
     let h;
     try { h = await load(`labh:${key}`, `/v1/users/${ownerPath()}/labs/${encodeURIComponent(key)}/history`); }
     catch (e) {
@@ -2580,7 +2595,7 @@
     const groups = new Map();
     for (const it of list) { const g = it.group || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(it); }
     return `<div class="section">${head}${[...groups].map(([g, items]) => `${g ? `<div class="cat">${esc(g)}</div>` : ""}
-      <div class="stat-grid">${items.map((it) => `<button class="stat" ${sheetAttr(() => (it.lab_key ? labSheet(it.lab_key, it.label) : statusSheet(it)))}>
+      <div class="stat-grid">${items.map((it) => `<button class="stat" data-card="${it.lab_key ? `lab:${hookKey(it.lab_key)}` : "status"}" ${sheetAttr(() => (it.lab_key ? labSheet(it.lab_key, it.label) : statusSheet(it)))}>
           <span class="stat-l"><span class="tone ${esc(it.tone || "neutral")}"></span><span>${esc(it.label)}</span></span>
           <span class="stat-v">${statValue(it)}${it.unit ? `<small>${esc(it.unit)}</small>` : ""}
             ${it.trend ? `<span class="trend ${trendClass(it)}">${TREND_CHAR[it.trend] || ""}</span>` : ""}</span>
@@ -3209,7 +3224,7 @@
     const extra = [sat != null && [tr("饱和脂肪"), `${fmtNum(sat, 1)}<small> g</small>`], fib != null && [tr("纤维"), `${fmtNum(fib, 1)}<small> g</small>`],
       add != null && [tr("添加糖"), `${fmtNum(add, 1)}<small> g</small>`],
       entries.length && [tr("条目"), `${entries.length}`]].filter(Boolean);
-    const total = `<div class="card food-day">
+    const total = `<div class="card food-day" data-card="food_day">
         <div class="kcal" style="margin-top:0"><span class="row-sub">${tr("热量")}</span><span class="v">${fmtNum(i.calories)}<span class="small muted"> / ${fmtNum(g.calories)} kcal</span></span></div>
         <div class="bar ${g.calories && i.calories > g.calories * 1.05 ? "over" : ""}"><span style="width:${pct(i.calories, g.calories).toFixed(0)}%"></span></div>
         <div class="macros">${m(tr("蛋白"), i.protein_g, g.protein_g)}${m(tr("碳水"), i.carbs_g, g.carbs_g)}${m(tr("脂肪"), i.fat_g, g.fat_g)}</div>
@@ -3225,7 +3240,7 @@
           <span class="k">${e.calories != null ? `${fmtNum(e.calories)}<small> kcal</small>` : "—"}</span><span class="chev">${ICON.chev}</span></button>`);
     const meals = MEAL_ORDER.filter((k) => by.get(k).length).map((k) => {
       const xs = by.get(k), kc = sumOf(xs, "calories"), pr = sumOf(xs, "protein_g");
-      return `<div class="card list food-meal"><div class="food-meal-h"><span class="row-title">${SLOT_NAME[k]}</span>
+      return `<div class="card list food-meal" data-card="food_meals"><div class="food-meal-h"><span class="row-title">${SLOT_NAME[k]}</span>
           <span class="small muted">${kc != null ? `${fmtNum(kc)} kcal` : ""}${pr != null ? ` · ${tr("蛋白")} ${fmtNum(pr)} g` : ""}</span></div>
         ${xs.map(row).join("")}</div>`;
     }).join("");
@@ -3389,6 +3404,19 @@
       ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
       ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
   }
+  // A member card's sync state (friends/cards.py sync_info): scored (today's scores are in) / pending (data arrived, today's
+  // scores are being computed) / stale (no data for 36 h) / never. Older servers only send synced_today.
+  const syncState = (sc) => sc.state || (sc.synced_today ? "scored" : "stale");
+  // When data last arrived, coarse: just now / x min ago / x h ago / yesterday / date (days are the person's own, today = their today)
+  function syncAgo(sc, today) {
+    const mins = sc.last_sync_min, day = sc.last_sync_date;
+    if (mins == null || !day) return "";
+    if (mins < 1) return tr("刚刚");
+    if (mins < 60) return tr("{n} 分钟前", { n: mins });
+    if (day === today) return tr("{n} 小时前", { n: Math.floor(mins / 60) });
+    return day === addDays(today, -1) ? tr("昨天") : shortDay(day);
+  }
+  const syncDay = (sc) => (sc.last_sync_date || sc.last_date);   // the day shown on 「Not synced · last …」
   const remarkBtn = (m) => window.BodyRemarks?.button(m.id, m.display_name, m.remark) || "";   // 「⋯」 → 设置备注 (#212)
   function friendCardV2(m, kinds) {
     const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
@@ -3397,20 +3425,23 @@
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     let hero, body = "";
     if (!sc) hero = `<span class="fd2-off">${esc(tr("未共享"))}</span>`;
-    else if (!sc.synced_today) {
-      hero = `<span class="fd2-off">${esc(sc.last_date ? tr("未同步 · 上次 {d}", { d: shortDay(sc.last_date) }) : tr("未同步"))}</span>`;
+    else if (syncState(sc) === "pending") hero = `<span class="fd2-off">${esc(tr("今天的分数计算中"))}</span>`;
+    else if (syncState(sc) !== "scored") {
+      hero = `<span class="fd2-off">${esc(syncDay(sc) ? tr("未同步 · 上次 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步"))}</span>`;
     } else {
       hero = sc.recovery != null
         ? `<span class="fd2-rec"><b class="tone-${ZONE[sc.zone] || "none"}">${sc.recovery}</b>${sc.label ? `<i>${esc(sc.label)}</i>` : ""}</span>`
         : `<span class="fd2-off">—</span>`;
     }
-    if (sc?.synced_today) {
+    if (sc && syncState(sc) === "scored") {
       body += `<div class="fd2-nums"><span><b>${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
         <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
         <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span>
         ${trained ? `<span class="fd2-trained">${badge("plain", tr("已训练"))}</span>` : ""}</div>`;
     } else if (trained) body += `<div class="fd2-nums">${badge("plain", tr("已训练"))}</div>`;
     if (sc) body += recoveryStrip(m, sc);
+    const ago = sc && ["scored", "pending"].includes(syncState(sc)) ? syncAgo(sc, m.date) : "";
+    if (ago) body += `<p class="fd2-note">${esc(tr("最近同步 {t}", { t: ago }))}</p>`;
     const note = !seen ? "" : seen.count === 0 ? tr("还没有朋友看到你，加入圈子后他们才看得到")
       : seen.varies ? tr("不同朋友看到的范围不一样，这里按所有人的并集显示") : "";
     const foot = m.self
@@ -3432,7 +3463,8 @@
     const tagsH = [];
     if (sc?.label) tagsH.push(badge(ZONE[sc.zone] || "plain", sc.label));
     if (m.trained) tagsH.push(badge("plain", tr("已训练")));
-    if (sc && !sc.synced_today) tagsH.push(badge("plain", sc.last_date ? tr("上次同步 {d}", { d: shortDay(sc.last_date) }) : tr("未同步")));
+    if (sc && syncState(sc) === "pending") tagsH.push(badge("plain", tr("今天的分数计算中")));
+    else if (sc && syncState(sc) !== "scored") tagsH.push(badge("plain", syncDay(sc) ? tr("上次同步 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步")));
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     const cheers = m.self
       ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
@@ -3456,7 +3488,7 @@
     return "";
   }
   async function boardHtml() {
-    const b = await api(`/v1/friends/leaderboard?board=${encodeURIComponent(S.board)}`);
+    const b = await api(`/v1/friends/leaderboard?board=${encodeURIComponent(S.board)}${S.fcircle ? `&circle=${S.fcircle}` : ""}`);
     const seg = `<div class="toolbar"><div class="seg seg-range fd-boards" role="group" aria-label="${esc(tr("排行榜"))}">${b.boards.map((k) =>
       `<button data-board="${k}" aria-pressed="${k === b.board}">${esc(BOARD[k] || k)}</button>`).join("")}</div></div>`;
     const rows = b.rows.map((r) => {
@@ -3469,13 +3501,32 @@
     }).join("");
     return `${seg}<p class="fd-win">${esc(b.window_days === 28 ? tr("近 4 周 · 和自己的基线比") : tr("近 7 天 · 和自己的基线比"))}</p><div class="card fd-board">${rows}</div>`;
   }
+  // The circle switcher (flag circles_by_circle): 「全部」 + one chip per circle; the chosen circle narrows members, feed and leaderboards
+  function circleBar(list) {
+    // the order comes from the server: pinned first, then the most recent (flag circle_prefs); archived circles are not here
+    const chip = (id, name, n, cls = "") => `<button type="button" class="${cls}" data-fcircle="${id ?? ""}" aria-pressed="${(S.fcircle ?? null) === id}">${esc(name)}${n != null ? `<i>${n}</i>` : ""}</button>`;
+    return `<div class="fd-cbar" role="group" aria-label="${esc(tr("圈子"))}">${chip(null, tr("全部"))}${list.filter((c) => !c.archived).map((c) =>
+      chip(c.id, c.name, c.members, [c.pinned ? "pin" : "", c.muted ? "mute" : ""].join(" ").trim())).join("")}</div>`;
+  }
   const RENDER_friends = async () => {
     const feedOn = !!window.BodyCircleFeed && window.BodyFlags.on("circle_feed");   // 成员 | 动态 | 排行榜 (circle-feed.js)
+    const byCircle = window.BodyFlags.on("circles_by_circle");
+    if (!byCircle) S.fcircle = null;
     if (!feedOn && S.friendsMode === "feed") S.friendsMode = "cards";
-    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ...(feedOn ? [["feed", tr("动态")]] : []), ["board", tr("排行榜")]].map(([k, t]) =>
+    let ov;
+    try { ov = await api(`/v1/friends/overview${S.fcircle ? `?circle=${S.fcircle}` : ""}`); } catch (e) {
+      if (!S.fcircle) throw e;
+      S.fcircle = null;   // left / dissolved since: back to all circles
+      ov = await api("/v1/friends/overview");
+    }
+    if (S.fcircle && !(ov.circles || []).some((c) => c.id === S.fcircle && !c.archived)) S.fcircle = null;
+    // all circles: no leaderboard (people of different circles don't know each other, docs/circles-redesign.md §9 point 1)
+    const boardOn = !byCircle || !!S.fcircle;
+    if (!boardOn && S.friendsMode === "board") S.friendsMode = "cards";
+    const mode = `<div class="seg" role="group" aria-label="${esc(tr("朋友"))}">${[["cards", tr("成员")], ...(feedOn ? [["feed", tr("动态")]] : []), ...(boardOn ? [["board", tr("排行榜")]] : [])].map(([k, t]) =>
       `<button data-fmode2="${k}" aria-pressed="${S.friendsMode === k}">${esc(t)}</button>`).join("")}</div>`;
-    const manage = `<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
-    const ov = await api("/v1/friends/overview");
+    const bar = byCircle && ov.circles?.length ? circleBar(ov.circles) : "";
+    const manage = `${bar}<div class="toolbar fd-bar-top">${mode}<button class="btn" type="button" id="fd-circles">${esc(tr("圈子"))}</button></div>`;
     S.data.friends = ov;
     if (!ov.has_circles) {
       return `${manage}<div class="empty">${esc(tr("还没有圈子"))}<div class="btns"><button class="btn btn-primary" id="fd-new">${esc(tr("建圈子"))}</button><button class="btn" id="fd-join">${esc(tr("用邀请码加入"))}</button></div></div>`;
@@ -3491,8 +3542,13 @@
   }
   function afterFriends(view) {
     window.BodyCircles && (window.BodyCircles.onChange = () => { S.data = {}; refresh(); });
-    window.BodyCircleFeed?.bind(view, S.friendsMode === "feed");
+    window.BodyCircleFeed?.bind(view, S.friendsMode === "feed", S.fcircle);
     for (const b of $$("[data-fmode2]", view)) b.onclick = () => { S.friendsMode = b.dataset.fmode2; render(); };
+    for (const b of $$("[data-fcircle]", view)) b.onclick = () => {
+      S.fcircle = Number(b.dataset.fcircle) || null;
+      try { localStorage.setItem("be.fcircle", S.fcircle ? String(S.fcircle) : ""); } catch (e) { /* private mode */ }
+      render();
+    };
     for (const b of $$("[data-board]", view)) b.onclick = () => {
       S.board = b.dataset.board;
       try { localStorage.setItem("be.board", S.board); } catch (e) { /* private mode */ }
@@ -3910,7 +3966,7 @@
       ? `<div class="card list" style="margin-top:10px"><button class="item" id="tlog-row"><span class="row-title">${tr("训练记录")}</span><span class="val">${tlogBadge(wk.sparky)}</span><span class="chev">${ICON.chev}</span></button></div>`
       : "";
     const left = `<div class="section"><div class="section-head"><h2>${tr("本周")}</h2>${headActions}</div>
-        <div class="card"><div class="week">${week}</div>
+        <div class="card" data-card="training_week"><div class="week">${week}</div>
         <div class="msum" style="margin:14px 0 0">${[[tr("训练"), sm.training_days, tr("天")], [tr("时长"), sm.total_duration_min != null ? hm(sm.total_duration_min) : null, ""],
           [tr("消耗"), (sm.total_workout_kcal ?? sm.total_active_kcal) != null ? fmtNum(sm.total_workout_kcal ?? sm.total_active_kcal) : null, "kcal"],
           [tr("计划"), (wk.days || []).filter((x) => x.planned.length).length || null, tr("天")]]
@@ -3939,7 +3995,7 @@
     }).join("");
     const head = planned.map((p) => sname(p.name)).join(" · ");
     return `<div class="section" id="today-plan"><div class="section-head"><h2>${tr("今天")}</h2><span class="small muted">${esc(head)}${day?.change ? ` ${badge("mid", tr("已调整"))}` : ""}</span></div>
-      <div class="card">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
+      <div class="card" data-card="training_plan">${rows || `<div class="empty faint" style="padding:8px">${day?.rest_day ? tr("休息") : tr("无计划")}</div>`}</div></div>`;
   }
 
   // A future day's plan. Own plan: each exercise has a remove button (this day only, or never again; issue #172) and the

@@ -30,6 +30,12 @@
 .cc-trail span:first-child{border-top:0}.cc-trail button{margin-left:auto}
 .cc-trail i{flex-basis:100%;font-style:normal;font-size:12px;color:var(--text-2)}
 .cc-sc{font-size:12px;color:var(--text-2);margin:10px 0 0}
+.cc-tag{flex:none;font-size:11px;color:var(--text-2);background:var(--surface-2);border-radius:6px;padding:2px 6px}
+.cc-invh{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;font-size:13px;color:var(--text-2)}
+.cc-invh button{border:0;background:none;padding:4px 0;color:var(--text);text-decoration:underline;font-size:13px}
+.cc-inv .f small{display:block;color:var(--text-2);font-size:12px;margin-top:2px}
+.cc-q{margin:0 0 12px}
+.cc-arch{margin:4px 0 12px}.cc-arch summary{font-size:13px;color:var(--text-2);padding:6px 0;cursor:pointer}
 .cc-act{display:flex;flex-wrap:wrap;gap:14px;margin:10px 0 0}
 .cc-act button{border:0;background:none;padding:0;color:var(--text);text-decoration:underline;font-size:13px}
 .cc-act button.bad{color:var(--bad)}
@@ -120,10 +126,11 @@
   // How a member came in (friends/trail.py): only the owner gets m.join (flag circle_join_trail), the other members never do
   function joinLine(m) {
     const j = m.join;
-    const who = j.by ? (j.by.me ? tr("我自己") : j.by.remark || j.by.display_name || tr("已注销的用户")) : tr("已注销的用户");
+    const me = !!j.by?.me;
+    const who = j.by ? j.by.remark || j.by.display_name || tr("已注销的用户") : tr("已注销的用户");
     const how = j.via === "created" ? tr("建圈")
-      : j.via === "invite_code" ? tr("由 {who} 邀请 · 邀请链接", { who })
-      : j.via === "referral" ? tr("用了 {who} 的推荐码", { who })
+      : j.via === "invite_code" ? (me ? tr("我邀请的 · 邀请链接") : tr("由 {who} 邀请 · 邀请链接", { who }))
+      : j.via === "referral" ? (me ? tr("用了我的推荐码") : tr("用了 {who} 的推荐码", { who }))
       : j.via === "circle_code" ? tr("圈子激活码「{code}」", { code: j.code || "" })
       : tr("来源未记录");
     const when = m.joined_at ? new Date(m.joined_at).toLocaleDateString(window.I18N.locale(), { year: "numeric", month: "numeric", day: "numeric" }) : "";
@@ -142,8 +149,18 @@
     if (owner && !c.personal && window.BodyAvatar?.on()) acts.push(`<button type="button" data-logo="${c.id}">${esc(tr("圈子 logo"))}</button>`);
     acts.push(`<button type="button" class="bad" data-leave="${c.id}">${esc(tr("退出"))}</button>`);
     if (owner) acts.push(`<button type="button" class="bad" data-dissolve="${c.id}">${esc(tr("解散"))}</button>`);
+    // my own pin / mute / archive (flag circle_prefs, friends/prefs.py): nothing changes for the others, sharing included
+    const pf = data?.prefs_on ? (c.prefs || {}) : null;
+    if (pf) {
+      if (!pf.archived) acts.splice(1, 0, `<button type="button" data-pin="${c.id}">${esc(pf.pinned ? tr("取消置顶") : tr("置顶"))}</button>`);
+      acts.splice(pf.archived ? 1 : 2, 0, `<button type="button" data-mute="${c.id}">${esc(pf.muted ? tr("取消静音") : tr("静音"))}</button>`,
+        `<button type="button" data-archive="${c.id}">${esc(pf.archived ? tr("取消归档") : tr("归档"))}</button>`);
+    }
+    const tags = pf ? [pf.pinned && tr("已置顶"), pf.muted && !pf.archived && tr("已静音"), pf.archived && tr("已归档")].filter(Boolean)
+      .map((t) => `<span class="cc-tag">${esc(t)}</span>`).join("") : "";
+    const q = [c.name, ...c.members.flatMap((m) => [m.display_name, m.remark])].filter(Boolean).join(" ").toLowerCase();
     const live = owner && c.invites?.live ? ` · ${esc(tr("{n} 个邀请有效", { n: c.invites.live }))}` : "";
-    return `<div class="cc-card"><div class="cc-head">${avatar(c, 32)}<b>${esc(c.name)}</b><span class="small muted">${esc(tr("{n} 人", { n: c.members.length }))}${live}</span></div>
+    return `<div class="cc-card" data-q="${esc(q)}"><div class="cc-head">${avatar(c, 32)}<b>${esc(c.name)}</b>${tags}<span class="small muted">${esc(tr("{n} 人", { n: c.members.length }))}${live}</span></div>
       <div class="cc-mem${trail ? " cc-trail" : ""}">${mem}</div>
       <p class="cc-sc">${esc(tr("我共享：{list}", { list: scopeList(c.my_scopes) }))}</p>
       <div class="cc-act">${acts.join("")}</div></div>`;
@@ -152,11 +169,24 @@
   function render(root) {
     if (!data) { root.innerHTML = `<p class="empty">${esc(tr("读取失败"))}</p>`; return; }
     if (consentGate(root)) return;
-    const inv = data.invites.map((i) => `<div class="cc-inv"><span class="f">${esc(tr("{who} 邀请你加入「{name}」", { who: i.from_name || "", name: i.name }))}</span>
+    const pOn = !!data.prefs_on;
+    // the invite inbox (flag circle_prefs: how many people, what joining shares by default, 「全部忽略」)
+    const invHead = pOn && data.invites.length ? `<div class="cc-invh"><span>${esc(tr("邀请 ({n})", { n: data.invites.length }))}</span>${data.invites.length > 1
+      ? `<button type="button" id="cc-decline-all">${esc(tr("全部忽略"))}</button>` : ""}</div>` : "";
+    const inv = data.invites.map((i) => `<div class="cc-inv"><span class="f">${esc(tr("{who} 邀请你加入「{name}」", { who: i.from_name || "", name: i.name }))}${pOn
+      ? `<small>${esc(tr("{n} 人 · 默认共享：{list}", { n: i.members, list: scopeList(i.default_scopes || []) }))}</small>` : ""}</span>
       <button class="btn btn-primary" type="button" data-accept="${i.id}" data-name="${esc(i.name)}">${esc(tr("加入"))}</button>
       <button class="btn" type="button" data-decline="${i.id}">${esc(tr("忽略"))}</button></div>`).join("");
-    const list = data.circles.length ? data.circles.map(circleCard).join("") : `<p class="empty">${esc(tr("还没有圈子"))}</p>`;
-    root.innerHTML = `${inv}${list}
+    // pinned first, then the most recent; archived ones folded away at the end
+    const t = (c) => (c.recent_at ? Date.parse(c.recent_at) : 0);
+    const ordered = pOn ? [...data.circles].sort((a, b) => (!!b.prefs?.pinned - !!a.prefs?.pinned) || t(b) - t(a)) : data.circles;
+    const shown = ordered.filter((c) => !(pOn && c.prefs?.archived)), archived = ordered.filter((c) => pOn && c.prefs?.archived);
+    const search = pOn && data.circles.length >= (data.search_from || 6)
+      ? `<input class="input cc-q" id="cc-q" type="search" placeholder="${esc(tr("搜索圈子 / 成员"))}" aria-label="${esc(tr("搜索圈子 / 成员"))}">` : "";
+    const list = data.circles.length ? shown.map(circleCard).join("") + (archived.length
+      ? `<details class="cc-arch"><summary>${esc(tr("已归档 ({n})", { n: archived.length }))}</summary>${archived.map(circleCard).join("")}</details>` : "")
+      : `<p class="empty">${esc(tr("还没有圈子"))}</p>`;
+    root.innerHTML = `${invHead}${inv}${search}${list}
       <div class="btns"><button class="btn btn-primary" id="cc-new">${esc(tr("建圈子"))}</button><button class="btn" id="cc-join">${esc(tr("用邀请码加入"))}</button></div>
       <p class="cc-err" id="cc-error" role="alert"></p>`;
     const err = (e) => { $("#cc-error", root).textContent = e.message; };
@@ -166,6 +196,28 @@
     $("#cc-join", root).onclick = () => codeSheet("");
     by("[data-accept]", async (b) => joinSheet({ invite_id: Number(b.dataset.accept), name: b.dataset.name }));
     by("[data-decline]", async (b) => { await C.api(`/v1/friends/invites/${b.dataset.decline}`, { method: "DELETE" }); await reopen(); });
+    const all = $("#cc-decline-all", root);
+    if (all) all.onclick = () => (async () => {
+      if (!confirm(tr("忽略全部 {n} 个邀请？", { n: data.invites.length }))) return;
+      await C.api("/v1/friends/invites", { method: "DELETE" });
+      await reopen();
+    })().catch(err);
+    const qbox = $("#cc-q", root);
+    if (qbox) qbox.oninput = () => {
+      const q = qbox.value.trim().toLowerCase();
+      root.querySelectorAll(".cc-card").forEach((el) => { el.hidden = !!q && !el.dataset.q.includes(q); });
+      const arch = $(".cc-arch", root);
+      if (arch && q) arch.open = true;
+    };
+    const prefs = async (id, body) => { await C.api(`/v1/friends/circles/${id}/prefs`, { method: "PUT", body }); await reopen(); };
+    by("[data-pin]", async (b) => prefs(b.dataset.pin, { pinned: !find(b.dataset.pin).prefs?.pinned }));
+    by("[data-mute]", async (b) => prefs(b.dataset.mute, { muted: !find(b.dataset.mute).prefs?.muted }));
+    by("[data-archive]", async (b) => {
+      const c = find(b.dataset.archive);
+      if (!c.prefs?.archived && !confirm(tr("归档后「{name}」从朋友页隐藏，也不再通知你；但你仍在向圈里的人共享：{list}。想停止共享请退出圈子。",
+        { name: c.name, list: scopeList(c.my_scopes) }))) return;
+      await prefs(c.id, { archived: !c.prefs?.archived });
+    });
     by("[data-scopes]", async (b) => scopesSheet(find(b.dataset.scopes)));
     by("[data-invite]", async (b) => inviteSheet(find(b.dataset.invite)));
     by("[data-logo]", async (b) => {

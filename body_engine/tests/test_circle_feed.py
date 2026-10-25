@@ -559,3 +559,42 @@ def test_custom_exercise_of_the_same_name_and_watch_only_strength(client, world,
     watch_only = posts[1]
     assert watch_only["no_exercises"] is True and watch_only["exercises"] == []
     assert (watch_only["active_kcal"], watch_only["avg_hr"], watch_only["max_hr"]) == (200, 105, 140)
+
+
+def test_comments_and_likes_stay_inside_the_circle_the_post_reaches_you_through(client, world, dsn):
+    """#269: Ann is in a circle with Ben and another with Cat (training ticked in both). Ben and Cat both see her post,
+    but never each other's name, comment or ❤️. A third circle where Ben and Cat are together but Ann did not tick
+    training does not count: the post does not reach them through it."""
+    ids, tok = world
+    join(client, tok["Ben"], circle(client, tok["Ann"], name="家")["invite"]["code"])
+    join(client, tok["Cat"], circle(client, tok["Ann"], name="跑团")["invite"]["code"])
+    third = circle(client, tok["Ann"], name="同学", scopes=["scores"])["invite"]["code"]
+    join(client, tok["Ben"], third)
+    join(client, tok["Cat"], third)
+    log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
+    pid = get_feed(client, tok["Ben"])["posts"][0]["id"]
+    assert get_feed(client, tok["Cat"])["posts"][0]["id"] == pid
+    url = f"{FEED}/posts/{pid}/comments"
+    ben_c = client.post(url, headers=h(tok["Ben"]), json={"body": "from Ben"}).json()["id"]
+    client.post(url, headers=h(tok["Cat"]), json={"body": "from Cat"})
+    client.post(url, headers=h(tok["Ann"]), json={"body": "from Ann"})
+    assert client.put(f"{FEED}/posts/{pid}/like", headers=h(tok["Ben"])).status_code == 200
+
+    def seen(who):
+        return [c["body"] for c in client.get(url, headers=h(tok[who])).json()["comments"]]
+
+    assert seen("Ben") == ["from Ben", "from Ann"]
+    assert seen("Cat") == ["from Cat", "from Ann"]
+    assert seen("Ann") == ["from Ben", "from Cat", "from Ann"]
+    for who, n, likes in (("Ben", 2, 1), ("Cat", 2, 0), ("Ann", 3, 1)):
+        post = get_feed(client, tok[who])["posts"][0]
+        assert post["comment_count"] == n, who
+        assert post["likes"]["count"] == likes, who
+    assert [c["user"]["name"] for c in get_feed(client, tok["Cat"])["posts"][0]["preview_comments"]] == ["Cat", "Ann"]
+    # a comment you are not shown can't be reported either (no probing by id)
+    assert client.post(f"{FEED}/comments/{ben_c}/report", headers=h(tok["Cat"])).status_code == 404
+    # the author's red dot still counts both circles
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("INSERT INTO circle_feed_seen (user_id, seen_at) VALUES (%s, now() - interval '1 day') "
+                     "ON CONFLICT (user_id) DO UPDATE SET seen_at = EXCLUDED.seen_at", (ids["Ann"],))
+    assert client.get(f"{FEED}/unread", headers=h(tok["Ann"])).json()["count"] == 3

@@ -35,10 +35,28 @@ def _days(a: date, b: date):
         d += timedelta(days=1)
 
 
-def _between(samples, start, end):
-    """samples sorted by time; take those within [start, end]."""
-    times = [t for t, _ in samples]
+def _between(samples, start, end, times=None):
+    """samples sorted by time; take those within [start, end]. times: [t for t, _ in samples], when the caller has it."""
+    times = [t for t, _ in samples] if times is None else times
     return samples[bisect_left(times, start):bisect_right(times, end)]
+
+
+class _Segments:
+    """The sleep-stage segments (sorted by start) with their start times, so a night's segments are found by bisection
+    instead of a scan of the whole history for every night (same segments, same order)."""
+
+    def __init__(self, segments):
+        self.all = segments
+        self.starts = [s[0] for s in segments]
+        self.max_len = max((s[1] - s[0] for s in segments), default=timedelta(0))
+
+    def starting(self, lo, hi):
+        """The segments whose start is within [lo, hi], in order."""
+        return self.all[bisect_left(self.starts, lo):bisect_right(self.starts, hi)]
+
+    def within(self, start, end):
+        """= inputs.segments_in(segments, start, end)."""
+        return [s for s in self.starting(start, end) if s[1] <= end]
 
 
 def _r(x, nd=3):
@@ -75,6 +93,10 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     feats: dict[str, dict[date, float]] = {k: {} for k in ("hrv", "rhr", "sleep_performance", "resp_rate", "temp")}
     feats["rhr_daily"] = dict(inp.daily_rhr)   # Apple's all-day resting heart rate used as a fallback, with its own baseline
     rows = []
+    # time lists of the raw series and the indexed segments: built once, not once per night
+    times = {k: [t for t, _ in getattr(inp, k)] for k in ("hr", "resp", "temp", "spo2")}
+    ordered = inp.segments == sorted(inp.segments) and all(a <= b for a, b, _ in inp.segments)
+    seg_index = _Segments(inp.segments) if ordered else None
 
     for d in _days(first, last):
         flags: dict = {}
@@ -128,7 +150,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
             flags["no_sleep"] = ("只有非手表来源的睡眠（没有阶段数据），不计" if d in inp.non_watch_dates
                                  else "没有手表睡眠数据")
         else:
-            segs = segments_in(inp.segments, night.start, night.end)
+            segs = seg_index.within(night.start, night.end) if seg_index else segments_in(inp.segments, night.start, night.end)
             if segs:
                 awake_min, awakenings = S.waso(segs)
             else:
@@ -162,23 +184,24 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
                                 "bedtime": night.start.astimezone(tz).isoformat(timespec="minutes"),
                                 "wake_time": night.end.astimezone(tz).isoformat(timespec="minutes"),
                                 "need_from_debt": round(need["from_debt"]), "need_from_strain": round(need["from_strain"]),
-                                "source": night.source, **_latency_efficiency(inp.segments, night)}
+                                "source": night.source, **_latency_efficiency(inp.segments, night, seg_index)}
             feats["sleep_performance"][d] = perf
 
         # ================= recovery =================
         if night is not None:
             hrv_ln, n_hrv = R.night_hrv_ln(inp.hrv, night.start, night.end)
-            rhr, rhr_at = R.lowest_window(_between(inp.hr, night.start, night.end), night.start, night.end)
+            rhr, rhr_at = R.lowest_window(_between(inp.hr, night.start, night.end, times["hr"]), night.start, night.end)
             rhr_key = "rhr"
             if rhr is None and d in inp.daily_rhr:
                 # Apple's all-day resting heart rate is a few bpm above the lowest during sleep, so it can only be compared with its own baseline
                 rhr, rhr_key = inp.daily_rhr[d], "rhr_daily"
                 flags["rhr_from_daily"] = "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
-            resp = [v for _, v in _between(inp.resp, night.start, night.end)]
+            resp = [v for _, v in _between(inp.resp, night.start, night.end, times["resp"])]
             resp_night = statistics.median(resp) if resp else None
-            temps = [v for _, v in _between(inp.temp, night.start - timedelta(hours=2), night.end + timedelta(hours=2))]
+            temps = [v for _, v in _between(inp.temp, night.start - timedelta(hours=2), night.end + timedelta(hours=2),
+                                            times["temp"])]
             temp = statistics.median(temps) if temps else None
-            spo2 = [v for _, v in _between(inp.spo2, night.start, night.end)]
+            spo2 = [v for _, v in _between(inp.spo2, night.start, night.end, times["spo2"])]
             row.update(hrv_night_ln=_r(hrv_ln, 4), rhr_night=_r(rhr, 1), resp_rate_night=_r(resp_night, 2))
 
             past = [d - timedelta(days=k) for k in range(1, P.BASELINE_DAYS + 1)]
@@ -235,11 +258,14 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     return rows
 
 
-def _latency_efficiency(segments, night: Night) -> dict:
+def _latency_efficiency(segments, night: Night, index: "_Segments | None" = None) -> dict:
     """Sleep latency ≈ the awake segment immediately before the first asleep segment (Apple Watch records awake time from the start of Sleep Focus; there is no "in bed" data,
     left empty when there is no such segment); sleep efficiency = asleep / (latency start → last wake)."""
     t, latency = night.start, 0.0
-    for a, b, stage in reversed([s for s in segments if s[1] <= night.start and s[1] >= night.start - timedelta(hours=3)]):
+    lo = night.start - timedelta(hours=3)
+    # a segment ending in [lo, night.start] starts in [lo - longest segment, night.start]: only those are looked at
+    near = index.starting(lo - index.max_len, night.start) if index else segments
+    for a, b, stage in reversed([s for s in near if s[1] <= night.start and s[1] >= lo]):
         if stage != "awake" or (t - b).total_seconds() > 60:
             break
         latency += (b - a).total_seconds() / 60
@@ -298,7 +324,9 @@ def load_muscle(conn: psycopg.Connection, inp: Inputs, user_id: int, start: date
 
 
 def run(conn: psycopg.Connection, client, user_id: int, start: date | None = None, end: date | None = None,
-        archive_dir: Path | None = None, sparky=None) -> dict:
+        archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None) -> dict:
+    """ow_cache: how the OW raw samples are read (importers/ow_cache.py): None = all from OW, "use" = through the local
+    copy, "refresh" = all from OW and replace the copy."""
     origin = scoring_origin(conn, user_id)
     if origin is None:
         return {"rows": 0, "note": "这个用户还没有手表数据（没有 resting_heart_rate）"}
@@ -309,7 +337,8 @@ def run(conn: psycopg.Connection, client, user_id: int, start: date | None = Non
     # HRV kind of this user (hrv_kind.py): SDNN unless switched on for RMSSD with enough beat data; never mixed
     kind, kind_reason = HK.choose(conn, user_id, tz, start, end)
     # pull one extra year back: the 365-day HRmax window; one extra day for sleep (the night before the first day)
-    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind)
+    inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind,
+               ow_cache=ow_cache)
     muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
     rows = score_days(inp, origin, end, today)
     n = write(conn, user_id, rows, start, end)

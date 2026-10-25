@@ -151,6 +151,21 @@ def main() -> None:
     ntt.add_argument("--user-id", type=int, required=True)
     ntp = nts.add_parser("prune", help="delete notifications older than --days (default 90)")
     ntp.add_argument("--days", type=int, default=90)
+    ns = sub.add_parser("notice-send", help="a one-time message from the admin to one user: a sheet on their Today page "
+                                            "(also in the app), with an optional button link (notices/)")
+    ns.add_argument("--user-id", type=int, required=True)
+    ns.add_argument("--title", required=True)
+    ns.add_argument("--body", default="")
+    ns.add_argument("--link", default=None, help="the button's link: https://…, /app/… or watch2whoop://… (e.g. watch2whoop://sync)")
+    ns.add_argument("--link-label", default=None, help="the button's text (default 打开 / Open)")
+    ns.add_argument("--expires-days", type=int, default=None, help="not shown after this many days (default: until seen)")
+    nl = sub.add_parser("notice-list", help="the latest admin messages (of one user) and whether they were seen")
+    nl.add_argument("--user-id", type=int, default=None)
+    nl.add_argument("--limit", type=int, default=50)
+    nr = sub.add_parser("notice-revoke", help="withdraw an admin message that was not seen yet")
+    nr.add_argument("--id", type=int, required=True)
+    sub.add_parser("sync-broken", help="read only: users whose phone sync to Open Wearables looks broken while they still "
+                                       "use the app (sync/broken.py; the Today page asks them to reconnect)")
     lb = sub.add_parser("lookup-barcode", help="look up one barcode on Open Food Facts (needs BODY_OFF_CONTACT; nothing is written)")
     lb.add_argument("barcode")
     gs = sub.add_parser("grocery-sync", help="opt-in weekly refresh of the supermarkets' public food catalogue "
@@ -283,6 +298,8 @@ def main() -> None:
     hb.add_argument("--user-id", type=int, default=None)
     sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
     sr.add_argument("--user-id", type=int, default=None)
+    sub.add_parser("ow-watch", help="one round of the API's poller (sync/ow_watch.py): which users uploaded to Open Wearables "
+                                    "lately; queue an import + score recompute (sync-refresh-run) for the ones that went quiet")
     hd = sub.add_parser("hk-derive-run", help="app sync engine (flag apple_sync_engine): derive daily values, sleep and workouts "
                                               "from the uploaded HealthKit samples of the queued days (hk_dirty_days), oldest "
                                               "first; idempotent, time-budgeted, nothing queued = nothing done")
@@ -561,6 +578,25 @@ def main() -> None:
             out = {"status": notify_admin.status, "test": lambda c: notify_admin.test(c, args.user_id),
                    "prune": lambda c: notify_admin.prune(c, args.days)}[args.notify_cmd](conn)
             print(json.dumps(out, default=str, ensure_ascii=False, indent=2))
+        elif args.cmd == "notice-send":
+            from .notices import store as notices
+            try:
+                row = notices.send(conn, args.user_id, args.title, args.body, args.link, args.link_label, None, args.expires_days)
+            except ValueError as e:
+                p.error(str(e))
+            conn.commit()
+            print(json.dumps(row, default=str, ensure_ascii=False))
+        elif args.cmd == "notice-list":
+            from .notices import store as notices
+            print(json.dumps(notices.list_all(conn, args.user_id, args.limit), default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "notice-revoke":
+            from .notices import store as notices
+            ok = notices.revoke(conn, args.id)
+            conn.commit()
+            print(json.dumps({"revoked": ok}))
+        elif args.cmd == "sync-broken":
+            from .sync import broken
+            print(json.dumps(broken.broken_users(conn), default=str, ensure_ascii=False, indent=1))
         elif args.cmd == "user-stats":
             try:
                 res = user_stats.collect(conn, args.days, tuple(x.strip() for x in args.signals.split(",") if x.strip()))
@@ -688,7 +724,7 @@ def main() -> None:
             if not args.no_scores:
                 ow_client = OWClient()
                 res["workouts_enriched"] = workouts_importer.enrich_pending(conn, ow_client, args.user_id)
-                res["scores"] = scores_engine.run(conn, ow_client, args.user_id)
+                res["scores"] = scores_engine.run(conn, ow_client, args.user_id, ow_cache="refresh")
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-raw":
             from .rawdata import export as rx_export
@@ -740,6 +776,9 @@ def main() -> None:
         elif args.cmd == "sync-refresh-run":
             from .sync import refresh as sync_refresh
             print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
+        elif args.cmd == "ow-watch":
+            from .sync import ow_watch
+            print(json.dumps(ow_watch.run_once(conn), default=str, ensure_ascii=False))
         elif args.cmd == "hk-derive-run":
             from .rawdata import derive as hk_derive
             print(json.dumps(hk_derive.run(conn, args.user_id, args.max_days), default=str, ensure_ascii=False))
@@ -755,9 +794,11 @@ def main() -> None:
                 print(text)
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
+            # OW raw samples through the local copy (importers/ow_cache.py); a full recompute re-reads and replaces it
+            mode = "use" if args.start else "refresh"
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,
-                                    args.archive_dir or shortcut.user_archive_dir(args.user_id))
-            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id)   # body age (weekly), stress
+                                    args.archive_dir or shortcut.user_archive_dir(args.user_id), ow_cache=mode)
+            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id, ow_cache=mode)   # body age (weekly), stress
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-records":
             print(records_importer.format_report(records_importer.run(conn, args.user_id)))
