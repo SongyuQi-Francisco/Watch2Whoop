@@ -43,7 +43,7 @@ AI_OR_ADMIN_ONLY = (
     "ai/web/", "assistant/butler_tools.py", "assistant/diet_profile.py", "assistant/memory_review.py", "assistant/snapshots.py", "assistant/sparky_tools.py",
     "assistant/status.py", "assistant/tools.py", "assistant/writelog.py", "cli.py", "config.py", "importers/", "mcp_server.py",
     "ownstore/migrate.py",
-    "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "records/importer.py",
+    "nutrition/constraints.py", "ow_client.py", "rawdata/compare.py", "rawdata/ecg.py", "rawdata/ow_archive.py", "records/importer.py",
     "records/lab_catalog.py", "records/tools.py", "rules/context.py", "rules/store.py", "rules/tools.py", "scores/inputs.py",
     "sync/history.py", "training/day_overrides.py", "training/importer.py", "training/media.py", "training/overrides.py",
     "training/plan_start.py", "training/tools.py", "water/store.py")
