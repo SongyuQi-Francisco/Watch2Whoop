@@ -87,32 +87,81 @@ def test_lucide_icons_and_notice():
         assert f"lucide/blob/main/icons/{name}.svg" in notices, name
 
 
-def test_menu_motion_is_quick_transform_and_opacity_only_and_one_ink():
-    """The menu (#53, speed + mono pass): about 200 ms, no stagger, no bounce; Web Animations only move transform and opacity
-    (the compositor runs them in the app's WKWebView); nothing loops; the open key shows chevron-down with a clear label; and
-    the whole Jarvis look is one ink (the page's --text): no colour, gradient or glow."""
-    assert "const OPEN_MS = 200, CLOSE_MS = 150" in JS
-    for fn in ("function openMenu", "function closeMenu", "function arcFrames"):
+def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
+    """The HUD open / close (#53): Web Animations only move transform and opacity (the compositor runs them in the app's
+    WKWebView); the idle breathing and turning run only while the menu is open and pause while the page is hidden; the
+    open key shows chevron-down with a clear label, never the x."""
+    for fn in ("function openMenu", "function closeMenu"):
         body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
         for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
             for prop in re.findall(r"(\w+):", props):
                 assert prop in ("offset", "opacity", "transform"), (fn, prop)
         assert "strokeDashoffset" not in body, fn
+    assert 'const EXIT_ICON = "chevron-down";' in JS and '${lu(EXIT_ICON, 2.2)}' in JS
+    assert 'tr("收起 Jarvis 菜单")' in JS
+    assert 'document.addEventListener("visibilitychange", pause)' in JS
+    assert "body.jv-paused :is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation-play-state: paused; }" in CSS
+    # infinite animations only inside the fan (display:none while closed) or the open key, and off with reduced motion
+    for m in re.finditer(r"([^{}]+)\{[^{}]*infinite[^{}]*\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
+        sel = m.group(1).strip()
+        assert sel.startswith((".jv-fan", ".jv.open")) or "jv-vp-dot" in sel, sel
+    assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
+
+
+# ---------------------------------------------------------------- flag jarvis_dial (PR #294): the instrument-cluster menu in one ink
+DIAL_MARK = "/* ---------- flag jarvis_dial"
+CSS_OLD, CSS_DIAL = CSS.split(DIAL_MARK, 1)
+CSS_DIAL = DIAL_MARK + CSS_DIAL
+
+
+def test_dial_flag_declared_and_checked_once_at_mount():
+    assert "jarvis_dial" in registry.FLAGS
+    assert 'DIAL_FLAG = "jarvis_dial"' in JS
+    assert JS.count("window.BodyFlags?.on(DIAL_FLAG)") == 1   # read once, when the key is mounted
+    assert "let dial = false;" in JS
+    assert 'if (dial) document.body.classList.add("jv-dial");' in JS
+
+
+def test_flag_off_keeps_the_ring_menu_unchanged():
+    """The existing look and animation are all still there and run when `dial` is false; the dial code is only reached
+    through `if (dial)`, and its styles only apply under body.jv-dial."""
+    for old in ("const R_KEY = 98, R_RING = 35, START = 225, SWEEP_MS = 560", "const FLY_MS = 440, BACK_MS = 260;",
+                'lu("orbit", 1.7)', "lu(EXIT_ICON, 2.2)", 'id="jv-comet"', 'id="jv-ticks"', 'class="jv-shock"', 'class="jv-kglow"',
+                "function orbitFrames(th, overshoot = 1.25)", 'id="jv-grad"', "th: 290,", "th: 336.67,", "th: 23.33,", "th: 70,"):
+        assert old in JS, old
+    assert "if (dial) { openDial(byKeyboard); return; }" in JS and "if (dial) { closeDial(focusBack); return; }" in JS
+    assert "const seg = CIRC / SEGS, segs = dial ? [] : Array.from" in JS
+    assert 'stroke-width="${dial ? 1.75 : sw}"' in JS
+    for fn in ("function openDial", "function closeDial", "function arcFrames", "function arcPath"):
+        assert fn in JS, fn
+    # the old stylesheet part has no dial rule and every dial rule starts at body.jv-dial
+    assert "jv-dial" not in CSS_OLD
+    body = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    body = re.sub(r"@media[^{]*\{", "", body)
+    for sel in re.findall(r"([^{}]+)\{[^{}]*\}", body):
+        for one in re.split(r",(?![^()]*\))", sel):
+            assert "jv-dial" in one, one.strip()
+
+
+def test_flag_on_is_quick_transform_and_opacity_only_and_one_ink():
+    """jarvis_dial: about 200 ms, no stagger, no bounce; Web Animations only move transform and opacity; nothing loops;
+    black lines in light mode / white in dark (the page's --text), no colour, gradient or glow."""
+    assert "const OPEN_MS = 200, CLOSE_MS = 150" in JS
+    for fn in ("function openDial", "function closeDial", "function arcFrames"):
+        body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
+        for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
+            for prop in re.findall(r"(\w+):", props):
+                assert prop in ("offset", "opacity", "transform"), (fn, prop)
         assert "delay: order" not in body and "overshoot" not in body, fn   # no stagger, no bounce
     # the press answers on pointerdown in CSS (no JS between the touch and the first frame)
-    assert ".jv.pressed { transform: scale(.92); }" in CSS and "transition: transform .08s" in CSS
-    assert 'const EXIT_ICON = "chevron-down";' in JS and "${lu(EXIT_ICON)}" in JS
-    assert 'tr("收起 Jarvis 菜单")' in JS
-    # nothing runs forever in the menu (only the voice panel's recording dot blinks)
-    for m in re.finditer(r"([^{}]+)\{[^{}]*infinite[^{}]*\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
-        assert "jv-vp-dot" in m.group(1), m.group(1)
-    # one ink: no colour, gradient, glow or accent token anywhere in the Jarvis files
-    code = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
-    for bad in ("gradient", "--sleep", "--bad", "--accent", "hud", "glow", "#fff;", "hsl", "--bad-soft"):
+    assert "body.jv-dial .jv.pressed { transform: scale(.92); }" in CSS_DIAL and "transition: transform .08s" in CSS_DIAL
+    code = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    assert "infinite" not in code
+    for bad in ("gradient", "--sleep", "--bad", "--jv-hud", "glow", "#fff;", "hsl", "url("):
         assert bad not in code, bad
     for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
         assert colour.lower() in ("#ffffff", "#151517"), colour   # the key's face: white / near-black
-    assert "linearGradient" not in JS and "jv-grad" not in JS
-    # one stroke width for the Lucide icons
-    assert "const lu = (name, sw = 1.75)" in JS and not re.search(r"lu\([^)]*,\s*[\d.]+\)", JS)
-    assert ".jv, .jv-ic, .jv-kbase" in CSS   # reduced motion drops the transitions too
+    assert "prefers-reduced-motion: reduce" in CSS_DIAL and "transition: none" in CSS_DIAL
+    # the arc's centre sits below the key's centre; the keys are smaller than the 56 pt key
+    assert int(re.search(r"ARC_DY = (\d+)", JS).group(1)) > 0
+    assert "width: 46px; height: 46px" in CSS_DIAL
