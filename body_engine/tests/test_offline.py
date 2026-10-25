@@ -344,8 +344,10 @@ def test_offline_shell_inlines_the_page():
     html = web_api.offline_shell_html()
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     # every local script and stylesheet is inside, in the same order; nothing is loaded from the server
-    names = re.findall(r'<script src="([\w.-]+\.js)"', index)
-    assert names and not re.search(r'<script src="[\w.-]+\.js"', html) and 'rel="stylesheet"' not in html
+    # (the on-demand scripts, type="w2w/lazy", are inline here too; the gate that loads the English table later is not: the copy has it)
+    names = re.findall(r'<script (?:type="w2w/lazy"(?: data-lang="\w+")? )?src="([\w.-]+\.js)"', index)
+    assert names and not re.search(r'<script (?:type="w2w/lazy"[^>]*)?src="[\w.-]+\.js"', html) and 'rel="stylesheet"' not in html
+    assert not re.search(r'<script (?:data-w2w="gate"|type="w2w/lazy")[^>]*src="[\w.-]+\.js"></script>', html) and {"i18n-en.js", "muscle-body-data.js", "intro.js"} <= set(names)
     starts = [html.index((STATIC / n).read_text(encoding="utf-8")[:200].replace("</script", "<\\/script")) for n in names]
     assert starts == sorted(starts)
     assert html.count("<script>") == len(names) + 1          # + the W2W_SHELL marker

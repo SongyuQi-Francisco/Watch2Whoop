@@ -25,6 +25,7 @@ MESSAGES = Messages(
     call_directly="{name} 要直接调用（删除 / 撤销类，客户端会先请用户确认）",
     missing_args="{name} 缺少参数：{missing}（参数说明用 find_tools 查）",
     missing_sep="、",
+    missing_param="缺少参数 {param}",
     unknown_playbook="没有这个 playbook：{name}；有：{names}",
     playbook_sep=" / ",
     write_only_self="写操作只能写给自己",

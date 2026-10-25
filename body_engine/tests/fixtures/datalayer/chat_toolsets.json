@@ -2188,7 +2188,10 @@
       "description": "me 或授权给你的家人 ID"
      },
      "statuses": {
-      "type": "array",
+      "type": [
+       "array",
+       "null"
+      ],
       "items": {
        "type": "string",
        "enum": [
@@ -2199,7 +2202,7 @@
         "not_needed"
        ]
       },
-      "description": "空 = 全部"
+      "description": "null / 空 = 全部"
      }
     },
     "required": [
@@ -2974,7 +2977,11 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
@@ -8262,7 +8269,11 @@
       "description": "YYYY-MM-DD，null=今天"
      },
      "include_dismissed": {
-      "type": "boolean"
+      "type": [
+       "boolean",
+       "null"
+      ],
+      "description": "null = false"
      },
      "detail": {
       "type": "boolean",
@@ -9121,7 +9132,10 @@
     "type": "object",
     "properties": {
      "statuses": {
-      "type": "array",
+      "type": [
+       "array",
+       "null"
+      ],
       "items": {
        "type": "string",
        "enum": [
@@ -9132,7 +9146,7 @@
         "not_needed"
        ]
       },
-      "description": "空 = 全部"
+      "description": "null / 空 = 全部"
      }
     },
     "required": [

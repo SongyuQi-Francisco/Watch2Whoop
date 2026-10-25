@@ -550,6 +550,22 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   `identity_events` (migration 390).
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
+- Provisioning retries (`account/provision.py`, migration 785): transient errors (connection refused, timeout, HTTP 5xx)
+  are tried 3 times within a run; a failed run writes every failing step with its exception type to
+  `user_provisioning.last_error` and sets `next_attempt_at` (10 min doubling per attempt, at most 6 h); `provision-run`
+  only picks due rows, and one user's failure never stops the others.
+
+## Running it on a small server (memory, logs; `docs/api-memory.md`)
+- Run jobs and checks as `body-engine <command>` in a **separate** container with its own memory limit, never with
+  `docker exec` into the API container: each CLI process is ~75 MB inside the API's limit, and the kernel then kills the
+  biggest process there, the API.
+- `BODY_SYNC_IMPORT=queue`: "sync now" (`POST /v1/users/{user}/sync/refresh`) only queues the OW import; the per-minute
+  `sync-refresh-run` imports and recomputes (default: import in a thread of the API process).
+- `BODY_LOG_DIR=<dir>`: the API's log (warnings, tracebacks; no access lines) also goes to `<dir>/engine-YYYY-MM-DD.log`,
+  kept `BODY_LOG_KEEP_DAYS` (14) days. `compose.yaml` mounts `health_data/ops/engine/`.
+- Responses carry `X-Body-User: <id>` of the authenticated user (`obs.py`): log it in the reverse proxy
+  (`$upstream_http_x_body_user`) and hide it from clients (`proxy_hide_header X-Body-User`).
+- The image sets `MALLOC_ARENA_MAX=2` (fewer glibc arenas for the API's thread pool).
 
 ## Optional plugins (`src/body_engine/plugins.py`)
 None by default. Set `BODY_PLUGIN_DIR` to a directory of plugin packages (`<dir>/<name>/__init__.py`, name `[a-z][a-z0-9_]*`) to extend a deployment without changing this code. A plugin may define:

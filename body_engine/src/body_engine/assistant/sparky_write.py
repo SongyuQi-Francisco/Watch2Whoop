@@ -7,7 +7,7 @@ They use the read-write key (sparky_client.write_client_for_user) and check befo
   (only written with allow_duplicates=true). Each entry carries source=body_assistant and a source_id computed from its content, which SparkyFitness uses for idempotency
   (retrying the same entry never writes twice). SparkyFitness requires food entries to hang on a food in the food library, so a custom food is created / reused by content
   (provider_external_id = ba:<content hash>, 1 serving = this portion).
-- Workouts: each exercise is first matched against the SparkyFitness exercise library (ID / name / Chinese and English names and aliases in exercise_meta); a match that is banned
+- Workouts: each exercise is first matched against the SparkyFitness exercise library (ID / name / Chinese and English names and aliases in exercise_meta / the bilingual catalog); a match that is banned
   (marked banned in exercise_meta or 【禁用】 in the SparkyFitness description) rejects the whole call with the reason; the same exercise already logged that day is treated as a duplicate and skipped.
 - Weight: an existing different value on the same day is not overwritten (only with overwrite=true), an identical one is skipped.
 Edit / delete (issue #30, any source; deletes ask the user first): update_food_entry, update_set, undo_entry (food entry by id or an exact
@@ -16,6 +16,7 @@ date + meal + name (+ time) match, workout session, single set, one day's check-
 Dual write (issue #252, flag own_food_store): every write ends with mirror.after_write for the dates it touched, which copies
 them from SparkyFitness into Body Engine's own tables (ownstore/); with the flag off it does nothing.
 """
+import difflib
 import hashlib
 import json
 import re
@@ -191,7 +192,12 @@ def exercise_index(conn, user_id: int, client) -> dict:
     """SparkyFitness exercise library + exercise_meta, used for matching and the banned check."""
     library = sparky_client.exercises(client)
     meta = records_store.list_exercises(conn, user_id)
-    return {"library": library, "by_id": {e["id"]: e for e in library}, "meta": meta,
+    try:   # the bilingual catalog (names + aliases): a Chinese everyday name reaches the library entry through it
+        from ..training import catalog as tr_catalog
+        catalog = tr_catalog.rows_for(conn, user_id)
+    except Exception:  # noqa: BLE001  matching still works on the library alone
+        catalog = []
+    return {"library": library, "by_id": {e["id"]: e for e in library}, "meta": meta, "catalog": catalog,
             "meta_by_app_id": {m["app_exercise_id"]: m for m in meta if m.get("app_exercise_id")}}
 
 
@@ -212,8 +218,45 @@ def banned_reason(idx: dict, name: str, exercise_id: str | None) -> str | None:
     return None
 
 
+def _catalog_forms(idx: dict, name: str) -> list[dict]:
+    """Catalog rows (training/catalog.py) whose standard name, English name or an alias is this name."""
+    from ..training.catalog import norm as cnorm, strip_paren as cstrip
+    n, short = cnorm(name), cnorm(cstrip(name))
+    out = []
+    for r in idx.get("catalog") or []:
+        forms = [r["name_zh"], r["name_en"], *(r.get("aliases") or [])]
+        names = {cnorm(x) for x in forms if x} | {cnorm(cstrip(x)) for x in forms if x}
+        if n in names or (short and short in names):
+            out.append(r)
+    return out
+
+
+def _library_for_catalog_row(idx: dict, row: dict) -> list[dict]:
+    """The user's library entries that are this catalog exercise: linked by exercise_meta, or named like one of its names."""
+    from ..training.catalog import norm as cnorm, strip_paren as cstrip
+    ids = {m["app_exercise_id"] for m in idx["meta"] if m.get("app_exercise_id") and m.get("exercise_ref") == row["slug"]}
+    forms = [row["name_zh"], row["name_en"], *(row.get("aliases") or [])]
+    names = {cnorm(x) for x in forms if x} | {cnorm(cstrip(x)) for x in forms if x}
+    names.discard("")
+    return [e for e in idx["library"] if e["id"] in ids or cnorm(e["name"]) in names or cnorm(cstrip(e["name"])) in names]
+
+
+def _closest(idx: dict, queries: list[str], limit: int) -> list[str]:
+    """Library names most like the asked name (and the names of the catalog exercise it means), best first."""
+    qs = [_norm(q) for q in queries if q]
+    scored = []
+    for e in idx["library"]:
+        forms = {_norm(e["name"]), _strip_paren(e["name"])}
+        score = max(difflib.SequenceMatcher(None, q, f).ratio() for q in qs for f in forms if f and q) if qs else 0.0
+        scored.append((score, e["name"]))
+    scored.sort(key=lambda x: -x[0])
+    return [name for _, name in scored[:limit]]
+
+
 def resolve_exercise(idx: dict, name: str, exercise_id: str | None) -> tuple[dict | None, list[str]]:
-    """Exercise name -> SparkyFitness exercise. Returns (exercise or None, candidate names). Order: ID -> name -> exercise_meta name / alias -> name without brackets."""
+    """Exercise name -> SparkyFitness exercise. Returns (exercise or None, candidate names). Order: ID -> name -> exercise_meta name / alias ->
+    name without brackets -> the bilingual catalog (an everyday Chinese or English name or alias leads to a catalog exercise, and that one
+    to the library entry). Without a match the candidates are the library names that contain it, filled up with the most similar ones."""
     lib = idx["library"]
     if exercise_id:
         return idx["by_id"].get(exercise_id), []
@@ -225,10 +268,23 @@ def resolve_exercise(idx: dict, name: str, exercise_id: str | None) -> tuple[dic
         hits = [idx["by_id"][i] for i in ids if i in idx["by_id"]]
     if not hits:
         hits = [e for e in lib if _strip_paren(e["name"]) == _strip_paren(name)]
+    rows = []
+    if not hits:
+        rows = _catalog_forms(idx, name)
+        seen = set()
+        for r in rows:
+            for e in _library_for_catalog_row(idx, r):
+                if e["id"] not in seen:
+                    seen.add(e["id"])
+                    hits.append(e)
     if len(hits) == 1:
         return hits[0], []
     cands = [e["name"] for e in hits] or [e["name"] for e in lib if n and (n in _norm(e["name"]) or _strip_paren(e["name"]) in n)]
-    return None, cands[:8]
+    cands = cands[:8]
+    if len(cands) < 5 and lib:   # nothing (or little) contains the name: offer the most similar ones instead of an empty list
+        queries = [name, *(x for r in rows for x in (r["name_zh"], r["name_en"]))]
+        cands += [c for c in _closest(idx, queries, 5) if c not in cands][:5 - len(cands)]
+    return None, cands
 
 
 def search_exercises(conn, user_id: int, query: str | None = "", client=None,

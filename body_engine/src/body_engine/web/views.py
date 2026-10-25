@@ -18,6 +18,7 @@ from ..rules import params as RP, store as rules_store
 from ..rules.context import Ctx, load_overrides
 from ..scores import store as scores_store
 from ..trends import series as trend_series
+from . import recovery_empty
 from ..training import loads as tr_loads
 
 RECOVERY_GREEN = 67          # >= 67 green, 34-66 yellow, < 34 red (the bands in system design §7)
@@ -159,6 +160,7 @@ def scores_today(conn, owner_id: int, day: date) -> dict:
     return {
         "date": day, "today": today, "yesterday": yesterday,
         "today_reasons": reasons(today), "yesterday_reasons": reasons(yesterday),
+        "recovery_empty": recovery_empty.explain(conn, owner_id, day, today, local_today(conn, owner_id)),   # why the ring is empty
         "recovery_zone": recovery_zone((today or {}).get("recovery")),
         "recovery_word": _recovery_word(recovery_zone((today or {}).get("recovery"))),
         "load_status": load_status(yesterday),

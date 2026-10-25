@@ -32,6 +32,12 @@ def _require(row, what: str):
     return row
 
 
+def _add_supplement(conn, uid, a):
+    if not (a.get("name") or "").strip():   # checked here, not by the database's NOT NULL (the AI gets a message it can fix)
+        raise ValueError("缺少参数 name")
+    return store.add_supplement(conn, uid, {**_changes(a), "name": a["name"].strip()})
+
+
 SUPP_STATUS = ["active", "as_needed", "paused", "stopped", "not_needed"]
 SUPP_STATUS_DESC = "active 在吃 / as_needed 按需 / paused 暂停 / stopped 已停 / not_needed 不需要"
 
@@ -98,8 +104,8 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="list_supplements",
         description="补剂清单：名称、剂量、时间、成分、状态、开始 / 停止日期、为什么吃、当前建议、对应日记项。",
-        input_schema=_schema({"user": USER, "statuses": {"type": "array", "items": {"type": "string", "enum": SUPP_STATUS},
-                                                         "description": "空 = 全部"}}),
+        input_schema=_schema({"user": USER, "statuses": {"type": ["array", "null"], "items": {"type": "string", "enum": SUPP_STATUS},
+                                                         "description": "null / 空 = 全部"}}),
         handler=lambda conn, uid, a: store.list_supplements(conn, uid, a["statuses"] or None),
         group="records", scope="supplements",
     ),
@@ -117,7 +123,7 @@ TOOL_SPECS: list[dict] = [
             "advice": _nullable("string", "当前建议"),
             "journal_key": _nullable("string", "小写字母下划线"),
         }),
-        handler=lambda conn, uid, a: store.add_supplement(conn, uid, _changes(a)),
+        handler=_add_supplement,
         group="records", scope="supplements", writes=True,
     ),
     dict(

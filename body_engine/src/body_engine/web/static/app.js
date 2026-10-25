@@ -36,6 +36,34 @@
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
+  // On-demand scripts (first-screen slimming): index.html declares them as script elements of type w2w/lazy, which the browser neither
+  // fetches nor runs; the server puts ?v=<fingerprint> on the src. lazyScript(name) loads one the first time something needs it and
+  // resolves true (false: it could not be fetched; the next call tries again). In the offline copy of the page they are ordinary inline
+  // scripts already, so nothing is declared and nothing is fetched. A file that registers a plugin in window.BodyPlugins when it runs
+  // gets its init() right after, with what the start-up gave the others (initLate).
+  const LAZY = new Map();
+  const lateInit = { ctx: null, me: null, done: new WeakSet() };
+  function initLate() {
+    if (!lateInit.ctx) return;
+    for (const p of PLUGINS()) if (!lateInit.done.has(p)) { lateInit.done.add(p); try { p.init?.(lateInit.ctx, lateInit.me); } catch (e) { /* a plugin never breaks the page */ } }
+  }
+  function lazyScript(name) {
+    if (!LAZY.has(name)) {
+      const decl = [...document.querySelectorAll('script[type="w2w/lazy"]')].find((e) => (e.getAttribute("src") || "").split("?")[0] === name);
+      LAZY.set(name, !decl ? Promise.resolve(true) : new Promise((done) => {
+        const el = Object.assign(document.createElement("script"), { src: decl.getAttribute("src") });
+        el.onload = () => { initLate(); done(true); };
+        el.onerror = () => { LAZY.delete(name); el.remove(); done(false); };
+        document.head.append(el);
+      }));
+    }
+    return LAZY.get(name);
+  }
+  window.BodyLazy = { script: lazyScript };
+  // intro.js (37 KB) loads when the intro first opens (a new account, or 「我 → 新手引导」); this stand-in is replaced by the real
+  // window.BodyIntro when the file has run (and is never installed where the file is already there: the offline copy)
+  const introStub = { open: async () => { if ((await lazyScript("intro.js")) && window.BodyIntro !== introStub) window.BodyIntro.open(); } };
+  if (!window.BodyIntro) window.BodyIntro = introStub;
   // Optional plugins of this server (BODY_PLUGIN_DIR, body_engine/plugins.py): /app/plugins/manifest.json lists the scripts and
   // styles for the signed-in user; they load before the plugins are initialised and register in window.BodyPlugins like the
   // files above. A server without plugins lists nothing and nothing is loaded.
@@ -84,6 +112,20 @@
     const feature = el && featureOf(el);
     if (feature) window.BodyHooks.emit("action", { feature, page: lastPage });
   }, true);
+  // <in-app-links> Inside the iOS app's WebView a target=_blank <a> does nothing, while window.open reaches the app's navigation
+  // delegate, which hands the address to the system. So every such link on the page (Jarvis answers in md.js, the feedback link, the
+  // Jarvis "open" button …) is opened from code there. A handler that already took the click (preventDefault) is left alone.
+  document.addEventListener("click", (e) => {
+    if (!IN_APP || e.defaultPrevented || e.button) return;
+    const a = e.target.closest?.("a[target=_blank][href]");
+    if (!a) return;
+    let url;
+    try { url = new URL(a.getAttribute("href"), location.href); } catch (err) { return; }
+    if (url.protocol !== "https:" && url.protocol !== "http:") return;
+    e.preventDefault();
+    window.open(url.href, "_blank", "noopener");
+  });
+  // </in-app-links>
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const WEEK = (() => { const w = I18N.weekdaysMon(); return [w[6], ...w.slice(0, 6)]; })();   // Sunday first (getDay())
   const WEEK_MON = I18N.weekdaysMon();   // Monday first (the training week strip)
@@ -138,6 +180,9 @@
   const addDays = (s, n) => { const d = parseDay(s); d.setDate(d.getDate() + n); return isoDay(d); };
   const fmtDay = (s, withYear) => I18N.dayLabel(parseDay(s), withYear);
   const shortDay = (s) => { const d = parseDay(s); return I18N.lang === "zh" ? `${d.getMonth() + 1}/${d.getDate()}` : d.toLocaleDateString(I18N.locale(), { day: "numeric", month: "numeric" }); };
+  // The same day with its year ("2025/10/27"; English: the device's own order, "27/10/25"), for ranges long enough that "10/27 … 10/26" reads backwards
+  const yearDay = (s) => { const d = parseDay(s); return I18N.lang === "zh" ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : d.toLocaleDateString(I18N.locale(), { day: "numeric", month: "numeric", year: "2-digit" }); };
+  const spansYear = (a, b) => String(a).slice(0, 4) !== String(b).slice(0, 4) || Math.round((parseDay(String(b).slice(0, 10)) - parseDay(String(a).slice(0, 10))) / 864e5) >= 179;   // 6 months = 180 days = 179 days apart
   const hm = (m) => (m == null ? null : `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")}`);
   const fmtMin = (m) => {
     if (m == null) return "—";
@@ -198,7 +243,10 @@
   // Reads (GET) wait and try again by themselves, at most twice; every other request is sent once (a write must not run
   // twice). A 503 with X-Offline is the service worker saying it has no copy, not a restart.
   const UPDATING_WAITS = [3000, 6000];
-  const isRestart = (r) => [502, 503, 504].includes(r.status) && r.headers.get("X-Offline") !== "1";
+  // A JSON answer comes from Body Engine itself (e.g. a 502 because the food-log service is down), not from the proxy of a restarting
+  // server (an HTML error page): waiting and asking again would only make the page wait ~9 s for the same answer.
+  const isJson = (r) => /json/i.test(r.headers.get("Content-Type") || "");
+  const isRestart = (r) => [502, 503, 504].includes(r.status) && r.headers.get("X-Offline") !== "1" && !isJson(r);
   async function fetchRetrying(path, init, retry) {
     for (let n = 0; ; n++) {
       let r = null, err = null;
@@ -209,6 +257,14 @@
       await new Promise((ok) => setTimeout(ok, UPDATING_WAITS[n]));
     }
   }
+
+  // Reads that only decorate the page (what the plugin files ask at start-up: profile, account, sync state, notices, history import)
+  // wait until the first page is drawn, so the first second carries the page's own data and not 17 requests at once (the proxy counts
+  // every HTTP/2 stream as a connection). firstPaint resolves when start() has drawn the first page, or after 4 s whatever happens.
+  const DEFERRED_GETS = /^\/v1\/(account|users\/me\/(profile|sync\/connection|sync\/status|notices|health-history))(\?|$)/;
+  let paintDone;
+  const firstPaint = new Promise((ok) => { paintDone = ok; });
+  setTimeout(() => paintDone(), 4000);
 
   // queue: {kind, label, group?, coalesce?} = a write offline.js may keep and send later (water, weight, training sets).
   // It resolves {queued: item} when it was kept instead of sent: offline, or older writes are still waiting (they go first).
@@ -235,6 +291,7 @@
       // loads the real page once the network is back
       if (window.W2W_SHELL) throw new Error("offline shell");
       const pre = method === "GET" ? await (S.stale ? prePeek(path) : preTake(path)) : null;
+      if (!pre && method === "GET" && DEFERRED_GETS.test(path)) await firstPaint;
       r = pre && !isRestart(pre) ? pre
         : await fetchRetrying(path, { method, headers, credentials: "same-origin", body: body === undefined ? undefined : JSON.stringify(body) }, method === "GET");
     } catch (e) {
@@ -810,13 +867,8 @@
 
   async function refresh() { S.data = {}; window.BodySleepDetail?.reset(); await boot(true); }
 
-  // Block pinch-zoom on iOS (Safari ignores user-scalable=no in some modes): gesture events + two-finger moves
-  for (const ev of ["gesturestart", "gesturechange", "gestureend"]) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
-  // The non-passive touchmove listener exists only while two or more fingers are down, so one-finger pans never wait on the page.
-  // (Sideways strips such as .quick: the real blocker in issue #11 was the :active opacity on their div.card, see app.css.)
-  const noPinch = (e) => { if (e.touches.length > 1) e.preventDefault(); };
-  document.addEventListener("touchstart", (e) => { if (e.touches.length > 1) document.addEventListener("touchmove", noPinch, { passive: false }); }, { passive: true });
-  for (const ev of ["touchend", "touchcancel"]) document.addEventListener(ev, (e) => { if (e.touches.length < 2) document.removeEventListener("touchmove", noPinch); }, { passive: true });
+  // Pinch-zoom is allowed (WCAG 1.4.4; the viewport has no maximum-scale / user-scalable=no any more). iOS zooms into a field
+  // on focus only when its font is smaller than 16px: app.css gives every input / select / textarea at least 16px, keep it so.
 
   // Pull to refresh (a home-screen app has no built-in one from the browser)
   (() => {
@@ -924,14 +976,20 @@
 
   function recoverySheet(sc) {
     const t = sc.today || {}, r = sc.today_reasons, last = sc.last_recovery;
+    const em = t.recovery == null ? sc.recovery_empty : null;
+    const emBtn = em?.action && em.cta && isSelf() ? `<div class="btns"><button class="btn btn-primary" id="rec-next">${esc(em.cta)}</button></div>` : "";
     openSheet(tr("恢复"), t.recovery == null ? `${recoveryScale(last?.recovery)}
-      ${kv(tr("恢复分"), null, r.recovery)}
+      ${em ? kv(tr("恢复分"), esc(em.label)) : kv(tr("恢复分"), null, r.recovery)}
       ${last ? kv(tr("上次"), `${last.recovery} ${badge(ZONE[last.zone], ZONE_LABEL[last.zone])} · ${shortDay(last.date)}`) : ""}
-      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${xpBox}` : `${recoveryScale(t.recovery)}
+      ${xkv("HRV", null, r.hrv_night_ms, "hrv")}${xkv(tr("静息心率"), null, r.rhr_night, "resting_hr")}${emBtn}${xpBox}` : `${recoveryScale(t.recovery)}
       ${kv(tr("恢复分"), `${t.recovery} ${badge(ZONE[sc.recovery_zone], ZONE_LABEL[sc.recovery_zone])}`)}
       ${xkv("HRV", t.hrv_night_ms != null ? `${fmtNum(t.hrv_night_ms)} <small class="muted">ms</small>` : null, r.hrv_night_ms, "hrv")}
       ${xkv(tr("静息心率"), t.rhr_night != null ? `${fmtNum(t.rhr_night)} <small class="muted">bpm</small>` : null, r.rhr_night, "resting_hr")}
-      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => explainInto(root, "metric", "recovery", false));
+      ${flagTags(t.flags, LOAD_FLAGS)}${xpBox}`, (root) => {
+      const next = $("#rec-next", root);
+      if (next) next.onclick = () => { closeSheet(); recoveryNext(em.action); };
+      explainInto(root, "metric", "recovery", false);
+    });
   }
 
   function sleepSheet(sc) {
@@ -970,14 +1028,33 @@
       ${sc.load_missing_days ? tags([badge("mid", tr("缺 {n} 天", { n: sc.load_missing_days }))]) : ""}`);
   }
 
+  // The next step under an empty recovery ring (empty.action from web/recovery_empty.py): the consent form, the app's sync page
+  // (a browser: the data status list), or the sleep data status with the steps to switch on sleep tracking on the watch.
+  // Only for yourself: the person you look at is the one who can fix it.
+  function recoveryNext(action) {
+    if (action === "consent") { window.BodyProfile?.consent?.(false); return; }
+    const ds = PLUGINS().find((p) => p.openDataStatus);
+    if (action === "sleep_help") ds?.openDataStatusType?.("sleep", { watchSleep: true });
+    else ds?.openDataStatus?.();   // "sync" outside the app
+  }
+  function recoveryNextHtml(empty) {
+    if (!empty.action || !empty.cta || !isSelf()) return "";
+    if (empty.action === "sync" && IN_APP)
+      return `<div class="chip-row"><a class="chip" data-feature="recovery_next" href="${syncCenterOn() ? "watch2whoop://sync-center" : "watch2whoop://sync"}">${esc(empty.cta)}</a></div>`;
+    return `<div class="chip-row"><button class="chip" data-feature="recovery_next" ${sheetAttr(() => recoveryNext(empty.action))}>${esc(empty.cta)}</button></div>`;
+  }
+
   function scoresHtml(sc) {
     if (sc.error) return `<div class="hero">${ring(null)}<div class="hero-word muted">${esc(short(sc.error))}</div></div>`;
     const t = sc.today || {}, y = sc.yesterday || {};
-    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>` : "";
+    const empty = t.recovery == null ? sc.recovery_empty : null;   // why the ring is empty (web/recovery_empty.py)
+    const word = sc.recovery_word ? `<div class="hero-word">${esc(sc.recovery_word)}</div>`
+      : empty ? `<div class="hero-word muted" data-empty="${esc(empty.code)}">${esc(empty.label)}</div>` : "";
     const sub = t.recovery == null && sc.last_recovery ? `<div class="hero-sub">${tr("上次")} ${sc.last_recovery.recovery} · ${shortDay(sc.last_recovery.date)}</div>` : "";
     const tile = (label, value, fn, card) => `<button class="tile" data-card="${card}" ${sheetAttr(fn)}><span class="tile-label">${label}</span>
       <span class="tile-value">${value != null ? value : dash()}</span></button>`;
     return `<button class="hero" data-card="recovery" ${sheetAttr(() => recoverySheet(sc))}>${ring(t.recovery, sc.recovery_zone)}${word}${sub}</button>
+      ${empty ? recoveryNextHtml(empty) : ""}
       <div class="tiles">
         ${tile(tr("睡眠"), hm(t.sleep_actual_min), () => (sleepDetailOn() ? openSleepDetail(S.todaySleepDate) : sleepSheet(sc)), "sleep")}
         ${tile(tr("睡眠分"), t.sleep_score, () => sleepSheet(sc), "sleep_score")}
@@ -1483,6 +1560,7 @@
       mload ? optional("mload", `/v1/users/${ownerPath()}/training/muscle-load`) : null,   // muscle_load: the small card (no training share = no card)
     ]);
     S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
+    if (mdata) await window.BodyMuscleLoad.ready();   // the body drawings (muscle-body-data.js) load on first use, only for someone who has the card
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
     // Stacked on phones; two / three columns on wide screens (.dash in app.css)
@@ -1798,7 +1876,8 @@
     g += "</g>";
     if (wide && !opts.noTicks) for (const v of [lo + (hi - lo) * 0.15, hi - (hi - lo) * 0.15]) g += `<text class="ylab" x="0" y="${(sy(v) - 3).toFixed(1)}">${fmtNum(v, Math.abs(hi - lo) < 5 ? 1 : 0)}</text>`;
     g += `<line class="grid" x1="0" x2="${W}" y1="${H - B}" y2="${H - B}"/>`;
-    g += `<text x="0" y="${H - 3}">${shortDay(dates[0])}</text>${wide ? `<text x="${W / 2}" y="${H - 3}" text-anchor="middle">${shortDay(dates[Math.floor((n - 1) / 2)])}</text>` : ""}<text x="${W}" y="${H - 3}" text-anchor="end">${shortDay(dates[n - 1])}</text>`;
+    const axisDay = spansYear(dates[0], dates[n - 1]) ? yearDay : shortDay;   // half a year or more of data: the labels carry the year
+    g += `<text x="0" y="${H - 3}">${axisDay(dates[0])}</text>${wide ? `<text x="${W / 2}" y="${H - 3}" text-anchor="middle">${axisDay(dates[Math.floor((n - 1) / 2)])}</text>` : ""}<text x="${W}" y="${H - 3}" text-anchor="end">${axisDay(dates[n - 1])}</text>`;
     g += `<line class="cursor" id="${id}-cur" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/><circle class="cursor-dot" id="${id}-dot" r="3.5" visibility="hidden"/>`;
     const main = layers.find((l) => l.main) || layers.find((l) => l.type !== "band" && l.type !== "range");
     CH.set(id, { n, W, cx, tip: opts.tip, y: (i) => { const v = main?.values?.[i]; return v == null ? null : sy(v, main.axis); } });
@@ -2076,7 +2155,7 @@
     };
     // Long ranges (or ones crossing a year) show the year, otherwise "1 year" read as "10/19 – 10/18 vs 10/19 – 10/18"
     const withYear = d.days >= 180 || String(d.prev_start).slice(0, 4) !== String(d.end).slice(0, 4);
-    const day = (x) => (withYear ? `${String(x).slice(0, 4)}/${shortDay(String(x))}` : shortDay(String(x)));
+    const day = (x) => (withYear ? yearDay(String(x)) : shortDay(String(x)));
     const range = `<div class="rep-head">${esc(`${day(d.start)} – ${day(d.end)}`)}<span class="muted"> vs ${esc(`${day(d.prev_start)} – ${day(addDays(String(d.start), -1))}`)}</span></div>`;
     // Status tiles describe "now" (as of the end date) and do not change with the range: keep them below the range-dependent charts
     const now = statusTiles(d.status);
@@ -3254,6 +3333,9 @@
 
   // ---- Per-meal suggestions (GET /recipes/meal-plan, issue #43): each meal not logged yet gets 2 recipes (taste, pantry, health caps)
   function mealPlanHtml(plan) {
+    // The food log (kept in the diary service) cannot be read: the server answers at once with `unavailable` + a short label; say so, offer a retry
+    if (plan?.unavailable) return `<div class="section"><div class="section-head"><h2>${tr("每餐推荐")}</h2></div><div class="empty faint">${esc(plan.label || tr("饮食记录暂时读不到"))}</div>
+      <div class="btns" style="justify-content:center;margin-top:4px"><button class="btn" data-retry>${esc(tr("common.retry"))}</button></div></div>`;
     const slots = (plan?.slots || []).filter((s) => s.suggestions?.length);
     if (!slots.length) return "";
     const rem = plan.remaining;
@@ -3274,6 +3356,8 @@
 
   const RENDER_food = async () => {
     if (S.foodSub === "recipes" && S.foodMode !== "shopping") return recipesSubHtml();
+    // The food page's plugin files (diet-profile.js, water.js; grocery.js for 采购) are not part of the first screen: they load the first time the tab opens
+    await Promise.all([lazyScript("diet-profile.js"), lazyScript("water.js"), S.foodMode === "shopping" ? lazyScript("grocery.js") : null]);
     const seg = (friendsOn() ? recSeg() : "") + `<div class="toolbar"><div class="seg" role="group" aria-label="${tr("饮食")}">${[["diet", tr("饮食")], ["shopping", tr("采购")]].map(([k, t]) => `<button data-fmode="${k}" aria-pressed="${S.foodMode === k}">${t}</button>`).join("")}</div></div>`
       + PLUGINS().map((p) => p.foodTop?.({ owner: ownerPath(), self: isSelf(), date: S.todayDate }) || "").join("");   // diet-profile.js
     if (S.foodMode === "shopping") {
@@ -3404,6 +3488,19 @@
       ${kv(tr("睡眠"), d.sleep_min != null ? `${hm(d.sleep_min)}${d.sleep_score != null ? ` <small class="muted">· ${d.sleep_score}</small>` : ""}` : null, tr("未同步"))}
       ${kv(tr("负荷"), d.strain != null ? fmtNum(d.strain, 1) : null, tr("未同步"))}`);
   }
+  // A member card's sync state (friends/cards.py sync_info): scored (today's scores are in) / pending (data arrived, today's
+  // scores are being computed) / stale (no data for 36 h) / never. Older servers only send synced_today.
+  const syncState = (sc) => sc.state || (sc.synced_today ? "scored" : "stale");
+  // When data last arrived, coarse: just now / x min ago / x h ago / yesterday / date (days are the person's own, today = their today)
+  function syncAgo(sc, today) {
+    const mins = sc.last_sync_min, day = sc.last_sync_date;
+    if (mins == null || !day) return "";
+    if (mins < 1) return tr("刚刚");
+    if (mins < 60) return tr("{n} 分钟前", { n: mins });
+    if (day === today) return tr("{n} 小时前", { n: Math.floor(mins / 60) });
+    return day === addDays(today, -1) ? tr("昨天") : shortDay(day);
+  }
+  const syncDay = (sc) => (sc.last_sync_date || sc.last_date);   // the day shown on 「Not synced · last …」
   const remarkBtn = (m) => window.BodyRemarks?.button(m.id, m.display_name, m.remark) || "";   // 「⋯」 → 设置备注 (#212)
   function friendCardV2(m, kinds) {
     const seen = m.self ? m.seen || { hidden: [], count: 0 } : null;
@@ -3412,20 +3509,23 @@
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     let hero, body = "";
     if (!sc) hero = `<span class="fd2-off">${esc(tr("未共享"))}</span>`;
-    else if (!sc.synced_today) {
-      hero = `<span class="fd2-off">${esc(sc.last_date ? tr("未同步 · 上次 {d}", { d: shortDay(sc.last_date) }) : tr("未同步"))}</span>`;
+    else if (syncState(sc) === "pending") hero = `<span class="fd2-off">${esc(tr("今天的分数计算中"))}</span>`;
+    else if (syncState(sc) !== "scored") {
+      hero = `<span class="fd2-off">${esc(syncDay(sc) ? tr("未同步 · 上次 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步"))}</span>`;
     } else {
       hero = sc.recovery != null
         ? `<span class="fd2-rec"><b class="tone-${ZONE[sc.zone] || "none"}">${sc.recovery}</b>${sc.label ? `<i>${esc(sc.label)}</i>` : ""}</span>`
         : `<span class="fd2-off">—</span>`;
     }
-    if (sc?.synced_today) {
+    if (sc && syncState(sc) === "scored") {
       body += `<div class="fd2-nums"><span><b>${sc.recovery ?? "—"}</b><i>${esc(tr("恢复"))}</i></span>
         <span><b>${sc.sleep_min != null ? hm(sc.sleep_min) : "—"}</b><i>${esc(tr("睡眠"))}</i></span>
         <span><b>${sc.strain != null ? fmtNum(sc.strain, 1) : "—"}</b><i>${esc(tr("负荷"))}</i></span>
         ${trained ? `<span class="fd2-trained">${badge("plain", tr("已训练"))}</span>` : ""}</div>`;
     } else if (trained) body += `<div class="fd2-nums">${badge("plain", tr("已训练"))}</div>`;
     if (sc) body += recoveryStrip(m, sc);
+    const ago = sc && ["scored", "pending"].includes(syncState(sc)) ? syncAgo(sc, m.date) : "";
+    if (ago) body += `<p class="fd2-note">${esc(tr("最近同步 {t}", { t: ago }))}</p>`;
     const note = !seen ? "" : seen.count === 0 ? tr("还没有朋友看到你，加入圈子后他们才看得到")
       : seen.varies ? tr("不同朋友看到的范围不一样，这里按所有人的并集显示") : "";
     const foot = m.self
@@ -3447,7 +3547,8 @@
     const tagsH = [];
     if (sc?.label) tagsH.push(badge(ZONE[sc.zone] || "plain", sc.label));
     if (m.trained) tagsH.push(badge("plain", tr("已训练")));
-    if (sc && !sc.synced_today) tagsH.push(badge("plain", sc.last_date ? tr("上次同步 {d}", { d: shortDay(sc.last_date) }) : tr("未同步")));
+    if (sc && syncState(sc) === "pending") tagsH.push(badge("plain", tr("今天的分数计算中")));
+    else if (sc && syncState(sc) !== "scored") tagsH.push(badge("plain", syncDay(sc) ? tr("上次同步 {d}", { d: shortDay(syncDay(sc)) }) : tr("未同步")));
     const canOpen = !m.self && S.viewable.some((v) => v.id === m.id);
     const cheers = m.self
       ? (() => { const got = kinds.filter((k) => m.received?.[k]?.length).map((k) => `<span title="${esc(m.received[k].join(", "))}">${NUDGE[k]} ${m.received[k].length}</span>`); return got.length ? `<div class="fd-got">${got.join("")}</div>` : ""; })()
@@ -4199,6 +4300,7 @@
     if (!stale) tellApp(`lang:${me.me?.language || ""}`);   // the app's native screens follow the profile language ("" = the system language)
     if (me.me?.status === "pending" && window.BodyAccount) {   // self-signed-up, no invite code yet (account.js)
       $("#login").hidden = true; $("#app").hidden = true;
+      paintDone();
       window.BodyAccount.showPending(() => boot());
       return;
     }
@@ -4212,7 +4314,10 @@
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
-    PLUGINS().forEach((p) => p.init?.({ api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet }, me));
+    lateInit.ctx = { api, openSheet, closeSheet, toast, esc, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet };
+    lateInit.me = me;
+    PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
+    if (!stale && me.me?.intro_seen === false) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
@@ -4223,6 +4328,7 @@
       shown = stale || !S.staleAt || (S.tab !== "record" && $("#sheet").hidden) ? render() : null;
     } else shown = setTab(savedTab());
     await shown;
+    paintDone();
     if (!stale) {
       if (S.staleAt) { S.staleAt = null; showBanner(); }
       setTimeout(endRec, 1500);

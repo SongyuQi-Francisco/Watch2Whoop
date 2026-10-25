@@ -9,7 +9,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 from starlette.routing import Route
 
-from . import auth, errors_en, plugins, queries
+from . import auth, errors_en, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
 from .ai import naming, parity
@@ -55,6 +55,7 @@ pool: ConnectionPool | None = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global pool
+    obs.install_file_log()   # BODY_LOG_DIR: the app log survives container rebuilds (obs.py)
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
     # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
@@ -65,6 +66,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Body Engine", version="0.1.0", lifespan=lifespan)
 app.add_middleware(LangMiddleware)   # X-Body-Lang from the Today page -> texts it shows in that language (i18n.py)
+app.add_middleware(obs.UserHeaderMiddleware)   # X-Body-User: the authenticated user id, for the proxy's access log (obs.py)
 
 
 @app.exception_handler(HTTPException)

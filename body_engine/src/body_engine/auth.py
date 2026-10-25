@@ -4,6 +4,8 @@ import secrets
 
 import psycopg
 
+from . import obs
+
 TOKEN_PREFIX = "be_"
 # A token with this scope is an AI-client-only token (ai/tokens.py): usable only for the remote MCP (/mcp); normal /v1 endpoints and the Today page login reject it.
 MCP_SCOPE = "mcp"
@@ -63,6 +65,7 @@ def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
            RETURNING id, user_id, scopes""", (hash_token(token), RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
+    obs.note_user(row["user_id"])   # X-Body-User on the response (obs.py)
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
 
@@ -76,6 +79,7 @@ def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
            RETURNING id, user_id, scopes""", (hash_token(token), MCP_SCOPE, INGEST_SCOPE)).fetchone()
     if row is None:
         return None
+    obs.note_user(row["user_id"])
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
 
