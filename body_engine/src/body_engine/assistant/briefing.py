@@ -284,10 +284,23 @@ def _updates(conn: psycopg.Connection, user_id: int) -> dict:
     return {"feedback_updates": u} if u else {}
 
 
+def _history_gap(conn: psycopg.Connection, user_id: int) -> dict:
+    """`history_gap` (own briefing only, never cached): the watch history is short and the reminders are not stopped, so the AI
+    may say so once at a fitting moment (sync/backfill.py; the Today page card does the asking)."""
+    from ..sync import backfill
+    try:
+        hint = backfill.briefing_hint(conn, user_id)   # commits its own small writes, so no transaction() block here
+    except Exception:  # never let this spoil the briefing
+        conn.rollback()
+        return {}
+    return {"history_gap": hint} if hint else {}
+
+
 def get(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> dict:
     """The briefing, from the cache when the caller reads their own and nothing changed; root rules always added fresh."""
     res = {**_get(conn, viewer_id, owner_id), "system_rules": _rules(conn, viewer_id),
-           **(_updates(conn, viewer_id) if viewer_id == owner_id else {})}
+           **(_updates(conn, viewer_id) if viewer_id == owner_id else {}),
+           **(_history_gap(conn, viewer_id) if viewer_id == owner_id else {})}
     if viewer_id == owner_id:
         _count(conn, owner_id, bool(res.get("cached")), len(compact.dumps(res)))
     return res

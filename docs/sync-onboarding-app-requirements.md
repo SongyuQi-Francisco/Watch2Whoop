@@ -151,3 +151,44 @@ app 自己的同步页如果也显示原因，请用同样的 code 和文案（`
 - [ ] `onApp` 进度在页面重新加载后不丢（app 保留最近一次进度，`onPageFinished` 时补发一次）。
 - [ ] 第 4 节上报：真机分别打开低电量模式、关掉后台 App 刷新、锁屏等后台同步，今天页显示对应原因。
 - [ ] 中英文案（`tr('中文', 'English')`）。
+
+## 10. 补全历史数据：`Watch2WhoopFeatures.backfill` + `watch2whoop://backfill`
+
+> 负责人 2026-10-26 的决定：1.0.8 首次同步只读最近 **14 天**，新数据尽快进来；之后今天页定期提醒用户把历史补到 **90 天**
+> （评分的个人基线 60 天、恢复分至少 14 晚 HRV）。服务端和今天页在 `sync/backfill.py`、`web/static/sync-status.js`，这里只写 app 要做的事。
+
+**首次同步**：`syncDaysBack` 默认从 90 改成 14（`setup_flow` / `connectSyncViaAccount` / `sync-connect` 的首次同步都一样）。
+`sync-connect` 的 `uploading` 进度按 14 天算，`done` 的时机不变。
+
+**宣布**：`window.Watch2WhoopFeatures.backfill = true`（加进 `kFeaturesJs` / `kFeaturesNoMicJs`）。没做就不要宣布；没宣布时今天页把按钮
+指向旧入口（有 `syncCenter` 且服务端开着 `sync_center` → `watch2whoop://sync-center`，否则 `watch2whoop://sync`，用户在那里选
+「全部历史」）。
+
+**页面 → app**：用户点卡片上的「补全历史」。页面先 `POST /v1/users/me/sync/backfill {days: 90}`（账号 cookie），服务端创建和同步中心
+一样的强制重新同步任务（`sync_resync` 表，状态 `phone`，`days=90`，`range_from` = 90 天前），然后页面导航到
+
+```
+watch2whoop://backfill?days=90      （全部历史：days=all）
+```
+
+**app 要做的**（不离开今天页，没有确认框，用户刚在页面上点过按钮）：
+
+1. `GET /v1/ingest/resync`（Bearer：账号 token 或只上传 token）。`status == "phone"` → 读 `days`（`null` = 全部历史）；
+   不是 `phone`（任务已被取消、或已经在服务器阶段）→ 什么也不做。**不要自己再 `POST`**，任务是页面建的。
+2. 做手机部分，和同步中心「立即重新同步」的手机部分完全一样（`resync_flow.dart`）：清锚点、从 `days` 天前的 0 点起整段重读
+   （`daysBackOf(days)`，OW SDK + RawSync 自己的类型），进度用现有的 `PUT /v1/ingest/resync {phone_percent, counts}`，读完
+   `phone_done: true`。服务端接着导入这一段并重算分数（`sync/resync.py`），不需要 app 再做什么。
+3. 可选：进度同时在页面里调 `window.BodySyncStatus.onApp({kind: "backfill", phase: "uploading" | "done" | "error", percent, error})`。
+   页面对 `kind: "backfill"` 只在 `done` / `error` 时重新读状态（卡片的百分比以服务端为准，页面每 20 秒读一次），其余字段忽略；
+   **一定要带 `kind: "backfill"`**，否则会被当成「一键开启」的进度。
+
+**服务端对 app 的放宽**：这个任务由卡片创建后的 48 小时内，`/v1/ingest/resync` 的 GET / PUT / DELETE 即使该用户没有 `sync_center`
+开关也可用（`sync/backfill.allows_resync`）。其他时候仍按 `sync_center` 开关。
+
+**卡住怎么办**：任务建好 15 分钟内 app 一次进度也没报（没打开 / 没处理链接），页面把它当失败，卡片出「再试一次」，再点会作废旧任务重建。
+所以 app 收到链接后要尽快报第一次 `phone_percent`（哪怕 0 之外的 1）。
+
+**验收**
+- 14 天首次同步后，次日今天页出现「补全历史数据 14 / 90 天」卡片，点「补全历史」→ 只看到后台读取，卡片显示「补全中 x%」→ 完成后卡片消失（或 90 天未满则 30 天内不再提醒）。
+- 用户中途离开今天页 / 杀掉 app 再打开：`GET /v1/ingest/resync` 仍是 `phone` 且 `phone_percent` 不倒退，app 继续（任务可续）。
+- 飞行模式 / 没有健康权限：不要宣布成功；卡片 15 分钟后出「没能补全」。
