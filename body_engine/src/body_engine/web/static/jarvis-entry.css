@@ -218,53 +218,51 @@ body.jv-paused :is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation-play-state
   .jv-glow { top: -16px; }
 }
 
-/* ---------- flag jarvis_dial: one ink (the page's --text), layers by opacity; everything under body.jv-dial ---------- */
+/* ---------- flag jarvis_dial: Liquid Glass in one ink (neutral whites / blacks only; everything under body.jv-dial) ---------- */
 body.jv-dial {
-  --jv-key-bg: #ffffff;
-  --jv-fan-scrim: rgba(246, 246, 248, .86);
-  --jv-line: color-mix(in srgb, var(--text) 85%, transparent);
-  --jv-line-2: color-mix(in srgb, var(--text) 40%, transparent);
+  --jv-fan-scrim: rgba(246, 246, 248, .5); --jv-glass: rgba(255, 255, 255, .66); --jv-edge: rgba(0, 0, 0, .2);
+  --jv-hi: rgba(255, 255, 255, .85); --jv-spec: rgba(255, 255, 255, .55); --jv-shadow: 0 6px 18px rgba(0, 0, 0, .16);
 }
 @media (prefers-color-scheme: dark) {
-  body.jv-dial { --jv-key-bg: #151517; --jv-fan-scrim: rgba(0, 0, 0, .74); }
+  body.jv-dial { --jv-fan-scrim: rgba(0, 0, 0, .45); --jv-glass: rgba(58, 58, 62, .52); --jv-edge: rgba(255, 255, 255, .22);
+    --jv-hi: rgba(255, 255, 255, .3); --jv-spec: rgba(255, 255, 255, .2); --jv-shadow: 0 8px 24px rgba(0, 0, 0, .5); }
 }
-body.jv-dial .jv {
-  background: var(--jv-key-bg); color: var(--text); box-shadow: inset 0 0 0 1.5px var(--jv-line);
-  touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform .08s ease-out;
+/* the glass: a static backdrop blur (never animated), a thin edge, an inner highlight and a soft specular sheen */
+body.jv-dial :is(.jv, .jv-key) {
+  background: var(--jv-glass); color: var(--text); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%);
+  box-shadow: inset 0 0 0 .5px var(--jv-edge), inset 0 1px 0 var(--jv-hi), var(--jv-shadow);
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; transition: transform .38s cubic-bezier(.2, .9, .3, 1.2);
 }
-body.jv-dial .jv.pressed { transform: scale(.92); }   /* answers the finger on pointerdown, before the menu opens on release */
-body.jv-dial .jv-ic { transition: opacity .12s, transform .12s ease-out; }
+@supports (transition-timing-function: linear(0, 1)) {
+  body.jv-dial :is(.jv, .jv-key) { transition-timing-function: linear(0, 0.174, 0.521, 0.849, 1.065, 1.155, 1.153, 1.104, 1.046, 1.002, 0.979, 0.973, 0.979, 0.988, 0.997, 1.002, 1.004, 1.004, 1); }
+}
+body.jv-dial :is(.jv, .jv-key)::after {
+  content: ""; position: absolute; inset: 1px; border-radius: 50%; pointer-events: none; z-index: 0;
+  background: linear-gradient(180deg, var(--jv-spec), rgba(255, 255, 255, 0) 52%); transition: transform .1s ease-out;
+}
+body.jv-dial .jv.pressed { transform: scale(.94); transition-duration: .08s; transition-timing-function: ease-out; will-change: transform; }
+body.jv-dial .jv.pressed::after, body.jv-dial .jv-key:active::after { transform: translateY(2.5px); }
+body.jv-dial .jv-key:active { transform: scale(.94); transition-duration: .08s; transition-timing-function: ease-out; }
+body.jv-dial .jv-ic { z-index: 1; transition: opacity .12s; }
 body.jv-dial .jv-ic svg { stroke: currentColor; }
 body.jv-dial .jv-ic-x, body.jv-dial .jv-ic-mic { transform: scale(.7); }
 body.jv-dial .jv.open .jv-ic-main { transform: scale(.7); }
-body.jv-dial .jv.open .jv-ic-x { transform: none; }
+body.jv-dial .jv.open .jv-ic-x, body.jv-dial .jv.rec .jv-ic-mic { transform: none; }
 body.jv-dial .jv.rec { background: var(--text); color: var(--bg); }   /* recording: the key inverts */
-body.jv-dial .jv.rec .jv-ic-mic { transform: none; }
 body.jv-dial .jv-ring .trk { opacity: 0; }
 body.jv-dial .jv-ring .hold { stroke: var(--text); stroke-width: 2; }
-body.jv-dial .jv-halo { background: none; box-shadow: 0 0 0 1.5px var(--jv-line-2); }
-body.jv-dial .jvd { position: fixed; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; color: var(--text); }
-body.jv-dial .jvd-l { fill: none; stroke: currentColor; stroke-width: 1.25; stroke-linecap: round; }
-body.jv-dial .jvd-f { fill: currentColor; stroke: none; }
-body.jv-dial .jvd-h { opacity: 0; }
-body.jv-dial .jvd-l.d2 { stroke-dasharray: 2 4; }
-body.jv-dial .jvd-l.d3 { stroke-dasharray: 10 3 1 3; }
-body.jv-dial .jvd-ol { stroke-width: 1.5; stroke-dasharray: 1 2; stroke-dashoffset: 1; }
-body.jv-dial #jvd-halo .jvd-l { stroke-width: 5; }
-body.jv-dial .jv-key {
-  width: 46px; height: 46px; margin: -23px 0 0 -23px; color: var(--text);
-  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-}
-body.jv-dial .jv-kbase { background: var(--jv-key-bg); box-shadow: none; transition: transform .06s ease-out; }
-body.jv-dial .jv-key > svg:not(.jv-kring) { width: 22px; height: 22px; stroke: currentColor; }
+body.jv-dial .jv-halo { background: none; box-shadow: 0 0 0 1.5px var(--jv-edge); }
+body.jv-dial .dock.jv-dim .tabbar { transition: none; }
+body.jv-dial .jv-scrim { opacity: 1; }   /* its bottom edge is set to the dock's top when the menu opens */
+body.jv-dial .jv-key { width: 46px; height: 46px; margin: -23px 0 0 -23px; opacity: 1; }
+body.jv-dial .jv-key > svg { width: 22px; height: 22px; stroke: currentColor; z-index: 1; }
 body.jv-dial .jv-key .lbl { top: 52px; color: var(--text); opacity: 1; }
-body.jv-dial .jv-key:active .jv-kbase { background: var(--jv-key-bg); transform: scale(.92); }
 /* the voice panel in the same ink */
 body.jv-dial .jv-vp-dot { background: var(--text); }
 body.jv-dial .jv-vpanel.z-cancel .jv-vp-hint { color: var(--text); }
 body.jv-dial .jv-vt.hot.jv-vt-cancel { background: var(--text); color: var(--bg); }
 body.jv-dial #ai-mic.rec { background: var(--text); color: var(--bg); }
 @media (prefers-reduced-motion: reduce) {
-  body.jv-dial :is(.jv, .jv-ic, .jv-kbase) { transition: none; }
+  body.jv-dial :is(.jv, .jv-key, .jv-ic, .jv::after, .jv-key::after) { transition: none; }
   body.jv-dial .jv-ic { transform: none !important; }
 }
