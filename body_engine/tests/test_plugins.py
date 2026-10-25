@@ -157,3 +157,8 @@ def test_page_hooks_are_inert_without_plugins():
     assert 'fetch("/app/plugins/manifest.json"' in js and "window.BodyHooks" in js
     assert re.search(r'emit\("page"', js) and re.search(r'emit\("action"', js)
     assert 'if (!HOOKS.has("action")) return;' in js                         # no listener -> nothing computed
+    assert 'emit("sheet", { open: true' in js and 'emit("sheet", { open: false }' in js
+    assert 'a !== "data-card"' in js                                         # data-card never becomes a control name
+    cards = set(re.findall(r'data-card="([a-z_]+)"', js + "".join(f.read_text() for f in STATIC.glob("*.js") if f.name != "app.js")))
+    assert {"recovery", "sleep", "nutrition", "training", "healthspan", "reminders", "hr_zones", "sleep_regularity"} <= cards
+    assert all(re.fullmatch(r"[a-z][a-z0-9_.:-]{0,59}", c) for c in cards)

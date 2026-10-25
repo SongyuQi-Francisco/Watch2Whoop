@@ -555,7 +555,7 @@ None by default. Set `BODY_PLUGIN_DIR` to a directory of plugin packages (`<dir>
 - `migrations/*.sql`: applied by `body-engine migrate` after the core migrations, recorded as `<name>/<file>`;
 - `page_scripts(conn, user)` / `page_styles(conn, user)`: files under `<name>/static/` the Today page loads for this user (only listed files are served, at `/app/plugins/<name>/<file>`; `/app/plugins/manifest.json` lists them).
 
-The Today page loads the listed files before initialising `window.BodyPlugins` and offers `window.BodyHooks.on(name, fn)`: `"page"` (`{page}`, when the visible page changes) and `"action"` (`{feature, page}`, when a control is used; `feature` is the control's `data-feature`, id or data-attribute name, never typed text or record values). `body-engine plugins list | run <plugin> <job>`.
+The Today page loads the listed files before initialising `window.BodyPlugins` and offers `window.BodyHooks.on(name, fn)`: `"page"` (`{page}`, when the visible page changes) and `"action"` (`{feature, page}`, when a control is used; `feature` is the control's `data-feature`, id or data-attribute name, never typed text or record values). `body-engine plugins list | run <plugin> <job>`. Also `"sheet"`: `{open: true, kind, key}` when a detail sheet opens (`kind` `"card"` = opened from an element marked `data-card="<key>"`, `"explain"` = a metric explanation, `"lab"` = a lab test's history; other sheets have no key) and `{open: false}` when it closes. `data-card="<key>"` marks a data card on a page with a fixed code key (lower-case `[a-z0-9_.:-]`, never record values) so a plugin can see which cards are on screen.
 
 ## Notifications and push (`src/body_engine/notify/`, migration 630, issue #175)
 
