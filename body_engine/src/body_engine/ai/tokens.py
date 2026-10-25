@@ -11,7 +11,7 @@ import re
 
 import psycopg
 
-from .. import auth
+from .. import auth, obs
 from ..i18n import L
 
 CLIENT_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,30}$")
@@ -60,4 +60,5 @@ def user_for_mcp_token(conn: psycopg.Connection, token: str) -> dict | None:
     if row["oauth_grant_id"] is not None:   # an OAuth connection: its "last used" in AI settings
         conn.execute("UPDATE oauth_grants SET last_used_at = now() WHERE id = %s", (row["oauth_grant_id"],))
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
+    obs.note_user(row["user_id"])
     return {**user, "token_id": row["id"], "token_name": row["name"], "token_scopes": row["scopes"]}

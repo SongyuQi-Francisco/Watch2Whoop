@@ -107,6 +107,7 @@ def test_items_equal_the_endpoints_on_their_own(client, users, dsn):
     set_flag(dsn, "all")
     r = client.post("/v1/web/boot", json={"paths": PATHS + ["/v1/users/me/today"]}, headers=H(tok["a"]))
     assert r.status_code == 200, r.text
+    assert r.headers["x-body-user"] == str(ids["a"])   # the bundle names its user although only its items authenticate
     out = r.json()
     today = out["today"]
     items = {it["path"]: it for it in out["items"]}
