@@ -768,6 +768,7 @@ I18N.addEn({
   "已到目标": "Target reached",
   "已记到 {d}": "Logged to {d}",
   "每餐推荐": "Meal suggestions",
+  "饮食记录暂时读不到": "Food log unavailable",
   "记到 {d}": "Log to {d}",
   "返回饮食": "Back to Food",
   // training day changes (#17)

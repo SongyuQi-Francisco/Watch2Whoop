@@ -1092,6 +1092,22 @@ def test_meal_plan_taste_pantry_and_caps(conn, world, monkeypatch):
     assert p["over"] == ["added_sugar"] and {"label": "添加糖超", "tone": "bad"} in recipes._labels(p)
 
 
+def test_meal_plan_api_answers_when_sparkyfitness_is_down(client, world, monkeypatch, conn):
+    """The food tab asks for the plan on every visit: with SparkyFitness not reachable / not linked the endpoint answers 200 with
+    `unavailable` and a short label (in the page language) instead of a 502 that made the page wait ~9 s and fill the console."""
+    e, tok = _user(conn, "E2")
+    conn.commit()
+
+    def down(*args, **kwargs):
+        raise status.sparky_client.SparkyError("not linked")
+    monkeypatch.setattr(recipes, "meal_plan", down)
+    r = client.get("/v1/users/me/recipes/meal-plan", headers=h(tok))
+    assert r.status_code == 200 and r.json() == {"unavailable": "sparkyfitness", "label": "饮食记录暂时读不到", "slots": []}
+    en = client.get("/v1/users/me/recipes/meal-plan", headers={**h(tok), "X-Body-Lang": "en"}).json()
+    assert en["label"] == "Food log unavailable"
+    assert client.get(f"/v1/users/{e}/recipes/meal-plan", headers=h(world[1]["C"])).status_code == 403   # the share check still comes first
+
+
 def test_meal_plan_api_and_past_day_log(client, world, monkeypatch, conn):
     """Regression for issue #43: logging a recipe while the page looks back at an earlier day must land on that day,
     and the day's per-meal plan (and intake) must then show the meal as logged."""

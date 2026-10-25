@@ -116,6 +116,14 @@
 - **效果**（#257 实测，同第 1.1 节的方法）：热启动 38 个 304 → 0，少一层串行往返：150 ms 下 0.79 → 0.64 s，300 ms 下 1.55 → 1.25 s；冷启动第一次不变。手机上 38 个文件的解析不变。
 - **风险**：低。浏览器 / WKWebView 只会多缓存文件；回退 = revert，下次打开就回到 `no-cache`。
 
+### 3.1.1 首屏瘦身：按需加载的脚本（2026-10-26 体检 W2，今天页，部署即生效）
+
+- `index.html` 里首屏用不到的脚本写成 `<script type="w2w/lazy" src="…">`：浏览器不下载也不执行；服务端照样给 `src` 加 `?v=<指纹>`；`app.js` 的 `lazyScript(name)` 第一次需要时才加载（失败下次重试），加载后新注册的插件会补调 `init`。离线副本把它们当普通脚本内联（`offline_shell_html`），所以离线冷启动不受影响。
+- 现在按需的：`i18n-en.js`（89 KB，只有英文页面要；`lang-gate.js` 在解析时按和 `i18n.js` 一样的规则判断语言，是英文才 `document.write` 一个 defer 的 `<script>`，测试逐例对比两者）、`muscle-body-data.js`（105 KB，有肌肉负荷数据的人第一次画卡片 / 训练页时）、`intro.js`（37 KB，新账号首次引导 / 「我 → 新手引导」）、`diet-profile.js` + `water.js` + `grocery.js`（饮食 tab 第一次打开）。
+- 首屏的「装饰性」读取（`profile`、`account`、`sync/connection`、`sync/status`、`notices`、`health-history`，插件启动时各发一次）等第一页画完再发（`app.js` 的 `DEFERRED_GETS` / `firstPaint`，最迟 4 秒），首屏同一瞬间的 API 请求从 11 个降到 9 个。
+- 实测（本地，`/app/`，中文，普通账号）：脚本 + 样式 40 → 35 个，1,242,015 → 974,870 字节（gzip -6：414,047 → 314,384）；预算守在 `tests/test_today_first_screen.py`。
+- 还在 nginx 一侧要做（运维，不在代码里）：`limit_conn w2w_conn` 提到 100–150（HTTP/2 每个并发流都算一个连接），`/sdk/*/logs` 不限连接；`gzip_comp_level` 2 → 5。
+
 ### 3.2 启动接口合并：一次 `boot`（服务端 + 页面，已实现，开关 `boot_api`）
 
 - 接口 `POST /v1/web/boot {"paths": [...]}`（`web/boot.py`）：页面把**上一次启动时自己发过的 GET 路径**（只限本人的数据：`/v1/web/me`、`/v1/auth/methods`、`/v1/account`、`/v1/friends…`、`/v1/users/me/…`，最多 24 个）发过来，日期写成 `{today}` / `{d:-6}`（相对用户自己的今天）。服务器先算 `/v1/web/me`（拿用户的今天和开关），其余并行；**每一项都是在服务器里把原接口原样跑一遍**（同一个 cookie / Bearer、同一种语言、同样的 share 鉴权、同样的状态码和内容），所以不用另写鉴权，原接口照常给别处用。某一项出错 / 超时（10 s）只让那一项带着它的错误状态，页面再单独请求那一项；`/v1/web/me` 续期 cookie 的 `Set-Cookie` 也带回来。

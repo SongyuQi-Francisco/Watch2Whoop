@@ -6,6 +6,8 @@ from typing import Literal
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import sparky_client
+from ..i18n import L
 from ..records.api import _owner, _self, current_user, get_conn
 from . import recipes
 from .memory_api import _meal_call
@@ -48,8 +50,15 @@ def suggest(user: str, date: dt.date | None = None, slot: Slot | None = None,
 @router.get("/meal-plan")
 def meal_plan(user: str, date: dt.date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Per-meal suggestions for the day (breakfast / lunch / dinner / snack): what each meal already logged, its kcal / protein
-    target and 2 recipes ranked like /suggest plus taste (how often logged) and what is in the pantry; short labels for the page."""
-    return _meal_call(recipes.meal_plan, conn, _owner(conn, viewer, user, "nutrition"), date)
+    target and 2 recipes ranked like /suggest plus taste (how often logged) and what is in the pantry; short labels for the page.
+    The food log lives in SparkyFitness: when it cannot be read (not connected, down) this is an ordinary answer with
+    `unavailable` and a short `label` the page shows, not a 502 (a 502 made the food tab wait and retry for ~9 s and fill the console)."""
+    def plan(*args):
+        try:
+            return recipes.meal_plan(*args)
+        except sparky_client.SparkyError:
+            return {"unavailable": "sparkyfitness", "label": L("饮食记录暂时读不到", "Food log unavailable"), "slots": []}
+    return _meal_call(plan, conn, _owner(conn, viewer, user, "nutrition"), date)   # the other failures keep their usual answers (404 / 403 / 422)
 
 
 @router.get("/{recipe_id}")

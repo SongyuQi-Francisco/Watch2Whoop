@@ -236,7 +236,7 @@
     host.prepend(box);
     const mark = () => { for (const b of box.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.lang === window.I18N.lang)); };
     mark();
-    box.addEventListener("click", (e) => {
+    box.addEventListener("click", async (e) => {
       const b = e.target.closest("button[data-lang]");
       if (!b) return;
       const l = b.dataset.lang;
@@ -244,6 +244,7 @@
       try { window.Watch2Whoop?.postMessage("lang:" + l); } catch (err) { /* older app */ }
       if (!changed) return;
       if (!["#le-email", "#le-code", "#ap-code", "#token"].some((id) => $(id)?.value)) { location.reload(); return; }
+      if (l === "en") await window.I18N.ensureEn();   // the English texts are not loaded on a Chinese start (lang-gate.js)
       window.I18N.apply();
       mark();
       drawHint();

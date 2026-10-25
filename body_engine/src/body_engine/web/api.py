@@ -36,7 +36,7 @@ from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.136-2026-10-26"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.137-2026-10-26"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -170,6 +170,8 @@ def logout(request: Request, conn=Depends(get_conn)):
 # other static files; no user data in it.
 _SCRIPT = re.compile(r'<script src="([\w.-]+\.js)"( defer)?></script>')
 _STYLE = re.compile(r'<link rel="stylesheet" href="([\w.-]+\.css)">')
+_LAZY = re.compile(r'<script type="w2w/lazy"(?: data-lang="\w+")? src="([\w.-]+\.js)"></script>')   # not loaded until needed (index.html)
+_GATE = re.compile(r'<script data-w2w="gate" src="[\w.-]+\.js"></script>\n?')                    # lang-gate.js: loads i18n-en.js only for English
 _shell_cache: dict[str, str] = {}
 
 
@@ -178,6 +180,8 @@ def offline_shell_html() -> str:
         def read(m: re.Match, tag: str) -> str:   # a closing tag inside the text would end the element early
             return (STATIC / m.group(1)).read_text(encoding="utf-8").replace(f"</{tag}", f"<\\/{tag}")
         html = (STATIC / "index.html").read_text(encoding="utf-8")
+        html = _GATE.sub("", html)                 # the copy carries the English table itself: no gate that loads it later
+        html = _LAZY.sub(r'<script src="\1" defer></script>', html)   # on-demand scripts are ordinary inline scripts here
         html = _SCRIPT.sub(lambda m: f"<script>{read(m, 'script')}\n</script>", html)
         html = _STYLE.sub(lambda m: f"<style>{read(m, 'style')}</style>", html)
         marker = f'<script>window.W2W_SHELL = {json.dumps(WEB_VERSION)};</script>\n'
@@ -197,7 +201,7 @@ def offline_shell():
 # Only a request whose v is the file's current fingerprint gets a year of caching, so an older page asking for a file that
 # changed since gets the new content without the long cache, never the reverse. The offline shell and the service worker
 # read the files by their plain names and are not affected.
-_ASSET = re.compile(r'(<script src="|<link rel="stylesheet" href=")([\w.-]+\.(?:js|css))(")')
+_ASSET = re.compile(r'(<script src="|<script type="w2w/lazy"(?: data-lang="\w+")? src="|<script data-w2w="gate" src="|<link rel="stylesheet" href=")([\w.-]+\.(?:js|css))(")')
 _fingerprints: dict[str, tuple[int, str]] = {}   # file name -> (mtime_ns, fingerprint)
 IMMUTABLE = "public, max-age=31536000, immutable"
 
