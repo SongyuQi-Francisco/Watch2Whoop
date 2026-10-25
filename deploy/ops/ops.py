@@ -69,6 +69,7 @@ HEALTHSYNC_LABEL = "org.watch2whoop.healthsync"
 PRIMARY = os.environ.get("BODY_PRIMARY", "mac")
 ALI_HOST = os.environ.get("ALI_HOST", "Ali")              # name in ~/.ssh/config
 ALI_ROOT = os.environ.get("ALI_ROOT", "/opt/body-management")
+ALI_DOCTOR_MAX_AGE_S = 75 * 60   # Ali's own hourly doctor result is used while younger than this (doctor_checks_ali_primary)
 ALI_MIRROR = OPS_DIR / "ali-mirror"                       # mirror of Ali's secrets/ and health_data/archive/ (restic backs it up)
 ALI_DUMP_MAX_AGE = 3600                                   # the pulled dump must be freshly made (seconds)
 
@@ -885,8 +886,17 @@ def doctor_checks_ali_primary(r: Report) -> None:
     """When the primary server is Ali, this machine is only responsible for: pulling the backup from Ali into restic every night, the restore drill; and bringing back Ali's own doctor result.
     The local Docker services are stopped then (kept for rollback) and not checked."""
     t_now = time.time()
-    p = ssh_ali(f"python3 {ALI_ROOT}/deploy/ali/doctor.py --json", timeout=300, check=False)
-    line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), "")
+    # Ali runs its own doctor every hour (systemd body-doctor, result in doctor-latest.txt): read that result instead of
+    # running a second doctor at the same minute. Two doctors at once started two extra Body Engine processes inside the
+    # API container and pushed it over its memory limit (docs/api-memory.md). Only a missing or stale result runs it here.
+    latest = f"{ALI_ROOT}/health_data/ops/doctor-latest.txt"
+    p = ssh_ali(f"echo $(( $(date +%s) - $(stat -c %Y {latest}) )); tail -n 1 {latest}", timeout=60, check=False)
+    out = p.stdout.splitlines()
+    age = int(out[0]) if out and out[0].strip().lstrip("-").isdigit() else None
+    line = out[-1] if age is not None and age < ALI_DOCTOR_MAX_AGE_S and out[-1].startswith("{") else ""
+    if not line:
+        p = ssh_ali(f"python3 {ALI_ROOT}/deploy/ali/doctor.py --json", timeout=300, check=False)
+        line = next((l for l in reversed(p.stdout.splitlines()) if l.startswith("{")), "")
     if not line:
         r.fail("Ali", f"ssh {ALI_HOST} 跑 doctor 失败：{(p.stderr or p.stdout).strip()[-150:]}")
     else:

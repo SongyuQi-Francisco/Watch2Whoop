@@ -26,6 +26,7 @@ from ..cardio import hrr as cardio_hrr
 COLUMNS = ["sleep_score", "sleep_need_min", "sleep_debt_min", "sleep_performance", "sleep_actual_min",
            "hrv_kind", "hrv_night_ln", "rhr_night", "resp_rate_night", "recovery",
            "trimp", "strain", "hr_max", "muscle_load", "ctl", "atl", "tsb", "flags", "details", "algo_version"]
+WRITE_LOCK_NS = 0x4453   # advisory lock namespace ("DS") for (namespace, user_id): one daily_scores write per user at a time
 
 
 def _days(a: date, b: date):
@@ -283,14 +284,19 @@ def scoring_origin(conn: psycopg.Connection, user_id: int) -> date | None:
 
 
 def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date, end: date) -> int:
-    """Delete the old rows in [start, end] before inserting (no stale rows when the algorithm changes), idempotent."""
+    """Delete the old rows in [start, end] before inserting (no stale rows when the algorithm changes), idempotent.
+    Two recomputes of the same user can overlap (the hourly batch, the per-minute sync-refresh-run, a manual run): the
+    writes of one user are serialised with a transaction-level advisory lock, and the insert is an upsert, so the second
+    writer replaces the first one's rows instead of failing with UniqueViolation on daily_scores_pkey."""
     rows = [r for r in rows if start <= r["date"] <= end]
     cols = ["user_id", "date", *COLUMNS]
     with conn.transaction():
+        conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (WRITE_LOCK_NS, user_id))
         conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s", (user_id, start, end))
         with conn.cursor() as cur:
             cur.executemany(
-                f"INSERT INTO daily_scores ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
+                f"INSERT INTO daily_scores ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
+                f" ON CONFLICT (user_id, date) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in COLUMNS)}",
                 [[user_id, r["date"], *[Jsonb(r[c]) if c in ("flags", "details") else r[c] for c in COLUMNS]]
                  for r in rows])
     return len(rows)

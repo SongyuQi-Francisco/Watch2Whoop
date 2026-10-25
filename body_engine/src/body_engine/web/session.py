@@ -56,6 +56,7 @@ def user_for_session(conn: psycopg.Connection, session_id: str) -> dict | None:
            RETURNING s.user_id, t.scopes""", (SESSION_DAYS, _sha(session_id))).fetchone()
     if row is None:
         return None
+    auth.obs.note_user(row["user_id"])   # X-Body-User on the response (obs.py)
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_scopes": row["scopes"], "auth": "session"}
 

@@ -67,9 +67,17 @@ services:
       # BODY_APNS_TEAM_ID: TEAM123456
       # BODY_APNS_BUNDLE_ID: com.example.watch2whoop
       TZ: Australia/Sydney
+      # The API's own log (warnings, errors with tracebacks) as health_data/ops/engine/engine-YYYY-MM-DD.log, kept 14 days
+      # (body_engine/obs.py): `docker logs` is lost whenever the container is recreated (deploys, OOM restarts)
+      BODY_LOG_DIR: /data/log
+      # Requests that wait on Open Wearables or a refresh import only queue the work for the per-minute job
+      # (`sync-refresh-run`, deploy/ops: the hourly job on a single machine), so the API process never holds a window of
+      # raw samples; leave it out to import inside the API process (sync/refresh.py)
+      # BODY_SYNC_IMPORT: queue
     secrets: [body_db_password, sparkyfitness_api_key_owner_ro, open_wearables_api_key, ai_master_key]
     # imports: Apple Health exports uploaded from the Today page (history/, deleted once parsed; the background job reads the same directory in a one-off container)
-    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports", "./media:/data/media"]
+    volumes: ["./health_data/archive:/data/health/archive:ro", "./health_data/imports:/data/health/imports", "./media:/data/media",
+              "./health_data/ops/engine:/data/log"]
     ports: ["127.0.0.1:8100:8100"]
     depends_on:
       body-db: {condition: service_healthy}
