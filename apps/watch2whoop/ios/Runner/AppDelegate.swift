@@ -26,6 +26,10 @@ import HealthKit
     if let host = (creds["host"] ?? nil) as? String, !host.isEmpty, sdk.isSyncActive {
       sdk.configure(host: host)
     }
+    // History backfill (Backfill.swift): its BGProcessingTask must be registered before launch finishes, and its
+    // background upload session recreated so uploads that finished while the app was not running are delivered
+    Backfill.register()
+    Backfill.shared.attach()
     // Push notifications (#175): set before launch finishes so a tap that cold-starts the app reaches didReceive
     UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -47,7 +51,11 @@ import HealthKit
       case "deviceState": result(DeviceState.shared.snapshot())
       default:
         // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
-        if !RawSync.shared.handle(call, result) { result(FlutterMethodNotImplemented) }
+        // engine*: the app's own sync engine reader (SyncEngine.swift, #219 A1)
+        if !RawSync.shared.handle(call, result) && !SyncEngine.shared.handle(call, result)
+          && !Backfill.shared.handle(call, result) {
+          result(FlutterMethodNotImplemented)
+        }
       }
     }
     // watch2whoop://setup?… (opened by scanning the setup QR code with the camera): store it first, Dart picks it up later
@@ -66,6 +74,9 @@ import HealthKit
     debug.setMethodCallHandler { call, result in
       if call.method == "seedHealthData", #available(iOS 16.0, *) {
         DebugHealthSeeder.seed { result($0) }
+      } else if call.method == "runBackfillTask" {
+        // the BGProcessingTask's body (BGTaskScheduler does not run tasks in the simulator)
+        Backfill.shared.runSlices(expired: { false }) { ok in DispatchQueue.main.async { result(ok) } }
       } else {
         result(FlutterMethodNotImplemented)
       }
@@ -78,6 +89,11 @@ import HealthKit
     handleEventsForBackgroundURLSession identifier: String,
     completionHandler: @escaping () -> Void
   ) {
+    if identifier == Backfill.sessionId {
+      Backfill.shared.sessionCompletion = completionHandler
+      Backfill.shared.attach()
+      return
+    }
     OpenWearablesHealthSdkPlugin.setBackgroundCompletionHandler(completionHandler)
   }
 
@@ -366,6 +382,14 @@ enum DebugHealthSeeder {
         let end = t.addingTimeInterval(minutes * 60)
         samples.append(HKCategorySample(type: HKCategoryType(.sleepAnalysis), value: stage.rawValue, start: t, end: end, metadata: meta))
         t = end
+      }
+      // Older history for the backfill (Backfill.swift): days 15–44 ago, 12 heart rate samples and one sleep stage a day
+      for d in 15..<45 {
+        let day = cal.date(bySettingHour: 12, minute: 0, second: 0, of: now.addingTimeInterval(-Double(d) * 86400))!
+        for h in 0..<12 { qs(.heartRate, bpm, 60 + Double((d + h) % 25), day.addingTimeInterval(Double(h) * 3600 - 6 * 3600)) }
+        let night = day.addingTimeInterval(-9 * 3600)
+        samples.append(HKCategorySample(type: HKCategoryType(.sleepAnalysis), value: HKCategoryValueSleepAnalysis.asleepCore.rawValue,
+                                        start: night, end: night.addingTimeInterval(5 * 3600), metadata: meta))
       }
       // A 50-minute strength workout yesterday at 18:00
       let ws = cal.date(bySettingHour: 18, minute: 0, second: 0, of: now.addingTimeInterval(-86400))!

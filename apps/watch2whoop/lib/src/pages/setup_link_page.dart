@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
+import '../backfill.dart';
 import '../config.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
@@ -352,13 +353,11 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
 
   /// Read range (health_range.dart): stored with the config; if syncing already started, the SDK follows at once.
   Future<void> _pickRange(int days) async {
-    await AppState.instance.update(_config.copyWith(syncDaysBack: days));
+    // Open Wearables, RawSync and the app's own engine follow (backfill.dart); before connecting it is just stored
     if (_config.owConnected && _config.healthRequested) {
-      try {
-        await HealthSync.instance.changeRange(days);
-      } catch (e) {
-        debugPrint('changeRange failed: $e');
-      }
+      await BackfillService.instance.setRange(days);
+    } else {
+      await AppState.instance.update(_config.copyWith(syncDaysBack: days));
     }
     if (mounted) setState(() {});
   }

@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # <marketing version>+<build number>. The public name (tag, release, CHANGELOG) is the marketing version only (1.0.6);
 # the build number after "+" is what the stores need and goes up with every upload (docs/apps.md, section 4).
-version: 1.0.7+7
+version: 1.0.8+8
 
 environment:
   sdk: ^3.13.5
@@ -21,7 +21,7 @@ dependencies:
   # (0.14 has the sync race that interrupts the initial export) — check ios/Podfile.lock.
   open_wearables_health_sdk: 0.0.25
   webview_flutter: 4.14.1
-  webview_flutter_wkwebview: 3.27.0
+  webview_flutter_wkwebview: 3.27.2
   # Android WebView (#253): file inputs and the platform params; same version the lock already had transitively
   webview_flutter_android: 4.14.1
   url_launcher: 6.3.3
@@ -35,7 +35,7 @@ dependencies:
   flutter_secure_storage: 11.2.0
   # sha256 of the Sign in with Apple nonce
   crypto: 3.0.7
-  wakelock_plus: 1.8.1
+  wakelock_plus: 1.8.2
   package_info_plus: 10.2.2
   # Scan the setup QR code (iOS uses system AVFoundation / Vision, no Google ML Kit)
   mobile_scanner: 7.4.2
@@ -47,6 +47,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # The sync engine's HealthKit type registry (#219 A1): rawdata/hk_types.engine_json() of the server, byte for byte
+    - assets/healthkit_types.json
   config:
     # All plugins go through CocoaPods (OW SDK 0.0.25 has no Swift Package yet).
     enable-swift-package-manager: false

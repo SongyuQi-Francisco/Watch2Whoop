@@ -229,9 +229,11 @@ class HealthSync {
   /// Changes the read range (health_range.dart). "All history" after the 90-day export: the anchors only see newer
   /// samples, so they are reset and the whole history is exported again (the last 90 days are re-sent once and stored
   /// once by Open Wearables). Back to 90 days: only later full exports are limited; nothing already read is removed.
-  Future<void> changeRange(int syncDaysBack) async {
+  /// [grows] (backfill.dart rangeGrows): a larger range than before needs the history read again (14 -> 90 days as well
+  /// as -> all history); default: only going to all history.
+  Future<void> changeRange(int syncDaysBack, {bool? grows}) async {
     if (!hasHealthSync) return;
-    if (syncDaysBack <= 0) {
+    if (grows ?? syncDaysBack <= 0) {
       await OpenWearablesHealthSdk.stopBackgroundSync();
       await OpenWearablesHealthSdk.resetAnchors();
     }
@@ -246,6 +248,18 @@ class HealthSync {
     await OpenWearablesHealthSdk.stopBackgroundSync();
     await OpenWearablesHealthSdk.resetAnchors();
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
+  }
+
+  /// The server switched this user to the app's own sync engine (contract §7, mode `app`): the SDK stops syncing in
+  /// the background; its credentials and anchors stay, so going back resumes where it stopped.
+  Future<void> pauseForEngine() async {
+    if (!hasHealthSync || !OpenWearablesHealthSdk.isConfigured) return;
+    try {
+      await OpenWearablesHealthSdk.stopBackgroundSync();
+      await note('Open Wearables sync paused: the app\'s own sync engine is the source now');
+    } catch (e) {
+      await note('Pausing Open Wearables sync failed: $e');
+    }
   }
 
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.

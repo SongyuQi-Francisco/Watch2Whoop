@@ -6,6 +6,7 @@
 	<array>
 		<string>com.openwearables.healthsdk.task.refresh</string>
 		<string>com.openwearables.healthsdk.task.process</string>
+		<string>watch2whoop.sync.backfill</string>
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>

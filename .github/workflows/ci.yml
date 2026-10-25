@@ -171,6 +171,33 @@ jobs:
       - run: flutter pub get
       - run: flutter test
 
+  # iOS native pods (#295 A4): `pod install` from pubspec.lock must give exactly the committed ios/Podfile.lock, so a
+  # tag builds the same pods every time (OpenWearablesHealthSDK ~> 0.15.0 cannot float). Not a required check of main.
+  # Note: plugin pods carry their podspec's version (e.g. open_wearables_health_sdk 0.0.25 says 0.0.24), not pub's.
+  ios-pods:
+    name: iOS Podfile.lock
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.flutter == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ${{ env.FLUTTER_APP }}
+    env:
+      LANG: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2.9.1
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+      - run: flutter precache --ios
+      - run: flutter pub get
+      - run: cd ios && pod install
+      - name: Podfile.lock unchanged (otherwise run `pod install` and commit ios/Podfile.lock)
+        run: git diff --exit-code ios/Podfile.lock
+
   # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
   # as an artifact of the run for a test phone. Not a required check of main yet.
   android:

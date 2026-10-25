@@ -122,6 +122,14 @@ void main() {
     }
   });
 
+  test('the sync engine\'s uploads are listed too (#219 A1)', () {
+    final st = buildSyncStatus(SyncStatusInput(supported: true, signedIn: true, connected: true, healthAsked: true,
+        ow: SyncStats(), raw: const RawSyncStatus(), engineAt: {'HKCategoryTypeIdentifierSleepAnalysis': _now}, now: _now));
+    expect((st['types'] as List).single, containsPair('channel', 'engine'));
+    expect(st['lastUpload'], '2026-10-26T09:00:00.000Z');
+    expect(st['engine'], {'stop': null});
+  });
+
   test('the app\'s own uploads per kind are listed with their time', () {
     final st = buildSyncStatus(input(raw: RawSyncStatus(kindsAt: {'heartbeat': _now.toLocal()})));
     expect((st['types'] as List).single, {'key': 'heartbeat', 'channel': 'app', 'lastUpload': '2026-10-26T09:00:00.000Z'});

@@ -4,6 +4,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'sync_params.dart';
+
 /// Compile-time defaults (empty in the repo; when building yourself fill them with --dart-define-from-file=config/defaults.json).
 /// Build-time defaults. Empty in the repo; set them with --dart-define-from-file.
 const String kDefaultTodayUrl = String.fromEnvironment('W2W_DEFAULT_TODAY_URL');
@@ -11,7 +13,8 @@ const String kDefaultOwHost = String.fromEnvironment('W2W_DEFAULT_OW_HOST');
 
 /// Days to sync on the first run. export.xml already covered older history, so by default only the last 90 days are synced.
 /// Days of history for the first sync (older history is imported from export.xml).
-const int kDefaultSyncDaysBack = int.fromEnvironment('W2W_SYNC_DAYS_BACK', defaultValue: 90);
+/// The first sync's range (sync_params.dart kFirstSyncDays: 14 days since 1.0.8; existing installs keep their stored range).
+const int kDefaultSyncDaysBack = int.fromEnvironment('W2W_SYNC_DAYS_BACK', defaultValue: kFirstSyncDays);
 
 /// OW invitation code: 8 characters, alphabet without the easily confused 0 O 1 I.
 /// Open Wearables invitation codes: 8 chars from an unambiguous alphabet.

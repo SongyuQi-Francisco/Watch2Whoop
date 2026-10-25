@@ -12,6 +12,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 
 | Version | Tag | Commit | Store |
 |---|---|---|---|
+| 1.0.8 | `app-ios-v1.0.8` | (set when tagged) | TestFlight (iOS) |
 | Android 1.0.7 | `app-android-v1.0.7` | (set when tagged) | APK on the GitHub Release (Android, sideloaded) |
 | 1.0.7 | `app-ios-v1.0.7` | (set when tagged) | TestFlight (iOS) |
 | 1.0.6 | `app-ios-v1.0.6` | (set when tagged) | TestFlight (iOS) |
@@ -19,59 +20,36 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
-## Unreleased
-- Sync repairs itself when Open Wearables stops accepting the phone (seen in production: the SDK's credentials became
-  invalid and every upload got 401 for days, unnoticed). When the sync log shows an authentication error, the app
-  reconnects silently like 「连接同步」 (a fresh invitation code from the user's own account), in the foreground only, with
-  backoff (at once, then after 15 minutes, then after 2 hours) and at most 3 times a day (`lib/src/sync_repair.dart`,
-  `test/sync_repair_test.dart`). Accounts without a sign-in token (setup-link users) still use the code dialog.
-- The Today page's 「手机同步已断开 → 重新连接」 (server side: `web/static/sync-repair.js`) now works in one step: the app
-  takes `watch2whoop://setup?ow=…&code=…` from the page (only the sync part; server addresses and login codes still come
-  only from scanned / pasted setup info), asks once and reconnects. The page knows from `Watch2WhoopFeatures.syncRepair`;
-  1.0.6 / 1.0.7 get the code shown and their 「手机同步」 page opened instead.
-- Jarvis voice input on the phone itself (#53; the Today page side is behind the server's rollout flag `jarvis_orbit`):
-  holding the Jarvis key (or its 「语音」 / "Voice" key) now uses Apple's speech recogniser **on the device only**
-  (`requiresOnDeviceRecognition`; the sound is never sent to Apple for it), so the words appear while you talk. The app
-  records with its own microphone session (not the WebView) only between start and stop, gives the audio session back
-  right after, and ends with "interrupted" when a call or Siri takes it. Chinese: when you let go, the same recording
-  (kept in memory only, 16 kHz) also goes to your own server's recogniser for the final text, which is more accurate for
-  Chinese; English stays on the phone and only the text is corrected with your own words on the server. The recognition
-  language follows the app language, with a 中文 / English switch in the voice panel. The app tells the page which
-  languages the phone can recognise on device (`Watch2WhoopFeatures.voice`); a language without an on-device model, and
-  every app before this one, keeps recording in the page as before. Native code in `ios/Runner/VoiceInput.swift`, the
-  bridge in `lib/src/voice_bridge.dart` (tests in `test/voice_bridge_test.dart`).
-- Haptics for the Jarvis key (menu opens, talking starts, cancel / lock zones, sent, cancelled): the page asks with
-  `haptic:<kind>` once the app says `Watch2WhoopFeatures.haptics`.
-- New permission text `NSSpeechRecognitionUsageDescription` (English and Chinese): on-device recognition, nothing sent to
-  Apple. `NSMicrophoneUsageDescription` now says the sound is turned into text on the iPhone or on your server.
-- Sync from the Today page (P0 2026-10-26, `lib/src/sync_bridge.dart`): the app declares
-  `Watch2WhoopFeatures.sync` and gives the page `Watch2WhoopSync.enableSync()` (Health permission + silent connect +
-  first round, with progress events), `syncNow()` (one round now, no 3-minute throttle) and `syncStatus()` (per-type last
-  upload, whether Health was asked, and every reason sync is held back — 401, permission, network, Background App
-  Refresh off, Low Power Mode, locked phone, server — as a short sentence with the action that fixes it). Someone who
-  skipped sync during onboarding turns it on from the page's card in one tap. The app's own uploads (beat-to-beat
-  series, ECGs, the types the Open Wearables SDK cannot read) no longer wait for the background sync to be connected:
-  they run on open / resume (at most every 3 minutes) once Health was asked, and from `syncNow()`. `Watch2WhoopFeatures.net` (wifi / cellular
-  / Low Data Mode) for the page's prefetch. Native `deviceState` in `AppDelegate.swift`.
-- The Today page's own sync protocol (docs/sync-onboarding-app-requirements.md, PR #303): `watch2whoop://sync-connect`
-  (one tap: connect with the account's own or the page's code, Health, first upload; no extra dialog), `sync-now`,
-  `app-settings`, `health-settings`, declared as `syncConnect` / `syncNow` / `appSettings` / `healthSettings`; progress
-  through `BodySyncStatus.onApp({phase, percent, error})` (the percentage of the first export while it runs), sent again
-  after the page reloads.
-- From the sync investigation of 2026-10-26: after an automatic or page-started reconnect a round runs right away (a
-  reconnected phone used to send nothing until the next open); after connecting, the app checks whether iOS still
-  wants to ask about the core Health types and shows the sheet once more (accounts that connected but never uploaded:
-  the sheet had been swallowed, #214); the phone's state (Background App Refresh, Low Power Mode, locked, last attempt /
-  upload, last error, types iOS never asked about, the SDK's sync state) goes to `PUT /v1/ingest/sync-device` after every
-  round and on return to the foreground; the sync page says "only iPhone data, no watch" apart from "sync is broken".
-- Sync robustness (#295 A2 / A3): the Open Wearables auth error is taken from the SDK's `authErrorStream` (the log text
-  stays a fallback, plus "client errors in a row without an accepted upload"); a sign-in that fails after the invitation
-  code was redeemed is now an error the user sees instead of a silent "not connected". RawSync: when the account token
-  gets 401 it continues with the Today page's upload-only token; the status request has its own 10-second timeout and is
-  asked once per pass (a dead network ends the pass as `offline` instead of waiting 60 s per type); uploads time out
-  after 45 s; sync-on-open is released before the app's own uploads run.
-- Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
-  Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
+## 1.0.8 — 2026-11-01
+这一版主要让「手机同步」更稳、更快、出问题时说得清楚。还在用 1.0.6 的测试用户请直接升到 1.0.8（1.0.7 的修复也都在里面）。
+
+**同步**
+- **第一次同步只读最近 14 天**（以前是 90 天）：几分钟就传完，今天页很快就有数据，不会再出现「首次同步好几天、新数据一直进不来」的情况。已经在用的测试用户保持原来的范围。
+- **「补全历史」**：在今天页或「手机同步」页选「近 90 天」或「全部历史」，app 先照常传最新的数据，再在后台补更早的历史；app 切到后台、被系统挂起也会继续传，中途被打断（包括 app 被关掉）下次从断点接着传，不会重复，进度在页面上显示。手机空闲、连着 Wi-Fi 时补得最快，不用蜂窝流量。
+- 今天页上的「一键开启同步」：点一下，app 自己连接同步、弹出「健康」授权、马上开始第一次上传，卡片上显示进度（首次同步时显示百分比）。登录时点了「跳过」也没关系，之后从今天页一步开启。
+- 今天页上的「立即上传」「去设置」「去授权」直接在 app 里完成，不用再跳到「手机同步」页。
+- 同步连接失效时 app 会自己重新连接，并且**重新连上后马上同步一轮**（以前要等下次打开 app）。
+- 如果「健康」授权窗口没有弹出来（以前偶尔会被别的窗口挡住），app 会发现并再弹一次。
+- app 会把手机这边影响同步的状态告诉服务器：后台 App 刷新是否打开、低电量模式、锁屏读不到健康数据、哪些健康类型还没授权、上次同步和上次成功上传的时间。今天页因此能说出具体原因，比如「后台刷新被关」「手机锁着」，而不只是「很久没收到」。不包含任何健康数值。
+- 「手机同步」页把「只收到 iPhone 的数据、没有手表数据」（多半是手表没配对 / 没戴，或者没授权心率和睡眠）和「同步断了」分开显示。
+- 网络很差（连着 Wi-Fi 但上不了网、VPN 丢包）时，打开 app 不会再卡好几分钟；没传完的下次打开接着传。
+- 即使后台同步还没连上，逐拍心率、心电图和「站立时间」等 app 自己读的数据，打开 app 时也会照常上传。
+
+**Jarvis（AI 助手）**
+- 按住说话改用这台 iPhone 上的语音识别：边说边出字；中文松手后再交你自己的服务器定稿，更准。声音不会为此发给苹果，也不保存录音。第一次使用会弹「语音识别」权限。
+- 按 Jarvis 键时有轻微震动反馈。
+
+**登录**
+- 今天页里的「通过 Apple 登录」和「我 → 登录方式 → 绑定 Apple 登录」在 app 里可以直接用了。
+
+**技术说明（给开发者）**
+- 页面同步协议见 `docs/sync-onboarding-app-requirements.md`（`sync-connect` / `sync-now` / `app-settings` / `health-settings`，`BodySyncStatus.onApp` 进度，`PUT /v1/ingest/sync-device` 手机状态）；另有 `Watch2WhoopSync.enableSync / syncNow / syncStatus`（`lib/src/sync_bridge.dart`）。
+- OW 登录失效改用 SDK 的 `authErrorStream`（日志匹配只作兜底）；RawSync 的账号 token 被 401 时改用今天页签发的只上传 token；status 请求 10 秒超时、每轮最多一次（#295 A2 / A3）。
+- 首次范围和补传参数在 `lib/src/sync_params.dart`（`kFirstSyncDays = 14`、`kBackfillDays = 90`）。补传：今天页「补全历史」按 `docs/sync-onboarding-app-requirements.md` 第 10 节——宣布 `Watch2WhoopFeatures.backfill = true`，页面建好服务器的重新同步任务后打开 `watch2whoop://backfill?days=90|all`，app `GET /v1/ingest/resync` 是 `phone` 时做手机部分、`PUT` 进度（马上报第一次）、完成时 `phone_done`，并用 `onApp({kind: "backfill", …})` 通知页面（`lib/src/backfill.dart`、`resync_flow.dart joinPageBackfill`）；服务器开了自建引擎（shadow / app）时由原生 `ios/Runner/Backfill.swift` 按天往回补：后台 URLSession 上传、BGProcessingTask `watch2whoop.sync.backfill`、游标 200 后才前移、同一批重发用同一个 batch_id；开关关着时走 Open Wearables SDK 自己的全量导出（重置锚点后最新的先传，SDK 自己的后台任务续传；导出期间新数据跟着导出一起上来，没有单独的增量轮次）。
+- 自建同步引擎 A1（#219，`lib/src/sync_engine.dart`、`ios/Runner/SyncEngine.swift`、`assets/healthkit_types.json`）：服务器开关 `apple_sync_engine` 默认关，关着时不读、不传。
+- 本机语音识别 `ios/Runner/VoiceInput.swift`（#53）；Apple 登录桥 `lib/src/apple_bridge.dart`；新增权限说明 `NSSpeechRecognitionUsageDescription`。
+- 依赖：`wakelock_plus` 1.8.2、`webview_flutter_wkwebview` 3.27.2；`ios/Podfile.lock` 与 `pubspec.lock` 一致（CI「iOS Podfile.lock」检查）；`.github/dependabot.yml`。
+- 推送（#175）的 app 侧在 1.0.7 已经做好；APNs key 交给服务器后才会真正推送，没有 key 不影响构建和其他功能。
 
 ## Android 1.0.7 — (set when tagged)
 First Android build (#253), for Huawei phones on HarmonyOS 4.x and older (Android compatible, no Google services),

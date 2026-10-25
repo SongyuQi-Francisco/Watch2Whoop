@@ -144,7 +144,7 @@ void main() {
     expect(r.copyWith(clearPendingLoginCode: true).pendingLoginCode, isNull);
     expect(r.copyWith(todayUrl: 'https://c.example').pendingLoginCode, 'ABCDEFGHJKMN');
     expect(AppConfig.fromJson(const {}).syncDaysBack, kDefaultSyncDaysBack);
-    expect(kDefaultSyncDaysBack, 90);
+    expect(kDefaultSyncDaysBack, 14, reason: 'the first sync reads 14 days since 1.0.8 (sync_params.dart)');
   });
 
   test('only a definite answer from the Today page settles the pending login code', () {

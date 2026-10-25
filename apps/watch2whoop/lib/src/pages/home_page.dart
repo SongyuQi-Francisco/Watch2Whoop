@@ -24,6 +24,8 @@ import '../account_api.dart' show AccountApiException;
 import '../account_flow.dart';
 import '../android_bridge.dart';
 import '../app_state.dart';
+import '../backfill.dart';
+import '../apple_bridge.dart';
 import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
@@ -37,7 +39,9 @@ import '../resync.dart';
 import '../resync_flow.dart';
 import '../setup_flow.dart';
 import '../sync_bridge.dart';
+import '../sync_engine.dart';
 import '../sync_on_open.dart';
+import '../sync_params.dart';
 import '../sync_repair.dart';
 import '../sync_stats.dart' show SdkSyncStatus;
 import '../ui.dart';
@@ -88,7 +92,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final SyncOnOpen _syncOnOpen = SyncOnOpen(
     canSync: () {
       final c = AppState.instance.config;
-      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn;
+      // mode `app` (#219): the app's own engine is the source, the SDK stays paused (its own uploads still run)
+      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn && !_engineMode;
     },
     startRound: () async {
       await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
@@ -275,6 +280,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ow: HealthSync.instance.stats.value,
       raw: RawSync.instance.status.value,
       device: await DeviceSyncState.read(),
+      engineAt: SyncEngine.instance.uploadedAt,
+      engineStop: SyncEngine.instance.last?.stop,
       now: DateTime.now(),
     );
   }
@@ -366,6 +373,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _reportDevice();
   }
 
+  /// The server's sync mode is `app` (sync_engine.dart): no SDK rounds.
+  bool _engineMode = false;
+
+  Future<void> _onEngineMode(String from, String to) async {
+    _engineMode = to == 'app';
+    if (to == 'app') {
+      await HealthSync.instance.pauseForEngine();
+    } else if (from == 'app' && AppState.instance.config.owConnected) {
+      // back from `app` (rollback): the SDK catches up from its own anchors
+      await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
+    }
+  }
+
   /// The app's own uploads when the background sync is not connected (skipped in onboarding, no account, OW refused):
   /// they do not depend on it, so they run on open / resume as well (at most every 3 minutes) and on the page's syncNow.
   DateTime? _ownAt;
@@ -382,6 +402,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         await Future<void>.delayed(const Duration(seconds: 1)); // the page may still be loading on a cold start
       }
       await _rawSync();
+      await stepResync(pageToken: _pageIngestToken); // a re-sync / backfill still running continues here too
       if (mounted && _error == null) {
         await _web.runJavaScript("window.BodySync && window.BodySync.refresh('app');").catchError((_) {});
       }
@@ -407,6 +428,40 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       pageToken: _pageIngestToken,
       appVersion: version,
     );
+    // The app's own sync engine (#219 A1): only while the server's engine block says so (flag apple_sync_engine)
+    final token = RawSync.instance.lastToken;
+    if (token != null && mounted) {
+      await SyncEngine.instance.run(
+        serverUrl: c.todayUrl,
+        token: token,
+        serverStatus: RawSync.instance.lastServerStatus,
+        daysBack: kFirstSyncDays, // older history is the backfill's job (backfill.dart), after the new data
+        appVersion: version,
+      );
+    }
+    // a slice of the history backfill, only after this round's new data went
+    if (hasHealthSync && mounted) await BackfillService.instance.pump();
+  }
+
+  /// The Today page's 「补全历史」 link (backfill.dart, resync_flow.dart joinPageBackfill).
+  Future<void> _onBackfillLink() async {
+    // no Health permission yet: ask first (a backfill without it would read nothing)
+    if (!AppState.instance.config.healthRequested) await _askHealthChecked();
+    final why = await joinPageBackfill();
+    if (why == null) return;
+    await HealthSync.instance.note('Backfill link: nothing to do ($why)');
+    final msg = switch (why) {
+      'offline' => tr('连不上服务器，稍后再试', 'Cannot reach the server; try again later'),
+      'no_token' => tr('先在今天页登录', 'Sign in on the Today page first'),
+      _ => null,
+    };
+    if (msg != null && mounted) _web.runJavaScript(appProgressJs(backfillOnApp('error', error: msg))).catchError((_) {});
+  }
+
+  /// While a re-sync / backfill runs: one step and a progress report every 30 s (the page waits for them)
+  Future<void> _tellBackfill() async {
+    if (!hasHealthSync || !mounted || Resync.instance.state.value == null) return;
+    await stepResync(pageToken: _pageIngestToken);
   }
 
   /// Setup-link users have no account token: the logged-in page mints an upload-only token (cookie + X-Body-Web) and
@@ -498,6 +553,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       AndroidWebViewController.enableDebugging(kDebugMode);
     }
     // Jarvis voice input on the phone (voice_bridge.dart, #53): the recogniser's events go to the page as they come
+    SyncEngine.instance.onModeChange = (from, to) => unawaited(_onEngineMode(from, to));
+    SyncEngine.instance.mode().then((m) => _engineMode = m == 'app');
     VoiceBridge.instance
       ..attach()
       ..onEvent = (e) => _web.runJavaScript(voiceEventJs(e)).catchError((_) {});
@@ -507,7 +564,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     PushService.instance.received.addListener(_onPushReceived);
     HealthSync.instance.stats.addListener(_onSyncStats);
     _load();
-    _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) => _reportRange());
+    _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _reportRange();
+      _tellBackfill();
+    });
+    BackfillService.instance.onLog = HealthSync.instance.note;
+    onBackfillProgress = (e) {
+      if (mounted && !_onShell) _web.runJavaScript(appProgressJs(e)).catchError((_) {});
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
@@ -686,8 +750,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (hasHealthSync) {
         await _web.runJavaScript(kSyncBridgeJs);
         await _web.runJavaScript(kSyncLinkFeaturesJs); // the page's 一键开启 / 立即上传 / 去设置 / 去授权 (doc §3, §5)
+        await _web.runJavaScript(kBackfillFeatureJs); // 「补全历史」 → watch2whoop://backfill (backfill.dart)
         _resendProgress();
       }
+      // Sign in with / bind Apple from the page's own screens (apple_bridge.dart)
+      if (await appleAvailable()) await _web.runJavaScript(kAppleFeaturesJs);
       await _announceNet();
     } catch (e) {
       debugPrint('features call failed: $e');
@@ -785,8 +852,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _onSyncCall(sync);
       return;
     }
+
     if (message == kAppSettingsMessage) {
       openAppSettings();
+      return;
+    }
+    if (message == kAppleSignInMessage && !_onShell) {
+      _appleSignIn();
+      return;
+    }
+    if (message == kAppleLinkMessage && !_onShell) {
+      _appleLink();
       return;
     }
     if (message == 'sync' || message == 'settings') _openSync();
@@ -837,6 +913,59 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (entry != null && mounted) await _web.loadRequest(withLangFragment(entry));
   }
 
+  bool _appleBusy = false;
+
+  /// The page's 「通过 Apple 登录」: native sheet -> /v1/auth/apple -> session in the Keychain -> page logged in with a
+  /// fresh one-time code (apple_bridge.dart). Cancelling does nothing; errors show as a short message.
+  Future<void> _appleSignIn() async {
+    if (_appleBusy) return;
+    _appleBusy = true;
+    try {
+      final c = await appleCredential();
+      if (c == null) return;
+      final server = AppState.instance.config.todayUrl;
+      final s = await accountApiFor(server).signInWithApple(
+          identityToken: c.identityToken,
+          rawNonce: c.rawNonce,
+          device: deviceLabel,
+          givenName: c.givenName,
+          familyName: c.familyName);
+      await saveSession(s, server);
+      _webLoginTried = false;
+      await _load();
+    } on AccountApiException catch (e) {
+      _snack(switch (e.code) {
+        'invalid' => tr('Apple 登录验证没通过，请再试一次', 'The Apple sign-in could not be verified — try again'),
+        'unavailable' => tr('这个服务器没有开通「通过 Apple 登录」，请用邮箱登录', 'This server has no Sign in with Apple — use e-mail'),
+        _ => accountError(e),
+      });
+    } catch (e) {
+      _snack(tr('通过 Apple 登录没有成功', 'Sign in with Apple did not work'));
+      debugPrint('apple sign-in failed: $e');
+    } finally {
+      _appleBusy = false;
+    }
+  }
+
+  /// The page's 「绑定 Apple 登录」: native sheet, then the page binds the token with its own session.
+  Future<void> _appleLink() async {
+    if (_appleBusy) return;
+    _appleBusy = true;
+    AppleCredential? c;
+    try {
+      c = await appleCredential(name: false);
+    } catch (e) {
+      debugPrint('apple link failed: $e');
+    } finally {
+      _appleBusy = false;
+    }
+    await _web.runJavaScript(appleResultJs(c)).catchError((_) {});
+  }
+
+  void _snack(String text) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
   Future<void> _onAccountDeleted() => signOutToOnboarding(revoke: false);
 
   Future<NavigationDecision> _onNavigation(NavigationRequest req) async {
@@ -854,6 +983,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (uri.host == 'sync-now') _syncBridge.now();
         if (uri.host == 'app-settings') openAppSettings();
         if (uri.host == 'health-settings') _healthSettings();
+        if (isBackfillLink(uri)) _onBackfillLink();
       }
       // 「手机同步已断开 → 重新连接」 on the Today page (web/static/sync-repair.js): its sync part, asked once like a scanned link
       final setup = uri.host == 'setup' ? pageSetupLink(req.url) : null;

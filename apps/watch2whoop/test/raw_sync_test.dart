@@ -357,6 +357,8 @@ void main() {
     expect(needsAnchorReset(0, 90), isFalse);
     expect(needsAnchorReset(null, 0), isFalse);
     expect(needsAnchorReset(90, 90), isFalse);
+    expect(needsAnchorReset(14, 90), isTrue, reason: 'backfill after the 14-day first sync');
+    expect(needsAnchorReset(90, 14), isFalse);
     final s = RawSyncStatus(heartbeats: 3, ecgs: 1, lastUpload: DateTime(2026, 10, 21, 8), stop: 'consent');
     final back = RawSyncStatus.fromJson(jsonDecode(jsonEncode(s.toJson())) as Map<String, Object?>);
     expect(back.heartbeats, 3);

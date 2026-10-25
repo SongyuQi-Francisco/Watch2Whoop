@@ -7,12 +7,14 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'account_api.dart';
 import 'app_state.dart';
+import 'backfill.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
 import 'platform_features.dart';
 import 'push.dart';
 import 'raw_sync.dart';
+import 'sync_engine.dart';
 
 /// Short device label the server shows in the token list.
 String get deviceLabel {
@@ -111,6 +113,8 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   state.webLoginNeeded = false;
   await state.setAccountToken(null);
   await RawSync.instance.clear();
+  await SyncEngine.instance.clear();
+  await BackfillService.instance.clear();
   try {
     await setLangOverride(null); // the next person starts in the system language
   } catch (e) {

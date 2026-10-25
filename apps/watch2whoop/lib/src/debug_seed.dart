@@ -4,6 +4,17 @@ import 'package:flutter/services.dart';
 
 const _channel = MethodChannel('watch2whoop/debug');
 
+/// Runs the history backfill's background-task body once (Backfill.swift runSlices); simulator debug builds only.
+Future<String> runDebugBackfillTask() async {
+  try {
+    return '${await _channel.invokeMethod<bool>('runBackfillTask')}';
+  } on MissingPluginException {
+    return 'not available in this build';
+  } on PlatformException catch (e) {
+    return 'failed: ${e.message}';
+  }
+}
+
 Future<String> seedHealthTestData() async {
   try {
     final r = await _channel.invokeMethod<String>('seedHealthData');
