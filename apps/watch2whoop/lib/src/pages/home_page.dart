@@ -129,6 +129,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final SyncBridge _syncBridge = SyncBridge(
     supported: () => hasHealthSync,
     isConnected: () => AppState.instance.config.owConnected && HealthSync.instance.isSignedIn,
+    canUpload: () =>
+        hasHealthSync &&
+        (AppState.instance.config.healthRequested || (AppState.instance.config.owConnected && HealthSync.instance.isSignedIn)),
     needsReconnect: () => HealthSync.instance.stats.value.authProblem,
     connect: _bridgeConnect,
     askHealth: () async {
@@ -173,6 +176,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     });
     try {
+      if (!_syncOnOpen.canSync()) {
+        await _ownUploads(force: true); // background sync not connected: the app's own uploads still go
+        return true;
+      }
       if (_syncOnOpen.running) {
         while (_syncOnOpen.running) {
           await Future<void>.delayed(const Duration(seconds: 1));
@@ -261,6 +268,30 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _reportRange();
     await _rawSync();
     await stepResync(pageToken: _pageIngestToken); // a forced re-sync still running (resync_flow.dart): continue it
+  }
+
+  /// The app's own uploads when the background sync is not connected (skipped in onboarding, no account, OW refused):
+  /// they do not depend on it, so they run on open / resume as well (at most every 3 minutes) and on the page's syncNow.
+  DateTime? _ownAt;
+  bool _ownRunning = false;
+
+  Future<void> _ownUploads({bool force = false}) async {
+    final now = DateTime.now();
+    if (_ownRunning || !hasHealthSync || !AppState.instance.config.healthRequested) return;
+    if (!force && _ownAt != null && now.difference(_ownAt!) < const Duration(minutes: 3)) return;
+    _ownRunning = true;
+    _ownAt = now;
+    try {
+      for (var i = 0; i < 10 && mounted && (_loading || _error != null); i++) {
+        await Future<void>.delayed(const Duration(seconds: 1)); // the page may still be loading on a cold start
+      }
+      await _rawSync();
+      if (mounted && _error == null) {
+        await _web.runJavaScript("window.BodySync && window.BodySync.refresh('app');").catchError((_) {});
+      }
+    } finally {
+      _ownRunning = false;
+    }
   }
 
   /// Beat-to-beat HRV series and ECG recordings, straight to Body Engine (raw_sync.dart), after each sync-on-open round.
@@ -383,6 +414,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
+      if (!_syncOnOpen.canSync()) _ownUploads(); // not connected: the app's own uploads still go
       _onSyncStats(); // a 401 kept from the last run
       // Someone who was never asked for Health (e.g. updated from a build without the permissions step): show it once
       if (shouldShowPermissions(AppState.instance.config)) {
@@ -460,6 +492,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _announceNet();
     PushService.instance.refresh(); // allowed in iOS Settings meanwhile, or a new device token: register again
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
+    if (!_syncOnOpen.canSync()) _ownUploads();
     if (_onShell) {
       _load(); // showing the kept copy of the page: try the real one again
       return;

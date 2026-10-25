@@ -49,7 +49,9 @@ shared `## <marketing version>` section, and the iOS release never sees it.
   first round, with progress events), `syncNow()` (one round now, no 3-minute throttle) and `syncStatus()` (per-type last
   upload, whether Health was asked, and every reason sync is held back — 401, permission, network, Background App
   Refresh off, Low Power Mode, locked phone, server — as a short sentence with the action that fixes it). Someone who
-  skipped sync during onboarding turns it on from the page's card in one tap. `Watch2WhoopFeatures.net` (wifi / cellular
+  skipped sync during onboarding turns it on from the page's card in one tap. The app's own uploads (beat-to-beat
+  series, ECGs, the types the Open Wearables SDK cannot read) no longer wait for the background sync to be connected:
+  they run on open / resume (at most every 3 minutes) once Health was asked, and from `syncNow()`. `Watch2WhoopFeatures.net` (wifi / cellular
   / Low Data Mode) for the page's prefetch. Native `deviceState` in `AppDelegate.swift`.
 - Sync robustness (#295 A2 / A3): the Open Wearables auth error is taken from the SDK's `authErrorStream` (the log text
   stays a fallback, plus "client errors in a row without an accepted upload"); a sign-in that fails after the invitation

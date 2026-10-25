@@ -313,6 +313,7 @@ class SyncBridge {
   SyncBridge({
     required this.supported,
     required this.isConnected,
+    required this.canUpload,
     required this.needsReconnect,
     required this.connect,
     required this.askHealth,
@@ -325,6 +326,10 @@ class SyncBridge {
 
   /// The background sync has a working session.
   final bool Function() isConnected;
+
+  /// Something can be uploaded at all: the background sync is connected, or Health was asked for (the app's own uploads
+  /// — beat-to-beat series, ECGs, the types the SDK cannot read — go without the background sync).
+  final bool Function() canUpload;
 
   /// The session is there but the server refuses it (401): connect again.
   final bool Function() needsReconnect;
@@ -363,22 +368,26 @@ class SyncBridge {
     if (!supported()) {
       return _error('unsupported', tr('这台手机暂时不能同步健康数据', 'This phone cannot sync health data yet'), 'none', await status());
     }
+    SyncConnectOutcome? failed;
     if (!isConnected() || needsReconnect()) {
       progress({'step': 'connect', 'message': tr('正在连接同步…', 'Connecting sync…')});
       final c = await connect();
-      if (!c.connected) {
-        return _error(c.manualNeeded ? 'needs_code' : 'connect',
-            c.message ?? tr('同步没连上，请再试一次', 'Sync did not connect; try again'),
-            c.manualNeeded ? 'sync_page' : 'retry', await status());
-      }
+      if (!c.connected) failed = c;
     }
+    // Health and the app's own uploads go even when the background sync could not connect (no account / no network):
+    // those types still arrive, and the answer says what is missing.
     progress({'step': 'permission', 'message': tr('请在弹出的「健康」窗口里允许读取', 'Allow reading in the Health sheet')});
     await askHealth();
-    return _upload();
+    if (failed == null) return _upload();
+    progress({'step': 'upload', 'message': tr('正在上传…', 'Uploading…')});
+    await runRound();
+    return _error(failed.manualNeeded ? 'needs_code' : 'connect',
+        failed.message ?? tr('同步没连上，请再试一次', 'Sync did not connect; try again'),
+        failed.manualNeeded ? 'sync_page' : 'retry', await status());
   }
 
   Future<Map<String, Object?>> _now() async {
-    if (!supported() || !isConnected()) {
+    if (!supported() || !canUpload()) {
       final st = await status();
       final p = (st['problems'] as List?)?.cast<Map<String, Object?>>().firstOrNull;
       return _error('${p?['code'] ?? 'not_connected'}', '${p?['message'] ?? tr('同步还没开启', 'Sync is not turned on yet')}',

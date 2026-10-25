@@ -126,7 +126,7 @@ void main() {
 
   group('steps', () {
     late List<String> log;
-    late bool connected, reconnect, connectOk;
+    late bool connected, reconnect, connectOk, asked;
     late List<Map<String, Object?>> events;
     late Map<String, Object?> statusAnswer;
     Completer<bool>? round;
@@ -134,6 +134,7 @@ void main() {
     SyncBridge bridge() => SyncBridge(
           supported: () => true,
           isConnected: () => connected,
+          canUpload: () => connected || asked,
           needsReconnect: () => reconnect,
           connect: () async {
             log.add('connect');
@@ -155,6 +156,7 @@ void main() {
       connected = false;
       reconnect = false;
       connectOk = true;
+      asked = false;
       round = null;
       statusAnswer = {'ok': true, 'problems': []};
     });
@@ -176,10 +178,10 @@ void main() {
       expect(log, ['connect', 'health', 'round']);
     });
 
-    test('enableSync: a failed connect says why and stops', () async {
+    test('enableSync: a failed connect says why; Health and the app\'s own uploads still go', () async {
       connectOk = false;
       final r = await bridge().enable();
-      expect(log, ['connect']);
+      expect(log, ['connect', 'health', 'round']);
       expect(r['ok'], isFalse);
       expect((r['error'] as Map)['code'], 'connect');
       expect((r['error'] as Map)['message'], 'Sync did not connect');
@@ -209,6 +211,10 @@ void main() {
       final r = await bridge().now();
       expect(log, isEmpty);
       expect((r['error'] as Map)['action'], 'enable');
+      // not connected, but Health was asked: the app's own uploads run
+      asked = true;
+      await bridge().now();
+      expect(log, ['round']);
     });
 
     test('one operation at a time: a second call gets the first one\'s answer', () async {
