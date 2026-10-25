@@ -13,7 +13,7 @@ from typing import Any, Callable, ContextManager, Mapping
 from .audit import AuditSink
 from .messages import Messages
 from .policy import Policy, resolve_owner
-from .spec import Tool, fill_defaults
+from .spec import Tool, fill_defaults, relaxed
 from .writelog import WriteLog
 
 
@@ -40,6 +40,17 @@ class Executor:
         with self.call_context():
             return self._run(conn, viewer_id, channel, name, args, extra)
 
+    def _missing_params(self, tool: Tool, full: dict, e: Exception) -> list[str]:
+        """The handler read args["x"] and x was left out: a KeyError naming one of the tool's own properties. Returns every required
+        argument still missing (so one message names them all), or [] for any other error. Only this case is turned into a message:
+        a tool that copes with a missing argument keeps working and any other KeyError stays visible."""
+        key = e.args[0] if isinstance(e, KeyError) and e.args else None
+        if not (isinstance(key, str) and key in tool.input_schema.get("properties", {}) and full.get(key) is None):
+            return []
+        required = relaxed(tool.input_schema, self.optional_defaults).get("required", [])
+        missing = [k for k in required if full.get(k) is None]
+        return missing if key in missing else [*missing, key]
+
     def _run(self, conn, viewer_id, channel, name, args, extra) -> Any:
         tool = self.tools[name]
         full = fill_defaults(tool.input_schema, args, self.optional_defaults)  # MCP clients may leave out nullable / defaulted fields (spec.relaxed)
@@ -60,6 +71,10 @@ class Executor:
                 else:
                     result = tool.handler(conn, owner_id, args_in)
         except Exception as e:
+            if missing := self._missing_params(tool, full, e):   # the model can fix this: say which arguments, not KeyError
+                err = ValueError(m.missing_param.format(param=m.missing_sep.join(missing)))
+                self.audit.record(conn, viewer_id, channel, name, args, False, str(err), **extra)
+                raise err from None
             self.audit.record(conn, viewer_id, channel, name, args, False, str(e), **extra)
             raise
         self.audit.record(conn, viewer_id, channel, name, args, True, None, **extra)

@@ -33,6 +33,8 @@ class Messages:
     call_directly: str               # {name}
     missing_args: str                # {name}, {missing}
     missing_sep: str                 # joins the missing argument names
+    # running a tool: a required argument is missing (datalayer/execute.py)
+    missing_param: str               # {param}: the missing argument names, joined with missing_sep
     # playbooks (datalayer/playbooks.py)
     unknown_playbook: str            # {name}, {names}
     playbook_sep: str                # joins the playbook names in unknown_playbook
