@@ -326,7 +326,8 @@ def test_page_wiring():
     # the only thing stored is that the first-open sheet was shown, never the code
     assert js.count("localStorage.setItem(") == 1 and "sessionStorage" not in js
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert html.index('src="sync-repair.js"') < html.index('src="sync-status.js"') < html.index('src="app.js"')
+    assert '<script type="w2w/lazy" src="sync-status.js"></script>' in html   # outside the first-screen budget
+    assert 'window.BodyLazy?.script("sync-status.js")' in (STATIC / "sync.js").read_text(encoding="utf-8")
     assert '"sync-status.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")
     assert "window.BodySyncRepair = {" in (STATIC / "sync-repair.js").read_text(encoding="utf-8")
     assert "isSelf, openHandbook" in (STATIC / "app.js").read_text(encoding="utf-8")

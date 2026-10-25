@@ -12,7 +12,7 @@
      status steps, 打开同步页 / 立即上传 = the app). A broken OW link keeps sync-repair.js's own banner.
    - window.BodySyncStatus.device(report): the app (1.0.8+) hands its phone report to the server through the page
      (PUT /v1/users/me/sync/device).
-   Registered in window.BodyPlugins (init / onTab / meItem / bindMe). The pure helpers are module.exports for
+   Loaded on demand right after the start (sync.js, type w2w/lazy); registered in window.BodyPlugins (init / onTab / meItem / bindMe). The pure helpers are module.exports for
    tests/test_sync_overview.py. */
 (() => {
   "use strict";
@@ -408,7 +408,11 @@
   window.BodySyncStatus = { open: () => openPanel(), onApp, device, refresh: () => load(true), line, decorate };
   (window.BodyPlugins = window.BodyPlugins || []).push({
     meGroup: "main",
-    init(ctx, me) { C = ctx; ME = me?.me || null; css(); load(false); },
+    init(ctx, me) {   // arrives after the first tab was drawn: take the current tab from the tab bar
+      C = ctx; ME = me?.me || null; css();
+      tab = document.querySelector('.tab[aria-current="page"]')?.dataset.tab || tab;
+      load(false);
+    },
     onTab(t) { tab = t; panelOpen = false; draw(); if (t === "today") load(false); },
     meItem: (chev) => (ME ? `<button class="item" id="me-sync-status"><span class="row-title">${C.esc(tr("同步状态"))}</span><span class="val" id="me-sync-status-val">${meVal()}</span>${chev || ""}</button>` : ""),
     bindMe(view) {

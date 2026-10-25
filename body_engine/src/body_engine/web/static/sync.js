@@ -116,6 +116,8 @@
   window.BodySync = { refresh, header, redraw: () => { if (C) draw(); } };
   window.BodyHealthRange = { report };
   (window.BodyPlugins = window.BodyPlugins || []).push({
-    init(ctx) { C = ctx; },   // runs again on every reload: keep st (a poll may be running)
+    // runs again on every reload: keep st (a poll may be running); sync-status.js (the setup card and the status panel) loads
+    // right after the start, outside the first-screen budget
+    init(ctx) { C = ctx; window.BodyLazy?.script("sync-status.js"); },
   });
 })();
