@@ -1,4 +1,5 @@
-// First sync 14 days + history backfill (owner's decision 2026-10-26): page messages, ranges, status, native wiring.
+// First sync 14 days + history backfill (owner's decision 2026-10-26; the page's 「补全历史」 per
+// docs/sync-onboarding-app-requirements.md §10): link, onApp progress, ranges, the re-sync state, native wiring.
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,31 +7,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch2whoop/src/backfill.dart';
 import 'package:watch2whoop/src/config.dart';
 import 'package:watch2whoop/src/health_range.dart';
+import 'package:watch2whoop/src/resync.dart';
 import 'package:watch2whoop/src/sync_params.dart';
-import 'package:watch2whoop/src/sync_stats.dart';
 
 void main() {
-  test('the first sync reads 14 days; the backfill offers 90 days and all history', () {
+  test('the first sync reads 14 days; existing installs keep their range', () {
     expect(kFirstSyncDays, 14);
     expect(kBackfillDays, 90);
     expect(const AppConfig().syncDaysBack, kFirstSyncDays);
-    expect(AppConfig.fromJson(const {'syncDaysBack': 90}).syncDaysBack, 90, reason: 'existing installs keep their range');
+    expect(AppConfig.fromJson(const {'syncDaysBack': 90}).syncDaysBack, 90);
   });
 
-  test('page messages: start with days or "all", status; nothing else', () {
-    expect(parseBackfillMessage('backfill:start {"id":"b1","days":90}'), (verb: 'start', id: 'b1', days: 90));
-    expect(parseBackfillMessage('backfill:start {"id":"b1","days":"all"}')?.days, kAllHistory);
-    expect(parseBackfillMessage('backfill:start {"id":"b1"}')?.days, kBackfillDays);
-    expect(parseBackfillMessage('backfill:status {"id":"b2"}')?.verb, 'status');
-    for (final bad in ['backfill:start {"id":"b1","days":-3}', 'backfill:start {"id":"b1","days":"x"}', 'backfill:stop {"id":"b"}',
-        'backfill:start', 'backfill:status {}', 'sync:now {"id":"x"}']) {
-      expect(parseBackfillMessage(bad), isNull, reason: bad);
+  test('the page protocol (§10): feature true, the link, onApp always with kind backfill', () {
+    expect(kBackfillFeatureJs, contains('{backfill:true}'));
+    expect(isBackfillLink(Uri.parse('watch2whoop://backfill?days=90')), isTrue);
+    expect(isBackfillLink(Uri.parse('watch2whoop://backfill?days=all')), isTrue);
+    expect(isBackfillLink(Uri.parse('watch2whoop://sync-connect')), isFalse);
+    expect(isBackfillLink(Uri.parse('https://backfill/')), isFalse);
+    expect(backfillOnApp('uploading', percent: 140), {'kind': 'backfill', 'phase': 'uploading', 'percent': 100, 'error': null});
+    expect(backfillOnApp('error', error: 'offline')['kind'], 'backfill');
+    // the page side, when it is in this checkout
+    final page = File('../../body_engine/src/body_engine/web/static/sync-status.js');
+    if (page.existsSync() && page.readAsStringSync().contains('watch2whoop://backfill')) {
+      final js = page.readAsStringSync();
+      expect(js, contains('backfill'));
+      expect(js, contains('kind'));
     }
-    expect(kBackfillJs, contains('window.Watch2WhoopBackfill={v:1'));
-    expect(kBackfillJs, contains('{backfill:{v:1,days:[90],all:true}}'));
-    expect(kBackfillJs, contains("'watch2whoop:backfill'"));
-    final r = backfillReplyJs('b1', {'ok': true});
-    expect(jsonDecode(r.substring(r.indexOf(',') + 1, r.lastIndexOf(')'))), {'ok': true});
   });
 
   test('a larger range reads the history again; a smaller one does not', () {
@@ -43,15 +45,14 @@ void main() {
     expect(rangeGrows(null, 90), isFalse);
   });
 
-  test('status: the slower of the two paths; done when both are', () {
-    final owRunning = HistoryProgress.from(const SdkSyncStatus(isFullExport: true, completedTypes: 10, sentCount: 500), 40, DateTime(2026, 10, 26));
-    final s = backfillStatus(target: 90, range: 90, ow: owRunning, engine: {'active': true, 'percent': 60, 'error': null});
-    expect([s['active'], s['done'], s['percent'], s['channel']], [true, false, 25, 'both']);
-    final done = HistoryProgress.from(const SdkSyncStatus(initialExportDone: true), 40, DateTime(2026, 10, 26));
-    final d = backfillStatus(target: 90, range: 90, ow: done, engine: {'active': false, 'done': true, 'percent': 100});
-    expect([d['active'], d['done'], d['percent']], [false, true, 100]);
-    final e = backfillStatus(target: 0, range: 0, engine: {'active': false, 'error': 'auth'});
-    expect([e['channel'], e['error'], e['percent']], ['engine', 'auth', null]);
+  test('the re-sync state carries the engine part and where it came from; the percent counts all parts', () {
+    final s = ResyncState(days: 90, startedAt: DateTime(2026, 10, 26), engineDone: false, fromPage: true);
+    final back = ResyncState.fromJson(jsonDecode(jsonEncode(s.toJson())));
+    expect([back!.engineDone, back.fromPage, back.days], [false, true, 90]);
+    expect(ResyncState.fromJson({'started_at': '2026-10-26T00:00:00'})!.engineDone, isTrue, reason: 'older state: no engine part');
+    expect(phonePercent(s, 40, enginePercent: 70), ((40 + 0 + 70) / 3).round());
+    expect(phonePercent(s.copyWith(owDone: true, rawDone: true, engineDone: true), 0), 100);
+    expect(phonePercent(const ResyncStateFixture().value, 40), 20, reason: 'without the engine as before');
   });
 
   test('native: BGTask id in Info.plist, registered at launch, background session routed, file in the project', () {
@@ -69,4 +70,9 @@ void main() {
     expect(swift, contains('"phase": "backfill"'));
     expect(File('ios/Runner.xcodeproj/project.pbxproj').readAsStringSync(), contains('Backfill.swift in Sources'));
   });
+}
+
+class ResyncStateFixture {
+  const ResyncStateFixture();
+  ResyncState get value => ResyncState(days: 7, startedAt: DateTime(2026, 10, 26));
 }

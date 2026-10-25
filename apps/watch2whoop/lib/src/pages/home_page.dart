@@ -402,6 +402,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         await Future<void>.delayed(const Duration(seconds: 1)); // the page may still be loading on a cold start
       }
       await _rawSync();
+      await stepResync(pageToken: _pageIngestToken); // a re-sync / backfill still running continues here too
       if (mounted && _error == null) {
         await _web.runJavaScript("window.BodySync && window.BodySync.refresh('app');").catchError((_) {});
       }
@@ -438,37 +439,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         appVersion: version,
       );
     }
-    await _pumpBackfill();
+    // a slice of the history backfill, only after this round's new data went
+    if (hasHealthSync && mounted) await BackfillService.instance.pump();
   }
 
-  /// A slice of the history backfill, only after this round's new data went; the page sees the progress.
-  Future<void> _pumpBackfill() async {
-    if (!hasHealthSync || !mounted) return;
-    final st = await BackfillService.instance.pump();
-    if (st != null && mounted) _web.runJavaScript(backfillProgressJs(st)).catchError((_) {});
+  /// The Today page's 「补全历史」 link (backfill.dart, resync_flow.dart joinPageBackfill).
+  Future<void> _onBackfillLink() async {
+    // no Health permission yet: ask first (a backfill without it would read nothing)
+    if (!AppState.instance.config.healthRequested) await _askHealthChecked();
+    final why = await joinPageBackfill();
+    if (why == null) return;
+    await HealthSync.instance.note('Backfill link: nothing to do ($why)');
+    final msg = switch (why) {
+      'offline' => tr('连不上服务器，稍后再试', 'Cannot reach the server; try again later'),
+      'no_token' => tr('先在今天页登录', 'Sign in on the Today page first'),
+      _ => null,
+    };
+    if (msg != null && mounted) _web.runJavaScript(appProgressJs(backfillOnApp('error', error: msg))).catchError((_) {});
   }
 
-  Future<void> _onBackfillCall(({String verb, String id, int days}) m) async {
-    Map<String, Object?> res;
-    try {
-      if (m.verb == 'start') {
-        final st = await BackfillService.instance.setRange(m.days);
-        unawaited(_pumpBackfill());
-        res = {'ok': true, 'status': st};
-      } else {
-        res = {'ok': true, 'status': await BackfillService.instance.status()};
-      }
-    } catch (e) {
-      res = {'ok': false, 'error': redactServer('$e')};
-    }
-    if (mounted) await _web.runJavaScript(backfillReplyJs(m.id, res)).catchError((_) {});
-  }
-
-  /// While a backfill runs: its progress to the page with the range report (every 30 s).
+  /// While a re-sync / backfill runs: one step and a progress report every 30 s (the page waits for them)
   Future<void> _tellBackfill() async {
-    if (!hasHealthSync || !mounted || _loading || _error != null || _onShell) return;
-    final st = await BackfillService.instance.status();
-    if (st['active'] == true || st['done'] == true) _web.runJavaScript(backfillProgressJs(st)).catchError((_) {});
+    if (!hasHealthSync || !mounted || Resync.instance.state.value == null) return;
+    await stepResync(pageToken: _pageIngestToken);
   }
 
   /// Setup-link users have no account token: the logged-in page mints an upload-only token (cookie + X-Body-Web) and
@@ -576,6 +569,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _tellBackfill();
     });
     BackfillService.instance.onLog = HealthSync.instance.note;
+    onBackfillProgress = (e) {
+      if (mounted && !_onShell) _web.runJavaScript(appProgressJs(e)).catchError((_) {});
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onLink();
       _syncOnOpen.trigger(); // cold start
@@ -754,7 +750,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (hasHealthSync) {
         await _web.runJavaScript(kSyncBridgeJs);
         await _web.runJavaScript(kSyncLinkFeaturesJs); // the page's 一键开启 / 立即上传 / 去设置 / 去授权 (doc §3, §5)
-        await _web.runJavaScript(kBackfillJs); // 「补全历史」: 90 days / all history (backfill.dart)
+        await _web.runJavaScript(kBackfillFeatureJs); // 「补全历史」 → watch2whoop://backfill (backfill.dart)
         _resendProgress();
       }
       // Sign in with / bind Apple from the page's own screens (apple_bridge.dart)
@@ -856,11 +852,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _onSyncCall(sync);
       return;
     }
-    final backfill = parseBackfillMessage(message);
-    if (backfill != null) {
-      if (hasHealthSync && !_onShell) _onBackfillCall(backfill);
-      return;
-    }
+
     if (message == kAppSettingsMessage) {
       openAppSettings();
       return;
@@ -991,6 +983,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (uri.host == 'sync-now') _syncBridge.now();
         if (uri.host == 'app-settings') openAppSettings();
         if (uri.host == 'health-settings') _healthSettings();
+        if (isBackfillLink(uri)) _onBackfillLink();
       }
       // 「手机同步已断开 → 重新连接」 on the Today page (web/static/sync-repair.js): its sync part, asked once like a scanned link
       final setup = uri.host == 'setup' ? pageSetupLink(req.url) : null;

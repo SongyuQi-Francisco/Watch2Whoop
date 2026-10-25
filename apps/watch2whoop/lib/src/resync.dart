@@ -43,36 +43,47 @@ int? parseCustomDays(String text) {
 /// The phone part of a running re-sync (kept across app starts).
 class ResyncState {
   const ResyncState({this.days, required this.startedAt, this.owDone = false, this.rawDone = false, this.reported = 0,
-      this.phoneDone = false});
+      this.phoneDone = false, this.engineDone = true, this.fromPage = false});
 
   final int? days;
   final DateTime startedAt;
   final bool owDone, rawDone, phoneDone;
   final int reported;
 
-  ResyncState copyWith({bool? owDone, bool? rawDone, bool? phoneDone, int? reported}) => ResyncState(
+  /// The app's own engine read the range too (backfill.dart, Backfill.swift); true when the engine is not on.
+  final bool engineDone;
+
+  /// Started by the Today page's 「补全历史」 (its progress also goes to the page's onApp with kind backfill).
+  final bool fromPage;
+
+  ResyncState copyWith({bool? owDone, bool? rawDone, bool? phoneDone, int? reported, bool? engineDone}) => ResyncState(
       days: days,
       startedAt: startedAt,
       owDone: owDone ?? this.owDone,
       rawDone: rawDone ?? this.rawDone,
       phoneDone: phoneDone ?? this.phoneDone,
-      reported: reported ?? this.reported);
+      reported: reported ?? this.reported,
+      engineDone: engineDone ?? this.engineDone,
+      fromPage: fromPage);
 
   Map<String, Object?> toJson() => {'days': days, 'started_at': startedAt.toIso8601String(), 'ow_done': owDone,
-        'raw_done': rawDone, 'phone_done': phoneDone, 'reported': reported};
+        'raw_done': rawDone, 'phone_done': phoneDone, 'reported': reported, 'engine_done': engineDone, 'from_page': fromPage};
 
   static ResyncState? fromJson(Object? j) {
     if (j is! Map) return null;
     final at = DateTime.tryParse('${j['started_at']}');
     if (at == null) return null;
     return ResyncState(days: (j['days'] as num?)?.toInt(), startedAt: at, owDone: j['ow_done'] == true,
-        rawDone: j['raw_done'] == true, phoneDone: j['phone_done'] == true, reported: (j['reported'] as num?)?.toInt() ?? 0);
+        rawDone: j['raw_done'] == true, phoneDone: j['phone_done'] == true, reported: (j['reported'] as num?)?.toInt() ?? 0,
+        engineDone: j['engine_done'] != false, fromPage: j['from_page'] == true);
   }
 }
 
 /// Phone percent: the OW export (its own percent) and the app's direct reads, half each.
-int phonePercent(ResyncState s, int owPercent) =>
-    ((s.owDone ? 100 : owPercent.clamp(0, 100)) * 0.5 + (s.rawDone ? 100 : 0) * 0.5).round();
+int phonePercent(ResyncState s, int owPercent, {int enginePercent = 100}) {
+  final parts = [s.owDone ? 100 : owPercent.clamp(0, 100), s.rawDone ? 100 : 0, if (!s.engineDone) enginePercent.clamp(0, 100)];
+  return (parts.reduce((a, b) => a + b) / parts.length).round();
+}
 
 /// GET / POST / PUT / DELETE {server}/v1/ingest/resync with the account or upload-only token.
 class ResyncApi {

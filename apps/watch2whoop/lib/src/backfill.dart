@@ -1,25 +1,24 @@
 // History backfill (owner's decision 2026-10-26): the first sync reads only the last 14 days (sync_params.dart); the
-// Today page's 「补全历史」 card (or the sync page's read range) asks for 90 days or all history afterwards.
+// older history is filled in afterwards, in the background, after the newest data.
 //
-// Page API (declared as `window.Watch2WhoopFeatures.backfill = {v: 1, days: [90], all: true}`; names to be aligned with
-// the page's PR):
-//   await window.Watch2WhoopBackfill.start(90 | "all")  -> {ok, status}
-//   await window.Watch2WhoopBackfill.status()           -> status
-//   window 'watch2whoop:backfill' events, detail = status, while it runs
-// status = {v, target (days, 0 = all), range, active, done, percent, channel, ow: {...}, engine: {...}, error}.
+// Two entry points:
+// - the Today page's 「补全历史」 card (docs/sync-onboarding-app-requirements.md §10): the app declares
+//   `Watch2WhoopFeatures.backfill = true`; the page creates the server's re-sync job (POST /v1/users/me/sync/backfill)
+//   and opens `watch2whoop://backfill?days=90|all`; the app joins that job (resync_flow.dart joinPageBackfill: GET
+//   /v1/ingest/resync, the phone part, PUT progress, phone_done) — it never creates the job itself;
+// - the read range on the sync page / in onboarding (14 / 90 days / all history, [BackfillService.setRange]).
 //
-// Two ways, depending on the server's sync mode (sync_engine.dart, GET /v1/ingest/healthkit `engine`):
-// - the app's own engine (modes shadow / app): the native backfill (ios/Runner/Backfill.swift) walks back day by day
-//   from the start of the first-sync window, uploads each day with a background URLSession (continues while the app is
-//   suspended), resumes from its persisted cursor after an interruption, and runs in a BGProcessingTask while the phone
-//   is idle; the newest data always goes first (the foreground gives it time only after each round of new data);
-// - Open Wearables (mode ow, the flag apple_sync_engine off, the default): the SDK's own full export with the larger
-//   range (stop, reset anchors, start; newest first, resumable, continued in the SDK's own background tasks). Limits of
-//   the SDK: while that export runs, its rounds are export rounds (new samples arrive with it, newest first, not as a
-//   separate incremental round), and there is no background URLSession of ours on that path. RawSync's types re-read
-//   the larger range too (anchor reset; the server skips what it has).
+// The phone part, depending on the server's sync mode (sync_engine.dart, GET /v1/ingest/healthkit `engine`):
+// - the app's own engine (modes shadow / app): the native backfill (ios/Runner/Backfill.swift) walks back day by day,
+//   uploads each day with a background URLSession (continues while the app is suspended or was ended by the system),
+//   resumes from its persisted cursor, and runs in a BGProcessingTask while the phone is idle; the foreground gives it
+//   time only after each round of new data;
+// - Open Wearables (mode ow, the flag apple_sync_engine off, the default): the SDK's own full export of the range (stop,
+//   reset anchors, start; newest first, resumable, continued in the SDK's own background tasks). Limits of the SDK: while
+//   that export runs its rounds are export rounds (new samples arrive with it, newest first, not as a separate
+//   incremental round), and there is no background URLSession of ours on that path. RawSync's types read the range again
+//   with their own anchor set.
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -31,59 +30,16 @@ import 'health_sync.dart';
 import 'raw_sync.dart';
 import 'sync_engine.dart';
 import 'sync_params.dart';
-import 'sync_stats.dart' show SdkSyncStatus;
 
-const String kBackfillPrefix = 'backfill:';
+/// The page's 「补全历史」 button (docs §10): declared on iOS (the phone part needs HealthKit).
+const String kBackfillFeatureJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{backfill:true});';
 
-/// JS defining `window.Watch2WhoopBackfill` (once per page) and the feature.
-const String kBackfillJs = '''
-(function(){
-var B=window.Watch2WhoopBackfill;
-if(!B||B.v!==1){var n=0,w={};
-function call(verb,days){return new Promise(function(res){var id='b'+(++n)+'_'+Date.now();w[id]=res;
-try{Watch2Whoop.postMessage('backfill:'+verb+' '+JSON.stringify({id:id,days:days}))}catch(e){delete w[id];res({ok:false,error:String(e)})}})}
-B=window.Watch2WhoopBackfill={v:1,
-start:function(days){return call('start',days===undefined?90:days)},
-status:function(){return call('status').then(function(r){return r&&r.status?r.status:r})},
-_reply:function(id,r){var f=w[id];if(f){delete w[id];f(r)}},
-_progress:function(s){try{window.dispatchEvent(new CustomEvent('watch2whoop:backfill',{detail:s}))}catch(x){}}};}
-window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},{backfill:{v:1,days:[90],all:true}});
-})();''';
+/// `watch2whoop://backfill?days=90|all` from the page: true when it is that link (the days come from the server's job).
+bool isBackfillLink(Uri uri) => uri.scheme == 'watch2whoop' && uri.host == 'backfill';
 
-/// One `backfill:*` message: verb (start / status), reply id and the days (start only; 0 = all history), or null.
-({String verb, String id, int days})? parseBackfillMessage(String message) {
-  if (!message.startsWith(kBackfillPrefix)) return null;
-  final rest = message.substring(kBackfillPrefix.length);
-  final sp = rest.indexOf(' ');
-  if (sp < 0) return null;
-  final verb = rest.substring(0, sp);
-  if (verb != 'start' && verb != 'status') return null;
-  try {
-    final j = jsonDecode(rest.substring(sp + 1));
-    final id = j is Map ? j['id'] : null;
-    if (id is! String || id.isEmpty || id.length > 64) return null;
-    final d = (j as Map)['days'];
-    var days = kBackfillDays;
-    if (verb == 'start') {
-      if (d == 'all' || d == 0) {
-        days = kAllHistory;
-      } else if (d is int && d > 0 && d <= 3650) {
-        days = d;
-      } else if (d != null) {
-        return null;
-      }
-    }
-    return (verb: verb, id: id, days: days);
-  } catch (_) {
-    return null;
-  }
-}
-
-String backfillReplyJs(String id, Map<String, Object?> r) =>
-    'window.Watch2WhoopBackfill&&window.Watch2WhoopBackfill._reply(${jsonEncode(id)},${jsonEncode(r)});';
-
-String backfillProgressJs(Map<String, Object?> status) =>
-    'window.Watch2WhoopBackfill&&window.Watch2WhoopBackfill._progress(${jsonEncode(status)});';
+/// The page's `onApp` progress for the backfill (docs §10: always with `kind: "backfill"`).
+Map<String, Object?> backfillOnApp(String phase, {int? percent, String? error}) =>
+    {'kind': 'backfill', 'phase': phase, 'percent': ?percent?.clamp(0, 100), 'error': error};
 
 /// Whether going from [previous] to [next] days needs the history read again (a larger range; 0 = all).
 bool rangeGrows(int? previous, int next) {
@@ -92,41 +48,11 @@ bool rangeGrows(int? previous, int next) {
   return isAllHistory(next) || next > previous;
 }
 
-/// The page's status from the OW export and the native engine's status (pure, tested).
-Map<String, Object?> backfillStatus({
-  required int target,
-  required int range,
-  HistoryProgress? ow,
-  Map<String, Object?>? engine,
-  String? error,
-}) {
-  final owActive = ow != null && ow.running && !ow.done;
-  final engActive = engine?['active'] == true;
-  final parts = <int>[
-    if (ow != null && (owActive || ow.done)) ow.percent,
-    if (engine != null && (engActive || engine['done'] == true)) (engine['percent'] as num?)?.toInt() ?? 0,
-  ];
-  final percent = parts.isEmpty ? null : parts.reduce((a, b) => a < b ? a : b);
-  return {
-    'v': 1,
-    'target': target,
-    'range': range,
-    'active': owActive || engActive,
-    'done': parts.isNotEmpty && !owActive && !engActive,
-    'percent': percent,
-    'channel': engine != null && ow != null ? 'both' : (engine != null ? 'engine' : 'ow'),
-    if (ow != null) 'ow': {'percent': ow.percent, 'sent': ow.sent, 'done': ow.done, 'running': ow.running},
-    'engine': ?engine,
-    'error': error ?? engine?['error'],
-  };
-}
-
 class BackfillService {
   BackfillService._();
   static final BackfillService instance = BackfillService._();
   static const _ch = MethodChannel('watch2whoop/native');
   static const _toKey = 'w2w.backfill.to.v1';
-  static const _targetKey = 'w2w.backfill.target.v1';
 
   void Function(String line)? onLog;
 
@@ -140,13 +66,13 @@ class BackfillService {
   }
 
   /// The engine block of the server's last answer says the app's own engine uploads (shadow / app).
-  EngineInfo? get _engine {
+  EngineInfo? get engine {
     final e = EngineInfo.fromStatus(RawSync.instance.lastServerStatus);
     return e != null && e.active ? e : null;
   }
 
-  /// The start of the first-sync window, fixed the first time a backfill starts (the native cursor walks back from it).
-  Future<double> _to() async {
+  /// The start of the first-sync window, fixed the first time a range backfill starts (the cursor walks back from it).
+  Future<double> _firstWindowStart() async {
     final p = await SharedPreferences.getInstance();
     final kept = p.getDouble(_toKey);
     if (kept != null) return kept;
@@ -156,16 +82,46 @@ class BackfillService {
     return to;
   }
 
-  /// Read range [days] (0 = all history): a larger one starts the backfill on every path; a smaller one only changes
-  /// what later full exports read (nothing already on the server is removed).
-  Future<Map<String, Object?>> setRange(int days, {String? token}) async {
+  /// Starts the native engine backfill of [days] (0 = all) back to [to] (default: the first-sync window's start);
+  /// false when the engine is not on for this user or there is no token.
+  Future<bool> startEngine(int days, {double? to, String? token}) async {
+    final e = engine;
+    if (e == null) return false;
+    final state = AppState.instance;
+    final t = token ?? RawSync.instance.lastToken ?? state.accountToken ?? await RawSync.instance.ingestToken();
+    if (t == null) return false;
+    final ios = iosMajor();
+    final reg = await SyncEngine.instance.registry();
+    final r = await _native('backfillStart', {
+      'server': state.config.todayUrl,
+      'token': t,
+      'days': days,
+      'to': to ?? await _firstWindowStart(),
+      'powerOnly': kBackfillPowerOnly,
+      'types': [
+        for (final x in reg)
+          if (x.readByA1 && e.types.contains(x.hk) && (ios == 0 || x.minIos == 0 || ios >= x.minIos))
+            {'hk': x.hk, 'kind': x.kind, 'unit': x.unit},
+      ],
+    });
+    return r != null;
+  }
+
+  /// The native backfill's state (active, done, percent, error …), or null when there is none.
+  Future<Map<String, Object?>?> engineStatus() async {
+    final s = await _native('backfillStatus');
+    if (s == null || (s['active'] != true && s['done'] != true && s['batches'] == 0)) return null;
+    return s;
+  }
+
+  /// Read range [days] (0 = all history) from the sync page / onboarding: a larger one reads the history again on every
+  /// path; a smaller one only changes what later full exports read (nothing already on the server is removed).
+  Future<void> setRange(int days) async {
     final state = AppState.instance;
     final previous = state.config.syncDaysBack;
     await state.update(state.config.copyWith(syncDaysBack: days));
-    (await SharedPreferences.getInstance()).setInt(_targetKey, days);
     final grows = rangeGrows(previous, days);
     final engineMode = await SyncEngine.instance.mode();
-    // Open Wearables: the SDK's own full export of the larger range (not in mode app: there the SDK is paused)
     if (state.config.owConnected && HealthSync.instance.isSignedIn && engineMode != 'app') {
       try {
         await HealthSync.instance.changeRange(days, grows: grows);
@@ -173,63 +129,21 @@ class BackfillService {
         onLog?.call('Backfill: changing the Open Wearables range failed: $e');
       }
     }
-    // the app's own engine: the native backfill (background URLSession + BGProcessingTask)
-    final engine = _engine;
-    if (grows && engine != null) {
-      final t = token ?? RawSync.instance.lastToken ?? state.accountToken ?? await RawSync.instance.ingestToken();
-      if (t != null) {
-        final ios = iosMajor();
-        final reg = await SyncEngine.instance.registry();
-        await _native('backfillStart', {
-          'server': state.config.todayUrl,
-          'token': t,
-          'days': days,
-          'to': await _to(),
-          'powerOnly': kBackfillPowerOnly,
-          'types': [
-            for (final x in reg)
-              if (x.readByA1 && engine.types.contains(x.hk) && (ios == 0 || x.minIos == 0 || ios >= x.minIos))
-                {'hk': x.hk, 'kind': x.kind, 'unit': x.unit},
-          ],
-        });
-      }
-    }
+    final started = grows && await startEngine(days);
     onLog?.call('Backfill: read range ${previous == 0 ? 'all' : previous} -> ${days == 0 ? 'all' : days} days'
-        '${grows ? ' (history is read again)' : ''}${engine != null ? ', engine ${engine.mode}' : ''}');
-    return status();
+        '${grows ? ' (history is read again)' : ''}${started ? ', engine backfill started' : ''}');
   }
 
-  /// The combined progress for the page and the sync page.
-  Future<Map<String, Object?>> status() async {
-    final c = AppState.instance.config;
-    HistoryProgress? ow;
-    if (c.owConnected && HealthSync.instance.isSignedIn) {
-      final SdkSyncStatus s = await HealthSync.instance.status();
-      ow = HistoryProgress.from(s, requestedTypes.length, DateTime.now());
-    }
-    final engine = await _native('backfillStatus');
-    final target = (await SharedPreferences.getInstance()).getInt(_targetKey) ?? c.syncDaysBack;
-    return backfillStatus(
-      target: target,
-      range: c.syncDaysBack,
-      ow: ow,
-      engine: engine == null || (engine['active'] != true && engine['done'] != true && engine['batches'] == 0) ? null : engine,
-    );
-  }
-
-  /// A slice of the engine backfill in the foreground, after the new data went; returns the status when it ran.
-  Future<Map<String, Object?>?> pump() async {
+  /// A slice of the engine backfill in the foreground, after the new data went.
+  Future<void> pump() async {
     final s = await _native('backfillStatus');
-    if (s == null || s['active'] != true) return null;
+    if (s == null || s['active'] != true) return;
     await _native('backfillPump', {'seconds': kBackfillPumpSeconds});
-    return status();
   }
 
   /// Sign-out: stop the native backfill and forget its window.
   Future<void> clear() async {
     await _native('backfillCancel');
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_toKey);
-    await p.remove(_targetKey);
+    await (await SharedPreferences.getInstance()).remove(_toKey);
   }
 }
