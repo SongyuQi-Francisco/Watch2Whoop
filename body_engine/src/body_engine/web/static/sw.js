@@ -4,7 +4,7 @@
    - On 401 (not logged in / logged out) the data cache is cleared; the page also deletes it on logout. Writes (POST / PUT / PATCH / DELETE) are not cached.
    - The Watch2Whoop app's WKWebView runs no service worker; offline.js (flag offline_mode) keeps the page's own copies
      and the queue of writes made offline in IndexedDB, for the app and browsers alike. */
-const SHELL = "be-shell-v140";
+const SHELL = "be-shell-v141";
 const DATA = "be-data";
 const SHELL_FILES = ["./", "index.html", "app.css", "app.js", "ai.css", "ai.js", "jarvis-entry.js", "jarvis-entry.css", "md.js", "ai-media.js", "profile.js", "identities.js", "remarks.js", "circles.js", "circle-feed.js", "account.js", "feedback.js", "data-status.js", "notify.js", "grocery.js", "grocery.css", "diet-profile.js", "diet-profile.css", "water.js", "muscle-map.js", "muscle-body-data.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "intro.js", "sync.js", "sync-repair.js", "notices.js", "offline.js", "i18n.js", "i18n-en.js", "lang-gate.js", "ios-web.js", "avatars.js", "install.html", "manifest.webmanifest", "icon.svg", "apple-touch-icon.png"];
 const TIMEOUT_MS = 8000;
