@@ -340,7 +340,7 @@ def test_api_specials_and_purge(dsn, conn, users, on):
         r = c.get("/v1/users/me/grocery/specials?limit=2", headers=h)
         assert r.status_code == 200 and len(r.json()["items"]) == 2
         assert c.get(f"/v1/users/{ids['A']}/grocery/specials", headers={"Authorization": f"Bearer {tok['B']}"}).status_code == 403
-        assert c.get("/v1/users/me/grocery/list", headers=h).json().get("half_price") is not None
+        assert c.get(f"/v1/users/me/grocery/list?week={DAY}", headers=h).json().get("half_price") is not None   # ?week=: the seeded data's week, not the real "this week"
     finally:
         api.pool.close()
     out = runner.purge(conn, "coles")
