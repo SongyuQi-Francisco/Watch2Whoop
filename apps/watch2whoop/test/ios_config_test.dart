@@ -22,7 +22,8 @@ void main() {
   test('every privacy service the app or the Today page can reach has a usage description', () {
     const required = {
       'NSCameraUsageDescription', // QR scanner; photo / video capture from the Today page file inputs
-      'NSMicrophoneUsageDescription', // "Take Video" from the Today page video input
+      'NSMicrophoneUsageDescription', // "Take Video" from the Today page video input; Jarvis voice input (VoiceInput.swift)
+      'NSSpeechRecognitionUsageDescription', // Jarvis voice input with the on-device recogniser (VoiceInput.swift)
       'NSPhotoLibraryAddUsageDescription', // long press on an image → Save to Photos
       'NSHealthShareUsageDescription',
       'NSHealthUpdateUsageDescription',
