@@ -622,6 +622,13 @@ class RawSync {
 
   final ValueNotifier<RawSyncStatus> status = ValueNotifier(const RawSyncStatus());
   RawSource source = NativeRawSource();
+
+  /// The server's last answer (GET / POST /v1/ingest/healthkit) of this app run, with its `engine` block: the sync
+  /// engine (sync_engine.dart) runs only when that says so, without asking again.
+  Map<String, Object?>? lastServerStatus;
+
+  /// The token the last pass uploaded with (account or upload-only), for the sync engine right after it.
+  String? lastToken;
   bool _running = false;
 
   /// The sync page's log (HealthSync.note, set in main.dart).
@@ -729,6 +736,8 @@ class RawSync {
         }
       }
       _log(rawLogLine(res));
+      if (res.serverStatus != null) lastServerStatus = res.serverStatus;
+      lastToken = res.stop == 'unauthorized' ? null : token;
       status.value = nextRawStatus(status.value, res, DateTime.now(),
           accountRejected: accountToken != null && prefs.getString(_rejectedKey) == tokenFingerprint(accountToken));
       await prefs.setString(_statusKey, jsonEncode(status.value.toJson()));

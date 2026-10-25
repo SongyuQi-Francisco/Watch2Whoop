@@ -38,6 +38,7 @@ import '../resync.dart';
 import '../resync_flow.dart';
 import '../setup_flow.dart';
 import '../sync_bridge.dart';
+import '../sync_engine.dart';
 import '../sync_on_open.dart';
 import '../sync_repair.dart';
 import '../sync_stats.dart' show SdkSyncStatus;
@@ -89,7 +90,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final SyncOnOpen _syncOnOpen = SyncOnOpen(
     canSync: () {
       final c = AppState.instance.config;
-      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn;
+      // mode `app` (#219): the app's own engine is the source, the SDK stays paused (its own uploads still run)
+      return c.owConnected && c.healthRequested && HealthSync.instance.isSignedIn && !_engineMode;
     },
     startRound: () async {
       await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
@@ -276,6 +278,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ow: HealthSync.instance.stats.value,
       raw: RawSync.instance.status.value,
       device: await DeviceSyncState.read(),
+      engineAt: SyncEngine.instance.uploadedAt,
+      engineStop: SyncEngine.instance.last?.stop,
       now: DateTime.now(),
     );
   }
@@ -367,6 +371,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _reportDevice();
   }
 
+  /// The server's sync mode is `app` (sync_engine.dart): no SDK rounds.
+  bool _engineMode = false;
+
+  Future<void> _onEngineMode(String from, String to) async {
+    _engineMode = to == 'app';
+    if (to == 'app') {
+      await HealthSync.instance.pauseForEngine();
+    } else if (from == 'app' && AppState.instance.config.owConnected) {
+      // back from `app` (rollback): the SDK catches up from its own anchors
+      await HealthSync.instance.startSync(Resync.instance.effectiveDaysBack(AppState.instance.config.syncDaysBack));
+    }
+  }
+
   /// The app's own uploads when the background sync is not connected (skipped in onboarding, no account, OW refused):
   /// they do not depend on it, so they run on open / resume as well (at most every 3 minutes) and on the page's syncNow.
   DateTime? _ownAt;
@@ -408,6 +425,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       pageToken: _pageIngestToken,
       appVersion: version,
     );
+    // The app's own sync engine (#219 A1): only while the server's engine block says so (flag apple_sync_engine)
+    final token = RawSync.instance.lastToken;
+    if (token != null && mounted) {
+      await SyncEngine.instance.run(
+        serverUrl: c.todayUrl,
+        token: token,
+        serverStatus: RawSync.instance.lastServerStatus,
+        daysBack: c.syncDaysBack,
+        appVersion: version,
+      );
+    }
   }
 
   /// Setup-link users have no account token: the logged-in page mints an upload-only token (cookie + X-Body-Web) and
@@ -499,6 +527,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       AndroidWebViewController.enableDebugging(kDebugMode);
     }
     // Jarvis voice input on the phone (voice_bridge.dart, #53): the recogniser's events go to the page as they come
+    SyncEngine.instance.onModeChange = (from, to) => unawaited(_onEngineMode(from, to));
+    SyncEngine.instance.mode().then((m) => _engineMode = m == 'app');
     VoiceBridge.instance
       ..attach()
       ..onEvent = (e) => _web.runJavaScript(voiceEventJs(e)).catchError((_) {});

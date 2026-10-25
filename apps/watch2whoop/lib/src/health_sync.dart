@@ -248,6 +248,18 @@ class HealthSync {
     await OpenWearablesHealthSdk.startBackgroundSync(syncDaysBack: syncDaysBack);
   }
 
+  /// The server switched this user to the app's own sync engine (contract §7, mode `app`): the SDK stops syncing in
+  /// the background; its credentials and anchors stay, so going back resumes where it stopped.
+  Future<void> pauseForEngine() async {
+    if (!hasHealthSync || !OpenWearablesHealthSdk.isConfigured) return;
+    try {
+      await OpenWearablesHealthSdk.stopBackgroundSync();
+      await note('Open Wearables sync paused: the app\'s own sync engine is the source now');
+    } catch (e) {
+      await note('Pausing Open Wearables sync failed: $e');
+    }
+  }
+
   /// Retry after failure: resumes an interrupted session if there is one, otherwise starts a new round.
   Future<void> retry(int syncDaysBack) async {
     if (!hasHealthSync) return;

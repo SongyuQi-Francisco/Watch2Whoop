@@ -47,6 +47,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # The sync engine's HealthKit type registry (#219 A1): rawdata/hk_types.engine_json() of the server, byte for byte
+    - assets/healthkit_types.json
   config:
     # All plugins go through CocoaPods (OW SDK 0.0.25 has no Swift Package yet).
     enable-swift-package-manager: false

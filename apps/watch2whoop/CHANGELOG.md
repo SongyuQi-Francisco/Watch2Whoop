@@ -64,6 +64,13 @@ shared `## <marketing version>` section, and the iOS release never sees it.
   the sheet had been swallowed, #214); the phone's state (Background App Refresh, Low Power Mode, locked, last attempt /
   upload, last error, types iOS never asked about, the SDK's sync state) goes to `PUT /v1/ingest/sync-device` after every
   round and on return to the foreground; the sync page says "only iPhone data, no watch" apart from "sync is broken".
+- The app's own HealthKit sync engine, step A1 (#219, `docs/apple-sync-engine-app-contract.md`; off unless the server's
+  `engine` block says so — flag `apple_sync_engine`, off by default): registry `assets/healthkit_types.json` (the
+  server's `rawdata/hk_types.engine_json()`), native reader `ios/Runner/SyncEngine.swift`, runner and upload
+  `lib/src/sync_engine.dart`. Per type the newest 48 hours first (`recent`), then the anchored crawl (`backfill` on
+  Wi-Fi only, then `incremental`); columnar gzip batches ≤ 1 MB, anchors committed only after 200, retries of the same
+  batch on 429 / 5xx / network errors, 401 / 409 / 413 / 422 as the contract says, `runs[]` per pass, mode `app` pauses
+  the Open Wearables SDK. Raw quantities and categories only (workouts and statistics buckets: A3; background: A2).
 - Sync robustness (#295 A2 / A3): the Open Wearables auth error is taken from the SDK's `authErrorStream` (the log text
   stays a fallback, plus "client errors in a row without an accepted upload"); a sign-in that fails after the invitation
   code was redeemed is now an error the user sees instead of a silent "not connected". RawSync: when the account token

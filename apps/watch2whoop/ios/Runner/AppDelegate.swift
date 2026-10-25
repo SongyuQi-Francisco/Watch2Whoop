@@ -47,7 +47,10 @@ import HealthKit
       case "deviceState": result(DeviceState.shared.snapshot())
       default:
         // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
-        if !RawSync.shared.handle(call, result) { result(FlutterMethodNotImplemented) }
+        // engine*: the app's own sync engine reader (SyncEngine.swift, #219 A1)
+        if !RawSync.shared.handle(call, result) && !SyncEngine.shared.handle(call, result) {
+          result(FlutterMethodNotImplemented)
+        }
       }
     }
     // watch2whoop://setup?… (opened by scanning the setup QR code with the camera): store it first, Dart picks it up later

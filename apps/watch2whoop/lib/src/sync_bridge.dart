@@ -130,8 +130,15 @@ class SyncStatusInput {
     required this.ow,
     required this.raw,
     this.device = const DeviceSyncState(),
+    this.engineAt = const {},
+    this.engineStop,
     required this.now,
   });
+
+  /// The app's own sync engine (#219, only while the server turns it on): last accepted upload per HealthKit type of
+  /// this app run, and why its last pass stopped.
+  final Map<String, DateTime> engineAt;
+  final String? engineStop;
 
   /// This phone can sync Health at all (iOS; not the Android build yet).
   final bool supported;
@@ -285,6 +292,7 @@ Map<String, Object?> buildSyncStatus(SyncStatusInput s) {
     for (final e in s.ow.perType.entries)
       {'key': e.key, 'channel': 'ow', 'count': e.value, 'lastUpload': _iso(s.ow.perTypeAt[e.key])},
     for (final e in s.raw.kindsAt.entries) {'key': e.key, 'channel': 'app', 'lastUpload': _iso(e.value)},
+    for (final e in s.engineAt.entries) {'key': e.key, 'channel': 'engine', 'lastUpload': _iso(e.value)},
   ]..sort((a, b) => '${b['lastUpload'] ?? ''}'.compareTo('${a['lastUpload'] ?? ''}'));
   return {
     'v': 1,
@@ -294,7 +302,8 @@ Map<String, Object?> buildSyncStatus(SyncStatusInput s) {
     'authorized': {'asked': s.healthAsked, 'needsAsk': s.healthNeedsAsk},
     'running': s.running,
     'firstSyncDone': s.firstSyncDone,
-    'lastUpload': _iso(_latest([s.ow.lastUploadAt, s.raw.lastUpload])),
+    'lastUpload': _iso(_latest([s.ow.lastUploadAt, s.raw.lastUpload, ...s.engineAt.values])),
+    if (s.engineAt.isNotEmpty || s.engineStop != null) 'engine': {'stop': s.engineStop},
     'lastRound': _iso(_latest([s.ow.lastCompleteAt, s.raw.lastRun])),
     'device': {
       'net': s.device.net,
@@ -529,7 +538,7 @@ Map<String, Object?> buildDeviceReport(
     'low_power': d.lowPower,
     'health_readable': d.protectedData,
     'last_attempt_at': _iso(_latest([s.ow.lastCompleteAt, s.ow.lastErrorAt, s.raw.lastRun])),
-    'last_upload_at': _iso(_latest([s.ow.lastUploadAt, s.raw.lastUpload])),
+    'last_upload_at': _iso(_latest([s.ow.lastUploadAt, s.raw.lastUpload, ...s.engineAt.values])),
     'last_error': deviceLastError(syncProblems(s)),
     'unasked_types': unasked.take(60).toList(),
     // extra, for the server's sync investigation (ignored by servers that do not read them)
