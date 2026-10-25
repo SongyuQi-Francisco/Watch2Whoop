@@ -1184,6 +1184,8 @@ I18N.addEn({
   "还没有朋友看到你，加入圈子后他们才看得到": "No friends can see you yet; they will once you join a circle",
   "不同朋友看到的范围不一样，这里按所有人的并集显示": "Friends see different things; this shows everything any friend can see",
   "未同步": "Not synced",
+  "今天的分数计算中": "Today's scores are being calculated",
+  "最近同步 {t}": "Last synced {t}",
   "棒": "Well done",
   "正在查看：{name}（只读）": "Viewing: {name} (read-only)",
   // Friends tab leaderboards (app.js)

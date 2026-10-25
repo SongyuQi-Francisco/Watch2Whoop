@@ -3,7 +3,7 @@ dissolve, shares.circle_scopes kept apart from hand-made grants, cross-user acce
 after leaving, never ECGs), consent gate, invite limits, the referral hook (#57) and account deletion.
 Test database body_test_friends (BODY_TEST_DB_NAME_FRIENDS), recreated on every run; skipped without Postgres."""
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import psycopg
 import pytest
@@ -72,7 +72,8 @@ def clean(dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("DELETE FROM circles")
         conn.execute("DELETE FROM shares")
-        for t in ("daily_scores", "workouts", "healthspan_weekly", "daily_metrics", "assistant_status"):
+        for t in ("daily_scores", "workouts", "healthspan_weekly", "daily_metrics", "assistant_status", "ow_watch",
+                  "rawdata_uploads", "shortcut_uploads", "sync_state"):
             conn.execute(f"DELETE FROM {t}")
     yield
 
@@ -544,6 +545,115 @@ def test_card_without_scores_shows_no_numbers_and_last_sync_date(client, world, 
     assert not any(d["today"] and d["recovery"] is not None for d in sc["week"])
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.execute("DELETE FROM daily_scores")
+
+
+def _arrived(dsn, uid, ago, via="ow_watch"):
+    """Data reached the server `ago` ago, by one of the three ways in."""
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        if via == "ow_watch":
+            conn.execute("INSERT INTO ow_watch (user_id, ow_synced_at) VALUES (%s, now() - %s) ON CONFLICT (user_id) DO UPDATE "
+                         "SET ow_synced_at = EXCLUDED.ow_synced_at", (uid, ago))
+        elif via == "app":
+            conn.execute("INSERT INTO rawdata_uploads (user_id, batch_id, received_at) VALUES (%s, gen_random_uuid(), now() - %s)",
+                         (uid, ago))
+        else:
+            conn.execute("INSERT INTO shortcut_uploads (user_id, file, format, bytes, rows, imported_at) "
+                         "VALUES (%s, 'f', 'cols-v1', 1, 1, now() - %s)", (uid, ago))
+
+
+def _ann_scores(client, tok):
+    return client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]["scores"]
+
+
+def test_card_after_midnight_with_fresh_data_is_computing_not_unsynced(client, world, dsn):
+    """Today has no scores yet (just after the person's midnight) but the phone synced 5 minutes ago: the card says the
+    scores are being computed, shows when data arrived, and never "not synced" with the last scored day."""
+    ids, tok = world
+    a = ids["Ann"]
+    today = _scores(dsn, a, days=1, recovery=60)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE daily_scores SET date = date - 1 WHERE user_id = %s", (a,))   # only yesterday is scored
+    _arrived(dsn, a, timedelta(minutes=5))
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    s = _ann_scores(client, tok)
+    assert s["state"] == "pending" and not s["synced_today"] and s["recovery"] is None
+    assert s["last_date"] == str(today - timedelta(days=1))                      # the last SCORED day, no longer shown as the sync
+    assert s["last_sync_min"] in (4, 5, 6) and s["last_sync_date"] in (str(today), str(today - timedelta(days=1)))
+    assert datetime.fromisoformat(s["last_sync_at"]).utcoffset() is not None     # an absolute time, not a bare local one
+    assert s["last_sync_at"][17:19] == "00"                                        # to the minute, never the seconds
+
+
+def test_card_sync_state_follows_the_36_hour_limit(client, world, dsn):
+    ids, tok = world
+    a = ids["Ann"]
+    _scores(dsn, a, days=1, recovery=60)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE daily_scores SET date = date - 3 WHERE user_id = %s", (a,))
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    s = _ann_scores(client, tok)
+    assert s["state"] == "stale" and s["last_sync_at"] is None                    # old scores, no record of any data
+    _arrived(dsn, a, timedelta(hours=35))
+    s = _ann_scores(client, tok)
+    assert s["state"] == "pending" and s["last_sync_min"] == 35 * 60
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE ow_watch SET ow_synced_at = now() - interval '37 hours' WHERE user_id = %s", (a,))
+    s = _ann_scores(client, tok)
+    assert s["state"] == "stale" and s["last_sync_min"] == 37 * 60
+    assert P.SYNC_STALE_AFTER == timedelta(hours=36)
+    from body_engine.sync import params as sync_params
+    assert P.SYNC_STALE_AFTER == sync_params.SYNC_BROKEN_AFTER                    # one definition of "sync stopped"
+
+
+def test_card_never_synced_and_scored_today(client, world, dsn):
+    ids, tok = world
+    a = ids["Ann"]
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    s = _ann_scores(client, tok)
+    assert s["state"] == "never" and s["last_sync_at"] is None and s["last_date"] is None
+    _scores(dsn, a, recovery=70)
+    _arrived(dsn, a, timedelta(hours=50))                                          # old data but today is scored: numbers show
+    s = _ann_scores(client, tok)
+    assert s["state"] == "scored" and s["synced_today"] and s["recovery"] == 70
+
+
+def test_card_last_sync_counts_app_and_shortcut_uploads_and_hides_seconds(client, world, dsn):
+    ids, tok = world
+    a = ids["Ann"]
+    _scores(dsn, a, days=1, recovery=60)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE daily_scores SET date = date - 5 WHERE user_id = %s", (a,))
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    _arrived(dsn, a, timedelta(hours=30))
+    _arrived(dsn, a, timedelta(hours=3), via="app")
+    s = _ann_scores(client, tok)
+    assert s["state"] == "pending" and s["last_sync_min"] in (179, 180, 181)       # the newest way in wins
+    _arrived(dsn, a, timedelta(minutes=1), via="shortcut")
+    s = _ann_scores(client, tok)
+    assert s["last_sync_min"] == 0                                                  # under JUST_NOW_MIN minutes: just "now"
+    assert s["last_sync_at"][17:19] == "00"
+
+
+def test_card_last_sync_is_part_of_the_scores_grant(client, world, dsn):
+    """A viewer without the scores grant gets no card block at all, so no sync time either."""
+    ids, tok = world
+    _arrived(dsn, ids["Ann"], timedelta(minutes=10))
+    join(client, tok["Ben"], circle(client, tok["Ann"], scopes=["sleep"])["invite"]["code"])
+    ann = client.get("/v1/friends/overview", headers=h(tok["Ben"])).json()["members"][0]
+    assert ann["scores"] is None and "last_sync" not in str(ann)
+
+
+def test_ai_overview_uses_the_same_sync_reckoning(client, world, dsn):
+    ids, tok = world
+    a = ids["Ann"]
+    _scores(dsn, a, days=1, recovery=60)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("UPDATE daily_scores SET date = date - 1 WHERE user_id = %s", (a,))
+    _arrived(dsn, a, timedelta(minutes=20))
+    join(client, tok["Ben"], circle(client, tok["Ann"])["invite"]["code"])
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        out = run_tool(conn, ids["Ben"], "mcp:test", "get_friends_overview", {})
+    ann = {m["name"]: m for m in out["members"]}["Ann"]
+    assert ann["sync"] == "pending" and ann["last_sync"].startswith("20")
 
 
 def test_own_card_shows_what_friends_see(client, world, dsn):
