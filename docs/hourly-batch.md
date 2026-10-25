@@ -79,7 +79,52 @@ The old way is measured by the production run: 14.5 s per user, of which about 6
    per-user commands still exist).
 3. Look at the first hourly log: the summary line shows users, skipped steps, failures, seconds.
 
+## New data within minutes (migration 770)
+The hourly job alone meant: the phone uploads the night's data to Open Wearables at 07:00, Body Engine pulls it at 08:10, the
+recovery score follows. Two pieces make it minutes; the hourly job stays as the safety net.
+
+**1. Noticing uploads: `sync/ow_watch.py`.** Inside the API process, every 30 s, one request to OW: `GET /users` sorted by
+`last_synced_at` (OW stamps it after every saved SDK batch), newest first, stopping at 6 hours back. A user has new data when OW's
+time is later than both the import last queued for them (`ow_watch.queued_through`) and the start of the last OW import or probe
+from any path (`sync_state.last_synced_at`). Once their uploads went quiet for 45 s (an upload round is several batches seconds
+apart) and at most once per 3 minutes per user, `sync_refresh` is set to `scores_queued` with `import_queued_at`. Nothing else
+happens while nobody uploads: no container, no write. Users without consent, without an OW link, or with a refresh running are left
+alone. Settings in `sync/params.py` (`OW_WATCH_*`); `BODY_OW_WATCH=off` disables it; `body-engine ow-watch` runs one round by hand.
+
+**2. Doing the work: the existing queue.** The per-minute job that already runs `sync-refresh-run` when something is queued (on the
+server: the imports timer, a one-off container only then) now imports from OW first when `import_queued_at` is set (`import-ow` for
+that user under the same per-user lock as the app's refresh), then recomputes the scores, insights and rules as before. Afterwards
+the hourly job's fingerprints are stored, so the hourly job skips the user. The Today page shows 「同步中…」 while queued and
+reloads when the scores are in (`web/static/sync.js`, unchanged); there is no server-side cache of the Today data.
+
+**3. Making the recompute short: `importers/ow_cache.py`.** The recompute was slow because the scoring engine reads every raw heart
+rate / HRV / respiratory rate / SpO2 / wrist temperature sample from a year before the scoring start, and the stress score 104 days
+of heart rate / steps / HRV, over OW's HTTP API. Profiled read-only on the production server for the user with the most history
+(14 months of watch data, 2026-10-25): 94 s in total, of which 80 s were 356 requests to OW's `/timeseries` (225 ms per 1000
+samples), 9 s the day-by-day scoring, 1 s body age. Now:
+- A local copy of those samples (`ow_sample_cache`, per user / type / UTC day / source, arrays of epoch microseconds and values;
+  measured locally: 475 000 samples = 6 MB, 300 000 read back in 0.4 s). A recompute reads the copy and fetches from OW only the
+  last 2 days (late uploads land there). `import-ow` stores what it pulls anyway, so late samples a few days old reach the copy.
+- Full recomputes (`hourly-batch --full` at night, `compute-scores` without `--start`, a new user's history) re-read everything
+  from OW and replace the copy, so changes deep in the history arrive within a day, as before for anything older than the hourly
+  window. A re-linked OW user or a new `CACHE_VERSION` invalidates the copy. A broken copy (missing table) falls back to reading OW.
+- Scores are the same: the copy hands out exactly the samples OW returns (`tests/test_ow_cache.py` compares samples and the
+  `daily_scores` rows computed both ways).
+- The day loop no longer scans the whole history per night (raw-series time lists and the sleep-stage segments are indexed
+  once): 3.5 s → 0.6 s for 14 months of synthetic data, identical output.
+
+Expected: about 15–25 s per recompute for that user (container start, import of the last days, copy read, two days from OW,
+scoring, stress, body age, rules) instead of 90–200 s, and **at most about 3 minutes from the end of an upload to the new
+scores** (45 s quiet + up to 30 s until the next poll + up to 60 s until the per-minute job + the recompute). The first recompute
+of each user after the deploy fills the copy and takes as long as before.
+
 ## 中文摘要
 每小时 / 每晚任务原来对每个用户、每一步各起一个容器（启动约 2 秒），19 个用户 275 秒，300 个用户约 72 分钟。现在 `body-engine hourly-batch`
 在一个进程里循环所有用户：每个用户独立连接和异常隔离，`--workers N` 并发，上次成功后输入（按内容指纹 + 本地日期）没变的步骤跳过（至少每 2 小时
 重算一次，doctor 把超过 3 小时的评分判为失败），`--full` 用于夜间。日志仍是一步一行的老格式，最后一行是 `BATCH_RESULT {json}`。
+
+新数据几分钟内出分（迁移 770）：API 进程每 30 秒问一次 OW 哪些用户刚上传过（`GET /users` 按 `last_synced_at` 排序，一个请求），上传停了
+45 秒的用户在 `sync_refresh` 里排队（同一用户最多 3 分钟一次）；每分钟任务已有的 `sync-refresh-run` 先 import-ow 再算分，算完记下每小时任务的
+指纹（每小时那次就跳过）。算分慢是因为每次都经 HTTP 从 OW 读一年多的原始样本（生产实测 94 秒里 80 秒是 356 次请求），现在原始样本在本地有一份
+副本（`ow_sample_cache`），只从 OW 读最近 2 天，夜间完整重算时整份刷新；逐天循环也不再每晚扫全部历史。预计单次重算 15–25 秒，上传结束到出分
+最多约 3 分钟。每小时任务保留做兜底。

@@ -70,3 +70,15 @@ RESYNC_ALL_MIN_INTERVAL = timedelta(hours=6)    # before an "all history" reques
 RESYNC_PHONE_STALE = timedelta(hours=24)        # a phone phase without a report for this long is no longer running
 RESYNC_WINDOW_DAYS = 30                         # OW import window of the server part (same as importers/ow.WINDOW)
 RESYNC_TIME_BUDGET = 240                        # seconds per sync-refresh-run step (the next run continues)
+
+# Scores within minutes of new watch data (sync/ow_watch.py, docs/hourly-batch.md "New data within minutes"): operational
+# limits, not health rules. The API process asks Open Wearables every OW_WATCH_POLL_S which users uploaded (one request).
+# An upload round of the iOS SDK is several batches a few seconds apart (OW's worker log on the production server,
+# 2026-10-25): a user is queued once nothing new arrived for OW_WATCH_QUIET, then at most once per OW_WATCH_MIN_GAP (a
+# phone that uploads all the time must not keep the server recomputing). With the per-minute job that runs the queue and
+# a recompute of about 20 s this keeps "upload finished -> new scores on the Today page" under 3 minutes: 45 + 30 + 60 + 25 s.
+OW_WATCH_POLL_S = 30
+OW_WATCH_QUIET = timedelta(seconds=45)
+OW_WATCH_MIN_GAP = timedelta(minutes=3)
+OW_WATCH_LOOKBACK = timedelta(hours=6)    # older uploads are left to the hourly job
+OW_WATCH_MAX_PAGES = 5                     # GET /users pages of 100 users, newest upload first

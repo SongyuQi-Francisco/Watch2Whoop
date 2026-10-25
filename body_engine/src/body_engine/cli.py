@@ -283,6 +283,8 @@ def main() -> None:
     hb.add_argument("--user-id", type=int, default=None)
     sr = sub.add_parser("sync-refresh-run", help="recompute scores for users whose on-demand refresh (app opened / pull to refresh) is queued; nothing queued = nothing done")
     sr.add_argument("--user-id", type=int, default=None)
+    sub.add_parser("ow-watch", help="one round of the API's poller (sync/ow_watch.py): which users uploaded to Open Wearables "
+                                    "lately; queue an import + score recompute (sync-refresh-run) for the ones that went quiet")
     hd = sub.add_parser("hk-derive-run", help="app sync engine (flag apple_sync_engine): derive daily values, sleep and workouts "
                                               "from the uploaded HealthKit samples of the queued days (hk_dirty_days), oldest "
                                               "first; idempotent, time-budgeted, nothing queued = nothing done")
@@ -688,7 +690,7 @@ def main() -> None:
             if not args.no_scores:
                 ow_client = OWClient()
                 res["workouts_enriched"] = workouts_importer.enrich_pending(conn, ow_client, args.user_id)
-                res["scores"] = scores_engine.run(conn, ow_client, args.user_id)
+                res["scores"] = scores_engine.run(conn, ow_client, args.user_id, ow_cache="refresh")
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-raw":
             from .rawdata import export as rx_export
@@ -740,6 +742,9 @@ def main() -> None:
         elif args.cmd == "sync-refresh-run":
             from .sync import refresh as sync_refresh
             print(json.dumps(sync_refresh.run_queued(conn, args.user_id), default=str, ensure_ascii=False))
+        elif args.cmd == "ow-watch":
+            from .sync import ow_watch
+            print(json.dumps(ow_watch.run_once(conn), default=str, ensure_ascii=False))
         elif args.cmd == "hk-derive-run":
             from .rawdata import derive as hk_derive
             print(json.dumps(hk_derive.run(conn, args.user_id, args.max_days), default=str, ensure_ascii=False))
@@ -755,9 +760,11 @@ def main() -> None:
                 print(text)
         elif args.cmd == "compute-scores":
             ow_client = OWClient()
+            # OW raw samples through the local copy (importers/ow_cache.py); a full recompute re-reads and replaces it
+            mode = "use" if args.start else "refresh"
             res = scores_engine.run(conn, ow_client, args.user_id, args.start, args.end,
-                                    args.archive_dir or shortcut.user_archive_dir(args.user_id))
-            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id)   # body age (weekly), stress
+                                    args.archive_dir or shortcut.user_archive_dir(args.user_id), ow_cache=mode)
+            res["insights"] = insights_jobs.run(conn, ow_client, args.user_id, ow_cache=mode)   # body age (weekly), stress
             print(json.dumps(res, default=str, ensure_ascii=False))
         elif args.cmd == "import-records":
             print(records_importer.format_report(records_importer.run(conn, args.user_id)))

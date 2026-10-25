@@ -117,11 +117,11 @@ def process(conn: psycopg.Connection, job: dict, client=None) -> dict:
         from ..importers.shortcut import user_archive_dir
         archive = user_archive_dir(uid)
         with conn.transaction():
-            sc = scores_engine.run(conn, client, uid, archive_dir=archive)
+            sc = scores_engine.run(conn, client, uid, archive_dir=archive, ow_cache="refresh")
         res["scores"] = {k: sc.get(k) for k in ("origin", "rows", "with_sleep_score", "with_recovery", "with_strain")}
         try:
             with conn.transaction():
-                insights_jobs.run(conn, client, uid)
+                insights_jobs.run(conn, client, uid, ow_cache="refresh")
         except Exception as e:  # noqa: BLE001
             notes.append(f"insights：{e}")
     except Exception as e:  # noqa: BLE001

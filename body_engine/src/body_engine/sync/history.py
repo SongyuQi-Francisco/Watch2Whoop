@@ -108,8 +108,8 @@ def _score(conn, user_id: int, client) -> dict:
     from ..insights import jobs as insights_jobs
     from ..rules import engine as rules_engine
     from ..scores import engine as scores_engine
-    res = scores_engine.run(conn, client, user_id, None, None, shortcut.user_archive_dir(user_id))
-    res["insights"] = insights_jobs.run(conn, client, user_id)
+    res = scores_engine.run(conn, client, user_id, None, None, shortcut.user_archive_dir(user_id), ow_cache="refresh")
+    res["insights"] = insights_jobs.run(conn, client, user_id, ow_cache="refresh")
     rules_engine.run(conn, user_id, None)
     return res
 
