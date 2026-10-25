@@ -92,14 +92,21 @@ def enabled(conn: psycopg.Connection, user_id: int) -> bool:
 
 
 MODES = ("ow", "shadow", "app")      # = importers/common.SYNC_MODES
+PRIMARY_FLAG = "apple_sync_primary"
 
 
 def mode(conn: psycopg.Connection, user_id: int) -> str:
-    """ow = only Open Wearables feeds the scores; shadow = the engine uploads too, stored for comparison (§3.2.3).
-    `app` (the engine's values take part, above ow; D4) is already handled by the derivation (rawdata/derive.py),
-    resolve_daily (importers/common.py) and the workout duplicates (training/importer.refresh_duplicates); the cut-over
-    step S5 adds the flag apple_sync_primary that turns it on here."""
-    return "shadow" if enabled(conn, user_id) else "ow"
+    """ow = only Open Wearables feeds the scores (flag apple_sync_engine off); shadow = the engine uploads too, stored for
+    the comparison (§3.2.3); app = the engine's values take part, above ow (D4): only after `body-engine sync-mode` switched
+    this user (sync_mode_state.mode = app, rawdata/cutover.py) AND while the kill switch apple_sync_primary is still on for
+    them and they are not pinned to ow. Turning the flag off or pinning takes effect on the next read (rollback); the
+    cut-over then cleans up the derived data."""
+    if not enabled(conn, user_id):
+        return "ow"
+    st = conn.execute("SELECT mode, pin FROM sync_mode_state WHERE user_id = %s", (user_id,)).fetchone()
+    if st and st["mode"] == "app" and st["pin"] is None and flags.enabled(conn, user_id, PRIMARY_FLAG):
+        return "app"
+    return "shadow"
 
 
 def uses_engine(batch: dict) -> bool:
@@ -207,7 +214,7 @@ def rate_limit(conn: psycopg.Connection, user_id: int, phase: str | None, size: 
                         FROM rawdata_uploads WHERE user_id = %(u)s AND received_at >= least(%(m)s, %(d)s)""",
                      {"u": user_id, "m": minute, "d": day0}).fetchone()
     if r["n"] >= (BIG_BATCHES_PER_MINUTE if big else BATCHES_PER_MINUTE):
-        raise RateLimited(60 - (now - r["oldest"]).total_seconds())
+        raise RateLimited(60 - (now - (r["oldest"] or now)).total_seconds())
     if r["day_bytes"] + (size or 0) > (BIG_DAY_BYTES if big else DAY_BYTES):
         raise RateLimited((day0 + timedelta(days=1) - now).total_seconds())
 
@@ -375,8 +382,9 @@ def _runs(conn, user_id: int, runs: list[dict], app_version: str | None) -> int:
 
 
 def write(conn: psycopg.Connection, user_id: int, batch: dict, tz: ZoneInfo, deleted: list[str]) -> dict:
-    """Store the engine fields of a checked batch (does not commit). Returns the counts and `changed_from`, the earliest
-    day of a direct-upload type (HK_TYPES) whose daily value was remade (the caller queues the score recompute)."""
+    """Store the engine fields of a checked batch (does not commit). Returns the counts, `changed_from`, the earliest
+    day of a direct-upload type (HK_TYPES) whose daily value was remade, and `dirty_from`, the earliest day queued for
+    derivation (the caller queues the score recompute: from changed_from, in the app mode from dirty_from)."""
     now = datetime.now(timezone.utc)
     sources = batch.get("sources") or []
     src_ids = _sources(conn, user_id, sources)
@@ -395,10 +403,12 @@ def write(conn: psycopg.Connection, user_id: int, batch: dict, tz: ZoneInfo, del
     if batch.get("range_done"):
         removed, gone_pairs = _range_done(conn, user_id, str(batch["range_done"]))
         pairs |= gone_pairs
-    mark_dirty(conn, user_id, pairs | stat_pairs)
+    dirty = pairs | stat_pairs
+    mark_dirty(conn, user_id, dirty)
     direct = {(hk, d) for hk, d in pairs if hk in T.BY_HK}
     Q.rebuild_days(conn, user_id, direct, datetime.now(tz).date())
     return {"samples": sum(r["type"] != WORKOUT for r in new), "workouts": sum(r["type"] == WORKOUT for r in new),
             "buckets": buckets, "removed": removed, "deleted": n_del, "skipped": skipped, "dropped": dropped + b_dropped,
             "runs": _runs(conn, user_id, batch.get("runs") or [], batch.get("app_version")),
-            "changed_from": min((d for _, d in direct), default=None)}
+            "changed_from": min((d for _, d in direct), default=None),
+            "dirty_from": min((d for _, d in dirty), default=None)}

@@ -23,6 +23,7 @@ from ..records.api import _found, _owner, _self, current_user, get_conn
 from . import engine as EN
 from . import ingest as I
 from . import store
+from . import sync_status as SS
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["rawdata"])
 ingest_router = APIRouter(tags=["rawdata"])
@@ -246,13 +247,23 @@ class IngestIn(_In):
 
 
 def ingest_user(request: Request, conn=Depends(get_conn), authorization: Annotated[str | None, Header()] = None) -> dict:
-    """Bearer only (no cookie): the account token (scope write) or the upload-only token (scope ingest)."""
+    """Bearer only (no cookie): the account token (scope write) or the upload-only token (scope ingest). A refused token
+    that belongs to someone (revoked, or the wrong scope) and a blocked account are recorded for their sync status."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "缺少 Bearer token")
-    user = auth.user_for_ingest_token(conn, authorization.removeprefix("Bearer ").strip())
+    token = authorization.removeprefix("Bearer ").strip()
+    user = auth.user_for_ingest_token(conn, token)
     if user is None:
+        known = conn.execute("SELECT user_id, revoked_at FROM api_tokens WHERE token_sha256 = %s",
+                             (auth.hash_token(token),)).fetchone()
+        if known is not None:
+            SS.record_failure(conn, known["user_id"], 401, "token_revoked" if known["revoked_at"] else "token_scope")
         raise HTTPException(401, "token 无效或已吊销")
-    account_api.gate(user, request.url.path)
+    try:
+        account_api.gate(user, request.url.path)
+    except HTTPException as e:
+        SS.record_failure(conn, user["id"], e.status_code, str(e.detail)[:60])
+        raise
     return user
 
 
@@ -260,8 +271,19 @@ def _too_large():
     return HTTPException(413, L("这一批太大，请分小一点", "This batch is too large; send smaller batches"))
 
 
-async def ingest_body(request: Request) -> tuple[IngestIn, int]:
-    """The batch and its size on the wire; the body may be gzip (Content-Encoding)."""
+async def ingest_body(request: Request, conn=Depends(get_conn), viewer=Depends(ingest_user)) -> tuple[IngestIn, int]:
+    """The batch and its size on the wire; the body may be gzip (Content-Encoding). A body refused here is recorded
+    (reason format) for the user's sync status."""
+    try:
+        return await _parse_body(request)
+    except HTTPException as e:
+        code = {413: "too_large", 415: "encoding", 400: "bad_gzip"}.get(e.status_code, "validation")
+        SS.record_failure(conn, viewer["id"], e.status_code, code, phase=None,
+                          app_version=request.headers.get("x-app-version"))
+        raise
+
+
+async def _parse_body(request: Request) -> tuple[IngestIn, int]:
     if int(request.headers.get("content-length") or 0) > I.MAX_BODY_BYTES:
         raise _too_large()
     raw = await request.body()
@@ -290,24 +312,36 @@ def ingest_healthkit(conn=Depends(get_conn), viewer=Depends(ingest_user), payloa
     engine's samples, workouts, statistics, ranges and runs); idempotent (HealthKit UUID, batch_id). JSON, optionally
     gzip. 409 consent_required / engine_disabled / type_paused and 429 (Retry-After) store nothing."""
     body, size = payload
+    uid = viewer["id"]
+
+    def fail(status: int, code: str) -> None:
+        SS.record_failure(conn, uid, status, code, body.batch_id, body.phase, body.app_version)
+
     for h in body.heartbeats:
         if h.end < h.start or (h.gaps is not None and len(h.gaps) != len(h.beats)):
+            fail(422, "contract")
             raise HTTPException(422, L("心跳序列的时间或 gaps 不对", "Bad heartbeat series: times or gaps"))
+    batch = body.model_dump()
     try:
-        res = I.ingest(conn, viewer["id"], body.model_dump(), size or None)
+        res = I.ingest(conn, uid, batch, size or None)
     except PermissionError:
+        fail(409, "consent_required")
         raise HTTPException(409, "consent_required")
     except EN.Refused as e:
-        conn.rollback()
+        fail(409, str(e))
         raise HTTPException(409, str(e))
     except EN.RateLimited as e:
-        conn.rollback()
+        fail(429, "rate_limited")
         return JSONResponse({"detail": "rate_limited", "retry_after": e.retry_after}, status_code=429,
                             headers={"Retry-After": str(e.retry_after)})
     except I.IngestError as e:
-        conn.rollback()
+        fail(422, "contract")
         raise HTTPException(422, str(e))
-    return {**res, "status": I.status(conn, viewer["id"])}
+    except Exception as e:
+        fail(500, type(e).__name__)
+        raise
+    # engine batches get the light status (no counts over the user's samples: keeps a batch well under the 2 s budget)
+    return {**res, "status": I.status(conn, uid, light=EN.uses_engine(batch))}
 
 
 @ingest_router.get("/v1/ingest/healthkit")

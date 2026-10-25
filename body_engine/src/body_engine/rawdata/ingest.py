@@ -153,6 +153,9 @@ def _write_engine(conn, user_id: int, batch: dict, ctx: dict) -> dict:
         return {}
     r = EN.write(conn, user_id, batch, _tz(conn, user_id), ctx["deleted"])
     _changed(ctx, r.pop("changed_from"))
+    dirty_from = r.pop("dirty_from")
+    if ctx["mode"] == "app":   # the engine's data counts: derive + recompute from the earliest changed day (sync-refresh-run)
+        _changed(ctx, dirty_from)
     return r
 
 
@@ -202,7 +205,7 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
     # Decode every ECG first: a bad recording rejects the whole batch before anything is written
     ctx = {**flags_now, "ecgs": [(it, _ecg(it)) for it in batch.get("ecgs") or []],
            "deleted": [str(u) for u in batch.get("deleted") or []], "changed_from": None,
-           "engine": engine, "uses_engine": uses}
+           "engine": engine, "uses_engine": uses, "mode": EN.mode(conn, user_id) if engine else "ow"}
     counts = dict.fromkeys(COUNTS, 0)
     try:
         for write in WRITERS:
@@ -223,20 +226,27 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
     return {**counts, **flags_now}
 
 
-def status(conn: psycopg.Connection, user_id: int) -> dict:
+def status(conn: psycopg.Connection, user_id: int, light: bool = False) -> dict:
     """What the app has uploaded so far (shown on its sync page and in the admin's checks), and what the server takes:
     water_enabled, metrics_enabled + metric_types (the HealthKit types of quantities[]; the app reads only these),
     sync_center (the app shows its sync center), engine (the sync engine: enabled, mode, accepted fields, encodings,
-    types and limits; rawdata/engine.describe)."""
+    types and limits; rawdata/engine.describe). light (the answer to a sync-engine batch): without the four counts,
+    which count every stored sample of the user and grow with the history (counts: false says they are left out)."""
     from .. import water
-    r = conn.execute("""SELECT (SELECT count(*) FROM heartbeat_series WHERE user_id = %(u)s AND origin = 'app') AS heartbeats,
-                               (SELECT count(*) FROM ecg_recordings WHERE user_id = %(u)s AND origin = 'app') AS ecgs,
-                               (SELECT count(*) FROM water_intake WHERE user_id = %(u)s AND hk_uuid IS NOT NULL) AS water,
-                               (SELECT count(*) FROM hk_samples WHERE user_id = %(u)s) AS metrics,
-                               (SELECT max(received_at) FROM rawdata_uploads WHERE user_id = %(u)s) AS last_upload_at""",
-                     {"u": user_id}).fetchone()
+    if light:
+        r = conn.execute("SELECT max(received_at) AS last_upload_at FROM rawdata_uploads WHERE user_id = %s",
+                         (user_id,)).fetchone()
+        counts = {"counts": False}
+    else:
+        r = conn.execute("""SELECT (SELECT count(*) FROM heartbeat_series WHERE user_id = %(u)s AND origin = 'app') AS heartbeats,
+                                   (SELECT count(*) FROM ecg_recordings WHERE user_id = %(u)s AND origin = 'app') AS ecgs,
+                                   (SELECT count(*) FROM water_intake WHERE user_id = %(u)s AND hk_uuid IS NOT NULL) AS water,
+                                   (SELECT count(*) FROM hk_samples WHERE user_id = %(u)s) AS metrics,
+                                   (SELECT max(received_at) FROM rawdata_uploads WHERE user_id = %(u)s) AS last_upload_at""",
+                         {"u": user_id}).fetchone()
+        counts = {k: r[k] for k in ("heartbeats", "ecgs", "water", "metrics")}
     on, water_on = metrics_enabled(conn, user_id), water.enabled(conn, user_id)
-    return {"heartbeats": r["heartbeats"], "ecgs": r["ecgs"], "water": r["water"], "metrics": r["metrics"],
+    return {**counts,
             "water_enabled": water_on, "metrics_enabled": on, "engine": EN.describe(conn, user_id, water_on, on),
             "metric_types": [t.hk for t in hk_types.HK_TYPES] if on else [],
             "sync_center": flags.enabled(conn, user_id, "sync_center"),

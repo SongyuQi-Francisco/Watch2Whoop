@@ -300,15 +300,19 @@ def app_window_samples(conn: psycopg.Connection, user_id: int, w: dict, tail_end
 
 
 def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str | None, tz: ZoneInfo,
-           app: bool = False) -> dict:
+           app: bool = False, archived: bool = False) -> dict:
     """Compute a workout's TRIMP / five-zone minutes / active energy / heart-rate recovery and write back to workouts. Returns flags.
     app = the user's sync mode is `app`: the app's own samples first, OW's only for the sample types the app has none of
     in this window (OW-era workouts until step S6 moves OW's history), and an OW workout with no energy samples anywhere
-    keeps the active energy computed before."""
+    keeps the active energy computed before. archived = OW's history is kept locally (rawdata/ow_archive.py, step S6):
+    its heart rate comes from there and OW is not asked."""
     flags = {k: v for k, v in (w["flags"] or {}).items() if k in IMPORT_FLAGS}
     tail_end = w["end_at"] + P.HRR_TAIL   # heart rate a few minutes past the end, for heart-rate recovery only
     samples = app_window_samples(conn, user_id, w, tail_end) if app else {}
-    if client is not None and ow_user and not (app and {"heart_rate", "active_energy", "basal_energy"} <= samples.keys()):
+    if archived:
+        from ..rawdata import ow_archive
+        samples = {**ow_archive.window_samples(conn, user_id, w["start_at"], tail_end), **samples}
+    elif client is not None and ow_user and not (app and {"heart_rate", "active_energy", "basal_energy"} <= samples.keys()):
         samples = {**window_samples(client, ow_user, w["start_at"], tail_end), **samples}
     for code in ("active_energy", "basal_energy"):
         if code in samples:
@@ -373,10 +377,11 @@ def enrich_pending(conn: psycopg.Connection, client, user_id: int, force_ids: se
     todo = [w for w in rows if (w["flags"] or {}).get("computed") != P.TRAINING_VERSION or w["id"] in (force_ids or set())]
     if not todo:
         return 0
-    from ..rawdata import samples as rx_samples
+    from ..rawdata import ow_archive, samples as rx_samples
     app = rx_samples.reads_app(conn, user_id)
+    archived = app and ow_archive.get(conn, user_id) is not None
     for w in todo:
-        enrich(conn, client, user_id, w, user["ow_user_id"], tz, app)
+        enrich(conn, client, user_id, w, user["ow_user_id"], tz, app, archived)
     return len(todo)
 
 

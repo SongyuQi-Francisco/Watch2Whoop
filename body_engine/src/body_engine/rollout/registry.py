@@ -73,6 +73,10 @@ FLAGS: dict[str, str] = {
                          "训练、睡眠阶段、15 分钟统计桶、按范围重新同步和同步记录（rawdata/engine.py），GET /v1/ingest/healthkit "
                          "的 engine 块告诉 app 收哪些字段和类型、同步模式 shadow（只存着做对比，不影响分数）；关着时 = ow 模式，"
                          "这些字段一律 409 不收，旧版 app 不受影响",
+    "apple_sync_primary": "自建同步引擎切换（#219 S5，docs/apple-sync-engine.md 第 5 节）：开着的人可以被 body-engine sync-mode switch / apply "
+                          "切到 app 模式（自建引擎的数据参与选值和算分、OW 只补历史；app 收到 mode=app 后停掉 OW SDK）；切换要过门槛"
+                          "（app ≥ 1.0.8、影子对比连续 7 天一致、覆盖率 ≥ 95%、分数一致性）。这是总开关：关掉后所有人下一次读取就回到 "
+                          "shadow，sync-mode apply 再把派生数据还原；单人回退用 sync-mode rollback。默认关",
     "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
                       "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",
