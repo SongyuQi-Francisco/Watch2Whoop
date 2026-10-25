@@ -145,7 +145,7 @@ def test_on_demand_wiring():
 
 
 LAZY_HARNESS = r"""
-const src = process.argv[1];
+const src = require("fs").readFileSync(process.argv[1], "utf8");   // a path: the whole file does not fit in one argument on Linux
 const m = /function lazyScript\(name\) \{[\s\S]*?\n  \}\n/.exec(src);
 const head = /const LAZY = new Map\(\);[\s\S]*?function initLate\(\) \{[\s\S]*?\n  \}\n/.exec(src);
 const appended = [];
@@ -178,13 +178,13 @@ eval(head[0] + m[0] + "\n(async () => {" + `
 
 @needs_node
 def test_lazy_script_loader():
-    out = json.loads(subprocess.run([NODE, "-e", LAZY_HARNESS, APP], capture_output=True, text=True, check=True).stdout)
+    out = json.loads(subprocess.run([NODE, "-e", LAZY_HARNESS, str(STATIC / "app.js")], capture_output=True, text=True, check=True).stdout)
     assert out == {"none": True, "declared": 0, "one": True, "init": ["ctx", "me"], "ok": [True, True], "failed": False, "retried": True}
 
 
 # ---------------------------------------------------------------- W1 links
 LINK_HARNESS = r"""
-const src = process.argv[1];
+const src = require("fs").readFileSync(process.argv[1], "utf8");   // a path: the whole file does not fit in one argument on Linux
 const block = /\/\/ <in-app-links>[\s\S]*?\/\/ <\/in-app-links>/.exec(src)[0];
 let handler = null, opened = [];
 const document = { addEventListener: (ev, fn) => { if (ev === "click") handler = fn; } };
@@ -216,7 +216,7 @@ console.log(JSON.stringify(out));
 def test_new_tab_links_open_from_code_inside_the_app():
     """W1: Jarvis answers (md.js), the feedback link and the Jarvis 「open」 button are target=_blank anchors, which do nothing in the
     app's WebView; window.open reaches the app's navigation delegate (hands the address to the system)."""
-    out = json.loads(subprocess.run([NODE, "-e", LINK_HARNESS, APP], capture_output=True, text=True, check=True).stdout)
+    out = json.loads(subprocess.run([NODE, "-e", LINK_HARNESS, str(STATIC / "app.js")], capture_output=True, text=True, check=True).stdout)
     assert out["app"] == {"opened": [["https://example.org/doc?a=1", "_blank", "noopener"]], "prevented": True}
     assert out["relative"]["opened"] == [["https://body.example/app/handbook/", "_blank", "noopener"]]
     for case in ("browser", "notALink", "mailto", "javascript", "handled", "middle"):   # the browser keeps its own behaviour
@@ -227,7 +227,7 @@ def test_new_tab_links_open_from_code_inside_the_app():
 
 # ---------------------------------------------------------------- W3 chart range labels
 YEAR_HARNESS = r"""
-const src = process.argv[1];
+const src = require("fs").readFileSync(process.argv[1], "utf8");   // a path: the whole file does not fit in one argument on Linux
 const day = (name) => new RegExp("  const " + name + " = [^\\n]*\\n").exec(src)[0];
 const pieces = ["parseDay", "shortDay", "yearDay", "spansYear"].map(day).join("");
 function make(lang, locale) {
@@ -247,7 +247,7 @@ console.log(JSON.stringify({
 @needs_node
 def test_long_chart_ranges_show_the_year():
     """W3: a one-year chart read 「10/27 … 10/26」 (backwards). Ranges of half a year or more, or across New Year, label the ends with the year."""
-    out = json.loads(subprocess.run([NODE, "-e", YEAR_HARNESS, APP], capture_output=True, text=True, check=True).stdout)
+    out = json.loads(subprocess.run([NODE, "-e", YEAR_HARNESS, str(STATIC / "app.js")], capture_output=True, text=True, check=True).stdout)
     assert out["zh"] == ["2025/10/27", "10/27"]
     assert out["en"][1] == "27/10" and out["en"][0].endswith("/25") and out["en"][0].startswith("27/10")
     assert out["year"] and out["halfYear"] and out["across"]
