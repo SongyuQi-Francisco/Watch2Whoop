@@ -106,3 +106,62 @@ def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
         sel = m.group(1).strip()
         assert sel.startswith((".jv-fan", ".jv.open")) or "jv-vp-dot" in sel, sel
     assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
+
+
+# ---------------------------------------------------------------- flag jarvis_dial (PR #294): the instrument-cluster menu in one ink
+DIAL_MARK = "/* ---------- flag jarvis_dial"
+CSS_OLD, CSS_DIAL = CSS.split(DIAL_MARK, 1)
+CSS_DIAL = DIAL_MARK + CSS_DIAL
+
+
+def test_dial_flag_declared_and_checked_once_at_mount():
+    assert "jarvis_dial" in registry.FLAGS
+    assert 'DIAL_FLAG = "jarvis_dial"' in JS
+    assert JS.count("window.BodyFlags?.on(DIAL_FLAG)") == 1   # read once, when the key is mounted
+    assert "let dial = false;" in JS
+    assert 'if (dial) document.body.classList.add("jv-dial");' in JS
+
+
+def test_flag_off_keeps_the_ring_menu_unchanged():
+    """The existing look and animation are all still there and run when `dial` is false; the dial code is only reached
+    through `if (dial)`, and its styles only apply under body.jv-dial."""
+    for old in ("const R_KEY = 98, R_RING = 35, START = 225, SWEEP_MS = 560", "const FLY_MS = 440, BACK_MS = 260;",
+                'lu("orbit", 1.7)', "lu(EXIT_ICON, 2.2)", 'id="jv-comet"', 'id="jv-ticks"', 'class="jv-shock"', 'class="jv-kglow"',
+                "function orbitFrames(th, overshoot = 1.25)", 'id="jv-grad"', "th: 290,", "th: 336.67,", "th: 23.33,", "th: 70,"):
+        assert old in JS, old
+    assert "if (dial) { openDial(byKeyboard); return; }" in JS and "if (dial) { closeDial(focusBack); return; }" in JS
+    assert "const seg = CIRC / SEGS, segs = dial ? [] : Array.from" in JS
+    assert 'stroke-width="${dial ? 1.75 : sw}"' in JS
+    for fn in ("function openDial", "function closeDial", "function arcFrames", "function arcPath"):
+        assert fn in JS, fn
+    # the old stylesheet part has no dial rule and every dial rule starts at body.jv-dial
+    assert "jv-dial" not in CSS_OLD
+    body = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    body = re.sub(r"@media[^{]*\{", "", body)
+    for sel in re.findall(r"([^{}]+)\{[^{}]*\}", body):
+        for one in re.split(r",(?![^()]*\))", sel):
+            assert "jv-dial" in one, one.strip()
+
+
+def test_flag_on_is_quick_transform_and_opacity_only_and_one_ink():
+    """jarvis_dial: about 200 ms, no stagger, no bounce; Web Animations only move transform and opacity; nothing loops;
+    black lines in light mode / white in dark (the page's --text), no colour, gradient or glow."""
+    assert "const OPEN_MS = 200, CLOSE_MS = 150" in JS
+    for fn in ("function openDial", "function closeDial", "function arcFrames"):
+        body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
+        for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
+            for prop in re.findall(r"(\w+):", props):
+                assert prop in ("offset", "opacity", "transform"), (fn, prop)
+        assert "delay: order" not in body and "overshoot" not in body, fn   # no stagger, no bounce
+    # the press answers on pointerdown in CSS (no JS between the touch and the first frame)
+    assert "body.jv-dial .jv.pressed { transform: scale(.92); }" in CSS_DIAL and "transition: transform .08s" in CSS_DIAL
+    code = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
+    assert "infinite" not in code
+    for bad in ("gradient", "--sleep", "--bad", "--jv-hud", "glow", "#fff;", "hsl", "url("):
+        assert bad not in code, bad
+    for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
+        assert colour.lower() in ("#ffffff", "#151517"), colour   # the key's face: white / near-black
+    assert "prefers-reduced-motion: reduce" in CSS_DIAL and "transition: none" in CSS_DIAL
+    # the arc's centre sits below the key's centre; the keys are smaller than the 56 pt key
+    assert int(re.search(r"ARC_DY = (\d+)", JS).group(1)) > 0
+    assert "width: 46px; height: 46px" in CSS_DIAL

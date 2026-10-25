@@ -37,7 +37,7 @@ def test_first_screen_budget():
     assert len(names) == len(set(names))
     total = sum((STATIC / n).stat().st_size for n in names)
     assert len(names) <= 35, len(names)
-    assert total <= 980_000, total
+    assert total <= 990_000, total   # 980_000 + 10_000 for the jarvis_dial code that sits beside the old ring menu until the flag is on for everyone (#294)
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
