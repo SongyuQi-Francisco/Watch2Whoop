@@ -7,7 +7,9 @@ import psycopg
 from . import healthspan_store, stress
 
 
-def run(conn: psycopg.Connection, client, user_id: int, stress_days: int = stress.DEFAULT_DAYS, sparky=None) -> dict:
+def run(conn: psycopg.Connection, client, user_id: int, stress_days: int = stress.DEFAULT_DAYS, sparky=None,
+        ow_cache: str | None = None) -> dict:
+    """ow_cache: how the stress score reads the OW samples (importers/ow_cache.py), None = all from OW."""
     out = {}
     try:
         rows = healthspan_store.compute(conn, user_id, sparky=sparky)
@@ -19,7 +21,7 @@ def run(conn: psycopg.Connection, client, user_id: int, stress_days: int = stres
     try:
         tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
         end = datetime.now(tz).date()
-        rows = stress.compute(conn, client, user_id, end - timedelta(days=stress_days - 1), end)
+        rows = stress.compute(conn, client, user_id, end - timedelta(days=stress_days - 1), end, ow_cache=ow_cache)
         out["stress_days"] = stress.write(conn, user_id, rows)
         out["stress_days_with_score"] = sum(r["score"] is not None for r in rows)
     except Exception as e:

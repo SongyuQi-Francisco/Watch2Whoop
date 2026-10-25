@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from ..importers import ow as ow_imp
+from ..importers import ow as ow_imp, ow_cache as ow_cache_mod
 from ..importers.common import WAKE_DAY_SHIFT as WAKE_SHIFT, Segment
 from ..importers import shortcut as sc_imp
 from ..rawdata import samples as rx_samples, store as rx_store
@@ -131,11 +131,20 @@ class _Merger:
 
 
 def load_ow(client, ow_user_id: str, tz: ZoneInfo, start: date, end: date, merger: _Merger,
-            types: dict | None = None) -> list:
-    """Pull OW raw samples into the merger; returns the sleep-stage segments."""
+            types: dict | None = None, conn: psycopg.Connection | None = None, user_id: int | None = None,
+            ow_cache: str | None = None) -> list:
+    """Pull OW raw samples into the merger; returns the sleep-stage segments. ow_cache "use" / "refresh" reads the samples
+    through the local copy (importers/ow_cache.py, needs conn and user_id); None reads them all from OW."""
     types = OW_TYPES if types is None else types
     lo = datetime.combine(start, time.min, tz)
     stop = datetime.combine(end + timedelta(days=1), time.min, tz)
+    if ow_cache is not None and conn is not None and user_id is not None:
+        got = ow_cache_mod.samples(conn, client, user_id, ow_user_id, types, lo, stop, ow_cache)
+        for code, xs in got.items():
+            key = types[code]
+            for s in xs:
+                merger.add(key, s.ts, s.value, s.xml)
+        lo = stop   # the samples are in; only the sleep stages below
     while lo < stop:
         hi = min(lo + WINDOW, stop)
         for raw in client.paginate(f"/users/{ow_user_id}/timeseries", start_time=lo.isoformat(),
@@ -244,7 +253,7 @@ def rmssd_hrv(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date,
 
 
 def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date, archive_dir: Path | None,
-         hrv_kind: str = P.HRV_KIND) -> Inputs:
+         hrv_kind: str = P.HRV_KIND, ow_cache: str | None = None) -> Inputs:
     inp = load_db(conn, user_id, start, end)
     inp.hrv_kind = hrv_kind
     ow_user = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()["ow_user_id"]
@@ -254,7 +263,8 @@ def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
     if app:   # the app's own sync engine first (rawdata/samples.py); OW then only fills what it lacks
         segs += load_hk(conn, user_id, inp.tz, start, end, merger, ow_types(hrv_kind))
     if client is not None and ow_user:
-        ow_segs = load_ow(client, ow_user, inp.tz, start, end, merger, ow_types(hrv_kind))
+        ow_segs = load_ow(client, ow_user, inp.tz, start, end, merger, ow_types(hrv_kind), conn=conn, user_id=user_id,
+                          ow_cache=ow_cache)
         if app:
             have = rx_samples.wake_dates(segs, inp.tz)
             ow_segs = [s for s in ow_segs if (s.end - WAKE_SHIFT).astimezone(inp.tz).date() not in have]

@@ -89,6 +89,12 @@ def _fresh(conn: psycopg.Connection, user_id: int, step: str, fp: str, max_age_h
     return not (age >= REFRESH_AFTER_HOURS and (_now_hour() + user_id) % REFRESH_TURNS == 0)
 
 
+def remember(conn: psycopg.Connection, user_id: int, step: str, fp: str) -> None:
+    """The step ran with these inputs (also called by sync/refresh.py after its recompute, so this job skips the user)."""
+    _remember(conn, user_id, step, fp)
+    conn.commit()
+
+
 def _remember(conn: psycopg.Connection, user_id: int, step: str, fp: str) -> None:
     conn.execute("""INSERT INTO batch_state (user_id, step, fingerprint, ran_at, checked_at) VALUES (%s, %s, %s, now(), now())
                     ON CONFLICT (user_id, step) DO UPDATE SET fingerprint = EXCLUDED.fingerprint, ran_at = now(), checked_at = now()""",
@@ -127,8 +133,10 @@ def _step_compute_scores(conn, client, u, start):
     from .importers import shortcut
     from .insights import jobs as insights_jobs
     from .scores import engine as scores_engine
-    res = scores_engine.run(conn, client, u["id"], start, None, shortcut.user_archive_dir(u["id"]))
-    res["insights"] = insights_jobs.run(conn, client, u["id"])
+    # OW raw samples through the local copy (importers/ow_cache.py); the full nightly recompute re-reads and replaces it
+    mode = "refresh" if start is None else "use"
+    res = scores_engine.run(conn, client, u["id"], start, None, shortcut.user_archive_dir(u["id"]), ow_cache=mode)
+    res["insights"] = insights_jobs.run(conn, client, u["id"], ow_cache=mode)
     return json.dumps(res, default=str, ensure_ascii=False)
 
 

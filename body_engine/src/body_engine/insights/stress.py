@@ -23,7 +23,7 @@ from openbodyscore.stress import (BANDS, BASELINE_DAYS, HR_WEIGHT, HRV_WEIGHT, M
                                   MIN_HOUR_SAMPLES, OFFSET, SPREAD_FLOOR, STEP_ACTIVE, STEP_WINDOW, STRESS_VERSION, band,
                                   calm_samples, override, robust_baseline, score_day)
 
-from ..importers import ow as ow_imp
+from ..importers import ow as ow_imp, ow_cache as ow_cache_mod
 from ..rawdata import samples as rx_samples
 
 STRESS_TYPES = ["heart_rate", "steps", "heart_rate_variability_sdnn"]   # OW series codes (the app's samples are read by them too)
@@ -31,8 +31,17 @@ DEFAULT_DAYS = 90                                             # compute-scores r
 
 
 # ---------------------------------------------------------------- read data, compute day by day, write to the database
-def _ow_samples(client, ow_user: str, types: list[str], lo: datetime, hi: datetime) -> dict[str, list]:
+def _ow_samples(client, ow_user: str, types: list[str], lo: datetime, hi: datetime, conn: psycopg.Connection | None = None,
+                user_id: int | None = None, ow_cache: str | None = None) -> dict[str, list]:
+    """ow_cache "use" / "refresh": read through the local copy (importers/ow_cache.py); None: all from OW."""
     out: dict[str, dict] = defaultdict(dict)
+    if ow_cache is not None and conn is not None and user_id is not None:
+        for code, xs in ow_cache_mod.samples(conn, client, user_id, ow_user, types, lo, hi, ow_cache).items():
+            for s in xs:
+                k = (s.ts, s.source) if code == "steps" else s.ts   # as below
+                if k not in out[code] or not s.xml:
+                    out[code][k] = (s.ts, s.value)
+        return {t: sorted(v.values()) for t, v in out.items()}
     cur = lo
     while cur < hi:
         nxt = min(cur + timedelta(days=30), hi)
@@ -72,7 +81,8 @@ def _with_app(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, lo: datetime
     return out, sorted({*ow_workouts, *rx_samples.workout_windows(conn, user_id, lo, hi)})
 
 
-def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date) -> list[dict]:
+def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date, ow_cache: str | None = None) -> list[dict]:
+    """ow_cache: how the OW samples are read (importers/ow_cache.py), None = all from OW."""
     user = conn.execute("SELECT timezone, ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
     tz = ZoneInfo(user["timezone"])
     lo = datetime.combine(start - timedelta(days=BASELINE_DAYS), time.min, tz)
@@ -87,7 +97,7 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
         (user_id, start, end))}
     samples, workouts = {}, []
     if client is not None and user["ow_user_id"]:
-        samples = _ow_samples(client, user["ow_user_id"], STRESS_TYPES, lo, hi)
+        samples = _ow_samples(client, user["ow_user_id"], STRESS_TYPES, lo, hi, conn, user_id, ow_cache)
         workouts = _workouts(client, user["ow_user_id"], start - timedelta(days=BASELINE_DAYS), end, tz)
     if rx_samples.reads_app(conn, user_id):
         samples, workouts = _with_app(conn, user_id, tz, lo, hi, samples, workouts)

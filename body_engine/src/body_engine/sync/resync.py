@@ -186,8 +186,9 @@ def _score(conn, user_id: int, client, start: date | None) -> dict:
     from ..insights import jobs as insights_jobs
     from ..rules import engine as rules_engine
     from ..scores import engine as scores_engine
-    res = scores_engine.run(conn, client, user_id, start, None, shortcut.user_archive_dir(user_id))
-    res["insights"] = insights_jobs.run(conn, client, user_id)
+    # the re-sync re-imported its range from OW, which also refreshed that part of the local sample copy
+    res = scores_engine.run(conn, client, user_id, start, None, shortcut.user_archive_dir(user_id), ow_cache="use")
+    res["insights"] = insights_jobs.run(conn, client, user_id, ow_cache="use")
     rules_engine.run(conn, user_id, None)
     return res
 

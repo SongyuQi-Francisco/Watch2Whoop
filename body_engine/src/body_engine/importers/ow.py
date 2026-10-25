@@ -271,6 +271,7 @@ def run(conn: psycopg.Connection, client: OWClient, user_id: int, start: date | 
     if user is None or not user["ow_user_id"]:
         raise ValueError(f"用户 {user_id} 还没对应 OW 的 user：先运行 body-engine ow-link --user-id {user_id}")
     ow_user, tz = user["ow_user_id"], ZoneInfo(user["timezone"])
+    from . import ow_cache   # imports this module
     state = conn.execute("SELECT cursor FROM sync_state WHERE user_id = %s AND source = %s",
                          (user_id, SOURCE)).fetchone()
     if start is None:
@@ -301,6 +302,8 @@ def run(conn: psycopg.Connection, client: OWClient, user_id: int, start: date | 
             (xml_days if s.xml else live_days).add(s.ts.astimezone(tz).date())
             last_ts = max(last_ts, s.ts) if last_ts else s.ts
             n_samples += 1
+        # the raw samples scoring reads also go to its local copy (ow_cache.py): no extra request
+        raw_for_cache = {code: samples for code, (_, samples) in by_type.items() if code in ow_cache.CACHE_TYPES}
         by_type = {code: (unit, drop_xml_duplicates(samples)) for code, (unit, samples) in by_type.items()}
         rows = [r for r in daily_rows(by_type, tz) if start <= r["date"] <= end]
         if xml_days:
@@ -314,6 +317,7 @@ def run(conn: psycopg.Connection, client: OWClient, user_id: int, start: date | 
                 rows = [r for r in rows if r["date"] != last_xml]
         with conn.transaction():
             n_rows += upsert_daily(conn, user_id, SOURCE, rows)
+            ow_cache.store_safe(conn, user_id, ow_user, raw_for_cache, lo, hi)
         lo = hi
 
     # sleep: pull one extra day so that when OW splits a night into two segments we do not get only the second half; keep only those waking after start
