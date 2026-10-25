@@ -222,7 +222,7 @@
     const big = total > 0 ? `${num(total, 0)} <small>${tr("组")}</small>` : "—";
     const sub = trainedToday.length ? `${tr("今天练了")}${COLON()}${esc(trainedToday.slice(0, 4).join(SEP()))}` : (low ? tr("{n} 块肌群偏少", { n: low }) : tr("本周还没有逐组记录"));
     const sp = sportMin > 0 ? `<span class="mml-sub" style="display:block">${esc(tr("运动 {n} 分钟", { n: num(sportMin) }))}</span>` : "";
-    return `<div class="section"><div class="section-head"><h2>${tr("肌肉负荷")}</h2><span class="small muted">${tr("本周")}</span></div>
+    return `<div class="section" data-card="muscle_load"><div class="section-head"><h2>${tr("肌肉负荷")}</h2><span class="small muted">${tr("本周")}</span></div>
       <div class="card mml"><div class="mml-mini" id="mml-open" role="button" tabindex="0">${bodies(rows, "week", sex, true)}
         <span class="mml-txt"><span class="mml-big">${big}</span><span class="mml-sub" style="display:block">${sub}</span>${sp}</span><span class="chev">›</span></div>
         ${sexHint(data, "mml-sex-card")}</div></div>`;

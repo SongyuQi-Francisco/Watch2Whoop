@@ -84,7 +84,7 @@
     const logged = loggedItems(data.items, valuesOf(data.entries, day));
     const shown = logged.slice(0, 4).map((it) => `<span class="badge plain">${ctx.esc(shortLabel(it))}</span>`).join("");
     const more = logged.length > 4 ? `<span class="badge plain">+${logged.length - 4}</span>` : "";
-    return `<div class="section" id="journal-section"><div class="section-head"><h2>${tr("日记")}</h2></div>
+    return `<div class="section" id="journal-section" data-card="journal"><div class="section-head"><h2>${tr("日记")}</h2></div>
       <button class="card" id="journal-card" ${ctx.sheetAttr(() => openDay(ctx, day))}>
         <div class="row"><span class="row-title">${logged.length ? tr("已记录 {n} 项", { n: logged.length }) : tr("未记录")}</span><span class="chev">${ctx.icon.chev}</span></div>
         ${logged.length ? `<div class="rcard-tags" style="margin-top:8px">${shown}${more}</div>` : ""}</button></div>`;
