@@ -36,7 +36,7 @@ from ..records.defaults import with_label
 from ..rollout import api as rollout_api
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.138-2026-10-26"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.139-2026-10-26"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
