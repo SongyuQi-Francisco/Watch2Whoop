@@ -197,7 +197,7 @@ When a test user is onboarded the admin supplies only the Apple ID email; the pr
 - Degradation when profile data is missing: no birth date → HRmax uses only observed values and body age is not computed; no sex → VO₂max is not compared with norms; no height → BMI is not computed.
 
 ## Health read range and full-history backfill (`src/body_engine/sync/history.py`, migration 410)
-The app reads 90 days of Apple Health by default or the whole history (OW SDK `syncDaysBack` 0 = everything, newest first, resumable). It reports through the Today page in its WebView:
+The app reads the last 14 days of Apple Health first (since 1.0.8) and backfills 90 days or the whole history in the background (OW SDK `syncDaysBack` 0 = everything, newest first, resumable). It reports through the Today page in its WebView:
 | Endpoint (own data only) | Description |
 |---|---|
 | `PUT /v1/users/{user}/health-history` `{scope: days90 \| all, upload_percent?, sent?, upload_done?}` | The app's choice and progress (needs write). Choosing `all` starts the upload phase; `upload_done` queues the backfill; after an error, `upload_done` resumes from the saved cursor |

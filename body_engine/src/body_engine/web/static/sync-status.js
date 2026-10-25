@@ -91,12 +91,18 @@
   /** The card's bar: the top-up's percent while it runs, else how much of the target there is. */
   const backfillPercent = (cov) => Math.max(0, Math.min(100, cov.progress && cov.progress.active ? (cov.progress.percent || 0) : Math.round(100 * cov.days / (cov.target_days || 90))));
 
-  if (typeof module !== "undefined") module.exports = { agoText, typeAgo, actionLink, connectLink, wantsCard, wantsAsk, bannerFor, toneOf, backfillLink, wantsBackfill, backfillAction, backfillSub, backfillPercent };
+  /** Whether load() may answer from the last overview. Never when forced, and never while that overview says the consent form
+   *  is still open: the consent is confirmed at any moment (profile.js), so the old "consent" answer must not hide the card
+   *  for the next minute. */
+  const reuseOverview = (ov, checkedAt, now, force) => !force && !!ov && ov.state !== "consent" && now - checkedAt < MIN_GAP_MS;
+
+  if (typeof module !== "undefined") module.exports = { reuseOverview, agoText, typeAgo, actionLink, connectLink, wantsCard, wantsAsk, bannerFor, toneOf, backfillLink, wantsBackfill, backfillAction, backfillSub, backfillPercent };
   if (typeof window === "undefined") return;
 
   let C = null, ME = null;
   let ov = null;            // last /sync/overview
   let checkedAt = 0;
+  let loadSeq = 0;          // the latest overview request: an older answer arriving later must not overwrite a newer one
   let tab = "today";
   let phase = null;         // the connect flow: null | "asked" (1.0.6 / 1.0.7: their sync page is open) | {phase, percent, error} from the app
   let invCode = null;       // the invitation code minted for the connect flow (memory only)
@@ -135,10 +141,14 @@
 
   async function load(force) {
     if (!C || window.W2W_SHELL) return ov;
-    if (!force && ov && Date.now() - checkedAt < MIN_GAP_MS) return ov;
+    if (reuseOverview(ov, checkedAt, Date.now(), force)) return ov;
     checkedAt = Date.now();
+    const seq = ++loadSeq;
     const topping = !!ov?.coverage?.progress?.active;
-    try { ov = await C.api(`/v1/users/me/sync/overview${IN_APP() ? "?in_app=1" : ""}`, { quiet401: true }); } catch (e) { return ov; }
+    let next;
+    try { next = await C.api(`/v1/users/me/sync/overview${IN_APP() ? "?in_app=1" : ""}`, { quiet401: true }); } catch (e) { return ov; }
+    if (seq !== loadSeq) return ov;   // a newer request (e.g. right after the consent was confirmed) is on its way and wins
+    ov = next;
     draw();
     const active = !!ov?.coverage?.progress?.active;
     if (active && !watchUntil) watch();               // a history top-up is running (maybe started elsewhere): follow it

@@ -58,4 +58,18 @@ void main() {
       }
     }
   });
+
+  test('the speech-recognition description does not contradict the system dialog (no claims about Apple)', () {
+    // iOS appends its own sentence about Apple to this dialog; our text must only say that recognition runs on the phone.
+    final texts = [
+      plist['NSSpeechRecognitionUsageDescription']!,
+      for (final lang in ['en', 'zh-Hans'])
+        infoPlistStrings(File('ios/Runner/$lang.lproj/InfoPlist.strings').readAsStringSync())['NSSpeechRecognitionUsageDescription']!,
+    ];
+    for (final t in texts) {
+      expect(t, isNot(contains('苹果')));
+      expect(t, isNot(contains('Apple')));
+    }
+    expect(texts[2], contains('本机'));
+  });
 }

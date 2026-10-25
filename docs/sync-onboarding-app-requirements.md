@@ -40,7 +40,7 @@ watch2whoop://sync-connect?ow=<OW 公网地址，可省>&code=<一次性邀请�
 
 1. `permission`：`requestAuthorization`（OW SDK 的类型 + RawSync 的类型，和「连接同步」一样两张表单的现有逻辑）。
 2. `connecting`：兑换邀请码 / `connectSyncViaAccount()`，`HealthSync.connect()`。
-3. `uploading`：`startSync(syncDaysBack)` 的首次同步（90 天，最新的先传），同时跑一次 RawSync。前台期间保持屏幕常亮（同步页现有逻辑）。
+3. `uploading`：`startSync(syncDaysBack)` 的首次同步（1.0.8 起 14 天，最新的先传），同时跑一次 RawSync。前台期间保持屏幕常亮（同步页现有逻辑）。
 4. `done`：第一批数据已经被服务器接受（OW 返回 2xx 或 RawSync 上传成功），然后在页面里调 `BodySync.refresh("app")`（现有）。
 
 **app → 页面（进度）**：每个阶段开始时、上传中每 ~2 秒一次，在 WebView 里执行

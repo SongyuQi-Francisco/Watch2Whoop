@@ -66,7 +66,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used only while you hold the mic button to talk to your AI, or record a video for it, on the Today page; the sound is turned into text on this iPhone or on your server and is not kept.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Used only while you talk to Jarvis on the Today page: what you say is turned into text on this iPhone (on-device recognition), and nothing is sent to Apple for it.</string>
+	<string>Used only while you talk to Jarvis on the Today page: recognition runs on this iPhone and turns what you say into text.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Used only when you long-press an image and choose to save it to Photos. Watch2Whoop never reads your photo library.</string>
 	<key>UIApplicationSceneManifest</key>
