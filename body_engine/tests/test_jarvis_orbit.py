@@ -108,7 +108,7 @@ def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
     assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
 
 
-# ---------------------------------------------------------------- flag jarvis_dial (PR #294): the start-up sequence in one ink
+# ---------------------------------------------------------------- flag jarvis_dial: Liquid Glass in one ink
 DIAL_MARK = "/* ---------- flag jarvis_dial"
 CSS_OLD, CSS_DIAL = CSS.split(DIAL_MARK, 1)
 CSS_DIAL = DIAL_MARK + CSS_DIAL
@@ -132,7 +132,7 @@ def test_flag_off_keeps_the_ring_menu_unchanged():
     assert "if (dial) { openDial(byKeyboard); return; }" in JS and "if (dial) { closeDial(focusBack); return; }" in JS
     assert "const seg = CIRC / SEGS, segs = dial ? [] : Array.from" in JS
     assert 'stroke-width="${dial ? 1.75 : sw}"' in JS
-    for fn in ("function openDial", "function closeDial", "function dialRun", "function dialLayer"):
+    for fn in ("function openDial", "function closeDial", "const spring = "):
         assert fn in JS, fn
     # the old stylesheet part has no dial rule and every dial rule starts at body.jv-dial
     assert "jv-dial" not in CSS_OLD
@@ -143,40 +143,39 @@ def test_flag_off_keeps_the_ring_menu_unchanged():
             assert "jv-dial" in one, one.strip()
 
 
-def test_flag_on_is_a_short_sequence_of_transform_opacity_and_dashoffset_in_one_ink():
-    """jarvis_dial: the start-up sequence takes at most 400 ms (180 ms to close); Web Animations only move transform, opacity and
-    stroke-dashoffset; a few SVG groups drive the elements (about 17 animations); one very slow ring turn is the only loop
-    (paused while the page is hidden, not made at all with reduced motion); no ticks, readouts or connecting arcs; black lines in
-    light mode / white in dark (the page's --text), no colour, gradient or glow."""
-    assert "DIAL_CLOSE_MS = 180" in JS and "DIAL_HIT = [130, 162, 194, 226]" in JS
-    run = JS[JS.index("function dialRun"):JS.index("function dialStop")]
-    ends = [int(d) + int(u) for d, u in re.findall(r"delay: (?:DIAL_HIT\[i\] [-+] )?(\d+|10|30), duration: (\d+)", run) if d.isdigit()]
-    assert ends and max(ends) <= 400, ends
-    assert max(DIAL_HIT := [130, 162, 194, 226]) + 30 + 80 <= 400   # the last outline closes by 336, the breath ends at 400
-    for fn in ("function dialRun", "function openDial", "function closeDial"):
-        body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
-        for props in re.findall(r"\{ ((?:offset|opacity|transform|strokeDashoffset)[^{}]*)\}", body):
-            for prop in re.findall(r"(\w+):", props):
-                assert prop in ("offset", "opacity", "transform", "strokeDashoffset"), (fn, prop)
-    assert run.count("an(") <= 20, run.count("an(")   # element count: groups, not single ticks
-    # the only loop: one slow ring, paused with the page, never started with reduced motion
-    assert JS.count("iterations: Infinity") == 1 and "duration: 90000" in JS
-    assert "if (D.rotor) document.hidden ? D.rotor.pause() : D.rotor.play();" in JS
-    assert "if (rm) D.A.forEach((a) => a.finish());\n    else D.rotor =" in run
-    # what the owner dropped: scale ticks, tick lines, readouts and any line joining the keys
+def test_flag_on_is_glass_on_a_spring_with_only_composited_properties():
+    """jarvis_dial (Liquid Glass): glass discs with a static backdrop blur, one element and one animation per key on a CSS linear()
+    spring, only transform and opacity (no SVG, no stroke-dashoffset, nothing looping), at most 6 things moving at once,
+    will-change only while moving, neutral whites / blacks only, the final state at once with reduced motion."""
     dial_js = JS[JS.index("// ---- jarvis_dial"):JS.index("function bindMenu")]
-    for gone in ("tick", "readout", "arcPath", "arcD", "jv-arc", "text"):
-        assert gone not in dial_js.replace("context", ""), gone
-    # the press answers on pointerdown in CSS (no JS between the touch and the first frame)
-    assert "body.jv-dial .jv.pressed { transform: scale(.92); }" in CSS_DIAL and "transition: transform .08s" in CSS_DIAL
+    opening = dial_js[dial_js.index("function openDial"):dial_js.index("function closeDial")]
+    # what moves: keys (transform + opacity keyframes) and the scrim (opacity); the Jarvis key's squeeze is a CSS transition
+    assert opening.count("D.A.push(") == 2 and "el.animate([" in opening and "scrim.animate([" in opening
+    for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", dial_js):
+        for prop in re.findall(r"(\w+):", props):
+            assert prop in ("offset", "opacity", "transform"), prop
+    for gone in ("strokeDashoffset", "iterations", "Infinity", "createElementNS", "<svg", "dialLayer", "getTotalLength"):
+        assert gone not in dial_js, gone
+    assert 'GLASS_OPEN_MS = 380, GLASS_CLOSE_MS = 200' in JS
+    # springs: CSS linear() generated from a damped spring, a plain curve where it is not supported
+    assert "linear(${pts.join" in dial_js and 'CSS?.supports?.("animation-timing-function", "linear(0, 1)")' in dial_js
+    assert "@supports (transition-timing-function: linear(0, 1))" in CSS_DIAL and "cubic-bezier(.2, .9, .3, 1.2)" in CSS_DIAL
+    # will-change only while moving; the click after the touch cannot land on a key that is still under the Jarvis key; the scrim stops above the dock
+    assert 'el.style.willChange = on ? "transform, opacity" : ""' in dial_js and "will(keys, false)" in dial_js
+    assert 'el.style.pointerEvents = "none"' in dial_js and "scrim.style.bottom" in dial_js
+    # the glass: a static backdrop blur (never animated), edge, highlight; the press squeezes to .94 and the sheen moves
     code = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
-    assert "infinite" not in code
-    for bad in ("gradient", "--sleep", "--bad", "--jv-hud", "glow", "#fff;", "hsl", "url(", "indigo"):
+    assert "backdrop-filter: blur(16px) saturate(180%)" in code and "@keyframes" not in code and "animation" not in code
+    for line in re.findall(r"transition[^;]*;", code):
+        assert "filter" not in line and "box-shadow" not in line and "background" not in line, line
+    assert "body.jv-dial .jv.pressed { transform: scale(.94);" in code and "translateY(2.5px)" in code
+    assert "width: 46px; height: 46px" in code
+    # one neutral ink: white / black / grey only
+    for r, g, b, _ in re.findall(r"rgba\((\d+), (\d+), (\d+), ([\d.]+)\)", code):
+        assert max(int(r), int(g), int(b)) - min(int(r), int(g), int(b)) <= 4, (r, g, b)
+    for bad in ("--sleep", "--bad", "--jv-hud", "hsl", "url(", "indigo"):
         assert bad not in code, bad
-    for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
-        assert colour.lower() in ("#ffffff", "#151517") or colour.startswith("#jvd"), colour   # the key's face / layer ids
-    assert "box-shadow: none" in CSS_DIAL   # the old HUD outline of the key face is off; the layer draws the outline
+    assert not re.search(r"#[0-9a-fA-F]{3,8}\b", code)
+    # reduced motion: no transitions in CSS, no animations in JS (the keys are just there)
     assert "prefers-reduced-motion: reduce" in CSS_DIAL and "transition: none" in CSS_DIAL
-    # the arc's centre sits below the key's centre; the keys are smaller than the 56 pt key
-    assert int(re.search(r"ARC_DY = (\d+)", JS).group(1)) > 0
-    assert "width: 46px; height: 46px" in CSS_DIAL
+    assert "if (rm) return;" in opening and "if (!rm) {" in opening
