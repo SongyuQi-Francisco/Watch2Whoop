@@ -202,4 +202,19 @@ void main() {
       expect(find.textContaining('Data Access & Devices'), findsNothing);
     });
   });
+
+  test('verdict: "no watch data" is not "sync broken" (sync investigation 2026-10-26)', () {
+    DataStatusReport rep(Map<String, String> states) => DataStatusReport(types: [
+          for (final e in states.entries)
+            DataTypeStatus(key: e.key, label: e.key, state: DataState.values.firstWhere((s) => s.name == e.value)),
+        ]);
+    const watch = ['heart_rate', 'hrv', 'resting_heart_rate', 'sleep'];
+    expect(syncVerdict(rep({for (final k in [...watch, 'steps']) k: 'never'})), SyncVerdict.empty);
+    expect(syncVerdict(rep({for (final k in watch) k: 'never', 'steps': 'ok', 'active_energy': 'ok'})), SyncVerdict.noWatch);
+    expect(syncVerdict(rep({for (final k in watch) k: 'stale', 'steps': 'stale'})), SyncVerdict.broken);
+    expect(syncVerdict(rep({for (final k in watch) k: 'ok', 'steps': 'ok'})), SyncVerdict.ok);
+    expect(syncVerdict(rep({'heart_rate': 'ok', 'sleep': 'never', 'steps': 'ok'})), SyncVerdict.ok, reason: 'one missing type is not "no watch"');
+    expect(syncVerdictText(SyncVerdict.noWatch), isNotNull);
+    expect(syncVerdictText(SyncVerdict.ok), isNull);
+  });
 }

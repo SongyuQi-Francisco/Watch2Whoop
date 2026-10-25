@@ -83,6 +83,10 @@ final class RawSync {
       result(nil)
     case "healthAskStatus":
       askStatus { out in DispatchQueue.main.async { result(out) } }
+    case "healthUnasked":
+      // The identifiers iOS has never asked the user about (its sheet would show them): after connecting, a swallowed
+      // sheet (#214) shows up here and is asked again; also reported to the server (sync_bridge.dart)
+      unasked(args["types"] as? [String] ?? []) { out in DispatchQueue.main.async { result(out) } }
     case "healthLatest":
       latest(args["types"] as? [String] ?? []) { out in DispatchQueue.main.async { result(out) } }
     case "rawReset":
@@ -121,6 +125,46 @@ final class RawSync {
 
   /// Per type: was the iOS prompt already shown for it (true) or would asking show the sheet (false)? HealthKit says
   /// nothing about what the user chose for reading; types it cannot answer are left out.
+  /// A HealthKit identifier as an object type (quantity, category, workout, heartbeat series, ECG); nil when this iOS
+  /// does not know it.
+  static func objectType(_ id: String) -> HKObjectType? {
+    switch id {
+    case "HKWorkoutTypeIdentifier": return HKObjectType.workoutType()
+    case "HKDataTypeIdentifierHeartbeatSeries": return HKSeriesType.heartbeat()
+    case "HKDataTypeIdentifierElectrocardiogram": return HKObjectType.electrocardiogramType()
+    default:
+      if id.hasPrefix("HKQuantityTypeIdentifier") {
+        return HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: id))
+      }
+      if id.hasPrefix("HKCategoryTypeIdentifier") {
+        return HKCategoryType.categoryType(forIdentifier: HKCategoryTypeIdentifier(rawValue: id))
+      }
+      return nil
+    }
+  }
+
+  /// The identifiers (of [ids]) whose read permission iOS would still ask for; [] when HealthKit is not available.
+  private func unasked(_ ids: [String], _ done: @escaping ([String]) -> Void) {
+    guard HKHealthStore.isHealthDataAvailable() else { done([]); return }
+    let group = DispatchGroup()
+    let lock = NSLock()
+    var out: [String] = []
+    for id in Set(ids) {
+      guard let type = Self.objectType(id) else { continue }
+      // the heartbeat series must be asked together with its parent (see baseReadTypes)
+      var read: Set<HKObjectType> = [type]
+      if id == "HKDataTypeIdentifierHeartbeatSeries" { read.insert(HKQuantityType(.heartRateVariabilitySDNN)) }
+      group.enter()
+      store.getRequestStatusForAuthorization(toShare: [], read: read) { status, error in
+        lock.lock()
+        if error == nil && status == .shouldRequest { out.append(id) }
+        lock.unlock()
+        group.leave()
+      }
+    }
+    group.notify(queue: .global()) { done(out.sorted()) }
+  }
+
   private func askStatus(_ done: @escaping ([String: Bool]) -> Void) {
     guard HKHealthStore.isHealthDataAvailable() else { done([:]); return }
     let group = DispatchGroup()

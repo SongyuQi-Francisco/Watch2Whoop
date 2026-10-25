@@ -1,8 +1,11 @@
 // The Today page's sync calls (enableSync / syncNow / syncStatus, P0 2026-10-26): messages, JS, status and the steps.
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:watch2whoop/src/raw_sync.dart';
 import 'package:watch2whoop/src/sync_bridge.dart';
 import 'package:watch2whoop/src/sync_stats.dart';
@@ -136,8 +139,8 @@ void main() {
           isConnected: () => connected,
           canUpload: () => connected || asked,
           needsReconnect: () => reconnect,
-          connect: () async {
-            log.add('connect');
+          connect: (link) async {
+            log.add(link?.code == null ? 'connect' : 'connect:${link!.code}');
             if (connectOk) connected = true;
             return SyncConnectOutcome(connected: connectOk, message: connectOk ? null : 'Sync did not connect');
           },
@@ -229,5 +232,71 @@ void main() {
       expect(log, ['round']);
       expect(b.busy, isFalse);
     });
+
+    test('the page\'s sync-connect link: its code goes to connect; already connected = no new code', () async {
+      await bridge().enable(link: parseSyncConnect(Uri.parse('watch2whoop://sync-connect?ow=https%3A%2F%2Fsync.example.com&code=AB12-CD34')));
+      expect(log.first, 'connect:AB12-CD34');
+      log.clear();
+      await bridge().enable(link: (owHost: null, code: 'AB12-CD34'));
+      expect(log, ['health', 'round'], reason: 'connected now: straight to uploading');
+    });
+  });
+
+  test('the page\'s protocol (docs/sync-onboarding-app-requirements.md): links, features, onApp progress', () {
+    expect(parseSyncConnect(Uri.parse('watch2whoop://sync-connect')), (owHost: null, code: null));
+    expect(parseSyncConnect(Uri.parse('watch2whoop://sync-connect?ow=javascript:alert(1)&code=<x>')), (owHost: null, code: null));
+    expect(parseSyncConnect(Uri.parse('watch2whoop://sync-connect?ow=https://sync.example.com&code=ABCD-2345'))?.owHost,
+        'https://sync.example.com');
+    expect(parseSyncConnect(Uri.parse('watch2whoop://setup?code=X')), isNull);
+    expect(kSyncLinkFeaturesJs, contains('{syncConnect:true,syncNow:true,appSettings:true,healthSettings:true}'));
+    expect(onAppEvent({'step': 'connect'}), {'phase': 'connecting', 'error': null});
+    expect(onAppEvent({'step': 'upload', 'percent': 142}), {'phase': 'uploading', 'percent': 100, 'error': null});
+    expect(onAppEvent({'step': 'error', 'message': 'Health is off'}), {'phase': 'error', 'error': 'Health is off'});
+    expect(onAppEvent({'step': 'other'}), isNull);
+    expect(appProgressJs({'phase': 'done'}), contains('window.BodySyncStatus.onApp({"phase":"done"})'));
+    // the page side, when it is in this checkout
+    final page = File('../../body_engine/src/body_engine/web/static/sync-status.js');
+    if (page.existsSync()) {
+      final js = page.readAsStringSync();
+      for (final s in ['onApp', 'syncConnect', 'sync-connect', 'sync-now', 'app-settings', 'health-settings']) {
+        expect(js, contains(s), reason: s);
+      }
+    }
+  });
+
+  test('device report (PUT /v1/ingest/sync-device): the phone\'s state, no health values', () async {
+    final i = input(
+      ow: SyncStats(lastUploadAt: _now.subtract(const Duration(hours: 2)), authProblem: true, lastErrorAt: _now),
+      device: const DeviceSyncState(net: 'wifi', backgroundRefresh: 'off', lowPower: true, protectedData: false),
+    );
+    final r = buildDeviceReport(i, appVersion: '1.0.8', unasked: const ['HKCategoryTypeIdentifierSleepAnalysis'],
+        sdkActive: true, sdk: const SdkSyncStatus(sentCount: 120, completedTypes: 3), firstSyncPercent: 12);
+    expect(r['background_refresh'], 'denied');
+    expect(r['low_power'], isTrue);
+    expect(r['health_readable'], isFalse);
+    expect(r['last_error'], 'auth');
+    expect(r['last_upload_at'], '2026-10-26T07:00:00.000Z');
+    expect(r['unasked_types'], ['HKCategoryTypeIdentifierSleepAnalysis']);
+    expect((r['sdk_status'] as Map)['sent'], 120);
+    expect(r['first_sync_percent'], 12);
+    expect(deviceLastError(syncProblems(input())), isNull);
+    expect(deviceLastError(syncProblems(input(raw: const RawSyncStatus(stop: 'offline')))), 'network');
+    expect(deviceLastError(syncProblems(input(asked: false))), 'health_denied');
+
+    var puts = 0;
+    late http.Request seen;
+    final rep = DeviceReporter(client: MockClient((req) async {
+      puts++;
+      seen = req;
+      return http.Response('{}', 200);
+    }));
+    expect(await rep.send('https://body.example.com/app/', 'tok', r), isTrue);
+    expect([seen.method, seen.url.toString(), seen.headers['Authorization']],
+        ['PUT', 'https://body.example.com/v1/ingest/sync-device', 'Bearer tok']);
+    expect(await rep.send('https://body.example.com/app/', 'tok', r), isFalse, reason: 'same content within 10 minutes');
+    expect(await rep.send('https://body.example.com/app/', 'tok', {...r, 'low_power': false}), isTrue);
+    expect(puts, 2);
+    final old = DeviceReporter(client: MockClient((_) async => http.Response('', 404)));
+    expect(await old.send('https://body.example.com', 'tok', r), isFalse, reason: 'older server: ignored');
   });
 }

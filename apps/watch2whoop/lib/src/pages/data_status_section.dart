@@ -169,12 +169,25 @@ class _DataStatusSectionState extends State<DataStatusSection> {
     final rows = <Widget>[
       if (r == null) Row2(tr('读取中…', 'Loading…'))
       else if (report == null) Row2(r.problemText ?? '—')
-      else
+      else ...[
+        // "no watch data" and "sync broken" are different things (sync investigation 2026-10-26)
+        if (syncVerdictText(syncVerdict(report)) case final v?)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Text(v,
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    color: syncVerdict(report) == SyncVerdict.noWatch
+                        ? Theme.of(context).colorScheme.onSurface
+                        : Theme.of(context).colorScheme.error)),
+          ),
         for (final t in report.types)
           Row2(t.label,
               value: sinceLabel(t),
               trailing: _StateTag(t.state),
               onTap: () => _detail(t, report.windowDays)),
+      ],
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

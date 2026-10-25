@@ -1,5 +1,16 @@
-// Phone sync for the Today page (P0 2026-10-26: sync must be reliable and visible). The page's 「开启同步」 card and
-// 「同步状态」 panel drive the app's sync through three calls instead of sending people to the native sync page:
+// Phone sync for the Today page (P0 2026-10-26: sync must be reliable and visible).
+//
+// 1. The page's protocol (docs/sync-onboarding-app-requirements.md, sections 3–5; the page side is web/static/sync-status.js):
+//   window.Watch2WhoopFeatures.{syncConnect, syncNow, appSettings, healthSettings} = true   (declared by the app)
+//   watch2whoop://sync-connect?ow=&code=   one tap: connect (the code, or the account's own) + Health + first upload
+//   watch2whoop://sync-now                 one round now, without leaving the page
+//   watch2whoop://app-settings             this app's page in iOS Settings (Background App Refresh, Health)
+//   watch2whoop://health-settings          the Health sheet when iOS still has types to ask, else iOS Settings
+//   progress: window.BodySyncStatus.onApp({phase: permission|connecting|uploading|done|error, percent, error}); the last
+//   one is sent again after the page reloads ([appProgressJs]).
+//   The phone's state goes to the server after every round (PUT /v1/ingest/sync-device, [buildDeviceReport]).
+//
+// 2. The same steps as promises, for pages that want an answer (and the status the app knows):
 //
 //   window.Watch2WhoopFeatures.sync = {v: 1, enableSync: true, syncNow: true, syncStatus: true}   (declared by the app)
 //   await window.Watch2WhoopSync.enableSync()  -> {ok, status, error?}   Health permission + silent connect + first sync
@@ -16,6 +27,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
 import 'i18n.dart';
 import 'raw_sync.dart';
@@ -333,7 +345,8 @@ class SyncBridge {
 
   /// The session is there but the server refuses it (401): connect again.
   final bool Function() needsReconnect;
-  final Future<SyncConnectOutcome> Function() connect;
+  /// [link]: the sync part of the page's `sync-connect` link (OW address, one-time code), when it sent one.
+  final Future<SyncConnectOutcome> Function(({String? owHost, String? code})? link) connect;
 
   /// Shows the Health permission sheet(s) when iOS needs them; remembers that it asked.
   final Future<void> Function() askHealth;
@@ -349,7 +362,7 @@ class SyncBridge {
 
   bool get busy => _op != null;
 
-  Future<Map<String, Object?>> enable() => _once(_enable);
+  Future<Map<String, Object?>> enable({({String? owHost, String? code})? link}) => _once(() => _enable(link));
   Future<Map<String, Object?>> now() => _once(_now);
 
   Future<Map<String, Object?>> _once(Future<Map<String, Object?>> Function() f) {
@@ -364,14 +377,14 @@ class SyncBridge {
     return {'ok': false, 'error': {'code': code, 'message': message, 'action': action}, 'status': status};
   }
 
-  Future<Map<String, Object?>> _enable() async {
+  Future<Map<String, Object?>> _enable(({String? owHost, String? code})? link) async {
     if (!supported()) {
       return _error('unsupported', tr('这台手机暂时不能同步健康数据', 'This phone cannot sync health data yet'), 'none', await status());
     }
     SyncConnectOutcome? failed;
     if (!isConnected() || needsReconnect()) {
       progress({'step': 'connect', 'message': tr('正在连接同步…', 'Connecting sync…')});
-      final c = await connect();
+      final c = await connect(link);
       if (!c.connected) failed = c;
     }
     // Health and the app's own uploads go even when the background sync could not connect (no account / no network):
@@ -405,5 +418,174 @@ class SyncBridge {
     if (first != null) return _error('${first['code']}', '${first['message']}', '${first['action']}', st);
     progress({'step': 'done', 'message': ran ? tr('已同步', 'Synced') : tr('正在后台同步', 'Syncing in the background')});
     return {'ok': true, 'ran': ran, 'status': st};
+  }
+}
+
+// ------------------------------------------------------------------------------------- the page's protocol (doc §3–5)
+
+/// The page's link-driven features; declared on iOS only (Android has no phone sync yet).
+const String kSyncLinkFeaturesJs = 'window.Watch2WhoopFeatures=Object.assign(window.Watch2WhoopFeatures||{},'
+    '{syncConnect:true,syncNow:true,appSettings:true,healthSettings:true});';
+
+/// The page's names for the steps (doc §3).
+const Map<String, String> kAppPhases = {
+  'connect': 'connecting',
+  'permission': 'permission',
+  'upload': 'uploading',
+  'done': 'done',
+  'error': 'error',
+};
+
+/// One progress event of [SyncBridge] as the page's `onApp` argument, or null for steps it does not know.
+Map<String, Object?>? onAppEvent(Map<String, Object?> e) {
+  final phase = kAppPhases['${e['step']}'];
+  if (phase == null) return null;
+  final percent = (e['percent'] as num?)?.toInt();
+  return {
+    'phase': phase,
+    'percent': ?percent?.clamp(0, 100),
+    'error': phase == 'error' ? '${e['message'] ?? ''}' : null,
+  };
+}
+
+String appProgressJs(Map<String, Object?> onApp) =>
+    'window.BodySyncStatus&&window.BodySyncStatus.onApp&&window.BodySyncStatus.onApp(${jsonEncode(onApp)});';
+
+/// The sync part of a `watch2whoop://sync-connect?ow=…&code=…` link (never server addresses or login codes); null for
+/// other links. The OW address must be http(s).
+({String? owHost, String? code})? parseSyncConnect(Uri uri) {
+  if (uri.scheme != 'watch2whoop' || uri.host != 'sync-connect') return null;
+  final code = uri.queryParameters['code']?.trim();
+  final ow = uri.queryParameters['ow']?.trim();
+  final owOk = ow != null && ow.isNotEmpty && (ow.startsWith('https://') || ow.startsWith('http://')) && ow.length < 300;
+  final codeOk = code != null && RegExp(r'^[A-Za-z0-9-]{4,64}$').hasMatch(code);
+  return (owHost: owOk ? ow : null, code: codeOk ? code : null);
+}
+
+/// The Health types whose permission matters most for the scores (HealthKit identifiers): after connecting, any of
+/// them iOS still wants to ask about means the sheet did not come up (swallowed, #214) and is asked again.
+const List<String> kCoreHealthTypes = [
+  'HKQuantityTypeIdentifierHeartRate',
+  'HKQuantityTypeIdentifierRestingHeartRate',
+  'HKQuantityTypeIdentifierHeartRateVariabilitySDNN',
+  'HKCategoryTypeIdentifierSleepAnalysis',
+  'HKQuantityTypeIdentifierStepCount',
+  'HKQuantityTypeIdentifierActiveEnergyBurned',
+  'HKQuantityTypeIdentifierOxygenSaturation',
+  'HKQuantityTypeIdentifierRespiratoryRate',
+  'HKWorkoutTypeIdentifier',
+];
+
+/// The identifiers of [ids] iOS has never asked about (RawSync.swift healthUnasked); [] when it cannot say.
+Future<List<String>> healthUnasked(Iterable<String> ids) async {
+  try {
+    return (await const MethodChannel('watch2whoop/native').invokeListMethod<String>('healthUnasked', {'types': ids.toList()})) ??
+        const [];
+  } catch (_) {
+    return const [];
+  }
+}
+
+// ---------------------------------------------------------------------------------- the phone's state (doc §4)
+
+/// last_error of the report from the status problems (doc §4): auth / network / locked / health_denied / server / other.
+String? deviceLastError(List<SyncProblem> problems) {
+  for (final p in problems) {
+    if (p.severity == 'info' && p.code != 'locked') continue;
+    final e = switch (p.code) {
+      'auth' => 'auth',
+      'network' => 'network',
+      'locked' => 'locked',
+      'permission' => 'health_denied',
+      'server' => 'server',
+      'not_connected' || 'background_refresh_off' || 'low_power' || 'stale' || 'consent' || 'unsupported' => null,
+      _ => 'other',
+    };
+    if (e != null) return e;
+  }
+  return null;
+}
+
+/// The body of PUT /v1/ingest/sync-device: the phone's state only, no health values. Fields the server does not know
+/// are ignored there (the SDK's own state is sent along for the sync investigation, docs/audits).
+Map<String, Object?> buildDeviceReport(
+  SyncStatusInput s, {
+  String? appVersion,
+  List<String> unasked = const [],
+  bool foreground = true,
+  bool? sdkActive,
+  SdkSyncStatus? sdk,
+  int? firstSyncPercent,
+}) {
+  final d = s.device;
+  return {
+    'app_version': ?appVersion,
+    'background_refresh': switch (d.backgroundRefresh) {
+      'on' => 'available',
+      'off' => 'denied',
+      'restricted' => 'restricted',
+      _ => null,
+    },
+    'low_power': d.lowPower,
+    'health_readable': d.protectedData,
+    'last_attempt_at': _iso(_latest([s.ow.lastCompleteAt, s.ow.lastErrorAt, s.raw.lastRun])),
+    'last_upload_at': _iso(_latest([s.ow.lastUploadAt, s.raw.lastUpload])),
+    'last_error': deviceLastError(syncProblems(s)),
+    'unasked_types': unasked.take(60).toList(),
+    // extra, for the server's sync investigation (ignored by servers that do not read them)
+    'foreground': foreground,
+    'connected': s.connected,
+    'health_asked': s.healthAsked,
+    'net': d.net,
+    'sdk_sync_active': ?sdkActive,
+    if (sdk != null)
+      'sdk_status': {
+        'syncing': sdk.isSyncing,
+        'full_export': sdk.isFullExport,
+        'initial_export_done': sdk.initialExportDone,
+        'resumable': sdk.hasResumableSession,
+        'sent': sdk.sentCount,
+        'types_done': sdk.completedTypes,
+      },
+    'first_sync_percent': ?firstSyncPercent,
+  };
+}
+
+/// Sends the report at most once per [minGap] for the same content (a changed field goes at once); a server without
+/// the endpoint (404) or no network is not an error.
+class DeviceReporter {
+  DeviceReporter({this.client, this.minGap = const Duration(minutes: 10), DateTime Function()? now}) : _now = now ?? DateTime.now;
+  final http.Client? client;
+  final Duration minGap;
+  final DateTime Function() _now;
+  String? _lastBody;
+  DateTime? _lastAt;
+
+  /// Whether it was sent (and accepted).
+  Future<bool> send(String serverUrl, String token, Map<String, Object?> report) async {
+    final body = jsonEncode(report);
+    final now = _now();
+    if (body == _lastBody && _lastAt != null && now.difference(_lastAt!) < minGap) return false;
+    if (serverUrl.isEmpty) return false;
+    final b = Uri.parse(serverUrl);
+    final uri = Uri(scheme: b.scheme, host: b.host, port: b.hasPort ? b.port : null, path: '/v1/ingest/sync-device');
+    final c = client ?? http.Client();
+    try {
+      final res = await c
+          .put(uri,
+              headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json', 'Accept': 'application/json'},
+              body: body)
+          .timeout(const Duration(seconds: 10));
+      final ok = res.statusCode >= 200 && res.statusCode < 300;
+      if (ok) {
+        _lastBody = body;
+        _lastAt = now;
+      }
+      return ok;
+    } catch (_) {
+      return false;
+    } finally {
+      if (client == null) c.close();
+    }
   }
 }
