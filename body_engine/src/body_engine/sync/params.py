@@ -108,3 +108,37 @@ SYNC_DEVICE_FRESH = timedelta(hours=24)
 SYNC_FIRST_GRACE = timedelta(hours=2)
 OVERVIEW_TYPES = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "workouts")
 OVERVIEW_PARTIAL = ("hrv", "resting_heart_rate", "sleep", "steps")
+
+# History top-up (「补全历史数据」, sync/backfill.py): the app's first sync reads only the last 14 days (app 1.0.8, so the new
+# data comes in fast); the rest of the Apple Health history is topped up later, on request. Operational heuristics for how much
+# history the scores want, not health rules; the two numbers the scores need come from the score engine's own parameters.
+# - BACKFILL_TARGET_DAYS: the history we ask for, counted as days with watch data (heart rate, HRV or sleep) inside the last
+#   this-many days.
+# - The baseline the recovery score compares with is the last BASELINE_DAYS days and needs MIN_BASELINE_NIGHTS nights of HRV in
+#   it (openbodyscore/params.py): fewer HRV nights = no recovery score yet ("baseline"), fewer days than the window = a
+#   baseline that works but is thin ("thin").
+# - Reminders: the card opens this many days after the first sync (local dates), once each; after the last of them at most once
+#   every BACKFILL_REMIND_EVERY_DAYS days. A reminder is a day: the card stays up that whole local day, then waits for the next
+#   date. "Don't remind me" stops them for good; reaching the target stops them too.
+# - BACKFILL_*_METRICS: the daily_metrics names counted as watch heart-rate and HRV data.
+# - BACKFILL_RESYNC_OPEN: after a top-up started from the card, the app may use /v1/ingest/resync for this long even where the
+#   sync_center flag is off (the card, not the flag, started that job).
+# - BACKFILL_BASELINE_MIN_FILL: share of the baseline window that must have data before the baseline counts as steady.
+# - BACKFILL_ERROR_SHOWN: a failed top-up stays on the card this long, with a retry button.
+# - BACKFILL_PHONE_STALL: a top-up whose phone part has not reported anything after this long was never taken up by the app.
+# - BACKFILL_EXHAUSTED_FOR: after a whole-history top-up finished and the target is still not reached, the reminders pause this
+#   long (the phone may simply have no more; the server's import may also have run before Open Wearables finished processing).
+from openbodyscore import params as _score  # noqa: E402
+
+BACKFILL_TARGET_DAYS = 90
+BASELINE_DAYS = _score.BASELINE_DAYS
+MIN_BASELINE_NIGHTS = _score.MIN_BASELINE_NIGHTS
+BACKFILL_REMIND_AFTER_DAYS = (1, 3, 7)
+BACKFILL_REMIND_EVERY_DAYS = 7
+BACKFILL_HEART_METRICS = ("heart_rate", "resting_heart_rate")
+BACKFILL_HRV_METRICS = ("heart_rate_variability_sdnn", "heart_rate_variability_rmssd")
+BACKFILL_RESYNC_OPEN = timedelta(hours=48)
+BACKFILL_ERROR_SHOWN = timedelta(hours=24)
+BACKFILL_BASELINE_MIN_FILL = 0.9
+BACKFILL_PHONE_STALL = timedelta(minutes=15)
+BACKFILL_EXHAUSTED_FOR = timedelta(days=30)

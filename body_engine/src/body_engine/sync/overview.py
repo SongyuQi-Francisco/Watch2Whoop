@@ -7,6 +7,8 @@ It combines what the server already knows, read only:
 - the newest data of each way in (OW, the app's direct upload, the Shortcut) and of the main types (data_status.py);
 - today's scores (daily_scores) and, when the recovery ring is empty, why (web/recovery_empty.py);
 - the on-demand refresh and the history import (refresh.py, history.py: 「同步中…」);
+- `coverage`: how much watch history there is and the top-up card's reminder state (backfill.py); it keeps its own reminder
+  state in table history_backfill, the rest here is read only;
 - what the app last reported about the phone (table sync_device_state, app 1.0.8+, put_device()): Background App Refresh,
   Low Power Mode, Health locked, the last error, Health types iOS never asked about. Older apps send nothing; then the
   phone-side causes collapse into one "the background sync is behind" with the same buttons.
@@ -39,7 +41,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from ..i18n import L, is_en
-from . import broken, data_status, history, params as P, refresh
+from . import backfill, broken, data_status, history, params as P, refresh
 
 ISSUES = ("consent", "not_connected", "credentials", "server", "app_closed", "background_off", "low_power", "locked",
           "lagging", "type_missing")
@@ -152,6 +154,15 @@ def _scores(conn: psycopg.Connection, user_id: int, today: date) -> dict:
     return out
 
 
+def _coverage(conn: psycopg.Connection, user_id: int, now: datetime) -> dict | None:
+    """The history top-up answer (backfill.evaluate). It writes only its own reminder state; a failure never spoils the overview."""
+    try:
+        return backfill.evaluate(conn, user_id, now)
+    except Exception:  # noqa: BLE001
+        conn.rollback()
+        return None
+
+
 def _iso(t: datetime | None, tz: ZoneInfo) -> str | None:
     return t.astimezone(tz).isoformat(timespec="seconds") if t else None
 
@@ -231,6 +242,7 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
         "refresh": {"busy": ref["busy"], "status": ref["status"], "scored_at": _iso(ref["scored_at"], tz),
                     "linked": ref["linked"], "error": bool(ref["error"]) and ref["status"] == "error"},
         "history": {"active": hist["active"], "percent": hist["percent"]},
+        "coverage": _coverage(conn, user_id, now),
         "engine_status": {"mode": engine, "failure": fail and {k: fail.get(k) for k in ("reason", "code", "at", "n")},
                           "pending_days": (eng.get("pipeline") or {}).get("pending_days"),
                           "up_to_date": (eng.get("pipeline") or {}).get("up_to_date")},
