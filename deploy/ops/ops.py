@@ -426,7 +426,14 @@ def job_scores(log: Log, full: bool) -> list:
         engine_step(log, errors, "ai-cards periodic", "ai-cards", "periodic")
     if full and "memory-review-run" in help_text:   # long-term memory review state + archive cleanup (#113); per user inside, idempotent
         engine_step(log, errors, "memory-review-run", "memory-review-run")
+    # the cut-over to the app sync engine (#219 S5): reconcile every user with the flags (switch / roll back / post check);
+    # nobody is switched while apple_sync_primary is off, so this is a no-op until then
+    if "sync-mode" in help_text:
+        engine_step(log, errors, "sync-mode apply", "sync-mode", "apply")
     batch_step(log, errors, full)
+    # the shadow comparison (#219 S4) after the night's import-ow: closed days only, users with the engine on
+    if full and "sync-shadow-compare" in help_text:
+        engine_step(log, errors, "sync-shadow-compare", "sync-shadow-compare")
     if full and "muscle-coverage-check" in help_text:   # every recent workout must credit a muscle on the muscle load map (training/muscle_coverage.py)
         engine_step(log, errors, "muscle-coverage-check", "muscle-coverage-check")
     return errors
@@ -934,6 +941,25 @@ def check_muscle_coverage(r: Report) -> None:
         r.fail("肌肉图覆盖", f"这些运动类型没有映射到肌群：{names}；到 training/sport_muscles.py 补")
 
 
+def check_sync_shadow(r: Report) -> None:
+    """The app sync engine's shadow comparison (#219 S4; `body-engine sync-shadow-report --summary`: counts only)."""
+    p = engine("sync-shadow-report", "--summary", timeout=120)
+    try:
+        users = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return   # an engine without the command, or nobody compared yet
+    if not users:
+        return
+    bad = [u for u in users if u["bad"]]
+    ready = sum(1 for u in users if u["ready"])
+    detail = f"{len(users)} 人对比中，{ready} 人可以切换"
+    if bad:
+        r.warn("影子对比", detail + "；有不一致：" + "、".join(f"user {u['user_id']}（{u['bad']} 项）" for u in bad)
+               + "（body-engine sync-shadow-report --user-id N 看明细）")
+    else:
+        r.ok("影子对比", detail)
+
+
 def doctor_checks(r: Report) -> None:
     if PRIMARY == "ali":
         return doctor_checks_ali_primary(r)
@@ -1132,6 +1158,7 @@ def doctor_checks(r: Report) -> None:
             r.ok("每小时任务", f"{fmt_age(age)}成功")
 
     check_muscle_coverage(r)
+    check_sync_shadow(r)
     check_backups(r, state, t_now)
 
     # disk

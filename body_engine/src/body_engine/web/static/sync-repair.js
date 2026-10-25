@@ -149,6 +149,7 @@
     if (document.visibilityState === "visible" && C && st?.broken) check(true);   // back from the app's sync page
   });
 
+  window.BodySyncRepair = { open: () => (C ? openSheet() : null) };   // the sync status panel's 「重新连接」 (sync-status.js)
   (window.BodyPlugins = window.BodyPlugins || []).push({
     init(ctx) { C = ctx; css(); check(false); },   // runs again on every reload (at most one request a minute)
     onTab(tab) { onToday = tab === "today"; draw(); },

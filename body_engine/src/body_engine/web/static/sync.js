@@ -5,7 +5,8 @@
    data when the import and then the scores are done. Registered in window.BodyPlugins (init) and window.BodySync.
    Also the Apple Health read range (sync/history.py): while the whole history is being read and processed the line shows
    「历史数据导入中 x%」 (GET /v1/users/me/health-history, polled every 30 s), and window.BodyHealthRange.report() lets the app
-   (which has no cookie of its own) send its choice and progress (PUT, from its WebView). */
+   (which has no cookie of its own) send its choice and progress (PUT, from its WebView). The line gets its status dot, its
+   tap and, when the sync is stuck, its text from sync-status.js (window.BodySyncStatus). */
 (() => {
   "use strict";
   let C = null;          // ctx from app.js: api, reload
@@ -43,10 +44,12 @@
   function draw() {
     const e = el();
     const last = lastTime(st);
+    const stuck = window.BodySyncStatus?.line();   // sync-status.js: a stuck sync says why instead of 「已更新」
     const text = hist?.active ? tr("历史数据导入中 {p}%", { p: hist.percent ?? 0 })
-      : !st || !st.linked ? "" : st.busy ? tr("同步中…") : last ? tr("已更新 {t}", { t: hhmm(last) }) : "";
+      : stuck || (!st || !st.linked ? "" : st.busy ? tr("同步中…") : last ? tr("已更新 {t}", { t: hhmm(last) }) : "");
     e.textContent = text;
     e.hidden = !shown || !text;
+    window.BodySyncStatus?.decorate(e);   // the status dot; a tap opens the sync status panel
   }
 
   async function loadHistory() {
@@ -110,9 +113,11 @@
     if (shown && !st && C) load(); else draw();
   }
 
-  window.BodySync = { refresh, header };
+  window.BodySync = { refresh, header, redraw: () => { if (C) draw(); } };
   window.BodyHealthRange = { report };
   (window.BodyPlugins = window.BodyPlugins || []).push({
-    init(ctx) { C = ctx; },   // runs again on every reload: keep st (a poll may be running)
+    // runs again on every reload: keep st (a poll may be running); sync-status.js (the setup card and the status panel) loads
+    // right after the start, outside the first-screen budget
+    init(ctx) { C = ctx; window.BodyLazy?.script("sync-status.js"); },
   });
 })();

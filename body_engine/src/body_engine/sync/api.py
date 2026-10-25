@@ -6,6 +6,10 @@
 - GET  /v1/users/{user}/sync/status -> the same status fields (「同步中… / 已更新 07:42」 on the Today page).
 - GET  /v1/users/{user}/sync/connection -> {broken, reason, last_data_at, hours, after_hours, …}: whether the phone's
   Open Wearables sync looks broken (broken.py; 「手机同步已断开」 banner and sheet, web/static/sync-repair.js). Own data only.
+- GET  /v1/users/{user}/sync/overview?in_app=1 -> the 「同步状态」 panel and the 「开启数据同步」 card (overview.py): state, the
+  issue with its buttons, the newest data per main type, today's scores, refresh / history progress. Own data only.
+- PUT  /v1/users/{user}/sync/device and PUT /v1/ingest/sync-device -> the app's report on the phone side of its sync
+  (Background App Refresh, Low Power Mode, Health readable, last error; app 1.0.8+, overview.put_device). Own only, write.
 - PUT  /v1/users/{user}/health-history {scope: days90 | all, upload_percent?, sent?, upload_done?} -> the app's read range
   and progress (sent by the Today page in the app's WebView); GET -> {scope, status, active, percent, …} for
   「历史数据导入中 x%」 (history.py). Own data only; PUT needs write.
@@ -20,8 +24,14 @@
 - GET  /v1/users/{user}/sync/engine/days?date=&end= (flag apple_sync_engine, 404 when off for this user): the two sync
   paths (Open Wearables and the app's own sync engine) side by side per day, at most 31 days (rawdata/side_by_side.py,
   for the shadow comparison of docs/apple-sync-engine.md §4). Own data only, read scope is enough.
+- GET  /v1/users/{user}/sync/engine/status and GET /v1/ingest/sync-status (Bearer, like the other /v1/ingest reads): the
+  sync status panel (rawdata/sync_status.py): last successful upload, newest sample per type, refused uploads by
+  reason, the derive -> scores pipeline, the app's last sync round. Every sync mode, no flag. Own data only.
+- GET  /v1/users/{user}/sync/engine/shadow?date=&end=&all= (flag apple_sync_engine, 404 when off): the shadow
+  comparison's summary and the items of [date, end] (default the last 7 compared days; only the ones that are not ok
+  unless all=true), rawdata/shadow.py. Own data only.
 """
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -29,9 +39,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
-from ..rawdata import engine as rx_engine, side_by_side
+from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
-from . import broken, data_status, history, refresh, resync
+from . import broken, data_status, history, overview, refresh, resync
 
 router = APIRouter(tags=["sync"])
 
@@ -62,6 +72,45 @@ def sync_connection(user: str, conn=Depends(get_conn), viewer=Depends(current_us
     res = broken.check(conn, viewer["id"])
     res.pop("user_id", None)
     return res
+
+
+@router.get("/v1/users/{user}/sync/overview")
+def sync_overview(user: str, in_app: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    return overview.collect(conn, viewer["id"], in_app=in_app)
+
+
+class SyncDeviceIn(BaseModel):
+    """What the app knows about the phone side of its sync (docs/sync-onboarding-app-requirements.md §4)."""
+    model_config = ConfigDict(extra="ignore")   # a newer app may send more; only these are kept
+    app_version: str | None = Field(None, max_length=40)
+    background_refresh: Literal["available", "denied", "restricted"] | None = None
+    low_power: bool | None = None
+    health_readable: bool | None = None
+    last_attempt_at: datetime | None = None
+    last_upload_at: datetime | None = None
+    last_error: Literal["auth", "network", "locked", "health_denied", "server", "other"] | None = None
+    unasked_types: list[str] = Field(default_factory=list, max_length=60)
+
+
+def _device_put(conn, uid: int, body: SyncDeviceIn) -> dict:
+    if any(len(t) > 60 for t in body.unasked_types):
+        raise HTTPException(422, L("类型名太长", "Type name too long"))
+    return overview.put_device(conn, uid, body.model_dump())
+
+
+@router.put("/v1/users/{user}/sync/device")
+def put_sync_device(user: str, body: SyncDeviceIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    if "write" not in (viewer.get("token_scopes") or []):
+        raise HTTPException(403, L("这个登录没有 write 权限", "This sign-in cannot write"))
+    return _device_put(conn, uid, body)
+
+
+@router.put("/v1/ingest/sync-device")
+def put_ingest_sync_device(body: SyncDeviceIn, conn=Depends(get_conn), viewer=Depends(ingest_user)):
+    return _device_put(conn, viewer["id"], body)
 
 
 class HealthHistoryIn(BaseModel):
@@ -104,6 +153,34 @@ def get_engine_days(user: str, start: date = Query(alias="date"), end: date | No
     except ValueError:
         raise HTTPException(422, L(f"日期范围要在 1–{side_by_side.MAX_DAYS} 天之间",
                                    f"The date range must be 1–{side_by_side.MAX_DAYS} days")) from None
+
+
+@router.get("/v1/users/{user}/sync/engine/status")
+def get_engine_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    return rx_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/ingest/sync-status")
+def get_ingest_sync_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
+    return rx_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/users/{user}/sync/engine/shadow")
+def get_engine_shadow(user: str, start: date | None = Query(None, alias="date"), end: date | None = None,
+                      all: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):  # noqa: A002
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的数据", "You can only see your own data"))
+    uid = viewer["id"]
+    if not rx_engine.enabled(conn, uid):
+        raise HTTPException(404, L("没有开启", "Not enabled"))
+    s = rx_shadow.summary(conn, uid)
+    end = end or (s["last_day"] if s and s["last_day"] else date.today())
+    start = start or end - timedelta(days=6)
+    if end < start or (end - start).days > 92:
+        raise HTTPException(422, L("日期范围要在 1–93 天之间", "The date range must be 1–93 days"))
+    return {"summary": s, "start": start, "end": end, "items": rx_shadow.diffs(conn, uid, start, end, only_bad=not all)}
 
 
 @router.get("/v1/ingest/data-status")

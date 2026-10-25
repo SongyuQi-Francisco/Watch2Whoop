@@ -94,3 +94,17 @@ SYNC_BROKEN_AFTER = timedelta(hours=36)
 SYNC_BROKEN_GIVE_UP = timedelta(days=30)
 SYNC_BROKEN_SERVER_OK = timedelta(hours=6)
 SYNC_BROKEN_APP_SEEN = timedelta(hours=48)
+
+# Sync overview (sync/overview.py: 「同步状态」 panel, the 「开启数据同步」 card, GET /v1/users/me/sync/overview). Operational
+# heuristics, not health rules. The app syncs in the background several times an hour when iOS lets it, and on every open:
+# nothing new for 6 h while the phone is in use means the background sync is not running (Background App Refresh off, Low
+# Power Mode, the phone locked when iOS woke the app), before it counts as broken (SYNC_BROKEN_AFTER). A phone report
+# (sync_device_state, app 1.0.8+) older than 24 h no longer describes the phone. A brand-new connection gets 2 h before a
+# missing type counts (the first sync reads 90 days, newest first, sleep and HRV can come in a later batch).
+# OVERVIEW_TYPES: the types the panel lists (data_status.KINDS keys); OVERVIEW_PARTIAL: the ones whose absence (while heart
+# rate arrives) is reported as "not authorised" (workouts: rest weeks are normal; weight / VO₂max need other things).
+SYNC_LAG_AFTER = timedelta(hours=6)
+SYNC_DEVICE_FRESH = timedelta(hours=24)
+SYNC_FIRST_GRACE = timedelta(hours=2)
+OVERVIEW_TYPES = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "workouts")
+OVERVIEW_PARTIAL = ("hrv", "resting_heart_rate", "sleep", "steps")

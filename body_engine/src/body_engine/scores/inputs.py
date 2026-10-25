@@ -24,7 +24,7 @@ import psycopg
 from ..importers import ow as ow_imp, ow_cache as ow_cache_mod
 from ..importers.common import WAKE_DAY_SHIFT as WAKE_SHIFT, Segment
 from ..importers import shortcut as sc_imp
-from ..rawdata import samples as rx_samples, store as rx_store
+from ..rawdata import ow_archive as rx_archive, samples as rx_samples, store as rx_store
 from . import params as P
 
 Samples = list[tuple[datetime, float]]
@@ -252,19 +252,38 @@ def rmssd_hrv(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date,
     return [(t, v) for t, v, _ in rx_store.rmssd_samples(conn, user_id, lo, hi)]
 
 
+def load_ow_archive(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date, merger: _Merger,
+                    types: dict) -> list:
+    """The app mode once OW's history is archived (rawdata/ow_archive.py): load_ow's samples and stages from the local
+    copy, without asking OW."""
+    lo = datetime.combine(start, time.min, tz)
+    hi = datetime.combine(end + timedelta(days=1), time.min, tz)
+    for code, xs in rx_archive.samples(conn, user_id, types, lo, hi).items():
+        for s in xs:
+            merger.add(types[code], s.ts, s.value, s.xml)
+    return rx_archive.sleep_segments(conn, user_id, lo - timedelta(days=1), hi + timedelta(days=1))
+
+
 def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date, archive_dir: Path | None,
-         hrv_kind: str = P.HRV_KIND, ow_cache: str | None = None) -> Inputs:
+         hrv_kind: str = P.HRV_KIND, ow_cache: str | None = None, sync_mode: str | None = None) -> Inputs:
+    """sync_mode: None = the user's (rawdata/engine.mode); "app" loads as the app mode would (the shadow comparison and
+    the cut-over check score a shadow user that way without writing)."""
     inp = load_db(conn, user_id, start, end)
     inp.hrv_kind = hrv_kind
     ow_user = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()["ow_user_id"]
     merger = _Merger()
     segs = []
-    app = rx_samples.reads_app(conn, user_id)
+    app = rx_samples.reads_app(conn, user_id) if sync_mode is None else sync_mode == "app"
+    archived = app and rx_archive.get(conn, user_id) is not None
     if app:   # the app's own sync engine first (rawdata/samples.py); OW then only fills what it lacks
         segs += load_hk(conn, user_id, inp.tz, start, end, merger, ow_types(hrv_kind))
-    if client is not None and ow_user:
+    ow_segs = None
+    if archived:   # OW's history from the local archive (step S6): OW is not asked
+        ow_segs = load_ow_archive(conn, user_id, inp.tz, start, end, merger, ow_types(hrv_kind))
+    elif client is not None and ow_user:
         ow_segs = load_ow(client, ow_user, inp.tz, start, end, merger, ow_types(hrv_kind), conn=conn, user_id=user_id,
                           ow_cache=ow_cache)
+    if ow_segs is not None:
         if app:
             have = rx_samples.wake_dates(segs, inp.tz)
             ow_segs = [s for s in ow_segs if (s.end - WAKE_SHIFT).astimezone(inp.tz).date() not in have]
