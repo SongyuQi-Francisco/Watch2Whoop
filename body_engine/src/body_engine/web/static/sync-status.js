@@ -12,6 +12,12 @@
      status steps, 打开同步页 / 立即上传 = the app). A broken OW link keeps sync-repair.js's own banner.
    - window.BodySyncStatus.device(report): the app (1.0.8+) hands its phone report to the server through the page
      (PUT /v1/users/me/sync/device).
+   - 「补全历史数据」 card (sync/backfill.py, overview.coverage): the app's first sync reads only 14 days; while the history is short
+     the Today tab shows one card (short label, x / 90 days, one button) on the server's rhythm — 1, 3, 7 days after the first sync,
+     then weekly — with 「不再提醒」; the page tells the server it was shown (POST /sync/history/seen). The button: apps that announce
+     `Watch2WhoopFeatures.backfill` (1.0.8+, docs/sync-onboarding-app-requirements.md §10) get POST /sync/backfill (the server makes
+     the re-sync job) and then watch2whoop://backfill?days=90; older apps go to their sync center / sync page (read range → all
+     history). While a top-up runs the card shows its percent and nothing is asked again. The panel has the same row.
    Loaded on demand right after the start (sync.js, type w2w/lazy); registered in window.BodyPlugins (init / onTab / meItem / bindMe). The pure helpers are module.exports for
    tests/test_sync_overview.py. */
 (() => {
@@ -65,7 +71,27 @@
   /** The tone of the status dot: good / mid / bad / plain. */
   const toneOf = (ov) => (!ov ? "plain" : ov.state === "ok" ? "good" : ov.state === "issue" || ov.state === "consent" ? (ov.issue?.tone || "mid") : "plain");
 
-  if (typeof module !== "undefined") module.exports = { agoText, typeAgo, actionLink, connectLink, wantsCard, wantsAsk, bannerFor, toneOf };
+  /** The link that makes the app (1.0.8+) read `days` days of Apple Health again; days null = all history. */
+  const backfillLink = (days) => "watch2whoop://backfill?days=" + (days == null ? "all" : days);
+  /** Whether the top-up card shows: inside the app, own page, Today tab, the server says so, and the sync itself is not stuck. */
+  const wantsBackfill = (ov, tab, self, inApp) => !!(inApp && self && tab === "today" && ov && ov.coverage && ov.coverage.remind && ov.coverage.remind.show
+    && ((ov.coverage.progress && ov.coverage.progress.active) || ov.state === "ok" || ov.state === "syncing"));
+  /** What the card's button does: "bridge" (the app announced backfill) or a link into an older app's sync page. */
+  function backfillAction(f, syncCenterOn) {
+    f = f || {};
+    if (f.backfill) return { kind: "bridge" };
+    return { kind: "link", href: f.syncCenter && syncCenterOn ? "watch2whoop://sync-center" : "watch2whoop://sync" };
+  }
+  /** The line under the card's title. */
+  function backfillSub(cov) {
+    if (cov.progress && cov.progress.active) return tr("补全中 {p}%", { p: cov.progress.percent == null ? 0 : cov.progress.percent });
+    if (cov.remind && cov.remind.state === "error") return tr("没能补全");
+    return [tr("{n} / {t} 天", { n: cov.days, t: cov.target_days }), cov.impact_label].filter(Boolean).join(" · ");
+  }
+  /** The card's bar: the top-up's percent while it runs, else how much of the target there is. */
+  const backfillPercent = (cov) => Math.max(0, Math.min(100, cov.progress && cov.progress.active ? (cov.progress.percent || 0) : Math.round(100 * cov.days / (cov.target_days || 90))));
+
+  if (typeof module !== "undefined") module.exports = { agoText, typeAgo, actionLink, connectLink, wantsCard, wantsAsk, bannerFor, toneOf, backfillLink, wantsBackfill, backfillAction, backfillSub, backfillPercent };
   if (typeof window === "undefined") return;
 
   let C = null, ME = null;
@@ -76,6 +102,7 @@
   let invCode = null;       // the invitation code minted for the connect flow (memory only)
   let watchUntil = 0, watchTimer = 0;
   let retryAt = 0;
+  let seenDay = "";         // the day the top-up card was reported as shown
   const IN_APP = () => !!window.Watch2Whoop;
   const F = () => window.Watch2WhoopFeatures || {};
   const self = () => (C?.isSelf ? C.isSelf() : true) && $("#viewing")?.hidden !== false;
@@ -100,8 +127,9 @@
       + "#sync-st.ss-tap{cursor:pointer}#sync-st[data-tone]::before{content:\"\";display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px;background:var(--text-3)}"
       + "#sync-st[data-tone=good]::before{background:var(--good)}#sync-st[data-tone=mid]::before{background:var(--mid)}#sync-st[data-tone=bad]::before{background:var(--bad)}#sync-issue{margin-top:8px}"
       + ".ss-path{font-size:13px;color:var(--text-2);margin:6px 0 0}"
+      + "#sync-backfill{margin:8px 20px 0}#sync-backfill[hidden]{display:none}.ss-quiet{border:0;background:none;color:var(--text-2);font-size:13px;padding:6px 0;align-self:center}"
       + ".ss-h{font-size:13px;font-weight:600;margin:18px 0 6px;color:var(--text-2)}.ss-sc{display:flex;gap:8px;flex-wrap:wrap}"
-      + "@media (min-width:1024px){#sync-setup{margin-left:calc(var(--side) + 40px);max-width:560px}}";
+      + "@media (min-width:1024px){#sync-setup,#sync-backfill{margin-left:calc(var(--side) + 40px);max-width:560px}}";
     document.head.appendChild(s);
   }
 
@@ -109,8 +137,12 @@
     if (!C || window.W2W_SHELL) return ov;
     if (!force && ov && Date.now() - checkedAt < MIN_GAP_MS) return ov;
     checkedAt = Date.now();
+    const topping = !!ov?.coverage?.progress?.active;
     try { ov = await C.api(`/v1/users/me/sync/overview${IN_APP() ? "?in_app=1" : ""}`, { quiet401: true }); } catch (e) { return ov; }
     draw();
+    const active = !!ov?.coverage?.progress?.active;
+    if (active && !watchUntil) watch();               // a history top-up is running (maybe started elsewhere): follow it
+    else if (topping && !active) C.reload?.();        // it just finished: show the new scores
     return ov;
   }
 
@@ -162,6 +194,75 @@
     bindActions(e);
   }
 
+  // ---- the history top-up card (「补全历史数据」, above the page like the setup card; Today tab only)
+  function backfillEl() {
+    let e = $("#sync-backfill");
+    if (!e) {
+      const view = $("#view");
+      if (!view) return null;
+      e = document.createElement("section");
+      e.id = "sync-backfill";
+      e.hidden = true;
+      view.before(e);
+    }
+    return e;
+  }
+
+  /** The top-up button: a link for an older app (its sync page), a button that starts the job for 1.0.8+. */
+  function backfillButton(primary, label) {
+    const act = backfillAction(F(), !!window.BodyFlags?.on("sync_center"));
+    const cls = `btn${primary ? " btn-primary" : ""}`;
+    return act.kind === "link" ? `<a class="${cls}" href="${act.href}" data-ss-link="backfill">${C.esc(label)}</a>`
+      : `<button class="${cls}" type="button" data-ss="backfill">${C.esc(label)}</button>`;
+  }
+
+  function drawBackfill() {
+    const e = backfillEl();
+    if (!e) return;
+    const show = wantsBackfill(ov, tab, self(), IN_APP());
+    e.hidden = !show;
+    if (!show) return;
+    const cov = ov.coverage, st = cov.remind.state, running = !!(cov.progress && cov.progress.active);
+    const btns = running ? "" : backfillButton(true, st === "error" ? tr("再试一次") : tr("补全历史"))
+      + (st === "due" ? `<button class="ss-quiet" type="button" data-ss="bf_mute">${C.esc(tr("不再提醒"))}</button>` : "");
+    e.innerHTML = `<div class="ss-card"><div class="ss-head"><span class="ss-ic">${ICON_WATCH}</span><div><div class="ss-t">${C.esc(tr("补全历史数据"))}</div>
+      <div class="ss-s">${C.esc(backfillSub(cov))}</div></div></div>
+      <div class="ss-bar"><i style="width:${Math.max(4, backfillPercent(cov))}%"></i></div>${btns}</div>`;
+    bindActions(e);
+    const day = new Date().toDateString();   // a reminder is a day: tell the server this one was shown
+    if (st === "due" && seenDay !== day && (ME?.token_scopes || []).includes("write")) {
+      seenDay = day;
+      C.api("/v1/users/me/sync/history/seen", { method: "POST", body: {}, quiet401: true }).catch(() => { seenDay = ""; });
+    }
+  }
+
+  async function startBackfill(btn) {
+    const cov = ov?.coverage;
+    if (!cov) return;
+    const days = cov.action?.days ?? cov.target_days ?? 90;
+    if (btn) btn.disabled = true;
+    let res = null;
+    try { res = await C.api("/v1/users/me/sync/backfill", { method: "POST", body: { days } }); } catch (e) { res = null; }
+    if (btn) btn.disabled = false;
+    if (!res) { C.toast(tr("现在连不上服务器")); return; }
+    if (res.coverage && ov) ov.coverage = res.coverage;
+    draw();
+    if (!res.accepted && res.reason === "throttled") { C.toast(tr("{n} 秒后再试", { n: res.retry_after || 60 })); return; }
+    if (!res.accepted && res.reason !== "busy") return;   // consent: the consent sheet is its own flow
+    watch();
+    location.href = backfillLink(days);   // the app does the phone part of the job the server just made
+  }
+
+  async function muteBackfill(muted) {
+    let cov = null;
+    try { cov = await C.api("/v1/users/me/sync/history/mute", { method: "PUT", body: { muted } }); } catch (e) { C.toast(tr("现在连不上服务器")); return; }
+    if (ov && cov) ov.coverage = cov;
+    C.toast(muted ? tr("已关闭提醒") : tr("已开启提醒"));
+    draw();
+    const root = $("#sheet-body");
+    if (panelOpen && root && $("#sheet")?.hidden === false && $("#sheet-title")?.textContent === tr("同步状态")) { root.innerHTML = panelHtml(); bindActions(root, true); }
+  }
+
   // ---- the banner (stuck sync) and the status line under the Today title (sync.js draws its text)
   function drawBanner() {
     let e = $("#sync-issue");
@@ -192,6 +293,7 @@
 
   function draw() {
     drawCard();
+    drawBackfill();
     drawBanner();
     window.BodySync?.redraw();
     updateMe();
@@ -270,6 +372,10 @@
   // done | error, percent?, error?}
   function onApp(ev) {
     if (!ev || typeof ev !== "object") return;
+    if (ev.kind === "backfill") {   // the history top-up (docs/sync-onboarding-app-requirements.md §10): the server tracks it; look again at the end
+      if (ev.phase === "done" || ev.phase === "error") load(true);
+      return;
+    }
     phase = { phase: String(ev.phase || "uploading"), percent: Number(ev.percent) || 0, error: ev.error ? String(ev.error) : null };
     drawCard();
     if (phase.phase === "done") load(true);
@@ -311,6 +417,12 @@
     const mark = (ok, label) => `<span class="badge ${ok ? "good" : "plain"}">${C.esc(label)} ${ok ? "✓" : "—"}</span>`;
     const scores = `<div class="ss-sc">${mark(sc.recovery, tr("恢复"))}${mark(sc.sleep, tr("睡眠"))}${mark(sc.strain, tr("负荷"))}</div>
       ${!sc.recovery && sc.empty && !is ? `<p class="ss-path">${C.esc(sc.empty.label)}</p>` : ""}`;
+    const cov = ov.coverage;
+    const hist = cov && cov.days > 0 ? `<div class="ss-h">${C.esc(tr("历史数据"))}</div>
+      <div class="kv"><span class="k"><i class="ss-dot ${cov.status === "complete" || !cov.impact ? "good" : "mid"}"></i>${C.esc(tr("{n} / {t} 天", { n: cov.days, t: cov.target_days }))}</span>
+        <span class="v">${C.esc(cov.progress?.active ? tr("补全中 {p}%", { p: cov.progress.percent ?? 0 }) : "")}</span></div>
+      ${cov.impact_label && cov.status !== "complete" ? `<p class="ss-path">${C.esc(cov.impact_label)}</p>` : ""}
+      ${IN_APP() && cov.status !== "complete" && !cov.progress?.active ? `<div class="btns">${backfillButton(false, tr("补全历史"))}${cov.remind?.muted ? `<button class="btn" type="button" data-ss="bf_unmute">${C.esc(tr("开启提醒"))}</button>` : ""}</div>` : ""}` : "";
     const busy = ov.refresh?.busy || ov.history?.active;
     const bottom = [
       !is?.actions.includes("retry") && ov.refresh?.linked && !ov.setup_needed ? `<button class="btn" type="button" data-ss="retry"${busy ? " disabled" : ""}>${C.esc(busy ? tr("同步中…") : tr("立即重试"))}</button>` : "",
@@ -320,7 +432,7 @@
       ? `<button class="item" type="button" data-ss="data_status"><span class="row-title">${C.esc(tr("数据状态"))}</span></button>` : "";
     return `${head}${issue}
       <div class="ss-h">${C.esc(tr("最新数据"))}</div>${rows}
-      <div class="ss-h">${C.esc(tr("今天的分数"))}</div>${scores}
+      <div class="ss-h">${C.esc(tr("今天的分数"))}</div>${scores}${hist}
       ${bottom ? `<div class="btns">${bottom}</div>` : ""}${ds ? `<div class="group" style="margin-top:12px">${ds}</div>` : ""}`;
   }
   const PLUGINS = () => window.BodyPlugins || [];
@@ -373,6 +485,9 @@
       const ds = PLUGINS().find((p) => p.openDataStatusType);
       if (a === "connect") { if (inSheet) C.closeSheet(); connect(inSheet ? null : b); }
       else if (a === "retry") retry(b);
+      else if (a === "backfill") { if (inSheet) C.closeSheet(); startBackfill(inSheet ? null : b); }
+      else if (a === "bf_mute") muteBackfill(true);
+      else if (a === "bf_unmute") muteBackfill(false);
       else if (a === "copy") copyCode();
       else if (a === "reconnect") { if (inSheet) C.closeSheet(); window.BodySyncRepair?.open(); }
       else if (a === "consent") { if (inSheet) C.closeSheet(); window.BodyProfile?.consent?.(false); }

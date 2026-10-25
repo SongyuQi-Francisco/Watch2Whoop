@@ -107,6 +107,8 @@ NO_DATA = {
     "data-status": "sync control: which health data types reached the server (#163)",
     "sync/connection": "sync control: whether the phone's sync stopped (sync/broken.py)",
     "sync/overview": "sync control: the sync status panel (sync/overview.py)", "sync/device": "sync control: the app's phone report",
+    "sync/backfill": "sync control: start the history top-up (sync/backfill.py)",
+    "sync/history/seen": "sync control: the top-up card was shown", "sync/history/mute": "setting: stop the top-up reminders",
     "notices": "messages from the admin (notices/)", "notices/{x}/seen": "messages from the admin",
     "notifications": "notification list (#175)", "notifications/unread": "notification list", "notifications/read": "notification list",
     "notification-settings": "setting: push per category, quiet hours (#175)",
