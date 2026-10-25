@@ -82,3 +82,15 @@ OW_WATCH_QUIET = timedelta(seconds=45)
 OW_WATCH_MIN_GAP = timedelta(minutes=3)
 OW_WATCH_LOOKBACK = timedelta(hours=6)    # older uploads are left to the hourly job
 OW_WATCH_MAX_PAGES = 5                     # GET /users pages of 100 users, newest upload first
+
+# 「手机同步已断开」 (sync/broken.py): a phone whose Open Wearables uploads stopped (seen in production: its SDK credentials
+# became invalid and every upload got 401) while its owner still opens the app. Operational heuristics, not health rules:
+# an iPhone records steps and heart rate every day and the app syncs on every open, so 36 h without anything new is not a
+# quiet day; it is longer than a night with the phone off or a day without the watch. Older than 30 days: the phone sync was
+# probably given up on purpose (another phone, Shortcut only), so the page stops asking. The server must have reached OW
+# for the user within 6 h (the hourly import), otherwise OW or our job is down and it is not the phone. "Uses the app":
+# a Today page session or an upload of the app's own sync within 48 h (the Today page asking counts as a visit).
+SYNC_BROKEN_AFTER = timedelta(hours=36)
+SYNC_BROKEN_GIVE_UP = timedelta(days=30)
+SYNC_BROKEN_SERVER_OK = timedelta(hours=6)
+SYNC_BROKEN_APP_SEEN = timedelta(hours=48)
