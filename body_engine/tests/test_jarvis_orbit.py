@@ -87,22 +87,32 @@ def test_lucide_icons_and_notice():
         assert f"lucide/blob/main/icons/{name}.svg" in notices, name
 
 
-def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
-    """The HUD open / close (#53): Web Animations only move transform and opacity (the compositor runs them in the app's
-    WKWebView); the idle breathing and turning run only while the menu is open and pause while the page is hidden; the
-    open key shows chevron-down with a clear label, never the x."""
-    for fn in ("function openMenu", "function closeMenu"):
+def test_menu_motion_is_quick_transform_and_opacity_only_and_one_ink():
+    """The menu (#53, speed + mono pass): about 200 ms, no stagger, no bounce; Web Animations only move transform and opacity
+    (the compositor runs them in the app's WKWebView); nothing loops; the open key shows chevron-down with a clear label; and
+    the whole Jarvis look is one ink (the page's --text): no colour, gradient or glow."""
+    assert "const OPEN_MS = 200, CLOSE_MS = 150" in JS
+    for fn in ("function openMenu", "function closeMenu", "function arcFrames"):
         body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
         for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
             for prop in re.findall(r"(\w+):", props):
                 assert prop in ("offset", "opacity", "transform"), (fn, prop)
         assert "strokeDashoffset" not in body, fn
-    assert 'const EXIT_ICON = "chevron-down";' in JS and '${lu(EXIT_ICON, 2.2)}' in JS
+        assert "delay: order" not in body and "overshoot" not in body, fn   # no stagger, no bounce
+    # the press answers on pointerdown in CSS (no JS between the touch and the first frame)
+    assert ".jv.pressed { transform: scale(.92); }" in CSS and "transition: transform .08s" in CSS
+    assert 'const EXIT_ICON = "chevron-down";' in JS and "${lu(EXIT_ICON)}" in JS
     assert 'tr("收起 Jarvis 菜单")' in JS
-    assert 'document.addEventListener("visibilitychange", pause)' in JS
-    assert "body.jv-paused :is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation-play-state: paused; }" in CSS
-    # infinite animations only inside the fan (display:none while closed) or the open key, and off with reduced motion
+    # nothing runs forever in the menu (only the voice panel's recording dot blinks)
     for m in re.finditer(r"([^{}]+)\{[^{}]*infinite[^{}]*\}", re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)):
-        sel = m.group(1).strip()
-        assert sel.startswith((".jv-fan", ".jv.open")) or "jv-vp-dot" in sel, sel
-    assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
+        assert "jv-vp-dot" in m.group(1), m.group(1)
+    # one ink: no colour, gradient, glow or accent token anywhere in the Jarvis files
+    code = re.sub(r"/\*.*?\*/", "", CSS, flags=re.S)
+    for bad in ("gradient", "--sleep", "--bad", "--accent", "hud", "glow", "#fff;", "hsl", "--bad-soft"):
+        assert bad not in code, bad
+    for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
+        assert colour.lower() in ("#ffffff", "#151517"), colour   # the key's face: white / near-black
+    assert "linearGradient" not in JS and "jv-grad" not in JS
+    # one stroke width for the Lucide icons
+    assert "const lu = (name, sw = 1.75)" in JS and not re.search(r"lu\([^)]*,\s*[\d.]+\)", JS)
+    assert ".jv, .jv-ic, .jv-kbase" in CSS   # reduced motion drops the transitions too

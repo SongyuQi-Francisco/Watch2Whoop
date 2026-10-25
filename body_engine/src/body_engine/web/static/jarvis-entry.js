@@ -3,11 +3,13 @@
 
    - The dock's Jarvis key becomes a round icon button (Lucide "orbit", no text), centred and raised above the tab bar.
    - Jarvis = the built-in fallback AI (BodyAI.isJarvis()). For Jarvis:
-     · tap: a light runs once clockwise round the key's ring, lighting its segments like a scan, and four keys fly out of the
-       ring along the orbit (a short glowing trail each) to an arc above it: 对话 (the full chat), 语音 (talk without holding:
-       straight into the locked state), 拍照 (the camera; the photo goes to Jarvis), 快记 (quick log). The keys sit on glowing
-       HUD bases that breathe while the menu is open (paused while the page is hidden); closing runs it all backwards. While
-       open the key shows "chevron-down" (close the menu). Only transform and opacity are animated (the compositor runs them).
+     · tap: four keys come out of the key's two sides along an upward-arching arc (its centre a little below the key's centre,
+       like an instrument cluster), growing from small to their size (a little smaller than the key): 对话 (the full chat), 语音
+       (talk without holding: straight into the locked state), 拍照 (the camera; the photo goes to Jarvis), 快记 (quick log). About
+       200 ms, no stagger, no bounce; closing is the same backwards, quicker. While open the key shows "chevron-down" (close the
+       menu). Only transform and opacity are animated (the compositor runs them). The press answers on pointerdown (CSS, 80 ms).
+       One ink: black lines in light mode, white in dark (the page's --text), no colour, no gradient, no glow. Icons: Lucide, one
+       stroke width (1.75).
 
      · hold (HOLD_MS): talk at once. Release = done; slide up-left = cancel; slide up-right = lock (hands free, then 发送).
        Recognition: the app's on-device recogniser when it has one for the language (window.Watch2WhoopFeatures.voice, app 1.0.8+:
@@ -17,8 +19,8 @@
        jarvis_voice_direct, otherwise after the user checked it (the consent says the text is confirmed before it is sent).
      · the same hold-to-talk on the chat's own mic button (bindMic), started at once (it is a mic button).
    - Anyone else (own API / subscription AI, the body butler, none): only the look changes; a tap does what the pill did.
-   Motion follows prefers-reduced-motion in JS too (Web Animations are not covered by app.css' global rule): no sweep, no fly-out,
-   no breathing; the open menu just appears. Haptics only when the app says it has them (Watch2WhoopFeatures.haptics). Nothing of a recording is kept. */
+   Motion follows prefers-reduced-motion in JS too (Web Animations are not covered by app.css' global rule): no flight, no fade;
+   the open menu just appears. Haptics only when the app says it has them (Watch2WhoopFeatures.haptics). Nothing of a recording is kept. */
 (() => {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
@@ -38,18 +40,18 @@
   const MIN_S = 0.6;            // shorter holds are not sent (as the chat's mic, ai-media.js)
   const UP_PX = 60;             // slide up at least this far before cancel / lock count by side
   const HIT_PX = 48, NEAR_PX = 150;
-  const R_KEY = 98, R_RING = 35, START = 225, SWEEP_MS = 560, CIRC = 219.91, BARS = 34;
-  const EASE = [0.45, 0.05, 0.35, 1];
-  const SEGS = 12;              // the ring's lit segments (30° each, a 5° gap)
-  const LEAD = 55;              // a key leaves the ring this many degrees before its place and flies clockwise along the orbit
-  const FLY_MS = 440, BACK_MS = 260;
+  const CIRC = 219.91, BARS = 34;   // CIRC = the hold ring's circumference (r 35)
+  // The menu (instrument-cluster style): two keys on each side of the Jarvis key, on one upward-arching arc of radius R_ARC whose
+  // centre is ARC_DY below the key's centre; they come out of the key's sides along it (radius R_FROM -> R_ARC) while growing
+  const R_ARC = 120, ARC_DY = 22, R_FROM = 32, SIDE_FROM = 100;   // SIDE_FROM = the angle (from 12 o'clock) they leave from
+  const OPEN_MS = 200, CLOSE_MS = 150, STEPS = 9;   // no stagger, no overshoot; the beat between touch and first frame is the CSS press
   const FINAL_WAIT_MS = 8000;   // the app's final result after 发送; then the last partial text is used
   const START_WAIT_MS = 20000;  // the app says "started" (after its permission prompts the first time); else unavailable
-  const KEYS = [   // angle on the arc, 0 = 12 o'clock, clockwise; the order never changes
-    { id: "chat", label: () => tr("对话"), icon: "bot-message-square", th: 290 },
-    { id: "voice", label: () => tr("语音"), icon: "audio-waveform", th: 336.67 },
-    { id: "photo", label: () => tr("jarvis.photo"), icon: "scan-eye", th: 23.33 },
-    { id: "quick", label: () => tr("快记"), icon: "zap", th: 70 },
+  const KEYS = [   // angle on the arc from 12 o'clock (negative = left of the key); the order (= focus order) never changes
+    { id: "chat", label: () => tr("对话"), icon: "bot-message-square", th: -72 },
+    { id: "voice", label: () => tr("语音"), icon: "audio-waveform", th: -36 },
+    { id: "photo", label: () => tr("jarvis.photo"), icon: "scan-eye", th: 36 },
+    { id: "quick", label: () => tr("快记"), icon: "zap", th: 72 },
   ];
   const EXIT_ICON = "chevron-down";   // the open key = close the menu (the owner picks from chevron-down / minimize-2 / power)
 
@@ -66,7 +68,7 @@
     lock: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
     "arrow-up": '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
   };
-  const lu = (name, sw = 2) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${LU[name]}</svg>`;
+  const lu = (name, sw = 1.75) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${LU[name]}</svg>`;
 
   let C = null;            // plugin context from app.js
   let jv = null;           // the Jarvis key (id "ask", so app.js' offline greying and needsNet still apply)
@@ -106,25 +108,16 @@
     if (!old || jv) return;
     const row = document.createElement("div");
     row.className = "jv-row";
-    // The ring's segments: SEGS arcs of the r 35 circle, each one dash rotated to its place (0° = 12 o'clock, clockwise)
-    const seg = CIRC / SEGS, segs = Array.from({ length: SEGS }, (_, j) =>
-      `<circle class="sg" cx="38" cy="38" r="35" stroke-dasharray="${(seg * 25 / 30).toFixed(2)} ${(CIRC - seg * 25 / 30).toFixed(2)}" transform="rotate(${-90 + j * 30 + 2.5} 38 38)"/>`).join("");
     row.innerHTML = `
       <span class="jv-halo" id="jv-halo" aria-hidden="true"></span>
-      <span class="jv-glow" aria-hidden="true"></span>
       <button type="button" class="jv" id="ask" aria-label="Jarvis">
-        <span class="jv-ticks" id="jv-ticks" aria-hidden="true"><svg class="spin" viewBox="0 0 100 100">
-          <circle class="tk" cx="50" cy="50" r="47"/><circle class="tk2" cx="50" cy="50" r="50" transform="rotate(-60 50 50)"/></svg></span>
         <svg class="jv-ring" viewBox="0 0 76 76" aria-hidden="true">
           <circle class="trk" cx="38" cy="38" r="35"/>
           <circle class="hold" id="jv-ring-hold" cx="38" cy="38" r="35" transform="rotate(-90 38 38)"/>
-          <g id="jv-segs">${segs}</g>
         </svg>
-        <span class="jv-comet" id="jv-comet" aria-hidden="true"><svg viewBox="0 0 76 76"><circle class="tail" cx="38" cy="38" r="35"
-          stroke-dasharray="40 179.91" transform="rotate(-155.5 38 38)"/></svg></span>
-        <span class="jv-ic jv-ic-main">${lu("orbit", 1.7)}</span>
-        <span class="jv-ic jv-ic-x">${lu(EXIT_ICON, 2.2)}</span>
-        <span class="jv-ic jv-ic-mic">${lu("mic", 2)}</span>
+        <span class="jv-ic jv-ic-main">${lu("orbit")}</span>
+        <span class="jv-ic jv-ic-x">${lu(EXIT_ICON)}</span>
+        <span class="jv-ic jv-ic-mic">${lu("mic")}</span>
       </button>
       <span class="jv-sr" id="jv-desc"></span>`;
     old.replaceWith(row);
@@ -132,21 +125,15 @@
     document.body.classList.add("jv-orbit");
     const layer = document.createElement("div");
     layer.className = "jv-layer";
-    // The HUD gradients (icon strokes, the comet's tail) live in one always-rendered SVG: a gradient inside display:none is lost
     layer.innerHTML = `
-      <svg class="jv-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
-        <linearGradient id="jv-grad" gradientUnits="userSpaceOnUse" x1="3" y1="3" x2="21" y2="21"><stop offset="0" class="g0"/><stop offset="1" class="g1"/></linearGradient>
-        <linearGradient id="jv-tail" gradientUnits="userSpaceOnUse" x1="6.3" y1="23.2" x2="38" y2="3"><stop offset="0" class="t0"/><stop offset="1" class="t1"/></linearGradient>
-      </defs></svg>
       <div class="jv-scrim" id="jv-scrim" hidden></div>
       <div class="jv-fan" id="jv-fan" role="menu" hidden>
-        <span class="jv-shock" id="jv-shock" aria-hidden="true"></span>
-        ${KEYS.map(() => `<span class="jv-trail" aria-hidden="true"></span><span class="jv-trail t2" aria-hidden="true"></span>`).join("")}
-        ${KEYS.map((k) => `<button type="button" class="jv-key" role="menuitem" data-key="${k.id}"><span class="jv-kglow" aria-hidden="true"></span><span class="jv-kbase" aria-hidden="true"></span><svg class="jv-kring" viewBox="0 0 68 68" aria-hidden="true"><circle class="a" cx="34" cy="34" r="32"/><circle class="b" cx="34" cy="34" r="27.5"/></svg><span class="jv-ping" aria-hidden="true"></span>${lu(k.icon, 1.9)}<span class="lbl" aria-hidden="true"></span></button>`).join("")}
+        <svg class="jv-arc" id="jv-arc" viewBox="-130 -130 260 150" aria-hidden="true" focusable="false"><path d="${arcPath()}"/></svg>
+        ${KEYS.map((k) => `<button type="button" class="jv-key" role="menuitem" data-key="${k.id}"><span class="jv-kbase" aria-hidden="true"></span>${lu(k.icon)}<span class="lbl" aria-hidden="true"></span></button>`).join("")}
       </div>
       <div class="jv-vscrim" id="jv-vscrim" hidden></div>
-      <div class="jv-vt jv-vt-cancel" id="jv-vt-cancel" aria-hidden="true" hidden>${lu("x", 2)}<span class="lbl"></span></div>
-      <div class="jv-vt jv-vt-lock" id="jv-vt-lock" aria-hidden="true" hidden>${lu("lock", 2)}<span class="lbl"></span></div>
+      <div class="jv-vt jv-vt-cancel" id="jv-vt-cancel" aria-hidden="true" hidden>${lu("x")}<span class="lbl"></span></div>
+      <div class="jv-vt jv-vt-lock" id="jv-vt-lock" aria-hidden="true" hidden>${lu("lock")}<span class="lbl"></span></div>
       <div class="jv-vpanel" id="jv-vpanel" role="dialog" hidden>
         <div class="jv-vp-top"><span class="jv-vp-dot" aria-hidden="true"></span><span id="jv-vp-title"></span>
           <button type="button" class="jv-vp-lang" id="jv-vp-lang" hidden></button><span class="jv-vp-time num" id="jv-vp-time">0:00</span></div>
@@ -200,7 +187,6 @@
     };
     jv.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      sync();
       if (offline()) return;   // the click that follows says "needs a connection" (app.js)
       if (V.state === "locked" && V.anchor === jv) { e.preventDefault(); ignoreClickUntil = performance.now() + CLICK_GUARD_MS; finishVoice(); return; }
       if (V.state !== "off") return;
@@ -250,15 +236,7 @@
     if (M.open) closeMenu(byKeyboard); else openMenu(byKeyboard);
   }
 
-  // ---------------------------------------------------------------- the ring menu
-  // The inverse of a CSS cubic-bezier: the time at which the eased light reaches a given share of the turn, so each key comes out
-  // just as the light passes its angle
-  function timeAtProgress(x1, y1, x2, y2) {
-    const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx, cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
-    const X = (u) => ((ax * u + bx) * u + cx) * u, Y = (u) => ((ay * u + by) * u + cy) * u;
-    return (p) => { let lo = 0, hi = 1; for (let i = 0; i < 32; i++) { const m = (lo + hi) / 2; if (Y(m) < p) lo = m; else hi = m; } return X((lo + hi) / 2); };
-  }
-  const timeAt = timeAtProgress(...EASE);
+  // ---------------------------------------------------------------- the menu
   function swapAnim(el, keyframes, opts) {   // start the new animation before cancelling the old one: no flash of the CSS start state
     const old = el.getAnimations();
     const a = el.animate(keyframes, { fill: "both", ...opts });
@@ -267,69 +245,51 @@
   }
   const centre = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
   const rad = (deg) => deg * Math.PI / 180;
-  const sweepShare = (deg) => ((((deg - START) % 360) + 360) % 360) / 360;   // where an angle falls in the light's one turn
-  const backOut = (s, k = 1.25) => 1 + (k + 1) * (s - 1) ** 3 + k * (s - 1) ** 2;   // eases in with a slight overshoot
-
-  // A key's flight out of the ring: a clockwise spiral from the ring, LEAD degrees behind its place, to its place on the arc
-  // (radius overshooting a little), sampled into transform keyframes relative to the place (left / top) it ends at
-  function orbitFrames(th, overshoot = 1.25) {
-    const fx = Math.sin(rad(th)) * R_KEY, fy = -Math.cos(rad(th)) * R_KEY, out = [];
-    for (let i = 0; i <= 12; i++) {
-      const s = i / 12, e = 1 - (1 - s) ** 3, a = rad(th - LEAD * (1 - e)), r = R_RING + (R_KEY - R_RING) * backOut(s, overshoot);
-      out.push({ offset: s, opacity: Math.min(1, s * 4),
-        transform: `translate(${(Math.sin(a) * r - fx).toFixed(1)}px, ${(-Math.cos(a) * r - fy).toFixed(1)}px) scale(${(0.3 + 0.7 * e).toFixed(3)})` });
+  // a point on the arc (centre = the arc's centre, 0,0 here): angle from 12 o'clock, radius r
+  const onArc = (deg, r) => ({ x: Math.sin(rad(deg)) * r, y: -Math.cos(rad(deg)) * r });
+  function arcPath() {   // the thin guide line behind the keys, a little wider than the outer keys
+    const a = onArc(-SIDE_FROM + 12, R_ARC), b = onArc(SIDE_FROM - 12, R_ARC);
+    return `M${a.x.toFixed(1)} ${a.y.toFixed(1)}A${R_ARC} ${R_ARC} 0 0 1 ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+  }
+  // A key's way out: from the Jarvis key's side (SIDE_FROM, R_FROM, small, invisible) along the arc to its place (th, R_ARC, full
+  // size), eased out and sampled into transform keyframes relative to that place; no overshoot. Closing runs it backwards.
+  function arcFrames(th) {
+    const to = onArc(th, R_ARC), from = th < 0 ? -SIDE_FROM : SIDE_FROM, out = [];
+    for (let i = 0; i <= STEPS; i++) {
+      const s = i / STEPS, e = 1 - (1 - s) ** 3;
+      const p = onArc(from + (th - from) * e, R_FROM + (R_ARC - R_FROM) * e);
+      out.push({ offset: s, opacity: Math.min(1, s * 3.5),
+        transform: `translate(${(p.x - to.x).toFixed(1)}px, ${(p.y - to.y).toFixed(1)}px) scale(${(0.35 + 0.65 * e).toFixed(3)})` });
     }
     return out;
   }
   const backwards = (frames) => frames.slice().reverse().map((f) => ({ ...f, offset: 1 - f.offset }));
-  // The trail: the same path a little later, brightest mid-flight and gone on arrival
-  const trailFrames = (frames, peak) => frames.map((f) => ({ ...f, opacity: +(peak * Math.sin(Math.PI * f.offset)).toFixed(3) }));
 
   function openMenu(byKeyboard) {
     if (M.open || V.state !== "off") return;
     M.open = true;
-    const fan = $("#jv-fan"), scrim = $("#jv-scrim"), comet = $("#jv-comet"), ticks = $("#jv-ticks"), shock = $("#jv-shock");
-    const c = centre(jv), rm = reduced(), keys = $$(".jv-key", fan), trails = $$(".jv-trail", fan), segs = $$("#jv-segs .sg");
+    const fan = $("#jv-fan"), scrim = $("#jv-scrim"), arc = $("#jv-arc"), keys = $$(".jv-key", fan);
+    const c = centre(jv), rm = reduced(), cy = c.y + ARC_DY;   // the arc's centre: a little below the key's centre
     fan.hidden = false; scrim.hidden = false;
-    $(".dock").classList.add("jv-dim");
-    jv.classList.add("open");
-    sync(); syncInert(); haptic("light");
-    shock.style.left = `${c.x}px`; shock.style.top = `${c.y}px`;
+    arc.style.left = `${c.x - 130}px`; arc.style.top = `${cy - 130}px`;
     KEYS.forEach((k, i) => {
-      const x = `${c.x + Math.sin(rad(k.th)) * R_KEY}px`, y = `${c.y - Math.cos(rad(k.th)) * R_KEY}px`;
-      for (const el of [keys[i], trails[2 * i], trails[2 * i + 1]]) { el.style.left = x; el.style.top = y; }
+      const p = onArc(k.th, R_ARC);
+      keys[i].style.left = `${c.x + p.x}px`; keys[i].style.top = `${cy + p.y}px`;
     });
-    if (rm) {   // reduced motion: no turn, no flight, no breathing; the open menu is just there
-      for (const el of [scrim, ticks, ...keys, ...keys.map((el) => $(".lbl", el))]) swapAnim(el, [{ opacity: 1 }, { opacity: 1 }], { duration: 0 });
-      for (const el of segs) swapAnim(el, [{ opacity: 0.55 }, { opacity: 0.55 }], { duration: 0 });
-      for (const el of [comet, shock, ...trails]) swapAnim(el, [{ opacity: 0 }, { opacity: 0 }], { duration: 0 });
-      announce(tr("菜单已展开：对话、语音、拍照、快记"));
-      if (byKeyboard) setTimeout(() => keys[0].focus(), 30);
-      return;
+    const lbls = keys.map((el) => $(".lbl", el));
+    if (rm) {   // reduced motion: no flight, no fade; the open menu is just there
+      for (const el of [scrim, arc, ...keys, ...lbls]) swapAnim(el, [{ opacity: 1 }, { opacity: 1 }], { duration: 0 });
+    } else {
+      swapAnim(scrim, [{ opacity: 0 }, { opacity: 1 }], { duration: OPEN_MS });
+      swapAnim(arc, [{ opacity: 0 }, { opacity: 1 }], { duration: OPEN_MS });
+      keys.forEach((el, i) => swapAnim(el, arcFrames(KEYS[i].th), { duration: OPEN_MS, easing: "linear" }));
+      lbls.forEach((el) => swapAnim(el, [{ opacity: 0 }, { opacity: 1 }], { duration: OPEN_MS * 0.6, delay: OPEN_MS * 0.4 }));
     }
-    const ease = `cubic-bezier(${EASE.join(",")})`;
-    swapAnim(scrim, [{ opacity: 0 }, { opacity: 1 }], { duration: 220 });
-    jv.animate([{ transform: "scale(.92)" }, { transform: "scale(1.06)", offset: 0.45 }, { transform: "scale(1)" }], { duration: 320, easing: "ease-out" });
-    // a pulse wave out of the key, the outer tick ring turning in, and one turn of the light from half past seven
-    swapAnim(shock, [{ opacity: 0.85, transform: "scale(.25)" }, { opacity: 0, transform: "scale(1.25)" }], { duration: 620, easing: "cubic-bezier(.2, .7, .3, 1)" });
-    swapAnim(ticks, [{ opacity: 0, transform: "rotate(-120deg) scale(.82)" }, { opacity: 1, transform: "rotate(0deg) scale(1)" }], { duration: SWEEP_MS + 120, easing: ease });
-    swapAnim(comet, [{ transform: `rotate(${START}deg)`, opacity: 1 }, { transform: `rotate(${START + 360}deg)`, opacity: 1 }], { duration: SWEEP_MS, easing: ease });
-    comet.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 180, delay: SWEEP_MS, fill: "forwards" });
-    // each segment flares as the light passes it, then stays lit
-    segs.forEach((sg, j) => {
-      const d = Math.max(0, timeAt(sweepShare(j * 30 + 15)) * SWEEP_MS - 30);
-      swapAnim(sg, [{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0.55 }], { duration: 420, delay: d });
-    });
-    KEYS.forEach((k, i) => {
-      const el = keys[i], lbl = $(".lbl", el), frames = orbitFrames(k.th);
-      const delay = Math.max(0, timeAt(sweepShare(k.th - LEAD)) * SWEEP_MS - 20);
-      swapAnim(el, frames, { duration: FLY_MS, delay, easing: "linear" });
-      swapAnim(trails[2 * i], trailFrames(frames, 0.75), { duration: FLY_MS, delay: delay + 45, easing: "linear" });
-      swapAnim(trails[2 * i + 1], trailFrames(frames, 0.4), { duration: FLY_MS, delay: delay + 95, easing: "linear" });
-      swapAnim($(".jv-ping", el), [{ opacity: 0, transform: "scale(.8)" }, { opacity: 0.9, transform: "scale(.9)", offset: 0.15 }, { opacity: 0, transform: "scale(1.65)" }],
-        { duration: 520, delay: delay + FLY_MS * 0.7, easing: "ease-out" });
-      swapAnim(lbl, [{ opacity: 0, transform: "translate(-50%, -4px)" }, { opacity: 1, transform: "translate(-50%, 0)" }], { duration: 200, delay: delay + FLY_MS * 0.6 });
-    });
+    // the rest of the state (classes, aria, inert) after the animations have been handed to the compositor
+    jv.classList.add("open");
+    $(".dock").classList.add("jv-dim");
+    haptic("light");
+    requestAnimationFrame(() => { sync(); syncInert(); });
     announce(tr("菜单已展开：对话、语音、拍照、快记"));
     if (byKeyboard) setTimeout(() => keys[0].focus(), 30);
   }
@@ -337,37 +297,21 @@
   function closeMenu(focusBack) {
     if (!M.open) return;
     M.open = false;
-    const fan = $("#jv-fan"), scrim = $("#jv-scrim"), rm = reduced(), keys = $$(".jv-key", fan), trails = $$(".jv-trail", fan);
-    const comet = $("#jv-comet"), ticks = $("#jv-ticks"), segs = $$("#jv-segs .sg");
+    const fan = $("#jv-fan"), scrim = $("#jv-scrim"), arc = $("#jv-arc"), rm = reduced(), keys = $$(".jv-key", fan);
     jv.classList.remove("open");
     $(".dock").classList.remove("jv-dim");
     sync(); syncInert();
     const done = [];
     if (rm) {
-      for (const el of [scrim, ticks, comet, $("#jv-shock"), ...segs, ...keys, ...trails]) swapAnim(el, [{ opacity: 0 }, { opacity: 0 }], { duration: 0 });
+      for (const el of [scrim, arc, ...keys]) swapAnim(el, [{ opacity: 0 }, { opacity: 0 }], { duration: 0 });
     } else {
-      // the same story backwards and quicker: the keys spiral back into the ring (the last one first; no overshoot, and an
-      // ease-out on top, since the reversed flight starts slowly), the light runs anticlockwise (mirrored, so its tail trails
-      // behind it) and the segments go out behind it
-      const back = 360, ease = "cubic-bezier(.4, 0, .6, 1)";
-      KEYS.forEach((k, i) => {
-        const el = keys[i], order = KEYS.length - 1 - i, frames = backwards(orbitFrames(k.th, 0));
-        const an = swapAnim(el, frames, { duration: BACK_MS, delay: order * 35, easing: "cubic-bezier(.2, .6, .4, 1)" });
-        swapAnim(trails[2 * i], trailFrames(frames, 0.5), { duration: BACK_MS, delay: order * 35 + 30, easing: "cubic-bezier(.2, .6, .4, 1)" });
-        swapAnim(trails[2 * i + 1], [{ opacity: 0 }, { opacity: 0 }], { duration: 1 });
-        swapAnim($(".lbl", el), [{ opacity: 1 }, { opacity: 0 }], { duration: 90 });
-        done.push(an.finished.catch(() => {}));
+      keys.forEach((el, i) => {
+        done.push(swapAnim(el, backwards(arcFrames(KEYS[i].th)), { duration: CLOSE_MS, easing: "linear" }).finished.catch(() => {}));
+        swapAnim($(".lbl", el), [{ opacity: 1 }, { opacity: 0 }], { duration: CLOSE_MS * 0.5 });
       });
-      swapAnim(comet, [{ transform: `rotate(${START + 360}deg) scaleX(-1)`, opacity: 1 }, { transform: `rotate(${START}deg) scaleX(-1)`, opacity: 1 }], { duration: back, easing: ease });
-      comet.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, delay: back, fill: "forwards" });
-      segs.forEach((sg, j) => {
-        const d = (1 - sweepShare(j * 30 + 15)) * back;
-        swapAnim(sg, [{ opacity: 0.55 }, { opacity: 1, offset: 0.25 }, { opacity: 0 }], { duration: 200, delay: d });
-      });
-      swapAnim(ticks, [{ opacity: 1, transform: "rotate(0deg) scale(1)" }, { opacity: 0, transform: "rotate(90deg) scale(.82)" }], { duration: back, easing: ease });
-      swapAnim($("#jv-shock"), [{ opacity: 0 }, { opacity: 0 }], { duration: 1 });
+      swapAnim(arc, [{ opacity: 1 }, { opacity: 0 }], { duration: CLOSE_MS });
+      done.push(swapAnim(scrim, [{ opacity: 1 }, { opacity: 0 }], { duration: CLOSE_MS }).finished.catch(() => {}));
     }
-    done.push(swapAnim(scrim, [{ opacity: 1 }, { opacity: 0 }], { duration: rm ? 0 : 260 }).finished.catch(() => {}));
     Promise.all(done).then(() => { if (!M.open) { fan.hidden = true; scrim.hidden = true; } });
     if (focusBack) jv.focus();
   }
@@ -392,9 +336,6 @@
       else if (e.key === "Tab") { e.preventDefault(); if (e.shiftKey ? i === 0 : i === keys.length - 1) jv.focus(); else go(i + (e.shiftKey ? -1 : 1)); }
     });
     window.addEventListener("resize", () => { if (M.open) closeMenu(); });
-    // the bases' breathing and the turning rings stop while the page cannot be seen (jarvis-entry.css body.jv-paused)
-    const pause = () => document.body.classList.toggle("jv-paused", document.visibilityState === "hidden");
-    document.addEventListener("visibilitychange", pause); pause();
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
       if (M.open) { e.stopImmediatePropagation(); closeMenu(true); }
@@ -570,7 +511,7 @@
       : st === "review" ? tr("可以改，点「发送」才发给 Jarvis") : "";
     $("#jv-vp-acts").hidden = st !== "locked" && st !== "review";
     $("#jv-vp-cancel").textContent = tr("取消");
-    $("#jv-vp-send").innerHTML = `${lu("arrow-up", 2.2)}<span>${esc(st === "locked" && !direct ? tr("完成") : tr("发送"))}</span>`;
+    $("#jv-vp-send").innerHTML = `${lu("arrow-up")}<span>${esc(st === "locked" && !direct ? tr("完成") : tr("发送"))}</span>`;
     $("#jv-vp-edit").hidden = st !== "review";
     $("#jv-vp-cap").hidden = st === "review";
     $("#jv-vscrim").classList.toggle("tap", st === "locked" || st === "review");
