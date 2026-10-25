@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jarvis dial: opening-animation prototypes</title>
+<!-- A throwaway page for choosing between four opening animations (PR #294). Serve the repo root over http (python3 -m http.server)
+     and open /docs/images/jarvis-dial-variants/proto/index.html?v=1..4 (light / dark follow the system). -->
+<link rel="stylesheet" href="../../../../body_engine/src/body_engine/web/static/app.css">
+<link rel="stylesheet" href="../../../../body_engine/src/body_engine/web/static/jarvis-entry.css">
+<style>
+  #vx { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 13; pointer-events: none; color: var(--text); overflow: visible; }
+  #fan { position: fixed; inset: 0; z-index: 14; pointer-events: none; }
+  body.v4 .jv-kbase { box-shadow: none; }   /* variant 4 draws the key outlines itself */
+  .demo-card { margin: 16px; padding: 20px; height: 150px; border-radius: 18px; background: var(--surface); }
+</style></head>
+<body class="jv-orbit jv-dial">
+<header class="top"><div class="top-l"><div class="top-date">10月26日</div><h1 class="top-title">今天</h1></div></header>
+<div class="demo-card">恢复 82</div><div class="demo-card">睡眠 7h 12m</div><div class="demo-card">负荷 11.4</div>
+<div class="jv-scrim" id="scrim" hidden></div>
+<svg id="vx" aria-hidden="true"></svg><div id="fan"></div>
+  <div class="dock">
+    <div class="jv-row">
+      <span class="jv-halo" aria-hidden="true"></span>
+      <button type="button" class="jv" id="ask" aria-label="Jarvis">
+        <svg class="jv-ring" viewBox="0 0 76 76" aria-hidden="true"><circle class="trk" cx="38" cy="38" r="35"/></svg>
+        <span class="jv-ic jv-ic-main"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.341 6.484A10 10 0 0 1 10.266 21.85"/><path d="M3.659 17.516A10 10 0 0 1 13.74 2.152"/><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/></svg></span><span class="jv-ic jv-ic-x"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span>
+      </button></div>
+    <nav class="tabbar" aria-label="页面" data-i18n-aria="nav.tabs">
+      <button data-tab="today" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 1 7.7 10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg><span data-i18n="tab.today">今天</span></button>
+      <button data-tab="trends" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16l4.5-5 3.5 3 7-8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 20h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span data-i18n="tab.trends">趋势</span></button>
+      <button data-tab="friends" class="tab" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c.9-3 3-4.6 5.5-4.6s4.6 1.6 5.5 4.6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="16.5" cy="8" r="2.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 13.2c2.3 0 4 1.3 4.6 3.8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span data-i18n="tab.friends">朋友</span></button>
+      <button data-tab="food" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5h16a8 8 0 0 1-16 0z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 4.5c0 1.5 1.5 1.5 1.5 3S9 9 9 10M14 4.5c0 1.5 1.5 1.5 1.5 3S14 9 14 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><span data-i18n="tab.food">饮食</span></button>
+      <button data-tab="record" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="1.7"/></svg><span data-i18n="tab.record">记录</span></button>
+      <button data-tab="me" class="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8.5" r="3.6" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 19.5c1.2-3.3 3.8-5 7-5s5.8 1.7 7 5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span data-i18n="tab.me">我</span></button>
+    </nav>
+  </div>
+</div>
+
+<script src="variants.js"></script>
+</body></html>
