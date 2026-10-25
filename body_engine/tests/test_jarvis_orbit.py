@@ -108,7 +108,7 @@ def test_hud_motion_is_transform_and_opacity_only_and_rests_when_hidden():
     assert ":is(.jv-kglow, .jv-kring, .jv-ticks .spin) { animation: none !important; }" in CSS
 
 
-# ---------------------------------------------------------------- flag jarvis_dial (PR #294): the instrument-cluster menu in one ink
+# ---------------------------------------------------------------- flag jarvis_dial (PR #294): the start-up sequence in one ink
 DIAL_MARK = "/* ---------- flag jarvis_dial"
 CSS_OLD, CSS_DIAL = CSS.split(DIAL_MARK, 1)
 CSS_DIAL = DIAL_MARK + CSS_DIAL
@@ -132,7 +132,7 @@ def test_flag_off_keeps_the_ring_menu_unchanged():
     assert "if (dial) { openDial(byKeyboard); return; }" in JS and "if (dial) { closeDial(focusBack); return; }" in JS
     assert "const seg = CIRC / SEGS, segs = dial ? [] : Array.from" in JS
     assert 'stroke-width="${dial ? 1.75 : sw}"' in JS
-    for fn in ("function openDial", "function closeDial", "function arcFrames", "function arcPath"):
+    for fn in ("function openDial", "function closeDial", "function dialRun", "function dialLayer"):
         assert fn in JS, fn
     # the old stylesheet part has no dial rule and every dial rule starts at body.jv-dial
     assert "jv-dial" not in CSS_OLD
@@ -143,24 +143,39 @@ def test_flag_off_keeps_the_ring_menu_unchanged():
             assert "jv-dial" in one, one.strip()
 
 
-def test_flag_on_is_quick_transform_and_opacity_only_and_one_ink():
-    """jarvis_dial: about 200 ms, no stagger, no bounce; Web Animations only move transform and opacity; nothing loops;
-    black lines in light mode / white in dark (the page's --text), no colour, gradient or glow."""
-    assert "const OPEN_MS = 200, CLOSE_MS = 150" in JS
-    for fn in ("function openDial", "function closeDial", "function arcFrames"):
+def test_flag_on_is_a_short_sequence_of_transform_opacity_and_dashoffset_in_one_ink():
+    """jarvis_dial: the start-up sequence takes at most 400 ms (180 ms to close); Web Animations only move transform, opacity and
+    stroke-dashoffset; a few SVG groups drive the elements (about 17 animations); one very slow ring turn is the only loop
+    (paused while the page is hidden, not made at all with reduced motion); no ticks, readouts or connecting arcs; black lines in
+    light mode / white in dark (the page's --text), no colour, gradient or glow."""
+    assert "DIAL_CLOSE_MS = 180" in JS and "DIAL_HIT = [130, 162, 194, 226]" in JS
+    run = JS[JS.index("function dialRun"):JS.index("function dialStop")]
+    ends = [int(d) + int(u) for d, u in re.findall(r"delay: (?:DIAL_HIT\[i\] [-+] )?(\d+|10|30), duration: (\d+)", run) if d.isdigit()]
+    assert ends and max(ends) <= 400, ends
+    assert max(DIAL_HIT := [130, 162, 194, 226]) + 30 + 80 <= 400   # the last outline closes by 336, the breath ends at 400
+    for fn in ("function dialRun", "function openDial", "function closeDial"):
         body = JS[JS.index(fn):JS.index("\n  }\n", JS.index(fn))]
-        for props in re.findall(r"\{ ((?:offset|opacity|transform)[^{}]*)\}", body):
+        for props in re.findall(r"\{ ((?:offset|opacity|transform|strokeDashoffset)[^{}]*)\}", body):
             for prop in re.findall(r"(\w+):", props):
-                assert prop in ("offset", "opacity", "transform"), (fn, prop)
-        assert "delay: order" not in body and "overshoot" not in body, fn   # no stagger, no bounce
+                assert prop in ("offset", "opacity", "transform", "strokeDashoffset"), (fn, prop)
+    assert run.count("an(") <= 20, run.count("an(")   # element count: groups, not single ticks
+    # the only loop: one slow ring, paused with the page, never started with reduced motion
+    assert JS.count("iterations: Infinity") == 1 and "duration: 90000" in JS
+    assert "if (D.rotor) document.hidden ? D.rotor.pause() : D.rotor.play();" in JS
+    assert "if (rm) D.A.forEach((a) => a.finish());\n    else D.rotor =" in run
+    # what the owner dropped: scale ticks, tick lines, readouts and any line joining the keys
+    dial_js = JS[JS.index("// ---- jarvis_dial"):JS.index("function bindMenu")]
+    for gone in ("tick", "readout", "arcPath", "arcD", "jv-arc", "text"):
+        assert gone not in dial_js.replace("context", ""), gone
     # the press answers on pointerdown in CSS (no JS between the touch and the first frame)
     assert "body.jv-dial .jv.pressed { transform: scale(.92); }" in CSS_DIAL and "transition: transform .08s" in CSS_DIAL
     code = re.sub(r"/\*.*?\*/", "", CSS_DIAL, flags=re.S)
     assert "infinite" not in code
-    for bad in ("gradient", "--sleep", "--bad", "--jv-hud", "glow", "#fff;", "hsl", "url("):
+    for bad in ("gradient", "--sleep", "--bad", "--jv-hud", "glow", "#fff;", "hsl", "url(", "indigo"):
         assert bad not in code, bad
     for colour in re.findall(r"#[0-9a-fA-F]{3,8}\b", code):
-        assert colour.lower() in ("#ffffff", "#151517"), colour   # the key's face: white / near-black
+        assert colour.lower() in ("#ffffff", "#151517") or colour.startswith("#jvd"), colour   # the key's face / layer ids
+    assert "box-shadow: none" in CSS_DIAL   # the old HUD outline of the key face is off; the layer draws the outline
     assert "prefers-reduced-motion: reduce" in CSS_DIAL and "transition: none" in CSS_DIAL
     # the arc's centre sits below the key's centre; the keys are smaller than the 56 pt key
     assert int(re.search(r"ARC_DY = (\d+)", JS).group(1)) > 0
