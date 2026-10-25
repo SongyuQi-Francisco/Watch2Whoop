@@ -20,6 +20,15 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
 ## Unreleased
+- Sync repairs itself when Open Wearables stops accepting the phone (seen in production: the SDK's credentials became
+  invalid and every upload got 401 for days, unnoticed). When the sync log shows an authentication error, the app
+  reconnects silently like 「连接同步」 (a fresh invitation code from the user's own account), in the foreground only, with
+  backoff (at once, then after 15 minutes, then after 2 hours) and at most 3 times a day (`lib/src/sync_repair.dart`,
+  `test/sync_repair_test.dart`). Accounts without a sign-in token (setup-link users) still use the code dialog.
+- The Today page's 「手机同步已断开 → 重新连接」 (server side: `web/static/sync-repair.js`) now works in one step: the app
+  takes `watch2whoop://setup?ow=…&code=…` from the page (only the sync part; server addresses and login codes still come
+  only from scanned / pasted setup info), asks once and reconnects. The page knows from `Watch2WhoopFeatures.syncRepair`;
+  1.0.6 / 1.0.7 get the code shown and their 「手机同步」 page opened instead.
 - Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
   Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
 
