@@ -29,6 +29,21 @@ shared `## <marketing version>` section, and the iOS release never sees it.
   takes `watch2whoop://setup?ow=…&code=…` from the page (only the sync part; server addresses and login codes still come
   only from scanned / pasted setup info), asks once and reconnects. The page knows from `Watch2WhoopFeatures.syncRepair`;
   1.0.6 / 1.0.7 get the code shown and their 「手机同步」 page opened instead.
+- Jarvis voice input on the phone itself (#53; the Today page side is behind the server's rollout flag `jarvis_orbit`):
+  holding the Jarvis key (or its 「语音」 / "Voice" key) now uses Apple's speech recogniser **on the device only**
+  (`requiresOnDeviceRecognition`; the sound is never sent to Apple for it), so the words appear while you talk. The app
+  records with its own microphone session (not the WebView) only between start and stop, gives the audio session back
+  right after, and ends with "interrupted" when a call or Siri takes it. Chinese: when you let go, the same recording
+  (kept in memory only, 16 kHz) also goes to your own server's recogniser for the final text, which is more accurate for
+  Chinese; English stays on the phone and only the text is corrected with your own words on the server. The recognition
+  language follows the app language, with a 中文 / English switch in the voice panel. The app tells the page which
+  languages the phone can recognise on device (`Watch2WhoopFeatures.voice`); a language without an on-device model, and
+  every app before this one, keeps recording in the page as before. Native code in `ios/Runner/VoiceInput.swift`, the
+  bridge in `lib/src/voice_bridge.dart` (tests in `test/voice_bridge_test.dart`).
+- Haptics for the Jarvis key (menu opens, talking starts, cancel / lock zones, sent, cancelled): the page asks with
+  `haptic:<kind>` once the app says `Watch2WhoopFeatures.haptics`.
+- New permission text `NSSpeechRecognitionUsageDescription` (English and Chinese): on-device recognition, nothing sent to
+  Apple. `NSMicrophoneUsageDescription` now says the sound is turned into text on the iPhone or on your server.
 - Tests only (#64): the i18n coverage test (`test/i18n_test.dart`) now also fails on a Chinese double-quoted literal and on
   Chinese in the English half of a `tr()`. The app's own texts were already complete; nothing changes for users.
 
