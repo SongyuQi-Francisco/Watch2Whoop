@@ -44,7 +44,18 @@
     const general = t.status === "never"
       ? [tr("健康权限里没有打开这一项"), tr("手表或 iPhone 没有记录这类数据"), tr("第一次同步还没传完")]
       : [tr("健康权限被关掉了"), tr("最近没戴手表，或很久没打开 app"), tr("后台同步被 iOS 暂停：打开一次 app")];
-    return [...general, ...notes];
+    // Sleep comes from the watch: the usual cause is that sleep tracking is off, or the watch is not worn in bed
+    return [...(t.key === "sleep" ? [tr("手表上没有开启睡眠追踪，或者睡觉时没戴手表")] : []), ...general, ...notes];
+  }
+
+  /** Steps to switch on sleep tracking on the Apple Watch (the empty recovery ring points here, web/recovery_empty.py). */
+  function sleepTrackingSteps() {
+    return [
+      tr("在 iPhone 上打开「手表」app，点「睡眠」"),
+      tr("打开睡眠追踪（用 Apple Watch 追踪睡眠）"),
+      tr("睡前给手表充好电，睡觉时戴着它"),
+      tr("醒来后打开一次 Watch2Whoop，睡眠就会同步上来"),
+    ];
   }
 
   /** Steps to switch the type on in iOS (the user taps them); [] when a permission would not help. */
@@ -115,13 +126,16 @@
     return `${sum}<div class="group">${rows}</div><div class="ds-h">${C.esc(tr("收到时间"))}</div>${chan}${strengthHtml(data.strength)}${inApp}`;
   }
 
-  function detail(t) {
+  function detail(t, opts = {}) {
     const reasons = reasonsFor(t), steps = stepsFor(t);
+    // opened from the empty recovery ring (opts.watchSleep): the watch's own switch comes first
+    const watchSteps = t.key === "sleep" && (opts.watchSleep || t.status !== "ok") ? sleepTrackingSteps() : [];
     const body = `${kv(tr("状态"), LABEL[t.status])}
       ${kv(tr("最近收到"), t.last_at ? when(t.last_at) : t.last_date || "—")}
       ${kv(tr("近 {n} 天", { n: data.window_days }), tr("{d} 天 · {n} 条", { d: t.days, n: t.count }))}
       ${t.sources.length ? kv(tr("来源"), t.sources.join(" · ")) : ""}
       ${reasons.length ? `<div class="ds-h">${C.esc(tr("可能的原因"))}</div><ul class="ds-list">${reasons.map((r) => `<li>${C.esc(r)}</li>`).join("")}</ul>` : ""}
+      ${watchSteps.length ? `<div class="ds-h">${C.esc(tr("在手表上开启睡眠追踪"))}</div><ol class="ds-steps">${watchSteps.map((x) => `<li>${C.esc(x)}</li>`).join("")}</ol>` : ""}
       ${steps.length ? `<div class="ds-h">${C.esc(tr("在 iPhone 上打开"))}</div><ol class="ds-steps">${steps.map((x) => `<li>${C.esc(x)}</li>`).join("")}</ol>
         <p class="small faint" style="margin:8px 0 0">${C.esc(tr("也可以：「健康」app → 右上角头像 →「App」→「Watch2Whoop」"))}</p>` : ""}
       ${window.Watch2Whoop && steps.length ? `<div class="btns"><a class="btn" href="watch2whoop://sync">${C.esc(tr("me.phoneSync"))}</a></div>` : ""}
@@ -152,7 +166,14 @@
   const inSyncCenter = () => !!window.Watch2Whoop && !!window.Watch2WhoopFeatures?.syncCenter && !!window.BodyFlags?.on("sync_center");
   const on = () => !!ME && !!window.BodyFlags?.on("data_status") && !inSyncCenter();
 
-  if (typeof module !== "undefined") module.exports = { reasonsFor, stepsFor, strengthText, IOS_NAME };
+  // The empty recovery ring (app.js recoveryNext) opens one type's detail, e.g. sleep with the watch's steps
+  async function openType(key, opts) {
+    await load();
+    const t = data?.types.find((x) => x.key === key);
+    if (t) detail(t, opts); else open();
+  }
+
+  if (typeof module !== "undefined") module.exports = { reasonsFor, stepsFor, sleepTrackingSteps, strengthText, IOS_NAME };
   if (typeof window === "undefined") return;
   (window.BodyPlugins = window.BodyPlugins || []).push({
     meGroup: "main",
@@ -164,6 +185,7 @@
       b.onclick = () => { data = null; open(); };
       load().then(updateItem);
     },
+    openDataStatusType: (key, opts) => openType(key, opts),
     openDataStatus: () => { data = null; open(); },   // a Jarvis data status card (ai.js, flag jarvis_cards_v2)
   });
 })();
