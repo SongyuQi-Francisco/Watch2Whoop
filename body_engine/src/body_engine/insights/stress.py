@@ -24,7 +24,7 @@ from openbodyscore.stress import (BANDS, BASELINE_DAYS, HR_WEIGHT, HRV_WEIGHT, M
                                   calm_samples, override, robust_baseline, score_day)
 
 from ..importers import ow as ow_imp, ow_cache as ow_cache_mod
-from ..rawdata import samples as rx_samples
+from ..rawdata import ow_archive as rx_archive, samples as rx_samples
 
 STRESS_TYPES = ["heart_rate", "steps", "heart_rate_variability_sdnn"]   # OW series codes (the app's samples are read by them too)
 DEFAULT_DAYS = 90                                             # compute-scores recomputes the last 90 days by default
@@ -36,12 +36,7 @@ def _ow_samples(client, ow_user: str, types: list[str], lo: datetime, hi: dateti
     """ow_cache "use" / "refresh": read through the local copy (importers/ow_cache.py); None: all from OW."""
     out: dict[str, dict] = defaultdict(dict)
     if ow_cache is not None and conn is not None and user_id is not None:
-        for code, xs in ow_cache_mod.samples(conn, client, user_id, ow_user, types, lo, hi, ow_cache).items():
-            for s in xs:
-                k = (s.ts, s.source) if code == "steps" else s.ts   # as below
-                if k not in out[code] or not s.xml:
-                    out[code][k] = (s.ts, s.value)
-        return {t: sorted(v.values()) for t, v in out.items()}
+        return _dedupe(ow_cache_mod.samples(conn, client, user_id, ow_user, types, lo, hi, ow_cache))
     cur = lo
     while cur < hi:
         nxt = min(cur + timedelta(days=30), hi)
@@ -54,6 +49,17 @@ def _ow_samples(client, ow_user: str, types: list[str], lo: datetime, hi: dateti
             if k not in out[raw["type"]] or not s.xml:
                 out[raw["type"]][k] = (s.ts, s.value)
         cur = nxt
+    return {t: sorted(v.values()) for t, v in out.items()}
+
+
+def _dedupe(got: dict[str, list]) -> dict[str, list]:
+    """OW Samples by code -> (ts, value) lists as the paging below builds them (one per time stamp, steps per source)."""
+    out: dict[str, dict] = defaultdict(dict)
+    for code, xs in got.items():
+        for s in xs:
+            k = (s.ts, s.source) if code == "steps" else s.ts
+            if k not in out[code] or not s.xml:
+                out[code][k] = (s.ts, s.value)
     return {t: sorted(v.values()) for t, v in out.items()}
 
 
@@ -96,7 +102,10 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
         "SELECT DISTINCT date FROM daily_metrics WHERE user_id = %s AND source = 'shortcut' AND date BETWEEN %s AND %s",
         (user_id, start, end))}
     samples, workouts = {}, []
-    if client is not None and user["ow_user_id"]:
+    if rx_archive.reads_archive(conn, user_id):   # app mode, OW's history archived (step S6): OW is not asked
+        samples = _dedupe(rx_archive.samples(conn, user_id, STRESS_TYPES, lo, hi))
+        workouts = rx_archive.workout_windows(conn, user_id, lo, hi)
+    elif client is not None and user["ow_user_id"]:
         samples = _ow_samples(client, user["ow_user_id"], STRESS_TYPES, lo, hi, conn, user_id, ow_cache)
         workouts = _workouts(client, user["ow_user_id"], start - timedelta(days=BASELINE_DAYS), end, tz)
     if rx_samples.reads_app(conn, user_id):

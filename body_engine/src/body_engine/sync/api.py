@@ -20,8 +20,14 @@
 - GET  /v1/users/{user}/sync/engine/days?date=&end= (flag apple_sync_engine, 404 when off for this user): the two sync
   paths (Open Wearables and the app's own sync engine) side by side per day, at most 31 days (rawdata/side_by_side.py,
   for the shadow comparison of docs/apple-sync-engine.md §4). Own data only, read scope is enough.
+- GET  /v1/users/{user}/sync/engine/status and GET /v1/ingest/sync-status (Bearer, like the other /v1/ingest reads): the
+  sync status panel (rawdata/sync_status.py): last successful upload, newest sample per type, refused uploads by
+  reason, the derive -> scores pipeline, the app's last sync round. Every sync mode, no flag. Own data only.
+- GET  /v1/users/{user}/sync/engine/shadow?date=&end=&all= (flag apple_sync_engine, 404 when off): the shadow
+  comparison's summary and the items of [date, end] (default the last 7 compared days; only the ones that are not ok
+  unless all=true), rawdata/shadow.py. Own data only.
 """
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -29,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import current_user, get_conn
-from ..rawdata import engine as rx_engine, side_by_side
+from ..rawdata import engine as rx_engine, shadow as rx_shadow, side_by_side, sync_status as rx_status
 from ..rawdata.api import ingest_user
 from . import broken, data_status, history, refresh, resync
 
@@ -104,6 +110,34 @@ def get_engine_days(user: str, start: date = Query(alias="date"), end: date | No
     except ValueError:
         raise HTTPException(422, L(f"日期范围要在 1–{side_by_side.MAX_DAYS} 天之间",
                                    f"The date range must be 1–{side_by_side.MAX_DAYS} days")) from None
+
+
+@router.get("/v1/users/{user}/sync/engine/status")
+def get_engine_status(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的同步状态", "You can only see your own sync status"))
+    return rx_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/ingest/sync-status")
+def get_ingest_sync_status(conn=Depends(get_conn), viewer=Depends(ingest_user)):
+    return rx_status.collect(conn, viewer["id"])
+
+
+@router.get("/v1/users/{user}/sync/engine/shadow")
+def get_engine_shadow(user: str, start: date | None = Query(None, alias="date"), end: date | None = None,
+                      all: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):  # noqa: A002
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能看自己的数据", "You can only see your own data"))
+    uid = viewer["id"]
+    if not rx_engine.enabled(conn, uid):
+        raise HTTPException(404, L("没有开启", "Not enabled"))
+    s = rx_shadow.summary(conn, uid)
+    end = end or (s["last_day"] if s and s["last_day"] else date.today())
+    start = start or end - timedelta(days=6)
+    if end < start or (end - start).days > 92:
+        raise HTTPException(422, L("日期范围要在 1–93 天之间", "The date range must be 1–93 days"))
+    return {"summary": s, "start": start, "end": end, "items": rx_shadow.diffs(conn, uid, start, end, only_bad=not all)}
 
 
 @router.get("/v1/ingest/data-status")

@@ -2,7 +2,7 @@
 
 > 状态：设计稿，等维护者确认（#219）。只描述方案，不含代码改动。标「待查」的地方写这份文档时没查清，拆 PR 时先确认。
 > 文中出现的数字都是示例或估算，不是任何真人的数据。
-> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）、S3（读取层 + 两条链路逐日对照）已实现，和设计不同的地方见第 3.2 节开头的说明。
+> 进度：S1（#226）、S2（#234：派生 + 脏天队列 + 同步模式）、S3（#242：读取层 + 两条链路逐日对照）、S4–S6（影子对比、按用户切换和回退、OW 历史本地存档，迁移 800）和同步状态接口已实现，和设计不同的地方见第 3.2 节开头的说明。app 侧的接口要求：`docs/apple-sync-engine-app-contract.md`。完全不用 OW 的评估和时间表：第 9 节。
 
 ## 0. 摘要
 
@@ -237,6 +237,12 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 > - 只有 `app` 模式读它：`scores/inputs.load`（`compute-scores`、`hrv-compare`）、`insights/stress`、`training/importer.enrich`（训练心率、TRIMP、能量拆分）、今天页睡眠阶段图（`web/views.night_stages`，`stages_source = app`）。`app` 模式下新引擎优先，OW 只补它没有的（新引擎没有的那一晚、那一类样本、那一天；OW 时代的训练两边都没有能量样本时保留已存的活动能量），直到 S6 把 OW 的历史原始样本迁进来；所以 S3 不会造成第 8 节风险 1。`ow` / `shadow` 模式完全不读新引擎的样本，结果和以前一样（`tests/test_apple_sync_read.py`）。
 > - 影子对比的读取能力（第 4 节的输入，判定和每晚任务留给 S4）：同一用户每天两条链路并排——`daily_metric_sources` 的 `ow` / `app` 日值（各自的平均 / 最小 / 最大 / 条数、app − ow、相对差、`daily_metrics` 选中了谁）、`sleep_sessions` 里存的 OW 睡眠和从阶段样本现算的 app 睡眠（按醒来日期）、两份训练。命令 `body-engine sync-shadow-day --user-id N --date D [--end D] [--json]`（中文 Markdown，含健康数值，只到终端或 `health_data/reports/`），接口 `GET /v1/users/{user}/sync/engine/days?date=&end=`（只能看自己的，最多 31 天，`apple_sync_engine` 对这个用户关着时 404）。
 > - 部署机每分钟的导入任务在 `hk_dirty_days` 有行时跑 `hk-derive-run`、每小时任务也先跑一次（部署者自己的运维脚本；开关关着时上传被拒、队列一直为空，任务空跑）。
+>
+> **S4–S6 和同步状态已实现（迁移 800，参数和出处 `rawdata/params.py`）**，和下文不同的地方以代码为准：
+> - S4 影子对比 `rawdata/shadow.py`：判定规则就是第 4 节的表；每项一行写 `sync_shadow_diffs`（verdict：ok / explained + 原因代码 / mismatch / missing_app / new），只计数的 `sync_shadow_summary`（连续一致天数、覆盖率、能不能切换和原因）给切换门槛、doctor 和部署者的运维插件读。分数一项用 `scores/inputs.load(sync_mode='app')` 不写库重算（app 的样本优先、OW 补缺，app 的睡眠替换存着的 OW 睡眠，和切换后一模一样），和存着的分数比。命令 `sync-shadow-compare`（每晚 import-ow 之后）、`sync-shadow-report`（`--summary` 只有计数），接口 `GET /v1/users/{user}/sync/engine/shadow`。
+> - S5 切换 `rawdata/cutover.py`：`apple_sync_primary` 是总开关（默认关），**真正的切换按用户做**：`sync-mode switch --user-id N` 一步完成（把人加进 `sync_app` 分组、过门槛、存切换前 14 天分数快照、`sync_mode_state.mode = app`、app 训练去掉 shadow 标记、最近 90 天按 app 模式重派生、排队算分）；第一次算完分后 `sync-mode apply` 做切换后检查（快照 vs 新分数）。`engine.mode()` 只有在 state = app、总开关开着、没有固定在 ow 时才返回 app，所以关总开关或 `sync-mode rollback` 下一次读取就回到 shadow；rollback 再把 app 训练改回 shadow、删 app 睡眠并从 OW 重新导入这几晚、重选日值、排队算分。原始数据两边都不删，可以来回切。版本门槛看 `rawdata_uploads.app_version`（引擎批次，≥ 1.0.8），`--force` 只跳过影子和分数门槛。`app` 模式下引擎上传自己排队算分，`POST /sync/refresh` 不再导 OW。开户 / 设置链接 / 删号不碰 OW 的部分没有做（第 9 节）。
+> - S6 历史 `rawdata/ow_archive.py`：**没有把 OW 样本搬进 `hk_samples(origin='ow')`**，而是复用 #287 的本地副本 `ow_sample_cache`（它存的就是评分要的 OW 原始样本，带来源、优先级、XML 标记；OW 样本没有结束时间、XML 样本没有 UUID，搬过去反而要编 UUID、存两份）。`ow-archive --user-id N` 把副本补全到「评分起点 − 365 天 − 压力基线」到现在（每 60 天一窗、从新到旧、每窗提交，可续跑），睡眠阶段（以前每次实时读 OW）存进 `ow_archive_segments`。存档过、且在 app 模式的用户：评分输入、压力、训练心率、今天页睡眠阶段图都读存档，不再问 OW；ow / shadow 模式忽略存档。
+> - 同步状态 `rawdata/sync_status.py`：被拒的上传按原因记进 `ingest_failures`（auth / format / refused / limit / server，只有代码，同一原因 10 分钟内合并计数，吊销的 token 也能认出是谁的）；`GET /v1/users/{user}/sync/engine/status` 和 `GET /v1/ingest/sync-status` 给今天页面板和 app 用（字段见 app 接口文档第 6 节）。引擎批次的回答里 `status` 不再数全部样本（`counts: false`）。
 
 #### 3.2.1 接口
 
@@ -530,3 +536,42 @@ GRANT SELECT ON hk_samples, hk_stats TO grafana_ro;   -- 如果 Grafana 要读
    - 半小时时区靠 15 分钟桶。
 8. **版本门槛**：TestFlight 用户不一定马上更新；按 `app_version` 拒绝切换，旧版本用户继续走 OW 直到更新。
 9. **同意书**：新增类型是否在同意书范围内，见 D6（已定：同步中心的类型已涵盖；血压、血糖等开给内测组前再确认）。
+
+---
+
+## 9. 完全不用 OW：评估、时间表、风险（2026-10-26）
+
+**结论：可以完全不用 OW，包括新用户的首次 90 天导入，不需要再 fork OW 的代码。** 服务器侧 S1–S6 已经齐了：接收、派生、读取层、影子对比、按用户切换 / 回退、OW 历史本地存档。剩下的关键路径在 app（A1–A3）和三处还会主动找 OW 的服务器代码（下面「还差什么」）。OW 里我们需要的规则（训练类型表、睡眠切段规则）已经移植并注明出处（`THIRD_PARTY_NOTICES.md`）；OW iOS SDK 里值得借鉴的后台调度写法（第 2 节「值得照搬」）iOS 开发可以参考，照抄代码时同样是 MIT，要在 `THIRD_PARTY_NOTICES.md` 加一行出处。
+
+**新用户首次 90 天**：app 的引擎 `phase=backfill` 从空锚点按类型分页读 90 天（第 3.1.4 节），服务器按 UUID 去重、`backfill` 阶段限流放宽（每分钟 120 批、每天 512 MB），本地实测一批 5000 条样本 + 2880 个统计桶（gzip）入库 0.34 秒。没有 OW 账号的用户切换门槛只看 app 版本（没有可对比的、也没有会丢的 OW 历史）。90 天以前的历史照旧用「导入健康历史」上传 export.zip（`history/`，本来就不经过 OW）。
+
+**还差什么（按顺序）**
+
+| # | 内容 | 位置 | 估计 |
+|---|---|---|---|
+| A1–A3 | app：引擎内核、后台、训练 / 睡眠 / 统计桶（接口要求见 `docs/apple-sync-engine-app-contract.md`） | `apps/` | iOS 开发，随 1.0.8 / 1.0.9 |
+| S5b | 开户不再建 OW 用户、设置链接不带 OW 邀请码（`account/provision._ow_step`、`web/activation.mint_ow_invitation`、`account/api` 的 `ow-invitation`），按「新开户默认走引擎」的全局开关；`sync/resync.run_step` 在 app 模式不导 OW、改成等 app 的按范围重新同步；`sync/data_status` 的 `channel` 跟着模式变；`sync/broken.py` 在 app 模式看引擎上传而不是 OW | 服务器 | 2–3 人日 |
+| S7 | 运维：OW 停写 → 只读 → 下线（第 5.3 节），`import-ow` 和 OW 备份从定时任务去掉，Grafana 的 OW 数据源 | `deploy/`、ops 仓库 | 2 人日 |
+| S8 | 删 OW 代码（第 5.4 节清单） | 服务器 | 1–2 人日 |
+
+**时间表（建议，按每周日发版）**
+
+| 日期 | 事项 |
+|---|---|
+| 10-27 → 10-31 | 本 PR 合并部署（开关全关，零影响）；内测组开 `apple_sync_engine`（只收、只对比） |
+| 11-01（周日） | iOS 1.0.8：A1（前台引擎）。内测组开始影子期；每晚 `sync-shadow-compare` |
+| 11-08 | iOS 1.0.9：A2 / A3（后台、训练、睡眠、统计桶）——影子对比要有睡眠和训练才有意义，**真正的 7 天连续一致从这里开始算** |
+| 11-15 前后 | 内测组逐个 `sync-mode switch`（门槛不过的人留在 shadow，报告里看原因）；同时做 S5b |
+| 11-22 前后 | `apple_sync_primary` 开给所有人，`sync-mode apply` 每小时把过了门槛的人切过去；新开户默认走引擎 |
+| 切完后 | 每人跑 `ow-archive`（OW 还在时做，可续跑）；回退期（D5 建议 30 天，有了本地存档可以缩到 14 天）→ OW 只读 → 下线，释放约 1.3 GB 内存 |
+
+最快的路径：1.0.9 在 11-08 带上 A2 / A3，11-15 内测切换，11-22 全员，12 月中 OW 下线。
+
+**风险**
+
+1. **iOS 后台可靠性**（第 8 节风险 2）：只能靠 app 端多种触发 + 服务器看 `sync_runs` 和同步状态面板量化；切换门槛里不含后台可靠性，建议内测组切换后看一周 `sync_runs` 再开给所有人。
+2. **影子期耗电和抢后台额度**：OW SDK 和引擎同时跑；影子期只给内测组、只 1–2 周。
+3. **多来源睡眠**：OW 的状态机按用户合并来源，我们按来源分开（S2 说明）；手表 + 手机 / 第三方 app 交叉的晚上会被判为「可解释（source_priority）」，差异大于 20 分钟会是「不一致」，要人看报告。
+4. **数据库增长**：每人每天约 1–2 千条原始样本 + 约 1 千个统计桶；10 人一年千万行级；doctor 要加 `hk_samples` 表大小（S7）。
+5. **切换后分数漂移**：切换前快照 + 第一次重算后自动对比（`post_check`），超过阈值看报告、必要时 `sync-mode rollback`（一步回退，原始数据两边都在）。
+6. **OW 下线后才发现的缺口**：下线前在测试库全量重算一次对比 `daily_scores`（第 8 节风险 1 的对策），`ow-archive --check` 必须全部 complete。
