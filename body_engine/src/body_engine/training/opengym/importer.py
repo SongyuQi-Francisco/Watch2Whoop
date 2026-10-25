@@ -216,8 +216,9 @@ def run(conn: psycopg.Connection, snapshot: tuple[dict, list[dict]] | None = Non
                     cur.execute(_INSERT, {**conv, "text_sources": Jsonb(conv["text_sources"])})
                 for slug, m in merges.items():
                     row, conv = m["row"], m["new"]
-                    cur_row = conn.execute("SELECT aliases, secondary_muscles, description_en, instructions_en, text_sources "
-                                           "FROM exercise_catalog WHERE slug = %s", (slug,)).fetchone()
+                    cur_row = conn.execute("SELECT slug, name_zh, name_en, cues_zh, instructions_zh, zh_source, aliases, secondary_muscles, "
+                                           "description_en, instructions_en, text_sources FROM exercise_catalog WHERE slug = %s",
+                                           (slug,)).fetchone()
                     aliases = list(cur_row["aliases"])
                     nm = catalog.norm(conv["name_en"])
                     if nm not in row["_names"] and nm not in {catalog.norm(a) for a in aliases}:
@@ -229,12 +230,24 @@ def run(conn: psycopg.Connection, snapshot: tuple[dict, list[dict]] | None = Non
                         "instructions_en": list(cur_row["instructions_en"]) or conv["instructions_en"],
                         "text_sources": _merge_sources(cur_row["text_sources"], m["refs"]),
                     }
+                    # the merge can add English (a description) to a row without human Chinese: its machine Chinese is the line
+                    # made from that final English (translations/), so apply it here too
+                    zh = {k: cur_row[k] for k in ("name_zh", "cues_zh", "instructions_zh", "zh_source")}
+                    if cur_row["zh_source"] != "human":
+                        cand = {**cur_row, **want, "instructions_zh": list(cur_row["instructions_zh"])}
+                        if cur_row["zh_source"] == "machine":   # judge by the English, as if no Chinese had been applied yet
+                            cand.update(name_zh=cand["name_en"], zh_source=None)
+                        if TR.apply(cand) == "applied":
+                            zh = {k: cand[k] for k in zh}
+                    want.update(zh)
                     if all(want[k] == cur_row[k] for k in want):
                         continue
                     cur.execute("""UPDATE exercise_catalog SET aliases = %s, secondary_muscles = %s, description_en = %s,
-                                   instructions_en = %s, text_sources = %s, updated_at = now() WHERE slug = %s""",
+                                   instructions_en = %s, text_sources = %s, name_zh = %s, cues_zh = %s, instructions_zh = %s,
+                                   zh_source = %s, updated_at = now() WHERE slug = %s""",
                                 (want["aliases"], want["secondary_muscles"], want["description_en"], want["instructions_en"],
-                                 Jsonb(want["text_sources"]), slug))
+                                 Jsonb(want["text_sources"]), want["name_zh"], want["cues_zh"], want["instructions_zh"],
+                                 want["zh_source"], slug))
                     updated_existing += 1
     by_src = Counter(c["source"] for c in new_rows)
     skipped_stubs = meta.get("variant_stubs_skipped")
