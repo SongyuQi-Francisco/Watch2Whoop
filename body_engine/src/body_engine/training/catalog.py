@@ -63,8 +63,8 @@ def image_urls(images: list[str]) -> list[str]:
             and (root / img).is_file()]
 
 
-@functools.lru_cache(maxsize=200000)
-def norm(s: str | None) -> str:
+@functools.lru_cache(maxsize=40000)   # the whole catalog's names take ~18k; also called on free text (searches, AI writes),
+def norm(s: str | None) -> str:      # so a larger bound only grows the API process (~150 B per entry)
     s = unicodedata.normalize("NFKC", s or "").lower()
     s = s.replace("（禁用）", "").replace("(禁用)", "")
     return re.sub(r"[\s/+·・,，、.。:：\-_'\"“”‘’()（）\[\]]", "", s)
