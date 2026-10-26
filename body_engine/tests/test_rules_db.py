@@ -323,7 +323,7 @@ def test_score_days_writes_muscle_load():
     rows = {r["date"]: r for r in score_days(inp, days[0], days[-1], today=days[-1] + timedelta(days=5))}
     assert rows[d]["muscle_load"] == 1350.0 and rows[d]["details"]["muscle"]["working_sets"] == 8
     assert rows[days[6]]["muscle_load"] is None and "muscle_load_unavailable" not in rows[days[6]]["flags"]
-    assert rows[d]["algo_version"].startswith("v1.1")
+    assert rows[d]["algo_version"] >= "v1.1"          # muscle_load came with v1.1
     inp.muscle, inp.muscle_error = {}, "连不上"
     rows = score_days(inp, days[0], days[1], today=days[-1])
     assert all("muscle_load_unavailable" in r["flags"] for r in rows)

@@ -463,6 +463,10 @@ def main() -> None:
     bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
     bs.add_argument("--days", type=int, default=7)
     bs.add_argument("--json", action="store_true")
+    dg = sub.add_parser("data-gaps", help="health data types that used to arrive regularly and stopped for at least 3 days, "
+                        "per user (sync/gaps.py; the doctor's data-gap row, read-only, dates only)")
+    dg.add_argument("--user-id", type=int, action="append", help="only these users (repeatable)")
+    dg.add_argument("--json", action="store_true")
     mcc = sub.add_parser("muscle-coverage-check", help="every recent workout of every user must credit at least one muscle on the muscle load map; "
                          "lists the workout types that are not mapped (exit 1 if any; nightly job and doctor, read-only)")
     mcc.add_argument("--days", type=int, default=28)
@@ -718,6 +722,10 @@ def main() -> None:
                       f"平均 {st['avg_chars'] or 0} 字符，最大 {st['max_chars'] or 0} 字符")
                 for d in st["per_day"]:
                     print(f"  {d['day']}  {d['calls']:>4} 次  命中 {d['hit_rate']:.0%}  平均 {d['avg_chars']} / 最大 {d['max_chars']} 字符  {d['users']} 人")
+        elif args.cmd == "data-gaps":
+            from .sync import gaps
+            res = gaps.scan(conn, args.user_id)
+            print(json.dumps(res, ensure_ascii=False) if args.json else gaps.render(res))
         elif args.cmd == "muscle-coverage-check":
             from .training import muscle_coverage
             res = muscle_coverage.scan(conn, args.days)

@@ -142,3 +142,14 @@ BACKFILL_ERROR_SHOWN = timedelta(hours=24)
 BACKFILL_BASELINE_MIN_FILL = 0.9
 BACKFILL_PHONE_STALL = timedelta(minutes=15)
 BACKFILL_EXHAUSTED_FOR = timedelta(days=30)
+
+# Data gaps (sync/gaps.py, `body-engine data-gaps`, the doctor's 「数据断流」 row, FB-18): a type that used to arrive regularly
+# and stopped. Operational heuristics for noticing a broken way in, not health rules. A gap = no data on the last GAP_DAYS full
+# days (today not counted; a type whose own STALE_AFTER_DAYS is longer waits that long), for a type that had data on at least
+# GAP_MIN_PRIOR_DAYS of the GAP_LOOKBACK_DAYS before its last day (about twice a week: sparse types such as a weekly walking
+# steadiness estimate or an occasional weigh-in never count as a gap). Gaps longer than GAP_GIVE_UP_DAYS are no longer listed
+# (the person stopped using the app or the type; the doctor's phone-sync row covers people who stopped syncing).
+GAP_DAYS = 3
+GAP_LOOKBACK_DAYS = 30
+GAP_MIN_PRIOR_DAYS = 8
+GAP_GIVE_UP_DAYS = 30
