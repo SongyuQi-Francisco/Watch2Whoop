@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch2whoop/src/apple_bridge.dart';
 import 'package:watch2whoop/src/backfill.dart';
+import 'package:watch2whoop/src/native_ui.dart';
 import 'package:watch2whoop/src/sync_bridge.dart';
 import 'package:watch2whoop/src/voice_bridge.dart';
 
@@ -29,6 +30,7 @@ void main() {
       netFeatureJs('wifi')!,
       kSyncLinkFeaturesJs,
       kBackfillFeatureJs,
+      nativeFeaturesJs(jarvis: true, today: true),
     ].join();
     for (final name in read) {
       expect(RegExp('[{,.]$name[:=]').hasMatch(declared), isTrue, reason: 'the page reads Watch2WhoopFeatures.$name');

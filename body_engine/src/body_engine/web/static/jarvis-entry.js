@@ -499,7 +499,8 @@
       startVoice({ anchor: jv, mode: "locked", dest: "half" });
     } else if (id === "photo") {
       if (AI().ai().vision === false) { C.toast(tr("这个 AI 看不了图片")); return; }
-      $("#jv-cam").click();
+      if (window.Watch2WhoopFeatures?.nativeJarvis?.camera) tell("jv-camera");   // the app's camera (native-bridge.js)
+      else $("#jv-cam").click();
     } else if (id === "quick") openQuick();
   }
 
@@ -894,6 +895,7 @@
     bindMic,
     // for tests and screenshots: the state of the overlay
     state: () => V.state,
+    native: () => ({ jv, V, C, isJarvis, offline, runKey, finishVoice, keys: KEYS.map((k) => k.id) }),   // the app's key: native-bridge.js
   };
 
   (window.BodyPlugins = window.BodyPlugins || []).push({
