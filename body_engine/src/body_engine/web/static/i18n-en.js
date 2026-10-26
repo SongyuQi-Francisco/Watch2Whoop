@@ -1897,4 +1897,12 @@ I18N.addEn({
   "图片": "Picture",
   "无": "None",
   "每份（{g} {u}）": "Per serving ({g} {u})",
+  "外观": "Appearance",
+  "主题": "Theme",
+  "默认": "Default",
+  "薄肌": "Lean",
+  "每日语录": "Daily quote",
+  "换一句": "Next quote",
+  "关闭语录": "Turn off the quote",
+  "原帖": "Original post",
 });

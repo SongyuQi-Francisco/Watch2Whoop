@@ -33,10 +33,11 @@ from ..avatars import urls as avatar_urls
 from ..training import catalog as tr_catalog
 from . import activation, boot, login_codes, login_limit, session, views
 from ..records.defaults import with_label
-from ..rollout import api as rollout_api
+from ..rollout import api as rollout_api, flags as rollout_flags
+from ..appearance import store as appearance
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.146-2026-10-27"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.148-2026-10-27"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -246,10 +247,12 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     ai = ai_status(conn, viewer)
     me = _me(viewer)
     me["avatar"] = avatar_urls.urls_for(conn, viewer["id"], [viewer["id"]]).get(viewer["id"])   # my own picture (#200)
+    look = {"appearance": appearance.get(conn, viewer["id"])} if rollout_flags.enabled(conn, viewer["id"], appearance.FEATURE) else {}   # theme + quote (#126)
     return {"me": me, "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
             **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)
+            **look,
             "version": {"web": WEB_VERSION, "api": api.app.version}}
 
 
