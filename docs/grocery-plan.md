@@ -11,7 +11,7 @@
 ## 1. 表（迁移 `240_grocery.sql`）
 | 表 | 内容 |
 |---|---|
-| `grocery_products` | 商品库：名字、品牌、门店（自由文本）、Coles / Woolworths 商品页 `product_url` + 从链接解析的 `store_sku`（迁移 `260_grocery_store_links.sql`，第 7 节）、营养来源 `nutrition_source`、类别、包装规格（数量 + 单位 g / ml / pcs，按个卖的可以写每个多少克 `piece_g`）、价格 + 币种 + 更新日期、每 100g（ml）营养（kcal、蛋白、碳水、脂肪、饱和脂肪、糖、钠 mg，知道多少写多少）、嘌呤等级（low / medium / high，和快捷记餐模板同一套）、是不是红肉 / 加工肉、条码、`matches`（这件商品能顶哪些食材名，例如「鸡胸肉」「chicken breast」） |
+| `grocery_products` | 商品库：名字、品牌、门店（自由文本）、Coles / Woolworths 商品页 `product_url` + 从链接解析的 `store_sku`（迁移 `260_grocery_store_links.sql`，第 7 节）、营养来源 `nutrition_source`、类别、包装规格（数量 + 单位 g / ml / pcs，按个卖的可以写每个多少克 `piece_g`）、价格 + 币种 + 更新日期、每 100g（ml）营养（原来 7 项，第 10 节起 14 项，知道多少写多少）、嘌呤等级（low / medium / high，和快捷记餐模板同一套）、是不是红肉 / 加工肉、条码、`matches`（这件商品能顶哪些食材名，例如「鸡胸肉」「chicken breast」） |
 | `pantry_items` | 家里存货（粗略）：名字、数量、单位、对应商品。买了自动加，AI 听用户说「鸡蛋还有 6 个」时直接改 |
 | `shopping_lists` | 每人每周一张（`week_start` = 用户时区的周一），存生成时用的计划 `plan` |
 | `shopping_items` | 清单的每一行：名字、对应商品、类别、门店、计划需要的量（扣掉存货后）、要买几包、买多少、估价、来源（plan / manual）、用在哪些菜、买了没有（`bought_at`、实付价格） |
@@ -116,3 +116,26 @@ AI 工具（`grocery/tools.py`）：`find_products`、`save_product`（新建或
 **页内对话联网**：API 类（Anthropic / OpenAI / Gemini）可以在「AI 设置」里打开各家**官方**的联网工具（`ai_providers.web_tools`，默认关，费用算在用户自己的 key 上）：Anthropic `web_search_20260209` + `web_fetch_20260209`（老模型只有 `web_search_20250305`，`pause_turn` 自动续），OpenAI Responses `web_search`，Gemini `google_search` + `url_context`。托底 AI、OpenAI 兼容接口用服务器的 `web_search` / `web_fetch`（灰度开关 `ai_web`，#150）。订阅类（Claude / ChatGPT / Gemini app）本来就有自己的联网，通过 MCP 用同样的工具。
 
 **接口**（scope nutrition，读别人的要 shares 授权，写只能写自己的）：`GET …/grocery/context`、`POST …/grocery/store-prices`、`GET …/grocery/store-products?q=`、`GET …/grocery/store-products/{id}`。今天页「采购」：行上「x 天前」和特价 / 半价角标，已买的行显示「买得便宜 / 买贵了」，统计下面是每家合计、特价省多少、缺价 / 旧价几样；新的「价格记录」列出自己的超市商品，点开看价格走势、最低 / 平均 / 最近、打折频率、上次买的判断。
+
+## 10. 商品档案补字段（#291，用户反馈 FB-16，迁移 870）
+目标：商品库能完整存档一件商品，不用再把配料、过敏原塞进备注。只加列，全部可空；旧商品、记餐、存货、商品卡不受影响。
+
+**营养表 7 项 → 14 项**（`grocery/params.NUTRITION_KEYS`，仍是 `grocery_products.nutrition` 里的 JSONB，所以营养项本身不用改表）：热量 `kcal`、蛋白 `protein_g`、碳水 `carbs_g`、脂肪 `fat_g`、饱和脂肪 `sat_fat_g`、**反式脂肪 `trans_fat_g`**、糖 `sugar_g`、**添加糖 `added_sugar_g`**、**膳食纤维 `fiber_g`**、钠 `sodium_mg`、**钾 `potassium_mg`**、**钙 `calcium_mg`**、**铁 `iron_mg`**、**胆固醇 `cholesterol_mg`**。命名和记餐的 `nutrition/extras.py`（`sugar_g` / `added_sugar_g` / `fiber_g` / `sodium_mg`）一致。
+- 不知道就不写，从不补 0；已有的值再存一次是合并，不是覆盖，null 不清除。
+- 校验（`store._check_nutrition`）：每项 ≥ 0 且不超过 `NUTRITION_MAX`（抓 g / mg 弄混，例如钙 120000 mg）；饱和 + 反式脂肪 ≤ 总脂肪；添加糖 ≤ 糖 ≤ 碳水；热量和三大营养素对得上。
+- 阈值标签（`product_flags`：饱和脂肪 / 糖 / 钠高）不变，新增的项不打标签。
+
+**每份营养单独存**：标签上有「每份」一栏时，`serving_size` + `serving_unit`（g / ml，要一起给）+ `nutrition_serving`（同样的 14 个键）。每份的克数项不能超过一份的重量。商品卡的「每份」一行优先用标签上的每份，没有才用每个 / 整包算出来的。
+
+**配料、过敏原**：`ingredients`（原文，≤ 2000 字）；`allergens`（含有）和 `allergen_traces`（可能含有，如「可能含有大豆」）各自是短标签列表（≤ 20 个、每个 ≤ 40 字，不分大小写去重）。**null = 从没记过，`[]` = 标签上写了没有**，两者不一样，所以这两列不是 `NOT NULL DEFAULT '{}'`。
+
+**图片**：`image_url` 只存一个 https 地址（≤ 500 字，不带账号密码、不带空格），是用户的 AI 看到的商品图的**引用**。服务器不下载、不转存、不抓取任何网站；今天页的 CSP 只加载自己的图片，所以页面上只显示一个「查看」链接（新标签页 / 系统浏览器打开）。用户自己上传图片这一期没做（需要图片存储和审核，见下）。图片版权归原站，和第 9 节一样只存引用。
+
+**AI 工具和接口**
+- `save_product` / `POST|PATCH …/grocery/products` 多了 `nutrition_serving`、`serving_size`、`serving_unit`、`ingredients`、`allergens`、`allergen_traces`、`image_url`；`""` 清除文字字段。`find_products` / `GET …/products` 都带回这些字段；`find_products` 一次返回超过 5 个商品时配料截到 300 字（`…`），只有 1–5 个时给全文。
+- `lookup_barcode`（Open Food Facts）顺带返回 14 项营养（OFF 的矿物质和胆固醇是克，换成 mg）、`ingredients`、`allergens`、`allergen_traces`（只取英文标签）和 `image_url`（OFF 自己的图片地址，https 才收），AI 用户确认后 `save_product`。数据仍是 ODbL，来源写进 `nutrition_source`。
+- 工具定义变长了约 1,450 字：`ai/params.py` 的 `GROUP_BUDGET_CHARS["grocery"]` 9200 → 10700，`PAGE_BUDGET_CHARS` 37700 → 38100（注释里写了原因）。
+
+**页面**：商品详情（饮食 → 采购 → 商品库）按有的值显示 14 项、「每份」一栏、过敏原（短标签）、配料、「图片 → 查看」。Jarvis 的商品卡显示全部营养项、标签上的每份、过敏原短标签；配料原文和图片不放进卡片（卡片只放数字和短标签）。
+
+**没做 / 以后**：用户自己上传商品图片（要图片存储、大小和类型限制、清理，单独的 issue）；按用户的过敏档案自动提醒（先有档案字段再说）。

@@ -80,7 +80,7 @@
 | 「把今天午饭这几样存成模板」「这几样合成一顿」 | `get_nutrition(include_entries=true)` 拿这天的条目 id → `combine_food_entries`（template 存成快捷模板、原条目保留；merge 合成一条，营养加总，原条目被替换；both 两样都做）。合并错了用 `get_write_log` → `rollback_write` 拆回原来的几条 |
 | 「晚饭吃了照烧鸡腿」这类食谱库里有的菜 | `list_recipes`（q 搜菜名）→ `log_recipe`（servings 吃了几份；不含主食的菜，米饭另外 `log_food`） |
 | 新菜的做法（文字、照片、网页链接里的菜谱） | `create_recipe`（食材按整锅写，每样带营养、嘌呤估算、红肉克数；做法几条短句；会做了就 can_make=true） |
-| 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养、包装规格、每包价格、门店；matches 写它能顶的食材名） |
+| 价签 / 小票 / 营养成分表照片 | `save_product`（每 100g 营养〔标签上有的都存：钙、膳食纤维、钾、添加糖等〕、每份营养 + serving_size、配料 `ingredients`、`allergens`〔含有〕/ `allergen_traces`〔可能含有〕、包装规格、每包价格、门店；matches 写它能顶的食材名；图片只存用户给的 https 地址，不要去抓） |
 | Coles / WWS（Woolworths）商品链接、带网址的截图 | `save_product` 的 `product_url`（只认商品页）。返回 `store_not_connected` = 这家超市还没连接，链接不显示：问用户要不要连接 |
 | 「帮我查一下这周清单的价格」「哪家便宜」 | 先 `get_shopping_context`，**按它的 rules 做**：只查 `needs_price` 里的（用户自己清单上的，一次十几样），用 `web_search` / `web_fetch` 搜商品、打开商品页，不整站抓、不翻目录；页面打不开、要登录或被拦截（403、验证码、`web_fetch` 返回 blocked）就直接告诉用户「这家超市的网页读不到，可以把商品页截图或小票发给我」，**不要尝试绕过、不换链接重试**；查到后 `record_store_prices` 一次写回（商品页 URL、规格、价格、特价和原价、for_item）。没有联网工具就请用户发商品页截图或小票。然后 `get_shopping_list` 告诉用户哪家买、总价、哪些特价、能省多少 |
 | 用户买了、发了小票 / 实付价 | 清单上的 `mark_bought`（paid 填实付）；不在清单上的 `record_store_prices` 带 bought=true。返回的 verdict：cheap 买得便宜 / dear 买贵了 / normal |

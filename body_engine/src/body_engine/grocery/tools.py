@@ -18,11 +18,25 @@ def _d(s):
     return date.fromisoformat(s) if s else None
 
 
-def _slim_product(p: dict) -> dict:
+INGREDIENTS_SHOWN = 300   # chars of the ingredient list when many products come back at once (<= FULL_TEXT_MAX products: the full text)
+FULL_TEXT_MAX = 5
+
+
+def _slim_product(p: dict, full: bool = True) -> dict:
     out = {k: v for k, v in p.items() if v not in (None, [], {}, "") and k not in ("category_label", "size_label", "store_label", "links")}
+    for k in ("allergens", "allergen_traces"):
+        if p.get(k) == []:   # recorded as "none" is information; null (never recorded) is dropped like the rest
+            out[k] = []
+    if not full and len(out.get("ingredients") or "") > INGREDIENTS_SHOWN:
+        out["ingredients"] = out["ingredients"][:INGREDIENTS_SHOWN] + "…"
     if p.get("offer"):
         out["offer"] = _slim_offer({**p["offer"], "save_total": p["offer"].get("save")})
     return out
+
+
+def _found(products: list[dict]) -> list[dict]:
+    full = len(products) <= FULL_TEXT_MAX
+    return [_slim_product(p, full) for p in products]
 
 
 OFFER_KEYS = ("store", "name", "size", "price", "was_price", "unit_price", "unit_price_unit", "special", "special_label", "save_total",
@@ -69,6 +83,8 @@ def _specials(conn, uid, a):
 
 
 NUTRITION = schema({k: _n("number") for k in P.NUTRITION_KEYS})
+SERVING_UNIT_N = {"type": ["string", "null"], "enum": [*P.SERVING_UNITS, None]}
+TAGS = {"type": ["array", "null"], "items": {"type": "string"}}
 PLAN = schema({
     "kind": {"type": "string", "enum": ["recipe", "template", "food"]},
     "ref_id": _n("integer", "recipe / template 的 id"),
@@ -83,13 +99,13 @@ TOOL_SPECS: list[dict] = [
         description="商品库：规格、价格、单价、每 100g 营养、flags。",
         input_schema=schema({"user": USER, "q": _n("string", "搜名字 / 品牌 / 门店 / 条码"),
                              "category": {"type": ["string", "null"], "enum": [*P.CATEGORIES, None]}}),
-        handler=lambda conn, uid, a: [_slim_product(p) for p in store.list_products(conn, uid, a["q"], a["category"])],
+        handler=lambda conn, uid, a: _found(store.list_products(conn, uid, a["q"], a["category"])),
         group="grocery", scope="nutrition",
     ),
     dict(
         name="save_product",
         description="存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，"
-                    "否则新建；null=不改。nutrition 每 100g（不知道就 {}）；matches=能顶的食材名；price 每包。",
+                    "否则新建；null=不改。nutrition 每 100g、nutrition_serving 每份（不知道的项不写）；matches=能顶的食材名；price 每包。",
         input_schema=schema({
             "product_id": _n("integer"),
             "name": _n("string"), "brand": _n("string"), "store": _n("string"),
@@ -97,6 +113,11 @@ TOOL_SPECS: list[dict] = [
             "package_size": _n("number"), "package_unit": UNIT_N, "piece_g": _n("number", "每个几克"),
             "price": _n("number"), "currency": _n("string"),
             "nutrition": NUTRITION,
+            "serving_size": _n("number", "一份多少，和 serving_unit 一起"), "serving_unit": SERVING_UNIT_N,
+            "nutrition_serving": NUTRITION,
+            "ingredients": _n("string", "配料表原文"),
+            "allergens": {**TAGS, "description": "含有的过敏原；[]=标签写了没有"}, "allergen_traces": {**TAGS, "description": "可能含有"},
+            "image_url": _n("string", "https 图片地址（只存地址）"),
             "purine_level": {"type": ["string", "null"], "enum": ["low", "medium", "high", None]},
             "red_meat": _n("boolean"), "barcode": _n("string"),
             "matches": {"type": ["array", "null"], "items": {"type": "string"}}, "note": _n("string"),
@@ -108,7 +129,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="lookup_barcode",
-        description="按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
+        description="按条码查 Open Food Facts（名字、规格、每 100g 营养、配料、过敏原、图片地址）。",
         input_schema=schema({"barcode": {"type": "string"}}),
         handler=lambda conn, uid, a: off.lookup(uid, a["barcode"]),
         group="grocery", scope="nutrition",

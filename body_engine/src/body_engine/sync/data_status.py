@@ -106,17 +106,20 @@ def _iso(v: datetime | None, tz: ZoneInfo) -> str | None:
     return v.astimezone(tz).isoformat(timespec="seconds") if v else None
 
 
+# Kinds stored as one row per event: (key, table, date expression, time expression, source expression, extra condition)
+EVENT_SPECS = (
+    ("sleep", "sleep_sessions", "wake_date", "end_at", "source", "TRUE"),
+    ("workouts", "workouts", "local_date", "end_at", "source", "dup_of IS NULL AND excluded IS NULL"),
+    ("heartbeats", "heartbeat_series", "(start_at AT TIME ZONE %(tz)s)::date", "end_at", "origin", "TRUE"),
+    ("ecg", "ecg_recordings", "(start_at AT TIME ZONE %(tz)s)::date", "start_at", "origin", "TRUE"),
+    ("water", "water_intake", "local_date", "at", "source", "source = 'apple_health'"),
+)
+
+
 def _event_rows(conn: psycopg.Connection, user_id: int, tz: str, since: date, src_since: date) -> dict[str, dict]:
     """Kinds stored as one row per event: {key: {last_date, last_at, days, count, sources}}."""
     p = {"u": user_id, "tz": tz, "since": since, "src": src_since}
-    # (key, table, date expression, time expression, source expression, extra condition)
-    specs = [
-        ("sleep", "sleep_sessions", "wake_date", "end_at", "source", "TRUE"),
-        ("workouts", "workouts", "local_date", "end_at", "source", "dup_of IS NULL AND excluded IS NULL"),
-        ("heartbeats", "heartbeat_series", "(start_at AT TIME ZONE %(tz)s)::date", "end_at", "origin", "TRUE"),
-        ("ecg", "ecg_recordings", "(start_at AT TIME ZONE %(tz)s)::date", "start_at", "origin", "TRUE"),
-        ("water", "water_intake", "local_date", "at", "source", "source = 'apple_health'"),
-    ]
+    specs = EVENT_SPECS
     sql = " UNION ALL ".join(
         f"""SELECT '{key}' AS key, max({d}) AS last_date, max({t}) AS last_at,
                    count(DISTINCT {d}) FILTER (WHERE {d} >= %(since)s) AS days,

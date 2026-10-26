@@ -142,3 +142,21 @@ BACKFILL_ERROR_SHOWN = timedelta(hours=24)
 BACKFILL_BASELINE_MIN_FILL = 0.9
 BACKFILL_PHONE_STALL = timedelta(minutes=15)
 BACKFILL_EXHAUSTED_FOR = timedelta(days=30)
+
+# Data gaps (sync/gaps.py, `body-engine data-gaps`, the doctor's 「数据断流」 row, FB-18): a type that used to arrive regularly
+# and stopped. Operational heuristics for noticing a broken way in, not health rules. A gap = no data on the last GAP_DAYS full
+# days (today not counted; a type whose own STALE_AFTER_DAYS is longer waits that long), for a type that had data on at least
+# GAP_MIN_PRIOR_DAYS of the GAP_LOOKBACK_DAYS before its last day (about twice a week: sparse types such as a weekly walking
+# steadiness estimate or an occasional weigh-in never count as a gap). Gaps longer than GAP_GIVE_UP_DAYS are no longer listed
+# (the person stopped using the app or the type; the doctor's phone-sync row covers people who stopped syncing).
+GAP_DAYS = 3
+GAP_LOOKBACK_DAYS = 30
+GAP_MIN_PRIOR_DAYS = 8
+GAP_GIVE_UP_DAYS = 30
+# Only these "core" kinds (the ones the scores stand on, read live by the Open Wearables SDK) make a doctor ⚠; the others
+# (Apple-computed types such as stand time, exercise minutes, daylight, audio, walking heart rate, wrist temperature, which
+# only the app's own sync reads from 1.0.7, and workouts / weight / VO2max / water ...) are listed as information only.
+GAP_CORE_KINDS = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "active_energy", "blood_oxygen",
+                  "respiratory_rate")
+# Sources that are a history import, not a live way in: they never make a type "regular" or end a gap.
+GAP_HISTORY_SOURCES = frozenset({"apple_export"})
