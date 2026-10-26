@@ -61,38 +61,53 @@ def _user(conn, name):
                            VALUES (%s, 'member', now(), 'v', 'Australia/Sydney') RETURNING id""", (name,)).fetchone()["id"]
 
 
-def _metric(conn, uid, metric, days):
+def _metric(conn, uid, metric, days, source="ow"):
     for d in days:
-        conn.execute("""INSERT INTO daily_metrics (user_id, date, metric, value, unit, agg, n, source)
-                        VALUES (%s, %s, %s, 1, 'x', 'avg', 1, 'ow')""", (uid, d, metric))
+        conn.execute("""INSERT INTO daily_metric_sources (user_id, date, metric, source, value, unit, agg, n)
+                        VALUES (%s, %s, %s, %s, 1, 'x', 'avg', 1)""", (uid, d, metric, source))
 
 
-def _sleep(conn, uid, days):
+def _sleep(conn, uid, days, source="ow"):
     for d in days:
         start = datetime.combine(d - timedelta(days=1), time(23), TZ)
         conn.execute("""INSERT INTO sleep_sessions (user_id, wake_date, start_at, end_at, asleep_min, source)
-                        VALUES (%s, %s, %s, %s, 420, 'ow')""", (uid, d, start, start + timedelta(hours=8)))
+                        VALUES (%s, %s, %s, %s, 420, %s)""", (uid, d, start, start + timedelta(hours=8), source))
 
 
 def test_scan(conn):
-    a, b, c = _user(conn, "a"), _user(conn, "b"), _user(conn, "c")
-    # a: heart rate and sleep keep arriving, wrist temperature was nightly and stopped 6 days ago, weight is occasional
+    a, b, c, d = _user(conn, "a"), _user(conn, "b"), _user(conn, "c"), _user(conn, "d")
+    # a: heart rate and sleep keep arriving live; SpO2 was live daily and stopped 5 days ago (core);
+    #    wrist temperature came live from the app nightly and stopped 6 days ago (aux, information only);
+    #    weight is occasional; stand time only from the Apple Health export and an export.xml uploaded into OW
     _metric(conn, a, "heart_rate", daily(0, 40))
     _sleep(conn, a, daily(1, 40))
-    _metric(conn, a, "apple_sleeping_wrist_temperature", daily(6, 20))
-    _metric(conn, a, "body_mass", {TODAY - timedelta(days=d) for d in (12, 40)})
-    # b: everything stopped 5 days ago (phone not syncing)
+    _metric(conn, a, "oxygen_saturation", daily(5, 30))
+    _metric(conn, a, "apple_sleeping_wrist_temperature", daily(6, 20), "app")
+    _metric(conn, a, "body_mass", {TODAY - timedelta(days=x) for x in (12, 40)})
+    _metric(conn, a, "apple_stand_time", daily(10, 30), "apple_export")
+    _metric(conn, a, "apple_stand_time", daily(12, 20), "ow")
+    # b: everything live stopped 5 days ago (phone not syncing); a history import later covered newer days
     _metric(conn, b, "heart_rate", daily(5, 30))
     _sleep(conn, b, daily(5, 30))
-    # c: all fine
+    _metric(conn, b, "heart_rate", daily(1, 10), "apple_export")
+    # c: all fine; d: only a history import, never synced live
     _metric(conn, c, "heart_rate", daily(0, 30))
+    _metric(conn, d, "heart_rate", daily(8, 30), "apple_export")
+    _sleep(conn, d, daily(8, 30), "apple_export")
     res = gaps.scan(conn, today=TODAY)
     by = {g["user_id"]: g for g in res["gaps"]}
-    assert res["checked_users"] == 3 and set(by) == {a, b}
+    info = {i["user_id"]: i for i in res["info"]}
+    assert res["checked_users"] == 4 and set(by) == {a, b}
     assert by[a]["all"] is False
-    assert [(t["key"], t["days"], t["last_date"]) for t in by[a]["types"]] == [
-        ("wrist_temperature", 6, (TODAY - timedelta(days=6)).isoformat())]
+    assert [(t["key"], t["days"]) for t in by[a]["types"]] == [("blood_oxygen", 5)]
     assert by[b]["all"] is True and {t["key"] for t in by[b]["types"]} == {"heart_rate", "sleep"}
-    assert gaps.scan(conn, [c], today=TODAY)["gaps"] == []
+    assert by[b]["types"][0]["last_date"] == (TODAY - timedelta(days=5)).isoformat()   # the import does not end the gap
+    assert set(info) == {a, d}
+    assert [(t["key"], t["days"]) for t in info[a]["aux"]] == [("wrist_temperature", 6)]
+    assert [t["key"] for t in info[a]["history_only"]] == ["stand_time"]   # OW's copy of stand time is an export.xml
+    assert info[d]["aux"] == [] and {t["key"] for t in info[d]["history_only"]} == {"heart_rate", "sleep"}
+    only_c = gaps.scan(conn, [c], today=TODAY)
+    assert only_c["gaps"] == [] and only_c["info"] == []
     text = gaps.render(res)
-    assert f"用户 {a}：手腕温度 6 天" in text and f"用户 {b}（全部类型）" in text
+    assert f"⚠ 用户 {a}：血氧 5 天" in text and f"⚠ 用户 {b}（全部核心类型）" in text
+    assert f"· 用户 {a}：辅助类型断流 手腕温度 6 天；只来自历史导入 站立时间" in text
