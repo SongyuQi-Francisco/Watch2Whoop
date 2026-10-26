@@ -97,8 +97,8 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v8.3.2
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.2
         with:
           version: "0.12.19"
       - name: Database password file
@@ -127,15 +127,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: py_compile (all tracked .py)
         run: git ls-files -z '*.py' | xargs -0 -r python -m py_compile
       - name: bash -n (all tracked .sh)
         run: git ls-files -z '*.sh' | xargs -0 -r -n1 bash -n
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       # The Today page has no build step, so a JS syntax error ships as is and blanks the whole page (#198 → #207)
@@ -161,8 +161,8 @@ jobs:
       run:
         working-directory: ${{ env.FLUTTER_APP }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2.9.1
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.7
@@ -186,8 +186,8 @@ jobs:
     env:
       LANG: en_US.UTF-8
     steps:
-      - uses: actions/checkout@v5
-      - uses: subosito/flutter-action@v2.9.1
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           flutter-version: 3.47.7
@@ -220,7 +220,7 @@ jobs:
       run:
         working-directory: ${{ matrix.app.path }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: HarmonyOS (placeholder)
         if: matrix.app.kind == 'harmony'
         run: |
