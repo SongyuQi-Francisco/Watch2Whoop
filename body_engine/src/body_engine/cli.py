@@ -463,8 +463,8 @@ def main() -> None:
     bs = sub.add_parser("briefing-stats", help="get_briefing: calls, cache hit rate and size in characters over the last days (admin, counts only)")
     bs.add_argument("--days", type=int, default=7)
     bs.add_argument("--json", action="store_true")
-    dg = sub.add_parser("data-gaps", help="health data types that used to arrive regularly and stopped for at least 3 days, "
-                        "per user (sync/gaps.py; the doctor's data-gap row, read-only, dates only)")
+    dg = sub.add_parser("data-gaps", help="health data types that used to arrive live and regularly and stopped for at least 3 days, core types "
+                        "as warnings, the others and history-import-only types as information (sync/gaps.py; read-only, dates only)")
     dg.add_argument("--user-id", type=int, action="append", help="only these users (repeatable)")
     dg.add_argument("--json", action="store_true")
     mcc = sub.add_parser("muscle-coverage-check", help="every recent workout of every user must credit at least one muscle on the muscle load map; "
