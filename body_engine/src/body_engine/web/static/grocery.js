@@ -52,6 +52,12 @@
   const num = (v, d = 1) => (v == null ? "—" : Number(v).toLocaleString(window.I18N.locale(), { maximumFractionDigits: d }));
   const md = (iso) => window.I18N.monthDay(new Date(`${iso.slice(0, 10)}T12:00:00`));
   const badge = (cls, t) => `<span class="badge ${cls}">${esc(t)}</span>`;
+  // the nutrition table of the product sheet (grocery/params.NUTRITION_KEYS, label order): only the values the product has
+  const nutRows = (n) => [[tr("热量"), "kcal", "kcal", 0], [tr("蛋白质"), "protein_g", "g", 1], [tr("碳水"), "carbs_g", "g", 1], [tr("脂肪"), "fat_g", "g", 1],
+    [tr("饱和脂肪"), "sat_fat_g", "g", 1], [tr("反式脂肪"), "trans_fat_g", "g", 1], [tr("糖"), "sugar_g", "g", 1], [tr("添加糖"), "added_sugar_g", "g", 1],
+    [tr("膳食纤维"), "fiber_g", "g", 1], [tr("钠"), "sodium_mg", "mg", 0], [tr("钾"), "potassium_mg", "mg", 0], [tr("钙"), "calcium_mg", "mg", 0],
+    [tr("铁"), "iron_mg", "mg", 1], [tr("胆固醇"), "cholesterol_mg", "mg", 0]].filter(([, k]) => n[k] != null)
+    .map(([l, k, u, d]) => `<div class="kv"><span class="k">${esc(l)}</span><span class="v">${esc(`${num(n[k], d)} ${u}`)}</span></div>`).join("");
   const IN_APP = !!window.Watch2Whoop;
   const storeLinks = (links, name) => (links || []).length ? `<span class="glinks">${links.map((l) =>
     `<a class="gstore${l.kind === "product" ? " on" : ""}" href="${esc(l.url)}"${IN_APP ? "" : ` target="_blank"`} rel="noopener noreferrer"
@@ -197,15 +203,21 @@
     const s = p.staple && p.staple_info && staplesOn();
     const amount = s ? (s.unit === "pack" ? tr("{n} 包", { n: s.qty }) : `${s.qty} ${s.unit === "pcs" ? tr("个") : s.unit}`) : "";
     const usual = s ? `${kv(tr("常买"), tr("每 {n} 天 · {amount}", { n: s.every_days, amount }))}${kv(tr("下次该买"), md(s.next_due))}` : "";
+    const ns = p.nutrition_serving || {};
+    const serving = p.serving_size && Object.keys(ns).length
+      ? `<div class="ghead" style="margin-top:16px"><span>${esc(tr("每份"))} · ${esc(num(p.serving_size))} ${esc(p.serving_unit || "")}</span></div>${nutRows(ns)}` : "";
+    const row = (k, html) => `<div class="kv"><span class="k">${esc(k)}</span><span class="v">${html}</span></div>`;
+    const tags = (p.allergens && p.allergens.length ? row(tr("过敏原"), p.allergens.map((a) => badge("mid", a)).join(" ")) : p.allergens ? kv(tr("过敏原"), tr("无")) : "")
+      + (p.allergen_traces && p.allergen_traces.length ? row(tr("可能含有"), p.allergen_traces.map((a) => badge("", a)).join(" ")) : "");
+    // only a link: the page's CSP loads its own images, and the picture is never copied (docs/grocery-plan.md §10)
+    const image = p.image_url ? row(tr("图片"), `<a href="${esc(p.image_url)}" target="_blank" rel="noopener noreferrer">${esc(tr("查看"))}</a>`) : "";
     C.openSheet(p.name, `${flags ? `<div class="gwarn">${flags}</div>` : ""}${usual}
       ${kv(tr("品牌"), p.brand)}${kv(tr("门店"), p.store_label)}${(p.links || []).length ? `<div class="kv"><span class="k">${tr("链接")}</span>${storeLinks(p.links, p.name)}</div>` : ""}${kv(tr("类别"), p.category_label)}${kv(tr("规格"), p.size_label)}
       ${kv(tr("价格"), p.price != null ? money(p.price, p.currency) : null)}${kv(tr("单价"), unitP)}${kv(tr("价格日期"), p.price_on ? md(p.price_on) : null)}
       ${p.offer ? kv(tr("本周价"), `${p.offer.label} ${money(p.offer.price, "AUD")}${p.offer.was_price ? ` / ${money(p.offer.was_price, "AUD")}` : ""}${p.offer.half_price ? ` · ${tr("半价")}` : ""}`) : ""}
-      <div class="ghead" style="margin-top:16px"><span>${esc(tr("每 {per}", { per }))}</span></div>
-      ${kv(tr("热量"), n.kcal != null ? `${num(n.kcal, 0)} kcal` : null)}${kv(tr("蛋白质"), n.protein_g != null ? `${num(n.protein_g)} g` : null)}
-      ${kv(tr("碳水"), n.carbs_g != null ? `${num(n.carbs_g)} g` : null)}${kv(tr("脂肪"), n.fat_g != null ? `${num(n.fat_g)} g` : null)}
-      ${kv(tr("饱和脂肪"), n.sat_fat_g != null ? `${num(n.sat_fat_g)} g` : null)}${kv(tr("糖"), n.sugar_g != null ? `${num(n.sugar_g)} g` : null)}
-      ${kv(tr("钠"), n.sodium_mg != null ? `${num(n.sodium_mg, 0)} mg` : null)}${p.nutrition_source ? kv(tr("来源"), p.nutrition_source) : ""}${p.barcode ? kv(tr("条码"), p.barcode) : ""}`);
+      ${nutRows(n) ? `<div class="ghead" style="margin-top:16px"><span>${esc(tr("每 {per}", { per }))}</span></div>${nutRows(n)}` : ""}${serving}
+      ${tags}${p.ingredients ? kv(tr("配料"), p.ingredients) : ""}${image}
+      ${p.nutrition_source ? kv(tr("来源"), p.nutrition_source) : ""}${p.barcode ? kv(tr("条码"), p.barcode) : ""}`);
   }
 
   function pantryRow(p) {

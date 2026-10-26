@@ -136,6 +136,7 @@ Planned work and discussions live in [issues](../../issues); app builds and note
 - [ ] *In progress*: friends page and circles ([design](docs/friends-social-plan.md))
 - [ ] *In progress*: own Apple Health sync engine to replace Open Wearables on iOS ([#219](../../issues/219))
 - [ ] RMSSD-based recovery ([#117](../../issues/117))
+- [ ] Coles / Woolworths prices and weekly specials: the sites block scraping and we do not work around that; prices come from the user's own receipts / shelf labels / AI, the opt-in `grocery-sync` component stays off, compliant sources are being surveyed ([#292](../../issues/292), [plan and terms analysis](docs/grocery-store-data-plan.md))
 - [ ] Publish the scoring library `openbodyscore`
 - [ ] One-command Linux VPS installer
 - [ ] **Other watches**: Garmin, Oura, Polar, Android Health Connect … (help wanted)
