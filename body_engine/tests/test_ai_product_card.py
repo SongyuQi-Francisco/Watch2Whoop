@@ -340,3 +340,25 @@ def test_card_is_plain_json(conn, world):
     _flag(conn)
     card = cards.build(conn, ids["A"], {"type": "product", "id": pid}, v2=True)
     assert json.loads(json.dumps(card)) == card
+
+
+def test_card_shows_archive_fields(conn, world):
+    """#291: the fuller nutrition table, the label's own per-serving column and the allergens (short labels) are on the card;
+    the ingredient text and the picture are not (the library keeps them)."""
+    ids, _ = world
+    _flag(conn)
+    p = store.save_product(conn, ids["A"], {
+        "name": "Full Cream Milk", "package_size": 2000, "package_unit": "ml", "piece_g": None,
+        "nutrition": {"kcal": 64, "protein_g": 3.4, "carbs_g": 4.8, "fat_g": 3.6, "calcium_mg": 120, "fiber_g": 0, "potassium_mg": 150},
+        "serving_size": 250, "serving_unit": "ml", "nutrition_serving": {"kcal": 160, "protein_g": 8.5, "calcium_mg": 300},
+        "ingredients": "Milk (100%)", "allergens": ["Milk"], "allergen_traces": ["Soy"], "image_url": "https://img.example.org/m.jpg"})
+    card = cards.build(conn, ids["A"], {"type": "product", "id": p["id"]}, v2=True)
+    n = card["nutrition"]
+    assert n["per100"]["calcium_mg"] == 120 and n["per100"]["fiber_g"] == 0 and n["per100"]["potassium_mg"] == 150
+    assert n["serving"] == {"kind": "serving", "amount": 250.0, "unit": "ml", "kcal": 160.0, "protein_g": 8.5}
+    assert card["allergens"] == ["Milk"] and card["traces"] == ["Soy"] and card["image_url"] == "https://img.example.org/m.jpg"
+    assert "ingredients" not in card and "含过敏原：Milk" in cards_product.summary(card)
+    # a product without any of it: same card as before, empty lists
+    plain = cards.build(conn, ids["A"], {"type": "product", "id": world[1]}, v2=True)
+    assert plain["allergens"] == [] and plain["traces"] == [] and plain["image_url"] is None
+    assert plain["nutrition"]["serving"]["kind"] == "pack"

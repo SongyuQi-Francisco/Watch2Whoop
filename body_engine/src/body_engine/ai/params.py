@@ -66,13 +66,16 @@ ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "del
 CORE_BUDGET_CHARS = 30000
 META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
-GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 9200,
+GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 10700,
                       "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500}
 # grocery 9000 -> 9200: with the rollout flag mcp_web, MCP's find_tools(group="grocery") also returns web_search / web_fetch
 # (ai/web/mcp.py, about 400 chars; tests/test_mcp_web.py checks the group with them)
-PAGE_BUDGET_CHARS = 37700         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
+# grocery 9200 -> 10700 (#291): save_product's nutrition goes from 7 to 14 items, there is a second table for the label's per-serving
+# column, and ingredients / allergens / allergen_traces / image_url / serving_size / serving_unit; about 1,450 chars in all.
+PAGE_BUDGET_CHARS = 38100         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
                                   # (36000 -> 36500 for the 5 nutrient fields of update_food_entry, #183; -> 37700 for
-                                  # get_memory_review / apply_memory_changes in the memory group, #113)
+                                  # get_memory_review / apply_memory_changes in the memory group, #113; -> 38100 for the 14-item
+                                  # nutrition table + per-serving table + ingredients / allergens / image of save_product, #291)
                                   # that has been on several pages (the oldest pages' groups are dropped beyond it)
 FALLBACK_PAGE_BUDGET_CHARS = 26200  # the same cap for the fallback AI (core and pages cut to its whitelist; 25000 -> 26200 for
                                     # get_memory_review / apply_memory_changes, #113)

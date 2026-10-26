@@ -13,7 +13,19 @@ CATEGORIES = {   # key -> short Chinese label (UI order)
     "household": "日用", "other": "其他",
 }
 UNITS = ("g", "ml", "pcs")
-NUTRITION_KEYS = ("kcal", "protein_g", "carbs_g", "fat_g", "sat_fat_g", "sugar_g", "sodium_mg")
+# Nutrition table (per 100 g / ml; the per-serving column uses the same keys), in the order of a typical label.
+# The original seven were kcal .. sodium_mg; trans fat, added sugar, fibre, potassium, calcium, iron and cholesterol came with #291.
+NUTRITION_KEYS = ("kcal", "protein_g", "carbs_g", "fat_g", "sat_fat_g", "trans_fat_g", "sugar_g", "added_sugar_g", "fiber_g",
+                  "sodium_mg", "potassium_mg", "calcium_mg", "iron_mg", "cholesterol_mg")
+# Upper bounds per 100 g / ml, to catch g <-> mg mix-ups (pure salt is ~39 g sodium per 100 g). Grams: 100 is the physical limit.
+NUTRITION_MAX = {"kcal": 900, "protein_g": 100, "carbs_g": 100, "fat_g": 100, "sat_fat_g": 100, "trans_fat_g": 100, "sugar_g": 100,
+                 "added_sugar_g": 100, "fiber_g": 100, "sodium_mg": 40000, "potassium_mg": 20000, "calcium_mg": 10000,
+                 "iron_mg": 200, "cholesterol_mg": 5000}
+SERVING_UNITS = ("g", "ml")
+MAX_ALLERGENS = 20          # tags per list
+ALLERGEN_MAX_LEN = 40       # characters per tag
+INGREDIENTS_MAX_LEN = 2000
+IMAGE_URL_MAX_LEN = 500
 
 # Unmatched ingredients (no product in the library) are rounded up to this many grams / ml.
 ROUND_G = 50
@@ -65,7 +77,8 @@ PRODUCT_URL_MAX = 300
 # Off unless BODY_OFF_CONTACT (an e-mail or URL) is set.
 OFF_PRODUCT_URL = "https://world.openfoodfacts.org/api/v2/product/{code}.json"
 OFF_PAGE_URL = "https://world.openfoodfacts.org/product/{code}"
-OFF_FIELDS = "code,product_name,product_name_en,brands,quantity,nutriments"
+OFF_FIELDS = ("code,product_name,product_name_en,brands,quantity,nutriments,ingredients_text,ingredients_text_en,"
+              "allergens_tags,traces_tags,image_front_url")
 OFF_PER_MINUTE = 15        # per process, all users together
 OFF_PER_USER_DAY = 50
 OFF_TIMEOUT_S = 8
