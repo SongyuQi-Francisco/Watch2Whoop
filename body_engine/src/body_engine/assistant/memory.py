@@ -48,9 +48,12 @@ STANDARD_KEYS: dict[str, tuple[str, int]] = {
     "communication": ("沟通方式", 5),   # answer length, numbers vs explanations, tone, emoji, reminder frequency, topics not to raise
 }
 OBS_COLS = ("id, text, created_at, source, evidence, kind, valid_from, valid_until, topic, confirmed_at, origin, status, "
-            "archived_at, archived_reason, merged_into")
+            "archived_at, archived_reason, merged_into, confirm_count")
 CARD_COLS = ("key, label, value, updated_at, source, topic, confirmed_at, origin, status, archived_at, archived_reason, "
-             "merged_into")
+             "merged_into, confirm_count")
+# SQL for the confirmation counter (migration 910): +1 unless the entry was confirmed within the last COUNT_MIN_GAP_DAYS, so the
+# same fact stated several times in one conversation counts once. Old row values: in an UPDATE the right side sees them.
+COUNT = f"(confirmed_at < now() - interval '{mp.COUNT_MIN_GAP_DAYS} day')::int"
 ORIGINS = ("user_said", "ai_inferred", "data")
 TOPICS = tuple(STANDARD_KEYS)
 
@@ -244,8 +247,8 @@ def rollback_profile(conn: psycopg.Connection, user_id: int, key: str, before: d
 def confirm_profile(conn: psycopg.Connection, user_id: int, key: str) -> dict | None:
     """「还准确」: the item is still right as it is."""
     return conn.execute(
-        """UPDATE assistant_profile SET confirmed_at = now() WHERE user_id = %s AND key = %s AND status = 'active'
-           RETURNING key, confirmed_at""", (user_id, key)).fetchone()
+        f"""UPDATE assistant_profile SET confirmed_at = now(), confirm_count = confirm_count + {COUNT}
+           WHERE user_id = %s AND key = %s AND status = 'active' RETURNING key, confirmed_at""", (user_id, key)).fetchone()
 
 
 def restore_profile(conn: psycopg.Connection, user_id: int, key: str) -> dict | None:
@@ -323,10 +326,11 @@ def add_observation(conn: psycopg.Connection, user_id: int, text: str, evidence:
     if span:
         old = conn.execute(
             f"""UPDATE assistant_observations SET kind = 'recent', valid_from = %s, valid_until = %s,
-                  evidence = COALESCE(%s, evidence), confirmed_at = now()
+                  evidence = COALESCE(%s, evidence), confirmed_at = now(), confirm_count = confirm_count + {COUNT}
                 WHERE id = %s RETURNING {OBS_COLS}""", (vfrom, vuntil, evidence, same["id"])).fetchone()
         return {**old, "duplicate": True, "dates_updated": True}
-    old = conn.execute(f"UPDATE assistant_observations SET confirmed_at = now() WHERE id = %s RETURNING {OBS_COLS}",
+    old = conn.execute(f"UPDATE assistant_observations SET confirmed_at = now(), confirm_count = confirm_count + {COUNT} "
+                       f"WHERE id = %s RETURNING {OBS_COLS}",
                        (same["id"],)).fetchone()
     return {**old, "duplicate": True}
 
@@ -388,8 +392,8 @@ def rollback_observation(conn: psycopg.Connection, user_id: int, observation_id:
 def confirm_observation(conn: psycopg.Connection, user_id: int, observation_id: int) -> dict | None:
     """「还准确」: the note is still right as it is."""
     return conn.execute(
-        """UPDATE assistant_observations SET confirmed_at = now() WHERE id = %s AND user_id = %s AND status = 'active'
-           RETURNING id, confirmed_at""", (observation_id, user_id)).fetchone()
+        f"""UPDATE assistant_observations SET confirmed_at = now(), confirm_count = confirm_count + {COUNT}
+           WHERE id = %s AND user_id = %s AND status = 'active' RETURNING id, confirmed_at""", (observation_id, user_id)).fetchone()
 
 
 def restore_observation(conn: psycopg.Connection, user_id: int, observation_id: int) -> dict | None:
