@@ -39,6 +39,7 @@ import base64
 import binascii
 import copy
 import dataclasses
+import functools
 import json
 from typing import Iterator
 
@@ -50,6 +51,7 @@ from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..assistant.tools import _audit as run_audit
 from ..i18n import L, is_en
+from ..toolspec import fill_defaults
 from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, scope_guard, web
 from .choice import owner_assistant_url  # noqa: F401  (web/api.py and older callers import it from here)
 from . import fallback_params as fp
@@ -270,6 +272,22 @@ def _result_text(result) -> str:
     return text
 
 
+def _for_model(viewer_id: int, name: str, args: dict, res):
+    """What the model reads of a tool result in this chat. The system prompt here already carries the root rules and the
+    caller's own long-term memory (prompt.py), so the caller's own get_briefing leaves out the rules text and the memory
+    block (its memory_review reminder stays); about 900 tokens that would sit in every later call of the conversation
+    (issue #78). MCP clients have no such system prompt and get the whole briefing."""
+    if name != "get_briefing" or not isinstance(res, dict) or str(args.get("user") or "me") not in ("me", str(viewer_id)):
+        return res
+    out = {k: v for k, v in res.items() if k not in ai_params.CHAT_BRIEFING_DROP}
+    if isinstance(res.get("system_rules"), dict):
+        out["system_rules"] = {k: v for k, v in res["system_rules"].items() if k != "text"}
+    review = (res.get("memory") or {}).get("memory_review") if isinstance(res.get("memory"), dict) else None
+    if review:
+        out["memory"] = {"memory_review": review}
+    return out
+
+
 def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args: dict) -> tuple[str, str]:
     """Run one tool (read tools automatically, write tools after confirmation); returns (status, result text)."""
     if name in web.NAMES:
@@ -279,7 +297,7 @@ def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args:
     try:
         res = run_tool(conn, viewer["id"], f"api:{provider['kind']}", name, args,
                        provider_id=provider["id"], model=provider["model"])
-        status, text = "done", _result_text(res)
+        status, text = "done", _result_text(_for_model(viewer["id"], name, args, res))
     except Exception as e:  # Permission, parameter and database errors are passed to the model as they are
         status, text = "error", f"{type(e).__name__}: {e}"
     if parity.on(conn, viewer["id"]):
@@ -374,11 +392,25 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
     return name, args, tool, None if tool else f"没有这个工具：{name}"
 
 
-def _tool_sets(conn, user_id: int, provider: dict) -> tuple[tuple, list]:
+@functools.lru_cache(maxsize=1)
+def _own_tools() -> tuple:
+    """Every tool as someone nobody shares data with gets it: without the `user` parameter (it could only be "me"; the
+    executor fills that in). About 1k tokens less per call on the Today page (issue #78)."""
+    return tuple(dataclasses.replace(t, input_schema=fallback.own_schema(t.input_schema))
+                 if "user" in t.input_schema.get("properties", {}) else t for t in TOOLS)
+
+
+def _shared_with(conn, user_id: int) -> bool:
+    """Has anyone ever given this user a share (any grant row, expired or not): then the chat keeps the `user` parameter."""
+    return conn.execute("SELECT 1 FROM shares WHERE viewer_id = %s LIMIT 1", (user_id,)).fetchone() is not None
+
+
+def _tool_sets(conn, user_id: int, provider: dict, own_only: bool = False) -> tuple[tuple, list]:
     """(the tools this chat may reach, the server web tools): the fallback only ever reaches its own whitelist (+ the
-    grocery tools behind ai_web; with ai_parity everything but fallback.CONSENT_EXCLUDED), also through the meta tools."""
+    grocery tools behind ai_web; with ai_parity everything but fallback.CONSENT_EXCLUDED), also through the meta tools.
+    own_only (ai_conversations.own_only, fixed when the conversation starts): the tools without their `user` parameter."""
     if not fallback.is_fallback(provider):
-        allowed = TOOLS
+        allowed = _own_tools() if own_only else TOOLS
     elif parity.on(conn, user_id):
         allowed = fallback.tools(parity=True)
     else:
@@ -486,6 +518,24 @@ def _scrub_events(events: Iterator[dict]) -> Iterator[dict]:
         yield ev("text", delta=rest)
 
 
+def compose_system(stored: str, extras: list[str], parity_prompt: str | None) -> str:
+    """The system prompt of one call: the stored one (+ summary) with the per-call additions (cards, scope rules) and,
+    with ai_parity, everything scrubbed and the parity prompt (never scrubbed) added. A conversation stored with
+    prompt.EXTRAS_MARK gets them right after the fixed persona, before this user's part, so every conversation shares the
+    fixed text as one cached prefix (issue #78); older conversations get them at the end as before, so their prompt does
+    not change mid-conversation (prompt caching, Claude's preserved thinking)."""
+    head, mark, tail = stored.partition(prompt.EXTRAS_MARK)
+    add = "".join(f"\n\n{x}" for x in extras)
+    if not mark:   # stored before EXTRAS_MARK: the old order
+        head, tail = stored + add, ""
+    else:
+        head = head + add
+    if parity_prompt is None:
+        return head + tail
+    return (f"{naming.scrub(head)}\n\n{parity_prompt}{naming.scrub(tail)}" if mark
+            else f"{naming.scrub(head)}\n\n{parity_prompt}")
+
+
 def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter) -> Iterator[dict]:
     if parity.on(conn, viewer["id"]):
         yield from _scrub_events(_turns(conn, viewer, provider, conv, adapter, True))
@@ -496,7 +546,7 @@ def _loop(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adap
 def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Adapter, scrub: bool) -> Iterator[dict]:
     can_write = "write" in (viewer.get("token_scopes") or [])
     fb = fallback.is_fallback(provider)
-    allowed, web_tools = _tool_sets(conn, viewer["id"], provider)
+    allowed, web_tools = _tool_sets(conn, viewer["id"], provider, bool(conv.get("own_only")))
     access = toolsets.Access({t.name: t for t in (*allowed, *web_tools)}, can_write)
     budget, per_page = _page_cut(conn, viewer["id"], provider)
     tools = toolsets.for_page(allowed, toolsets.fit_pages(allowed, conv.get("pages") or [], budget, per_page),
@@ -511,14 +561,17 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
     if scrub:
         tools = [_scrub_tool(t) for t in tools]
     rounds, turn_cost = (fp.MAX_ROUNDS if fb else MAX_ROUNDS), 0.0
+    extras = [cards.prompt(v2, product)] if rich else []
+    if scoped:
+        extras.append(scope_guard.PROMPT)
     for rnd in range(rounds):
         system, history = yield from _context(conn, viewer, provider, conv, adapter)
-        if rich:
-            system = f"{system}\n\n{cards.prompt(v2, product)}"
-        if scoped:
-            system = f"{system}\n\n{scope_guard.PROMPT}"
+        system = compose_system(system, extras, parity.prompt(fb) if scrub else None)
         if scrub:
-            system, history = f"{naming.scrub(system)}\n\n{parity.prompt(fb)}", _scrub_history(history)
+            history = _scrub_history(history)
+        if adapter.shorten_history:   # the fallback: older turns' tool results go out shortened (context.py)
+            history = context.shorten_old_results(history, ai_params.HISTORY_FULL_TURNS, ai_params.HISTORY_RESULT_CHARS,
+                                                  ai_params.HISTORY_FULL_TOOLS)
         # The last call allowed: same tools (history and prompt cache stay valid), calls switched off, an answer now
         last = rnd > 0 and (rnd == rounds - 1 or (fb and turn_cost >= fp.MAX_TURN_CNY))
         caller = adapter
@@ -579,6 +632,8 @@ def _turns(conn, viewer: dict, provider: dict, conv: dict, adapter: adapters.Ada
         for c in result.tool_calls:
             args = c["args"] if isinstance(c["args"], dict) else {}
             if rich and c["name"] == cards.NAME:   # not a data tool: builds a card from the user's own data (no audit)
+                # relaxed schemas (adapters.base.parameters): put back what the model left out, as run_tool does
+                args = fill_defaults(cards.tool(v2, product).input_schema, args)
                 card, status, text = _card(conn, viewer["id"], args, v2)
                 if card:
                     shown.add(cards.spec_key(args))
@@ -660,15 +715,16 @@ def prepare_chat(conn, viewer, message, images, conversation_id, allow_owner_fal
     check_budget(conn, viewer["id"], provider)
     adapter = make_adapter(provider, viewer["id"])
     if conversation_id is None:
-        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, pages)
-                               VALUES (%s,%s,%s,%s,%s) RETURNING *""",
+        conv = conn.execute("""INSERT INTO ai_conversations (user_id, provider_id, title, system_prompt, pages, own_only)
+                               VALUES (%s,%s,%s,%s,%s,%s) RETURNING *""",
                             (viewer["id"], provider["id"], (message or "图片")[:40],
                              prompt.build_system_prompt(conn, viewer["id"], lite=fb),
-                             [page] if toolsets.known_page(page) else [])).fetchone()
+                             [page] if toolsets.known_page(page) else [],
+                             not _shared_with(conn, viewer["id"]))).fetchone()
     else:
         conv = _conversation(conn, viewer["id"], conversation_id)
         conn.execute("UPDATE ai_conversations SET provider_id = %s WHERE id = %s", (provider["id"], conv["id"]))
-        allowed, _ = _tool_sets(conn, viewer["id"], provider)
+        allowed, _ = _tool_sets(conn, viewer["id"], provider, bool(conv.get("own_only")))
         pages = toolsets.visit_page(allowed, conv["pages"], page, *_page_cut(conn, viewer["id"], provider))
         if pages != conv["pages"]:   # a new page adds its groups; over the cap the oldest pages' groups are dropped
             conv = conn.execute("UPDATE ai_conversations SET pages = %s WHERE id = %s RETURNING *",
