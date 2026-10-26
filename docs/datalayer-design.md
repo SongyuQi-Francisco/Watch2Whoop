@@ -297,6 +297,26 @@ OAuth 2.1 授权服务器（`ai/oauth*.py`）**不在上面任何一期里**：�
 - 现有的 MCP 和页内对话行为不变：全部测试通过，`tools/list` 的内容和顺序不变（快照测试）；
 - `docs/oss-extraction-plan.md` 里补上这块的计划。
 
+## 8.1 第 2b 期之后还剩的耦合点（2026-10-27 盘点）
+第 2b 期以后，`datalayer/` 里有：`spec`、`compact`、`toolsets`、`playbooks`、`messages`、`execute`、`policy`、`audit`、`writelog`、`mcp/{server,stdio,http}`、`testing`。下表是 Watch2Whoop 一侧**还把框架和业务绑在一起的地方**，按拆的顺序排（风险从低到高）。「接口不变」= 旧 import 路径、`tools/list`、#201 快照都不动。
+
+| # | 耦合点 | 现在在哪 | 怎么拆 | 期 |
+|---|---|---|---|---|
+| 1 | 工具集预算和配置一致性检查 | 只在 `tests/test_tool_groups.py` 里手写断言，常量在 `ai/params.py` | **已做（本期）**：框架 `toolsets.Budgets`、`config_problems`、`budget_problems`，`testing.check_toolset(cfg, tools, budgets)` 一行调用；Watch2Whoop 的 `assistant/toolsets.budgets()` / `problems()` 从 `ai/params` 读，原来的断言照留 | 3.6 节 |
+| 2 | 「只看自己」的 schema 变换（去掉 `user` 参数） | `ai/fallback._own_schema`（托底白名单），#326 起页内对话的 own_only 对话也用它 | 框架 `views.py`：`View(tools, schema 变换, 强制 owner = 自己)`；托底白名单、own_only 都变成视图 | 3 |
+| 3 | 写前确认名单三份 | `ai/params.ALWAYS_CONFIRM`、管家 `assistant/.claude/settings.json` 的 ask、`ai/chat.CONFIRM_EN`（英文确认卡） | `Tool.confirm=True` + 英文摘要放在工具定义上，三份由注册表推出来，一致性测试照留 | 3 |
+| 4 | 工具注册表的拼接 | `assistant/tools.py`：文件里 8 个健康工具 + 模块级把 17 个模块的 `TOOL_SPECS` 拼起来（records、rules、goals、training、insights、cardio、butler、grocery、diet_profile ×2、friends、water、ui、feedback、scene、sparky） | `dl_app.py` 里 `Registry` 按顺序登记，`TOOLS` 顺序不变（快照保证） | 3 |
+| 5 | 回滚处理登记在一个文件 | `assistant/writelog.py` 给 13 个 kind 登记处理函数，import 了 sparky_write、food_combine、lab、training、water、grocery、memory | 谁写的谁登记：挪到各模块的注册函数里 | 3 |
+| 6 | handler 旧签名 | `(conn, owner_id, args)`，viewer 和 channel 塞在 `args["_viewer_id"]` / `["_channel"]` | 新签名 `(ctx, args)`，旧的用 legacy 适配器（第 9 节问题 5） | 3 |
+| 7 | 执行器的业务钩子 | `assistant/tools.EXECUTOR`：`Policy` = `auth.can_view`（shares + 好友圈 + `IMPLIED_BY`）、`call_context` = `use_lang("zh")`、`after_write` = `briefing.invalidate`、`OPTIONAL_DEFAULTS`（`toolspec.py`） | 已经是注入，不用拆；第 4 期给默认值 | — |
+| 8 | 给 AI 的固定文字 | `ai/datalayer_texts.py`（中文） | 框架自带英文默认，Watch2Whoop 传中文 | 4 |
+| 9 | MCP 的业务部分 | `mcp_server.INSTRUCTIONS` + 根规则、`butler` prompt（`ai/prompt.base_prompt`）、token 查找（`auth`）、`ai/mcp_http` 的连接池和 `users.status`、`ai/web/mcp.py` 往 grocery 组加联网工具 | 已经是注入；联网工具改成注册一个「附加组」 | 3–4 |
+| 10 | MCP OAuth | `ai/oauth*.py`，绑今天页登录、同意页、限流 | 第 6 期之后单独决定（第 9 节问题 3） | — |
+| 11 | 页内对话 | `ai/chat.py` 直接调 `run_tool`、`_audit`（服务器联网工具）、`toolsets.resolve / find`；确认循环、预算、历史折叠、#326 的省 token | 第 9 节问题 2：目前算框架的**调用方**，不拆 | — |
+| 12 | 开局摘要 | `assistant/briefing.py`：内容是业务，只靠 `after_write` 清缓存 | 不进框架，只写进文档当约定 | — |
+
+**这一期为什么先做第 1 项**：它是设计 3.6 节点名的框架件，纯函数、只加不改，Watch2Whoop 的预算常量和原有测试一行不动，同时让第 4 期的非健康示例有现成的契约测试可用（`tests/test_datalayer_boundary.py` 用一个三工具的读书笔记工具集验证过）。
+
 ## 9. 需要负责人决定的问题
 1. **框架的名字和位置**：工作名 `datalayer`。第一期放 `body_engine/src/body_engine/datalayer/`（#116 的建议），拆包时再定正式名（例 `openbodydata`、`personal-datalayer`）。要不要现在就定名字，免得第 6 期再改一轮？
 2. **页内对话（工具循环、确认卡、adapters、预算）算不算框架**：本设计建议第一阶段**不算**，它是框架的调用方，留在 Watch2Whoop；以后如果有外部需求，再做成可选模块 `datalayer.chat`。

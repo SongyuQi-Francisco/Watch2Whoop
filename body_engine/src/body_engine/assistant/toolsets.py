@@ -26,6 +26,18 @@ def _cfg() -> _ts.ToolsetConfig:
                              messages=MESSAGES, optional_defaults=OPTIONAL_DEFAULTS)
 
 
+def budgets() -> _ts.Budgets:
+    """ai/params' size caps in the framework's form (read on every call, like the configuration)."""
+    return _ts.Budgets(core=params.CORE_BUDGET_CHARS, meta=params.META_BUDGET_CHARS, listing=params.MCP_LIST_BUDGET_CHARS,
+                       context=params.PAGE_BUDGET_CHARS, groups=params.GROUP_BUDGET_CHARS)
+
+
+def problems() -> list[str]:
+    """The framework's contract check of Watch2Whoop's tools (datalayer.testing.check_toolset); empty = fine."""
+    from ..datalayer.testing import check_toolset
+    return check_toolset(_cfg(), TOOLS, budgets())
+
+
 def definition_chars(tools: Iterable[Tool]) -> int:
     """Size of the tool definitions as tools/list sends them (relaxed schema), in characters."""
     return _ts.definition_chars(tools, OPTIONAL_DEFAULTS)
