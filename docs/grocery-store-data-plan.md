@@ -202,4 +202,4 @@
 
 **原则（不变）**：不绕过反爬，不整站抓取，不轮换 IP；服务器不访问 Coles / WWS 的网站；图片只存 URL 引用。
 
-**下一步**：[issue #292](https://github.com/SongyuQi-Francisco/Watch2Whoop/issues/292) 比较了合规的价格 / 特价来源（小票识别、官方 API、Open Food Facts、公开 catalogue、比价网站、用户众包），推荐写在那里的评论里；选定后再把流程接到 `record_store_prices`，并决定「本周半价」何时开。
+**下一步**：issue #292 比较了合规的价格 / 特价来源（小票识别、官方 API、Open Food Facts、公开 catalogue、比价网站、用户众包），推荐写在那里的评论里；选定后再把流程接到 `record_store_prices`，并决定「本周半价」何时开。
