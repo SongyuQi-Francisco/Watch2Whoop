@@ -289,3 +289,32 @@ def test_trend_explanations(client, world):
     assert x["current"]["value"] == "保持"
     hidden = client.get(f"/v1/users/{ids['A']}/explain/metric/hrv_status", headers=bearer(tok["B"])).json()
     assert hidden["current"] is None and "metrics" in hidden["hidden"]
+
+
+def test_baseline_band_window_slice_matches_the_full_scan():
+    """series.baseline_band slices the 60-day window out of date-ordered rows (the trends tab's hottest loop); the answer
+    is the old scan's, value for value (same values, same summing order), also for unordered input."""
+    import random
+    from body_engine.trends import series
+
+    def scan(by_date, dates):
+        mean, lo, hi = [], [], []
+        for d in dates:
+            xs = [v for k, v in by_date.items() if d - timedelta(days=series.BASELINE_DAYS) <= k < d and v is not None]
+            if len(xs) < series.BASELINE_MIN_N:
+                mean.append(None); lo.append(None); hi.append(None)
+                continue
+            m = sum(xs) / len(xs)
+            sd = (sum((x - m) ** 2 for x in xs) / (len(xs) - 1)) ** 0.5
+            mean.append(round(m, 2)); lo.append(round(m - sd, 2)); hi.append(round(m + sd, 2))
+        return {"mean": mean, "lo": lo, "hi": hi}
+
+    rnd = random.Random(3)
+    base = date(2026, 1, 1)
+    for trial in range(60):
+        keys = [base + timedelta(days=i) for i in range(400) if rnd.random() < 0.8]
+        if trial % 3 == 0:
+            rnd.shuffle(keys)
+        by_date = {k: None if rnd.random() < 0.05 else rnd.uniform(20, 90) for k in keys}
+        dates = [base + timedelta(days=200 + i) for i in range(90)]
+        assert series.baseline_band(by_date, dates) == scan(by_date, dates)

@@ -8,7 +8,8 @@
   BODY_WEB_INSECURE_LOCAL_COOKIE=1, and Secure is dropped only when the request Host is localhost / 127.0.0.1;
   production (tailnet HTTPS, Host is *.ts.net) is unaffected.
 - A session hangs off the token that created it, permissions (read / write) follow the token; revoking the token invalidates the session immediately.
-  Lifetime is SESSION_DAYS days (the browser maximum), extended on every use, so testers stay logged in for as long as the service runs; logout = delete the session.
+  Lifetime is SESSION_DAYS days (the browser maximum), extended on use (at most every auth.TOUCH_EVERY, never waiting for another
+  request of the same login), so testers stay logged in for as long as the service runs; logout = delete the session.
 - CSRF protection: besides SameSite=Strict, cookie-authenticated write requests (POST / PUT / PATCH / DELETE) must also carry the custom header X-Body-Web: 1
   (cross-site requests cannot add custom headers without a CORS preflight, and this service does not enable CORS).
 """
@@ -50,12 +51,15 @@ def login(conn: psycopg.Connection, token: str, user_agent: str | None = None) -
 def user_for_session(conn: psycopg.Connection, session_id: str) -> dict | None:
     """If the session is valid (not expired, token not revoked) extend its lifetime and return the same user dict as auth.user_for_token."""
     row = conn.execute(
-        """UPDATE web_sessions s SET last_seen_at = now(), expires_at = now() + make_interval(days => %s)
-           FROM api_tokens t
-           WHERE s.session_sha256 = %s AND s.expires_at > now() AND t.id = s.token_id AND t.revoked_at IS NULL
-           RETURNING s.user_id, t.scopes""", (SESSION_DAYS, _sha(session_id))).fetchone()
+        """SELECT s.id, s.user_id, t.scopes, s.last_seen_at < now() - %s::interval AS stale
+           FROM web_sessions s JOIN api_tokens t ON t.id = s.token_id
+           WHERE s.session_sha256 = %s AND s.expires_at > now() AND t.revoked_at IS NULL""",
+        (auth.TOUCH_EVERY, _sha(session_id))).fetchone()
     if row is None:
         return None
+    if row["stale"]:   # at most every TOUCH_EVERY and never waiting for another request of this login (auth.touch)
+        auth.touch(conn, "web_sessions", row["id"], "last_seen_at = now(), expires_at = now() + make_interval(days => %s)",
+                   (SESSION_DAYS,))
     auth.obs.note_user(row["user_id"])   # X-Body-User on the response (obs.py)
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_scopes": row["scopes"], "auth": "session"}

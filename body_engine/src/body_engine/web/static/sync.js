@@ -1,12 +1,9 @@
-/* On-demand refresh (sync/refresh.py): a small 「同步中… / 已更新 07:42」 line under the Today title, and the call that asks the
-   server for fresh data. Used by pull to refresh and 「我 → 数据更新」 (app.js), and by the Watch2Whoop app after its sync round
-   on open (it runs `BodySync.refresh("app")` in the page). POST /v1/users/me/sync/refresh pulls the new data from Open Wearables
-   in the background and queues the score recompute; this file polls /sync/status while that is busy and reloads the page
-   data when the import and then the scores are done. Registered in window.BodyPlugins (init) and window.BodySync.
-   Also the Apple Health read range (sync/history.py): while the whole history is being read and processed the line shows
-   「历史数据导入中 x%」 (GET /v1/users/me/health-history, polled every 30 s), and window.BodyHealthRange.report() lets the app
-   (which has no cookie of its own) send its choice and progress (PUT, from its WebView). The line gets its status dot, its
-   tap and, when the sync is stuck, its text from sync-status.js (window.BodySyncStatus). */
+/* On-demand refresh (sync/refresh.py): the 「同步中… / 已更新 07:42」 line under the Today title and BodySync.refresh (pull to
+   refresh, 「我 → 数据更新」, the app after its sync: refresh("app")). POST …/sync/refresh imports in the background; this
+   polls /sync/status while busy and reloads when the import, then the scores are in. History read (sync/history.py):
+   「历史数据导入中 x%」 (/health-history, polled every 30 s); BodyHealthRange.report() = the app's PUT from its WebView.
+   Start-up: one shared /sync/overview (overview(); sync-repair.js, sync-status.js too), `parts` = the answers of
+   /sync/status, /health-history, /sync/connection. Dot, tap, stuck text: sync-status.js. */
 (() => {
   "use strict";
   let C = null;          // ctx from app.js: api, reload
@@ -62,7 +59,7 @@
     else if (was) C.reload?.();   // the history just finished: show the new scores
   }
 
-  // The app's read range and progress (it runs this in its WebView; the page has the login cookie)
+  // The app's read range and progress (from its WebView: the page has the cookie)
   async function report(body) {
     if (!C) return null;
     try { hist = await C.api("/v1/users/me/health-history", { method: "PUT", body }); } catch (e) { return null; }
@@ -71,9 +68,26 @@
     return hist;
   }
 
+  let ovP = null, ovAt = 0;
+  function overview(force) {   // shared for 10 s
+    if (!C) return Promise.resolve(null);
+    if (force || !ovP || Date.now() - ovAt > 1e4) {
+      ovAt = Date.now();
+      ovP = C.api(`/v1/users/me/sync/overview${window.Watch2Whoop ? "?in_app=1" : ""}`, { quiet401: true }).catch(() => null);
+    }
+    return ovP;
+  }
+
   async function load() {
-    try { st = await C.api("/v1/users/me/sync/status"); } catch (e) { st = null; }
-    if (!hist) loadHistory();
+    const p = (await overview())?.parts;
+    if (p) {
+      st = p.status;
+      hist = hist || p.health_history;
+      if (hist?.active && !histTimer) histTimer = setTimeout(loadHistory, 30000);
+    } else {
+      try { st = await C.api("/v1/users/me/sync/status"); } catch (e) { st = null; }
+      if (!hist) loadHistory();
+    }
     draw();
     if (st?.busy && !active) poll(++polling);   // opened while a refresh is running (e.g. from another device)
   }
@@ -95,7 +109,7 @@
     } finally { if (gen === polling) active = false; }
   }
 
-  // Ask the server for fresh data. source: "pull" | "me" | "app" (only for the logs). Returns the server's answer (or null).
+  // Ask the server for fresh data. source: "pull" | "me" | "app" (logs only). Returns its answer or null.
   async function refresh(source) {
     if (!C) return null;
     let res = null;
@@ -107,16 +121,16 @@
     return res;
   }
 
-  // Called by app.js header() on every render: show the line only on the Today tab for one's own data and today's date
+  // app.js header(), every render: the line only on Today, own data, today
   function header(visible) {
     shown = !!visible;
     if (shown && !st && C) load(); else draw();
   }
 
-  window.BodySync = { refresh, header, redraw: () => { if (C) draw(); } };
+  window.BodySync = { refresh, header, overview, redraw: () => { if (C) draw(); } };
   window.BodyHealthRange = { report };
   (window.BodyPlugins = window.BodyPlugins || []).push({
-    // runs again on every reload: keep st (a poll may be running); sync-status.js (the setup card and the status panel) loads
+    // runs on every reload: keep st (a poll may run); sync-status.js (setup card, status panel) loads
     // right after the start, outside the first-screen budget
     init(ctx) { C = ctx; window.BodyLazy?.script("sync-status.js"); },
   });

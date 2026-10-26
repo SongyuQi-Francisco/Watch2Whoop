@@ -146,7 +146,10 @@
     const seq = ++loadSeq;
     const topping = !!ov?.coverage?.progress?.active;
     let next;
-    try { next = await C.api(`/v1/users/me/sync/overview${IN_APP() ? "?in_app=1" : ""}`, { quiet401: true }); } catch (e) { return ov; }
+    // shared with sync.js / sync-repair.js (one request at start-up); force asks again and refreshes the shared answer
+    const shared = window.BodySync?.overview;
+    try { next = shared ? await shared(force || ov?.state === "consent") : await C.api(`/v1/users/me/sync/overview${IN_APP() ? "?in_app=1" : ""}`, { quiet401: true }); } catch (e) { return ov; }
+    if (!next) return ov;
     if (seq !== loadSeq) return ov;   // a newer request (e.g. right after the consent was confirmed) is on its way and wins
     ov = next;
     draw();

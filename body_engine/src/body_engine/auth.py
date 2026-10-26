@@ -14,6 +14,18 @@ MCP_SCOPE = "mcp"
 INGEST_SCOPE = "ingest"
 # Tokens with one of these scopes only work on their own endpoint
 RESTRICTED_SCOPES = [MCP_SCOPE, INGEST_SCOPE]
+# "Last used" stamps (api_tokens.last_used_at, web_sessions.last_seen_at and expires_at) are written at most this often.
+# Writing them on every request kept the row locked until that request's transaction ended, so all requests of one login
+# ran one after another: the Today page's ~20 parallel start-up reads queued behind the slowest (2026-10-26).
+TOUCH_EVERY = "5 minutes"
+
+
+def touch(conn: psycopg.Connection, table: str, row_id: int, sets: str, params: tuple = ()) -> None:
+    """UPDATE <table> SET <sets> on one row unless another request of the same login holds it right now (SKIP LOCKED):
+    nobody waits for a "last used" stamp. The lock taken here lasts until this request's transaction ends, which is fine
+    because the next requests only read the row."""
+    conn.execute(f"UPDATE {table} SET {sets} WHERE id = (SELECT id FROM {table} WHERE id = %s FOR UPDATE SKIP LOCKED)",
+                 (*params, row_id))
 
 
 def hash_token(token: str) -> str:
@@ -60,11 +72,13 @@ def revoke_tokens(conn: psycopg.Connection, user_id: int, name: str | None = Non
 
 def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
     row = conn.execute(
-        """UPDATE api_tokens SET last_used_at = now()
-           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])
-           RETURNING id, user_id, scopes""", (hash_token(token), RESTRICTED_SCOPES)).fetchone()
+        """SELECT id, user_id, scopes, (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
+           WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (scopes && %s::text[])""",
+        (TOUCH_EVERY, hash_token(token), RESTRICTED_SCOPES)).fetchone()
     if row is None:
         return None
+    if row["stale"]:
+        touch(conn, "api_tokens", row["id"], "last_used_at = now()")
     obs.note_user(row["user_id"])   # X-Body-User on the response (obs.py)
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
@@ -73,12 +87,13 @@ def user_for_token(conn: psycopg.Connection, token: str) -> dict | None:
 def user_for_ingest_token(conn: psycopg.Connection, token: str) -> dict | None:
     """Identity for POST /v1/ingest/*: the app's account token (scope write) or its upload-only token (scope ingest)."""
     row = conn.execute(
-        """UPDATE api_tokens SET last_used_at = now()
+        """SELECT id, user_id, scopes, (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
            WHERE token_sha256 = %s AND revoked_at IS NULL AND NOT (%s = ANY(scopes))
-             AND ('write' = ANY(scopes) OR %s = ANY(scopes))
-           RETURNING id, user_id, scopes""", (hash_token(token), MCP_SCOPE, INGEST_SCOPE)).fetchone()
+             AND ('write' = ANY(scopes) OR %s = ANY(scopes))""", (TOUCH_EVERY, hash_token(token), MCP_SCOPE, INGEST_SCOPE)).fetchone()
     if row is None:
         return None
+    if row["stale"]:
+        touch(conn, "api_tokens", row["id"], "last_used_at = now()")
     obs.note_user(row["user_id"])
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     return {**user, "token_id": row["id"], "token_scopes": row["scopes"]}
