@@ -23,8 +23,15 @@ class Nutrition(BaseModel):
     carbs_g: float | None = Field(None, ge=0)
     fat_g: float | None = Field(None, ge=0)
     sat_fat_g: float | None = Field(None, ge=0)
+    trans_fat_g: float | None = Field(None, ge=0)
     sugar_g: float | None = Field(None, ge=0)
+    added_sugar_g: float | None = Field(None, ge=0)
+    fiber_g: float | None = Field(None, ge=0)
     sodium_mg: float | None = Field(None, ge=0)
+    potassium_mg: float | None = Field(None, ge=0)
+    calcium_mg: float | None = Field(None, ge=0)
+    iron_mg: float | None = Field(None, ge=0)
+    cholesterol_mg: float | None = Field(None, ge=0)
 
 
 class ProductIn(BaseModel):
@@ -39,6 +46,13 @@ class ProductIn(BaseModel):
     price: float | None = Field(None, ge=0)
     currency: str | None = None
     nutrition: Nutrition | None = Field(None, description="每 100 g（或 100 ml）")
+    serving_size: float | None = Field(None, gt=0, description="一份多少（serving_unit），和 serving_unit 一起给")
+    serving_unit: Literal["g", "ml"] | None = None
+    nutrition_serving: Nutrition | None = Field(None, description="每份（serving_size serving_unit）")
+    image_url: str | None = Field(None, max_length=500, description="图片地址，https 开头，只存地址不下载；\"\" = 清除")
+    ingredients: str | None = Field(None, max_length=2000, description="配料表原文；\"\" = 清除")
+    allergens: list[str] | None = Field(None, max_length=20, description="含有的过敏原；[] = 记过了，没有")
+    allergen_traces: list[str] | None = Field(None, max_length=20, description="可能含有 / 生产线可能带入的过敏原")
     purine_level: Literal["low", "medium", "high"] | None = None
     red_meat: bool | None = None
     barcode: str | None = None
@@ -49,8 +63,9 @@ class ProductIn(BaseModel):
 
     def fields(self) -> dict:
         d = self.model_dump(exclude_unset=True)
-        if d.get("nutrition") is not None:
-            d["nutrition"] = {k: v for k, v in d["nutrition"].items() if v is not None}
+        for k in ("nutrition", "nutrition_serving"):
+            if d.get(k) is not None:
+                d[k] = {kk: v for kk, v in d[k].items() if v is not None}
         return d
 
 
