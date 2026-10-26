@@ -1956,7 +1956,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [
@@ -2708,7 +2708,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [
@@ -4710,7 +4710,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [
@@ -5462,7 +5462,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [

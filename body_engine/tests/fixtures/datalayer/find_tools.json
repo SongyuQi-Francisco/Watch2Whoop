@@ -180,6 +180,13 @@
      [
       "get_playbook"
      ]
+    ],
+    [
+     "home",
+     "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
+     [
+      "set_home"
+     ]
     ]
    ]
   },
@@ -305,6 +312,11 @@
      [
       "get_playbook"
      ]
+    ],
+    [
+     "home",
+     "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
+     null
     ]
    ]
   },
@@ -440,6 +452,11 @@
     "tools": [
      "get_playbook"
     ]
+   },
+   {
+    "group": "home",
+    "about": "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
+    "tools": []
    }
   ],
   "hint": "用 find_tools(group=…) 拿完整参数说明"
@@ -625,6 +642,13 @@
      [
       "get_playbook"
      ]
+    ],
+    [
+     "home",
+     "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
+     [
+      "set_home"
+     ]
     ]
    ]
   },
@@ -801,6 +825,13 @@
     "about": "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
     "tools": [
      "get_playbook"
+    ]
+   },
+   {
+    "group": "home",
+    "about": "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
+    "tools": [
+     "set_home"
     ]
    }
   ],

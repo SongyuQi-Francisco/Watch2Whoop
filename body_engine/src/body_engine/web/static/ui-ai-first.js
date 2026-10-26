@@ -31,6 +31,8 @@
 .a1-asks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.a1-asks .chip{display:inline-flex;align-items:center;gap:4px}
 .a1-asks .chip svg{width:14px;height:14px;color:var(--text-2)}
 .a1-gap{pointer-events:none}
+.a1-focus .chip[aria-pressed="true"]{background:var(--text);color:var(--bg)}
+.a1-why{margin-left:6px;vertical-align:2px}
 .a1-circ .row{display:flex;align-items:center;gap:10px}.a1-avs{display:flex}.a1-avs .avatar{width:32px;height:32px;font-size:13px}
 .a1-avs .avatar+.avatar{margin-left:-6px}.a1-avs .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}
 .a1-circ .a1-acts{display:flex;gap:8px;margin-top:12px}.a1-circ .a1-acts .btn{flex:1}
@@ -200,7 +202,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
     const day = P.viewDay(), past = P.isPast(), self = P.isSelf();
     const own = `/v1/users/${P.ownerPath()}`, v2 = P.recordsV2(), mload = P.muscleOn() && !past;
     // The same reads as the old Today minus stress and the activity row (they are in 身体), plus the circles card: no more requests
-    const [d, goal, meals, coach, monitor, sleepCoach, jitems, jday, mdata, ov] = await Promise.all([
+    const [d, goal, meals, coach, monitor, sleepCoach, jitems, jday, mdata, ov, home] = await Promise.all([
       P.load(P.todayKey(), P.todayPath()),
       (past ? P.load(`goal${day}`, `${own}/goals/sleep?night=${day}`) : P.load("goal", `${own}/goals/sleep`)).catch((e) => ({ error: e })),
       self && !past ? P.load("meals", `${own}/meal-templates`).catch(() => null) : null,
@@ -210,28 +212,96 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       v2 ? P.optional(`jday${day}`, `${own}/journal?start=${day}&end=${day}`) : null,
       mload ? P.optional("mload", `${own}/training/muscle-load`) : null,
       self && !past && P.friendsOn() ? P.optional("a1friends", "/v1/friends/overview") : null,
+      self ? P.optional("a1home", `${own}/ui/home`) : null,
     ]);
     s.todaySleepDate = d.sleep?.date || null;   // the night the sleep ring opens on the sleep detail page
     if (mdata) await window.BodyMuscleLoad.ready();
     const qs = todayQuestions(d, self && !past);
     state.qs = qs;
     const focus = P.remindersHtml(d.reminders).replace(`<h2>${tr("提醒")}</h2>`, `<h2>${tr("重点")}</h2>`);
-    // My modules: the page's own cards, at most MAX_MODULES, in the order Today had them
-    const mods = [
-      P.monitorHtml(monitor), P.strainCoachHtml(coach), P.sleepCardHtml(d.sleep), P.goalCardHtml(goal, d.sleep, sleepCoach),
-      P.dayCardHtml(d, meals), mdata ? window.BodyMuscleLoad.card(mdata, P.muscleCtx()) : "",
-      v2 ? window.BodyJournal.cardHtml(P.journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : "",
-    ].filter(Boolean).slice(0, MAX_MODULES);
+    // My modules: the page's own cards in the server's order (ui/home.py: pinned, focus, findings, used, the old order), at most
+    // max_modules of those that have something to show; someone else's page (or no answer) keeps the old order
+    const card = {
+      health_monitor: P.monitorHtml(monitor), strain_coach: P.strainCoachHtml(coach), sleep: P.sleepCardHtml(d.sleep),
+      sleep_goal: P.goalCardHtml(goal, d.sleep, sleepCoach), training: P.dayCardHtml(d, meals),
+      muscle_load: mdata ? window.BodyMuscleLoad.card(mdata, P.muscleCtx()) : "",
+      journal: v2 ? window.BodyJournal.cardHtml(P.journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : "",
+    };
+    state.home = home && !past ? home : null;
+    const order = home?.modules || MODULES.map((key) => ({ key, reason: null }));
+    const shown = order.filter((m) => card[m.key]).slice(0, home?.max_modules || MAX_MODULES);
+    state.shown = Object.fromEntries(shown.map((m) => [m.key, m.reason]));
+    const mods = shown.map((m) => card[m.key]);
     const all = self ? `<div class="section"><div class="group"><button class="item" type="button" data-a1="all"><span class="row-title">${tr("全部功能")}</span><span class="val">${tr("随时能看")}</span>${chev()}</button></div></div>` : "";
     return `<div class="dash"><div class="col">${rings(d.scores)}${self && !past ? askBar(qs.find((q) => !q.send && !q.photo)?.label || tr("今天练什么？")) + asksHtml(qs) : ""}
       ${focus}${circleCard(ov)}${mods.join("")}${all}</div></div>`;
   }
-  const state = { qs: [] };
+  const state = { qs: [], home: null, shown: {}, overviewOpened: false };
+  const MODULES = ["health_monitor", "strain_coach", "sleep", "sleep_goal", "training", "muscle_load", "journal"];   // ui/params.py MODULES
+  const WHY = () => ({ pinned: tr("固定"), focus: tr("关注"), finding: tr("发现"), used: tr("用过") });
+  const MODULE_NAME = () => ({ health_monitor: tr("健康监测"), strain_coach: tr("负荷目标"), sleep: tr("睡眠"), sleep_goal: tr("入睡目标"),
+    training: tr("训练与饮食"), muscle_load: tr("肌肉负荷"), journal: tr("日记") });
+  const FOCUS_NAME = () => ({ fat: tr("减脂"), muscle: tr("增肌"), sleep: tr("睡得更好"), recover: tr("训练和恢复"), markers: tr("健康指标") });
+  const uiPath = () => `/v1/users/${P.ownerPath()}/ui`;
+  function keepHome(h) { if (h) { P.S.data[`a1home:${P.S.owner}`] = h; state.home = h; } }
+  async function setModule(key, choice) {
+    try { keepHome(await P.api(`${uiPath()}/modules/${key}`, { method: "PUT", body: { state: choice } })); P.render(); }
+    catch (e) { /* the page stays as it was */ }
+  }
+
+  // Why a card is on my Today: a small label next to its title (the old page's markup stays as it is)
+  function whyLabels(view) {
+    const why = WHY();
+    for (const [key, reason] of Object.entries(state.shown)) {
+      if (!reason) continue;
+      const el = $$(`.dash [data-card="${key}"]`, view).find((x) => !x.closest(".a1-tri"));   // not the rings (they reuse the tiles' keys)
+      const head = el && ((el.classList.contains("section") ? $(".section-head h2", el) : el.closest(".section")?.querySelector(".section-head h2")) || $(".tile-label", el));
+      if (head && !$(".a1-why", head)) head.insertAdjacentHTML("beforeend", ` <span class="badge plain a1-why">${esc(why[reason] || "")}</span>`);
+    }
+  }
+
+  // Shown once, on Today, when nothing else is on screen (the consent, the sync prompt, a sheet the user opened): right away, or
+  // when that sheet closes
+  function maybeOverview() {
+    if (!on() || S().tab !== "today" || !state.home?.overview || state.overviewOpened || $("#sheet")?.hidden === false) return;
+    state.overviewOpened = true;
+    focusSheet(state.home, true);
+  }
+
+  // The first screen of a new account: the user's own data first (no intro), then what they care about as quick-reply chips
+  function focusSheet(h, first) {
+    const opts = h.focus_options || [], names = FOCUS_NAME(), picked = new Set(h.focus || []);
+    const f = (x) => `<div class="card" style="margin-top:8px"><div class="row" style="display:flex;justify-content:space-between;align-items:center">
+        <span class="tile-label">${esc(x.area)}</span><span class="badge ${x.tone === "good" ? "good" : "mid"}">${esc(x.value)}</span></div>
+        <div class="small muted" style="margin-top:4px">${esc(x.label)}</div></div>`;
+    const ov = first ? h.overview : null, st = ov?.stats;
+    const head = ov ? `${st?.days ? `<div class="small muted">${esc(tr("已读入 {days} 天的数据 · {nights} 晚睡眠 · {workouts} 次训练", st))}</div>` : ""}
+        ${ov.findings.map(f).join("")}<div class="section-head" style="margin-top:18px"><h2>${tr("你最关心哪些？")}</h2><span class="small muted">${tr("可多选")}</span></div>` : "";
+    P.openSheet(first ? tr("你的身体概况") : tr("关注点"), `${head}<div class="a1-asks a1-focus">${opts.map((k) =>
+        `<button class="chip" type="button" data-focus="${k}" aria-pressed="${picked.has(k)}">${esc(names[k] || k)}</button>`).join("")}</div>
+      <div class="btns"><button class="btn btn-primary" type="button" data-f="ok">${tr("好了")}</button>${first ? `<button class="btn" type="button" data-f="skip">${tr("先跳过")}</button>` : ""}</div>`, (root) => {
+      for (const b of $$("[data-focus]", root)) b.onclick = () => { const k = b.dataset.focus; if (picked.has(k)) picked.delete(k); else picked.add(k); b.setAttribute("aria-pressed", String(picked.has(k))); };
+      $('[data-f="ok"]', root).onclick = async () => {
+        P.closeSheet();
+        try { keepHome(await P.api(`${uiPath()}/focus`, { method: "PUT", body: { focus: [...picked] } })); } catch (e) { /* kept as it was */ }
+        P.render();
+      };
+      const skip = $('[data-f="skip"]', root);
+      if (skip) skip.onclick = () => P.closeSheet();
+    });
+    if (first) P.api(`${uiPath()}/overview-seen`, { method: "POST" }).then(() => { if (state.home) state.home.overview = null; }).catch(() => {});
+  }
 
   // ---------------------------------------------------------------- 全部功能 (我 → 全部功能)
-  function allPage() {
+  function allPage(h) {
+    const names = MODULE_NAME(), max = h?.max_modules || MAX_MODULES;
+    const onHome = (h?.modules || []).slice(0, max), off = h ? [...h.hidden, ...(h.modules || []).slice(max).map((m) => m.key)] : [];
+    const row = (key, act, label) => `<div class="item"><span class="row-title">${esc(names[key] || key)}</span><button class="link" type="button" data-mod="${key}:${act}">${label}</button></div>`;
+    const mine = h ? `<div class="section"><div class="section-head"><h2>${tr("我的首页")}</h2><span class="small muted">${tr("最多 {n} 块", { n: max })}</span></div><div class="group">
+        <button class="item" type="button" data-a1="focus"><span class="row-title">${tr("关注点")}</span><span class="val">${esc((h.focus || []).map((k) => FOCUS_NAME()[k]).join(" · ") || tr("未选"))}</span>${chev()}</button>
+        ${onHome.map((m) => row(m.key, "hidden", tr("移走"))).join("")}${off.map((k) => row(k, h.hidden.includes(k) ? "auto" : "pinned", tr("放到首页"))).join("")}</div></div>` : "";
     return `<div class="sub-head"><button class="sub-back" type="button" data-a1="me">${CHEV}<span>${tr("tab.me")}</span></button><h2>${tr("全部功能")}</h2></div>
-      ${askBar(tr("怎么记喝水？"))}
+      ${askBar(tr("怎么记喝水？"))}${mine}
       ${FEATURES().map(([area, list], gi) => `<div class="section"><div class="section-head"><h2>${esc(area)}</h2></div><div class="group">${list.map(([name], i) =>
         `<button class="item" type="button" data-feat="${gi}.${i}"><span class="row-title">${esc(name)}</span>${chev()}</button>`).join("")}</div></div>`).join("")}`;
   }
@@ -239,7 +309,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
   // ---------------------------------------------------------------- the page hooks (app.js render / after)
   async function render(tab) {
     if (tab === "today") return today();
-    if (tab === "me" && S().meSub === "all") return allPage();
+    if (tab === "me" && S().meSub === "all") return allPage(P.isSelf() ? await P.optional("a1home", `/v1/users/${P.ownerPath()}/ui/home`) : null);
     return null;
   }
 
@@ -250,6 +320,8 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
     if (tab === "today") {
       for (const arc of $$(".a1-tri .ring .arc[data-target]", view)) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
       bindAsk(view); bindAsks(view, state.qs);
+      whyLabels(view);
+      maybeOverview();
     } else if (tab === "trends") {
       const bar = $(".toolbar", view);
       if (bar && P.isSelf()) { bar.insertAdjacentHTML("afterend", askBar(tr("这周为什么恢复低？"))); bindAsk(view); }
@@ -257,6 +329,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       bindAsk(view);
       const list = FEATURES();
       for (const b of $$("[data-feat]", view)) b.onclick = () => { const [g, i] = b.dataset.feat.split(".").map(Number); list[g][1][i][1](); };
+      for (const b of $$("[data-mod]", view)) b.onclick = () => { const [key, act] = b.dataset.mod.split(":"); setModule(key, act); };
     } else if (tab === "me" && !S().meSub) {
       $("#me-intro", view)?.remove();   // no tutorial
       if (P.isSelf() && view.firstElementChild) {
@@ -281,6 +354,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
     else if (a === "records") goTab("record", (x) => { x.recSub = "training"; });
     else if (a === "feed") goTab("friends", (x) => { x.friendsMode = "feed"; });
     else if (a === "invite" || a === "join") window.BodyCircles?.open();
+    else if (a === "focus") { const h = P.S.data[`a1home:${P.S.owner}`]; if (h) focusSheet(h, false); }
   }
 
   // Tab bar: 今天 · 身体 · (Jarvis over the gap) · 圈子 · 我
@@ -311,7 +385,9 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
   function cardInfo(el) {
     const key = el.dataset.card || "";
     const sec = el.closest(".section");
-    const label = ($(".tile-label, .trend-label", el) || (sec && $(".section-head h2", sec)) || $(".row-title", el))?.textContent.trim() || "";
+    const head = ($(".tile-label, .trend-label", el) || (sec && $(".section-head h2", sec)) || $(".row-title", el))?.cloneNode(true);
+    for (const w of head ? $$(".a1-why", head) : []) w.remove();   // the "why on my Today" label is not part of the name
+    const label = head?.textContent.trim() || "";
     const value = ($(".tile-value, .trend-value, .val", el))?.textContent.trim() || "";
     return { key, label: label.slice(0, 30), value: value.slice(0, 20) };
   }
@@ -326,7 +402,10 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
     P.openSheet(info.label || tr("问 Jarvis"), `<div class="group">
         <button class="item" type="button" data-m="ask"><span class="a1-sp">${SPARK}</span><span class="row-title">${esc(tr("问 Jarvis：{q}", { q }))}</span>${chev()}</button>
         ${el.hasAttribute("data-sheet") || el.tagName === "BUTTON" ? `<button class="item" type="button" data-m="open"><span class="row-title">${tr("看详情")}</span>${chev()}</button>` : ""}
+        ${state.home && info.key in state.shown && !el.closest(".a1-tri") ? `<button class="item" type="button" data-m="off"><span class="row-title">${tr("从首页移走")}</span></button>` : ""}
       </div>`, (root) => {
+      const off = $('[data-m="off"]', root);
+      if (off) off.onclick = () => { P.closeSheet(); setModule(info.key, "hidden"); };
       $('[data-m="ask"]', root).onclick = () => { P.closeSheet(); ask(q); };
       const o = $('[data-m="open"]', root);
       if (o) o.onclick = () => { P.closeSheet(); setTimeout(() => el.click(), 250); };
@@ -344,7 +423,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       lp.t = setTimeout(() => { if (lp.el === el) { lp.fired = true; menu(el); } }, LONG_PRESS_MS);
     }, { passive: true });
     document.addEventListener("pointermove", (e) => { if (lp.el && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) cancel(); }, { passive: true });
-    for (const ev of ["pointerup", "pointercancel"]) document.addEventListener(ev, () => { clearTimeout(lp.t); }, { passive: true });
+    for (const ev of ["pointerup", "pointercancel"]) document.addEventListener(ev, () => { clearTimeout(lp.t); if (lp.fired) setTimeout(() => { lp.fired = false; }, 400); }, { passive: true });
     window.addEventListener("scroll", cancel, { passive: true });
     // the click that ends a long press does not also open the card
     document.addEventListener("click", (e) => { if (lp.fired) { lp.fired = false; e.preventDefault(); e.stopPropagation(); } }, true);
@@ -367,6 +446,7 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       P.TABS && Object.assign(P.TABS, { trends: tr("身体"), friends: tr("圈子") });   // the header shows the new names too
       tabs();
       bindLongPress();
+      window.BodyHooks.on("sheet", (d) => { if (!d.open) setTimeout(maybeOverview, 350); });
     },
   });
 })();

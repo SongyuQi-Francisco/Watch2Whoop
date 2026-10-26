@@ -39,6 +39,7 @@ from .cardio.api import router as cardio_router
 from .water.api import router as water_router
 from .offline.api import router as offline_router
 from .sleep_night.api import router as sleep_night_router
+from .ui.api import router as ui_router
 from .training.api import router as training_router
 from .grocery.api import router as grocery_router
 from .feedback.api import router as feedback_router
@@ -183,6 +184,7 @@ app.include_router(cardio_router)
 app.include_router(water_router)   # daily water intake (water/, issue #125)
 app.include_router(offline_router)   # weight from the Today page, queued while offline (offline/, #77)
 app.include_router(sleep_night_router)   # sleep detail page (sleep_night/, flag sleep_detail)
+app.include_router(ui_router)   # the AI-first page: my Today, focus, first-screen overview (ui/, flag ui_ai_first, #279)
 app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
