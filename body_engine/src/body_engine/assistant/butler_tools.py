@@ -358,7 +358,7 @@ TOOL_SPECS: list[dict] = [
         name="get_memory_review",
         description="整理记忆先调：重复、过时、同主题条目；rules 必须照做。",
         input_schema=_schema({}),
-        handler=lambda conn, uid, a: memory_review.review(conn, uid),
+        handler=lambda conn, uid, a: memory_review.review(conn, uid, a.get("_viewer_id", uid)),   # data comparison: owner only
         group="memory", scope="memory",
     ),
     dict(

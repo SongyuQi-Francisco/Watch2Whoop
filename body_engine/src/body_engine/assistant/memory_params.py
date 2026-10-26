@@ -84,3 +84,83 @@ APPLY_MAX_ITEMS = 30
 PROTECTED_TOPICS = ("health_constraints", "injuries")
 # Origins that count as the user's own words: NULL (unknown) is treated the same, as phase 1 decided.
 USER_ORIGINS = ("user_said", None)
+
+# ---------------------------------------------------------------- memory hygiene, phase 3: checking against the data, promotion (issue #113)
+# A confirmation counts at most once per this many days (the same fact stated three times in one chat is one confirmation).
+COUNT_MIN_GAP_DAYS = 1
+# Nightly, a lasting note the data backs is confirmed (confirmed_at, confirm_count) when its last confirmation is at least this old.
+DATA_CONFIRM_GAP_DAYS = 30
+# A mismatch the user already looked at (entry confirmed since it was written, within this many days) is not offered again.
+DATA_SNOOZE_DAYS = 30
+DATA_MAX = 6           # mismatches handed to the AI per review (the rest wait for the next one)
+DATA_CLAIM_CHARS = 40  # characters of the claim / of the data shown per mismatch
+
+# Promotion: a lasting note is offered for merging into its profile card item when it was confirmed this many times, or when it
+# is at least PROMOTE_MIN_AGE_DAYS old and still not stale. Set by the issue (confirmed >= 2 times, or still valid after 60 days).
+PROMOTE_MIN_CONFIRMS = 2
+PROMOTE_MIN_AGE_DAYS = 60
+PROMOTE_MAX = 5            # candidates per review
+PROMOTE_CARD_CHARS = 300   # characters of the target card item shown (the AI reads the full text with get_memory when it is cut)
+
+# Training habits against the workout records (watch workouts, own logged strength sessions).
+TRAIN_WINDOW_DAYS = 56        # 8 weeks, the window the issue names
+TRAIN_MIN_DAYS_EVER = 4       # fewer training days than this in the last TRAIN_LOOKBACK_DAYS = no training data: no verdict
+TRAIN_LOOKBACK_DAYS = 120
+TRAIN_MIN_MINUTES = 20        # a workout shorter than this (a stroll the watch logged) is not a training day
+TRAIN_FREQ_TOLERANCE = 1.0    # days per week the real average may differ from the claimed range before it is a mismatch
+# "every Wednesday basketball": no such workout on that weekday in the window = mismatch; at least WEEKDAY_VERIFY_HITS = verified.
+WEEKDAY_MISMATCH_MAX_HITS = 0
+WEEKDAY_VERIFY_HITS = 3
+WEEKDAY_MIN_OCCURRENCES = 6   # the weekdays named must occur at least this often in the window to judge
+# Sport id -> (words in the text, workout types it is recorded as; training/params.py TYPE_NAMES). "strength" also counts the
+# logged strength sessions. Plain word lists, a judgement call.
+SPORT_TYPES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "basketball": (("篮球", "basketball"), ("basketball",)),
+    "swimming": (("游泳", "swim"), ("swimming", "pool_swimming", "open_water_swimming")),
+    "running": (("跑步", "长跑", "慢跑", "running", "jogging"), ("running", "treadmill")),
+    "soccer": (("足球", "soccer"), ("soccer", "australian_football")),
+    "tennis": (("网球", "tennis"), ("tennis",)),
+    "badminton": (("羽毛球", "badminton"), ("badminton",)),
+    "cycling": (("骑车", "骑行", "单车", "cycling"), ("cycling", "indoor_cycling")),
+    "yoga": (("瑜伽", "yoga"), ("yoga", "pilates")),
+    "hiking": (("爬坡", "徒步", "爬山", "hiking"), ("hiking", "walking", "stair_climbing")),
+    "strength": (("力量训练", "撸铁", "举铁", "力量", "strength", "lifting"), ("strength_training", "fitness_equipment")),
+}
+TRAIN_WORDS = ("练", "训练", "健身", "运动", "锻炼", "力量", "gym", "train", "workout", "exercise", "lift")
+HABIT_WORDS = ("每", "一般", "通常", "经常", "习惯", "固定", "总是", "常常", "every", "usually", "regularly", "weekly", "routinely")
+
+# Body weight against the weigh-ins (daily_metrics body_mass, body_measurements) and the goal weight (status card goal_weight).
+WEIGHT_RECENT_DAYS = 14       # no weigh-in this recent = no verdict on "my weight is ..."
+WEIGHT_AVG_DAYS = 7           # readings of the last week are averaged
+WEIGHT_TOLERANCE_KG = 1.5     # day-to-day swings of a kilo or two are normal
+GOAL_TOLERANCE_KG = 0.5
+
+# Supplements against the supplements table. Name in the text -> words that find it in the table (name / ingredients).
+SUPPLEMENT_WORDS: dict[str, tuple[str, ...]] = {
+    "肌酸": ("肌酸", "creatine"), "鱼油": ("鱼油", "fish oil", "omega", "epa", "dha"),
+    "蛋白粉": ("蛋白粉", "protein powder", "whey"), "维生素D": ("维生素d", "维d", "vitamin d"),
+    "维生素C": ("维生素c", "vitamin c"), "维生素B": ("维生素b", "vitamin b"), "镁": ("镁", "magnesium"),
+    "锌": ("锌", "zinc"), "褪黑素": ("褪黑素", "melatonin"), "益生菌": ("益生菌", "probiotic"),
+    "钙": ("钙", "calcium"), "辅酶Q10": ("辅酶q10", "coq10"), "叶酸": ("叶酸", "folate", "folic"),
+}
+SUPPLEMENT_CONTEXT = ("补剂", "每天吃", "每日", "随餐", "服用", "在吃", "吃了", "supplement", "taking", "take ")
+SUPPLEMENT_ACTIVE = ("active", "as_needed")   # statuses of the supplements table that count as "taking it"
+
+# Injuries against the body events. Body part in the text -> words that find it in an event's body_part / title.
+BODY_PARTS: dict[str, tuple[str, ...]] = {
+    "肩": ("肩", "shoulder"), "膝": ("膝", "knee"), "腰": ("腰", "lower back", "lumbar"), "背": ("背", "back"),
+    "颈": ("颈", "neck"), "肘": ("肘", "elbow"), "腕": ("腕", "wrist"), "踝": ("踝", "ankle"), "髋": ("髋", "hip"),
+    "大腿": ("大腿", "thigh", "hamstring", "quad"), "小腿": ("小腿", "calf", "shin"), "脚": ("脚", "foot"),
+}
+INJURY_WORDS = ("伤", "疼", "痛", "受限", "不适", "弹响", "劳损", "拉伤", "扭", "发炎", "injur", "pain", "sore", "strain", "sprain")
+RECOVERED_WORDS = ("好了", "痊愈", "康复了", "恢复了", "已愈", "不痛了", "不疼了", "healed", "recovered", "pain-free")
+RULE_WORDS = ("禁用", "不能做", "不要做", "避免", "别做", "禁止", "不做", "avoid", "never do")   # exercise rules, not an injury status
+EVENT_CATEGORIES = ("injury", "pain", "symptom", "posture", "other")   # (and events without a category)
+INJURY_LOOKBACK_DAYS = 365
+INJURY_RESOLVED_GRACE_DAYS = 7   # an event marked better less than this long ago is not yet "the note is out of date"
+
+# Words that make a sentence no claim about the present: negation, wishes, history. Looked for next to the matched word.
+NEGATION_BEFORE = ("不", "没", "未", "别", "停", "戒", "无", "no ", "not ", "stop", "quit", "without")
+NEGATION_AFTER = ("停", "不吃", "不再", "已停", "没吃", "stopped", "quit")
+WISH_WORDS = ("想", "打算", "希望", "考虑", "争取", "准备", "建议", "可以", "want", "plan to", "planning", "hope", "should", "consider")
+PAST_WORDS = ("曾", "以前", "之前", "过去", "原来", "once", "used to", "previously", "formerly")
