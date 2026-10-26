@@ -153,3 +153,10 @@ GAP_DAYS = 3
 GAP_LOOKBACK_DAYS = 30
 GAP_MIN_PRIOR_DAYS = 8
 GAP_GIVE_UP_DAYS = 30
+# Only these "core" kinds (the ones the scores stand on, read live by the Open Wearables SDK) make a doctor ⚠; the others
+# (Apple-computed types such as stand time, exercise minutes, daylight, audio, walking heart rate, wrist temperature, which
+# only the app's own sync reads from 1.0.7, and workouts / weight / VO2max / water ...) are listed as information only.
+GAP_CORE_KINDS = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "active_energy", "blood_oxygen",
+                  "respiratory_rate")
+# Sources that are a history import, not a live way in: they never make a type "regular" or end a gap.
+GAP_HISTORY_SOURCES = frozenset({"apple_export"})
