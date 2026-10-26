@@ -37,9 +37,9 @@ def test_first_screen_budget():
     assert len(names) == len(set(names))
     total = sum((STATIC / n).stat().st_size for n in names)
     assert len(names) <= 35, len(names)
-    # 980_000 + 12_500 for the jarvis_dial layers that sit beside the old ring menu until the flag is on for everyone (#294 / #309 / #312)
+    # 980_000 + 12_500 for the jarvis_dial layers that sit beside the old ring menu until the flag is on for everyone (#294 / #309 / #312); + 1_000 for the product card's fuller nutrition line and allergen labels (#291)
     # + 700 for the ui_ai_first hooks and window.BodyPage in app.js (the AI-first page itself, ui-ai-first.js, loads on demand; #279)
-    assert total <= 993_200, total
+    assert total <= 994_200, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 

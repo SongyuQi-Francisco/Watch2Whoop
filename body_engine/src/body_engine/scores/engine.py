@@ -42,6 +42,19 @@ def _between(samples, start, end, times=None):
     return samples[bisect_left(times, start):bisect_right(times, end)]
 
 
+def _wrist_temps(temps, times, night: Night, prev_end: datetime | None):
+    """The sleeping wrist temperature readings of a night (params WRIST_TEMP_PAD / WRIST_TEMP_LEAD): those within the pad
+    of the night; if none, those dated up to the lead before it (Apple dates the reading from the start of the sleep schedule),
+    but not before the end of the previous main sleep (+ pad), so one reading never serves two nights."""
+    near = _between(temps, night.start - P.WRIST_TEMP_PAD, night.end + P.WRIST_TEMP_PAD, times)
+    if near:
+        return near
+    lo = night.start - P.WRIST_TEMP_LEAD
+    if prev_end is not None:
+        lo = max(lo, prev_end + P.WRIST_TEMP_PAD + timedelta(microseconds=1))
+    return _between(temps, lo, night.start - P.WRIST_TEMP_PAD, times) if lo < night.start - P.WRIST_TEMP_PAD else []
+
+
 class _Segments:
     """The sleep-stage segments (sorted by start) with their start times, so a night's segments are found by bisection
     instead of a scan of the whole history for every night (same segments, same order)."""
@@ -76,6 +89,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
     main = {d: max(ns, key=lambda n: n.asleep_min) for d, ns in by_wake.items()}
     naps = sorted((n for d, ns in by_wake.items() for n in ns if n is not main[d]), key=lambda n: n.start)
     mains_sorted = sorted(main.values(), key=lambda n: n.start)
+    prev_main_end = {b.wake_date: a.end for a, b in zip(mains_sorted, mains_sorted[1:])}   # wake date -> end of the main sleep before
 
     # ---- strain: heart rate grouped by local date; the minutes each sample represents are computed over the whole timeline ----
     hr_times = [t for t, _ in inp.hr]
@@ -199,8 +213,7 @@ def score_days(inp: Inputs, first: date, last: date, today: date | None = None) 
                 flags["rhr_from_daily"] = "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
             resp = [v for _, v in _between(inp.resp, night.start, night.end, times["resp"])]
             resp_night = statistics.median(resp) if resp else None
-            temps = [v for _, v in _between(inp.temp, night.start - timedelta(hours=2), night.end + timedelta(hours=2),
-                                            times["temp"])]
+            temps = [v for _, v in _wrist_temps(inp.temp, times["temp"], night, prev_main_end.get(d))]
             temp = statistics.median(temps) if temps else None
             spo2 = [v for _, v in _between(inp.spo2, night.start, night.end, times["spo2"])]
             row.update(hrv_night_ln=_r(hrv_ln, 4), rhr_night=_r(rhr, 1), resp_rate_night=_r(resp_night, 2))

@@ -1862,4 +1862,17 @@ I18N.addEn({
   "问 Jarvis：{q}": "Ask Jarvis: {q}",
   "随时能看": "Always available",
   "圈子里还没有朋友，邀请他们一起看恢复和排行": "No friends in your circle yet: invite them to share recovery and rankings",
+  // product archive fields (issue #291)
+  "反式脂肪": "Trans fat",
+  "膳食纤维": "Fibre",
+  "钾": "Potassium",
+  "钙": "Calcium",
+  "铁": "Iron",
+  "胆固醇": "Cholesterol",
+  "配料": "Ingredients",
+  "过敏原": "Allergens",
+  "可能含有": "May contain",
+  "图片": "Picture",
+  "无": "None",
+  "每份（{g} {u}）": "Per serving ({g} {u})",
 });

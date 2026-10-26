@@ -6554,7 +6554,7 @@
   },
   "save_product": {
    "name": "save_product",
-   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g（不知道就 {}）；matches=能顶的食材名；price 每包。",
+   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g、nutrition_serving 每份（不知道的项不写）；matches=能顶的食材名；price 每包。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -6673,13 +6673,55 @@
          "null"
         ]
        },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sugar_g": {
         "type": [
          "number",
          "null"
         ]
        },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
         "type": [
          "number",
          "null"
@@ -6692,10 +6734,175 @@
        "carbs_g",
        "fat_g",
        "sat_fat_g",
+       "trans_fat_g",
        "sugar_g",
-       "sodium_mg"
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
       ],
       "additionalProperties": false
+     },
+     "serving_size": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "一份多少，和 serving_unit 一起"
+     },
+     "serving_unit": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "g",
+       "ml",
+       null
+      ]
+     },
+     "nutrition_serving": {
+      "type": "object",
+      "properties": {
+       "kcal": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "protein_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "carbs_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sat_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "kcal",
+       "protein_g",
+       "carbs_g",
+       "fat_g",
+       "sat_fat_g",
+       "trans_fat_g",
+       "sugar_g",
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
+      ],
+      "additionalProperties": false
+     },
+     "ingredients": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "配料表原文"
+     },
+     "allergens": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "含有的过敏原；[]=标签写了没有"
+     },
+     "allergen_traces": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "可能含有"
+     },
+     "image_url": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "https 图片地址（只存地址）"
      },
      "purine_level": {
       "type": [
@@ -6763,6 +6970,13 @@
      "price",
      "currency",
      "nutrition",
+     "serving_size",
+     "serving_unit",
+     "nutrition_serving",
+     "ingredients",
+     "allergens",
+     "allergen_traces",
+     "image_url",
      "purine_level",
      "red_meat",
      "barcode",
@@ -6777,7 +6991,7 @@
   },
   "lookup_barcode": {
    "name": "lookup_barcode",
-   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
+   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养、配料、过敏原、图片地址）。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -11334,7 +11548,7 @@
   },
   "save_product": {
    "name": "save_product",
-   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g（不知道就 {}）；matches=能顶的食材名；price 每包。",
+   "description": "存商品（价签 / 小票 / 营养表照片、商品链接）。product_id=null 时同条码 / 商品页 / 同名同品牌的更新，否则新建；null=不改。nutrition 每 100g、nutrition_serving 每份（不知道的项不写）；matches=能顶的食材名；price 每包。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -11453,13 +11667,55 @@
          "null"
         ]
        },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sugar_g": {
         "type": [
          "number",
          "null"
         ]
        },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
        "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
         "type": [
          "number",
          "null"
@@ -11472,10 +11728,175 @@
        "carbs_g",
        "fat_g",
        "sat_fat_g",
+       "trans_fat_g",
        "sugar_g",
-       "sodium_mg"
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
       ],
       "additionalProperties": false
+     },
+     "serving_size": {
+      "type": [
+       "number",
+       "null"
+      ],
+      "description": "一份多少，和 serving_unit 一起"
+     },
+     "serving_unit": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "g",
+       "ml",
+       null
+      ]
+     },
+     "nutrition_serving": {
+      "type": "object",
+      "properties": {
+       "kcal": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "protein_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "carbs_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sat_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "trans_fat_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "added_sugar_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "fiber_g": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "sodium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "potassium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "calcium_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "iron_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       },
+       "cholesterol_mg": {
+        "type": [
+         "number",
+         "null"
+        ]
+       }
+      },
+      "required": [
+       "kcal",
+       "protein_g",
+       "carbs_g",
+       "fat_g",
+       "sat_fat_g",
+       "trans_fat_g",
+       "sugar_g",
+       "added_sugar_g",
+       "fiber_g",
+       "sodium_mg",
+       "potassium_mg",
+       "calcium_mg",
+       "iron_mg",
+       "cholesterol_mg"
+      ],
+      "additionalProperties": false
+     },
+     "ingredients": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "配料表原文"
+     },
+     "allergens": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "含有的过敏原；[]=标签写了没有"
+     },
+     "allergen_traces": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string"
+      },
+      "description": "可能含有"
+     },
+     "image_url": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "https 图片地址（只存地址）"
      },
      "purine_level": {
       "type": [
@@ -11543,6 +11964,13 @@
      "price",
      "currency",
      "nutrition",
+     "serving_size",
+     "serving_unit",
+     "nutrition_serving",
+     "ingredients",
+     "allergens",
+     "allergen_traces",
+     "image_url",
      "purine_level",
      "red_meat",
      "barcode",
@@ -14397,7 +14825,7 @@
   },
   "lookup_barcode": {
    "name": "lookup_barcode",
-   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养）。",
+   "description": "按条码查 Open Food Facts（名字、规格、每 100g 营养、配料、过敏原、图片地址）。",
    "input_schema": {
     "type": "object",
     "properties": {
