@@ -647,6 +647,7 @@
   // The Friends page is behind the feature flag `friends` (docs/rollout.md). Off: the old tabs (饮食 is its own tab, no
   // 朋友 tab, 记录 has 日记 | 训练). On: 朋友 replaces 饮食 in the tab bar and 饮食 becomes the third segment of 记录.
   const friendsOn = () => (S.flags || []).includes("friends");
+  const A1 = () => (S.flags || []).includes("ui_ai_first") && !!window.BodyAIFirst;
   // Flag `records_v2`: the 日记 segment of 记录 is gone (记录 = 训练 | 饮食). The journal lives on the Today page (a 日记 card opening
   // the day's editor sheet) and Trends (the 行为影响 card); journal.js. Off: 日记 | 训练 | 饮食 as before.
   const recordsV2 = () => (S.flags || []).includes("records_v2") && !!window.BodyJournal;
@@ -849,7 +850,7 @@
     if (!same) view.innerHTML = `<div class="empty faint">…</div>`;
     try {
       SH.clear();
-      const html = await RENDER[S.tab]();
+      const html = (A1() && await window.BodyAIFirst.render(S.tab)) || await RENDER[S.tab]();
       if (seq !== renderSeq) return;
       const y = window.scrollY;
       view.innerHTML = html;
@@ -857,6 +858,7 @@
       if (view.dataset.slide) setTimeout(() => { view.dataset.slide = ""; }, 400);
       if (same) window.scrollTo(0, y);
       AFTER[S.tab]?.(view);
+      if (A1()) window.BodyAIFirst.after(S.tab, view);
     } catch (err) {
       if (seq !== renderSeq || err.status === 401) return;
       view.dataset.shown = "";
@@ -4314,10 +4316,11 @@
     S.assistantUrl = me.assistant_url || null; S.version = me.version || null; S.ai = me.ai || { mode: "none" };
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
+    if (S.flags.includes("ui_ai_first")) await lazyScript("ui-ai-first.js");
     lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet };
     lateInit.me = me;
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
-    if (!stale && me.me?.intro_seen === false) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
+    if (!stale && me.me?.intro_seen === false && !A1()) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
@@ -4412,6 +4415,13 @@
         if (fn) b.addEventListener("click", (e) => { e.preventDefault(); fn(); });
       }
     },
+  };
+
+  // Flag ui_ai_first (#279): the page's own pieces for ui-ai-first.js
+  window.BodyPage = {
+    S, load, optional, render, setTab, goPage, openSheet, closeSheet, askAI, canAskAI, isSelf, isPast, viewDay, ownerPath, todayKey, todayPath,
+    WHOOP_API, TABS, friendsOn, recordsV2, muscleOn, muscleCtx, journalCtx, scoresHtml, remindersHtml, sleepCardHtml, goalCardHtml, dayCardHtml,
+    monitorHtml, strainCoachHtml,
   };
 
   // Feature flags and A/B variants of the signed-in user (rollout/, docs/rollout.md), from /v1/web/me. A gated feature draws
