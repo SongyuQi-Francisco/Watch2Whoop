@@ -4,10 +4,13 @@ Maintains `exercise_catalog` (shared read-only dictionary) and joins it with eac
 (banned / caution / active, personal cues, reason, app_exercise_id). For a known user the user's own custom exercises
 (custom.py, issue #189) are appended to the shared rows (rows_for); nobody else sees them.
 """
+import contextlib
+import contextvars
 import functools
 import json
 import os
 import re
+import time
 import unicodedata
 from pathlib import Path
 
@@ -388,16 +391,63 @@ def format_exercise(row: dict, meta: dict | None = None, *, detail: bool = False
 
 
 _ROWS_CACHE: dict[str, tuple] = {}
+_HAS_VERSIONS: dict[str, tuple[float, bool]] = {}   # db name -> (checked at, table_versions exists)
+# lookup_scope(): memo of one request / one plan view (catalog rows, the user's custom rows and exercise_meta, resolve answers)
+_SCOPE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("catalog_scope", default=None)
+
+
+@contextlib.contextmanager
+def lookup_scope():
+    """Within this block the shared catalog, each user's custom exercises / exercise_meta and the answers of resolve() are
+    read once (a plan view resolves every planned exercise: ~30 lookups that each read the same rows). For read paths only:
+    a write to exercise_meta / custom_exercises inside the block is not seen by later lookups in it. Nested blocks share
+    the outer memo."""
+    if _SCOPE.get() is not None:
+        yield
+        return
+    token = _SCOPE.set({})
+    try:
+        yield
+    finally:
+        _SCOPE.reset(token)
+
+
+def _scoped(key, compute):
+    memo = _SCOPE.get()
+    if memo is None:
+        return compute()
+    if key not in memo:
+        memo[key] = compute()
+    return memo[key]
+
+
+def _catalog_stamp(conn: psycopg.Connection) -> tuple:
+    """A value that changes whenever exercise_catalog does: its table_versions row (migration 850, a statement trigger bumps
+    it; one primary-key read). Without that table: count + max(updated_at), a scan of the whole table."""
+    db = conn.info.dbname
+    seen = _HAS_VERSIONS.get(db)
+    if seen is None or (not seen[1] and time.monotonic() - seen[0] > 60):
+        has = conn.execute("SELECT to_regclass('table_versions') IS NOT NULL AS ok").fetchone()["ok"]
+        seen = _HAS_VERSIONS[db] = (time.monotonic(), bool(has))
+    if seen[1]:
+        row = conn.execute("SELECT version, changed_at FROM table_versions WHERE name = 'exercise_catalog'").fetchone()
+        return ("v", row["version"], row["changed_at"]) if row else ("v", None, None)
+    fp = conn.execute("SELECT count(*) AS n, max(updated_at) AS t FROM exercise_catalog").fetchone()
+    return ("n", fp["n"], fp["t"])
 
 
 def catalog_rows(conn: psycopg.Connection) -> list[dict]:
-    """All exercise_catalog rows (about 950 with free-exercise-db), cached per database until the table changes.
-    Each row carries `_names`: normalized names / aliases for matching. Rows are shared: treat them as read-only."""
-    ensure_seeded(conn)
-    fp = conn.execute("SELECT count(*) AS n, max(updated_at) AS t FROM exercise_catalog").fetchone()
-    key, stamp = conn.info.dbname, (fp["n"], fp["t"])
+    """All exercise_catalog rows (about 6,300 with the openGym import), cached per database until the table changes
+    (_catalog_stamp). Each row carries `_names`: normalized names / aliases for matching. Rows are shared: treat them as read-only."""
+    return _scoped("catalog", lambda: _catalog_rows(conn))
+
+
+def _catalog_rows(conn: psycopg.Connection) -> list[dict]:
+    key, stamp = conn.info.dbname, _catalog_stamp(conn)
     hit = _ROWS_CACHE.get(key)
     if hit is None or hit[0] != stamp:
+        ensure_seeded(conn)
+        stamp = _catalog_stamp(conn)   # seeding an empty table changes it
         rows = conn.execute("SELECT * FROM exercise_catalog ORDER BY slug").fetchall()
         for r in rows:
             if extra := EXTRA_ALIASES.get(r["slug"]):   # more everyday wordings (gym_aliases.py), merged here so no re-seed is needed
@@ -518,56 +568,156 @@ def offered(grades: dict[str, dict] | None, slug: str) -> bool:
     return grades is None or slug not in grades or grades[slug]["passed"]
 
 
+_SHARED_CACHE: dict[int, tuple] = {}   # id(viewer's shared rows) -> (those rows, rows without the openGym import)
+
+
+def _shared_rows(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
+    """The shared catalog rows as this viewer sees them (rows_for without the custom exercises); the same list object while
+    the catalog and the viewer's flags stay the same, so per-list indexes (_index_for) can be cached."""
+    rows = _user_view(conn, user_id)
+    if imported_visible(conn, user_id):
+        return rows
+    hit = _SHARED_CACHE.get(id(rows))
+    if hit is None or hit[0] is not rows:
+        if len(_SHARED_CACHE) > 16:
+            _SHARED_CACHE.clear()
+        hit = _SHARED_CACHE[id(rows)] = (rows, [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES])
+    return hit[1]
+
+
+def _custom_rows(conn: psycopg.Connection, user_id: int) -> list[dict]:
+    from . import custom
+    return _scoped(("custom", user_id), lambda: custom.rows(conn, user_id))
+
+
 def rows_for(conn: psycopg.Connection, user_id: int | None) -> list[dict]:
     """The shared catalog plus the user's own custom exercises (only the shared rows for None); the openGym import only while its
     flag is on for the user; machine-translated Chinese only while exercise_zh_machine is on (English otherwise); pictures per
     media_policy (exercise_media_licensed, exercise_media_free_db_off; both deployment-wide); the curated library's written
     steps while exercise_curated_steps is on."""
-    rows = _user_view(conn, user_id)
-    if not imported_visible(conn, user_id):
-        rows = [r for r in rows if r["source"] not in OGM.IMPORTED_SOURCES]
+    rows = _shared_rows(conn, user_id)
     if user_id is None:
         return rows
-    from . import custom
-    return rows + custom.rows(conn, user_id)
+    return rows + _custom_rows(conn, user_id)
 
 
 def _load_catalog_and_meta(conn: psycopg.Connection, user_id: int | None, with_meta: bool = True) -> tuple[list[dict], dict[str, dict]]:
     cat_rows = rows_for(conn, user_id if with_meta else None)
     meta_by_ref: dict[str, dict] = {}
     if user_id is not None and with_meta:
-        for m in records_store.list_exercises(conn, user_id):
+        for m in _scoped(("meta", user_id), lambda: records_store.list_exercises(conn, user_id)):
             meta_by_ref[m["exercise_ref"]] = m
     return cat_rows, meta_by_ref
 
 
-def _match_meta_to_slug(cat_rows: list[dict], meta_by_ref: dict[str, dict]) -> dict[str, dict]:
-    """Map catalog slug -> user's exercise_meta row (matching by slug == exercise_ref or normalized name/alias)."""
+class _Index:
+    """Lookups over one list of shared catalog rows (built once per list, _index_for): position of each slug, exact /
+    bracket-stripped normalized names -> positions, every `_names` entry -> positions, the rows that belong to a family."""
+
+    def __init__(self, rows: list[dict]):
+        self.rows = rows
+        self.slug_pos: dict[str, int] = {}
+        self.exact: dict[str, list[int]] = {}
+        self.stripped: dict[str, list[int]] = {}
+        self.any_name: dict[str, list[int]] = {}
+        self.family: list[int] = []
+        for i, r in enumerate(rows):
+            self.slug_pos.setdefault(r["slug"], i)
+            for k in {norm(x) for x in (r["name_zh"], r["name_en"], r["slug"], *(r.get("aliases") or [])) if x}:
+                self.exact.setdefault(k, []).append(i)
+            shown = [x for x in (r["name_zh"], r["name_en"], *(r.get("aliases") or [])) if x]
+            for k in {norm(strip_paren(x)) for x in shown} - {""}:
+                self.stripped.setdefault(k, []).append(i)
+            for k in _row_names(r):
+                self.any_name.setdefault(k, []).append(i)
+            if r.get("family_slug"):
+                self.family.append(i)
+
+
+_INDEX_CACHE: dict[int, tuple] = {}
+
+
+def _index_for(rows: list[dict]) -> _Index:
+    hit = _INDEX_CACHE.get(id(rows))
+    if hit is None or hit[0] is not rows:
+        if len(_INDEX_CACHE) > 8:   # one per viewer variant of the catalog (flags), rebuilt when the catalog changes
+            _INDEX_CACHE.clear()
+        hit = _INDEX_CACHE[id(rows)] = (rows, _Index(rows))
+    return hit[1]
+
+
+def _row_names(r: dict) -> set[str]:
+    return r.get("_names") or {norm(x) for x in [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])] if x}
+
+
+def _match_meta_to_slug(cat_rows: list[dict], meta_by_ref: dict[str, dict], shared: list[dict] | None = None) -> dict[str, dict]:
+    """Map catalog slug -> user's exercise_meta row (matching by slug == exercise_ref or normalized name/alias).
+    `shared`: the cached list of shared rows cat_rows starts with (cat_rows = shared + custom rows); its index then replaces
+    the scans over the whole catalog."""
     by_slug: dict[str, dict] = {}
     unmatched_meta = []
-    cat_slugs = {r["slug"] for r in cat_rows}
+    idx = _index_for(shared) if shared is not None else None
+    n_shared = len(shared) if idx else 0
+    cat_slugs = {r["slug"] for r in cat_rows[n_shared:]} if idx else {r["slug"] for r in cat_rows}
     for ref, m in meta_by_ref.items():
-        if ref in cat_slugs:
+        if ref in cat_slugs or (idx and ref in idx.slug_pos):
             by_slug[ref] = m
         else:
             unmatched_meta.append(m)
     if unmatched_meta:
         m_names = [(m, {norm(x) for x in [m["exercise_ref"], m.get("name_zh"), m.get("name_en"), *(m.get("aliases") or [])] if x})
                    for m in unmatched_meta]
-        for r in cat_rows:
+        if idx:   # only rows sharing a name with some meta row can match; same order as the full scan
+            positions = sorted({p for _, names in m_names for n in names for p in idx.any_name.get(n, ())}
+                               | set(range(n_shared, len(cat_rows))))
+        else:
+            positions = range(len(cat_rows))
+        for p in positions:
+            r = cat_rows[p]
             if r["slug"] in by_slug:
                 continue
-            r_names = r.get("_names") or {norm(x) for x in [r["slug"], r["name_zh"], r["name_en"], *(r.get("aliases") or [])] if x}
+            r_names = _row_names(r)
             for m, names in m_names:
                 if r_names & names:
                     by_slug[r["slug"]] = m
                     break
     # Imported variants of a restricted exercise inherit the user's restriction (not the SparkyFitness id)
-    for r in cat_rows:
+    family = [*idx.family, *range(n_shared, len(cat_rows))] if idx else range(len(cat_rows))
+    for p in family:
+        r = cat_rows[p]
         fam = r.get("family_slug")
         if fam and r["slug"] not in by_slug and fam in by_slug and by_slug[fam]["status"] != "active":
             by_slug[r["slug"]] = {**by_slug[fam], "app_exercise_id": None, "inherited_from": fam}
     return by_slug
+
+
+def _lookup_ctx(conn: psycopg.Connection, user_id: int | None, with_meta: bool) -> dict:
+    """What resolve_with_candidates needs for one viewer: rows (shared + custom), meta by slug, the shared rows' index and an
+    overlay for the custom rows and the user's own names in exercise_meta."""
+    def build():
+        uid = user_id if with_meta else None
+        shared = _shared_rows(conn, uid)
+        custom_rows = _custom_rows(conn, uid) if uid is not None else []
+        cat_rows = shared + custom_rows
+        _, meta_by_ref = _load_catalog_and_meta(conn, user_id, with_meta)
+        meta_by_slug = _match_meta_to_slug(cat_rows, meta_by_ref, shared)
+        idx = _index_for(shared)
+        n = len(shared)
+        slug_pos = {r["slug"]: n + i for i, r in reversed(list(enumerate(custom_rows)))}
+        extra_exact: dict[str, set[int]] = {}
+        app_pos: dict = {}
+        for slug, m in meta_by_slug.items():
+            p = idx.slug_pos.get(slug, slug_pos.get(slug))
+            if p is None:
+                continue
+            if m.get("app_exercise_id") is not None:
+                app_pos[m["app_exercise_id"]] = min(p, app_pos.get(m["app_exercise_id"], p))
+            for x in (m.get("name_zh"), m.get("name_en"), m.get("exercise_ref"), *(m.get("aliases") or [])):
+                if x:
+                    extra_exact.setdefault(norm(x), set()).add(p)
+        return {"rows": cat_rows, "n": n, "idx": idx, "meta": meta_by_slug, "custom_pos": slug_pos,
+                "app_pos": app_pos, "extra_exact": extra_exact}
+    return _scoped(("lookup", user_id, with_meta), build)
 
 
 def resolve_with_candidates(
@@ -576,56 +726,72 @@ def resolve_with_candidates(
     query_or_slug: str,
     with_meta: bool = True,
 ) -> tuple[dict | None, dict | None, list[str]]:
-    """Resolve an exercise slug, Chinese/English name, or alias to (catalog_row, meta_row, candidate_names)."""
-    cat_rows, meta_by_ref = _load_catalog_and_meta(conn, user_id, with_meta)
-    meta_by_slug = _match_meta_to_slug(cat_rows, meta_by_ref)
+    """Resolve an exercise slug, Chinese/English name, or alias to (catalog_row, meta_row, candidate_names).
+    Order of precedence (first match wins, rows in catalog order, custom rows last): slug / app_exercise_id, exact name or
+    alias (several hits: the first, with the names of up to 8 as candidates), the same without a bracketed tail, else no row
+    and up to 8 names containing the query."""
     q_raw = (query_or_slug or "").strip()
+    return _scoped(("resolve", user_id, with_meta, q_raw), lambda: _resolve(conn, user_id, q_raw, with_meta))
+
+
+def _resolve(conn: psycopg.Connection, user_id: int | None, q_raw: str,
+             with_meta: bool) -> tuple[dict | None, dict | None, list[str]]:
     q = norm(q_raw)
     q_short = norm(strip_paren(q_raw))
     if not q:
         return None, None, []
+    ctx = _lookup_ctx(conn, user_id, with_meta)
+    rows, n, idx, meta = ctx["rows"], ctx["n"], ctx["idx"], ctx["meta"]
+    custom_rows = rows[n:]
+
+    def hit(p: int) -> tuple[dict, dict | None]:
+        return rows[p], meta.get(rows[p]["slug"])
 
     # 1. Exact slug or app_exercise_id match
-    for r in cat_rows:
-        m = meta_by_slug.get(r["slug"])
-        if r["slug"] == q_raw or r["slug"] == q or (m and m.get("app_exercise_id") == q_raw):
-            return r, m, []
+    firsts = [idx.slug_pos.get(q_raw), idx.slug_pos.get(q), ctx["custom_pos"].get(q_raw), ctx["custom_pos"].get(q),
+              ctx["app_pos"].get(q_raw)]
+    firsts = [p for p in firsts if p is not None]
+    if firsts:
+        r, m = hit(min(firsts))
+        return r, m, []
 
-    # 2. Exact name_zh / name_en / alias match
-    exact_hits = []
-    for r in cat_rows:
-        m = meta_by_slug.get(r["slug"])
-        names = [r["name_zh"], r["name_en"], r["slug"], *(r.get("aliases") or [])]
-        if m:
-            names += [m.get("name_zh"), m.get("name_en"), m.get("exercise_ref"), *(m.get("aliases") or [])]
-        if any(norm(x) == q for x in names if x):
-            exact_hits.append((r, m))
+    # 2. Exact name_zh / name_en / alias match (the user's own names for an exercise count too)
+    exact = set(idx.exact.get(q, ())) | ctx["extra_exact"].get(q, set())
+    for i, r in enumerate(custom_rows):
+        if any(norm(x) == q for x in [r["name_zh"], r["name_en"], r["slug"], *(r.get("aliases") or [])] if x):
+            exact.add(n + i)
+    exact_hits = [hit(p) for p in sorted(exact)]
     if len(exact_hits) == 1:
         return exact_hits[0][0], exact_hits[0][1], []
 
     # 3. Stripped parenthetical match
     if not exact_hits and q_short:
-        for r in cat_rows:
-            m = meta_by_slug.get(r["slug"])
-            names = [r["name_zh"], r["name_en"], *(r.get("aliases") or [])]
-            if any(norm(strip_paren(x)) == q_short for x in names if x):
-                exact_hits.append((r, m))
+        stripped = set(idx.stripped.get(q_short, ()))
+        for i, r in enumerate(custom_rows):
+            if any(norm(strip_paren(x)) == q_short for x in [r["name_zh"], r["name_en"], *(r.get("aliases") or [])] if x):
+                stripped.add(n + i)
+        exact_hits = [hit(p) for p in sorted(stripped)]
         if len(exact_hits) == 1:
             return exact_hits[0][0], exact_hits[0][1], []
 
     if exact_hits:
         return exact_hits[0][0], exact_hits[0][1], [r["name_zh"] for r, _ in exact_hits[:8]]
 
-    # 4. Substring candidate suggestions
+    # 4. Substring candidate suggestions (rare: nothing matched; a full scan, stops at 8)
+    def hit_name(x: str) -> bool:
+        return q in norm(x) or bool((s := norm(strip_paren(x))) and s in q)
+
     cands = []
-    for r in cat_rows:
-        m = meta_by_slug.get(r["slug"])
+    for r in rows:
+        if len(cands) >= 8:
+            break
+        m = meta.get(r["slug"])
         names = [r["name_zh"], r["name_en"], *(r.get("aliases") or [])]
         if m:
             names += [m.get("name_zh"), m.get("name_en"), *(m.get("aliases") or [])]
-        if any(q in norm(x) or (norm(strip_paren(x)) and norm(strip_paren(x)) in q) for x in names if x):
+        if any(hit_name(x) for x in names if x):
             cands.append(r["name_zh"])
-    return None, None, cands[:8]
+    return None, None, cands
 
 
 def resolve(

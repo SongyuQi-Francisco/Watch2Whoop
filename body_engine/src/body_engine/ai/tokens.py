@@ -51,14 +51,17 @@ def revoke(conn: psycopg.Connection, user_id: int, token_id: int) -> bool:
 def user_for_mcp_token(conn: psycopg.Connection, token: str) -> dict | None:
     """Identity for the remote MCP: only tokens with the mcp scope that are not revoked. Returns the user + token_id / token_name / token_scopes."""
     row = conn.execute(
-        """UPDATE api_tokens SET last_used_at = now()
+        """SELECT id, user_id, name, scopes, oauth_grant_id,
+                  (last_used_at IS NULL OR last_used_at < now() - %s::interval) AS stale FROM api_tokens
            WHERE token_sha256 = %s AND revoked_at IS NULL AND %s = ANY(scopes)
-             AND (expires_at IS NULL OR expires_at > now())
-           RETURNING id, user_id, name, scopes, oauth_grant_id""", (auth.hash_token(token), auth.MCP_SCOPE)).fetchone()
+             AND (expires_at IS NULL OR expires_at > now())""",
+        (auth.TOUCH_EVERY, auth.hash_token(token), auth.MCP_SCOPE)).fetchone()
     if row is None:
         return None
-    if row["oauth_grant_id"] is not None:   # an OAuth connection: its "last used" in AI settings
-        conn.execute("UPDATE oauth_grants SET last_used_at = now() WHERE id = %s", (row["oauth_grant_id"],))
+    if row["stale"]:   # at most every auth.TOUCH_EVERY, never waiting for a parallel call of the same client (auth.touch)
+        auth.touch(conn, "api_tokens", row["id"], "last_used_at = now()")
+        if row["oauth_grant_id"] is not None:   # an OAuth connection: its "last used" in AI settings
+            auth.touch(conn, "oauth_grants", row["oauth_grant_id"], "last_used_at = now()")
     user = conn.execute("SELECT * FROM users WHERE id = %s", (row["user_id"],)).fetchone()
     obs.note_user(row["user_id"])
     return {**user, "token_id": row["id"], "token_name": row["name"], "token_scopes": row["scopes"]}

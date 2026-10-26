@@ -141,7 +141,8 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
             sessions = []
         plan, rest_day, change, removed = None, False, None, []
     policy = catalog.media_policy(conn)   # which demo pictures may be shown (exercise_media_licensed / _free_db_off)
-    rows = {r["slug"]: catalog.media_view(r, *policy) for r in catalog.catalog_rows(conn)}
+    need = {item.get("slug") for p in sessions for item in p["exercises"]}   # only the planned rows, not all ~6,300
+    rows = {r["slug"]: catalog.media_view(r, *policy) for r in catalog.catalog_rows(conn) if r["slug"] in need}
     out_sessions = []
     for p in sessions:
         exs = []

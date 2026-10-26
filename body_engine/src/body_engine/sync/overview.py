@@ -28,6 +28,8 @@ It combines what the server already knows, read only:
   lagging         behind (SYNC_LAG_AFTER) without a phone report
   type_missing    heart rate arrives but one of OVERVIEW_PARTIAL does not (the Health permission of that type is off;
                   for sleep also: sleep tracking off on the watch)
+`parts`: the exact answers of GET /sync/status, /sync/connection and /health-history, so the page's start-up asks this one
+endpoint instead of four (web/static/sync.js, sync-repair.js); the separate endpoints stay for polling and older pages.
 `state`: consent / off / syncing / ok / issue. The own sync engine (#219) comes in through rawdata/sync_status.collect()
 (GET /v1/users/me/sync/engine/status, the same data): its mode, the refused uploads and the derive -> scores pipeline
 (`engine_status` in the answer, codes and times only). In its app mode the OW checks are skipped and the engine's uploads
@@ -247,4 +249,12 @@ def collect(conn: psycopg.Connection, user_id: int, now: datetime | None = None,
                           "pending_days": (eng.get("pipeline") or {}).get("pending_days"),
                           "up_to_date": (eng.get("pipeline") or {}).get("up_to_date")},
         "device": {k: (_iso(v, tz) if isinstance(v, datetime) else v) for k, v in dev.items()} if dev else None,
+        "parts": {"status": ref, "health_history": hist, "connection": _connection(conn, user_id, now, link, in_app)},
     }
+
+
+def _connection(conn: psycopg.Connection, user_id: int, now: datetime, link: dict, in_app: bool) -> dict:
+    """What GET /sync/connection answers (broken.check as someone who is on the page now)."""
+    res = dict(link if in_app else broken.check(conn, user_id, now))
+    res.pop("user_id", None)
+    return res

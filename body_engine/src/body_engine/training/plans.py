@@ -710,7 +710,14 @@ def get_week_plan(
     detail: bool = True,
 ) -> dict:
     """Return the active weekly training plan for [Monday..Sunday] around `day`, enriched with exercise metadata,
-    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation."""
+    recommended working weights (training/loads.py), weekly muscle-group volume, progression suggestions, and readiness autoregulation.
+    Read-only: every planned exercise is resolved inside one catalog.lookup_scope (the catalog, exercise_meta and custom
+    exercises read once instead of once per exercise)."""
+    with catalog.lookup_scope():
+        return _get_week_plan(conn, viewer_id, owner_id, day, detail)
+
+
+def _get_week_plan(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | None, detail: bool) -> dict:
     if not auth.can_view(conn, viewer_id, owner_id, "training"):
         raise PermissionError(L("没有授权查看该用户的训练计划（需要 training 权限）",
                                 "No permission to view this user's training plan (needs the training scope)"))

@@ -98,21 +98,44 @@ def clear_history_cache(owner_id: int | None = None) -> None:
         _HISTORY_CACHE.pop(k, None)
 
 
+_SHARED_MAPS: dict[int, tuple] = {}
+
+
+def _shared_maps(shared: list[dict]) -> tuple[dict[str, dict], dict[str, str]]:
+    """slug -> row and normalized name -> slug of a cached list of shared catalog rows (catalog._shared_rows); curated rows
+    first so a shared alias resolves to the curated exercise."""
+    hit = _SHARED_MAPS.get(id(shared))
+    if hit is None or hit[0] is not shared:
+        if len(_SHARED_MAPS) > 8:
+            _SHARED_MAPS.clear()
+        by_name: dict[str, str] = {}
+        for r in shared:
+            if r.get("source") == "curated":
+                for n in r["_names"]:
+                    by_name.setdefault(n, r["slug"])
+        for r in shared:
+            for n in r["_names"]:
+                by_name.setdefault(n, r["slug"])
+        hit = _SHARED_MAPS[id(shared)] = (shared, {r["slug"]: r for r in shared}, by_name)
+    return hit[1], hit[2]
+
+
 class Index:
     """Catalog lookups for logged exercises: normalized name / alias -> slug, SparkyFitness id -> slug (exercise_meta).
     The owner's own custom exercises (custom.py) are in it too, after the shared rows (their names never clash: custom.add refuses)."""
 
     def __init__(self, conn: psycopg.Connection, owner_id: int):
-        rows = catalog.rows_for(conn, owner_id)
-        self.rows = {r["slug"]: r for r in rows}
-        self.by_name: dict[str, str] = {}
-        for r in rows:   # curated rows first so a shared alias resolves to the curated exercise
-            if r.get("source") == "curated":
+        shared = catalog._shared_rows(conn, owner_id)
+        own = catalog._custom_rows(conn, owner_id)
+        rows_by_slug, by_name = _shared_maps(shared)   # the ~6,300 shared rows: built once per catalog version, not per request
+        if own:   # custom rows come after every shared row, so they only add names no shared row has
+            rows_by_slug, by_name = dict(rows_by_slug), dict(by_name)
+            for r in own:
+                rows_by_slug.setdefault(r["slug"], r)
+            for r in own:
                 for n in r["_names"]:
-                    self.by_name.setdefault(n, r["slug"])
-        for r in rows:
-            for n in r["_names"]:
-                self.by_name.setdefault(n, r["slug"])
+                    by_name.setdefault(n, r["slug"])
+        self.rows, self.by_name = rows_by_slug, by_name   # shared dicts when there are no custom rows: read-only
         self.by_app: dict[str, str] = {}
         for m in conn.execute("SELECT exercise_ref, app_exercise_id, name_zh, name_en, aliases FROM exercise_meta WHERE user_id = %s",
                               (owner_id,)).fetchall():

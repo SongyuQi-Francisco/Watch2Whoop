@@ -1,16 +1,14 @@
 /* 「手机同步已断开」: the phone's Open Wearables sync stopped while its owner still opens the app (seen in production: the
-   SDK's credentials became invalid and every upload got 401, for days, unnoticed). GET /v1/users/me/sync/connection
-   (sync/broken.py) says so; then the Today tab shows a banner (until the data flows again) and, at most once a day, a sheet.
-   Its button asks POST /v1/account/ow-invitation for a fresh invitation code of the user's own sync account and hands it
-   to the app:
-   - apps that announce `Watch2WhoopFeatures.syncRepair` (1.0.8 and later) take watch2whoop://setup?ow=…&code=… from the
-     page and reconnect after one confirmation;
-   - older apps (1.0.6 / 1.0.7) ignore that link inside the page, so the sheet shows the code with a copy button and opens
-     their 「手机同步」 page (watch2whoop://sync), where 「连接同步」 (or 「重新连接」 / 「用邀请码连接」 with the code) reconnects.
-   The code is only in this page's memory and the app's link: never in a URL sent to a server, never stored.
-   After the tap the page asks again every 30 s for 10 minutes (and when it comes back to the front); the banner goes once
-   data arrives. Registered in window.BodyPlugins (init, onTab); the pure helpers are module.exports for
-   tests/test_sync_broken.py. */
+   SDK's credentials went bad: every upload got 401, unnoticed). /v1/users/me/sync/connection (sync/broken.py; at start-up
+   from sync.js's shared overview) says so: a banner on Today until data flows again and, at most once a day, a sheet.
+   Its button gets a fresh invitation code (POST /v1/account/ow-invitation) for the app:
+   - apps announcing `Watch2WhoopFeatures.syncRepair` (1.0.8+) take watch2whoop://setup?ow=…&code=… and reconnect after
+     one confirmation;
+   - 1.0.6 / 1.0.7 ignore that link, so the sheet shows the code (copy button) and opens 「手机同步」 (watch2whoop://sync),
+     where 「连接同步」 (or 「重新连接」 / 「用邀请码连接」 with the code) reconnects.
+   The code lives only in page memory and the app's link: never in a URL sent to a server, never stored.
+   After the tap: asks again every 30 s for 10 minutes (and on coming back to the front); the banner goes once data arrives.
+   window.BodyPlugins (init, onTab); pure helpers are module.exports for tests/test_sync_broken.py. */
 (() => {
   "use strict";
   const tr = (k, p) => window.I18N.t(k, p);
@@ -123,7 +121,9 @@
     if (!C || window.W2W_SHELL) return;
     if (!force && Date.now() - checkedAt < MIN_GAP_MS) { draw(); return; }
     checkedAt = Date.now();
-    try { st = await C.api("/v1/users/me/sync/connection", { quiet401: true }); } catch (e) { return; }
+    const shared = force ? null : (await window.BodySync?.overview?.())?.parts?.connection;
+    if (shared) st = shared;
+    else try { st = await C.api("/v1/users/me/sync/connection", { quiet401: true }); } catch (e) { return; }
     draw();
     if (!st?.broken) { watchUntil = 0; return; }
     if (watchUntil) return;   // just tapped: no second sheet

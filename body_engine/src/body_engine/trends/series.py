@@ -3,6 +3,7 @@ previous period of the same length (`prev_mean`, for "vs 上期"), recovery colo
 and the status cards computed as of `end` (HRV status, training status, load focus, resilience, chronotype, illness risk,
 body battery, recovery time, recovery index, heart-rate recovery). Each block is authorised by its scope (shares).
 Only reads tables that the scores / insights / training jobs already fill; nothing is stored here."""
+import bisect
 import statistics
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -65,8 +66,13 @@ LOOKBACK = 90   # extra days before the previous period, for baselines (60), ACW
 def baseline_band(by_date: dict[date, float], dates: list[date]) -> dict:
     """Personal baseline for each day: mean and ±1 SD of the previous 60 days (excluding the day itself); not produced with fewer than 14 days."""
     mean, lo, hi = [], [], []
+    items = [(k, v) for k, v in by_date.items() if v is not None]
+    keys = [k for k, _ in items]
+    ordered = all(a < b for a, b in zip(keys, keys[1:]))   # rows come by date: slice the window instead of scanning all
     for d in dates:
-        xs = [v for k, v in by_date.items() if d - timedelta(days=BASELINE_DAYS) <= k < d and v is not None]
+        start = d - timedelta(days=BASELINE_DAYS)
+        xs = ([v for _, v in items[bisect.bisect_left(keys, start):bisect.bisect_left(keys, d)]] if ordered
+              else [v for k, v in items if start <= k < d])
         if len(xs) < BASELINE_MIN_N:
             mean.append(None); lo.append(None); hi.append(None)
             continue

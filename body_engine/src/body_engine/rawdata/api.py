@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .. import auth
@@ -291,6 +292,11 @@ async def _parse_body(request: Request) -> tuple[IngestIn, int]:
     if size > I.MAX_BODY_BYTES:
         raise _too_large()
     encoding = (request.headers.get("content-encoding") or "identity").strip().lower()
+    # gunzip + validation of a batch take tens of ms of CPU: in a worker thread, not on the event loop every request shares
+    return await run_in_threadpool(_decode_body, raw, encoding, size)
+
+
+def _decode_body(raw: bytes, encoding: str, size: int) -> tuple[IngestIn, int]:
     if encoding == "gzip":
         try:
             raw = EN.gunzip(raw)
