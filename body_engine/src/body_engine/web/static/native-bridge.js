@@ -159,7 +159,8 @@
       window.BodyHooks?.on("page", (d) => { if (d.page !== "today") webToday = false; page = d.page; schedule(); });
       window.BodyHooks?.on("sheet", schedule);
       window.BodyHooks?.on("today", (d) => { data = d; sendData(); schedule(); });
-      new MutationObserver(schedule).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "class", "inert"] });
+      new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });   // 「外观」 themes change the tokens
+      new MutationObserver(schedule).observe(document.body,{ subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "class", "inert"] });
       for (const ev of ["resize", "scroll", "pageshow"]) window.addEventListener(ev, schedule, { passive: true });
       document.addEventListener("visibilitychange", schedule);
       window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => { last["jvn:"] = last["tdn:"] = ""; schedule(); });
