@@ -106,6 +106,7 @@
    "get_shopping_context",
    "record_store_prices",
    "get_friends_overview",
+   "set_home",
    "report_feedback",
    "get_training_context",
    "get_week_review_context",
@@ -638,6 +639,7 @@
    "delete_observation",
    "get_shopping_context",
    "record_store_prices",
+   "set_home",
    "report_feedback",
    "list_feedback",
    "get_training_context",
@@ -718,6 +720,7 @@
     "delete_observation",
     "get_shopping_context",
     "record_store_prices",
+    "set_home",
     "report_feedback",
     "list_feedback",
     "get_training_context",
@@ -8118,6 +8121,66 @@
    },
    "strict": true
   },
+  "set_home": {
+   "name": "set_home",
+   "description": "今天页「我的首页」：module 放上(pinned) / 移走(hidden) / 交回规则(auto)；focus 设关注点。null = 不改。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "module": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "health_monitor",
+       "strain_coach",
+       "sleep",
+       "sleep_goal",
+       "training",
+       "muscle_load",
+       "journal",
+       null
+      ]
+     },
+     "state": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "pinned",
+       "hidden",
+       "auto",
+       null
+      ]
+     },
+     "focus": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string",
+       "enum": [
+        "fat",
+        "muscle",
+        "sleep",
+        "recover",
+        "markers"
+       ]
+      }
+     }
+    },
+    "required": [
+     "module",
+     "state",
+     "focus"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
   "report_feedback": {
    "name": "report_feedback",
    "description": "把系统 bug / 用户的新需求报告给开发者（根规则）。只写产品行为，不写健康数值、名字、联系方式。照返回的 tell_user 告诉用户。",
@@ -8278,7 +8341,7 @@
        "string",
        "null"
       ],
-      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help"
+      "description": "body / training / nutrition / recipes / grocery / records / memory / feedback / help / home"
      },
      "query": {
       "type": [
@@ -15162,6 +15225,66 @@
      "changes",
      "reason",
      "version"
+    ],
+    "additionalProperties": false
+   },
+   "strict": true
+  },
+  "set_home": {
+   "name": "set_home",
+   "description": "今天页「我的首页」：module 放上(pinned) / 移走(hidden) / 交回规则(auto)；focus 设关注点。null = 不改。",
+   "input_schema": {
+    "type": "object",
+    "properties": {
+     "module": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "health_monitor",
+       "strain_coach",
+       "sleep",
+       "sleep_goal",
+       "training",
+       "muscle_load",
+       "journal",
+       null
+      ]
+     },
+     "state": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "enum": [
+       "pinned",
+       "hidden",
+       "auto",
+       null
+      ]
+     },
+     "focus": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "items": {
+       "type": "string",
+       "enum": [
+        "fat",
+        "muscle",
+        "sleep",
+        "recover",
+        "markers"
+       ]
+      }
+     }
+    },
+    "required": [
+     "module",
+     "state",
+     "focus"
     ],
     "additionalProperties": false
    },

@@ -165,6 +165,8 @@ from ..friends.tools import TOOL_SPECS as FRIENDS_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in FRIENDS_TOOL_SPECS]  # Friends page: circle members' shared status and leaderboard ranks
 from ..water.tools import TOOL_SPECS as WATER_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in WATER_TOOL_SPECS]  # daily water intake (issue #125)
+from ..ui.tools import TOOL_SPECS as UI_TOOL_SPECS  # noqa: E402
+TOOLS += [Tool(**spec) for spec in UI_TOOL_SPECS]  # the AI-first page: my Today and the focus (ui/, flag ui_ai_first, #279)
 from ..feedback.tools import TOOL_SPECS as FEEDBACK_TOOL_SPECS  # noqa: E402
 TOOLS += [Tool(**spec) for spec in FEEDBACK_TOOL_SPECS]  # root rules: bugs and feature requests to the developers
 from .scene_tools import TOOL_SPECS as SCENE_TOOL_SPECS  # noqa: E402

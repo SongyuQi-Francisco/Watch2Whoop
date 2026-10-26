@@ -30,7 +30,7 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "slim.js", "slim-quotes.js", "notices.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "ui-ai-first.js", "slim.js", "slim-quotes.js", "notices.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js"]
 PAGES = ["index.html", "activate.html", "install.html", "oauth.html"]
 
 

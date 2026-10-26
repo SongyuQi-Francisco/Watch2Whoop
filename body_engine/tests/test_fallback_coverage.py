@@ -63,6 +63,7 @@ READ = {
     "grocery/store-products/{x}": ["get_price_history"],
     "feedback": ["list_feedback"],
     "water": ["get_briefing"],                                 # today's water vs goal (briefing section water)
+    "ui/home": ["get_scores", "get_sleep"],                    # ui_ai_first: my Today's order; its findings come from the scores and sleep (ui/findings.py)
 }
 # endpoints with no data for the AI to read
 NO_DATA = {
@@ -107,7 +108,9 @@ NO_DATA = {
     "health-history": "upload of a Health export", "sync/refresh": "sync control", "sync/status": "sync control",
     "data-status": "sync control: which health data types reached the server (#163)",
     "sync/connection": "sync control: whether the phone's sync stopped (sync/broken.py)",
-    "sync/overview": "sync control: the sync status panel (sync/overview.py)", "sync/device": "sync control: the app's phone report",
+    "ui": "ui_ai_first: the base path of the calls below (ui-ai-first.js uiPath)", "ui/focus": "setting: what the user cares about (set_home)",
+    "ui/modules/{x}": "setting: cards on my Today (set_home)", "ui/overview-seen": "the first screen was shown",
+        "sync/overview": "sync control: the sync status panel (sync/overview.py)", "sync/device": "sync control: the app's phone report",
     "sync/backfill": "sync control: start the history top-up (sync/backfill.py)",
     "sync/history/seen": "sync control: the top-up card was shown", "sync/history/mute": "setting: stop the top-up reminders",
     "notices": "messages from the admin (notices/)", "notices/{x}/seen": "messages from the admin",
