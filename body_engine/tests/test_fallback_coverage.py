@@ -80,6 +80,7 @@ NO_DATA = {
     "training/session/{x}": "write: the training page's set-by-set draft (FB-5)",
     "training/session/{x}/submit": "write: submit the ticked sets to the training log (log_workout)",
     "training/import/hevy": "the Hevy import sheet: upload, last summary, unmatched names (#161); the imported sets reach the AI through get_training_day / get_training_calendar",
+    "appearance": "the look of the Today page (theme, daily quote; flag slim_mode, #126): a display setting, nothing for the AI to read",
     "weight": "write: the day's weight from 记录 → 日记 (log_weight; offline_mode)",
     "journal/{x}/{x}": "write: one journal answer (log_journal)",
     "meal-logs/{x}": "write: undo a quick meal",

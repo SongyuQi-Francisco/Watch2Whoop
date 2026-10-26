@@ -637,7 +637,7 @@
     try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ }   // start-up paths and flags of this account
     S.offlineOn = false; S.offlineAt = null; showBanner();
     S.data = {}; S.me = null; pluginFiles = null;
-    window.BodyAI?.reset();
+    window.BodyAI?.reset(); window.BodySlim?.reset();
     $("#view").innerHTML = ""; $("#view").dataset.shown = "";
     closeSheet();
     showLogin("");
@@ -1565,7 +1565,7 @@
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
     // Stacked on phones; two / three columns on wide screens (.dash in app.css)
     // Activity right after the scores, so on phones it is near the first screen
-    return `<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
+    return `${window.BodySlim?.top() || ""}<div class="dash"><div class="col col-a">${scoresHtml(d.scores)}${activityHtml(tday?.daily)}${extras}${remindersHtml(d.reminders)}</div>
       <div class="col col-b">${sleepCardHtml(d.sleep)}${goalCardHtml(goal, d.sleep, sleepCoach)}</div>
       <div class="col col-c">${dayCardHtml(d, meals)}${mdata ? window.BodyMuscleLoad.card(mdata, muscleCtx()) : ""}${v2 ? window.BodyJournal.cardHtml(journalCtx(), day, jitems && jday ? { items: jitems, entries: jday } : null) : ""}</div></div>`;
   };
@@ -1595,6 +1595,7 @@
     const arc = $(".ring .arc", view);
     if (arc) requestAnimationFrame(() => requestAnimationFrame(() => arc.setAttribute("stroke-dashoffset", arc.dataset.target)));
     bindMeals(view);
+    window.BodySlim?.bind(view);
     if (muscleOn()) window.BodyMuscleLoad.bindCard(view, muscleCtx());
     const c = $("#to-cal", view);
     if (c) c.onclick = () => { S.recSub = "training"; setTab("record"); };
@@ -4316,6 +4317,7 @@
     await plugged;
     lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet };
     lateInit.me = me;
+    if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
     if (!stale && me.me?.intro_seen === false) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();

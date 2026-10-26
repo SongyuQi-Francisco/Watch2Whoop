@@ -1815,4 +1815,12 @@ I18N.addEn({
   "识别出：{text}。可以改，点发送才发给 Jarvis": "Heard: {text}. Edit if needed; tap Send to send it to Jarvis",
   "已发送：{text}": "Sent: {text}",
   "等 Jarvis 回答完再说": "Wait for Jarvis to finish answering",
+  "外观": "Appearance",
+  "主题": "Theme",
+  "默认": "Default",
+  "薄肌": "Lean",
+  "每日语录": "Daily quote",
+  "换一句": "Next quote",
+  "关闭语录": "Turn off the quote",
+  "原帖": "Original post",
 });

@@ -37,6 +37,7 @@ from .explain.api import router as explain_router
 from .rawdata.api import ingest_router as rawdata_ingest_router, router as rawdata_router
 from .cardio.api import router as cardio_router
 from .water.api import router as water_router
+from .appearance.api import router as appearance_router
 from .offline.api import router as offline_router
 from .sleep_night.api import router as sleep_night_router
 from .training.api import router as training_router
@@ -181,6 +182,7 @@ app.include_router(rawdata_router)
 app.include_router(rawdata_ingest_router)   # uploads from the app (rawdata/ingest.py)
 app.include_router(cardio_router)
 app.include_router(water_router)   # daily water intake (water/, issue #125)
+app.include_router(appearance_router)   # theme + daily quote of the Today page (appearance/, issue #126, flag slim_mode)
 app.include_router(offline_router)   # weight from the Today page, queued while offline (offline/, #77)
 app.include_router(sleep_night_router)   # sleep detail page (sleep_night/, flag sleep_detail)
 app.include_router(account_api.router)
