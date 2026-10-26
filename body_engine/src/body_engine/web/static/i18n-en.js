@@ -1815,4 +1815,17 @@ I18N.addEn({
   "识别出：{text}。可以改，点发送才发给 Jarvis": "Heard: {text}. Edit if needed; tap Send to send it to Jarvis",
   "已发送：{text}": "Sent: {text}",
   "等 Jarvis 回答完再说": "Wait for Jarvis to finish answering",
+  // product archive fields (issue #291)
+  "反式脂肪": "Trans fat",
+  "膳食纤维": "Fibre",
+  "钾": "Potassium",
+  "钙": "Calcium",
+  "铁": "Iron",
+  "胆固醇": "Cholesterol",
+  "配料": "Ingredients",
+  "过敏原": "Allergens",
+  "可能含有": "May contain",
+  "图片": "Picture",
+  "无": "None",
+  "每份（{g} {u}）": "Per serving ({g} {u})",
 });

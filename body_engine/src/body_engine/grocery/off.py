@@ -23,9 +23,23 @@ _cache: dict[str, tuple[float, dict]] = {}
 CACHE_S = 86400
 
 # OFF nutriments key (per 100 g) -> ours, factor
+# (OFF gives grams per 100 g for everything except energy, so minerals and cholesterol are x 1000 -> mg)
 _MAP = {"energy-kcal_100g": ("kcal", 1), "proteins_100g": ("protein_g", 1), "carbohydrates_100g": ("carbs_g", 1),
-        "fat_100g": ("fat_g", 1), "saturated-fat_100g": ("sat_fat_g", 1), "sugars_100g": ("sugar_g", 1),
-        "sodium_100g": ("sodium_mg", 1000)}
+        "fat_100g": ("fat_g", 1), "saturated-fat_100g": ("sat_fat_g", 1), "trans-fat_100g": ("trans_fat_g", 1),
+        "sugars_100g": ("sugar_g", 1), "added-sugars_100g": ("added_sugar_g", 1), "fiber_100g": ("fiber_g", 1),
+        "sodium_100g": ("sodium_mg", 1000), "potassium_100g": ("potassium_mg", 1000), "calcium_100g": ("calcium_mg", 1000),
+        "iron_100g": ("iron_mg", 1000), "cholesterol_100g": ("cholesterol_mg", 1000)}
+
+
+def _tags(tags) -> list[str]:
+    """OFF allergen tags ("en:milk", "fr:lait") -> readable names of the English ones ("milk", "tree nuts")."""
+    out = []
+    for t in tags or []:
+        if isinstance(t, str) and t.startswith("en:"):
+            name = t[3:].replace("-", " ").strip()
+            if name and name not in out:
+                out.append(name)
+    return out
 
 
 def contact() -> str | None:
@@ -71,7 +85,8 @@ def _fetch(code: str) -> dict:
 
 
 def parse(code: str, data: dict) -> dict:
-    """OFF product JSON -> {found, barcode, name, brand, quantity, nutrition, source, url}."""
+    """OFF product JSON -> {found, barcode, name, brand, quantity, nutrition, source, url} plus, when OFF has them, ingredients,
+    allergens, allergen_traces and image_url (a link to OFF's picture, to be stored as a reference only)."""
     base = {"barcode": code, "source": P.OFF_ATTRIBUTION, "url": P.OFF_PAGE_URL.format(code=code)}
     prod = data.get("product") if data.get("status") == 1 else None
     if not prod:
@@ -84,8 +99,18 @@ def parse(code: str, data: dict) -> dict:
             nutrition[ours] = round(float(v) * f, 1)
     brand = (prod.get("brands") or "").split(",")[0].strip() or None
     name = (prod.get("product_name_en") or prod.get("product_name") or "").strip() or None
-    return {"found": True, **base, "name": name[:60] if name else None, "brand": brand[:40] if brand else None,
-            "quantity": (prod.get("quantity") or "").strip() or None, "nutrition": nutrition}
+    out = {"found": True, **base, "name": name[:60] if name else None, "brand": brand[:40] if brand else None,
+           "quantity": (prod.get("quantity") or "").strip() or None, "nutrition": nutrition}
+    ingredients = (prod.get("ingredients_text_en") or prod.get("ingredients_text") or "").strip()
+    if ingredients:
+        out["ingredients"] = ingredients[:P.INGREDIENTS_MAX_LEN]
+    for key, field in (("allergens", "allergens_tags"), ("allergen_traces", "traces_tags")):
+        if tags := _tags(prod.get(field))[:P.MAX_ALLERGENS]:
+            out[key] = tags
+    image = (prod.get("image_front_url") or "").strip()
+    if image.startswith("https://") and len(image) <= P.IMAGE_URL_MAX_LEN:   # a reference to OFF's own picture; never fetched
+        out["image_url"] = image
+    return out
 
 
 def lookup(user_id: int, barcode: str) -> dict:

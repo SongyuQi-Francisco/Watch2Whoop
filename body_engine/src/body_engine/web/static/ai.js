@@ -1286,9 +1286,11 @@
     const seg = sp ? [["p", sp.protein_g], ["c", sp.carbs_g], ["f", sp.fat_g]].filter(([, v]) => v) : [];
     const split = sp ? `<div class="ai-split" role="img" aria-label="${esc(`${tr("蛋白")} ${sp.protein_g}% · ${tr("碳水")} ${sp.carbs_g}% · ${tr("脂肪")} ${sp.fat_g}%`)}">${seg.map(([k, v]) => `<span class="${k}" style="flex:${v} 1 0"></span>`).join("")}</div>
       <div class="ai-split-key small muted"><span>${esc(tr("热量来源"))}</span><span><i class="p"></i>${esc(tr("蛋白"))} ${sp.protein_g}%</span><span><i class="c"></i>${esc(tr("碳水"))} ${sp.carbs_g}%</span><span><i class="f"></i>${esc(tr("脂肪"))} ${sp.fat_g}%</span></div>` : "";
-    const rest = [[tr("饱和脂肪"), p.sat_fat_g, "g", 1], [tr("糖"), p.sugar_g, "g", 1], [tr("钠"), p.sodium_mg, "mg", 0]].filter(([, v]) => v != null)
+    const rest = [[tr("饱和脂肪"), p.sat_fat_g, "g", 1], [tr("反式脂肪"), p.trans_fat_g, "g", 1], [tr("糖"), p.sugar_g, "g", 1], [tr("添加糖"), p.added_sugar_g, "g", 1],
+      [tr("膳食纤维"), p.fiber_g, "g", 1], [tr("钠"), p.sodium_mg, "mg", 0], [tr("钾"), p.potassium_mg, "mg", 0], [tr("钙"), p.calcium_mg, "mg", 0],
+      [tr("铁"), p.iron_mg, "mg", 1], [tr("胆固醇"), p.cholesterol_mg, "mg", 0]].filter(([, v]) => v != null)
       .map(([l, v, unit, d]) => `${esc(l)} ${n0(v, d)} ${unit}`);
-    const per = !s ? "" : `<div class="small muted ai-card-cap num">${esc(s.kind === "piece" ? tr("每个（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }) : tr("整包（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }))}: ${
+    const per = !s ? "" : `<div class="small muted ai-card-cap num">${esc(s.kind === "serving" ? tr("每份（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }) : s.kind === "piece" ? tr("每个（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }) : tr("整包（{g} {u}）", { g: n0(s.amount, 1), u: s.unit }))}: ${
       [s.kcal != null ? `${n0(s.kcal)} kcal` : "", s.protein_g != null ? `${esc(tr("蛋白"))} ${n0(s.protein_g, 1)} g` : "", s.carbs_g != null ? `${esc(tr("碳水"))} ${n0(s.carbs_g, 1)} g` : "",
         s.fat_g != null ? `${esc(tr("脂肪"))} ${n0(s.fat_g, 1)} g` : ""].filter(Boolean).join(" · ")}</div>`;
     return psec(tr("每 100 {u}", { u }), `<div class="nut4">${cell(tr("热量"), p.kcal, "kcal")}${cell(tr("蛋白"), p.protein_g, "g", 1)}${cell(tr("碳水"), p.carbs_g, "g", 1)}${cell(tr("脂肪"), p.fat_g, "g", 1)}</div>
@@ -1335,7 +1337,9 @@
   }
   function productBody(c) {
     const sub = [c.brand, c.size].filter(Boolean).join(" · ");
-    return `<div class="ai-card-title">${esc(c.name)}</div>${sub ? `<div class="small muted ai-card-sub">${esc(sub)}</div>` : ""}
+    // allergens are short labels, so they show; the ingredient text and the picture stay in the library (the card has no room, and the CSP loads no outside image)
+    const allergens = [...(c.allergens || []).map((a) => pbadge("mid", a)), ...(c.traces || []).map((a) => pbadge("", `${tr("可能含有")} ${a}`))].join(" ");
+    return `<div class="ai-card-title">${esc(c.name)}</div>${sub ? `<div class="small muted ai-card-sub">${esc(sub)}</div>` : ""}${allergens ? `<div class="ai-card-sub">${allergens}</div>` : ""}
       ${c.nutrition ? productNutrition(c.nutrition) : ""}${productStores(c)}${productHistory(c)}${productPantry(c)}`;
   }
   // meal card rows (v2: the card has entry_actions): tap a row for its portion / delete buttons
