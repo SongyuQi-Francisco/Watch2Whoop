@@ -79,3 +79,35 @@ def test_rollback_kinds_are_the_ones_before_the_move():
         for action in ("create", "update", "delete", "merge", "rollback"):
             assert writelog._can_roll(kind, action) == (action != "rollback" and only.get(kind, action) == action), (kind, action)
     assert not writelog._can_roll("other", "other")
+
+
+def test_check_toolset_on_a_non_health_toolset():
+    """datalayer.testing.check_toolset works on any application's tools: a three-tool reading-notes toolset (the kind of
+    example docs/datalayer-design.md phase 4 plans) passes, and each inconsistency or overrun is named."""
+    import dataclasses
+
+    from body_engine.datalayer import Messages
+    from body_engine.datalayer import toolsets as ts
+    from body_engine.datalayer.spec import Tool, nullable, schema
+
+    def noop(conn, uid, a):
+        return None
+    tools = [Tool("list_books", "Books I am reading.", schema({}), noop, scope="books", group="books"),
+             Tool("add_note", "Add a note to a book.", schema({"book": {"type": "string"}, "text": {"type": "string"}}),
+                  noop, scope="", group="notes", writes=True),
+             Tool("delete_note", "Delete a note.", schema({"id": {"type": "integer"}, "why": nullable("string")}),
+                  noop, scope="", group="notes", writes=True)]
+    texts = Messages(**{f.name: f.name for f in dataclasses.fields(Messages)})
+    meta = ts.meta_tools({"books": "", "notes": ""}, texts)
+    cfg = ts.ToolsetConfig(core=("list_books",), groups={"books": "books", "notes": "notes"},
+                           contexts={"reader": ("notes",)}, confirm={"delete_note"}, meta=meta, find_max=5, messages=texts)
+    roomy = ts.Budgets(core=1000, meta=3000, listing=4000, context=4000, groups={"books": 500, "notes": 1000})
+    assert testing.check_toolset(cfg, tools, roomy) == []
+    tight = ts.Budgets(core=10, meta=3000, listing=4000, context=4000, groups={"books": 500})
+    assert testing.check_toolset(cfg, tools, tight) == [f"core: {ts.definition_chars(tools[:1])} > 10 chars",
+                                                        "group notes: no budget"]
+    bad = ts.ToolsetConfig(core=("list_books", "nope"), groups={"books": "", "notes": "", "empty": ""},
+                           contexts={"reader": ("notes", "ghost")}, confirm={"list_books"}, meta=meta, find_max=5,
+                           messages=texts)
+    assert ts.config_problems(bad, tools) == ["core: no tool nope", "confirm: list_books is not a write tool",
+                                              "context reader: unknown group 'ghost'", "group empty: no tools"]
