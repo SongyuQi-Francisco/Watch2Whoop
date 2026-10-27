@@ -13,6 +13,8 @@ The API key lives only in the adapter object and is discarded after use; error m
 from dataclasses import dataclass, field
 from typing import Iterator
 
+from ...toolspec import relaxed
+
 MAX_OUTPUT_TOKENS = 16000
 TIMEOUT_S = 180
 
@@ -37,6 +39,10 @@ class TurnResult:
 class Adapter:
     kind = ""
     web = False   # the vendor's official web search / fetch tools (set by adapters.make; only WEB_TOOL_KINDS act on it)
+    shorten_history = False   # older turns' tool results may be sent shortened (context.shorten_old_results). Off for every
+                              # vendor that replays reasoning bound to the exact earlier turns (Claude's preserved thinking,
+                              # OpenAI reasoning items, Gemini thought signatures, DeepSeek thinking mode): only the fallback,
+                              # whose thinking is off (DeepSeekFallbackAdapter), turns it on.
     no_tool_calls = False   # the tools are still sent (history and prompt cache stay valid) but the model may not call any:
                             # the tools-off answer at the round / cost limit (chat._loop sets it on a copy; issue #184)
 
@@ -48,6 +54,18 @@ class Adapter:
     @property
     def key(self) -> str:
         return f"{self.kind}:{self.model}"
+
+    def parameters(self, tool) -> dict:
+        """The JSON schema this vendor gets for a tool's arguments: the relaxed form MCP clients get too (nullable and
+        defaulted properties optional, toolspec.relaxed), about 11% shorter than the strict one and the model writes no
+        `"x": null` for unused fields (issue #78). The executor puts the omitted values back (fill_defaults) before any
+        handler runs. Only the Anthropic adapter sends the strict form (strict tools need it)."""
+        return relaxed(tool.input_schema)
+
+    def tool_defs(self, tools) -> list[dict]:
+        """The function-tool definitions exactly as this vendor's request carries them (the vendor's own server tools,
+        such as web search, are added by stream_turn). Also what tests measure (tests/test_token_economy.py)."""
+        return [tool.api_definition() for tool in tools]
 
     def stream_turn(self, system: str, history: list[dict], tools: list[dict]) -> Iterator[tuple[str, object]]:
         raise NotImplementedError

@@ -133,9 +133,13 @@ def is_fallback(p: dict | None) -> bool:
     return bool(p) and p.get("kind") == KIND
 
 
-def _own_schema(schema: dict) -> dict:
+def own_schema(schema: dict) -> dict:
+    """A tool's schema without the `user` parameter (only ever one's own data; the executor fills "me")."""
     props = {k: v for k, v in (schema.get("properties") or {}).items() if k != "user"}
     return {**schema, "properties": props, "required": [r for r in schema.get("required", []) if r != "user"]}
+
+
+_own_schema = own_schema   # old name
 
 
 def parity_names() -> tuple:

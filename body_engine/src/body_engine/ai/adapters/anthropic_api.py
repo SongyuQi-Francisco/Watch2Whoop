@@ -81,11 +81,14 @@ class AnthropicAdapter(Adapter):
                 {"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": WEB_MAX_USES,
                  "max_content_tokens": WEB_FETCH_MAX_TOKENS}]
 
+    def tool_defs(self, tools) -> list[dict]:
+        return [t.api_definition() for t in tools]   # strict tools: the full strict schema (every property required, nullable)
+
     def stream_turn(self, system, history, tools):
         client = anthropic.Anthropic(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
         messages = self._messages(history)
         kwargs = dict(model=self.model, max_tokens=MAX_OUTPUT_TOKENS, system=system, cache_control={"type": "ephemeral"})
-        tool_defs = [t.api_definition() for t in tools] + self._web_tools()
+        tool_defs = self.tool_defs(tools) + self._web_tools()
         if tool_defs:   # none for the history fold call (ai/context.py)
             kwargs["tools"] = tool_defs
             if self.no_tool_calls:
