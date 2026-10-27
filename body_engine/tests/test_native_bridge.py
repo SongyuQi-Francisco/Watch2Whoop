@@ -44,7 +44,9 @@ def test_today_hook_and_plugin_context():
 def test_jarvis_entry_native_hooks():
     # the app's camera only when the app says it has one; otherwise the page's own file input, as before
     assert 'if (window.Watch2WhoopFeatures?.nativeJarvis?.camera) tell("jv-camera");' in JV
-    assert "native: () => ({ jv, V, C, isJarvis, offline, runKey, finishVoice, keys: KEYS.map((k) => k.id) })," in JV
+    assert "native: () => ({ jv, V, C, isJarvis, offline, runKey, finishVoice, cancelVoice, startVoice, holdMove, holdUp, voiceOn, keys: KEYS.map((k) => k.id) })," in JV
+    # the hold gesture of either key goes through the same two functions
+    assert "holdMove(e.clientX, e.clientY)" in JV and "e.pointerId === V.pid) holdUp()" in JV
     # a tap from the app never opens the page's own (invisible) menu: Jarvis opens the app's menu, the rest goes where the key went
     src = BRIDGE.read_text(encoding="utf-8")
     tap = src[src.index("  function jvTap("):src.index("  function jvRun(")]
@@ -81,17 +83,21 @@ function run(scenario) {
     addEventListener() {},
   };
   const features = {};
-  const jarvis = { calls: [] };
+  const jarvis = { calls: [] }, V = { state: "off", pid: null };
   const window = {
     Watch2Whoop: { postMessage: (m) => msgs.push(m) },
     get Watch2WhoopFeatures() { return features; },
     BodyFlags: { on: (k) => scenario.flags.includes(k) },
     I18N: { t: (k) => k },
     BodyHooks: { on: (n, f) => (hooks[n] = hooks[n] || []).push(f), emit: (n, d) => (hooks[n] || []).forEach((f) => f(d)) },
-    BodyJarvis: { native: () => ({ jv: ask, V: { state: "off" }, keys: ["chat", "voice", "photo", "quick"],
+    BodyJarvis: { native: () => ({ jv: ask, V, keys: ["chat", "voice", "photo", "quick"], voiceOn: () => !scenario.noVoice,
+      startVoice: (o) => { jarvis.calls.push(`start:${o.mode}:${o.pointerId}:${o.x},${o.y}`); V.state = "hold"; V.pid = o.pointerId; },
+      holdMove: (x, y) => jarvis.calls.push(`move:${x},${y}`), holdUp: () => { jarvis.calls.push("up"); V.state = "locked"; },
+      cancelVoice: (m, why) => { jarvis.calls.push(`cancel:${why}`); V.state = "off"; },
       C: { openAssistant: () => jarvis.calls.push("assistant"), needsNet: () => jarvis.calls.push("needsNet") },
       isJarvis: () => !scenario.ownAi, offline: () => false, runKey: (id) => jarvis.calls.push(id), finishVoice: () => jarvis.calls.push("finish") }) },
-    BodyAI: { openHalf: () => true, sendPhoto: (f) => jarvis.calls.push(`photo:${f.name}:${f.type}:${f.size}`) },
+    BodyAI: { openHalf: () => true, sendPhoto: (f) => jarvis.calls.push(`photo:${f.name}:${f.type}:${f.size}`), ensureJarvis: () => true,
+      phase: () => scenario.phase || null },
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     addEventListener: (n, f) => (listeners[n] = listeners[n] || []).push(f),
     innerWidth: 390, scrollY: 0,
@@ -126,6 +132,15 @@ function run(scenario) {
     window.BodyNative.action({ kind: "jarvis", id: "photo" });
     window.BodyNative.action({ kind: "jarvis", id: "hold" });
     window.BodyNative.action({ kind: "jarvis", id: "nope" });
+    if (scenario.hold) {   // hold to talk on the app's key: start, slide, lift; the state goes back to the app
+      window.BodyNative.action({ kind: "jarvis", id: "hold-move", x: 1, y: 1 });   // nothing is holding yet: ignored
+      window.BodyNative.action({ kind: "jarvis", id: "hold-start", x: 195, y: 788 });
+      flush(); r.holding = JSON.parse(msgs.filter((m) => m.startsWith("jvn:")).pop().slice(4));
+      window.BodyNative.action({ kind: "jarvis", id: "hold-move", x: 260, y: 650 });
+      window.BodyNative.action({ kind: "jarvis", id: "hold-end" });
+      window.BodyNative.action({ kind: "jarvis", id: "hold-cancel" });   // not holding any more (locked): ignored
+      flush(); r.locked = JSON.parse(msgs.filter((m) => m.startsWith("jvn:")).pop().slice(4));
+    }
     window.BodyNative.action({ kind: "today", card: "recovery" });
     window.BodyNative.action({ kind: "today", card: "bad\"]" });
     window.BodyNative.action({ kind: "today", card: "refresh" });
@@ -141,6 +156,9 @@ function run(scenario) {
 }
 run({ name: "off", flags: [] });
 run({ name: "on", flags: ["native_jarvis", "jarvis_orbit", "native_today"], features: { nativeUi: { v: 1 }, nativeJarvis: { v: 1, camera: true }, nativeToday: { v: 1 } }, cover: true });
+run({ name: "hold", hold: true, flags: ["native_jarvis", "jarvis_orbit"], features: { nativeUi: { v: 1 }, nativeJarvis: { v: 1 } } });
+run({ name: "hold-novoice", hold: true, noVoice: true, flags: ["native_jarvis", "jarvis_orbit"], features: { nativeUi: { v: 1 }, nativeJarvis: { v: 1 } } });
+run({ name: "answering", phase: "answering", flags: ["native_jarvis", "jarvis_orbit"], features: { nativeUi: { v: 1 }, nativeJarvis: { v: 1 } } });
 run({ name: "own-ai", ownAi: true, flags: ["native_jarvis", "jarvis_orbit"], features: { nativeUi: { v: 1 }, nativeJarvis: { v: 1 } } });
 run({ name: "today-only", flags: ["native_jarvis", "native_today"], features: { nativeUi: { v: 1 }, nativeToday: { v: 1 } } });
 console.log(JSON.stringify(out));
@@ -207,3 +225,18 @@ def test_actions_go_to_the_pages_own_code(tmp_path):
 def test_page_key_stays_when_the_app_does_not_draw_it(tmp_path):
     r = _run(tmp_path)["today-only"]
     assert r["hidden"] is False and _msg(r["after"], "jvn:") is None and _msg(r["after"], "tdn:")["show"] is True
+
+
+@needs_node
+def test_hold_to_talk_on_the_apps_key_runs_the_pages_voice_and_reports_its_state(tmp_path):
+    r = _run(tmp_path)
+    h = r["hold"]
+    i = h["jarvis"].index("start:hold:app:195,788")
+    assert h["jarvis"][i:i + 3] == ["start:hold:app:195,788", "move:260,650", "up"]
+    assert "move:1,1" not in h["jarvis"] and not any(c.startswith("cancel") for c in h["jarvis"])
+    assert h["holding"]["phase"] == "recording" and h["holding"]["voice"] == "hold" and h["holding"]["menu"] is False
+    assert h["locked"]["voice"] == "locked" and h["locked"]["phase"] == "recording"
+    # no way to talk (no recogniser): holding is a tap, as on the page's key; Jarvis then has nothing more to do
+    assert not any(c.startswith("start:") for c in r["hold-novoice"]["jarvis"])
+    assert _msg(r["hold-novoice"]["after"], "jvn:")["talk"] is False and _msg(h["after"], "jvn:")["talk"] is True
+    assert _msg(r["answering"]["after"], "jvn:")["phase"] == "answering" and _msg(h["after"], "jvn:")["phase"] == "idle"

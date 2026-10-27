@@ -26,6 +26,7 @@ private let kArc: CGFloat = 120      // jarvis-entry.js R_ARC
 private let kArcDY: CGFloat = 22     // ARC_DY: the arc's centre is this far below the key's centre
 private let kHit: [Double] = [0.105, 0.128, 0.151, 0.174]   // DIAL_HIT: when the scan passes each key (s)
 private let kHoldS = 0.35            // HOLD_MS
+private let kRingDelayS = 0.12       // RING_DELAY_MS: the hold ring starts filling only after this, so a quick tap shows nothing
 private let kMoveTol: CGFloat = 10   // MOVE_TOL
 private let kSub: CGFloat = 46       // a key of the menu
 
@@ -54,6 +55,9 @@ struct NativeJarvisView: View {
   @State private var moved = false
   @State private var held = false
   @State private var holdWork: DispatchWorkItem?
+  @State private var holdFill: CGFloat = 0
+  @State private var lastPoint: CGPoint = .zero
+  @State private var lastMoveAt: CFTimeInterval = 0
 
   private var st: JarvisState { model.jarvis }
   private var open: Bool { model.menuOpen }
@@ -85,16 +89,37 @@ struct NativeJarvisView: View {
   private func runDemo() {
     guard !demoRunning else { return }
     demoRunning = true
+    let sec: (Double) async -> Void = { s in try? await Task.sleep(nanoseconds: UInt64(s * 1_000_000_000)) }
     Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 2_000_000_000)
-      for _ in 0..<5 where model.demo && st.show && st.menu {
+      await sec(2)
+      for _ in 0..<(model.demo2 ? 0 : 3) where model.demo && st.show && st.menu {
         pressed = true
-        try? await Task.sleep(nanoseconds: 90_000_000)
+        await sec(0.09)
         pressed = false
         setOpen(true)
-        try? await Task.sleep(nanoseconds: 2_200_000_000)
+        await sec(2.2)
         setOpen(false)
-        try? await Task.sleep(nanoseconds: 1_300_000_000)
+        await sec(1.3)
+      }
+      // hold to talk: slide up-left = cancel; slide up-right = lock, then the key again = done; hold and lift = send / review
+      // (the page's cancel / lock targets sit 104 pt to each side and 132 pt above the key's centre)
+      let gestures = model.demo2 ? [(0.0, 0.0)] : [(-104.0, 0.0), (104.0, 2.0), (0.0, 0.0)]
+      for (dx, then) in gestures where model.demo && st.show && st.talk && st.phase == "idle" {
+        let start = c
+        beginPress(at: start)
+        await sec(kHoldS + 0.1)
+        if dx != 0 {
+          for k in 1...24 {
+            let f = CGFloat(k) / 24, p = CGPoint(x: start.x + CGFloat(dx) * f, y: start.y - 132 * f)
+            lastPoint = p
+            holdMoved(to: p)
+            await sec(0.025)
+          }
+        }
+        await sec(1.2)
+        endPress(at: lastPoint)
+        if then > 0 { await sec(then); tap() }
+        await sec(3)
       }
       demoRunning = false
     }
@@ -212,57 +237,112 @@ struct NativeJarvisView: View {
     .accessibilityLabel(st.label(kKeys[i].id, kKeys[i].fallback))
   }
 
+  /// The icon of the Jarvis key: the menu's close arrow, or what the page is doing (phase), or the Jarvis mark.
+  private var icon: String {
+    if open { return "chevron.down" }
+    switch st.phase {
+    case "recording": return "mic.fill"
+    case "recognizing": return "waveform"
+    case "review": return "text.cursor"
+    case "sending": return "arrow.up"
+    case "answering": return "ellipsis"
+    default: return "atom"
+    }
+  }
+
   private func mainKey(glass: Bool) -> some View {
-    let rec = st.voice != "off"
+    let rec = st.phase == "recording" || held   // filled while the microphone is on, as the page's key (.rec)
     let back = st.dark == isDark ? st.theme.bg : Theme(nil, dark: isDark).bg
+    let busy = ["recognizing", "sending", "answering"].contains(st.phase)
     return ZStack {
-      Image(systemName: "atom").opacity(!open && !rec ? 1 : 0).scaleEffect(open ? 0.7 : 1)
-      Image(systemName: "chevron.down").opacity(open && !rec ? 1 : 0).scaleEffect(open ? 1 : 0.7)
-      Image(systemName: "mic.fill").opacity(rec ? 1 : 0)
+      Image(systemName: icon)
+        .id(icon)
+        .transition(reduceMotion ? .identity : .scale(scale: 0.7).combined(with: .opacity))
+        .modifier(BusyPulse(on: busy && !reduceMotion))
     }
     .font(.system(size: 22, weight: .medium))
     .foregroundColor(rec ? back : ink)
     .frame(width: keySize, height: keySize)
     .contentShape(Circle())
     .modifier(KeySurface(glass: glass, ink: ink, filled: rec, dark: isDark, id: "jarvis", ns: ns))
+    .overlay(   // the hold ring: fills while the finger stays down (jarvis-entry.js ringStart), then talk starts
+      Circle().trim(from: 0, to: holdFill).stroke(ink, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        .rotationEffect(.degrees(-90)).frame(width: keySize + 10, height: keySize + 10).allowsHitTesting(false)
+    )
     .scaleEffect(pressed ? 0.92 : 1)
     .animation(reduceMotion ? nil : (pressed ? .easeOut(duration: 0.05) : .spring(response: 0.32, dampingFraction: 0.45)), value: pressed)
-    .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: open)
+    .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: icon)
+    .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: rec)
     .opacity(st.offline ? 0.4 : 1)
     .gesture(pressGesture)
+    .onDisappear { if held { endHold(cancelled: true) } }
     .accessibilityElement(children: .ignore)
-    .accessibilityLabel(open ? st.label("close", "收起 Jarvis 菜单") : st.label("key", "Jarvis"))
+    .accessibilityLabel(open ? st.label("close", "收起 Jarvis 菜单") : st.phase == "idle" ? st.label("key", "Jarvis") : st.label(st.phase, "Jarvis"))
     .accessibilityAddTraits(.isButton)
     .accessibilityAction { tap() }
   }
 
-  // ------------------------------------------------------------ press: tap / hold
+  // ------------------------------------------------------------ press: tap / hold to talk (jarvis-entry.js bindKey)
+  // Tap = the menu (or the page's tap). Hold (HOLD_MS) where the page can talk = talk at once: the finger's moves go to the
+  // page, which shows the cancel / lock targets and decides by the zone the finger lifts in (cancel, lock, or send / review).
+  // Moving more than MOVE_TOL before the hold counts = not a press (a scroll). Without a way to talk, a hold is a tap.
   private var pressGesture: some Gesture {
     DragGesture(minimumDistance: 0, coordinateSpace: .global)
       .onChanged { v in
-        if pressAt == nil {
-          pressAt = Date(); moved = false; held = false; pressed = true
-          let w = DispatchWorkItem { hold() }
-          holdWork = w
-          DispatchQueue.main.asyncAfter(deadline: .now() + kHoldS, execute: w)
-        } else if !moved && hypot(v.translation.width, v.translation.height) > kMoveTol {
-          moved = true; pressed = false; holdWork?.cancel()
-        }
+        if pressAt == nil { beginPress(at: v.location) }
+        else if held { holdMoved(to: v.location) }
+        else if !moved && hypot(v.translation.width, v.translation.height) > kMoveTol { moved = true; cancelPress() }
+        lastPoint = v.location
       }
-      .onEnded { _ in
-        holdWork?.cancel()
-        let wasHeld = held, wasMoved = moved
-        pressAt = nil; pressed = false; held = false; moved = false
-        if !wasHeld && !wasMoved { tap() }
-      }
+      .onEnded { v in endPress(at: v.location) }
   }
 
-  private func hold() {
+  private func beginPress(at p: CGPoint) {
+    pressAt = Date(); moved = false; held = false; pressed = true; lastPoint = p
+    guard st.talk && !open && st.phase == "idle" else { return }
+    if !reduceMotion { withAnimation(.linear(duration: kHoldS - kRingDelayS).delay(kRingDelayS)) { holdFill = 1 } }
+    let w = DispatchWorkItem { beginHold() }
+    holdWork = w
+    DispatchQueue.main.asyncAfter(deadline: .now() + kHoldS, execute: w)
+  }
+
+  private func cancelPress() {
+    pressed = false; holdWork?.cancel()
+    withAnimation(nil) { holdFill = 0 }
+  }
+
+  private func endPress(at p: CGPoint) {
+    let wasHeld = held, wasMoved = moved
+    holdWork?.cancel()
+    pressAt = nil; pressed = false; moved = false
+    withAnimation(nil) { holdFill = 0 }
+    if wasHeld { holdMoved(to: p, force: true); endHold(cancelled: false) }
+    else if !wasMoved { tap() }
+  }
+
+  /// The hold counted: the page starts listening (its own recogniser choice: the app's on-device one where it can).
+  private func beginHold() {
     guard pressAt != nil, !moved else { return }
-    held = true; pressed = false
+    held = true; pressed = false; model.holding = true
+    withAnimation(nil) { holdFill = 0 }
     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     if open { setOpen(false) }
-    model.send("action", ["kind": "jarvis", "id": "hold"])
+    model.meter.mark("jarvis-hold", seconds: 1.0)
+    model.send("action", ["kind": "jarvis", "id": "hold-start", "x": Double(lastPoint.x), "y": Double(lastPoint.y)])
+  }
+
+  /// The finger's position while holding, at most once a frame (the page re-checks its cancel / lock zones).
+  private func holdMoved(to p: CGPoint, force: Bool = false) {
+    let now = CACurrentMediaTime()
+    guard force || now - lastMoveAt >= 1.0 / 60 else { return }
+    lastMoveAt = now
+    model.meter.mark("jarvis-hold", seconds: 0.5)
+    model.send("action", ["kind": "jarvis", "id": "hold-move", "x": Double(p.x), "y": Double(p.y)])
+  }
+
+  private func endHold(cancelled: Bool) {
+    held = false; model.holding = false
+    model.send("action", ["kind": "jarvis", "id": cancelled ? "hold-cancel" : "hold-end", "x": Double(lastPoint.x), "y": Double(lastPoint.y)])
   }
 
   private func tap() {
@@ -352,5 +432,13 @@ struct PressScale: ButtonStyle {
     configuration.label
       .scaleEffect(configuration.isPressed ? 0.92 : 1)
       .animation(configuration.isPressed ? .easeOut(duration: 0.05) : .spring(response: 0.3, dampingFraction: 0.5), value: configuration.isPressed)
+  }
+}
+
+/// The icon breathes while the page is busy (recognising, sending, Jarvis answering): the system's symbol pulse on iOS 17+.
+private struct BusyPulse: ViewModifier {
+  let on: Bool
+  @ViewBuilder func body(content: Content) -> some View {
+    if #available(iOS 17.0, *) { content.symbolEffect(.pulse, options: .repeating, isActive: on) } else { content }
   }
 }

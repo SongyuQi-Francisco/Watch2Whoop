@@ -16,9 +16,11 @@ import UIKit
 
 /// What the page and Dart say about the Jarvis key.
 struct JarvisState: Equatable {
-  var enabled = false, show = false, menu = false, offline = false, dark = false
+  var enabled = false, show = false, menu = false, offline = false, dark = false, talk = false
   var rect: CGRect = .zero
   var voice = "off"
+  /// What the page is doing: idle / recording / recognizing / review / sending / answering (native-bridge.js jvState).
+  var phase = "idle"
   var theme = Theme()
   var labels: [String: String] = [:]
 
@@ -31,6 +33,8 @@ struct JarvisState: Equatable {
     dark = a["dark"] as? Bool ?? false
     rect = NativeUI.rect(a["rect"]) ?? .zero
     voice = a["voice"] as? String ?? "off"
+    talk = a["talk"] as? Bool ?? false
+    phase = a["phase"] as? String ?? "idle"
     theme = Theme(a["theme"] as? [String: Any], dark: dark)
     labels = a["labels"] as? [String: String] ?? [:]
   }
@@ -106,10 +110,13 @@ final class NativeUIModel: ObservableObject {
   @Published var jarvis = JarvisState()
   @Published var today = TodayState()
   @Published var menuOpen = false
+  /// A finger holds the Jarvis key (talking): the key stays on screen until it lifts, whatever covers it meanwhile.
+  @Published var holding = false
   /// Debug builds only (`W2W_NATIVE_UI=…,material`): the pre-iOS 26 material keys on an iOS 26 simulator, for screenshots.
   @Published var material = false
   /// Debug builds only (`W2W_NATIVE_UI=…,demo`): the menu opens / closes and 今天 scrolls by itself, for frame timing.
   @Published var demo = false
+  var demo2 = false
   /// What the native views send back (NativeUI.send).
   var send: (String, [String: Any]) -> Void = { _, _ in }
   let meter = FrameMeter()
@@ -158,7 +165,11 @@ final class NativeUI: NSObject {
     if !j.show || !j.menu, model.menuOpen { model.menuOpen = false }   // covered, a recording started, went offline …
     model.meter.enabled = (a["meter"] as? Bool) == true && (j.enabled || t.enabled)
     if model.material != ((a["material"] as? Bool) == true) { model.material = !model.material }
+    model.demo2 = (a["demo2"] as? Bool) == true
     if model.demo != ((a["demo"] as? Bool) == true) { model.demo = !model.demo }
+    #if DEBUG && targetEnvironment(simulator)
+    VoiceBridge.scripted = model.demo   // the demo talks without a microphone or the speech permission sheet (VoiceInput.swift)
+    #endif
     if j.enabled || t.enabled {
       if host == nil { host = OverlayHost(model: model) }
       host?.attach()
@@ -197,7 +208,7 @@ final class OverlayHost {
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
       guard let m = model else { return false }
       if m.jarvis.show && m.menuOpen { return true }   // the scrim closes the menu
-      if m.jarvis.show && m.jarvis.rect.insetBy(dx: -6, dy: -6).contains(point) { return true }
+      if (m.jarvis.show || m.holding) && m.jarvis.rect.insetBy(dx: -6, dy: -6).contains(point) { return true }
       if m.today.show && m.today.rect.contains(point) { return true }
       return false
     }
@@ -247,7 +258,7 @@ struct OverlayRoot: View {
           .offset(x: model.today.rect.minX, y: model.today.rect.minY)
           .transition(.opacity)
       }
-      if model.jarvis.enabled && model.jarvis.show {
+      if model.jarvis.enabled && (model.jarvis.show || model.holding) {
         NativeJarvisView(model: model)
       }
     }

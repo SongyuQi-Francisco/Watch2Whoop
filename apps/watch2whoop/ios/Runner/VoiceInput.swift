@@ -49,6 +49,9 @@ final class VoiceBridge: NSObject {
   func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
     let a = call.arguments as? [String: Any] ?? [:]
     let s = a["session"] as? String ?? ""
+    #if DEBUG && targetEnvironment(simulator)
+    if VoiceBridge.scripted, scriptedHandle(call.method, s, result) { return }
+    #endif
     switch call.method {
     case "langs": result(VoiceBridge.supportedLangs())
     case "start": start(session: s, lang: a["lang"] as? String ?? "zh", audio: a["audio"] as? Bool ?? false); result(nil)
@@ -295,3 +298,54 @@ final class VoiceBridge: NSObject {
     }
   }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+/// Simulator debug builds only, while the native-views demo runs (NativeUI.swift, `W2W_NATIVE_UI=…,demo`): a scripted
+/// recogniser with the same events as the real one (started, level, partial, final), so the hold-to-talk gestures can be
+/// recorded without a microphone or the speech permission sheet. Never compiled into device or release builds.
+extension VoiceBridge {
+  static var scripted = false
+  private static let script = ["今天", "今天睡得", "今天睡得不错", "今天睡得不错，练腿", "今天睡得不错，练腿四十分钟"]
+  private static var timer: Timer?
+  private static var tick = 0
+
+  func scriptedHandle(_ method: String, _ s: String, _ result: @escaping FlutterResult) -> Bool {
+    switch method {
+    case "langs": result(["zh", "en"])
+    case "start":
+      VoiceBridge.timer?.invalidate()
+      VoiceBridge.tick = 0
+      scriptedSession = s
+      emit(["type": "started"], session: s)
+      VoiceBridge.timer = Timer.scheduledTimer(withTimeInterval: VoiceBridge.levelEvery, repeats: true) { [weak self] _ in
+        guard let self, let cur = self.scriptedSession else { return }
+        VoiceBridge.tick += 1
+        let t = Double(VoiceBridge.tick)
+        self.emit(["type": "level", "rms": 0.35 + 0.3 * abs(sin(t / 3))], session: cur)
+        if VoiceBridge.tick % 8 == 0 {
+          self.emit(["type": "partial", "text": VoiceBridge.script[min(VoiceBridge.tick / 8 - 1, VoiceBridge.script.count - 1)]], session: cur)
+        }
+      }
+      result(nil)
+    case "stop", "cancel":
+      guard s == scriptedSession || s == "*" else { result(nil); return true }
+      VoiceBridge.timer?.invalidate()
+      if method == "stop", let cur = scriptedSession {
+        let n = max(0, min(VoiceBridge.tick / 8 - 1, VoiceBridge.script.count - 1))
+        emit(["type": "final", "text": VoiceBridge.script[n], "seconds": Double(VoiceBridge.tick) * VoiceBridge.levelEvery, "lang": "zh"], session: cur)
+      }
+      scriptedSession = nil
+      result(nil)
+    case "lang": result(nil)
+    default: return false
+    }
+    return true
+  }
+
+  private var scriptedSession: String? {
+    get { objc_getAssociatedObject(self, &scriptedKey) as? String }
+    set { objc_setAssociatedObject(self, &scriptedKey, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+  }
+}
+private var scriptedKey = 0
+#endif

@@ -105,7 +105,8 @@ FLAGS: dict[str, str] = {
                    "管理命令 body-engine open-signup status / list。关着时和以前一样，注册后要激活码",
     "native_jarvis": "app 原生 Jarvis 键（#247 第 2 期，iOS app 1.0.9+，需要 jarvis_orbit 也开着）：Jarvis 键和展开菜单由 app 用 SwiftUI 画"
                      "（iOS 26 起是系统的 Liquid Glass `.glassEffect()`，更早的 iOS 用 `.ultraThinMaterial` 毛玻璃），网页里的 Jarvis 键隐藏；"
-                     "点子键（对话 / 语音 / 拍照 / 快记）、长按（直接进入免手持语音）都交回今天页处理，拍照用 app 的相机；"
+                     "点子键（对话 / 语音 / 拍照 / 快记）交回今天页处理，拍照用 app 的相机；按住说话（左上取消、右上锁定、松开识别，按 jarvis_voice_direct 发送或先确认）"
+                     "和网页键一致，键上显示在听 / 识别中 / 发送中 / 回答中；"
                      "旧版 app、浏览器、安卓不受影响；关着时和以前一样",
     "native_today": "app 原生今天（#247 第 2 期，iOS app 1.0.9+）：今天 tab 从分数往下由 app 用 SwiftUI 画（并排三环：睡眠分 / 恢复（居中）/ 昨天负荷，"
                     "加核心指标：HRV、静息心率、睡眠时长 / 需求 / 睡眠债、步数、活动、锻炼、负荷目标、健康监测、负荷状态、提醒数；分数上面的同步卡片等仍是网页），数据来自今天页已经取到的数据，"

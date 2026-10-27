@@ -118,12 +118,12 @@ struct NativeTodayView: View {
 
   private func open(_ card: String) { send("action", ["kind": "today", "card": card]) }
 
-  /// Debug builds only (`W2W_NATIVE_UI=…,demo`): after the Jarvis demo (about 20 s), scroll to the end and back four times.
+  /// Debug builds only (`W2W_NATIVE_UI=…,demo`): after the Jarvis demo (about 35 s), scroll to the end and back four times.
   private func runDemo(_ proxy: ScrollViewProxy) {
     guard !demoRunning else { return }
     demoRunning = true
     Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 21_000_000_000)
+      try? await Task.sleep(nanoseconds: 40_000_000_000)
       for k in 0..<8 {
         meter.mark("today-scroll", seconds: 1.3)
         withAnimation(.easeInOut(duration: 0.9)) { proxy.scrollTo(k % 2 == 0 ? "end" : "top", anchor: k % 2 == 0 ? .bottom : .top) }

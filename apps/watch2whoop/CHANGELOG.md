@@ -24,12 +24,12 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 计划进 1.0.9（版本号和日期在发版的 PR 里定）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
 
 **原生界面（#247 第 2 期，iOS）**
-- **Jarvis 键换成原生的 Liquid Glass**（开关 `native_jarvis`，还要 `jarvis_orbit` 开着）：Jarvis 键和展开菜单由 app 自己画——iOS 26 起是系统的液态玻璃（四个子键从 Jarvis 键的玻璃里「流」出来，收起时流回去），更早的 iOS 用半透明毛玻璃。按下压缩回弹、三层细环展开、扫描光掠过、辉光呼吸一次，黑白单色、弹簧动画、120Hz 屏上跟满帧率；「减少动态效果」打开时不播动画。点子键（对话 / 语音 / 拍照 / 快记）照常在今天页里打开；长按 Jarvis 键直接进入免手持语音；拍照用 app 的相机。
+- **Jarvis 键换成原生的 Liquid Glass**（开关 `native_jarvis`，还要 `jarvis_orbit` 开着）：Jarvis 键和展开菜单由 app 自己画——iOS 26 起是系统的液态玻璃（四个子键从 Jarvis 键的玻璃里「流」出来，收起时流回去），更早的 iOS 用半透明毛玻璃。按下压缩回弹、三层细环展开、扫描光掠过、辉光呼吸一次，黑白单色、弹簧动画、120Hz 屏上跟满帧率；「减少动态效果」打开时不播动画。点子键（对话 / 语音 / 拍照 / 快记）照常在今天页里打开；拍照用 app 的相机。**按住 Jarvis 键说话**和以前一样：往左上滑取消、往右上滑锁定（松手接着说）、原地松开识别，识别用手机本机的语音识别；松开后是直接发送还是先显示文字可以改，和网页版同一个开关。Jarvis 键会显示现在在做什么：在听、识别中、确认文字、发送中、回答中。
 - **原生「今天」**（开关 `native_today`）：今天 tab 从分数往下换成原生页面——睡眠分 / 恢复（居中）/ 昨天负荷三个环并排，下面是 HRV、静息心率、睡眠时长 / 需求 / 睡眠债、步数、活动、锻炼、负荷目标、健康监测和负荷状态、提醒数；分数上面的同步卡片等照旧。打开 app 先显示上一次的数据（存在手机上，退出登录清空），网页的数据到了再更新。点环或数字打开今天页原来的弹层；下拉刷新；底部「完整今天页」回到网页版。看别人、看过去的日子时自动用网页版。
 
 **技术说明（给开发者）**
 - `lib/src/native_ui.dart`（页面消息 `native:` / `jvn:` / `tdn:` / `tdn-data:` / `jv-camera`、今天的数字格式和页面一致、本机缓存）；`ios/Runner/NativeUI.swift`（通道 `watch2whoop/nativeui`、窗口上的穿透浮层、帧计时器、相机）、`NativeJarvis.swift`、`NativeToday.swift`；页面 `web/static/native-bridge.js`（按需加载，只在声明了 `Watch2WhoopFeatures.nativeUi` 的 app 里）。
-- 调试 / 测试包可以用 `--dart-define=W2W_NATIVE_UI=jarvis,today,meter` 不看开关直接打开（`meter` = 在日志里打印帧计时），正式包不要加。
+- 调试 / 测试包可以用 `--dart-define=W2W_NATIVE_UI=jarvis,today,meter` 不看开关直接打开（`meter` = 在日志里打印帧计时；`demo` / `demo2` = 自动展开、做按住说话手势、滚动，模拟器里用脚本化的识别器（`VoiceInput.swift`，只编进模拟器调试包）；`material` = 在 iOS 26 模拟器上看 iOS 26 以下的样子），正式包不要加。
 - 用 Xcode 26（iOS 26 SDK）编译时才有系统液态玻璃（`.glassEffect()`，`#if compiler(>=6.2)`）；更早的 Xcode 也能编译，只用 `.ultraThinMaterial`。部署目标仍是 iOS 15，iOS 26 以下的手机运行时自动用 `.ultraThinMaterial`。
 
 ## 1.0.8 — 2026-11-01

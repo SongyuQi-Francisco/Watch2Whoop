@@ -54,6 +54,13 @@ void main() {
     expect(nativeActionJs({'kind': 'jarvis', 'id': 'chat'}), 'window.BodyNative&&window.BodyNative.action({"kind":"jarvis","id":"chat"});');
     expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold'}), contains('"hold"'));
     expect(nativeActionJs({'kind': 'jarvis', 'id': 'eval'}), isNull);
+    // hold to talk: the finger's position goes along, rounded; without a usable position nothing is sent
+    expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold-move', 'x': 12.345, 'y': 800}),
+        'window.BodyNative&&window.BodyNative.action({"kind":"jarvis","id":"hold-move","x":12.3,"y":800.0});');
+    expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold-end', 'x': 0, 'y': 0}), contains('"hold-end"'));
+    expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold-move'}), isNull);
+    expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold-move', 'x': double.nan, 'y': 1}), isNull);
+    expect(nativeActionJs({'kind': 'jarvis', 'id': 'hold-jump', 'x': 1, 'y': 1}), isNull);
     expect(nativeActionJs({'kind': 'today', 'card': 'recovery'}), contains('"card":"recovery"'));
     expect(nativeActionJs({'kind': 'today', 'card': 'x"]);alert(1);//'}), isNull);
     expect(nativePhotoJs('QUJD', 'image/jpeg'), 'window.BodyNative&&window.BodyNative.photo("QUJD","image/jpeg");');
@@ -157,6 +164,12 @@ void main() {
       ui.handle('jvn:${jsonEncode({'show': true, 'rect': [167, 760, 56, 56], 'menu': true})}');
       expect(part('jarvis'), containsPair('show', true));
       expect(part('jarvis')['rect'], [167.0, 760.0, 56.0, 56.0]);
+      expect(part('jarvis')['phase'], 'idle');
+      ui.handle('jvn:${jsonEncode({'show': true, 'rect': [167, 760, 56, 56], 'talk': true, 'phase': 'answering'})}');
+      expect(part('jarvis'), containsPair('phase', 'answering'));
+      expect(part('jarvis'), containsPair('talk', true));
+      ui.handle('jvn:${jsonEncode({'show': true, 'rect': [167, 760, 56, 56], 'phase': 'dancing'})}');
+      expect(part('jarvis')['phase'], 'idle');
       ui.handle('tdn:${jsonEncode({'show': true, 'rect': [0, 110, 390, 630]})}');
       expect(part('today')['show'], isFalse, reason: 'no data yet');
       ui.handle('tdn-data:${jsonEncode(_data())}');

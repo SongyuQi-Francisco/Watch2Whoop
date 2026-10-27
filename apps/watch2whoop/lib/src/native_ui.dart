@@ -92,12 +92,23 @@ String nativeFeaturesJs({required bool jarvis, required bool today}) =>
     "window.dispatchEvent(new Event('w2w-features'));";
 
 const Set<String> _kJarvisIds = {'tap', 'hold', 'chat', 'voice', 'photo', 'quick'};
+const Set<String> _kHoldIds = {'hold-start', 'hold-move', 'hold-end', 'hold-cancel'};
+
+/// What the native key shows (native-bridge.js jvState phase).
+const Set<String> kJarvisPhases = {'idle', 'recording', 'recognizing', 'review', 'sending', 'answering'};
 
 /// JS that hands a native action to the page; null for anything the page does not take.
 String? nativeActionJs(Map<String, Object?> a) {
   final kind = a['kind'];
   if (kind == 'jarvis' && _kJarvisIds.contains(a['id'])) {
     return 'window.BodyNative&&window.BodyNative.action(${jsonEncode({'kind': 'jarvis', 'id': a['id']})});';
+  }
+  // Hold to talk on the native key (native-bridge.js jvHold): the finger's position in points = the page's CSS pixels
+  final x = a['x'], y = a['y'];
+  if (kind == 'jarvis' && _kHoldIds.contains(a['id']) && x is num && y is num && x.isFinite && y.isFinite &&
+      x.abs() < 10000 && y.abs() < 10000) {
+    double r(num v) => (v * 10).round() / 10;
+    return 'window.BodyNative&&window.BodyNative.action(${jsonEncode({'kind': 'jarvis', 'id': a['id'], 'x': r(x), 'y': r(y)})});';
   }
   final card = a['card'];
   if (kind == 'today' && card is String && RegExp(r'^[a-z0-9_.:-]{1,40}$').hasMatch(card)) {
@@ -397,6 +408,8 @@ class NativeUi {
         'menu': jv['menu'] == true,
         'voice': jv['voice'] is String ? jv['voice'] : 'off',
         'offline': jv['offline'] == true,
+        'talk': jv['talk'] == true,
+        'phase': kJarvisPhases.contains(jv['phase']) ? jv['phase'] : 'idle',
         'dark': jv['dark'] == true,
         'theme': jv['theme'] is Map ? jv['theme'] : null,
         'labels': jv['labels'] is Map ? jv['labels'] : null,
@@ -411,7 +424,9 @@ class NativeUi {
       },
       'meter': meter,
       'material': override.split(',').contains('material'), // debug: the pre-iOS 26 keys on an iOS 26 simulator
-      'demo': override.split(',').contains('demo'), // debug: open / close the menu and scroll 今天 by themselves (frame timing)
+      // debug: open / close the menu, the hold gestures and scrolling 今天 by themselves (frame timing); demo2 = only hold and lift
+      'demo': override.split(',').any((o) => o == 'demo' || o == 'demo2'),
+      'demo2': override.split(',').contains('demo2'),
     };
   }
 

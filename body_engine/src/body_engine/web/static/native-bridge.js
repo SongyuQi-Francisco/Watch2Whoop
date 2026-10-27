@@ -40,9 +40,28 @@
 
   // The page's Jarvis code (jarvis-entry.js) still decides what a press does. menu = a tap opens the app's own menu (Jarvis, online,
   // no recording); otherwise the app sends the tap here: own AI / butler = what the key always did, offline = "needs a connection",
-  // a locked recording = send it. "hold" (a long press) = hands-free talk at once, as 语音.
+  // a locked recording = send it. Holding the app's key = hold to talk exactly as on this page's key: "hold-start" (after the
+  // app's HOLD time), then "hold-move" with the finger's position (slide up-left = cancel, up-right = lock) and "hold-end" /
+  // "hold-cancel"; the page's own voice panel, targets, recogniser (the app's on-device one, #238) and jarvis_voice_direct apply.
+  // phase (what the app's key shows): recording / recognizing / review / sending / answering / idle; talk = holding can talk.
   const J = () => window.BodyJarvis?.native?.() || null;
-  const jvState = (j = J()) => (j?.jv ? { menu: j.isJarvis() && !j.offline() && j.V.state === "off", voice: j.V.state, offline: j.offline() } : {});
+  const PHASE = { hold: "recording", locked: "recording", final: "recognizing", review: "review" };
+  const jvState = (j = J()) => (j?.jv ? { menu: j.isJarvis() && !j.offline() && j.V.state === "off", voice: j.V.state, offline: j.offline(),
+    talk: !!j.voiceOn(), phase: PHASE[j.V.state] || window.BodyAI?.phase?.() || "idle" } : {});
+  function jvHold(a, j = J()) {
+    if (!j?.jv) return;
+    const x = Number(a.x) || 0, y = Number(a.y) || 0;
+    if (a.id === "hold-start") {
+      if (j.V.state !== "off") return;
+      if (j.offline() || !j.isJarvis() || !j.voiceOn()) { jvTap(j); return; }   // no way to talk here: a hold is a tap
+      if (!window.BodyAI.ensureJarvis(() => j.C?.toast?.(tr("好了，再按住说话")))) return;
+      j.startVoice({ anchor: j.jv, mode: "hold", x, y, pointerId: "app", dest: "half" });
+    } else if (j.V.state === "hold" && j.V.pid === "app") {
+      if (a.id === "hold-move") j.holdMove(x, y);
+      else if (a.id === "hold-end") j.holdUp();
+      else if (a.id === "hold-cancel") j.cancelVoice(tr("被系统打断，没有发送"), "interrupted");
+    }
+  }
   function jvTap(j = J()) {
     if (!j?.jv) return;
     if (j.V.state === "locked" && j.V.anchor === j.jv) j.finishVoice();
@@ -63,8 +82,9 @@
       const r = key.getBoundingClientRect();
       if (r.width > 0 && r.height > 0) { rect = box(r); show = clear(key, r.left + r.width / 2, r.top + r.height / 2); }
     }
-    return { show, rect, menu: !!st.menu, voice: st.voice || "off", offline: !!st.offline, dark: dark(), theme: theme(),
-      labels: { chat: tr("对话"), voice: tr("语音"), photo: tr("jarvis.photo"), quick: tr("快记"), close: tr("收起 Jarvis 菜单"), key: "Jarvis" } };
+    return { show, rect, menu: !!st.menu, voice: st.voice || "off", offline: !!st.offline, talk: !!st.talk, phase: st.phase || "idle", dark: dark(), theme: theme(),
+      labels: { chat: tr("对话"), voice: tr("语音"), photo: tr("jarvis.photo"), quick: tr("快记"), close: tr("收起 Jarvis 菜单"), key: "Jarvis",
+        recording: tr("在听"), recognizing: tr("识别中"), review: tr("确认文字"), sending: tr("发送中"), answering: tr("回答中") } };
   }
 
   function todayState() {
@@ -135,7 +155,7 @@
   window.BodyNative = {
     action(a) {
       if (!a || typeof a !== "object") return;
-      if (a.kind === "jarvis") { if (a.id === "tap") jvTap(); else jvRun(String(a.id)); }
+      if (a.kind === "jarvis") { if (a.id === "tap") jvTap(); else if (/^hold-/.test(a.id)) jvHold(a); else jvRun(String(a.id)); }
       else if (a.kind === "today") card(String(a.card || ""));
       schedule();
     },
@@ -160,7 +180,7 @@
       window.BodyHooks?.on("sheet", schedule);
       window.BodyHooks?.on("today", (d) => { data = d; sendData(); schedule(); });
       new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });   // 「外观」 themes change the tokens
-      new MutationObserver(schedule).observe(document.body,{ subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "class", "inert"] });
+      new MutationObserver(schedule).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden", "class", "inert", "disabled"] });
       for (const ev of ["resize", "scroll", "pageshow"]) window.addEventListener(ev, schedule, { passive: true });
       document.addEventListener("visibilitychange", schedule);
       window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => { last["jvn:"] = last["tdn:"] = ""; schedule(); });
