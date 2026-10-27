@@ -30,7 +30,7 @@ def table(name: str) -> dict[str, str]:
 
 
 ZH, EN = table("ZH"), table("EN")
-SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "slim.js", "slim-quotes.js", "notices.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js", "native-bridge.js"]
+SCRIPTS = ["app.js", "ai.js", "ai-media.js", "jarvis-entry.js", "account.js", "grocery.js", "profile.js", "diet-profile.js", "water.js", "muscle-map.js", "muscle-load.js", "custom-exercises.js", "journal.js", "exercise-plan.js", "training-day.js", "hevy-import.js", "sleep-detail.js", "feedback.js", "data-status.js", "notify.js", "circles.js", "circle-feed.js", "identities.js", "intro.js", "sync.js", "sync-repair.js", "sync-status.js", "ui-ai-first.js", "slim.js", "slim-quotes.js", "notices.js", "offline.js", "activate.js", "ios-web.js", "oauth.js", "sw.js", "avatars.js", "remarks.js", "md.js", "muscle-body-data.js", "lang-gate.js", "native-bridge.js"]
 PAGES = ["index.html", "activate.html", "install.html", "oauth.html"]
 
 
@@ -106,6 +106,26 @@ def test_no_chinese_outside_tr(name):
     """Every Chinese text in the page scripts goes through tr(); data matched against server texts is marked i18n-ok."""
     stray = stray_chinese((STATIC / name).read_text(encoding="utf-8"))
     assert not stray, f"{name}: {len(stray)} Chinese literals outside tr(): " + "; ".join(f"{x.line}: {x.text[:40]!r}" for x in stray[:25])
+
+
+# Chinese literals on lines marked i18n-ok that are meant to stay Chinese: the language switch shows each language in its own
+# name, sw.js has no I18N and picks its English twin itself (X-Body-Lang), the daily quotes are not translated (owner decision
+# for the slim-muscle mode, #126: quotes are quoted words, shown as written).
+I18N_OK_STAYS_CHINESE = {"语言 / Language", "Language / 语言",
+                         '<button type="button" data-lang="zh" lang="zh-CN">中文</button><span aria-hidden="true">/</span>',
+                         "离线，这台设备上也没有保存过这项数据"}
+I18N_OK_DATA_FILES = {"slim-quotes.js"}
+
+
+@pytest.mark.parametrize("name", [s for s in SCRIPTS if s not in I18N_OK_DATA_FILES])
+def test_i18n_ok_literals_have_english(name):
+    """A Chinese literal on an `i18n-ok` line is not a tr() key as far as the scanner can see, but it is often a table that is
+    mapped through tr(variable) later (the short reasons in app.js), and test_used_keys_exist cannot see those keys: "未计算" had
+    no English entry for that reason. Every such literal needs an entry in i18n-en.js, unless it is listed above."""
+    src = (STATIC / name).read_text(encoding="utf-8")
+    missing = sorted({x.text for x in scan(src) if x.kind in ("str", "tpl") and not x.is_tr_key and CJK.search(x.text)
+                      and "i18n-ok" in x.line_text and x.text not in EN_TEXT and x.text not in I18N_OK_STAYS_CHINESE})
+    assert not missing, f"{name}: i18n-ok Chinese without an English entry in i18n-en.js: {missing}"
 
 
 class _HtmlCheck(HTMLParser):

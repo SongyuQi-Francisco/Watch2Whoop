@@ -23,6 +23,7 @@ import psycopg
 from psycopg.types.json import Jsonb
 
 from .. import queries
+from ..i18n import L, use_lang
 from ..records import store as records_store
 from . import memory_params as mp
 from . import writelog
@@ -48,9 +49,12 @@ STANDARD_KEYS: dict[str, tuple[str, int]] = {
     "communication": ("沟通方式", 5),   # answer length, numbers vs explanations, tone, emoji, reminder frequency, topics not to raise
 }
 OBS_COLS = ("id, text, created_at, source, evidence, kind, valid_from, valid_until, topic, confirmed_at, origin, status, "
-            "archived_at, archived_reason, merged_into")
+            "archived_at, archived_reason, merged_into, confirm_count")
 CARD_COLS = ("key, label, value, updated_at, source, topic, confirmed_at, origin, status, archived_at, archived_reason, "
-             "merged_into")
+             "merged_into, confirm_count")
+# SQL for the confirmation counter (migration 910): +1 unless the entry was confirmed within the last COUNT_MIN_GAP_DAYS, so the
+# same fact stated several times in one conversation counts once. Old row values: in an UPDATE the right side sees them.
+COUNT = f"(confirmed_at < now() - interval '{mp.COUNT_MIN_GAP_DAYS} day')::int"
 ORIGINS = ("user_said", "ai_inferred", "data")
 TOPICS = tuple(STANDARD_KEYS)
 
@@ -244,8 +248,8 @@ def rollback_profile(conn: psycopg.Connection, user_id: int, key: str, before: d
 def confirm_profile(conn: psycopg.Connection, user_id: int, key: str) -> dict | None:
     """「还准确」: the item is still right as it is."""
     return conn.execute(
-        """UPDATE assistant_profile SET confirmed_at = now() WHERE user_id = %s AND key = %s AND status = 'active'
-           RETURNING key, confirmed_at""", (user_id, key)).fetchone()
+        f"""UPDATE assistant_profile SET confirmed_at = now(), confirm_count = confirm_count + {COUNT}
+           WHERE user_id = %s AND key = %s AND status = 'active' RETURNING key, confirmed_at""", (user_id, key)).fetchone()
 
 
 def restore_profile(conn: psycopg.Connection, user_id: int, key: str) -> dict | None:
@@ -323,10 +327,11 @@ def add_observation(conn: psycopg.Connection, user_id: int, text: str, evidence:
     if span:
         old = conn.execute(
             f"""UPDATE assistant_observations SET kind = 'recent', valid_from = %s, valid_until = %s,
-                  evidence = COALESCE(%s, evidence), confirmed_at = now()
+                  evidence = COALESCE(%s, evidence), confirmed_at = now(), confirm_count = confirm_count + {COUNT}
                 WHERE id = %s RETURNING {OBS_COLS}""", (vfrom, vuntil, evidence, same["id"])).fetchone()
         return {**old, "duplicate": True, "dates_updated": True}
-    old = conn.execute(f"UPDATE assistant_observations SET confirmed_at = now() WHERE id = %s RETURNING {OBS_COLS}",
+    old = conn.execute(f"UPDATE assistant_observations SET confirmed_at = now(), confirm_count = confirm_count + {COUNT} "
+                       f"WHERE id = %s RETURNING {OBS_COLS}",
                        (same["id"],)).fetchone()
     return {**old, "duplicate": True}
 
@@ -388,8 +393,8 @@ def rollback_observation(conn: psycopg.Connection, user_id: int, observation_id:
 def confirm_observation(conn: psycopg.Connection, user_id: int, observation_id: int) -> dict | None:
     """「还准确」: the note is still right as it is."""
     return conn.execute(
-        """UPDATE assistant_observations SET confirmed_at = now() WHERE id = %s AND user_id = %s AND status = 'active'
-           RETURNING id, confirmed_at""", (observation_id, user_id)).fetchone()
+        f"""UPDATE assistant_observations SET confirmed_at = now(), confirm_count = confirm_count + {COUNT}
+           WHERE id = %s AND user_id = %s AND status = 'active' RETURNING id, confirmed_at""", (observation_id, user_id)).fetchone()
 
 
 def restore_observation(conn: psycopg.Connection, user_id: int, observation_id: int) -> dict | None:
@@ -430,17 +435,25 @@ def _num(v) -> str:
 
 
 def from_database(conn: psycopg.Connection, user_id: int) -> dict[str, str]:
-    """Profile card items derived from existing database data (works for anyone). Items the database has no data for are omitted."""
+    """Profile card items derived from existing database data (works for anyone). Items the database has no data for are omitted.
+    Written in the user's saved language (users.language; Chinese while none is saved): the card is shown as it is under
+    Me -> Long-term memory, so an English user does not start with Chinese text there (#64)."""
+    row = conn.execute("SELECT language FROM users WHERE id = %s", (user_id,)).fetchone()
+    with use_lang((row or {}).get("language") or "zh"):
+        return _from_database(conn, user_id)
+
+
+def _from_database(conn: psycopg.Connection, user_id: int) -> dict[str, str]:
     out: dict[str, str] = {}
     u = conn.execute("SELECT birth_date, height_cm, sex, timezone FROM users WHERE id = %s", (user_id,)).fetchone()
     if u:
         parts = []
         if (a := _age(u["birth_date"], queries.local_today(conn, user_id))) is not None:
-            parts.append(f"{a} 岁（{u['birth_date']} 生）")
+            parts.append(L(f"{a} 岁（{u['birth_date']} 生）", f"{a} years old (born {u['birth_date']})"))
         if u["height_cm"]:
-            parts.append(f"身高 {u['height_cm']:g}cm")
-        parts.append(f"时区 {u['timezone']}")
-        out["basics"] = "，".join(parts)
+            parts.append(L(f"身高 {u['height_cm']:g}cm", f"height {u['height_cm']:g} cm"))
+        parts.append(L(f"时区 {u['timezone']}", f"time zone {u['timezone']}"))
+        out["basics"] = L("，", ", ").join(parts)
 
     abnormal = [r for r in records_store.lab_report(conn, user_id) if r["status"] in ("high", "low", "abnormal")]
     if abnormal:
@@ -448,26 +461,28 @@ def from_database(conn: psycopg.Connection, user_id: int) -> dict[str, str]:
         for r in abnormal:
             last = r["latest"]
             val = last["value_text"] or (f"{_num(last['value'])} {last['unit'] or ''}".strip())
-            rng = f"，上限 {_num(last['ref_high'])}" if r["status"] == "high" and last["ref_high"] is not None else ""
-            items.append(f"{r['test_name']} {val}（{last['collected_on']}{rng}）")
-        out["health_constraints"] = "化验异常：" + "；".join(items) + "。最新数值以 get_lab_results 为准。"
+            rng = L(f"，上限 {_num(last['ref_high'])}", f", upper limit {_num(last['ref_high'])}") \
+                if r["status"] == "high" and last["ref_high"] is not None else ""
+            items.append(L(f"{r['test_name']} {val}（{last['collected_on']}{rng}）", f"{r['test_name']} {val} ({last['collected_on']}{rng})"))
+        out["health_constraints"] = L("化验异常：" + "；".join(items) + "。最新数值以 get_lab_results 为准。",
+                                      "Abnormal lab results: " + "; ".join(items) + ". The latest values are in get_lab_results.")
 
     rules = records_store.exercise_rules(conn, user_id)
     if rules["banned"] or rules["caution"]:
         txt = []
         if rules["banned"]:
-            txt.append("永久不做：" + "、".join(r["name_zh"] or r["exercise_ref"] for r in rules["banned"]))
+            txt.append(L("永久不做：", "Never do: ") + L("、", ", ").join(r["name_zh"] or r["exercise_ref"] for r in rules["banned"]))
         if rules["caution"]:
-            txt.append("要小心：" + "；".join(
-                f"{r['name_zh'] or r['exercise_ref']}" + (f"（{r['reason']}）" if r.get("reason") else "")
+            txt.append(L("要小心：", "Be careful with: ") + L("；", "; ").join(
+                f"{r['name_zh'] or r['exercise_ref']}" + (L(f"（{r['reason']}）", f" ({r['reason']})") if r.get("reason") else "")
                 for r in rules["caution"]))
-        out["injuries"] = "。".join(txt) + "。以 get_exercise_rules 为准。"
+        out["injuries"] = L("。".join(txt) + "。以 get_exercise_rules 为准。", ". ".join(txt) + ". The rules are in get_exercise_rules.")
 
     supps = records_store.list_supplements(conn, user_id, ["active", "as_needed"])
     if supps:
-        out["supplements"] = "；".join(
-            f"{s['name']} {s['dose'] or ''}".strip() + ("（按需）" if s["status"] == "as_needed" else "")
-            for s in supps) + "。建议和状态以 list_supplements 为准。"
+        out["supplements"] = L("；", "; ").join(
+            f"{s['name']} {s['dose'] or ''}".strip() + (L("（按需）", " (as needed)") if s["status"] == "as_needed" else "")
+            for s in supps) + L("。建议和状态以 list_supplements 为准。", ". The advice and status are in list_supplements.")
     return out
 
 

@@ -35,13 +35,14 @@ GROUPS = {
     "memory": "长期记忆：档案卡、观察笔记、状态卡；AI 写入记录和回滚",
     "feedback": "给开发者报 bug / 提需求，查看已报的",
     "help": "操作说明（playbook）：规划采购、排一周训练、复盘一周、照片记餐",
+    "home": "今天页首页：放上 / 移走卡片、关注点（新版首页 ui_ai_first）",
 }
 
 # Today page id -> extra groups for the in-page chat. Ids are the tab ids in web/static/app.js (TABS) and its sub-pages
 # as "<tab>.<sub>" (record: S.recSub, food: S.foodMode / S.foodSub, trends: S.trendsMode). An unknown "<tab>.<sub>" falls
 # back to "<tab>"; an unknown tab or no page = core only (everything else via find_tools).
 PAGE_GROUPS = {
-    "today": ("body", "training"),
+    "today": ("body", "training", "home"),
     "trends": ("body",),
     "food": ("nutrition", "recipes"),
     "food.diet": ("nutrition", "recipes"),
@@ -50,7 +51,7 @@ PAGE_GROUPS = {
     "record": ("records", "training"),
     "record.journal": ("records",),
     "record.training": ("training",),
-    "me": ("memory", "records", "feedback"),
+    "me": ("memory", "records", "feedback", "home"),
 }
 PAGE_MAX_LEN = 40
 
@@ -67,7 +68,7 @@ CORE_BUDGET_CHARS = 30000
 META_BUDGET_CHARS = 2500
 MCP_LIST_BUDGET_CHARS = 35000     # core + ALWAYS_CONFIRM + meta
 GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "recipes": 7000, "grocery": 10700,
-                      "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500}
+                      "records": 10000, "memory": 4000, "feedback": 1500, "help": 1500, "home": 1000}
 # grocery 9000 -> 9200: with the rollout flag mcp_web, MCP's find_tools(group="grocery") also returns web_search / web_fetch
 # (ai/web/mcp.py, about 400 chars; tests/test_mcp_web.py checks the group with them)
 # grocery 9200 -> 10700 (#291): save_product's nutrition goes from 7 to 14 items, there is a second table for the label's per-serving
@@ -93,6 +94,18 @@ READ_RESULT_MAX_CHARS_BY_TOOL = {
     "propose_plan": 14000,       # a whole week's draft with sets, loads and the questions to ask first (~10k)
     "search_exercises": 12000,   # up to its own result limit, each with muscles, equipment and safe alternatives (~9k)
 }
+
+# Token economy of the in-page chat (issue #78; measured by tests/test_token_economy.py, numbers in docs/ai-assistant-plan.md §9.23)
+# get_briefing keys the chat model does not get: its system prompt already has the caller's memory (and the root rules,
+# whose text is dropped from system_rules too); the memory_review reminder is kept.
+CHAT_BRIEFING_DROP = ("memory",)
+# Tool results of older turns are sent shortened: the model has already answered from them and can call the tool again.
+# The results of the last HISTORY_FULL_TURNS user turns (the current one included) go out whole, and so do the tools below
+# (what the model needs to carry on: the opening briefing, schemas from find_tools, the playbooks and the scene context).
+HISTORY_FULL_TURNS = 2
+HISTORY_RESULT_CHARS = 600
+HISTORY_FULL_TOOLS = ("get_briefing", "find_tools", "get_playbook", "get_training_context", "get_week_review_context",
+                      "get_shopping_context")
 
 # Scene context tools (assistant/scenes.py, issue #100)
 TRAINING_RECENT_DAYS = 14         # get_training_context: training and load looked back on

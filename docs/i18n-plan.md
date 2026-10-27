@@ -71,6 +71,14 @@ whole Today page, the server texts it shows and the app's native screens through
       fail on a page script or a module with Chinese raise messages nobody has classified (`test_i18n.py`,
       `test_i18n_server.py`, `test_i18n_remnants.py`). The app's test also covers double-quoted literals and the English half
       of `tr()`.
+- [x] The new-feature sweep (#64, 2026-10-27): "not calculated" (the short reason table in `app.js`), the split name in the
+      "now using" toast, the profile card's first seed (written in the user's saved language), admin messages with an
+      optional English title / text / button (`notice-send --title-en …`, migration 920). Guards so it stays that way:
+      `test_i18n.py::test_i18n_ok_literals_have_english` (a Chinese literal on an `i18n-ok` line must have an English entry
+      unless listed), `test_i18n_endpoints.py` (every GET route asked in English: no Chinese unless listed with a reason, so
+      a new route or field is covered without touching the test), `I18N.missing()` and `tools/i18n_crawl.mjs` (opens every
+      tab and sheet of a local demo in English and lists the Chinese on the screen and the keys with no English; run it
+      before a UI release, with a user with no data, one with data and an owner with every flag on).
 - [ ] User data stays as stored (food names, recipes, journal items, notes and status cards the AI wrote); the exercise
       detail still shows the other-language name under the title on purpose (both names, page language first)
 
@@ -78,7 +86,11 @@ whole Today page, the server texts it shows and the app's native screens through
 
 - [x] `docs/tester-handbook.en.md`, rendered to `/app/handbook/en/` by `deploy/ali/handbook.py`; the activation page
       (`activate.html` / `install.html`, `data-i18n-href`) and the Today page's 「我 → 使用手册」 open the handbook in the page
-      language, and the two editions link to each other (#50). Screenshots in the English edition still show the Chinese UI
+      language, and the two editions link to each other (#50). The English edition has English screenshots (#13):
+      `tools/handbook_shots_en.mjs` (headless Chrome on a Quick Start demo, synthetic data only) +
+      `python3 tools/handbook_images.py --lang en` (red frames from the boxes the page itself reports) →
+      `docs/images/tester-handbook/en/`, copied to `handbook/en/img/`; only the iOS Health permission sheet (a system
+      screen, needs the app on a simulator) is still the Chinese capture, and says so under the picture
 - [x] iOS permission prompts (#64): `ios/Runner/en.lproj` / `zh-Hans.lproj` `InfoPlist.strings` (variant group in the Xcode
       project), English is the development language (`CFBundleDevelopmentRegion = en`, Info.plist holds the English)
 - [ ] App Store English listing and review notes

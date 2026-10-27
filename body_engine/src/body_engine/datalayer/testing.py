@@ -2,7 +2,8 @@
 
 check_imports: the framework imports only the standard library, itself and a short list of third-party packages; never
 the application. Every import statement counts, also the ones inside functions, and so do importlib.import_module /
-__import__ / importlib.resources.files calls with a literal module name."""
+__import__ / importlib.resources.files calls with a literal module name.
+check_toolset: the application's toolset configuration matches its tools and every set sent to a model fits its budget."""
 import ast
 import sys
 from pathlib import Path
@@ -52,3 +53,12 @@ def check_imports(root: Path, package: str, framework: str,
             if not ok:
                 bad.append(f"{rel}:{line} {mod}")
     return bad
+
+
+def check_toolset(cfg, tools, budgets) -> list[str]:
+    """An application's one-line contract test for its tools (docs/datalayer-design.md section 3.6): the ToolsetConfig
+    is consistent with the tools (toolsets.config_problems) and every set the framework sends fits its Budgets
+    (toolsets.budget_problems). Empty = fine; each entry says what and by how much."""
+    from .toolsets import budget_problems, config_problems
+    tools = list(tools)
+    return config_problems(cfg, tools) + budget_problems(cfg, tools, budgets)

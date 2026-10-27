@@ -261,8 +261,10 @@
   let lang = resolve(readPref());
 
   const EN_TEXT = {};   // Chinese source text -> English (filled by i18n-en.js via addEn)
+  const MISSING = new Set();   // English page: Chinese keys that came back without an English text (tools/i18n_crawl.mjs lists them)
   function t(key, params) {
     let s = TABLES[lang][key] ?? (lang === "en" ? EN_TEXT[key] : undefined) ?? ZH[key] ?? key;
+    if (s === key && lang === "en" && /[一-鿿]/.test(key)) MISSING.add(key);
     if (params) s = s.replace(/\{(\w+)\}/g, (m, k) => (params[k] != null ? String(params[k]) : m));
     return s;
   }
@@ -343,6 +345,6 @@
   const num = (v, d = 0) => Number(v).toLocaleString(locale(), { maximumFractionDigits: d });
 
   window.I18N = { t, apply, setPref, choose, unsaved, markSaved, addEn, ensureEn, headers, num, locale, dayLabel, monthDay, yearMonth, monthShort, weekdaysMon,
-    get lang() { return lang; }, tables: TABLES, enText: EN_TEXT };
+    get lang() { return lang; }, tables: TABLES, enText: EN_TEXT, missing: () => [...MISSING].filter((k) => !EN_TEXT[k]) };
   apply();   // again when i18n-en.js adds the English text table
 })();

@@ -4,6 +4,7 @@ Needs Postgres: uses a separate test database BODY_TEST_DB_NAME (default body_te
 SparkyFitness is replaced by a fake client (FakeSparky); no real service is contacted.
 """
 import os
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -168,6 +169,15 @@ def test_memory_init_from_database_is_idempotent(conn, world):
     # A has abnormal labs and a banned exercise -> health constraints and injuries come from the database
     a_db = memory.from_database(conn, ids["A"])
     assert "尿酸" in a_db["health_constraints"] and "直立划船" in a_db["injuries"]
+    # a user whose saved language is English gets the seed in English (#64): Me -> Long-term memory shows it as it is
+    conn.execute("UPDATE users SET language = 'en' WHERE id = %s", (ids["A"],))
+    en_db = memory.from_database(conn, ids["A"])
+    conn.execute("UPDATE users SET language = NULL WHERE id = %s", (ids["A"],))
+    assert set(en_db) == set(a_db)
+    assert not re.search(r"[一-鿿]", en_db["basics"]), en_db   # the names of labs / exercises are the user's own data
+    assert not [w for w in ("化验异常", "永久不做", "要小心", "最新数值以", "以 get_exercise_rules", "上限") if w in " ".join(en_db.values())]
+    assert "time zone" in en_db["basics"]
+    assert "Abnormal lab results" in en_db["health_constraints"] and "Never do" in en_db["injuries"]
 
 
 def test_memory_api_auth(client, world):
