@@ -2154,7 +2154,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -4765,6 +4765,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -4776,7 +4793,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
@@ -9360,7 +9379,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -9858,6 +9877,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -9869,7 +9905,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
@@ -15454,7 +15492,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -16181,6 +16219,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -16192,7 +16247,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
@@ -16778,7 +16835,7 @@
   },
   "get_weight": {
    "name": "get_weight",
-   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+   "description": "称重和围度（底层数据库 check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
    "input_schema": {
     "type": "object",
     "properties": {
@@ -17490,6 +17547,23 @@
      },
      "overwrite": {
       "type": "boolean"
+     },
+     "context": {
+      "type": [
+       "array",
+       "null"
+      ],
+      "description": "测量情况：fasting after_toilet after_meal after_workout before_bed clothed unclothed",
+      "items": {
+       "type": "string"
+      }
+     },
+     "note": {
+      "type": [
+       "string",
+       "null"
+      ],
+      "description": "备注"
      }
     },
     "required": [
@@ -17501,7 +17575,9 @@
      "body_water_pct",
      "bone_mass_kg",
      "bmr_kcal",
-     "overwrite"
+     "overwrite",
+     "context",
+     "note"
     ],
     "additionalProperties": false
    },
