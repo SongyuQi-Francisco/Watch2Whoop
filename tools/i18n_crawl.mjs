@@ -77,8 +77,13 @@ try {
   await c.eval(PAGE);
   await c.eval(`document.querySelector("#sheet-close")?.click(); 1`);
   for (const t of TABS) {
-    await c.eval(`window.__crawl(${JSON.stringify(t)})`);
-    console.error("crawled", t);
+    // a tab that never finishes (a click that keeps opening something) must not hold the whole run: 8 minutes each
+    const done = await Promise.race([c.eval(`window.__crawl(${JSON.stringify(t)}), true`), sleep(8 * 60 * 1000).then(() => false)]);
+    console.error(done ? "crawled" : "gave up after 8 minutes on", t);
+    if (!done) await c.eval(`document.querySelector("#sheet-close")?.click(); 1`).catch(() => {});
+    const so = await c.eval("window.__report()");   // a first look after each tab: a long run can be stopped without losing it
+    for (const [k, where] of Object.entries(so.onScreen)) console.error(`  ${k}   [${where[0]}]`);
+    if (so.missingKeys.length) console.error("  no English for:", so.missingKeys.join(" | "));
   }
   const r = await c.eval("window.__report()");
   console.log(JSON.stringify(r, null, 2));
