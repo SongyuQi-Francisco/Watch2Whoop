@@ -1908,4 +1908,16 @@ I18N.addEn({
   "换一句": "Next quote",
   "关闭语录": "Turn off the quote",
   "原帖": "Original post",
+  // log weight by hand (weight.js)
+  "记体重": "Log weight",
+  "测量情况": "Conditions",
+  "备注（选填）": "Note (optional)",
+  "不能记未来的日子": "Can't log a future day",
+  "早上空腹": "Morning, fasted",
+  "如厕后": "After the toilet",
+  "运动后": "After exercise",
+  "睡前": "Before bed",
+  "穿衣": "Clothed",
+  "未穿衣": "Unclothed",
 });
+

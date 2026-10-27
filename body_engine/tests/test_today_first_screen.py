@@ -40,7 +40,8 @@ def test_first_screen_budget():
     # 980_000 + 12_500 for the jarvis_dial layers that sit beside the old ring menu until the flag is on for everyone (#294 / #309 / #312); + 1_000 for the product card's fuller nutrition line and allergen labels (#291); + 500 for the four hooks of slim_mode in app.js (#126; slim.js and its quotes are on demand)
     # + 700 for the ui_ai_first hooks and window.BodyPage in app.js (the AI-first page itself, ui-ai-first.js, loads on demand; #279)
     # + 1,000 for the hooks of the iOS app's native views (#247 phase 2: the "today" hook, nativeHello, BodyJarvis.native); the bridge loads on demand
-    assert total <= 995_700, total
+    # + 800 for the 「记体重」 row of the Me page and its on-demand loader in app.js (weight.js loads on the first tap)
+    assert total <= 996_500, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
@@ -48,7 +49,7 @@ def test_first_screen_budget():
 def test_lazy_scripts_are_declared_and_fingerprinted():
     html = served_page()
     lazy = re.findall(r'<script type="w2w/lazy"(?: data-lang="(\w+)")? src="([\w.-]+\.js)\?v=([0-9a-f]{12})"></script>', html)
-    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"),
+    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"), ("", "weight.js"),
                                                         ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js"), ("", "slim.js"),
                                                         ("", "slim-quotes.js"),
                                                         ("", "ui-ai-first.js"), ("", "native-bridge.js")]

@@ -5,7 +5,7 @@
   (same client_id), a group stops at its first rejection, conflicts resend with their patch, the banner text.
 - the page wiring, checked on the source: nothing offline runs while the flag is off, logout wipes the copies, the scripts
   are loaded and cached, the limits agree with offline/params.py.
-- POST /v1/users/{user}/weight (offline/api.py): 404 while the flag is off, idempotent on (date, value), 409 on a different
+- POST /v1/users/{user}/weight (offline/api.py): works with the flag off too, idempotent on (date, value), 409 on a different
   value unless overwrite. Separate test database BODY_TEST_DB_NAME (default body_test_offline); skipped without Postgres.
 """
 import json
@@ -320,10 +320,7 @@ def test_weight_endpoint(client, users, dsn, monkeypatch):
         day = user_today(conn, ids["a"]).isoformat()
     body = {"date": day, "weight_kg": 88.4, "client_id": "q1"}
 
-    set_flag(dsn, "off")
-    assert client.post("/v1/users/me/weight", json=body, headers=H(tok["a"])).status_code == 404   # flag off: no endpoint
-
-    set_flag(dsn, "all")
+    set_flag(dsn, "off")   # the weigh-in does not depend on offline_mode (manual weight entry): only the offline queue does
     r = client.post("/v1/users/me/weight", json=body, headers=H(tok["a"]))
     assert r.status_code == 200 and r.json()["written"] is True and fake.posts == 1
     r = client.post("/v1/users/me/weight", json=body, headers=H(tok["a"]))     # the queue resends it: nothing new

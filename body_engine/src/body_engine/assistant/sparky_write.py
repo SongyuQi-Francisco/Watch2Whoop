@@ -30,6 +30,7 @@ from ..i18n import L
 from ..nutrition import constraint_params as CP, constraints as diet_constraints, extras
 from ..ownstore import mirror
 from ..records import store as records_store
+from ..weightlog import store as weight_store
 from . import writelog
 
 SOURCE = "body_assistant"
@@ -697,7 +698,9 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
 
 def _undo(conn, user_id: int, client, kind: str, d: date, entry_id, meal, food, time) -> dict:
     if kind == "weight":
-        return _delete_weight(conn, client, d)
+        res = _delete_weight(conn, client, d)
+        weight_store.delete(conn, user_id, d)   # its measuring conditions go with it
+        return res
     if kind == "set":
         return _delete_set(conn, client, d, entry_id)
     rows = _day_rows(client, kind, d)

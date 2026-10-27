@@ -18,6 +18,7 @@ STATIC = Path(__file__).resolve().parents[1] / "src" / "body_engine" / "web" / "
 # endpoint (user segment and ${…} parts normalised to {x}, query dropped) -> fallback read tool(s)
 READ = {
     "today": ["get_briefing"],
+    "weight/recent": ["get_weight"],
     "days": ["get_scores"],
     "trends": ["get_scores", "get_daily_metrics", "get_sleep_details", "get_stress", "get_healthspan", "get_vo2max"],
     "vo2max": ["get_vo2max"],
