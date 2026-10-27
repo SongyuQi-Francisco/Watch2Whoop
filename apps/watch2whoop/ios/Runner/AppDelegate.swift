@@ -69,6 +69,10 @@ import HealthKit
     let voice = FlutterMethodChannel(name: "watch2whoop/voice", binaryMessenger: registrar.messenger())
     VoiceBridge.shared.channel = voice
     voice.setMethodCallHandler { call, result in VoiceBridge.shared.handle(call, result) }
+    // Native SwiftUI views over the Today page (#247 phase 2, NativeUI.swift): nothing is drawn until Dart switches them on
+    let nativeUi = FlutterMethodChannel(name: "watch2whoop/nativeui", binaryMessenger: registrar.messenger())
+    NativeUI.shared.channel = nativeUi
+    nativeUi.setMethodCallHandler { call, result in NativeUI.shared.handle(call, result) }
     #if DEBUG && targetEnvironment(simulator)
     let debug = FlutterMethodChannel(name: "watch2whoop/debug", binaryMessenger: registrar.messenger())
     debug.setMethodCallHandler { call, result in

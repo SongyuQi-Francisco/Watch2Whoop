@@ -499,7 +499,8 @@
       startVoice({ anchor: jv, mode: "locked", dest: "half" });
     } else if (id === "photo") {
       if (AI().ai().vision === false) { C.toast(tr("这个 AI 看不了图片")); return; }
-      $("#jv-cam").click();
+      if (window.Watch2WhoopFeatures?.nativeJarvis?.camera) tell("jv-camera");   // the app's camera (native-bridge.js)
+      else $("#jv-cam").click();
     } else if (id === "quick") openQuick();
   }
 
@@ -768,24 +769,26 @@
     return null;
   }
 
+  // A holding finger moved / lifted: on this page's key, or on the app's native key (native-bridge.js sends the same)
+  function holdMove(x, y) {
+    const z = zoneAt(x, y);
+    if (z === V.zone) return;
+    V.zone = z;
+    $("#jv-vt-cancel").classList.toggle("hot", z === "cancel"); $("#jv-vt-lock").classList.toggle("hot", z === "lock");
+    const vp = $("#jv-vpanel");
+    vp.classList.toggle("z-cancel", z === "cancel"); vp.classList.toggle("z-lock", z === "lock");
+    $("#jv-vp-hint").textContent = z === "cancel" ? tr("松开 取消") : z === "lock" ? tr("松开 锁定，可以松手接着说") : (directSend() ? tr("松开 发送") : tr("松开 识别"));
+    if (z) haptic("selection");
+  }
+  function holdUp() {
+    if (V.zone === "cancel") cancelVoice(tr("已取消，没有发送"));
+    else if (V.zone === "lock") { haptic("selection"); setState("locked"); placePanel(); announce(directSend() ? tr("已锁定，说完点发送") : tr("已锁定，说完点完成")); }
+    else finishVoice();
+  }
+
   function bindVoice() {
-    document.addEventListener("pointermove", (e) => {
-      if (V.state !== "hold" || e.pointerId !== V.pid) return;
-      const z = zoneAt(e.clientX, e.clientY);
-      if (z === V.zone) return;
-      V.zone = z;
-      $("#jv-vt-cancel").classList.toggle("hot", z === "cancel"); $("#jv-vt-lock").classList.toggle("hot", z === "lock");
-      const vp = $("#jv-vpanel");
-      vp.classList.toggle("z-cancel", z === "cancel"); vp.classList.toggle("z-lock", z === "lock");
-      $("#jv-vp-hint").textContent = z === "cancel" ? tr("松开 取消") : z === "lock" ? tr("松开 锁定，可以松手接着说") : (directSend() ? tr("松开 发送") : tr("松开 识别"));
-      if (z) haptic("selection");
-    });
-    document.addEventListener("pointerup", (e) => {
-      if (V.state !== "hold" || e.pointerId !== V.pid) return;
-      if (V.zone === "cancel") cancelVoice(tr("已取消，没有发送"));
-      else if (V.zone === "lock") { haptic("selection"); setState("locked"); placePanel(); announce(directSend() ? tr("已锁定，说完点发送") : tr("已锁定，说完点完成")); }
-      else finishVoice();
-    });
+    document.addEventListener("pointermove", (e) => { if (V.state === "hold" && e.pointerId === V.pid) holdMove(e.clientX, e.clientY); });
+    document.addEventListener("pointerup", (e) => { if (V.state === "hold" && e.pointerId === V.pid) holdUp(); });
     // e.g. a call, Siri, or iOS' first microphone prompt taking the touch
     document.addEventListener("pointercancel", (e) => { if (V.state === "hold" && e.pointerId === V.pid) cancelVoice(tr("被系统打断，没有发送"), "interrupted"); });
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden" && (V.state === "hold" || V.state === "locked")) cancelVoice(tr("被系统打断，没有发送"), "interrupted"); });
@@ -894,6 +897,7 @@
     bindMic,
     // for tests and screenshots: the state of the overlay
     state: () => V.state,
+    native: () => ({ jv, V, C, isJarvis, offline, runKey, finishVoice, cancelVoice, startVoice, holdMove, holdUp, voiceOn, keys: KEYS.map((k) => k.id) }),   // the app's key: native-bridge.js
   };
 
   (window.BodyPlugins = window.BodyPlugins || []).push({

@@ -1421,6 +1421,7 @@
     ensureJarvis(then) { if (C.ai?.mode === "fallback" && !C.ai.consent) { consentSheet(null, then); return false; } return true; },
     voicePath() { return window.BodyMedia?.voicePath(asrOn()) || "off"; },
     busy() { return chat.busy; },
+    phase: () => (!chat.busy ? null : chat.live?.started?.() ? "answering" : "sending"),   // the app's native key (native-bridge.js)
     chatOpen() { const p = $("#ai-chat"); return !!p && !p.hidden && p.classList.contains("open"); },
     openHalf, toFull, close: closeChat, sendVoice, sendPhoto,
     draft(text) { panel(); const ta = $("#ai-text"); ta.value = text; ta.dispatchEvent(new Event("input")); ta.focus(); },

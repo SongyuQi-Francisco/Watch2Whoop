@@ -39,7 +39,8 @@ def test_first_screen_budget():
     assert len(names) <= 35, len(names)
     # 980_000 + 12_500 for the jarvis_dial layers that sit beside the old ring menu until the flag is on for everyone (#294 / #309 / #312); + 1_000 for the product card's fuller nutrition line and allergen labels (#291); + 500 for the four hooks of slim_mode in app.js (#126; slim.js and its quotes are on demand)
     # + 700 for the ui_ai_first hooks and window.BodyPage in app.js (the AI-first page itself, ui-ai-first.js, loads on demand; #279)
-    assert total <= 994_700, total
+    # + 1,000 for the hooks of the iOS app's native views (#247 phase 2: the "today" hook, nativeHello, BodyJarvis.native); the bridge loads on demand
+    assert total <= 995_700, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
@@ -50,7 +51,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
     assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"),
                                                         ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js"), ("", "slim.js"),
                                                         ("", "slim-quotes.js"),
-                                                        ("", "ui-ai-first.js")]
+                                                        ("", "ui-ai-first.js"), ("", "native-bridge.js")]
     assert re.search(r'<script data-w2w="gate" src="lang-gate\.js\?v=[0-9a-f]{12}"></script>', html)
     # the gate comes after i18n.js (the table adds itself to it) and before the scripts that call tr() when they run
     assert html.index('src="i18n.js?') < html.index('src="i18n-en.js?') < html.index('src="lang-gate.js?') < html.index('src="ios-web.js?')
@@ -59,7 +60,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
         r = TestClient(root_api.app, base_url="https://testserver").get(f"/app/{name}?v={v}")
         assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
     # an older page that still has the tags keeps working: nothing else in the page names these files as plain scripts
-    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|sync-status|slim|slim-quotes|ui-ai-first)\.js', INDEX)
+    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|sync-status|slim|slim-quotes|ui-ai-first|native-bridge)\.js', INDEX)
 
 
 def test_offline_copy_has_the_lazy_scripts_inline_and_no_gate():

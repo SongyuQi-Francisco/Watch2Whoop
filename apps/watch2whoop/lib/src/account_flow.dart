@@ -11,6 +11,7 @@ import 'backfill.dart';
 import 'config.dart';
 import 'health_sync.dart';
 import 'i18n.dart';
+import 'native_ui.dart';
 import 'platform_features.dart';
 import 'push.dart';
 import 'raw_sync.dart';
@@ -115,6 +116,7 @@ Future<void> signOutToOnboarding({bool revoke = true}) async {
   await RawSync.instance.clear();
   await SyncEngine.instance.clear();
   await BackfillService.instance.clear();
+  await NativeUi.clearCache(); // the kept copy of 今天 for the native view (native_ui.dart)
   try {
     await setLangOverride(null); // the next person starts in the system language
   } catch (e) {
