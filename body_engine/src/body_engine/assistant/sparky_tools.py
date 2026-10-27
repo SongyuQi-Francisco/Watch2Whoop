@@ -1,9 +1,11 @@
 """Assistant tools that read SparkyFitness (workouts, food, weight), all read-only.
 They read with the viewed user's own read-only API key (sparky_client.client_for_user), and viewing a family member's data still passes shares authorization first (run_tool)."""
 from datetime import date
+from zoneinfo import ZoneInfo
 
 from .. import sparky_client
 from ..toolspec import DETAIL
+from ..weightlog import store as weight_store
 from .tools import Tool, _range_schema
 
 MAX_DAYS = 366
@@ -61,8 +63,12 @@ def _nutrition(conn, uid, a):
 
 
 def _weight(conn, uid, a):
-    rows = sparky_client.weight(sparky_client.client_for_user(conn, uid), *_range(a))
-    return {"entries": rows, "weekly_avg": sparky_client.weekly_weight_average(rows)}
+    start, end = _range(a)
+    rows = sparky_client.weight(sparky_client.client_for_user(conn, uid), start, end)
+    ctx = weight_store.in_range(conn, uid, start, end)   # ctx = measuring conditions (空腹 / 运动后…), note, at = measured HH:MM
+    tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
+    entries = [{**r, **weight_store.for_ai(ctx.get(r["date"]), tz)} for r in rows]
+    return {"entries": entries, "weekly_avg": sparky_client.weekly_weight_average(rows)}
 
 
 SPARKY_TOOLS = [
@@ -84,7 +90,7 @@ SPARKY_TOOLS = [
     ),
     Tool(
         name="get_weight",
-        description="称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…）和每周（周一起）平均体重。调热量看周均。",
+        description="称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
         input_schema=_range_schema(),
         handler=_weight,
         group="body", scope="weight",

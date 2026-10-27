@@ -4323,7 +4323,8 @@
     await plugged;
     if (S.flags.includes("ui_ai_first")) await lazyScript("ui-ai-first.js");
     lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet,
-      page: () => lastPage, todayDrawn: () => lastToday };
+      page: () => lastPage, todayDrawn: () => lastToday, today: () => S.todayDate,
+      dropCache: () => { for (const k of Object.keys(S.data)) if (/^(today|trends)/.test(k)) delete S.data[k]; } };
     lateInit.me = me;
     if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });

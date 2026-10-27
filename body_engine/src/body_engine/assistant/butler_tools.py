@@ -6,6 +6,7 @@ from datetime import date
 
 from ..rollout import flags
 from ..toolspec import DETAIL, END, START, USER, nullable, schema
+from ..weightlog import params as weight_params, service as weight_service
 from . import food_combine, meals, memory, memory_params, memory_review, recipes, snapshots, sparky_write, status, writelog
 
 
@@ -227,8 +228,10 @@ TOOL_SPECS: list[dict] = [
             "bone_mass_kg": _n("number"),
             "bmr_kcal": _n("number"),
             "overwrite": {"type": "boolean"},
+            "context": _n("array", "测量情况：" + " ".join(weight_params.CONTEXT_TAGS), items={"type": "string"}),
+            "note": _n("string", "备注"),
         }),
-        handler=lambda conn, uid, a: sparky_write.log_weight(conn, uid, a),
+        handler=lambda conn, uid, a: weight_service.log_weight(conn, uid, a, context_tags=a.get("context"), note=a.get("note")),
         group="body", scope="weight", writes=True,
     ),
     dict(
