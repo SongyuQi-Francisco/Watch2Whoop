@@ -2,7 +2,8 @@
    app.js loads this file only for people with the flag (index.html declares it type w2w/lazy, so nobody else downloads it); with
    the flag off nothing here runs and the page is exactly as before. Guiding rule: someone who has used apps for years finds their
    way without any tutorial, so the AI's entry points are the familiar ones.
-   - Tab bar: 今天 · 身体 · (Jarvis) · 圈子 · 我. 记录 and 饮食 leave the bar and open as second-level pages (a back link on top).
+   - The tab bar stays as it is (owner's decision 2026-10-27, after trying a five-slot bar): circles keep their own tab and
+     also get the circles card on Today.
    - 今天: three rings side by side (recovery in the middle, sleep and strain at the sides; they open the same sheets as before),
      a search field that is also "ask Jarvis", two or three concrete questions made from the user's own numbers, 重点 (the
      reminders), the circles card (always there: friends, or an invitation), my modules (at most 6), a row to 全部功能.
@@ -30,7 +31,6 @@
 .a1-hits{margin-top:8px}
 .a1-asks{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.a1-asks .chip{display:inline-flex;align-items:center;gap:4px}
 .a1-asks .chip svg{width:14px;height:14px;color:var(--text-2)}
-.a1-gap{pointer-events:none}
 .a1-focus .chip[aria-pressed="true"]{background:var(--text);color:var(--bg)}
 .a1-why{margin-left:6px;vertical-align:2px}
 .a1-circ .row{display:flex;align-items:center;gap:10px}.a1-avs{display:flex}.a1-avs .avatar{width:32px;height:32px;font-size:13px}
@@ -314,7 +314,6 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
   }
 
   function after(tab, view) {
-    tabs();
     document.body.classList.add("a1");
     for (const b of $$("[data-a1]", view)) b.onclick = () => action(b.dataset.a1);
     if (tab === "today") {
@@ -334,15 +333,10 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       $("#me-intro", view)?.remove();   // no tutorial
       if (P.isSelf() && view.firstElementChild) {
         view.firstElementChild.insertAdjacentHTML("afterend", `${askBar("", tr("搜设置和功能，或问 Jarvis"))}<div class="section" style="margin-top:12px"><div class="group">
-          <button class="item" type="button" data-a1="all"><span class="row-title">${tr("全部功能")}</span>${chev()}</button>
-          <button class="item" type="button" data-a1="records"><span class="row-title">${tr("训练和饮食记录")}</span>${chev()}</button></div></div>`);
+          <button class="item" type="button" data-a1="all"><span class="row-title">${tr("全部功能")}</span>${chev()}</button></div></div>`);
         for (const b of $$("[data-a1]", view)) b.onclick = () => action(b.dataset.a1);
         bindAsk(view);
       }
-    } else if (tab === "record" || tab === "food") {
-      if (!$(".a1-back", view)) view.insertAdjacentHTML("afterbegin", `<div class="sub-head a1-back"><button class="sub-back" type="button" data-a1="today">${CHEV}<span>${tr("tab.today")}</span></button></div>`);
-      $(".a1-back [data-a1]", view).onclick = () => action("today");
-      for (const b of $$(".tab", $(".tabbar"))) b.setAttribute("aria-current", b.dataset.tab === "today" ? "page" : "false");
     }
   }
 
@@ -350,29 +344,9 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
     const s = S();
     if (a === "all") { if (s.tab === "me") { s.meSub = "all"; P.render(); } else { P.setTab("me"); s.meSub = "all"; P.render(); } }
     else if (a === "me") { s.meSub = null; P.render(); }
-    else if (a === "today") P.setTab("today");
-    else if (a === "records") goTab("record", (x) => { x.recSub = "training"; });
     else if (a === "feed") goTab("friends", (x) => { x.friendsMode = "feed"; });
     else if (a === "invite" || a === "join") window.BodyCircles?.open();
     else if (a === "focus") { const h = P.S.data[`a1home:${P.S.owner}`]; if (h) focusSheet(h, false); }
-  }
-
-  // Tab bar: 今天 · 身体 · (Jarvis over the gap) · 圈子 · 我
-  function tabs() {
-    const nav = $(".tabbar");
-    if (!nav) return;
-    for (const k of ["record", "food"]) { const b = $(`.tab[data-tab="${k}"]`, nav); if (b) b.hidden = true; }
-    if (!$(".a1-gap", nav)) {
-      const friends = $('.tab[data-tab="friends"]', nav), meTab = $('.tab[data-tab="me"]', nav);
-      const gap = Object.assign(document.createElement("span"), { className: "a1-gap" });
-      gap.setAttribute("aria-hidden", "true");
-      nav.insertBefore(gap, friends && !friends.hidden ? friends : meTab);
-      if (meTab) nav.append(meTab);
-      for (const [k, label] of [["trends", tr("身体")], ["friends", tr("圈子")]]) {
-        const span = $(`.tab[data-tab="${k}"] span`, nav);
-        if (span) { span.removeAttribute("data-i18n"); span.textContent = label; }
-      }
-    }
   }
 
   // ---------------------------------------------------------------- long press: "ask Jarvis about this" on any data card
@@ -443,8 +417,6 @@ body.a1 #view [data-card]{-webkit-touch-callout:none;-webkit-user-select:none;us
       P = window.BodyPage;
       if (!on()) return;
       if (!$("#a1-css")) document.head.append(Object.assign(document.createElement("style"), { id: "a1-css", textContent: CSS }));
-      P.TABS && Object.assign(P.TABS, { trends: tr("身体"), friends: tr("圈子") });   // the header shows the new names too
-      tabs();
       bindLongPress();
       window.BodyHooks.on("sheet", (d) => { if (!d.open) setTimeout(maybeOverview, 350); });
     },
