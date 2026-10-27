@@ -3971,8 +3971,8 @@
             closeSheet(); render();
             // Saved even when the training log sync failed (issue #66 FB-4): say so instead of a plain OK
             toast(res.sparky_sync && res.sparky_sync.synced === false && res.sparky_sync.link !== undefined
-              ? tr("已启用：{name} · 训练记录未同步", { name: res.saved?.name || chosen })
-              : tr("已启用：{name}", { name: res.saved?.name || chosen }));
+              ? tr("已启用：{name} · 训练记录未同步", { name: sname(res.saved?.name || chosen) })
+              : tr("已启用：{name}", { name: sname(res.saved?.name || chosen) }));
           } catch (err) { toast(err.message); save.disabled = false; }
         };
       });

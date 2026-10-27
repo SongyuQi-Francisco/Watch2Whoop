@@ -36,6 +36,7 @@ I18N.addEn({
   "你的档案": "Your profile",
   "问 AI": "Ask AI",
   "无权限": "No access",
+  "未计算": "Not calculated",
   "恢复分 {v}": "Recovery {v}",
   "恢复": "Recovery",
   "无睡眠": "No sleep",
