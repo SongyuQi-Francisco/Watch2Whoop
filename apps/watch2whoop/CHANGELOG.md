@@ -20,7 +20,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
-## 1.0.8 — 2026-11-01
+## 1.0.8 — 2026-10-27
 这一版主要让「手机同步」更稳、更快、出问题时说得清楚。还在用 1.0.6 的测试用户请直接升到 1.0.8（1.0.7 的修复也都在里面）。
 
 **同步**
