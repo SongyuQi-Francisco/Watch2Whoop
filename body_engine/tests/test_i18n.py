@@ -108,6 +108,26 @@ def test_no_chinese_outside_tr(name):
     assert not stray, f"{name}: {len(stray)} Chinese literals outside tr(): " + "; ".join(f"{x.line}: {x.text[:40]!r}" for x in stray[:25])
 
 
+# Chinese literals on lines marked i18n-ok that are meant to stay Chinese: the language switch shows each language in its own
+# name, sw.js has no I18N and picks its English twin itself (X-Body-Lang), the daily quotes are not translated (owner decision
+# for the slim-muscle mode, #126: quotes are quoted words, shown as written).
+I18N_OK_STAYS_CHINESE = {"语言 / Language", "Language / 语言",
+                         '<button type="button" data-lang="zh" lang="zh-CN">中文</button><span aria-hidden="true">/</span>',
+                         "离线，这台设备上也没有保存过这项数据"}
+I18N_OK_DATA_FILES = {"slim-quotes.js"}
+
+
+@pytest.mark.parametrize("name", [s for s in SCRIPTS if s not in I18N_OK_DATA_FILES])
+def test_i18n_ok_literals_have_english(name):
+    """A Chinese literal on an `i18n-ok` line is not a tr() key as far as the scanner can see, but it is often a table that is
+    mapped through tr(variable) later (the short reasons in app.js), and test_used_keys_exist cannot see those keys: "未计算" had
+    no English entry for that reason. Every such literal needs an entry in i18n-en.js, unless it is listed above."""
+    src = (STATIC / name).read_text(encoding="utf-8")
+    missing = sorted({x.text for x in scan(src) if x.kind in ("str", "tpl") and not x.is_tr_key and CJK.search(x.text)
+                      and "i18n-ok" in x.line_text and x.text not in EN_TEXT and x.text not in I18N_OK_STAYS_CHINESE})
+    assert not missing, f"{name}: i18n-ok Chinese without an English entry in i18n-en.js: {missing}"
+
+
 class _HtmlCheck(HTMLParser):
     ATTRS = {"placeholder": "data-i18n-ph", "aria-label": "data-i18n-aria", "title": "data-i18n-title"}
 

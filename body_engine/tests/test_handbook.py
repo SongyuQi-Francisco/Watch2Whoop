@@ -51,7 +51,8 @@ def test_editions_match_section_by_section():
     toc = lambda md: re.findall(r"^- \[[^\]]+\]\(#([^)]+)\)$", md, re.M)   # noqa: E731
     assert len(toc(zh)) == len(toc(en))
     # same screenshots, same personal-edition markers, same example chat and table rows
-    imgs = lambda md: re.findall(r"!\[[^\]]*\]\(([^)]+)\)", md)   # noqa: E731
+    # (the English edition has its own English screenshots under images/tester-handbook/en/, same names)
+    imgs = lambda md: [i.replace("/en/", "/") for i in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", md)]   # noqa: E731
     assert imgs(zh) == imgs(en)
     for marker in ("W2W:HELLO", "W2W:SETUP", "W2W:FOOTER"):
         assert f"<!-- {marker} -->" in zh and f"<!-- {marker} -->" in en
@@ -99,8 +100,25 @@ def test_rendered_page_is_up_to_date(lang):
     assert f'<html lang="{"en" if lang == "en" else "zh-CN"}"' in html
     # the images the Markdown uses are all copied next to the page
     for name in re.findall(r"!\[[^\]]*\]\(images/tester-handbook/([^)]+)\)", md_path.read_text(encoding="utf-8")):
-        assert (html_path.parent / "img" / name).is_file(), name
+        assert (html_path.parent / "img" / name.removeprefix("en/")).is_file(), name
+        assert (DOCS / "images" / "tester-handbook" / name).is_file(), name
     assert "viewport" in html and "width=device-width" in html
+
+
+def test_english_edition_uses_its_own_screenshots():
+    """#13: the English handbook shows the English interface. Its pictures are taken from the Quick Start demo (synthetic data) by
+    tools/handbook_shots_en.mjs + tools/handbook_images.py --lang en, and the rendered page carries the same files. The one
+    exception is the iOS permission sheet (a system screen), which says so under the picture."""
+    md = read("en")
+    names = re.findall(r"!\[[^\]]*\]\(images/tester-handbook/(en/[^)]+)\)", md)
+    assert len(names) == len(re.findall(r"!\[[^\]]*\]\(", md)) >= 11, "every picture of the English edition is under images/tester-handbook/en/"
+    assert "still show the Chinese interface" not in md
+    assert "captured on an iPhone set to Chinese" in md
+    shots = DOCS / "images" / "tester-handbook"
+    same = {n for n in names if (shots / n).read_bytes() == (shots / n.removeprefix("en/")).read_bytes()}
+    assert same == {"en/health-permission.jpg"}, f"these English screenshots are still the Chinese ones: {sorted(same)}"
+    for n in names:   # the rendered page carries the very same files
+        assert (STATIC / "handbook" / "en" / "img" / n.removeprefix("en/")).read_bytes() == (shots / n).read_bytes(), n
 
 
 def test_rendered_pages_link_to_each_other():

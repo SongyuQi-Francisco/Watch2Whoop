@@ -136,6 +136,26 @@ def test_api_own_and_admin(client, users, monkeypatch):
     assert client.get("/v1/admin/notices", headers=H(t["admin"])).status_code == 403   # nobody is an admin by default
 
 
+def test_english_text_for_english_pages(client, users, monkeypatch):
+    """An admin may write the message in English too (#64): users whose page language is English get it, everyone else (and an
+    English user when there is no English text) the original."""
+    ids, t = users
+    monkeypatch.setenv("BODY_ADMIN_USER_IDS", str(ids["admin"]))
+    both = {"user_id": ids["a"], "title": "手机同步已断开", "body": "点一下重新连接", "link": "watch2whoop://sync", "link_label": "重新连接",
+            "title_en": "Phone sync stopped", "body_en": "Tap to reconnect.", "link_label_en": "Reconnect"}
+    only_zh = {"user_id": ids["a"], "title": "只有中文", "body": "正文"}
+    assert client.post("/v1/admin/notices", json={**both, "link_label_en": "x" * 50}, headers=H(t["admin"])).status_code == 422
+    assert client.post("/v1/admin/notices", json={"user_id": ids["a"], "title": "t", "link_label_en": "Go"}, headers=H(t["admin"])).status_code == 422
+    for body in (both, only_zh):
+        assert client.post("/v1/admin/notices", json=body, headers=H(t["admin"])).status_code == 201
+    zh = client.get("/v1/users/me/notices", headers=H(t["a"])).json()["items"]
+    en = client.get("/v1/users/me/notices", headers={**H(t["a"]), "X-Body-Lang": "en"}).json()["items"]
+    texts = lambda items: [(i["title"], i["body"], i["link_label"]) for i in items]   # noqa: E731
+    assert texts(zh) == [("手机同步已断开", "点一下重新连接", "重新连接"), ("只有中文", "正文", None)]
+    assert texts(en) == [("Phone sync stopped", "Tap to reconnect.", "Reconnect"), ("只有中文", "正文", None)]
+    assert all("title_en" not in i for i in zh + en)   # the page only ever gets the text to show
+
+
 def test_cli_send(dsn, users):
     ids, _ = users
     env = {**os.environ, "BODY_DB_NAME": TEST_DB}

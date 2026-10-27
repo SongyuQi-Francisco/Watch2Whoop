@@ -168,6 +168,9 @@ def main() -> None:
     ns.add_argument("--link", default=None, help="the button's link: https://…, /app/… or watch2whoop://… (e.g. watch2whoop://sync)")
     ns.add_argument("--link-label", default=None, help="the button's text (default 打开 / Open)")
     ns.add_argument("--expires-days", type=int, default=None, help="not shown after this many days (default: until seen)")
+    ns.add_argument("--title-en", default=None, help="the title in English, for users whose page language is English")
+    ns.add_argument("--body-en", default=None, help="the text in English (same)")
+    ns.add_argument("--link-label-en", default=None, help="the button's text in English (same)")
     nl = sub.add_parser("notice-list", help="the latest admin messages (of one user) and whether they were seen")
     nl.add_argument("--user-id", type=int, default=None)
     nl.add_argument("--limit", type=int, default=50)
@@ -619,7 +622,8 @@ def main() -> None:
         elif args.cmd == "notice-send":
             from .notices import store as notices
             try:
-                row = notices.send(conn, args.user_id, args.title, args.body, args.link, args.link_label, None, args.expires_days)
+                row = notices.send(conn, args.user_id, args.title, args.body, args.link, args.link_label, None, args.expires_days,
+                                   args.title_en, args.body_en, args.link_label_en)
             except ValueError as e:
                 p.error(str(e))
             conn.commit()

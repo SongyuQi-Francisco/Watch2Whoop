@@ -4,7 +4,8 @@ Own (the Today page; `me` or one's own id):
   GET  /v1/users/{user}/notices              {items: [{id, title, body, link, link_label, created_at}]} not seen yet
   POST /v1/users/{user}/notices/{id}/seen    marks it seen (shown once); needs write
 Admins (BODY_ADMIN_USER_IDS; 403 for everyone else, also with write scope):
-  POST   /v1/admin/notices {user_id, title, body?, link?, link_label?, expires_days?} -> 201 {id, …}
+  POST   /v1/admin/notices {user_id, title, body?, link?, link_label?, expires_days?, title_en?, body_en?, link_label_en?} -> 201 {id, …}
+         (the *_en fields are shown instead of the originals to users whose page language is English)
   GET    /v1/admin/notices?user_id=&limit=   the latest notices with seen_at
   DELETE /v1/admin/notices/{id}              withdraw one that was not seen yet
 """
@@ -46,12 +47,17 @@ class NoticeIn(BaseModel):
     link: str | None = Field(None, max_length=store.MAX_LINK)
     link_label: str | None = Field(None, max_length=store.MAX_LABEL)
     expires_days: int | None = Field(None, ge=1, le=365)
+    # the same message in English, shown to users whose page language is English (optional)
+    title_en: str | None = Field(None, max_length=store.MAX_TITLE)
+    body_en: str | None = Field(None, max_length=store.MAX_BODY)
+    link_label_en: str | None = Field(None, max_length=store.MAX_LABEL)
 
 
 @router.post("/v1/admin/notices", status_code=201)
 def send(body: NoticeIn, conn=Depends(get_conn), viewer=Depends(admin)):
     try:
-        row = store.send(conn, body.user_id, body.title, body.body, body.link, body.link_label, viewer["id"], body.expires_days)
+        row = store.send(conn, body.user_id, body.title, body.body, body.link, body.link_label, viewer["id"], body.expires_days,
+                         body.title_en, body.body_en, body.link_label_en)
     except ValueError as e:
         conn.rollback()
         raise HTTPException(422, str(e)) from None
