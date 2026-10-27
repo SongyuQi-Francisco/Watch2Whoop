@@ -2955,6 +2955,7 @@
         ${isSelf() ? langRow() : ""}
         ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
+        ${who.self ? `<button class="item" id="me-weight"><span class="row-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:8px;color:var(--text-2)"><circle cx="12" cy="5" r="3"/><path d="M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.5 8z"/></svg>${tr("记体重")}</span><span class="chev">${ICON.chev}</span></button>` : ""}
         ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
@@ -3069,6 +3070,8 @@
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
+    const wt = $("#me-weight", view);   // weight.js, on demand (Lucide "weight", ISC)
+    if (wt) wt.onclick = async () => { if (await lazyScript("weight.js")) window.BodyWeight?.open(); };
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     const out = $("#me-logout", view), hb = $("#me-handbook", view);
     if (out) out.onclick = logout;

@@ -47,8 +47,10 @@ def test_page_chips_agree_with_params():
         assert f'"{zh}":' in en, zh
     assert [list(g) for g in P.EXCLUSIVE] == [["clothed", "unclothed"]] and 'EXCLUSIVE = [["clothed", "unclothed"]]' in js
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert 'src="weight.js"' in index and '"weight.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")
-    assert "me-weight" in js and "weightOn" not in js              # not behind the offline_mode flag
+    assert 'type="w2w/lazy" src="weight.js"' in index and '"weight.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")   # on demand
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert 'id="me-weight"' in app and 'lazyScript("weight.js")' in app and "window.BodyWeight = { open }" in js
+    assert "BodyFlags" not in js and "flags.includes" not in js    # not behind a rollout flag (offline_mode only decides queueing)
 
 
 def test_tool_spec_is_short():
