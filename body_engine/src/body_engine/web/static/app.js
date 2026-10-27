@@ -4422,7 +4422,7 @@
   // Flag ui_ai_first (#279): the page's own pieces for ui-ai-first.js
   window.BodyPage = {
     S, api, load, optional, render, setTab, goPage, openSheet, closeSheet, askAI, canAskAI, isSelf, isPast, viewDay, ownerPath, todayKey, todayPath,
-    WHOOP_API, TABS, friendsOn, recordsV2, muscleOn, muscleCtx, journalCtx, scoresHtml, remindersHtml, sleepCardHtml, goalCardHtml, dayCardHtml,
+    WHOOP_API, friendsOn, recordsV2, muscleOn, muscleCtx, journalCtx, scoresHtml, remindersHtml, sleepCardHtml, goalCardHtml, dayCardHtml,
     monitorHtml, strainCoachHtml,
   };
 
