@@ -95,6 +95,18 @@ READ_RESULT_MAX_CHARS_BY_TOOL = {
     "search_exercises": 12000,   # up to its own result limit, each with muscles, equipment and safe alternatives (~9k)
 }
 
+# Token economy of the in-page chat (issue #78; measured by tests/test_token_economy.py, numbers in docs/ai-assistant-plan.md §9.23)
+# get_briefing keys the chat model does not get: its system prompt already has the caller's memory (and the root rules,
+# whose text is dropped from system_rules too); the memory_review reminder is kept.
+CHAT_BRIEFING_DROP = ("memory",)
+# Tool results of older turns are sent shortened: the model has already answered from them and can call the tool again.
+# The results of the last HISTORY_FULL_TURNS user turns (the current one included) go out whole, and so do the tools below
+# (what the model needs to carry on: the opening briefing, schemas from find_tools, the playbooks and the scene context).
+HISTORY_FULL_TURNS = 2
+HISTORY_RESULT_CHARS = 600
+HISTORY_FULL_TOOLS = ("get_briefing", "find_tools", "get_playbook", "get_training_context", "get_week_review_context",
+                      "get_shopping_context")
+
 # Scene context tools (assistant/scenes.py, issue #100)
 TRAINING_RECENT_DAYS = 14         # get_training_context: training and load looked back on
 EQUIPMENT_CARD_KEY = "equipment"  # profile card item where the user's equipment is kept (asked once, then remembered)

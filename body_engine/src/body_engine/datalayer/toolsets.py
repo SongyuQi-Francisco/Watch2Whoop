@@ -9,7 +9,8 @@ tools/list_changed needed):
 The caller resolves a meta call to the real tool with `resolve`, then runs that tool as if it had been called directly:
 same authorization, the audit records the real name, confirm tools are judged by the real name, and a restricted
 caller only reaches tools in its own Access.tools.
-Everything application-specific (core list, groups, contexts, confirm tools, texts, budgets) comes in a ToolsetConfig.
+Everything application-specific (core list, groups, contexts, confirm tools, texts) comes in a ToolsetConfig, the size
+caps in Budgets; config_problems / budget_problems check an application's tools against both (datalayer.testing).
 """
 import json
 from dataclasses import dataclass, field
@@ -57,6 +58,60 @@ class ToolsetConfig:
     find_max: int
     messages: Messages
     optional_defaults: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Budgets:
+    """Size caps in characters of the tool definitions as they are sent ({name, description, relaxed input_schema} JSON,
+    definition_chars). Tool definitions go out with every model call, so these are what keeps each call small:
+    core: the resident core; meta: the meta tools; listing: MCP tools/list (core + confirm tools + meta);
+    context: core + one context's groups + meta, for every context of the config and for no context;
+    groups: group -> cap of all its tools (every group of the config needs one)."""
+    core: int
+    meta: int
+    listing: int
+    context: int
+    groups: Mapping[str, int] = field(default_factory=dict)
+
+
+def config_problems(cfg: ToolsetConfig, tools: Iterable[Tool]) -> list[str]:
+    """What is inconsistent between a ToolsetConfig and the application's tools (empty = fine): a tool in an unknown
+    group, a core / confirm name that is not a tool, a confirm tool that does not write, a context naming an unknown
+    group, a group without tools, a meta tool name taken by a tool."""
+    tools = list(tools)
+    names = {t.name for t in tools}
+    out = [f"tool {t.name}: unknown group {t.group!r}" for t in tools if t.group not in cfg.groups]
+    out += [f"core: no tool {n}" for n in cfg.core if n not in names]
+    if len(list(cfg.core)) != len(set(cfg.core)):
+        out.append("core: a name is listed twice")
+    writes = {t.name for t in tools if t.writes}
+    out += [f"confirm: {n} is not a write tool" for n in sorted(set(cfg.confirm) - writes)]
+    out += [f"context {c}: unknown group {g!r}" for c, gs in cfg.contexts.items() for g in gs if g not in cfg.groups]
+    out += [f"group {g}: no tools" for g in cfg.groups if not any(t.group == g for t in tools)]
+    out += [f"meta tool name {m.name} is also a tool" for m in cfg.meta if m.name in names]
+    return out
+
+
+def budget_problems(cfg: ToolsetConfig, tools: Iterable[Tool], budgets: Budgets) -> list[str]:
+    """Every set the framework sends, measured against `budgets` (empty = all fit)."""
+    tools = list(tools)
+    size = lambda ts: definition_chars(ts, cfg.optional_defaults)   # noqa: E731
+    out = []
+
+    def cap(what: str, n: int, limit: int) -> None:
+        if n > limit:
+            out.append(f"{what}: {n} > {limit} chars")
+    cap("core", size([t for t in tools if t.name in cfg.core]), budgets.core)
+    cap("meta", size(cfg.meta), budgets.meta)
+    cap("listing", size(for_listing(cfg, tools, True)), budgets.listing)
+    for g in cfg.groups:
+        if g not in budgets.groups:
+            out.append(f"group {g}: no budget")
+        else:
+            cap(f"group {g}", size([t for t in tools if t.group == g]), budgets.groups[g])
+    for c in [None, *cfg.contexts]:
+        cap(f"context {c}", size(for_context(cfg, tools, c)), budgets.context)
+    return out
 
 
 def definition_chars(tools: Iterable[Tool], optional_defaults: Mapping[str, Any] | None = None) -> int:

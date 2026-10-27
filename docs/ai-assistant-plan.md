@@ -520,3 +520,37 @@ Gemini CLI：`~/.gemini/settings.json` 的 `mcpServers` 加 `"body-engine": {"ht
 - **半屏**：就是对话面板加 `jv-half`（同一段对话、同一套卡片），高度跟内容、最高 80%；「继续对话」/ 上拉 = 完整对话页，下拉 / 点压暗处 = 关；关掉 10 分钟内再打开接着同一段对话。
 - **无障碍**：菜单是 `role="menu"`，键盘方向键可走；读屏双击 = 点按，「语音」键 = 不用按住的完整路径；状态变化用播报区；`prefers-reduced-motion` 时在 JS 里分支（不转、不飞，原位淡入）。触觉只在 app 声明 `Watch2WhoopFeatures.haptics` 时发 `haptic:<light|medium|selection|success|warning>`。
 - **测试**：`tests/test_voice_fix.py`（匹配规则、只用本人的词、两个接口跟开关走）、`tests/test_jarvis_orbit.py`（开关关着不改任何东西、文件接线、确认后才发、只给 Jarvis、减弱动态效果、图标出处）、`tests/test_voice_path.py`（本机识别只认 app 的声明）。
+
+### 9.23 每轮发给模型的 token：实测和压缩（2026-10-27，#78 / #116；`tests/test_token_economy.py`、`ai/chat.py`、迁移 `940_ai_conversation_own_only.sql`）
+**怎么量**：`tests/test_token_economy.py` 用 `test_tool_groups.py` 的一年合成数据，在今天页走一段 5 条消息的真实对话（「今天怎么样」→ 一个月睡眠 → HRV / 静息心率 → 这周训练 → 这周哪天恢复最差，每条一次工具调用 + 一次回答，共 10 次模型调用），用真的适配器类录下每次调用会发出去的 system、工具定义、历史（不联网）。生产上开着的开关（卡片 v2、商品卡、ai_parity、话题守门）都打开。`BODY_TOKEN_DUMP=x.json` 导出原文，下面的 token 数是导出后用 o200k_base 分词器数的（Claude / DeepSeek 自己的分词器数出来会差一些，比例差不多）。
+
+**改前构成**（主人自己的 Claude，一次调用 / 整段对话 10 次合计）：
+
+| 部分 | 第 1 次 | 第 10 次 | 整段合计 | 占比 |
+|---|---|---|---|---|
+| 工具定义（核心 + 今天页的 body / training / home 组 + 元工具 + show_card） | 14,946 | 14,946 | 149,460 | 50% |
+| system（根规则 550 + 人设 6,557 + 用户资料和记忆 + 卡片说明 730） | 10,577 | 10,577 | 105,770 | 35% |
+| 历史（其中工具返回） | 38 | 8,711（7,765） | 46,664（41,559） | 15% |
+| 合计 | 25,561 | 34,234 | 301,894 | |
+
+托底 AI（DeepSeek，ai_parity 每页只带第一组）：工具 10,383、system 6,242、第 10 次的历史 8,715，整段 212,950。MCP（外接 AI）：`tools/list` 8,214、server instructions 921（含根规则）、`get_briefing` 1,476（其中根规则全文 576）。
+
+**最大的几项**：① 工具定义（每次都发，主人 AI 约 15k）；② system 里的人设（6.6k，其中「记录归档流程」一节 2.7k）；③ 历史里的工具返回（越聊越多，单个 1–2.6k）；④ 页内对话的 `get_briefing` 和 system 重复的根规则全文、记忆（约 0.9k，一直留在历史里）。
+
+**这次做的**（不改工具描述、参数和 MCP `tools/list`，#201 快照一字未变）：
+
+| 改动 | 只影响 | 主人 Claude 整段 | 托底整段 |
+|---|---|---|---|
+| 没人给他共享数据的人，对话里的工具去掉 `user` 参数（只能是 me，执行器补上）；对话开始时定下来存在 `ai_conversations.own_only`，中途不变 | 页内对话，新对话 | 工具 −946 / 次（−6.3%） | 已经是这样 |
+| 页内对话自己的 `get_briefing` 不带根规则全文和记忆块（system 里已经有；`memory_review` 提醒保留）；只对本人，看家人时照旧 | 页内对话 | 历史 −871 / 次（从第 2 次起） | 同左 |
+| 非 Anthropic 的适配器（OpenAI、兼容接口 / DeepSeek、Gemini）发宽松 schema（和 MCP 一样，可省略的不必写 null；Anthropic 的 strict 工具仍发严格版） | 页内对话 | — | 工具 −865 / 次（−8.3%） |
+| 早前轮次的工具返回发给模型时截到 600 字（最近 2 轮、`get_briefing` / `find_tools` / `get_playbook` / 3 个场景 context 工具和报错不截；存的不变） | **只有托底**：其他厂商会校验推理块绑定的历史（Claude 的 preserved thinking 等），历史必须只追加不修改 | — | 第 10 次历史 −4,475 |
+| system 里按次附加的说明（卡片、话题守门、ai_parity）挪到固定人设后面、用户资料前面，固定部分成为所有对话共用的缓存前缀；只对新对话（存的 system 里有 `EXTRAS_MARK`），老对话顺序不变 | 页内对话，新对话 | 共用前缀 7,107 → 7,889 | 共用前缀 2,316 → 3,554（+53%，托底是管理员一个 key，跨用户都能命中） |
+
+**改后合计**：主人 Claude 整段 301,894 → 284,423（−5.8%，第 10 次 34,234 → 32,398）；托底整段 212,950 → 186,573（−12.4%，第 10 次 25,340 → 19,999，−21%）。测试里按字符设了整段对话的上限（改后 +5% 余量），以后谁让每次调用都变大会在 CI 里失败。
+
+**没做、留给负责人决定**：
+- 人设里「记录归档流程」（2.7k token，主人 AI 每次都带）挪成一份 playbook（`get_playbook("log_records")`），system 里只留三行：省得最多，但记录类对话要多一次工具调用，模型也可能不先读就记，属于行为变化。
+- 今天页带 training 组（约 3k token，`propose_plan` / `save_plan` 各 1.7k 字）：去掉以后「今天换个练法」要先 `find_tools`。
+- 工具顺序改成「核心在前、页面组在后」（换页时 DeepSeek 能命中核心部分）：会改变进行中对话的工具定义，Claude 的 preserved thinking 下有风险，先不动。
+- MCP 的 `get_briefing` 根规则全文和 server instructions 重复：不是每个客户端都把 instructions 给模型看，设计上 briefing 是唯一保证送到的地方，保留。

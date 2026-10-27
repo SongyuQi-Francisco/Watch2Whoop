@@ -77,3 +77,29 @@ def test_with_summary():
     assert context.with_summary("SYS", None) == "SYS"
     s = context.with_summary("SYS", "- 要点")
     assert s.startswith("SYS\n\n") and s.endswith("- 要点") and context.SUMMARY_HEADER in s
+
+
+def test_shorten_old_results_cuts_only_older_turns_and_keeps_what_is_needed():
+    """Issue #78: tool results of turns before the last `full_turns` go out shortened (the fallback only, chat._turns);
+    kept tools and errors stay whole; the input is not changed; cutting is stable as turns age."""
+    h = [m for i in range(4) for m in turn(i, tool=True)] + [msg("user", text("问4"))]
+    h[1]["content"][0]["name"] = h[2]["content"][0]["name"] = "get_briefing"   # turn 0: a kept tool
+    h[6]["content"][0]["is_error"] = True                                         # turn 1: an error
+    out = context.shorten_old_results(h, full_turns=2, max_chars=100, keep=("get_briefing",))
+    res = lambda ms, i: ms[4 * i + 2]["content"][0]["content"]   # noqa: E731
+    assert res(out, 0) == "x" * 5000 and res(out, 1) == "x" * 5000              # kept tool, error
+    assert res(out, 2).startswith("x" * 100) and "原长 5000 字" in res(out, 2) and len(res(out, 2)) < 200
+    assert res(out, 3) == "x" * 5000 and res(h, 2) == "x" * 5000                 # the last 2 turns whole; input untouched
+    later = context.shorten_old_results(h + turn(5, tool=True)[1:] + [msg("user", text("问6"))], 2, 100, ("get_briefing",))
+    assert res(later, 2) == res(out, 2) and res(later, 3) != "x" * 5000           # stays the same; the next one is cut now
+    assert context.shorten_old_results(h[:5], 2, 100) == h[:5]                   # nothing old enough
+
+
+def test_compose_system_puts_the_additions_before_the_user_part():
+    from body_engine.ai import chat, prompt
+    stored = f"规则\n\n人设{prompt.EXTRAS_MARK}\n\n## 用户\n称呼：A\n\n## 早前对话摘要\n- x"
+    assert chat.compose_system(stored, ["卡片"], None) == "规则\n\n人设\n\n卡片\n\n## 用户\n称呼：A\n\n## 早前对话摘要\n- x"
+    old = "规则\n\n人设\n\n## 用户\n称呼：A"   # stored before the marker: additions at the end, exactly as before
+    assert chat.compose_system(old, ["卡片", "范围"], None) == f"{old}\n\n卡片\n\n范围"
+    assert chat.compose_system(old, ["卡片"], "P") == f"{old}\n\n卡片\n\nP"
+    assert chat.compose_system(stored, [], "P") == "规则\n\n人设\n\nP\n\n## 用户\n称呼：A\n\n## 早前对话摘要\n- x"
