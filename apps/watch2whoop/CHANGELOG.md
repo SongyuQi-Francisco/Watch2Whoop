@@ -20,8 +20,8 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
-## Unreleased
-计划进 1.0.9（版本号和日期在发版的 PR 里定）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
+## 1.0.9 — 2026-10-27
+和 1.0.8 同一天发布：测试用户直接装 1.0.9 即可（包含 1.0.8 的全部内容）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
 
 **原生界面（#247 第 2 期，iOS）**
 - **Jarvis 键换成原生的 Liquid Glass**（开关 `native_jarvis`，还要 `jarvis_orbit` 开着）：Jarvis 键和展开菜单由 app 自己画——iOS 26 起是系统的液态玻璃（四个子键从 Jarvis 键的玻璃里「流」出来，收起时流回去），更早的 iOS 用半透明毛玻璃。按下压缩回弹、三层细环展开、扫描光掠过、辉光呼吸一次，黑白单色、弹簧动画、120Hz 屏上跟满帧率；「减少动态效果」打开时不播动画。点子键（对话 / 语音 / 拍照 / 快记）照常在今天页里打开；拍照用 app 的相机。**按住 Jarvis 键说话**和以前一样：往左上滑取消、往右上滑锁定（松手接着说）、原地松开识别，识别用手机本机的语音识别；松开后是直接发送还是先显示文字可以改，和网页版同一个开关。Jarvis 键会显示现在在做什么：在听、识别中、确认文字、发送中、回答中。
