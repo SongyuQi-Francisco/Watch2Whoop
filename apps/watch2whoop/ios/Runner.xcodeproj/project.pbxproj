@@ -17,6 +17,9 @@
 		7A3C9E152F1B4A0100D0A001 /* VoiceInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */; };
 		7A3C9E182F1B4A0100D0A001 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */; };
 		7A3C9E1A2F1B4A0100D0A001 /* Backfill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E192F1B4A0100D0A001 /* Backfill.swift */; };
+		7A3C9E2B2F1B4A0100D0A001 /* NativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */; };
+		7A3C9E2D2F1B4A0100D0A001 /* NativeJarvis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */; };
+		7A3C9E2F2F1B4A0100D0A001 /* NativeToday.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E2E2F1B4A0100D0A001 /* NativeToday.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
@@ -64,6 +67,9 @@
 		7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInput.swift; sourceTree = "<group>"; };
 		7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
 		7A3C9E192F1B4A0100D0A001 /* Backfill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backfill.swift; sourceTree = "<group>"; };
+		7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUI.swift; sourceTree = "<group>"; };
+		7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJarvis.swift; sourceTree = "<group>"; };
+		7A3C9E2E2F1B4A0100D0A001 /* NativeToday.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeToday.swift; sourceTree = "<group>"; };
 		78E0A7A72DC9AD7400C4905E /* FlutterGeneratedPluginSwiftPackage */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = FlutterGeneratedPluginSwiftPackage; path = Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		8D88656A5C450D3D383AC5D5 /* Pods-Runner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.debug.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"; sourceTree = "<group>"; };
@@ -183,6 +189,9 @@
 				7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */,
 				7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */,
 				7A3C9E192F1B4A0100D0A001 /* Backfill.swift */,
+				7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */,
+				7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */,
+				7A3C9E2E2F1B4A0100D0A001 /* NativeToday.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -415,6 +424,9 @@
 				7A3C9E152F1B4A0100D0A001 /* VoiceInput.swift in Sources */,
 				7A3C9E182F1B4A0100D0A001 /* SyncEngine.swift in Sources */,
 				7A3C9E1A2F1B4A0100D0A001 /* Backfill.swift in Sources */,
+				7A3C9E2B2F1B4A0100D0A001 /* NativeUI.swift in Sources */,
+				7A3C9E2D2F1B4A0100D0A001 /* NativeJarvis.swift in Sources */,
+				7A3C9E2F2F1B4A0100D0A001 /* NativeToday.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

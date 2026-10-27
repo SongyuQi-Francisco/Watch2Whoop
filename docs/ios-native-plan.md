@@ -297,6 +297,28 @@ Android 暂停后，Flutter 只剩一层外壳：页面在 WebView 里，健康�
   - **Jarvis**：1.4.0 之前一直是 WebView（预热好的那个 WKWebView 弹出来，打开 0 等待）；原生化时用 `URLSession` 的字节流读 SSE，Markdown 用 `AttributedString`，拍照 / 录音用系统框架（按住说话现在就走原生开关 `Watch2WhoopFeatures.mic`）。
   - **朋友 / 圈子**：在线功能，不进本地数据层，原生化放最后（或者一直留 WebView）。
 
+### 5.4 第 2 期先行（1.0.9，负责人 2026-10-27 决定）：Flutter 里先放两个原生视图
+
+在 1.1.0 换掉 Flutter 之前，先在现在的 app 里验证原生视图和页面共存的做法。两个服务器开关，默认关；关着时 app 和 1.0.8 一样（唯一的区别：1.0.9 的 app 会声明 `Watch2WhoopFeatures.nativeUi`，页面按需多取一个 `native-bridge.js` 并回报开关都关着）。
+
+- **怎么叠**：SwiftUI 视图放在 Flutter 窗口上面的一层透明视图里（`ios/Runner/NativeUI.swift`，在 WebView 之上、之后弹出的系统界面之下），只在原生视图所在的位置接触摸，其余穿透给页面。位置由页面报告（CSS 像素 = 点）。
+- **协议**（`web/static/native-bridge.js` ↔ `lib/src/native_ui.dart`）：页面 → app `native:`（开关）、`jvn:`（Jarvis 键的位置、能否看见、点一下是不是开菜单）、`tdn:`（今天从分数到 dock 的区域、能否看见）、`tdn-data:`（今天这次画用的数据，固定字段子集）、`jv-camera`；app → 页面 `BodyNative.action / photo`。是否「能看见」用 `elementFromPoint` 判断：弹层、对话面板、登录页、提示条盖住时原生视图自动让开。
+- **Jarvis**（`native_jarvis`，还要 `jarvis_orbit`）：键和菜单原生（iOS 26 `.glassEffect(.regular.interactive())` + `GlassEffectContainer` + `glassEffectID`，子键从 Jarvis 键的玻璃里流出；更早的 iOS `.ultraThinMaterial`）；按下压缩回弹、三环、扫描光、呼吸一次，时间线和 `jarvis_dial` 一致。点子键、自己的 AI / 离线 / 录音中的点按都交回页面原来的代码，语音面板、对话仍是页面。**按住说话**和网页键一致：按住 0.35s（环先填满）开始听，手指位置逐帧交给页面（`hold-start / hold-move / hold-end / hold-cancel`），页面用原来的 `holdMove / holdUp` 判断往左上取消、往右上锁定、原地松开识别；识别走 1.0.8 的本机语音（#238），松开后按 `jarvis_voice_direct` 直接发送或先显示文字可改。**状态同步**：页面把 `phase`（在听 / 识别中 / 确认文字 / 发送中 / 回答中）报给 app，原生键换成对应的图标（录音时反色，识别 / 发送 / 回答时图标呼吸），无障碍标签同步。
+- **今天**（`native_today`）：分数以下原生（三环 + 恢复 / 睡眠 / 活动 / 负荷目标 / 健康监测），分数以上（同步卡片、横幅）仍是页面。数字由 Dart 按页面的格式算（`todayModel`），颜色用页面的 token。app 存上一次的数据，冷启动先画出来（退出登录清空）。看别人、看过去的日子、睡眠详情、「完整今天页」时退回网页。
+- **还不是第 4 节的本地数据层**：数据仍由页面取（已有接口 + `boot` / `cached_first_paint`），1.1.0 起换成同步协议的本地库。
+
+模拟器实测（iPhone 17 Pro Max 模拟器 iOS 26.2，调试包，`W2W_NATIVE_UI=jarvis,today,meter,demo` 自动展开 / 收起、做三种按住说话手势（模拟器里用脚本化的识别器，不要麦克风）、滚动今天，`FrameMeter` 用 CADisplayLink 记每帧间隔，> 1.5 帧算掉帧；模拟器最高 60Hz）：
+
+| 场景 | 帧率 | 掉帧 |
+|---|---|---|
+| Jarvis 展开，Liquid Glass（浅色 2 轮 + 深色 1 轮，共 15 次） | 55–61 fps | 每轮第一次展开 1 帧 67–84ms（玻璃第一次渲染）；之后 12 次里 7 次 0 帧，5 次 1–2 帧（最长 26–39ms） |
+| Jarvis 收起（15 次） | 58–60 fps | 0 |
+| Jarvis 展开，`.ultraThinMaterial`（iOS 26 以下的样子，5 次） | 61 fps | 0 |
+| 今天滚动（浅色 8 次 + 深色 3 次，0.9s 动画滚到底 / 回顶） | 57–60 fps | 第一次 1 帧 68ms（第一次排版），其余 0 |
+| 按住说话（取消 / 锁定 / 松开，3 轮共 5 次手势，含 0.6s 滑动） | 58–62 fps | 每次 0–2 帧（最长 33ms，多在开始听的那一刻） |
+
+真机 120Hz 还要在 ProMotion 机型上确认（`CADisableMinimumFrameDurationOnPhone` 已开，帧计时器按屏幕最高帧率请求）：用调试包加 `meter` 看日志里的 `[frame-meter]`，或 Instruments 的 Animation Hitches。
+
 ---
 
 ## 6. 发版节奏

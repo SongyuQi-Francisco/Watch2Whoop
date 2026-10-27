@@ -30,6 +30,7 @@ import '../config.dart';
 import '../health_range.dart';
 import '../health_sync.dart';
 import '../i18n.dart';
+import '../native_ui.dart';
 import '../offline_shell.dart';
 import '../page_events.dart';
 import '../platform_features.dart';
@@ -488,6 +489,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  /// Native SwiftUI views over the page (native_ui.dart, #247 phase 2): off unless the server's flags say so.
+  late final NativeUi _native = NativeUi(runJs: (js) => _web.runJavaScript(js));
+
   /// Self-service accounts: check once per page load whether the Today page is logged in; mint a fresh code at most once per app run.
   bool _checkLogin = false;
   bool _webLoginTried = false;
@@ -514,9 +518,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ..setNavigationDelegate(
         NavigationDelegate(
           onNavigationRequest: _onNavigation,
-          onPageStarted: (_) => setState(() => _loading = true),
+          onPageStarted: (_) {
+            setState(() => _loading = true);
+            _native.pageLoading();
+          },
           onPageFinished: (_) {
             setState(() => _loading = false);
+            _native.pageLoaded();
             _announceFeatures();
             _maybeCheckLogin();
             Future<void>.delayed(const Duration(seconds: 3), _reportRange);
@@ -563,6 +571,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     PushService.instance.opened.addListener(_openTapped);
     PushService.instance.received.addListener(_onPushReceived);
     HealthSync.instance.stats.addListener(_onSyncStats);
+    unawaited(_native.start());
     _load();
     _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _reportRange();
@@ -595,6 +604,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     HealthSync.instance.stats.removeListener(_onSyncStats);
     VoiceBridge.instance.onEvent = null;
     VoiceBridge.instance.cancelAll();
+    unawaited(_native.dispose());
     super.dispose();
   }
 
@@ -755,6 +765,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
       // Sign in with / bind Apple from the page's own screens (apple_bridge.dart)
       if (await appleAvailable()) await _web.runJavaScript(kAppleFeaturesJs);
+      // Native views (native_ui.dart): the page loads native-bridge.js and reports the flags
+      final native = _native.featuresJs();
+      if (native != null) await _web.runJavaScript(native);
       await _announceNet();
     } catch (e) {
       debugPrint('features call failed: $e');
@@ -829,6 +842,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _onBridge(String message) {
+    // Native views (native_ui.dart): the flags, where the views go, the data of 今天, the camera; never from the kept copy
+    if (!_onShell && _native.handle(message)) return;
     if (message.startsWith(_kIngestPrefix)) {
       final t = message.substring(_kIngestPrefix.length);
       final w = _ingestWait;
@@ -1024,6 +1039,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final dark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    // Native views only over the page itself: not over the sync page / a dialog, the error view or the kept offline copy
+    final top = ModalRoute.of(context)?.isCurrent ?? true, usable = _error == null && !_onShell;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _native.setRouteTop(top);
+      _native.setPageUsable(usable);
+    });
     final page = Scaffold(
       backgroundColor: dark ? Colors.black : Colors.white,
       body: Stack(

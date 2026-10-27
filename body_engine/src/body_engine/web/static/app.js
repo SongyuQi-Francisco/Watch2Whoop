@@ -87,13 +87,13 @@
   // "sheet" ({open: true, kind, key} / {open: false}) when a detail sheet opens or closes: kind "card" = opened from an element
   // with data-card="<key>", "explain" = the explanation of a metric (key), "lab" = a lab test's history (test_key); other sheets
   // have no key. data-card marks a data card on the page with a fixed code key (never record values); a plugin can watch which
-  // cards are on screen. Keys are lower-case [a-z0-9_.:-] only.
+  // cards are on screen. Keys are lower-case [a-z0-9_.:-] only. "today": the data each draw of 今天 used.
   const HOOKS = new Map();
   window.BodyHooks = {
     on(name, fn) { if (!HOOKS.has(name)) HOOKS.set(name, []); HOOKS.get(name).push(fn); },
     emit(name, detail) { for (const fn of HOOKS.get(name) || []) { try { fn(detail); } catch (e) { /* a plugin never breaks the page */ } } },
   };
-  let lastPage = "";
+  let lastPage = "", lastToday = null;
   const pageKey = () => { const sub = { record: S.recSub, food: S.foodMode, trends: S.trendsMode, me: S.meSub, today: S.sleepNight ? "sleep" : null }[S.tab]; return sub ? `${S.tab}:${sub}` : S.tab; };
   function featureOf(el) {
     const named = el.closest("[data-feature]")?.dataset.feature;
@@ -1562,6 +1562,7 @@
       mload ? optional("mload", `/v1/users/${ownerPath()}/training/muscle-load`) : null,   // muscle_load: the small card (no training share = no card)
     ]);
     S.todaySleepDate = d.sleep?.date || null;   // the night the 睡眠 tile opens on the sleep detail page
+    window.BodyHooks.emit("today", lastToday = { day, past, self: isSelf(), scores: d.scores, daily: tday?.daily || null, reminders: d.reminders, coach, monitor });
     if (mdata) await window.BodyMuscleLoad.ready();   // the body drawings (muscle-body-data.js) load on first use, only for someone who has the card
     const pair = [strainCoachHtml(coach), stressHtml(stress)].filter(Boolean);
     const extras = monitorHtml(monitor) + (pair.length ? `<div class="${pair.length === 2 ? "half" : ""}" style="${pair.length === 1 ? "margin-top:8px" : ""}">${pair.join("")}</div>` : "");
@@ -4244,6 +4245,9 @@
   // The Watch2Whoop app keeps its one-time login code until the page reports the outcome on its JS channel (`logged-in` after
   // /v1/web/me works, `login-failed` when the server rejected the code), so a load that was interrupted is retried next time.
   const tellApp = (msg) => { try { if (IN_APP) window.Watch2Whoop.postMessage(msg); } catch (e) { /* older app */ } };
+  // the iOS app's native views (1.0.9+, #247)
+  const nativeHello = () => { if (IN_APP && S.me && window.Watch2WhoopFeatures?.nativeUi) lazyScript("native-bridge.js"); };
+  window.addEventListener("w2w-features", nativeHello);
   async function loginFromHash() {
     const m = /(?:^#|&)login=([A-Za-z0-9-]{8,40})/.exec(location.hash);
     if (!m) return;
@@ -4318,7 +4322,8 @@
     window.BodyAI?.init({ api, openSheet, closeSheet, toast, esc, refresh, page: pageId, isSelf, go: goPage, onAiChange: (ai, url) => { S.ai = ai || { mode: "none" }; S.assistantUrl = url || null; setupAssistant(); render(); }, me: me.me, ai: me.ai || { mode: "none" }, assistantUrl: S.assistantUrl });
     await plugged;
     if (S.flags.includes("ui_ai_first")) await lazyScript("ui-ai-first.js");
-    lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet };
+    lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet,
+      page: () => lastPage, todayDrawn: () => lastToday };
     lateInit.me = me;
     if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
@@ -4327,7 +4332,7 @@
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
     $("#login").hidden = true;
     $("#app").hidden = false;
-    if (!stale) tellApp("logged-in");
+    if (!stale) { tellApp("logged-in"); nativeHello(); }
     let shown;
     if (keepTab) {   // a refresh, or the real data replacing the copies drawn a moment ago (the sheet / log page keep their input)
       shown = stale || !S.staleAt || (S.tab !== "record" && $("#sheet").hidden) ? render() : null;

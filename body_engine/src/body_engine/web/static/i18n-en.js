@@ -1795,6 +1795,8 @@ I18N.addEn({
   "已锁定": "Locked",
   "识别中": "Finishing",
   "确认文字": "Check the text",
+  "发送中": "Sending",
+  "回答中": "Answering",
   "松开 发送": "Release to send",
   "松开 识别": "Release to finish",
   "松开 取消": "Release to cancel",
