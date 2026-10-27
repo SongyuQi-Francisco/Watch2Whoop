@@ -10,8 +10,12 @@ behind the briefing reminder and the nightly check. Entry fields and the archive
   of a protected topic (health constraints, injuries), is changed or archived only with user_ok=true on the item; the one
   exception is a merge of a note into another with the very same text. Every change is logged for rollback_write
   (writelog kind memory_state for archive / restore / confirm, profile / observation for rewrites).
-- memory-review-run (nightly, every user the flag memory_hygiene is on for) refreshes memory_review_state and purges; the briefing
-  reads that state (reminder_line).
+- Phase 3 (memory_datacheck.py, owner only): entries are compared with the user's own records (training habits, supplements, body
+  weight, injuries). What the data contradicts comes back as `data_mismatch` with the claim and the data, for the AI to put to the
+  user (nothing is changed by itself); what it backs is confirmed by the nightly run (confirmed_at, confirm_count). Lasting notes
+  confirmed several times, or old and still current, come back as `promote` (merge into the profile card item of their topic).
+- memory-review-run (nightly, every user the flag memory_hygiene is on for) confirms what the data backs, refreshes
+  memory_review_state and purges; the briefing reads that state (reminder_line).
 Authorization is the caller's job: everything here works on the caller's own user_id only.
 """
 import re
@@ -20,15 +24,17 @@ from difflib import SequenceMatcher
 
 import psycopg
 
+from .. import queries
 from ..rollout import flags
-from . import memory, memory_params as mp, writelog
+from . import memory, memory_datacheck, memory_params as mp, writelog
 
 REF_RE = re.compile(r"^(?:n(\d+)|k:([a-z][a-z0-9_]*))$")
 ACTIONS = ("merge", "update", "archive", "confirm", "promote", "restore")
-STATE_COLS = "status, archived_at, archived_reason, merged_into, confirmed_at"
+STATE_COLS = "status, archived_at, archived_reason, merged_into, confirmed_at, confirm_count"
 RULES = (
     "origin 是 user_said 或空的条目、以及健康约束 / 伤病：改、归档、并入前要用户明确同意，才能写 user_ok=true",
     "exact=true 的重复可以直接合并（留 keep）；其余先问用户，一次最多 5 条",
+    "data_mismatch 是和记录对不上的：问用户哪个对（记录 / 记忆），不要自己改；promote 先问用户，并入后写这一项的完整内容",
     "归档不删除，用户能在「我 → 长期记忆」恢复，90 天后清理；写错了 rollback_write",
     "结束时一定调 apply_memory_changes（没有要改的就空 items），记下这次整理",
 )
@@ -39,9 +45,9 @@ def _ref(kind: str, key) -> str:
     return f"n{key}" if kind == "note" else f"k:{key}"
 
 
-def _cut(text: str) -> str:
+def _cut(text: str, n: int = mp.REVIEW_TEXT_CHARS) -> str:
     text = " ".join((text or "").split())
-    return text if len(text) <= mp.REVIEW_TEXT_CHARS else text[:mp.REVIEW_TEXT_CHARS].rstrip("，、；。 ") + "…"
+    return text if len(text) <= n else text[:n].rstrip("，、；。 ") + "…"
 
 
 def _entry(kind: str, e: dict) -> dict:
@@ -89,17 +95,71 @@ def _stale_days(topic) -> int:
     return mp.STALE_DAYS.get(topic, mp.STALE_DEFAULT_DAYS)
 
 
-def candidates(conn: psycopg.Connection, user_id: int, today=None) -> dict:
+def _snoozed(created, confirmed) -> bool:
+    """The user (or the AI with him) looked at this entry since it was written, recently: a mismatch is not offered again yet."""
+    now = datetime.now(timezone.utc)
+    return confirmed > created + timedelta(minutes=1) and now - confirmed < timedelta(days=mp.DATA_SNOOZE_DAYS)
+
+
+def _data_verdicts(conn, user_id: int, notes: list[dict], cards: list[dict], skip: set[str], today) -> dict[str, tuple]:
+    """{ref: (kind, entry, verdict)} for the lasting notes and card items the user's records have something to say about."""
+    rows = {_ref("note", n["id"]): ("note", n) for n in notes if n["kind"] != "recent" and _ref("note", n["id"]) not in skip}
+    rows |= {_ref("card", c["key"]): ("card", c) for c in cards}
+    verdicts = memory_datacheck.check_entries(
+        conn, user_id, [(ref, e["text"] if k == "note" else e["value"], e["topic"]) for ref, (k, e) in rows.items()], today)
+    return {ref: (*rows[ref], v) for ref, v in verdicts.items()}
+
+
+def _data_mismatches(verdicts: dict[str, tuple]) -> list[dict]:
+    """Entries whose claim the records contradict, unless the user already looked at the entry lately (_snoozed)."""
+    out = []
+    for kind, e, v in verdicts.values():
+        written = e["created_at"] if kind == "note" else e["updated_at"]
+        if v["verdict"] == "mismatch" and not _snoozed(written, e["confirmed_at"]):
+            out.append({**_entry(kind, e), "check": v["kind"], "claim": v["claim"], "data": v["data"]})
+    return sorted(out, key=lambda x: (x["check"], x["ref"]))
+
+
+def _promotions(notes: list[dict], cards: list[dict], skip: set[str]) -> list[dict]:
+    """Lasting notes ready to be merged into the profile card item of their topic: confirmed PROMOTE_MIN_CONFIRMS times or more, or at
+    least PROMOTE_MIN_AGE_DAYS old; still current (not stale); not already said by the card item."""
+    now = datetime.now(timezone.utc)
+    by_key = {c["key"]: c for c in cards}
+    out = []
+    for n in notes:
+        if n["kind"] == "recent" or n["stale"] or not n["topic"] or _ref("note", n["id"]) in skip:
+            continue
+        age = (now - n["created_at"]).days
+        if n["confirm_count"] < mp.PROMOTE_MIN_CONFIRMS and age < mp.PROMOTE_MIN_AGE_DAYS:
+            continue
+        card = by_key.get(n["topic"])
+        if card and memory._norm(n["text"]) in memory._norm(card["value"]):
+            continue
+        out.append({**_entry("note", n), "into": f"k:{n['topic']}", "confirms": n["confirm_count"], "age": age,
+                    "card": _cut(card["value"], mp.PROMOTE_CARD_CHARS) if card else None})
+    return sorted(out, key=lambda x: (-x["confirms"], -x["age"], x["ref"]))
+
+
+def candidates(conn: psycopg.Connection, user_id: int, today=None, with_data: bool = False) -> dict:
     """What a review looks at: duplicates, stale entries, topics with several entries (possible contradictions) and the memory's
-    size. `count` is duplicates + stale entries before the per-group cap (what the nightly check stores)."""
+    size. `count` is every candidate before the per-group cap (what the nightly check stores).
+    with_data (the owner only, never through a share: it quotes weight, training, supplements, injuries) adds `data_mismatch`
+    (claims the records contradict, memory_datacheck) and `promote` (notes to merge into their profile card item)."""
+    today = today or queries.local_today(conn, user_id)
     m = memory.get_memory(conn, user_id, today=today)
     notes, cards = m["observations"], [c for c in m["profile_card"] if not _managed(c["key"])]
     dups = _duplicates(notes)
     in_dup = {int(n["ref"][1:]) for g in dups for n in g["notes"]}
+    mismatch, promote = [], []
+    if with_data:
+        skip = {_ref("note", i) for i in in_dup}
+        mismatch = _data_mismatches(_data_verdicts(conn, user_id, notes, cards, skip, today))
+        promote = _promotions(notes, cards, skip | {x["ref"] for x in mismatch})
+    flagged = {x["ref"] for x in mismatch}      # listed as a mismatch: not listed again as stale
     stale = []
     for kind, es in (("note", [n for n in notes if n["id"] not in in_dup]), ("card", cards)):
         for e in es:
-            if e["stale"]:
+            if e["stale"] and _ref(kind, e["id"] if kind == "note" else e["key"]) not in flagged:
                 lim = _stale_days(e["topic"])
                 stale.append({**_entry(kind, e), "limit": lim, "long_stale": e["confirmed_days"] > lim * mp.LONG_STALE_FACTOR,
                               "_over": e["confirmed_days"] / lim})
@@ -113,16 +173,20 @@ def candidates(conn: psycopg.Connection, user_id: int, today=None) -> dict:
     facts = [n for n in notes if n["kind"] != "recent"]
     size = {"notes": len(facts), "limit": mp.PROMPT_FACTS_MAX, "card_items": len(cards),
             "near_full": len(facts) >= mp.NEAR_FULL_RATIO * mp.PROMPT_FACTS_MAX}
-    return {"count": len(dups) + len(stale), "size": size,
-            "duplicates": dups[:mp.REVIEW_MAX_PER_GROUP],
-            "stale": [{k: v for k, v in s.items() if k != "_over"} for s in stale[:mp.REVIEW_MAX_PER_GROUP]],
-            "same_topic": [{"topic": t, "entries": es[:mp.REVIEW_PER_TOPIC_MAX]} for t, es in topics[:mp.REVIEW_TOPICS_MAX]],
-            "expired_recent": m["expired_recent"]}
+    out = {"count": len(dups) + len(stale) + len(mismatch) + len(promote), "size": size,
+           "duplicates": dups[:mp.REVIEW_MAX_PER_GROUP],
+           "stale": [{k: v for k, v in s.items() if k != "_over"} for s in stale[:mp.REVIEW_MAX_PER_GROUP]],
+           "same_topic": [{"topic": t, "entries": es[:mp.REVIEW_PER_TOPIC_MAX]} for t, es in topics[:mp.REVIEW_TOPICS_MAX]],
+           "expired_recent": m["expired_recent"]}
+    if with_data:
+        out |= {"data_mismatch": mismatch[:mp.DATA_MAX], "promote": promote[:mp.PROMOTE_MAX]}
+    return out
 
 
-def review(conn: psycopg.Connection, user_id: int) -> dict:
-    """The get_memory_review payload: candidates + the review state + the rules."""
-    c = candidates(conn, user_id)
+def review(conn: psycopg.Connection, user_id: int, viewer_id: int | None = None) -> dict:
+    """The get_memory_review payload: candidates + the review state + the rules. The comparison with the data and the promotion
+    candidates only go to the owner's own AI (viewer_id None or the owner), not to someone reading through a memory share."""
+    c = candidates(conn, user_id, with_data=viewer_id in (None, user_id))
     st = get_state(conn, user_id)
     return {**c, "last_reviewed": f"{st['last_reviewed_at']:%Y-%m-%d}" if st and st["last_reviewed_at"] else None,
             "rules": list(RULES)}
@@ -141,7 +205,7 @@ def _save_check(conn, user_id: int, c: dict) -> None:
 
 
 def mark_reviewed(conn: psycopg.Connection, user_id: int) -> None:
-    c = candidates(conn, user_id)
+    c = candidates(conn, user_id, with_data=True)
     _save_check(conn, user_id, c)
     conn.execute("UPDATE memory_review_state SET last_reviewed_at = now() WHERE user_id = %s", (user_id,))
 
@@ -170,9 +234,27 @@ def purge_archived(conn: psycopg.Connection, user_id: int) -> dict:
     return {"observations": n, "profile": k}
 
 
+def confirm_verified(conn: psycopg.Connection, user_id: int, today=None) -> list[str]:
+    """Confirm the lasting notes the user's own records back (memory_datacheck judges the claim true), when their last confirmation
+    is at least DATA_CONFIRM_GAP_DAYS old, so a note is confirmed by the data at most monthly. Returns the refs. Card items are not
+    confirmed this way: one item holds many statements and one true claim does not make all of them current. Run inside a write-log
+    capture (run_all) every change is logged (memory_state) and can be undone with rollback_write."""
+    today = today or queries.local_today(conn, user_id)
+    due = [n for n in memory.get_memory(conn, user_id, today=today)["observations"]
+           if n["kind"] != "recent" and n["confirmed_days"] >= mp.DATA_CONFIRM_GAP_DAYS]
+    verdicts = memory_datacheck.check_entries(conn, user_id, [(_ref("note", n["id"]), n["text"], n["topic"]) for n in due], today)
+    done = []
+    for n in due:
+        if (verdicts.get(_ref("note", n["id"])) or {}).get("verdict") == "match":
+            _set_state(conn, user_id, "note", n, confirmed_at=conn.execute("SELECT now() AS t").fetchone()["t"],
+                       confirm_count=_bumped(n))
+            done.append(_ref("note", n["id"]))
+    return done
+
+
 def run_all(conn: psycopg.Connection, only_user: int | None = None) -> list[dict]:
-    """memory-review-run: for every user the flag memory_hygiene is on for, purge old archived entries and refresh the
-    review state. Safe to run any number of times; a user that fails does not stop the others."""
+    """memory-review-run: for every user the flag memory_hygiene is on for, confirm the notes the data backs, purge old archived
+    entries and refresh the review state. Safe to run any number of times; a user that fails does not stop the others."""
     out = []
     for u in conn.execute("SELECT id FROM users WHERE (%s::int IS NULL OR id = %s) ORDER BY id", (only_user, only_user)).fetchall():
         uid = u["id"]
@@ -181,9 +263,12 @@ def run_all(conn: psycopg.Connection, only_user: int | None = None) -> list[dict
         try:
             with conn.transaction():
                 purged = purge_archived(conn, uid)
-                c = candidates(conn, uid)
+                with writelog.capture(uid, "system", "memory-review-run"):
+                    confirmed = confirm_verified(conn, uid)
+                c = candidates(conn, uid, with_data=True)
                 _save_check(conn, uid, c)
-            out.append({"user_id": uid, "candidates": c["count"], "near_full": c["size"]["near_full"], "purged": purged})
+            out.append({"user_id": uid, "candidates": c["count"], "near_full": c["size"]["near_full"], "purged": purged,
+                        "confirmed_by_data": len(confirmed)})
         except Exception as e:  # noqa: BLE001
             out.append({"user_id": uid, "error": f"{type(e).__name__}: {e}"})
     return out
@@ -230,19 +315,25 @@ def _need_ok(kind: str, e: dict, item: dict, what: str) -> None:
 
 
 def _snapshot(kind: str, e: dict) -> dict:
-    return {k: e[k] for k in ("status", "archived_at", "archived_reason", "merged_into", "confirmed_at")}
+    return {k: e[k] for k in ("status", "archived_at", "archived_reason", "merged_into", "confirmed_at", "confirm_count")}
+
+
+def _bumped(e: dict) -> int:
+    """The confirmation counter after confirming `e` now: +1, unless it was confirmed within COUNT_MIN_GAP_DAYS already."""
+    old = e["confirmed_at"] < datetime.now(timezone.utc) - timedelta(days=mp.COUNT_MIN_GAP_DAYS)
+    return e["confirm_count"] + (1 if old else 0)
 
 
 def _set_state(conn, user_id: int, kind: str, e: dict, **new) -> None:
     """Change the lifecycle fields of one entry and log before / after (kind memory_state)."""
     ref = _ref(kind, e["id"] if kind == "note" else e["key"])
     fields = {"status": e["status"], "archived_at": e["archived_at"], "archived_reason": e["archived_reason"],
-              "merged_into": e["merged_into"], "confirmed_at": e["confirmed_at"], **new}
+              "merged_into": e["merged_into"], "confirmed_at": e["confirmed_at"], "confirm_count": e["confirm_count"], **new}
     table, where, arg = (("assistant_observations", "id", e["id"]) if kind == "note"
                          else ("assistant_profile", "key", e["key"]))
     row = conn.execute(
         f"""UPDATE {table} SET status = %(status)s, archived_at = %(archived_at)s, archived_reason = %(archived_reason)s,
-              merged_into = %(merged_into)s, confirmed_at = %(confirmed_at)s
+              merged_into = %(merged_into)s, confirmed_at = %(confirmed_at)s, confirm_count = %(confirm_count)s
             WHERE user_id = %(u)s AND {where} = %(arg)s RETURNING {STATE_COLS}""",
         {**fields, "u": user_id, "arg": arg}).fetchone()
     writelog.record(conn, "memory_state", "update", ref, _snapshot(kind, e), _snapshot(kind, row))   # what changed: before / after status
@@ -276,7 +367,8 @@ def _do(conn, user_id: int, item: dict) -> str:
     if e["status"] == "archived" and action not in ("archive", "merge", "promote"):
         raise ValueError(f"{item['ref']} 已经归档了；要用它先 restore")
     if action == "confirm":
-        _set_state(conn, user_id, kind, e, confirmed_at=conn.execute("SELECT now() AS t").fetchone()["t"])
+        _set_state(conn, user_id, kind, e, confirmed_at=conn.execute("SELECT now() AS t").fetchone()["t"],
+                   confirm_count=_bumped(e))
         return "已确认"
     if action == "archive":
         if e["status"] == "archived":
@@ -374,6 +466,7 @@ def rollback_state(conn: psycopg.Connection, user_id: int, ref: str, before: dic
     table, where, arg = ("assistant_observations", "id", e["id"]) if kind == "note" else ("assistant_profile", "key", e["key"])
     conn.execute(
         f"""UPDATE {table} SET status = %(status)s, archived_at = %(archived_at)s, archived_reason = %(archived_reason)s,
-              merged_into = %(merged_into)s, confirmed_at = %(confirmed_at)s WHERE user_id = %(u)s AND {where} = %(arg)s""",
-        {**before, "u": user_id, "arg": arg})
+              merged_into = %(merged_into)s, confirmed_at = %(confirmed_at)s, confirm_count = COALESCE(%(confirm_count)s, confirm_count)
+            WHERE user_id = %(u)s AND {where} = %(arg)s""",
+        {**before, "confirm_count": before.get("confirm_count"), "u": user_id, "arg": arg})
     return {"memory_state_restored": ref}

@@ -85,12 +85,15 @@ class OpenAIResponsesAdapter(Adapter):
                 items.append({"role": "user", "content": parts})
         return items
 
+    def tool_defs(self, tools) -> list[dict]:
+        return [{"type": "function", "name": t.name, "description": t.description, "parameters": self.parameters(t),
+                 "strict": False} for t in tools]
+
     def stream_turn(self, system, history, tools):
         client = openai.OpenAI(api_key=self.api_key, timeout=TIMEOUT_S, max_retries=2)
         final = None
         try:
-            tool_defs = [{"type": "function", "name": t.name, "description": t.description,
-                          "parameters": t.input_schema, "strict": False} for t in tools] \
+            tool_defs = self.tool_defs(tools) \
                 + ([{"type": "web_search"}] if self.web else [])   # OpenAI's own web search (ai_providers.web_tools)
             stream = client.responses.create(
                 model=self.model, instructions=system, input=self._input(history),
@@ -172,14 +175,17 @@ class OpenAICompatAdapter(Adapter):
                     out.append({"role": "user", "content": text})
         return out
 
+    def tool_defs(self, tools) -> list[dict]:
+        return [{"type": "function", "function": {"name": t.name, "description": t.description,
+                                                  "parameters": self.parameters(t)}} for t in tools]
+
     def stream_turn(self, system, history, tools):
         client = openai.OpenAI(api_key=self.api_key or "none", base_url=self.base_url, timeout=TIMEOUT_S, max_retries=2)
         text, reasoning, calls, usage, finish = [], [], {}, None, None
         try:
             stream = client.chat.completions.create(
                 model=self.model, messages=self._messages(system, history),
-                **({"tools": [{"type": "function", "function": {"name": t.name, "description": t.description,
-                                                                "parameters": t.input_schema}} for t in tools]}
+                **({"tools": self.tool_defs(tools)}
                    if tools else {}),   # an empty list is rejected; none for the history fold call (ai/context.py)
                 **({"tool_choice": "none"} if tools and self.no_tool_calls else {}),
                 max_tokens=self.max_tokens, stream=True, stream_options={"include_usage": True},
@@ -223,6 +229,7 @@ class OpenAICompatAdapter(Adapter):
 class DeepSeekFallbackAdapter(OpenAICompatAdapter):
     kind = "system_fallback"
     extra_body = {"thinking": {"type": "disabled"}}
+    shorten_history = True   # thinking is off: no reasoning bound to the earlier turns (base.Adapter.shorten_history)
 
     def __init__(self, model, api_key, base_url=None):
         from .. import fallback_params as fp
