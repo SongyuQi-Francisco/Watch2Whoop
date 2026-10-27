@@ -76,3 +76,12 @@ def test_pure_parts():
     assert out["qs"] == ["为什么恢复 72？", "为什么睡得比需要的少？", "记一顿饭"]
     assert out["calm"] == ["为什么恢复 80？", "记一顿饭"]
     assert out["other"] == []
+
+
+def test_the_tab_bar_stays_as_it_is():
+    """Owner's decision 2026-10-27: with the flag on the tab bar is the one everyone has (today, trends, friends, food / record, me
+    with the Jarvis key); the circles keep their tab and also get the circles card on Today."""
+    src = (STATIC / "ui-ai-first.js").read_text(encoding="utf-8")
+    assert ".tabbar" not in src and "TABS" not in src and "a1-gap" not in src
+    assert 'data-card="circles"' in src
+

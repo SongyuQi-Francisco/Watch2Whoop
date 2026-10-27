@@ -32,7 +32,7 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 - 调试 / 测试包可以用 `--dart-define=W2W_NATIVE_UI=jarvis,today,meter` 不看开关直接打开（`meter` = 在日志里打印帧计时；`demo` / `demo2` = 自动展开、做按住说话手势、滚动，模拟器里用脚本化的识别器（`VoiceInput.swift`，只编进模拟器调试包）；`material` = 在 iOS 26 模拟器上看 iOS 26 以下的样子），正式包不要加。
 - 用 Xcode 26（iOS 26 SDK）编译时才有系统液态玻璃（`.glassEffect()`，`#if compiler(>=6.2)`）；更早的 Xcode 也能编译，只用 `.ultraThinMaterial`。部署目标仍是 iOS 15，iOS 26 以下的手机运行时自动用 `.ultraThinMaterial`。
 
-## 1.0.8 — 2026-11-01
+## 1.0.8 — 2026-10-27
 这一版主要让「手机同步」更稳、更快、出问题时说得清楚。还在用 1.0.6 的测试用户请直接升到 1.0.8（1.0.7 的修复也都在里面）。
 
 **同步**
