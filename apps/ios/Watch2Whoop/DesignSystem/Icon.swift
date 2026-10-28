@@ -13,6 +13,9 @@ struct Icon: View {
     case chevronRight = "chevron-right"
     case x
     case refreshCw = "refresh-cw"
+    case chevronLeft = "chevron-left"
+    case calendar
+    case sparkles
     // N8: sign-in, Me / settings, sync center
     case qrCode = "qr-code"
     case mail
@@ -26,7 +29,6 @@ struct Icon: View {
     case circleAlert = "circle-alert"
     case smartphone
     case bell
-    case sparkles
     case languages
     case palette
     case megaphone

@@ -29,6 +29,9 @@ ICONS = {
     "chevron-right": "list rows",
     "x": "sheet close",
     "refresh-cw": "sync / retry",
+    "chevron-left": "previous night / month (N3)",
+    "calendar": "look back at a day (N3)",
+    "sparkles": "ask AI (N3)",
     # N8: sign-in, Me / settings, sync center
     "qr-code": "sign-in: setup QR code",
     "mail": "sign-in: e-mail",
@@ -42,7 +45,6 @@ ICONS = {
     "circle-alert": "sync center: needs attention",
     "smartphone": "sync center: on the phone",
     "bell": "Me: notifications",
-    "sparkles": "Me: AI settings",
     "languages": "Me: language",
     "palette": "Me: appearance",
     "megaphone": "Me: what's new",
