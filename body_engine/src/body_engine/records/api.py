@@ -273,6 +273,7 @@ class JournalItemIn(_Model):
 class JournalEntryIn(_Model):
     value: float = Field(description="是否项：1 是 / 0 否；数量项：数值")
     note: str | None = None
+    client_id: str | None = Field(None, max_length=64, description="app 的重发键：同一个 client_id 只写一次（也可用请求头 X-Client-Id）")
 
 
 KEY_PATTERN = r"^[a-z][a-z0-9_]*$"
@@ -303,17 +304,29 @@ def journal(user: str, start: date | None = None, end: date | None = None,
 
 @router.put("/journal/{day}/{key}")
 def put_journal_entry(user: str, day: date, key: str, body: JournalEntryIn,
-                      conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Record an item for a day (date = the day the behavior happened). Overwrites if already recorded."""
-    return _bad_request(store.log_journal, conn, _self(viewer, user), day, key, body.value, body.note)
+                      conn=Depends(get_conn), viewer=Depends(current_user),
+                      x_client_id: Annotated[str | None, Header()] = None):
+    """Record an item for a day (date = the day the behavior happened). Overwrites if already recorded.
+    client_id (body or X-Client-Id): a resend with the same id answers the first answer and writes nothing (#340 N2)."""
+    from ..nativesync import idem
+    uid = _self(viewer, user)
+    return idem.once(conn, uid, body.client_id or x_client_id, "journal.put",
+                     lambda: _bad_request(store.log_journal, conn, uid, day, key, body.value, body.note))
 
 
 @router.delete("/journal/{day}/{key}", status_code=204)
-def delete_journal_entry(user: str, day: date, key: str, conn=Depends(get_conn), viewer=Depends(current_user)):
-    """Undo an item for a day (back to "no record")."""
-    if not store.delete_journal_entry(conn, _self(viewer, user), day, key):
-        raise HTTPException(404, "这天没有记这一项")
-    return Response(status_code=204)
+def delete_journal_entry(user: str, day: date, key: str, conn=Depends(get_conn), viewer=Depends(current_user),
+                         x_client_id: Annotated[str | None, Header()] = None):
+    """Undo an item for a day (back to "no record"). X-Client-Id: a resend after it was deleted is 204 again, not 404."""
+    from ..nativesync import idem
+    uid = _self(viewer, user)
+
+    def delete():
+        if not store.delete_journal_entry(conn, uid, day, key):
+            raise HTTPException(404, "这天没有记这一项")
+        return {"deleted": True}
+    out = idem.once(conn, uid, x_client_id, "journal.delete", delete, status=204)
+    return out if isinstance(out, Response) else Response(status_code=204)
 
 
 @router.get("/journal/analysis")

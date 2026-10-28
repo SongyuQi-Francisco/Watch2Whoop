@@ -23,6 +23,7 @@ class RecipeLogIn(BaseModel):
     servings: float = Field(1, gt=0, le=10)
     time: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="HH:MM，默认现在")
     allow_duplicates: bool = False
+    client_id: str | None = Field(None, max_length=64, description="app 的重发键：同一个 client_id 只记一次（#340 N2）")
 
 
 class RecipePatch(BaseModel):
@@ -71,8 +72,11 @@ def log_recipe(user: str, recipe_id: int, body: RecipeLogIn | None = None,
                conn=Depends(get_conn), viewer=Depends(current_user)):
     """Ate this dish: write one SparkyFitness food entry. The same dish already logged for this meal on this day -> 409."""
     b = body or RecipeLogIn()
-    return _meal_call(recipes.log_recipe, conn, _self(viewer, user), recipe_id, b.date, b.meal, b.servings, b.time,
-                      b.allow_duplicates, channel="web")
+    uid = _self(viewer, user)
+    from ..nativesync import idem
+    return idem.once(conn, uid, b.client_id, f"recipe.log:{recipe_id}", lambda: _meal_call(
+        recipes.log_recipe, conn, uid, recipe_id, b.date, b.meal, b.servings, b.time, b.allow_duplicates, channel="web"),
+        status=201)
 
 
 @router.patch("/{recipe_id}")

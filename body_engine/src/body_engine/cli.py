@@ -524,8 +524,28 @@ def main() -> None:
     hk.add_argument("--by", default=None, help="who made the change (stored with it)")
     hr = sub.add_parser("history-import-run", help="process history imports queued by Today page uploads (Ali: systemd timer every minute; Mac: hourly)")
     hr.add_argument("--max-jobs", type=int, default=5)
+    ak = sub.add_parser("algo-keygen", help="create an Ed25519 key for signing the algorithm bundle (maintainer's machine only; never in git or on a server); "
+                                            "prints the public key for packages/openbodyscore-js/signing-keys.json and AlgoSigningKeys.swift (#340 N2)")
+    ak.add_argument("--out", type=Path, required=True, help="where to write the private key, e.g. secrets/algo_signing_key (never overwritten)")
+    asg = sub.add_parser("algo-sign", help="sign packages/openbodyscore-js/dist/openbodyscore.js and write signature + key_id into its manifest.json "
+                                           "(run after build.js, on the maintainer's machine; no database) (#340 N2)")
+    asg.add_argument("--key", type=Path, required=True, help="the private key file (algo-keygen)")
+    asg.add_argument("--dist", type=Path, help="another dist/ directory (default: the repository's)")
+    aps = sub.add_parser("app-scores", help="scores computed by the iOS app (#340 N2): status, or give the scoring back to the server / to the app")
+    aps.add_argument("action", choices=["status", "server", "app"],
+                     help="status = state, recent spot checks and what the hourly job does; server = the server scores this user "
+                          "whatever the app uploads (the hourly job recomputes as before); app = the app may score again")
+    aps.add_argument("--user-id", type=int, required=True)
 
     args = p.parse_args()
+    if args.cmd in ("algo-keygen", "algo-sign"):  # the maintainer's machine: no database
+        from .algo import signing
+        if args.cmd == "algo-keygen":
+            print(json.dumps(signing.keygen(args.out), ensure_ascii=False, indent=1))
+        else:
+            m = signing.sign_dist(args.key, args.dist)
+            print(f"signed {m['file']} {m['version']} (sha256 {m['sha256'][:12]}…) with key {m['key_id']}")
+        return
     if args.cmd == "sparky-migrate":  # manages its own connection (rolls back a dry run / a failed check, exit code)
         from .ownstore import migrate as own_migrate
         raise SystemExit(own_migrate.cli(args))
@@ -929,6 +949,11 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "app-scores":
+            from .nativesync import appscores
+            if args.action != "status":
+                appscores.set_server_forced(conn, args.user_id, args.action == "server")
+            print(json.dumps(appscores.status(conn, args.user_id), ensure_ascii=False, indent=1, default=str))
         elif args.cmd == "static-bundle-pack":
             from .static_bundle import pack as sb_pack
             man = sb_pack.pack(conn, args.out, args.since)

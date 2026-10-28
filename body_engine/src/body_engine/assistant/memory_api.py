@@ -128,6 +128,7 @@ class MealLogIn(BaseModel):
     time: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$", description="HH:MM，默认现在")
     items: list[MealOverride] | None = Field(None, description="覆盖部分食物的克数，营养按比例换算")
     allow_duplicates: bool = False
+    client_id: str | None = Field(None, max_length=64, description="app 的重发键：同一个 client_id 只记一次（#340 N2）")
 
 
 def _meal_call(fn, *args, **kwargs):
@@ -170,9 +171,11 @@ def log_meal_template(user: str, template_id: int, body: MealLogIn | None = None
     """One tap logs a meal: one SparkyFitness food entry per food. Duplicate (this meal already logged on this day) -> 409."""
     b = body or MealLogIn()
     owner = _self(viewer, user)
-    return _with_today(conn, owner, _meal_call(meals.log_template, conn, owner, template_id, b.date, b.time,
-                                               [o.model_dump() for o in b.items] if b.items else None, b.allow_duplicates,
-                                               channel="web"))
+    from ..nativesync import idem
+    return idem.once(conn, owner, b.client_id, f"meal_template.log:{template_id}", lambda: _with_today(
+        conn, owner, _meal_call(meals.log_template, conn, owner, template_id, b.date, b.time,
+                                [o.model_dump() for o in b.items] if b.items else None, b.allow_duplicates, channel="web")),
+        status=201)
 
 
 @router.delete("/meal-logs/{log_id}")

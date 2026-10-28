@@ -296,22 +296,35 @@ def scoring_origin(conn: psycopg.Connection, user_id: int) -> date | None:
     return r["d"]
 
 
-def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date, end: date) -> int:
-    """Delete the old rows in [start, end] before inserting (no stale rows when the algorithm changes), idempotent.
-    Two recomputes of the same user can overlap (the hourly batch, the per-minute sync-refresh-run, a manual run): the
-    writes of one user are serialised with a transaction-level advisory lock, and the insert is an upsert, so the second
-    writer replaces the first one's rows instead of failing with UniqueViolation on daily_scores_pkey."""
-    rows = [r for r in rows if start <= r["date"] <= end]
-    cols = ["user_id", "date", *COLUMNS]
+def write(conn: psycopg.Connection, user_id: int, rows: list[dict], start: date, end: date,
+          only: set[date] | None = None, origin: str = "server", bundle_version: str | None = None) -> int:
+    """Replace the rows in [start, end] (only those days when `only` is given): rows of days no longer computed are
+    deleted (no stale rows when the algorithm changes), the others upserted, so a day whose values did not change is no
+    change for the app's change log (nativesync/, migration 970). Idempotent. Two recomputes of the same user can overlap
+    (the hourly batch, the per-minute sync-refresh-run, a manual run): the writes of one user are serialised with a
+    transaction-level advisory lock, and the insert is an upsert, so the second writer replaces the first one's rows
+    instead of failing with UniqueViolation on daily_scores_pkey. origin: server, or app for the scores the iOS app
+    uploaded (nativesync/appscores.py)."""
+    rows = [r for r in rows if start <= r["date"] <= end and (only is None or r["date"] in only)]
+    cols = ["user_id", "date", *COLUMNS, "origin", "bundle_version"]
+    upd = [*COLUMNS, "origin", "bundle_version"]
+    days = [r["date"] for r in rows]
     with conn.transaction():
         conn.execute("SELECT pg_advisory_xact_lock(%s, %s)", (WRITE_LOCK_NS, user_id))
-        conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s", (user_id, start, end))
+        if only is None:
+            conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s AND NOT date = ANY(%s)",
+                         (user_id, start, end, days))
+        else:
+            conn.execute("DELETE FROM daily_scores WHERE user_id = %s AND date = ANY(%s) AND NOT date = ANY(%s)",
+                         (user_id, sorted(d for d in only if start <= d <= end), days))
         with conn.cursor() as cur:
             cur.executemany(
                 f"INSERT INTO daily_scores ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
-                f" ON CONFLICT (user_id, date) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in COLUMNS)}",
-                [[user_id, r["date"], *[Jsonb(r[c]) if c in ("flags", "details") else r[c] for c in COLUMNS]]
-                 for r in rows])
+                f" ON CONFLICT (user_id, date) DO UPDATE SET {', '.join(f'{c} = EXCLUDED.{c}' for c in upd)},"
+                f" computed_at = now()",
+                [[user_id, r["date"], *[Jsonb(r[c]) if c in ("flags", "details") and r.get(c) is not None else r.get(c)
+                                        for c in COLUMNS],
+                  origin, bundle_version] for r in rows])
     return len(rows)
 
 
@@ -342,26 +355,35 @@ def load_muscle(conn: psycopg.Connection, inp: Inputs, user_id: int, start: date
     return f"{len(inp.muscle)} 天有训练记录"
 
 
-def run(conn: psycopg.Connection, client, user_id: int, start: date | None = None, end: date | None = None,
-        archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None) -> dict:
-    """ow_cache: how the OW raw samples are read (importers/ow_cache.py): None = all from OW, "use" = through the local
-    copy, "refresh" = all from OW and replace the copy."""
-    origin = scoring_origin(conn, user_id)
-    if origin is None:
-        return {"rows": 0, "note": "这个用户还没有手表数据（没有 resting_heart_rate）"}
-    tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
+def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date, origin: date, tz: ZoneInfo,
+            archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None) -> tuple[list[dict], dict]:
+    """Every row from the scoring start to end, nothing written, and what run() reports about them."""
     today = datetime.now(tz).date()
-    end = end or today
-    start = max(start or origin, origin)
     # HRV kind of this user (hrv_kind.py): SDNN unless switched on for RMSSD with enough beat data; never mixed
     kind, kind_reason = HK.choose(conn, user_id, tz, start, end)
     # pull one extra year back: the 365-day HRmax window; one extra day for sleep (the night before the first day)
     inp = load(conn, client, user_id, origin - timedelta(days=P.HRMAX_WINDOW_DAYS), end, archive_dir, hrv_kind=kind,
                ow_cache=ow_cache)
     muscle_note = load_muscle(conn, inp, user_id, origin, end, sparky)
-    rows = score_days(inp, origin, end, today)
-    n = write(conn, user_id, rows, start, end)
-    written = [r for r in rows if start <= r["date"] <= end]
+    return score_days(inp, origin, end, today), {"inp": inp, "hrv_kind": kind, "hrv_kind_reason": kind_reason,
+                                                 "muscle_load": muscle_note}
+
+
+def run(conn: psycopg.Connection, client, user_id: int, start: date | None = None, end: date | None = None,
+        archive_dir: Path | None = None, sparky=None, ow_cache: str | None = None, only: set[date] | None = None) -> dict:
+    """ow_cache: how the OW raw samples are read (importers/ow_cache.py): None = all from OW, "use" = through the local
+    copy, "refresh" = all from OW and replace the copy. only: write just these days of [start, end] (the server's
+    fallback for a user whose app computes the scores, nativesync/appscores.py)."""
+    origin = scoring_origin(conn, user_id)
+    if origin is None:
+        return {"rows": 0, "note": "这个用户还没有手表数据（没有 resting_heart_rate）"}
+    tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
+    end = end or datetime.now(tz).date()
+    start = max(start or origin, origin)
+    rows, meta = compute(conn, client, user_id, start, end, origin, tz, archive_dir, sparky, ow_cache)
+    inp, kind, kind_reason, muscle_note = meta["inp"], meta["hrv_kind"], meta["hrv_kind_reason"], meta["muscle_load"]
+    n = write(conn, user_id, rows, start, end, only)
+    written = [r for r in rows if start <= r["date"] <= end and (only is None or r["date"] in only)]
     # heart rate recovery after each workout, from the same raw heart rate (cardio/hrr.py); a failure does not affect the scores
     try:
         hrr = cardio_hrr.compute(conn, user_id, inp.hr, {r["date"]: r["hr_max"] for r in rows if r["hr_max"]}, start, end)

@@ -18,6 +18,7 @@ from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
 from .ai.oauth_api import router as oauth_router, well_known as oauth_well_known
 from .ai.oauth_http import oauth_app
+from .nativesync.api import router as native_sync_router
 from .rollout.api import router as rollout_router
 from .static_bundle.api import router as static_bundle_router
 from .assistant.memory_api import router as memory_router
@@ -50,6 +51,7 @@ from .feedback.api import router as feedback_router
 from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
+from .notify import silent as notify_silent
 from .notify.api import router as notify_router
 from .notices.api import router as notices_router
 from .web import api as web_api, session as web_session
@@ -64,7 +66,8 @@ async def lifespan(app: FastAPI):
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
     # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
-    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher():
+    # silent pushes to the native app when a user's data changed (notify/silent.py; nothing without APNs)
+    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher():
         yield
     pool.close()
 
@@ -196,6 +199,7 @@ app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
+app.include_router(native_sync_router)   # the native app's pull / push / app-computed scores (nativesync/, #340 N2, flag native_sync)
 app.include_router(algo_router)   # the JS scoring bundle the iOS app runs locally (algo/, packages/openbodyscore-js, #340)
 app.include_router(static_bundle_router)   # versioned static data for the app: exercise library etc. (static_bundle/, flag static_bundle)
 app.include_router(rollout_router)       # feature flags / A/B variants of the signed-in user (rollout/api.py)

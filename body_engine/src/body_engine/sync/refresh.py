@@ -269,6 +269,14 @@ def _score(conn, user_id: int, client=None, scores_from=None) -> dict:
     start = datetime.now(tz).date() - timedelta(days=SCORE_DAYS)
     if scores_from is not None:
         start = min(start, scores_from)
+    from ..nativesync import appscores
+    plan = appscores.plan(conn, user_id)
+    if plan["mode"] == "app":   # the user's app computes the scores (#340 N2): only the days it left stale
+        res = (scores_engine.run(conn, client, user_id, min(plan["days"]), None, shortcut.user_archive_dir(user_id),
+                                 ow_cache="use", only=set(plan["days"])) if plan["days"] else {"rows": 0})
+        res["app_scoring"] = True
+        rules_engine.run(conn, user_id, None)
+        return res
     res = scores_engine.run(conn, client, user_id, start, None, shortcut.user_archive_dir(user_id), ow_cache="use")
     res["insights"] = insights_jobs.run(conn, client, user_id, ow_cache="use")
     rules_engine.run(conn, user_id, None)

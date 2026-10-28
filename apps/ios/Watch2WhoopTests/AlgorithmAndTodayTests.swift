@@ -35,6 +35,28 @@ final class AlgorithmRuntimeTests: XCTestCase {
     m.api = 2
     XCTAssertThrowsError(try BundleVerifier.verify(bundle, manifest: m, publicKey: key.publicKey))
   }
+
+  func testRotationAndUnsignedBundles() throws {
+    let current = Curve25519.Signing.PrivateKey(), next = Curve25519.Signing.PrivateKey()
+    let bundle = Data("globalThis.OBS = {apiVersion: 1};".utf8)
+    let sha = SHA256.hash(data: bundle).map { String(format: "%02x", $0) }.joined()
+    let keys = [current.publicKey, next.publicKey]
+    // signed with the next key: accepted while the app carries both
+    let signed = AlgorithmManifest(version: "1.0.1", api: 1, sha256: sha,
+                                   signature: try next.signature(for: bundle).base64EncodedString(), minApp: nil)
+    XCTAssertNoThrow(try BundleVerifier.verify(bundle, manifest: signed, publicKeys: keys, requireSignature: true))
+    XCTAssertThrowsError(try BundleVerifier.verify(bundle, manifest: signed, publicKeys: [current.publicKey],
+                                                   requireSignature: true))
+    // unsigned: a Debug build takes it, a Release build does not
+    let unsigned = AlgorithmManifest(version: "1.0.1", api: 1, sha256: sha, signature: nil, minApp: nil)
+    XCTAssertNoThrow(try BundleVerifier.verify(bundle, manifest: unsigned, publicKeys: keys, requireSignature: false))
+    XCTAssertThrowsError(try BundleVerifier.verify(bundle, manifest: unsigned, publicKeys: keys, requireSignature: true)) { e in
+      XCTAssertEqual(e as? AlgorithmError, .verification("unsigned"))
+    }
+    let decoded = try JSONDecoder().decode(AlgorithmManifest.self, from: Data(
+      #"{"version": "1.0.1", "api": 1, "sha256": "\#(sha)", "signature": null, "key_id": null}"#.utf8))
+    XCTAssertNil(decoded.signature)
+  }
 }
 
 final class TodayModelTests: XCTestCase {
