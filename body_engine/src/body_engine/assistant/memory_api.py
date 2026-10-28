@@ -214,6 +214,38 @@ def split_food_merge(user: str, merge_id: int, conn=Depends(get_conn), viewer=De
 
 
 # ---------------------------------------------------------------- deleting a food entry (Today page, 饮食 day detail)
+class FoodPortionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    date: dt.date = Field(description="这条记录的日期")
+    quantity: float = Field(gt=0, le=100, description="新的份数（绝对值，和 /today 里这条的 quantity 同一个单位）")
+    client_id: str | None = Field(None, max_length=64, description="app 的重发键（#340 N5）")
+
+
+@router.patch("/nutrition/entries/{entry_id}")
+def change_food_portion(user: str, body: FoodPortionIn, entry_id: str = Path(pattern=r"^[A-Za-z0-9-]{1,64}$"),
+                        conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The native app's 「改份量」 (#340 N5): sets one of your own food entries to `quantity` servings, same id, the
+    nutrition follows. Absolute, so a resend never scales twice; the same quantity again changes nothing. Only for oneself."""
+    owner = _self(viewer, user)
+    from ..nativesync import idem
+
+    def change():
+        be = _meal_call(sparky_write.backend, conn, owner)
+        try:
+            row = sparky_write._food_row(be, body.date, entry_id)
+        except ValueError as e:   # not on that day (deleted, or someone else's id)
+            raise HTTPException(404, str(e)) from None
+        old = float(row.get("quantity") or 1) or 1
+        if abs(body.quantity - old) < 1e-6:
+            return {"updated": None, "unchanged": True, "date": body.date.isoformat()}
+        out = _meal_call(sparky_write.update_food_entry, conn, owner,
+                         {"date": body.date.isoformat(), "id": entry_id, "portion": body.quantity / old})
+        briefing.invalidate(owner)
+        return _with_today(conn, owner, {**out, "date": body.date.isoformat()})
+
+    return idem.once(conn, owner, body.client_id, f"food.portion:{entry_id}", change)
+
+
 @router.delete("/nutrition/entries/{entry_id}")
 def delete_food_entry(user: str, entry_id: str = Path(pattern=r"^[A-Za-z0-9-]{1,64}$"),
                       date: dt.date = Query(description="这条记录的日期 YYYY-MM-DD"),

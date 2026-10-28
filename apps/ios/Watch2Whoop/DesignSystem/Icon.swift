@@ -82,6 +82,16 @@ struct Icon: View {
     case externalLink = "external-link"
     case check
     case audioLines = "audio-lines"
+    // N5: food, log, health record
+    case minus
+    case droplet
+    case bookOpen = "book-open"
+    case shoppingCart = "shopping-cart"
+    case search
+    case star
+    case undo2 = "undo-2"
+    case ban
+    case triangleAlert = "triangle-alert"
 
     var assetName: String { "lucide.\(rawValue)" }
   }

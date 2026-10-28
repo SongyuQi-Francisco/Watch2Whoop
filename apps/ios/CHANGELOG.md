@@ -32,3 +32,8 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - the chat streams its answer as Markdown, shows native cards (generic card for the other types), asks before deletes, keeps conversations, switches the AI at the top, asks for the fallback AI's terms first, shows quick questions for the current page;
   - photos (camera / library) and video frames (≤ 8);
   - `JarvisRouter.ask(prompt:)` for the explain sheets and other pages: the in-app chat, or the butler link / a copied question for an AI used elsewhere.
+- Food, Log and the health record (#340 N5):
+  - Food: what was eaten today against the targets (four rings) and each entry by meal, change the portion or delete an entry; water with +250 / +500 and undo; quick meals (log, log again, undo); recipes (search, by meal, detail with servings and meal, favourite); this week's shopping list (tick items); look back at another day;
+  - Log: training (the muscle load map drawn natively, today's plan with set-by-set logging and submit, banned / caution exercises with the user's own reason, the week, exercise limits, the history calendar with each day's detail) and the journal (tags, numbers, body events); Food moves here while circles are on;
+  - health record from Me: supplements with today's check-in, lab results with each test's trend chart, body events;
+  - everything opens on the local copy, offline too; writes wait in the offline queue and show on the page at once.
