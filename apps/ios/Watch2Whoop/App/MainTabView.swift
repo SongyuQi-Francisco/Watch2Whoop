@@ -59,7 +59,7 @@ struct MainTabView: View {
   // Each tab is owned by one page agent (docs/ios-native-app.md section 9); they replace their placeholder here.
   @ViewBuilder private func screen(_ tab: AppTab) -> some View {
     switch tab {
-    case .today: TodayView()                                                              // N3
+    case .today: TodayView(session: session)                                              // N3
     case .trends: PlaceholderTab(tab: tab, owner: "N4")
     case .circles: PlaceholderTab(tab: tab, owner: "N7")
     case .food: PlaceholderTab(tab: tab, owner: "N5")

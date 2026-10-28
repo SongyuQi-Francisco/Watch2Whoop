@@ -13,6 +13,9 @@ struct Icon: View {
     case chevronRight = "chevron-right"
     case x
     case refreshCw = "refresh-cw"
+    case chevronLeft = "chevron-left"
+    case calendar
+    case sparkles
 
     var assetName: String { "lucide.\(rawValue)" }
   }

@@ -9,3 +9,8 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - a GRDB database per account, the sync coordinator with an offline queue, the JavaScriptCore algorithm runtime;
   - the copied HealthKit sync code;
   - a minimal Today tab drawing the three rings from `/v1/users/me/today`.
+- Native Today tab (#340 N3):
+  - three rings side by side, core numbers, strain target, health monitor, body status (weight opens a native weigh-in sheet), reminders, sync and circles cards;
+  - look-back calendar and pull to refresh;
+  - the sleep detail page (stage chart in Swift Charts) and explain sheets with an 「问 AI」 hook;
+  - everything is read from the local database; the N1 scoring bundle runs in JavaScriptCore and fills days the server has not scored once the phone has raw samples.

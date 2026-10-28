@@ -29,6 +29,9 @@ ICONS = {
     "chevron-right": "list rows",
     "x": "sheet close",
     "refresh-cw": "sync / retry",
+    "chevron-left": "previous night / month (N3)",
+    "calendar": "look back at a day (N3)",
+    "sparkles": "ask AI (N3)",
 }
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "Watch2Whoop" / "Resources" / "Assets.xcassets" / "Icons"
 

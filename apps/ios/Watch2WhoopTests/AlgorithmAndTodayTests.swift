@@ -70,7 +70,7 @@ final class TodayModelTests: XCTestCase {
       "recovery_word": "Train as planned",
       "load_status": ["key": "balanced", "label": "Balanced"],
     ] as [String: Any],
-    "reminders": [["id": 1]],
+    "reminders": [["id": 1, "title": "Example reminder", "level": "info", "status": "new"]],
   ]
 
   func testRingsFollowThePage() {
@@ -80,9 +80,10 @@ final class TodayModelTests: XCTestCase {
     XCTAssertEqual(m.rings[1].tone, .mid)
     XCTAssertEqual(m.rings[2].fraction, 12.34 / 21, accuracy: 1e-9)
     XCTAssertEqual(m.word, "Train as planned")
-    XCTAssertEqual(m.chips.count, 2)
-    XCTAssertEqual(m.hrv, "52")
-    XCTAssertEqual(m.sleep, "7:32")
+    XCTAssertEqual(m.loadChip, "Balanced")
+    XCTAssertEqual(m.reminders.count, 1)
+    XCTAssertEqual(m.sections[0].metrics[0].value, "52")
+    XCTAssertEqual(m.sections[1].metrics[0].value, "7:32")
   }
 
   func testEmptyDayShowsDashesAndLastRecovery() {

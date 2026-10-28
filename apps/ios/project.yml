@@ -39,6 +39,10 @@ targets:
       - path: Watch2Whoop
         excludes:
           - "**/*.md"
+      # N1's scoring bundle (global OpenBodyScore), run in JavaScriptCore by Algorithms/OpenBodyScoreRuntime.swift. Built
+      # into the app from its one copy in git; N2 adds the signed download that replaces it at run time.
+      - path: ../../packages/openbodyscore-js/dist/openbodyscore.js
+        buildPhase: resources
     info:
       path: Watch2Whoop/Info.plist
       properties:
