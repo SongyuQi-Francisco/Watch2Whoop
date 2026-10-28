@@ -76,6 +76,7 @@ There is no CLA. By submitting a contribution you agree that it is licensed unde
 | Directory | Licence |
 |---|---|
 | `apps/watch2whoop/` (iOS app) | MIT — [`apps/watch2whoop/LICENSE`](apps/watch2whoop/LICENSE) |
+| `apps/ios/` (native iOS app, SwiftUI) | MIT — [`apps/ios/LICENSE`](apps/ios/LICENSE) |
 | `shortcuts/` (iOS Shortcut) | MIT — [`shortcuts/LICENSE`](shortcuts/LICENSE) |
 | `packages/openbodyscore/` (scoring library) | Apache-2.0 — [`packages/openbodyscore/LICENSE`](packages/openbodyscore/LICENSE) |
 | everything else (server, deployment, tools, docs) | GNU AGPL-3.0 — [`LICENSE`](LICENSE) |

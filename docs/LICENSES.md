@@ -9,6 +9,7 @@ This project is licensed per directory:
 |---|---|---|
 | Everything except the directories below: Body Engine (`body_engine/`), deployment and ops (`deploy/`), Shortcut receiver (`health_sync/`), AI coach workspace (`assistant/`), Quick Start, tools, docs | **GNU AGPL-3.0** | [`LICENSE`](../LICENSE) |
 | iOS app (`apps/watch2whoop/`) | **MIT** | [`apps/watch2whoop/LICENSE`](../apps/watch2whoop/LICENSE) |
+| Native iOS app (`apps/ios/`, SwiftUI) | **MIT** | [`apps/ios/LICENSE`](../apps/ios/LICENSE) |
 | iOS Shortcut and its checker (`shortcuts/`) | **MIT** | [`shortcuts/LICENSE`](../shortcuts/LICENSE) |
 | Scoring library (`packages/openbodyscore/`, being extracted for reuse: [oss-extraction-plan.md](oss-extraction-plan.md)) | **Apache-2.0** | [`packages/openbodyscore/LICENSE`](../packages/openbodyscore/LICENSE), [`NOTICE`](../packages/openbodyscore/NOTICE) |
 

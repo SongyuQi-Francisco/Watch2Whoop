@@ -1,0 +1,122 @@
+# XcodeGen spec of the native iOS app (#340 N0, docs/ios-native-app.md). The .xcodeproj is generated, never committed:
+#   cd apps/ios && xcodegen generate
+# CI pins XcodeGen 2.46.0 (.github/workflows/ci.yml, job "iOS native").
+name: Watch2Whoop
+options:
+  bundleIdPrefix: org.watch2whoop
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+  developmentLanguage: zh-Hans
+
+configFiles:
+  Debug: Config/Watch2Whoop.xcconfig
+  Release: Config/Watch2Whoop.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  GRDB:
+    url: https://github.com/groue/GRDB.swift
+    exactVersion: 7.11.1
+  # Lets SyncEngine.swift / RawSync.swift / Backfill.swift stay byte-for-byte copies of the Flutter app's files while
+  # A2–A4 still change them there (scripts/sync_flutter_sources.sh). Removed when N8 gives them a native API.
+  FlutterShim:
+    path: Packages/FlutterShim
+
+targets:
+  Watch2Whoop:
+    type: application
+    platform: iOS
+    sources:
+      - path: Watch2Whoop
+        excludes:
+          - "**/*.md"
+    info:
+      path: Watch2Whoop/Info.plist
+      properties:
+        CFBundleDisplayName: $(W2W_DISPLAY_NAME)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: zh-Hans
+        CFBundleAllowMixedLocalizations: true
+        CFBundleLocalizations: [zh-Hans, en]
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [fetch, processing]
+        BGTaskSchedulerPermittedIdentifiers:
+          - watch2whoop.sync.backfill
+          - watch2whoop.sync.refresh
+        CFBundleURLTypes:
+          - CFBundleURLName: watch2whoop
+            CFBundleURLSchemes: [watch2whoop]
+        NSHealthShareUsageDescription: "Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up."
+        NSHealthUpdateUsageDescription: "Release builds never write to Health; only debug builds write test data in the simulator."
+        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for your AI."
+        NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to your AI; the sound is turned into text on this iPhone or on your server and is not kept."
+        NSSpeechRecognitionUsageDescription: "Used only while you talk to Jarvis: recognition runs on this iPhone and turns what you say into text."
+    entitlements:
+      path: Watch2Whoop/Watch2Whoop.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
+        com.apple.developer.healthkit.background-delivery: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(W2W_BUNDLE_ID)
+        PRODUCT_NAME: Watch2Whoop
+        DEVELOPMENT_TEAM: $(W2W_TEAM_ID)
+        CODE_SIGN_STYLE: Automatic
+        MARKETING_VERSION: $(W2W_MARKETING_VERSION)
+        CURRENT_PROJECT_VERSION: $(W2W_BUILD_NUMBER)
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_PREVIEWS: YES
+    dependencies:
+      - package: GRDB
+      - package: FlutterShim
+        product: Flutter
+      - sdk: HealthKit.framework
+      - sdk: JavaScriptCore.framework
+
+  Watch2WhoopTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Watch2WhoopTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: org.watch2whoop.native.tests
+        DEVELOPMENT_TEAM: $(W2W_TEAM_ID)
+    # GRDB comes with the host app (TEST_HOST); linking it again here would load two copies.
+    dependencies:
+      - target: Watch2Whoop
+
+schemes:
+  Watch2Whoop:
+    build:
+      targets:
+        Watch2Whoop: all
+        Watch2WhoopTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: false
+      targets:
+        - Watch2WhoopTests
+    archive:
+      config: Release
