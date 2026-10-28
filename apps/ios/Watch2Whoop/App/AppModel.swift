@@ -9,7 +9,16 @@ final class AccountSession: ObservableObject {
   let db: AppDatabase
   let sync: SyncCoordinator
   /// Feature flags on for this user (`/v1/web/me` → `flags`), e.g. `friends` decides the tab bar.
-  @Published var flags: Set<String> { didSet { sync.deltaAvailable = flags.contains(Self.nativeSyncFlag) } }
+  @Published var flags: Set<String> {
+    didSet {
+      let on = flags.contains(Self.nativeSyncFlag)
+      if on, !sync.deltaAvailable {   // just learned the server has it (first start): pull and score now
+        sync.deltaAvailable = true
+        Task { await sync.refresh(.changes) }
+      }
+      sync.deltaAvailable = on
+    }
+  }
   @Published var displayName: String?
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
@@ -217,7 +226,10 @@ final class AppModel: ObservableObject {
     sync.onRoundDone = { [weak s] in await s?.sync.refresh(.changes) }
     // #340 N2b: the scoring types go into the local tables as HealthKit has them, the beat-to-beat readings as they upload
     let reader = HealthKitScoringReader(db: db)
-    Task { await s.sync.scoring.setHealthReader { store in await reader.read(into: store) } }
+    Task {
+      await s.sync.scoring.setHealthReader { store in await reader.read(into: store) }
+      await s.sync.scoring.setUploadGate { await MainActor.run { HealthSyncService.shared.uploadedEverything } }
+    }
     sync.onHeartbeats = { [weak s] items, deleted in
       guard let s else { return }
       _ = try? LocalRawStore(db: s.db, zone: ScoringSync.zone(s.db)).ingestBeats(items, deleted: deleted)

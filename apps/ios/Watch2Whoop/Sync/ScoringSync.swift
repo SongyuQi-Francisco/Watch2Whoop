@@ -16,7 +16,7 @@ actor ScoringSync {
   struct Report: Codable, Equatable {
     var at: Double
     var reason: String
-    /// idle | offline | server_mode | stale_algo | no_data | scored | failed
+    /// idle | offline | server_mode | stale_algo | no_data | scored | waiting_sync (HealthKit upload still going) | failed
     var state: String
     var first: String?
     var written: [String] = []
@@ -31,11 +31,13 @@ actor ScoringSync {
   static let contextDoc = "scoring:context"
   static let histKey = "scoring.hist_through"
   static let lastKey = "scoring.last"
+  static let readKey = "scoring.hk_read"
 
   private let db: AppDatabase
   private let api: APIClient
   let bundles: AlgoBundles
   private var readHealth: ((LocalRawStore) async -> Set<String>)?
+  private var uploadGate: (() async -> Bool)?
   private var running = false
 
   init(db: AppDatabase, api: APIClient, bundles: AlgoBundles? = nil) {
@@ -46,6 +48,11 @@ actor ScoringSync {
 
   /// The host's HealthKit reader (Features/Sync); nil in tests and before HealthKit is set up.
   func setHealthReader(_ f: ((LocalRawStore) async -> Set<String>)?) { readHealth = f }
+
+  /// true when everything this phone read from HealthKit is on the server too (`HealthSyncService.uploadedEverything`):
+  /// the server's spot check sees the same inputs only then. While false the days are scored and shown here but not
+  /// uploaded; the sync round's end runs scoring again.
+  func setUploadGate(_ f: (() async -> Bool)?) { uploadGate = f }
 
   /// The zone of the last scoring context (the user's), else the phone's.
   nonisolated static func zone(_ db: AppDatabase) -> TimeZone {
@@ -59,7 +66,7 @@ actor ScoringSync {
     running = true
     defer { running = false }
     let store = LocalRawStore(db: db, zone: Self.zone(db))
-    if let readHealth { _ = await readHealth(store) }
+    if let readHealth, !(await readHealth(store)).isEmpty { try? db.setMeta(Self.readKey, "1") }
     var today = LocalDay.string(now, store.zone)
     if let v = await bundles.update(api: api) { markRecent(today: today, version: v) }
 
@@ -146,6 +153,12 @@ actor ScoringSync {
     // upload what is settled: the days before the first night the server has not sent yet
     let cutoff = result.unsettled.first ?? "9999-12-31"
     let days = result.written.filter { $0 < cutoff }
+    // samples this phone read from HealthKit must be on the server first (with none, the inputs are the server's anyway)
+    let phoneReads = (try? db.meta(Self.readKey)) == "1"
+    if !days.isEmpty, phoneReads, let gate = uploadGate, !(await gate()) {
+      rep.state = "waiting_sync"
+      return save(rep)
+    }
     if !days.isEmpty {
       let (status, body) = await upload(days: days, runtime: runtime)
       rep.upload = status

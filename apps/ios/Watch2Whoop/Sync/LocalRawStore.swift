@@ -10,7 +10,7 @@ import GRDB
 /// - `hr_day_hist`: per-day heart-rate histograms {bpm: count} for the scores' 365-day HRmax window, kept after the
 ///   samples of that day are pruned (from the phone's samples, or once from `GET /v1/sync/scoring?hist_from=`).
 /// - `score_dirty`: the local days whose inputs changed and have to be scored again.
-/// Size: about 1,000–2,000 heart-rate samples a day dominate: 60 days ≈ 100k rows ≈ 10–15 MB with the index; the
+/// Size: about 1,000–2,000 heart-rate samples a day dominate (~200 bytes a row with its indexes): 60 days ≈ 12–25 MB; the
 /// histograms and the rest are well under 1 MB (measured figures in the doc).
 final class LocalRawStore {
   static let keepDays = 60

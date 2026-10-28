@@ -35,7 +35,9 @@ final class HealthSyncService: ObservableObject {
   @Published private(set) var jobPercent = 0
   @Published var consentRequired = false
 
-  /// After each round with uploads: the account's data layer pulls (session.sync.refresh).
+  /// After each round: the account's data layer pulls (session.sync.refresh) and, with N2's sync, the phone scores the
+  /// changed days and uploads them now that the round's samples are on the server (#340 N2b: also after a round without
+  /// uploads, since a scoring run may have waited for this one).
   var onRoundDone: (() async -> Void)?
   /// Beat-to-beat readings the server took: into the account's local tables (#340 N2b; items as RawSync reads them).
   var onHeartbeats: (([[String: Any]], [String]) -> Void)?
@@ -63,6 +65,14 @@ final class HealthSyncService: ObservableObject {
   }
 
   var engineTypes: [HealthType] { registry.filter(\.isEngine) }
+
+  /// Everything this phone read from HealthKit is on the server (#340 N2b: the phone uploads the scores it computed only
+  /// then, so the server's spot check sees the same inputs): no round running, the last one complete (not stopped by the
+  /// time budget, offline …) and the first sync done. Nothing to wait for when the engine is not active for this user.
+  var uploadedEverything: Bool {
+    guard attached, engine.active else { return true }
+    return !running && !engine.running && engine.lastStop == nil && engine.firstSyncDone
+  }
 
   var diagnosis: SyncDiagnosis {
     var i = SyncDiagnosis.Input()
@@ -208,7 +218,6 @@ final class HealthSyncService: ObservableObject {
       return serverProblem == "unauthorized" ? tr("登录失效", "Signed out") : tr("连不上服务器", "Can't reach the server")
     }
     var message: String?
-    var uploaded = false
     // beat-to-beat series, ECGs, drinks (RawSync.swift)
     if permission != .notAsked, permission != .unavailable {
       let days = settings.daysBack
@@ -218,7 +227,6 @@ final class HealthSyncService: ObservableObject {
       rawStop = r.stop == "budget" ? nil : r.stop
       rawReadProblem = r.readProblem
       if r.stop == "consent" { consentRequired = true }
-      uploaded = uploaded || !r.uploaded.isEmpty
     }
     // the engine's round (raw samples, sleep stages, workouts, 15-minute buckets, deletions)
     if i.engineActive {
@@ -232,7 +240,6 @@ final class HealthSyncService: ObservableObject {
         message = samples > 0 ? tr("已上传 \(samples) 条（\(types) 类）", "Uploaded \(samples) items (\(types) types)")
           : tr("没有新数据", "Nothing new")
       }
-      uploaded = uploaded || samples > 0
       if stop == nil || stop == "budget" || stop == "busy" {
         lastOk = Date()
         settings.lastOk = lastOk
@@ -244,7 +251,7 @@ final class HealthSyncService: ObservableObject {
     await stepJob()
     await reloadDetails(server: true)
     await reportDevice()
-    if uploaded, let onRoundDone { await onRoundDone() }
+    if let onRoundDone { await onRoundDone() }
     return message
   }
 

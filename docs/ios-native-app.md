@@ -1,6 +1,6 @@
 # iOS 原生 app（SwiftUI）：架构和开发约定
 
-> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
+> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
@@ -38,8 +38,8 @@
 | `Watch2Whoop/Networking/` | `APIClient`（Bearer、401、重试）、`APIError`、`Endpoint`（所有路径） | N0；页面加路径常量 |
 | `Watch2Whoop/Auth/` | `KeychainStore`、`CredentialStore`（token、服务器地址、user id）、`FlutterMigration` | N0 / N8 |
 | `Watch2Whoop/Storage/` | `AppDatabase`（每账号一个库）、`Schema`（迁移）、`Records`（GRDB 记录类型） | 页面在 `Schema` 末尾**追加**迁移 |
-| `Watch2Whoop/Sync/` | `SyncCoordinator`、`RemoteSync`（`LegacyRemote` / `DeltaRemote`）、`OfflineQueue`、`DocKey` | N0 / N2 客户端 |
-| `Watch2Whoop/Algorithms/` | `AlgorithmRuntime`（JavaScriptCore）、`BundleVerifier`、`algo-builtin.js`（目前是占位） | N1 |
+| `Watch2Whoop/Sync/` | `SyncCoordinator`、`RemoteSync`（`LegacyRemote` / `DeltaRemote`）、`OfflineQueue`、`DocKey`；本机算分（N2b）：`ScoringSync`、`LocalScoring`、`LocalRawStore`、`AlgoBundles` | N0 / N2 / N2b |
+| `Watch2Whoop/Algorithms/` | `OpenBodyScoreRuntime`（JavaScriptCore，第 6.1 节）、`BundleVerifier`、`AlgoSigningKeys` | N1 / N2 |
 | `Watch2Whoop/HealthSync/` | 从 Flutter 拷来的 `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift`（逐字节相同），加上 `HealthSyncBridge`（async 包装）；注册表 `Resources/healthkit_types.json` 也由脚本拷贝 | 拷贝件用脚本同步；宿主一侧在 `Features/Sync/`（N8） |
 | `Watch2Whoop/Features/<页面>/` | 每个页面一个目录：`Today/`（N3）、`Trends/`（N4）、`Record/`、`Food/`（N5）、`Jarvis/`（N6）、`Circles/`（N7）、`Onboarding/`（登录、同意书、资料、健康权限）、`Me/`、`Sync/`（同步中心和同步宿主）（N8）；`Placeholders/` 是还没做的 tab | 各页面 agent |
 | `Watch2Whoop/Localization/` | `tr()`、`Lang` | — |
@@ -114,7 +114,12 @@
 | `sleep_sessions` | `id` | 睡眠段，`date` = 醒来那天（结束时间减 4 小时），阶段存 JSON | 算法 / 同步层 |
 | `daily_scores` | `date` | 每天的评分：圆环要用的数字是列，整行存在 `payload`；`algo_version`；`origin` 取 server / app；`uploaded` | 算法写（N1 / N3），同步层上传 |
 | `records` | `kind, id` | 用户自己的记录（饮食 / 体重 / 喝水 / 日记 / 补剂 / 化验 / 训练）：`date`、`server_id`、`client_id`、`payload`、`version`、`deleted`、`pending`；还没收到服务器回答的行 `id` = `c:<client_id>` | N5 |
-| `algo_bundles` | `version` | 已安装的算法包（sha256、api、文件路径、来源 builtin / download、`active`） | N1 |
+| `algo_bundles` | `version` | 已安装的算法包（sha256、api、文件路径、来源 builtin / download、`active`） | N1 / N2b |
+| `heartbeat_series` | `uuid` | 逐拍心跳读数（RMSSD 用户算分用）：`start`（整秒）、`end`、`rmssd`、`sdnn`；手机自己的读数先存 `beats`，包算完 RMSSD 后删掉；`origin` 取 phone / server | N2b（迁移 `v2_local_scoring`） |
+| `hr_day_hist` | `date` | 每天的心率直方图 `{bpm: 次数}`（365 天最大心率窗口）：原始样本删掉以后还留着；`source` 取 phone / server | N2b |
+| `score_dirty` | `date` | 算分输入变了、还要重算的本地日期 | N2b |
+
+`sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。
 
 **不存在本地的**：别人的数据（只存圈子动态的缓存文档）、AI 对话全文、心电图波形、AI 设置里的 key。
 
@@ -123,6 +128,7 @@
 - 只在 `Schema.migrator` 末尾**追加** `vN_<名字>`（例如 `v2_records_training_sets`），一个 PR 一个。已经发出去的迁移不能改、不能改名、不能调顺序。`SchemaTests.testMigrationOrder` 把列表钉死，加迁移时同时改这个测试。
 - Debug 版开了 `eraseDatabaseOnSchemaChange`：开发时改了迁移，本地库直接清空重建，反正只是缓存。Release 版没有这个开关。
 - 本地库只是服务器的缓存，加上还没发出去的队列。要做破坏性改动（比如改主键），就新建表并从服务器重新拉，不在手机上搬数据。
+- 迁移列表：`v1_initial`（N0）、`v2_local_scoring`（N2b）。
 
 ## 5. 同步层
 
@@ -143,7 +149,10 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 
 - **N0（现在）**：`LegacyRemote` 调原有的 GET 接口，把结果原样存进 `docs`；`.changes` 目前只拉今天的文档。各页面在 N2 之前照这个做法：在 `LegacyRemote` 里加自己的 scope，把接口结果存进 `docs`。
   - 一个页面要好几份文档时（N3 起），用 `Sync/DocPull.swift` 的 `DocPuller`：`[DocFetch(文档键, 请求)]` 并行拉、原样存；断网保留缓存，403 / 404（没有共享、开关没开）删掉那份文档，页面就隐藏那一块。主文档仍走 `session.sync.refresh`（状态行和离线队列在那里）。
-- **N2（服务器已实现，`body_engine/src/body_engine/nativesync/`）**：`DeltaRemote` 调 `POST /v1/sync/pull`：
+- **N2（服务器已实现，`body_engine/src/body_engine/nativesync/`；app 一侧 N2b 实现了算分要的几个 stream，`Sync/DeltaRemote.swift`）**：`DeltaRemote` 调 `POST /v1/sync/pull`：
+  - app 现在拉 `scores`、`daily`、`sleep`；`raw` 只在第一次全量恢复时拉，并且带 `raw_since`（今天往前 `LocalRawStore.keepDays` = 60 天），恢复完就不再拉：手机自己从 HealthKit 读（第 9.1 节），再拉回自己上传的样本只会让流量翻倍。
+  - `records`、`docs` 两个 stream 留给 N5；今天的文档照旧走 `LegacyRemote`。
+  - 开关 `native_sync` 打开时，`refresh(.changes)` 先增量拉，再拉今天的文档，最后在后台算分（`ScoringSync`）。
 
   ```json
   // 请求：只拉 cursors 里列出的 stream；"" = 这个 stream 从头全量恢复
@@ -156,7 +165,7 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
    "algo": {"version": "0.1.0", "sha256": "…", "algo_versions": {…}}}
   ```
 
-  - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`、`hk_*`），然后保存游标。`more` 为 true 就接着拉。
+  - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`、`hk_*`），然后保存游标。`more` 为 true 就接着拉。`daily`、`sleep`、`raw` 改到的日期同时记进 `score_dirty`。
   - 游标对 app 是不透明的字符串，原样存、原样发回。服务器回 422 `bad_cursor` 时把这个 stream 的游标清空，重新全量恢复。
   - 游标为空就是**全量恢复**：删了 app 重装、换手机都走这一条。按天分页，**最新的一天在最前**，所以前一两页就是最近两周。
   - `raw`（HealthKit 原始样本）也能拉回来，这样删掉 app 重装后可以在本地重算。规则是：全量恢复时拉（同样按天、从新到旧，每页 ≤ 20000 行）；某几天要重算时用 `raw_days` 指定（每次 ≤ 7 天，不动游标）。90 天以前的原始数据，app 只在 Wi-Fi 下继续拉（`params.RAW_CELLULAR_DAYS`，由 app 判断）。
@@ -206,40 +215,32 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 ## 6. 算法包（JavaScriptCore）
 
-### 6.1 调用约定（api 1，已在 `Algorithms/AlgorithmRuntime.swift` 定下）
+### 6.1 调用约定（N2b 定下：用包自带的入口）
+
+**只有一种**：包自带的入口，全局 `OpenBodyScore`（`packages/openbodyscore-js/README.md` 的「Entry points」）。N0 占位的 `OBS.call(name, json)`（`AlgorithmRuntime`、`algo-builtin.js`）已删掉。
 
 **包的形状**
 
 - 一个普通脚本（ES2020）：不用 module，没有 DOM、计时器、网络，结果不能依赖 `Date.now()`。
-- 脚本里定义：
+- 求值后全局有 `OpenBodyScore`：`VERSION`、`ALGO_VERSIONS`，和各个入口 `buildInputs`、`computeDays`、`computeDay`、`analyzeHrv`、`stressDays`、`healthspanSnapshot`、`trend`……
+- 入口是同步的纯函数：同样的输入，在每台手机和服务器上都得到同样的输出（跨语言 golden 测试）。
+- 输入输出沿用服务器的约定：日期是用户时区的 `YYYY-MM-DD`，时刻是毫秒或带时区的 ISO 字符串，单位 kg / kcal / ms / bpm，缺的值写 `null`。每个结果都带 `algo_version` 和 `bundle_version`。
 
-  ```js
-  globalThis.OBS = {
-    apiVersion: 1,
-    version: "x.y.z",
-    functions: ["…"],
-    call(name, inputJson) { … }   // 返回 JSON 字符串
-  }
-  ```
+**Swift 一侧**（`Algorithms/OpenBodyScoreRuntime.swift`）
 
-**`call` 的规则**
-
-- `call` 是同步的纯函数：同样的输入，在每台手机和服务器上都得到同样的输出（golden 测试）。
-- 出错返回 `{"error": {"code": "…", "message": "…"}}`，不抛异常（抛了 runtime 也会接住）。
-- 输入输出沿用服务器的约定：日期是用户时区的 `YYYY-MM-DD`，时间是 UTC 秒，单位 kg / kcal / ms / bpm，缺的值写 `null`。
-
-**Swift 一侧**
-
-- `try runtime.call("scores.day", input, as: Output.self)`；也可以用 `callJSON`。
+- `runtime.invoke("analyzeHrv", [beats, gaps])`：任意入口，参数和结果都走 JSON。
+- `runtime.scoreDays(source:first:last:today:origin:)`：`computeDays(buildInputs(src), opts)`，本机算分用。
+- JS 里出错（抛异常、没有这个入口）一律变成 `AlgorithmError`，不会让 app 崩。
 - 每个包版本一个 `JSContext`，所有调用在它自己的串行队列上执行。
-- 函数清单和输入输出的结构由 N1 定，命名建议 `<模块>.<函数>`（`scores.day`、`trends.series`、`rules.evaluate`）。
+- `OpenBodyScoreRuntime.apiVersion = 1` 是这套入口的版本。manifest 里带了 `api` 而且不是 1，就不下载（`BundleVerifier`）。服务器的 manifest 现在不带 `api`，表示 1。
 
-### 6.2 下发和启用（N1 实现）
+### 6.2 下发和启用（N2b 实现：`Sync/AlgoBundles.swift`）
 
-1. **内置包**：`algo-builtin.js` 打进 app，第一次启动和校验失败时用。N0 放的是占位文件，只有 `echo` 和 `about`。
-2. **检查新版本**：冷启动时（至少隔 6 小时一次）请求 `GET /v1/algo/manifest`，返回 `{version, api, sha256, signature, min_app}`。如果版本比本机新、`api` 和 app 支持的一致、app 版本 ≥ `min_app`，就下载 `GET /v1/algo/bundle/<version>.js`。
-3. **校验**：`BundleVerifier` 先比 sha256，再验 Ed25519 签名（CryptoKit `Curve25519.Signing`；公钥编译进 app，私钥只在维护者手里，不在服务器上）。两项都通过，才写进 `Application Support/W2W/algo/<version>.js` 和表 `algo_bundles`，然后标成 `active`。
-4. **重算和回滚**：切换版本后，在后台重算最近 N 天（N 由 N1 定），写进 `daily_scores` 时带上 `algo_version`，再上传。新包加载失败或调用报错，就退回上一个 `active` 版本，并上报。
+1. **内置包**：`packages/openbodyscore-js/dist/openbodyscore.js` 由 `project.yml` 作为资源打进 app，第一次启动、没有下载过、下载的包加载失败时用。
+2. **检查新版本**：每次算分前（至少隔 6 小时一次；服务器回 `stale_algo` 或算法版本对不上时立刻）请求 `GET /v1/algo/manifest`，返回 `{version, sha256, url, signature, key_id, algo_versions}`。版本比正在用的新，就下载 `url`（`GET /v1/algo/openbodyscore-<version>.js`）。
+3. **校验**：`BundleVerifier` 先比 sha256，再验 Ed25519 签名（第 6.3 节），然后在 JavaScriptCore 里试加载一次，版本号也要对上。都通过，才写进 `Application Support/W2W/algo/openbodyscore-<version>.js` 和表 `algo_bundles`，标成 `active`。
+4. **用哪个**：`active` 的下载包和内置包，谁新用谁（app 升级后不会退回更老的下载包）。下载的包加载失败，就取消 `active`，退回内置包。
+5. **重算**：换了包，就把最近 `AlgoBundles.rescoreDays`（14）天标成要重算（`score_dirty`），下一次算分时用新包重算并上传。
 
 ### 6.3 签名（N2）
 
@@ -254,11 +255,11 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **轮换**：先发一版 app，把新钥匙放进 `next`。等大多数人更新以后，开始用新钥匙签名。再下一版 app 把它挪到 `current`，`next` 留空或放再下一把。`BundleVerifier` 会两把都试。
 - **没有签名时**：Debug 版接受，方便本地开发直接用没签名的 `dist/`。Release 版（TestFlight / App Store）拒绝（`AlgorithmError.verification("unsigned")`），继续用内置包或上一个 `active` 版本。签名不对时两种版本都拒绝。
 
-### 6.4 N1 的包在 app 里怎么接（N3）
+### 6.4 包在 app 里怎么用
 
-- N1 交付的 `packages/openbodyscore-js/dist/openbodyscore.js` 用的是自己的入口（全局 `OpenBodyScore`：`buildInputs`、`computeDays`、`stressDays`、`trend`……），不是 6.1 的 `OBS.call(name, json)`。`Algorithms/OpenBodyScoreRuntime.swift` 直接调这些入口：一个 JS 胶水函数，JSON 进、JSON 出，在串行队列上执行。`AlgorithmRuntime`（api 1）和 `algo-builtin.js` 占位先留着，给 N2 的下载 / 签名流程用；N2 统一调用约定时二选一。
-- 这个文件由 `project.yml` 作为资源打进 app，仓库里只有 `packages/` 下那一份。
-- 加载一次要解析约 140 kB 的 JS，所以只在后台、确实要算的时候才建。
+- `dist/openbodyscore.js` 由 `project.yml` 作为资源打进 app，仓库里只有 `packages/` 下那一份。
+- 加载一次要解析约 145 kB 的 JS，所以只在后台、确实要算的时候才建（`AlgoBundles.runtime()` 按版本缓存一份）。
+- 0.2.0（N2b）给 `computeDays` 加了**带种子的算法**（seeded run，第 9.1 节）：`buildInputs` 多收 `hr_hist`、`seed_rows`，`computeDays` 多收 `origin`。服务器不传这些，结果和以前一字不差（golden 测试照旧）。包的内容变了，`dist/` 的签名被 `build.js` 去掉了：**部署者要在本机重新跑一次 `body-engine algo-sign`**（第 6.3 节），否则 Release 版的 app 不会下载它（内置包照常用）。
 
 ## 7. 和服务器的接口
 
@@ -289,6 +290,9 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | flag `native_sync` | `/v1/web/me` 的 `flags` 里 |
 | `GET /v1/algo/manifest` | N1 的接口，N2 加了 `signature`、`key_id`（第 6.3 节） |
 | 静默推送 | `notify/silent.py`：设备登记 `POST /push-devices` 时带 `"silent": true` 的（只有原生 app 这样登记），数据一变就收到 `content-available` |
+| `GET /v1/sync/scoring`（N2b） | 手机自己算分要的、只有服务器有的输入（`nativesync/scoring.py`）：`hrv_kind`、`sync_mode`、`scoring_origin`、生日、时区、服务器的算法版本、`app_scoring`（服务器现在是否让 app 算、最近一次抽查）；`?from=&to=` 再给这几天的肌肉负荷（≤ 120 天），`?hist_from=&hist_to=` 再给每天的心率直方图（≤ 430 天，要读这么长的历史，只在装好后要一次） |
+| pull 的 N2b 补充 | `raw_since`（全量恢复 raw 到这一天为止）；`raw` 的 body 多了 `beats`（逐拍读数的 RMSSD / SDNN，不带逐拍数据本身）；`sleep` 的 body 多了 `segments`（最近 `SEGMENT_DAYS` 天：服务器算分用的阶段段）；`heartbeat_series` 的写入记进 `raw` stream（迁移 980） |
+| 圈子评论带 `client_id`（N2b） | `POST /v1/friends/feed/posts/{id}/comments` 的 body `client_id` 或请求头 `X-Client-Id`：超时重发回第一次的评论（`X-Duplicate: 1`），不会多一条 |
 
 ### 7.3 N2 细则
 
@@ -305,10 +309,10 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 |---|---|---|
 | `scores` | `""` / 日期 | `daily_scores` 一行：各列 + `origin`（server / app）、`bundle_version`、`computed_at` |
 | `daily` | `""` / 日期 | `{"metrics": {指标: {value, unit, agg, n, min, max, source}}}` |
-| `sleep` | `""` / 日期（醒来那天） | `{"sessions": [{id, start, end, asleep_min, core_min, deep_min, rem_min, awake_min, unspecified_min, is_main, source, device}]}` |
+| `sleep` | `""` / 日期（醒来那天） | `{"sessions": [{id, start, end, asleep_min, core_min, deep_min, rem_min, awake_min, unspecified_min, is_main, source, device}], "segments": [[start, end, stage], …]}`；`segments` 只在最近 `params.SEGMENT_DAYS` 天有：服务器算分时用的阶段段（`scores/inputs.night_segments`，和 `load()` 同样的来源和顺序），从这天第一段睡眠前 3 小时到最后一段结束 |
 | `records` | `water` / `journal` / `food` / `weight` / `strength`（力量训练，套着动作和组）/ `training_session` / `meal_log` / `lab` / `workout`（手表训练）/ 日期；`supplements` / `journal_items` / `meal_templates` / `all` | `{"items": [表里的行…]}`：这个 kind 在这一天的全部条目，app 整组替换 |
 | `docs` | `""` / `today:<日期>` | op 是 `stale`，body 为 `null`：这天服务器算的视图变了，如果正在显示就重新取（全量恢复时不发） |
-| `raw` | `""` / 日期 | `{"samples": {"cols": [uuid, type, start, end, value, value_text, source, tz, meta], "rows": […]}, "stats": {"cols": [type, start, value], "rows": […]}}` |
+| `raw` | `""` / 日期 | `{"samples": {"cols": [uuid, type, start, end, value, value_text, source, tz, meta], "rows": […]}, "stats": {"cols": [type, start, value], "rows": […]}, "beats": {"cols": [uuid, start, end, rmssd, sdnn, origin], "rows": […]}}` |
 
 - `op = "delete"` 表示这一天（或这个 kind）已经没有数据了。全量恢复只发有数据的。
 - `version` 就是这个 key 最近一次变化的 `seq`，push 里的 `base_version` 跟它比较。
@@ -386,7 +390,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 6. 需要新表就在 `Schema` 末尾追加迁移。
 7. 测试：解析服务器 JSON 的模型、本地读写、队列行为，至少各有一个单元测试。用虚构的数据。
 
-### 9.1 N3 今天：数据从哪来，本机算分还缺什么
+### 9.1 N3 今天：数据从哪来；本机算分（N2b）
 
 **文档键**（表 `docs`，`Features/Today/TodayStore.swift` 的 `TodayDocs`）
 
@@ -397,7 +401,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `today.coach:<日期>`、`today.monitor:<日期>` | `/strain-coach`、`/health-monitor` | 负荷目标、健康监测 |
 | `memory:me` | `/memory` → `status` | 身体状态卡（点体重 = 记体重） |
 | `sync:overview` | `/sync/overview?in_app=1` | 同步卡 |
-| `circles:overview` | `/v1/friends/overview`（`friends` 开关） | 圈子入口卡（页面由 N7 做） |
+| `circles:overview` | `/v1/friends/overview`（`friends` 开关） | 只用来决定显不显示圈子卡；卡片本身是 N7 的 `CircleSummaryCard()`（N2b 换上） |
 | `days:<年-月>` | `/days?month=` | 顶部日期 → 月历回看 |
 | `sleep:night:<日期>` / `latest` | `/sleep/night`（`sleep_detail` 开关） | 睡眠详情 |
 | `explain:<kind>:<键>:<日期>` | `/explain/metric/…`、`/explain/status/…` | 讲解弹层 |
@@ -409,18 +413,64 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 记体重：先写 `records`（kind `weight`，`pending`），再排队 `POST /weight`（带 `client_id`）。409 时提示「用这次的覆盖」。
 - 「问 AI」：`DesignSystem/AskAI.swift` 的环境值 `\.askAI`，默认把问题复制到剪贴板；N6 在 `MainTabView` 上把它设成 `JarvisRouter.ask`（第 9.2 节）。
 
-**本机算分**（`Features/Today/LocalScoring.swift`）：已经接上，测试里用 40 天虚构数据跑通。
+**本机算分**（N2b，`Sync/ScoringSync.swift`、`LocalScoring.swift`、`LocalRawStore.swift`、`DeltaRemote.swift`、`AlgoBundles.swift`）
 
-- 流程：本地 `hk_samples`（心率、HRV SDNN、呼吸、血氧、手腕温度、静息心率、睡眠阶段）+ `sleep_sessions` + `daily_metrics` → `buildInputs` → `computeDays` → 写进 `daily_scores`（origin `app`，带 `algo_version`）。
-- 只填服务器没有分数的那一天（离线、还没同步），不覆盖服务器的行。
+负责人的要求：计算在手机上做，云端以备份和同步为主，算法以云端版本为准。开关 `native_sync` 打开、而且同步模式是 `app`（`GET /v1/sync/scoring` 的 `sync_mode`）的用户，由手机自己算分。其他用户的算分输入来自 Open Wearables / 快捷指令，手机上没有，照旧由服务器算。
 
-现在实际上不会跑，因为还缺：
+*一次算分*（`ScoringSync.run`，同一时间只跑一个）。触发时机：每轮同步结束（`HealthSyncService.onRoundDone` → `refresh(.changes)`）、打开今天页、第一次知道有 `native_sync` 的时候。
 
-1. **本地原始数据**：同步引擎写 `hk_samples` 是 N8 的事；删掉重装后的全量恢复（`raw` stream）是 N2 的事。在那之前这些表是空的，`hasRawData` 为假，页面照旧显示服务器的分数。
-2. **足够长的历史**：恢复分要 60 天基线（≥ 14 晚），CTL / ATL 从算分起点算，HRmax 看 365 天。本机历史短的时候，算出来和服务器不一样，所以只当兜底。
-3. **`hrv_kind = rmssd` 的用户**：要逐拍心跳序列（`heartbeat_series`），本地还没有这张表。现在只有 `sdnn` 的人能在本机算。
-4. **只有服务器有的输入**：多设备、多来源的合并，力量训练记录（肌肉负荷），个人资料（生日）等，见 `packages/openbodyscore-js/README.md` 的「Inputs only the server can provide」。
-5. **上传**：`PUT /v1/users/me/scores/app`（N2）还没有，本机算的行不上传。
+1. **读 HealthKit**（`Features/Sync/HealthKitScoringReader.swift`）：只读算分要的 7 类（心率、HRV SDNN、呼吸、血氧、手腕温度、静息心率、睡眠阶段），只读最近 60 天。每类一个 anchored query，锚点存在账号库里，也读删除。读到的写进 `hk_samples`，同时更新改到那天的心率直方图，并把那天记进 `score_dirty`。
+   - 为什么不在同步引擎上传时顺手写：`SyncEngine.swift` 是 Flutter 版的逐字节拷贝（第 2.3 节），没有挂钩。
+   - 逐拍心跳是在上传时顺手写的：`RawUploadPass` 的 `stored` 回调 → `LocalRawStore.ingestBeats`。包算完 RMSSD（`analyzeHrv`，和服务器的 rr-v1 同一套）以后，逐拍数据本身删掉。
+2. **增量拉取**（第 5.2 节）：`scores`、`daily`、`sleep`。`sleep` 带服务器算分时用的阶段段（`segments`）。改到的日期也记进 `score_dirty`。
+3. **算法包**：最多每 6 小时查一次新包（第 6.2 节）。换了包就把最近 14 天标成要重算。
+4. **`GET /v1/sync/scoring?from=F&to=今天`**：拿 hrv_kind、同步模式、算分起点、生日、这几天的肌肉负荷。装好后第一次还带 `hist_from` / `hist_to`，拿原始样本窗口之前一年的每日心率直方图。
+5. **算**：`F` = 最早要重算的那天，但不早于原始样本窗口的第 3 天。算 `[F, 今天]`，写进 `daily_scores`（origin `app`，`uploaded = 0`），用的是**带种子的算法**（下面）。
+6. **上传**：`PUT /v1/users/me/scores/app`（第 7.3 节），只传「定了」的天。
+   - 某一晚服务器还没派生出睡眠（本地没有那天的 `sleep_sessions`），就用手机自己的阶段样本先算出来显示，但这一天和之后的天先不传。
+   - 手机从 HealthKit 读到过数据时，要等 `HealthSyncService.uploadedEverything`：没有正在跑的同步、上一轮完整跑完、首次同步已完成。这样服务器抽查时看到的输入和手机一样。不满足时状态是 `waiting_sync`，等这一轮同步结束再传。
+   - 回答 `ok` / `mismatch` 都标成已上传：`mismatch` 时服务器存的是它自己那天的结果，下次拉取会拉回来。回答 `stale_algo` 就立刻去更新算法包。
+7. **服务器停算**：N2 的逻辑没变。抽查通过后，`app_score_state` 变成 active，每小时任务 / 每晚任务 / `sync-refresh-run` 对这个用户只补算 app 两小时还没传的「脏天」（`appscores.plan` → `{"mode": "app", "days": []}`）。
+
+上一次的结果存在 `meta` 的 `scoring.last`（`SyncCoordinator.lastScoring`），给同步中心和排查用。
+
+*带种子的算法*（`packages/openbodyscore-js` 0.2.0）：服务器每次都从算分起点（第一次有静息心率的那天）一路算到今天。手机只留 60 天原始样本，所以从后面的 `first` 开始算，历史通过输入带进来：
+
+- `seed_rows`：`first` 之前 62 天已存的 `daily_scores` 行，服务器算的或手机算的都行。用来算 60 天基线（HRV、静息心率、呼吸、手腕温度、睡眠表现）、前一天负荷（睡眠需求），以及 CTL / ATL 的起点。手机算的行在 `details.load_state` 里带不四舍五入的 CTL / ATL，连着算也不会越积越偏。
+- `hr_hist`：原始样本窗口之前每天的心率直方图（365 天最大心率窗口）。
+- 睡眠债按晚重新从 `sleep_sessions` 算（这张表保留全部历史）。
+- 存下来的值是四舍五入过的，所以结果最多差一个舍入步长（CTL 0.1、恢复 1 分），正好在服务器的抽查容差 `CHECK_TOLERANCE` 以内。
+- 测试：Node 端 `golden.test.js` 的 seeded run（三个切点加一次连续接力），和 Swift 端 `SeededScoringTests`（JavaScriptCore 跑 70 天虚构数据），都和从起点全量算的结果比。
+
+*删掉重装 / 换手机*：所有 stream 的游标都是空的，就是全量恢复。
+
+- `scores`、`daily`、`sleep` 全部历史都拉（都很小）。
+- `raw` 只拉最近 60 天（`raw_since`）。
+- 心率直方图从 `GET /v1/sync/scoring?hist_from=` 拉一次。
+- 拉完就能接着算，不用把全部原始样本拉回来。
+
+*本地库占多少*（模拟器实测，见下）：`hk_samples` 每行约 200 字节（含两个索引）。
+
+- 虚构用户每天约 190 条样本：60 天 11,420 行，约 2.3 MB。
+- 真实的 Apple Watch 一天大约 1,000–2,000 条心率，60 天约 12–25 MB；其他 6 类加起来每天几十条。
+- 心率直方图一天约 0.4 KB，430 天不到 0.2 MB。
+- `daily_scores` 一天约 2 KB，几百天 1 MB 左右。
+- 合计一个账号大约 **15–30 MB**，不会再随时间增长：原始样本 62 天以前的删掉，直方图 430 天以前的删掉。
+
+*模拟器 + 本地服务器走通*（2026-10-29，iPhone 17 模拟器，一次性库 `body_test_*`，虚构用户）：
+
+- 服务器端：120 天「同步引擎上传的」样本，派生后由服务器算分。用户切到 `app` 模式，打开 `native_sync`。
+- app 端：重新安装后用 Debug 登录。
+  - 全量恢复只要一页：120 天的分数、日汇总、睡眠，加 60 天原始样本。
+  - 拉一次直方图，带种子算 58 天，上传。
+  - 抽查当天全部字段一致，`app_score_state` 变成 active / trusted，`app-scores status` 的计划是 `{"mode": "app", "days": []}`，服务器不再给他算分。
+- 第一次试的时候，app 一边从 HealthKit 读，同步引擎一边在上传。服务器抽查时少了后半批样本，CTL 差了 1.4，抽查不通过。等样本全部到了服务器，它重算出的 CTL 和手机的一样。所以才加了上面「等同步传完再上传」那一条。
+
+*还没做 / 风险*
+
+- 同时用快捷指令、export.zip 补历史的人：服务器会合并这些来源，手机上没有。不一致时抽查不通过，服务器接着算（自动兜底）。
+- 力量训练的肌肉负荷要联网拿。离线时先不算这一项，等联网后重算再上传。
+- 趋势、压力、身体年龄还是服务器算（N4 再搬）。
 
 **性能**：`PerfProbe` 打 `W2W_PERF` 日志和 signpost（`today data`、`today rings`）。
 
@@ -432,7 +482,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - **读**：圈子数据只在服务器上（别人的数据不进本地表），`CirclesStore` 先读本地缓存、再请求接口，回答原样或合并后存进 `docs`：`circles:list`（`GET /v1/friends`）、`circles:overview:<all|圈子 id>`、`circles:feed:<all|圈子 id>`（`FeedCache`：已经看过的帖子 + 下一页游标，最多 120 条）、`circles:board:<榜>:<圈子>`、`circles:comments:<帖子>`、`circles:unread`。打开就是上次的样子，离线也一样；顶部标「离线 · 显示上次的内容」。
 - **增量刷新**：下拉刷新 / 回到前台 / 打开 tab（最多 20 秒一次）只拉第一页，`FeedLogic.mergeHead` 合并：新帖替换旧副本，第一页范围内服务器已经没有的帖子删掉（对方退圈、训练被删），更早的缓存保留；往下滚到倒数第 3 条时拉下一页。红点 `GET /feed/unread` 每分钟一次。
-- **写**：点赞 / 取消、评论走离线队列（kind `circle.like` / `circle.comment`，每个帖子一个组）。点赞是「最后一次为准」：入队前 `OfflineQueue.supersede` 删掉同组还没发出的旧状态；界面上立刻变（缓存同时改），队列里还没发出的点赞和评论由 `FeedLogic.overlay` 叠在服务器的数据上（评论显示时钟，被拒的显示「没发出去 · 重试 / 删掉」）。评论接口没有 `client_id`：超时后重发可能多一条，服务器加 `client_id` 之前接受这个风险。其他写（建圈、加入、邀请、退出、共享范围、鼓励、头像）只在线（第 5.5 节）。
+- **写**：点赞 / 取消、评论走离线队列（kind `circle.like` / `circle.comment`，每个帖子一个组）。点赞是「最后一次为准」：入队前 `OfflineQueue.supersede` 删掉同组还没发出的旧状态；界面上立刻变（缓存同时改），队列里还没发出的点赞和评论由 `FeedLogic.overlay` 叠在服务器的数据上（评论显示时钟，被拒的显示「没发出去 · 重试 / 删掉」）。评论带上队列条目的 `client_id`（N2b 给评论接口加上了），超时后重发不会多一条。其他写（建圈、加入、邀请、退出、共享范围、鼓励、头像）只在线（第 5.5 节）。
 - **队列的改动**（共享，N7 加的）：`drain` 先原子地「领取」一条（`UPDATE … WHERE state = 'pending'`），两个 drain 同时跑也不会重复发送；`sending` 带 120 秒租约，app 发送中被杀掉后会再发。
 - **隐私**：只显示接口给的内容，服务器每次读都按对方的共享范围判断；切到某个圈子时成员、动态、排行榜只含这个圈子里的人和他们在这里勾选的内容。
 - **通知**：`AppDelegate` 设 `UNUserNotificationCenter` 的 delegate（`App/NotificationTaps.swift`），点通知把 payload 的 `url`（`/app/?tab=friends&feed=<id>`）交给 `AppModel.handle(link:)` → `Route.circles(post:)` → `MainTabView` 的 `.circleRouting` 切到朋友 tab → 动态滚到这条、打开评论。app 在前台时 `circle.*` 通知也弹横幅。`watch2whoop://circle?code=…` 和今天页的邀请链接 `/app/?circle=…` 打开加入页。
@@ -662,7 +712,7 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 - Auth: Keychain, plus migration from the Flutter app.
 - Storage: one GRDB database per account, with append-only migrations.
 - Sync: coordinator, legacy and delta remotes, and an offline queue that is FIFO per group, idempotent by `client_id`, and keeps failed or conflicting writes for the user to resolve.
-- Algorithms: JavaScriptCore runtime with calling convention api 1, `OBS.call(name, json) -> json`. Downloaded bundles are checked by sha256 and an Ed25519 signature before use.
+- Algorithms: `OpenBodyScoreRuntime` runs the bundle's own entry points (`OpenBodyScore.buildInputs`, `computeDays`, `analyzeHrv` …) in JavaScriptCore; this is the one calling convention (N2b dropped N0's `OBS.call` placeholder). Downloaded bundles are checked by sha256 and an Ed25519 signature and a test load before use (`AlgoBundles`); the newer of the download and the built-in copy runs.
 - HealthSync: byte-for-byte copies of the Flutter app's SyncEngine, RawSync and Backfill, compiled against a tiny `Flutter` shim package.
 - Features: one folder per page.
 
@@ -685,6 +735,10 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
     - A Python spot check runs for the first upload of each bundle version, then at most every 6 hours. If it finds a difference, the server's row is stored, the user goes back to server scoring, and a recompute is queued.
     - While the app scores a user, the hourly and nightly jobs only fill in days whose inputs changed more than 2 hours ago that the app has not uploaded since.
     - The admin command is `body-engine app-scores status|server|app`.
+  - N2b additions:
+    - `GET /v1/sync/scoring`: the scoring context the phone cannot work out itself (hrv_kind, sync mode, origin, birth date, app scoring state, muscle load of `from..to`, per-day heart-rate histograms of `hist_from..hist_to`).
+    - Pull: `raw_since` bounds a raw restore. The raw body carries `beats` (RMSSD / SDNN of beat-to-beat readings). Recent sleep bodies carry the scores' stage `segments`. Writes to `heartbeat_series` count as raw changes (migration 980).
+    - Circle comments take a `client_id` (body or `X-Client-Id`).
 - N1 adds `GET /v1/algo/manifest` and the bundle download. N2 adds an Ed25519 `signature` and `key_id` to the manifest (section 6.3):
   - The maintainer signs on their own machine with `body-engine algo-sign --key secrets/algo_signing_key`.
   - The app has two public keys built in (`AlgoSigningKeys.swift`, current and next).
@@ -697,7 +751,14 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 - Flutter items are kept so a rollback to 1.0.8 still works; native sign-out removes them.
 
 **Pages**
-- N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points). `LocalScoring` computes a day from the local raw tables and fills only days the server has not scored. It stays idle until N8 writes `hk_samples` and N2 restores raw data; it cannot serve `rmssd` users (no beat-to-beat table) and cannot match the server's long baselines with a short local history.
+- N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points).
+- N2b: the phone scores app-mode users itself (`native_sync` on, sync mode `app`; section 9.1).
+  - After every sync round, `ScoringSync` reads the seven scoring types from HealthKit into `hk_samples` (60 days, own anchors; the copied engine has no hook). Beat-to-beat readings are stored as they upload.
+  - It pulls `scores` / `daily` / `sleep` (sleep with the server's stage segments) and gets `GET /v1/sync/scoring` (hrv_kind, sync mode, origin, muscle load, once the per-day heart-rate histograms).
+  - It runs a seeded `computeDays` (bundle 0.2.0: stored rows + day histograms stand in for the history before the raw window; within the server's check tolerance) and uploads the settled days with `PUT /scores/app`, only once the sync round's samples are all on the server.
+  - A reinstall restores the full history of scores, daily values and sleep, plus 60 days of raw data (`raw_since`).
+  - Local database: about 15–30 MB per account.
+  - Simulator + local server: a fresh install restored, scored 58 days, uploaded them; the spot check passed; the server's plan became `app` with no days to score.
 - N4: Trends and reports.
 - N5: all records and the Food tab (section 9.3). Each page store observes its documents plus the pending `records` rows (`LocalView`); `RecordsPuller` saves the server's views and prunes the rows the server now has in one transaction. Writes are a `records` row plus an outbox entry with the same `client_id`; last-write-wins groups drop older unsent states. Undo of a queued write is local, of a sent one online. The muscle map draws the Today page's own `muscle-body-data.js` (bundled) as SwiftUI paths. Server: `PATCH /nutrition/entries/{id}` sets an absolute portion.
 - N4: Trends and reports. Series come from `/trends` (cached as documents); seven status cards (HRV status, training status, load focus, illness risk, lowest-HR timing, recovery time, chronotype) are computed on the phone with the bundle's `trend(...)` when the local history covers their window, resilience / body battery / heart-rate recovery stay the server's. Swift Charts with a tap / press-and-slide read-out, LTTB-thinned lines above 140 points, year labels on long ranges.
