@@ -16,6 +16,30 @@ struct Icon: View {
     case chevronLeft = "chevron-left"
     case calendar
     case sparkles
+    // N8: sign-in, Me / settings, sync center
+    case qrCode = "qr-code"
+    case mail
+    case keyRound = "key-round"
+    case link
+    case clipboardPaste = "clipboard-paste"
+    case heartPulse = "heart-pulse"
+    case cloudUpload = "cloud-upload"
+    case calendarClock = "calendar-clock"
+    case circleCheck = "circle-check"
+    case circleAlert = "circle-alert"
+    case smartphone
+    case bell
+    case languages
+    case palette
+    case megaphone
+    case database
+    case inbox
+    case fileText = "file-text"
+    case pill
+    case flaskConical = "flask-conical"
+    case calendarDays = "calendar-days"
+    case logOut = "log-out"
+    case userX = "user-x"
 
     var assetName: String { "lucide.\(rawValue)" }
   }

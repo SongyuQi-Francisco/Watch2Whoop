@@ -40,12 +40,12 @@
 | `Watch2Whoop/Storage/` | `AppDatabase`（每账号一个库）、`Schema`（迁移）、`Records`（GRDB 记录类型） | 页面在 `Schema` 末尾**追加**迁移 |
 | `Watch2Whoop/Sync/` | `SyncCoordinator`、`RemoteSync`（`LegacyRemote` / `DeltaRemote`）、`OfflineQueue`、`DocKey` | N0 / N2 客户端 |
 | `Watch2Whoop/Algorithms/` | `AlgorithmRuntime`（JavaScriptCore）、`BundleVerifier`、`algo-builtin.js`（目前是占位） | N1 |
-| `Watch2Whoop/HealthSync/` | 从 Flutter 拷来的 `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift`（逐字节相同），加上 `HealthSyncBridge`（async 包装） | 拷贝件用脚本同步；N8 接手 |
-| `Watch2Whoop/Features/<页面>/` | 每个页面一个目录：`Today/`（N3）、`Trends/`（N4）、`Record/`、`Food/`（N5）、`Jarvis/`（N6）、`Circles/`（N7）、`Me/`、`SignIn/`、`SyncCenter/`（N8）；`Placeholders/` 是还没做的 tab | 各页面 agent |
+| `Watch2Whoop/HealthSync/` | 从 Flutter 拷来的 `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift`（逐字节相同），加上 `HealthSyncBridge`（async 包装）；注册表 `Resources/healthkit_types.json` 也由脚本拷贝 | 拷贝件用脚本同步；宿主一侧在 `Features/Sync/`（N8） |
+| `Watch2Whoop/Features/<页面>/` | 每个页面一个目录：`Today/`（N3）、`Trends/`（N4）、`Record/`、`Food/`（N5）、`Jarvis/`（N6）、`Circles/`（N7）、`Onboarding/`（登录、同意书、资料、健康权限）、`Me/`、`Sync/`（同步中心和同步宿主）（N8）；`Placeholders/` 是还没做的 tab | 各页面 agent |
 | `Watch2Whoop/Localization/` | `tr()`、`Lang` | — |
 | `Watch2Whoop/Resources/` | `Assets.xcassets`（AppIcon、`LaunchBackground`、`Icons/lucide.*`） | — |
 | `Watch2WhoopTests/` | XCTest 单元测试，在模拟器上跑 | 每个 PR 都要加测试 |
-| `Packages/FlutterShim/` | 本地 SPM 包，模块名就叫 `Flutter`：只有 `FlutterMethodCall`、`FlutterResult`、`FlutterError` 三个类型，让拷进来的文件不改一个字节也能编译 | N8 删掉 |
+| `Packages/FlutterShim/` | 本地 SPM 包，模块名就叫 `Flutter`：只有 `FlutterMethodCall`、`FlutterResult`、`FlutterError` 三个类型，让拷进来的文件不改一个字节也能编译。N8 之后只剩 `RawSync.swift` 用它 | Flutter 原文件的 RawSync 拆出原生接口后删掉 |
 | `scripts/` | `sync_flutter_sources.sh`（拷贝 / `--check`）、`lucide_assets.py`（生成图标 / `--check`）、`check_sources.py`（双语和颜色 token） | — |
 
 ### 2.2 依赖方向
@@ -61,7 +61,9 @@
 - `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift` 和 `apps/watch2whoop/ios/Runner/` 里的原文件逐字节相同。A2–A4（#219）还在原文件上改，所以这里不改拷贝件。
 - 原文件更新后跑 `apps/ios/scripts/sync_flutter_sources.sh`；CI 里的 `--check` 发现不一致只给警告，不让 job 失败。
 - 拷贝件仍然是 method channel 的形状：`handle(FlutterMethodCall, result)`。`HealthSyncBridge.call(.engine, "engineRead", args)` 把它包成 `await`。
-- Dart 那一侧的逻辑（`lib/src/sync_engine.dart`、`raw_sync.dart`、`backfill.dart`：读什么、怎么上传、什么时候提交锚点）在 N8 改写成 Swift，见第 9 节。改写完给这三个文件换成原生接口，删掉 `FlutterShim`。
+- Dart 那一侧的逻辑（`lib/src/sync_engine.dart`、`raw_sync.dart`、`backfill.dart`、`resync_flow.dart`）N8 已改写成 Swift，在 `Features/Sync/`：`HealthSyncService`（交给引擎服务器、token、注册表和 engine 块，前台轮次、补全历史、重新同步的手机部分、状态）、`RawUploadPass`（心跳序列 / 心电图 / 喝水，200 之后才提交锚点）、`SyncDiagnosis`（卡在哪里、怎么自救）。`SyncEngine.swift`、`Backfill.swift` 从 #344 起就是原生接口；`RawSync.swift` 还是 method channel 的形状，经 `HealthSyncBridge.raw` 调用，等 Flutter 原文件拆出原生接口后再删 `FlutterShim`。
+- 1.0.9 只走引擎（`app` 模式）：不调 `ow-invitation`，设置链接里的 `ow` / `code` 读到也不用（契约第 7.1 节）。注册表里的数量类型全由引擎读，RawSync 在原生 app 里只管心跳序列、心电图和喝水。
+- 后台：`AppDelegate` 在启动结束前 `SyncEngine.register()`（BGAppRefresh `watch2whoop.sync.refresh`、BGProcessing `watch2whoop.sync.process`、HealthKit 观察者和后台送达）和 `Backfill.register()`；回到前台时 `HealthSyncService.syncOnOpen()`（至少隔 3 分钟）。引擎自己存配置（服务器、Keychain 里的 token、注册表、模式），没有页面也能在后台跑。
 - 锚点和 backfill 状态存在 `UserDefaults` 里，键不带 `flutter.` 前缀（`w2w.sync.anchor.*`、`w2w.raw.anchor.*`、`w2w.backfill.state.v1`）；backfill 的上传 token 在 Keychain 的 `w2w.backfill` / `token`。这些和 Flutter 版是同一份，升级后直接接着用，不用迁移。
 - `AppDelegate` 已经注册了 `watch2whoop.sync.backfill` 后台任务，并在每次启动时重新挂上后台 URLSession。`BGTaskSchedulerPermittedIdentifiers` 里还预留了 `watch2whoop.sync.refresh`，给 N8 的定时刷新用。
 
@@ -69,7 +71,7 @@
 
 ```
 启动 → FlutterMigration.run（只跑一次）→ 有 token + 服务器？
-  否 → SignInView（N0 是 token 表单；N8 换成设置二维码 / 邮箱 / Apple）
+  否 → OnboardingView（N8：通过 Apple 登录、邮箱验证码、设置二维码 / watch2whoop://setup 链接、激活码；高级：token）
   是 → 已经知道 user id？
         是 → 立刻打开本地库，显示 tab（先画缓存）→ 后台调 /v1/web/me 更新 flags 和名字
         否 → 「正在连接」→ /v1/web/me → 记下 user id → 打开本地库
@@ -77,6 +79,8 @@
 退出登录 → 删掉这个账号的库目录 + Keychain（原生项和 Flutter 项都删）→ 通知服务器 /v1/account/logout
 ```
 
+- 登录方式都换成一个设备 token（Keychain）：Apple / 邮箱是 `client: app`；设置链接的一次性登录码走 `POST /v1/web/login-code {code, client: "app"}`（N8 加的：不设 cookie，回答里带 token）；16 位激活码先 `POST /v1/web/activate {web: true}` 换成设置链接，再兑换其中的登录码；还没激活的账号（pending）再填邀请码（`/v1/account/redeem-invite`，别的账号的码会切到那个账号并给它的 token）。
+- 登录后只在需要时依次出现（`SignedInFlows`）：同意书（`GET /v1/consent` 的文本和版本，`required` 不能跳过，`reconfirm` 是新版本）→ 资料（缺生日 / 性别 / 身高时，可以「以后再说」，每个账号只问一次）→ 健康权限（一个弹窗问全部类型）→ 首次同步。
 - `AccountSession`（`@MainActor ObservableObject`）通过 `environmentObject` 注入，里面有 `config`、`api`、`db`、`sync` 和 `flags`。页面用 `@EnvironmentObject var session: AccountSession` 拿。
 - 功能开关来自 `/v1/web/me` 的 `flags`，本机缓存在 `w2w.native.flags.v1`。每个原生页面如果需要服务器开关，就读 `session.flags`。
 - Debug 版可以用启动环境变量自动登录，给模拟器和截图用：`SIMCTL_CHILD_W2W_DEV_SERVER`、`SIMCTL_CHILD_W2W_DEV_TOKEN`、`SIMCTL_CHILD_W2W_DEV_LANG=zh|en`。
@@ -353,6 +357,11 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - **Flutter 项不删**：TestFlight 还能退回 1.0.8。原生版退出登录时，Flutter 项会一起删掉，避免退回 1.0.8 后又出现一个已经吊销的会话。迁移代码保留两个版本（到 1.1.x），之后删掉。
 - **只有 token 没有地址，或者只有地址没有 token**：显示登录页，不删旧数据。
 - **测试**：单元测试（`FlutterMigrationTests`）用内存 Keychain 和独立的 UserDefaults 模拟 Flutter 版存的东西。**真机覆盖升级要在 N9 测**：先装 1.0.8 的 TestFlight 包并登录，再装 1.0.9，确认不用重新登录、同步锚点能接上。
+- **模拟器验证（N8，2026-10-29，合成数据）**：装 `app-ios-v1.0.8` 的 Flutter 模拟器构建，邮箱登录、给权限、写测试数据，1.0.8 上传了 347 条；再覆盖装原生版（同 bundle ID，`FAKETEAMID` 签名，见 `apps/ios/README.md`）：
+  - 不用重新登录（Keychain 里的账号 token、`flutter.w2w.config.v1` 的服务器都接上了）；
+  - 引擎沿用 1.0.8 的 `w2w.sync.anchor.*` / `w2w.raw.anchor.*`：第一轮只把 1.0.8 已传过的样本里「最近 48 小时」那部分重发一次（拷贝来的引擎在 A1 → A2 时的 `recent` 阶段，348 条，服务器按 UUID 全部跳过），没有重传历史；之后的轮次只传新数据，没有新数据时不发请求；
+  - 1.0.8 在 `app` 模式下只问了一部分类型（契约 7.1 的缺口），升级后的一个弹窗补问全部类型，补上的类型照常上传。
+  - 注意：迁移只跑一次，`incomplete`（没读到 token）也会记成已跑；1.0.8 里用设置链接登录的人没有账号 token，升级后要重新登录一次（邮箱 / Apple / 新的登录码），锚点不受影响。
 
 ## 9. 页面清单（N3–N8）
 
@@ -440,6 +449,10 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 用 `quickstart/demo_data.py` 生成合成数据，再用 `body-engine import-apple-zip` 导入。
 - 跑 `uvicorn body_engine.api:app`。
 - 用 Debug 环境变量登录（第 3 节）。不碰任何真实的库。
+
+N8 的登录、同意书、我、同步中心（iPhone 17 模拟器，合成数据）：
+
+<img src="images/ios-native/n8-signin.png" width="200" alt="N8 登录"> <img src="images/ios-native/n8-consent.png" width="200" alt="N8 同意书"> <img src="images/ios-native/n8-me.png" width="200" alt="N8 我"> <img src="images/ios-native/n8-sync-center.png" width="200" alt="N8 同步中心">
 
 N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 
@@ -530,6 +543,10 @@ N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
 - N6: Jarvis.
 - N7: Circles.
 - N8: Me, settings, onboarding, the sync center, and porting the sync engine's Dart side to Swift.
+  - Sign-in: Apple, e-mail code, setup QR code / link (`POST /v1/web/login-code` with `client: app` returns a device token), activation code.
+  - The consent, profile and Health access steps follow once.
+  - The sync host (`Features/Sync/`) drives the copied engine, backfill and RawSync. BGTasks and observers are registered at launch. No Open Wearables SDK.
+  - A simulator upgrade from 1.0.8 kept the sign-in and the anchors. Only the engine's one-time "recent 48 hours" pass resent samples, and the server skipped them by UUID.
 
 **Testing and CI**
 - XCTest unit tests run on the simulator in the CI job "iOS native", which runs only when `apps/ios/**` changes.

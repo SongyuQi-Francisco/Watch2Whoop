@@ -10,3 +10,5 @@ W2W_TEAM_ID = ABCDE12345
 W2W_DISPLAY_NAME = Watch2Whoop
 // Build number: one more than the last upload of this version.
 // W2W_BUILD_NUMBER = 2
+// Host of the default server on the sign-in screen (no https://: two slashes start a comment in xcconfig).
+// W2W_DEFAULT_HOST = body.example.com

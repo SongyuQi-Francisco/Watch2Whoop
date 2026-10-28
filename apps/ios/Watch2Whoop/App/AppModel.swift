@@ -38,6 +38,19 @@ final class AppModel: ObservableObject {
 
   @Published private(set) var phase: Phase = .starting
   @Published private(set) var session: AccountSession?
+  /// Bumped when the UI language changes: the root view is rebuilt so every `tr()` is read again.
+  @Published private(set) var langRevision = 0
+  /// A setup link (camera QR scan, `watch2whoop://setup?…`) waiting for the sign-in screen, or for a confirmation while
+  /// someone is signed in.
+  @Published var pendingSetup: SetupInfo?
+  /// Where a `watch2whoop://` link asked to go (sync center, history backfill).
+  @Published var route: Route?
+
+  enum Route: Equatable {
+    case syncCenter
+    /// The Today page's 「补全历史」: 90 days, or 0 = all history.
+    case history(days: Int)
+  }
 
   let store: CredentialStore
   private let flagsKey = "w2w.native.flags.v1"
@@ -50,6 +63,8 @@ final class AppModel: ObservableObject {
     FlutterMigration.run(store: store)
     #if DEBUG
     DevSignIn.applyIfRequested(store: store)
+    // simulator runs: `SIMCTL_CHILD_W2W_DEV_SETUP=watch2whoop://setup?…` goes through the real setup-link sign-in
+    if let link = ProcessInfo.processInfo.environment["W2W_DEV_SETUP"], let u = URL(string: link) { handle(url: u) }
     #endif
     await connect()
   }
@@ -87,14 +102,65 @@ final class AppModel: ObservableObject {
     return nil
   }
 
-  func signOut() {
+  /// Signs out on this phone: this account's local database, its Keychain items (native and Flutter's), the sync state
+  /// (engine anchors, backfill, RawSync), this phone's push registration; [revoke] also revokes the token on the server
+  /// (not needed after the account was deleted). Health data on the server is not touched.
+  func signOut(revoke: Bool = true) async {
     let api = session?.api
+    if let api, revoke {
+      _ = try? await api.data(APIRequest(method: .delete, path: Endpoint.pushDevices, timeout: 10))
+      _ = try? await api.data(APIRequest(method: .post, path: Endpoint.accountLogout, idempotent: false, timeout: 10))
+    }
+    await HealthSyncService.shared.detach()
     if let cfg = store.config, let uid = cfg.userId { try? AppDatabase.deleteAccount(server: cfg.server, userId: uid) }
+    let server = store.config?.server
     store.signOut()
+    if let server { UserDefaults.standard.set(server, forKey: Self.lastServerKey) }
     UserDefaults.standard.removeObject(forKey: flagsKey)
+    Lang.override = nil   // the next person starts in the system language
+    langRevision += 1
     session = nil
     phase = .signedOut(message: nil)
-    if let api { Task { _ = try? await api.data(APIRequest(method: .post, path: Endpoint.accountLogout, idempotent: false)) } }
+  }
+
+  /// The server of the last sign-out: the sign-in screen offers it again.
+  static let lastServerKey = "w2w.native.lastServer.v1"
+
+  /// DELETE /v1/account (everything on the server), then the local sign-out. nil = done, else the server's reason.
+  func deleteAccount() async -> String? {
+    guard let api = session?.api else { return tr("还没有登录", "Not signed in") }
+    do {
+      _ = try await api.data(try .json(.delete, Endpoint.account, ["confirm": "DELETE"]))
+    } catch let e as APIError {
+      return e.userMessage
+    } catch {
+      return String(describing: error)
+    }
+    await signOut(revoke: false)
+    return nil
+  }
+
+  /// "zh" / "en", or nil = follow the system.
+  func setLanguage(_ code: String?) {
+    Lang.override = code
+    langRevision += 1
+  }
+
+  /// `watch2whoop://setup?…` (sign in), `watch2whoop://sync` (the sync center), `watch2whoop://backfill?days=90|all`.
+  func handle(url: URL) {
+    guard url.scheme?.lowercased() == SetupInfo.scheme else { return }
+    switch url.host?.lowercased() {
+    case "setup":
+      let info = SetupInfo.parse(url.absoluteString)
+      if !info.isEmpty { pendingSetup = info }
+    case "sync":
+      route = .syncCenter
+    case "backfill":
+      let days = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "days" }?.value
+      route = .history(days: days == "all" ? 0 : Int(days ?? "") ?? SyncSettings.backfillDays)
+    default:
+      break
+    }
   }
 
   // MARK: - private
@@ -121,8 +187,21 @@ final class AppModel: ObservableObject {
     if session?.config.userId == userId, session?.config.server == cfg.server { phase = .signedIn; return }
     let db = try AppDatabase.open(server: cfg.server, userId: userId)
     let cached = Set(UserDefaults.standard.stringArray(forKey: flagsKey) ?? [])
-    session = AccountSession(config: cfg, api: api, db: db, flags: cached)
+    let s = AccountSession(config: cfg, api: api, db: db, flags: cached)
+    session = s
     phase = .signedIn
+    // HealthKit sync for this account: the engine's anchors carry on (same keys as 1.0.8), rounds on open and in the
+    // background; after a round with uploads the account's data is pulled again.
+    let sync = HealthSyncService.shared
+    sync.onRoundDone = { [weak s] in await s?.sync.refresh(.changes) }
+    if let token = store.accountToken {
+      Task {
+        await sync.attach(api: api, server: cfg.server, token: token,
+                          accountKey: AppDatabase.accountKey(server: cfg.server, userId: userId))
+        await sync.syncOnOpen()
+      }
+    }
+    Task { await PushRegistration.shared.renew(api: api) }   // the APNs token can change between starts
   }
 
   /// `/v1/web/me`: user id (names the database), display name, flags.

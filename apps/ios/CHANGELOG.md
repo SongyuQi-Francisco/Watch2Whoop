@@ -14,3 +14,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - look-back calendar and pull to refresh;
   - the sleep detail page (stage chart in Swift Charts) and explain sheets with an 「问 AI」 hook;
   - everything is read from the local database; the N1 scoring bundle runs in JavaScriptCore and fills days the server has not scored once the phone has raw samples.
+- Sign-in, sync center and Me (#340 N8):
+  - sign in with Apple, an e-mail code, the setup QR code / `watch2whoop://setup` link, or an activation code; invite code for pending accounts; the consent (text and version from the server), the profile and Health access (one sheet for every type) follow once;
+  - the sync center: one-tap sync, the overall state, where it is stuck in plain words with a button to fix it, first-sync progress, history backfill (90 days / all, continues in the background), re-sync of 7 / 30 / 90 days / all, phone vs server per type;
+  - the sync engine's background work (BGTasks, HealthKit observers) and the beat-to-beat / ECG / water uploads run in the native app; no Open Wearables SDK;
+  - Me: profile, AI settings (which AI, AI tokens), notifications, language, appearance (testers), what's new, data status, unsent changes, sign-out, account deletion; health record entries wait for N5;
+  - upgrading from the Flutter app keeps the sign-in and the sync anchors.
