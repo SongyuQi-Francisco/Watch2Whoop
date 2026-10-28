@@ -45,6 +45,7 @@ import 'health_range.dart';
 import 'hk_types.dart';
 import 'i18n.dart';
 import 'platform_features.dart';
+import 'sync_engine.dart' show SyncEngine;
 import 'ui.dart' show ago;
 
 const List<String> kRawKinds = ['heartbeat', 'ecg', 'water'];
@@ -133,15 +134,22 @@ abstract class RawSource {
 class NativeRawSource implements RawSource {
   static const _ch = MethodChannel('watch2whoop/native');
 
-  /// The registry's types go with the RawSync sheet (the native side drops the ones this iOS does not know).
-  static Map<String, Object?> get _types => {'types': [for (final t in kHkTypes) t.hk]};
+  /// The app's one sheet (#219 A2): RawSync's types and every type of the sync engine's registry (+ the two only the
+  /// Open Wearables SDK asked for); the native side drops the ones this iOS does not know.
+  static Future<Map<String, Object?>> _types() async {
+    final all = {for (final t in kHkTypes) t.hk};
+    try {
+      all.addAll(await SyncEngine.instance.authTypes());
+    } catch (_) {} // no asset (tests): RawSync's own types
+    return {'types': all.toList()};
+  }
 
   @override
-  Future<String> authStatus() async => (await _ch.invokeMethod<String>('rawAuthStatus', _types)) ?? 'unknown';
+  Future<String> authStatus() async => (await _ch.invokeMethod<String>('rawAuthStatus', await _types())) ?? 'unknown';
 
   @override
   Future<RawAuth> requestAuth() async =>
-      RawAuth.fromMap(await _ch.invokeMapMethod<Object?, Object?>('rawRequestAuth', _types));
+      RawAuth.fromMap(await _ch.invokeMapMethod<Object?, Object?>('rawRequestAuth', await _types()));
 
   @override
   Future<RawPage> read(String kind, int daysBack, int limit) async => RawPage.fromMap((await _ch.invokeMapMethod<Object?, Object?>(
@@ -616,7 +624,9 @@ class RawSync {
 
   static const _statusKey = 'w2w.raw.status.v1';
   static const _rangeKey = 'w2w.raw.range.v1';
-  static const _authTriesKey = 'w2w.raw.authTries.v1'; // automatic asks while iOS says shouldRequest (kRawMaxAutoAsks)
+  // automatic asks while iOS says shouldRequest (kRawMaxAutoAsks); v2 with the one sheet for every type (#219 A2): 1.0.8
+  // phones whose second sheet never came up get it again (their tries of v1 were used up)
+  static const _authTriesKey = 'w2w.raw.authTries.v2';
   static const _tokenKey = 'w2w.ingest.token.v1';
   static const _rejectedKey = 'w2w.raw.accountRejected.v1'; // sha256 of the account token that got 401 (never the token)
   static const _storage = FlutterSecureStorage(

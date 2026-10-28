@@ -10,6 +10,7 @@ import 'health_sync.dart';
 import 'i18n.dart';
 import 'raw_sync.dart';
 import 'resync.dart';
+import 'sync_engine.dart';
 
 Future<String?> _token() async => AppState.instance.accountToken ?? await RawSync.instance.ingestToken();
 
@@ -20,11 +21,13 @@ Future<String?> startResync(int? days) async {
   if (token == null || c.todayUrl.isEmpty) return tr('先打开今天页登录，再回来重试', 'Sign in on the Today page first, then try again');
   final r = await ResyncApi(c.todayUrl, token).start(days);
   if (r?['accepted'] != true) return resyncRefusal(r);
-  final ow = c.owConnected && HealthSync.instance.isSignedIn;
-  await Resync.instance.save(ResyncState(days: days, startedAt: DateTime.now(), owDone: !ow));
+  final ow = HealthSync.instance.owInUse(c);
+  // the app's own engine (#219 A3, contract §8): a range re-sync, which also drops what the phone no longer has
+  final engine = BackfillService.instance.engine != null && await SyncEngine.instance.startRange(daysBackOf(days));
+  await Resync.instance.save(ResyncState(days: days, startedAt: DateTime.now(), owDone: !ow, engineDone: !engine, engineRange: engine));
   await RawSync.instance.source.reset(anchorSet: kResyncAnchorSet);
   if (ow) await HealthSync.instance.resyncFrom(daysBackOf(days));
-  await HealthSync.instance.note('Re-sync started: ${days == null ? 'all history' : '$days days'}');
+  await HealthSync.instance.note('Re-sync started: ${days == null ? 'all history' : '$days days'}${engine ? ' (engine range)' : ''}');
   unawaited(stepResync());
   return null;
 }
@@ -34,6 +37,7 @@ Future<void> cancelResync() async {
   final c = AppState.instance.config;
   final token = await _token();
   if (token != null) await ResyncApi(c.todayUrl, token).cancel();
+  if (Resync.instance.state.value?.engineRange == true) await SyncEngine.instance.cancelRange();
   if (Resync.instance.state.value?.owDone == false) await HealthSync.instance.startSync(c.syncDaysBack);
   await Resync.instance.save(null);
   await HealthSync.instance.note('Re-sync stopped');
@@ -58,7 +62,7 @@ Future<String?> joinPageBackfill() async {
   final days = (job['days'] as num?)?.toInt(); // null = all history
   final running = Resync.instance.state.value;
   if (running == null || running.days != days) {
-    final ow = c.owConnected && HealthSync.instance.isSignedIn;
+    final ow = HealthSync.instance.owInUse(c);
     // the app's own engine (when the server has it on) reads the whole range too: background URLSession, resumable
     final engine = await BackfillService.instance.startEngine(daysBackOf(days), to: DateTime.now().millisecondsSinceEpoch / 1000);
     await Resync.instance.save(ResyncState(days: days, startedAt: DateTime.now(), owDone: !ow, engineDone: !engine, fromPage: true));
@@ -98,7 +102,15 @@ Future<void> stepResync({Future<String?> Function()? pageToken}) async {
       if (res != null && (res.stop == null || res.stop == 'consent')) next = next.copyWith(rawDone: true);
     }
     var enginePercent = 100;
-    if (!next.engineDone) {
+    if (!next.engineDone && next.engineRange) {
+      // the engine's range re-sync: gone from its state = range_done went (or it was dropped)
+      final r = (await SyncEngine.instance.status())?.range;
+      if (r == null) {
+        next = next.copyWith(engineDone: true);
+      } else {
+        enginePercent = (r['percent'] as num?)?.toInt() ?? 0;
+      }
+    } else if (!next.engineDone) {
       final e = await BackfillService.instance.engineStatus();
       if (e == null || e['done'] == true || (e['active'] != true && e['error'] != null)) {
         next = next.copyWith(engineDone: true); // finished, or stopped with an error (shown in its status; OW / RawSync still count)

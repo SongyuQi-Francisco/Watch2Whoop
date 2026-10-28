@@ -170,6 +170,19 @@ void main() {
       expect(inv.owUrl, 'https://sync.example.com');
     });
 
+    test('ow-invitation 409 sync_engine (mode app, contract §7.1): its own code, not retried', () async {
+      var calls = 0;
+      final a = api((r) {
+        calls++;
+        return http.Response('{"detail":"sync_engine"}', 409);
+      });
+      await expectLater(
+        a.owInvitationWhenReady('t', step: const Duration(milliseconds: 1)),
+        throwsA(isA<AccountApiException>().having((e) => e.code, 'code', 'sync_engine')),
+      );
+      expect(calls, 1);
+    });
+
     test('ow-invitation 503 is not retried; null ow_url is allowed', () async {
       final a = api((r) => http.Response('', 503));
       expect(
