@@ -18,5 +18,7 @@ secrets/*
 assistant/.claude/settings.local.json
 .docker/
 dist/
+# the JS algorithm bundle is committed: the server serves it as it is (issue #340)
+!packages/openbodyscore-js/dist/
 quickstart/.data/
 tools/public/private.local.json

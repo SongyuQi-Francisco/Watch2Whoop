@@ -1,0 +1,100 @@
+# openbodyscore-js
+
+The Watch2Whoop scoring algorithms as **one dependency-free JavaScript file** for the iOS app, which runs it in the
+system's JavaScriptCore (no WebView). Issue #340, part N1.
+
+- **The algorithms are the server's.** The Python code (`packages/openbodyscore` and the pure scoring parts of
+  `body_engine`) is the reference; this is a port of it, kept equal by cross-language golden tests. The server keeps
+  computing in Python (to check the app's numbers, and for users whose app has not uploaded scores yet).
+- **Versioned and served by the server.** `GET /v1/algo/manifest` names the current bundle (version, sha256, size,
+  algorithm versions, download path); `GET /v1/algo/openbodyscore-<version>.js` is the file. The app downloads a new
+  version, checks the sha256 and only then switches to it. The file served is `dist/openbodyscore.js` as committed here.
+- **Every result carries `algo_version`** (the server's version string of that algorithm, e.g. `v1.2-2026-10-27`) and
+  `bundle_version`, so scores computed on the phone and on the server can be reconciled.
+
+`dist/openbodyscore.js` is ES2020, a classic script (no modules), no DOM, no Node APIs, no network, no timers: after
+`JSContext.evaluateScript(code)` everything is under the global `OpenBodyScore`. It needs `BigInt` and `DataView`
+(exact `statistics.stdev` and Python's rounding) and, for IANA time zone names, `Intl` — all in JavaScriptCore on iOS 14+.
+
+## Entry points (for the iOS app)
+
+Instants may be **epoch milliseconds** (numbers; fractions = sub-millisecond) or **ISO 8601 strings with an offset**;
+local dates are `"YYYY-MM-DD"`; a time zone is an IANA name (`"Australia/Sydney"`) or a fixed offset (`600`, `"+10:00"`).
+
+| Call | Returns |
+|---|---|
+| `OpenBodyScore.VERSION`, `.ALGO_VERSIONS` | bundle version; `{scores, healthspan, hrv, stress, trends}` |
+| `buildInputs(src)` | scoring inputs from the local rows (sleep sessions, raw samples, stage segments, daily resting HR, workout logs) — the rules of `scores/inputs.py`: watch sleep only, one sample per (kind, time) with live samples winning over export.xml copies, SpO₂ fractions to percent, export.zip stages only for nights nothing else covers |
+| `computeDays(inputs, {first, last, today})` | the server's `daily_scores` rows for `[first, last]`: sleep score / need / debt / performance, HRV and resting HR of the night, recovery, TRIMP, strain, HRmax, muscle load, CTL / ATL / TSB, `flags`, `details` (same keys and texts as the server) |
+| `computeDay(inputs, date, {first, today})` | the row of one day (computed from the scoring origin, so baselines and CTL are the full-history ones) |
+| `stressDays(src, start, end)` | `stress_daily` rows (score 0–3, level, hours) |
+| `healthspanSnapshot(data, asOf)`, `healthspanWeekly(data, origin, today)` | body age, pace of aging, contributors (v1.2) |
+| `sleepDays(intervals, wakeDates, tz)` | the minute states for sleep regularity (`data.sleep_days`) |
+| `analyzeHrv(beats, gaps)` | RMSSD / SDNN of one beat-to-beat reading |
+| `trend(name, ...args)` | one Trends analysis (`hrv_status`, `training_status`, `load_focus`, `resilience`, `illness_risk`, `chronotype`, `body_battery`, `recovery_time`, `recovery_index`, `baseline_band`, `rolling`, …) as `{value, algo_version, bundle_version}` |
+| `setLanguage("en")` | English labels for the Trends texts (default Chinese, the stored / AI-facing text) |
+
+The ported modules are also reachable one by one with the Python names (`OpenBodyScore.sleep.sleep_score`,
+`.recovery`, `.strain`, `.muscle`, `.stress`, `.healthspan`, `.hrv`, `.trends`, `.engine.score_days`, …). Inside, instants
+are integer microseconds (Python's datetime resolution, exact in a double), which is what makes the numbers equal.
+
+```js
+// Swift: let ctx = JSContext(); ctx.evaluateScript(bundleSource); then call through ctx.objectForKeyedSubscript("OpenBodyScore")
+const inputs = OpenBodyScore.buildInputs({
+  tz: "Australia/Sydney", birth_date: "1990-01-01", hrv_kind: "sdnn",
+  sleep_sessions: [{ wake_date: "2026-08-02", start: "2026-08-01T23:10:00+10:00", end: "2026-08-02T06:55:00+10:00",
+                     asleep_min: 420, core_min: 250, deep_min: 80, rem_min: 90, awake_min: 25, device: "Apple Watch" }],
+  samples: [{ kind: "hr", t: 1785589800000, value: 54 }, { kind: "hrv", t: "2026-08-02T01:00:00+10:00", value: 48 }],
+  segments: [{ start: "2026-08-01T23:10:00+10:00", end: "2026-08-01T23:40:00+10:00", stage: "core" }],
+  daily_rhr: { "2026-08-02": 56 },
+});
+const rows = OpenBodyScore.computeDays(inputs, { today: "2026-08-02" });   // [{date, recovery, strain, …, algo_version}]
+```
+
+## Inputs only the server can provide
+
+The phone computes a full day from its local database when it has these; they come from the server (and are cached
+on the phone with the rest of the synced data):
+
+| Input | Why it is the server's |
+|---|---|
+| `hrv_kind` (`"sdnn"` / `"rmssd"`) | chosen per user by `body_engine/scores/hrv_kind.py` (switched on for the user and enough beat-to-beat coverage) and never mixed over a user's history |
+| History older than the phone's local database | scores are recomputed from the **scoring origin** (first day with a resting heart rate): CTL / ATL are seeded from the first 14 days, HRmax uses a 365-day window, recovery a 60-day baseline (≥ 14 nights), sleep debt 14 nights, stress a 14-day calm baseline and 60 nights of HRV, body age 180 days. After a reinstall or on a new phone this comes back from the cloud backup (raw samples and daily summaries) |
+| Data from other devices and sources | the server merges Open Wearables, the Shortcut, export.zip uploads and the app's own sync, deduplicates and picks the source per day (`importers/common.resolve_daily`); a sample another device uploaded is only in the cloud |
+| Strength workout records | the muscle load and the body-age strength minutes come from SparkyFitness and imported logs (Hevy), kept on the server |
+| Profile | birth date, sex, height, time zone, goal weight (`profile/`) |
+| Body-age extras | manual weigh-ins and waist (SparkyFitness), the journal's strength entries and the active training plan (record-coverage label only) |
+| `shortcut_dates` | which days only have Shortcut data (flag texts only) |
+| Cross-user views | baselines of other people never reach the phone: a shared view (circles, family) is read from the server |
+
+## Tests
+
+```sh
+node packages/openbodyscore-js/build.js           # rebuild dist/ after changing src/ (CI checks dist/ is up to date)
+node --test packages/openbodyscore-js/test/golden.test.js
+cd body_engine && uv run pytest tests/test_js_golden.py tests/test_algo_bundle.py
+```
+
+- **One set of cases for both languages.** `test/cases.py` (standard library only) builds the synthetic inputs; the Node
+  test dumps them with `python3 test/cases.py --dump` and runs the bundle on them. The expected results are Python's:
+  `packages/openbodyscore/tests/golden/{scores,healthspan_v12}.json` (every public function of the Python package,
+  replayed call for call by `test/golden_cases.js`) and `test/golden/{engine,stress,healthspan,trends}.json` (written by
+  `body_engine/tests/test_js_golden.py` from the server's own code): 97 daily score rows, 70 stress rows, 41 body-age
+  snapshots, 211 Trends calls and every function of the Python package — about 28,000 compared values.
+- **Float tolerance**: 1e-9 relative (and absolute), floats only; keys, nulls, integers, booleans and strings must be
+  identical. JavaScript's `Math.exp / log / pow / sin` are not the C library's and differ in the last bit now and then,
+  and that grows through the logistic and exp / log chains to ~1e-13 at most (the test prints the largest difference it
+  saw). 1e-9 is far below anything stored or shown (integer scores, values rounded to 1–3 decimals).
+- `test/golden.test.js` also checks the API layer (buildInputs → computeDays gives the server's rows), the version
+  stamps, IANA time zones across a DST change, and that the bundle is a single script without DOM / Node / network APIs.
+
+## Changing an algorithm
+
+1. Change the Python code and bump its version (`ALGO_VERSION`, `STRESS_VERSION`, `TREND_VERSION`, …).
+2. Rewrite the goldens: `BODY_WRITE_GOLDEN=1 uv run pytest tests/test_js_golden.py` (and the package's own goldens if they
+   change).
+3. Port the change to `src/` (same function names as Python), bump `version` in `package.json`, run `build.js`, run the
+   Node test. `body_engine/tests/test_algo_bundle.py` fails while the bundle's algorithm versions differ from Python's.
+4. Deploy: the server serves the new `dist/`; apps pick it up from the manifest.
+
+Licence: see [NOTICE](NOTICE).

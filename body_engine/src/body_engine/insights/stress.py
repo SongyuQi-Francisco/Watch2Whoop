@@ -111,6 +111,15 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
     if rx_samples.reads_app(conn, user_id):
         samples, workouts = _with_app(conn, user_id, tz, lo, hi, samples, workouts)
     hr, steps, hrv = samples.get("heart_rate", []), samples.get("steps", []), samples.get("heart_rate_variability_sdnn", [])
+    return score_range(tz, start, end, sleep, workouts, hr, steps, hrv, {r["date"]: r["hrv_night_ln"] for r in hrv_rows},
+                       shortcut)
+
+
+def score_range(tz: ZoneInfo, start: date, end: date, sleep: list, workouts: list, hr: list, steps: list, hrv: list,
+                hrv_night: dict[date, float], shortcut: set[date]) -> list[dict]:
+    """The day-by-day part of compute(), without the database: pure, ported to packages/openbodyscore-js (stressDays).
+    sleep / workouts: [(start, end)]; hr / steps / hrv: [(time, value)] sorted; hrv_night: date -> night ln HRV
+    (daily_scores.hrv_night_ln); shortcut: dates that only have Shortcut data (flag text only)."""
     calm = calm_samples(hr, sleep, workouts, steps)
     awake_hrv = calm_samples(hrv, sleep, workouts, steps)
     calm_by_day: dict[date, list] = defaultdict(list)
@@ -126,7 +135,7 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
         flags = {}
         base_vals = [v for k in range(1, BASELINE_DAYS + 1) for _, v in calm_by_day.get(d - timedelta(days=k), [])]
         hr_base = robust_baseline(base_vals)
-        hist = [r["hrv_night_ln"] for r in hrv_rows if d - timedelta(days=60) <= r["date"] < d]
+        hist = [v for k, v in hrv_night.items() if d - timedelta(days=60) <= k < d]
         hrv_base = (statistics.fmean(hist), statistics.stdev(hist)) if len(hist) >= 14 else None
         if d not in hr_days:
             flags["no_raw_hr"] = ("这天只有快捷指令数据：心率是按小时求和的，算不了压力" if d in shortcut

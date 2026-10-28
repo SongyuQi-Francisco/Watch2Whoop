@@ -9,6 +9,8 @@ then [`docs/README.md`](docs/README.md) (design documents, mostly Chinese) and [
 | Path | What |
 |---|---|
 | `body_engine/` | FastAPI + PostgreSQL: scores, insights, records, rules, training, AI tools, MCP server, Today page (`web/`). `cd body_engine && uv run pytest` |
+| `packages/openbodyscore/` | The scoring algorithms as a standalone Python library (Apache-2.0); Body Engine depends on it |
+| `packages/openbodyscore-js/` | JS port of the algorithms for the iOS app (JavaScriptCore), served by `/v1/algo`. Change Python first, then port `src/`, `node build.js`, `node --test test/golden.test.js` (README) |
 | `apps/watch2whoop/` | Flutter iOS app: HealthKit background sync to Open Wearables + the Today page in a WebView. `flutter test` |
 | `quickstart/`, `quickstart.sh` | One-command local demo with synthetic data |
 | `deploy/` | Production deployment of Open Wearables, SparkyFitness, Grafana, ops jobs (backups, health checks), the AI coach workspace |

@@ -159,6 +159,7 @@ Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pyt
 | [`body_engine/`](body_engine/README.md) | Server: scores, records, rules, AI tools, MCP, Today page |
 | [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app (Flutter) |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | Standalone scoring library |
+| [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | The same algorithms as one JS file the iOS app runs locally (JavaScriptCore) |
 | [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (no app needed) |
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |

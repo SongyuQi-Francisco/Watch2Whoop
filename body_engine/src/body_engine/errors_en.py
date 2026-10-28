@@ -11,6 +11,9 @@ import re
 from .i18n import is_en
 
 EXACT: dict[str, str] = {
+    # ---- JS algorithm bundle (algo/api.py)
+    "算法包不可用": "The algorithm bundle is not available",
+    "没有这个版本的算法包": "No algorithm bundle of this version",
     # ---- auth / sessions (api.py, records/api.py, web/)
     # ---- grocery-sync (sync/wws.py)
     "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
