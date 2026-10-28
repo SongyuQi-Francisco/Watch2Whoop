@@ -287,8 +287,7 @@
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
     try {
-      // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
-      // loads the real page once the network is back
+      // The app's offline copy (web/api.py offline_shell) sends nothing; the app opens the real page once online
       if (window.W2W_SHELL) throw new Error("offline shell");
       const pre = method === "GET" ? await (S.stale ? prePeek(path) : preTake(path)) : null;
       if (!pre && method === "GET" && DEFERRED_GETS.test(path)) await firstPaint;
@@ -317,6 +316,7 @@
     let data = null;
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (off && method === "GET" && r.ok && r.headers.get("X-Offline") !== "1") off.put(path, I18N.lang, data).catch(() => {});
+    if (r.status === 401 && window.W2W_LOCAL) { tellApp("reload"); throw new ApiError(401, ""); }   // #337
     if (r.status === 401 && off) off.clearCache().catch(() => {});   // signed out: no copies left readable; the queue waits for the same account
     if (r.status === 401) { PRE.clear(); try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ } }
     if (r.status === 401 && !quiet401) {
@@ -4284,7 +4284,7 @@
     const paths = !S.viewDate && (!keepTab || S.owner === S.me?.id) ? fast.boot?.[tab] : null;
     const bundle = flagWas("boot_api") && paths?.length ? fetchBoot(paths) : null;
     rec = { tab, paths: new Set() };
-    const painted = !keepTab && tab === "today" && flagWas("cached_first_paint") && !S.viewDate
+    const painted = !keepTab && /^(today|trends|me)$/.test(tab) && flagWas("cached_first_paint") && !S.viewDate
       ? await paintCached(fast, bundle || Promise.resolve()) : false;
     if (bundle) await bundle;
     try { me = await api("/v1/web/me"); }
@@ -4360,8 +4360,8 @@
     return TABS[tab] ? tab : "today";
   }
 
-  // Draw today's page from this device's copies (offline.js) while the network answers (docs/ios-native-plan.md 3.5):
-  // only the account the copies belong to, copies of today and at most STALE_MAX old; the banner says 「更新中」.
+  // Draw the start tab (today / trends / me) from this device's copies (offline.js) while the network answers (3.5):
+  // only the copies' own account, of today and at most STALE_MAX old; the banner says 「更新中」.
   const STALE_MAX = 12 * 3600 * 1000;
   const zoneToday = (tz) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined }).format(new Date()); } catch (e) { return isoDay(new Date()); } };
   async function paintCached(fast, wait) {
@@ -4373,7 +4373,7 @@
       || String(me.today) !== zoneToday(me.me.timezone) || !(me.flags || []).includes("offline_mode")) return false;
     S.stale = { wait };
     S.staleAt = hit.at;
-    try { await start(me, false, null, true); return S.tab === "today" && !$("#app").hidden; }   // optional plugin files are not waited for
+    try { await start(me, false, null, true); return !$("#app").hidden; }   // optional plugin files are not waited for
     catch (e) { return false; }
     finally { S.stale = null; S.data = {}; showBanner(); }   // nothing from the copies stays in memory: the next reads are fresh
   }
@@ -4471,8 +4471,8 @@
         await lib.clear();
       }
     } catch (e) { /* IndexedDB trouble: the page works online as before */ }
-    // The Watch2Whoop app keeps a copy of the page for a cold start without network only while this is on (1.0.7+)
-    if (!window.W2W_SHELL) tellApp(S.offlineOn ? "offline:on" : "offline:off");
+    // The app keeps a copy of the page while this is on (1.0.7+) and opens it first (#337)
+    if (!window.W2W_SHELL) { tellApp(S.offlineOn ? "offline:on" : "offline:off"); tellApp("local-first:" + !S.flags.includes("local_first_start_off")); }
     showBanner();
   }
   // Controls that need the server: greyed out offline (app.css body.is-offline) and a tap says so

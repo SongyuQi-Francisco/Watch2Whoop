@@ -37,7 +37,7 @@ from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.155-2026-10-29"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.156-2026-10-29"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -168,7 +168,9 @@ def logout(request: Request, conn=Depends(get_conn)):
 # file (index.html with every local stylesheet and script inlined) and opens it with loadHtmlString(baseUrl = the page's
 # address): same origin, so the page reads the copies offline.js kept in IndexedDB. window.W2W_SHELL tells the page it
 # runs from the copy: it sends nothing and asks the app to load the real page once the network is back. Public like the
-# other static files; no user data in it.
+# other static files; no user data in it. Local-first start (#337, apps after 1.0.9): the app also opens this copy first on a cold
+# start, with the marker renamed to window.W2W_LOCAL: then it is the ordinary page (it sends requests, draws the last data
+# from IndexedDB first, cached_first_paint) and only saves the round trip for the HTML.
 _SCRIPT = re.compile(r'<script src="([\w.-]+\.js)"( defer)?></script>')
 _STYLE = re.compile(r'<link rel="stylesheet" href="([\w.-]+\.css)">')
 _LAZY = re.compile(r'<script type="w2w/lazy"(?: data-lang="\w+")? src="([\w.-]+\.js)"></script>')   # not loaded until needed (index.html)
@@ -192,9 +194,15 @@ def offline_shell_html() -> str:
 
 
 @router.get("/app/offline-shell.html", include_in_schema=False)
-def offline_shell():
-    return Response(offline_shell_html(), media_type="text/html; charset=utf-8",
-                    headers={"X-Web-Version": WEB_VERSION})
+def offline_shell(request: Request):
+    # The app (versions after 1.0.9) asks once per run with If-None-Match: 304 while its copy is current, so a cold start that opens the
+    # copy first (local-first start, #337) costs one small request instead of the whole page.
+    html = offline_shell_html()
+    etag = '"' + hashlib.sha256(html.encode()).hexdigest()[:20] + '"'
+    headers = {"X-Web-Version": WEB_VERSION, "ETag": etag, "Cache-Control": "no-cache"}
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers=headers)
+    return Response(html, media_type="text/html; charset=utf-8", headers=headers)
 
 
 # ---- fingerprinted static files (docs/ios-native-plan.md, section 3.1)
