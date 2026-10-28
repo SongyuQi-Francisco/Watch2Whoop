@@ -1,4 +1,11 @@
-# SparkyFitness local deployment
+# SparkyFitness local deployment (optional, no longer needed)
+
+> Since issue #252 food, food library, weight and workout logs live in Body Engine's own tables. A **new deployment does
+> not need SparkyFitness**: turn on `own_food_only` for everyone (`body-engine flags set own_food_only --state all`);
+> sign-up then no longer creates a SparkyFitness account. Keep this service only while an older deployment still has
+> data in it: migrate with `body-engine sparky-migrate` and switch with the flags as described in
+> [`docs/own-food-weight-storage.md`](../../docs/own-food-weight-storage.md) §13, then keep it read-only for 4 weeks
+> and remove it.
 
 [SparkyFitness](https://github.com/CodeWithCJ/SparkyFitness) v1.8.0 (stable release of 2026-10-08) records workouts, meals and weight, and runs in local Docker. It is not forked and its source is not modified: only the official images + the `compose.yaml` here.
 The license is the author's own **non-commercial license**: personal use and free use by family members are fine, commercial use is not (see section 3 of `docs/system-design.md`).

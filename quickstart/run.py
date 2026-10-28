@@ -3,6 +3,7 @@
 
     ./quickstart.sh                 start everything, create the demo user, load synthetic data, print the login link
     ./quickstart.sh --grafana       also start Grafana
+    ./quickstart.sh --sparkyfitness also start SparkyFitness (optional: food / weight / workout logs live in Body Engine)
     ./quickstart.sh login           print a fresh one-time login link
     ./quickstart.sh status | logs [service] | down | reset
 
@@ -314,7 +315,7 @@ def demo_user_id() -> int | None:
     return None
 
 
-def setup_body(env: dict, days: int) -> int:
+def setup_body(env: dict, days: int, sparky: bool) -> int:
     uid = demo_user_id()
     if uid is None:
         say("Body Engine: creating the demo user")
@@ -334,18 +335,19 @@ def setup_body(env: dict, days: int) -> int:
         engine("import-apple-zip", "--user-id", str(uid), "--file", "/data/health/imports/demo-export.zip")
         (DATA / "health" / "imports" / "demo-export.zip").unlink()
         engine("journal-init", "--user-id", str(uid))
-        engine("sparky-link", "--user-id", str(uid), "--key-name", DEMO_KEY)
+        if sparky:
+            engine("sparky-link", "--user-id", str(uid), "--key-name", DEMO_KEY)
         engine("ow-link", "--user-id", str(uid))
         engine("memory-init", "--user-id", str(uid))
         engine("set-sleep-goal", "--user-id", str(uid), "--bedtime", "23:00")
         marker.write_text("ok\n")
     sparky_marker = DATA / f"demo_sparky_u{uid}"
     if not sparky_marker.exists():
-        say("adding synthetic meals, strength sessions and weigh-ins to SparkyFitness")
+        say("adding synthetic meals, strength sessions and weigh-ins" + (" to SparkyFitness" if sparky else ""))
         r = compose("exec", "-T", "body-engine", "python", "-", str(uid), check=False, capture=True,
                     input_bytes=(HERE / "demo_sparky.py").read_bytes())
         if r.returncode != 0:
-            die(f"demo SparkyFitness data failed:\n{r.stderr.decode()[-2000:]}")
+            die(f"demo food / workout / weight data failed:\n{r.stderr.decode()[-2000:]}")
         print("    " + r.stdout.decode().strip())
         sparky_marker.write_text("ok\n")
     engine("refresh-status", "--user-id", str(uid))
@@ -361,14 +363,15 @@ def login_link(env: dict, uid: int) -> str:
     return f"http://localhost:{env['W2W_BODY_PORT']}/app/#login={code}"
 
 
-def summary(env: dict, uid: int, grafana: bool) -> None:
+def summary(env: dict, uid: int, grafana: bool, sparky: bool = False) -> None:
     link = login_link(env, uid)
     print(f"""
 \033[1mWatch2Whoop is running.\033[0m
   Today page (one-time login link, valid 24 h):  {link}
   Body Engine API docs:                          http://localhost:{env['W2W_BODY_PORT']}/docs
-  SparkyFitness (back end, demo@example.com):    http://localhost:{env['W2W_SF_PORT']}   password: quickstart/.data/secrets/sparkyfitness_demo_password
   Open Wearables API:                            http://localhost:{env['W2W_OW_PORT']}/docs""")
+    if sparky:
+        print(f"  SparkyFitness (back end, demo@example.com):    http://localhost:{env['W2W_SF_PORT']}   password: quickstart/.data/secrets/sparkyfitness_demo_password")
     if grafana:
         print(f"  Grafana (admin):                               http://localhost:{env['W2W_GRAFANA_PORT']}   password: quickstart/.data/secrets/grafana_admin_password")
     print("""
@@ -391,20 +394,26 @@ def setup_grafana() -> None:
 
 
 # ------------------------------------------------------------------ commands
+ALL_PROFILES = ("grafana", "sparkyfitness")
+
+
 def cmd_up(a) -> None:
     check_prereqs()
     env = ensure_config(a.tz)
-    profiles = ("grafana",) if a.grafana else ()
+    profiles = (("grafana",) if a.grafana else ()) + (("sparkyfitness",) if a.sparkyfitness else ())
     say(f"starting containers (project {env['W2W_PROJECT']}; first run builds Body Engine and pulls images, ~5 min)")
     compose("up", "-d", "--build", profiles=profiles)
     wait_http(f"http://{PROBE}:{env['W2W_BODY_PORT']}/healthz", "Body Engine")
     wait_http(f"http://{PROBE}:{env['W2W_OW_PORT']}/api/v1/health", "Open Wearables", timeout=600)
     setup_ow(env)
-    setup_sparky(env, profiles)
-    uid = setup_body(env, a.days)
+    if a.sparkyfitness:
+        setup_sparky(env, profiles)
+    else:   # issue #252: the logs live in Body Engine's own tables, nothing is written to SparkyFitness
+        engine("flags", "set", "own_food_only", "--state", "all", "--by", "quickstart")
+    uid = setup_body(env, a.days, a.sparkyfitness)
     if a.grafana:
         setup_grafana()
-    summary(env, uid, a.grafana)
+    summary(env, uid, a.grafana, a.sparkyfitness)
 
 
 def cmd_login(a) -> None:
@@ -420,6 +429,8 @@ def main() -> None:
     p.add_argument("command", nargs="?", default="up", choices=["up", "login", "status", "logs", "down", "reset"])
     p.add_argument("service", nargs="?", help="for logs: one service name")
     p.add_argument("--grafana", action="store_true", help="also start Grafana")
+    p.add_argument("--sparkyfitness", action="store_true",
+                   help="also start SparkyFitness and keep the demo logs there (optional, no longer needed)")
     p.add_argument("--days", type=int, default=60, help="days of synthetic data (default 60)")
     p.add_argument("--tz", default=os.environ.get("W2W_TZ") or local_timezone(),
                    help="demo user's IANA time zone (default: this machine's)")
@@ -432,15 +443,15 @@ def main() -> None:
     elif not ENV_FILE.exists():
         die("nothing to do: the Quick Start stack was never started here")
     elif a.command == "status":
-        compose("ps", profiles=("grafana",))
+        compose("ps", profiles=ALL_PROFILES)
     elif a.command == "logs":
-        compose("logs", "--tail", "200", *( [a.service] if a.service else []), profiles=("grafana",))
+        compose("logs", "--tail", "200", *( [a.service] if a.service else []), profiles=ALL_PROFILES)
     elif a.command == "down":
-        compose("down", profiles=("grafana",))
+        compose("down", profiles=ALL_PROFILES)
     elif a.command == "reset":
         if not a.yes and input("Delete the Quick Start containers, volumes and quickstart/.data/? [y/N] ").lower() != "y":
             return
-        compose("down", "-v", "--remove-orphans", profiles=("grafana",))
+        compose("down", "-v", "--remove-orphans", profiles=ALL_PROFILES)
         shutil.rmtree(DATA)
         say("removed")
 

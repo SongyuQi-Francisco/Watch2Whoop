@@ -15,6 +15,9 @@ date + meal + name (+ time) match, workout session, single set, one day's check-
 (writelog.py) and rollback() puts it back. The user also deletes food entries on the Today page (delete_food_entry, not logged).
 Dual write (issue #252, flag own_food_store): every write ends with mirror.after_write for the dates it touched, which copies
 them from SparkyFitness into Body Engine's own tables (ownstore/); with the flag off it does nothing.
+Store (issue #252 phase 4, flag own_food_only): the checks here do not depend on where the records live; every read / write
+of a record goes through backend(): SparkyBackend (the SparkyFitness API, unchanged) or ownstore/write.OwnBackend (the own
+tables, no SparkyFitness at all) for users whose writes are own only (ownstore/source.only).
 """
 import difflib
 import hashlib
@@ -50,7 +53,7 @@ def check_date(conn, user_id: int, s: str) -> date:
     if d > today:
         raise ValueError(f"日期 {d} 在未来（用户今天是 {today}）；日期是行为发生的那天")
     if (today - d).days > MAX_BACKDATE_DAYS:
-        raise ValueError(f"日期 {d} 早于 {MAX_BACKDATE_DAYS} 天前，补这么早的记录请在 SparkyFitness 里手动加")
+        raise ValueError(f"日期 {d} 早于 {MAX_BACKDATE_DAYS} 天前，这么早的记录不能补记")
     return d
 
 
@@ -100,18 +103,23 @@ def _food_source_id(d: date, item: dict) -> str:
     return hashlib.sha1(key.encode()).hexdigest()[:20]
 
 
-def _ensure_food(client, it: dict) -> tuple[str, str]:
-    """A SparkyFitness food entry must hang on a food in the food library (row-level security). Find a same custom food the butler created earlier by content (name, portion, nutrition);
-    if none, create one: 1 serving = this portion, nutrition is the total for this portion. That way changing the portion in the app converts correctly,
-    and the same food can be picked directly next time."""
-    name, amount = it["food"].strip(), it["amount"].strip()
-    sig_items = [name, amount, it["calories"], it["protein_g"], it["carbs_g"], it["fat_g"],
+def _food_ext_id(it: dict) -> str:
+    """The food library key of a food the AI created: its name, portion and nutrition (same food -> same key)."""
+    sig_items = [it["food"].strip(), it["amount"].strip(), it["calories"], it["protein_g"], it["carbs_g"], it["fat_g"],
                  it.get("saturated_fat_g"), it.get("alcohol_g")]
     extra = [it.get(f) for f in ("sugar_g", "fiber_g", "sodium_mg")]
     if any(v is not None for v in extra):   # only then: foods created before sugar tracking keep their id
         sig_items += extra
     sig = json.dumps(sig_items, ensure_ascii=False)
-    ext_id = "ba:" + hashlib.sha1(sig.encode()).hexdigest()[:16]
+    return "ba:" + hashlib.sha1(sig.encode()).hexdigest()[:16]
+
+
+def _ensure_food(client, it: dict) -> tuple[str, str]:
+    """A SparkyFitness food entry must hang on a food in the food library (row-level security). Find a same custom food the butler created earlier by content (name, portion, nutrition);
+    if none, create one: 1 serving = this portion, nutrition is the total for this portion. That way changing the portion in the app converts correctly,
+    and the same food can be picked directly next time."""
+    name, amount = it["food"].strip(), it["amount"].strip()
+    ext_id = _food_ext_id(it)
     page = client.get("/foods/foods-paginated", searchTerm=name, foodFilter="mine", currentPage=1, itemsPerPage=100,
                       sortBy="name:asc", providerType="") or {}
     hit = next((f for f in page.get("foods") or [] if f.get("provider_external_id") == ext_id), None)
@@ -146,13 +154,13 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
         d = check_date(conn, user_id, it["date"])
         warnings += _check_food(it, low_sat_fat)
         checked.append((d, it))
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
+    be = backend(conn, user_id, client)
+    be.prepare_food()
     days: dict[date, list] = {}
     created, skipped, pantry = [], [], []
     for d, it in checked:
         if d not in days:
-            days[d] = client.get(f"/food-entries/by-date/{d.isoformat()}") or []
+            days[d] = be.food_day(d)
         dup = next((e for e in days[d] if e.get("meal_type") == it["meal"] and _norm(e.get("food_name")) == _norm(it["food"])),
                    None)
         if dup and not allow_duplicates:
@@ -160,7 +168,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
                             f"这天{MEALS[it['meal']]}已经有「{dup.get('food_name')}」（{dup.get('calories')} kcal，"
                             f"id {dup['id']}），当作重复没写；确认是另一份就用 allow_duplicates=true 再写"})
             continue
-        row = _create_food(client, meal_ids, d, it)
+        row = be.create_food(d, it)
         days[d].append(row)
         writelog.record(conn, "food", "create", row["id"], None, row)
         opt = {f: it.get(f) for f in extras.OPTIONAL}
@@ -172,7 +180,7 @@ def log_food(conn: psycopg.Connection, user_id: int, items: list[dict], allow_du
                         "carbs_g": it["carbs_g"], "fat_g": it["fat_g"],
                         **{k: v for k, v in opt.items() if v is not None}})
     if created:
-        mirror.after_write(conn, user_id, client, food=days)
+        be.after_write(food=days)
     return {"created": created, "skipped_duplicates": skipped, "warnings": warnings,
             **({"pantry_used": pantry} if pantry else {}),
             "undo": "记错了可以用 undo_sparky_entry(kind=food, date, id) 删掉（扣掉的存货会加回去），改用 update_food_entry"}
@@ -190,8 +198,9 @@ def _create_food(client, meal_ids: dict, d: date, it: dict) -> dict:
 
 # ---------------------------------------------------------------- exercise matching
 def exercise_index(conn, user_id: int, client) -> dict:
-    """SparkyFitness exercise library + exercise_meta, used for matching and the banned check."""
-    library = sparky_client.exercises(client)
+    """The exercise library (SparkyFitness, or the own user_exercises; client may be a backend or a reader) + exercise_meta,
+    used for matching and the banned check."""
+    library = client.library() if hasattr(client, "library") else sparky_client.exercises(client)
     meta = records_store.list_exercises(conn, user_id)
     try:   # the bilingual catalog (names + aliases): a Chinese everyday name reaches the library entry through it
         from ..training import catalog as tr_catalog
@@ -302,7 +311,7 @@ def search_exercises(conn, user_id: int, query: str | None = "", client=None,
     sparky_lib: list[dict] = []
     idx: dict | None = None
     try:
-        sp_client = client or sparky_client.client_for_user(conn, user_id)
+        sp_client = client or sparky_client.reader_for_user(conn, user_id)
         idx = exercise_index(conn, user_id, sp_client)
         sparky_lib = idx["library"]
         for e in sparky_lib:
@@ -417,8 +426,8 @@ def log_workout(conn: psycopg.Connection, user_id: int, a: dict, client=None) ->
     pre = [r for ex in a["exercises"] if (r := banned_reason(meta_only, ex["exercise"], ex.get("exercise_id")))]
     if pre:
         raise PermissionError(_banned_message(pre))
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    idx = exercise_index(conn, user_id, client)
+    be = backend(conn, user_id, client)
+    idx = exercise_index(conn, user_id, be)
     # Check all exercises (a banned one rejects the whole call), then write
     banned, unknown, resolved = [], [], []
     for ex in a["exercises"]:
@@ -435,17 +444,14 @@ def log_workout(conn: psycopg.Connection, user_id: int, a: dict, client=None) ->
     if banned:
         raise PermissionError(_banned_message(banned))
     if unknown:
-        raise ValueError("这些动作在 SparkyFitness 动作库里对不上：" + json.dumps(unknown, ensure_ascii=False)
+        raise ValueError("这些动作在动作库里对不上：" + json.dumps(unknown, ensure_ascii=False)
                          + "。用候选里的名字或 exercise_id 再试；确实是新动作就让用户确认后用 create_missing_exercises=true")
-    existing = client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
+    existing = be.workout_day(d)
     done_ids = set().union(*(_session_exercise_ids(s) for s in existing)) if existing else set()
     exercises, created_ex = [], []
     for i, (ex, hit) in enumerate(resolved):
         if hit is None:  # New exercise confirmed by the user: create it in SparkyFitness
-            hit = client.request("POST", "/exercises", {
-                "name": ex["exercise"].strip(), "category": "strength", "source": "custom", "is_custom": True,
-                "modality": "weight_reps", "description": "身体管家记录训练时新建（用户确认过）"},
-                multipart_field="exerciseData")
+            hit = be.create_exercise(ex["exercise"].strip())
             created_ex.append(hit["name"])
         exercises.append({
             "exercise_id": hit["id"], "sort_order": i, "duration_minutes": 0, "notes": ex.get("notes"),
@@ -460,9 +466,9 @@ def log_workout(conn: psycopg.Connection, user_id: int, a: dict, client=None) ->
                 "用 get_training_log 核对，确认是另一次训练再用 allow_duplicate=true"}
     body = {"entry_date": d.isoformat(), "name": a["name"].strip() or "训练", "notes": a.get("notes"),
             "source": SOURCE, "exercises": exercises}
-    row = client.request("POST", "/exercise-preset-entries", {k: v for k, v in body.items() if v is not None})
+    row = be.create_session({k: v for k, v in body.items() if v is not None})
     writelog.record(conn, "session", "create", row["id"], None, {"id": row["id"], "date": d.isoformat(), "type": "preset"})
-    mirror.after_write(conn, user_id, client, workouts=[d])
+    be.after_write(workouts=[d])
     return {"created": {"id": row["id"], "date": d.isoformat(), "name": row.get("name"),
                         "exercises": [{"name": (x.get("exercise_snapshot") or {}).get("name") or x.get("name"),
                                        "sets": len(x.get("sets") or [])} for x in row.get("exercises") or []]},
@@ -491,10 +497,8 @@ def log_weight(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> 
         want[col] = v
     if not want:
         raise ValueError("至少要有一个数值（weight_kg / body_fat_pct / waist_cm …）")
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    cur = client.get(f"/measurements/check-in/{d.isoformat()}") or {}
-    if str(cur.get("entry_date") or d.isoformat())[:10] != d.isoformat():
-        cur = {}  # SparkyFitness returns the latest check-in on or before the date, not only that day's
+    be = backend(conn, user_id, client)
+    cur = be.checkin(d)
     same = {c: v for c, v in want.items() if cur.get(c) is not None and abs(float(cur[c]) - v) < 1e-6}
     conflict = {c: {"existing": float(cur[c]), "new": v} for c, v in want.items()
                 if cur.get(c) is not None and c not in same}
@@ -504,20 +508,20 @@ def log_weight(conn: psycopg.Connection, user_id: int, a: dict, client=None) -> 
     todo = {c: v for c, v in want.items() if c not in same}
     if not todo:
         return {"written": None, "unchanged": same, "reason": f"{d} 已经记过同样的数值，没重复写"}
-    client.request("POST", "/measurements/check-in", {"entry_date": d.isoformat(), **todo})
+    be.save_checkin(d, todo)
     writelog.record(conn, "weight", "update" if cur else "create", d.isoformat(),
                     {"date": d.isoformat(), **{c: cur.get(c) for c in todo}} if cur else None,
                     {"date": d.isoformat(), **todo})
-    mirror.after_write(conn, user_id, client, weight=[d])
+    be.after_write(weight=[d])
     return {"written": {"date": d.isoformat(), **todo}, "unchanged": same, "overwrote": conflict or None}
 
 
 # ---------------------------------------------------------------- lookups
-def _day_rows(client, kind: str, d: date) -> list[dict]:
+def _day_rows(be, kind: str, d: date) -> list[dict]:
     if kind == "food":
-        return client.get(f"/food-entries/by-date/{d.isoformat()}") or []
+        return be.food_day(d)
     if kind in ("workout", "set"):
-        return client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
+        return be.workout_day(d)
     raise ValueError("kind 只能是 food / workout / set / weight")
 
 
@@ -547,8 +551,8 @@ def _match_food(rows: list[dict], d: date, meal: str | None, food: str | None, h
     return hits[0]
 
 
-def _food_row(client, d: date, entry_id) -> dict:
-    row = next((r for r in _day_rows(client, "food", d) if str(r.get("id")) == str(entry_id)), None)
+def _food_row(be, d: date, entry_id) -> dict:
+    row = next((r for r in _day_rows(be, "food", d) if str(r.get("id")) == str(entry_id)), None)
     if row is None:
         raise ValueError(f"{d} 没有这条饮食记录：{entry_id}（用 get_nutrition(include_entries=true) 查 id 和日期）")
     return row
@@ -559,8 +563,8 @@ def _session_entries(s: dict) -> list[dict]:
     return s.get("exercises") or [] if s.get("type", "preset") == "preset" else [s]
 
 
-def _find_set(client, d: date, set_id) -> tuple[dict, dict, dict]:
-    for s in _day_rows(client, "set", d):
+def _find_set(be, d: date, set_id) -> tuple[dict, dict, dict]:
+    for s in _day_rows(be, "set", d):
         for e in _session_entries(s):
             for x in e.get("sets") or []:
                 if str(x.get("id")) == str(set_id):
@@ -592,8 +596,8 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
     if portion is not None and not 0 < portion <= 20:
         raise ValueError("portion 是相对现在份量的倍数（0.5 = 一半），要 > 0")
     new_d = check_date(conn, user_id, a["new_date"]) if a.get("new_date") else d
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    row = _food_row(client, d, a["id"])
+    be = backend(conn, user_id, client)
+    row = _food_row(be, d, a["id"])
     meal = a.get("meal") or row.get("meal_type")
     hhmm = a.get("time") or (row.get("entry_time") or "")[:5] or None
     nutrition = ("food", "amount", "calories", "protein_g", "carbs_g", "fat_g", "saturated_fat_g", *extras.OPTIONAL)
@@ -601,12 +605,10 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
     if all(a.get(k) is None for k in nutrition):
         if portion is None and not a.get("meal") and not a.get("new_date") and not a.get("time"):
             raise ValueError("没有要改的字段")
-        meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
         body = {"quantity": round((row.get("quantity") or 1) * (portion or 1), 4), "unit": row.get("unit"),
-                "entry_date": new_d.isoformat(), "meal_type": meal, "meal_type_id": meal_ids.get(meal),
+                "entry_date": new_d.isoformat(), "meal_type": meal,
                 "entry_time": hhmm, "notes": row.get("notes"), "variant_id": row.get("variant_id")}
-        new = client.request("PUT", f"/food-entries/{row['id']}", {k: v for k, v in body.items() if v is not None})
-        new = {**row, **(new or {}), **{k: v for k, v in body.items() if v is not None}}
+        new = be.update_food(row, {k: v for k, v in body.items() if v is not None})
     else:
         carry = 1   # the new values below already carry the scaling
         cur = sparky_client._food_entry(row)
@@ -633,9 +635,8 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         if item["saturated_fat_g"] is not None and (item["saturated_fat_g"] > item["fat_g"] + 0.5 or a.get("fat_g") is not None):
             item["saturated_fat_g"] = min(item["saturated_fat_g"], item["fat_g"])
         warnings = _check_food(item)
-        meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
-        new = _create_food(client, meal_ids, new_d, item)
-        client.request("DELETE", _entry_path("food", row))
+        new = be.create_food(new_d, item)
+        be.delete_food(row)
     writelog.record(conn, "food", "update", row["id"], row, new)
     _pantry_follow(conn, user_id, row["id"], new["id"])   # replaced entry: undo / delete of the new one restores the pantry
     if renamed:
@@ -644,7 +645,7 @@ def update_food_entry(conn: psycopg.Connection, user_id: int, a: dict, client=No
         extras.carry_over(conn, user_id, row["id"], new["id"], new_d, carry)
     if item is not None:   # the corrected values (given, or scaled) are the entry's extras; added sugar has no SparkyFitness field
         extras.set_values(conn, user_id, new["id"], new_d, {k: item.get(k) for k in extras.OPTIONAL})
-    mirror.after_write(conn, user_id, client, food=[d, new_d])
+    be.after_write(food=[d, new_d])
     out = sparky_client._food_entry({**new, "entry_date": str(new.get("entry_date") or new_d)})
     return {"updated": {k: v for k, v in out.items() if v is not None}, "previous_id": row["id"],
             "note": None if str(new["id"]) == str(row["id"]) else "改了名称 / 营养：换成了一条新记录（新 id），原来那条已删",
@@ -656,8 +657,8 @@ def update_set(conn: psycopg.Connection, user_id: int, day: str, set_id, reps, w
     d = date.fromisoformat(day)
     if reps is None and weight_kg is None and rir is None:
         raise ValueError("reps、weight_kg、rir 至少给一个")
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    s, e, x = _find_set(client, d, set_id)
+    be = backend(conn, user_id, client)
+    s, e, x = _find_set(be, d, set_id)
     before = _clean_sets(e.get("sets") or [])
     after = []
     for y in sorted(e.get("sets") or [], key=lambda y: y.get("set_number") or 0):
@@ -667,10 +668,10 @@ def update_set(conn: psycopg.Connection, user_id: int, day: str, set_id, reps, w
                                                   "duration_s": y.get("duration")})
         after.append(y)
     after = _clean_sets(after)
-    client.request("PUT", f"/exercise-entries/{e['id']}", {"sets": after})
+    be.replace_sets(e["id"], after)
     writelog.record(conn, "sets", "update", e["id"], {"date": d.isoformat(), "entry_id": e["id"], "sets": before},
                     {"date": d.isoformat(), "entry_id": e["id"], "sets": after})
-    mirror.after_write(conn, user_id, client, workouts=[d])
+    be.after_write(workouts=[d])
     n = next(i for i, y in enumerate(sorted(e.get("sets") or [], key=lambda y: y.get("set_number") or 0))
              if str(y.get("id")) == str(set_id))
     name = (e.get("exercise_snapshot") or {}).get("name") or e.get("name")
@@ -689,28 +690,31 @@ def undo_entry(conn: psycopg.Connection, user_id: int, kind: str, day: str, entr
         raise ValueError("kind 只能是 food / workout / set / weight")
     if not entry_id and kind in ("workout", "set"):
         raise ValueError("训练 / 组要给 id（get_training_log 里有）")
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    res = _undo(conn, user_id, client, kind, d, entry_id, meal, food, time)
+    be = backend(conn, user_id, client)
+    res = _undo(conn, user_id, be, kind, d, entry_id, meal, food, time)
     target = {"food": "food", "weight": "weight"}.get(kind, "workouts")   # workout / set -> that day's workouts
-    mirror.after_write(conn, user_id, client, **{target: [d]})
+    be.after_write(**{target: [d]})
     return res
 
 
-def _undo(conn, user_id: int, client, kind: str, d: date, entry_id, meal, food, time) -> dict:
+def _undo(conn, user_id: int, be, kind: str, d: date, entry_id, meal, food, time) -> dict:
     if kind == "weight":
-        res = _delete_weight(conn, client, d)
+        res = _delete_weight(conn, be, d)
         weight_store.delete(conn, user_id, d)   # its measuring conditions go with it
         return res
     if kind == "set":
-        return _delete_set(conn, client, d, entry_id)
-    rows = _day_rows(client, kind, d)
+        return _delete_set(conn, be, d, entry_id)
+    rows = _day_rows(be, kind, d)
     if entry_id:
         row = next((r for r in rows if str(r.get("id")) == str(entry_id)), None)
         if row is None:
             raise ValueError(f"{d} 没有这条记录：{entry_id}")
     else:
         row = _match_food(rows, d, meal, food, time)
-    client.request("DELETE", _entry_path(kind, row))
+    if kind == "food":
+        be.delete_food(row)
+    else:
+        be.delete_session(row)
     writelog.record(conn, "food" if kind == "food" else "session", "delete", row["id"], row, None)
     back = _pantry_back(conn, user_id, row["id"]) if kind == "food" else {}
     return {"deleted": {"kind": kind, "date": d.isoformat(), "id": row["id"],
@@ -732,14 +736,14 @@ def _pantry_follow(conn, user_id: int, old_id, new_id) -> None:
         pantry_auto.rekey(conn, user_id, old_id, new_id)
 
 
-def _delete_set(conn, client, d: date, set_id) -> dict:
-    s, e, x = _find_set(client, d, set_id)
+def _delete_set(conn, be, d: date, set_id) -> dict:
+    s, e, x = _find_set(be, d, set_id)
     sets = e.get("sets") or []
     if len(sets) == 1:
         raise ValueError("这是这个动作唯一的一组；删整次训练用 kind=workout")
     before = _clean_sets(sets)
     after = _clean_sets([y for y in sets if str(y.get("id")) != str(set_id)])
-    client.request("PUT", f"/exercise-entries/{e['id']}", {"sets": after})
+    be.replace_sets(e["id"], after)
     writelog.record(conn, "sets", "update", e["id"], {"date": d.isoformat(), "entry_id": e["id"], "sets": before},
                     {"date": d.isoformat(), "entry_id": e["id"], "sets": after})
     name = (e.get("exercise_snapshot") or {}).get("name") or e.get("name")
@@ -751,12 +755,12 @@ CHECKIN_COLUMNS = ("weight", "neck", "waist", "hips", "steps", "height", "body_f
                    "bone_mass_kg", "body_water_percentage", "bmr")
 
 
-def _delete_weight(conn, client, d: date) -> dict:
-    cur = client.get(f"/measurements/check-in/{d.isoformat()}") or {}
-    if not cur.get("id") or str(cur.get("entry_date") or "")[:10] != d.isoformat():
+def _delete_weight(conn, be, d: date) -> dict:
+    cur = be.checkin(d)
+    if not cur.get("id"):
         raise ValueError(f"{d} 没有称重 / 体成分记录")
     before = {"date": d.isoformat(), **{c: cur[c] for c in CHECKIN_COLUMNS if cur.get(c) is not None}}
-    client.request("DELETE", f"/measurements/check-in/{cur['id']}")
+    be.delete_checkin(cur)
     writelog.record(conn, "weight", "delete", d.isoformat(), before, None)
     return {"deleted": before}
 
@@ -764,13 +768,13 @@ def _delete_weight(conn, client, d: date) -> dict:
 def delete_food_entry(conn: psycopg.Connection, user_id: int, day: date, entry_id: str, client=None) -> dict:
     """The user deletes one of their own food entries from the Today page (any source: logged by the AI, in the app, migrated).
     Uses the user's own read-write key, so only that user's SparkyFitness data can be touched; the entry must be on that day."""
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    row = next((r for r in _day_rows(client, "food", day) if str(r.get("id")) == str(entry_id)), None)
+    be = backend(conn, user_id, client)
+    row = next((r for r in _day_rows(be, "food", day) if str(r.get("id")) == str(entry_id)), None)
     if row is None:
         raise LookupError(f"{day} 没有这条饮食记录（可能已经删了）")
-    client.request("DELETE", _entry_path("food", row))
+    be.delete_food(row)
     _pantry_back(conn, user_id, row["id"])
-    mirror.after_write(conn, user_id, client, food=[day])
+    be.after_write(food=[day])
     return {"deleted": {"id": row["id"], "date": day.isoformat(), "meal": row.get("meal_type"),
                         "food": row.get("food_name"), "source": row.get("source")}}
 
@@ -814,60 +818,158 @@ def _rollback_dates(kind: str, before, after) -> dict:
 
 
 def rollback(conn, user_id: int, kind: str, action: str, before, after, client=None) -> dict:
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    res = _rollback(conn, user_id, client, kind, action, before, after)
-    mirror.after_write(conn, user_id, client, **_rollback_dates(kind, before, after))
+    """Put a logged change back, on the user's current store (ids are the same on both, so rows logged before the switch
+    to own only roll back there too)."""
+    be = backend(conn, user_id, client)
+    res = _rollback(conn, user_id, be, kind, action, before, after)
+    be.after_write(**_rollback_dates(kind, before, after))
     return res
 
 
-def _rollback(conn, user_id: int, client, kind: str, action: str, before, after) -> dict:
+def _rollback(conn, user_id: int, be, kind: str, action: str, before, after) -> dict:
     if kind == "food":
         if action == "create":
-            row = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
-            client.request("DELETE", _entry_path("food", row))
+            row = _food_row(be, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
+            be.delete_food(row)
             _pantry_back(conn, user_id, row["id"])
             return {"deleted": row["id"]}
         if action == "delete":
-            return {"restored": _recreate_food(client, before)["id"]}
+            return {"restored": be.recreate_food(before)["id"]}
         # update: in place -> put the old portion / meal / date / time back; replaced -> remove the new one, restore the old one
-        new = _food_row(client, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
+        new = _food_row(be, date.fromisoformat(str(after["entry_date"])[:10]), after["id"])
         if str(after["id"]) == str(before["id"]):
             body = {"quantity": before.get("quantity"), "unit": before.get("unit"),
                     "entry_date": str(before["entry_date"])[:10], "meal_type": before.get("meal_type"),
                     "entry_time": (before.get("entry_time") or "")[:5] or None, "notes": before.get("notes"),
                     "variant_id": before.get("variant_id")}
-            client.request("PUT", f"/food-entries/{new['id']}", {k: v for k, v in body.items() if v is not None})
+            be.update_food(new, {k: v for k, v in body.items() if v is not None}, meal_id=False)
             return {"restored": new["id"]}
-        client.request("DELETE", _entry_path("food", new))
-        old = _recreate_food(client, before)
+        be.delete_food(new)
+        old = be.recreate_food(before)
         _pantry_follow(conn, user_id, new["id"], old["id"])
         return {"restored": old["id"], "deleted": new["id"]}
     if kind == "session":
         if action == "create":
             d = date.fromisoformat(after["date"])
-            row = next((r for r in _day_rows(client, "workout", d) if str(r.get("id")) == str(after["id"])), None)
+            row = next((r for r in _day_rows(be, "workout", d) if str(r.get("id")) == str(after["id"])), None)
             if row is None:
                 raise ValueError("这次训练已经不在了")
-            client.request("DELETE", _entry_path("workout", row))
+            be.delete_session(row)
             return {"deleted": row["id"]}
-        return {"restored": _recreate_session(client, before)["id"]}
+        return {"restored": be.recreate_session(before)["id"]}
     if kind == "sets":
         d = date.fromisoformat(before["date"])
-        rows = _day_rows(client, "set", d)
+        rows = _day_rows(be, "set", d)
         entry = next((e for s in rows for e in _session_entries(s) if str(e.get("id")) == str(after.get("entry_id")
                                                                                               or before.get("entry_id"))), None)
         if entry is None:
             raise ValueError("这个动作已经不在了")
-        client.request("PUT", f"/exercise-entries/{entry['id']}", {"sets": before["sets"]})
+        be.replace_sets(entry["id"], before["sets"])
         return {"restored_sets": len(before["sets"])}
     if kind == "weight":
         d = (before or after)["date"]
         if before is None:  # the AI created that day's check-in: remove it
-            cur = client.get(f"/measurements/check-in/{d}") or {}
-            if cur.get("id") and str(cur.get("entry_date") or "")[:10] == d:
-                client.request("DELETE", f"/measurements/check-in/{cur['id']}")
+            cur = be.checkin(date.fromisoformat(d))
+            if cur.get("id"):
+                be.delete_checkin(cur)
             return {"deleted": d}
         vals = {c: before.get(c) for c in (before if action == "delete" else after) if c != "date"}
-        client.request("POST", "/measurements/check-in", {"entry_date": d, **vals})
+        be.save_checkin(date.fromisoformat(d), vals)
         return {"restored": {"date": d, **vals}}
     raise ValueError(f"不支持回滚 {kind}")
+
+
+# ---------------------------------------------------------------- store back ends (issue #252)
+class SparkyBackend:
+    """The records on SparkyFitness through the user's read-write key: exactly the requests made before the split."""
+    own = False
+
+    def __init__(self, conn, user_id: int, client):
+        self.conn, self.user_id, self.client = conn, user_id, client
+        self._meal_ids: dict | None = None
+
+    def after_write(self, **dates) -> None:
+        mirror.after_write(self.conn, self.user_id, self.client, **dates)
+
+    def meal_ids(self) -> dict:
+        if self._meal_ids is None:
+            self._meal_ids = {m["name"]: m["id"] for m in self.client.get("/meal-types")}
+        return self._meal_ids
+
+    # food
+    def prepare_food(self) -> None:
+        self.meal_ids()
+
+    def food_day(self, d: date) -> list[dict]:
+        return self.client.get(f"/food-entries/by-date/{d.isoformat()}") or []
+
+    def create_food(self, d: date, it: dict) -> dict:
+        return _create_food(self.client, self.meal_ids(), d, it)
+
+    def delete_food(self, row: dict) -> None:
+        self.client.request("DELETE", _entry_path("food", row))
+
+    def update_food(self, row: dict, body: dict, meal_id: bool = True) -> dict:
+        """In place (PUT, same id); body: quantity / unit / entry_date / meal_type / entry_time / notes / variant_id."""
+        if meal_id and "meal_type" in body:   # the rollback path never sent it
+            body = {**body, "meal_type_id": self.meal_ids().get(body["meal_type"])}
+        body = {k: v for k, v in body.items() if v is not None}
+        new = self.client.request("PUT", f"/food-entries/{row['id']}", body)
+        return {**row, **(new or {}), **body}
+
+    def recreate_food(self, before: dict) -> dict:
+        return _recreate_food(self.client, before)
+
+    # exercise library
+    def library(self) -> list[dict]:
+        return sparky_client.exercises(self.client)
+
+    def create_exercise(self, name: str) -> dict:
+        return self.client.request("POST", "/exercises", {
+            "name": name, "category": "strength", "source": "custom", "is_custom": True,
+            "modality": "weight_reps", "description": "身体管家记录训练时新建（用户确认过）"}, multipart_field="exerciseData")
+
+    # workouts
+    def workout_day(self, d: date) -> list[dict]:
+        return self.client.get("/v2/exercise-entries/by-date", selectedDate=d.isoformat()) or []
+
+    def create_session(self, body: dict) -> dict:
+        return self.client.request("POST", "/exercise-preset-entries", body)
+
+    def recreate_session(self, before: dict) -> dict:
+        return _recreate_session(self.client, before)
+
+    def delete_session(self, row: dict) -> None:
+        self.client.request("DELETE", _entry_path("workout", row))
+
+    def delete_session_id(self, session_id) -> None:
+        self.client.request("DELETE", f"/exercise-preset-entries/{session_id}")
+
+    def replace_sets(self, entry_id, sets: list[dict]) -> None:
+        self.client.request("PUT", f"/exercise-entries/{entry_id}", {"sets": sets})
+
+    # weight / body data
+    def checkin(self, d: date) -> dict:
+        cur = self.client.get(f"/measurements/check-in/{d.isoformat()}") or {}
+        if str(cur.get("entry_date") or d.isoformat())[:10] != d.isoformat():
+            cur = {}  # SparkyFitness returns the latest check-in on or before the date, not only that day's
+        return cur
+
+    def save_checkin(self, d: date, vals: dict) -> None:
+        self.client.request("POST", "/measurements/check-in", {"entry_date": d.isoformat(), **vals})
+
+    def delete_checkin(self, cur: dict) -> None:
+        self.client.request("DELETE", f"/measurements/check-in/{cur['id']}")
+
+
+def backend(conn, user_id: int, client=None):
+    """Where this user's records are written: a given client (tests, callers already holding one) -> SparkyFitness, or that
+    back end itself; own only (flag own_food_only, ownstore/source.only) -> the own tables; else the SparkyFitness
+    read-write key as before (raises SparkyError when the user has none)."""
+    if client is not None:
+        return client if hasattr(client, "food_day") else SparkyBackend(conn, user_id, client)
+    from ..ownstore import source
+    if source.only(conn, user_id):
+        from ..ownstore.write import OwnBackend
+        return OwnBackend(conn, user_id)
+    return SparkyBackend(conn, user_id, sparky_client.write_client_for_user(conn, user_id))

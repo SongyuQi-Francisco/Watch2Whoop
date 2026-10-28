@@ -11,16 +11,18 @@ then [`docs/README.md`](docs/README.md) (design documents, mostly Chinese) and [
 | `body_engine/` | FastAPI + PostgreSQL: scores, insights, records, rules, training, AI tools, MCP server, Today page (`web/`). `cd body_engine && uv run pytest` |
 | `apps/watch2whoop/` | Flutter iOS app: HealthKit background sync to Open Wearables + the Today page in a WebView. `flutter test` |
 | `quickstart/`, `quickstart.sh` | One-command local demo with synthetic data |
-| `deploy/` | Production deployment of Open Wearables, SparkyFitness, Grafana, ops jobs (backups, health checks), the AI coach workspace |
+| `deploy/` | Production deployment of Open Wearables, Grafana, the optional SparkyFitness (no longer needed, #252), ops jobs (backups, health checks), the AI coach workspace |
 | `shortcuts/` | iOS Shortcut alternative to the app (format spec: `docs/shortcut-sync-spec.md`) |
 | `health_sync/` | Receiver for Shortcut uploads |
 | `vendor/open-wearables` | Open Wearables (git submodule, pinned) |
 
 ## Product principles
-- One entry point per device: the Today page (also inside the iOS app). Open Wearables, SparkyFitness and Grafana are back ends only.
+- One entry point per device: the Today page (also inside the iOS app). Open Wearables and Grafana are back ends only.
 - Every table carries `user_id`; every endpoint authorizes per user; viewing someone else's data needs an explicit share.
 - The UI shows numbers, charts and short labels; longer texts stay in the API for the AI coach.
-- Build on existing open-source projects instead of rewriting them; SparkyFitness runs unmodified (its licence is non-commercial).
+- Build on existing open-source projects instead of rewriting them. Food / weight / workout logs live in Body Engine's own
+  tables (#252, `body_engine/src/body_engine/ownstore/`); SparkyFitness is optional and only runs unmodified (its licence
+  is non-commercial) — never copy its code or schema.
 
 ## Conventions
 - Every change is a pull request from your own branch or fork (never push to `main`); CI (`.github/workflows/ci.yml`) must be green and a maintainer reviews before a squash merge. See `CONTRIBUTING.md`.

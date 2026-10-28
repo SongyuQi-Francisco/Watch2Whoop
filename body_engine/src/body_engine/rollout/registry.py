@@ -79,7 +79,13 @@ FLAGS: dict[str, str] = {
                           "shadow，sync-mode apply 再把派生数据还原；单人回退用 sync-mode rollback。默认关",
     "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
-                      "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",
+                      "同步失败只记日志、不影响这次写。关着时和以前完全一样（不多发请求、不碰新表）",
+    "own_food_read": "饮食 / 食物库 / 体重 / 围度 / 动作库 / 训练记录改读 Body Engine 自己的表（#252 第 3 期）：今天页、趋势、评分、"
+                     "规则、AI 工具、briefing、训练日历等全部读新表，返回的形状不变；只对最近一次 sparky-migrate 核对通过的用户生效，"
+                     "写仍然先写 SparkyFitness 再同步（开着时双写自动生效）。关着时和以前一样读 SparkyFitness",
+    "own_food_only": "饮食 / 体重 / 训练记录只写 Body Engine 自己的表（#252 第 4 期）：AI 写工具、今天页写接口、撤销、合并 / 拆开、"
+                     "训练页提交、离线体重都不再调 SparkyFitness，读也读新表；对最近一次迁移核对通过的用户和没有 SparkyFitness 账号的用户生效。"
+                     "全体打开后新开户不再建 SparkyFitness 账号、不再镜像计划 / 食谱。关着时双写（见 own_food_store）",
     "jarvis_scope_guard": "Jarvis 话题守门（#170，只管托底 AI，用户自己的 AI 不受影响）：明显跑题且费钱的请求（写代码、作业、长文写作 / 长篇翻译、"
                           "和健康无关的通用话题）由服务端规则直接用固定的礼貌说明回复，不调模型、不扣额度、不调工具，托底 AI 的系统提示里也加上话题范围；"
                           "健康、训练、饮食、睡眠、化验、app 用法、反馈和简短寒暄照常；关着时和以前完全一样",

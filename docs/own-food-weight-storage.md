@@ -1,7 +1,8 @@
 # 饮食、体重、训练记录改存 Body Engine 自己的表（#252）
 
-> 状态：设计（第 1 期）。第 2 期（新表 + 双写 + 迁移命令）同时开 PR；第 3、4 期等负责人确认后再做。
-> 英文摘要在文末。
+> 状态：第 1、2 期已合并（#256、#260），线上双写已开、迁移已正式执行。第 3、4 期的代码（读开关 `own_food_read`、
+> 只写新表 `own_food_only`、新开户不再建 SparkyFitness 账号、Grafana 体重面板改读新表）见第 13 节；上线顺序和命令见 13.4。
+> 第 9 节的删代码 / 下线（第 5 步起）在 `own_food_only` 全体打开满 4 周后再做。英文摘要在文末。
 
 ## 0. 为什么、做什么
 
@@ -262,6 +263,52 @@ SparkyFitness 的许可证不允许商业使用。它的第 2 条还规定：修
 - 第 4 期下线后，代码里只保留迁移命令和它用到的 API 读函数（方便晚来的部署者迁数据），其余 SparkyFitness 相关代码全部删除。部署里不再包含 SparkyFitness 的任何镜像。
 - 评审要求：涉及新存储的 PR，评审时确认没有从 SparkyFitness 仓库复制的内容（代码、SQL、注释、测试数据）。
 
+## 13. 第 3、4 期的实现（读开关、只写新表）
+
+### 13.1 谁读写哪里（`ownstore/source.py`）
+
+| 开关 | 生效条件（按用户） | 读 | 写 |
+|---|---|---|---|
+| 都关 | — | SparkyFitness | SparkyFitness（`own_food_store` 开时写完同步进新表） |
+| `own_food_read` | 最近一次 `sparky-migrate` 正式执行 ok | 新表 | SparkyFitness，写完**一定**同步进新表（这时不管 `own_food_store` 开没开，避免读到旧数据） |
+| `own_food_only` | 最近一次迁移 ok，**或者**根本没有 SparkyFitness 账号（新开户的人） | 新表 | 只写新表，不连 SparkyFitness |
+
+有 SparkyFitness 账号但没迁移成功的人，开关开了也留在 SparkyFitness，不会读到半套数据。最近一次迁移失败（ok = false）的人自动回到 SparkyFitness。
+
+### 13.2 读（`own_food_read`）
+
+- `sparky_client.reader_for_user(conn, uid)` 代替原来的 `client_for_user`：生效时给 `ownstore/read.OwnReader`，否则还是 SparkyFitness 只读客户端。`sparky_client` 的 `training_log`、`food_entries`、`weight`、`exercises`、`workout_presets`、`workout_plans`、`goal_for_date` 看到 OwnReader 就从新表取，所以约 20 个调用方（今天页、趋势、评分、规则、AI 工具、briefing、explain、训练日历、周报 / 月报、身体年龄、肌肉负荷、推荐重量、计划起始周、动作库匹配、`link-exercises`……）只改了取客户端那一行。
+- 形状逐字段相同：`ownstore/rows.py` 把新表的行拼回原来的记录形状，再走同一个 `_session` / `_food_entry` / `weight_rows` 转换。测试 `test_reader_returns_the_same_shapes_as_sparkyfitness` 把同一份数据分别从假 SparkyFitness 和新表读出来逐个比较。
+- `link_state` 对读新表的人直接返回 connected：「训练记录未连接」这类提示不再出现。
+- 新表里没有的：SparkyFitness 的周计划模板 / preset（只给没有 Body Engine 计划的人用）和它的饮食目标（只在用户第一版自己的目标之前兜底）。读模式下这两样照旧问 SparkyFitness；只写新表模式下不再问（计划为空、兜底目标为空）。
+
+### 13.3 写（`own_food_only`）
+
+- `assistant/sparky_write.py` 的检查（日期、营养自洽、禁用动作、查重、体重冲突）不变，读写记录全部经过 `backend()`：`SparkyBackend`（原来的请求，一个不多一个不少，`test_flag_off_changes_nothing` 照旧）或 `ownstore/write.OwnBackend`（新表）。食物库条目、动作库新动作、训练三层表、体重都在新表里建；在新表里改过的行标 `origin = 'own'`，以后的迁移 / 同步不会覆盖或删掉。
+- 走同一条路的：AI 写工具（`log_food`、`log_workout`、`log_weight`、`update_food_entry`、`update_training_set`、`undo_sparky_entry`、`rollback_write`、`combine_food_entries`、`log_meal_template`、`undo_meal_log`、`log_recipe`）、今天页的删一条饮食 / 合并 / 拆开 / 快捷记餐、训练页提交（重交删掉上一次）、离线补交体重、体重弹层。
+- 撤销按 id：id 沿用，切换前用 SparkyFitness 记的写入日志（before / after 是 SparkyFitness 的记录）在新表上照样能撤销 / 回滚（`test_only_mode_rolls_back_rows_logged_before_the_switch`）。删掉再恢复的记录换新 id，和 SparkyFitness 的行为一样。
+- 工具名 `undo_sparky_entry` 不变；所有工具描述里的「SparkyFitness」换成中性说法（#201 快照里只有描述变了，`ai_parity` 的替换表因此少了这些工具）。
+- 计划 / 食谱不再镜像到 SparkyFitness（`save_plan` 返回 `sparky_sync.not_needed`，不再提示「没同步到训练记录」）。
+- `food_entry_extras` 继续写（读的地方还在用），加糖 / 含糖饮料同时写进 `food_entries`；第 5 步再停。
+- 开户：`own_food_only` 是 **all**（且没有同意书版本要求）时，`account/provision.py` 的 sparky 步骤记为 `skipped`（算完成），不建 SparkyFitness 账号；缺 SparkyFitness key 不算错误。
+
+### 13.4 上线顺序和命令（中控执行，每步可回退）
+
+1. 部署本期代码。开关默认关，行为不变。
+2. 补齐：每个用户 `body-engine sparky-migrate --user-id N --dry-run`，全部 ✓ 后负责人确认，再逐个 `--confirm`（双写一直开着，这一步通常全是「不变」；它同时给每人留一条新的 ok 记录）。
+3. 读切换：`body-engine flags set own_food_read --state cohort --cohort beta --by coordinator`，看一两天（今天页饮食 / 训练 / 体重、趋势体重、briefing、训练日历），再 `--state all`。回退：`--state off`。
+4. Grafana：部署后看板自动重新加载，体重面板读 `body_measurements`（迁移 735 已给 `grafana_ro` 授权，不用新迁移）。
+5. 观察一到两周。
+6. 只写新表：`body-engine flags set own_food_only --state cohort --cohort beta --by coordinator`，再 `--state all`。全体打开后新开户不再建 SparkyFitness 账号。回退：关 `own_food_only`（和 `own_food_read`），再用反向同步把这段时间新写的行补回 SparkyFitness（第 7 节，还没写；所以 SparkyFitness 至少保留 4 周）。
+7. 满 4 周没有回退 → 第 9 节第 2 步起（删代码、部署、文档）。
+
+### 13.5 打开 `own_food_only` 之后仍然依赖 SparkyFitness 的地方
+
+- 命令：`sparky-migrate`（迁移本身）、`sparky-link`、`nutrition-goals-import`（从 SparkyFitness 导目标版本：还靠 SparkyFitness 兜底目标的人，开 `own_food_only` 前要先导）、`recipes-init`（按名字对 SparkyFitness 的 meal）。
+- 账号：注销时删除 SparkyFitness 账号（`account/delete.py`，有账号的人才删）；「我 → 训练记录 → 连接」接口还在（读新表的人状态是 connected，不会显示入口）。
+- 部署：根目录 `compose.yaml` 的 `BODY_SPARKY_URL` 和 key 挂载、Grafana 的 Infinity 数据源（已经没有面板用）、`deploy/ops/ops.py` 的备份 / doctor / 端口 / tailscale serve 8444、私有部署。Quick Start 默认已经不启动 SparkyFitness（`--sparkyfitness` 才启动）。
+- 表：`users.sparky_*`、`user_provisioning.sparky_*`、`training_plans.sparky_*`、`recipe_meta.sparky_meal_id`、`food_entry_extras` 留到第 9 节再删。
+
 ---
 
 ## English summary
@@ -272,4 +319,10 @@ Food, food library, weight and workout logs live in SparkyFitness today, whose l
 - **Phases**: (1) this design; (2) the tables, dual write behind flag `own_food_store` (after each SparkyFitness write the affected dates are read back and synced into the new tables; off = exactly as before) and `body-engine sparky-migrate --user-id N [--dry-run | --confirm]` (idempotent upsert by id, deletes rows SparkyFitness no longer has, per-table check against SparkyFitness, the owner confirms before production runs); (3) read path switch behind `own_food_read` (same-shape readers for `training_log` / `food_entries` / `nutrition` / `weight` / `exercises`, only for users whose last migration was ok), write split into checks + storage backend, rollback dispatched by a `store` marker, Grafana weight panel on SQL; (4) `own_food_only`, stop mirroring plans / recipes, remove SparkyFitness from code, compose, quickstart, ops and docs after a 4-week fallback window.
 - **Rollback**: turn the flags off (dual write keeps SparkyFitness complete until phase 4); after phase 4 a push-back command restores SparkyFitness from rows written meanwhile.
 - **Effort**: about 0.5 + 2 + 4 + 3 days.
+- **Phases 3 and 4 as built** (§13): `sparky_client.reader_for_user` hands out an own-table reader (`ownstore/read.py`,
+  same shapes, rebuilt by `ownstore/rows.py`) when `own_food_read` applies (latest migration ok); writes go through
+  `sparky_write.backend()` — the unchanged SparkyFitness requests or `ownstore/write.OwnBackend` when `own_food_only`
+  applies (latest migration ok, or no SparkyFitness account at all). Undo by id and rollback of rows logged before the
+  switch keep working; plans / recipes are no longer mirrored; with `own_food_only` on for everyone sign-up skips the
+  SparkyFitness account. The Grafana weight panel reads `body_measurements`. Rollout order and commands: §13.4.
 - **Licence: independent implementation** (§12): clause 2 of SparkyFitness's licence keeps modified versions and works containing substantial parts of it under the same non-commercial terms, so nothing is forked, adapted or copied (source, SQL schema, migrations, seed data). Tables, code and field names are our own design. The only contact is its public HTTP API, used by the migration and the dual write to read each user's own data with that user's own read-only key.

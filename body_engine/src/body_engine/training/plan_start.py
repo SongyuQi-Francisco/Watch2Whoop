@@ -111,7 +111,7 @@ def trained(conn: psycopg.Connection, user_id: int, start: date, end: date,
     sparky = "connected"
     if end >= start:
         try:
-            cl = client or sparky_client.client_for_user(conn, user_id)
+            cl = client or sparky_client.reader_for_user(conn, user_id)
             for s in sparky_client.training_log(cl, start, end):
                 d = date.fromisoformat(str(s["date"])[:10])
                 g = days.setdefault(d, {"groups": set(), "sessions": []})
