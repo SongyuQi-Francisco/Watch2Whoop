@@ -20,6 +20,20 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
+## Unreleased
+
+**打开就有内容（#337 第 1 期：本地优先启动）**
+- （iOS）冷启动（包括 iOS 把后台的 app 杀掉后再打开）不再先等服务器发页面：app 直接打开手机上保存的今天页副本，先用手机上存的上一次的数据画出来（顶部标「更新中」），再在后台向服务器要新数据，到了原地替换。省掉的是请求页面的那一次往返，以前那段时间只能看到加载中。
+- 副本每次打开 app 最多检查一次有没有新版（带 ETag，没变化时服务器只回 304，不再每次下载整页）；有新版就在后台下载，下次打开生效；app 在后台放了 10 分钟以上再回来时也会安静地换上。
+- 这些情况照旧先向服务器要页面：第一次打开（还没有副本）、刚登录 / 扫码设置 / 带登录码、点通知打开、换了服务器、退出登录之后（副本已删）。副本里的页面拿到 401（登录过期等）时，app 马上改为从服务器打开页面，由它显示登录。
+- 本机副本没能启动（脚本没跑起来，8 秒内没反应）时自动改为从服务器打开。
+- 服务器上有紧急开关 `local_first_start_off`：打开后，正在用本机副本的 app 立刻换成从服务器打开，之后的冷启动也和以前一样。
+
+**技术说明（给开发者）**
+- `lib/src/offline_shell.dart`：`save` 带 `If-None-Match`，`changed` 表示存下了更新的副本；`loadLocal` 把标记 `window.W2W_SHELL` 改成 `window.W2W_LOCAL`（页面把它当普通页面用）；页面消息 `local-first:true|false` 记在 `offline_shell.first`，`offline:off` 一并删掉。`home_page.dart`：`_load(local: true)` 只在冷启动和从离线副本回来时用，`_onLocal` 时不显示顶部进度条；`reload` 消息（离线副本联网 / 本机副本 401）都改为从服务器打开。
+- 安卓暂不启用（`isAndroid` 时照旧走网络：还没验证安卓 WebView 用 `loadDataWithBaseURL` 打开的页面会不会带上 cookie）。
+- 需要服务器 v2.156 起的页面（发 `local-first:` 消息、本机副本 401 时发 `reload`）；老服务器从不发 `local-first:true`，app 保持以前的行为。
+
 ## 1.0.9 — 2026-10-27
 和 1.0.8 同一天发布：测试用户直接装 1.0.9 即可（包含 1.0.8 的全部内容）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
 
