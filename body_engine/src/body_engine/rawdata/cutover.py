@@ -24,6 +24,12 @@ module does the switch user by user:
   recompute in the app mode the post-switch check compares the new scores with the snapshot (post_check).
 The app learns the mode from GET /v1/ingest/healthkit (engine.mode): with `app` it stops the OW SDK (keeps its
 credentials and anchors), with `shadow` it starts it again (OW resumes from its anchors).
+
+Step S5b, new accounts (flag apple_sync_new_accounts, global: only `--state all` counts, and only while apple_sync_engine
+is `all` too, new_accounts()): provisioning (account/provision.py) creates no OW user and calls start_on_engine(): the
+account is in the app mode from the start (nothing to compare, no OW history to lose). Such an engine-only account (no
+OW link) stays in app whatever apple_sync_primary says (engine.mode) and is not rolled back without force: shadow would
+only hide its data. readiness.py lists, per user, what is still missing before the switch.
 """
 from __future__ import annotations
 
@@ -62,7 +68,52 @@ def desired(conn: psycopg.Connection, user_id: int) -> str:
     st = state(conn, user_id)
     if st and st["pin"] == "ow":
         return "shadow"
+    if st and st["mode"] == "app" and engine_only(conn, user_id):
+        return "app"   # no OW path to go back to (engine.mode)
     return "app" if flags.enabled(conn, user_id, EN.PRIMARY_FLAG) else "shadow"
+
+
+def engine_only(conn: psycopg.Connection, user_id: int) -> bool:
+    """No OW link: the engine is this account's only sync path."""
+    r = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
+    return r is not None and not r["ow_user_id"]
+
+
+# ---------------------------------------------------------------- new accounts (S5b)
+def _flag_state(conn: psycopg.Connection, key: str) -> str:
+    row = flags.rows(conn).get(key)
+    return row["state"] if row else "off"
+
+
+def new_accounts(conn: psycopg.Connection) -> dict:
+    """Whether new accounts start on the engine: {on, flag, engine, reason}. The flag is global (like open_signup: only
+    `all` counts) and needs apple_sync_engine at `all` too, else a new account without OW would sync nowhere."""
+    flag, engine = _flag_state(conn, EN.NEW_ACCOUNTS_FLAG), _flag_state(conn, EN.FLAG)
+    reason = None if flag == "all" and engine == "all" else ("flag_off" if flag != "all" else "engine_not_all")
+    if flag == "all" and reason:
+        log.warning("%s is on but %s is %s: new accounts still get an OW user", EN.NEW_ACCOUNTS_FLAG, EN.FLAG, engine)
+    return {"on": reason is None, "flag": flag, "engine": engine, "reason": reason}
+
+
+def new_accounts_on_engine(conn: psycopg.Connection) -> bool:
+    return new_accounts(conn)["on"]
+
+
+def start_on_engine(conn: psycopg.Connection, user_id: int, actor: str | None = None) -> dict:
+    """A new account without an OW link starts in the app mode (provisioning, flag apple_sync_new_accounts). No gates:
+    nothing to compare, no OW history to lose; the app version is the app's business at setup. Idempotent; refuses a
+    user who has an OW link (that one goes through switch()). Does not commit."""
+    if not engine_only(conn, user_id):
+        return {"started": False, "reason": "has_ow"}
+    st = state(conn, user_id)
+    if st and st["mode"] == "app" and st["pin"] is None:
+        return {"started": False, "reason": "already_app"}
+    flags.cohort_add(conn, user_id, PRIMARY_COHORT, actor=actor or "provision")
+    now = datetime.now(timezone.utc)
+    _set_state(conn, user_id, mode="app", pin=None, switched_at=now,
+               checks={"at": now, "result": "new_account", "gates": {"shadow": {"ok": True, "reason": "no_ow"}}},
+               post_check={"at": now, "skipped": "new_account"}, note=f"new account on the engine ({actor or 'provision'})")
+    return {"started": True, "mode": EN.mode(conn, user_id)}
 
 
 def _tz(conn, user_id: int) -> ZoneInfo:
@@ -244,8 +295,11 @@ def switch(conn: psycopg.Connection, user_id: int, client=None, force: bool = Fa
     return {"switched": True, "mode": EN.mode(conn, user_id), "gates": g, **conv}
 
 
-def rollback(conn: psycopg.Connection, user_id: int, client=None, actor: str | None = None) -> dict:
-    """Back to OW for this user, at once (see the module doc)."""
+def rollback(conn: psycopg.Connection, user_id: int, client=None, actor: str | None = None, force: bool = False) -> dict:
+    """Back to OW for this user, at once (see the module doc). An engine-only account (no OW link) is refused unless
+    force: it has no OW data to go back to, the shadow mode would only hide what the engine delivers."""
+    if engine_only(conn, user_id) and not force:
+        return {"rolled_back": False, "reason": "no_ow", "mode": EN.mode(conn, user_id)}
     was = EN.mode(conn, user_id)
     _set_state(conn, user_id, mode="shadow", pin="ow", rolled_back_at=datetime.now(timezone.utc),
                note=f"rolled back by {actor or 'sync-mode'} from {was}")

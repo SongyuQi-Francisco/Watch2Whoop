@@ -2,7 +2,10 @@
 idempotent job. Every step checks what already exists first, so running it again only fills in what is missing.
 
 Steps (state in user_provisioning.steps):
-  ow       Open Wearables user (OW API key Body Engine already uses; external_user_id w2w-u<id>, searched first) → users.ow_user_id
+  ow       Open Wearables user (OW API key Body Engine already uses; external_user_id w2w-u<id>, searched first) → users.ow_user_id.
+           While new accounts start on the app's own sync engine (flag apple_sync_new_accounts, rawdata/cutover.new_accounts,
+           #219 S5b) no OW user is created: the account is put in the sync mode app instead (cutover.start_on_engine) and
+           the step is done without OW.
   sparky   SparkyFitness account with a synthetic login (w2w-u<id>@<BODY_SPARKY_EMAIL_DOMAIN>, random password — not the
            person's e-mail) + a read-write and a read-only API key, stored encrypted with the AI master key (ai/crypto.py)
            → users.sparky_user_id. Needs SparkyFitness sign-up to be open (SPARKY_FITNESS_DISABLE_SIGNUP=false); keep its
@@ -130,6 +133,15 @@ def _raise_5xx(status: int, what: str, body) -> None:
         raise TransientError(f"SparkyFitness {what} {status}: {str(body)[:200]}")
 
 
+def _engine_step(conn: psycopg.Connection, user: dict) -> bool:
+    """New accounts on the app's own sync engine (S5b): no OW user, the sync mode app from the start. True = handled."""
+    from ..rawdata import cutover
+    if user["ow_user_id"] or not cutover.new_accounts_on_engine(conn):
+        return False
+    cutover.start_on_engine(conn, user["id"], actor="provision")
+    return True
+
+
 def _ow_step(conn: psycopg.Connection, user: dict, ow_client: OWClient) -> None:
     if user["ow_user_id"]:
         return
@@ -192,8 +204,9 @@ def run(conn: psycopg.Connection, user_id: int, ow_client: OWClient | None = Non
             raise ValueError(f"user {user_id} is not active")
         try:
             if step == "ow":
-                client = ow_client or OWClient(timeout=20)
-                _with_retry(lambda: _ow_step(conn, user, client))
+                if not _engine_step(conn, user):
+                    client = ow_client or OWClient(timeout=20)
+                    _with_retry(lambda: _ow_step(conn, user, client))
             elif step == "sparky":
                 from ..ownstore import source
                 if source.only_for_everyone(conn):

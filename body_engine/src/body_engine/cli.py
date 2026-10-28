@@ -339,10 +339,15 @@ def main() -> None:
     sp.add_argument("--out", type=Path, help="write the report here instead of stdout")
     sp.add_argument("--summary", action="store_true", help="one JSON line per user, counts only (doctor)")
     sm = sub.add_parser("sync-mode", help="app sync engine (#219 S5): per-user cut-over to the app's own sync engine and back. "
-                                          "status / switch / rollback / unpin / apply (hourly, reconciles everyone) / verify")
-    sm.add_argument("action", choices=("status", "switch", "rollback", "unpin", "apply", "verify"))
+                                          "status / switch / rollback / unpin / apply (hourly, reconciles everyone) / verify / "
+                                          "readiness (who can be switched and what is missing; Chinese Markdown with names: "
+                                          "the terminal or health_data/reports/ only, never git)")
+    sm.add_argument("action", choices=("status", "switch", "rollback", "unpin", "apply", "verify", "readiness"))
     sm.add_argument("--user-id", type=int, default=None)
-    sm.add_argument("--force", action="store_true", help="switch: skip the shadow and score gates (not the app version)")
+    sm.add_argument("--force", action="store_true", help="switch: skip the shadow and score gates (not the app version); "
+                                                         "rollback: also an account without an OW link")
+    sm.add_argument("--json", action="store_true", help="readiness: the full report as JSON")
+    sm.add_argument("--out", type=Path, help="readiness: write the report here instead of stdout")
     sm.add_argument("--dry-run", action="store_true", help="switch: only check the gates")
     sm.add_argument("--no-scores", action="store_true", help="switch / apply: skip the score consistency gate")
     oa = sub.add_parser("ow-archive", help="app sync engine (#219 S6): keep this user's Open Wearables history locally (raw "
@@ -481,6 +486,13 @@ def main() -> None:
     orv = sub.add_parser("oauth-revoke", help="end one OAuth connection (its access and refresh tokens stop at once)")
     orv.add_argument("--user-id", type=int, required=True)
     orv.add_argument("--connection-id", type=int, required=True)
+    wn = sub.add_parser("whats-new", help="the weekly 「本周更新」 message (whatsnew/): who is due, what it says, send it")
+    wns = wn.add_subparsers(dest="wn_cmd", required=True)
+    wnd = wns.add_parser("send", help="send it to everyone whose local Sunday 19:00 window is open and who has not had this week's "
+                                      "(idempotent, called hourly by deploy/ops/ops.py; nothing new = nothing sent)")
+    wnd.add_argument("--user-id", type=int, default=None, help="only this user")
+    wnd.add_argument("--dry-run", action="store_true", help="say who would get what, write and send nothing")
+    wnd.add_argument("--now", default=None, help="pretend it is this ISO time (UTC unless it has an offset), e.g. 2026-11-01T09:30")
     ai_fallback_cli.add_parser(sub)
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
@@ -750,6 +762,18 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "whats-new":
+            from datetime import datetime, timezone
+            from .whatsnew import service as whatsnew
+            at = datetime.fromisoformat(args.now) if args.now else None
+            if at is not None and at.tzinfo is None:
+                at = at.replace(tzinfo=timezone.utc)
+            res = whatsnew.run(conn, args.user_id, at, args.dry_run)
+            counts: dict = {}
+            for r in res:
+                counts[r["status"]] = counts.get(r["status"], 0) + 1
+            print(json.dumps({"dry_run": args.dry_run, "counts": counts, "users": [r for r in res if r["status"] not in ("empty", "already")]},
+                             ensure_ascii=False))
         elif args.cmd == "open-signup":
             open_signup_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
@@ -856,13 +880,24 @@ def main() -> None:
                 print(text)
         elif args.cmd == "sync-mode":
             from .rawdata import cutover
+            if args.action == "readiness":
+                from .rawdata import readiness
+                rep = readiness.report(conn, [args.user_id] if args.user_id else None)
+                text = json.dumps(rep, default=str, ensure_ascii=False, indent=1) if args.json else readiness.markdown(rep)
+                if args.out:
+                    args.out.parent.mkdir(parents=True, exist_ok=True)
+                    args.out.write_text(text, encoding="utf-8")
+                    print("written:", args.out)
+                else:
+                    print(text)
+                return
             if args.action not in ("apply",) and args.user_id is None:
                 raise SystemExit("--user-id is required")
             client = _ow_or_none()
             res = {"status": lambda: cutover.status(conn, args.user_id),
                    "switch": lambda: cutover.switch(conn, args.user_id, client, args.force, args.dry_run,
                                                     not args.no_scores, actor="cli"),
-                   "rollback": lambda: cutover.rollback(conn, args.user_id, client, actor="cli"),
+                   "rollback": lambda: cutover.rollback(conn, args.user_id, client, actor="cli", force=args.force),
                    "unpin": lambda: cutover.unpin(conn, args.user_id),
                    "apply": lambda: cutover.apply(conn, args.user_id, client, not args.no_scores),
                    "verify": lambda: cutover.post_check(conn, args.user_id)}[args.action]()

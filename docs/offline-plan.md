@@ -48,6 +48,7 @@
   - 主页面加载失败时，有同一服务器的副本就用 `loadHtmlString(副本, baseUrl: 今天页地址)` 打开：同源，读得到 offline.js 存的 IndexedDB，能看缓存、能把记录放进队列。
   - 副本里的页面**不发任何请求**（不用担心 cookie 是否带上、不会因为 401 清掉缓存）；回到前台或页面检测到联网（发 `reload`）时，app 重新加载真页面，由真页面发送队列。
   - 老版本 app 收到这几个 bridge 消息会忽略，不受影响；老服务器没有这个接口时 app 什么都不存。
+- **本地优先启动**（#337 第 1 期，1.0.9 之后的 app，`docs/ios-native-plan.md` 第 3.6 节）：同一份副本在冷启动时直接打开（不等主页面失败），标记改名成 `window.W2W_LOCAL`，页面照常联网，先画 IndexedDB 里的数据；断网时它和网络页面断网一样用缓存、排队。副本带 ETag，每次运行检查一次。紧急开关 `local_first_start_off`（页面发 `local-first:true|false`）。
 
 ## 6. 上线
 1. 合并、部署（`deploy/ali/push.sh code` → 重建 body-engine）。开关默认关，部署本身不改变任何人的页面（#77 的离线提示除外：只是网络失败时的文字和重试按钮）。

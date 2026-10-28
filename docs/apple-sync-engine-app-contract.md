@@ -156,6 +156,17 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
   - 从 `app` 回到 `shadow`（回退）：重新 `startBackgroundSync()`，OW 从自己的锚点补上停写期间的数据。
 - 模式在 app 内部存一份，每次 GET 后更新；不要因为一次网络失败就改模式。
 - `app` 模式下引擎每次上传，服务器会自动排队重算分数（不用再调 `POST /v1/users/{user}/sync/refresh`；调了也只是排队，不再从 OW 导入）。
+- `app` 模式下「立即重新同步」（`/v1/ingest/resync`）的服务器部分不再从 OW 导入：app 要用引擎把这段范围重发一遍（第 8 节的 `range` / `range_done`），再报 `phone_done`。服务器在 `range_done` 到达、这些天派生完之后才算分（最多等 30 分钟）。
+
+### 7.1 没有 OW 账号的账号（S5b，开关 `apple_sync_new_accounts`）
+
+开关打开后新开户不建 OW 用户，账号一开就是 `engine.mode = app`，而且以后也不会回到 `shadow`（没有 OW 可回）。服务器这边：
+
+- 激活码兑换出的设置链接 `watch2whoop://setup?…` **没有 `ow`、也没有 `code`**，只有 `today` 和 `login`；
+- `POST /v1/account/ow-invitation` 对 `app` 模式的人回 **409 `sync_engine`**（不是 `provisioning`，不要重试）；
+- 「手机同步已断开」（`GET /v1/users/me/sync/connection`）多一个 `channel`：`app` = 看的是引擎上传，今天页的「重新连接」直接打开 `watch2whoop://sync`。
+
+**打开这个开关之前 app 要做到**（1.0.8 / 1.0.9 还没有）：`engine.mode = app` 时，「已连接」看引擎（发现接口能用、有 token），不看 OW 的 `owUserId`；引导和同步页不再要求「连接同步」、不调 `ow-invitation`（或者把 409 `sync_engine` 当成「不需要」）；设置链接没有 `code` 时不提示输入邀请码；不启动 OW SDK。
 
 ## 8. 按范围重新同步
 
