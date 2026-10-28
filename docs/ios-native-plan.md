@@ -159,7 +159,7 @@
 - **cookie 已验证**：`loadHtmlString` 打开的页面发同源 `fetch` 会带上 `HttpOnly; Secure; SameSite=Strict` 的 cookie（`Sec-Fetch-Site: same-origin`，写请求的 `Origin` 是今天页的地址），`localStorage` / IndexedDB 和网络打开的页面是同一份（2026-10-29 用 macOS 的 WKWebView 跑真实页面 + 假服务器验证；真机 / 模拟器还要在发版前的 TestFlight 内测里看一遍）。兜底：副本里的页面拿到 401 时不显示登录、不清缓存，发 `reload` 让 app 从服务器打开页面；副本加载后 `window.BodyFlags` 不存在（脚本没跑起来）或 8 秒内没加载完，app 也改为从服务器打开。
 - 照旧走网络的情况：没有副本（第一次打开、退出登录后）、副本不是这个服务器的、登录码（`#login=`）、刚登录（`webLoginNeeded`）、点通知打开、错误页的「重试」、换服务器、Apple 登录后、开关关着。
 - 开关：页面每次启动把 `local-first:true|false`（`local_first_start_off` 没开 = true）和 `offline:on|off` 一起发给 app，app 记住，下次冷启动用；正开着本机副本时收到 `false` 马上改为从服务器打开。新开关的数据库行默认是 off，所以部署后**对所有人默认开着**本地优先启动，出问题时 `body-engine flags set local_first_start_off --state all` 就是紧急停用。需要 `offline_mode` 开着（否则没有副本），先画缓存还要 `cached_first_paint`。
-- 没做：app 包里另带一份构建时的副本（第一次安装时用）。
+- 没做：app 包里另带一份构建时的副本（第一次安装时用）；安卓（同一份 Flutter 代码里 `isAndroid` 时不启用，安卓 WebView 的 cookie 还没验证）。
 
 ### 3.7 API 的 ETag / 304：先不做
 

@@ -759,7 +759,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final config = AppState.instance.config;
     final url = config.todayEntry.toString();
     final code = config.pendingLoginCode;
-    final html = local && code == null && !AppState.instance.webLoginNeeded && PushService.instance.opened.value == null
+    // iOS only for now: WKWebView was checked to send the session cookie from a page opened this way; Android's WebView not yet
+    final html = local && !isAndroid && code == null && !AppState.instance.webLoginNeeded && PushService.instance.opened.value == null
         ? await _shell.loadLocal(config.todayEntry)
         : null;
     if (!mounted) return;
