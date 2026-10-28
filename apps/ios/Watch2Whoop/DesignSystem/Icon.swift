@@ -92,6 +92,8 @@ struct Icon: View {
     case undo2 = "undo-2"
     case ban
     case triangleAlert = "triangle-alert"
+    // N4: trends
+    case info
 
     var assetName: String { "lucide.\(rawValue)" }
   }

@@ -107,6 +107,8 @@ ICONS = {
     "undo-2": "food: undo the last drink",
     "ban": "training: banned exercise",
     "triangle-alert": "training: exercise to be careful with",
+    # N4: trends
+    "info": "trends: explain a metric (N4)",
 }
 # Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
 # fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.

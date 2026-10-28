@@ -37,3 +37,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - Log: training (the muscle load map drawn natively, today's plan with set-by-set logging and submit, banned / caution exercises with the user's own reason, the week, exercise limits, the history calendar with each day's detail) and the journal (tags, numbers, body events); Food moves here while circles are on;
   - health record from Me: supplements with today's check-in, lab results with each test's trend chart, body events;
   - everything opens on the local copy, offline too; writes wait in the offline queue and show on the page at once.
+- Native Trends tab and reports (#340 N4):
+  - every WHOOP metric of `/trends` over 1 week / 1 month / 3 months / 1 year with "vs previous period", ending on any day (calendar); recovery, strain, sleep vs need, recovery vs strain, training load, weekly aerobic minutes and volume, heart-rate zones, sleep regularity, VO₂max fitness level;
+  - Swift Charts with a tap / press-and-slide read-out of single days; a year's labels carry the year;
+  - status cards as of the end date (HRV status, training status with load focus, resilience, illness risk, body battery, recovery time, lowest-HR timing, heart-rate recovery, chronotype); seven of them are computed on the phone with the algorithm bundle when the local history covers their window;
+  - the last 14 nights (stages, schedule, the list opens the sleep detail page), the weekly / monthly report with the behaviour card;
+  - every metric opens its explanation; with `ui_ai_first` an 「问 Jarvis」 bar on top.

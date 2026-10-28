@@ -64,7 +64,7 @@ struct MainTabView: View {
   @ViewBuilder private func screen(_ tab: AppTab) -> some View {
     switch tab {
     case .today: TodayView(session: session)                                              // N3
-    case .trends: PlaceholderTab(tab: tab, owner: "N4")
+    case .trends: TrendsView(session: session)                                            // N4
     case .circles: CirclesTab()                                                           // N7
     case .food: FoodTab(session: session)                                                 // N5
     case .record: RecordTab(session: session)                                             // N5
