@@ -9,6 +9,11 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - a GRDB database per account, the sync coordinator with an offline queue, the JavaScriptCore algorithm runtime;
   - the copied HealthKit sync code;
   - a minimal Today tab drawing the three rings from `/v1/users/me/today`.
+- Native Today tab (#340 N3):
+  - three rings side by side, core numbers, strain target, health monitor, body status (weight opens a native weigh-in sheet), reminders, sync and circles cards;
+  - look-back calendar and pull to refresh;
+  - the sleep detail page (stage chart in Swift Charts) and explain sheets with an 「问 AI」 hook;
+  - everything is read from the local database; the N1 scoring bundle runs in JavaScriptCore and fills days the server has not scored once the phone has raw samples.
 - Sign-in, sync center and Me (#340 N8):
   - sign in with Apple, an e-mail code, the setup QR code / `watch2whoop://setup` link, or an activation code; invite code for pending accounts; the consent (text and version from the server), the profile and Health access (one sheet for every type) follow once;
   - the sync center: one-tap sync, the overall state, where it is stuck in plain words with a button to fix it, first-sync progress, history backfill (90 days / all, continues in the background), re-sync of 7 / 30 / 90 days / all, phone vs server per type;

@@ -142,6 +142,7 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 ### 5.2 拉取
 
 - **N0（现在）**：`LegacyRemote` 调原有的 GET 接口，把结果原样存进 `docs`；`.changes` 目前只拉今天的文档。各页面在 N2 之前照这个做法：在 `LegacyRemote` 里加自己的 scope，把接口结果存进 `docs`。
+  - 一个页面要好几份文档时（N3 起），用 `Sync/DocPull.swift` 的 `DocPuller`：`[DocFetch(文档键, 请求)]` 并行拉、原样存；断网保留缓存，403 / 404（没有共享、开关没开）删掉那份文档，页面就隐藏那一块。主文档仍走 `session.sync.refresh`（状态行和离线队列在那里）。
 - **N2（服务器已实现，`body_engine/src/body_engine/nativesync/`）**：`DeltaRemote` 调 `POST /v1/sync/pull`：
 
   ```json
@@ -252,6 +253,12 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **app 内置的公钥**：放在 `apps/ios/Watch2Whoop/Algorithms/AlgoSigningKeys.swift`，有 `current` 和 `next` 两个位置，值是 `algo-keygen` 打印的 base64。仓库里的 `packages/openbodyscore-js/signing-keys.json` 必须和它一字不差，`body_engine/tests/test_native_sync.py` 的 `test_repository_keys_match_the_app` 会比对两边，还会检查仓库里的 `dist/` 要么没签名，要么是这两把钥匙之一签的。现在两把都还是 `nil`，等部署者生成钥匙后，在同一个 PR 里两处一起填上。
 - **轮换**：先发一版 app，把新钥匙放进 `next`。等大多数人更新以后，开始用新钥匙签名。再下一版 app 把它挪到 `current`，`next` 留空或放再下一把。`BundleVerifier` 会两把都试。
 - **没有签名时**：Debug 版接受，方便本地开发直接用没签名的 `dist/`。Release 版（TestFlight / App Store）拒绝（`AlgorithmError.verification("unsigned")`），继续用内置包或上一个 `active` 版本。签名不对时两种版本都拒绝。
+
+### 6.4 N1 的包在 app 里怎么接（N3）
+
+- N1 交付的 `packages/openbodyscore-js/dist/openbodyscore.js` 用的是自己的入口（全局 `OpenBodyScore`：`buildInputs`、`computeDays`、`stressDays`、`trend`……），不是 6.1 的 `OBS.call(name, json)`。`Algorithms/OpenBodyScoreRuntime.swift` 直接调这些入口：一个 JS 胶水函数，JSON 进、JSON 出，在串行队列上执行。`AlgorithmRuntime`（api 1）和 `algo-builtin.js` 占位先留着，给 N2 的下载 / 签名流程用；N2 统一调用约定时二选一。
+- 这个文件由 `project.yml` 作为资源打进 app，仓库里只有 `packages/` 下那一份。
+- 加载一次要解析约 140 kB 的 JS，所以只在后台、确实要算的时候才建。
 
 ## 7. 和服务器的接口
 
@@ -379,6 +386,48 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 6. 需要新表就在 `Schema` 末尾追加迁移。
 7. 测试：解析服务器 JSON 的模型、本地读写、队列行为，至少各有一个单元测试。用虚构的数据。
 
+### 9.1 N3 今天：数据从哪来，本机算分还缺什么
+
+**文档键**（表 `docs`，`Features/Today/TodayStore.swift` 的 `TodayDocs`）
+
+| 键 | 接口 | 用在 |
+|---|---|---|
+| `today:current` / `today:<日期>` | `/today[?date=]`（N0） | 三环、恢复词、睡眠时长 / 需求 / 睡眠债、HRV、静息心率、负荷状态、提醒 |
+| `today.activity:<日期>` | `/training/day/{日期}` → `daily` | 步数、活动、锻炼 |
+| `today.coach:<日期>`、`today.monitor:<日期>` | `/strain-coach`、`/health-monitor` | 负荷目标、健康监测 |
+| `memory:me` | `/memory` → `status` | 身体状态卡（点体重 = 记体重） |
+| `sync:overview` | `/sync/overview?in_app=1` | 同步卡 |
+| `circles:overview` | `/v1/friends/overview`（`friends` 开关） | 圈子入口卡（页面由 N7 做） |
+| `days:<年-月>` | `/days?month=` | 顶部日期 → 月历回看 |
+| `sleep:night:<日期>` / `latest` | `/sleep/night`（`sleep_detail` 开关） | 睡眠详情 |
+| `explain:<kind>:<键>:<日期>` | `/explain/metric/…`、`/explain/status/…` | 讲解弹层 |
+| `weight:recent` | `/weight/recent` | 记体重弹层 |
+
+- 一次读库（`TodaySnapshot.read`）拿齐当天要的全部文档，再加上本机算的分数行。`ValueObservation` 用 `.immediate`，`TodayStore` 在 `TodayView` 初始化时就读第一份，所以第一帧就有缓存的数字。
+- 写操作：
+  - 提醒的「已看 / 不再提醒」：先改本地的 `today:*` 文档，再排队 `PATCH /reminders/{id}`。
+  - 记体重：先写 `records`（kind `weight`，`pending`），再排队 `POST /weight`（带 `client_id`）。409 时提示「用这次的覆盖」。
+- 「问 AI」：`DesignSystem/AskAI.swift` 的环境值 `\.askAI`，默认把问题复制到剪贴板；N6 在外层把它设成打开 Jarvis。
+
+**本机算分**（`Features/Today/LocalScoring.swift`）：已经接上，测试里用 40 天虚构数据跑通。
+
+- 流程：本地 `hk_samples`（心率、HRV SDNN、呼吸、血氧、手腕温度、静息心率、睡眠阶段）+ `sleep_sessions` + `daily_metrics` → `buildInputs` → `computeDays` → 写进 `daily_scores`（origin `app`，带 `algo_version`）。
+- 只填服务器没有分数的那一天（离线、还没同步），不覆盖服务器的行。
+
+现在实际上不会跑，因为还缺：
+
+1. **本地原始数据**：同步引擎写 `hk_samples` 是 N8 的事；删掉重装后的全量恢复（`raw` stream）是 N2 的事。在那之前这些表是空的，`hasRawData` 为假，页面照旧显示服务器的分数。
+2. **足够长的历史**：恢复分要 60 天基线（≥ 14 晚），CTL / ATL 从算分起点算，HRmax 看 365 天。本机历史短的时候，算出来和服务器不一样，所以只当兜底。
+3. **`hrv_kind = rmssd` 的用户**：要逐拍心跳序列（`heartbeat_series`），本地还没有这张表。现在只有 `sdnn` 的人能在本机算。
+4. **只有服务器有的输入**：多设备、多来源的合并，力量训练记录（肌肉负荷），个人资料（生日）等，见 `packages/openbodyscore-js/README.md` 的「Inputs only the server can provide」。
+5. **上传**：`PUT /v1/users/me/scores/app`（N2）还没有，本机算的行不上传。
+
+**性能**：`PerfProbe` 打 `W2W_PERF` 日志和 signpost（`today data`、`today rings`）。
+
+- 启动环境变量 `W2W_PERF=1` 时开帧计数器；`W2W_PERF_SCROLL=1` 时今天页自己上下滚三次，并报告掉帧。看结果：`xcrun simctl launch --console-pty … | grep W2W_PERF`。
+- 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
+- Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`）。
+
 ### 9.2 N7 圈子：数据从哪来、写怎么走
 
 - **读**：圈子数据只在服务器上（别人的数据不进本地表），`CirclesStore` 先读本地缓存、再请求接口，回答原样或合并后存进 `docs`：`circles:list`（`GET /v1/friends`）、`circles:overview:<all|圈子 id>`、`circles:feed:<all|圈子 id>`（`FeedCache`：已经看过的帖子 + 下一页游标，最多 120 条）、`circles:board:<榜>:<圈子>`、`circles:comments:<帖子>`、`circles:unread`。打开就是上次的样子，离线也一样；顶部标「离线 · 显示上次的内容」。
@@ -424,6 +473,10 @@ N8 的登录、同意书、我、同步中心（iPhone 17 模拟器，合成数�
 N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 
 <img src="images/ios-native/n0-today-light.png" width="240" alt="N0 今天 tab，浅色"> <img src="images/ios-native/n0-today-dark.png" width="240" alt="N0 今天 tab，深色">
+
+N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
+
+<img src="images/ios-native/n3-today-zh-light.png" width="180" alt="N3 今天，中文浅色"> <img src="images/ios-native/n3-today-zh-dark.png" width="180" alt="N3 今天，中文深色"> <img src="images/ios-native/n3-today-en-light.png" width="180" alt="N3 Today, English"> <img src="images/ios-native/n3-sleep-dark.png" width="180" alt="N3 睡眠详情，深色"> <img src="images/ios-native/n3-explain-light.png" width="180" alt="N3 讲解弹层">
 
 **发布**（`apps.md` 第 4 节）
 
@@ -500,7 +553,7 @@ N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 - Flutter items are kept so a rollback to 1.0.8 still works; native sign-out removes them.
 
 **Pages**
-- N3: Today, sleep and explain sheets.
+- N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points). `LocalScoring` computes a day from the local raw tables and fills only days the server has not scored. It stays idle until N8 writes `hk_samples` and N2 restores raw data; it cannot serve `rmssd` users (no beat-to-beat table) and cannot match the server's long baselines with a short local history.
 - N4: Trends and reports.
 - N5: all records and the Food tab.
 - N6: Jarvis.
