@@ -5,6 +5,8 @@
 W2W_BUNDLE_ID = org.watch2whoop.app
 W2W_TEAM_ID =
 W2W_DISPLAY_NAME = Watch2Whoop
+// Host of the default server on the sign-in screen, e.g. body.example.com (no scheme: two slashes start a comment here).
+W2W_DEFAULT_HOST =
 
 // Version shown in TestFlight (docs/apps.md section 4: the public name is the version only; the build number goes up
 // for every upload of the same version).

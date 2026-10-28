@@ -5,23 +5,37 @@ import UIKit
 struct Watch2WhoopApp: App {
   @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   @StateObject private var model = AppModel()
+  @Environment(\.scenePhase) private var scenePhase
 
   var body: some Scene {
     WindowGroup {
       RootView()
         .environmentObject(model)
         .task { await model.start() }
+        .onOpenURL { model.handle(url: $0) }
+    }
+    .onChange(of: scenePhase) { phase in
+      // Every return to the foreground: one sync round (the phone is unlocked, so Health can be read), at most every
+      // 3 minutes (HealthSyncService.syncOnOpen); the engine's observers and BGTasks cover the time in between.
+      guard phase == .active, model.phase == .signedIn else { return }
+      Task { await HealthSyncService.shared.syncOnOpen() }
     }
   }
 }
 
-/// UIKit hooks the sync engine needs before any view exists: the backfill's background task and its background
-/// URLSession (copied Backfill.swift), re-attached at every launch so iOS can deliver finished uploads.
+/// UIKit hooks the sync needs before any view exists. Both BGTask handlers must be registered before launch finishes;
+/// HealthKit's observers are set up again on every launch, including the background launches HealthKit makes for them.
 final class AppDelegate: NSObject, UIApplicationDelegate {
   func application(_ application: UIApplication,
                    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+    // History backfill (Backfill.swift): its BGProcessingTask, and its background URLSession re-attached so iOS can
+    // deliver uploads that finished while the app was not running.
     Backfill.register()
     Backfill.shared.attach()
+    // The app's own sync engine (#219): BGAppRefresh `watch2whoop.sync.refresh`, BGProcessing `watch2whoop.sync.process`,
+    // HealthKit observers + background delivery, unlock / network-back resumes. It keeps its own configuration (server,
+    // token in the Keychain, registry, mode), so background rounds run without any view or account session.
+    SyncEngine.register()
     Appearance.apply()
     return true
   }
@@ -34,6 +48,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     } else {
       completionHandler()
     }
+  }
+
+  func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+    Task { @MainActor in PushRegistration.shared.received(deviceToken) }
+  }
+
+  func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+    Task { @MainActor in PushRegistration.shared.failed() }
   }
 }
 

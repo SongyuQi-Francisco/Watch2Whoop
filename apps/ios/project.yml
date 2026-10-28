@@ -55,10 +55,13 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIBackgroundModes: [fetch, processing]
+        UIBackgroundModes: [fetch, processing, remote-notification]
+        # Default server host for the sign-in screen (git-ignored Watch2Whoop.local.xcconfig; empty = ask)
+        W2WDefaultHost: $(W2W_DEFAULT_HOST)
         BGTaskSchedulerPermittedIdentifiers:
           - watch2whoop.sync.backfill
           - watch2whoop.sync.refresh
+          - watch2whoop.sync.process
         CFBundleURLTypes:
           - CFBundleURLName: watch2whoop
             CFBundleURLSchemes: [watch2whoop]
@@ -70,6 +73,9 @@ targets:
     entitlements:
       path: Watch2Whoop/Watch2Whoop.entitlements
       properties:
+        com.apple.developer.applesignin: [Default]
+        # Push (#175): development here; exporting for App Store Connect / TestFlight signs it as production
+        aps-environment: development
         com.apple.developer.healthkit: true
         com.apple.developer.healthkit.access: []
         com.apple.developer.healthkit.background-delivery: true

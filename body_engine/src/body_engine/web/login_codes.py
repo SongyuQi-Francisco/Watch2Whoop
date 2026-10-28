@@ -49,6 +49,13 @@ def create(conn: psycopg.Connection, user_id: int, label: str | None = None, hou
 
 def redeem(conn: psycopg.Connection, code: str, user_agent: str | None = None) -> tuple[str, dict] | None:
     """If the code is valid, invalidate it, issue a device token, create a session, and return (plaintext session ID, user); otherwise None."""
+    token = redeem_token(conn, code)
+    return None if token is None else session.login(conn, token, user_agent)
+
+
+def redeem_token(conn: psycopg.Connection, code: str) -> str | None:
+    """If the code is valid, invalidate it and return a new device token (the native app keeps it in the Keychain and
+    sends it as Bearer, #340 N8: it has no web view for the cookie); otherwise None."""
     if len(normalize(code)) != LENGTH:
         return None
     row = conn.execute(
@@ -60,4 +67,4 @@ def redeem(conn: psycopg.Connection, code: str, user_agent: str | None = None) -
     token = auth.create_token(conn, row["user_id"], f"app:{row['label'] or 'login-code'}", list(row["scopes"]))
     conn.execute("""UPDATE web_login_codes SET token_id = (SELECT id FROM api_tokens WHERE token_sha256 = %s)
                     WHERE id = %s""", (auth.hash_token(token), row["id"]))
-    return session.login(conn, token, user_agent)
+    return token
