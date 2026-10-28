@@ -106,6 +106,60 @@ test("api: buildInputs from raw local rows + computeDays give the server's rows,
   assert.strictEqual(O.computeDays(inp, { last: r.first, today: r.today })[0].date, Object.keys(e.daily_rhr).sort()[0]);
 });
 
+// The server's spot check of app-computed rows (body_engine nativesync/params.CHECK_TOLERANCE): a seeded run must stay
+// within it. Keep in step with that file.
+const CHECK_TOLERANCE = { sleep_score: 1, recovery: 1, sleep_need_min: 1, sleep_debt_min: 1, sleep_actual_min: 1,
+  sleep_performance: 0.01, hrv_night_ln: 0.001, rhr_night: 0.1, resp_rate_night: 0.1, trimp: 0.1, strain: 0.1,
+  muscle_load: 0.1, ctl: 0.1, atl: 0.1, tsb: 0.1, hr_max: 1 };
+
+test("seeded run (the phone): a later first + stored rows + day histograms = the full recompute within the check tolerance", () => {
+  const inp = O.inputs.normalize(C.engine.inputs);
+  const r = C.engine.runs[0];
+  const full = plain(O.engine.score_days(inp, r.first, r.last, r.today));
+  const seeded = (first, prior) => {
+    const keep = U.combine(U.addDays(first, -2), 0, TZ);   // the phone keeps raw samples from two days before `first`
+    const recent = (xs) => xs.filter((p) => p[0] >= keep);
+    const hist = {};
+    inp.hr.forEach((p) => {
+      if (p[0] >= keep) return;
+      const d = U.localDate(p[0], TZ), b = U.round(p[1]);
+      hist[d] = hist[d] || {};
+      hist[d][b] = (hist[d][b] || 0) + 1;
+    });
+    const src = Object.assign({}, inp, { hr: recent(inp.hr), hrv: recent(inp.hrv), resp: recent(inp.resp), spo2: recent(inp.spo2),
+      temp: recent(inp.temp), segments: inp.segments.filter((s) => s[0] >= U.combine(U.addDays(first, -20), 0, TZ)),
+      hr_hist: hist, seed_rows: JSON.parse(JSON.stringify(prior.filter((x) => x.date < first))) });
+    return plain(O.engine.score_days(src, first, r.last, r.today, { origin: r.first }));
+  };
+  const worstDiff = {};
+  const compare = (rows, label) => {
+    const want = full.filter((x) => x.date >= rows[0].date);
+    assert.strictEqual(rows.length, want.length, label);
+    rows.forEach((row, i) => {
+      assert.strictEqual(row.date, want[i].date);
+      assert.strictEqual(row.hrv_kind, want[i].hrv_kind);
+      Object.keys(CHECK_TOLERANCE).forEach((f) => {
+        const a = row[f], b = want[i][f];
+        if (a === null || b === null) { assert.strictEqual(a, b, `${label} ${row.date} ${f}: ${a} vs ${b}`); return; }
+        const d = Math.abs(a - b);
+        worstDiff[f] = Math.max(worstDiff[f] || 0, d);
+        assert.ok(d <= CHECK_TOLERANCE[f] + 1e-9, `${label} ${row.date} ${f}: ${a} vs ${b}`);
+      });
+      assert.deepStrictEqual(Object.keys(row.flags).filter((k) => k !== "ctl_warmup").sort(),
+        Object.keys(want[i].flags).filter((k) => k !== "ctl_warmup").sort(), `${label} ${row.date} flags`);
+      assert.ok(row.details.load_state, "a seeded row keeps its unrounded load for the next seeded run");
+    });
+  };
+  [20, 35, 50].forEach((k) => compare(seeded(U.addDays(r.first, k), full), `cut ${k}`));
+  // a chain: the rows of one seeded run seed the next one (the phone scores day after day from its own rows)
+  const a = seeded(U.addDays(r.first, 25), full);
+  const prior = full.filter((x) => x.date < a[0].date).concat(a);
+  compare(seeded(U.addDays(r.first, 45), prior), "chain");
+  // nothing seeded = the full recompute (no load_state, Python's rows)
+  assert.ok(full.every((x) => !x.details.load_state));
+  console.log(`seeded run, largest differences from the full recompute: ${JSON.stringify(worstDiff)}`);
+});
+
 test("api: every entry point stamps algo_version and bundle_version", () => {
   const s = C.stress, r = s.runs[0];
   const stress = O.stressDays({ tz: 600, sleep: s.sleep, workouts: s.workouts, hr: s.hr, steps: s.steps, hrv: s.hrv,

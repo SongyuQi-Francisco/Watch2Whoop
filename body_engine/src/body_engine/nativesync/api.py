@@ -1,7 +1,8 @@
 """Endpoints of the native app's sync (#340 N2; docs/ios-native-app.md sections 5 and 7.2). Rollout flag native_sync:
 404 while it is off for the user, and /v1/web/me lists it in `flags` when on, so the app knows the server has them.
 
-POST /v1/sync/pull             {cursors: {stream: cursor|""}, limit?, raw_days?}  -> changes (pull.py)
+POST /v1/sync/pull             {cursors: {stream: cursor|""}, limit?, raw_days?, raw_since?}  -> changes (pull.py)
+GET  /v1/sync/scoring          ?from&to&hist_from&hist_to                         -> the phone's scoring context (scoring.py)
 POST /v1/sync/push             {mutations: [...]}                                 -> one result per mutation (push.py)
 PUT  /v1/users/{user}/scores/app {algo_version, bundle_version, days}             -> stored / checked (appscores.py)
 Only one's own data; pull needs a read token, the writes a write token.
@@ -9,13 +10,13 @@ Only one's own data; pull needs a read token, the writes a write token.
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
-from . import appscores, params as P, pull as PL, push as PS
+from . import appscores, params as P, pull as PL, push as PS, scoring
 
 router = APIRouter(tags=["native-sync"], dependencies=[Depends(flags.require(P.FLAG))])
 
@@ -25,12 +26,13 @@ class PullIn(BaseModel):
     cursors: dict[str, str | None] = Field(min_length=1, max_length=len(P.STREAMS))
     limit: int = Field(P.PULL_LIMIT_DEFAULT, ge=1, le=P.PULL_LIMIT_MAX)
     raw_days: list[date] = Field(default_factory=list, max_length=P.RAW_DAYS_MAX)
+    raw_since: date | None = None   # a raw restore stops at this day (the phone keeps params.APP_RAW_DAYS)
 
 
 @router.post("/v1/sync/pull")
 def sync_pull(body: PullIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     try:
-        return PL.pull(conn, viewer["id"], body.cursors, body.limit, body.raw_days)
+        return PL.pull(conn, viewer["id"], body.cursors, body.limit, body.raw_days, body.raw_since)
     except KeyError as e:
         raise HTTPException(422, L(f"没有这个 stream：{e.args[0]}", f"Unknown stream: {e.args[0]}"))
     except PL.BadCursor:
@@ -57,6 +59,17 @@ def sync_push(body: PushIn, conn=Depends(get_conn), viewer=Depends(current_user)
     _self(viewer, "me")
     conn.commit()   # whatever the auth step wrote; each mutation is its own transaction
     return PS.push(conn, viewer, [m.model_dump() for m in body.mutations])
+
+
+@router.get("/v1/sync/scoring")
+def sync_scoring(from_: date | None = Query(None, alias="from"), to: date | None = None, hist_from: date | None = None,
+                 hist_to: date | None = None, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """What the phone needs from the server to score the user itself (scoring.py): hrv_kind, sync mode, app scoring
+    state; muscle load of [from, to]; per-day heart-rate histograms of [hist_from, hist_to]."""
+    try:
+        return scoring.context(conn, viewer["id"], from_, to, hist_from, hist_to)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 class ScoreDayIn(BaseModel):

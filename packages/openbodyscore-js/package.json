@@ -1,6 +1,6 @@
 {
   "name": "openbodyscore-js",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Watch2Whoop scoring algorithms (recovery, sleep, strain, HRV, stress, body age, trends) as one dependency-free JavaScript file for JavaScriptCore.",
   "license": "AGPL-3.0-only",
   "private": true,

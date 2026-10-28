@@ -323,6 +323,23 @@ def test_comments_text_only_limit_delete_report(client, world, dsn, pair):
     assert client.delete(f"{FEED}/comments/{cid}", headers=h(tok["Ben"])).status_code == 404
 
 
+def test_comment_client_id_dedups_a_resend(client, world, dsn, pair):
+    """The native app's offline queue resends a comment after a timeout with the same client_id: one comment, the first
+    answer again (X-Duplicate); the id works in the body or the X-Client-Id header, and only for comments."""
+    ids, tok, _ = pair
+    log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])
+    pid = get_feed(client, tok["Ben"])["posts"][0]["id"]
+    url = f"{FEED}/posts/{pid}/comments"
+    a = client.post(url, headers=h(tok["Ben"]), json={"body": "once", "client_id": "c-123"})
+    b = client.post(url, headers=h(tok["Ben"]), json={"body": "once", "client_id": "c-123"})
+    assert a.status_code == b.status_code == 201 and b.headers.get("x-duplicate") == "1" and b.json()["id"] == a.json()["id"]
+    c = client.post(url, headers={**h(tok["Ben"]), "X-Client-Id": "c-456"}, json={"body": "header"})
+    d = client.post(url, headers={**h(tok["Ben"]), "X-Client-Id": "c-456"}, json={"body": "header"})
+    assert d.json()["id"] == c.json()["id"]
+    assert [x["body"] for x in client.get(url, headers=h(tok["Ann"])).json()["comments"]] == ["once", "header"]
+    assert client.post(url, headers=h(tok["Ben"]), json={"body": "x", "client_id": "  "}).status_code == 422
+
+
 def test_newest_comments_preview_under_the_post(client, world, dsn, pair):
     ids, tok, _ = pair
     log_sets(dsn, ids["Ann"], [("bench-press", [(8, 60, True)])])

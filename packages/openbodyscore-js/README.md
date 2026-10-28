@@ -25,7 +25,7 @@ local dates are `"YYYY-MM-DD"`; a time zone is an IANA name (`"Australia/Sydney"
 |---|---|
 | `OpenBodyScore.VERSION`, `.ALGO_VERSIONS` | bundle version; `{scores, healthspan, hrv, stress, trends}` |
 | `buildInputs(src)` | scoring inputs from the local rows (sleep sessions, raw samples, stage segments, daily resting HR, workout logs) — the rules of `scores/inputs.py`: watch sleep only, one sample per (kind, time) with live samples winning over export.xml copies, SpO₂ fractions to percent, export.zip stages only for nights nothing else covers |
-| `computeDays(inputs, {first, last, today})` | the server's `daily_scores` rows for `[first, last]`: sleep score / need / debt / performance, HRV and resting HR of the night, recovery, TRIMP, strain, HRmax, muscle load, CTL / ATL / TSB, `flags`, `details` (same keys and texts as the server) |
+| `computeDays(inputs, {first, last, today, origin})` | the server's `daily_scores` rows for `[first, last]`: sleep score / need / debt / performance, HRV and resting HR of the night, recovery, TRIMP, strain, HRmax, muscle load, CTL / ATL / TSB, `flags`, `details` (same keys and texts as the server). With `seed_rows` / `hr_hist` in the inputs it is the phone's seeded run (below); `origin` then only places the CTL warm-up flag |
 | `computeDay(inputs, date, {first, today})` | the row of one day (computed from the scoring origin, so baselines and CTL are the full-history ones) |
 | `stressDays(src, start, end)` | `stress_daily` rows (score 0–3, level, hours) |
 | `healthspanSnapshot(data, asOf)`, `healthspanWeekly(data, origin, today)` | body age, pace of aging, contributors (v1.2) |
@@ -50,6 +50,23 @@ const inputs = OpenBodyScore.buildInputs({
 });
 const rows = OpenBodyScore.computeDays(inputs, { today: "2026-08-02" });   // [{date, recovery, strain, …, algo_version}]
 ```
+
+## The phone's seeded run (0.2.0, #340 N2b)
+
+The server always recomputes from the scoring origin. The phone keeps raw samples for about 60 days only, so it starts at a
+later `first` and brings the history in through two extra fields of `buildInputs(src)` (the server never passes them, and
+without them every result is exactly Python's):
+
+- `seed_rows`: the stored `daily_scores` rows of the ~62 days before `first`. Their HRV / resting HR / respiration / wrist
+  temperature / sleep performance feed the 60-day baselines, their strain the next night's sleep need, their CTL / ATL
+  (`details.load_state` when a seeded run wrote the row: unrounded) and TRIMPs the training load. The actual sleep of those
+  nights is recomputed from `sleep_sessions` (exact).
+- `hr_hist`: `{date: {bpm: count}}`, the heart-rate histogram of each day without raw samples (the 365-day HRmax window).
+
+Stored values are rounded, so a seeded row can differ from the full recompute by one rounding step (CTL 0.1, recovery 1),
+which is exactly what the server's spot check allows (`body_engine/src/body_engine/nativesync/params.CHECK_TOLERANCE`).
+`test/golden.test.js` checks three cut points and a chain of two seeded runs against the full recompute. Rows of a seeded
+run carry `details.load_state`.
 
 ## Inputs only the server can provide
 

@@ -167,6 +167,35 @@ enum Schema {
         t.column("active", .boolean).notNull().defaults(to: false)
       }
     }
+
+    // #340 N2b: the phone scores app-mode users itself (docs/ios-native-app.md section 9.1).
+    m.registerMigration("v2_local_scoring") { db in
+      // Beat-to-beat HRV readings (RMSSD users): the phone's own (beats kept until the bundle computed RMSSD / SDNN, then
+      // dropped) and the server's (pulled raw stream, RMSSD only). Pruned with hk_samples (LocalRawStore.keepDays).
+      try db.create(table: "heartbeat_series") { t in
+        t.primaryKey("uuid", .text)
+        t.column("start", .double).notNull().indexed()      // whole seconds, like the server's start_at
+        t.column("end", .double).notNull()
+        t.column("rmssd", .double)
+        t.column("sdnn", .double)
+        t.column("beats", .blob)                            // JSON {"t": [s since start], "gaps": [bool]}; nil once analysed
+        t.column("origin", .text).notNull()                 // phone | server
+      }
+      // Per-day heart-rate histogram {bpm: count} (the scores' 365-day HRmax window) for days whose raw samples are gone.
+      try db.create(table: "hr_day_hist") { t in
+        t.primaryKey("date", .text)
+        t.column("hist", .blob).notNull()                   // JSON {"61": 12, …}
+        t.column("source", .text).notNull()                 // phone (from hk_samples) | server (GET /v1/sync/scoring)
+        t.column("updated_at", .double).notNull()
+      }
+      // Days whose scoring inputs changed since they were last scored here (new samples, pulled sleep / daily / raw).
+      try db.create(table: "score_dirty") { t in
+        t.primaryKey("date", .text)
+        t.column("at", .double).notNull()
+      }
+      // The server's whole session as it came from the sleep stream (asleep / stage minutes, device): the scores use them.
+      try db.alter(table: "sleep_sessions") { t in t.add(column: "payload", .blob) }
+    }
     return m
   }
 }

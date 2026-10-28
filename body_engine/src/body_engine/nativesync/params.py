@@ -16,6 +16,15 @@ RAW_DAYS_MAX = 7                  # explicit raw_days per request (re-scoring a 
 # ("先拉最近 14 天再往前补"). Raw data older than RAW_CELLULAR_DAYS is the app's to fetch on Wi-Fi only.
 RAW_CELLULAR_DAYS = 90
 
+# ---------------------------------------------------------------- the phone's own scoring (#340 N2b, nativesync/scoring.py)
+# The phone keeps APP_RAW_DAYS of raw samples (heart rate, HRV, respiration, SpO2, wrist temperature, resting heart rate,
+# sleep stages, beat-to-beat RMSSD) and recomputes changed days within them; a full restore pulls raw data that far back
+# (pull's raw_since). Older history reaches its scoring as stored rows and per-day heart-rate histograms (seeded run).
+APP_RAW_DAYS = 60
+SEGMENT_DAYS = APP_RAW_DAYS + 2   # the sleep stream carries the server's stage segments of these recent nights
+HIST_MAX_DAYS = 430               # GET /v1/sync/scoring?hist_from=&hist_to=: one request covers the HRmax window and a bit
+MUSCLE_MAX_DAYS = 120             # ... &from=&to=: the muscle load of the days the phone recomputes
+
 # ---------------------------------------------------------------- push
 PUSH_MAX_MUTATIONS = 100
 CLIENT_ID_MAX = 64

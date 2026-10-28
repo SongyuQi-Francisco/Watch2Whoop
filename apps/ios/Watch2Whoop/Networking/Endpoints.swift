@@ -102,8 +102,9 @@ enum Endpoint {
     return .get("/v1/users/\(user)/journal/analysis", q)
   }
 
-  // N2 (new; not on the server yet): incremental sync, app-computed scores, algorithm bundles
+  // N2 / N2b: incremental sync, the phone's scoring context, app-computed scores, algorithm bundles
   static let syncPull = "/v1/sync/pull"
+  static let syncScoring = "/v1/sync/scoring"
   static let syncPush = "/v1/sync/push"
   static let scoresUpload = "/v1/users/me/scores/app"
   static let algoManifest = "/v1/algo/manifest"

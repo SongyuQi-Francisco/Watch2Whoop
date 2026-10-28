@@ -34,18 +34,6 @@ struct LegacyRemote: RemoteSync {
   }
 }
 
-/// N2's incremental pull. Not on the server yet: always "not available", so the coordinator uses `LegacyRemote`.
-struct DeltaRemote: RemoteSync {
-  let api: APIClient
-  struct NotAvailable: Error {}
-
-  func pull(_ scope: PullScope, into db: AppDatabase) async throws -> [String] {
-    // N2: POST Endpoint.syncPull {"cursors": {stream: cursor}, "limit": n} → {"changes": [...], "cursors": {...},
-    // "more": bool}; apply in one transaction per page, then save the cursors (section 5.2).
-    throw NotAvailable()
-  }
-}
-
 /// Document keys in the `docs` table, in one place.
 enum DocKey {
   static func today(_ date: String) -> String { "today:\(date)" }
@@ -71,14 +59,21 @@ final class SyncCoordinator: ObservableObject {
   private let api: APIClient
   private let delta: RemoteSync
   private let legacy: RemoteSync
-  private var deltaAvailable = false   // N2: set from /v1/web/me (feature) once the server has it
+  /// The server has N2's sync for this user (flag `native_sync` in `/v1/web/me`; `AccountSession` sets it): the scoring
+  /// inputs are pulled incrementally and the phone scores the user itself (`ScoringSync`, #340 N2b).
+  var deltaAvailable = false
+  /// The phone's own scoring (N2b).
+  let scoring: ScoringSync
+  @Published private(set) var lastScoring: ScoringSync.Report?
 
-  init(db: AppDatabase, api: APIClient, delta: RemoteSync? = nil, legacy: RemoteSync? = nil) {
+  init(db: AppDatabase, api: APIClient, delta: RemoteSync? = nil, legacy: RemoteSync? = nil, scoring: ScoringSync? = nil) {
     self.db = db
     self.api = api
     self.queue = OfflineQueue(db: db)
-    self.delta = delta ?? DeltaRemote(api: api)
+    self.delta = delta ?? DeltaRemote(api: api, zone: { ScoringSync.zone(db) })
     self.legacy = legacy ?? LegacyRemote(api: api)
+    self.scoring = scoring ?? ScoringSync(db: db, api: api)
+    self.lastScoring = ScoringSync.lastReport(db)
   }
 
   /// Pull `scope`, then send queued writes. Errors end up in `status`; cached data stays on screen.
@@ -86,17 +81,28 @@ final class SyncCoordinator: ObservableObject {
     status = .syncing
     do {
       if deltaAvailable, scope == .changes {
+        // the scoring inputs (scores, daily, sleep; raw during the first restore), then the today document as before
         _ = try await delta.pull(scope, into: db)
-      } else {
-        _ = try await legacy.pull(scope == .changes ? .today(date: nil) : scope, into: db)
       }
+      _ = try await legacy.pull(scope == .changes ? .today(date: nil) : scope, into: db)
       lastPull = Date()
       try await queue.drain(send: OfflineQueue.apiSender(api))
       status = .idle
+      if deltaAvailable, scope == .changes { scoreSoon(reason: "pull") }
     } catch let e as APIError {
       if case .network = e { status = .offline } else { status = .failed(e.userMessage) }
     } catch {
       status = .failed(String(describing: error))
+    }
+  }
+
+  /// The phone's scoring in the background (one run at a time; a run asked for while one goes is folded into it).
+  func scoreSoon(reason: String) {
+    guard deltaAvailable else { return }
+    let scoring = self.scoring
+    Task.detached(priority: .utility) { [weak self] in
+      let r = await scoring.run(reason: reason)
+      await MainActor.run { self?.lastScoring = r }
     }
   }
 

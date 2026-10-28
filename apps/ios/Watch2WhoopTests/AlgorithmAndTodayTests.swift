@@ -3,24 +3,19 @@ import XCTest
 @testable import Watch2Whoop
 
 final class AlgorithmRuntimeTests: XCTestCase {
-  func testBuiltinBundleFollowsTheCallingConvention() throws {
-    let rt = try AlgorithmRuntime.builtin()
-    XCTAssertEqual(rt.version, "0.0.0-n0")
-    XCTAssertTrue(rt.functions.contains("echo"))
-    struct Input: Codable, Equatable { var day: String; var hrv: [Double?] }
-    let input = Input(day: "2026-01-02", hrv: [41.5, nil, 38])
-    XCTAssertEqual(try rt.call("echo", input, as: Input.self), input)
-  }
-
-  func testErrorsComeBackAsAlgorithmError() throws {
-    let rt = try AlgorithmRuntime.builtin()
-    XCTAssertThrowsError(try rt.callJSON("nope", "{}")) { e in
-      XCTAssertEqual(e as? AlgorithmError, .function(code: "unknown_function", message: "nope"))
+  /// The one calling convention (N2b): the bundle's own entry points through OpenBodyScoreRuntime.
+  func testEntryPointsAndErrors() throws {
+    let rt = try OpenBodyScoreRuntime.builtin()
+    XCTAssertThrowsError(try rt.invoke("nope", [])) { e in
+      XCTAssertEqual(e as? AlgorithmError, .function(code: "exception", message: "no function nope"))
     }
-    XCTAssertThrowsError(try AlgorithmRuntime(source: "globalThis.OBS = {apiVersion: 2}")) { e in
-      XCTAssertEqual(e as? AlgorithmError, .apiMismatch(2))
+    XCTAssertThrowsError(try OpenBodyScoreRuntime(source: "globalThis.OBS = {apiVersion: 1}")) { e in
+      XCTAssertEqual(e as? AlgorithmError, .load("no OpenBodyScore object"))
     }
-    XCTAssertThrowsError(try AlgorithmRuntime(source: "this is not javascript"))
+    XCTAssertThrowsError(try OpenBodyScoreRuntime(source: "this is not javascript"))
+    XCTAssertEqual(AlgoBundles.version(of: "/*! openbodyscore-js 0.12.3 | AGPL */"), "0.12.3")
+    XCTAssertTrue(OpenBodyScoreRuntime.isNewer("0.10.0", than: "0.9.3"))
+    XCTAssertFalse(OpenBodyScoreRuntime.isNewer("0.2.0", than: "0.2.0"))
   }
 
   func testVerifierChecksHashAndSignature() throws {

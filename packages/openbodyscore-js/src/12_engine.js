@@ -3,6 +3,16 @@
 Every run computes from the scoring start (the user's first day with a resting heart rate) up to `last`, so results depend
 only on the data: CTL / ATL, the 60-day baselines, 14 nights of sleep debt and the 365-day HRmax window all need earlier history.
 The flag texts are the server's (Chinese, read by the AI), so a row computed here is the same row the server would store.
+
+The phone's seeded run (not in Python; the server always starts at the scoring origin): the phone keeps raw samples for a
+few weeks only, so it starts at a later `first` and carries the history in through the inputs:
+- inp.hr_hist {date: {bpm: count}}: the heart-rate histogram of a day without raw samples (the 365-day HRmax window);
+- inp.seed_rows: the stored daily_scores rows of the days before `first`: their HRV / resting HR / respiration / wrist
+  temperature / sleep performance feed the 60-day baselines, their strain the next night's sleep need, their CTL / ATL
+  (details.load_state when the phone wrote the row: unrounded) and TRIMPs the load; the actual sleep of those nights is
+  recomputed from inp.nights (exact), and the stored value is used only when the night is not there.
+The stored values are rounded (HRV ln 4 decimals, resting HR 0.1, CTL 0.1 …), so a seeded row can differ from the full
+recompute by a rounding step; nativesync/params.CHECK_TOLERANCE on the server allows exactly that (test: golden.test.js).
 */
 OBS.engine = (function (U, P, R, S, L, I) {
   "use strict";
@@ -58,7 +68,10 @@ OBS.engine = (function (U, P, R, S, L, I) {
    * Compute the scores day by day for [first, last] (local dates). Pure: uses only the data in inp
    * (inputs.build / inputs.normalize output: instants in microseconds, series sorted). today: local date (default: now).
    */
-  function score_days(inp, first, last, today) {
+  function has(v) { return v !== null && v !== undefined; }
+
+  function score_days(inp, first, last, today, opts) {
+    opts = opts || {};
     var tz = U.tzOf(inp.tz);
     today = today || U.localDate(Date.now() * 1000, tz);
     var shortcut = {};
@@ -78,6 +91,13 @@ OBS.engine = (function (U, P, R, S, L, I) {
     var mainsSorted = Array.from(byWake.keys()).map(function (d) { return main[d]; }).sort(byStart);
     var prevMainEnd = {};
     for (var i = 0; i + 1 < mainsSorted.length; i++) prevMainEnd[mainsSorted[i + 1].wake_date] = mainsSorted[i].end;
+    /** Naps between the previous main sleep (at most 24 h back) and this night: they count towards its actual sleep. */
+    function napMinutes(night) {
+      var prevMains = mainsSorted.filter(function (n) { return n.end <= night.start; });
+      var lo = Math.max(prevMains.length ? prevMains[prevMains.length - 1].end : night.start - 24 * U.US_HOUR,
+        night.start - 24 * U.US_HOUR);
+      return U.pySum(naps.filter(function (n) { return n.start >= lo && n.end <= night.start; }).map(function (n) { return n.asleep_min; }));
+    }
 
     // ---- strain: heart rate by local date; the minutes each sample represents over the whole timeline
     var hrTimes = inp.hr.map(function (s) { return s[0]; });
@@ -91,6 +111,8 @@ OBS.engine = (function (U, P, R, S, L, I) {
     }
     var histByDay = new Map();
     hrByDay.forEach(function (idx, d) { histByDay.set(d, L.counter(idx.map(function (j) { return U.round(inp.hr[j][1]); }))); });
+    // seeded run: a day the phone keeps no raw heart rate for counts with its stored histogram
+    Object.keys(inp.hr_hist || {}).forEach(function (d) { if (!histByDay.has(d)) histByDay.set(d, inp.hr_hist[d]); });
     var hrWindow = new L.HrHistogram();
     U.dateRange(U.addDays(first, -P.HRMAX_WINDOW_DAYS), U.addDays(first, -1)).forEach(function (d) {
       if (histByDay.has(d)) hrWindow.add(histByDay.get(d));
@@ -103,6 +125,21 @@ OBS.engine = (function (U, P, R, S, L, I) {
     var times = {};
     ["hr", "resp", "temp", "spo2"].forEach(function (k) { times[k] = inp[k].map(function (s) { return s[0]; }); });
     var segIndex = isSorted(inp.segments) ? new SegIndex(inp.segments) : null;
+
+    // seeded run: the stored rows of the days before `first` stand in for the days not recomputed
+    var seed = {};
+    (inp.seed_rows || []).forEach(function (row) { if (row && row.date && row.date < first) seed[row.date] = row; });
+    var seedDays = Object.keys(seed).sort();
+    seedDays.forEach(function (d) {
+      var row = seed[d], fl = row.flags || {}, rec = (row.details || {}).recovery || {};
+      if (has(row.hrv_night_ln)) feats.hrv[d] = row.hrv_night_ln;
+      if (has(row.rhr_night)) feats[fl.rhr_from_daily ? "rhr_daily" : "rhr"][d] = row.rhr_night;
+      if (has(row.resp_rate_night)) feats.resp_rate[d] = row.resp_rate_night;
+      if (has(rec.wrist_temp)) feats.temp[d] = rec.wrist_temp;
+      if (has(row.sleep_performance)) feats.sleep_performance[d] = row.sleep_performance;
+      if (has(row.strain)) strainByDay[d] = row.strain;
+      if (has(row.sleep_actual_min)) actual[d] = main[d] ? main[d].asleep_min + napMinutes(main[d]) : row.sleep_actual_min;
+    });
 
     U.dateRange(first, last).forEach(function (d) {
       var flags = {}, details = {}, row = {};
@@ -158,10 +195,7 @@ OBS.engine = (function (U, P, R, S, L, I) {
           .slice(-P.CONSISTENCY_WINDOW_NIGHTS).map(function (n) { return n.start; });
         if (!hist.length) flags.consistency_no_history = "前 15 天没有主睡眠，规律性按 OW 规格给 0";
         var sc = S.sleep_score(night.asleep_min, night.deep_min, night.rem_min, night.start, hist, awake_min, awakenings, tz);
-        var prevMains = mainsSorted.filter(function (n) { return n.end <= night.start; });
-        var lo = Math.max(prevMains.length ? prevMains[prevMains.length - 1].end : night.start - 24 * U.US_HOUR,
-          night.start - 24 * U.US_HOUR);
-        var napMin = U.pySum(naps.filter(function (n) { return n.start >= lo && n.end <= night.start; }).map(function (n) { return n.asleep_min; }));
+        var napMin = napMinutes(night);
         actual[d] = night.asleep_min + napMin;
         var back = [];
         for (var k = 1; k <= P.DEBT_NIGHTS; k++) { var a = actual[U.addDays(d, -k)]; back.push(a === undefined ? null : a); }
@@ -252,12 +286,24 @@ OBS.engine = (function (U, P, R, S, L, I) {
     });
 
     // ================= CTL / ATL / TSB (over the consecutive dates from first)
-    var loads = L.training_load(rows.map(function (x) { return x.trimp; }));
+    // seeded run: from the last stored day with a load, through the stored TRIMPs of the days up to `first`
+    var init = null, pre = [];
+    for (var a = seedDays.length - 1; a >= 0 && !(has(seed[seedDays[a]].ctl) && has(seed[seedDays[a]].atl)); a--);
+    if (a >= 0) {
+      var anchor = seed[seedDays[a]], ls = (anchor.details || {}).load_state;
+      init = ls && has(ls.ctl) && has(ls.atl) ? { ctl: ls.ctl, atl: ls.atl } : { ctl: anchor.ctl, atl: anchor.atl };
+      if (seedDays[a] < U.addDays(first, -1))
+        U.dateRange(U.addDays(seedDays[a], 1), U.addDays(first, -1)).forEach(function (d) { pre.push(seed[d] ? seed[d].trimp : null); });
+    }
+    var loads = L.training_load(pre.concat(rows.map(function (x) { return x.trimp; })), undefined, init).slice(pre.length);
+    var origin = opts.origin || seedDays[0] || first;
+    var offset = origin < first ? U.daysBetween(origin, first) : 0;
     rows.forEach(function (row, j) {
       var ld = loads[j];
       row.ctl = r(ld.ctl, 1); row.atl = r(ld.atl, 1); row.tsb = r(ld.tsb, 1);
       if (ld.missing && ld.ctl !== null) row.flags.load_missing = "这天没有完整的 TRIMP，CTL / ATL 沿用前一天";
-      if (j < P.CTL_DAYS) row.flags.ctl_warmup = "评分起点后的前 " + P.CTL_DAYS + " 天，CTL 还没稳定";
+      if (j + offset < P.CTL_DAYS) row.flags.ctl_warmup = "评分起点后的前 " + P.CTL_DAYS + " 天，CTL 还没稳定";
+      if (seedDays.length && ld.ctl !== null) row.details.load_state = { ctl: ld.ctl, atl: ld.atl };
     });
     return rows;
   }

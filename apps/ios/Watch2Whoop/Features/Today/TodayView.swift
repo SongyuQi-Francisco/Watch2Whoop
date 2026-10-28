@@ -154,7 +154,7 @@ struct TodayView: View {
     }
 
     if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
-    if let c = m.circles { CirclesCardView(info: c) { tab = .circles }.padding(.top, 22) }
+    if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
 
     SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
   }
@@ -407,29 +407,5 @@ struct SyncStatusLine: View {
     .font(Typo.label)
     .foregroundColor(Palette.text3)
     .frame(maxWidth: .infinity)
-  }
-}
-
-/// The circles entry (circles stay a first-level entry; N7 builds the page, this only opens its tab).
-struct CirclesCardView: View {
-  let info: TodayModel.Circles
-  let open: () -> Void
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeader(title: tr("圈子", "Circles"))
-      Button(action: open) {
-        HStack(spacing: 12) {
-          Icon(.users, size: 20).foregroundColor(Palette.text2)
-          Text(info.members > 0 ? tr("\(info.members) 位朋友", "\(info.members) friends") : tr("和朋友一起看恢复", "Recovery with friends"))
-            .font(Typo.body).foregroundColor(Palette.text)
-          Spacer()
-          Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
-      }
-      .buttonStyle(PressScale())
-    }
   }
 }
