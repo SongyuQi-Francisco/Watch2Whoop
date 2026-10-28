@@ -523,6 +523,27 @@ def test_provisioning_failure_is_retried(client, dsn, _env, monkeypatch):
         assert row["last_error"] is None and row["next_attempt_at"] is None
 
 
+def test_provisioning_skips_sparkyfitness_once_own_only_for_everyone(client, dsn, _env):
+    """Issue #252: with own_food_only on for everyone the logs live in Body Engine; no SparkyFitness account is made."""
+    from body_engine.rollout import flags
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        flags.set_flag(conn, "own_food_only", "all", actor="test")
+        conn.commit()
+    try:
+        s = _email_login(client, "ownonly@example.com", "app")
+        h = {"Authorization": f"Bearer {s['token']}"}
+        r = client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]})
+        assert r.status_code == 200 and r.json()["provisioning"]["state"] == "done"
+        assert r.json()["provisioning"]["steps"]["sparky"] == "skipped"
+        assert not [a for a in _env["sparky"].accounts if a[0] == f"w2w-u{s['me']['id']}@users.watch2whoop.invalid"]
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert sparky_client.link_state(conn, s["me"]["id"])["state"] == "connected"   # no "not connected" hint
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.set_flag(conn, "own_food_only", "off", actor="test")
+            conn.commit()
+
+
 def test_new_accounts_on_the_engine_get_no_ow(client, dsn, _env, monkeypatch):
     """#219 S5b: while apple_sync_new_accounts (global) and apple_sync_engine are both `all`, provisioning creates no OW
     user and the account starts in the sync mode app; no OW invitation code anywhere; the data status, the broken check

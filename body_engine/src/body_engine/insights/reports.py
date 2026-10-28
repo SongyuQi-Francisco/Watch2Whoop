@@ -95,7 +95,7 @@ def _training_block(conn, user_id: int, start: date, end: date, sparky=None) -> 
     out = {"sessions": None, "strength_sessions": None, "workouts": None, "workout_minutes": None, "by_type": {},
            "error": None}
     try:
-        sparky = sparky or sparky_client.client_for_user(conn, user_id)
+        sparky = sparky or sparky_client.reader_for_user(conn, user_id)
         log = sparky_client.training_log(sparky, start, end)
         out["sessions"] = len(log)
         out["strength_sessions"] = sum(1 for s in log if any((e.get("category") or "strength") == "strength"
@@ -115,7 +115,7 @@ def _training_block(conn, user_id: int, start: date, end: date, sparky=None) -> 
 
 def _weight_block(conn, user_id: int, start: date, end: date, sparky=None) -> dict:
     try:
-        sparky = sparky or sparky_client.client_for_user(conn, user_id)
+        sparky = sparky or sparky_client.reader_for_user(conn, user_id)
         rows = [r for r in sparky_client.weight(sparky, start - timedelta(days=30), end) if "weight_kg" in r]
     except Exception as e:
         return {"error": f"SparkyFitness：{type(e).__name__}: {e}"}
@@ -203,7 +203,7 @@ def report(conn: psycopg.Connection, user_id: int, period: str, end: date, spark
     cur, prev = block(start, end), block(pstart, pend)
     if {"training", "weight"} & can or nutrition:
         try:
-            sparky = sparky or sparky_client.client_for_user(conn, user_id)
+            sparky = sparky or sparky_client.reader_for_user(conn, user_id)
         except Exception:
             sparky = None
     if "training" in can:

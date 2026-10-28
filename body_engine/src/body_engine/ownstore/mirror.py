@@ -6,7 +6,7 @@ exercises, so the copy matches what it actually stored; updates, deletes, rollba
 dates", with no mirror logic per operation. Anything missed (a change made in the SparkyFitness app itself, a failed sync)
 is caught up by `body-engine sparky-migrate`.
 
-Flag off: returns at once — no extra request, no table touched, exactly the behaviour before. A failing sync never fails
+Flags off (own_food_store and own_food_read): returns at once — no extra request, no table touched, exactly the behaviour before. A failing sync never fails
 the write it follows: it runs in a savepoint, is logged and dropped.
 """
 import logging
@@ -21,8 +21,13 @@ log = logging.getLogger(__name__)
 
 
 def enabled(conn: psycopg.Connection, user_id: int) -> bool:
+    """own_food_store, or reads from the own tables (own_food_read: a write to SparkyFitness must reach the tables the
+    pages read). Never in own_food_only mode: those writes do not go to SparkyFitness at all (ownstore/write.py)."""
     from ..rollout import flags
-    return flags.enabled(conn, user_id, FLAG)
+    from . import source
+    if source.only(conn, user_id):
+        return False
+    return flags.enabled(conn, user_id, FLAG) or source.reads_own(conn, user_id)
 
 
 def _days(v) -> set[date]:

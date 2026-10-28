@@ -17,7 +17,7 @@ def recent(conn, uid: int, limit: int) -> list[dict]:
     today = sparky_write.user_today(conn, uid)
     start, end = store.window(today)
     try:
-        rows = [r for r in sparky_client.weight(sparky_client.client_for_user(conn, uid), start, end) if "weight_kg" in r]
+        rows = [r for r in sparky_client.weight(sparky_client.reader_for_user(conn, uid), start, end) if "weight_kg" in r]
     except sparky_client.SparkyError:
         rows = [{"date": r["date"].isoformat(), "weight_kg": r["weight_kg"]} for r in conn.execute(
             "SELECT date, weight_kg FROM body_measurements WHERE user_id = %s AND date BETWEEN %s AND %s AND weight_kg IS NOT NULL ORDER BY date",

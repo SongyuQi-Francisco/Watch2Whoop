@@ -12,15 +12,15 @@ cd Watch2Whoop
 ```
 The script
 1. generates random secrets in `quickstart/.data/` (git-ignored),
-2. starts Body Engine, Open Wearables (API + workers) and SparkyFitness as one compose project (`watch2whoop-quickstart`), every port bound to `127.0.0.1`,
-3. creates a demo user, generates **60 days of synthetic data** (heart rate, HRV, sleep stages, workouts, steps, weight; no real person's data) and imports it through the real Apple Health importer, adds synthetic meals / strength sessions / weigh-ins to SparkyFitness, computes all scores and reminders,
+2. starts Body Engine and Open Wearables (API + workers) as one compose project (`watch2whoop-quickstart`), every port bound to `127.0.0.1`; SparkyFitness only with `--sparkyfitness` (optional, no longer needed: food / weight / workout logs live in Body Engine, `own_food_only` is turned on),
+3. creates a demo user, generates **60 days of synthetic data** (heart rate, HRV, sleep stages, workouts, steps, weight; no real person's data) and imports it through the real Apple Health importer, adds synthetic meals / strength sessions / weigh-ins (Body Engine's own tables; SparkyFitness with `--sparkyfitness`), computes all scores and reminders,
 4. prints a one-time login link for the Today page.
 
 | URL | What |
 |---|---|
 | `http://localhost:18100/app/#login=…` | Today page (the link logs you in; `./quickstart.sh login` prints a new one) |
 | `http://localhost:18100/docs` | Body Engine API (OpenAPI) |
-| `http://localhost:18300` | SparkyFitness (back end; demo account `demo@example.com`, password in `quickstart/.data/secrets/`) |
+| `http://localhost:18300` | SparkyFitness, only with `--sparkyfitness` (back end; demo account `demo@example.com`, password in `quickstart/.data/secrets/`) |
 | `http://localhost:18200/docs` | Open Wearables API |
 | `http://localhost:18400` | Grafana (with `--grafana`; user `admin`) |
 
@@ -38,13 +38,13 @@ The script
 | `run.py` | Orchestrator (standard library only): port selection, secrets, `docker compose up`, Open Wearables API key, SparkyFitness demo account + API keys, demo user, data, login link |
 | `compose.yaml` | One compose project with every service. Same pinned images as production; Open Wearables runs only its API, worker and beat (no developer portal, Flower, Svix or S3) |
 | `demo_data.py` | Generates a synthetic Apple Health `export.zip` (heart rate every 2–6 min, overnight HRV / respiratory rate / SpO₂ / wrist temperature, sleep stages in ~90-minute cycles, 5 workout types with heart-rate curves, steps, energy, weight, VO₂max). Training load feeds the next morning's HRV and resting heart rate, so recovery and strain react realistically |
-| `demo_sparky.py` | Runs inside the Body Engine container and writes synthetic meals, strength sessions and weigh-ins through Body Engine's own SparkyFitness write path |
+| `demo_sparky.py` | Runs inside the Body Engine container and writes synthetic meals, strength sessions and weigh-ins through Body Engine's write path (own tables, or SparkyFitness with `--sparkyfitness`) |
 | `grafana/` | Grafana provisioning for the Quick Start (Body Engine + Open Wearables data sources through the read-only `grafana_ro` roles; the production dashboards from `deploy/grafana/dashboards/`) |
 | `.data/` | Created on first run, git-ignored: `quickstart.env` (ports, DB passwords), `open_wearables.env`, `secrets/` (one file per secret, mode 600), `health/` (import spool), markers that make re-runs idempotent |
 
 Re-running `./quickstart.sh` is safe: existing secrets, users and data are kept; only missing steps run. `./quickstart.sh reset` starts over.
 
-Differences from a real deployment: no Tailscale / HTTPS (plain `http://localhost`, so the session cookie is allowed without `Secure` for `localhost` only via `BODY_WEB_INSECURE_LOCAL_COOKIE=1`), no backups or scheduled jobs (scores are computed once at start-up), SparkyFitness sign-up is opened only while the demo account is created.
+Differences from a real deployment: no Tailscale / HTTPS (plain `http://localhost`, so the session cookie is allowed without `Secure` for `localhost` only via `BODY_WEB_INSECURE_LOCAL_COOKIE=1`), no backups or scheduled jobs (scores are computed once at start-up), with `--sparkyfitness`, SparkyFitness sign-up is opened only while the demo account is created.
 
 ## Tested
 | Date | Host | Result |

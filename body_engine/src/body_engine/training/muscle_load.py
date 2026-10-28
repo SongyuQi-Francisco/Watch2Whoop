@@ -70,7 +70,7 @@ def _sparky(conn: psycopg.Connection, uid: int, start: date, end: date) -> tuple
     if hit and time.monotonic() - hit[0] < P.LOAD_HISTORY_TTL_S:
         return hit[1], "ok"
     try:
-        client = sparky_client.client_for_user(conn, uid)
+        client = sparky_client.reader_for_user(conn, uid)
     except (sparky_client.SparkyError, ValueError):
         return [], "not_linked"
     try:

@@ -1,5 +1,7 @@
-"""Assistant tools that read SparkyFitness (workouts, food, weight), all read-only.
-They read with the viewed user's own read-only API key (sparky_client.client_for_user), and viewing a family member's data still passes shares authorization first (run_tool)."""
+"""Assistant tools that read the workout, food and weight logs, all read-only.
+They read the viewed user's own data (sparky_client.reader_for_user: Body Engine's own tables with own_food_read, issue #252,
+else that user's own SparkyFitness read-only key), and viewing a family member's data still passes shares authorization
+first (run_tool)."""
 from datetime import date
 from zoneinfo import ZoneInfo
 
@@ -53,7 +55,7 @@ def summarize_sessions(sessions: list[dict]) -> list[dict]:
 
 
 def _training(conn, uid, a):
-    sessions = sparky_client.training_log(sparky_client.client_for_user(conn, uid), *_range(a))
+    sessions = sparky_client.training_log(sparky_client.reader_for_user(conn, uid), *_range(a))
     return sessions if a.get("detail") else summarize_sessions(sessions)
 
 
@@ -64,7 +66,7 @@ def _nutrition(conn, uid, a):
 
 def _weight(conn, uid, a):
     start, end = _range(a)
-    rows = sparky_client.weight(sparky_client.client_for_user(conn, uid), start, end)
+    rows = sparky_client.weight(sparky_client.reader_for_user(conn, uid), start, end)
     ctx = weight_store.in_range(conn, uid, start, end)   # ctx = measuring conditions (空腹 / 运动后…), note, at = measured HH:MM
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
     entries = [{**r, **weight_store.for_ai(ctx.get(r["date"]), tz)} for r in rows]
@@ -74,7 +76,7 @@ def _weight(conn, uid, a):
 SPARKY_TOOLS = [
     Tool(
         name="get_training_log",
-        description="力量训练记录（SparkyFitness）：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），"
+        description="力量训练记录：每次训练的 id、日期、名称、来源（body_assistant = 管家写的），"
                     "每个动作的组：「次数×重量 RIR」（哑铃是单只）和 set_ids（改 / 删一组用）。动作的禁用状态不在这里。",
         input_schema=_range_schema(detail={**DETAIL, "description": "true=每组一个对象、带动作 ID"}),
         handler=_training,
@@ -90,7 +92,7 @@ SPARKY_TOOLS = [
     ),
     Tool(
         name="get_weight",
-        description="称重和围度（SparkyFitness check-in：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
+        description="称重和围度（每天一条：体重 kg、腰围、体脂…，ctx = 测量情况、note = 备注）和每周（周一起）平均体重。调热量看周均。",
         input_schema=_range_schema(),
         handler=_weight,
         group="body", scope="weight",

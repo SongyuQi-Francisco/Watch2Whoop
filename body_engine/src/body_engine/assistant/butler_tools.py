@@ -1,4 +1,5 @@
-"""Tools added by the body butler (P1): write SparkyFitness (food, workouts, weight, undo), screenshot metrics, long-term memory.
+"""Tools added by the body butler (P1): write the food / workout / weight logs (SparkyFitness, or Body Engine's own tables
+with own_food_only, issue #252; undo), screenshot metrics, long-term memory.
 Only specs (dicts) are given here; assistant/tools.py wraps them into registered Tools. Format follows the Claude API strict tools:
 every property is in `required`, optional ones use null. Write tools (writes=True) have no user parameter and can only write for the caller.
 Lab result writing (add_lab_results) lives in records/tools.py."""
@@ -172,10 +173,10 @@ REVIEW_ITEM = _schema({
 
 
 TOOL_SPECS: list[dict] = [
-    # ---------- SparkyFitness writes ----------
+    # ---------- food / workout / weight log writes (assistant/sparky_write.py picks the store) ----------
     dict(
         name="search_exercises",
-        description="在动作库（+ SparkyFitness）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
+        description="在动作库（含自己的动作）按名称/别名/肌群/器械/模式搜动作：返回 slug、exercise_id、肌群、器械、状态（active/caution/banned）与要点。",
         input_schema=_schema({
             "user": USER,
             "query": _n("string"),
@@ -190,7 +191,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="log_food",
-        description="饮食记进 SparkyFitness（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；"
+        description="记饮食（每条一种食物 / 一道菜）。热量和三大营养素要自洽（4/4/9，酒精 7），对不上会被拒；"
                     "同天同餐同名当重复跳过（allow_duplicates=true 才写）。返回条目 id（撤销用 undo_sparky_entry）。",
         input_schema=_schema({
             "items": {"type": "array", "items": FOOD_ITEM},
@@ -201,7 +202,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="log_workout",
-        description="一次训练记进 SparkyFitness（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；"
+        description="记一次训练（每个动作每组次数、重量、RIR）。有 banned 动作整次拒绝（告诉用户原因和替代）；"
                     "对不上的动作报错并给候选；同天同动作当重复跳过（allow_duplicate=true 才写）。",
         input_schema=_schema({
             "date": DATE,
@@ -216,7 +217,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="log_weight",
-        description="称重 / 体成分记进 SparkyFitness check-in（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。"
+        description="记称重 / 体成分（每天一条）。同天已有不同数值不覆盖（overwrite=true 才改）。"
                     "InBody 的其他项（内脏脂肪、骨骼肌…）用 log_metric_snapshot。",
         input_schema=_schema({
             "date": DATE,
@@ -424,7 +425,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="log_meal_template",
-        description="按模板记一餐进 SparkyFitness。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝"
+        description="按模板记一餐。overrides 改这次的克数（营养按比例，0 = 没吃）。当天这一餐记过会拒绝"
                     "（allow_duplicates=true 才再记）。warnings（例如超过用户设的红肉上限）要转告用户。返回 log_id（撤销用 undo_meal_log）。",
         input_schema=_schema({
             "template_id": {"type": "integer"},
@@ -496,7 +497,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="create_recipe",
-        description="新建菜谱（对话里的做法、菜的照片、网页菜谱），同时在 SparkyFitness 建镜像。食材按整锅（servings 份）写，"
+        description="新建菜谱（对话里的做法、菜的照片、网页菜谱）。食材按整锅（servings 份）写，"
                     "每样带克数和营养；嘌呤按常见含量估（每 100g：鸡约 130、鱼 110–120、牛猪 110–120、豆腐 60、蛋奶 0、米 25、"
                     "燕麦 90、蘑菇 50、青菜 30）；做法几条短句。",
         input_schema=_schema({
@@ -520,7 +521,7 @@ TOOL_SPECS: list[dict] = [
     dict(
         name="update_recipe",
         description="修改菜谱：收藏、会不会做、适合哪餐、标签、时间、份数、食材 / 做法（整份替换）、备注；null = 不改；"
-                    "active=false = 删掉。改了食材 / 名字会同步 SparkyFitness。",
+                    "active=false = 删掉。",
         input_schema=_schema({
             "recipe_id": {"type": "integer"},
             "name": _n("string"),
@@ -544,7 +545,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="log_recipe",
-        description="记吃了食谱里的一道菜（一条 SparkyFitness 饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。"
+        description="记吃了食谱里的一道菜（一条饮食记录）。servings 吃了几份；不含主食的菜，米饭另用 log_food。"
                     "同天同餐同菜会拒绝（allow_duplicates 才再记）。返回 log_id（撤销用 undo_meal_log）。",
         input_schema=_schema({
             "recipe_id": {"type": "integer"},
