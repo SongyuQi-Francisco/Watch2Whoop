@@ -20,6 +20,35 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 | 1.0.0+2 | `app-ios-v1.0.0+2` | `2f4a02f` | TestFlight (iOS), uploaded as build 4; crashes on open (fixed in 1.0.5+5) |
 | 1.0.0+1 | (not tagged; source = release `v0.1.0` asset `watch2whoop-ios-app-v0.1.0.zip`) | `42a8f0f` | TestFlight (iOS), sent to the builder 2026-10-18 |
 
+## Unreleased
+
+**打开就有内容（#337 第 1 期：本地优先启动）**
+- （iOS）冷启动（包括 iOS 把后台的 app 杀掉后再打开）不再先等服务器发页面：app 直接打开手机上保存的今天页副本，先用手机上存的上一次的数据画出来（顶部标「更新中」），再在后台向服务器要新数据，到了原地替换。省掉的是请求页面的那一次往返，以前那段时间只能看到加载中。
+- 副本每次打开 app 最多检查一次有没有新版（带 ETag，没变化时服务器只回 304，不再每次下载整页）；有新版就在后台下载，下次打开生效；app 在后台放了 10 分钟以上再回来时也会安静地换上。
+- 这些情况照旧先向服务器要页面：第一次打开（还没有副本）、刚登录 / 扫码设置 / 带登录码、点通知打开、换了服务器、退出登录之后（副本已删）。副本里的页面拿到 401（登录过期等）时，app 马上改为从服务器打开页面，由它显示登录。
+- 本机副本没能启动（脚本没跑起来，8 秒内没反应）时自动改为从服务器打开。
+- 服务器上有紧急开关 `local_first_start_off`：打开后，正在用本机副本的 app 立刻换成从服务器打开，之后的冷启动也和以前一样。
+
+**技术说明（给开发者）**
+- `lib/src/offline_shell.dart`：`save` 带 `If-None-Match`，`changed` 表示存下了更新的副本；`loadLocal` 把标记 `window.W2W_SHELL` 改成 `window.W2W_LOCAL`（页面把它当普通页面用）；页面消息 `local-first:true|false` 记在 `offline_shell.first`，`offline:off` 一并删掉。`home_page.dart`：`_load(local: true)` 只在冷启动和从离线副本回来时用，`_onLocal` 时不显示顶部进度条；`reload` 消息（离线副本联网 / 本机副本 401）都改为从服务器打开。
+- 安卓暂不启用（`isAndroid` 时照旧走网络：还没验证安卓 WebView 用 `loadDataWithBaseURL` 打开的页面会不会带上 cookie）。
+- 需要服务器 v2.156 起的页面（发 `local-first:` 消息、本机副本 401 时发 `reload`）；老服务器从不发 `local-first:true`，app 保持以前的行为。
+
+**自建同步引擎（#219 A2–A4）**：服务器把同步模式切到「app」以后，app 不再需要 Open Wearables 也能完整同步，包括在后台。
+- **后台同步**：手表有新数据时 app 在后台被唤醒（睡眠、训练、HRV、静息心率等立即；心率、步数、能量每小时），系统空闲时（后台 App 刷新）也会补一轮；手机锁屏读不到「健康」时，解锁后自动续传；断网时，联网后自动续传；回到前台时也同步一轮。
+- **更多数据**：训练（时长、能量、距离、心率、功率、暂停 / 圈等事件）、睡眠阶段、步数 / 能量 / 距离 / 爬楼等每 15 分钟的合计；「健康」里删掉的数据，服务器上也会删掉。
+- **省电、省流量**：没有新数据就不联网；首次同步和补历史默认只用 Wi-Fi（同步中心可以打开「用蜂窝数据补历史」）；低电量模式下后台只同步重要的几项。
+- **同步中心**：新增「自建同步」——模式、首次同步进度、上次同步 / 上次后台同步、立即同步，每一类数据「手机上 / 服务器上」最新一条对比（没采集 / 没同步），以及同步日志。「立即重新同步」会按范围重发，服务器顺带删掉手机上已经没有的数据。
+- **新用户不再需要同步邀请码**：服务器给的是只有今天页地址的设置链接，或者账号已经在「app」模式时，设置和引导直接跳过连接 Open Wearables 那一步；「连接同步」碰到服务器回答「不需要」（409 `sync_engine`）也算已连接，不再提示连接失败。
+- **健康权限只弹一个窗口**：app 读的所有类型合在一个系统弹窗里，不再先后弹两个（第二个经常弹不出来）。升级后会自动再问一次还没问过的类型。
+- **修正「健康权限被拒绝」的误报**：1.0.8 把「心跳间期、心电图、饮水、站立等补充类型还没问过权限」也当成「没允许读取健康数据」上报（`health_denied`），其实主要数据一直在同步。现在只有核心类型（心率、睡眠、步数……）没问过才算；补充类型没问过只提示一下。
+
+**技术说明：自建同步引擎（给开发者）**
+- `ios/Runner/SyncEngine.swift` 是不依赖 Flutter 和 Open Wearables 的独立模块（#340 的 SwiftUI 版会直接复用）：读取、列式 gzip 批次、锚点只在 200 后提交、重试 / 限流 / 401 退避、`runs[]`、`HKObserverQuery` + 后台推送、BGTask `watch2whoop.sync.refresh` / `watch2whoop.sync.process`（加进 Info.plist，和 Backfill 的 `watch2whoop.sync.backfill`、OW 的两个并存）。Flutter 通道在 `SyncEngineChannel.swift`；Backfill.swift 也不再依赖 Flutter，历史补传也带训练和统计桶。
+- Open Wearables 的 `stopBackgroundSync()` 会关掉它那些类型的后台推送、取消 app 的全部 BGTask，所以每次停 OW 之后引擎和 Backfill 都会重新注册（`engineRearm`）。
+- Dart 侧 `lib/src/sync_engine.dart` 只剩配置、模式、状态（A1 的 Dart 上传器删掉了）；同步中心的新面板 `lib/src/pages/engine_section.dart`。
+- 模拟器验证：调试包「同步中心 → 开发」里可以写测试数据、跑一轮后台式同步、删掉一条测试心率。
+
 ## 1.0.9 — 2026-10-27
 和 1.0.8 同一天发布：测试用户直接装 1.0.9 即可（包含 1.0.8 的全部内容）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
 

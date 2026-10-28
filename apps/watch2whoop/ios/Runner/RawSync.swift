@@ -39,9 +39,10 @@ final class RawSync {
      HKQuantityType(.dietaryWater)]
   }
 
-  /// The registry's quantity types (identifiers from Dart) this iOS knows; unknown ones (older iOS) are left out.
+  /// The registry's types (identifiers from Dart: RawSync's quantities and, from A2, every type of the sync engine's
+  /// registry, so one sheet asks for all of them, #219) this iOS knows; unknown ones (older iOS) are left out.
   private static func quantityTypes(_ ids: [String]) -> Set<HKObjectType> {
-    Set(ids.compactMap { HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: $0)) })
+    Set(ids.compactMap { objectType($0) })
   }
 
   private func readTypes(_ args: [String: Any]) -> Set<HKObjectType> {

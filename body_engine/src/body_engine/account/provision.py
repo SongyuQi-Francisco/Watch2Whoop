@@ -2,11 +2,16 @@
 idempotent job. Every step checks what already exists first, so running it again only fills in what is missing.
 
 Steps (state in user_provisioning.steps):
-  ow       Open Wearables user (OW API key Body Engine already uses; external_user_id w2w-u<id>, searched first) → users.ow_user_id
+  ow       Open Wearables user (OW API key Body Engine already uses; external_user_id w2w-u<id>, searched first) → users.ow_user_id.
+           While new accounts start on the app's own sync engine (flag apple_sync_new_accounts, rawdata/cutover.new_accounts,
+           #219 S5b) no OW user is created: the account is put in the sync mode app instead (cutover.start_on_engine) and
+           the step is done without OW.
   sparky   SparkyFitness account with a synthetic login (w2w-u<id>@<BODY_SPARKY_EMAIL_DOMAIN>, random password — not the
            person's e-mail) + a read-write and a read-only API key, stored encrypted with the AI master key (ai/crypto.py)
            → users.sparky_user_id. Needs SparkyFitness sign-up to be open (SPARKY_FITNESS_DISABLE_SIGNUP=false); keep its
            port private (127.0.0.1 / tailnet only). While sign-up is closed the step fails and is retried.
+           Skipped (state "skipped", counts as finished) once own_food_only is on for everyone (issue #252): food, weight
+           and workout logs live in Body Engine's own tables, SparkyFitness is optional and no longer needed.
   journal  default journal items (records/defaults.py)
   memory   the butler's initial profile card and status card (no owner seed data)
 
@@ -42,6 +47,7 @@ from ..sparky_client import SPARKY_URL
 log = logging.getLogger(__name__)
 
 STEPS = ("ow", "sparky", "journal", "memory")
+FINISHED = ("done", "skipped")
 MAX_ATTEMPTS = 48   # then the admin looks (provision-run --user-id N resets nothing, it just runs)
 STEP_TRIES = 3                       # tries of one step within a run while the error is transient
 STEP_DELAYS_S = (2.0, 5.0)           # waits between those tries
@@ -127,6 +133,15 @@ def _raise_5xx(status: int, what: str, body) -> None:
         raise TransientError(f"SparkyFitness {what} {status}: {str(body)[:200]}")
 
 
+def _engine_step(conn: psycopg.Connection, user: dict) -> bool:
+    """New accounts on the app's own sync engine (S5b): no OW user, the sync mode app from the start. True = handled."""
+    from ..rawdata import cutover
+    if user["ow_user_id"] or not cutover.new_accounts_on_engine(conn):
+        return False
+    cutover.start_on_engine(conn, user["id"], actor="provision")
+    return True
+
+
 def _ow_step(conn: psycopg.Connection, user: dict, ow_client: OWClient) -> None:
     if user["ow_user_id"]:
         return
@@ -182,16 +197,22 @@ def run(conn: psycopg.Connection, user_id: int, ow_client: OWClient | None = Non
     steps = dict(prov["steps"] or {})
     errors = []
     for step in STEPS:
-        if steps.get(step) == "done":
+        if steps.get(step) in FINISHED:
             continue
         user = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
         if user is None or user["status"] != "active":
             raise ValueError(f"user {user_id} is not active")
         try:
             if step == "ow":
-                client = ow_client or OWClient(timeout=20)
-                _with_retry(lambda: _ow_step(conn, user, client))
+                if not _engine_step(conn, user):
+                    client = ow_client or OWClient(timeout=20)
+                    _with_retry(lambda: _ow_step(conn, user, client))
             elif step == "sparky":
+                from ..ownstore import source
+                if source.only_for_everyone(conn):
+                    steps[step] = "skipped"
+                    conn.commit()
+                    continue
                 signup = sparky or SparkySignup(timeout=30)
                 _with_retry(lambda: _sparky_step(conn, user, signup))
             elif step == "journal":
@@ -205,7 +226,7 @@ def run(conn: psycopg.Connection, user_id: int, ow_client: OWClient | None = Non
             steps[step] = f"error: {str(e)[:200]}"
             errors.append(f"{step}: {type(e).__name__}: {e}")
             log.warning("provision user %s step %s failed: %s", user_id, step, e)
-    state = "done" if all(steps.get(s) == "done" for s in STEPS) else "failed"
+    state = "done" if all(steps.get(s) in FINISHED for s in STEPS) else "failed"
     _record(conn, user_id, steps, state, "; ".join(errors))
     return status(conn, user_id)
 
@@ -250,7 +271,7 @@ def status(conn: psycopg.Connection, user_id: int) -> dict:
                        (user_id,)).fetchone()
     if row is None:
         return {"state": "none", "steps": {}}
-    return {"state": row["state"], "steps": {k: ("done" if v == "done" else "error") for k, v in (row["steps"] or {}).items()},
+    return {"state": row["state"], "steps": {k: (v if v in FINISHED else "error") for k, v in (row["steps"] or {}).items()},
             "attempts": row["attempts"], "updated_at": row["updated_at"], "next_attempt_at": row["next_attempt_at"]}
 
 

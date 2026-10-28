@@ -14,7 +14,7 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.ownstore import mapping as M
 from body_engine.ownstore import migrate as om
-from body_engine.ownstore import mirror, store
+from body_engine.ownstore import mirror, source, store
 from body_engine.rollout import flags
 from psycopg.rows import dict_row
 
@@ -388,3 +388,209 @@ def test_rollback_dates_cover_every_kind():
     assert sparky_write._rollback_dates("weight", {"date": d}, None) == {"weight": [d]}
     assert sparky_write._rollback_dates("lab", {}, {}) == {}
     assert writelog   # rollback_write goes through sparky_write.rollback (assistant/writelog._sparky)
+
+
+# ---------------------------------------------------------------- phase 3: read switch (own_food_read)
+@pytest.fixture()
+def flag_state(conn):
+    """Set rollout flags for one test; everything back to off afterwards."""
+    touched = []
+
+    def set_(key, state="all", **kw):
+        touched.append(key)
+        flags.set_flag(conn, key, state, actor="test", **kw)
+    yield set_
+    for key in touched:
+        flags.set_flag(conn, key, "off", actor="test")
+
+
+def _linked(conn, uid):
+    conn.execute("UPDATE users SET sparky_user_id = %s WHERE id = %s", (f"sp-{uid}", uid))
+
+
+def test_reader_returns_the_same_shapes_as_sparkyfitness(conn, flag_state, monkeypatch):
+    uid = _user(conn, "read")
+    _linked(conn, uid)
+    fake = FakeSparky("rd")
+    d1, d2 = _seed(fake)
+    monkeypatch.setattr(sparky_client, "client_for_user", lambda c, u: fake)
+    flag_state(source.READ_FLAG)
+    assert not getattr(sparky_client.reader_for_user(conn, uid), "own", False)   # no ok migration yet: SparkyFitness
+    assert om.run(conn, uid, dry_run=False, client=fake)["ok"]
+    reader = sparky_client.reader_for_user(conn, uid)
+    assert reader.own and not reader.only
+    s, e = d1 - timedelta(days=1), d2
+    fake.calls.clear()
+    assert sparky_client.training_log(reader, s, e) == sparky_client.training_log(fake, s, e)
+    key = lambda r: r["id"]   # noqa: E731
+    assert sorted(sparky_client.food_entries(reader, s, e), key=key) == sorted(sparky_client.food_entries(fake, s, e), key=key)
+    assert sparky_client.weight(reader, s, e) == sparky_client.weight(fake, s, e)
+    mine = {x["id"]: x for x in sparky_client.exercises(reader)}
+    assert all(mine[x["id"]] == x for x in sparky_client.exercises(fake))   # + the public one a session used
+    assert len(fake.calls) == 4                                               # only the fake's own four reads above
+    assert sparky_client.link_state(conn, uid)["state"] == "connected"
+    # A failed later migration switches the user back to SparkyFitness
+    conn.execute("INSERT INTO own_store_migrations (user_id, since, until, ok, report) VALUES (%s, %s, %s, FALSE, '{}')",
+                 (uid, s, e))
+    assert not getattr(sparky_client.reader_for_user(conn, uid), "own", False)
+
+
+def test_read_flag_keeps_the_tables_in_step_with_writes(conn, flag_state):
+    uid = _user(conn, "readwrite")
+    _linked(conn, uid)
+    fake = FakeSparky("rw")
+    assert om.run(conn, uid, dry_run=False, client=fake)["ok"]
+    flag_state(source.READ_FLAG)                       # own_food_store stays off: reads own -> the dual write runs anyway
+    d = _today()
+    res = sparky_write.log_food(conn, uid, [_food_item(d)], False, client=fake)
+    reader = sparky_client.reader_for_user(conn, uid)
+    assert [r["id"] for r in sparky_client.food_entries(reader, d, d)] == [res["created"][0]["id"]]
+
+
+# ---------------------------------------------------------------- phase 4: own only (own_food_only)
+def _no_sparky(monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("SparkyFitness must not be used")
+    monkeypatch.setattr(sparky_client, "write_client_for_user", boom)
+    monkeypatch.setattr(sparky_client, "client_for_user", boom)
+    monkeypatch.setattr(sparky_client.SparkyClient, "request", boom)
+
+
+def _workout(d, *exercises, create=True):
+    return {"date": d.isoformat(), "name": "推", "notes": None, "allow_duplicate": False, "create_missing_exercises": create,
+            "exercises": [{"exercise": name, "exercise_id": None, "notes": None, "sets": [
+                {"reps": r, "weight_kg": w, "rir": 2, "duration_s": None, "set_type": None, "notes": None} for r, w in sets]}
+                for name, sets in exercises]}
+
+
+def test_only_mode_food_without_sparkyfitness(conn, flag_state, monkeypatch):
+    uid = _user(conn, "only")                          # no SparkyFitness account at all: a new sign-up
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    assert source.only(conn, uid) and source.only_for_everyone(conn)
+    assert sparky_client.link_state(conn, uid)["state"] == "connected"
+    d = _today() - timedelta(days=1)
+    reader = sparky_client.reader_for_user(conn, uid)
+
+    res = sparky_write.log_food(conn, uid, [_food_item(d)], False)
+    eid = res["created"][0]["id"]
+    row = conn.execute("SELECT * FROM food_entries WHERE id = %s", (eid,)).fetchone()
+    assert row["origin"] == "own" and row["calories"] == 650 and row["added_sugar_g"] == 2 and row["user_id"] == uid
+    assert conn.execute("SELECT provider_external_id FROM foods WHERE user_id = %s", (uid,)).fetchone()[
+        "provider_external_id"].startswith("ba:")
+    assert sparky_write.log_food(conn, uid, [_food_item(d)], False)["skipped_duplicates"]
+    assert [(r["id"], r["calories"], r["time"]) for r in sparky_client.food_entries(reader, d, d)] == [(eid, 650, "12:00")]
+    half = sparky_write.update_food_entry(conn, uid, {"date": d.isoformat(), "id": eid, "portion": 0.5})
+    assert half["updated"]["id"] == eid and half["updated"]["calories"] == 325
+    renamed = sparky_write.update_food_entry(conn, uid, {"date": d.isoformat(), "id": eid, "food": "牛肉面", "calories": 500,
+                                                         "protein_g": 30, "carbs_g": 60, "fat_g": 15})
+    new_id = renamed["updated"]["id"]
+    assert new_id != eid and [r["food"] for r in sparky_client.food_entries(reader, d, d)] == ["牛肉面"]
+    record = sparky_write.backend(conn, uid).food_day(d)[0]
+    gone = sparky_write.undo_entry(conn, uid, "food", d.isoformat(), new_id)
+    assert gone["deleted"]["id"] == new_id and _count(conn, "food_entries", uid) == 0
+    back = sparky_write.rollback(conn, uid, "food", "delete", record, None)
+    assert [r["calories"] for r in sparky_client.food_entries(reader, d, d)] == [500] and back["restored"] != new_id
+    assert sparky_write.delete_food_entry(conn, uid, d, back["restored"])["deleted"]["food"] == "牛肉面"
+    with pytest.raises(ValueError, match="没有这条"):
+        sparky_write.undo_entry(conn, uid, "food", d.isoformat(), "someone-elses-id")
+
+
+def test_only_mode_weight_and_workouts_without_sparkyfitness(conn, flag_state, monkeypatch):
+    uid = _user(conn, "only2")
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    d = _today() - timedelta(days=1)
+    reader = sparky_client.reader_for_user(conn, uid)
+
+    w = {"date": d.isoformat(), "weight_kg": 88.0, "overwrite": False}
+    assert sparky_write.log_weight(conn, uid, w)["written"] == {"date": d.isoformat(), "weight": 88.0}
+    assert sparky_write.log_weight(conn, uid, w)["written"] is None
+    assert sparky_write.log_weight(conn, uid, {**w, "weight_kg": 89.0})["conflicts"]
+    sparky_write.log_weight(conn, uid, {**w, "weight_kg": 89.0, "overwrite": True})
+    assert sparky_client.weight(reader, d, d) == [{"date": d.isoformat(), "weight_kg": 89}]
+    sparky_write.undo_entry(conn, uid, "weight", d.isoformat())
+    assert sparky_client.weight(reader, d, d) == []
+    sparky_write.rollback(conn, uid, "weight", "delete", {"date": d.isoformat(), "weight": 89.0, "steps": 5000}, None)
+    assert sparky_client.weight(reader, d, d) == [{"date": d.isoformat(), "weight_kg": 89}]
+
+    with pytest.raises(ValueError, match="对不上"):
+        sparky_write.log_workout(conn, uid, _workout(d, ("哑铃卧推", [(10, 20)]), create=False))
+    wk = sparky_write.log_workout(conn, uid, _workout(d, ("哑铃卧推", [(10, 20), (8, 22.5)])))
+    assert wk["new_exercises_in_library"] == ["哑铃卧推"] and wk["created"]["exercises"] == [{"name": "哑铃卧推", "sets": 2}]
+    assert sparky_write.log_workout(conn, uid, _workout(d, ("哑铃卧推", [(10, 20)])))["skipped_duplicate"]
+    log = sparky_client.training_log(reader, d, d)
+    assert [(s["id"], [x["name"] for x in s["exercises"]]) for s in log] == [(wk["created"]["id"], ["哑铃卧推"])]
+    sets = log[0]["exercises"][0]["sets"]
+    assert [(x["set"], x["reps"], x["weight_kg"]) for x in sets] == [(1, 10, 20), (2, 8, 22.5)]
+    assert sparky_write.update_set(conn, uid, d.isoformat(), sets[1]["id"], 9, None, None)["updated"]["now"]["reps"] == 9
+    sets = sparky_client.training_log(reader, d, d)[0]["exercises"][0]["sets"]
+    sparky_write.undo_entry(conn, uid, "set", d.isoformat(), sets[0]["id"])
+    assert [(x["set"], x["reps"]) for x in sparky_client.training_log(reader, d, d)[0]["exercises"][0]["sets"]] == [(1, 9)]
+    session = sparky_write.backend(conn, uid).workout_day(d)[0]
+    sparky_write.undo_entry(conn, uid, "workout", d.isoformat(), wk["created"]["id"])
+    assert _count(conn, "logged_workouts", uid) == 0 and _count(conn, "logged_workout_sets", uid) == 0
+    restored = sparky_write.rollback(conn, uid, "session", "delete", session, None)["restored"]
+    again = sparky_client.training_log(reader, d, d)
+    assert [s["id"] for s in again] == [restored] and again[0]["exercises"][0]["name"] == "哑铃卧推"
+    assert [x["reps"] for x in again[0]["exercises"][0]["sets"]] == [9]
+
+
+def test_only_mode_merge_and_split(conn, flag_state, monkeypatch):
+    from body_engine.assistant import food_combine
+    uid = _user(conn, "merge")
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    flag_state("meal_merge")
+    d = _today()
+    ids = [c["id"] for c in sparky_write.log_food(conn, uid, [
+        _food_item(d, food="米饭", amount="150 g", calories=200, protein_g=4, carbs_g=44, fat_g=0.5, saturated_fat_g=0.1),
+        _food_item(d, food="鸡胸", amount="100 g", calories=165, protein_g=31, carbs_g=0, fat_g=3.6, saturated_fat_g=1,
+                   added_sugar_g=None, sugar_g=None)], False)["created"]]
+    out = food_combine.combine(conn, uid, d, ids, "merge")
+    reader = sparky_client.reader_for_user(conn, uid)
+    rows = sparky_client.food_entries(reader, d, d)
+    assert [r["id"] for r in rows] == [out["merge"]["entry_id"]] and rows[0]["calories"] == 365
+    food_combine.split(conn, uid, out["merge"]["id"])
+    assert sorted(r["calories"] for r in sparky_client.food_entries(reader, d, d)) == [165, 200]
+
+
+def test_only_mode_rolls_back_rows_logged_before_the_switch(conn, flag_state, monkeypatch):
+    uid = _user(conn, "switch")
+    _linked(conn, uid)
+    fake = FakeSparky("sw")
+    d1, _ = _seed(fake)
+    assert om.run(conn, uid, dry_run=False, client=fake)["ok"]
+    raw = next(r for r in fake.food.values() if r["food_name"] == "燕麦")
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    assert source.only(conn, uid) and not mirror.enabled(conn, uid)
+    # An entry the AI logged on SparkyFitness (write log: after = its SparkyFitness record) is removed by id from the own table
+    assert sparky_write.rollback(conn, uid, "food", "create", None, raw)["deleted"] == raw["id"]
+    assert conn.execute("SELECT 1 FROM food_entries WHERE id = %s", (raw["id"],)).fetchone() is None
+    # ... and a SparkyFitness record from a delete log comes back with the same totals
+    back = sparky_write.rollback(conn, uid, "food", "delete", raw, None)["restored"]
+    got = conn.execute("SELECT * FROM food_entries WHERE id = %s", (back,)).fetchone()
+    assert (got["food_name"], got["calories"], got["date"], got["origin"]) == ("燕麦", 300, d1, "own")
+
+
+def test_only_mode_needs_a_good_migration_for_users_with_an_account(conn, flag_state):
+    uid = _user(conn, "pending")
+    _linked(conn, uid)
+    flag_state(source.ONLY_FLAG)
+    assert not source.only(conn, uid) and not source.reads_own(conn, uid)   # stays on SparkyFitness until migrated
+    flag_state(source.ONLY_FLAG, "cohort")
+    assert not source.only_for_everyone(conn)
+
+
+def test_only_mode_today_page_training_week_and_day(conn, flag_state, monkeypatch):
+    from body_engine.web import views
+    uid = _user(conn, "page")
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    d = _today()
+    sparky_write.log_workout(conn, uid, _workout(d, ("哑铃卧推", [(10, 20)])))
+    week = views.training_week(conn, uid, uid, d)        # no plan anywhere: the page offers the splits, log "connected"
+    assert week["plan"] is None and week["available_splits"] and week["sparky"]["state"] == "connected"
+    day = views.training_today(conn, uid, uid, d)
+    assert [x["name"] for s in day["logged"] for x in s["exercises"]] == ["哑铃卧推"] and not day["sparky"]["can_connect"]

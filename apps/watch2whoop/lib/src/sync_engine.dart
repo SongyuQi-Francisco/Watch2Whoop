@@ -1,52 +1,29 @@
-// The app's own HealthKit sync engine, step A1 (#219, docs/apple-sync-engine.md §3.1 and §6): foreground core.
+// The app's own HealthKit sync engine (#219, docs/apple-sync-engine.md §3.1, docs/apple-sync-engine-app-contract.md).
 // - Registry: assets/healthkit_types.json, the server's rawdata/hk_types.engine_json() byte for byte (both sides test it).
-// - Off unless the server says so: it runs only while the last GET/POST /v1/ingest/healthkit answer of RawSync has
-//   `engine.enabled` and `engine.mode` is shadow / app (flag apple_sync_engine, off by default) — no extra request, no
-//   HealthKit read, nothing uploaded otherwise. Open Wearables stays the source of the scores in ow / shadow mode.
-// - What A1 reads: the registry's raw quantities (samples[]) and categories (categories[], e.g. sleep stages), only the
-//   types the server lists in `engine.types`, only the ones this iOS has (min_ios), only in the order of the registry.
-//   Workouts and 15-minute statistics buckets (A3), background delivery and BGTasks (A2) come later; beat-to-beat series,
-//   ECGs and water stay with RawSync (raw_sync.dart), which runs right before.
-// - Per type: first the newest 48 hours (phase `recent`, no anchor), then the anchored crawl from the start of the range
-//   (phase `backfill` until it has read everything once, `incremental` afterwards). The anchor is committed only after
-//   the server answered 200 (an interrupted upload is read again; the server skips UUIDs it has).
-// - Each request is gzip JSON ≤ [kEngineMaxBytes] compressed (the page halves otherwise, and on 413); 409 type_paused /
-//   engine_disabled keep the anchor and skip the type / stop; 429 stops for Retry-After; 401 stops (RawSync then repairs
-//   the token); a network error ends the pass as offline. The pass ends after [kEngineBudget] or [kEngineMaxBatches].
-// - Each pass reports itself in `runs[]` (trigger, result, duration, counts; no health values) for the server's sync_runs.
-// Deviations from the design, on purpose for A1: the upload is in Dart (testable, like RawSync); it moves to Swift with
-// A2 when background rounds need it without Flutter. Anchors are the native side's own (`w2w.sync.anchor.<type>`);
-// sign-out resets them. No new Health permission sheet: types never asked are skipped (HealthKit error 5) until the
-// sheet for the engine's types is added together with the cut-over (blood pressure / glucose need the owner's OK, D6).
-// Pure Dart runner with an injected source / uploader (test/sync_engine_test.dart); native reader ios/Runner/SyncEngine.swift.
+// - Off unless the server says so: it runs only while the server's `engine` block (GET / POST /v1/ingest/healthkit)
+//   has `enabled` and `mode` shadow / app (flag apple_sync_engine). In `app` mode the engine is the source of the scores
+//   and Open Wearables is stopped (its credentials stay for a rollback, contract §7).
+// - A1 (1.0.8) read natively and uploaded from here. From A2 the whole round is native (ios/Runner/SyncEngine.swift),
+//   because HealthKit background delivery and BGTasks wake the app without Flutter: reading (raw samples, sleep stages,
+//   workouts, 15-minute buckets of cumulative types, deletions), gzip batches, anchors after 200, retries, runs[],
+//   observers, BGAppRefresh / BGProcessing, resuming after unlock / when the network is back, Wi-Fi-only history.
+// - This side hands over the server, the token (Keychain on the native side), the registry and the server's last engine
+//   block; starts foreground rounds; keeps the mode (Open Wearables stops in `app`); starts range re-syncs; and reads the
+//   native state for the sync center (per type, first-sync progress, run log). No health values pass through here.
 import 'dart:convert';
-import 'dart:io' show gzip, Platform;
-import 'dart:math';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'raw_sync.dart' show newUuid;
-import 'sync_bridge.dart' show DeviceSyncState;
+import 'data_status.dart' show iosName;
+import 'i18n.dart';
+import 'resync.dart' show TypeVerdict;
+import 'sync_params.dart';
 
 const String kEngineRegistryAsset = 'assets/healthkit_types.json';
-
-/// One request, gzip-compressed (the server takes 2 MB on the wire; the design aims at ≤ 1 MB).
-const int kEngineMaxBytes = 1000000;
-const int kEngineMaxBatches = 30;
-const Duration kEngineBudget = Duration(seconds: 90);
-const Duration kEngineUploadTimeout = Duration(seconds: 30); // contract §5: connect 10 s, whole request 30 s
-
-/// Retries of the same batch (same batch_id) after a network error / 5xx, contract §4: 2, 4, 8 seconds (+ jitter).
-const List<Duration> kEngineRetryDelays = [Duration(seconds: 2), Duration(seconds: 4), Duration(seconds: 8)];
-
-/// A 429 with a Retry-After up to this is waited for within the pass (the same batch again); longer = next pass.
-const Duration kEngineMaxRetryWait = Duration(seconds: 15);
-
-/// After a 401 the engine waits this long before trying again (contract §4: no retry loop).
-const Duration kEngineAuthBackoff = Duration(minutes: 15);
 
 /// One row of the registry (rawdata/hk_types.EngineType).
 @immutable
@@ -60,22 +37,26 @@ class EngineType {
     this.bg = 'none',
     this.order = 50,
     this.minIos = 0,
-    this.pageForeground = 2000,
+    this.page = const [2000, 200],
     this.flag,
     this.consent,
+    this.status,
   });
 
   final String hk, key, kind, unit, upload, bg;
-  final int order, minIos, pageForeground;
+  final int order, minIos;
+  final List<int> page;
   final String? flag, consent;
 
+  /// The data-status key the sync center groups it under (null: not shown there).
+  final String? status;
+
   bool get raw => upload.contains('raw');
+  bool get stats => upload.contains('stats');
 
-  /// A1 reads raw quantities and categories; workouts / statistics (A3) and heartbeat / ECG / water (RawSync) not here.
-  bool get readByA1 => (kind == 'quantity' && raw) || kind == 'category';
-
-  /// The request field this type goes in.
-  String get field => kind == 'category' ? 'categories' : 'samples';
+  /// Read by the engine: quantities (raw and / or 15-minute buckets), categories, workouts. Heartbeat series, ECGs and
+  /// water stay with RawSync (raw_sync.dart).
+  bool get engine => kind == 'quantity' || kind == 'category' || kind == 'workout';
 
   factory EngineType.fromJson(Map<String, Object?> j) => EngineType(
         hk: j['hk'] as String,
@@ -86,10 +67,21 @@ class EngineType {
         bg: (j['bg'] as String?) ?? 'none',
         order: (j['order'] as num?)?.toInt() ?? 50,
         minIos: (j['min_ios'] as num?)?.toInt() ?? 0,
-        pageForeground: ((j['page'] as List?)?.first as num?)?.toInt() ?? 2000,
+        page: [for (final x in (j['page'] as List?) ?? const [2000, 200]) (x as num).toInt()],
         flag: j['flag'] as String?,
         consent: j['consent'] as String?,
+        status: j['status'] as String?,
       );
+
+  /// What the native engine needs of it.
+  Map<String, Object?> toNative() =>
+      {'hk': hk, 'kind': kind, 'unit': unit, 'upload': upload, 'bg': bg, 'order': order, 'min_ios': minIos, 'page': page};
+}
+
+/// The iOS major version this runs on (min_ios of the registry); 0 = unknown (then nothing is skipped).
+int iosMajor() {
+  if (kIsWeb || !Platform.isIOS) return 0;
+  return int.tryParse(RegExp(r'(\d+)').firstMatch(Platform.operatingSystemVersion)?.group(1) ?? '') ?? 0;
 }
 
 /// The registry in reading order (the JSON's order is the server's: sleep and the overnight readings first, heart rate last).
@@ -97,13 +89,24 @@ List<EngineType> parseRegistry(String json) => [
       for (final t in ((jsonDecode(json) as Map)['types'] as List).cast<Map>()) EngineType.fromJson(t.cast<String, Object?>()),
     ];
 
+/// Types whose read permission only the Open Wearables SDK asked for (not in the registry): asked in the same sheet so
+/// its own request shows nothing new (one sheet, #214).
+const List<String> kOwOnlyHealthTypes = [
+  'HKQuantityTypeIdentifierWaistCircumference',
+  'HKQuantityTypeIdentifierInsulinDelivery',
+];
+
 /// The server's `engine` block (GET /v1/ingest/healthkit, rawdata/engine.describe).
 @immutable
 class EngineInfo {
-  const EngineInfo({this.enabled = false, this.mode = 'ow', this.accepts = const {}, this.encodings = const {}, this.types = const {}});
+  const EngineInfo({this.enabled = false, this.mode = 'ow', this.accepts = const {}, this.encodings = const {}, this.types = const {},
+      this.raw = const {}});
   final bool enabled;
   final String mode;
   final Set<String> accepts, encodings, types;
+
+  /// The block as the server sent it (handed to the native engine).
+  final Map<String, Object?> raw;
 
   /// The engine uploads at all: the server takes its fields and the user is in shadow / app mode.
   bool get active => enabled && (mode == 'shadow' || mode == 'app') && accepts.contains('phase');
@@ -118,463 +121,378 @@ class EngineInfo {
       accepts: set(e['accepts']),
       encodings: set(e['encodings']),
       types: set(e['types']),
+      raw: e.map((k, v) => MapEntry('$k', v)),
     );
   }
 }
 
-/// One columnar page from the native reader.
-class EnginePage {
-  const EnginePage({
-    this.uuid = const [],
-    this.start = const [],
-    this.end = const [],
-    this.value = const [],
-    this.src = const [],
-    this.tz = const [],
-    this.sources = const [],
-    this.deleted = const [],
-    this.anchor,
-    this.more = false,
-    this.unsupported = false,
-    this.tzName,
-  });
-
-  final List<String> uuid;
-  final List<double> start, end, value;
-  final List<int> src;
-  final List<String?> tz;
-  final List<Map<String, Object?>> sources;
-  final List<String> deleted;
-  final String? anchor, tzName;
-  final bool more, unsupported;
-
-  bool get isEmpty => uuid.isEmpty && deleted.isEmpty;
-
-  factory EnginePage.fromMap(Map<Object?, Object?> m) {
-    List<T> l<T>(Object? v, T Function(Object?) f) => [for (final x in (v as List?) ?? const []) f(x)];
-    return EnginePage(
-      uuid: l(m['uuid'], (x) => '$x'),
-      start: l(m['start'], (x) => (x as num).toDouble()),
-      end: l(m['end'], (x) => (x as num).toDouble()),
-      value: l(m['value'], (x) => (x as num).toDouble()),
-      src: l(m['src'], (x) => (x as num).toInt()),
-      tz: l(m['tz'], (x) => x as String?),
-      sources: l(m['sources'], (x) => (x as Map).map((k, v) => MapEntry('$k', v))),
-      deleted: l(m['deleted'], (x) => '$x'),
-      anchor: m['anchor'] as String?,
-      more: m['more'] == true,
-      unsupported: m['unsupported'] == true,
-      tzName: m['tzName'] as String?,
-    );
-  }
-}
-
-abstract class EngineSource {
-  /// One page of [t]: the newest 48 hours ([recent]) or the next page after the anchor named [anchorKey].
-  Future<EnginePage> read(EngineType t, {required String anchorKey, required int daysBack, required int limit, bool recent});
-  Future<void> commit(String anchorKey, String anchor);
-  Future<void> reset();
-}
-
-class NativeEngineSource implements EngineSource {
-  static const _ch = MethodChannel('watch2whoop/native');
-
-  @override
-  Future<EnginePage> read(EngineType t, {required String anchorKey, required int daysBack, required int limit, bool recent = false}) async =>
-      EnginePage.fromMap(await _ch.invokeMapMethod<Object?, Object?>('engineRead', {
-            'type': t.hk,
-            'kind': t.kind,
-            'unit': t.unit,
-            'anchor': anchorKey,
-            'daysBack': daysBack,
-            'limit': limit,
-            'recent': recent,
-          }) ??
-          const {});
-
-  @override
-  Future<void> commit(String anchorKey, String anchor) => _ch.invokeMethod('engineCommit', {'anchor': anchorKey, 'value': anchor});
-
-  @override
-  Future<void> reset() => _ch.invokeMethod('engineReset');
-}
-
-/// The request body for one page (rawdata/api.py IngestIn, engine fields).
-Map<String, Object?> buildEngineBatch(EngineType t, EnginePage p,
-    {required String batchId, required String phase, String? appVersion, List<Map<String, Object?>> runs = const []}) {
-  final group = {
-    'type': t.hk,
-    'unit': t.kind == 'category' ? '' : t.unit,
-    'uuid': p.uuid,
-    'start': p.start,
-    'end': p.end,
-    'value': p.value,
-    'src': p.src,
-    if (p.tz.any((z) => z != null)) 'tz': p.tz,
-  };
-  return {
-    'batch_id': batchId,
-    'device': 'iPhone',
-    'app_version': ?appVersion,
-    'phase': phase,
-    'tz': ?p.tzName,
-    'sources': p.sources,
-    if (p.uuid.isNotEmpty) t.field: [group],
-    'deleted': p.deleted,
-    if (runs.isNotEmpty) 'runs': runs,
-  };
-}
-
-List<int> gzipJson(Map<String, Object?> body) => gzip.encode(utf8.encode(jsonEncode(body)));
-
-enum EngineUpload { ok, unauthorized, refused, rateLimited, tooLarge, rejected, failed, offline }
-
-class EngineUploadResult {
-  const EngineUploadResult(this.outcome, {this.body, this.detail, this.retryAfter});
-  final EngineUpload outcome;
-  final Map<String, Object?>? body;
-
-  /// 409: engine_disabled / type_paused / consent_required; 422: why the batch was refused.
-  final String? detail;
-  final Duration? retryAfter;
-}
-
-/// POST {server}/v1/ingest/healthkit with gzip JSON.
-class EngineUploader {
-  EngineUploader(this.baseUrl, this.token, {this.client, this.appVersion});
-  final String baseUrl, token;
-  final String? appVersion;
-  final http.Client? client;
-
-  Uri get _uri {
-    final b = Uri.parse(baseUrl);
-    return Uri(scheme: b.scheme, host: b.host, port: b.hasPort ? b.port : null, path: '/v1/ingest/healthkit');
-  }
-
-  Future<EngineUploadResult> upload(List<int> gz) async {
-    final c = client ?? http.Client();
-    try {
-      final res = await c
-          .post(_uri,
-              headers: {
-                'Authorization': 'Bearer $token',
-                'Content-Type': 'application/json',
-                'Content-Encoding': 'gzip',
-                'Accept': 'application/json',
-                'X-App-Version': ?appVersion,
-              },
-              body: gz)
-          .timeout(kEngineUploadTimeout);
-      Map<String, Object?>? body;
-      try {
-        final j = jsonDecode(res.body);
-        if (j is Map) body = j.map((k, v) => MapEntry('$k', v));
-      } catch (_) {}
-      final detail = body?['detail'] is String ? body!['detail'] as String : null;
-      final retry = int.tryParse(res.headers['retry-after'] ?? '');
-      return EngineUploadResult(
-        switch (res.statusCode) {
-          200 => EngineUpload.ok,
-          401 => EngineUpload.unauthorized,
-          409 => EngineUpload.refused,
-          413 => EngineUpload.tooLarge,
-          422 || 400 => EngineUpload.rejected,
-          429 => EngineUpload.rateLimited,
-          _ => EngineUpload.failed,
-        },
-        body: body,
-        detail: detail,
-        retryAfter: retry == null ? null : Duration(seconds: retry),
-      );
-    } catch (_) {
-      return const EngineUploadResult(EngineUpload.offline);
-    } finally {
-      if (client == null) c.close();
-    }
-  }
-}
-
+/// The answer of one native round.
 class EngineResult {
-  int batches = 0, samples = 0, bytes = 0, types = 0;
+  EngineResult({this.batches = 0, this.samples = 0, this.bytes = 0, this.types = 0, this.stop, this.mode, this.retryAfter,
+      Map<String, String>? skipped, Set<String>? uploaded})
+      : skipped = skipped ?? {},
+        uploaded = uploaded ?? {};
 
-  /// null = everything read; off (server: not active) / unauthorized / engine_disabled / rate_limited / offline / failed / budget
-  String? stop;
+  final int batches, samples, bytes, types;
 
-  /// Types skipped this pass and why (type_paused, not_asked, healthkit, rejected …): the next pass tries again.
-  final Map<String, String> skipped = {};
+  /// null = everything read; off / busy / backoff / budget / locked / offline / unauthorized / rate_limited /
+  /// engine_disabled / consent_required / failed / expired …
+  final String? stop;
 
-  /// The HealthKit identifiers with at least one accepted page this pass.
-  final Set<String> uploaded = {};
-  Duration? retryAfter;
-  Map<String, Object?>? serverStatus;
-}
+  /// The server's mode after the round (from its answers).
+  final String? mode;
+  final Duration? retryAfter;
 
-/// What the runner keeps between passes (shared_preferences): which types finished their 48-hour read and their first
-/// full crawl.
-abstract class EngineProgress {
-  Future<bool> recentDone(String hk);
-  Future<void> setRecentDone(String hk);
-  Future<bool> backfilled(String hk);
-  Future<void> setBackfilled(String hk);
-  Future<void> clear();
-}
+  /// Types skipped this round and why (type_paused, not_asked, wifi_only, contract …): the next round tries again.
+  final Map<String, String> skipped;
 
-class PrefsEngineProgress implements EngineProgress {
-  static const _recent = 'w2w.sync.recent.v1', _backfilled = 'w2w.sync.backfilled.v1';
+  /// HealthKit identifiers with at least one accepted batch this round.
+  final Set<String> uploaded;
 
-  Future<bool> _has(String key, String hk) async => ((await SharedPreferences.getInstance()).getStringList(key) ?? const []).contains(hk);
-  Future<void> _add(String key, String hk) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setStringList(key, {...?p.getStringList(key), hk}.toList());
-  }
-
-  @override
-  Future<bool> recentDone(String hk) => _has(_recent, hk);
-  @override
-  Future<void> setRecentDone(String hk) => _add(_recent, hk);
-  @override
-  Future<bool> backfilled(String hk) => _has(_backfilled, hk);
-  @override
-  Future<void> setBackfilled(String hk) => _add(_backfilled, hk);
-  @override
-  Future<void> clear() async {
-    final p = await SharedPreferences.getInstance();
-    await p.remove(_recent);
-    await p.remove(_backfilled);
-  }
-}
-
-class MemoryEngineProgress implements EngineProgress {
-  final Set<String> recent = {}, full = {};
-  @override
-  Future<bool> recentDone(String hk) async => recent.contains(hk);
-  @override
-  Future<void> setRecentDone(String hk) async => recent.add(hk);
-  @override
-  Future<bool> backfilled(String hk) async => full.contains(hk);
-  @override
-  Future<void> setBackfilled(String hk) async => full.add(hk);
-  @override
-  Future<void> clear() async {
-    recent.clear();
-    full.clear();
-  }
-}
-
-/// The iOS major version this runs on (min_ios of the registry); 0 = unknown (then nothing is skipped).
-int iosMajor() {
-  if (kIsWeb || !Platform.isIOS) return 0;
-  return int.tryParse(RegExp(r'(\d+)').firstMatch(Platform.operatingSystemVersion)?.group(1) ?? '') ?? 0;
-}
-
-class EngineRunner {
-  EngineRunner({
-    required this.registry,
-    required this.info,
-    required this.source,
-    required this.upload,
-    required this.progress,
-    this.appVersion,
-    this.trigger = 'foreground',
-    this.ios = 0,
-    this.maxBatches = kEngineMaxBatches,
-    this.maxBytes = kEngineMaxBytes,
-    this.budget = kEngineBudget,
-    this.allowBackfill = true,
-    this.retryDelays = kEngineRetryDelays,
-    Future<void> Function(Duration)? sleep,
-    DateTime Function()? now,
-    String Function()? batchId,
-  })  : _now = now ?? DateTime.now,
-        _sleep = sleep ?? Future<void>.delayed,
-        _batchId = batchId ?? newUuid;
-
-  /// Read history beyond the newest 48 hours (first crawl): Wi-Fi only by default (contract §5, design §3.1.8); types
-  /// that finished their first crawl go on incrementally on any network.
-  final bool allowBackfill;
-  final List<Duration> retryDelays;
-  final Future<void> Function(Duration) _sleep;
-
-  final List<EngineType> registry;
-  final EngineInfo info;
-  final EngineSource source;
-  final Future<EngineUploadResult> Function(List<int> gz) upload;
-  final EngineProgress progress;
-  final String? appVersion;
-  final String trigger;
-  final int ios, maxBatches, maxBytes;
-  final Duration budget;
-  final DateTime Function() _now;
-  final String Function() _batchId;
-
-  /// The types this pass reads: A1's kinds, accepted by the server now, known to this iOS.
-  List<EngineType> get types => [
-        for (final t in registry)
-          if (t.readByA1 && info.types.contains(t.hk) && (ios == 0 || t.minIos == 0 || ios >= t.minIos)) t,
-      ];
-
-  Future<EngineResult> run(int daysBack) async {
-    final out = EngineResult();
-    if (!info.active) {
-      out.stop = 'off';
-      return out;
-    }
-    final t0 = _now();
-    types:
-    for (final t in types) {
-      out.types++;
-      var limit = t.pageForeground;
-      var recent = !await progress.recentDone(t.hk);
-      final backfilled = await progress.backfilled(t.hk);
-      while (true) {
-        if (out.batches >= maxBatches || _now().difference(t0) > budget) {
-          out.stop = 'budget';
-          return _report(out, t0);
-        }
-        final EnginePage page;
-        try {
-          page = await source.read(t, anchorKey: t.hk, daysBack: daysBack, limit: limit, recent: recent);
-        } on PlatformException catch (e) {
-          out.skipped[t.hk] = e.code == 'healthkit' && '${e.details}' == '5' ? 'not_asked' : e.code;
-          continue types; // the anchor stays; the next type may be readable
-        } catch (e) {
-          out.skipped[t.hk] = 'read';
-          continue types;
-        }
-        if (page.unsupported) continue types;
-        final phase = recent ? 'recent' : (backfilled ? 'incremental' : 'backfill');
-        if (phase == 'backfill' && !allowBackfill) {
-          out.skipped[t.hk] = 'wifi_only'; // history waits for Wi-Fi; the newest 48 hours already went
-          continue types;
-        }
-        if (page.isEmpty) {
-          if (recent) {
-            await progress.setRecentDone(t.hk);
-            recent = false;
-            continue;
-          }
-          if (page.anchor != null) await source.commit(t.hk, page.anchor!);
-          if (!page.more) {
-            if (!backfilled) await progress.setBackfilled(t.hk);
-            continue types;
-          }
-          continue;
-        }
-        final gz = gzipJson(buildEngineBatch(t, page, batchId: _batchId(), phase: phase, appVersion: appVersion));
-        if (gz.length > maxBytes && limit > 1) {
-          limit = max(1, limit ~/ 2);
-          continue;
-        }
-        var res = await upload(gz);
-        out.batches++;
-        out.bytes += gz.length;
-        // the same batch (same batch_id) again: a 429 with a short Retry-After, a network error or 5xx with backoff
-        for (var i = 0;
-            i < retryDelays.length && _now().difference(t0) < budget &&
-                (res.outcome == EngineUpload.offline || res.outcome == EngineUpload.failed ||
-                    (res.outcome == EngineUpload.rateLimited && (res.retryAfter ?? kEngineMaxRetryWait * 2) <= kEngineMaxRetryWait));
-            i++) {
-          final wait = res.outcome == EngineUpload.rateLimited ? res.retryAfter! : retryDelays[i];
-          await _sleep(wait + Duration(milliseconds: Random().nextInt(500)));
-          res = await upload(gz);
-        }
-        switch (res.outcome) {
-          case EngineUpload.ok:
-            final b = res.body ?? const {};
-            if (b['status'] is Map) out.serverStatus = (b['status'] as Map).map((k, v) => MapEntry('$k', v));
-            if (recent) {
-              await progress.setRecentDone(t.hk); // the newest 48 hours went; the anchored crawl sends them again (skipped)
-              recent = false;
-            } else if (page.anchor != null) {
-              await source.commit(t.hk, page.anchor!);
-            }
-            out.samples += page.uuid.length;
-            out.uploaded.add(t.hk);
-            if (!recent && !page.more && phase != 'recent') {
-              if (!backfilled) await progress.setBackfilled(t.hk);
-              continue types;
-            }
-          case EngineUpload.tooLarge when limit > 1:
-            limit = max(1, limit ~/ 2);
-          case EngineUpload.refused:
-            if (res.detail == 'type_paused') {
-              out.skipped[t.hk] = 'type_paused'; // not taken right now: the anchor stays, sent once it is taken again
-              continue types;
-            }
-            // engine_disabled (re-read the engine block next pass) / consent_required (the page shows the consent)
-            out.stop = res.detail ?? 'refused';
-            return _report(out, t0);
-          case EngineUpload.rejected:
-            out.skipped[t.hk] = 'contract'; // an app bug for this type: its anchor stays, the other types go on
-            continue types;
-          case EngineUpload.rateLimited:
-            out.stop = 'rate_limited';
-            out.retryAfter = res.retryAfter;
-            return out; // nothing more this pass (not even the run report)
-          case EngineUpload.unauthorized:
-            out.stop = 'unauthorized';
-            return out;
-          case EngineUpload.offline:
-            out.stop = 'offline';
-            return out;
-          default:
-            out.stop = 'failed';
-            return _report(out, t0);
-        }
-      }
-    }
-    return _report(out, t0);
-  }
-
-  /// One small batch with this pass's `runs[]` entry (counts only), when anything was tried.
-  Future<EngineResult> _report(EngineResult out, DateTime t0) async {
-    if (out.batches == 0 && out.skipped.isEmpty) return out;
-    final result = switch (out.stop) {
-      null => out.skipped.isEmpty ? 'ok' : 'partial',
-      'budget' => 'partial',
-      _ => 'error',
-    };
-    final contract = out.skipped.containsValue('contract');
-    final run = {
-      'id': _batchId(),
-      'trigger': trigger,
-      'result': result,
-      if (out.stop != null && out.stop != 'budget') 'error': out.stop else if (contract) 'error': 'contract',
-      'started': t0.millisecondsSinceEpoch / 1000,
-      'duration_ms': _now().difference(t0).inMilliseconds,
-      'batches': out.batches,
-      'bytes': out.bytes,
-      'samples': out.samples,
-    };
-    try {
-      final res = await upload(gzipJson({'batch_id': _batchId(), 'device': 'iPhone', 'app_version': ?appVersion, 'runs': [run]}));
-      if (res.outcome == EngineUpload.ok && res.body?['status'] is Map) {
-        out.serverStatus = (res.body!['status'] as Map).map((k, v) => MapEntry('$k', v));
-      }
-    } catch (_) {}
-    return out;
-  }
+  factory EngineResult.fromMap(Map<Object?, Object?> m) => EngineResult(
+        batches: (m['batches'] as num?)?.toInt() ?? 0,
+        samples: (m['samples'] as num?)?.toInt() ?? 0,
+        bytes: (m['bytes'] as num?)?.toInt() ?? 0,
+        types: (m['types'] as num?)?.toInt() ?? 0,
+        stop: m['stop'] as String?,
+        mode: m['mode'] as String?,
+        retryAfter: m['retryAfter'] is num ? Duration(seconds: (m['retryAfter'] as num).ceil()) : null,
+        skipped: {for (final e in ((m['skipped'] as Map?) ?? const {}).entries) '${e.key}': '${e.value}'},
+        uploaded: {for (final x in (m['uploaded'] as List?) ?? const []) '$x'},
+      );
 }
 
 /// One line for the sync log (English, counts only).
 String engineLogLine(EngineResult r) => [
-      'Sync engine: ${r.samples} samples of ${r.uploaded.length}/${r.types} types in ${r.batches} batches',
+      'Sync engine: ${r.samples} items of ${r.uploaded.length}/${r.types} types in ${r.batches} batches',
       if (r.stop != null) 'stopped: ${r.stop}',
       if (r.skipped.isNotEmpty) 'skipped: ${r.skipped.values.toSet().join(', ')} (${r.skipped.length})',
     ].join('; ');
 
-/// The app glue: registry from the asset, the server's engine block from RawSync's last answer.
+/// Per type on this phone (native state): first read done, last accepted upload, last error.
+class EngineTypeState {
+  const EngineTypeState({this.firstDone = false, this.okAt, this.error, this.errorAt});
+  final bool firstDone;
+  final DateTime? okAt, errorAt;
+  final String? error;
+
+  static DateTime? _t(Object? v) => v is num && v > 0 ? DateTime.fromMillisecondsSinceEpoch((v * 1000).round()) : null;
+
+  factory EngineTypeState.fromMap(Map<Object?, Object?> m) => EngineTypeState(
+        firstDone: m['backfilled'] == true,
+        okAt: _t(m['okAt']),
+        error: m['error'] as String?,
+        errorAt: _t(m['errorAt']),
+      );
+}
+
+/// The native engine's state for the sync center (no health values).
+class EngineStatus {
+  const EngineStatus({
+    this.mode = 'ow',
+    this.active = false,
+    this.cellularHistory = false,
+    this.running = false,
+    this.types = const {},
+    this.firstTypes = 0,
+    this.firstDone = 0,
+    this.log = const [],
+    this.range,
+    this.lastRun,
+    this.lastBackgroundAt,
+    this.lastStop,
+  });
+
+  final String mode;
+  final bool active, cellularHistory, running;
+  final Map<String, EngineTypeState> types;
+  final int firstTypes, firstDone;
+  final List<String> log;
+
+  /// A range re-sync in progress: {percent, batches, error …}.
+  final Map<String, Object?>? range;
+
+  /// The last round: {trigger, result, error, started, duration_ms, batches, samples}.
+  final Map<String, Object?>? lastRun;
+  final DateTime? lastBackgroundAt;
+  final String? lastStop;
+
+  /// The first read of the first-sync window (every type once), 0–100.
+  int get firstPercent => firstTypes == 0 ? 0 : (firstDone * 100 ~/ firstTypes);
+  bool get firstSyncDone => firstTypes > 0 && firstDone >= firstTypes;
+
+  factory EngineStatus.fromMap(Map<Object?, Object?> m) {
+    final first = (m['firstSync'] as Map?) ?? const {};
+    Map<String, Object?>? map(Object? v) => v is Map ? v.map((k, x) => MapEntry('$k', x)) : null;
+    final lastStop = m['lastStop'] as String?;
+    return EngineStatus(
+      mode: '${m['mode'] ?? 'ow'}',
+      active: m['active'] == true,
+      cellularHistory: m['cellularHistory'] == true,
+      running: m['running'] == true,
+      types: {
+        for (final e in ((m['types'] as Map?) ?? const {}).entries)
+          if (e.value is Map) '${e.key}': EngineTypeState.fromMap(e.value as Map),
+      },
+      firstTypes: (first['types'] as num?)?.toInt() ?? 0,
+      firstDone: (first['done'] as num?)?.toInt() ?? 0,
+      log: [for (final l in (m['log'] as List?) ?? const []) '$l'],
+      range: map(m['range']),
+      lastRun: map(m['lastRun']),
+      lastBackgroundAt: EngineTypeState._t(m['lastBackgroundAt']),
+      lastStop: lastStop == null || lastStop.isEmpty ? null : lastStop,
+    );
+  }
+}
+
+/// "ISO time\tline" of the native run log -> "10/29 09:12:03 line" (newest last), for the sync log.
+List<String> engineLogForDisplay(List<String> lines) => [
+      for (final l in lines)
+        () {
+          final tab = l.indexOf('\t');
+          final at = tab > 0 ? DateTime.tryParse(l.substring(0, tab))?.toLocal() : null;
+          final msg = tab > 0 ? l.substring(tab + 1) : l;
+          if (at == null) return msg;
+          return '${at.month}/${at.day} ${at.toIso8601String().substring(11, 19)} $msg';
+        }(),
+    ];
+
+/// What a round's stop means for people (null = nothing to say).
+String? engineStopText(String? stop) => switch (stop) {
+      null || 'budget' || 'busy' || 'off' => null,
+      'locked' => tr('手机锁着时读不到「健康」，解锁后自动继续', 'Health cannot be read while the phone is locked; it continues once unlocked'),
+      'offline' => tr('没有网络，联网后自动补传', 'No network; it catches up once online'),
+      'unauthorized' || 'backoff' => tr('登录失效：打开今天页重新登录', 'Signed out: sign in on the Today page again'),
+      'rate_limited' => tr('服务器请稍后再传，会自动继续', 'The server asked to wait; it continues by itself'),
+      'consent_required' => tr('确认同意书后才会上传', 'Uploads start after you accept the consent'),
+      'expired' => tr('后台时间用完，下次接着传', 'Background time ran out; it continues next time'),
+      _ => tr('上次同步没完成（$stop），会自动重试', 'The last sync did not finish ($stop); it retries by itself'),
+    };
+
+// ------------------------------------------------------------------------------ sync center: phone vs server (A4)
+
+/// GET /v1/ingest/sync-status (contract §6): per HealthKit type the newest sample the server has, the last round the app
+/// reported, rejected requests and the pipeline. Times, counts and codes only.
+class EngineServerStatus {
+  const EngineServerStatus({this.mode = 'ow', this.latest = const {}, this.lastRun, this.failures, this.pipeline});
+  final String mode;
+
+  /// HealthKit identifier -> start of the newest sample (cumulative types: the newest bucket) on the server.
+  final Map<String, DateTime> latest;
+  final Map<String, Object?>? lastRun, failures, pipeline;
+
+  factory EngineServerStatus.fromJson(Map<String, Object?> j) {
+    Map<String, Object?>? map(Object? v) => v is Map ? v.map((k, x) => MapEntry('$k', x)) : null;
+    return EngineServerStatus(
+      mode: '${j['mode'] ?? 'ow'}',
+      latest: {
+        for (final t in (j['types'] as List?) ?? const [])
+          if (t is Map && t['type'] is String && DateTime.tryParse('${t['latest_sample_at']}') != null)
+            t['type'] as String: DateTime.parse('${t['latest_sample_at']}').toLocal(),
+      },
+      lastRun: map(j['last_run']),
+      failures: map(j['failures']),
+      pipeline: map(j['pipeline']),
+    );
+  }
+
+  /// Rejected requests after the last success (contract §6 `failures.recovered = false`): code of the last one.
+  String? get openFailure {
+    final f = failures;
+    if (f == null || f['recovered'] != false) return null;
+    final last = f['last'];
+    return last is Map ? '${last['code'] ?? last['reason'] ?? 'error'}' : 'error';
+  }
+}
+
+Future<EngineServerStatus?> fetchEngineServerStatus(String serverUrl, String token, {http.Client? client}) async {
+  if (serverUrl.isEmpty) return null;
+  final b = Uri.parse(serverUrl);
+  final c = client ?? http.Client();
+  try {
+    final res = await c.get(Uri(scheme: b.scheme, host: b.host, port: b.hasPort ? b.port : null, path: '/v1/ingest/sync-status'),
+        headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) return null;
+    final j = jsonDecode(utf8.decode(res.bodyBytes));
+    return j is Map ? EngineServerStatus.fromJson(j.map((k, v) => MapEntry('$k', v))) : null;
+  } catch (_) {
+    return null;
+  } finally {
+    if (client == null) c.close();
+  }
+}
+
+/// A newer sample on the phone than on the server by more than this = not synced (a round may be under way).
+const Duration kEngineSyncSlack = Duration(minutes: 30);
+
+/// "Not recorded or not synced" per type, by time: nothing on the phone = not recorded (or not allowed to read); the
+/// phone's newest sample clearly after the server's = not synced; else synced.
+TypeVerdict engineVerdict(DateTime? phone, DateTime? server) {
+  if (phone == null) return TypeVerdict.notCollected;
+  if (server == null) return TypeVerdict.notSynced;
+  return phone.isAfter(server.add(kEngineSyncSlack)) ? TypeVerdict.notSynced : TypeVerdict.synced;
+}
+
+class EngineTypeRow {
+  const EngineTypeRow(this.type, this.phone, this.server, this.verdict);
+  final EngineType type;
+  final DateTime? phone, server;
+  final TypeVerdict verdict;
+}
+
+/// One row per engine type the server takes (all engine types when it did not say): not synced first, then synced,
+/// then not recorded; the registry's order inside.
+List<EngineTypeRow> engineRows(List<EngineType> registry, Set<String> serverTypes, Map<String, DateTime> phone,
+    Map<String, DateTime> server) {
+  final rows = [
+    for (final t in registry)
+      if (t.engine && (serverTypes.isEmpty || serverTypes.contains(t.hk)))
+        EngineTypeRow(t, phone[t.hk], server[t.hk], engineVerdict(phone[t.hk], server[t.hk])),
+  ];
+  int rank(TypeVerdict v) => switch (v) {
+        TypeVerdict.notSynced => 0,
+        TypeVerdict.synced => 1,
+        TypeVerdict.unknown => 2,
+        TypeVerdict.notCollected => 3,
+      };
+  final order = {for (var i = 0; i < rows.length; i++) rows[i].type.hk: i};
+  rows.sort((a, b) {
+    final r = rank(a.verdict).compareTo(rank(b.verdict));
+    return r != 0 ? r : order[a.type.hk]!.compareTo(order[b.type.hk]!);
+  });
+  return rows;
+}
+
+/// Names of the registry types without a data-status label (as Apple's Health app calls them).
+String? _typeName(String key) => switch (key) {
+      'time_in_daylight' => tr('日照时间', 'Time in daylight'),
+      'physical_effort' => tr('体能消耗', 'Physical effort'),
+      'stair_ascent_speed' => tr('上楼速度', 'Stair ascent speed'),
+      'stair_descent_speed' => tr('下楼速度', 'Stair descent speed'),
+      'environmental_audio_exposure' => tr('环境音量', 'Environmental audio exposure'),
+      'headphone_audio_exposure' => tr('耳机音量', 'Headphone audio exposure'),
+      'environmental_sound_reduction' => tr('环境降噪', 'Environmental sound reduction'),
+      'apple_stand_time' => tr('站立时间', 'Apple stand time'),
+      'apple_exercise_time' => tr('锻炼分钟数', 'Apple exercise time'),
+      'distance_walking_running' => tr('步行+跑步距离', 'Distance walking running'),
+      'distance_cycling' => tr('骑行距离', 'Distance cycling'),
+      'distance_swimming' => tr('游泳距离', 'Distance swimming'),
+      'swimming_stroke_count' => tr('划水次数', 'Swimming stroke count'),
+      'flights_climbed' => tr('已爬楼层', 'Flights climbed'),
+      'basal_energy_burned' => tr('静息能量', 'Basal energy burned'),
+      'walking_heart_rate_average' => tr('步行平均心率', 'Walking heart rate average'),
+      'apple_walking_steadiness' => tr('步行稳定性', 'Apple walking steadiness'),
+      'heart_rate_variability_rmssd' => tr('心率变异性（RMSSD）', 'Heart rate variability rmssd'),
+      'body_fat_percentage' => tr('体脂率', 'Body fat percentage'),
+      'lean_body_mass' => tr('去脂体重', 'Lean body mass'),
+      'body_mass_index' => tr('身体质量指数', 'Body mass index'),
+      'height' => tr('身高', 'Height'),
+      'body_temperature' => tr('体温', 'Body temperature'),
+      'blood_pressure_systolic' => tr('收缩压', 'Blood pressure systolic'),
+      'blood_pressure_diastolic' => tr('舒张压', 'Blood pressure diastolic'),
+      'blood_glucose' => tr('血糖', 'Blood glucose'),
+      'mindful_session' => tr('正念', 'Mindful session'),
+      'walking_speed' => tr('步行速度', 'Walking speed'),
+      'walking_step_length' => tr('步长', 'Walking step length'),
+      'walking_double_support_percentage' => tr('双支撑时间', 'Walking double support percentage'),
+      'walking_asymmetry_percentage' => tr('步伐不对称', 'Walking asymmetry percentage'),
+      'six_minute_walk_test_distance' => tr('六分钟步行距离', 'Six minute walk test distance'),
+      'running_speed' => tr('跑步速度', 'Running speed'),
+      'running_stride_length' => tr('跑步步长', 'Running stride length'),
+      'running_power' => tr('跑步功率', 'Running power'),
+      'running_vertical_oscillation' => tr('垂直振幅', 'Running vertical oscillation'),
+      'running_ground_contact_time' => tr('触地时间', 'Running ground contact time'),
+      'cycling_speed' => tr('骑行速度', 'Cycling speed'),
+      'cycling_power' => tr('骑行功率', 'Cycling power'),
+      'cycling_cadence' => tr('骑行踏频', 'Cycling cadence'),
+      'cycling_functional_threshold_power' => tr('功能性阈值功率', 'Cycling functional threshold power'),
+      'water_temperature' => tr('水温', 'Water temperature'),
+      'workout_effort_score' => tr('体能训练强度', 'Workout effort score'),
+      'estimated_workout_effort_score' => tr('估算体能训练强度', 'Estimated workout effort score'),
+      _ => null,
+    };
+
+/// A label for people: the iOS switch name when the type has a data-status key, else its Health app name (Chinese) or
+/// its server name in words.
+String engineTypeLabel(EngineType t) {
+  final words = t.key.replaceAll('_', ' ');
+  final fallback = words.isEmpty ? t.hk : '${words[0].toUpperCase()}${words.substring(1)}';
+  final named = _typeName(t.key);
+  if (named != null) return named;
+  return t.status == null ? fallback : iosName(t.status!, fallback);
+}
+
+/// The native side (channel watch2whoop/native, methods engine*); a fake in tests.
+abstract class EngineNative {
+  Future<Map<Object?, Object?>?> configure(Map<String, Object?> args);
+  Future<Map<Object?, Object?>?> run(Map<String, Object?> args);
+  Future<Map<Object?, Object?>?> status();
+  Future<void> setCellular(bool on);
+  Future<Map<Object?, Object?>?> rangeStart(int days);
+  Future<void> rangeCancel();
+  Future<void> rearm();
+  Future<void> reset();
+}
+
+class ChannelEngineNative implements EngineNative {
+  static const _ch = MethodChannel('watch2whoop/native');
+
+  Future<Map<Object?, Object?>?> _map(String m, [Object? args]) async {
+    try {
+      return await _ch.invokeMapMethod<Object?, Object?>(m, args);
+    } on MissingPluginException {
+      return null; // Android / tests
+    } on PlatformException catch (e) {
+      debugPrint('$m failed: ${e.code}');
+      return null;
+    }
+  }
+
+  @override
+  Future<Map<Object?, Object?>?> configure(Map<String, Object?> args) => _map('engineConfigure', args);
+  @override
+  Future<Map<Object?, Object?>?> run(Map<String, Object?> args) => _map('engineRun', args);
+  @override
+  Future<Map<Object?, Object?>?> status() => _map('engineStatus');
+  @override
+  Future<void> setCellular(bool on) => _map('engineSetCellular', {'on': on});
+  @override
+  Future<Map<Object?, Object?>?> rangeStart(int days) => _map('engineRangeStart', {'days': days});
+  @override
+  Future<void> rangeCancel() => _map('engineRangeCancel');
+  @override
+  Future<void> rearm() => _map('engineRearm');
+  @override
+  Future<void> reset() => _map('engineReset');
+}
+
+/// GET {server}/v1/ingest/healthkit: the engine block for this token (null = no answer).
+Future<EngineInfo?> fetchEngineInfo(String serverUrl, String token, {http.Client? client}) async {
+  if (serverUrl.isEmpty) return null;
+  final b = Uri.parse(serverUrl);
+  final c = client ?? http.Client();
+  try {
+    final res = await c.get(Uri(scheme: b.scheme, host: b.host, port: b.hasPort ? b.port : null, path: '/v1/ingest/healthkit'),
+        headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'}).timeout(const Duration(seconds: 15));
+    if (res.statusCode != 200) return null;
+    final j = jsonDecode(res.body);
+    return j is Map ? EngineInfo.fromStatus(j.map((k, v) => MapEntry('$k', v))) : null;
+  } catch (_) {
+    return null;
+  } finally {
+    if (client == null) c.close();
+  }
+}
+
+/// The app glue: registry from the asset, the server's engine block from RawSync's last answer, the native engine.
 class SyncEngine {
   SyncEngine._();
   static final SyncEngine instance = SyncEngine._();
 
-  EngineSource source = NativeEngineSource();
-  EngineProgress progress = PrefsEngineProgress();
+  EngineNative native = ChannelEngineNative();
   List<EngineType>? _registry;
-  bool _running = false;
-  DateTime? _notBefore; // 429 Retry-After
 
-  /// The last pass (for the sync status / log); null before the first one.
+  /// The last round of this app run (sync status); null before the first one.
   EngineResult? last;
 
   /// Last accepted upload per HealthKit type in this app run (sync_bridge.dart status).
@@ -583,7 +501,31 @@ class SyncEngine {
 
   Future<List<EngineType>> registry() async => _registry ??= parseRegistry(await rootBundle.loadString(kEngineRegistryAsset));
 
-  /// One pass when the server's engine block says active; returns null when it did nothing.
+  @visibleForTesting
+  set registryForTest(List<EngineType> r) => _registry = r;
+
+  /// Every HealthKit type the app reads, for the one permission sheet (RawSync.swift `rawRequestAuth` adds the heartbeat
+  /// series' parent).
+  Future<List<String>> authTypes() async => [
+        for (final t in await registry()) t.hk,
+        ...kOwOnlyHealthTypes,
+      ];
+
+  Map<String, Object?> _args(List<EngineType> reg, EngineInfo info,
+          {required String serverUrl, required String token, required int daysBack, String? appVersion}) =>
+      {
+        'server': serverUrl,
+        'token': token,
+        'daysBack': daysBack,
+        'appVersion': ?appVersion,
+        'engine': info.raw.isEmpty
+            ? {'enabled': info.enabled, 'mode': info.mode, 'accepts': info.accepts.toList(), 'types': info.types.toList()}
+            : info.raw,
+        'registry': [for (final t in reg) if (t.engine) t.toNative()],
+      };
+
+  /// One foreground round when the server's engine block says active; otherwise the native side learns that it is off
+  /// (observers stop). Returns null when it did nothing.
   Future<EngineResult?> run({
     required String serverUrl,
     required String token,
@@ -593,26 +535,21 @@ class SyncEngine {
     String trigger = 'foreground',
   }) async {
     final info = EngineInfo.fromStatus(serverStatus);
-    if (info != null) await _setMode(info);
-    if (_running || info == null || !info.active || serverUrl.isEmpty) return null;
-    if (_notBefore != null && DateTime.now().isBefore(_notBefore!)) return null;
-    _running = true;
+    if (info == null || serverUrl.isEmpty) return null;
+    final reg = await registry();
+    final args = _args(reg, info, serverUrl: serverUrl, token: token, daysBack: daysBack, appVersion: appVersion);
+    if (!info.active) {
+      await native.configure(args);
+      await _setMode(info.enabled ? info.mode : 'ow');
+      return null;
+    }
     try {
-      final up = EngineUploader(serverUrl, token, appVersion: appVersion);
-      final net = (await DeviceSyncState.read()).net;
-      final res = await EngineRunner(
-        registry: await registry(),
-        info: info,
-        source: source,
-        upload: up.upload,
-        progress: progress,
-        appVersion: appVersion,
-        trigger: trigger,
-        ios: iosMajor(),
-        allowBackfill: net == null || net == 'wifi' || net == 'wired' || net == 'unknown',
-      ).run(daysBack);
-      if (res.retryAfter != null) _notBefore = DateTime.now().add(res.retryAfter!);
-      if (res.stop == 'unauthorized') _notBefore = DateTime.now().add(kEngineAuthBackoff);
+      final m = await native.run({...args, 'trigger': trigger});
+      if (m == null) return null;
+      final res = EngineResult.fromMap(m);
+      // the round's own answers are the newest word of the server on the mode
+      await _setMode(res.mode ?? info.mode);
+      if (res.stop == 'busy' || res.stop == 'off' || res.stop == 'backoff') return null;
       last = res;
       final at = DateTime.now();
       for (final hk in res.uploaded) {
@@ -625,22 +562,67 @@ class SyncEngine {
     } catch (e) {
       onLog?.call('Sync engine failed: $e');
       return null;
-    } finally {
-      _running = false;
     }
   }
+
+  /// A new user (no upload yet): ask the server for the engine block first, so a user in `app` mode never sets up Open
+  /// Wearables. Hands it to the native side too. null = no answer.
+  Future<EngineInfo?> refreshInfo({required String serverUrl, required String token, int daysBack = kFirstSyncDays, String? appVersion}) async {
+    final info = await fetchEngineInfo(serverUrl, token);
+    if (info == null) return null;
+    await _setMode(info.enabled ? info.mode : 'ow');
+    await native.configure(_args(await registry(), info, serverUrl: serverUrl, token: token, daysBack: daysBack, appVersion: appVersion));
+    return info;
+  }
+
+  Future<EngineStatus?> status() async {
+    final m = await native.status();
+    if (m == null) return null;
+    final s = EngineStatus.fromMap(m);
+    if (m['enabled'] != null) await _setMode(m['enabled'] == true ? s.mode : 'ow');
+    return s;
+  }
+
+  Future<void> setCellularHistory(bool on) => native.setCellular(on);
+
+  /// A foreground round with what the native side kept (server, token, engine block): the sync center's 「立即同步」.
+  Future<EngineResult?> runNow() async {
+    final m = await native.run({'trigger': 'foreground'});
+    if (m == null) return null;
+    final res = EngineResult.fromMap(m);
+    if (res.mode != null) await _setMode(res.mode!);
+    if (res.stop != 'busy' && res.stop != 'off' && res.stop != 'backoff') {
+      last = res;
+      for (final hk in res.uploaded) {
+        uploadedAt[hk] = DateTime.now();
+      }
+      onLog?.call(engineLogLine(res));
+    }
+    return res;
+  }
+
+  /// Range re-sync of the last [days] days (0 = all history), contract §8; false when the engine is off.
+  Future<bool> startRange(int days) async => (await native.rangeStart(days)) != null;
+  Future<void> cancelRange() => native.rangeCancel();
+
+  /// After Open Wearables stopped (it disables background delivery of its types and cancels every BGTask request).
+  Future<void> rearm() => native.rearm();
+
+  // ------------------------------------------------------------------------------------------------ the mode
 
   /// The server's mode for this user (contract §7), kept across restarts; changed only by an answer of the server.
   static const _modeKey = 'w2w.sync.mode.v1';
   String? _mode;
+
+  /// The mode known right now (after [mode] was read once): `app` = the engine is the source, Open Wearables stays off.
+  bool get appMode => _mode == 'app';
 
   /// Called when the mode changes (HomePage: `app` stops the Open Wearables SDK, back from `app` starts it again).
   void Function(String from, String to)? onModeChange;
 
   Future<String> mode() async => _mode ??= (await SharedPreferences.getInstance()).getString(_modeKey) ?? 'ow';
 
-  Future<void> _setMode(EngineInfo info) async {
-    final to = info.enabled ? info.mode : 'ow';
+  Future<void> _setMode(String to) async {
     final from = await mode();
     if (to == from) return;
     _mode = to;
@@ -649,16 +631,24 @@ class SyncEngine {
     onModeChange?.call(from, to);
   }
 
+  /// An answer of the server that only exists in the mode `app` (409 sync_engine of ow-invitation, contract §7.1).
+  Future<void> serverSaysAppMode() => _setMode('app');
+
+  @visibleForTesting
+  void resetForTest() {
+    _mode = null;
+    last = null;
+    uploadedAt.clear();
+  }
+
   /// Sign-out / account deleted: the next account starts from scratch.
   Future<void> clear() async {
     try {
-      await source.reset();
+      await native.reset();
     } catch (_) {}
-    await progress.clear();
     last = null;
     uploadedAt.clear();
     _mode = null;
-    _notBefore = null;
     try {
       await (await SharedPreferences.getInstance()).remove(_modeKey);
     } catch (_) {}

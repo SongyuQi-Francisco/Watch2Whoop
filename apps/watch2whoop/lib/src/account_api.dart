@@ -270,6 +270,8 @@ AccountApiException errorFor(int status, String body, [Map<String, String> heade
     403 when detail == 'account_pending' => 'pending',
     403 => 'forbidden',
     409 when detail == 'provisioning' => 'provisioning',
+    // the user syncs with the app's own engine (mode app, no Open Wearables account; contract §7.1, #219 S5b)
+    409 when detail == 'sync_engine' => 'sync_engine',
     409 => 'conflict',
     410 => 'gone',
     429 => 'rate_limited',

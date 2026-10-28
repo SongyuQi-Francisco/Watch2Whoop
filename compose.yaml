@@ -1,4 +1,6 @@
-# Body Engine (in-house). Open Wearables, SparkyFitness and Grafana each have their own compose (under deploy/).
+# Body Engine (in-house). Open Wearables and Grafana each have their own compose (under deploy/). SparkyFitness
+# (deploy/sparkyfitness/) is optional since issue #252: with own_food_only on for everyone nothing reads or writes it,
+# and the BODY_SPARKY_URL / sparkyfitness_api_key_* lines below are only used while migrating an older deployment.
 # All ports bind to 127.0.0.1 only; remote access goes through Tailscale. Image versions are pinned.
 name: body
 

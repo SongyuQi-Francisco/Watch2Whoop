@@ -98,10 +98,11 @@ class BackfillService {
       'days': days,
       'to': to ?? await _firstWindowStart(),
       'powerOnly': kBackfillPowerOnly,
+      // quantities (raw samples and / or 15-minute buckets), sleep and other categories, workouts (A3)
       'types': [
         for (final x in reg)
-          if (x.readByA1 && e.types.contains(x.hk) && (ios == 0 || x.minIos == 0 || ios >= x.minIos))
-            {'hk': x.hk, 'kind': x.kind, 'unit': x.unit},
+          if (x.engine && e.types.contains(x.hk) && (ios == 0 || x.minIos == 0 || ios >= x.minIos))
+            {'hk': x.hk, 'kind': x.kind, 'unit': x.unit, 'upload': x.upload},
       ],
     });
     return r != null;

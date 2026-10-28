@@ -305,7 +305,7 @@ TOOL_SPECS: list[dict] = [
             "per_side": _nullable("boolean", "单侧（组数按每侧）"),
             "cues": _nullable("string", "动作要点"),
             "reason": _nullable("string"),
-            "app_exercise_id": _nullable("string", "SparkyFitness 动作 ID"),
+            "app_exercise_id": _nullable("string", "训练记录里的动作 ID"),
         }),
         handler=lambda conn, uid, a: store.upsert_exercise(conn, uid, a["exercise_ref"], _changes(a, "exercise_ref")),
         group="training", scope="exercises", writes=True,

@@ -96,7 +96,7 @@ def weights(conn, owner_id: int, start: date, end: date) -> dict[date, float]:
         """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
            AND date BETWEEN %s AND %s""", (owner_id, start, end))}
     try:
-        client = sparky_client.client_for_user(conn, owner_id)
+        client = sparky_client.reader_for_user(conn, owner_id)
         for r in sparky_client.weight(client, start, end):
             if r.get("weight_kg") is not None:
                 out[date.fromisoformat(r["date"])] = r["weight_kg"]

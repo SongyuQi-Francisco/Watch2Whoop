@@ -82,7 +82,7 @@ def load_history(conn: psycopg.Connection, owner_id: int, day: date) -> tuple[li
     if hit and time.monotonic() - hit[0] < P.LOAD_HISTORY_TTL_S:
         return sorted(hit[1] + imported, key=lambda s: s["date"]), None, True
     try:
-        client = sparky_client.client_for_user(conn, owner_id)
+        client = sparky_client.reader_for_user(conn, owner_id)
     except (sparky_client.SparkyError, ValueError):
         return imported, None, bool(imported)
     try:

@@ -852,7 +852,7 @@ def search(
     sparky_lib: list[dict] = []
     if client is None and user_id is not None:
         try:
-            client = sparky_client.client_for_user(conn, user_id)
+            client = sparky_client.reader_for_user(conn, user_id)
         except Exception:
             client = None
     if client is not None:

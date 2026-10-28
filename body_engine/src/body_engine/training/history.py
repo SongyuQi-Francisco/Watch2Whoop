@@ -67,7 +67,7 @@ def load_workouts(conn: psycopg.Connection, user_id: int, start: date, end: date
 def load_sparky(conn: psycopg.Connection, user_id: int, start: date, end: date, with_exercises: bool = False):
     """SparkyFitness workout records (and the exercise library). Returns (sessions, exercises, error): when not connected / unreadable sessions is empty and error holds the reason."""
     try:
-        client = sparky_client.client_for_user(conn, user_id)
+        client = sparky_client.reader_for_user(conn, user_id)
         sessions = sparky_client.training_log(client, start, end)
         exercises = {e["id"]: e for e in sparky_client.exercises(client)} if with_exercises and sessions else {}
         return sessions, exercises, None

@@ -372,3 +372,41 @@ def test_resync_ow_client_failure_fails_the_job_not_the_run(client, users, dsn, 
         assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (ids["c"],)).fetchone()["status"] == "idle"
     st = client.get("/v1/ingest/resync", headers=H(tok["c"])).json()
     assert st["status"] == "error" and st["active"] is False
+
+
+def test_resync_in_the_app_mode_waits_for_the_engine_not_ow(users, dsn, monkeypatch):
+    """#219 S5b: in the sync mode app the server part imports nothing from OW: it waits while the app's range re-sync is
+    open (no range_done) or the engine's days are not derived, at most RESYNC_ENGINE_WAIT after phone_done, then scores
+    from the start of the range."""
+    from body_engine.rawdata import engine as EN
+    with conn_of(dsn) as conn:
+        uid = conn.execute("""INSERT INTO users (display_name, role, ow_user_id, consent_at, consent_version)
+                              VALUES ('e', 'member', 'ow-e', '2026-10-01', '2026-10-22.1') RETURNING id""").fetchone()["id"]
+        conn.commit()
+    monkeypatch.setattr(EN, "mode", lambda c, u: "app" if u == uid else "ow")
+    monkeypatch.setattr(refresh, "derive_engine_days", lambda c, u: {})   # the derive queue does not move here
+    scored = []
+    kw = {"client": object(), "first_day": lambda *a: pytest.fail("OW is not asked in the app mode"),
+          "importer": lambda *a: pytest.fail("nothing is imported from OW in the app mode"),
+          "scorer": lambda c, u, cl, start: scored.append(start)}
+    with conn_of(dsn) as conn:
+        assert resync.request(conn, uid, 7)["accepted"]
+        conn.execute("""INSERT INTO sync_ranges (user_id, client_id, types, start_at, end_at)
+                        VALUES (%s, %s, ARRAY['HKQuantityTypeIdentifierHeartRate'], now() - interval '7 days', now())""",
+                     (uid, uuid.uuid4()))
+        conn.commit()
+        resync.progress(conn, uid, phone_done=True)
+        r = resync.run_step(conn, uid, **kw)
+        assert (r["status"], r.get("waiting")) == ("queued", "range"), r
+        assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (uid,)).fetchone()["status"] == "scores_queued"
+        conn.execute("UPDATE sync_ranges SET done_at = now() WHERE user_id = %s", (uid,))
+        conn.execute("INSERT INTO hk_dirty_days (user_id, day) VALUES (%s, %s)", (uid, D1))
+        conn.commit()
+        assert resync.run_step(conn, uid, **kw)["waiting"] == "derive"
+        # a day that never derives does not hold the job forever
+        conn.execute("UPDATE sync_resync SET phone_done_at = now() - %s WHERE user_id = %s",
+                     (SP.RESYNC_ENGINE_WAIT + timedelta(minutes=1), uid))
+        conn.commit()
+        assert resync.run_step(conn, uid, **kw)["status"] == "done"
+        assert scored == [datetime.now(TZ).date() - timedelta(days=7)]
+        assert conn.execute("SELECT status FROM sync_refresh WHERE user_id = %s", (uid,)).fetchone()["status"] == "idle"

@@ -5,6 +5,8 @@
 // re-sync and the phone / server comparison per type (sync_center_section.dart) in place of 「服务器收到的数据」; the Today
 // page then has this one row instead of 手机同步 / 数据更新 / 数据状态. Flag off: the page is exactly as before.
 // Android (#253): no phone health sync yet, so the page only says so and keeps the setup / server / sign-out rows.
+// The app's own sync engine (#219 A4, engine_section.dart): shown while the server has it on; in mode `app` it is the
+// sync, so the Open Wearables parts (its log counts, connect / reconnect / disconnect, its server) are not shown.
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -27,9 +29,11 @@ import '../platform_features.dart';
 import '../raw_sync.dart';
 import '../resync.dart';
 import '../setup_flow.dart';
+import '../sync_engine.dart';
 import '../sync_stats.dart';
 import '../ui.dart';
 import 'data_status_section.dart';
+import 'engine_section.dart';
 import 'permissions_page.dart';
 import 'range_picker.dart';
 import 'scan_page.dart';
@@ -391,6 +395,14 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
     setState(() => _message = r);
   });
 
+  Future<void> _debugEngine(String what) => _run(() async {
+    final r = await debugEngine(what);
+    setState(() {
+      _message = r;
+      _statusReload++;
+    });
+  });
+
   // -------------------------------------------------------------------------- UI
 
   /// Android: what is there instead of the sync status (the watch data comes later, #253).
@@ -453,12 +465,15 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
     if (!hasHealthSync) return _withoutHealthSync(context);
     final cs = Theme.of(context).colorScheme;
     final stats = _sync.stats.value;
-    final connected = _config.owConnected && _sync.isSignedIn;
+    final appMode = SyncEngine.instance.appMode;
+    final connected = !appMode && _config.owConnected && _sync.isSignedIn;
     final active = connected && _sync.isSyncActive;
     final failedAfterSuccess = stats.lastErrorAt != null &&
         (stats.lastUploadAt == null || stats.lastErrorAt!.isAfter(stats.lastUploadAt!));
 
-    final (String headline, Color dot) = !connected
+    final (String headline, Color dot) = appMode
+        ? (tr('自建同步已开启', 'Own sync on'), const Color(0xFF34C759))
+        : !connected
         ? (tr('未连接', 'Not connected'), cs.onSurfaceVariant)
         : stats.authProblem
         ? (tr('连接已失效', 'Connection expired'), cs.error)
@@ -494,8 +509,10 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                     ),
                     const SizedBox(height: 14),
                     _kv(tr('本机最近一次同步', 'Last sync on this phone'), _lastSyncText(lastSyncOf(stats, RawSync.instance.status.value))),
-                    _kv(tr('上次上传', 'Last upload'), ago(stats.lastUploadAt)),
-                    _kv(tr('上次完整同步', 'Last full pass'), ago(stats.lastCompleteAt)),
+                    if (!appMode) ...[
+                      _kv(tr('上次上传', 'Last upload'), ago(stats.lastUploadAt)),
+                      _kv(tr('上次完整同步', 'Last full pass'), ago(stats.lastCompleteAt)),
+                    ],
                     if (connected && !_status.initialExportDone)
                       _kv(tr('首次同步', 'First sync'), tr('进行中 · 已发 ${_status.sentCount} 条', 'in progress · ${_status.sentCount} sent'))
                     else if (_status.isSyncing)
@@ -524,7 +541,9 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               ),
             ),
             const SizedBox(height: 14),
-            if (connected && !stats.authProblem) ...[
+            if (appMode)
+              const SizedBox.shrink() // the engine's own 「立即同步」 is in its section below
+            else if (connected && !stats.authProblem) ...[
               BigButton(tr('立即同步', 'Sync now'), onPressed: _syncNow, busy: _busy),
               if (failedAfterSuccess || _status.hasResumableSession) ...[
                 const SizedBox(height: 6),
@@ -539,6 +558,9 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               Hint(_message!, icon: Icons.check_circle_outline),
             ],
             const SizedBox(height: 24),
+
+            // ---- the app's own sync engine (#219 A4): shown while the server has it on
+            EngineSection(reloadToken: _statusReload),
 
             // ---- sync center: forced re-sync, phone / server per type (resync.dart)
             if (_center) SyncCenterSection(load: _loadDataStatus, reloadToken: _statusReload),
@@ -567,7 +589,8 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
               footer: tr('app 直接从「健康」读取，不用再导出文件。', 'The app reads Health directly; no export file needed.'),
             ),
 
-            // ---- per-type counts
+            // ---- per-type counts (Open Wearables' log; not in mode app)
+            if (!appMode)
             Group(
               title: tr('已上传（按类型）', 'Uploaded by type'),
               footer: stats.perType.isEmpty
@@ -611,7 +634,8 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Row2(tr('扫描设置二维码', 'Scan setup code'), onTap: _busy ? null : () => _setupFrom(_scanText)),
                   Row2(tr('粘贴设置信息', 'Paste setup text'), onTap: _busy ? null : () => _setupFrom(_clipboardText)),
                   Row2(tr('今天页', 'Today page'), value: shortUrl(_config.todayUrl), onTap: () => _editUrl(UrlKind.today)),
-                  Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
+                  if (!appMode)
+                    Row2(tr('同步服务器', 'Sync server'), value: shortUrl(_config.owHost), onTap: () => _editUrl(UrlKind.ow)),
                 ],
                 Row2(tr('权限', 'Permissions'), onTap: () => Navigator.of(context)
                     .push(MaterialPageRoute(builder: (_) => const PermissionsPage()))
@@ -633,6 +657,11 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   // The backfill's BGProcessingTask body (the simulator does not run BGTaskScheduler tasks)
                   Row2(tr('运行一次后台补传任务', 'Run the background backfill task once'),
                       onTap: _busy ? null : _runBackfillTask),
+                  // the engine's background round (observer wake / BGAppRefresh body) and a deletion for deleted[]
+                  Row2(tr('运行一次自建同步的后台轮', 'Run one background round of the engine'),
+                      onTap: _busy ? null : () => _debugEngine('round')),
+                  Row2(tr('删掉一条测试心率', 'Delete one test heart rate sample'),
+                      onTap: _busy ? null : () => _debugEngine('delete')),
                 ],
               ),
 
@@ -646,7 +675,7 @@ class _SyncPageState extends State<SyncPage> with WidgetsBindingObserver {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                     child: SelectableText(
-                      redactServer(_sync.recentLog.reversed.take(80).join('\n')),
+                      redactServer(_sync.recentLog.reversed.take(80).join('\n')), // the app's notes (+ OW's lines unless mode app)
                       style: TextStyle(fontSize: 11, fontFamily: 'Menlo', color: cs.onSurfaceVariant),
                     ),
                   ),
