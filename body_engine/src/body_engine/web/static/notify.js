@@ -228,7 +228,7 @@
 
   // A link opened from a push (the app loads its url) or typed: act once, then drop its parameters so a reload does not
   // open it again (other query parameters such as ?date= stay)
-  const LINK_KEYS = ["tab", "notifications", "feed", "post", "ai_cards"];   // ai_cards: Jarvis allowance cards (ai.js, #182)
+  const LINK_KEYS = ["tab", "notifications", "feed", "post", "ai_cards", "whatsnew"];   // ai_cards: Jarvis allowance cards (ai.js, #182)
   function fromLocation() {
     const p = parseLink(location.search + location.hash);
     if (!LINK_KEYS.some((k) => k in p)) return;
@@ -244,6 +244,7 @@
     if (settingsRoot?.isConnected && $("#nt-back", settingsRoot)) openSettings();
   });
   window.addEventListener("hashchange", fromLocation);
+  window.addEventListener("body:link", async (e) => { if ("whatsnew" in (e.detail || {}) && await window.BodyLazy?.script("whatsnew.js")) window.BodyWhatsNew?.open(); });   // the weekly message
   window.addEventListener("watch2whoop:foreground", refreshCount);
   window.addEventListener("watch2whoop:notification", refreshCount);   // the app got a push while open
   document.addEventListener("visibilitychange", refreshCount);

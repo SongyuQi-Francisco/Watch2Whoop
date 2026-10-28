@@ -424,6 +424,8 @@ def job_scores(log: Log, full: bool) -> list:
         engine_step(log, errors, "oauth-cleanup", "oauth-cleanup")
     if "ai-cards" in help_text:   # Jarvis quota cards: expiry + periodic grant rules (idempotent per period, #182)
         engine_step(log, errors, "ai-cards periodic", "ai-cards", "periodic")
+    if "whats-new" in help_text:   # the weekly 「本周更新」 message: sent only inside a user's own Sunday-evening window, idempotent per week
+        engine_step(log, errors, "whats-new send", "whats-new", "send")
     if full and "memory-review-run" in help_text:   # long-term memory review state + archive cleanup (#113); per user inside, idempotent
         engine_step(log, errors, "memory-review-run", "memory-review-run")
     # the cut-over to the app sync engine (#219 S5): reconcile every user with the flags (switch / roll back / post check);

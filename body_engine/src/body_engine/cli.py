@@ -481,6 +481,13 @@ def main() -> None:
     orv = sub.add_parser("oauth-revoke", help="end one OAuth connection (its access and refresh tokens stop at once)")
     orv.add_argument("--user-id", type=int, required=True)
     orv.add_argument("--connection-id", type=int, required=True)
+    wn = sub.add_parser("whats-new", help="the weekly 「本周更新」 message (whatsnew/): who is due, what it says, send it")
+    wns = wn.add_subparsers(dest="wn_cmd", required=True)
+    wnd = wns.add_parser("send", help="send it to everyone whose local Sunday 19:00 window is open and who has not had this week's "
+                                      "(idempotent, called hourly by deploy/ops/ops.py; nothing new = nothing sent)")
+    wnd.add_argument("--user-id", type=int, default=None, help="only this user")
+    wnd.add_argument("--dry-run", action="store_true", help="say who would get what, write and send nothing")
+    wnd.add_argument("--now", default=None, help="pretend it is this ISO time (UTC unless it has an offset), e.g. 2026-11-01T09:30")
     ai_fallback_cli.add_parser(sub)
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
@@ -750,6 +757,18 @@ def main() -> None:
             ai_fallback_cli.run(conn, args)
         elif args.cmd == "ai-cards":
             ai_cards_cli.run(conn, args)
+        elif args.cmd == "whats-new":
+            from datetime import datetime, timezone
+            from .whatsnew import service as whatsnew
+            at = datetime.fromisoformat(args.now) if args.now else None
+            if at is not None and at.tzinfo is None:
+                at = at.replace(tzinfo=timezone.utc)
+            res = whatsnew.run(conn, args.user_id, at, args.dry_run)
+            counts: dict = {}
+            for r in res:
+                counts[r["status"]] = counts.get(r["status"], 0) + 1
+            print(json.dumps({"dry_run": args.dry_run, "counts": counts, "users": [r for r in res if r["status"] not in ("empty", "already")]},
+                             ensure_ascii=False))
         elif args.cmd == "open-signup":
             open_signup_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:

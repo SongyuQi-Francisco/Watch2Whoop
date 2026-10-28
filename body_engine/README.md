@@ -630,6 +630,12 @@ the push is off, pushes to the user's registered iPhones through APNs from a bac
   `GET / PUT /notification-settings`. Today page: `web/static/notify.js` (bell in the header, list, settings; in the app it
   asks for push permission on the first visit to the Friends tab or the settings).
 - Tests: `tests/test_notify.py` (fake APNs client, never Apple).
+- Weekly 「本周更新」 (`src/body_engine/whatsnew/`, migration 960): the hand-kept `entries.py` (one short zh + en sentence per user-visible
+  change, added in the PR that ships it; CONTRIBUTING.md "What's new") is sent through `notify()` as category `updates` (on by default,
+  switchable) to each user from Sunday 19:00 in their own time zone: what is new since their last message, never from before their
+  account existed, nothing new = nothing sent, one row of `whats_new_sends` per user and week. `body-engine whats-new send
+  [--user-id N] [--dry-run] [--now ISO]` is called hourly by `deploy/ops/ops.py` (idempotent). The Today page lists the same entries
+  (`GET /v1/whats-new`, `web/static/whatsnew.js`, 我 → 设置 → 更新记录; the message's link `/app/?whatsnew=1` opens it). Tests: `tests/test_whats_new.py`.
 
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
 Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.

@@ -17,5 +17,6 @@
 - [ ] Every new or changed user-facing text is bilingual (zh + en): `tr()` + `i18n-en.js` on the Today page, `L()` / `errors_en.py` on the server, `tr('中文', 'English')` in the app (CONTRIBUTING.md "Bilingual UI"; `test_i18n*` enforce it)
 - [ ] UI changes: an English screenshot is attached (language set to English under Me → 语言 / Language), next to the Chinese one
 - [ ] Docs updated if behaviour, commands or settings changed
+- [ ] Something a user can see changed: one entry added to `body_engine/src/body_engine/whatsnew/entries.py` (one short sentence, zh + en; see CONTRIBUTING.md "What's new"), or nothing user-visible
 - [ ] App changes: `CHANGELOG.md` of the app has a line under "Unreleased" (version bumps only in release PRs, see docs/apps.md)
 - [ ] I will leave a summary comment on this PR and on every issue it closes (what changed, verification, CI, deploy status; see CONTRIBUTING.md "Maintenance rules")

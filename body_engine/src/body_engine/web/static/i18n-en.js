@@ -1594,7 +1594,6 @@ I18N.addEn({
   "{n} 个动作没对上动作库，没有计入": "{n} exercises are not in the exercise library and were not counted",
   "{n} 块肌群偏少": "{n} muscle groups are low",
   "{n} 组": "{n} sets",
-  "上周": "Last week",
   "较上周": "vs last week",
   "今天练了": "Trained today",
   "今天练过": "Trained today",
@@ -1919,5 +1918,10 @@ I18N.addEn({
   "睡前": "Before bed",
   "穿衣": "Clothed",
   "未穿衣": "Unclothed",
+  // weekly what's new (whatsnew.js)
+  "更新记录": "What's new",
+  "本周更新": "This week's updates",
+  "上周": "Last week",
+  "{d} 起的一周": "Week of {d}",
 });
 
