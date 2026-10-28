@@ -321,6 +321,10 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 跑 `uvicorn body_engine.api:app`。
 - 用 Debug 环境变量登录（第 3 节）。不碰任何真实的库。
 
+N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
+
+<img src="images/ios-native/n0-today-light.png" width="240" alt="N0 今天 tab，浅色"> <img src="images/ios-native/n0-today-dark.png" width="240" alt="N0 今天 tab，深色">
+
 **发布**（`apps.md` 第 4 节）
 
 - 版本号 1.0.9，build 号每上传一次加一（`W2W_BUILD_NUMBER`）。
