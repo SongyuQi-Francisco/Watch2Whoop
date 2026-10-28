@@ -337,7 +337,7 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     end = start + timedelta(days=6)
     try:
         _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
-        if getattr(_client, "only", False) and not ctx.plans:   # own_food_only (#252): no SparkyFitness weekly plan to show
+        if getattr(_client, "own", False) and not ctx.plans:   # own tables (#252): no SparkyFitness weekly plan to show
             raise sparky_client.SparkyError("no weekly plan")
     except sparky_client.SparkyError:   # no plan anywhere yet: an empty week to pick a split from, and why the log is missing
         with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")

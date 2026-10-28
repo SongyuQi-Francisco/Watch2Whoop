@@ -280,7 +280,7 @@ SparkyFitness 的许可证不允许商业使用。它的第 2 条还规定：修
 - `sparky_client.reader_for_user(conn, uid)` 代替原来的 `client_for_user`：生效时给 `ownstore/read.OwnReader`，否则还是 SparkyFitness 只读客户端。`sparky_client` 的 `training_log`、`food_entries`、`weight`、`exercises`、`workout_presets`、`workout_plans`、`goal_for_date` 看到 OwnReader 就从新表取，所以约 20 个调用方（今天页、趋势、评分、规则、AI 工具、briefing、explain、训练日历、周报 / 月报、身体年龄、肌肉负荷、推荐重量、计划起始周、动作库匹配、`link-exercises`……）只改了取客户端那一行。
 - 形状逐字段相同：`ownstore/rows.py` 把新表的行拼回原来的记录形状，再走同一个 `_session` / `_food_entry` / `weight_rows` 转换。测试 `test_reader_returns_the_same_shapes_as_sparkyfitness` 把同一份数据分别从假 SparkyFitness 和新表读出来逐个比较。
 - `link_state` 对读新表的人直接返回 connected：「训练记录未连接」这类提示不再出现。
-- 新表里没有的：SparkyFitness 的周计划模板 / preset（只给没有 Body Engine 计划的人用）和它的饮食目标（只在用户第一版自己的目标之前兜底）。读模式下这两样照旧问 SparkyFitness；只写新表模式下不再问（计划为空、兜底目标为空）。
+- 新表里没有的：SparkyFitness 的周计划模板 / preset（只给没有 Body Engine 计划的人用）和它的饮食目标（只在用户第一版自己的目标之前兜底）。读模式下这两样照旧问 SparkyFitness（周计划读不到时当作没有，训练记录照样显示）；只写新表模式下不再问（计划为空、兜底目标为空）。
 
 ### 13.3 写（`own_food_only`）
 

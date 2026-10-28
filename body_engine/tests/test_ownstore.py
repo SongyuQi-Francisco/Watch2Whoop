@@ -581,3 +581,16 @@ def test_only_mode_needs_a_good_migration_for_users_with_an_account(conn, flag_s
     assert not source.only(conn, uid) and not source.reads_own(conn, uid)   # stays on SparkyFitness until migrated
     flag_state(source.ONLY_FLAG, "cohort")
     assert not source.only_for_everyone(conn)
+
+
+def test_only_mode_today_page_training_week_and_day(conn, flag_state, monkeypatch):
+    from body_engine.web import views
+    uid = _user(conn, "page")
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    d = _today()
+    sparky_write.log_workout(conn, uid, _workout(d, ("哑铃卧推", [(10, 20)])))
+    week = views.training_week(conn, uid, uid, d)        # no plan anywhere: the page offers the splits, log "connected"
+    assert week["plan"] is None and week["available_splits"] and week["sparky"]["state"] == "connected"
+    day = views.training_today(conn, uid, uid, d)
+    assert [x["name"] for s in day["logged"] for x in s["exercises"]] == ["哑铃卧推"] and not day["sparky"]["can_connect"]

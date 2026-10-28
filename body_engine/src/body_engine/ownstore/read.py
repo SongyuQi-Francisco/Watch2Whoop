@@ -51,12 +51,19 @@ class OwnReader:
         return self._client
 
     def workout_presets(self) -> dict:
-        from ..sparky_client import workout_presets
-        return {} if self.only else workout_presets(self.sparky())
+        """SparkyFitness templates (read mode); unreachable = none, so the log in the own tables still shows."""
+        from ..sparky_client import SparkyError, workout_presets
+        try:
+            return {} if self.only else workout_presets(self.sparky())
+        except SparkyError:
+            return {}
 
     def workout_plans(self) -> list[dict]:
-        from ..sparky_client import workout_plans
-        return [] if self.only else workout_plans(self.sparky())
+        from ..sparky_client import SparkyError, workout_plans
+        try:
+            return [] if self.only else workout_plans(self.sparky())
+        except SparkyError:
+            return []
 
     def goal_for_date(self, day: date) -> dict:
         from ..sparky_client import goal_for_date
