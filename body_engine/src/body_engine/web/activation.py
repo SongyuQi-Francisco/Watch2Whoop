@@ -9,7 +9,8 @@ carries two single-use codes, so it cannot be handed out once and reused. An act
 - Each use mints a new one-time Today page login code (login_codes.create, 1 hour, label `activation:<label>`) and, when
   configured, a new Open Wearables invitation code for users.ow_user_id (OW voids that user's older unused codes itself).
   If the user has no ow_user_id, or OW signing is not configured, or OW cannot be reached, the link has no `code`:
-  the app accepts that and asks for the invitation code on its sync step.
+  the app accepts that and asks for the invitation code on its sync step. A user in the sync mode `app` (the app's own
+  sync engine feeds the scores, rawdata/engine.mode; #219 S5b) gets neither the code nor the OW address: note "sync_engine".
 - 16 characters from the login-code alphabet (no 0 O 1 I, about 80 bits); only the sha256 is stored. A code is valid until
   revoked, or until expires_at when created with --days. Every redemption counts `uses` and `last_used_at`.
 - Any failure is a generic 401 and counts against the per-IP failure limit of web/login_limit.py (shared with token login).
@@ -173,10 +174,14 @@ def activate(conn: psycopg.Connection, code: str, user_agent: str | None = None,
         return None
     login = login_codes.create(conn, row["user_id"], f"activation:{row['label'] or row['id']}", hours=LOGIN_CODE_HOURS)
 
+    from ..rawdata import engine as rx_engine
     ow_code, note = None, None
     ow_user_id = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (row["user_id"],)).fetchone()["ow_user_id"]
-    signing = ow_signing()
-    if not mint_ow:
+    on_engine = rx_engine.mode(conn, row["user_id"]) == "app"
+    signing = None if on_engine else ow_signing()
+    if on_engine:
+        note = "sync_engine"
+    elif not mint_ow:
         note = "web"
     elif not ow_user_id:
         note = "no_ow_user"
@@ -189,5 +194,5 @@ def activate(conn: psycopg.Connection, code: str, user_agent: str | None = None,
             log.warning("activation %s: OW invitation code failed: %s", row["id"], e)
             note = "ow_unavailable"
     today = (os.environ.get("BODY_PUBLIC_URL") or today_url or "").rstrip("/") or None
-    ow = (os.environ.get("BODY_OW_PUBLIC_URL") or "").rstrip("/") or None
+    ow = None if on_engine else (os.environ.get("BODY_OW_PUBLIC_URL") or "").rstrip("/") or None
     return {"setup_link": setup_link(today, ow, ow_code, login), "sync": ow_code is not None, "note": note}

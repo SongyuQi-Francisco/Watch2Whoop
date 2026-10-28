@@ -363,6 +363,15 @@ client reads what the OW-only user reads from OW; shadow / OW users never read t
   the app mode and queues the recompute; `rollback` pins the user to OW at once and undoes the derived data (OW's nights
   imported again). `rawdata/engine.mode` = app only while the state says app, the flag is on and there is no pin. In the
   app mode an engine upload queues the recompute itself and `POST /sync/refresh` imports nothing from OW.
+- S5b (#219): `uv run body-engine sync-mode readiness [--user-id N] [--json] [--out file]` (`rawdata/readiness.py`, read
+  only, no recompute): the three switches, then one row per user — mode, app version, clean streak, coverage, score
+  consistency from the stored comparison, verdict (switched / ready / blocked / engine off) and what is missing (Chinese
+  Markdown with names: terminal or `health_data/reports/` only). Flag `apple_sync_new_accounts` (global, only `--state
+  all`, and only while `apple_sync_engine` is `all`): provisioning creates no OW user and starts the account in the app
+  mode (`cutover.start_on_engine`). An account without an OW link stays in the app mode whatever `apple_sync_primary`
+  says (`rollback` needs `--force`). In the app mode: no OW invitation (activation links without `ow` / `code`,
+  `POST /v1/account/ow-invitation` → 409 `sync_engine`), the forced re-sync waits for the app's range re-sync instead of
+  importing OW, the data status says `channel: app`, and the broken-sync check judges the engine's uploads.
 - S6 history (`rawdata/ow_archive.py`): `uv run body-engine ow-archive --user-id N [--check]` keeps OW's history locally
   (the raw-sample copy `ow_sample_cache` made complete over the scoring range, sleep stages in `ow_archive_segments`); an
   archived app-mode user's scores, stress, workout heart rate and stage chart never ask OW.

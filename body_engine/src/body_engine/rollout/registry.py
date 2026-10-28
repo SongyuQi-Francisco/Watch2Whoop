@@ -77,6 +77,11 @@ FLAGS: dict[str, str] = {
                           "切到 app 模式（自建引擎的数据参与选值和算分、OW 只补历史；app 收到 mode=app 后停掉 OW SDK）；切换要过门槛"
                           "（app ≥ 1.0.8、影子对比连续 7 天一致、覆盖率 ≥ 95%、分数一致性）。这是总开关：关掉后所有人下一次读取就回到 "
                           "shadow，sync-mode apply 再把派生数据还原；单人回退用 sync-mode rollback。默认关",
+    "apple_sync_new_accounts": "新开户默认走自建同步引擎（#219 S5b，全局开关，只认 --state all，而且 apple_sync_engine 也要是 all 才生效）："
+                               "开户不再建 Open Wearables 用户，账号一开就是 app 模式（rawdata/cutover.start_on_engine）；激活链接 / 设置链接"
+                               "不带 OW 邀请码，POST /v1/account/ow-invitation 对 app 模式的人回 409 sync_engine。已经开好的账号不受影响。"
+                               "打开前先确认 TestFlight 上能装到的 app 都能在没有 OW 的情况下同步（sync-mode readiness 顶部会提示）。"
+                               "关掉后新开户照旧建 OW 用户；已经按引擎开好的账号留在 app 模式（没有 OW 可回退）。默认关",
     "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
                       "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",

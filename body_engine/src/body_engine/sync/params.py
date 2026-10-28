@@ -70,6 +70,8 @@ RESYNC_ALL_MIN_INTERVAL = timedelta(hours=6)    # before an "all history" reques
 RESYNC_PHONE_STALE = timedelta(hours=24)        # a phone phase without a report for this long is no longer running
 RESYNC_WINDOW_DAYS = 30                         # OW import window of the server part (same as importers/ow.WINDOW)
 RESYNC_TIME_BUDGET = 240                        # seconds per sync-refresh-run step (the next run continues)
+RESYNC_ENGINE_WAIT = timedelta(minutes=30)      # sync mode app: the server part waits this long after phone_done for the
+                                                # app's open range re-sync (range_done) and the derive queue, then scores
 
 # Scores within minutes of new watch data (sync/ow_watch.py, docs/hourly-batch.md "New data within minutes"): operational
 # limits, not health rules. The API process asks Open Wearables every OW_WATCH_POLL_S which users uploaded (one request).

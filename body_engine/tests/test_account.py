@@ -523,6 +523,65 @@ def test_provisioning_failure_is_retried(client, dsn, _env, monkeypatch):
         assert row["last_error"] is None and row["next_attempt_at"] is None
 
 
+def test_new_accounts_on_the_engine_get_no_ow(client, dsn, _env, monkeypatch):
+    """#219 S5b: while apple_sync_new_accounts (global) and apple_sync_engine are both `all`, provisioning creates no OW
+    user and the account starts in the sync mode app; no OW invitation code anywhere; the data status, the broken check
+    and the rollback follow the mode. Off again afterwards (the database is shared by the module)."""
+    from body_engine.rawdata import cutover, engine as rx_engine
+    from body_engine.rollout import flags
+    from body_engine.sync import broken, data_status
+    created = len(_env["ow"].created)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert cutover.new_accounts(conn)["reason"] == "flag_off"
+        flags.set_flag(conn, rx_engine.NEW_ACCOUNTS_FLAG, "all", actor="test")
+        flags.set_flag(conn, rx_engine.FLAG, "cohort", cohort="beta", actor="test")
+        assert cutover.new_accounts(conn)["reason"] == "engine_not_all"   # a new account would sync nowhere
+        flags.set_flag(conn, rx_engine.FLAG, "all", actor="test")
+        assert cutover.new_accounts(conn) == {"on": True, "flag": "all", "engine": "all", "reason": None}
+        conn.commit()
+    try:
+        s = _email_login(client, "engine-only@example.com", "app")
+        h = {"Authorization": f"Bearer {s['token']}"}
+        r = client.post("/v1/account/redeem-invite", headers=h, json={"code": _batch(dsn)["codes"][0]})
+        assert r.status_code == 200 and r.json()["provisioning"]["state"] == "done", r.text
+        uid = s["me"]["id"]
+        assert len(_env["ow"].created) == created   # no OW user
+        assert client.post("/v1/account/ow-invitation", headers=h).json()["detail"] == "sync_engine"
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            assert conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (uid,)).fetchone()["ow_user_id"] is None
+            assert rx_engine.mode(conn, uid) == "app" and cutover.desired(conn, uid) == "app"
+            st = cutover.state(conn, uid)
+            assert st["post_check"]["skipped"] == "new_account" and "new account" in st["note"]
+            # the kill switch apple_sync_primary (off here) does not take an engine-only account back: nothing to go back to
+            assert flags.rows(conn)[rx_engine.PRIMARY_FLAG]["state"] == "off"
+            assert cutover.apply(conn, uid) == [{"user_id": uid, "action": "none", "mode": "app"}]
+            assert cutover.rollback(conn, uid)["reason"] == "no_ow" and rx_engine.mode(conn, uid) == "app"
+            assert cutover.start_on_engine(conn, uid)["reason"] == "already_app"
+            # the setup link of an activation code carries no OW address and no invitation code
+            act = activation.create(conn, uid, label="phone")
+            conn.commit()
+            ds = data_status.collect(conn, uid, extended=False)
+            assert ds["mode"] == "app" and {t["channel"] for t in ds["types"]} == {"app"}
+            assert "sdk_unsupported" not in next(t for t in ds["types"] if t["key"] == "wrist_temperature")["notes"]
+            b = broken.check(conn, uid)
+            assert (b["channel"], b["reason"]) == ("app", "never")
+        _ow_signing(monkeypatch)
+        monkeypatch.setenv("BODY_OW_PUBLIC_URL", "https://sync.example.com")
+        r = client.post("/v1/web/activate", json={"code": act["code"]})
+        assert r.status_code == 200 and r.json()["note"] == "sync_engine" and r.json()["sync"] is False
+        assert "code=" not in r.json()["setup_link"] and "ow=" not in r.json()["setup_link"]
+    finally:
+        with psycopg.connect(dsn, row_factory=dict_row) as conn:
+            flags.set_flag(conn, rx_engine.NEW_ACCOUNTS_FLAG, "off", actor="test")
+            flags.set_flag(conn, rx_engine.FLAG, "off", actor="test")
+            conn.commit()
+    # switched off: the next new account gets its OW user again
+    s2 = _email_login(client, "ow-again@example.com", "app")
+    r = client.post("/v1/account/redeem-invite", headers={"Authorization": f"Bearer {s2['token']}"},
+                    json={"code": _batch(dsn)["codes"][0]})
+    assert r.status_code == 200 and len(_env["ow"].created) == created + 1
+
+
 def test_provisioning_backoff_and_transient_retry():
     from datetime import timedelta
     assert [provision.backoff(n) for n in (1, 2, 3)] == [timedelta(minutes=10), timedelta(minutes=20), timedelta(minutes=40)]
