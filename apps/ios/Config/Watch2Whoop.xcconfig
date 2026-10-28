@@ -1,0 +1,14 @@
+// Signing and identity of the native iOS app (apps/ios). Placeholders only, like the Flutter app's
+// apps/watch2whoop/ios/Flutter/Watch2Whoop.xcconfig: the release build must use the SAME bundle ID and team as the
+// Flutter app so TestFlight upgrades it in place and the Keychain items carry over (docs/ios-native-app.md section 8).
+// Copy Watch2Whoop.local.xcconfig.example to Watch2Whoop.local.xcconfig (git-ignored) and fill in your own values.
+W2W_BUNDLE_ID = org.watch2whoop.app
+W2W_TEAM_ID =
+W2W_DISPLAY_NAME = Watch2Whoop
+
+// Version shown in TestFlight (docs/apps.md section 4: the public name is the version only; the build number goes up
+// for every upload of the same version).
+W2W_MARKETING_VERSION = 1.0.9
+W2W_BUILD_NUMBER = 1
+
+#include? "Watch2Whoop.local.xcconfig"

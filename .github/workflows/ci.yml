@@ -38,6 +38,7 @@ jobs:
     outputs:
       server: ${{ steps.filter.outputs.server }}
       flutter: ${{ steps.filter.outputs.flutter }}
+      ios_native: ${{ steps.filter.outputs.ios_native }}
       other_apps: ${{ steps.filter.outputs.other_apps }}
     steps:
       - id: filter
@@ -52,6 +53,7 @@ jobs:
             echo "$1 → running all jobs"
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "flutter=true" >> "$GITHUB_OUTPUT"
+            echo "ios_native=true" >> "$GITHUB_OUTPUT"
             echo "other_apps=$(jq -c '[.[] | select(.enabled)]' <<< "$OTHER_APPS")" >> "$GITHUB_OUTPUT"
             exit 0
           }
@@ -68,11 +70,13 @@ jobs:
              || grep -qxE 'apps/watch2whoop/(lib/src/hk_types\.dart|assets/healthkit_types\.json)' <<< "$files"; then
             server=true; else server=false; fi
           if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
+          # The native SwiftUI app (#340): only its own directory
+          if grep -q "^apps/ios/" <<< "$files"; then ios_native=true; else ios_native=false; fi
           other="$(jq -c --arg files "$files" \
             '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \
             <<< "$OTHER_APPS")"
-          echo "server=$server flutter=$flutter other_apps=$other"
-          { echo "server=$server"; echo "flutter=$flutter"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
+          echo "server=$server flutter=$flutter ios_native=$ios_native other_apps=$other"
+          { echo "server=$server"; echo "flutter=$flutter"; echo "ios_native=$ios_native"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
 
   body-engine:
     name: Body Engine tests
@@ -197,6 +201,62 @@ jobs:
       - run: cd ios && pod install
       - name: Podfile.lock unchanged (otherwise run `pod install` and commit ios/Podfile.lock)
         run: git diff --exit-code ios/Podfile.lock
+
+  # Native SwiftUI iOS app (#340, docs/ios-native-app.md section 10): generate the project with a pinned XcodeGen, build
+  # and run the unit tests on a simulator. Runs only when apps/ios/ changes. Not a required check of main yet.
+  ios-native:
+    name: iOS native
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios_native == 'true') }}
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/ios
+    env:
+      XCODEGEN_VERSION: "2.46.0"
+      XCODEGEN_SHA256: 4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806
+    steps:
+      - uses: actions/checkout@v7
+      - name: Source checks (bilingual strings, colour tokens, Lucide icons)
+        run: |
+          python3 scripts/check_sources.py
+          python3 scripts/lucide_assets.py --check
+      - name: Copied sync files match the Flutter app (warning only while A2–A4 change them there)
+        run: scripts/sync_flutter_sources.sh --check || echo "::warning::apps/ios HealthSync copies differ from apps/watch2whoop/ios/Runner; run apps/ios/scripts/sync_flutter_sources.sh"
+      - name: Newest Xcode
+        run: |
+          xcode="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "using $xcode"
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+      - name: XcodeGen ${{ env.XCODEGEN_VERSION }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "$XCODEGEN_SHA256  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c -
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate
+      - name: Simulator
+        run: |
+          id="$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          rt = json.load(sys.stdin)["devices"]
+          ios = sorted((k for k in rt if "iOS" in k), key=lambda k: [int(x) for x in k.rsplit("iOS-", 1)[-1].split("-")])
+          for k in reversed(ios):
+              phones = [d for d in rt[k] if d["name"].startswith("iPhone")]
+              if phones:
+                  print(phones[0]["udid"]); break
+          ')"
+          test -n "$id"
+          echo "SIM_ID=$id" >> "$GITHUB_ENV"
+      - name: Build
+        run: >-
+          xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
+          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO build
+      - name: Unit tests
+        run: >-
+          xcodebuild -project Watch2Whoop.xcodeproj -scheme Watch2Whoop -destination "platform=iOS Simulator,id=$SIM_ID"
+          -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO test
 
   # Android build check (#253): the release APK, signed with the runner's debug key (no secrets on pull requests), kept
   # as an artifact of the run for a test phone. Not a required check of main yet.

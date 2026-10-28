@@ -60,7 +60,8 @@ when the contract changes (the iOS app is the reference implementation).
 ```
 apps/
   README.md          index of client apps
-  watch2whoop/       Flutter app (iOS target today; Android target to be added)
+  watch2whoop/       Flutter app (iOS 1.0.8; bug fixes only from 1.0.9, #340)
+  ios/               native SwiftUI iOS app from 1.0.9 (#340; XcodeGen, docs/ios-native-app.md)
 ```
 
 **Target:**

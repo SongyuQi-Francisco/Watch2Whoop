@@ -1,0 +1,12 @@
+// Copy to Watch2Whoop.local.xcconfig (same folder) and fill in. That file is git-ignored.
+// Use the same values as apps/watch2whoop/ios/Flutter/Watch2Whoop.local.xcconfig so the native app replaces the
+// Flutter app on the same TestFlight record.
+
+// Bundle ID of the app in App Store Connect.
+W2W_BUNDLE_ID = com.yourname.watch2whoop
+// Apple Developer Team ID (developer.apple.com → Membership details, 10 alphanumeric characters).
+W2W_TEAM_ID = ABCDE12345
+// Name shown on the home screen.
+W2W_DISPLAY_NAME = Watch2Whoop
+// Build number: one more than the last upload of this version.
+// W2W_BUILD_NUMBER = 2
