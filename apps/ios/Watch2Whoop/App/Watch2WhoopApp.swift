@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 @main
 struct Watch2WhoopApp: App {
@@ -37,6 +38,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     // token in the Keychain, registry, mode), so background rounds run without any view or account session.
     SyncEngine.register()
     Appearance.apply()
+    UNUserNotificationCenter.current().delegate = NotificationTaps.shared   // taps → the post (N7); set before launch ends
     return true
   }
 
