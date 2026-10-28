@@ -42,7 +42,11 @@ struct SleepNights: Equatable {
   }
 
   /// Minutes after 20:00 (the window chart runs 20:00 → 16:00 next day).
-  static func fromEvening(_ m: Double) -> Double { min(20 * 60, max(0, (m < 20 * 60 ? m + 1440 : m) - 20 * 60)) }
+  static func fromEvening(_ m: Double) -> Double {
+    let evening: Double = 1200
+    let shifted: Double = m < evening ? m + 1440 : m
+    return Swift.min(evening, Swift.max(0, shifted - evening))
+  }
 
   /// Mean on the 24-hour circle (bedtimes cross midnight).
   static func circularMean(_ times: [Double]) -> Double? {
@@ -61,7 +65,11 @@ struct SleepNights: Equatable {
   }
 
   var mains: [Night] { nights.filter(\.hasMain) }
-  var avgSleep: Double? { mains.isEmpty ? nil : mains.map { $0.asleep ?? 0 }.reduce(0, +) / Double(mains.count) }
+  var avgSleep: Double? {
+    guard !mains.isEmpty else { return nil }
+    let total: Double = mains.reduce(0) { $0 + ($1.asleep ?? 0) }
+    return total / Double(mains.count)
+  }
   var avgBed: Double? { Self.circularMean(mains.compactMap { $0.start.flatMap(Self.minutes) }) }
   var avgWake: Double? { Self.circularMean(mains.compactMap { $0.end.flatMap(Self.minutes) }) }
 }
@@ -194,10 +202,12 @@ struct StagesChart: View {
   private static func parts(_ nights: [SleepNights.Night]) -> [Part] {
     var out: [Part] = []
     for (i, n) in nights.enumerated() where n.hasMain {
-      let staged = (n.deep ?? 0) + (n.core ?? 0) + (n.rem ?? 0) + (n.unspecified ?? 0)
-      let seq: [(String, Double?)] = staged > 0
-        ? [("deep", n.deep), ("core", n.core), ("rem", n.rem), ("unspecified", n.unspecified), ("awake", n.awake)]
-        : [("unspecified", n.asleep), ("awake", n.awake)]
+      let parts: [Double?] = [n.deep, n.core, n.rem, n.unspecified]
+      let staged: Double = parts.reduce(0) { $0 + ($1 ?? 0) }
+      var seq: [(String, Double?)] = [("unspecified", n.asleep), ("awake", n.awake)]
+      if staged > 0 {
+        seq = [("deep", n.deep), ("core", n.core), ("rem", n.rem), ("unspecified", n.unspecified), ("awake", n.awake)]
+      }
       var y = 0.0
       for (st, v) in seq {
         guard let v, v > 0 else { continue }

@@ -54,7 +54,9 @@ struct ChartSpec: Equatable {
     }
     var lo = omin.map { Swift.min($0, dlo) } ?? dlo, hi = omax.map { Swift.max($0, dhi) } ?? dhi
     let span = hi - lo
-    let pad = span != 0 ? span * 0.12 : (abs(hi) * 0.05 != 0 ? abs(hi) * 0.05 : 1)
+    var pad: Double = span * 0.12
+    if pad == 0 { pad = abs(hi) * 0.05 }
+    if pad == 0 { pad = 1 }
     if omin == nil || dlo < omin! { lo -= pad }
     if omax == nil || dhi > omax! { hi += pad }
     return lo...hi
@@ -133,9 +135,11 @@ struct TrendChartBody: View, Equatable {
   /// colour); the read-out always reads single days.
   static let barLimit = 400
 
-  struct BarSlot: Identifiable { let id: Int; let start: Int; let end: Int; let y: Double; let tone: Tone? }
+  /// A bar from the base line to its value (a zero value still shows as a sliver).
+  struct BarSlot: Identifiable { let id: Int; let start: Int; let end: Int; let y0: Double; let y1: Double; let tone: Tone? }
 
-  static func barSlots(_ l: ChartLayer, y: ClosedRange<Double>, limit: Int) -> [BarSlot] {
+  static func barSlots(_ l: ChartLayer, y: ClosedRange<Double>, base: Double, limit: Int) -> [BarSlot] {
+    let sliver: Double = (y.upperBound - y.lowerBound) * 0.01
     let n = l.values.count
     let k = n > limit ? Int((Double(n) / Double(limit)).rounded(.up)) : 1
     var out: [BarSlot] = []
@@ -150,7 +154,10 @@ struct TrendChartBody: View, Equatable {
       }
       if cnt > 0 {
         let tone = tones.max { a, b in a.value < b.value || (a.value == b.value && a.key.rawValue > b.key.rawValue) }?.key
-        out.append(BarSlot(id: i, start: i, end: j, y: mapped(sum / cnt, right: l.rightAxis, y: y), tone: l.tones == nil ? nil : tone))
+        let v: Double = mapped(sum / cnt, right: l.rightAxis, y: y)
+        let lo: Double = Swift.min(base, v)
+        let hi: Double = v == base ? base + sliver : Swift.max(base, v)
+        out.append(BarSlot(id: i, start: i, end: j, y0: lo, y1: hi, tone: l.tones == nil ? nil : tone))
       }
       i = j
     }
@@ -225,9 +232,9 @@ struct TrendChartBody: View, Equatable {
     case .bars:
       let base = Swift.max(y.lowerBound, Swift.min(y.upperBound, 0))
       let inset = n > 60 ? 0.05 : 0.17
-      ForEach(Self.barSlots(l, y: y, limit: Self.barLimit)) { b in
+      ForEach(Self.barSlots(l, y: y, base: base, limit: Self.barLimit)) { b in
         RectangleMark(xStart: .value("x", Double(b.start) + inset), xEnd: .value("x", Double(b.end) - inset),
-                      yStart: .value("v", Swift.min(base, b.y)), yEnd: .value("v", Swift.max(base, b.y) + (b.y == base ? (y.upperBound - y.lowerBound) * 0.01 : 0)))
+                      yStart: .value("v", b.y0), yEnd: .value("v", b.y1))
           .foregroundStyle(b.tone.map { $0 == .text ? Palette.text3.opacity(0.7) : $0.color } ?? color.opacity(0.55))
           .cornerRadius(n > 60 ? 0.5 : 2)
       }

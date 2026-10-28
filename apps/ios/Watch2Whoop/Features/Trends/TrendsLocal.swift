@@ -143,21 +143,33 @@ enum TrendsLocal {
     if count(inp.zoneMinutes, days: 28) >= 21, let f = try trend("load_focus", [inp.zoneMinutes, end]) { status["load_focus"] = f }
     // illness risk: the day's z-scores, wrist temperature against its own 60-day mean (≥ 3 nights), SpO₂
     if let z = inp.z[end] {
-      let past = inp.wristTemp.filter { $0.key >= LocalDay.add(end, -60) && $0.key < end }.map(\.value)
-      let dev: Any = inp.wristTemp[end].flatMap { t in past.count >= 3 ? ((t - past.reduce(0, +) / Double(past.count)) * 100).rounded() / 100 : nil } ?? NSNull()
-      if let il = try trend("illness_risk", [z, dev, inp.spo2[end] ?? NSNull()]) { status["illness"] = il }
+      let dev: Any = wristTempDeviation(inp.wristTemp, end: end) ?? NSNull()
+      let spo2: Any = inp.spo2[end] ?? NSNull()
+      if let il = try trend("illness_risk", [z, dev, spo2]) { status["illness"] = il }
     }
     if let low = inp.lowOffset[end], let asleep = inp.asleep[end], let ri = try trend("recovery_index", [low, asleep]) {
       status["recovery_index"] = ri
     }
     if inp.recovery[end] != nil || inp.strain[LocalDay.add(end, -1)] != nil, count(inp.strain, days: 4) > 0 {
-      let zone = try inp.recovery[end].flatMap { try trend("recovery_zone", [$0]) } ?? NSNull()
+      var zone: Any = NSNull()
+      if let r = inp.recovery[end], let zr = try trend("recovery_zone", [r]) { zone = zr }
       if let rt = try trend("recovery_time", [inp.strain, inp.tsb, zone, end]) { status["recovery_time"] = rt }
     }
     let nights = inp.nights.sorted { $0.key < $1.key }.map { [$0.value[0] * 1000, $0.value[1] * 1000] }
     if nights.count >= 10, let c = try trend("chronotype", [nights, tz]) { status["chronotype"] = c }
 
     return Output(status: status, keys: Set(status.keys), bundleVersion: runtime.version)
+  }
+
+  /// The night's wrist temperature against the mean of the 60 days before it (≥ 3 nights), two decimals (series.py).
+  static func wristTempDeviation(_ temps: [String: Double], end: String) -> Double? {
+    guard let t = temps[end] else { return nil }
+    let from = LocalDay.add(end, -60)
+    let past: [Double] = temps.filter { $0.key >= from && $0.key < end }.map { $0.value }
+    guard past.count >= 3 else { return nil }
+    let mean: Double = past.reduce(0, +) / Double(past.count)
+    let dev: Double = t - mean
+    return (dev * 100).rounded() / 100
   }
 
   /// Reads, computes and stores `trends.local:<end>` (nothing is stored when the phone has no history at all).

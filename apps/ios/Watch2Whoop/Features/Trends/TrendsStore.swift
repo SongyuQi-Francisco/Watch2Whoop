@@ -85,11 +85,13 @@ struct TrendsPage: Equatable {
         let t = Array(iso)
         guard t.count >= 16, let h = Int(String(t[11...12])), let m = Int(String(t[14...15])) else { return nil }
         let x = Double(h * 60 + m)
-        return x < 18 * 60 ? x + 6 * 60 : x - 18 * 60
+        let evening: Double = 1080   // 18:00 → 0
+        return x < evening ? x + 360 : x - evening
       }
       let nights: [ClosedRange<Double>] = ((s["nights"] as? [[String: Any]]) ?? []).compactMap { n in
-        guard let b = (n["bedtime"] as? String).flatMap(off), let w = (n["wake_time"] as? String).flatMap(off) else { return nil }
-        return b...max(b + 10, w)
+        guard let bs = n["bedtime"] as? String, let ws = n["wake_time"] as? String, let b = off(bs), let w = off(ws) else { return nil }
+        let end: Double = Swift.max(b + 10, w)
+        return b...end
       }
       regularity = Regularity(pct7: TodayModel.num(s["consistency_pct_7d"]), pct30: TodayModel.num(s["consistency_pct_30d"]), nights: nights)
     }
