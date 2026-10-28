@@ -11,5 +11,7 @@
     "stress": "v1.0-2026-10-17",
     "trends": "trends-1"
   },
-  "global": "OpenBodyScore"
+  "global": "OpenBodyScore",
+  "signature": "1Pl/UY8SC3IckF3PwnNUoS9txsN+S6wmsa+aH2YfXTee4C7VzmqctA8rJlTK0x9In2+L3yEIr1GU9cLeu3iLAQ==",
+  "key_id": "51e37b7c14053032"
 }

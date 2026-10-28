@@ -9,8 +9,8 @@ import Foundation
 /// equal `packages/openbodyscore-js/signing-keys.json` (body_engine/tests/test_native_sync.py compares the two).
 /// The private keys never leave the maintainer's machine (`secrets/algo_signing_key`, not in git, not on any server).
 enum AlgoSigningKeys {
-  static let current: String? = nil
-  static let next: String? = nil
+  static let current: String? = "FvOt1FIeUlsAcfaGWpSk02DbSLNTSfISXZJqDe5OYJg="
+  static let next: String? = "PZeBHFxsHJ+rB58Lp3ogBu2ZWy4vQPaMxufPda8khbo="
 
   static var all: [Curve25519.Signing.PublicKey] {
     [current, next].compactMap { b64 in

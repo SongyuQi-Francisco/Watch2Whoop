@@ -173,6 +173,8 @@ SCAN_ALLOW = [
     ("body_engine/tests/*", r"sk-(ant-)?test-"),                                                # fake API keys
     ("deploy/tailscale/policy.hujson", r"100\.64\.0\.\d+"),                                      # placeholder tailnet IPs
     ("tools/export_public.py", r"100\.64\.0\.0"),
+    ("packages/openbodyscore-js/signing-keys.json", r'"public_key": "[A-Za-z0-9+/]{43}="'),            # Ed25519 public keys (#340)
+    ("apps/ios/Watch2Whoop/Algorithms/AlgoSigningKeys.swift", r'static let (current|next): String\? = "[A-Za-z0-9+/]{43}="'),
 ]
 # (exact path, regex) spans cut out of a line before the private-word check: the repository's own address in the two
 # READMEs (clone command, GitHub links, shields.io badges), whose owner name is otherwise a private word (owner's decision,
