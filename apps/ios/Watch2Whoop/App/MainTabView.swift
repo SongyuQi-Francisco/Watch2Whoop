@@ -53,6 +53,7 @@ struct MainTabView: View {
     .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
     .overlay { JarvisLayer(tab: $selection) }                                             // N6
     .environment(\.askAI, AskAIAction { p in Task { @MainActor in JarvisRouter.ask(prompt: p) } })   // N6
+    .devTab($selection)                                                                    // N5: Debug screenshots
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }
@@ -65,8 +66,8 @@ struct MainTabView: View {
     case .today: TodayView(session: session)                                              // N3
     case .trends: TrendsView(session: session)                                            // N4
     case .circles: CirclesTab()                                                           // N7
-    case .food: PlaceholderTab(tab: tab, owner: "N5")
-    case .record: PlaceholderTab(tab: tab, owner: "N5")
+    case .food: FoodTab(session: session)                                                 // N5
+    case .record: RecordTab(session: session)                                             // N5
     case .me: MeTab()                                                                     // N8
     }
   }

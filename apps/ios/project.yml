@@ -43,6 +43,10 @@ targets:
       # into the app from its one copy in git; N2 adds the signed download that replaces it at run time.
       - path: ../../packages/openbodyscore-js/dist/openbodyscore.js
         buildPhase: resources
+      # N5's muscle load map: the Today page's body drawings (paths from @mjcdev/react-body-highlighter, MIT), read by
+      # Features/Record/MuscleMap.swift; one copy in git, so the app and the page never draw different bodies.
+      - path: ../../body_engine/src/body_engine/web/static/muscle-body-data.js
+        buildPhase: resources
     info:
       path: Watch2Whoop/Info.plist
       properties:

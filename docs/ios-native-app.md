@@ -271,7 +271,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | 账号 / 启动（N0、N8） | `GET /v1/web/me`（id、名字、flags、用户的今天）、`GET /v1/auth/methods`、`POST /v1/auth/email/start`、`/verify`、`POST /v1/auth/apple`、`GET /v1/account`、`POST /v1/account/logout`、`DELETE /v1/account`、`POST /v1/account/redeem-invite`、`GET /v1/consent`、`POST /v1/users/me/consent`、`GET/PATCH /v1/users/me/profile`、`PUT /v1/users/me/intro` |
 | 今天 / 睡眠 / 讲解（N3） | `GET /v1/users/me/today`（N0 已接）、`/sleep/nights`、`/sleep/night`、`/sleep/details`、`/days?month=`、`/health-monitor`、`/strain-coach`、`/sleep-coach`、`/stress`、`/healthspan`、`/hr-zones`、`/vo2max`、`/reminders`（`PATCH /reminders/{id}`）、`/explain/metric/{key}`、`/explain/status/{key}`、`/explain/lab/{key}`、`GET /v1/explain/glossary`、`/goals/sleep` |
 | 趋势 / 报告（N4） | `GET /v1/users/me/trends?days=&end=`、`/reports`、`/journal/analysis`、`/cardio`、`/labs/{key}/history`、`/weight/recent` |
-| 记录（N5） | 喝水 `GET/POST /water`、`DELETE /water/{id}`；体重 `POST /weight`（`client_id`）、`/weight/recent`；日记 `GET /journal`、`/journal/items`、`/journal/frequent`、`PUT/DELETE /journal/{day}/{key}`；饮食 `GET /meal-templates`、`POST /meal-templates/{id}/log`、`DELETE /meal-logs/{id}`、`/nutrition/combine`、`DELETE /nutrition/entries/{id}`、`/recipes…`、`/diet-profile`、`/goals/nutrition`、`/grocery/…`；训练 `/training/calendar`、`/training/day/{day}`、`/training/week`、`/training/plan…`、`/training/session…`、`/training/muscle-load…`、`/training/exercises…`、`/training/custom-exercises…`、`/training/goals`；补剂 `/supplements…`；化验 `/labs…`；事件 `/events…`；动作限制 `/exercises…` |
+| 记录（N5） | 喝水 `GET/POST /water`、`DELETE /water/{id}`；体重 `POST /weight`（`client_id`）、`/weight/recent`；日记 `GET /journal`、`/journal/items`、`/journal/frequent`、`PUT/DELETE /journal/{day}/{key}`；饮食 `GET /meal-templates`、`POST /meal-templates/{id}/log`、`DELETE /meal-logs/{id}`、`/nutrition/combine`、`PATCH / DELETE /nutrition/entries/{id}`（PATCH 是 N5 加的「改份量」：绝对份数 `quantity`，带 `client_id`）、`/recipes…`、`/diet-profile`、`/goals/nutrition`、`/grocery/…`；训练 `/training/calendar`、`/training/day/{day}`、`/training/week`、`/training/plan…`、`/training/session…`、`/training/muscle-load…`、`/training/exercises…`、`/training/custom-exercises…`、`/training/goals`；补剂 `/supplements…`；化验 `/labs…`；事件 `/events…`；动作限制 `/exercises…` |
 | Jarvis（N6） | `POST /v1/assistant/chat`（SSE）、`/chat/confirm`、`GET /chat/{id}/events`、`/conversations…`、`POST /v1/assistant/transcribe`、`/voice-fix`、`GET /v1/users/me/ai-cards`、`/ai-choice`、`/ai-fallback…` |
 | 圈子（N7） | `GET /v1/friends`、`/overview`、`/leaderboard`、`/referral`、`/invite`、`POST /v1/friends/join`、`/circles…`、`/nudges`、`/remarks…`、`/v1/friends/feed…`（动态、点赞、评论、未读）、`/v1/avatars…` |
 | 我 / 设置 / 同步中心（N8） | `/memory…`、`/ai-providers…`、`/ai-tokens…`、`/ai-connections…`、`/notification-settings`、`/notifications…`、`POST/DELETE /push-devices`、`GET /v1/whats-new`、`/notices…`、`/feedback…`、`/data-status`、`/history-import…`、`/appearance`、`/flags`；同步：`GET/POST /v1/ingest/healthkit`、`GET /v1/ingest/sync-status`、`/v1/ingest/resync`、`PUT /v1/ingest/sync-device`、`/sync/engine/status`、`/sync/overview`、`/sync/history…`、`/health-history`、`POST /v1/web/ingest-token` |
@@ -504,6 +504,21 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 按住说话：开始的那一下 51–60 fps，最差 66 ms。
   - 毛玻璃键：展开 / 收起 60 fps，偶尔掉 1–2 帧。
 
+### 9.3 N5 饮食 / 记录 / 健康档案：数据从哪来、写怎么走
+
+- **页面**：`Features/Food/`（饮食 tab：今天吃了的四个进度环和按餐的每条记录、改份量 / 删除、喝水、快捷记餐、食谱列表和详情、采购清单）、`Features/Record/`（记录 tab：训练 · 日记，`friends` 开关打开时多一个「饮食」分段；训练里有肌肉负荷图、今天的计划和逐组记录、本周、动作限制、训练历史月历）、`Features/Health/`（「我」→ 补剂 / 化验 / 身体事件）。
+- **读**：每个页面一个 `LocalPageStore` 子类（`Sync/LocalPageStore.swift`）：订阅 `docs` 里自己的文档 + `records` 里还没被服务器视图包含的行（`LocalView`，`.immediate`，第一帧就有缓存），刷新时 `RecordsPuller` 并行拉、在**一个事务**里存文档并删掉「已经发出去、服务器视图里已经有了」的本地行，所以同一条不会同时出现两次。文档键：`today:<日期>`（N3 的今天文档，用它的 `nutrition` 块）、`water:<日期>`、`food:templates`、`food:recipes`、`food:recipe:<id>`、`grocery:list:<周一>`、`journal:items`、`journal:frequent`、`journal:<日期>`、`training:session:<日期>`、`training:week:<周一>`、`training:calendar:<年-月>`、`training:day:<日期>`、`training:muscle`、`exercise:rules`、`health:supplements`、`health:labs`、`health:lab:<化验项>`、`health:events`。
+- **写**（`Sync/LocalRecords.swift`）：一次写 = `records` 一行（`id = c:<client_id>`，`pending`，`payload` 是页面叠加要用的内容）+ 离线队列一条（同一个 `client_id`），同一个事务。页面把这些行叠在服务器文档上（`NutritionDay.applying`、`WaterDay.build`、`JournalDay.build`、`TrainingSession.build`、`GroceryList.build`、`Supplement.build`），钟表 = 等待提交，红色感叹号 = 被拒（在「我 → 没提交的修改」里重试 / 丢弃）。
+  - 只追加：喝水 `POST /water`、快捷记餐 `POST /meal-templates/{id}/log`、食谱 `POST /recipes/{id}/log`（`client_id` 在 body）。当天已记过 = 409 → 冲突，页面提示「再记一份」（丢掉这条，带 `allow_duplicates` 重记）。
+  - 后写的为准（`LocalRecords.supersede` 先删同组还没发出的旧状态）：日记一项 `PUT/DELETE /journal/{day}/{key}`（补剂打卡就是它）、改份量 `PATCH /nutrition/entries/{id}`、采购勾选 `PATCH /grocery/list/items/{id}`、当天训练草稿 `PUT /training/session/{day}`。草稿改了而「提交」还在队列里时，提交重新排到新草稿后面。
+  - 删除一条饮食：`DELETE /nutrition/entries/{id}?date=`（排队，叠加时隐藏）。
+  - 撤销（第 5.4 节）：还在队列里的直接删掉那一条和本地行（`LocalRecords.cancel`）；已经提交的要联网（`DELETE /water/{id}`、`DELETE /meal-logs/{id}`）。
+  - 只在线（第 5.5 节）：收藏 / 现在能做（`PATCH /recipes/{id}`）、记身体事件（`POST /events`，没有 `client_id`）；化验录入、补剂增改仍交给用户自己的 AI。
+- **禁用 / 注意的动作**：今天的计划卡里禁用动作划掉、写「不要做」、不能记组，注意动作带标签；展开后显示用户自己的原因 / 要点。「动作限制」一节列出 `/exercises`（exercise_meta）里禁用 / 注意的动作，加上本周计划的 `cautions`。
+- **肌肉负荷图**（开关 `muscle_load`）：人体图是原生绘制的。`project.yml` 把今天页的 `web/static/muscle-body-data.js` 当资源打进 app（仓库里只有这一份），`MuscleBodies` 解析出 JSON，`SVGPath` 把 SVG path（M L H V C S Q T A Z，含相对坐标和弧线）转成 SwiftUI `Path`，`Canvas` 按区域着色（没练 / 偏少 / 合适 / 偏多，今天练的描边），点区域打开那块肌肉。区域归属和今天页一样（`MuscleLoad.bodyRegions` = muscle-map.js 的 `BODY_REGIONS`）。
+- **服务器改动**：新加 `PATCH /v1/users/{user}/nutrition/entries/{id}`（`assistant/memory_api.py`，`{date, quantity, client_id}`，只能改自己的，同一个份数再发不改，测试 `tests/test_ownstore.py::test_only_mode_change_portion_api`）。
+- **模拟器截图**（Debug 版，`Features/Record/RecordDevShot.swift`）：`SIMCTL_CHILD_W2W_DEV_TAB=food|record`、`W2W_DEV_RECORD=training|journal|food`、`W2W_DEV_HEALTH=supplements|labs|events[:化验项]`、`W2W_DEV_SCROLL=n5.today|n5.week|n5.limits|n5.calendar|n5.water|n5.templates`。模拟器里要写 Keychain，构建时用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID`（`apps/ios/README.md`）。
+- **还没做的**（网页版有、这次没搬）：饮食多选合并 / 存成模板、每餐推荐、饮食档案弹层、采购的商品库 / 家里存货 / 超市链接；训练的切换分化、动作库、移除 / 恢复动作、动作指导图；肌肉详情里的推荐动作和「让 Jarvis 分析」；日记的「行为影响」（在趋势页，归 N4）。
 ### 9.3 N4 趋势和报告：哪些在本机算
 
 **文档键**（`Features/Trends/TrendsStore.swift` 的 `TrendsDocs`、`Features/Reports/ReportModel.swift` 的 `ReportDocs`；结束日期是今天时键里不带日期，所以第二天打开也先画缓存）
@@ -578,6 +593,10 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - 用 `quickstart/demo_data.py` 生成合成数据，再用 `body-engine import-apple-zip` 导入。
 - 跑 `uvicorn body_engine.api:app`。
 - 用 Debug 环境变量登录（第 3 节）。不碰任何真实的库。
+
+N5 的饮食、记录、健康档案（iPhone 17 模拟器，合成数据）：
+
+<img src="images/ios-native/n5-food-zh-light.png" width="180" alt="N5 饮食"> <img src="images/ios-native/n5-water-quick-zh-dark.png" width="180" alt="N5 喝水和快捷记餐，深色"> <img src="images/ios-native/n5-food-en-light.png" width="180" alt="N5 Food, English"> <img src="images/ios-native/n5-muscle-zh-light.png" width="180" alt="N5 肌肉负荷图"> <img src="images/ios-native/n5-training-today-zh-light.png" width="180" alt="N5 今天的训练，逐组记录"> <img src="images/ios-native/n5-week-history-zh-light.png" width="180" alt="N5 本周、动作限制、训练历史"> <img src="images/ios-native/n5-journal-zh-light.png" width="180" alt="N5 日记"> <img src="images/ios-native/n5-lab-trend-zh-light.png" width="180" alt="N5 化验趋势"> <img src="images/ios-native/n5-supplements-en-light.png" width="180" alt="N5 Supplements, English">
 
 N7 的朋友 tab：动态、评论（从通知进来）、成员、排行榜（深色）、加入圈子、英文（iPhone 17 模拟器，虚构的用户和合成数据）：
 
@@ -679,6 +698,8 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 
 **Pages**
 - N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points). `LocalScoring` computes a day from the local raw tables and fills only days the server has not scored. It stays idle until N8 writes `hk_samples` and N2 restores raw data; it cannot serve `rmssd` users (no beat-to-beat table) and cannot match the server's long baselines with a short local history.
+- N4: Trends and reports.
+- N5: all records and the Food tab (section 9.3). Each page store observes its documents plus the pending `records` rows (`LocalView`); `RecordsPuller` saves the server's views and prunes the rows the server now has in one transaction. Writes are a `records` row plus an outbox entry with the same `client_id`; last-write-wins groups drop older unsent states. Undo of a queued write is local, of a sent one online. The muscle map draws the Today page's own `muscle-body-data.js` (bundled) as SwiftUI paths. Server: `PATCH /nutrition/entries/{id}` sets an absolute portion.
 - N4: Trends and reports. Series come from `/trends` (cached as documents); seven status cards (HRV status, training status, load focus, illness risk, lowest-HR timing, recovery time, chronotype) are computed on the phone with the bundle's `trend(...)` when the local history covers their window, resilience / body battery / heart-rate recovery stay the server's. Swift Charts with a tap / press-and-slide read-out, LTTB-thinned lines above 140 points, year labels on long ranges.
 - N5: all records and the Food tab.
 - N6: Jarvis.

@@ -183,17 +183,3 @@ struct UnsentChangesView: View {
     }
   }
 }
-
-/// Supplements, lab results and body events: the pages come with N5 (#340); until then the record lives on the server
-/// and your AI reads and writes it.
-struct RecordsPlaceholder: View {
-  let kind: MeSheet.RecordKind
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      Text(tr("这一页还在做。现在可以直接让你的 AI 记录和查看。", "This page is on its way. For now, ask your AI to log and show it."))
-        .font(Typo.body).foregroundColor(Palette.text2)
-      Text("#340 N5").font(Typo.caption).foregroundColor(Palette.text3)
-    }
-  }
-}

@@ -594,3 +594,41 @@ def test_only_mode_today_page_training_week_and_day(conn, flag_state, monkeypatc
     assert week["plan"] is None and week["available_splits"] and week["sparky"]["state"] == "connected"
     day = views.training_today(conn, uid, uid, d)
     assert [x["name"] for s in day["logged"] for x in s["exercises"]] == ["哑铃卧推"] and not day["sparky"]["can_connect"]
+
+
+def test_only_mode_change_portion_api(conn, dsn, flag_state, monkeypatch):
+    """The native app's 「改份量」 (#340 N5): PATCH /nutrition/entries/{id} sets an absolute quantity, same id; a resend with
+    the same client_id is answered from the first write, the same quantity again changes nothing; only for oneself."""
+    from fastapi.testclient import TestClient
+    from psycopg_pool import ConnectionPool
+    from body_engine import api, auth
+    uid, other = _user(conn, "portion"), _user(conn, "portion-b")
+    conn.execute("UPDATE users SET consent_at = now(), consent_version = '2026-10-22.2' WHERE id IN (%s, %s)", (uid, other))
+    _no_sparky(monkeypatch)
+    flag_state(source.ONLY_FLAG)
+    d = _today() - timedelta(days=1)
+    eid = sparky_write.log_food(conn, uid, [_food_item(d)], False)["created"][0]["id"]
+    tok, ro = auth.create_token(conn, uid, "app", ["read", "write"]), auth.create_token(conn, uid, "ro", ["read"])
+    tok_b = auth.create_token(conn, other, "app", ["read", "write"])
+    conn.commit()
+    flags.invalidate()
+    api.pool = ConnectionPool(dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=2, open=True)
+    try:
+        c = TestClient(api.app, base_url="https://testserver")
+        h = lambda t: {"Authorization": f"Bearer {t}"}   # noqa: E731
+        url = f"/v1/users/me/nutrition/entries/{eid}"
+        body = {"date": d.isoformat(), "quantity": 0.5, "client_id": "portion-1"}
+        assert c.patch(url, json=body, headers=h(ro)).status_code == 403                 # read-only token
+        assert c.patch(f"/v1/users/{uid}/nutrition/entries/{eid}", json=body, headers=h(tok_b)).status_code == 403
+        assert c.patch(url, json=body, headers=h(tok_b)).status_code == 404              # not in the other user's food
+        r = c.patch(url, json=body, headers=h(tok))
+        assert r.status_code == 200 and r.json()["updated"]["id"] == eid and r.json()["updated"]["calories"] == 325
+        again = c.patch(url, json=body, headers=h(tok))                                    # the queue resent it
+        assert again.status_code == 200 and again.headers.get("X-Duplicate") == "1"
+        same = c.patch(url, json={**body, "client_id": "portion-2"}, headers=h(tok))
+        assert same.status_code == 200 and same.json()["unchanged"] is True
+        assert c.patch(url, json={**body, "quantity": 0}, headers=h(tok)).status_code == 422
+        assert conn.execute("SELECT calories FROM food_entries WHERE id = %s", (eid,)).fetchone()["calories"] == 325
+    finally:
+        api.pool.close()
+        api.pool = None

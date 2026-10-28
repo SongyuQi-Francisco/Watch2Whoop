@@ -97,6 +97,16 @@ ICONS = {
     "external-link": "Jarvis: open your AI",
     "check": "Jarvis: current AI / confirmed",
     "audio-lines": "Jarvis: voice message tag",
+    # N5: food, log, health record
+    "minus": "records: fewer servings / a smaller portion",
+    "droplet": "food: water",
+    "book-open": "food: recipes",
+    "shopping-cart": "food: shopping list",
+    "search": "food: search recipes",
+    "star": "food: favourite recipe",
+    "undo-2": "food: undo the last drink",
+    "ban": "training: banned exercise",
+    "triangle-alert": "training: exercise to be careful with",
     # N4: trends
     "info": "trends: explain a metric (N4)",
 }
