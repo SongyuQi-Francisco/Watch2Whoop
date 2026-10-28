@@ -101,11 +101,19 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
 
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=8, max_length=40)
+    client: str = Field("web", pattern="^(web|app)$")   # app: the native iOS app (#340 N8) gets the device token, no cookie
 
 
 @router.post("/v1/web/login-code")
 def login_with_code(body: LoginCodeIn, request: Request, response: Response, conn=Depends(get_conn)):
-    """Log in with a one-time login code (from the Watch2Whoop app's setup info / QR code): issue a token specific to this device and set the same cookie."""
+    """Log in with a one-time login code (from the Watch2Whoop app's setup info / QR code): issue a token specific to this
+    device and set the same cookie. client=app: no cookie; the answer carries that token (Bearer for the native app)."""
+    if body.client == "app":
+        token = login_codes.redeem_token(conn, body.code)
+        user = auth.user_for_token(conn, token) if token else None
+        if user is None:
+            raise HTTPException(401, "登录码无效、已用过或已过期")
+        return {**_me(user), "token": token}
     res = login_codes.redeem(conn, body.code, request.headers.get("user-agent"))
     if res is None:
         raise HTTPException(401, "登录码无效、已用过或已过期")

@@ -10,15 +10,18 @@ struct RootView: View {
       case .starting:
         Palette.bg.ignoresSafeArea()
       case .signedOut(let message):
-        SignInView(message: message)
+        OnboardingView(message: message)                                                  // N8
       case .connecting(let message):
         ConnectingView(message: message)
       case .signedIn:
         if let session = model.session {
-          MainTabView().environmentObject(session)
+          MainTabView()
+            .environmentObject(session)
+            .modifier(SignedInFlows(session: session))                                     // N8
         }
       }
     }
+    .id(model.langRevision)   // a language change redraws everything with the new `tr()`
     .background(Palette.bg.ignoresSafeArea())
   }
 }
@@ -35,6 +38,8 @@ private struct ConnectingView: View {
       if message != nil {
         Button(tr("重试", "Retry")) { Task { await model.connect() } }
           .font(Typo.bodyStrong).foregroundColor(Palette.text)
+        Button(tr("退出登录", "Sign out")) { Task { await model.signOut() } }
+          .font(Typo.caption).foregroundColor(Palette.text2)
       }
     }
     .padding(Metrics.gutter)

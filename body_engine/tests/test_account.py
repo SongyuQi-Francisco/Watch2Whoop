@@ -638,6 +638,22 @@ def test_web_login_code_for_app_webview(client):
     client.cookies.clear()
 
 
+def test_login_code_for_native_app_returns_token(client):
+    """The native iOS app (#340 N8) redeems a setup link's login code for a Bearer token: no cookie, single use."""
+    s = _email_login(client, "native@example.com", "app")
+    code = client.post("/v1/account/web-login-code", headers={"Authorization": f"Bearer {s['token']}"}).json()["code"]
+    client.cookies.clear()
+    r = client.post("/v1/web/login-code", json={"code": code, "client": "app"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["id"] == s["me"]["id"] and body["token"] and body["token"] != s["token"]
+    assert "set-cookie" not in r.headers
+    me = client.get("/v1/web/me", headers={"Authorization": f"Bearer {body['token']}"})
+    assert me.status_code == 200 and me.json()["me"]["id"] == s["me"]["id"]
+    assert client.post("/v1/web/login-code", json={"code": code, "client": "app"}).status_code == 401   # used up
+    assert client.post("/v1/web/login-code", json={"code": code, "client": "other"}).status_code == 422
+
+
 # ---------------------------------------------------------------------------------------------------- deletion, disabled
 
 def test_delete_account_removes_everything(client, dsn, _env, monkeypatch):

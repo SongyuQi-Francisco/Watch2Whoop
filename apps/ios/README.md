@@ -20,6 +20,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   - `python3 scripts/lucide_assets.py --check`：图标；
   - `scripts/sync_flutter_sources.sh --check`：拷进来的同步代码。
 - **模拟器自动登录**（只对 Debug 版有效）：`SIMCTL_CHILD_W2W_DEV_SERVER=http://127.0.0.1:<端口> SIMCTL_CHILD_W2W_DEV_TOKEN=<token> SIMCTL_CHILD_W2W_DEV_LANG=zh xcrun simctl launch <设备> <bundle id>`。只连用合成数据的测试服务器（`quickstart/`）。
+- **模拟器里走设置链接登录**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_SETUP='watch2whoop://setup?today=…&login=<登录码>'`，和相机扫码走同一条路（`body-engine login-code` 发码）。`simctl openurl` 也行，但要在模拟器里点一次「打开」。
+- **模拟器里测 Keychain / 覆盖升级**：不能用 `CODE_SIGNING_ALLOWED=NO`（没签名的 app 写不进 Keychain）。用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID` 构建：Flutter 的模拟器构建用的就是 `FAKETEAMID`，两边的 Keychain 访问组一致，才能读到 Flutter 版存的 token。
 
 ## English
 
