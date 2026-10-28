@@ -56,6 +56,26 @@ ICONS = {
     "calendar-days": "Me: body events",
     "log-out": "Me: sign out",
     "user-x": "Me: delete account",
+    # N6: Jarvis (key, menu, voice, chat)
+    "orbit": "Jarvis key",
+    "bot-message-square": "Jarvis menu: chat",
+    "audio-waveform": "Jarvis menu: voice",
+    "scan-eye": "Jarvis menu: photo",
+    "zap": "Jarvis menu: quick log",
+    "chevron-down": "Jarvis: close the menu",
+    "mic": "Jarvis: hold to talk",
+    "lock": "Jarvis: lock the recording",
+    "arrow-up": "Jarvis: send",
+    "plus": "Jarvis: new conversation",
+    "messages-square": "Jarvis: conversations",
+    "camera": "Jarvis: camera",
+    "image": "Jarvis: photo library",
+    "video": "Jarvis: video",
+    "copy": "Jarvis: copy the question",
+    "external-link": "Jarvis: open your AI",
+    "check": "Jarvis: current AI / confirmed",
+    "audio-lines": "Jarvis: voice message tag",
+    "trash": "Jarvis: delete a conversation",
 }
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "Watch2Whoop" / "Resources" / "Assets.xcassets" / "Icons"
 

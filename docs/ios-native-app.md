@@ -407,7 +407,7 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 写操作：
   - 提醒的「已看 / 不再提醒」：先改本地的 `today:*` 文档，再排队 `PATCH /reminders/{id}`。
   - 记体重：先写 `records`（kind `weight`，`pending`），再排队 `POST /weight`（带 `client_id`）。409 时提示「用这次的覆盖」。
-- 「问 AI」：`DesignSystem/AskAI.swift` 的环境值 `\.askAI`，默认把问题复制到剪贴板；N6 在外层把它设成打开 Jarvis。
+- 「问 AI」：`DesignSystem/AskAI.swift` 的环境值 `\.askAI`，默认把问题复制到剪贴板；N6 在 `MainTabView` 上把它设成 `JarvisRouter.ask`（第 9.2 节）。
 
 **本机算分**（`Features/Today/LocalScoring.swift`）：已经接上，测试里用 40 天虚构数据跑通。
 
@@ -427,6 +427,71 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 启动环境变量 `W2W_PERF=1` 时开帧计数器；`W2W_PERF_SCROLL=1` 时今天页自己上下滚三次，并报告掉帧。看结果：`xcrun simctl launch --console-pty … | grep W2W_PERF`。
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
 - Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`）。
+
+### 9.2 N6 Jarvis（`Features/Jarvis/`）
+
+**挂在哪里**：`MainTabView` 只加了两行：`.overlay { JarvisLayer(tab: $selection) }` 和 `\.askAI` 环境值。Jarvis 键在底部正中、底栏上方；其他页面不用管它。
+
+**其他页面怎么调 Jarvis**：`JarvisRouter.ask(prompt:)`（静态方法，任何地方都能调），行为和今天页的 `askAI` 一致：
+
+| 用户选的 AI（`/ai-choice` → `ai.mode`） | `ask` 做什么 |
+|---|---|
+| `api`（自己的 API key）、`fallback`（托底 Jarvis） | 打开对话，问题放进输入框，由用户发送；托底 AI 没同意过时先弹同意 |
+| `butler`（身体管家链接） | 复制问题，打开管家链接 |
+| `mcp`（订阅类，在它自己的 app 里用）、`none` | 复制问题，提示去哪里粘贴 |
+
+`MainTabView` 已经把 N3 的环境值 `\.askAI` 设成交给 `JarvisRouter.ask(prompt:)` 的 `AskAIAction`，讲解弹层的「问 AI」直接走这里。页面想让快捷问题更准，可以设 `JarvisRouter.current?.page = "record.training"`（默认是当前 tab）。
+
+**Jarvis 键**（`JarvisLayer.swift`）
+
+- 点一下（AI 在 app 内对话时）：菜单像 Mission 仪表盘那样展开。四个键（对话 / 语音 / 拍照 / 快记）先向两边滑出，再升到弧上、放大到略小于 Jarvis 键（58 / 50 pt）。弧的圆心在键中心下方 22 pt。没有刻度线和连接线。
+- 颜色只用一种墨色（`Palette.text`），动画只改 transform 和 opacity，弹簧曲线；系统打开「减弱动态效果」时直接出现。
+- iOS 26：键是系统 Liquid Glass，放在一个 `GlassEffectContainer` 里，四个键从 Jarvis 键的玻璃里流出来。iOS 16–25：`.ultraThinMaterial` 圆片加一条细描边。
+  - 菜单收起时，四个键不在视图树里。停在中心的玻璃键也会参与合成，会把面板上的文字折射到键边上。
+  - 录音时 Jarvis 键是实心墨色，不用着色玻璃，原因同上。
+  - 遮罩是纯色，不用全屏模糊：玻璃键移动时，全屏模糊会掉帧。
+- 按住 0.35 秒：开始说话。往左上滑是取消，往右上滑是锁定（之后可以松手，点「完成」或「发送」）。直接松开就是结束。
+  - 识别：`JarvisVoice` 用系统的本机识别（`requiresOnDeviceRecognition`，声音不发给 Apple）。中文另外在内存里留一份 16 kHz 录音，交给服务器的 `/transcribe?fix=1` 定稿；英文用手机自己的文字，再经 `/voice-fix` 按用户自己的词纠正。录音不落盘。
+  - 发出去：flag `jarvis_voice_direct` 打开时直接发（消息带 ［语音］ 标记）；没打开时放进输入框，用户确认后再发（同意书的约定）。
+  - 音频会话和 AVAudioEngine 在专用串行队列上启停。第一次碰麦克风输入要几百毫秒，放在主线程会卡住动画。
+- AI 不在 app 内（管家链接 / 订阅 / 没设置）：点一下和今天页的键一样（`JarvisRouter.tapKey`），没有菜单，也不能按住说话。
+
+**对话**（`JarvisChat.swift` 模型，`JarvisChatView.swift` 界面）
+
+- 接口：`POST /v1/assistant/chat`（`{message, images, conversation_id, page}`）和 `/chat/confirm`，都用 `APIClient.eventStream` 按字节读 SSE（`SSEParser`：`URLSession.AsyncBytes.lines` 会吞掉空行，而空行正是事件的分隔）。
+- 文字最多每秒重画 30 次。Markdown 由 `MDBlock` 分块：标题、段落、列表、引用、代码、表格；行内格式用 `AttributedString(markdown:)`。
+- 断线：已经收到事件的一轮，回到前台或者断开时，用 `GET /chat/{id}/events?after=<seq>` 接着读；服务器回 `resync` 时重新读会话。
+- 新消息遇到 502–504（部署重启）时，等 3 秒、6 秒各重发一次；连不上时消息下面有「重试」。
+- 写操作：只有删除 / 撤销会等确认（`confirm` 事件）。确认卡片上有「不要 / 确认」，确认后同一个流接着回答。
+- 多轮对话靠 `conversation_id`。历史对话来自 `/conversations`，可以打开、删除。
+- 顶部 AI 切换：选项来自 `/ai-choice`，选了立即生效。
+  - 选托底 AI 但还没同意过：先弹同意书（`/ai-fallback`，要点由服务器给），同意后接着做刚才的事。
+  - 改成链接 / 订阅类：关掉对话，键改走那边。
+- 快捷问题按当前页面给（`JarvisRouter.quick(for:)`，和 `ai.js quickList` 同一套）。第一条消息之前排在问候下面，之后变成输入框上方的一行。
+- 照片：拍照用 `UIImagePickerController`；相册用 `PhotosPicker`（照片和视频都可以）。
+  - 照片长边 ≤ 1600 px，JPEG 0.85。
+  - 视频抽 ≤ 8 帧（长边 1024），给模型的消息前加 ［视频 n 帧，约 s 秒］。临时文件读完就删。
+- 拍照键：拍完连同「拍照记一餐」一起发。快记键：常用的 3 个快捷记餐、喝水（flag `water`）、训练按计划完成、体重，点一下就发一句话给 Jarvis。
+
+**卡片**（`JarvisCards.swift`，`show_card` 的类型）
+
+- 原生：`training`、`meal`（点一行出 ×0.5 / ×1.5 / ×2 / 删除）、`metric`（小折线图）、`sleep`、`actions`（快捷按钮）、`product`（商品卡）、`recovery`、`water`、`supplements`。
+- 其余类型（`muscle`、`goals`、`suggest`、`recipe`、`recipes`、`templates`、`shopping`、`strain`、`stress`、`healthspan`、`trend`、`weight`、`lab`、`journal`、`report`、`hr_zones`、`vo2max`、`monitor`、`data_status`）先用通用卡片：标题、日期、顶层的数字和短词，加上按钮。
+- 按钮：`send` 发 app 自己的一句话（`JarvisCards.send`，和 `ai.js SEND` 一致）；`open` 切到对应的 tab（`JarvisRouter.open(page:)`）。卡片里从不渲染模型写的标记。
+
+**测试和演示**
+
+- 单元测试 `JarvisTests`：SSE 分帧，以及一轮对话的各种情况（文字、卡片、额度、语音和视频标记、确认、托底同意后重发、502 重试、断线续读、重开会话），还有 AI 选项、`ask`、快捷问题、Markdown、卡片、媒体、帧率统计。服务器全部用 `StubProtocol` 假的 SSE 回答，不调付费 AI。
+- 模拟器演示：`python3 apps/ios/scripts/fake_jarvis_server.py` 是一个假的 Body Engine（只有 Jarvis 用到的接口，数字都是编的）。配合第 3 节的 Debug 登录，再加上 `SIMCTL_CHILD_W2W_JARVIS_DEMO`：
+  - `dial`：展开 / 收起各 5 次，再按住说话 3 次，打印帧率汇总；
+  - `open`、`hold`、`chat`：停在对应的画面；
+  - `script`：只用脚本化的识别器，给 UI 测试用。
+  - `W2W_JARVIS_MATERIAL=1`：在 iOS 26 上也画毛玻璃键，方便对比。
+- 帧率：`W2W_PERF=1` 时 `JarvisPerf` 用 CADisplayLink 统计每次展开 / 收起 / 开始说话，写日志 `W2W_PERF jarvis-open fps=… worst=…ms dropped=…`。看结果用 `log stream --predicate 'category == "perf"'`。
+- 2026-10-29 实测：iPhone 17 Pro Max 模拟器，iOS 26.2，60 Hz，Liquid Glass。
+  - 展开 / 收起：稳定后都是 60 fps，0 掉帧。冷启动后第一次展开 55–57 fps，掉 2–3 帧。
+  - 按住说话：开始的那一下 51–60 fps，最差 66 ms。
+  - 毛玻璃键：展开 / 收起 60 fps，偶尔掉 1–2 帧。
 
 ## 10. 测试和发布
 
@@ -453,6 +518,10 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 N8 的登录、同意书、我、同步中心（iPhone 17 模拟器，合成数据）：
 
 <img src="images/ios-native/n8-signin.png" width="200" alt="N8 登录"> <img src="images/ios-native/n8-consent.png" width="200" alt="N8 同意书"> <img src="images/ios-native/n8-me.png" width="200" alt="N8 我"> <img src="images/ios-native/n8-sync-center.png" width="200" alt="N8 同步中心">
+
+N6 的 Jarvis：菜单（浅色 / 深色）、按住说话、对话（浅色 / 深色）（iPhone 17 Pro Max 模拟器，iOS 26，假服务器，合成数据）：
+
+<img src="images/ios-native/n6-dial-light.png" width="180" alt="N6 Jarvis 菜单，浅色"> <img src="images/ios-native/n6-dial-dark.png" width="180" alt="N6 Jarvis 菜单，深色"> <img src="images/ios-native/n6-hold-light.png" width="180" alt="N6 按住说话"> <img src="images/ios-native/n6-chat-light.png" width="180" alt="N6 对话，浅色"> <img src="images/ios-native/n6-chat-dark.png" width="180" alt="N6 对话，深色">
 
 N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 
@@ -540,7 +609,13 @@ N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
 - N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points). `LocalScoring` computes a day from the local raw tables and fills only days the server has not scored. It stays idle until N8 writes `hk_samples` and N2 restores raw data; it cannot serve `rmssd` users (no beat-to-beat table) and cannot match the server's long baselines with a short local history.
 - N4: Trends and reports.
 - N5: all records and the Food tab.
-- N6: Jarvis.
+- N6: Jarvis (section 9.2).
+  - `JarvisLayer` sits over the tabs (one line in MainTabView). Its key opens a Mission-style dial: the keys slide out to both sides, then rise onto an arc centred below the key. The keys are Liquid Glass on iOS 26 and material discs before that.
+  - Holding the key starts on-device speech recognition: slide up-left to cancel, up-right to lock.
+  - `JarvisChat` streams `POST /v1/assistant/chat` as SSE through `APIClient.eventStream`. It resumes dropped turns from `/events?after=`, waits for confirmation on deletes, keeps conversations, switches the AI and asks for the fallback consent.
+  - Cards are native views by `show_card` type, with a generic fallback.
+  - Other pages call `JarvisRouter.ask(prompt:)`.
+  - Tests use a fake SSE server (StubProtocol). `scripts/fake_jarvis_server.py` serves simulator demos.
 - N7: Circles.
 - N8: Me, settings, onboarding, the sync center, and porting the sync engine's Dart side to Swift.
   - Sign-in: Apple, e-mail code, setup QR code / link (`POST /v1/web/login-code` with `client: app` returns a device token), activation code.

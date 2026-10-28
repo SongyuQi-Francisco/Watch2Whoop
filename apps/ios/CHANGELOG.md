@@ -20,3 +20,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - the sync engine's background work (BGTasks, HealthKit observers) and the beat-to-beat / ECG / water uploads run in the native app; no Open Wearables SDK;
   - Me: profile, AI settings (which AI, AI tokens), notifications, language, appearance (testers), what's new, data status, unsent changes, sign-out, account deletion; health record entries wait for N5;
   - upgrading from the Flutter app keeps the sign-in and the sync anchors.
+- Jarvis (#340 N6):
+  - the Jarvis key at the bottom centre: a tap opens a Mission-style dial (chat / voice / photo / quick log); Liquid Glass on iOS 26, material before;
+  - hold to talk, recognised on the phone: slide up-left to cancel, up-right to lock;
+  - the chat streams its answer as Markdown, shows native cards (generic card for the other types), asks before deletes, keeps conversations, switches the AI at the top, asks for the fallback AI's terms first, shows quick questions for the current page;
+  - photos (camera / library) and video frames (≤ 8);
+  - `JarvisRouter.ask(prompt:)` for the explain sheets and other pages: the in-app chat, or the butler link / a copied question for an AI used elsewhere.

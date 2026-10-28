@@ -40,6 +40,26 @@ struct Icon: View {
     case calendarDays = "calendar-days"
     case logOut = "log-out"
     case userX = "user-x"
+    // N6: Jarvis
+    case orbit
+    case botMessageSquare = "bot-message-square"
+    case audioWaveform = "audio-waveform"
+    case scanEye = "scan-eye"
+    case zap
+    case chevronDown = "chevron-down"
+    case mic
+    case lock
+    case arrowUp = "arrow-up"
+    case plus
+    case messagesSquare = "messages-square"
+    case camera
+    case image
+    case video
+    case copy
+    case externalLink = "external-link"
+    case check
+    case audioLines = "audio-lines"
+    case trash
 
     var assetName: String { "lucide.\(rawValue)" }
   }
