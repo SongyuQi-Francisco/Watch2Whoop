@@ -167,7 +167,7 @@ struct AvatarEditor: View {
       }
     }
     .fullScreenCover(isPresented: $camera) {
-      CameraPicker { img in
+      AvatarCameraPicker { img in
         camera = false
         if let img { Task { busy = true; await upload(img); busy = false } }
       }
@@ -197,7 +197,7 @@ struct AvatarEditor: View {
 }
 
 /// The system camera (SwiftUI has none on iOS 16).
-private struct CameraPicker: UIViewControllerRepresentable {
+private struct AvatarCameraPicker: UIViewControllerRepresentable {
   let done: (UIImage?) -> Void
 
   func makeUIViewController(context: Context) -> UIImagePickerController {
