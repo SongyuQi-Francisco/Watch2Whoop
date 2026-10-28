@@ -78,12 +78,15 @@ OBS.strain = (function (U, P) {
     return p.STRAIN_MAX * (1 - Math.exp(-trimp / k));
   }
 
-  /** CTL (42-day EWMA), ATL (7-day EWMA), TSB, day by day; null days keep the previous values and are flagged missing. */
-  function training_load(trimps, params) {
+  /** CTL (42-day EWMA), ATL (7-day EWMA), TSB, day by day; null days keep the previous values and are flagged missing.
+   *  init {ctl, atl}: the values of the day before trimps[0] (the phone's seeded run, engine.js); without it the start is
+   *  the mean of the first LOAD_SEED_DAYS known TRIMPs, as in Python. */
+  function training_load(trimps, params, init) {
     var p = params || P;
     var known = trimps.filter(function (t) { return t !== null && t !== undefined; }).slice(0, p.LOAD_SEED_DAYS);
-    if (!known.length) return trimps.map(function (t) { return { ctl: null, atl: null, tsb: null, missing: t === null || t === undefined }; });
-    var ctl = U.pySum(known) / known.length, atl = ctl;
+    var seeded = init && init.ctl !== null && init.ctl !== undefined && init.atl !== null && init.atl !== undefined;
+    if (!known.length && !seeded) return trimps.map(function (t) { return { ctl: null, atl: null, tsb: null, missing: t === null || t === undefined }; });
+    var ctl = seeded ? init.ctl : U.pySum(known) / known.length, atl = seeded ? init.atl : ctl;
     var a_ctl = 1 - Math.exp(-1 / p.CTL_DAYS), a_atl = 1 - Math.exp(-1 / p.ATL_DAYS);
     return trimps.map(function (t) {
       var missing = t === null || t === undefined;

@@ -66,12 +66,28 @@ def daily(conn, uid: int, days: list) -> dict:
     return out
 
 
-def sleep(conn, uid: int, days: list) -> dict:
+def sleep(conn, uid: int, days: list, tz: ZoneInfo | None = None) -> dict:
+    """{day: {"sessions": [...], "segments": [[start, end, stage], ...]}}. `segments` (UTC seconds) are the stage segments
+    the server's scoring uses (scores/inputs.night_segments) from 3 hours before that day's first session (the sleep
+    latency looks back) to the end of its last one, only for the days within params.SEGMENT_DAYS, which the phone may
+    recompute (#340 N2b); older days carry the sessions only. A segment near two nights can be in both days."""
     rows = conn.execute("""SELECT id, wake_date, start_at AS start, end_at AS "end", asleep_min, core_min, deep_min, rem_min,
                                   awake_min, unspecified_min, is_main, source, device
                            FROM sleep_sessions WHERE user_id = %s AND wake_date = ANY(%s) ORDER BY start_at""",
                         (uid, days)).fetchall()
-    return {d: {"sessions": items} for d, items in _by_day(rows, "wake_date", lambda r: _row(r, DROP | {"wake_date"})).items()}
+    out = {d: {"sessions": items} for d, items in _by_day(rows, "wake_date", lambda r: _row(r, DROP | {"wake_date"})).items()}
+    if tz is None or not out:
+        return out
+    from ..scores import inputs as SI
+    from . import params as P
+    recent = sorted(d for d in out if d >= datetime.now(tz).date() - timedelta(days=P.SEGMENT_DAYS))
+    if recent:
+        segs = [[plain(a), plain(b), st] for a, b, st in SI.night_segments(conn, uid, tz, recent[0], recent[-1])]
+        for d in recent:
+            lo = min(s["start"] for s in out[d]["sessions"]) - 3 * 3600
+            hi = max(s["end"] for s in out[d]["sessions"])
+            out[d]["segments"] = [s for s in segs if s[0] >= lo and s[1] <= hi]
+    return out
 
 
 # ---------------------------------------------------------------- records: one body per (kind, day) = {"items": [...]}
@@ -131,6 +147,7 @@ def record(conn, uid: int, kind: str, days: list) -> dict:
 # ---------------------------------------------------------------- raw HealthKit data, one body per local day
 SAMPLE_COLS = ["uuid", "type", "start", "end", "value", "value_text", "source", "tz", "meta"]
 STAT_COLS = ["type", "start", "value"]
+BEAT_COLS = ["uuid", "start", "end", "rmssd", "sdnn", "origin"]   # heartbeat_series without the beats themselves
 
 
 def day_bounds(d: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
@@ -138,8 +155,10 @@ def day_bounds(d: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
 
 
 def raw(conn, uid: int, days: list, tz: ZoneInfo) -> dict:
-    """{day: {"samples": {"cols", "rows"}, "stats": {"cols", "rows"}}}: what the sync engine uploaded for that day
-    (hk_samples by local day; the 900 s statistics buckets that start inside the day). Columnar, like the uploads."""
+    """{day: {"samples": {"cols", "rows"}, "stats": {"cols", "rows"}, "beats": {"cols", "rows"}}}: what the sync engine
+    uploaded for that day (hk_samples by local day; the 900 s statistics buckets that start inside the day), and the
+    beat-to-beat readings that start that day with the server's RMSSD / SDNN (the phone scores RMSSD users with them,
+    #340 N2b; the beats themselves stay on the server). Columnar, like the uploads."""
     out: dict = {}
     for d in days:
         lo, hi = day_bounds(d, tz)
@@ -147,26 +166,34 @@ def raw(conn, uid: int, days: list, tz: ZoneInfo) -> dict:
                             WHERE user_id = %s AND local_date = %s ORDER BY type, start_at""", (uid, d)).fetchall()
         b = conn.execute("""SELECT type, bucket_start, value FROM hk_stats WHERE user_id = %s
                             AND bucket_start >= %s AND bucket_start < %s ORDER BY type, bucket_start""", (uid, lo, hi)).fetchall()
-        if s or b:
+        hb = conn.execute("""SELECT hk_uuid, start_at, end_at, rmssd, sdnn, origin FROM heartbeat_series
+                             WHERE user_id = %s AND start_at >= %s AND start_at < %s ORDER BY start_at""", (uid, lo, hi)).fetchall()
+        if s or b or hb:
             out[d] = {"samples": {"cols": SAMPLE_COLS, "rows": [[plain(v) for v in r.values()] for r in s]},
-                      "stats": {"cols": STAT_COLS, "rows": [[plain(v) for v in r.values()] for r in b]}}
+                      "stats": {"cols": STAT_COLS, "rows": [[plain(v) for v in r.values()] for r in b]},
+                      "beats": {"cols": BEAT_COLS, "rows": [[plain(v) for v in r.values()] for r in hb]}}
     return out
 
 
 def raw_size(body: dict | None) -> int:
-    return 0 if not body else len(body["samples"]["rows"]) + len(body["stats"]["rows"])
+    return 0 if not body else sum(len((body.get(k) or {}).get("rows") or []) for k in ("samples", "stats", "beats"))
 
 
-def restore_days(conn, uid: int, stream: str, kind: str, before: date | None, limit: int, tz: ZoneInfo) -> list[date]:
-    """Days with data of one stream (records: one kind), newest first, older than `before`; for the full restore."""
+def restore_days(conn, uid: int, stream: str, kind: str, before: date | None, limit: int, tz: ZoneInfo,
+                 since: date | None = None) -> list[date]:
+    """Days with data of one stream (records: one kind), newest first, older than `before` and (when given) not older
+    than `since`; for the full restore."""
     cond, args = ("", [])
     if before is not None:
         cond, args = (" AND d < %s", [before])
+    if since is not None:
+        cond, args = (cond + " AND d >= %s", [*args, since])
     if stream == "raw":
         q = f"""SELECT d FROM (SELECT DISTINCT local_date AS d FROM hk_samples WHERE user_id = %s
-                               UNION SELECT DISTINCT (bucket_start AT TIME ZONE %s)::date FROM hk_stats WHERE user_id = %s) x
+                               UNION SELECT DISTINCT (bucket_start AT TIME ZONE %s)::date FROM hk_stats WHERE user_id = %s
+                               UNION SELECT DISTINCT (start_at AT TIME ZONE %s)::date FROM heartbeat_series WHERE user_id = %s) x
                 WHERE TRUE{cond} ORDER BY d DESC LIMIT %s"""
-        params = [uid, str(tz), uid, *args, limit]
+        params = [uid, str(tz), uid, str(tz), uid, *args, limit]
     else:
         table, col = {"scores": ("daily_scores", "date"), "daily": ("daily_metrics", "date"),
                       "sleep": ("sleep_sessions", "wake_date")}.get(stream) or RECORD_KINDS[kind][1:]

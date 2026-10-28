@@ -28,9 +28,11 @@ offset; local dates are 'YYYY-MM-DD'; the time zone is an IANA name or a fixed o
   /**
    * Daily scores (the server's daily_scores rows) for [first, last].
    * inputs: OBS.buildInputs(...) output, or the same shape with instants as milliseconds / ISO strings.
-   * opts: {first (default: scoring origin = first day with a resting heart rate), last (default: today), today}.
+   * opts: {first (default: scoring origin = first day with a resting heart rate), last (default: today), today, origin}.
    * Pass all data from `first − 365 days` (HRmax window) on; days before `first` are not scored but feed the baselines only
    * through the samples (the engine recomputes from `first`, as the server does from the user's scoring origin).
+   * The phone's seeded run starts at a later `first` with inputs.hr_hist and inputs.seed_rows instead (engine.js); then
+   * `origin` (the server's scoring origin) only places the CTL warm-up flag.
    */
   OBS.computeDays = function (inputs, opts) {
     opts = opts || {};
@@ -39,7 +41,7 @@ offset; local dates are 'YYYY-MM-DD'; the time zone is an IANA name or a fixed o
     var first = opts.first || E.scoring_origin(inp.daily_rhr);
     if (!first) return [];
     var last = opts.last || today;
-    return E.score_days(inp, first, last, today).map(function (row) { return stamp(row, P.ALGO_VERSION); });
+    return E.score_days(inp, first, last, today, { origin: opts.origin }).map(function (row) { return stamp(row, P.ALGO_VERSION); });
   };
 
   /** One day's row (computed from the scoring origin up to that day, so baselines and CTL are the full-history ones). */

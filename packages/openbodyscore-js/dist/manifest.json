@@ -1,9 +1,9 @@
 {
   "name": "openbodyscore-js",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "file": "openbodyscore.js",
-  "sha256": "28d2f181658eb0c951b2cef5c7d9169122d35d841a27035b290dfa4c4a79190f",
-  "size": 141002,
+  "sha256": "8008c21c8deee06e7388d9e9807f6c25af680e6241d2cc200e45d704493e80cf",
+  "size": 145577,
   "algo_versions": {
     "scores": "v1.2-2026-10-27",
     "healthspan": "hs-v1.2-2026-10-23",
@@ -11,7 +11,5 @@
     "stress": "v1.0-2026-10-17",
     "trends": "trends-1"
   },
-  "global": "OpenBodyScore",
-  "signature": "1Pl/UY8SC3IckF3PwnNUoS9txsN+S6wmsa+aH2YfXTee4C7VzmqctA8rJlTK0x9In2+L3yEIr1GU9cLeu3iLAQ==",
-  "key_id": "51e37b7c14053032"
+  "global": "OpenBodyScore"
 }

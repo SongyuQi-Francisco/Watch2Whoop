@@ -30,14 +30,19 @@ OBS.inputs = (function (U, P, M) {
   /**
    * src = {tz, birth_date, hrv_kind, sleep_sessions: [{wake_date, start, end, asleep_min, core_min, deep_min, rem_min,
    *   awake_min, source, device}], samples: [{kind, t, value, xml}], segments: [{start, end, stage, export}],
-   *   daily_rhr: {date: bpm}, shortcut_dates: [date], muscle_sessions: [...] | muscle: {date: {...}}, muscle_error}
+   *   daily_rhr: {date: bpm}, shortcut_dates: [date], muscle_sessions: [...] | muscle: {date: {...}}, muscle_error,
+   *   hr_hist: {date: {bpm: count}}, seed_rows: [daily_scores rows]}
    * -> inputs for OBS.engine.score_days.
+   * hr_hist and seed_rows are the phone's seeded run (engine.js score_days): the per-day heart-rate histograms of days
+   * whose raw samples it no longer keeps (HRmax window), and the stored rows of the days before `first` (baselines,
+   * sleep debt, CTL / ATL). The server never passes them.
    */
   function build(src) {
     var inp = { units: "us", tz: src.tz, birth_date: src.birth_date || null, hrv_kind: src.hrv_kind || P.HRV_KIND, nights: [],
       non_watch_dates: [], segments: [], hr: [], hrv: [], resp: [], spo2: [], temp: [],
       daily_rhr: Object.assign({}, src.daily_rhr || {}), shortcut_dates: (src.shortcut_dates || []).slice(),
-      muscle: src.muscle || (src.muscle_sessions ? M.daily_muscle_load(src.muscle_sessions) : {}), muscle_error: src.muscle_error || null };
+      muscle: src.muscle || (src.muscle_sessions ? M.daily_muscle_load(src.muscle_sessions) : {}), muscle_error: src.muscle_error || null,
+      hr_hist: src.hr_hist || {}, seed_rows: (src.seed_rows || []).slice() };
     var tz = U.tzOf(src.tz);
     var sessions = (src.sleep_sessions || []).map(function (r) { return Object.assign({}, r, { start: U.toUs(r.start), end: U.toUs(r.end) }); })
       .sort(function (a, b) { return a.start - b.start; });
@@ -86,6 +91,8 @@ OBS.inputs = (function (U, P, M) {
     out.muscle_error = inp.muscle_error || null;
     out.hrv_kind = inp.hrv_kind || P.HRV_KIND;
     out.birth_date = inp.birth_date || null;
+    out.hr_hist = inp.hr_hist || {};
+    out.seed_rows = inp.seed_rows || [];
     return out;
   }
 

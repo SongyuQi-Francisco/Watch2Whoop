@@ -307,6 +307,30 @@ def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date,
     return inp
 
 
+def night_segments(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, start: date, end: date,
+                   sync_mode: str | None = None) -> list[tuple[datetime, datetime, str]]:
+    """The stage segments load() gives the scores around the nights waking in [start, end] (sorted), for the phone's own
+    scoring (nativesync/bodies.sleep, #340 N2b). The same sources in the same order: the app mode's engine samples first,
+    OW's archived history for nights the app lacks, the Shortcut's, export.zip's only for nights nothing else covers;
+    one segment per (start, stage). Live Open Wearables is not asked: the phone scores app-mode users only."""
+    app = rx_samples.reads_app(conn, user_id) if sync_mode is None else sync_mode == "app"
+    lo = datetime.combine(start - timedelta(days=1), time.min, tz)
+    hi = datetime.combine(end + timedelta(days=1), time.min, tz)
+    segs: list = []
+    if app:
+        segs += rx_samples.sleep_segments(conn, user_id, tz, lo, hi)
+        if rx_archive.get(conn, user_id) is not None:
+            have = rx_samples.wake_dates(segs, tz)
+            segs += [s for s in rx_archive.sleep_segments(conn, user_id, lo - timedelta(days=1), hi + timedelta(days=1))
+                     if (s.end - WAKE_SHIFT).astimezone(tz).date() not in have]
+    db_segs = load_shortcut_db(conn, user_id, tz, start - timedelta(days=1), end, _Merger(), {})
+    segs += db_segs or []
+    taken = {(s.end - WAKE_SHIFT).astimezone(tz).date() for s in segs}
+    segs += [s for s in load_export_db(conn, user_id, tz, start - timedelta(days=1), end, _Merger())
+             if (s.end - WAKE_SHIFT).astimezone(tz).date() not in taken]
+    return sorted((s.start, s.end, s.stage) for s in {(s.start, s.stage): s for s in segs}.values())
+
+
 def segments_in(segments: list[tuple[datetime, datetime, str]], start: datetime, end: datetime) -> list:
     return [s for s in segments if s[0] >= start and s[1] <= end]
 

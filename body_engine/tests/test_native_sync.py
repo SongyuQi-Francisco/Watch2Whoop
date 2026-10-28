@@ -436,6 +436,93 @@ def test_hourly_job_follows_the_plan(dsn, users, monkeypatch):
         assert runs[-1] == (ids["b"], D0, None)
 
 
+# ---------------------------------------------------------------- the phone's own scoring (#340 N2b)
+def test_raw_carries_beats_and_raw_since_bounds_the_restore(client, users, dsn):
+    ids, tok = users
+    uid = ids["b"]
+    t = datetime(2026, 2, 3, 15, 0, tzinfo=timezone.utc)   # 2026-02-04 02:00 in Sydney: the local day counts
+    old = datetime(2026, 1, 20, 1, 0, tzinfo=timezone.utc)
+    with conn_of(dsn) as c:
+        c.execute("""INSERT INTO heartbeat_series (user_id, start_at, end_at, source, origin, hk_uuid, beats_ms, n_beats,
+                                                   n_valid, algo, rmssd, sdnn)
+                     VALUES (%s, %s, %s, 'Watch', 'app', gen_random_uuid(), '{0,800,1600}', 3, 2, 'rr-v1', 42.5, 40.1)""",
+                  (uid, t, t + timedelta(minutes=1)))
+        c.execute("""INSERT INTO hk_samples (user_id, hk_uuid, type, start_at, end_at, local_date, value, source)
+                     VALUES (%s, gen_random_uuid(), 'HKQuantityTypeIdentifierHeartRate', %s, %s, '2026-01-20', 58, 'Watch')""",
+                  (uid, old, old))
+        c.commit()
+        logged = c.execute("SELECT key FROM sync_changes WHERE user_id = %s AND stream = 'raw'", (uid,)).fetchall()
+        assert "2026-02-04" in {r["key"] for r in logged}   # the trigger of migration 980, by the user's local day
+    got, cursors, _ = pull_all(client, tok["b"], {"raw": ""}, raw_since="2026-02-01")
+    assert [ch["key"] for ch in got] == ["2026-02-04"]
+    beats = got[0]["body"]["beats"]
+    assert beats["cols"] == ["uuid", "start", "end", "rmssd", "sdnn", "origin"]
+    assert beats["rows"][0][1] == t.timestamp() and beats["rows"][0][3:] == [42.5, 40.1, "app"]
+    assert cursors["raw"].startswith("c.")   # the bounded restore is complete; changes follow incrementally
+    everything, _, _ = pull_all(client, tok["b"], {"raw": ""})
+    assert {"2026-01-20", "2026-02-04"} <= {ch["key"] for ch in everything}
+
+
+def test_sleep_carries_the_scores_stage_segments(client, users, dsn, monkeypatch):
+    """Recent nights come with the stage segments the server's scoring uses (scores/inputs.night_segments)."""
+    from zoneinfo import ZoneInfo
+    from body_engine.rawdata import samples as rx_samples
+    ids, tok = users
+    uid = ids["b"]
+    tz = ZoneInfo(TZ)
+    wake = datetime.now(tz).date() - timedelta(days=2)
+    bed = datetime.combine(wake, datetime.min.time(), tz).replace(hour=2)   # wakes 05:20: that day (end − 4 h)
+    with conn_of(dsn) as c:
+        src = c.execute("""INSERT INTO hk_sources (user_id, name, device_type, device_name) VALUES (%s, 'Watch', 'watch', 'Apple Watch')
+                           RETURNING id""", (uid,)).fetchone()["id"]
+        for i, value in enumerate((3, 4, 5, 2, 3)):   # core, deep, rem, awake, core: 40 minutes each
+            a = bed + timedelta(minutes=40 * i)
+            c.execute("""INSERT INTO hk_samples (user_id, hk_uuid, type, start_at, end_at, local_date, value, source, source_id)
+                         VALUES (%s, gen_random_uuid(), 'HKCategoryTypeIdentifierSleepAnalysis', %s, %s, %s, %s, 'Watch', %s)""",
+                      (uid, a, a + timedelta(minutes=40), a.date(), value, src))
+        c.execute("""INSERT INTO sleep_sessions (user_id, wake_date, start_at, end_at, asleep_min, core_min, deep_min, rem_min,
+                                                 awake_min, source, device)
+                     VALUES (%s, %s, %s, %s, 160, 80, 40, 40, 40, 'app', 'Apple Watch')""",
+                  (uid, wake, bed, bed + timedelta(minutes=200)))
+        c.commit()
+    monkeypatch.setattr(rx_samples, "reads_app", lambda conn, user_id: True)
+    got, _, _ = pull_all(client, tok["b"], {"sleep": ""})
+    night = next(ch for ch in got if ch["key"] == wake.isoformat())
+    segs = night["body"]["segments"]
+    assert [s[2] for s in segs] == ["core", "deep", "rem", "awake", "core"]
+    assert segs[0][0] == bed.timestamp() and segs[-1][1] == (bed + timedelta(minutes=200)).timestamp()
+    old = next(ch for ch in got if ch["key"] == D0.isoformat())   # outside SEGMENT_DAYS: sessions only
+    assert "segments" not in old["body"]
+
+
+def test_scoring_context(client, users, dsn, monkeypatch):
+    from body_engine.rawdata import samples as rx_samples
+    ids, tok = users
+    uid = ids["b"]
+    t = datetime(2026, 2, 9, 1, 0, tzinfo=timezone.utc)   # 2026-02-09 12:00 in Sydney
+    with conn_of(dsn) as c:
+        for i, v in enumerate((60, 61, 61, 60.5, 140)):    # 60.5 rounds to 60, like Python's round()
+            c.execute("""INSERT INTO hk_samples (user_id, hk_uuid, type, start_at, end_at, local_date, value, source)
+                         VALUES (%s, gen_random_uuid(), 'HKQuantityTypeIdentifierHeartRate', %s, %s, '2026-02-09', %s, 'Watch')""",
+                      (uid, t + timedelta(minutes=i), t + timedelta(minutes=i), v))
+        c.commit()
+    monkeypatch.setattr(rx_samples, "reads_app", lambda conn, user_id: True)
+    r = client.get("/v1/sync/scoring", params={"from": "2026-02-08", "to": "2026-02-09", "hist_from": "2026-02-08",
+                                               "hist_to": "2026-02-09"}, headers=H(tok["b"]))
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["tz"] == TZ and j["hrv_kind"] in ("sdnn", "rmssd") and j["algo_version"] == SP.ALGO_VERSION
+    assert j["sync_mode"] == "ow" and j["raw_days"] == P.APP_RAW_DAYS
+    assert set(j["app_scoring"]) >= {"active", "trusted", "server_forced", "last_check"}
+    assert j["hr_hist"]["days"] == {"2026-02-09": {"60": 2, "61": 2, "140": 1}}
+    assert j["muscle"] == {"from": "2026-02-08", "to": "2026-02-09", "days": {}, "error": None}
+    plain = client.get("/v1/sync/scoring", headers=H(tok["b"])).json()
+    assert "hr_hist" not in plain and "muscle" not in plain
+    too_long = {"hist_from": "2024-01-01", "hist_to": "2026-02-09"}
+    assert client.get("/v1/sync/scoring", params=too_long, headers=H(tok["b"])).status_code == 422
+    assert client.get("/v1/sync/scoring", headers=H(tok["off"])).status_code == 404
+
+
 # ---------------------------------------------------------------- silent push
 class FakeApns:
     def __init__(self):

@@ -10,8 +10,9 @@ whatever changed during the restore is sent again (harmless) and nothing is lost
 transactions older than the oldest one still running (xid < xmin): a late commit can never slip behind a cursor.
 
 Streams: scores, daily, sleep, records (kind = water / journal / ...), docs (op "stale": the server view of that day
-changed, fetch it again if it is shown), raw (HealthKit samples and statistics buckets per day; pulled on a full
-restore, after a cursor, or for explicit raw_days). Each change: {stream, op, kind, key, date, version, body};
+changed, fetch it again if it is shown), raw (HealthKit samples, statistics buckets and beat-to-beat RMSSD per day;
+pulled on a full restore, after a cursor, or for explicit raw_days; `raw_since` bounds a raw restore, since the phone
+keeps a few weeks of raw samples only, #340 N2b). Each change: {stream, op, kind, key, date, version, body};
 op "delete" = that day / kind has no data any more (body null).
 """
 from __future__ import annotations
@@ -55,8 +56,8 @@ def _change(stream: str, kind: str, day: date | None, body, version: int, op: st
 
 
 class Puller:
-    def __init__(self, conn: psycopg.Connection, uid: int):
-        self.conn, self.uid = conn, uid
+    def __init__(self, conn: psycopg.Connection, uid: int, raw_since: date | None = None):
+        self.conn, self.uid, self.raw_since = conn, uid, raw_since
         self.tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
         self.xmin = _xmin(conn)
 
@@ -66,6 +67,8 @@ class Puller:
             return B.record(self.conn, self.uid, kind, days)
         if stream == "raw":
             return B.raw(self.conn, self.uid, days, self.tz)
+        if stream == "sleep":
+            return B.sleep(self.conn, self.uid, days, self.tz)
         return getattr(B, stream)(self.conn, self.uid, days)
 
     def emit(self, stream: str, pairs: list[tuple[str, date | None]]) -> list[dict]:
@@ -126,7 +129,8 @@ class Puller:
             out += [c for c in self.emit("records", [(k, None) for k in undated]) if c["body"] is not None]
         kinds = [k for k, (_, _, col) in B.RECORD_KINDS.items() if col is not None] if stream == "records" else [""]
         limit = max(budget, 1)
-        lists = {k: B.restore_days(self.conn, self.uid, stream, k, before, limit, self.tz) for k in kinds}
+        since = self.raw_since if stream == "raw" else None
+        lists = {k: B.restore_days(self.conn, self.uid, stream, k, before, limit, self.tz, since) for k in kinds}
         # a day can only be sent once every kind that might still have it was read that far back
         cutoff = max((ds[-1] for ds in lists.values() if len(ds) >= limit), default=None)
         days = sorted({d for ds in lists.values() for d in ds if cutoff is None or d >= cutoff}, reverse=True)
@@ -147,13 +151,13 @@ class Puller:
 
 
 def pull(conn: psycopg.Connection, uid: int, cursors: dict[str, str | None], limit: int = P.PULL_LIMIT_DEFAULT,
-         raw_days: list[date] | None = None) -> dict:
+         raw_days: list[date] | None = None, raw_since: date | None = None) -> dict:
     """The answer of POST /v1/sync/pull for the streams named in `cursors` (raises BadCursor / KeyError)."""
     for s in cursors:
         if s not in P.STREAMS:
             raise KeyError(s)
     parsed = {s: parse(c) for s, c in cursors.items()}
-    p = Puller(conn, uid)
+    p = Puller(conn, uid, raw_since)
     changes: list[dict] = []
     out_cursors: dict[str, str] = {}
     more = False
