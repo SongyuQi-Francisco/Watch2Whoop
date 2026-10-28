@@ -11,6 +11,9 @@ import re
 from .i18n import is_en
 
 EXACT: dict[str, str] = {
+    # ---- JS algorithm bundle (algo/api.py)
+    "算法包不可用": "The algorithm bundle is not available",
+    "没有这个版本的算法包": "No algorithm bundle of this version",
     # ---- auth / sessions (api.py, records/api.py, web/)
     # ---- grocery-sync (sync/wws.py)
     "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
@@ -255,6 +258,7 @@ TERMS: dict[str, str] = {
 }
 
 _TEMPLATES: list[tuple[str, str]] = [
+    ("没有这条饮食记录：{}", "No such food entry: {}"),   # ownstore/write.py (before the generic "{}：{}" ones)
     # ---- memory recent notes (assistant/memory.py, #112)
     ("until 写 YYYY-MM-DD（近况的最后一天）或 recent（默认 {} 天），长期事实不填",
      "until: YYYY-MM-DD (the last day of the recent note) or recent (default {} days); leave it empty for a lasting fact"),
@@ -375,7 +379,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("{} 没有这一组：{}（组的 id 在 get_training_log 里）", "{}: no such set: {}"),
     ("不支持回滚 {}", "Can't undo {}"),
     ("日期 {} 在未来（用户今天是 {}）；日期是行为发生的那天", "Date {} is in the future (today is {})"),
-    ("日期 {} 早于 {} 天前，补这么早的记录请在 SparkyFitness 里手动加", "Date {} is more than {} days ago; add such old entries in SparkyFitness"),
+    ("日期 {} 早于 {} 天前，这么早的记录不能补记", "Date {} is more than {} days ago; entries that old cannot be added"),
     ("{}：{} kcal 太大，确认是不是把一整天或别的单位算进来了", "{}: {} kcal is too much; is that a whole day or another unit?"),
     ("{}：热量 {} kcal 和三大营养素算出来的 {} kcal （4×蛋白 + 4×碳水 + 9×脂肪 + 7×酒精）差太多，先核对",
      "{}: {} kcal is too far from the {} kcal the macros add up to; check it"),
@@ -385,8 +389,8 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("{}：RIR 只能是 0–10", "{}: RIR must be 0–10"),
     ("{}：时长 {} 秒不合理", "{}: {} s doesn't look right"),
     ("{}：每组至少要有次数、重量或时长之一", "{}: every set needs reps, weight or duration"),
-    ("这些动作在 SparkyFitness 动作库里对不上：{}。用候选里的名字或 exercise_id 再试；确实是新动作就让用户确认后用 create_missing_exercises=true",
-     "These exercises are not in the SparkyFitness library: {}"),
+    ("这些动作在动作库里对不上：{}。用候选里的名字或 exercise_id 再试；确实是新动作就让用户确认后用 create_missing_exercises=true",
+     "These exercises are not in the exercise library: {}"),
     ("{} {}没有「{}」{}；用 get_nutrition(include_entries=true) 核对名字或拿 id", "No “{3}” in {2} on {1}{4}"),
     ("{} {}「{}」有 {} 条，不确定删哪条：{}。给 time 或 id 再试", "{4} entries of “{3}” in {2} on {1}: {5}. Give time or id"),
     ("{} 没有这条饮食记录：{}（用 get_nutrition(include_entries=true) 查 id 和日期）", "{}: no such food entry: {}"),

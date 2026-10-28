@@ -77,9 +77,20 @@ FLAGS: dict[str, str] = {
                           "切到 app 模式（自建引擎的数据参与选值和算分、OW 只补历史；app 收到 mode=app 后停掉 OW SDK）；切换要过门槛"
                           "（app ≥ 1.0.8、影子对比连续 7 天一致、覆盖率 ≥ 95%、分数一致性）。这是总开关：关掉后所有人下一次读取就回到 "
                           "shadow，sync-mode apply 再把派生数据还原；单人回退用 sync-mode rollback。默认关",
+    "apple_sync_new_accounts": "新开户默认走自建同步引擎（#219 S5b，全局开关，只认 --state all，而且 apple_sync_engine 也要是 all 才生效）："
+                               "开户不再建 Open Wearables 用户，账号一开就是 app 模式（rawdata/cutover.start_on_engine）；激活链接 / 设置链接"
+                               "不带 OW 邀请码，POST /v1/account/ow-invitation 对 app 模式的人回 409 sync_engine。已经开好的账号不受影响。"
+                               "打开前先确认 TestFlight 上能装到的 app 都能在没有 OW 的情况下同步（sync-mode readiness 顶部会提示）。"
+                               "关掉后新开户照旧建 OW 用户；已经按引擎开好的账号留在 app 模式（没有 OW 可回退）。默认关",
     "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
-                      "同步失败只记日志、不影响这次写；还没有任何地方读这些表。关着时和以前完全一样（不多发请求、不碰新表）",
+                      "同步失败只记日志、不影响这次写。关着时和以前完全一样（不多发请求、不碰新表）",
+    "own_food_read": "饮食 / 食物库 / 体重 / 围度 / 动作库 / 训练记录改读 Body Engine 自己的表（#252 第 3 期）：今天页、趋势、评分、"
+                     "规则、AI 工具、briefing、训练日历等全部读新表，返回的形状不变；只对最近一次 sparky-migrate 核对通过的用户生效，"
+                     "写仍然先写 SparkyFitness 再同步（开着时双写自动生效）。关着时和以前一样读 SparkyFitness",
+    "own_food_only": "饮食 / 体重 / 训练记录只写 Body Engine 自己的表（#252 第 4 期）：AI 写工具、今天页写接口、撤销、合并 / 拆开、"
+                     "训练页提交、离线体重都不再调 SparkyFitness，读也读新表；对最近一次迁移核对通过的用户和没有 SparkyFitness 账号的用户生效。"
+                     "全体打开后新开户不再建 SparkyFitness 账号、不再镜像计划 / 食谱。关着时双写（见 own_food_store）",
     "jarvis_scope_guard": "Jarvis 话题守门（#170，只管托底 AI，用户自己的 AI 不受影响）：明显跑题且费钱的请求（写代码、作业、长文写作 / 长篇翻译、"
                           "和健康无关的通用话题）由服务端规则直接用固定的礼貌说明回复，不调模型、不扣额度、不调工具，托底 AI 的系统提示里也加上话题范围；"
                           "健康、训练、饮食、睡眠、化验、app 用法、反馈和简短寒暄照常；关着时和以前完全一样",
@@ -95,8 +106,11 @@ FLAGS: dict[str, str] = {
                            "（现在写的是「确认文字后才发送」）；关着时松开后先显示识别出的文字，可以改，点「发送」才发",
     "boot_api": "启动提速（#247 第 3.2 节）：今天页启动时一次 POST /v1/web/boot 拿到上次启动用到的全部只读接口（/v1/web/me、今天页各块、"
                 "health-history 等，服务器内部逐个执行原接口、各自鉴权、各自出错），页面不再串行等 3 层；关着时接口 404、页面逐个请求",
-    "cached_first_paint": "先显示上次的数据（#247 第 3.5 节，需要 offline_mode 也开着）：打开今天页时先用本机副本（12 小时内、今天的）画出来，"
+    "cached_first_paint": "先显示上次的数据（#247 第 3.5 节，需要 offline_mode 也开着）：启动停在今天 / 趋势 / 我时先用本机副本（12 小时内、今天的）画出来，"
                           "顶部标「更新中」，新数据回来后替换；退出登录 / 登录过期时副本清空；关着时和以前一样等数据回来再画",
+    "local_first_start_off": "紧急开关：停用 app 的「本地优先启动」（#337，1.0.9 之后的 app）。关着（默认）= 功能对所有人开：app 冷启动直接打开本机保存的页面副本"
+                             "（offline-shell.html，需要 offline_mode 开着才有副本），先用本机缓存画出上次的数据（cached_first_paint），再照常向服务器要新数据；"
+                             "打开 = app 下次冷启动起照旧先向服务器要页面（正开着本机副本的会马上换成网络页面）",
     "tab_prefetch": "切 tab 提速（#247 第 3.3 节）：趋势 / 饮食 / 我 的两层请求并成一层；今天页画完后浏览器空闲时预取其他 tab 的数据"
                     "（最多 30 个请求，蜂窝网络 / 省流量模式 / 慢网不预取）；关着时和以前一样切过去才请求",
     "open_signup": "开放注册（全局开关，只认 --state all）：活跃账号数低于 account/params.py 的 OPEN_SIGNUP_MAX_ACTIVE（默认 200）时，"

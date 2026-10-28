@@ -88,6 +88,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final OfflineShell _shell = OfflineShell();
   bool _onShell = false;
 
+  /// Local-first start (#337, offline_shell.dart): the cold start opened the kept copy as the ordinary page (W2W_LOCAL),
+  /// which draws the last data from the device and then asks the server. Unlike _onShell it is fully online.
+  bool _onLocal = false;
+  Timer? _localWatch;
+  DateTime? _pausedAt;
+
   /// Sync on open (sync_on_open.dart): one round on cold start and on every return to the foreground (throttled), then the
   /// Today page asks the server for the new data (web/static/sync.js) and shows 「同步中… / 已更新」.
   late final SyncOnOpen _syncOnOpen = SyncOnOpen(
@@ -157,10 +163,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The Today page's 「开启同步」 / 「立即同步」 / 「同步状态」 (sync_bridge.dart).
   late final SyncBridge _syncBridge = SyncBridge(
     supported: () => hasHealthSync,
-    isConnected: () => AppState.instance.config.owConnected && HealthSync.instance.isSignedIn,
+    isConnected: () => HealthSync.instance.syncConnected(AppState.instance.config),
     canUpload: () =>
-        hasHealthSync &&
-        (AppState.instance.config.healthRequested || (AppState.instance.config.owConnected && HealthSync.instance.isSignedIn)),
+        hasHealthSync && (AppState.instance.config.healthRequested || HealthSync.instance.syncConnected(AppState.instance.config)),
     needsReconnect: () => HealthSync.instance.stats.value.authProblem,
     connect: _bridgeConnect,
     askHealth: _askHealthChecked,
@@ -273,9 +278,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return SyncStatusInput(
       supported: hasHealthSync,
       signedIn: AppState.instance.accountToken != null,
-      connected: c.owConnected && HealthSync.instance.isSignedIn,
+      connected: HealthSync.instance.syncConnected(c),
       healthAsked: c.healthRequested,
-      healthNeedsAsk: ask == 'shouldRequest' || (_unasked?.isNotEmpty ?? false),
+      healthNeedsAsk: _unasked?.isNotEmpty ?? false,
+      extraNeedsAsk: ask == 'shouldRequest',
       running: _syncOnOpen.running || (sdk?.isSyncing ?? false),
       firstSyncDone: sdk?.initialExportDone,
       ow: HealthSync.instance.stats.value,
@@ -524,6 +530,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           },
           onPageFinished: (_) {
             setState(() => _loading = false);
+            if (_onLocal && (_localWatch?.isActive ?? false)) _checkLocal(); // once per local load, not for later navigations
             _native.pageLoaded();
             _announceFeatures();
             _maybeCheckLogin();
@@ -572,7 +579,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     PushService.instance.received.addListener(_onPushReceived);
     HealthSync.instance.stats.addListener(_onSyncStats);
     unawaited(_native.start());
-    _load();
+    _load(local: true); // cold start: the kept copy of the page first when there is one (#337)
     _rangeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _reportRange();
       _tellBackfill();
@@ -597,6 +604,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _rangeTimer?.cancel();
+    _localWatch?.cancel();
     AppState.instance.removeListener(_onConfig);
     SetupLinks.instance.pending.removeListener(_onLink);
     PushService.instance.opened.removeListener(_openTapped);
@@ -656,8 +664,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Back in the foreground: fetch the logs buffered during background sync (the Today page refreshes itself on demand).
     _foreground = state == AppLifecycleState.resumed;
-    if (state == AppLifecycleState.paused) VoiceBridge.instance.cancelAll(); // the microphone never stays on in the background
+    if (state == AppLifecycleState.paused) {
+      VoiceBridge.instance.cancelAll(); // the microphone never stays on in the background
+      _pausedAt = DateTime.now();
+    }
     if (state != AppLifecycleState.resumed) return;
+    final away = _pausedAt == null ? Duration.zero : DateTime.now().difference(_pausedAt!);
+    _pausedAt = null;
     HealthSync.instance.drainNativeLog();
     _tellPageForeground();
     _announceNet();
@@ -666,7 +679,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _syncOnOpen.trigger(); // back in the foreground: fresh data (at most every 3 minutes, never two rounds at once)
     if (!_syncOnOpen.canSync()) _ownUploads();
     if (_onShell) {
-      _load(); // showing the kept copy of the page: try the real one again
+      _load(local: true); // showing the offline copy of the page: try the real one again (the local-first copy when on)
+      return;
+    }
+    // A newer copy of the page came in meanwhile (offline_shell.dart save): after a while away, open it now; the page
+    // draws the last data first, so the switch is quiet. Otherwise the next cold start picks it up.
+    if (_onLocal && _shell.changed && away >= const Duration(minutes: 10)) {
+      _load(local: true);
       return;
     }
     // The login code is still pending: the last load was interrupted (e.g. the Health permission sheet came up, the page never
@@ -705,16 +724,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _web.loadHtmlString(html, baseUrl: entry.removeFragment().toString());
   }
 
+  /// The local copy loaded: its script must have run (app.js defines window.BodyFlags at the end of its set-up);
+  /// otherwise the page from the server.
+  Future<void> _checkLocal() async {
+    var ok = false;
+    try {
+      ok = (await _web.runJavaScriptReturningResult('window.BodyFlags ? 1 : 0')).toString() == '1';
+    } catch (_) {}
+    if (!_onLocal) return;
+    if (ok) {
+      _localWatch?.cancel();
+    } else {
+      await _localFailed('the page script did not run');
+    }
+  }
+
+  Future<void> _localFailed(String why) async {
+    if (!mounted || !_onLocal) return;
+    _localWatch?.cancel();
+    await HealthSync.instance.note('Today page: local copy failed ($why), loading from the server');
+    await _load();
+  }
+
   void _syncBackground() {
     final dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
     _web.setBackgroundColor(dark ? Colors.black : Colors.white);
   }
 
-  Future<void> _load() async {
+  /// Opens the Today page. [local]: a cold start (or a return from the offline copy) may open the kept copy of the page
+  /// right away (local-first start, #337); a login code, a fresh sign-in, a tapped notification, no copy for this server
+  /// or the kill switch go to the server as before.
+  Future<void> _load({bool local = false}) async {
     _syncBackground();
     final config = AppState.instance.config;
     final url = config.todayEntry.toString();
     final code = config.pendingLoginCode;
+    // iOS only for now: WKWebView was checked to send the session cookie from a page opened this way; Android's WebView not yet
+    final html = local && !isAndroid && code == null && !AppState.instance.webLoginNeeded && PushService.instance.opened.value == null
+        ? await _shell.loadLocal(config.todayEntry)
+        : null;
+    if (!mounted) return;
+    _localWatch?.cancel();
     setState(() {
       _loadedUrl = url;
       _loadedCode = code;
@@ -722,8 +772,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _error = null;
       _loading = true;
       _onShell = false;
+      _onLocal = html != null;
     });
     _checkLogin = false;
+    if (html != null) {
+      // no login check from here: a 401 in the copy sends `reload`, and the page from the server does the check below
+      _localWatch = Timer(const Duration(seconds: 8), () => _localFailed('no start within 8 s'));
+      unawaited(HealthSync.instance.note('Today page: local copy ${OfflineShell.versionOf(html) ?? '?'}'));
+      await _web.loadHtmlString(html, baseUrl: withLangFragment(config.todayEntry).toString());
+      return;
+    }
     if (code == null && AppState.instance.accountToken != null) {
       // Self-service account: right after sign-in, log the page in with a fresh one-time code; otherwise check after loading.
       if (AppState.instance.webLoginNeeded) {
@@ -834,7 +892,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _openTapped() {
     if (!mounted || _onShell || AppState.instance.config.pendingLoginCode != null) return; // _load() picks it up
     final target = _takeTapped();
-    if (target != null) _web.loadRequest(target);
+    if (target == null) return;
+    _onLocal = false;
+    _web.loadRequest(target);
   }
 
   void _onPushReceived() {
@@ -895,7 +955,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // Offline use (docs/offline-plan.md): keep / drop the copy of the page; the copy asks for the real page once online
     if (message == 'offline:on' && !_onShell) _shell.save(AppState.instance.config.todayEntry);
     if (message == 'offline:off') _shell.forget();
-    if (message == 'reload' && _onShell) _load();
+    // the offline copy is online again, or the local copy got a 401 (signed out / cookie not sent): the page from the server
+    if (message == 'reload' && (_onShell || _onLocal)) _load();
+    // Local-first start (#337): the kill switch local_first_start_off, for the next cold start; turned off while the local
+    // copy is on screen = the page from the server right away
+    final first = parseLocalFirst(message);
+    if (first != null) {
+      _shell.setLocalFirst(first);
+      if (!first && _onLocal) _load();
+      return;
+    }
     final c = AppState.instance.config;
     if (loginCodeSettled(message) && c.pendingLoginCode != null) {
       AppState.instance.update(c.copyWith(clearPendingLoginCode: true));
@@ -925,7 +994,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (status != 401 || _webLoginTried || AppState.instance.accountToken == null) return;
     _webLoginTried = true;
     final entry = await freshWebLoginEntry();
-    if (entry != null && mounted) await _web.loadRequest(withLangFragment(entry));
+    if (entry != null && mounted) {
+      _onLocal = false;
+      await _web.loadRequest(withLangFragment(entry));
+    }
   }
 
   bool _appleBusy = false;
@@ -1051,7 +1123,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       body: Stack(
         children: [
           Positioned.fill(child: WebViewWidget(controller: _web)),
-          if (_loading && _error == null)
+          if (_loading && _error == null && !_onLocal) // the local copy draws at once: no bar over it
             const Positioned(
               top: 0,
               left: 0,

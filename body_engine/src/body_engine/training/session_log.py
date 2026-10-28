@@ -22,7 +22,6 @@ import psycopg
 from .. import auth, sparky_client
 from ..assistant import briefing, sparky_write
 from ..i18n import L
-from ..ownstore import mirror
 from . import catalog, loads, params as P, plans
 
 MAX_SETS = 20
@@ -267,8 +266,8 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
         raise PermissionError(L(f"禁用动作不能记录：{'、'.join(banned)}", f"Banned exercises can't be logged: {', '.join(banned)}"))
     if not exercises:
         raise ValueError(L("先勾选做完的组", "Tick the sets you have done first"))
-    try:
-        client = client or sparky_client.write_client_for_user(conn, user_id)
+    try:   # SparkyFitness, or the own tables when own_food_only (issue #252)
+        be = sparky_write.backend(conn, user_id, client)
     except (sparky_client.SparkyError, ValueError):
         raise LookupError(L("训练记录还没连接，先连接再提交", "The training log is not connected yet; connect it, then submit"))
     old_id = row.get("sparky_entry_id")
@@ -278,17 +277,17 @@ def submit(conn: psycopg.Connection, user_id: int, day: date, allow_duplicate: b
         # a resubmit replaces the page's own earlier workout (deleted below), so it is not a duplicate of it
         "allow_duplicate": allow_duplicate or bool(old_id),
         "create_missing_exercises": True,   # exercises of the user's own plan
-    }, client=client)
+    }, client=be)
     if res.get("skipped_duplicate"):
         return {"submitted": False, "duplicate": True,
                 "reason": L("今天已经记过这些动作（可能是 AI 或 SparkyFitness 里记的）", "These exercises are already logged today (by your AI or in SparkyFitness)")}
     new_id = res["created"]["id"]
     if old_id and str(old_id) != str(new_id):
         try:
-            client.request("DELETE", f"/exercise-preset-entries/{old_id}")
+            be.delete_session_id(old_id)
         except sparky_client.SparkyError:
             pass   # deleted in SparkyFitness already
-        mirror.after_write(conn, user_id, client, workouts=[day])   # dual write (issue #252): the replaced one is gone
+        be.after_write(workouts=[day])   # dual write (issue #252): the replaced one is gone
     row = conn.execute(
         """UPDATE training_session_logs SET status = 'submitted', sparky_entry_id = %s, submitted_at = now(), updated_at = now()
            WHERE user_id = %s AND date = %s AND source = 'page' RETURNING *""", (str(new_id), user_id, day)).fetchone()

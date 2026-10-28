@@ -102,7 +102,7 @@ def resolver(conn: psycopg.Connection, user_id: int, client=None) -> Callable[[d
     def sparky_goal(day: date) -> dict | None:
         try:
             if state["client"] is None:
-                state["client"] = sparky_client.client_for_user(conn, user_id)
+                state["client"] = sparky_client.reader_for_user(conn, user_id)
             return sparky_client.goal_for_date(state["client"], day)
         except Exception:  # noqa: BLE001  not linked / unreachable: no fallback goal (and do not retry for later dates)
             state["client"] = False

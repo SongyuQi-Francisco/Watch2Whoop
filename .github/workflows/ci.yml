@@ -40,6 +40,7 @@ jobs:
       flutter: ${{ steps.filter.outputs.flutter }}
       ios_native: ${{ steps.filter.outputs.ios_native }}
       other_apps: ${{ steps.filter.outputs.other_apps }}
+      algo_js: ${{ steps.filter.outputs.algo_js }}
     steps:
       - id: filter
         env:
@@ -54,6 +55,7 @@ jobs:
             echo "server=true" >> "$GITHUB_OUTPUT"
             echo "flutter=true" >> "$GITHUB_OUTPUT"
             echo "ios_native=true" >> "$GITHUB_OUTPUT"
+            echo "algo_js=true" >> "$GITHUB_OUTPUT"
             echo "other_apps=$(jq -c '[.[] | select(.enabled)]' <<< "$OTHER_APPS")" >> "$GITHUB_OUTPUT"
             exit 0
           }
@@ -72,11 +74,14 @@ jobs:
           if grep -q "^$FLUTTER_APP/" <<< "$files"; then flutter=true; else flutter=false; fi
           # The native SwiftUI app (#340): only its own directory
           if grep -q "^apps/ios/" <<< "$files"; then ios_native=true; else ios_native=false; fi
+          # The JS port of the algorithms (#340): its own files, the Python it ports and the cross-language goldens
+          if grep -qE '^(packages/openbodyscore(-js)?/|body_engine/src/body_engine/(scores|trends|insights|algo)/|body_engine/tests/test_js_golden\.py)' <<< "$files"; then
+            algo_js=true; else algo_js=false; fi
           other="$(jq -c --arg files "$files" \
             '[.[] | select(.enabled) | . as $a | select($files | split("\n") | any(startswith($a.path + "/")))]' \
             <<< "$OTHER_APPS")"
-          echo "server=$server flutter=$flutter ios_native=$ios_native other_apps=$other"
-          { echo "server=$server"; echo "flutter=$flutter"; echo "ios_native=$ios_native"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
+          echo "server=$server flutter=$flutter ios_native=$ios_native algo_js=$algo_js other_apps=$other"
+          { echo "server=$server"; echo "flutter=$flutter"; echo "ios_native=$ios_native"; echo "algo_js=$algo_js"; echo "other_apps=$other"; } >> "$GITHUB_OUTPUT"
 
   body-engine:
     name: Body Engine tests
@@ -125,6 +130,30 @@ jobs:
         run: |
           uv run --locked pytest -q -rs | tee "$RUNNER_TEMP/pytest.txt"
           ! grep -qE "cannot connect to Postgres|unreachable" "$RUNNER_TEMP/pytest.txt"
+
+  # The scoring algorithms as one JS file for the iOS app (packages/openbodyscore-js, issue #340): dist/ must be what src/
+  # builds, and the bundle must give Python's numbers on the shared golden cases (the Python side of those goldens runs in
+  # "Body Engine tests": tests/test_js_golden.py). Not a required check of main.
+  algo-js:
+    name: Algorithm JS bundle
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.algo_js == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: dist/ is up to date
+        run: node packages/openbodyscore-js/build.js --check
+      - name: cross-language golden tests
+        env:
+          PYTHON: python
+        run: node --test packages/openbodyscore-js/test/golden.test.js
 
   syntax:
     name: Syntax checks   # always runs: it covers every tracked .py / .sh / .js and takes seconds

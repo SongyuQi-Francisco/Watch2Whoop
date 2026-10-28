@@ -9,7 +9,8 @@ Account (Bearer or cookie; also for `pending` accounts):
   GET    /v1/account                       status, identities, provisioning
   POST   /v1/account/redeem-invite {code}  pending → active, provisioning starts in the background; an existing account's
                                            activation / login code instead moves this sign-in to that account (claimed)
-  POST   /v1/account/ow-invitation         fresh Open Wearables invitation code for this user's sync account (active only)
+  POST   /v1/account/ow-invitation         fresh Open Wearables invitation code for this user's sync account (active only;
+                                           409 sync_engine in the sync mode app, #219 S5b)
   POST   /v1/account/web-login-code        one-time Today page login code (the app logs its WebView in with it)
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
@@ -401,10 +402,15 @@ def my_invite_code(user: str, conn=Depends(get_conn), viewer=Depends(current_use
 
 @router.post("/v1/account/ow-invitation")
 def ow_invitation(conn=Depends(get_conn), viewer=Depends(current_user)):
-    """A fresh Open Wearables invitation code for this user's own sync account; the app redeems it silently."""
+    """A fresh Open Wearables invitation code for this user's own sync account; the app redeems it silently.
+    409 sync_engine: the user is in the sync mode app (the app's own sync engine, rawdata/engine.mode; #219 S5b), there
+    is no OW account to connect (new accounts while apple_sync_new_accounts is on never get one)."""
     import os
+    from ..rawdata import engine as rx_engine
     if viewer.get("status") != "active":
         raise HTTPException(403, "account_pending")
+    if rx_engine.mode(conn, viewer["id"]) == "app":
+        raise HTTPException(409, "sync_engine")
     row = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (viewer["id"],)).fetchone()
     if not row["ow_user_id"]:
         raise HTTPException(409, "provisioning")

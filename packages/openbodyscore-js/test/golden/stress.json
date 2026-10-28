@@ -1,0 +1,9470 @@
+{
+ "runs": [
+  [
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": null,
+     "spread": 8.9
+    },
+    "date": "2026-08-11",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.89
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.17
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 13,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 14,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 104.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 7,
+      "score": 2.75
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.95
+     },
+     {
+      "hour": 17,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.28
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.06
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.44
+     },
+     {
+      "hour": 22,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 2,
+    "peak_hour": 15,
+    "score": 0.81
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": null,
+     "spread": 8.9
+    },
+    "date": "2026-08-12",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.89
+     },
+     {
+      "hour": 8,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.06
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 11,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 16,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.17
+     },
+     {
+      "hour": 17,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.78
+     },
+     {
+      "hour": 18,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 20,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 21,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 3,
+    "peak_hour": 16,
+    "score": 0.72
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": null,
+     "spread": 8.9
+    },
+    "date": "2026-08-13",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.28
+     },
+     {
+      "hour": 8,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.17
+     },
+     {
+      "hour": 9,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 10,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.89
+     },
+     {
+      "hour": 11,
+      "hr": 95.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.74
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 14,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.06
+     },
+     {
+      "hour": 15,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 16,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.84
+     },
+     {
+      "hour": 17,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 4,
+      "score": 1.34
+     },
+     {
+      "hour": 18,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.4
+     },
+     {
+      "hour": 19,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 20,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.29
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 22,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     }
+    ],
+    "level": "low",
+    "low_h": 9,
+    "medium_h": 7,
+    "peak_hour": 11,
+    "score": 0.91
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": null,
+     "spread": 8.9
+    },
+    "date": "2026-08-14",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.84
+     },
+     {
+      "hour": 8,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.44
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 13,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.95
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 16,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.17
+     },
+     {
+      "hour": 17,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 18,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.11
+     },
+     {
+      "hour": 19,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 21,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.84
+     },
+     {
+      "hour": 22,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 16,
+    "score": 0.45
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.768,
+     "spread": 8.9
+    },
+    "date": "2026-08-15",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.67
+     },
+     {
+      "hour": 8,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 11,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.22
+     },
+     {
+      "hour": 12,
+      "hr": 93.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.51
+     },
+     {
+      "hour": 13,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 14,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.11
+     },
+     {
+      "hour": 15,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 16,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 17,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.17
+     },
+     {
+      "hour": 18,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.95
+     },
+     {
+      "hour": 19,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     },
+     {
+      "hour": 21,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.28
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 12,
+    "score": 0.55
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.775,
+     "spread": 8.9
+    },
+    "date": "2026-08-16",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 9,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.05
+     },
+     {
+      "hour": 12,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 72.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 93.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.51
+     },
+     {
+      "hour": 16,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 17,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.05
+     },
+     {
+      "hour": 18,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.22
+     },
+     {
+      "hour": 19,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.11
+     },
+     {
+      "hour": 20,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 11,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.18
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.796,
+     "spread": 8.9
+    },
+    "date": "2026-08-17",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     },
+     {
+      "hour": 8,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.84
+     },
+     {
+      "hour": 9,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 13,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     },
+     {
+      "hour": 14,
+      "hr": 92.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.46
+     },
+     {
+      "hour": 15,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 17,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     },
+     {
+      "hour": 18,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.11
+     },
+     {
+      "hour": 21,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.17
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 2,
+    "peak_hour": 14,
+    "score": 0.54
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.797,
+     "spread": 8.9
+    },
+    "date": "2026-08-18",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.89
+     },
+     {
+      "hour": 9,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 11,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.95
+     },
+     {
+      "hour": 12,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.17
+     },
+     {
+      "hour": 13,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.22
+     },
+     {
+      "hour": 14,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.67
+     },
+     {
+      "hour": 16,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 18,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.16
+     },
+     {
+      "hour": 20,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.67
+     },
+     {
+      "hour": 21,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 22,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.72
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 12,
+    "score": 0.57
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.782,
+     "spread": 8.9
+    },
+    "date": "2026-08-19",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.39
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.16
+     },
+     {
+      "hour": 10,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 11,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 3,
+    "medium_h": 2,
+    "peak_hour": 7,
+    "score": 0.61
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.784,
+     "spread": 8.9
+    },
+    "date": "2026-08-20",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.28
+     },
+     {
+      "hour": 8,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.22
+     },
+     {
+      "hour": 9,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.5
+     },
+     {
+      "hour": 12,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.16
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.16
+     },
+     {
+      "hour": 15,
+      "hr": 89.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.12
+     },
+     {
+      "hour": 16,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     },
+     {
+      "hour": 17,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 18,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.28
+     },
+     {
+      "hour": 19,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.67
+     },
+     {
+      "hour": 20,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.28
+     },
+     {
+      "hour": 21,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.84
+     },
+     {
+      "hour": 22,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.41
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.788,
+     "spread": 8.9
+    },
+    "date": "2026-08-21",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     },
+     {
+      "hour": 8,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.22
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.16
+     },
+     {
+      "hour": 10,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.34
+     },
+     {
+      "hour": 12,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 13,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.06
+     },
+     {
+      "hour": 14,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.17
+     },
+     {
+      "hour": 15,
+      "hr": 101.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 7,
+      "score": 2.41
+     },
+     {
+      "hour": 16,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.29
+     },
+     {
+      "hour": 17,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.28
+     },
+     {
+      "hour": 18,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.11
+     },
+     {
+      "hour": 19,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.29
+     },
+     {
+      "hour": 20,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.95
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 22,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     }
+    ],
+    "level": "low",
+    "low_h": 10,
+    "medium_h": 5,
+    "peak_hour": 15,
+    "score": 0.82
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.768,
+     "spread": 8.9
+    },
+    "date": "2026-08-22",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     },
+     {
+      "hour": 12,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 14,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.05
+     },
+     {
+      "hour": 15,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 16,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 17,
+      "hr": 79.0,
+      "hrv_z": -0.06,
+      "level": "low",
+      "samples": 11,
+      "score": 0.09
+     },
+     {
+      "hour": 18,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.05
+     },
+     {
+      "hour": 19,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.05
+     },
+     {
+      "hour": 21,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.67
+     },
+     {
+      "hour": 22,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 0,
+    "peak_hour": 21,
+    "score": 0.29
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.769,
+     "spread": 8.9
+    },
+    "date": "2026-08-23",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.72
+     },
+     {
+      "hour": 8,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.29
+     },
+     {
+      "hour": 9,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 11,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.06
+     },
+     {
+      "hour": 12,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": -1.39,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.39
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.39
+     },
+     {
+      "hour": 16,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.5
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 19,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 20,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.72
+     },
+     {
+      "hour": 21,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 3,
+    "peak_hour": 8,
+    "score": 0.54
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.776,
+     "spread": 8.9
+    },
+    "date": "2026-08-24",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 8,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 10,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.06
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.44
+     },
+     {
+      "hour": 14,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 16,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 17,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 19,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 76.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 10,
+    "score": 0.38
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.774,
+     "spread": 8.9
+    },
+    "date": "2026-08-25",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 9,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.84
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 12,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.16
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 15,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.72
+     },
+     {
+      "hour": 17,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.61
+     },
+     {
+      "hour": 18,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.72
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.16
+     },
+     {
+      "hour": 20,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.22
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 16,
+    "medium_h": 0,
+    "peak_hour": 9,
+    "score": 0.34
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.776,
+     "spread": 8.9
+    },
+    "date": "2026-08-26",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 90.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.23
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.84
+     },
+     {
+      "hour": 12,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 84.0,
+      "hrv_z": -0.02,
+      "level": "low",
+      "samples": 11,
+      "score": 0.49
+     },
+     {
+      "hour": 14,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 98.5,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 6,
+      "score": 2.13
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 17,
+      "hr": 83.0,
+      "hrv_z": 1.17,
+      "level": "low",
+      "samples": 11,
+      "score": 0.77
+     },
+     {
+      "hour": 18,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.44
+     },
+     {
+      "hour": 20,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 83.0,
+      "hrv_z": 1.17,
+      "level": "low",
+      "samples": 13,
+      "score": 0.77
+     },
+     {
+      "hour": 22,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.61
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.774,
+     "spread": 8.9
+    },
+    "date": "2026-08-27",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.84
+     },
+     {
+      "hour": 9,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 11,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.11
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 14,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.39
+     },
+     {
+      "hour": 16,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.29
+     },
+     {
+      "hour": 17,
+      "hr": 90.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.23
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.28
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 21,
+      "hr": 80.0,
+      "hrv_z": -0.53,
+      "level": "low",
+      "samples": 9,
+      "score": 0.03
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 3,
+    "peak_hour": 16,
+    "score": 0.49
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.775,
+     "spread": 8.9
+    },
+    "date": "2026-08-28",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.4
+     },
+     {
+      "hour": 8,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.89
+     },
+     {
+      "hour": 9,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.89
+     },
+     {
+      "hour": 12,
+      "hr": 93.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.62
+     },
+     {
+      "hour": 13,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 14,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 15,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.06
+     },
+     {
+      "hour": 16,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.78
+     },
+     {
+      "hour": 17,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.67
+     },
+     {
+      "hour": 18,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.29
+     },
+     {
+      "hour": 19,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.67
+     },
+     {
+      "hour": 20,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 21,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.12
+     },
+     {
+      "hour": 22,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.4
+     }
+    ],
+    "level": "low",
+    "low_h": 10,
+    "medium_h": 6,
+    "peak_hour": 12,
+    "score": 0.96
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.77,
+     "spread": 8.9
+    },
+    "date": "2026-08-29",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.61
+     },
+     {
+      "hour": 8,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 9,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.05
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.39
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.16
+     },
+     {
+      "hour": 15,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.06
+     },
+     {
+      "hour": 16,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.16
+     },
+     {
+      "hour": 17,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     },
+     {
+      "hour": 18,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.11
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.16
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.22
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.768,
+     "spread": 8.9
+    },
+    "date": "2026-08-30",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.4
+     },
+     {
+      "hour": 8,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 4,
+      "score": 1.12
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 12,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.51
+     },
+     {
+      "hour": 13,
+      "hr": 90.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.34
+     },
+     {
+      "hour": 14,
+      "hr": 90.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.34
+     },
+     {
+      "hour": 15,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.51
+     },
+     {
+      "hour": 16,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.17
+     },
+     {
+      "hour": 17,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.39
+     },
+     {
+      "hour": 18,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 19,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 20,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.44
+     },
+     {
+      "hour": 21,
+      "hr": 94.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.74
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 7,
+    "medium_h": 8,
+    "peak_hour": 21,
+    "score": 0.95
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.759,
+     "spread": 8.9
+    },
+    "date": "2026-08-31",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.89
+     },
+     {
+      "hour": 8,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 78.0,
+      "hrv_z": 4.39,
+      "level": "medium",
+      "samples": 11,
+      "score": 1.34
+     },
+     {
+      "hour": 10,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.67
+     },
+     {
+      "hour": 11,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 11,
+      "score": 1.06
+     },
+     {
+      "hour": 12,
+      "hr": 76.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.17
+     },
+     {
+      "hour": 14,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.78
+     },
+     {
+      "hour": 15,
+      "hr": 100.5,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 10,
+      "score": 2.35
+     },
+     {
+      "hour": 16,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.4
+     },
+     {
+      "hour": 17,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.84
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.95
+     },
+     {
+      "hour": 21,
+      "hr": 90.0,
+      "hrv_z": -0.45,
+      "level": "low",
+      "samples": 10,
+      "score": 0.84
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 10,
+    "medium_h": 4,
+    "peak_hour": 15,
+    "score": 0.89
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.761,
+     "spread": 10.38
+    },
+    "date": "2026-09-01",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 8,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.98
+     },
+     {
+      "hour": 9,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.45
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.6
+     },
+     {
+      "hour": 11,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 12,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.79
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.21
+     },
+     {
+      "hour": 14,
+      "hr": 89.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.03
+     },
+     {
+      "hour": 15,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.69
+     },
+     {
+      "hour": 16,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.6
+     },
+     {
+      "hour": 17,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.79
+     },
+     {
+      "hour": 18,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.6
+     },
+     {
+      "hour": 19,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.4
+     },
+     {
+      "hour": 20,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.21
+     },
+     {
+      "hour": 21,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.98
+     },
+     {
+      "hour": 22,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.11
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 14,
+    "score": 0.57
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.759,
+     "spread": 10.38
+    },
+    "date": "2026-09-02",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.69
+     },
+     {
+      "hour": 8,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.4
+     },
+     {
+      "hour": 10,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.98
+     },
+     {
+      "hour": 11,
+      "hr": 94.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.46
+     },
+     {
+      "hour": 12,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.17
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.21
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.6
+     },
+     {
+      "hour": 15,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.79
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 18,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.79
+     },
+     {
+      "hour": 19,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.27
+     },
+     {
+      "hour": 20,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.64
+     },
+     {
+      "hour": 21,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.17
+     },
+     {
+      "hour": 22,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.69
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 4,
+    "peak_hour": 11,
+    "score": 0.76
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.753,
+     "spread": 10.38
+    },
+    "date": "2026-09-03",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.4
+     },
+     {
+      "hour": 8,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.79
+     },
+     {
+      "hour": 9,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.45
+     },
+     {
+      "hour": 11,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.22
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.69
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.21
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.4
+     },
+     {
+      "hour": 15,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.6
+     },
+     {
+      "hour": 17,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.26
+     },
+     {
+      "hour": 19,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.02
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 21,
+      "hr": 85.5,
+      "hrv_z": 1.03,
+      "level": "low",
+      "samples": 8,
+      "score": 0.91
+     },
+     {
+      "hour": 22,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.69
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 11,
+    "score": 0.45
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.751,
+     "spread": 9.64
+    },
+    "date": "2026-09-04",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.02
+     },
+     {
+      "hour": 8,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.6
+     },
+     {
+      "hour": 9,
+      "hr": 93.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.43
+     },
+     {
+      "hour": 10,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.14
+     },
+     {
+      "hour": 11,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.6
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.19
+     },
+     {
+      "hour": 14,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.86
+     },
+     {
+      "hour": 15,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.29
+     },
+     {
+      "hour": 16,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.71
+     },
+     {
+      "hour": 17,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.71
+     },
+     {
+      "hour": 18,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.92
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.29
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.4
+     },
+     {
+      "hour": 21,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.66
+     },
+     {
+      "hour": 22,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.12
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 3,
+    "peak_hour": 9,
+    "score": 0.62
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.746,
+     "spread": 8.9
+    },
+    "date": "2026-09-05",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.33
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.61
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 11,
+      "score": 1.4
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 15,
+      "hr": 97.5,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 10,
+      "score": 2.02
+     },
+     {
+      "hour": 16,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 20,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.16
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.48
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.748,
+     "spread": 8.9
+    },
+    "date": "2026-09-06",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": 1.19,
+      "level": "low",
+      "samples": 9,
+      "score": 0.94
+     },
+     {
+      "hour": 10,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.16
+     },
+     {
+      "hour": 11,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.56
+     },
+     {
+      "hour": 12,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 13,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 14,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 15,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.4
+     },
+     {
+      "hour": 16,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 18,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.72
+     },
+     {
+      "hour": 19,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.4
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 21,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 22,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 2,
+    "peak_hour": 15,
+    "score": 0.77
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.748,
+     "spread": 8.9
+    },
+    "date": "2026-09-07",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.39
+     },
+     {
+      "hour": 8,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": 1.03,
+      "level": "low",
+      "samples": 11,
+      "score": 0.89
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     }
+    ],
+    "level": "low",
+    "low_h": 5,
+    "medium_h": 0,
+    "peak_hour": 9,
+    "score": 0.58
+   },
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.751,
+     "spread": 8.9
+    },
+    "date": "2026-09-08",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.5
+     },
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.28
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.5
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     },
+     {
+      "hour": 12,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 13,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.28
+     },
+     {
+      "hour": 15,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     },
+     {
+      "hour": 16,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 17,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 20,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 21,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     },
+     {
+      "hour": 22,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 0,
+    "peak_hour": 13,
+    "score": 0.33
+   },
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.753,
+     "spread": 8.9
+    },
+    "date": "2026-09-09",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.39
+     },
+     {
+      "hour": 8,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.05
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.17
+     },
+     {
+      "hour": 12,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 15,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.72
+     },
+     {
+      "hour": 16,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     },
+     {
+      "hour": 18,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.28
+     },
+     {
+      "hour": 20,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.06
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 11,
+    "score": 0.43
+   },
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.757,
+     "spread": 8.9
+    },
+    "date": "2026-09-10",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 69.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 9,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 12,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.84
+     },
+     {
+      "hour": 14,
+      "hr": 73.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 93.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.4
+     },
+     {
+      "hour": 16,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 85.0,
+      "hrv_z": 1.34,
+      "level": "low",
+      "samples": 6,
+      "score": 0.9
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.22
+     },
+     {
+      "hour": 21,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.26
+   },
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.755,
+     "spread": 8.9
+    },
+    "date": "2026-09-11",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.72
+     },
+     {
+      "hour": 8,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.22
+     },
+     {
+      "hour": 9,
+      "hr": 81.5,
+      "hrv_z": -0.16,
+      "level": "low",
+      "samples": 12,
+      "score": 0.18
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 16,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 78.0,
+      "hrv_z": -1.59,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.44
+     }
+    ],
+    "level": "low",
+    "low_h": 16,
+    "medium_h": 0,
+    "peak_hour": 7,
+    "score": 0.2
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.759,
+     "spread": 8.9
+    },
+    "date": "2026-09-12",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 75.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 75.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.39
+     },
+     {
+      "hour": 17,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     },
+     {
+      "hour": 18,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.56
+     },
+     {
+      "hour": 20,
+      "hr": 69.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 77.0,
+      "hrv_z": 0.09,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 0,
+    "peak_hour": 19,
+    "score": 0.08
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-13",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.84
+     },
+     {
+      "hour": 8,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     },
+     {
+      "hour": 9,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.84
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.16
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 14,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.72
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 16,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.89
+     },
+     {
+      "hour": 17,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.44
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.28
+     },
+     {
+      "hour": 20,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 21,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 22,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.33
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 0,
+    "peak_hour": 16,
+    "score": 0.44
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.765,
+     "spread": 8.9
+    },
+    "date": "2026-09-14",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 8,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.67
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 12,
+      "hr": 89.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.12
+     },
+     {
+      "hour": 13,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 14,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 15,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 16,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.06
+     },
+     {
+      "hour": 17,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.67
+     },
+     {
+      "hour": 18,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.16
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.72
+     },
+     {
+      "hour": 20,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.56
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 12,
+    "score": 0.49
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.76,
+     "spread": 8.9
+    },
+    "date": "2026-09-15",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 8,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.05
+     },
+     {
+      "hour": 9,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 14,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.95
+     },
+     {
+      "hour": 15,
+      "hr": 99.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 8,
+      "score": 2.3
+     },
+     {
+      "hour": 16,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.61
+     },
+     {
+      "hour": 17,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.17
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 20,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.46
+     },
+     {
+      "hour": 21,
+      "hr": 85.0,
+      "hrv_z": -0.38,
+      "level": "low",
+      "samples": 9,
+      "score": 0.54
+     },
+     {
+      "hour": 22,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 3,
+    "peak_hour": 15,
+    "score": 0.66
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-16",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.72
+     },
+     {
+      "hour": 8,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": -0.18,
+      "level": "low",
+      "samples": 13,
+      "score": 0.45
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 12,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.29
+     },
+     {
+      "hour": 13,
+      "hr": 80.0,
+      "hrv_z": 2.74,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.09
+     },
+     {
+      "hour": 14,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 15,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.29
+     },
+     {
+      "hour": 16,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 17,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 18,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 20,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.06
+     },
+     {
+      "hour": 21,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     }
+    ],
+    "level": "low",
+    "low_h": 9,
+    "medium_h": 7,
+    "peak_hour": 12,
+    "score": 0.86
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.755,
+     "spread": 8.9
+    },
+    "date": "2026-09-17",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.44
+     },
+     {
+      "hour": 10,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 11,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.72
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 16,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.67
+     },
+     {
+      "hour": 17,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 5,
+      "score": 1.29
+     },
+     {
+      "hour": 18,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 21,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.67
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 17,
+    "score": 0.45
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.752,
+     "spread": 8.9
+    },
+    "date": "2026-09-18",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 9,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 76.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.33
+     },
+     {
+      "hour": 12,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 16,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.44
+     },
+     {
+      "hour": 18,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.4
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 20,
+      "hr": 75.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": 2.15,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.38
+     },
+     {
+      "hour": 22,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 18,
+    "score": 0.43
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.75,
+     "spread": 8.9
+    },
+    "date": "2026-09-19",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 11,
+      "hr": 71.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     },
+     {
+      "hour": 14,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     },
+     {
+      "hour": 16,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.84
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.22
+     },
+     {
+      "hour": 21,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 0,
+    "peak_hour": 18,
+    "score": 0.28
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.753,
+     "spread": 8.9
+    },
+    "date": "2026-09-20",
+    "flags": {},
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.33
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.56
+     },
+     {
+      "hour": 12,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.06
+     },
+     {
+      "hour": 13,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 14,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.17
+     },
+     {
+      "hour": 15,
+      "hr": 104.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 7,
+      "score": 2.86
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.06
+     },
+     {
+      "hour": 17,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.89
+     },
+     {
+      "hour": 18,
+      "hr": 89.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.23
+     },
+     {
+      "hour": 19,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.67
+     },
+     {
+      "hour": 20,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.46
+     },
+     {
+      "hour": 21,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.17
+     },
+     {
+      "hour": 22,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 7,
+    "medium_h": 6,
+    "peak_hour": 15,
+    "score": 0.97
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.754,
+     "spread": 8.9
+    },
+    "date": "2026-09-21",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.95
+     },
+     {
+      "hour": 8,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.72
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.5
+     },
+     {
+      "hour": 12,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 14,
+      "hr": 72.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.72
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.61
+     },
+     {
+      "hour": 18,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 76.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.29
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 22,
+    "score": 0.48
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.753,
+     "spread": 8.9
+    },
+    "date": "2026-09-22",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 9,
+      "hr": 77.0,
+      "hrv_z": 0.59,
+      "level": "low",
+      "samples": 7,
+      "score": 0.2
+     },
+     {
+      "hour": 10,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 12,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 15,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     },
+     {
+      "hour": 16,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.05
+     },
+     {
+      "hour": 17,
+      "hr": 72.0,
+      "hrv_z": -1.07,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.84
+     },
+     {
+      "hour": 22,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.26
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.758,
+     "spread": 8.9
+    },
+    "date": "2026-09-23",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 84.5,
+      "hrv_z": 2.52,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.45
+     },
+     {
+      "hour": 10,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.05
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.22
+     },
+     {
+      "hour": 13,
+      "hr": 91.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.57
+     },
+     {
+      "hour": 14,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.05
+     },
+     {
+      "hour": 15,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 19,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.61
+     },
+     {
+      "hour": 22,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.06
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 3,
+    "peak_hour": 13,
+    "score": 0.45
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.756,
+     "spread": 8.9
+    },
+    "date": "2026-09-24",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.22
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     },
+     {
+      "hour": 12,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.05
+     },
+     {
+      "hour": 13,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 16,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.11
+     },
+     {
+      "hour": 18,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 72.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 73.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 0,
+    "peak_hour": 14,
+    "score": 0.16
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.761,
+     "spread": 8.9
+    },
+    "date": "2026-09-25",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 79.0,
+      "hrv_z": 0.32,
+      "level": "low",
+      "samples": 16,
+      "score": 0.36
+     },
+     {
+      "hour": 10,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 12,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 78.0,
+      "hrv_z": 0.08,
+      "level": "low",
+      "samples": 13,
+      "score": 0.21
+     },
+     {
+      "hour": 14,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 95.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.96
+     },
+     {
+      "hour": 16,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 18,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 20,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 72.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.05
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.36
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.761,
+     "spread": 8.9
+    },
+    "date": "2026-09-26",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 70.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 4,
+    "medium_h": 0,
+    "peak_hour": 8,
+    "score": 0.2
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.766,
+     "spread": 8.9
+    },
+    "date": "2026-09-27",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 8,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 12,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.29
+     },
+     {
+      "hour": 14,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.95
+     },
+     {
+      "hour": 15,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.72
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.17
+     },
+     {
+      "hour": 17,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.23
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.29
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.95
+     },
+     {
+      "hour": 20,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.29
+     },
+     {
+      "hour": 21,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.44
+     },
+     {
+      "hour": 22,
+      "hr": 92.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.68
+     }
+    ],
+    "level": "low",
+    "low_h": 8,
+    "medium_h": 6,
+    "peak_hour": 22,
+    "score": 0.96
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.762,
+     "spread": 8.9
+    },
+    "date": "2026-09-28",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.16
+     },
+     {
+      "hour": 8,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.05
+     },
+     {
+      "hour": 10,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.05
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.39
+     },
+     {
+      "hour": 13,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 5,
+      "score": 0.05
+     },
+     {
+      "hour": 14,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.16
+     },
+     {
+      "hour": 16,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.16
+     },
+     {
+      "hour": 17,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.39
+     },
+     {
+      "hour": 18,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.39
+     },
+     {
+      "hour": 19,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.78
+     },
+     {
+      "hour": 20,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.16
+     },
+     {
+      "hour": 21,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.67
+     },
+     {
+      "hour": 22,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 8,
+      "score": 1.01
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 22,
+    "score": 0.31
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-29",
+    "flags": {},
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 8,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.78
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.72
+     },
+     {
+      "hour": 11,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.95
+     },
+     {
+      "hour": 12,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.56
+     },
+     {
+      "hour": 16,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 9,
+      "score": 1.4
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 3,
+      "score": 1.29
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.39
+     },
+     {
+      "hour": 20,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.39
+     },
+     {
+      "hour": 21,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 7,
+      "score": 1.29
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.16
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 3,
+    "peak_hour": 17,
+    "score": 0.64
+   }
+  ],
+  [
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.757,
+     "spread": 8.9
+    },
+    "date": "2026-09-10",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": -0.39,
+      "level": "low",
+      "samples": 14,
+      "score": 0.07
+     },
+     {
+      "hour": 10,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.22
+     },
+     {
+      "hour": 12,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 82.0,
+      "hrv_z": -0.82,
+      "level": "low",
+      "samples": 15,
+      "score": 0.02
+     },
+     {
+      "hour": 14,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 97.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.85
+     },
+     {
+      "hour": 16,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.05
+     },
+     {
+      "hour": 17,
+      "hr": 85.0,
+      "hrv_z": 1.34,
+      "level": "low",
+      "samples": 8,
+      "score": 0.9
+     },
+     {
+      "hour": 18,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 77.0,
+      "hrv_z": 0.34,
+      "level": "low",
+      "samples": 16,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.23
+   },
+   {
+    "baseline": {
+     "calm_hr": 85.0,
+     "hrv_ln": 3.755,
+     "spread": 8.9
+    },
+    "date": "2026-09-11",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.22
+     },
+     {
+      "hour": 9,
+      "hr": 80.0,
+      "hrv_z": -0.16,
+      "level": "low",
+      "samples": 16,
+      "score": 0.06
+     },
+     {
+      "hour": 10,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.05
+     },
+     {
+      "hour": 12,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 76.5,
+      "hrv_z": 1.4,
+      "level": "low",
+      "samples": 14,
+      "score": 0.25
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 80.5,
+      "hrv_z": -1.72,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.44
+     },
+     {
+      "hour": 19,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.28
+     },
+     {
+      "hour": 21,
+      "hr": 81.0,
+      "hrv_z": -1.59,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 16,
+    "medium_h": 0,
+    "peak_hour": 14,
+    "score": 0.13
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.759,
+     "spread": 8.9
+    },
+    "date": "2026-09-12",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 73.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 76.5,
+      "hrv_z": -2.7,
+      "level": "low",
+      "samples": 18,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 77.0,
+      "hrv_z": 0.57,
+      "level": "low",
+      "samples": 17,
+      "score": 0.12
+     },
+     {
+      "hour": 14,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.16
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": -0.81,
+      "level": "low",
+      "samples": 13,
+      "score": 0.26
+     },
+     {
+      "hour": 18,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.05
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 21,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 79.0,
+      "hrv_z": 0.09,
+      "level": "low",
+      "samples": 14,
+      "score": 0.13
+     },
+     {
+      "hour": 22,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 0,
+    "peak_hour": 19,
+    "score": 0.08
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-13",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.95
+     },
+     {
+      "hour": 8,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 86.0,
+      "hrv_z": 2.87,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.52
+     },
+     {
+      "hour": 11,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": 0.31,
+      "level": "low",
+      "samples": 14,
+      "score": 0.51
+     },
+     {
+      "hour": 14,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.84
+     },
+     {
+      "hour": 15,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.39
+     },
+     {
+      "hour": 16,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.89
+     },
+     {
+      "hour": 17,
+      "hr": 81.0,
+      "hrv_z": 1.22,
+      "level": "low",
+      "samples": 15,
+      "score": 0.63
+     },
+     {
+      "hour": 18,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.61
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.33
+     },
+     {
+      "hour": 21,
+      "hr": 85.0,
+      "hrv_z": -0.93,
+      "level": "low",
+      "samples": 13,
+      "score": 0.3
+     },
+     {
+      "hour": 22,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 9,
+    "score": 0.61
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.765,
+     "spread": 8.9
+    },
+    "date": "2026-09-14",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.78
+     },
+     {
+      "hour": 8,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": 3.66,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.52
+     },
+     {
+      "hour": 10,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.33
+     },
+     {
+      "hour": 11,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.22
+     },
+     {
+      "hour": 12,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 83.0,
+      "hrv_z": 7.04,
+      "level": "high",
+      "samples": 15,
+      "score": 2.53
+     },
+     {
+      "hour": 14,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.28
+     },
+     {
+      "hour": 15,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.56
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.95
+     },
+     {
+      "hour": 17,
+      "hr": 82.5,
+      "hrv_z": 1.32,
+      "level": "low",
+      "samples": 16,
+      "score": 0.78
+     },
+     {
+      "hour": 18,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.16
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": 1.58,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.13
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 13,
+    "medium_h": 2,
+    "peak_hour": 13,
+    "score": 0.65
+   },
+   {
+    "baseline": {
+     "calm_hr": 84.0,
+     "hrv_ln": 3.76,
+     "spread": 8.9
+    },
+    "date": "2026-09-15",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.16
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": 0.29,
+      "level": "low",
+      "samples": 15,
+      "score": 0.51
+     },
+     {
+      "hour": 10,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 86.0,
+      "hrv_z": 0.66,
+      "level": "low",
+      "samples": 12,
+      "score": 0.86
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 98.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 13,
+      "score": 2.07
+     },
+     {
+      "hour": 16,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.28
+     },
+     {
+      "hour": 17,
+      "hr": 82.0,
+      "hrv_z": 0.51,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     },
+     {
+      "hour": 18,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 10,
+      "score": 1.06
+     },
+     {
+      "hour": 19,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 87.0,
+      "hrv_z": -0.38,
+      "level": "low",
+      "samples": 13,
+      "score": 0.62
+     },
+     {
+      "hour": 22,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.57
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-16",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.84
+     },
+     {
+      "hour": 8,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": -0.18,
+      "level": "low",
+      "samples": 16,
+      "score": 0.45
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.95
+     },
+     {
+      "hour": 12,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.61
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": 2.74,
+      "level": "medium",
+      "samples": 16,
+      "score": 1.17
+     },
+     {
+      "hour": 14,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.06
+     },
+     {
+      "hour": 15,
+      "hr": 92.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.57
+     },
+     {
+      "hour": 16,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.67
+     },
+     {
+      "hour": 17,
+      "hr": 79.0,
+      "hrv_z": 5.83,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.93
+     },
+     {
+      "hour": 18,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.06
+     },
+     {
+      "hour": 21,
+      "hr": 84.5,
+      "hrv_z": 3.26,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.6
+     },
+     {
+      "hour": 22,
+      "hr": 86.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.89
+     }
+    ],
+    "level": "low",
+    "low_h": 10,
+    "medium_h": 6,
+    "peak_hour": 17,
+    "score": 0.95
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.755,
+     "spread": 8.9
+    },
+    "date": "2026-09-17",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.22
+     },
+     {
+      "hour": 8,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": 1.08,
+      "level": "low",
+      "samples": 14,
+      "score": 0.98
+     },
+     {
+      "hour": 10,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.16
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 79.0,
+      "hrv_z": -0.13,
+      "level": "low",
+      "samples": 17,
+      "score": 0.15
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.72
+     },
+     {
+      "hour": 15,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.56
+     },
+     {
+      "hour": 16,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.67
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": -0.07,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 18,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 7,
+      "score": 0.5
+     },
+     {
+      "hour": 19,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.16
+     },
+     {
+      "hour": 20,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 21,
+      "hr": 83.0,
+      "hrv_z": 0.17,
+      "level": "low",
+      "samples": 15,
+      "score": 0.55
+     },
+     {
+      "hour": 22,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.39
+     }
+    ],
+    "level": "low",
+    "low_h": 16,
+    "medium_h": 0,
+    "peak_hour": 9,
+    "score": 0.48
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.752,
+     "spread": 8.9
+    },
+    "date": "2026-09-18",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.16
+     },
+     {
+      "hour": 9,
+      "hr": 78.0,
+      "hrv_z": 1.06,
+      "level": "low",
+      "samples": 15,
+      "score": 0.42
+     },
+     {
+      "hour": 10,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.05
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.84
+     },
+     {
+      "hour": 13,
+      "hr": 80.5,
+      "hrv_z": 2.09,
+      "level": "low",
+      "samples": 16,
+      "score": 0.93
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     },
+     {
+      "hour": 15,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.16
+     },
+     {
+      "hour": 16,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 19,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 80.0,
+      "hrv_z": 1.78,
+      "level": "low",
+      "samples": 15,
+      "score": 0.8
+     },
+     {
+      "hour": 18,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.78
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.39
+     },
+     {
+      "hour": 20,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 86.0,
+      "hrv_z": 2.15,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.38
+     },
+     {
+      "hour": 22,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.67
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 21,
+    "score": 0.47
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.75,
+     "spread": 8.9
+    },
+    "date": "2026-09-19",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 11,
+      "hr": 71.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 82.0,
+      "hrv_z": 1.26,
+      "level": "low",
+      "samples": 18,
+      "score": 0.8
+     },
+     {
+      "hour": 14,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.05
+     },
+     {
+      "hour": 16,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 78.0,
+      "hrv_z": 0.79,
+      "level": "low",
+      "samples": 16,
+      "score": 0.34
+     },
+     {
+      "hour": 18,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.28
+     },
+     {
+      "hour": 20,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.11
+     },
+     {
+      "hour": 21,
+      "hr": 81.5,
+      "hrv_z": 0.12,
+      "level": "low",
+      "samples": 16,
+      "score": 0.42
+     },
+     {
+      "hour": 22,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.0
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 0,
+    "peak_hour": 13,
+    "score": 0.21
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.753,
+     "spread": 8.9
+    },
+    "date": "2026-09-20",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 1,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.56
+     },
+     {
+      "hour": 9,
+      "hr": 82.0,
+      "hrv_z": 0.33,
+      "level": "low",
+      "samples": 10,
+      "score": 0.52
+     },
+     {
+      "hour": 11,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.84
+     },
+     {
+      "hour": 12,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 11,
+      "score": 1.4
+     },
+     {
+      "hour": 13,
+      "hr": 87.0,
+      "hrv_z": 0.17,
+      "level": "low",
+      "samples": 15,
+      "score": 0.87
+     },
+     {
+      "hour": 14,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.78
+     },
+     {
+      "hour": 15,
+      "hr": 101.0,
+      "hrv_z": null,
+      "level": "high",
+      "samples": 15,
+      "score": 2.52
+     },
+     {
+      "hour": 16,
+      "hr": 84.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.67
+     },
+     {
+      "hour": 17,
+      "hr": 91.0,
+      "hrv_z": 0.55,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.29
+     },
+     {
+      "hour": 18,
+      "hr": 87.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.01
+     },
+     {
+      "hour": 19,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.84
+     },
+     {
+      "hour": 20,
+      "hr": 90.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.29
+     },
+     {
+      "hour": 21,
+      "hr": 87.0,
+      "hrv_z": 0.59,
+      "level": "low",
+      "samples": 16,
+      "score": 0.99
+     },
+     {
+      "hour": 22,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.95
+     }
+    ],
+    "level": "medium",
+    "low_h": 9,
+    "medium_h": 4,
+    "peak_hour": 15,
+    "score": 1.04
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.754,
+     "spread": 8.9
+    },
+    "date": "2026-09-21",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 83.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 8,
+      "score": 0.56
+     },
+     {
+      "hour": 8,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 88.0,
+      "hrv_z": 0.11,
+      "level": "low",
+      "samples": 15,
+      "score": 0.93
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.61
+     },
+     {
+      "hour": 11,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.61
+     },
+     {
+      "hour": 12,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.39
+     },
+     {
+      "hour": 13,
+      "hr": 85.0,
+      "hrv_z": 2.71,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.47
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.28
+     },
+     {
+      "hour": 15,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.72
+     },
+     {
+      "hour": 16,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.72
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": 0.04,
+      "level": "low",
+      "samples": 16,
+      "score": 0.59
+     },
+     {
+      "hour": 18,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.39
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 76.0,
+      "hrv_z": 1.07,
+      "level": "low",
+      "samples": 14,
+      "score": 0.27
+     },
+     {
+      "hour": 22,
+      "hr": 89.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.17
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 13,
+    "score": 0.58
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.753,
+     "spread": 8.9
+    },
+    "date": "2026-09-22",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.33
+     },
+     {
+      "hour": 8,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 9,
+      "hr": 83.0,
+      "hrv_z": 0.59,
+      "level": "low",
+      "samples": 13,
+      "score": 0.68
+     },
+     {
+      "hour": 10,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.11
+     },
+     {
+      "hour": 11,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.33
+     },
+     {
+      "hour": 12,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.0
+     },
+     {
+      "hour": 13,
+      "hr": 78.0,
+      "hrv_z": -0.4,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.33
+     },
+     {
+      "hour": 15,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.84
+     },
+     {
+      "hour": 16,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.05
+     },
+     {
+      "hour": 17,
+      "hr": 79.0,
+      "hrv_z": -1.07,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.72
+     },
+     {
+      "hour": 20,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.61
+     },
+     {
+      "hour": 21,
+      "hr": 85.0,
+      "hrv_z": 1.15,
+      "level": "medium",
+      "samples": 16,
+      "score": 1.0
+     },
+     {
+      "hour": 22,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.05
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 21,
+    "score": 0.32
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.758,
+     "spread": 8.9
+    },
+    "date": "2026-09-23",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 82.0,
+      "hrv_z": 2.52,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.18
+     },
+     {
+      "hour": 10,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.16
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.39
+     },
+     {
+      "hour": 12,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.28
+     },
+     {
+      "hour": 13,
+      "hr": 86.0,
+      "hrv_z": 1.33,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.14
+     },
+     {
+      "hour": 14,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.33
+     },
+     {
+      "hour": 15,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.11
+     },
+     {
+      "hour": 16,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.11
+     },
+     {
+      "hour": 17,
+      "hr": 76.0,
+      "hrv_z": 0.41,
+      "level": "low",
+      "samples": 17,
+      "score": 0.07
+     },
+     {
+      "hour": 18,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 19,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 76.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 80.5,
+      "hrv_z": 3.05,
+      "level": "medium",
+      "samples": 12,
+      "score": 1.22
+     },
+     {
+      "hour": 22,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.44
+     }
+    ],
+    "level": "low",
+    "low_h": 12,
+    "medium_h": 3,
+    "peak_hour": 21,
+    "score": 0.4
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.756,
+     "spread": 8.9
+    },
+    "date": "2026-09-24",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 81.5,
+      "hrv_z": -0.92,
+      "level": "low",
+      "samples": 12,
+      "score": 0.18
+     },
+     {
+      "hour": 10,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 11,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.0
+     },
+     {
+      "hour": 12,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.16
+     },
+     {
+      "hour": 13,
+      "hr": 76.0,
+      "hrv_z": -0.26,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 14,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 19,
+      "score": 0.61
+     },
+     {
+      "hour": 15,
+      "hr": 77.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 16,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 78.5,
+      "hrv_z": -2.16,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 18,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 9,
+      "score": 0.28
+     },
+     {
+      "hour": 19,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.05
+     },
+     {
+      "hour": 20,
+      "hr": 74.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 74.0,
+      "hrv_z": -1.99,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.33
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 0,
+    "peak_hour": 14,
+    "score": 0.17
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.761,
+     "spread": 8.9
+    },
+    "date": "2026-09-25",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.16
+     },
+     {
+      "hour": 8,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.61
+     },
+     {
+      "hour": 9,
+      "hr": 79.0,
+      "hrv_z": 0.32,
+      "level": "low",
+      "samples": 18,
+      "score": 0.36
+     },
+     {
+      "hour": 10,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.39
+     },
+     {
+      "hour": 11,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.5
+     },
+     {
+      "hour": 12,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.72
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": 0.08,
+      "level": "low",
+      "samples": 15,
+      "score": 0.45
+     },
+     {
+      "hour": 14,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.39
+     },
+     {
+      "hour": 15,
+      "hr": 95.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.96
+     },
+     {
+      "hour": 16,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.05
+     },
+     {
+      "hour": 17,
+      "hr": 84.5,
+      "hrv_z": -0.0,
+      "level": "low",
+      "samples": 16,
+      "score": 0.7
+     },
+     {
+      "hour": 18,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.61
+     },
+     {
+      "hour": 19,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.39
+     },
+     {
+      "hour": 20,
+      "hr": 75.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.0
+     },
+     {
+      "hour": 21,
+      "hr": 79.5,
+      "hrv_z": -2.44,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 22,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 15,
+    "medium_h": 1,
+    "peak_hour": 15,
+    "score": 0.47
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.761,
+     "spread": 8.9
+    },
+    "date": "2026-09-26",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 8,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.5
+     },
+     {
+      "hour": 9,
+      "hr": 78.5,
+      "hrv_z": -2.59,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 10,
+      "hr": 71.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 10,
+      "score": 0.0
+     },
+     {
+      "hour": 11,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.28
+     }
+    ],
+    "level": "low",
+    "low_h": 4,
+    "medium_h": 0,
+    "peak_hour": 8,
+    "score": 0.2
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.766,
+     "spread": 8.9
+    },
+    "date": "2026-09-27",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 82.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.56
+     },
+     {
+      "hour": 8,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.95
+     },
+     {
+      "hour": 9,
+      "hr": 84.0,
+      "hrv_z": 1.06,
+      "level": "low",
+      "samples": 14,
+      "score": 0.97
+     },
+     {
+      "hour": 10,
+      "hr": 85.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 4,
+      "score": 0.89
+     },
+     {
+      "hour": 11,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 3,
+      "score": 0.05
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.95
+     },
+     {
+      "hour": 13,
+      "hr": 88.0,
+      "hrv_z": 2.1,
+      "level": "medium",
+      "samples": 17,
+      "score": 1.6
+     },
+     {
+      "hour": 14,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.72
+     },
+     {
+      "hour": 15,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.72
+     },
+     {
+      "hour": 16,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.17
+     },
+     {
+      "hour": 17,
+      "hr": 84.0,
+      "hrv_z": 0.99,
+      "level": "low",
+      "samples": 13,
+      "score": 0.95
+     },
+     {
+      "hour": 18,
+      "hr": 91.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.51
+     },
+     {
+      "hour": 19,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 15,
+      "score": 1.06
+     },
+     {
+      "hour": 20,
+      "hr": 88.5,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.23
+     },
+     {
+      "hour": 21,
+      "hr": 83.0,
+      "hrv_z": 1.37,
+      "level": "low",
+      "samples": 14,
+      "score": 0.99
+     },
+     {
+      "hour": 22,
+      "hr": 92.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 13,
+      "score": 1.62
+     }
+    ],
+    "level": "low",
+    "low_h": 10,
+    "medium_h": 6,
+    "peak_hour": 22,
+    "score": 1.0
+   },
+   {
+    "baseline": {
+     "calm_hr": 83.0,
+     "hrv_ln": 3.762,
+     "spread": 8.9
+    },
+    "date": "2026-09-28",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 78.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.0
+     },
+     {
+      "hour": 8,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.33
+     },
+     {
+      "hour": 9,
+      "hr": 81.0,
+      "hrv_z": 0.13,
+      "level": "low",
+      "samples": 13,
+      "score": 0.38
+     },
+     {
+      "hour": 10,
+      "hr": 80.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.16
+     },
+     {
+      "hour": 11,
+      "hr": 80.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 16,
+      "score": 0.22
+     },
+     {
+      "hour": 12,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 13,
+      "hr": 81.0,
+      "hrv_z": -0.87,
+      "level": "low",
+      "samples": 13,
+      "score": 0.08
+     },
+     {
+      "hour": 14,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.05
+     },
+     {
+      "hour": 15,
+      "hr": 79.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.05
+     },
+     {
+      "hour": 16,
+      "hr": 77.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 20,
+      "score": 0.0
+     },
+     {
+      "hour": 17,
+      "hr": 82.0,
+      "hrv_z": 0.27,
+      "level": "low",
+      "samples": 13,
+      "score": 0.5
+     },
+     {
+      "hour": 18,
+      "hr": 81.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 6,
+      "score": 0.28
+     },
+     {
+      "hour": 19,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 11,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.39
+     },
+     {
+      "hour": 21,
+      "hr": 83.5,
+      "hrv_z": 0.39,
+      "level": "low",
+      "samples": 14,
+      "score": 0.66
+     },
+     {
+      "hour": 22,
+      "hr": 87.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.95
+     }
+    ],
+    "level": "low",
+    "low_h": 16,
+    "medium_h": 0,
+    "peak_hour": 22,
+    "score": 0.32
+   },
+   {
+    "baseline": {
+     "calm_hr": 82.0,
+     "hrv_ln": 3.764,
+     "spread": 8.9
+    },
+    "date": "2026-09-29",
+    "flags": {
+     "no_motion_data": "没有步数数据，走路时的心率没法排除，压力可能偏高"
+    },
+    "high_h": 0,
+    "hours": [
+     {
+      "hour": 7,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.95
+     },
+     {
+      "hour": 8,
+      "hr": 78.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.05
+     },
+     {
+      "hour": 9,
+      "hr": 85.0,
+      "hrv_z": 0.49,
+      "level": "low",
+      "samples": 15,
+      "score": 0.88
+     },
+     {
+      "hour": 10,
+      "hr": 84.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.72
+     },
+     {
+      "hour": 11,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 13,
+      "score": 0.95
+     },
+     {
+      "hour": 12,
+      "hr": 86.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 17,
+      "score": 0.95
+     },
+     {
+      "hour": 13,
+      "hr": 81.5,
+      "hrv_z": -0.38,
+      "level": "low",
+      "samples": 18,
+      "score": 0.35
+     },
+     {
+      "hour": 14,
+      "hr": 85.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.84
+     },
+     {
+      "hour": 15,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.5
+     },
+     {
+      "hour": 16,
+      "hr": 79.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 12,
+      "score": 0.22
+     },
+     {
+      "hour": 17,
+      "hr": 87.0,
+      "hrv_z": 1.69,
+      "level": "medium",
+      "samples": 14,
+      "score": 1.4
+     },
+     {
+      "hour": 18,
+      "hr": 88.0,
+      "hrv_z": null,
+      "level": "medium",
+      "samples": 6,
+      "score": 1.17
+     },
+     {
+      "hour": 19,
+      "hr": 82.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 15,
+      "score": 0.5
+     },
+     {
+      "hour": 20,
+      "hr": 81.5,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 14,
+      "score": 0.44
+     },
+     {
+      "hour": 21,
+      "hr": 85.0,
+      "hrv_z": -1.01,
+      "level": "low",
+      "samples": 14,
+      "score": 0.43
+     },
+     {
+      "hour": 22,
+      "hr": 83.0,
+      "hrv_z": null,
+      "level": "low",
+      "samples": 18,
+      "score": 0.61
+     }
+    ],
+    "level": "low",
+    "low_h": 14,
+    "medium_h": 2,
+    "peak_hour": 17,
+    "score": 0.68
+   }
+  ]
+ ]
+}

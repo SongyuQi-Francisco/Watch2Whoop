@@ -111,7 +111,7 @@ class Data:
                 self.workouts[r["local_date"]].append((r["type"], r["duration_min"], r["hr_zone_min"]))
         sparky_days: dict[date, float] = {}
         try:
-            sparky = sparky or sparky_client.client_for_user(conn, user_id)
+            sparky = sparky or sparky_client.reader_for_user(conn, user_id)
             for s in sparky_client.training_log(sparky, start, end):
                 minutes = session_strength_minutes(s)
                 if minutes is None:
@@ -205,7 +205,7 @@ def strength_sources(conn: psycopg.Connection, user_id: int, start: date, end: d
     else:
         try:
             if sparky is None:
-                sparky = sparky_client.client_for_user(conn, user_id)
+                sparky = sparky_client.reader_for_user(conn, user_id)
                 if timeout is not None:
                     sparky.timeout = timeout
             sessions = [s for s in sparky_client.training_log(sparky, start, end) if session_strength_minutes(s) is not None]

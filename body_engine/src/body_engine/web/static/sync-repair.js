@@ -96,6 +96,7 @@
       root.innerHTML = `<p class="para" style="margin:0">${C.esc(tr("在 iPhone 的 Watch2Whoop app 里打开今天页，再点「重新连接」"))}</p>`;
       return;
     }
+    if (st?.channel === "app") { C.closeSheet(); watch(); location.href = "watch2whoop://sync"; return; }   // no OW (S5b)
     btn.disabled = true;
     let inv = null;
     try { inv = await C.api("/v1/account/ow-invitation", { method: "POST", body: {} }); } catch (e) { inv = null; }

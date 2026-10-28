@@ -11,6 +11,9 @@ One job per user (table sync_resync, migration 675):
    windows, resumable (import_cursor) and within TIME_BUDGET per run; -> 'scoring': compute-scores + insights + rules from
    the range start (all history: everything) -> 'done'. Users without an OW link skip the import. Unfinished after the
    budget: sync_refresh stays scores_queued and the next run continues. Any error: 'error' (shown; a new request may start).
+   In the sync mode app (rawdata/engine.mode, #219 S5b) nothing is imported from OW: the phone re-sends the range
+   through the engine (range / range_done, rawdata/engine.py), and 'queued' stays queued while that range is still open
+   or the engine's days are not derived yet (_engine_waiting, at most RESYNC_ENGINE_WAIT), then -> 'scoring'.
 cancel(): stops a job that has not reached the server part. A phone job without a report for PHONE_STALE is no longer
 running (the app was closed for good): a new request may start, the server part never runs for it.
 Own data only; the app calls it with its account token or its upload-only token (sync/api.py, /v1/ingest/resync).
@@ -34,6 +37,7 @@ PHONE = "phone"
 SERVER = ("queued", "importing", "scoring")
 ACTIVE = (PHONE, *SERVER)
 LOCK_NS = 0x5253                # advisory lock namespace ("RS")
+CLOCK_SLACK = timedelta(minutes=5)   # requested_at is the API's clock, sync_ranges.created_at the database's
 
 
 def _now() -> datetime:
@@ -193,6 +197,32 @@ def _score(conn, user_id: int, client, start: date | None) -> dict:
     return res
 
 
+def _ow_or_none():
+    from ..ow_client import OWClient, OWError
+    try:
+        return OWClient()
+    except OWError:   # no OW configured (after it was retired)
+        return None
+
+
+def _engine_waiting(conn, user_id: int, row: dict) -> str | None:
+    """The sync mode app: what the server part still waits for before it recomputes, or None.
+    'range' = a range re-sync the app opened for this job (sync_ranges since the request) has no range_done yet;
+    'derive' = the engine's uploaded days are not all derived yet (derived here first, within the refresh budget).
+    Either for at most RESYNC_ENGINE_WAIT after the phone said it was done: an app killed mid-range or a day that keeps
+    failing to derive must not hold the job forever (the scores are then computed from what is there)."""
+    from . import refresh
+    since = row.get("requested_at") or _now()
+    patient = _now() - (row.get("phone_done_at") or since) < P.RESYNC_ENGINE_WAIT
+    open_ = conn.execute("""SELECT count(*) AS n FROM sync_ranges WHERE user_id = %s AND done_at IS NULL
+                            AND created_at >= %s""", (user_id, since - CLOCK_SLACK)).fetchone()["n"]
+    if open_ and patient:
+        return "range"
+    refresh.derive_engine_days(conn, user_id)
+    left = conn.execute("SELECT count(*) AS n FROM hk_dirty_days WHERE user_id = %s", (user_id,)).fetchone()["n"]
+    return "derive" if left and patient else None
+
+
 def _first_day(conn, user_id: int, client) -> date | None:
     from ..importers import ow
     row = conn.execute("SELECT ow_user_id, timezone FROM users WHERE id = %s", (user_id,)).fetchone()
@@ -212,14 +242,28 @@ def run_step(conn: psycopg.Connection, user_id: int, client=None, importer=None,
     t0 = clock()
     windows = 0
     try:
-        if client is None:   # inside the try: an OW client that cannot start (no API key) fails this job, shown in the
+        from ..rawdata import engine as rx_engine
+        app = rx_engine.mode(conn, user_id) == "app"
+        if client is None and app:   # nothing is imported; the app mode's readers fill from OW only while it still runs
+            client = _ow_or_none()
+        elif client is None:   # inside the try: an OW client that cannot start (no API key) fails this job, shown in the
             from ..ow_client import OWClient   # app, instead of raising out of sync-refresh-run with the job stuck queued
             client = OWClient()
         row = _row(conn, user_id)
+        if app and row.get("status") == "importing":   # switched to the app mode while importing: OW is not read any more
+            _set(conn, user_id, status="scoring")
+            conn.commit()
+            row = _row(conn, user_id)
         if row.get("status") == "queued":
+            if app:
+                waiting = _engine_waiting(conn, user_id, row)
+                if waiting:   # the next per-minute run looks again
+                    _wake(conn, user_id)
+                    conn.commit()
+                    return {"status": "queued", "waiting": waiting, "windows": 0, "percent": percent(row)}
             linked = conn.execute("SELECT ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()["ow_user_id"]
-            first = (first_day or _first_day)(conn, user_id, client) if linked else None
-            if first is None:   # nothing in OW (or no link): only the scores
+            first = (first_day or _first_day)(conn, user_id, client) if linked and not app else None
+            if first is None:   # the app mode, nothing in OW or no link: only the scores
                 _set(conn, user_id, status="scoring")
             else:
                 frm = max(first, row["range_from"]) if row["range_from"] else first

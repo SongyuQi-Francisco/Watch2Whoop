@@ -16,6 +16,9 @@ same records body age counts, so the user can check them (insights/healthspan_st
 With the sync center (flag sync_center, `extended`): the types the app reads itself (rawdata/hk_types.py: stand time,
 exercise minutes, daylight ...) are listed too, wrist temperature counts as read by the app, and those types carry the
 time of the newest stored sample (hk_samples), so the app can compare it with the newest one on the phone.
+`channel` follows the sync mode (rawdata/engine.mode, #219 S5b): in the mode app the types the OW SDK used to deliver
+come through the app's own sync engine, so they say `app` (and wrist temperature loses `sdk_unsupported`); `mode` is in
+the answer too.
 """
 from __future__ import annotations
 
@@ -83,10 +86,14 @@ assert [k.key for k in EXTRA_KINDS] == list(params.EXTRA_STALE_AFTER_DAYS), \
     "sync/params.EXTRA_STALE_AFTER_DAYS must list every extra kind"
 
 
-def kinds(extended: bool = False) -> tuple[Kind, ...]:
-    if not extended:
-        return KINDS
-    return tuple(EXTENDED_REPLACE.get(k.key, k) for k in KINDS) + EXTRA_KINDS
+def kinds(extended: bool = False, mode: str = "ow") -> tuple[Kind, ...]:
+    """The listed kinds; mode = the user's sync mode (rawdata/engine.MODES): in `app` nothing comes through OW."""
+    out = KINDS if not extended else tuple(EXTENDED_REPLACE.get(k.key, k) for k in KINDS) + EXTRA_KINDS
+    if mode == "app":
+        out = tuple(k if k.channel != "ow" else
+                    Kind(k.key, k.zh, k.en, "app", k.metrics, tuple(n for n in k.notes if n != "sdk_unsupported"))
+                    for k in out)
+    return out
 
 
 def _stale_after(key: str) -> int | None:
@@ -189,13 +196,15 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, s
     """{today, window_days, types: [...], summary: {ok, stale, never}, channels, strength, extended}.
     extended: the sync center's longer list; None = the user's sync_center flag."""
     from .. import water
+    from ..rawdata import engine as rx_engine
     from ..rollout import flags
     tz_name = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"]
     tz = ZoneInfo(tz_name)
     today = today or datetime.now(tz).date()
     if extended is None:
         extended = flags.enabled(conn, user_id, "sync_center")
-    kind_list = kinds(extended)
+    mode = rx_engine.mode(conn, user_id)
+    kind_list = kinds(extended, mode)
     since = today - timedelta(days=params.WINDOW_DAYS - 1)
     src_since = today - timedelta(days=params.SOURCES_DAYS - 1)
     rows = {**_metric_rows(conn, user_id, since, src_since, kind_list),
@@ -224,4 +233,4 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, s
         })
     return {"today": today.isoformat(), "window_days": params.WINDOW_DAYS, "types": types, "summary": summary,
             "channels": _channels(conn, user_id, tz), "strength": _strength(conn, user_id, today, sparky),
-            "extended": extended}
+            "extended": extended, "mode": mode}

@@ -742,7 +742,7 @@
   {
    "type": "timeseries",
    "title": "负荷：strain 和肌肉负荷",
-   "description": "strain：心率 TRIMP 映射到 0–21（K = 170）。肌肉负荷：SparkyFitness 当天力量动作工作组 Σ 次数 × 重量，没有训练记录的天留空（没记录 ≠ 没练）。",
+   "description": "strain：心率 TRIMP 映射到 0–21（K = 170）。肌肉负荷：训练记录里当天力量动作工作组 Σ 次数 × 重量，没有训练记录的天留空（没记录 ≠ 没练）。",
    "targets": [
     {
      "refId": "A",
