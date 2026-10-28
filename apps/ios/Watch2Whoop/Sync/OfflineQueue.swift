@@ -68,8 +68,38 @@ final class OfflineQueue {
       let heads = try OutboxItem.fetchAll(db, sql: """
         SELECT * FROM outbox o WHERE o.id = (SELECT min(id) FROM outbox WHERE group_key = o.group_key) ORDER BY o.id
         """)
-      return heads.filter { $0.state == .pending && $0.nextAttemptAt <= t }
+      // a `sending` head whose lease ran out was cut off (the app was killed mid-request): it goes again, same client_id
+      return heads.filter { ($0.state == .pending || $0.state == .sending) && $0.nextAttemptAt <= t }
     }
+  }
+
+  /// Last write wins (a like / unlike): drops the group's entries that are not on their way to the server right now,
+  /// before the new state is queued, so only the latest one is sent (and an old failure no longer blocks the group).
+  func supersede(group: String) throws {
+    try db.writer.write { db in
+      try db.execute(sql: "DELETE FROM outbox WHERE group_key = ? AND state <> 'sending'", arguments: [group])
+    }
+  }
+
+  /// Seconds an entry stays `sending` before another drain may take it again (well above the 30 s request timeout).
+  static let lease: TimeInterval = 120
+
+  /// Takes the entry for this drain only: two drains running at once (a page and the sync coordinator) never send the
+  /// same entry twice.
+  private func claim(_ item: inout OutboxItem) async throws -> Bool {
+    let t = now(), lease = t + Self.lease, id = item.id
+    let ok = try await db.writer.write { db -> Bool in
+      try db.execute(sql: """
+        UPDATE outbox SET state = 'sending', next_attempt_at = ?
+        WHERE id = ? AND (state = 'pending' OR (state = 'sending' AND next_attempt_at <= ?))
+        """, arguments: [lease, id, t])
+      return db.changesCount == 1
+    }
+    if ok {
+      item.state = .sending
+      item.nextAttemptAt = lease
+    }
+    return ok
   }
 
   /// Sends what is due until nothing is due or the server said 401. Returns how many entries went through.
@@ -79,9 +109,11 @@ final class OfflineQueue {
     while true {
       let batch = try due()
       if batch.isEmpty { return sent }
+      var claimed = 0
       for var item in batch {
-        item.state = .sending
-        try await save(item)
+        let due = item.nextAttemptAt
+        guard try await claim(&item) else { continue }
+        claimed += 1
         let result = await send(item)
         switch result {
         case .done:
@@ -103,10 +135,12 @@ final class OfflineQueue {
           try await save(item)
         case .unauthorized:
           item.state = .pending
+          item.nextAttemptAt = due
           try await save(item)
           return sent
         }
       }
+      if claimed == 0 { return sent }   // everything due is being sent by another drain
     }
   }
 

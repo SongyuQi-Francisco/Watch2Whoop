@@ -55,6 +55,8 @@ struct APIRequest {
   var body: Data?
   var idempotent: Bool? = nil
   var timeout: TimeInterval = 30
+  /// Body type when it is not JSON (an avatar upload sends the picture itself, `image/jpeg`).
+  var contentType: String? = nil
 
   var isIdempotent: Bool { idempotent ?? (method == .get || method == .put || method == .delete) }
 
@@ -116,7 +118,7 @@ final class APIClient {
     if let t = token(), !t.isEmpty { u.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
     if let b = r.body {
       u.httpBody = b
-      u.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      u.setValue(r.contentType ?? "application/json", forHTTPHeaderField: "Content-Type")
     }
     return u
   }

@@ -50,6 +50,10 @@ final class AppModel: ObservableObject {
     case syncCenter
     /// The Today page's 「补全历史」: 90 days, or 0 = all history.
     case history(days: Int)
+    /// The Friends tab (N7); `post` = a feed post to open with its comments (a like / comment notification).
+    case circles(post: Int?)
+    /// The join sheet with an invite code (`watch2whoop://circle?code=…`, a shared invite link).
+    case circleJoin(String)
   }
 
   let store: CredentialStore
@@ -60,11 +64,14 @@ final class AppModel: ObservableObject {
   }
 
   func start() async {
+    NotificationTaps.shared.open = { [weak self] link in self?.handle(link: link) }   // a tapped notification
     FlutterMigration.run(store: store)
     #if DEBUG
     DevSignIn.applyIfRequested(store: store)
     // simulator runs: `SIMCTL_CHILD_W2W_DEV_SETUP=watch2whoop://setup?…` goes through the real setup-link sign-in
     if let link = ProcessInfo.processInfo.environment["W2W_DEV_SETUP"], let u = URL(string: link) { handle(url: u) }
+    // `SIMCTL_CHILD_W2W_DEV_LINK=/app/?tab=friends&feed=12` behaves like a tapped notification (N7 screenshots)
+    if let link = ProcessInfo.processInfo.environment["W2W_DEV_LINK"], !link.isEmpty { handle(link: link) }
     #endif
     await connect()
   }
@@ -158,8 +165,19 @@ final class AppModel: ObservableObject {
     case "backfill":
       let days = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "days" }?.value
       route = .history(days: days == "all" ? 0 : Int(days ?? "") ?? SyncSettings.backfillDays)
+    case "circle", "feed":                                                                    // N7
+      handle(link: url.absoluteString)
     default:
       break
+    }
+  }
+
+  /// A notification's `url` (`/app/?tab=friends&feed=12`) or a circle link: where it points (N7: circles only so far).
+  func handle(link: String) {
+    switch CircleLink.parse(link) {
+    case .post(let id)?: route = .circles(post: id)
+    case .join(let code)?: route = .circleJoin(code)
+    case nil: if link.contains("tab=friends") { route = .circles(post: nil) }
     }
   }
 

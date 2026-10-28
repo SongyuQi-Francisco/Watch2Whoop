@@ -38,6 +38,34 @@ struct Icon: View {
     case calendarDays = "calendar-days"
     case logOut = "log-out"
     case userX = "user-x"
+    // N7: circles (feed, invites, circle management, avatars)
+    case heart
+    case heartFill = "heart.fill"   // the Lucide heart, filled (scripts/lucide_assets.py FILLED)
+    case messageCircle = "message-circle"
+    case send
+    case trophy
+    case dumbbell
+    case flame
+    case mapPin = "map-pin"
+    case activity
+    case timer
+    case share
+    case userPlus = "user-plus"
+    case logIn = "log-in"
+    case plus
+    case copy
+    case settings
+    case ellipsis
+    case camera
+    case image
+    case trash
+    case pin
+    case bellOff = "bell-off"
+    case archive
+    case chevronDown = "chevron-down"
+    case flag
+    case crown
+    case clock
 
     var assetName: String { "lucide.\(rawValue)" }
   }
