@@ -41,7 +41,8 @@ def test_first_screen_budget():
     # + 700 for the ui_ai_first hooks and window.BodyPage in app.js (the AI-first page itself, ui-ai-first.js, loads on demand; #279)
     # + 1,000 for the hooks of the iOS app's native views (#247 phase 2: the "today" hook, nativeHello, BodyJarvis.native); the bridge loads on demand
     # + 800 for the 「记体重」 row of the Me page and its on-demand loader in app.js (weight.js loads on the first tap)
-    assert total <= 996_500, total
+    # + 400 for the 「记体重」 button on the weight card's explanation sheet
+    assert total <= 996_900, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
