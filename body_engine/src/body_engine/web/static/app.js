@@ -939,9 +939,12 @@
       catch (e) { if (box.isConnected) box.innerHTML = tags([badge("plain", e.status === 403 ? tr("无权限") : short(e.message))]); return; }
     }
     if (!box.isConnected) return;   // the sheet was closed or replaced while loading
-    box.innerHTML = explainHtml(x, head);
+    const weigh = isSelf() && /^weight/.test(key);   // the weight card logs a weigh-in too (weight.js)
+    box.innerHTML = (weigh ? `<div class="btns"><button class="btn btn-primary" data-xp-weigh>${tr("记体重")}</button></div>` : "") + explainHtml(x, head);
     const ask = $("[data-xp-ask]", box);
     if (ask) ask.onclick = () => askAI(x.ai_prompt);
+    const wb = $("[data-xp-weigh]", box);
+    if (wb) wb.onclick = async () => { if (await lazyScript("weight.js")) window.BodyWeight?.open(); };
   }
   const xpBox = `<div class="xp"><div class="xp-load"><span></span><span></span><span></span></div></div>`;
   function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true), { kind: "explain", key }); }
