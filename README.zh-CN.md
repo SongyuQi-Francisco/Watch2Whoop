@@ -152,6 +152,7 @@ flowchart LR
 | [`body_engine/`](body_engine/README.md) | 服务器：评分、记录、规则、AI 工具、MCP、今天页 |
 | [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app（Flutter） |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | 独立的评分库 |
+| [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | 同一套算法的 JS 单文件，iOS app 在本地用 JavaScriptCore 运行 |
 | [`shortcuts/`](shortcuts/README.md) | iOS 快捷指令同步（不用装 app） |
 | [`quickstart/`](quickstart/README.md) | 一条命令的本地演示 |
 | `deploy/`、`assistant/` | 部署、运维、AI 管家工作目录 |

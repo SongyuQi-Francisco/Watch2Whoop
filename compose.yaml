@@ -27,6 +27,7 @@ services:
       context: ./body_engine
       additional_contexts:   # the scoring algorithms (path dependency, see body_engine/Dockerfile); needs Compose >= 2.17
         openbodyscore: ./packages/openbodyscore
+        openbodyscore_js: ./packages/openbodyscore-js/dist   # the JS bundle for the app (/v1/algo, issue #340)
     image: body-engine:0.1.0
     environment:
       BODY_DB_HOST: body-db

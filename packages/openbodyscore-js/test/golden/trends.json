@@ -1,0 +1,2343 @@
+[
+ {
+  "fn": "hrv_status",
+  "value": null
+ },
+ {
+  "fn": "acwr",
+  "value": 1.89
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 63.371428571428574
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 72.26923076923077
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.5
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 74,
+     "trimp": 793
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 23,
+     "trimp": 250
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 32
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 70,
+     "trimp": 402
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 151
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 18
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.411,
+   "capacity": 0.632,
+   "days": 12,
+   "label": "一般",
+   "level": "adequate",
+   "stress_load": 0.443
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.632,
+   "capacity": 0.632,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-08-13",
+   "from_strain": 13.0,
+   "hours": 20
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": null
+ },
+ {
+  "fn": "acwr",
+  "value": 1.32
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 60.94285714285714
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 76.24117647058823
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.5
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 74,
+     "trimp": 1048
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 23,
+     "trimp": 328
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 45
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 77,
+     "trimp": 416
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 19,
+     "trimp": 103
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 4,
+     "trimp": 20
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.493,
+   "capacity": 0.708,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.43
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.708,
+   "capacity": 0.708,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-08-17",
+   "from_strain": 11.0,
+   "hours": 23
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 42.7,
+   "band_ms": [
+    37.4,
+    50.8
+   ],
+   "baseline_ms": 43.6,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.59
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 90.62857142857142
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 75.9
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.7
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 1265
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 454
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 52
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 67,
+     "trimp": 407
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 31,
+     "trimp": 187
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 2,
+     "trimp": 15
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.494,
+   "capacity": 0.702,
+   "days": 12,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.417
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.702,
+   "capacity": 0.702,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-08-20",
+   "from_strain": 17.9,
+   "hours": 48
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 42.4,
+   "band_ms": [
+    37.2,
+    52.0
+   ],
+   "baseline_ms": 44.0,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.05
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 67.24285714285715
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 74.95
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.8
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 73,
+     "trimp": 1500
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 24,
+     "trimp": 496
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 62
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 72,
+     "trimp": 406
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 25,
+     "trimp": 139
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 18
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.487,
+   "capacity": 0.689,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.404
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.689,
+   "capacity": 0.689,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-08-24",
+   "from_strain": 15.9,
+   "hours": 15
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 40.5,
+   "band_ms": [
+    36.6,
+    52.1
+   ],
+   "baseline_ms": 43.6,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.16
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 85.08571428571429
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 78.65384615384616
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.8
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 1622
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 25,
+     "trimp": 579
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 72
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 74,
+     "trimp": 405
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 23,
+     "trimp": 124
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 4,
+     "trimp": 20
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.511,
+   "capacity": 0.702,
+   "days": 12,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.382
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.702,
+   "capacity": 0.702,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-08-28",
+   "from_strain": 13.9,
+   "hours": 35
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 38.8,
+   "band_ms": [
+    37.0,
+    51.3
+   ],
+   "baseline_ms": 43.6,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.23
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 90.87142857142858
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 79.50384615384615
+ },
+ {
+  "fn": "slope_per",
+  "value": 2.86
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 70,
+     "trimp": 1635
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 27,
+     "trimp": 618
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 68
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 68,
+     "trimp": 396
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 30,
+     "trimp": 175
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 15
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.502,
+   "capacity": 0.697,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.391
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.697,
+   "capacity": 0.697,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-02",
+   "from_strain": 18.0,
+   "hours": 79
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 40.8,
+   "band_ms": [
+    36.5,
+    50.6
+   ],
+   "baseline_ms": 43.0,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 0.96
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 69.14285714285714
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 77.26538461538462
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.0
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 72,
+     "trimp": 1608
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 25,
+     "trimp": 558
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 70
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 74,
+     "trimp": 410
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 23,
+     "trimp": 127
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 18
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.476,
+   "capacity": 0.71,
+   "days": 12,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.469
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.71,
+   "capacity": 0.71,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-06",
+   "from_strain": 16.0,
+   "hours": 48
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 45.8,
+   "band_ms": [
+    36.0,
+    49.7
+   ],
+   "baseline_ms": 42.3,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 0.83
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 60.885714285714286
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 78.83461538461538
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.0
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 1634
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 597
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 72
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 395
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 145
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 4,
+     "trimp": 20
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.477,
+   "capacity": 0.705,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.456
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.705,
+   "capacity": 0.705,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-10",
+   "from_strain": 14.0,
+   "hours": 23
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 46.1,
+   "band_ms": [
+    36.5,
+    49.8
+   ],
+   "baseline_ms": 42.6,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.19
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 91.11428571428571
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 82.51153846153846
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.14
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 1617
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 603
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 68
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 70,
+     "trimp": 419
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 27,
+     "trimp": 163
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 15
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.454,
+   "capacity": 0.675,
+   "days": 12,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.443
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.675,
+   "capacity": 0.675,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-14",
+   "from_strain": 12.0,
+   "hours": 7
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 39.8,
+   "band_ms": [
+    36.9,
+    50.3
+   ],
+   "baseline_ms": 43.1,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 1.14
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 86.98571428571428
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 81.98846153846154
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.27
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 72,
+     "trimp": 1616
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 24,
+     "trimp": 543
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 70
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 75,
+     "trimp": 397
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 22,
+     "trimp": 115
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 18
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.451,
+   "capacity": 0.654,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.406
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.654,
+   "capacity": 0.654,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-17",
+   "from_strain": 18.9,
+   "hours": 47
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 43.2,
+   "band_ms": [
+    36.1,
+    50.6
+   ],
+   "baseline_ms": 42.7,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 0.95
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 74.35714285714286
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 84.42692307692307
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.27
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 70,
+     "trimp": 1642
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 615
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 72
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 69,
+     "trimp": 421
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 27,
+     "trimp": 166
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 20
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.46,
+   "capacity": 0.675,
+   "days": 12,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.43
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.675,
+   "capacity": 0.675,
+   "days": 12,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-21",
+   "from_strain": 16.9,
+   "hours": 17
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 45.7,
+   "band_ms": [
+    36.2,
+    50.4
+   ],
+   "baseline_ms": 42.7,
+   "label": "平衡",
+   "nights": 7,
+   "status": "balanced"
+  }
+ },
+ {
+  "fn": "acwr",
+  "value": 0.94
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 74.60000000000001
+ },
+ {
+  "fn": "rolling_mean",
+  "value": 85.01538461538462
+ },
+ {
+  "fn": "slope_per",
+  "value": 3.37
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 28,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 1617
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 588
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 68
+    }
+   ]
+  }
+ },
+ {
+  "fn": "load_focus",
+  "value": {
+   "days": 7,
+   "groups": [
+    {
+     "key": "low_aerobic",
+     "label": "低有氧",
+     "pct": 71,
+     "trimp": 406
+    },
+    {
+     "key": "high_aerobic",
+     "label": "高有氧",
+     "pct": 26,
+     "trimp": 151
+    },
+    {
+     "key": "anaerobic",
+     "label": "无氧",
+     "pct": 3,
+     "trimp": 15
+    }
+   ]
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.454,
+   "capacity": 0.662,
+   "days": 13,
+   "label": "稳固",
+   "level": "solid",
+   "stress_load": 0.417
+  }
+ },
+ {
+  "fn": "resilience",
+  "value": {
+   "balance": 0.662,
+   "capacity": 0.662,
+   "days": 13,
+   "label": "极强",
+   "level": "exceptional",
+   "stress_load": null
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-25",
+   "from_strain": 14.9,
+   "hours": 0
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 88.9,
+   "acwr": 1.13,
+   "chronic": 78.5,
+   "label": "有效",
+   "status": "productive",
+   "trimp_days": 26,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 88.9,
+   "acwr": 1.13,
+   "chronic": 78.5,
+   "label": "疲劳",
+   "status": "strained",
+   "trimp_days": 26,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 88.9,
+   "acwr": 1.13,
+   "chronic": 78.5,
+   "label": "有效",
+   "status": "productive",
+   "trimp_days": 26,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 200.0,
+   "acwr": 2.11,
+   "chronic": 95.0,
+   "label": "过度",
+   "status": "overreaching",
+   "trimp_days": 28,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 5.0,
+   "acwr": 0.08,
+   "chronic": 61.2,
+   "label": "去适应",
+   "status": "detraining",
+   "trimp_days": 28,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 5.0,
+   "acwr": 0.08,
+   "chronic": 61.2,
+   "label": "恢复中",
+   "status": "recovery",
+   "trimp_days": 28,
+   "vo2_change_60d": 3.37
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 80.0,
+   "acwr": 1.0,
+   "chronic": 80.0,
+   "label": "有效",
+   "status": "productive",
+   "trimp_days": 28,
+   "vo2_change_60d": 1.8
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 80.0,
+   "acwr": 1.0,
+   "chronic": 80.0,
+   "label": "低效",
+   "status": "unproductive",
+   "trimp_days": 28,
+   "vo2_change_60d": -1.8
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": {
+   "acute": 80.0,
+   "acwr": 1.0,
+   "chronic": 80.0,
+   "label": "保持",
+   "status": "maintaining",
+   "trimp_days": 28,
+   "vo2_change_60d": null
+  }
+ },
+ {
+  "fn": "training_status",
+  "value": null
+ },
+ {
+  "fn": "training_status",
+  "value": null
+ },
+ {
+  "fn": "hrv_status",
+  "value": null
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 30.0,
+   "band_ms": [
+    55.2,
+    56.8
+   ],
+   "baseline_ms": 56.0,
+   "label": "很低",
+   "nights": 7,
+   "status": "poor"
+  }
+ },
+ {
+  "fn": "hrv_status",
+  "value": {
+   "avg7_ms": 52.0,
+   "band_ms": [
+    40.4,
+    42.7
+   ],
+   "baseline_ms": 41.5,
+   "label": "偏高",
+   "nights": 7,
+   "status": "high"
+  }
+ },
+ {
+  "fn": "slope_per",
+  "value": null
+ },
+ {
+  "fn": "slope_per",
+  "value": -90.0
+ },
+ {
+  "fn": "aerobic_minutes",
+  "value": null
+ },
+ {
+  "fn": "aerobic_minutes",
+  "value": null
+ },
+ {
+  "fn": "aerobic_minutes",
+  "value": 62.0
+ },
+ {
+  "fn": "aerobic_minutes",
+  "value": 7.5
+ },
+ {
+  "fn": "weekly_sum",
+  "value": [
+   {
+    "value": 17.0,
+    "week": "2026-07-27"
+   },
+   {
+    "value": 325.0,
+    "week": "2026-08-03"
+   },
+   {
+    "value": 348.0,
+    "week": "2026-08-10"
+   },
+   {
+    "value": 281.0,
+    "week": "2026-08-17"
+   },
+   {
+    "value": 304.0,
+    "week": "2026-08-24"
+   },
+   {
+    "value": 327.0,
+    "week": "2026-08-31"
+   },
+   {
+    "value": 350.0,
+    "week": "2026-09-07"
+   },
+   {
+    "value": 283.0,
+    "week": "2026-09-14"
+   },
+   {
+    "value": 306.0,
+    "week": "2026-09-21"
+   },
+   {
+    "value": 99.0,
+    "week": "2026-09-28"
+   }
+  ]
+ },
+ {
+  "fn": "weekly_sum",
+  "value": [
+   {
+    "value": 291.0,
+    "week": "2026-08-03"
+   },
+   {
+    "value": 150.0,
+    "week": "2026-08-10"
+   }
+  ]
+ },
+ {
+  "fn": "sleep_performance_whoop",
+  "value": null
+ },
+ {
+  "fn": "sleep_performance_whoop",
+  "value": 85.0
+ },
+ {
+  "fn": "sleep_performance_whoop",
+  "value": 94.0
+ },
+ {
+  "fn": "sleep_performance_whoop",
+  "value": 46.0
+ },
+ {
+  "fn": "sleep_performance_whoop",
+  "value": 93.2
+ },
+ {
+  "fn": "strain_from_trimp",
+  "value": 0.0
+ },
+ {
+  "fn": "strain_from_trimp",
+  "value": 5.35103484271691
+ },
+ {
+  "fn": "strain_from_trimp",
+  "value": 12.050646802380848
+ },
+ {
+  "fn": "strain_from_trimp",
+  "value": 19.89112502297969
+ },
+ {
+  "fn": "combined_strain",
+  "value": null
+ },
+ {
+  "fn": "combined_strain",
+  "value": null
+ },
+ {
+  "fn": "combined_strain",
+  "value": 10.6
+ },
+ {
+  "fn": "combined_strain",
+  "value": 15.9
+ },
+ {
+  "fn": "combined_strain",
+  "value": 7.9
+ },
+ {
+  "fn": "combined_strain",
+  "value": 7.9
+ },
+ {
+  "fn": "illness_risk",
+  "value": null
+ },
+ {
+  "fn": "illness_risk",
+  "value": null
+ },
+ {
+  "fn": "illness_risk",
+  "value": {
+   "label": "留意",
+   "level": "watch",
+   "score": 39
+  }
+ },
+ {
+  "fn": "illness_risk",
+  "value": {
+   "label": "留意",
+   "level": "watch",
+   "score": 59
+  }
+ },
+ {
+  "fn": "illness_risk",
+  "value": {
+   "label": "留意",
+   "level": "watch",
+   "score": 45
+  }
+ },
+ {
+  "fn": "illness_risk",
+  "value": {
+   "label": "高",
+   "level": "high",
+   "score": 99
+  }
+ },
+ {
+  "fn": "chronotype",
+  "value": {
+   "free_days": true,
+   "label": "中间型",
+   "mid_sleep": "04:11",
+   "nights": 60,
+   "type": "intermediate"
+  }
+ },
+ {
+  "fn": "chronotype",
+  "value": null
+ },
+ {
+  "fn": "chronotype",
+  "value": {
+   "free_days": false,
+   "label": "中间型",
+   "mid_sleep": "03:03",
+   "nights": 42,
+   "type": "intermediate"
+  }
+ },
+ {
+  "fn": "chronotype",
+  "value": {
+   "free_days": true,
+   "label": "早型",
+   "mid_sleep": "22:46",
+   "nights": 20,
+   "type": "early"
+  }
+ },
+ {
+  "fn": "chronotype",
+  "value": {
+   "free_days": true,
+   "label": "极晚型",
+   "mid_sleep": "08:46",
+   "nights": 20,
+   "type": "very_late"
+  }
+ },
+ {
+  "fn": "body_battery",
+  "value": null
+ },
+ {
+  "fn": "body_battery",
+  "value": {
+   "current": 5,
+   "estimate": true,
+   "low": 5,
+   "points": [
+    {
+     "hour": 6,
+     "v": 76
+    },
+    {
+     "hour": 7,
+     "v": 70
+    },
+    {
+     "hour": 8,
+     "v": 63
+    },
+    {
+     "hour": 9,
+     "v": 59
+    },
+    {
+     "hour": 10,
+     "v": 55
+    },
+    {
+     "hour": 11,
+     "v": 49
+    },
+    {
+     "hour": 12,
+     "v": 41
+    },
+    {
+     "hour": 13,
+     "v": 37
+    },
+    {
+     "hour": 14,
+     "v": 34
+    },
+    {
+     "hour": 15,
+     "v": 28
+    },
+    {
+     "hour": 16,
+     "v": 20
+    },
+    {
+     "hour": 17,
+     "v": 16
+    },
+    {
+     "hour": 18,
+     "v": 12
+    },
+    {
+     "hour": 19,
+     "v": 6
+    },
+    {
+     "hour": 20,
+     "v": 5
+    },
+    {
+     "hour": 21,
+     "v": 5
+    },
+    {
+     "hour": 22,
+     "v": 5
+    },
+    {
+     "hour": 23,
+     "v": 5
+    }
+   ],
+   "wake": 76
+  }
+ },
+ {
+  "fn": "body_battery",
+  "value": {
+   "current": 67,
+   "estimate": true,
+   "low": 67,
+   "points": [
+    {
+     "hour": 7,
+     "v": 95
+    },
+    {
+     "hour": 8,
+     "v": 89
+    },
+    {
+     "hour": 9,
+     "v": 87
+    },
+    {
+     "hour": 10,
+     "v": 85
+    },
+    {
+     "hour": 11,
+     "v": 81
+    },
+    {
+     "hour": 12,
+     "v": 75
+    },
+    {
+     "hour": 13,
+     "v": 73
+    },
+    {
+     "hour": 14,
+     "v": 71
+    },
+    {
+     "hour": 15,
+     "v": 67
+    }
+   ],
+   "wake": 95
+  }
+ },
+ {
+  "fn": "body_battery",
+  "value": {
+   "current": 5,
+   "estimate": true,
+   "low": 5,
+   "points": [
+    {
+     "hour": 16,
+     "v": 28
+    },
+    {
+     "hour": 17,
+     "v": 18
+    },
+    {
+     "hour": 18,
+     "v": 9
+    },
+    {
+     "hour": 19,
+     "v": 5
+    },
+    {
+     "hour": 20,
+     "v": 5
+    },
+    {
+     "hour": 21,
+     "v": 5
+    },
+    {
+     "hour": 22,
+     "v": 5
+    },
+    {
+     "hour": 23,
+     "v": 5
+    }
+   ],
+   "wake": 28
+  }
+ },
+ {
+  "fn": "body_battery",
+  "value": {
+   "current": 88,
+   "estimate": true,
+   "low": 88,
+   "points": [
+    {
+     "hour": 8,
+     "v": 88
+    }
+   ],
+   "wake": 88
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": null
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": null,
+   "from_strain": null,
+   "hours": 0
+  }
+ },
+ {
+  "fn": "recovery_time",
+  "value": {
+   "estimate": true,
+   "from_date": "2026-09-28",
+   "from_strain": 19.0,
+   "hours": 83
+  }
+ },
+ {
+  "fn": "recovery_index",
+  "value": null
+ },
+ {
+  "fn": "recovery_index",
+  "value": null
+ },
+ {
+  "fn": "recovery_index",
+  "value": {
+   "label": "前半夜",
+   "level": "good",
+   "pct": 25
+  }
+ },
+ {
+  "fn": "recovery_index",
+  "value": {
+   "label": "后半夜",
+   "level": "fair",
+   "pct": 62
+  }
+ },
+ {
+  "fn": "recovery_index",
+  "value": {
+   "label": "很晚",
+   "level": "late",
+   "pct": 95
+  }
+ },
+ {
+  "fn": "recovery_index",
+  "value": {
+   "label": "前半夜",
+   "level": "good",
+   "pct": 0
+  }
+ },
+ {
+  "fn": "recovery_index",
+  "value": {
+   "label": "很晚",
+   "level": "late",
+   "pct": 100
+  }
+ },
+ {
+  "fn": "hr_recovery",
+  "value": null
+ },
+ {
+  "fn": "hr_recovery",
+  "value": 16.5
+ },
+ {
+  "fn": "hr_recovery",
+  "value": 20.0
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": null
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": "low"
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": "low"
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": "fair"
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": "good"
+ },
+ {
+  "fn": "hr_recovery_level",
+  "value": "good"
+ },
+ {
+  "fn": "baseline_band",
+  "value": {
+   "hi": [
+    49.73,
+    49.75,
+    49.62,
+    49.77,
+    49.73,
+    49.88,
+    49.75,
+    49.89,
+    50.22,
+    50.19,
+    50.06,
+    50.37,
+    50.37,
+    50.23,
+    50.09,
+    50.14,
+    50.15,
+    50.04,
+    50.43,
+    50.3,
+    50.68,
+    50.6,
+    50.95,
+    50.83,
+    50.83
+   ],
+   "lo": [
+    36.02,
+    36.19,
+    36.26,
+    36.43,
+    36.56,
+    36.73,
+    36.73,
+    36.89,
+    37.02,
+    37.13,
+    36.83,
+    36.96,
+    36.25,
+    36.2,
+    36.14,
+    36.27,
+    36.39,
+    36.4,
+    36.49,
+    36.41,
+    36.5,
+    36.55,
+    36.63,
+    36.48,
+    36.58
+   ],
+   "mean": [
+    42.88,
+    42.97,
+    42.94,
+    43.1,
+    43.14,
+    43.3,
+    43.24,
+    43.39,
+    43.62,
+    43.66,
+    43.45,
+    43.67,
+    43.31,
+    43.21,
+    43.12,
+    43.21,
+    43.27,
+    43.22,
+    43.46,
+    43.36,
+    43.59,
+    43.57,
+    43.79,
+    43.66,
+    43.71
+   ]
+  }
+ },
+ {
+  "fn": "baseline_band",
+  "value": {
+   "hi": [
+    51.21,
+    51.21,
+    50.99,
+    50.99,
+    50.76,
+    50.76,
+    50.6,
+    50.6,
+    50.4,
+    50.4
+   ],
+   "lo": [
+    38.49,
+    38.49,
+    38.42,
+    38.42,
+    38.17,
+    38.17,
+    38.22,
+    38.22,
+    37.84,
+    37.84
+   ],
+   "mean": [
+    44.85,
+    44.85,
+    44.7,
+    44.7,
+    44.46,
+    44.46,
+    44.41,
+    44.41,
+    44.12,
+    44.12
+   ]
+  }
+ },
+ {
+  "fn": "rolling",
+  "value": [
+   null,
+   null,
+   null,
+   5.0,
+   6.75,
+   6.75,
+   5.6,
+   6.4,
+   6.5,
+   6.6,
+   7.4,
+   8.2,
+   7.17,
+   8.4,
+   9.2,
+   10.0,
+   10.67,
+   10.2,
+   7.6,
+   8.4,
+   8.5,
+   8.6,
+   9.4,
+   6.8,
+   6.33,
+   7.0,
+   7.8,
+   8.6,
+   9.83,
+   8.8
+  ]
+ },
+ {
+  "fn": "rolling",
+  "value": [
+   1.0,
+   1.0,
+   1.0,
+   2.0,
+   2.5
+  ]
+ },
+ {
+  "fn": "hr_zone_summary",
+  "value": {
+   "labels": [
+    "50–60%",
+    "60–70%",
+    "70–80%",
+    "80–90%",
+    "90–100%"
+   ],
+   "total_min": [
+    346,
+    321,
+    75,
+    27,
+    9
+   ],
+   "weeks": [
+    {
+     "minutes": [
+      16,
+      22,
+      10,
+      3,
+      0
+     ],
+     "week": "2026-09-07"
+    },
+    {
+     "minutes": [
+      140,
+      128,
+      21,
+      9,
+      4
+     ],
+     "week": "2026-09-14"
+    },
+    {
+     "minutes": [
+      142,
+      132,
+      37,
+      10,
+      3
+     ],
+     "week": "2026-09-21"
+    },
+    {
+     "minutes": [
+      48,
+      39,
+      7,
+      5,
+      2
+     ],
+     "week": "2026-09-28"
+    }
+   ]
+  }
+ },
+ {
+  "fn": "hr_zone_summary",
+  "value": null
+ },
+ {
+  "fn": "recovery_zone",
+  "value": null
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "red"
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "red"
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "yellow"
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "yellow"
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "green"
+ },
+ {
+  "fn": "recovery_zone",
+  "value": "green"
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "恢复 80（绿）"
+   ],
+   "target_high": 18.0,
+   "target_low": 14.0,
+   "zone": "green"
+  }
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "恢复 50（黄）",
+    "近期疲劳累积（TSB -35），区间下调 2"
+   ],
+   "target_high": 12.0,
+   "target_low": 8.0,
+   "zone": "yellow"
+  }
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "恢复 20（红）"
+   ],
+   "target_high": 10.0,
+   "target_low": 0.0,
+   "zone": "red"
+  }
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "今天没有恢复分，按「黄」给中等目标"
+   ],
+   "target_high": 14.0,
+   "target_low": 10.0,
+   "zone": null
+  }
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "有生病提示，只做轻活动"
+   ],
+   "target_high": 8.0,
+   "target_low": 0.0,
+   "zone": "green"
+  }
+ },
+ {
+  "fn": "strain_target",
+  "value": {
+   "reasons": [
+    "恢复 70（绿）",
+    "近期疲劳累积（TSB -31），区间下调 2"
+   ],
+   "target_high": 16.0,
+   "target_low": 12.0,
+   "zone": "green"
+  }
+ }
+]

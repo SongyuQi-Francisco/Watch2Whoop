@@ -12,6 +12,7 @@ from starlette.routing import Route
 from . import auth, errors_en, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
+from .algo.api import router as algo_router
 from .ai import naming, parity
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
@@ -195,6 +196,7 @@ app.include_router(account_api.router)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
+app.include_router(algo_router)   # the JS scoring bundle the iOS app runs locally (algo/, packages/openbodyscore-js, #340)
 app.include_router(static_bundle_router)   # versioned static data for the app: exercise library etc. (static_bundle/, flag static_bundle)
 app.include_router(rollout_router)       # feature flags / A/B variants of the signed-in user (rollout/api.py)
 app.include_router(oauth_router)        # MCP OAuth: consent step and connections (ai/oauth_api.py)

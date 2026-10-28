@@ -77,6 +77,8 @@ that changes whenever a result would change; store it with your scores.
 `tests/test_golden.py` runs every public function on fixed synthetic data (`tests/golden_cases.py`, a made-up person,
 60 days) and compares with `tests/golden/scores.json`, which was generated from the code before it was extracted:
 any change of a number fails the test. An intentional change bumps the algorithm version and regenerates the file.
+The same golden files check the JavaScript port the iOS app runs ([`packages/openbodyscore-js`](../openbodyscore-js/README.md)),
+so a change here is ported there too.
 
 ## Licence
 
