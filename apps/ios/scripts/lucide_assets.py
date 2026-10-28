@@ -83,6 +83,20 @@ ICONS = {
     "flag": "circles: report a comment",
     "crown": "circles: circle owner",
     "clock": "circles: comment not sent yet",
+    # N6: Jarvis (key, menu, voice, chat)
+    "orbit": "Jarvis key",
+    "bot-message-square": "Jarvis menu: chat",
+    "audio-waveform": "Jarvis menu: voice",
+    "scan-eye": "Jarvis menu: photo",
+    "zap": "Jarvis menu: quick log",
+    "mic": "Jarvis: hold to talk",
+    "lock": "Jarvis: lock the recording",
+    "arrow-up": "Jarvis: send",
+    "messages-square": "Jarvis: conversations",
+    "video": "Jarvis: video",
+    "external-link": "Jarvis: open your AI",
+    "check": "Jarvis: current AI / confirmed",
+    "audio-lines": "Jarvis: voice message tag",
 }
 # Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
 # fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.

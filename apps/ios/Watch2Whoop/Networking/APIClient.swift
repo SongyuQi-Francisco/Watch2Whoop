@@ -55,7 +55,7 @@ struct APIRequest {
   var body: Data?
   var idempotent: Bool? = nil
   var timeout: TimeInterval = 30
-  /// Body type when it is not JSON (an avatar upload sends the picture itself, `image/jpeg`).
+  /// Body type when it is not JSON (an avatar upload sends the picture itself, `image/jpeg`; Jarvis voice `audio/wav`).
   var contentType: String? = nil
 
   var isIdempotent: Bool { idempotent ?? (method == .get || method == .put || method == .delete) }
@@ -154,6 +154,29 @@ final class APIClient {
     let d = try await data(r)
     guard let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { throw APIError.decoding("not an object") }
     return o
+  }
+
+  /// A streamed answer (server-sent events: the Jarvis chat). Sent once, never retried here: a turn that started runs on
+  /// on the server and its caller picks it up again from the events endpoint. 401 goes to `onUnauthorized` and throws; any
+  /// other status comes back with the stream, so the caller can read the server's `{code, message}` detail.
+  func eventStream(_ r: APIRequest) async throws -> (status: Int, bytes: URLSession.AsyncBytes) {
+    guard token() != nil else { throw APIError.notConfigured }
+    var req = try urlRequest(r)
+    req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+    let bytes: URLSession.AsyncBytes, resp: URLResponse
+    do {
+      (bytes, resp) = try await session.bytes(for: req)
+    } catch let e as URLError {
+      throw APIError.network(e.errorCode)
+    } catch {
+      throw APIError.network(-1)
+    }
+    guard let http = resp as? HTTPURLResponse else { throw APIError.network(-1) }
+    if http.statusCode == 401 {
+      onUnauthorized()
+      throw APIError.unauthorized
+    }
+    return (http.statusCode, bytes)
   }
 
   /// 0.5 s, 1 s, 2 s … (max 30 s) with ±20 % jitter; 429 waits `Retry-After` when given (max 30 s here; longer waits

@@ -51,6 +51,8 @@ struct MainTabView: View {
     }
     .tint(Palette.text)
     .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
+    .overlay { JarvisLayer(tab: $selection) }                                             // N6
+    .environment(\.askAI, AskAIAction { p in Task { @MainActor in JarvisRouter.ask(prompt: p) } })   // N6
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }

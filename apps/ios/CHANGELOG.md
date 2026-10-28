@@ -26,3 +26,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - my circles: invites addressed to me, new circle, join with a code or a pasted link / message, invite with a code, a link and a picture card, revoke codes, share settings, pin / mute / archive, rename, logo, remove members, leave, dissolve; my picture;
   - opens on the last saved state, offline too; likes and comments wait in the offline queue; a like / comment notification opens the post with its comments;
   - a circle summary card other pages can show.
+- Jarvis (#340 N6):
+  - the Jarvis key at the bottom centre: a tap opens a Mission-style dial (chat / voice / photo / quick log); Liquid Glass on iOS 26, material before;
+  - hold to talk, recognised on the phone: slide up-left to cancel, up-right to lock;
+  - the chat streams its answer as Markdown, shows native cards (generic card for the other types), asks before deletes, keeps conversations, switches the AI at the top, asks for the fallback AI's terms first, shows quick questions for the current page;
+  - photos (camera / library) and video frames (≤ 8);
+  - `JarvisRouter.ask(prompt:)` for the explain sheets and other pages: the in-app chat, or the butler link / a copied question for an AI used elsewhere.

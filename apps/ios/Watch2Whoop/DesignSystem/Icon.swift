@@ -68,6 +68,20 @@ struct Icon: View {
     case flag
     case crown
     case clock
+    // N6: Jarvis
+    case orbit
+    case botMessageSquare = "bot-message-square"
+    case audioWaveform = "audio-waveform"
+    case scanEye = "scan-eye"
+    case zap
+    case mic
+    case lock
+    case arrowUp = "arrow-up"
+    case messagesSquare = "messages-square"
+    case video
+    case externalLink = "external-link"
+    case check
+    case audioLines = "audio-lines"
 
     var assetName: String { "lucide.\(rawValue)" }
   }

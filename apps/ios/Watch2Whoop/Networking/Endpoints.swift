@@ -53,6 +53,18 @@ enum Endpoint {
   static let dataStatus = "/v1/users/me/data-status"
   static let appearance = "/v1/users/me/appearance"
 
+  // N6: Jarvis (online only, section 5.5)
+  static let assistantChat = "/v1/assistant/chat"                   // SSE
+  static let assistantConfirm = "/v1/assistant/chat/confirm"        // SSE
+  static func assistantEvents(_ conversation: Int) -> String { "/v1/assistant/chat/\(conversation)/events" }
+  static let assistantTranscribe = "/v1/assistant/transcribe"
+  static let assistantVoiceFix = "/v1/assistant/voice-fix"
+  static let conversations = "/v1/assistant/conversations"
+  static func conversation(_ id: Int) -> String { "/v1/assistant/conversations/\(id)" }
+  static let aiFallback = "/v1/users/me/ai-fallback"
+  static let aiFallbackConsent = "/v1/users/me/ai-fallback/consent"
+  static let mealTemplates = "/v1/users/me/meal-templates"
+
   // N8: sync center (docs/apple-sync-engine-app-contract.md)
   static let ingest = "/v1/ingest/healthkit"
   static let ingestSyncStatus = "/v1/ingest/sync-status"
