@@ -71,7 +71,6 @@ final class TodayStore: ObservableObject {
   private var cancellable: AnyDatabaseCancellable?
   private var lastSnapshot: TodaySnapshot?
   private weak var session: AccountSession?
-  private var scoring = false
 
   /// With the session the first read happens here, so the page's first body already has the cached numbers (one layout
   /// pass instead of an empty one followed by a full one).
@@ -164,15 +163,9 @@ final class TodayStore: ObservableObject {
     session.sync.enqueue(kind: "reminder", group: "reminder:\(id)", method: .patch, path: Endpoint.reminder(id), body: body)
   }
 
-  /// LocalScoring off the main thread, once at a time; a no-op until the phone has raw samples (N8 / N2).
+  /// The phone's own scoring (#340 N2b, `ScoringSync`): only while the server has N2's sync for this user; it runs in the
+  /// background, one run at a time, and does nothing when no input changed.
   private func scoreLocally() {
-    guard let session, !scoring, LocalScoring.hasRawData(session.db), let today = userToday else { return }
-    scoring = true
-    let db = session.db, tz = model.timezone ?? TimeZone.current.identifier, kind = model.hrvKind ?? "sdnn"
-    Task.detached(priority: .utility) {
-      defer { Task { @MainActor in self.scoring = false } }
-      guard let rt = try? OpenBodyScoreRuntime.builtin() else { return }
-      _ = try? LocalScoring.run(db: db, runtime: rt, tz: tz, hrvKind: kind, today: today)
-    }
+    session?.sync.scoreSoon(reason: "today")
   }
 }

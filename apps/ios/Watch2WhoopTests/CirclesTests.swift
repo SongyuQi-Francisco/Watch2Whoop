@@ -291,6 +291,11 @@ final class CirclesStoreTests: XCTestCase {
     XCTAssertEqual(store.commentList(9)?.last?.body, "Example comment")
     XCTAssertEqual(store.commentList(9)?.last?.local, .pending)
     XCTAssertEqual(store.posts[0].commentCount, 1)
+    // the comment carries its queue entry's client_id: a resend after a timeout is not a second comment (N2b)
+    let comment = try XCTUnwrap(try s.sync.queue.all().first { $0.kind == FeedLogic.commentKind })
+    let sent = try JSONSerialization.jsonObject(with: try XCTUnwrap(comment.body)) as? [String: Any]
+    XCTAssertEqual(sent?["client_id"] as? String, comment.clientId)
+    XCTAssertEqual(sent?["body"] as? String, "Example comment")
   }
 }
 

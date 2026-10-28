@@ -37,6 +37,8 @@ final class HealthSyncService: ObservableObject {
 
   /// After each round with uploads: the account's data layer pulls (session.sync.refresh).
   var onRoundDone: (() async -> Void)?
+  /// Beat-to-beat readings the server took: into the account's local tables (#340 N2b; items as RawSync reads them).
+  var onHeartbeats: (([[String: Any]], [String]) -> Void)?
 
   let registry: [HealthType]
   let settings: SyncSettings
@@ -248,7 +250,9 @@ final class HealthSyncService: ObservableObject {
 
   private func rawPass(daysBack: Int, anchorSet: String, water: Bool) async -> RawPassResult {
     guard let api else { return RawPassResult() }
-    let pass = RawUploadPass(source: raw, upload: { body in await Self.upload(api, body) }, appVersion: Self.appVersion)
+    let beats = onHeartbeats
+    let pass = RawUploadPass(source: raw, upload: { body in await Self.upload(api, body) }, appVersion: Self.appVersion,
+                             stored: { kind, page in if kind == "heartbeat" { beats?(page.items, page.deleted) } })
     return await pass.run(daysBack: daysBack, waterEnabled: water, anchorSet: anchorSet)
   }
 

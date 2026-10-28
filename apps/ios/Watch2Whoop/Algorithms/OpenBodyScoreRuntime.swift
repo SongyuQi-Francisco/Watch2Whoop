@@ -1,16 +1,18 @@
 import Foundation
 import JavaScriptCore
 
-/// The real scoring bundle of N1 (`packages/openbodyscore-js/dist/openbodyscore.js`, global `OpenBodyScore`) in
-/// JavaScriptCore. The file is copied into the app as a resource by `project.yml` (one source, no second copy in git).
+/// The scoring bundle (`packages/openbodyscore-js/dist/openbodyscore.js`, global `OpenBodyScore`) in JavaScriptCore.
 ///
-/// N1 shipped the bundle with its own entry points (`OpenBodyScore.buildInputs`, `.computeDays`, …) rather than the
-/// `OBS.call(name, json)` convention of `AlgorithmRuntime` (api 1); this wrapper calls those entry points directly
-/// through one small JS glue function, JSON in and out. The download / signature path (`/v1/algo/manifest`,
-/// `BundleVerifier`) is N2's; until then the built-in copy is what runs (docs/ios-native-app.md section 6.4).
+/// The one calling convention (docs/ios-native-app.md section 6.1, decided in #340 N2b): the bundle's own entry points —
+/// `OpenBodyScore.buildInputs`, `.computeDays`, `.analyzeHrv`, `.stressDays`, `.trend`, … — called through one small JS
+/// glue function, JSON in and out, on this runtime's serial queue. The `OBS.call(name, json)` convention of N0's
+/// placeholder is gone; `apiVersion` names this entry-point contract (a manifest with another `api` is refused).
 ///
-/// Loading parses ~140 kB of JS (tens of ms), so pages create it off the main thread and only when they need it.
+/// The built-in copy is a resource of the app (`project.yml`); a newer signed download replaces it (`AlgoBundles`).
+/// Loading parses ~145 kB of JS (tens of ms), so it is created off the main thread and only when needed.
 final class OpenBodyScoreRuntime {
+  static let apiVersion = 1
+
   let version: String
   /// `{scores, healthspan, hrv, stress, trends}` → the server's algorithm version strings.
   let algoVersions: [String: String]
@@ -51,9 +53,13 @@ final class OpenBodyScoreRuntime {
 
   /// The copy built into the app.
   static func builtin(bundle: Bundle = .main) throws -> OpenBodyScoreRuntime {
-    guard let url = bundle.url(forResource: "openbodyscore", withExtension: "js"),
-          let src = try? String(contentsOf: url, encoding: .utf8) else { throw AlgorithmError.load("openbodyscore.js missing") }
+    guard let src = builtinSource(bundle: bundle) else { throw AlgorithmError.load("openbodyscore.js missing") }
     return try OpenBodyScoreRuntime(source: src)
+  }
+
+  static func builtinSource(bundle: Bundle = .main) -> String? {
+    guard let url = bundle.url(forResource: "openbodyscore", withExtension: "js") else { return nil }
+    return try? String(contentsOf: url, encoding: .utf8)
   }
 
   /// `OpenBodyScore.<fn>(...args)`; arguments and result go through JSON.
@@ -61,10 +67,12 @@ final class OpenBodyScoreRuntime {
     try run("__w2wInvoke", [fn, try Self.json(args)])
   }
 
-  /// `computeDays(buildInputs(src), opts)`: the server's daily_scores rows for `[first, last]` from local raw rows.
-  func scoreDays(source: [String: Any], first: String?, last: String, today: String) throws -> [[String: Any]] {
+  /// `computeDays(buildInputs(src), opts)`: the server's daily_scores rows for `[first, last]` from local rows.
+  /// `origin` = the server's scoring origin (only places the CTL warm-up flag of a seeded run).
+  func scoreDays(source: [String: Any], first: String?, last: String, today: String, origin: String? = nil) throws -> [[String: Any]] {
     var opts: [String: Any] = ["last": last, "today": today]
     if let first { opts["first"] = first }
+    if let origin { opts["origin"] = origin }
     let out = try run("__w2wScore", [try Self.json(source), try Self.json(opts)])
     return out as? [[String: Any]] ?? []
   }
@@ -86,5 +94,15 @@ final class OpenBodyScoreRuntime {
 
   private static func json(_ v: Any) throws -> String {
     String(decoding: try JSONSerialization.data(withJSONObject: v, options: [.fragmentsAllowed]), as: UTF8.self)
+  }
+
+  /// "0.10.0" > "0.9.3": numeric parts compared in order.
+  static func isNewer(_ a: String, than b: String) -> Bool {
+    let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+    for i in 0..<max(x.count, y.count) {
+      let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+      if p != q { return p > q }
+    }
+    return false
   }
 }

@@ -75,10 +75,15 @@ final class RawUploadPass {
   private let budget: TimeInterval
   private let now: () -> Date
   private let batchId: () -> String
+  /// A page the server took (after its anchor was committed): the beat-to-beat readings also go into the local tables the
+  /// phone scores from (#340 N2b, `LocalRawStore.ingestBeats`).
+  private let stored: ((String, RawPage) -> Void)?
 
   init(source: RawPageSource, upload: @escaping ([String: Any]) async -> RawUploadOutcome, device: String = "iPhone",
        appVersion: String? = nil, maxBatches: Int = 40, maxBytes: Int = 1_000_000, budget: TimeInterval = 120,
-       now: @escaping () -> Date = Date.init, batchId: @escaping () -> String = { UUID().uuidString.lowercased() }) {
+       now: @escaping () -> Date = Date.init, batchId: @escaping () -> String = { UUID().uuidString.lowercased() },
+       stored: ((String, RawPage) -> Void)? = nil) {
+    self.stored = stored
     self.source = source
     self.upload = upload
     self.device = device
@@ -144,6 +149,7 @@ final class RawUploadPass {
             continue kinds
           }
           if let a = page.anchor { await source.commit(kind: name, anchor: a) }
+          stored?(kind, page)
           out.uploaded.insert(kind)
           out.heartbeats += (b["heartbeats"] as? NSNumber)?.intValue ?? 0
           out.ecgs += (b["ecgs"] as? NSNumber)?.intValue ?? 0

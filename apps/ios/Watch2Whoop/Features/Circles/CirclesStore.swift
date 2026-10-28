@@ -348,10 +348,12 @@ final class CirclesStore: ObservableObject {
   func addComment(_ post: Int, _ text: String) {
     let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !t.isEmpty else { return }
-    guard let body = try? JSONEncoder.api.encode(["body": t]) else { return }
+    // the server answers a resend with the same client_id (after a timeout) with the first comment, not a second one
+    let clientId = UUID().uuidString.lowercased()
+    guard let body = try? JSONEncoder.api.encode(["body": t, "client_id": clientId]) else { return }
     do {
       try queue.enqueue(kind: FeedLogic.commentKind, group: FeedLogic.commentGroup(post), method: .post,
-                        path: Endpoint.Circles.comments(post), body: body)
+                        path: Endpoint.Circles.comments(post), body: body, clientId: clientId)
     } catch {
       toast = tr("没存下来，再试一次", "Couldn't save that, try again")
       return

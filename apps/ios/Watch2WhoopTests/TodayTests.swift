@@ -234,7 +234,7 @@ final class TodayStorageTests: XCTestCase {
 final class LocalScoringTests: XCTestCase {
   func testBuiltInBundleLoadsInJavaScriptCore() throws {
     let rt = try OpenBodyScoreRuntime.builtin()
-    XCTAssertEqual(rt.version, "0.1.0")
+    XCTAssertEqual(rt.version, "0.2.0")
     XCTAssertEqual(rt.algoVersions["scores"], "v1.2-2026-10-27")
     let hrv = try rt.invoke("analyzeHrv", [[0, 0.8, 1.62, 2.41, 3.25, 4.05], []]) as? [String: Any]
     XCTAssertNotNil(hrv?["algo_version"])
@@ -286,16 +286,19 @@ final class LocalScoringTests: XCTestCase {
     }
     XCTAssertTrue(LocalScoring.hasRawData(db))
     let rt = try OpenBodyScoreRuntime.builtin()
-    let out = try LocalScoring.run(db: db, runtime: rt, tz: tz, hrvKind: "sdnn", today: today, days: 3)
+    let ctx = LocalScoring.Context(tz: tz, hrvKind: "sdnn")
+    // every local day from the first one (the whole history is on the phone here: no seeds needed)
+    let out = try LocalScoring.run(db: db, runtime: rt, context: ctx, first: LocalDay.add(today, -39), today: today, replace: false)
     XCTAssertNil(out.skipped)
-    XCTAssertEqual(out.written, ["2026-01-29", "2026-01-30"])
+    XCTAssertEqual(out.written.count, 39)
+    XCTAssertFalse(out.written.contains("2026-01-28"))   // a server row stays when not replacing
+    XCTAssertEqual(out.written.last, today)
+    XCTAssertTrue(out.unsettled.contains(today))   // nights the server has not sent: shown, not uploaded
     let row = try XCTUnwrap(try db.writer.read { try DailyScore.fetchOne($0, key: today) })
     XCTAssertEqual(row.origin, "app")
     XCTAssertEqual(row.algoVersion, rt.algoVersions["scores"])
     XCTAssertNotNil(row.sleepScore)
     XCTAssertNotNil(row.recovery, String(decoding: row.payload ?? Data(), as: UTF8.self))
     XCTAssertEqual(try db.writer.read { try DailyScore.fetchOne($0, key: "2026-01-28") }?.recovery, 11)
-    // rmssd users need beat-to-beat series the phone does not keep yet
-    XCTAssertNotNil(try LocalScoring.run(db: db, runtime: rt, tz: tz, hrvKind: "rmssd", today: today).skipped)
   }
 }
