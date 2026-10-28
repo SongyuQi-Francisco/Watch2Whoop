@@ -200,7 +200,8 @@ def _create_food(client, meal_ids: dict, d: date, it: dict) -> dict:
 def exercise_index(conn, user_id: int, client) -> dict:
     """The exercise library (SparkyFitness, or the own user_exercises; client may be a backend or a reader) + exercise_meta,
     used for matching and the banned check."""
-    library = client.library() if hasattr(client, "library") else sparky_client.exercises(client)
+    own_lib = getattr(client, "library", None)   # a back end has library(); a client object may carry a plain list
+    library = own_lib() if callable(own_lib) else sparky_client.exercises(client)
     meta = records_store.list_exercises(conn, user_id)
     try:   # the bilingual catalog (names + aliases): a Chinese everyday name reaches the library entry through it
         from ..training import catalog as tr_catalog
