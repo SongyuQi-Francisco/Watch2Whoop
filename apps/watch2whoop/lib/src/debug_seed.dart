@@ -15,6 +15,21 @@ Future<String> runDebugBackfillTask() async {
   }
 }
 
+/// The sync engine (#219) in the simulator: `round` = one background-style round (what an observer wake or BGAppRefresh
+/// runs; the simulator never runs BGTasks), `delete` = delete the newest test heart rate sample (its UUID must go in
+/// the next round's deleted[]). Debug builds only.
+Future<String> debugEngine(String what) async {
+  try {
+    if (what == 'delete') return await _channel.invokeMethod<String>('deleteTestSample') ?? 'ok';
+    final r = await const MethodChannel('watch2whoop/native').invokeMapMethod<String, Object?>('engineDebugRound', {'trigger': 'debug'});
+    return 'engine round: stop=${r?['stop']}, ${r?['samples']} items, ${r?['batches']} batches, skipped ${r?['skipped']}';
+  } on MissingPluginException {
+    return 'not available in this build';
+  } on PlatformException catch (e) {
+    return 'failed: ${e.message}';
+  }
+}
+
 Future<String> seedHealthTestData() async {
   try {
     final r = await _channel.invokeMethod<String>('seedHealthData');

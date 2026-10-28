@@ -163,10 +163,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// The Today page's 「开启同步」 / 「立即同步」 / 「同步状态」 (sync_bridge.dart).
   late final SyncBridge _syncBridge = SyncBridge(
     supported: () => hasHealthSync,
-    isConnected: () => AppState.instance.config.owConnected && HealthSync.instance.isSignedIn,
+    isConnected: () => HealthSync.instance.syncConnected(AppState.instance.config),
     canUpload: () =>
-        hasHealthSync &&
-        (AppState.instance.config.healthRequested || (AppState.instance.config.owConnected && HealthSync.instance.isSignedIn)),
+        hasHealthSync && (AppState.instance.config.healthRequested || HealthSync.instance.syncConnected(AppState.instance.config)),
     needsReconnect: () => HealthSync.instance.stats.value.authProblem,
     connect: _bridgeConnect,
     askHealth: _askHealthChecked,
@@ -279,9 +278,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return SyncStatusInput(
       supported: hasHealthSync,
       signedIn: AppState.instance.accountToken != null,
-      connected: c.owConnected && HealthSync.instance.isSignedIn,
+      connected: HealthSync.instance.syncConnected(c),
       healthAsked: c.healthRequested,
-      healthNeedsAsk: ask == 'shouldRequest' || (_unasked?.isNotEmpty ?? false),
+      healthNeedsAsk: _unasked?.isNotEmpty ?? false,
+      extraNeedsAsk: ask == 'shouldRequest',
       running: _syncOnOpen.running || (sdk?.isSyncing ?? false),
       firstSyncDone: sdk?.initialExportDone,
       ow: HealthSync.instance.stats.value,

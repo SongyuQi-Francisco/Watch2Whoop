@@ -18,6 +18,7 @@ SyncStatusInput input({
   bool connected = true,
   bool asked = true,
   bool needsAsk = false,
+  bool extraNeedsAsk = false,
   SyncStats? ow,
   RawSyncStatus raw = const RawSyncStatus(),
   DeviceSyncState device = const DeviceSyncState(net: 'wifi', backgroundRefresh: 'on', lowPower: false, protectedData: true),
@@ -28,6 +29,7 @@ SyncStatusInput input({
       connected: connected,
       healthAsked: asked,
       healthNeedsAsk: needsAsk,
+      extraNeedsAsk: extraNeedsAsk,
       ow: ow ?? SyncStats(lastUploadAt: _now.subtract(const Duration(minutes: 5))),
       raw: raw,
       device: device,
@@ -93,7 +95,11 @@ void main() {
     expect(codes(input(raw: const RawSyncStatus(stop: 'unauthorized'))), contains('auth'));
     // iOS still wants to ask for Health (new types) / HealthKit says never asked
     expect(codes(input(needsAsk: true)), ['permission']);
-    expect(codes(input(raw: const RawSyncStatus(stop: 'not_asked'))), ['permission']);
+    // only types beyond the core ones never asked (the second sheet of 1.0.8 that did not come up, #219): a warning
+    expect(codes(input(raw: const RawSyncStatus(stop: 'not_asked'))), ['permission_extra']);
+    expect(codes(input(extraNeedsAsk: true)), ['permission_extra']);
+    expect(syncProblems(input(extraNeedsAsk: true)).single.action, 'enable');
+    expect(buildSyncStatus(input(raw: const RawSyncStatus(stop: 'not_asked')))['ok'], isTrue);
     // network: offline now, or the last pass could not reach the server
     expect(codes(input(device: const DeviceSyncState(net: 'offline'))), ['network']);
     expect(codes(input(raw: const RawSyncStatus(stop: 'offline'))), ['network']);
@@ -290,6 +296,10 @@ void main() {
     expect(deviceLastError(syncProblems(input())), isNull);
     expect(deviceLastError(syncProblems(input(raw: const RawSyncStatus(stop: 'offline')))), 'network');
     expect(deviceLastError(syncProblems(input(asked: false))), 'health_denied');
+    expect(deviceLastError(syncProblems(input(needsAsk: true))), 'health_denied');
+    // 1.0.8 reported health_denied for this (4 of 7 phones, #219): core types fine, only RawSync's never asked
+    expect(deviceLastError(syncProblems(input(raw: const RawSyncStatus(stop: 'not_asked')))), isNull);
+    expect(deviceLastError(syncProblems(input(extraNeedsAsk: true))), isNull);
 
     var puts = 0;
     late http.Request seen;
