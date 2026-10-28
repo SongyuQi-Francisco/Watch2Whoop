@@ -179,7 +179,7 @@ private struct MeSheetView: View {
       case .dataStatus: DataStatusView()
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()
-      case .records(let k): RecordsPlaceholder(kind: k)
+      case .records(let k): HealthRecordView(kind: k)                                    // N5
       }
     }
     .presentationDetents([.large])

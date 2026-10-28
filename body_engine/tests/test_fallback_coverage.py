@@ -88,7 +88,7 @@ NO_DATA = {
     "meal-logs/{x}": "write: undo a quick meal",
     "meal-templates/{x}/log": "write: log a quick meal",
     "recipes/{x}/log": "write: log a recipe",
-    "nutrition/entries/{x}": "write: delete a food entry (undo_sparky_entry)",
+    "nutrition/entries/{x}": "write: change the portion of / delete a food entry (update_food_entry / undo_sparky_entry)",
     "reminders/{x}": "write: dismiss a reminder",
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",

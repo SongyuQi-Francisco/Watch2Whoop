@@ -97,6 +97,16 @@ ICONS = {
     "external-link": "Jarvis: open your AI",
     "check": "Jarvis: current AI / confirmed",
     "audio-lines": "Jarvis: voice message tag",
+    # N5: food, log, health record
+    "minus": "records: fewer servings / a smaller portion",
+    "droplet": "food: water",
+    "book-open": "food: recipes",
+    "shopping-cart": "food: shopping list",
+    "search": "food: search recipes",
+    "star": "food: favourite recipe",
+    "undo-2": "food: undo the last drink",
+    "ban": "training: banned exercise",
+    "triangle-alert": "training: exercise to be careful with",
 }
 # Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
 # fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.
