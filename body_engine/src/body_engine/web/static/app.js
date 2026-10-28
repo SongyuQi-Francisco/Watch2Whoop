@@ -1,7 +1,6 @@
 /* Today page v2 (PWA): restrained, few words, let the numbers speak. No build step: plain JS, charts are hand-drawn SVG.
    Pages: Today / Trends (metrics, sleep) / Log / Me; explanations and details live in bottom sheets that open on tap.
-   A persistent "Ask the butler" (「问管家」) at the bottom: when the default AI is an API type (each person's own key) it opens the in-page chat (ai.js); for subscription types / when unset it opens the body butler
-   Claude Code session (Remote Control) link (assistant_url from /v1/web/me, only given to the deployer) -- subscriptions can only be used in the official client.
+   A persistent "Ask the butler" (「问管家」) at the bottom opens the in-page chat (ai.js) or, without an API-type AI, the butler's Remote Control link (assistant_url from /v1/web/me).
    Endpoints: /v1/web/* (login), /v1/users/{u}/today | sleep/nights | trends | journal/frequent (aggregates),
    /v1/users/{u}/memory (body profile card, observation notes, provided by the body butler session), plus the existing journal / events / supplements / reminders.
    Auth relies on an httpOnly cookie; write requests carry X-Body-Web: 1.
@@ -36,11 +35,9 @@
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
-  // On-demand scripts (first-screen slimming): index.html declares them as script elements of type w2w/lazy, which the browser neither
-  // fetches nor runs; the server puts ?v=<fingerprint> on the src. lazyScript(name) loads one the first time something needs it and
-  // resolves true (false: it could not be fetched; the next call tries again). In the offline copy of the page they are ordinary inline
-  // scripts already, so nothing is declared and nothing is fetched. A file that registers a plugin in window.BodyPlugins when it runs
-  // gets its init() right after, with what the start-up gave the others (initLate).
+  // On-demand scripts: index.html declares them as type w2w/lazy (the browser neither fetches nor runs them; the server adds ?v=<fingerprint>).
+  // lazyScript(name) loads one on first need and resolves true (false: not fetched, the next call retries). The offline copy has them inline.
+  // A file that registers a plugin in window.BodyPlugins gets its init() right after it runs (initLate).
   const LAZY = new Map();
   const lateInit = { ctx: null, me: null, done: new WeakSet() };
   function initLate() {
@@ -2898,7 +2895,7 @@
       ${meSection(tr("账号"), [isSelf() ? langRow() : "", ...(rows["settings-account"] || [])])}
       ${meSection("AI", rows["settings-ai"] || [])}
       ${meSection(tr("导入"), rows["settings-import"] || [])}
-      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""])}
+      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : "", item(tr("更新记录"), null, 'id="me-whatsnew"')])}
       ${meSection(tr("关于"), [`<div class="item"><span class="row-title">${tr("版本")}</span><span class="val">${esc(ver || "—")}</span></div>`])}
       ${meSection("", [`<button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>`, ...(rows["settings-danger"] || [])])}
       ${who.self ? "" : `<p class="small faint" style="margin:14px 2px 0">${tr("这里是你自己账号的设置")}</p>`}</div>`;
@@ -2963,6 +2960,7 @@
         ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
+        ${item(tr("更新记录"), null, 'id="me-whatsnew"')}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(nameText(who.remark, who.display_name)), 'id="me-who"') : ""}
         ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
@@ -3074,8 +3072,10 @@
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
-    const wt = $("#me-weight", view);   // weight.js, on demand (Lucide "weight", ISC)
-    if (wt) wt.onclick = async () => { if (await lazyScript("weight.js")) window.BodyWeight?.open(); };
+    for (const [id, file, g] of [["#me-weight", "weight.js", "BodyWeight"], ["#me-whatsnew", "whatsnew.js", "BodyWhatsNew"]]) {   // on demand (Lucide "weight", ISC)
+      const b = $(id, view);
+      if (b) b.onclick = async () => { if (await lazyScript(file)) window[g]?.open(); };
+    }
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     const out = $("#me-logout", view), hb = $("#me-handbook", view);
     if (out) out.onclick = logout;

@@ -50,7 +50,7 @@ def test_first_screen_budget():
 def test_lazy_scripts_are_declared_and_fingerprinted():
     html = served_page()
     lazy = re.findall(r'<script type="w2w/lazy"(?: data-lang="(\w+)")? src="([\w.-]+\.js)\?v=([0-9a-f]{12})"></script>', html)
-    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"), ("", "weight.js"),
+    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"), ("", "weight.js"), ("", "whatsnew.js"),
                                                         ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js"), ("", "slim.js"),
                                                         ("", "slim-quotes.js"),
                                                         ("", "ui-ai-first.js"), ("", "native-bridge.js")]
@@ -62,7 +62,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
         r = TestClient(root_api.app, base_url="https://testserver").get(f"/app/{name}?v={v}")
         assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
     # an older page that still has the tags keeps working: nothing else in the page names these files as plain scripts
-    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|sync-status|slim|slim-quotes|ui-ai-first|native-bridge)\.js', INDEX)
+    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|weight|whatsnew|sync-status|slim|slim-quotes|ui-ai-first|native-bridge)\.js', INDEX)
 
 
 def test_offline_copy_has_the_lazy_scripts_inline_and_no_gate():

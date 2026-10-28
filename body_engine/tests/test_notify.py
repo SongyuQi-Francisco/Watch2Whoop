@@ -223,7 +223,7 @@ def test_quiet_hours_and_settings(client, dsn, users, fake):
     r = client.put("/v1/users/me/notification-settings", headers=H(t["a"]),
                    json={"categories": {"circle": False}, "quiet": {"start": "12:00", "end": "13:00"}})
     assert r.status_code == 200, r.text
-    assert r.json()["categories"] == {"circle": False, "system": True} and r.json()["quiet"]["start"] == "12:00"
+    assert r.json()["categories"] == {"circle": False, "system": True, "updates": True} and r.json()["quiet"]["start"] == "12:00"
     assert r.json()["labels"]["circle"] == "圈子互动"
     with conn_of(dsn) as conn:
         assert notify(conn, ids["a"], "circle.like", "x", "", now=NOON)["push"] == "off"

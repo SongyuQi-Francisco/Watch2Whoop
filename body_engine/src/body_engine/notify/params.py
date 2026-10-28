@@ -12,6 +12,7 @@ FEATURE = "notifications"   # rollout flag: the Today page list / settings, and 
 CATEGORIES: dict[str, dict] = {
     "circle": {"zh": "圈子互动", "en": "Circle activity", "default": True},   # likes / comments on the training feed
     "system": {"zh": "系统消息", "en": "System", "default": True},
+    "updates": {"zh": "每周更新", "en": "Weekly updates", "default": True},   # whatsnew/ (every Sunday evening)
     "ai_card": {"zh": "Jarvis 额度卡", "en": "Jarvis allowance cards", "default": True, "flag": "ai_cards"},   # ai/quota_cards.py (#182)
 }
 

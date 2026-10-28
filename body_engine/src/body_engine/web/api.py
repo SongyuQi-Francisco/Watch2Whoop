@@ -37,7 +37,7 @@ from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.155-2026-10-29"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.156-2026-10-29"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
