@@ -71,7 +71,7 @@ def match(meta: list[dict], sparky: list[dict]) -> dict:
 
 def run(conn: psycopg.Connection, user_id: int, client: sparky_client.SparkyClient | None = None,
         dry_run: bool = False) -> dict:
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     sparky = sparky_client.exercises(client)
     by_id = {e["id"]: e for e in sparky}
     meta = store.list_exercises(conn, user_id)

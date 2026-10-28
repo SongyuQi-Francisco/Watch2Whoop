@@ -1,7 +1,7 @@
 {
  "uid": "body-weight",
  "title": "身体管理 · 体重和活动",
- "description": "体重（SparkyFitness）和 7 天均值、每日步数、活动能量。饮食明细在 SparkyFitness 里看。",
+ "description": "体重和 7 天均值、每日步数、活动能量。饮食明细在今天页里看。",
  "tags": [
   "身体管理"
  ],
@@ -69,52 +69,24 @@
  "panels": [
   {
    "type": "timeseries",
-   "title": "体重（SparkyFitness）",
-   "description": "来自 SparkyFitness 的称重记录（你手动记 / app 同步的）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust 要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。",
+   "title": "体重",
+   "description": "称重记录（表 body_measurements：今天页 / AI 记的，迁移过来的历史）。7 天均值 = 含当天往前 7 天内所有称重的平均（规则 calorie_adjust 要求每个 7 天窗口 ≥ 2 次称重；只有 1 次时均值就等于那次）。",
    "targets": [
     {
      "refId": "A",
      "datasource": {
-      "type": "yesoreyeram-infinity-datasource",
-      "uid": "sparkyfitness"
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
      },
-     "type": "json",
-     "source": "url",
+     "rawQuery": true,
+     "editorMode": "code",
      "format": "table",
-     "parser": "backend",
-     "url": "http://host.docker.internal:8300/api/measurements/check-in-measurements-range/2020-01-01/${__to:date:YYYY-MM-DD}",
-     "url_options": {
-      "method": "GET",
-      "data": ""
-     },
-     "root_selector": "( $r := $[weight != null].{\"d\": entry_date, \"ms\": $toMillis(entry_date & \"T00:00:00+10:00\"), \"w\": weight}; $r.( $m := ms; $win := $r[ms > $m - 6*86400000 and ms <= $m]; {\"time\": d & \"T00:00:00+10:00\", \"weight\": w, \"avg7\": $round($average($win.w), 2), \"n7\": $count($win)} ) )",
-     "columns": [
-      {
-       "selector": "time",
-       "text": "time",
-       "type": "timestamp"
-      },
-      {
-       "selector": "weight",
-       "text": "体重",
-       "type": "number"
-      },
-      {
-       "selector": "avg7",
-       "text": "7 天均值",
-       "type": "number"
-      },
-      {
-       "selector": "n7",
-       "text": "7 天内称重次数",
-       "type": "number"
-      }
-     ]
+     "rawSql": "WITH w AS (SELECT date, weight_kg FROM body_measurements WHERE user_id = $user AND weight_kg IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 6 AND ($__timeTo()::timestamptz)::date) SELECT w.date::timestamptz AS time, w.weight_kg AS \"体重\", (SELECT round(avg(x.weight_kg)::numeric, 2) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS \"7 天均值\", (SELECT count(*) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS \"7 天内称重次数\" FROM w WHERE w.date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
     }
    ],
    "datasource": {
-    "type": "yesoreyeram-infinity-datasource",
-    "uid": "sparkyfitness"
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
    },
    "fieldConfig": {
     "defaults": {
@@ -256,46 +228,18 @@
     {
      "refId": "A",
      "datasource": {
-      "type": "yesoreyeram-infinity-datasource",
-      "uid": "sparkyfitness"
+      "type": "grafana-postgresql-datasource",
+      "uid": "body-engine"
      },
-     "type": "json",
-     "source": "url",
+     "rawQuery": true,
+     "editorMode": "code",
      "format": "table",
-     "parser": "backend",
-     "url": "http://host.docker.internal:8300/api/measurements/check-in-measurements-range/2020-01-01/${__to:date:YYYY-MM-DD}",
-     "url_options": {
-      "method": "GET",
-      "data": ""
-     },
-     "root_selector": "( $r := $[weight != null].{\"d\": entry_date, \"ms\": $toMillis(entry_date & \"T00:00:00+10:00\"), \"w\": weight}; $r.( $m := ms; $win := $r[ms > $m - 6*86400000 and ms <= $m]; {\"time\": d & \"T00:00:00+10:00\", \"weight\": w, \"avg7\": $round($average($win.w), 2), \"n7\": $count($win)} ) )",
-     "columns": [
-      {
-       "selector": "time",
-       "text": "time",
-       "type": "timestamp"
-      },
-      {
-       "selector": "weight",
-       "text": "体重",
-       "type": "number"
-      },
-      {
-       "selector": "avg7",
-       "text": "7 天均值",
-       "type": "number"
-      },
-      {
-       "selector": "n7",
-       "text": "7 天内称重次数",
-       "type": "number"
-      }
-     ]
+     "rawSql": "WITH w AS (SELECT date, weight_kg FROM body_measurements WHERE user_id = $user AND weight_kg IS NOT NULL AND date BETWEEN ($__timeFrom()::timestamptz)::date - 6 AND ($__timeTo()::timestamptz)::date) SELECT w.date::timestamptz AS time, w.weight_kg AS \"体重\", (SELECT round(avg(x.weight_kg)::numeric, 2) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS \"7 天均值\", (SELECT count(*) FROM w x WHERE x.date BETWEEN w.date - 6 AND w.date) AS \"7 天内称重次数\" FROM w WHERE w.date >= ($__timeFrom()::timestamptz)::date ORDER BY 1"
     }
    ],
    "datasource": {
-    "type": "yesoreyeram-infinity-datasource",
-    "uid": "sparkyfitness"
+    "type": "grafana-postgresql-datasource",
+    "uid": "body-engine"
    },
    "fieldConfig": {
     "defaults": {

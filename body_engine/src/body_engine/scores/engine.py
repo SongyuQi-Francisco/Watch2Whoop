@@ -321,7 +321,7 @@ def muscle_sessions(conn: psycopg.Connection, user_id: int, start: date, end: da
     from ..training import hevy_import
     imported = hevy_import.imported_sessions(conn, user_id, start, end)
     try:
-        sparky = sparky or sparky_client.client_for_user(conn, user_id)
+        sparky = sparky or sparky_client.reader_for_user(conn, user_id)
     except sparky_client.SparkyError:
         return imported, None, False
     try:

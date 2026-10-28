@@ -206,7 +206,7 @@ def _exercise_view(ctx: Ctx, ex_id: str, name: str | None, sets: list[dict], rep
 
 def _training_ctx(conn, viewer_id: int, owner_id: int, day: date):
     """SparkyFitness exercise library, templates and weekly plan + exercise_meta (only with the exercises scope)."""
-    client = sparky_client.client_for_user(conn, owner_id)
+    client = sparky_client.reader_for_user(conn, owner_id)
     ctx = Ctx(user_id=owner_id, day=day)
     ctx.exercises = {e["id"]: e for e in sparky_client.exercises(client)}
     ctx.presets = sparky_client.workout_presets(client)
@@ -337,6 +337,8 @@ def training_week(conn, viewer_id: int, owner_id: int, day: date) -> dict:
     end = start + timedelta(days=6)
     try:
         _client, ctx, with_meta = _training_ctx(conn, viewer_id, owner_id, day)
+        if getattr(_client, "own", False) and not ctx.plans:   # own tables (#252): no SparkyFitness weekly plan to show
+            raise sparky_client.SparkyError("no weekly plan")
     except sparky_client.SparkyError:   # no plan anywhere yet: an empty week to pick a split from, and why the log is missing
         with_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
         return {"start": start, "end": end, "date": day, "plan": None,

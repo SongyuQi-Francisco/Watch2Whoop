@@ -1,7 +1,9 @@
-"""Synthetic SparkyFitness records for the Quick Start demo user: meals, strength sessions and weigh-ins for the last 3 weeks.
+"""Synthetic food / workout / weight records for the Quick Start demo user: meals, strength sessions and weigh-ins for
+the last 3 weeks.
 
 Runs inside the body-engine container (quickstart/run.py pipes it to `python -`, argv: user id) and writes through
-Body Engine's own SparkyFitness write path (assistant/sparky_write.py), the same code the AI coach uses.
+Body Engine's write path (assistant/sparky_write.py), the same code the AI coach uses: into Body Engine's own tables
+(own_food_only, the default), or into SparkyFitness with ./quickstart.sh --sparkyfitness.
 All values are made up. Idempotent: entries that already exist are skipped.
 """
 import random
@@ -29,7 +31,7 @@ def main() -> None:
     rng = random.Random(11)
     conn = db.connect()
     today = sw.user_today(conn, user_id)
-    client = sw.sparky_client.write_client_for_user(conn, user_id)
+    client = sw.backend(conn, user_id)
     weight, n_food, n_workout, n_weight = 83.2, 0, 0, 0
     for back in range(20, -1, -1):
         d = today - timedelta(days=back)
@@ -60,7 +62,7 @@ def main() -> None:
             res = sw.log_weight(conn, user_id, {"date": d.isoformat(), "weight_kg": round(weight, 1),
                                                 "overwrite": False}, client=client)
             n_weight += res["written"] is not None
-    print(f"SparkyFitness demo data: {n_food} food entries, {n_workout} strength sessions, {n_weight} weigh-ins")
+    print(f"demo data: {n_food} food entries, {n_workout} strength sessions, {n_weight} weigh-ins")
 
 
 if __name__ == "__main__":

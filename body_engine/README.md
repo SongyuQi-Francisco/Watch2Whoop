@@ -51,6 +51,19 @@ For OW's deployment and API key see `../deploy/open-wearables/README.md` (the ke
 The OW importer's rules (cumulative metrics de-duplicated by time window + source priority, the export day itself not written, the XML unit problem) are written at the top of `src/body_engine/importers/ow.py` and in section 10 of the system design.
 SparkyFitness (workouts, meals, weight) is not imported; it is read live through its API when needed (`src/body_engine/sparky_client.py`, one read-only key per person; only the body butler's write tools use the read-write key; address `BODY_SPARKY_URL`, default http://127.0.0.1:8300; key directory `BODY_SECRETS_DIR`, default `../secrets`). Why a read-only database role is not used is explained at the top of that file. For deployment see `../deploy/sparkyfitness/README.md`.
 
+**SparkyFitness is optional now (issue #252, `docs/own-food-weight-storage.md`).** Food, food library, weight / body
+measurements, the exercise library and strength logs live in Body Engine's own tables (`ownstore/`, migration 735).
+Three rollout flags move a deployment over, each per user and reversible:
+`own_food_store` (dual write: after each SparkyFitness write the touched dates are copied into the own tables),
+`own_food_read` (every reader — Today page, trends, scores, rules, AI tools, briefing, explain, training calendar,
+reports — reads the own tables through `sparky_client.reader_for_user`, same shapes; only for users whose latest
+`sparky-migrate` checked out; writes still go to SparkyFitness and are synced back) and
+`own_food_only` (writes go to the own tables only, `ownstore/write.py`; also for users without a SparkyFitness account;
+with the flag on for everyone, sign-up no longer creates a SparkyFitness account and plans / recipes are no longer
+mirrored there). A new deployment just runs `body-engine flags set own_food_only --state all` and never needs SparkyFitness.
+What still asks SparkyFitness in read mode (never in own-only mode): its weekly plan templates (only for users without a
+Body Engine plan) and its food goals (only before a user's first own goal version).
+
 ## Scores (`src/body_engine/scores/`)
 WHOOP-style sleep score, sleep need / sleep debt / sleep performance, recovery score (HRV currently uses SDNN), strain (Edwards TRIMP), CTL / ATL / TSB. For the formulas, parameter values, differences from the design and backfill results see "Implementation notes" in section 7 of the system design.
 - The pure functions and parameters (`params`, `sleep`, `recovery`, `strain`, `muscle`) live in the Apache-2.0 package [`packages/openbodyscore`](../packages/openbodyscore/README.md) (issue #115); the files here are aliases of those modules, so `from body_engine.scores import params` keeps working. Change the algorithms there; golden tests (`tests/test_openbodyscore_golden.py`) fail on any changed number.
@@ -678,8 +691,8 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - `src/body_engine/ow_client.py`: OW API client (standard library only)
 - `src/body_engine/scores/`: the scoring engine (see above)
 - `src/body_engine/insights/`: WHOOP-comparable analysis (see above)
-- `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight)
-- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
+- `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight); `reader_for_user` hands out the own-table reader instead when `own_food_read` applies
+- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check, readers `read.py` (flag `own_food_read`), the own-only store `write.py` (flag `own_food_only`) and who uses which `source.py`
 - `src/body_engine/records/`: health records (supplements, lab results, journal and journal analysis, events, exercises, exercise ID mapping): reads/writes, API, assistant tools, migration
 - `src/body_engine/rules/`: the rule reminder engine (see above)
 - `src/body_engine/goals/`: bedtime target (see above)

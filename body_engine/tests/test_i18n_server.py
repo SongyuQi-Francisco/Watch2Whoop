@@ -34,7 +34,7 @@ REACHABLE = ("account/api.py", "ai/api.py", "ai/chat.py", "ai/asr.py", "api.py",
              "insights/reports.py", "nutrition/extras.py", "profile/api.py", "profile/store.py", "rawdata/api.py",
              "records/api.py", "records/store.py", "records/analysis.py", "rules/api.py", "training/api.py",
              "training/history.py", "training/plans.py", "training/catalog.py", "avatars/", "images/", "water/api.py",
-             "web/", "sparky_client.py")
+             "web/", "sparky_client.py", "ownstore/write.py")
 # Modules with Chinese raise messages that stay Chinese because only the AI (tool arguments, tool results), the command line or
 # the admin ever read them. A module that is in neither list fails test_every_chinese_raise_is_classified (issue #64): decide
 # whether a page user can see its messages (then translate and add it to REACHABLE) or not (then add it here).

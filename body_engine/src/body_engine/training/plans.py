@@ -455,7 +455,11 @@ def ensure_sparky_exercise(conn: psycopg.Connection, user_id: int, ex_item: dict
 
 def _sync_plan_to_sparky(conn: psycopg.Connection, user_id: int, plan_row: dict,
                          client: sparky_client.SparkyClient | None = None) -> dict:
-    """Best-effort sync of a saved training_plans row to SparkyFitness presets and weekly plan template."""
+    """Best-effort sync of a saved training_plans row to SparkyFitness presets and weekly plan template.
+    Not with own_food_only (issue #252): the log lives in Body Engine and nothing reads the mirror any more."""
+    from ..ownstore import source
+    if source.only(conn, user_id):
+        return {"synced": False, "not_needed": True, "reason": "训练记录存在 Body Engine，不再同步到 SparkyFitness"}
     try:
         client = client or sparky_client.write_client_for_user(conn, user_id)
     except (sparky_client.SparkyError, ValueError) as e:
@@ -641,7 +645,7 @@ def save_plan(
     sparky_sync = {"synced": False, "reason": "未请求同步"}
     if sync_sparky:
         sparky_sync = _sync_plan_to_sparky(conn, user_id, row, client=client)
-        if not sparky_sync.get("synced"):   # issue #66 FB-4: the plan is saved here all the same; say what to do
+        if not sparky_sync.get("synced") and not sparky_sync.get("not_needed"):   # issue #66 FB-4: saved here all the same
             link = sparky_client.link_state(conn, user_id)
             sparky_sync = {**sparky_sync, "link": link["state"],
                            "tell_user": "计划已保存在 Body Engine（今天页和 AI 都能用）；没同步到训练记录（SparkyFitness）。"

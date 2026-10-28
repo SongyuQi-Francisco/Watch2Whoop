@@ -217,7 +217,7 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     # ---- SparkyFitness ----
     if client is None:
         try:
-            client = sparky_client.client_for_user(conn, user_id)
+            client = sparky_client.reader_for_user(conn, user_id)
         except sparky_client.SparkyError as e:
             ctx.missing["sparky"] = str(e)
     if client is not None:
