@@ -82,6 +82,8 @@ struct Icon: View {
     case externalLink = "external-link"
     case check
     case audioLines = "audio-lines"
+    // N4: trends
+    case info
 
     var assetName: String { "lucide.\(rawValue)" }
   }

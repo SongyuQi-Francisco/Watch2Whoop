@@ -370,7 +370,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | 块 | 页面 | 主要数据 |
 |---|---|---|
 | **N3 今天** | 三环（睡眠分 / 恢复 / 昨天负荷）+ 恢复词 + 负荷状态 + 核心指标（HRV、静息心率、睡眠、需要、欠债、步数、能量、锻炼分钟）+ 健康监测 + 负荷目标 + 状态卡 + 提醒 + 训练卡 + 饮食卡；顶部日期 → 月历回看；睡眠详情（阶段图用 Swift Charts）；每个指标的讲解弹层 | `docs today:*`，之后改读 `daily_scores` / `daily_metrics` / `sleep_sessions`；讲解来自 `explain/*`，词条放静态包 |
-| **N4 趋势** | 全部指标的序列（7–365 天、和上期比较）、状态卡（HRV 状态、训练状态、韧性……）、周报 / 月报 | `docs trends:*` → 本地算法 `trends.series` |
+| **N4 趋势** | 全部指标的序列（7 / 30 / 90 / 365 天、和上期比较）、状态卡（HRV 状态、训练状态、韧性……）、最近 14 晚、周报 / 月报 | `docs trends:*`；状态卡能在本机算的用算法包 `trend(...)`（第 9.3 节） |
 | **N5 记录** | 日记、喝水、体重（带测量情况标签）、饮食（今天吃了 / 快捷记餐 / 食谱 / 合并）、训练（计划 / 当天逐组 / 肌肉负荷）、补剂、化验 | `records` + 离线队列；饮食 tab 也归 N5 |
 | **N6 Jarvis** | 原生按键和菜单（拿 1.0.9 的 `NativeJarvis.swift`、`VoiceInput.swift` 来用）+ 对话（URLSession 字节流读 SSE，Markdown 用 `AttributedString`）+ 语音 / 拍照 / 快记 + 卡片 + 确认 | 只在线；会话列表可以缓存成文档 |
 | **N7 圈子** | 动态、点赞评论、排行、邀请、圈子管理、头像 | 只在线；`docs circles:*` 当缓存 |
@@ -504,6 +504,59 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 按住说话：开始的那一下 51–60 fps，最差 66 ms。
   - 毛玻璃键：展开 / 收起 60 fps，偶尔掉 1–2 帧。
 
+### 9.3 N4 趋势和报告：哪些在本机算
+
+**文档键**（`Features/Trends/TrendsStore.swift` 的 `TrendsDocs`、`Features/Reports/ReportModel.swift` 的 `ReportDocs`；结束日期是今天时键里不带日期，所以第二天打开也先画缓存）
+
+| 键 | 接口 | 用在 |
+|---|---|---|
+| `trends:<天数>` / `trends:<天数>:<结束日>` | `/trends?days=&end=` | 全部序列（`values`、`avg7`、`mean`、`prev_mean`、基线带、恢复颜色和贡献项、负荷目标带）、心率区间、每周有氧分钟、服务器的状态卡 |
+| `trends.local:<结束日>` | 本机算（`TrendsLocal`） | 本机算出的状态卡，盖在服务器的同名卡上 |
+| `trends.vo2max:<结束日>` | `/vo2max?days=365` | VO₂max 卡的「体能 良好」 |
+| `trends.sleepdetails:<结束日>` | `/sleep/details` | 睡眠规律性卡（7 / 30 天、最近几晚的入睡到醒来） |
+| `trends.nights:<结束日>` | `/sleep/nights?days=14` | 「睡眠」：平均睡眠 / 入睡 / 醒来、阶段图、作息图、每晚列表（点开是 N3 的睡眠详情） |
+| `report:<week\|month>:<结束日>` | `/reports?period=&end=` | 「报告」的数字块和变化、日记发现 |
+| `journal.analysis:<结束日>` | `/journal/analysis?days=90` | 「行为影响 · 次日恢复」 |
+
+**状态卡：本机算还是用接口**（`Features/Trends/TrendsLocal.swift`）
+
+| 卡 | 在哪算 | 输入（本地表） |
+|---|---|---|
+| HRV 状态 | 本机 `trend("hrv_status")` | `daily_metrics` 的 `heart_rate_variability_sdnn`（7 天里 ≥ 3 晚，前 60 天 ≥ 14 晚） |
+| 训练状态 | 本机 `trend("training_status")` | `daily_scores.payload` 的 `trimp`、`ctl`（28 天里 ≥ 21 天有 TRIMP），`vo2_max`，HRV 状态 |
+| 负荷重点 | 本机 `trend("load_focus")` | `payload.details.load.zone_minutes`（28 天里 ≥ 21 天） |
+| 生病风险 | 本机 `trend("illness_risk")` | 当天 `details.recovery` 的 `z`、`spo2_night`，手腕温度对自己前 60 天均值的偏差（≥ 3 晚） |
+| 最低心率出现 | 本机 `trend("recovery_index")` | `details.recovery.rhr_low_offset_min`、`details.sleep.asleep_min` |
+| 恢复时间 | 本机 `trend("recovery_time")` | `strain`、`tsb`、当天恢复的颜色 |
+| 生物钟 | 本机 `trend("chronotype")` | `sleep_sessions` 最近 60 天的主睡眠（≥ 10 晚） |
+| 韧性、身体电量 | 接口 | 要压力分（`stress_daily`），本地没有这张表 |
+| 运动后心率恢复 | 接口 | 要训练后的原始心率（`workouts`） |
+
+- 本地历史不够某张卡的窗口时不算，这张卡用服务器的。窗口和服务器 `trends/calc.py` 一样，所以同样的输入两边结果相同：`TrendsTests.testLocalStatusMatchesTheServer` 用 80 天虚构数据和 Python 算出的值逐项对比。
+- 算法包在后台建（约 140 kB JS），只有本地有 `daily_scores` 或 HRV 日值时才建。本地这些表由 N2b 的全量恢复填；在那之前全部状态卡都是服务器的，页面看起来和以前一样。
+- 序列（`values`、`avg7`、`prev_mean`、基线带）仍然用 `/trends` 的结果存进本地缓存：算法包里只有序列用到的单个函数（`baseline_band`、`rolling`），整套序列（37 个指标、睡眠表、体重和 SparkyFitness）只有服务器有。N2b 之后可以把以 `daily_scores` / `daily_metrics` 为输入的那部分序列也搬到本机。
+
+**图表**（`Features/Trends/TrendChart.swift`，Swift Charts）
+
+- x 轴是格子序号（一天一格，每周的柱子一周一格），柱子、基线带、目标带和线共用一个轴；y 范围的算法和网页的 `chartRange` 一样（参考带在数据外面时露出一条边）。
+- 点一下看那一天，长按后滑动连续看（不挡页面滚动，换天时轻触反馈）；读数和竖线画在叠加层里，手指移动时不重建图表。
+- 半年以上或跨年的范围，日期标签和读数带年份（`2025/11/3`）。
+- 线超过 140 个点时用 LTTB 抽稀（保留峰谷，断档仍是断档），基线带每隔几天取一个点；柱子一年内每天一根。
+- 图表内部不画坐标轴，日期是三个普通文字，触摸层自己按宽度换算：这样每张卡第一次出现时的开销少了一截。
+
+**性能**（iPhone 17 模拟器，60 Hz，Release 构建，合成数据，`W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1 W2W_PERF_TRENDS_DAYS=365` 时趋势页自己上下滚三次）：
+
+| 范围 | 平均帧率 | 最长一帧 | 卡顿 |
+|---|---|---|---|
+| 30 天 | 57.9 fps | 67 ms | 36 ms/s |
+| 365 天 | 56.8 fps | 93 ms | 53 ms/s |
+| 365 天，不画图表（对照） | 59.2 fps | 122 ms | 13 ms/s |
+
+一年和一个月差不多，掉的帧主要是卡片第一次进屏时建 Swift Charts 的固定开销（快速连续滚过三十多张卡）。抽稀之前 365 天 Debug 构建最长一帧 1375 ms，现在 232 ms。真机（ProMotion）待 N9 用 Instruments 复测。
+
+- Debug 版截图用的环境变量：`W2W_DEV_TRENDS=<metrics|sleep|report>[,<天数>][,<结束日>]`、`W2W_DEV_TRENDS_SHEET=explain:<键>|status:<键>|recovery|calendar`、`W2W_DEV_TRENDS_SCROLL=<锚点>`（`TrendsView.swift` 的 `TrendsDevShot`）。
+- 内测组开着 `ui_ai_first` 时顶部有「问 Jarvis」输入条，回车把问题交给 `\.askAI`（N6 接上之前是复制到剪贴板）。
+
 ## 10. 测试和发布
 
 **本地**
@@ -545,6 +598,10 @@ N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
 
 <img src="images/ios-native/n3-today-zh-light.png" width="180" alt="N3 今天，中文浅色"> <img src="images/ios-native/n3-today-zh-dark.png" width="180" alt="N3 今天，中文深色"> <img src="images/ios-native/n3-today-en-light.png" width="180" alt="N3 Today, English"> <img src="images/ios-native/n3-sleep-dark.png" width="180" alt="N3 睡眠详情，深色"> <img src="images/ios-native/n3-explain-light.png" width="180" alt="N3 讲解弹层">
+
+N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 14 晚（合成数据）：
+
+<img src="images/ios-native/n4-trends-zh-light.png" width="150" alt="N4 趋势，中文浅色"> <img src="images/ios-native/n4-trends-year-dark.png" width="150" alt="N4 一年范围，深色，点了一天"> <img src="images/ios-native/n4-status-light.png" width="150" alt="N4 状态卡"> <img src="images/ios-native/n4-status-sheet.png" width="150" alt="N4 训练状态弹层"> <img src="images/ios-native/n4-report-light.png" width="150" alt="N4 周报"> <img src="images/ios-native/n4-sleep-en-dark.png" width="150" alt="N4 Sleep, English dark">
 
 **发布**（`apps.md` 第 4 节）
 
@@ -622,7 +679,7 @@ N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
 
 **Pages**
 - N3: Today, sleep and explain sheets. A page that needs several documents pulls them in parallel with `DocPuller`. The N1 bundle runs through `OpenBodyScoreRuntime` (its own `OpenBodyScore` entry points). `LocalScoring` computes a day from the local raw tables and fills only days the server has not scored. It stays idle until N8 writes `hk_samples` and N2 restores raw data; it cannot serve `rmssd` users (no beat-to-beat table) and cannot match the server's long baselines with a short local history.
-- N4: Trends and reports.
+- N4: Trends and reports. Series come from `/trends` (cached as documents); seven status cards (HRV status, training status, load focus, illness risk, lowest-HR timing, recovery time, chronotype) are computed on the phone with the bundle's `trend(...)` when the local history covers their window, resilience / body battery / heart-rate recovery stay the server's. Swift Charts with a tap / press-and-slide read-out, LTTB-thinned lines above 140 points, year labels on long ranges.
 - N5: all records and the Food tab.
 - N6: Jarvis.
 - N7: Circles (section 9.2). Feed, likes and comments, member cards, leaderboards, invites (code, link, picture card), circle management, avatars. Server answers are cached in `docs` (`circles:*`) and the feed's first page is merged on refresh; likes and comments go through the offline queue and are laid over the cached posts. The queue now claims an entry atomically (two drains never send it twice) with a 120 s lease. Notification taps open the post (`App/NotificationTaps.swift`). `CircleSummaryCard` is there for other pages.

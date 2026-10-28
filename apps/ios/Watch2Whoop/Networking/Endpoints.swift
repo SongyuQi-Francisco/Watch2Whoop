@@ -72,6 +72,36 @@ enum Endpoint {
   static let ingestSyncDevice = "/v1/ingest/sync-device"
   static let historyBackfill = "/v1/users/me/sync/backfill"
 
+  // N4: trends (series and status cards), VO₂max level, sleep regularity, nights, reports, journal behaviour
+  static func trends(days: Int, end: String?, user: String = "me") -> APIRequest {
+    var q = ["days": String(days)]
+    if let end { q["end"] = end }
+    return .get("/v1/users/\(user)/trends", q)
+  }
+  static func vo2max(end: String?, user: String = "me") -> APIRequest {
+    var q = ["days": "365"]
+    if let end { q["end"] = end }
+    return .get("/v1/users/\(user)/vo2max", q)
+  }
+  static func sleepDetails(end: String?, user: String = "me") -> APIRequest {
+    .get("/v1/users/\(user)/sleep/details", end.map { ["end": $0] } ?? [:])
+  }
+  static func sleepNights(days: Int = 14, end: String?, user: String = "me") -> APIRequest {
+    var q = ["days": String(days)]
+    if let end { q["end"] = end }
+    return .get("/v1/users/\(user)/sleep/nights", q)
+  }
+  static func report(_ period: String, end: String?, user: String = "me") -> APIRequest {
+    var q = ["period": period]
+    if let end { q["end"] = end }
+    return .get("/v1/users/\(user)/reports", q)
+  }
+  static func journalAnalysis(end: String?, days: Int = 90, user: String = "me") -> APIRequest {
+    var q = ["days": String(days)]
+    if let end { q["end"] = end }
+    return .get("/v1/users/\(user)/journal/analysis", q)
+  }
+
   // N2 (new; not on the server yet): incremental sync, app-computed scores, algorithm bundles
   static let syncPull = "/v1/sync/pull"
   static let syncPush = "/v1/sync/push"

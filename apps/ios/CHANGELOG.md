@@ -32,3 +32,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - the chat streams its answer as Markdown, shows native cards (generic card for the other types), asks before deletes, keeps conversations, switches the AI at the top, asks for the fallback AI's terms first, shows quick questions for the current page;
   - photos (camera / library) and video frames (≤ 8);
   - `JarvisRouter.ask(prompt:)` for the explain sheets and other pages: the in-app chat, or the butler link / a copied question for an AI used elsewhere.
+- Native Trends tab and reports (#340 N4):
+  - every WHOOP metric of `/trends` over 1 week / 1 month / 3 months / 1 year with "vs previous period", ending on any day (calendar); recovery, strain, sleep vs need, recovery vs strain, training load, weekly aerobic minutes and volume, heart-rate zones, sleep regularity, VO₂max fitness level;
+  - Swift Charts with a tap / press-and-slide read-out of single days; a year's labels carry the year;
+  - status cards as of the end date (HRV status, training status with load focus, resilience, illness risk, body battery, recovery time, lowest-HR timing, heart-rate recovery, chronotype); seven of them are computed on the phone with the algorithm bundle when the local history covers their window;
+  - the last 14 nights (stages, schedule, the list opens the sleep detail page), the weekly / monthly report with the behaviour card;
+  - every metric opens its explanation; with `ui_ai_first` an 「问 Jarvis」 bar on top.

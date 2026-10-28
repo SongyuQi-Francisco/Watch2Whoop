@@ -97,6 +97,8 @@ ICONS = {
     "external-link": "Jarvis: open your AI",
     "check": "Jarvis: current AI / confirmed",
     "audio-lines": "Jarvis: voice message tag",
+    # N4: trends
+    "info": "trends: explain a metric (N4)",
 }
 # Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
 # fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.
