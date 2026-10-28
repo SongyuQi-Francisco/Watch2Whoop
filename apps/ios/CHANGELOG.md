@@ -20,3 +20,9 @@ Releases are named by version only (docs/apps.md section 4). Unreleased entries 
   - the sync engine's background work (BGTasks, HealthKit observers) and the beat-to-beat / ECG / water uploads run in the native app; no Open Wearables SDK;
   - Me: profile, AI settings (which AI, AI tokens), notifications, language, appearance (testers), what's new, data status, unsent changes, sign-out, account deletion; health record entries wait for N5;
   - upgrading from the Flutter app keeps the sign-in and the sync anchors.
+- Circles (#340 N7), the Friends tab:
+  - training feed (stats, heart-rate zones, exercises and sets), likes with a bounce and double-tap, comments (delete your own, report others'), pull to refresh, endless scrolling, a red dot for new likes / comments;
+  - member cards (today's recovery / sleep / strain, the last 7 days, cheers, private nicknames) and leaderboards; switch between circles;
+  - my circles: invites addressed to me, new circle, join with a code or a pasted link / message, invite with a code, a link and a picture card, revoke codes, share settings, pin / mute / archive, rename, logo, remove members, leave, dissolve; my picture;
+  - opens on the last saved state, offline too; likes and comments wait in the offline queue; a like / comment notification opens the post with its comments;
+  - a circle summary card other pages can show.

@@ -71,7 +71,7 @@ targets:
             CFBundleURLSchemes: [watch2whoop]
         NSHealthShareUsageDescription: "Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up."
         NSHealthUpdateUsageDescription: "Release builds never write to Health; only debug builds write test data in the simulator."
-        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for your AI."
+        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for your AI or for your profile picture."
         NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to your AI; the sound is turned into text on this iPhone or on your server and is not kept."
         NSSpeechRecognitionUsageDescription: "Used only while you talk to Jarvis: recognition runs on this iPhone and turns what you say into text."
     entitlements:

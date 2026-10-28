@@ -202,7 +202,7 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 
 ### 5.5 只在线的功能（不进队列，不进本地库，最多存一份缓存文档）
 
-Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号和 AI 设置、化验录入、建食谱 / 快捷记餐模板、看别人的数据。离线时这些入口显示为灰色，点了提示「需要联网」。
+Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞和评论例外，走离线队列，见第 9.2 节）、账号和 AI 设置、化验录入、建食谱 / 快捷记餐模板、看别人的数据。离线时这些入口显示为灰色，点了提示「需要联网」。
 
 ## 6. 算法包（JavaScriptCore）
 
@@ -428,6 +428,18 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 今天页用 `LazyVStack`，首帧只建屏幕上的部分。
 - Debug 版截图用的环境变量：`W2W_DEV_SHEET`、`W2W_DEV_SLEEP`、`W2W_DEV_DATE`、`W2W_DEV_SCROLL`（`TodayView.swift` 的 `DevShot`）。
 
+### 9.2 N7 圈子：数据从哪来、写怎么走
+
+- **读**：圈子数据只在服务器上（别人的数据不进本地表），`CirclesStore` 先读本地缓存、再请求接口，回答原样或合并后存进 `docs`：`circles:list`（`GET /v1/friends`）、`circles:overview:<all|圈子 id>`、`circles:feed:<all|圈子 id>`（`FeedCache`：已经看过的帖子 + 下一页游标，最多 120 条）、`circles:board:<榜>:<圈子>`、`circles:comments:<帖子>`、`circles:unread`。打开就是上次的样子，离线也一样；顶部标「离线 · 显示上次的内容」。
+- **增量刷新**：下拉刷新 / 回到前台 / 打开 tab（最多 20 秒一次）只拉第一页，`FeedLogic.mergeHead` 合并：新帖替换旧副本，第一页范围内服务器已经没有的帖子删掉（对方退圈、训练被删），更早的缓存保留；往下滚到倒数第 3 条时拉下一页。红点 `GET /feed/unread` 每分钟一次。
+- **写**：点赞 / 取消、评论走离线队列（kind `circle.like` / `circle.comment`，每个帖子一个组）。点赞是「最后一次为准」：入队前 `OfflineQueue.supersede` 删掉同组还没发出的旧状态；界面上立刻变（缓存同时改），队列里还没发出的点赞和评论由 `FeedLogic.overlay` 叠在服务器的数据上（评论显示时钟，被拒的显示「没发出去 · 重试 / 删掉」）。评论接口没有 `client_id`：超时后重发可能多一条，服务器加 `client_id` 之前接受这个风险。其他写（建圈、加入、邀请、退出、共享范围、鼓励、头像）只在线（第 5.5 节）。
+- **队列的改动**（共享，N7 加的）：`drain` 先原子地「领取」一条（`UPDATE … WHERE state = 'pending'`），两个 drain 同时跑也不会重复发送；`sending` 带 120 秒租约，app 发送中被杀掉后会再发。
+- **隐私**：只显示接口给的内容，服务器每次读都按对方的共享范围判断；切到某个圈子时成员、动态、排行榜只含这个圈子里的人和他们在这里勾选的内容。
+- **通知**：`AppDelegate` 设 `UNUserNotificationCenter` 的 delegate（`App/NotificationTaps.swift`），点通知把 payload 的 `url`（`/app/?tab=friends&feed=<id>`）交给 `AppModel.handle(link:)` → `Route.circles(post:)` → `MainTabView` 的 `.circleRouting` 切到朋友 tab → 动态滚到这条、打开评论。app 在前台时 `circle.*` 通知也弹横幅。`watch2whoop://circle?code=…` 和今天页的邀请链接 `/app/?circle=…` 打开加入页。
+- **给别的页面用**：`CircleSummaryCard()`（`Features/Circles/CircleSummaryCard.swift`）：头像、几位朋友、今天几人练了、最新一条动态、红点；点了默认切到朋友 tab，也可以传 `onOpen`。和朋友 tab 共用一个 store，`friends` 开关关着时不显示。
+- **开关**：`friends`（tab）、`circle_feed`（动态）、`circles_by_circle`（圈子切换条、排行榜只在选了圈子时有）、`circle_prefs`（置顶 / 静音 / 归档）、`avatars`（上传头像）、`member_remarks`（备注名）、`circle_join_trail`（圈主看到每人怎么进来的）。关着的接口回 404，那一块不显示。
+- **模拟器截图**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_LINK=/app/?tab=friends&feed=<id>`（等于点了通知）、`SIMCTL_CHILD_W2W_DEV_CIRCLES=members|board|feed[:圈子 id]`、`SIMCTL_CHILD_W2W_DEV_SKIP_HEALTH=1`（跳过健康权限弹层）。
+
 ## 10. 测试和发布
 
 **本地**
@@ -449,6 +461,10 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 - 用 `quickstart/demo_data.py` 生成合成数据，再用 `body-engine import-apple-zip` 导入。
 - 跑 `uvicorn body_engine.api:app`。
 - 用 Debug 环境变量登录（第 3 节）。不碰任何真实的库。
+
+N7 的朋友 tab：动态、评论（从通知进来）、成员、排行榜（深色）、加入圈子、英文（iPhone 17 模拟器，虚构的用户和合成数据）：
+
+<img src="images/ios-native/n7-feed-zh-light.png" width="200" alt="N7 动态"> <img src="images/ios-native/n7-comments-zh-light.png" width="200" alt="N7 评论"> <img src="images/ios-native/n7-members-zh-light.png" width="200" alt="N7 成员"> <img src="images/ios-native/n7-board-zh-dark.png" width="200" alt="N7 排行榜，深色"> <img src="images/ios-native/n7-join-zh-light.png" width="200" alt="N7 加入圈子"> <img src="images/ios-native/n7-feed-en-strength.png" width="200" alt="N7 英文动态">
 
 N8 的登录、同意书、我、同步中心（iPhone 17 模拟器，合成数据）：
 
@@ -541,7 +557,7 @@ N3 的今天页、睡眠详情、讲解弹层（同样是合成数据）：
 - N4: Trends and reports.
 - N5: all records and the Food tab.
 - N6: Jarvis.
-- N7: Circles.
+- N7: Circles (section 9.2). Feed, likes and comments, member cards, leaderboards, invites (code, link, picture card), circle management, avatars. Server answers are cached in `docs` (`circles:*`) and the feed's first page is merged on refresh; likes and comments go through the offline queue and are laid over the cached posts. The queue now claims an entry atomically (two drains never send it twice) with a 120 s lease. Notification taps open the post (`App/NotificationTaps.swift`). `CircleSummaryCard` is there for other pages.
 - N8: Me, settings, onboarding, the sync center, and porting the sync engine's Dart side to Swift.
   - Sign-in: Apple, e-mail code, setup QR code / link (`POST /v1/web/login-code` with `client: app` returns a device token), activation code.
   - The consent, profile and Health access steps follow once.

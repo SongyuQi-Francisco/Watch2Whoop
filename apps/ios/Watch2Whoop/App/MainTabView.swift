@@ -50,6 +50,7 @@ struct MainTabView: View {
       }
     }
     .tint(Palette.text)
+    .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
     .onChange(of: session.circlesTab) { on in
       if selection == .circles && !on { selection = .today }
       if selection == .food && on { selection = .record }
@@ -61,7 +62,7 @@ struct MainTabView: View {
     switch tab {
     case .today: TodayView(session: session)                                              // N3
     case .trends: PlaceholderTab(tab: tab, owner: "N4")
-    case .circles: PlaceholderTab(tab: tab, owner: "N7")
+    case .circles: CirclesTab()                                                           // N7
     case .food: PlaceholderTab(tab: tab, owner: "N5")
     case .record: PlaceholderTab(tab: tab, owner: "N5")
     case .me: MeTab()                                                                     // N8

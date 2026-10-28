@@ -26,7 +26,7 @@ struct SignedInFlows: ViewModifier {
         .environmentObject(session)
         .environmentObject(app)
       }
-      .sheet(item: Binding(get: { app.route.map(RouteBox.init) }, set: { if $0 == nil { app.route = nil } })) { box in
+      .sheet(item: Binding(get: { app.route.flatMap(RouteBox.sync) }, set: { if $0 == nil { app.route = nil } })) { box in
         NavigationStack {
           SyncCenterView(startHistory: box.historyDays)
             .toolbar {
@@ -58,6 +58,13 @@ struct SignedInFlows: ViewModifier {
 private struct RouteBox: Identifiable {
   let route: AppModel.Route
   var id: String { "\(route)" }
+  /// Only the sync routes open the sync center here (the circle routes belong to the Friends tab, N7).
+  static func sync(_ r: AppModel.Route) -> RouteBox? {
+    switch r {
+    case .syncCenter, .history: return RouteBox(route: r)
+    default: return nil
+    }
+  }
   var historyDays: Int? {
     if case .history(let d) = route { return d }
     return nil
@@ -123,6 +130,10 @@ final class SignedInFlow: ObservableObject {
       step = .profile
       return
     }
+    #if DEBUG
+    // simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SKIP_HEALTH=1` leaves the Health sheet out (Debug builds only)
+    if ProcessInfo.processInfo.environment["W2W_DEV_SKIP_HEALTH"] != nil { return }
+    #endif
     await HealthSyncService.shared.refreshPermission()
     if HealthSyncService.shared.permission == .notAsked {
       try? await Task.sleep(nanoseconds: 350_000_000)

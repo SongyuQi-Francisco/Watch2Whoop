@@ -56,7 +56,37 @@ ICONS = {
     "calendar-days": "Me: body events",
     "log-out": "Me: sign out",
     "user-x": "Me: delete account",
+    # N7: circles (feed, invites, circle management, avatars)
+    "heart": "circles: like",
+    "message-circle": "circles: comments",
+    "send": "circles: send a comment",
+    "trophy": "circles: personal record / leaderboard",
+    "dumbbell": "circles: exercise without a picture",
+    "flame": "circles: energy",
+    "map-pin": "circles: distance",
+    "activity": "circles: training load",
+    "timer": "circles: duration",
+    "share": "circles: share an invite",
+    "user-plus": "circles: invite friends",
+    "log-in": "circles: join with a code",
+    "plus": "circles: new circle",
+    "copy": "circles: copy the invite code",
+    "settings": "circles: manage circles",
+    "ellipsis": "circles: more actions",
+    "camera": "circles: take a picture",
+    "image": "circles: choose a picture",
+    "trash": "circles: remove / delete",
+    "pin": "circles: pin a circle",
+    "bell-off": "circles: mute a circle",
+    "archive": "circles: archive a circle",
+    "chevron-down": "circles: show sets / more",
+    "flag": "circles: report a comment",
+    "crown": "circles: circle owner",
+    "clock": "circles: comment not sent yet",
 }
+# Icons that also get a filled twin `lucide.<name>.fill` (same path, `fill` = the stroke colour), the way the Today page
+# fills the heart of a liked post with CSS (circle-feed.js). Not a drawing of our own: the Lucide outline, filled.
+FILLED = {"heart": "circles: liked"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "Watch2Whoop" / "Resources" / "Assets.xcassets" / "Icons"
 
 
@@ -67,9 +97,13 @@ def convert(svg: str) -> str:
     return svg.strip() + "\n"
 
 
-def contents(name: str) -> str:
+def filled(svg: str) -> str:
+    return svg.replace('fill="none"', 'fill="#000000"', 1)
+
+
+def contents(name: str, file: str | None = None) -> str:
     return json.dumps({
-        "images": [{"filename": f"{name}.svg", "idiom": "universal"}],
+        "images": [{"filename": f"{file or name}.svg", "idiom": "universal"}],
         "info": {"author": "xcode", "version": 1},
         "properties": {"preserves-vector-representation": True, "template-rendering-intent": "template"},
     }, indent=2) + "\n"
@@ -92,6 +126,10 @@ def main() -> int:
         if check:
             if not (d / f"{name}.svg").exists() or (d / "Contents.json").read_text() != contents(name):
                 bad.append(name)
+            f = ROOT / f"lucide.{name}.fill.imageset"
+            if name in FILLED and (not (f / f"{name}-fill.svg").exists()
+                                   or (f / "Contents.json").read_text() != contents(name, f"{name}-fill")):
+                bad.append(f"{name}.fill")
             continue
         url = f"https://raw.githubusercontent.com/lucide-icons/lucide/{LUCIDE_TAG}/icons/{name}.svg"
         with urllib.request.urlopen(url, timeout=20) as r:   # noqa: S310 (fixed https URL)
@@ -100,6 +138,12 @@ def main() -> int:
         (d / f"{name}.svg").write_text(convert(svg))
         (d / "Contents.json").write_text(contents(name))
         print(f"lucide.{name}")
+        if name in FILLED:
+            f = ROOT / f"lucide.{name}.fill.imageset"
+            f.mkdir(exist_ok=True)
+            (f / f"{name}-fill.svg").write_text(filled(convert(svg)))
+            (f / "Contents.json").write_text(contents(name, f"{name}-fill"))
+            print(f"lucide.{name}.fill")
     if bad:
         print("missing or changed icons:", ", ".join(bad), "(run apps/ios/scripts/lucide_assets.py)")
         return 1

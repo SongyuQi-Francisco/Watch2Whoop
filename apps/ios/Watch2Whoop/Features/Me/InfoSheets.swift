@@ -169,6 +169,8 @@ struct UnsentChangesView: View {
     case "meal", "food": return tr("饮食", "Food")
     case "training": return tr("训练", "Training")
     case "supplement": return tr("补剂", "Supplement")
+    case "circle.like": return tr("圈子点赞", "Circle like")          // N7
+    case "circle.comment": return tr("圈子评论", "Circle comment")    // N7
     default: return k
     }
   }
