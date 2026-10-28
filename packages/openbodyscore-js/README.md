@@ -95,6 +95,12 @@ cd body_engine && uv run pytest tests/test_js_golden.py tests/test_algo_bundle.p
    change).
 3. Port the change to `src/` (same function names as Python), bump `version` in `package.json`, run `build.js`, run the
    Node test. `body_engine/tests/test_algo_bundle.py` fails while the bundle's algorithm versions differ from Python's.
-4. Deploy: the server serves the new `dist/`; apps pick it up from the manifest.
+4. Sign it on the maintainer's machine: `body-engine algo-sign --key secrets/algo_signing_key`. This writes `signature` and
+   `key_id` into `dist/manifest.json`. The private key never goes into git or onto a server.
+   - `build.js` keeps a signature only while the bytes it covers are unchanged.
+   - Release builds of the iOS app refuse an unsigned bundle.
+   - The public keys are in `signing-keys.json` and, with the same values, in the app's `AlgoSigningKeys.swift`.
+   - See `docs/ios-native-app.md` section 6.3.
+5. Deploy: the server serves the new `dist/`; apps pick it up from the manifest.
 
 Licence: see [NOTICE](NOTICE).

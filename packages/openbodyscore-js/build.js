@@ -45,9 +45,17 @@ function manifest(code) {
 }
 
 const code = bundle();
-const man = JSON.stringify(manifest(code), null, 2) + "\n";
 const outJs = path.join(DIST, "openbodyscore.js");
 const outMan = path.join(DIST, "manifest.json");
+// The maintainer's Ed25519 signature (`body-engine algo-sign`, docs/ios-native-app.md 6.3) is kept while it still
+// belongs to these exact bytes; a rebuilt bundle drops it and has to be signed again.
+function withSignature(m) {
+  let old = null;
+  try { old = JSON.parse(fs.readFileSync(outMan, "utf8")); } catch (e) { old = null; }
+  if (old && old.signature && old.sha256 === m.sha256) return { ...m, signature: old.signature, key_id: old.key_id };
+  return m;
+}
+const man = JSON.stringify(withSignature(manifest(code)), null, 2) + "\n";
 if (process.argv.includes("--check")) {
   const same = (f, s) => fs.existsSync(f) && fs.readFileSync(f, "utf8") === s;
   if (!same(outJs, code) || !same(outMan, man)) {

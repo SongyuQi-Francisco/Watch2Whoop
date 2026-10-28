@@ -82,6 +82,10 @@ FLAGS: dict[str, str] = {
                                "不带 OW 邀请码，POST /v1/account/ow-invitation 对 app 模式的人回 409 sync_engine。已经开好的账号不受影响。"
                                "打开前先确认 TestFlight 上能装到的 app 都能在没有 OW 的情况下同步（sync-mode readiness 顶部会提示）。"
                                "关掉后新开户照旧建 OW 用户；已经按引擎开好的账号留在 app 模式（没有 OW 可回退）。默认关",
+    "native_sync": "原生 app 同步接口（#340 N2，docs/ios-native-app.md 第 5、7.2 节）：POST /v1/sync/pull（增量 / 全量恢复）、"
+                   "POST /v1/sync/push（批量写记录）、PUT /v1/users/me/scores/app（app 算好的分数，服务器抽查；这个用户由 app 算分后"
+                   "每小时任务只补算改过的天）；/v1/web/me 的 flags 里有它 = 服务器有这些接口。关着时接口 404，app 用旧接口，"
+                   "已经上传的 app 分数留在库里，服务器照常每小时算分",
     "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
                       "同步失败只记日志、不影响这次写。关着时和以前完全一样（不多发请求、不碰新表）",

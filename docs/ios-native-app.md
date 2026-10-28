@@ -1,6 +1,6 @@
 # iOS 原生 app（SwiftUI）：架构和开发约定
 
-> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
+> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
@@ -138,37 +138,44 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 ### 5.2 拉取
 
 - **N0（现在）**：`LegacyRemote` 调原有的 GET 接口，把结果原样存进 `docs`；`.changes` 目前只拉今天的文档。各页面在 N2 之前照这个做法：在 `LegacyRemote` 里加自己的 scope，把接口结果存进 `docs`。
-- **N2**：`DeltaRemote` 调 `POST /v1/sync/pull`：
+- **N2（服务器已实现，`body_engine/src/body_engine/nativesync/`）**：`DeltaRemote` 调 `POST /v1/sync/pull`：
 
   ```json
-  // 请求
-  {"cursors": {"scores": "…", "daily": "…", "sleep": "…", "records": "…", "docs": "…"}, "limit": 500}
+  // 请求：只拉 cursors 里列出的 stream；"" = 这个 stream 从头全量恢复
+  {"cursors": {"scores": "…", "daily": "…", "sleep": "…", "records": "…", "docs": "…", "raw": "…"},
+   "limit": 500, "raw_days": ["2026-01-02"]}
   // 回答
-  {"changes": [{"stream": "records", "op": "upsert|delete", "kind": "water", "key": "123", "version": 7,
-                "date": "2026-01-02", "body": {…}}],
-   "cursors": {"records": "…"}, "more": false, "algo": {"version": "1.2.0", "api": 1}}
+  {"changes": [{"stream": "records", "op": "upsert|delete|stale", "kind": "water", "key": "2026-01-02",
+                "date": "2026-01-02", "version": 7, "body": {"items": […]}}],
+   "cursors": {"records": "c.812.40"}, "more": false, "data_version": 40,
+   "algo": {"version": "0.1.0", "sha256": "…", "algo_versions": {…}}}
   ```
 
-  - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`），然后保存游标。`more` 为 true 就接着拉。
-  - 游标对 app 来说是不透明的字符串（服务器可以用 `updated_at` + id 实现）。
-  - 第一次拉（游标为空）就是**全量恢复**：删了 app 重装、换手机都走这一条，按 stream 分页，先拉最近 14 天再往前补。
-  - `HealthKit 原始样本` 也要能拉回来（#340「删掉 app 重装后从云端取回、在本地重算」），作为单独的 stream `raw`，按天分页，只在全量恢复或某天需要重算时拉。
-- **什么时候拉**：冷启动、回到前台、自己的写操作提交之后、同步引擎上传完一轮之后（服务器回 `dirty_days`，只拉那几天）、静默推送（`content-available`）、下拉刷新。
-- 服务器有没有 N2 接口，由 `/v1/web/me` 的 flag `native_sync` 告诉 app（名字由 N2 定）。没有就继续走 Legacy，所以 N2 上线前后 app 都能用。
+  - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`、`hk_*`），然后保存游标。`more` 为 true 就接着拉。
+  - 游标对 app 是不透明的字符串，原样存、原样发回。服务器回 422 `bad_cursor` 时把这个 stream 的游标清空，重新全量恢复。
+  - 游标为空就是**全量恢复**：删了 app 重装、换手机都走这一条。按天分页，**最新的一天在最前**，所以前一两页就是最近两周。
+  - `raw`（HealthKit 原始样本）也能拉回来，这样删掉 app 重装后可以在本地重算。规则是：全量恢复时拉（同样按天、从新到旧，每页 ≤ 20000 行）；某几天要重算时用 `raw_days` 指定（每次 ≤ 7 天，不动游标）。90 天以前的原始数据，app 只在 Wi-Fi 下继续拉（`params.RAW_CELLULAR_DAYS`，由 app 判断）。
+  - 每种 stream 的 `body` 形状、各 kind 的含义，见第 7.3 节。
+- **什么时候拉**：冷启动、回到前台、自己的写操作提交之后、同步引擎上传完一轮之后（`POST /v1/ingest/healthkit` 的回答里有 `dirty_days`，只拉那几天）、静默推送（`content-available`）、下拉刷新。
+- 服务器有没有 N2 接口，看 `/v1/web/me` 的 `flags` 里有没有 **`native_sync`**；有的话，回答里还会带 `data_version`。没有就继续走 Legacy，所以 N2 上线前后 app 都能用。`data_version` 和本机记的不一样时再去拉。
 
 ### 5.3 推送（上传）
 
-- **记录**：走离线队列。N2 之前用现有接口，并且带 `client_id`：喝水、体重已经支持；其他接口由 N2 加上。N2 之后可以合并成 `POST /v1/sync/push`：
+- **记录**：走离线队列。两种发法，都按 `client_id` 去重：
+  - 现有接口带 `client_id`：喝水、体重原来就支持；N2 给日记 `PUT /journal/{day}/{key}`（body 的 `client_id` 或请求头 `X-Client-Id`）、`DELETE /journal/{day}/{key}`（请求头 `X-Client-Id`）、快捷记餐 `POST /meal-templates/{id}/log`、食谱 `POST /recipes/{id}/log`、训练 `PUT /training/session/{day}` 和 `POST …/submit` 都加上了。补剂打卡就是日记接口（补剂的 `journal_key`）。同一个 `client_id` 重发时，服务器回第一次的回答（同样的状态码，加请求头 `X-Duplicate: 1`），不会再写一次。只保存成功的回答，所以 4xx / 409 之后可以用同一个 id 重发。保留 30 天。同一个 `client_id` 用在另一种写操作上会得到 422。
+  - 也可以合并成 `POST /v1/sync/push`：
 
   ```json
-  {"mutations": [{"client_id": "…", "kind": "journal", "op": "upsert|delete", "key": "2026-01-02/water",
+  {"mutations": [{"client_id": "…", "kind": "journal", "op": "upsert|delete", "key": "2026-01-02/sauna",
                   "base_version": 6, "body": {…}}]}
-  // 回答：每条一个结果
-  {"results": [{"client_id": "…", "status": "applied|duplicate|conflict|rejected", "key": "…", "version": 7, "body": {…}}]}
+  // 回答：每条一个结果，顺序和请求一样
+  {"results": [{"client_id": "…", "kind": "journal", "key": "…", "status": "applied|duplicate|conflict|rejected|error",
+                "date": "2026-01-02", "version": 7, "body": {…}, "detail": …}], "data_version": 41}
   ```
 
-- **HealthKit 原始数据**：继续用 `POST /v1/ingest/healthkit`，协议见 `apple-sync-engine-app-contract.md`。改动是先写进本地 `hk_*` 表，再上传，200 之后打 `uploaded` 标记、提交锚点。
-- **app 算的分数**：`PUT /v1/users/me/scores/app`（N2），格式 `{"algo_version": "…", "days": [{"date": "…", "row": {…}}]}`。服务器存下来作为这个用户的分数，并对他停掉每小时的服务器算分（#340 第 4 条）。如果服务器用同一个算法版本校验出不一致，会记下来，但不覆盖。
+  每条 mutation 走它对应的那个接口，检查和回答都一样，每条一个事务，最多 100 条。`error` 表示 5xx，或者饮食记录暂时连不上，留在队列里稍后重发。`kind`、`key` 和冲突规则见第 7.3 节。
+- **HealthKit 原始数据**：继续用 `POST /v1/ingest/healthkit`，协议见 `apple-sync-engine-app-contract.md`。改动是先写进本地 `hk_*` 表，再上传，200 之后打 `uploaded` 标记、提交锚点。回答里多了 **`dirty_days`**：这一批改动到的本地日期，app 只需要再拉这几天。重发的批次（`duplicate_batch`）回 `null`，意思是不知道，照常增量拉。服务器之后派生出的日值、睡眠和分数，通过变更记录和静默推送送到 app。
+- **app 算的分数**：`PUT /v1/users/me/scores/app`，格式 `{"algo_version": "…", "bundle_version": "0.1.0", "days": [{"date": "…", "row": {daily_scores 的列}}]}`，一次最多 400 天。规则见第 7.3 节：服务器先抽一天用 Python 校验，不一致就以服务器的结果为准；这个用户由 app 算分期间，每小时任务只补算 app 没管的「脏」天。
 
 ### 5.4 离线队列（`Sync/OfflineQueue.swift`，已实现并有测试）
 
@@ -229,6 +236,19 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 3. **校验**：`BundleVerifier` 先比 sha256，再验 Ed25519 签名（CryptoKit `Curve25519.Signing`；公钥编译进 app，私钥只在维护者手里，不在服务器上）。两项都通过，才写进 `Application Support/W2W/algo/<version>.js` 和表 `algo_bundles`，然后标成 `active`。
 4. **重算和回滚**：切换版本后，在后台重算最近 N 天（N 由 N1 定），写进 `daily_scores` 时带上 `algo_version`，再上传。新包加载失败或调用报错，就退回上一个 `active` 版本，并上报。
 
+### 6.3 签名（N2）
+
+- **算法**：Ed25519，签的是 `dist/openbodyscore.js` 文件本身的字节。`GET /v1/algo/manifest` 多了两个字段：`signature`（base64，没签时是 `null`）和 `key_id`（原始公钥 sha256 的前 16 位十六进制，只用来看是哪把钥匙签的）。签名变了，manifest 的 ETag 也会变。
+- **私钥**：只放在部署者本机的 `secrets/algo_signing_key`（PEM，权限 0600）。不进 git，不上服务器，也不进 CI。
+- **发布算法包的步骤**（都在部署者本机做，不需要数据库）：
+  1. 第一次先生成钥匙：`body-engine algo-keygen --out secrets/algo_signing_key`。命令会打印 `{key_id, public_key}`，不会覆盖已有的钥匙。
+  2. 打包：`node packages/openbodyscore-js/build.js`。包的内容变了，旧签名会自动去掉；内容没变，签名会保留，所以 `build.js --check` 照样通过。
+  3. 签名：`body-engine algo-sign --key secrets/algo_signing_key`。签名和 `key_id` 写进 `dist/manifest.json`。
+  4. 提交 `dist/`，部署。
+- **app 内置的公钥**：放在 `apps/ios/Watch2Whoop/Algorithms/AlgoSigningKeys.swift`，有 `current` 和 `next` 两个位置，值是 `algo-keygen` 打印的 base64。仓库里的 `packages/openbodyscore-js/signing-keys.json` 必须和它一字不差，`body_engine/tests/test_native_sync.py` 的 `test_repository_keys_match_the_app` 会比对两边，还会检查仓库里的 `dist/` 要么没签名，要么是这两把钥匙之一签的。现在两把都还是 `nil`，等部署者生成钥匙后，在同一个 PR 里两处一起填上。
+- **轮换**：先发一版 app，把新钥匙放进 `next`。等大多数人更新以后，开始用新钥匙签名。再下一版 app 把它挪到 `current`，`next` 留空或放再下一把。`BundleVerifier` 会两把都试。
+- **没有签名时**：Debug 版接受，方便本地开发直接用没签名的 `dist/`。Release 版（TestFlight / App Store）拒绝（`AlgorithmError.verification("unsigned")`），继续用内置包或上一个 `active` 版本。签名不对时两种版本都拒绝。
+
 ## 7. 和服务器的接口
 
 `{user}` 一律写 `me`。看别人的数据时（共享或圈子）换成对方的 id。
@@ -245,19 +265,70 @@ Jarvis / AI 对话、圈子的写操作（点赞、评论、邀请）、账号�
 | 圈子（N7） | `GET /v1/friends`、`/overview`、`/leaderboard`、`/referral`、`/invite`、`POST /v1/friends/join`、`/circles…`、`/nudges`、`/remarks…`、`/v1/friends/feed…`（动态、点赞、评论、未读）、`/v1/avatars…` |
 | 我 / 设置 / 同步中心（N8） | `/memory…`、`/ai-providers…`、`/ai-tokens…`、`/ai-connections…`、`/notification-settings`、`/notifications…`、`POST/DELETE /push-devices`、`GET /v1/whats-new`、`/notices…`、`/feedback…`、`/data-status`、`/history-import…`、`/appearance`、`/flags`；同步：`GET/POST /v1/ingest/healthkit`、`GET /v1/ingest/sync-status`、`/v1/ingest/resync`、`PUT /v1/ingest/sync-device`、`/sync/engine/status`、`/sync/overview`、`/sync/history…`、`/health-history`、`POST /v1/web/ingest-token` |
 
-### 7.2 N2 要新加的接口
+### 7.2 N2 新加的接口（已实现，开关 `native_sync`，关着时都是 404）
 
 | 接口 | 作用 |
 |---|---|
-| `POST /v1/sync/pull` | 增量拉取（第 5.2 节）：stream 有 `scores`、`daily`、`sleep`、`records`、`docs`、`raw`；游标、分页、tombstone；第一次拉即全量恢复 |
-| `POST /v1/sync/push` | 批量写记录（第 5.3 节）：按 `client_id` 幂等，带 `base_version` 的冲突返回 `conflict` |
-| 各写接口补上 `client_id` | N2 完成 `sync/push` 之前的过渡：日记 `PUT /journal/{day}/{key}`、补剂打卡、快捷记餐 `/meal-templates/{id}/log`、食谱 `/recipes/{id}/log`、训练逐组 / 提交（服务器记下 client_id → 结果，重发时返回同一个结果） |
-| `PUT /v1/users/me/scores/app` | 接收 app 算好的分数（带 `algo_version`），并对这个用户停掉每小时的服务器算分；同时增加一个管理命令，用来恢复服务器算分 |
-| 服务器端的「文档版本」 | 现在只有动作库的 `table_versions`，是全局的，不分用户。N2 要加按用户的 `doc_versions(user_id, doc_key, version)` 或者 `updated_at` 游标，并把 `touch` 接到导入、算分、记录类接口和 AI 写工具上（`ios-native-plan.md` 第 4.2 节） |
-| `dirty_days` | `POST /v1/ingest/healthkit` 的回答里加上受影响的日期，app 只拉那几天 |
-| flag `native_sync` | 告诉 app 服务器已经有 N2 的接口 |
-| `GET /v1/algo/manifest`、`GET /v1/algo/bundle/{version}.js` | 下发算法包（这两个属于 N1，和 N2 一起部署） |
-| 静默推送 | 数据有变化时发 `content-available`，现有推送服务加一个类型 |
+| `POST /v1/sync/pull` | 增量拉取 / 全量恢复（第 5.2、7.3 节），只拉自己的数据，读权限的 token 就可以 |
+| `POST /v1/sync/push` | 批量写记录（第 5.3、7.3 节），按 `client_id` 幂等，需要写权限 |
+| 各写接口补上 `client_id` | 日记、补剂打卡（= 日记）、快捷记餐、食谱、训练日（草稿 / 提交）（第 5.3 节） |
+| `PUT /v1/users/me/scores/app` | 接收 app 算好的分数（第 7.3 节）；管理命令 `body-engine app-scores status / server / app --user-id N` |
+| 按用户的数据版本 | 表 `sync_changes`（迁移 970），由触发器写；`data_version` 出现在 `/v1/web/me`、pull、push 和分数上传的回答里 |
+| `dirty_days` | `POST /v1/ingest/healthkit` 的回答里 |
+| flag `native_sync` | `/v1/web/me` 的 `flags` 里 |
+| `GET /v1/algo/manifest` | N1 的接口，N2 加了 `signature`、`key_id`（第 6.3 节） |
+| 静默推送 | `notify/silent.py`：设备登记 `POST /push-devices` 时带 `"silent": true` 的（只有原生 app 这样登记），数据一变就收到 `content-available` |
+
+### 7.3 N2 细则
+
+**数据版本和变更记录**（`nativesync/store.py`，迁移 970）
+
+- 每张 app 会镜像的表都挂了语句级触发器，任何写入都会往 `sync_changes` 追加一行 `(user, stream, kind, 日期)`，所以导入、`compute-scores`、记录接口、AI 写工具、命令行都算在内，不需要在 Python 里记得调用什么。只改了时间戳（`updated_at`、`computed_at` 等）的 UPDATE 不算变化。
+- 用户的数据版本 `data_version` 就是他的最大 `seq`，每次变化都会变大。
+- 拉取只返回比「还在运行的最老事务」更早的事务（`xid < snapshot xmin`），按 `(xid, seq)` 排序。这样一个先开始、后提交的事务，不会落在已经发出去的游标后面。代价是：遇到很长的事务时，拉取会晚一点看到变化。
+- 每小时任务会压缩变更记录，每个 key 只留最新一行。全量恢复不读变更记录，直接读数据表。
+
+**各 stream 的 body**（时间是 UTC 秒，日期是用户本地的 `YYYY-MM-DD`）
+
+| stream | kind / key | body |
+|---|---|---|
+| `scores` | `""` / 日期 | `daily_scores` 一行：各列 + `origin`（server / app）、`bundle_version`、`computed_at` |
+| `daily` | `""` / 日期 | `{"metrics": {指标: {value, unit, agg, n, min, max, source}}}` |
+| `sleep` | `""` / 日期（醒来那天） | `{"sessions": [{id, start, end, asleep_min, core_min, deep_min, rem_min, awake_min, unspecified_min, is_main, source, device}]}` |
+| `records` | `water` / `journal` / `food` / `weight` / `strength`（力量训练，套着动作和组）/ `training_session` / `meal_log` / `lab` / `workout`（手表训练）/ 日期；`supplements` / `journal_items` / `meal_templates` / `all` | `{"items": [表里的行…]}`：这个 kind 在这一天的全部条目，app 整组替换 |
+| `docs` | `""` / `today:<日期>` | op 是 `stale`，body 为 `null`：这天服务器算的视图变了，如果正在显示就重新取（全量恢复时不发） |
+| `raw` | `""` / 日期 | `{"samples": {"cols": [uuid, type, start, end, value, value_text, source, tz, meta], "rows": […]}, "stats": {"cols": [type, start, value], "rows": […]}}` |
+
+- `op = "delete"` 表示这一天（或这个 kind）已经没有数据了。全量恢复只发有数据的。
+- `version` 就是这个 key 最近一次变化的 `seq`，push 里的 `base_version` 跟它比较。
+
+**push 的 kind 和冲突规则**（`nativesync/push.py`）
+
+| kind | key | 规则 |
+|---|---|---|
+| `water` | upsert 不用 key；delete 用条目 id | 只追加，按 `client_id` 幂等 |
+| `weight` | 日期 | 后写的为准（`overwrite` 默认 true） |
+| `journal`（含补剂打卡） | `日期/日记项` | 后写的为准。删除优先：带着 `base_version` 去改一项，而服务器上这一项在那之后已经被删了，就回 `conflict`（`detail.conflict = "deleted"`）。不带 `base_version` 就当作新建 |
+| `meal_log` | upsert body 带 `template_id`；delete 用记餐 id | 当天已经记过同一个模板 → `conflict`（和现在的 409 一样，用户选择「仍要记」，就带上 `allow_duplicates`） |
+| `recipe_log` | body 带 `recipe_id` | 同上 |
+| `training_session` | 日期 | 整天覆盖：带的 `base_version` 和服务器当前版本不同 → `conflict`（`detail.version` 是当前版本）；`submit: true` 表示保存后直接提交 |
+
+**app 算的分数**（`nativesync/appscores.py`）
+
+- 只收**和服务器同一个算法版本**（`scores/params.ALGO_VERSION`）的行。版本不同时回 `stale_algo`，什么都不存，服务器照常算分，app 应该先去更新算法包。
+- **抽查**：每个 `bundle_version` 第一次上传时抽查一次，之后最多每 6 小时一次。抽的是上传里最近 14 天内最新的一天（不含今天）。服务器用 Python 把这一天重算一遍，逐项比较，容差在 `nativesync/params.CHECK_TOLERANCE`，每次结果记进 `app_score_checks`。
+  - 一致：这次上传的行全部存进 `daily_scores`，标 `origin = app`、`bundle_version`。
+  - 超出容差：这一天存服务器自己的结果，这次上传的其他天都不存；这个用户标记为「不可信」，每小时任务重新给他全量算分，并且马上排队重算上传的这段日期。以后哪次抽查通过了，再恢复由 app 算。
+- **服务器什么时候停算**：同时满足下面四条，就算「由 app 算分」：最近 3 天内上传过、算法版本和服务器一致、最近一次抽查通过、管理员没有强制让服务器算。这期间：
+  - 每小时任务、每晚的全量任务、上传之后的 `sync-refresh-run`，都不再给他做全量算分。
+  - 它们只补算「脏天」：最近 30 天里，算分输入（`daily`、`sleep`、`raw`，以及记录里的 `workout` / `strength`）在这天分数的 `computed_at` 之后变过，而且最后一次变化已经超过 2 小时，app 却一直没有重新上传这一天。
+- `body-engine app-scores server --user-id N` 让服务器重新给这个用户算分；`app-scores app --user-id N` 恢复由 app 算；`app-scores status` 查看状态、最近的抽查结果和下一次每小时任务会怎么做。
+- AI、MCP、今天页读的始终是 `daily_scores` 里存的分数，不管是谁算的。
+
+**静默推送**（`notify/silent.py`）
+
+- API 进程每 20 秒看一次：哪些用户有登记了 `silent` 的设备，而且最近 60 分钟里有还没通知过的变化。给这些用户发一条 `apns-push-type: background` 推送，内容是 `{"aps": {"content-available": 1}, "w2w": {"type": "data_changed", "data_version": N}}`，不带任何健康数据。每个用户每分钟最多一条。
+- 没有配置 APNs 时完全不运行：不起循环，也不查库。
 
 ## 8. 从 Flutter 版升级：凭据迁移（`Auth/FlutterMigration.swift`，已实现并有测试）
 
@@ -340,8 +411,9 @@ N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 1. **OW SDK**：1.0.9 不带 Open Wearables SDK。所以发布前，所有用户都要切到同步引擎的 `app` 模式（#219，`apple-sync-engine-app-contract.md` 第 7 节）；否则 N8 要通过 SPM / 二进制把 OW iOS SDK 加回来。**请负责人定**。
 2. **iOS 16 还是 17**（C1）。要看测试用户的系统版本；决定之后只改一行配置。
 3. **Swift 6 严格并发**（C9）：N8 改写完同步代码之后再评估。
-4. **算法包签名的私钥**放在哪里、谁来签（N1）。建议放在维护者本机或 CI secret，不放在服务器上。
-5. **全量恢复的流量**：原始样本按天分页，只在 Wi-Fi 下补 90 天以前的数据。具体限额由 N2 定。
+4. ~~算法包签名的私钥~~：已定（#340 中控），放在部署者本机，实现见第 6.3 节。还剩一步：部署者生成两把钥匙，然后把公钥填进 `AlgoSigningKeys.swift` 和 `signing-keys.json`。
+5. ~~全量恢复的流量~~：已定（N2）。每页最多 500 条变化，原始数据每页最多 20000 行，都按天、从新到旧。90 天以前的原始数据只在 Wi-Fi 下拉，由 app 判断。
+6. **长事务会让拉取变慢**：拉取要等「还在运行的最老事务」结束，才能看到它之后的变化。几分钟的大导入期间，别人的拉取也会晚几分钟看到变化。这是为了不丢变化，故意这样设计的。
 
 ---
 
@@ -375,8 +447,22 @@ N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 **Sync**
 - Pages read only the local database, call `sync.refresh` for fresh data, and write locally first, then enqueue.
 - N0 pulls through the existing endpoints.
-- N2 adds `POST /v1/sync/pull` (streams, cursors, full restore on an empty cursor), `POST /v1/sync/push`, `client_id` on the remaining write endpoints, `PUT /v1/users/me/scores/app` (which also stops server-side hourly scoring for that user), per-user document versions, `dirty_days`, and a `native_sync` flag.
-- N1 adds `GET /v1/algo/manifest` and `GET /v1/algo/bundle/{version}.js`.
+- N2 (implemented, behind the flag `native_sync`; section 7.3) adds:
+  - A per-user change log, `sync_changes` (migration 970). Triggers on every mirrored table write to it, so imports, scoring, the record endpoints and the AI's writes all count. `data_version` is the user's newest seq.
+  - `POST /v1/sync/pull`. Streams are `scores`, `daily`, `sleep`, `records`, `docs` (only "stale" notices) and `raw`. A full restore runs newest day first. Incremental pages only include transactions older than the oldest one still running, so a late commit is never skipped.
+  - `POST /v1/sync/push`. It goes through each record endpoint's own code, with one transaction per mutation, and is idempotent by `client_id`.
+  - `client_id` on the journal, meal template, recipe and training day endpoints.
+  - `dirty_days` in the HealthKit upload's answer.
+  - Silent pushes to devices registered with `silent: true`. Nothing runs when APNs is not configured.
+  - `PUT /v1/users/me/scores/app`:
+    - Rows are only accepted when they use the server's own algorithm version.
+    - A Python spot check runs for the first upload of each bundle version, then at most every 6 hours. If it finds a difference, the server's row is stored, the user goes back to server scoring, and a recompute is queued.
+    - While the app scores a user, the hourly and nightly jobs only fill in days whose inputs changed more than 2 hours ago that the app has not uploaded since.
+    - The admin command is `body-engine app-scores status|server|app`.
+- N1 adds `GET /v1/algo/manifest` and the bundle download. N2 adds an Ed25519 `signature` and `key_id` to the manifest (section 6.3):
+  - The maintainer signs on their own machine with `body-engine algo-sign --key secrets/algo_signing_key`.
+  - The app has two public keys built in (`AlgoSigningKeys.swift`, current and next).
+  - Release builds refuse unsigned bundles.
 
 **Migration from the Flutter app**
 - Copies the account and ingest tokens from the `flutter_secure_storage_service` Keychain items.
@@ -400,5 +486,6 @@ N0 的今天 tab（iPhone 17 模拟器，合成数据，浅色 / 深色）：
 - The OW SDK is not included, so every user must be in engine `app` mode before 1.0.9.
 - iOS 16 or 17.
 - Swift 6 strict concurrency.
-- Where the bundle signing key lives.
-- Full-restore traffic.
+- The signing key is decided (the maintainer's machine). What is left is to generate the keys and fill them in.
+- Full-restore traffic is decided: pages of 500 changes or 20,000 raw rows, and raw data older than 90 days on Wi-Fi only.
+- A long transaction delays what pulls can see until it ends. This is on purpose, so that no change is lost.

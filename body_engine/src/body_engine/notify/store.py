@@ -48,20 +48,22 @@ def prune(conn: psycopg.Connection, days: int = P.KEEP_DAYS) -> int:
 
 
 def register_device(conn: psycopg.Connection, user_id: int, token: str, environment: str, api_token_id: int | None,
-                    bundle_id: str | None = None, app_version: str | None = None, lang: str | None = None) -> dict:
-    """A token is one app install: re-registering moves it to whoever registers it now (signed in on that phone)."""
+                    bundle_id: str | None = None, app_version: str | None = None, lang: str | None = None,
+                    silent: bool = False) -> dict:
+    """A token is one app install: re-registering moves it to whoever registers it now (signed in on that phone).
+    silent: the install also takes background pushes when the user's data changed (the native app, notify/silent.py)."""
     if not TOKEN_RE.match(token or ""):
         raise ValueError("token")
     if environment not in ("sandbox", "production"):
         raise ValueError("environment")
     row = conn.execute(
-        """INSERT INTO push_devices (user_id, token, environment, bundle_id, app_version, lang, api_token_id)
-           VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """INSERT INTO push_devices (user_id, token, environment, bundle_id, app_version, lang, api_token_id, silent)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
            ON CONFLICT (token) DO UPDATE SET user_id = EXCLUDED.user_id, environment = EXCLUDED.environment,
              bundle_id = EXCLUDED.bundle_id, app_version = EXCLUDED.app_version, lang = EXCLUDED.lang,
-             api_token_id = EXCLUDED.api_token_id, last_seen_at = now()
+             api_token_id = EXCLUDED.api_token_id, silent = EXCLUDED.silent, last_seen_at = now()
            RETURNING id, environment, created_at""",
-        (user_id, token.lower(), environment, bundle_id, app_version, lang, api_token_id)).fetchone()
+        (user_id, token.lower(), environment, bundle_id, app_version, lang, api_token_id, silent)).fetchone()
     return {"id": row["id"], "environment": row["environment"]}
 
 

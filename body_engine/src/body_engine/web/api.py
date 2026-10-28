@@ -256,6 +256,9 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     me = _me(viewer)
     me["avatar"] = avatar_urls.urls_for(conn, viewer["id"], [viewer["id"]]).get(viewer["id"])   # my own picture (#200)
     look = {"appearance": appearance.get(conn, viewer["id"])} if rollout_flags.enabled(conn, viewer["id"], appearance.FEATURE) else {}   # theme + quote (#126)
+    if rollout_flags.enabled(conn, viewer["id"], "native_sync"):   # the native app pulls when this differs from its own (#340 N2)
+        from ..nativesync import store as sync_store
+        look["data_version"] = sync_store.data_version(conn, viewer["id"])
     return {"me": me, "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),

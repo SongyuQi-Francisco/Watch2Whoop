@@ -294,9 +294,13 @@ def test_stats_replace_their_span(client, users, dsn):
     with conn_of(dsn) as c:
         c.execute("DELETE FROM hk_dirty_days WHERE user_id = %s", (uid,))
         c.commit()
-    assert send([0.0, 100.0, 50.0])["buckets"] == 0 and dirty(dsn, uid) == {}, "an unchanged span marks nothing"
-    assert send([0.0, 100.0, 0.0, 30.0])["buckets"] == 2 and stored() == {900: 100.0, 2700: 30.0}
+    same = send([0.0, 100.0, 50.0])
+    assert same["buckets"] == 0 and dirty(dsn, uid) == {}, "an unchanged span marks nothing"
+    assert same["dirty_days"] == [], "nothing for the app to pull again (#340 N2)"
+    changed = send([0.0, 100.0, 0.0, 30.0])
+    assert changed["buckets"] == 2 and stored() == {900: 100.0, 2700: 30.0}
     assert dirty(dsn, uid) == {T0.date(): {STEPS}}
+    assert changed["dirty_days"] == [T0.date().isoformat()], "the upload names the days it changed (#340 N2)"
 
 
 def test_direct_upload_types_and_pause(client, users, dsn):

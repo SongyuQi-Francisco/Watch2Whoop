@@ -133,8 +133,18 @@ def _step_compute_scores(conn, client, u, start):
     from .importers import shortcut
     from .insights import jobs as insights_jobs
     from .scores import engine as scores_engine
+    from .nativesync import appscores
     # OW raw samples through the local copy (importers/ow_cache.py); the full nightly recompute re-reads and replaces it
     mode = "refresh" if start is None else "use"
+    plan = appscores.plan(conn, u["id"])
+    if plan["mode"] == "app":   # the user's app computes the scores (#340 N2): only the days it left stale
+        if not plan["days"]:
+            return json.dumps({"app_scoring": True, "rows": 0}, ensure_ascii=False)
+        res = scores_engine.run(conn, client, u["id"], min(plan["days"]), None, shortcut.user_archive_dir(u["id"]),
+                                ow_cache="use", only=set(plan["days"]))
+        res["app_scoring"] = True
+        res["insights"] = insights_jobs.run(conn, client, u["id"], ow_cache="use")
+        return json.dumps(res, default=str, ensure_ascii=False)
     res = scores_engine.run(conn, client, u["id"], start, None, shortcut.user_archive_dir(u["id"]), ow_cache=mode)
     res["insights"] = insights_jobs.run(conn, client, u["id"], ow_cache=mode)
     return json.dumps(res, default=str, ensure_ascii=False)
@@ -318,6 +328,13 @@ def main(args) -> int:
     print("用户：" + ", ".join(f"{u['id']} {u['name']}" for u in users), flush=True)
     res = run(users, steps, workers=args.workers, full=args.full, skip=not (args.full or args.no_skip),
               max_age_hours=args.max_age_hours, emit=lambda line: print(line, flush=True))
+    if not args.user_id:   # the native app's change log: keep the newest row per key (nativesync/store.py)
+        try:
+            from .nativesync import store as sync_store
+            with db.connect() as conn:
+                res["sync_changes_compacted"] = sync_store.compact(conn)
+        except Exception as e:  # noqa: BLE001  housekeeping only
+            res["errors"].append(f"sync-compact: {type(e).__name__}: {e}")
     print(f"{len(users)} 个用户，{res['skipped_steps']} 步没变跳过，{len(res['errors'])} 项失败（{res['seconds']:.0f} 秒，{args.workers} 个进程）")
     print(RESULT_PREFIX + json.dumps(res, ensure_ascii=False), flush=True)
     return 1 if res["errors"] else 0

@@ -355,11 +355,13 @@ class SessionDraftIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     exercises: list[SessionExerciseIn] = Field(default_factory=list, max_length=session_log.MAX_EXERCISES)
     notes: str | None = Field(default=None, max_length=500)
+    client_id: str | None = Field(default=None, max_length=64)   # the app's resend key (#340 N2): one write per id
 
 
 class SessionSubmitIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     allow_duplicate: bool = False
+    client_id: str | None = Field(default=None, max_length=64)
 
 
 V2 = [Depends(flags.require("training_day_v2"))]
@@ -378,10 +380,14 @@ def training_session(user: str, day: Annotated[date | None, Query(alias="date")]
 def save_training_session(user: str, day: date, body: SessionDraftIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Save the sets being filled in (draft); each set has its own reps / weight and a done tick."""
     uid = _self(viewer, user)
-    try:
-        return session_log.save_draft(conn, uid, day, [e.model_dump() for e in body.exercises], body.notes)
-    except ValueError as e:
-        raise HTTPException(422, str(e))
+    from ..nativesync import idem
+
+    def save():
+        try:
+            return session_log.save_draft(conn, uid, day, [e.model_dump() for e in body.exercises], body.notes)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+    return idem.once(conn, uid, body.client_id, f"training.session:{day}", save)
 
 
 @router.post("/session/{day}/submit", dependencies=V2)
@@ -389,8 +395,14 @@ def submit_training_session(user: str, day: date, body: SessionSubmitIn | None =
                             conn=Depends(get_conn), viewer=Depends(current_user)):
     """Write the sets marked done to the training log (SparkyFitness) as one workout; a resubmit replaces it."""
     uid = _self(viewer, user)
+    from ..nativesync import idem
+    return idem.once(conn, uid, body and body.client_id, f"training.submit:{day}",
+                     lambda: _submit(conn, uid, day, bool(body and body.allow_duplicate)))
+
+
+def _submit(conn, uid: int, day: date, allow_duplicate: bool):
     try:
-        return session_log.submit(conn, uid, day, allow_duplicate=bool(body and body.allow_duplicate))
+        return session_log.submit(conn, uid, day, allow_duplicate=allow_duplicate)
     except PermissionError as e:
         raise HTTPException(409, str(e))
     except LookupError as e:
