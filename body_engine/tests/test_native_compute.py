@@ -222,6 +222,7 @@ def test_compute_is_off_for_everyone_by_default(client, users, dsn):
             assert j["compute"]["packages"]["derive"]["implemented"]   # M1 (rawdata/derive.DERIVE_VERSION + src/30_derive.js)
             assert j["compute"]["packages"]["workouts"]["implemented"]   # M1c (importer.WORKOUTS_VERSION + src/31_workouts.js)
             assert j["compute"]["packages"]["coach"]["implemented"]   # M4 (insights/coach.COACH_VERSION + src/34_coach.js)
+            assert j["compute"]["packages"]["reports"]["implemented"]   # M5 (reports_params.REPORTS_VERSION + src/35_reports.js)
         old = client.get("/v1/sync/compute", headers=H(tok["b"], **{"X-App-Version": "1.0.9"})).json()
         assert old["compute"]["packages"]["series"]["state"] == "off", "older apps never compute a package"
     finally:

@@ -541,6 +541,67 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
 | Acceptance | analysis effect / se / p / q within 1e-6 (matrix inversion), report numbers exact at display rounding |
 | Device | Weekly report and "行为影响" open offline |
 
+#### M5 as built (2026-10-30)
+- **Algorithm** `reports` = `insights/reports.py:REPORTS_VERSION` (`reports-1`, defined in the new `insights/reports_params.py`)
+  = `OBS.ALGO_VERSIONS.reports`: one key for the report, the journal analysis and the regression. **Python split** (outputs
+  unchanged): `insights/reports.py` `load(conn, user, period, end, viewer, sparky)` (every input of both periods, read once:
+  score rows, stress rows or None without the table, sleep sessions, the log's sessions over both periods, kept workouts,
+  weigh-ins, nutrition days, `analyze_all` results) + pure `compute(data, period, end)` (`report` = `compute(load(…))`;
+  blocks `scores_block`, `stress_block`, `consistency`, `training_block`, `weight_block`, `nutrition_block`, `journal_block`;
+  a block whose input key is absent is left out, which is how the phone marks the server-only blocks);
+  `records/analysis.py` `_analyze` = the query + pure `analyze_rows`; new `rows_from` (the query's join on plain data),
+  `analyze_data` (analyze / analyze_all on plain data, BH across the items) and `load_data` (the same inputs from the tables).
+  The report's thresholds moved to `insights/reports_params.py` with sources (recovery bands 67 / 34, < 6 h nights,
+  strain ≥ 14, 90-day journal window, top 5 findings); the regression's stay in `records/analysis_params.py`.
+- **JS** `src/35_reports.js`: `OBS.regression` (`inverse`, `Singular`, `erfc` — JavaScript has none: series below 2,
+  continued fraction above, ~1e-15 —, `norm_p`, `ols_hac`, `bh`), `OBS.analysis` (`compare`, `regress`, `apply_bh`,
+  `analyze_rows`, `rows_from`, `analyze_data`; texts identical, Python's float formatting of the sample counts included),
+  `OBS.reports` (`compute` and its blocks, `clock_mean` with Python's float modulo); entry points `report(data, {period, end})`
+  and `journalAnalysis(data, {end, days, regression, key, threshold})` → `{results, algo_version, bundle_version}`.
+- **Goldens**: `test/cases_reports.py` (synthetic, inputs rounded and drawn from `random.Random` so they do not depend on libm):
+  the inverse (regular, singular, all zero), the normal p on a z grid across both erfc branches, BH (ties, one, none),
+  `ols_hac` (daily, gaps of 3 days, unsorted days, two rows per day); `regress` (usual, lower-is-better, few yes days, too few
+  residual degrees of freedom, a Tuesday-only behaviour = collinear, zero residuals, an all-zero behaviour, no observations);
+  `analyze_data` on 730 days of journal (effect, none, a duplicate item for BH ties, Tuesday-only, all-zero, rare, every-4th-day
+  logging for calendar-day lags, a numeric item with thresholds, missing scores / metrics / covariates, an HRV of 0;
+  windows 14 / 90 / 365 / 730, both versions, one key); `compute` on 70 days over the end of DST (week / month, three ends and
+  one before any data; no stress table, the phone's absent blocks, SparkyFitness errors, nutrition-summary scope, scores only,
+  scores + sleep + training, no scope, failed journal analysis) → `golden/reports.json`; `golden/reports_local.json` = the same
+  person as the phone's tables + the Python answers (week, month, both analysis versions). Largest float difference seen:
+  1.2e-13 relative (a raw normal p at the erfc branch point); all rounded outputs equal. Tests
+  `tests/test_js_golden_reports.py` ↔ `test/reports.test.js`; `tests/test_native_reports.py` (database: the split report equals
+  the pre-split one, `tests/reports_v0.py`, for both periods, four ends, a failing log reader and three viewers' scopes;
+  `analyze_all` / `analyze` on the tables equal `analyze_data(load_data(…))`; the phone's raw journal gives the server's
+  findings); `Watch2WhoopTests/ReportsLocalTests.swift`.
+- **Server**: nothing else (views are not uploaded, section 3.2); no migration. `GET /v1/sync/compute` reports `reports`
+  implemented (shadow with `native_reports`, primary with `native_compute_primary`).
+- **iOS** `Features/Reports/ReportsLocal.swift` (no compute stage, like M3: computed after the page's server pull): pulls the
+  `records` stream filtered to `journal` + `journal_items` on its own cursor (`reports.records_cursor.journal,journal_items`;
+  kept in `records`, non-pending, whole-day replace) and `ext_records` for [start − 30, end]; loader = `reports.load` /
+  `analysis.load_data` on `daily_scores.payload`, `sleep_sessions`, `daily_metrics`, `stress_daily` (only with `stress`
+  primary), `workouts` (only when M1c's rows are on the phone), `ext_records` strength sets and weigh-ins. Documents
+  `report.local:<period>:<end>`, `journal.analysis.local:[r:]<end>`; shadow compares with the server's document (meta
+  `reports.compare`, field paths only), primary draws the phone's. Server-only blocks (`server_only` in the document,
+  ignored by the comparison): nutrition always, stress / training / weight / journal findings when their inputs are
+  missing. The 行为影响 card follows flag `journal_regression` (request `regression=true`, own documents, the adjusted
+  estimate and BH direction like the page's `behaviorModel`, tip 「已控制负荷、睡眠、星期」).
+- **Deviations**: (1) no local table, docs only (as section 3.1 says); (2) the nutrition block stays the server's: goal
+  resolution (`goals/nutrition.py`, M6) and the food extras (added sugar, sugary drinks) are not on the phone; the pure
+  `nutrition_block` is ported and golden-tested for M6; (3) the phone does not read `records` `food` / `weight` (the report
+  reads the log, i.e. `ext_records`); pending (unsent) journal answers and weigh-ins count once they reach the server;
+  (4) order within one day: `ext_records` sorts a day's sessions / weigh-ins canonically, the log answers in its own order, so
+  `session_names` or a same-day first / last weigh-in can differ (a shadow difference, not a value); (5) the server's
+  `sleep_detail.asleep_minutes` subtracts datetimes that share one ZoneInfo as wall clocks, so a regularity value whose
+  window crosses a DST change can differ by about a point from the phone's (instants); the goldens feed UTC instants. Left to
+  `insights/sleep_detail.py`'s owner; (6) `native-compare` is not part of M5; (7) M4's `healthspan_weekly` is not read: the server's report has no body-age block (insights/reports.py), so neither does the phone's.
+- **Flag**: `native_reports` (shadow; primary needs `native_compute_primary`), off by default. `journal_regression` is unchanged
+  (the server's flag, now also read by the native card).
+- **Device checklist entry (for S9)**: owner's internal build, `native_reports` on for the owner. (1) Open Trends → 周报, then
+  月报: meta `reports.compare` shows `ok` for `report_week`, `report_month` and `journal_analysis` (`…_regression` with
+  `journal_regression` on). (2) With `native_compute_primary` on (S9), airplane mode: the weekly and monthly report and
+  「行为影响」 open with the same numbers as before; the nutrition tiles stay the cached server values. (3) Log a journal
+  answer online, refresh: the card's counts follow after the next pull.
+
 ### M6 — rules, nutrition targets, explain texts
 | | |
 |---|---|

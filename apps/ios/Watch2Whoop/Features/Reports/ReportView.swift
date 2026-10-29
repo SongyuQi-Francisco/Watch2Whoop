@@ -83,6 +83,10 @@ struct ReportView: View {
           }
           .buttonStyle(PressScale())
           Spacer()
+          if store.adjusted {   // second version (flag journal_regression): adjusted for strain, sleep and weekday
+            Text(tr("已控制负荷、睡眠、星期", "Adjusted for strain, sleep, weekday")).font(Typo.label).foregroundColor(Palette.text3)
+              .lineLimit(1).minimumScaleFactor(0.8)
+          }
           Text(tr("90 天", "90 days")).font(Typo.label).foregroundColor(Palette.text3)
         }
         Card(padding: 14) {
