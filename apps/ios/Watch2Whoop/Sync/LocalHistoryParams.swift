@@ -15,9 +15,11 @@ enum LocalHistoryParams {
 
   /// The compact history's sample kinds (table `hist_samples`, column `kind`): the scores' raw inputs as the server merges
   /// them (body_engine scores/inputs.load; packages/openbodyscore-js inputs.KINDS). Codes are stored, never renumber.
+  /// `steps` (2.0.0 M1, decision 3 of docs/ios-native-2.0.md): 15-minute step counts (t = the bucket's start), for stress
+  /// (M2) and body age (M4) over the whole history; not a scoring input.
   enum Kind: Int, CaseIterable {
-    case hr = 1, hrv = 2, resp = 3, spo2 = 4, temp = 5
-    var name: String { ["", "hr", "hrv", "resp", "spo2", "temp"][rawValue] }
+    case hr = 1, hrv = 2, resp = 3, spo2 = 4, temp = 5, steps = 6
+    var name: String { ["", "hr", "hrv", "resp", "spo2", "temp", "steps"][rawValue] }
     init?(name: String) {
       guard let k = Kind.allCases.first(where: { $0.name == name }) else { return nil }
       self = k
@@ -30,7 +32,7 @@ enum LocalHistoryParams {
   static let hotDays = 60
   /// Days of the compact history kept per kind (nil = all of it). All nil: measured ≈16 MB a year for all kinds together
   /// (heart rate), well inside the 200–300 MB budget, and a full recompute needs every day back to the scoring origin.
-  static let keepDays: [Kind: Int?] = [.hr: nil, .hrv: nil, .resp: nil, .spo2: nil, .temp: nil]
+  static let keepDays: [Kind: Int?] = [.hr: nil, .hrv: nil, .resp: nil, .spo2: nil, .temp: nil, .steps: nil]
   /// Sleep-stage segments of the history (`hist_segments`): all (≈30 a night, <2 KB).
   static let segmentKeepDays: Int? = nil
   /// Beat-to-beat readings with their beats (`heartbeat_series`): all. The beats (≈600 bytes a reading as JSON) let the

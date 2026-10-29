@@ -2,14 +2,15 @@
   "name": "openbodyscore-js",
   "version": "0.2.0",
   "file": "openbodyscore.js",
-  "sha256": "49aba4b840fcc55aafa9d435be3faf9f984d07317546ae7d4b4b3532ec1ef750",
-  "size": 178941,
+  "sha256": "810ed55d587a0928b37ac4df7c8d2e9ca5aa370d97478014a629ba3262cdf510",
+  "size": 209272,
   "algo_versions": {
     "scores": "v1.2-2026-10-27",
     "healthspan": "hs-v1.2-2026-10-23",
     "hrv": "rr-v1",
     "stress": "v1.0-2026-10-17",
     "trends": "trends-1",
+    "derive": "derive-1-2026-10-30",
     "series": "series-1"
   },
   "global": "OpenBodyScore"

@@ -89,7 +89,7 @@ actor ScoringSync {
       // days without their raw data here would be uploaded as the app's: wait until the history is complete
       full = nil
     }
-    let dirty = (try? await db.writer.read { db in try String.fetchAll(db, sql: "SELECT date FROM score_dirty ORDER BY date") }) ?? []
+    let dirty = (try? await db.writer.read { db in try String.fetchAll(db, sql: "SELECT date FROM score_dirty WHERE kind = 'scores' ORDER BY date") }) ?? []
     let pending = (try? await db.writer.read { db in
       try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM daily_scores WHERE origin = 'app' AND uploaded = 0)")
     }) ?? false
@@ -331,7 +331,7 @@ actor ScoringSync {
   private func clearDirty(from a: String, through b: String, before t: Double, keepFrom: String?) {
     let upto = keepFrom.map { min(b, LocalDay.add($0, -1)) } ?? b
     try? db.writer.write { db in
-      try db.execute(sql: "DELETE FROM score_dirty WHERE date <= ? AND at <= ?", arguments: [upto, t])
+      try db.execute(sql: "DELETE FROM score_dirty WHERE kind = 'scores' AND date <= ? AND at <= ?", arguments: [upto, t])
     }
   }
 

@@ -118,12 +118,14 @@
 | `algo_bundles` | `version` | 已安装的算法包（sha256、api、文件路径、来源 builtin / download、`active`） | N1 / N2b |
 | `heartbeat_series` | `uuid` | 逐拍心跳读数（RMSSD 用户算分用）：`start`（整秒）、`end`、`rmssd`、`sdnn`；手机自己的读数先存 `beats`，包算完 RMSSD 后删掉；`origin` 取 phone / server | N2b（迁移 `v2_local_scoring`） |
 | `hr_day_hist` | `date` | 每天的心率直方图 `{bpm: 次数}`（365 天最大心率窗口）：原始样本删掉以后还留着；`source` 取 phone / server | N2b |
-| `score_dirty` | `date` | 算分输入变了、还要重算的本地日期 | N2b |
-| `hist_samples` | `kind, t` | 热区之前的全部算分原始输入（服务器合并好的，或热区移出的），WITHOUT ROWID，一行约 20 字节；`kind` 是 `LocalHistoryParams.Kind` | 本机完整历史（迁移 `v3_local_history`） |
+| `score_dirty` | `date, kind` | 输入变了、还要重算的本地日期；`kind` 取 `scores`（算分，N2b）/ `derive`（2.0.0 M1 派生） | N2b；`v4_derive_tables` 加 `kind` |
+| `hist_samples` | `kind, t` | 热区之前的全部算分原始输入（服务器合并好的，或热区移出的），WITHOUT ROWID，一行约 20 字节；`kind` 是 `LocalHistoryParams.Kind`（2.0.0 M1 加了 `steps`：15 分钟步数桶，给压力 / 身体年龄用） | 本机完整历史（迁移 `v3_local_history`） |
 | `hist_segments` | `start, stage` | 历史区的睡眠阶段段，`date` = 这一晚醒来那天 | 同上 |
 | `hist_days` | `date` | 历史区有哪些天、来源（server / phone）、`complete` | 同上 |
+| `daily_metric_sources` | `date, metric, source, origin` | 每个来源当天的值（服务器 `daily_metric_sources` 的副本）：`origin` = server（拉下来的 `daily.sources`）/ phone（手机自己派生的 app 行） | 2.0.0 M1（`v4_derive_tables`，`DeriveStage`） |
+| `derived_rows` | `kind, date` | 手机算好、要上传的行（`daily` / `sleep`），带 `algo_version`、`bundle_version`、`uploaded` | 同上 |
 
-`sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。`v3_local_history` 给 `heartbeat_series` 加了 `analyzed`：逐拍数据不再在算完后删掉。
+`sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。`v3_local_history` 给 `heartbeat_series` 加了 `analyzed`：逐拍数据不再在算完后删掉。`v4_derive_tables`（2.0.0 M1）：上面两张新表；`score_dirty` 以 `(date, kind)` 重建（本机自己的队列，原有的行搬成 `kind = scores`）；`hk_samples` 按 `source_id` 加索引（手机读 HealthKit 时记下来源，和服务器一样按来源分组睡眠和累计值）。
 
 **不存在本地的**：别人的数据（只存圈子动态的缓存文档）、AI 对话全文、心电图波形、AI 设置里的 key。
 
@@ -132,7 +134,7 @@
 - 只在 `Schema.migrator` 末尾**追加** `vN_<名字>`（例如 `v2_records_training_sets`），一个 PR 一个。已经发出去的迁移不能改、不能改名、不能调顺序。`SchemaTests.testMigrationOrder` 把列表钉死，加迁移时同时改这个测试。
 - Debug 版开了 `eraseDatabaseOnSchemaChange`：开发时改了迁移，本地库直接清空重建，反正只是缓存。Release 版没有这个开关。
 - 本地库只是服务器的缓存，加上还没发出去的队列。要做破坏性改动（比如改主键），就新建表并从服务器重新拉，不在手机上搬数据。
-- 迁移列表：`v1_initial`（N0）、`v2_local_scoring`（N2b）、`v3_local_history`（本机完整历史）。
+- 迁移列表：`v1_initial`（N0）、`v2_local_scoring`（N2b）、`v3_local_history`（本机完整历史）、`v4_derive_tables`（2.0.0 M1，`Storage/Migrations/DeriveSchema.swift`）。
 
 ## 5. 同步层
 
@@ -482,6 +484,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 - **服务器给什么**：`raw` stream 只有同步引擎上传的样本。可大多数人的头几年来自 Open Wearables（在线或已归档）、快捷指令、export.zip。所以新加 `raw_history` stream：每天给的是**服务器算分时合并好的输入**（`scores/inputs.load`：所有来源，同一时刻只留一条，在线来源优先于 export.xml），加上这天醒来的那几晚的阶段段（`night_segments`，按会话归到醒来那天）和带逐拍数据的心跳读数。`complete = false` 表示有来源读不到（OW 没归档又连不上），这样的天手机不会拿来重算上传。
   - 请求：`{"cursors": {"raw_history": ""}, "history_before": "<热区第一天>"}`，按天倒序分页，每页 ≤ 14 天、≤ 60,000 行；第一页回答里带 `history: {days, oldest}`，用来算进度。
   - 下完以后游标变成增量：`history_before` 之前哪天的算分输入变了（`daily` / `sleep` / `raw` 的变更记录，例如导入了 export.zip），就再发那一天。
+  - **步数**（2.0.0 M1，`ios-native-2.0.md` 决定 3）：每天的 `inputs.steps` = 15 分钟步数桶 `[dt, 步数]`（同步引擎的统计桶；没有的天用服务器存的 Open Wearables 步数样本，按来源加到 15 分钟桶，取当天总数最大的那个来源）。手机存成 `hist_samples` 的 `steps`（6）；热区移出时，`hk_stat_buckets` 里的步数桶也搬进去。给压力（M2）和身体年龄（M4）用，不是算分输入。
   - **限速**（`nativesync/params.HISTORY_*`、`throttle.py`，每个 API 进程各自计）：同一个用户每 3 秒最多一页；整个进程同时最多算 2 页；超了马上回 429 + `Retry-After`，不做任何计算。`raw_history` 必须单独拉，普通拉取不受影响。一页（14 天）的代价约等于这个用户 14 天的 `compute-scores`；本机实测 2 年的虚构用户一页约 230 KB、0.23 秒。
 - **手机怎么下**（`HistoryDownload`）：
   - 条件：第一次恢复已完成，而且这个用户是 `app` 模式（别的用户的分数手机本来就不算）。

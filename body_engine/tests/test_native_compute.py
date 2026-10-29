@@ -151,8 +151,13 @@ def test_flags_are_registered_and_off(dsn, users):
             assert not flags.enabled(c, ids["a"], k)
 
 
+# the kinds the merged packages ship (M1: daily, sleep); each belongs to its package and none is a record kind yet
+SHIPPED = {"daily", "sleep"}
+
+
 def test_registry_ships_no_kind_and_checks_modules():
-    assert derived_kinds.kinds() == {}
+    assert set(derived_kinds.kinds()) == SHIPPED
+    assert all(k in P.COMPUTE_PACKAGES[m.PACKAGE]["kinds"] for k, m in derived_kinds.kinds().items())
     assert derived_kinds.record_kinds() == {}
     with pytest.raises(derived_kinds.BadKind):
         derived_kinds.register(types.SimpleNamespace(KIND="x", PACKAGE="derive"))
@@ -191,10 +196,12 @@ def test_compute_is_off_for_everyone_by_default(client, users, dsn):
     c = j["compute"]
     assert set(c["packages"]) == set(P.COMPUTE_PACKAGES)
     assert all(p["state"] == "off" for p in c["packages"].values())
-    assert all(k["state"] == "off" and not k["registered"] for p in c["packages"].values() for k in p["kinds"].values())
+    assert all(k["state"] == "off" and k["registered"] == (name in SHIPPED)
+               for p in c["packages"].values() for name, k in p["kinds"].items())
     assert c["server_algo_versions"]["scores"] == versions.current("scores") and c["primary_flag"] is False
     # every package flag on for everyone: a package this server does not implement stays off; a views-only package
-    # (M3 series: nothing uploaded, nothing to spot-check) is shadow, then primary once native_compute_primary is on
+    # (M3 series: nothing uploaded, nothing to spot-check) is shadow, then primary once native_compute_primary is on; one
+    # with upload kinds (M1 derive) stays shadow until its kinds pass a spot check
     for spec in P.COMPUTE_PACKAGES.values():
         set_flag(dsn, spec["flag"], "all")
     try:
@@ -208,7 +215,10 @@ def test_compute_is_off_for_everyone_by_default(client, users, dsn):
                     assert p["state"] == "off", name
                 elif not P.COMPUTE_PACKAGES[name]["kinds"]:
                     assert p["state"] == ("primary" if primary else "shadow"), name
+                else:
+                    assert p["state"] == "shadow", name
             assert j["compute"]["packages"]["series"]["implemented"]   # M3 (trends/series.SERIES_VERSION + src/33_series.js)
+            assert j["compute"]["packages"]["derive"]["implemented"]   # M1 (rawdata/derive.DERIVE_VERSION + src/30_derive.js)
         old = client.get("/v1/sync/compute", headers=H(tok["b"], **{"X-App-Version": "1.0.9"})).json()
         assert old["compute"]["packages"]["series"]["state"] == "off", "older apps never compute a package"
     finally:

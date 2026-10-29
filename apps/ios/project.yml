@@ -111,6 +111,9 @@ targets:
     platform: iOS
     sources:
       - path: Watch2WhoopTests
+      # 2.0.0 M1: the derivation's cross-language golden file (inputs + the server's expected rows), LocalDeriveTests.swift
+      - path: ../../packages/openbodyscore-js/test/golden/derive.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

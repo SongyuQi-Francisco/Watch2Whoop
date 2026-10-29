@@ -101,12 +101,14 @@ final class LocalRawStoreTests: XCTestCase {
       .init(uuid: "b", type: hr, start: t + 60, end: t + 60, value: 61),
       .init(uuid: "c", type: hr, start: t + 60, end: t + 60, value: 99),  // same instant: the first one counts
       .init(uuid: "d", type: LocalRawStore.sleepAnalysis, start: t + 14 * 3600, end: t + 15 * 3600, value: 3),   // wakes 03:00 next day → that day − 4 h
-      .init(uuid: "e", type: "HKQuantityTypeIdentifierStepCount", start: t, end: t, value: 10),                // not a scoring type
+      .init(uuid: "e", type: "HKQuantityTypeIdentifierStepCount", start: t, end: t, value: 10),                // not a scoring type: kept for the derivation (M1) only
     ])
     XCTAssertEqual(days, ["2026-01-10"])
+    XCTAssertEqual(try db.writer.read { try String.fetchAll($0, sql: "SELECT date FROM score_dirty WHERE kind = 'derive' ORDER BY date") },
+                   ["2026-01-10", "2026-01-11", "2026-01-12"], "a stage marks its start day, the next day and its wake day")
     let hist = try db.writer.read { try Data.fetchOne($0, sql: "SELECT hist FROM hr_day_hist WHERE date = '2026-01-10'") }
     XCTAssertEqual(try JSONSerialization.jsonObject(with: XCTUnwrap(hist)) as? [String: Int], ["60": 1, "61": 1])
-    XCTAssertEqual(try db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM hk_samples") }, 4)
+    XCTAssertEqual(try db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM hk_samples") }, 5)
     // a deletion changes its day too; the server's histograms never replace the phone's own
     XCTAssertEqual(try store.ingest([], deleted: ["b"]), ["2026-01-10"])
     try store.storeServerHistograms(["2026-01-10": ["70": 5], "2025-12-01": ["80": 2]])
@@ -231,7 +233,7 @@ final class DeltaRemoteTests: XCTestCase {
       XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM hk_samples"), 2)                          // not a scoring type: left out
       XCTAssertEqual(try Double.fetchOne(db, sql: "SELECT rmssd FROM heartbeat_series WHERE uuid = 'bb-1'"), 45.5)
       XCTAssertNotNil(try Data.fetchOne(db, sql: "SELECT hist FROM hr_day_hist"))
-      XCTAssertEqual(try String.fetchAll(db, sql: "SELECT date FROM score_dirty"), ["2026-01-09"])
+      XCTAssertEqual(try String.fetchAll(db, sql: "SELECT date FROM score_dirty WHERE kind = 'scores'"), ["2026-01-09"])
       XCTAssertEqual(try String.fetchAll(db, sql: "SELECT stream FROM sync_cursors ORDER BY stream"), ["daily", "scores", "sleep"])
     }
     XCTAssertEqual(try db.meta(DeltaRemote.rawRestoredKey), "1")
@@ -310,7 +312,7 @@ final class ScoringSyncTests: XCTestCase {
     XCTAssertNotNil(row?["recovery"] as? Double)
     try await db.writer.read { db in
       XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM daily_scores WHERE origin = 'app' AND uploaded = 1"), 3)
-      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM score_dirty"), 0)
+      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM score_dirty WHERE kind = 'scores'"), 0)
     }
     XCTAssertEqual(ScoringSync.lastReport(db)?.uploaded.count, 3)
   }
