@@ -7,7 +7,8 @@
 - POST /v1/web/ingest-token {"device"}: the Watch2Whoop app (in its WebView, with the page's cookie) gets an upload-only
   token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
-  feature flags on for this user and their A/B variants (rollout/); also extends the cookie's lifetime.
+  feature flags on for this user and their A/B variants (rollout/), `upgrade` (R2 forced upgrade: state none / notice / block,
+  client/policy.py); also extends the cookie's lifetime.
 - POST /v1/web/boot {"paths"}: the page's start-up GETs answered in one round trip (boot.py, flag boot_api).
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/. The page itself (/app/, /app/index.html) links
@@ -35,9 +36,10 @@ from . import activation, boot, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
+from ..client import policy as upgrade_policy
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.158-2026-10-29"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.159-2026-10-30"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -272,6 +274,7 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
             "today": views.local_today(conn, viewer["id"]),
             **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)
             **look,
+            "upgrade": upgrade_policy.for_request(conn, request, viewer),   # R2: none / notice / block (client/policy.py)
             "version": {"web": WEB_VERSION, "api": api.app.version}}
 
 

@@ -5,7 +5,7 @@ import GRDB
 /// - FIFO per `group_key`, one entry in flight per group; different groups do not block each other.
 /// - Every entry carries a `client_id` the server uses to answer a resend with the first result (idempotency).
 /// - Network error / 5xx / 429 → stays `pending`, next try after 2, 4, 8 … s (max 5 min, ±20 %), 429 after Retry-After.
-/// - 401 → stop the whole drain (signed out); nothing is dropped.
+/// - 401 → stop the whole drain (signed out); nothing is dropped. 426 (R2: this app must be upgraded) → stays `pending`, next try in 6 h.
 /// - 409 → `conflict`, other 4xx → `failed`: kept and shown to the user (「没提交」: retry or discard); the rest of that
 ///   group waits behind it so the order is kept.
 final class OfflineQueue {
@@ -167,6 +167,7 @@ final class OfflineQueue {
         case .conflict(let d): return .conflict(d)
         case .rateLimited(let after): return .retry(after: after)
         case .network: return .retry(after: nil)
+        case .http(426, _): return .retry(after: 6 * 3600)   // R2: kept until the app is upgraded (the queue carries over)
         case .http(let s, let d): return s >= 500 || s == 408 ? .retry(after: nil) : .failed(d)
         case .forbidden(let d): return .failed(d)
         case .notFound: return .failed("not_found")

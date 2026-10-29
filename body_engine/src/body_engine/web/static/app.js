@@ -320,6 +320,7 @@
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
     }
+    if (r.status === 426) window.BodyUpgrade?.block(data?.detail);   // R2: this client must be upgraded (upgrade.js)
     if (!r.ok && isRestart(r)) {   // still down after the retries (reads), or a write that was not repeated
       const e = new ApiError(r.status, tr("服务器正在更新，请过一会儿再试"), data);
       e.updating = true;

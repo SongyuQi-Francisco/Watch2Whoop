@@ -720,6 +720,28 @@ If `explain/personal.py` (~785 lines of bilingual rules) does not fit one PR, sp
 | Files | `body_engine/src/body_engine/client/` (new), `web/api.py` (`web_me`), `web/static/upgrade.js` (+ `index.html`, `sw.js` shell), `notify/`, iOS `App/UpgradeGate.swift`; migrations 1070–1079 (notice log) |
 | Acceptance | tests for every auth path (native old / new, cookie, Bearer, MCP, ingest); flag off restores today's behaviour in ≤ 30 s |
 
+#### R2 as built
+- **Policy** (`client/policy.py`, `client/params.py`): flag `force_upgrade` (off = no notice, no block; the kill switch, ≤ 30 s
+  through the flag cache) + `rollout_settings` rows `upgrade.notice_from`, `upgrade.block_from` (ISO date = midnight in each
+  user's time zone, or a date-time), `upgrade.min.ios-native` (default `2.0.0`, `2.0.0+N` for builds), `upgrade.min.web`
+  (`all` default = every Today-page session counts as old, `none`), `upgrade.url` (https; else env `BODY_UPGRADE_URL`).
+  No notice date = 7 days before the block. Every change is in `rollout_audit`. Nothing is set in code.
+- **Client**: cookie session = `web`; Bearer + `X-App-Client: ios-native` + a readable `X-App-Version` = native. Anything
+  else (API keys, the 1.0.8 app's own Bearer uploads, other `X-App-Client`, a native call without a version) is unknown and
+  never asked. Checked in `api.current_user` for every `/v1/*` path except `/v1/web/*` (me, login, boot) and `/v1/ingest/*`;
+  `/mcp` never goes through it. After the block: **426** `{"detail": {"code": "upgrade_required", "state": "block",
+  "must_upgrade": true, "min", "block_from", "url", "title", "message"}}` (texts in the request language).
+- **Clients**: `/v1/web/me` → `upgrade` (same object, `state` none / notice / block). Today page `web/static/upgrade.js`
+  (notice: a sheet once a day; block or any 426: full screen, no close). Native `App/UpgradeGate.swift` (notice: banner,
+  「稍后」 hides it for the day; block or any 426: full-screen page with 「重新检查」); the offline queue keeps writes that got 426.
+- **Send** (`client/notice.py`, migration 1070 `upgrade_notice_sends`): `body-engine upgrade send [--stage auto|notice|last-day]
+  [--dry-run] [--user-id N] [--include-upgraded]`: admin notice (button = the link) + `notify()` kind `system.upgrade` (push
+  where allowed), once per (person, stage, block date); skips people whose phone reported the target version, inactive
+  accounts, no consent, flag off for them.
+- **Commands**: `body-engine upgrade set --block-from YYYY-MM-DD [--notice-from …] [--url https://…] [--min-ios …] [--min-web all|none]`,
+  `upgrade on [--cohort inner]`, `upgrade off`, `upgrade status`, `upgrade send --dry-run` then `upgrade send`.
+- Not done here: the `whats-new` entry (with the release PR) and running `upgrade send` from the hourly job (private ops).
+
 ### S9 — server stops computing for app-mode users
 | | |
 |---|---|

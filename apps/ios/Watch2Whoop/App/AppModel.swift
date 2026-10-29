@@ -198,6 +198,12 @@ final class AppModel: ObservableObject {
     }
   }
 
+  /// 「重新检查」 on the upgrade page: asks `/v1/web/me` again (the server may have lifted the block).
+  func recheckUpgrade() async {
+    guard let cfg = store.config, let base = URL(string: cfg.server) else { return }
+    await refreshMe(session?.api ?? makeClient(base))
+  }
+
   // MARK: - private
 
   private func makeClient(_ base: URL) -> APIClient {
@@ -265,6 +271,7 @@ final class AppModel: ObservableObject {
       cfg.userId = uid
       cfg.displayName = user?["display_name"] as? String
       store.config = cfg
+      UpgradeGate.shared.apply(UpgradeInfo.parse(me["upgrade"] as? [String: Any]) ?? .none)   // R2
       let flags = (me["flags"] as? [String]) ?? []
       UserDefaults.standard.set(flags, forKey: flagsKey)
       try open(cfg, userId: uid, api: api)
