@@ -74,9 +74,9 @@ class Reader:
             "sessions": [C.sess("2026-10-10", ("pull", C.S(4, 12, 39))), C.sess("2026-10-13", ("upright", C.S(3, 10, 20))),
                          C.sess("2026-10-14", ("face", [(15, 18, None), (12, 22.5, None)]), ("hip", C.S(4, 9, 40))),
                          C.sess("2026-10-17", ("ball", [(1, None, None)]), name="篮球")],
-            "weights": C.weights("2026-09-26", 23, 91.0, -0.16, 2),
+            "weights": C.weights("2026-09-26", 23, 77.0, -0.16, 2),
             "food": [dict(f, id=i + 1) for i, f in enumerate(
-                [C.food("2026-10-11", "牛肋条", meal="dinner"), C.food("2026-10-13", "牛肉面", meal="lunch"),
+                [C.food("2026-10-11", "炸鸡", meal="dinner"), C.food("2026-10-12", "牛肋条", meal="dinner"), C.food("2026-10-13", "牛肉面", meal="lunch"),
                  C.food("2026-10-14", "培根三明治", meal="breakfast"), C.food("2026-10-15", "奶茶", carbs=55.0, sugar_g=45.0),
                  C.food("2026-10-16", "燕麦", carbs=20.0, meal="breakfast"),
                  C.food("2026-10-16", "可乐", carbs=35.0, sugar_g=35.0),
@@ -199,7 +199,7 @@ def stored(dsn, users, reader):
                              for s in C._sessions("2026-10-19", 30)])
             cur.executemany("""INSERT INTO daily_metrics (user_id, date, metric, value, unit, agg, source)
                                VALUES (%s, %s, 'body_mass', %s, 'kg', 'avg', 'app')""",
-                            [(uid, FRI - timedelta(days=k), 89.0 + k * 0.07) for k in range(0, 25, 2)])
+                            [(uid, FRI - timedelta(days=k), 75.0 + k * 0.07) for k in range(0, 25, 2)])
             cur.executemany("""INSERT INTO diet_constraints (user_id, kind, target, match, value, basis, effective_from, source)
                                VALUES (%s, %s, %s, %s, %s, %s, '2026-09-01', 'user')""",
                             [(uid, r["kind"], r["target"], r["match"] or [], r["value"], r["basis"]) for r in C.DIET])

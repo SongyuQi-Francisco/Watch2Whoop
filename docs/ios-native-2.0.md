@@ -613,6 +613,97 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
 
 If `explain/personal.py` (~785 lines of bilingual rules) does not fit one PR, split into M6a (rules) and M6b (explain).
 
+#### M6 as built (2026-10-30)
+- **Algorithms** `rules` = `rules/params.py:RULES_VERSION` (`v1.4-2026-10-22`, unchanged: the split changes no output) =
+  `OBS.ALGO_VERSIONS.rules`; `explain` = `explain/personal.py:EXPLAIN_VERSION` (`explain-1`, new) = `OBS.ALGO_VERSIONS.explain`.
+  One PR (no M6a / M6b split). **Python split** (outputs unchanged; `tests/test_native_rules.py` proves it on the database):
+  the rules were pure functions of `Ctx` already; `rules/context.py` gains the plain-data layers — `to_data` / `from_data`
+  (the Ctx as JSON), `assemble(raw)` (the pure end of `load`: goal resolution for the 7 days, `merge_weights`, the nights
+  before the day, tonight's sleep duration), `load_raw(conn, …)` (`load`'s reads, nothing assembled) and `inputs(conn, …)`
+  (the part of `raw` the phone does not hold, `INPUT_KEYS`; the phone's own part is `LOCAL_KEYS`: scores, journal, body mass,
+  sleep sessions, the newest sleep need); `rules/engine.py` `reminder_rows`, `evaluate_data` (pure: summaries + the rows
+  `store` writes), `results_from` (rows → `RuleResult`s for `store`). `goals/nutrition.py` `goal_for(day, versions, sparky,
+  en)` (pure; `_goal` takes the language) and `day_from_totals` (a `nutrition/daily.summarize_day` row from the log's day
+  sums). `explain/personal.py`: every `calc_*` = its query + a pure `*_compute` (`hrv_compute` … `lab_compute`,
+  `bedtime_items` = the pure twin of `assistant/status.calc_bedtime`, which is not edited), `metric_view` / `lab_view` (the
+  sheet from the static entry + the personal part), `metric_data` / `metric_out` (the phone's twin: plain JSON rows → the
+  personal part), `lab_out`. `records/lab_history.py` was pure already (`_history_of`, `card`, `trend`).
+- **JS** `src/36_rules.js`: `OBS.rules` (`Ctx`, every rule, `evaluate`, `assemble`, `jsonable`, `nutrition.*`, `params` for
+  rules / goals / water / constraints / nutrition / context), entry points `rulesLocal(raw)`, `rulesEvaluate(data)`,
+  `nutritionGoals(versions, from, to, sparky)`, `nutritionDays(totals, versions, from, to, sparky)`; reuses M4's
+  `OBS.coach.goals` (bedtime plan) and `fmtG`. Python's `str(float)` of the texts' numbers is reproduced (`pf`: "1.0 kg").
+  `src/37_explain.js`: `OBS.explain` (every calculator, `metric_out`, `metric_view`, `lab_view`, `bedtime_items`,
+  `lab.{history_of, card, trend, compare_to_range}`, `params` incl. the Trends metrics' series / status / digits / units),
+  entry points `explainMetric(key, entry, data, day)`, `explainLab(key, entry, data, day, profile)`, `labHistory(key, rows)`.
+- **Goldens**: `test/cases_rules.py` (synthetic, the person of `tests/test_rules.py`: a weekly plan of three templates +
+  basketball; 55 runs: every rule fires / is quiet / is short of data, `common.need` errors and missing SparkyFitness,
+  banned exercises in the plan / the log / too heavy, caution by exercise rules and by the SparkyFitness description
+  marker, unmapped exercise rules, plan day changes to another weekday and a free label, red meat by grams / meals / food
+  limit with marked grams, portions and milk excluded, added sugar with the default and an own cap, sugary drinks, the
+  bedtime goal's late nights / stage / final target / late wake-up, water before / after 15:00; 4 raw runs: goal versions,
+  SparkyFitness fallback goals, weigh-ins + body mass, sleep across the 2026-10-04 change to daylight saving time, plan day
+  changes, a weigh-in error, no SparkyFitness; nutrition goals / day rows over 31 days in both languages) →
+  `golden/rules.json`; `golden/rules_local.json` = one raw input + the Python answer (iOS fixture). `test/cases_explain.py`
+  (M3's synthetic person at five days — the last, 50 days back, early with < 14 baseline days, before any data, a day
+  without a score row — for the ten table-backed keys + 68 handmade runs for every tone / branch, the Trends metrics on
+  handmade series documents; 7 lab sheets, 5 lab histories; 236 sheets in all, each in Chinese and English, the glossary
+  entries in the golden file) → `golden/explain.json`. Every text compared verbatim. Tests `tests/test_js_golden_rules.py` ↔
+  `test/rules.test.js`, `tests/test_js_golden_explain.py` ↔ `test/explain.test.js`; `tests/test_native_rules.py` (DB:
+  `evaluate_ctx(load)` == `evaluate_data(assemble(load_raw))` == `evaluate_data(to_data(load))` on four days; the kind;
+  the records pull; the inputs endpoint; every `CALC[key]` == `metric_out(metric_data)` on M3's person; `bedtime_items` ==
+  `calc_bedtime`); `Watch2WhoopTests/LocalRulesTests.swift`.
+- **Server**: `GET /v1/users/{user}/rules/inputs?date=` (`rules/api.py`; flag `native_rules`, own data only: another user's id
+  is 403) = `context.inputs`: raw rows, nothing computed (the phone holds the rest). Kind `derived_kinds/reminders.py`:
+  rows of one day = one run row `{role: run, now, rules: [summaries]}` + one row per reminder `{role: reminder, rule_key,
+  subject, level, title, message, title_en, message_en, evidence, sticky, status}` (`status` = the phone's own change or
+  null); spot check = `evaluate_data(assemble(load_raw(day, now = the phone's now)))`, the (rule, subject) set and every
+  field exact (evidence and summaries are rounded to 3 decimals on both sides by `jsonable`), the phone's status taken over;
+  primary = `engine.store` with the phone's rows (same idempotent upsert, sticky dismissals, old rows of an errored rule
+  kept, `rule_runs` written) + origin `app` / `bundle_version`, and a phone status applied only forward (new → seen →
+  dismissed). Record kind `reminders` of the `records` stream. Migration `1050_native_rules.sql` (`origin`,
+  `bundle_version` on `reminders`; `sync_attach` by `date`).
+- **iOS**: `RulesSchema` → `v8_rules_reminders` (`reminders` keyed by (date, rule_key, subject): the row in `payload`,
+  `status`, `status_dirty`, `server_id`). `RulesStage` (implemented): after a new rules algorithm, on a new day or every 15
+  minutes, pulls `rules:inputs:<day>` for today and yesterday, the journal (M5's `ReportsLocal.pullJournal`) and the
+  server's reminders (`records` filtered to `reminders`, own cursor `rules.records_cursor.reminders`: server ids, statuses
+  changed elsewhere; a status changed here and not confirmed only moves forward), evaluates today at the run's time and
+  yesterday at 23:59 (the spot check needs a settled day), writes `reminders` (shadow and primary; sticky dismissals
+  inherited, rows of an errored rule kept), `derived_rows` kind `reminders` (unchanged rows — the run's time aside — keep
+  their upload state) and the document `reminders.local:<day>` (the server's list shape; id = server id or minus the
+  local row id), uploads with `DeriveStage.upload`; shadow comparison with the server's Today list in meta `rules.compare`.
+  Primary: `TodayStore` draws `reminders.local:<day>` (English texts with the app in English); 「已看 / 不再提醒」 updates the
+  local row (`RulesStage.setStatus`) and, with a server id, queues `PATCH /reminders/{id}` as before; without one the
+  status rides along with the next upload. `ExplainSheet.swift` `ExplainLocal`: metric sheets from the local tables
+  (`metric_data` on `daily_metrics`, `daily_scores` payload, main sleeps, weights + the profile's goal weight, M3's local
+  VO₂max and 30-day series documents) with the static texts of the cached server sheet → `explain.local:metric:<key>:<day>`;
+  shadow compares the personal part (meta `explain.compare`), primary shows the phone's. `ReportsLocal`: the nutrition block
+  is computed (`nutritionDays` on the log's day sums and the goal versions of the newest inputs document) when the versions
+  cover both periods; its added-sugar, total-sugar and sugary-drink fields stay the server's (`server_only_paths`).
+- **Deviations**: (1) the phone reads the rules' non-watch inputs (exercise rules, SparkyFitness library / templates / plan /
+  training log / food log with its extras / weigh-ins, goal versions, bedtime goal, day changes, diet constraints, water and
+  its goal) as one raw document from the new inputs endpoint instead of separate docs (`nutrition goals doc`,
+  `exercise:rules`): `ext_records` has the log's sums but not the food names, extras or templates the rules need; the
+  evaluation itself, goal resolution, weights merge and nights are the phone's; (2) only today and yesterday are evaluated
+  (the server's `evaluate-rules` also only evaluates the current day); (3) status / lab sheets stay the server's: status
+  items and profile sentences live in the AI memory (§1.3), and no app page opens a lab sheet — `explainLab`,
+  `labHistory` are ported and golden-tested for later; (4) without a cached server sheet the phone's sheet has the key as
+  title and no static texts (the glossary is not on the phone: the static bundle is not in the app yet); (5) the report's
+  added sugar / sugary drinks / total sugar stay the server's (food extras); a window that starts before the first goal
+  version keeps the whole nutrition block the server's (its goals are SparkyFitness's); (6) the training week / plan
+  suggestions of `/training/week` (Features/Record) stay the server's: no rule computes them (they are `training/` views);
+  (7) a day's inputs can change after the phone evaluated it (a meal logged later): the spot check compares the newest
+  settled day only; float-valued integers of SparkyFitness rows lose their type on the way through JSON (Python's
+  "12.0" vs JS "12" in a text) — none in the goldens; (8) `native-compare` is not part of M6.
+- **Flag**: `native_rules` (shadow; primary needs `native_compute_primary`), off by default; it also opens the inputs
+  endpoint.
+- **Device checklist entry (for S9)**: owner's internal build, `native_rules` on for the owner. (1) After a sync round the
+  compute report (`meta` `compute.last`) shows `rules` `done` with `reminders:<yesterday>` / `reminders:<today>` written and
+  uploaded; `GET /v1/sync/compute` shows kind `reminders` with a passing last check; meta `rules.compare` shows `ok` for
+  `reminders`. (2) Open 3 metric sheets (HRV, 睡眠时长, 恢复): meta `explain.compare` is `ok` for each. (3) With
+  `native_compute_primary` on (S9), airplane mode: log a workout in the app's offline queue, the next round shows today's
+  pre-workout reminder; a metric sheet shows its personal advice offline; 「不再提醒」 on a reminder offline, back online:
+  the AI's `get_reminders` lists it dismissed after the next upload, and the dismissal survives a pull.
+
 ### R1 — OW and Shortcut retirement
 | | |
 |---|---|

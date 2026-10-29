@@ -160,9 +160,9 @@ def base(day=FRI, **kw) -> dict:
 
 
 DIET = [
-    {"kind": "food_times_per_week", "target": "牛肋条", "value": 1.0, "basis": "医生建议", "match": None},
+    {"kind": "food_times_per_week", "target": "炸鸡", "value": 1.0, "basis": "示例依据", "match": ["fried chicken"]},
     {"kind": "low_purine", "target": "", "value": None, "basis": None, "match": None},
-    {"kind": "red_meat_g_per_week", "target": "", "value": 250.0, "basis": "尿酸偏高", "match": None},
+    {"kind": "red_meat_g_per_week", "target": "", "value": 300.0, "basis": "示例依据", "match": None},
     {"kind": "red_meat_meals_per_week", "target": "", "value": 2.0, "basis": None, "match": None},
 ]
 GOAL_ROW = {"status": "active", "start_date": "2026-10-05", "pace_min_per_step": 20, "step_days": 3,
@@ -193,11 +193,11 @@ def runs() -> list[dict]:
         missing={"sparky": "还没有连 SparkyFitness"})
     # ---- calories by weekly average weight
     g2 = [goal(add(FRI, k), "训练日（减脂）" if k % 2 == 0 else "休息日（减脂）", 2300 if k % 2 == 0 else 2050) for k in range(7)]
-    run("cal_fast", weights=weights(add(FRI, -20), 21, 92.0, -0.2), goals=g2)
-    run("cal_slow", weights=weights(add(FRI, -20), 21, 90.0, -0.02), goals=g2)
-    run("cal_gaining", weights=weights(add(FRI, -20), 21, 88.0, 0.03, every=2), goals=[])
-    run("cal_keep", weights=weights(add(FRI, -20), 21, 91.0, -0.1))
-    run("cal_few_weighins", weights=weights(add(FRI, -20), 21, 91.0, -0.1, every=6))
+    run("cal_fast", weights=weights(add(FRI, -20), 21, 78.0, -0.2), goals=g2)
+    run("cal_slow", weights=weights(add(FRI, -20), 21, 76.0, -0.02), goals=g2)
+    run("cal_gaining", weights=weights(add(FRI, -20), 21, 74.0, 0.03, every=2), goals=[])
+    run("cal_keep", weights=weights(add(FRI, -20), 21, 77.0, -0.1))
+    run("cal_few_weighins", weights=weights(add(FRI, -20), 21, 77.0, -0.1, every=6))
     run("cal_unreadable", weights=None, errors={"weights": "TimeoutError: timed out"})
     # ---- pre-workout eating
     run("fuel_leg_day", journal=[[add(FRI, -5), "low_blood_sugar", 1.0], [add(FRI, -1), "water_l", 2.1],
@@ -210,14 +210,16 @@ def runs() -> list[dict]:
     run("fuel_day_change", day=SUN, overrides={SUN: {"sessions": [{"dow": 5}, {"label": "游泳 30 分钟"}]}})
     run("fuel_label_only", day=SAT, overrides={SAT: {"sessions": [{"label": "休息"}]}})
     # ---- red meat / food caps
-    meat = [food(add(FRI, -6), "牛肋条", meal="dinner"), food(add(FRI, -5), "牛肋条（烤）", meal="dinner"),
+    meat = [food(add(FRI, -6), "炸鸡", meal="dinner"), food(add(FRI, -5), "Fried Chicken 桶", meal="dinner"),
+            food(add(FRI, -5), "牛肋条", meal="lunch"),
             food(add(FRI, -4), "培根三明治", meal="breakfast"), food(add(FRI, -3), "牛奶燕麦", meal="breakfast"),
             food(add(FRI, -2), "红烧排骨", meal="dinner", qty=2, unit="份"), food(add(FRI, -1), "牛肉面", meal="lunch", qty=300, unit="g"),
             food(FRI, "午餐便当（红肉 120g）", meal="lunch")]
     run("caps_none")
     run("caps_over", diet=DIET, food=meat, journal=[[add(FRI, -3), "red_meat_g", 80.0]])
     run("caps_close", diet=[dict(DIET[2], value=500.0), dict(DIET[0], value=2.0)],
-        food=[food(add(FRI, -6), "牛肋条", meal="dinner"), food(add(FRI, -1), "牛肋条", meal="dinner"),
+        food=[food(add(FRI, -6), "炸鸡", meal="dinner"), food(add(FRI, -1), "炸鸡", meal="dinner"),
+              food(add(FRI, -3), "牛肋条", meal="dinner"), food(add(FRI, -4), "羊肉串", meal="dinner"),
               food(add(FRI, -2), "steak", meal="dinner")])
     run("caps_unreadable", diet=DIET, food=None, errors={"food": "HTTPError: 500"})
     run("caps_no_log", diet=DIET, food=[food(add(FRI, -9), "牛排")])
@@ -312,8 +314,8 @@ def raw_base(day: str, **kw) -> dict:
     data = base(day)
     raw = {k: data[k] for k in ("day", "tz", "now", "sessions", "exercises", "presets", "plans", "meta", "food", "diet",
                                 "water", "water_goal", "errors", "missing")}
-    raw.update({"nutrition_versions": deepcopy(VERSIONS), "sparky_goals": {}, "sparky_weights": weights(add(day, -20), 21, 90.0, -0.12, 2),
-                "body_mass": [{"date": add(day, -k), "value": round(89.2 + 0.05 * k, 2)} for k in range(0, 21, 3)],
+    raw.update({"nutrition_versions": deepcopy(VERSIONS), "sparky_goals": {}, "sparky_weights": weights(add(day, -20), 21, 76.0, -0.12, 2),
+                "body_mass": [{"date": add(day, -k), "value": round(75.2 + 0.05 * k, 2)} for k in range(0, 21, 3)],
                 "scores": [{"date": add(day, -k), **score(recovery=40 + 7 * k)} for k in range(0, 8)],
                 "journal": [{"date": add(day, -1), "key": "water_l", "value": 2.4},
                             {"date": add(day, -3), "key": "underfed_training", "value": 1.0},

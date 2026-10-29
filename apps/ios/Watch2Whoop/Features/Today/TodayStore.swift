@@ -56,6 +56,8 @@ struct TodaySnapshot: Equatable {
     if let d = s.day {
       // the phone's coach blocks (M4) when package `coach` is primary and they have been computed
       if let l = try CoachLocal.shownCoach(db, day: d) { s.docs[l.key] = l }
+      // the phone's reminders (M6) when package `rules` is primary and the day has been evaluated
+      if RulesStage.mode(db) == .primary, let r = try DocRecord.fetchOne(db, key: RulesStage.localKey(d)) { s.docs[r.key] = r }
       s.local = try DailyScore.filter(Column("date") == d && Column("origin") == "app").fetchOne(db)
       s.localPrev = try DailyScore.filter(Column("date") == LocalDay.add(d, -1) && Column("origin") == "app").fetchOne(db)
     }
@@ -117,6 +119,12 @@ final class TodayStore: ObservableObject {
       for k in ["scores", "sleep"] { if let v = l[k] { t[k] = v } }
       today = t
     }
+    // M6 primary: the phone's reminders of the day (its own evaluation, statuses kept locally until the server has them)
+    if let d = s.day, let r = s.docs[RulesStage.localKey(d)]?.json, var t = today, t["date"] as? String == d,
+       let items = r["reminders"] as? [[String: Any]] {
+      t["reminders"] = RulesStage.localized(items)
+      today = t
+    }
     let inp = TodayInputs(
       today: today, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
       coach: (local?["strain_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json },
@@ -172,9 +180,12 @@ final class TodayStore: ObservableObject {
   }
 
   /// The reminder card's actions (已看 / 不再提醒 / 标为未读): the local copy of the today document first, then the
-  /// offline queue (PATCH /reminders/{id}).
+  /// offline queue (PATCH /reminders/{id}). The phone's own row of the reminder (M6) follows too; a reminder the server
+  /// has not stored yet (negative id, package `rules` primary) carries its status with the next `reminders` upload.
   func setReminder(_ id: Int, status: String) {
     guard let session else { return }
+    RulesStage.setStatus(session.db, id: id, status: status)
+    if id < 0 { return }
     let key = date.map(DocKey.today) ?? DocKey.todayCurrent
     for k in Set([key, DocKey.todayCurrent, userToday.map(DocKey.today) ?? key]) {
       guard let rec = try? session.db.doc(k), var json = rec.json, var list = json["reminders"] as? [[String: Any]] else { continue }

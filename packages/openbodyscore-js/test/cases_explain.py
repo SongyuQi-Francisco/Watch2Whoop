@@ -122,10 +122,10 @@ def hand_runs() -> list[dict]:
                                   missing_reason="没填性别（users.sex），没法对照常模", current=39.0)})
     add("vo2max", {"vo2max": dict(vo2, current=None)})
     w21 = _days(day, 21)
-    for goal, slope in ((None, -0.1), (80.0, -0.25), (80.0, -0.08), (80.0, -0.01), (95.0, -0.1)):
-        add("weight", {"weights": {x: round(90 + slope * k, 2) for k, x in enumerate(w21) if k % 2 == 0}, "goal": goal})
-    add("weight", {"weights": {w21[-1]: 88.4, w21[-2]: 88.6}, "goal": 85.0})
-    add("weight", {"weights": {}, "goal": 80.0})
+    for goal, slope in ((None, -0.1), (66.0, -0.25), (66.0, -0.08), (66.0, -0.01), (81.0, -0.1)):
+        add("weight", {"weights": {x: round(76 + slope * k, 2) for k, x in enumerate(w21) if k % 2 == 0}, "goal": goal})
+    add("weight", {"weights": {w21[-1]: 74.4, w21[-2]: 74.6}, "goal": 70.0})
+    add("weight", {"weights": {}, "goal": 66.0})
     series = {"resp_rate": {"n": 28, "values": [14.2, None, 14.61], "mean": 14.437, "prev_mean": 14.9},
               "steps": {"n": 30, "values": [8000.0, 9123.0], "mean": 8765.4, "prev_mean": None},
               "hr_recovery": {"n": 5, "values": [22.5], "mean": 21.04, "prev_mean": 20.0},
@@ -160,11 +160,11 @@ def runs() -> list[dict]:
 
 
 def lab_runs() -> list[dict]:
-    hist = [{"collected_on": "2026-03-02", "value": 510.0, "value_text": None, "unit": "μmol/L", "status": "high", "source": "lab"},
+    hist = [{"collected_on": "2026-03-02", "value": 452.0, "value_text": None, "unit": "μmol/L", "status": "high", "source": "lab"},
             {"collected_on": "2026-06-20", "value": None, "value_text": "阴性", "unit": None, "status": "unknown", "source": "lab"},
-            {"collected_on": "2026-07-01", "value": 528.5, "value_text": None, "unit": "μmol/L", "status": "high",
+            {"collected_on": "2026-07-01", "value": 471.5, "value_text": None, "unit": "μmol/L", "status": "high",
              "source": "home_device"}]
-    latest = {"collected_on": "2026-07-01", "value": 528.5, "value_text": None, "unit": "μmol/L", "ref_low": 208.0,
+    latest = {"collected_on": "2026-07-01", "value": 471.5, "value_text": None, "unit": "μmol/L", "ref_low": 208.0,
               "ref_high": 428.0, "flag": None, "note": None, "source": "home_device", "fasting": False}
     rep = {"test_key": "uric_acid", "test_name": "尿酸", "category": "生化", "latest": latest, "status": "high",
            "history": hist, "above_upper_pct": 23.5}
@@ -187,7 +187,7 @@ def lab_runs() -> list[dict]:
 def lab_history_runs() -> list[dict]:
     base = {"test_name": "甘油三酯", "category": "血脂", "lab": None, "note": None}
     rows = [
-        {**base, "id": 1, "collected_on": "2025-08-01", "value": 2.25, "value_text": None, "unit": "mmol/L", "ref_low": None,
+        {**base, "id": 1, "collected_on": "2025-08-01", "value": 2.05, "value_text": None, "unit": "mmol/L", "ref_low": None,
          "ref_high": 1.7, "flag": "H", "source": "lab", "fasting": True},
         {**base, "id": 2, "collected_on": "2025-12-01", "value": None, "value_text": "复查未做", "unit": None, "ref_low": None,
          "ref_high": None, "flag": None, "source": "lab", "fasting": None},
