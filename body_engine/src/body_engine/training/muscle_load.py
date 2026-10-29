@@ -297,17 +297,68 @@ def compute(conn: psycopg.Connection, owner_id: int, today: date | None = None) 
     return _build(conn, owner_id, today)[0]
 
 
-def _build(conn: psycopg.Connection, owner_id: int, today: date | None) -> tuple[dict, dict]:
-    """compute()'s result and the sports behind each muscle (only the one-muscle detail lists them)."""
+class DictIndex:
+    """loads.Index from plain data {rows: {slug: catalog row}, by_name: {normalized name: slug}, by_app: {SparkyFitness
+    exercise id: slug}} (2.0.0: what the phone builds from the static bundle's catalog; the same lookups)."""
+
+    def __init__(self, data: dict):
+        self.rows = data.get("rows") or {}
+        self.by_name = data.get("by_name") or {}
+        self.by_app = data.get("by_app") or {}
+
+    def slug_for(self, app_id: str | None, *names: str | None) -> str | None:
+        if app_id and app_id in self.by_app:
+            return self.by_app[app_id]
+        for n in names:
+            for key in (catalog.norm(n), catalog.norm(catalog.strip_paren(n))):
+                if key and key in self.by_name:
+                    return self.by_name[key]
+        return None
+
+
+def start_of(today: date) -> date:
+    """The first day the map reads (the 'last trained' look-back and the previous week)."""
+    return min(today - timedelta(days=P.MUSCLE_LOAD_BASELINE_DAYS - 1), windows(today)["prev_week"][0])
+
+
+def load(conn: psycopg.Connection, owner_id: int, today: date | None = None) -> dict:
+    """Everything compute_from needs, from the database and SparkyFitness (2.0.0: the phone builds the same from its
+    local workouts, `ext_records` strength sets and the static bundle's catalog)."""
     today = today or plans._user_today(conn, owner_id)
-    win = windows(today)
-    start = min(today - timedelta(days=P.MUSCLE_LOAD_BASELINE_DAYS - 1), win["prev_week"][0])
+    start = start_of(today)
     sessions, sparky_state = _sparky(conn, owner_id, start, today)
     imported = _imported(conn, owner_id, start, today)
-    index = loads.Index(conn, owner_id)
-    agg = aggregate([*sessions, *imported], index, today)
-    sp = aggregate_sports(_sports(conn, owner_id, start, today), today, agg["logged_days"], _plan_targets(conn, owner_id))
     sex = (conn.execute("SELECT sex FROM users WHERE id = %s", (owner_id,)).fetchone() or {}).get("sex")
+    return {"today": today, "sessions": sessions, "sparky_state": sparky_state, "imported": imported,
+            "index": loads.Index(conn, owner_id), "sports": _sports(conn, owner_id, start, today),
+            "plan_targets": _plan_targets(conn, owner_id), "sex": sex}
+
+
+def _targets_of(t):
+    """plan_targets as load gives it (a function of the date) or as data {isoweekday: [primary, secondary] | null}."""
+    if t is None or callable(t):
+        return t
+    return lambda d: (lambda v: (list(v[0]), list(v[1])) if v else None)(t.get(str(d.isoweekday())))
+
+
+def _build(conn: psycopg.Connection, owner_id: int, today: date | None) -> tuple[dict, dict]:
+    """compute()'s result and the sports behind each muscle (only the one-muscle detail lists them)."""
+    data = load(conn, owner_id, today)
+    return compute_from(data, data["today"])
+
+
+def compute_from(data: dict, today: date) -> tuple[dict, dict]:
+    """The pure part of _build (2.0.0: the twin of src/31_workouts.js `muscle_load.compute_from`): data as load gives it,
+    or JSON-like (dates as YYYY-MM-DD, index as DictIndex data). Texts follow the request language (i18n)."""
+    today = today if isinstance(today, date) else date.fromisoformat(today)
+    win = windows(today)
+    sessions, imported = data.get("sessions") or [], data.get("imported") or []
+    index = data["index"] if hasattr(data["index"], "slug_for") else DictIndex(data["index"])
+    sports = [{**x, "date": x["date"] if isinstance(x["date"], date) else date.fromisoformat(x["date"])}
+              for x in data.get("sports") or []]
+    agg = aggregate([*sessions, *imported], index, today)
+    sp = aggregate_sports(sports, today, agg["logged_days"], _targets_of(data.get("plan_targets")))
+    sex, sparky_state = data.get("sex"), data.get("sparky_state")
     muscles = []
     for key in CD.MUSCLE_ZH:
         st, lst = agg["stats"][key], agg["last"].get(key)

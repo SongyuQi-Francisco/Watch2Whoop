@@ -262,7 +262,7 @@ enum SeriesLocal {
       apple[d] = v
     }
     data["hrr_apple"] = apple
-    if let rows = try? Row.fetchAll(db, sql: """
+    if workoutsOnPhone(db), let rows = try? Row.fetchAll(db, sql: """
       SELECT local_date, max(hr_recovery_bpm) AS v FROM workouts WHERE dup_of IS NULL AND excluded IS NULL
       AND hr_recovery_bpm IS NOT NULL AND local_date BETWEEN ? AND ? GROUP BY local_date ORDER BY local_date
       """, arguments: [w.lo, end]) {
@@ -280,6 +280,12 @@ enum SeriesLocal {
     }
     data["weights"] = try weights(db, from: LocalDay.add(w.prevStart, -6), to: end)
     return (data, only)
+  }
+
+  /// M1c's `workouts` table holds the phone's workouts only while the package computes (WorkoutsStage); empty (package
+  /// off) or missing, the training days and the workouts' heart-rate recovery come from the server's documents.
+  static func workoutsOnPhone(_ db: Database) -> Bool {
+    (try? Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM workouts)")) == true
   }
 
   /// The local score rows as the server's daily_scores rows (columns + flags + details), by date.
@@ -378,7 +384,7 @@ enum SeriesLocal {
       nz(try String.fetchOne(db, sql: "SELECT min(date) FROM sleep_sessions WHERE is_main")),
       nz(try String.fetchOne(db, sql: "SELECT min(date) FROM daily_metrics")),
     ]
-    if let days = try? String.fetchAll(db, sql: """
+    if workoutsOnPhone(db), let days = try? String.fetchAll(db, sql: """
       SELECT DISTINCT local_date FROM workouts WHERE dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN ? AND ?
       """, arguments: [start, end]) {
       present["training"] = days

@@ -52,7 +52,7 @@ final class LocalComputeTests: XCTestCase {
     XCTAssertFalse(Endpoint.extRecords(from: "2026-01-01", to: "2026-01-31").query.contains { $0.name == "fingerprints" })
   }
 
-  /// Only implemented stages count (M1: derive); with the server saying off (or an older server: 404) the run is the
+  /// Only implemented stages count (M1: derive, M1c: workouts, M2: stress); with the server saying off (or an older server: 404) the run is the
   /// scoring run alone and nothing is recorded.
   func testPipelineWithoutStagesIsTheScoringRunAlone() async throws {
     let db = try AppDatabase.inMemory()
@@ -60,7 +60,8 @@ final class LocalComputeTests: XCTestCase {
     XCTAssertEqual(LocalCompute.order, ["derive", "workouts", "scores", "stress", "healthspan", "rules"])
     let lc = LocalCompute(db: db, api: api())
     XCTAssertEqual((lc.before + lc.after).map { type(of: $0).name }, ["derive", "workouts", "stress", "healthspan", "rules"])
-    XCTAssertEqual((lc.before + lc.after).filter { type(of: $0).implemented }.map { type(of: $0).name }, ["derive", "stress"])
+    XCTAssertEqual((lc.before + lc.after).filter { type(of: $0).implemented }.map { type(of: $0).name },
+                   ["derive", "workouts", "stress"])
     var ran = 0
     let want = ScoringSync.Report(at: 1, reason: "test", state: "scored")
     let got = await lc.run(reason: "test") { ran += 1; return want }
@@ -69,7 +70,7 @@ final class LocalComputeTests: XCTestCase {
     XCTAssertEqual(StubProtocol.requests.map { $0.url!.path }, ["/v1/sync/compute"])
     XCTAssertNil(try db.meta(LocalCompute.lastKey))
     XCTAssertEqual(Schema.migrator.migrations, ["v1_initial", "v2_local_scoring", "v3_local_history", "v4_derive_tables",
-                                                    "v6_stress_daily"])
+                                                 "v5_workouts_tables", "v6_stress_daily"])
   }
 
   /// A stage runs only when it is implemented and the server says its package is not off.

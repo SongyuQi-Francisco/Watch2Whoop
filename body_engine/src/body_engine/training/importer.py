@@ -12,6 +12,10 @@
 - OW incremental: import-ow re-pulls whole workouts within the days pulled each time, and anything already deleted in OW is deleted here too (only source=ow within the pulled range).
 - The app's own sync engine (source=app, docs/apple-sync-engine.md §3.2.4): parse_app turns its HKWorkouts (hk_samples) into the same
   rows (rawdata/derive.py writes them); outside the app sync mode they are stored with excluded = 'shadow'.
+- 2.0.0 (docs/ios-native-2.0.md, package M1c): the phone computes its own workouts with packages/openbodyscore-js
+  src/31_workouts.js, the twin of `workout_days` below (pure: JSON-like rows in, rows out; goldens
+  tests/test_js_golden_workouts.py). It is built from the same pure parts the server uses here: parse_app, overrides.apply,
+  `duplicates` (of refresh_duplicates), `hr_enrich` (the heart-rate part of enrich) and cardio/hrr.hrr60.
 """
 import statistics
 from collections import defaultdict
@@ -24,6 +28,11 @@ from psycopg.types.json import Jsonb
 from ..importers import ow as ow_imp
 from ..scores import strain as L
 from . import params as P
+
+# Version of the phone's workout algorithm (algo/versions.py key `workouts`, OBS.ALGO_VERSIONS.workouts): parse_app, the
+# duplicate rules, hr_enrich, cardio/hrr.hrr60, the per-workout intensity and the training views (training/history.py,
+# training/muscle_load.py compute). Bump it with any change of those, in the same PR as the JS port and the goldens.
+WORKOUTS_VERSION = "workouts-1-2026-10-30"
 
 KJ_PER_KCAL = 4.184
 APP_SOURCE = "app"     # the app's own sync engine (rawdata/derive.py)
@@ -40,14 +49,20 @@ def _local(dt: datetime, tz: ZoneInfo) -> datetime:
     return dt.astimezone(tz)
 
 
+def _span(start: datetime, end: datetime) -> timedelta:
+    """end − start as elapsed time (aware datetimes of one ZoneInfo subtract as wall clocks, wrong across a DST change)."""
+    return end.astimezone(timezone.utc) - start.astimezone(timezone.utc)
+
+
 def _base_row(tz: ZoneInfo, start: datetime, end: datetime) -> dict:
     flags = {}
     excluded = None
-    if end - start > P.MAX_DURATION:
+    span = _span(start, end)
+    if span > P.MAX_DURATION:
         excluded = "implausible_duration"
-        flags["implausible_duration"] = f"时长 {(end - start).total_seconds() / 3600:.0f} 小时，像是没结束的记录，不计入"
+        flags["implausible_duration"] = f"时长 {span.total_seconds() / 3600:.0f} 小时，像是没结束的记录，不计入"
     return {"local_date": _local(start, tz).date(), "start_at": start, "end_at": end,
-            "duration_min": round((end - start).total_seconds() / 60, 2), "excluded": excluded, "flags": flags}
+            "duration_min": round(span.total_seconds() / 60, 2), "excluded": excluded, "flags": flags}
 
 
 # ---------------------------------------------------------------- OW
@@ -104,7 +119,7 @@ def parse_app(r: dict, tz: ZoneInfo, shadow: bool) -> dict:
     except (ValueError, KeyError):
         ztz = tz
     dist = stats.get("distance_m")
-    row.update(source=APP_SOURCE, external_id=str(r["uuid"]), origin=r.get("source_name") or r.get("source") or None,
+    row.update(source=APP_SOURCE, external_id=str(r["uuid"]).lower(), origin=r.get("source_name") or r.get("source") or None,
                is_xml=False, device=r.get("device_name") or r.get("source_name") or r.get("source") or None, type=t,
                name_zh=type_name(t), total_kcal=None if total is None else round(total, 1),
                active_kcal=None if active is None else round(active, 1),
@@ -186,6 +201,31 @@ def _is_dup(a: dict, b: dict) -> bool:
     return same_type and shorter > 0 and overlap / shorter >= P.DUP_OVERLAP
 
 
+def duplicates(rows: list[dict], ranks: dict = P.SOURCE_RANK) -> dict:
+    """The pure part of refresh_duplicates: {id: id of the kept workout it duplicates, or None} for rows {id, source,
+    is_xml, device, type, start_at, end_at, dup_of, excluded, flags}. From the highest priority down, a workout that
+    duplicates an already-kept one points to it; a dup_of set by hand (flags.manual_dup) is kept; excluded workouts (except
+    user_hidden) take no part."""
+    kept: list[dict] = []
+    target: dict = {}
+    manual = {w["id"]: w["dup_of"] for w in rows if (w["flags"] or {}).get("manual_dup") and w["dup_of"]}
+    utc = timezone.utc   # compare instants, not wall clocks (rows read from the database share one ZoneInfo)
+    rows = [{**w, "start_at": w["start_at"].astimezone(utc), "end_at": w["end_at"].astimezone(utc)} for w in rows]
+    for w in sorted(rows, key=lambda w: _rank(w, ranks)):
+        if w["id"] in manual:
+            target[w["id"]] = manual[w["id"]]
+            continue
+        if w["excluded"] and w["excluded"] != "user_hidden":   # hidden by the user: still holds its copies as duplicates
+            target[w["id"]] = None
+            continue
+        hit = next((k for k in kept if k["start_at"] < w["end_at"] + P.DUP_SAME_TIME
+                    and w["start_at"] < k["end_at"] + P.DUP_SAME_TIME and _is_dup(k, w)), None)
+        target[w["id"]] = hit["id"] if hit else None
+        if hit is None:
+            kept.append(w)
+    return target
+
+
 def refresh_duplicates(conn: psycopg.Connection, user_id: int, mode: str | None = None) -> dict:
     """Recompute dup_of for all of this user's workouts: from highest priority down, one that duplicates an already-kept workout points to it. Returns {kept, duplicates, changed}.
     Runs after every import, whichever copy arrived first. A dup_of set by hand (flags.manual_dup) is never changed.
@@ -200,26 +240,13 @@ def refresh_duplicates(conn: psycopg.Connection, user_id: int, mode: str | None 
             mode = engine.mode(conn, user_id)
         if mode == "app":
             ranks = P.SOURCE_RANK_APP
-    kept: list[dict] = []
-    target: dict[int, int | None] = {}
-    manual = {w["id"]: w["dup_of"] for w in rows if (w["flags"] or {}).get("manual_dup") and w["dup_of"]}
-    for w in sorted(rows, key=lambda w: _rank(w, ranks)):
-        if w["id"] in manual:
-            target[w["id"]] = manual[w["id"]]
-            continue
-        if w["excluded"] and w["excluded"] != "user_hidden":   # hidden by the user: still holds its copies as duplicates
-            target[w["id"]] = None
-            continue
-        hit = next((k for k in kept if k["start_at"] < w["end_at"] + P.DUP_SAME_TIME
-                    and w["start_at"] < k["end_at"] + P.DUP_SAME_TIME and _is_dup(k, w)), None)
-        target[w["id"]] = hit["id"] if hit else None
-        if hit is None:
-            kept.append(w)
+    target = duplicates(rows, ranks)
     changed = [(t, w["id"]) for w in rows if (t := target[w["id"]]) != w["dup_of"]]
     if changed:
         with conn.cursor() as cur:
             cur.executemany("UPDATE workouts SET dup_of = %s, updated_at = now() WHERE id = %s", changed)
-    return {"kept": len(kept), "duplicates": sum(1 for t in target.values() if t), "changed": len(changed)}
+    kept = sum(1 for w in rows if target[w["id"]] is None and not (w["excluded"] and w["excluded"] != "user_hidden"))
+    return {"kept": kept, "duplicates": sum(1 for t in target.values() if t), "changed": len(changed)}
 
 
 # ---------------------------------------------------------------- heart rate, TRIMP, active energy
@@ -291,6 +318,29 @@ def session_hr_recovery(hr: list[tuple[datetime, float]], end: datetime) -> floa
     return round(last[-1] - min(after)[1], 1)
 
 
+def hr_enrich(hr_all: list[tuple[datetime, float]], end: datetime, start: datetime, duration_min: float,
+              hr_max: float | None) -> tuple[dict, dict]:
+    """The heart-rate part of enrich (pure): hr_all = the workout window's heart rate [(instant, bpm)] sorted by time, one
+    value per instant, from the start up to end + HRR_TAIL. Returns (columns {trimp, hr_zone_min, hr_samples,
+    hr_max_used}, flags {hr_recovery_bpm, hr_coverage_low | no_raw_hr})."""
+    flags: dict = {}
+    hr = [x for x in hr_all if x[0] <= end]
+    if (hrr := session_hr_recovery(hr_all, end)) is not None:
+        flags["hr_recovery_bpm"] = hrr
+    upd = {"trimp": None, "hr_zone_min": None, "hr_samples": len(hr) or None, "hr_max_used": hr_max}
+    if hr and hr_max:
+        res = session_trimp(hr, start, end, hr_max)
+        cover = res["covered_min"] / max(duration_min, 1e-6)
+        upd["hr_zone_min"] = [round(z, 1) for z in res["zones"]]
+        if cover >= P.MIN_HR_COVERAGE:
+            upd["trimp"] = round(res["trimp"], 1)
+        else:
+            flags["hr_coverage_low"] = f"心率只覆盖了训练的 {cover:.0%}，不出 TRIMP（强度按平均心率估）"
+    elif not hr:
+        flags["no_raw_hr"] = "训练时段没有原始心率（手表没戴 / 没同步，或 2025-08 之前没有手表）"
+    return upd, flags
+
+
 def app_window_samples(conn: psycopg.Connection, user_id: int, w: dict, tail_end: datetime) -> dict[str, list]:
     """The sync mode `app` (rawdata/samples.py): heart rate up to tail_end and active / basal energy (the app's 15-minute
     statistics buckets, prorated) within the workout, from what the app's own sync engine uploaded."""
@@ -307,6 +357,9 @@ def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str
     keeps the active energy computed before. archived = OW's history is kept locally (rawdata/ow_archive.py, step S6):
     its heart rate comes from there and OW is not asked."""
     flags = {k: v for k, v in (w["flags"] or {}).items() if k in IMPORT_FLAGS}
+    # instants in UTC: datetimes read from the database share one ZoneInfo, whose arithmetic and comparisons are wall-clock
+    # (wrong for a workout across the end of daylight saving time)
+    w = {**w, "start_at": w["start_at"].astimezone(timezone.utc), "end_at": w["end_at"].astimezone(timezone.utc)}
     tail_end = w["end_at"] + P.HRR_TAIL   # heart rate a few minutes past the end, for heart-rate recovery only
     samples = app_window_samples(conn, user_id, w, tail_end) if app else {}
     if archived:
@@ -319,28 +372,15 @@ def enrich(conn: psycopg.Connection, client, user_id: int, w: dict, ow_user: str
             samples[code] = [x for x in samples[code] if x.ts <= w["end_at"]]
     hr_by_ts: dict[datetime, float] = {}
     for s in sorted(samples.get("heart_rate", []), key=lambda s: s.priority):
-        hr_by_ts.setdefault(s.ts, s.value)
+        hr_by_ts.setdefault(s.ts.astimezone(timezone.utc), s.value)
     if not hr_by_ts:  # OW has no heart rate for this window: raw heart rate from the export.zip the user uploaded (history/, export_samples)
         for r in conn.execute("""SELECT start_at, value FROM export_samples WHERE user_id = %s AND kind = 'hr'
                                  AND start_at BETWEEN %s AND %s ORDER BY start_at""",
                               (user_id, w["start_at"], tail_end)):
-            hr_by_ts.setdefault(r["start_at"], r["value"])
-    hr_all = sorted(hr_by_ts.items())
-    hr = [x for x in hr_all if x[0] <= w["end_at"]]
-    if (hrr := session_hr_recovery(hr_all, w["end_at"])) is not None:
-        flags["hr_recovery_bpm"] = hrr
+            hr_by_ts.setdefault(r["start_at"].astimezone(timezone.utc), r["value"])
     hr_max = hr_max_for(conn, user_id, w["local_date"])
-    upd = {"trimp": None, "hr_zone_min": None, "hr_samples": len(hr) or None, "hr_max_used": hr_max}
-    if hr and hr_max:
-        res = session_trimp(hr, w["start_at"], w["end_at"], hr_max)
-        cover = res["covered_min"] / max(w["duration_min"], 1e-6)
-        upd["hr_zone_min"] = [round(z, 1) for z in res["zones"]]
-        if cover >= P.MIN_HR_COVERAGE:
-            upd["trimp"] = round(res["trimp"], 1)
-        else:
-            flags["hr_coverage_low"] = f"心率只覆盖了训练的 {cover:.0%}，不出 TRIMP（强度按平均心率估）"
-    elif not hr:
-        flags["no_raw_hr"] = "训练时段没有原始心率（手表没戴 / 没同步，或 2025-08 之前没有手表）"
+    upd, hr_flags = hr_enrich(sorted(hr_by_ts.items()), w["end_at"], w["start_at"], w["duration_min"], hr_max)
+    flags.update(hr_flags)
 
     # active energy (OW workouts have only total energy)
     if w["source"] == "ow":
@@ -383,6 +423,100 @@ def enrich_pending(conn: psycopg.Connection, client, user_id: int, force_ids: se
     for w in todo:
         enrich(conn, client, user_id, w, user["ow_user_id"], tz, app, archived)
     return len(todo)
+
+
+# ---------------------------------------------------------------- 2.0.0 M1c: the phone's workouts (src/31_workouts.js)
+def _instant(x) -> datetime:
+    return x if isinstance(x, datetime) else datetime.fromtimestamp(x, timezone.utc)
+
+
+def _pairs(x) -> list:
+    if isinstance(x, dict):   # columnar {cols, rows}
+        i, j = x["cols"].index("t"), x["cols"].index("value")
+        return [(r[i], r[j]) for r in x["rows"]]
+    return [(r[0], r[1]) for r in x or []]
+
+
+def heart_rate(samples) -> list[tuple[datetime, float]]:
+    """The phone's heart-rate samples [[t (UTC seconds), bpm]] -> sorted [(instant, bpm)], the first value of an instant
+    kept (the loader lists the higher-priority source first, as enrich's setdefault by priority)."""
+    seen: dict = {}
+    for t, v in _pairs(samples):
+        seen.setdefault(t, v)
+    return [(_instant(t), float(v)) for t, v in sorted(seen.items())]
+
+
+def workout_days(src: dict) -> dict:
+    """The phone's workouts of some days (the twin of src/31_workouts.js `workoutDays`), as the server in the sync mode
+    `app` computes them: src = {
+      tz, days: [YYYY-MM-DD] (the local start days to answer for),
+      hk_workouts: [{uuid, start, end (UTC seconds), value (minutes without pauses), value_text (activity name),
+                     meta: {activity, stats}, tz, source, source_name, device_type, device_name}]  (the phone's HKWorkouts),
+      others: [{source, external_id, type, start, end, is_xml, device, excluded, dup_of (key "source:external_id" of a
+                manual duplicate), manual_dup}]  (the server's workouts of the other sources, around those days),
+      overrides: [{source, external_id, type, name_zh, hidden}], type_rules: [{weekday, start_hour, to_type, name_zh}],
+      hr: [[t, bpm]] or {cols, rows} (heart rate over those workouts and 3 minutes after), hr_max: {date: HRmax of the
+      day's scores}, birth_date}
+    -> {algo_version, days: {date: [rows of the app's workouts that started that day]}, dups: {key: key it duplicates}}.
+    A row: parse_app's fields (start / end as UTC seconds), dup_of (a key), the heart-rate part of enrich (trimp,
+    zone1_min … zone5_min, hr_samples, hr_max_used, hr_recovery_bpm (flags.hr_recovery_bpm on the server), flags), intensity (history.workout_intensity) and
+    cardio/hrr.hrr60 (hrr60, hrr_peak, hrr_60s, hrr_valid, hrr_reason); duplicates and excluded workouts are not enriched."""
+    from bisect import bisect_left, bisect_right
+    from ..cardio import hrr as HRR
+    from . import history, overrides
+    tz = ZoneInfo(src["tz"])
+    want = set(src.get("days") or [])
+    ctx = {"overrides": {(o["source"], o["external_id"]): o for o in src.get("overrides") or []},
+           "rules": list(src.get("type_rules") or []), "tz": tz}
+    rows: list[dict] = []
+    for r in src.get("hk_workouts") or []:
+        w = parse_app({**r, "start_at": _instant(r["start"]), "end_at": _instant(r["end"])}, tz, shadow=False)
+        w = overrides.apply(w, ctx)
+        rows.append({**w, "id": f"{APP_SOURCE}:{w['external_id']}", "dup_of": None})
+    for o in src.get("others") or []:
+        rows.append({"id": f"{o['source']}:{o['external_id']}", "source": o["source"], "external_id": o["external_id"],
+                     "type": o.get("type") or "other", "is_xml": bool(o.get("is_xml")), "device": o.get("device"),
+                     "start_at": _instant(o["start"]), "end_at": _instant(o["end"]), "excluded": o.get("excluded"),
+                     "dup_of": o.get("dup_of"), "flags": {"manual_dup": True} if o.get("manual_dup") else {}})
+    target = duplicates(rows, P.SOURCE_RANK_APP)
+    hr = heart_rate(src.get("hr"))
+    times = [t for t, _ in hr]
+    hr_max_by_day = {k: float(v) for k, v in (src.get("hr_max") or {}).items() if v}
+    birth = date.fromisoformat(src["birth_date"]) if src.get("birth_date") else None
+    days: dict[str, list] = {}
+    for w in sorted((w for w in rows if w["source"] == APP_SOURCE), key=lambda w: (w["start_at"], w["external_id"])):
+        d = w["local_date"].isoformat()
+        if d not in want:
+            continue
+        dup = target.get(w["id"])
+        flags = {k: v for k, v in w["flags"].items() if k in IMPORT_FLAGS}
+        out = {"external_id": w["external_id"], "type": w["type"], "name_zh": w["name_zh"], "local_date": d,
+               "start": w["start_at"].timestamp(), "end": w["end_at"].timestamp(), "duration_min": w["duration_min"],
+               "active_kcal": w["active_kcal"], "total_kcal": w["total_kcal"], "distance_km": w["distance_km"],
+               "avg_hr": w["avg_hr"], "max_hr": w["max_hr"], "zone_offset": w["zone_offset"], "device": w["device"],
+               "origin": w["origin"], "excluded": w["excluded"], "dup_of": dup, "trimp": None, "hr_samples": None,
+               "hr_max_used": None, **{f"zone{i}_min": None for i in range(1, 6)}, "hr_recovery_bpm": None, "intensity": None,
+               "hrr60": None, "hrr_peak": None, "hrr_60s": None, "hrr_valid": None, "hrr_reason": None}
+        if dup is None and w["excluded"] is None:
+            hr_max = hr_max_by_day.get(d)
+            if hr_max is None and birth is not None:
+                hr_max = L.hrmax_formula(L.age_on(birth, w["local_date"]))
+            lo, hi = bisect_left(times, w["start_at"]), bisect_right(times, w["end_at"] + P.HRR_TAIL)
+            upd, hr_flags = hr_enrich(hr[lo:hi], w["end_at"], w["start_at"], w["duration_min"], hr_max)
+            out["hr_recovery_bpm"] = hr_flags.pop("hr_recovery_bpm", None)
+            flags.update(hr_flags)
+            out.update(trimp=upd["trimp"], hr_samples=upd["hr_samples"], hr_max_used=upd["hr_max_used"])
+            for i, z in enumerate(upd["hr_zone_min"] or [None] * 5):
+                out[f"zone{i + 1}_min"] = z
+            r60 = HRR.hrr60(hr, w["end_at"], hr_max_by_day.get(d))
+            out.update(hrr60=r60["hrr60"], hrr_peak=r60["peak_hr"], hrr_60s=r60["hr_60s"], hrr_valid=r60["valid"],
+                       hrr_reason=r60["reason"])
+            out["intensity"] = history.workout_intensity(out)
+            flags["computed"] = P.TRAINING_VERSION   # as enrich (duplicates and excluded ones keep their import flags)
+        out["flags"] = flags
+        days.setdefault(d, []).append(out)
+    return {"algo_version": WORKOUTS_VERSION, "days": {d: days.get(d, []) for d in sorted(want)},
+            "dups": {k: v for k, v in sorted(target.items()) if v}}
 
 
 # ---------------------------------------------------------------- entry point

@@ -189,11 +189,17 @@ struct DeriveStage: ComputeStage {
       """, arguments: [histLo, a])
     var seen = Set<String>(), history: [[String: Any]] = []
     for r in mine where seen.insert("\(r["date"] as String)|\(r["metric"] as String)").inserted { history.append(row(r)) }
-    var kcal: [String: Double] = [:]
-    for r in try Row.fetchAll(db, sql: "SELECT start, stats FROM hk_workouts WHERE start >= ? AND start < ?", arguments: [lo, hi]) {
+    // the day's workout energy as the server's daily.day_src: Σ active energy of the kept workouts (M1c's `workouts`:
+    // the server's rows of every source + the phone's own, duplicates and excluded ones left out); an HKWorkout the
+    // workouts stage has not computed yet counts with its own statistics
+    var kcal: [String: Double] = WorkoutsStage.keptKcalRows(db, from: LocalDay.add(a, -1), to: LocalDay.add(b, 4))
+    for r in try Row.fetchAll(db, sql: """
+      SELECT start, stats FROM hk_workouts WHERE start >= ? AND start < ? AND NOT EXISTS (
+        SELECT 1 FROM workouts w WHERE w.key = 'app:' || hk_workouts.uuid)
+      """, arguments: [lo, hi]) {
       guard let data = r["stats"] as Data?, let st = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
             let k = LocalRawStore.num(st["active_kcal"]) else { continue }
-      kcal[store.day(r["start"] as Double), default: 0] += k
+      kcal[store.day(r["start"] as Double), default: 0] += (k * 10).rounded() / 10
     }
     return ["tz": store.zone.identifier, "today": today, "days": days, "wake_dates": days,
             "samples": ["cols": ["uuid", "type", "start", "end", "value", "source", "source_id", "device_type", "device_name"],

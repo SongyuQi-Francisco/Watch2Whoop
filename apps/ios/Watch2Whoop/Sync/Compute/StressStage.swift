@@ -17,7 +17,7 @@ import GRDB
 /// 3. the rows go to `stress_daily` (shadow and primary: the phone's own table; pages read it only in primary) and to
 ///    `derived_rows` (kind `stress`), uploaded like DeriveStage's once everything read from HealthKit is on the server;
 /// 4. the cardio view (`cardio.local:<today>`, the server's /cardio for the last 90 days) from the local score rows and,
-///    once M1c has them on the phone, its `workout_hrr` rows.
+///    once M1c has them on the phone, its `workout_hrr` rows (keyed by workout key, joined to the kept `workouts`).
 struct StressStage: ComputeStage {
   static let name = "stress"
   static let package = "stress"
@@ -291,13 +291,15 @@ struct StressStage: ComputeStage {
         return ["date": r["date"] as String, "details": p["details"] ?? NSNull()]
       }
       let hrr: [[String: Any]] = (try? Row.fetchAll(db, sql: """
-        SELECT h.workout_uuid, h.local_date, h.end_at, h.peak_hr, h.hr_60s, h.hrr60, h.apple_hrr60, h.valid, h.reason,
-               w.type, w.name_zh, w.duration_min
-        FROM workout_hrr h JOIN workouts w ON w.uuid = h.workout_uuid
-        WHERE h.local_date BETWEEN ? AND ? ORDER BY h.end_at
+        SELECT h.key, h.local_date, h."end", h.peak_hr, h.hr_60s, h.hrr60, NULL, h.valid, h.reason,
+               w.type, json_extract(w.row, '$.name_zh'), w.duration_min, w.server_id
+        FROM workout_hrr h JOIN workouts w ON w.key = h.key
+        WHERE h.local_date BETWEEN ? AND ? AND w.dup_of IS NULL AND w.excluded IS NULL ORDER BY h."end"
         """, arguments: [Swift.min(start, lo), today]).map { r -> [String: Any] in
         let nz = SeriesLocal.nz
-        return ["workout_id": nz(r[0] as String?), "local_date": r[1] as String, "end_at": (r[2] as Double) * 1000,
+        // M1c's tables (WorkoutsSchema): by workout key; the server's id when the server has the workout
+        let id: Any = (r[12] as Int64?).map { NSNumber(value: $0) as Any } ?? nz(r[0] as String?)
+        return ["workout_id": id, "local_date": r[1] as String, "end_at": (r[2] as Double) * 1000,
                 "peak_hr": nz(r[3] as Double?), "hr_60s": nz(r[4] as Double?), "hrr60": nz(r[5] as Double?),
                 "apple_hrr60": nz(r[6] as Double?), "valid": (r[7] as Bool?) ?? false, "reason": nz(r[8] as String?),
                 "type": nz(r[9] as String?), "name_zh": nz(r[10] as String?), "duration_min": nz(r[11] as Double?)]
