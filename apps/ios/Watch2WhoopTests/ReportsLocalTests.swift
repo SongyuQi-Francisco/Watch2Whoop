@@ -67,9 +67,9 @@ final class ReportsLocalTests: XCTestCase {
     for r in rows("ext_records") {
       try db.saveDoc(DocPuller.extRecordsKey(r["date"] as? String ?? ""), json: try data(r))
     }
-    try db.saveDoc(LocalCompute.stateDoc, json: try data(["compute": ["packages": [
-      "stress": ["state": "primary", "flag": true, "implemented": true],
-      "reports": ["state": "shadow", "flag": true, "implemented": true]]]]))
+    let packages: [String: Any] = ["stress": ["state": "primary", "flag": true, "implemented": true] as [String: Any],
+                                   "reports": ["state": "shadow", "flag": true, "implemented": true] as [String: Any]]
+    try db.saveDoc(LocalCompute.stateDoc, json: try data(["compute": ["packages": packages] as [String: Any]] as [String: Any]))
     try db.setMeta(ReportsLocal.cursorKey, "test")
     try db.setMeta(ReportsLocal.extOkMeta, "1")
     return db
@@ -112,9 +112,9 @@ final class ReportsLocalTests: XCTestCase {
     try db.writer.write { db in try db.execute(sql: "DELETE FROM meta WHERE key = ?", arguments: [ReportsLocal.cursorKey]) }
     let rt = try OpenBodyScoreRuntime.builtin()
     let ctx = ReportsLocal.Context(tz: f["tz"] as? String ?? "UTC", today: f["today"] as? String ?? "")
-    let server: [String: Any] = ["current": ["training": ["sessions": 3], "weight": ["last_kg": 80.0], "nutrition": ["days_logged": 2]],
-                                 "previous_values": ["training": ["sessions": 1]], "change": ["training": ["sessions": 2]],
-                                 "journal_findings": [["key": "sauna"]]]
+    let current: [String: Any] = ["training": ["sessions": 3], "weight": ["last_kg": 80.0], "nutrition": ["days_logged": 2]]
+    let server: [String: Any] = ["current": current, "previous_values": ["training": ["sessions": 1]],
+                                 "change": ["training": ["sessions": 2]], "journal_findings": [["key": "sauna"]]]
     let out = try XCTUnwrap(try ReportsLocal.compute(.report(period: "week", end: nil), db: db, runtime: rt, ctx: ctx, server: server))
     XCTAssertEqual(Set(out["server_only"] as? [String] ?? []), ["nutrition", "training", "weight", "journal_findings"])
     let cur = try XCTUnwrap(out["current"] as? [String: Any])
