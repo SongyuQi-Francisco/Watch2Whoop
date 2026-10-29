@@ -681,7 +681,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 - 本地历史不够某张卡的窗口时不算，这张卡用服务器的。窗口和服务器 `trends/calc.py` 一样，所以同样的输入两边结果相同：`TrendsTests.testLocalStatusMatchesTheServer` 用 80 天虚构数据和 Python 算出的值逐项对比。
 - 算法包在后台建（约 140 kB JS），只有本地有 `daily_scores` 或 HRV 日值时才建。本地这些表由 N2b 的全量恢复填；在那之前全部状态卡都是服务器的，页面看起来和以前一样。
-- 序列（`values`、`avg7`、`prev_mean`、基线带）仍然用 `/trends` 的结果存进本地缓存：算法包里只有序列用到的单个函数（`baseline_band`、`rolling`），整套序列（37 个指标、睡眠表、体重和 SparkyFitness）只有服务器有。N2b 之后可以把以 `daily_scores` / `daily_metrics` 为输入的那部分序列也搬到本机。
+- 序列（`values`、`avg7`、`prev_mean`、基线带）：2.0.0 M3 起本机也能算（`Features/Trends/TrendsSeriesLocal.swift`，算法包 `trendsSeries` 等，见 [ios-native-2.0.md](ios-native-2.0.md) 第 4 节 M3）。开关 `native_series` 关着时和以前一样只用 `/trends`；shadow 时本机算出来存成 `trends.local.series:<天数>[:<结束日>]`、`days.local:<月>`、`sleep.local:nights:<结束日>`、`sleep.local:details:<结束日>`、`trends.local.vo2max:<结束日>`，和服务器的同一页对比（只记字段名，meta `series.compare`），页面仍画服务器的；primary 时页面画本机的（还没算出来时画服务器的）。压力、韧性、身体电量、身体年龄、运动后心率恢复、月历的训练日在本地还没有对应表时继续用服务器文档里的。界面不变。
 
 **图表**（`Features/Trends/TrendChart.swift`，Swift Charts）
 

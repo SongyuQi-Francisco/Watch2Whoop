@@ -193,13 +193,24 @@ def test_compute_is_off_for_everyone_by_default(client, users, dsn):
     assert all(p["state"] == "off" for p in c["packages"].values())
     assert all(k["state"] == "off" and not k["registered"] for p in c["packages"].values() for k in p["kinds"].values())
     assert c["server_algo_versions"]["scores"] == versions.current("scores") and c["primary_flag"] is False
-    # every package flag and primary on for everyone: still off, nothing is implemented in P0
+    # every package flag on for everyone: a package this server does not implement stays off; a views-only package
+    # (M3 series: nothing uploaded, nothing to spot-check) is shadow, then primary once native_compute_primary is on
     for spec in P.COMPUTE_PACKAGES.values():
         set_flag(dsn, spec["flag"], "all")
-    set_flag(dsn, P.COMPUTE_PRIMARY_FLAG, "all")
     try:
-        j = client.get("/v1/sync/compute", headers=H(tok["b"])).json()
-        assert all(p["state"] == "off" and p["flag"] and not p["implemented"] for p in j["compute"]["packages"].values())
+        for primary in (False, True):
+            if primary:
+                set_flag(dsn, P.COMPUTE_PRIMARY_FLAG, "all")
+            j = client.get("/v1/sync/compute", headers=H(tok["b"])).json()
+            for name, p in j["compute"]["packages"].items():
+                assert p["flag"] and p["implemented"] == compute.package_implemented(name), name
+                if not p["implemented"]:
+                    assert p["state"] == "off", name
+                elif not P.COMPUTE_PACKAGES[name]["kinds"]:
+                    assert p["state"] == ("primary" if primary else "shadow"), name
+            assert j["compute"]["packages"]["series"]["implemented"]   # M3 (trends/series.SERIES_VERSION + src/33_series.js)
+        old = client.get("/v1/sync/compute", headers=H(tok["b"], **{"X-App-Version": "1.0.9"})).json()
+        assert old["compute"]["packages"]["series"]["state"] == "off", "older apps never compute a package"
     finally:
         for spec in P.COMPUTE_PACKAGES.values():
             set_flag(dsn, spec["flag"], "off")

@@ -95,8 +95,8 @@ struct TrendsSleepView: View {
   }
 
   private func observe(_ e: String?) {
-    let key = TrendsDocs.sleepNights(e)
-    cancellable = ValueObservation.tracking { db in try DocRecord.fetchOne(db, key: key) }
+    let key = TrendsDocs.sleepNights(e), local = SeriesLocal.nightsKey(e)
+    cancellable = ValueObservation.tracking { db in try SeriesLocal.shown(db, server: key, local: local) }
       .removeDuplicates()
       .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { rec in
         let n = rec?.json.map(SleepNights.init(json:))
@@ -104,8 +104,10 @@ struct TrendsSleepView: View {
       })
   }
 
+  /// The server's nights, then (package `series` on) the phone's own (M3 `SeriesLocal`).
   private func pull(_ e: String?) async {
     _ = await DocPuller(api: session.api, db: session.db).pull([DocFetch(TrendsDocs.sleepNights(e), Endpoint.sleepNights(end: e))])
+    await SeriesLocal.refresh(session: session, [.nights(end: e)], userToday: nil)
   }
 
   @ViewBuilder private func content(_ s: SleepNights) -> some View {

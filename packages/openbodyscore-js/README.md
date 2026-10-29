@@ -32,6 +32,7 @@ local dates are `"YYYY-MM-DD"`; a time zone is an IANA name (`"Australia/Sydney"
 | `sleepDays(intervals, wakeDates, tz)` | the minute states for sleep regularity (`data.sleep_days`) |
 | `analyzeHrv(beats, gaps)` | RMSSD / SDNN of one beat-to-beat reading |
 | `trend(name, ...args)` | one Trends analysis (`hrv_status`, `training_status`, `load_focus`, `resilience`, `illness_risk`, `chronotype`, `body_battery`, `recovery_time`, `recovery_index`, `baseline_band`, `rolling`, …) as `{value, algo_version, bundle_version}` |
+| `trendsSeries(data, {end, days, today, tz, now_hour})`, `monthDays(…)`, `sleepNights(…)`, `sleepDetails(…)`, `vo2max(…)`, `hrZones(…)` | 2.0.0 M3 (`src/33_series.js`, `ALGO_VERSIONS.series`): the JSON of `/trends`, `/days?month=`, `/sleep/nights`, `/sleep/details`, `/vo2max`, `/hr-zones` from what the server's `load` side reads (docs/ios-native-2.0.md section 4 M3) |
 | `setLanguage("en")` | English labels for the Trends texts (default Chinese, the stored / AI-facing text) |
 
 The ported modules are also reachable one by one with the Python names (`OpenBodyScore.sleep.sleep_score`,

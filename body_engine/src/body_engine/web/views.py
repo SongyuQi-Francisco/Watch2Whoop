@@ -558,10 +558,16 @@ def frequent_journal(conn, owner_id: int, end: date | None = None, days: int = 3
 def sleep_nights(conn, viewer: dict, owner_id: int, end: date | None = None, days: int = 14) -> dict:
     end = end or local_today(conn, owner_id)
     start = end - timedelta(days=days - 1)
-    tz = user_tz(conn, owner_id)
-    sessions = queries.sleep_sessions(conn, owner_id, start, end)
     can_scores = auth.can_view(conn, viewer["id"], owner_id, "scores")
     scores = {r["date"]: r for r in scores_store.scores(conn, owner_id, start, end)} if can_scores else {}
+    return sleep_nights_compute(queries.sleep_sessions(conn, owner_id, start, end), scores, can_scores, end, days,
+                                user_tz(conn, owner_id))
+
+
+def sleep_nights_compute(sessions: list[dict], scores: dict, can_scores: bool, end: date, days: int, tz: ZoneInfo) -> dict:
+    """The pure part of sleep_nights (no database): the phone runs it as JS `OBS.series.sleep_nights` (M3).
+    sessions: the sleep_sessions rows of [end − days + 1, end] by start; scores: {date: daily_scores row}."""
+    start = end - timedelta(days=days - 1)
     hm = lambda t: t.astimezone(tz).strftime("%H:%M")
     nights = []
     for k in range(days):
@@ -618,9 +624,7 @@ def month_days(conn, viewer: dict, owner_id: int, month: str) -> dict:
     """Month calendar for the Today page date picker: for each day in `month` (YYYY-MM) whether scores / sleep / training / daily metrics exist, plus the recovery score and colour.
     Each category is authorised by its own shares scope (unauthorised fields are null and listed in `hidden`); `first` is the earliest day among the data you may see
     (Apple Health history imports can reach back several years), and the frontend uses it to limit paging backwards. Reads only this database, not SparkyFitness."""
-    y, m = (int(x) for x in month.split("-"))
-    start = date(y, m, 1)
-    end = (date(y + (m == 12), m % 12 + 1, 1)) - timedelta(days=1)
+    start, end = month_range(month)
     vid, today = viewer["id"], local_today(conn, owner_id)
     hidden, firsts = [], []
     scores = {}
@@ -638,6 +642,19 @@ def month_days(conn, viewer: dict, owner_id: int, month: str) -> dict:
             continue
         present[field] = {r["d"] for r in conn.execute(month_sql, (owner_id, start, end))}
         firsts.append(conn.execute(first_sql, (owner_id,)).fetchone()["d"])
+    return month_days_compute(month, today, scores, present, firsts, hidden)
+
+
+def month_range(month: str) -> tuple[date, date]:
+    y, m = (int(x) for x in month.split("-"))
+    return date(y, m, 1), date(y + (m == 12), m % 12 + 1, 1) - timedelta(days=1)
+
+
+def month_days_compute(month: str, today: date, scores: dict, present: dict, firsts: list, hidden: list) -> dict:
+    """The pure part of month_days (no database): the phone runs it as JS `OBS.series.month_days` (M3).
+    scores: {date: {recovery, sleep_score, strain}}; present: {field: set of dates} for each visible DAYS_SOURCES field;
+    firsts: the earliest date of each visible source (None when it has none); hidden: the scopes the viewer may not see."""
+    start, end = month_range(month)
     out = []
     for k in range((end - start).days + 1):
         d = start + timedelta(days=k)

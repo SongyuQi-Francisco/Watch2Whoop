@@ -61,6 +61,12 @@ SUM_KEYS = {"aerobic_min", "steps", "active_kcal", "total_kcal", "muscle_load", 
 BASELINE_DAYS = 60
 BASELINE_MIN_N = 14
 LOOKBACK = 90   # extra days before the previous period, for baselines (60), ACWR (28), muscle median (90)
+METRICS = ["resting_heart_rate", "heart_rate_variability_sdnn", "vo2_max", "step_count", "active_energy_burned",
+           "basal_energy_burned", "time_in_daylight", "oxygen_saturation", "respiratory_rate", "apple_sleeping_wrist_temperature"]
+# The pure part of this module (compute, baseline_band, rolling, hr_zone_summary) and web/views month_days / sleep_nights,
+# insights/sleep_detail, insights/fitness run on the phone as packages/openbodyscore-js/src/33_series.js (M3). Bump with
+# any change of their output; the JS bundle carries the same string (algo/versions.py, tests/test_js_golden_series.py).
+SERIES_VERSION = "series-1"
 
 
 def baseline_band(by_date: dict[date, float], dates: list[date]) -> dict:
@@ -135,13 +141,65 @@ def _metric_map(rows, metric: str, scale: float = 1.0) -> dict[date, float]:
     return {r["date"]: r["value"] * scale for r in rows if r["metric"] == metric and r["value"] is not None}
 
 
-def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days: int, today: date, tz: ZoneInfo) -> dict:
+def window(end: date, days: int) -> tuple[date, date, date]:
+    """(start, prev_start, lo): the range, the previous period of the same length, and the first day read (baselines)."""
     start = end - timedelta(days=days - 1)
     prev_start = start - timedelta(days=days)
-    lo = prev_start - timedelta(days=LOOKBACK)
+    return start, prev_start, prev_start - timedelta(days=LOOKBACK)
+
+
+def load(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days: int) -> dict:
+    """Everything `compute` reads, from the database (each block only with its scope). The phone builds the same dict from
+    its local tables (docs/ios-native-2.0.md M3; JS `OBS.series.compute`)."""
+    start, prev_start, lo = window(end, days)
+    can = {s: auth.can_view(conn, viewer["id"], owner_id, s) for s in ("scores", "metrics", "sleep", "weight", "training")}
+    data: dict = {"can": can}
+    if can["scores"]:
+        data["scores"] = [dict(r) for r in conn.execute(
+            """SELECT date, recovery, sleep_score, sleep_actual_min, sleep_need_min, sleep_debt_min, sleep_performance,
+                      resp_rate_night, trimp, strain, muscle_load, ctl, atl, tsb, flags, details
+               FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""", (owner_id, lo, end))]
+        data["stress"] = [dict(r) for r in conn.execute(
+            "SELECT date, score, level, hours FROM stress_daily WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date",
+            (owner_id, lo, end))]
+        data["body_age"] = [dict(r) for r in conn.execute(
+            """SELECT as_of, body_age FROM healthspan_weekly WHERE user_id = %s AND as_of BETWEEN %s AND %s
+               AND body_age IS NOT NULL ORDER BY as_of""", (owner_id, prev_start, end))]
+    if can["metrics"]:
+        data["metrics"] = [{"date": r["date"], "metric": r["metric"], "value": r["value"]}
+                           for r in queries.daily_metrics(conn, owner_id, lo, end, METRICS)]
+    if can["sleep"]:
+        data["sleep"] = [dict(r) for r in conn.execute(
+            """SELECT DISTINCT ON (wake_date) wake_date, start_at, end_at, asleep_min,
+                      extract(epoch FROM end_at - start_at) / 60 AS in_bed
+               FROM sleep_sessions WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
+               ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner_id, lo, end))]
+    if can["training"]:   # heart-rate recovery: Apple's one-minute value, else our own from the workout's raw heart rate
+        data["hrr_apple"] = {r["date"]: r["value"] for r in conn.execute(
+            """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'heart_rate_recovery_one_minute'
+               AND date BETWEEN %s AND %s ORDER BY date""", (owner_id, lo, end))}
+        data["hrr_workouts"] = {r["local_date"]: r["v"] for r in conn.execute(
+            """SELECT local_date, max((flags->>'hr_recovery_bpm')::float) AS v FROM workouts
+               WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND flags ? 'hr_recovery_bpm'
+               AND local_date BETWEEN %s AND %s GROUP BY local_date ORDER BY local_date""", (owner_id, lo, end))}
+    if can["weight"]:
+        try:  # 6 extra days back so the 7-day mean of the first week is complete
+            data["weights"] = weights(conn, owner_id, prev_start - timedelta(days=6), end)
+        except sparky_client.SparkyError as e:
+            data["weights_error"] = str(e)
+    return data
+
+
+def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days: int, today: date, tz: ZoneInfo) -> dict:
+    return compute(load(conn, viewer, owner_id, end, days), end, days, today, tz)
+
+
+def compute(data: dict, end: date, days: int, today: date, tz: ZoneInfo, now_hour: int | None = None) -> dict:
+    """The Trends document from `load`'s data, no database. `now_hour`: the local hour for today's body battery (None = now).
+    Missing blocks (`stress`, `body_age`, `hrr_*`, `weights`) are treated as having no rows."""
+    start, prev_start, lo = window(end, days)
     dates = [start + timedelta(days=k) for k in range(days)]
-    vid = viewer["id"]
-    can = {s: auth.can_view(conn, vid, owner_id, s) for s in {"scores", "metrics", "sleep", "weight", "training"}}
+    can = data["can"]
     raw: dict[str, dict[date, float]] = {}
     unavailable: dict[str, str] = {}
     extra: dict = {}
@@ -151,10 +209,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
     rows: dict[date, dict] = {}
 
     if can["scores"]:
-        rows = {r["date"]: r for r in conn.execute(
-            """SELECT date, recovery, sleep_score, sleep_actual_min, sleep_need_min, sleep_debt_min, sleep_performance,
-                      resp_rate_night, trimp, strain, muscle_load, ctl, atl, tsb, flags, details
-               FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""", (owner_id, lo, end))}
+        rows = {r["date"]: r for r in data.get("scores") or []}
         det = {d: r["details"] or {} for d, r in rows.items()}
         sl = {d: x.get("sleep") or {} for d, x in det.items()}
         rc = {d: x.get("recovery") or {} for d, x in det.items()}
@@ -200,9 +255,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         span = [lo + timedelta(days=k) for k in range((end - lo).days + 1)]
         raw["acwr"] = {d: v for d in span if trimp.get(d) is not None and (v := calc.acwr(trimp, d)) is not None
                        and sum(1 for k in range(P.CHRONIC_DAYS) if trimp.get(d - timedelta(days=k)) is not None) >= P.MIN_TRIMP_DAYS}
-        stress = {r["date"]: r for r in conn.execute(
-            "SELECT date, score, level, hours FROM stress_daily WHERE user_id = %s AND date BETWEEN %s AND %s",
-            (owner_id, lo, end))}
+        stress = {r["date"]: r for r in data.get("stress") or []}
         raw["stress"] = {d: round(r["score"], 2) for d, r in stress.items() if r["score"] is not None}
         perf_raw = {d: r["sleep_performance"] for d, r in rows.items() if r["sleep_performance"] is not None}
         raw["resilience"] = {}
@@ -210,9 +263,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
             res = calc.resilience(raw["recovery"], perf_raw, raw["stress"], d)
             if res:
                 raw["resilience"][d] = round(100 * res["balance"])
-        raw["body_age"] = {r["as_of"]: round(r["body_age"], 1) for r in conn.execute(
-            """SELECT as_of, body_age FROM healthspan_weekly WHERE user_id = %s AND as_of BETWEEN %s AND %s
-               AND body_age IS NOT NULL""", (owner_id, prev_start, end))}
+        raw["body_age"] = {r["as_of"]: round(r["body_age"], 1) for r in data.get("body_age") or []}
 
         # recovery colours, contributors, and the Strain Coach target band of each day
         zone_of = {d: coach.recovery_zone(v) for d, v in raw["recovery"].items()}
@@ -247,7 +298,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         status["body_battery"] = calc.body_battery(
             er["recovery"] if er else None, er["sleep_performance"] if er else None, wake.hour if wake else None,
             (es or {}).get("hours") or [], er["strain"] if er else None,
-            until_hour=datetime.now(tz).hour if end == today else 23) if er else None
+            until_hour=(datetime.now(tz).hour if now_hour is None else now_hour) if end == today else 23) if er else None
         status["strain_combined"] = None if end not in raw["strain_combined"] else {
             "value": raw["strain_combined"][end], "strain": raw["strain"].get(end), "muscle_median_kg": med}
         status["sleep_perf_whoop"] = None if end not in raw["sleep_perf_whoop"] else {
@@ -257,9 +308,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         trimp = {}
 
     if can["metrics"]:
-        m = queries.daily_metrics(conn, owner_id, lo, end, [
-            "resting_heart_rate", "heart_rate_variability_sdnn", "vo2_max", "step_count", "active_energy_burned",
-            "basal_energy_burned", "time_in_daylight", "oxygen_saturation", "respiratory_rate", "apple_sleeping_wrist_temperature"])
+        m = data.get("metrics") or []
         raw["hrv"] = _metric_map(m, "heart_rate_variability_sdnn")
         raw["resting_hr"] = _metric_map(m, "resting_heart_rate")
         raw["vo2max"] = _metric_map(m, "vo2_max")
@@ -279,39 +328,30 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
             status["training_status"] = calc.training_status(trimp, raw["ctl"], raw["vo2max"], hs, end)
 
     if can["sleep"]:   # sleep efficiency = asleep / in bed (main sleep); chronotype from the last 60 nights
-        sess = conn.execute(
-            """SELECT DISTINCT ON (wake_date) wake_date, start_at, end_at, asleep_min,
-                      extract(epoch FROM end_at - start_at) / 60 AS in_bed
-               FROM sleep_sessions WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
-               ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner_id, lo, end)).fetchall()
+        sess = data.get("sleep") or []
         raw["sleep_efficiency"] = {r["wake_date"]: min(100.0, round(100 * r["asleep_min"] / float(r["in_bed"]), 1))
                                    for r in sess if r["in_bed"] and r["asleep_min"]}
-        status["chronotype"] = calc.chronotype([(r["start_at"].astimezone(tz), r["end_at"].astimezone(tz)) for r in sess
+        status["chronotype"] = calc.chronotype([(_local(r["start_at"], tz), _local(r["end_at"], tz)) for r in sess
                                                 if r["wake_date"] > end - timedelta(days=P.CHRONO_DAYS)])
 
     if can["training"]:   # heart-rate recovery: Apple's one-minute value when synced, else our own from the workout's raw heart rate
-        hrr = {r["date"]: r["value"] for r in conn.execute(
-            """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'heart_rate_recovery_one_minute'
-               AND date BETWEEN %s AND %s""", (owner_id, lo, end))}
-        for r in conn.execute(
-                """SELECT local_date, max((flags->>'hr_recovery_bpm')::float) AS v FROM workouts
-                   WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND flags ? 'hr_recovery_bpm'
-                   AND local_date BETWEEN %s AND %s GROUP BY local_date""", (owner_id, lo, end)):
-            hrr.setdefault(r["local_date"], r["v"])
+        hrr = dict(data.get("hrr_apple") or {})
+        for d, v in (data.get("hrr_workouts") or {}).items():
+            hrr.setdefault(d, v)
         raw["hr_recovery"] = hrr
         last = max((d for d in hrr if d <= end), default=None)
         status["hr_recovery"] = None if last is None else {
             "bpm": round(hrr[last], 1), "date": last, "level": calc.hr_recovery_level(hrr[last])}
 
     if can["weight"]:
-        try:  # 6 extra days back so the 7-day mean of the first week is complete
-            w = weights(conn, owner_id, prev_start - timedelta(days=6), end)
+        if data.get("weights_error") is not None:
+            unavailable["weight"] = data["weights_error"]
+        else:
+            w = data.get("weights") or {}
             ext = [start - timedelta(days=k) for k in range(6, 0, -1)] + dates
             avg = rolling([w.get(d) for d in ext], min_n=1)[6:]
             raw["weight"] = w
             extra["weight_avg7"] = dict(zip(dates, avg))
-        except sparky_client.SparkyError as e:
-            unavailable["weight"] = str(e)
 
     for key in [k for k in raw if not can.get(SCOPE.get(k), True)]:
         del raw[key]   # sleep-session details kept in the scores row (bedtime, stages, regularity) need sleep (issue #111)
@@ -325,7 +365,7 @@ def build(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days
         values = [None if raw[key].get(d) is None else round(float(raw[key][d]), 2) for d in dates]
         avg7 = [extra["weight_avg7"][d] for d in dates] if key == "weight" else rolling(values)
         present = [v for v in values if v is not None]
-        prev = [float(v) for d, v in raw[key].items() if prev_start <= d < start and v is not None]
+        prev = [float(v) for d, v in sorted(raw[key].items()) if prev_start <= d < start and v is not None]
         series[key] = {"label": tl(label, P.EN), "unit": tl(unit, P.EN), "group": group, "values": values, "avg7": avg7, "n": len(present),
                        "min": min(present) if present else None, "max": max(present) if present else None,
                        "mean": round(sum(present) / len(present), 2) if present else None,

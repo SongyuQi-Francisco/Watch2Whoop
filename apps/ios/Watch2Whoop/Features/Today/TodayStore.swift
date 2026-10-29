@@ -47,9 +47,12 @@ struct TodaySnapshot: Equatable {
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if let main = try DocRecord.fetchOne(db, key: mainKey) { s.docs[mainKey] = main }
     s.day = date ?? (s.docs[mainKey].flatMap(Self.dateOf))
-    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles, TrendsDocs.trends(TodayParams.trendsDays, end: date)]
+    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles]
     if let d = s.day { keys += [TodayDocs.activity(d), TodayDocs.coach(d), TodayDocs.monitor(d), TrendsLocal.docKey(d)] }
     for r in try DocRecord.fetchAll(db, keys: keys) { s.docs[r.key] = r }
+    // the 61-day Trends document under its server key: the phone's own when package `series` is primary (M3)
+    let trendsKey = TrendsDocs.trends(TodayParams.trendsDays, end: date)
+    s.docs[trendsKey] = try SeriesLocal.shown(db, server: trendsKey, local: SeriesLocal.trendsKey(TodayParams.trendsDays, end: date))
     if let d = s.day {
       s.local = try DailyScore.filter(Column("date") == d && Column("origin") == "app").fetchOne(db)
       s.localPrev = try DailyScore.filter(Column("date") == LocalDay.add(d, -1) && Column("origin") == "app").fetchOne(db)
@@ -152,6 +155,7 @@ final class TodayStore: ObservableObject {
     scoreLocally()
     // the phone's own status cards for the day (今日核心 / 需要注意), in the background like Trends
     if let day = date ?? userToday { TrendsStore.computeLocal(session: session, day: day) }
+    SeriesLocal.refresh(session: session, [.trends(days: TodayParams.trendsDays, end: date)], userToday: userToday)
   }
 
   /// The reminder card's actions (已看 / 不再提醒 / 标为未读): the local copy of the today document first, then the
