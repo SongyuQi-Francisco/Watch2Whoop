@@ -28,6 +28,7 @@ from body_engine.training import catalog_data as CD, history as H, importer as T
 REPO = Path(__file__).resolve().parents[2]
 JS_TESTS = REPO / "packages" / "openbodyscore-js" / "test"
 GOLDEN = JS_TESTS / "golden" / "workouts.json"
+IOS_CASE = "new_york"
 
 
 def _load(name: str, path: Path):
@@ -109,7 +110,10 @@ def build() -> dict:
     data = C.all_cases()
     return _dump({
         "params": params(), "tables": tables(),
-        "workouts": [{"name": c["name"], "want": TI.workout_days(c["src"])} for c in data["workouts"]],
+        # the `new_york` case keeps its inputs: the iOS test (Watch2WhoopTests/LocalWorkoutsTests.swift) feeds them through
+        # the phone's local tables
+        "workouts": [{"name": c["name"], "want": TI.workout_days(c["src"]), **({"src": c["src"]} if c["name"] == IOS_CASE else {})}
+                     for c in data["workouts"]],
         "training": [{"name": r["name"], "want": training_run(r)} for r in data["training"]["runs"]],
         "muscle": [{"name": r["name"], "want": muscle_run(r)} for r in data["muscle"]["runs"]],
     })

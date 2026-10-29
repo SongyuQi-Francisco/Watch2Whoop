@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 （开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
 
+- 训练在手机上算：读「健康」里的体能训练，算 TRIMP、五个心率区间的分钟、训练后心率恢复和重复记录，训练月历和单日详情也能在手机上生成（M1c，开关 `native_workouts`，先只在后台对比，界面仍是服务器的），和服务器同一套算法、服务器抽查。 / Workouts are computed on the phone: the Health workouts with TRIMP, five-zone minutes, post-workout heart-rate recovery and duplicates, and the training calendar and day detail (M1c, flag `native_workouts`; shadow only for now, the pages still show the server's), with the server's algorithms, spot-checked by the server.
+
 - 趋势、月历、最近 14 晚、睡眠规律性和 VO₂max 等级可以在手机上算（M3，开关 `native_series`），和服务器同一套算法；没网时也能看全部范围。 / Trends, the month calendar, the last 14 nights, sleep regularity and the VO₂max level can be computed on the phone (M3, flag `native_series`) with the server's algorithms, so every range opens offline.
 - 每天的压力和趋势里的韧性、身体电量、运动后心率恢复可以在手机上算（M2，开关 `native_stress`：影子模式只在后台对比，界面仍是服务器的数；主模式后没网也会随时更新），和服务器同一套算法、服务器抽查。 / Daily stress and the Trends cards resilience, body battery and heart-rate recovery can be computed on the phone (M2, flag `native_stress`: in shadow only compared in the background, the pages keep the server's values; once primary they update during the day without network), with the server's algorithms, spot-checked by the server.
 - 每天的步数、能量、锻炼分钟等数值和每晚的睡眠可以在手机上从「健康」派生（M1，开关 `native_derive`，先只在后台对比，界面仍是服务器的数），规则和服务器同一套、服务器抽查。 / Daily steps, energy, exercise minutes and the other day values, and each night's sleep, can be derived on the phone from Health (M1, flag `native_derive`; shadow only for now, the pages still show the server's values), with the server's rules, spot-checked by the server.

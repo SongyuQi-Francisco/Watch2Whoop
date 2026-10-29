@@ -99,7 +99,8 @@ final class TrainingStore: LocalPageStore {
 
   private func observeAll() {
     var keys = [RecordDocs.session(today), RecordDocs.week(monday), RecordDocs.calendar(month), RecordDocs.calendar(String(monday.prefix(7))),
-                RecordDocs.rules]
+                RecordDocs.rules, TrainingLocal.calendarKey(month), TrainingLocal.calendarKey(String(monday.prefix(7))),
+                LocalCompute.stateDoc]
     if muscleOn { keys.append(RecordDocs.muscle) }
     observe(keys: keys, kinds: RecordDocs.kinds)
   }
@@ -108,14 +109,26 @@ final class TrainingStore: LocalPageStore {
     let s = TrainingSession.build(view.json(RecordDocs.session(today)), day: today, pending: view.pending)
     session = s
     if !editing, let s { rows = s.rows }
-    var cal = (view.json(RecordDocs.calendar(String(monday.prefix(7))))?["days"] as? [[String: Any]]) ?? []
+    var cal = (calendarDoc(String(monday.prefix(7)))?["days"] as? [[String: Any]]) ?? []
     if String(RecordDay.add(monday, 6).prefix(7)) != String(monday.prefix(7)) {
-      cal += (view.json(RecordDocs.calendar(String(RecordDay.add(monday, 6).prefix(7))))?["days"] as? [[String: Any]]) ?? []
+      cal += (calendarDoc(String(RecordDay.add(monday, 6).prefix(7)))?["days"] as? [[String: Any]]) ?? []
     }
     week = TrainingWeek.build(view.json(RecordDocs.week(monday)), calendar: cal, monday: monday)
-    calendar = TrainingMonth.build(view.json(RecordDocs.calendar(month)), month: month)
+    calendar = TrainingMonth.build(calendarDoc(month), month: month)
     muscle = muscleOn ? MuscleLoad.parse(view.json(RecordDocs.muscle)) : nil
     rules = ExerciseRule.parseList(view.list(RecordDocs.rules))
+  }
+
+  /// A month's calendar: the server's, the phone's when the package `workouts` is primary (2.0.0 M1c, TrainingLocal).
+  private func calendarDoc(_ m: String) -> [String: Any]? {
+    TrainingLocal.shown(state: view.json(LocalCompute.stateDoc), server: view.json(RecordDocs.calendar(m)),
+                        local: view.json(TrainingLocal.calendarKey(m)))
+  }
+
+  /// The phone's calendars of these months, in the background (nothing while the package is off).
+  private func computeLocal(_ months: [String]) {
+    let db = db, api = api, t = today
+    Task.detached(priority: .utility) { await TrainingLocal.refresh(db: db, api: api, months: Array(Set(months)).sorted(), today: t) }
   }
 
   func refresh() async {
@@ -124,6 +137,7 @@ final class TrainingStore: LocalPageStore {
       today = t
       observeAll()
     }
+    defer { computeLocal([month, String(monday.prefix(7)), String(RecordDay.add(monday, 6).prefix(7))]) }
     await send()
     var f = [DocFetch(RecordDocs.session(today), RecordAPI.session(today)), DocFetch(RecordDocs.week(monday), RecordAPI.week(today)),
              DocFetch(RecordDocs.calendar(month), RecordAPI.calendar(month)), DocFetch(RecordDocs.rules, RecordAPI.rules)]
@@ -139,14 +153,20 @@ final class TrainingStore: LocalPageStore {
     month = m
     observeAll()
     changed()
-    Task { await pull([DocFetch(RecordDocs.calendar(m), RecordAPI.calendar(m))]) }
+    Task {
+      await pull([DocFetch(RecordDocs.calendar(m), RecordAPI.calendar(m))])
+      computeLocal([m])
+    }
   }
 
-  /// A past day's detail (watch workouts + logged strength): the server's, else the cached copy (offline).
+  /// A past day's detail (watch workouts + logged strength): the server's, else the cached copy (offline); the phone's
+  /// own when the package `workouts` is primary (2.0.0 M1c, TrainingLocal; computed and compared in shadow).
   func dayDetail(_ day: String) async -> [String: Any]? {
     let key = RecordDocs.trainingDay(day)
     _ = await RecordsPuller(api: api, db: db).pull([DocFetch(key, RecordAPI.day(day))], kinds: [])
-    return (try? db.doc(key))?.json
+    await TrainingLocal.refresh(db: db, api: api, months: [], days: [day], today: db.userToday())
+    return TrainingLocal.shown(state: (try? db.doc(LocalCompute.stateDoc))?.json, server: (try? db.doc(key))?.json,
+                               local: (try? db.doc(TrainingLocal.dayKey(day)))?.json)
   }
 
   // MARK: - set-by-set logging

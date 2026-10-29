@@ -114,6 +114,9 @@ targets:
       # 2.0.0 M1: the derivation's cross-language golden file (inputs + the server's expected rows), LocalDeriveTests.swift
       - path: ../../packages/openbodyscore-js/test/golden/derive.json
         buildPhase: resources
+      # 2.0.0 M1c: the workouts' golden file (the `new_york` inputs + the server's expected rows), LocalWorkoutsTests.swift
+      - path: ../../packages/openbodyscore-js/test/golden/workouts.json
+        buildPhase: resources
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

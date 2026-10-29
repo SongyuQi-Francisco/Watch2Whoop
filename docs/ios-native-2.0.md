@@ -325,6 +325,67 @@ M1 and M3 share no file except `dist/*`.
 | Acceptance | TRIMP / zones / HRR within tolerance on goldens; strain in `daily_scores` unchanged vs server on 90 synthetic days |
 | Device | A real workout recorded offline shows TRIMP, zones and HRR on the day sheet within one sync round |
 
+#### M1c as built (2026-10-30)
+- **Algorithm** `workouts` = `training/importer.py:WORKOUTS_VERSION` (`workouts-1-2026-10-30`) = `OBS.ALGO_VERSIONS.workouts`.
+  Python reference of the phone's entry point: `importer.workout_days(src)` (pure, JSON-like rows in and out), built from
+  the pure splits `duplicates` (of `refresh_duplicates`), `hr_enrich` (the heart-rate part of `enrich`), `heart_rate`,
+  `parse_app`, `overrides.apply`, `cardio/hrr.hrr60` (read only) and `history.workout_intensity`. Views:
+  `training/history.py` `load` + pure `compute` (`build` = `compute(load(…))`), `calendar_view`, `day_view`;
+  `training/muscle_load.py` `load` + pure `compute_from` (`DictIndex` = `loads.Index` from plain data). JS
+  `src/31_workouts.js`: `OBS.workoutDays`, `OBS.trainingCalendar`, `OBS.trainingDay`, `OBS.muscleLoad` and
+  `OBS.workouts.<python name>`; thresholds in `OBS.workouts.PARAMS`, the type / sport-muscle / muscle tables in
+  `OBS.workouts.TABLES`, both compared with the Python by the golden test. Static bundle module `sport_muscles` added.
+- **Upload rows** (kind `workouts`, one per app workout, by its start day): parse_app's fields, `dup_of` as
+  `"<source>:<external_id>"`, `trimp`, `zone1_min` … `zone5_min` (flattened so each zone has its tolerance),
+  `hr_samples`, `hr_max_used`, `hr_recovery_bpm` (the server keeps it in `flags`), `intensity`, `flags`, and hrr60 as
+  `hrr60`, `hrr_peak`, `hrr_60s`, `hrr_valid`, `hrr_reason`. Duplicates and excluded workouts are not enriched (as
+  `enrich_pending`). External ids are lower-case (the server's `hk_uuid::text`).
+- **Goldens**: `test/cases_workouts.py` (synthetic): `sydney` 8 days over the end of DST (strength + cardio the same day,
+  a watch + iPhone copy and an Open Wearables copy, no heart rate, a heart-rate gap at the end, a workout across the DST
+  change, a type override, a hidden workout, a type rule, a manual duplicate, a 13-hour record, low coverage, a
+  winding-down walk, HRmax from the birth date) and `new_york` 4 days over the start of DST (its inputs are in the golden
+  file for the iOS test); calendar / day runs (watch + SparkyFitness strength and cardio merge, SparkyFitness-only, Hevy
+  on its watch copy, partial-energy flag, scores hidden, English); muscle-load runs (catalog by slug / name / SparkyFitness
+  id, unmatched, warm-up, cardio, the sports layer with and without a planned target, English). Tests
+  `tests/test_js_golden_workouts.py` ↔ `test/workouts.test.js`; `tests/test_native_workouts.py` (database) checks that the
+  server's own import + `refresh_duplicates` + `enrich_pending` + `hrr.compute` on the same uploaded workouts equal
+  `workout_days`, that `build` / `_build` equal `compute(load(…))`, the kind (shadow check, a changed TRIMP caught,
+  primary write, another user untouched) and `hrr` in the pull.
+- **Server**: migration `1010_native_workouts.sql` (`computed_by`, `bundle_version` on `workouts` and `workout_hrr`;
+  `workouts.origin` is the source app, so not reused; `workout_hrr` joins the `records` / `workout` change log). Kind
+  `derived_kinds/workouts.py`: spot check = `workout_days` on the server's hk_samples workouts of the day ± 1 day, the
+  other sources' rows, `workout_overrides` / `workout_type_rules`, heart rate ±5 min (watch first), the day's HRmax and
+  the birth date; tolerance trimp 0.1, each zone 0.1, HR recovery / hrr60 / peak / 60-s value 0.5, HRmax 1, start / end
+  1 s, minutes 0.01, energy 0.1; primary writes the enrichment columns of the server's row of the same workout (source app,
+  external_id) and its `workout_hrr`; `extend_pull` adds `hrr` to the records stream's workout items.
+- **iOS**: `WorkoutsSchema` → migration `v5_workouts_tables` (`workouts` keyed by `<source>:<external_id>` with
+  `computed_by` server / phone, the row in the server's shape and the server's own row in `server_row`; `workout_hrr`).
+  `WorkoutsStage` reads the HKWorkouts of the read window (anchored, `EngineWorkout.map`, into `hk_workouts`), pulls the
+  `records` stream on its own cursor and keeps kind `workout` (the native app pulls no `records` otherwise), computes dirty
+  days with `workoutDays` (corrections = the server's rows of the app's workouts), writes `derived_rows`, `workouts`,
+  `workout_hrr` and the duplicates of the server's rows, marks days whose kept workout energy changed dirty for `derive`,
+  uploads once settled. `DeriveStage`'s workout energy for the `incomplete` rule now reads the kept `workouts` (an
+  HKWorkout not computed yet counts with its own statistics): the same set the server sums. `Features/Record/TrainingLocal`
+  computes the month calendar and the day detail (`training.local:calendar:<month>`, `training.local:day:<day>`), compared
+  in shadow (meta `workouts.compare`, field paths only), drawn in primary. M3's `SeriesLocal` reads the training days
+  and the workouts' HR recovery from `workouts` only when it has rows (`workoutsOnPhone`: the package computes),
+  else from the server's documents as before.
+- **Deviations**: (1) `cardio/` is M2's: the hrr60 split was not made there (the JS ports `hrr60` directly; the server's
+  `hrr.compute` is unchanged). Known server bug left to its owner: `hrr.compute` does wall-clock arithmetic on the
+  database's ZoneInfo, so a workout ending in the repeated hour of a DST change gets a wrong peak window (the DB test skips
+  that one workout). (2) `enrich`, `_base_row` and `duplicates` now compute in UTC instants: outputs change only for
+  workouts across the end of DST (they were wrong there). (3) The phone has no Hevy import, no SparkyFitness exercise
+  descriptions (status from `exercise:rules` only) and no type rules of its own (the server's corrected rows stand in);
+  `sparky_error` is not compared. (4) The muscle-load map is ported and golden-tested but the app keeps the server's
+  document: the phone has no exercise catalog until the static bundle reaches the app. (5) `native-compare` is not part
+  of M1c.
+- **Flag**: `native_workouts` (shadow only; `native_compute_primary` stays off), off by default.
+- **Device checklist entry (for S9)**: owner's internal build, `native_workouts` on for the owner only. (1) After a sync
+  round the compute report shows `workouts` `done`, `workouts:<day>` uploaded; `GET /v1/sync/compute` shows the kind
+  with a passing check. (2) Record a workout offline: the next round (still offline) writes it to `workouts` with TRIMP,
+  zones and HRR; meta `workouts.compare` shows `ok` for the calendar and the day once online. (3) With primary on (S9),
+  the training calendar and the day sheet open offline with the same numbers as the server's before.
+
 ### M2 — stress, resilience, body battery, HR recovery
 | | |
 |---|---|
