@@ -211,6 +211,20 @@ def nights_case(data: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------- insights/sleep_detail and fitness
+def dst_sleep_rows(first_wake: date, nights: int, shift: dict) -> list[dict]:
+    """Watch main sleeps in bed 23:00 / up 07:00 local (+ shift minutes), their instants in the user's own zone (as a database
+    session can return them: Python then subtracts by wall time, the DST bug of the sleep regularity)."""
+    rows = []
+    for k in range(nights):
+        w = first_wake + timedelta(days=k)
+        extra = shift.get(k, 0)
+        base = datetime.combine(w, time(0), TZ)
+        rows.append({"wake_date": w, "start_at": base + timedelta(minutes=-60 + extra), "end_at": base + timedelta(minutes=420 + extra),
+                     "asleep_min": 420.0, "awake_min": 0.0, "deep_min": 60.0, "rem_min": 60.0, "core_min": 300.0,
+                     "is_main": True, "device": "Apple Watch"})
+    return rows
+
+
 def sleep_detail_case(data: dict) -> list[dict]:
     """[{rows (sleep_sessions by start), nights (nights_from rows), start, end}] of details()."""
     rows = []
@@ -235,7 +249,12 @@ def sleep_detail_case(data: dict) -> list[dict]:
     short = [r for r in rows if r["wake_date"] >= END - timedelta(days=3)]
     return [{"rows": rows, "nights": nights, "start": END - timedelta(days=13), "end": END},
             {"rows": rows, "nights": nights[:5], "start": END - timedelta(days=20), "end": END - timedelta(days=9)},
-            {"rows": short, "nights": [], "start": END - timedelta(days=13), "end": END}]
+            {"rows": short, "nights": [], "start": END - timedelta(days=13), "end": END},
+            # DST in Australia/Sydney: starts 2026-10-04 (first Sunday of October), ends 2026-04-05 (first Sunday of April)
+            {"rows": dst_sleep_rows(date(2026, 9, 1), 50, {35: 150, 37: 60, 40: -30, 44: 90}), "nights": [],
+             "start": date(2026, 9, 28), "end": date(2026, 10, 10)},
+            {"rows": dst_sleep_rows(date(2026, 3, 1), 50, {35: 120, 37: 45, 40: -30, 44: 90}), "nights": [],
+             "start": date(2026, 3, 30), "end": date(2026, 4, 12)}]
 
 
 def fitness_case(data: dict) -> dict:

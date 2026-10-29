@@ -5,7 +5,7 @@ the probability P that the sleep / wake state is the same at two moments 24 hour
 Here each "day" = [d−1 12:00, d 12:00) for wake date d, with the state taken per minute: inside an asleep stretch of a watch sleep segment (main sleep + naps) = asleep;
 only pairs where both consecutive days have a watch main sleep are compared (a day without the watch looks like awake all day and cannot be counted).
 """
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -14,9 +14,16 @@ DAY_MIN = 1440
 MIN_PAIRS = 4          # at least 4 pairs of adjacent days for an SRI
 
 
+def _utc(t: datetime) -> datetime:
+    """The same instant in UTC. Python subtracts and compares two aware datetimes that share one tzinfo by wall-clock time, so
+    two datetimes in the user's own zone (how a database session may return them) are an hour off across a DST change;
+    in UTC every difference is the exact elapsed time (what the phone's JS does with epoch microseconds)."""
+    return t.astimezone(timezone.utc)
+
+
 def _day_block(d: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
-    start = datetime.combine(d - timedelta(days=1), time(12), tz)
-    return start, start + timedelta(days=1)
+    """[d−1 12:00, d 12:00) local, as UTC instants (so it is 23 or 25 hours long on the day of a DST change)."""
+    return (_utc(datetime.combine(d - timedelta(days=1), time(12), tz)), _utc(datetime.combine(d, time(12), tz)))
 
 
 def asleep_minutes(intervals: list[tuple[datetime, datetime]], d: date, tz: ZoneInfo) -> bytearray:
@@ -24,6 +31,7 @@ def asleep_minutes(intervals: list[tuple[datetime, datetime]], d: date, tz: Zone
     lo, hi = _day_block(d, tz)
     out = bytearray(DAY_MIN)
     for a, b in intervals:
+        a, b = _utc(a), _utc(b)
         if b <= lo or a >= hi:
             continue
         i0 = max(0, int((a - lo).total_seconds() // 60))
@@ -64,7 +72,7 @@ def watch_sessions(rows: list[dict]) -> tuple[dict, list]:
     for r in watch:
         if r["wake_date"] not in mains or r["asleep_min"] > mains[r["wake_date"]]["asleep_min"]:
             mains[r["wake_date"]] = r
-    return mains, [(r["start_at"], r["end_at"]) for r in watch]
+    return mains, [(_utc(r["start_at"]), _utc(r["end_at"])) for r in watch]
 
 
 def sri_for(conn, user_id: int, tz: ZoneInfo, start: date, end: date) -> dict:

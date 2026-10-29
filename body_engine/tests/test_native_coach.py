@@ -244,8 +244,8 @@ def test_sleep_night_pure_parts_equal_the_sql_they_replaced(dsn, stored):
             naps = c.execute("""SELECT start_at, end_at, asleep_min FROM sleep_sessions WHERE user_id = %s AND wake_date = %s
                                 AND NOT is_main ORDER BY start_at""", (stored, day)).fetchall()
             assert [n["asleep_min"] for n in out["naps"]] == [n["asleep_min"] for n in naps]
-            # sri_for on the same rows, in UTC instants (the rows come back in the user's zone: wall-time arithmetic is
-            # an hour off in a window holding the DST night, which body age and this page no longer use)
+            # sri_for on the same rows, in UTC instants (sleep_detail converts every interval itself now: the rows come back
+            # in the user's zone, and wall-time arithmetic was an hour off in a window holding the DST night)
             rows = HSS.utc_sessions(c.execute(
                 """SELECT wake_date, start_at, end_at, asleep_min, awake_min, deep_min, rem_min, core_min, is_main, device
                    FROM sleep_sessions WHERE user_id = %s AND wake_date BETWEEN %s AND %s ORDER BY start_at""",
@@ -253,9 +253,8 @@ def test_sleep_night_pure_parts_equal_the_sql_they_replaced(dsn, stored):
             for n, k in ((7, "regularity_pct_7d"), (30, "regularity_pct_30d")):
                 sri = sleep_detail.sri_from(*sleep_detail.watch_sessions(rows), TZ, day - timedelta(days=n - 1), day)["sri"]
                 assert out["baseline"][k] == sleep_detail.consistency_pct(sri), (day, k)
-                if not lo <= CC.DST_DAY <= day:   # away from the DST change the old path agrees
-                    old_sri = sleep_detail.sri_for(c, stored, TZ, day - timedelta(days=n - 1), day)["sri"]
-                    assert out["baseline"][k] == sleep_detail.consistency_pct(old_sri), (day, k)
+                old_sri = sleep_detail.sri_for(c, stored, TZ, day - timedelta(days=n - 1), day)["sri"]   # also across the DST night
+                assert out["baseline"][k] == sleep_detail.consistency_pct(old_sri), (day, k)
         for day in (END, CC.DST_DAY, END - timedelta(days=40)):
             old = c.execute("""SELECT wake_date, start_at FROM sleep_sessions WHERE user_id = %s AND is_main
                                AND wake_date BETWEEN %s AND %s ORDER BY wake_date DESC, asleep_min DESC NULLS LAST LIMIT 1""",
