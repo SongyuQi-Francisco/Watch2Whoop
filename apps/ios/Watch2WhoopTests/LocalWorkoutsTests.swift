@@ -116,6 +116,13 @@ final class LocalWorkoutsTests: XCTestCase {
     }
     // the same inputs again: nothing to upload anew
     XCTAssertEqual(try WorkoutsStage.computeChunk(db: db, zone: f.zone, runtime: rt, days: f.days, birthDate: nil), [])
+    // M2's cardio view reads these workout_hrr rows (heart-rate recovery end to end)
+    let today = try XCTUnwrap(f.days.last)
+    try StressStage.cardio(db: db, runtime: rt, today: today, tz: f.zone.identifier)
+    let cardio = try XCTUnwrap(try db.doc(StressStage.cardioDoc(today))?.json)
+    let listed = ((cardio["hrr"] as? [String: Any])?["workouts"] as? [[String: Any]]) ?? []
+    XCTAssertEqual(listed.count, 4)
+    XCTAssertTrue(listed.allSatisfy { ($0["workout_id"] as? String)?.hasPrefix("app:") == true && $0["type"] is String })
   }
 
   /// A pulled server row of another source that duplicates the phone's workout is marked as its copy; the calendar of
