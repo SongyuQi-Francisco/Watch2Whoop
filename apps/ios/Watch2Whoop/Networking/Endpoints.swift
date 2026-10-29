@@ -108,4 +108,14 @@ enum Endpoint {
   static let syncPush = "/v1/sync/push"
   static let scoresUpload = "/v1/users/me/scores/app"
   static let algoManifest = "/v1/algo/manifest"
+
+  // 2.0.0 local compute (docs/ios-native-2.0.md section 2.2): where each package is computed (a superset of syncScoring),
+  // the phone's rows of one derived kind, the training / weight / food log as raw rows per day (pull only)
+  static func compute(_ query: [String: String] = [:]) -> APIRequest { .get("/v1/sync/compute", query) }
+  static let derivedUpload = "/v1/users/me/derived/app"
+  static func extRecords(from: String, to: String, fingerprintsOnly: Bool = false) -> APIRequest {
+    var q = ["from": from, "to": to]
+    if fingerprintsOnly { q["fingerprints"] = "1" }
+    return .get("/v1/users/me/ext-records", q)
+  }
 }

@@ -101,6 +101,28 @@ P0 creates every shared seam once, so packages only add their own files:
 | iOS endpoints | `Endpoint.derivedUpload`, `Endpoint.compute` (`GET /v1/sync/compute`, superset of `/v1/sync/scoring`), `Endpoint.extRecords` |
 | `ext_records` doc kind (pull only) | Server `nativesync/ext_records.py`: `GET /v1/users/me/ext-records?from=&to=` returns per day `{date, fingerprint, strength_sets, weights, nutrition_totals}`: the person's **raw** SparkyFitness rows (strength sets with exercise, reps, weight, duration; weight entries; nutrition day totals) or the own-store rows when `own_food_only` is on, read with the read-only key, no computation; `?fingerprints=1` returns only `{date: fingerprint}` (sha256 of the day's canonical JSON). iOS `Sync/ExtRecords.swift`: a `DocPuller` kind storing `docs` key `ext_records:<date>`, refetching only days whose fingerprint changed; never written by the phone |
 
+#### P0 as built (where a package plugs in)
+- **Versions**: `algo/versions.py` maps every key to a constant in a file the package owns (`derive` → `rawdata/derive.py:DERIVE_VERSION`,
+  `workouts` → `training/importer.py:WORKOUTS_VERSION`, `stress_cards` → `insights/stress.py:STRESS_CARDS_VERSION`,
+  `series` → `trends/series.py:SERIES_VERSION`, `coach` → `insights/coach.py:COACH_VERSION`, `reports` → `insights/reports.py:REPORTS_VERSION`,
+  `rules` → `rules/params.py:RULES_VERSION` (exists already), `explain` → `explain/personal.py:EXPLAIN_VERSION`). A package is *implemented*
+  when every algorithm key has its constant **and** the served bundle carries the same string, and every upload kind has its module.
+- **Kind module** (`nativesync/derived_kinds/<kind>.py`, interface in that package's `__init__.py`): `KIND`, `PACKAGE`, `ALGO_KEY`,
+  `TOLERANCE` (field → absolute or `("rel", x)`, with sources), `validate`, `write`, `recompute`; optional `row_key`, a `records`
+  stream kind (`RECORD_KIND`, `RECORD_TABLE`, `RECORD_DAYCOL`, `record_body`) and `extend_pull` (fields added to an existing
+  stream's bodies, e.g. `daily.sources`). Tolerances live in the kind module, not in `nativesync/params.py`, so no package edits a shared file.
+- **State and checks**: migration `990_native_compute.sql` (tables `app_compute_state` per (user, kind), `app_compute_checks` with
+  field names only). In `shadow` an upload is spot-checked and counted, never stored; only `primary` (flag `native_compute_primary`
+  + last check passed + ≥ `PRIMARY_MIN_DAYS` days + same `algo_version`) writes through the kind's `write`.
+- **`GET /v1/sync/compute`**: `/v1/sync/scoring`'s answer + `compute.packages.<pkg>` (`state`, `flag`, `implemented`, `app_ok`,
+  per upload kind its state and last check). Keyed by package because views (series, reports) have no upload kind;
+  `MIN_APP_VERSION_BY_KIND` is keyed the same way (header `X-App-Version`, optional `X-App-Build` for `"2.0.0+N"`).
+- **`ext_records`**: `GET /v1/users/me/ext-records` (own data only, flag `native_sync`); rows read through
+  `sparky_client.reader_for_user` (own tables when the user's reads are own). `strength_sets` = that day's sessions in the
+  `training_log` shape (exercises with their sets); `available: false` = the log cannot be read now (the phone keeps its cache).
+- **iOS**: stage `HealthspanStage` belongs to package `coach`. `LocalCompute` asks `/v1/sync/compute` only once a stage sets
+  `implemented = true`; the `ext_records` puller is `DocPuller.pullExtRecords(from:to:)` (no caller yet).
+
 ## 3. Data contract
 
 ### 3.1 Local tables (GRDB, per account) written / read by each package

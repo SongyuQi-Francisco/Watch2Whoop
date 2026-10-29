@@ -13,8 +13,19 @@ const ROOT = __dirname;
 const DIST = path.join(ROOT, "dist");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
 
+// 2.0.0 packages (docs/ios-native-2.0.md section 2.2) add src/3N_<pkg>.js and extend OBS.ALGO_VERSIONS.<key>; only
+// 20_api.js creates the object, so a package can never drop another package's key.
+const ALGO_VERSIONS_OWNER = "20_api.js";
+const REASSIGN = /\bOBS\.ALGO_VERSIONS\s*=(?!=)/;
+
 function bundle() {
   const files = fs.readdirSync(path.join(ROOT, "src")).filter((f) => f.endsWith(".js")).sort();
+  for (const f of files) {
+    if (f !== ALGO_VERSIONS_OWNER && REASSIGN.test(fs.readFileSync(path.join(ROOT, "src", f), "utf8"))) {
+      console.error(`src/${f} reassigns OBS.ALGO_VERSIONS: add your key instead (OBS.ALGO_VERSIONS.<key> = ...)`);
+      process.exit(1);
+    }
+  }
   const parts = files.map((f) => `// ---- src/${f}\n` + fs.readFileSync(path.join(ROOT, "src", f), "utf8").trimEnd() + "\n");
   return `/*! openbodyscore-js ${pkg.version} | AGPL-3.0; the parts ported from packages/openbodyscore are Apache-2.0 (NOTICE)
  * Watch2Whoop scoring algorithms: a port of packages/openbodyscore and the pure scoring parts of body_engine.

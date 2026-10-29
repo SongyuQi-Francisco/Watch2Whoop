@@ -75,3 +75,36 @@ CHECK_TOLERANCE: dict[str, float] = {
 SILENT_TICK_S = 20                # how often the API process looks for new changes
 SILENT_MIN_INTERVAL_S = 60        # at most one silent push per user per minute (Apple throttles more than ~3/hour anyway)
 SILENT_LOOKBACK_MINUTES = 60      # changes older than this are not pushed any more (the app pulls on open)
+
+# ---------------------------------------------------------------- 2.0.0: every own-data computation on the phone
+# (docs/ios-native-2.0.md sections 2.2, 3 and 5; compute.py, derived.py, derived_kinds/, ext_records.py)
+# package (= one compute stage of the app, Sync/Compute/<Stage>Stage.swift) -> its rollout flag, the keys of its algorithms
+# in OBS.ALGO_VERSIONS (algo/versions.py) and the kinds it uploads (PUT /v1/users/me/derived/app, one module each in
+# derived_kinds/). A package is "implemented" on this server when every algorithm key has a Python constant and is in the
+# served bundle, and every upload kind has its module; until then GET /v1/sync/compute reports it off whatever the flags.
+COMPUTE_PACKAGES: dict[str, dict] = {
+    "derive": {"flag": "native_derive", "algo": ("derive",), "kinds": ("daily", "sleep")},
+    "workouts": {"flag": "native_workouts", "algo": ("workouts",), "kinds": ("workouts",)},
+    "stress": {"flag": "native_stress", "algo": ("stress_cards",), "kinds": ("stress",)},
+    "series": {"flag": "native_series", "algo": ("series",), "kinds": ()},
+    "coach": {"flag": "native_coach", "algo": ("coach",), "kinds": ("healthspan",)},
+    "reports": {"flag": "native_reports", "algo": ("reports",), "kinds": ()},
+    "rules": {"flag": "native_rules", "algo": ("rules", "explain"), "kinds": ("reminders",)},
+}
+COMPUTE_PRIMARY_FLAG = "native_compute_primary"
+COMPUTE_STATES = ("off", "shadow", "primary")
+# The first app version that implements each package (header X-App-Version; "2.0.0+57" = version 2.0.0 from build 57 on,
+# header X-App-Build, for internal builds). A package is never enabled for an older client or one that sends no version.
+MIN_APP_VERSION_BY_KIND: dict[str, str] = {p: "2.0.0" for p in COMPUTE_PACKAGES}
+# primary needs the kind's last spot check passed and at least this many days uploaded (section 5)
+PRIMARY_MIN_DAYS = 3
+# PUT /v1/users/me/derived/app: at most this many days per request (newest batch first) and rows per day
+DERIVED_MAX_DAYS = 400
+DERIVED_MAX_ROWS_PER_DAY = 2000
+# The derived spot check (section 3.4) runs like the scores' one: first upload of a bundle, then at most every
+# CHECK_EVERY_HOURS, the newest uploaded day within CHECK_WITHIN_DAYS (both above). Tolerances are per kind, in the kind's
+# own module (derived_kinds/<kind>.py TOLERANCE, with their sources), so a package never edits this shared file.
+
+# ---------------------------------------------------------------- ext_records (GET /v1/users/me/ext-records, pull only)
+EXT_MAX_DAYS = 400                # one request covers at most this many days
+EXT_DEFAULT_DAYS = 30             # without from / to: the last 30 days

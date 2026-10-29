@@ -106,10 +106,14 @@ final class SyncCoordinator: ObservableObject {
   func scoreSoon(reason: String) {
     guard deltaAvailable else { return }
     let scoring = self.scoring, history = self.history, db = self.db
+    let compute = LocalCompute(db: db, api: api)
     Task.detached(priority: .utility) { [weak self] in
       let h = await MemoryProbe.measure("foreground", db: db) { () -> HistoryDownload.State in
-        // a full recompute (new bundle, whole history here) gets a short slice now; the background task does the rest
-        let r = await scoring.run(reason: reason, deadline: Date().addingTimeInterval(LocalHistoryParams.foregroundScoringSeconds))
+        // a full recompute (new bundle, whole history here) gets a short slice now; the background task does the rest.
+        // 2.0.0: the package stages run around the scores (LocalCompute; all skipped until a package lands)
+        let r = await compute.run(reason: reason) {
+          await scoring.run(reason: reason, deadline: Date().addingTimeInterval(LocalHistoryParams.foregroundScoringSeconds))
+        }
         await MainActor.run { self?.lastScoring = r }
         // then the history (local history): a few pages now when the network and power allow, the rest in the background
         return await history.run(reason: reason, maxPages: LocalHistoryParams.foregroundPages)

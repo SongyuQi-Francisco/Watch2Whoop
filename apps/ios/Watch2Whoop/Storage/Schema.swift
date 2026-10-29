@@ -229,6 +229,14 @@ enum Schema {
       try db.alter(table: "heartbeat_series") { t in t.add(column: "analyzed", .boolean).notNull().defaults(to: false) }
       try db.execute(sql: "UPDATE heartbeat_series SET analyzed = 1 WHERE beats IS NULL")
     }
+
+    // 2.0.0 (docs/ios-native-2.0.md section 2.2): each package's tables in its own file, in the compute order. Nothing
+    // ships externally before 2.0.0, so this order is final at release.
+    DeriveSchema.register(&m)
+    WorkoutsSchema.register(&m)
+    StressSchema.register(&m)
+    HealthspanSchema.register(&m)
+    RulesSchema.register(&m)
     return m
   }
 }
