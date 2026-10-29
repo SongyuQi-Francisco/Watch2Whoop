@@ -19,5 +19,7 @@
     "rules": "v1.4-2026-10-22",
     "explain": "explain-1"
   },
-  "global": "OpenBodyScore"
+  "global": "OpenBodyScore",
+  "signature": "G37+nTEzF3PRXFxeoYpw1bNUrlkLU1cvguUbHleahh9llNfqqFyLFloQYWaMvpozHloWB7/eygs63hpd6uUIDQ==",
+  "key_id": "51e37b7c14053032"
 }
