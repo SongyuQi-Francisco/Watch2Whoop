@@ -1,14 +1,24 @@
 import SwiftUI
 
+/// A range card's two numbers (#357): the range mean its headline shows and the end day's own value, side by side in
+/// the explain sheet, so a 7-day mean of 12 and a day of 31 never look contradictory.
+struct RangeFigures: Equatable {
+  var meanLabel: String
+  var mean: String?
+  var dayLabel: String
+  var day: String?
+  var unit: String?
+}
+
 /// Sheets of the Trends tab (one at a time).
 enum TrendsSheet: Identifiable {
-  case explain(key: String, title: String)
+  case explain(key: String, title: String, figures: RangeFigures? = nil)
   case status(TrendStatus.Tile)
   case recovery, regularity, calendar
 
   var id: String {
     switch self {
-    case .explain(let k, _): return "explain:\(k)"
+    case .explain(let k, _, _): return "explain:\(k)"
     case .status(let t): return "status:\(t.key)"
     case .recovery: return "recovery"
     case .regularity: return "regularity"
@@ -17,8 +27,9 @@ enum TrendsSheet: Identifiable {
   }
 }
 
-/// The Trends tab (#340 N4), like the page's: 指标 (every WHOOP metric over 7 / 30 / 90 / 365 days with "vs 上期", status
-/// cards as of the end date), 睡眠 (the last 14 nights) and 报告 (weekly / monthly report). Read from the local database
+/// The Trends tab (#340 N4), like the page's: 指标 (今天 = the end day's full metric list against the personal baseline,
+/// status cards first (#357); 7 / 30 / 90 / 365 days = every WHOOP metric with its range mean and "vs 上期", status cards
+/// as of the end date), 睡眠 (the last 14 nights) and 报告 (weekly / monthly report). Read from the local database
 /// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets.
 struct TrendsView: View {
   enum Mode: String, CaseIterable { case metrics, sleep, report
@@ -55,6 +66,16 @@ struct TrendsView: View {
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
+    // 「全部指标 →」 on Today (also when this tab is created by that tap: the publisher replays the pending request)
+    .onReceive(TrendsLink.shared.$pending) { r in
+      guard r != nil else { return }
+      DispatchQueue.main.async {
+        guard let r = TrendsLink.shared.take() else { return }
+        mode = r.mode
+        path = []
+        store.apply(r)
+      }
+    }
   }
 
   private var page: some View {
@@ -125,7 +146,9 @@ struct TrendsView: View {
   @ViewBuilder private var metrics: some View {
     SegControl(items: TrendRange.allCases.map { ($0, $0.label) }, selected: store.range) { store.setRange($0) }
       .padding(.top, 8)
-    if let p = store.page {
+    if let p = store.page, store.range == .today {
+      dayList(p)
+    } else if let p = store.page {
       let d = p.data
       let cur = Text("\(TrendsFormat.day(d.start, year: d.withYear)) – \(TrendsFormat.day(d.end, year: d.withYear))")
         .font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
@@ -150,6 +173,18 @@ struct TrendsView: View {
         .frame(maxWidth: .infinity).padding(.vertical, 60)
     }
     SyncStatusLine(sync: session.sync, hasData: store.page != nil).padding(.top, 18)
+  }
+
+  /// 「今天」 (#357): the end day, its status cards first (they are "today" by nature), then every metric as one row.
+  @ViewBuilder private func dayList(_ p: TrendsPage) -> some View {
+    // the day itself is in the header's overline (and next to the status cards)
+    let d = p.data
+    if !p.status.tiles.isEmpty { statusBlock(p) }
+    ForEach(TrendDay.groups(d), id: \.id) { g in
+      SectionHeader(title: g.title).padding(.top, 22).padding(.bottom, 10)
+      TrendDayList(rows: g.rows) { r in sheet = .explain(key: r.explain, title: r.label) }
+        .id("day.\(g.id)")
+    }
   }
 
   /// Status cards describe the end date and do not change with the range, so they come after the charts.
@@ -211,7 +246,7 @@ struct TrendsSheetView: View {
 
   private var title: String {
     switch sheet {
-    case .explain(_, let t): return t
+    case .explain(_, let t, _): return t
     case .status(let t): return t.label
     case .recovery: return tr("恢复贡献项", "Recovery contributors")
     case .regularity: return tr("睡眠规律性", "Sleep regularity")
@@ -221,20 +256,19 @@ struct TrendsSheetView: View {
 
   @ViewBuilder private var content: some View {
     switch sheet {
-    case .explain(let key, _):
-      ExplainBody(kind: "metric", key: key, day: end)
-    case .status(let t):
-      VStack(alignment: .leading, spacing: 0) {
-        if !t.points.isEmpty { BatteryChart(points: t.points).frame(height: 90).padding(.vertical, 8) }
-        ForEach(Array(t.rows.enumerated()), id: \.offset) { _, r in KVRow(label: r.label, value: r.value) }
-        if !t.focus.isEmpty { focus(t.focus) }
-        HStack(spacing: 6) {
-          if t.sub == tr("估算", "Estimate") { ToneBadge(text: tr("估算", "Estimate")) }
-          if t.local { ToneBadge(text: tr("本机计算", "On this phone")) }
+    case .explain(let key, _, let figures):
+      if let f = figures {
+        // a range card: its mean and the end day's value, labelled, instead of the end day's value alone
+        VStack(alignment: .leading, spacing: 0) {
+          KVRow(label: f.meanLabel, value: f.mean, unit: f.unit)
+          KVRow(label: f.dayLabel, value: f.day, unit: f.unit)
+          ExplainBody(kind: "metric", key: key, day: end, head: false).padding(.top, 8)
         }
-        .padding(.top, 10)
-        ExplainBody(kind: "metric", key: t.key, day: end, head: false).padding(.top, 8)
+      } else {
+        ExplainBody(kind: "metric", key: key, day: end)
       }
+    case .status(let t):
+      StatusTileBody(tile: t, day: end)
     case .recovery:
       recovery
     case .regularity:
@@ -251,25 +285,6 @@ struct TrendsSheetView: View {
     }
   }
 
-  private func focus(_ groups: [(label: String, pct: Double)]) -> some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(tr("负荷重点 · 28 天", "Load focus · 28 days")).font(Typo.section).foregroundColor(Palette.text2).padding(.top, 14)
-      GeometryReader { g in
-        HStack(spacing: 2) {
-          ForEach(Array(groups.enumerated()), id: \.offset) { i, x in
-            Capsule().fill([Palette.good, Palette.mid, Palette.bad][min(2, i)]).frame(width: max(2, g.size.width * x.pct / 100 - 2))
-          }
-        }
-      }
-      .frame(height: 6)
-      HStack(spacing: 14) {
-        ForEach(Array(groups.enumerated()), id: \.offset) { _, x in
-          Text("\(TodayModel.fmt(x.pct))% \(x.label)").font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text2)
-        }
-      }
-    }
-  }
-
   /// Mean z-score of each contributor over the range, and the latest day's (app.js recoveryTrendHtml sheet).
   @ViewBuilder private var recovery: some View {
     let s = page?.data.series["recovery"]
@@ -277,8 +292,10 @@ struct TrendsSheetView: View {
                                      ("sleep_performance", tr("睡眠表现", "Sleep performance"))]
     let zs = (s?.contributors ?? []).compactMap { $0 }
     let last = (s?.contributors ?? []).last { $0 != nil } ?? nil
+    let fig = page.flatMap { p in s.map { TrendCards.figures($0, p.data, digits: 0, unit: nil) } }
     VStack(alignment: .leading, spacing: 0) {
-      KVRow(label: tr("区间均值", "Range mean"), value: s?.mean.map { TodayModel.fmt($0) })
+      KVRow(label: fig?.meanLabel ?? tr("区间均值", "Range mean"), value: s?.mean.map { TodayModel.fmt($0) })
+      if let fig { KVRow(label: fig.dayLabel, value: fig.day) }
       KVRow(label: tr("上期", "Previous"), value: s?.prevMean.map { TodayModel.fmt($0) })
       let rows = names.compactMap { k, label -> (String, Double, Double?)? in
         let xs = zs.compactMap { $0[k] }
@@ -324,10 +341,52 @@ struct BatteryChart: View {
   }
 }
 
+/// A status card's sheet (Trends' 当前状态 and Today's 今日核心 / 需要注意): its rows, the battery curve or load focus,
+/// then the explanation. `day`: the end date (nil = today).
+struct StatusTileBody: View {
+  let tile: TrendStatus.Tile
+  let day: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if !tile.points.isEmpty { BatteryChart(points: tile.points).frame(height: 90).padding(.vertical, 8) }
+      ForEach(Array(tile.rows.enumerated()), id: \.offset) { _, r in KVRow(label: r.label, value: r.value) }
+      if !tile.focus.isEmpty { focus(tile.focus) }
+      HStack(spacing: 6) {
+        if tile.sub == tr("估算", "Estimate") { ToneBadge(text: tr("估算", "Estimate")) }
+        if tile.local { ToneBadge(text: tr("本机计算", "On this phone")) }
+      }
+      .padding(.top, 10)
+      ExplainBody(kind: "metric", key: tile.key, day: day, head: false).padding(.top, 8)
+    }
+  }
+
+  private func focus(_ groups: [(label: String, pct: Double)]) -> some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Text(tr("负荷重点 · 28 天", "Load focus · 28 days")).font(Typo.section).foregroundColor(Palette.text2).padding(.top, 14)
+      GeometryReader { g in
+        HStack(spacing: 2) {
+          ForEach(Array(groups.enumerated()), id: \.offset) { i, x in
+            Capsule().fill([Palette.good, Palette.mid, Palette.bad][min(2, i)]).frame(width: max(2, g.size.width * x.pct / 100 - 2))
+          }
+        }
+      }
+      .frame(height: 6)
+      HStack(spacing: 14) {
+        ForEach(Array(groups.enumerated()), id: \.offset) { _, x in
+          Text("\(TodayModel.fmt(x.pct))% \(x.label)").font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text2)
+        }
+      }
+    }
+  }
+}
+
 #if DEBUG
 /// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_TRENDS=<mode>[,<days>][,<end>]`
-/// (`metrics,365`, `sleep`, `report`), `SIMCTL_CHILD_W2W_DEV_TRENDS_SHEET=explain:<key>|status:<key>|recovery|calendar`,
-/// `SIMCTL_CHILD_W2W_DEV_TRENDS_SCROLL=<anchor>` (`status`, `card.<key>`, `bottom`).
+/// (`metrics,1` = 今天, `metrics,365`, `sleep`, `report`),
+/// `SIMCTL_CHILD_W2W_DEV_TRENDS_SHEET=explain:<key>|status:<key>|card:<card id>|recovery|calendar` (`card:` opens a range
+/// card's own sheet, with its mean and end-day figures), `SIMCTL_CHILD_W2W_DEV_TRENDS_SCROLL=<anchor>` (`status`,
+/// `card.<key>`, `day.<group>`, `bottom`).
 enum TrendsDevShot {
   static func apply(proxy: ScrollViewProxy, mode: @escaping (TrendsView.Mode) -> Void, range: @escaping (TrendRange) -> Void,
                     end: @escaping (String) -> Void, sheet: @escaping (TrendsSheet) -> Void, page: @escaping () -> TrendsPage?) {
@@ -345,6 +404,10 @@ enum TrendsDevShot {
       else if s == "calendar" { sheet(.calendar) }
       else if s.hasPrefix("explain:") { sheet(.explain(key: String(s.dropFirst(8)), title: String(s.dropFirst(8)))) }
       else if s.hasPrefix("status:"), let t = page()?.status.tiles.first(where: { $0.key == String(s.dropFirst(7)) }) { sheet(.status(t)) }
+      else if s.hasPrefix("card:"), let p = page(),
+              let c = TrendCards.groups(p).flatMap(\.cards).first(where: { $0.id == String(s.dropFirst(5)) }) {
+        sheet(c.sheet ?? .explain(key: c.explain, title: c.title, figures: c.figures))
+      }
     }
   }
 }

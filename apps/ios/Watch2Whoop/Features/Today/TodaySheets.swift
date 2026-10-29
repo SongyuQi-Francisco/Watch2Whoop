@@ -5,6 +5,8 @@ enum TodaySheet: Identifiable, Equatable {
   case recovery, strain, load, coach, monitor, calendar, weight, reminders
   case reminder(Int)
   case explain(kind: String, key: String, title: String)
+  /// A status card of 今日核心 / 需要注意 (#357), the same sheet as Trends'.
+  case status(TrendStatus.Tile)
 
   var id: String {
     switch self {
@@ -18,6 +20,7 @@ enum TodaySheet: Identifiable, Equatable {
     case .reminders: return "reminders"
     case .reminder(let id): return "reminder:\(id)"
     case .explain(let k, let key, _): return "explain:\(k):\(key)"
+    case .status(let t): return "status:\(t.key)"
     }
   }
 }
@@ -57,6 +60,7 @@ struct TodaySheetView: View {
     case .reminders: return "\(tr("提醒", "Reminders")) · \(model.reminders.count)"
     case .reminder: return tr("提醒", "Reminder")
     case .explain(_, _, let t): return t
+    case .status(let t): return t.label
     }
   }
 
@@ -136,6 +140,8 @@ struct TodaySheetView: View {
       }
     case .explain(let kind, let key, _):
       ExplainBody(kind: kind, key: key, day: day)
+    case .status(let t):
+      StatusTileBody(tile: t, day: day)
     case .calendar:
       MonthPicker(selected: store.date, userToday: store.userToday) { day in
         store.select(day)

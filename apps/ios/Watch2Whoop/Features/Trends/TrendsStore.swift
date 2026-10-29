@@ -16,17 +16,46 @@ enum TrendsDocs {
   }
 }
 
-/// The ranges of the range control (the page also has 180 days; #340 N4 keeps four).
+/// The ranges of the range control (the page also has 180 days; #340 N4 keeps four). 「今天」 (#357) is one day: its
+/// metric list reads the 61-day document (the day plus its 60-day baseline window, `TodayParams.trendsDays`).
 enum TrendRange: Int, CaseIterable, Identifiable {
-  case week = 7, month = 30, quarter = 90, year = 365
+  case today = 1, week = 7, month = 30, quarter = 90, year = 365
   var id: Int { rawValue }
   var label: String {
     switch self {
-    case .week: return tr("1周", "1W")
-    case .month: return tr("1月", "1M")
-    case .quarter: return tr("3月", "3M")
-    case .year: return tr("1年", "1Y")
+    case .today: return tr("今天", "Today")
+    case .week: return tr("7 天", "7 d")
+    case .month: return tr("30 天", "30 d")
+    case .quarter: return tr("90 天", "90 d")
+    case .year: return tr("365 天", "365 d")
     }
+  }
+
+  /// `days` of the `/trends` document this range draws.
+  var docDays: Int { self == .today ? TodayParams.trendsDays : rawValue }
+}
+
+/// 「全部指标 →」 on the Today tab (#357): switches to Trends, mode 指标, range 今天, ending on the day Today shows.
+@MainActor
+final class TrendsLink: ObservableObject {
+  static let shared = TrendsLink()
+
+  struct Request: Equatable {
+    /// nil = the user's today.
+    var end: String?
+    var range: TrendRange = .today
+    var mode: TrendsView.Mode = .metrics
+  }
+
+  @Published private(set) var pending: Request?
+
+  /// `day`: the day the Today tab shows (nil = today).
+  func open(day: String?) { pending = Request(end: day) }
+
+  /// The pending request, once.
+  func take() -> Request? {
+    defer { pending = nil }
+    return pending
   }
 }
 
@@ -112,11 +141,11 @@ final class TrendsStore: ObservableObject {
 
   private var cancellable: AnyDatabaseCancellable?
   private weak var session: AccountSession?
-  private var computing = false
-  static let rangeKey = "w2w.trends.days"
+  /// The range picked in this run of the app (#357: kept while the app runs, a fresh launch starts on 「今天」).
+  static var sessionRange: TrendRange = .today
 
   init(session: AccountSession? = nil) {
-    range = TrendRange(rawValue: UserDefaults.standard.integer(forKey: Self.rangeKey)) ?? .month
+    range = Self.sessionRange
     // frame-meter runs (PerfProbe): `W2W_PERF_TRENDS_DAYS=365` picks the range
     if PerfProbe.enabled, let n = ProcessInfo.processInfo.environment["W2W_PERF_TRENDS_DAYS"].flatMap(Int.init),
        let r = TrendRange(rawValue: n) {
@@ -130,7 +159,7 @@ final class TrendsStore: ObservableObject {
   func observe(_ session: AccountSession) {
     self.session = session
     if userToday == nil, let cur = try? session.db.doc(DocKey.todayCurrent) { userToday = TodaySnapshot.dateOf(cur) }
-    let days = range.rawValue, end = self.end, endDay = end ?? userToday
+    let days = range.docDays, end = self.end, endDay = end ?? userToday
     cancellable?.cancel()
     // Parsing a year of 37 series happens in `map`, off the main thread (except the first, synchronous value).
     cancellable = ValueObservation.tracking { db in try TrendsSnapshot.read(db, days: days, end: end, endDay: endDay) }
@@ -145,7 +174,19 @@ final class TrendsStore: ObservableObject {
   func setRange(_ r: TrendRange) {
     guard r != range, let session else { return }
     range = r
-    UserDefaults.standard.set(r.rawValue, forKey: Self.rangeKey)
+    Self.sessionRange = r
+    observe(session)
+    Task { await refresh() }
+  }
+
+  /// A request from 「全部指标 →」: range and end date at once, one reload.
+  func apply(_ r: TrendsLink.Request) {
+    let d = (r.end == userToday) ? nil : r.end
+    guard r.range != range || d != end else { return }
+    range = r.range
+    Self.sessionRange = r.range
+    end = d
+    guard let session else { return }
     observe(session)
     Task { await refresh() }
   }
@@ -163,24 +204,32 @@ final class TrendsStore: ObservableObject {
   func refresh() async {
     guard let session else { return }
     loading = true
-    let out = await DocPuller(api: session.api, db: session.db).pull(TrendsDocs.fetches(days: range.rawValue, end: end))
+    let out = await DocPuller(api: session.api, db: session.db).pull(TrendsDocs.fetches(days: range.docDays, end: end))
     offline = out.offline
     loading = false
     computeLocal()
   }
 
-  /// TrendsLocal off the main thread, once at a time; the bundle is only loaded when the phone has score rows.
+  /// The phone's own status cards for the end date (`TrendsStore.computeLocal(session:day:)`).
   private func computeLocal() {
-    guard let session, !computing else { return }
-    guard let day = end ?? page?.data.end ?? userToday else { return }
+    guard let session, let day = end ?? page?.data.end ?? userToday else { return }
+    Self.computeLocal(session: session, day: day)
+  }
+
+  private static var computing: Set<String> = []
+
+  /// TrendsLocal off the main thread, once at a time per day; the bundle is only loaded when the phone has score rows.
+  /// Shared by Trends and the Today tab's 今日核心 / 需要注意 (#357).
+  static func computeLocal(session: AccountSession, day: String) {
+    guard !computing.contains(day) else { return }
     let hasRows = (try? session.db.writer.read { db in
       try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM daily_scores LIMIT 1) OR EXISTS (SELECT 1 FROM daily_metrics WHERE metric = 'heart_rate_variability_sdnn' LIMIT 1)")
     }) ?? false
     guard hasRows else { return }
-    computing = true
+    computing.insert(day)
     let db = session.db, tz = TrendsStore.timezone(session)
     Task.detached(priority: .utility) {
-      defer { Task { @MainActor in self.computing = false } }
+      defer { Task { @MainActor in TrendsStore.computing.remove(day) } }
       guard let rt = try? OpenBodyScoreRuntime.builtin() else { return }
       _ = try? TrendsLocal.run(db: db, runtime: rt, end: day, tz: tz)
     }

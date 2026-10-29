@@ -17,10 +17,13 @@ enum TodayDocs {
 
   /// What a refresh of `day` pulls besides the today document. Undated views (status cards, sync, circles) only on today.
   static func fetches(day: String, isToday: Bool, circles: Bool) -> [DocFetch] {
+    // the day's 61-day Trends document (需要注意, 今日核心; #357): the same key Trends' 「今天」 reads
+    let end = isToday ? nil : day
     var f = [
       DocFetch(activity(day), Endpoint.dayActivity(day)),
       DocFetch(coach(day), Endpoint.strainCoach(day)),
       DocFetch(monitor(day), Endpoint.healthMonitor(day)),
+      DocFetch(TrendsDocs.trends(TodayParams.trendsDays, end: end), Endpoint.trends(days: TodayParams.trendsDays, end: end)),
     ]
     if isToday {
       f.append(DocFetch(memory, Endpoint.memory()))
@@ -44,8 +47,8 @@ struct TodaySnapshot: Equatable {
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if let main = try DocRecord.fetchOne(db, key: mainKey) { s.docs[mainKey] = main }
     s.day = date ?? (s.docs[mainKey].flatMap(Self.dateOf))
-    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles]
-    if let d = s.day { keys += [TodayDocs.activity(d), TodayDocs.coach(d), TodayDocs.monitor(d)] }
+    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles, TrendsDocs.trends(TodayParams.trendsDays, end: date)]
+    if let d = s.day { keys += [TodayDocs.activity(d), TodayDocs.coach(d), TodayDocs.monitor(d), TrendsLocal.docKey(d)] }
     for r in try DocRecord.fetchAll(db, keys: keys) { s.docs[r.key] = r }
     if let d = s.day {
       s.local = try DailyScore.filter(Column("date") == d && Column("origin") == "app").fetchOne(db)
@@ -106,7 +109,9 @@ final class TodayStore: ObservableObject {
       today: s.docs[mainKey]?.json, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
       coach: s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json }, monitor: s.day.flatMap { s.docs[TodayDocs.monitor($0)]?.json },
       memory: s.docs[TodayDocs.memory]?.json, sync: s.docs[TodayDocs.sync]?.json, circles: s.docs[TodayDocs.circles]?.json,
-      localDay: s.local, localPrev: s.localPrev, userToday: userToday, circlesOn: circlesOn)
+      localDay: s.local, localPrev: s.localPrev, userToday: userToday, circlesOn: circlesOn,
+      trends: s.docs[TrendsDocs.trends(TodayParams.trendsDays, end: date)]?.json,
+      trendsLocal: s.day.flatMap { s.docs[TrendsLocal.docKey($0)]?.json })
     let m = TodayModel(inp)
     if m != model { model = m }
     if !hasData && s.docs[mainKey] != nil {
@@ -145,6 +150,8 @@ final class TodayStore: ObservableObject {
       }
     }
     scoreLocally()
+    // the phone's own status cards for the day (今日核心 / 需要注意), in the background like Trends
+    if let day = date ?? userToday { TrendsStore.computeLocal(session: session, day: day) }
   }
 
   /// The reminder card's actions (已看 / 不再提醒 / 标为未读): the local copy of the today document first, then the
