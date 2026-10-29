@@ -15,7 +15,8 @@ final class SleepNightStore: ObservableObject {
     self.date = date
     error = nil
     let key = TodayDocs.sleepNight(date)
-    cancellable = ValueObservation.tracking { db in try DocRecord.fetchOne(db, key: key) }
+    // the phone's night (M4, `sleepnight.local:<day>`) when package `coach` is primary, else the server's
+    cancellable = ValueObservation.tracking { db in try CoachLocal.shownNight(db, serverKey: key, day: date) }
       .removeDuplicates()
       .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] rec in
         guard let json = rec?.json else { return }
@@ -30,6 +31,7 @@ final class SleepNightStore: ObservableObject {
          let data = try? JSONSerialization.data(withJSONObject: json) {
         try? session.db.saveDoc(TodayDocs.sleepNight(d), json: data)
       }
+      CoachLocal.refreshNight(session: session, day: date)
       if model == nil {
         if out.removed.contains(key) { error = tr("这晚没有数据", "No data for this night") }
         else if out.offline { error = tr("离线，连上网络后重试", "Offline, retry when connected") }

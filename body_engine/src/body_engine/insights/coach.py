@@ -9,6 +9,13 @@ import psycopg
 from ..i18n import is_en
 from ..scores import params as SP
 from ..scores import sleep as S
+from . import healthspan_store as _HSS
+
+# 2.0.0 package M4 (docs/ios-native-2.0.md section 4): the phone runs this module's pure parts (`*_compute`), the bedtime
+# goal of goals/, the sleep detail of sleep_night/, the Today composition of web/views.py and the body-age loader of
+# healthspan_store.py as JS src/34_coach.js. One key for all of them and the body-age algorithm they run, so a change of
+# either makes the phone recompute (as insights/stress.STRESS_CARDS_VERSION).
+COACH_VERSION = "coach-1+" + _HSS.CURRENT.ALGO_VERSION
 
 # ---------------------------------------------------------------- today's strain target
 # WHOOP's Strain Coach gives the day's target strain by recovery score; the ranges are first-version values (strain calibrated to our K=170, median on strength-training days about 12).
@@ -47,7 +54,11 @@ def strain_coach(conn: psycopg.Connection, user_id: int, d: date) -> dict:
     rows = {r["date"]: r for r in conn.execute(
         "SELECT date, recovery, strain, tsb, flags FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s",
         (user_id, d - timedelta(days=1), d))}
-    today, yday = rows.get(d), rows.get(d - timedelta(days=1))
+    return strain_coach_compute(rows.get(d), rows.get(d - timedelta(days=1)), d)
+
+
+def strain_coach_compute(today: dict | None, yday: dict | None, d: date) -> dict:
+    """The pure part of strain_coach: today's and yesterday's score rows {recovery, strain, tsb, flags} (None = no row)."""
     illness = bool(today and "illness_warning" in (today["flags"] or {}))
     tgt = strain_target(today["recovery"] if today else None, yday["tsb"] if yday else None, illness)
     cur = today["strain"] if today else None
@@ -97,6 +108,15 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
     rows = conn.execute("""SELECT date, sleep_actual_min, strain, details->'sleep' AS s FROM daily_scores
                            WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date DESC""",
                         (user_id, d - timedelta(days=SP.DEBT_NIGHTS - 1), d)).fetchall()
+    if goal == "auto":
+        goal = _goal_view(conn, user_id)
+    return sleep_coach_compute(rows, d, tz, goal)
+
+
+def sleep_coach_compute(rows: list[dict], d: date, tz: ZoneInfo, goal: dict | None) -> dict:
+    """The pure part of sleep_coach: score rows {date, sleep_actual_min, strain, s = details.sleep} of the DEBT_NIGHTS days
+    up to d, newest first; goal = the bedtime-goal view (goals/store.compute) when it has a target tonight, else None.
+    Clock arithmetic is wall-clock (datetimes of one time zone), so a DST night shifts nothing."""
     by = {r["date"]: r for r in rows}
     actual = [by[d - timedelta(days=k)]["sleep_actual_min"] if d - timedelta(days=k) in by else None
               for k in range(SP.DEBT_NIGHTS)]
@@ -105,8 +125,6 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
     latencies = [r["s"].get("latency_min") for r in rows if r["s"] and r["s"].get("latency_min") is not None]
     latency = statistics.median(latencies) if len(latencies) >= 3 else LATENCY_DEFAULT_MIN
     wakes = [datetime.fromisoformat(r["s"]["wake_time"]) for r in rows[:7] if r["s"] and r["s"].get("wake_time")]
-    if goal == "auto":
-        goal = _goal_view(conn, user_id)
     out = {"date": d, "need_min": round(need["need"]), "need_parts": {k: round(need[k]) for k in ("baseline", "from_debt",
            "from_strain")}, "sleep_debt_min": round(need["debt"]), "strain_today": strain_today,
            "latency_buffer_min": round(latency), "wake_time": None, "wake_source": None,
@@ -159,6 +177,7 @@ def sleep_coach(conn: psycopg.Connection, user_id: int, d: date, tz: ZoneInfo, g
 MONITOR_DAYS = 60
 MONITOR_MIN_NIGHTS = 14
 MONITOR_K = 2.0               # normal range = baseline mean ± 2 × standard deviation (not below the half-band widths below)
+MONITOR_HRV_MIN_HALF_LN = 0.15   # HRV's minimum half-band on the ln scale (about ±16 %); first-version value, named for the JS twin
 MONITOR = {   # key: (label, unit, getter, minimum half-band)
     "rhr": ("静息心率（睡眠期最低）", "bpm", lambda r: r["rhr_value"], 3.0),
     "hrv": ("HRV（SDNN，夜间）", "ms", lambda r: math.exp(r["hrv_night_ln"]) if r["hrv_night_ln"] is not None else None, None),
@@ -185,7 +204,7 @@ def monitor_range(values: list[float], key: str) -> tuple[float, float, float] |
     if key == "hrv":
         ln = [math.log(v) for v in values]
         m, sd = statistics.fmean(ln), statistics.stdev(ln)
-        half = max(MONITOR_K * sd, 0.15)
+        half = max(MONITOR_K * sd, MONITOR_HRV_MIN_HALF_LN)
         return math.exp(m - half), math.exp(m + half), math.exp(m)
     m, sd = statistics.fmean(values), statistics.stdev(values)
     half = max(MONITOR_K * sd, MONITOR[key][3])
@@ -199,6 +218,14 @@ def health_monitor(conn: psycopg.Connection, user_id: int, d: date) -> dict:
                                 AND m.metric = 'resting_heart_rate'
                            WHERE s.user_id = %s AND s.date BETWEEN %s AND %s ORDER BY s.date""",
                         (user_id, d - timedelta(days=MONITOR_DAYS), d)).fetchall()
+    return health_monitor_compute(rows, d)
+
+
+def health_monitor_compute(rows: list[dict], d: date) -> dict:
+    """The pure part of health_monitor: score rows of the MONITOR_DAYS days up to d, by date: {date, rhr_night,
+    hrv_night_ln, resp_rate_night, rec = details.recovery, rhr_daily = flags has rhr_from_daily, apple_rhr = Apple's
+    resting heart rate of the day}. The caller's rows are not changed."""
+    rows = [dict(r) for r in rows]
     latest_any = next((r for r in reversed(rows) if r["rhr_night"] is not None or r["hrv_night_ln"] is not None), None)
     # the lowest sleep heart rate and Apple's all-day resting heart rate differ by a few bpm and cannot be compared mixed: when the latest night is a fallback all-day value, use the all-day value against its own baseline for the whole item
     rhr_apple = bool(latest_any and latest_any["rhr_daily"])

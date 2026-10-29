@@ -152,14 +152,14 @@ def test_flags_are_registered_and_off(dsn, users):
 
 
 # the kinds the merged packages ship (M1: daily, sleep; M2: stress, also a record kind of the `records` stream;
-# M1c: workouts)
-SHIPPED = {"daily", "sleep", "stress", "workouts"}
+# M1c: workouts; M4: healthspan, also a record kind)
+SHIPPED = {"daily", "sleep", "stress", "workouts", "healthspan"}
 
 
 def test_registry_ships_no_kind_and_checks_modules():
     assert set(derived_kinds.kinds()) == SHIPPED
     assert all(k in P.COMPUTE_PACKAGES[m.PACKAGE]["kinds"] for k, m in derived_kinds.kinds().items())
-    assert set(derived_kinds.record_kinds()) == {"stress"}
+    assert set(derived_kinds.record_kinds()) == {"stress", "healthspan"}
     with pytest.raises(derived_kinds.BadKind):
         derived_kinds.register(types.SimpleNamespace(KIND="x", PACKAGE="derive"))
     bad = probe_kind()
@@ -221,6 +221,7 @@ def test_compute_is_off_for_everyone_by_default(client, users, dsn):
             assert j["compute"]["packages"]["series"]["implemented"]   # M3 (trends/series.SERIES_VERSION + src/33_series.js)
             assert j["compute"]["packages"]["derive"]["implemented"]   # M1 (rawdata/derive.DERIVE_VERSION + src/30_derive.js)
             assert j["compute"]["packages"]["workouts"]["implemented"]   # M1c (importer.WORKOUTS_VERSION + src/31_workouts.js)
+            assert j["compute"]["packages"]["coach"]["implemented"]   # M4 (insights/coach.COACH_VERSION + src/34_coach.js)
         old = client.get("/v1/sync/compute", headers=H(tok["b"], **{"X-App-Version": "1.0.9"})).json()
         assert old["compute"]["packages"]["series"]["state"] == "off", "older apps never compute a package"
     finally:

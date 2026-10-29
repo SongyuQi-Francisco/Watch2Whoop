@@ -146,7 +146,7 @@ def load_text(row: dict | None, missing_days: int) -> str:
 
 def scores_today(conn, owner_id: int, day: date) -> dict:
     rows = {r["date"]: r for r in scores_store.scores(conn, owner_id, day - timedelta(days=6), day)}
-    today, yesterday = rows.get(day), rows.get(day - timedelta(days=1))
+    today = rows.get(day)
     last = conn.execute(
         """SELECT date, recovery, sleep_score FROM daily_scores
            WHERE user_id = %s AND date < %s AND recovery IS NOT NULL ORDER BY date DESC LIMIT 1""",
@@ -156,11 +156,22 @@ def scores_today(conn, owner_id: int, day: date) -> dict:
            WHERE user_id = %s AND date < %s AND sleep_score IS NOT NULL ORDER BY date DESC LIMIT 1""",
         (owner_id, day)).fetchone()
     computed = conn.execute("SELECT max(computed_at) AS t FROM daily_scores WHERE user_id = %s", (owner_id,)).fetchone()
+    empty = recovery_empty.explain(conn, owner_id, day, today, local_today(conn, owner_id))   # why the ring is empty
+    return scores_today_compute(rows, day, last, last_sleep, computed["t"] if computed else None, empty)
+
+
+def scores_today_compute(rows: dict, day: date, last: dict | None, last_sleep: dict | None, computed_at,
+                         empty: dict | None) -> dict:
+    """The pure part of scores_today: the score rows (scores/store.FIELDS) of the 7 days up to `day` by date, the newest
+    earlier row with a recovery {date, recovery, sleep_score} and with a sleep score {date, sleep_score, sleep_actual_min,
+    sleep_need_min, sleep_debt_min}, the newest computed_at, recovery_empty's block. The phone's twin: JS
+    OBS.coach.today.scores_today (docs/ios-native-2.0.md M4)."""
+    today, yesterday = rows.get(day), rows.get(day - timedelta(days=1))
     missing_load = sum(1 for d, r in rows.items() if d < day and "load_missing" in (r.get("flags") or {}))
     return {
         "date": day, "today": today, "yesterday": yesterday,
         "today_reasons": reasons(today), "yesterday_reasons": reasons(yesterday),
-        "recovery_empty": recovery_empty.explain(conn, owner_id, day, today, local_today(conn, owner_id)),   # why the ring is empty
+        "recovery_empty": empty,
         "recovery_zone": recovery_zone((today or {}).get("recovery")),
         "recovery_word": _recovery_word(recovery_zone((today or {}).get("recovery"))),
         "load_status": load_status(yesterday),
@@ -168,7 +179,7 @@ def scores_today(conn, owner_id: int, day: date) -> dict:
         (last and {**last, "zone": recovery_zone(last["recovery"])}),
         "last_sleep": None if (today or {}).get("sleep_score") is not None else last_sleep,
         "load_text": load_text(yesterday, missing_load), "load_missing_days": missing_load,
-        "computed_at": computed["t"] if computed else None,
+        "computed_at": computed_at,
     }
 
 
@@ -471,11 +482,30 @@ def hypnogram(segments: list, start: datetime, end: datetime, tz: ZoneInfo) -> l
 def recent_bedtimes(conn, owner_id: int, day: date, tz: ZoneInfo, nights: int = 7) -> list[dict]:
     """Bedtime / wake time of the main sleep for the last `nights` nights (by wake date day − nights + 1 … day), for the bedtime-goal mini chart.
     night = wake date − 1 (the date of that night); bed_offset_min = minutes counted from 18:00 of `night` (so a bedtime after midnight can still be compared with the goal)."""
+    return recent_bedtimes_compute(list(conn.execute(
+        """SELECT DISTINCT ON (wake_date) wake_date, start_at, end_at FROM sleep_sessions
+           WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
+           ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner_id, day - timedelta(days=nights - 1), day))), tz)
+
+
+def main_rows(sessions: list[dict], start: date, end: date) -> dict[date, dict]:
+    """The pure twin of `SELECT DISTINCT ON (wake_date) … WHERE is_main … ORDER BY wake_date, asleep_min DESC NULLS LAST`:
+    the main session with the most minutes asleep of each wake date in [start, end] (the earlier one on a tie), by date.
+    sessions: sleep_sessions rows by start_at."""
+    out: dict[date, dict] = {}
+    for r in sessions:
+        if not r["is_main"] or not start <= r["wake_date"] <= end:
+            continue
+        cur = out.get(r["wake_date"])
+        if cur is None or (r["asleep_min"] is not None and (cur["asleep_min"] is None or r["asleep_min"] > cur["asleep_min"])):
+            out[r["wake_date"]] = r
+    return dict(sorted(out.items()))
+
+
+def recent_bedtimes_compute(mains: list[dict], tz: ZoneInfo) -> list[dict]:
+    """The pure part of recent_bedtimes: one main session per wake date {wake_date, start_at, end_at}, by date."""
     out = []
-    for r in conn.execute(
-            """SELECT DISTINCT ON (wake_date) wake_date, start_at, end_at FROM sleep_sessions
-               WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
-               ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner_id, day - timedelta(days=nights - 1), day)):
+    for r in mains:
         night = r["wake_date"] - timedelta(days=1)
         evening = datetime.combine(night, datetime.min.time(), tz) + timedelta(hours=18)
         out.append({"date": r["wake_date"], "night": night,
@@ -513,17 +543,31 @@ def sleep_today(conn, owner_id: int, day: date) -> dict:
     """The main sleep that ended on wake date `day` (if none, the most recent night within the last 7 days, latest=True): bedtime / wake time (user timezone),
     minutes per stage (sleep_sessions), stage chart (OW first, otherwise the Shortcut archive)."""
     tz = user_tz(conn, owner_id)
-    row = conn.execute(
+    sessions = conn.execute(
         """SELECT wake_date, start_at, end_at, asleep_min, deep_min, core_min, rem_min, awake_min, unspecified_min,
-                  source, device FROM sleep_sessions
-           WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
-           ORDER BY wake_date DESC, asleep_min DESC NULLS LAST LIMIT 1""",
-        (owner_id, day - timedelta(days=LATEST_LOOKBACK_DAYS), day)).fetchone()
-    recent = recent_bedtimes(conn, owner_id, day, tz)
+                  is_main, source, device FROM sleep_sessions
+           WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s ORDER BY start_at""",
+        (owner_id, day - timedelta(days=LATEST_LOOKBACK_DAYS), day)).fetchall()
+    row = latest_main(sessions, day)
+    timeline = night_stages(conn, owner_id, tz, row["start_at"], row["end_at"]) if row else None
+    return sleep_today_compute(sessions, day, tz, timeline)
+
+
+def latest_main(sessions: list[dict], day: date) -> dict | None:
+    """The main sleep of the newest wake date in [day − LATEST_LOOKBACK_DAYS, day] (the most minutes asleep)."""
+    mains = main_rows(sessions, day - timedelta(days=LATEST_LOOKBACK_DAYS), day)
+    return mains[max(mains)] if mains else None
+
+
+def sleep_today_compute(sessions: list[dict], day: date, tz: ZoneInfo, timeline: tuple | None) -> dict:
+    """The pure part of sleep_today: the main sessions of the wake dates [day − 7, day] by start, and night_stages(…) of
+    the night latest_main picks. The phone's twin: JS OBS.coach.today.sleep_today (docs/ios-native-2.0.md M4)."""
+    row = latest_main(sessions, day)
+    recent = recent_bedtimes_compute(list(main_rows(sessions, day - timedelta(days=6), day).values()), tz)
     if row is None:
         return {"date": day, "main": None, "reason": "最近 7 天没有手表睡眠数据", "recent": recent}
     start, end = row["start_at"], row["end_at"]
-    stages, source, stages_reason = night_stages(conn, owner_id, tz, start, end)
+    stages, source, stages_reason = timeline or ([], None, None)
     return {"date": row["wake_date"], "latest": row["wake_date"] != day, "main": {
                 "start": start.astimezone(tz).strftime("%H:%M"), "end": end.astimezone(tz).strftime("%H:%M"),
                 "start_at": start.astimezone(tz).isoformat(), "end_at": end.astimezone(tz).isoformat(),
@@ -544,6 +588,13 @@ def frequent_journal(conn, owner_id: int, end: date | None = None, days: int = 3
     counts = {r["key"]: r["n"] for r in conn.execute(
         """SELECT key, count(*) AS n FROM journal_entries WHERE user_id = %s AND date BETWEEN %s AND %s AND value <> 0
            GROUP BY key""", (owner_id, end - timedelta(days=days - 1), end))}
+    return frequent_journal_compute(items, counts, days, limit, min_items)
+
+
+def frequent_journal_compute(items: list[dict], counts: dict[str, int], days: int = 30, limit: int = 8,
+                             min_items: int = 6) -> list[dict]:
+    """The pure part of frequent_journal: the active journal items {key, label_zh, kind, unit, category, sort} by
+    (sort, key) and the count of non-zero entries per key in the window."""
     by_key = {i["key"]: i for i in items}
     ranked = sorted((k for k in counts if k in by_key), key=lambda k: (-counts[k], by_key[k]["sort"] or 0, k))[:limit]
     for i in items:

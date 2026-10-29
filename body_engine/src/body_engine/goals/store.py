@@ -35,6 +35,12 @@ def get_goal(conn, user_id: int) -> dict | None:
     row = dict(row)
     row["target_bedtime"] = row["target_bedtime"].strftime("%H:%M")
     row["target_wake"] = row["target_wake"].strftime("%H:%M") if row["target_wake"] else None
+    return with_plan(row)
+
+
+def with_plan(row: dict) -> dict:
+    """The pure part of get_goal: a goal row (times as "HH:MM") with its plan steps (`plan_rows`)."""
+    row = dict(row)
     row["plan_rows"] = S.build_plan(row["start_bedtime_off"], S.to_off(row["target_bedtime"]), row["start_date"],
                                     row["pace_min_per_step"], row["step_days"])
     return row
@@ -76,10 +82,22 @@ def set_goal(conn, user_id: int, target_bedtime: str, target_wake: str | None = 
 def duration(conn, user_id: int, goal: dict | None, night: date) -> int:
     if goal and goal.get("target_duration_min"):
         return goal["target_duration_min"]
+    return duration_from(goal, latest_need(conn, user_id, night))
+
+
+def latest_need(conn, user_id: int, night: date) -> int | None:
+    """The newest sleep need of the scores up to the morning after `night`."""
     row = conn.execute("""SELECT sleep_need_min FROM daily_scores WHERE user_id = %s AND date <= %s
                           AND sleep_need_min IS NOT NULL ORDER BY date DESC LIMIT 1""",
                        (user_id, night + timedelta(days=1))).fetchone()
-    return row["sleep_need_min"] if row else P.DEFAULT_DURATION_MIN
+    return row["sleep_need_min"] if row else None
+
+
+def duration_from(goal: dict | None, need: int | None) -> int:
+    """The pure part of duration: the goal's own sleep duration, else the newest sleep need, else the default."""
+    if goal and goal.get("target_duration_min"):
+        return goal["target_duration_min"]
+    return need if need is not None else P.DEFAULT_DURATION_MIN
 
 
 def compute(goal: dict | None, nights: list[dict], night: date, duration: int) -> dict:
@@ -115,4 +133,14 @@ def view(conn, user_id: int, night: date | None = None, now: datetime | None = N
     tz = user_tz(conn, user_id)
     night = night or tonight(tz, now)
     goal = get_goal(conn, user_id)
-    return compute(goal, load_nights(conn, user_id, tz, night), night, duration(conn, user_id, goal, night))
+    sessions = queries.sleep_sessions(conn, user_id, night - timedelta(days=HISTORY_DAYS), night + timedelta(days=1))
+    need = None if goal and goal.get("target_duration_min") else latest_need(conn, user_id, night)
+    return view_compute(goal, sessions, tz, night, need)
+
+
+def view_compute(goal: dict | None, sessions: list[dict], tz: ZoneInfo, night: date, need: int | None) -> dict:
+    """The pure part of view: the goal row with its plan (with_plan) or None, the sleep_sessions rows of the HISTORY_DAYS
+    nights before `night` (+ the morning after), the newest sleep need (duration_from). The phone's twin: JS
+    OBS.coach.goals.view_compute (docs/ios-native-2.0.md M4)."""
+    nights = [n for n in S.nights_from_sessions(sessions, tz) if n["night"] < night]
+    return compute(goal, nights, night, duration_from(goal, need))

@@ -2,7 +2,7 @@
 import json
 import math
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -60,94 +60,139 @@ def _table_exists(conn, name: str) -> bool:
     return conn.execute("SELECT to_regclass(%s) AS t", (name,)).fetchone()["t"] is not None
 
 
+SEXES = {"m": "male", "male": "male", "男": "male", "f": "female", "female": "female", "女": "female"}
+METRICS = ("step_count", "resting_heart_rate", "vo2_max", "body_mass")
+SPARKY_NOTE = "SparkyFitness 读不到（{}），力量训练只看手表训练记录、体重只看 Apple 健康"
+
+
 class Data:
-    """All inputs of one person over [start, end] (indexed by date), reused repeatedly when computing weekly snapshots."""
+    """All inputs of one person over [start, end] (indexed by date), reused repeatedly when computing weekly snapshots.
+    Data(conn, …) reads them (load_parts) and builds them (from_parts, pure: the phone's twin is JS
+    OBS.coach.healthspan.from_parts, docs/ios-native-2.0.md M4)."""
 
     def __init__(self, conn: psycopg.Connection, user_id: int, start: date, end: date, sparky=None):
-        u = conn.execute("SELECT timezone, birth_date, sex, height_cm FROM users WHERE id = %s", (user_id,)).fetchone()
-        self.tz, self.birth, self.height = ZoneInfo(u["timezone"]), u["birth_date"], u["height_cm"]
-        self.sex = {"m": "male", "male": "male", "男": "male", "f": "female", "female": "female", "女": "female"}.get(
-            (u["sex"] or "").strip().lower())
-        self.notes: list[str] = []
-        rows = conn.execute("""SELECT date, sleep_actual_min, strain, details->'load'->'zone_minutes' AS z
-                               FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s""",
-                            (user_id, start, end)).fetchall()
-        self.sleep = {r["date"]: r["sleep_actual_min"] / 60 for r in rows if r["sleep_actual_min"] is not None}
-        # moderate-to-vigorous: Z2–Z3 (60–80% HRmax) count as moderate, Z4–Z5 (>= 80%) as vigorous, vigorous × 2 -> moderate-equivalent minutes / day
-        self.mvpa = {}
-        self.zones = {r["date"]: list(r["z"]) for r in rows if r["strain"] is not None and r["z"]}   # v1.2 MVPA reference
-        for r in rows:
-            if r["strain"] is not None and r["z"]:
-                z = r["z"]
-                self.mvpa[r["date"]] = (z[1] + z[2]) + H.VIGOROUS_FACTOR * (z[3] + z[4])
-        metric = lambda m: {r["date"]: r["value"] for r in conn.execute(
-            "SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = %s AND date BETWEEN %s AND %s",
-            (user_id, m, start, end))}
-        self.steps, self.rhr, self.vo2 = metric("step_count"), metric("resting_heart_rate"), metric("vo2_max")
-        self.weight = metric("body_mass")
-        self.waist: dict[date, float] = {}
-        try:   # the user's own goal weight (profile / status card), only for the body-composition tip
-            from ..profile import store as profile
-            self.goal_kg = profile.get(conn, user_id)["goal_weight_kg"]
-        except Exception:  # noqa: BLE001
-            self.goal_kg = None
-        # sleep regularity: minute-by-minute state for each wake date
-        mains, intervals = sleep_detail.load_intervals(conn, user_id, start, end)
-        self.sleep_days = {d: sleep_detail.asleep_minutes(intervals, d, self.tz) for d in mains if start <= d <= end}
-        # strength-training minutes: watch workout records (workouts table, Hevy imports included), SparkyFitness workout records and
-        # imported sessions (Hevy); per day the largest of them (SparkyFitness sessions carry no start time, so they cannot be
-        # matched workout by workout; the larger value never counts one workout twice and never drops a source)
-        self.strength: dict[date, float] = defaultdict(float)
-        # v1.2: every watch workout by day, [(type, minutes, heart-rate zone minutes)], for the activity domain
-        # (strength minutes still come from self.strength, the larger of watch and SparkyFitness)
-        self.workouts: dict[date, list] = defaultdict(list)
-        first_track = []
-        if _table_exists(conn, "workouts"):
-            for r in conn.execute("""SELECT local_date, type, duration_min, hr_zone_min FROM workouts WHERE user_id = %s
-                                     AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s""",
-                                  (user_id, start, end)):
-                if r["type"] in STRENGTH_TYPES:
-                    self.strength[r["local_date"]] += r["duration_min"]
-                self.workouts[r["local_date"]].append((r["type"], r["duration_min"], r["hr_zone_min"]))
-        sparky_days: dict[date, float] = {}
-        try:
-            sparky = sparky or sparky_client.reader_for_user(conn, user_id)
-            for s in sparky_client.training_log(sparky, start, end):
-                minutes = session_strength_minutes(s)
-                if minutes is None:
-                    continue
-                d = date.fromisoformat(s["date"][:10])
-                sparky_days[d] = sparky_days.get(d, 0) + minutes
-            for r in sparky_client.weight(sparky, start, end):
-                d = date.fromisoformat(r["date"])
-                if "weight_kg" in r:
-                    self.weight[d] = r["weight_kg"]   # manual weigh-ins take priority over Apple Health
-                if "waist_cm" in r:
-                    self.waist[d] = r["waist_cm"]
-                if "height_cm" in r and not self.height:
-                    self.height = r["height_cm"]
-        except Exception as e:  # SparkyFitness not connected / unreadable: strength training uses only watch records
-            self.notes.append(f"SparkyFitness 读不到（{type(e).__name__}），力量训练只看手表训练记录、体重只看 Apple 健康")
-        # imported workouts (Hevy CSV, issue #210): most are already in `workouts` as source 'hevy', but one that is a duplicate
-        # of a watch copy whose type is not counted above (e.g. fitness_equipment) was lost; same per-day rule as SparkyFitness
-        hevy_days = imported_strength_days(conn, user_id, start, end)
-        for days in (sparky_days, hevy_days):
-            for d, m in days.items():
-                self.strength[d] = max(self.strength.get(d, 0.0), m)
-        if self.strength:
-            first_track.append(min(self.strength))
-        origin = scoring_origin(conn, user_id)
-        if origin:
-            first_track.append(origin)
-        # before the first recorded day it is unknown whether the user trained; from when they started wearing the watch (or first logged a workout), days without records count as 0 minutes
-        self.strength_from = min(first_track) if first_track else None
-        # evidence that the user trained (journal, active plan), only to label the strength item (strength_coverage)
-        self.strength_journal = {r["date"] for r in conn.execute(
-            """SELECT DISTINCT date FROM journal_entries WHERE user_id = %s AND key = ANY(%s) AND value > 0
-               AND date BETWEEN %s AND %s""", (user_id, list(H.STRENGTH_JOURNAL_KEYS), start, end))}
-        self.strength_plan = conn.execute(
-            """SELECT days_per_week, start_date FROM training_plans WHERE user_id = %s AND active
-               ORDER BY updated_at DESC, id DESC LIMIT 1""", (user_id,)).fetchone()
+        self.__dict__.update(from_parts(load_parts(conn, user_id, start, end, sparky)).__dict__)
+
+
+def load_parts(conn: psycopg.Connection, user_id: int, start: date, end: date, sparky=None) -> dict:
+    """What Data reads, as plain rows: the profile, the score rows, the daily metrics, the sleep sessions, the watch
+    workouts, the SparkyFitness strength log and weigh-ins (None when they could not be read, with the error's name), the
+    imported strength minutes per day, the scoring origin, the journal's strength days and the active training plan."""
+    u = conn.execute("SELECT timezone, birth_date, sex, height_cm FROM users WHERE id = %s", (user_id,)).fetchone()
+    p = {"tz": u["timezone"], "birth": u["birth_date"], "sex": u["sex"], "height": u["height_cm"], "start": start, "end": end}
+    p["scores"] = conn.execute("""SELECT date, sleep_actual_min, strain, details->'load'->'zone_minutes' AS z
+                                  FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s""",
+                               (user_id, start, end)).fetchall()
+    p["metrics"] = {m: {r["date"]: r["value"] for r in conn.execute(
+        "SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = %s AND date BETWEEN %s AND %s",
+        (user_id, m, start, end))} for m in METRICS}
+    try:   # the user's own goal weight (profile / status card), only for the body-composition tip
+        from ..profile import store as profile
+        p["goal_kg"] = profile.get(conn, user_id)["goal_weight_kg"]
+    except Exception:  # noqa: BLE001
+        p["goal_kg"] = None
+    # sleep regularity: the sessions sleep_detail.load_intervals reads
+    p["sleep"] = conn.execute(
+        """SELECT wake_date, start_at, end_at, asleep_min, awake_min, deep_min, rem_min, core_min, is_main, device
+           FROM sleep_sessions WHERE user_id = %s AND wake_date BETWEEN %s AND %s ORDER BY start_at""",
+        (user_id, start - timedelta(days=1), end)).fetchall()
+    p["workouts"] = conn.execute(
+        """SELECT local_date, type, duration_min, hr_zone_min FROM workouts WHERE user_id = %s
+           AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s""",
+        (user_id, start, end)).fetchall() if _table_exists(conn, "workouts") else []
+    p["sparky_sessions"] = p["sparky_weights"] = p["sparky_error"] = None
+    try:
+        sparky = sparky or sparky_client.reader_for_user(conn, user_id)
+        p["sparky_sessions"] = list(sparky_client.training_log(sparky, start, end))
+        p["sparky_weights"] = list(sparky_client.weight(sparky, start, end))
+    except Exception as e:  # SparkyFitness not connected / unreadable: strength training uses only watch records
+        p["sparky_error"] = type(e).__name__
+    p["imported"] = imported_strength_days(conn, user_id, start, end)
+    p["origin"] = scoring_origin(conn, user_id)
+    p["journal"] = {r["date"] for r in conn.execute(
+        """SELECT DISTINCT date FROM journal_entries WHERE user_id = %s AND key = ANY(%s) AND value > 0
+           AND date BETWEEN %s AND %s""", (user_id, list(H.STRENGTH_JOURNAL_KEYS), start, end))}
+    p["plan"] = conn.execute(
+        """SELECT days_per_week, start_date FROM training_plans WHERE user_id = %s AND active
+           ORDER BY updated_at DESC, id DESC LIMIT 1""", (user_id,)).fetchone()
+    return p
+
+
+def utc_sessions(rows: list[dict]) -> list[dict]:
+    """Sleep session rows with start_at / end_at in UTC (exact interval arithmetic in sleep_detail.asleep_minutes)."""
+    return [{**r, "start_at": r["start_at"].astimezone(timezone.utc), "end_at": r["end_at"].astimezone(timezone.utc)}
+            for r in rows]
+
+
+def from_parts(p: dict) -> Data:
+    """The pure part of Data: load_parts' rows -> the inputs of snapshot / weekly (no database)."""
+    self = Data.__new__(Data)
+    start, end = p["start"], p["end"]
+    self.tz, self.birth, self.height = ZoneInfo(p["tz"]), p["birth"], p["height"]
+    self.sex = SEXES.get((p["sex"] or "").strip().lower())
+    self.notes: list[str] = []
+    rows = p["scores"]
+    self.sleep = {r["date"]: r["sleep_actual_min"] / 60 for r in rows if r["sleep_actual_min"] is not None}
+    # moderate-to-vigorous: Z2–Z3 (60–80% HRmax) count as moderate, Z4–Z5 (>= 80%) as vigorous, vigorous × 2 -> moderate-equivalent minutes / day
+    self.mvpa = {}
+    self.zones = {r["date"]: list(r["z"]) for r in rows if r["strain"] is not None and r["z"]}   # v1.2 MVPA reference
+    for r in rows:
+        if r["strain"] is not None and r["z"]:
+            z = r["z"]
+            self.mvpa[r["date"]] = (z[1] + z[2]) + H.VIGOROUS_FACTOR * (z[3] + z[4])
+    metrics = p["metrics"]
+    self.steps, self.rhr, self.vo2 = (dict(metrics.get(m) or {}) for m in METRICS[:3])
+    self.weight = dict(metrics.get("body_mass") or {})
+    self.waist: dict[date, float] = {}
+    self.goal_kg = p.get("goal_kg")
+    # sleep regularity: minute-by-minute state for each wake date. In UTC instants: datetimes in the user's own zone (how
+    # the database session may return them) would subtract by wall time, an hour off in the week of a DST change.
+    mains, intervals = sleep_detail.watch_sessions(utc_sessions(p["sleep"]))
+    self.sleep_days = {d: sleep_detail.asleep_minutes(intervals, d, self.tz) for d in mains if start <= d <= end}
+    # strength-training minutes: watch workout records (workouts table, Hevy imports included), SparkyFitness workout records and
+    # imported sessions (Hevy); per day the largest of them (SparkyFitness sessions carry no start time, so they cannot be
+    # matched workout by workout; the larger value never counts one workout twice and never drops a source)
+    self.strength: dict[date, float] = defaultdict(float)
+    # v1.2: every watch workout by day, [(type, minutes, heart-rate zone minutes)], for the activity domain
+    # (strength minutes still come from self.strength, the larger of watch and SparkyFitness)
+    self.workouts: dict[date, list] = defaultdict(list)
+    first_track = []
+    for r in p["workouts"]:
+        if r["type"] in STRENGTH_TYPES:
+            self.strength[r["local_date"]] += r["duration_min"]
+        self.workouts[r["local_date"]].append((r["type"], r["duration_min"], r["hr_zone_min"]))
+    sparky_days: dict[date, float] = {}
+    for s in p["sparky_sessions"] or []:
+        minutes = session_strength_minutes(s)
+        if minutes is None:
+            continue
+        d = date.fromisoformat(s["date"][:10])
+        sparky_days[d] = sparky_days.get(d, 0) + minutes
+    for r in p["sparky_weights"] or []:
+        d = date.fromisoformat(r["date"])
+        if "weight_kg" in r:
+            self.weight[d] = r["weight_kg"]   # manual weigh-ins take priority over Apple Health
+        if "waist_cm" in r:
+            self.waist[d] = r["waist_cm"]
+        if "height_cm" in r and not self.height:
+            self.height = r["height_cm"]
+    if p["sparky_error"]:
+        self.notes.append(SPARKY_NOTE.format(p["sparky_error"]))
+    # imported workouts (Hevy CSV, issue #210): most are already in `workouts` as source 'hevy', but one that is a duplicate
+    # of a watch copy whose type is not counted above (e.g. fitness_equipment) was lost; same per-day rule as SparkyFitness
+    for days in (sparky_days, p["imported"] or {}):
+        for d, m in days.items():
+            self.strength[d] = max(self.strength.get(d, 0.0), m)
+    if self.strength:
+        first_track.append(min(self.strength))
+    if p["origin"]:
+        first_track.append(p["origin"])
+    # before the first recorded day it is unknown whether the user trained; from when they started wearing the watch (or first logged a workout), days without records count as 0 minutes
+    self.strength_from = min(first_track) if first_track else None
+    # evidence that the user trained (journal, active plan), only to label the strength item (strength_coverage)
+    self.strength_journal = set(p["journal"] or ())
+    self.strength_plan = p["plan"]
+    return self
 
 
 def session_strength_minutes(s: dict) -> float | None:
@@ -457,21 +502,44 @@ def weekly(data: Data, origin: date, today: date, params=CURRENT) -> list[dict]:
     return rows
 
 
+def weekly_local(p: dict, today: date) -> list[dict]:
+    """The phone's entry point (JS OpenBodyScore.healthspanLocal, docs/ios-native-2.0.md M4): load_parts' rows over
+    [scoring origin − 1, today] -> the healthspan_weekly rows; [] without an origin or a birth date (as load)."""
+    if p["origin"] is None or p["birth"] is None:
+        return []
+    return weekly(from_parts(p), p["origin"], today)
+
+
 def compute(conn: psycopg.Connection, user_id: int, today: date | None = None, sparky=None, params=CURRENT) -> list[dict]:
     loaded = load(conn, user_id, today, sparky)
     return weekly(*loaded, params) if loaded else []
 
 
-def write(conn: psycopg.Connection, user_id: int, rows: list[dict], params=CURRENT) -> int:
+def write(conn: psycopg.Connection, user_id: int, rows: list[dict], params=CURRENT, only: bool = False,
+          origin: str | None = None, bundle_version: str | None = None) -> int:
+    """Replace the user's weeks with `rows`: weeks no longer computed are deleted (unless `only`: the phone's upload of
+    some weeks, nativesync/derived_kinds/healthspan.py), the others upserted, so an unchanged week is no change for the
+    app's change log (records stream, kind `healthspan`, migration 1030). origin 'app' + bundle_version: rows the phone
+    computed (2.0.0 M4); the server's own rows keep NULL."""
     with conn.transaction():
-        conn.execute("DELETE FROM healthspan_weekly WHERE user_id = %s", (user_id,))
+        if not only:
+            conn.execute("DELETE FROM healthspan_weekly WHERE user_id = %s AND NOT (week_start = ANY(%s))",
+                         (user_id, [r["week_start"] for r in rows]))
         with conn.cursor() as cur:
             cur.executemany(
                 """INSERT INTO healthspan_weekly (user_id, week_start, as_of, chrono_age, body_age, delta_years,
-                     pace_of_aging, pace_raw, pace_window_weeks, contributors, insufficient, algo_version)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                     pace_of_aging, pace_raw, pace_window_weeks, contributors, insufficient, algo_version, origin,
+                     bundle_version)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                   ON CONFLICT (user_id, week_start) DO UPDATE SET as_of = EXCLUDED.as_of, chrono_age = EXCLUDED.chrono_age,
+                     body_age = EXCLUDED.body_age, delta_years = EXCLUDED.delta_years,
+                     pace_of_aging = EXCLUDED.pace_of_aging, pace_raw = EXCLUDED.pace_raw,
+                     pace_window_weeks = EXCLUDED.pace_window_weeks, contributors = EXCLUDED.contributors,
+                     insufficient = EXCLUDED.insufficient, algo_version = EXCLUDED.algo_version, origin = EXCLUDED.origin,
+                     bundle_version = EXCLUDED.bundle_version, computed_at = now()""",
                 [(user_id, r["week_start"], r["as_of"], r["chrono_age"], r["body_age"], r["delta_years"],
-                  r["pace_of_aging"], r["pace_raw"], r["pace_window_weeks"], Jsonb(r["contributors"], _dumps), Jsonb(r["insufficient"], _dumps), params.ALGO_VERSION) for r in rows])
+                  r["pace_of_aging"], r["pace_raw"], r["pace_window_weeks"], Jsonb(r["contributors"], _dumps),
+                  Jsonb(r["insufficient"], _dumps), params.ALGO_VERSION, origin, bundle_version) for r in rows])
     return len(rows)
 
 

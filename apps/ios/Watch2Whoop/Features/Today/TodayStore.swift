@@ -54,6 +54,8 @@ struct TodaySnapshot: Equatable {
     let trendsKey = TrendsDocs.trends(TodayParams.trendsDays, end: date)
     s.docs[trendsKey] = try SeriesLocal.shown(db, server: trendsKey, local: SeriesLocal.trendsKey(TodayParams.trendsDays, end: date))
     if let d = s.day {
+      // the phone's coach blocks (M4) when package `coach` is primary and they have been computed
+      if let l = try CoachLocal.shownCoach(db, day: d) { s.docs[l.key] = l }
       s.local = try DailyScore.filter(Column("date") == d && Column("origin") == "app").fetchOne(db)
       s.localPrev = try DailyScore.filter(Column("date") == LocalDay.add(d, -1) && Column("origin") == "app").fetchOne(db)
     }
@@ -108,9 +110,17 @@ final class TodayStore: ObservableObject {
     lastSnapshot = s
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if date == nil, let d = s.day { userToday = d }
+    // M4 primary: the phone's strain target, health monitor and the today document's `scores` / `sleep` blocks
+    let local = s.day.flatMap { s.docs[CoachLocal.coachKey($0)]?.json }
+    var today = s.docs[mainKey]?.json
+    if let l = local, var t = today, t["date"] as? String == l["date"] as? String {
+      for k in ["scores", "sleep"] { if let v = l[k] { t[k] = v } }
+      today = t
+    }
     let inp = TodayInputs(
-      today: s.docs[mainKey]?.json, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
-      coach: s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json }, monitor: s.day.flatMap { s.docs[TodayDocs.monitor($0)]?.json },
+      today: today, activity: s.day.flatMap { s.docs[TodayDocs.activity($0)]?.json },
+      coach: (local?["strain_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.coach($0)]?.json },
+      monitor: (local?["health_monitor"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.monitor($0)]?.json },
       memory: s.docs[TodayDocs.memory]?.json, sync: s.docs[TodayDocs.sync]?.json, circles: s.docs[TodayDocs.circles]?.json,
       localDay: s.local, localPrev: s.localPrev, userToday: userToday, circlesOn: circlesOn,
       trends: s.docs[TrendsDocs.trends(TodayParams.trendsDays, end: date)]?.json,
@@ -154,7 +164,10 @@ final class TodayStore: ObservableObject {
     }
     scoreLocally()
     // the phone's own status cards for the day (今日核心 / 需要注意), in the background like Trends
-    if let day = date ?? userToday { TrendsStore.computeLocal(session: session, day: day) }
+    if let day = date ?? userToday {
+      TrendsStore.computeLocal(session: session, day: day)
+      CoachLocal.refresh(session: session, day: day, userToday: userToday)   // M4: coach blocks, the night's detail
+    }
     SeriesLocal.refresh(session: session, [.trends(days: TodayParams.trendsDays, end: date)], userToday: userToday)
   }
 

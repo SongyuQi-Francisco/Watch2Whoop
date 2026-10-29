@@ -464,6 +464,73 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
 | Acceptance | all Today numbers come from local tables; coach texts identical in zh and en |
 | Device | Today fully renders in airplane mode the morning after a synced night (rings, coach, monitor, sleep sheet) |
 
+#### M4 as built (2026-10-30)
+- **Algorithm** `coach` = `insights/coach.py:COACH_VERSION` = `"coach-1+" + healthspan_store.CURRENT.ALGO_VERSION`
+  (`coach-1+hs-v1.2-2026-10-23`) = `OBS.ALGO_VERSIONS.coach`: one key for the views, the body-age loader and the body-age
+  formulas they run (as M2's `stress_cards`). **Python split** (outputs unchanged; the DB tests of the endpoints stay green
+  and `tests/test_native_coach.py` checks the wiring on stored synthetic data): `insights/coach.py` `strain_coach_compute`,
+  `sleep_coach_compute` (goal passed in), `health_monitor_compute` (+ named constant `MONITOR_HRV_MIN_HALF_LN`);
+  `goals/store.py` `with_plan`, `latest_need`, `duration_from`, `view_compute` (`view` = `view_compute(load…)`);
+  `sleep_night/view.py` `load` + pure `compute` (`build` = `compute(load(…))`, `_night` takes the stage timeline);
+  `web/views.py` `scores_today_compute`, `main_rows` (the pure twin of `DISTINCT ON (wake_date) … asleep_min DESC NULLS
+  LAST`), `latest_main`, `recent_bedtimes_compute`, `sleep_today_compute`, `frequent_journal_compute`;
+  `web/recovery_empty.py` `explain_from` (facts as values or lazy callables, so the server keeps its query order);
+  `insights/healthspan_store.py` `load_parts` + pure `from_parts` (`Data(conn, …)` = `from_parts(load_parts(…))`),
+  `weekly_local(parts, today)` (the phone's reference), `utc_sessions`; `write` now upserts (weeks no longer computed are
+  deleted) so an unchanged week is no change in the `records` stream. The Today thresholds of `TodayParams.swift` are now
+  `web/params.py` (sources there), mirrored in `OBS.coach.TODAY_PARAMS`.
+- **JS** `src/34_coach.js`: `OBS.coach.{strain_coach_compute, sleep_coach_compute, health_monitor_compute, monitor_range,
+  goals.*, sleep_night.*, today.*, healthspan.{from_parts, weekly_local}, TODAY_PARAMS}`; entry points `strainCoach`,
+  `sleepCoach`, `healthMonitor`, `sleepGoal`, `sleepNight`, `todayScores`, `recoveryEmpty`, `todaySleep`, `hypnogram`,
+  `frequentJournal`, `healthspanLocal`, stamped. Reuses `OBS.trends.strain_target`, `OBS.sleep.sleep_debt / sleep_need`,
+  `OBS.series.sleep_detail` and `OBS.healthspan_snapshot.weekly`. Python's wall-clock datetime arithmetic (one zone) is
+  reproduced as wall-clock microseconds; `format(x, "g")` / `".0f"` are ported (`fmtG`, `fmt0`).
+- **Goldens** (`*_coach.*`): `test/cases_coach.py` on M3's synthetic person (420 days, Australia/Sydney, DST change
+  2026-10-04): strain coach (zone edges 33 / 34 / 66 / 67, illness, TSB < −30, missing strain, no row), sleep coach (no goal,
+  goal with / without wake time, after midnight, evening wake time, the DST morning, no wake times), health monitor (both
+  languages, Apple's all-day resting HR, < 14 nights, a night out of range, the DST night), bedtime goal (no goal, mid-plan,
+  reached, paused, far behind, DST nights) and its helpers, sleep detail (stages / no stages / no night, naps, two mains,
+  without the scores share, English) and every note, Today scores (load states, missing load days), every
+  `recovery_empty` code in both languages, Today sleep + hypnogram (overlaps, merges, gaps, DST), frequent journal items,
+  body age with / without strength logs, with a SparkyFitness error, without birth date / origin → `golden/coach.json`;
+  `golden/coach_local.json` = the body-age parts as the phone has them + the Python rows, a strain-coach call and the Today
+  thresholds (iOS fixture). Tests `body_engine/tests/test_js_golden_coach.py`, `test/coach.test.js`,
+  `body_engine/tests/test_native_coach.py` (DB), `Watch2WhoopTests/LocalCoachTests.swift`.
+- **Server**: kind `derived_kinds/healthspan.py` (one upload day = one week by its Monday; rows = `weekly`'s row without
+  `week_start` / `notes`; `TOLERANCE` body age / delta 0.1, pace / raw pace 0.01, chronological age 0.01; contributor and
+  insufficient keys exact — recompute takes the phone's lists when their keys agree; `recompute` = `healthspan_store.compute`
+  up to the row's `as_of`; primary upserts the week with origin `app`). Record kind `healthspan` of the `records` stream.
+  Migration `1030_native_healthspan.sql` (`origin`, `bundle_version` on `healthspan_weekly`; `sync_attach` by `week_start`).
+- **iOS**: `HealthspanSchema` → `v7_healthspan_weekly`. `HealthspanStage` (implemented): after a new coach algorithm, on
+  a new day or after an hour, pulls `ext_records` from the scoring origin and the journal's strength days (`records`
+  stream with the kind filter of #368, `kinds: {records: [journal]}`, on its own cursor `healthspan.records_cursor.journal`
+  into the document `healthspan.journal_strength`), reads the parts (`profile:me`, `daily_scores` payload, `daily_metrics`,
+  `sleep_sessions`, M1c's kept `workouts`, `ext_records` strength sets / weigh-ins, the journal days + unsent journal
+  records), calls `healthspanLocal`, writes `healthspan_weekly` + `derived_rows` kind `healthspan` (shadow and primary),
+  uploads with `DeriveStage.upload`. `Features/Today/CoachLocal.swift`: after Today's pulls, `coach.local:<day>`
+  (strain coach, health monitor, sleep coach, the today document's `scores` and `sleep` blocks with the phone's own stage
+  segments) and `sleepnight.local:<day>` (after the sleep page's pull too); shadow = compared with the server's documents
+  (meta `coach.compare`, field paths only), primary = `TodayStore` draws the phone's strain target / monitor / rings'
+  scores and sleep, `SleepNightStore` the phone's night. `TrendsSeriesLocal` reads the body-age series from
+  `healthspan_weekly` only when `coach` is primary.
+- **Deviations**: (1) the server's sleep regularity in body age and the sleep detail now computes on UTC instants
+  (`utc_sessions`): with rows in the user's own zone the old arithmetic was an hour off in a window holding a DST night,
+  so values change only in those windows (M3's `/sleep/details` still has the old behaviour: its owner's, the phone's
+  M3 port already uses UTC); (2) the phone has no Hevy import and no training plan (the plan only labels the strength
+  item; the Hevy minutes are a few days a year), the spot check compares the newest week only; (3) `TodayParams.swift`
+  keeps its constants (no JS call on the main thread), checked against the bundle's `TODAY_PARAMS` by `LocalCoachTests`;
+  (4) the app has no bedtime-goal / sleep-coach page: both are computed (`sleep_coach` in the coach document, goal
+  `null`, since the app does not cache the goal settings; `sleepGoal` is ported and golden-tested for the later page);
+  `frequent_journal` is ported but the record page keeps the server's document; (5) views are not uploaded (section
+  3.2), so only body age has a server spot check; (6) `native-compare` is not part of M4.
+- **Flag**: `native_coach` (shadow; primary needs `native_compute_primary`), off by default.
+- **Device checklist entry (for S9)**: owner's internal build, `native_coach` on for the owner. (1) After a sync round the
+  compute report (`meta` `compute.last`) shows `healthspan` `done` with weeks written and uploaded; `GET /v1/sync/compute`
+  shows kind `healthspan` with a passing last check. (2) Open Today and a night's sleep detail: `meta` `coach.compare` is
+  `ok` for `strain_coach`, `health_monitor`, `today_scores`, `today_sleep`, `sleep_night`. (3) With
+  `native_compute_primary` on (S9), airplane mode the morning after a synced night: Today renders the rings, strain
+  target, health monitor and the sleep sheet; Trends' body age series is the phone's.
+
 ### M5 — reports and journal analysis
 | | |
 |---|---|

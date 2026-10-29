@@ -17,7 +17,7 @@ import GRDB
 /// Package `series` (flag `native_series`, `GET /v1/sync/compute`): off = nothing is computed; shadow = computed and
 /// compared with the server's document (field names of the differences in `meta` `series.compare`), the page still
 /// draws the server's; primary = the page draws the phone's (the server's while the phone's is not there yet).
-/// Inputs the phone does not compute yet (healthspan_weekly before M4, workouts before M1c) and the stress series / cards
+/// Inputs the phone does not compute yet (body age while package `coach` is not primary, workouts before M1c) and the stress series / cards
 /// while package `stress` (M2, StressStage) is not primary come from the server's document of the same page
 /// (`server_only` in the phone's document); with `stress` primary, heart-rate recovery is Apple's value until M1c.
 enum SeriesLocal {
@@ -239,10 +239,9 @@ enum SeriesLocal {
       only.series += ["stress", "resilience"]
       only.status += ["resilience", "body_battery"]
     }
-    if let rows = try? Row.fetchAll(db, sql: """
-      SELECT as_of, body_age FROM healthspan_weekly WHERE as_of BETWEEN ? AND ? AND body_age IS NOT NULL ORDER BY as_of
-      """, arguments: [w.prevStart, end]) {
-      data["body_age"] = rows.map { r -> [String: Any] in ["as_of": r["as_of"] as String, "body_age": r["body_age"] as Double] }
+    // body age (M4): the phone's weeks only when package `coach` is primary; in shadow the page keeps the server's
+    if HealthspanStage.mode(db) == .primary, let rows = try? HealthspanStage.bodyAges(db, from: w.prevStart, to: end) {
+      data["body_age"] = rows
     } else {
       only.series.append("body_age")
     }
