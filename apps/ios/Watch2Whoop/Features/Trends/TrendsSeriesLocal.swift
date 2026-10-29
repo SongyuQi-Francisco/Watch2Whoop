@@ -26,6 +26,8 @@ enum SeriesLocal {
   static let profileDoc = "profile:me"
   static let profileMaxAge: Double = 86_400
   static let compareMeta = "series.compare"
+  /// trends/series.py's data text for a series without data (AI-facing, not shown as is): 没有数据.
+  static let noData = "\u{6CA1}\u{6709}\u{6570}\u{636E}"
   /// Relative tolerance of the shadow comparison (section 3.4: series values and prev_mean 1e-9 relative).
   static let tolerance = 1e-9
 
@@ -439,7 +441,7 @@ enum SeriesLocal {
         unavailable[k] = nil
       } else {
         series[k] = nil
-        unavailable[k] = nz(su[k] ?? "没有数据")
+        unavailable[k] = nz(su[k] ?? noData)
       }
     }
     let st = server?["status"] as? [String: Any] ?? [:]
