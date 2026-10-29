@@ -38,6 +38,19 @@ struct SignedInFlows: ViewModifier {
         .environmentObject(session)
         .environmentObject(app)
       }
+      .modifier(SwitchAccountDialog())
+      // A setup link opened while a step is showing: the dialog cannot present over the step's cover (N9: the link was
+      // dropped without a word). The step steps aside until the question is answered, and comes back after 「取消」.
+      .onReceive(app.$pendingSetup) { flow.hold($0 != nil) }
+  }
+}
+
+/// "Sign in again with this setup info?" for a setup link opened while signed in.
+private struct SwitchAccountDialog: ViewModifier {
+  @EnvironmentObject private var app: AppModel
+
+  func body(content: Content) -> some View {
+    content
       .confirmationDialog(tr("用这个设置信息重新登录？", "Sign in again with this setup info?"),
                           isPresented: Binding(get: { app.pendingSetup != nil }, set: { if !$0 { app.pendingSetup = nil } }),
                           titleVisibility: .visible) {
@@ -87,6 +100,9 @@ final class SignedInFlow: ObservableObject {
   }
 
   @Published var step: Step?
+  /// A setup link is waiting for its question: the step that would show (or was showing) waits too.
+  private var held = false
+  private var heldStep: Step?
   private var session: AccountSession?
   private var profile: Profile?
   private var started = false
@@ -100,10 +116,28 @@ final class SignedInFlow: ObservableObject {
     profile = try? await session.api.send(.get(Endpoint.profile), as: Profile.self)
     if let c = profile?.consent, c.needed {
       HealthSyncService.shared.consentRequired = c.required
-      step = .consent(reconfirm: !c.required)
+      show(.consent(reconfirm: !c.required))
       return
     }
     await next(afterConsent: true)
+  }
+
+  private func show(_ s: Step) {
+    if held { heldStep = s } else { step = s }
+  }
+
+  func hold(_ on: Bool) {
+    guard on != held else { return }
+    held = on
+    if on {
+      if let s = step { heldStep = s; step = nil }
+    } else if let s = heldStep {
+      heldStep = nil
+      Task {
+        try? await Task.sleep(nanoseconds: 450_000_000)   // the dialog goes first
+        if !held { step = s }
+      }
+    }
   }
 
   func consentDone() async {
@@ -127,7 +161,7 @@ final class SignedInFlow: ObservableObject {
     guard let s = session else { return }
     if afterConsent, let p = profile, !p.missing.isEmpty, !UserDefaults.standard.bool(forKey: Self.profileSeenKey(s)) {
       try? await Task.sleep(nanoseconds: 350_000_000)   // let the previous cover go first
-      step = .profile
+      show(.profile)
       return
     }
     #if DEBUG
@@ -137,7 +171,7 @@ final class SignedInFlow: ObservableObject {
     await HealthSyncService.shared.refreshPermission()
     if HealthSyncService.shared.permission == .notAsked {
       try? await Task.sleep(nanoseconds: 350_000_000)
-      step = .health
+      show(.health)
     }
   }
 }

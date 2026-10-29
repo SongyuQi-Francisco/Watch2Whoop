@@ -11,6 +11,6 @@ W2W_DEFAULT_HOST =
 // Version shown in TestFlight (docs/apps.md section 4: the public name is the version only; the build number goes up
 // for every upload of the same version).
 W2W_MARKETING_VERSION = 1.0.9
-W2W_BUILD_NUMBER = 1
+W2W_BUILD_NUMBER = 10
 
 #include? "Watch2Whoop.local.xcconfig"

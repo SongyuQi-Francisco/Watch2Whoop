@@ -54,7 +54,8 @@ struct SyncSettings {
     nonmutating set { defaults.set(newValue, forKey: Key.rawRange) }
   }
 
-  /// The start of the first-sync window (UTC seconds), fixed the first time a history backfill starts: the backfill's
+  /// The start of the first-sync window (UTC seconds), fixed when the account is attached (`pinFirstWindow`; else the
+  /// first time a history backfill starts): the backfill's
   /// cursor walks back from it, and the same value lets Backfill.swift keep the progress of a backfill 1.0.8 started.
   func backfillTo(now: Date = Date(), calendar: Calendar = .current) -> Double {
     if defaults.object(forKey: Key.backfillTo) != nil { return defaults.double(forKey: Key.backfillTo) }
@@ -66,6 +67,16 @@ struct SyncSettings {
     let start = calendar.startOfDay(for: now).addingTimeInterval(-Double(Self.firstSyncDays) * 86400).timeIntervalSince1970
     defaults.set(start, forKey: Key.backfillTo)
     return start
+  }
+
+  /// Fixes the first-sync window's start when an account is attached and none is known yet (#340 N9). The engine's
+  /// first read takes `now - firstSyncDays` (to the second), while `backfillTo` used to be the start of that day: the
+  /// backfill then stopped hours short of the engine's window (a gap on the server), and the phone's own scoring read
+  /// those hours that the server never got. One hour later than the engine's start: the two overlap a little (the
+  /// server skips repeated UUIDs) instead of leaving a gap. 1.0.8's value (a backfill it started) is kept.
+  func pinFirstWindow(now: Date = Date()) {
+    guard defaults.object(forKey: Key.backfillTo) == nil, defaults.object(forKey: Key.flutterBackfillTo) == nil else { return }
+    defaults.set(now.timeIntervalSince1970 - Double(Self.firstSyncDays) * 86400 + 3600, forKey: Key.backfillTo)
   }
 
   /// A larger read range (or all history after a limited one) needs RawSync's anchors reset once.

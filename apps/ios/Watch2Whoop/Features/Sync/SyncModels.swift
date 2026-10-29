@@ -112,6 +112,10 @@ struct BackfillState: Equatable {
   var target = 0
   var percent = 0
   var to: Double = 0
+  /// Where the backfill goes (UTC seconds; 0 = all history) and how far back it got: everything from `cursor` to `to`
+  /// is on the server.
+  var from: Double = 0
+  var cursor: Double = 0
   var error: String?
   var uploading = false
   var batches = 0
@@ -127,6 +131,8 @@ struct BackfillState: Equatable {
     target = Int(num(m["target"]) ?? 0)
     percent = Int(num(m["percent"]) ?? 0)
     to = num(m["to"]) ?? 0
+    from = num(m["from"]) ?? 0
+    cursor = num(m["cursor"]) ?? 0
     error = m["error"] as? String
     uploading = m["uploading"] as? Bool ?? false
     batches = Int(num(m["batches"]) ?? 0)

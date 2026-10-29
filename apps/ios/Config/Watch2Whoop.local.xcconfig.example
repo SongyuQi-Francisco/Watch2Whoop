@@ -8,7 +8,7 @@ W2W_BUNDLE_ID = com.yourname.watch2whoop
 W2W_TEAM_ID = ABCDE12345
 // Name shown on the home screen.
 W2W_DISPLAY_NAME = Watch2Whoop
-// Build number: one more than the last upload of this version.
-// W2W_BUILD_NUMBER = 2
+// Version and build number come from Watch2Whoop.xcconfig in the repository (docs/apps.md section 4): do not set
+// W2W_MARKETING_VERSION / W2W_BUILD_NUMBER here.
 // Host of the default server on the sign-in screen (no https://: two slashes start a comment in xcconfig).
 // W2W_DEFAULT_HOST = body.example.com

@@ -139,7 +139,14 @@ working because the depth does not change.
 - **The person building** (TestFlight / Play) builds **only from that GitHub Release** (its zip, checked against the
   `.sha256` and the commit) or `git clone --branch <tag>`. Never from `main` or a zip sent by hand, and never edits
   the version. See the app README, "Get the code".
-- Changelogs: [`apps/watch2whoop/CHANGELOG.md`](../apps/watch2whoop/CHANGELOG.md) (iOS + Android).
+- **The native iOS app** (`apps/ios/`, #340) replaces the Flutter app on iOS from 1.0.9: same bundle ID, same tags
+  `app-ios-v<X.Y.Z>`. `tools/app_release.sh ios` takes the native app at every commit that has `apps/ios/project.yml`
+  (and the Flutter app at older ones, so the build numbers of the Flutter tags still count). Its version is
+  `W2W_MARKETING_VERSION` + `W2W_BUILD_NUMBER` in `apps/ios/Config/Watch2Whoop.xcconfig` (the same `X.Y.Z+N` rules), its
+  notes are the `## X.Y.Z` section of `apps/ios/CHANGELOG.md`, and its zip also carries the files `project.yml` builds in
+  from outside `apps/ios` (`path: ../../…`), at their repository paths. Android stays on the Flutter app.
+- Changelogs: [`apps/ios/CHANGELOG.md`](../apps/ios/CHANGELOG.md) (iOS from 1.0.9),
+  [`apps/watch2whoop/CHANGELOG.md`](../apps/watch2whoop/CHANGELOG.md) (iOS up to 1.0.8, Android).
 
 ### 5. CI
 
@@ -163,5 +170,6 @@ issue forms ask for the platform, and the PR template has a platform checklist.
 - **共用**：服务器 API、WebView 里的今天页、设置二维码 `watch2whoop://setup?…`、OW 邀请码兑换、今天页一次性登录码、`watch2whoop://sync`。**各平台自己的**：健康数据来源和权限、后台执行、深链注册、签名和商店发布、版本号。
 - **目录**：目标是 `apps/flutter/`（iOS + Android）+ `apps/harmony/` + `apps/README.md` 索引。**现在不改名**：#16（app 自助注册）和 #20（多语言）都在改 `apps/watch2whoop/`；等它们合并后，单独开一个只改名的 PR，并在加 Android 之前做（步骤见第 3 节）。
 - **版本**：服务器继续 `vX.Y.Z`；app 的 tag 只用营销版本，例如 `app-ios-v1.0.6`。tag、Release 标题、zip 名、CHANGELOG 节标题（`## 1.0.6 — 日期`）都不出现构建号；构建号只留在 `pubspec.yaml`（`version: 1.0.6+6`，商店要用它，打包的人不用管）。iOS / Android 共用 pubspec 的版本，构建号只增不减；**每个营销版本每个平台只发一次**，TestFlight 90 天过期重新打包也要升补丁版本（1.0.6 → 1.0.7）。改版本号和 CHANGELOG 走 PR，合并后维护者跑 `tools/app_release.sh`（默认只预演，`--create` 本地打 tag + 打包看看，`--push` 推送 tag）；**GitHub Release 只由 workflow `app-release.yml` 在 tag 推上去后自动生成**：会再查一遍营销版本和 tag 一致、这个版本没发过、构建号比之前所有 tag 的都大（从每个 tag 的 `pubspec.yaml` 读，以前带 `+N` 的老 tag 也算）、有 CHANGELOG 一节、commit 在 main 上，然后附上源码 zip 和 sha256。整个流程不依赖维护者的电脑。以前的 `app-ios-v1.0.0+2`、`app-ios-v1.0.5+5` 保持原名。流程测试用 `-test` 版本（pubspec `0.0.0-test+0` → tag `app-ios-v0.0.0-test`），测完立即删掉 release 和 tag。
+- **原生 iOS app**（`apps/ios/`，#340）从 1.0.9 起接替 Flutter 版的 iOS，tag 还是 `app-ios-v<版本>`：`tools/app_release.sh ios` 在有 `apps/ios/project.yml` 的提交上用原生 app（更早的提交仍是 Flutter 版，所以 Flutter tag 的构建号照样参与比较）。版本号是 `apps/ios/Config/Watch2Whoop.xcconfig` 的 `W2W_MARKETING_VERSION` + `W2W_BUILD_NUMBER`，更新记录是 `apps/ios/CHANGELOG.md` 的 `## X.Y.Z` 一节，源码 zip 里还带上 `project.yml` 从 `apps/ios` 外面打进 app 的文件（路径和仓库一样）。安卓仍是 Flutter 版。
 - **帮忙编译的朋友**：只从这个 tag 的 GitHub Release 编译（zip 先对 sha256 和 commit，或 `git clone --branch <tag>`），不用 main、不用手发的 zip，不自己改版本号。
 - **CI**：按改动路径决定跑哪些任务，跳过的任务也报成功，分支保护的三个必需检查照常；以后的 app 加在工作流顶部的 `OTHER_APPS` 列表里（鸿蒙占位）。
