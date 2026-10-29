@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from . import bodies as B, history as HI, params as P, store
+from . import bodies as B, derived_kinds, history as HI, params as P, store
 
 CURSOR_RE = re.compile(r"^(?:r\.(\d+)\.(\d{4}-\d{2}-\d{2})?|c\.(\d+)\.(\d+))$")
 DATED_STREAMS = ("scores", "daily", "sleep")
@@ -66,6 +66,11 @@ class Puller:
 
     # ------------------------------------------------------------ bodies of (stream, kind, days)
     def bodies(self, stream: str, kind: str, days: list) -> dict:
+        found = self._bodies(stream, kind, days)
+        derived_kinds.extend_pull(stream, kind, self.conn, self.uid, found)   # 2.0.0 kinds add their fields
+        return found
+
+    def _bodies(self, stream: str, kind: str, days: list) -> dict:
         if stream == "records":
             return B.record(self.conn, self.uid, kind, days)
         if stream == "raw":
@@ -134,9 +139,9 @@ class Puller:
             return [], done, False
         out: list[dict] = []
         if stream == "records" and before is None:   # undated kinds once, on the first page
-            undated = [k for k, (_, _, col) in B.RECORD_KINDS.items() if col is None]
+            undated = [k for k, (_, _, col) in B.record_kinds().items() if col is None]
             out += [c for c in self.emit("records", [(k, None) for k in undated]) if c["body"] is not None]
-        kinds = [k for k, (_, _, col) in B.RECORD_KINDS.items() if col is not None] if stream == "records" else [""]
+        kinds = [k for k, (_, _, col) in B.record_kinds().items() if col is not None] if stream == "records" else [""]
         limit = max(budget, 1)
         since = self.raw_since if stream == "raw" else None
         lists = {k: B.restore_days(self.conn, self.uid, stream, k, before, limit, self.tz, since) for k in kinds}

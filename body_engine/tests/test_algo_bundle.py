@@ -45,12 +45,27 @@ def test_download_is_the_file_and_names_its_hash(client):
 
 
 def test_versions_match_the_python_algorithms():
-    """The bundle's algorithm versions are the server's: a Python change without a rebuilt bundle fails here."""
-    from openbodyscore import healthspan_params_v12, hrv, params, stress
-    from body_engine.trends import params as trends_params
+    """The bundle's algorithm versions are the server's (algo/versions.py names the Python constant of each key): a Python
+    change without a rebuilt bundle fails here. Only keys present in the bundle are compared; the 2.0.0 packages add
+    theirs with `src/3N_<pkg>.js` (docs/ios-native-2.0.md section 2.2)."""
+    from body_engine.algo import versions
     m = json.loads((DIST / "manifest.json").read_text())
-    assert m["algo_versions"] == {"scores": params.ALGO_VERSION, "healthspan": healthspan_params_v12.ALGO_VERSION,
-                                  "hrv": hrv.ALGO, "stress": stress.STRESS_VERSION, "trends": trends_params.TREND_VERSION}
+    assert {"scores", "healthspan", "hrv", "stress", "trends"} <= set(m["algo_versions"])
+    for key, version in m["algo_versions"].items():
+        assert key in versions.VERSIONS, f"{key}: add it to algo/versions.py"
+        assert versions.current(key) == version, f"{key}: bundle {version!r}, Python {versions.path(key)} {versions.current(key)!r}"
+
+
+def test_versions_registry_resolves():
+    """Shipped keys resolve to their constant; a planned key without its constant yet has no server version."""
+    from openbodyscore import params
+    from body_engine.algo import versions
+    assert versions.current("scores") == params.ALGO_VERSION
+    assert set(versions.server_versions()) >= {"scores", "healthspan", "hrv", "stress", "trends"}
+    assert set(versions.VERSIONS) >= {"derive", "workouts", "stress_cards", "series", "coach", "reports", "rules", "explain"}
+    assert versions.current("derive") is None or isinstance(versions.current("derive"), str)
+    with pytest.raises(KeyError):
+        versions.path("nope")
 
 
 def test_missing_or_tampered_bundle_is_503(client, tmp_path, monkeypatch):

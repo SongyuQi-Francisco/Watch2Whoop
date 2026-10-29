@@ -140,8 +140,14 @@ RECORD_KINDS = {
 }
 
 
+def record_kinds() -> dict:
+    """RECORD_KINDS plus the record kinds of the derived kinds (derived_kinds/<kind>.py RECORD_KIND, 2.0.0 packages)."""
+    from . import derived_kinds
+    return {**RECORD_KINDS, **derived_kinds.record_kinds()}
+
+
 def record(conn, uid: int, kind: str, days: list) -> dict:
-    return RECORD_KINDS[kind][0](conn, uid, days)
+    return record_kinds()[kind][0](conn, uid, days)
 
 
 # ---------------------------------------------------------------- raw HealthKit data, one body per local day
@@ -196,7 +202,7 @@ def restore_days(conn, uid: int, stream: str, kind: str, before: date | None, li
         params = [uid, str(tz), uid, str(tz), uid, *args, limit]
     else:
         table, col = {"scores": ("daily_scores", "date"), "daily": ("daily_metrics", "date"),
-                      "sleep": ("sleep_sessions", "wake_date")}.get(stream) or RECORD_KINDS[kind][1:]
+                      "sleep": ("sleep_sessions", "wake_date")}.get(stream) or record_kinds()[kind][1:]
         q = f"SELECT d FROM (SELECT DISTINCT {col} AS d FROM {table} WHERE user_id = %s) x WHERE TRUE{cond} ORDER BY d DESC LIMIT %s"
         params = [uid, *args, limit]
     return [r["d"] for r in conn.execute(q, params).fetchall()]

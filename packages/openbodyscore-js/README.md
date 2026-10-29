@@ -88,7 +88,7 @@ on the phone with the rest of the synced data):
 
 ```sh
 node packages/openbodyscore-js/build.js           # rebuild dist/ after changing src/ (CI checks dist/ is up to date)
-node --test packages/openbodyscore-js/test/golden.test.js
+node --test packages/openbodyscore-js/test/*.test.js
 cd body_engine && uv run pytest tests/test_js_golden.py tests/test_algo_bundle.py
 ```
 
@@ -104,6 +104,23 @@ cd body_engine && uv run pytest tests/test_js_golden.py tests/test_algo_bundle.p
   saw). 1e-9 is far below anything stored or shown (integer scores, values rounded to 1–3 decimals).
 - `test/golden.test.js` also checks the API layer (buildInputs → computeDays gives the server's rows), the version
   stamps, IANA time zones across a DST change, and that the bundle is a single script without DOM / Node / network APIs.
+
+## 2.0.0 packages (docs/ios-native-2.0.md section 2.2)
+
+Every own-data computation moves to the phone in packages (M1 derive, M1c workouts, M2 stress, M3 series, M4 coach, M5
+reports, M6 rules / explain). So parallel packages never touch the same file:
+
+- **Load order.** A package adds one file `src/3N_<pkg>.js` (`30_derive.js`, `31_workouts.js`, `32_stress.js`, `33_series.js`,
+  `34_coach.js`, `35_reports.js`, `36_rules.js`, `37_explain.js`). `build.js` concatenates `src/` in name order, so these run
+  after `20_api.js` and can use everything it set up.
+- **Algorithm versions.** Each file adds its own key: `OBS.ALGO_VERSIONS.series = "…";` and never reassigns
+  `OBS.ALGO_VERSIONS` (`build.js` refuses a file that does). The string equals the Python constant that
+  `body_engine/src/body_engine/algo/versions.py` names for that key. `tests/test_algo_bundle.py` compares every key in the bundle.
+- **Tests.** Goldens per package: `test/cases_<pkg>.py` (synthetic inputs, standard library only),
+  `body_engine/tests/test_js_golden_<pkg>.py` (writes `test/golden/<pkg>.json` with `BODY_WRITE_GOLDEN=1`),
+  `test/<pkg>.test.js` (replays them on the bundle). CI runs every `test/*.test.js`.
+- **dist/** is the only file packages share: the PR that merges second rebases and re-runs `node build.js`. Package PRs do
+  not bump `package.json`; the coordinator releases the bundle at the end of each wave.
 
 ## Changing an algorithm
 

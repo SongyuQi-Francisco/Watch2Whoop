@@ -86,7 +86,20 @@ FLAGS: dict[str, str] = {
                    "POST /v1/sync/push（批量写记录）、PUT /v1/users/me/scores/app（app 算好的分数，服务器抽查；这个用户由 app 算分后"
                    "每小时任务只补算改过的天）；/v1/web/me 的 flags 里有它 = 服务器有这些接口。关着时接口 404，app 用旧接口，"
                    "已经上传的 app 分数留在库里，服务器照常每小时算分",
-    "own_food_store": "饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
+    # 2.0.0 本机计算（docs/ios-native-2.0.md 第 5 节）：每个包一个开关，开着 = app 在本机「影子」计算这个包（照旧显示服务器的数，
+    # 上传自己算的行，服务器抽查）；GET /v1/sync/compute 告诉 app 每个包是 off / shadow / primary。服务器还没有这个包的算法
+    # （algo/versions.py 的常量、nativesync/derived_kinds/ 的模块、算法包里的 key）时开着也是 off。关着时和以前一样
+    "native_derive": "2.0.0 本机计算 M1：每日数值（步数、能量、锻炼分钟、生命体征）和睡眠在手机上从 HealthKit 推导，上传 daily / sleep 抽查；关着时用服务器的",
+    "native_workouts": "2.0.0 本机计算 M1c：训练、TRIMP、心率区间、心率恢复、训练日历在手机上算，上传 workouts 抽查；关着时用服务器的",
+    "native_stress": "2.0.0 本机计算 M2：压力、韧性、身体电量、心率恢复卡在手机上算，上传 stress 抽查；关着时用服务器的",
+    "native_series": "2.0.0 本机计算 M3：趋势页全部曲线、月历颜色、近 14 晚、睡眠规律性、VO₂max 等级在手机上算（不上传）；关着时读服务器的 /trends",
+    "native_coach": "2.0.0 本机计算 M4：负荷目标、睡眠教练、健康监测范围、睡眠详情、今天页组合、身体年龄在手机上算，上传 healthspan 抽查；关着时用服务器的",
+    "native_reports": "2.0.0 本机计算 M5：周报 / 月报和「行为影响」在手机上算（不上传）；关着时读服务器的",
+    "native_rules": "2.0.0 本机计算 M6：提醒、训练建议、饮食目标、讲解弹层的个人建议在手机上算，上传 reminders 抽查；关着时用服务器的",
+    "native_compute_primary": "2.0.0 本机计算转正：上面各包里最近一次抽查通过、已上传 ≥ 3 天的，app 显示自己算的数、服务器把上传存成这个人的数据；"
+                              "关着时所有包最多是影子（全局回退开关）",
+    "force_upgrade": "2.0.0 强制升级（R2，全局）：提前 7 天提示，之后原生 app 旧版本和网页今天页被拦（MCP / API token 不拦）；关着时不提示、不拦",
+    "own_food_store":"饮食 / 食物库 / 体重 / 训练记录双写（#252 第 2 期，docs/own-food-weight-storage.md）：每次写 SparkyFitness 后，"
                       "把涉及的日期读回来同步进 Body Engine 自己的表（food_entries、foods、body_measurements、logged_workouts…），"
                       "同步失败只记日志、不影响这次写。关着时和以前完全一样（不多发请求、不碰新表）",
     "own_food_read": "饮食 / 食物库 / 体重 / 围度 / 动作库 / 训练记录改读 Body Engine 自己的表（#252 第 3 期）：今天页、趋势、评分、"

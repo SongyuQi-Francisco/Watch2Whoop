@@ -6,19 +6,24 @@ POST /v1/sync/pull             {cursors: {stream: cursor|""}, limit?, raw_days?,
 GET  /v1/sync/scoring          ?from&to&hist_from&hist_to                         -> the phone's scoring context (scoring.py)
 POST /v1/sync/push             {mutations: [...]}                                 -> one result per mutation (push.py)
 PUT  /v1/users/{user}/scores/app {algo_version, bundle_version, days}             -> stored / checked (appscores.py)
+2.0.0 local compute (docs/ios-native-2.0.md):
+GET  /v1/sync/compute          same query as /v1/sync/scoring              -> its answer + per package off|shadow|primary (compute.py)
+PUT  /v1/users/{user}/derived/app {kind, algo_version, bundle_version, days}      -> checked / stored (derived.py)
+GET  /v1/users/{user}/ext-records ?from&to[&fingerprints=1]                       -> raw log rows per day (ext_records.py)
 Only one's own data; pull needs a read token, the writes a write token.
 """
-from datetime import date
-from typing import Any, Literal
+from datetime import date, datetime, timedelta
+from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
-from . import appscores, params as P, pull as PL, push as PS, scoring, throttle
+from . import appscores, compute, derived, ext_records, params as P, pull as PL, push as PS, scoring, throttle
 
 router = APIRouter(tags=["native-sync"], dependencies=[Depends(flags.require(P.FLAG))])
 
@@ -107,3 +112,71 @@ def put_app_scores(user: str, body: AppScoresIn, conn=Depends(get_conn), viewer=
     except ValueError as e:
         conn.rollback()
         raise HTTPException(422, str(e))
+
+
+# ---------------------------------------------------------------- 2.0.0: every own-data computation on the phone
+def _own(viewer: dict, user: str) -> int:
+    """Reads of one's own sync data only (the phone's copy; shares never cover these)."""
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能读自己的同步数据", "Only your own sync data can be read"))
+    return viewer["id"]
+
+
+@router.get("/v1/sync/compute")
+def sync_compute(from_: date | None = Query(None, alias="from"), to: date | None = None, hist_from: date | None = None,
+                 hist_to: date | None = None, conn=Depends(get_conn), viewer=Depends(current_user),
+                 x_app_version: Annotated[str | None, Header()] = None, x_app_build: Annotated[str | None, Header()] = None):
+    """GET /v1/sync/scoring's answer plus `compute`: where each 2.0.0 package is computed for this user and client
+    (compute.py). Everything is `off` until a package is implemented and its flag is on."""
+    try:
+        out = scoring.context(conn, viewer["id"], from_, to, hist_from, hist_to)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    out["compute"] = compute.overview(conn, viewer["id"], x_app_version, x_app_build)
+    return out
+
+
+class DerivedDayIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    date: date
+    rows: list[dict[str, Any]] = Field(default_factory=list, max_length=P.DERIVED_MAX_ROWS_PER_DAY)
+
+
+class DerivedIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: str = Field(min_length=1, max_length=40)
+    algo_version: str = Field(min_length=1, max_length=60)
+    bundle_version: str | None = Field(None, max_length=40)
+    days: list[DerivedDayIn] = Field(max_length=P.DERIVED_MAX_DAYS)
+
+
+@router.put("/v1/users/{user}/derived/app")
+def put_derived(user: str, body: DerivedIn, conn=Depends(get_conn), viewer=Depends(current_user),
+                x_app_version: Annotated[str | None, Header()] = None, x_app_build: Annotated[str | None, Header()] = None):
+    uid = _self(viewer, user)
+    try:
+        return derived.upload(conn, uid, body.kind, body.algo_version, body.bundle_version,
+                              [d.model_dump() for d in body.days], x_app_version, x_app_build)
+    except KeyError:
+        conn.rollback()
+        raise HTTPException(422, L(f"没有这个类型：{body.kind}", f"Unknown kind: {body.kind}"))
+    except derived.KindOff:
+        conn.rollback()
+        raise HTTPException(409, {"message": L("这个类型现在不在手机上计算", "This kind is not computed on the phone now"),
+                                  "code": "kind_off"})
+    except ValueError as e:
+        conn.rollback()
+        raise HTTPException(422, str(e))
+
+
+@router.get("/v1/users/{user}/ext-records")
+def get_ext_records(user: str, from_: date | None = Query(None, alias="from"), to: date | None = None,
+                    fingerprints: bool = False, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = _own(viewer, user)
+    if to is None:
+        tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
+        to = datetime.now(tz).date()
+    from_ = from_ or to - timedelta(days=P.EXT_DEFAULT_DAYS - 1)
+    if to < from_ or (to - from_).days >= P.EXT_MAX_DAYS:
+        raise HTTPException(422, L(f"from / to：最多 {P.EXT_MAX_DAYS} 天", f"from / to: at most {P.EXT_MAX_DAYS} days"))
+    return (ext_records.fingerprints if fingerprints else ext_records.days)(conn, uid, from_, to)
