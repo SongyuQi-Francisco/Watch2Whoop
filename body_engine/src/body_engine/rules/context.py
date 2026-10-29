@@ -246,3 +246,214 @@ def load(conn: psycopg.Connection, user_id: int, day: date | None = None,
     if ctx.weights is not None or body_mass:
         ctx.weights = sorted(weights.values(), key=lambda r: r["date"])
     return ctx
+
+
+# ================================================================ plain data (2.0.0 package M6, docs/ios-native-2.0.md)
+# The phone runs the rules itself (packages/openbodyscore-js src/36_rules.js). Its input is plain JSON in two layers:
+# - `data`: the Ctx itself (to_data / from_data), what OBS.rules.evaluate reads;
+# - `raw`: the sources before the three pure steps at the end of `load` (assemble): goal versions + SparkyFitness
+#   fallback goals -> `goals`, SparkyFitness weigh-ins + body_mass -> `weights`, sleep sessions + the newest sleep need
+#   -> `sleep_nights`, `sleep_duration_min`. The phone fills `raw` from its own tables (scores, sleep, body mass,
+#   journal) and the server's raw inputs document (GET /v1/users/me/rules/inputs = `inputs`);
+#   evaluate_data(assemble(load_raw(...))) equals evaluate_ctx(load(...)) (tests/test_native_rules.py).
+SCORE_FIELDS = ("recovery", "sleep_score", "sleep_debt_min", "sleep_actual_min", "sleep_need_min", "strain", "flags")
+META_FIELDS = ("exercise_ref", "app_exercise_id", "status", "aliases", "reason", "cues")
+GOAL_FIELDS = ("status", "start_date", "pace_min_per_step", "step_days", "start_bedtime_off", "target_bedtime",
+               "target_wake", "target_duration_min")
+DIET_FIELDS = ("kind", "target", "value", "basis", "match")
+VERSION_FIELDS = ("id", "effective_from", "name", "training", "rest", "training_weekdays")
+# keys of `raw` the server's inputs document carries; LOCAL_KEYS come from the phone's own tables
+INPUT_KEYS = ("sessions", "exercises", "presets", "plans", "meta", "food", "nutrition_versions", "sparky_goals",
+              "sparky_weights", "sleep_goal", "overrides", "diet", "water", "water_goal", "errors", "missing")
+LOCAL_KEYS = ("scores", "journal", "body_mass", "sleep_sessions", "sleep_need")
+
+
+def _iso(v):
+    return v.isoformat() if isinstance(v, (date, datetime)) else v
+
+
+def _plain(x):
+    """JSON-safe copy: dates as ISO strings, tuples as lists; numbers untouched."""
+    if isinstance(x, dict):
+        return {str(k): _plain(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_plain(v) for v in x]
+    return _iso(x)
+
+
+def goal_data(goal: dict | None) -> dict | None:
+    """The bedtime goal row as data (without plan_rows: from_data rebuilds them with goals/store.with_plan)."""
+    return None if goal is None else {k: _iso(goal.get(k)) for k in GOAL_FIELDS}
+
+
+def to_data(ctx: Ctx) -> dict:
+    """The Ctx as plain JSON data (OBS.rules.evaluate's input); evaluate_ctx(from_data(to_data(ctx))) == evaluate_ctx(ctx)."""
+    return {
+        "day": ctx.day.isoformat(), "tz": ctx.tz.key, "now": ctx.now.isoformat() if ctx.now else None,
+        "sessions": _plain(ctx.sessions), "exercises": _plain(ctx.exercises),
+        "presets": None if ctx.presets is None else _plain(list(ctx.presets.values())), "plans": _plain(ctx.plans),
+        "meta": [{k: _plain(m.get(k)) for k in META_FIELDS} for m in ctx.meta], "food": _plain(ctx.food),
+        "goals": _plain(ctx.goals), "weights": _plain(ctx.weights),
+        "scores": {d.isoformat(): {k: _plain(r.get(k)) for k in SCORE_FIELDS} for d, r in sorted(ctx.scores.items())},
+        "journal": [[d.isoformat(), k, v] for (d, k), v in sorted(ctx.journal.items())],
+        "sleep_goal": goal_data(ctx.sleep_goal), "sleep_nights": _plain(ctx.sleep_nights),
+        "sleep_duration_min": ctx.sleep_duration_min,
+        "overrides": {d.isoformat(): {"sessions": _plain(ov.get("sessions") or [])} for d, ov in sorted(ctx.overrides.items())},
+        "diet": None if ctx.diet is None else [{k: _plain(r.get(k)) for k in DIET_FIELDS} for r in ctx.diet.rows],
+        "water": None if ctx.water is None else {d.isoformat(): v for d, v in sorted(ctx.water.items())},
+        "water_goal": ctx.water_goal, "errors": dict(ctx.errors), "missing": dict(ctx.missing)}
+
+
+def from_data(data: dict) -> Ctx:
+    """Inverse of to_data (pure)."""
+    from ..goals import store as gs
+    from ..nutrition.constraints import Constraints
+    D = date.fromisoformat
+    goal = data.get("sleep_goal")
+    if goal is not None:
+        goal = gs.with_plan({**goal, "start_date": D(goal["start_date"])})
+    presets = data.get("presets")
+    return Ctx(
+        user_id=0, day=D(data["day"]), tz=ZoneInfo(data["tz"]),
+        now=datetime.fromisoformat(data["now"]) if data.get("now") else None,
+        sessions=data.get("sessions"), exercises=data.get("exercises"),
+        presets=None if presets is None else {p["id"]: p for p in presets}, plans=data.get("plans"),
+        meta=list(data.get("meta") or []), food=data.get("food"), goals=data.get("goals"), weights=data.get("weights"),
+        scores={D(d): {**r, "date": D(d)} for d, r in (data.get("scores") or {}).items()},
+        journal={(D(d), k): v for d, k, v in data.get("journal") or []},
+        sleep_goal=goal, sleep_nights=[{**n, "night": D(n["night"])} for n in data.get("sleep_nights") or []],
+        sleep_duration_min=data.get("sleep_duration_min"),
+        overrides={D(d): ov for d, ov in (data.get("overrides") or {}).items()},
+        diet=None if data.get("diet") is None else Constraints(list(data["diet"])),
+        water=None if data.get("water") is None else {D(d): v for d, v in data["water"].items()},
+        water_goal=data.get("water_goal"), errors=dict(data.get("errors") or {}), missing=dict(data.get("missing") or {}))
+
+
+def merge_weights(sparky: list[dict] | None, body_mass: list[dict]) -> list[dict] | None:
+    """The end of `load`: SparkyFitness weigh-ins first, Body Engine's body_mass ({date, value}) on days without one."""
+    weights = {r["date"]: {"date": r["date"], "weight_kg": r["weight_kg"], "source": "sparkyfitness"}
+               for r in sparky or [] if r.get("weight_kg") is not None}
+    for r in body_mass:
+        d = _iso(r["date"])
+        weights.setdefault(d, {"date": d, "weight_kg": r["value"], "source": "body_engine"})
+    if sparky is not None or body_mass:
+        return sorted(weights.values(), key=lambda r: r["date"])
+    return None
+
+
+def assemble(raw: dict) -> dict:
+    """raw -> data (pure): the goals of the 7 days from `day`, the merged weights, the nights before `day` and tonight's
+    sleep duration, as `load` builds them."""
+    from ..goals import nutrition as ng, sleep as S, store as gs
+    D = date.fromisoformat
+    day, tz = D(raw["day"]), ZoneInfo(raw["tz"])
+    goals = None
+    if raw.get("nutrition_versions") is not None:
+        versions = [{**v, "effective_from": D(v["effective_from"])} for v in raw["nutrition_versions"]]
+        fallback = raw.get("sparky_goals") or {}
+        goals = _plain([ng.goal_for(d, versions, fallback.get(d.isoformat()), en=False)
+                        for d in (day + timedelta(days=k) for k in range(7))])
+    lo, hi = (day - timedelta(days=gs.HISTORY_DAYS)).isoformat(), (day + timedelta(days=1)).isoformat()
+    sessions = [{**s, "start_at": datetime.fromisoformat(s["start_at"]) if s.get("start_at") else None,
+                 "end_at": datetime.fromisoformat(s["end_at"]) if s.get("end_at") else None}
+                for s in raw.get("sleep_sessions") or [] if lo <= s["wake_date"] <= hi]
+    nights = [n for n in S.nights_from_sessions(sessions, tz) if n["night"] < day]
+    goal = raw.get("sleep_goal")
+    keep = ("day", "tz", "now", "sessions", "exercises", "presets", "plans", "meta", "food", "sleep_goal", "diet",
+            "water", "water_goal", "errors", "missing")
+    return {**{k: raw.get(k) for k in keep}, "goals": goals,
+            "weights": merge_weights(raw.get("sparky_weights"), raw.get("body_mass") or []),
+            "scores": {r["date"]: {k: r.get(k) for k in SCORE_FIELDS} for r in raw.get("scores") or []},
+            "journal": sorted([r["date"], r["key"], r["value"]] for r in raw.get("journal") or []),
+            "sleep_nights": _plain(nights), "sleep_duration_min": gs.duration_from(goal, raw.get("sleep_need")),
+            "overrides": {r["date"]: {"sessions": r.get("sessions") or []} for r in raw.get("overrides") or []}}
+
+
+def load_raw(conn: psycopg.Connection, user_id: int, day: date | None = None,
+             client: sparky_client.SparkyClient | None = None, now: datetime | None = None) -> dict:
+    """`load`'s reads as `raw` (see above): the same tables and SparkyFitness calls, nothing assembled."""
+    from .. import queries
+    user = conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()
+    if user is None:
+        raise ValueError(f"没有用户 {user_id}")
+    tz = ZoneInfo(user["timezone"] or "Australia/Sydney")
+    day = day or _today(tz)
+    raw = {"day": day.isoformat(), "tz": tz.key, "now": now.isoformat() if now else None,
+           **inputs(conn, user_id, day, client)}
+    raw["scores"] = [{"date": r["date"].isoformat(), **{k: r[k] for k in SCORE_FIELDS}} for r in conn.execute(
+        """SELECT date, recovery, sleep_score, sleep_debt_min, sleep_actual_min, sleep_need_min, strain, flags
+           FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""",
+        (user_id, day - timedelta(days=SCORE_DAYS), day))]
+    raw["journal"] = [{"date": r["date"].isoformat(), "key": r["key"], "value": r["value"]} for r in conn.execute(
+        "SELECT date, key, value FROM journal_entries WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date, key",
+        (user_id, day - timedelta(days=JOURNAL_DAYS), day))]
+    raw["body_mass"] = [{"date": r["date"].isoformat(), "value": r["value"]} for r in conn.execute(
+        """SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'body_mass' AND unit = 'kg'
+           AND date BETWEEN %s AND %s ORDER BY date""", (user_id, day - timedelta(days=WEIGHT_DAYS - 1), day))]
+    raw["sleep_sessions"] = [
+        {"wake_date": s["wake_date"].isoformat(), "start_at": _iso(s["start_at"]), "end_at": _iso(s["end_at"]),
+         "asleep_min": s["asleep_min"], "is_main": s["is_main"]}
+        for s in queries.sleep_sessions(conn, user_id, day - timedelta(days=goal_store.HISTORY_DAYS), day + timedelta(days=1))]
+    raw["sleep_need"] = goal_store.latest_need(conn, user_id, day)
+    return raw
+
+
+def inputs(conn: psycopg.Connection, user_id: int, day: date, client=None) -> dict:
+    """The part of `raw` the phone does not hold (INPUT_KEYS): exercise rules, the SparkyFitness library / templates /
+    weekly plan / training log / food log / weigh-ins as read, the goal versions and the SparkyFitness goals of the days
+    before the first version, the bedtime goal row, plan day changes, diet constraints, water. Raw rows only; read
+    failures in `errors`, a missing SparkyFitness link in `missing`, exactly as `load` records them."""
+    out: dict = {k: None for k in INPUT_KEYS}
+    out.update(errors={}, missing={})
+    out["meta"] = [{k: _plain(m.get(k)) for k in META_FIELDS}
+                   for m in conn.execute("SELECT * FROM exercise_meta WHERE user_id = %s", (user_id,)).fetchall()]
+    out["sleep_goal"] = goal_data(goal_store.get_goal(conn, user_id))
+    out["overrides"] = [{"date": d.isoformat(), "sessions": _plain(ov.get("sessions") or [])} for d, ov in
+                        sorted(load_overrides(conn, user_id, day - timedelta(days=7), day + timedelta(days=7)).items())]
+    from ..nutrition import constraints as diet_constraints
+    out["diet"] = [{k: _plain(r.get(k)) for k in DIET_FIELDS} for r in diet_constraints.for_user(conn, user_id, day).rows]
+    from .. import water
+    if water.enabled(conn, user_id):
+        from ..water import store as water_store
+        out["water"] = {d.isoformat(): v for d, v in sorted(water_store.totals(conn, user_id, day - timedelta(days=1), day).items())}
+        out["water_goal"] = water_store.goal(conn, user_id, day)["ml"]
+    if client is None:
+        try:
+            client = sparky_client.reader_for_user(conn, user_id)
+        except sparky_client.SparkyError as e:
+            out["missing"]["sparky"] = str(e)
+    if client is None:
+        return out
+    versions = nutrition_goals.versions(conn, user_id)
+
+    def goals():
+        fallback, ok = {}, True
+        for d in (day + timedelta(days=k) for k in range(7)):
+            if nutrition_goals.version_for(versions, d) is not None:
+                continue
+            g = None
+            if ok:
+                try:
+                    g = sparky_client.goal_for_date(client, d)
+                except Exception:  # noqa: BLE001  as goals/nutrition.resolver: no fallback goal, no retry for later dates
+                    ok = False
+            fallback[d.isoformat()] = _plain(g)
+        out["sparky_goals"] = fallback
+        return [{k: _plain(r.get(k)) for k in VERSION_FIELDS} for r in versions]
+
+    fetches = {   # load's order; the names in `errors` are the Ctx's (goals, weights)
+        "exercises": lambda: _plain({e["id"]: e for e in sparky_client.exercises(client)}),
+        "presets": lambda: _plain(list(sparky_client.workout_presets(client).values())),
+        "plans": lambda: _plain(sparky_client.workout_plans(client)),
+        "sessions": lambda: _plain(sparky_client.training_log(client, day - timedelta(days=TRAINING_DAYS), day)),
+        "food": lambda: _plain(nutrition_daily.entries(conn, user_id, day - timedelta(days=FOOD_DAYS - 1), day, client)),
+        "goals": goals,
+        "weights": lambda: _plain(sparky_client.weight(client, day - timedelta(days=WEIGHT_DAYS - 1), day)),
+    }
+    key = {"goals": "nutrition_versions", "weights": "sparky_weights"}
+    for name, fetch in fetches.items():
+        try:
+            out[key.get(name, name)] = fetch()
+        except Exception as e:  # noqa: BLE001  network, permissions, format changes: only the rules that depend on it
+            out["errors"][name] = f"{type(e).__name__}: {e}"
+    return out

@@ -19,9 +19,10 @@ import GRDB
 /// `journal` and `journal_items` on this view's own cursor, kept in `records` like the server's other copies),
 /// `ext_records` (training log, weigh-ins), `workouts` (M1c) and `stress_daily` (M2). A block whose input the phone does not
 /// have is taken from the server's document of the same page (`server_only` in the phone's document), never computed from
-/// missing inputs: nutrition always (goals and food extras are not on the phone yet), stress until package `stress` is
-/// primary, training until M1c's workouts are on the phone, training and weight while the log cannot be read, the journal
-/// findings before the first journal pull.
+/// missing inputs: nutrition until the goal versions are on the phone (M6: RulesStage's inputs document covering both
+/// periods; then only its added-sugar, total-sugar and sugary-drink fields are the server's, the food extras stay there),
+/// stress until package `stress` is primary, training until M1c's workouts are on the phone, training and weight while
+/// the log cannot be read, the journal findings before the first journal pull.
 enum ReportsLocal {
   static let package = "reports"
   static let compareMeta = "reports.compare"
@@ -222,10 +223,18 @@ enum ReportsLocal {
     switch job {
     case let .report(p, end):
       let e = end ?? ctx.today
-      let (data, only) = try db.writer.read { try reportData($0, period: p, end: e, tz: ctx.tz, extOk: extOk, journalOk: journalOk) }
+      var (data, only) = try db.writer.read { try reportData($0, period: p, end: e, tz: ctx.tz, extOk: extOk, journalOk: journalOk) }
       guard (data["scores"] as? [Any])?.isEmpty == false else { return nil }
+      // M6: the nutrition block from the log's day sums and the goal versions once the phone resolves the goals
+      var nutritionLocal = false
+      if extOk, let days = try nutritionDays(db: db, runtime: runtime, period: p, end: e) {
+        data["nutrition"] = ["days": days]
+        only.removeAll { $0 == "nutrition" }
+        nutritionLocal = true
+      }
       guard let out = try runtime.invoke("report", [data, ["period": p, "end": e]]) as? [String: Any] else { return nil }
-      return overlay(out, server: server as? [String: Any], serverOnly: only)
+      let res = overlay(out, server: server as? [String: Any], serverOnly: only)
+      return nutritionLocal ? overlayFields(res, server: server as? [String: Any], block: "nutrition", fields: nutritionServerFields) : res
     case let .analysis(end, regression):
       guard journalOk else { return nil }
       let e = end ?? ctx.today
@@ -350,6 +359,56 @@ enum ReportsLocal {
       metrics[d, default: [:]][m] = v
     }
     return ["items": items, "entries": entries, "scores": scores, "metrics": metrics]
+  }
+
+  // MARK: - M6: the nutrition block's goals on the phone
+
+  /// The nutrition block's fields the phone cannot compute (added sugar, sugary drinks, total sugar: food_entry_extras
+  /// and the entries' own values live on the server; the log's day sums carry no added sugar): taken from the server's
+  /// document of the same period, never computed from missing inputs.
+  static let nutritionServerFields = ["added_sugar_avg_g", "added_sugar_known_days", "added_sugar_over_cap_days", "sugar_avg_g",
+                                      "sugary_drinks"]
+
+  /// nutrition/daily day rows of both periods (OBS.nutritionDays = goals/nutrition.goal_for + day_from_totals) from the log's
+  /// day sums (`ext_records` nutrition_totals) and the goal versions of RulesStage's newest inputs document; nil when the
+  /// versions are not on the phone or a day of the window predates the first version (its goal would be SparkyFitness's).
+  static func nutritionDays(db: AppDatabase, runtime rt: OpenBodyScoreRuntime, period: String, end: String) throws -> [[String: Any]]? {
+    let n = periodDays[period] ?? 7
+    let pstart = LocalDay.add(end, -(2 * n - 1))
+    let read = try db.writer.read { db -> ([[String: Any]], [String: Any])? in
+      guard let doc = try DocRecord.fetchOne(db, sql: "SELECT * FROM docs WHERE key LIKE 'rules:inputs:%' ORDER BY key DESC LIMIT 1"),
+            let versions = doc.json?["nutrition_versions"] as? [[String: Any]], !versions.isEmpty,
+            let first = versions.compactMap({ $0["effective_from"] as? String }).min(), first <= pstart else { return nil }
+      var totals: [String: Any] = [:]
+      for d in try DocRecord.fetchAll(db, sql: "SELECT * FROM docs WHERE key >= ? AND key <= ? ORDER BY key",
+                                      arguments: [DocPuller.extRecordsKey(pstart), DocPuller.extRecordsKey(end)]) {
+        guard let j = d.json, let day = j["date"] as? String, let t = j["nutrition_totals"], !(t is NSNull) else { continue }
+        totals[day] = t
+      }
+      return (versions, totals)
+    }
+    guard let read else { return nil }
+    _ = try? rt.invoke("setLanguage", [Lang.code])
+    return try rt.invoke("nutritionDays", [read.1, read.0, pstart, end, [String: Any]()]) as? [[String: Any]]
+  }
+
+  /// Some fields of one block taken from the server's document (current, previous_values, change); their paths join
+  /// `server_only_paths`, so the comparison skips them.
+  static func overlayFields(_ local: [String: Any], server: [String: Any]?, block: String, fields: [String]) -> [String: Any] {
+    var out = local
+    var paths = out["server_only_paths"] as? [String] ?? []
+    for part in ["current", "previous_values", "change"] {
+      guard var p = out[part] as? [String: Any], var b = p[block] as? [String: Any] else { continue }
+      let s = ((server?[part] as? [String: Any])?[block] as? [String: Any])
+      for f in fields where b[f] != nil || s?[f] != nil {
+        b[f] = s?[f] ?? NSNull()
+        paths.append("\(part).\(block).\(f)")
+      }
+      p[block] = b
+      out[part] = p
+    }
+    out["server_only_paths"] = paths
+    return out
   }
 
   // MARK: - server-only blocks, comparison

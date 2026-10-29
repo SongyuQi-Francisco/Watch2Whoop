@@ -68,13 +68,20 @@ def _version_view(r: dict, superseded: bool | None = None) -> dict:
     return out
 
 
-def _goal_name(t: str, version_name: str | None) -> str:
-    if is_en():
+def _goal_name(t: str, version_name: str | None, en: bool | None = None) -> str:
+    if is_en() if en is None else en:
         return DAY_TYPE_EN[t] + (f" ({version_name})" if version_name else "")
     return DAY_TYPE_ZH[t] + (f"（{version_name}）" if version_name else "")
 
 
-def _goal(day: date, version: dict | None, sparky: dict | None) -> dict:
+def goal_for(day: date, versions: list[dict], sparky: dict | None, en: bool | None = None) -> dict:
+    """Pure (2.0.0 M6, the phone's twin in src/36_rules.js): the goal in effect on `day` from the versions (newest
+    effective_from first, as `versions` returns them) or, before the first version, from SparkyFitness' goal of that day
+    (None = unreachable / not linked). en: the name's language (None = the request's; the rules run in Chinese)."""
+    return _goal(day, version_for(versions, day), sparky, en)
+
+
+def _goal(day: date, version: dict | None, sparky: dict | None, en: bool | None = None) -> dict:
     """One date's goal. Keys name / calories / protein_g / carbs_g / fat_g keep the shape of sparky_client.goal_for_date."""
     out = {"date": day.isoformat(), "source": None, "version_id": None, "effective_from": None, "day_type": None,
            "name": None, **{f: None for f in FIELDS}, "added_sugar_cap_default": False}
@@ -82,7 +89,7 @@ def _goal(day: date, version: dict | None, sparky: dict | None) -> dict:
         t = day_type(version, day)
         s = version[t]
         out.update(source="body_engine", version_id=version["id"], effective_from=version["effective_from"],
-                   day_type=t, name=_goal_name(t, version["name"]),
+                   day_type=t, name=_goal_name(t, version["name"], en),
                    **{f: s.get(f) for f in FIELDS})
     elif sparky is not None:
         out.update(source="sparkyfitness", name=sparky.get("name"),
@@ -114,6 +121,25 @@ def resolver(conn: psycopg.Connection, user_id: int, client=None) -> Callable[[d
             cache[day] = _goal(day, v, None if v is not None or state["client"] is False else sparky_goal(day))
         return cache[day]
     return resolve_day
+
+
+TOTAL_KEYS = ("calories", "protein_g", "carbs_g", "fat_g", "saturated_fat_g")   # = nutrition/daily.MACRO_KEYS
+UNKNOWN_ON_PHONE = ("sugar_g", "added_sugar_g", "fiber_g", "sodium_mg")
+
+
+def day_from_totals(day: date, totals: dict | None, goal: dict | None) -> dict:
+    """Pure (2.0.0 M6): a nutrition/daily.summarize_day row from one day's sums as the phone holds them (ext_records
+    `nutrition_totals`: {entries, calories, protein_g, ...}, sums of the entries' known values, None when none knew one).
+    Calories and macros are summarize_day's (an unknown sum is 0, as it sums `or 0`); sugar, fiber, sodium and the sugary
+    drinks come from food_entry_extras, which the phone does not have: unknown (the report takes them from the server)."""
+    from ..nutrition import daily
+    t = totals or {}
+    d = {"date": day.isoformat(), "logged": (t.get("entries") or 0) > 0,
+         **{k: round(t.get(k) or 0, 1) for k in TOTAL_KEYS}, **{k: None for k in UNKNOWN_ON_PHONE},
+         "known": {"of": t.get("entries") or 0, **{k: 0 for k in UNKNOWN_ON_PHONE}}, "sugary_drinks": 0}
+    d["goal"] = {k: goal.get(k) for k in daily.GOAL_KEYS} if goal else None
+    d["adherence"] = daily.adherence(d, goal)
+    return d
 
 
 def resolve(conn: psycopg.Connection, user_id: int, day: date, client=None) -> dict:

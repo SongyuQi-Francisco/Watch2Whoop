@@ -6,12 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from .. import queries
+from ..i18n import L
 from ..records.api import _owner, _self, current_user, get_conn
-from . import store
+from ..rollout import flags
+from . import context, store
 from .engine import RULE_KEYS
+from .params import RULES_VERSION
 
 router = APIRouter(prefix="/v1/users/{user}", tags=["reminders"])
 Status = Literal["new", "seen", "dismissed"]
+NATIVE_FLAG = "native_rules"
 
 
 class ReminderPatch(BaseModel):
@@ -40,6 +44,19 @@ def rule_runs(user: str, start: date | None = None, end: date | None = None,
     owner = _owner(conn, viewer, user, "reminders")
     end = end or queries.local_today(conn, owner)
     return store.rule_runs(conn, owner, start or end - timedelta(days=6), end)
+
+
+@router.get("/rules/inputs", dependencies=[Depends(flags.require(NATIVE_FLAG))])
+def rule_inputs(user: str, day: Annotated[date | None, Query(alias="date")] = None,
+                conn=Depends(get_conn), viewer=Depends(current_user)):
+    """2.0.0 M6 (docs/ios-native-2.0.md): the raw inputs of the rules the phone does not hold (context.inputs: exercise
+    rules, the SparkyFitness library / templates / plan / training log / food log / weigh-ins, nutrition goal versions,
+    the bedtime goal, plan day changes, diet constraints, water). Rows as read, nothing computed. Own data only."""
+    if user not in ("me", str(viewer["id"])):
+        raise HTTPException(403, L("只能读自己的规则输入", "Only your own rule inputs can be read"))
+    uid = viewer["id"]
+    day = day or queries.local_today(conn, uid)
+    return {"date": day.isoformat(), "rules_version": RULES_VERSION, **context.inputs(conn, uid, day)}
 
 
 @router.patch("/reminders/{reminder_id}")
