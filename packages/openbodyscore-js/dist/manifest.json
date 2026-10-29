@@ -2,8 +2,8 @@
   "name": "openbodyscore-js",
   "version": "0.2.0",
   "file": "openbodyscore.js",
-  "sha256": "a83aa4ca1645f175e82ac09e0cd7b546061718d9a5723091ec92c9cbc1f1085e",
-  "size": 504806,
+  "sha256": "524aad178c56cb587c19250252974937e3193b67f9985eacebd846b77798e63c",
+  "size": 504776,
   "algo_versions": {
     "scores": "v1.2-2026-10-27",
     "healthspan": "hs-v1.2-2026-10-23",

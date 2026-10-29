@@ -595,10 +595,10 @@ OBS.rules = (function (U, CG, CO) {
     var food_limits = diet ? diet.food_limits() : [];
     if (!nn(g_cap) && !nn(meal_cap) && !food_limits.length) return Result(CAPS, "not_triggered", "没有设置红肉 / 食物次数的饮食约束");
     if (has(ctx.errors, "food")) return Result(CAPS, "error", "读不到饮食记录：" + ctx.errors.food);
-    var window = days_back(ctx.day, 7), keys = new Set(window);
+    var win = days_back(ctx.day, 7), keys = new Set(win);
     var food = (ctx.food || []).filter(function (f) { return keys.has(f.date); });
     var journal_g = new Map();
-    window.forEach(function (d) { if (ctx.jhas(d, "red_meat_g")) journal_g.set(d, ctx.jget(d, "red_meat_g")); });
+    win.forEach(function (d) { if (ctx.jhas(d, "red_meat_g")) journal_g.set(d, ctx.jget(d, "red_meat_g")); });
     var logged_days = sortedUnique(food.map(function (f) { return f.date; }).concat(Array.from(journal_g.keys())));
     if (!logged_days.length) {
       var why = !nn(ctx.food) ? "没连 SparkyFitness" : "这 7 天没有饮食记录";
@@ -606,7 +606,7 @@ OBS.rules = (function (U, CG, CO) {
     }
     var per_day = {}, meals = new Set(), matched = [], times = {};
     food_limits.forEach(function (f) { times[f.target] = []; });
-    window.forEach(function (d) {
+    win.forEach(function (d) {
       var hits = [];
       food.filter(function (x) { return x.date === d; }).forEach(function (f) {
         var est = red_meat_estimate(or(g(f, "food"), ""), g(f, "quantity"), g(f, "unit"));
@@ -629,7 +629,7 @@ OBS.rules = (function (U, CG, CO) {
     var coverage = "这 7 天有 " + logged_days.length + " 天有饮食记录" + (logged_days.length === 7 ? "" : "，没记的天不算，实际可能更多");
     var coverage_en = "Days with a food log in these 7: " + logged_days.length + (logged_days.length === 7 ? "" :
       "; days without a log are not counted, so the real amount may be higher");
-    var evidence = { window: [window[0], window[6]], red_meat_g: grams, per_day: per_day, matched_entries: matched,
+    var evidence = { window: [win[0], win[6]], red_meat_g: grams, per_day: per_day, matched_entries: matched,
       food_times: times, red_meat_meals: meals.size, logged_days: logged_days, source: "diet_constraints",
       constraints: diet.rows.map(function (r) { return r.kind + (truthy(r.target) ? ":" + r.target : ""); }) };
     var reminders = [], alt = "接下来几天的蛋白质换成别的来源（禽肉、鱼、蛋、奶、豆制品）",
@@ -707,7 +707,7 @@ OBS.rules = (function (U, CG, CO) {
   function sugar_caps(ctx) {
     if (has(ctx.errors, "food")) return Result(SUGAR, "error", "读不到饮食记录：" + ctx.errors.food);
     if (!nn(ctx.food)) return Result(SUGAR, "insufficient_data", "没连 SparkyFitness，没有饮食记录");
-    var window = days_back(ctx.day, 7), keys = new Set(window);
+    var win = days_back(ctx.day, 7), keys = new Set(win);
     var today = ctx.food.filter(function (f) { return f.date === ctx.day; });
     var drinks = ctx.food.filter(function (f) { return keys.has(f.date) && truthy(g(f, "sugary_drink")); });
     var goal = or((ctx.goals || [null])[0], {});
@@ -734,7 +734,7 @@ OBS.rules = (function (U, CG, CO) {
     if (drinks.length > P.SUGARY_DRINKS_PER_WEEK) {
       reminders.push(Reminder(SUGAR, "warning", "近 7 天喝了 " + drinks.length + " 次含糖饮料",
         "超过每周 " + P.SUGARY_DRINKS_PER_WEEK + " 次。果糖饮料会升尿酸和甘油三酯；换成无糖版、气泡水或茶。",
-        { subject: "sugary_drinks", evidence: { window: [window[0], window[6]],
+        { subject: "sugary_drinks", evidence: { window: [win[0], win[6]],
             drinks: drinks.map(function (f) { return { date: f.date, food: g(f, "food") }; }), limit: P.SUGARY_DRINKS_PER_WEEK,
             source: "Choi & Curhan 2008 BMJ（含糖软饮与痛风）；ACR 2020 痛风指南" },
           title_en: "Sugary drinks " + drinks.length + " times in the last 7 days",
