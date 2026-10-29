@@ -8,7 +8,7 @@ Only meaningful when the workout ended hard: the peak must reach PEAK_MIN_PCT of
 we only look at personal trends, never diagnose.
 """
 from bisect import bisect_left, bisect_right
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 
@@ -20,8 +20,17 @@ PEAK_MIN_PCT = 0.75
 TREND_DAYS = 30
 
 
+def _utc_series(hr: list[tuple[datetime, float]]) -> list[tuple[datetime, float]]:
+    """The series with every instant in UTC. Aware datetimes read from the database share one ZoneInfo, and Python adds,
+    subtracts and compares those as wall clocks, so a window across a DST change would be an hour off; UTC is exact."""
+    if all(t.tzinfo is timezone.utc for t, _ in hr):
+        return hr
+    return [(t.astimezone(timezone.utc), v) for t, v in hr]
+
+
 def hrr60(hr: list[tuple[datetime, float]], end: datetime, hr_max: float | None) -> dict:
-    """hr sorted by time. -> {peak_hr, hr_60s, hrr60, valid, reason}."""
+    """hr sorted by time. -> {peak_hr, hr_60s, hrr60, valid, reason}. Instants are compared in UTC (DST-safe)."""
+    hr, end = _utc_series(hr), end.astimezone(timezone.utc)
     times = [t for t, _ in hr]
     peak_vals = [v for _, v in hr[bisect_left(times, end - PEAK_WINDOW):bisect_right(times, end + timedelta(seconds=5))]]
     out = {"peak_hr": None, "hr_60s": None, "hrr60": None, "valid": False, "reason": None}
@@ -60,6 +69,7 @@ def compute(conn: psycopg.Connection, user_id: int, hr: list[tuple[datetime, flo
     wos = conn.execute("""SELECT id, local_date, end_at FROM workouts
                           WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s
                           ORDER BY start_at""", (user_id, start, end)).fetchall()
+    hr = _utc_series(hr)   # once for all workouts
     rows = []
     for w in wos:
         hmax = hr_max_by_day.get(w["local_date"])

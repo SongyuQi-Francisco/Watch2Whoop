@@ -9,6 +9,14 @@ A restore remembers the snapshot xmin it started at; when it is done the stream 
 whatever changed during the restore is sent again (harmless) and nothing is lost. Incremental pages only contain
 transactions older than the oldest one still running (xid < xmin): a late commit can never slip behind a cursor.
 
+Kind filter (optional, per stream, `kinds: {"records": ["workout"]}`): the answer only has the changes of those record kinds
+(a stage that needs one kind does not download the whole stream). Absent = everything, as before. The cursor of a filtered
+pull is its own namespace: the server stamps the kind set on it (`c.<xid>.<seq>~workout`, kinds sorted) and refuses a cursor
+whose stamp differs from the request's kinds (BadCursor -> 422 bad_cursor, the app restores from "" as for any bad cursor).
+So a cursor of a filtered pull can never be used for an unfiltered pull of the stream (which would skip every other kind that
+changed before it), nor for another kind set, and the server keeps no state about it; the app keeps one cursor per
+(stream, kind set). Rows of other kinds are skipped inside the filtered cursor's own namespace only, where nobody reads them.
+
 Streams: scores, daily, sleep, records (kind = water / journal / ...), docs (op "stale": the server view of that day
 changed, fetch it again if it is shown), raw (HealthKit samples, statistics buckets and beat-to-beat RMSSD per day;
 pulled on a full restore, after a cursor, or for explicit raw_days; `raw_since` bounds a raw restore, since the phone
@@ -35,6 +43,40 @@ class BadCursor(ValueError):
     pass
 
 
+class BadKinds(ValueError):
+    pass
+
+
+def kind_tag(kinds) -> str:
+    return ",".join(sorted(kinds)) if kinds else ""
+
+
+def check_kinds(cursors: dict, kinds: dict | None) -> dict[str, frozenset]:
+    """Validated kind filters {stream: frozenset(kinds)} (raises BadKinds): the stream must be pulled in this request,
+    have kinds (records) and know every kind."""
+    out: dict[str, frozenset] = {}
+    for stream, ks in (kinds or {}).items():
+        if stream not in cursors:
+            raise BadKinds(f"{stream}: not in cursors")
+        if stream != "records":
+            raise BadKinds(f"{stream}: has no kinds")
+        bad = sorted(set(ks) - set(B.record_kinds()))
+        if bad or not ks:
+            raise BadKinds(f"{stream}: unknown kinds {bad}" if bad else f"{stream}: empty kinds")
+        out[stream] = frozenset(ks)
+    return out
+
+
+def split_tag(cursor: str | None, kinds) -> str | None:
+    """The cursor without its kind stamp; BadCursor unless the stamp is exactly the request's kind set."""
+    if not cursor:   # a restore from the start is the same for every kind set
+        return cursor
+    base, _, tag = cursor.partition("~")
+    if tag != kind_tag(kinds):
+        raise BadCursor(cursor)
+    return base
+
+
 def _xmin(conn) -> int:
     return int(conn.execute("SELECT pg_snapshot_xmin(pg_current_snapshot())::text::bigint AS x").fetchone()["x"])
 
@@ -59,8 +101,9 @@ def _change(stream: str, kind: str, day: date | None, body, version: int, op: st
 
 class Puller:
     def __init__(self, conn: psycopg.Connection, uid: int, raw_since: date | None = None,
-                 history_before: date | None = None):
+                 history_before: date | None = None, kinds: dict[str, frozenset] | None = None):
         self.conn, self.uid, self.raw_since, self.history_before = conn, uid, raw_since, history_before
+        self.kinds = kinds or {}   # {stream: kinds wanted}; a stream without an entry gives all of its kinds
         self.tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
         self.xmin = _xmin(conn)
 
@@ -102,11 +145,13 @@ class Puller:
                      AND xid < pg_snapshot_xmin(pg_current_snapshot()) ORDER BY day, xid DESC, seq DESC""",
                 {"u": self.uid, "x": xid, "s": seq}).fetchall()
         else:
+            want = self.kinds.get(stream)
             rows = self.conn.execute(
                 """SELECT DISTINCT ON (kind, key) kind, key, day, xid::text::bigint AS xid, seq FROM sync_changes
                    WHERE user_id = %(u)s AND stream = %(st)s AND (xid, seq) > (%(x)s::text::xid8, %(s)s)
+                     AND (%(k)s::text[] IS NULL OR kind = ANY(%(k)s::text[]))
                      AND xid < pg_snapshot_xmin(pg_current_snapshot()) ORDER BY kind, key, xid DESC, seq DESC""",
-                {"u": self.uid, "st": stream, "x": xid, "s": seq}).fetchall()
+                {"u": self.uid, "st": stream, "x": xid, "s": seq, "k": sorted(want) if want else None}).fetchall()
         rows.sort(key=lambda r: (r["xid"], r["seq"]))
         if stream == "raw":   # bounded by rows of data, at least one day
             out, size, taken = [], 0, []
@@ -138,10 +183,12 @@ class Puller:
         if stream == "docs":    # server views are fetched on demand; the stream only invalidates from here on
             return [], done, False
         out: list[dict] = []
+        want = self.kinds.get(stream)
+        known = {k: v for k, v in B.record_kinds().items() if want is None or k in want} if stream == "records" else {}
         if stream == "records" and before is None:   # undated kinds once, on the first page
-            undated = [k for k, (_, _, col) in B.record_kinds().items() if col is None]
+            undated = [k for k, (_, _, col) in known.items() if col is None]
             out += [c for c in self.emit("records", [(k, None) for k in undated]) if c["body"] is not None]
-        kinds = [k for k, (_, _, col) in B.record_kinds().items() if col is not None] if stream == "records" else [""]
+        kinds = [k for k, (_, _, col) in known.items() if col is not None] if stream == "records" else [""]
         limit = max(budget, 1)
         since = self.raw_since if stream == "raw" else None
         lists = {k: B.restore_days(self.conn, self.uid, stream, k, before, limit, self.tz, since) for k in kinds}
@@ -194,13 +241,16 @@ class Puller:
 
 
 def pull(conn: psycopg.Connection, uid: int, cursors: dict[str, str | None], limit: int = P.PULL_LIMIT_DEFAULT,
-         raw_days: list[date] | None = None, raw_since: date | None = None, history_before: date | None = None) -> dict:
-    """The answer of POST /v1/sync/pull for the streams named in `cursors` (raises BadCursor / KeyError)."""
+         raw_days: list[date] | None = None, raw_since: date | None = None, history_before: date | None = None,
+         kinds: dict[str, list[str]] | None = None) -> dict:
+    """The answer of POST /v1/sync/pull for the streams named in `cursors` (raises BadCursor / KeyError / BadKinds).
+    `kinds` = the optional per-stream kind filter (module docstring)."""
     for s in cursors:
         if s not in P.STREAMS:
             raise KeyError(s)
-    parsed = {s: parse(c) for s, c in cursors.items()}
-    p = Puller(conn, uid, raw_since, history_before)
+    want = check_kinds(cursors, kinds)
+    parsed = {s: parse(split_tag(c, want.get(s))) for s, c in cursors.items()}
+    p = Puller(conn, uid, raw_since, history_before, want)
     changes: list[dict] = []
     out_cursors: dict[str, str] = {}
     more = False
@@ -210,12 +260,12 @@ def pull(conn: psycopg.Connection, uid: int, cursors: dict[str, str | None], lim
         budget = limit - len(changes)
         mode, a, b = parsed[s]
         if budget <= 0:
-            out_cursors[s] = cursors[s] or ""
+            out_cursors[s] = cursors[s] or ""   # unchanged, so its kind stamp stays
             more = True
             continue
         got, cur, again = (p.restore(s, a, b, budget) if mode == "restore" else p.changes(s, a, b, budget))
         changes += got
-        out_cursors[s] = cur
+        out_cursors[s] = cur + (f"~{kind_tag(want[s])}" if s in want else "")
         more = more or again
     if raw_days:
         changes += p.emit("raw", [("", d) for d in sorted(set(raw_days))[:P.RAW_DAYS_MAX]])

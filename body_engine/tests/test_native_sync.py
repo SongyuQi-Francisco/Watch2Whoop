@@ -211,6 +211,85 @@ def test_full_restore_then_incremental(client, users, dsn):
     assert pull_all(client, tok["a"], cur3)[0] == []
 
 
+def test_pull_kind_filter_and_its_cursor_namespace(client, users, dsn):
+    """`kinds` narrows the records stream; its cursor is stamped with the kind set, so it cannot be mixed up with the
+    unfiltered cursor (whose kinds it would otherwise skip) or another kind set."""
+    ids, tok = users
+    with conn_of(dsn) as c:
+        uid = c.execute("""INSERT INTO users (display_name, role, timezone, consent_at, consent_version)
+                           VALUES ('k', 'member', %s, now(), '2026-10-22.2') RETURNING id""", (TZ,)).fetchone()["id"]
+        flags.cohort_add(c, uid, "native", actor="test")
+        token = auth.create_token(c, uid, "app", ["read"])
+        c.execute("INSERT INTO water_intake (user_id, at, local_date, ml, source) VALUES (%s, %s, %s, 250, 'button')",
+                  (uid, datetime(2026, 1, 9, 23, tzinfo=timezone.utc), date(2026, 1, 10)))
+        c.execute("INSERT INTO supplements (user_id, name, status) VALUES (%s, 'Example', 'active')", (uid,))
+        c.execute("INSERT INTO journal_items (user_id, key, label_zh) VALUES (%s, 'stretch', 'x')", (uid,))
+        c.execute("INSERT INTO journal_entries (user_id, date, key, value) VALUES (%s, %s, 'stretch', 1)", (uid, D0))
+        # another user's water: never in the answer, filtered or not
+        c.execute("INSERT INTO water_intake (user_id, at, local_date, ml, source) VALUES (%s, %s, %s, 999, 'button')",
+                  (ids["a"], datetime(2026, 1, 9, 23, tzinfo=timezone.utc), date(2026, 1, 10)))
+        c.commit()
+        flags.invalidate()
+    kinds_of = lambda got: sorted({ch["kind"] for ch in got})   # noqa: E731
+    water = {"records": ["water"]}
+
+    # restore, filtered: only water (and not the undated supplements), its cursor carries the stamp
+    unf, unf_cur, _ = pull_all(client, token, {"records": ""})
+    assert kinds_of(unf) == ["journal", "journal_items", "supplements", "water"]
+    got, cur, _ = pull_all(client, token, {"records": ""}, kinds=water)
+    assert kinds_of(got) == ["water"] and [ch["body"]["items"][0]["ml"] for ch in got] == [250]
+    assert cur["records"].startswith("c.") and cur["records"].endswith("~water")
+    assert unf_cur["records"].startswith("c.") and "~" not in unf_cur["records"]
+    # a kind set is a set: order and duplicates do not matter
+    _, both, _ = pull_all(client, token, {"records": ""}, kinds={"records": ["water", "journal"]})
+    assert both["records"].endswith("~journal,water")
+    assert pull_all(client, token, both, kinds={"records": ["journal", "water", "journal"]})[0] == []
+
+    # cursors do not cross namespaces
+    def code(cursor, **kw):
+        r = client.post("/v1/sync/pull", json={"cursors": {"records": cursor}, **kw}, headers=H(token))
+        return r.status_code, (r.json()["detail"].get("code") if r.status_code == 422 else None)
+    assert code(cur["records"]) == (422, "bad_cursor"), "filtered cursor, unfiltered pull"
+    assert code(unf_cur["records"], kinds=water) == (422, "bad_cursor"), "unfiltered cursor, filtered pull"
+    assert code(cur["records"], kinds={"records": ["journal"]}) == (422, "bad_cursor"), "another kind set"
+    assert code(cur["records"], kinds=water) == (200, None)
+
+    # a change of another kind is not seen by the filtered cursor, and still reaches the unfiltered one
+    with conn_of(dsn) as c:
+        c.execute("UPDATE supplements SET status = 'paused' WHERE user_id = %s", (uid,))
+        c.execute("UPDATE water_intake SET ml = 300 WHERE user_id = %s", (uid,))
+        c.commit()
+    inc, cur2, _ = pull_all(client, token, cur, kinds=water)
+    assert kinds_of(inc) == ["water"] and cur2["records"].endswith("~water")
+    assert pull_all(client, token, cur2, kinds=water)[0] == []
+    inc_all, _, _ = pull_all(client, token, unf_cur)
+    assert kinds_of(inc_all) == ["supplements", "water"]
+    # a filtered restore for another kind set starts from ""
+    assert kinds_of(pull_all(client, token, {"records": ""}, kinds={"records": ["supplements"]})[0]) == ["supplements"]
+
+    # a paged filtered restore keeps the stamp on its in-progress cursors too
+    with conn_of(dsn) as c:
+        for i in range(2, 5):
+            c.execute("INSERT INTO water_intake (user_id, at, local_date, ml, source) VALUES (%s, %s, %s, 100, 'button')",
+                      (uid, datetime(2026, 1, 10 + i, 3, tzinfo=timezone.utc), date(2026, 1, 10 + i)))
+        c.commit()
+    paged, pcur, pages = pull_all(client, token, {"records": ""}, limit=1, kinds=water)
+    assert pages > 1 and kinds_of(paged) == ["water"] and len(paged) == 4 and pcur["records"].endswith("~water")
+    first = client.post("/v1/sync/pull", json={"cursors": {"records": ""}, "limit": 1, "kinds": water}, headers=H(token)).json()
+    assert first["more"] and first["cursors"]["records"].startswith("r.") and first["cursors"]["records"].endswith("~water")
+
+    # validation against the registry
+    def bad(cursors, kinds):
+        r = client.post("/v1/sync/pull", json={"cursors": cursors, "kinds": kinds}, headers=H(token))
+        return r.status_code, r.json()["detail"].get("code")
+    assert bad({"records": ""}, {"records": ["nope"]}) == (422, "bad_kinds")
+    assert bad({"records": ""}, {"records": []}) == (422, "bad_kinds")
+    assert bad({"scores": ""}, {"scores": ["x"]}) == (422, "bad_kinds"), "only records has kinds"
+    assert bad({"scores": ""}, {"records": ["water"]}) == (422, "bad_kinds"), "stream not pulled"
+    # no filter at all = as before
+    assert client.post("/v1/sync/pull", json={"cursors": {"records": ""}, "kinds": {}}, headers=H(token)).status_code == 200
+
+
 def test_raw_restore_and_raw_days(client, users, dsn):
     ids, tok = users
     uid = ids["a"]

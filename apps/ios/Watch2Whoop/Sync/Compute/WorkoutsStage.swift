@@ -31,7 +31,12 @@ struct WorkoutsStage: ComputeStage {
   static let maxPullPages = 10
   /// meta: the derive algorithm last used, the records cursor of the server's workouts.
   static let algoKey = "workouts.algo"
-  static let cursorKey = "workouts.records_cursor"
+  /// The cursor of the filtered pull (`kinds: {records: [workout]}`). The server stamps a filtered cursor with its kind set
+  /// and refuses it for any other request, so this key is this stage's own and never feeds an unfiltered pull. (The key of
+  /// 2.0.0 betas, `workouts.records_cursor`, held an unfiltered cursor and is not read any more.)
+  static let cursorKey = "workouts.records_cursor.workout"
+  /// The pull filter: only the workouts of the records stream come down, not the water, food, journal … of the user.
+  static let pullKinds: [String: [String]] = ["records": ["workout"]]
 
   // MARK: - host hooks (tests replace them)
 
@@ -329,13 +334,13 @@ struct WorkoutsStage: ComputeStage {
 
   // MARK: - the server's workouts (records stream, kind workout)
 
-  /// Pulls the `records` stream on this stage's own cursor and keeps the kind `workout` (whole-day replace of the server's
-  /// rows; a phone row of the same workout keeps the server's copy in `server_row`). Returns the days that changed.
+  /// Pulls the `records` stream filtered to the kind `workout` (`pullKinds`) on this stage's own cursor (whole-day replace of
+  /// the server's rows; a phone row of the same workout keeps the server's copy in `server_row`). Returns the days that changed.
   static func pullServerWorkouts(db: AppDatabase, api: APIClient) async -> Set<String> {
     var days = Set<String>()
     for _ in 0..<maxPullPages {
       let cursor = ((try? db.meta(cursorKey)) ?? nil) ?? ""
-      let body: [String: Any] = ["cursors": ["records": cursor], "limit": 500]
+      let body: [String: Any] = ["cursors": ["records": cursor], "limit": 500, "kinds": pullKinds]
       let page: [String: Any]
       do {
         page = try await api.json(APIRequest(method: .post, path: Endpoint.syncPull,

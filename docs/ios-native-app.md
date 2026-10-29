@@ -173,6 +173,7 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
 
   - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`、`hk_*`），然后保存游标。`more` 为 true 就接着拉。`daily`、`sleep`、`raw` 改到的日期同时记进 `score_dirty`。
   - 游标对 app 是不透明的字符串，原样存、原样发回。服务器回 422 `bad_cursor` 时把这个 stream 的游标清空，重新全量恢复。
+  - 可选 `kinds: {"records": ["workout"]}`：只要这些 kind（只有 records 有 kind；没有 = 全部）。带过滤的游标被服务器盖上 kind 集合的章（`c.812.40~workout`），章和请求的 kinds 对不上就是 422 `bad_cursor`，所以过滤游标不会被拿去做不过滤的拉取（否则会漏掉其他 kind）；app 对每个（stream, kind 集合）单独存一个游标。空游标对任何 kind 集合都有效。未知 kind 是 422 `bad_kinds`。
   - 游标为空就是**全量恢复**：删了 app 重装、换手机都走这一条。按天分页，**最新的一天在最前**，所以前一两页就是最近两周。
   - `raw`（HealthKit 原始样本）也能拉回来，这样删掉 app 重装后可以在本地重算。规则是：全量恢复时拉（同样按天、从新到旧，每页 ≤ 20000 行）；某几天要重算时用 `raw_days` 指定（每次 ≤ 7 天，不动游标）。
   - 更早的全部历史走 `raw_history`（单独拉、服务器限速、Wi‑Fi 加充电或用户允许蜂窝时才拉），内容是服务器算分时合并好的输入，见第 9.1 节「本机完整历史」。
