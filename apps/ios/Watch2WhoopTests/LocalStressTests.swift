@@ -162,14 +162,17 @@ final class LocalStressTests: XCTestCase {
     // a heart-rate sample on an old day (the history downloaded later): that day and the 14 after it
     let old = LocalDay.add(end, -50)
     let store = LocalRawStore(db: db, zone: zone)
-    try db.writer.write { db in
+    try Self.write(db) { db in
       try db.execute(sql: "INSERT INTO hist_samples (kind, t, value) VALUES (1, ?, 70)", arguments: [store.dayStart(old)! + 3600 * 11 + 7])
-      let days = try StressStage.daysToCompute(db, store: store, today: end, algo: rt.algoVersions["stress_cards"]!)
-      XCTAssertEqual(days.first, old)
-      XCTAssertTrue(days.contains(LocalDay.add(old, 14)) && !days.contains(LocalDay.add(old, 15)))
-      XCTAssertEqual(days.filter { $0 >= LocalDay.add(end, -15) }.count, StressStage.recentDays)
     }
+    let days = try StressStage.days(db: db, store: store, today: end, algo: try XCTUnwrap(rt.algoVersions["stress_cards"]))
+    XCTAssertEqual(days.first, old)
+    XCTAssertTrue(days.contains(LocalDay.add(old, 14)) && !days.contains(LocalDay.add(old, 15)))
+    XCTAssertEqual(days.filter { $0 >= LocalDay.add(end, -15) }.count, StressStage.recentDays)
   }
+
+  /// Synchronous database access from the async tests.
+  private static func write(_ db: AppDatabase, _ f: (Database) throws -> Void) throws { try db.writer.write(f) }
 
   /// Chunks are runs of consecutive days, at most `chunkDays` long.
   func testChunks() {
