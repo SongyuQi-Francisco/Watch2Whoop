@@ -17,5 +17,7 @@
     "coach": "coach-1+hs-v1.2-2026-10-23",
     "reports": "reports-1"
   },
-  "global": "OpenBodyScore"
+  "global": "OpenBodyScore",
+  "signature": "I1srETL0DfFXCF2A5GmbH2/jNXD5Fq59kKwmVmSQn73bFsFl0OX7tGZSv31RxH9iJ+fs4fevVIwOQcuEWc3gAA==",
+  "key_id": "51e37b7c14053032"
 }
