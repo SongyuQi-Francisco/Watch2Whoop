@@ -4,7 +4,8 @@ import XCTest
 final class SchemaTests: XCTestCase {
   /// Migrations are append-only: a page agent adds a new one at the end, never renames or reorders (section 4.3).
   func testMigrationOrder() {
-    XCTAssertEqual(Schema.migrator.migrations, ["v1_initial", "v2_local_scoring", "v3_local_history", "v4_derive_tables"])
+    XCTAssertEqual(Schema.migrator.migrations, ["v1_initial", "v2_local_scoring", "v3_local_history", "v4_derive_tables",
+                                                    "v6_stress_daily"])
   }
 
   func testDocumentsRoundTrip() throws {

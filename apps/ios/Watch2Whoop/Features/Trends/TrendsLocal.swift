@@ -8,8 +8,10 @@ import GRDB
 /// | Card | Where | Why |
 /// |---|---|---|
 /// | HRV status, training status, load focus, illness risk, lowest-HR timing, recovery time, chronotype | phone | inputs are in the local score rows, metrics and sleep sessions |
-/// | resilience, body battery | server | need the stress score (`stress_daily`), which has no local table |
-/// | heart-rate recovery | server | needs the workouts' raw heart rate after exercise (`workouts`) |
+/// | resilience, body battery, heart-rate recovery | phone when package `stress` is primary (M2), else server | the bundle's `stressCards` (insights/stress.cards) on `stress_daily` (StressStage), the score rows and the heart-rate-recovery values the phone has (Apple's; M1c's workouts once on the phone) |
+///
+/// Package `stress` in shadow: the three cards are computed and compared with the server's status of the same day (field
+/// names in `meta` `stress.compare`), the page keeps the server's; primary: the phone's replace them (null hides a card).
 ///
 /// A card is only computed when the local history covers its window (else the bundle would answer from a few days and
 /// disagree with the server); otherwise the server's value stays. The result is kept as the document
@@ -174,12 +176,94 @@ enum TrendsLocal {
 
   /// Reads, computes and stores `trends.local:<end>` (nothing is stored when the phone has no history at all).
   @discardableResult
-  static func run(db: AppDatabase, runtime: OpenBodyScoreRuntime, end: String, tz: String) throws -> Output? {
+  static func run(db: AppDatabase, runtime: OpenBodyScoreRuntime, end: String, tz: String, now: Date = Date()) throws -> Output? {
     let inp = try read(db, end: end)
     guard !inp.isEmpty else { return nil }
-    let out = try compute(inp, end: end, tz: tz, runtime: runtime)
+    var out = try compute(inp, end: end, tz: tz, runtime: runtime)
+    let mode = try db.writer.read { StressStage.mode($0) }
+    if mode != .off {
+      let cards = try stressCards(db, runtime: runtime, end: end, tz: tz, now: now)
+      if mode == .primary {
+        for k in stressKeys { out.status[k] = cards[k] ?? NSNull() }
+        out.keys.formUnion(stressKeys)
+      } else if let server = try serverStatus(db, end: end) {
+        recordStressCompare(compareStress(local: cards, server: server, today: end == today(tz, now)), end: end, db: db)
+      }
+    }
     try db.saveDoc(docKey(end), json: try JSONSerialization.data(withJSONObject: out.json))
     return out
+  }
+
+  // MARK: - the stress cards (package M2)
+
+  /// The cards `stressCards` answers (insights/stress.cards).
+  static let stressKeys: Set<String> = ["resilience", "body_battery", "hr_recovery"]
+  /// Days of heart-rate-recovery values read before `end`: the server's window of the default 30-day Trends range
+  /// (trends/series.window: 2 × 30 days + 90 days of baselines), so the last value is the same one.
+  static let hrrLookback = 150
+  static let stressCompareMeta = "stress.compare"
+
+  static func today(_ tz: String, _ now: Date) -> String { LocalDay.string(now, TimeZone(identifier: tz) ?? .current) }
+
+  /// The bundle's `stressCards` on the local tables: the score rows and `stress_daily` of the 14 days up to `end`, the
+  /// heart-rate-recovery values (Apple's one-minute value, else the workouts' own when M1c's table is there).
+  static func stressCards(_ db: AppDatabase, runtime: OpenBodyScoreRuntime, end: String, tz: String, now: Date) throws -> [String: Any] {
+    let from = LocalDay.add(end, -13)
+    let data: [String: Any] = try db.writer.read { db in
+      var apple: [String: Double] = [:], own: [String: Double] = [:]
+      for r in try Row.fetchAll(db, sql: """
+        SELECT date, value FROM daily_metrics WHERE metric = 'heart_rate_recovery_one_minute' AND value IS NOT NULL
+        AND date BETWEEN ? AND ?
+        """, arguments: [LocalDay.add(end, -hrrLookback), end]) {
+        apple[r["date"] as String] = r["value"] as Double
+      }
+      if let rows = try? Row.fetchAll(db, sql: """
+        SELECT local_date, max(hr_recovery_bpm) AS v FROM workouts WHERE dup_of IS NULL AND excluded IS NULL
+        AND hr_recovery_bpm IS NOT NULL AND local_date BETWEEN ? AND ? GROUP BY local_date
+        """, arguments: [LocalDay.add(end, -hrrLookback), end]) {
+        for r in rows { own[r["local_date"] as String] = r["v"] as Double }
+      }
+      let scores = try SeriesLocal.scoreRows(db, from: from, to: end), stress = try StressStage.rows(db, from: from, to: end)
+      return ["scores": scores, "stress": stress, "hrr_apple": apple, "hrr_workouts": own]
+    }
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: tz) ?? .current
+    let opts: [String: Any] = ["end": end, "today": today(tz, now), "tz": tz, "now_hour": cal.component(.hour, from: now)]
+    _ = try? runtime.invoke("setLanguage", [Lang.code])
+    return (try runtime.invoke("stressCards", [data, opts]) as? [String: Any]) ?? [:]
+  }
+
+  /// The server's status cards as of `end`: any cached Trends document of that end date.
+  static func serverStatus(_ db: AppDatabase, end: String) throws -> [String: Any]? {
+    try db.writer.read { db in
+      for d in try DocRecord.fetchAll(db, sql: "SELECT * FROM docs WHERE key LIKE 'trends:%' ORDER BY fetched_at DESC") {
+        if let j = d.json, j["end"] as? String == end, let s = j["status"] as? [String: Any] { return s }
+      }
+      return nil
+    }
+  }
+
+  /// Field paths of the three cards that differ (numbers within 1e-9 relative, texts exact). Today's body battery
+  /// depends on the hour each side computed it at: only its value on waking is compared.
+  static func compareStress(local: [String: Any], server: [String: Any], today: Bool) -> SeriesLocal.Comparison {
+    var l: [String: Any] = [:], s: [String: Any] = [:]
+    for k in stressKeys {
+      l[k] = local[k] ?? NSNull()
+      s[k] = server[k] ?? NSNull()
+    }
+    if today {
+      l["body_battery"] = ((l["body_battery"] as? [String: Any])?["wake"]) ?? NSNull()
+      s["body_battery"] = ((s["body_battery"] as? [String: Any])?["wake"]) ?? NSNull()
+    }
+    return SeriesLocal.compare(local: l, server: s)
+  }
+
+  static func recordStressCompare(_ c: SeriesLocal.Comparison, end: String, db: AppDatabase) {
+    let o: [String: Any] = ["ok": c.ok, "fields_over": c.fieldsOver, "compared": c.compared, "end": end,
+                            "at": Date().timeIntervalSince1970]
+    if let data = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) {
+      try? db.setMeta(stressCompareMeta, String(decoding: data, as: UTF8.self))
+    }
   }
 
   /// The server's status with the phone's results laid over it.

@@ -17,8 +17,9 @@ import GRDB
 /// Package `series` (flag `native_series`, `GET /v1/sync/compute`): off = nothing is computed; shadow = computed and
 /// compared with the server's document (field names of the differences in `meta` `series.compare`), the page still
 /// draws the server's; primary = the page draws the phone's (the server's while the phone's is not there yet).
-/// Inputs the phone does not compute yet (stress_daily before M2, healthspan_weekly before M4, workouts before M1c)
-/// come from the server's document of the same page (`server_only` in the phone's document).
+/// Inputs the phone does not compute yet (healthspan_weekly before M4, workouts before M1c) and the stress series / cards
+/// while package `stress` (M2, StressStage) is not primary come from the server's document of the same page
+/// (`server_only` in the phone's document); with `stress` primary, heart-rate recovery is Apple's value until M1c.
 enum SeriesLocal {
   static let package = "series"
   /// The compute state is asked again when the cached answer is older than this (seconds).
@@ -229,14 +230,11 @@ enum SeriesLocal {
     var data: [String: Any] = ["can": ["scores": true, "metrics": true, "sleep": true, "weight": true, "training": true]]
     var only = ServerOnly()
     data["scores"] = try scoreRows(db, from: w.lo, to: end)
-    // stress (M2), body age (M4), workouts' own heart-rate recovery (M1c): only from their tables when the phone has them
-    if let rows = try? Row.fetchAll(db, sql: """
-      SELECT date, score, level, hours FROM stress_daily WHERE date BETWEEN ? AND ? ORDER BY date
-      """, arguments: [w.lo, end]) {
-      data["stress"] = rows.map { r -> [String: Any] in
-        ["date": r["date"] as String, "score": nz(r["score"] as Double?), "level": nz(r["level"] as String?),
-         "hours": nz(jsonValue(r["hours"]))]
-      }
+    // stress (M2), body age (M4), workouts' own heart-rate recovery (M1c): only from their tables when the phone has them.
+    // Stress (and the cards that read it) only when package `stress` is primary: in shadow the page keeps the server's.
+    let stressPrimary = StressStage.mode(db) == .primary
+    if stressPrimary, let rows = try? StressStage.rows(db, from: w.lo, to: end) {
+      data["stress"] = rows
     } else {
       only.series += ["stress", "resilience"]
       only.status += ["resilience", "body_battery"]
@@ -274,6 +272,8 @@ enum SeriesLocal {
         own[d] = v
       }
       data["hrr_workouts"] = own
+    } else if stressPrimary {
+      data["hrr_workouts"] = [String: Double]()   // M2 primary: the heart-rate-recovery values the phone has (Apple's)
     } else {
       only.series.append("hr_recovery")
       only.status.append("hr_recovery")
