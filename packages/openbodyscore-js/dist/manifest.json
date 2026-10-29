@@ -15,5 +15,7 @@
     "stress_cards": "stress-cards-1+v1.0-2026-10-17",
     "series": "series-1"
   },
-  "global": "OpenBodyScore"
+  "global": "OpenBodyScore",
+  "signature": "2jh5KtyhxPodKCzTuuG1JDuAS30/zNGVBxWbrafFd++vB+K4ZlVMlt7ZDLiQx6SByfHsH8KHJp2FqwkrgOWHAw==",
+  "key_id": "51e37b7c14053032"
 }
