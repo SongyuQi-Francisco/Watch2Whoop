@@ -11,7 +11,7 @@ Authorization: the whole block needs shares training; scores (strain, muscle loa
 and ungranted fields are null and listed in hidden.
 """
 import calendar as _cal
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -296,25 +296,53 @@ def _days(start: date, end: date):
         d += timedelta(days=1)
 
 
-def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, end: date,
-          with_exercises: bool = False) -> dict:
-    """Per-day merged workouts + daily metrics + scores for [start, end]. Shared by the calendar and the single-day detail."""
+def workout_intensity(w: dict) -> str:
+    """The intensity of one workouts row on its own (no strength sets merged): `classify` on the calendar's view of it
+    (2.0.0: the per-workout intensity the phone uploads, importer.workout_days)."""
+    sess = {"trimp": w.get("trimp"), "avg_hr": _r(w.get("avg_hr")), "hr_max": w.get("hr_max_used"),
+            "duration_min": round(w["duration_min"]), "working_sets": None, "volume_kg": None, "_cat": _category(w["type"])}
+    classify(sess, None)
+    return sess["intensity"]
+
+
+def _instant(x) -> datetime:
+    return x if isinstance(x, datetime) else datetime.fromtimestamp(x, timezone.utc)
+
+
+def _date(x) -> date:
+    return x if isinstance(x, date) else date.fromisoformat(str(x)[:10])
+
+
+class _Status:
+    """The rules' exercise status (Ctx.status_of) of the exercises the loader saw: {exercise_id: status}."""
+
+    def __init__(self, by_id: dict[str, str]):
+        self.by_id = by_id
+
+    def status_of(self, exercise_id: str) -> tuple[str, None, str]:
+        return self.by_id.get(exercise_id, "active"), None, ""
+
+
+def load(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, end: date,
+         with_exercises: bool = False) -> dict:
+    """Everything `compute` needs for [start, end], read from the database and SparkyFitness (2.0.0: the phone builds the
+    same from its local tables and `ext_records`). The viewer's shares decide what is read (scores, metrics, exercises)."""
     tz = _tz(conn, owner_id)
     can_scores = auth.can_view(conn, viewer_id, owner_id, "scores")
     can_metrics = auth.can_view(conn, viewer_id, owner_id, "metrics")
     workouts = load_workouts(conn, owner_id, start, end)
     sparky, exercises, sparky_error = load_sparky(conn, owner_id, start, end, with_exercises)
-    imported_by_day: dict[date, list] = {}
-    for s in hevy_import.imported_sessions(conn, owner_id, start, end):
-        imported_by_day.setdefault(date.fromisoformat(s["date"]), []).append(s)
+    imported = hevy_import.imported_sessions(conn, owner_id, start, end)
     targets = {r["external_id"]: r["dup_of"] or r["id"] for r in conn.execute(
         """SELECT id, external_id, dup_of FROM workouts WHERE user_id = %s AND source = 'hevy' AND local_date BETWEEN %s AND %s""",
-        (owner_id, start, end))} if imported_by_day else {}
-    ctx = None
+        (owner_id, start, end))} if imported else {}
+    status = None
     if with_exercises:
         ctx = Ctx(user_id=owner_id, day=end, exercises=exercises)
         if auth.can_view(conn, viewer_id, owner_id, "exercises"):
             ctx.meta = conn.execute("SELECT * FROM exercise_meta WHERE user_id = %s", (owner_id,)).fetchall()
+        ids = {e["exercise_id"] for s in [*sparky, *imported] for e in s["exercises"] if e.get("exercise_id")}
+        status = {i: ctx.status_of(i)[0] for i in sorted(ids)}
     metrics: dict[date, dict] = {}
     if can_metrics:
         for r in conn.execute("""SELECT date, metric, value FROM daily_metrics WHERE user_id = %s AND date BETWEEN %s AND %s
@@ -325,19 +353,59 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
         scores = {r["date"]: r for r in conn.execute(
             """SELECT date, strain, muscle_load, recovery, trimp, hr_max FROM daily_scores
                WHERE user_id = %s AND date BETWEEN %s AND %s""", (owner_id, start, end + timedelta(days=1)))}
+    hr_max = {r["date"]: float(r["hr_max"]) for r in conn.execute(
+        "SELECT date, hr_max FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s AND hr_max IS NOT NULL",
+        (owner_id, start, end))}
+    birth = (conn.execute("SELECT birth_date FROM users WHERE id = %s", (owner_id,)).fetchone() or {}).get("birth_date")
+    return {"timezone": str(tz), "workouts": workouts, "sparky": sparky, "sparky_error": sparky_error,
+            "imported": imported, "targets": targets, "status": status, "metrics": metrics, "scores": scores,
+            "hr_max": hr_max, "birth_date": birth, "can_scores": can_scores, "can_metrics": can_metrics}
+
+
+def _hr_max_fallback(data: dict, d: date) -> float | None:
+    """importer.hr_max_for on the loaded data: the day's scores' HRmax, else 208 − 0.7 × age."""
+    hm = {_date(k): v for k, v in (data.get("hr_max") or {}).items()}
+    if hm.get(d):
+        return float(hm[d])
+    if data.get("birth_date"):
+        from ..scores import strain as SL
+        return SL.hrmax_formula(SL.age_on(_date(data["birth_date"]), d))
+    return None
+
+
+def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, end: date,
+          with_exercises: bool = False) -> dict:
+    """Per-day merged workouts + daily metrics + scores for [start, end]. Shared by the calendar and the single-day detail."""
+    data = load(conn, viewer_id, owner_id, start, end, with_exercises)
+    return compute(data, start, end, datetime.now(ZoneInfo(data["timezone"])).date())
+
+
+def compute(data: dict, start: date, end: date, today: date) -> dict:
+    """The pure part of build (2.0.0: the twin of src/31_workouts.js `training.compute`): data as `load` returns it, also
+    JSON-like (instants as UTC seconds, dates as YYYY-MM-DD). Texts follow the request language (i18n)."""
+    tz = ZoneInfo(data["timezone"])
+    start, end, today = _date(start), _date(end), _date(today)
+    metrics = {_date(k): v for k, v in (data.get("metrics") or {}).items()}
+    scores = {_date(k): v for k, v in (data.get("scores") or {}).items()}
+    targets = data.get("targets") or {}
+    status = data.get("status")
+    ctx = _Status(status) if status is not None else None
+    imported_by_day: dict[date, list] = {}
+    for s in data.get("imported") or []:
+        imported_by_day.setdefault(_date(s["date"]), []).append(s)
     by_day_w: dict[date, list] = {}
-    for w in workouts:
+    for w in data.get("workouts") or []:
+        w = {**w, "start_at": _instant(w["start_at"]), "end_at": _instant(w["end_at"]), "local_date": _date(w["local_date"])}
         by_day_w.setdefault(w["local_date"], []).append(w)
     by_day_s: dict[date, list] = {}
-    for s in sparky:
+    for s in data.get("sparky") or []:
         by_day_s.setdefault(date.fromisoformat(s["date"][:10]), []).append(s)
-    today = datetime.now(tz).date()
     days = []
     for d in _days(start, end):
         sessions = merge_day(by_day_w.get(d, []), by_day_s.get(d, []), tz, imported_by_day.get(d), targets)
         hr_max = (scores.get(d) or {}).get("hr_max")
         if hr_max is None and any(s.get("avg_hr") and not s.get("hr_max") for s in sessions):
-            hr_max = hr_max_for(conn, owner_id, d)
+            hr_max = _hr_max_fallback(data, d)
         for s in sessions:
             classify(s, hr_max)
             if ctx is not None:
@@ -368,8 +436,8 @@ def build(conn: psycopg.Connection, viewer_id: int, owner_id: int, start: date, 
             "types": list(dict.fromkeys(s["type"] for s in sessions)),
             "labels": list(dict.fromkeys(s["name"] for s in sessions)), "flags": flags,
         })
-    hidden = [x for x, ok in (("scores", can_scores), ("metrics", can_metrics)) if not ok]
-    return {"days": days, "sparky_error": sparky_error, "hidden": hidden, "timezone": str(tz)}
+    hidden = [x for x, ok in (("scores", data.get("can_scores", True)), ("metrics", data.get("can_metrics", True))) if not ok]
+    return {"days": days, "sparky_error": data.get("sparky_error"), "hidden": hidden, "timezone": str(tz)}
 
 
 def summarize(days: list[dict]) -> dict:
@@ -430,7 +498,11 @@ def calendar(conn: psycopg.Connection, viewer_id: int, owner_id: int, month: str
         label = None
     else:
         start, end, label = month_range(month, tz)
-    res = build(conn, viewer_id, owner_id, start, end)
+    return calendar_view(build(conn, viewer_id, owner_id, start, end), start, end, label)
+
+
+def calendar_view(res: dict, start: date, end: date, label: str | None) -> dict:
+    """The calendar's answer from build's (pure; the phone's `trainingCalendar`)."""
     days = []
     for d in res["days"]:
         row = {k: d[k] for k in CALENDAR_DAY_KEYS}
@@ -445,7 +517,11 @@ def calendar(conn: psycopg.Connection, viewer_id: int, owner_id: int, month: str
 
 
 def day(conn: psycopg.Connection, viewer_id: int, owner_id: int, d: date) -> dict:
-    res = build(conn, viewer_id, owner_id, d, d, with_exercises=True)
+    return day_view(build(conn, viewer_id, owner_id, d, d, with_exercises=True), d)
+
+
+def day_view(res: dict, d: date) -> dict:
+    """The single-day detail from build's answer for that day (pure; the phone's `trainingDay`)."""
     x = res["days"][0]
     daily = {k: x[k] for k in ("active_kcal", "basal_kcal", "total_kcal", "workout_kcal", "exercise_min", "steps",
                                "strain", "muscle_load", "recovery", "recovery_next_day", "intensity", "intensity_label",
