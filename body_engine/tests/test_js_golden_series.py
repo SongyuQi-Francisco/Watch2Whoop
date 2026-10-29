@@ -93,6 +93,7 @@ def test_series_goldens(cases):
     assert runs[9]["series"]["recovery"]["label"] == "Recovery"
     assert "weight" in runs[-1]["unavailable"] and "hrv" in runs[10]["series"] and "recovery" not in runs[10]["series"]
     assert {r["sri_7d"] is not None for r in got["sleep_detail"]} == {True, False}
+    assert all(r["sri_7d"] is not None for r in got["sleep_detail"][3:]), "the two DST cases (October / April starts) need an SRI"
     assert any(n["reason"] for n in got["nights"][0]["nights"]) and any(n["naps"] for n in got["nights"][0]["nights"])
     assert {v["level"] for v in got["vo2"]} >= {None, "good"} or len({v["level"] for v in got["vo2"]}) >= 2
     if os.environ.get("BODY_WRITE_GOLDEN") == "1":

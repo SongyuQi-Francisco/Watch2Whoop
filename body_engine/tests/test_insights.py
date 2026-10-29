@@ -17,10 +17,11 @@ from body_engine.scores.engine import _latency_efficiency
 from body_engine.scores.inputs import Night
 
 SYD = ZoneInfo("Australia/Sydney")
+BNE = ZoneInfo("Australia/Brisbane")   # same offset as Sydney in winter, no DST: "the same clock time every day" is the same elapsed time
 
 
-def at(day: str, hhmm: str) -> datetime:
-    return datetime.fromisoformat(f"{day}T{hhmm}").replace(tzinfo=SYD)
+def at(day: str, hhmm: str, tz: ZoneInfo = SYD) -> datetime:
+    return datetime.fromisoformat(f"{day}T{hhmm}").replace(tzinfo=tz)
 
 
 # ================================================================== body age: curves and conversion
@@ -144,8 +145,8 @@ def test_snapshot_body_comp_tip_reads_goal_only_below_current_weight():
 # ================================================================== body age: snapshot (synthetic data)
 def make_data(days: int = 180, as_of: date = date(2026, 10, 17), **over) -> SimpleNamespace:
     ds = [as_of - timedelta(days=k) for k in range(days)]
-    regular = {d: sleep_detail.asleep_minutes([(at((d - timedelta(days=1)).isoformat(), "23:30"),
-                                                at(d.isoformat(), "07:00"))], d, SYD) for d in ds}
+    regular = {d: sleep_detail.asleep_minutes([(at((d - timedelta(days=1)).isoformat(), "23:30", BNE),
+                                                at(d.isoformat(), "07:00", BNE))], d, BNE) for d in ds}   # identical every day
     base = dict(tz=SYD, birth=date(2001, 6, 15), sex="male", height=180.0, notes=[],
                 sleep={d: 7.0 for d in ds}, sleep_days=regular, steps={d: 8078.0 for d in ds},
                 mvpa={d: 150 / 7 for d in ds}, strength=defaultdict(float), strength_from=as_of - timedelta(days=days - 1),
@@ -310,14 +311,15 @@ def test_week_ends_sunday_and_partial_current_week():
 # ================================================================== sleep regularity / details
 def test_sri_regular_irregular_and_insufficient():
     nights = lambda days, bed, wake: {d: sleep_detail.asleep_minutes(
-        [(at((d - timedelta(days=1)).isoformat(), bed), at(d.isoformat(), wake))], d, SYD) for d in days}
+        [(at((d - timedelta(days=1)).isoformat(), bed, BNE), at(d.isoformat(), wake, BNE))], d, BNE) for d in days}
     days = [date(2026, 10, 1) + timedelta(days=k) for k in range(8)]
     assert sleep_detail.sri(nights(days, "23:00", "07:00")) == (100.0, 7)
     flip = {}
     for i, d in enumerate(days):    # sleeps at night one day and in the daytime the next (12 hours apart), exactly opposite
         flip.update(nights([d], "23:00", "07:00") if i % 2 == 0 else {d: sleep_detail.asleep_minutes(
-            [(at(d.isoformat(), "11:00"), at(d.isoformat(), "11:59")), (at((d - timedelta(days=1)).isoformat(), "12:00"),
-                                                                       at((d - timedelta(days=1)).isoformat(), "19:00"))], d, SYD)})
+            [(at(d.isoformat(), "11:00", BNE), at(d.isoformat(), "11:59", BNE)),
+             (at((d - timedelta(days=1)).isoformat(), "12:00", BNE), at((d - timedelta(days=1)).isoformat(), "19:00", BNE))],
+            d, BNE)})
     v, pairs = sleep_detail.sri(flip)
     assert pairs == 7 and v < 0
     gap = nights(days[:2], "23:00", "07:00") | nights(days[5:], "23:00", "07:00")   # watch not worn in between: no pairing across the gap
