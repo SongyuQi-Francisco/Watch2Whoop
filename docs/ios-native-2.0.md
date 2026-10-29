@@ -361,7 +361,7 @@ M1 and M3 share no file except `dist/*`.
 - **iOS**: `WorkoutsSchema` → migration `v5_workouts_tables` (`workouts` keyed by `<source>:<external_id>` with
   `computed_by` server / phone, the row in the server's shape and the server's own row in `server_row`; `workout_hrr`).
   `WorkoutsStage` reads the HKWorkouts of the read window (anchored, `EngineWorkout.map`, into `hk_workouts`), pulls the
-  `records` stream on its own cursor and keeps kind `workout` (the native app pulls no `records` otherwise), computes dirty
+  `records` stream filtered to kind `workout` (`kinds: {"records": ["workout"]}`, own cursor in meta `workouts.records_cursor.workout`; the native app pulls no `records` otherwise), computes dirty
   days with `workoutDays` (corrections = the server's rows of the app's workouts), writes `derived_rows`, `workouts`,
   `workout_hrr` and the duplicates of the server's rows, marks days whose kept workout energy changed dirty for `derive`,
   uploads once settled. `DeriveStage`'s workout energy for the `incomplete` rule now reads the kept `workouts` (an
@@ -538,3 +538,27 @@ Rollback per kind: turn the package flag off (app falls back to server docs, ser
 | 5 | Spot checks for inner-cohort members | allowed: product-safety maintenance like `app_score_checks`, storing only pass / fail + field names; detailed comparisons and any analysis stay user 1 + synthetic | §3.4 |
 
 Kept as proposals inside the packages: `/v1/ingest/*` stays open after the block (R2), the M6a / M6b split (M6), `TodayParams.swift` thresholds into JS params (M4).
+
+### Pull kind filter (wave 2 follow-up)
+
+`POST /v1/sync/pull` takes an optional `kinds: {stream: [kind, ...]}` (only the stream `records` has kinds; kinds are validated
+against `bodies.record_kinds()`, an unknown kind, an empty list, a stream without kinds or a stream that is not in `cursors`
+is 422 `bad_kinds`). Absent = everything, as before. A stage that needs one kind (M1c's `WorkoutsStage`: `workout`) no longer
+downloads the whole records stream; no other M1 / M2 stage pulls a stream for one kind.
+
+**Cursor design.** The server stays stateless: a filtered pull stamps its cursors with the sorted kind set
+(`c.812.40~workout`, `r.812.2026-03-10~journal,water`). A cursor whose stamp differs from the request's kinds (an unfiltered
+cursor sent with a filter, a filtered one sent without, another kind set) is 422 `bad_cursor`, and the app restores from `""`,
+as for any bad cursor. So a filtered cursor can never stand in for an unfiltered pull of the same stream (which would skip every
+other kind that changed before it); the app keeps one cursor per (stream, kind set) and the stage's key is its own
+(`workouts.records_cursor.workout`; the old unfiltered `workouts.records_cursor` of the betas is not read any more). An empty
+cursor is valid for any kind set. Tests: `test_native_sync.py::test_pull_kind_filter_and_its_cursor_namespace`,
+`LocalWorkoutsTests`.
+
+### Wave 2 follow-up: DST in `cardio/hrr`
+
+`hrr60` and `hrr.compute` read aware datetimes that share one `ZoneInfo`; Python adds, subtracts and compares those as wall
+clocks, so the 2-minute peak window and the +60 s target of a workout around a DST change were an hour off. Both now work in
+UTC (same pattern as `training/importer.py`, #366). The JS twin (`31_workouts.js` `session_hr_recovery`) works in epoch
+microseconds, so it was never affected: goldens and bundle unchanged. Tests: `test_rawdata.py::test_hrr60_across_dst_end`,
+`test_hrr_compute_across_dst_end` (Sydney, 2026-04-05).

@@ -7,7 +7,7 @@ import io
 import math
 import os
 import zipfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -127,6 +127,34 @@ def test_hrr60_valid_and_interpolated():
     end = datetime(2026, 9, 1, 19, tzinfo=TZ)
     r = H.hrr60(hr_series(end), end, 190)
     assert r["valid"] and r["peak_hr"] == 170 and r["hr_60s"] == 140 and r["hrr60"] == 30
+
+
+def test_hrr60_across_dst_end():
+    """Sydney DST ends 2026-04-05 03:00 AEDT -> 02:00 AEST. A workout ending 02:59:30 AEDT has its +60 s target after the
+    change: wall-clock arithmetic on same-ZoneInfo datetimes would look an hour late and find no sample."""
+    end_utc = datetime(2026, 4, 4, 15, 59, 30, tzinfo=timezone.utc)          # 02:59:30 AEDT, just before the change
+    hr = [(t.astimezone(TZ), v) for t, v in hr_series(end_utc)]               # as the database hands them out
+    end = end_utc.astimezone(TZ)
+    assert end.utcoffset() == timedelta(hours=11) and hr[-1][0].utcoffset() == timedelta(hours=10)   # really crosses
+    r = H.hrr60(hr, end, 190)
+    assert r["valid"] and r["peak_hr"] == 170 and r["hr_60s"] == 140 and r["hrr60"] == 30
+    assert r == H.hrr60(hr_series(end_utc), end_utc, 190)                     # same answer as in plain UTC
+
+
+def test_hrr_compute_across_dst_end(dsn, users):
+    ids, _ = users
+    end = datetime(2026, 4, 4, 15, 59, 30, tzinfo=timezone.utc)
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.execute("SET TIME ZONE 'Australia/Sydney'")                     # datetimes come back as Sydney ZoneInfo
+        conn.execute("""INSERT INTO workouts (user_id, source, external_id, type, name_zh, local_date, start_at, end_at, duration_min)
+                        VALUES (%s, 'ow', 'dst', 'basketball', '篮球', '2026-04-05', %s, %s, 60)""",
+                     (ids["A"], end - timedelta(hours=1), end))
+        hr = [(t.astimezone(TZ), v) for t, v in hr_series(end)]
+        res = H.compute(conn, ids["A"], hr, {date(2026, 4, 5): 190}, date(2026, 4, 1), date(2026, 4, 7))
+        row = conn.execute("SELECT peak_hr, hr_60s, hrr60, valid FROM workout_hrr WHERE user_id = %s", (ids["A"],)).fetchone()
+        conn.rollback()
+    assert res == {"workouts": 1, "valid": 1}
+    assert (row["peak_hr"], row["hr_60s"], row["hrr60"], row["valid"]) == (170, 140, 30, True)
 
 
 def test_hrr60_low_peak_or_no_samples():

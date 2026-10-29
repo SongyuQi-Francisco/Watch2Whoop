@@ -187,4 +187,55 @@ final class LocalWorkoutsTests: XCTestCase {
     XCTAssertEqual(again.written, [])
     XCTAssertEqual(StubProtocol.requests.count, 0)
   }
+
+  // MARK: - the filtered pull of the server's workouts
+
+  private func sentBody(_ i: Int) throws -> [String: Any] {
+    let r = StubProtocol.requests[i]
+    return try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(r.httpBodyStream.map(DeltaRemoteTests.read) ?? r.httpBody)) as? [String: Any])
+  }
+
+  private func workoutPage(cursor: String, more: Bool = false) -> String {
+    let item = #"{"id": 7, "source": "ow", "external_id": "x1", "local_date": "2026-03-10", "type": "running", "start_at": 1773100000, "end_at": 1773101800, "duration_min": 30}"#
+    return """
+      {"changes": [
+        {"stream": "records", "op": "upsert", "kind": "workout", "key": "2026-03-10", "date": "2026-03-10", "version": 1, "body": {"items": [\(item)]}},
+        {"stream": "records", "op": "upsert", "kind": "water", "key": "2026-03-10", "date": "2026-03-10", "version": 1, "body": {"items": []}}],
+       "cursors": {"records": "\(cursor)"}, "more": \(more)}
+      """
+  }
+
+  /// The pull asks for the kind workout only, keeps the stamped cursor under its own key and sends it back next time.
+  func testServerWorkoutsArePulledWithAKindFilterOnTheirOwnCursor() async throws {
+    let db = try AppDatabase.inMemory()
+    StubProtocol.reset([.init(status: 200, body: workoutPage(cursor: "r.5.2026-03-10~workout", more: true)),
+                        .init(status: 200, body: workoutPage(cursor: "c.5.0~workout"))])
+    let days = await WorkoutsStage.pullServerWorkouts(db: db, api: api())
+    XCTAssertEqual(days, ["2026-03-10"], "the water change is not a workout")
+    XCTAssertEqual(StubProtocol.requests.map { $0.url!.path }, [Endpoint.syncPull, Endpoint.syncPull])
+    let first = try sentBody(0)
+    XCTAssertEqual(first["kinds"] as? [String: [String]], ["records": ["workout"]])
+    XCTAssertEqual((first["cursors"] as? [String: String])?["records"], "")
+    XCTAssertEqual(((try sentBody(1))["cursors"] as? [String: String])?["records"], "r.5.2026-03-10~workout")
+    XCTAssertEqual(try db.meta(WorkoutsStage.cursorKey), "c.5.0~workout")
+    let n = try await db.writer.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM workouts WHERE computed_by = 'server'") }
+    XCTAssertEqual(n, 1)
+    // next run: the stored (stamped) cursor goes back
+    StubProtocol.reset([.init(status: 200, body: workoutPage(cursor: "c.6.1~workout"))])
+    _ = await WorkoutsStage.pullServerWorkouts(db: db, api: api())
+    XCTAssertEqual(((try sentBody(0))["cursors"] as? [String: String])?["records"], "c.5.0~workout")
+  }
+
+  /// A refused cursor (422) is dropped, so the next run restores from the start.
+  func testABadCursorIsDroppedAndTheNextRunRestores() async throws {
+    let db = try AppDatabase.inMemory()
+    try db.setMeta(WorkoutsStage.cursorKey, "c.5.0")   // e.g. an unstamped cursor
+    StubProtocol.reset([.init(status: 422, body: #"{"detail": {"message": "bad", "code": "bad_cursor"}}"#)])
+    let days = await WorkoutsStage.pullServerWorkouts(db: db, api: api())
+    XCTAssertEqual(days, [])
+    XCTAssertNil(try db.meta(WorkoutsStage.cursorKey))
+    StubProtocol.reset([.init(status: 200, body: workoutPage(cursor: "c.9.0~workout"))])
+    _ = await WorkoutsStage.pullServerWorkouts(db: db, api: api())
+    XCTAssertEqual(((try sentBody(0))["cursors"] as? [String: String])?["records"], "")
+  }
 }
