@@ -124,6 +124,21 @@ struct DeltaRemote: RemoteSync {
         try db.execute(sql: "INSERT INTO daily_metrics (date, metric, value, unit, source, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
                        arguments: [day, metric, LocalRawStore.num(m["value"]), m["unit"] as? String, m["source"] as? String, now])
       }
+      // 2.0.0 M1: every source's value of the day (`sources`), from which the phone chooses itself (DeriveStage)
+      try db.execute(sql: "DELETE FROM daily_metric_sources WHERE date = ? AND origin = 'server'", arguments: [day])
+      for (metric, v) in (body?["sources"] as? [String: Any]) ?? [:] {
+        for s in (v as? [[String: Any]]) ?? [] {
+          guard let source = s["source"] as? String, let value = LocalRawStore.num(s["value"]), let agg = s["agg"] as? String else {
+            continue
+          }
+          let flags = (s["flags"] as? [String: Any]).flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }
+          try db.execute(sql: """
+            INSERT OR REPLACE INTO daily_metric_sources (date, metric, source, origin, value, unit, agg, n, min, max, flags, updated_at)
+            VALUES (?, ?, ?, 'server', ?, ?, ?, ?, ?, ?, ?, ?)
+            """, arguments: [day, metric, source, value, s["unit"] as? String, agg, (s["n"] as? NSNumber)?.intValue,
+                             LocalRawStore.num(s["min"]), LocalRawStore.num(s["max"]), flags, now])
+        }
+      }
       return [day]
     case "sleep":
       try db.execute(sql: "DELETE FROM sleep_sessions WHERE date = ?", arguments: [day])

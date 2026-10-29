@@ -34,6 +34,36 @@ final class LocalRawStore {
   ]
   /// A sleep belongs to the day of its end minus 4 hours (the server's rule, importers/common.py).
   static let wakeShift: TimeInterval = 4 * 3600
+  /// 2.0.0 M1 (DeriveStage): every other raw type of the registry the phone derives daily values from (HealthKit identifier
+  /// → unit), read only while the derive package runs. They never make a day dirty for the scores, only for the derivation.
+  static var deriveTypes: [String: String] {
+    var out: [String: String] = [:]
+    for t in HealthRegistry.bundled where (t.kind == "quantity" || t.kind == "category") && t.upload.contains("raw")
+      && types[t.hk] == nil {
+      out[t.hk] = t.kind == "category" ? "" : t.unit
+    }
+    return out
+  }
+  /// The registry's cumulative types the phone keeps 15-minute statistics buckets of (`hk_stat_buckets`), with their unit.
+  static var statTypes: [String: String] {
+    var out: [String: String] = [:]
+    for t in HealthRegistry.bundled where t.kind == "quantity" && t.upload.contains("stats") { out[t.hk] = t.unit }
+    return out
+  }
+  static let stepCount = "HKQuantityTypeIdentifierStepCount"
+  static let bucketSeconds = 900.0
+
+  /// Where a sample comes from (HKSourceRevision + HKDevice), as the sync engine sends it; the key is the server's
+  /// hk_sources identity (name, bundle, product, device name, device model), so both group samples the same way.
+  struct Source: Equatable, Hashable {
+    var name: String
+    var bundle: String = ""
+    var product: String = ""
+    var deviceType: String = "other"
+    var deviceName: String = ""
+    var deviceModel: String = ""
+    var key: String { [name, bundle, product, deviceName, deviceModel].joined(separator: "|") }
+  }
 
   struct Sample: Equatable {
     var uuid: String
@@ -41,6 +71,7 @@ final class LocalRawStore {
     var start: Double
     var end: Double
     var value: Double
+    var source: Source? = nil
   }
 
   let db: AppDatabase
@@ -75,19 +106,35 @@ final class LocalRawStore {
 
   // MARK: - writing
 
-  /// New / changed samples and HealthKit deletions → `hk_samples`, histograms of the touched days, `score_dirty`.
-  /// Returns the dirty days.
+  /// New / changed samples and HealthKit deletions → `hk_samples` (with their source), histograms of the touched days,
+  /// `score_dirty`: kind `scores` for the scoring types, kind `derive` (M1) for every type (`deriveDays`).
+  /// Returns the scores' dirty days.
   @discardableResult
   func ingest(_ samples: [Sample], deleted: [String] = []) throws -> Set<String> {
     guard !samples.isEmpty || !deleted.isEmpty else { return [] }
     let tz = zone.identifier
+    let extra = Self.deriveTypes
     return try db.writer.write { db -> Set<String> in
-      var days = Set<String>(), hrDays = Set<String>()
-      for s in samples where Self.types[s.type] != nil {
+      var days = Set<String>(), hrDays = Set<String>(), derive = Set<String>()
+      var sourceIds: [String: Int64] = [:]
+      for s in samples where Self.types[s.type] != nil || extra[s.type] != nil {
+        var sid: Int64?
+        if let src = s.source {
+          if let id = sourceIds[src.key] {
+            sid = id
+          } else {
+            let id = try Self.sourceId(db, src)
+            sourceIds[src.key] = id
+            sid = id
+          }
+        }
         try db.execute(sql: """
-          INSERT INTO hk_samples (uuid, type, start, end, value, tz, uploaded) VALUES (?, ?, ?, ?, ?, ?, 1)
-          ON CONFLICT(uuid) DO UPDATE SET type = excluded.type, start = excluded.start, end = excluded.end, value = excluded.value
-          """, arguments: [s.uuid, s.type, s.start, s.end, s.value, tz])
+          INSERT INTO hk_samples (uuid, type, start, end, value, source_id, tz, uploaded) VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+          ON CONFLICT(uuid) DO UPDATE SET type = excluded.type, start = excluded.start, end = excluded.end, value = excluded.value,
+            source_id = coalesce(excluded.source_id, hk_samples.source_id)
+          """, arguments: [s.uuid, s.type, s.start, s.end, s.value, sid, tz])
+        derive.formUnion(deriveDays(s))
+        guard Self.types[s.type] != nil else { continue }
         days.insert(scoringDay(s))
         if s.type == Self.heartRate { hrDays.insert(day(s.start)) }
       }
@@ -96,12 +143,56 @@ final class LocalRawStore {
           continue
         }
         let s = Sample(uuid: uuid, type: r["type"], start: r["start"], end: r["end"], value: 0)
-        days.insert(scoringDay(s))
+        derive.formUnion(deriveDays(s))
+        if Self.types[s.type] != nil { days.insert(scoringDay(s)) }
         if s.type == Self.heartRate { hrDays.insert(day(s.start)) }
         try db.execute(sql: "DELETE FROM hk_samples WHERE uuid = ?", arguments: [uuid])
       }
       try refreshHistograms(db, days: hrDays)
       try Self.markDirty(db, days)
+      try Self.markDirty(db, derive, kind: "derive")
+      return days
+    }
+  }
+
+  /// The days a sample changes the derivation of: its local start day d (daily values: the server's local_date), and for a
+  /// sleep stage the nights waking on d and d + 1 (rawdata/derive.derive_day's rule) and its own wake day.
+  func deriveDays(_ s: Sample) -> Set<String> {
+    let d = day(s.start)
+    return s.type == Self.sleepAnalysis ? [d, LocalDay.add(d, 1), scoringDay(s)] : [d]
+  }
+
+  /// The local id of a source (`hk_sources.key` is unique), inserted when new.
+  static func sourceId(_ db: Database, _ s: Source) throws -> Int64 {
+    try db.execute(sql: """
+      INSERT INTO hk_sources (key, name, bundle, product, device_type, device_name, device_model) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET device_type = excluded.device_type
+      """, arguments: [s.key, s.name, s.bundle, s.product, s.deviceType, s.deviceName, s.deviceModel])
+    return try Int64.fetchOne(db, sql: "SELECT id FROM hk_sources WHERE key = ?", arguments: [s.key]) ?? 0
+  }
+
+  /// 15-minute statistics buckets of one cumulative type over `[from, to)` (UTC seconds, aligned to 900 s): the span is
+  /// replaced (zero buckets are not kept, as in the server's hk_stats); the local days whose buckets changed are marked
+  /// dirty for the derivation and returned.
+  @discardableResult
+  func ingestBuckets(type: String, from: Double, to: Double, values: [(Double, Double)]) throws -> Set<String> {
+    try db.writer.write { db -> Set<String> in
+      var old: [Int: Double] = [:]
+      for r in try Row.fetchAll(db, sql: "SELECT start, value FROM hk_stat_buckets WHERE type = ? AND start >= ? AND start < ?",
+                                arguments: [type, Int(from), Int(to)]) {
+        old[r["start"] as Int] = r["value"] as Double
+      }
+      var new: [Int: Double] = [:]
+      for (t, v) in values where v > 0 && v.isFinite && t >= from && t < to { new[Int(t)] = v }
+      var days = Set<String>()
+      for k in Set(old.keys).union(new.keys) where abs((old[k] ?? 0) - (new[k] ?? 0)) > 1e-9 { days.insert(day(Double(k))) }
+      guard !days.isEmpty else { return [] }
+      try db.execute(sql: "DELETE FROM hk_stat_buckets WHERE type = ? AND start >= ? AND start < ?",
+                     arguments: [type, Int(from), Int(to)])
+      for (k, v) in new {
+        try db.execute(sql: "INSERT INTO hk_stat_buckets (type, start, value, uploaded) VALUES (?, ?, ?, 1)", arguments: [type, k, v])
+      }
+      try Self.markDirty(db, days, kind: "derive")
       return days
     }
   }
@@ -210,11 +301,13 @@ final class LocalRawStore {
     }
   }
 
-  static func markDirty(_ db: Database, _ days: Set<String>) throws {
+  /// Marks days dirty for one kind (docs/ios-native-2.0.md section 3.3): `scores` (ScoringSync), `derive` (DeriveStage).
+  static func markDirty(_ db: Database, _ days: Set<String>, kind: String = "scores") throws {
     let t = Date().timeIntervalSince1970
     for d in days {
-      try db.execute(sql: "INSERT INTO score_dirty (date, at) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET at = excluded.at",
-                     arguments: [d, t])
+      try db.execute(sql: """
+        INSERT INTO score_dirty (date, kind, at) VALUES (?, ?, ?) ON CONFLICT(date, kind) DO UPDATE SET at = excluded.at
+        """, arguments: [d, kind, t])
     }
   }
 
@@ -231,6 +324,8 @@ final class LocalRawStore {
     return try db.writer.write { db -> [String] in
       let rolled = try rollOver(db, before: cut)
       try db.execute(sql: "DELETE FROM hk_samples WHERE start < ?", arguments: [cut])
+      try db.execute(sql: "DELETE FROM hk_stat_buckets WHERE start < ?", arguments: [Int(cut)])
+      try db.execute(sql: "DELETE FROM derived_rows WHERE date < ? AND uploaded = 1", arguments: [cutDay])
       try db.execute(sql: "DELETE FROM score_dirty WHERE date < ?", arguments: [cutDay])
       let from = try String.fetchOne(db, sql: "SELECT value FROM meta WHERE key = ?", arguments: [Self.hotFromKey])
       if from.map({ $0 < cutDay }) ?? true {

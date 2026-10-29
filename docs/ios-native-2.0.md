@@ -215,6 +215,51 @@ Every package: flags off by default (§5), synthetic tests, `CHANGELOG` line in 
 | Acceptance | Python and JS equal on goldens; Swift test: 30 synthetic days through HealthKit fixtures give the same rows as the server's `derive_day` + `resolve_daily` on the same samples; uploads pass the spot check |
 | Device | Airplane mode after a night: steps, energy and last night's sleep appear from local derivation; reconnect: no duplicate rows after pull |
 
+#### M1 as built (2026-10-30)
+- **Algorithm** `derive` = `rawdata/derive.py:DERIVE_VERSION` (`derive-1-2026-10-30`) = `OBS.ALGO_VERSIONS.derive`. Python
+  reference of the phone's entry point: `derive.derive_days(src)` (pure, JSON-like rows in and out), built from the pure
+  splits `daily_values` (of `daily_rows`), `phase1_rows`, `night_window` / `nights_of` (of `nights`), `session_rows`,
+  `ingest_rows` (the engine's factor, plausible range, zero-bucket rules) and `importers/common.basal_reference` /
+  `resolve` (of `_basal_reference` / `resolve_daily`). JS: `OBS.deriveDays(src)` and `OBS.derive.<python name>`; thresholds
+  in `OBS.derive.PARAMS` and the registry rows in `OBS.derive.TYPES`, both compared with the Python by the golden test.
+- **Beyond the table above**: the phase-1 direct-upload types (`hk_types.HK_TYPES`: exercise / stand / daylight minutes,
+  wrist temperature, …) are derived too (`phase1_rows` = `rawdata/quantities._day_rows`), since their 'app' rows are part of
+  the day's sources; sums of the sync engine's types come from the 15-minute buckets only (raw step samples are not added).
+  `SleepSession` gained `segments` (sessionize keeps them; replace_sleep ignores them). `ow_sessions` now sorts sessions by
+  instant instead of by ISO string (the strings' offsets follow the database session's time zone); behaviour is unchanged
+  except across a DST overlap.
+- **Goldens**: `test/cases_derive.py` (synthetic): `sydney` 62 days over the end of DST (iPhone + watch heart rate and exercise
+  minutes, Shortcut-only hourly sums, basal < 50 %, workout kcal > active kcal, all heart-rate samples deleted, out-of-range
+  samples, zero buckets, raw steps next to buckets, sleep gaps > 60 min and > 2 h, nap, iPhone in-bed copy, in-bed-only
+  night, third-party night, the same sample twice, the DST night) and `new_york` 30 days over the start of DST (its inputs
+  are in the golden file for the iOS test). `tests/test_js_golden_derive.py` ↔ `test/derive.test.js`; `tests/test_native_derive.py`
+  checks that the server's own `derive_day` + `resolve_daily` on the same uploaded samples give `derive_days`' rows.
+- **Server**: migration `1000_native_derive.sql` (`origin`, `bundle_version` on `daily_metric_sources`, `daily_metrics`,
+  `sleep_sessions`; `sleep_sessions.segments`; `daily_metric_sources` joins the `daily` pull stream's change log). Kinds
+  `derived_kinds/daily.py` (rows `{role: source | chosen, metric, source, value, unit, agg, n, min_value, max_value, flags}`;
+  tolerance `value` / `min_value` / `max_value` 1e-4 relative, sums included: 1 step on a 10,000-step day) and
+  `derived_kinds/sleep.py` (sessions with segments; start / end 1 s, minutes 0.5). `daily.extend_pull` adds `sources`
+  (`{metric: [{source, value, unit, agg, n, min, max, flags}]}`) to the `daily` bodies, so `bodies.py` / `pull.py` are
+  unchanged. `raw_history` bodies carry `inputs.steps` (15-minute buckets: the engine's `hk_stats`, else the server's copy
+  of Open Wearables' step samples, largest single source per day).
+- **iOS**: `DeriveSchema` → migration `v4_derive_tables` (`daily_metric_sources` with `origin` server / phone,
+  `derived_rows` (kind, date, rows, versions, uploaded), `score_dirty` rebuilt with `(date, kind)`). `HealthKitScoringReader`
+  keeps each sample's source and gains `readEngine` (the registry's other raw types + `hk_stat_buckets`); `DeriveStage`
+  reads HealthKit (both), derives the dirty days, the days whose pulled sources changed and all days after a new derive
+  algorithm (from the first day read in full), writes `derived_rows` and the phone's 'app' rows, and in **primary** only
+  `daily_metrics` / `sleep_sessions` (source app) + `score_dirty` for the scores; it uploads unsent rows once
+  `HealthSyncService.uploadedEverything`. `DeltaRemote` stores the pulled `sources`. History kind `steps` (6).
+- **Deviations**: (1) the `daily` tolerance on sums is 1e-4 relative, not 0.5 unit (one tolerance per field in the kind
+  module); (2) the phone's workout energy for the `incomplete` rule comes from `hk_workouts.stats` (all non-duplicate
+  workouts on the server), equal once M1c lands; (3) `native-compare` (section 3.4) is not part of M1.
+- **Flag**: `native_derive` (shadow only; `native_compute_primary` stays off), off by default.
+- **Device checklist entry (for S9's `ios-native-2.0-device-checklist.md`)**: owner's internal build, `native_derive` on for
+  the owner only. (1) After a sync round, the sync center's compute report (`meta` `compute.last`) shows `derive` `done` with
+  days written and `daily` / `sleep` uploaded; `GET /v1/sync/compute` shows both kinds with a passing last check.
+  (2) Airplane mode the morning after a night: the round still derives (report `waiting_sync` only for the upload), and with
+  primary on (later, S9) steps, energy and last night's sleep come from the phone. (3) Back online: one upload of the
+  unsent days, then nothing on the next round; a pull does not duplicate `sleep_sessions` or `daily_metrics` rows.
+
 ### M3 — Trends series (reader of local tables; no migration, no upload)
 | | |
 |---|---|

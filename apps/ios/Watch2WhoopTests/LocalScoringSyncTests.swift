@@ -231,7 +231,7 @@ final class DeltaRemoteTests: XCTestCase {
       XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM hk_samples"), 2)                          // not a scoring type: left out
       XCTAssertEqual(try Double.fetchOne(db, sql: "SELECT rmssd FROM heartbeat_series WHERE uuid = 'bb-1'"), 45.5)
       XCTAssertNotNil(try Data.fetchOne(db, sql: "SELECT hist FROM hr_day_hist"))
-      XCTAssertEqual(try String.fetchAll(db, sql: "SELECT date FROM score_dirty"), ["2026-01-09"])
+      XCTAssertEqual(try String.fetchAll(db, sql: "SELECT date FROM score_dirty WHERE kind = 'scores'"), ["2026-01-09"])
       XCTAssertEqual(try String.fetchAll(db, sql: "SELECT stream FROM sync_cursors ORDER BY stream"), ["daily", "scores", "sleep"])
     }
     XCTAssertEqual(try db.meta(DeltaRemote.rawRestoredKey), "1")
@@ -310,7 +310,7 @@ final class ScoringSyncTests: XCTestCase {
     XCTAssertNotNil(row?["recovery"] as? Double)
     try await db.writer.read { db in
       XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM daily_scores WHERE origin = 'app' AND uploaded = 1"), 3)
-      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM score_dirty"), 0)
+      XCTAssertEqual(try Int.fetchOne(db, sql: "SELECT count(*) FROM score_dirty WHERE kind = 'scores'"), 0)
     }
     XCTAssertEqual(ScoringSync.lastReport(db)?.uploaded.count, 3)
   }

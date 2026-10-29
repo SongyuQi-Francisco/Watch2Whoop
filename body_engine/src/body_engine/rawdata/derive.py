@@ -31,6 +31,10 @@ Sync mode (rawdata/engine.mode; D4):
 - app (after the cut-over, S5): the values take part (app above ow, importers/common.SOURCE_PRIORITY), daily_metrics is
   re-chosen, the sleep is written, app workouts rank first among the duplicates, and the score recompute is queued from
   the earliest derived day (sync/refresh.queue_scores; sync-refresh-run does it).
+2.0.0 (docs/ios-native-2.0.md, package M1): the phone derives the same daily values and sleep itself from what it reads
+from HealthKit, with packages/openbodyscore-js src/30_derive.js, the twin of `derive_days` below (pure: JSON-like rows in,
+rows out; goldens tests/test_js_golden_derive.py). DERIVE_VERSION is the algorithm's version for both (algo/versions.py
+key `derive`); the server's own path (derive_day) runs the same pure functions on its tables.
 Not derived here: categories other than sleep (mindful sessions: no table yet). The heart rate / TRIMP of app workouts
 is training/importer.enrich's, which reads hk_samples in the app mode (rawdata/samples.py, step S3).
 """
@@ -39,7 +43,7 @@ from __future__ import annotations
 import logging
 import time as _time
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -52,6 +56,11 @@ from . import params as P
 from . import samples as S
 
 log = logging.getLogger(__name__)
+
+# Version of the derivation (daily values, source choice, sleep) shared with the JS bundle (OBS.ALGO_VERSIONS.derive).
+# Bump it with any change of daily_values / phase1_rows / common.resolve / the sleep rules, in the same PR as the JS port
+# and the goldens (packages/openbodyscore-js README "Changing an algorithm").
+DERIVE_VERSION = "derive-1-2026-10-30"
 
 SOURCE = common.APP_SOURCE
 SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
@@ -84,6 +93,12 @@ def daily_rows(conn: psycopg.Connection, user_id: int, d: date, types: list[T.En
                                  AND bucket_start >= %s AND bucket_start < %s ORDER BY type, bucket_start""",
                               (user_id, sums, _midnight(d, tz), _midnight(d + timedelta(days=1), tz))):
             values[r["type"]].append(r["value"])
+    return daily_values(d, types, values)
+
+
+def daily_values(d: date, types: list[T.EngineType], values: dict[str, list[float]]) -> tuple[list[dict], list[str]]:
+    """Pure part of daily_rows: values = {HealthKit type: the day's raw values (avg types, in start / uuid order) or
+    statistics buckets (sum types, in time order)} -> (rows, metrics left without data)."""
     rows, empty = [], []
     for t in types:
         xs = values.get(t.hk)
@@ -96,6 +111,34 @@ def daily_rows(conn: psycopg.Connection, user_id: int, d: date, types: list[T.En
             rows.append({"date": d, "metric": t.key, "value": round(sum(xs) / len(xs), 4), "unit": t.store_unit,
                          "agg": "avg", "n": len(xs), "min_value": min(xs), "max_value": max(xs)})
     return rows, empty
+
+
+def phase1_rows(d: date, samples: list[tuple[str, str, float]]) -> list[dict]:
+    """The phase-1 direct-upload types' daily rows (rawdata/quantities._day_rows, whose SQL groups by source) from the
+    day's samples (HealthKit type, source name, stored value), in start / uuid order: per type the sums of each source,
+    then `sum` = the largest single-source total, `avg` = mean / min / max of all (quantities.WRITERS)."""
+    from . import quantities as Q
+    acc: dict[str, dict] = {}
+    per: dict[tuple[str, str], dict] = {}
+    order: list[tuple[str, str]] = []
+    for hk, src, v in samples:
+        k = (hk, src or "")
+        if k not in per:
+            per[k] = {"s": 0.0, "n": 0, "mn": v, "mx": v}
+            order.append(k)
+        p = per[k]
+        p["s"] += v
+        p["n"] += 1
+        p["mn"], p["mx"] = min(p["mn"], v), max(p["mx"], v)
+    for hk, src in order:
+        p = per[(hk, src)]
+        a = acc.setdefault(hk, {"s": 0.0, "n": 0, "mn": float("inf"), "mx": float("-inf"), "best": 0.0})
+        a["s"] += p["s"]
+        a["n"] += p["n"]
+        a["mn"] = min(a["mn"], p["mn"])
+        a["mx"] = max(a["mx"], p["mx"])
+        a["best"] = max(a["best"], p["s"])
+    return [Q.WRITERS[T.BY_HK[hk].agg](T.BY_HK[hk], d, a) for hk, a in acc.items()]
 
 
 def _write_daily(conn, user_id: int, d: date, rows: list[dict], empty: list[str], mode: str, today: date) -> int:
@@ -177,18 +220,37 @@ def ow_sessions(rows: list[dict]) -> list[dict]:
             if stages:
                 out.append({"source": src, "start_time": stages[0][1].isoformat(), "sleep_stage_intervals": [
                     {"stage": st, "start_time": a.isoformat(), "end_time": b.isoformat()} for st, a, b in stages]})
-    out.sort(key=lambda s: s["start_time"])
+    out.sort(key=lambda s: datetime.fromisoformat(s["start_time"]))   # by instant (the strings' offsets may differ)
     return out
+
+
+def night_window(wake_dates, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    """[lo, hi) of the stage samples (by start) that hold every night waking on these dates."""
+    return (_midnight(min(wake_dates) - timedelta(days=P.SLEEP_DAYS_BEFORE), tz),
+            _midnight(max(wake_dates) + timedelta(days=P.SLEEP_DAYS_AFTER), tz))
+
+
+def nights_of(rows: list[dict], wake_dates, tz: ZoneInfo) -> list[common.SleepSession]:
+    """Pure part of nights: the stage samples of night_window (ow_sessions' rows) -> the sessions waking on these dates."""
+    return [n for n in common.sessionize(ow_imp.sleep_segments(ow_sessions(rows), tz)) if n.wake_date in wake_dates]
 
 
 def nights(conn: psycopg.Connection, user_id: int, wake_dates: set[date], tz: ZoneInfo) -> list[common.SleepSession]:
     """The sleep sessions waking on these dates, from the stored stage samples (no writes; the comparison can use it)."""
     if not wake_dates:
         return []
-    lo = _midnight(min(wake_dates) - timedelta(days=P.SLEEP_DAYS_BEFORE), tz)
-    hi = _midnight(max(wake_dates) + timedelta(days=P.SLEEP_DAYS_AFTER), tz)
-    rows = S.stage_rows(conn, user_id, lo, hi)
-    return [n for n in common.sessionize(ow_imp.sleep_segments(ow_sessions(rows), tz)) if n.wake_date in wake_dates]
+    return nights_of(S.stage_rows(conn, user_id, *night_window(wake_dates, tz)), wake_dates, tz)
+
+
+def session_rows(sessions: list[common.SleepSession]) -> list[dict]:
+    """Sessions of one wake date as sleep_sessions stores them (common.replace_sleep), UTC seconds, with their stage
+    segments; is_main = the longest asleep, the first of equals (replace_sleep's ORDER BY asleep_min DESC, id)."""
+    main = max(range(len(sessions)), key=lambda i: sessions[i].asleep_min) if sessions else -1
+    return [{"start": s.start.timestamp(), "end": s.end.timestamp(), "asleep_min": s.asleep_min,
+             "core_min": round(s.minutes["core"]), "deep_min": round(s.minutes["deep"]), "rem_min": round(s.minutes["rem"]),
+             "awake_min": round(s.minutes["awake"]), "unspecified_min": round(s.minutes["unspecified"]), "is_main": i == main,
+             "device": s.device, "segments": [[g.start.timestamp(), g.end.timestamp(), g.stage] for g in s.segments]}
+            for i, s in enumerate(sessions)]
 
 
 def _write_sleep(conn, user_id: int, wake_dates: set[date], tz: ZoneInfo) -> int:
@@ -229,6 +291,104 @@ def _write_workouts(conn, user_id: int, d: date, tz: ZoneInfo, mode: str) -> dic
            RETURNING id""", (user_id, SOURCE, WORKOUT)).fetchall()
     TI.refresh_duplicates(conn, user_id, mode)
     return {"workouts": len(rows), "workouts_deleted": len(gone), "inserted": res["inserted"], "updated": res["updated"]}
+
+
+# ---------------------------------------------------------------- 2.0.0 M1: the phone's derivation (src/30_derive.js)
+def _instant(x) -> datetime:
+    return x if isinstance(x, datetime) else datetime.fromtimestamp(x, timezone.utc)
+
+
+def ingest_rows(samples: list[dict], buckets: list[dict], tz: ZoneInfo,
+                hk_units: bool = True) -> tuple[list[dict], list[dict]]:
+    """What rawdata/engine keeps of the phone's HealthKit rows: samples {uuid, type, start, end (UTC seconds), value,
+    source, source_id, device_type, device_name} and 15-minute buckets {type, start, value}. hk_units: the values are in
+    the registry's HealthKit unit and get its factor (engine._rows / _stats); then samples outside the plausible range,
+    ending before they start or longer than engine.MAX_SAMPLE_SPAN are dropped, and zero buckets left out. Samples get
+    `day` (local date of the start); samples are sorted by (start, uuid), buckets by (type, start)."""
+    from .engine import MAX_SAMPLE_SPAN
+    out_s, out_b = [], []
+    for r in samples:
+        t = T.ENGINE_BY_HK.get(r["type"])
+        if t is None or t.kind not in ("quantity", "category"):
+            continue
+        v = float(r["value"]) * (t.factor if hk_units else 1.0)
+        a, b = _instant(r["start"]), _instant(r["end"])
+        if not (t.lo <= v <= t.hi) or b < a or b - a > MAX_SAMPLE_SPAN:
+            continue
+        out_s.append({**r, "start_at": a, "end_at": b, "value": v, "day": a.astimezone(tz).date(),
+                      "source": r.get("source") or "", "name": r.get("source") or None})
+    for r in buckets:
+        t = T.ENGINE_BY_HK.get(r["type"])
+        if t is None or not t.stats:
+            continue
+        v = float(r["value"]) * (t.factor if hk_units else 1.0)
+        if v == 0 or not t.lo <= v <= t.hi:
+            continue
+        out_b.append({"type": t.hk, "start_at": _instant(r["start"]), "value": v})
+    out_s.sort(key=lambda r: (r["start_at"], r.get("uuid") or ""))
+    out_b.sort(key=lambda r: (r["type"], r["start_at"]))
+    return out_s, out_b
+
+
+def derive_days(src: dict) -> dict:
+    """The phone's derivation of some days from its own HealthKit rows (the twin of src/30_derive.js `deriveDays`):
+    src = {tz, today, days: [YYYY-MM-DD], wake_dates: [YYYY-MM-DD], samples: [...], buckets: [...] (ingest_rows),
+           units: "hk" (default) | "stored", other: [daily_metric_sources rows of the other sources: date, metric, source,
+           value, unit, agg, n, min_value, max_value, flags], app_history: [the phone's own 'app' rows of earlier days,
+           for the basal reference], workout_kcal: {date: active kcal of that day's workouts}}
+    -> {algo_version, daily: {day: {sources: the 'app' rows, chosen: the day's value per metric (common.resolve)}},
+        sleep: {wake date: session_rows}}.
+    As the server in the sync mode `app`: the app's values take part in the choice (common.SOURCE_PRIORITY)."""
+    tz = ZoneInfo(src["tz"])
+    today = date.fromisoformat(src["today"])
+    samples, buckets = ingest_rows(src.get("samples") or [], src.get("buckets") or [], tz,
+                                   (src.get("units") or "hk") == "hk")
+    days = sorted({date.fromisoformat(d) for d in src.get("days") or []})
+    qtypes = [t for t in T.ENGINE_TYPES if t.kind == "quantity" and t.hk not in T.BY_HK]
+    app: dict[date, list[dict]] = {}
+    for d in days:
+        values: dict[str, list[float]] = defaultdict(list)
+        mine = [r for r in samples if r["day"] == d]
+        for r in sorted(mine, key=lambda r: (r["type"], r["start_at"], r.get("uuid") or "")):
+            if T.ENGINE_BY_HK[r["type"]].agg == "avg":   # raw samples count for averages; sums come from the buckets
+                values[r["type"]].append(r["value"])
+        lo, hi = _midnight(d, tz), _midnight(d + timedelta(days=1), tz)
+        for b in buckets:
+            if lo <= b["start_at"] < hi:
+                values[b["type"]].append(b["value"])
+        rows, _ = daily_values(d, qtypes, values)
+        rows += phase1_rows(d, [(r["type"], r["source"], r["value"]) for r in mine if r["type"] in T.BY_HK])
+        app[d] = sorted(({k: v for k, v in r.items() if k != "date"} | {"source": SOURCE, "flags": {}} for r in rows),
+                        key=lambda r: r["metric"])
+
+    def cand(r: dict, d: date | None = None) -> dict:
+        day = d or (date.fromisoformat(r["date"]) if isinstance(r["date"], str) else r["date"])
+        return {**r, "date": day, "flags": dict(r.get("flags") or {})}
+
+    other = [cand(r) for r in src.get("other") or [] if r["source"] != SOURCE]
+    history = [c for c in (cand(r) for r in src.get("app_history") or [] if r["source"] == SOURCE) if c["date"] not in app]
+    new = [cand(r, d) for d in days for r in app[d]]
+    per_day: dict[date, float] = {}
+    for r in other + history + new:
+        if r["metric"] == "basal_energy_burned" and r["value"] > 0 and "hourly_sum" not in r["flags"]:
+            per_day[r["date"]] = max(per_day.get(r["date"], r["value"]), r["value"])
+    wk = {date.fromisoformat(k): v for k, v in (src.get("workout_kcal") or {}).items() if v is not None}
+    daily = {}
+    if days:
+        want = set(days)
+        chosen: dict[date, list[dict]] = defaultdict(list)
+        for win, flags in common.resolve([r for r in other if r["date"] in want] + new,
+                                         common.basal_reference(per_day, days[0], days[-1]), wk, today):
+            chosen[win["date"]].append({k: win[k] for k in ("metric", "source", "value", "unit", "agg", "n", "min_value",
+                                                            "max_value")} | {"flags": flags})
+        for d in days:
+            daily[d.isoformat()] = {"sources": app[d], "chosen": sorted(chosen.get(d, []), key=lambda r: r["metric"])}
+    sleep = {}
+    stage = [r for r in samples if r["type"] == SLEEP]
+    for w in sorted({date.fromisoformat(d) for d in src.get("wake_dates") or []}):
+        lo, hi = night_window({w}, tz)
+        sleep[w.isoformat()] = session_rows(nights_of([r for r in stage if lo <= r["start_at"] < hi], {w}, tz))
+    return {"algo_version": DERIVE_VERSION, "daily": daily, "sleep": sleep}
 
 
 # ---------------------------------------------------------------- one day, one user, everyone

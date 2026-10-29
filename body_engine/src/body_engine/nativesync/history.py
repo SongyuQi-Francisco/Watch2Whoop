@@ -16,6 +16,10 @@ sample before an export.xml copy):
 
 - inputs: the samples starting that local day; dt = seconds after t0 (ms precision, like every time the pull sends);
   hrv is Apple's SDNN (the RMSSD users' values are the beat-to-beat readings below); SpO2 in percent.
+  `steps` (2.0.0 M1, docs/ios-native-2.0.md decision 3): 15-minute step counts [dt of the bucket start, steps] for stress
+  (M2) and body age (M4): the app engine's statistics buckets (Apple's own de-duplication of iPhone + watch) where the day
+  has them, else the server's copy of Open Wearables' step samples (importers/ow_cache), summed per source into 15-minute
+  buckets, the source with the largest day total (the importers' "largest single device" rule for cumulative values).
 - segments: the sleep-stage segments the scores use (inputs.night_segments) of the nights waking this day: segments are
   grouped into nights by the importers' gap rule and a night goes to the day of its end - 4 h, like its sleep_sessions row.
 - beats: the beat-to-beat readings starting that day, with the beats themselves (ms since the first beat, gap flags) so the
@@ -39,6 +43,9 @@ from . import params as P
 from .bodies import day_bounds, plain
 
 KINDS = ("hr", "hrv", "resp", "spo2", "temp")
+STEPS = "steps"
+STEP_TYPE = "HKQuantityTypeIdentifierStepCount"
+BUCKET_S = 900                         # = rawdata/engine.BUCKET_S
 SESSION_GAP = timedelta(minutes=60)   # importers: a gap of more than an hour starts a new sleep session
 HISTORY_BEAT_COLS = ["uuid", "start", "end", "rmssd", "sdnn", "origin", "beats_ms", "gaps"]
 
@@ -103,8 +110,11 @@ def bodies(conn: psycopg.Connection, uid: int, days: list[date], tz: ZoneInfo) -
         d = (max(b for _, b, _ in night) - WAKE_DAY_SHIFT).astimezone(tz).date()
         if d in want:
             segs[d] += [[plain(a), plain(b), stage] for a, b, stage in night]
-    beats: dict = defaultdict(list)
     lo, hi = day_bounds(lo_day, tz)[0], day_bounds(hi_day, tz)[1]
+    for d, pairs in step_buckets(conn, uid, tz, lo, hi).items():
+        if d in want:
+            inputs[d][STEPS] = [[round(t - t0[d], 3), v] for t, v in pairs]
+    beats: dict = defaultdict(list)
     for r in conn.execute("""SELECT hk_uuid, start_at, end_at, rmssd, sdnn, origin, beats_ms, gaps FROM heartbeat_series
                              WHERE user_id = %s AND start_at >= %s AND start_at < %s ORDER BY start_at""", (uid, lo, hi)):
         d = r["start_at"].astimezone(tz).date()
@@ -116,6 +126,35 @@ def bodies(conn: psycopg.Connection, uid: int, days: list[date], tz: ZoneInfo) -
             continue
         out[d] = {"t0": t0[d], "inputs": {k: v for k, v in inputs[d].items() if v}, "segments": segs.get(d, []),
                   "beats": {"cols": HISTORY_BEAT_COLS, "rows": beats.get(d, [])}, "complete": complete}
+    return out
+
+
+def step_buckets(conn: psycopg.Connection, uid: int, tz: ZoneInfo, lo, hi) -> dict[date, list[tuple[float, float]]]:
+    """{local day: [(bucket start, UTC seconds; steps), ...]} in [lo, hi) (see the module doc)."""
+    out: dict[date, list] = defaultdict(list)
+    for r in conn.execute("""SELECT bucket_start, value FROM hk_stats WHERE user_id = %s AND type = %s
+                             AND bucket_start >= %s AND bucket_start < %s ORDER BY bucket_start""", (uid, STEP_TYPE, lo, hi)):
+        out[r["bucket_start"].astimezone(tz).date()].append((r["bucket_start"].timestamp(), float(r["value"])))
+    try:
+        from ..rawdata import ow_archive
+        ow = ow_archive.samples(conn, uid, ["steps"], lo, hi).get("steps") or []
+    except Exception:  # noqa: BLE001  no copy of Open Wearables for this user: the engine's buckets only
+        ow = []
+    per: dict = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))   # day -> source -> bucket -> steps
+    seen: dict = {}
+    for s in ow:   # one sample per (time, source), a live sample before an export.xml copy (insights/stress._dedupe)
+        k = (s.ts, s.source)
+        if k not in seen or not s.xml:
+            seen[k] = s
+    for s in seen.values():
+        t = s.ts.timestamp()
+        d = s.ts.astimezone(tz).date()
+        if d in out:
+            continue
+        per[d][s.source][t // BUCKET_S * BUCKET_S] += float(s.value)
+    for d, by_src in per.items():
+        best = max(by_src.values(), key=lambda b: sum(b.values()))
+        out[d] = sorted(best.items())
     return out
 
 

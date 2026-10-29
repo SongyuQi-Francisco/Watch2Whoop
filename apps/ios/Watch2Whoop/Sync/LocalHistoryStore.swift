@@ -108,6 +108,16 @@ extension LocalRawStore {
       try insert.execute(arguments: [kind.rawValue, start, kind == .spo2 && value <= 1 ? value * 100 : value])
       byDay[d, default: 0] += 1
     }
+    // 2.0.0 M1: the 15-minute step buckets of those days (kind steps, t = the bucket's start)
+    let steps = try Row.fetchCursor(db, sql: "SELECT start, value FROM hk_stat_buckets WHERE type = ? AND start < ? ORDER BY start",
+                                    arguments: [Self.stepCount, Int(cut)])
+    while let r = try steps.next() {
+      let start = Double(r["start"] as Int), value: Double = r["value"]
+      let d = day(start)
+      guard !server.contains(d), value > 0 else { continue }
+      try insert.execute(arguments: [Kind.steps.rawValue, start, value])
+      byDay[d, default: 0] += 1
+    }
     // a night's segments all go to its wake day (end of the night − 4 h), the day of its sleep_sessions row
     for night in LocalScoring.groupSessions(stages) {
       let d = day(night.map(\.end).max()! - Self.wakeShift)
