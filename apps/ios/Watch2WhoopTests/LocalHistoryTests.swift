@@ -184,6 +184,12 @@ final class HistoryDownloadTests: XCTestCase {
 }
 
 final class FullRecomputeTests: XCTestCase {
+  /// The history download is done (HistoryDownload.isComplete).
+  static func historyComplete(_ db: AppDatabase, before: String) throws {
+    let s = HistoryDownload.State(phase: "done", before: before, at: Date().timeIntervalSince1970)
+    try db.setMeta(HistoryDownload.stateKey, String(decoding: try JSONEncoder().encode(s), as: UTF8.self))
+  }
+
   private func api() -> APIClient {
     APIClient(baseURL: URL(string: "https://body.example.com")!, token: { "example-token" }, session: StubProtocol.session(),
               sleep: { _ in })
@@ -211,6 +217,7 @@ final class FullRecomputeTests: XCTestCase {
     try db.setMeta("algo.checked_at", String(Date().timeIntervalSince1970))
     try db.setMeta(ScoringSync.histKey, "done")
     try db.setMeta(LocalRawStore.hotFromKey, day0)   // everything is "hot" here; the rows come from the chunks either way
+    try Self.historyComplete(db, before: day0)
     StubProtocol.reset([
       context(rt, origin: day0), context(rt, origin: day0),   // two muscle windows of 120 days
       .init(status: 200, body: #"{"status": "ok", "app_scoring": true}"#),
@@ -253,6 +260,7 @@ final class FullRecomputeTests: XCTestCase {
     try db.setMeta("algo.checked_at", String(Date().timeIntervalSince1970))
     try db.setMeta(ScoringSync.histKey, "done")
     try db.setMeta(LocalRawStore.hotFromKey, day0)
+    try Self.historyComplete(db, before: day0)   // a full recompute waits for the whole history (the prune moves hot_from)
     let sync = ScoringSync(db: db, api: api())
     await sync.startFullRecompute(from: day0)
     StubProtocol.reset([context(rt, origin: day0)])
