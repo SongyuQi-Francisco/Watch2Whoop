@@ -11,7 +11,8 @@ import GRDB
 /// 2. inputs (`raw`, rules/context.load_raw): the server's raw inputs document `GET /v1/users/me/rules/inputs?date=` (the
 ///    exercise rules, the SparkyFitness library / templates / weekly plan / training log / food log / weigh-ins as read,
 ///    the nutrition goal versions, the bedtime goal, plan day changes, diet constraints, water — rows, nothing computed;
-///    cached as `rules:inputs:<day>`, so a run offline uses the last copy) and the phone's own tables: `daily_scores`
+///    cached as `rules:inputs:<day>`, so a run offline uses the last copy; today's refetched at most every 30 minutes,
+///    a past day's once after it ended, since it reads the SparkyFitness log on the server) and the phone's own tables: `daily_scores`
 ///    (7 days), the journal (`records` kind `journal`, pulled with ReportsLocal's filtered pull, unsent entries included),
 ///    body mass (`daily_metrics`), `sleep_sessions` (the bedtime goal's nights) and the newest sleep need;
 /// 3. today at the run's time and yesterday at 23:59 (the server checks a settled day: section 3.4) → `reminders` (the
@@ -85,7 +86,8 @@ struct RulesStage: ComputeStage {
       return rep
     }
     if Self.due(db, algo: algo, today: today, now: ctx.now.timeIntervalSince1970) {
-      await Self.pullInputs(db, ctx.api, [today, yday])
+      let stale = [today, yday].filter { Self.inputsDue(db, day: $0, today: today, now: ctx.now, zone: zone) }
+      if !stale.isEmpty { await Self.pullInputs(db, ctx.api, stale) }
       await Self.pullJournal(db, ctx.api)
       await Self.pullReminders(db, ctx.api)
       do {
@@ -121,6 +123,15 @@ struct RulesStage: ComputeStage {
     let atText: String? = (try? db.meta(atKey)) ?? nil
     guard last == algo, day == today, let at = atText.flatMap({ Double($0) }) else { return true }
     return now - at >= recomputeEvery
+  }
+
+  /// The inputs document reads the SparkyFitness log on the server: today's at most every `inputsEvery` seconds, a past
+  /// day's once after it ended (its log is settled), a missing one always.
+  static let inputsEvery: Double = 1800
+  static func inputsDue(_ db: AppDatabase, day: String, today: String, now: Date, zone: TimeZone) -> Bool {
+    guard let doc = (try? db.doc(inputsKey(day))) ?? nil else { return true }
+    if day < today { return doc.fetchedAt < endOfDay(day, zone).timeIntervalSince1970 + 60 }
+    return now.timeIntervalSince1970 - doc.fetchedAt >= inputsEvery
   }
 
   /// 23:59 of `day` in the zone (yesterday's final evaluation).

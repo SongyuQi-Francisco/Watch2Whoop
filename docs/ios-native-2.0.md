@@ -664,7 +664,8 @@ If `explain/personal.py` (~785 lines of bilingual rules) does not fit one PR, sp
   `bundle_version` on `reminders`; `sync_attach` by `date`).
 - **iOS**: `RulesSchema` → `v8_rules_reminders` (`reminders` keyed by (date, rule_key, subject): the row in `payload`,
   `status`, `status_dirty`, `server_id`). `RulesStage` (implemented): after a new rules algorithm, on a new day or every 15
-  minutes, pulls `rules:inputs:<day>` for today and yesterday, the journal (M5's `ReportsLocal.pullJournal`) and the
+  minutes, pulls `rules:inputs:<day>` (today's at most every 30 minutes, yesterday's once after it ended: the document reads
+  the SparkyFitness log on the server), the journal (M5's `ReportsLocal.pullJournal`) and the
   server's reminders (`records` filtered to `reminders`, own cursor `rules.records_cursor.reminders`: server ids, statuses
   changed elsewhere; a status changed here and not confirmed only moves forward), evaluates today at the run's time and
   yesterday at 23:59 (the spot check needs a settled day), writes `reminders` (shadow and primary; sticky dismissals
