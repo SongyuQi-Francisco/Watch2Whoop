@@ -37,14 +37,15 @@ struct TrendCardView: View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .top, spacing: 8) {
         VStack(alignment: .leading, spacing: 2) {
-          Button { open(card.sheet ?? .explain(key: card.explain, title: card.title)) } label: {
+          Button { open(card.sheet ?? .explain(key: card.explain, title: card.title, figures: card.figures)) } label: {
             HStack(spacing: 4) {
               Text(card.title).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
               Icon(.info, size: 12).foregroundColor(Palette.text3)
+              if let b = card.basis { Text(b).font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text3).lineLimit(1) }
             }
           }
           .buttonStyle(PressScale())
-          .accessibilityLabel(card.title)
+          .accessibilityLabel(card.basis.map { "\(card.title) \($0)" } ?? card.title)
           HStack(alignment: .firstTextBaseline, spacing: 3) {
             Text(card.value ?? "—").font(.system(size: 24, weight: .semibold).monospacedDigit())
               .foregroundColor(card.value == nil ? Palette.text3 : Palette.text).lineLimit(1).minimumScaleFactor(0.6)

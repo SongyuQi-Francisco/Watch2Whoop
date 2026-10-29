@@ -13,6 +13,10 @@ struct TrendCardModel: Identifiable {
   var value: String?
   var unit: String?
   var sub: String?
+  /// What the headline is (#357): 「7 天均」 / 「最新」, so it is never mistaken for the end day's value.
+  var basis: String?
+  /// The range mean and the end day's value, both shown in the explain sheet (#357).
+  var figures: RangeFigures?
   /// "vs 上期" text and its colour (the base line of the read-out).
   var base: (String, Tone)?
   var spec: ChartSpec?
@@ -125,6 +129,24 @@ enum TrendCards {
     return tr("\(r) 无数据", "No data in \(r)")
   }
 
+  /// 「7 天均」 / "7-day mean": the basis of a range card's headline.
+  static func meanBasis(_ d: TrendsData) -> String { tr("\(d.days) 天均", "\(d.days)-day mean") }
+  static var latestBasis: String { tr("最新", "Latest") }
+
+  /// The range mean and the end day's reading (for latest-only metrics: the latest reading and its date) of a series.
+  static func figures(_ s: TrendSeries, _ d: TrendsData, digits: Int, unit: String?, latest: Bool = false,
+                      format: ((Double) -> String)? = nil) -> RangeFigures {
+    let f = format ?? { TodayModel.fmt($0, digits: digits) }
+    var dayIndex = s.values.count - 1
+    if latest, let j = s.values.lastIndex(where: { $0 != nil }) { dayIndex = j }
+    let day = d.dates[safe: dayIndex] ?? d.end
+    let dayValue = s.values[safe: dayIndex] ?? nil
+    return RangeFigures(meanLabel: meanBasis(d), mean: s.mean.map(f),
+                        dayLabel: latest ? tr("最新 \(TodayModel.shortDay(day))", "Latest \(TodayModel.shortDay(day))")
+                                         : tr("\(TodayModel.shortDay(day)) 当天", "On \(TodayModel.shortDay(day))"),
+                        day: dayValue.map(f), unit: unit)
+  }
+
   static func spec(_ id: String, _ d: TrendsData, _ layers: [ChartLayer], conf: Conf? = nil, min: Double? = nil, max: Double? = nil,
                    zone: ClosedRange<Double>? = nil, guides: [Double] = [], label: String) -> ChartSpec {
     ChartSpec(id: id, dates: d.dates, layers: layers, min: min ?? conf?.min, max: max ?? conf?.max, zone: zone ?? conf?.zone,
@@ -139,7 +161,8 @@ enum TrendCards {
       return optional.contains(key) ? nil : TrendCardModel(id: key, title: cf.label, explain: cf.explain, empty: noData(d))
     }
     if s.n == 0 && optional.contains(key) && s.prevN == 0 { return nil }
-    let head = latest.contains(key) ? s.last : s.mean
+    let isLatest = latest.contains(key)
+    let head = isLatest ? s.last : s.mean
     let unit = cf.unit.isEmpty ? s.unit : cf.unit
     let layers: [ChartLayer]
     switch cf.chart {
@@ -155,7 +178,8 @@ enum TrendCards {
     if s.baseline != nil, s.n > 0 { legend.append(.init(tone: .text, text: tr("基线", "Baseline"), faint: true)) }
     return TrendCardModel(
       id: key, title: cf.label, explain: cf.explain, value: head.map { TodayModel.fmt($0, digits: cf.digits) }, unit: unit.isEmpty ? nil : unit,
-      sub: sub, base: base.map { ($0, .text) } ?? delta(head, s.prevMean, digits: cf.digits, better: cf.better),
+      sub: sub, basis: s.n > 0 ? (isLatest ? latestBasis : meanBasis(d)) : nil,
+      figures: s.n > 0 ? figures(s, d, digits: cf.digits, unit: unit.isEmpty ? nil : unit, latest: isLatest) : nil, base: base.map { ($0, .text) } ?? delta(head, s.prevMean, digits: cf.digits, better: cf.better),
       spec: s.n > 0 ? spec(key, d, layers, conf: cf, label: cf.label) : nil,
       tip: tipDay(d, s.values, digits: cf.digits, unit: unit), legend: legend, empty: s.n > 0 ? nil : noData(d))
   }
@@ -169,7 +193,7 @@ enum TrendCards {
     let tones: [Tone] = s.values.map { v in v.map { $0 >= 67 ? .good : $0 >= 34 ? .mid : .bad } ?? .text }
     return TrendCardModel(
       id: "recovery", title: title, explain: "recovery", value: s.mean.map { TodayModel.fmt($0) },
-      base: delta(s.mean, s.prevMean, digits: 0, better: 1),
+      basis: s.n > 0 ? meanBasis(d) : nil, base: delta(s.mean, s.prevMean, digits: 0, better: 1),
       spec: s.n > 0 ? spec("recovery", d, [ChartLayer(kind: .bars, values: s.values, tones: tones, main: true)], min: 0, max: 100, label: title) : nil,
       tip: tipDay(d, s.values, digits: 0, unit: ""), extra: s.zones.map { .zones($0) } ?? .none, sheet: .recovery, empty: s.n > 0 ? nil : noData(d))
   }
@@ -190,6 +214,7 @@ enum TrendCards {
     }
     return TrendCardModel(
       id: "strain", title: title, explain: "strain", value: s.mean.map { TodayModel.fmt($0, digits: 1) },
+      basis: s.n > 0 ? meanBasis(d) : nil, figures: s.n > 0 ? figures(s, d, digits: 1, unit: nil) : nil,
       base: delta(s.mean, s.prevMean, digits: 1, better: 0),
       spec: s.n > 0 ? spec("strain", d, [ChartLayer(kind: .range, ranges: bands), ChartLayer(kind: .bars, values: s.values, tones: tones, main: true)],
                            min: 0, max: 21, label: title) : nil,
@@ -207,7 +232,7 @@ enum TrendCards {
     let title = tr("恢复 vs 负荷", "Recovery vs strain")
     return TrendCardModel(
       id: "recovery_vs_strain", title: title, explain: "recovery_vs_strain", value: r.mean.map { TodayModel.fmt($0) },
-      unit: s.mean.map { "/ \(TodayModel.fmt($0, digits: 1))" },
+      unit: s.mean.map { "/ \(TodayModel.fmt($0, digits: 1))" }, basis: meanBasis(d),
       spec: spec("rs", d, [ChartLayer(kind: .avg, values: r.avg7, tone: .good, main: true),
                            ChartLayer(kind: .avg, values: s.avg7, tone: .train, rightAxis: true)], min: 0, max: 100, label: title),
       tip: { i in
@@ -232,6 +257,7 @@ enum TrendCards {
     }
     return TrendCardModel(
       id: "sleep_hours", title: title, explain: "sleep_need", value: a.mean.map { TodayModel.fmt($0, digits: 1) }, unit: tr("小时", "h"),
+      basis: a.n > 0 ? meanBasis(d) : nil, figures: a.n > 0 ? figures(a, d, digits: 1, unit: nil, format: { TrendsFormat.hm($0 * 60) ?? "—" }) : nil,
       base: delta(a.mean, a.prevMean, digits: 1, better: 1),
       spec: a.n > 0 ? spec("sleep_hours", d, layers, min: 0, label: title) : nil,
       tip: { i in
@@ -250,7 +276,7 @@ enum TrendCards {
     if let a { layers.append(ChartLayer(kind: .avg, values: a.values, tone: .mid)) }
     return TrendCardModel(
       id: "training_load", title: title, explain: "training_load", value: t?.last.map { TrendsFormat.signed($0, digits: 0) }, unit: "TSB",
-      base: delta(c.last, c.prevMean, digits: 0, better: 1), spec: spec("ctl", d, layers, min: 0, label: title),
+      basis: latestBasis, base: delta(c.last, c.prevMean, digits: 0, better: 1), spec: spec("ctl", d, layers, min: 0, label: title),
       tip: { i in
         let f = { (s: TrendSeries?) in (s?.values[safe: i] ?? nil).map { TodayModel.fmt($0) } ?? "—" }
         return "\(tipDate(d, i)) · CTL \(f(c)) · ATL \(f(a)) · TSB \((t?.values[safe: i] ?? nil).map { TrendsFormat.signed($0, digits: 0) } ?? "—")"

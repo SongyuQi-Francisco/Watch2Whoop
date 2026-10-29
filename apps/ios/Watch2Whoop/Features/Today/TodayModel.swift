@@ -23,6 +23,10 @@ struct TodayInputs {
   /// The user's own today (to tell a look-back day).
   var userToday: String?
   var circlesOn = false
+  /// `GET /trends?days=61[&end=]` (`TrendsDocs.trends(61, end:)`, shared with Trends' 今天) and the phone's own status
+  /// cards `trends.local:<day>`: 需要注意 and 今日核心 (#357).
+  var trends: [String: Any]?
+  var trendsLocal: [String: Any]?
 }
 
 /// Everything the Today tab draws, built from `TodayInputs`. Same numbers, rules and short labels as the page (app.js
@@ -164,6 +168,10 @@ struct TodayModel: Equatable {
   var coach: Coach?
   var vitals: [Vital] = []
   var vitalsOff = 0
+  /// 需要注意: only what is abnormal on the day, worst first, at most 3 (#357).
+  var attention: [TodayAttention] = []
+  /// 今日核心: the strain target, recovery vs strain, stress and the day's status cards (#357).
+  var core: [TodayCoreCard] = []
   var status: [StatusGroup] = []
   var reminders: [Reminder] = []
   var sync: SyncCard?
@@ -289,6 +297,11 @@ struct TodayModel: Equatable {
       }
       vitalsOff = vitals.filter(\.off).count
     }
+
+    // ---- 需要注意 and 今日核心 (#357): the day's Trends document, the phone's own status cards laid over it
+    let day = TodayTrends(json: inp.trends, local: inp.trendsLocal, day: date)
+    attention = TodayAttentionRules.select(trends: day, vitals: vitals)
+    core = TodayCoreCards.build(coach: coach, trends: day)
 
     // ---- body status (me.status cards, grouped like the page)
     var groups: [StatusGroup] = []

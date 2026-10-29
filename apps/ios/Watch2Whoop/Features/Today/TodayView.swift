@@ -6,7 +6,9 @@ struct SleepRoute: Hashable {
 }
 
 /// The Today tab (#340 N3): three rings side by side (sleep score | recovery, centred and bigger | yesterday's strain),
-/// then the core numbers, strain target, health monitor, body status, reminders, sync and circles. Everything is read
+/// then 需要注意 (only what is off on the day) and 今日核心 (strain target, recovery vs strain, stress, illness, body
+/// battery, HRV status, training status; #357), the core numbers, health monitor, 「全部指标 →」 (Trends' 今天 for the same
+/// day), body status, reminders, sync and circles. Everything is read
 /// from the local database (first frame from the cache), refreshed through the sync layer; numbers and short labels
 /// only — the words are in the explain sheets. The date on top looks back at any day.
 struct TodayView: View {
@@ -125,6 +127,28 @@ struct TodayView: View {
     }
     if let e = m.error { ToneBadge(text: e).frame(maxWidth: .infinity).padding(.top, 10) }
 
+    // 需要注意 (#357): only when something is off on the day
+    if !m.attention.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: tr("需要注意", "Needs attention"))
+        AttentionList(items: m.attention) { open($0.open) }
+      }
+      .padding(.top, 22)
+      .id("attention")
+    }
+
+    // 今日核心 (#357): the strain target (live) and our algorithms' results for the day
+    if !m.core.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: tr("今日核心", "Today's core"))
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+          ForEach(m.core) { c in CoreCardView(card: c) { open(c.open) } }
+        }
+      }
+      .padding(.top, 22)
+      .id("core")
+    }
+
     ForEach(m.sections) { s in
       VStack(alignment: .leading, spacing: 10) {
         SectionHeader(title: s.title)
@@ -133,12 +157,28 @@ struct TodayView: View {
       .padding(.top, 22)
     }
 
-    if m.coach != nil || !m.vitals.isEmpty {
-      HStack(alignment: .top, spacing: 8) {
-        if let c = m.coach { CoachCard(coach: c) { sheet = .coach } }
-        if !m.vitals.isEmpty { MonitorCard(vitals: m.vitals, off: m.vitalsOff) { sheet = .monitor } }
+    // the strain target lives in 今日核心; the health monitor keeps its own card
+    if !m.vitals.isEmpty {
+      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { sheet = .monitor }.padding(.top, 22)
+    }
+
+    if m.date != nil {
+      Button {
+        TrendsLink.shared.open(day: store.date)
+        tab = .trends
+      } label: {
+        HStack(spacing: 4) {
+          Text(tr("全部指标", "All metrics")).font(Typo.bodyStrong)
+          Icon(.chevronRight, size: 14)
+        }
+        .foregroundColor(Palette.text2)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
       }
-      .padding(.top, 22)
+      .buttonStyle(PressScale())
+      .padding(.top, 12)
+      .id("allMetrics")
     }
 
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
@@ -197,6 +237,14 @@ struct TodayView: View {
     }
   }
 
+  private func open(_ o: TodayOpen) {
+    switch o {
+    case .coach: sheet = .coach
+    case .metric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
+    case .status(let t): sheet = .status(t)
+    }
+  }
+
   private func handle(_ a: TodayModel.Action) {
     switch a {
     case .recovery: sheet = .recovery
@@ -230,7 +278,8 @@ struct TodayView: View {
 }
 
 #if DEBUG
-/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SCROLL=<anchor id>` (`bottom`),
+/// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SCROLL=<anchor id>` (`attention`, `core`,
+/// `allMetrics`, `bottom`),
 /// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|explain:<kind>:<key>`,
 /// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (open the sleep detail page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
 enum DevShot {
@@ -261,40 +310,65 @@ enum DevShot {
 
 // MARK: - cards
 
-/// The strain target: a 0–21 ring with the target band and today's strain so far (app.js strainCoachHtml).
-struct CoachCard: View {
-  let coach: TodayModel.Coach
+/// 需要注意 (#357): one row per item — tone dot, short label, the baseline / range, the value with its arrow.
+struct AttentionList: View {
+  let items: [TodayAttention]
+  let open: (TodayAttention) -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      ForEach(Array(items.enumerated()), id: \.element.id) { i, it in
+        Button { open(it) } label: {
+          HStack(spacing: 8) {
+            Circle().fill(it.tone.color).frame(width: 7, height: 7)
+            Text(it.label).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
+            Spacer(minLength: 6)
+            if let b = it.base { Text(b).font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text3).lineLimit(1) }
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+              Text(it.value).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(it.tone.color).lineLimit(1)
+              if let u = it.unit { Text(u).font(Typo.unit).foregroundColor(Palette.text2).lineLimit(1) }
+              if let a = it.arrow { Text(a).font(.system(size: 13, weight: .semibold)).foregroundColor(it.tone.color) }
+            }
+            Icon(.chevronRight, size: 13).foregroundColor(Palette.text3)
+          }
+          .padding(.vertical, 11)
+          .overlay(i == items.count - 1 ? nil : Rectangle().fill(Palette.hair).frame(height: 1), alignment: .bottom)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(PressScale())
+        .accessibilityElement(children: .combine)
+      }
+    }
+    .padding(.horizontal, 14)
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+  }
+}
+
+/// A 今日核心 card, drawn like the Trends status cards (label, value in its tone colour, the small line under it).
+struct CoreCardView: View {
+  let card: TodayCoreCard
   let action: () -> Void
 
   var body: some View {
     Button(action: action) {
-      VStack(alignment: .leading, spacing: 8) {
-        Text(tr("负荷目标", "Strain target")).font(Typo.label).foregroundColor(Palette.text2)
-        HStack(spacing: 10) {
-          ZStack {
-            Circle().stroke(Palette.surface2, lineWidth: 6)
-            Circle().trim(from: coach.low / 21, to: coach.high / 21)
-              .stroke(Palette.train.opacity(0.28), lineWidth: 6).rotationEffect(.degrees(-90))
-            if let c = coach.current, c > 0 {
-              Circle().trim(from: 0, to: min(1, c / 21))
-                .stroke(Palette.train, style: StrokeStyle(lineWidth: 6, lineCap: .round)).rotationEffect(.degrees(-90))
-            }
-            Text(coach.current.map { TodayModel.fmt($0, digits: 1) } ?? "—")
-              .font(.system(size: 13, weight: .bold).monospacedDigit()).foregroundColor(Palette.text)
-          }
-          .frame(width: 48, height: 48)
-          VStack(alignment: .leading, spacing: 2) {
-            Text("\(TodayModel.fmt(coach.low))–\(TodayModel.fmt(coach.high))").font(Typo.bodyStrong.monospacedDigit())
-              .foregroundColor(Palette.text)
-            Text(coach.stateLabel).font(Typo.caption).foregroundColor(coach.tone == .text ? Palette.text2 : coach.tone.color)
-          }
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 4) {
+          Text(card.label).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
+          if card.local { Circle().fill(Palette.text3).frame(width: 4, height: 4).accessibilityLabel(tr("本机计算", "On this phone")) }
         }
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+          Text(card.value).font(.system(size: 19, weight: .semibold).monospacedDigit())
+            .foregroundColor(card.tone == .text ? Palette.text : card.tone.color).lineLimit(1).minimumScaleFactor(0.6)
+          if let u = card.unit { Text(u).font(Typo.unit).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.7) }
+        }
+        if let s = card.sub { Text(s).font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text3).lineLimit(1) }
       }
       .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(14)
-      .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+      .padding(12)
+      .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.surface))
     }
     .buttonStyle(PressScale())
+    .accessibilityElement(children: .combine)
   }
 }
 

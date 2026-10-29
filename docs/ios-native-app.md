@@ -412,6 +412,20 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `sleep:night:<日期>` / `latest` | `/sleep/night`（`sleep_detail` 开关） | 睡眠详情 |
 | `explain:<kind>:<键>:<日期>` | `/explain/metric/…`、`/explain/status/…` | 讲解弹层 |
 | `weight:recent` | `/weight/recent` | 记体重弹层 |
+| `trends:61` / `trends:61:<日期>`、`trends.local:<日期>` | `/trends?days=61[&end=]`、本机算（`TrendsLocal`） | 「需要注意」「今日核心」（#357）；和趋势页「今天」共用同一份文档 |
+
+**需要注意、今日核心、全部指标（#357）**
+
+- 三环（和恢复词）下面：
+  - 「需要注意」：只在当天有异常时出现，最多 3 项，只有数字和短标签（标签、基线或范围、当天值 + 箭头），点开是对应的讲解弹层或状态卡弹层。
+  - 「今日核心」：两列卡片，依次是负荷 / 目标（实时，原来的「负荷目标」卡并进来了，不再单独显示）、恢复 vs 负荷（7 天均）、压力、生病风险、身体电量、HRV 状态、训练状态；没数据的卡不显示，颜色和趋势页状态卡一致。
+  - 原有的三组数字、健康监测、身体状态、提醒、同步、圈子不变；健康监测卡下面是「全部指标 →」，切到趋势页「指标 · 今天」，结束日期就是今天页正在看的那天（回看时带日期，`TrendsLink`）。
+- 数据全部从本机读：`/trends?days=61` 的缓存文档（当天 + 前 60 天基线窗口）加上本机算的状态卡 `trends.local:<日期>`。刷新时和其他文档一起并行拉，第一帧不等网络；本机状态卡在后台算（`TrendsStore.computeLocal`，和趋势页共用）。缓存的文档不是当天的（比如过了午夜）时这两块不显示，不会把昨天的异常当成今天的。
+- 异常规则（`Features/Today/TodayParams.swift`，每个阈值都写了出处，可配置；全部是和用户自己比，不写死任何人的数字）：
+  - 指标偏离个人基线，而且是坏的方向：HRV 低、静息心率高、呼吸频率高、血氧低，|z| ≥ 1.5 且差值超过各自的下限（5 ms / 3 bpm / 1 次每分 / 1.5 个百分点，避免基线很稳时把噪声当异常）；手腕温度（本身就是对 60 天均值的偏差）≥ +0.5 °C。基线优先用服务器的基线带（60 天均值 ± 1 SD），没有基线带的指标在手机上用同一个 60 天窗口算（≥ 14 个读数，`DayBaseline`）。
+  - 状态卡变黄 / 红：生病风险（留意 / 高）、HRV 状态（偏低 / 差）、训练状态（吃力 / 无效 / 退步 / 过度）；韧性、身体电量、最低心率出现、运动后心率恢复只在红的时候算。
+  - 健康监测超出服务器给的范围。
+  - 排序按严重程度（统一换算成 z 的单位：指标 = |z|，红色状态卡 3.0，黄色 1.6，健康监测超范围 2.0），同一个指标只留最严重的一条。
 
 - 一次读库（`TodaySnapshot.read`）拿齐当天要的全部文档，再加上本机算的分数行。`ValueObservation` 用 `.immediate`，`TodayStore` 在 `TodayView` 初始化时就读第一份，所以第一帧就有缓存的数字。
 - 写操作：
@@ -637,13 +651,19 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 | 键 | 接口 | 用在 |
 |---|---|---|
-| `trends:<天数>` / `trends:<天数>:<结束日>` | `/trends?days=&end=` | 全部序列（`values`、`avg7`、`mean`、`prev_mean`、基线带、恢复颜色和贡献项、负荷目标带）、心率区间、每周有氧分钟、服务器的状态卡 |
+| `trends:<天数>` / `trends:<天数>:<结束日>` | `/trends?days=&end=` | 「今天」用 61 天（`TodayParams.trendsDays`）；全部序列（`values`、`avg7`、`mean`、`prev_mean`、基线带、恢复颜色和贡献项、负荷目标带）、心率区间、每周有氧分钟、服务器的状态卡 |
 | `trends.local:<结束日>` | 本机算（`TrendsLocal`） | 本机算出的状态卡，盖在服务器的同名卡上 |
 | `trends.vo2max:<结束日>` | `/vo2max?days=365` | VO₂max 卡的「体能 良好」 |
 | `trends.sleepdetails:<结束日>` | `/sleep/details` | 睡眠规律性卡（7 / 30 天、最近几晚的入睡到醒来） |
 | `trends.nights:<结束日>` | `/sleep/nights?days=14` | 「睡眠」：平均睡眠 / 入睡 / 醒来、阶段图、作息图、每晚列表（点开是 N3 的睡眠详情） |
 | `report:<week\|month>:<结束日>` | `/reports?period=&end=` | 「报告」的数字块和变化、日记发现 |
 | `journal.analysis:<结束日>` | `/journal/analysis?days=90` | 「行为影响 · 次日恢复」 |
+
+**范围和口径（#357）**
+
+- 范围是「今天 / 7 天 / 30 天 / 90 天 / 365 天」，默认「今天」。这次运行里选过的范围会记住（`TrendsStore.sessionRange`，只在内存里），重新打开 app 回到「今天」。
+- 「今天」= 结束日当天的全部指标清单（`Features/Trends/TrendsDay.swift`）：分组和范围视图一样（恢复 / 睡眠 / 负荷 / 压力 / 长期），每个指标一行：当天值和单位、相对个人基线的方向（箭头 + 颜色，按每个指标的 `better`；在 0.5 SD 以内算持平）、基线均值、7 天小走势线。不画单点趋势图；当天没值显示「—」，可选指标最近 7 天都没值就不显示；体重、VO₂max 这类只看最新的指标显示最近一次和它的日期。状态卡放在最上面。点一行打开当天的讲解弹层。
+- 7 天及以上：卡片标题旁写明大数字的口径（「7 天均」，体重 / VO₂max / 训练负荷是「最新」）；点开的弹层同时给「7 天均」和「10/29 当天」两个数（`RangeFigures`），不会再出现卡片 12、弹层 31 却看不出为什么的情况。
 
 **状态卡：本机算还是用接口**（`Features/Trends/TrendsLocal.swift`）
 
@@ -681,7 +701,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 一年和一个月差不多，掉的帧主要是卡片第一次进屏时建 Swift Charts 的固定开销（快速连续滚过三十多张卡）。抽稀之前 365 天 Debug 构建最长一帧 1375 ms，现在 232 ms。真机（ProMotion）待 N9 用 Instruments 复测。
 
-- Debug 版截图用的环境变量：`W2W_DEV_TRENDS=<metrics|sleep|report>[,<天数>][,<结束日>]`、`W2W_DEV_TRENDS_SHEET=explain:<键>|status:<键>|recovery|calendar`、`W2W_DEV_TRENDS_SCROLL=<锚点>`（`TrendsView.swift` 的 `TrendsDevShot`）。
+- Debug 版截图用的环境变量：`W2W_DEV_TRENDS=<metrics|sleep|report>[,<天数>][,<结束日>]`（天数 1 = 今天）、`W2W_DEV_TRENDS_SHEET=explain:<键>|status:<键>|card:<卡片 id>|recovery|calendar`（`card:` 打开范围卡片自己的弹层，带两个数）、`W2W_DEV_TRENDS_SCROLL=<锚点>`（`status`、`card.<键>`、`day.<分组>`）（`TrendsView.swift` 的 `TrendsDevShot`）；今天页 `W2W_DEV_SCROLL=attention|core|allMetrics|bottom`。
 - 内测组开着 `ui_ai_first` 时顶部有「问 Jarvis」输入条，回车把问题交给 `\.askAI`（N6 接上之前是复制到剪贴板）。
 
 ## 10. 测试和发布
@@ -873,6 +893,7 @@ tools/app_release.sh ios --push                      # 打新 tag 并推送，wo
 - N4: Trends and reports.
 - N5: all records and the Food tab (section 9.3). Each page store observes its documents plus the pending `records` rows (`LocalView`); `RecordsPuller` saves the server's views and prunes the rows the server now has in one transaction. Writes are a `records` row plus an outbox entry with the same `client_id`; last-write-wins groups drop older unsent states. Undo of a queued write is local, of a sent one online. The muscle map draws the Today page's own `muscle-body-data.js` (bundled) as SwiftUI paths. Server: `PATCH /nutrition/entries/{id}` sets an absolute portion.
 - N4: Trends and reports. Series come from `/trends` (cached as documents); seven status cards (HRV status, training status, load focus, illness risk, lowest-HR timing, recovery time, chronotype) are computed on the phone with the bundle's `trend(...)` when the local history covers their window, resilience / body battery / heart-rate recovery stay the server's. Swift Charts with a tap / press-and-slide read-out, LTTB-thinned lines above 140 points, year labels on long ranges.
+- #357 (1.0.9): Trends' range control is Today / 7 / 30 / 90 / 365 d, Today by default (kept for the app's run, a fresh launch starts on Today). Today = the end day's full metric list (value, arrow and colour against the personal 60-day baseline, 7-day spark line, status cards first), read from a 61-day `/trends` document. Range cards label their headline ("7-day mean" / "Latest") and their sheet shows the range mean and the end day's value side by side. The Today tab adds "Needs attention" (only when something is off, at most 3: metrics ≥ 1.5 SD off the baseline in the bad direction, yellow/red status cards, health-monitor vitals out of range; thresholds with sources in `TodayParams.swift`), a "Today's core" card grid (strain vs target, recovery vs strain, stress, illness risk, body battery, HRV status, training status) and "All metrics →" (Trends, Today, same day). Both blocks read the cached 61-day document and the phone's own status cards; no blocking network call.
 - N5: all records and the Food tab.
 - N6: Jarvis.
 - N7: Circles (section 9.2). Feed, likes and comments, member cards, leaderboards, invites (code, link, picture card), circle management, avatars. Server answers are cached in `docs` (`circles:*`) and the feed's first page is merged on refresh; likes and comments go through the offline queue and are laid over the cached posts. The queue now claims an entry atomically (two drains never send it twice) with a 120 s lease. Notification taps open the post (`App/NotificationTaps.swift`). `CircleSummaryCard` is there for other pages.

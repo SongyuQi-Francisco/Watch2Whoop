@@ -26,8 +26,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 - 不再需要 Open Wearables：新账号扫码就能同步。
 
 **页面**
-- 今天：睡眠分、恢复、昨天负荷三个环并排，核心指标、健康监测、负荷目标、提醒；点开看睡眠详情和每个指标的讲解。
-- 趋势：全部指标的 1 周 / 1 月 / 3 月 / 1 年趋势和「比上期」，状态卡（HRV 状态、训练状态等），最近 14 晚，周报 / 月报。
+- 今天：睡眠分、恢复、昨天负荷三个环并排；当天有异常时三环下面列出「需要注意」（最多 3 项）；「今日核心」一眼看负荷 / 目标、恢复 vs 负荷、压力、生病风险、身体电量、HRV 状态、训练状态；核心指标、健康监测、提醒；「全部指标 →」直接看当天的全部数字。点开看睡眠详情和每个指标的讲解。
+- 趋势：默认「今天」，当天的全部指标和相对你自己基线的方向；7 天 / 30 天 / 90 天 / 365 天的趋势和「比上期」，卡片上写明是「N 天均」，点开同时看到区间均值和当天的值；状态卡（HRV 状态、训练状态等），最近 14 晚，周报 / 月报。
 - 记录：训练（肌肉负荷图、今天的计划逐组记录、动作限制、训练日历）、日记、饮食（今天吃了、快捷记餐、食谱、采购清单）、喝水、体重；「我」里有补剂、化验趋势、身体事件。
 - Jarvis：底部中间的键，点开是对话 / 语音 / 拍照 / 快记；按住直接说话（往左上滑取消、往右上滑锁定）；回答里有卡片，删除前会先问你。
 - 朋友：训练动态、点赞评论、成员卡片、排行榜、邀请朋友（邀请码、链接、图片）、管理圈子、头像。
@@ -52,8 +52,10 @@ as usual; **you stay signed in**, and your settings and sync progress from 1.0.8
   everything, continuing in the background), re-sync by days, and the newest reading per type on the phone and on the
   server. New watch data syncs in the background; when the phone is locked, it continues after unlocking. Open
   Wearables is no longer needed: new accounts sync right after scanning the setup code.
-- **Pages**: Today (three rings side by side, core numbers, health monitor, strain target, reminders, sleep detail and
-  explanations), Trends (every metric over a week / month / 3 months / year, status cards, the last 14 nights, weekly and
+- **Pages**: Today (three rings side by side, "Needs attention" when something is off, "Today's core" cards, core
+  numbers, health monitor, reminders, "All metrics →", sleep detail and explanations), Trends (Today by default: the
+  day's full metric list against your own baseline; every metric over 7 / 30 / 90 / 365 days labelled as an N-day mean,
+  with the range mean and the day's value side by side in its sheet; status cards, the last 14 nights, weekly and
   monthly reports), Log (training with the muscle map and set-by-set logging, journal, food, water, weight; supplements,
   lab trends and body events under Me), Jarvis (tap for chat / voice / photo / quick log, hold to talk, cards, asks
   before deleting), Friends (feed, likes and comments, members, leaderboards, invites, circle settings, pictures).
