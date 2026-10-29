@@ -384,8 +384,10 @@ enum SeriesLocal {
       present["training"] = days
       let first = (try? String.fetchOne(db, sql: "SELECT min(local_date) FROM workouts WHERE dup_of IS NULL AND excluded IS NULL")) ?? nil
       firsts.append(nz(first))
-    } else if let s = server, s["month"] as? String == month {   // training days: the server's until M1c (workouts) is on the phone
-      present["training"] = ((s["days"] as? [[String: Any]]) ?? []).filter { $0["training"] as? Bool == true }.compactMap { $0["date"] as? String }
+    } else if let s = server, s["month"] as? String == month,
+              let sd = s["days"] as? [[String: Any]], sd.contains(where: { $0["training"] is Bool }) {
+      // training days: the server's until M1c (workouts) is on the phone; null there (no source) stays null here
+      present["training"] = sd.filter { $0["training"] as? Bool == true }.compactMap { $0["date"] as? String }
     }
     if let f = server?["first"] as? String { firsts.append(f) }   // history the phone may not hold (old imports)
     return [month, today, scores, present, firsts, [String]()]
