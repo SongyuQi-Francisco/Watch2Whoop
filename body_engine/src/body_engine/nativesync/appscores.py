@@ -122,8 +122,11 @@ def diff(app: dict, server: dict) -> dict:
     return out
 
 
-def server_rows(conn: psycopg.Connection, uid: int, days: list[date]) -> dict[date, dict]:
-    """The server's own rows for these days (Python, nothing written). Tests replace this."""
+def server_rows(conn: psycopg.Connection, uid: int, days: list[date], end: date | None = None) -> dict[date, dict]:
+    """The server's own rows for these days (Python, nothing written), computed through `end` (default: the last of
+    them). The spot check passes today: the hourly job and the phone both compute through today, and in a new user's
+    first two weeks the CTL / ATL start (the mean of the first 14 TRIMPs) depends on where the run ends (#340 N9).
+    Tests replace this."""
     from ..importers import shortcut
     from ..ow_client import OWClient, OWError
     origin = E.scoring_origin(conn, uid)
@@ -134,7 +137,7 @@ def server_rows(conn: psycopg.Connection, uid: int, days: list[date]) -> dict[da
         client = OWClient()
     except OWError:
         client = None
-    end = max(days)
+    end = max(end or max(days), max(days))
     rows, _ = E.compute(conn, client, uid, min(days), end, origin, tz, shortcut.user_archive_dir(uid), ow_cache="use")
     want = set(days)
     return {r["date"]: r for r in rows if r["date"] in want}
@@ -172,7 +175,7 @@ def upload(conn: psycopg.Connection, uid: int, algo_version: str, bundle_version
     stored_rows = rows
     day = _check_day(rows, today) if (force_check or _check_due(s, bundle_version)) else None
     if day is not None:
-        server = server_rows(conn, uid, [day]).get(day)
+        server = server_rows(conn, uid, [day], end=today).get(day)
         diffs = diff(rows[day], server) if server is not None else {}
         ok = server is None or not diffs
         conn.execute("""INSERT INTO app_score_checks (user_id, date, algo_version, bundle_version, ok, diffs)

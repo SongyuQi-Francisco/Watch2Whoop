@@ -52,6 +52,46 @@ final class SyncCenterTests: XCTestCase {
     XCTAssertFalse(IngestInfo(["engine": ["enabled": true, "mode": "ow", "accepts": ["phase"]]]).engineActive)
   }
 
+  /// N9: the phone scores only from what the server has (a new user with more history in Health than the first sync's
+  /// 14 days failed every spot check: CTL / ATL from the extra days, a recovery the server could not compute yet).
+  @MainActor
+  func testScoringReadsOnlyWhatTheServerHas() {
+    let defaults = UserDefaults(suiteName: "n9.scoring.\(UUID().uuidString)")!
+    let first = 1_800_000_000.0
+    defaults.set(first, forKey: "w2w.native.backfill.to.v1")
+    let service = HealthSyncService(registry: [], settings: SyncSettings(defaults: defaults))
+    XCTAssertEqual(service.uploadedSince.timeIntervalSince1970, first)   // no backfill: the first sync's window
+    let now = Date(timeIntervalSince1970: first + 14 * 86_400)
+    XCTAssertEqual(HealthKitScoringReader.since(now: now, uploadedSince: service.uploadedSince).timeIntervalSince1970, first)
+    // a backfill that went further back widens it up to the raw window of 60 days
+    let window = now.addingTimeInterval(-Double(LocalRawStore.keepDays) * 86_400)
+    XCTAssertEqual(HealthKitScoringReader.since(now: now, uploadedSince: Date(timeIntervalSince1970: first - 90 * 86_400)), window)
+    XCTAssertEqual(HealthKitScoringReader.since(now: now, uploadedSince: nil), window)
+    // only a start that moved back drops the anchors
+    XCTAssertTrue(HealthKitScoringReader.needsReread(previous: first, next: first - 86_400))
+    XCTAssertFalse(HealthKitScoringReader.needsReread(previous: first, next: first + 86_400))
+    XCTAssertFalse(HealthKitScoringReader.needsReread(previous: first, next: first - 60))
+    let b = BackfillState(["active": true, "to": first, "from": first - 90 * 86_400, "cursor": first - 30 * 86_400, "batches": 3])
+    XCTAssertEqual(b.cursor, first - 30 * 86_400)
+    XCTAssertEqual(b.from, first - 90 * 86_400)
+  }
+
+  /// N9: the first-sync window is pinned when the account is attached, an hour inside the engine's own start (which is
+  /// `now - 14 days` to the second, not the start of that day), so the backfill's end overlaps it instead of leaving a gap.
+  func testFirstWindowIsPinnedOnceAtAttach() {
+    let defaults = UserDefaults(suiteName: "n9.window.\(UUID().uuidString)")!
+    let s = SyncSettings(defaults: defaults)
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    s.pinFirstWindow(now: now)
+    XCTAssertEqual(s.backfillTo(now: now), 1_800_000_000 - 14 * 86_400 + 3600)
+    s.pinFirstWindow(now: now.addingTimeInterval(86_400))   // later attaches keep it
+    XCTAssertEqual(s.backfillTo(), 1_800_000_000 - 14 * 86_400 + 3600)
+    let upgraded = UserDefaults(suiteName: "n9.window.\(UUID().uuidString)")!
+    upgraded.set(1_700_000_000.0, forKey: "flutter.w2w.backfill.to.v1")   // a backfill 1.0.8 started keeps its window
+    SyncSettings(defaults: upgraded).pinFirstWindow(now: now)
+    XCTAssertEqual(SyncSettings(defaults: upgraded).backfillTo(), 1_700_000_000)
+  }
+
   // MARK: - diagnosis
 
   private func activeInfo() -> IngestInfo {

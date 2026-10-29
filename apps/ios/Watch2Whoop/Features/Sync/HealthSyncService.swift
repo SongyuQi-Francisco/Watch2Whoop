@@ -74,6 +74,15 @@ final class HealthSyncService: ObservableObject {
     return !running && !engine.running && engine.lastStop == nil && engine.firstSyncDone
   }
 
+  /// From when the server has all of this phone's HealthKit data (#340 N9): the first sync's window start, or as far
+  /// back as the history backfill got (everything in [cursor, to) is on the server). The phone scores from raw samples
+  /// only from there (`HealthKitScoringReader`); older days come in as the server's stored rows (the seeded run).
+  var uploadedSince: Date {
+    let first = settings.backfillTo()
+    if !backfill.isEmpty, backfill.cursor > 0 { return Date(timeIntervalSince1970: min(first, backfill.cursor)) }
+    return Date(timeIntervalSince1970: first)
+  }
+
   var diagnosis: SyncDiagnosis {
     var i = SyncDiagnosis.Input()
     i.permission = permission
@@ -105,6 +114,7 @@ final class HealthSyncService: ObservableObject {
   func attach(api: APIClient, server: String, token: String, accountKey: String) async {
     if let previous = settings.account, previous != accountKey { await resetPhoneState() }
     settings.account = accountKey
+    settings.pinFirstWindow()   // before the engine's first read (N9: no gap between the first sync and the backfill)
     self.api = api
     self.server_ = server
     self.token = token

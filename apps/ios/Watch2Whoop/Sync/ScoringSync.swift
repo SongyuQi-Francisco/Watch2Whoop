@@ -101,6 +101,8 @@ actor ScoringSync {
 
     // the server's part of the inputs (the muscle load of the first window; histograms once after an install)
     let window = min(today, LocalDay.add(first, LocalHistoryParams.muscleWindowDays - 1))
+    let firstFetched = first
+    var windowEnd = window
     let needHist = (try? db.meta(Self.histKey)) == nil
     var ctxResult = await context(from: first, to: window, hist: needHist ? today : nil)
     let j: [String: Any]
@@ -151,13 +153,33 @@ actor ScoringSync {
     }
     if ctx.hrvKind == "rmssd" { _ = try? store.analyzeBeats(runtime) }
 
+    // The server starts every chain (CTL / ATL, sleep need from the day before) on its scoring origin, its first day
+    // with a resting heart rate (#340 N9). A new user's first rounds come before the server derived anything: the phone
+    // scores for its own display, but rows from before the origin would seed the next runs with a different start
+    // (CTL 559 vs 491 in the regression), and an upload without an origin passed the spot check unchecked. So: nothing
+    // is uploaded until the server has an origin; once it has, the phone's rows before it go and the chain is recomputed
+    // from the origin.
+    if let origin = ctx.origin {
+      let dropped = (try? await db.writer.write { db -> Int in
+        try db.execute(sql: "DELETE FROM daily_scores WHERE origin = 'app' AND date < ?", arguments: [origin])
+        return db.changesCount
+      }) ?? 0
+      if dropped > 0 || first < origin { first = origin }
+      // While the whole history since the origin is in the phone's raw window (a new user's first ~2 months), every run
+      // is the server's full recompute from the origin rather than a seeded one: the CTL / ATL start is the mean of the
+      // first 14 days with a TRIMP, so a chain seeded from a run that had fewer days kept a different start (the
+      // regression's new user: CTL 466 on the phone, 491 on the server, spot check failed). ≤ 60 days, cheap.
+      if origin >= hotStart { first = origin }
+    }
+    // a first moved before the context's muscle window needs that window fetched again (the loop does it)
+    if first < firstFetched { windowEnd = LocalDay.add(first, -1) }
+
     // compute [first, today] chunk by chunk (a full recompute may stop at the deadline and go on next time)
     let started = Date().timeIntervalSince1970
     let fullNow = full
     rep.first = first
     var a = first
     var unsettled: String?
-    var windowEnd = window
     var reachedToday = false
     while a <= today {
       if Task.isCancelled || deadline.map({ Date() >= $0 }) == true { break }
@@ -203,6 +225,11 @@ actor ScoringSync {
         SELECT date FROM daily_scores WHERE origin = 'app' AND uploaded = 0 AND date < ? AND algo_version IS ? ORDER BY date DESC
         """, arguments: [cutoff, algo])
     }) ?? [])
+    guard ctx.origin != nil else {   // see above: the server has not derived a first day yet
+      rep.state = "waiting_sync"
+      rep.detail = "no_origin"
+      return save(rep)
+    }
     // samples this phone read from HealthKit must be on the server first (with none, the inputs are the server's anyway)
     let phoneReads = (try? db.meta(Self.readKey)) == "1"
     if !days.isEmpty, phoneReads, let gate = uploadGate, !(await gate()) {

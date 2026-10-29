@@ -358,8 +358,9 @@ def test_app_scores_check_store_and_plan(client, users, dsn, monkeypatch):
     d1, d2 = today - timedelta(days=2), today - timedelta(days=1)
     calls = []
 
-    def fake_server(conn, u, days):
+    def fake_server(conn, u, days, end=None):
         calls.append(days)
+        assert end is not None and end >= max(days)   # through today, like the hourly job and the phone (N9)
         return {d: {**{c: None for c in appscores.E.COLUMNS}, "date": d, **app_row(), "algo_version": SP.ALGO_VERSION}
                 for d in days}
     monkeypatch.setattr(appscores, "server_rows", fake_server)
