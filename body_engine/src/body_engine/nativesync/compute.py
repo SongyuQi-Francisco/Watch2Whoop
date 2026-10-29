@@ -3,9 +3,11 @@
 - off: the app shows the server's documents and computes nothing of that package (the default for everyone).
 - shadow: the package's flag is on for the user: the app computes locally, still shows the server's values, uploads its
   rows (derived.py); the server spot-checks them and keeps its own rows.
-- primary: also `native_compute_primary` is on, and for every upload kind of the package the last spot check passed, at
-  least PRIMARY_MIN_DAYS days were uploaded, with the server's algorithm version, not forced back by an admin. The app
-  shows its own values and the server stores its uploads as the user's rows.
+- primary: also `native_compute_primary` is on, a grant covers the user for the package (2.0.0 S9, primary.py:
+  `body-engine app-compute primary`, checked against the spot-check pass rate), and for every upload kind of the package
+  the last spot check passed, at least PRIMARY_MIN_DAYS days were uploaded, with the server's algorithm version, not
+  forced back by an admin. The app shows its own values and the server stores its uploads as the user's rows; the
+  server's scheduled jobs leave the package to the phone (primary.server_primary).
 A package is off for everyone while this server does not implement it (algo/versions.py has no constant for one of its
 algorithm keys, the served bundle lacks the key, or one of its upload kinds has no module in derived_kinds/), and for
 a client older than params.MIN_APP_VERSION_BY_KIND.
@@ -81,6 +83,12 @@ def trusted(row: dict | None, algo_version: str | None) -> bool:
                 and row["days_uploaded"] >= P.PRIMARY_MIN_DAYS and algo_version and row["algo_version"] == algo_version)
 
 
+def primary_on(conn: psycopg.Connection, uid: int, pkg: str) -> bool:
+    """The global switch is on for the user and a grant covers them for this package (S9, primary.py)."""
+    from . import primary
+    return flags.enabled(conn, uid, P.COMPUTE_PRIMARY_FLAG) and primary.granted(conn, uid, pkg)
+
+
 def kind_state(conn: psycopg.Connection, uid: int, kind: str, app_version: str | None, app_build: str | None,
                bundle: dict[str, str] | None = None) -> str:
     """off | shadow | primary of one upload kind for this user and client."""
@@ -92,7 +100,7 @@ def kind_state(conn: psycopg.Connection, uid: int, kind: str, app_version: str |
         return "off"
     if not flags.enabled(conn, uid, P.COMPUTE_PACKAGES[pkg]["flag"]):
         return "off"
-    if flags.enabled(conn, uid, P.COMPUTE_PRIMARY_FLAG) and trusted(kind_row(conn, uid, kind), versions.current(mod.ALGO_KEY)):
+    if primary_on(conn, uid, pkg) and trusted(kind_row(conn, uid, kind), versions.current(mod.ALGO_KEY)):
         return "primary"
     return "shadow"
 
@@ -133,8 +141,9 @@ def overview(conn: psycopg.Connection, uid: int, app_version: str | None, app_bu
         elif kinds:   # the package is as far as its least advanced kind
             state = min((v["state"] for v in kinds.values()), key=order.__getitem__)
         else:         # views only (series, reports): nothing to spot-check on the server (developer comparison, 3.4)
-            state = "primary" if flags.enabled(conn, uid, P.COMPUTE_PRIMARY_FLAG) else "shadow"
+            state = "primary" if primary_on(conn, uid, pkg) else "shadow"
         packages[pkg] = {"state": state, "flag": flag_on, "implemented": implemented, "app_ok": app_ok,
+                         "primary_granted": primary_on(conn, uid, pkg),
                          "min_app_version": P.MIN_APP_VERSION_BY_KIND[pkg],
                          "algo_versions": {k: versions.current(k) for k in spec["algo"]}, "kinds": kinds}
     return {"packages": packages, "primary_flag": flags.enabled(conn, uid, P.COMPUTE_PRIMARY_FLAG),

@@ -415,6 +415,10 @@ def enrich_pending(conn: psycopg.Connection, client, user_id: int, force_ids: se
     rows = conn.execute("""SELECT * FROM workouts WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL
                            ORDER BY start_at""", (user_id,)).fetchall()
     todo = [w for w in rows if (w["flags"] or {}).get("computed") != P.TRAINING_VERSION or w["id"] in (force_ids or set())]
+    if todo and any(w["source"] == APP_SOURCE for w in todo):
+        from ..nativesync import primary
+        if primary.server_primary(conn, user_id, "workouts"):   # 2.0.0 S9: the phone enriches its own workouts
+            todo = [w for w in todo if w["source"] != APP_SOURCE]
     if not todo:
         return 0
     from ..rawdata import ow_archive, samples as rx_samples

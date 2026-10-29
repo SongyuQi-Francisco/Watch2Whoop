@@ -151,7 +151,10 @@ def _step_compute_scores(conn, client, u, start):
 
 
 def _step_evaluate_rules(conn, client, u):
+    from .nativesync import primary
     from .rules import engine as rules_engine
+    if primary.server_primary(conn, u["id"], "rules"):   # 2.0.0 S9: the user's phone evaluates the rules and uploads them
+        return "app 计算（rules 已转正），服务器不写提醒"
     res = rules_engine.run(conn, u["id"])
     return (f"{res['date']} 新增 {res['inserted']}、更新 {res['updated']}、不变 {res['unchanged']}、删除 {res['deleted']}"
             + (f"；数据来源失败 {sorted(res['sources_failed'])}" if res["sources_failed"] else ""))

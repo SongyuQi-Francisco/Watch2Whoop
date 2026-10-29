@@ -105,6 +105,22 @@ DERIVED_MAX_ROWS_PER_DAY = 2000
 # CHECK_EVERY_HOURS, the newest uploaded day within CHECK_WITHIN_DAYS (both above). Tolerances are per kind, in the kind's
 # own module (derived_kinds/<kind>.py TOLERANCE, with their sources), so a package never edits this shared file.
 
+# ---------------------------------------------------------------- 2.0.0 S9: primary per package (primary.py)
+# `body-engine app-compute primary --package P ...` moves a package from shadow to primary for a user / cohort / everyone
+# only when, over the targeted users' spot checks (app_compute_checks) of the last PRIMARY_CHECK_DAYS days, every upload
+# kind of the package has at least PRIMARY_MIN_CHECKS checks and at least PRIMARY_MIN_PASS_RATE of them passed (else
+# --force, audited). Product-safety numbers, not health thresholds: a failing check already makes the kind untrusted.
+PRIMARY_CHECK_DAYS = 14
+PRIMARY_MIN_CHECKS = 3
+PRIMARY_MIN_PASS_RATE = 0.95
+# The server's scheduled jobs leave a primary package to the phone while the phone uploaded its kinds within
+# APP_ACTIVE_DAYS (as the scores, above); after that the server computes the package for that user again by itself.
+# A day queued for derivation (hk_dirty_days) that the phone has not uploaded within DIRTY_GRACE_MINUTES (above) is
+# derived by the server again (the per-day fallback, as for the scores).
+# An app-serving endpoint asked for a primary package's rows the phone has not uploaded computes them on demand (not
+# stored, counted in app_compute_fallbacks); at most this many of the newest missing days per request (bounds the cost).
+FALLBACK_MAX_DAYS = 31
+
 # ---------------------------------------------------------------- ext_records (GET /v1/users/me/ext-records, pull only)
 EXT_MAX_DAYS = 400                # one request covers at most this many days
 EXT_DEFAULT_DAYS = 30             # without from / to: the last 30 days

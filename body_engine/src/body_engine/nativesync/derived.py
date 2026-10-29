@@ -145,6 +145,8 @@ def upload(conn: psycopg.Connection, uid: int, kind: str, algo_version: str, bun
     stored = 0
     if state == "primary" and ok_now and days:
         stored = mod.write(conn, uid, days, bundle_version)
+        from . import primary
+        primary.record_days(conn, uid, kind, days)   # S9: the jobs' per-day fallback knows these days are the phone's
     conn.execute(
         """INSERT INTO app_compute_state AS s (user_id, kind, algo_version, bundle_version, last_upload_at, uploads,
                                                days_uploaded, trusted, last_check_at, last_check_ok)

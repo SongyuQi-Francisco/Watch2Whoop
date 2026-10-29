@@ -546,12 +546,17 @@ def write(conn: psycopg.Connection, user_id: int, rows: list[dict], params=CURRE
 def read(conn: psycopg.Connection, user_id: int, weeks: int = 26) -> dict | None:
     rows = conn.execute("""SELECT * FROM healthspan_weekly WHERE user_id = %s ORDER BY week_start DESC LIMIT %s""",
                         (user_id, weeks)).fetchall()
+    return view(rows)
+
+
+def view(rows: list[dict]) -> dict | None:
+    """read()'s answer from weekly rows, newest first (stored rows, or compute()'s rows on demand: 2.0.0 S9 fallback)."""
     if not rows:
         return None
     cur = rows[0]
     return {"body_age": cur["body_age"], "chrono_age": cur["chrono_age"], "delta_years": cur["delta_years"],
             "pace_of_aging": cur["pace_of_aging"], "pace_raw": cur["pace_raw"],
-            "window_weeks": cur["pace_window_weeks"], "as_of": cur["as_of"], "algo_version": cur["algo_version"],
+            "window_weeks": cur["pace_window_weeks"], "as_of": cur["as_of"], "algo_version": cur.get("algo_version"),
             "history": [{"week": r["week_start"], "as_of": r["as_of"], "body_age": r["body_age"],
                          "delta_years": r["delta_years"], "pace": r["pace_of_aging"], "pace_raw": r["pace_raw"],
                          "window_weeks": r["pace_window_weeks"]} for r in reversed(rows)],

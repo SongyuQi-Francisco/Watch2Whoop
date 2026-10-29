@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 （开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
 
+- 某一部分转为手机计算（主模式）以后，服务器不再定时重算这部分，直接用手机上传的结果；手机还没传的时候服务器临时算一次补上。app 本身不变（服务器端 S9，按包逐个转正）。 / Once a part is computed on the phone (primary), the server stops recomputing it on its schedule and uses the phone's uploads; until the phone has uploaded, the server fills in on demand. No change in the app itself (server side S9, switched package by package).
+
 - 服务器可以要求旧版本升级（R2，开关 `force_upgrade`，默认关闭）：提示期在顶部显示一条可以关掉的提醒（每天最多一次），停用日之后整页提示去升级；以后的版本也能这样强制升级。数据上传不受影响。 / The server can ask old versions to update (R2, flag `force_upgrade`, off by default): during the notice a banner at the top that can be closed (at most once a day), after the cut-off a full-screen page that points to the update; later versions can be forced the same way. Uploads keep working.
 
 - 规则提醒、饮食目标和讲解弹层里的个人建议可以在手机上算（M6，开关 `native_rules`：影子模式只在后台对比，界面仍是服务器的；主模式后没网记了训练也会出提醒，讲解弹层没网也有个人建议），和服务器同一套规则、中英文一字不差，提醒由服务器抽查；在手机上点「不再提醒」会同步回服务器，AI 和其他设备都能看到。周报的饮食那一块改成在手机上按饮食目标算，只有添加糖和含糖饮料还用服务器的。 / Rule reminders, nutrition goals and the personal advice of the explanation sheets can be computed on the phone (M6, flag `native_rules`: in shadow only compared in the background, the pages keep the server's; once primary a reminder appears offline after logging a workout and the sheets give personal advice offline), with the server's rules and identical Chinese and English texts, reminders spot-checked by the server; 「Dismiss」 on the phone syncs back, so the AI and other devices see it. The report's nutrition block now resolves the goals on the phone; only added sugar and sugary drinks still come from the server.

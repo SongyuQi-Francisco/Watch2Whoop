@@ -33,7 +33,8 @@ def list_reminders(user: str, start: date | None = None, end: date | None = None
     owner = _owner(conn, viewer, user, "reminders")
     end = end or queries.local_today(conn, owner)
     start = start or end
-    return store.list_reminders(conn, owner, start, end,
+    from . import fallback   # 2.0.0 S9: the phone's reminders, or today evaluated on demand until it uploads them
+    return fallback.list_reminders(conn, owner, start, end,
                                 status or ["new", "seen"], rule, evidence)
 
 

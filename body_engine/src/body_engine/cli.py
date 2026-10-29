@@ -45,6 +45,49 @@ def _legacy_stopped() -> bool:
     return retire.ow_import_stopped()
 
 
+def _app_compute(conn, args) -> int:
+    """`body-engine app-compute` (2.0.0 S9, nativesync/primary.py). Prints JSON; exit code 1 when the gate refused."""
+    from .nativesync import derived, params as NP, primary
+    days = args.days or NP.PRIMARY_CHECK_DAYS
+    out = lambda x: print(json.dumps(x, ensure_ascii=False, indent=1, default=str))   # noqa: E731
+    if args.action == "status":
+        out(primary.status(conn, args.user_id, days))
+        return 0
+    if args.action in ("server", "app"):
+        if args.user_id is None or not args.kind:
+            raise SystemExit("server / app: --kind K --user-id N")
+        if args.kind not in {k for p in NP.COMPUTE_PACKAGES.values() for k in p["kinds"]}:
+            raise SystemExit(f"unknown kind {args.kind!r}")
+        derived.set_server_forced(conn, args.user_id, args.kind, args.action == "server")
+        from .rollout import audit
+        audit.log(conn, audit.actor(args.by), f"compute.kind.{args.action}", f"{args.kind}:user:{args.user_id}", None,
+                  {"kind": args.kind, "user_id": args.user_id, "server_forced": args.action == "server"})
+        conn.commit()
+        out(primary.status(conn, args.user_id, days)["user"])
+        return 0
+    if not args.package:
+        raise SystemExit(f"{args.action}: --package P (or all)")
+    pkgs = list(NP.COMPUTE_PACKAGES) if args.package == "all" else [args.package]
+    target = {"user_id": args.user_id, "cohort": args.cohort, "everyone": args.all}
+    code, results = 0, []
+    for p in pkgs:
+        try:
+            if args.action == "primary":
+                results.append({"ok": True, **primary.set_primary(conn, p, **target, force=args.force, actor=args.by,
+                                                                  days=days)})
+            else:
+                results.append({"ok": True, **primary.set_shadow(conn, p, **target, actor=args.by)})
+        except primary.GateFailed as e:
+            conn.rollback()
+            code = 1
+            results.append({"ok": False, "package": p, "refused": "抽查通过率不够（或抽查次数太少）；确认后可加 --force（会记审计）",
+                            "gate": e.args[0]})
+        except ValueError as e:
+            raise SystemExit(str(e)) from None
+    out(results)
+    return code
+
+
 def _export_date(processed_dir: Path) -> date:
     """Export date: prefer the file name of full_export/export_YYYY-MM-DD.zip, otherwise the latest date in daily_metrics.csv."""
     zips = sorted(processed_dir.parent.glob("full_export/export_*.zip"))
@@ -552,6 +595,20 @@ def main() -> None:
                                            "(run after build.js, on the maintainer's machine; no database) (#340 N2)")
     asg.add_argument("--key", type=Path, required=True, help="the private key file (algo-keygen)")
     asg.add_argument("--dist", type=Path, help="another dist/ directory (default: the repository's)")
+    apc = sub.add_parser("app-compute", help="2.0.0 S9 (nativesync/primary.py): which packages the iOS app computes instead of the "
+                                             "server. primary = move a package from shadow to primary for a user / cohort / everyone "
+                                             "(only when the spot checks of app_compute_checks pass, else --force; audited); shadow = "
+                                             "remove that grant again; status = grants, pass rates, fallbacks (counts only); server / app "
+                                             "= the server keeps one upload kind of a user whatever the app uploads / the app may again")
+    apc.add_argument("action", choices=["status", "primary", "shadow", "server", "app"])
+    apc.add_argument("--package", help="primary / shadow: a package (derive, workouts, stress, series, coach, reports, rules) or all")
+    apc.add_argument("--kind", help="server / app: an upload kind (daily, sleep, workouts, stress, healthspan, reminders)")
+    apc.add_argument("--user-id", type=int)
+    apc.add_argument("--cohort")
+    apc.add_argument("--all", action="store_true", help="primary / shadow: everyone")
+    apc.add_argument("--force", action="store_true", help="primary: even when the pass-rate gate fails (audited as forced)")
+    apc.add_argument("--days", type=int, default=None, help="the pass-rate window in days (default nativesync/params.PRIMARY_CHECK_DAYS)")
+    apc.add_argument("--by", help="who is changing it (audit; default BODY_ADMIN or the OS user)")
     aps = sub.add_parser("app-scores", help="scores computed by the iOS app (#340 N2): status, or give the scoring back to the server / to the app")
     aps.add_argument("action", choices=["status", "server", "app"],
                      help="status = state, recent spot checks and what the hourly job does; server = the server scores this user "
@@ -1001,6 +1058,8 @@ def main() -> None:
             from .training import catalog as tr_catalog, media as tr_media
             src = tr_media.fetch_json() if args.free_db and not args.free_exercise_db else args.free_exercise_db
             print(json.dumps(tr_catalog.seed_catalog(conn, src), ensure_ascii=False))
+        elif args.cmd == "app-compute":
+            raise SystemExit(_app_compute(conn, args))
         elif args.cmd == "app-scores":
             from .nativesync import appscores
             if args.action != "status":
