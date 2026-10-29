@@ -320,6 +320,7 @@
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
     }
+    if (r.status === 426) lazyScript("upgrade.js").then(() => window.BodyUpgrade?.block(data?.detail));   // R2
     if (!r.ok && isRestart(r)) {   // still down after the retries (reads), or a write that was not repeated
       const e = new ApiError(r.status, tr("服务器正在更新，请过一会儿再试"), data);
       e.updating = true;
@@ -4335,6 +4336,7 @@
     lateInit.me = me;
     if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
+    if (me.upgrade && me.upgrade.state !== "none") lazyScript("upgrade.js");   // R2 notice / block
     if (!stale && me.me?.intro_seen === false && !A1()) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;

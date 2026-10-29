@@ -3,6 +3,7 @@ import SwiftUI
 /// Starting → sign-in / connecting / the tabs.
 struct RootView: View {
   @EnvironmentObject private var model: AppModel
+  @ObservedObject private var upgrade = UpgradeGate.shared   // R2 forced upgrade
 
   var body: some View {
     Group {
@@ -23,6 +24,16 @@ struct RootView: View {
     }
     .id(model.langRevision)   // a language change redraws everything with the new `tr()`
     .background(Palette.bg.ignoresSafeArea())
+    .overlay(alignment: .top) {
+      if upgrade.showsNotice, model.phase == .signedIn {
+        UpgradeNoticeBanner(info: upgrade.info) { upgrade.closeNotice() }.padding(.top, 4)
+      }
+    }
+    .overlay {
+      if upgrade.showsBlock {
+        UpgradeScreen(info: upgrade.info) { Task { await model.recheckUpgrade() } }
+      }
+    }
   }
 }
 

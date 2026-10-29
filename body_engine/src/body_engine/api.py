@@ -12,6 +12,7 @@ from starlette.routing import Route
 from . import auth, errors_en, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
+from .client import policy as upgrade_policy
 from .algo.api import router as algo_router
 from .ai import naming, parity
 from .ai.api import router as ai_router
@@ -109,6 +110,7 @@ def current_user(request: Request, conn=Depends(get_conn), authorization: Annota
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)
     account_api.gate(user, request.url.path, conn)
+    upgrade_policy.enforce(conn, request, user)   # R2: 426 for an old native app / the Today page after the block (client/)
     request.state.ai_parity = parity.on(conn, user["id"])   # error texts without the back end's name (http_error)
     return user
 

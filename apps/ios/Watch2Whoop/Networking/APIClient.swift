@@ -200,6 +200,9 @@ final class APIClient {
     let status = http.statusCode
     if (200..<300).contains(status) { return data }
     let detail = Self.detail(data)
+    if status == 426 {   // R2: this app version must be upgraded (UpgradeGate shows the full-screen page)
+      Task { @MainActor in UpgradeGate.shared.receivedUpgradeRequired(data) }
+    }
     switch status {
     case 401:
       onUnauthorized()
@@ -212,10 +215,11 @@ final class APIClient {
     }
   }
 
-  /// FastAPI's `{"detail": "…"}` (a string, or a list of validation errors).
+  /// FastAPI's `{"detail": "…"}` (a string, a `{code, message}` object, or a list of validation errors).
   static func detail(_ data: Data) -> String? {
     guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
     if let s = o["detail"] as? String { return s }
+    if let d = o["detail"] as? [String: Any], let m = d["message"] as? String { return m }   // {code, message, …}
     if let l = o["detail"] as? [[String: Any]], let m = l.first?["msg"] as? String { return m }
     return nil
   }

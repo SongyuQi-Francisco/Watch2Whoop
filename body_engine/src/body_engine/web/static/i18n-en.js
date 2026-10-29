@@ -1923,5 +1923,9 @@ I18N.addEn({
   "本周更新": "This week's updates",
   "上周": "Last week",
   "{d} 起的一周": "Week of {d}",
+  // upgrade.js (R2 forced upgrade)
+  "请升级 Watch2Whoop": "Please update Watch2Whoop",
+  "去升级": "Update",
+  "这个版本已停用，请升级后继续使用。": "This version is no longer supported. Please update to continue.",
 });
 

@@ -43,7 +43,8 @@ def test_first_screen_budget():
     # + 800 for the 「记体重」 row of the Me page and its on-demand loader in app.js (weight.js loads on the first tap)
     # + 400 for the 「记体重」 button on the weight card's explanation sheet
     # + 200 for the sync-repair sheet opening the app's sync page for users on the own sync engine (#219 S5b)
-    assert total <= 997_100, total
+    # + 200 for the two R2 forced-upgrade hooks in app.js (upgrade.js itself loads on demand)
+    assert total <= 997_300, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
@@ -54,7 +55,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
     assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"), ("", "weight.js"), ("", "whatsnew.js"),
                                                         ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js"), ("", "slim.js"),
                                                         ("", "slim-quotes.js"),
-                                                        ("", "ui-ai-first.js"), ("", "native-bridge.js")]
+                                                        ("", "ui-ai-first.js"), ("", "native-bridge.js"), ("", "upgrade.js")]
     assert re.search(r'<script data-w2w="gate" src="lang-gate\.js\?v=[0-9a-f]{12}"></script>', html)
     # the gate comes after i18n.js (the table adds itself to it) and before the scripts that call tr() when they run
     assert html.index('src="i18n.js?') < html.index('src="i18n-en.js?') < html.index('src="lang-gate.js?') < html.index('src="ios-web.js?')
@@ -63,7 +64,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
         r = TestClient(root_api.app, base_url="https://testserver").get(f"/app/{name}?v={v}")
         assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
     # an older page that still has the tags keeps working: nothing else in the page names these files as plain scripts
-    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|weight|whatsnew|sync-status|slim|slim-quotes|ui-ai-first|native-bridge)\.js', INDEX)
+    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|weight|whatsnew|sync-status|slim|slim-quotes|ui-ai-first|native-bridge|upgrade)\.js', INDEX)
 
 
 def test_offline_copy_has_the_lazy_scripts_inline_and_no_gate():

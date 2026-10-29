@@ -23,6 +23,7 @@ from .training import importer as workouts_importer
 from .ai import crypto as ai_crypto, fallback_cli as ai_fallback_cli, quota_cards_cli as ai_cards_cli, tokens as ai_tokens
 from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
+from .client import cli as upgrade_cli
 from .account import open_signup_cli
 
 
@@ -516,6 +517,7 @@ def main() -> None:
     ai_cards_cli.add_parser(sub)
     feedback_cli.add_parser(sub)
     rollout_cli.add_parser(sub)
+    upgrade_cli.add_parser(sub)   # R2 forced upgrade (client/)
     open_signup_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
@@ -818,6 +820,11 @@ def main() -> None:
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)
+            except (KeyError, ValueError) as e:
+                p.error(str(e))
+        elif args.cmd in upgrade_cli.COMMANDS:
+            try:
+                upgrade_cli.run(conn, args)
             except (KeyError, ValueError) as e:
                 p.error(str(e))
         elif args.cmd == "feedback":
