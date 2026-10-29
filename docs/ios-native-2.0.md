@@ -70,7 +70,7 @@ Read with [ios-native-app.md](ios-native-app.md) (local DB, sync, algorithm bund
 | `export.zip` history import (`history/`, `importers/apple_zip.py`) | one-time ingest, admin path; its days reach the phone as `raw_history` and as non-`app` source rows (M1) |
 | Static content (glossary texts, exercise catalog, sport → muscle map) | shipped through the static bundle (`static_bundle/`); M1c and M6 add modules there |
 | Sync status (`/sync/overview`, `/data-status`) | server-side knowledge of what arrived |
-| AI / MCP on-demand views (`get_strain_coach`, `get_report`, `analyze_journal` …) | the AI path, not the app path: Python stays and reads the tables the phone uploads (§3.2) |
+| AI / MCP on-demand views (`get_strain_coach`, `get_report`, `analyze_journal` …) | the AI path, not the app path: tool calls compute on demand with the Python twin at the same `algo_version`, reading the tables the phone uploads (§3.2). This is not "computing for the app" (decision 4, §6) |
 
 ## 2. Shared rules for every package
 
@@ -93,12 +93,13 @@ P0 creates every shared seam once, so packages only add their own files:
 | JS load order | packages add `src/3N_<pkg>.js` (after `20_api.js`); each file extends `OBS.ALGO_VERSIONS.<key>` and never reassigns it |
 | Algorithm versions | `body_engine/src/body_engine/algo/versions.py`: planned keys `derive`, `workouts`, `stress_cards`, `series`, `coach`, `reports`, `rules`, `explain` → Python constant path; `tests/test_algo_bundle.py` checks only keys present in the bundle |
 | CI | `algo_js` filter widened to `rawdata|importers|training|cardio|rules|explain|goals|sleep_night|records|web/views.py|static_bundle` and `tests/test_js_golden[^/]*\.py`; Node step runs `test/*.test.js` |
-| Server migrations | `db.migrate` sorts by the numeric prefix (string sort puts `1000_` before `001_`); ranges: M1 1000–1009, M1c 1010–1019, M2 1020–1029, M4 1030–1039, M5 1040–1049, M6 1050–1059, R1 1060–1069, R2 1070–1079, S9 1080–1089 (M3 adds none) |
+| Server migrations | `db.migrate` sorts by the numeric prefix (string sort puts `1000_` before `001_`; test: `1000_x.sql` sorts after `999_x.sql`, existing order unchanged); ranges: M1 1000–1009, M1c 1010–1019, M2 1020–1029, M4 1030–1039, M5 1040–1049, M6 1050–1059, R1 1060–1069, R2 1070–1079, S9 1080–1089 (M3 adds none) |
 | Upload / pull per kind | `nativesync/derived.py`: `PUT /v1/users/me/derived/app` + kind registry auto-loading `nativesync/derived_kinds/<kind>.py` (each module: row validation, table write, Python recompute for the spot check, its pull-stream body); `pull.py` / `bodies.py` iterate the registry, so later kinds never edit them; generic spot check and state (§3.2) |
 | Flags | all keys of §5 registered in `rollout/registry.py`, default `off` |
 | iOS compute pipeline | `Sync/Compute/LocalCompute.swift`: ordered stages `derive → workouts → scores (existing ScoringSync) → stress → healthspan → rules`, one empty stage file per package (`Sync/Compute/<Stage>Stage.swift`) |
 | iOS schema | `Storage/Migrations/<Pkg>Schema.swift` stubs called from `Schema.swift` in the order above; nothing ships externally before 2.0.0, so the order is final at release |
-| iOS endpoints | `Endpoint.derivedUpload`, `Endpoint.compute` (`GET /v1/sync/compute`, superset of `/v1/sync/scoring`) |
+| iOS endpoints | `Endpoint.derivedUpload`, `Endpoint.compute` (`GET /v1/sync/compute`, superset of `/v1/sync/scoring`), `Endpoint.extRecords` |
+| `ext_records` doc kind (pull only) | Server `nativesync/ext_records.py`: `GET /v1/users/me/ext-records?from=&to=` returns per day `{date, fingerprint, strength_sets, weights, nutrition_totals}`: the person's **raw** SparkyFitness rows (strength sets with exercise, reps, weight, duration; weight entries; nutrition day totals) or the own-store rows when `own_food_only` is on, read with the read-only key, no computation; `?fingerprints=1` returns only `{date: fingerprint}` (sha256 of the day's canonical JSON). iOS `Sync/ExtRecords.swift`: a `DocPuller` kind storing `docs` key `ext_records:<date>`, refetching only days whose fingerprint changed; never written by the phone |
 
 ## 3. Data contract
 
@@ -107,11 +108,11 @@ P0 creates every shared seam once, so packages only add their own files:
 | Pkg | Writes (new tables in bold) | Reads |
 |---|---|---|
 | M1 | `hk_samples` (all `ENGINE_TYPES`, not only the 7 scoring kinds), `hk_stat_buckets` (15-min sums), **`daily_metric_sources`** (date, metric, source, value, unit, agg, n, min, max, flags), `daily_metrics` (chosen, `source`, `flags`), `sleep_sessions` (source `app`, `stages`), `score_dirty` | HealthKit, `hist_*`, `hk_workouts.stats` (workout kcal for `incomplete`), pulled non-`app` source rows |
-| M1c | `hk_workouts`, **`workouts`** (uuid, local_date, type, start, end, duration_min, active_kcal, total_kcal, avg_hr, max_hr, trimp, zone_min[5], hr_recovery_bpm, intensity, dup_of, excluded, source, flags, algo_version), **`workout_hrr`** | `hk_samples` hr, `hist_samples` hr, `daily_scores.hr_max`, `records` (`strength`, `training_session`), static bundle (catalog, sport map) |
+| M1c | `hk_workouts`, **`workouts`** (uuid, local_date, type, start, end, duration_min, active_kcal, total_kcal, avg_hr, max_hr, trimp, zone_min[5], hr_recovery_bpm, intensity, dup_of, excluded, source, flags, algo_version), **`workout_hrr`** | `hk_samples` hr, `hist_samples` hr, `daily_scores.hr_max`, `records` (`strength`, `training_session`), `ext_records`, static bundle (catalog, sport map) |
 | M2 | **`stress_daily`** (date, score, level, hours, algo_version) | `hk_samples` / `hist_samples` hr + hrv + steps, `sleep_sessions`, `workouts`, `daily_scores.details.recovery.hrv_night_ln` |
-| M3 | nothing persistent; caches `docs` keys `trends.local.series:<days>[:<end>]`, `days.local:<month>`, `sleep.local:nights:<end>` | `daily_scores`, `daily_metrics`, `sleep_sessions`, `records` (`weight`), and when present `stress_daily`, **`healthspan_weekly`**, `workouts` |
-| M4 | **`healthspan_weekly`**, `docs` `coach.local:<date>`, `sleepnight.local:<date>` | M1–M3 tables, `records`, profile (birth date, sex, height from `/profile` doc) |
-| M5 | `docs` `report.local:<period>:<end>`, `journal.analysis.local:<end>` | `daily_scores`, `stress_daily`, `workouts`, `records` (`journal`, `food`, `weight`) |
+| M3 | nothing persistent; caches `docs` keys `trends.local.series:<days>[:<end>]`, `days.local:<month>`, `sleep.local:nights:<end>` | `daily_scores`, `daily_metrics`, `sleep_sessions`, `records` (`weight`), `ext_records`, and when present `stress_daily`, **`healthspan_weekly`**, `workouts` |
+| M4 | **`healthspan_weekly`**, `docs` `coach.local:<date>`, `sleepnight.local:<date>` | M1–M3 tables, `records`, `ext_records`, profile (birth date, sex, height from `/profile` doc) |
+| M5 | `docs` `report.local:<period>:<end>`, `journal.analysis.local:<end>` | `daily_scores`, `stress_daily`, `workouts`, `records` (`journal`, `food`, `weight`), `ext_records` |
 | M6 | **`reminders`** (id, date, rule_key, level, payload, status, algo_version, uploaded), `docs` `explain.local:*` | everything above, `records`, nutrition goals doc, `exercise:rules` doc, labs docs |
 
 Rules: every computed row carries `algo_version` + `bundle_version`; pages read only local tables / docs (ios-native-app.md §5.1); a
@@ -147,7 +148,7 @@ stream kinds `stress`, `healthspan`, `reminders` to `records` (whole-day replace
 - Bundle releases happen at wave ends (coordinator): bump `package.json` (0.3.0 after wave 1 … ), `build.js`, sign (`body-engine algo-sign`). Package PRs do not bump the version.
 
 ### 3.4 Shadow compare
-Two layers; neither moves values of non-research users into analysis.
+Two layers; neither moves values of non-research users into analysis. The automatic spot check is product-safety maintenance, like `app_score_checks`, and runs for every shadow / primary user, inner cohort included; it stores only pass / fail and field names. Detailed comparisons and any analysis use user 1 + synthetic data only (decision 5).
 
 | Layer | Who | What is kept |
 |---|---|---|
@@ -184,10 +185,10 @@ Every package: flags off by default (§5), synthetic tests, `CHANGELOG` line in 
 ### M1 — daily values and sleep derivation (producer only, no page code)
 | | |
 |---|---|
-| Scope | Read every `ENGINE_TYPES` type and 15-min stats into local tables; derive per-source daily rows (`daily_rows`), resolve (`resolve_daily` incl. `incomplete` rules and `SOURCE_PRIORITY`), derive sleep (`ow_sessions` → `clean_stages` → `sleep_segments` → `sessionize`, wake day = end − 4 h) for the app source; upload kinds `daily`, `sleep` |
-| Inputs | HealthKit anchored queries (add types to the reader), `hist_*`, pulled `daily.sources` |
+| Scope | Read every `ENGINE_TYPES` type and 15-min stats into local tables; add **steps** (15-min stats buckets) to `raw_history` and to the phone's history area (`hist_samples` kind `steps`), so derivation, stress (M2) and body age (M4) have steps for the whole history; derive per-source daily rows (`daily_rows`), resolve (`resolve_daily` incl. `incomplete` rules and `SOURCE_PRIORITY`), derive sleep (`ow_sessions` → `clean_stages` → `sleep_segments` → `sessionize`, wake day = end − 4 h) for the app source; upload kinds `daily`, `sleep` |
+| Inputs | HealthKit anchored queries (add types to the reader), `hist_*` (now with steps), pulled `daily.sources` |
 | Outputs | `daily_metric_sources`, `daily_metrics`, `sleep_sessions`; `score_dirty` for changed days (ScoringSync recomputes) |
-| Files | JS `src/30_derive.js`; server `rawdata/derive.py`, `importers/common.py`, `importers/ow.py` (pure rule split only), `nativesync/bodies.py` + `pull.py` (`sources`), `nativesync/derived_kinds/{daily,sleep}.py`, migrations 1000–1009; iOS `Features/Sync/HealthKitScoringReader.swift`, `Sync/LocalRawStore.swift`, `Sync/DeltaRemote.swift`, `Sync/Compute/DeriveStage.swift`, `Storage/Migrations/DeriveSchema.swift`; tests `test_js_golden_derive.py`, `cases_derive.py`, `derive.test.js`, `Watch2WhoopTests/LocalDeriveTests.swift` |
+| Files | JS `src/30_derive.js`; server `rawdata/derive.py`, `importers/common.py`, `importers/ow.py` (pure rule split only), `nativesync/bodies.py` + `pull.py` (`sources`), `nativesync/history.py` (steps in `raw_history`), `nativesync/derived_kinds/{daily,sleep}.py`, migrations 1000–1009; iOS `Features/Sync/HealthKitScoringReader.swift`, `Sync/LocalRawStore.swift`, `Sync/LocalHistoryStore.swift`, `Sync/LocalHistoryParams.swift`, `Sync/DeltaRemote.swift`, `Sync/Compute/DeriveStage.swift`, `Storage/Migrations/DeriveSchema.swift`; tests `test_js_golden_derive.py`, `cases_derive.py`, `derive.test.js`, `Watch2WhoopTests/LocalDeriveTests.swift` |
 | Goldens | ≥ 60 synthetic days: iPhone + watch overlap, DST change, a day with only hourly sums, basal < 50 % day, workout kcal > active kcal, gaps > 2 h and > 60 min, nap vs main sleep, deleted samples |
 | Acceptance | Python and JS equal on goldens; Swift test: 30 synthetic days through HealthKit fixtures give the same rows as the server's `derive_day` + `resolve_daily` on the same samples; uploads pass the spot check |
 | Device | Airplane mode after a night: steps, energy and last night's sleep appear from local derivation; reconnect: no duplicate rows after pull |
@@ -196,7 +197,7 @@ Every package: flags off by default (§5), synthetic tests, `CHANGELOG` line in 
 | | |
 |---|---|
 | Scope | Port the pure part of `trends/series.build` (every `SERIES` entry, `prev_mean`, baseline bands, recovery colours and contributors, strain target band, weekly aerobic minutes, hr zone summary), `month_days`, `sleep_nights`, `sleep_detail` (SRI), `fitness.vo2max` / `hr_zones`; switch Trends, Today's "今日核心" / activity numbers and the month picker to local tables |
-| Inputs | local `daily_scores`, `daily_metrics`, `sleep_sessions`, `records(weight)`; until M2 / M4 are primary, `stress`, `resilience`, `body_age` come from the cached server doc |
+| Inputs | local `daily_scores`, `daily_metrics`, `sleep_sessions`, `records(weight)` + `ext_records` weights (`series.weights` reads SparkyFitness today); until M2 / M4 are primary, `stress`, `resilience`, `body_age` come from the cached server doc |
 | Outputs | JSON identical to `/trends` (minus share authorisation), cached in `docs` |
 | Files | JS `src/33_series.js`; server `trends/series.py`, `web/views.py` (`month_days`, `sleep_nights` split only), `insights/sleep_detail.py`, `insights/fitness.py`; iOS `Features/Trends/*`, `Features/Today/TodayStore.swift`, `Features/Today/TodayModel.swift`, `Features/Today/MonthPicker.swift`; tests `test_js_golden_series.py`, `cases_series.py`, `series.test.js`, `Watch2WhoopTests/TrendsSeriesTests.swift` |
 | Goldens | ranges 7 / 30 / 90 / 365, end = today and in the past, missing days, weight from records, < 14 baseline days |
@@ -209,7 +210,7 @@ M1 and M3 share no file except `dist/*`.
 | | |
 |---|---|
 | Scope | Workouts from `hk_workouts` (`parse_app`: OW type map, total = active + basal), duplicate rules (`refresh_duplicates`, `SOURCE_RANK`), `enrich` (TRIMP from raw HR, else `avg_hr_trimp`; five-zone minutes; `session_hr_recovery`; `hrr60`), training calendar / day merge with strength records and intensity (`training/history.py`), muscle-load map (`muscle_load.aggregate*`, `sport_load`); upload kind `workouts` |
-| Inputs | `hk_workouts`, HR samples (hot + history), `hr_max` from scores, `records` strength / sessions, static bundle (exercise catalog, new module `sport_muscles`) |
+| Inputs | `hk_workouts`, HR samples (hot + history), `hr_max` from scores, `records` strength / sessions, `ext_records` (strength sets: muscle load and the strength merge), static bundle (exercise catalog, new module `sport_muscles`) |
 | Outputs | `workouts`, `workout_hrr`; feeds strain (`computeDays` workout logs) and `score_dirty` |
 | Files | JS `src/31_workouts.js`; server `training/importer.py`, `training/history.py`, `training/muscle_load.py`, `training/sport_muscles.py`, `cardio/hrr.py` (pure split), `static_bundle/build.py` (`sport_muscles` module), `nativesync/derived_kinds/workouts.py`, migrations 1010–1019; iOS `Sync/Compute/WorkoutsStage.swift`, `Storage/Migrations/WorkoutsSchema.swift`, `Features/Record/` training views (`training:calendar`, `training:day`, `training:muscle` readers); tests `*_workouts.*` |
 | Goldens | strength + cardio same day, watch + phone duplicate, workout without HR, HR gap at the end (HRR null), DST, user correction of a type |
@@ -220,19 +221,19 @@ M1 and M3 share no file except `dist/*`.
 | | |
 |---|---|
 | Scope | Local stress loader (port of `insights/stress.compute` input assembly: sleep / workout windows, HR, steps, HRV, 14-day calm baseline, 60 nights of `hrv_night_ln`) calling `stressDays`; resilience, body battery, HR-recovery series and cards in `TrendsLocal`; `cardio` view; upload kind `stress` |
-| Inputs | M1 tables, `workouts` (contract only: the integration test runs after M1c merges), `daily_scores` |
+| Inputs | M1 tables incl. steps history (**depends on M1**), `workouts` (contract only: the integration test runs after M1c merges), `daily_scores` |
 | Outputs | `stress_daily`; local cards replacing the server's |
 | Files | JS `src/32_stress.js`; server `insights/stress.py` (split loader), `cardio/views.py`, `nativesync/derived_kinds/stress.py`, migrations 1020–1029; iOS `Sync/Compute/StressStage.swift`, `Storage/Migrations/StressSchema.swift`, `Features/Trends/TrendsLocal.swift`; tests `*_stress.*` |
 | Goldens | existing `stress.json` cases + the loader on 30 synthetic days (sleep crossing midnight, workout windows, steps-only hours) |
 | Acceptance | stress rows equal the server's on 60 synthetic days; cards equal `/trends` status |
 | Device | Stress and body battery update during the day without network |
 
-Note: history beyond the hot window has no local steps; stress is recomputed only for `[today − 60, today]`, older rows come back by pull.
+Note: with steps in the history area (M1) the phone recomputes stress for the whole history on a bundle change, like scores.
 
 ### M4 — coaches, body age, health-monitor ranges, Today composition
 | | |
 |---|---|
-| Scope | `strain_coach` (`strain_target` already JS), `sleep_coach` + `sleep_need_tonight` + bedtime goal (`goals/sleep`), `health_monitor` / `monitor_range`, `sleep_night` notes / baseline / vitals, `/today` composition (`reasons`, `load_status`, `load_text`, hypnogram), `frequent_journal`, body age loader (`healthspan_store.load` / `weekly`, `strength_sources` from local records) with existing `healthspanSnapshot` / `healthspanWeekly`; upload kind `healthspan` |
+| Scope | `strain_coach` (`strain_target` already JS), `sleep_coach` + `sleep_need_tonight` + bedtime goal (`goals/sleep`), `health_monitor` / `monitor_range`, `sleep_night` notes / baseline / vitals, `/today` composition (`reasons`, `load_status`, `load_text`, hypnogram), `frequent_journal`, body age loader (`healthspan_store.load` / `weekly`; steps history from M1, **depends on M1**; `strength_sources` from local records + `ext_records` strength sets and weights) with existing `healthspanSnapshot` / `healthspanWeekly`; upload kind `healthspan`; move the thresholds of `TodayParams.swift` into a JS params block with the same sources (D7) |
 | Files | JS `src/34_coach.js`; server `insights/coach.py`, `insights/healthspan_store.py`, `goals/sleep.py`, `goals/store.py`, `sleep_night/view.py`, `web/views.py` (`scores_today`, `sleep_today`, `reasons` split), `nativesync/derived_kinds/healthspan.py`, migrations 1030–1039; iOS `Features/Today/*` (except files owned by M3 in wave 1, now free), `Features/Sleep/*`, `Sync/Compute/HealthspanStage.swift`; tests `*_coach.*` |
 | Goldens | recovery zones edge values, illness flag, no goal / goal mid-plan, < 14 nights, body age with and without strength logs |
 | Acceptance | all Today numbers come from local tables; coach texts identical in zh and en |
@@ -242,6 +243,7 @@ Note: history beyond the hot window has no local steps; stress is recomputed onl
 | | |
 |---|---|
 | Scope | `reports.report` (scores, stress, training, weight, nutrition, journal blocks, deltas, clock means), `analysis.compare` / `regress` / `apply_bh`, `regression.ols_hac` / `bh` |
+| Inputs | local `daily_scores`, `stress_daily`, `workouts`, `records` (`journal`), `ext_records` (strength sets, weights, nutrition day totals) |
 | Files | JS `src/35_reports.js`; server `insights/reports.py`, `records/analysis.py`, `records/regression.py`; iOS `Features/Reports/*`, the journal-impact block in `Features/Trends/` (wave 3: M3 is merged); tests `*_reports.*` |
 | Goldens | week / month, empty blocks, a singular design matrix (`Singular`), 730 days, gaps in the journal (lags in calendar days) |
 | Acceptance | analysis effect / se / p / q within 1e-6 (matrix inversion), report numbers exact at display rounding |
@@ -255,6 +257,8 @@ Note: history beyond the hot window has no local steps; stress is recomputed onl
 | Goldens | each rule fires / does not fire / missing input (`common.need`), banned and caution exercises, every `calc_*` key in both languages |
 | Acceptance | reminders identical to `evaluate-rules` on 60 synthetic days; dismiss on phone survives a pull |
 | Device | A reminder appears without network after logging a workout; explain sheet shows personal advice offline |
+
+If `explain/personal.py` (~785 lines of bilingual rules) does not fit one PR, split into M6a (rules) and M6b (explain).
 
 ### R1 — OW and Shortcut retirement
 | | |
@@ -274,7 +278,7 @@ Note: history beyond the hot window has no local steps; stress is recomputed onl
 ### S9 — server stops computing for app-mode users
 | | |
 |---|---|
-| Scope | Generalise `appscores.plan` to `app_compute_state` per (user, kind): when a kind is `primary` and trusted, hourly / nightly / `sync-refresh-run` skip `hk-derive-run`, `resolve_daily` for the `app` source, `enrich_pending`, stress and healthspan jobs, `evaluate-rules` for that user, except "dirty days" the app did not upload within 2 h (fallback, as for scores); remove the app's reads of the server views; regression |
+| Scope | Meaning (decision 4): the server stops **scheduled / background compute and the app-serving view endpoints** for app-mode users; AI / MCP tool calls keep computing on demand with the Python twin (same `algo_version`). Generalise `appscores.plan` to `app_compute_state` per (user, kind): when a kind is `primary` and trusted, hourly / nightly / `sync-refresh-run` skip `hk-derive-run`, `resolve_daily` for the `app` source, `enrich_pending`, stress and healthspan jobs, `evaluate-rules` for that user, except "dirty days" the app did not upload within 2 h (fallback, as for scores); remove the app's reads of the server views; regression |
 | Acceptance | 14 days on user 1 + synthetic users with the server only spot-checking; full Body Engine suite and iOS suite green; `native-compare` on user 1 clean for every kind; device checklist file complete |
 
 ## 5. Rollout
@@ -298,13 +302,14 @@ app version that implements it (`nativesync/params.MIN_APP_VERSION_BY_KIND`, all
 
 Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-scores server`-style command `app-compute server --kind K --user-id N`); global: `native_compute_primary` off; upgrade block: `force_upgrade` off.
 
-## 6. Open questions and blockers (for the coordinator)
+## 6. Decisions (2026-10-30, coordinator)
 
-1. **Migration ordering**: `db.migrate` sorts file names as strings; only 981–999 are left. P0 must switch to a numeric sort before any `1000_` file exists.
-2. **SparkyFitness inputs**: muscle load, body-age strength minutes, reports (training / weight / nutrition) read SparkyFitness through the server for deployments not on `own_food_only`. The phone cannot read it: M1c / M4 / M5 primary requires `own_food_only` for that user (or a migrated store, #252).
-3. **Steps history** is not in `hist_samples`: stress and body age need daily steps beyond 60 days. Either extend `raw_history` with steps (server change, M2) or keep older stress rows server-computed until the window rolls over. Proposed: extend `raw_history`.
-4. **AI path**: after S9 the server still runs Python on demand for MCP tools (coach, reports, analysis) from uploaded tables. Confirm this is accepted as "not computing for the app".
-5. **Inner cohort and D6**: shadow mode runs the automatic spot check for non-owner members (product safety, as `app_score_checks` already does); only pass / fail and field names are stored. Detailed comparisons stay user 1 + synthetic. Confirm.
-6. **1.0.8 uploads after the block**: proposed to keep `/v1/ingest/*` open so nothing is lost; the OW SDK path ends with R1.
-7. **`explain/personal.py` size** (~785 lines of bilingual rules) makes M6 the largest package; split into M6a rules and M6b explain if it does not fit one PR.
-8. **Swift-only constants**: `TodayParams.swift` thresholds duplicate rule-like logic in Swift; M4 should move them into a JS params block with the same sources (D7).
+| # | Question | Decision | Where |
+|---|---|---|---|
+| 1 | `db.migrate` sorts names as strings (`1000_` before `001_`) | P0 switches to a numeric sort, with a test that `1000_x.sql` sorts after `999_x.sql` | §2.2 |
+| 2 | SparkyFitness inputs (production has `own_food_only` off) | not a prerequisite: the server passes the person's raw SparkyFitness rows (strength sets, weight entries, nutrition day totals) as the pull-only doc kind `ext_records` with a per-day fingerprint; the phone computes muscle load, body-age strength minutes and reports from it | §2.2 (P0), M1c, M4, M5 |
+| 3 | Steps missing from the phone's history | `raw_history` and `hist_samples` carry steps; in M1's scope; M2 and M4 depend on it | M1, M2, M4 |
+| 4 | AI / MCP tools after S9 | allowed to compute on demand on the server with the Python twin (same `algo_version`); S9 stops scheduled / background compute and app-serving endpoints for app-mode users only | §1.3, S9 |
+| 5 | Spot checks for inner-cohort members | allowed: product-safety maintenance like `app_score_checks`, storing only pass / fail + field names; detailed comparisons and any analysis stay user 1 + synthetic | §3.4 |
+
+Kept as proposals inside the packages: `/v1/ingest/*` stays open after the block (R2), the M6a / M6b split (M6), `TodayParams.swift` thresholds into JS params (M4).
