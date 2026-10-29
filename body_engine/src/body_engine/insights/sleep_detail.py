@@ -50,10 +50,14 @@ def sri(days: dict[date, bytearray]) -> tuple[float | None, int]:
 def load_intervals(conn: psycopg.Connection, user_id: int, start: date, end: date) -> tuple[dict, dict]:
     """Read watch sleep segments (only those with stage data count, consistent with scoring): returns (wake date -> main-sleep row, all sleep intervals).
     Asleep interval = the segment's start and end (awake time inside a segment is ignored in SRI: Apple gives only summary minutes, and this is the most stable when there is no detail)."""
-    rows = conn.execute(
+    return watch_sessions(conn.execute(
         """SELECT wake_date, start_at, end_at, asleep_min, awake_min, deep_min, rem_min, core_min, is_main, device
            FROM sleep_sessions WHERE user_id = %s AND wake_date BETWEEN %s AND %s ORDER BY start_at""",
-        (user_id, start - timedelta(days=1), end)).fetchall()
+        (user_id, start - timedelta(days=1), end)).fetchall())
+
+
+def watch_sessions(rows: list[dict]) -> tuple[dict, list]:
+    """The pure part of load_intervals: rows (by start) -> (wake date -> longest watch session, all watch intervals)."""
     watch = [r for r in rows if (r["device"] and "watch" in r["device"].lower())
              or (r["core_min"] or 0) + (r["deep_min"] or 0) + (r["rem_min"] or 0) > 0]
     mains: dict[date, dict] = {}
@@ -64,7 +68,11 @@ def load_intervals(conn: psycopg.Connection, user_id: int, start: date, end: dat
 
 
 def sri_for(conn, user_id: int, tz: ZoneInfo, start: date, end: date) -> dict:
-    mains, intervals = load_intervals(conn, user_id, start, end)
+    return sri_from(*load_intervals(conn, user_id, start, end), tz, start, end)
+
+
+def sri_from(mains: dict, intervals: list, tz: ZoneInfo, start: date, end: date) -> dict:
+    """SRI of [start, end] from watch_sessions' output (sessions may reach further back: only these wake dates count)."""
     days = {d: asleep_minutes(intervals, d, tz) for d in mains if start <= d <= end}
     value, pairs = sri(days)
     return {"sri": value, "pairs": pairs, "nights": len(days), "start": start, "end": end}
@@ -77,10 +85,15 @@ def consistency_pct(sri_value: float | None) -> int | None:
 
 def nights(conn, user_id: int, tz: ZoneInfo, start: date, end: date) -> list[dict]:
     """Per-night details (from daily_scores.details.sleep, computed by the scoring engine)."""
+    return nights_from(conn.execute("""SELECT date, sleep_score, sleep_actual_min, details->'sleep' AS s FROM daily_scores
+                                       WHERE user_id = %s AND date BETWEEN %s AND %s AND details ? 'sleep' ORDER BY date""",
+                                    (user_id, start, end)).fetchall())
+
+
+def nights_from(rows: list[dict]) -> list[dict]:
+    """The pure part of nights: rows {date, sleep_score, s = details.sleep} of the days whose details have a sleep block."""
     out = []
-    for r in conn.execute("""SELECT date, sleep_score, sleep_actual_min, details->'sleep' AS s FROM daily_scores
-                             WHERE user_id = %s AND date BETWEEN %s AND %s AND details ? 'sleep' ORDER BY date""",
-                          (user_id, start, end)):
+    for r in rows:
         s = r["s"] or {}
         out.append({"date": r["date"], "sleep_score": r["sleep_score"], "bedtime": s.get("bedtime"),
                     "wake_time": s.get("wake_time"), "asleep_min": s.get("asleep_min"), "nap_min": s.get("nap_min"),
@@ -88,3 +101,19 @@ def nights(conn, user_id: int, tz: ZoneInfo, start: date, end: date) -> list[dic
                     "waso_min": s.get("waso_min"), "awakenings": s.get("awakenings"),
                     "deep_min": s.get("deep_min"), "rem_min": s.get("rem_min")})
     return out
+
+
+NOTES = ("规律性 = 睡眠规律性指数 SRI（相隔 24 小时睡 / 醒状态相同的比例，−100～100，这里截到 0–100）；"
+         "入睡潜伏期只在睡着前有手表记的「清醒」片段时才有；效率 = 睡着 /（潜伏期开始 → 醒来）")
+
+
+def details(sessions: tuple[dict, list], nights_list: list[dict], tz: ZoneInfo, start: date, end: date) -> dict:
+    """GET /sleep/details from watch_sessions' output (covering at least the 30 days before `end`) and nights_from's rows;
+    no database. The phone runs it as JS `OBS.series.sleep_detail.details` (M3)."""
+    mains, intervals = sessions
+    r7 = sri_from(mains, intervals, tz, end - timedelta(days=6), end)
+    r30 = sri_from(mains, intervals, tz, end - timedelta(days=29), end)
+    return {"start": start, "end": end,
+            "consistency_pct_7d": consistency_pct(r7["sri"]), "sri_7d": r7["sri"], "sri_7d_pairs": r7["pairs"],
+            "consistency_pct_30d": consistency_pct(r30["sri"]), "sri_30d": r30["sri"],
+            "sri_30d_pairs": r30["pairs"], "nights": nights_list, "notes": NOTES}

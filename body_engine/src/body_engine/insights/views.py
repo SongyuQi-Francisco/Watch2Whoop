@@ -83,15 +83,9 @@ def sleep_details(conn, user_id: int, start: date | None, end: date | None) -> d
     tz = user_tz(conn, user_id)
     end = end or datetime.now(tz).date()
     start = start or end - timedelta(days=13)
-    r7 = sleep_detail.sri_for(conn, user_id, tz, end - timedelta(days=6), end)
-    r30 = sleep_detail.sri_for(conn, user_id, tz, end - timedelta(days=29), end)
-    return {"start": start, "end": end,
-            "consistency_pct_7d": sleep_detail.consistency_pct(r7["sri"]), "sri_7d": r7["sri"], "sri_7d_pairs": r7["pairs"],
-            "consistency_pct_30d": sleep_detail.consistency_pct(r30["sri"]), "sri_30d": r30["sri"],
-            "sri_30d_pairs": r30["pairs"],
-            "nights": sleep_detail.nights(conn, user_id, tz, start, end),
-            "notes": "规律性 = 睡眠规律性指数 SRI（相隔 24 小时睡 / 醒状态相同的比例，−100～100，这里截到 0–100）；"
-                     "入睡潜伏期只在睡着前有手表记的「清醒」片段时才有；效率 = 睡着 /（潜伏期开始 → 醒来）"}
+    lo = min(start, end - timedelta(days=29))
+    sessions = sleep_detail.load_intervals(conn, user_id, lo, end)
+    return sleep_detail.details(sessions, sleep_detail.nights(conn, user_id, tz, start, end), tz, start, end)
 
 
 def hr_zones(conn, user_id: int, start: date | None, end: date | None, viewer_id: int | None = None) -> dict:

@@ -9,6 +9,12 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 |---|---|---|---|
 | 1.0.9 | `app-ios-v1.0.9` (on the release day, replacing the voided one: docs/ios-native-app.md section 12) | 10 | TestFlight (iOS) |
 
+## 2.0.0
+
+（开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
+
+- 趋势、月历、最近 14 晚、睡眠规律性和 VO₂max 等级可以在手机上算（M3，开关 `native_series`），和服务器同一套算法；没网时也能看全部范围。 / Trends, the month calendar, the last 14 nights, sleep regularity and the VO₂max level can be computed on the phone (M3, flag `native_series`) with the server's algorithms, so every range opens offline.
+
 ## 1.0.9
 
 整个 app 换成了 iOS 原生界面（不再用网页），打开更快、滑动更顺。从 TestFlight 直接更新就行，**不用重新登录**；1.0.8 里的设置和同步进度都会接着用。

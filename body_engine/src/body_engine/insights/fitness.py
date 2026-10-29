@@ -15,12 +15,9 @@ LEVELS_EN = {"excellent": "Excellent", "good": "Good", "average": "Average", "fa
 
 def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date, with_workouts: bool = True) -> dict:
     """with_workouts=False: the viewer has no training share, the per-workout list is left out (`hidden`)."""
-    days = []
-    for r in conn.execute("""SELECT date, strain, hr_max, details->'load'->'zone_minutes' AS z, flags->>'no_raw_hr' AS missing
-                             FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""",
-                          (user_id, start, end)):
-        days.append({"date": r["date"], "zone_minutes": r["z"], "hr_max": r["hr_max"], "strain": r["strain"],
-                     "missing_reason": r["missing"] if r["z"] is None else None})
+    rows = [dict(r) for r in conn.execute(
+        """SELECT date, strain, hr_max, details->'load'->'zone_minutes' AS z, flags->>'no_raw_hr' AS missing
+           FROM daily_scores WHERE user_id = %s AND date BETWEEN %s AND %s ORDER BY date""", (user_id, start, end))]
     workouts = None
     if with_workouts and _table_exists(conn, "workouts"):
         workouts = [dict(r) for r in conn.execute(
@@ -28,6 +25,14 @@ def hr_zones(conn: psycopg.Connection, user_id: int, start: date, end: date, wit
                       hr_zone_min AS zone_minutes, flags FROM workouts
                WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s
                ORDER BY start_at""", (user_id, start, end))]
+    return hr_zones_compute(rows, workouts, start, end, with_workouts)
+
+
+def hr_zones_compute(rows: list[dict], workouts: list[dict] | None, start: date, end: date, with_workouts: bool = True) -> dict:
+    """The pure part of hr_zones (no database); JS `OBS.series.fitness.hr_zones` (M3). rows: daily_scores {date, strain,
+    hr_max, z = details.load.zone_minutes, missing = flags.no_raw_hr} by date; workouts None = no workouts table."""
+    days = [{"date": r["date"], "zone_minutes": r["z"], "hr_max": r["hr_max"], "strain": r["strain"],
+             "missing_reason": r["missing"] if r["z"] is None else None} for r in rows]
     total = [round(sum((d["zone_minutes"] or [0] * 5)[i] for d in days), 1) for i in range(5)]
     if not with_workouts:
         return {"zones": ZONES, "start": start, "end": end, "days": days, "total_minutes": total, "hidden": ["training"]}
@@ -44,18 +49,26 @@ def level(pct: float | None) -> tuple[str, str] | tuple[None, None]:
 
 def vo2max(conn: psycopg.Connection, user_id: int, end: date, days: int = 365) -> dict:
     u = conn.execute("SELECT birth_date, sex FROM users WHERE id = %s", (user_id,)).fetchone()
-    sex = {"m": "male", "male": "male", "男": "male", "f": "female", "female": "female", "女": "female"}.get(
-        (u["sex"] or "").strip().lower())
+    sex = SEXES.get((u["sex"] or "").strip().lower())
     rows = conn.execute("""SELECT date, value FROM daily_metrics WHERE user_id = %s AND metric = 'vo2_max'
                            AND date BETWEEN %s AND %s ORDER BY date""",
                         (user_id, end - timedelta(days=days - 1), end)).fetchall()
+    return vo2max_compute(rows, u["birth_date"], sex, end)
+
+
+SEXES = {"m": "male", "male": "male", "男": "male", "f": "female", "female": "female", "女": "female"}
+
+
+def vo2max_compute(rows: list[dict], birth_date: date | None, sex: str | None, end: date) -> dict:
+    """The pure part of vo2max (no database); JS `OBS.series.fitness.vo2max` (M3). rows: {date, value} of the vo2_max metric
+    in the window, by date; sex: "male" / "female" / None (users.sex through SEXES)."""
     months: dict[str, list[float]] = {}
     for r in rows:
         months.setdefault(r["date"].strftime("%Y-%m"), []).append(r["value"])
     latest = rows[-1] if rows else None
     recent = [r["value"] for r in rows if r["date"] >= end - timedelta(days=89)]
     current = round(statistics.fmean(recent), 1) if recent else (latest["value"] if latest else None)
-    age = HS.chrono_age(u["birth_date"], end) if u["birth_date"] else None
+    age = HS.chrono_age(birth_date, end) if birth_date else None
     pct = HS.vo2_percentile(current, age, sex) if current is not None and age is not None and sex else None
     key, zh = level(pct)
     trend = None

@@ -72,13 +72,14 @@ struct TrendsSnapshot: Equatable {
     return TrendsPage(data: data, local: TrendsLocal.Output(json: s.local?.json), vo2: s.vo2?.json, sleep: s.sleep?.json)
   }
 
+  /// The phone's own documents instead of the server's when package `series` is primary (M3, `SeriesLocal`).
   static func read(_ db: Database, days: Int, end: String?, endDay: String?) throws -> TrendsSnapshot {
     var s = TrendsSnapshot()
-    s.trends = try DocRecord.fetchOne(db, key: TrendsDocs.trends(days, end: end))
+    s.trends = try SeriesLocal.shown(db, server: TrendsDocs.trends(days, end: end), local: SeriesLocal.trendsKey(days, end: end))
     let day = end ?? endDay ?? (s.trends?.json?["end"] as? String).map { String($0.prefix(10)) }
     if let day { s.local = try DocRecord.fetchOne(db, key: TrendsLocal.docKey(day)) }
-    s.vo2 = try DocRecord.fetchOne(db, key: TrendsDocs.vo2max(end))
-    s.sleep = try DocRecord.fetchOne(db, key: TrendsDocs.sleepDetails(end))
+    s.vo2 = try SeriesLocal.shown(db, server: TrendsDocs.vo2max(end), local: SeriesLocal.vo2Key(end))
+    s.sleep = try SeriesLocal.shown(db, server: TrendsDocs.sleepDetails(end), local: SeriesLocal.detailsKey(end))
     return s
   }
 }
@@ -200,14 +201,16 @@ final class TrendsStore: ObservableObject {
     Task { await refresh() }
   }
 
-  /// The range's documents from the server, then the phone's own status cards.
+  /// The range's documents from the server, then the phone's own status cards and (package `series` on) its own series.
   func refresh() async {
     guard let session else { return }
     loading = true
-    let out = await DocPuller(api: session.api, db: session.db).pull(TrendsDocs.fetches(days: range.docDays, end: end))
+    let days = range.docDays, end = self.end
+    let out = await DocPuller(api: session.api, db: session.db).pull(TrendsDocs.fetches(days: days, end: end))
     offline = out.offline
     loading = false
     computeLocal()
+    SeriesLocal.refresh(session: session, [.trends(days: days, end: end), .vo2(end: end), .details(end: end)], userToday: userToday)
   }
 
   /// The phone's own status cards for the end date (`TrendsStore.computeLocal(session:day:)`).

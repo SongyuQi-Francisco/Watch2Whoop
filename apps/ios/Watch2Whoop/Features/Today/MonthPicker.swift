@@ -142,14 +142,18 @@ struct MonthPicker: View {
     load()
   }
 
+  /// The server's month, or the phone's own (M3 `SeriesLocal`, package `series` primary); computed after the pull.
   private func load() {
-    let key = TodayDocs.days(month)
-    cancellable = ValueObservation.tracking { db in try DocRecord.fetchOne(db, key: key) }
+    let key = TodayDocs.days(month), local = SeriesLocal.daysKey(month)
+    cancellable = ValueObservation.tracking { db in try SeriesLocal.shown(db, server: key, local: local) }
       .removeDuplicates()
       .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { rec in
         if let json = rec?.json { data = MonthDays(json: json) }
       })
-    let m = month
-    Task { _ = await DocPuller(api: session.api, db: session.db).pull([DocFetch(key, Endpoint.monthDays(m))]) }
+    let m = month, session = self.session, today = userToday
+    Task {
+      _ = await DocPuller(api: session.api, db: session.db).pull([DocFetch(key, Endpoint.monthDays(m))])
+      await SeriesLocal.refresh(session: session, [.month(m)], userToday: today)
+    }
   }
 }

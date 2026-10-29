@@ -228,6 +228,47 @@ Every package: flags off by default (§5), synthetic tests, `CHANGELOG` line in 
 
 M1 and M3 share no file except `dist/*`.
 
+#### M3 as built
+- **Python split** (outputs unchanged, DB tests green): `trends/series.py` `window` + `load(conn, viewer, owner, end, days)` +
+  pure `compute(data, end, days, today, tz, now_hour)` (`build` = `compute(load(…))`; `prev_mean` now sums the previous period
+  in date order, the same set as before); `web/views.py` `month_days_compute`, `month_range`, `sleep_nights_compute`;
+  `insights/sleep_detail.py` `watch_sessions`, `sri_from`, `nights_from`, `details` (+ `NOTES`), `insights/views.sleep_details`
+  loads once for the 7 / 30-day SRI; `insights/fitness.py` `hr_zones_compute`, `vo2max_compute`, `SEXES`.
+  `SERIES_VERSION = "series-1"` in `trends/series.py`; the thresholds stay where they were (`trends/params.py`,
+  `series.py` `BASELINE_DAYS` / `BASELINE_MIN_N` / `LOOKBACK`, `fitness.LEVELS`, `views.RECOVERY_GREEN`, `rules/params.RECOVERY_RED`),
+  mirrored in `src/33_series.js` `OBS.series.params`.
+- **JS** `src/33_series.js`: `OBS.series.compute` (the whole `/trends` JSON incl. status cards, with the existing `OBS.trends`
+  functions), `month_days`, `sleep_nights`, `sleep_detail.*`, `fitness.*`; entry points `trendsSeries(data, {end, days, today,
+  tz, now_hour})`, `monthDays`, `sleepNights`, `sleepDetails`, `vo2max`, `hrZones`, stamped `series-1`; `OBS.ALGO_VERSIONS.series`.
+  `in_bed` is optional (the phone derives it from start / end). `GET /v1/sync/compute` now reports `series` implemented
+  (views only: shadow with `native_series`, primary with `native_compute_primary`).
+- **Goldens**: `test/cases_series.py` (420 synthetic days in Australia/Sydney across the 2026-10-04 DST change; ranges 7 / 30 /
+  90 / 365 ending today and 50 days back, a run with < 14 baseline days, a range ending after the data, English labels,
+  variants without scores / metrics + sleep / weight + training scopes, without the stress / body-age / heart-rate-recovery /
+  weight blocks, a weight-log error; month calendar incl. hidden scopes and a future month; nights with naps and two mains;
+  SRI 7 / 30 days and < 4 pairs; VO₂max with / without sex or birth date, < 3 readings, old readings only; zone totals with /
+  without workouts; level edges) → `golden/series.json`; `golden/series_local.json` = 120 days as the phone's local tables + the
+  Python answers (the Swift acceptance test). Tests: `body_engine/tests/test_js_golden_series.py`, `test/series.test.js`,
+  `Watch2WhoopTests/TrendsSeriesTests.swift`.
+- **iOS** `Features/Trends/TrendsSeriesLocal.swift` (`SeriesLocal`): no stage in `LocalCompute` (views are computed when a page
+  refreshes, after its server pull); it asks `/v1/sync/compute` itself when the cached `compute:state` is older than an hour.
+  Loader = the server's `load` on local tables: `daily_scores.payload`, `daily_metrics`, `sleep_sessions` (+ payload),
+  weights = `body_mass` < records `weight` < `ext_records` weigh-ins < unsent records (it pulls `ext_records` for the window,
+  the first caller of `pullExtRecords`), profile doc `profile:me` (birth date, sex) for the VO₂max level. `stress_daily`,
+  `healthspan_weekly`, `workouts` are read when the table exists; until then the series `stress`, `resilience`, `body_age`,
+  `hr_recovery`, the cards `resilience`, `body_battery`, `hr_recovery` and the month's `training` days come from the server's
+  document of the same page (`server_only` in the phone's document; "没有数据" without one). Pages read through
+  `SeriesLocal.shown` (phone's document only in `primary` and once computed): Trends (`TrendsSnapshot`), Today's 61-day
+  document (`TodaySnapshot`), `MonthPicker`, `TrendsSleepView`, the regularity card and the VO₂max level.
+- **Deviations**: two more cache keys than section 3.1 lists, `sleep.local:details:<end>` and `trends.local.vo2max:<end>` (the
+  regularity card and the fitness level are their own documents on the server too); the shadow comparison is local only (meta
+  `series.compare`: per page ok / field paths / count, no values), since views are never uploaded (section 3.2); the 365-day
+  ≥ 55 fps check is left to the device checklist (the page code is unchanged, only the document it reads).
+- **Device checklist (for S9)**: with `native_series` on (shadow), open Trends on every range, the month calendar and 睡眠;
+  meta `series.compare` shows `ok` for each page; then with `native_compute_primary` on, airplane mode: Trends opens on all
+  ranges, Today's 「全部指标」 equals Trends 「今天」, the month calendar colours and the last 14 nights match the server's
+  from before.
+
 ### M1c — workouts, TRIMP, zones, HR recovery, training views
 | | |
 |---|---|
