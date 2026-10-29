@@ -271,7 +271,7 @@ final class AppModel: ObservableObject {
       cfg.userId = uid
       cfg.displayName = user?["display_name"] as? String
       store.config = cfg
-      UpgradeGate.shared.apply(UpgradeInfo.parse(me["upgrade"] as? [String: Any]) ?? .none)   // R2
+      UpgradeGate.shared.apply(UpgradeInfo.parse(me["upgrade"] as? [String: Any]) ?? .clear)   // R2
       let flags = (me["flags"] as? [String]) ?? []
       UserDefaults.standard.set(flags, forKey: flagsKey)
       try open(cfg, userId: uid, api: api)

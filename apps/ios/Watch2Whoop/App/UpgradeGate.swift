@@ -15,7 +15,8 @@ struct UpgradeInfo: Equatable {
   var minVersion: String?
   var blockFrom: String?
 
-  static let none = UpgradeInfo(state: .none)
+  /// Nothing to show (named `clear`, not `none`: `?? .none` would mean `Optional.none`).
+  static let clear = UpgradeInfo(state: .none)
 
   /// `upgrade` of `/v1/web/me`, or a 426 answer's `detail`. nil when it is not an object.
   static func parse(_ o: [String: Any]?) -> UpgradeInfo? {
@@ -42,7 +43,7 @@ final class UpgradeGate: ObservableObject {
   static let shared = UpgradeGate()
   static let dayKey = "w2w.native.upgradeNotice.day.v1"
 
-  @Published private(set) var info: UpgradeInfo = .none
+  @Published private(set) var info: UpgradeInfo = .clear
   @Published private(set) var noticeClosedToday = false
   private let defaults: UserDefaults
   private let now: () -> Date

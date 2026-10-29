@@ -48,7 +48,7 @@ final class UpgradeGateTests: XCTestCase {
     gate.receivedUpgradeRequired(Data(#"{"detail":{"code":"upgrade_required"}}"#.utf8))
     XCTAssertTrue(gate.showsBlock)
     XCTAssertFalse(gate.showsNotice)
-    gate.apply(.none)   // kill switch: /v1/web/me says none again
+    gate.apply(.clear)   // kill switch: /v1/web/me says none again
     XCTAssertFalse(gate.showsBlock)
   }
 
