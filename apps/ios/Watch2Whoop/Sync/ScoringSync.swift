@@ -98,6 +98,9 @@ actor ScoringSync {
     let hotStart = LocalDay.add(store.hotFrom(today: today), 2)
     var first = full ?? max(dirty.first ?? today, hotStart)
     if first > today { first = today }
+    // a new user's chain starts on the server's origin (#340 N9, below): with the origin of the last run the first muscle
+    // window is fetched from there right away instead of a second time
+    if let o = (try? db.doc(Self.contextDoc))?.json?["scoring_origin"] as? String, o >= hotStart, o < first { first = o }
 
     // the server's part of the inputs (the muscle load of the first window; histograms once after an install)
     let window = min(today, LocalDay.add(first, LocalHistoryParams.muscleWindowDays - 1))

@@ -339,7 +339,8 @@ final class ScoringSyncTests: XCTestCase {
     XCTAssertEqual(StubProtocol.requests.map { $0.url!.path }, ["/v1/sync/scoring"])   // not uploaded
 
     try await db.writer.write { db in try LocalRawStore.markDirty(db, [today]) }
-    StubProtocol.reset([
+    StubProtocol.reset([   // the origin moves the first day back: its muscle window is fetched again
+      .init(status: 200, body: context(rt, mode: "app", origin: origin)),
       .init(status: 200, body: context(rt, mode: "app", origin: origin)),
       .init(status: 200, body: #"{"status": "ok", "stored": 8, "app_scoring": true, "check": {"date": "x", "ok": true, "diffs": {}}}"#),
     ])
