@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 （开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
 
+- 身体年龄、负荷目标、健康监测、睡眠详情和今天页三环下的睡眠 / 评分块可以在手机上算（M4，开关 `native_coach`：影子模式只在后台对比，界面仍是服务器的；主模式后睡了一晚、没网也能完整打开今天页），和服务器同一套算法，身体年龄由服务器抽查。 / Body age, the strain target, the health monitor, the sleep detail and the Today rings' score / sleep blocks can be computed on the phone (M4, flag `native_coach`: in shadow only compared in the background, the pages keep the server's; once primary Today opens in full offline the morning after a synced night), with the server's algorithms, body age spot-checked by the server.
+
 - 训练在手机上算：读「健康」里的体能训练，算 TRIMP、五个心率区间的分钟、训练后心率恢复和重复记录，训练月历和单日详情也能在手机上生成（M1c，开关 `native_workouts`，先只在后台对比，界面仍是服务器的），和服务器同一套算法、服务器抽查。 / Workouts are computed on the phone: the Health workouts with TRIMP, five-zone minutes, post-workout heart-rate recovery and duplicates, and the training calendar and day detail (M1c, flag `native_workouts`; shadow only for now, the pages still show the server's), with the server's algorithms, spot-checked by the server.
 
 - 趋势、月历、最近 14 晚、睡眠规律性和 VO₂max 等级可以在手机上算（M3，开关 `native_series`），和服务器同一套算法；没网时也能看全部范围。 / Trends, the month calendar, the last 14 nights, sleep regularity and the VO₂max level can be computed on the phone (M3, flag `native_series`) with the server's algorithms, so every range opens offline.
