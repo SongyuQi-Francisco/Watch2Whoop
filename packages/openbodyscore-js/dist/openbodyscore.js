@@ -6393,5 +6393,1792 @@ OBS.reports = (function (U, AN, SD) {
     journal_block: journal_block, delta: delta, compute: compute };
 })(OBS.util, OBS.analysis, OBS.series.sleep_detail);
 
+// ---- src/36_rules.js
+/* rules (2.0.0 package M6, docs/ios-native-2.0.md): rule reminders and nutrition targets on the phone. Port of body_engine
+- rules/context.py `Ctx` (its methods), `assemble`, `merge_weights` (the pure end of `load`), `from_data`;
+- rules/progression.py, rules/nutrition.py (`calorie_adjust`, `pre_workout_fuel`, `frequency_caps`, `sugar_caps`,
+  `red_meat_estimate`), rules/safety.py (`exercise_restrictions`, `readiness`), rules/sleep_goal.py, rules/hydration.py;
+- rules/engine.py `evaluate_ctx`, `reminder_rows`, `evaluate_data` (the reminders `store` writes, the rule_runs summaries);
+- rules/base.py `jsonable`, rules/common.py `need`, `days_back`;
+- goals/nutrition.py `version_for`, `day_type`, `goal_for`, `day_from_totals` and nutrition/daily.py `adherence`,
+  nutrition/extras.py `known_sum`, `day_totals`, nutrition/constraints.py `Constraints` (the parts the rules read).
+Thresholds: rules/params.py, goals/params.py, water/params.py, nutrition/constraint_params.py (sources there), mirrored in
+`params` below and compared by the golden test (test/rules.test.js against body_engine/tests/test_js_golden_rules.py).
+Every reminder carries its Chinese and English text (title / message, title_en / message_en): both are compared verbatim.
+The bedtime-goal arithmetic is M4's OBS.coach.goals (goals/sleep.py). Dates are 'YYYY-MM-DD' strings.
+*/
+OBS.rules = (function (U, CG, CO) {
+  "use strict";
+  var RULES_VERSION = "v1.4-2026-10-22";   // rules/params.RULES_VERSION (unchanged by the 2.0.0 split)
+
+  // ================================================================ parameters (sources in the Python files)
+  var P = {   // rules/params.py
+    INCREMENT_FALLBACK_KG: { upper: 2.5, lower: 2.5 }, MIN_RIR_FOR_INCREASE: 1, FAIL_STREAK: 2, REQUIRE_PLANNED_SETS: true,
+    PROGRESSION_LOOKBACK_DAYS: 120, WARMUP_SET_TYPES: ["warm-up", "warmup", "warm up", "热身"],
+    SLOW_LOSS_KG_PER_WEEK: 0.4, SLOW_LOSS_KCAL: -150, FAST_LOSS_KG_PER_WEEK: 1.0, FAST_LOSS_KCAL: 200,
+    MIN_WEIGHINS_PER_WEEK: 2, TARGET_LOSS_RANGE: [0.5, 0.9],
+    PRE_MEAL_CARBS_G: [50, 70], PRE_MEAL_PROTEIN_G: [20, 30], DAY_CARBS_WARN_G: 50, WATER_TARGET_L: 3.0,
+    SYMPTOM_LOOKBACK_DAYS: 14, LEG_MUSCLES: ["quadriceps", "hamstrings", "glutes", "calves", "adductors", "abductors"],
+    RED_MEAT_KEYWORDS: [["牛肋条", 135], ["short rib", 135], ["培根", 30], ["bacon", 30], ["火腿", 30], ["香肠", 50],
+      ["sausage", 50], ["牛", 150], ["beef", 150], ["steak", 150], ["羊", 150], ["lamb", 150], ["猪", 150], ["pork", 150],
+      ["排骨", 150], ["rump", 150], ["topside", 150]],
+    RED_MEAT_EXCLUDE: ["牛奶", "牛乳", "牛油果", "牛油", "酸牛奶", "羊奶", "羊乳", "蜗牛", "牛蛙", "milk", "avocado"],
+    BANNED_LOG_LOOKBACK_DAYS: 14, CAUTION_LOG_LOOKBACK_DAYS: 14, CAUTION_MAX_WEIGHT_KG: { cable_face_pull: 18.0 },
+    SPARKY_STATUS_MARKERS: [["【禁用】", "banned"], ["【注意】", "caution"]],
+    RECOVERY_RED: 34, HEAVY_CARDIO_KEYWORDS: ["篮球", "basketball"], SLEEP_DEBT_HIGH_MIN: 120,
+    ADDED_SUGAR_CAP_G: 25, ADDED_SUGAR_WARN_G: 50, SUGARY_DRINKS_PER_WEEK: 2,
+    CALORIE_ADHERENCE_TOL: 0.10, PROTEIN_ADHERENCE_MIN: 0.90
+  };
+  var GP = {   // goals/params.py (the bedtime-goal reminders)
+    DEFAULT_DURATION_MIN: 480, ON_TARGET_TOL_MIN: 15, DEVIATION_MIN: 30, DEVIATION_NIGHTS: 3, SCREEN_OFF_BEFORE_MIN: 60,
+    CAFFEINE_BEFORE_MIN: 480, CAFFEINE_NOON_CUTOFF_MIN: 720, DINNER_BEFORE_MIN: 180, HISTORY_DAYS: 21,
+    MORNING_LIGHT: "起床后 30 分钟内晒太阳 10–20 分钟", MORNING_LIGHT_EN: "10–20 min of sunlight within 30 min of waking"
+  };
+  var WP = { REMIND_FROM_HOUR: 15, REMIND_SHARE: 0.5 };   // water/params.py
+  var CP = {   // nutrition/constraint_params.py
+    WARN_FRACTION: 0.8,
+    FOOD_ALIASES: { "牛肋条": ["short rib", "beef rib", "牛小排"], "培根": ["bacon"], "火腿": ["ham"], "香肠": ["sausage"] }
+  };
+  var NG = {   // goals/nutrition.py, nutrition/daily.py
+    FIELDS: ["calories", "protein_g", "carbs_g", "fat_g", "sat_fat_max_g", "added_sugar_max_g", "fiber_min_g"],
+    DAY_TYPE_ZH: { training: "训练日", rest: "休息日" }, DAY_TYPE_EN: { training: "Training day", rest: "Rest day" },
+    GOAL_KEYS: ["name", "day_type", "source", "calories", "protein_g", "carbs_g", "fat_g", "sat_fat_max_g",
+      "added_sugar_max_g", "fiber_min_g"],
+    TOTAL_KEYS: ["calories", "protein_g", "carbs_g", "fat_g", "saturated_fat_g"],
+    UNKNOWN_ON_PHONE: ["sugar_g", "added_sugar_g", "fiber_g", "sodium_mg"],
+    OPTIONAL: ["sugar_g", "added_sugar_g", "fiber_g", "sodium_mg"]
+  };
+  var CTX = { TRAINING_DAYS: 120, FOOD_DAYS: 14, WEIGHT_DAYS: 21, SCORE_DAYS: 7, JOURNAL_DAYS: 21 };   // rules/context.py
+  var SCORE_FIELDS = ["recovery", "sleep_score", "sleep_debt_min", "sleep_actual_min", "sleep_need_min", "strain", "flags"];
+  var SOURCE_LABELS = { sessions: "训练记录", presets: "训练模板", plans: "每周训练计划", exercises: "动作库",
+    food: "饮食记录", goals: "饮食目标", weights: "体重" };
+
+  // ================================================================ Python helpers
+  function nn(v) { return v !== null && v !== undefined; }
+  function g(o, k) { var v = o ? o[k] : undefined; return v === undefined ? null : v; }
+  function has(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
+  function or(a, b) { return truthy(a) ? a : b; }
+  /** Python truthiness of a JSON value. */
+  function truthy(v) {
+    if (v === null || v === undefined || v === false || v === 0 || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "object") return Object.keys(v).length > 0;
+    return true;
+  }
+  var fmtG = CO.fmtG;
+  /** Python str() of a value that is a float in Python (round(...) results, float parameters); None -> "None". */
+  function pf(x) {
+    if (!nn(x)) return "None";
+    if (Number.isInteger(x) && Math.abs(x) < 1e16) return x.toFixed(1);
+    return String(x);
+  }
+  /** Python str() of an int or a value as stored; None -> "None". */
+  function ps(x) { return nn(x) ? String(x) : "None"; }
+  /** f"{x:.nf}" (Python rounds the exact binary value half to even). */
+  function fix(x, n) { return U.round(x, n).toFixed(n); }
+  function sum(xs) { return U.pySum(xs); }
+  function sortedUnique(xs) { return Array.from(new Set(xs)).sort(); }
+  function isoWeek(d) {
+    var n = U.dayNum(d), wd = U.weekday(d), thu = n - wd + 3, year = Number(U.fromDayNum(thu).slice(0, 4));
+    var jan4 = U.dayNum(year + "-01-04"), firstThu = jan4 - U.weekday(year + "-01-04") + 3;
+    return [year, Math.floor((thu - firstThu) / 7) + 1];
+  }
+  function isoweekday(d) { return U.weekday(d) + 1; }
+  function startsWith(s, p) { return s.slice(0, p.length) === p; }
+  function replaceAll(s, a, b) { return a ? s.split(a).join(b) : s; }
+  function strip(s) { return s.replace(/^\s+|\s+$/g, ""); }
+
+  /** rules/base.jsonable: floats rounded to 3 decimals (an integral value is an int already). */
+  function jsonable(x) {
+    if (Array.isArray(x)) return x.map(jsonable);
+    if (x && typeof x === "object") {
+      var out = {};
+      Object.keys(x).forEach(function (k) { out[k] = jsonable(x[k]); });
+      return out;
+    }
+    if (typeof x === "number" && !Number.isInteger(x)) return U.round(x, 3);
+    return x;
+  }
+
+  function Reminder(rule_key, level, title, message, o) {
+    o = o || {};
+    return { rule_key: rule_key, level: level, title: title, message: message, subject: o.subject || "",
+      evidence: o.evidence || {}, sticky: !!o.sticky, title_en: o.title_en || "", message_en: o.message_en || "" };
+  }
+  function Result(rule_key, status, note, reminders, details) {
+    return { rule_key: rule_key, status: status, note: note || "", reminders: reminders || [], details: details || {} };
+  }
+  function summary(r) {
+    var out = { rule_key: r.rule_key, status: r.status, note: r.note, reminders: r.reminders.length };
+    if (truthy(r.details)) out.details = jsonable(r.details);
+    return out;
+  }
+
+  // ================================================================ nutrition/constraints.py (Constraints)
+  function norm(s) { return (s || "").toLowerCase().replace(/\s+/g, ""); }
+  function Diet(rows) {
+    this.rows = rows || [];
+  }
+  Diet.prototype._one = function (kind) {
+    for (var i = 0; i < this.rows.length; i++) if (this.rows[i].kind === kind) return this.rows[i];
+    return null;
+  };
+  Diet.prototype.red_meat_g = function () { var r = this._one("red_meat_g_per_week"); return r && r.value; };
+  Diet.prototype.red_meat_meals = function () { var r = this._one("red_meat_meals_per_week"); return r && r.value; };
+  Diet.prototype.food_limits = function () {
+    return this.rows.filter(function (r) { return r.kind === "food_times_per_week"; }).map(function (r) {
+      var t = r.target || "", names = [t].concat(CP.FOOD_ALIASES[t] || [], r.match || []).filter(truthy).map(norm);
+      return { target: r.target, names: names, max: r.value, basis: g(r, "basis") };
+    });
+  };
+  Diet.prototype.food_limit_hit = function (food) {
+    var s = norm(food), lims = this.food_limits();
+    for (var i = 0; i < lims.length; i++) {
+      if (lims[i].names.some(function (n) { return n && s.indexOf(n) >= 0; })) return lims[i];
+    }
+    return null;
+  };
+
+  // ================================================================ rules/context.py (Ctx from data)
+  function Ctx(data) {
+    var self = this;
+    this.day = data.day; this.tz = data.tz; this.now = g(data, "now");
+    this.sessions = g(data, "sessions"); this.exercises = g(data, "exercises"); this.plans = g(data, "plans");
+    this.presets = null;
+    if (nn(data.presets)) { this.presets = new Map(); data.presets.forEach(function (p) { self.presets.set(String(p.id), p); }); }
+    this.meta = data.meta || []; this.food = g(data, "food"); this.goals = g(data, "goals"); this.weights = g(data, "weights");
+    this.scores = data.scores || {};
+    this.journal = new Map();
+    (data.journal || []).forEach(function (j) { self.journal.set(j[0] + "\u0000" + j[1], j[2]); });
+    this.journal_rows = (data.journal || []).slice();
+    this.sleep_goal = nn(data.sleep_goal) ? CG.with_plan(data.sleep_goal) : null;
+    this.sleep_nights = data.sleep_nights || []; this.sleep_duration_min = g(data, "sleep_duration_min");
+    this.overrides = data.overrides || {};
+    this.diet = nn(data.diet) ? new Diet(data.diet) : null;
+    this.water = g(data, "water"); this.water_goal = g(data, "water_goal");
+    this.errors = data.errors || {}; this.missing = data.missing || {};
+  }
+  Ctx.prototype.jget = function (d, k) { var v = this.journal.get(d + "\u0000" + k); return v === undefined ? null : v; };
+  Ctx.prototype.jhas = function (d, k) { return this.journal.has(d + "\u0000" + k); };
+  Ctx.prototype.preset = function (id) { return this.presets ? (this.presets.get(String(id)) || null) : null; };
+  Ctx.prototype.ex = function (id) {
+    return this.exercises && has(this.exercises, String(id)) ? this.exercises[String(id)] : null;
+  };
+  Ctx.prototype.meta_by_app_id = function () {
+    var m = new Map();
+    this.meta.forEach(function (x) { if (truthy(x.app_exercise_id)) m.set(String(x.app_exercise_id), x); });
+    return m;
+  };
+  Ctx.prototype.meta_by_ref = function () { var m = new Map(); this.meta.forEach(function (x) { m.set(x.exercise_ref, x); }); return m; };
+  Ctx.prototype.exercise_name = function (id, fallback) {
+    var ex = this.ex(id);
+    return or(ex ? g(ex, "name") : null, or(fallback, id));
+  };
+  Ctx.prototype.status_of = function (id) {
+    var m = this.meta_by_app_id().get(String(id));
+    if (m !== undefined) return [m.status, m, "exercise_meta"];
+    var desc = or(g(this.ex(id) || {}, "description"), "");
+    for (var i = 0; i < P.SPARKY_STATUS_MARKERS.length; i++) {
+      if (startsWith(desc, P.SPARKY_STATUS_MARKERS[i][0])) return [P.SPARKY_STATUS_MARKERS[i][1], null, "SparkyFitness 动作描述"];
+    }
+    return ["active", null, "默认"];
+  };
+  Ctx.prototype.muscles_of = function (id, fallback) {
+    var ex = this.ex(id) || {};
+    return or(g(ex, "primary_muscles"), or(fallback, [])).map(function (m) { return m.toLowerCase(); });
+  };
+  Ctx.prototype.is_leg_exercise = function (id, category, fallback) {
+    var ex = this.ex(id) || {}, cat = or(g(ex, "category"), category === undefined ? null : category);
+    if (cat !== null && cat !== "strength") return false;
+    return this.muscles_of(id, fallback).some(function (m) { return P.LEG_MUSCLES.indexOf(m) >= 0; });
+  };
+  Ctx.prototype.active_plan = function (day) {
+    day = day || this.day;
+    var plans = this.plans || [];
+    for (var i = 0; i < plans.length; i++) {
+      var p = plans[i], start = truthy(p.start_date) ? String(p.start_date).slice(0, 10) : "0000-00-00";
+      var end = truthy(p.end_date) ? String(p.end_date).slice(0, 10) : "9999-99-99";
+      var st = g(p, "schedule_type");
+      if (truthy(p.is_active) && (st === null || st === "weekly") && start <= day && day <= end) return p;
+    }
+    return null;
+  };
+  Ctx.prototype.planned_for = function (day) {
+    day = day || this.day;
+    var ov = has(this.overrides, day) ? this.overrides[day] : null, self = this;
+    if (ov === null) return this.weekday_items(isoweekday(day), day);
+    var out = [];
+    (ov.sessions || []).forEach(function (ref) {
+      if (truthy(ref.dow)) out = out.concat(self.weekday_items(Number(ref.dow), day));
+      else if (truthy(ref.label)) out.push({ kind: "label", name: ref.label });
+    });
+    return out;
+  };
+  Ctx.prototype.weekday_items = function (iso_dow, day) {
+    var plan = this.active_plan(day || this.day), self = this;
+    if (plan === null) return [];
+    var dow = iso_dow % 7, out = [];
+    plan.assignments.filter(function (a) { return a.day_of_week === dow; })
+      .map(function (a, i) { return [a, i]; })
+      .sort(function (x, y) { return (x[0].sort_order - y[0].sort_order) || x[1] - y[1]; })
+      .forEach(function (x) {
+        var a = x[0];
+        if (nn(a.workout_preset_id)) {
+          out.push({ kind: "preset", preset: self.preset(a.workout_preset_id) ||
+            { id: a.workout_preset_id, name: g(a, "workout_preset_name"), exercises: [] } });
+        } else if (truthy(a.exercise_id)) {
+          out.push({ kind: "exercise", exercise_id: a.exercise_id, name: self.exercise_name(a.exercise_id, g(a, "exercise_name")) });
+        }
+      });
+    return out;
+  };
+  Ctx.prototype.planned_exercises = function (day) {
+    var out = [], self = this;
+    this.planned_for(day).forEach(function (item) {
+      if (item.kind === "preset") {
+        item.preset.exercises.forEach(function (x) {
+          out.push({ exercise_id: x.exercise_id, name: self.exercise_name(x.exercise_id, g(x, "name")),
+            category: g(x, "category"), preset: item.preset.name });
+        });
+      } else if (item.kind === "exercise") {
+        out.push({ exercise_id: item.exercise_id, name: item.name, category: null, preset: null });
+      }
+    });
+    return out;
+  };
+  Ctx.prototype.plan_prescriptions = function () {
+    var plan = this.active_plan(), self = this, out = new Map();
+    if (plan === null) return out;
+    var ids = plan.assignments.map(function (a, i) { return [a, i]; })
+      .sort(function (x, y) { return (x[0].day_of_week - y[0].day_of_week) || (x[0].sort_order - y[0].sort_order) || x[1] - y[1]; })
+      .filter(function (x) { return nn(x[0].workout_preset_id); }).map(function (x) { return x[0].workout_preset_id; });
+    var seenIds = new Set();
+    ids.forEach(function (pid) {
+      if (seenIds.has(String(pid))) return;
+      seenIds.add(String(pid));
+      var preset = self.preset(pid);
+      ((preset || {}).exercises || []).forEach(function (x) {
+        if (out.has(String(x.exercise_id))) return;
+        var working = x.sets.filter(function (s) { return P.WARMUP_SET_TYPES.indexOf(or(g(s, "type"), "").toLowerCase()) < 0; });
+        var lows = working.filter(function (s) { return truthy(s.reps); }).map(function (s) { return s.reps; });
+        var pw = null;
+        for (var i = 0; i < working.length; i++) if (truthy(working[i].weight_kg)) { pw = working[i].weight_kg; break; }
+        out.set(String(x.exercise_id), { exercise_id: x.exercise_id, name: self.exercise_name(x.exercise_id, g(x, "name")),
+          preset: preset.name, progression_mode: g(x, "progression_mode"),
+          rep_low: lows.length ? Math.min.apply(null, lows) : null, rep_high: g(x, "rep_goal"),
+          increment_kg: g(x, "increment_value"), planned_sets: working.length, planned_weight_kg: pw,
+          category: g(x, "category") });
+      });
+    });
+    return out;
+  };
+  Ctx.prototype.sessions_on = function (day) {
+    return (this.sessions || []).filter(function (s) { return s.date.slice(0, 10) === day; });
+  };
+  /** Local wall-clock fields of `now` (the evaluation time; the phone always passes it). */
+  Ctx.prototype.now_local = function () {
+    return U.local(nn(this.now) ? U.toUs(this.now) : Date.now() * 1000, U.tzOf(this.tz));
+  };
+
+  // ================================================================ rules/common.py
+  function need(ctx, rule_key, sources) {
+    var failed = sources.filter(function (s) { return has(ctx.errors, s); });
+    if (failed.length) {
+      return Result(rule_key, "error", "读不到 " + failed.map(function (s) {
+        return (SOURCE_LABELS[s] || s) + "（" + ctx.errors[s] + "）";
+      }).join("、"));
+    }
+    if (sources.some(function (s) { return !nn(ctx[s]); })) {
+      return Result(rule_key, "insufficient_data", "没有 SparkyFitness 数据：" + or(g(ctx.missing, "sparky"), "没有数据"));
+    }
+    return null;
+  }
+  function days_back(day, n) { var out = []; for (var k = n - 1; k >= 0; k--) out.push(U.addDays(day, -k)); return out; }
+
+  // ================================================================ rules/progression.py
+  var PROGRESSION = "progression";
+  function working(sets) {
+    return sets.filter(function (s) { return P.WARMUP_SET_TYPES.indexOf(or(g(s, "type"), "").toLowerCase()) < 0 && nn(g(s, "reps")); });
+  }
+  function history(ctx, exercise_id) {
+    var by_day = new Map();
+    (ctx.sessions || []).forEach(function (s) {
+      var d = s.date.slice(0, 10);
+      if (d > ctx.day) return;
+      s.exercises.forEach(function (e) {
+        if (String(e.exercise_id) !== String(exercise_id)) return;
+        if (!by_day.has(d)) by_day.set(d, { date: d, sets: [], notes: g(s, "notes") });
+        var x = by_day.get(d);
+        x.sets = x.sets.concat(working(e.sets));
+      });
+    });
+    return Array.from(by_day.keys()).sort().reverse().map(function (k) { return by_day.get(k); })
+      .filter(function (x) { return x.sets.length > 0; });
+  }
+  function top_weight(sets) { return Math.max.apply(null, sets.map(function (s) { return or(g(s, "weight_kg"), 0); })); }
+  function note_about(ctx, ex_id, name, notes) {
+    if (!truthy(notes)) return null;
+    var meta = ctx.meta_by_app_id().get(String(ex_id)) || {};
+    var keys = [name.split("（")[0].slice(0, 4)].concat(or(g(meta, "aliases"), []))
+      .filter(function (k) { return truthy(k) && k.length >= 2; });
+    keys = Array.from(new Set(keys));
+    var hits = notes.split(/[。；;\n]/).map(strip).filter(function (x) { return keys.some(function (k) { return x.indexOf(k) >= 0; }); });
+    return hits.join("；") || null;
+  }
+  function wfmt(w) { return truthy(w) ? fmtG(w) + " kg" : "自重"; }
+  function wfmt_en(w) { return truthy(w) ? fmtG(w) + " kg" : "bodyweight"; }
+
+  function progression(ctx) {
+    var r = need(ctx, PROGRESSION, ["sessions", "presets", "plans", "exercises"]);
+    if (r !== null) return r;
+    var plan = ctx.active_plan();
+    if (plan === null) return Result(PROGRESSION, "insufficient_data", "SparkyFitness 里没有当天生效的每周训练计划，不知道次数区间");
+    var rx = ctx.plan_prescriptions(), reminders = [], never = [], checked = [], skipped = [];
+    rx.forEach(function (p, ex_id) {
+      if (p.progression_mode !== "rep_goal" || !truthy(p.rep_high)) { skipped.push(p.name); return; }
+      var hist = history(ctx, p.exercise_id);
+      if (!hist.length) { never.push(p.name); return; }
+      var last = hist[0], sets = last.sets, w = top_weight(sets);
+      var low = or(p.rep_low, p.rep_high), high = p.rep_high;
+      var inc = or(p.increment_kg, P.INCREMENT_FALLBACK_KG[ctx.is_leg_exercise(p.exercise_id) ? "lower" : "upper"]);
+      var reps = sets.map(function (s) { return s.reps; });
+      var rirs = sets.filter(function (s) { return nn(g(s, "rir")); }).map(function (s) { return s.rir; });
+      checked.push(p.name);
+      var evidence = { exercise_id: p.exercise_id, exercise: p.name, template: p.preset, last_session: last.date,
+        sets: sets.map(function (s) { return { reps: s.reps, weight_kg: g(s, "weight_kg"), rir: g(s, "rir") }; }),
+        rep_range: [low, high], planned_sets: p.planned_sets, increment_kg: inc,
+        session_notes: (or(last.notes, "")).slice(0, 300) || null, source: "body-management.md 4.5" };
+      var enough = !P.REQUIRE_PLANNED_SETS || sets.length >= p.planned_sets;
+      var minReps = Math.min.apply(null, reps);
+      if (minReps >= high && enough) {
+        if (rirs.length && Math.min.apply(null, rirs) < P.MIN_RIR_FOR_INCREASE) {
+          var mr = Math.min.apply(null, rirs);
+          reminders.push(Reminder(PROGRESSION, "info", p.name + "：到上限但做到力竭，先保持 " + wfmt(w),
+            last.date + " 每组都做到 " + high + " 次，但最低 RIR " + mr + "（力竭）。4.3 要求每组留 1–2 次余力" +
+            "（力竭时容易耸肩代偿），先在 " + wfmt(w) + " 做到留 1 次余力再加重。",
+            { subject: ex_id + ":" + fmtG(w) + ":hold", evidence: evidence, sticky: true,
+              title_en: p.name + ": top of the range but to failure, stay at " + wfmt_en(w),
+              message_en: "On " + last.date + " every set reached " + high + " reps, but the lowest RIR was " + mr + " (failure). " +
+                "4.3 asks for 1–2 reps in reserve on every set (at failure you tend to shrug to compensate); " +
+                "stay at " + wfmt_en(w) + " until you have 1 rep in reserve, then add weight." }));
+        } else {
+          var nxt = w + inc, note = note_about(ctx, p.exercise_id, p.name, last.notes);
+          reminders.push(Reminder(PROGRESSION, "info", "下次加重：" + p.name + " " + wfmt(w) + " → " + wfmt(nxt),
+            last.date + " 的 " + sets.length + " 个工作组都做到了区间上限 " + high + " 次（" + reps.map(String).join("/") + "）。" +
+            "按双进阶，下次用 " + wfmt(nxt) + "，回到区间下限 " + low + " 次重新练（哑铃按单只、单侧动作按每侧）。" +
+            (note ? "\n那次训练的备注提到这个动作：「" + note + "」。和这条建议不一致时以备注和你的感觉为准。" : ""),
+            { subject: ex_id + ":" + fmtG(w) + ":up", evidence: Object.assign({}, evidence, { next_weight_kg: nxt }), sticky: true,
+              title_en: "Add weight next time: " + p.name + " " + wfmt_en(w) + " → " + wfmt_en(nxt),
+              message_en: "On " + last.date + " all " + sets.length + " working sets reached the top of the range, " + high + " reps " +
+                "(" + reps.map(String).join("/") + "). Double progression: next time use " + wfmt_en(nxt) + " and start again " +
+                "at the bottom of the range, " + low + " reps (dumbbells per dumbbell, one-sided exercises per side)." +
+                (note ? "\nThe notes of that workout mention this exercise: “" + note + "”. If they disagree with this " +
+                  "advice, go by the notes and how you feel." : "") }));
+        }
+        return;
+      }
+      var streak = 0;
+      for (var i = 0; i < hist.length; i++) {
+        var h = hist[i];
+        if (top_weight(h.sets) !== w || Math.min.apply(null, h.sets.map(function (x) { return x.reps; })) >= low) break;
+        streak += 1;
+      }
+      if (streak >= P.FAIL_STREAK) {
+        var down = Math.max(w - inc, 0), dates = hist.slice(0, streak).map(function (x) { return x.date; });
+        reminders.push(Reminder(PROGRESSION, "warning", "连续没做到下限：" + p.name + " 建议减到 " + wfmt(down),
+          "最近 " + streak + " 次（" + dates.join("、") + "）在 " + wfmt(w) + " 都有工作组没做到 " + low + " 次。" +
+          "减一档到 " + wfmt(down) + "，动作做标准、每组留 1–2 次余力，重新从区间下限往上加。",
+          { subject: ex_id + ":" + fmtG(w) + ":down",
+            evidence: Object.assign({}, evidence, { fail_streak: streak, next_weight_kg: down }), sticky: true,
+            title_en: "Missed the bottom of the range again: " + p.name + ", drop to " + wfmt_en(down),
+            message_en: "In the last " + streak + " workouts (" + dates.join(", ") + ") at " + wfmt_en(w) + " a " +
+              "working set fell short of " + low + " reps. Drop one step to " + wfmt_en(down) + ", keep strict form with 1–2 " +
+              "reps in reserve per set, and build back up from the bottom of the range." }));
+      }
+    });
+    var cut = U.addDays(ctx.day, -28), off = [];
+    (ctx.sessions || []).forEach(function (s) {
+      var d = s.date.slice(0, 10);
+      if (!(cut <= d && d <= ctx.day)) return;
+      s.exercises.forEach(function (e) {
+        if (!rx.has(String(e.exercise_id)) && or(g(e, "category"), "strength") === "strength") off.push(e.name);
+      });
+    });
+    var details = { checked: checked, never_logged: never, no_progression_in_template: skipped,
+      logged_but_not_in_plan_28d: sortedUnique(off) };
+    if (reminders.length) return Result(PROGRESSION, "triggered", "检查了 " + checked.length + " 个动作", reminders, details);
+    if (!checked.length) return Result(PROGRESSION, "insufficient_data", "当前计划里的动作还没有训练记录", [], details);
+    return Result(PROGRESSION, "not_triggered", "检查了 " + checked.length + " 个动作，都还没到区间上限、也没有连续失败", [], details);
+  }
+
+  // ================================================================ rules/nutrition.py
+  var CALORIES = "calorie_adjust", FUEL = "pre_workout_fuel", CAPS = "frequency_caps", SUGAR = "sugar_caps";
+
+  function window_avg(weights, end, n) {
+    n = n || 7;
+    var lo = U.addDays(end, -(n - 1));
+    var vals = weights.filter(function (w) { return lo <= w.date && w.date <= end; }).map(function (w) { return w.weight_kg; });
+    return { start: lo, end: end, n: vals.length, avg_kg: vals.length >= P.MIN_WEIGHINS_PER_WEEK ? U.round(U.fmean(vals), 2) : null };
+  }
+  function goal_lines(ctx, delta) {
+    var goals = new Map();
+    (ctx.goals || []).forEach(function (gg) {
+      if (truthy(g(gg, "calories"))) { var k = or(g(gg, "name"), "当前目标"); if (!goals.has(k)) goals.set(k, gg.calories); }
+    });
+    var rows = [];
+    goals.forEach(function (kcal, name) { rows.push({ goal: name, calories: kcal, suggested: kcal + delta }); });
+    var text = rows.map(function (r) { return r.goal.split("（")[0] + " " + fmtG(r.calories) + " → " + fmtG(r.suggested) + " kcal"; }).join("；");
+    var en = rows.map(function (r) {
+      return (r.goal === "当前目标" ? "Current goal" : r.goal.split("（")[0]) + " " + fmtG(r.calories) + " → " + fmtG(r.suggested) + " kcal";
+    }).join("; ");
+    return [text, rows, en];
+  }
+  function calorie_adjust(ctx) {
+    if (has(ctx.errors, "weights") && !truthy(ctx.weights)) return Result(CALORIES, "error", "读不到体重：" + ctx.errors.weights);
+    var weights = ctx.weights || [];
+    var w0 = window_avg(weights, ctx.day), w1 = window_avg(weights, U.addDays(ctx.day, -7)), w2 = window_avg(weights, U.addDays(ctx.day, -14));
+    var one_week = truthy(w0.avg_kg) && truthy(w1.avg_kg) ? U.round(w1.avg_kg - w0.avg_kg, 2) : null;
+    var two_week = truthy(w0.avg_kg) && truthy(w2.avg_kg) ? U.round((w2.avg_kg - w0.avg_kg) / 2, 2) : null;
+    var details = { this_week: w0, last_week: w1, two_weeks_ago: w2, loss_kg_1wk: one_week, loss_kg_per_wk_2wk: two_week,
+      weights: weights };
+    var evidence = Object.assign({}, details, { source: "body-management.md 5.2（V2.1）、5.2.0", weights: weights.slice(-10) });
+    var iw = isoWeek(ctx.day), week = iw[0] + "-W" + U.pad(iw[1], 2), t;
+    if (nn(one_week) && one_week > P.FAST_LOSS_KG_PER_WEEK) {
+      t = goal_lines(ctx, P.FAST_LOSS_KCAL);
+      return Result(CALORIES, "triggered", "", [Reminder(CALORIES, "warning", "体重降得太快：建议每天加 " + P.FAST_LOSS_KCAL + " kcal",
+        "近 7 天平均 " + pf(w0.avg_kg) + " kg，前 7 天 " + pf(w1.avg_kg) + " kg，一周降了 " + pf(one_week) + " kg（超过 " +
+        pf(P.FAST_LOSS_KG_PER_WEEK) + " kg）。按 5.2 每天加约 " + P.FAST_LOSS_KCAL + " kcal" + (t[0] ? "（" + t[0] + "）" : "") +
+        "。降太快容易疲劳、掉肌肉，也可能让尿酸短期升高。只是建议，要改目标告诉管家（set_nutrition_goals）。",
+        { subject: "fast:" + week, evidence: Object.assign({}, evidence, { suggested_goals: t[1] }), sticky: true,
+          title_en: "Losing weight too fast: add " + P.FAST_LOSS_KCAL + " kcal a day",
+          message_en: "7-day average " + pf(w0.avg_kg) + " kg, the 7 days before " + pf(w1.avg_kg) + " kg: down " + pf(one_week) +
+            " kg in a week (more than " + pf(P.FAST_LOSS_KG_PER_WEEK) + " kg). Per 5.2, add about " + P.FAST_LOSS_KCAL + " kcal a day" +
+            (t[2] ? " (" + t[2] + ")" : "") + ". Losing too fast tends to bring fatigue and muscle loss, and can raise uric acid for a while. " +
+            "Advice only; to change your goals, tell Jarvis (set_nutrition_goals)." })], details);
+    }
+    if (nn(two_week) && two_week < P.SLOW_LOSS_KG_PER_WEEK) {
+      t = goal_lines(ctx, P.SLOW_LOSS_KCAL);
+      var trend = two_week >= 0 ? "平均每周降 " + pf(two_week) + " kg" : "平均每周反而升 " + pf(-two_week) + " kg";
+      var trend_en = two_week >= 0 ? "down " + pf(two_week) + " kg a week on average" : "up " + pf(-two_week) + " kg a week on average";
+      return Result(CALORIES, "triggered", "", [Reminder(CALORIES, "info", "体重降得慢：建议每天少 " + (-P.SLOW_LOSS_KCAL) + " kcal",
+        "近 7 天平均 " + pf(w0.avg_kg) + " kg，两周前那 7 天 " + pf(w2.avg_kg) + " kg，" + trend + "（不到 " + pf(P.SLOW_LOSS_KG_PER_WEEK) +
+        " kg）。按 5.2 每天减约 " + (-P.SLOW_LOSS_KCAL) + " kcal" + (t[0] ? "（" + t[0] + "）" : "") +
+        "：先减油和零食，不先砍训练日碳水。如果最近疲劳或早醒，先别减。只是建议，要改目标告诉管家（set_nutrition_goals）。",
+        { subject: "slow:" + week, evidence: Object.assign({}, evidence, { suggested_goals: t[1] }), sticky: true,
+          title_en: "Losing weight slowly: eat " + (-P.SLOW_LOSS_KCAL) + " kcal less a day",
+          message_en: "7-day average " + pf(w0.avg_kg) + " kg, the 7 days two weeks ago " + pf(w2.avg_kg) + " kg: " + trend_en + " " +
+            "(less than " + pf(P.SLOW_LOSS_KG_PER_WEEK) + " kg). Per 5.2, eat about " + (-P.SLOW_LOSS_KCAL) + " kcal less a day" +
+            (t[2] ? " (" + t[2] + ")" : "") + ": cut oil and snacks first, not the carbs on training days. If you have been tired or waking early " +
+            "lately, hold off. Advice only; to change your goals, tell Jarvis (set_nutrition_goals)." })], details);
+    }
+    if (!nn(one_week) && !nn(two_week)) {
+      return Result(CALORIES, "insufficient_data", "周均体重算不出来：每个 7 天窗口至少要 " + P.MIN_WEIGHINS_PER_WEEK + " 次称重，" +
+        "近 7 天 " + w0.n + " 次、前 7 天 " + w1.n + " 次、两周前 " + w2.n + " 次", [], details);
+    }
+    return Result(CALORIES, "not_triggered", "一周降 " + pf(one_week) + " kg、两周平均每周降 " + pf(two_week) + " kg，没到调整线（目标每周 " +
+      pf(P.TARGET_LOSS_RANGE[0]) + "–" + pf(P.TARGET_LOSS_RANGE[1]) + " kg）", [], details);
+  }
+
+  function is_training_item(ctx, id, category) {
+    var ex = ctx.ex(id) || {};
+    if (g(ex, "modality") === "weight_reps") return true;
+    var name = or(g(ex, "name"), "");
+    return or(g(ex, "category"), category === undefined ? null : category) === "cardio" &&
+      ["篮球", "游泳", "basketball", "swim"].some(function (k) { return name.indexOf(k) >= 0; });
+  }
+  function pre_workout_fuel(ctx) {
+    var r = need(ctx, FUEL, ["plans", "presets", "exercises", "sessions"]);
+    if (r !== null) return r;
+    var planned = ctx.planned_exercises(), logged = [];
+    ctx.sessions_on(ctx.day).forEach(function (s) { logged = logged.concat(s.exercises); });
+    var training = planned.filter(function (p) { return is_training_item(ctx, p.exercise_id, p.category); })
+      .concat(logged.filter(function (e) { return is_training_item(ctx, e.exercise_id, g(e, "category")); }));
+    if (!training.length) {
+      var what = Array.from(new Set(planned.map(function (p) { return or(p.preset, p.name); }))).join("、") || "休息";
+      return Result(FUEL, "not_triggered", "今天计划：" + what + "，没有力量训练或球类 / 游泳");
+    }
+    var legs = sortedUnique(training.filter(function (x) {
+      return ctx.is_leg_exercise(x.exercise_id, g(x, "category"), g(x, "primary_muscles"));
+    }).map(function (x) { return x.name; }));
+    var sessions = Array.from(new Set(planned.filter(function (p) {
+      return truthy(g(p, "preset")) || is_training_item(ctx, p.exercise_id, p.category);
+    }).map(function (p) { return or(p.preset, p.name); }).concat(ctx.sessions_on(ctx.day).map(function (s) { return s.name; }))));
+    var lo7 = U.addDays(ctx.day, -P.SYMPTOM_LOOKBACK_DAYS), symptoms = [];
+    ctx.journal_rows.forEach(function (j) {
+      if ((j[1] === "low_blood_sugar" || j[1] === "underfed_training") && j[2] > 0 && lo7 <= j[0] && j[0] <= ctx.day) symptoms.push([j[0], j[1]]);
+    });
+    symptoms.sort(U.cmp);
+    var lo = P.PRE_MEAL_CARBS_G[0], hi = P.PRE_MEAL_CARBS_G[1], plo = P.PRE_MEAL_PROTEIN_G[0], phi = P.PRE_MEAL_PROTEIN_G[1];
+    var lines = ["练前 1.5–2 小时吃一顿正餐：碳水 " + lo + "–" + hi + "g、蛋白 " + plo + "–" + phi + "g；离上一餐超过 4 小时，练前 30–60 分钟再加一根香蕉或一片吐司配蜂蜜。"];
+    var en = ["Eat a proper meal 1.5–2 h before: carbs " + lo + "–" + hi + " g, protein " + plo + "–" + phi + " g; if your last meal was more than 4 h " +
+      "earlier, add a banana or a slice of toast with honey 30–60 min before."];
+    if (legs.length) {
+      lines.push("不空腹练腿；手边备一根香蕉或一盒果汁（快糖）。",
+        "头晕、手抖、出冷汗、心慌：立刻停组坐下，吃 15–20g 快糖，15 分钟没缓解再吃一次，当天不再做高强度。");
+      en.push("Don't train legs on an empty stomach; keep a banana or a juice box (fast sugar) at hand.",
+        "Dizzy, shaky, cold sweat, racing heart: stop the set and sit down, take 15–20 g of fast sugar, take more if " +
+        "it hasn't eased in 15 min, and no more high intensity that day.");
+    }
+    lines.push("练前 2 小时喝 500ml 水，练中每 15–20 分钟小口喝 150–250ml，1 小时内不超过约 1L。");
+    en.push("Drink 500 ml of water 2 h before; during training sip 150–250 ml every 15–20 min, no more than about 1 L an hour.");
+    var yday = U.addDays(ctx.day, -1), water = ctx.jget(yday, "water_l");
+    if (water === null && truthy(ctx.water) && truthy(g(ctx.water, yday))) water = U.round(ctx.water[yday] / 1000, 1);
+    if (water !== null && water < P.WATER_TARGET_L) {
+      lines.push("昨天只喝了 " + fmtG(water) + "L（吃肌酸期间目标 3–3.5L）。");
+      en.push("Yesterday you drank only " + fmtG(water) + " L (target 3–3.5 L while taking creatine).");
+    }
+    if (symptoms.length) {
+      lines.push("最近有过：" + symptoms.map(function (x) { return x[0] + " " + (x[1] === "low_blood_sugar" ? "低血糖感" : "练前没吃够"); }).join("、") + "。");
+      en.push("Recently: " + symptoms.map(function (x) { return x[0] + " " + (x[1] === "low_blood_sugar" ? "low blood sugar" : "under-fuelled training"); }).join(", ") + ".");
+    }
+    var label = sessions.join("、") || "训练", label_en = sessions.join(", ") || "Workout";
+    var evidence = { planned: planned.map(function (p) { return { exercise_id: p.exercise_id, name: p.name, template: p.preset }; }),
+      logged_today: logged.map(function (e) { return e.name; }), leg_exercises: legs,
+      recent_symptoms: symptoms.map(function (x) { return { date: x[0], key: x[1] }; }), water_l_yesterday: water,
+      source: "body-management.md 4.2.1" };
+    var reminders = [Reminder(FUEL, legs.length && symptoms.length ? "warning" : "info",
+      "今天" + label + "：" + (legs.length ? "练腿，练前吃够、备快糖" : "练前记得吃正餐"), lines.join("\n"),
+      { subject: "", evidence: evidence,
+        title_en: label_en + " today: " + (legs.length ? "leg day, eat enough before and keep fast sugar at hand" : "eat a proper meal before training"),
+        message_en: en.join("\n") })];
+    var food_today = (ctx.food || []).filter(function (f) { return f.date === ctx.day; });
+    if (food_today.length) {
+      var carbs = sum(food_today.map(function (f) { return or(g(f, "carbs_g"), 0); }));
+      if (carbs < P.DAY_CARBS_WARN_G) {
+        reminders.push(Reminder(FUEL, "warning", "今天记录的碳水只有 " + fmtG(carbs) + "g",
+          "今天有" + label + "，饮食记录里全天碳水 " + fmtG(carbs) + "g，还不够练前一顿正餐（" + lo + "–" + hi + "g）。" +
+          "空腹或碳水太少时训练容易低血糖；练前补一顿有主食的正餐。",
+          { subject: "carbs", evidence: { carbs_g_logged: carbs, entries: food_today.map(function (f) {
+              return { time: g(f, "time"), food: g(f, "food"), carbs_g: g(f, "carbs_g") };
+            }), source: "body-management.md 4.2.1" },
+            title_en: "Carbs logged today: only " + fmtG(carbs) + " g",
+            message_en: label_en + " today, and your food log shows " + fmtG(carbs) + " g of carbs for the whole day: not enough for one " +
+              "pre-workout meal (" + lo + "–" + hi + " g). Training fasted or on very few carbs can bring low blood sugar; " +
+              "have a proper meal with a staple before training." }));
+      }
+    }
+    return Result(FUEL, "triggered", "", reminders, { leg_day: legs.length > 0 });
+  }
+
+  function clean(name) {
+    var s = (name || "").toLowerCase();
+    P.RED_MEAT_EXCLUDE.forEach(function (x) { s = replaceAll(s, x.toLowerCase(), ""); });
+    return s;
+  }
+  var RED_MEAT_MARK = /红肉\s*(\d+(?:\.\d+)?)\s*(?:g|克)/;
+  function red_meat_estimate(food, quantity, unit) {
+    var m = RED_MEAT_MARK.exec(food || "");
+    if (m) return ["标注", U.round(parseFloat(m[1]))];
+    var s = clean(food);
+    for (var i = 0; i < P.RED_MEAT_KEYWORDS.length; i++) {
+      var kw = P.RED_MEAT_KEYWORDS[i][0], grams = P.RED_MEAT_KEYWORDS[i][1];
+      if (s.indexOf(kw.toLowerCase()) >= 0) {
+        var mult = 1;
+        if (truthy(quantity) && truthy(unit) && ["g", "克", "gram", "grams", "ml"].indexOf(strip(unit).toLowerCase()) < 0) {
+          mult = Math.min(Math.max(U.round(quantity), 1), 3);
+        }
+        return [kw, grams * mult];
+      }
+    }
+    return null;
+  }
+  function basis(b) { return truthy(b) ? ["（" + b + "）", " (" + b + ")"] : ["", ""]; }
+  function intish(v) { return Number.isInteger(v) ? String(v) : String(v); }   // int(v) if v.is_integer() else v
+
+  function frequency_caps(ctx) {
+    var diet = ctx.diet;
+    var g_cap = diet ? diet.red_meat_g() : null, meal_cap = diet ? diet.red_meat_meals() : null;
+    var food_limits = diet ? diet.food_limits() : [];
+    if (!nn(g_cap) && !nn(meal_cap) && !food_limits.length) return Result(CAPS, "not_triggered", "没有设置红肉 / 食物次数的饮食约束");
+    if (has(ctx.errors, "food")) return Result(CAPS, "error", "读不到饮食记录：" + ctx.errors.food);
+    var window = days_back(ctx.day, 7), keys = new Set(window);
+    var food = (ctx.food || []).filter(function (f) { return keys.has(f.date); });
+    var journal_g = new Map();
+    window.forEach(function (d) { if (ctx.jhas(d, "red_meat_g")) journal_g.set(d, ctx.jget(d, "red_meat_g")); });
+    var logged_days = sortedUnique(food.map(function (f) { return f.date; }).concat(Array.from(journal_g.keys())));
+    if (!logged_days.length) {
+      var why = !nn(ctx.food) ? "没连 SparkyFitness" : "这 7 天没有饮食记录";
+      return Result(CAPS, "insufficient_data", why + "，日记里也没记红肉克数");
+    }
+    var per_day = {}, meals = new Set(), matched = [], times = {};
+    food_limits.forEach(function (f) { times[f.target] = []; });
+    window.forEach(function (d) {
+      var hits = [];
+      food.filter(function (x) { return x.date === d; }).forEach(function (f) {
+        var est = red_meat_estimate(or(g(f, "food"), ""), g(f, "quantity"), g(f, "unit"));
+        if (est !== null) {
+          hits.push({ food: g(f, "food"), meal_type: g(f, "meal_type"), keyword: est[0], grams_est: est[1] });
+          meals.add(JSON.stringify([d, or(g(f, "meal_type"), or(g(f, "time"), g(f, "food")))]));
+        }
+        var lim = diet ? diet.food_limit_hit(or(g(f, "food"), "")) : null;
+        if (lim !== null) times[lim.target].push({ date: d, food: g(f, "food") });
+      });
+      if (journal_g.has(d)) {
+        per_day[d] = { grams: journal_g.get(d), from: "日记 red_meat_g" };
+        if (journal_g.get(d) > 0 && !hits.length) meals.add(JSON.stringify([d, "journal"]));
+      } else if (hits.length) {
+        per_day[d] = { grams: sum(hits.map(function (h) { return h.grams_est; })), from: "饮食记录估算" };
+      }
+      hits.forEach(function (h) { matched.push(Object.assign({ date: d }, h)); });
+    });
+    var grams = sum(Object.keys(per_day).map(function (k) { return per_day[k].grams; }));
+    var coverage = "这 7 天有 " + logged_days.length + " 天有饮食记录" + (logged_days.length === 7 ? "" : "，没记的天不算，实际可能更多");
+    var coverage_en = "Days with a food log in these 7: " + logged_days.length + (logged_days.length === 7 ? "" :
+      "; days without a log are not counted, so the real amount may be higher");
+    var evidence = { window: [window[0], window[6]], red_meat_g: grams, per_day: per_day, matched_entries: matched,
+      food_times: times, red_meat_meals: meals.size, logged_days: logged_days, source: "diet_constraints",
+      constraints: diet.rows.map(function (r) { return r.kind + (truthy(r.target) ? ":" + r.target : ""); }) };
+    var reminders = [], alt = "接下来几天的蛋白质换成别的来源（禽肉、鱼、蛋、奶、豆制品）",
+      alt_en = "for the next few days get your protein elsewhere (poultry, fish, eggs, dairy, soy)", b;
+    if (nn(g_cap)) {
+      b = basis(g(diet._one("red_meat_g_per_week"), "basis"));
+      var cap = intish(g_cap);
+      if (grams > g_cap) {
+        reminders.push(Reminder(CAPS, "warning", "近 7 天红肉约 " + fmtG(grams) + "g，超过 " + cap + "g",
+          "你的饮食约束：红肉每周 ≤ " + cap + "g" + b[0] + "。" + alt + "。" + coverage + "。",
+          { subject: "red_meat_g", evidence: evidence,
+            title_en: "Red meat in the last 7 days: about " + fmtG(grams) + " g, over " + cap + " g",
+            message_en: "Your diet constraint: red meat ≤ " + cap + " g a week" + b[1] + ". For the next few days get " +
+              "your protein elsewhere (poultry, fish, eggs, dairy, soy). " + coverage_en + "." }));
+      } else if (grams >= g_cap * CP.WARN_FRACTION) {
+        reminders.push(Reminder(CAPS, "info", "近 7 天红肉约 " + fmtG(grams) + "g，快到 " + cap + "g 了",
+          "还剩约 " + fmtG(g_cap - grams) + "g；" + alt + "。" + coverage + "。",
+          { subject: "red_meat_g", evidence: evidence,
+            title_en: "Red meat in the last 7 days: about " + fmtG(grams) + " g, close to " + cap + " g",
+            message_en: "About " + fmtG(g_cap - grams) + " g left; " + alt_en + ". " + coverage_en + "." }));
+      }
+    }
+    food_limits.forEach(function (lim) {
+      var eaten = times[lim.target], mx = intish(lim.max);
+      b = basis(lim.basis);
+      if (eaten.length > lim.max) {
+        reminders.push(Reminder(CAPS, "warning", "近 7 天吃了 " + eaten.length + " 次" + lim.target + "，超过每周 " + mx + " 次",
+          "你的饮食约束：" + lim.target + "每周最多 " + mx + " 次" + b[0] + "。",
+          { subject: "food:" + lim.target, evidence: evidence,
+            title_en: lim.target + " " + eaten.length + " times in the last 7 days, over " + mx + " a week",
+            message_en: "Your diet constraint: " + lim.target + " at most " + mx + " times a week" + b[1] + "." }));
+      } else if (eaten.length && eaten.length === lim.max) {
+        var nxt = U.addDays(eaten[0].date, 7);
+        reminders.push(Reminder(CAPS, "info", "这周的" + lim.target + "已经吃够了",
+          "近 7 天吃了 " + eaten.length + " 次，每周最多 " + mx + " 次" + b[0] + "；下一次 " + nxt + " 以后。",
+          { subject: "food:" + lim.target, evidence: evidence, title_en: lim.target + ": this week's limit reached",
+            message_en: eaten.length + " times in the last 7 days, at most " + mx + " a week" + b[1] + "; next time " +
+              "after " + nxt + "." }));
+      }
+    });
+    if (nn(meal_cap) && meals.size > meal_cap) {
+      b = basis(g(diet._one("red_meat_meals_per_week"), "basis"));
+      var mc = intish(meal_cap);
+      reminders.push(Reminder(CAPS, "warning", "近 7 天吃了 " + meals.size + " 顿红肉，超过每周 " + mc + " 顿",
+        "你的饮食约束：红肉每周 ≤ " + mc + " 顿" + b[0] + "，培根、火腿等加工肉也算。" + coverage + "。",
+        { subject: "red_meat_meals", evidence: evidence,
+          title_en: "Red meat " + meals.size + " meals in the last 7 days, over " + mc + " a week",
+          message_en: "Your diet constraint: red meat ≤ " + mc + " meals a week" + b[1] + "; processed meat such " +
+            "as bacon and ham counts too. " + coverage_en + "." }));
+    }
+    var ft = {};
+    Object.keys(times).forEach(function (k) { ft[k] = times[k].length; });
+    var details = { red_meat_g: grams, food_times: ft, red_meat_meals: meals.size, logged_days: logged_days.length };
+    if (reminders.length) return Result(CAPS, "triggered", coverage, reminders, details);
+    return Result(CAPS, "not_triggered", "近 7 天红肉约 " + fmtG(grams) + "g、红肉 " + meals.size + " 顿，都没到你设的上限；" + coverage,
+      [], details);
+  }
+
+  // nutrition/extras.py
+  function known_sum(items, field) {
+    var vals = items.filter(function (i) { return nn(g(i, field)); }).map(function (i) { return i[field]; });
+    return vals.length ? U.round(sum(vals), 1) : null;
+  }
+  function day_totals(entries) {
+    var out = {}, known = { of: entries.length };
+    NG.OPTIONAL.forEach(function (f) {
+      out[f] = known_sum(entries, f);
+      known[f] = entries.filter(function (e) { return nn(g(e, f)); }).length;
+    });
+    out.known = known;
+    out.sugary_drinks = entries.filter(function (e) { return truthy(g(e, "sugary_drink")); }).length;
+    return out;
+  }
+
+  function sugar_caps(ctx) {
+    if (has(ctx.errors, "food")) return Result(SUGAR, "error", "读不到饮食记录：" + ctx.errors.food);
+    if (!nn(ctx.food)) return Result(SUGAR, "insufficient_data", "没连 SparkyFitness，没有饮食记录");
+    var window = days_back(ctx.day, 7), keys = new Set(window);
+    var today = ctx.food.filter(function (f) { return f.date === ctx.day; });
+    var drinks = ctx.food.filter(function (f) { return keys.has(f.date) && truthy(g(f, "sugary_drink")); });
+    var goal = or((ctx.goals || [null])[0], {});
+    var cap = or(g(goal, "added_sugar_max_g"), P.ADDED_SUGAR_CAP_G), warn = Math.max(P.ADDED_SUGAR_WARN_G, cap);
+    var t = day_totals(today), added = t.added_sugar_g, known = t.known;
+    var coverage = "今天 " + known.of + " 条记录里 " + known.added_sugar_g + " 条有添加糖的数，没数的不算";
+    var coverage_en = "Today's entries with an added sugar value: " + known.added_sugar_g + " of " + known.of + "; the others are not counted";
+    var cdef = has(goal, "added_sugar_cap_default") ? goal.added_sugar_cap_default : true;
+    var evidence = { date: ctx.day, added_sugar_g: added, cap_g: cap, cap_from_goal: !truthy(cdef), warn_g: warn, known: known,
+      entries: today.filter(function (f) { return truthy(g(f, "added_sugar_g")) || truthy(g(f, "sugar_g")); })
+        .map(function (f) { return { food: g(f, "food"), added_sugar_g: g(f, "added_sugar_g"), sugar_g: g(f, "sugar_g") }; }),
+      source: "WHO 2015 糖摄入指南（游离糖 < 10% 能量，最好 < 5%，约 25g）" };
+    var reminders = [];
+    if (nn(added) && added > cap) {
+      reminders.push(Reminder(SUGAR, added > warn ? "warning" : "info", "今天添加糖约 " + fmtG(added) + "g，超过 " + fmtG(cap) + "g",
+        "添加糖每天 ≤ " + fmtG(cap) + "g（WHO：最好 < 5% 能量，约 25g；> 50g 超过 10% 的上限）。" +
+        "甜饮料、甜点、酱料里的糖都算；接下来换无糖饮料和水果。" + coverage + "。",
+        { subject: "added_sugar", evidence: evidence,
+          title_en: "Added sugar today: about " + fmtG(added) + " g, over " + fmtG(cap) + " g",
+          message_en: "Added sugar ≤ " + fmtG(cap) + " g a day (WHO: ideally < 5% of energy, about 25 g; > 50 g " +
+            "is over the 10% limit). Sugar in sweet drinks, desserts and sauces all counts; " +
+            "switch to sugar-free drinks and fruit. " + coverage_en + "." }));
+    }
+    if (drinks.length > P.SUGARY_DRINKS_PER_WEEK) {
+      reminders.push(Reminder(SUGAR, "warning", "近 7 天喝了 " + drinks.length + " 次含糖饮料",
+        "超过每周 " + P.SUGARY_DRINKS_PER_WEEK + " 次。果糖饮料会升尿酸和甘油三酯；换成无糖版、气泡水或茶。",
+        { subject: "sugary_drinks", evidence: { window: [window[0], window[6]],
+            drinks: drinks.map(function (f) { return { date: f.date, food: g(f, "food") }; }), limit: P.SUGARY_DRINKS_PER_WEEK,
+            source: "Choi & Curhan 2008 BMJ（含糖软饮与痛风）；ACR 2020 痛风指南" },
+          title_en: "Sugary drinks " + drinks.length + " times in the last 7 days",
+          message_en: "More than " + P.SUGARY_DRINKS_PER_WEEK + " a week. Fructose drinks raise uric acid and " +
+            "triglycerides; switch to sugar-free versions, sparkling water or tea." }));
+    }
+    var details = { added_sugar_g: added, cap_g: cap, sugary_drinks_7d: drinks.length, known: known };
+    var note = "今天添加糖 " + (!nn(added) ? "未知" : fmtG(added) + "g") + "（上限 " + fmtG(cap) + "g），近 7 天含糖饮料 " + drinks.length + " 次";
+    if (reminders.length) return Result(SUGAR, "triggered", note, reminders, details);
+    if (!today.length && !drinks.length) return Result(SUGAR, "insufficient_data", "今天还没有饮食记录", [], details);
+    return Result(SUGAR, "not_triggered", note, [], details);
+  }
+
+  // ================================================================ rules/safety.py
+  var EXERCISES = "exercise_restrictions", READINESS = "readiness";
+  function meta_text(meta, key) {
+    var t = strip(or(g(meta || {}, key), ""));
+    return t && "。！？.!?".indexOf(t[t.length - 1]) < 0 ? t + "。" : t;
+  }
+  function rstrip(s) { return s.replace(/\s+$/, ""); }
+
+  function exercise_restrictions(ctx) {
+    var r = need(ctx, EXERCISES, ["plans", "presets", "exercises", "sessions"]);
+    if (r !== null) return r;
+    var reminders = [], plan = ctx.active_plan(), in_plan = new Map();
+    if (plan !== null) {
+      plan.assignments.forEach(function (a) {
+        var items = nn(g(a, "workout_preset_id")) ? ((ctx.preset(a.workout_preset_id) || {}).exercises || [])
+          : [{ exercise_id: a.exercise_id, name: g(a, "exercise_name") }];
+        items.forEach(function (x) {
+          if (!in_plan.has(String(x.exercise_id))) {
+            in_plan.set(String(x.exercise_id), { id: x.exercise_id, name: ctx.exercise_name(x.exercise_id, g(x, "name")),
+              template: g(a, "workout_preset_name") });
+          }
+        });
+      });
+    }
+    in_plan.forEach(function (info, ex_id) {
+      var st = ctx.status_of(info.id);
+      if (st[0] === "banned") {
+        var tpl = or(info.template, plan.name);
+        reminders.push(Reminder(EXERCISES, "alert", "训练计划里有禁用动作：" + info.name,
+          "「" + tpl + "」里有 " + info.name + "，它是永久不做的动作（4.3）。" + meta_text(st[1], "reason") +
+          "请在 SparkyFitness 里把它从模板删掉。" + meta_text(st[1], "cues"),
+          { subject: "plan:" + ex_id, sticky: true,
+            evidence: { exercise_id: info.id, exercise: info.name, template: info.template, status_basis: st[2],
+              source: "body-management.md 4.3" },
+            title_en: "Banned exercise in your training plan: " + info.name,
+            message_en: rstrip("“" + tpl + "” contains " + info.name + ", an exercise you never do (4.3). " +
+              meta_text(st[1], "reason") + "Remove it from the template in SparkyFitness. " + meta_text(st[1], "cues")) }));
+      }
+    });
+    var byRef = ctx.meta_by_ref(), caps = new Map();
+    Object.keys(P.CAUTION_MAX_WEIGHT_KG).forEach(function (ref) {
+      if (byRef.has(ref) && truthy(g(byRef.get(ref), "app_exercise_id"))) caps.set(String(byRef.get(ref).app_exercise_id), [ref, P.CAUTION_MAX_WEIGHT_KG[ref]]);
+    });
+    var banned_since = U.addDays(ctx.day, -(P.BANNED_LOG_LOOKBACK_DAYS - 1)), caution_since = U.addDays(ctx.day, -(P.CAUTION_LOG_LOOKBACK_DAYS - 1));
+    (ctx.sessions || []).forEach(function (s) {
+      var d = s.date.slice(0, 10);
+      if (d > ctx.day) return;
+      s.exercises.forEach(function (e) {
+        var st = ctx.status_of(e.exercise_id), name = ctx.exercise_name(e.exercise_id, g(e, "name"));
+        var sets = e.sets.map(function (x) { return { reps: g(x, "reps"), weight_kg: g(x, "weight_kg") }; });
+        if (st[0] === "banned" && d >= banned_since) {
+          reminders.push(Reminder(EXERCISES, "warning", d + " 做了禁用动作：" + name,
+            name + " 是永久不做的动作（4.3）。" + meta_text(st[1], "reason") + "下次换成：" + or(meta_text(st[1], "cues"), "计划里的替代动作。"),
+            { subject: "log:" + e.exercise_id + ":" + d, sticky: true,
+              evidence: { exercise_id: e.exercise_id, exercise: name, date: d, sets: sets, status_basis: st[2],
+                source: "body-management.md 4.3" },
+              title_en: "Banned exercise on " + d + ": " + name,
+              message_en: name + " is an exercise you never do (4.3). " + meta_text(st[1], "reason") + "Next time do instead: " +
+                or(meta_text(st[1], "cues"), "the alternative in your plan.") }));
+        }
+        if (caps.has(String(e.exercise_id)) && d >= caution_since) {
+          var cap = caps.get(String(e.exercise_id))[1];
+          var heavy = e.sets.length ? Math.max.apply(null, e.sets.map(function (x) { return or(g(x, "weight_kg"), 0); })) : 0;
+          if (heavy > cap) {
+            reminders.push(Reminder(EXERCISES, "warning", d + " " + name + " 用了 " + fmtG(heavy) + " kg，超过 " + fmtG(cap) + " kg",
+              "大重量绳索面拉在练上斜方，4.3 列为永久不做；计划是 " + fmtG(cap) + " kg 左右的轻重量（4.4）。" + meta_text(st[1], "cues"),
+              { subject: "weight:" + e.exercise_id + ":" + d, sticky: true,
+                evidence: { exercise_id: e.exercise_id, exercise: name, date: d, sets: sets, max_kg: cap,
+                  source: "body-management.md 4.3、4.4" },
+                title_en: d + " " + name + ": " + fmtG(heavy) + " kg, over " + fmtG(cap) + " kg",
+                message_en: rstrip("Heavy cable face pulls train the upper traps, and 4.3 lists them as never-do; the plan is " +
+                  "a light weight around " + fmtG(cap) + " kg (4.4). " + meta_text(st[1], "cues")) }));
+          }
+        }
+      });
+    });
+    var caution = [];
+    ctx.planned_exercises().forEach(function (p) {
+      var st = ctx.status_of(p.exercise_id);
+      if (st[0] === "caution" && !caution.some(function (c) { return String(c.exercise_id) === String(p.exercise_id); })) {
+        var desc = or(g(ctx.ex(p.exercise_id) || {}, "description"), "");
+        if (startsWith(desc, "【注意】")) desc = desc.slice("【注意】".length);
+        caution.push({ exercise_id: p.exercise_id, exercise: p.name, reason: meta_text(st[1], "reason") || null,
+          cues: meta_text(st[1], "cues") || desc.split("（迁移自")[0], status_basis: st[2] });
+      }
+    });
+    if (caution.length) {
+      reminders.push(Reminder(EXERCISES, "info", "今天计划里有 " + caution.length + " 个要小心的动作",
+        caution.map(function (c) { return "· " + c.exercise + "：" + c.cues + (c.reason ? "（" + c.reason + "）" : ""); }).join("\n"),
+        { subject: "", evidence: { exercises: caution, source: "body-management.md 4.3、exercise_meta" },
+          title_en: "Exercises to take care with in today's plan: " + caution.length,
+          message_en: caution.map(function (c) { return "· " + c.exercise + ": " + c.cues + (c.reason ? " (" + c.reason + ")" : ""); }).join("\n") }));
+    }
+    var details = { plan_exercises: in_plan.size, unmapped_meta: ctx.meta.filter(function (m) { return !truthy(g(m, "app_exercise_id")); }).length };
+    if (reminders.length) return Result(EXERCISES, "triggered", "", reminders, details);
+    var note = "计划和最近的训练记录里没有禁用动作，今天也没有要小心的动作";
+    if (details.unmapped_meta) note += "（" + details.unmapped_meta + " 个 exercise_meta 还没对上 SparkyFitness 的动作 ID，先跑 link-exercises）";
+    return Result(EXERCISES, "not_triggered", note, [], details);
+  }
+
+  function heavy_day(ctx) {
+    var out = [];
+    ctx.planned_for().forEach(function (item) {
+      if (item.kind === "preset") {
+        if (item.preset.exercises.some(function (x) { return g(ctx.ex(x.exercise_id) || {}, "modality") === "weight_reps"; })) out.push(item.preset.name);
+      } else {
+        var n = or(item.name, "").toLowerCase();
+        if (P.HEAVY_CARDIO_KEYWORDS.some(function (k) { return n.indexOf(k) >= 0; })) out.push(item.name);
+      }
+    });
+    return out;
+  }
+
+  function readiness(ctx) {
+    var row = has(ctx.scores, ctx.day) ? ctx.scores[ctx.day] : null;
+    if (row === null) return Result(READINESS, "insufficient_data", "daily_scores 里没有这天（先跑 compute-scores）");
+    var flags = or(g(row, "flags"), {}), reminders = [], rec = g(row, "recovery"), debt = g(row, "sleep_debt_min");
+    var evidence = { date: ctx.day, recovery: rec, sleep_score: g(row, "sleep_score"), sleep_debt_min: debt,
+      sleep_actual_min: g(row, "sleep_actual_min"), flags: flags, source: "系统设计第 7 节、body-management.md 4.3、6.2" };
+    var heavy = nn(ctx.plans) ? heavy_day(ctx) : [];
+    if (nn(rec) && rec < P.RECOVERY_RED) {
+      if (heavy.length) {
+        reminders.push(Reminder(READINESS, "warning", "恢复分 " + rec + "（红），今天降强度",
+          "今天计划「" + heavy.join("、") + "」。恢复红的日子：每个动作少做 1 组、每组多留 1–2 次余力，不冲重量；" +
+          "或者换成爬坡 / 肩部 routine。身体不舒服就休息。",
+          { subject: "red_heavy", evidence: Object.assign({}, evidence, { planned_heavy: heavy }),
+            title_en: "Recovery " + rec + " (red): lower the intensity today",
+            message_en: "Today's plan: “" + heavy.join(", ") + "”. On a red day do one set less per exercise, keep 1–2 more reps " +
+              "in reserve per set and don't push the weight; or switch to incline walking / the shoulder routine. " +
+              "If you feel unwell, rest." }));
+      } else {
+        reminders.push(Reminder(READINESS, "info", "恢复分 " + rec + "（红）", "今天计划里没有大重量训练；以散步、灵活度为主，早点睡。",
+          { subject: "red", evidence: evidence, title_en: "Recovery " + rec + " (red)",
+            message_en: "No heavy training in today's plan; keep to walking and mobility, and go to bed early." }));
+      }
+    }
+    if (has(flags, "illness_warning")) {
+      reminders.push(Reminder(READINESS, "warning", "可能在生病或过度疲劳",
+        flags.illness_warning + "。今天别做高强度，注意体温和症状；连续几天这样考虑看 GP。",
+        { subject: "illness", evidence: evidence, title_en: "Possibly getting sick or overreaching",
+          message_en: "Resting HR more than 5 above baseline and HRV below 85% of baseline. No high " +
+            "intensity today; watch your temperature and symptoms, and if it lasts several " +
+            "days, consider seeing a GP." }));
+    }
+    if (nn(debt) && debt >= P.SLEEP_DEBT_HIGH_MIN) {
+      var needm = or(g(row, "sleep_need_min"), "—");
+      reminders.push(Reminder(READINESS, debt >= 2 * P.SLEEP_DEBT_HIGH_MIN ? "warning" : "info", "睡眠债 " + fix(debt / 60, 1) + " 小时",
+        "最近 14 晚加权平均少睡 " + debt + " 分钟（睡眠需求 " + needm + " 分钟）。今晚提前上床；" +
+        "午睡最多 20 分钟、下午 3 点后不睡，12 点后不喝咖啡（6.2）。",
+        { subject: "sleep_debt", evidence: evidence, title_en: "Sleep debt " + fix(debt / 60, 1) + " h",
+          message_en: "Over the last 14 nights you slept " + debt + " min less than you need on a weighted average (sleep need " +
+            needm + " min). Go to bed earlier tonight; nap at most 20 min and not after 3 pm, " +
+            "and no coffee after 12 noon (6.2)." }));
+    }
+    if (reminders.length) return Result(READINESS, "triggered", "", reminders);
+    if (!nn(rec)) {
+      var whyText = Object.keys(flags).filter(function (k) { return ["no_sleep", "hrv_missing", "baseline_insufficient"].indexOf(k) >= 0; })
+        .map(function (k) { return k + "：" + flags[k]; }).join("；");
+      return Result(READINESS, "insufficient_data", "今天没有恢复分（" + (whyText || "见 flags") + "）；睡眠债 " +
+        (nn(debt) ? debt : "—") + " 分钟没到 " + P.SLEEP_DEBT_HIGH_MIN);
+    }
+    return Result(READINESS, "not_triggered", "恢复分 " + rec + "、睡眠债 " + ps(debt) + " 分钟，没到提醒线（红 < " + P.RECOVERY_RED +
+      "、睡眠债 ≥ " + P.SLEEP_DEBT_HIGH_MIN + "）" + (nn(ctx.plans) ? "" : "；没连 SparkyFitness，不知道今天的计划"));
+  }
+
+  // ================================================================ rules/sleep_goal.py
+  var SLEEP = "sleep_goal";
+  function caffeine_cutoff(t) { return Math.min(t - GP.CAFFEINE_BEFORE_MIN, GP.CAFFEINE_NOON_CUTOFF_MIN - 1440); }
+  function sleep_goal(ctx) {
+    var goal = ctx.sleep_goal;
+    if (goal === null) return Result(SLEEP, "insufficient_data", "还没设入睡时间目标");
+    if (goal.status !== "active") return Result(SLEEP, "not_triggered", "入睡目标已暂停");
+    var night = ctx.day, nights = ctx.sleep_nights, pace = goal.pace_min_per_step, plan = goal.plan_rows;
+    var t = CG.target_for(plan, nights, night, pace);
+    if (t === null) return Result(SLEEP, "not_triggered", "计划从 " + goal.start_date + " 那晚开始");
+    var F = CG.fmt, fin = CG.to_off(goal.target_bedtime), recent = CG.window(nights, night);
+    var last = recent.length ? recent[recent.length - 1] : null;
+    var wake = truthy(goal.target_wake) ? CG.to_off(goal.target_wake) : t + or(ctx.sleep_duration_min, GP.DEFAULT_DURATION_MIN);
+    var cut = caffeine_cutoff(t), woke = last ? last.wake_off - 1440 : null;
+    var lines = [F(t - GP.SCREEN_OFF_BEFORE_MIN) + " 起停屏、调暗灯光",
+      woke !== null && woke >= cut ? "今天别再喝咖啡" : "咖啡 " + F(cut) + " 前",
+      "晚饭、训练 " + F(t - GP.DINNER_BEFORE_MIN) + " 前结束", F(wake) + " 起床；" + GP.MORNING_LIGHT];
+    var lines_en = ["From " + F(t - GP.SCREEN_OFF_BEFORE_MIN) + ": screens off, lights dimmed",
+      woke !== null && woke >= cut ? "No more coffee today" : "Coffee before " + F(cut),
+      "Finish dinner and training by " + F(t - GP.DINNER_BEFORE_MIN), "Get up at " + F(wake) + "; " + GP.MORNING_LIGHT_EN];
+    var stage = CG.stage_for(plan, night);
+    var evidence = { night: night, tonight_target: F(t), plan_stage: F(stage.bed_off), final_target: goal.target_bedtime,
+      wake_target: F(wake), last_night: last ? { bedtime: last.bedtime, wake: last.wake } : null,
+      source: "body-management.md 6.1、6.2；goals/params.py" };
+    var reminders = [Reminder(SLEEP, "info", "今晚 " + F(t) + " 前睡", lines.join("\n"), { subject: "", evidence: evidence,
+      title_en: "Bed by " + F(t) + " tonight", message_en: lines_en.join("\n") })];
+    var streak = [];
+    for (var k = 1; k <= GP.DEVIATION_NIGHTS; k++) {
+      var d = U.addDays(night, -k), x = null;
+      for (var i = 0; i < recent.length; i++) if (recent[i].night === d) { x = recent[i]; break; }
+      var tt = CG.target_for(plan, nights, d, pace);
+      if (x === null || tt === null || x.bed_off <= tt + GP.DEVIATION_MIN) break;
+      streak.push(x.bed_off - tt);
+    }
+    if (streak.length >= GP.DEVIATION_NIGHTS) {
+      var late = U.round(sum(streak) / streak.length);
+      reminders.push(Reminder(SLEEP, "warning", "连续 " + streak.length + " 晚比目标晚",
+        "平均晚 " + late + " 分钟。\n今晚先守住 " + F(t) + "；按时起床、晒太阳。",
+        { subject: "deviation", evidence: Object.assign({}, evidence, { late_by_min: streak }),
+          title_en: "Later than your target " + streak.length + " nights in a row",
+          message_en: late + " min late on average.\nTonight, hold " + F(t) + "; get up on time and get some sunlight." }));
+    }
+    var a = CG.avg(recent, "bed_off");
+    if (a !== null && a <= fin + GP.ON_TARGET_TOL_MIN) {
+      reminders.push(Reminder(SLEEP, "info", "达成目标：7 晚平均 " + F(a), "目标 " + goal.target_bedtime + "，保持住起床时间和早上晒太阳。",
+        { subject: "final:" + goal.target_bedtime, evidence: evidence, sticky: true,
+          title_en: "Goal reached: 7-night average " + F(a),
+          message_en: "Goal " + goal.target_bedtime + "; keep your wake time and the morning sunlight." }));
+    } else if (a !== null && stage.bed_off !== fin && stage !== plan[0] && a <= stage.bed_off + GP.ON_TARGET_TOL_MIN) {
+      reminders.push(Reminder(SLEEP, "info", "到 " + F(stage.bed_off) + " 这一档了",
+        "7 晚平均 " + F(a) + "。按计划继续往前提，最终 " + goal.target_bedtime + "。",
+        { subject: "stage:" + F(stage.bed_off), evidence: evidence, sticky: true,
+          title_en: "Reached the " + F(stage.bed_off) + " step",
+          message_en: "7-night average " + F(a) + ". Keep moving earlier as planned; final goal " + goal.target_bedtime + "." }));
+    }
+    return Result(SLEEP, "triggered", "", reminders, { tonight_target: F(t), avg_bedtime_7d: F(a), nights_7d: recent.length });
+  }
+
+  // ================================================================ rules/hydration.py
+  var WATER = "water_halfway";
+  function hydration(ctx) {
+    if (!nn(ctx.water) || !nn(ctx.water_goal)) return Result(WATER, "insufficient_data", "喝水记录没开放或没有目标");
+    var now = ctx.now_local();
+    if (ctx.day !== now.date) return Result(WATER, "not_triggered", "只提醒当天");
+    if (now.hour < WP.REMIND_FROM_HOUR) return Result(WATER, "not_triggered", WP.REMIND_FROM_HOUR + ":00 之前不提醒");
+    var total = has(ctx.water, ctx.day) ? ctx.water[ctx.day] : 0, goal = ctx.water_goal;
+    var details = { total_ml: total, goal_ml: goal };
+    if (total >= goal * WP.REMIND_SHARE) return Result(WATER, "not_triggered", "已经喝到一半", [], details);
+    return Result(WATER, "triggered", "", [Reminder(WATER, "info", "下午了，水还没喝到一半",
+      "今天喝了 " + total + " ml，目标 " + goal + " ml。", { evidence: details, title_en: "Afternoon, and less than half your water",
+        message_en: "You have had " + total + " ml today; your goal is " + goal + " ml." })], details);
+  }
+
+  // ================================================================ rules/engine.py
+  var RULES = [[PROGRESSION, progression], [CALORIES, calorie_adjust], [FUEL, pre_workout_fuel], [CAPS, frequency_caps],
+    [SUGAR, sugar_caps], [EXERCISES, exercise_restrictions], [READINESS, readiness], [SLEEP, sleep_goal], [WATER, hydration]];
+  function evaluate_ctx(ctx) {
+    return RULES.map(function (r) {
+      try { return r[1](ctx); } catch (e) { return Result(r[0], "error", (e && e.name || "Error") + ": " + (e && e.message)); }
+    });
+  }
+  function reminder_rows(results) {
+    var out = new Map();
+    results.forEach(function (res) {
+      if (res.status === "error") return;
+      res.reminders.forEach(function (r) {
+        out.set(r.rule_key + "\u0000" + r.subject, { rule_key: r.rule_key, subject: r.subject, level: r.level, title: r.title,
+          message: r.message, title_en: r.title_en, message_en: r.message_en, evidence: jsonable(r.evidence), sticky: r.sticky });
+      });
+    });
+    return Array.from(out.values());
+  }
+  /** engine.evaluate_data: every rule on `data` (context.to_data / assemble). */
+  function evaluate(data) {
+    var ctx = new Ctx(data), results = evaluate_ctx(ctx);
+    return { date: ctx.day, rules_version: RULES_VERSION, rules: results.map(summary), reminders: reminder_rows(results) };
+  }
+
+  // ================================================================ goals/nutrition.py, nutrition/daily.py
+  function version_for(rows, day) {
+    for (var i = 0; i < rows.length; i++) if (rows[i].effective_from <= day) return rows[i];
+    return null;
+  }
+  function day_type(version, day) { return (version.training_weekdays || []).indexOf(isoweekday(day)) >= 0 ? "training" : "rest"; }
+  function goal_name(t, version_name, en) {
+    if (en) return NG.DAY_TYPE_EN[t] + (truthy(version_name) ? " (" + version_name + ")" : "");
+    return NG.DAY_TYPE_ZH[t] + (truthy(version_name) ? "（" + version_name + "）" : "");
+  }
+  /** goals/nutrition.goal_for: en = the name's language (undefined: OBS.lang). */
+  function goal_for(day, versions, sparky, en) {
+    if (en === undefined || en === null) en = OBS.lang === "en";
+    var version = version_for(versions, day);
+    var out = { date: day, source: null, version_id: null, effective_from: null, day_type: null, name: null };
+    NG.FIELDS.forEach(function (f) { out[f] = null; });
+    out.added_sugar_cap_default = false;
+    if (version !== null) {
+      var t = day_type(version, day), s = version[t] || {};
+      out.source = "body_engine"; out.version_id = version.id; out.effective_from = version.effective_from;
+      out.day_type = t; out.name = goal_name(t, g(version, "name"), en);
+      NG.FIELDS.forEach(function (f) { out[f] = g(s, f); });
+    } else if (nn(sparky)) {
+      out.source = "sparkyfitness"; out.name = g(sparky, "name");
+      ["calories", "protein_g", "carbs_g", "fat_g"].forEach(function (f) { out[f] = g(sparky, f); });
+    }
+    if (!nn(out.added_sugar_max_g)) { out.added_sugar_max_g = P.ADDED_SUGAR_CAP_G; out.added_sugar_cap_default = true; }
+    return out;
+  }
+  function adherence(day, goal) {
+    var out = { calories: null, protein: null };
+    if (!truthy(day.logged) || !truthy(goal)) return out;
+    if (truthy(g(goal, "calories"))) out.calories = Math.abs(day.calories - goal.calories) <= P.CALORIE_ADHERENCE_TOL * goal.calories;
+    if (truthy(g(goal, "protein_g"))) out.protein = day.protein_g >= P.PROTEIN_ADHERENCE_MIN * goal.protein_g;
+    return out;
+  }
+  function day_from_totals(day, totals, goal) {
+    var t = totals || {}, d = { date: day, logged: or(g(t, "entries"), 0) > 0 };
+    NG.TOTAL_KEYS.forEach(function (k) { d[k] = U.round(or(g(t, k), 0), 1); });
+    NG.UNKNOWN_ON_PHONE.forEach(function (k) { d[k] = null; });
+    var known = { of: or(g(t, "entries"), 0) };
+    NG.UNKNOWN_ON_PHONE.forEach(function (k) { known[k] = 0; });
+    d.known = known; d.sugary_drinks = 0;
+    if (truthy(goal)) { var gg = {}; NG.GOAL_KEYS.forEach(function (k) { gg[k] = g(goal, k); }); d.goal = gg; } else d.goal = null;
+    d.adherence = adherence(d, goal);
+    return d;
+  }
+
+  // ================================================================ rules/context.py: assemble (raw -> data)
+  function merge_weights(sparky, body_mass) {
+    var weights = new Map();
+    (sparky || []).forEach(function (r) {
+      if (nn(g(r, "weight_kg"))) weights.set(r.date, { date: r.date, weight_kg: r.weight_kg, source: "sparkyfitness" });
+    });
+    body_mass.forEach(function (r) {
+      if (!weights.has(r.date)) weights.set(r.date, { date: r.date, weight_kg: r.value, source: "body_engine" });
+    });
+    if (nn(sparky) || body_mass.length) {
+      return Array.from(weights.values()).sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    }
+    return null;
+  }
+  function assemble(raw) {
+    var day = raw.day, goals = null;
+    if (nn(raw.nutrition_versions)) {
+      var fb = raw.sparky_goals || {};
+      goals = [];
+      for (var k = 0; k < 7; k++) {
+        var d = U.addDays(day, k);
+        goals.push(goal_for(d, raw.nutrition_versions, has(fb, d) ? fb[d] : null, false));
+      }
+    }
+    var lo = U.addDays(day, -GP.HISTORY_DAYS), hi = U.addDays(day, 1);
+    var sessions = (raw.sleep_sessions || []).filter(function (s) { return lo <= s.wake_date && s.wake_date <= hi; });
+    var nights = CG.nights_from_sessions(sessions, raw.tz).filter(function (n) { return n.night < day; });
+    var out = {};
+    ["day", "tz", "now", "sessions", "exercises", "presets", "plans", "meta", "food", "sleep_goal", "diet", "water",
+      "water_goal", "errors", "missing"].forEach(function (key) { out[key] = has(raw, key) ? raw[key] : null; });
+    out.goals = goals;
+    out.weights = merge_weights(g(raw, "sparky_weights"), raw.body_mass || []);
+    out.scores = {};
+    (raw.scores || []).forEach(function (r) { var x = {}; SCORE_FIELDS.forEach(function (f) { x[f] = g(r, f); }); out.scores[r.date] = x; });
+    out.journal = (raw.journal || []).map(function (r) { return [r.date, r.key, r.value]; }).sort(U.cmp);
+    out.sleep_nights = nights;
+    out.sleep_duration_min = CG.duration_from(g(raw, "sleep_goal"), g(raw, "sleep_need"));
+    out.overrides = {};
+    (raw.overrides || []).forEach(function (r) { out.overrides[r.date] = { sessions: r.sessions || [] }; });
+    return out;
+  }
+
+  // ================================================================ entry points (stamped)
+  function stamp(x) { x.algo_version = RULES_VERSION; x.bundle_version = OBS.VERSION; return x; }
+  OBS.ALGO_VERSIONS.rules = RULES_VERSION;
+  /** Every rule on `data` (the Ctx as plain data): {date, rules_version, rules, reminders}. */
+  OBS.rulesEvaluate = function (data) { return stamp(evaluate(data)); };
+  /** The phone's entry point: raw sources (its own tables + GET /rules/inputs) -> the day's reminders. */
+  OBS.rulesLocal = function (raw) { return stamp(evaluate(assemble(raw))); };
+  /** The nutrition goal of each day of [from, to] (goals/nutrition.goal_for) in OBS.lang. */
+  OBS.nutritionGoals = function (versions, from, to, sparky) {
+    return U.dateRange(from, to).map(function (d) { return goal_for(d, versions || [], (sparky || {})[d] || null); });
+  };
+  /** nutrition/daily day rows from the log's day sums (ext_records nutrition_totals) and the goal versions. */
+  OBS.nutritionDays = function (totals, versions, from, to, sparky) {
+    return U.dateRange(from, to).map(function (d) {
+      return day_from_totals(d, (totals || {})[d] || null, goal_for(d, versions || [], (sparky || {})[d] || null));
+    });
+  };
+
+  return { RULES_VERSION: RULES_VERSION, params: { rules: P, goals: GP, water: WP, constraints: CP, nutrition: NG, context: CTX },
+    jsonable: jsonable, Ctx: Ctx, Diet: Diet, need: need, days_back: days_back, red_meat_estimate: red_meat_estimate,
+    day_totals: day_totals, known_sum: known_sum,
+    rules: { progression: progression, calorie_adjust: calorie_adjust, pre_workout_fuel: pre_workout_fuel,
+      frequency_caps: frequency_caps, sugar_caps: sugar_caps, exercise_restrictions: exercise_restrictions, readiness: readiness,
+      sleep_goal: sleep_goal, hydration: hydration },
+    evaluate_ctx: evaluate_ctx, reminder_rows: reminder_rows, evaluate: evaluate, assemble: assemble, merge_weights: merge_weights,
+    nutrition: { version_for: version_for, day_type: day_type, goal_for: goal_for, adherence: adherence, day_from_totals: day_from_totals },
+    isoWeek: isoWeek, pf: pf };
+})(OBS.util, OBS.coach.goals, OBS.coach);
+
+// ---- src/37_explain.js
+/* explain (2.0.0 package M6, docs/ios-native-2.0.md): the personal part of the explanation sheets on the phone. Port of the
+pure parts of body_engine
+- explain/personal.py: the calculators `hrv_compute`, `resting_hr_compute`, `sleep_hours_compute`, `sleep_score_compute`,
+  `sleep_debt_compute`, `sleep_consistency_compute`, `sleep_efficiency_compute`, `bedtime_items` (= assistant/status
+  calc_bedtime), `bedtime_compute`, `recovery_compute`, `strain_compute`, `vo2max_compute`, `weight_compute`,
+  `trend_compute`, `lab_compute`, the dispatch `metric_out` / `lab_out` and the sheet assembly `metric_view`, `lab_view`
+  (`_entry_view`, `_apply`, `_prompt`);
+- records/lab_history.py `history_of`, `trend`, `card` and records/store.py `compare_to_range` (lab arrows / status cards).
+Rules only, no AI: `ai_prompt` is a question the viewer hands to their own AI. The static texts (title, what it is, how to
+read it, tips) are the glossary's (explain/glossary*.py): the phone takes them from the server's cached sheet and passes
+them in as `entry`; this file builds everything personal around them. Texts follow OBS.lang ("zh" / "en") like the
+server's L(); `missing` stays Chinese as on the server. Thresholds: scores/params.py, web/views.py (recovery bands),
+records/lab_params.py, mirrored in `params` and compared by the golden test (test/explain.test.js against
+body_engine/tests/test_js_golden_explain.py).
+*/
+OBS.explain = (function (U, CO, TD) {
+  "use strict";
+  var EXPLAIN_VERSION = "explain-1";   // explain/personal.EXPLAIN_VERSION
+  var P = {
+    BASELINE_DAYS: 60, MIN_BASELINE_NIGHTS: 14, ILLNESS_RHR_DELTA: 5.0,   // scores/params.py (openbodyscore)
+    RECOVERY_PART: { hrv: ["HRV", "HRV"], rhr: ["静息心率", "Resting HR"], sleep_performance: ["睡眠表现", "Sleep performance"],
+      resp_rate: ["呼吸频率", "Respiratory rate"] },
+    SLEEP_PART: { duration: ["时长", "Duration"], stages: ["睡眠阶段", "Sleep stages"], consistency: ["规律性", "Consistency"],
+      interruptions: ["中途醒来", "Interruptions"] },
+    SLEEP_PART_TIP: {
+      duration: ["最拉分的是时长：先保证 7 小时，固定起床时间、入睡往前挪。",
+        "Duration pulls the score down most: secure 7 hours first; fix your wake time and move bedtime earlier."],
+      stages: ["最拉分的是睡眠阶段（深睡 / REM 少）：睡前别喝酒、别吃太撑，晚睡也会丢掉前半夜的深睡。",
+        "Sleep stages pull the score down most (little deep / REM sleep): no alcohol or heavy meals before bed; " +
+        "a late bedtime also loses the deep sleep of the first half of the night."],
+      consistency: ["最拉分的是规律性：入睡时间和前两周差太多，先固定起床时间。",
+        "Consistency pulls the score down most: your bedtime differs too much from the last two weeks; fix your wake time first."],
+      interruptions: ["最拉分的是中途醒来：睡前少喝水和酒，卧室凉一点、遮光。",
+        "Interruptions pull the score down most: less water and alcohol before bed, a cooler, darker bedroom."]
+    },
+    VO2_LEVEL_EN: { excellent: "Excellent", good: "Good", average: "Average", fair: "Fair", poor: "Poor" },
+    TONE: { good: "good", warn: "mid", bad: "bad", neutral: "plain", mid: "mid", plain: "plain" },
+    LAB_SOURCE: { lab: ["化验所", "Lab"], home_device: ["家用仪器", "Home device"] },
+    // explain/glossary_trends.TREND_METRICS: series key, status key, digits, unit (zh, en)
+    TREND: { resp_rate: ["resp_rate", null, 1, "次/分", "/min"], spo2: ["spo2", null, 1, "%", "%"],
+      wrist_temp: ["wrist_temp", null, 2, "°C", "°C"], illness: ["illness", "illness", 0, "", ""],
+      recovery_index: ["recovery_index", "recovery_index", 0, "%", "%"], sleep_need: ["sleep_need_hours", null, 1, "小时", "h"],
+      sleep_performance: ["sleep_performance", null, 0, "%", "%"], sleep_perf_whoop: ["sleep_perf_whoop", "sleep_perf_whoop", 0, "", ""],
+      restorative: ["restorative_hours", null, 1, "小时", "h"], awakenings: ["awakenings", null, 1, "次", "times"],
+      daylight: ["daylight", null, 0, "分钟", "min"], recovery_vs_strain: ["recovery", null, 0, "", ""],
+      training_load: ["tsb", null, 0, "", ""], acwr: ["acwr", null, 2, "", ""],
+      strain_combined: ["strain_combined", "strain_combined", 1, "", ""], aerobic_min: ["aerobic_min", null, 0, "分钟", "min"],
+      muscle_load: ["muscle_load", null, 0, "kg", "kg"], steps: ["steps", null, 0, "步", "steps"],
+      calories: ["total_kcal", null, 0, "kcal", "kcal"], hr_recovery: ["hr_recovery", "hr_recovery", 0, "bpm", "bpm"],
+      stress: ["stress", null, 1, "", ""], resilience: ["resilience", "resilience", 0, "", ""], body_age: ["body_age", null, 1, "岁", "yrs"],
+      behavior: [null, null, 0, "", ""], hrv_status: [null, "hrv_status", 0, "", ""], training_status: [null, "training_status", 0, "", ""],
+      body_battery: [null, "body_battery", 0, "", ""], recovery_time: [null, "recovery_time", 0, "小时", "h"],
+      chronotype: [null, "chronotype", 0, "", ""] },
+    // records/lab_params.py
+    LAB: { TREND_FLAT_FRACTION: 0.01, SPARK_POINTS: 12, HIGH_BAD_FRACTION: 0.20, SOURCE_LABEL: { lab: "化验", home_device: "家测" },
+      GOOD_DIRECTION: { uric_acid: "down", alt: "down", ast: "down", ggt: "down", triglycerides: "down", total_cholesterol: "down",
+        ldl: "down", non_hdl: "down", chol_hdl_ratio: "down", hdl: "up", glucose_fasting: "down", hba1c: "down",
+        insulin_fasting: "down", creatinine: "down", egfr: "up", crp: "down", vitamin_d: "up", body_weight: "down", bmi: "down",
+        blood_pressure_systolic: "down", blood_pressure_diastolic: "down" } }
+  };
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var SCORE_KEYS = ["sleep_hours", "sleep_score", "sleep_debt", "sleep_consistency", "recovery"];
+  var DAILY_METRIC = { hrv: "heart_rate_variability_sdnn", resting_hr: "resting_heart_rate" };
+
+  function nn(v) { return v !== null && v !== undefined; }
+  function g(o, k) { var v = o ? o[k] : undefined; return v === undefined ? null : v; }
+  function L(zh, en) { return OBS.lang === "en" ? en : zh; }
+  function Lp(pair) { return L(pair[0], pair[1]); }
+  function fix(x, n) { return U.round(x, n).toFixed(n); }
+  function signed(x, n) { var s = fix(x, n); return s[0] === "-" ? s : "+" + s; }
+  /** Python str() of a float (always with a decimal point). */
+  function pf(x) { return Number.isInteger(x) && Math.abs(x) < 1e16 ? x.toFixed(1) : String(x); }
+  var fmtG = CO.fmtG;
+
+  function md(d) { return L(d.slice(5, 7) + "-" + d.slice(8, 10), Number(d.slice(8, 10)) + " " + MON[Number(d.slice(5, 7)) - 1]); }
+  function avg7() { return L("7 天均", "7-day avg"); }
+  function avg7n() { return L("7 晚均", "7-night avg"); }
+  function hours() { return L("小时", "h"); }
+  /** personal._fmt: fixed digits, trailing zeros dropped. */
+  function fmt(v, nd) {
+    if (!nn(v)) return "—";
+    var s = fix(v, nd || 0);
+    return s.indexOf(".") >= 0 ? s.replace(/0+$/, "").replace(/\.$/, "") : s;
+  }
+  function mean(xs) { xs = xs.filter(nn); return xs.length ? U.fmean(xs) : null; }
+  function fact(label, value) { return { label: label, value: value }; }
+  function adv(text, tone) { return { text: text, tone: tone || "plain" }; }
+  function Out() { return { current: null, facts: [], advice: [], missing: null }; }
+  /** current: {value, unit, basis, tone}; `isFloat` = the value is a float in Python (the prompt prints it with str()). */
+  function current(value, unit, basis, tone, isFloat) {
+    var c = { value: value, unit: unit, basis: basis, tone: tone };
+    Object.defineProperty(c, "_float", { value: !!isFloat, enumerable: false });
+    return c;
+  }
+  function minKey(o) {   // Python min(d, key=d.get): the first smallest
+    var best = null;
+    Object.keys(o).forEach(function (k) { if (best === null || o[k] < o[best]) best = k; });
+    return best;
+  }
+
+  // ================================================================ calculators
+  function vs_baseline(by, day) {
+    var lo7 = U.addDays(day, -6), lob = U.addDays(day, -(6 + P.BASELINE_DAYS)), recent = [], base = [], past = [];
+    Object.keys(by).forEach(function (d) {
+      var v = by[d];
+      if (lo7 <= d && d <= day) recent.push(v);
+      if (lob <= d && d < lo7) base.push(v);
+      if (d <= day) past.push([d, v]);
+    });
+    past.sort(U.cmp);
+    var m = null, sd = null;
+    if (base.length >= P.MIN_BASELINE_NIGHTS) { m = U.fmean(base); sd = U.stdev(base); }
+    return [mean(recent), m, sd, past.length ? past[past.length - 1] : null];
+  }
+
+  function hrv_compute(vals, day) {
+    var o = Out(), b = vs_baseline(vals, day), cur = b[0], m = b[1], sd = b[2], last = b[3];
+    if (cur === null) {
+      o.missing = "近 7 天没有 HRV 数据";
+      o.advice.push(adv(L("睡觉时戴着手表，HRV 主要在睡眠中测。", "Wear the watch to bed: HRV is measured mainly during sleep.")));
+      return o;
+    }
+    o.facts.push(fact(avg7(), fmt(cur) + " ms"));
+    if (last) o.facts.push(fact(L("最近 " + md(last[0]), "Latest " + md(last[0])), fmt(last[1]) + " ms"));
+    if (m === null) {
+      o.current = current(U.round(cur), "ms", avg7(), "plain");
+      o.advice.push(adv(L("基线还不够（要 14 天以上的数据），先看趋势，过两周再和自己比。",
+        "Not enough data for a baseline yet (needs 14+ days): watch the trend for now and compare with yourself in two weeks.")));
+      return o;
+    }
+    o.facts.push(fact(L("你的基线", "Your baseline"), fmt(m) + " ± " + fmt(sd) + " ms"));
+    var z = (cur - m) / Math.max(sd, 1e-6), pct = (cur / m - 1) * 100, tone, text;
+    if (z >= 0.5) {
+      tone = "good"; text = L("比你的基线高 " + fix(pct, 0) + "%：恢复状态好，可以按计划上强度。",
+        fix(pct, 0) + "% above your baseline: you are recovering well and can train hard as planned.");
+    } else if (z > -0.5) {
+      tone = "plain"; text = L("在你的基线范围内：保持现在的作息和训练节奏。", "Within your baseline range: keep your current sleep and training rhythm.");
+    } else if (z > -1) {
+      tone = "mid"; text = L("比基线低 " + fix(-pct, 0) + "%：留意睡眠、饮酒和训练量，今天别冲极限。",
+        fix(-pct, 0) + "% below baseline: watch sleep, alcohol and training volume; don't push to your limit today.");
+    } else {
+      tone = "bad"; text = L("明显低于基线（低 " + fix(-pct, 0) + "%）：今天降强度或休息，早点睡、多喝水；静息心率也升高的话，可能要生病。",
+        "Clearly below baseline (" + fix(-pct, 0) + "% lower): train easier or rest today, sleep early and drink more water; " +
+        "if your resting HR is up too, you may be getting sick.");
+    }
+    o.current = current(U.round(cur), "ms", avg7(), tone);
+    o.advice.push(adv(text, tone));
+    return o;
+  }
+
+  function resting_hr_compute(vals, day) {
+    var o = Out(), b = vs_baseline(vals, day), cur = b[0], m = b[1], sd = b[2], last = b[3];
+    if (cur === null) { o.missing = "近 7 天没有静息心率数据"; return o; }
+    o.facts.push(fact(avg7(), fmt(cur) + " bpm"));
+    if (last) o.facts.push(fact(L("最近 " + md(last[0]), "Latest " + md(last[0])), fmt(last[1]) + " bpm"));
+    if (m === null) {
+      o.current = current(U.round(cur), "bpm", avg7(), "plain");
+      o.advice.push(adv(L("基线还不够（要 14 天以上的数据），先看趋势。", "Not enough data for a baseline yet (needs 14+ days): watch the trend for now.")));
+      return o;
+    }
+    o.facts.push(fact(L("你的基线", "Your baseline"), fmt(m) + " ± " + fmt(sd) + " bpm"));
+    var delta = cur - m, tone, text;
+    if (delta >= P.ILLNESS_RHR_DELTA) {
+      tone = "bad"; text = L("比基线高 " + fix(delta, 0) + " bpm：可能是疲劳、脱水、喝酒或生病早期，今天降强度、多喝水、早点睡。",
+        fix(delta, 0) + " bpm above baseline: possibly fatigue, dehydration, alcohol or early illness; " +
+        "train easier today, drink more water and sleep early.");
+    } else if (delta >= 2) {
+      tone = "mid"; text = L("比基线高 " + fix(delta, 0) + " bpm：留意睡眠和补水，训练量别再加。",
+        fix(delta, 0) + " bpm above baseline: watch sleep and hydration, and don't add training volume.");
+    } else if (delta > -2) {
+      tone = "plain"; text = L("和你的基线持平。", "In line with your baseline.");
+    } else {
+      tone = "good"; text = L("比基线低 " + fix(-delta, 0) + " bpm：心肺状态好。", fix(-delta, 0) + " bpm below baseline: your cardiovascular system is in good shape.");
+    }
+    o.current = current(U.round(cur), "bpm", avg7(), tone);
+    o.advice.push(adv(text, tone));
+    return o;
+  }
+
+  function lastWith(rows, k) { for (var i = rows.length - 1; i >= 0; i--) if (nn(rows[i][k])) return rows[i]; return null; }
+
+  function sleep_hours_compute(rows) {
+    var o = Out(), mins = rows.map(function (r) { return g(r, "sleep_actual_min"); }).filter(nn);
+    if (!mins.length) { o.missing = "近 7 晚没有睡眠数据"; return o; }
+    var h = U.fmean(mins) / 60, last = lastWith(rows, "sleep_actual_min"), nr = lastWith(rows, "sleep_need_min");
+    var need = nr ? nr.sleep_need_min : null, tone, text;
+    o.facts.push(fact(avg7n(), fmt(h, 1) + " " + hours()), fact(md(last.date), fmt(last.sleep_actual_min / 60, 1) + " " + hours()));
+    if (need) o.facts.push(fact(L("今晚需要", "Need tonight"), fmt(need / 60, 1) + " " + hours()));
+    if (h < 6) {
+      tone = "bad"; text = L("近 7 晚平均 " + fmt(h, 1) + " 小时，明显不够：先固定起床时间，入睡每周往前挪 15–30 分钟，直到 7 小时以上。",
+        fmt(h, 1) + " h on average over the last 7 nights, clearly not enough: fix your wake time first, " +
+        "then move bedtime 15–30 minutes earlier each week until you reach 7+ hours.");
+    } else if (h < 7) {
+      tone = "mid"; text = L("近 7 晚平均 " + fmt(h, 1) + " 小时，略少：每晚再多睡 " + fmt((7 - h) * 60) + " 分钟左右就到 7 小时。",
+        fmt(h, 1) + " h on average over the last 7 nights, a bit short: about " + fmt((7 - h) * 60) + " more " +
+        "minutes a night gets you to 7 hours.");
+    } else {
+      tone = "good"; text = L("近 7 晚平均 " + fmt(h, 1) + " 小时，够了，保持。", fmt(h, 1) + " h on average over the last 7 nights: enough, keep it up.");
+    }
+    o.current = current(U.round(h, 1), hours(), avg7n(), tone, true);
+    o.advice.push(adv(text, tone));
+    if (need && need / 60 - h >= 0.25) {
+      o.advice.push(adv(L("按你昨天的负荷和睡眠债，今晚最好睡 " + fmt(need / 60, 1) + " 小时。",
+        "Given yesterday's strain and your sleep debt, aim for " + fmt(need / 60, 1) + " h tonight."), "mid"));
+    }
+    return o;
+  }
+
+  function sleep_score_compute(all) {
+    var o = Out(), rows = all.filter(function (r) { return nn(g(r, "sleep_score")); });
+    if (!rows.length) { o.missing = "近 7 晚没有睡眠分"; return o; }
+    var last = rows[rows.length - 1], avg = U.fmean(rows.map(function (r) { return r.sleep_score; }));
+    var tone = last.sleep_score >= 80 ? "good" : last.sleep_score >= 60 ? "mid" : "bad";
+    o.current = current(last.sleep_score, "", md(last.date), tone);
+    o.facts.push(fact(avg7n(), fmt(avg)));
+    var sl = (g(last, "details") || {}).sleep || {}, parts = {};
+    Object.keys(sl).forEach(function (k) { if (k in P.SLEEP_PART && nn(sl[k])) parts[k] = sl[k]; });
+    Object.keys(parts).forEach(function (k) { o.facts.push(fact(Lp(P.SLEEP_PART[k]), fmt(parts[k]))); });
+    if (Object.keys(parts).length) {
+      var worst = minKey(parts);
+      if (parts[worst] < 80) o.advice.push(adv(Lp(P.SLEEP_PART_TIP[worst]), parts[worst] >= 50 ? "mid" : "bad"));
+    }
+    if (!o.advice.length) o.advice.push(adv(L("各项都不错，保持现在的作息。", "Every part looks good: keep your current schedule."), "good"));
+    return o;
+  }
+
+  function sleep_debt_compute(all) {
+    var o = Out(), rows = all.filter(function (r) { return nn(g(r, "sleep_debt_min")); });
+    if (!rows.length) { o.missing = "还没有睡眠债数据"; return o; }
+    var debt = rows[rows.length - 1].sleep_debt_min / 60, tone = debt <= 1 ? "good" : debt <= 2 ? "mid" : "bad";
+    o.current = current(U.round(debt, 1), hours(), md(rows[rows.length - 1].date), tone, true);
+    o.advice.push(adv({
+      good: L("睡眠债很少，保持。", "Very little sleep debt: keep it up."),
+      mid: L("欠了 " + fmt(debt, 1) + " 小时：接下来几晚每晚提前 30 分钟上床就能慢慢还上。",
+        fmt(debt, 1) + " h of sleep debt: going to bed 30 minutes earlier for the next few nights pays it back gradually."),
+      bad: L("欠了 " + fmt(debt, 1) + " 小时：这几天把训练强度降一点，优先睡觉，每晚提前 30–60 分钟上床。",
+        fmt(debt, 1) + " h of sleep debt: ease off training intensity for a few days, put sleep first and " +
+        "go to bed 30–60 minutes earlier each night.")
+    }[tone], tone));
+    return o;
+  }
+
+  function sleep_consistency_compute(rows) {
+    var o = Out(), cur = mean(rows.map(function (r) { return g((g(r, "details") || {}).sleep || {}, "consistency"); }));
+    if (cur === null) { o.missing = "近 7 晚没有规律性数据"; return o; }
+    var tone = cur >= 80 ? "good" : cur >= 60 ? "mid" : "bad";
+    o.current = current(U.round(cur), "", avg7n(), tone);
+    o.advice.push(adv({
+      good: L("作息很规律，保持。", "Very regular schedule: keep it up."),
+      mid: L("入睡时间有些摇摆：先把起床时间固定在同一个点（差不超过 30 分钟）。",
+        "Your bedtime wobbles a bit: first fix your wake time (within 30 minutes every day)."),
+      bad: L("作息很不规律：每天同一时间起床最重要，入睡时间会慢慢跟上。",
+        "Very irregular schedule: getting up at the same time every day matters most; bedtime will follow.")
+    }[tone], tone));
+    return o;
+  }
+
+  function sleep_efficiency_compute(rows) {
+    var o = Out(), effs = rows.filter(function (r) { return g(r, "in_bed") && g(r, "asleep_min"); })
+      .map(function (r) { return Math.min(100.0, 100 * r.asleep_min / r.in_bed); });
+    if (!effs.length) { o.missing = "近 7 晚没有睡眠记录"; return o; }
+    var cur = U.round(U.fmean(effs)), tone = cur >= 85 ? "good" : cur >= 75 ? "mid" : "bad";
+    o.current = current(U.round(cur), "%", avg7n(), tone);
+    o.advice.push(adv({
+      good: L("躺下基本就睡着，保持。", "You fall asleep soon after lying down: keep it up."),
+      mid: L("躺床上醒着的时间偏多：困了再上床，睡不着 20 分钟就起来做点安静的事。",
+        "Quite a lot of time awake in bed: go to bed when sleepy; if you can't sleep for 20 minutes, get up and do something quiet."),
+      bad: L("躺床上醒着的时间很多：别在床上刷手机，困了再上床；长期这样可以了解一下 CBT-I（失眠的认知行为治疗）。",
+        "A lot of time awake in bed: don't scroll in bed and go to bed only when sleepy; if this lasts, look into " +
+        "CBT-I (cognitive behavioural therapy for insomnia).")
+    }[tone], tone));
+    return o;
+  }
+
+  // assistant/status.py helpers of calc_bedtime
+  function clock(h) {
+    var m = ((U.round(h * 60) % 1440) + 1440) % 1440, hh = Math.floor(m / 60), mm = U.pad(m % 60, 2);
+    if (hh < 5) return "凌晨 " + hh + ":" + mm;
+    if (hh < 12) return "早上 " + hh + ":" + mm;
+    if (hh < 18) return "下午 " + hh + ":" + mm;
+    return hh + ":" + mm;
+  }
+  function trend3(cur, prev, eps) {
+    if (!nn(cur) || !nn(prev)) return null;
+    return Math.abs(cur - prev) < eps ? "flat" : (cur > prev ? "up" : "down");
+  }
+  function bedtime_items(mains, tz, today) {
+    if (!mains.length) return [];
+    var z = U.tzOf(tz), by = {};
+    mains.forEach(function (r) {
+      var p = U.local(U.toUs(r.start_at), z), h = p.hour + p.minute / 60;
+      by[r.wake_date] = h >= 18 ? h - 24 : h;
+    });
+    var vals = [];
+    for (var i = 0; i < 14; i++) { var d = U.addDays(today, -(13 - i)); vals.push(d in by ? by[d] : null); }
+    var cur = mean(vals.slice(7)), prev = mean(vals.slice(0, 7));
+    if (cur === null) return [];
+    var tone = cur <= 0.5 ? "good" : cur <= 2 ? "warn" : "bad";
+    return [[{ key: "bedtime", label: "入睡时间", value: clock(cur), unit: null, tone: tone, trend: trend3(cur, prev, 1 / 3),
+      good_direction: "down", group: "作息", spark: vals.map(function (v) { return nn(v) ? U.round(v, 2) : null; }),
+      note: "近 7 晚平均" }, 20]];
+  }
+  function bedtime_compute(items) {
+    var o = Out();
+    if (!items.length) { o.missing = "近 2 周没有睡眠记录"; return o; }
+    var item = items[0][0], tone = P.TONE[item.tone];
+    o.current = current(item.value, "", avg7n(), tone);
+    o.advice.push(adv({
+      good: L("入睡时间合适，保持。", "Good bedtime: keep it up."),
+      mid: L("平均 " + item.value + " 才睡：每周往前挪 15–30 分钟，目标 24 点前。",
+        "Asleep at " + item.value + " on average: move it 15–30 minutes earlier each week, aiming for before midnight."),
+      bad: L("平均 " + item.value + " 才睡，生物钟往后推了很多：先固定起床时间、起床就晒太阳，入睡每周只提前 15–30 分钟，别一次提前太多。",
+        "Asleep at " + item.value + " on average, your body clock has shifted a lot later: fix your wake time first and get " +
+        "sunlight right after waking; move bedtime only 15–30 minutes earlier per week, not too much at once.")
+    }[tone], tone));
+    return o;
+  }
+
+  var ZONE_TONE = { green: "good", yellow: "mid", red: "bad" };
+  function recovery_compute(rows, day) {
+    var o = Out(), today = null;
+    rows.forEach(function (r) { if (today === null && r.date === day) today = r; });
+    var rec = rows.map(function (r) { return g(r, "recovery"); }).filter(nn);
+    if (rec.length) o.facts.push(fact(avg7(), fmt(U.fmean(rec))));
+    if (!today || !nn(g(today, "recovery"))) {
+      o.missing = "这天还没有恢复分";
+      if (rec.length) {
+        var last = lastWith(rows, "recovery");
+        o.facts.push(fact(L("上次 " + md(last.date), "Last " + md(last.date)), String(last.recovery)));
+      }
+      return o;
+    }
+    var zone = TD.recovery_zone(today.recovery), tone = ZONE_TONE[zone];
+    o.current = current(today.recovery, "", md(day), tone);
+    o.advice.push(adv({
+      green: L("今天适合大重量或高强度，按计划练满。", "A good day for heavy weights or high intensity: do your full plan."),
+      yellow: L("按计划训练，控制强度（每组留 2 次余力），不冲新纪录。", "Train as planned but control intensity (2 reps in reserve per set); no PR attempts."),
+      red: L("今天以恢复为主：轻松有氧、拉伸或休息，早点睡、多喝水。", "Focus on recovery today: easy cardio, stretching or rest; sleep early and drink more water.")
+    }[zone], tone));
+    var z = ((g(today, "details") || {}).recovery || {}).z || {}, neg = {};
+    Object.keys(z).forEach(function (k) { if (k in P.RECOVERY_PART && nn(z[k]) && z[k] < -0.3) neg[k] = z[k]; });
+    if (Object.keys(neg).length) {
+      var worst = minKey(neg);
+      o.advice.push(adv(L("拉低最多的是" + P.RECOVERY_PART[worst][0] + "（比你的基线差）。",
+        P.RECOVERY_PART[worst][1] + " pulls it down most (worse than your baseline)."), "mid"));
+    }
+    Object.keys(z).forEach(function (k) {
+      if (k in P.RECOVERY_PART && nn(z[k])) {
+        o.facts.push(fact(L(P.RECOVERY_PART[k][0] + " 对比基线", P.RECOVERY_PART[k][1] + " vs baseline"),
+          z[k] >= 0.3 ? L("高", "Higher") : z[k] <= -0.3 ? L("低", "Lower") : L("持平", "Same")));
+      }
+    });
+    return o;
+  }
+
+  function strain_compute(score_rows, day) {
+    var o = Out(), rows = {};
+    score_rows.forEach(function (r) { rows[r.date] = r; });
+    var y = rows[U.addDays(day, -1)] || {};
+    var vals = Object.keys(rows).filter(function (d) { return d < day && nn(g(rows[d], "strain")); }).map(function (d) { return rows[d].strain; });
+    if (!nn(g(y, "strain")) && !vals.length) { o.missing = "近 7 天没有负荷数据"; return o; }
+    if (nn(g(y, "strain"))) {
+      var s = y.strain, tone = s < 10 ? "plain" : s < 14 ? "good" : s < 18 ? "mid" : "bad";
+      o.current = current(U.round(s, 1), "", L("前一天", "Previous day"), tone, true);
+    }
+    if (vals.length) o.facts.push(fact(avg7(), fmt(U.fmean(vals), 1)));
+    var rec = g(rows[day] || {}, "recovery"), zone = TD.recovery_zone(rec);
+    if (zone) {
+      o.facts.push(fact(L("今天恢复", "Recovery today"), String(rec)));
+      o.advice.push(adv({
+        green: L("今天恢复绿，可以安排高负荷（14–17）。", "Recovery is green today: you can plan high strain (14–17)."),
+        yellow: L("今天恢复黄，负荷控制在 10–14。", "Recovery is yellow today: keep strain at 10–14."),
+        red: L("今天恢复红，负荷控制在 10 以下，以轻松活动为主。", "Recovery is red today: keep strain under 10, mostly light activity.")
+      }[zone], ZONE_TONE[zone]));
+    }
+    if (nn(g(y, "tsb")) && y.tsb < -30) {
+      o.advice.push(adv(L("最近累积疲劳很高（TSB 很低），安排一两天低负荷日。", "Accumulated fatigue is very high (very low TSB): plan one or two low-strain days."), "bad"));
+    }
+    return o;
+  }
+
+  function vo2max_compute(v) {
+    var o = Out();
+    if (!nn(v.current)) {
+      o.missing = "近一年没有 VO₂max 读数";
+      o.advice.push(adv(L("户外步行、跑步或徒步时开体能训练记录，手表才会估算。",
+        "Start a workout on the watch for outdoor walks, runs or hikes, so it can estimate VO₂max.")));
+      return o;
+    }
+    var tone = { excellent: "good", good: "good", average: "plain", fair: "mid", poor: "bad" }[v.level] || "plain";
+    o.current = current(v.current, "mL/kg·min", L("近 90 天均", "90-day avg"), tone, true);
+    if (v.level_zh) {
+      var lvl = L(v.level_zh, P.VO2_LEVEL_EN[v.level] || v.level_zh);
+      o.facts.push(fact(L("同龄同性别", "Same age and sex"), nn(v.percentile)
+        ? L(lvl + " · 第 " + fix(v.percentile, 0) + " 百分位", lvl + " · " + fix(v.percentile, 0) + "th percentile") : lvl));
+    }
+    if (nn(v.norm_median)) o.facts.push(fact(L("同龄中位数", "Median for your age"), fmt(v.norm_median, 1)));
+    if (nn(v.trend_per_year)) o.facts.push(fact(L("每年变化", "Change per year"), signed(v.trend_per_year, 1)));
+    if (v.missing_reason) o.advice.push(adv(L("在「我 → 个人资料」里填性别和生日，才能和同龄人比。", "Add your sex and birthday under Me → Profile to compare with people your age.")));
+    if (v.level === "excellent" || v.level === "good") {
+      o.advice.push(adv(L("心肺能力不错：每周 2–3 次有氧保持住。", "Good cardiorespiratory fitness: keep it with 2–3 cardio sessions a week."), "good"));
+    } else {
+      o.advice.push(adv(L("提升空间大：每周 2–3 次 Zone 2 有氧（如爬坡快走）30–60 分钟，加 1 次间歇，几个月能看到上升。",
+        "Plenty of room to improve: 2–3 Zone 2 cardio sessions a week (e.g. incline walking) of 30–60 minutes, " +
+        "plus one interval session; you should see it rise within a few months."), "mid"));
+    }
+    if (nn(v.trend_per_year) && v.trend_per_year < -1) {
+      o.advice.push(adv(L("过去一年在下降，有氧训练要加回来。", "It has been falling over the past year: bring cardio back in."), "mid"));
+    }
+    return o;
+  }
+
+  function weight_compute(w, goal, day) {
+    var o = Out(), days = Object.keys(w);
+    if (!days.length) { o.missing = "近 3 周没有体重记录"; return o; }
+    var last_day = days.slice().sort()[days.length - 1], lo7 = U.addDays(day, -7), lo14 = U.addDays(day, -14);
+    var cur7 = mean(days.filter(function (d) { return d > lo7; }).map(function (d) { return w[d]; }));
+    var prev7 = mean(days.filter(function (d) { return lo14 < d && d <= lo7; }).map(function (d) { return w[d]; }));
+    o.current = current(U.round(w[last_day], 1), "kg", md(last_day), "plain", true);
+    if (cur7 !== null) o.facts.push(fact(avg7(), fmt(cur7, 1) + " kg"));
+    if (nn(goal)) o.facts.push(fact(L("目标", "Goal"), fmt(goal, 1) + " kg"));
+    if (cur7 === null || prev7 === null) {
+      o.advice.push(adv(L("每周至少称 3–4 次，才能算出周均变化。", "Weigh in at least 3–4 times a week so the weekly change can be computed.")));
+      return o;
+    }
+    var change = cur7 - prev7;
+    o.facts.push(fact(L("周均变化", "Weekly change"), signed(change, 1) + " kg"));
+    var losing = nn(goal) && w[last_day] > goal;
+    if (!losing) {
+      o.advice.push(adv(L("看周均变化，单日波动 1–2 kg 很正常。", "Watch the weekly change; day-to-day swings of 1–2 kg are normal.")));
+    } else if (change < -1.0) {
+      o.current.tone = "mid";
+      o.advice.push(adv(L("掉得偏快：适当加点碳水，避免疲劳、早醒和掉肌肉。", "Losing a bit fast: add some carbs to avoid fatigue, early waking and muscle loss."), "mid"));
+    } else if (change <= -0.3) {
+      o.current.tone = "good";
+      o.advice.push(adv(L("速度合适，保持现在的热量和训练。", "Good pace: keep your current calories and training."), "good"));
+    } else {
+      o.advice.push(adv(L("周均没怎么降：每天少 200–300 kcal，或每天多走 2000–3000 步。",
+        "The weekly average has barely dropped: eat 200–300 kcal less a day, or walk 2,000–3,000 more steps a day."), "mid"));
+    }
+    return o;
+  }
+
+  function status_text(key, st) {
+    if (key === "illness") return [st.label + " · " + st.score, { low: "good", watch: "mid", high: "bad" }[st.level]];
+    if (key === "body_battery") return [String(st.current), st.current >= 60 ? "good" : st.current >= 30 ? "mid" : "bad"];
+    if (key === "recovery_time") return [st.hours + " " + hours(), !st.hours ? "good" : st.hours <= 24 ? "plain" : "mid"];
+    if (key === "hr_recovery") return [fmt(st.bpm) + " bpm", { good: "good", fair: "plain", low: "bad" }[st.level]];
+    if (key === "strain_combined" || key === "sleep_perf_whoop") return [fmt(st.value, 1), "plain"];
+    var label = nn(g(st, "label")) ? st.label : "—";
+    var tone = { balanced: "good", productive: "good", exceptional: "good", strong: "good", good: "good", low: "mid", strained: "mid",
+      adequate: "mid", fair: "mid", poor: "bad", overreaching: "bad", limited: "bad", late: "bad" }[g(st, "status") || g(st, "level")] || "plain";
+    return [label, tone];
+  }
+  function trend_compute(key, d, day) {
+    var o = Out(), e = P.TREND[key], st = e[1] ? g(d.status, e[1]) : null, s = e[0] ? g(d.series, e[0]) : null;
+    var nd = e[2], unit = L(e[3], e[4]), strip = function (x) { return x.replace(/^\s+|\s+$/g, ""); };
+    if (st) {
+      var vt = status_text(key, st);
+      o.current = current(vt[0], "", md(day), vt[1]);
+    } else if (s && s.n) {
+      var last = null;
+      for (var i = s.values.length - 1; i >= 0; i--) if (nn(s.values[i])) { last = s.values[i]; break; }
+      o.current = current(nd ? U.round(last, nd) : U.round(last), unit, L("最近", "Latest"), "plain", !!nd);
+    }
+    if (s && s.n) {
+      o.facts.push(fact(L("30 天均", "30-day avg"), strip(fmt(s.mean, nd) + " " + unit)));
+      if (nn(g(s, "prev_mean"))) o.facts.push(fact(L("前 30 天", "Previous 30 days"), strip(fmt(s.prev_mean, nd) + " " + unit)));
+    }
+    if (o.current === null && !o.facts.length) o.missing = "还没有数据";
+    return o;
+  }
+
+  function lab_compute(rep, key, day) {
+    var o = Out();
+    if (!rep || !nn(rep.latest.value)) { o.missing = "还没有化验记录"; return o; }
+    var last = rep.latest, unit = last.unit || "", ab = g(rep, "above_upper_pct") || 0;
+    var tone = { normal: "good", high: ab > 20 ? "bad" : "mid", low: "mid" }[rep.status] || "plain";
+    o.current = current(last.value, unit, last.collected_on, tone, true);
+    var how = [Lp(P.LAB_SOURCE[g(last, "source")] || ["化验", "Lab test"]),
+      g(last, "fasting") === true ? L("空腹", "Fasting") : g(last, "fasting") === false ? L("饭后", "After a meal") : null];
+    o.facts.push(fact(L("来源", "Source"), how.filter(function (x) { return x; }).join(" · ")));
+    var lo = g(last, "ref_low"), hi = g(last, "ref_high");
+    if (nn(lo) || nn(hi)) {
+      var rng = nn(lo) && nn(hi) ? fmt(lo, 2) + "–" + fmt(hi, 2) : nn(hi) ? "≤ " + fmt(hi, 2) : "≥ " + fmt(lo, 2);
+      o.facts.push(fact(L("参考范围", "Reference range"), (rng + " " + unit).replace(/\s+$/, "")));
+    }
+    var hist = rep.history.filter(function (h) { return nn(h.value); });
+    if (hist.length >= 2) {
+      var prev = hist[hist.length - 2];
+      o.facts.push(fact(L("上次 " + prev.collected_on, "Previous " + prev.collected_on), (fmt(prev.value, 2) + " " + unit).replace(/\s+$/, "")));
+    }
+    if (rep.status === "high") {
+      var pct = g(rep, "above_upper_pct"), p = nn(pct) ? " " + fix(pct, 0) + "%" : "";
+      o.advice.push(adv(L("最近一次高于上限" + p + "：按下面的建议调整饮食和生活方式，按时复查。",
+        "The latest result is" + p + " above the upper limit: adjust diet and lifestyle as suggested below and get retested on time."), tone));
+    } else if (rep.status === "low") {
+      o.advice.push(adv(L("最近一次低于参考范围，复查时问医生。", "The latest result is below the reference range: ask your doctor at the follow-up."), "mid"));
+    } else {
+      o.advice.push(adv(L("在参考范围内，保持。", "Within the reference range: keep it up."), "good"));
+    }
+    if (g(last, "source") === "home_device") {
+      o.advice.push(adv(L("最近一次是家用仪器测的，误差比化验所大，看趋势时和同样条件（空腹 / 饭后）的家测比，下结论以化验所的结果为准。",
+        "The latest reading is from a home device, which is less accurate than a lab: for trends, compare " +
+        "with home readings taken under the same conditions (fasting / after a meal), and rely on lab results " +
+        "for conclusions."), "plain"));
+      if (key === "uric_acid" && g(last, "fasting") === false) {
+        o.advice.push(adv(L("这次是饭后测的，尿酸饭后会偏高一些，下次尽量早上空腹测，才好和以前比。",
+          "This reading was taken after a meal, when uric acid reads a little higher; next time test fasting " +
+          "in the morning so it compares with earlier readings."), "plain"));
+      }
+    }
+    var weeks = Math.floor(U.daysBetween(last.collected_on, day) / 7);
+    if (rep.status !== "normal" && weeks >= 12) {
+      o.advice.push(adv(L("已经 " + weeks + " 周没复查了，约 GP 复查。", "No retest for " + weeks + " weeks: book a follow-up with your GP."), "mid"));
+    }
+    return o;
+  }
+
+  // ================================================================ dispatch (metric_out, lab_out)
+  function metric_out(key, data, day) {
+    if (key in DAILY_METRIC) return (key === "hrv" ? hrv_compute : resting_hr_compute)(data.values || {}, day);
+    if (SCORE_KEYS.indexOf(key) >= 0) {
+      var rows = data.scores || [];
+      if (key === "recovery") return recovery_compute(rows, day);
+      return { sleep_hours: sleep_hours_compute, sleep_score: sleep_score_compute, sleep_debt: sleep_debt_compute,
+        sleep_consistency: sleep_consistency_compute }[key](rows);
+    }
+    if (key === "strain") return strain_compute(data.scores || [], day);
+    if (key === "sleep_efficiency") return sleep_efficiency_compute(data.nights || []);
+    if (key === "bedtime") return bedtime_compute(bedtime_items(data.mains || [], data.tz, day));
+    if (key === "vo2max") return vo2max_compute(data.vo2max);
+    if (key === "weight") return weight_compute(data.weights || {}, g(data, "goal"), day);
+    if (key in P.TREND) return trend_compute(key, data.series, day);
+    throw new Error("no explanation for " + key);
+  }
+  function lab_out(data, key, day) { return lab_compute(g(data, "report"), key, day); }
+
+  // ================================================================ the sheet (metric_view, lab_view)
+  function entry_view(kind, key, e) {
+    return { kind: kind, key: key, title: e.title, what: e.what,
+      read: (e.read || []).map(function (r) { return { range: r[0], label: r[1], tone: r[2] }; }),
+      recovery: e.recovery || null, tips: (e.tips || []).slice(), avoid: (e.avoid || []).slice(),
+      current: null, facts: [], advice: [], profile: [], exercises: null, missing: null, hidden: [], source: "rules" };
+  }
+  function apply(view, o) {
+    view.current = view.current || o.current;
+    view.facts = view.facts.concat(o.facts);
+    view.advice = view.advice.concat(o.advice);
+    view.missing = view.missing || (o.current === null ? o.missing : null);
+  }
+  function prompt(title, view, subject) {
+    var cur = view.current, bits = [];
+    if (cur) {
+      var v = cur._float ? pf(cur.value) : String(cur.value);
+      bits.push(cur.basis + " " + v + (cur.unit ? " " + cur.unit : ""));
+    }
+    view.facts.slice(0, 4).forEach(function (f) { bits.push(f.label + " " + f.value); });
+    if (OBS.lang === "en") {
+      return "Please explain " + (subject || "my \"" + title + "\"") + (bits.length ? " (" + bits.join("; ") + ")" : "") +
+        ": what does it mean, how am I doing right now, what exactly should I do next, and what should I avoid?";
+    }
+    return "帮我解读一下" + (subject || "我的「" + title + "」") + (bits.length ? "（" + bits.join("；") + "）" : "") +
+      "：这是什么意思、我现在的情况怎么样、接下来具体该怎么做、要避免什么？";
+  }
+  function metric_view(key, e, o) {
+    var view = entry_view("metric", key, e);
+    apply(view, o);
+    view.ai_prompt = prompt(e.title, view);
+    return view;
+  }
+  function lab_view(key, e, o, profile) {
+    var view = entry_view("lab", key, e);
+    apply(view, o);
+    if (nn(profile)) view.profile = profile;
+    view.ai_prompt = prompt(e.title, view);
+    return view;
+  }
+
+  // ================================================================ records/lab_history.py
+  var ROW_FIELDS = ["id", "collected_on", "value", "value_text", "unit", "ref_low", "ref_high", "flag", "source", "fasting", "lab", "note"];
+  function compare_to_range(r) {
+    var v = g(r, "value"), lo = g(r, "ref_low"), hi = g(r, "ref_high");
+    if (nn(v) && (nn(lo) || nn(hi))) {
+      if (nn(hi) && v > hi) return "high";
+      if (nn(lo) && v < lo) return "low";
+      return "normal";
+    }
+    return { H: "high", L: "low", abnormal: "abnormal", normal: "normal" }[g(r, "flag")] || "unknown";
+  }
+  function lab_trend(cur, prev) {
+    if (!nn(cur) || !nn(prev)) return null;
+    if (Math.abs(cur - prev) <= Math.abs(prev) * P.LAB.TREND_FLAT_FRACTION) return "flat";
+    return cur > prev ? "up" : "down";
+  }
+  function delta(cur, prev) {
+    if (prev === null || !nn(cur.value) || !nn(prev.value)) return { delta: null, pct: null };
+    var d = cur.value - prev.value;
+    return { delta: U.round(d, 4), pct: prev.value ? U.round(d / prev.value * 100, 1) : null };
+  }
+  function history_of(key, rows) {
+    var out = [], prev = null;
+    rows.forEach(function (r) {
+      var item = {};
+      ROW_FIELDS.forEach(function (k) { item[k] = g(r, k); });
+      item.status = compare_to_range(r);
+      var dl = delta(r, prev);
+      item.delta = dl.delta; item.pct = dl.pct;
+      if (nn(r.value)) prev = r;
+      out.push(item);
+    });
+    var last = rows[rows.length - 1], ref = last;
+    for (var i = rows.length - 1; i >= 0; i--) if (nn(g(rows[i], "ref_low")) || nn(g(rows[i], "ref_high"))) { ref = rows[i]; break; }
+    var unit = null;
+    for (var j = rows.length - 1; j >= 0; j--) if (rows[j].unit) { unit = rows[j].unit; break; }
+    return { test_key: key, test_name: last.test_name, category: g(last, "category"), unit: unit, ref_low: g(ref, "ref_low"),
+      ref_high: g(ref, "ref_high"), good_direction: P.LAB.GOOD_DIRECTION[key] || null, rows: out };
+  }
+  function card(h) {
+    var nums = h.rows.filter(function (r) { return nn(r.value); });
+    if (!nums.length) return null;
+    var last = nums[nums.length - 1], status = compare_to_range(last);
+    var word = { high: "偏高", low: "偏低", normal: "正常" }[status] || "";
+    var over = status === "high" && last.ref_high ? (last.value - last.ref_high) / last.ref_high : 0;
+    var tone = { normal: "good", high: over > P.LAB.HIGH_BAD_FRACTION ? "bad" : "warn", low: "warn" }[status] || "neutral";
+    var limit = nn(last.ref_high) ? " · 上限 " + fmtG(last.ref_high) : "";
+    return { value: (word + " " + fmtG(last.value)).replace(/^\s+|\s+$/g, ""), unit: last.unit, tone: tone,
+      trend: nums.length >= 2 ? lab_trend(last.value, nums[nums.length - 2].value) : null, good_direction: h.good_direction,
+      spark: nums.length >= 2 ? nums.slice(-P.LAB.SPARK_POINTS).map(function (r) { return r.value; }) : null,
+      note: last.collected_on.slice(5, 7) + "-" + last.collected_on.slice(8, 10) + " · " +
+        (P.LAB.SOURCE_LABEL[last.source] || last.source) + limit,
+      lab_key: h.test_key, lab_date: last.collected_on, lab_source: last.source };
+  }
+
+  // ================================================================ entry points (stamped)
+  function stamp(x) { x.algo_version = EXPLAIN_VERSION; x.bundle_version = OBS.VERSION; return x; }
+  OBS.ALGO_VERSIONS.explain = EXPLAIN_VERSION;
+  /** One metric's sheet: `entry` = its static texts (glossary, the server's cached sheet), `data` = metric_data's JSON. */
+  OBS.explainMetric = function (key, entry, data, day) { return stamp(metric_view(key, entry, metric_out(key, data, day))); };
+  /** One lab test's sheet (profile card lines are the server's: memory). */
+  OBS.explainLab = function (key, entry, data, day, profile) { return stamp(lab_view(key, entry, lab_out(data, key, day), profile)); };
+  /** A lab test's history and status card from its raw readings (lab_results rows, old -> new). */
+  OBS.labHistory = function (key, rows) { var h = history_of(key, rows); return { history: h, card: card(h) }; };
+
+  return { EXPLAIN_VERSION: EXPLAIN_VERSION, params: P, fmt: fmt, md: md, metric_out: metric_out, lab_out: lab_out,
+    metric_view: metric_view, lab_view: lab_view, prompt: prompt, bedtime_items: bedtime_items,
+    calc: { hrv: hrv_compute, resting_hr: resting_hr_compute, sleep_hours: sleep_hours_compute, sleep_score: sleep_score_compute,
+      sleep_debt: sleep_debt_compute, sleep_consistency: sleep_consistency_compute, sleep_efficiency: sleep_efficiency_compute,
+      bedtime: bedtime_compute, recovery: recovery_compute, strain: strain_compute, vo2max: vo2max_compute, weight: weight_compute,
+      trend: trend_compute, lab: lab_compute },
+    lab: { compare_to_range: compare_to_range, trend: lab_trend, history_of: history_of, card: card } };
+})(OBS.util, OBS.coach, OBS.coach.today);
+
 root.OpenBodyScore = OBS;
 })(typeof globalThis !== "undefined" ? globalThis : this);

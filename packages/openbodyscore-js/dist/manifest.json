@@ -2,8 +2,8 @@
   "name": "openbodyscore-js",
   "version": "0.2.0",
   "file": "openbodyscore.js",
-  "sha256": "ad879feb15612931f1a1780b78a42729af7f1bb15e179d63d9d2d421422a06f8",
-  "size": 384632,
+  "sha256": "a83aa4ca1645f175e82ac09e0cd7b546061718d9a5723091ec92c9cbc1f1085e",
+  "size": 504806,
   "algo_versions": {
     "scores": "v1.2-2026-10-27",
     "healthspan": "hs-v1.2-2026-10-23",
@@ -15,7 +15,9 @@
     "stress_cards": "stress-cards-1+v1.0-2026-10-17",
     "series": "series-1",
     "coach": "coach-1+hs-v1.2-2026-10-23",
-    "reports": "reports-1"
+    "reports": "reports-1",
+    "rules": "v1.4-2026-10-22",
+    "explain": "explain-1"
   },
   "global": "OpenBodyScore",
   "signature": "I1srETL0DfFXCF2A5GmbH2/jNXD5Fq59kKwmVmSQn73bFsFl0OX7tGZSv31RxH9iJ+fs4fevVIwOQcuEWc3gAA==",

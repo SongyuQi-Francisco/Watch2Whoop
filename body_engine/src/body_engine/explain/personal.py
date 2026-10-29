@@ -11,6 +11,7 @@ Matching on the owner's own notes and profile card (Chinese data) is unchanged.
 import re
 import statistics
 from datetime import date, timedelta
+from zoneinfo import ZoneInfo
 
 import psycopg
 
@@ -24,7 +25,11 @@ from ..scores import params as SP, store as scores_store
 from ..web import views
 from . import glossary as G
 
-METRIC_SCOPE = {"recovery": "scores", "sleep_score": "scores", "sleep_hours": "scores", "sleep_debt": "scores",
+# 2.0.0 M6 (docs/ios-native-2.0.md): the personal part runs on the phone too (packages/openbodyscore-js src/37_explain.js,
+# OBS.ALGO_VERSIONS.explain). Bump with any change of a text, threshold or rule below, together with the JS and goldens.
+EXPLAIN_VERSION = "explain-1"
+
+METRIC_SCOPE = {"recovery":"scores", "sleep_score": "scores", "sleep_hours": "scores", "sleep_debt": "scores",
                 "sleep_consistency": "sleep", "strain": "scores", "hrv": "metrics", "resting_hr": "metrics",
                 "vo2max": "metrics", "sleep_efficiency": "sleep", "bedtime": "sleep", "weight": "weight"}
 TONE = {"good": "good", "warn": "mid", "bad": "bad", "neutral": "plain", "mid": "mid", "plain": "plain"}
@@ -115,9 +120,17 @@ def _vs_baseline(by_date: dict[date, float], day: date) -> tuple:
     return _mean(recent), m, sd, (past[-1] if past else None)
 
 
+def _baseline_window(day: date) -> date:
+    return day - timedelta(days=6 + SP.BASELINE_DAYS)
+
+
 def calc_hrv(conn, owner: int, day: date) -> Out:
+    return hrv_compute(_daily_values(conn, owner, "heart_rate_variability_sdnn", _baseline_window(day), day), day)
+
+
+def hrv_compute(vals: dict[date, float], day: date) -> Out:
+    """Pure (2.0.0 M6): vals = the day values of heart_rate_variability_sdnn over [day − 66, day]."""
     o = Out()
-    vals = _daily_values(conn, owner, "heart_rate_variability_sdnn", day - timedelta(days=6 + SP.BASELINE_DAYS), day)
     cur, m, sd, last = _vs_baseline(vals, day)
     if cur is None:
         o.missing = "近 7 天没有 HRV 数据"
@@ -152,8 +165,12 @@ def calc_hrv(conn, owner: int, day: date) -> Out:
 
 
 def calc_resting_hr(conn, owner: int, day: date) -> Out:
+    return resting_hr_compute(_daily_values(conn, owner, "resting_heart_rate", _baseline_window(day), day), day)
+
+
+def resting_hr_compute(vals: dict[date, float], day: date) -> Out:
+    """Pure: vals = the day values of resting_heart_rate over [day − 66, day]."""
     o = Out()
-    vals = _daily_values(conn, owner, "resting_heart_rate", day - timedelta(days=6 + SP.BASELINE_DAYS), day)
     cur, m, sd, last = _vs_baseline(vals, day)
     if cur is None:
         o.missing = "近 7 天没有静息心率数据"
@@ -189,9 +206,13 @@ def _score_rows(conn, owner: int, day: date, days: int = 7) -> list[dict]:
 
 
 def calc_sleep_hours(conn, owner: int, day: date) -> Out:
+    return sleep_hours_compute(_score_rows(conn, owner, day))
+
+
+def sleep_hours_compute(rows: list[dict]) -> Out:
+    """Pure: rows = daily_scores of the 7 days up to the day (scores.store.scores with details), by date."""
     o = Out()
-    rows = _score_rows(conn, owner, day)
-    mins = [r["sleep_actual_min"] for r in rows if r["sleep_actual_min"] is not None]
+    mins =[r["sleep_actual_min"] for r in rows if r["sleep_actual_min"] is not None]
     if not mins:
         o.missing = "近 7 晚没有睡眠数据"
         return o
@@ -222,8 +243,12 @@ def calc_sleep_hours(conn, owner: int, day: date) -> Out:
 
 
 def calc_sleep_score(conn, owner: int, day: date) -> Out:
+    return sleep_score_compute(_score_rows(conn, owner, day))
+
+
+def sleep_score_compute(rows: list[dict]) -> Out:
     o = Out()
-    rows = [r for r in _score_rows(conn, owner, day) if r["sleep_score"] is not None]
+    rows = [r for r in rows if r["sleep_score"] is not None]
     if not rows:
         o.missing = "近 7 晚没有睡眠分"
         return o
@@ -245,8 +270,12 @@ def calc_sleep_score(conn, owner: int, day: date) -> Out:
 
 
 def calc_sleep_debt(conn, owner: int, day: date) -> Out:
+    return sleep_debt_compute(_score_rows(conn, owner, day))
+
+
+def sleep_debt_compute(rows: list[dict]) -> Out:
     o = Out()
-    rows = [r for r in _score_rows(conn, owner, day) if r["sleep_debt_min"] is not None]
+    rows = [r for r in rows if r["sleep_debt_min"] is not None]
     if not rows:
         o.missing = "还没有睡眠债数据"
         return o
@@ -265,8 +294,12 @@ def calc_sleep_debt(conn, owner: int, day: date) -> Out:
 
 
 def calc_sleep_consistency(conn, owner: int, day: date) -> Out:
+    return sleep_consistency_compute(_score_rows(conn, owner, day))
+
+
+def sleep_consistency_compute(rows: list[dict]) -> Out:
     o = Out()
-    vals = [((r.get("details") or {}).get("sleep") or {}).get("consistency") for r in _score_rows(conn, owner, day)]
+    vals = [((r.get("details") or {}).get("sleep") or {}).get("consistency") for r in rows]
     cur = _mean(vals)
     if cur is None:
         o.missing = "近 7 晚没有规律性数据"
@@ -284,11 +317,16 @@ def calc_sleep_consistency(conn, owner: int, day: date) -> Out:
 
 
 def calc_sleep_efficiency(conn, owner: int, day: date) -> Out:
-    o = Out()
     rows = conn.execute(
         """SELECT DISTINCT ON (wake_date) wake_date, asleep_min, extract(epoch FROM end_at - start_at) / 60 AS in_bed
            FROM sleep_sessions WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
            ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner, day - timedelta(days=6), day)).fetchall()
+    return sleep_efficiency_compute(rows)
+
+
+def sleep_efficiency_compute(rows: list[dict]) -> Out:
+    """Pure: rows = the main night of each wake date of the 7 days ({asleep_min, in_bed}: minutes from start to end)."""
+    o = Out()
     effs = [min(100.0, 100 * r["asleep_min"] / float(r["in_bed"])) for r in rows if r["in_bed"] and r["asleep_min"]]
     if not effs:
         o.missing = "近 7 晚没有睡眠记录"
@@ -308,8 +346,34 @@ def calc_sleep_efficiency(conn, owner: int, day: date) -> Out:
 
 
 def calc_bedtime(conn, owner: int, day: date) -> Out:
+    return bedtime_compute(status_mod.calc_bedtime(conn, owner, day))
+
+
+def bedtime_items(mains: list[dict], tz: ZoneInfo, today: date) -> list[tuple[dict, int]]:
+    """Pure twin of assistant/status.calc_bedtime (its query's rows `mains`: the main night of each wake date of the 14
+    days, {wake_date, start_at}); the phone builds the status item with it."""
+    if not mains:
+        return []
+
+    def rel(ts):   # hours relative to the midnight of the night of falling asleep: after 18:00 counts as negative
+        t = ts.astimezone(tz)
+        h = t.hour + t.minute / 60
+        return h - 24 if h >= 18 else h
+    by_day = {r["wake_date"]: rel(r["start_at"]) for r in mains}
+    days = [today - timedelta(days=13 - i) for i in range(14)]
+    vals = [by_day.get(d) for d in days]
+    cur, prev = status_mod._mean(vals[7:]), status_mod._mean(vals[:7])
+    if cur is None:
+        return []
+    tone = "good" if cur <= 0.5 else "warn" if cur <= 2 else "bad"
+    return [({"key": "bedtime", "label": "入睡时间", "value": status_mod._clock(cur), "unit": None, "tone": tone,
+              "trend": status_mod._trend(cur, prev, 1 / 3), "good_direction": "down", "group": "作息",
+              "spark": [status_mod._r(v, 2) for v in vals], "note": "近 7 晚平均"}, 20)]
+
+
+def bedtime_compute(items: list[tuple[dict, int]]) -> Out:
+    """Pure: items = the bedtime status item (assistant/status.calc_bedtime / bedtime_items)."""
     o = Out()
-    items = status_mod.calc_bedtime(conn, owner, day)
     if not items:
         o.missing = "近 2 周没有睡眠记录"
         return o
@@ -328,9 +392,12 @@ def calc_bedtime(conn, owner: int, day: date) -> Out:
 
 
 def calc_recovery(conn, owner: int, day: date) -> Out:
+    return recovery_compute(_score_rows(conn, owner, day), day)
+
+
+def recovery_compute(rows: list[dict], day: date) -> Out:
     o = Out()
-    rows = _score_rows(conn, owner, day)
-    today = next((r for r in rows if r["date"] == day), None)
+    today =next((r for r in rows if r["date"] == day), None)
     rec = [r["recovery"] for r in rows if r["recovery"] is not None]
     if rec:
         o.facts.append(_fact(_avg7(), _fmt(statistics.fmean(rec))))
@@ -364,8 +431,13 @@ def calc_recovery(conn, owner: int, day: date) -> Out:
 
 
 def calc_strain(conn, owner: int, day: date) -> Out:
+    return strain_compute(_score_rows(conn, owner, day, days=8), day)
+
+
+def strain_compute(score_rows: list[dict], day: date) -> Out:
+    """Pure: score_rows = daily_scores of the 8 days up to the day."""
     o = Out()
-    rows = {r["date"]: r for r in _score_rows(conn, owner, day, days=8)}
+    rows = {r["date"]: r for r in score_rows}
     y = rows.get(day - timedelta(days=1)) or {}
     vals = [r["strain"] for d, r in rows.items() if d < day and r["strain"] is not None]
     if y.get("strain") is None and not vals:
@@ -394,8 +466,12 @@ def calc_strain(conn, owner: int, day: date) -> Out:
 
 
 def calc_vo2max(conn, owner: int, day: date) -> Out:
+    return vo2max_compute(fitness.vo2max(conn, owner, day))
+
+
+def vo2max_compute(v: dict) -> Out:
+    """Pure: v = insights/fitness.vo2max's answer for the day (GET /vo2max, OBS.vo2max on the phone)."""
     o = Out()
-    v = fitness.vo2max(conn, owner, day)
     if v["current"] is None:
         o.missing = "近一年没有 VO₂max 读数"
         o.advice.append(_adv(L("户外步行、跑步或徒步时开体能训练记录，手表才会估算。",
@@ -434,12 +510,17 @@ def _goal_weight(conn, owner: int) -> float | None:
 
 
 def calc_weight(conn, owner: int, day: date) -> Out:
-    o = Out()
     start = day - timedelta(days=20)
     try:
         w = views.weights(conn, owner, start, day)
     except Exception:  # noqa: BLE001  SparkyFitness unreachable / not linked: fall back to the watch's body mass
         w = {r["date"]: r["value"] for r in queries.daily_metrics(conn, owner, start, day, ["body_mass"])}
+    return weight_compute(w, _goal_weight(conn, owner), day)
+
+
+def weight_compute(w: dict[date, float], goal: float | None, day: date) -> Out:
+    """Pure: w = the weights of [day − 20, day] by date (web/views.weights), goal = the goal weight (status card)."""
+    o = Out()
     if not w:
         o.missing = "近 3 周没有体重记录"
         return o
@@ -449,7 +530,6 @@ def calc_weight(conn, owner: int, day: date) -> Out:
     o.current = {"value": round(w[last_day], 1), "unit": "kg", "basis": _md(last_day), "tone": "plain"}
     if cur7 is not None:
         o.facts.append(_fact(_avg7(), f"{_fmt(cur7, 1)} kg"))
-    goal = _goal_weight(conn, owner)
     if goal is not None:
         o.facts.append(_fact(L("目标", "Goal"), f"{_fmt(goal, 1)} kg"))
     if cur7 is None or prev7 is None:
@@ -500,9 +580,14 @@ def _status_text(key: str, st: dict) -> tuple[str, str]:
 
 
 def calc_trend(conn, owner: int, day: date, key: str) -> Out:
+    d = views.trend_series.build(conn, {"id": owner}, owner, day, 30, views.local_today(conn, owner), views.user_tz(conn, owner))
+    return trend_compute(key, d, day)
+
+
+def trend_compute(key: str, d: dict, day: date) -> Out:
+    """Pure: d = the 30-day /trends document ending on the day (trends/series.build; OBS.trendsSeries on the phone)."""
     o = Out()
     e = G.metric(key)
-    d = views.trend_series.build(conn, {"id": owner}, owner, day, 30, views.local_today(conn, owner), views.user_tz(conn, owner))
     st = d["status"].get(e.get("status")) if e.get("status") else None
     s = d["series"].get(e.get("series")) if e.get("series") else None
     nd, unit = e.get("digits", 0), e.get("unit", "")
@@ -528,8 +613,12 @@ for _k, _e in G.TREND_METRICS.items():
 
 # ---------------------------------------------------------------- status-item calculators
 def calc_lab(conn, owner: int, key: str, day: date) -> Out:
+    return lab_compute(next(iter(records_store.lab_report(conn, owner, [key])), None), key, day)
+
+
+def lab_compute(rep: dict | None, key: str, day: date) -> Out:
+    """Pure: rep = records/store.lab_report's entry of the test (None without readings)."""
     o = Out()
-    rep = next(iter(records_store.lab_report(conn, owner, [key])), None)
     if rep is None or rep["latest"]["value"] is None:
         o.missing = "还没有化验记录"
         return o
@@ -593,12 +682,11 @@ def _lab_entry(conn, owner: int, key: str, label: str | None = None) -> dict:
 def explain_lab(conn: psycopg.Connection, viewer_id: int, owner: int, key: str, day: date) -> dict:
     """One lab test (the trend sheet). Caller has checked the labs scope."""
     e = _lab_entry(conn, owner, key)
-    view = _entry_view("lab", key, e)
-    _apply(view, calc_lab(conn, owner, key, day))
+    o = calc_lab(conn, owner, key, day)
+    profile = None
     if auth.can_view(conn, viewer_id, owner, "memory"):  # profile card lines live in memory
-        view["profile"] = profile_sentences(conn, owner, [e["title"]], e.get("keywords", []))
-    view["ai_prompt"] = _prompt(e["title"], view)
-    return view
+        profile = profile_sentences(conn, owner, [e["title"]], e.get("keywords", []))
+    return lab_view(key, e, o, profile)
 
 
 def calc_training_week(item: dict) -> Out:
@@ -698,15 +786,126 @@ def _prompt(title: str, view: dict, subject: str | None = None) -> str:
 
 def explain_metric(conn: psycopg.Connection, viewer_id: int, owner: int, key: str, day: date) -> dict:
     e = G.metric(key)
-    view = _entry_view("metric", key, e)
     scope = METRIC_SCOPE[key]
     if auth.can_view(conn, viewer_id, owner, scope):
-        _apply(view, CALC[key](conn, owner, day))
+        return metric_view(key, e, CALC[key](conn, owner, day))
+    return metric_view(key, e, None, scope)
+
+
+def metric_view(key: str, e: dict, o: Out | None, hidden: str | None = None) -> dict:
+    """Pure: the sheet of one metric from its static entry `e` (glossary, request language) and the personal part `o`
+    (None = the viewer may not see `hidden`, that metric's scope)."""
+    view = _entry_view("metric", key, e)
+    if o is not None:
+        _apply(view, o)
     else:
-        view["hidden"].append(scope)
-        view["missing"] = views.forbidden(scope)["error"]
+        view["hidden"].append(hidden)
+        view["missing"] = views.forbidden(hidden)["error"]
     view["ai_prompt"] = _prompt(e["title"], view)
     return view
+
+
+def lab_view(key: str, e: dict, o: Out, profile: list[str] | None = None) -> dict:
+    """Pure: the lab sheet (explain_lab) from its entry, the personal part and the profile card lines (memory, server)."""
+    view = _entry_view("lab", key, e)
+    _apply(view, o)
+    if profile is not None:
+        view["profile"] = profile
+    view["ai_prompt"] = _prompt(e["title"], view)
+    return view
+
+
+# ---------------------------------------------------------------- the phone's twin (2.0.0 M6, src/37_explain.js)
+# metric_data reads one metric's inputs from the tables as plain JSON (ISO dates), the same rows the phone reads from its
+# own; metric_out turns them into the personal part. CALC[key](conn, owner, day) == metric_out(key, metric_data(...), day)
+# (tests/test_native_rules.py); the static entry comes with the request (glossary), the phone keeps it from the server's
+# cached sheet.
+SCORE_KEYS = ("sleep_hours", "sleep_score", "sleep_debt", "sleep_consistency", "recovery")
+DAILY_METRIC = {"hrv": "heart_rate_variability_sdnn", "resting_hr": "resting_heart_rate"}
+
+
+def _j(x):
+    if isinstance(x, dict):
+        return {str(k) if not isinstance(k, date) else k.isoformat(): _j(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_j(v) for v in x]
+    return x.isoformat() if isinstance(x, date) else x
+
+
+def metric_data(conn, owner: int, key: str, day: date) -> dict:
+    """One metric's inputs as plain JSON (ISO dates)."""
+    if key in DAILY_METRIC:
+        return {"values": _j(_daily_values(conn, owner, DAILY_METRIC[key], _baseline_window(day), day))}
+    if key in SCORE_KEYS or key == "strain":
+        rows = _score_rows(conn, owner, day, days=8 if key == "strain" else 7)
+        return {"scores": [_j({k: r.get(k) for k in ("date", "recovery", "sleep_score", "sleep_actual_min", "sleep_need_min",
+                                                      "sleep_debt_min", "strain", "tsb", "details")}) for r in rows]}
+    if key == "sleep_efficiency":
+        rows = conn.execute(
+            """SELECT DISTINCT ON (wake_date) wake_date, asleep_min, extract(epoch FROM end_at - start_at) / 60 AS in_bed
+               FROM sleep_sessions WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
+               ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner, day - timedelta(days=6), day)).fetchall()
+        return {"nights": [{"wake_date": r["wake_date"].isoformat(), "asleep_min": r["asleep_min"],
+                            "in_bed": None if r["in_bed"] is None else float(r["in_bed"])} for r in rows]}
+    if key == "bedtime":
+        rows = conn.execute(
+            """SELECT DISTINCT ON (wake_date) wake_date, start_at FROM sleep_sessions
+               WHERE user_id = %s AND is_main AND wake_date BETWEEN %s AND %s
+               ORDER BY wake_date, asleep_min DESC NULLS LAST""", (owner, day - timedelta(days=13), day)).fetchall()
+        return {"tz": views.user_tz(conn, owner).key,
+                "mains": [{"wake_date": r["wake_date"].isoformat(), "start_at": r["start_at"].isoformat()} for r in rows]}
+    if key == "vo2max":
+        return {"vo2max": _j(fitness.vo2max(conn, owner, day))}
+    if key == "weight":
+        start = day - timedelta(days=20)
+        try:
+            w = views.weights(conn, owner, start, day)
+        except Exception:  # noqa: BLE001  as calc_weight
+            w = {r["date"]: r["value"] for r in queries.daily_metrics(conn, owner, start, day, ["body_mass"])}
+        return {"weights": _j(w), "goal": _goal_weight(conn, owner)}
+    if key in G.TREND_METRICS:
+        return {"series": _j(views.trend_series.build(conn, {"id": owner}, owner, day, 30, views.local_today(conn, owner),
+                                                      views.user_tz(conn, owner)))}
+    raise KeyError(key)
+
+
+def metric_out(key: str, data: dict, day: date) -> Out:
+    """Pure: metric_data's JSON -> the personal part."""
+    from datetime import datetime
+    D = date.fromisoformat
+
+    def rows(xs):
+        return [{**r, "date": D(r["date"])} for r in xs]
+    if key in DAILY_METRIC:
+        return (hrv_compute if key == "hrv" else resting_hr_compute)({D(d): v for d, v in data["values"].items()}, day)
+    if key in SCORE_KEYS:
+        r = rows(data["scores"])
+        return {"sleep_hours": sleep_hours_compute, "sleep_score": sleep_score_compute, "sleep_debt": sleep_debt_compute,
+                "sleep_consistency": sleep_consistency_compute}[key](r) if key != "recovery" else recovery_compute(r, day)
+    if key == "strain":
+        return strain_compute(rows(data["scores"]), day)
+    if key == "sleep_efficiency":
+        return sleep_efficiency_compute(data["nights"])
+    if key == "bedtime":
+        mains = [{"wake_date": D(r["wake_date"]), "start_at": datetime.fromisoformat(r["start_at"])} for r in data["mains"]]
+        return bedtime_compute(bedtime_items(mains, ZoneInfo(data["tz"]), day))
+    if key == "vo2max":
+        return vo2max_compute(data["vo2max"])
+    if key == "weight":
+        return weight_compute({D(d): v for d, v in data["weights"].items()}, data.get("goal"), day)
+    if key in G.TREND_METRICS:
+        return trend_compute(key, data["series"], day)
+    raise KeyError(key)
+
+
+def lab_out(data: dict, key: str, day: date) -> Out:
+    """Pure: lab_compute on the JSON of records/store.lab_report's entry (collected_on as ISO dates)."""
+    rep = data.get("report")
+    if rep is not None:
+        D = date.fromisoformat
+        rep = {**rep, "latest": {**rep["latest"], "collected_on": D(rep["latest"]["collected_on"])},
+               "history": [{**h, "collected_on": D(h["collected_on"])} for h in rep["history"]]}
+    return lab_compute(rep, key, day)
 
 
 def _status_item(conn, owner: int, key: str, viewer_id: int | None = None) -> dict | None:
