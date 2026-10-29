@@ -64,11 +64,14 @@ def hrr60(hr: list[tuple[datetime, float]], end: datetime, hr_max: float | None)
 
 
 def compute(conn: psycopg.Connection, user_id: int, hr: list[tuple[datetime, float]], hr_max_by_day: dict,
-            start, end) -> dict:
-    """Recompute workout_hrr for the user's workouts that started in [start, end] (local dates). Idempotent."""
+            start, end, skip_app: bool = False) -> dict:
+    """Recompute workout_hrr for the user's workouts that started in [start, end] (local dates). Idempotent.
+    skip_app: the package `workouts` is primary for the user (2.0.0 S9, nativesync/primary.py): the app's own workouts
+    (source 'app') keep the rows the phone uploaded; only the other sources' workouts are recomputed."""
     wos = conn.execute("""SELECT id, local_date, end_at FROM workouts
                           WHERE user_id = %s AND dup_of IS NULL AND excluded IS NULL AND local_date BETWEEN %s AND %s
-                          ORDER BY start_at""", (user_id, start, end)).fetchall()
+                          AND NOT (%s AND source = 'app')
+                          ORDER BY start_at""", (user_id, start, end, skip_app)).fetchall()
     hr = _utc_series(hr)   # once for all workouts
     rows = []
     for w in wos:
@@ -77,7 +80,9 @@ def compute(conn: psycopg.Connection, user_id: int, hr: list[tuple[datetime, flo
         rows.append((w["id"], user_id, w["local_date"], w["end_at"], r["peak_hr"], r["hr_60s"], r["hrr60"], hmax,
                      r["valid"], r["reason"], ALGO))
     with conn.transaction():
-        conn.execute("""DELETE FROM workout_hrr WHERE user_id = %s AND local_date BETWEEN %s AND %s""", (user_id, start, end))
+        conn.execute("""DELETE FROM workout_hrr h WHERE h.user_id = %s AND h.local_date BETWEEN %s AND %s
+                        AND NOT (%s AND EXISTS (SELECT 1 FROM workouts w WHERE w.id = h.workout_id AND w.source = 'app'))""",
+                     (user_id, start, end, skip_app))
         if rows:
             with conn.cursor() as cur:
                 cur.executemany(

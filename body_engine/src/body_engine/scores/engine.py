@@ -386,7 +386,9 @@ def run(conn: psycopg.Connection, client, user_id: int, start: date | None = Non
     written = [r for r in rows if start <= r["date"] <= end and (only is None or r["date"] in only)]
     # heart rate recovery after each workout, from the same raw heart rate (cardio/hrr.py); a failure does not affect the scores
     try:
-        hrr = cardio_hrr.compute(conn, user_id, inp.hr, {r["date"]: r["hr_max"] for r in rows if r["hr_max"]}, start, end)
+        from ..nativesync import primary   # 2.0.0 S9: the phone computes its own workouts' heart-rate recovery
+        hrr = cardio_hrr.compute(conn, user_id, inp.hr, {r["date"]: r["hr_max"] for r in rows if r["hr_max"]}, start, end,
+                                 skip_app=primary.server_primary(conn, user_id, "workouts"))
     except Exception as e:  # noqa: BLE001
         hrr = {"error": f"{type(e).__name__}: {e}"}
     return {"origin": origin, "start": start, "end": end, "rows": n, "algo_version": P.ALGO_VERSION,

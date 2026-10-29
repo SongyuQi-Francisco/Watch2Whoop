@@ -14,7 +14,7 @@ from ..friends import remarks
 from ..config import settings
 from ..i18n import L
 from ..importers import ow as ow_imp, shortcut as sc_imp
-from ..rules import params as RP, store as rules_store
+from ..rules import fallback as rules_fallback, params as RP, store as rules_store
 from ..rules.context import Ctx, load_overrides
 from ..scores import store as scores_store
 from ..trends import series as trend_series
@@ -408,7 +408,7 @@ def today(conn, viewer: dict, owner_id: int, day: date | None = None) -> dict:
         "scores": section(conn, vid, owner_id, "scores", lambda: scores_today(conn, owner_id, day)),
         "sleep": section(conn, vid, owner_id, "sleep", lambda: sleep_today(conn, owner_id, day)),
         "reminders": section(conn, vid, owner_id, "reminders",
-                             lambda: rules_store.list_reminders(conn, owner_id, day, day, ["new", "seen"], None, True)),
+                             lambda: rules_fallback.list_reminders(conn, owner_id, day, day, ["new", "seen"], None, True)),
         "training": section(conn, vid, owner_id, "training", lambda: training_today(conn, vid, owner_id, day)),
         "nutrition": section(conn, vid, owner_id, "nutrition", lambda: nutrition_today(conn, owner_id, day)),
     }

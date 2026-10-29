@@ -38,7 +38,7 @@ from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.goals import store as goal_store
 from body_engine.insights import coach, healthspan_store as HSS, sleep_detail
-from body_engine.nativesync import compute, derived_kinds, params as P
+from body_engine.nativesync import compute, derived_kinds, params as P, primary
 from body_engine.records import defaults
 from body_engine.rollout import flags
 from body_engine.sleep_night import view as night_view
@@ -94,6 +94,11 @@ def conn_of(dsn):
 def set_flag(dsn, key, state, cohort=None):
     with conn_of(dsn) as c:
         flags.set_flag(c, key, state, cohort=cohort, actor="test")
+        if key == P.COMPUTE_PRIMARY_FLAG:   # 2.0.0 S9: primary also needs a grant per package (nativesync/primary.py)
+            c.execute("DELETE FROM app_compute_primary")
+            for pkg in P.COMPUTE_PACKAGES if state != "off" else ():
+                primary.set_primary(c, pkg, cohort=cohort if state == "cohort" else None, everyone=state != "cohort",
+                                    force=True, actor="test")
         c.commit()
     flags.invalidate()
 

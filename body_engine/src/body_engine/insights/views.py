@@ -32,6 +32,8 @@ def _scopes(key) -> set[str]:
 def healthspan(conn, user_id: int, weeks: int = 26, viewer_id: int | None = None) -> dict:
     """Someone else's body age: items built from data the viewer may not see are left out, their scopes in `hidden`."""
     res = healthspan_store.read(conn, user_id, weeks)
+    if res is None:
+        res = _healthspan_fallback(conn, user_id, weeks)
     if res is not None and viewer_id is not None and viewer_id != user_id:
         every = set().union(*(_scopes(k) for k in HEALTHSPAN_SCOPE))
         can = auth.visible_scopes(conn, viewer_id, user_id, every | set(ACTIVITY_PART_SCOPE.values()))
@@ -52,10 +54,40 @@ def healthspan(conn, user_id: int, weeks: int = 26, viewer_id: int | None = None
     return res
 
 
+def _healthspan_fallback(conn, user_id: int, weeks: int) -> dict | None:
+    """2.0.0 S9: body age is the phone's (package `coach` primary) and it has not uploaded a week yet: computed on demand
+    with the Python twin, not stored, recorded as a fallback. None for everyone else (unchanged behaviour)."""
+    from ..nativesync import primary
+    if not primary.server_primary(conn, user_id, "coach"):
+        return None
+    rows = healthspan_store.compute(conn, user_id)
+    primary.fallback(conn, user_id, "coach", "healthspan", today(conn, user_id))
+    rows = [{**r, "algo_version": healthspan_store.CURRENT.ALGO_VERSION} for r in reversed(rows[-weeks:])]
+    return healthspan_store.view(rows)
+
+
+def _stress_fallback(conn, user_id: int, start: date, end: date, rows: list[dict], hours: bool) -> list[dict]:
+    """2.0.0 S9: stress is the phone's (package `stress` primary) and days of the range have no row: the newest of them
+    (at most FALLBACK_MAX_DAYS) are computed on demand with the Python twin, not stored, recorded as a fallback."""
+    from ..nativesync import params as NP, primary
+    have = {r["date"] for r in rows}
+    missing = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+    missing = [d for d in missing if d not in have][-NP.FALLBACK_MAX_DAYS:]
+    if not missing or not primary.server_primary(conn, user_id, "stress"):
+        return rows
+    cols = ("date", "score", "level", "low_h", "medium_h", "high_h", "peak_hour", "baseline", "flags", "algo_version",
+            *(("hours",) if hours else ()))
+    want = set(missing)
+    got = [{k: ({**r, "algo_version": stress.STRESS_VERSION}).get(k) for k in cols}
+           for r in stress.compute(conn, None, user_id, missing[0], missing[-1], ow_cache="use") if r["date"] in want]
+    primary.fallback(conn, user_id, "stress", "stress", missing[-1])
+    return sorted(rows + got, key=lambda r: r["date"])
+
+
 def stress_days(conn, user_id: int, start: date | None, end: date | None, hours: bool = True) -> dict:
     end = end or today(conn, user_id)
     start = start or end
-    rows = stress.read(conn, user_id, start, end, hours)
+    rows = _stress_fallback(conn, user_id, start, end, stress.read(conn, user_id, start, end, hours), hours)
     return {"start": start, "end": end, "scale": "0–3：< 1 低、1–2 中、≥ 2 高（醒着不动时心率 / HRV 相对平静基线）",
             "days": rows}
 

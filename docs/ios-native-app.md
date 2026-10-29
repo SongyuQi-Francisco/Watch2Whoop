@@ -348,6 +348,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 它们只补算「脏天」：最近 30 天里，算分输入（`daily`、`sleep`、`raw`，以及记录里的 `workout` / `strength`）在这天分数的 `computed_at` 之后变过，而且最后一次变化已经超过 2 小时，app 却一直没有重新上传这一天。
 - `body-engine app-scores server --user-id N` 让服务器重新给这个用户算分；`app-scores app --user-id N` 恢复由 app 算；`app-scores status` 查看状态、最近的抽查结果和下一次每小时任务会怎么做。
 - AI、MCP、今天页读的始终是 `daily_scores` 里存的分数，不管是谁算的。
+- 2.0.0 的其他包（每日数值、睡眠、训练、压力、身体年龄、提醒）按同样的思路逐包停算：包被 `body-engine app-compute primary`（先看抽查通过率，`--force` 记审计）授权成「主模式」以后，每小时 / 每晚任务和 `sync-refresh-run` 不再给这个人算这个包，读的都是手机上传的行；手机还没传的部分由接口临时算、不存、记一次 fallback。见 [ios-native-2.0.md](ios-native-2.0.md) 第 4 节 S9。
 
 **静默推送**（`notify/silent.py`）
 

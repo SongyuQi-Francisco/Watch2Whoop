@@ -393,19 +393,22 @@ def derive_days(src: dict) -> dict:
 
 # ---------------------------------------------------------------- one day, one user, everyone
 def derive_day(conn: psycopg.Connection, user_id: int, d: date, types: set[str], tz: ZoneInfo, mode: str,
-               today: date) -> dict:
-    """Derive one dirty day (in the caller's transaction)."""
+               today: date, phone: bool = False) -> dict:
+    """Derive one dirty day (in the caller's transaction). phone: the package `derive` is primary for the user and the
+    phone derives the day's values and sleep itself (2.0.0 S9, nativesync/primary.py): only the workouts are imported
+    (the phone's `workouts` upload enriches the server's rows), nothing of daily_metric_sources / daily_metrics /
+    sleep_sessions is touched."""
     out = {"daily": 0, "nights": 0, "workouts": 0, "workouts_deleted": 0}
     qtypes = derived_types(types)
-    if qtypes:
+    if qtypes and not phone:
         rows, empty = daily_rows(conn, user_id, d, qtypes, tz)
         out["daily"] = _write_daily(conn, user_id, d, rows, empty, mode, today)
-    if SLEEP in types and mode == "app":
+    if SLEEP in types and mode == "app" and not phone:
         out["nights"] = _write_sleep(conn, user_id, {d, d + timedelta(days=1)}, tz)
     if WORKOUT in types:
         w = _write_workouts(conn, user_id, d, tz, mode)
         out["workouts"], out["workouts_deleted"] = w["workouts"], w["workouts_deleted"]
-        if mode == "app":   # the day's workouts decide whether its active energy is complete (common.incomplete_days)
+        if mode == "app" and not phone:   # the day's workouts decide whether its active energy is complete (common.incomplete_days)
             common.resolve_daily(conn, user_id, [d], today, mode)
     return out
 
@@ -422,6 +425,10 @@ def run_user(conn: psycopg.Connection, user_id: int, mode: str | None = None, ma
     mode = mode or EN.mode(conn, user_id)
     today = datetime.now(tz).date()
     out = {"mode": mode, "days": 0, "daily": 0, "nights": 0, "workouts": 0, "workouts_deleted": 0, "left": 0}
+    from ..nativesync import primary
+    phone_primary = primary.server_primary(conn, user_id, "derive")   # 2.0.0 S9: the phone derives this user's days
+    if phone_primary:
+        out.update(phone_primary=True, phone_days=0, waiting=0, fallback_days=0)
     conn.commit()
     first = None
     for i, d in enumerate(queued):
@@ -433,12 +440,19 @@ def run_user(conn: psycopg.Connection, user_id: int, mode: str | None = None, ma
                 if not conn.execute("SELECT pg_try_advisory_xact_lock(%s, %s) AS ok", (LOCK_NS, user_id)).fetchone()["ok"]:
                     out.update(busy=True, left=len(queued) - i)
                     break
-                row = conn.execute("SELECT types FROM hk_dirty_days WHERE user_id = %s AND day = %s FOR UPDATE",
+                row = conn.execute("SELECT types, queued_at FROM hk_dirty_days WHERE user_id = %s AND day = %s FOR UPDATE",
                                    (user_id, d)).fetchone()
                 if row is None:   # derived meanwhile by another run
                     continue
-                res = derive_day(conn, user_id, d, set(row["types"]), tz, mode, today)
-                conn.execute("DELETE FROM hk_dirty_days WHERE user_id = %s AND day = %s", (user_id, d))
+                plan = (primary.derive_plan(conn, user_id, d, set(row["types"]), row["queued_at"], today)
+                        if phone_primary else "server")
+                if phone_primary:
+                    out[{"phone": "phone_days", "wait": "waiting", "server": "fallback_days"}[plan]] += 1
+                    if plan == "server":   # the phone did not upload this day in time: the server derives it again
+                        primary.fallback(conn, user_id, "derive", "hk-derive-run", d)
+                res = derive_day(conn, user_id, d, set(row["types"]), tz, mode, today, phone=plan != "server")
+                if plan != "wait":   # waiting days stay queued for the next run (the phone may still upload them)
+                    conn.execute("DELETE FROM hk_dirty_days WHERE user_id = %s AND day = %s", (user_id, d))
         except Exception as e:  # noqa: BLE001  that day stays queued (rolled back); the later days still go
             log.warning("hk derive of user %s, %s failed: %s", user_id, d, e)
             out.setdefault("errors", []).append({"day": d.isoformat(), "error": str(e)[:300]})

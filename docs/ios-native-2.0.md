@@ -773,12 +773,84 @@ Not covered here (later, ops or other packages): stopping the OW containers and 
 | Scope | Meaning (decision 4): the server stops **scheduled / background compute and the app-serving view endpoints** for app-mode users; AI / MCP tool calls keep computing on demand with the Python twin (same `algo_version`). Generalise `appscores.plan` to `app_compute_state` per (user, kind): when a kind is `primary` and trusted, hourly / nightly / `sync-refresh-run` skip `hk-derive-run`, `resolve_daily` for the `app` source, `enrich_pending`, stress and healthspan jobs, `evaluate-rules` for that user, except "dirty days" the app did not upload within 2 h (fallback, as for scores); remove the app's reads of the server views; regression |
 | Acceptance | 14 days on user 1 + synthetic users with the server only spot-checking; full Body Engine suite and iOS suite green; `native-compare` on user 1 clean for every kind; device checklist file complete |
 
+#### S9 as built (2026-10-30)
+- **Primary is per package and granted** (`nativesync/primary.py`, migration `1080_native_primary.sql`). A package is
+  primary for a user when its flag and the global kill switch `native_compute_primary` are on for them, a grant in
+  `app_compute_primary` covers them (the user, one of their cohorts, or everyone) and every upload kind of the package is
+  trusted (`compute.trusted`). `compute.kind_state` / `GET /v1/sync/compute` use the same rule (new field
+  `primary_granted` per package), so the app and the server always agree. Without a grant nothing changes: the
+  `native_compute_primary` flag alone no longer makes anything primary.
+- **The flip**: `body-engine app-compute primary --package P|all (--user-id N | --cohort C | --all) [--force] [--days D]
+  [--by NAME]`. Gate (`primary.gate`): over the targeted users' spot checks of the last 14 days, every upload kind of the
+  package has ≥ 3 checks and ≥ 95 % passed (`nativesync/params.PRIMARY_*`). Refused = exit code 1, the gate printed,
+  nothing changed. `--force` grants anyway, marked `forced` and audited as `compute.primary.force`; a normal grant is
+  `compute.primary`; `app-compute shadow …` removes exactly that grant (`compute.shadow`). Every change is in
+  `rollout_audit` with the gate (counts and rates only, never values). Views-only packages (`series`, `reports`) have no
+  server spot checks: the gate passes with `views_only: true` (their check is the device checklist's meta `*.compare`).
+  `app-compute status [--user-id N]` = grants, gates, per user `granted` / `server_primary`, fallbacks.
+  `app-compute server|app --kind K --user-id N` = the old `set_server_forced` (the kind stays the server's whatever the
+  phone uploads), audited.
+- **What stops** for a user and a package that is primary (`primary.server_primary`: the rule above without a client,
+  plus "the phone uploaded every kind of the package within `APP_ACTIVE_DAYS` = 3 days"; a phone that went quiet gives the
+  package back to the server automatically):
+
+  | Package | Stopped | Kept |
+  |---|---|---|
+  | `derive` | `hk-derive-run` / `sync-refresh-run`'s derivation of daily values, sleep and `resolve_daily` for a queued day the phone uploaded (`app_compute_days`, written by every stored upload) after the day was queued | the import of the app's workouts (the phone's `workouts` upload enriches the server's row); a queued day the phone has not uploaded is kept queued for `DIRTY_GRACE_MINUTES` (120), then derived by the server (fallback) |
+  | `workouts` | `enrich_pending` and `cardio/hrr.compute` (in compute-scores) for the app's workouts | other sources' workouts |
+  | `stress` | the stress part of `insights/jobs.run` (hourly compute-scores, sync-refresh-run) | — |
+  | `coach` | the body-age part of `insights/jobs.run` | — |
+  | `rules` | hourly-batch `evaluate-rules` and sync-refresh-run's rules run | the CLI `evaluate-rules` (an admin's explicit run) |
+  | `series`, `reports` | nothing scheduled existed | — |
+
+  Scores stay with `appscores.plan` (#340 N2, unchanged). `refresh-status` (the AI memory's status card) is not a
+  computation of the app (section 1.3) and keeps running.
+- **Endpoints**: every app-serving reader reads the stored rows, which for a primary user are the phone's uploads
+  (`/today`, `/trends`, `/days`, `/sleep/nights`, coaches, reports, `/training/*` compute their views on demand from those
+  tables, as before). Where a primary user's phone has not uploaded yet, the endpoint computes on demand with the Python
+  twin, **does not store**, and records the fallback (`app_compute_fallbacks`: user, package, path, day, count; log line
+  without values): `/stress` (missing days, at most the newest `FALLBACK_MAX_DAYS` = 31), `/healthspan` (no week at all),
+  `/reminders` and the Today document's reminders (no rule run today: today evaluated, rows without `id`,
+  `computed_on_demand: true`; `rules/fallback.py`). AI / MCP tools read the same functions (decision 4); circles read the
+  stored copy.
+- **Regression** `tests/test_native_s9.py` (synthetic, two users): the phone uploads all six kinds and its scores; the
+  flip is refused with one check per kind, `--force` is audited, three passing checks per kind let `--package all` pass;
+  `GET /v1/sync/compute` shows every package primary; then `hk-derive-run`, `hourly-batch` (compute-scores +
+  evaluate-rules), `sync-refresh-run`, the insights job, `enrich_pending` and `hrr.compute` change no row of the user's
+  computed tables (`daily_metric_sources`, `daily_metrics`, `sleep_sessions`, `workouts`, `workout_hrr`, `stress_daily`,
+  `healthspan_weekly`, `reminders`, `rule_runs`, `daily_scores`, compared by content hash); `/stress`, `/healthspan`,
+  `/reminders`, `/today`, `/training/day`, `/sleep/nights`, `/trends` return the uploaded values; seven MCP tools answer;
+  the three fallbacks are computed, not stored and recorded; the other user is computed as always; the kill switch gives
+  every package back. The spot checks' Python twins are stubbed to "agree" there (their equality is the per-kind tests'
+  and goldens' job). Existing tests: their `set_flag(native_compute_primary)` helper now also grants every package.
+- **Deviations**: (1) per-day fallback only for `derive` (the raw data queue exists); stress / body age / rules fall back
+  per package (phone quiet for 3 days) and per request (endpoints); (2) the app's reads of server views are not removed
+  in this PR: in primary the pages already draw the phone's documents (M3–M6), the server documents stay the offline /
+  first-launch fallback; (3) `native-compare` (section 3.4) is still not built; (4) the 14-day soak on user 1 and the
+  device checklist ([ios-native-2.0-device-checklist.md](ios-native-2.0-device-checklist.md)) are runbook steps, not CI.
+
+**Rollout runbook (owner confirms each step; on the primary server through the deployment's engine wrapper).**
+1. **Shadow for `inner`**: `body-engine flags set native_<pkg> --state cohort --cohort inner` for every package and
+   `native_sync`; the inner cohort runs 2.0.0 internal builds. `GET /v1/sync/compute` (owner) shows every package `shadow`.
+2. **Check pass rates** after 3–7 days: `body-engine app-compute status` → `gates`: each kind ≥ 3 checks, pass rate ≥ 0.95
+   (counts only; for user 1 `native-compare` / meta `*.compare` for details). A failing kind: read its `fields_over` names
+   in `app_compute_checks`, fix in the package (Python + JS + goldens, version bump), start again at 1.
+3. **Primary for `inner`**: `body-engine flags set native_compute_primary --state cohort --cohort inner`, then
+   `body-engine app-compute primary --package all --cohort inner --by <you>` (a refused package stays shadow; `--force`
+   only after reading its gate). Owner first if preferred: `--user-id 1`. Run the device checklist's S9 section; watch
+   `app-compute status` fallbacks and the hourly log for 3–7 days. Rollback per package: `app-compute shadow --package P
+   --cohort inner`; per kind and user: `app-compute server --kind K --user-id N`; everything: `flags set
+   native_compute_primary --state off` (≤ 30 s; the jobs compute again on their next run).
+4. **All at the 2.0.0 release**: package flags and `native_compute_primary` `--state all`, then `app-compute primary
+   --package all --all` (gate over everyone's checks). Users still on 1.0.8 stay `off` (minimum app version) until the
+   forced upgrade (R2) moves them; their server computation is unchanged until then.
+
 ## 5. Rollout
 
 | Flag (P0, default off) | Effect when on for a user |
 |---|---|
 | `native_derive`, `native_workouts`, `native_stress`, `native_series`, `native_coach`, `native_reports`, `native_rules` | the app computes that package locally in **shadow**: shows server values, uploads its rows, the server spot-checks |
-| `native_compute_primary` | kinds whose last spot check passed (and ≥ 3 settled days uploaded) become **primary**: the app shows its own values, the server stores the uploads as the user's rows |
+| `native_compute_primary` | global kill switch of primary: packages granted with `app-compute primary` (S9) whose kinds' last spot check passed (and ≥ 3 settled days uploaded) become **primary**: the app shows its own values, the server stores the uploads as the user's rows and its scheduled jobs leave the package to the phone |
 | `force_upgrade` | R2 notice / block (global) |
 
 `GET /v1/sync/compute` returns per kind `off | shadow | primary` plus server versions; a kind is never enabled for a client below the
@@ -788,11 +860,11 @@ app version that implements it (`nativesync/params.MIN_APP_VERSION_BY_KIND`, all
 |---|---|---|
 | 1 | each package merged | flag stays off; internal TestFlight build for the owner only |
 | 2 | wave end | `flags set native_<pkg> --state cohort --cohort inner`; watch `app_compute_checks` (pass / fail counts only for non-research users) |
-| 3 | after S9 regression | `native_compute_primary` cohort `inner`, 3–7 days, then all package flags and primary `--state all` |
+| 3 | after S9 regression | `native_compute_primary` cohort `inner` + `app-compute primary --package all --cohort inner` (pass-rate gate), 3–7 days, then all package flags and primary `--state all` + `app-compute primary --package all --all` (S9 runbook) |
 | 4 | release (wave 6) | 2.0.0 to the external group; `force_upgrade` on with `notice_from` = release day, `block_from` = +7 days |
 | 5 | `block_from` | Shortcut 410; OW stop-write after `retire-check` is green for everyone (R1) |
 
-Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-scores server`-style command `app-compute server --kind K --user-id N`); global: `native_compute_primary` off; upgrade block: `force_upgrade` off.
+Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-scores server`-style command `app-compute server --kind K --user-id N`, built in S9); per package and target: `app-compute shadow --package P --cohort C`; global: `native_compute_primary` off; upgrade block: `force_upgrade` off.
 
 ## 6. Decisions (2026-10-30, coordinator)
 
