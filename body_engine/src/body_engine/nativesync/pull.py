@@ -12,7 +12,9 @@ transactions older than the oldest one still running (xid < xmin): a late commit
 Streams: scores, daily, sleep, records (kind = water / journal / ...), docs (op "stale": the server view of that day
 changed, fetch it again if it is shown), raw (HealthKit samples, statistics buckets and beat-to-beat RMSSD per day;
 pulled on a full restore, after a cursor, or for explicit raw_days; `raw_since` bounds a raw restore, since the phone
-keeps a few weeks of raw samples only, #340 N2b). Each change: {stream, op, kind, key, date, version, body};
+keeps a few weeks of raw samples only, #340 N2b), raw_history (the merged scoring inputs of the days before
+`history_before`, newest first: the phone's background download of its full history, history.py; asked for alone and
+throttled, api.py). Each change: {stream, op, kind, key, date, version, body};
 op "delete" = that day / kind has no data any more (body null).
 """
 from __future__ import annotations
@@ -23,7 +25,7 @@ from zoneinfo import ZoneInfo
 
 import psycopg
 
-from . import bodies as B, params as P, store
+from . import bodies as B, history as HI, params as P, store
 
 CURSOR_RE = re.compile(r"^(?:r\.(\d+)\.(\d{4}-\d{2}-\d{2})?|c\.(\d+)\.(\d+))$")
 DATED_STREAMS = ("scores", "daily", "sleep")
@@ -56,8 +58,9 @@ def _change(stream: str, kind: str, day: date | None, body, version: int, op: st
 
 
 class Puller:
-    def __init__(self, conn: psycopg.Connection, uid: int, raw_since: date | None = None):
-        self.conn, self.uid, self.raw_since = conn, uid, raw_since
+    def __init__(self, conn: psycopg.Connection, uid: int, raw_since: date | None = None,
+                 history_before: date | None = None):
+        self.conn, self.uid, self.raw_since, self.history_before = conn, uid, raw_since, history_before
         self.tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (uid,)).fetchone()["timezone"])
         self.xmin = _xmin(conn)
 
@@ -67,6 +70,8 @@ class Puller:
             return B.record(self.conn, self.uid, kind, days)
         if stream == "raw":
             return B.raw(self.conn, self.uid, days, self.tz)
+        if stream == P.HISTORY_STREAM:
+            return HI.bodies(self.conn, self.uid, days, self.tz)
         if stream == "sleep":
             return B.sleep(self.conn, self.uid, days, self.tz)
         return getattr(B, stream)(self.conn, self.uid, days)
@@ -83,6 +88,8 @@ class Puller:
 
     # ------------------------------------------------------------ incremental
     def changes(self, stream: str, xid: int, seq: int, budget: int) -> tuple[list[dict], str, bool]:
+        if stream == P.HISTORY_STREAM:
+            return self.history_changes(xid, seq, budget)
         if stream == "docs":
             rows = self.conn.execute(
                 """SELECT DISTINCT ON (day) '' AS kind, day::text AS key, day, xid::text::bigint AS xid, seq FROM sync_changes
@@ -121,6 +128,8 @@ class Puller:
     def restore(self, stream: str, x0: int | None, before: date | None, budget: int) -> tuple[list[dict], str, bool]:
         x0 = self.xmin if x0 is None else x0
         done = f"c.{x0}.0"
+        if stream == P.HISTORY_STREAM:
+            return self.history_restore(x0, before, done)
         if stream == "docs":    # server views are fetched on demand; the stream only invalidates from here on
             return [], done, False
         out: list[dict] = []
@@ -150,14 +159,43 @@ class Puller:
         return out, f"r.{x0}.{sent[-1].isoformat()}" if sent else f"r.{x0}.", True
 
 
+    # ------------------------------------------------------------ raw_history (history.py)
+    def history_restore(self, x0: int, before: date | None, done: str) -> tuple[list[dict], str, bool]:
+        """One page of the download: up to HISTORY_PAGE_DAYS days older than the cursor's day and history_before."""
+        days = HI.restore_days(self.conn, self.uid, before, self.history_before, P.HISTORY_PAGE_DAYS + 1)
+        more = len(days) > P.HISTORY_PAGE_DAYS
+        days = days[:P.HISTORY_PAGE_DAYS]
+        if not days:
+            return [], done, False
+        sent, got = HI.page(self.conn, self.uid, self.tz, days)
+        more = more or len(sent) < len(days)
+        vers = store.versions(self.conn, self.uid, "raw", [("", d.isoformat()) for d in sent])
+        out = [_change(P.HISTORY_STREAM, "", d, got[d], vers.get(("", d.isoformat()), 0)) for d in sent if d in got]
+        return out, (f"r.{x0}.{sent[-1].isoformat()}" if more else done), more
+
+    def history_changes(self, xid: int, seq: int, budget: int) -> tuple[list[dict], str, bool]:
+        """After the download: days before history_before whose inputs changed, at most a page of them."""
+        rows = HI.changed_days(self.conn, self.uid, xid, seq, self.history_before)
+        taken = rows[:min(budget, P.HISTORY_PAGE_DAYS)]
+        if not taken:
+            return [], f"c.{xid}.{seq}", False
+        got = HI.bodies(self.conn, self.uid, [r["day"] for r in taken], self.tz)
+        out = [_change(P.HISTORY_STREAM, "", r["day"], got.get(r["day"]), int(r["seq"])) for r in taken]
+        last = taken[-1]
+        return out, f"c.{last['xid']}.{last['seq']}", len(taken) < len(rows)
+
+    def history_info(self) -> dict:
+        return HI.total_days(self.conn, self.uid, self.history_before)
+
+
 def pull(conn: psycopg.Connection, uid: int, cursors: dict[str, str | None], limit: int = P.PULL_LIMIT_DEFAULT,
-         raw_days: list[date] | None = None, raw_since: date | None = None) -> dict:
+         raw_days: list[date] | None = None, raw_since: date | None = None, history_before: date | None = None) -> dict:
     """The answer of POST /v1/sync/pull for the streams named in `cursors` (raises BadCursor / KeyError)."""
     for s in cursors:
         if s not in P.STREAMS:
             raise KeyError(s)
     parsed = {s: parse(c) for s, c in cursors.items()}
-    p = Puller(conn, uid, raw_since)
+    p = Puller(conn, uid, raw_since, history_before)
     changes: list[dict] = []
     out_cursors: dict[str, str] = {}
     more = False
@@ -176,8 +214,11 @@ def pull(conn: psycopg.Connection, uid: int, cursors: dict[str, str | None], lim
         more = more or again
     if raw_days:
         changes += p.emit("raw", [("", d) for d in sorted(set(raw_days))[:P.RAW_DAYS_MAX]])
-    return {"changes": changes, "cursors": out_cursors, "more": more,
-            "data_version": store.data_version(conn, uid), "algo": _algo()}
+    out = {"changes": changes, "cursors": out_cursors, "more": more,
+           "data_version": store.data_version(conn, uid), "algo": _algo()}
+    if P.HISTORY_STREAM in parsed and parsed[P.HISTORY_STREAM][0] == "restore" and parsed[P.HISTORY_STREAM][2] is None:
+        out["history"] = p.history_info()   # the first page of a download: how much there is (progress)
+    return out
 
 
 def _algo() -> dict | None:

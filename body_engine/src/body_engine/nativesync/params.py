@@ -7,13 +7,14 @@ takes the scoring back from the app.
 FLAG = "native_sync"   # rollout flag: the app uses POST /v1/sync/pull, /push and PUT /scores/app only while this is on
 
 # ---------------------------------------------------------------- pull
-STREAMS = ("scores", "daily", "sleep", "records", "docs", "raw")
+STREAMS = ("scores", "daily", "sleep", "records", "docs", "raw", "raw_history")
 PULL_LIMIT_DEFAULT = 500          # changes per answer unless the app asks for fewer / more
 PULL_LIMIT_MAX = 2000
 RAW_PAGE_ROWS = 20000             # raw samples + statistics buckets per answer (at least one whole day is always sent)
 RAW_DAYS_MAX = 7                  # explicit raw_days per request (re-scoring a few days)
 # Full restore order: newest day first, so the last two weeks are on the phone after the first page or two
-# ("先拉最近 14 天再往前补"). Raw data older than RAW_CELLULAR_DAYS is the app's to fetch on Wi-Fi only.
+# ("先拉最近 14 天再往前补"). Raw data older than RAW_CELLULAR_DAYS is the app's to fetch on Wi-Fi only (the app now
+# restores APP_RAW_DAYS with `raw` and everything older with `raw_history`, Wi-Fi + power unless the user allows cellular).
 RAW_CELLULAR_DAYS = 90
 
 # ---------------------------------------------------------------- the phone's own scoring (#340 N2b, nativesync/scoring.py)
@@ -24,6 +25,22 @@ APP_RAW_DAYS = 60
 SEGMENT_DAYS = APP_RAW_DAYS + 2   # the sleep stream carries the server's stage segments of these recent nights
 HIST_MAX_DAYS = 430               # GET /v1/sync/scoring?hist_from=&hist_to=: one request covers the HRmax window and a bit
 MUSCLE_MAX_DAYS = 120             # ... &from=&to=: the muscle load of the days the phone recomputes
+
+# ---------------------------------------------------------------- the phone's full history (stream raw_history, history.py)
+# After the first APP_RAW_DAYS the phone downloads the rest of the history in the background (Wi-Fi + charging, or
+# cellular if the user allows it), newest first, so it can recompute every day itself when the algorithm changes. A page
+# is the merged scoring inputs of up to HISTORY_PAGE_DAYS days: one scores/inputs.load() over that range, i.e. about what
+# the hourly compute-scores costs for two weeks of one user (tens to a few hundred ms). 3 years ≈ 80 pages.
+HISTORY_STREAM = "raw_history"
+HISTORY_PAGE_DAYS = 14
+HISTORY_PAGE_ROWS = 60000         # samples + segments + readings per answer (an Apple Watch day is ~1,000-2,500)
+# Server pressure: one user gets a page at most every HISTORY_MIN_INTERVAL_S (the phone waits Retry-After, so a whole
+# download spreads over minutes, not seconds), and one API process computes at most HISTORY_CONCURRENCY pages at once
+# (everyone else gets 429 + Retry-After HISTORY_BUSY_RETRY_S and the phone tries again later). Normal pulls are not
+# throttled: a history page must be asked for alone.
+HISTORY_MIN_INTERVAL_S = 3.0
+HISTORY_CONCURRENCY = 2
+HISTORY_BUSY_RETRY_S = 20
 
 # ---------------------------------------------------------------- push
 PUSH_MAX_MUTATIONS = 100

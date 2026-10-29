@@ -77,6 +77,12 @@ final class OpenBodyScoreRuntime {
     return out as? [[String: Any]] ?? []
   }
 
+  /// Frees what the last calls left on the JS heap now rather than whenever JavaScriptCore decides: a chunked recompute
+  /// (`ScoringSync`) calls this between chunks so the heap stays at one chunk's size (local history).
+  func collectGarbage() {
+    queue.sync { JSGarbageCollect(context.jsGlobalContextRef) }
+  }
+
   private func run(_ glue: String, _ args: [String]) throws -> Any {
     try queue.sync {
       var thrown: String?

@@ -70,6 +70,7 @@ targets:
           - watch2whoop.sync.backfill
           - watch2whoop.sync.refresh
           - watch2whoop.sync.process
+          - watch2whoop.history.download
         CFBundleURLTypes:
           - CFBundleURLName: watch2whoop
             CFBundleURLSchemes: [watch2whoop]

@@ -5,9 +5,10 @@ import GRDB
 /// from (#340 N2b): the streams `scores`, `daily`, `sleep` and — during the first full restore only — `raw`.
 /// - Each page is written in one transaction together with its cursors; `more` = pull the next page.
 /// - An empty cursor is a full restore (newest day first). The raw restore stops at `LocalRawStore.keepDays`
-///   (`raw_since`); once it is done the raw stream is not pulled again: the phone reads HealthKit itself, so pulling its
-///   own uploads back would only double the traffic. Older history reaches the scores as stored rows (`scores`) and
-///   heart-rate histograms (`GET /v1/sync/scoring`).
+///   (`raw_since`) so the phone scores within seconds; once it is done the raw stream is not pulled again: the phone
+///   reads HealthKit itself, so pulling its own uploads back would only double the traffic. Everything older comes in
+///   the background with the stream raw_history (`HistoryDownload`, local history); until then it reaches the scores
+///   as stored rows (`scores`) and heart-rate histograms (`GET /v1/sync/scoring`).
 /// - 422 `bad_cursor`: the cursors of the streams asked for are cleared and those streams restored again.
 /// - `records` and `docs` are N5's (the user's records); the today documents still come from the legacy GETs.
 struct DeltaRemote: RemoteSync {
@@ -77,6 +78,10 @@ struct DeltaRemote: RemoteSync {
       if withRaw, let raw = next["raw"], raw.hasPrefix("c.") {
         // the bounded raw restore is complete: from now on the phone's own HealthKit reads feed hk_samples
         try db.setMeta(Self.rawRestoredKey, "1")
+        // the hot window starts where the restore stopped; the history download (HistoryDownload) fills in before it
+        if (try db.meta(LocalRawStore.hotFromKey)) == nil {
+          try db.setMeta(LocalRawStore.hotFromKey, LocalRawStore.rawStart(today: day))
+        }
         try await db.writer.write { db in try db.execute(sql: "DELETE FROM sync_cursors WHERE stream = 'raw'") }
         withRaw = false
       }

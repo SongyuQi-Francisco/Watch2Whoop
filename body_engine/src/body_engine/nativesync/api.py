@@ -1,7 +1,8 @@
 """Endpoints of the native app's sync (#340 N2; docs/ios-native-app.md sections 5 and 7.2). Rollout flag native_sync:
 404 while it is off for the user, and /v1/web/me lists it in `flags` when on, so the app knows the server has them.
 
-POST /v1/sync/pull             {cursors: {stream: cursor|""}, limit?, raw_days?, raw_since?}  -> changes (pull.py)
+POST /v1/sync/pull             {cursors: {stream: cursor|""}, limit?, raw_days?, raw_since?, history_before?}
+                                                                   -> changes (pull.py; raw_history alone, throttle.py)
 GET  /v1/sync/scoring          ?from&to&hist_from&hist_to                         -> the phone's scoring context (scoring.py)
 POST /v1/sync/push             {mutations: [...]}                                 -> one result per mutation (push.py)
 PUT  /v1/users/{user}/scores/app {algo_version, bundle_version, days}             -> stored / checked (appscores.py)
@@ -11,12 +12,13 @@ from datetime import date
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..i18n import L
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
-from . import appscores, params as P, pull as PL, push as PS, scoring
+from . import appscores, params as P, pull as PL, push as PS, scoring, throttle
 
 router = APIRouter(tags=["native-sync"], dependencies=[Depends(flags.require(P.FLAG))])
 
@@ -27,12 +29,24 @@ class PullIn(BaseModel):
     limit: int = Field(P.PULL_LIMIT_DEFAULT, ge=1, le=P.PULL_LIMIT_MAX)
     raw_days: list[date] = Field(default_factory=list, max_length=P.RAW_DAYS_MAX)
     raw_since: date | None = None   # a raw restore stops at this day (the phone keeps params.APP_RAW_DAYS)
+    history_before: date | None = None   # raw_history: only the days before this one (the phone has the rest)
 
 
 @router.post("/v1/sync/pull")
 def sync_pull(body: PullIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    uid = viewer["id"]
     try:
-        return PL.pull(conn, viewer["id"], body.cursors, body.limit, body.raw_days, body.raw_since)
+        if P.HISTORY_STREAM in body.cursors:
+            if len(body.cursors) > 1 or body.raw_days:
+                raise HTTPException(422, L(f"{P.HISTORY_STREAM} 要单独拉", f"Pull {P.HISTORY_STREAM} on its own"))
+            try:
+                with throttle.history_page(uid):
+                    return PL.pull(conn, uid, body.cursors, body.limit, None, None, body.history_before)
+            except throttle.SlowDown as s:
+                return JSONResponse({"detail": {"message": L("服务器忙，请稍后再拉历史", "Server busy; fetch the history later"),
+                                                "code": "slow_down", "retry_after": s.retry_after}},
+                                    status_code=429, headers={"Retry-After": str(s.retry_after)})
+        return PL.pull(conn, uid, body.cursors, body.limit, body.raw_days, body.raw_since)
     except KeyError as e:
         raise HTTPException(422, L(f"没有这个 stream：{e.args[0]}", f"Unknown stream: {e.args[0]}"))
     except PL.BadCursor:

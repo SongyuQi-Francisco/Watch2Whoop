@@ -1,19 +1,23 @@
 import Foundation
 import GRDB
 
-/// The raw samples the phone scores from (docs/ios-native-app.md section 9.1, #340 N2b), kept small:
-/// - `hk_samples`: the scoring types only (heart rate, HRV SDNN, respiration, SpO2, sleeping wrist temperature, resting
-///   heart rate, sleep stages), for the last `keepDays` days. Written from HealthKit by the host (`HealthKitScoringReader`)
-///   and, after a reinstall, from the server's raw stream (`DeltaRemote`).
-/// - `heartbeat_series`: beat-to-beat readings (RMSSD users), stored when the sync uploads them (`RawUploadPass`) or pulled
-///   with the server's RMSSD; the beats themselves are dropped once the bundle has analysed them.
-/// - `hr_day_hist`: per-day heart-rate histograms {bpm: count} for the scores' 365-day HRmax window, kept after the
-///   samples of that day are pruned (from the phone's samples, or once from `GET /v1/sync/scoring?hist_from=`).
+/// The raw samples the phone scores from (docs/ios-native-app.md section 9.1, #340 N2b and local history):
+/// - `hk_samples` (hot): the scoring types only (heart rate, HRV SDNN, respiration, SpO2, sleeping wrist temperature,
+///   resting heart rate, sleep stages), for the last `keepDays` days. Written from HealthKit by the host
+///   (`HealthKitScoringReader`) and, after a reinstall, from the server's raw stream (`DeltaRemote`).
+/// - the compact history (`hist_samples`, `hist_segments`, `hist_days`; `LocalHistoryStore.swift`): every older day, from
+///   the server's raw_history stream (`HistoryDownload`) or rolled over from `hk_samples` when a day leaves the hot window.
+///   `hotFrom` is the day where one ends and the other begins.
+/// - `heartbeat_series`: beat-to-beat readings (RMSSD users), stored when the sync uploads them (`RawUploadPass`) or pulled;
+///   the beats stay (`LocalHistoryParams.beatsKeepDays`), `analyzed` says RMSSD / SDNN are current.
+/// - `hr_day_hist`: per-day heart-rate histograms {bpm: count} for the scores' 365-day HRmax window (from the phone's own
+///   samples or history, or once from `GET /v1/sync/scoring?hist_from=` while the history is not here yet).
 /// - `score_dirty`: the local days whose inputs changed and have to be scored again.
-/// Size: about 1,000–2,000 heart-rate samples a day dominate (~200 bytes a row with its indexes): 60 days ≈ 12–25 MB; the
-/// histograms and the rest are well under 1 MB (measured figures in the doc).
+/// Sizes: measured in `LocalHistoryMeasureTests`; the figures are in LocalHistoryParams and the doc.
 final class LocalRawStore {
-  static let keepDays = 60
+  static var keepDays: Int { LocalHistoryParams.hotDays }
+  /// meta: the first local day `hk_samples` is authoritative for; the scores read the compact history before it.
+  static let hotFromKey = "history.hot_from"
   static let heartRate = "HKQuantityTypeIdentifierHeartRate"
   static let sleepAnalysis = "HKCategoryTypeIdentifierSleepAnalysis"
   static let restingHR = "HKQuantityTypeIdentifierRestingHeartRate"
@@ -59,6 +63,14 @@ final class LocalRawStore {
   /// The local day a sample changes the scores of.
   func scoringDay(_ s: Sample) -> String {
     s.type == Self.sleepAnalysis ? day(s.end - Self.wakeShift) : day(s.start)
+  }
+
+  /// Local midnight of a day, UTC seconds.
+  func dayStart(_ d: String) -> Double? {
+    guard let noon = LocalDay.parse(d, zone) else { return nil }
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = zone
+    return cal.startOfDay(for: noon).timeIntervalSince1970
   }
 
   // MARK: - writing
@@ -110,7 +122,7 @@ final class LocalRawStore {
         try db.execute(sql: """
           INSERT INTO heartbeat_series (uuid, start, end, beats, origin) VALUES (?, ?, ?, ?, 'phone')
           ON CONFLICT(uuid) DO UPDATE SET start = excluded.start, end = excluded.end, beats = excluded.beats,
-            rmssd = NULL, sdnn = NULL, origin = 'phone'
+            rmssd = NULL, sdnn = NULL, origin = 'phone', analyzed = 0
           """, arguments: [uuid.lowercased(), start, b.timeIntervalSince1970, blob])
         days.insert(day(start))
       }
@@ -125,22 +137,21 @@ final class LocalRawStore {
     }
   }
 
-  /// RMSSD / SDNN of the readings the phone has not analysed yet (the bundle's `analyzeHrv`, the server's rr-v1); the
-  /// beats are dropped afterwards. Returns how many were analysed.
+  /// RMSSD / SDNN of the readings not analysed yet (the bundle's `analyzeHrv`, the server's rr-v1). The beats stay, so a
+  /// new HRV algorithm can analyse them again. Beats are `{"t": [s since start]}` (the phone's) or `{"ms": [ms since the
+  /// first beat]}` (pulled with the history). Returns how many were analysed.
   @discardableResult
   func analyzeBeats(_ runtime: OpenBodyScoreRuntime) throws -> Int {
     let rows = try db.writer.read { db in
-      try Row.fetchAll(db, sql: "SELECT uuid, beats FROM heartbeat_series WHERE beats IS NOT NULL")
+      try Row.fetchAll(db, sql: "SELECT uuid, beats FROM heartbeat_series WHERE analyzed = 0 AND beats IS NOT NULL")
     }
     var n = 0
     for r in rows {
       let uuid: String = r["uuid"]
-      guard let data = r["beats"] as Data?, let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let t = j["t"] as? [Double] else { continue }
-      let gaps = j["gaps"] as? [Bool] ?? []
+      guard let data = r["beats"] as Data?, let (t, gaps) = Self.beats(data) else { continue }
       let out = (try? runtime.invoke("analyzeHrv", [t, gaps])) as? [String: Any]
       try db.writer.write { db in
-        try db.execute(sql: "UPDATE heartbeat_series SET rmssd = ?, sdnn = ?, beats = NULL WHERE uuid = ?",
+        try db.execute(sql: "UPDATE heartbeat_series SET rmssd = ?, sdnn = ?, analyzed = 1 WHERE uuid = ?",
                        arguments: [Self.num(out?["rmssd"]), Self.num(out?["sdnn"]), uuid])
       }
       n += 1
@@ -148,30 +159,43 @@ final class LocalRawStore {
     return n
   }
 
+  /// (beat times in seconds since the first beat, gap flags) from either stored shape.
+  static func beats(_ data: Data) -> ([Double], [Bool])? {
+    guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+    let gaps = j["gaps"] as? [Bool] ?? []
+    if let t = j["t"] as? [Double] { return (t, gaps) }
+    if let ms = j["ms"] as? [Double] { return (ms.map { $0 / 1000 }, gaps) }
+    return nil
+  }
+
   /// The phone's own histograms of these days, from `hk_samples` (one sample per start time; Python's round()).
   func refreshHistograms(_ db: Database, days: Set<String>) throws {
     for d in days {
-      guard let noon = LocalDay.parse(d, zone) else { continue }
-      var cal = Calendar(identifier: .gregorian)
-      cal.timeZone = zone
-      let lo = cal.startOfDay(for: noon), hi = cal.date(byAdding: .day, value: 1, to: lo)!
-      var seen = Set<Double>(), hist: [String: Int] = [:]
-      for r in try Row.fetchAll(db, sql: "SELECT start, value FROM hk_samples WHERE type = ? AND start >= ? AND start < ? ORDER BY start, uuid",
-                                arguments: [Self.heartRate, lo.timeIntervalSince1970, hi.timeIntervalSince1970]) {
-        let t: Double = r["start"]
-        guard seen.insert(t).inserted else { continue }
-        let v: Double = r["value"]
-        hist[String(Int(v.rounded(.toNearestOrEven))), default: 0] += 1
-      }
-      if hist.isEmpty {
-        try db.execute(sql: "DELETE FROM hr_day_hist WHERE date = ? AND source = 'phone'", arguments: [d])
-        continue
-      }
-      try db.execute(sql: """
-        INSERT INTO hr_day_hist (date, hist, source, updated_at) VALUES (?, ?, 'phone', ?)
-        ON CONFLICT(date) DO UPDATE SET hist = excluded.hist, source = 'phone', updated_at = excluded.updated_at
-        """, arguments: [d, try JSONSerialization.data(withJSONObject: hist, options: [.sortedKeys]), Date().timeIntervalSince1970])
+      guard let lo = dayStart(d), let hi = dayStart(LocalDay.add(d, 1)) else { continue }
+      let rows = try Row.fetchAll(db, sql: "SELECT start, value FROM hk_samples WHERE type = ? AND start >= ? AND start < ? ORDER BY start, uuid",
+                                  arguments: [Self.heartRate, lo, hi])
+      try storeHistogram(db, day: d, Self.histogram(rows.map { ($0["start"] as Double, $0["value"] as Double) }), source: "phone")
     }
+  }
+
+  /// {bpm: count} of (instant, bpm) pairs in their order: one per instant, Python's round() (half to even).
+  static func histogram(_ xs: [(Double, Double)]) -> [String: Int] {
+    var seen = Set<Double>(), hist: [String: Int] = [:]
+    for (t, v) in xs where seen.insert(t).inserted {
+      hist[String(Int(v.rounded(.toNearestOrEven))), default: 0] += 1
+    }
+    return hist
+  }
+
+  func storeHistogram(_ db: Database, day d: String, _ hist: [String: Int], source: String) throws {
+    if hist.isEmpty {
+      try db.execute(sql: "DELETE FROM hr_day_hist WHERE date = ? AND source <> 'server'", arguments: [d])
+      return
+    }
+    try db.execute(sql: """
+      INSERT INTO hr_day_hist (date, hist, source, updated_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(date) DO UPDATE SET hist = excluded.hist, source = excluded.source, updated_at = excluded.updated_at
+      """, arguments: [d, try JSONSerialization.data(withJSONObject: hist, options: [.sortedKeys]), source, Date().timeIntervalSince1970])
   }
 
   /// The server's histograms (`GET /v1/sync/scoring` → `hr_hist.days`): only for days the phone has none of its own.
@@ -196,29 +220,45 @@ final class LocalRawStore {
 
   // MARK: - housekeeping
 
-  /// Drops raw samples and readings older than `keepDays` before `today` (their histograms stay) and dirty marks older
-  /// than that (those days are the server's to score).
-  func prune(today: String) throws {
-    guard let noon = LocalDay.parse(today, zone) else { return }
-    let cut = noon.addingTimeInterval(-Double(Self.keepDays + 2) * 86_400).timeIntervalSince1970
-    let cutDay = LocalDay.string(Date(timeIntervalSince1970: cut), zone)
-    let histCut = LocalDay.add(today, -430)
-    try db.writer.write { db in
+  /// Days that leave the hot window (older than `keepDays` + 2 before `today`) move into the compact history (unless the
+  /// server's history has them already), then leave `hk_samples`; dirty marks that old go (only a full recompute scores
+  /// those days again). Readings, histograms and the history stay unless LocalHistoryParams gives a kind a limit.
+  /// Returns the days rolled over.
+  @discardableResult
+  func prune(today: String) throws -> [String] {
+    let cutDay = LocalDay.add(today, -(Self.keepDays + 2))
+    guard let cut = dayStart(cutDay) else { return [] }
+    return try db.writer.write { db -> [String] in
+      let rolled = try rollOver(db, before: cut)
       try db.execute(sql: "DELETE FROM hk_samples WHERE start < ?", arguments: [cut])
-      try db.execute(sql: "DELETE FROM heartbeat_series WHERE start < ?", arguments: [cut])
       try db.execute(sql: "DELETE FROM score_dirty WHERE date < ?", arguments: [cutDay])
-      try db.execute(sql: "DELETE FROM hr_day_hist WHERE date < ?", arguments: [histCut])
+      let from = try String.fetchOne(db, sql: "SELECT value FROM meta WHERE key = ?", arguments: [Self.hotFromKey])
+      if from.map({ $0 < cutDay }) ?? true {
+        try db.execute(sql: "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                       arguments: [Self.hotFromKey, cutDay])
+      }
+      try applyKeepLimits(db, today: today)
+      return rolled
     }
   }
+
+  /// The first local day `hk_samples` is authoritative for (before it: the compact history).
+  func hotFrom(today: String) -> String {
+    hotFromIfSet ?? Self.rawStart(today: today)
+  }
+
+  /// The boundary once a restore or a prune set it; nil = no history yet, `hk_samples` is all there is.
+  var hotFromIfSet: String? { (try? db.meta(Self.hotFromKey)) ?? nil }
 
   /// The first day the phone keeps raw samples of in full.
   static func rawStart(today: String) -> String { LocalDay.add(today, -(keepDays - 1)) }
 
-  /// What the tables take now (the sync center / the doc's size figures).
+  /// Rows per table now (the data status page, the doc's size figures).
   func footprint() throws -> [String: Int] {
     try db.writer.read { db in
       var out: [String: Int] = [:]
-      for t in ["hk_samples", "heartbeat_series", "hr_day_hist", "daily_scores", "daily_metrics", "sleep_sessions"] {
+      for t in ["hk_samples", "hist_samples", "hist_segments", "hist_days", "heartbeat_series", "hr_day_hist", "daily_scores",
+                "daily_metrics", "sleep_sessions"] {
         out[t] = try Int.fetchOne(db, sql: "SELECT count(*) FROM \(t)") ?? 0
       }
       return out
