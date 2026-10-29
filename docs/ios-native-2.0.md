@@ -712,6 +712,31 @@ If `explain/personal.py` (~785 lines of bilingual rules) does not fit one PR, sp
 | Files | `rawdata/ow_archive.py`, `cli.py` (`retire-check`), `health_sync/health_server.py`, `batch.py` steps, `deploy/ops/ops.py` jobs, migrations 1060–1069; docs `apple-sync-engine.md` §5 |
 | Acceptance | `retire-check` green for every user with OW or Shortcut data; code deletion (S8 list, apple-sync-engine.md §10) is a later PR |
 
+**As built (R1 PR).** Tooling and the switch only; nothing is turned off by merging or deploying it.
+
+| Planned | Built |
+|---|---|
+| `retire-check --user-id N` | `body-engine retire-legacy verify --user-id N \| --all [--offline] [--scores] [--json]` (`rawdata/retire.py`), read-only. Per user: what the server keeps of `ow` / `shortcut` / `apple_export` in `daily_metric_sources` (days), `sleep_sessions` (nights), `workouts`, raw samples (`ow_sample_cache`, `shortcut_samples`, `export_samples`), counts and local date ranges only; the OW archive (`ow_archive.check`: complete, and covering OW's newest sample = the `sync_state` cursor); with an OW client, OW's nights whose wake date has no night at all locally and OW's workouts missing from `workouts`; local days of the archived OW samples without an OW daily value; Shortcut files on disk never imported; queued history imports. `--scores`: full recompute with `client=None` (app mode, archive) vs stored `daily_scores` within the cut-over tolerance (`cutover.score_check`), pass / fail and day counts only. Status per user: ✓ kept / ⚠ kept, look at the note / ✗ something would be lost / — no legacy data; exit code 1 when any ✗ |
+| `ow-archive` until complete | `verify --archive` runs, per user (consent-gated, idempotent, commits per step, **never deletes**): pending Shortcut files (`importers/shortcut.run`), `ow_archive.archive` (raw samples + stages, refreshed up to now), OW's missing nights (only on wake dates without any night), OW's missing workouts (insert only; unlike `import_ow` nothing is deleted), OW's missing daily values (only days without any OW value). Then verify. `ow-archive` itself is unchanged |
+| `BODY_SHORTCUT_CUTOFF` | one variable for both sides: `BODY_LEGACY_SOURCES_CUTOFF` (ISO date = 00:00 UTC of that day, or an ISO date-time; unset by default). Not set / before it / invalid: nothing changes. From it on: `POST /upload` (`health_sync/health_server.py`) answers **410 Gone** with a Chinese-first message pointing to the app and stores nothing (`GET /legacy-status` shows the switch); the hourly-batch step `import-ow`, `body-engine import-ow` / `import-workouts` (unless `--force`), the on-demand refresh's OW import (`sync/refresh.py`) and the OW poller (`sync/ow_watch.py`) skip. Already imported data is never touched. Both containers (Body Engine and the receiver) must get the same value |
+| doctor | `body-engine retire-legacy status` (JSON: switch, users with OW data / Shortcut uploads in the last 7 days, OW-linked users; counts only); `deploy/ops/ops.py check_legacy_sources` (row 「旧数据源停用」: ✓ before the cutoff; after it ⚠ while anyone still sent legacy data, ⚠ for an invalid value). A deployment's own doctor calls the same command |
+| migrations 1060–1069, `batch.py` steps, `ops.py` jobs | no migration needed (the switch is an environment variable, the archive tables exist since 770 / 800); `import-ow` stays in the step list and skips itself after the cutoff, so the jobs need no change |
+
+Not covered here (later, ops or other packages): stopping the OW containers and its public sync paths, removing `import-ow` from the jobs, the last OW `pg_dump` (apple-sync-engine.md §5.3); relaxing `ow_archive.reads_archive` to "archived, any mode" and deleting the OW code (S8, apple-sync-engine.md §10); the forced upgrade (R2).
+
+**Cutover runbook (owner confirms each step; on the primary server, through the deployment's engine wrapper).**
+1. Verify, read-only: `body-engine retire-legacy verify --all` (with OW reachable; add `--scores` for the full recompute
+   check, slow). Output: ids, counts and dates only. Every row ✓ or ⚠ with a note you accept.
+2. Archive what is missing: `body-engine retire-legacy verify --all --archive`, then step 1 again. Re-runnable at any time;
+   run it once more right before step 3 so the archive covers OW's newest samples (✗ `OW 存档没覆盖最新样本` otherwise).
+   ⚠ `不是 app 模式` means the scores do not read the archive yet: switch that user (`sync-mode`) before OW stops.
+3. Set the cutoff: `BODY_LEGACY_SOURCES_CUTOFF=<date>` in the deployment's environment for both the Body Engine container
+   and the Shortcut receiver, recreate both. Check: doctor row 「旧数据源停用」 says 已于 … 停用, `GET /legacy-status` on the
+   receiver says `active: true`, `retire-legacy status` shows no user still sending (⚠ lists them otherwise).
+   Rollback: remove the variable and recreate both; nothing was deleted, the next hourly import-ow catches up from its cursor.
+4. Later, ops only (not in this PR): keep OW running read-only for the agreed period, last `pg_dump`, then stop its containers
+   and remove its public sync paths (apple-sync-engine.md §5.3). Run step 1 with `--offline` afterwards: still ✓ / ⚠.
+
 ### R2 — forced upgrade
 | | |
 |---|---|

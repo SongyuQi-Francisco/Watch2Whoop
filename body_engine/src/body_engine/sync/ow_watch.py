@@ -57,7 +57,10 @@ def recent_uploads(client, since: datetime) -> dict[str, datetime]:
 def poll(conn: psycopg.Connection, client=None, now: datetime | None = None) -> dict:
     """One round. Returns {"uploads": n, "queued": [user ids], "waiting": [user ids]}. Commits."""
     from ..profile import consent
+    from ..rawdata import retire
     from .refresh import STALE
+    if retire.ow_import_stopped():   # 2.0.0 R1: OW retired, nothing to watch
+        return {"uploads": 0, "queued": [], "waiting": [], "skipped": "legacy_cutoff"}
     if client is None:
         from ..ow_client import OWClient
         client = OWClient()

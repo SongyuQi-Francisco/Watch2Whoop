@@ -1,5 +1,7 @@
 # iPhone 快捷指令同步规范（唯一规范）
 
+> **停用说明（2.0.0，`docs/ios-native-2.0.md` §0 D2、§4 R1）**：2.0.0 之后快捷指令上传不再维护，所有人改用 Watch2Whoop app 自己的 HealthKit 同步。部署者设了 `BODY_LEGACY_SOURCES_CUTOFF` 之后，接收器的 `POST /upload` 回 **410 Gone**（先中文后英文的提示，指向 app），不再保存任何上传；已经导入的数据（`shortcut_samples`、`shortcut_uploads`、`source='shortcut'` 的日值 / 睡眠 / 训练）永久保留。停用前用 `body-engine retire-legacy verify --all [--archive]` 确认每个人的上传都已导入。本规范留作历史数据的格式说明。
+
 > 2026-10-17 定，2026-10-18 改（快捷指令 1.1：累计型改传原始样本；来源选择规则见第 5 节）。Open Wearables 的 iPhone app 恢复之前，日常健康数据全部靠 iPhone 快捷指令「Export Health Data」上传到服务器（2026-10-18 起是 Ali）。
 > 改快捷指令、接收器（`health_sync/health_server.py`）或导入器（`body_engine/src/body_engine/importers/shortcut.py`）都以这里为准，三处一起改。
 > 原快捷指令的备份：iPhone 上的「Export Health Data 备份 2026-10-17」（rows-v0 格式、局域网地址、心率按小时分组）。

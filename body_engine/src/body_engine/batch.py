@@ -227,7 +227,11 @@ def process_user(u: dict, steps: tuple, full: bool, skip: bool, max_age_hours: f
             return {"id": uid, "lines": lines, "errors": [], "skipped": 0, "seconds": time.time() - t_user}
         client = client or make_ow_client_safe()
         if "import-ow" in steps:
-            if u["ow"]:
+            from .rawdata import retire
+            if retire.ow_import_stopped():   # 2.0.0 R1: OW retired; what was imported stays as it is
+                if u["ow"]:
+                    lines.append(f"· user {uid} {retire.SKIP_NOTE}，跳过 import-ow")
+            elif u["ow"]:
                 step(f"import-ow user {uid}", "import-ow", lambda: _step_import_ow(conn, client, u), "ran",
                      quiet=lambda: _ow_quiet(conn, client, u), why="OW 没有比同步游标更新的样本")
             else:

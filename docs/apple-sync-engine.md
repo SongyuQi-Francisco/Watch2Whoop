@@ -395,6 +395,8 @@ GRANT SELECT ON hk_samples, hk_stats TO grafana_ro;   -- 如果 Grafana 要读
 
 ### 5.3 OW 停写、只读保留多久
 
+> 2.0.0 起（`docs/ios-native-2.0.md` §4 R1）：停写前先 `body-engine retire-legacy verify --all [--archive]` 确认每个人的 OW / 快捷指令 / 导出数据都在 Body Engine 自己的表里；停写开关是环境变量 `BODY_LEGACY_SOURCES_CUTOFF`（快捷指令 410、`import-ow` 跳过），步骤见那里的 runbook。
+
 1. **回退期 30 天**（D5）：OW 容器、对外同步入口、`import-ow` 都照常运行（没有新数据），随时能回退。
 2. **只读期 60 天**：
    - 关闭 OW 的对外同步入口（反向代理里删掉对应的站点或路径）；

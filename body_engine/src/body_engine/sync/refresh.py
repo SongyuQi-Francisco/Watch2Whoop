@@ -123,7 +123,9 @@ def _run_import(user_id: int, client=None, connect=None) -> None:
             try:
                 from ..importers import ow
                 from ..ow_client import OWClient
-                ow.run(conn, client or OWClient(), user_id)
+                from ..rawdata import retire
+                if not retire.ow_import_stopped():   # 2.0.0 R1: after the cutoff only the scores are refreshed
+                    ow.run(conn, client or OWClient(), user_id)
             finally:
                 conn.execute("SELECT pg_advisory_unlock(%s, %s)", (LOCK_NS, user_id))
             _set(conn, user_id, status="scores_queued", imported_at=_now(), error=None)
@@ -228,6 +230,12 @@ def import_queued(conn: psycopg.Connection, user_id: int, client=None) -> dict:
         conn.commit()
         return {"busy": True}
     try:
+        from ..rawdata import retire
+        if retire.ow_import_stopped():   # 2.0.0 R1: OW retired, nothing to import; the queued scores still run
+            conn.execute("""UPDATE sync_refresh SET status = 'scores_queued', import_queued_at = NULL, updated_at = now()
+                            WHERE user_id = %s""", (user_id,))
+            conn.commit()
+            return {"skipped": "legacy_cutoff"}
         _set(conn, user_id, status="importing")
         conn.commit()
         from ..importers import ow

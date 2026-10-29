@@ -39,6 +39,11 @@ def _ow_or_none():
         return None
 
 
+def _legacy_stopped() -> bool:
+    from .rawdata import retire
+    return retire.ow_import_stopped()
+
+
 def _export_date(processed_dir: Path) -> date:
     """Export date: prefer the file name of full_export/export_YYYY-MM-DD.zip, otherwise the latest date in daily_metrics.csv."""
     zips = sorted(processed_dir.parent.glob("full_export/export_*.zip"))
@@ -300,11 +305,13 @@ def main() -> None:
     w.add_argument("--full", action="store_true", help="recompute everything from the earliest data in OW")
     w.add_argument("--xml-energy-unit", choices=["kJ", "kcal"], default="kJ",
                    help="energy unit in the export.xml imported into OW (see the unit of ActiveEnergyBurned in export.xml)")
+    w.add_argument("--force", action="store_true", help="import even after the legacy cutoff (BODY_LEGACY_SOURCES_CUTOFF)")
 
     wk = sub.add_parser("import-workouts", help="pull only the workout records from Open Wearables -> workouts (import-ow also does this every time; this is for separate backfill / recompute)")
     wk.add_argument("--user-id", type=int, required=True)
     wk.add_argument("--start", type=date.fromisoformat, help="start from this day (user local date), default all history")
     wk.add_argument("--end", type=date.fromisoformat, help="up to and including this day, default today")
+    wk.add_argument("--force", action="store_true", help="import even after the legacy cutoff (BODY_LEGACY_SOURCES_CUTOFF)")
 
     hb = sub.add_parser("history-backfill-run", help="full-history backfill for users whose app read the whole Apple Health history: import from OW window by window, then recompute all scores (resumable, time-budgeted; nothing queued = nothing done)")
     hb.add_argument("--user-id", type=int, default=None)
@@ -355,6 +362,18 @@ def main() -> None:
                                            "idempotent, resumable; --check only reports whether the archive is complete")
     oa.add_argument("--user-id", type=int, required=True)
     oa.add_argument("--check", action="store_true")
+    rl = sub.add_parser("retire-legacy", help="2.0.0 R1: retiring Open Wearables and the iOS Shortcut. verify (read-only): per user, "
+                                              "what the server keeps of OW / Shortcut / apple_export (counts and dates only) and what "
+                                              "still lives only in OW; --archive copies the missing rows (idempotent, never deletes). "
+                                              "status: the cutoff switch (BODY_LEGACY_SOURCES_CUTOFF) and who still sent legacy data "
+                                              "lately (counts only, the doctor)")
+    rl.add_argument("action", choices=("verify", "status"))
+    rl.add_argument("--user-id", type=int, default=None)
+    rl.add_argument("--all", action="store_true", help="verify: every user with legacy data or an OW link")
+    rl.add_argument("--archive", action="store_true", help="verify: first copy what is missing into Body Engine's tables")
+    rl.add_argument("--offline", action="store_true", help="verify: do not ask OW (local checks only)")
+    rl.add_argument("--scores", action="store_true", help="verify: also recompute all scores without OW and compare (slow)")
+    rl.add_argument("--json", action="store_true")
     c = sub.add_parser("compute-scores", help="compute sleep / recovery / strain scores into daily_scores (always recomputed in full from the scoring start; only --start to --end is written)")
     c.add_argument("--user-id", type=int, required=True)
     c.add_argument("--start", type=date.fromisoformat, help="first day written, default the scoring start (the day the watch was first worn)")
@@ -854,6 +873,9 @@ def main() -> None:
             print("ow user id:", ow.link_user(conn, OWClient(), args.user_id, args.ow_user_id))
         elif args.cmd == "sparky-link":
             print("sparkyfitness user id:", sparky_client.link_user(conn, args.user_id, args.key_name))
+        elif args.cmd in ("import-ow", "import-workouts") and not args.force and _legacy_stopped():
+            from .rawdata import retire
+            print(json.dumps({"skipped": retire.SKIP_NOTE}, ensure_ascii=False))
         elif args.cmd == "import-ow":
             print(json.dumps(ow.run(conn, OWClient(), args.user_id, args.start, args.end, args.full,
                                     args.xml_energy_unit), default=str))
@@ -922,6 +944,29 @@ def main() -> None:
                    "apply": lambda: cutover.apply(conn, args.user_id, client, not args.no_scores),
                    "verify": lambda: cutover.post_check(conn, args.user_id)}[args.action]()
             print(json.dumps(res, default=str, ensure_ascii=False, indent=1))
+        elif args.cmd == "retire-legacy":
+            from .rawdata import retire
+            if args.action == "status":
+                print(json.dumps(retire.status(conn), default=str, ensure_ascii=False))
+                return
+            if (args.user_id is None) == (not args.all):
+                raise SystemExit("verify: --user-id N 或 --all（二选一）")
+            ids = retire.users(conn) if args.all else [args.user_id]
+            client = None if args.offline else _ow_or_none()
+            results, archived = [], []
+            for uid in ids:
+                if args.archive:
+                    archived.append(retire.archive(conn, uid, client))
+                results.append(retire.verify(conn, uid, client, scores=args.scores))
+                conn.rollback()   # verify only reads
+            if args.json:
+                print(json.dumps({"archived": archived, "users": results}, default=str, ensure_ascii=False, indent=1))
+            else:
+                if archived:
+                    print("\n".join(json.dumps(a, default=str, ensure_ascii=False) for a in archived) + "\n")
+                print(retire.markdown(results))
+            if any(r["status"] == "✗" for r in results):
+                raise SystemExit(1)
         elif args.cmd == "ow-archive":
             from .rawdata import ow_archive
             res = ow_archive.check(conn, args.user_id) if args.check else ow_archive.archive(conn, OWClient(), args.user_id)

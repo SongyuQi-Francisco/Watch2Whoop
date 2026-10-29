@@ -1,5 +1,7 @@
 # iPhone Shortcut: Watch2Whoop Health Sync
 
+> **Retired with 2.0.0** (`docs/ios-native-2.0.md` §0 D2, §4 R1). The Shortcut is no longer maintained; everyone syncs with the Watch2Whoop app's own HealthKit sync. Once a deployment sets `BODY_LEGACY_SOURCES_CUTOFF`, the receiver answers `POST /upload` with **410 Gone** (a Chinese-first message pointing to the app) and stores nothing; data already imported stays. Before the cutoff, `body-engine retire-legacy verify --all [--archive]` confirms every uploaded file was imported. The files below are kept for reference.
+
 > An iOS Shortcut that reads Apple Health samples (Apple Watch heart rate, HRV, sleep stages, energy, …) and uploads them to a self-hosted receiver (`health_sync/health_server.py`). Import `Watch2Whoop Health Sync.shortcut`, answer the two import questions (upload URL, upload token), then add the personal automations below.
 
 The shortcut joins Apple Health samples (watch heart rate, HRV, sleep stages, energy, steps, ...) into column-based text and POSTs it to the receiver `health_sync/health_server.py` on your own Mac; Body Engine imports it and computes the sleep / recovery / strain scores.
