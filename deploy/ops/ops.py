@@ -962,6 +962,33 @@ def check_sync_shadow(r: Report) -> None:
         r.ok("影子对比", detail)
 
 
+def legacy_sources_row(res: dict) -> tuple[str, str]:
+    """(status, detail) of the OW / Shortcut retirement (2.0.0 R1) from `body-engine retire-legacy status` (counts only).
+    Before the cutoff: ✓ with who still sends legacy data. After it: ⚠ while someone still sent data in the last days
+    (they are not on the app's own sync yet). An invalid cutoff value: ⚠ (the switch is not in effect)."""
+    c, days = res["cutoff"], res["recent_days"]
+    recent = f"近 {days} 天仍有 OW 数据 {res['ow_users_recent']} 人、快捷指令上传 {res['shortcut_users_recent']} 人"
+    if c.get("error"):
+        return "⚠", f"停用时间设置无效：{c['error']}；{recent}"
+    if not c["set"]:
+        return "✓", f"未设停用时间（OW / 快捷指令照常）；{recent}"
+    if not c["active"]:
+        return "✓", f"将于 {c['cutoff']} 停用；{recent}"
+    still = res["ow_users_recent"] + res["shortcut_users_recent"]
+    return ("⚠" if still else "✓"), f"已于 {c['cutoff']} 停用（快捷指令 410、不再导入 OW）；{recent}"
+
+
+def check_legacy_sources(r: Report) -> None:
+    """OW / Shortcut retirement switch (2.0.0 R1, `body-engine retire-legacy status`)."""
+    p = engine("retire-legacy", "status", timeout=120)
+    try:
+        res = json.loads(p.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return   # an engine without the command
+    st, detail = legacy_sources_row(res)
+    {"✓": r.ok, "⚠": r.warn}[st]("旧数据源停用", detail)
+
+
 def doctor_checks(r: Report) -> None:
     if PRIMARY == "ali":
         return doctor_checks_ali_primary(r)
@@ -1161,6 +1188,7 @@ def doctor_checks(r: Report) -> None:
 
     check_muscle_coverage(r)
     check_sync_shadow(r)
+    check_legacy_sources(r)
     check_backups(r, state, t_now)
 
     # disk

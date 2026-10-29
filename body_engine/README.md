@@ -388,6 +388,11 @@ client reads what the OW-only user reads from OW; shadow / OW users never read t
 - S6 history (`rawdata/ow_archive.py`): `uv run body-engine ow-archive --user-id N [--check]` keeps OW's history locally
   (the raw-sample copy `ow_sample_cache` made complete over the scoring range, sleep stages in `ow_archive_segments`); an
   archived app-mode user's scores, stress, workout heart rate and stage chart never ask OW.
+- 2.0.0 R1 retirement (`rawdata/retire.py`, docs/ios-native-2.0.md §4 R1): `uv run body-engine retire-legacy verify
+  --user-id N | --all [--archive] [--offline] [--scores] [--json]` (per user ✓ / ⚠ / ✗ with counts and dates only; `--archive`
+  copies what still lives only in OW and imports pending Shortcut files, idempotent, never deletes) and `retire-legacy status`
+  (doctor). Switch: `BODY_LEGACY_SOURCES_CUTOFF` (unset by default): afterwards the Shortcut receiver answers 410 and every
+  OW import skips. Tests: `tests/test_retire_legacy.py`.
 - Status panel (`rawdata/sync_status.py`): refused uploads are recorded by reason (`ingest_failures`: auth / format /
   refused / limit / server, codes only, repeats folded); `GET /v1/users/{user}/sync/engine/status` (Today page) and
   `GET /v1/ingest/sync-status` (Bearer, the app) return the last upload, the newest sample per type, failures, the

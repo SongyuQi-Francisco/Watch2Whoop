@@ -8,6 +8,11 @@ POST /upload?name=health   body = text assembled by the Shortcut; header Authori
   - The token identifies the user via secrets/health_upload_tokens.json (only sha256 is stored); old Shortcuts without a token are still accepted during the transition (counted as user 1),
     with one line in server.log; a wrong token gets 401. With HEALTH_SYNC_REQUIRE_TOKEN=1, requests without a token are rejected too.
 GET /ping                   health-sync ok
+GET /legacy-status          {"cutoff": ..., "active": ...}: the retirement switch below, for the doctor
+
+Retirement (2.0.0 R1, docs/ios-native-2.0.md §4 R1): once BODY_LEGACY_SOURCES_CUTOFF (ISO date = 00:00 UTC of that day, or
+an ISO date-time) is reached, POST /upload answers 410 Gone with a Chinese-first message pointing to the Watch2Whoop app and
+stores nothing; files already received stay as they are. Unset (default) or invalid = uploads are accepted as before.
 
 Listens on two ports: 0.0.0.0:8765 (legacy LAN address, kept for compatibility) and 127.0.0.1:8767 (for `tailscale serve --https=8446`;
 127.0.0.1:8765 on this machine is taken by another project, so it cannot be used).
@@ -37,6 +42,10 @@ ENGINE_DIR = os.environ.get("BODY_ENGINE_DIR") or os.path.join(os.path.dirname(B
 IMPORT_LOG = os.path.join(BASE, "import.log")
 SERVER_LOG = os.path.join(BASE, "server.log")
 
+CUTOFF_ENV = "BODY_LEGACY_SOURCES_CUTOFF"
+GONE_MESSAGE = ("快捷指令同步已停用：请打开 Watch2Whoop app 同步健康数据（「我」→「手机同步」）。\n"
+                "The Shortcut upload has been retired: please sync your health data with the Watch2Whoop app.\n")
+
 _import_users: set[int] = set()
 _import_cv = threading.Condition()
 _save_lock = threading.Lock()
@@ -53,6 +62,28 @@ def log(msg: str) -> None:
 
 def user_archive(user_id: int) -> str:
     return ARCHIVE if user_id == OWNER_USER_ID else os.path.join(ARCHIVE, f"u{user_id}")
+
+
+# ---------- retirement switch (same rules as body_engine/rawdata/retire.parse_cutoff) ----------
+
+def parse_cutoff(raw: str | None) -> datetime.datetime | None:
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    if len(raw) == 10:
+        return datetime.datetime.combine(datetime.date.fromisoformat(raw), datetime.time.min, datetime.timezone.utc)
+    t = datetime.datetime.fromisoformat(raw)
+    return t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
+
+
+def cutoff_state(now: datetime.datetime | None = None) -> dict:
+    raw = os.environ.get(CUTOFF_ENV, "")
+    try:
+        at = parse_cutoff(raw)
+    except ValueError:
+        return {"cutoff": None, "active": False, "error": "invalid"}
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return {"cutoff": at.isoformat() if at else None, "active": at is not None and now >= at, "error": None}
 
 
 # ---------- token ----------
@@ -124,16 +155,21 @@ def want_import(user_id: int) -> None:
 # ---------- HTTP ----------
 
 class H(BaseHTTPRequestHandler):
-    def _reply(self, code: int, msg: str) -> None:
+    def _reply(self, code: int, msg: str, ctype: str = "text/plain; charset=utf-8") -> None:
         body = msg.encode()
         self.send_response(code)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
-        self._reply(200, "health-sync ok\n") if urlparse(self.path).path == "/ping" else self._reply(404, "not found\n")
+        path = urlparse(self.path).path
+        if path == "/ping":
+            return self._reply(200, "health-sync ok\n")
+        if path == "/legacy-status":
+            return self._reply(200, json.dumps(cutoff_state()) + "\n", "application/json")
+        self._reply(404, "not found\n")
 
     def do_POST(self):
         u = urlparse(self.path)
@@ -143,6 +179,9 @@ class H(BaseHTTPRequestHandler):
         name = re.sub(r"[^A-Za-z0-9_-]", "", name)[:40] or "data"
         user_id, why = check_token(self.headers)
         via = "tailscale" if self.server.server_address[0] == "127.0.0.1" else "lan"
+        if cutoff_state()["active"]:   # retired (2.0.0 R1): nothing is stored any more
+            log(f"已停用，拒收 {name}（user {user_id if user_id is not None else '?'}，{via}）")
+            return self._reply(410, GONE_MESSAGE)
         if user_id is None:
             log(f"拒收 {name}（{via}，{self.client_address[0]}）：{why}")
             return self._reply(401, "unauthorized\n")
