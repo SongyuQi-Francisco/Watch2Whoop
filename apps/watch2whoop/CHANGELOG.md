@@ -50,6 +50,10 @@ shared `## <marketing version>` section, and the iOS release never sees it.
 - 模拟器验证：调试包「同步中心 → 开发」里可以写测试数据、跑一轮后台式同步、删掉一条测试心率。
 
 ## 1.0.9 — 2026-10-27
+> **作废（#340）**：这一版从没发给测试用户。iOS 从 1.0.9 起是原生 app（`apps/ios/`，更新记录在 `apps/ios/CHANGELOG.md`）；旧的
+> `app-ios-v1.0.9` tag 和 Release 在原生 1.0.9 发布当天删掉、在新提交上重新打（`docs/ios-native-app.md` 第 12 节）。Flutter 版停在
+> 1.0.8，之后只修 bug。下面保留原文作记录。
+
 和 1.0.8 同一天发布：测试用户直接装 1.0.9 即可（包含 1.0.8 的全部内容）。下面的新功能都由服务器开关控制、默认关：开关关着时 app 和 1.0.8 完全一样。
 
 **原生界面（#247 第 2 期，iOS）**

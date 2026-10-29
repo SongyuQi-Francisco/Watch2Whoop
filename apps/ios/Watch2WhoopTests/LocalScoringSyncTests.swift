@@ -313,6 +313,41 @@ final class ScoringSyncTests: XCTestCase {
     XCTAssertEqual(ScoringSync.lastReport(db)?.uploaded.count, 3)
   }
 
+  /// N9: a new user's first rounds come before the server derived a first day. The phone scores for its own display but
+  /// uploads nothing (an upload without an origin went past the spot check); once the server has an origin, the phone's
+  /// rows before it go and the chain (CTL / ATL, sleep need) is computed again from there, like the server does.
+  func testNoUploadBeforeTheServerHasAnOriginThenTheChainStartsThere() async throws {
+    let db = try AppDatabase.inMemory()
+    let today = "2026-03-20", day0 = LocalDay.add(today, -9), origin = LocalDay.add(today, -7)
+    try Synthetic.fill(db, today: today, days: 10)
+    try await db.writer.write { db in try LocalRawStore.markDirty(db, [day0]) }
+    try db.saveDoc(ScoringSync.contextDoc, json: Data(#"{"tz": "\#(Synthetic.tz)"}"#.utf8))
+    try db.setMeta("algo.checked_at", String(Date().timeIntervalSince1970))
+    try db.setMeta(ScoringSync.histKey, "done")
+    let rt = try OpenBodyScoreRuntime.builtin()
+    let noOrigin = context(rt, mode: "app", origin: "x").replacingOccurrences(of: #""x""#, with: "null")
+    StubProtocol.reset([.init(status: 200, body: noOrigin)])
+    let sync = ScoringSync(db: db, api: api())
+    let now = LocalDay.parse(today, Synthetic.zone)!.addingTimeInterval(6 * 3600)
+    let rep = await sync.run(reason: "test", now: now)
+    XCTAssertEqual(rep.state, "waiting_sync")
+    XCTAssertEqual(rep.detail, "no_origin")
+    XCTAssertEqual(rep.first, day0)
+    XCTAssertFalse(rep.written.isEmpty)   // shown on the phone
+    XCTAssertEqual(StubProtocol.requests.map { $0.url!.path }, ["/v1/sync/scoring"])   // not uploaded
+
+    try await db.writer.write { db in try LocalRawStore.markDirty(db, [today]) }
+    StubProtocol.reset([
+      .init(status: 200, body: context(rt, mode: "app", origin: origin)),
+      .init(status: 200, body: #"{"status": "ok", "stored": 8, "app_scoring": true, "check": {"date": "x", "ok": true, "diffs": {}}}"#),
+    ])
+    let rep2 = await sync.run(reason: "test", now: now)
+    XCTAssertEqual(rep2.first, origin)
+    XCTAssertEqual(rep2.uploaded.first, origin)
+    let before = try await db.writer.read { try Int.fetchOne($0, sql: "SELECT count(*) FROM daily_scores WHERE date < ?", arguments: [origin]) }
+    XCTAssertEqual(before, 0)
+  }
+
   /// A user the server scores from Open Wearables / the Shortcut: the phone does not.
   func testOnlyAppModeUsersAreScoredHere() async throws {
     let db = try AppDatabase.inMemory()

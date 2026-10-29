@@ -24,6 +24,11 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 - **模拟器里走设置链接登录**（Debug 版）：`SIMCTL_CHILD_W2W_DEV_SETUP='watch2whoop://setup?today=…&login=<登录码>'`，和相机扫码走同一条路（`body-engine login-code` 发码）。`simctl openurl` 也行，但要在模拟器里点一次「打开」。
 - **Jarvis 演示，不用数据库，不调 AI**（Debug 版）：先 `python3 scripts/fake_jarvis_server.py`，再用上面的自动登录，`W2W_DEV_SERVER` 填 `http://127.0.0.1:18766`、`W2W_DEV_TOKEN` 随便填。再加 `SIMCTL_CHILD_W2W_JARVIS_DEMO=dial|open|hold|chat`，`W2W_PERF=1` 时打印帧率。详见 `docs/ios-native-app.md` 9.2。
 - **模拟器里测 Keychain / 覆盖升级**：不能用 `CODE_SIGNING_ALLOWED=NO`（没签名的 app 写不进 Keychain）。用 `CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID` 构建：Flutter 的模拟器构建用的就是 `FAKETEAMID`，两边的 Keychain 访问组一致，才能读到 Flutter 版存的 token。
+- **模拟器里写测试健康数据**（Debug 版、只在模拟器）：`SIMCTL_CHILD_W2W_DEV_SEED_HEALTH=21` 启动时先弹一次写入授权，再写 21 天合成数据（心率、HRV、静息心率、睡眠阶段、步数、能量、隔天一次力量训练、逐拍心跳；元数据 `W2WTestData=1`，体重 99.9 kg）。模拟器里已经写过就只加一条新心率。全量回归的步骤见 `docs/ios-native-1.0.9-regression.md`。
+
+## TestFlight
+
+给编译上传的人：只从 `app-ios-v<版本>` 的 GitHub Release 拿源码（zip 里除了 `apps/ios/`，还有它要打进 app 的两个文件，路径和仓库一样），版本号和构建号在 `Config/Watch2Whoop.xcconfig` 里，不要改。签名、能力（HealthKit、Sign in with Apple、Push、Background Modes）、Keychain、App Review 备注的完整步骤在交接单模板 [`docs/ios-native-1.0.9-handover-template.md`](../../docs/ios-native-1.0.9-handover-template.md)。
 
 ## English
 
@@ -32,5 +37,10 @@ Pure-SwiftUI iOS app (#340), replacing the Flutter app (`apps/watch2whoop/`) fro
 **Build**
 - Run `xcodegen generate` (XcodeGen 2.46.0), then `xcodebuild … test` on a simulator.
 - Signing values go in the git-ignored `Config/Watch2Whoop.local.xcconfig`. Use the same bundle ID and team as the Flutter app, so TestFlight upgrades it in place.
+
+**TestFlight**: build only from the `app-ios-v<version>` GitHub Release (its zip holds `apps/ios/` plus the two files the
+project builds in from elsewhere, at their repository paths). The version and build number are in
+`Config/Watch2Whoop.xcconfig`; do not change them. Signing, capabilities, Keychain and App Review notes:
+`docs/ios-native-1.0.9-handover-template.md`.
 
 Licence: MIT ([LICENSE](LICENSE)).

@@ -15,11 +15,22 @@ final class HealthKitScoringReader {
     self.db = db
   }
 
-  /// Reads every type; returns the local days that changed.
-  func read(into raw: LocalRawStore, now: Date = Date()) async -> Set<String> {
+  /// Reads every type; returns the local days that changed. [uploadedSince]: the server has everything this phone read
+  /// from HealthKit only from there on (the first sync's window, or as far as the history backfill got,
+  /// `HealthSyncService.uploadedSince`); older samples stay out, so the phone and the server's spot check score the same
+  /// inputs (#340 N9: a new user with more history in Health than the first sync's 14 days failed every check).
+  func read(into raw: LocalRawStore, now: Date = Date(), uploadedSince: Date? = nil) async -> Set<String> {
     guard HKHealthStore.isHealthDataAvailable() else { return [] }
     var days = Set<String>()
-    let since = now.addingTimeInterval(-Double(LocalRawStore.keepDays) * 86_400)
+    let since = Self.since(now: now, uploadedSince: uploadedSince)
+    // An earlier start (the backfill got further) needs fresh anchors: an anchored query never returns samples its
+    // predicate left out before. Re-reading is cheap, `ingest` keeps samples by UUID.
+    let sinceKey = "hk.scoring.since"
+    if let previous = (try? db.meta(sinceKey)).flatMap({ $0 }).flatMap(Double.init),
+       Self.needsReread(previous: previous, next: since.timeIntervalSince1970) {
+      try? await db.writer.write { db in try db.execute(sql: "DELETE FROM meta WHERE key LIKE 'hk.scoring.anchor.%'") }
+    }
+    try? db.setMeta(sinceKey, String(since.timeIntervalSince1970))
     for (type, unit) in LocalRawStore.types {
       guard let t = Self.sampleType(type) else { continue }
       let u = unit.isEmpty ? nil : HKUnit(from: unit)
@@ -38,6 +49,16 @@ final class HealthKitScoringReader {
     }
     return days
   }
+
+  /// The start of what is read: the last `keepDays` days, but not before the server has the phone's data.
+  static func since(now: Date, uploadedSince: Date?) -> Date {
+    let window = now.addingTimeInterval(-Double(LocalRawStore.keepDays) * 86_400)
+    guard let uploadedSince else { return window }
+    return max(window, uploadedSince)
+  }
+
+  /// The anchors are dropped when the start moved back by more than an hour.
+  static func needsReread(previous: Double, next: Double) -> Bool { next < previous - 3600 }
 
   static func sampleType(_ id: String) -> HKSampleType? {
     if id.hasPrefix("HKCategoryTypeIdentifier") { return HKObjectType.categoryType(forIdentifier: HKCategoryTypeIdentifier(rawValue: id)) }

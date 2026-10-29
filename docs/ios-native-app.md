@@ -1,6 +1,6 @@
 # iOS 原生 app（SwiftUI）：架构和开发约定
 
-> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
+> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）；N9 发布前回归和上线顺序（第 12 节，`ios-native-1.0.9-regression.md`）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
@@ -251,7 +251,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   2. 打包：`node packages/openbodyscore-js/build.js`。包的内容变了，旧签名会自动去掉；内容没变，签名会保留，所以 `build.js --check` 照样通过。
   3. 签名：`body-engine algo-sign --key secrets/algo_signing_key`。签名和 `key_id` 写进 `dist/manifest.json`。
   4. 提交 `dist/`，部署。
-- **app 内置的公钥**：放在 `apps/ios/Watch2Whoop/Algorithms/AlgoSigningKeys.swift`，有 `current` 和 `next` 两个位置，值是 `algo-keygen` 打印的 base64。仓库里的 `packages/openbodyscore-js/signing-keys.json` 必须和它一字不差，`body_engine/tests/test_native_sync.py` 的 `test_repository_keys_match_the_app` 会比对两边，还会检查仓库里的 `dist/` 要么没签名，要么是这两把钥匙之一签的。现在两把都还是 `nil`，等部署者生成钥匙后，在同一个 PR 里两处一起填上。
+- **app 内置的公钥**：放在 `apps/ios/Watch2Whoop/Algorithms/AlgoSigningKeys.swift`，有 `current` 和 `next` 两个位置，值是 `algo-keygen` 打印的 base64。仓库里的 `packages/openbodyscore-js/signing-keys.json` 必须和它一字不差，`body_engine/tests/test_native_sync.py` 的 `test_repository_keys_match_the_app` 会比对两边，还会检查仓库里的 `dist/` 要么没签名，要么是这两把钥匙之一签的。两把钥匙已经生成并填上（`current` 签当前的包，`next` 留给轮换）。
 - **轮换**：先发一版 app，把新钥匙放进 `next`。等大多数人更新以后，开始用新钥匙签名。再下一版 app 把它挪到 `current`，`next` 留空或放再下一把。`BundleVerifier` 会两把都试。
 - **没有签名时**：Debug 版接受，方便本地开发直接用没签名的 `dist/`。Release 版（TestFlight / App Store）拒绝（`AlgorithmError.verification("unsigned")`），继续用内置包或上一个 `active` 版本。签名不对时两种版本都拒绝。
 
@@ -466,6 +466,13 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 抽查当天全部字段一致，`app_score_state` 变成 active / trusted，`app-scores status` 的计划是 `{"mode": "app", "days": []}`，服务器不再给他算分。
 - 第一次试的时候，app 一边从 HealthKit 读，同步引擎一边在上传。服务器抽查时少了后半批样本，CTL 差了 1.4，抽查不通过。等样本全部到了服务器，它重算出的 CTL 和手机的一样。所以才加了上面「等同步传完再上传」那一条。
 
+*N9 回归后补的三条规则*（`ios-native-1.0.9-regression.md` 第 3 节 B1–B4；之前的走通用的是服务器合成、再全量恢复到手机的数据，没有覆盖「真的新用户」）
+
+- **只读服务器已经有的那段「健康」数据**：`HealthKitScoringReader` 的起点 = max(60 天前, `HealthSyncService.uploadedSince`)。`uploadedSince` 是首次同步窗口的起点（账号连上时由 `SyncSettings.pinFirstWindow` 定下，比引擎自己的「现在 − 14 天」晚一小时，补全历史也以它为终点，两边不再有空档），补全历史进行中时是它的游标。补得更早时清掉锚点重读。
+- **服务器没有评分起点时不上传**（`/v1/sync/scoring` 的 `scoring_origin` 为空：还没派生出静息心率）。有了起点以后，手机删掉起点之前的本机行，从起点重算。
+- **头两个月每轮都从起点全量算**：评分起点还在原始样本窗口里时（新用户），`first` = 起点，不用种子。CTL / ATL 的起点是「前 14 个有 TRIMP 的天的平均值」，种子会把天数还少时的起点一路带下去。服务器的抽查也改成算到今天（`appscores.server_rows(…, end=today)`），和每小时任务、手机一致。
+- 模拟器验证：新开户、首次同步 14 天、派生后手机全量算 14 天上传，抽查通过，`app-scores status` 计划 `{"mode": "app", "days": []}`；服务器逐天重算 13 天，全部在容差内。
+
 *还没做 / 风险*
 
 - 同时用快捷指令、export.zip 补历史的人：服务器会合并这些来源，手机上没有。不一致时抽查不通过，服务器接着算（自动兜底）。
@@ -674,22 +681,64 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 
 **发布**（`apps.md` 第 4 节）
 
-- 版本号 1.0.9，build 号每上传一次加一（`W2W_BUILD_NUMBER`）。
+- 版本号 1.0.9，构建号 10（`W2W_BUILD_NUMBER`；作废的 Flutter 1.0.9 是 9）。和 Flutter 版一样，改版本号走 PR，打包的人不改。
 - 签名值写在本地的 `Watch2Whoop.local.xcconfig`，和 Flutter 版一样。
 - Xcode → Archive → 上传到 App Store Connect 的**同一条 app 记录**。
 - 先给 TestFlight 内部组用一周，再给外部测试用户。
-- 发布当天在新提交上打 `app-ios-v1.0.9`，删掉旧的 1.0.9 tag 和 Release（#340）。
+- 发布当天先删掉旧的 1.0.9 tag 和 Release，再在新提交上打 `app-ios-v1.0.9`（步骤见第 12.1 节）。`tools/app_release.sh ios` 从 N9 起认原生工程：版本号读 `Config/Watch2Whoop.xcconfig`，更新记录读 `apps/ios/CHANGELOG.md`，源码 zip 带上 `project.yml` 从外面打进 app 的文件。
+- 交接单模板：`ios-native-1.0.9-handover-template.md`；只能真机验证的清单：`ios-native-1.0.9-device-checklist.md`。
 
 **回退**：TestFlight 装回 1.0.8。Flutter 项还在，不用重新登录。
 
 ## 11. 还没定 / 风险
 
-1. **OW SDK**：1.0.9 不带 Open Wearables SDK。所以发布前，所有用户都要切到同步引擎的 `app` 模式（#219，`apple-sync-engine-app-contract.md` 第 7 节）；否则 N8 要通过 SPM / 二进制把 OW iOS SDK 加回来。**请负责人定**。
+1. ~~**OW SDK**~~：已定（#340 中控）：1.0.9 不带 Open Wearables SDK，发布前把所有用户切到 `app` 模式。顺序见第 12 节。
 2. **iOS 16 还是 17**（C1）。要看测试用户的系统版本；决定之后只改一行配置。
 3. **Swift 6 严格并发**（C9）：N8 改写完同步代码之后再评估。
-4. ~~算法包签名的私钥~~：已定（#340 中控），放在部署者本机，实现见第 6.3 节。还剩一步：部署者生成两把钥匙，然后把公钥填进 `AlgoSigningKeys.swift` 和 `signing-keys.json`。
+4. ~~算法包签名的私钥~~：已定（#340 中控），放在部署者本机，实现见第 6.3 节；两把公钥已填进 `AlgoSigningKeys.swift` 和 `signing-keys.json`。
 5. ~~全量恢复的流量~~：已定（N2）。每页最多 500 条变化，原始数据每页最多 20000 行，都按天、从新到旧。90 天以前的原始数据只在 Wi-Fi 下拉，由 app 判断。
 6. **长事务会让拉取变慢**：拉取要等「还在运行的最老事务」结束，才能看到它之后的变化。几分钟的大导入期间，别人的拉取也会晚几分钟看到变化。这是为了不丢变化，故意这样设计的。
+
+## 12. 上线顺序（N9）
+
+前提：N9 的 PR 已合并、服务器已部署（抽查改成算到今天，第 9.1 节），全量回归见 `ios-native-1.0.9-regression.md`。命令都在部署机上跑；开关用 `body-engine flags set <开关> --state …`。
+
+**现在的状态**（10-29）：`apple_sync_engine` 全员（影子模式，1.0.8 的前台引擎在传），`apple_sync_primary`、`apple_sync_new_accounts`、`native_sync` 都关着；测试用户都在 TestFlight 1.0.8（Flutter，带 OW SDK）。1.0.9 **没有 OW SDK**：装了 1.0.9 还停在 `shadow` 模式的人，OW 那条链路断了，引擎传的数据又只用来对比，分数会停住。所以**先切 app 模式，再发 1.0.9**。
+
+| 步 | 什么时候 | 做什么 | 看什么 |
+|---|---|---|---|
+| 1 | N9 合并、部署后 | 作废旧 1.0.9 tag，打新 tag（第 12.1 节），朋友上传，先只给 TestFlight **内部组** | Release 的 zip 和 sha256；TestFlight 显示 1.0.9 (10) |
+| 2 | 同一天 | 负责人自己：`sync-mode switch --user-id <自己>`（过门槛）→ `flags set native_sync --state cohort --cohort beta`（负责人在 beta 组）→ 手机从 1.0.8 升级到 1.0.9，按真机清单 A、C7 验 | `app-scores status --user-id <自己>`：`active`、`trusted`、计划 `{"mode": "app", "days": []}`；今天页「本机计算」 |
+| 3 | 内部组用满 3–7 天、真机清单 A–D 没有阻塞问题 | **把所有人切到 app 模式**：`sync-mode readiness` 看每个人；能切的逐个 `sync-mode switch --user-id N`（也可以 `flags set apple_sync_primary --state cohort --cohort sync_app` + 每小时 `sync-mode apply`）。切的时候大家还在 1.0.8：app 模式下引擎的数据优先、1.0.8 的 OW SDK 照常在后台补缺，所以先切不会断数据 | `sync-mode readiness` 里没有「还不能切」；每人第一次重算后 `sync-mode apply` 的切换后检查（快照 vs 新分数）不超阈值。门槛不过的人（影子对比不一致、覆盖率不够）先看报告；确认只是 OW 的问题时用 `sync-mode switch --force --user-id N`（只跳过影子和分数门槛） |
+| 4 | 第 3 步做完当天 | 1.0.9 加到**外部组**（公开链接）；`flags set native_sync --state all`。1.0.8 不调这些接口，开着对它没有影响 | 一天内 `rawdata_uploads` 里大多数人的 `app_version` 变成 `1.0.9+10`；`app-scores status` 陆续变成 app 算分 |
+| 5 | TestFlight 上只剩 1.0.9 能装以后（1.0.8 的构建在 App Store Connect 里设为过期，或者 90 天自然过期） | `flags set apple_sync_new_accounts --state all`：新开户不再建 OW 用户，一开就是 app 模式 | 先开一个测试账号确认设置链接只有 `today` 和 `login`，1.0.9 扫码就能同步。**不能早开**：1.0.8 登录这种账号会显示「服务器出错（409）」，连不上同步（回归报告 O4） |
+| 6 | 所有有 OW 账号的人都已在 app 模式、都装了 1.0.9（`sync-mode readiness`、`rawdata_uploads.app_version`），1.0.9 外部组稳定一周 | **OW 停写**：每人 `ow-archive --user-id N` 补完存档、`ow-archive --check` 全部完整 → 定时任务里去掉 `import-ow` 和 OW 备份，OW 只读（#219 S7，`apple-sync-engine.md` 第 5.3 节） | 回退期 14 天（有本地存档）里分数不漂；之后 OW 下线（S8 删代码，`apple-sync-engine.md` 第 10 节） |
+
+**回退**（从轻到重）
+
+- **一个人的分数不对**：`app-scores server --user-id N`，服务器重新给他算分（app 上传的照收，但不再用）；查清后 `app-scores app --user-id N`。抽查不一致时服务器本来就会自动接手。
+- **本机算分 / 增量同步整体有问题**：`flags set native_sync --state off`。接口全部 404，1.0.9 退回旧接口拉数据，服务器照常每小时算分；已经上传的 app 分数留在库里。
+- **一个人的同步模式**：`sync-mode rollback --user-id N` 回到 `shadow`，用 OW 的数据（只在 OW 还在写的时候有用，所以第 6 步之前一直保留 OW）。没有 OW 账号的人不能回退（`no_ow`）。
+- **1.0.9 本身有问题**：TestFlight 里把 1.0.9 的构建设为过期，测试用户在 TestFlight app 里装回 1.0.8。Flutter 的钥匙串项一直留着，不用重新登录；在 app 模式下 1.0.8 用前台引擎 + OW SDK 照常同步（所以第 6 步 OW 停写之前，这条路一直可用）。
+- **新开户出问题**：`flags set apple_sync_new_accounts --state off`，只影响之后的开户；已经按引擎开好的账号留在 app 模式。
+
+### 12.1 作废旧的 `app-ios-v1.0.9`
+
+旧 tag 指向 `8640be1`（#332，Flutter 1.0.9+9：只多了原生今天页 / Jarvis，开关关着），Release「iOS app 1.0.9」是 pre-release，从没发给测试用户。原生 1.0.9 的构建号是 10，比它和 1.0.8（8）都大，所以即使 build 9 曾经上传过 App Store Connect 也不冲突。**发布当天**由维护者在自己的 clone 里做（N9 没有删、没有打）：
+
+```bash
+git fetch --tags origin
+git rev-parse 'app-ios-v1.0.9^{commit}'            # 确认是 8640be1ea0099d22c814d6fab565587dea7aa62d，不是就停下
+gh release view app-ios-v1.0.9 --json name,isPrerelease,createdAt
+gh release delete app-ios-v1.0.9 --cleanup-tag --yes  # 删 Release 和远端 tag
+git tag -d app-ios-v1.0.9                            # 删本地 tag（每个 clone 都要）
+tools/app_release.sh ios                             # 预演：App apps/ios、1.0.9 build 10，全部 ✓
+tools/app_release.sh ios --push                      # 打新 tag 并推送，workflow「App release」发布 pre-release
+```
+
+- 预演里还出现「version 1.0.9 has no ios tag yet (already: app-ios-v1.0.9)」，说明旧 tag 没删干净（本地或远端）。
+- 朋友手上如果有旧 1.0.9 的 zip，作废，只用新的 Release。私有的旧交接单 `dist/交接单-iOS-1.0.9.md` 换成按 `ios-native-1.0.9-handover-template.md` 填的新版。
+- Flutter 的 `CHANGELOG.md` 里旧的 1.0.9 一节已标「作废」，留作记录；iOS 的更新记录从 1.0.9 起在 `apps/ios/CHANGELOG.md`。
 
 ---
 
@@ -783,10 +832,23 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 - XCTest unit tests run on the simulator in the CI job "iOS native", which runs only when `apps/ios/**` changes.
 - Simulator demos use a throwaway database with synthetic data.
 
+**N9: release regression and rollout** (section 12, `ios-native-1.0.9-regression.md`)
+- A simulator run end to end with synthetic data (fresh install, setup link, consent, profile, Health, first sync,
+  on-device scoring, trends, logging, Jarvis on a fake SSE server, circles, sign-out, reinstall restore, upgrade from
+  Flutter 1.0.8) found five bugs, all fixed: the phone scored from Health history the server never got (the first sync
+  sends 14 days, the phone read 60), a gap between the first-sync window and the backfill, uploads before the server had
+  a scoring origin, a CTL / ATL start that depended on where a run ended (the phone now recomputes from the origin while
+  the history fits its raw window; the server's spot check computes through today), and a setup link lost behind a
+  sign-in step.
+- Rollout: switch every user to the `app` sync mode while they are still on 1.0.8 (OW keeps filling gaps), then ship
+  1.0.9 and turn `native_sync` on; `apple_sync_new_accounts` only once TestFlight offers nothing older than 1.0.9; OW
+  stops writing last. Each step has its rollback. The voided `app-ios-v1.0.9` tag is deleted and re-made on release day
+  (section 12.1); `tools/app_release.sh` now releases `apps/ios` (version from its xcconfig, build 10).
+
 **Open questions**
-- The OW SDK is not included, so every user must be in engine `app` mode before 1.0.9.
+- The OW SDK is not included: every user moves to engine `app` mode before 1.0.9 (decided; section 12).
 - iOS 16 or 17.
 - Swift 6 strict concurrency.
-- The signing key is decided (the maintainer's machine). What is left is to generate the keys and fill them in.
+- The signing keys are generated and built into the app (current and next).
 - Full-restore traffic is decided: pages of 500 changes or 20,000 raw rows, and raw data older than 90 days on Wi-Fi only.
 - A long transaction delays what pulls can see until it ends. This is on purpose, so that no change is lost.

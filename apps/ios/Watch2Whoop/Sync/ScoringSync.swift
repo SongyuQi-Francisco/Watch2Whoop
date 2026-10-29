@@ -132,6 +132,25 @@ actor ScoringSync {
     }
     if ctx.hrvKind == "rmssd" { _ = try? store.analyzeBeats(runtime) }
 
+    // The server starts every chain (CTL / ATL, sleep need from the day before) on its scoring origin, its first day
+    // with a resting heart rate (#340 N9). A new user's first rounds come before the server derived anything: the phone
+    // scores for its own display, but rows from before the origin would seed the next runs with a different start
+    // (CTL 559 vs 491 in the regression), and an upload without an origin passed the spot check unchecked. So: nothing
+    // is uploaded until the server has an origin; once it has, the phone's rows before it go and the chain is recomputed
+    // from the origin.
+    if let origin = ctx.origin {
+      let dropped = (try? await db.writer.write { db -> Int in
+        try db.execute(sql: "DELETE FROM daily_scores WHERE origin = 'app' AND date < ?", arguments: [origin])
+        return db.changesCount
+      }) ?? 0
+      if dropped > 0 || first < origin { first = origin }
+      // While the whole history since the origin is in the phone's raw window (a new user's first ~2 months), every run
+      // is the server's full recompute from the origin rather than a seeded one: the CTL / ATL start is the mean of the
+      // first 14 days with a TRIMP, so a chain seeded from a run that had fewer days kept a different start (the
+      // regression's new user: CTL 466 on the phone, 491 on the server, spot check failed). ≤ 60 days, cheap.
+      if origin >= LocalDay.add(LocalRawStore.rawStart(today: today), 2) { first = origin }
+    }
+
     let started = Date().timeIntervalSince1970
     let result: LocalScoring.Result
     do {
@@ -153,6 +172,11 @@ actor ScoringSync {
     // upload what is settled: the days before the first night the server has not sent yet
     let cutoff = result.unsettled.first ?? "9999-12-31"
     let days = result.written.filter { $0 < cutoff }
+    guard ctx.origin != nil else {   // see above: the server has not derived a first day yet
+      rep.state = "waiting_sync"
+      rep.detail = "no_origin"
+      return save(rep)
+    }
     // samples this phone read from HealthKit must be on the server first (with none, the inputs are the server's anyway)
     let phoneReads = (try? db.meta(Self.readKey)) == "1"
     if !days.isEmpty, phoneReads, let gate = uploadGate, !(await gate()) {

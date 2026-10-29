@@ -85,6 +85,9 @@ final class AppModel: ObservableObject {
     // `SIMCTL_CHILD_W2W_DEV_LINK=/app/?tab=friends&feed=12` behaves like a tapped notification (N7 screenshots)
     if let link = ProcessInfo.processInfo.environment["W2W_DEV_LINK"], !link.isEmpty { handle(link: link) }
     #endif
+    #if DEBUG && targetEnvironment(simulator)
+    DebugHealthSeeder.runIfRequested()   // `SIMCTL_CHILD_W2W_DEV_SEED_HEALTH=21`: synthetic Health data (N9 regression)
+    #endif
     await connect()
   }
 
@@ -227,7 +230,10 @@ final class AppModel: ObservableObject {
     // #340 N2b: the scoring types go into the local tables as HealthKit has them, the beat-to-beat readings as they upload
     let reader = HealthKitScoringReader(db: db)
     Task {
-      await s.sync.scoring.setHealthReader { store in await reader.read(into: store) }
+      await s.sync.scoring.setHealthReader { store in
+        let since = await MainActor.run { HealthSyncService.shared.uploadedSince }
+        return await reader.read(into: store, uploadedSince: since)
+      }
       await s.sync.scoring.setUploadGate { await MainActor.run { HealthSyncService.shared.uploadedEverything } }
     }
     sync.onHeartbeats = { [weak s] items, deleted in
