@@ -156,6 +156,13 @@ def _analyze(conn: psycopg.Connection, user_id: int, key: str, end: date | None,
            LEFT JOIN daily_scores prev ON prev.user_id = e.user_id AND prev.date = e.date
            WHERE e.user_id = %s AND e.key = %s AND e.date BETWEEN %s AND %s ORDER BY e.date""",
         (user_id, key, start, end)).fetchall()
+    return analyze_rows(item, rows, start, end, threshold, regression)
+
+
+def analyze_rows(item: dict, rows: list[dict], start: date, end: date, threshold: float, regression: bool) -> dict:
+    """The pure part of _analyze (the phone runs the same, packages/openbodyscore-js/src/35_reports.js): rows = the
+    item's entries in [start, end] by date, each with the next day's outcomes and covariates (the query in _analyze or
+    rows_from)."""
     outcomes = {}
     for name, (metric, f, label, higher_is_better) in OUTCOMES.items():
         yes, no = [], []
@@ -196,3 +203,58 @@ def analyze_all(conn, user_id: int, end: date | None = None, days: int = 90, reg
         apply_bh(res)
         _clean(res)
     return res
+
+
+# ---------------------------------------------------------------- the phone's inputs (2.0.0 package M5)
+def rows_from(entries: list[dict], scores: dict, metrics: dict) -> list[dict]:
+    """The join of _analyze's query on plain data: entries [{date, value}] of one item (any order), scores {date: {recovery,
+    sleep_actual_min, strain}}, metrics {date: {resting_heart_rate, heart_rate_variability_sdnn}}; missing = None."""
+    out = []
+    for e in sorted(entries, key=lambda e: e["date"]):
+        nxt = e["date"] + timedelta(days=1)
+        m, sc, prev = metrics.get(nxt) or {}, scores.get(nxt) or {}, scores.get(e["date"]) or {}
+        out.append({"date": e["date"], "value": e["value"],
+                    "resting_heart_rate": m.get("resting_heart_rate"),
+                    "heart_rate_variability_sdnn": m.get("heart_rate_variability_sdnn"),
+                    "recovery": sc.get("recovery"), "sleep_actual_min": sc.get("sleep_actual_min"),
+                    "prev_strain": prev.get("strain")})
+    return out
+
+
+def analyze_data(data: dict, end: date, days: int = 90, regression: bool = False, key: str | None = None,
+                 threshold: float = 0.0):
+    """analyze_all (key None) or analyze (one key) on plain data — the reference of the phone's OBS.journalAnalysis.
+    data: {"items": the active items in order (sort, key), each {key, label_zh, kind, unit} (other fields are passed
+    through), "entries": [{date, key, value}], "scores", "metrics" as in rows_from}."""
+    start = end - timedelta(days=days - 1)
+    items = data["items"] if key is None else [i for i in data["items"] if i["key"] == key]
+    if key is not None and not items:
+        raise ValueError(f"没有这个日记项：{key}")
+    res = []
+    for it in items:
+        ents = [e for e in data["entries"] if e["key"] == it["key"] and start <= e["date"] <= end]
+        res.append(analyze_rows(it, rows_from(ents, data["scores"], data["metrics"]), start, end,
+                                threshold if key is not None else 0.0, regression))
+    if regression and key is None:
+        apply_bh(res)
+    _clean(res)
+    return res if key is None else res[0]
+
+
+def load_data(conn: psycopg.Connection, user_id: int, end: date, days: int = 90) -> dict:
+    """analyze_data's input from the server's tables (what the phone holds locally; tests and developer comparisons)."""
+    start = end - timedelta(days=days - 1)
+    items = conn.execute("SELECT key, label_zh, kind, unit FROM journal_items WHERE user_id = %s AND active ORDER BY sort, key",
+                         (user_id,)).fetchall()
+    entries = conn.execute("SELECT date, key, value FROM journal_entries WHERE user_id = %s AND date BETWEEN %s AND %s",
+                           (user_id, start, end)).fetchall()
+    scores = {r["date"]: {"recovery": r["recovery"], "sleep_actual_min": r["sleep_actual_min"], "strain": r["strain"]}
+              for r in conn.execute("""SELECT date, recovery, sleep_actual_min, strain FROM daily_scores
+                                       WHERE user_id = %s AND date BETWEEN %s AND %s""",
+                                    (user_id, start, end + timedelta(days=1)))}
+    metrics: dict = {}
+    for r in conn.execute("""SELECT date, metric, value FROM daily_metrics WHERE user_id = %s AND date BETWEEN %s AND %s
+                             AND metric IN ('resting_heart_rate', 'heart_rate_variability_sdnn')""",
+                          (user_id, start + timedelta(days=1), end + timedelta(days=1))):
+        metrics.setdefault(r["date"], {})[r["metric"]] = r["value"]
+    return {"items": [dict(i) for i in items], "entries": entries, "scores": scores, "metrics": metrics}
