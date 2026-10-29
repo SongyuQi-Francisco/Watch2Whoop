@@ -96,9 +96,11 @@ enum Endpoint {
     if let end { q["end"] = end }
     return .get("/v1/users/\(user)/reports", q)
   }
-  static func journalAnalysis(end: String?, days: Int = 90, user: String = "me") -> APIRequest {
+  /// `regression`: the second version (#118, flag `journal_regression`): OLS + Newey-West, BH across the items.
+  static func journalAnalysis(end: String?, days: Int = 90, regression: Bool = false, user: String = "me") -> APIRequest {
     var q = ["days": String(days)]
     if let end { q["end"] = end }
+    if regression { q["regression"] = "true" }
     return .get("/v1/users/\(user)/journal/analysis", q)
   }
 

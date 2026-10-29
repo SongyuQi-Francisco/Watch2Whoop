@@ -127,6 +127,73 @@ def test_reports_goldens(cases):
     assert diff is None, diff
 
 
+IOS_FIXTURE = JS_TESTS / "golden" / "reports_local.json"
+
+
+def phone_case() -> dict:
+    """The synthetic person as the phone's local tables (Watch2WhoopTests/ReportsLocalTests.swift loads them through
+    ReportsLocal's loader) and the Python answers for the same data: the report (week, month) without the nutrition block
+    (the server's on the phone) and the journal analysis (both versions), all ending on the last day."""
+    from datetime import timedelta, timezone
+    d = C.report_data()
+    j = d["journal"]
+    end = C.LAST
+    rows = {r["date"]: r for r in d["scores"]}
+    merged = {}   # one daily_scores table: the report's rows, the journal's three columns on the other days
+    blank = {k: None for k in d["scores"][0]}
+    for day in sorted(set(rows) | set(j["scores"])):
+        merged[day] = rows[day] if day in rows else {**blank, "date": day, "rhr_daily": False, **j["scores"][day]}
+    journal = {"items": j["items"], "entries": j["entries"], "metrics": j["metrics"],
+               "scores": {day: {k: r.get(k) for k in ("recovery", "sleep_actual_min", "strain")} for day, r in merged.items()}}
+    ts = lambda t: t.astimezone(timezone.utc).timestamp()   # noqa: E731
+    tables = {
+        "daily_scores": [{"date": day, "recovery": r.get("recovery"), "sleep_score": r.get("sleep_score"), "strain": r.get("strain"),
+                          "payload": {**{k: v for k, v in r.items() if k not in ("s", "rhr_daily")},
+                                      "details": {"sleep": r["s"]} if r.get("s") else {},
+                                      "flags": {"rhr_from_daily": "test"} if r.get("rhr_daily") else {}}}
+                         for day, r in merged.items()],
+        "sleep_sessions": [{"id": f"s{i}", "date": s["wake_date"], "start": ts(s["start_at"]), "end": ts(s["end_at"]),
+                            "is_main": s["is_main"], "source": "app",
+                            "payload": {k: s[k] for k in ("asleep_min", "awake_min", "deep_min", "rem_min", "core_min", "device")}}
+                           for i, s in enumerate(d["sleep_sessions"])],
+        "daily_metrics": [{"date": day, "metric": m, "value": v} for day, ms in j["metrics"].items() for m, v in ms.items()],
+        "stress_daily": d["stress"],
+        "workouts": [{"key": f"app:w{i}", "local_date": w["local_date"], "start": ts(C.at(w["local_date"], 18.0)),
+                      "duration_min": w["duration_min"], "row": {"name_zh": w["name_zh"]}}
+                     for i, w in enumerate(d["training"]["workouts"])],
+        "ext_records": [],
+        "journal": [e for e in j["entries"] if end - timedelta(days=89) <= e["date"] <= end],
+        "journal_items": [{**it, "active": True, "sort": k} for k, it in enumerate(j["items"])],
+    }
+    ext: dict = {}
+    for s in d["training"]["log"]:
+        ext.setdefault(s["date"][:10], {"strength_sets": [], "weights": []})["strength_sets"].append(s)
+    for w in d["weights"]["rows"]:
+        ext.setdefault(w["date"], {"strength_sets": [], "weights": []})["weights"].append(w)
+    tables["ext_records"] = [{"date": k, **v, "nutrition_totals": None, "fingerprint": k} for k, v in sorted(ext.items())]
+    expected = {"analysis": analysis.analyze_data(journal, end, 90), "analysis_regression": analysis.analyze_data(journal, end, 90, True)}
+    for period in ("week", "month"):
+        start, _, _ = reports.window(period, end)
+        lo = (start - timedelta(days=30)).isoformat()
+        data = {**{k: v for k, v in d.items() if k != "nutrition"}, "journal": journal,
+                "can": ["journal", "nutrition", "nutrition_summary", "scores", "sleep", "training", "weight"],
+                "scores": list(merged.values()),
+                "weights": {"rows": [w for w in d["weights"]["rows"] if lo <= w["date"] <= end.isoformat()]}}
+        expected[period] = reports.compute(data, period, end)
+    return {"tz": C.TZ_NAME, "today": end, "tables": tables, "expected": expected}
+
+
+def test_ios_fixture():
+    got = _dump(phone_case())
+    assert got["expected"]["week"]["current"]["training"]["sessions"] is not None and "nutrition" not in got["expected"]["week"]["current"]
+    assert got["expected"]["month"]["journal_findings"] and len(got["expected"]["analysis"]) == len(C.ITEMS)
+    if os.environ.get("BODY_WRITE_GOLDEN") == "1":
+        IOS_FIXTURE.write_text(json.dumps(got, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
+        pytest.skip(f"wrote {IOS_FIXTURE}")
+    diff = G.mismatch(got, json.loads(IOS_FIXTURE.read_text()))
+    assert diff is None, diff
+
+
 def test_report_is_load_plus_compute_and_analysis_shares_analyze_rows():
     import inspect
     assert "compute(load(conn, user_id, period, end, viewer_id, sparky), period, end)" in inspect.getsource(reports.report)

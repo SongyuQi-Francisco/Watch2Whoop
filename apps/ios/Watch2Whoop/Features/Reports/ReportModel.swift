@@ -89,19 +89,34 @@ struct BehaviorRow: Equatable, Identifiable {
   var tone: Tone
   var reliable: Bool
 
-  /// The page's behaviorHtml: items with a result, largest effect first; `lacking` = items without enough days.
+  /// The page's behaviorModel (journal.js): items with a result, largest effect first; `lacking` = items without enough
+  /// days. With the second version (`regression` in the outcome, flag `journal_regression`) the adjusted estimate and its
+  /// Benjamini-Hochberg direction replace the raw difference.
   static func parse(_ list: [[String: Any]]) -> (rows: [BehaviorRow], lacking: Int) {
+    let adj = adjusted(list)
     var rows: [BehaviorRow] = []
     for a in list {
-      guard let o = (a["outcomes"] as? [String: Any])?["next_recovery"] as? [String: Any], o["status"] as? String == "ok" else { continue }
+      guard let o = (a["outcomes"] as? [String: Any])?["next_recovery"] as? [String: Any],
+            let r = adj ? (o["regression"] as? [String: Any]) : Optional(o), r["status"] as? String == "ok" else { continue }
       let item = a["item"] as? [String: Any] ?? [:]
-      let dir = o["direction"] as? String
+      let dir = r["direction"] as? String
       rows.append(BehaviorRow(id: item["key"] as? String ?? UUID().uuidString, label: shortLabel(item),
-                              diff: TodayModel.num(o["diff_yes_minus_no"]) ?? 0,
-                              tone: dir == "better" ? .good : dir == "worse" ? .bad : .text, reliable: o["reliable"] as? Bool ?? false))
+                              diff: TodayModel.num(adj ? r["estimate"] : r["diff_yes_minus_no"]) ?? 0,
+                              tone: dir == "better" ? .good : dir == "worse" ? .bad : .text, reliable: r["reliable"] as? Bool ?? false))
     }
     rows.sort { abs($0.diff) > abs($1.diff) }
     return (rows, list.count - rows.count)
+  }
+
+  /// The list carries the second version (adjusted for strain, sleep and weekday).
+  static func adjusted(_ list: [[String: Any]]) -> Bool {
+    list.contains { (($0["outcomes"] as? [String: Any])?["next_recovery"] as? [String: Any])?["regression"] != nil }
+  }
+
+  /// The analysis document: the server's list, or the phone's `{"results": [...]}` (ReportsLocal).
+  static func list(_ body: Data) -> [[String: Any]] {
+    let o = try? JSONSerialization.jsonObject(with: body)
+    return (o as? [[String: Any]]) ?? ((o as? [String: Any])?["results"] as? [[String: Any]]) ?? []
   }
 
   /// The item's name without bracketed notes and alternatives (journal labels are the user's data).
@@ -117,14 +132,18 @@ struct BehaviorRow: Equatable, Identifiable {
 
 enum ReportDocs {
   static func report(_ p: ReportModel.Period, end: String?) -> String { "report:\(p.rawValue):\(end ?? "")" }
-  static func behavior(end: String?) -> String { "journal.analysis:\(end ?? "")" }
+  /// `regression` = the second version (flag `journal_regression`): its own document, as the page's own cache key.
+  static func behavior(end: String?, regression: Bool = false) -> String { "journal.analysis\(regression ? ".r" : ""):\(end ?? "")" }
 }
 
-/// The report's state: the cached documents first, then a refresh through `DocPuller`.
+/// The report's state: the cached documents first, then a refresh through `DocPuller`. With package `reports` (M5,
+/// `ReportsLocal`) primary the page draws the phone's documents.
 @MainActor
 final class ReportStore: ObservableObject {
   @Published private(set) var report: ReportModel?
   @Published private(set) var behavior: (rows: [BehaviorRow], lacking: Int) = ([], 0)
+  /// The 行为影响 card shows the second version (adjusted for strain, sleep and weekday).
+  @Published private(set) var adjusted = false
   @Published private(set) var loaded = false
   @Published var period: ReportModel.Period = .week
   private var cancellable: AnyDatabaseCancellable?
@@ -132,31 +151,38 @@ final class ReportStore: ObservableObject {
 
   private struct Snap: Equatable { var report: DocRecord?; var behavior: DocRecord? }
 
+  static func regression(_ session: AccountSession) -> Bool { session.flags.contains("journal_regression") }
+
   func observe(_ session: AccountSession, end: String?) {
     self.end = end
-    let rk = ReportDocs.report(period, end: end), bk = ReportDocs.behavior(end: end)
+    let reg = Self.regression(session)
+    let rk = ReportDocs.report(period, end: end), bk = ReportDocs.behavior(end: end, regression: reg)
+    let lrk = ReportsLocal.reportKey(period.rawValue, end: end), lbk = ReportsLocal.analysisKey(end: end, regression: reg)
     cancellable?.cancel()
     cancellable = ValueObservation.tracking { db in
-      Snap(report: try DocRecord.fetchOne(db, key: rk), behavior: try DocRecord.fetchOne(db, key: bk))
+      Snap(report: try ReportsLocal.shown(db, server: rk, local: lrk), behavior: try ReportsLocal.shown(db, server: bk, local: lbk))
     }
     .removeDuplicates()
     .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] s in
       guard let self else { return }
       let r = s.report?.json.flatMap(ReportModel.init(json:))
       if r != self.report { self.report = r }
-      let list = s.behavior.flatMap { (try? JSONSerialization.jsonObject(with: $0.body)) as? [[String: Any]] } ?? []
-      let b = BehaviorRow.parse(list)
+      let list = s.behavior.map { BehaviorRow.list($0.body) } ?? []
+      let b = BehaviorRow.parse(list), adj = BehaviorRow.adjusted(list)
       if b.rows != self.behavior.rows || b.lacking != self.behavior.lacking { self.behavior = b }
+      if adj != self.adjusted { self.adjusted = adj }
     })
   }
 
   func refresh(_ session: AccountSession) async {
-    let p = period, e = end
+    let p = period, e = end, reg = Self.regression(session)
     _ = await DocPuller(api: session.api, db: session.db).pull([
       DocFetch(ReportDocs.report(p, end: e), Endpoint.report(p.rawValue, end: e)),
-      DocFetch(ReportDocs.behavior(end: e), Endpoint.journalAnalysis(end: e)),
+      DocFetch(ReportDocs.behavior(end: e, regression: reg), Endpoint.journalAnalysis(end: e, regression: reg)),
     ])
     loaded = true
+    ReportsLocal.refresh(session: session, [.report(period: p.rawValue, end: e), .analysis(end: e, regression: reg)],
+                         userToday: session.db.userToday())
   }
 
   func setPeriod(_ p: ReportModel.Period, session: AccountSession) {
