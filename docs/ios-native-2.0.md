@@ -593,7 +593,7 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
   `session_names` or a same-day first / last weigh-in can differ (a shadow difference, not a value); (5) the server's
   `sleep_detail.asleep_minutes` subtracts datetimes that share one ZoneInfo as wall clocks, so a regularity value whose
   window crosses a DST change can differ by about a point from the phone's (instants); the goldens feed UTC instants. Left to
-  `insights/sleep_detail.py`'s owner; (6) `native-compare` is not part of M5.
+  `insights/sleep_detail.py`'s owner; (6) `native-compare` is not part of M5; (7) M4's `healthspan_weekly` is not read: the server's report has no body-age block (insights/reports.py), so neither does the phone's.
 - **Flag**: `native_reports` (shadow; primary needs `native_compute_primary`), off by default. `journal_regression` is unchanged
   (the server's flag, now also read by the native card).
 - **Device checklist entry (for S9)**: owner's internal build, `native_reports` on for the owner. (1) Open Trends → 周报, then
