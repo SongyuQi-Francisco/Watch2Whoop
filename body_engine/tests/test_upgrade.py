@@ -317,6 +317,7 @@ def test_page_script():
 
 def test_page_wiring():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert html.index('src="upgrade.js"') < html.index('src="app.js"')
+    assert '<script type="w2w/lazy" src="upgrade.js"></script>' in html, "on demand: not part of the first screen"
     assert '"upgrade.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")
-    assert "r.status === 426" in (STATIC / "app.js").read_text(encoding="utf-8")
+    app = (STATIC / "app.js").read_text(encoding="utf-8")
+    assert 'r.status === 426) lazyScript("upgrade.js")' in app and 'me.upgrade.state !== "none") lazyScript("upgrade.js")' in app

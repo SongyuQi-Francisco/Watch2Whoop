@@ -3,8 +3,8 @@
      config, 「稍后」 closes it; the day is kept on this device);
    - "block" (or any API answer 426 upgrade_required, app.js api()): a full-screen page over everything, no way to close it.
    Title and text come from the server in the page language; only the buttons are translated here. The link is https only.
-   Registered in window.BodyPlugins (init) and window.BodyUpgrade (block / apply); noticeDue / safeUrl are module.exports for
-   tests/test_upgrade.py. */
+   Loaded on demand (type w2w/lazy): app.js loads it when /v1/web/me says notice / block or an answer is 426. Registered in
+   window.BodyPlugins (init) and window.BodyUpgrade (block / apply); noticeDue / safeUrl are module.exports for tests/test_upgrade.py. */
 (() => {
   "use strict";
   const DAY_KEY = "w2w.upgrade.notice.day";
