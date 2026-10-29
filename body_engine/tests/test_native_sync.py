@@ -11,6 +11,7 @@ import shutil
 import secrets as pysecrets
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -521,6 +522,111 @@ def test_scoring_context(client, users, dsn, monkeypatch):
     too_long = {"hist_from": "2024-01-01", "hist_to": "2026-02-09"}
     assert client.get("/v1/sync/scoring", params=too_long, headers=H(tok["b"])).status_code == 422
     assert client.get("/v1/sync/scoring", headers=H(tok["off"])).status_code == 404
+
+
+# ---------------------------------------------------------------- the phone's full history (stream raw_history)
+def _history_user(dsn, name):
+    with conn_of(dsn) as c:
+        uid = c.execute("""INSERT INTO users (display_name, role, timezone, consent_at, consent_version)
+                           VALUES (%s, 'member', %s, now(), '2026-10-22.2') RETURNING id""", (name, TZ)).fetchone()["id"]
+        flags.cohort_add(c, uid, "native", actor="test")
+        c.commit()
+        flags.invalidate()
+        tok = auth.create_token(c, uid, "app", ["read", "write"])
+        c.commit()
+    return uid, tok
+
+
+def _hr(c, uid, at, v, table="hk"):
+    if table == "hk":
+        c.execute("""INSERT INTO hk_samples (user_id, hk_uuid, type, start_at, end_at, local_date, value, source)
+                     VALUES (%s, gen_random_uuid(), 'HKQuantityTypeIdentifierHeartRate', %s, %s, %s, %s, 'Watch')""",
+                  (uid, at, at, at.astimezone(ZoneInfo(TZ)).date(), v))
+    else:
+        c.execute("""INSERT INTO export_samples (user_id, kind, start_at, end_at, value, source) VALUES (%s, %s, %s, %s, %s, 'Watch')""",
+                  (uid, table, at, at, v))
+
+
+def test_raw_history_download(client, users, dsn, monkeypatch):
+    """Newest first, page by page, the merged scoring inputs (every source, live before export.xml), whole nights, the
+    beats; then only changed old days."""
+    from body_engine.nativesync import throttle
+    from body_engine.rawdata import samples as rx_samples
+    monkeypatch.setattr(P, "HISTORY_MIN_INTERVAL_S", 0)
+    monkeypatch.setattr(P, "HISTORY_PAGE_DAYS", 2)
+    monkeypatch.setattr(rx_samples, "reads_app", lambda conn, user_id: True)
+    throttle.reset()
+    uid, tok = _history_user(dsn, "hist")
+    tz = ZoneInfo(TZ)
+    days = [date(2025, 3, 1) + timedelta(days=i) for i in range(5)]   # fictional
+    with conn_of(dsn) as c:
+        for d in days:
+            seed_day(c, uid, d)
+            noon = datetime.combine(d, datetime.min.time(), tz).replace(hour=12)
+            _hr(c, uid, noon, 60 + d.day)                         # the app's sample ...
+            _hr(c, uid, noon, 99, table="hr")                     # ... wins over the export.xml copy of the same instant
+            _hr(c, uid, noon.replace(hour=13), 70, table="hr")    # export only: in the merged inputs too
+            _hr(c, uid, noon.replace(hour=14), 45.5, table="hrv")
+        bed = datetime.combine(days[2], datetime.min.time(), tz).replace(hour=4)   # wakes 06:00: that day
+        c.execute("""INSERT INTO export_samples (user_id, kind, start_at, end_at, stage, source)
+                     VALUES (%s, 'sleep', %s, %s, 'deep', 'Watch'), (%s, 'sleep', %s, %s, 'rem', 'Watch')""",
+                  (uid, bed, bed + timedelta(hours=1), uid, bed + timedelta(hours=1), bed + timedelta(hours=2)))
+        hb = datetime.combine(days[1], datetime.min.time(), tz).replace(hour=3)
+        c.execute("""INSERT INTO heartbeat_series (user_id, start_at, end_at, source, origin, hk_uuid, beats_ms, gaps, n_beats,
+                                                   n_valid, algo, rmssd, sdnn)
+                     VALUES (%s, %s, %s, 'Watch', 'app', gen_random_uuid(), '{0,810,1620}', '{f,f,t}', 3, 2, 'rr-v1', 41.5, 39.0)""",
+                  (uid, hb, hb + timedelta(minutes=1)))
+        c.commit()
+    before = days[-1]   # the phone has the last day already (raw stream)
+    r = client.post("/v1/sync/pull", json={"cursors": {"raw_history": ""}, "history_before": before.isoformat()}, headers=H(tok))
+    assert r.status_code == 200, r.text
+    first = r.json()
+    assert first["history"] == {"days": 4, "oldest": days[0].isoformat()}
+    assert [ch["key"] for ch in first["changes"]] == [days[3].isoformat(), days[2].isoformat()] and first["more"]
+    got, cursors, pages = pull_all(client, tok, first["cursors"], history_before=before.isoformat())
+    every = first["changes"] + got
+    assert [ch["key"] for ch in every] == [d.isoformat() for d in reversed(days[:4])] and pages == 1
+    assert cursors["raw_history"].startswith("c.")
+    by = {ch["key"]: ch["body"] for ch in every}
+    b = by[days[0].isoformat()]
+    t0 = datetime.combine(days[0], datetime.min.time(), tz).timestamp()
+    assert b["t0"] == t0 and b["complete"] is True
+    assert b["inputs"]["hr"] == [[12 * 3600.0, 61.0], [13 * 3600.0, 70.0]]   # the app's 61, not the export's 99
+    assert b["inputs"]["hrv"] == [[14 * 3600.0, 45.5]]
+    assert [s[2] for s in by[days[2].isoformat()]["segments"]] == ["deep", "rem"]
+    beats = by[days[1].isoformat()]["beats"]
+    assert beats["cols"][-2:] == ["beats_ms", "gaps"]
+    assert beats["rows"][0][3:] == [41.5, 39.0, "app", [0, 810, 1620], [False, False, True]]
+    # afterwards: only a changed day older than history_before comes again; the newer day is the raw stream's
+    with conn_of(dsn) as c:
+        _hr(c, uid, datetime.combine(days[1], datetime.min.time(), tz).replace(hour=20), 88)
+        _hr(c, uid, datetime.combine(days[4], datetime.min.time(), tz).replace(hour=20), 88)
+        for d in (days[1], days[4]):   # what the engine's upload queues (rawdata/engine.mark_dirty): the raw stream's log
+            c.execute("INSERT INTO hk_dirty_days (user_id, day, types) VALUES (%s, %s, '{x}') ON CONFLICT DO NOTHING", (uid, d))
+        c.commit()
+    inc, _, _ = pull_all(client, tok, cursors, history_before=before.isoformat())
+    assert [ch["key"] for ch in inc] == [days[1].isoformat()]
+    assert [v for _, v in inc[0]["body"]["inputs"]["hr"] if v == 88.0] == [88.0]
+
+
+def test_raw_history_is_throttled_and_alone(client, users, dsn, monkeypatch):
+    from body_engine.nativesync import throttle
+    throttle.reset()
+    uid, tok = _history_user(dsn, "hist2")
+    body = {"cursors": {"raw_history": ""}}
+    assert client.post("/v1/sync/pull", json=body, headers=H(tok)).status_code == 200
+    r = client.post("/v1/sync/pull", json=body, headers=H(tok))
+    assert r.status_code == 429 and 1 <= int(r.headers["Retry-After"]) <= P.HISTORY_MIN_INTERVAL_S
+    assert r.json()["detail"]["code"] == "slow_down"
+    # ordinary pulls are never throttled
+    assert client.post("/v1/sync/pull", json={"cursors": {"scores": ""}}, headers=H(tok)).status_code == 200
+    mixed = {"cursors": {"raw_history": "", "scores": ""}}
+    assert client.post("/v1/sync/pull", json=mixed, headers=H(tok)).status_code == 422
+    # the process is busy with other people's pages: try later
+    monkeypatch.setattr(P, "HISTORY_MIN_INTERVAL_S", 0)
+    monkeypatch.setattr(throttle, "_sem", type("Busy", (), {"acquire": lambda self, blocking=True: False})())
+    r = client.post("/v1/sync/pull", json=body, headers=H(tok))
+    assert r.status_code == 429 and r.headers["Retry-After"] == str(P.HISTORY_BUSY_RETRY_S)
 
 
 # ---------------------------------------------------------------- silent push

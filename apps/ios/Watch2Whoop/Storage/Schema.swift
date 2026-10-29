@@ -196,6 +196,39 @@ enum Schema {
       // The server's whole session as it came from the sleep stream (asleep / stage minutes, device): the scores use them.
       try db.alter(table: "sleep_sessions") { t in t.add(column: "payload", .blob) }
     }
+
+    // #340 local history: the phone keeps its whole history (docs/ios-native-app.md section 9.1, LocalHistoryParams).
+    m.registerMigration("v3_local_history") { db in
+      // The scores' raw inputs before the hot window, as the server merges them (stream raw_history) or rolled over from
+      // hk_samples: one row per (kind, instant), ~25 bytes (WITHOUT ROWID, kind = LocalHistoryParams.Kind code).
+      try db.create(table: "hist_samples", options: .withoutRowID) { t in
+        t.column("kind", .integer).notNull()
+        t.column("t", .double).notNull()                    // UTC seconds
+        t.column("value", .double).notNull()                // SpO2 in percent (the server's), the rest in registry units
+        t.primaryKey(["kind", "t"])
+      }
+      // Sleep-stage segments of those nights (the scores' segments); `date` = the day they came with (end − 4 h).
+      try db.create(table: "hist_segments", options: .withoutRowID) { t in
+        t.column("start", .double).notNull()
+        t.column("end", .double).notNull()
+        t.column("stage", .text).notNull()
+        t.column("date", .text).notNull()
+        t.primaryKey(["start", "stage"])
+      }
+      try db.create(index: "hist_segments_by_date", on: "hist_segments", columns: ["date"])
+      // Which days the history holds and where from: server (raw_history; `complete` = every source the server scores
+      // from was in it) or phone (rolled over from hk_samples).
+      try db.create(table: "hist_days") { t in
+        t.primaryKey("date", .text)
+        t.column("source", .text).notNull()
+        t.column("rows", .integer).notNull()
+        t.column("complete", .boolean).notNull()
+        t.column("fetched_at", .double).notNull()
+      }
+      // The beats now stay after the analysis: `analyzed` says the RMSSD / SDNN columns are current.
+      try db.alter(table: "heartbeat_series") { t in t.add(column: "analyzed", .boolean).notNull().defaults(to: false) }
+      try db.execute(sql: "UPDATE heartbeat_series SET analyzed = 1 WHERE beats IS NULL")
+    }
     return m
   }
 }

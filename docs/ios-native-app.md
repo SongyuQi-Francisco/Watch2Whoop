@@ -1,6 +1,6 @@
 # iOS 原生 app（SwiftUI）：架构和开发约定
 
-> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
+> 状态：#340 N0（架构文档 + 工程骨架），2026-10-29；N2 服务器接口已实现（第 5.2、5.3、6.3、7.2、7.3 节）；N2b 本机算分全链路已打通（第 6.1、9.1 节）；本机完整历史（第 4、9.1 节「本机完整历史」）。这份文档是 N1–N9 各个 agent 的共同依据：改约定先改这里，在 PR 里说明。
 > 相关：#340（总纲）、#337（本地优先的决定）、#219（自建同步引擎，`apple-sync-engine.md`、`apple-sync-engine-app-contract.md`）、`ios-native-plan.md`（测量和分期）、`apps.md`（版本号和发版）。
 > 文中的数字都是示例，不是任何真人的数据。
 
@@ -91,7 +91,8 @@
 
 - 路径：`Application Support/W2W/accounts/<key>/body.sqlite`，`key` = sha256(`服务器|user id`) 的前 16 位十六进制。同一台手机登录不同账号或不同服务器，数据互不相见。
 - 文件保护级别 `completeUntilFirstUserAuthentication`：后台同步要读。
-- 不进 iCloud / 设备备份：服务器有全量备份；Keychain 是「仅本机」，换机恢复后本来就要重新登录、从云端重新拉。
+- 不进 iCloud / 设备备份：服务器有全量备份；Keychain 是「仅本机」，换机恢复后本来就要重新登录、从云端重新拉。账号目录、`W2W/` 根目录和三个 SQLite 文件都设了 `isExcludedFromBackup`。
+- 新库是 `auto_vacuum = INCREMENTAL`，定期 `incremental_vacuum` / `VACUUM`；「我 → 数据状态」显示占用并能清除本机缓存（`Storage/LocalStorage.swift`，第 9.1 节「本机完整历史」）。
 - GRDB `DatabasePool`（WAL）：读不会挡写。
 - 退出登录时删掉整个目录。删之前，离线队列里没发出去的写操作先问用户（N8 的弹窗，规则同 `offline-plan.md` 第 4 节）。
 
@@ -118,8 +119,11 @@
 | `heartbeat_series` | `uuid` | 逐拍心跳读数（RMSSD 用户算分用）：`start`（整秒）、`end`、`rmssd`、`sdnn`；手机自己的读数先存 `beats`，包算完 RMSSD 后删掉；`origin` 取 phone / server | N2b（迁移 `v2_local_scoring`） |
 | `hr_day_hist` | `date` | 每天的心率直方图 `{bpm: 次数}`（365 天最大心率窗口）：原始样本删掉以后还留着；`source` 取 phone / server | N2b |
 | `score_dirty` | `date` | 算分输入变了、还要重算的本地日期 | N2b |
+| `hist_samples` | `kind, t` | 热区之前的全部算分原始输入（服务器合并好的，或热区移出的），WITHOUT ROWID，一行约 20 字节；`kind` 是 `LocalHistoryParams.Kind` | 本机完整历史（迁移 `v3_local_history`） |
+| `hist_segments` | `start, stage` | 历史区的睡眠阶段段，`date` = 这一晚醒来那天 | 同上 |
+| `hist_days` | `date` | 历史区有哪些天、来源（server / phone）、`complete` | 同上 |
 
-`sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。
+`sleep_sessions` 在 `v2_local_scoring` 里加了 `payload`（睡眠 stream 的整段 session：入睡 / 各阶段分钟、设备），算分用。`v3_local_history` 给 `heartbeat_series` 加了 `analyzed`：逐拍数据不再在算完后删掉。
 
 **不存在本地的**：别人的数据（只存圈子动态的缓存文档）、AI 对话全文、心电图波形、AI 设置里的 key。
 
@@ -128,7 +132,7 @@
 - 只在 `Schema.migrator` 末尾**追加** `vN_<名字>`（例如 `v2_records_training_sets`），一个 PR 一个。已经发出去的迁移不能改、不能改名、不能调顺序。`SchemaTests.testMigrationOrder` 把列表钉死，加迁移时同时改这个测试。
 - Debug 版开了 `eraseDatabaseOnSchemaChange`：开发时改了迁移，本地库直接清空重建，反正只是缓存。Release 版没有这个开关。
 - 本地库只是服务器的缓存，加上还没发出去的队列。要做破坏性改动（比如改主键），就新建表并从服务器重新拉，不在手机上搬数据。
-- 迁移列表：`v1_initial`（N0）、`v2_local_scoring`（N2b）。
+- 迁移列表：`v1_initial`（N0）、`v2_local_scoring`（N2b）、`v3_local_history`（本机完整历史）。
 
 ## 5. 同步层
 
@@ -168,7 +172,8 @@ session.sync.enqueue(kind: "water", group: "water", method: .post, path: "/v1/us
   - 每一页在一个事务里写进对应的表（`records`、`daily_scores`、`daily_metrics`、`sleep_sessions`、`docs`、`hk_*`），然后保存游标。`more` 为 true 就接着拉。`daily`、`sleep`、`raw` 改到的日期同时记进 `score_dirty`。
   - 游标对 app 是不透明的字符串，原样存、原样发回。服务器回 422 `bad_cursor` 时把这个 stream 的游标清空，重新全量恢复。
   - 游标为空就是**全量恢复**：删了 app 重装、换手机都走这一条。按天分页，**最新的一天在最前**，所以前一两页就是最近两周。
-  - `raw`（HealthKit 原始样本）也能拉回来，这样删掉 app 重装后可以在本地重算。规则是：全量恢复时拉（同样按天、从新到旧，每页 ≤ 20000 行）；某几天要重算时用 `raw_days` 指定（每次 ≤ 7 天，不动游标）。90 天以前的原始数据，app 只在 Wi-Fi 下继续拉（`params.RAW_CELLULAR_DAYS`，由 app 判断）。
+  - `raw`（HealthKit 原始样本）也能拉回来，这样删掉 app 重装后可以在本地重算。规则是：全量恢复时拉（同样按天、从新到旧，每页 ≤ 20000 行）；某几天要重算时用 `raw_days` 指定（每次 ≤ 7 天，不动游标）。
+  - 更早的全部历史走 `raw_history`（单独拉、服务器限速、Wi‑Fi 加充电或用户允许蜂窝时才拉），内容是服务器算分时合并好的输入，见第 9.1 节「本机完整历史」。
   - 每种 stream 的 `body` 形状、各 kind 的含义，见第 7.3 节。
 - **什么时候拉**：冷启动、回到前台、自己的写操作提交之后、同步引擎上传完一轮之后（`POST /v1/ingest/healthkit` 的回答里有 `dirty_days`，只拉那几天）、静默推送（`content-available`）、下拉刷新。
 - 服务器有没有 N2 接口，看 `/v1/web/me` 的 `flags` 里有没有 **`native_sync`**；有的话，回答里还会带 `data_version`。没有就继续走 Legacy，所以 N2 上线前后 app 都能用。`data_version` 和本机记的不一样时再去拉。
@@ -291,6 +296,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 | `GET /v1/algo/manifest` | N1 的接口，N2 加了 `signature`、`key_id`（第 6.3 节） |
 | 静默推送 | `notify/silent.py`：设备登记 `POST /push-devices` 时带 `"silent": true` 的（只有原生 app 这样登记），数据一变就收到 `content-available` |
 | `GET /v1/sync/scoring`（N2b） | 手机自己算分要的、只有服务器有的输入（`nativesync/scoring.py`）：`hrv_kind`、`sync_mode`、`scoring_origin`、生日、时区、服务器的算法版本、`app_scoring`（服务器现在是否让 app 算、最近一次抽查）；`?from=&to=` 再给这几天的肌肉负荷（≤ 120 天），`?hist_from=&hist_to=` 再给每天的心率直方图（≤ 430 天，要读这么长的历史，只在装好后要一次） |
+| `raw_history` stream（本机完整历史） | `{"cursors": {"raw_history": ""}, "history_before": 日期}`，必须单独拉；按天倒序，每页 ≤ 14 天 / 60,000 行，body 是那天合并好的算分输入、醒来那晚的阶段段、带逐拍数据的心跳读数和 `complete`；第一页带 `history: {days, oldest}`；下完以后只发变过的天。每个用户 3 秒一页、每个进程同时 2 页，超了 429 + `Retry-After`（`nativesync/history.py`、`throttle.py`、`params.HISTORY_*`） |
 | pull 的 N2b 补充 | `raw_since`（全量恢复 raw 到这一天为止）；`raw` 的 body 多了 `beats`（逐拍读数的 RMSSD / SDNN，不带逐拍数据本身）；`sleep` 的 body 多了 `segments`（最近 `SEGMENT_DAYS` 天：服务器算分用的阶段段）；`heartbeat_series` 的写入记进 `raw` stream（迁移 980） |
 | 圈子评论带 `client_id`（N2b） | `POST /v1/friends/feed/posts/{id}/comments` 的 body `client_id` 或请求头 `X-Client-Id`：超时重发回第一次的评论（`X-Duplicate: 1`），不会多一条 |
 
@@ -445,17 +451,58 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 *删掉重装 / 换手机*：所有 stream 的游标都是空的，就是全量恢复。
 
 - `scores`、`daily`、`sleep` 全部历史都拉（都很小）。
-- `raw` 只拉最近 60 天（`raw_since`）。
-- 心率直方图从 `GET /v1/sync/scoring?hist_from=` 拉一次。
-- 拉完就能接着算，不用把全部原始样本拉回来。
+- `raw` 先只拉最近 60 天（`raw_since`），拉完就能算分，几秒钟。
+- 心率直方图从 `GET /v1/sync/scoring?hist_from=` 拉一次（历史还没下完时 HRmax 窗口用它）。
+- 更早的原始历史在后台续传（下面「本机完整历史」）。
 
-*本地库占多少*（模拟器实测，见下）：`hk_samples` 每行约 200 字节（含两个索引）。
+*本机完整历史*（#340 后续，`LocalHistoryParams.swift`、`LocalHistoryStore.swift`、`HistoryDownload.swift`、`LocalHistoryRunner.swift`，服务器 `nativesync/history.py`、`throttle.py`）
 
-- 虚构用户每天约 190 条样本：60 天 11,420 行，约 2.3 MB。
-- 真实的 Apple Watch 一天大约 1,000–2,000 条心率，60 天约 12–25 MB；其他 6 类加起来每天几十条。
-- 心率直方图一天约 0.4 KB，430 天不到 0.2 MB。
-- `daily_scores` 一天约 2 KB，几百天 1 MB 左右。
-- 合计一个账号大约 **15–30 MB**，不会再随时间增长：原始样本 62 天以前的删掉，直方图 430 天以前的删掉。
+负责人的方向：服务器负载尽量搬到手机上，每个账号在手机上占 200–300 MB 是理想状态。所以手机保留**全部历史**的原始输入，自己就能重算全部历史；算法升级时在本机重算，不再只算最近 14 天。
+
+- **两层存储**：
+  - 热区 `hk_samples`：最近 `hotDays`（60）天，手机自己从 HealthKit 读的，按 uuid 存，能处理删除。
+  - 历史区 `hist_samples`（WITHOUT ROWID，主键 `(kind, t)`，一行约 20 字节）、`hist_segments`（睡眠阶段段，按醒来那天）、`hist_days`（哪些天、来源、`complete`）。
+  - 分界是 `meta` 的 `history.hot_from`：第一次恢复时等于 `raw_since`，之后每次 `prune` 往后挪；热区移出的天先搬进历史区（`rollOver`），服务器历史里已有的天不搬。
+  - 逐拍心跳 `heartbeat_series` 现在保留逐拍数据本身（`analyzed` 标记 RMSSD / SDNN 是不是最新），HRV 算法改了可以重算。心率直方图、睡眠、分数也全部保留。
+  - 每种数据保留多久在 `LocalHistoryParams.keepDays`（按类型，`nil` = 全部），现在全是 `nil`。
+- **服务器给什么**：`raw` stream 只有同步引擎上传的样本。可大多数人的头几年来自 Open Wearables（在线或已归档）、快捷指令、export.zip。所以新加 `raw_history` stream：每天给的是**服务器算分时合并好的输入**（`scores/inputs.load`：所有来源，同一时刻只留一条，在线来源优先于 export.xml），加上这天醒来的那几晚的阶段段（`night_segments`，按会话归到醒来那天）和带逐拍数据的心跳读数。`complete = false` 表示有来源读不到（OW 没归档又连不上），这样的天手机不会拿来重算上传。
+  - 请求：`{"cursors": {"raw_history": ""}, "history_before": "<热区第一天>"}`，按天倒序分页，每页 ≤ 14 天、≤ 60,000 行；第一页回答里带 `history: {days, oldest}`，用来算进度。
+  - 下完以后游标变成增量：`history_before` 之前哪天的算分输入变了（`daily` / `sleep` / `raw` 的变更记录，例如导入了 export.zip），就再发那一天。
+  - **限速**（`nativesync/params.HISTORY_*`、`throttle.py`，每个 API 进程各自计）：同一个用户每 3 秒最多一页；整个进程同时最多算 2 页；超了马上回 429 + `Retry-After`，不做任何计算。`raw_history` 必须单独拉，普通拉取不受影响。一页（14 天）的代价约等于这个用户 14 天的 `compute-scores`；本机实测 2 年的虚构用户一页约 230 KB、0.23 秒。
+- **手机怎么下**（`HistoryDownload`）：
+  - 条件：第一次恢复已完成，而且这个用户是 `app` 模式（别的用户的分数手机本来就不算）。
+  - 只在 Wi‑Fi 并且在充电时下；用户在同步中心打开了「用蜂窝数据补历史」（和上传补历史共用一个开关）时任何网络都下；低数据模式下不下。
+  - 每一页和它的游标在同一个事务里写，随时可以中断再续。前台每次同步后最多下 12 页，剩下的交给 `BGProcessingTask`（`watch2whoop.history.download`，`requiresExternalPower`，允许蜂窝时不要求充电）。`Retry-After` 不超过 30 秒就等，更长就这次先停。
+  - 进度在同步中心「本机历史数据」（`LocalHistoryCard`）和「我 → 数据状态」显示。
+- **本机完整重算**（`ScoringSync`）：
+  - 历史下完（`HistoryDownload.isComplete`：`done`、没有 `complete = false` 的天）以后，换算法包就从算分起点开始全部重算；没下完时还是只重算最近 14 天（带种子）。
+  - 按 `scoreChunkDays`（14）天一块算，每块用上一块刚写的行当种子（带种子的算法本来就支持连续接力），进度存在 `meta` 的 `scoring.full_next`，被打断（后台任务到时间、前台 20 秒）下次接着算。
+  - 上传按 120 天一批，**最新的一批先传**，这样服务器的抽查（只看最近 14 天）第一次就能看到新包的结果。服务器的抽查逻辑没改。
+  - 平常的同步还是只从最早的脏天算到今天，不会因为历史在本机就每次都从头算。
+  - 测试：`FullRecomputeTests` 150 天分块算和一次算完的结果在抽查容差内，分批上传顺序对；`testFullRecomputeResumes` 中断后接着算。
+- **存储卫生**（`Storage/LocalStorage.swift`）：
+  - 账号目录、`W2W/` 根目录和 SQLite 的三个文件都设了 `isExcludedFromBackup`，不进 iCloud 备份。
+  - 新库建库时就是 `auto_vacuum = INCREMENTAL`，老库在第一次完整 `VACUUM` 时切过去；每次同步后 `PRAGMA incremental_vacuum`，后台任务里接电时最多每 7 天、空闲页超过 20% 才做一次完整 `VACUUM`；之后都把 WAL 截短。
+  - 「我 → 数据状态 → 本机存储」：合计、近 60 天原始数据、历史数据、分数和每日汇总、其他（`dbstat` 按表算），和「清除本机缓存」：服务器能重新给的全部清掉，还没上传的记录（`outbox` 和它们的 `records`）和算法包保留，然后完整 `VACUUM`，再从服务器全量恢复。
+
+*本机占多少*（`LocalHistoryMeasureTests`，iPhone 17 模拟器，虚构的高密度 Apple Watch 日：约 2,000 条心率、8 次 HRV、110 次呼吸、30 次血氧、1 次手腕温度、32 段睡眠、8 次逐拍读数）：
+
+| 部分 | 每天 | 1 年 | 2 年 | 3 年 |
+|---|---|---|---|---|
+| 历史区（含逐拍心跳、直方图） | 约 45 KB | 约 16 MB | 约 31 MB | 约 47 MB |
+| 热区 `hk_samples`（按 uuid，60 天固定） | 约 450 KB | 26 MB | 26 MB | 26 MB |
+| 分数、日汇总、睡眠 | 约 0.4 KB | 0.1 MB | 0.3 MB | 0.4 MB |
+| **合计** | | **约 42 MB** | **约 58 MB** | **约 74 MB** |
+
+- 所以全部历史都留，3 年也只用到 200–300 MB 预算的三分之一左右，`keepDays` 不设上限；以后要在本机存更多类型（步数、能量、训练）也有余量。
+- 实测 1,095 天：历史写入 239 万行，14.6 秒。
+
+*内存*（`phys_footprint`，`MemoryProbe`；运行时每次前台 / 后台任务的峰值存在 `meta` 的 `perf.peak.foreground` / `perf.peak.background`）：
+
+- 分块是关键：JavaScriptCore 的堆会停在用过的最高点。一次算 180 天高密度数据要 +490 MB，3 年一次算完会到 GB 级。
+- 14 天一块、3 年高密度数据（测试进程，模拟器）：峰值 181 MB（开始时 43 MB，增加约 140 MB），每块之后基本持平，**不随历史长度增长**（730 天和 1,095 天一样）。块大小 7 / 14 / 30 天分别是 +113 / +136 / +176 MB，选 14 天是时间和内存的折中。
+- 每块整个包在 `autoreleasepool` 里，块之间 `JSGarbageCollect`；不这样做的话内存会随块数慢慢涨。
+- 端到端（模拟器里的 app，本地服务器，2 年虚构数据，每天约 1,100 条）：前台一次同步（带种子算分 + 12 页历史）峰值 54 MB（开始 48 MB）；前台接着全部重算（20 秒一段）峰值 150 MB（开始 119 MB，是前面留下的 JavaScriptCore 堆）。后台（同一段代码，见下）只下历史 55 MB（开始 52 MB），下完历史接着全部重算 137 MB（开始 55 MB）。
 
 *模拟器 + 本地服务器走通*（2026-10-29，iPhone 17 模拟器，一次性库 `body_test_*`，虚构用户）：
 
@@ -466,9 +513,17 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
   - 抽查当天全部字段一致，`app_score_state` 变成 active / trusted，`app-scores status` 的计划是 `{"mode": "app", "days": []}`，服务器不再给他算分。
 - 第一次试的时候，app 一边从 HealthKit 读，同步引擎一边在上传。服务器抽查时少了后半批样本，CTL 差了 1.4，抽查不通过。等样本全部到了服务器，它重算出的 CTL 和手机的一样。所以才加了上面「等同步传完再上传」那一条。
 
+*模拟器 + 本地服务器走通（本机完整历史，2026-10-29）*：一次性库 `body_test_lhdd_e2e`，虚构用户 2 年「同步引擎上传的」样本，服务器派生并算分，`app` 模式，`native_sync` 打开。
+
+- app 重新安装、Debug 登录：全量恢复（60 天原始样本）→ 带种子算 58 天并上传，抽查通过、`app_scoring` 变成 true → 历史前台下了 11 页（中间遇到 429 就等 `Retry-After`）→ 排了后台任务。
+- 模拟器里没有 `BGTaskScheduler`（提交会失败），所以 Debug 版加了 `SIMCTL_CHILD_W2W_DEV_BG=1`：app 每次进后台就在一个后台任务断言里跑后台任务的同一段代码（`HistoryBackground.start()`，约 30 秒后被系统结束）。前后台切了几轮：后台把剩下的历史下完（670 / 670 天），接着全部重算，30 秒到时停在中间；回到前台接着算完，730 天分批上传，抽查通过，`app-scores` 的计划是 `{"mode": "app", "days": []}`。
+- 再用服务器的 Python 把这 730 天全部重算一遍，和手机算的逐天比：0 天超出抽查容差。
+- 历史没下完时手动塞进去的「全部重算」会被跳过（`ScoringSync` 的保护）：缺原始数据的天不能当成手机算的结果上传。
+- 真机上的 `BGProcessingTask`（接电、空闲时由系统安排）要在 N9 的真机清单里验证。
+
 *还没做 / 风险*
 
-- 同时用快捷指令、export.zip 补历史的人：服务器会合并这些来源，手机上没有。不一致时抽查不通过，服务器接着算（自动兜底）。
+- 同时用快捷指令、export.zip 补历史的人：热区（最近 60 天）只有同步引擎上传的样本，服务器还会合并别的来源。不一致时抽查不通过，服务器接着算（自动兜底）。历史区（`raw_history`）已经是合并好的输入，没有这个问题。
 - 力量训练的肌肉负荷要联网拿。离线时先不算这一项，等联网后重算再上传。
 - 趋势、压力、身体年龄还是服务器算（N4 再搬）。
 
@@ -688,7 +743,7 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 2. **iOS 16 还是 17**（C1）。要看测试用户的系统版本；决定之后只改一行配置。
 3. **Swift 6 严格并发**（C9）：N8 改写完同步代码之后再评估。
 4. ~~算法包签名的私钥~~：已定（#340 中控），放在部署者本机，实现见第 6.3 节。还剩一步：部署者生成两把钥匙，然后把公钥填进 `AlgoSigningKeys.swift` 和 `signing-keys.json`。
-5. ~~全量恢复的流量~~：已定（N2）。每页最多 500 条变化，原始数据每页最多 20000 行，都按天、从新到旧。90 天以前的原始数据只在 Wi-Fi 下拉，由 app 判断。
+5. ~~全量恢复的流量~~：已定（N2）。每页最多 500 条变化，原始数据每页最多 20000 行，都按天、从新到旧。更早的历史走 `raw_history`，只在 Wi‑Fi 加充电或用户允许蜂窝时拉（第 9.1 节「本机完整历史」）。
 6. **长事务会让拉取变慢**：拉取要等「还在运行的最老事务」结束，才能看到它之后的变化。几分钟的大导入期间，别人的拉取也会晚几分钟看到变化。这是为了不丢变化，故意这样设计的。
 
 ---
@@ -757,7 +812,14 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
   - It pulls `scores` / `daily` / `sleep` (sleep with the server's stage segments) and gets `GET /v1/sync/scoring` (hrv_kind, sync mode, origin, muscle load, once the per-day heart-rate histograms).
   - It runs a seeded `computeDays` (bundle 0.2.0: stored rows + day histograms stand in for the history before the raw window; within the server's check tolerance) and uploads the settled days with `PUT /scores/app`, only once the sync round's samples are all on the server.
   - A reinstall restores the full history of scores, daily values and sleep, plus 60 days of raw data (`raw_since`).
-  - Local database: about 15–30 MB per account.
+  - Local database: see "local history" below (N2b alone kept 60 days, 15–30 MB).
+- Local history (after N2b): the phone keeps the whole history of the scores' raw inputs and recomputes all of it itself when the algorithm bundle changes.
+  - Two tiers: `hk_samples` (last 60 days, uuid-keyed, from HealthKit) and a compact history (`hist_samples` WITHOUT ROWID, `hist_segments`, `hist_days`; migration `v3_local_history`); beats are kept. Retention per kind in `LocalHistoryParams` (all = everything).
+  - The server's new stream `raw_history` sends, per day before `history_before`, the inputs as its own scoring merges them (OW, Shortcut, export.zip, the app's uploads), whole nights' stage segments and beat-to-beat readings; pulled alone, ≤ 14 days a page, throttled (one page per user every 3 s, two pages per process at once, 429 + Retry-After).
+  - Downloaded newest first after the 60-day restore, on Wi-Fi while charging (or cellular if allowed), resumable, a few pages in the foreground, the rest in a `BGProcessingTask`; progress in the sync center and under Me → Data status.
+  - Full recompute in 14-day chunks seeded by the previous chunk, resumable, uploads in 120-day batches newest first; the server's spot check is unchanged. In the simulator e2e all 730 days matched the server's Python recompute within the check tolerance.
+  - Measured (dense made-up days): history ≈45 KB a day (1 / 2 / 3 years ≈ 16 / 31 / 47 MB) plus ≈26 MB for the 60 hot days; peak memory of a 3-year recompute ≈+140 MB and flat over the history length (one call over 180 days would be +490 MB).
+  - Storage: excluded from backups, incremental auto-vacuum, a local "clear cache".
   - Simulator + local server: a fresh install restored, scored 58 days, uploaded them; the spot check passed; the server's plan became `app` with no days to score.
 - N4: Trends and reports.
 - N5: all records and the Food tab (section 9.3). Each page store observes its documents plus the pending `records` rows (`LocalView`); `RecordsPuller` saves the server's views and prunes the rows the server now has in one transaction. Writes are a `records` row plus an outbox entry with the same `client_id`; last-write-wins groups drop older unsent states. Undo of a queued write is local, of a sent one online. The muscle map draws the Today page's own `muscle-body-data.js` (bundled) as SwiftUI paths. Server: `PATCH /nutrition/entries/{id}` sets an absolute portion.
@@ -788,5 +850,5 @@ N4 的趋势页、一年范围的读数、状态卡和弹层、报告、最近 1
 - iOS 16 or 17.
 - Swift 6 strict concurrency.
 - The signing key is decided (the maintainer's machine). What is left is to generate the keys and fill them in.
-- Full-restore traffic is decided: pages of 500 changes or 20,000 raw rows, and raw data older than 90 days on Wi-Fi only.
+- Full-restore traffic is decided: pages of 500 changes or 20,000 raw rows; older history comes through `raw_history` (Wi-Fi + power, or cellular if allowed).
 - A long transaction delays what pulls can see until it ends. This is on purpose, so that no change is lost.

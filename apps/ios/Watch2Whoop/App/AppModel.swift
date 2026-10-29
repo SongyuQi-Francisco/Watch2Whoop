@@ -23,13 +23,14 @@ final class AccountSession: ObservableObject {
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
 
-  init(config: AccountConfig, api: APIClient, db: AppDatabase, flags: Set<String>) {
+  init(config: AccountConfig, api: APIClient, db: AppDatabase, flags: Set<String>, runtime: AccountRuntime? = nil) {
     self.config = config
     self.api = api
     self.db = db
     self.flags = flags
     self.displayName = config.displayName
-    self.sync = SyncCoordinator(db: db, api: api)
+    // the long jobs (scoring, history download) are the runtime's, shared with the background task (local history)
+    self.sync = SyncCoordinator(db: db, api: api, scoring: runtime?.scoring, history: runtime?.history)
     sync.deltaAvailable = flags.contains(Self.nativeSyncFlag)
   }
 
@@ -131,6 +132,7 @@ final class AppModel: ObservableObject {
       _ = try? await api.data(APIRequest(method: .post, path: Endpoint.accountLogout, idempotent: false, timeout: 10))
     }
     await HealthSyncService.shared.detach()
+    AccountRuntime.close()
     if let cfg = store.config, let uid = cfg.userId { try? AppDatabase.deleteAccount(server: cfg.server, userId: uid) }
     let server = store.config?.server
     store.signOut()
@@ -215,9 +217,10 @@ final class AppModel: ObservableObject {
 
   private func open(_ cfg: AccountConfig, userId: Int, api: APIClient) throws {
     if session?.config.userId == userId, session?.config.server == cfg.server { phase = .signedIn; return }
-    let db = try AppDatabase.open(server: cfg.server, userId: userId)
+    let runtime = try AccountRuntime.open(server: cfg.server, userId: userId, api: api)
+    let db = runtime.db
     let cached = Set(UserDefaults.standard.stringArray(forKey: flagsKey) ?? [])
-    let s = AccountSession(config: cfg, api: api, db: db, flags: cached)
+    let s = AccountSession(config: cfg, api: api, db: db, flags: cached, runtime: runtime)
     session = s
     phase = .signedIn
     // HealthKit sync for this account: the engine's anchors carry on (same keys as 1.0.8), rounds on open and in the

@@ -4,19 +4,24 @@ import GRDB
 /// The phone scores the user itself (#340 N2b, docs/ios-native-app.md section 9.1), after every sync:
 /// 1. New HealthKit samples of the scoring types go into the local tables (`readHealth`, the host's HealthKit reader);
 ///    pulled server changes (`DeltaRemote`) have already marked their days in `score_dirty`.
-/// 2. At most every 6 hours (or when the server says `stale_algo`) a newer signed bundle is fetched; switching re-scores
-///    the last `AlgoBundles.rescoreDays` days.
+/// 2. At most every 6 hours (or when the server says `stale_algo`) a newer signed bundle is fetched. Switching re-scores
+///    the last `AlgoBundles.rescoreDays` days — or, once the whole history is on the phone (`HistoryDownload`), every
+///    day from the scoring origin (a *full recompute*, local history).
 /// 3. `GET /v1/sync/scoring`: hrv_kind, sync mode, scoring origin, the muscle load of the days to compute, and once after
 ///    an install the heart-rate histograms of the year before the raw window.
-/// 4. Only for users in the sync mode `app`: `LocalScoring` recomputes from the earliest dirty day (within the raw window)
-///    to today, writes the rows (origin `app`), and `PUT /v1/users/me/scores/app` uploads the settled ones. The server
-///    spot-checks them (N2); while they pass, its hourly job no longer scores this user.
+/// 4. Only for users in the sync mode `app`: `LocalScoring` recomputes from the earliest dirty day (within the hot window)
+///    or from the full recompute's next day, in chunks of `LocalHistoryParams.scoreChunkDays` (each seeded with the rows
+///    the previous one wrote, so memory follows the chunk, not the history), writes the rows (origin `app`), and
+///    `PUT /v1/users/me/scores/app` uploads the settled ones not uploaded yet, newest batch first. The server spot-checks
+///    them (N2); while they pass, its hourly job no longer scores this user.
+/// A full recompute keeps its position in `meta` (`scoring.full_next`): a background task that ends resumes there.
 /// One run at a time; the report of the last one is kept in `meta` (`scoring.last`) for the sync center.
 actor ScoringSync {
   struct Report: Codable, Equatable {
     var at: Double
     var reason: String
-    /// idle | offline | server_mode | stale_algo | no_data | scored | waiting_sync (HealthKit upload still going) | failed
+    /// idle | offline | server_mode | stale_algo | no_data | scored | partial (a full recompute that goes on next time)
+    /// | waiting_sync (HealthKit upload still going) | failed
     var state: String
     var first: String?
     var written: [String] = []
@@ -32,6 +37,10 @@ actor ScoringSync {
   static let histKey = "scoring.hist_through"
   static let lastKey = "scoring.last"
   static let readKey = "scoring.hk_read"
+  /// A full recompute in progress: the next day to compute.
+  static let fullKey = "scoring.full_next"
+  /// The first day of the last run whose night the server had not sent yet (not uploaded until it has).
+  static let unsettledKey = "scoring.unsettled_from"
 
   private let db: AppDatabase
   private let api: APIClient
@@ -59,8 +68,13 @@ actor ScoringSync {
     (try? db.doc(contextDoc))?.json.flatMap { $0["tz"] as? String }.flatMap(TimeZone.init(identifier:)) ?? .current
   }
 
+  /// Start a full recompute from the scoring origin (a new bundle once the history is complete; tests).
+  func startFullRecompute(from day: String) {
+    try? db.setMeta(Self.fullKey, day)
+  }
+
   @discardableResult
-  func run(reason: String, now: Date = Date()) async -> Report {
+  func run(reason: String, now: Date = Date(), deadline: Date? = nil) async -> Report {
     var rep = Report(at: now.timeIntervalSince1970, reason: reason, state: "idle")
     guard !running else { rep.detail = "busy"; return rep }
     running = true
@@ -68,32 +82,37 @@ actor ScoringSync {
     let store = LocalRawStore(db: db, zone: Self.zone(db))
     if let readHealth, !(await readHealth(store)).isEmpty { try? db.setMeta(Self.readKey, "1") }
     var today = LocalDay.string(now, store.zone)
-    if let v = await bundles.update(api: api) { markRecent(today: today, version: v) }
+    if let v = await bundles.update(api: api) { markNewBundle(today: today, version: v) }
 
+    var full = (try? db.meta(Self.fullKey)) ?? nil
+    if let f = full, f < store.hotFrom(today: today), !HistoryDownload.isComplete(db) {
+      // days without their raw data here would be uploaded as the app's: wait until the history is complete
+      full = nil
+    }
     let dirty = (try? await db.writer.read { db in try String.fetchAll(db, sql: "SELECT date FROM score_dirty ORDER BY date") }) ?? []
-    guard let earliest = dirty.first else { return save(rep) }
-    var first = max(earliest, LocalDay.add(LocalRawStore.rawStart(today: today), 2))
+    let pending = (try? await db.writer.read { db in
+      try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM daily_scores WHERE origin = 'app' AND uploaded = 0)")
+    }) ?? false
+    guard full != nil || !dirty.isEmpty || pending else { return save(rep) }
+    // a dirty day before the hot window is not scored here (only a full recompute goes that far back)
+    let hotStart = LocalDay.add(store.hotFrom(today: today), 2)
+    var first = full ?? max(dirty.first ?? today, hotStart)
     if first > today { first = today }
 
-    // the server's part of the inputs
-    var query = ["from": first, "to": today]
+    // the server's part of the inputs (the muscle load of the first window; histograms once after an install)
+    let window = min(today, LocalDay.add(first, LocalHistoryParams.muscleWindowDays - 1))
     let needHist = (try? db.meta(Self.histKey)) == nil
-    if needHist {
-      query["hist_from"] = LocalDay.add(today, -425)
-      query["hist_to"] = LocalDay.add(LocalRawStore.rawStart(today: today), -1)
-    }
+    var ctxResult = await context(from: first, to: window, hist: needHist ? today : nil)
     let j: [String: Any]
-    do {
-      j = try await api.json(.get(Endpoint.syncScoring, query))
-    } catch APIError.notFound {
-      rep.state = "server_mode"   // the server has no native sync for this user
+    switch ctxResult {
+    case .failure(let state, let detail):
+      rep.state = state
+      rep.detail = detail
       return save(rep)
-    } catch {
-      rep.state = "offline"
-      rep.detail = String(describing: error)
-      return save(rep)
+    case .success(let got):
+      j = got
     }
-    guard let ctx = LocalScoring.Context(j) else { rep.state = "failed"; rep.detail = "context"; return save(rep) }
+    guard var ctx = LocalScoring.Context(j) else { rep.state = "failed"; rep.detail = "context"; return save(rep) }
     rep.appScoring = (j["app_scoring"] as? [String: Any])?["active"] as? Bool
     if let data = try? JSONSerialization.data(withJSONObject: j.filter { $0.key != "hr_hist" && $0.key != "muscle" }) {
       try? db.saveDoc(Self.contextDoc, json: data)
@@ -116,7 +135,7 @@ actor ScoringSync {
     do {
       runtime = try bundles.runtime()
       if let want = ctx.algoVersion, runtime.algoVersions["scores"] != want {
-        if let v = await bundles.update(api: api, force: true) { markRecent(today: today, version: v) }
+        if let v = await bundles.update(api: api, force: true) { markNewBundle(today: today, version: v) }
         runtime = try bundles.runtime()
       }
     } catch {
@@ -132,35 +151,69 @@ actor ScoringSync {
     }
     if ctx.hrvKind == "rmssd" { _ = try? store.analyzeBeats(runtime) }
 
+    // compute [first, today] chunk by chunk (a full recompute may stop at the deadline and go on next time)
     let started = Date().timeIntervalSince1970
-    let result: LocalScoring.Result
-    do {
-      result = try LocalScoring.run(db: db, runtime: runtime, context: ctx, first: first, today: today, replace: true)
-    } catch {
-      rep.state = "failed"
-      rep.detail = String(describing: error)
-      return save(rep)
-    }
+    let fullNow = full
     rep.first = first
-    rep.written = result.written
-    guard !result.written.isEmpty else {
-      rep.state = result.skipped == nil ? "scored" : "no_data"
-      rep.detail = result.skipped
-      clearDirty(through: today, before: started)
-      return save(rep)
+    var a = first
+    var unsettled: String?
+    var windowEnd = window
+    var reachedToday = false
+    while a <= today {
+      if Task.isCancelled || deadline.map({ Date() >= $0 }) == true { break }
+      if a > windowEnd {   // the next muscle window
+        let w = min(today, LocalDay.add(a, LocalHistoryParams.muscleWindowDays - 1))
+        ctxResult = await context(from: a, to: w, hist: nil)
+        guard case .success(let more) = ctxResult, let c = LocalScoring.Context(more) else { break }
+        ctx = c
+        windowEnd = w
+      }
+      let b = min(today, LocalDay.add(a, LocalHistoryParams.scoreChunkDays - 1), windowEnd)
+      let result: LocalScoring.Result
+      do {
+        result = try LocalScoring.run(db: db, runtime: runtime, context: ctx, first: a, last: b, today: today, replace: true)
+      } catch {
+        rep.state = "failed"
+        rep.detail = String(describing: error)
+        return save(rep)
+      }
+      runtime.collectGarbage()
+      rep.written += result.written
+      if result.skipped != nil, rep.detail == nil { rep.detail = result.skipped }
+      if let u = result.unsettled.first { unsettled = min(unsettled ?? u, u) }
+      // the chunk's days are computed: their dirty marks go (an unsettled night's stay: scored again when it comes)
+      clearDirty(from: a, through: b, before: started, keepFrom: unsettled)
+      if fullNow != nil { try? db.setMeta(Self.fullKey, LocalDay.add(b, 1)) }
+      if b >= today { reachedToday = true }
+      a = LocalDay.add(b, 1)
     }
-    rep.state = "scored"
-    // upload what is settled: the days before the first night the server has not sent yet
-    let cutoff = result.unsettled.first ?? "9999-12-31"
-    let days = result.written.filter { $0 < cutoff }
+    if reachedToday {
+      if fullNow != nil { try? await db.writer.write { db in try db.execute(sql: "DELETE FROM meta WHERE key = ?", arguments: [Self.fullKey]) } }
+      if let unsettled { try? db.setMeta(Self.unsettledKey, unsettled) } else {
+        try? await db.writer.write { db in try db.execute(sql: "DELETE FROM meta WHERE key = ?", arguments: [Self.unsettledKey]) }
+      }
+    }
+    rep.state = reachedToday ? (rep.written.isEmpty && rep.detail != nil ? "no_data" : "scored") : "partial"
+
+    // upload what is settled and not uploaded yet: before the first night the server has not sent yet
+    let cutoff = ((try? db.meta(Self.unsettledKey)) ?? nil) ?? "9999-12-31"
+    let algo = runtime.algoVersions["scores"]
+    let days = ((try? await db.writer.read { db in
+      try String.fetchAll(db, sql: """
+        SELECT date FROM daily_scores WHERE origin = 'app' AND uploaded = 0 AND date < ? AND algo_version IS ? ORDER BY date DESC
+        """, arguments: [cutoff, algo])
+    }) ?? [])
     // samples this phone read from HealthKit must be on the server first (with none, the inputs are the server's anyway)
     let phoneReads = (try? db.meta(Self.readKey)) == "1"
     if !days.isEmpty, phoneReads, let gate = uploadGate, !(await gate()) {
       rep.state = "waiting_sync"
       return save(rep)
     }
-    if !days.isEmpty {
-      let (status, body) = await upload(days: days, runtime: runtime)
+    // newest batch first: the server's spot check looks at the recent days of an upload
+    for batch in stride(from: 0, to: days.count, by: LocalHistoryParams.uploadBatchDays).map({
+      Array(days[$0..<min(days.count, $0 + LocalHistoryParams.uploadBatchDays)]).reversed()
+    }) {
+      let (status, body) = await upload(days: Array(batch), runtime: runtime)
       rep.upload = status
       if let ok = (body?["app_scoring"] as? Bool) { rep.appScoring = ok }
       if let check = body?["check"] as? [String: Any], check["ok"] as? Bool == false {
@@ -170,18 +223,41 @@ actor ScoringSync {
       case "ok", "mismatch":
         // mismatch: the server stored its own row for the checked day; the pull brings it back
         try? await db.writer.write { db in
-          for d in days { try db.execute(sql: "UPDATE daily_scores SET uploaded = 1 WHERE date = ? AND origin = 'app'", arguments: [d]) }
+          for d in batch { try db.execute(sql: "UPDATE daily_scores SET uploaded = 1 WHERE date = ? AND origin = 'app'", arguments: [d]) }
         }
-        rep.uploaded = days
-        clearDirty(through: days.max()!, before: started)
+        rep.uploaded += batch
       case "stale_algo":
-        if let v = await bundles.update(api: api, force: true) { markRecent(today: today, version: v) }
+        if let v = await bundles.update(api: api, force: true) { markNewBundle(today: today, version: v) }
       default:
         break
       }
+      if status != "ok" { break }
     }
+    rep.uploaded.sort()
     try? store.prune(today: today)
     return save(rep)
+  }
+
+
+  private enum ContextResult {
+    case success([String: Any])
+    case failure(String, String?)
+  }
+
+  /// `GET /v1/sync/scoring?from=&to=` (+ the histograms of the year before the raw window once).
+  private func context(from: String, to: String, hist today: String?) async -> ContextResult {
+    var query = ["from": from, "to": to]
+    if let today {
+      query["hist_from"] = LocalDay.add(today, -425)
+      query["hist_to"] = LocalDay.add(LocalRawStore.rawStart(today: today), -1)
+    }
+    do {
+      return .success(try await api.json(.get(Endpoint.syncScoring, query)))
+    } catch APIError.notFound {
+      return .failure("server_mode", nil)   // the server has no native sync for this user
+    } catch {
+      return .failure("offline", String(describing: error))
+    }
   }
 
   /// PUT /v1/users/me/scores/app with the rows of these days → (status, answer).
@@ -206,16 +282,26 @@ actor ScoringSync {
     }
   }
 
-  /// A new bundle: the last days are scored again with it.
-  private func markRecent(today: String, version: String) {
+  /// A new bundle: with the whole history on the phone every day is scored again with it (from the scoring origin,
+  /// chunk by chunk); otherwise the last days (the older rows stay the server's).
+  private func markNewBundle(today: String, version: String) {
+    if HistoryDownload.isComplete(db) {
+      let origin = (try? db.doc(Self.contextDoc))?.json?["scoring_origin"] as? String
+      let oldest = (try? db.writer.read { db in try String.fetchOne(db, sql: "SELECT min(date) FROM hist_days") }) ?? nil
+      if let from = origin ?? oldest {
+        try? db.setMeta(Self.fullKey, from)
+        return
+      }
+    }
     let days = Set((0..<AlgoBundles.rescoreDays).map { LocalDay.add(today, -$0) })
     try? db.writer.write { db in try LocalRawStore.markDirty(db, days) }
   }
 
-  /// Days scored and uploaded: their marks go, unless they were set again while this run was going.
-  private func clearDirty(through day: String, before t: Double) {
+  /// Days computed: their marks go, unless they were set again while this run was going or their night is still to come.
+  private func clearDirty(from a: String, through b: String, before t: Double, keepFrom: String?) {
+    let upto = keepFrom.map { min(b, LocalDay.add($0, -1)) } ?? b
     try? db.writer.write { db in
-      try db.execute(sql: "DELETE FROM score_dirty WHERE date <= ? AND at <= ?", arguments: [day, t])
+      try db.execute(sql: "DELETE FROM score_dirty WHERE date <= ? AND at <= ?", arguments: [upto, t])
     }
   }
 

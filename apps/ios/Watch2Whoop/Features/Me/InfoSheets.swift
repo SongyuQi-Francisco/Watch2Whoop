@@ -34,7 +34,8 @@ struct WhatsNewView: View {
   }
 }
 
-/// 数据状态: per data type, when the server last got it (`GET /v1/users/me/data-status`).
+/// 数据状态: what this iPhone keeps (local history), then per data type when the server last got it
+/// (`GET /v1/users/me/data-status`).
 struct DataStatusView: View {
   @EnvironmentObject private var session: AccountSession
   @State private var s: DataStatus?
@@ -42,6 +43,7 @@ struct DataStatusView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
+      LocalStorageSection()
       if let s {
         let ok = s.summary["ok"] ?? 0, stale = s.summary["stale"] ?? 0, never = s.summary["never"] ?? 0
         HStack(spacing: 8) {

@@ -34,6 +34,7 @@ struct SyncCenterView: View {
         if let message { Banner(text: message, tone: .text) }
         if sync.engine.active && !sync.engine.firstSyncDone { firstSync }
         history
+        LocalHistoryCard(sync: session.sync)
         resync
         types
         settings

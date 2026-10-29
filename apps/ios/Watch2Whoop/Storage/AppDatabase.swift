@@ -23,8 +23,21 @@ final class AppDatabase {
     config.prepareDatabase { db in
       try db.execute(sql: "PRAGMA foreign_keys = ON")
     }
-    let pool = try DatabasePool(path: dir.appendingPathComponent("body.sqlite").path, configuration: config)
-    return try AppDatabase(pool)
+    let path = dir.appendingPathComponent("body.sqlite").path
+    if !FileManager.default.fileExists(atPath: path) {
+      // a new database gives freed pages back on `PRAGMA incremental_vacuum` (LocalStorage.swift). The mode sticks only
+      // when set on the empty file before WAL is switched on; older databases switch at their first full VACUUM.
+      let q = try DatabaseQueue(path: path)
+      try q.writeWithoutTransaction { db in
+        try db.execute(sql: "PRAGMA auto_vacuum = INCREMENTAL")
+        try db.execute(sql: "VACUUM")
+      }
+      try q.close()
+    }
+    let pool = try DatabasePool(path: path, configuration: config)
+    let db = try AppDatabase(pool)
+    db.excludeFromBackup()   // the directory is excluded too; the files themselves as well, to be sure
+    return db
   }
 
   /// Empty in-memory database with the full schema (tests, previews).
@@ -46,6 +59,8 @@ final class AppDatabase {
     var values = URLResourceValues()
     values.isExcludedFromBackup = true
     try? dir.setResourceValues(values)
+    var root = base.appendingPathComponent("W2W", isDirectory: true)   // every account and the algorithm bundles
+    try? root.setResourceValues(values)
     return dir
   }
 

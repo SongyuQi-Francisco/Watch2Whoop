@@ -65,15 +65,21 @@ final class SyncCoordinator: ObservableObject {
   /// The phone's own scoring (N2b).
   let scoring: ScoringSync
   @Published private(set) var lastScoring: ScoringSync.Report?
+  /// The history download (local history): after scoring, a few pages in the foreground, the rest in the background.
+  let history: HistoryDownload
+  @Published private(set) var historyState: HistoryDownload.State
 
-  init(db: AppDatabase, api: APIClient, delta: RemoteSync? = nil, legacy: RemoteSync? = nil, scoring: ScoringSync? = nil) {
+  init(db: AppDatabase, api: APIClient, delta: RemoteSync? = nil, legacy: RemoteSync? = nil, scoring: ScoringSync? = nil,
+       history: HistoryDownload? = nil) {
     self.db = db
     self.api = api
     self.queue = OfflineQueue(db: db)
     self.delta = delta ?? DeltaRemote(api: api, zone: { ScoringSync.zone(db) })
     self.legacy = legacy ?? LegacyRemote(api: api)
     self.scoring = scoring ?? ScoringSync(db: db, api: api)
+    self.history = history ?? HistoryDownload(db: db, api: api)
     self.lastScoring = ScoringSync.lastReport(db)
+    self.historyState = HistoryDownload.state(db)
   }
 
   /// Pull `scope`, then send queued writes. Errors end up in `status`; cached data stays on screen.
@@ -99,11 +105,35 @@ final class SyncCoordinator: ObservableObject {
   /// The phone's scoring in the background (one run at a time; a run asked for while one goes is folded into it).
   func scoreSoon(reason: String) {
     guard deltaAvailable else { return }
-    let scoring = self.scoring
+    let scoring = self.scoring, history = self.history, db = self.db
     Task.detached(priority: .utility) { [weak self] in
-      let r = await scoring.run(reason: reason)
-      await MainActor.run { self?.lastScoring = r }
+      let h = await MemoryProbe.measure("foreground", db: db) { () -> HistoryDownload.State in
+        // a full recompute (new bundle, whole history here) gets a short slice now; the background task does the rest
+        let r = await scoring.run(reason: reason, deadline: Date().addingTimeInterval(LocalHistoryParams.foregroundScoringSeconds))
+        await MainActor.run { self?.lastScoring = r }
+        // then the history (local history): a few pages now when the network and power allow, the rest in the background
+        return await history.run(reason: reason, maxPages: LocalHistoryParams.foregroundPages)
+      }
+      await MainActor.run { self?.historyState = h }
+      if h.phase != "done" && h.phase != "server_mode" || (try? db.meta(ScoringSync.fullKey)) ?? nil != nil {
+        HistoryBackground.schedule()
+      }
+      _ = try? db.maintain(onPower: false)   // incremental vacuum after pruning (cheap)
     }
+  }
+
+  /// Re-read the history's progress (the sync center while it is open).
+  func reloadHistoryState() {
+    historyState = HistoryDownload.state(db)
+  }
+
+  /// 清除本机缓存: empty the local copy (unsent writes stay) and pull it all again from the server.
+  func clearLocalCache() async throws {
+    let db = self.db
+    try await Task.detached(priority: .userInitiated) { try db.clearCache() }.value
+    historyState = HistoryDownload.state(db)
+    lastScoring = nil
+    await refresh(.changes)
   }
 
   /// Queue a write and try to send it right away (the page has already updated its local rows).

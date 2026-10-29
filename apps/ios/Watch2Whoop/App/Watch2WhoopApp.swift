@@ -37,6 +37,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     // HealthKit observers + background delivery, unlock / network-back resumes. It keeps its own configuration (server,
     // token in the Keychain, registry, mode), so background rounds run without any view or account session.
     SyncEngine.register()
+    // #340 local history: the history download and a full recompute, BGProcessing `watch2whoop.history.download`
+    HistoryBackground.register()
+    #if DEBUG
+    HistoryBackground.devHook()
+    #endif
     Appearance.apply()
     UNUserNotificationCenter.current().delegate = NotificationTaps.shared   // taps → the post (N7); set before launch ends
     return true

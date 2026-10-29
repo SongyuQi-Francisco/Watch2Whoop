@@ -132,7 +132,9 @@ final class LocalRawStoreTests: XCTestCase {
     XCTAssertEqual(r["uuid"] as String, "abc")
     XCTAssertEqual(r["start"] as Double, LocalDay.parse("2026-01-10", TimeZone(identifier: "UTC")!)!.timeIntervalSince1970 - 11 * 3600)
     XCTAssertNotNil(r["rmssd"] as Double?)
-    XCTAssertNil(r["beats"] as Data?)   // the beats go once analysed
+    XCTAssertNotNil(r["beats"] as Data?)   // the beats stay (local history: a new HRV algorithm can analyse them again)
+    XCTAssertEqual(r["analyzed"] as Bool, true)
+    XCTAssertEqual(try store.analyzeBeats(try OpenBodyScoreRuntime.builtin()), 0)   // once
   }
 }
 
