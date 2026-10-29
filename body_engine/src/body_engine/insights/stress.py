@@ -12,7 +12,7 @@ No raw heart rate (the Shortcut only has hour-summed heart rate) -> no score for
 """
 import statistics
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -75,20 +75,30 @@ def _with_app(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, lo: datetime
               ow_workouts: list) -> tuple[dict, list]:
     """The sync mode `app` (rawdata/samples.py): the app's own samples and workouts; OW's samples of a type only for the
     days the app has none of that type (step counts are kept per source, so mixing both on one day would add up), and
-    the workouts of both (a duplicate window excludes nothing more)."""
+    the workouts of both (a duplicate window excludes nothing more). The rule itself is merge_app (pure, the phone's twin)."""
     app = rx_samples.samples(conn, user_id, STRESS_TYPES, lo, hi)
+    mine = {code: [(s.ts, s.value, s.source) for s in app.get(code, [])] for code in STRESS_TYPES}
+    return merge_app(mine, ow_samples, tz), sorted({*ow_workouts, *rx_samples.workout_windows(conn, user_id, lo, hi)})
+
+
+def merge_app(app: dict[str, list], other: dict[str, list], tz: ZoneInfo) -> dict[str, list]:
+    """Pure part of _with_app. app: {code: [(time, value, source)]} (the app's own samples, in time order); other:
+    {code: [(time, value)]} (Open Wearables / history). Per code: the app's samples, one per time stamp (steps: per time
+    stamp and source, the later one wins), and the other samples only on the local days the app has none of that code."""
     out = {}
     for code in STRESS_TYPES:
         mine = app.get(code, [])
-        k = (lambda s: (s.ts, s.source)) if code == "steps" else (lambda s: s.ts)   # as _ow_samples
-        have = {s.ts.astimezone(tz).date() for s in mine}
-        xs = {k(s): (s.ts, s.value) for s in mine}
-        out[code] = sorted([*xs.values(), *(x for x in ow_samples.get(code, []) if x[0].astimezone(tz).date() not in have)])
-    return out, sorted({*ow_workouts, *rx_samples.workout_windows(conn, user_id, lo, hi)})
+        k = (lambda s: (s[0], s[2])) if code == "steps" else (lambda s: s[0])   # as _ow_samples
+        have = {s[0].astimezone(tz).date() for s in mine}
+        xs = {k(s): (s[0], s[1]) for s in mine}
+        out[code] = sorted([*xs.values(), *(x for x in other.get(code, []) if x[0].astimezone(tz).date() not in have)])
+    return out
 
 
-def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date, ow_cache: str | None = None) -> list[dict]:
-    """ow_cache: how the OW samples are read (importers/ow_cache.py), None = all from OW."""
+def load(conn: psycopg.Connection, client, user_id: int, start: date, end: date, ow_cache: str | None = None) -> dict:
+    """Everything score_range reads for [start, end], from the database (and Open Wearables when `client` is given):
+    {tz, sleep, workouts, hr, steps, hrv, hrv_night, shortcut}. ow_cache: how the OW samples are read
+    (importers/ow_cache.py), None = all from OW."""
     user = conn.execute("SELECT timezone, ow_user_id FROM users WHERE id = %s", (user_id,)).fetchone()
     tz = ZoneInfo(user["timezone"])
     lo = datetime.combine(start - timedelta(days=BASELINE_DAYS), time.min, tz)
@@ -110,9 +120,16 @@ def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: da
         workouts = _workouts(client, user["ow_user_id"], start - timedelta(days=BASELINE_DAYS), end, tz)
     if rx_samples.reads_app(conn, user_id):
         samples, workouts = _with_app(conn, user_id, tz, lo, hi, samples, workouts)
-    hr, steps, hrv = samples.get("heart_rate", []), samples.get("steps", []), samples.get("heart_rate_variability_sdnn", [])
-    return score_range(tz, start, end, sleep, workouts, hr, steps, hrv, {r["date"]: r["hrv_night_ln"] for r in hrv_rows},
-                       shortcut)
+    return {"tz": tz, "sleep": sleep, "workouts": workouts, "hr": samples.get("heart_rate", []),
+            "steps": samples.get("steps", []), "hrv": samples.get("heart_rate_variability_sdnn", []),
+            "hrv_night": {r["date"]: r["hrv_night_ln"] for r in hrv_rows}, "shortcut": shortcut}
+
+
+def compute(conn: psycopg.Connection, client, user_id: int, start: date, end: date, ow_cache: str | None = None) -> list[dict]:
+    """stress_daily rows of [start, end] = score_range(load(...)). ow_cache: see load."""
+    d = load(conn, client, user_id, start, end, ow_cache)
+    return score_range(d["tz"], start, end, d["sleep"], d["workouts"], d["hr"], d["steps"], d["hrv"], d["hrv_night"],
+                       d["shortcut"])
 
 
 def score_range(tz: ZoneInfo, start: date, end: date, sleep: list, workouts: list, hr: list, steps: list, hrv: list,
@@ -155,6 +172,69 @@ def score_range(tz: ZoneInfo, start: date, end: date, sleep: list, workouts: lis
         rows.append({"date": d, **res, "flags": flags})
         d += timedelta(days=1)
     return rows
+
+
+# ---------------------------------------------------------------- 2.0.0 package M2: the phone's twin (docs/ios-native-2.0.md)
+# The phone computes stress_daily and the stress cards itself with the algorithm bundle (packages/openbodyscore-js
+# src/32_stress.js: OBS.stressLocal, OBS.stressCards, OBS.cardioView). This version covers those entry points and the
+# stress algorithm they run (STRESS_VERSION), so a change of either makes the phone recompute (section 3.3).
+STRESS_CARDS_VERSION = f"stress-cards-1+{STRESS_VERSION}"
+_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
+# the phone's sample groups -> OW series codes (STRESS_TYPES)
+LOCAL_CODES = {"hr": "heart_rate", "steps": "steps", "hrv": "heart_rate_variability_sdnn"}
+
+
+def instant(seconds: float) -> datetime:
+    """UTC seconds (the phone's local tables) -> datetime, rounded to the microsecond like the bundle."""
+    return _EPOCH + timedelta(microseconds=round(seconds * 1e6))
+
+
+def days_local(src: dict) -> list[dict]:
+    """stress_daily rows of [start, end] from the phone's local tables, no database: the reference of OBS.stressLocal.
+    src = {tz, start, end (local dates),
+           app: {hr | hrv | steps: [[t, value, source?]]}   the phone's own HealthKit samples (hk_samples; steps by source),
+           other: {hr | hrv | steps: [[t, value]]}          the history area (hist_samples: the server's merged inputs,
+                                                            steps as 15-minute buckets), used on days without app samples,
+           sleep, workouts: [[start, end]], hrv_night: {date: night ln HRV}, shortcut: [dates]}
+    with t = UTC seconds. The same merge as the server's sync mode `app` (merge_app), then score_range."""
+    tz = ZoneInfo(src["tz"])
+    app = {LOCAL_CODES[k]: [(instant(x[0]), x[1], x[2] if len(x) > 2 else None) for x in sorted(v, key=lambda x: x[0])]
+           for k, v in (src.get("app") or {}).items() if k in LOCAL_CODES}
+    other = {LOCAL_CODES[k]: sorted((instant(x[0]), x[1]) for x in v) for k, v in (src.get("other") or {}).items()
+             if k in LOCAL_CODES}
+    samples = merge_app(app, other, tz)
+    spans = lambda xs: sorted({(instant(a), instant(b)) for a, b in xs or []})  # noqa: E731
+    return score_range(tz, date.fromisoformat(src["start"]), date.fromisoformat(src["end"]), spans(src.get("sleep")),
+                       spans(src.get("workouts")), samples["heart_rate"], samples["steps"],
+                       samples["heart_rate_variability_sdnn"],
+                       {date.fromisoformat(d): v for d, v in (src.get("hrv_night") or {}).items()},
+                       {date.fromisoformat(d) for d in src.get("shortcut") or []})
+
+
+def cards(data: dict, end: date, today: date, tz: ZoneInfo, now_hour: int | None = None) -> dict:
+    """The Trends status cards that read stress or heart-rate recovery, as of `end`, exactly as trends/series.compute
+    builds them (resilience, body_battery, hr_recovery), for one person's own data (no share scopes):
+    data = {scores: [{date, recovery, sleep_performance, strain, details}], stress: [{date, score, level, hours}],
+            hrr_apple: {date: bpm}, hrr_workouts: {date: bpm}}. The reference of OBS.stressCards."""
+    from ..trends import calc
+    rows = {r["date"]: r for r in data.get("scores") or []}
+    recovery = {d: r["recovery"] for d, r in rows.items() if r.get("recovery") is not None}
+    perf = {d: r["sleep_performance"] for d, r in rows.items() if r.get("sleep_performance") is not None}
+    stress = {r["date"]: r for r in data.get("stress") or []}
+    st = {d: round(r["score"], 2) for d, r in stress.items() if r.get("score") is not None}
+    er, es = rows.get(end), stress.get(end)
+    wake_at = (((er or {}).get("details") or {}).get("sleep") or {}).get("wake_time")
+    wake = (wake_at if isinstance(wake_at, datetime) else datetime.fromisoformat(wake_at)).astimezone(tz) if wake_at else None
+    until = (datetime.now(tz).hour if now_hour is None else now_hour) if end == today else 23
+    hrr = dict(data.get("hrr_apple") or {})
+    for d, v in (data.get("hrr_workouts") or {}).items():
+        hrr.setdefault(d, v)
+    last = max((d for d in hrr if d <= end), default=None)
+    return {"resilience": calc.resilience(recovery, perf, st, end),
+            "body_battery": calc.body_battery(er.get("recovery"), er.get("sleep_performance"), wake.hour if wake else None,
+                                              (es or {}).get("hours") or [], er.get("strain"), until_hour=until) if er else None,
+            "hr_recovery": None if last is None else {"bpm": round(hrr[last], 1), "date": last,
+                                                      "level": calc.hr_recovery_level(hrr[last])}}
 
 
 def write(conn: psycopg.Connection, user_id: int, rows: list[dict]) -> int:

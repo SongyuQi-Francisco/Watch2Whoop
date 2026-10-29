@@ -151,14 +151,14 @@ def test_flags_are_registered_and_off(dsn, users):
             assert not flags.enabled(c, ids["a"], k)
 
 
-# the kinds the merged packages ship (M1: daily, sleep); each belongs to its package and none is a record kind yet
-SHIPPED = {"daily", "sleep"}
+# the kinds the merged packages ship (M1: daily, sleep; M2: stress, also a record kind of the `records` stream)
+SHIPPED = {"daily", "sleep", "stress"}
 
 
 def test_registry_ships_no_kind_and_checks_modules():
     assert set(derived_kinds.kinds()) == SHIPPED
     assert all(k in P.COMPUTE_PACKAGES[m.PACKAGE]["kinds"] for k, m in derived_kinds.kinds().items())
-    assert derived_kinds.record_kinds() == {}
+    assert set(derived_kinds.record_kinds()) == {"stress"}
     with pytest.raises(derived_kinds.BadKind):
         derived_kinds.register(types.SimpleNamespace(KIND="x", PACKAGE="derive"))
     bad = probe_kind()

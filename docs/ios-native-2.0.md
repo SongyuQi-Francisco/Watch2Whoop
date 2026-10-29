@@ -338,6 +338,62 @@ M1 and M3 share no file except `dist/*`.
 
 Note: with steps in the history area (M1) the phone recomputes stress for the whole history on a bundle change, like scores.
 
+#### M2 as built (2026-10-30)
+- **Algorithm** `stress_cards` = `insights/stress.py:STRESS_CARDS_VERSION` = `"stress-cards-1+" + STRESS_VERSION`
+  (`stress-cards-1+v1.0-2026-10-17`) = `OBS.ALGO_VERSIONS.stress_cards`: one key for the three entry points and the stress
+  algorithm they run, so a change of either makes the phone recompute. **Python split** (outputs unchanged; the DB tests of
+  `stress.compute` in `test_apple_sync_read.py`, `test_apple_sync_cutover.py`, `test_openbodyscore_golden.py` stay green):
+  `insights/stress.py` `load` + `compute` (= `score_range(load(…))`), the pure merge `merge_app` (of `_with_app`), the
+  phone's reference `days_local(src)` (UTC seconds; the app's samples first, the history's on days without any of a type,
+  then `score_range`) and `cards(data, end, today, tz, now_hour)` (resilience, body battery, heart-rate recovery exactly as
+  `trends/series.compute` builds them; a test checks the equality on M3's synthetic person); `cardio/views.py` `window`,
+  `load`, pure `compute` (`cardio` = share check around them). No new thresholds; `cardio/hrr.py` `ALGO`, `TREND_DAYS`,
+  `PEAK_MIN_PCT` are mirrored in `OBS.stress_cards.params` and compared by the golden test.
+- **JS** `src/32_stress.js`: `OBS.stress_cards.{merge_app, days_local, cards, cardio, mean}` (`mean` = `statistics.mean`,
+  exact rational mean) on top of the existing `OBS.stress_days.score_range` and `OBS.trends`; entry points `stressLocal(src)`,
+  `stressCards(data, {end, today, tz, now_hour})`, `cardioView(data, {start, end})`, stamped.
+- **Goldens** (`*_stress_cards.*`, since `golden/stress.json` is N1's): `test/cases_stress_cards.py` — 74 synthetic days in
+  Australia/Sydney over the 2026-10-04 DST change (history-area days, app days with watch + iPhone steps at the same
+  instants, a day in both, a day with app heart rate but history steps, sleep across midnight, naps, a workout twice,
+  walking bursts, an hour with steps but < 3 heart-rate readings, a Shortcut-only day, a day without heart rate; runs: all,
+  a start with < 50 baseline readings, no steps), the cards on M3's person (both languages, today with an hour, a day without
+  a score row, without heart-rate recovery / stress), the cardio view (valid / invalid, both 30-day periods, a zero-length
+  night) → `golden/stress_cards.json`; `golden/stress_local.json` = the 74 days + the Python rows of the last 60 (the iOS
+  acceptance fixture). Tests `body_engine/tests/test_js_golden_stress_cards.py`, `test/stress_cards.test.js`,
+  `body_engine/tests/test_native_stress.py` (DB: the server's `stress.compute` on the same uploads == `days_local`; upload
+  kind off / shadow / mismatch / primary; records pull; /cardio), `Watch2WhoopTests/LocalStressTests.swift`.
+- **Server**: kind `derived_kinds/stress.py` (rows: one per day, `score_range`'s row without `date`; `TOLERANCE` score 0.01;
+  `recompute` = `stress.compute` from the server's tables, a day without raw heart rate is not compared; hours: only the
+  (hour, level) pairs are compared — recompute takes the phone's hour rows when they agree; baseline within half its
+  rounding; counts, peak hour and flag texts exact). Record kind `stress` of the `records` stream. Migration
+  `1020_native_stress.sql` (`origin`, `bundle_version` on `stress_daily`; `sync_attach` for the records stream).
+- **iOS**: `StressSchema` → `v6_stress_daily` (`n_hr` = the day's heart-rate samples it was computed from). `StressStage`
+  (implemented): every day after a new algorithm, else the last 16 days and every day whose heart-rate count changed (+ the
+  14 days after it), in chunks of ≤ 30 consecutive days; inputs = `hk_samples` (heart rate, HRV SDNN, raw steps keyed like
+  `rawdata/samples._source_key`), `hist_samples` (hr / hrv / steps), `sleep_sessions`, `hk_workouts` (+ M1c's `workouts`
+  when the table exists), `daily_scores.payload.hrv_night_ln`, `daily_metrics` source `shortcut`; writes `stress_daily` in
+  shadow and primary, `derived_rows` kind `stress` (uploaded with `DeriveStage.upload`), and the doc `cardio.local:<today>`.
+  `TrendsLocal`: `stressCards` (14 days of score / stress rows, 150 days of heart-rate recovery); primary = the three cards
+  are the phone's (null hides a card), shadow = compared with the cached server status of that day (meta `stress.compare`,
+  field names only; today's body battery: only its value on waking). `TrendsSeriesLocal`: `stress` / `resilience` /
+  `body_battery` and `hr_recovery` from local tables when `stress` is primary, else from the server's document as before.
+- **Deviations**: (1) file names `*_stress_cards.*`; (2) the spot check reads the server's own sleep and score rows, not the
+  phone's uploaded `sleep` kind; (3) days before the hot window come from the history area, whose steps are 15-minute buckets
+  (the server reads Open Wearables' raw step samples for those days), so pre-app days may differ slightly — the spot check
+  only compares the newest uploaded day; (4) Open Wearables-only workouts reach the phone with M1c, until then only
+  `hk_workouts` are left out; (5) with `stress` primary the heart-rate-recovery card uses Apple's value (and M1c's workouts
+  once on the phone, as the brief says); (6) no app page reads `/cardio` today (AI only): the phone keeps the document
+  `cardio.local:<today>` for a later card; it reads M1c's `workout_hrr` / `workouts` with assumed column names
+  (`workout_uuid`, `local_date`, `end_at`, `peak_hr`, `hr_60s`, `hrr60`, `apple_hrr60`, `valid`, `reason`; `uuid`, `type`,
+  `name_zh`, `duration_min`), no rows until those exist; (7) the phone does not pull the `records` stream yet, so the record
+  kind `stress` is for a later restore; (8) local migration `v6_…` (v5 left to M1c); (9) `native-compare` is not part of M2.
+- **Flag**: `native_stress` (shadow; primary needs `native_compute_primary`), off by default.
+- **Device checklist entry (for S9)**: owner's internal build, `native_stress` on for the owner. (1) After a sync round the
+  compute report (`meta` `compute.last`) shows `stress` `done` with days written and uploaded; `GET /v1/sync/compute`
+  shows kind `stress` with a passing last check. (2) Open Trends: `meta` `stress.compare` is `ok` (resilience, body battery,
+  heart-rate recovery equal the server's). (3) With `native_compute_primary` on (S9), airplane mode during the day: Today's
+  「压力」 and 「身体电量」 and Trends 「韧性」 update after a sync round without network.
+
 ### M4 — coaches, body age, health-monitor ranges, Today composition
 | | |
 |---|---|
