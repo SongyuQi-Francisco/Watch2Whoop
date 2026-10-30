@@ -167,6 +167,7 @@ struct UnsentChangesView: View {
     switch k {
     case "water": return tr("喝水", "Water")
     case "weight": return tr("体重", "Weight")
+    case "sleep_goal": return tr("入睡目标", "Bedtime goal")
     case "journal": return tr("日记", "Journal")
     case "meal", "food": return tr("饮食", "Food")
     case "training": return tr("训练", "Training")

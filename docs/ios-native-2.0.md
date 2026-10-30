@@ -519,8 +519,16 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
   M3 port already uses UTC); (2) the phone has no Hevy import and no training plan (the plan only labels the strength
   item; the Hevy minutes are a few days a year), the spot check compares the newest week only; (3) `TodayParams.swift`
   keeps its constants (no JS call on the main thread), checked against the bundle's `TODAY_PARAMS` by `LocalCoachTests`;
-  (4) the app has no bedtime-goal / sleep-coach page: both are computed (`sleep_coach` in the coach document, goal
-  `null`, since the app does not cache the goal settings; `sleepGoal` is ported and golden-tested for the later page);
+  (4) the app has no sleep-coach page (`sleep_coach` is computed into the coach document); the **bedtime-goal page**
+  exists since its own PR (`Features/Sleep/BedtimeGoal.swift`, `BedtimeGoalView.swift`; entries on the sleep detail
+  page and in 我 → 设置): the server's `GET /goals/sleep` now carries `settings` (the stored row, `rules/context.goal_data`)
+  and `DELETE /goals/sleep` clears the goal; the app caches the answer as doc `goal.sleep` (Today's refresh pulls it),
+  a write is local first (draft `goal.sleep.draft` = what `set_goal` will store, offline-queue group `goal.sleep`, last
+  write wins), and with `coach` not off `OBS.sleepGoal` on the local nights gives `goal.sleep.local` (shadow: compared
+  as page `sleep_goal` in meta `coach.compare`; primary, or while a write is queued: drawn), whose view of tonight is the
+  sleep coach's goal (as `insights/coach._goal_view`) — no longer `null`; the rules keep the goal row of the server's
+  inputs document; nothing new is uploaded (`BedtimeGoalTests.swift` checks the local view against the golden `goals`
+  cases);
   `frequent_journal` is ported but the record page keeps the server's document; (5) views are not uploaded (section
   3.2), so only body age has a server spot check; (6) `native-compare` is not part of M4.
 - **Flag**: `native_coach` (shadow; primary needs `native_compute_primary`), off by default.

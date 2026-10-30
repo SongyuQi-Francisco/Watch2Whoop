@@ -222,6 +222,10 @@ struct SleepDetailView: View {
       }
     }
 
+    NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }
+      .buttonStyle(PressScale())
+      .padding(.top, 22)
+
     if let p = m.aiPrompt { AskAIButton(prompt: p).padding(.top, 24) }
   }
 

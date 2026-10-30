@@ -10,6 +10,7 @@ import GRDB
 /// |---|---|---|
 /// | Today: strain target, health monitor, the rings' `scores` block, the night's `sleep` block, the sleep coach | `today.coach:<day>`, `today.monitor:<day>`, `today:<day>` (`scores`, `sleep`) | `coach.local:<day>` (`strain_coach`, `health_monitor`, `scores`, `sleep`, `sleep_coach`) |
 /// | Sleep detail | `sleep:night:<day>` | `sleepnight.local:<day>` |
+/// | Bedtime goal | `goal.sleep` | `goal.sleep.local` (BedtimeGoal; its settings feed the sleep coach) |
 ///
 /// Package `coach` (flag `native_coach`): off = nothing is computed; shadow = computed and compared with the server's
 /// documents (field paths of the differences in `meta` `coach.compare`), the pages draw the server's; primary = the pages
@@ -90,14 +91,19 @@ enum CoachLocal {
   /// `coach.local:<day>`: strain coach, health monitor, sleep coach and the Today `scores` / `sleep` blocks; compared with
   /// the server's documents of the day when cached.
   @discardableResult
-  static func coach(_ day: String, db: AppDatabase, runtime rt: OpenBodyScoreRuntime, tz: String, today: String) throws -> [String: Any]? {
+  static func coach(_ day: String, db: AppDatabase, runtime rt: OpenBodyScoreRuntime, tz: String, today: String,
+                    now: Date = Date()) throws -> [String: Any]? {
     let input = try db.writer.read { db in try coachInputs(db, day: day, today: today, tz: tz) }
     guard let input else { return nil }
     _ = try? rt.invoke("setLanguage", [Lang.code])
     var out: [String: Any] = ["date": day]
     out["strain_coach"] = try rt.invoke("strainCoach", [input.today, input.yday, day])
     out["health_monitor"] = try rt.invoke("healthMonitor", [input.monitor, day])
-    out["sleep_coach"] = try rt.invoke("sleepCoach", [input.coachRows, ["date": day, "tz": tz, "goal": NSNull()]])
+    // the bedtime goal's view of tonight from the cached settings (insights/coach._goal_view: the current goal, whatever
+    // the day), also kept as the goal page's `goal.sleep.local`
+    let night = BedtimeGoal.tonight(now, tz: TimeZone(identifier: tz) ?? .current)
+    let goal = BedtimeGoal.coachGoal(try? BedtimeGoal.compute(db, runtime: rt, tz: tz, night: night))
+    out["sleep_coach"] = try rt.invoke("sleepCoach", [input.coachRows, ["date": day, "tz": tz, "goal": goal]])
     var opts = input.scoresOpts
     opts["empty"] = try rt.invoke("recoveryEmpty", [input.empty])
     out["scores"] = try rt.invoke("todayScores", [input.week, opts])

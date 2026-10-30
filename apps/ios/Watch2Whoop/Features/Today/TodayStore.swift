@@ -28,6 +28,7 @@ enum TodayDocs {
     if isToday {
       f.append(DocFetch(memory, Endpoint.memory()))
       f.append(DocFetch(sync, Endpoint.syncOverview()))
+      f.append(DocFetch(BedtimeGoal.serverKey, Endpoint.sleepGoal()))   // its `settings` feed the phone's sleep coach
       if circles { f.append(DocFetch(TodayDocs.circles, Endpoint.friendsOverview)) }
     }
     return f

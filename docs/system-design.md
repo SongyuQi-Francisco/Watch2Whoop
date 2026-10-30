@@ -457,6 +457,7 @@ CREATE TABLE sync_state (
 ```
 没设目标时 `target_bedtime` 等目标字段为 null、`plan` 为 []，`progress` 里平均 / 趋势照给，`on_target_nights_7d`、`gap_min`、`eta_date`、`behind_plan_min` 为 null。时间都是本地 HH:MM，日期 YYYY-MM-DD。
 `PUT /v1/users/{user}/goals/sleep` body `{"target_bedtime": "00:00", "target_wake": null, "pace_min_per_step": null, "step_days": null, "target_duration_min": null, "status": null}`：`target_bedtime` 必填（HH:MM，24 小时制），其余可省（沿用旧目标，没有就默认）；`status` = active / paused。只能改自己的、token 要有 write；cookie 登录要带 `X-Body-Web: 1`。返回同 GET。格式错 422。
+GET / PUT / DELETE 的返回都多一个 `settings`：存着的目标行（`status`、`start_date`、`pace_min_per_step`、`step_days`、`start_bedtime_off`、`target_bedtime`、`target_wake`、`target_duration_min`，没有目标为 null），iOS app 缓存它、在手机上算同一个视图。`DELETE /v1/users/{user}/goals/sleep` 清除目标（只能清自己的，清两次也没事），返回没有目标的视图。
 
 **默认目标示例**：目标 00:00，每 3 天提前 20 分钟；起点 = 最近几晚的平均入睡时间，按档逐步提前到目标。最近 14 晚的趋势在变晚时 eta 为空。
 

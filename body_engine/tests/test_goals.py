@@ -255,6 +255,28 @@ def test_api_get_without_goal_then_put(client, world):
     assert (v["pace_min_per_step"], v["step_days"]) == (30, 2)
 
 
+def test_api_settings_and_delete(client, world):
+    """GET / PUT carry the stored row (`settings`) the app caches; DELETE clears the goal (only one's own)."""
+    ids, tok = world
+    a = ids["A"]
+    v = client.put("/v1/users/me/goals/sleep", json={"target_bedtime": "00:00", "pace_min_per_step": 15},
+                   headers=h(tok["A"])).json()
+    st = v["settings"]
+    assert set(st) == {"status", "start_date", "pace_min_per_step", "step_days", "start_bedtime_off", "target_bedtime",
+                       "target_wake", "target_duration_min"}
+    assert (st["target_bedtime"], st["pace_min_per_step"], st["status"], st["start_bedtime_off"]) == ("00:00", 15, "active", 390)
+    assert st["start_date"] == v["start_date"]
+    got = client.get(f"/v1/users/{a}/goals/sleep", headers=h(tok["B"])).json()   # shared viewer: the same row
+    assert got["settings"] == st
+    assert client.delete(f"/v1/users/{a}/goals/sleep", headers=h(tok["B"])).status_code == 403
+    assert client.delete("/v1/users/me/goals/sleep", headers=h(tok["A_ro"])).status_code == 403
+    r = client.delete("/v1/users/me/goals/sleep", headers=h(tok["A"]))
+    assert r.status_code == 200 and r.json()["settings"] is None and r.json()["target_bedtime"] is None
+    assert client.delete("/v1/users/me/goals/sleep", headers=h(tok["A"])).status_code == 200      # twice is fine
+    assert client.get("/v1/users/me/goals/sleep", headers=h(tok["A"])).json()["settings"] is None
+    client.put("/v1/users/me/goals/sleep", json={"target_bedtime": "00:00"}, headers=h(tok["A"]))   # back for the next tests
+
+
 def test_api_auth(client, world):
     ids, tok = world
     a = ids["A"]
