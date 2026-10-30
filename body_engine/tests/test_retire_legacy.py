@@ -224,7 +224,7 @@ def test_archive_without_resting_heart_rate(dsn, monkeypatch):
     monkeypatch.delenv(RT.CUTOFF_ENV, raising=False)
     fake = CountingOW()
     with conn_of(dsn) as conn:
-        uid = new_user(conn, "示例丁", "ow-no-rhr")
+        uid = new_user(conn, "示例戊", "ow-no-rhr")
         ow.run(conn, fake, uid, D1, D2)
         conn.execute("DELETE FROM daily_metrics WHERE user_id = %s AND metric = 'resting_heart_rate'", (uid,))
         assert "ow_not_archived" in RT.verify(conn, uid, fake)["fails"]
@@ -264,7 +264,7 @@ def test_shortcut_files_and_users_without_legacy_data(dsn, tmp_path, monkeypatch
 
 def test_hourly_import_ow_before_and_after_the_cutoff(dsn, monkeypatch):
     with conn_of(dsn) as conn:
-        uid = new_user(conn, "示例丁", "ow-no-rhr")
+        uid = new_user(conn, "示例丁", "ow-d")
         u = batch.list_users(conn, [uid])[0]
     fake = CountingOW()
     monkeypatch.delenv(RT.CUTOFF_ENV, raising=False)
