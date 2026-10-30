@@ -79,6 +79,11 @@ def set_goal(conn, user_id: int, target_bedtime: str, target_wake: str | None = 
     return view(conn, user_id, now=now)
 
 
+def clear_goal(conn, user_id: int) -> bool:
+    """Remove the goal (the app's 「清除」); True if there was one. Rules and the sleep coach then see no goal."""
+    return conn.execute("DELETE FROM sleep_goals WHERE user_id = %s", (user_id,)).rowcount > 0
+
+
 def duration(conn, user_id: int, goal: dict | None, night: date) -> int:
     if goal and goal.get("target_duration_min"):
         return goal["target_duration_min"]

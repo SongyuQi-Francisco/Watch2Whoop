@@ -13,6 +13,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 
 （开发中，docs/ios-native-2.0.md；各包的开关默认关闭）
 
+- 新的「入睡目标」页（睡眠详情页底部和「我 → 设置」进入）：今晚和最终的入睡目标、最近 7 晚的入睡时间对照每晚目标、达标晚数和计划进度；可以设置、修改、清除目标，没网时先存在手机上，联网后自动提交。打开 `native_coach` 后目标也在手机上算，睡眠教练用的是真实的目标。 / New 「Bedtime goal」 page (from the bottom of the sleep detail and 「Me → Settings」): tonight's and the final target, the last 7 nights' bedtimes against each night's target, nights on target and the plan's progress; set, change or clear the goal, saved on the phone when offline and sent once back online. With `native_coach` on the goal is computed on the phone too, and the sleep coach uses the real goal.
+
 - 某一部分转为手机计算（主模式）以后，服务器不再定时重算这部分，直接用手机上传的结果；手机还没传的时候服务器临时算一次补上。app 本身不变（服务器端 S9，按包逐个转正）。 / Once a part is computed on the phone (primary), the server stops recomputing it on its schedule and uses the phone's uploads; until the phone has uploaded, the server fills in on demand. No change in the app itself (server side S9, switched package by package).
 
 - 服务器可以要求旧版本升级（R2，开关 `force_upgrade`，默认关闭）：提示期在顶部显示一条可以关掉的提醒（每天最多一次），停用日之后整页提示去升级；以后的版本也能这样强制升级。数据上传不受影响。 / The server can ask old versions to update (R2, flag `force_upgrade`, off by default): during the notice a banner at the top that can be closed (at most once a day), after the cut-off a full-screen page that points to the update; later versions can be forced the same way. Uploads keep working.

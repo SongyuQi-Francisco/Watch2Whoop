@@ -94,6 +94,8 @@ struct Icon: View {
     case triangleAlert = "triangle-alert"
     // N4: trends
     case info
+    // 2.0.0: bedtime goal
+    case moon
 
     var assetName: String { "lucide.\(rawValue)" }
   }

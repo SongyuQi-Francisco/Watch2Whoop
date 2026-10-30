@@ -29,6 +29,9 @@ enum Endpoint {
   static func reminder(_ id: Int) -> String { "/v1/users/me/reminders/\(id)" }
   static let weight = "/v1/users/me/weight"
   static func weightRecent(limit: Int = 8) -> APIRequest { .get("/v1/users/me/weight/recent", ["limit": String(limit)]) }
+  // 2.0.0: bedtime goal (GET the view + `settings`; PUT sets, DELETE clears: through the offline queue)
+  static let sleepGoalPath = "/v1/users/me/goals/sleep"
+  static func sleepGoal() -> APIRequest { .get(sleepGoalPath) }
   static let friendsOverview = APIRequest.get("/v1/friends/overview")
   // N8: sign-in (no token yet), account, consent, profile
   static let authMethods = "/v1/auth/methods"
