@@ -219,6 +219,21 @@ def test_verify_archive_and_verify_again(dsn, monkeypatch):
         assert "ow_archive_stale" in RT.verify(conn, uid, fake)["fails"]
 
 
+def test_archive_without_resting_heart_rate(dsn, monkeypatch):
+    """OW data but no resting heart rate (no scoring start): the archive starts at the first OW day instead of skipping."""
+    monkeypatch.delenv(RT.CUTOFF_ENV, raising=False)
+    fake = CountingOW()
+    with conn_of(dsn) as conn:
+        uid = new_user(conn, "示例戊", "ow-no-rhr")
+        ow.run(conn, fake, uid, D1, D2)
+        conn.execute("DELETE FROM daily_metrics WHERE user_id = %s AND metric = 'resting_heart_rate'", (uid,))
+        assert "ow_not_archived" in RT.verify(conn, uid, fake)["fails"]
+        res = RT.archive(conn, uid, fake)
+        assert "skipped" not in res["ow_archive"] and res["ow_archive"]["windows"] >= 1
+        after = RT.verify(conn, uid, fake)
+        assert after["fails"] == [] and after["ow_archive"]["complete"] is True
+
+
 def test_shortcut_files_and_users_without_legacy_data(dsn, tmp_path, monkeypatch):
     with conn_of(dsn) as conn:
         sc_user, empty = new_user(conn, "示例乙"), new_user(conn, "示例丙")
