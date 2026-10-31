@@ -22,3 +22,6 @@ dist/
 !packages/openbodyscore-js/dist/
 quickstart/.data/
 tools/public/private.local.json
+
+# App Store listing rendered from docs/appstore/listing (render_listing.py --write)
+docs/appstore/out/
