@@ -51,6 +51,24 @@ struct CirclesList: Codable, Equatable {
   var consentOk = true
   var limits = Limits()
   var searchFrom = 6
+  /// Community rules (flag circle_rules): asked once per version before creating / joining a circle or commenting.
+  var rules = RulesState()
+  /// An admin barred me from circles (friends/moderation.py).
+  var banned = false
+  var blockedCount = 0
+
+  struct RulesState: Codable, Equatable {
+    var required = false
+    var accepted = false
+    var version = ""
+    init() {}
+    init(from d: Decoder) throws {
+      let c = try d.container(keyedBy: CodingKeys.self)
+      required = c.opt(.required) ?? false
+      accepted = c.opt(.accepted) ?? false
+      version = c.opt(.version) ?? ""
+    }
+  }
 
   struct Limits: Codable, Equatable {
     var circles = 10
@@ -73,6 +91,7 @@ struct CirclesList: Codable, Equatable {
   enum CodingKeys: String, CodingKey {
     case circles, invites, scopes, limits
     case prefsOn = "prefs_on", defaultScopes = "default_scopes", consentOk = "consent_ok", searchFrom = "search_from"
+    case rules, banned, blockedCount = "blocked_count"
   }
 
   init() {}
@@ -86,7 +105,13 @@ struct CirclesList: Codable, Equatable {
     consentOk = c.opt(.consentOk) ?? true
     limits = c.opt(.limits) ?? Limits()
     searchFrom = c.opt(.searchFrom) ?? 6
+    rules = c.opt(.rules) ?? RulesState()
+    banned = c.opt(.banned) ?? false
+    blockedCount = c.opt(.blockedCount) ?? 0
   }
+
+  /// The rules have to be accepted before the next create / join / comment.
+  var rulesNeeded: Bool { rules.required && !rules.accepted }
 
   /// Pinned first, then the most recent activity; archived ones apart (the circles sheet of the Today page).
   var ordered: (shown: [FriendCircle], archived: [FriendCircle]) {
@@ -123,6 +148,8 @@ struct FriendCircle: Codable, Equatable, Identifiable {
     var avatar: String?
     var remark: String?
     var join: Join?
+    /// I blocked them (friends/moderation.py): still listed here, hidden everywhere else.
+    var blocked = false
 
     /// How a member came in (owner only, flag circle_join_trail).
     struct Join: Codable, Equatable {
@@ -138,7 +165,7 @@ struct FriendCircle: Codable, Equatable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-      case id, owner, me, avatar, remark, join, displayName = "display_name", joinedAt = "joined_at"
+      case id, owner, me, avatar, remark, join, blocked, displayName = "display_name", joinedAt = "joined_at"
     }
 
     init(id: Int, displayName: String, owner: Bool = false, me: Bool = false) {
@@ -158,6 +185,7 @@ struct FriendCircle: Codable, Equatable, Identifiable {
       avatar = c.opt(.avatar)
       remark = c.opt(.remark)
       join = c.opt(.join)
+      blocked = c.opt(.blocked) ?? false
     }
 
     /// What I call them (my private remark), else their name.
@@ -750,6 +778,8 @@ struct Comment: Codable, Equatable, Identifiable {
   var createdAt: String?
   /// Not on the server yet: waiting in the offline queue (`pending`) or refused there (`failed`).
   var local: LocalState?
+  /// Why the server refused a queued comment (e.g. a word that is not allowed); not cached.
+  var error: String?
 
   enum LocalState: String, Codable { case pending, failed }
 
@@ -782,4 +812,48 @@ struct FeedCache: Codable, Equatable {
   var commentPreview = 2
   var commentMax = 300
   var hasCircles = true
+}
+
+// MARK: - moderation (friends/moderation_api.py; App Store guideline 1.2)
+
+/// What can be reported (POST /v1/friends/reports).
+enum ReportKind: String { case post, comment, profile }
+
+/// Report reasons, in the server's order (friends/params.py REPORT_REASONS).
+enum ReportReason {
+  static let all = ["spam", "harassment", "hate", "sexual", "violence", "self_harm", "other"]
+
+  static func label(_ r: String) -> String {
+    switch r {
+    case "spam": return tr("垃圾信息 / 广告", "Spam or ads")
+    case "harassment": return tr("骚扰或辱骂", "Harassment")
+    case "hate": return tr("仇恨言论", "Hate speech")
+    case "sexual": return tr("色情内容", "Sexual content")
+    case "violence": return tr("暴力或威胁", "Violence or threats")
+    case "self_harm": return tr("自伤或自杀", "Self-harm")
+    default: return tr("其他", "Other")
+    }
+  }
+}
+
+/// One row of the 「已屏蔽」 list (GET /v1/friends/blocks).
+struct BlockedPerson: Codable, Equatable, Identifiable {
+  let id: Int
+  var displayName: String
+  var createdAt: String?
+  enum CodingKeys: String, CodingKey { case id, displayName = "display_name", createdAt = "created_at" }
+  init(from d: Decoder) throws {
+    let c = try d.container(keyedBy: CodingKeys.self)
+    id = try c.decode(Int.self, forKey: .id)
+    displayName = c.opt(.displayName) ?? ""
+    createdAt = c.opt(.createdAt)
+  }
+}
+
+/// GET /v1/friends/rules: the community rules in the asked language.
+struct CircleRules: Codable, Equatable {
+  var version = ""
+  var required = false
+  var accepted = false
+  var markdown = ""
 }

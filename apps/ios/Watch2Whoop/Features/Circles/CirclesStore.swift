@@ -41,6 +41,12 @@ final class CirclesStore: ObservableObject {
   @Published private(set) var boardName: String
   /// A post a notification asked for: the feed scrolls there and opens its comments.
   @Published var focusPost: Int?
+  /// The community rules sheet is up (flag circle_rules): accepting runs `afterRules`.
+  @Published var showRules = false
+  @Published private(set) var rulesHost: String?
+  /// The 「已屏蔽」 list (loaded when that page opens).
+  @Published private(set) var blocked: [BlockedPerson]?
+  private var afterRules: (() -> Void)?
 
   let session: AccountSession
   private var observer: Task<Void, Never>?
@@ -396,13 +402,89 @@ final class CirclesStore: ObservableObject {
     } catch {}
   }
 
-  func report(_ c: Comment) async {
-    do {
-      _ = try await session.api.data(try .json(.post, Endpoint.Circles.report(c.id), [String: String]()))
-      toast = tr("已举报", "Reported")
-    } catch let e as APIError {
-      toast = e.userMessage
-    } catch {}
+  // MARK: - moderation (block, report, community rules; App Store guideline 1.2). Online only.
+
+  /// Report a post, a comment or a person's profile with one of `ReportReason.all`. The server hides it for me at once;
+  /// here it goes from the screen too (a profile report also blocks the person: everything is reloaded).
+  func report(_ kind: ReportKind, _ id: Int, reason: String, post: Int? = nil) async {
+    struct Body: Encodable { let kind: String; let id: Int; let reason: String }
+    let ok = await write {
+      try await self.session.api.data(try .json(.post, Endpoint.Circles.reports, Body(kind: kind.rawValue, id: id, reason: reason), idempotent: false))
+    } != nil
+    guard ok else { return }
+    toast = tr("已举报，我们会尽快处理", "Reported. We'll look at it soon")
+    switch kind {
+    case .post:
+      feed.posts.removeAll { $0.id == id }
+      store(Key.feed(circle), feed)
+    case .comment:
+      if let post { comments[post]?.removeAll { $0.id == id } }
+      for i in feed.posts.indices where feed.posts[i].previewComments.contains(where: { $0.id == id }) {
+        feed.posts[i].previewComments.removeAll { $0.id == id }
+        feed.posts[i].commentCount = max(0, feed.posts[i].commentCount - 1)
+      }
+      store(Key.feed(circle), feed)
+    case .profile:
+      await reloadAll()
+    }
+  }
+
+  /// Block someone (across all circles): their posts, comments, ❤️, card and board row go, and theirs mine.
+  func block(_ user: Int) async {
+    let ok = await write { try await self.session.api.data(APIRequest(method: .put, path: Endpoint.Circles.block(user))) } != nil
+    guard ok else { return }
+    toast = tr("已屏蔽", "Blocked")
+    feed.posts.removeAll { $0.user.id == user }
+    for i in feed.posts.indices { feed.posts[i].previewComments.removeAll { $0.user.id == user } }
+    for k in comments.keys { comments[k]?.removeAll { $0.user.id == user } }
+    store(Key.feed(circle), feed)
+    await reloadAll()
+  }
+
+  func unblock(_ user: Int) async {
+    let ok = await write { try await self.session.api.data(APIRequest(method: .delete, path: Endpoint.Circles.block(user))) } != nil
+    guard ok else { return }
+    blocked?.removeAll { $0.id == user }
+    await reloadAll()
+  }
+
+  func loadBlocked() async {
+    struct Answer: Decodable { var blocks: [BlockedPerson] }
+    if let a = await fetch(.get(Endpoint.Circles.blocks), key: nil, as: Answer.self) { blocked = a.blocks }
+  }
+
+  /// Runs `action` now, or after the community rules were accepted when the server asks for them first. `host`: the view
+  /// that shows the rules sheet (each screen that can ask presents its own, `RulesGate`).
+  func requireRules(host: String, _ action: @escaping () -> Void) {
+    Task {
+      if list == nil { await refreshList() }
+      guard list?.rulesNeeded == true else { action(); return }
+      afterRules = action
+      rulesHost = host
+      showRules = true
+    }
+  }
+
+  func loadRules() async -> CircleRules? {
+    await fetch(.get(Endpoint.Circles.rules), key: nil, as: CircleRules.self)
+  }
+
+  /// "Accept": recorded on the server, then the action that asked for the rules goes ahead.
+  func acceptRules(_ version: String) async -> Bool {
+    let ok = await write { try await self.session.api.data(try .json(.post, Endpoint.Circles.rulesAccept, ["version": version], idempotent: true)) } != nil
+    guard ok else { return false }
+    list?.rules.accepted = true
+    if let l = list { store(Key.list, l) }
+    showRules = false
+    let next = afterRules
+    afterRules = nil
+    next?()
+    return true
+  }
+
+  func declineRules() {
+    afterRules = nil
+    showRules = false
   }
 
   // MARK: - online-only actions (create, join, invite, manage, cheers, avatars)

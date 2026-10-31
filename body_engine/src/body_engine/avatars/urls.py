@@ -9,10 +9,17 @@ def url(user_id: int, image_id: int | None) -> str | None:
     return f"/v1/avatars/users/{user_id}?v={image_id}" if image_id else None
 
 
+# A picture hidden or removed by circle moderation (friends/blocks.py, migration 1100) is shown to its owner only.
+_NOT_HIDDEN = """NOT EXISTS (SELECT 1 FROM circle_moderation mo WHERE mo.kind = 'profile' AND mo.target_id = {u}
+                             AND mo.status IN ('hidden', 'removed'))"""
+
+
 def shares_circle(conn: psycopg.Connection, viewer_id: int, user_id: int) -> bool:
+    """May `viewer_id` see `user_id`'s picture: their own, or a circle co-member's that moderation has not hidden."""
     return viewer_id == user_id or conn.execute(
-        """SELECT 1 FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
-           WHERE a.user_id = %s AND b.user_id = %s LIMIT 1""", (viewer_id, user_id)).fetchone() is not None
+        f"""SELECT 1 FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
+           WHERE a.user_id = %s AND b.user_id = %s AND {_NOT_HIDDEN.format(u='b.user_id')} LIMIT 1""",
+        (viewer_id, user_id)).fetchone() is not None
 
 
 def urls_for(conn: psycopg.Connection, viewer_id: int, user_ids) -> dict[int, str]:
@@ -24,5 +31,6 @@ def urls_for(conn: psycopg.Connection, viewer_id: int, user_ids) -> dict[int, st
     rows = conn.execute(
         """SELECT u.id, u.avatar_image_id FROM users u WHERE u.id = ANY(%(ids)s) AND u.avatar_image_id IS NOT NULL
              AND (u.id = %(v)s OR EXISTS (SELECT 1 FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
-                                          WHERE a.user_id = %(v)s AND b.user_id = u.id))""", {"ids": ids, "v": viewer_id}).fetchall()
+                                          WHERE a.user_id = %(v)s AND b.user_id = u.id) AND """ + _NOT_HIDDEN.format(u="u.id") + ")",
+        {"ids": ids, "v": viewer_id}).fetchall()
     return {r["id"]: url(r["id"], r["avatar_image_id"]) for r in rows}

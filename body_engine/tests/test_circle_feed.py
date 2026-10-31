@@ -317,7 +317,11 @@ def test_comments_text_only_limit_delete_report(client, world, dsn, pair):
     assert client.post(f"{FEED}/comments/{cid}/report", headers=h(tok["Ann"]), json={"reason": "spam"}).json() == {"reported": True}
     assert client.post(f"{FEED}/comments/{cid}/report", headers=h(tok["Ann"])).status_code == 200        # twice = once
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
-        assert conn.execute("SELECT count(*) AS n FROM circle_feed_reports").fetchone()["n"] == 1
+        # reports live in circle_reports since migration 1100 (friends/moderation.py); a known reason is kept as the reason
+        assert [r["reason"] for r in conn.execute("SELECT reason FROM circle_reports")] == ["spam"]
+    # reported = hidden for the reporter at once; the writer still sees it
+    assert client.get(url, headers=h(tok["Ann"])).json()["comments"] == []
+    assert len(client.get(url, headers=h(tok["Ben"])).json()["comments"]) == 1
     assert client.delete(f"{FEED}/comments/{cid}", headers=h(tok["Ben"])).status_code == 204
     assert client.get(url, headers=h(tok["Ann"])).json()["comments"] == []
     assert client.delete(f"{FEED}/comments/{cid}", headers=h(tok["Ben"])).status_code == 404

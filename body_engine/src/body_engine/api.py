@@ -53,6 +53,7 @@ from .feedback.api import router as feedback_router
 from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
+from .friends.moderation_api import admin_router as circles_admin_router, router as friends_moderation_router
 from .notify import silent as notify_silent
 from .notify.api import router as notify_router
 from .notices.api import router as notices_router
@@ -182,6 +183,8 @@ app.include_router(feedback_router)
 app.include_router(friends_router)
 app.include_router(avatars_router)
 app.include_router(friends_feed_router)
+app.include_router(friends_moderation_router)   # block / report / community rules (friends/moderation.py)
+app.include_router(circles_admin_router)        # the admins' report queue
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
 app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
 app.include_router(ai_router)

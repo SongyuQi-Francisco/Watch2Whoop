@@ -8,4 +8,7 @@
 - leaderboard.py: five boards scored against each person's own baseline / goals (weights in params.py)
 - tools.py: get_friends_overview for the AI
 - api.py: /v1/friends/* (only ever acts for the caller)
+- moderation.py / moderation_api.py / moderation_cli.py: block, report, the admins' review queue and bans (App Store 1.2);
+  blocks.py: what blocks / reports / moderation hide on every read path; rules.py: community rules acceptance
+  (community_rules*.md = docs/legal/community-rules*.md); keyword filter on write: ../wordfilter.py
 """
