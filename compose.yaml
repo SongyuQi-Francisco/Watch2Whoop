@@ -69,6 +69,18 @@ services:
       # BODY_APNS_KEY_ID: ABC123DEFG
       # BODY_APNS_TEAM_ID: TEAM123456
       # BODY_APNS_BUNDLE_ID: com.example.watch2whoop
+      # Sign in with Apple token revocation on account deletion (account/apple_tokens.py): the Sign in with Apple .p8 key
+      # as a docker secret (secrets/apple_signin_key.p8, mode 600), its Key ID and the Team ID. Without them deletions
+      # report "apple: not_configured" in their leftovers.
+      # BODY_APPLE_SIGNIN_KEY_FILE: /run/secrets/apple_signin_key
+      # BODY_APPLE_SIGNIN_KEY_ID: ABC123DEFG
+      # BODY_APPLE_TEAM_ID: TEAM123456
+      # Public legal pages /legal/privacy and /legal/terms (legal/pages.py, docs/legal/README.md): operator details
+      # BODY_LEGAL_ENTITY: Example Operator
+      # BODY_LEGAL_CONTACT: privacy@example.com
+      # BODY_DATA_REGION: Example Region
+      # BODY_LEGAL_GOVERNING_LAW: the laws of Example Region
+      # BODY_LEGAL_MIN_AGE: "16"
       TZ: Australia/Sydney
       # The API's own log (warnings, errors with tracebacks) as health_data/ops/engine/engine-YYYY-MM-DD.log, kept 14 days
       # (body_engine/obs.py): `docker logs` is lost whenever the container is recreated (deploys, OOM restarts)

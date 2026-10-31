@@ -601,7 +601,26 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   an Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail. Changes are audited in
   `identity_events` (migration 390).
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
+- Sign in with Apple token revocation (App Store guideline 5.1.1(v); `account/apple_tokens.py`, migration 1090): the app sends
+  the one-time `authorization_code` with `POST /v1/auth/apple` (and `/v1/account/identities/apple`); the server trades it at
+  Apple's `/auth/token` for a refresh token and keeps that AES-GCM encrypted under `secrets/ai_master_key` (table
+  `apple_signin_tokens`, one row per Apple ID). Deleting the account (and the 7-day pending purge) posts it to Apple's
+  `/auth/revoke` first. Settings: `BODY_APPLE_SIGNIN_KEY_FILE` (the Sign in with Apple `.p8` key, default
+  `secrets/apple_signin_key.p8`, mount it as a docker secret), `BODY_APPLE_SIGNIN_KEY_ID`, `BODY_APPLE_TEAM_ID`, optional
+  `BODY_APPLE_CLIENT_ID` (default: the identity token's audience = the bundle ID). Without them nothing is exchanged, sign-in
+  works as before, and a deletion reports `{"system": "apple", "error": "not_configured"}` in its `leftovers` (logged; the
+  deletion itself never fails on Apple). Tests: `tests/test_apple_revoke.py` (fake Apple on 127.0.0.1).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
+
+## Legal pages (`src/body_engine/legal/`, sources in `docs/legal/`)
+- Public, no sign-in: `GET /legal/privacy?lang=zh|en`, `GET /legal/terms?lang=zh|en` (HTML; without `lang` the browser's
+  Accept-Language picks), `GET /v1/legal` (paths, versions, minimum age). These are the URLs for App Store Connect and the
+  app (Me → 关于, the sign-in screen).
+- The Markdown sources are `docs/legal/{privacy,terms}{,.en}.md`; the package keeps byte-identical copies in `legal/texts/`
+  (`tests/test_legal.py` checks; copy after every edit). Operator details are placeholders filled at request time, so the
+  public repository names nobody: `BODY_LEGAL_APP_NAME` (default Watch2Whoop), `BODY_LEGAL_ENTITY`, `BODY_LEGAL_CONTACT`,
+  `BODY_DATA_REGION`, `BODY_LEGAL_GOVERNING_LAW` (each may have an `_EN` variant), `BODY_LEGAL_MIN_AGE` (default 16).
+  Unset ones show neutral wording. Details: `docs/legal/README.md`.
 - Provisioning retries (`account/provision.py`, migration 785): transient errors (connection refused, timeout, HTTP 5xx)
   are tried 3 times within a run; a failed run writes every failing step with its exception type to
   `user_provisioning.last_error` and sets `next_attempt_at` (10 min doubling per attempt, at most 6 h); `provision-run`

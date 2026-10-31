@@ -452,8 +452,15 @@ private struct SleepCard: View {
         if let eff = m["efficiency_pct"]?.double {
           Text(tr("效率", "Efficiency") + " \(JarvisCards.num(eff))%").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
         }
-        let notes = (c["notes"]?.array ?? []).filter { $0["tone"]?.string != "good" }.compactMap { $0["key"]?.string.flatMap(JarvisCards.sleepNote) }
-        if !notes.isEmpty { FlowRow(spacing: 6) { ForEach(notes.prefix(3), id: \.self) { OutlineBadge(text: $0) } } }
+        let keys = Array((c["notes"]?.array ?? []).filter { $0["tone"]?.string != "good" }.compactMap { $0["key"]?.string }
+          .filter { JarvisCards.sleepNote($0) != nil }.prefix(3))
+        if !keys.isEmpty {
+          FlowRow(spacing: 6) {
+            ForEach(keys, id: \.self) { OutlineBadge(text: JarvisCards.sleepNote($0) ?? $0) }
+            // 「可能生病」 is an estimate: its short label opens the not-medical-advice sheet
+            if keys.contains("illness") { DisclaimerTag(kind: .medical) }
+          }
+        }
       } else {
         Text(tr("这晚没有手表睡眠数据", "No watch sleep data that night")).font(Typo.caption).foregroundColor(Palette.text2)
       }
