@@ -9,6 +9,8 @@ Engine data; it is logged at ERROR with the external id and returned as `leftove
 SparkyFitness users are deleted through its admin API with an admin's full-access API key, read from the file named by
 BODY_SPARKY_ADMIN_KEY_FILE (default secrets/sparkyfitness_api_key_owner_rw — the owner is SparkyFitness's admin).
 Open Wearables users are deleted with Body Engine's OW API key.
+Sign in with Apple: the stored refresh tokens of the person's Apple IDs are revoked at Apple (account/apple_tokens.py);
+without the Sign in with Apple key settings, or without a stored token, this is reported in `leftovers` (system "apple").
 """
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ from ..config import REPO_ROOT, settings
 from ..ow_client import OWClient, OWError
 from ..sparky_client import SparkyClient, SparkyError
 from ..friends import store as friends
-from . import invites
+from . import apple_tokens, invites
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +101,7 @@ def delete_account(conn: psycopg.Connection, user_id: int, ow_client: OWClient |
             leftovers.append({"system": "open-wearables", "id": user["ow_user_id"], "error": str(e)[:200]})
     for item in leftovers:
         log.error("account deletion of user %s: %s user %s not deleted: %s", user_id, item["system"], item["id"], item["error"])
+    leftovers += apple_tokens.revoke_for_user(conn, user_id)   # logs its own leftovers; never raises
     invites.revoke_owned(conn, user_id)
     friends.leave_all(conn, user_id)   # circles this person owned pass on to the next member instead of vanishing
     conn.commit()
@@ -122,6 +125,7 @@ def purge_pending(conn: psycopg.Connection, days: int = PENDING_DAYS) -> int:
     rows = conn.execute("""SELECT id FROM users WHERE status = 'pending' AND role <> 'owner'
                            AND created_at < now() - make_interval(days => %s)""", (days,)).fetchall()
     for r in rows:
+        apple_tokens.revoke_for_user(conn, r["id"])
         _delete_rows(conn, r["id"])
         conn.commit()
     return len(rows)

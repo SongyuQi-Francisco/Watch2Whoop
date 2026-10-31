@@ -15,6 +15,8 @@ struct SyncCenterView: View {
   @State private var showConsent = false
   @State private var showTypes = false
   @State private var showLog = false
+  @State private var showResultInfo = false
+  @State private var showBackgroundHelp = false
   @State private var confirmResync: Int?? = nil
   @State private var tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -32,6 +34,7 @@ struct SyncCenterView: View {
           }
         }
         if let message { Banner(text: message, tone: .text) }
+        if sync.server != nil && !(sync.running || sync.engine.running) { resultCard(sync.result) }
         if sync.engine.active && !sync.engine.firstSyncDone { firstSync }
         history
         LocalHistoryCard(sync: session.sync)
@@ -61,6 +64,8 @@ struct SyncCenterView: View {
         await sync.reloadDetails(server: false)
       }
     }
+    .w2wSheet(isPresented: $showResultInfo, title: tr("同步结果说明", "About the sync result")) { resultInfo(sync.result) }
+    .w2wSheet(isPresented: $showBackgroundHelp, title: tr("打开后台 App 刷新", "Turn on Background App Refresh")) { backgroundHelp }
     .sheet(isPresented: $showConsent) {
       ConsentView(reconfirm: false) { showConsent = false; sync.consentRequired = false }
         .environmentObject(session).environmentObject(app)
@@ -103,6 +108,119 @@ struct SyncCenterView: View {
         }
         PrimaryButton(title: sync.permission == .notAsked ? tr("开启同步", "Turn on sync") : tr("立即同步", "Sync now"),
                       busy: busy || sync.running) { Task { await syncNow() } }
+      }
+    }
+  }
+
+  /// The one post-sync answer: nothing when everything is on the server (the headline says 「已同步」), else type →
+  /// reason → one button; the phone-side warnings; the types with nothing new on the phone in one quiet row.
+  @ViewBuilder private func resultCard(_ r: SyncResult) -> some View {
+    let items = r.problems + r.warnings
+    if !items.isEmpty || !r.quiet.isEmpty {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack {
+          SectionHeader(title: r.synced ? tr("同步结果", "Sync result") : tr("没同步的", "Not synced"))
+          Button { showResultInfo = true } label: {
+            Icon(.info, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
+          }
+          .buttonStyle(PressScale())
+          .accessibilityLabel(tr("说明", "About"))
+        }
+        .padding(.leading, 4)
+        RowGroup {
+          ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+            if i > 0 { RowDivider(inset: 0) }
+            resultRow(item)
+          }
+          if !r.quiet.isEmpty {
+            if !items.isEmpty { RowDivider(inset: 0) }
+            Button { showResultInfo = true } label: {
+              HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                  Text(tr("手机上没有新记录", "Nothing new on the phone")).font(Typo.body).foregroundColor(Palette.text)
+                  Text(r.quiet.map(\.label).joined(separator: tr("、", ", "))).font(Typo.caption).foregroundColor(Palette.text2)
+                    .lineLimit(2).multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Text("\(r.quiet.count)").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text3)
+                Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+              }
+              .padding(.vertical, 10)
+              .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+          }
+        }
+      }
+    }
+  }
+
+  private func resultRow(_ item: SyncResult.Item) -> some View {
+    HStack(spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(item.label).font(Typo.body).foregroundColor(Palette.text)
+        Text(SyncResult.reasonLabel(item)).font(Typo.caption)
+          .foregroundColor(item.reason == .locked || item.reason == .backgroundOff ? Palette.text2 : Palette.mid)
+      }
+      Spacer()
+      if let a = item.action, let title = SyncDiagnosis.Issue(id: item.id, text: "", action: a).actionTitle {
+        Button(title) { Task { await perform(a) } }
+          .font(.system(size: 13, weight: .semibold)).foregroundColor(Palette.text)
+          .padding(.vertical, 7).padding(.horizontal, 12)
+          .background(Capsule().fill(Palette.surface2))
+          .buttonStyle(PressScale())
+          .disabled(busy || sync.running)
+      }
+    }
+    .padding(.vertical, 10)
+  }
+
+  /// The longer words: one paragraph per reason shown, then each quiet type with what makes it appear.
+  private func resultInfo(_ r: SyncResult) -> some View {
+    let all = r.problems + r.warnings + r.quiet
+    var seen = Set<String>()
+    let reasons = all.map(\.reason).filter { seen.insert($0.rawValue).inserted }
+    return VStack(alignment: .leading, spacing: 14) {
+      if all.isEmpty {
+        Text(tr("手机上的数据都已经在服务器上了。", "Everything on the phone is on the server.")).font(Typo.body).foregroundColor(Palette.text)
+      }
+      ForEach(reasons, id: \.rawValue) { reason in
+        VStack(alignment: .leading, spacing: 4) {
+          Text(reason == .notRecorded ? tr("手机上没有新记录", "Nothing new on the phone")
+               : SyncResult.reasonLabel(SyncResult.Item(id: "", label: "", reason: reason)))
+            .font(Typo.bodyStrong).foregroundColor(Palette.text)
+          Text(SyncResult.explanation(reason)).font(Typo.caption).foregroundColor(Palette.text2)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      if !r.quiet.isEmpty {
+        RowGroup {
+          ForEach(Array(r.quiet.enumerated()), id: \.element.id) { i, item in
+            if i > 0 { RowDivider(inset: 0) }
+            HStack {
+              Text(item.label).font(Typo.body).foregroundColor(Palette.text)
+              Spacer()
+              Text(SyncResult.hintLabel(item.hint)).font(Typo.caption).foregroundColor(Palette.text2)
+            }
+            .padding(.vertical, 10)
+          }
+        }
+      }
+    }
+  }
+
+  /// Background App Refresh: the steps; the person changes the setting (the app only opens its Settings page).
+  private var backgroundHelp: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(SyncResult.explanation(.backgroundOff)).font(Typo.caption).foregroundColor(Palette.text2)
+      ForEach(Array(SyncResult.backgroundSteps.enumerated()), id: \.offset) { i, step in
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          Text("\(i + 1)").font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text2)
+          Text(step).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      SecondaryButton(icon: .settings, title: tr("打开设置", "Open Settings"), background: Palette.surface2) {
+        if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
       }
     }
   }
@@ -279,6 +397,12 @@ struct SyncCenterView: View {
     case .consent: showConsent = true
     case .allowCellular: await sync.setCellularHistory(true); await syncNow()
     case .retryHistory: _ = await HealthSyncBridge.History.pump(seconds: SyncSettings.pumpSeconds); await sync.reloadDetails(server: false)
+    case .resync: confirmResync = .some(7)
+    case .fillHistory:
+      busy = true
+      message = await sync.startHistory(days: sync.result.historyDays) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background")
+      busy = false
+    case .backgroundHelp: showBackgroundHelp = true
     }
   }
 
@@ -308,6 +432,7 @@ struct VerdictTag: View {
     let (label, tone): (String, Tone) = {
       switch verdict {
       case .notSynced: return (tr("没同步", "Not synced"), .mid)
+      case .outsideRange: return (tr("历史没补", "History"), .text)
       case .synced: return (tr("已同步", "Synced"), .good)
       case .notCollected: return (tr("没采集", "Not recorded"), .text)
       }

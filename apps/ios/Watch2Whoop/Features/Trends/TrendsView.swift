@@ -267,6 +267,7 @@ struct TrendsSheetView: View {
       } else {
         ExplainBody(kind: "metric", key: key, day: end)
       }
+      if TrendStatus.medicalKeys.contains(key) { DisclaimerTag(kind: .medical).padding(.top, 10) }
     case .status(let t):
       StatusTileBody(tile: t, day: end)
     case .recovery:
@@ -355,6 +356,7 @@ struct StatusTileBody: View {
       HStack(spacing: 6) {
         if tile.sub == tr("估算", "Estimate") { ToneBadge(text: tr("估算", "Estimate")) }
         if tile.local { ToneBadge(text: tr("本机计算", "On this phone")) }
+        if TrendStatus.medicalKeys.contains(tile.key) { DisclaimerTag(kind: .medical) }
       }
       .padding(.top, 10)
       ExplainBody(kind: "metric", key: tile.key, day: day, head: false).padding(.top, 8)
