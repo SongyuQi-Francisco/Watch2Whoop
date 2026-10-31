@@ -600,8 +600,41 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   account's activation / login code on the invite step moves its identity there. Apple joins an existing account only on
   an Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail. Changes are audited in
   `identity_events` (migration 390).
+- **Sign-up without a code** (`account/open_signup.py`, limits in `account/params.py`), two global switches (rollout flags,
+  only state `all` counts):
+  - `open_signup`: new accounts are active at once while fewer than `OPEN_SIGNUP_MAX_ACTIVE` (200) accounts are active; at
+    the cap new accounts wait for a code again.
+  - `store_signup` (App Store release, migration 1101, **default off**): new accounts are active at once with **no cap**, so
+    App Review and the public can sign up and use everything. Kept: `OPEN_SIGNUP_PER_IP_DAY` (5) new accounts per IP per
+    24 h, one free account per Apple ID / e-mail ever (a deleted account's identity needs a code to come back), the consent
+    first, and the fallback AI's per-person monthly quota as it is (each new person may cost up to that quota a month:
+    `body-engine open-signup status` shows the ceiling and the runway). Turn it on at release:
+    `body-engine flags set store_signup --state all`; off: `--state off` (accounts already opened stay active).
+  - Activation / invite / referral / circle codes keep working either way. `GET /v1/auth/methods` says `open_signup`
+    (a new account opens without a code now), `store_signup` and `invite_required`; the iOS app then shows the code entry
+    as a small link only. Accounts it opened: `open_signups.mode` = `store`, `body-engine user-stats` method `store`,
+    `body-engine open-signup status | list`.
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
+- Sign in with Apple token revocation (App Store guideline 5.1.1(v); `account/apple_tokens.py`, migration 1090): the app sends
+  the one-time `authorization_code` with `POST /v1/auth/apple` (and `/v1/account/identities/apple`); the server trades it at
+  Apple's `/auth/token` for a refresh token and keeps that AES-GCM encrypted under `secrets/ai_master_key` (table
+  `apple_signin_tokens`, one row per Apple ID). Deleting the account (and the 7-day pending purge) posts it to Apple's
+  `/auth/revoke` first. Settings: `BODY_APPLE_SIGNIN_KEY_FILE` (the Sign in with Apple `.p8` key, default
+  `secrets/apple_signin_key.p8`, mount it as a docker secret), `BODY_APPLE_SIGNIN_KEY_ID`, `BODY_APPLE_TEAM_ID`, optional
+  `BODY_APPLE_CLIENT_ID` (default: the identity token's audience = the bundle ID). Without them nothing is exchanged, sign-in
+  works as before, and a deletion reports `{"system": "apple", "error": "not_configured"}` in its `leftovers` (logged; the
+  deletion itself never fails on Apple). Tests: `tests/test_apple_revoke.py` (fake Apple on 127.0.0.1).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
+
+## Legal pages (`src/body_engine/legal/`, sources in `docs/legal/`)
+- Public, no sign-in: `GET /legal/privacy?lang=zh|en`, `GET /legal/terms?lang=zh|en` (HTML; without `lang` the browser's
+  Accept-Language picks), `GET /v1/legal` (paths, versions, minimum age). These are the URLs for App Store Connect and the
+  app (Me → 关于, the sign-in screen).
+- The Markdown sources are `docs/legal/{privacy,terms}{,.en}.md`; the package keeps byte-identical copies in `legal/texts/`
+  (`tests/test_legal.py` checks; copy after every edit). Operator details are placeholders filled at request time, so the
+  public repository names nobody: `BODY_LEGAL_APP_NAME` (default Watch2Whoop), `BODY_LEGAL_ENTITY`, `BODY_LEGAL_CONTACT`,
+  `BODY_DATA_REGION`, `BODY_LEGAL_GOVERNING_LAW` (each may have an `_EN` variant), `BODY_LEGAL_MIN_AGE` (default 16).
+  Unset ones show neutral wording. Details: `docs/legal/README.md`.
 - Provisioning retries (`account/provision.py`, migration 785): transient errors (connection refused, timeout, HTTP 5xx)
   are tried 3 times within a run; a failed run writes every failing step with its exception type to
   `user_provisioning.last_error` and sets `next_attempt_at` (10 min doubling per attempt, at most 6 h); `provision-run`
@@ -688,6 +721,36 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - AI tool `get_friends_overview` (read-only, no arguments): each circle member's shared status, 7-day recovery and board ranks, with what they do not share listed; not in the fallback AI's tool set.
 - Tests: `tests/test_friends.py` (cross-user access, leaving, ECG, hand-made grants, consent, limits, referral, deletion, cards, cheers, every board, the AI tool).
 - **Circle activation codes and avatars (#199, migration 655, no feature flag)**: `friends/codes.py`, `friends/admin.py`, `images/`. A readable code (matched ignoring case, spaces and dashes) bound to one circle, with `max_uses` (new accounts only: existing accounts join without taking a place, also once it is used up), an optional expiry and `disable` (both stop everyone); every use is a row in `circle_code_uses` (`new_account` or an existing one). In the sign-up invite step (`POST /v1/account/redeem-invite`, tried before the other kinds of codes) it activates the account and keeps a place in the circle; the person joins with the circle's default scopes only after the consent (`POST /v1/users/{user}/consent` → `circles_joined`; `GET /profile` → `circle_pending` for the consent sheet). On the Friends page (`GET /v1/friends/invite`, `POST /v1/friends/join`) an existing account joins with the scopes it picks. No new-account places left (new accounts only) / disabled / expired → 410, circle full → 409. The code row is locked for the whole redemption, so concurrent sign-ups never exceed `max_uses`. Circle avatars: `GET /v1/friends/circles/{id}/avatar` (members only); `images/store.py` accepts PNG / JPEG / WebP, crops to 256×256 WebP and drops all metadata. CLI: `body-engine circle-admin create | avatar | list`, `body-engine circle-code create | list | uses | disable` (docs/admin-guide.md). Tests: `tests/test_circle_codes.py`.
+- **Moderation of user content (App Store guideline 1.2, migration 1100)**: `friends/moderation.py` (writes, admin review),
+  `friends/blocks.py` (what is hidden, applied on the server in every read path: feed, comments, ❤️ counts and the red dot,
+  member cards, leaderboards, cheers, avatars, names), `friends/rules.py`, `wordfilter.py`.
+  - **Block** (`GET /v1/friends/blocks`, `PUT|DELETE /v1/friends/blocks/{user}`; only someone sharing a circle with me):
+    per person across all circles, hides both ways (posts, comments, ❤️, member card, leaderboard row; no cheers, no
+    notifications) and pauses the circle sharing between the two (`shares.circle_scopes`, restored on unblock). They stay
+    in a circle's member list, marked `blocked`, so the owner can still remove them.
+  - **Report** (`POST /v1/friends/reports {kind: post|comment|profile, id, reason, note?}`, reasons in `friends/params.py`
+    `REPORT_REASONS`): hidden for the reporter at once; a profile report also blocks the person for the reporter. After
+    `REPORT_HIDE_AFTER` (3) distinct reporters the item is hidden for everyone but its author until reviewed (a hidden
+    profile shows `HIDDEN_NAME` and no picture). The older `POST /v1/friends/feed/comments/{id}/report` still works.
+  - **Review queue (admins)**: `GET /v1/admin/circles/reports?status=pending`, `POST /v1/admin/circles/reports/{id}/resolve
+    {action: keep|remove|ban-user, note}`, `GET /v1/admin/circles/reports/overdue` (users in `BODY_ADMIN_USER_IDS` with a
+    write token); CLI `body-engine circles-reports list | resolve --id N --action keep|remove|ban-user [--note] | log | unban
+    --user-id N | overdue`. keep = shown again (earlier reports stop counting); remove = a comment is deleted, a post hidden
+    for everyone but its author, a profile's picture deleted and its name hidden; ban-user = remove + out of every circle and
+    no creating / joining / commenting / ❤️ / cheering (`circle_bans`). Every decision and every automatic hide is in
+    `circle_moderation_log`. `moderation.overdue(conn)` = `{pending, overdue, oldest_hours}` for a health check
+    (reports older than `REVIEW_WITHIN_HOURS`, 24 h).
+  - **Keyword filter** (`wordfilter.py`): comments, circle names (create / rename / admin) and display names are refused with
+    422 and a fixed message when they contain a word of the list in `BODY_BLOCKED_WORDS_FILE` (default
+    `secrets/blocked_words.txt`, one word or phrase per line, `#` comments; missing file = empty list). Matching ignores case,
+    full-width forms, spaces and punctuation; the file is re-read when it changes.
+  - **Community rules** (flag `circle_rules`, default off): before creating or joining a circle or writing a comment the
+    person accepts `docs/legal/community-rules.md` / `.en.md` once per version (`friends/params.py` `RULES_VERSION`; the
+    package copies `friends/community_rules*.md` must be identical, tests check). `GET /v1/friends/rules?lang=`, `POST
+    /v1/friends/rules/accept {version}`; without it those writes answer 428; a circle activation code used at sign-up joins
+    after the acceptance. `GET /v1/friends` gives `rules {required, accepted, version}`, `banned`, `blocked_count`. Turn it on
+    together with the 2.0.0 forced upgrade (the web page and the Flutter app have no rules screen).
+  - Tests: `tests/test_circle_moderation.py`.
 
 ## Layout
 - `src/body_engine/migrations/`: SQL executed once in numbered order; the table definitions are authoritative here

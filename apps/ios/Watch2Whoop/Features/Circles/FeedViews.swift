@@ -122,6 +122,9 @@ struct PostCard: View {
           .font(.system(size: 12.5)).foregroundColor(Palette.text2).lineLimit(1)
       }
       Spacer(minLength: 0)
+      if !post.user.isSelf && post.id > 0 {
+        ModerationMenu(store: store, kind: .post, target: post.id, user: post.user.id)
+      }
     }
   }
 
@@ -383,7 +386,7 @@ private struct ExerciseThumb: View {
 // MARK: - comments
 
 /// A post's comments, newest at the bottom, with the input bar (Instagram). Own comments can be deleted, others'
-/// reported (long press). Queued ones show a clock until they are on the server, a red mark when the server refused them.
+/// reported with a reason or their writer blocked (long press). Queued ones show a clock until they are on the server, a red mark when the server refused them.
 struct CommentsSheet: View {
   @ObservedObject var store: CirclesStore
   let postId: Int
@@ -391,7 +394,7 @@ struct CommentsSheet: View {
   @State private var text = ""
   @FocusState private var focused: Bool
   @State private var confirmDelete: Comment?
-  @State private var confirmReport: Comment?
+  @State private var gateId = "comments:\(UUID().uuidString)"
 
   var body: some View {
     let post = store.posts.first { $0.id == postId }
@@ -441,12 +444,8 @@ struct CommentsSheet: View {
       }
       Button(tr("取消", "Cancel"), role: .cancel) {}
     }
-    .confirmationDialog(tr("举报这条评论？", "Report this comment?"), isPresented: Binding(get: { confirmReport != nil }, set: { if !$0 { confirmReport = nil } }), titleVisibility: .visible) {
-      Button(tr("举报", "Report"), role: .destructive) {
-        if let c = confirmReport { Task { await store.report(c) } }
-      }
-      Button(tr("取消", "Cancel"), role: .cancel) {}
-    }
+    .rulesGate(store, host: gateId)
+    .overlay(alignment: .top) { ToastOverlay(store: store) }
   }
 
   private func row(_ c: Comment) -> some View {
@@ -456,6 +455,9 @@ struct CommentsSheet: View {
         Text(c.user.isSelf ? tr("我", "Me") : c.user.shownName).font(.system(size: 13, weight: .semibold)).foregroundColor(Palette.text)
         Text(c.body).font(.system(size: 15)).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
         if c.local == .failed {
+          if let why = c.error, !why.isEmpty {
+            Text(why).font(.system(size: 12)).foregroundColor(Palette.bad).fixedSize(horizontal: false, vertical: true)
+          }
           HStack(spacing: 14) {
             Text(tr("没发出去", "Not sent")).foregroundColor(Palette.bad)
             Button(tr("重试", "Retry")) { store.retryQueued(c) }.foregroundColor(Palette.text)
@@ -478,9 +480,7 @@ struct CommentsSheet: View {
           Label { Text(tr("删除", "Delete")) } icon: { Image(Icon.Name.trash.assetName).renderingMode(.template) }
         }
       } else if c.id > 0 {
-        Button(role: .destructive) { confirmReport = c } label: {
-          Label { Text(tr("举报", "Report")) } icon: { Image(Icon.Name.flag.assetName).renderingMode(.template) }
-        }
+        ModerationItems(store: store, kind: .comment, target: c.id, user: c.user.id, post: postId)
       }
     }
   }
@@ -513,9 +513,13 @@ struct CommentsSheet: View {
 
   private func send() {
     guard canSend else { return }
-    store.addComment(postId, text)
+    let t = text
+    // the community rules first, once (flag circle_rules); then the comment goes to the queue as before
+    store.requireRules(host: gateId) {
+      store.addComment(postId, t)
+      UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
     text = ""
-    UIImpactFeedbackGenerator(style: .light).impactOccurred()
   }
 
   static func when(_ iso: String) -> String {

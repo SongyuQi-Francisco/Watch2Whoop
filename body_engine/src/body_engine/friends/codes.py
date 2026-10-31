@@ -174,10 +174,12 @@ def _pending_count(conn, *, circle_id: int | None = None, user_id: int | None = 
 
 
 def _ready(conn, uid: int) -> bool:
-    """May this person be put in a circle now: active, circles on for them, and the circle consent given."""
+    """May this person be put in a circle now: active, circles on for them, the circle consent given, not banned from
+    circles, and the community rules accepted (flag circle_rules, friends/rules.py)."""
+    from . import blocks, rules
     u = conn.execute("SELECT status FROM users WHERE id = %s", (uid,)).fetchone()
     return u is not None and u["status"] == "active" and auth.circles_on(conn, uid) \
-        and consent.agreed_at_least(conn, uid, P.CONSENT_VERSION)
+        and consent.agreed_at_least(conn, uid, P.CONSENT_VERSION) and not blocks.banned(conn, uid) and rules.ok(conn, uid)
 
 
 def redeem(conn: psycopg.Connection, uid: int, code: str, scopes=None) -> dict | None:

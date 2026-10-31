@@ -30,6 +30,13 @@ extension Endpoint {
     static func comment(_ id: Int) -> String { "/v1/friends/feed/comments/\(id)" }
     static func report(_ id: Int) -> String { "/v1/friends/feed/comments/\(id)/report" }
 
+    // moderation (friends/moderation_api.py): block, report, community rules
+    static let blocks = "/v1/friends/blocks"
+    static func block(_ user: Int) -> String { "/v1/friends/blocks/\(user)" }   // PUT block, DELETE unblock
+    static let reports = "/v1/friends/reports"
+    static let rules = "/v1/friends/rules"                             // ?lang=
+    static let rulesAccept = "/v1/friends/rules/accept"
+
     // avatars (avatars/api.py): the body of an upload is the picture itself
     static let myAvatar = "/v1/avatars/me"
     static func circleAvatar(_ id: Int) -> String { "/v1/avatars/circles/\(id)" }

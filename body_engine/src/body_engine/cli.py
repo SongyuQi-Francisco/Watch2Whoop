@@ -25,6 +25,7 @@ from .feedback import cli as feedback_cli
 from .rollout import cli as rollout_cli
 from .client import cli as upgrade_cli
 from .account import open_signup_cli
+from .friends import moderation_cli as circles_reports_cli
 
 
 CONSENT_GATED = {"import-ow", "import-shortcut", "import-workouts", "compute-scores", "import-apple-zip", "import-raw", "hrv-compare", "hrv-kind",
@@ -562,6 +563,7 @@ def main() -> None:
     rollout_cli.add_parser(sub)
     upgrade_cli.add_parser(sub)   # R2 forced upgrade (client/)
     open_signup_cli.add_parser(sub)
+    circles_reports_cli.add_parser(sub)
 
     hz = sub.add_parser("import-apple-zip", help="import an export.zip / export.xml exported by the Health app directly (streaming, no extraction to disk)")
     hz.add_argument("--user-id", type=int, required=True)
@@ -874,6 +876,8 @@ def main() -> None:
                              ensure_ascii=False))
         elif args.cmd == "open-signup":
             open_signup_cli.run(conn, args)
+        elif args.cmd in circles_reports_cli.COMMANDS:
+            circles_reports_cli.run(conn, args)
         elif args.cmd in rollout_cli.COMMANDS:
             try:
                 rollout_cli.run(conn, args)

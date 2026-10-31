@@ -134,6 +134,9 @@ FLAGS: dict[str, str] = {
                    "新注册的账号直接开通（和兑换激活码后一样开户），已经在等激活码的账号下次访问时自动开通；到上限后新账号自动回到"
                    "要激活码；同一 IP 每天最多 OPEN_SIGNUP_PER_IP_DAY 个；激活码 / 推荐码 / 圈子码照样有效；同意书照旧。"
                    "管理命令 body-engine open-signup status / list。关着时和以前一样，注册后要激活码",
+    "store_signup": "App Store 公开注册（全局开关，只认 --state all，account/open_signup.py）：新注册的账号直接开通，没有 OPEN_SIGNUP_MAX_ACTIVE 上限，"
+                    "App Review 和公众不用激活码就能用全部功能；同一 IP 每天最多 OPEN_SIGNUP_PER_IP_DAY 个、同一 Apple ID / 邮箱只免码开一次、"
+                    "同意书照旧、托底 AI 每人每月额度不变；激活码 / 推荐码 / 圈子码照样有效。默认关，上架时由负责人打开",
     "native_jarvis": "app 原生 Jarvis 键（#247 第 2 期，iOS app 1.0.9+，需要 jarvis_orbit 也开着）：Jarvis 键和展开菜单由 app 用 SwiftUI 画"
                      "（iOS 26 起是系统的 Liquid Glass `.glassEffect()`，更早的 iOS 用 `.ultraThinMaterial` 毛玻璃），网页里的 Jarvis 键隐藏；"
                      "点子键（对话 / 语音 / 拍照 / 快记）交回今天页处理，拍照用 app 的相机；按住说话（左上取消、右上锁定、松开识别，按 jarvis_voice_direct 发送或先确认）"
@@ -152,4 +155,7 @@ FLAGS: dict[str, str] = {
                    "今天页并排三环、搜索框即问 Jarvis、具体示例问题、重点、常驻圈子卡、我的首页（最多 6 块）、我 → 全部功能，"
                    "长按任何卡片问 Jarvis，第 1 天身体概况 + 关注点、首页按关注 / 发现 / 用过排序，不弹新手引导；页面代码在 ui-ai-first.js，只有开着的人才下载；"
                    "关着时页面和以前完全一样",
+    "circle_rules": "圈子社区规则（App Store 1.2，friends/rules.py，迁移 1100）：建圈子、加入圈子、写评论之前要先同意一次 docs/legal/community-rules.md"
+                    "（版本 friends/params.py RULES_VERSION，换版本要重新同意）；没同意时这些接口回 428，原生 app 先弹规则页；"
+                    "旧的网页 / Flutter app 没有规则页，所以 2.0.0 强制升级之后再开；关着时和以前一样不用同意",
 }

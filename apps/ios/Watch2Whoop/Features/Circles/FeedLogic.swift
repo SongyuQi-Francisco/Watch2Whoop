@@ -75,7 +75,9 @@ enum FeedLogic {
     pending.filter { $0.kind == commentKind && postId($0.path) == post }.compactMap { item in
       guard let text = commentText(item), let id = item.id else { return nil }
       let state: Comment.LocalState = item.state == .failed || item.state == .conflict ? .failed : .pending
-      return Comment(id: -Int(id), user: me, body: text, local: state)
+      var c = Comment(id: -Int(id), user: me, body: text, local: state)
+      if state == .failed { c.error = item.lastError }
+      return c
     }
   }
 

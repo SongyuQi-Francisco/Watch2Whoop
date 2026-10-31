@@ -113,6 +113,9 @@ struct MyCirclesView: View {
       if let l, !l.consentOk {
         Banner(text: tr("同意书更新了，先在「我」里确认", "The consent was updated: confirm it under Me first"), tone: .mid)
       }
+      if l?.banned == true {
+        Banner(text: tr("你已不能使用圈子", "You can no longer use circles"), tone: .bad)
+      }
       if let invites = l?.invites, !invites.isEmpty { InviteInbox(store: store, invites: invites) { sub = .accept($0) } }
       if store.avatarsOn {
         Button { sub = .myAvatar } label: {
@@ -169,6 +172,22 @@ struct MyCirclesView: View {
       HStack(spacing: 10) {
         SecondaryButton(icon: .plus, title: tr("建圈子", "New circle")) { sub = .create }
         SecondaryButton(icon: .logIn, title: tr("用邀请码加入", "Join with a code")) { sub = .join("") }
+      }
+      RowGroup {
+        NavigationLink {
+          BlockedListView(store: store).navigationTitle(tr("已屏蔽", "Blocked")).scrollable()
+        } label: {
+          HStack(spacing: 12) {
+            Icon(.ban, size: 20).foregroundColor(Palette.text2)
+            Text(tr("已屏蔽", "Blocked")).font(Typo.body).foregroundColor(Palette.text)
+            Spacer(minLength: 8)
+            if let n = l?.blockedCount, n > 0 { Text("\(n)").font(Typo.caption).foregroundColor(Palette.text2) }
+            Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+          }
+          .padding(.vertical, 12)
+          .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
       }
     }
     .task { await store.refreshList() }
@@ -377,9 +396,19 @@ struct CircleDetailView: View {
         if let line = joinLine(m) { Text(line).font(.system(size: 12)).foregroundColor(Palette.text2).lineLimit(1) }
       }
       Spacer()
-      if owner && !m.me {
-        Button { confirm = .remove(m) } label: { Icon(.x, size: 16).foregroundColor(Palette.text3).frame(width: 32, height: 32) }
-          .accessibilityLabel(tr("移除", "Remove"))
+      if m.blocked { Chip(label: tr("已屏蔽", "Blocked"), tone: .text) }
+      if !m.me {
+        Menu {
+          if owner { Button(role: .destructive) { confirm = .remove(m) } label: { Text(tr("移出圈子", "Remove from circle")) } }
+          if m.blocked {
+            Button(tr("取消屏蔽", "Unblock")) { Task { await store.unblock(m.id) } }
+          } else {
+            ModerationItems(store: store, kind: .profile, target: m.id, user: m.id)
+          }
+        } label: {
+          Icon(.ellipsis, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32).contentShape(Rectangle())
+        }
+        .accessibilityLabel(tr("更多", "More"))
       }
     }
     .padding(.vertical, 8)
@@ -493,6 +522,7 @@ private struct ScopesEditor: View {
 /// A new circle: its name and what I share there; then straight to its invite.
 struct CreateCircleView: View {
   @ObservedObject var store: CirclesStore
+  @State private var gateId = "create:\(UUID().uuidString)"
   @State private var name = ""
   @State private var chosen: Set<String> = Set(CircleScope.defaults)
   @State private var busy = false
@@ -509,16 +539,19 @@ struct CreateCircleView: View {
         PrimaryButton(title: tr("建好并邀请", "Create and invite"), busy: busy) {
           let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
           guard !n.isEmpty else { store.toast = tr("先起个名字", "Give it a name first"); return }
-          Task {
-            busy = true
-            if let r = await store.create(name: String(n.prefix(40)), scopes: Array(chosen)) {
-              UINotificationFeedbackGenerator().notificationOccurred(.success)
-              withAnimation { created = r }
+          store.requireRules(host: gateId) {   // the community rules first, once (flag circle_rules)
+            Task {
+              busy = true
+              if let r = await store.create(name: String(n.prefix(40)), scopes: Array(chosen)) {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                withAnimation { created = r }
+              }
+              busy = false
             }
-            busy = false
           }
         }
       }
+      .rulesGate(store, host: gateId)
     }
   }
 }

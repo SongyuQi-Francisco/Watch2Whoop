@@ -144,6 +144,9 @@ struct ServerSyncStatus: Equatable {
   var mode = "ow"
   /// HealthKit identifier -> newest sample on the server.
   var latest: [String: Date] = [:]
+  /// HealthKit identifier -> the newest local day ("yyyy-MM-dd") the server has of it through any way in (an Apple Health
+  /// export, Open Wearables, the engine): `latest_day`, servers from 2026-10-31.
+  var latestDay: [String: String] = [:]
   var lastUploadAt: Date?
   /// Code of the last refused request when nothing went through since.
   var openFailure: String?
@@ -155,9 +158,9 @@ struct ServerSyncStatus: Equatable {
   init(_ j: [String: Any]) {
     mode = j["mode"] as? String ?? "ow"
     for t in j["types"] as? [Any] ?? [] {
-      guard let t = t as? [String: Any], let hk = t["type"] as? String,
-            let at = (t["latest_sample_at"] as? String).flatMap(ISO8601.parse) else { continue }
-      latest[hk] = at
+      guard let t = t as? [String: Any], let hk = t["type"] as? String else { continue }
+      if let at = (t["latest_sample_at"] as? String).flatMap(ISO8601.parse) { latest[hk] = at }
+      if let d = t["latest_day"] as? String, d.count == 10 { latestDay[hk] = d }
     }
     lastUploadAt = ((j["last_upload"] as? [String: Any])?["at"] as? String).flatMap(ISO8601.parse)
     if let f = j["failures"] as? [String: Any], f["recovered"] as? Bool == false {
@@ -170,19 +173,38 @@ struct ServerSyncStatus: Equatable {
   }
 }
 
-/// Per type: not recorded on the phone, not synced, or synced (the Flutter app's TypeVerdict).
+/// Per type: not recorded on the phone, not synced, older than what the sync reads, or synced (the Flutter app's
+/// TypeVerdict, plus `outsideRange`).
 enum TypeVerdict: Int, Comparable {
-  case notSynced = 0, synced, notCollected
+  case notSynced = 0, outsideRange, synced, notCollected
 
   static func < (a: TypeVerdict, b: TypeVerdict) -> Bool { a.rawValue < b.rawValue }
 
   /// A newer sample on the phone than on the server by more than this = not synced (a round may be under way).
   static let slack: TimeInterval = 30 * 60
 
-  init(phone: Date?, server: Date?) {
+  /// - serverDay: the newest local day the server has of the type through any way in (`latest_day`): a phone sample of an
+  ///   earlier day than today that the server has a day of, or a later one, is there (an export or Open Wearables brought it);
+  /// - uploadedSince: from when the sync reads this phone (the first sync's 14 days, or as far back as the history
+  ///   backfill got). The owner's report 2026-10-31: the newest weight / height on the phone was older than that, the
+  ///   engine never read it, so 「已最新」 and 「N 类没同步」 at once; it is "older than the synced range", fixed by the
+  ///   history backfill, not by syncing again.
+  init(phone: Date?, server: Date?, serverDay: String? = nil, uploadedSince: Date? = nil, now: Date = Date(),
+       calendar: Calendar = .current) {
     guard let phone else { self = .notCollected; return }
-    guard let server else { self = .notSynced; return }
-    self = phone > server.addingTimeInterval(Self.slack) ? .notSynced : .synced
+    if let server, phone <= server.addingTimeInterval(Self.slack) { self = .synced; return }
+    if let serverDay {
+      let day = Self.dayString(phone, calendar), today = Self.dayString(now, calendar)
+      if day < today && serverDay >= day { self = .synced; return }
+    }
+    if let uploadedSince, phone < uploadedSince { self = .outsideRange; return }
+    self = .notSynced
+  }
+
+  /// "yyyy-MM-dd" of a moment in the phone's calendar (string order = date order).
+  static func dayString(_ d: Date, _ calendar: Calendar = .current) -> String {
+    let c = calendar.dateComponents([.year, .month, .day], from: d)
+    return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
   }
 }
 
@@ -193,16 +215,51 @@ struct TypeRow: Identifiable, Equatable {
   let verdict: TypeVerdict
   var id: String { type.hk }
 
-  /// One row per engine type the server takes (all engine types when it did not say): not synced first, then synced,
-  /// then not recorded; the registry's order inside.
+  /// One row per engine type the server takes (all engine types when it did not say): not synced first, then older than
+  /// the synced range, synced, not recorded; the registry's order inside.
   static func rows(_ registry: [HealthType], serverTypes: Set<String>, phone: [String: Date],
-                   server: [String: Date]) -> [TypeRow] {
+                   server: [String: Date], serverDay: [String: String] = [:], uploadedSince: Date? = nil,
+                   now: Date = Date()) -> [TypeRow] {
     let rows = registry.enumerated().compactMap { i, t -> (Int, TypeRow)? in
       guard t.isEngine, serverTypes.isEmpty || serverTypes.contains(t.hk) else { return nil }
       return (i, TypeRow(type: t, phone: phone[t.hk], server: server[t.hk],
-                         verdict: TypeVerdict(phone: phone[t.hk], server: server[t.hk])))
+                         verdict: TypeVerdict(phone: phone[t.hk], server: server[t.hk], serverDay: serverDay[t.hk],
+                                              uploadedSince: uploadedSince, now: now)))
     }
     return rows.sorted { a, b in a.1.verdict != b.1.verdict ? a.1.verdict < b.1.verdict : a.0 < b.0 }.map(\.1)
+  }
+}
+
+/// GET /v1/users/me/data-status, the fields the sync result needs: per data type ok / stale / never and, from servers of
+/// 2026-10-31, why (`reason`, `action`, `alarm`) and the phone channel's state (`delivery`). Older servers: no reasons.
+struct ServerDataStatus: Equatable {
+  struct Kind: Equatable {
+    var key = ""
+    var label = ""
+    var status = "ok"
+    var reason: String?
+    var action: String?
+    var alarm = false
+    var daysSince: Int?
+  }
+
+  var types: [Kind] = []
+  /// ok / behind / never (nil: an older server).
+  var delivery: String?
+  var deliveryAction: String?
+
+  init() {}
+
+  init(_ j: [String: Any]) {
+    for t in j["types"] as? [Any] ?? [] {
+      guard let t = t as? [String: Any], let key = t["key"] as? String else { continue }
+      types.append(Kind(key: key, label: t["label"] as? String ?? key, status: t["status"] as? String ?? "ok",
+                        reason: t["reason"] as? String, action: t["action"] as? String, alarm: t["alarm"] as? Bool ?? false,
+                        daysSince: (t["days_since"] as? NSNumber)?.intValue))
+    }
+    let d = j["delivery"] as? [String: Any]
+    delivery = d?["state"] as? String
+    deliveryAction = d?["action"] as? String
   }
 }
 

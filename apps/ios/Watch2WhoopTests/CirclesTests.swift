@@ -75,6 +75,33 @@ final class CircleModelTests: XCTestCase {
     // a cached copy round-trips
     let again = try decode(String(data: try JSONEncoder.api.encode(l), encoding: .utf8)!, as: CirclesList.self)
     XCTAssertEqual(again, l)
+    // an older server: no moderation fields → nothing asked, nothing blocked
+    XCTAssertFalse(l.rulesNeeded)
+    XCTAssertFalse(l.banned)
+    XCTAssertFalse(gym.members[1].blocked)
+  }
+
+  func testModerationFieldsAndRulesText() throws {
+    let l = try decode("""
+    {"circles": [{"id": 3, "name": "Example gym", "members": [{"id": 2, "display_name": "Sam", "blocked": true}]}],
+     "rules": {"required": true, "accepted": false, "version": "2026-10-31"}, "banned": false, "blocked_count": 1}
+    """, as: CirclesList.self)
+    XCTAssertTrue(l.rulesNeeded)
+    XCTAssertEqual(l.rules.version, "2026-10-31")
+    XCTAssertEqual(l.blockedCount, 1)
+    XCTAssertTrue(l.circles[0].members[0].blocked)
+    let again = try decode(String(data: try JSONEncoder.api.encode(l), encoding: .utf8)!, as: CirclesList.self)
+    XCTAssertEqual(again, l)
+    let b = try decode(#"{"blocks": [{"id": 2, "display_name": "Sam", "created_at": "2026-01-02T08:00:00+00:00"}]}"#,
+                       as: [String: [BlockedPerson]].self)
+    XCTAssertEqual(b["blocks"]?.first?.displayName, "Sam")
+    // the rules Markdown: headings, bullets (continuation lines joined), paragraphs
+    let blocks = MarkdownBlocks.blocks("# Rules\n\nVersion: 1\n\n## 1. Not allowed\n\n- spam;\n  more of it\n- hate\n\nText\nnext line")
+    XCTAssertEqual(blocks.map(\.kind), [.h1, .para, .h2, .bullet, .bullet, .para])
+    XCTAssertEqual(blocks[3].text, "spam; more of it")
+    XCTAssertEqual(blocks[5].text, "Text next line")
+    XCTAssertEqual(ReportReason.all.count, 7)
+    XCTAssertEqual(ReportReason.label("nope"), ReportReason.label("other"))
   }
 
   func testOverviewKeepsOnlyWhatIsShared() throws {

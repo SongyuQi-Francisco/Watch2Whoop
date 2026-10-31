@@ -1,0 +1,6 @@
+/* Permission texts (English). Chinese: zh-Hans.lproj/InfoPlist.strings; the same English is in project.yml. */
+"NSHealthShareUsageDescription" = "Watch2Whoop reads the Health data you allow (such as heart rate, HRV and beat-to-beat intervals, ECGs, sleep, workouts, steps and energy) to calculate your recovery, sleep and strain, and syncs it to your account on the Watch2Whoop server. It is never used for advertising or sold. An AI reads it only when you use Jarvis.";
+"NSHealthUpdateUsageDescription" = "Watch2Whoop does not write your data to Health. Only developer test builds add sample data in the simulator.";
+"NSCameraUsageDescription" = "Used to scan your setup QR code and, when you choose to, to take a photo for Jarvis or for your profile picture. Photos go to your account on the Watch2Whoop server, and to your AI only when you send them to Jarvis.";
+"NSMicrophoneUsageDescription" = "Used only while you hold the mic button to talk to Jarvis. Your voice is turned into text on this iPhone or on the Watch2Whoop server; no recording is kept.";
+"NSSpeechRecognitionUsageDescription" = "Used only while you talk to Jarvis: Apple's on-device recognition turns what you say into text on this iPhone.";

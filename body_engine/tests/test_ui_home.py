@@ -160,12 +160,12 @@ def test_endpoints(dsn, users, client):
         flags.set_flag(conn, P.FEATURE, "off", actor="test")
         conn.commit()
     flags.invalidate()
-    assert client.get("/v1/users/me/ui/home", headers=Hd(tok["fine"])).status_code == 404   # flag off: as if it did not exist
+    assert client.get(f"/v1/users/me/ui/home?date={TODAY}", headers=Hd(tok["fine"])).status_code == 404   # flag off: as if it did not exist
     with conn_of(dsn) as conn:
         flags.set_flag(conn, P.FEATURE, "all", actor="test")
         conn.commit()
     flags.invalidate()
-    r = client.get("/v1/users/me/ui/home", headers=Hd(tok["fine"]))
+    r = client.get(f"/v1/users/me/ui/home?date={TODAY}", headers=Hd(tok["fine"]))
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["overview"] == {"findings": [], "stats": {"days": 70, "since": "2026-08-19", "nights": 12, "workouts": 0}}
@@ -178,12 +178,12 @@ def test_endpoints(dsn, users, client):
     assert r.status_code == 200 and r.json()["modules"][0] == {"key": "sleep", "reason": "pinned"}
     assert client.put("/v1/users/me/ui/modules/weather", json={"state": "pinned"}, headers=Hd(tok["fine"])).status_code == 422
     assert client.post("/v1/users/me/ui/overview-seen", headers=Hd(tok["fine"])).json() == {"ok": True}
-    assert client.get("/v1/users/me/ui/home", headers=Hd(tok["fine"])).json()["overview"] is None
+    assert client.get(f"/v1/users/me/ui/home?date={TODAY}", headers=Hd(tok["fine"])).json()["overview"] is None
     # oneself only; a read-only token cannot write
     assert client.get(f"/v1/users/{ids['tired']}/ui/home", headers=Hd(tok["fine"])).status_code == 403
     assert client.put("/v1/users/me/ui/focus", json={"focus": []}, headers=Hd(tok["ro"])).status_code == 403
     # English page: finding labels in English
-    r = client.get("/v1/users/me/ui/home", headers={**Hd(tok["tired"]), "X-Body-Lang": "en"})
+    r = client.get(f"/v1/users/me/ui/home?date={TODAY}", headers={**Hd(tok["tired"]), "X-Body-Lang": "en"})
     assert r.json()["overview"]["findings"][0]["label"] == "HRV is lower than usual this week"
 
 

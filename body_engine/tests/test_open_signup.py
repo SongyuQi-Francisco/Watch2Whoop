@@ -224,6 +224,45 @@ def test_identity_opens_one_free_account_ever(client, dsn):
     _flag(dsn, "off")
 
 
+def test_store_signup_has_no_cap_but_keeps_the_other_limits(client, dsn, monkeypatch, capsys):
+    """flag store_signup (App Store): every new account opens, also past OPEN_SIGNUP_MAX_ACTIVE; per-IP and identity rules stay."""
+    assert params.STORE_SIGNUP_FLAG in flags.FLAGS
+    m = client.get("/v1/auth/methods").json()
+    assert m["store_signup"] is False and m["invite_required"] is True    # default off
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        flags.set_flag(conn, params.STORE_SIGNUP_FLAG, "cohort", actor="test")   # only `all` turns it on
+    assert _signup(client, "store-cohort@example.com")["status"] == "pending"
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        flags.set_flag(conn, params.STORE_SIGNUP_FLAG, "all", actor="test")
+    monkeypatch.setattr(params, "OPEN_SIGNUP_MAX_ACTIVE", 0)            # the open_signup cap does not apply
+    m = client.get("/v1/auth/methods").json()
+    assert m["store_signup"] is True and m["open_signup"] is True and m["invite_required"] is False
+    s = _signup(client, "store-one@example.com")
+    assert s["status"] == "active"
+    acct = client.get("/v1/account", headers=s["h"]).json()
+    assert acct["invite_required"] is False and acct["invite_optional"] is True   # a code can still be added
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        assert conn.execute("SELECT mode FROM open_signups WHERE user_id = %s", (s["me"]["id"],)).fetchone()["mode"] == "store"
+        st = open_signup.status(conn)
+        assert st["store"] is True and st["open"] is True and st["opened_store"] >= 1
+        assert next(u for u in user_stats.collect(conn, 30)["users"] if u["id"] == s["me"]["id"])["method"] == "store"
+        # the per-IP limit still holds
+        monkeypatch.setattr(params, "OPEN_SIGNUP_PER_IP_DAY", 1)
+        ids = [signin.find_or_create_user(conn, "email", f"store-ip{i}@example.com", f"store-ip{i}@example.com", True)[0]["id"]
+               for i in range(2)]
+        assert [open_signup.try_activate(conn, uid, ip="203.0.113.77", new=True) for uid in ids] == ["activated", "ip_limit"]
+        conn.rollback()
+    # an identity that already opened an account is not opened again without a code
+    r = client.request("DELETE", "/v1/account", headers=s["h"], json={"confirm": "DELETE"})
+    assert r.status_code == 200, r.text
+    login_limit.reset()
+    assert _signup(client, "store-one@example.com")["status"] == "pending"
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        open_signup_cli.run(conn, open_signup_cli.argparse.Namespace(open_signup_cmd="status", refresh=False, json=False))
+        flags.set_flag(conn, params.STORE_SIGNUP_FLAG, "off", actor="test")
+    assert "App Store" in capsys.readouterr().out
+
+
 def test_codes_still_record_the_inviter(client, dsn, monkeypatch):
     monkeypatch.setenv(params.REFERRALS_ENV, "1")
     inviter = _signup(client, "inviter-open@example.com")

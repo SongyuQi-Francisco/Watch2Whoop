@@ -3,7 +3,9 @@
 Sign-in (no auth):
   POST /v1/auth/email/start   {email, lang}                       → mail a 6-digit code (same answer whether or not an account exists)
   POST /v1/auth/email/verify  {email, code, client, device}       → session
-  POST /v1/auth/apple         {identity_token, nonce, client, device, given_name, family_name} → session
+  POST /v1/auth/apple         {identity_token, nonce, client, device, given_name, family_name, authorization_code} → session
+                              (authorization_code: optional; exchanged for a refresh token that account deletion revokes,
+                              account/apple_tokens.py)
   "session": client=web sets the Today page cookie; client=app returns a device API token (Bearer) instead.
 Account (Bearer or cookie; also for `pending` accounts):
   GET    /v1/account                       status, identities, provisioning
@@ -15,7 +17,7 @@ Account (Bearer or cookie; also for `pending` accounts):
   POST   /v1/account/logout                revoke the Bearer token used (app sign-out)
   DELETE /v1/account {confirm: "DELETE"}   delete the account and all its data
   POST   /v1/account/identities/email {email, code}          bind another e-mail (code from /v1/auth/email/start); active only
-  POST   /v1/account/identities/apple {identity_token, nonce} bind the user's Apple ID (token from the app); active only
+  POST   /v1/account/identities/apple {identity_token, nonce, authorization_code} bind the user's Apple ID (token from the app); active only
          409 {"detail": "identity_taken"} when that e-mail / Apple ID already belongs to another account (never merged)
   GET    /v1/users/{user}/invite-code      the user's own referral code (created on first call) + how many joined; 404 unless
                                            BODY_REFERRALS_ENABLED (the Me page entry hides itself: /v1/auth/methods → referrals)
@@ -40,7 +42,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .. import auth
 from ..friends import codes as circle_codes, store as friends_store
 from ..web import activation, login_codes, login_limit, session
-from . import delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
+from . import apple_tokens, delete as account_delete, identities, invites, mailer, open_signup, params, provision, signin
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["account"])
@@ -135,8 +137,12 @@ def ios_web_mode() -> str:
 def methods(conn=Depends(get_conn)):
     """Which sign-in methods this server offers (the login pages hide the others), the iOS-Safari mode, and whether a new
     account opens without an invite code right now (open_signup)."""
+    # open_signup: a new account opens without a code right now (either switch); invite_required is its opposite, for the
+    # app's sign-in screen (the activation-code entry moves out of the way when false)
+    is_open = open_signup.is_open(conn)
     return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled(),
-            "ios_web": ios_web_mode(), "open_signup": open_signup.is_open(conn)}
+            "ios_web": ios_web_mode(), "open_signup": is_open, "store_signup": open_signup.store_on(conn),
+            "invite_required": not is_open}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail
@@ -207,6 +213,7 @@ class AppleIn(BaseModel):
     device: str | None = Field(None, max_length=60)
     given_name: str | None = Field(None, max_length=60)
     family_name: str | None = Field(None, max_length=60)
+    authorization_code: str | None = Field(None, max_length=2000)
 
 
 @router.post("/v1/auth/apple")
@@ -233,6 +240,7 @@ def apple(body: AppleIn, request: Request, response: Response, conn=Depends(get_
     except signin.SignInError:
         raise HTTPException(403, "account_disabled")
     activate_open(conn, user, ip, new_user)
+    apple_tokens.exchange_and_store(conn, user["id"], claims, body.authorization_code)
     out = _session_response(conn, request, response, user, new_user, body.client, body.device)
     if new_user:   # no existing account found: the app / page suggests binding Apple from the old account instead
         out["hint"] = "existing_account_bind_apple"
@@ -285,6 +293,7 @@ class BindAppleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     identity_token: str = Field(min_length=20, max_length=8000)
     nonce: str | None = Field(None, max_length=200)
+    authorization_code: str | None = Field(None, max_length=2000)
 
 
 def _bind(conn, viewer: dict, fn) -> dict:
@@ -325,7 +334,11 @@ def bind_apple(body: BindAppleIn, request: Request, conn=Depends(get_conn), view
         log.info("apple link rejected: %s", e)
         login_limit.record_failure(ip)
         raise HTTPException(401, "apple_invalid")
-    return _bind(conn, viewer, lambda: identities.link_apple(conn, viewer["id"], claims))
+    def link():
+        result = identities.link_apple(conn, viewer["id"], claims)
+        apple_tokens.exchange_and_store(conn, viewer["id"], claims, body.authorization_code)
+        return result
+    return _bind(conn, viewer, link)
 
 
 def _existing_account_for_code(conn, code: str) -> int | None:

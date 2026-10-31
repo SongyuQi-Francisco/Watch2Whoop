@@ -17,7 +17,7 @@ from ..web import views
 from ..avatars import urls as avatar_store
 from ..queries import _now, user_tz
 from ..sync import received
-from . import params as P, prefs, remarks, store
+from . import blocks, params as P, prefs, remarks, store
 
 NUDGE_KINDS = ("clap", "sleep", "train")   # 👏 / 💤 / 💪
 
@@ -78,13 +78,18 @@ def circle_list(conn: psycopg.Connection, uid: int) -> list[dict]:
 
 def co_members(conn: psycopg.Connection, uid: int, circle_id: int | None = None, skip: list[int] = ()) -> list[dict]:
     """Everyone who shares at least one circle with `uid` (only circle `circle_id` when given; never through the circles
-    in `skip`), with the names of those circles."""
-    return conn.execute(
-        """SELECT u.id, u.display_name, array_agg(DISTINCT c.name ORDER BY c.name) AS circles, min(o.joined_at) AS since
+    in `skip`), with the names of those circles. Never someone either of the two blocked (member cards and leaderboards
+    leave them out; friends/blocks.py); a profile hidden by moderation comes with params.HIDDEN_NAME."""
+    rows = conn.execute(
+        f"""SELECT u.id, u.display_name, array_agg(DISTINCT c.name ORDER BY c.name) AS circles, min(o.joined_at) AS since
            FROM circle_members m JOIN circle_members o ON o.circle_id = m.circle_id AND o.user_id <> m.user_id
            JOIN circles c ON c.id = m.circle_id JOIN users u ON u.id = o.user_id
-           WHERE m.user_id = %s AND (%s::int IS NULL OR m.circle_id = %s::int) AND NOT (m.circle_id = ANY(%s))
-           GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""", (uid, circle_id, circle_id, list(skip))).fetchall()
+           WHERE m.user_id = %(u)s AND (%(c)s::int IS NULL OR m.circle_id = %(c)s::int) AND NOT (m.circle_id = ANY(%(skip)s))
+             AND {blocks.not_blocked('%(u)s', 'o.user_id')}
+           GROUP BY u.id, u.display_name ORDER BY min(o.joined_at), u.id""",
+        {"u": uid, "c": circle_id, "skip": list(skip)}).fetchall()
+    blocks.mask_rows(conn, uid, rows)
+    return rows
 
 
 def share_with(conn: psycopg.Connection, viewer_id: int, owner_id: int) -> set[str]:
@@ -187,8 +192,9 @@ def _nudges(conn, uid: int) -> tuple[dict, dict]:
         sent.setdefault(r["to_user_id"], []).append(r["kind"])
     got = {k: [] for k in NUDGE_KINDS}
     for r in conn.execute(
-            """SELECT n.kind, n.from_user_id, u.display_name FROM circle_nudges n JOIN users u ON u.id = n.from_user_id
-               WHERE n.to_user_id = %s AND n.created_at > now() - interval '24 hours' ORDER BY n.id""", (uid,)):
+            f"""SELECT n.kind, n.from_user_id, u.display_name FROM circle_nudges n JOIN users u ON u.id = n.from_user_id
+               WHERE n.to_user_id = %(u)s AND n.created_at > now() - interval '24 hours'
+                 AND {blocks.not_blocked('%(u)s', 'n.from_user_id')} ORDER BY n.id""", {"u": uid}):
         got[r["kind"]].append(r)
     nick = remarks.for_viewer(conn, uid, [r["from_user_id"] for rs in got.values() for r in rs])   # my own remarks (#212)
     got = {k: [nick.get(r["from_user_id"], r["display_name"]) for r in rs] for k, rs in got.items()}
@@ -225,7 +231,9 @@ def nudge(conn: psycopg.Connection, uid: int, to_id: int, kind: str) -> dict:
     """One cheer: only to someone sharing a circle with me, one of each kind per person per day (my local date)."""
     if kind not in NUDGE_KINDS:
         raise store.FriendsError(400, f"不认识的鼓励：{kind}")
-    if to_id == uid or not conn.execute(
+    from . import moderation
+    moderation.require_allowed(conn, uid)
+    if to_id == uid or blocks.pair_blocked(conn, uid, to_id) or not conn.execute(
             """SELECT 1 FROM circle_members m JOIN circle_members o ON o.circle_id = m.circle_id
                WHERE m.user_id = %s AND o.user_id = %s""", (uid, to_id)).fetchone():
         raise store.FriendsError(404, "这个人不在你的圈子里")
