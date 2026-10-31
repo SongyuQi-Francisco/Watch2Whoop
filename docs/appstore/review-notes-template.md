@@ -68,13 +68,16 @@ In the demo account the AI is not connected, so Jarvis shows its set-up state; t
 Circles are small, invitation-only groups (an invite code or link is needed to join); there is no public feed and no
 search for strangers. Members see only what they ticked when joining and can leave any time. In a circle users can post
 the automatic workout summary, like and comment. Moderation:
-  - Report: any comment (and post / member — {{MODERATION_PR}}) can be reported with the "Report" action; reports go to the
-    operator, who reviews them within 24 hours and removes the content or the member when it breaks the rules.
-  - Block: the user can block a member so that their content disappears for the blocker ({{MODERATION_PR}}).
-  - Objectionable content: users agree to the terms of use (circle rules, no harassment / sexual / violent content) when they
-    sign in; the circle owner can remove members; comments are plain text, limited to 300 characters.
+  - Report: posts, comments and member profiles (name / avatar) can be reported from their "⋯" / long-press menu with a
+    reason. The reported item disappears for the reporter at once; after reports from several different people it is
+    hidden for everyone until the operator reviews it. The operator reviews reports within 24 hours and keeps the item,
+    removes it, or removes the member.
+  - Block: any member can be blocked from a post, comment or member card; the blocked person's posts, comments, likes and
+    leaderboard entries disappear for the blocker on the server, across all circles. Unblock in Circles → Settings → Blocked.
+  - Objectionable content: a word filter rejects matching comments, circle names and display names; users accept the
+    community rules before creating, joining or commenting in a circle for the first time; the circle owner can remove
+    members; comments are plain text, limited to 300 characters.
   - Contact: {{SUPPORT_CONTACT}} (also in the privacy policy, section 10).
-  [Verify this section against the app after the moderation PR is merged, line by line.]
 
 7. ACCOUNT DELETION (guideline 5.1.1(v))
 Me → Delete account → type to confirm. It deletes the account and all data on the server immediately (old copies in backups
@@ -99,4 +102,4 @@ authorisation at Apple. Export of the data: by request through the contact in th
 3. **下载的 JS**（第 4 节）：这是被拒风险最大的一条。依据是 Apple 开发者计划许可协议 3.3.2 里"解释型代码"的例外，措辞要负责人（最好有法务）确认；JS 包的许可证（`package.json` 现在写 AGPL-3.0-only）和 App Store 的兼容性还没定，见 `README.md`。
 4. **AI**（第 5 节）：和 `docs/legal/` 隐私政策第 4 节一致；备用 AI 在中国的服务器，是审核最可能追问的点。
 5. **圈子**（第 6 节）：举报 / 屏蔽合并后逐句核对；24 小时内处理是**对 Apple 的承诺**，负责人要确认做得到才保留这句。
-6. **占位符**：`APP_NAME`、`VERSION`、`REVIEW_TOKEN`、`REVIEW_SETUP_LINK`、`REVIEW_CONTACT`、`SUPPORT_CONTACT`、`SERVER_URL`、`ENTITY`、`MIN_AGE`、`MODERATION_PR`（圈子审核合并后删掉这个标记）。
+6. **占位符**：`APP_NAME`、`VERSION`、`REVIEW_TOKEN`、`REVIEW_SETUP_LINK`、`REVIEW_CONTACT`、`SUPPORT_CONTACT`、`SERVER_URL`、`ENTITY`、`MIN_AGE`。
