@@ -16,6 +16,22 @@ same records body age counts, so the user can check them (insights/healthspan_st
 With the sync center (flag sync_center, `extended`): the types the app reads itself (rawdata/hk_types.py: stand time,
 exercise minutes, daylight ...) are listed too, wrist temperature counts as read by the app, and those types carry the
 time of the newest stored sample (hk_samples), so the app can compare it with the newest one on the phone.
+Weight counts the person's own weigh-ins too (body_measurements, the Today page / the AI's log_weight, source `records`):
+it is on the server, and someone who weighs in there is not missing anything.
+
+Why a type is not ok (`reason`, `action`, `alarm`; explain(), thresholds in params.py), so "old because nothing new was
+recorded" is told apart from "old because the phone did not deliver" (the owner's report 2026-10-31: the sync said it was
+up to date while weight / wrist temperature / water showed as stale):
+- reason not_delivered: nothing came through the phone's sync for DELIVERY_FRESH; action from the phone's last report:
+  enable_background_refresh / unlock_phone / sign_in / check_network / open_app;
+- reason not_recorded: the sync delivered, the phone had nothing newer; action what makes it appear: wear_watch,
+  wear_watch_sleep, use_scale, outdoor_workout, log_in_health, log_workout, wear_headphones;
+- reason no_permission: never anything of a type a worn watch records daily while other data arrives; action authorize;
+- reason on_demand (ECG: action record_ecg), logged_elsewhere (water logged in the app, not in Health), unsupported
+  (the sync cannot read it), flag_off;
+- alarm: the reason is a sync problem (params.ALARM_REASONS); `alarm_count` counts them. `delivery`: the phone's channel
+  as one state (ok / behind / never), its last delivery and the action for it (background refresh off shows even while ok).
+All new fields; older apps ignore them.
 `channel` follows the sync mode (rawdata/engine.mode, #219 S5b): in the mode app the types the OW SDK used to deliver
 come through the app's own sync engine, so they say `app` (and wrist temperature loses `sdk_unsupported`); `mode` is in
 the answer too.
@@ -23,7 +39,7 @@ the answer too.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -32,6 +48,11 @@ from ..i18n import L
 from . import params
 
 STATUSES = ("ok", "stale", "never")
+REASONS = ("not_delivered", "not_recorded", "no_permission", "on_demand", "logged_elsewhere", "unsupported", "flag_off")
+ACTIONS = ("enable_background_refresh", "unlock_phone", "sign_in", "check_network", "open_app", "authorize", "wear_watch",
+           "wear_watch_sleep", "use_scale", "outdoor_workout", "record_ecg", "log_in_health", "log_workout",
+           "wear_headphones")
+DELIVERY = ("ok", "behind", "never")
 
 
 @dataclass(frozen=True)
@@ -109,6 +130,67 @@ def classify(last: date | None, today: date, stale_after: int | None) -> str:
     return "ok"
 
 
+def device_action(dev: dict | None) -> str:
+    """The phone-side fix for a sync that stopped delivering, from the app's last report (sync_device_state)."""
+    dev = dev or {}
+    if dev.get("last_error") == "auth":
+        return "sign_in"
+    if dev.get("background_refresh") in ("denied", "restricted"):
+        return "enable_background_refresh"
+    if dev.get("health_readable") is False or dev.get("last_error") in ("locked", "health_denied"):
+        return "unlock_phone"
+    if dev.get("last_error") == "network":
+        return "check_network"
+    return "open_app"
+
+
+def explain(kind: Kind, status: str, delivery: str, dev: dict | None = None, elsewhere: bool = False) -> dict:
+    """{reason, action, alarm} of one type (None / False when it is ok). delivery: the phone channel's state (DELIVERY);
+    dev: the app's last phone report; elsewhere: the person logs this type where the sync does not read it."""
+    def out(reason: str, action: str | None) -> dict:
+        return {"reason": reason, "action": action, "alarm": reason in params.ALARM_REASONS}
+    if status == "ok":
+        return {"reason": None, "action": None, "alarm": False}
+    if "flag_off" in kind.notes:
+        return out("flag_off", None)
+    if "sdk_unsupported" in kind.notes:
+        return out("unsupported", None)
+    if "on_demand" in kind.notes:
+        return out("on_demand", "record_ecg")
+    if elsewhere:
+        return out("logged_elsewhere", None)
+    if delivery != "ok":
+        return out("not_delivered", device_action(dev))
+    if status == "never" and kind.key in params.GAP_CORE_KINDS:
+        return out("no_permission", "authorize")
+    if kind.key in params.RECORD_ACTION:
+        return out("not_recorded", params.RECORD_ACTION[kind.key])
+    return out("not_recorded", "wear_watch_sleep" if kind.key in params.OVERNIGHT_KINDS else "wear_watch")
+
+
+def _delivery(conn: psycopg.Connection, user_id: int, mode: str, tz: ZoneInfo, now: datetime) -> tuple[dict, dict | None]:
+    """The phone channel as one state: ok (delivered within DELIVERY_FRESH), behind, never; and the app's phone report.
+    In the engine's app mode only its own uploads count (Open Wearables no longer feeds this user)."""
+    from . import overview
+    r = conn.execute(r"""SELECT (SELECT CASE WHEN cursor ~ '^\d{4}-\d{2}-\d{2}' THEN cursor::timestamptz END
+                                FROM sync_state WHERE user_id = %(u)s AND source = 'ow') AS ow,
+                                (SELECT max(received_at) FROM rawdata_uploads WHERE user_id = %(u)s) AS app,
+                                (SELECT max(imported_at) FROM shortcut_uploads WHERE user_id = %(u)s) AS shortcut""",
+                     {"u": user_id}).fetchone()
+    last = max((t for t in (None if mode == "app" else r["ow"], r["app"], r["shortcut"]) if t is not None), default=None)
+    dev = overview.device(conn, user_id, now)
+    state = "never" if last is None else ("ok" if now - last <= params.DELIVERY_FRESH else "behind")
+    bg_off = bool(dev and dev.get("background_refresh") in ("denied", "restricted"))
+    action = device_action(dev) if state != "ok" else ("enable_background_refresh" if bg_off else None)
+    return {"state": state, "last_at": _iso(last, tz), "action": action}, dev
+
+
+def _water_elsewhere(conn: psycopg.Connection, user_id: int, since: date) -> bool:
+    """Drinks logged outside Apple Health (the app's buttons, the AI) since `since`: the data status counts only Health."""
+    return conn.execute("""SELECT EXISTS (SELECT 1 FROM water_intake WHERE user_id = %s AND source <> 'apple_health'
+                                          AND local_date >= %s) AS x""", (user_id, since)).fetchone()["x"]
+
+
 def _iso(v: datetime | None, tz: ZoneInfo) -> str | None:
     return v.astimezone(tz).isoformat(timespec="seconds") if v else None
 
@@ -152,6 +234,17 @@ def _metric_rows(conn: psycopg.Connection, user_id: int, since: date, src_since:
             o["last_date"] = r["last_date"]
         o["dates"] |= set(r["dates"] or ())
         o["count"] += int(r["count"])
+    if "body_mass" in metric_kind:   # the person's own weigh-ins (Today page / AI log_weight) are weight on the server too
+        r = conn.execute("""SELECT max(date) AS last_date, array_agg(date) FILTER (WHERE date >= %(since)s) AS dates,
+                                   count(*) FILTER (WHERE date >= %(since)s) AS count, bool_or(date >= %(src)s) AS recent
+                            FROM body_measurements WHERE user_id = %(u)s AND weight_kg IS NOT NULL""", p).fetchone()
+        if r["last_date"]:
+            o = out.setdefault(metric_kind["body_mass"], {"last_date": None, "dates": set(), "count": 0, "sources": set()})
+            o["last_date"] = max(o["last_date"] or r["last_date"], r["last_date"])
+            o["dates"] |= set(r["dates"] or ())
+            o["count"] += int(r["count"])
+            if r["recent"]:
+                o["sources"].add("records")
     from ..importers import common
     app_mode = common.AppMode(conn, user_id)   # the sync engine's values count only in its app mode (as resolve_daily)
     for r in conn.execute("""SELECT DISTINCT metric, source FROM daily_metric_sources
@@ -211,6 +304,7 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, s
             **_event_rows(conn, user_id, tz_name, since, src_since)}
     app_at = _app_last_at(conn, user_id, kind_list) if extended else {}
     water_on = water.enabled(conn, user_id)
+    delivery, dev = _delivery(conn, user_id, mode, tz, datetime.now(timezone.utc))
     types, summary = [], dict.fromkeys(STATUSES, 0)
     for k in kind_list:
         r = dict(rows.get(k.key) or {})
@@ -222,6 +316,9 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, s
         status = classify(last, today, stale_after)
         summary[status] += 1
         notes = list(k.notes) + (["flag_off"] if k.key == "water" and not water_on else [])
+        elsewhere = k.key == "water" and status != "ok" and stale_after is not None \
+            and _water_elsewhere(conn, user_id, today - timedelta(days=stale_after))
+        why = explain(Kind(k.key, k.zh, k.en, k.channel, k.metrics, tuple(notes)), status, delivery["state"], dev, elsewhere)
         types.append({
             "key": k.key, "label": L(k.zh, k.en), "channel": k.channel, "status": status,
             "last_date": last.isoformat() if last else None,
@@ -229,8 +326,9 @@ def collect(conn: psycopg.Connection, user_id: int, today: date | None = None, s
             "days_since": max(0, (today - last).days) if last else None,
             "days": int(r.get("days") or 0), "count": int(r.get("count") or 0),
             "sources": list(r.get("sources") or []),
-            "stale_after_days": stale_after, "notes": notes,
+            "stale_after_days": stale_after, "notes": notes, **why,
         })
     return {"today": today.isoformat(), "window_days": params.WINDOW_DAYS, "types": types, "summary": summary,
             "channels": _channels(conn, user_id, tz), "strength": _strength(conn, user_id, today, sparky),
-            "extended": extended, "mode": mode}
+            "extended": extended, "mode": mode, "delivery": delivery,
+            "alarm_count": sum(1 for t in types if t["alarm"])}
