@@ -19,6 +19,10 @@ EXACT: dict[str, str] = {
     "WWS 的 robots.txt 能读到了，但还没有经过确认的页面解析器：先人工确认条款和页面结构，再写 wws.py 的解析器": "WWS robots.txt is readable now, but there is no confirmed page parser yet: check the terms and the page structure first, then write the parser in wws.py",
     # ---- circles (friends/)
     "心电图不能通过圈子共享": "ECGs can't be shared through circles",
+    # keyword filter (wordfilter.py) and circle moderation (friends/moderation.py, rules.py); raised with L() already,
+    # listed here for clients that send no X-Body-Lang and get the Chinese text translated later
+    "内容里有不允许的词，请修改后再发": "This contains words that aren't allowed. Please change it and try again",
+    "请先同意圈子社区规则": "Please accept the circle community rules first",
     "先在今天页重新确认同意书（新增了「圈子共享」一节）": "First confirm the updated consent on the Today page (it adds a section on circle sharing)",
     "没有这个圈子（或你不在里面）": "No such circle (or you are not in it)",
     "圈子 id 不对": "Bad circle id",
