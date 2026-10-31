@@ -155,6 +155,9 @@ struct TrendStatus: Equatable {
 
   var tiles: [Tile]
 
+  /// Estimates that read like a health finding: their card and sheet carry the 「非诊断」 tag (DisclaimerTag).
+  static let medicalKeys: Set<String> = ["illness"]
+
   static let toneMap: [String: [String: Tone]] = [
     "hrv_status": ["balanced": .good, "high": .text, "low": .mid, "poor": .bad],
     "training_status": ["productive": .good, "maintaining": .text, "recovery": .text, "strained": .mid, "unproductive": .mid,

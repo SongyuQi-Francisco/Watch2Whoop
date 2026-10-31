@@ -43,7 +43,8 @@
 | `Watch2Whoop/HealthSync/` | 从 Flutter 拷来的 `SyncEngine.swift`、`RawSync.swift`、`Backfill.swift`（逐字节相同），加上 `HealthSyncBridge`（async 包装）；注册表 `Resources/healthkit_types.json` 也由脚本拷贝 | 拷贝件用脚本同步；宿主一侧在 `Features/Sync/`（N8） |
 | `Watch2Whoop/Features/<页面>/` | 每个页面一个目录：`Today/`（N3）、`Trends/`（N4）、`Record/`、`Food/`（N5）、`Jarvis/`（N6）、`Circles/`（N7）、`Onboarding/`（登录、同意书、资料、健康权限）、`Me/`、`Sync/`（同步中心和同步宿主）（N8）；`Placeholders/` 是还没做的 tab | 各页面 agent |
 | `Watch2Whoop/Localization/` | `tr()`、`Lang` | — |
-| `Watch2Whoop/Resources/` | `Assets.xcassets`（AppIcon、`LaunchBackground`、`Icons/lucide.*`） | — |
+| `Watch2Whoop/Resources/` | `Assets.xcassets`（AppIcon、`LaunchBackground`、`Icons/lucide.*`）；`licenses.json`（「我 → 关于 → 开源许可」，和 `THIRD_PARTY_NOTICES.md`、`project.yml` 的 SPM 版本一致，`check_sources.py` 检查）；`zh-Hans.lproj` / `en.lproj` 的 `InfoPlist.strings`（权限说明，英文同时写在 `project.yml`） | — |
+| `Watch2Whoop/PrivacyInfo.xcprivacy` | 隐私清单：用到的 required-reason API（UserDefaults CA92.1、文件时间戳 C617.1）、收集的数据类型（和 `docs/legal/privacy.md` 第 1 节、App Store Connect 的隐私标签一致）、不跟踪。新用到 required-reason API（磁盘空间、开机时间等）时要加进来 | 上架包 A |
 | `Watch2WhoopTests/` | XCTest 单元测试，在模拟器上跑 | 每个 PR 都要加测试 |
 | `Packages/FlutterShim/` | 本地 SPM 包，模块名就叫 `Flutter`：只有 `FlutterMethodCall`、`FlutterResult`、`FlutterError` 三个类型，让拷进来的文件不改一个字节也能编译。N8 之后只剩 `RawSync.swift` 用它 | Flutter 原文件的 RawSync 拆出原生接口后删掉 |
 | `scripts/` | `sync_flutter_sources.sh`（拷贝 / `--check`）、`lucide_assets.py`（生成图标 / `--check`）、`check_sources.py`（双语和颜色 token） | — |

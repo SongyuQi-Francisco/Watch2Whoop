@@ -12,3 +12,6 @@ W2W_DISPLAY_NAME = Watch2Whoop
 // W2W_MARKETING_VERSION / W2W_BUILD_NUMBER here.
 // Host of the default server on the sign-in screen (no https://: two slashes start a comment in xcconfig).
 // W2W_DEFAULT_HOST = body.example.com
+// Host of the public privacy policy / terms pages (the server's /legal/privacy and /legal/terms; the same address you
+// enter in App Store Connect). Empty = the pages of the server the person signs in to.
+// W2W_LEGAL_BASE_URL = body.example.com

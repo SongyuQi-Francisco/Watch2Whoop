@@ -97,8 +97,10 @@ final class OnboardingModel: ObservableObject {
       let auth = try result.get()
       guard let cred = auth.credential as? ASAuthorizationAppleIDCredential, let data = cred.identityToken,
             let idToken = String(data: data, encoding: .utf8), let a = self.auth() else { throw APIError.decoding("no Apple token") }
+      // the one-time authorization code lets the server keep a refresh token it revokes when the account is deleted
+      let code = cred.authorizationCode.flatMap { String(data: $0, encoding: .utf8) }
       let s = try await a.apple(identityToken: idToken, rawNonce: rawNonce, givenName: cred.fullName?.givenName,
-                                familyName: cred.fullName?.familyName)
+                                familyName: cred.fullName?.familyName, authorizationCode: code)
       await signedIn(s)
     }
   }

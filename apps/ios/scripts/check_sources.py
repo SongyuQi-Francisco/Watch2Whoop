@@ -5,6 +5,8 @@
    half (CONTRIBUTING.md "Bilingual UI"). Comments are ignored.
 2. Colour tokens: every token in DesignSystem/Palette.swift that has a twin in the Today page's app.css (light `:root`
    and the dark block) has the same hex value, so the native app and the page cannot drift apart.
+3. Licences: Resources/licenses.json (the app's 开源许可 page) names every pinned SPM package of project.yml at its
+   version, and every entry has a licence text.
 
     python3 apps/ios/scripts/check_sources.py
 """
@@ -86,8 +88,23 @@ def check_tokens() -> list[str]:
     return errors
 
 
+def check_licences() -> list[str]:
+    import json
+    data = json.loads((APP / "Resources" / "licenses.json").read_text())
+    by_name = {c["name"].split(".")[0].lower(): c for c in data["components"]}
+    errors = [f"licenses.json: {c['name']} has no licence text" for c in data["components"] if not c.get("text", "").strip()]
+    spec = (HERE / "project.yml").read_text()
+    for name, version in re.findall(r"^  (\w+):\n    url: [^\n]+\n    exactVersion: ([\d.]+)", spec, re.M):
+        entry = by_name.get(name.lower())
+        if entry is None:
+            errors.append(f"licenses.json: SPM package {name} is missing")
+        elif entry["version"] != version:
+            errors.append(f"licenses.json: {name} is {entry['version']}, project.yml pins {version}")
+    return errors
+
+
 def main() -> int:
-    errors = check_i18n() + check_tokens()
+    errors = check_i18n() + check_tokens() + check_licences()
     for e in errors:
         print(e)
     print("ok" if not errors else f"{len(errors)} problem(s)")

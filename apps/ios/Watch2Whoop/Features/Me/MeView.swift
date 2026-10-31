@@ -54,9 +54,8 @@ struct MeTab: View {
             }
             RowDivider()
             ListRow(icon: .megaphone, title: tr("更新记录", "What's new")) { sheet = .whatsNew }
-            RowDivider()
-            ListRow(icon: .refreshCw, title: tr("版本", "Version"), value: APIClient.appVersion)
           }
+          AboutRows(server: session.config.server) { sheet = .licences }
           RowGroup {
             ListRow(icon: .logOut, title: tr("退出登录", "Sign out")) { confirmSignOut = true }
             RowDivider()
@@ -156,7 +155,7 @@ struct MeTab: View {
 }
 
 enum MeSheet: Identifiable, Equatable {
-  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal
+  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, licences
   case records(RecordKind)
 
   enum RecordKind: String { case supplements, labs, events }
@@ -182,6 +181,7 @@ private struct MeSheetView: View {
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
+      case .licences: LicensesView()
       case .records(let k): HealthRecordView(kind: k)                                    // N5
       }
     }
@@ -199,6 +199,7 @@ private struct MeSheetView: View {
     case .appearance: return tr("外观", "Appearance")
     case .unsent: return tr("没提交的修改", "Unsent changes")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
+    case .licences: return tr("开源许可", "Open-source licences")
     case .records(.supplements): return tr("补剂", "Supplements")
     case .records(.labs): return tr("化验", "Lab results")
     case .records(.events): return tr("身体事件", "Body events")

@@ -39,6 +39,10 @@ targets:
       - path: Watch2Whoop
         excludes:
           - "**/*.md"
+          - "PrivacyInfo.xcprivacy"
+      # The privacy manifest (required-reason APIs, collected data types; App Store submission)
+      - path: Watch2Whoop/PrivacyInfo.xcprivacy
+        buildPhase: resources
       # N1's scoring bundle (global OpenBodyScore), run in JavaScriptCore by Algorithms/OpenBodyScoreRuntime.swift. Built
       # into the app from its one copy in git; N2 adds the signed download that replaces it at run time.
       - path: ../../packages/openbodyscore-js/dist/openbodyscore.js
@@ -66,6 +70,8 @@ targets:
         UIBackgroundModes: [fetch, processing, remote-notification]
         # Default server host for the sign-in screen (git-ignored Watch2Whoop.local.xcconfig; empty = ask)
         W2WDefaultHost: $(W2W_DEFAULT_HOST)
+        # Fixed address of the privacy policy / terms pages (git-ignored local xcconfig; empty = the signed-in server's /legal/)
+        W2WLegalBaseURL: $(W2W_LEGAL_BASE_URL)
         BGTaskSchedulerPermittedIdentifiers:
           - watch2whoop.sync.backfill
           - watch2whoop.sync.refresh
@@ -74,11 +80,13 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: watch2whoop
             CFBundleURLSchemes: [watch2whoop]
-        NSHealthShareUsageDescription: "Watch2Whoop reads your Health data (heart rate, HRV and beat-to-beat intervals, ECG recordings, sleep, workouts and more) and syncs it only to the server you set up."
-        NSHealthUpdateUsageDescription: "Release builds never write to Health; only debug builds write test data in the simulator."
-        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for your AI or for your profile picture."
-        NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to your AI; the sound is turned into text on this iPhone or on your server and is not kept."
-        NSSpeechRecognitionUsageDescription: "Used only while you talk to Jarvis: recognition runs on this iPhone and turns what you say into text."
+        # Permission texts: English here and in en.lproj, Chinese in zh-Hans.lproj/InfoPlist.strings (keep the three equal in
+        # meaning). Data goes to the person's account on the Watch2Whoop server; an AI sees it only through Jarvis.
+        NSHealthShareUsageDescription: "Watch2Whoop reads the Health data you allow (such as heart rate, HRV and beat-to-beat intervals, ECGs, sleep, workouts, steps and energy) to calculate your recovery, sleep and strain, and syncs it to your account on the Watch2Whoop server. It is never used for advertising or sold. An AI reads it only when you use Jarvis."
+        NSHealthUpdateUsageDescription: "Watch2Whoop does not write your data to Health. Only developer test builds add sample data in the simulator."
+        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for Jarvis or for your profile picture. Photos go to your account on the Watch2Whoop server, and to your AI only when you send them to Jarvis."
+        NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to Jarvis. Your voice is turned into text on this iPhone or on the Watch2Whoop server; no recording is kept."
+        NSSpeechRecognitionUsageDescription: "Used only while you talk to Jarvis: Apple's on-device recognition turns what you say into text on this iPhone."
     entitlements:
       path: Watch2Whoop/Watch2Whoop.entitlements
       properties:
