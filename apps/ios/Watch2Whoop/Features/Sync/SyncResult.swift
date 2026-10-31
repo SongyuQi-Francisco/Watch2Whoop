@@ -129,26 +129,19 @@ struct SyncResult: Equatable {
   static func explanation(_ r: Reason) -> String {
     switch r {
     case .notSynced:
-      return tr("手机上有比服务器新的数据。先点「立即同步」；刚同步过还这样，用「重新同步」把最近几天重新上传。",
-                "The phone has newer data than the server. Tap Sync now; if it just synced, use Re-sync to upload the last days again.")
+      return tr("手机上有比服务器新的数据。先点「立即同步」；刚同步过还这样，用「重新同步」把最近几天重新上传。", "The phone has newer data than the server. Tap Sync now; if it just synced, use Re-sync to upload the last days again.")
     case .outsideRange:
-      return tr("手机上最新的一条比同步读取的范围还早（首次只读近 14 天）。用「补全历史」把更早的数据传上去。",
-                "The newest record on the phone is older than what the sync reads (the first sync reads 14 days). Fill in history to upload it.")
+      return tr("手机上最新的一条比同步读取的范围还早（首次只读近 14 天）。用「补全历史」把更早的数据传上去。", "The newest record on the phone is older than what the sync reads (the first sync reads 14 days). Fill in history to upload it.")
     case .notDelivered:
-      return tr("服务器最近没收到这台手机的同步。打开 app 点「立即同步」，并检查下面的后台设置。",
-                "The server has not received this phone's sync lately. Open the app, tap Sync now and check the background settings below.")
+      return tr("服务器最近没收到这台手机的同步。打开 app 点「立即同步」，并检查下面的后台设置。", "The server has not received this phone's sync lately. Open the app, tap Sync now and check the background settings below.")
     case .noPermission:
-      return tr("这一项从来没收到过。iOS 不告诉 app 有没有读取权限：在「健康」→ 头像 →「App」→「Watch2Whoop」里打开它。",
-                "Nothing of this ever arrived. iOS does not tell apps whether reading is allowed: turn it on in Health → profile → Apps → Watch2Whoop.")
+      return tr("这一项从来没收到过。iOS 不告诉 app 有没有读取权限：在「健康」→ 头像 →「App」→「Watch2Whoop」里打开它。", "Nothing of this ever arrived. iOS does not tell apps whether reading is allowed: turn it on in Health → profile → Apps → Watch2Whoop.")
     case .locked:
-      return tr("iPhone 锁着时 iOS 不让 app 读「健康」。上次后台同步碰上锁屏，解锁后会自动接着传。",
-                "iOS does not let apps read Health while the iPhone is locked. The last background sync met a locked phone; it continues once unlocked.")
+      return tr("iPhone 锁着时 iOS 不让 app 读「健康」。上次后台同步碰上锁屏，解锁后会自动接着传。", "iOS does not let apps read Health while the iPhone is locked. The last background sync met a locked phone; it continues once unlocked.")
     case .backgroundOff:
-      return tr("「后台 App 刷新」关着时只有打开 app 才同步。",
-                "With Background App Refresh off, it only syncs while the app is open.")
+      return tr("「后台 App 刷新」关着时只有打开 app 才同步。", "With Background App Refresh off, it only syncs while the app is open.")
     case .notRecorded:
-      return tr("手机上也没有更新的记录，不是同步的问题：比如没戴手表、没戴表睡觉、没有体重秤、心电图要自己测、VO₂max 只在户外运动后估算、饮水只读「健康」里记的。体重在这里记录的也算。",
-                "The phone has nothing newer either, so it is not a sync problem: the watch not worn (or not in bed), no scale, ECGs only when you record one, VO₂ max only after outdoor workouts, water only as logged in Health. Weights logged here count too.")
+      return tr("手机上也没有更新的记录，不是同步的问题：比如没戴手表、没戴表睡觉、没有体重秤、心电图要自己测、VO₂max 只在户外运动后估算、饮水只读「健康」里记的。体重在这里记录的也算。", "The phone has nothing newer either, so it is not a sync problem: the watch not worn (or not in bed), no scale, ECGs only when you record one, VO₂ max only after outdoor workouts, water only as logged in Health. Weights logged here count too.")
     }
   }
 
