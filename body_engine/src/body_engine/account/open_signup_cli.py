@@ -1,5 +1,6 @@
-"""body-engine open-signup <status | list> (admin; on the server through the engine wrapper). Read-only: the switch is the
-feature flag (`body-engine flags set open_signup --state all` / `--state off`), the limits are in account/params.py."""
+"""body-engine open-signup <status | list> (admin; on the server through the engine wrapper). Read-only: the switches are
+the feature flags (`body-engine flags set open_signup --state all` / `--state off`; the App Store switch without a cap:
+`flags set store_signup --state all`), the limits are in account/params.py."""
 import argparse
 import json
 
@@ -33,6 +34,8 @@ def render_status(s: dict) -> str:
     f = s["fallback"]
     state = ("开着，正在开放" if s["open"] else "开着，但已满额（新账号要激活码）") if s["on"] else f"关（flag {s['flag_state']}）"
     return "\n".join([
+        f"App Store 注册（store_signup）：{'开着，新账号直接开通、不限总数' if s.get('store') else '关'}"
+        + (f"；已开通 {s.get('opened_store', 0)} 个" if s.get("store") or s.get("opened_store") else ""),
         f"开放注册：{state}",
         f"活跃账号 {s['active']} / 上限 {s['cap']}（还能开 {s['room']} 个）；计数 = status active，不算 pending {s['pending']}、"
         f"disabled {s['disabled']}、cohort {', '.join(s['excluded_cohorts']) or '—'}（全部 active {s['active_all']}）",
@@ -65,4 +68,5 @@ def run(conn: psycopg.Connection, args: argparse.Namespace) -> None:
             ids = ", ".join(i["hint"] for i in r["identities"]) or "—"
             print(f"{r['user_id']:>5}  {(r['name'] or '')[:11]:<12}{r['status']:<9}{r['decision']:<10}{r['via']:<8}{at:<18}"
                   f"{'有' if r['code_redeemed'] else '—':<6}{ids}")
-        print(f"\n共 {len(rows)} 个。来源 signup = 开放期间新注册；pending = 开放前就在等激活码、开放后自动开通。")
+        print(f"\n共 {len(rows)} 个（其中 App Store 注册 {sum(r.get('mode') == 'store' for r in rows)} 个）。"
+              "来源 signup = 开放期间新注册；pending = 开放前就在等激活码、开放后自动开通。")

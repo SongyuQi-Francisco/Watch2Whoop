@@ -37,6 +37,14 @@ OPEN_SIGNUP_IP_KEEP_HOURS = 48
 # sign-up). Circle codes work as for any existing account (Friends page, or the same endpoint).
 OPEN_SIGNUP_CODE_DAYS = 14
 
+# App Store sign-up (feature flag `store_signup`, global: on = state `all`; default off, the deployer turns it on when the app
+# is public; account/open_signup.py). While it is on, every new sign-in account is active at once — App Review and any
+# member of the public can use everything without an activation code — with NO account cap (OPEN_SIGNUP_MAX_ACTIVE does not
+# apply). Everything else stays: OPEN_SIGNUP_PER_IP_DAY per IP, one free account per Apple ID / e-mail ever, the consent
+# first, the fallback AI's per-person monthly quota (ai/fallback_params.py) unchanged, and codes keep working
+# (OPEN_SIGNUP_CODE_DAYS). Recorded as open_signups.mode = 'store' (user-stats method `store`).
+STORE_SIGNUP_FLAG = "store_signup"
+
 
 def referrals_enabled() -> bool:
     import os

@@ -135,8 +135,12 @@ def ios_web_mode() -> str:
 def methods(conn=Depends(get_conn)):
     """Which sign-in methods this server offers (the login pages hide the others), the iOS-Safari mode, and whether a new
     account opens without an invite code right now (open_signup)."""
+    # open_signup: a new account opens without a code right now (either switch); invite_required is its opposite, for the
+    # app's sign-in screen (the activation-code entry moves out of the way when false)
+    is_open = open_signup.is_open(conn)
     return {"email": mailer.configured(), "apple": bool(signin.apple_audiences()), "referrals": params.referrals_enabled(),
-            "ios_web": ios_web_mode(), "open_signup": open_signup.is_open(conn)}
+            "ios_web": ios_web_mode(), "open_signup": is_open, "store_signup": open_signup.store_on(conn),
+            "invite_required": not is_open}
 
 
 # ---------------------------------------------------------------------------------------------------- e-mail

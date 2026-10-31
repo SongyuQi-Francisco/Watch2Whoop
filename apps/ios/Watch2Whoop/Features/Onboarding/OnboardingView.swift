@@ -102,9 +102,16 @@ struct OnboardingView: View {
     if QRScannerSheet.isAvailable {
       SecondaryButton(icon: .qrCode, title: tr("扫设置二维码", "Scan the setup QR code")) { scanning = true }
     }
-    SecondaryButton(icon: .keyRound, title: tr("我有设置链接或激活码", "I have a setup link or activation code")) {
-      model.error = nil
-      model.step = .setup
+    // No code needed on this server right now (open / App Store sign-up, /v1/auth/methods open_signup): the code entry
+    // steps aside as a small link; codes still work for whoever has one.
+    if model.methods?.openSignup == true {
+      Button(tr("我有设置链接或激活码", "I have a setup link or activation code")) { model.error = nil; model.step = .setup }
+        .font(Typo.label).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 4)
+    } else {
+      SecondaryButton(icon: .keyRound, title: tr("我有设置链接或激活码", "I have a setup link or activation code")) {
+        model.error = nil
+        model.step = .setup
+      }
     }
     Button(tr("用 token 登录（高级）", "Sign in with a token (advanced)")) { model.error = nil; model.step = .token }
       .font(Typo.label).foregroundColor(Palette.text3).frame(maxWidth: .infinity).padding(.top, 8)

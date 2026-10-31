@@ -600,6 +600,20 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   account's activation / login code on the invite step moves its identity there. Apple joins an existing account only on
   an Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail. Changes are audited in
   `identity_events` (migration 390).
+- **Sign-up without a code** (`account/open_signup.py`, limits in `account/params.py`), two global switches (rollout flags,
+  only state `all` counts):
+  - `open_signup`: new accounts are active at once while fewer than `OPEN_SIGNUP_MAX_ACTIVE` (200) accounts are active; at
+    the cap new accounts wait for a code again.
+  - `store_signup` (App Store release, migration 1101, **default off**): new accounts are active at once with **no cap**, so
+    App Review and the public can sign up and use everything. Kept: `OPEN_SIGNUP_PER_IP_DAY` (5) new accounts per IP per
+    24 h, one free account per Apple ID / e-mail ever (a deleted account's identity needs a code to come back), the consent
+    first, and the fallback AI's per-person monthly quota as it is (each new person may cost up to that quota a month:
+    `body-engine open-signup status` shows the ceiling and the runway). Turn it on at release:
+    `body-engine flags set store_signup --state all`; off: `--state off` (accounts already opened stay active).
+  - Activation / invite / referral / circle codes keep working either way. `GET /v1/auth/methods` says `open_signup`
+    (a new account opens without a code now), `store_signup` and `invite_required`; the iOS app then shows the code entry
+    as a small link only. Accounts it opened: `open_signups.mode` = `store`, `body-engine user-stats` method `store`,
+    `body-engine open-signup status | list`.
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
 - Provisioning retries (`account/provision.py`, migration 785): transient errors (connection refused, timeout, HTTP 5xx)
