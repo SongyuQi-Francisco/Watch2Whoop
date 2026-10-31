@@ -3,6 +3,15 @@ import XCTest
 
 /// N8: setup info parsing (QR code / link / paste), the server answers of the Me tab and the consent.
 final class OnboardingAndMeTests: XCTestCase {
+  func testSignInMethodsSayWhetherACodeIsNeeded() throws {
+    // App Store sign-up on (store_signup): open_signup true, extra keys ignored; an older server leaves it out
+    let open = try JSONDecoder().decode(AuthService.Methods.self, from: Data(
+      #"{"email": true, "apple": true, "open_signup": true, "store_signup": true, "invite_required": false}"#.utf8))
+    XCTAssertTrue(open.openSignup)
+    let old = try JSONDecoder().decode(AuthService.Methods.self, from: Data(#"{"email": true}"#.utf8))
+    XCTAssertFalse(old.openSignup)
+  }
+
   func testSetupLinkFromQRCode() {
     let s = SetupInfo.parse("watch2whoop://setup?today=https%3A%2F%2Fbody.example.com%2Fapp%2F&login=abcd-efgh-jkmn")
     XCTAssertEqual(s.server, "https://body.example.com")

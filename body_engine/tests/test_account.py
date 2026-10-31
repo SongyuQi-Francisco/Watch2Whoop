@@ -716,12 +716,12 @@ def test_purge_stale_pending(dsn):
 def test_methods_and_page_assets(client, monkeypatch):
     monkeypatch.delenv("BODY_REFERRALS_ENABLED", raising=False)
     assert client.get("/v1/auth/methods").json() == {"email": True, "apple": True, "referrals": False, "ios_web": "warn",
-                                                     "open_signup": False}
+                                                     "open_signup": False, "store_signup": False, "invite_required": True}
     monkeypatch.setenv("BODY_MAIL_MODE", "off")
     monkeypatch.delenv("BODY_APPLE_AUDIENCES")
     monkeypatch.setenv("BODY_REFERRALS_ENABLED", "1")
     assert client.get("/v1/auth/methods").json() == {"email": False, "apple": False, "referrals": True, "ios_web": "warn",
-                                                     "open_signup": False}
+                                                     "open_signup": False, "store_signup": False, "invite_required": True}
     assert '<script src="account.js?v=' in client.get("/app/").text   # linked as name?v=<fingerprint>
     js = client.get("/app/account.js")
     assert js.status_code == 200 and "watch2whoop://account-deleted" in js.text

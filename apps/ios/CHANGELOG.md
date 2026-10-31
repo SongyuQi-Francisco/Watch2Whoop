@@ -36,6 +36,8 @@ tags it and the workflow publishes this section as the release notes. The Flutte
 - 每天的压力和趋势里的韧性、身体电量、运动后心率恢复可以在手机上算（M2，开关 `native_stress`：影子模式只在后台对比，界面仍是服务器的数；主模式后没网也会随时更新），和服务器同一套算法、服务器抽查。 / Daily stress and the Trends cards resilience, body battery and heart-rate recovery can be computed on the phone (M2, flag `native_stress`: in shadow only compared in the background, the pages keep the server's values; once primary they update during the day without network), with the server's algorithms, spot-checked by the server.
 - 每天的步数、能量、锻炼分钟等数值和每晚的睡眠可以在手机上从「健康」派生（M1，开关 `native_derive`，先只在后台对比，界面仍是服务器的数），规则和服务器同一套、服务器抽查。 / Daily steps, energy, exercise minutes and the other day values, and each night's sleep, can be derived on the phone from Health (M1, flag `native_derive`; shadow only for now, the pages still show the server's values), with the server's rules, spot-checked by the server.
 
+- 服务器打开公开注册（开关 `store_signup` 或 `open_signup`）时，登录页上的「我有设置链接或激活码」缩成一个小链接，主路径就是「通过 Apple 登录」/ 邮箱；新账号登录后直接可用，不再要激活码。 / When the server has open sign-up on (flag `store_signup` or `open_signup`), 「I have a setup link or activation code」 on the sign-in screen shrinks to a small link, so the main path is Sign in with Apple / e-mail; new accounts can use the app right after signing in, no activation code.
+
 ## 1.0.9
 
 整个 app 换成了 iOS 原生界面（不再用网页），打开更快、滑动更顺。从 TestFlight 直接更新就行，**不用重新登录**；1.0.8 里的设置和同步进度都会接着用。
