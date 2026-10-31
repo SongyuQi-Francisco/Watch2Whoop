@@ -42,7 +42,7 @@ WITH_65=1 apps/ios/scripts/appstore_screenshots.sh               # 另外生成 
 
 - **尺寸假设**：iPhone app 必须提供 6.9"（iPhone 17 Pro Max 模拟器，1320×2868）；6.5"（1284×2778）只在没传 6.9" 时才需要，Apple 会把 6.9" 缩小给小屏，所以默认不做，`WITH_65=1` 时由 6.9" 缩放得到（iOS 26 没有 6.5" 的模拟器）。app 只有 iPhone 版，不需要 iPad 截图。上传前以 App Store Connect 当天的要求为准。
 - **只用合成数据**：`appstore_demo_server.py` 起一个一次性的 Postgres 容器（`w2w-appstore-shots-db`，端口 55433，不是真库的 5433），用 `quickstart/demo_data.py` 生成 60 天合成的健康数据导入，`demo_sparky.py` 加饮食 / 力量训练 / 体重，再造三个虚构成员（Ann、Ben、Cat）和一个圈子 `Sunrise Club`，用 uvicorn 在 127.0.0.1:18199 提供服务。不读仓库的 `secrets/`，不连任何线上服务器；结束后容器和临时目录（`/tmp/w2w-appstore-shots`）、模拟器状态栏覆盖、派生数据（`/tmp/w2w-appstore-dd`，`KEEP_DD=1` 保留）都会删掉。
-- **合成数据的几个细节**：时间假装成当天 10:00（午夜后跑的话昨晚的睡眠还没有，三环会是空的）；Debug 版的推出开关（rollout flags）按发布后"所有人都开"的状态打开 UI 相关的那批（`appstore_demo_server.py` 的 `UI_FLAGS`），否则会显示旧版布局（比如睡眠详情页是关着的）；`quickstart/demo_sparky.py` 自己不提交事务，脚本给它加了 autocommit。
+- **合成数据的几个细节**：时间假装成当天 10:00（午夜后跑的话昨晚的睡眠还没有，三环会是空的）；服务器的上线开关（rollout flags）按发布后"所有人都开"的状态打开 UI 相关的那批（`appstore_demo_server.py` 的 `UI_FLAGS`），否则会显示旧版布局（比如睡眠详情页是关着的）；`quickstart/demo_sparky.py` 自己不提交事务，脚本给它加了 autocommit。
 - **不改 app 代码**：用的全是 Debug 版已有的启动环境变量（`W2W_DEV_SERVER` / `W2W_DEV_TOKEN` / `W2W_DEV_LANG` / `W2W_DEV_TAB` / `W2W_DEV_SLEEP` / `W2W_DEV_RECORD` / `W2W_DEV_CIRCLES` / `W2W_JARVIS_DEMO`，见 `apps/ios/README.md`）；Release 版里这些开关不存在。
 - **Jarvis 一屏**用 `fake_jarvis_server.py`（不调任何 AI，回答是写死的示例），其余屏用真的 Body Engine。
 - 状态栏统一成 9:41、满电、满格；浅色模式；语言用启动参数 `-AppleLanguages`，加上 `W2W_DEV_LANG`。
