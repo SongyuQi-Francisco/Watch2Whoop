@@ -127,7 +127,7 @@ final class SyncCenterTests: XCTestCase {
     i.lastSkipped = ["wifi_only"]
     i.backgroundRefresh = false
     let ids = SyncDiagnosis.of(i).issues.map(\.id)
-    XCTAssertEqual(ids, ["locked", "wifi", "bg"])
+    XCTAssertEqual(ids, ["wifi"])   // a locked phone and background refresh off are in the sync result now
     XCTAssertEqual(SyncDiagnosis.of(i).overall, .ok)   // none of these blocks the sync
     i.serverProblem = "offline"
     XCTAssertEqual(SyncDiagnosis.of(i).overall, .attention)
@@ -141,6 +141,119 @@ final class SyncCenterTests: XCTestCase {
     i.info = activeInfo()
     i.rows = [TypeRow(type: HealthType(hk: "A", key: "a", kind: "quantity"), phone: nil, server: nil, verdict: .notCollected)]
     XCTAssertEqual(SyncDiagnosis.of(i).issues.first?.action, .openHealthApp)
+  }
+
+  // MARK: - one post-sync answer (the owner's report 2026-10-31)
+
+  private static let sydney: Calendar = {
+    var c = Calendar(identifier: .gregorian)
+    c.timeZone = TimeZone(identifier: "Australia/Sydney")!
+    return c
+  }()
+
+  /// The bug: the engine was caught up (「没有新数据」) while the comparison said the weight was 「没同步」: the newest weight
+  /// on the phone was older than the first sync's 14 days, so the engine never read it and the server's engine samples had
+  /// none. Now it is synced when the server has that day through another way in (an Apple Health export), and "older than
+  /// the synced range" (fill in history) when it does not; only a sample inside the range and newer than the server's is
+  /// "not synced".
+  func testOldPhoneSampleIsNotNotSynced() {
+    let now = Date(timeIntervalSince1970: 1_793_400_000)   // 2026-10-31 in Sydney
+    let since = now.addingTimeInterval(-14 * 86_400)
+    let oldWeight = now.addingTimeInterval(-400 * 86_400)
+    let cal = Self.sydney
+    // before the fix: phone sample, nothing from the engine on the server
+    XCTAssertEqual(TypeVerdict(phone: oldWeight, server: nil), .notSynced)
+    // the export brought that day: synced
+    let day = TypeVerdict.dayString(oldWeight, cal)
+    XCTAssertEqual(TypeVerdict(phone: oldWeight, server: nil, serverDay: day, uploadedSince: since, now: now, calendar: cal), .synced)
+    // nothing of it on the server: older than what the sync reads
+    XCTAssertEqual(TypeVerdict(phone: oldWeight, server: nil, uploadedSince: since, now: now, calendar: cal), .outsideRange)
+    // inside the range and newer than the server: still not synced (a day of today never counts as the whole day)
+    let recent = now.addingTimeInterval(-2 * 3600)
+    XCTAssertEqual(TypeVerdict(phone: recent, server: now.addingTimeInterval(-5 * 3600), serverDay: TypeVerdict.dayString(now, cal),
+                               uploadedSince: since, now: now, calendar: cal), .notSynced)
+    let s = ServerSyncStatus(["types": [["type": "W", "latest_sample_at": NSNull(), "latest_day": "2025-09-26"],
+                                        ["type": "H", "latest_sample_at": "2026-10-31T08:00:00+11:00", "latest_day": "2026-10-31"]]])
+    XCTAssertNil(s.latest["W"])
+    XCTAssertEqual(s.latestDay["W"], "2025-09-26")
+    XCTAssertNotNil(s.latest["H"])
+  }
+
+  private func row(_ hk: String, _ status: String, _ verdict: TypeVerdict, phone: Date? = nil) -> TypeRow {
+    TypeRow(type: HealthType(hk: hk, key: hk.lowercased(), kind: "quantity", status: status), phone: phone, server: nil,
+            verdict: verdict)
+  }
+
+  func testResultIsSyncedWhenOnlyNothingNewWasRecorded() {
+    let now = Date(timeIntervalSince1970: 1_793_400_000)
+    let status = ServerDataStatus(["types": [
+      ["key": "heart_rate", "label": "心率", "status": "ok"],
+      ["key": "weight", "label": "体重", "status": "stale", "reason": "not_recorded", "action": "use_scale", "alarm": false],
+      ["key": "wrist_temperature", "label": "手腕温度", "status": "stale", "reason": "not_recorded", "action": "wear_watch_sleep"],
+      ["key": "ecg", "label": "心电图", "status": "never", "reason": "on_demand", "action": "record_ecg"],
+      ["key": "vo2max", "label": "VO₂max", "status": "never", "reason": "unsupported"],
+    ], "delivery": ["state": "ok", "action": "enable_background_refresh"]])
+    XCTAssertEqual(status.delivery, "ok")
+    var i = SyncResult.Input()
+    i.rows = [row("HR", "heart_rate", .synced, phone: now), row("W", "weight", .synced, phone: now)]
+    i.status = status
+    i.lastOk = now.addingTimeInterval(-60)
+    i.now = now
+    i.lastStop = "locked"
+    i.backgroundRefresh = false
+    let r = SyncResult.of(i)
+    XCTAssertTrue(r.synced)
+    XCTAssertTrue(r.problems.isEmpty)
+    XCTAssertEqual(r.quiet.map(\.id), ["weight", "wrist_temperature", "ecg"])
+    XCTAssertEqual(r.quiet.map(\.hint), ["use_scale", "wear_watch_sleep", "record_ecg"])
+    XCTAssertEqual(r.warnings.map(\.reason), [.locked, .backgroundOff])
+    XCTAssertEqual(r.warnings.last?.action, .backgroundHelp)
+    // the headline agrees: 已同步, never next to a type that is not
+    var d = SyncDiagnosis.Input()
+    d.permission = .asked
+    d.info = activeInfo()
+    d.engine = EngineSnapshot(["mode": "app", "active": true])
+    d.lastOk = i.lastOk
+    d.result = r
+    XCTAssertEqual(SyncDiagnosis.of(d, now: now).overall, .ok)
+    XCTAssertEqual(SyncDiagnosis.of(d, now: now).headline, tr("已同步 · 1 分钟前", "Synced · 1 min ago"))
+  }
+
+  func testResultListsTypeReasonAction() {
+    let now = Date(timeIntervalSince1970: 1_793_400_000)
+    var i = SyncResult.Input()
+    i.rows = [row("HR", "heart_rate", .notSynced, phone: now), row("W", "weight", .outsideRange, phone: now.addingTimeInterval(-400 * 86_400)),
+              row("S", "steps", .synced, phone: now)]
+    i.status = ServerDataStatus(["types": [
+      ["key": "weight", "label": "体重", "status": "stale", "reason": "not_delivered", "action": "open_app", "alarm": true],
+      ["key": "hrv", "label": "HRV", "status": "never", "reason": "no_permission", "action": "authorize", "alarm": true],
+      ["key": "sleep", "label": "睡眠", "status": "stale", "reason": "not_delivered", "action": "enable_background_refresh"],
+      ["key": "steps", "label": "步数", "status": "stale", "reason": "not_delivered"],
+    ]])
+    i.now = now
+    i.lastOk = now.addingTimeInterval(-3600)   // not just synced: tap Sync now first
+    var r = SyncResult.of(i)
+    XCTAssertFalse(r.synced)
+    XCTAssertEqual(r.problems.map(\.reason), [.notSynced, .outsideRange, .noPermission, .notDelivered, .notDelivered])
+    XCTAssertEqual(r.problems.map(\.action), [.syncNow, .fillHistory, .openHealthApp, .syncNow, .syncNow])
+    XCTAssertEqual(r.historyDays, 0)   // the weight is older than 90 days: all history
+    // right after a round: a type still behind needs a re-sync; the server's "not delivered" for a type the phone has
+    // nothing newer of was simply not recorded
+    i.lastOk = now.addingTimeInterval(-60)
+    r = SyncResult.of(i)
+    XCTAssertEqual(r.problems.map(\.reason), [.notSynced, .outsideRange, .noPermission])
+    XCTAssertEqual(r.problems.first?.action, .resync)
+    XCTAssertEqual(r.quiet.map(\.id), ["sleep", "steps"])
+    var d = SyncDiagnosis.Input()
+    d.permission = .asked
+    d.info = activeInfo()
+    d.engine = EngineSnapshot(["mode": "app", "active": true])
+    d.lastOk = i.lastOk
+    d.result = r
+    XCTAssertEqual(SyncDiagnosis.of(d, now: now).overall, .attention)
+    XCTAssertEqual(SyncDiagnosis.of(d, now: now).headline, tr("3 项没同步", "3 not synced"))
+    XCTAssertFalse(SyncResult.reasonLabel(r.problems[1]).isEmpty)
+    XCTAssertEqual(SyncResult.backgroundSteps.count, 4)
   }
 
   // MARK: - RawSync pass
