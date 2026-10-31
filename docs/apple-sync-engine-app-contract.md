@@ -124,7 +124,7 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
   "ow_last_sync_at": "2026-11-01T18:40:00+11:00",
   "types": [{"type": "HKQuantityTypeIdentifierHeartRate", "key": "heart_rate", "kind": "quantity",
              "status": "heart_rate", "latest_sample_at": "2026-11-01T18:58:00+11:00",
-             "received_at": "2026-11-01T19:02:11+11:00"}],
+             "received_at": "2026-11-01T19:02:11+11:00", "latest_day": "2026-11-01"}],
   "failures": {"counts_24h": {"auth": 0, "format": 0, "refused": 0, "limit": 2, "server": 0},
                "recovered": true,
                "last": {"reason": "limit", "code": "rate_limited", "status": 429, "n": 2,
@@ -140,7 +140,7 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
 | 字段 | 说明 |
 |---|---|
 | `last_upload` | 最后一次**成功**的上传（任何字段，包括 RawSync 老字段）；`null` = 从没传过 |
-| `types[]` | 引擎收到过的每个类型：服务器上最新样本的开始时间 `latest_sample_at`（统计桶类型取最新桶）、最近一次收到的时间。app 拿它和「本机 HealthKit 最新样本」比，就能分出「没采集」和「没同步」；没收到过的类型不在列表里 |
+| `types[]` | 引擎收到过的每个类型：服务器上最新样本的开始时间 `latest_sample_at`（统计桶类型取最新桶）、最近一次收到的时间。app 拿它和「本机 HealthKit 最新样本」比，就能分出「没采集」和「没同步」；`latest_day`（2026-10-31 起）：服务器经任何渠道（Apple 健康导出、Open Wearables、快捷指令、引擎）有这一类的最新一天（用户本地日期），比引擎读取范围（首次 14 天、补历史）还早的手机样本靠它判断「服务器已经有那一天」，不再算「没同步」；只有 `latest_day` 没有引擎样本的类型 `latest_sample_at` 为 `null`（老 app 会跳过）。两样都没有的类型不在列表里 |
 | `failures.counts_24h` | 近 24 小时被拒的次数，按原因：`auth`（token 吊销 / scope 不对 / 账号停用）、`format`（太大、gzip 坏、字段不合约）、`refused`（409：同意书、引擎没开、类型暂停）、`limit`（429）、`server`（500） |
 | `failures.last` | 最近一次被拒：`code`（`token_revoked`、`token_scope`、`validation`、`contract`、`bad_gzip`、`too_large`、`consent_required`、`engine_disabled`、`type_paused`、`rate_limited`、异常类名…）、`n` = 10 分钟内同一原因合并的次数 |
 | `failures.recovered` | 最后一次失败之后有没有成功上传过（面板可以只在 `false` 时标红） |

@@ -60,8 +60,10 @@ struct AuthService {
     return try Self.session(j)
   }
 
-  func apple(identityToken: String, rawNonce: String, givenName: String?, familyName: String?) async throws -> Session {
+  func apple(identityToken: String, rawNonce: String, givenName: String?, familyName: String?,
+             authorizationCode: String? = nil) async throws -> Session {
     var body: [String: String] = ["identity_token": identityToken, "nonce": rawNonce, "client": "app", "device": Self.deviceLabel]
+    if let authorizationCode, !authorizationCode.isEmpty { body["authorization_code"] = authorizationCode }
     if let givenName, !givenName.isEmpty { body["given_name"] = givenName }
     if let familyName, !familyName.isEmpty { body["family_name"] = familyName }
     let j = try await api.json(try .json(.post, Endpoint.authApple, body, idempotent: false))

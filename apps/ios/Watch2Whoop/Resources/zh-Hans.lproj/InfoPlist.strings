@@ -1,0 +1,6 @@
+/* Permission texts (Chinese). English: en.lproj/InfoPlist.strings and project.yml — keep all three equal in meaning. */
+"NSHealthShareUsageDescription" = "Watch2Whoop 读取你允许的「健康」数据（例如心率、心率变异性和心跳间期、心电图、睡眠、体能训练、步数和能量），用来计算恢复、睡眠和负荷，并同步到你在 Watch2Whoop 服务器上的账号。不会用于广告，也不会出售。只有你使用 Jarvis 时，AI 才会读取。";
+"NSHealthUpdateUsageDescription" = "Watch2Whoop 不会把你的数据写入「健康」。只有开发者的测试版本会在模拟器里写入示例数据。";
+"NSCameraUsageDescription" = "用来扫描设置二维码；在你选择时，也用来给 Jarvis 或头像拍照。照片会传到你在 Watch2Whoop 服务器上的账号，只有发给 Jarvis 时才会交给 AI。";
+"NSMicrophoneUsageDescription" = "只在你按住麦克风和 Jarvis 说话时使用。语音在这台 iPhone 或 Watch2Whoop 服务器上转成文字，不保存录音。";
+"NSSpeechRecognitionUsageDescription" = "只在你和 Jarvis 说话时使用：用 Apple 的本机识别在这台 iPhone 上把语音转成文字。";

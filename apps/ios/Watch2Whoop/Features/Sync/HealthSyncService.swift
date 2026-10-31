@@ -24,6 +24,8 @@ final class HealthSyncService: ObservableObject {
   @Published private(set) var engine = EngineSnapshot()
   @Published private(set) var backfill = BackfillState()
   @Published private(set) var server: ServerSyncStatus?
+  /// The server's data status per data type (why a type is old: not recorded / not delivered / no permission).
+  @Published private(set) var dataStatus: ServerDataStatus?
   @Published private(set) var phoneLatest: [String: Date] = [:]
   @Published private(set) var permission: SyncDiagnosis.Permission = .unknown
   @Published private(set) var running = false
@@ -100,11 +102,26 @@ final class HealthSyncService: ObservableObject {
     i.consentRequired = consentRequired
     i.running = running || engine.running
     i.lastOk = lastOk
+    i.result = server == nil ? nil : result
     return SyncDiagnosis.of(i)
   }
 
+  /// The one post-sync answer (SyncResult): 「已同步」 or type → reason → action.
+  var result: SyncResult {
+    var i = SyncResult.Input()
+    i.rows = rows
+    i.status = dataStatus
+    i.lastStop = engine.lastStop
+    i.backgroundRefresh = UIApplication.shared.backgroundRefreshStatus == .available
+    i.lastOk = lastOk
+    return SyncResult.of(i)
+  }
+
+  /// Phone vs server per type. A phone sample older than what the sync reads (`uploadedSince`) is "older than the synced
+  /// range", and one of a day the server has through another way in (`latest_day`: an export, Open Wearables) is synced.
   var rows: [TypeRow] {
-    TypeRow.rows(registry, serverTypes: info?.types ?? [], phone: phoneLatest, server: server?.latest ?? [:])
+    TypeRow.rows(registry, serverTypes: info?.types ?? [], phone: phoneLatest, server: server?.latest ?? [:],
+                 serverDay: server?.latestDay ?? [:], uploadedSince: engine.active ? uploadedSince : nil)
   }
 
   // MARK: - account
@@ -132,6 +149,7 @@ final class HealthSyncService: ObservableObject {
     attached = false
     info = nil
     server = nil
+    dataStatus = nil
     engine = EngineSnapshot()
     backfill = BackfillState()
     job = nil
@@ -246,9 +264,10 @@ final class HealthSyncService: ObservableObject {
       let samples = (m["samples"] as? NSNumber)?.intValue ?? 0
       let types = (m["uploaded"] as? [Any])?.count ?? 0
       if stop == "consent_required" { consentRequired = true }
-      if stop == nil || stop == "budget" {
-        message = samples > 0 ? tr("已上传 \(samples) 条（\(types) 类）", "Uploaded \(samples) items (\(types) types)")
-          : tr("没有新数据", "Nothing new")
+      // nothing new: no separate line; the sync result says 「已同步」 or which types are not (the owner's report
+      // 2026-10-31: 「没有新数据」 next to 「N 类没同步」)
+      if (stop == nil || stop == "budget") && samples > 0 {
+        message = tr("已上传 \(samples) 条（\(types) 类）", "Uploaded \(samples) items (\(types) types)")
       }
       if stop == nil || stop == "budget" || stop == "busy" {
         lastOk = Date()
@@ -432,6 +451,7 @@ final class HealthSyncService: ObservableObject {
       phoneLatest = m.compactMapValues { ($0 as? String).flatMap(ISO8601.parse) }
     }
     if let j = try? await api.json(.get(Endpoint.ingestSyncStatus)) { server = ServerSyncStatus(j) }
+    if let j = try? await api.json(.get(Endpoint.dataStatus)) { dataStatus = ServerDataStatus(j) }
   }
 
   /// PUT /v1/ingest/sync-device: what the phone knows about its side (the admin's sync health view). Best effort.

@@ -58,13 +58,10 @@ struct MemberCardView: View {
         }
         Spacer(minLength: 4)
         hero(sc)
-        if !m.isSelf && store.remarksOn {
-          Menu {
-            Button(tr("设置备注名", "Set a nickname"), action: editRemark)
-          } label: {
-            Icon(.ellipsis, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
+        if !m.isSelf {
+          ModerationMenu(store: store, kind: .profile, target: m.id, user: m.id) {
+            if store.remarksOn { Button(tr("设置备注名", "Set a nickname"), action: editRemark) }
           }
-          .accessibilityLabel(tr("更多", "More"))
         }
       }
       if let sc, sc.state == "scored" {

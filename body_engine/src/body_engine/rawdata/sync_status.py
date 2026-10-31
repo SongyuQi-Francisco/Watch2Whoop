@@ -59,6 +59,26 @@ def _iso(x, tz):
     return x.astimezone(tz).isoformat(timespec="seconds") if x else None
 
 
+def _latest_days(conn: psycopg.Connection, user_id: int, hk: list) -> dict:
+    """HealthKit type -> the newest local day the server has of it through any way in (daily_metrics of every source:
+    Open Wearables, the Apple Health export, the Shortcut, the engine; sleep_sessions; workouts). The app's phone vs
+    server comparison uses it for samples older than what the engine reads (its first sync reads 14 days, the history
+    backfill is optional): those are on the server already when an export or Open Wearables brought them, and are not
+    "not synced" (the owner's report 2026-10-31)."""
+    keys = {t.key: t.hk for t in hk if t.kind == "quantity"}
+    out = {keys[r["metric"]]: r["d"] for r in conn.execute(
+        """SELECT metric, max(date) AS d FROM daily_metrics WHERE user_id = %s AND metric = ANY(%s) GROUP BY metric""",
+        (user_id, list(keys)))}
+    r = conn.execute("""SELECT (SELECT max(wake_date) FROM sleep_sessions WHERE user_id = %(u)s) AS sleep,
+                               (SELECT max(local_date) FROM workouts WHERE user_id = %(u)s AND dup_of IS NULL
+                                       AND excluded IS NULL) AS workout""", {"u": user_id}).fetchone()
+    for t in hk:
+        d = r["sleep"] if t.status == "sleep" else r["workout"] if t.kind == "workout" else None
+        if d is not None:
+            out[t.hk] = d
+    return out
+
+
 def collect(conn: psycopg.Connection, user_id: int) -> dict:
     tz = ZoneInfo(conn.execute("SELECT timezone FROM users WHERE id = %s", (user_id,)).fetchone()["timezone"])
     now = datetime.now(timezone.utc)
@@ -78,15 +98,18 @@ def collect(conn: psycopg.Connection, user_id: int) -> dict:
         """SELECT t, x.s, x.r FROM unnest(%s::text[]) t, LATERAL (
                SELECT bucket_start AS s, updated_at AS r FROM hk_stats WHERE user_id = %s AND type = t
                ORDER BY bucket_start DESC LIMIT 1) x""", (stat_types, user_id))}
+    days = _latest_days(conn, user_id, hk)
     types = []
     for t in hk:
         s, b = newest.get(t.hk), buckets.get(t.hk)
         latest = max((x for x in (s and s[0], b and b[0]) if x), default=None)
         received = max((x for x in (s and s[1], b and b[1]) if x), default=None)
-        if latest is None:
+        newest_day = days.get(t.hk)
+        if latest is None and newest_day is None:
             continue
         types.append({"type": t.hk, "key": t.key, "kind": t.kind, "status": t.status or None,
-                      "latest_sample_at": _iso(latest, tz), "received_at": _iso(received, tz)})
+                      "latest_sample_at": _iso(latest, tz), "received_at": _iso(received, tz),
+                      "latest_day": newest_day.isoformat() if newest_day else None})
     fails = conn.execute("""SELECT reason, code, status, n, first_at, at, phase, app_version FROM ingest_failures
                             WHERE user_id = %s ORDER BY at DESC LIMIT 20""", (user_id,)).fetchall()
     counts = {r: 0 for r in REASONS}

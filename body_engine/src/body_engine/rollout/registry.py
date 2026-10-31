@@ -155,4 +155,7 @@ FLAGS: dict[str, str] = {
                    "今天页并排三环、搜索框即问 Jarvis、具体示例问题、重点、常驻圈子卡、我的首页（最多 6 块）、我 → 全部功能，"
                    "长按任何卡片问 Jarvis，第 1 天身体概况 + 关注点、首页按关注 / 发现 / 用过排序，不弹新手引导；页面代码在 ui-ai-first.js，只有开着的人才下载；"
                    "关着时页面和以前完全一样",
+    "circle_rules": "圈子社区规则（App Store 1.2，friends/rules.py，迁移 1100）：建圈子、加入圈子、写评论之前要先同意一次 docs/legal/community-rules.md"
+                    "（版本 friends/params.py RULES_VERSION，换版本要重新同意）；没同意时这些接口回 428，原生 app 先弹规则页；"
+                    "旧的网页 / Flutter app 没有规则页，所以 2.0.0 强制升级之后再开；关着时和以前一样不用同意",
 }

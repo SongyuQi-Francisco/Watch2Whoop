@@ -181,7 +181,10 @@ struct JarvisChatView: View {
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Palette.inSheet))
       }
     case .assistant(let text):
-      MarkdownText(text: text.isEmpty ? "…" : text)
+      VStack(alignment: .leading, spacing: 6) {
+        MarkdownText(text: text.isEmpty ? "…" : text)
+        if !text.isEmpty { DisclaimerTag(kind: .ai) }
+      }
     case .card(let c):
       JarvisCardView(card: c, busy: chat.busy, send: { chat.send($0) }, open: { router.open(page: $0) })
     case .confirm(let call, let approved):

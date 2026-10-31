@@ -64,6 +64,27 @@ EXTRA_STALE_AFTER_DAYS: dict[str, int | None] = {
     "walking_steadiness": 14,
 }
 
+# Why a type is not ok, and what the person can do (data_status.explain, the per-type `reason` / `action` / `alarm`).
+# Operational heuristics, not health rules. The server cannot see the phone, so "not recorded" is inferred: when the
+# phone's sync delivered within DELIVERY_FRESH (= SYNC_LAG_AFTER: the background sync runs several times an hour when iOS
+# lets it, and on every open) and a type is still old, the upload ran and the phone had nothing newer of it (the
+# engine's anchored queries send every new sample, docs/apple-sync-engine.md §3.1). When nothing was delivered for that
+# long, the type is "not delivered" and the action comes from the phone's last report (sync_device_state).
+# - ALARM_REASONS: the reasons that are a sync problem (a red / orange mark); "not recorded" (the watch was not worn, no
+#   scale, no outdoor walk), an on-demand type (ECG), a type the person logs elsewhere and one the app cannot read are not.
+# - GAP_CORE_KINDS (below): types a worn Apple Watch records every day; never anything of them
+#   while other data arrives = most likely the Health switch is off (HealthKit never tells an app, issue #163).
+# - OVERNIGHT_KINDS: recorded mostly or only while the watch is worn in bed with sleep tracking on (Apple's sampling,
+#   STALE_AFTER_DAYS above): "not recorded" says "wear the watch to sleep" for them, "wear the watch" for the others.
+# - RECORD_ACTION: the one thing that makes a type appear at all (needs a scale, an outdoor walk, the ECG app, a drink
+#   logged in Health, a workout).
+DELIVERY_FRESH = timedelta(hours=6)   # the same as SYNC_LAG_AFTER (below)
+ALARM_REASONS = ("not_delivered", "no_permission")
+OVERNIGHT_KINDS = ("hrv", "sleep", "blood_oxygen", "respiratory_rate", "wrist_temperature", "heartbeats")
+RECORD_ACTION = {"weight": "use_scale", "vo2max": "outdoor_workout", "ecg": "record_ecg", "water": "log_in_health",
+                 "workouts": "log_workout", "headphone_audio": "wear_headphones", "stair_speed": "wear_watch",
+                 "walking_steadiness": "wear_watch"}
+
 RESYNC_MAX_DAYS = 3650                          # custom range: 1–3650 days (null = all history)
 RESYNC_MIN_INTERVAL = timedelta(minutes=10)     # between accepted requests of one user
 RESYNC_ALL_MIN_INTERVAL = timedelta(hours=6)    # before an "all history" request
@@ -105,7 +126,7 @@ SYNC_BROKEN_APP_SEEN = timedelta(hours=48)
 # missing type counts (the first sync reads 90 days, newest first, sleep and HRV can come in a later batch).
 # OVERVIEW_TYPES: the types the panel lists (data_status.KINDS keys); OVERVIEW_PARTIAL: the ones whose absence (while heart
 # rate arrives) is reported as "not authorised" (workouts: rest weeks are normal; weight / VO₂max need other things).
-SYNC_LAG_AFTER = timedelta(hours=6)
+SYNC_LAG_AFTER = DELIVERY_FRESH
 SYNC_DEVICE_FRESH = timedelta(hours=24)
 SYNC_FIRST_GRACE = timedelta(hours=2)
 OVERVIEW_TYPES = ("heart_rate", "hrv", "resting_heart_rate", "sleep", "steps", "workouts")

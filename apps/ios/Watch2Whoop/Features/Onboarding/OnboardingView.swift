@@ -115,6 +115,7 @@ struct OnboardingView: View {
     }
     Button(tr("用 token 登录（高级）", "Sign in with a token (advanced)")) { model.error = nil; model.step = .token }
       .font(Typo.label).foregroundColor(Palette.text3).frame(maxWidth: .infinity).padding(.top, 8)
+    LegalFooter(server: model.serverOrigin)
   }
 
   @ViewBuilder private func emailStep(_ model: OnboardingModel) -> some View {

@@ -35,6 +35,7 @@ from .goals.api import router as goals_router
 from .sync import ow_watch
 from .sync.api import router as sync_router
 from .history.api import router as history_router
+from .legal.api import router as legal_router
 from .profile.api import router as profile_router
 from .explain.api import router as explain_router
 from .rawdata.api import ingest_router as rawdata_ingest_router, router as rawdata_router
@@ -52,6 +53,7 @@ from .feedback.api import router as feedback_router
 from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
+from .friends.moderation_api import admin_router as circles_admin_router, router as friends_moderation_router
 from .notify import silent as notify_silent
 from .notify.api import router as notify_router
 from .notices.api import router as notices_router
@@ -181,6 +183,8 @@ app.include_router(feedback_router)
 app.include_router(friends_router)
 app.include_router(avatars_router)
 app.include_router(friends_feed_router)
+app.include_router(friends_moderation_router)   # block / report / community rules (friends/moderation.py)
+app.include_router(circles_admin_router)        # the admins' report queue
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
 app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
 app.include_router(ai_router)
@@ -198,6 +202,7 @@ app.include_router(whatsnew_router)   # what shipped, by week: the Today page's 
 app.include_router(sleep_night_router)   # sleep detail page (sleep_night/, flag sleep_detail)
 app.include_router(ui_router)   # the AI-first page: my Today, focus, first-screen overview (ui/, flag ui_ai_first, #279)
 app.include_router(account_api.router)
+app.include_router(legal_router)   # public privacy policy / terms pages (legal/, docs/legal/)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))

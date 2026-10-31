@@ -160,6 +160,7 @@ struct JoinView: View {
   @State private var scopes: Set<String> = Set(CircleScope.defaults)
   @State private var busy = false
   @State private var error: String?
+  @State private var gateId = "join:\(UUID().uuidString)"
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
@@ -179,17 +180,20 @@ struct JoinView: View {
         Text(tr("给圈子里的人看", "What its members see")).font(Typo.bodyStrong).foregroundColor(Palette.text)
         ScopePicker(all: store.list?.scopes ?? CircleScope.all, defaults: store.list?.defaultScopes ?? CircleScope.defaults, chosen: $scopes)
         PrimaryButton(title: tr("加入", "Join"), busy: busy) {
-          Task {
-            busy = true
-            let ok = await store.join(code: invite == nil ? code : nil, inviteId: invite?.id, scopes: Array(scopes))
-            busy = false
-            if ok {
-              UINotificationFeedbackGenerator().notificationOccurred(.success)
-              store.toast = tr("已加入", "Joined")
-              done()
+          store.requireRules(host: gateId) {   // the community rules first, once (flag circle_rules)
+            Task {
+              busy = true
+              let ok = await store.join(code: invite == nil ? code : nil, inviteId: invite?.id, scopes: Array(scopes))
+              busy = false
+              if ok {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                store.toast = tr("已加入", "Joined")
+                done()
+              }
             }
           }
         }
+        .rulesGate(store, host: gateId)
       } else {
         HStack(spacing: 8) {
           TextField("XXXXX-XXXXX", text: $code)

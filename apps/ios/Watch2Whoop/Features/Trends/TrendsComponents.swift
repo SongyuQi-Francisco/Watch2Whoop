@@ -217,6 +217,7 @@ struct StatusTileView: View {
       VStack(alignment: .leading, spacing: 4) {
         HStack(spacing: 4) {
           Text(tile.label).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
+          if TrendStatus.medicalKeys.contains(tile.key) { Icon(.info, size: 11).foregroundColor(Palette.text3) }
           if tile.local { Circle().fill(Palette.text3).frame(width: 4, height: 4).accessibilityLabel(tr("本机计算", "On this phone")) }
         }
         HStack(alignment: .firstTextBaseline, spacing: 2) {

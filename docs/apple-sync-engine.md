@@ -86,7 +86,7 @@ app 侧：`apps/watch2whoop/ios/Runner/AppDelegate.swift` 在启动完成前原�
 - **服务器** `rawdata/ingest.py` + `rawdata/api.py`：Bearer token（账号 token 或只能上传的 token，`ingest_user`）、请求 ≤ 2 MB、`batch_id` 幂等（表 `rawdata_uploads`，迁移 430）、按 HealthKit UUID 去重、`deleted[]` 删除、同意书版本检查、饮水跟着 `water` 开关。
 - **快捷指令导入器**（`importers/shortcut.py`，格式 `docs/shortcut-sync-spec.md`）：样本存 `shortcut_samples`（按类型 + 开始时间 + 来源去重），日值 / 睡眠 / 推断训练都从表里整天重算；累计型按「最大的单一来源」。
 - **Apple 全量导出**（`importers/apple_zip.py`）：流式解析 export.zip，写日值、睡眠、训练（`source=apple_export`）和评分要的原始样本 `export_samples`、逐拍心跳、心电图；累计型同样「最大的单一来源」。
-- **数据状态**（`sync/data_status.py`，#163）：按类型给出服务器最近收到的时间，`channel` 区分 `ow` / `app`。
+- **数据状态**（`sync/data_status.py`，#163）：按类型给出服务器最近收到的时间，`channel` 区分 `ow` / `app`。2026-10-31 起每类多 `reason` / `action` / `alarm`（为什么旧：`not_delivered` 手机这一路超过 6 小时没送到，动作按手机上报的状态给：打开后台 App 刷新 / 解锁 / 重新登录 / 检查网络 / 打开 app；`not_recorded` 送到了但手机上也没有新的，动作是让它出现的那件事：戴表、戴表睡觉、体重秤、户外运动、在「健康」里记饮水；`no_permission` 手表天天记的类型从来没收到；`on_demand` 心电图；`logged_elsewhere` 饮水记在 app 里），回答多 `delivery`（ok / behind / never + 动作）和 `alarm_count`；体重也算本人在今天页 / AI 记的（`body_measurements`，来源 `records`）。阈值和出处在 `sync/params.py`。原因：负责人反馈「同步按钮显示已最新，但仍提示部分数据未同步」，见 `docs/ios-native-app.md` 同步中心一节。
 
 ---
 
