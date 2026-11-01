@@ -50,6 +50,7 @@ from .. import errors_en, sparky_client
 from ..assistant import compact, toolsets
 from ..assistant.tools import TOOLS, TOOLS_BY_NAME, run_tool
 from ..assistant.tools import _audit as run_audit
+from ..dl_app import APP
 from ..i18n import L, is_en
 from ..toolspec import fill_defaults
 from . import adapters, cards, catalog, choice, context, crypto, fallback, naming, parity, prompt, providers, scope_guard, web
@@ -68,14 +69,6 @@ MAX_IMAGES = 8                 # photos, or the frames the page takes from one v
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 MAX_TEXT = 8000
-# What the confirm card says for these tools in English (the Chinese card uses the tool description's first sentence)
-CONFIRM_EN = {"undo_sparky_entry": "Delete a food entry / strength workout / set / weigh-in",
-              "undo_meal_log": "Undo a quick meal log", "undo_day_changes": "Undo day changes to the training plan", "delete_journal_entry": "Clear a journal answer for a day",
-              "delete_lab_results": "Delete lab results for a sample date", "delete_observation": "Delete an observation note",
-              "delete_supplement": "Delete a supplement and its journal item", "remove_product": "Remove a product",
-              "remove_shopping_items": "Remove shopping list items", "remove_staple": "Stop treating a product as a usual item",
-              "delete_workout": "Hide a duplicate / wrong workout",
-              "rollback_write": "Roll back an AI change", "delete_custom_exercise": "Delete one of your own exercises"}
 
 
 class ChatError(Exception):
@@ -293,7 +286,7 @@ def _exec(conn, viewer: dict, provider: dict, call_row_id: int, name: str, args:
     if name in web.NAMES:
         return _exec_web(conn, viewer, provider, call_row_id, name, args)
     if fallback.is_fallback(provider):  # the fallback reads / writes only the caller's own data, never through shares
-        args = {**args, "user": "me"} if "user" in TOOLS_BY_NAME[name].input_schema.get("properties", {}) else args
+        args = APP.views[fallback.VIEW].call_args(TOOLS_BY_NAME[name], args)
     try:
         res = run_tool(conn, viewer["id"], f"api:{provider['kind']}", name, args,
                        provider_id=provider["id"], model=provider["model"])
@@ -337,8 +330,8 @@ def _tool_event(name: str, status: str, text: str | None = None, **kw) -> dict:
 def _summary(name: str, args: dict) -> str:
     tool = TOOLS_BY_NAME.get(name)
     shown = {k: v for k, v in args.items() if k != "user" and v not in (None, "", [])}
-    if is_en():
-        return f"{CONFIRM_EN.get(name, name)}: " + json.dumps(shown, ensure_ascii=False)[:600]
+    if is_en():   # the Chinese card uses the tool description's first sentence, the English one the tool's confirm_label
+        return f"{(tool.confirm_label if tool else '') or name}: " + json.dumps(shown, ensure_ascii=False)[:600]
     return f"{tool.description.split('。')[0] if tool else name}：" + json.dumps(shown, ensure_ascii=False)[:600]
 
 
@@ -396,8 +389,7 @@ def _resolve_call(access: toolsets.Access, name: str, args: dict):
 def _own_tools() -> tuple:
     """Every tool as someone nobody shares data with gets it: without the `user` parameter (it could only be "me"; the
     executor fills that in). About 1k tokens less per call on the Today page (issue #78)."""
-    return tuple(dataclasses.replace(t, input_schema=fallback.own_schema(t.input_schema))
-                 if "user" in t.input_schema.get("properties", {}) else t for t in TOOLS)
+    return APP.view_tools("own_only")
 
 
 def _shared_with(conn, user_id: int) -> bool:

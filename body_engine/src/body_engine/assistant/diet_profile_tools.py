@@ -1,4 +1,4 @@
-"""AI tools of 「我的饮食档案」 (assistant/diet_profile.py). Registered in assistant/tools.py. Writing is not a delete, so it
+"""AI tools of 「我的饮食档案」 (assistant/diet_profile.py). Registered in dl_app.py. Writing is not a delete, so it
 runs without confirmation (not in ALWAYS_CONFIRM)."""
 from datetime import date
 

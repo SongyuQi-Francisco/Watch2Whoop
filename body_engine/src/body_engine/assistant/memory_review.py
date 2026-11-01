@@ -502,3 +502,9 @@ def rollback_state(conn: psycopg.Connection, user_id: int, ref: str, before: dic
             WHERE user_id = %(u)s AND {where} = %(arg)s""",
         {**before, "confirm_count": before.get("confirm_count"), "u": user_id, "arg": arg})
     return {"memory_state_restored": ref}
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kind this module writes, and how to put it back."""
+    # archive / restore / confirm of a memory entry (issue #113 phase 2); logged as an update, any status change can be undone
+    reg.rollback("memory_state", lambda conn, user_id, row, client=None: rollback_state(conn, user_id, row["target"], row["before"], row["after"]))

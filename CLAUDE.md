@@ -36,4 +36,5 @@ then [`docs/README.md`](docs/README.md) (design documents, mostly Chinese) and [
   server texts the page shows pick the language from `X-Body-Lang` (`i18n.py` `L()` / `tl()`, error details in `errors_en.py`),
   AI-facing texts stay Chinese; the iOS app uses `tr('中文', 'English')`. Code comments and developer docs are English.
 - New database migration: `body_engine/src/body_engine/migrations/NNN_name.sql`; grant `SELECT` to `grafana_ro` if Grafana reads it.
+- New AI tool: a spec in the feature's own module, registered in `body_engine/src/body_engine/dl_app.py`, handler `(ctx, args)`. If it deletes or undoes: `confirm=True` on the spec and its name in the `ask` list of `assistant/.claude/settings.json` (`tests/test_butler.py` checks both).
 - Health-related rules and thresholds live in `*/params.py` with their sources; keep them configurable, never hard-code one person's data.

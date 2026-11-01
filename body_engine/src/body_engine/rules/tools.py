@@ -1,4 +1,4 @@
-"""AI assistant tool specs for reminders (wrapped into registered Tools by assistant/tools.py)."""
+"""AI assistant tool specs for reminders (registered by dl_app.py)."""
 from datetime import date
 
 from .. import queries

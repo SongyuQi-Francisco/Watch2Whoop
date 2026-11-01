@@ -1,4 +1,4 @@
-"""AI tools of the feedback queue (root rules, ai/root_rules.md). Registered in assistant/tools.py and in the fallback AI's
+"""AI tools of the feedback queue (root rules, ai/root_rules.md). Registered in dl_app.py and in the fallback AI's
 tool set. report_feedback writes only the feedback queue (not health data), runs without confirmation."""
 from ..toolspec import nullable, schema
 from . import store

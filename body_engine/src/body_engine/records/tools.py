@@ -1,4 +1,4 @@
-"""AI assistant tools for health records. Only tool specs (dicts) are given; assistant/tools.py wraps them into registered Tools (avoiding circular imports).
+"""AI assistant tools for health records. Only tool specs (dicts) are given; dl_app.py registers them.
 Format follows Claude API strict tools: all properties are in required, and optional ones use null for "not provided / unchanged".
 Write tools (writes=True) have no user parameter and can only write for oneself."""
 from datetime import date, timedelta
@@ -150,6 +150,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"supplement_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _require(store.delete_supplement(conn, uid, a["supplement_id"]), "补剂"),
         group="records", scope="supplements", writes=True,
+        confirm=True, confirm_label="Delete a supplement and its journal item",
     ),
     # ---------- Lab results ----------
     dict(
@@ -210,6 +211,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: lab_catalog.delete_results(conn, uid, date.fromisoformat(a["collected_on"]),
                                                                 a["test_keys"]),
         group="records", scope="labs", writes=True,
+        confirm=True, confirm_label="Delete lab results for a sample date",
     ),
     # ---------- Journal ----------
     dict(
@@ -241,6 +243,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: _deleted_journal(store.delete_journal_entry(conn, uid, date.fromisoformat(a["date"]),
                                                                                 a["key"]), a),
         group="records", scope="journal", writes=True,
+        confirm=True, confirm_label="Clear a journal answer for a day",
     ),
     dict(
         name="get_journal",

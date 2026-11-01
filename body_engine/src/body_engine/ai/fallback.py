@@ -18,7 +18,6 @@ same, only ai_fallback_consents.method says how (app / one_tap, migration 680).
 Tools only ever read the caller's own data: the `user` argument is removed from the schemas and forced to "me" (no shares).
 The key file is read only when needed and never logged or returned.
 """
-import dataclasses
 import json
 import os
 import urllib.error
@@ -32,44 +31,17 @@ import psycopg
 
 from ..assistant.tools import TOOLS_BY_NAME as ALL_TOOLS
 from ..config import REPO_ROOT
+from ..datalayer.views import without_owner
+from ..dl_app import APP
 from ..i18n import L, is_en
 from . import fallback_params as fp
 from . import providers
 
 KIND = "system_fallback"
 CONSENT_VERSION = "2026-10-22"   # daily metrics and grocery named; 10-20: writes without a confirm step (only delete / undo ask); .2 (10-18): photos, video frames, voice
-# Read tools for everything the Today page shows + the everyday write tools. No ECG / raw heart data (get_cardio,
-# get_ecg_list: excluded by the consent below), no family data, no recipe editing.
-TOOL_NAMES = (
-    "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
-    "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_muscle_load", "get_exercise_rules",
-    "search_exercises", "get_exercise", "get_week_plan", "propose_plan", "save_plan", "swap_exercise",
-    "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
-    "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
-    "list_events", "list_journal_items", "get_journal", "get_memory",
-    "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
-    "add_observation", "update_profile_card",
-    "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
-    "add_custom_exercise",   # 「让 Jarvis 补进动作库」 on the muscle load map (#189)
-    "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
-    # The read tool behind every Today page card (issue #58; tests/test_fallback_coverage.py maps cards -> tools):
-    # computed metrics, the 饮食 page and 采购.
-    "get_healthspan", "get_stress", "get_health_monitor", "get_hr_zones", "get_vo2max", "get_report",
-    "get_sleep_details", "get_lab_history", "get_metric_snapshots", "analyze_journal",
-    "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
-    "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
-    "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
-    "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
-    "get_memory_review", "apply_memory_changes",                            # tidying the memory (playbook memory_review, #113)
-)
-# Behind the rollout flag ai_parity (ai/parity.py): the fallback gets every tool the other channels have for the user's own
-# data, except what its consent (CONSENT_POINTS: 「不发：心电图、逐拍心跳、家人的数据」) keeps from DeepSeek. Nothing else may
-# be left out (tests/test_ai_parity.py); a tool that ought to be is a consent question for the owner, not a whitelist edit.
-CONSENT_EXCLUDED = {
-    "get_cardio": "逐拍心跳",   # raw heart data (cardio/: recovery after workouts, nightly recovery index); out since the first consent
-    "get_ecg_list": "心电图",
-    "get_friends_overview": "家人的数据",   # circle members' shared data
-}
+TOOL_NAMES = fp.TOOL_NAMES                  # the whitelist and what the consent excludes: see fallback_params.py; registered
+CONSENT_EXCLUDED = fp.CONSENT_EXCLUDED      # as the views below in dl_app.py
+VIEW, PARITY_VIEW = "fallback", "fallback_parity"
 CONSENT_POINTS = [
     "托底 AI 是管理员提供的 DeepSeek（深度求索，中国公司），费用管理员出，每人每月 ¥{quota:g} 额度。",
     "你提问时会发给 DeepSeek：你的消息、称呼 / 年龄 / 性别 / 身高 / 时区、长期记忆（档案卡、观察笔记、状态卡），"
@@ -133,13 +105,8 @@ def is_fallback(p: dict | None) -> bool:
     return bool(p) and p.get("kind") == KIND
 
 
-def own_schema(schema: dict) -> dict:
-    """A tool's schema without the `user` parameter (only ever one's own data; the executor fills "me")."""
-    props = {k: v for k, v in (schema.get("properties") or {}).items() if k != "user"}
-    return {**schema, "properties": props, "required": [r for r in schema.get("required", []) if r != "user"]}
-
-
-_own_schema = own_schema   # old name
+own_schema = without_owner   # a tool's schema without the `user` parameter (old names)
+_own_schema = own_schema
 
 
 def parity_names() -> tuple:
@@ -151,9 +118,7 @@ def parity_names() -> tuple:
 def tools(extra: tuple = (), parity: bool = False) -> tuple:
     """The whitelist as own-data-only tools; `extra`: names added behind a rollout flag (ai/web.fallback_extra).
     parity (rollout flag ai_parity): parity_names() instead, `extra` is then already in it."""
-    names = parity_names() if parity else (*TOOL_NAMES, *(n for n in extra if n not in TOOL_NAMES))
-    return tuple(dataclasses.replace(ALL_TOOLS[n], input_schema=_own_schema(ALL_TOOLS[n].input_schema))
-                 for n in names if n in ALL_TOOLS)
+    return APP.view_tools(PARITY_VIEW) if parity else APP.view_tools(VIEW, extra)
 
 
 # ---------------------------------------------------------------- money

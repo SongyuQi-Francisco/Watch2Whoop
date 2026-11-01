@@ -1,4 +1,4 @@
-"""Shared JSON-schema pieces for the AI tools (assistant/tools.py and the */tools.py spec modules).
+"""Shared JSON-schema pieces for the AI tools (dl_app.py registers the */tools.py spec modules).
 
 The generic part (schema / nullable / relaxed / fill_defaults) lives in the datalayer framework (datalayer/spec.py,
 issue #116); this module keeps Watch2Whoop's wording and defaults and the old import path.
@@ -15,6 +15,10 @@ OPT_START = nullable("string", "YYYY-MM-DD，null=默认")
 OPT_END = nullable("string", "YYYY-MM-DD，null=今天")
 OPT_DAY = nullable("string", "YYYY-MM-DD，null=今天")
 DETAIL = {"type": "boolean", "description": "true=完整明细（大），默认 false 摘要"}
+
+
+def range_schema(**extra: dict) -> dict:
+    return schema({"user": USER, "start": START, "end": END, **extra})
 
 
 # ---------------------------------------------------------------- relaxed schema for MCP clients

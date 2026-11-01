@@ -198,3 +198,17 @@ def split(conn: psycopg.Connection, user_id: int, merge_id: int, client=None, lo
         writelog.record(conn, "merge", "split", merge_id, {"entry_id": row["entry_id"]}, {"entry_ids": restored})
     be.after_write(food=[row["date"]])
     return {"split": merge_id, "date": row["date"].isoformat(), "restored": len(restored), "merged_entry_gone": cur is None}
+
+
+def _remove_template(conn, user_id, row, client=None):
+    n = conn.execute("UPDATE meal_templates SET active = FALSE, updated_at = now() WHERE id = %s AND user_id = %s AND active",
+                     (int(row["target"]), user_id)).rowcount
+    return {"template_removed": int(row["target"]) if n else None}
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kinds this module writes, and how to put them back."""
+    # food entries merged into one: split them again
+    reg.rollback("merge", lambda conn, user_id, row, client=None: split(conn, user_id, int(row["target"]), client=client, log=False),
+                 only_action="merge")
+    reg.rollback("template", _remove_template, only_action="create")   # a template made from logged entries: remove it

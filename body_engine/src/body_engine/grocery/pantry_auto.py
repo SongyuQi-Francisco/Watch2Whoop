@@ -213,3 +213,13 @@ def briefing_lines(conn: psycopg.Connection, user_id: int) -> list[str]:
         when = f"已过期 {-n} 天" if n < 0 else "今天到期" if n == 0 else f"{n} 天后到期"
         out.append(f"{e['name']} {e['label']}：{when}（{e['best_before']}）")
     return out
+
+
+def _restore_row(conn, user_id, row, client=None):   # what a logged meal took from the pantry goes back; the food entry stays (issue #104)
+    back = restore(conn, user_id, row["target"])
+    return {"pantry_restored": back["restored"], **({"pantry_not_restored": back["not_restored"]} if back["not_restored"] else {})}
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kind this module writes, and how to put it back."""
+    reg.rollback("pantry", _restore_row)

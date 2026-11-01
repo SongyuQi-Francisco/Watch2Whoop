@@ -6,9 +6,10 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 from .. import sparky_client
+from ..datalayer.spec import Tool
 from ..toolspec import DETAIL
+from ..toolspec import range_schema as _range_schema
 from ..weightlog import store as weight_store
-from .tools import Tool, _range_schema
 
 MAX_DAYS = 366
 

@@ -15,11 +15,14 @@ class Tool:
     name: str
     description: str
     input_schema: dict
-    handler: Callable[[Any, int, dict], Any]  # (conn, owner_id, args) -> result
+    handler: Callable[..., Any]  # (ctx, args) -> result, ctx = execute.ToolContext; legacy=True: (conn, owner_id, args)
     scope: str            # data scope needed when viewing someone else's data ("" = no other person's data)
     writes: bool = False  # write operations: read-only callers do not see them, MCP clients ask before running them
     group: str = ""       # domain group: which tools are sent on each call, the rest via find_tools (datalayer/toolsets.py)
     strict: bool = True   # Claude strict tools; only the meta tools with a free-form `args` object are not strict
+    confirm: bool = False     # the user always confirms first (deleting / undoing): a write tool, in MCP tools/list and called by its own name
+    confirm_label: str = ""   # optional: what a confirmation card says when the description's language is not the reader's
+    legacy: bool = False      # the handler has the old signature; viewer and channel come in args as _viewer_id / _channel (execute.invoke)
 
     def api_definition(self) -> dict:
         return {"name": self.name, "description": self.description,

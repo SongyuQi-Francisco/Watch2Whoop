@@ -213,3 +213,8 @@ def rollback(conn, user_id: int, action: str, before, after) -> dict:
         out = {"restored": len(before)}
     status.sync_labs(conn, user_id)
     return out
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kind this module writes, and how to put it back."""
+    reg.rollback("lab", lambda conn, user_id, row, client=None: rollback(conn, user_id, row["action"], row["before"], row["after"]))

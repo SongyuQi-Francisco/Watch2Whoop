@@ -93,6 +93,9 @@ SparkyFitness, Grafana) are used as separate, unmodified services; changes to Op
   iOS app: `cd apps/watch2whoop && flutter test`.
 - Client apps (iOS, Android, HarmonyOS): platform plan, the contract every client implements, directory layout and
   app versioning / release tags in [docs/apps.md](docs/apps.md). App changes add a line to the app's `CHANGELOG.md`.
+- New AI tools always go through the registration interface: a spec in the feature's own module, registered in
+  `body_engine/src/body_engine/dl_app.py`, handler `(ctx, args)`, `confirm=True` if it deletes or undoes
+  ([docs/datalayer-design.md](docs/datalayer-design.md) section 3.2). 新的 AI 工具一律通过注册接口（`dl_app.py`）接入。
 - Conventions (multi-user, idempotent importers, English comments, UI text through `tr()` in both languages): see [CLAUDE.md](CLAUDE.md)
   and [`body_engine/README.md`](body_engine/README.md).
 - Never commit `secrets/`, `health_data/`, database files or `.env`.
