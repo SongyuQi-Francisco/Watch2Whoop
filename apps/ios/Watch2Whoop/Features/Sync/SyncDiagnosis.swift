@@ -19,6 +19,7 @@ struct SyncDiagnosis: Equatable {
     case resync               // re-upload the last 7 days (a type still behind right after a sync)
     case fillHistory          // the history backfill (a type older than what the sync reads)
     case backgroundHelp       // the steps to turn Background App Refresh on (the person does it in iOS Settings)
+    case sleepFocusHelp       // the steps to turn on sleep tracking / Sleep Focus for wrist temperature (FB-18; iOS has no link to it)
   }
 
   struct Issue: Equatable, Identifiable {
@@ -39,6 +40,7 @@ struct SyncDiagnosis: Equatable {
       case .resync: return tr("重新同步", "Re-sync")
       case .fillHistory: return tr("补全历史", "Fill in history")
       case .backgroundHelp: return tr("怎么打开", "How to")
+      case .sleepFocusHelp: return tr("怎么开", "How to turn on")
       case nil: return nil
       }
     }

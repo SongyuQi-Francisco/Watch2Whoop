@@ -187,6 +187,34 @@ final class FoodModelTests: XCTestCase {
     XCTAssertNotNil(l.items[0].pending)
   }
 
+  /// FB-19: the whole list as plain text for the supermarket, grouped by category, with quantity and note; items already
+  /// bought (a tick still in the queue counts) are left out and the title says how many are left.
+  func testGroceryExportTextIsGroupedByCategoryAndSkipsBought() throws {
+    let g = json("""
+    {"week_start": "2026-01-05", "items": [
+     {"id": 1, "name": "Chicken", "qty_label": "2 pk · 1 kg", "category_label": "Meat", "note": "skinless", "bought": false},
+     {"id": 2, "name": "Oats", "qty_label": "1 pk · 500 g", "category_label": "Grains", "bought": true},
+     {"id": 3, "name": "Beef", "category_label": "Meat", "bought": false},
+     {"id": 4, "name": "Rice", "qty_label": "1 pk · 2 kg", "category_label": "Grains", "bought": false}]}
+    """)
+    let l = try XCTUnwrap(GroceryList.build(g, pending: []))
+    let want = [tr("采购清单（2026-01-05 起这一周）· 还差 3 项", "Shopping list (week of 2026-01-05) · 3 left"), "",
+                tr("【Meat】", "[Meat]"), "□ Chicken — 2 pk · 1 kg (skinless)", "□ Beef", "",
+                tr("【Grains】", "[Grains]"), "□ Rice — 1 pk · 2 kg"].joined(separator: "\n")
+    XCTAssertEqual(l.exportText(), want)
+    XCTAssertEqual(l.exportTitle, l.exportText().components(separatedBy: "\n")[0])
+    XCTAssertFalse(l.exportText().contains("Oats"))
+    // a tick still in the queue is bought as far as the list is concerned
+    let ticked = try XCTUnwrap(GroceryList.build(g, pending: [rec(FoodKind.grocery, ["id": 1, "bought": true], date: "")]))
+    XCTAssertFalse(ticked.exportText().contains("Chicken"))
+    XCTAssertEqual(ticked.toBuy.count, 2)
+    // nothing left to buy: nothing to export (the page hides the buttons)
+    let none = GroceryList(week: nil, items: l.items.map { i -> GroceryList.Item in var j = i; j.bought = true; return j })
+    XCTAssertEqual(none.exportText(), "")
+    // without a week the title has no week
+    XCTAssertEqual(GroceryList(week: nil, items: l.items).exportTitle, tr("采购清单 · 还差 3 项", "Shopping list · 3 left"))
+  }
+
   func testMealSlots() {
     XCTAssertEqual(MealSlot("snacks"), .snack)
     XCTAssertEqual(MealSlot.snack.logName, "snacks")

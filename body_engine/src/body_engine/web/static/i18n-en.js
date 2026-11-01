@@ -40,6 +40,7 @@ I18N.addEn({
   "恢复分 {v}": "Recovery {v}",
   "恢复": "Recovery",
   "无睡眠": "No sleep",
+  "手表没记录": "Not recorded",
   "无 HRV": "No HRV",
   "基线不足": "No baseline",
   "无心率": "No HR",

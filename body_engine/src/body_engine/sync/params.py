@@ -77,13 +77,16 @@ EXTRA_STALE_AFTER_DAYS: dict[str, int | None] = {
 # - OVERNIGHT_KINDS: recorded mostly or only while the watch is worn in bed with sleep tracking on (Apple's sampling,
 #   STALE_AFTER_DAYS above): "not recorded" says "wear the watch to sleep" for them, "wear the watch" for the others.
 # - RECORD_ACTION: the one thing that makes a type appear at all (needs a scale, an outdoor walk, the ECG app, a drink
-#   logged in Health, a workout).
+#   logged in Health, a workout). Sleeping wrist temperature is `sleep_focus` (FB-18): Apple Watch writes it only on nights
+#   it is worn in bed with a sleep schedule / Sleep Focus and "Track Sleep with Apple Watch" on, and only after about 5 such
+#   nights (Apple's documented behaviour), so wearing the watch to bed is not enough. The clients show steps, not a link
+#   (iOS has no URL scheme for Focus settings); a client that does not know the code shows its generic "nothing new" text.
 DELIVERY_FRESH = timedelta(hours=6)   # the same as SYNC_LAG_AFTER (below)
 ALARM_REASONS = ("not_delivered", "no_permission")
 OVERNIGHT_KINDS = ("hrv", "sleep", "blood_oxygen", "respiratory_rate", "wrist_temperature", "heartbeats")
 RECORD_ACTION = {"weight": "use_scale", "vo2max": "outdoor_workout", "ecg": "record_ecg", "water": "log_in_health",
                  "workouts": "log_workout", "headphone_audio": "wear_headphones", "stair_speed": "wear_watch",
-                 "walking_steadiness": "wear_watch"}
+                 "walking_steadiness": "wear_watch", "wrist_temperature": "sleep_focus"}
 
 RESYNC_MAX_DAYS = 3650                          # custom range: 1–3650 days (null = all history)
 RESYNC_MIN_INTERVAL = timedelta(minutes=10)     # between accepted requests of one user

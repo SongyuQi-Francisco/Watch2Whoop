@@ -189,7 +189,7 @@ final class SyncCenterTests: XCTestCase {
     let status = ServerDataStatus(["types": [
       ["key": "heart_rate", "label": "心率", "status": "ok"],
       ["key": "weight", "label": "体重", "status": "stale", "reason": "not_recorded", "action": "use_scale", "alarm": false],
-      ["key": "wrist_temperature", "label": "手腕温度", "status": "stale", "reason": "not_recorded", "action": "wear_watch_sleep"],
+      ["key": "wrist_temperature", "label": "手腕温度", "status": "stale", "reason": "not_recorded", "action": "sleep_focus"],
       ["key": "ecg", "label": "心电图", "status": "never", "reason": "on_demand", "action": "record_ecg"],
       ["key": "vo2max", "label": "VO₂max", "status": "never", "reason": "unsupported"],
     ], "delivery": ["state": "ok", "action": "enable_background_refresh"]])
@@ -205,7 +205,12 @@ final class SyncCenterTests: XCTestCase {
     XCTAssertTrue(r.synced)
     XCTAssertTrue(r.problems.isEmpty)
     XCTAssertEqual(r.quiet.map(\.id), ["weight", "wrist_temperature", "ecg"])
-    XCTAssertEqual(r.quiet.map(\.hint), ["use_scale", "wear_watch_sleep", "record_ecg"])
+    XCTAssertEqual(r.quiet.map(\.hint), ["use_scale", "sleep_focus", "record_ecg"])
+    // wrist temperature (FB-18): the watch writes it only in bed with sleep tracking / Sleep Focus on, so its row has the steps
+    XCTAssertEqual(r.quiet.map(\.action), [nil, .sleepFocusHelp, nil])
+    XCTAssertEqual(SyncDiagnosis.Issue(id: "", text: "", action: .sleepFocusHelp).actionTitle, tr("怎么开", "How to turn on"))
+    XCTAssertEqual(SyncResult.hintLabel("sleep_focus"), tr("要开睡眠专注", "Needs Sleep Focus"))
+    XCTAssertEqual(SyncResult.sleepFocusSteps.count, 4)
     XCTAssertEqual(r.warnings.map(\.reason), [.locked, .backgroundOff])
     XCTAssertEqual(r.warnings.last?.action, .backgroundHelp)
     // the headline agrees: 已同步, never next to a type that is not
@@ -254,6 +259,23 @@ final class SyncCenterTests: XCTestCase {
     XCTAssertEqual(SyncDiagnosis.of(d, now: now).headline, tr("3 项没同步", "3 not synced"))
     XCTAssertFalse(SyncResult.reasonLabel(r.problems[1]).isEmpty)
     XCTAssertEqual(SyncResult.backgroundSteps.count, 4)
+  }
+
+  /// A server may send an action code this app does not know yet: the row stays a quiet "nothing new" one, with the generic
+  /// label and no button (the hint codes are only labels).
+  func testUnknownActionCodeDegradesToTheGenericLabel() {
+    let now = Date(timeIntervalSince1970: 1_793_400_000)
+    var i = SyncResult.Input()
+    i.status = ServerDataStatus(["types": [
+      ["key": "wrist_temperature", "label": "手腕温度", "status": "stale", "reason": "not_recorded", "action": "some_future_action"],
+    ]])
+    i.lastOk = now.addingTimeInterval(-60)
+    i.now = now
+    let r = SyncResult.of(i)
+    XCTAssertTrue(r.synced)
+    XCTAssertEqual(r.quiet.map(\.hint), ["some_future_action"])
+    XCTAssertEqual(r.quiet.map(\.action), [nil])
+    XCTAssertEqual(SyncResult.hintLabel("some_future_action"), tr("手机上没有新记录", "Nothing new on the phone"))
   }
 
   // MARK: - RawSync pass

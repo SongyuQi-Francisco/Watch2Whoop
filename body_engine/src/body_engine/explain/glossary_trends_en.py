@@ -21,10 +21,15 @@ TREND_METRICS_EN: dict[str, dict] = {
     "wrist_temp": {
         "title": "Wrist temperature deviation",
         "what": "The difference between your wrist skin temperature during sleep and your own average of the previous 60 days. "
-                "It shows change only; it is not body temperature. Apple Watch needs a few nights of wear before it has data.",
+                "It shows change only; it is not body temperature. Apple Watch needs a few nights of wear before it has data. "
+                "The watch records it only on nights you wear it to bed with a sleep schedule / Sleep Focus set up and "
+                "\"Track Sleep with Apple Watch\" on, and values appear after about 5 such nights; a night without the watch on, "
+                "or without these settings, has no reading. That is the watch not recording, not a lost sync.",
         "read": [("Within ±0.5 °C", "Normal"), ("0.5–1 °C higher", "High"), ("> 1 °C higher", "Clearly high")],
         "recovery": "A rise is common around a fever, after alcohol, a late big meal, going to bed straight after the sauna, or a hot bedroom.",
-        "tips": ["Wait at least 1–2 hours after the sauna before bed", "Keep the bedroom around 18–20 °C"],
+        "tips": ["Wait at least 1–2 hours after the sauna before bed", "Keep the bedroom around 18–20 °C",
+                 "Often no reading: on the iPhone open Health → Browse → Sleep → Sleep Schedule / Options, turn on "
+                 "\"Track Sleep with Apple Watch\" and Sleep Focus, and charge the watch before bed and wear it to sleep"],
     },
     "illness": {
         "title": "Illness risk",

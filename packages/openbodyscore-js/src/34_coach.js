@@ -19,7 +19,7 @@ Thresholds with their sources are in the Python files named above; the copies he
 OBS.coach = (function (U, T, SL, SP, HS, HSS, SER) {
   "use strict";
   // insights/coach.COACH_VERSION: this module's version + the body-age algorithm it runs
-  var COACH_VERSION = "coach-1+" + HSS.CURRENT.ALGO_VERSION;
+  var COACH_VERSION = "coach-2+" + HSS.CURRENT.ALGO_VERSION;
 
   function nn(v) { return v !== null && v !== undefined; }
   function g(o, k) { var v = o ? o[k] : undefined; return v === undefined ? null : v; }
@@ -59,8 +59,20 @@ OBS.coach = (function (U, T, SL, SP, HS, HSS, SER) {
     MONITOR_EN: { rhr: ["Resting HR (lowest during sleep)", "bpm"], hrv: ["HRV (SDNN, night)", "ms"],
       resp_rate: ["Respiratory rate (night)", "/min"], spo2: ["Blood oxygen (night median)", "%"],
       wrist_temp: ["Wrist temperature (night)", "°C"] },
-    RHR_APPLE_LABEL: ["静息心率（Apple 全天，最近一晚没有睡眠期原始心率）", "Resting HR (Apple, all day; no raw sleep HR last night)"]
+    RHR_APPLE_LABEL: ["静息心率（Apple 全天，最近一晚没有睡眠期原始心率）", "Resting HR (Apple, all day; no raw sleep HR last night)"],
+    MONITOR_MISSING: ["最近一晚没有这项读数", "No reading last night"],
+    MONITOR_MISSING_KEY: { wrist_temp: ["手表这晚没记录（要戴表睡觉、开睡眠专注）",
+      "The watch did not record it (wear it to bed with Sleep Focus on)"] },
+    MONITOR_MISSING_BASELINE: ["前 {days} 天只有 {n} 晚（要 ≥ {need}）", "Only {n} nights in the last {days} days (need ≥ {need})"]
   };
+
+  /** insights/coach.monitor_missing_reason: the short reason a vital has no status. */
+  function monitor_missing_reason(key, no_reading, nights) {
+    var i = OBS.lang === "en" ? 1 : 0;
+    if (no_reading) return (CP.MONITOR_MISSING_KEY[key] || CP.MONITOR_MISSING)[i];
+    return CP.MONITOR_MISSING_BASELINE[i].replace("{days}", String(CP.MONITOR_DAYS)).replace("{n}", String(nights))
+      .replace("{need}", String(CP.MONITOR_MIN_NIGHTS));
+  }
 
   function strain_coach_compute(today, yday, d) {
     var illness = !!(today && today.flags && Object.prototype.hasOwnProperty.call(today.flags, "illness_warning"));
@@ -181,8 +193,7 @@ OBS.coach = (function (U, T, SL, SP, HS, HSS, SER) {
         date: latest && cur !== null ? latest.date : null,
         low: rng === null ? null : U.round(rng[0], 2), high: rng === null ? null : U.round(rng[1], 2),
         baseline: rng === null ? null : U.round(rng[2], 2), baseline_nights: hist.length, status: status,
-        missing_reason: rng !== null && cur !== null ? null : cur === null ? "最近一晚没有这项读数"
-          : "前 " + CP.MONITOR_DAYS + " 天只有 " + hist.length + " 晚（要 ≥ " + CP.MONITOR_MIN_NIGHTS + "）" };
+        missing_reason: rng !== null && cur !== null ? null : monitor_missing_reason(key, cur === null, hist.length) };
     });
     var out_of_range = metrics.filter(function (m) { return m.status === "low" || m.status === "high"; }).map(function (m) { return m.key; });
     return { date: latest ? latest.date : null, metrics: metrics, out_of_range: out_of_range,

@@ -185,13 +185,38 @@ struct RecipeSheet: View {
 /// 饮食 → 采购: this week's shopping list by category; tap a line to tick it (last tick wins, queued offline).
 struct GroceryView: View {
   @ObservedObject var store: FoodStore
+  @Binding var toast: Toast?
+
+  /// 复制 / 分享 (FB-19): the whole list as plain text, grouped by category, for the supermarket. The system share sheet also
+  /// has Copy; the copy button here copies at once and says so.
+  @ViewBuilder private func exportButtons(_ g: GroceryList) -> some View {
+    let text = g.exportText()
+    if !text.isEmpty {
+      Button { copy(text, count: g.toBuy.count) } label: {
+        Icon(.copy, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
+      }
+      .buttonStyle(PressScale())
+      .accessibilityLabel(tr("复制清单", "Copy list"))
+      ShareLink(item: text, subject: Text(g.exportTitle)) {
+        Icon(.share, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
+      }
+      .accessibilityLabel(tr("分享清单", "Share list"))
+    }
+  }
+
+  private func copy(_ text: String, count: Int) {
+    UIPasteboard.general.string = text
+    UINotificationFeedbackGenerator().notificationOccurred(.success)
+    toast = Toast(tr("已复制 · \(count) 项", "Copied · \(count) items"))
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
       if let g = store.grocery, !g.items.isEmpty {
-        HStack {
+        HStack(spacing: 4) {
           SectionHeader(title: tr("本周采购", "This week's list"))
           Text("\(g.bought)/\(g.items.count)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
+          exportButtons(g)
         }
         ProgressBar(fraction: Double(g.bought) / Double(max(1, g.items.count)))
         ForEach(g.byCategory(), id: \.0) { cat, items in

@@ -25,7 +25,8 @@ up to date while weight / wrist temperature / water showed as stale):
 - reason not_delivered: nothing came through the phone's sync for DELIVERY_FRESH; action from the phone's last report:
   enable_background_refresh / unlock_phone / sign_in / check_network / open_app;
 - reason not_recorded: the sync delivered, the phone had nothing newer; action what makes it appear: wear_watch,
-  wear_watch_sleep, use_scale, outdoor_workout, log_in_health, log_workout, wear_headphones;
+  wear_watch_sleep, sleep_focus (sleeping wrist temperature: the watch must be worn in bed with a sleep schedule / Sleep Focus
+  and sleep tracking on, FB-18), use_scale, outdoor_workout, log_in_health, log_workout, wear_headphones;
 - reason no_permission: never anything of a type a worn watch records daily while other data arrives; action authorize;
 - reason on_demand (ECG: action record_ecg), logged_elsewhere (water logged in the app, not in Health), unsupported
   (the sync cannot read it), flag_off;
@@ -50,7 +51,7 @@ from . import params
 STATUSES = ("ok", "stale", "never")
 REASONS = ("not_delivered", "not_recorded", "no_permission", "on_demand", "logged_elsewhere", "unsupported", "flag_off")
 ACTIONS = ("enable_background_refresh", "unlock_phone", "sign_in", "check_network", "open_app", "authorize", "wear_watch",
-           "wear_watch_sleep", "use_scale", "outdoor_workout", "record_ecg", "log_in_health", "log_workout",
+           "wear_watch_sleep", "sleep_focus", "use_scale", "outdoor_workout", "record_ecg", "log_in_health", "log_workout",
            "wear_headphones")
 DELIVERY = ("ok", "behind", "never")
 

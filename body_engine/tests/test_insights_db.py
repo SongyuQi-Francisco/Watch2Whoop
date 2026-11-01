@@ -11,7 +11,7 @@ from psycopg.rows import dict_row
 from body_engine import auth
 from body_engine.config import settings
 from body_engine.db import migrate
-from body_engine.insights import jobs, views
+from body_engine.insights import coach, jobs, views
 from body_engine.scores import engine
 from test_scores import SYD, make_inputs
 from test_scores_db import FakeOW, seed
@@ -122,7 +122,8 @@ def test_coaches_monitor_and_details(conn, person):
     hm = views.health_monitor(conn, uid, d)
     rhr = next(m for m in hm["metrics"] if m["key"] == "rhr")
     assert rhr["status"] == "in_range" and rhr["low"] < rhr["value"] < rhr["high"]
-    assert next(m for m in hm["metrics"] if m["key"] == "wrist_temp")["missing_reason"]
+    wrist = next(m for m in hm["metrics"] if m["key"] == "wrist_temp")["missing_reason"]
+    assert wrist == coach.MONITOR_MISSING_KEY["wrist_temp"][0]   # the watch did not write it (FB-18), not a generic "no reading"
     det = views.sleep_details(conn, uid, d - timedelta(days=6), d)
     assert det["consistency_pct_7d"] == 100 and len(det["nights"]) == 7 and det["nights"][0]["awakenings"] == 1
     z = views.hr_zones(conn, uid, d, d)

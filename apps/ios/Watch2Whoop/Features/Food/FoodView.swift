@@ -75,7 +75,7 @@ struct FoodContent: View {
     VStack(alignment: .leading, spacing: 22) {
       SegmentedControl(items: [(Mode.diet, tr("饮食", "Food")), (.shopping, tr("采购", "Shopping"))], selection: $mode)
       RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.nutrition == nil)
-      if mode == .diet { diet } else { GroceryView(store: store) }
+      if mode == .diet { diet } else { GroceryView(store: store, toast: $toast) }
     }
   }
 
