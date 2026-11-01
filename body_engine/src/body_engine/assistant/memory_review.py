@@ -14,6 +14,10 @@ behind the briefing reminder and the nightly check. Entry fields and the archive
   weight, injuries). What the data contradicts comes back as `data_mismatch` with the claim and the data, for the AI to put to the
   user (nothing is changed by itself); what it backs is confirmed by the nightly run (confirmed_at, confirm_count). Lasting notes
   confirmed several times, or old and still current, come back as `promote` (merge into the profile card item of their topic).
+- Status card (owner only): the items the AI or the user wrote (not the auto ones, not those that read the lab table) come back as
+  `status_card` when the records contradict them (an injury item against the body events, the phase against the weight trend) or
+  nobody rewrote them for longer than their group's memory_params.STATUS_STALE_DAYS. Flagged only: the AI puts it to the user and
+  answers with set_status_items (written again unchanged = confirmed, as updated_at restarts).
 - memory-review-run (nightly, every user the flag memory_hygiene is on for) confirms what the data backs, refreshes
   memory_review_state and purges; the briefing reads that state (reminder_line).
 Authorization is the caller's job: everything here works on the caller's own user_id only.
@@ -26,7 +30,7 @@ import psycopg
 
 from .. import queries
 from ..rollout import flags
-from . import memory, memory_datacheck, memory_params as mp, writelog
+from . import memory, memory_datacheck, memory_params as mp, status, writelog
 
 REF_RE = re.compile(r"^(?:n(\d+)|k:([a-z][a-z0-9_]*))$")
 ACTIONS = ("merge", "update", "archive", "confirm", "promote", "restore")
@@ -35,6 +39,7 @@ RULES = (
     "origin 是 user_said 或空的条目、以及健康约束 / 伤病：改、归档、并入前要用户明确同意，才能写 user_ok=true",
     "exact=true 的重复可以直接合并（留 keep）；其余先问用户，一次最多 5 条",
     "data_mismatch 是和记录对不上的：问用户哪个对（记录 / 记忆），不要自己改；promote 先问用户，并入后写这一项的完整内容",
+    "status_card 是状态卡里对不上记录或太久没更新的项：问用户；还准就 set_status_items 原样重写一次，变了就改，不适用就 remove_keys",
     "归档不删除，用户能在「我 → 长期记忆」恢复，90 天后清理；写错了 rollback_write",
     "结束时一定调 apply_memory_changes（没有要改的就空 items），记下这次整理",
 )
@@ -140,21 +145,47 @@ def _promotions(notes: list[dict], cards: list[dict], skip: set[str]) -> list[di
     return sorted(out, key=lambda x: (-x["confirms"], -x["age"], x["ref"]))
 
 
+def _status_candidates(conn, user_id: int, today) -> list[dict]:
+    """Status card items to put to the user, mismatches first (check, key), then the stalest (days over the limit). The items the AI or
+    the user wrote; left out are the auto ones (the backend recomputes them) and those whose key is a lab test_key with a reading
+    (list_status shows the lab table's latest value: lab_key). An item written less than STATUS_SNOOZE_DAYS ago is not judged against the
+    records, someone has just looked at it. An item is listed once (a mismatch is not also listed as stale). Nothing is changed here."""
+    now = datetime.now(timezone.utc)
+    own = [i for i in status.list_status(conn, user_id)
+           if i["source"] != "auto" and i["key"] not in status.AUTO_KEYS and not i.get("lab_key")]
+    age = {i["key"]: max(0, (now - i["updated_at"]).days) for i in own}
+    verdicts = memory_datacheck.check_status(conn, user_id, [i for i in own if age[i["key"]] >= mp.STATUS_SNOOZE_DAYS], today)
+    mismatch, stale = [], []
+    for i in own:
+        shown = {"key": i["key"], "label": i["label"], "value": f"{i['value']}{i['unit'] or ''}"}
+        if v := verdicts.get(i["key"]):
+            mismatch.append({**shown, "why": "mismatch", "check": v["kind"], "claim": v["claim"], "data": v["data"]})
+            continue
+        limit = mp.STATUS_STALE_DAYS.get(i["group"], mp.STATUS_STALE_DEFAULT_DAYS)
+        if age[i["key"]] > limit:
+            stale.append({**shown, "why": "stale", "days": age[i["key"]], "limit": limit})
+    mismatch.sort(key=lambda x: (x["check"], x["key"]))
+    stale.sort(key=lambda x: (-x["days"] / x["limit"], x["key"]))
+    return mismatch + stale
+
+
 def candidates(conn: psycopg.Connection, user_id: int, today=None, with_data: bool = False) -> dict:
     """What a review looks at: duplicates, stale entries, topics with several entries (possible contradictions) and the memory's
     size. `count` is every candidate before the per-group cap (what the nightly check stores).
     with_data (the owner only, never through a share: it quotes weight, training, supplements, injuries) adds `data_mismatch`
-    (claims the records contradict, memory_datacheck) and `promote` (notes to merge into their profile card item)."""
+    (claims the records contradict, memory_datacheck), `promote` (notes to merge into their profile card item) and `status_card`
+    (status card items the records contradict or nobody rewrote for long)."""
     today = today or queries.local_today(conn, user_id)
     m = memory.get_memory(conn, user_id, today=today)
     notes, cards = m["observations"], [c for c in m["profile_card"] if not _managed(c["key"])]
     dups = _duplicates(notes)
     in_dup = {int(n["ref"][1:]) for g in dups for n in g["notes"]}
-    mismatch, promote = [], []
+    mismatch, promote, card_status = [], [], []
     if with_data:
         skip = {_ref("note", i) for i in in_dup}
         mismatch = _data_mismatches(_data_verdicts(conn, user_id, notes, cards, skip, today))
         promote = _promotions(notes, cards, skip | {x["ref"] for x in mismatch})
+        card_status = _status_candidates(conn, user_id, today)
     flagged = {x["ref"] for x in mismatch}      # listed as a mismatch: not listed again as stale
     stale = []
     for kind, es in (("note", [n for n in notes if n["id"] not in in_dup]), ("card", cards)):
@@ -173,13 +204,14 @@ def candidates(conn: psycopg.Connection, user_id: int, today=None, with_data: bo
     facts = [n for n in notes if n["kind"] != "recent"]
     size = {"notes": len(facts), "limit": mp.PROMPT_FACTS_MAX, "card_items": len(cards),
             "near_full": len(facts) >= mp.NEAR_FULL_RATIO * mp.PROMPT_FACTS_MAX}
-    out = {"count": len(dups) + len(stale) + len(mismatch) + len(promote), "size": size,
+    out = {"count": len(dups) + len(stale) + len(mismatch) + len(promote) + len(card_status), "size": size,
            "duplicates": dups[:mp.REVIEW_MAX_PER_GROUP],
            "stale": [{k: v for k, v in s.items() if k != "_over"} for s in stale[:mp.REVIEW_MAX_PER_GROUP]],
            "same_topic": [{"topic": t, "entries": es[:mp.REVIEW_PER_TOPIC_MAX]} for t, es in topics[:mp.REVIEW_TOPICS_MAX]],
            "expired_recent": m["expired_recent"]}
     if with_data:
-        out |= {"data_mismatch": mismatch[:mp.DATA_MAX], "promote": promote[:mp.PROMOTE_MAX]}
+        out |= {"data_mismatch": mismatch[:mp.DATA_MAX], "promote": promote[:mp.PROMOTE_MAX],
+                "status_card": card_status[:mp.STATUS_MAX]}
     return out
 
 

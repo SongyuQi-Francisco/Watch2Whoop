@@ -15,6 +15,10 @@
 - Viewing someone else's cards (shares scope memory, issue #111): an auto item is computed from another kind of data, so it
   also needs that data's own scope (AUTO_SCOPE; lab-linked items need labs). list_status(viewer_id=...) leaves the
   others out; the butler's own items are memory only.
+- Review (memory_review.py, issue #113, the owner's own AI only): get_memory_review flags the items the AI or the user wrote
+  (not the auto ones, not the lab-linked ones) when the records contradict them or updated_at is older than their group's
+  memory_params.STATUS_STALE_DAYS. Nothing is changed by it: writing an item again with set_status_items (updated_at restarts)
+  is how it is confirmed.
 """
 import json
 import re
