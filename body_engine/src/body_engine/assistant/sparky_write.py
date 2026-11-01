@@ -974,3 +974,11 @@ def backend(conn, user_id: int, client=None):
         from ..ownstore.write import OwnBackend
         return OwnBackend(conn, user_id)
     return SparkyBackend(conn, user_id, sparky_client.write_client_for_user(conn, user_id))
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kinds this module writes, and how to put them back."""
+    def _rollback_row(conn, user_id, row, client=None):
+        return rollback(conn, user_id, row["kind"], row["action"], row["before"], row["after"], client=client)
+    for kind in ("food", "session", "sets", "weight"):
+        reg.rollback(kind, _rollback_row)

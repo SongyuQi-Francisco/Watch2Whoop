@@ -1,4 +1,4 @@
-"""AI tool for water (registered by assistant/tools.py). One short write tool to stay inside the tool-definition budget
+"""AI tool for water (registered by dl_app.py). One short write tool to stay inside the tool-definition budget
 (tests/test_briefing.py); the AI reads today's total from get_briefing (section water). Undo: rollback_write (kind water)."""
 from ..assistant import writelog
 from ..rollout import flags

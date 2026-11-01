@@ -5,25 +5,20 @@ Only the resident core (ai/params.CORE_TOOLS) and, in the in-page chat, the grou
 with each model call; the rest is reached through the meta tools find_tools / run_read_tool / run_write_tool. The caller
 (mcp_server.call_tool, ai/chat._loop) resolves a meta call to the real tool with `resolve`, then runs that tool through
 assistant.tools.run_tool as if it had been called directly. A "context" in the framework is a Today page id here.
-The configuration is read from ai/params on every call, so it stays the single place to change it.
+The configuration is read from ai/params on every call, so it stays the single place to change it; the tools that ask
+first come from the registry (confirm=True on their definitions, dl_app.py).
 """
 from typing import Iterable
 
 from ..ai import params
-from ..ai.datalayer_texts import MESSAGES
 from ..datalayer import toolsets as _ts
 from ..datalayer.toolsets import FIND, RUN_NAMES, RUN_READ, RUN_WRITE, Access  # noqa: F401  (old import path)
+from ..dl_app import APP, META_TOOLS  # noqa: F401  (META_TOOLS: old import path)
 from ..toolspec import OPTIONAL_DEFAULTS
 from .tools import TOOLS, Tool
 
-META_TOOLS: list[Tool] = _ts.meta_tools(params.GROUPS, MESSAGES)
 META_BY_NAME = {t.name: t for t in META_TOOLS}
-
-
-def _cfg() -> _ts.ToolsetConfig:
-    return _ts.ToolsetConfig(core=params.CORE_TOOLS, groups=params.GROUPS, contexts=params.PAGE_GROUPS,
-                             confirm=params.ALWAYS_CONFIRM, meta=META_TOOLS, find_max=params.FIND_TOOLS_MAX,
-                             messages=MESSAGES, optional_defaults=OPTIONAL_DEFAULTS)
+_cfg = APP.toolset
 
 
 def budgets() -> _ts.Budgets:

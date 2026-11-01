@@ -1,4 +1,4 @@
-"""AI assistant tool specs for training history and Training V2 (wrapped into Tool and registered by assistant/tools.py):
+"""AI assistant tool specs for training history and Training V2 (registered by dl_app.py):
 read the calendar / a day, correct or hide a watch workout (overrides.py), exercise catalog, weekly splits, plan management, exercise swap, day changes (day_overrides.py),
 the muscle load map and the user's own custom exercises (custom.py, rollout flag muscle_load)."""
 from datetime import date, datetime, timedelta
@@ -241,6 +241,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"exercise": {"type": "string"}}),
         handler=_delete_custom_exercise,
         group="training", scope="training", writes=True,
+        confirm=True, confirm_label="Delete one of your own exercises",
     ),
     dict(
         name="get_exercise",
@@ -323,6 +324,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"workout_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: overrides.hide_workout(conn, uid, a["workout_id"]),
         group="training", scope="training", writes=True,
+        confirm=True, confirm_label="Hide a duplicate / wrong workout",
     ),
 ]
 
@@ -382,5 +384,6 @@ TOOL_SPECS += [
         handler=_undo_day_changes,
         group="training", scope="training",
         writes=True,
+        confirm=True, confirm_label="Undo day changes to the training plan",
     ),
 ]

@@ -1,6 +1,6 @@
 """Body Engine's MCP server: lets users read and write their own data from their own AI client (with their own subscription).
 
-Two transports, the same tools (assistant/tools.py, the same copy the in-Today-page chat uses), the same authorization and audit:
+Two transports, the same tools (dl_app.py, the same copy the in-Today-page chat uses), the same authorization and audit:
 - stdio (main in this file): local Claude Code / Claude desktop / body butler. Identity = one Body Engine token
   (default secrets/body_engine_token_owner), audit channel = BODY_MCP_CHANNEL (default mcp, the body butler uses butler).
 - Streamable HTTP (ai/mcp_http.py, mounted at /mcp): each user connects with their own AI-only token (scope mcp),

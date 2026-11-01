@@ -1,6 +1,6 @@
 """Tools added by the body butler (P1): write the food / workout / weight logs (SparkyFitness, or Body Engine's own tables
 with own_food_only, issue #252; undo), screenshot metrics, long-term memory.
-Only specs (dicts) are given here; assistant/tools.py wraps them into registered Tools. Format follows the Claude API strict tools:
+Only specs (dicts) are given here; dl_app.py registers them. Format follows the Claude API strict tools:
 every property is in `required`, optional ones use null. Write tools (writes=True) have no user parameter and can only write for the caller.
 Lab result writing (add_lab_results) lives in records/tools.py."""
 from datetime import date
@@ -250,6 +250,7 @@ TOOL_SPECS: list[dict] = [
         handler=lambda conn, uid, a: sparky_write.undo_entry(conn, uid, a["kind"], a["date"], a["id"],
                                                              meal=a["meal"], food=a["food"], time=a["time"]),
         group="training", scope="training", writes=True,
+        confirm=True, confirm_label="Delete a food entry / strength workout / set / weigh-in",
     ),
     dict(
         name="update_food_entry",
@@ -294,6 +295,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"log_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: writelog.rollback(conn, uid, a["log_id"]),
         group="memory", scope="memory", writes=True,
+        confirm=True, confirm_label="Roll back an AI change",
     ),
     # ---------- screenshot metrics ----------
     dict(
@@ -371,6 +373,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"items": {"type": "array", "items": REVIEW_ITEM}}),
         handler=lambda conn, uid, a: memory_review.apply(conn, uid, a["items"]),
         group="memory", scope="memory", writes=True,
+        confirm=True,
     ),
     dict(
         name="set_status_items",
@@ -446,6 +449,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"log_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: meals.undo_log(conn, uid, a["log_id"]),
         group="nutrition", scope="nutrition", writes=True,
+        confirm=True, confirm_label="Undo a quick meal log",
     ),
     dict(
         name="combine_food_entries",
@@ -566,6 +570,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=_schema({"observation_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _deleted(memory.delete_observation(conn, uid, a["observation_id"])),
         group="memory", scope="memory", writes=True,
+        confirm=True, confirm_label="Delete an observation note",
     ),
 ]
 

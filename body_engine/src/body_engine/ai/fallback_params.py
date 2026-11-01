@@ -8,6 +8,40 @@ The page lists CNY directly, so no exchange rate is needed. Every call is charge
 the real bill is never higher than what we count, and public holidays need no calendar. The quota is therefore at least ¥3 of real spend.
 """
 
+# What it may reach (dl_app.py registers these as views). Read tools for everything the Today page shows + the everyday write
+# tools. No ECG / raw heart data (get_cardio, get_ecg_list: excluded by the consent, ai/fallback.CONSENT_POINTS), no family
+# data, no recipe editing.
+TOOL_NAMES = (
+    "get_briefing", "get_profile", "get_scores", "get_sleep", "get_daily_metrics", "get_reminders", "get_sleep_goal",
+    "get_strain_coach", "get_sleep_coach", "get_training_calendar", "get_training_day", "get_muscle_load", "get_exercise_rules",
+    "search_exercises", "get_exercise", "get_week_plan", "propose_plan", "save_plan", "swap_exercise",
+    "reschedule_day", "swap_days", "replan_week", "undo_day_changes",
+    "get_training_log", "get_nutrition", "get_weight", "get_lab_results", "list_supplements",
+    "list_events", "list_journal_items", "get_journal", "get_memory",
+    "log_food", "log_workout", "log_weight", "log_water", "undo_sparky_entry", "log_journal", "add_event",
+    "add_observation", "update_profile_card",
+    "add_lab_results", "log_metric_snapshot", "add_supplement",   # lab report photos, watch / InBody screenshots, supplement bottles
+    "add_custom_exercise",   # 「让 Jarvis 补进动作库」 on the muscle load map (#189)
+    "report_feedback", "list_feedback",   # root rules (ai/root_rules.md): writes only the feedback queue
+    # The read tool behind every Today page card (issue #58; tests/test_fallback_coverage.py maps cards -> tools):
+    # computed metrics, the 饮食 page and 采购.
+    "get_healthspan", "get_stress", "get_health_monitor", "get_hr_zones", "get_vo2max", "get_report",
+    "get_sleep_details", "get_lab_history", "get_metric_snapshots", "analyze_journal",
+    "get_diet_profile", "get_nutrition_goals", "get_meal_templates", "list_recipes", "get_recipe", "suggest_meals",
+    "get_shopping_list", "get_weekly_specials", "find_products", "get_price_history",
+    "get_diet_constraints", "set_diet_constraint", "end_diet_constraint",   # the user's own diet constraints (#76)
+    "get_training_context", "get_week_review_context", "get_playbook",      # scene context + playbooks (#100); no ECG in them
+    "get_memory_review", "apply_memory_changes",                            # tidying the memory (playbook memory_review, #113)
+)
+# Behind the rollout flag ai_parity (ai/parity.py): the fallback gets every tool the other channels have for the user's own
+# data, except what its consent (CONSENT_POINTS: 「不发：心电图、逐拍心跳、家人的数据」) keeps from DeepSeek. Nothing else may
+# be left out (tests/test_ai_parity.py); a tool that ought to be is a consent question for the owner, not a whitelist edit.
+CONSENT_EXCLUDED = {
+    "get_cardio": "逐拍心跳",   # raw heart data (cardio/: recovery after workouts, nightly recovery index); out since the first consent
+    "get_ecg_list": "心电图",
+    "get_friends_overview": "家人的数据",   # circle members' shared data
+}
+
 MODEL = "deepseek-flash"
 BASE_URL = "https://api.deepseek.com"
 DISPLAY_NAME = "DeepSeek Flash"

@@ -3,8 +3,10 @@
 check_imports: the framework imports only the standard library, itself and a short list of third-party packages; never
 the application. Every import statement counts, also the ones inside functions, and so do importlib.import_module /
 __import__ / importlib.resources.files calls with a literal module name.
-check_toolset: the application's toolset configuration matches its tools and every set sent to a model fits its budget."""
+check_toolset: the application's toolset configuration matches its tools and every set sent to a model fits its budget.
+check_handlers: every handler takes the arguments its signature (legacy or not) says it does."""
 import ast
+import inspect
 import sys
 from pathlib import Path
 
@@ -62,3 +64,16 @@ def check_toolset(cfg, tools, budgets) -> list[str]:
     from .toolsets import budget_problems, config_problems
     tools = list(tools)
     return config_problems(cfg, tools) + budget_problems(cfg, tools, budgets)
+
+
+def check_handlers(tools) -> list[str]:
+    """Handlers registered with the wrong signature would only fail when a model first calls them: (ctx, args), or
+    (conn, owner_id, args) with legacy=True (execute.invoke). Empty = fine."""
+    out = []
+    for t in tools:
+        want = ("conn", "owner_id", "args") if t.legacy else ("ctx", "args")
+        try:
+            inspect.signature(t.handler).bind(*want)
+        except TypeError:
+            out.append(f"{t.name}: the handler does not take ({', '.join(want)})")
+    return out

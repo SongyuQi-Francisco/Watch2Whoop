@@ -1,4 +1,4 @@
-"""AI tool specs for grocery (wrapped into Tool and registered by assistant/tools.py). Descriptions are kept short (tool budget,
+"""AI tool specs for grocery (registered by dl_app.py). Descriptions are kept short (tool budget,
 tests/test_briefing.py). Write tools have no user parameter: they write only for the caller. Deleting (remove_*) asks first
 (ai/chat.ALWAYS_CONFIRM and assistant/.claude/settings.json)."""
 from datetime import date
@@ -184,6 +184,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=schema({"product_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: store.remove_product(conn, uid, a["product_id"]),
         group="grocery", scope="nutrition", writes=True,
+        confirm=True, confirm_label="Remove a product",
     ),
     dict(
         name="generate_shopping_list",
@@ -223,6 +224,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=schema({"item_ids": IDS}),
         handler=lambda conn, uid, a: _slim_list(store.remove_items(conn, uid, a["item_ids"])),
         group="grocery", scope="nutrition", writes=True,
+        confirm=True, confirm_label="Remove shopping list items",
     ),
     dict(
         name="set_staple",
@@ -238,6 +240,7 @@ TOOL_SPECS: list[dict] = [
         input_schema=schema({"product_id": {"type": "integer"}}),
         handler=lambda conn, uid, a: _slim_product(store.remove_staple(conn, uid, a["product_id"])),
         group="grocery", scope="nutrition", writes=True,
+        confirm=True, confirm_label="Stop treating a product as a usual item",
     ),
     dict(
         name="set_pantry",

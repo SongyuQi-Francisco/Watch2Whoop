@@ -6,7 +6,7 @@ Every tool has a domain `group` (the `group=` on its spec in */tools.py). What t
 - in-page chat (ai/chat.py): CORE_TOOLS + the groups of the page the chat was opened on (PAGE_GROUPS) + the meta tools.
 Everything else is one find_tools call away and runs through run_read_tool / run_write_tool (assistant/toolsets.py).
 Tool definitions are sent on every call, so the budgets below are enforced by tests/test_tool_groups.py.
-Change the lists here; keep the core list ordered as in assistant/tools.TOOLS (the sent order follows TOOLS anyway).
+Change the lists here; keep the core list ordered as in dl_app.py (the sent order follows TOOLS anyway).
 """
 
 # Resident core: the opening briefing, the scene context tools and playbooks, the everyday logging tools and their undo.
@@ -58,9 +58,13 @@ PAGE_MAX_LEN = 40
 # Owner's decision (2026-10-18): logging tools (food, training, weight, journal, labs, templates, recipes, events, supplements,
 # memory ...) run directly; only deleting / undoing asks first, so a mistaken call cannot destroy data. Same list as the
 # "ask" rules in the butler's assistant/.claude/settings.json. Judged by the real tool name, also behind run_write_tool.
-ALWAYS_CONFIRM = {"undo_sparky_entry", "undo_meal_log", "undo_day_changes", "delete_journal_entry", "delete_lab_results", "delete_observation",
-                  "delete_supplement", "remove_product", "remove_shopping_items", "remove_staple", "delete_workout", "rollback_write",
-                  "delete_custom_exercise", "apply_memory_changes"}
+# The list is confirm=True on the tool definitions; ALWAYS_CONFIRM here is the old name of what the registry derives from them.
+def __getattr__(name: str):
+    if name == "ALWAYS_CONFIRM":
+        from ..dl_app import APP   # the registry imports this module
+        return APP.confirm
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # Size budgets in characters of {name, description, relaxed input_schema} JSON (what tools/list sends).
 # Before #99 all 106 tools were sent every time: 58,539 chars.

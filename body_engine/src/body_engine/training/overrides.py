@@ -183,3 +183,8 @@ def restore(conn: psycopg.Connection, user_id: int, workout_id: int, before: dic
     _refresh(conn, user_id)
     return {"workout_id": w["id"], "type": before["type"], "name": before["name_zh"],
             "hidden": before.get("excluded") == HIDDEN}
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kind this module writes, and how to put it back."""
+    reg.rollback("workout", lambda conn, user_id, row, client=None: restore(conn, user_id, int(row["target"]), row["before"], row["after"]))

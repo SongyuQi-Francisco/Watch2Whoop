@@ -501,3 +501,12 @@ def init_profile(conn: psycopg.Connection, user_id: int, md_profile: dict[str, s
             (user_id, key, label, value, sort)).fetchone()
         (created if row else kept).append(key)
     return {"created": created, "kept": kept}
+
+
+def register_rollbacks(reg) -> None:
+    """dl_app.py: the write-log kinds this module writes, and how to put them back."""
+    # a profile card item the AI created / replaced (issue #113): the old value comes back
+    reg.rollback("profile", lambda conn, user_id, row, client=None: rollback_profile(conn, user_id, row["target"], row["before"], row["after"]))
+    # a rewrite of a note (issue #113)
+    reg.rollback("observation", lambda conn, user_id, row, client=None: rollback_observation(conn, user_id, int(row["target"]), row["before"], row["after"]),
+                 only_action="update")

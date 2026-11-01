@@ -5,9 +5,10 @@ oneself, viewing another user needs Policy.can_view -> the handler in a savepoin
 capture) -> audit -> after_write. Confirming writes is the caller's job (the chat loop, the MCP client).
 On an error only what the tool half-wrote is undone; the audit row stays, so the caller must commit after an error.
 
-Handlers keep the application's current signature handler(conn, owner_id, args), with the viewer and the channel in
-args as _viewer_id / _channel (the new (ctx, args) signature is phase 3)."""
+Handlers take (ctx, args), with ctx a ToolContext. Tools with legacy=True keep the application's older signature
+handler(conn, owner_id, args), with the viewer and the channel in args as _viewer_id / _channel (invoke adapts them)."""
 from contextlib import nullcontext
+from dataclasses import dataclass
 from typing import Any, Callable, ContextManager, Mapping
 
 from .audit import AuditSink
@@ -15,6 +16,27 @@ from .messages import Messages
 from .policy import Policy, resolve_owner
 from .spec import Tool, fill_defaults, relaxed
 from .writelog import WriteLog
+
+
+@dataclass(frozen=True)
+class ToolContext:
+    """What a handler gets besides its arguments: whose data (owner_id), who is asking (viewer_id), through which channel."""
+    conn: Any
+    owner_id: int
+    viewer_id: int
+    channel: str
+    writelog: WriteLog
+
+    def log(self, kind: str, action: str, target, before=None, after=None) -> int | None:
+        """One row of the write log (what a write tool changed, with before / after values); does nothing in a read tool."""
+        return self.writelog.record(self.conn, kind, action, target, before, after)
+
+
+def invoke(tool: Tool, ctx: ToolContext, args: dict) -> Any:
+    """Call a handler with the signature it has: (ctx, args), or the legacy adapter's (conn, owner_id, args)."""
+    if tool.legacy:
+        return tool.handler(ctx.conn, ctx.owner_id, {**args, "_viewer_id": ctx.viewer_id, "_channel": ctx.channel})
+    return tool.handler(ctx, dict(args))
 
 
 class Executor:
@@ -62,14 +84,14 @@ class Executor:
             if not self.policy.can_view(conn, viewer_id, owner_id, tool.scope):
                 raise PermissionError(m.no_grant.format(owner=owner_id, scope=tool.scope))
             with conn.transaction():
-                args_in = {**full, "_viewer_id": viewer_id, "_channel": channel}
+                ctx = ToolContext(conn, owner_id, viewer_id, channel, self.writelog)
                 if tool.writes:  # every AI write is logged with before / after values (writelog.py)
                     with self.writelog.capture(viewer_id, channel, name) as cap:
-                        result = tool.handler(conn, owner_id, args_in)
+                        result = invoke(tool, ctx, full)
                         if not cap["ids"]:
                             self.writelog.record_generic(conn, full, result)
                 else:
-                    result = tool.handler(conn, owner_id, args_in)
+                    result = invoke(tool, ctx, full)
         except Exception as e:
             if missing := self._missing_params(tool, full, e):   # the model can fix this: say which arguments, not KeyError
                 err = ValueError(m.missing_param.format(param=m.missing_sep.join(missing)))

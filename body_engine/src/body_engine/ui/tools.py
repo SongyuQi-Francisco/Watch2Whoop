@@ -1,4 +1,4 @@
-"""AI tool for the AI-first page (#279, registered by assistant/tools.py): any AI can tidy the user's Today ("把睡眠放到首页",
+"""AI tool for the AI-first page (#279, registered by dl_app.py): any AI can tidy the user's Today ("把睡眠放到首页",
 "首页太乱了") and set what they care about. One short write tool in its own small group home (sent on the Me page, find_tools elsewhere),
 inside the tool-definition budget (tests/test_briefing.py). FlagOff while ui_ai_first is off for the user."""
 from datetime import datetime
