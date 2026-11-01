@@ -3,7 +3,7 @@
 - first screen: what the page loads at start (file count and size budget), the on-demand scripts (type w2w/lazy), the English
   table only for an English page (lang-gate.js decides like i18n.js), the offline copy keeps everything inline;
 - W1: links that open a new tab are opened from code inside the app's WebView; W3: year in long chart ranges;
-  W4: a JSON 502 is not a restarting server; W5: the viewport allows zooming and no field can trigger iOS' focus zoom.
+  W4: a JSON 502 is not a restarting server; W5: the app page does not zoom (owner, 2026-11-02) and no field can trigger iOS' focus zoom.
 JS behaviour runs in node with stubs (skipped without node); the rest reads the files / the served page."""
 import json
 import re
@@ -267,11 +267,13 @@ def test_long_chart_ranges_show_the_year():
 
 
 # ---------------------------------------------------------------- W5 zoom
-def test_viewport_allows_zoom_and_fields_do_not_trigger_focus_zoom():
-    """W5: no maximum-scale / user-scalable=no (WCAG 1.4.4) and no script that cancels pinch gestures. iOS zooms into a field on focus
-    only when its font is smaller than 16px: every input / select / textarea is at least 16px."""
+def test_viewport_blocks_zoom_and_fields_do_not_trigger_focus_zoom():
+    """W5, changed by the owner on 2026-11-02: the Today page inside the 1.0.8 app (WKWebView, which honours the viewport's
+    limits) must not pinch- or double-tap-zoom, so the viewport has maximum-scale=1 and user-scalable=no (the native 2.0.0
+    app has no WebView). Text size comes from the page, not from zooming. iOS also zooms into a field on focus when its font
+    is smaller than 16px: every input / select / textarea stays at least 16px. The other pages keep zooming."""
     viewport = re.search(r'<meta name="viewport" content="([^"]+)"', INDEX).group(1)
-    assert "maximum-scale" not in viewport and "user-scalable" not in viewport and "initial-scale=1" in viewport
+    assert "initial-scale=1" in viewport and "maximum-scale=1" in viewport and "user-scalable=no" in viewport
     assert "gesturestart" not in APP and "noPinch" not in APP
     css = "".join((STATIC / n).read_text(encoding="utf-8") for n in ("app.css", "ai.css", "grocery.css", "diet-profile.css", "jarvis-entry.css"))
     assert re.search(r"input, select, textarea \{ font-size: max\(16px, 1em\); \}", css)
