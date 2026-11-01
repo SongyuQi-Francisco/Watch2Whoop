@@ -56,6 +56,7 @@ from .friends.feed_api import router as friends_feed_router
 from .friends.moderation_api import admin_router as circles_admin_router, router as friends_moderation_router
 from .notify import silent as notify_silent
 from .notify.api import router as notify_router
+from .inbox.api import router as inbox_router
 from .notices.api import router as notices_router
 from .web import api as web_api, session as web_session
 
@@ -187,6 +188,7 @@ app.include_router(friends_moderation_router)   # block / report / community rul
 app.include_router(circles_admin_router)        # the admins' report queue
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
 app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
+app.include_router(inbox_router)   # 「我 → 消息」: notices, what's new, circle invites and notifications merged (inbox/, #359, flag inbox)
 app.include_router(ai_router)
 app.include_router(history_router)
 app.include_router(profile_router)

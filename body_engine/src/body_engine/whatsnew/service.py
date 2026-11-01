@@ -48,10 +48,16 @@ def message(items: list[E.Entry]) -> tuple[dict, dict]:
     return title, {"zh": f"{zh}，等 {n} 项", "en": f"{en}, {n} updates in all"}
 
 
+def floor_day(last: date | None, created_local: date, today: date) -> date:
+    """A message on `today` names entries dated after this day: the previous message's last day, the day the account was made,
+    at most LOOKBACK_DAYS back (also how the inbox rebuilds an earlier week's message, inbox/store.py)."""
+    return max(d for d in (last, created_local, today - timedelta(days=P.LOOKBACK_DAYS)) if d is not None)
+
+
 def cursor(conn: psycopg.Connection, user_id: int, created: datetime, tz: ZoneInfo, today: date) -> date:
     """Entries must be dated after this day."""
     last = conn.execute("SELECT max(through) AS d FROM whats_new_sends WHERE user_id = %s", (user_id,)).fetchone()["d"]
-    return max(d for d in (last, created.astimezone(tz).date(), today - timedelta(days=P.LOOKBACK_DAYS)) if d is not None)
+    return floor_day(last, created.astimezone(tz).date(), today)
 
 
 def run(conn: psycopg.Connection, user_id: int | None = None, now: datetime | None = None, dry_run: bool = False,
