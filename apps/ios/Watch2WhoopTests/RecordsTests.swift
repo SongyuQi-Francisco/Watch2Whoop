@@ -252,6 +252,41 @@ final class RecordModelTests: XCTestCase {
     XCTAssertEqual(body?.map { $0["slug"] as? String }, ["press", "plank"])
   }
 
+  /// FB-21: "A + B" in the plan comes as two exercises of one group; a name the library does not know is a flagged card (also
+  /// from an older server that sent no slug for it), never dropped.
+  private let comboSession = json("""
+  {"date": "2026-01-02", "is_today": true, "rest_day": false, "can_log": true, "can_edit_plan": true,
+   "sessions": [{"name": "Shoulders", "exercises": [
+     {"slug": "lateral_raise", "name_zh": "侧平举", "name_en": "Lateral raise", "status": "active", "group": "ss1", "target": {"sets": 3, "reps": 10}},
+     {"slug": "curl", "name_zh": "弯举", "name_en": "Curl", "status": "caution", "reason": "Wrist (demo)", "group": "ss1", "target": {"sets": 3, "reps": 10}},
+     {"slug": "Mystery move", "name_zh": "Mystery move", "status": "active", "unresolved": true,
+      "candidates": [{"slug": "row", "name_zh": "划船", "name_en": "Row"}, {"slug": "pull", "name_zh": "下拉"}], "target": {"sets": 2, "reps": 8}},
+     {"name_zh": "无名动作", "status": "active", "unresolved": true, "target": {"sets": 1, "reps": 5}},
+     {"slug": "dips", "name_zh": "臂屈伸", "name_en": "Dips", "status": "active", "group": "ss2", "target": {"sets": 3, "reps": 8}}]},
+    {"name": "Extra", "exercises": [
+     {"slug": "plank", "name_zh": "平板", "name_en": "Plank", "status": "active", "group": "ss2", "target": {"sets": 2, "reps": 30}}]}],
+   "log": null}
+  """)
+
+  func testComboSupersetAndUnrecognisedExercisesAreNeverDropped() throws {
+    let s = try XCTUnwrap(TrainingSession.build(comboSession, day: "2026-01-02", pending: []))
+    XCTAssertEqual(s.exercises.map(\.slug), ["lateral_raise", "curl", "Mystery move", "无名动作", "dips", "plank"])
+    XCTAssertTrue(s.canEditPlan)
+    // the two parts are one superset block; the same group id in another session is another superset
+    let blocks = ExerciseBlock.blocks(s.exercises)
+    XCTAssertEqual(blocks.map { $0.items.map(\.slug) }, [["lateral_raise", "curl"], ["Mystery move"], ["无名动作"], ["dips"], ["plank"]])
+    XCTAssertEqual(blocks.map(\.isSuperset), [true, false, false, false, false])
+    // each part keeps its own restriction and its own rows
+    XCTAssertTrue(s.exercises[1].caution && !s.exercises[0].caution)
+    XCTAssertEqual(s.rows["lateral_raise"]?.count, 3)
+    XCTAssertEqual(s.rows["curl"]?.count, 3)
+    // not recognised: flagged, with the candidates in the app's language; the slug-less one is kept under its name
+    XCTAssertTrue(s.exercises[2].unresolved && s.exercises[3].unresolved && !s.exercises[0].unresolved)
+    XCTAssertEqual(s.exercises[2].candidates.map(\.slug), ["row", "pull"])
+    XCTAssertEqual(s.exercises[2].candidates.map(\.name), [Lang.isZh ? "划船" : "Row", "下拉"])
+    XCTAssertEqual(s.loggable.count, 6)
+  }
+
   func testAPendingDraftWinsAndIsNotSubmittedYet() throws {
     let draft: [String: Any] = ["exercises": [["slug": "press", "sets": [["reps": 8, "weight_kg": 22.5, "done": true], ["reps": 8, "done": false]]]]]
     let s = try XCTUnwrap(TrainingSession.build(session, day: "2026-01-02", pending: [rec(RecordKind.session, draft, date: "2026-01-02")]))

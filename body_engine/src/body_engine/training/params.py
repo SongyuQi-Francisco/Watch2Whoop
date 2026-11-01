@@ -543,6 +543,11 @@ EST_SET_WORK_SEC = 40
 EST_DEFAULT_REST_SEC = 90
 EST_ROUND_MIN = 5
 
+# ---- Combination plan items (FB-21, training/combo.py) ---------------------------------------------------------------
+# A plan item named "A + B" is a superset: it is split into its exercises, which share one `group` id.
+COMBO_MAX_PARTS = 4          # a giant set; a name with more parts than this is not read as a combination
+UNRESOLVED_CANDIDATES = 5    # replacement candidates offered for a plan exercise the library does not know
+
 
 # ---------- muscle load map (rollout flag muscle_load, training/muscle_load.py) ----------
 MUSCLE_LOAD_VERSION = "v1.2-2026-10-25"   # v1.2: every workout credits muscles, equivalent sets count for the colours; v1.1: sports layer, custom exercises (#189)

@@ -18,7 +18,7 @@ _schema = schema
 _n = nullable
 
 PLAN_EX = _schema({
-    "exercise": {"type": "string", "description": "slug 或动作名"},
+    "exercise": {"type": "string", "description": "slug 或动作名；「A + B」=超级组"},
     "sets": {"type": "integer"},
     "rep_low": _n("integer"),
     "rep_high": _n("integer"),
@@ -251,7 +251,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="propose_plan",
-        description="周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。",
+        description="周计划草案（不写库）。先问用户 ask_user_first 里的事（开始日、本周剩余怎么排、哪几天能练、不能练的日子、热身附加项），出草案给用户看（含推荐重量）。first_week=本周已练后只补缺的安排。unresolved=库里认不出的动作，和用户确认换成哪个。",
         input_schema=_schema({
             "user": USER,
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
@@ -266,7 +266,7 @@ TOOL_SPECS: list[dict] = [
     ),
     dict(
         name="save_plan",
-        description="用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户。",
+        description="用户确认 propose_plan 草案后才调：保存并激活周计划（参数同草案），本周按 first_week 补缺；SparkyFitness 同步失败计划照样保存，按 tell_user 告诉用户；unresolved 同上。",
         input_schema=_schema({
             "split_type": {"type": "string", "enum": SPLIT_ENUM},
             "name": _n("string"),

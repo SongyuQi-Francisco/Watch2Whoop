@@ -140,10 +140,12 @@ struct TrainingSection: View {
         } else {
           if let r = s.readiness { Banner(text: r.label, tone: r.tone) }
           VStack(spacing: 10) {
-            ForEach(s.exercises) { e in
-              ExerciseCard(e: e, rows: store.rows[e.slug] ?? [], canLog: s.canLog, open: open.contains(e.slug),
-                           toggle: { if open.contains(e.slug) { open.remove(e.slug) } else { open.insert(e.slug) } },
-                           edit: { change in store.edit(e.slug, change) })
+            ForEach(ExerciseBlock.blocks(s.exercises)) { b in
+              if b.isSuperset {
+                SupersetBlock { ForEach(b.items) { e in exerciseCard(e, s) } }
+              } else {
+                exerciseCard(b.items[0], s)
+              }
             }
           }
           if s.canLog && !s.loggable.isEmpty { submitFooter(s) }
@@ -151,6 +153,21 @@ struct TrainingSection: View {
       } else {
         Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
       }
+    }
+  }
+
+  private func exerciseCard(_ e: PlannedExercise, _ s: TrainingSession) -> some View {
+    ExerciseCard(e: e, rows: store.rows[e.slug] ?? [], canLog: s.canLog, open: open.contains(e.slug),
+                 toggle: { if open.contains(e.slug) { open.remove(e.slug) } else { open.insert(e.slug) } },
+                 edit: { change in store.edit(e.slug, change) },
+                 swapTo: s.canEditPlan ? { c in swap(e, c) } : nil)
+  }
+
+  /// An exercise the library did not recognise, replaced in the weekly plan by one of its candidates.
+  private func swap(_ e: PlannedExercise, _ c: SwapCandidate) {
+    Task {
+      let error = await store.swap(e.slug, for: c)
+      toast = Toast(error ?? tr("已换成 \(c.name)", "Swapped for \(c.name)"))
     }
   }
 
@@ -269,6 +286,29 @@ private struct DayRef: Identifiable {
   var id: String { day }
 }
 
+/// The exercises of one superset ("A + B" in the plan) drawn together under a 「超级组」 label; each keeps its own sets and weights.
+private struct SupersetBlock<Content: View>: View {
+  let content: Content
+
+  init(@ViewBuilder content: () -> Content) {
+    self.content = content()
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 6) {
+        Icon(.link, size: 13)
+        Text(tr("超级组", "Superset"))
+      }
+      .font(Typo.label).foregroundColor(Palette.text2)
+      .padding(.horizontal, 6)
+      content
+    }
+    .padding(8)
+    .overlay(RoundedRectangle(cornerRadius: Metrics.cardRadius + 8, style: .continuous).stroke(Palette.hair, lineWidth: 1))
+  }
+}
+
 /// One planned exercise: name + restriction, prescription; opened, its sets (reps · kg · done) with add / remove.
 struct ExerciseCard: View {
   let e: PlannedExercise
@@ -277,6 +317,8 @@ struct ExerciseCard: View {
   let open: Bool
   let toggle: () -> Void
   let edit: ((inout [SetRow]) -> Void) -> Void
+  /// Swap a name the library does not know for one of its candidates (nil: not offered, e.g. a plan that is not editable here).
+  var swapTo: ((SwapCandidate) -> Void)? = nil
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -287,6 +329,7 @@ struct ExerciseCard: View {
               Text(e.name).font(Typo.bodyStrong).foregroundColor(e.banned ? Palette.text2 : Palette.text)
                 .strikethrough(e.banned, color: Palette.text3).lineLimit(2).multilineTextAlignment(.leading)
               if e.banned { Badge(label: tr("禁用", "Banned"), tone: .bad) } else if e.caution { Badge(label: tr("注意", "Caution"), tone: .mid) }
+              if e.unresolved { Badge(label: tr("认不出", "Not recognised"), tone: .mid) }
             }
             Text(e.banned ? tr("不要做", "Don't do it") : e.prescription).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
           }
@@ -302,6 +345,26 @@ struct ExerciseCard: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
+      if e.unresolved, let swapTo, !e.candidates.isEmpty {
+        HStack(spacing: 8) {
+          Text(tr("换成", "Swap to")).font(Typo.label).foregroundColor(Palette.text3)
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+              ForEach(e.candidates) { c in
+                Button { swapTo(c) } label: {
+                  Text(c.name).lineLimit(1)
+                    .font(.system(size: 13, weight: .medium)).foregroundColor(Palette.text)
+                    .padding(.vertical, 6).padding(.horizontal, 10)
+                    .background(Capsule().fill(Palette.bg))
+                }
+                .buttonStyle(PressScale())
+                .accessibilityLabel(tr("换成 \(c.name)", "Swap to \(c.name)"))
+              }
+            }
+          }
+        }
+        .padding(.horizontal, 14).padding(.bottom, 12)
+      }
       if open {
         VStack(alignment: .leading, spacing: 8) {
           if (e.banned || e.caution), let why = e.reason ?? e.cues {

@@ -342,6 +342,67 @@ def test_propose_plan_detects_and_auto_swaps_banned_exercises(conn, world):
     assert swapped_prop["days"][0]["exercises"][1]["status"] == "active"
 
 
+def _fb21_days(dow: int, *names: str) -> list[dict]:
+    return [{"day_of_week": dow, "name": "测试肩日", "exercises": [
+        {"exercise": n, "sets": 3, "rep_low": 10, "rep_high": 12, "rest_sec": 60, "duration_sec": None, "weight_kg": 15, "note": None}
+        for n in names]}]
+
+
+def test_fb21_combo_item_is_proposed_and_saved_as_a_superset(conn, world):
+    """FB-21: "A + B" in the AI's plan becomes two exercises sharing a group; the volume counts both; the list of names
+    the library does not know is returned (kept in the plan, not dropped); get_week_plan shows both."""
+    a = world[0]["A"]
+    today = plans._user_today(conn, a)
+    days = _fb21_days(today.isoweekday(), "哑铃侧平举 + 哑铃弯举", "完全不存在的动作xyz", "面拉 + 外旋", "哑铃卧推")
+    prop = run_tool(conn, a, "butler", "propose_plan", {"user": "me", "split_type": "custom", "custom_days": days})
+    exs = prop["days"][0]["exercises"]
+    assert [e["slug"] for e in exs] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl", "完全不存在的动作xyz", "面拉 + 外旋", "dumbbell_bench_press"]
+    lat, curl = exs[0], exs[1]
+    assert lat["group"] == curl["group"] and lat["sets"] == curl["sets"] == 3 and lat["weight_kg"] is None and curl["weight_kg"] is None
+    assert "group" not in exs[4] and prop["can_save"]
+    assert prop["volume_by_group"]["shoulders"]["direct_sets"] >= 3 and prop["volume_by_group"]["arms"]["direct_sets"] >= 3
+    # a name the library does not know: listed with where it is and what it could be swapped for
+    names = {u["name"]: u for u in prop["unresolved"]}
+    assert set(names) == {"完全不存在的动作xyz", "面拉 + 外旋"} and names["完全不存在的动作xyz"]["session_name"] == "测试肩日"
+    assert {c["slug"] for c in names["面拉 + 外旋"]["candidates"]} >= {"cable_face_pull", "band_face_pull_er"}
+    assert exs[2]["unresolved"] and exs[2]["candidates"] == []
+
+    saved = run_tool(conn, a, "butler", "save_plan", {"split_type": "custom", "custom_days": days, "sync_sparky": False})
+    assert [u["name"] for u in saved["unresolved"]] == ["完全不存在的动作xyz", "面拉 + 外旋"]
+    stored = conn.execute("SELECT days FROM training_plans WHERE user_id = %s AND active", (a,)).fetchone()["days"][0]["exercises"]
+    assert [e["slug"] for e in stored[:2]] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl"] and stored[0]["group"] == stored[1]["group"]
+    assert all("candidates" not in e for e in stored)   # the hints are for the reader of the proposal, not stored
+
+    wk = run_tool(conn, a, "butler", "get_week_plan", {"user": "me", "date": None, "detail": False})
+    day = next(d for d in wk["days"] if d["date"] == today)
+    shown = day["planned"][0]["exercises"]
+    assert [e["slug"] for e in shown[:3]] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl", "完全不存在的动作xyz"]
+    assert shown[0]["group"] == shown[1]["group"] and shown[2]["unresolved"]
+
+
+def test_fb21_each_part_of_a_combo_follows_the_exercise_rules(conn, world):
+    """upright_row is on A's banned list: as the second part of a combo it is flagged and blocks saving, like alone."""
+    a = world[0]["A"]
+    days = _fb21_days(2, "哑铃侧平举 + 直立划船")
+    prop = plans.propose_plan(conn, a, split_type="custom", custom_days=days)
+    assert not prop["can_save"] and [c["slug"] for c in prop["banned_conflicts"]] == ["upright_row"]
+    assert prop["banned_conflicts"][0]["alternatives"] and prop["days"][0]["exercises"][0]["status"] == "active"
+    with pytest.raises(PermissionError, match="禁用动作"):
+        plans.save_plan(conn, a, split_type="custom", days=days, sync_sparky=False)
+    # an automatic swap puts the safe exercise into the same superset
+    swapped = plans.propose_plan(conn, a, split_type="custom", custom_days=days, auto_swap_banned=True)
+    first, second = swapped["days"][0]["exercises"]
+    assert swapped["can_save"] and second["slug"] != "upright_row" and first["group"] == second["group"]
+
+
+def test_fb21_combo_parts_are_synced_to_sparkyfitness_one_by_one(conn, world):
+    a = world[0]["C"]   # its own user: the fake's exercise ids restart at 1 and exercise_meta keeps what a sync linked
+    fake = FakeSparkyPlans()
+    res = plans.save_plan(conn, a, split_type="custom", days=_fb21_days(2, "哑铃侧平举 + 哑铃弯举"), sync_sparky=True, client=fake)
+    assert res["sparky_sync"]["synced"] is True
+    assert len(fake.presets[0]["exercises"]) == 2
+
+
 def test_save_plan_sparky_sync_and_swap_exercise(conn, world):
     ids, _ = world
     a = ids["A"]
