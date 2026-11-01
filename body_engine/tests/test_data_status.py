@@ -278,6 +278,29 @@ def test_explain_tells_not_recorded_from_not_delivered():
                 assert r["reason"] in data_status.REASONS and (r["action"] is None or r["action"] in data_status.ACTIONS), (k, st, d)
 
 
+def test_wrist_temperature_action_is_sleep_focus():
+    """FB-18: sleeping wrist temperature is written by the Apple Watch only on nights it is worn in bed with a sleep schedule /
+    Sleep Focus and sleep tracking on (about 5 nights before values appear), so "wear the watch to bed" is not the whole
+    answer: its action is `sleep_focus`. The other overnight types keep `wear_watch_sleep`."""
+    e = data_status.explain
+    assert params.RECORD_ACTION["wrist_temperature"] == "sleep_focus" and "sleep_focus" in data_status.ACTIONS
+    # the sync center reads wrist temperature with the app itself (no sdk_unsupported note)
+    wrist = data_status.EXTENDED_REPLACE["wrist_temperature"]
+    assert "sdk_unsupported" not in wrist.notes
+    for status in ("stale", "never"):
+        assert e(wrist, status, "ok") == {"reason": "not_recorded", "action": "sleep_focus", "alarm": False}
+    # not delivered is still a sync problem with the phone-side fix, not a sleep-focus hint
+    assert e(wrist, "stale", "behind", {"last_error": "locked"}) == {"reason": "not_delivered", "action": "unlock_phone",
+                                                                    "alarm": True}
+    for key in ("hrv", "sleep", "blood_oxygen", "respiratory_rate", "heartbeats"):
+        assert e(_kind(key), "stale", "ok")["action"] == "wear_watch_sleep", key
+    # every extended kind still answers with a known action
+    for k in data_status.kinds(extended=True, mode="app"):
+        for st in ("stale", "never"):
+            r = e(k, st, "ok")
+            assert r["action"] is None or r["action"] in data_status.ACTIONS, (k.key, st)
+
+
 def test_reasons_in_the_answer(dsn, users):
     """User a: nothing ever came through a phone sync (fixture) -> old types are "not delivered"; then an app upload now
     and a phone report with background refresh off: delivered, so weight is "not recorded", and the delivery says to turn

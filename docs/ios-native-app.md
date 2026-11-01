@@ -228,7 +228,7 @@ Jarvis / AI 对话、圈子的写操作（邀请、建圈、加入等；点赞�
 
 现在：
 - `GET /v1/ingest/sync-status` 的 `types[]` 多 `latest_day`（服务器经任何渠道有这一类的最新一天，见 `docs/apple-sync-engine-app-contract.md` 第 6 节）。`TypeVerdict`（`Features/Sync/SyncModels.swift`）：手机样本 ≤ 服务器最新样本 + 30 分钟 = 已同步；手机样本是今天以前、服务器有那一天或更新 = 已同步；比同步读取范围（`HealthSyncService.uploadedSince`：首次窗口或补历史到的位置）还早 = **历史没补**（`outsideRange`，按钮「补全历史」，超过 90 天就补全部）；其余才是**没同步**。
-- `SyncResult`（`Features/Sync/SyncResult.swift`，纯函数有测试）是同步完唯一的回答：没有问题时标题「已同步 · 时间」；否则标题「N 项没同步」，下面每行「类型 → 原因 → 一个按钮」：没同步（刚同步过就「重新同步」近 7 天，否则「立即同步」）、历史没补、可能没开读取（服务器 `reason=no_permission`：手表天天记的类型从没收到；按钮打开「健康」）、没传上来（`not_delivered`；刚同步完、手机上也没有更新的就改算「没有新记录」）。手机这边的两条提醒也在这里：上一轮碰上锁屏、「后台 App 刷新」关着（按钮「怎么打开」弹出在 iOS 设置里自己打开的步骤，app 只打开自己的设置页，从不替用户改设置）。服务器说 `not_recorded` / `on_demand` / `logged_elsewhere` 的类型合成一行「手机上没有新记录」，不算同步问题，长的说明只在 i 弹层里。
+- `SyncResult`（`Features/Sync/SyncResult.swift`，纯函数有测试）是同步完唯一的回答：没有问题时标题「已同步 · 时间」；否则标题「N 项没同步」，下面每行「类型 → 原因 → 一个按钮」：没同步（刚同步过就「重新同步」近 7 天，否则「立即同步」）、历史没补、可能没开读取（服务器 `reason=no_permission`：手表天天记的类型从没收到；按钮打开「健康」）、没传上来（`not_delivered`；刚同步完、手机上也没有更新的就改算「没有新记录」）。手机这边的两条提醒也在这里：上一轮碰上锁屏、「后台 App 刷新」关着（按钮「怎么打开」弹出在 iOS 设置里自己打开的步骤，app 只打开自己的设置页，从不替用户改设置）。服务器说 `not_recorded` / `on_demand` / `logged_elsewhere` 的类型合成一行「手机上没有新记录」，不算同步问题，长的说明只在 i 弹层里。手腕温度的动作是 `sleep_focus`：i 弹层里它旁边有「怎么开」按钮，弹出在「健康」里打开睡眠追踪和睡眠专注的步骤（iOS 没有打开专注设置的链接，app 只给步骤）。
 - 「没有新数据」那行提示去掉了（上传了才显示「已上传 N 条」），同步中心的「后台刷新」「锁屏」「N 类没同步」横幅也合进了同步结果。
 - 服务器的 `data-status` 每类多 `reason` / `action` / `alarm`、回答多 `delivery`（`sync/data_status.py`，阈值和出处在 `sync/params.py`），1.0.8 不读这些新字段；体重算上本人记的（`body_measurements`），这一点 1.0.8 的「数据状态」现在就能看到（不再显示体重很久没收到）。
 

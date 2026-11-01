@@ -79,7 +79,9 @@ struct SyncResult: Equatable {
       case "no_permission"?:
         problems.append(Item(id: k.key, label: k.label, reason: .noPermission, action: .openHealthApp))
       case "not_recorded"?, "on_demand"?, "logged_elsewhere"?:
-        quiet.append(Item(id: k.key, label: k.label, reason: .notRecorded, hint: k.action))
+        // wrist temperature: the watch writes it only in bed with sleep tracking / Sleep Focus on (FB-18), so show the steps
+        quiet.append(Item(id: k.key, label: k.label, reason: .notRecorded, hint: k.action,
+                          action: k.action == "sleep_focus" ? .sleepFocusHelp : nil))
       case nil where phoneHasNothingNewer:   // an older server: no reasons, the phone has nothing newer either
         quiet.append(Item(id: k.key, label: k.label, reason: .notRecorded))
       default:
@@ -115,6 +117,7 @@ struct SyncResult: Equatable {
     switch hint {
     case "use_scale": return tr("需要体重秤", "Needs a scale")
     case "wear_watch_sleep": return tr("戴表睡觉才有", "Wear the watch to bed")
+    case "sleep_focus": return tr("要开睡眠专注", "Needs Sleep Focus")
     case "wear_watch": return tr("戴手表才有", "Wear the watch")
     case "outdoor_workout": return tr("户外运动后才有", "After outdoor workouts")
     case "record_ecg": return tr("测心电图才有", "Record an ECG")
@@ -141,8 +144,18 @@ struct SyncResult: Equatable {
     case .backgroundOff:
       return tr("「后台 App 刷新」关着时只有打开 app 才同步。", "With Background App Refresh off, it only syncs while the app is open.")
     case .notRecorded:
-      return tr("手机上也没有更新的记录，不是同步的问题：比如没戴手表、没戴表睡觉、没有体重秤、心电图要自己测、VO₂max 只在户外运动后估算、饮水只读「健康」里记的。体重在这里记录的也算。", "The phone has nothing newer either, so it is not a sync problem: the watch not worn (or not in bed), no scale, ECGs only when you record one, VO₂ max only after outdoor workouts, water only as logged in Health. Weights logged here count too.")
+      return tr("手机上也没有更新的记录，不是同步的问题：比如没戴手表、没戴表睡觉、睡眠手腕温度要开睡眠专注和睡眠追踪才会记、没有体重秤、心电图要自己测、VO₂max 只在户外运动后估算、饮水只读「健康」里记的。体重在这里记录的也算。", "The phone has nothing newer either, so it is not a sync problem: the watch not worn (or not in bed), sleeping wrist temperature only recorded with Sleep Focus and sleep tracking on, no scale, ECGs only when you record one, VO₂ max only after outdoor workouts, water only as logged in Health. Weights logged here count too.")
     }
+  }
+
+  /// Steps to get sleeping wrist temperature recorded (the person does it; iOS has no link to the Focus settings, so the app
+  /// only shows the steps). Apple Watch writes it only on nights it is worn in bed with a sleep schedule / Sleep Focus and
+  /// sleep tracking on, and needs about 5 such nights before values appear.
+  static var sleepFocusSteps: [String] {
+    [tr("打开 iPhone 的「健康」App，点「浏览」→「睡眠」", "Open the Health app on your iPhone, then Browse → Sleep"),
+     tr("在「睡眠计划」里设好作息，点「选项」，打开「睡眠专注模式」", "Set up a Sleep Schedule, tap Options and turn on Sleep Focus"),
+     tr("打开「用 Apple Watch 追踪睡眠」（也可以在「手表」App → 睡眠 里打开）", "Turn on Track Sleep with Apple Watch (also in the Watch app → Sleep)"),
+     tr("睡前给手表充好电，戴着它睡觉；第一次开启后约 5 晚才会出读数", "Charge the watch before bed and wear it to sleep; values appear after about 5 nights")]
   }
 
   /// Steps to turn Background App Refresh on (the person does it; the app never changes settings).

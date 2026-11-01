@@ -27,6 +27,8 @@ class Entry:
 ENTRIES: tuple[Entry, ...] = (
     Entry(date(2026, 11, 1), "训练计划里写成「A + B」的组合动作，现在会拆成两个动作分别显示和记录。",
           "A plan item written as “A + B” now shows up and is logged as two exercises."),
+    Entry(date(2026, 11, 1), "手腕温度没有读数时，会说明是手表那晚没记录，以及怎么开启睡眠追踪。",
+          "When wrist temperature has no reading, it says the watch did not record it and how to turn on sleep tracking."),
     Entry(date(2026, 10, 28), "「我」页可以手动记体重，还能标上空腹、饭后等测量情况。",
           "You can log your weight by hand under Me, and note things like fasting or after a meal.", "/app/?tab=me"),
     Entry(date(2026, 10, 27), "手机同步更稳了：第一次只读最近 14 天，几分钟就能看到数据。",

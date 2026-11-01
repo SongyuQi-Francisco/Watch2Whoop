@@ -465,8 +465,9 @@ Note: with steps in the history area (M1) the phone recomputes stress for the wh
 | Device | Today fully renders in airplane mode the morning after a synced night (rings, coach, monitor, sleep sheet) |
 
 #### M4 as built (2026-10-30)
-- **Algorithm** `coach` = `insights/coach.py:COACH_VERSION` = `"coach-1+" + healthspan_store.CURRENT.ALGO_VERSION`
-  (`coach-1+hs-v1.2-2026-10-23`) = `OBS.ALGO_VERSIONS.coach`: one key for the views, the body-age loader and the body-age
+- **Algorithm** `coach` = `insights/coach.py:COACH_VERSION` = `"coach-2+" + healthspan_store.CURRENT.ALGO_VERSION`
+  (`coach-2+hs-v1.2-2026-10-23`; `coach-2` = the health monitor's missing-reason texts are bilingual and wrist temperature
+  has its own, FB-18) = `OBS.ALGO_VERSIONS.coach`: one key for the views, the body-age loader and the body-age
   formulas they run (as M2's `stress_cards`). **Python split** (outputs unchanged; the DB tests of the endpoints stay green
   and `tests/test_native_coach.py` checks the wiring on stored synthetic data): `insights/coach.py` `strain_coach_compute`,
   `sleep_coach_compute` (goal passed in), `health_monitor_compute` (+ named constant `MONITOR_HRV_MIN_HALF_LN`);

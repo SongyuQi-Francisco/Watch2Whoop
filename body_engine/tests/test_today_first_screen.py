@@ -44,7 +44,8 @@ def test_first_screen_budget():
     # + 400 for the 「记体重」 button on the weight card's explanation sheet
     # + 200 for the sync-repair sheet opening the app's sync page for users on the own sync engine (#219 S5b)
     # + 200 for the two R2 forced-upgrade hooks in app.js (upgrade.js itself loads on demand)
-    assert total <= 997_300, total
+    # + 200 for the wrist-temperature reason in app.js short() ("手表没记录", FB-18)
+    assert total <= 997_500, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
