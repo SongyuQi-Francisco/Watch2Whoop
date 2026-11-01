@@ -4,7 +4,10 @@
 - get_week_plan suggestions only name exercises of the plan, and not a step the plan already prescribes.
 - /training/session: planned exercise cards with a pre-fill target, a draft of sets (each its own reps / weight / done),
   submit to SparkyFitness through log_workout (resubmit replaces the page's workout), and get_training_day's page_draft.
+- FB-21: a plan item "A + B" is a superset of A and B on the card; a name the library does not know is still a card
+  (flagged, with swap candidates), also for a SparkyFitness weekly plan, where it used to come without a slug and vanish.
 """
+import json
 import os
 from datetime import timedelta
 
@@ -19,7 +22,8 @@ from body_engine.assistant.tools import run_tool
 from body_engine.config import Settings
 from body_engine.db import migrate
 from body_engine.rollout import flags
-from body_engine.training import plans, session_log
+from body_engine.training import combo, plans, session_log
+from body_engine.web import views
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_TRAINING_SESSION", "body_test_training_session")
 CSRF = {"X-Body-Web": "1"}
@@ -249,3 +253,122 @@ def test_http_behind_flag(client, world, dsn):
     with psycopg.connect(dsn, row_factory=dict_row) as c:
         flags.set_flag(c, FLAG, "off", actor="test")
     flags.invalidate()
+
+
+# ---------------------------------------------------------------- FB-21: combination items and names the library does not know
+def _user(conn, name: str) -> int:
+    return conn.execute("INSERT INTO users (display_name, role) VALUES (%s, 'owner') RETURNING id", (name,)).fetchone()["id"]
+
+
+def _ex(name: str, sets=3, lo=10, hi=12, **kw) -> dict:
+    return {"exercise": name, "sets": sets, "rep_low": lo, "rep_high": hi, "rest_sec": 60, **kw}
+
+
+def _cards(conn, uid: int, day) -> list[dict]:
+    return [c for s in session_log.view(conn, uid, uid, day)["sessions"] for c in s["exercises"]]
+
+
+def test_combo_and_unknown_items_are_all_on_the_card(conn):
+    """The reproduction: 4 plan items ("A + B", a name nothing matches, a face pull variant, a plain one) -> 5 cards, none lost."""
+    uid = _user(conn, "combo-a")
+    today = plans._user_today(conn, uid)
+    plans.save_plan(conn, uid, split_type="custom", sync_sparky=False, name="FB-21", days=[
+        {"day_of_week": today.isoweekday(), "name": "肩 + 手臂", "exercises": [
+            _ex("哑铃侧平举 + 哑铃弯举", 3, 10, 12, weight_kg=12.5), _ex("完全不存在的动作xyz", 2, 8, 8),
+            _ex("面拉 + 外旋", 2, 15, 15), _ex("杠铃平板卧推", 4, 6, 8)]}])
+    cards = _cards(conn, uid, today)
+    assert [c["slug"] for c in cards] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl", "完全不存在的动作xyz", "面拉 + 外旋", "barbell_bench_press"]
+    lat, curl, nope, face, bench = cards
+    # the pair: one superset group, each exercise with its own sets and weight; the pair's weight is not given to both
+    assert lat["group"] == curl["group"] and lat["group"]
+    assert lat["target"]["sets"] == curl["target"]["sets"] == 3 and lat["target"]["weight_kg"] != 12.5
+    assert not lat.get("unresolved") and bench["group"] is None
+    # names the library does not know: the card is there, flagged, with exercises to swap to
+    assert nope["unresolved"] and nope["candidates"] == [] and nope["target"]["sets"] == 2
+    assert face["unresolved"] and {c["slug"] for c in face["candidates"]} >= {"cable_face_pull", "band_face_pull_er"}
+    assert all(set(c) == {"slug", "name_zh", "name_en"} for c in face["candidates"])
+
+
+def test_unknown_item_swaps_for_a_candidate(conn):
+    uid = _user(conn, "combo-b")
+    today = plans._user_today(conn, uid)
+    plans.save_plan(conn, uid, split_type="custom", sync_sparky=False, name="FB-21 swap", days=[
+        {"day_of_week": today.isoweekday(), "name": "拉", "exercises": [_ex("面拉 + 外旋"), _ex("高位下拉")]}])
+    face = _cards(conn, uid, today)[0]
+    assert face["unresolved"]
+    res = plans.swap_exercise(conn, uid, from_exercise=face["slug"], to_exercise=face["candidates"][0]["slug"], sync_sparky=False)
+    assert res["swapped"] and res["replaced"][0]["to_slug"] == face["candidates"][0]["slug"]
+    after = _cards(conn, uid, today)
+    assert not after[0].get("unresolved") and after[0]["slug"] == face["candidates"][0]["slug"] and len(after) == 2
+
+
+def test_each_part_of_a_combo_keeps_its_own_restriction(conn):
+    """A part the user marked careful / forbidden is flagged on the card like a single exercise would be."""
+    uid = _user(conn, "combo-c")
+    today = plans._user_today(conn, uid)
+    plans.save_plan(conn, uid, split_type="custom", sync_sparky=False, name="FB-21 rules", days=[
+        {"day_of_week": today.isoweekday(), "name": "肩", "exercises": [_ex("哑铃前平举 + 哑铃侧平举"), _ex("哑铃弯举 + 锤式弯举")]}])
+    for ref, status, why in (("dumbbell_front_raise", "banned", "肩峰撞击（示例）"), ("dumbbell_lateral_raise", "caution", "控制幅度（示例）")):
+        conn.execute("INSERT INTO exercise_meta (user_id, exercise_ref, name_zh, status, reason) VALUES (%s, %s, %s, %s, %s)",
+                     (uid, ref, ref, status, why))
+    front, lat, curl, hammer = _cards(conn, uid, today)
+    assert front["group"] == lat["group"] != curl["group"] == hammer["group"]
+    assert front["status"] == "banned" and front["reason"] == "肩峰撞击（示例）"
+    assert lat["status"] == "caution" and curl["status"] == hammer["status"] == "active"
+
+
+def test_old_plan_with_a_combo_item_is_fixed_when_read_and_when_written(conn):
+    """A plan saved before combos existed holds "A + B" as one unknown exercise: read as a superset, stored split by the next write."""
+    uid = _user(conn, "combo-d")
+    today = plans._user_today(conn, uid)
+    old = [{"day_of_week": today.isoweekday(), "name": "旧计划", "exercises": [
+        {"slug": "哑铃侧平举 + 哑铃弯举", "name_zh": "哑铃侧平举 + 哑铃弯举", "in_catalog": False, "sets": 3, "rep_low": 10, "rep_high": 12,
+         "rest_sec": 60, "weight_kg": None, "modality": "weight_reps", "category": "strength"}]}]
+    conn.execute("INSERT INTO training_plans (user_id, name, split_type, days_per_week, start_date, active, days) "
+                 "VALUES (%s, 'old', 'custom', 1, %s, TRUE, %s::jsonb)", (uid, today - timedelta(days=30), json.dumps(old, ensure_ascii=False)))
+    wk = plans.get_week_plan(conn, uid, uid, today, detail=False)
+    exs = next(d for d in wk["days"] if d["date"] == today)["planned"][0]["exercises"]
+    assert [e["slug"] for e in exs] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl"] and exs[0]["group"] == exs[1]["group"]
+    plans.swap_exercise(conn, uid, from_exercise="dumbbell_bicep_curl", to_exercise="dumbbell_hammer_curl", sync_sparky=False)
+    stored = conn.execute("SELECT days FROM training_plans WHERE user_id = %s", (uid,)).fetchone()["days"][0]["exercises"]
+    assert [e["slug"] for e in stored] == ["dumbbell_lateral_raise", "dumbbell_hammer_curl"] and stored[0]["group"] == stored[1]["group"]
+
+
+def test_a_superset_rests_once_per_round(conn):
+    uid = _user(conn, "combo-e")
+    today = plans._user_today(conn, uid)
+    plans.save_plan(conn, uid, split_type="custom", sync_sparky=False, name="FB-21 time", days=[
+        {"day_of_week": today.isoweekday(), "name": "A", "exercises": [_ex("哑铃侧平举 + 哑铃弯举", 4, 10, 10, rest_sec=120)]}])
+    cards = session_log.view(conn, uid, uid, today)["sessions"][0]["exercises"]
+    paired = session_log._minutes(cards)
+    alone = session_log._minutes([{**c, "group": None} for c in cards])
+    assert paired < alone   # two exercises, one rest per round
+
+
+def test_sparky_weekly_plan_unknown_names_are_not_dropped(conn, monkeypatch):
+    """The root cause of FB-21: in a SparkyFitness weekly plan a name the library does not know had slug None, which the
+    app's card parser dropped. Now it is a flagged card (slug = its name) and "A + B" a superset."""
+    uid = _user(conn, "combo-f")
+    today = plans._user_today(conn, uid)
+    x = lambda name, **kw: {"exercise_id": None, "name": name, "sets_text": "3 × 10-12", "rep_low": 10, "rep_high": 12, "status": "active", **kw}
+    planned = [{"name": "Sparky 计划", "exercises": [x("哑铃侧平举 + 哑铃弯举"), x("完全不存在的动作xyz"), x("杠铃平板卧推")]}]
+    monkeypatch.setattr(views, "training_today", lambda *a, **k: {"planned": planned})
+    cards = _cards(conn, uid, today)
+    assert [c["slug"] for c in cards] == ["dumbbell_lateral_raise", "dumbbell_bicep_curl", "完全不存在的动作xyz", "barbell_bench_press"]
+    assert all(c["slug"] for c in cards)
+    assert cards[0]["group"] == cards[1]["group"] and cards[0]["target"]["sets"] == 3
+    assert cards[2]["unresolved"] and not cards[3].get("unresolved")
+    assert not session_log.view(conn, uid, uid, today)["can_edit_plan"]   # no Body Engine plan: nothing to swap in
+
+
+def test_combo_name_rules(conn):
+    uid = _user(conn, "combo-g")
+    parts = lambda q: combo.parts_of(conn, uid, q)
+    assert parts("哑铃侧平举 + 哑铃弯举") == ["哑铃侧平举", "哑铃弯举"]
+    assert parts("哑铃侧平举＋哑铃弯举") == ["哑铃侧平举", "哑铃弯举"] and parts("侧平举+哑铃弯举+面拉") == ["侧平举", "哑铃弯举", "面拉"]
+    assert parts("侧平举 & 面拉") == ["侧平举", "面拉"]
+    assert parts("绳索面拉 + 外旋") is None             # a name the library has as a whole
+    assert parts("面拉 + 外旋") is None                 # one part is not an exercise: stays one item, flagged, with candidates
+    assert parts("硬拉 / 罗马尼亚硬拉") is None          # "/" is part of real names
+    assert parts("5+3") is None and parts("引体向上 8+") is None and parts(None) is None
+    assert parts("侧平举 + 哑铃弯举 + 面拉 + 前平举 + 锤式弯举") is None   # more than COMBO_MAX_PARTS

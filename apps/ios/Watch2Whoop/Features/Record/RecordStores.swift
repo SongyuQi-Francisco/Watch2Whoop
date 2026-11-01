@@ -169,6 +169,23 @@ final class TrainingStore: LocalPageStore {
                                local: (try? db.doc(TrainingLocal.dayKey(day)))?.json)
   }
 
+  /// An exercise the library did not recognise, swapped in the weekly plan for one it knows (`POST /training/plan/swap`;
+  /// online, it edits the plan). Returns the error to show, nil when done.
+  func swap(_ slug: String, for candidate: SwapCandidate) async -> String? {
+    guard let data = try? JSONSerialization.data(withJSONObject: ["from_exercise": slug, "to_exercise": candidate.slug]) else {
+      return tr("出错了", "Something went wrong")
+    }
+    do {
+      _ = try await api.data(APIRequest(method: .post, path: RecordAPI.swapPath, body: data))
+      await pull([DocFetch(RecordDocs.session(today), RecordAPI.session(today)), DocFetch(RecordDocs.week(monday), RecordAPI.week(today))])
+      return nil
+    } catch let e as APIError {
+      return e.userMessage
+    } catch {
+      return tr("出错了", "Something went wrong")
+    }
+  }
+
   // MARK: - set-by-set logging
 
   func edit(_ slug: String, _ change: (inout [SetRow]) -> Void) {

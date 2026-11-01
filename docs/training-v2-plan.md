@@ -84,6 +84,11 @@
 - **4 分化就是 4 天**（#66 FB-3）：模板里不再写死周三的「肩部康复 / 灵活性」。康复 / 灵活性做成可选附加项（`params.MOBILITY_ADDONS`：肩、下背），只在用户自己的动作限制（`exercise_meta` 禁用 / 注意 → 动作库 `joint_stress`）涉及那个部位时作为建议给出（`addon_suggestions`），用户同意才加，作为热身放在相关训练的开头，不计入每周组数。动作库里「下背部」（竖脊肌）归到核心，不再把硬拉 / 山羊挺身算成又一次背部训练。
 - **训练记录没连上 / 读不到**（#66 FB-4）：`sparky_client.link_state` 给出 connected / not_linked / unreadable，带中英文短标签和提示。`GET /v1/users/{user}/training/sparky` 返回状态；`POST /v1/users/me/training/sparky/connect` 自助连接（和自助注册的开通步骤相同，`account/provision.connect_sparky`；管理员关联的账号提示找管理员）。今天页的训练页和「我」页有「训练记录」一行显示状态，点开可以连接；没有计划也没有训练记录时，训练页显示空的一周，不再报错。`save_plan` 同步失败时计划照样保存，`sparky_sync.tell_user` 告诉 AI 怎么跟用户说；`get_briefing` 的 `training.training_log` 告诉 AI 训练记录的状态。
 
+## 组合动作（超级组）和认不出的动作（FB-21，`training/combo.py`）
+- 计划里一个动作写成「A + B」（`+` / `＋` / `&`，不拆 `/`）：A、B 都是动作库里的动作才拆开，各自按单个动作解析（禁用 / 注意照常标），共用一个 `group`（`ss1`、`ss2`…，每天内唯一），训练卡里放在一起显示为「超级组」，每个动作各记各的组数和重量；整串名字本身在动作库里（如「绳索面拉 + 外旋」）就还是一个动作。组合动作的 `weight_kg` 不分给各部分（推荐重量按各动作算）。
+- 拆分发生在 `propose_plan` / `save_plan`，以及读当前计划时（`plans._active_plan_row`，内存里拆，旧计划不用迁移，下一次有写入时存成拆开的）。
+- 动作库认不出的名字不会消失：返回时带 `unresolved: true` 和 `candidates`（`resolve_with_candidates` 的候选，不含禁用动作）；`propose_plan` / `save_plan` 另有 `unresolved` 列表给 AI 和用户确认；SparkyFitness 周计划里认不出的名字也是一张带标记的卡（原来没有 slug，app 解析时被丢掉）。app 的卡片标「认不出」，点候选就用 `POST /training/plan/swap` 换进周计划。
+
 ## HTTP 接口与日常维护命令
 - `GET /v1/users/{user}/training/exercises?q=&muscle=&equipment=&pattern=&category=`：动作库筛选与搜索
 - `GET /v1/users/{user}/training/exercises/{slug}`：动作详情、关节压力、个人限制与同模式安全替代动作

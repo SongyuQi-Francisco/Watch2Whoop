@@ -35,6 +35,7 @@ enum RecordAPI {
   static func week(_ day: String) -> APIRequest { .get("/v1/users/me/training/week", ["date": day]) }
   static func session(_ day: String) -> APIRequest { .get("/v1/users/me/training/session", ["date": day]) }
   static func sessionPath(_ day: String) -> String { "/v1/users/me/training/session/\(day)" }
+  static let swapPath = "/v1/users/me/training/plan/swap"
   static func calendar(_ month: String) -> APIRequest { .get("/v1/users/me/training/calendar", ["month": month]) }
   static func day(_ day: String) -> APIRequest { .get("/v1/users/me/training/day/\(day)") }
   static let muscle = APIRequest.get("/v1/users/me/training/muscle-load")
@@ -123,6 +124,13 @@ struct JournalDay: Equatable {
 
 // MARK: - training
 
+/// A library exercise a plan exercise that was not recognised can be swapped for (`candidates[]`).
+struct SwapCandidate: Equatable, Identifiable {
+  var slug: String
+  var name: String
+  var id: String { slug }
+}
+
 /// An exercise of the day's plan (`/training/session` → sessions[].exercises[]), with its restriction.
 struct PlannedExercise: Equatable, Identifiable {
   var slug: String
@@ -139,13 +147,21 @@ struct PlannedExercise: Equatable, Identifiable {
   var target: SetRow
   var targetSets: Int
   var last: String?
+  /// The superset it belongs to (the server's `group`, made unique across the day's sessions); the exercises of one
+  /// superset are next to each other.
+  var group: String?
+  /// The library does not know this name (FB-21): the card says so and offers `candidates` to swap it for.
+  var unresolved: Bool
+  var candidates: [SwapCandidate]
   var id: String { slug }
 
   var banned: Bool { status == "banned" }
   var caution: Bool { status == "caution" }
 
-  static func parse(_ c: [String: Any]) -> PlannedExercise? {
-    guard let slug = c["slug"] as? String else { return nil }
+  /// `session`: the index of the session it is in (a group id is only unique inside one session).
+  static func parse(_ c: [String: Any], session: Int = 0) -> PlannedExercise? {
+    // An exercise is never dropped for lack of a slug (an older server sent none for a name it did not know): its name stands in.
+    guard let slug = (c["slug"] as? String) ?? (c["name_zh"] as? String) else { return nil }
     let t = c["target"] as? [String: Any] ?? [:]
     let timed = t["duration_s"] != nil && !(t["duration_s"] is NSNull)
     let modality = c["modality"] as? String ?? "weight_reps"
@@ -167,12 +183,37 @@ struct PlannedExercise: Equatable, Identifiable {
     }
     let perSide = (c["per_side"] as? Bool) ?? false
     if perSide { rx += tr(" · 每侧", " · per side") }
+    let candidates = ((c["candidates"] as? [[String: Any]]) ?? []).compactMap { x -> SwapCandidate? in
+      guard let id = x["slug"] as? String, let zh = x["name_zh"] as? String else { return nil }
+      return SwapCandidate(slug: id, name: Lang.isZh ? zh : ((x["name_en"] as? String) ?? zh))
+    }
     return PlannedExercise(slug: slug, name: name ?? slug, logName: (c["name_zh"] as? String) ?? name ?? slug, status: c["status"] as? String ?? "active", reason: c["reason"] as? String,
                            cues: c["cues"] as? String, weighted: !timed && modality == "weight_reps", timed: timed, perSide: perSide,
                            prescription: rx,
                            target: SetRow(reps: reps.map(Int.init), weightKg: RecordFormat.double(t["weight_kg"]),
                                           durationS: RecordFormat.double(t["duration_s"]), done: false),
-                           targetSets: (t["sets"] as? NSNumber)?.intValue ?? 3, last: last)
+                           targetSets: (t["sets"] as? NSNumber)?.intValue ?? 3, last: last,
+                           group: (c["group"] as? String).map { "\(session):\($0)" },
+                           unresolved: (c["unresolved"] as? Bool) ?? false, candidates: candidates)
+  }
+}
+
+/// The day's exercises as the card draws them: a run of exercises of one superset is one block, anything else a block of one.
+struct ExerciseBlock: Identifiable, Equatable {
+  var items: [PlannedExercise]
+  var id: String { items[0].slug }
+  var isSuperset: Bool { items.count > 1 }
+
+  static func blocks(_ list: [PlannedExercise]) -> [ExerciseBlock] {
+    var out: [ExerciseBlock] = []
+    for e in list {
+      if let g = e.group, let last = out.last, last.items.last?.group == g {
+        out[out.count - 1].items.append(e)
+      } else {
+        out.append(ExerciseBlock(items: [e]))
+      }
+    }
+    return out
   }
 }
 
@@ -218,6 +259,8 @@ struct TrainingSession: Equatable {
   var exercises: [PlannedExercise]
   var rows: [String: [SetRow]]
   var canLog: Bool
+  /// Own Body Engine plan, today or later: an exercise the library does not know can be swapped in the plan.
+  var canEditPlan: Bool
   var submitted: Bool
   var changedSinceSubmit: Bool
   var readiness: (label: String, tone: Tone)?
@@ -226,7 +269,7 @@ struct TrainingSession: Equatable {
 
   static func == (a: TrainingSession, b: TrainingSession) -> Bool {
     a.day == b.day && a.exercises == b.exercises && a.rows == b.rows && a.submitted == b.submitted && a.canLog == b.canLog
-      && a.pendingSave == b.pendingSave && a.pendingSubmit == b.pendingSubmit && a.changedSinceSubmit == b.changedSinceSubmit
+      && a.canEditPlan == b.canEditPlan && a.pendingSave == b.pendingSave && a.pendingSubmit == b.pendingSubmit && a.changedSinceSubmit == b.changedSinceSubmit
       && a.title == b.title && a.readiness?.label == b.readiness?.label
   }
 
@@ -242,7 +285,10 @@ struct TrainingSession: Equatable {
   static func build(_ j: [String: Any]?, day: String, pending: [PendingRecord]) -> TrainingSession? {
     guard let j else { return nil }
     let sessions = (j["sessions"] as? [[String: Any]]) ?? []
-    let exercises = sessions.flatMap { ($0["exercises"] as? [[String: Any]]) ?? [] }.compactMap(PlannedExercise.parse)
+    var exercises: [PlannedExercise] = []
+    for (i, s) in sessions.enumerated() {
+      exercises += ((s["exercises"] as? [[String: Any]]) ?? []).compactMap { PlannedExercise.parse($0, session: i) }
+    }
     let log = j["log"] as? [String: Any]
     let save = pending.last { $0.kind == RecordKind.session && $0.date == day }
     let submit = pending.last { $0.kind == RecordKind.submit && $0.date == day }
@@ -264,7 +310,7 @@ struct TrainingSession: Equatable {
     let names = sessions.compactMap { $0["name"] as? String }
     return TrainingSession(day: day, title: names.joined(separator: " · "), minutes: (j["minutes"] as? NSNumber)?.intValue,
                            restDay: (j["rest_day"] as? Bool) ?? false, exercises: exercises, rows: rows,
-                           canLog: (j["can_log"] as? Bool) ?? false, submitted: (log?["status"] as? String) == "submitted" && save == nil,
+                           canLog: (j["can_log"] as? Bool) ?? false, canEditPlan: (j["can_edit_plan"] as? Bool) ?? false, submitted: (log?["status"] as? String) == "submitted" && save == nil,
                            changedSinceSubmit: (log?["changed_since_submit"] as? Bool) ?? false,
                            readiness: readiness.map { (label: $0.0, tone: $0.1) }, pendingSave: save, pendingSubmit: submit)
   }
