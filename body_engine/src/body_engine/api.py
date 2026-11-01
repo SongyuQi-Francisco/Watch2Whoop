@@ -12,11 +12,14 @@ from starlette.routing import Route
 from . import auth, errors_en, obs, plugins, queries
 from .i18n import LangMiddleware, is_en
 from .account import api as account_api
+from .client import policy as upgrade_policy
+from .algo.api import router as algo_router
 from .ai import naming, parity
 from .ai.api import router as ai_router
 from .ai.mcp_http import mcp_app
 from .ai.oauth_api import router as oauth_router, well_known as oauth_well_known
 from .ai.oauth_http import oauth_app
+from .nativesync.api import router as native_sync_router
 from .rollout.api import router as rollout_router
 from .static_bundle.api import router as static_bundle_router
 from .assistant.memory_api import router as memory_router
@@ -32,6 +35,7 @@ from .goals.api import router as goals_router
 from .sync import ow_watch
 from .sync.api import router as sync_router
 from .history.api import router as history_router
+from .legal.api import router as legal_router
 from .profile.api import router as profile_router
 from .explain.api import router as explain_router
 from .rawdata.api import ingest_router as rawdata_ingest_router, router as rawdata_router
@@ -39,6 +43,8 @@ from .cardio.api import router as cardio_router
 from .water.api import router as water_router
 from .appearance.api import router as appearance_router
 from .offline.api import router as offline_router
+from .weightlog.api import router as weightlog_router
+from .whatsnew.api import router as whatsnew_router
 from .sleep_night.api import router as sleep_night_router
 from .ui.api import router as ui_router
 from .training.api import router as training_router
@@ -47,6 +53,8 @@ from .feedback.api import router as feedback_router
 from .avatars.api import router as avatars_router
 from .friends.api import router as friends_router
 from .friends.feed_api import router as friends_feed_router
+from .friends.moderation_api import admin_router as circles_admin_router, router as friends_moderation_router
+from .notify import silent as notify_silent
 from .notify.api import router as notify_router
 from .notices.api import router as notices_router
 from .web import api as web_api, session as web_session
@@ -61,7 +69,8 @@ async def lifespan(app: FastAPI):
     # Streaming responses of in-page chat on the Today page hold a connection until done, so leave more than the original 5
     pool = ConnectionPool(settings.dsn, kwargs={"row_factory": dict_row}, min_size=1, max_size=10, open=True)
     # remote MCP session manager (/mcp); jobs of BODY_PLUGIN_DIR plugins; new OW uploads -> scores within minutes (sync/ow_watch.py)
-    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher():
+    # silent pushes to the native app when a user's data changed (notify/silent.py; nothing without APNs)
+    async with mcp_app.lifespan(), plugins.scheduler(), ow_watch.watcher(), notify_silent.watcher():
         yield
     pool.close()
 
@@ -103,6 +112,7 @@ def current_user(request: Request, conn=Depends(get_conn), authorization: Annota
             raise HTTPException(401, "token 无效或已吊销")
     # Self-signed-up accounts waiting for an invite code only reach /v1/account*; disabled ones nothing (account/api.py)
     account_api.gate(user, request.url.path, conn)
+    upgrade_policy.enforce(conn, request, user)   # R2: 426 for an old native app / the Today page after the block (client/)
     request.state.ai_parity = parity.on(conn, user["id"])   # error texts without the back end's name (http_error)
     return user
 
@@ -173,6 +183,8 @@ app.include_router(feedback_router)
 app.include_router(friends_router)
 app.include_router(avatars_router)
 app.include_router(friends_feed_router)
+app.include_router(friends_moderation_router)   # block / report / community rules (friends/moderation.py)
+app.include_router(circles_admin_router)        # the admins' report queue
 app.include_router(notify_router)   # in-app notifications, push devices, settings (notify/, #175)
 app.include_router(notices_router)   # one-time messages from the admin to one user (notices/)
 app.include_router(ai_router)
@@ -185,12 +197,17 @@ app.include_router(cardio_router)
 app.include_router(water_router)   # daily water intake (water/, issue #125)
 app.include_router(appearance_router)   # theme + daily quote of the Today page (appearance/, issue #126, flag slim_mode)
 app.include_router(offline_router)   # weight from the Today page, queued while offline (offline/, #77)
+app.include_router(weightlog_router)   # recent weigh-ins with their conditions (weightlog/)
+app.include_router(whatsnew_router)   # what shipped, by week: the Today page's 本周更新 sheet (whatsnew/)
 app.include_router(sleep_night_router)   # sleep detail page (sleep_night/, flag sleep_detail)
 app.include_router(ui_router)   # the AI-first page: my Today, focus, first-screen overview (ui/, flag ui_ai_first, #279)
 app.include_router(account_api.router)
+app.include_router(legal_router)   # public privacy policy / terms pages (legal/, docs/legal/)
 app.include_router(sync_router)   # on-demand refresh: app opened / pull to refresh (sync/)
 # Remote MCP (Streamable HTTP): its own Bearer auth (AI-only token), see ai/mcp_http.py
 app.router.routes.append(Route("/mcp", endpoint=mcp_app, methods=["GET", "POST", "DELETE"], include_in_schema=False))
+app.include_router(native_sync_router)   # the native app's pull / push / app-computed scores (nativesync/, #340 N2, flag native_sync)
+app.include_router(algo_router)   # the JS scoring bundle the iOS app runs locally (algo/, packages/openbodyscore-js, #340)
 app.include_router(static_bundle_router)   # versioned static data for the app: exercise library etc. (static_bundle/, flag static_bundle)
 app.include_router(rollout_router)       # feature flags / A/B variants of the signed-in user (rollout/api.py)
 app.include_router(oauth_router)        # MCP OAuth: consent step and connections (ai/oauth_api.py)

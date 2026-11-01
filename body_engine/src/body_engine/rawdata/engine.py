@@ -93,6 +93,7 @@ def enabled(conn: psycopg.Connection, user_id: int) -> bool:
 
 MODES = ("ow", "shadow", "app")      # = importers/common.SYNC_MODES
 PRIMARY_FLAG = "apple_sync_primary"
+NEW_ACCOUNTS_FLAG = "apple_sync_new_accounts"   # global (only --state all counts): new accounts start on the engine
 
 
 def mode(conn: psycopg.Connection, user_id: int) -> str:
@@ -100,11 +101,15 @@ def mode(conn: psycopg.Connection, user_id: int) -> str:
     the comparison (§3.2.3); app = the engine's values take part, above ow (D4): only after `body-engine sync-mode` switched
     this user (sync_mode_state.mode = app, rawdata/cutover.py) AND while the kill switch apple_sync_primary is still on for
     them and they are not pinned to ow. Turning the flag off or pinning takes effect on the next read (rollback); the
-    cut-over then cleans up the derived data."""
+    cut-over then cleans up the derived data. An engine-only account (no OW link, e.g. opened while the new-account switch
+    apple_sync_new_accounts was on, rawdata/cutover.start_on_engine) stays in app once switched whatever apple_sync_primary
+    says: there is no OW path to fall back to, shadow would only hide its data."""
     if not enabled(conn, user_id):
         return "ow"
-    st = conn.execute("SELECT mode, pin FROM sync_mode_state WHERE user_id = %s", (user_id,)).fetchone()
-    if st and st["mode"] == "app" and st["pin"] is None and flags.enabled(conn, user_id, PRIMARY_FLAG):
+    st = conn.execute("""SELECT s.mode, s.pin, u.ow_user_id FROM users u JOIN sync_mode_state s ON s.user_id = u.id
+                         WHERE u.id = %s""", (user_id,)).fetchone()
+    if st and st["mode"] == "app" and st["pin"] is None and (
+            not st["ow_user_id"] or flags.enabled(conn, user_id, PRIMARY_FLAG)):
         return "app"
     return "shadow"
 

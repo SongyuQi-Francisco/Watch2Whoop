@@ -6,7 +6,8 @@
 - nutrition.py: versioned nutrition goals (table nutrition_goal_versions: training / rest day sets with caps, effective
   date, who / why), resolved per date for rules, status cards, reports and adherence; SparkyFitness goals are only the
   fallback before the first version, and import_sparky_plans backfills versions from SparkyFitness weekly goal plans
-- api.py / tools.py: GET / PUT /v1/users/{user}/goals/sleep and /goals/nutrition, assistant tools get_sleep_goal /
+- api.py / tools.py: GET / PUT / DELETE /v1/users/{user}/goals/sleep (GET / PUT / DELETE carry `settings`, the stored row
+  the app caches) and GET / PUT /goals/nutrition, assistant tools get_sleep_goal /
   set_sleep_goal / get_nutrition_goals / set_nutrition_goals
 Rule reminders (tonight's target and pre-sleep arrangements, consecutive deviations, milestone reached) are in rules/sleep_goal.py.
 """

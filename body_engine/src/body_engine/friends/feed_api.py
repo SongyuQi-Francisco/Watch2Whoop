@@ -1,10 +1,11 @@
 """HTTP endpoints of the circle training feed (friends/feed.py), under /v1/friends/feed. Behind the `friends` and `circle_feed`
 flags (404 while either is off for the caller). Reading needs a normal sign-in; ❤️, comments, reports and "seen" need a write
 token. There is deliberately no way to delete or edit a post."""
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
+from ..nativesync import idem
 from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
 from . import feed, params as P, store
@@ -23,6 +24,9 @@ def _run(fn, *args, **kw):
 class CommentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     body: str = Field(max_length=2000)   # the real limit (P.COMMENT_MAX) is checked in feed.clean_comment with a readable message
+    # The native app's offline queue (#340 N2b): a resend after a timeout answers the first result instead of a second
+    # comment (nativesync/idem.py; also the X-Client-Id header).
+    client_id: str | None = Field(default=None, max_length=64)
 
 
 class ReportIn(BaseModel):
@@ -64,8 +68,11 @@ def comments(post_id: int, circle: int | None = None, conn=Depends(get_conn), vi
 
 
 @router.post("/posts/{post_id}/comments", status_code=201)
-def comment(post_id: int, body: CommentIn, conn=Depends(get_conn), viewer=Depends(current_user)):
-    return _run(feed.add_comment, conn, _self(viewer, "me"), post_id, body.body)
+def comment(post_id: int, body: CommentIn, conn=Depends(get_conn), viewer=Depends(current_user),
+            x_client_id: str | None = Header(None)):
+    uid = _self(viewer, "me")
+    return idem.once(conn, uid, body.client_id or x_client_id, f"circle.comment:{post_id}",
+                     lambda: _run(feed.add_comment, conn, uid, post_id, body.body), status=201)
 
 
 @router.delete("/comments/{comment_id}", status_code=204)

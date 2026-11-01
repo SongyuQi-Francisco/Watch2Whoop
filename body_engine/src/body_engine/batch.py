@@ -133,15 +133,28 @@ def _step_compute_scores(conn, client, u, start):
     from .importers import shortcut
     from .insights import jobs as insights_jobs
     from .scores import engine as scores_engine
+    from .nativesync import appscores
     # OW raw samples through the local copy (importers/ow_cache.py); the full nightly recompute re-reads and replaces it
     mode = "refresh" if start is None else "use"
+    plan = appscores.plan(conn, u["id"])
+    if plan["mode"] == "app":   # the user's app computes the scores (#340 N2): only the days it left stale
+        if not plan["days"]:
+            return json.dumps({"app_scoring": True, "rows": 0}, ensure_ascii=False)
+        res = scores_engine.run(conn, client, u["id"], min(plan["days"]), None, shortcut.user_archive_dir(u["id"]),
+                                ow_cache="use", only=set(plan["days"]))
+        res["app_scoring"] = True
+        res["insights"] = insights_jobs.run(conn, client, u["id"], ow_cache="use")
+        return json.dumps(res, default=str, ensure_ascii=False)
     res = scores_engine.run(conn, client, u["id"], start, None, shortcut.user_archive_dir(u["id"]), ow_cache=mode)
     res["insights"] = insights_jobs.run(conn, client, u["id"], ow_cache=mode)
     return json.dumps(res, default=str, ensure_ascii=False)
 
 
 def _step_evaluate_rules(conn, client, u):
+    from .nativesync import primary
     from .rules import engine as rules_engine
+    if primary.server_primary(conn, u["id"], "rules"):   # 2.0.0 S9: the user's phone evaluates the rules and uploads them
+        return "app 计算（rules 已转正），服务器不写提醒"
     res = rules_engine.run(conn, u["id"])
     return (f"{res['date']} 新增 {res['inserted']}、更新 {res['updated']}、不变 {res['unchanged']}、删除 {res['deleted']}"
             + (f"；数据来源失败 {sorted(res['sources_failed'])}" if res["sources_failed"] else ""))
@@ -217,7 +230,11 @@ def process_user(u: dict, steps: tuple, full: bool, skip: bool, max_age_hours: f
             return {"id": uid, "lines": lines, "errors": [], "skipped": 0, "seconds": time.time() - t_user}
         client = client or make_ow_client_safe()
         if "import-ow" in steps:
-            if u["ow"]:
+            from .rawdata import retire
+            if retire.ow_import_stopped():   # 2.0.0 R1: OW retired; what was imported stays as it is
+                if u["ow"]:
+                    lines.append(f"· user {uid} {retire.SKIP_NOTE}，跳过 import-ow")
+            elif u["ow"]:
                 step(f"import-ow user {uid}", "import-ow", lambda: _step_import_ow(conn, client, u), "ran",
                      quiet=lambda: _ow_quiet(conn, client, u), why="OW 没有比同步游标更新的样本")
             else:
@@ -318,6 +335,13 @@ def main(args) -> int:
     print("用户：" + ", ".join(f"{u['id']} {u['name']}" for u in users), flush=True)
     res = run(users, steps, workers=args.workers, full=args.full, skip=not (args.full or args.no_skip),
               max_age_hours=args.max_age_hours, emit=lambda line: print(line, flush=True))
+    if not args.user_id:   # the native app's change log: keep the newest row per key (nativesync/store.py)
+        try:
+            from .nativesync import store as sync_store
+            with db.connect() as conn:
+                res["sync_changes_compacted"] = sync_store.compact(conn)
+        except Exception as e:  # noqa: BLE001  housekeeping only
+            res["errors"].append(f"sync-compact: {type(e).__name__}: {e}")
     print(f"{len(users)} 个用户，{res['skipped_steps']} 步没变跳过，{len(res['errors'])} 项失败（{res['seconds']:.0f} 秒，{args.workers} 个进程）")
     print(RESULT_PREFIX + json.dumps(res, ensure_ascii=False), flush=True)
     return 1 if res["errors"] else 0

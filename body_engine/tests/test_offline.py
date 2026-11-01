@@ -5,7 +5,7 @@
   (same client_id), a group stops at its first rejection, conflicts resend with their patch, the banner text.
 - the page wiring, checked on the source: nothing offline runs while the flag is off, logout wipes the copies, the scripts
   are loaded and cached, the limits agree with offline/params.py.
-- POST /v1/users/{user}/weight (offline/api.py): 404 while the flag is off, idempotent on (date, value), 409 on a different
+- POST /v1/users/{user}/weight (offline/api.py): works with the flag off too, idempotent on (date, value), 409 on a different
   value unless overwrite. Separate test database BODY_TEST_DB_NAME (default body_test_offline); skipped without Postgres.
 """
 import json
@@ -320,10 +320,7 @@ def test_weight_endpoint(client, users, dsn, monkeypatch):
         day = user_today(conn, ids["a"]).isoformat()
     body = {"date": day, "weight_kg": 88.4, "client_id": "q1"}
 
-    set_flag(dsn, "off")
-    assert client.post("/v1/users/me/weight", json=body, headers=H(tok["a"])).status_code == 404   # flag off: no endpoint
-
-    set_flag(dsn, "all")
+    set_flag(dsn, "off")   # the weigh-in does not depend on offline_mode (manual weight entry): only the offline queue does
     r = client.post("/v1/users/me/weight", json=body, headers=H(tok["a"]))
     assert r.status_code == 200 and r.json()["written"] is True and fake.posts == 1
     r = client.post("/v1/users/me/weight", json=body, headers=H(tok["a"]))     # the queue resends it: nothing new
@@ -364,3 +361,34 @@ def test_offline_shell_endpoint_and_page_bridge():
     assert 'tellApp(S.offlineOn ? "offline:on" : "offline:off")' in APP and 'tellApp("offline:off")' in APP
     assert 'if (window.W2W_SHELL) throw new Error("offline shell")' in APP
     assert 'if (window.W2W_SHELL) { tellApp("reload"); return; }' in APP
+
+
+# ---------------------------------------------------------------- local-first start (#337, apps after 1.0.9)
+def test_offline_shell_etag_and_local_marker():
+    from body_engine import api as root_api
+    from body_engine.web import api as web_api
+    c = TestClient(root_api.app, base_url="https://testserver")
+    r = c.get("/app/offline-shell.html")
+    etag = r.headers["etag"]
+    assert r.status_code == 200 and etag.startswith('"') and r.headers["x-web-version"] == web_api.WEB_VERSION
+    # the app asks once per run with its copy's ETag: unchanged = 304 without the page
+    again = c.get("/app/offline-shell.html", headers={"If-None-Match": etag})
+    assert again.status_code == 304 and not again.content and again.headers["etag"] == etag
+    assert c.get("/app/offline-shell.html", headers={"If-None-Match": '"old"'}).status_code == 200
+    # the app turns the copy into the local-first page by renaming this one marker (offline_shell.dart asLocal)
+    html = web_api.offline_shell_html()
+    assert html.count('<script>window.W2W_SHELL = "') == 1 and "W2W_LOCAL =" not in html
+
+
+def test_local_first_page_wiring():
+    assert "local_first_start_off" in registry.FLAGS   # kill switch: off (the default) = local-first start for everyone
+    # the page reports the switch next to offline:on / off (from the real page or the local copy, never the offline copy)
+    setup = APP[APP.index("async function setupOffline("):APP.index("// Controls that need the server")]
+    assert 'tellApp("local-first:" + !S.flags.includes("local_first_start_off"))' in setup
+    assert setup.index("if (!window.W2W_SHELL)") < setup.index("local-first:")
+    # a 401 in the local copy hands over to the real page: no login screen and no wiped copies from the copy itself
+    page_api = APP[APP.index("async function api(path"):APP.index("// ---- prefetched GETs")]
+    local = page_api.index('if (r.status === 401 && window.W2W_LOCAL) { tellApp("reload"); throw new ApiError(401, ""); }')
+    assert local < page_api.index("off.clearCache()") < page_api.index("showLogin(")
+    # the last data first: the start tab today, trends or me
+    assert '/^(today|trends|me)$/.test(tab) && flagWas("cached_first_paint")' in APP

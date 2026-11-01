@@ -1,0 +1,8372 @@
+{
+ "runs": [
+  [
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 312.9,
+    "ctl": 293.3,
+    "date": "2026-08-01",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 383,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 468.0,
+      "zone_minutes": [
+       136.0,
+       4.0,
+       13.0,
+       65.0,
+       5.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 0,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 166,
+      "spo2_night": 98.0,
+      "spo2_readings": 6,
+      "wrist_temp": 35.51
+     },
+     "sleep": {
+      "asleep_min": 456.0,
+      "awakenings": 3,
+      "bedtime": "2026-08-01T00:11+10:00",
+      "consistency": 0,
+      "deep_min": 85.0,
+      "duration": 100,
+      "efficiency": 0.934,
+      "interruptions": 76,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 0,
+      "need_from_strain": 0,
+      "rem_min": 99.0,
+      "source": "shortcut",
+      "stages": 97,
+      "wake_time": "2026-08-01T08:19+10:00",
+      "waso_min": 32.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 0 晚 HRV，满 14 晚才出恢复分",
+     "consistency_no_history": "前 15 天没有主睡眠，规律性按 OW 规格给 0",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0223,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 14.3,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 456,
+    "sleep_debt_min": 0,
+    "sleep_need_min": 480,
+    "sleep_performance": 0.95,
+    "sleep_score": 74,
+    "strain": 19.66,
+    "trimp": 468.0,
+    "tsb": -19.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 302.4,
+    "ctl": 291.9,
+    "date": "2026-08-02",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 315,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 234.0,
+      "zone_minutes": [
+       222.0,
+       6.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 1,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 180,
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "wrist_temp": 36.19
+     },
+     "sleep": {
+      "asleep_min": 353.0,
+      "awakenings": 4,
+      "bedtime": "2026-08-02T00:22+10:00",
+      "consistency": 100,
+      "deep_min": 84.0,
+      "duration": 82,
+      "efficiency": 0.874,
+      "interruptions": 61,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 24,
+      "need_from_strain": 38,
+      "rem_min": 65.0,
+      "source": "ow",
+      "stages": 82,
+      "wake_time": "2026-08-02T07:06+10:00",
+      "waso_min": 36.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 1 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6362,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.35,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 353,
+    "sleep_debt_min": 24,
+    "sleep_need_min": 542,
+    "sleep_performance": 0.6513,
+    "sleep_score": 81,
+    "strain": 15.7,
+    "trimp": 234.0,
+    "tsb": -10.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 296.6,
+    "ctl": 291.1,
+    "date": "2026-08-03",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 356,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 163.0,
+      "trimp_recorded": 259.0,
+      "zone_minutes": [
+       124.0,
+       36.0,
+       21.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1456.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 2,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 178,
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "wrist_temp": 36.0
+     },
+     "sleep": {
+      "asleep_min": 389.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-02T23:53+10:00",
+      "consistency": 91,
+      "deep_min": 83.0,
+      "duration": 94,
+      "efficiency": 0.965,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 83,
+      "need_from_strain": 26,
+      "rem_min": 72.0,
+      "source": "shortcut",
+      "stages": 86,
+      "wake_time": "2026-08-03T06:36+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 2 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.944,
+    "muscle_load": 1456.8,
+    "recovery": null,
+    "resp_rate_night": 15.05,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 389,
+    "sleep_debt_min": 83,
+    "sleep_need_min": 589,
+    "sleep_performance": 0.6605,
+    "sleep_score": 93,
+    "strain": 16.42,
+    "trimp": 259.0,
+    "tsb": -5.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 301.9,
+    "ctl": 292.2,
+    "date": "2026-08-04",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 328,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 336.0,
+      "zone_minutes": [
+       172.0,
+       5.0,
+       1.0,
+       24.0,
+       11.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 3,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 85,
+      "spo2_night": 95.4,
+      "spo2_readings": 6,
+      "wrist_temp": 35.9
+     },
+     "sleep": {
+      "asleep_min": 357.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-03T23:13+10:00",
+      "consistency": 80,
+      "deep_min": 83.0,
+      "duration": 84,
+      "efficiency": 0.92,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 86,
+      "need_from_strain": 28,
+      "rem_min": 65.0,
+      "source": "ow",
+      "stages": 82,
+      "wake_time": "2026-08-04T05:41+10:00",
+      "waso_min": 19.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 3 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6674,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.45,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 357,
+    "sleep_debt_min": 86,
+    "sleep_need_min": 595,
+    "sleep_performance": 0.6004,
+    "sleep_score": 85,
+    "strain": 18.09,
+    "trimp": 336.0,
+    "tsb": -9.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 284.3,
+    "ctl": 289.3,
+    "date": "2026-08-05",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 310,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 170.0,
+      "zone_minutes": [
+       170.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 4,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 210,
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "wrist_temp": 36.22
+     },
+     "sleep": {
+      "asleep_min": 387.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-05T00:07+10:00",
+      "consistency": 100,
+      "deep_min": 76.0,
+      "duration": 94,
+      "efficiency": 0.917,
+      "interruptions": 91,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 100,
+      "need_from_strain": 33,
+      "rem_min": 81.0,
+      "source": "shortcut",
+      "stages": 87,
+      "wake_time": "2026-08-05T07:09+10:00",
+      "waso_min": 23.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 4 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6886,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.4,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 422,
+    "sleep_debt_min": 100,
+    "sleep_need_min": 613,
+    "sleep_performance": 0.6884,
+    "sleep_score": 93,
+    "strain": 13.27,
+    "trimp": 170.0,
+    "tsb": 5.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 288.0,
+    "ctl": 289.8,
+    "date": "2026-08-06",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 349,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 312.0,
+      "zone_minutes": [
+       161.0,
+       35.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1480.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 5,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 74,
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "wrist_temp": 35.79
+     },
+     "sleep": {
+      "asleep_min": 355.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-05T23:36+10:00",
+      "consistency": 84,
+      "deep_min": 74.0,
+      "duration": 83,
+      "efficiency": 0.983,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 86,
+      "need_from_strain": 19,
+      "rem_min": 63.0,
+      "source": "ow",
+      "stages": 76,
+      "wake_time": "2026-08-06T05:37+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 5 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8433,
+    "muscle_load": 1480.8,
+    "recovery": null,
+    "resp_rate_night": 15.0,
+    "rhr_night": 57.6,
+    "sleep_actual_min": 355,
+    "sleep_debt_min": 86,
+    "sleep_need_min": 585,
+    "sleep_performance": 0.607,
+    "sleep_score": 85,
+    "strain": 17.65,
+    "trimp": 312.0,
+    "tsb": 1.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 285.1,
+    "ctl": 289.3,
+    "date": "2026-08-07",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 295,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 266.0,
+      "zone_minutes": [
+       246.0,
+       10.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 6,
+      "hrv_readings": 3,
+      "rhr_low_offset_min": 45,
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "wrist_temp": 35.87
+     },
+     "sleep": {
+      "asleep_min": 318.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-06T23:44+10:00",
+      "consistency": 98,
+      "deep_min": 70.0,
+      "duration": 64,
+      "efficiency": 0.981,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 98,
+      "need_from_strain": 32,
+      "rem_min": 61.0,
+      "source": "shortcut",
+      "stages": 72,
+      "wake_time": "2026-08-07T05:08+10:00",
+      "waso_min": 3.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 6 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.3499,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.4,
+    "rhr_night": 61.0,
+    "sleep_actual_min": 318,
+    "sleep_debt_min": 98,
+    "sleep_need_min": 610,
+    "sleep_performance": 0.5214,
+    "sleep_score": 79,
+    "strain": 16.61,
+    "trimp": 266.0,
+    "tsb": 4.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 265.8,
+    "ctl": 285.8,
+    "date": "2026-08-08",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 312,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 140.0,
+      "zone_minutes": [
+       136.0,
+       2.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 7,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 371,
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "wrist_temp": 35.95
+     },
+     "sleep": {
+      "asleep_min": 482.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-08T00:21+10:00",
+      "consistency": 87,
+      "deep_min": 86.0,
+      "duration": 100,
+      "efficiency": 0.964,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 116,
+      "need_from_strain": 29,
+      "rem_min": 106.0,
+      "source": "ow",
+      "stages": 97,
+      "wake_time": "2026-08-08T08:41+10:00",
+      "waso_min": 18.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 7 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8069,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.3,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 482,
+    "sleep_debt_min": 116,
+    "sleep_need_min": 625,
+    "sleep_performance": 0.7709,
+    "sleep_score": 96,
+    "strain": 11.78,
+    "trimp": 140.0,
+    "tsb": 20.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 268.2,
+    "ctl": 285.7,
+    "date": "2026-08-09",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 388,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 164.0,
+      "trimp_recorded": 284.0,
+      "zone_minutes": [
+       89.0,
+       81.0,
+       11.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 8,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 93,
+      "spo2_night": 96.6,
+      "spo2_readings": 6,
+      "wrist_temp": 35.71
+     },
+     "sleep": {
+      "asleep_min": 415.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-09T00:03+10:00",
+      "consistency": 100,
+      "deep_min": 85.0,
+      "duration": 99,
+      "efficiency": 0.926,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 14,
+      "rem_min": 68.0,
+      "source": "shortcut",
+      "stages": 84,
+      "wake_time": "2026-08-09T07:31+10:00",
+      "waso_min": 19.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 8 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9538,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 14.75,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 415,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 578,
+    "sleep_performance": 0.7182,
+    "sleep_score": 95,
+    "strain": 17.05,
+    "trimp": 284.0,
+    "tsb": 17.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 274.1,
+    "ctl": 286.4,
+    "date": "2026-08-10",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 362,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 164.0,
+      "trimp_recorded": 313.0,
+      "zone_minutes": [
+       164.0,
+       29.0,
+       29.0,
+       1.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1512.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 9,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 94,
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "wrist_temp": 36.19
+     },
+     "sleep": {
+      "asleep_min": 380.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-10T00:04+10:00",
+      "consistency": 100,
+      "deep_min": 85.0,
+      "duration": 92,
+      "efficiency": 0.96,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 79,
+      "need_from_strain": 30,
+      "rem_min": 68.0,
+      "source": "ow",
+      "stages": 84,
+      "wake_time": "2026-08-10T06:40+10:00",
+      "waso_min": 13.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 9 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6945,
+    "muscle_load": 1512.0,
+    "recovery": null,
+    "resp_rate_night": 15.4,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 380,
+    "sleep_debt_min": 79,
+    "sleep_need_min": 589,
+    "sleep_performance": 0.6455,
+    "sleep_score": 93,
+    "strain": 17.67,
+    "trimp": 313.0,
+    "tsb": 12.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 300.1,
+    "ctl": 290.7,
+    "date": "2026-08-11",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 348,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 469.0,
+      "zone_minutes": [
+       255.0,
+       13.0,
+       3.0,
+       26.0,
+       15.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 10,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 234,
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "wrist_temp": 36.07
+     },
+     "sleep": {
+      "asleep_min": 459.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-10T23:46+10:00",
+      "consistency": 97,
+      "deep_min": 91.0,
+      "duration": 100,
+      "efficiency": 0.968,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 32,
+      "rem_min": 90.0,
+      "source": "shortcut",
+      "stages": 100,
+      "wake_time": "2026-08-11T07:40+10:00",
+      "waso_min": 15.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 10 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7399,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.45,
+    "rhr_night": 58.6,
+    "sleep_actual_min": 459,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 596,
+    "sleep_performance": 0.7699,
+    "sleep_score": 99,
+    "strain": 19.67,
+    "trimp": 469.0,
+    "tsb": -9.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 292.1,
+    "ctl": 289.5,
+    "date": "2026-08-12",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 17,
+      "hr_samples": 233,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 240.0,
+      "zone_minutes": [
+       240.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 11,
+      "hrv_readings": 3,
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "wrist_temp": 36.14
+     },
+     "sleep": {
+      "asleep_min": 279.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-12T00:33+10:00",
+      "consistency": 85,
+      "deep_min": 70.0,
+      "duration": 39,
+      "efficiency": 0.9,
+      "interruptions": 92,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 68,
+      "need_from_strain": 38,
+      "rem_min": 39.0,
+      "source": "ow",
+      "stages": 60,
+      "wake_time": "2026-08-12T05:43+10:00",
+      "waso_min": 22.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 11 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "rhr_from_daily": "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9551,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.7,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 279,
+    "sleep_debt_min": 68,
+    "sleep_need_min": 586,
+    "sleep_performance": 0.4763,
+    "sleep_score": 63,
+    "strain": 15.88,
+    "trimp": 240.0,
+    "tsb": -2.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 306.7,
+    "ctl": 292.1,
+    "date": "2026-08-13",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 345,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 402.0,
+      "zone_minutes": [
+       268.0,
+       23.0,
+       28.0,
+       1.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1536.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 12,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 167,
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "wrist_temp": 35.81
+     },
+     "sleep": {
+      "asleep_min": 416.0,
+      "awakenings": 3,
+      "bedtime": "2026-08-12T23:55+10:00",
+      "consistency": 100,
+      "deep_min": 76.0,
+      "duration": 99,
+      "efficiency": 0.904,
+      "interruptions": 76,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 102,
+      "need_from_strain": 27,
+      "rem_min": 75.0,
+      "source": "shortcut",
+      "stages": 83,
+      "wake_time": "2026-08-13T07:35+10:00",
+      "waso_min": 32.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 12 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6882,
+    "muscle_load": 1536.0,
+    "recovery": null,
+    "resp_rate_night": 15.15,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 416,
+    "sleep_debt_min": 102,
+    "sleep_need_min": 609,
+    "sleep_performance": 0.6834,
+    "sleep_score": 91,
+    "strain": 19.03,
+    "trimp": 402.0,
+    "tsb": -14.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 286.4,
+    "ctl": 288.9,
+    "date": "2026-08-14",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 309,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 154.0,
+      "zone_minutes": [
+       142.0,
+       6.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 13,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 395,
+      "spo2_night": 97.2,
+      "spo2_readings": 6,
+      "wrist_temp": 35.79
+     },
+     "sleep": {
+      "asleep_min": 407.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-14T00:26+10:00",
+      "consistency": 92,
+      "deep_min": 82.0,
+      "duration": 98,
+      "efficiency": 1.0,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 92,
+      "need_from_strain": 36,
+      "rem_min": 68.0,
+      "source": "ow",
+      "stages": 83,
+      "wake_time": "2026-08-14T07:13+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 13 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8708,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.45,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 92,
+    "sleep_need_min": 608,
+    "sleep_performance": 0.7264,
+    "sleep_score": 94,
+    "strain": 12.51,
+    "trimp": 154.0,
+    "tsb": 2.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 268.1,
+    "ctl": 285.6,
+    "date": "2026-08-15",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 310,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 149.0,
+      "zone_minutes": [
+       149.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 14,
+      "hrv_baseline": [
+       3.7758,
+       0.1761
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.225,
+       0.3572
+      ],
+      "rhr_low_offset_min": 298,
+      "sleep_performance_baseline": [
+       0.6764,
+       0.1155
+      ],
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "weighted_z": 0.264,
+      "wrist_temp": 35.75,
+      "z": {
+       "hrv": 0.605,
+       "resp_rate": 0.35,
+       "sleep_performance": -1.129
+      }
+     },
+     "sleep": {
+      "asleep_min": 314.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-15T01:10+10:00",
+      "consistency": 50,
+      "deep_min": 65.0,
+      "duration": 61,
+      "efficiency": 0.932,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 79,
+      "need_from_strain": 17,
+      "rem_min": 46.0,
+      "source": "shortcut",
+      "stages": 61,
+      "wake_time": "2026-08-15T06:47+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8823,
+    "muscle_load": null,
+    "recovery": 67,
+    "resp_rate_night": 15.05,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 314,
+    "sleep_debt_min": 79,
+    "sleep_need_min": 575,
+    "sleep_performance": 0.546,
+    "sleep_score": 66,
+    "strain": 12.26,
+    "trimp": 149.0,
+    "tsb": 17.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 269.4,
+    "ctl": 285.4,
+    "date": "2026-08-16",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 375,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 278.0,
+      "zone_minutes": [
+       91.0,
+       68.0,
+       17.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 15,
+      "hrv_baseline": [
+       3.7829,
+       0.1719
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2133,
+       0.3472
+      ],
+      "rhr_baseline": [
+       58.3,
+       1.3939
+      ],
+      "rhr_low_offset_min": 286,
+      "sleep_performance_baseline": [
+       0.6677,
+       0.1163
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 1.811,
+      "wrist_temp": 35.59,
+      "z": {
+       "hrv": 1.817,
+       "resp_rate": 0.827,
+       "rhr": 3.0,
+       "sleep_performance": 0.526
+      }
+     },
+     "sleep": {
+      "asleep_min": 435.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-16T00:55+10:00",
+      "consistency": 65,
+      "deep_min": 67.0,
+      "duration": 100,
+      "efficiency": 0.938,
+      "interruptions": 91,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 101,
+      "need_from_strain": 16,
+      "rem_min": 103.0,
+      "source": "ow",
+      "stages": 87,
+      "wake_time": "2026-08-16T08:39+10:00",
+      "waso_min": 23.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0953,
+    "muscle_load": null,
+    "recovery": 96,
+    "resp_rate_night": 14.8,
+    "rhr_night": 53.8,
+    "sleep_actual_min": 435,
+    "sleep_debt_min": 101,
+    "sleep_need_min": 597,
+    "sleep_performance": 0.7289,
+    "sleep_score": 88,
+    "strain": 16.91,
+    "trimp": 278.0,
+    "tsb": 16.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 274.6,
+    "ctl": 285.9,
+    "date": "2026-08-17",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 365,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 308.0,
+      "zone_minutes": [
+       178.0,
+       35.0,
+       20.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1567.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 16,
+      "hrv_baseline": [
+       3.8024,
+       0.1835
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.1875,
+       0.351
+      ],
+      "rhr_baseline": [
+       58.0,
+       1.776
+      ],
+      "rhr_low_offset_min": 36,
+      "sleep_performance_baseline": [
+       0.6715,
+       0.1134
+      ],
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "weighted_z": -0.058,
+      "wrist_temp": 36.06,
+      "z": {
+       "hrv": 0.083,
+       "resp_rate": -0.825,
+       "rhr": -0.563,
+       "sleep_performance": 0.303
+      }
+     },
+     "sleep": {
+      "asleep_min": 421.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-16T23:00+10:00",
+      "consistency": 80,
+      "deep_min": 93.0,
+      "duration": 100,
+      "efficiency": 0.963,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 87,
+      "need_from_strain": 30,
+      "rem_min": 85.0,
+      "source": "shortcut",
+      "stages": 97,
+      "wake_time": "2026-08-17T06:17+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8177,
+    "muscle_load": 1567.2,
+    "recovery": 55,
+    "resp_rate_night": 15.6,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 421,
+    "sleep_debt_min": 87,
+    "sleep_need_min": 596,
+    "sleep_performance": 0.7059,
+    "sleep_score": 95,
+    "strain": 17.57,
+    "trimp": 308.0,
+    "tsb": 11.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 284.9,
+    "ctl": 287.5,
+    "date": "2026-08-18",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 353,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 352.0,
+      "zone_minutes": [
+       171.0,
+       5.0,
+       1.0,
+       27.0,
+       12.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 17,
+      "hrv_baseline": [
+       3.8033,
+       0.1778
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2118,
+       0.3542
+      ],
+      "rhr_baseline": [
+       58.0625,
+       1.7339
+      ],
+      "rhr_low_offset_min": 49,
+      "sleep_performance_baseline": [
+       0.6736,
+       0.1101
+      ],
+      "spo2_night": 97.8,
+      "spo2_readings": 6,
+      "weighted_z": -1.175,
+      "wrist_temp": 35.96,
+      "z": {
+       "hrv": -1.666,
+       "resp_rate": -0.376,
+       "rhr": -1.117,
+       "sleep_performance": 0.441
+      }
+     },
+     "sleep": {
+      "asleep_min": 427.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-18T00:33+10:00",
+      "consistency": 85,
+      "deep_min": 79.0,
+      "duration": 100,
+      "efficiency": 0.903,
+      "interruptions": 70,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 80,
+      "need_from_strain": 32,
+      "rem_min": 92.0,
+      "source": "ow",
+      "stages": 93,
+      "wake_time": "2026-08-18T08:26+10:00",
+      "waso_min": 46.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5073,
+    "muscle_load": null,
+    "recovery": 17,
+    "resp_rate_night": 15.4,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 427,
+    "sleep_debt_min": 80,
+    "sleep_need_min": 591,
+    "sleep_performance": 0.7221,
+    "sleep_score": 89,
+    "strain": 18.35,
+    "trimp": 352.0,
+    "tsb": 2.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 251.2,
+    "ctl": 281.5,
+    "date": "2026-08-19",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 12,
+      "hr_samples": 148,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 32.0,
+      "zone_minutes": [
+       32.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 18,
+      "hrv_baseline": [
+       3.7869,
+       0.186
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2222,
+       0.3465
+      ],
+      "rhr_baseline": [
+       58.1765,
+       1.7434
+      ],
+      "rhr_low_offset_min": 0,
+      "sleep_performance_baseline": [
+       0.6763,
+       0.1074
+      ],
+      "spo2_night": 95.6,
+      "spo2_readings": 6,
+      "weighted_z": -0.071,
+      "wrist_temp": 36.1,
+      "z": {
+       "hrv": 0.138,
+       "resp_rate": -1.256,
+       "rhr": 0.101,
+       "sleep_performance": -0.742
+      }
+     },
+     "sleep": {
+      "asleep_min": 350.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-18T23:50+10:00",
+      "consistency": 99,
+      "deep_min": 63.0,
+      "duration": 81,
+      "efficiency": 0.956,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 73,
+      "need_from_strain": 34,
+      "rem_min": 76.0,
+      "source": "shortcut",
+      "stages": 77,
+      "wake_time": "2026-08-19T05:56+10:00",
+      "waso_min": 16.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8125,
+    "muscle_load": null,
+    "recovery": 55,
+    "resp_rate_night": 15.85,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 350,
+    "sleep_debt_min": 73,
+    "sleep_need_min": 587,
+    "sleep_performance": 0.5966,
+    "sleep_score": 86,
+    "strain": 3.6,
+    "trimp": 32.0,
+    "tsb": 30.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 254.5,
+    "ctl": 281.3,
+    "date": "2026-08-20",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 336,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 276.0,
+      "zone_minutes": [
+       138.0,
+       21.0,
+       32.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1591.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 19,
+      "hrv_baseline": [
+       3.7882,
+       0.1809
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2553,
+       0.3662
+      ],
+      "rhr_baseline": [
+       58.1667,
+       1.6918
+      ],
+      "rhr_low_offset_min": 74,
+      "sleep_performance_baseline": [
+       0.6721,
+       0.106
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.236,
+      "wrist_temp": 35.69,
+      "z": {
+       "hrv": 0.289,
+       "resp_rate": 0.111,
+       "rhr": 0.69,
+       "sleep_performance": -0.537
+      }
+     },
+     "sleep": {
+      "asleep_min": 349.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-19T23:10+10:00",
+      "consistency": 80,
+      "deep_min": 77.0,
+      "duration": 81,
+      "efficiency": 0.989,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 87,
+      "need_from_strain": 0,
+      "rem_min": 80.0,
+      "source": "ow",
+      "stages": 86,
+      "wake_time": "2026-08-20T05:03+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8405,
+    "muscle_load": 1591.2,
+    "recovery": 66,
+    "resp_rate_night": 15.2,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 349,
+    "sleep_debt_min": 87,
+    "sleep_need_min": 567,
+    "sleep_performance": 0.6152,
+    "sleep_score": 85,
+    "strain": 16.86,
+    "trimp": 276.0,
+    "tsb": 26.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 259.1,
+    "ctl": 281.5,
+    "date": "2026-08-21",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 303,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 289.0,
+      "zone_minutes": [
+       275.0,
+       7.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 20,
+      "hrv_baseline": [
+       3.7908,
+       0.1764
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2525,
+       0.3567
+      ],
+      "rhr_baseline": [
+       58.1053,
+       1.6658
+      ],
+      "rhr_low_offset_min": 337,
+      "sleep_performance_baseline": [
+       0.6692,
+       0.1039
+      ],
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "weighted_z": -1.674,
+      "wrist_temp": 36.03,
+      "z": {
+       "hrv": -2.34,
+       "resp_rate": -0.095,
+       "rhr": -1.017,
+       "sleep_performance": -0.408
+      }
+     },
+     "sleep": {
+      "asleep_min": 381.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-20T23:28+10:00",
+      "consistency": 80,
+      "deep_min": 78.0,
+      "duration": 92,
+      "efficiency": 0.974,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 98,
+      "need_from_strain": 30,
+      "rem_min": 68.0,
+      "source": "shortcut",
+      "stages": 80,
+      "wake_time": "2026-08-21T05:59+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.3779,
+    "muscle_load": null,
+    "recovery": 8,
+    "resp_rate_night": 15.3,
+    "rhr_night": 59.8,
+    "sleep_actual_min": 381,
+    "sleep_debt_min": 98,
+    "sleep_need_min": 608,
+    "sleep_performance": 0.6268,
+    "sleep_score": 88,
+    "strain": 17.16,
+    "trimp": 289.0,
+    "tsb": 22.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 277.2,
+    "ctl": 284.2,
+    "date": "2026-08-22",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 351,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 395.0,
+      "zone_minutes": [
+       101.0,
+       0.0,
+       15.0,
+       56.0,
+       5.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 21,
+      "hrv_baseline": [
+       3.7712,
+       0.1942
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2548,
+       0.3478
+      ],
+      "rhr_baseline": [
+       58.19,
+       1.6651
+      ],
+      "rhr_low_offset_min": 339,
+      "sleep_performance_baseline": [
+       0.6672,
+       0.1017
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": 0.459,
+      "wrist_temp": 36.01,
+      "z": {
+       "hrv": 0.185,
+       "resp_rate": -0.29,
+       "rhr": 1.315,
+       "sleep_performance": 0.661
+      }
+     },
+     "sleep": {
+      "asleep_min": 447.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-22T01:18+10:00",
+      "consistency": 43,
+      "deep_min": 104.0,
+      "duration": 100,
+      "efficiency": 0.993,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 98,
+      "need_from_strain": 30,
+      "rem_min": 103.0,
+      "source": "ow",
+      "stages": 100,
+      "wake_time": "2026-08-22T08:48+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8071,
+    "muscle_load": null,
+    "recovery": 74,
+    "resp_rate_night": 15.4,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 447,
+    "sleep_debt_min": 98,
+    "sleep_need_min": 609,
+    "sleep_performance": 0.7344,
+    "sleep_score": 88,
+    "strain": 18.94,
+    "trimp": 395.0,
+    "tsb": 7.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 264.2,
+    "ctl": 281.7,
+    "date": "2026-08-23",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 315,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 180.0,
+      "zone_minutes": [
+       180.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 22,
+      "hrv_baseline": [
+       3.7728,
+       0.1896
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2614,
+       0.3408
+      ],
+      "rhr_baseline": [
+       58.0857,
+       1.6918
+      ],
+      "rhr_low_offset_min": 115,
+      "sleep_performance_baseline": [
+       0.6703,
+       0.1003
+      ],
+      "spo2_night": 96.0,
+      "spo2_readings": 6,
+      "weighted_z": 0.348,
+      "wrist_temp": 36.9,
+      "z": {
+       "hrv": 0.895,
+       "resp_rate": -0.877,
+       "rhr": -0.54,
+       "sleep_performance": -0.245
+      }
+     },
+     "sleep": {
+      "asleep_min": 351.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-23T00:24+10:00",
+      "consistency": 94,
+      "deep_min": 87.0,
+      "duration": 82,
+      "efficiency": 0.954,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 82,
+      "need_from_strain": 36,
+      "rem_min": 53.0,
+      "source": "shortcut",
+      "stages": 77,
+      "wake_time": "2026-08-23T06:32+10:00",
+      "waso_min": 13.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "wrist_temp_deviation": "手腕温度比 60 天基线高 0.9°C"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9426,
+    "muscle_load": null,
+    "recovery": 70,
+    "resp_rate_night": 15.7,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 386,
+    "sleep_debt_min": 82,
+    "sleep_need_min": 598,
+    "sleep_performance": 0.6457,
+    "sleep_score": 87,
+    "strain": 13.72,
+    "trimp": 180.0,
+    "tsb": 17.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 262.5,
+    "ctl": 281.0,
+    "date": "2026-08-24",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 355,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 251.0,
+      "zone_minutes": [
+       98.0,
+       36.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1624.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 23,
+      "hrv_baseline": [
+       3.7802,
+       0.1886
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2804,
+       0.3453
+      ],
+      "rhr_baseline": [
+       58.1273,
+       1.6625
+      ],
+      "rhr_low_offset_min": 82,
+      "sleep_performance_baseline": [
+       0.6692,
+       0.0981
+      ],
+      "spo2_night": 95.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.025,
+      "wrist_temp": 35.6,
+      "z": {
+       "hrv": -0.303,
+       "resp_rate": 0.561,
+       "rhr": 1.28,
+       "sleep_performance": -0.517
+      }
+     },
+     "sleep": {
+      "asleep_min": 362.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-23T23:31+10:00",
+      "consistency": 80,
+      "deep_min": 72.0,
+      "duration": 86,
+      "efficiency": 0.938,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 85,
+      "need_from_strain": 20,
+      "rem_min": 80.0,
+      "source": "ow",
+      "stages": 84,
+      "wake_time": "2026-08-24T05:57+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7231,
+    "muscle_load": 1624.8,
+    "recovery": 58,
+    "resp_rate_night": 15.0,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 362,
+    "sleep_debt_min": 85,
+    "sleep_need_min": 585,
+    "sleep_performance": 0.6185,
+    "sleep_score": 87,
+    "strain": 16.2,
+    "trimp": 251.0,
+    "tsb": 18.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 275.5,
+    "ctl": 282.9,
+    "date": "2026-08-25",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 360.0,
+      "zone_minutes": [
+       171.0,
+       5.0,
+       1.0,
+       29.0,
+       12.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 24,
+      "hrv_baseline": [
+       3.7778,
+       0.1848
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2687,
+       0.3426
+      ],
+      "rhr_baseline": [
+       58.0348,
+       1.6838
+      ],
+      "rhr_low_offset_min": 291,
+      "sleep_performance_baseline": [
+       0.6671,
+       0.0965
+      ],
+      "spo2_night": 95.7,
+      "spo2_readings": 6,
+      "weighted_z": -0.005,
+      "wrist_temp": 36.19,
+      "z": {
+       "hrv": 0.167,
+       "resp_rate": -0.163,
+       "rhr": -0.692,
+       "sleep_performance": 0.277
+      }
+     },
+     "sleep": {
+      "asleep_min": 417.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-24T23:21+10:00",
+      "consistency": 80,
+      "deep_min": 97.0,
+      "duration": 99,
+      "efficiency": 0.956,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 93,
+      "need_from_strain": 28,
+      "rem_min": 86.0,
+      "source": "shortcut",
+      "stages": 97,
+      "wake_time": "2026-08-25T06:37+10:00",
+      "waso_min": 19.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8088,
+    "muscle_load": null,
+    "recovery": 57,
+    "resp_rate_night": 15.35,
+    "rhr_night": 59.2,
+    "sleep_actual_min": 417,
+    "sleep_debt_min": 93,
+    "sleep_need_min": 601,
+    "sleep_performance": 0.6938,
+    "sleep_score": 94,
+    "strain": 18.47,
+    "trimp": 360.0,
+    "tsb": 7.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 275.5,
+    "ctl": 282.9,
+    "date": "2026-08-26",
+    "details": {
+     "hrv_kind": "sdnn",
+     "recovery": {
+      "baseline_nights": 25,
+      "hrv_baseline": [
+       3.779,
+       0.1811
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.272,
+       0.3357
+      ],
+      "rhr_baseline": [
+       58.0833,
+       1.6639
+      ],
+      "rhr_low_offset_min": 12,
+      "sleep_performance_baseline": [
+       0.6681,
+       0.0946
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": -0.584,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -0.224,
+       "resp_rate": -0.656,
+       "rhr": -1.753,
+       "sleep_performance": -0.443
+      }
+     },
+     "sleep": {
+      "asleep_min": 376.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-25T23:45+10:00",
+      "consistency": 90,
+      "deep_min": 66.0,
+      "duration": 91,
+      "efficiency": 0.964,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 86,
+      "need_from_strain": 34,
+      "rem_min": 93.0,
+      "source": "ow",
+      "stages": 86,
+      "wake_time": "2026-08-26T06:15+10:00",
+      "waso_min": 14.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "没有原始心率（手表没戴或没同步），算不了 TRIMP / strain"
+    },
+    "hr_max": null,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7386,
+    "muscle_load": null,
+    "recovery": 35,
+    "resp_rate_night": 15.6,
+    "rhr_night": 61.0,
+    "sleep_actual_min": 376,
+    "sleep_debt_min": 86,
+    "sleep_need_min": 600,
+    "sleep_performance": 0.6262,
+    "sleep_score": 91,
+    "strain": null,
+    "trimp": null,
+    "tsb": 7.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 271.7,
+    "ctl": 282.0,
+    "date": "2026-08-27",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 247.0,
+      "zone_minutes": [
+       116.0,
+       19.0,
+       31.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1648.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 26,
+      "hrv_baseline": [
+       3.7775,
+       0.1776
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2846,
+       0.3352
+      ],
+      "rhr_baseline": [
+       58.2,
+       1.7301
+      ],
+      "rhr_low_offset_min": 101,
+      "sleep_performance_baseline": [
+       0.6665,
+       0.0931
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": -0.362,
+      "wrist_temp": 35.72,
+      "z": {
+       "hrv": -0.455,
+       "resp_rate": 0.569,
+       "rhr": 0.116,
+       "sleep_performance": -0.942
+      }
+     },
+     "sleep": {
+      "asleep_min": 330.0,
+      "awakenings": 3,
+      "bedtime": "2026-08-26T23:10+10:00",
+      "consistency": 80,
+      "deep_min": 58.0,
+      "duration": 71,
+      "efficiency": 0.894,
+      "interruptions": 82,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 90,
+      "need_from_strain": 0,
+      "rem_min": 71.0,
+      "source": "shortcut",
+      "stages": 71,
+      "wake_time": "2026-08-27T05:19+10:00",
+      "waso_min": 27.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6968,
+    "muscle_load": 1648.8,
+    "recovery": 43,
+    "resp_rate_night": 15.0,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 330,
+    "sleep_debt_min": 90,
+    "sleep_need_min": 570,
+    "sleep_performance": 0.5789,
+    "sleep_score": 75,
+    "strain": 16.09,
+    "trimp": 247.0,
+    "tsb": 10.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 273.1,
+    "ctl": 282.0,
+    "date": "2026-08-28",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 292,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 282.0,
+      "zone_minutes": [
+       264.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 27,
+      "hrv_baseline": [
+       3.7745,
+       0.1748
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2741,
+       0.3332
+      ],
+      "rhr_baseline": [
+       58.1923,
+       1.6956
+      ],
+      "rhr_low_offset_min": 141,
+      "sleep_performance_baseline": [
+       0.6633,
+       0.0928
+      ],
+      "spo2_night": 95.5,
+      "spo2_readings": 6,
+      "weighted_z": -0.557,
+      "wrist_temp": 36.09,
+      "z": {
+       "hrv": -0.448,
+       "resp_rate": -0.152,
+       "rhr": -0.476,
+       "sleep_performance": -1.238
+      }
+     },
+     "sleep": {
+      "asleep_min": 336.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-27T23:18+10:00",
+      "consistency": 86,
+      "deep_min": 62.0,
+      "duration": 74,
+      "efficiency": 0.936,
+      "interruptions": 96,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 105,
+      "need_from_strain": 27,
+      "rem_min": 84.0,
+      "source": "ow",
+      "stages": 80,
+      "wake_time": "2026-08-28T05:17+10:00",
+      "waso_min": 23.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6962,
+    "muscle_load": null,
+    "recovery": 36,
+    "resp_rate_night": 15.35,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 336,
+    "sleep_debt_min": 105,
+    "sleep_need_min": 613,
+    "sleep_performance": 0.5484,
+    "sleep_score": 82,
+    "strain": 17.0,
+    "trimp": 282.0,
+    "tsb": 9.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 287.3,
+    "ctl": 284.3,
+    "date": "2026-08-29",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 16,
+      "hr_samples": 289,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 380.0,
+      "zone_minutes": [
+       96.0,
+       4.0,
+       13.0,
+       48.0,
+       9.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 28,
+      "hrv_baseline": [
+       3.7717,
+       0.1722
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2768,
+       0.3273
+      ],
+      "rhr_baseline": [
+       58.2222,
+       1.6699
+      ],
+      "rhr_low_offset_min": 390,
+      "sleep_performance_baseline": [
+       0.6592,
+       0.0937
+      ],
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "weighted_z": -0.767,
+      "wrist_temp": 35.82,
+      "z": {
+       "hrv": -0.178,
+       "resp_rate": 0.454,
+       "rhr": -3.0,
+       "sleep_performance": -0.552
+      }
+     },
+     "sleep": {
+      "asleep_min": 380.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-29T00:53+10:00",
+      "consistency": 42,
+      "deep_min": 91.0,
+      "duration": 92,
+      "efficiency": 0.974,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 116,
+      "need_from_strain": 30,
+      "rem_min": 60.0,
+      "source": "shortcut",
+      "stages": 83,
+      "wake_time": "2026-08-29T07:23+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7411,
+    "muscle_load": null,
+    "recovery": 28,
+    "resp_rate_night": 15.05,
+    "rhr_night": 66.0,
+    "sleep_actual_min": 380,
+    "sleep_debt_min": 116,
+    "sleep_need_min": 626,
+    "sleep_performance": 0.6074,
+    "sleep_score": 81,
+    "strain": 18.75,
+    "trimp": 380.0,
+    "tsb": -3.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 310.7,
+    "ctl": 288.5,
+    "date": "2026-08-30",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 388,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 463.0,
+      "zone_minutes": [
+       269.0,
+       67.0,
+       20.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 29,
+      "hrv_baseline": [
+       3.7706,
+       0.1692
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.269,
+       0.3242
+      ],
+      "rhr_baseline": [
+       58.5,
+       2.2013
+      ],
+      "rhr_low_offset_min": 287,
+      "sleep_performance_baseline": [
+       0.6574,
+       0.0925
+      ],
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "weighted_z": -1.773,
+      "wrist_temp": 35.78,
+      "z": {
+       "hrv": -2.471,
+       "resp_rate": -0.962,
+       "rhr": -0.681,
+       "sleep_performance": -0.707
+      }
+     },
+     "sleep": {
+      "asleep_min": 371.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-30T00:17+10:00",
+      "consistency": 76,
+      "deep_min": 72.0,
+      "duration": 89,
+      "efficiency": 0.916,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 111,
+      "need_from_strain": 35,
+      "rem_min": 79.0,
+      "source": "ow",
+      "stages": 83,
+      "wake_time": "2026-08-30T07:02+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.3527,
+    "muscle_load": null,
+    "recovery": 7,
+    "resp_rate_night": 15.75,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 371,
+    "sleep_debt_min": 111,
+    "sleep_need_min": 627,
+    "sleep_performance": 0.5921,
+    "sleep_score": 85,
+    "strain": 19.62,
+    "trimp": 463.0,
+    "tsb": -22.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 324.7,
+    "ctl": 291.5,
+    "date": "2026-08-31",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 17,
+      "hr_samples": 285,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 416.0,
+      "zone_minutes": [
+       232.0,
+       56.0,
+       24.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1680.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 30,
+      "hrv_readings": 0,
+      "rhr_low_offset_min": 34,
+      "spo2_night": null,
+      "spo2_readings": 0,
+      "wrist_temp": null
+     },
+     "sleep": {
+      "asleep_min": 35.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-31T15:10+10:00",
+      "consistency": 80,
+      "deep_min": 0.0,
+      "duration": 0,
+      "efficiency": 0.875,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 111,
+      "need_from_strain": 38,
+      "rem_min": 0.0,
+      "source": "ow",
+      "stages": 0,
+      "wake_time": "2026-08-31T15:50+10:00",
+      "waso_min": 5.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "hrv_missing": "睡眠窗口内没有 HRV 读数，算不了恢复分",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": null,
+    "muscle_load": 1680.0,
+    "recovery": null,
+    "resp_rate_night": null,
+    "rhr_night": 94.0,
+    "sleep_actual_min": 35,
+    "sleep_debt_min": 111,
+    "sleep_need_min": 629,
+    "sleep_performance": 0.0556,
+    "sleep_score": 36,
+    "strain": 19.18,
+    "trimp": 416.0,
+    "tsb": -33.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 331.5,
+    "ctl": 293.5,
+    "date": "2026-09-01",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 350,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 376.0,
+      "zone_minutes": [
+       198.0,
+       5.0,
+       2.0,
+       28.0,
+       10.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 30,
+      "hrv_baseline": [
+       3.7567,
+       0.1829
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.285,
+       0.3304
+      ],
+      "rhr_baseline": [
+       59.7333,
+       6.8171
+      ],
+      "rhr_low_offset_min": 154,
+      "sleep_performance_baseline": [
+       0.6359,
+       0.1404
+      ],
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "weighted_z": -0.068,
+      "wrist_temp": 36.29,
+      "z": {
+       "hrv": -0.124,
+       "resp_rate": -0.93,
+       "rhr": 0.254,
+       "sleep_performance": 0.014
+      }
+     },
+     "sleep": {
+      "asleep_min": 406.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-31T23:44+10:00",
+      "consistency": 100,
+      "deep_min": 96.0,
+      "duration": 98,
+      "efficiency": 0.944,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 37,
+      "rem_min": 76.0,
+      "source": "ow",
+      "stages": 92,
+      "wake_time": "2026-09-01T06:54+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7341,
+    "muscle_load": null,
+    "recovery": 55,
+    "resp_rate_night": 15.75,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 406,
+    "sleep_debt_min": 196,
+    "sleep_need_min": 637,
+    "sleep_performance": 0.6378,
+    "sleep_score": 97,
+    "strain": 18.7,
+    "trimp": 376.0,
+    "tsb": -38.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 325.5,
+    "ctl": 293.3,
+    "date": "2026-09-02",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 308,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 286.0,
+      "zone_minutes": [
+       266.0,
+       10.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 31,
+      "hrv_baseline": [
+       3.756,
+       0.1799
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3,
+       0.3354
+      ],
+      "rhr_baseline": [
+       59.6774,
+       6.7097
+      ],
+      "rhr_low_offset_min": 76,
+      "sleep_performance_baseline": [
+       0.6359,
+       0.1381
+      ],
+      "spo2_night": 97.3,
+      "spo2_readings": 6,
+      "weighted_z": -0.83,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -1.19,
+       "resp_rate": -0.5,
+       "rhr": -0.346,
+       "sleep_performance": -0.147
+      }
+     },
+     "sleep": {
+      "asleep_min": 391.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-01T23:36+10:00",
+      "consistency": 100,
+      "deep_min": 69.0,
+      "duration": 95,
+      "efficiency": 0.942,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 35,
+      "rem_min": 90.0,
+      "source": "shortcut",
+      "stages": 88,
+      "wake_time": "2026-09-02T06:31+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5419,
+    "muscle_load": null,
+    "recovery": 26,
+    "resp_rate_night": 15.55,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 391,
+    "sleep_debt_min": 166,
+    "sleep_need_min": 635,
+    "sleep_performance": 0.6157,
+    "sleep_score": 93,
+    "strain": 17.1,
+    "trimp": 286.0,
+    "tsb": -32.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 319.8,
+    "ctl": 293.1,
+    "date": "2026-09-03",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 343,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 283.0,
+      "zone_minutes": [
+       140.0,
+       31.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1704.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 32,
+      "hrv_baseline": [
+       3.7493,
+       0.181
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3078,
+       0.3329
+      ],
+      "rhr_baseline": [
+       59.75,
+       6.6134
+      ],
+      "rhr_low_offset_min": 270,
+      "sleep_performance_baseline": [
+       0.6353,
+       0.136
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 0.255,
+      "wrist_temp": 35.79,
+      "z": {
+       "hrv": 0.45,
+       "resp_rate": 0.116,
+       "rhr": 0.416,
+       "sleep_performance": -0.693
+      }
+     },
+     "sleep": {
+      "asleep_min": 341.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-02T23:47+10:00",
+      "consistency": 100,
+      "deep_min": 63.0,
+      "duration": 77,
+      "efficiency": 0.972,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 30,
+      "rem_min": 74.0,
+      "source": "ow",
+      "stages": 76,
+      "wake_time": "2026-09-03T05:38+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8307,
+    "muscle_load": 1704.0,
+    "recovery": 67,
+    "resp_rate_night": 15.25,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 341,
+    "sleep_debt_min": 146,
+    "sleep_need_min": 630,
+    "sleep_performance": 0.541,
+    "sleep_score": 86,
+    "strain": 17.03,
+    "trimp": 283.0,
+    "tsb": -26.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 306.9,
+    "ctl": 291.5,
+    "date": "2026-09-04",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 21,
+      "hr_samples": 294,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 223.0,
+      "zone_minutes": [
+       223.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 33,
+      "hrv_baseline": [
+       3.7518,
+       0.1787
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3061,
+       0.3278
+      ],
+      "rhr_baseline": [
+       59.6667,
+       6.5268
+      ],
+      "rhr_low_offset_min": 91,
+      "sleep_performance_baseline": [
+       0.6325,
+       0.1349
+      ],
+      "spo2_night": 98.2,
+      "spo2_readings": 6,
+      "weighted_z": -0.632,
+      "wrist_temp": 35.74,
+      "z": {
+       "hrv": -0.707,
+       "resp_rate": -0.388,
+       "rhr": -0.358,
+       "sleep_performance": -0.783
+      }
+     },
+     "sleep": {
+      "asleep_min": 332.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-03T23:10+10:00",
+      "consistency": 85,
+      "deep_min": 84.0,
+      "duration": 72,
+      "efficiency": 0.949,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 30,
+      "rem_min": 53.0,
+      "source": "shortcut",
+      "stages": 75,
+      "wake_time": "2026-09-04T05:00+10:00",
+      "waso_min": 18.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6255,
+    "muscle_load": null,
+    "recovery": 33,
+    "resp_rate_night": 15.5,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 332,
+    "sleep_debt_min": 145,
+    "sleep_need_min": 630,
+    "sleep_performance": 0.5269,
+    "sleep_score": 79,
+    "strain": 15.34,
+    "trimp": 223.0,
+    "tsb": -15.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 324.6,
+    "ctl": 294.9,
+    "date": "2026-09-05",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 361,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 440.0,
+      "zone_minutes": [
+       134.0,
+       7.0,
+       10.0,
+       63.0,
+       2.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 34,
+      "hrv_baseline": [
+       3.748,
+       0.1773
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3118,
+       0.3245
+      ],
+      "rhr_baseline": [
+       59.7353,
+       6.4396
+      ],
+      "rhr_low_offset_min": 127,
+      "sleep_performance_baseline": [
+       0.6295,
+       0.1341
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.396,
+      "wrist_temp": 36.05,
+      "z": {
+       "hrv": 0.436,
+       "resp_rate": 0.824,
+       "rhr": 0.425,
+       "sleep_performance": 0.054
+      }
+     },
+     "sleep": {
+      "asleep_min": 398.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-05T01:18+10:00",
+      "consistency": 20,
+      "deep_min": 84.0,
+      "duration": 96,
+      "efficiency": 0.952,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 25,
+      "rem_min": 60.0,
+      "source": "ow",
+      "stages": 79,
+      "wake_time": "2026-09-05T08:16+10:00",
+      "waso_min": 20.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8254,
+    "muscle_load": null,
+    "recovery": 72,
+    "resp_rate_night": 14.9,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 398,
+    "sleep_debt_min": 146,
+    "sleep_need_min": 625,
+    "sleep_performance": 0.6368,
+    "sleep_score": 77,
+    "strain": 19.42,
+    "trimp": 440.0,
+    "tsb": -29.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 312.3,
+    "ctl": 293.5,
+    "date": "2026-09-06",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 309,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 232.0,
+      "zone_minutes": [
+       232.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 35,
+      "hrv_baseline": [
+       3.7502,
+       0.1751
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3,
+       0.3272
+      ],
+      "rhr_baseline": [
+       59.6571,
+       6.361
+      ],
+      "rhr_low_offset_min": 11,
+      "sleep_performance_baseline": [
+       0.6297,
+       0.1322
+      ],
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.031,
+      "wrist_temp": 35.85,
+      "z": {
+       "hrv": 0.161,
+       "resp_rate": -1.0,
+       "rhr": -0.368,
+       "sleep_performance": 0.388
+      }
+     },
+     "sleep": {
+      "asleep_min": 434.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-06T01:11+10:00",
+      "consistency": 27,
+      "deep_min": 90.0,
+      "duration": 100,
+      "efficiency": 0.948,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 37,
+      "rem_min": 82.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-06T08:49+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7784,
+    "muscle_load": null,
+    "recovery": 59,
+    "resp_rate_night": 15.8,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 434,
+    "sleep_debt_min": 130,
+    "sleep_need_min": 637,
+    "sleep_performance": 0.681,
+    "sleep_score": 82,
+    "strain": 15.64,
+    "trimp": 232.0,
+    "tsb": -18.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 312.3,
+    "ctl": 293.5,
+    "date": "2026-09-07",
+    "details": {
+     "hrv_kind": "sdnn",
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1735.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 36,
+      "hrv_baseline": [
+       3.751,
+       0.1727
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3139,
+       0.3331
+      ],
+      "rhr_baseline": [
+       59.7222,
+       6.2816
+      ],
+      "rhr_low_offset_min": 38,
+      "sleep_performance_baseline": [
+       0.6311,
+       0.1306
+      ],
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.613,
+      "wrist_temp": 35.93,
+      "z": {
+       "hrv": 0.821,
+       "resp_rate": 0.528,
+       "rhr": 0.115,
+       "sleep_performance": 0.474
+      }
+     },
+     "sleep": {
+      "asleep_min": 426.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-06T22:53+10:00",
+      "consistency": 80,
+      "deep_min": 87.0,
+      "duration": 100,
+      "efficiency": 0.945,
+      "interruptions": 94,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 109,
+      "need_from_strain": 26,
+      "rem_min": 76.0,
+      "source": "ow",
+      "stages": 90,
+      "wake_time": "2026-09-07T06:24+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "这天只有快捷指令数据：心率是按小时求和的，算不了 TRIMP / strain",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": null,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8928,
+    "muscle_load": 1735.2,
+    "recovery": 78,
+    "resp_rate_night": 15.05,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 426,
+    "sleep_debt_min": 109,
+    "sleep_need_min": 615,
+    "sleep_performance": 0.693,
+    "sleep_score": 92,
+    "strain": null,
+    "trimp": null,
+    "tsb": -18.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 312.8,
+    "ctl": 294.0,
+    "date": "2026-09-08",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 341,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 316.0,
+      "zone_minutes": [
+       130.0,
+       4.0,
+       2.0,
+       23.0,
+       16.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 37,
+      "hrv_baseline": [
+       3.7549,
+       0.1719
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3068,
+       0.3313
+      ],
+      "rhr_baseline": [
+       59.7027,
+       6.1949
+      ],
+      "rhr_low_offset_min": 258,
+      "sleep_performance_baseline": [
+       0.6327,
+       0.1292
+      ],
+      "spo2_night": 95.3,
+      "spo2_readings": 6,
+      "weighted_z": 0.587,
+      "wrist_temp": 35.88,
+      "z": {
+       "hrv": 0.479,
+       "resp_rate": 0.314,
+       "rhr": 0.275,
+       "sleep_performance": 1.526
+      }
+     },
+     "sleep": {
+      "asleep_min": 477.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-07T23:14+10:00",
+      "consistency": 90,
+      "deep_min": 81.0,
+      "duration": 100,
+      "efficiency": 0.95,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 95,
+      "need_from_strain": 0,
+      "rem_min": 99.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-08T07:36+10:00",
+      "waso_min": 21.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8372,
+    "muscle_load": null,
+    "recovery": 78,
+    "resp_rate_night": 15.15,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 477,
+    "sleep_debt_min": 95,
+    "sleep_need_min": 575,
+    "sleep_performance": 0.8299,
+    "sleep_score": 95,
+    "strain": 17.73,
+    "trimp": 316.0,
+    "tsb": -18.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 296.1,
+    "ctl": 291.5,
+    "date": "2026-09-09",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 333,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 187.0,
+      "zone_minutes": [
+       169.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 38,
+      "hrv_baseline": [
+       3.757,
+       0.17
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3026,
+       0.3278
+      ],
+      "rhr_baseline": [
+       59.6579,
+       6.1169
+      ],
+      "rhr_low_offset_min": 135,
+      "sleep_performance_baseline": [
+       0.6378,
+       0.1313
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 0.904,
+      "wrist_temp": 35.89,
+      "z": {
+       "hrv": 0.991,
+       "resp_rate": -0.795,
+       "rhr": 0.925,
+       "sleep_performance": 1.091
+      }
+     },
+     "sleep": {
+      "asleep_min": 456.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-08T23:03+10:00",
+      "consistency": 80,
+      "deep_min": 88.0,
+      "duration": 100,
+      "efficiency": 0.954,
+      "interruptions": 92,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 72,
+      "need_from_strain": 32,
+      "rem_min": 90.0,
+      "source": "ow",
+      "stages": 98,
+      "wake_time": "2026-09-09T07:01+10:00",
+      "waso_min": 22.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9255,
+    "muscle_load": null,
+    "recovery": 85,
+    "resp_rate_night": 15.7,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 456,
+    "sleep_debt_min": 72,
+    "sleep_need_min": 584,
+    "sleep_performance": 0.7811,
+    "sleep_score": 94,
+    "strain": 14.01,
+    "trimp": 187.0,
+    "tsb": -4.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 293.5,
+    "ctl": 291.1,
+    "date": "2026-09-10",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 363,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 277.0,
+      "zone_minutes": [
+       111.0,
+       32.0,
+       34.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1759.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 39,
+      "hrv_baseline": [
+       3.7613,
+       0.1699
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3128,
+       0.3296
+      ],
+      "rhr_baseline": [
+       59.5128,
+       6.1035
+      ],
+      "rhr_low_offset_min": 130,
+      "sleep_performance_baseline": [
+       0.6414,
+       0.1316
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 0.357,
+      "wrist_temp": 35.6,
+      "z": {
+       "hrv": -0.07,
+       "resp_rate": 1.626,
+       "rhr": 0.739,
+       "sleep_performance": 1.134
+      }
+     },
+     "sleep": {
+      "asleep_min": 408.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-09T23:20+10:00",
+      "consistency": 100,
+      "deep_min": 97.0,
+      "duration": 98,
+      "efficiency": 0.953,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 59,
+      "need_from_strain": 21,
+      "rem_min": 68.0,
+      "source": "shortcut",
+      "stages": 87,
+      "wake_time": "2026-09-10T06:28+10:00",
+      "waso_min": 5.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7495,
+    "muscle_load": 1759.2,
+    "recovery": 71,
+    "resp_rate_night": 14.5,
+    "rhr_night": 55.0,
+    "sleep_actual_min": 443,
+    "sleep_debt_min": 59,
+    "sleep_need_min": 560,
+    "sleep_performance": 0.7906,
+    "sleep_score": 96,
+    "strain": 16.88,
+    "trimp": 277.0,
+    "tsb": -2.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 293.5,
+    "ctl": 291.1,
+    "date": "2026-09-11",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 3,
+      "hr_samples": 43,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 25.0,
+      "zone_minutes": [
+       25.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 40,
+      "hrv_baseline": [
+       3.7611,
+       0.1678
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2925,
+       0.3498
+      ],
+      "rhr_baseline": [
+       56.9512,
+       1.4483
+      ],
+      "sleep_performance_baseline": [
+       0.645,
+       0.132
+      ],
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "weighted_z": 0.741,
+      "wrist_temp": 35.86,
+      "z": {
+       "hrv": 0.906,
+       "resp_rate": 0.085,
+       "rhr": 0.657,
+       "sleep_performance": 0.416
+      }
+     },
+     "sleep": {
+      "asleep_min": 394.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-11T00:33+10:00",
+      "consistency": 52,
+      "deep_min": 75.0,
+      "duration": 95,
+      "efficiency": 0.949,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 53,
+      "need_from_strain": 30,
+      "rem_min": 71.0,
+      "source": "ow",
+      "stages": 80,
+      "wake_time": "2026-09-11T07:28+10:00",
+      "waso_min": 21.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "只有 3 小时有心率（要 ≥ 12），又没录到训练，负荷不出分",
+     "rhr_from_daily": "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.913,
+    "muscle_load": null,
+    "recovery": 82,
+    "resp_rate_night": 15.25,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 394,
+    "sleep_debt_min": 53,
+    "sleep_need_min": 563,
+    "sleep_performance": 0.7,
+    "sleep_score": 83,
+    "strain": null,
+    "trimp": null,
+    "tsb": -2.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 298.4,
+    "ctl": 292.1,
+    "date": "2026-09-12",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 375,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 330.0,
+      "zone_minutes": [
+       48.0,
+       0.0,
+       16.0,
+       56.0,
+       2.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 41,
+      "hrv_baseline": [
+       3.7648,
+       0.1673
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2915,
+       0.3455
+      ],
+      "rhr_baseline": [
+       59.4,
+       6.0668
+      ],
+      "rhr_low_offset_min": 197,
+      "sleep_performance_baseline": [
+       0.6463,
+       0.1307
+      ],
+      "spo2_night": 95.2,
+      "spo2_readings": 6,
+      "weighted_z": 1.026,
+      "wrist_temp": 35.83,
+      "z": {
+       "hrv": 1.031,
+       "resp_rate": 0.883,
+       "rhr": 1.187,
+       "sleep_performance": 0.838
+      }
+     },
+     "sleep": {
+      "asleep_min": 409.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-12T00:47+10:00",
+      "consistency": 49,
+      "deep_min": 88.0,
+      "duration": 98,
+      "efficiency": 0.965,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 61,
+      "need_from_strain": 0,
+      "rem_min": 77.0,
+      "source": "shortcut",
+      "stages": 91,
+      "wake_time": "2026-09-12T07:51+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9374,
+    "muscle_load": null,
+    "recovery": 87,
+    "resp_rate_night": 14.85,
+    "rhr_night": 52.2,
+    "sleep_actual_min": 409,
+    "sleep_debt_min": 61,
+    "sleep_need_min": 541,
+    "sleep_performance": 0.7558,
+    "sleep_score": 87,
+    "strain": 17.99,
+    "trimp": 330.0,
+    "tsb": -6.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 288.2,
+    "ctl": 290.4,
+    "date": "2026-09-13",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 4,
+      "hr_samples": 132,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 222.0,
+      "zone_minutes": [
+       37.0,
+       70.0,
+       15.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 42,
+      "hrv_baseline": [
+       3.7689,
+       0.1674
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.281,
+       0.348
+      ],
+      "rhr_baseline": [
+       59.2244,
+       6.0951
+      ],
+      "rhr_low_offset_min": 0,
+      "sleep_performance_baseline": [
+       0.6489,
+       0.1302
+      ],
+      "spo2_night": 95.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.098,
+      "wrist_temp": 35.73,
+      "z": {
+       "hrv": 0.597,
+       "resp_rate": -0.538,
+       "rhr": -0.784,
+       "sleep_performance": -0.507
+      }
+     },
+     "sleep": {
+      "asleep_min": 336.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-12T23:55+10:00",
+      "consistency": 99,
+      "deep_min": 63.0,
+      "duration": 74,
+      "efficiency": 0.952,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 63,
+      "need_from_strain": 33,
+      "rem_min": 73.0,
+      "source": "ow",
+      "stages": 75,
+      "wake_time": "2026-09-13T05:48+10:00",
+      "waso_min": 17.0
+     }
+    },
+    "flags": {
+     "hr_coverage_low": "只有 4 小时有心率，负荷可能偏低（录到的部分已经有训练，照常出分）"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8687,
+    "muscle_load": null,
+    "recovery": 61,
+    "resp_rate_night": 15.55,
+    "rhr_night": 64.0,
+    "sleep_actual_min": 336,
+    "sleep_debt_min": 63,
+    "sleep_need_min": 576,
+    "sleep_performance": 0.5829,
+    "sleep_score": 83,
+    "strain": 15.31,
+    "trimp": 222.0,
+    "tsb": 2.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 285.5,
+    "ctl": 289.9,
+    "date": "2026-09-14",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 353,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 268.0,
+      "zone_minutes": [
+       131.0,
+       40.0,
+       19.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1792.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 43,
+      "hrv_baseline": [
+       3.7712,
+       0.1661
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2872,
+       0.3463
+      ],
+      "rhr_baseline": [
+       59.3381,
+       6.0653
+      ],
+      "rhr_low_offset_min": 386,
+      "sleep_performance_baseline": [
+       0.6474,
+       0.1291
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": -0.84,
+      "wrist_temp": 36.06,
+      "z": {
+       "hrv": -1.55,
+       "resp_rate": -0.726,
+       "rhr": 0.55,
+       "sleep_performance": 0.104
+      }
+     },
+     "sleep": {
+      "asleep_min": 389.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-13T23:22+10:00",
+      "consistency": 97,
+      "deep_min": 89.0,
+      "duration": 94,
+      "efficiency": 0.915,
+      "interruptions": 89,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 25,
+      "rem_min": 66.0,
+      "source": "shortcut",
+      "stages": 85,
+      "wake_time": "2026-09-14T06:27+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5138,
+    "muscle_load": 1792.8,
+    "recovery": 26,
+    "resp_rate_night": 15.65,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 389,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 589,
+    "sleep_performance": 0.6608,
+    "sleep_score": 91,
+    "strain": 16.66,
+    "trimp": 268.0,
+    "tsb": 4.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 294.4,
+    "ctl": 291.3,
+    "date": "2026-09-15",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 16,
+      "hr_samples": 259,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 352.0,
+      "zone_minutes": [
+       191.0,
+       2.0,
+       2.0,
+       29.0,
+       7.0
+      ]
+     }
+    },
+    "flags": {
+     "no_sleep": "没有手表睡眠数据"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": null,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": null,
+    "rhr_night": null,
+    "sleep_actual_min": null,
+    "sleep_debt_min": null,
+    "sleep_need_min": null,
+    "sleep_performance": null,
+    "sleep_score": null,
+    "strain": 18.35,
+    "trimp": 352.0,
+    "tsb": -3.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 283.8,
+    "ctl": 289.5,
+    "date": "2026-09-16",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 311,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 215.0,
+      "zone_minutes": [
+       211.0,
+       2.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 44,
+      "hrv_baseline": [
+       3.7653,
+       0.1687
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2955,
+       0.3465
+      ],
+      "rhr_baseline": [
+       59.2605,
+       6.0142
+      ],
+      "rhr_low_offset_min": 172,
+      "sleep_performance_baseline": [
+       0.6477,
+       0.1276
+      ],
+      "spo2_night": 96.6,
+      "spo2_readings": 6,
+      "weighted_z": -1.881,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -3.0,
+       "resp_rate": -0.809,
+       "rhr": -0.123,
+       "sleep_performance": -0.11
+      }
+     },
+     "sleep": {
+      "asleep_min": 379.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-16T00:35+10:00",
+      "consistency": 61,
+      "deep_min": 96.0,
+      "duration": 92,
+      "efficiency": 0.92,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 34,
+      "rem_min": 65.0,
+      "source": "shortcut",
+      "stages": 86,
+      "wake_time": "2026-09-16T07:27+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.1646,
+    "muscle_load": null,
+    "recovery": 6,
+    "resp_rate_night": 15.7,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 379,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 598,
+    "sleep_performance": 0.6337,
+    "sleep_score": 84,
+    "strain": 15.07,
+    "trimp": 215.0,
+    "tsb": 5.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 278.2,
+    "ctl": 288.4,
+    "date": "2026-09-17",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 242.0,
+      "zone_minutes": [
+       107.0,
+       27.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1816.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 45,
+      "hrv_baseline": [
+       3.752,
+       0.1893
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3044,
+       0.3479
+      ],
+      "rhr_baseline": [
+       59.2773,
+       5.9449
+      ],
+      "rhr_low_offset_min": 185,
+      "sleep_performance_baseline": [
+       0.6474,
+       0.1262
+      ],
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "weighted_z": -0.475,
+      "wrist_temp": 35.82,
+      "z": {
+       "hrv": -0.84,
+       "resp_rate": 0.309,
+       "rhr": 0.383,
+       "sleep_performance": -0.417
+      }
+     },
+     "sleep": {
+      "asleep_min": 353.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-16T23:06+10:00",
+      "consistency": 80,
+      "deep_min": 63.0,
+      "duration": 82,
+      "efficiency": 0.931,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 89,
+      "need_from_strain": 24,
+      "rem_min": 66.0,
+      "source": "ow",
+      "stages": 71,
+      "wake_time": "2026-09-17T05:25+10:00",
+      "waso_min": 26.0
+     }
+    },
+    "flags": {
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5929,
+    "muscle_load": 1816.8,
+    "recovery": 39,
+    "resp_rate_night": 15.15,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 353,
+    "sleep_debt_min": 89,
+    "sleep_need_min": 594,
+    "sleep_performance": 0.5947,
+    "sleep_score": 81,
+    "strain": 15.94,
+    "trimp": 242.0,
+    "tsb": 10.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 256.2,
+    "ctl": 284.3,
+    "date": "2026-09-18",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 325,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 113.0,
+      "zone_minutes": [
+       113.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 46,
+      "hrv_baseline": [
+       3.7485,
+       0.1886
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3011,
+       0.3447
+      ],
+      "rhr_baseline": [
+       59.2267,
+       5.8867
+      ],
+      "rhr_low_offset_min": 174,
+      "sleep_performance_baseline": [
+       0.6463,
+       0.125
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": -0.113,
+      "wrist_temp": 35.79,
+      "z": {
+       "hrv": -0.6,
+       "resp_rate": -0.498,
+       "rhr": 1.058,
+       "sleep_performance": 0.404
+      }
+     },
+     "sleep": {
+      "asleep_min": 423.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-17T23:42+10:00",
+      "consistency": 100,
+      "deep_min": 73.0,
+      "duration": 100,
+      "efficiency": 0.968,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 100,
+      "need_from_strain": 27,
+      "rem_min": 103.0,
+      "source": "shortcut",
+      "stages": 90,
+      "wake_time": "2026-09-18T06:59+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6354,
+    "muscle_load": null,
+    "recovery": 53,
+    "resp_rate_night": 15.55,
+    "rhr_night": 53.0,
+    "sleep_actual_min": 423,
+    "sleep_debt_min": 100,
+    "sleep_need_min": 607,
+    "sleep_performance": 0.6968,
+    "sleep_score": 98,
+    "strain": 10.2,
+    "trimp": 113.0,
+    "tsb": 28.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 268.7,
+    "ctl": 285.8,
+    "date": "2026-09-19",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 349,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 350.0,
+      "zone_minutes": [
+       69.0,
+       0.0,
+       14.0,
+       56.0,
+       3.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 47,
+      "hrv_baseline": [
+       3.7461,
+       0.1873
+      ],
+      "hrv_readings": 5,
+      "resp_rate_baseline": [
+       15.3064,
+       0.3429
+      ],
+      "rhr_baseline": [
+       59.0913,
+       5.8929
+      ],
+      "rhr_low_offset_min": 277,
+      "sleep_performance_baseline": [
+       0.6473,
+       0.1239
+      ],
+      "spo2_night": 97.0,
+      "spo2_readings": 6,
+      "weighted_z": 1.062,
+      "wrist_temp": 35.53,
+      "z": {
+       "hrv": 0.864,
+       "resp_rate": 0.313,
+       "rhr": 0.864,
+       "sleep_performance": 2.367
+      }
+     },
+     "sleep": {
+      "asleep_min": 508.0,
+      "awakenings": 3,
+      "bedtime": "2026-09-19T01:13+10:00",
+      "consistency": 18,
+      "deep_min": 121.0,
+      "duration": 100,
+      "efficiency": 0.942,
+      "interruptions": 84,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 88,
+      "need_from_strain": 10,
+      "rem_min": 87.0,
+      "source": "ow",
+      "stages": 98,
+      "wake_time": "2026-09-19T10:12+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.908,
+    "muscle_load": null,
+    "recovery": 88,
+    "resp_rate_night": 15.15,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 543,
+    "sleep_debt_min": 88,
+    "sleep_need_min": 577,
+    "sleep_performance": 0.9406,
+    "sleep_score": 80,
+    "strain": 18.32,
+    "trimp": 350.0,
+    "tsb": 17.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 292.5,
+    "ctl": 289.6,
+    "date": "2026-09-20",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 370,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 447.0,
+      "zone_minutes": [
+       227.0,
+       83.0,
+       18.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 48,
+      "hrv_baseline": [
+       3.7495,
+       0.1868
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3031,
+       0.34
+      ],
+      "rhr_baseline": [
+       58.983,
+       5.8756
+      ],
+      "rhr_low_offset_min": 29,
+      "sleep_performance_baseline": [
+       0.6533,
+       0.1296
+      ],
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "weighted_z": 0.265,
+      "wrist_temp": 36.01,
+      "z": {
+       "hrv": 0.516,
+       "resp_rate": -0.894,
+       "rhr": -0.343,
+       "sleep_performance": 0.457
+      }
+     },
+     "sleep": {
+      "asleep_min": 399.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-20T00:58+10:00",
+      "consistency": 48,
+      "deep_min": 94.0,
+      "duration": 96,
+      "efficiency": 0.943,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 46,
+      "need_from_strain": 34,
+      "rem_min": 88.0,
+      "source": "shortcut",
+      "stages": 98,
+      "wake_time": "2026-09-20T08:01+10:00",
+      "waso_min": 9.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8459,
+    "muscle_load": null,
+    "recovery": 67,
+    "resp_rate_night": 15.75,
+    "rhr_night": 61.0,
+    "sleep_actual_min": 399,
+    "sleep_debt_min": 46,
+    "sleep_need_min": 560,
+    "sleep_performance": 0.7126,
+    "sleep_score": 87,
+    "strain": 19.49,
+    "trimp": 447.0,
+    "tsb": -2.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 270.0,
+    "ctl": 285.7,
+    "date": "2026-09-21",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 316,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 124.0,
+      "zone_minutes": [
+       124.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 49,
+      "hrv_baseline": [
+       3.7515,
+       0.1853
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3122,
+       0.3424
+      ],
+      "rhr_baseline": [
+       59.025,
+       5.8201
+      ],
+      "rhr_low_offset_min": 124,
+      "sleep_performance_baseline": [
+       0.6545,
+       0.1285
+      ],
+      "spo2_night": 96.9,
+      "spo2_readings": 6,
+      "weighted_z": -0.13,
+      "wrist_temp": 36.0,
+      "z": {
+       "hrv": -0.332,
+       "resp_rate": -0.376,
+       "rhr": 0.176,
+       "sleep_performance": 0.353
+      }
+     },
+     "sleep": {
+      "asleep_min": 401.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-21T00:36+10:00",
+      "consistency": 69,
+      "deep_min": 79.0,
+      "duration": 97,
+      "efficiency": 0.962,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 55,
+      "need_from_strain": 37,
+      "rem_min": 86.0,
+      "source": "ow",
+      "stages": 91,
+      "wake_time": "2026-09-21T07:33+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.69,
+    "muscle_load": null,
+    "recovery": 52,
+    "resp_rate_night": 15.5,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 401,
+    "sleep_debt_min": 55,
+    "sleep_need_min": 573,
+    "sleep_performance": 0.6999,
+    "sleep_score": 90,
+    "strain": 10.87,
+    "trimp": 124.0,
+    "tsb": 15.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 264.7,
+    "ctl": 284.4,
+    "date": "2026-09-22",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 344,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 230.0,
+      "zone_minutes": [
+       80.0,
+       2.0,
+       1.0,
+       22.0,
+       11.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 50,
+      "hrv_baseline": [
+       3.7502,
+       0.1836
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.316,
+       0.3399
+      ],
+      "rhr_baseline": [
+       59.0041,
+       5.761
+      ],
+      "rhr_low_offset_min": 119,
+      "sleep_performance_baseline": [
+       0.6554,
+       0.1274
+      ],
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "weighted_z": 1.125,
+      "wrist_temp": 35.91,
+      "z": {
+       "hrv": 1.449,
+       "resp_rate": 0.332,
+       "rhr": 0.348,
+       "sleep_performance": 1.125
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-21T22:56+10:00",
+      "consistency": 80,
+      "deep_min": 79.0,
+      "duration": 100,
+      "efficiency": 0.963,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 62,
+      "need_from_strain": 12,
+      "rem_min": 98.0,
+      "source": "shortcut",
+      "stages": 93,
+      "wake_time": "2026-09-22T06:35+10:00",
+      "waso_min": 9.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0164,
+    "muscle_load": null,
+    "recovery": 89,
+    "resp_rate_night": 15.15,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 62,
+    "sleep_need_min": 553,
+    "sleep_performance": 0.7987,
+    "sleep_score": 94,
+    "strain": 15.57,
+    "trimp": 230.0,
+    "tsb": 19.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 243.0,
+    "ctl": 280.1,
+    "date": "2026-09-23",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 317,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 102.0,
+      "zone_minutes": [
+       102.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 51,
+      "hrv_baseline": [
+       3.7555,
+       0.1856
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3127,
+       0.3373
+      ],
+      "rhr_baseline": [
+       58.964,
+       5.709
+      ],
+      "rhr_low_offset_min": 236,
+      "sleep_performance_baseline": [
+       0.6581,
+       0.1277
+      ],
+      "spo2_night": 96.6,
+      "spo2_readings": 6,
+      "weighted_z": -0.145,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -0.587,
+       "resp_rate": -0.275,
+       "rhr": 0.344,
+       "sleep_performance": 1.011
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-23T00:07+10:00",
+      "consistency": 97,
+      "deep_min": 94.0,
+      "duration": 100,
+      "efficiency": 0.957,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 56,
+      "need_from_strain": 26,
+      "rem_min": 95.0,
+      "source": "ow",
+      "stages": 100,
+      "wake_time": "2026-09-23T07:49+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6466,
+    "muscle_load": null,
+    "recovery": 52,
+    "resp_rate_night": 15.45,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 56,
+    "sleep_need_min": 561,
+    "sleep_performance": 0.7872,
+    "sleep_score": 99,
+    "strain": 9.47,
+    "trimp": 102.0,
+    "tsb": 37.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 240.8,
+    "ctl": 278.9,
+    "date": "2026-09-24",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 226.0,
+      "zone_minutes": [
+       58.0,
+       27.0,
+       38.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1872.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 52,
+      "hrv_baseline": [
+       3.7534,
+       0.1844
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3154,
+       0.3345
+      ],
+      "rhr_baseline": [
+       58.9255,
+       5.6583
+      ],
+      "rhr_low_offset_min": 0,
+      "sleep_performance_baseline": [
+       0.6606,
+       0.1277
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 1.318,
+      "wrist_temp": 35.52,
+      "z": {
+       "hrv": 1.585,
+       "resp_rate": 1.131,
+       "rhr": 1.047,
+       "sleep_performance": 0.671
+      }
+     },
+     "sleep": {
+      "asleep_min": 402.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-24T00:50+10:00",
+      "consistency": 67,
+      "deep_min": 83.0,
+      "duration": 97,
+      "efficiency": 0.95,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 51,
+      "need_from_strain": 7,
+      "rem_min": 69.0,
+      "source": "shortcut",
+      "stages": 84,
+      "wake_time": "2026-09-24T07:53+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0456,
+    "muscle_load": 1872.0,
+    "recovery": 92,
+    "resp_rate_night": 14.75,
+    "rhr_night": 53.0,
+    "sleep_actual_min": 402,
+    "sleep_debt_min": 51,
+    "sleep_need_min": 539,
+    "sleep_performance": 0.7463,
+    "sleep_score": 89,
+    "strain": 15.44,
+    "trimp": 226.0,
+    "tsb": 38.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 226.8,
+    "ctl": 275.5,
+    "date": "2026-09-25",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 330,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 136.0,
+      "zone_minutes": [
+       136.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 53,
+      "hrv_baseline": [
+       3.7589,
+       0.1869
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3047,
+       0.3403
+      ],
+      "rhr_baseline": [
+       58.8115,
+       5.6625
+      ],
+      "rhr_low_offset_min": 117,
+      "sleep_performance_baseline": [
+       0.6621,
+       0.127
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.252,
+      "wrist_temp": 35.72,
+      "z": {
+       "hrv": -0.15,
+       "resp_rate": 0.409,
+       "rhr": 0.885,
+       "sleep_performance": 0.961
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-24T23:43+10:00",
+      "consistency": 80,
+      "deep_min": 87.0,
+      "duration": 100,
+      "efficiency": 1.0,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 58,
+      "need_from_strain": 25,
+      "rem_min": 85.0,
+      "source": "ow",
+      "stages": 95,
+      "wake_time": "2026-09-25T07:05+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7309,
+    "muscle_load": null,
+    "recovery": 67,
+    "resp_rate_night": 15.1,
+    "rhr_night": 53.8,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 58,
+    "sleep_need_min": 564,
+    "sleep_performance": 0.7842,
+    "sleep_score": 95,
+    "strain": 11.56,
+    "trimp": 136.0,
+    "tsb": 48.7
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 234.2,
+    "ctl": 275.7,
+    "date": "2026-09-26",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 12,
+      "hr_samples": 197,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 282.0,
+      "zone_minutes": [
+       17.0,
+       0.0,
+       15.0,
+       50.0,
+       4.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 54,
+      "hrv_baseline": [
+       3.7584,
+       0.1852
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3009,
+       0.3382
+      ],
+      "rhr_baseline": [
+       58.717,
+       5.6498
+      ],
+      "rhr_low_offset_min": 13,
+      "sleep_performance_baseline": [
+       0.6644,
+       0.1269
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": 1.129,
+      "wrist_temp": 35.68,
+      "z": {
+       "hrv": 1.402,
+       "resp_rate": 0.302,
+       "rhr": 0.835,
+       "sleep_performance": 0.704
+      }
+     },
+     "sleep": {
+      "asleep_min": 412.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-26T00:49+10:00",
+      "consistency": 86,
+      "deep_min": 82.0,
+      "duration": 98,
+      "efficiency": 0.934,
+      "interruptions": 84,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 53,
+      "need_from_strain": 14,
+      "rem_min": 96.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-26T08:10+10:00",
+      "waso_min": 29.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0181,
+    "muscle_load": null,
+    "recovery": 89,
+    "resp_rate_night": 15.15,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 412,
+    "sleep_debt_min": 53,
+    "sleep_need_min": 547,
+    "sleep_performance": 0.7538,
+    "sleep_score": 92,
+    "strain": 17.0,
+    "trimp": 282.0,
+    "tsb": 41.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 256.6,
+    "ctl": 278.6,
+    "date": "2026-09-27",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 374,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 403.0,
+      "zone_minutes": [
+       220.0,
+       63.0,
+       19.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 55,
+      "hrv_baseline": [
+       3.7631,
+       0.1868
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.2982,
+       0.3357
+      ],
+      "rhr_baseline": [
+       58.6296,
+       5.633
+      ],
+      "rhr_low_offset_min": 50,
+      "sleep_performance_baseline": [
+       0.666,
+       0.1263
+      ],
+      "spo2_night": 95.9,
+      "spo2_readings": 6,
+      "weighted_z": -0.684,
+      "wrist_temp": 36.08,
+      "z": {
+       "hrv": -0.825,
+       "resp_rate": -0.404,
+       "rhr": -0.243,
+       "sleep_performance": -0.802
+      }
+     },
+     "sleep": {
+      "asleep_min": 320.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-27T00:28+10:00",
+      "consistency": 100,
+      "deep_min": 75.0,
+      "duration": 65,
+      "efficiency": 0.896,
+      "interruptions": 80,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 57,
+      "need_from_strain": 30,
+      "rem_min": 55.0,
+      "source": "ow",
+      "stages": 72,
+      "wake_time": "2026-09-27T06:25+10:00",
+      "waso_min": 37.0
+     }
+    },
+    "flags": {
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.609,
+    "muscle_load": null,
+    "recovery": 31,
+    "resp_rate_night": 15.5,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 320,
+    "sleep_debt_min": 57,
+    "sleep_need_min": 567,
+    "sleep_performance": 0.5647,
+    "sleep_score": 76,
+    "strain": 19.04,
+    "trimp": 403.0,
+    "tsb": 22.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 255.6,
+    "ctl": 278.0,
+    "date": "2026-09-28",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 338,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 249.0,
+      "zone_minutes": [
+       123.0,
+       27.0,
+       24.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1903.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 56,
+      "hrv_baseline": [
+       3.7603,
+       0.1862
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3018,
+       0.3337
+      ],
+      "rhr_baseline": [
+       58.6545,
+       5.5836
+      ],
+      "rhr_low_offset_min": 141,
+      "sleep_performance_baseline": [
+       0.6642,
+       0.1259
+      ],
+      "spo2_night": 95.6,
+      "spo2_readings": 6,
+      "weighted_z": 0.395,
+      "wrist_temp": 36.33,
+      "z": {
+       "hrv": 0.55,
+       "resp_rate": -0.296,
+       "rhr": 0.296,
+       "sleep_performance": 0.135
+      }
+     },
+     "sleep": {
+      "asleep_min": 373.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-27T23:11+10:00",
+      "consistency": 80,
+      "deep_min": 69.0,
+      "duration": 90,
+      "efficiency": 0.959,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 83,
+      "need_from_strain": 36,
+      "rem_min": 62.0,
+      "source": "shortcut",
+      "stages": 72,
+      "wake_time": "2026-09-28T05:40+10:00",
+      "waso_min": 13.0
+     }
+    },
+    "flags": {},
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8628,
+    "muscle_load": 1903.2,
+    "recovery": 72,
+    "resp_rate_night": 15.45,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 408,
+    "sleep_debt_min": 83,
+    "sleep_need_min": 599,
+    "sleep_performance": 0.6812,
+    "sleep_score": 86,
+    "strain": 16.15,
+    "trimp": 249.0,
+    "tsb": 22.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 256.9,
+    "ctl": 277.7,
+    "date": "2026-09-29",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 343,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 265.5,
+      "zone_minutes": [
+       120.5,
+       2.0,
+       1.0,
+       22.0,
+       10.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 57,
+      "hrv_baseline": [
+       3.7621,
+       0.1851
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3044,
+       0.3313
+      ],
+      "rhr_baseline": [
+       58.625,
+       5.5371
+      ],
+      "rhr_low_offset_min": 308,
+      "sleep_performance_baseline": [
+       0.6645,
+       0.1248
+      ],
+      "spo2_night": 97.3,
+      "spo2_readings": 6,
+      "weighted_z": 0.113,
+      "wrist_temp": 35.91,
+      "z": {
+       "hrv": 0.182,
+       "resp_rate": -0.691,
+       "rhr": -0.068,
+       "sleep_performance": 0.35
+      }
+     },
+     "sleep": {
+      "asleep_min": 416.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-28T23:54+10:00",
+      "consistency": 91,
+      "deep_min": 73.0,
+      "duration": 99,
+      "efficiency": 0.965,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 80,
+      "need_from_strain": 27,
+      "rem_min": 103.0,
+      "source": "ow",
+      "stages": 90,
+      "wake_time": "2026-09-29T07:05+10:00",
+      "waso_min": 6.0
+     }
+    },
+    "flags": {
+     "day_in_progress": "今天还没过完，负荷是到目前为止的"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7957,
+    "muscle_load": null,
+    "recovery": 62,
+    "resp_rate_night": 15.65,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 416,
+    "sleep_debt_min": 80,
+    "sleep_need_min": 587,
+    "sleep_performance": 0.7081,
+    "sleep_score": 95,
+    "strain": 16.59,
+    "trimp": 265.5,
+    "tsb": 20.7
+   }
+  ],
+  [
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 312.8,
+    "ctl": 315.9,
+    "date": "2026-08-21",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 303,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 289.0,
+      "zone_minutes": [
+       275.0,
+       7.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 0,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 337,
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "wrist_temp": 36.03
+     },
+     "sleep": {
+      "asleep_min": 381.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-20T23:28+10:00",
+      "consistency": 80,
+      "deep_min": 78.0,
+      "duration": 92,
+      "efficiency": 0.974,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 0,
+      "need_from_strain": 0,
+      "rem_min": 68.0,
+      "source": "shortcut",
+      "stages": 80,
+      "wake_time": "2026-08-21T05:59+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 0 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.3779,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.3,
+    "rhr_night": 59.8,
+    "sleep_actual_min": 381,
+    "sleep_debt_min": 0,
+    "sleep_need_min": 480,
+    "sleep_performance": 0.7937,
+    "sleep_score": 88,
+    "strain": 17.16,
+    "trimp": 289.0,
+    "tsb": 3.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 323.8,
+    "ctl": 317.7,
+    "date": "2026-08-22",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 351,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 395.0,
+      "zone_minutes": [
+       101.0,
+       0.0,
+       15.0,
+       56.0,
+       5.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 1,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 339,
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "wrist_temp": 36.01
+     },
+     "sleep": {
+      "asleep_min": 447.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-22T01:18+10:00",
+      "consistency": 43,
+      "deep_min": 104.0,
+      "duration": 100,
+      "efficiency": 0.993,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 99,
+      "need_from_strain": 30,
+      "rem_min": 103.0,
+      "source": "ow",
+      "stages": 100,
+      "wake_time": "2026-08-22T08:48+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 1 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8071,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.4,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 447,
+    "sleep_debt_min": 99,
+    "sleep_need_min": 609,
+    "sleep_performance": 0.7334,
+    "sleep_score": 88,
+    "strain": 18.94,
+    "trimp": 395.0,
+    "tsb": -6.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 304.6,
+    "ctl": 314.5,
+    "date": "2026-08-23",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 315,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 180.0,
+      "zone_minutes": [
+       180.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 2,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 115,
+      "spo2_night": 96.0,
+      "spo2_readings": 6,
+      "wrist_temp": 36.9
+     },
+     "sleep": {
+      "asleep_min": 351.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-23T00:24+10:00",
+      "consistency": 94,
+      "deep_min": 87.0,
+      "duration": 82,
+      "efficiency": 0.954,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 61,
+      "need_from_strain": 36,
+      "rem_min": 53.0,
+      "source": "shortcut",
+      "stages": 77,
+      "wake_time": "2026-08-23T06:32+10:00",
+      "waso_min": 13.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 2 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9426,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.7,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 386,
+    "sleep_debt_min": 61,
+    "sleep_need_min": 577,
+    "sleep_performance": 0.6689,
+    "sleep_score": 87,
+    "strain": 13.72,
+    "trimp": 180.0,
+    "tsb": 9.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 297.5,
+    "ctl": 313.0,
+    "date": "2026-08-24",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 355,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 165.0,
+      "trimp_recorded": 251.0,
+      "zone_minutes": [
+       98.0,
+       36.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1624.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 3,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 82,
+      "spo2_night": 95.8,
+      "spo2_readings": 6,
+      "wrist_temp": 35.6
+     },
+     "sleep": {
+      "asleep_min": 362.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-23T23:31+10:00",
+      "consistency": 80,
+      "deep_min": 72.0,
+      "duration": 86,
+      "efficiency": 0.938,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 75,
+      "need_from_strain": 20,
+      "rem_min": 80.0,
+      "source": "ow",
+      "stages": 84,
+      "wake_time": "2026-08-24T05:57+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 3 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7231,
+    "muscle_load": 1624.8,
+    "recovery": null,
+    "resp_rate_night": 15.0,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 362,
+    "sleep_debt_min": 75,
+    "sleep_need_min": 576,
+    "sleep_performance": 0.6289,
+    "sleep_score": 87,
+    "strain": 16.2,
+    "trimp": 251.0,
+    "tsb": 15.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 305.8,
+    "ctl": 314.1,
+    "date": "2026-08-25",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 360.0,
+      "zone_minutes": [
+       171.0,
+       5.0,
+       1.0,
+       29.0,
+       12.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 4,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 291,
+      "spo2_night": 95.7,
+      "spo2_readings": 6,
+      "wrist_temp": 36.19
+     },
+     "sleep": {
+      "asleep_min": 417.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-24T23:21+10:00",
+      "consistency": 80,
+      "deep_min": 97.0,
+      "duration": 99,
+      "efficiency": 0.956,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 91,
+      "need_from_strain": 28,
+      "rem_min": 86.0,
+      "source": "shortcut",
+      "stages": 97,
+      "wake_time": "2026-08-25T06:37+10:00",
+      "waso_min": 19.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 4 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8088,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.35,
+    "rhr_night": 59.2,
+    "sleep_actual_min": 417,
+    "sleep_debt_min": 91,
+    "sleep_need_min": 599,
+    "sleep_performance": 0.6966,
+    "sleep_score": 94,
+    "strain": 18.47,
+    "trimp": 360.0,
+    "tsb": 8.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 305.8,
+    "ctl": 314.1,
+    "date": "2026-08-26",
+    "details": {
+     "hrv_kind": "sdnn",
+     "recovery": {
+      "baseline_nights": 5,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 12,
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "wrist_temp": 36.07
+     },
+     "sleep": {
+      "asleep_min": 376.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-25T23:45+10:00",
+      "consistency": 90,
+      "deep_min": 66.0,
+      "duration": 91,
+      "efficiency": 0.964,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 82,
+      "need_from_strain": 34,
+      "rem_min": 93.0,
+      "source": "ow",
+      "stages": 86,
+      "wake_time": "2026-08-26T06:15+10:00",
+      "waso_min": 14.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 5 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "没有原始心率（手表没戴或没同步），算不了 TRIMP / strain"
+    },
+    "hr_max": null,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7386,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.6,
+    "rhr_night": 61.0,
+    "sleep_actual_min": 376,
+    "sleep_debt_min": 82,
+    "sleep_need_min": 596,
+    "sleep_performance": 0.6306,
+    "sleep_score": 91,
+    "strain": null,
+    "trimp": null,
+    "tsb": 8.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 298.0,
+    "ctl": 312.5,
+    "date": "2026-08-27",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 247.0,
+      "zone_minutes": [
+       116.0,
+       19.0,
+       31.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1648.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 6,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 101,
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "wrist_temp": 35.72
+     },
+     "sleep": {
+      "asleep_min": 330.0,
+      "awakenings": 3,
+      "bedtime": "2026-08-26T23:10+10:00",
+      "consistency": 80,
+      "deep_min": 58.0,
+      "duration": 71,
+      "efficiency": 0.894,
+      "interruptions": 82,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 89,
+      "need_from_strain": 0,
+      "rem_min": 71.0,
+      "source": "shortcut",
+      "stages": 71,
+      "wake_time": "2026-08-27T05:19+10:00",
+      "waso_min": 27.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 6 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6968,
+    "muscle_load": 1648.8,
+    "recovery": null,
+    "resp_rate_night": 15.0,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 330,
+    "sleep_debt_min": 89,
+    "sleep_need_min": 569,
+    "sleep_performance": 0.5804,
+    "sleep_score": 75,
+    "strain": 16.09,
+    "trimp": 247.0,
+    "tsb": 14.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 295.9,
+    "ctl": 311.8,
+    "date": "2026-08-28",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 292,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 282.0,
+      "zone_minutes": [
+       264.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 7,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 141,
+      "spo2_night": 95.5,
+      "spo2_readings": 6,
+      "wrist_temp": 36.09
+     },
+     "sleep": {
+      "asleep_min": 336.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-27T23:18+10:00",
+      "consistency": 86,
+      "deep_min": 62.0,
+      "duration": 74,
+      "efficiency": 0.936,
+      "interruptions": 96,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 106,
+      "need_from_strain": 27,
+      "rem_min": 84.0,
+      "source": "ow",
+      "stages": 80,
+      "wake_time": "2026-08-28T05:17+10:00",
+      "waso_min": 23.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 7 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6962,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.35,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 336,
+    "sleep_debt_min": 106,
+    "sleep_need_min": 614,
+    "sleep_performance": 0.5476,
+    "sleep_score": 82,
+    "strain": 17.0,
+    "trimp": 282.0,
+    "tsb": 15.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 307.1,
+    "ctl": 313.4,
+    "date": "2026-08-29",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 16,
+      "hr_samples": 289,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 380.0,
+      "zone_minutes": [
+       96.0,
+       4.0,
+       13.0,
+       48.0,
+       9.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 8,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 390,
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "wrist_temp": 35.82
+     },
+     "sleep": {
+      "asleep_min": 380.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-29T00:53+10:00",
+      "consistency": 42,
+      "deep_min": 91.0,
+      "duration": 92,
+      "efficiency": 0.974,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 117,
+      "need_from_strain": 30,
+      "rem_min": 60.0,
+      "source": "shortcut",
+      "stages": 83,
+      "wake_time": "2026-08-29T07:23+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 8 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7411,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.05,
+    "rhr_night": 66.0,
+    "sleep_actual_min": 380,
+    "sleep_debt_min": 117,
+    "sleep_need_min": 627,
+    "sleep_performance": 0.6063,
+    "sleep_score": 81,
+    "strain": 18.75,
+    "trimp": 380.0,
+    "tsb": 6.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 327.8,
+    "ctl": 316.9,
+    "date": "2026-08-30",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 388,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 463.0,
+      "zone_minutes": [
+       269.0,
+       67.0,
+       20.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 9,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 287,
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "wrist_temp": 35.78
+     },
+     "sleep": {
+      "asleep_min": 371.0,
+      "awakenings": 2,
+      "bedtime": "2026-08-30T00:17+10:00",
+      "consistency": 76,
+      "deep_min": 72.0,
+      "duration": 89,
+      "efficiency": 0.916,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 112,
+      "need_from_strain": 35,
+      "rem_min": 79.0,
+      "source": "ow",
+      "stages": 83,
+      "wake_time": "2026-08-30T07:02+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 9 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.3527,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.75,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 371,
+    "sleep_debt_min": 112,
+    "sleep_need_min": 627,
+    "sleep_performance": 0.5912,
+    "sleep_score": 85,
+    "strain": 19.62,
+    "trimp": 463.0,
+    "tsb": -10.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 339.6,
+    "ctl": 319.2,
+    "date": "2026-08-31",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 17,
+      "hr_samples": 285,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 416.0,
+      "zone_minutes": [
+       232.0,
+       56.0,
+       24.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1680.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 10,
+      "hrv_readings": 0,
+      "rhr_low_offset_min": 34,
+      "spo2_night": null,
+      "spo2_readings": 0,
+      "wrist_temp": null
+     },
+     "sleep": {
+      "asleep_min": 35.0,
+      "awakenings": 0,
+      "bedtime": "2026-08-31T15:10+10:00",
+      "consistency": 80,
+      "deep_min": 0.0,
+      "duration": 0,
+      "efficiency": 0.875,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 111,
+      "need_from_strain": 38,
+      "rem_min": 0.0,
+      "source": "ow",
+      "stages": 0,
+      "wake_time": "2026-08-31T15:50+10:00",
+      "waso_min": 5.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "hrv_missing": "睡眠窗口内没有 HRV 读数，算不了恢复分",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": null,
+    "muscle_load": 1680.0,
+    "recovery": null,
+    "resp_rate_night": null,
+    "rhr_night": 94.0,
+    "sleep_actual_min": 35,
+    "sleep_debt_min": 111,
+    "sleep_need_min": 629,
+    "sleep_performance": 0.0556,
+    "sleep_score": 36,
+    "strain": 19.18,
+    "trimp": 416.0,
+    "tsb": -20.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 344.4,
+    "ctl": 320.6,
+    "date": "2026-09-01",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 350,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 376.0,
+      "zone_minutes": [
+       198.0,
+       5.0,
+       2.0,
+       28.0,
+       10.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 10,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 154,
+      "spo2_night": 96.2,
+      "spo2_readings": 6,
+      "wrist_temp": 36.29
+     },
+     "sleep": {
+      "asleep_min": 406.0,
+      "awakenings": 1,
+      "bedtime": "2026-08-31T23:44+10:00",
+      "consistency": 100,
+      "deep_min": 96.0,
+      "duration": 98,
+      "efficiency": 0.944,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 37,
+      "rem_min": 76.0,
+      "source": "ow",
+      "stages": 92,
+      "wake_time": "2026-09-01T06:54+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 10 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7341,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.75,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 406,
+    "sleep_debt_min": 198,
+    "sleep_need_min": 637,
+    "sleep_performance": 0.6378,
+    "sleep_score": 97,
+    "strain": 18.7,
+    "trimp": 376.0,
+    "tsb": -23.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 336.6,
+    "ctl": 319.8,
+    "date": "2026-09-02",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 308,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 286.0,
+      "zone_minutes": [
+       266.0,
+       10.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 11,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 76,
+      "spo2_night": 97.3,
+      "spo2_readings": 6,
+      "wrist_temp": 36.07
+     },
+     "sleep": {
+      "asleep_min": 391.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-01T23:36+10:00",
+      "consistency": 100,
+      "deep_min": 69.0,
+      "duration": 95,
+      "efficiency": 0.942,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 35,
+      "rem_min": 90.0,
+      "source": "shortcut",
+      "stages": 88,
+      "wake_time": "2026-09-02T06:31+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 11 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5419,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.55,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 391,
+    "sleep_debt_min": 166,
+    "sleep_need_min": 635,
+    "sleep_performance": 0.6157,
+    "sleep_score": 93,
+    "strain": 17.1,
+    "trimp": 286.0,
+    "tsb": -16.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 329.5,
+    "ctl": 318.9,
+    "date": "2026-09-03",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 343,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 283.0,
+      "zone_minutes": [
+       140.0,
+       31.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1704.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 12,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 270,
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "wrist_temp": 35.79
+     },
+     "sleep": {
+      "asleep_min": 341.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-02T23:47+10:00",
+      "consistency": 100,
+      "deep_min": 63.0,
+      "duration": 77,
+      "efficiency": 0.972,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 30,
+      "rem_min": 74.0,
+      "source": "ow",
+      "stages": 76,
+      "wake_time": "2026-09-03T05:38+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 12 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8307,
+    "muscle_load": 1704.0,
+    "recovery": null,
+    "resp_rate_night": 15.25,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 341,
+    "sleep_debt_min": 147,
+    "sleep_need_min": 630,
+    "sleep_performance": 0.541,
+    "sleep_score": 86,
+    "strain": 17.03,
+    "trimp": 283.0,
+    "tsb": -10.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 315.3,
+    "ctl": 316.6,
+    "date": "2026-09-04",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 21,
+      "hr_samples": 294,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 223.0,
+      "zone_minutes": [
+       223.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 13,
+      "hrv_readings": 4,
+      "rhr_low_offset_min": 91,
+      "spo2_night": 98.2,
+      "spo2_readings": 6,
+      "wrist_temp": 35.74
+     },
+     "sleep": {
+      "asleep_min": 332.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-03T23:10+10:00",
+      "consistency": 85,
+      "deep_min": 84.0,
+      "duration": 72,
+      "efficiency": 0.949,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 30,
+      "rem_min": 53.0,
+      "source": "shortcut",
+      "stages": 75,
+      "wake_time": "2026-09-04T05:00+10:00",
+      "waso_min": 18.0
+     }
+    },
+    "flags": {
+     "baseline_insufficient": "前 60 天只有 13 晚 HRV，满 14 晚才出恢复分",
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6255,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": 15.5,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 332,
+    "sleep_debt_min": 145,
+    "sleep_need_min": 630,
+    "sleep_performance": 0.5269,
+    "sleep_score": 79,
+    "strain": 15.34,
+    "trimp": 223.0,
+    "tsb": 1.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 331.9,
+    "ctl": 319.5,
+    "date": "2026-09-05",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 361,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 440.0,
+      "zone_minutes": [
+       134.0,
+       7.0,
+       10.0,
+       63.0,
+       2.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 14,
+      "hrv_baseline": [
+       3.6869,
+       0.1656
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3964,
+       0.2613
+      ],
+      "rhr_baseline": [
+       61.8,
+       9.2739
+      ],
+      "rhr_low_offset_min": 127,
+      "sleep_performance_baseline": [
+       0.5903,
+       0.1647
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.697,
+      "wrist_temp": 36.05,
+      "z": {
+       "hrv": 0.836,
+       "resp_rate": 0.993,
+       "rhr": 0.518,
+       "sleep_performance": 0.282
+      }
+     },
+     "sleep": {
+      "asleep_min": 398.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-05T01:18+10:00",
+      "consistency": 20,
+      "deep_min": 84.0,
+      "duration": 96,
+      "efficiency": 0.952,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 25,
+      "rem_min": 60.0,
+      "source": "ow",
+      "stages": 79,
+      "wake_time": "2026-09-05T08:16+10:00",
+      "waso_min": 20.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8254,
+    "muscle_load": null,
+    "recovery": 80,
+    "resp_rate_night": 14.9,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 398,
+    "sleep_debt_min": 146,
+    "sleep_need_min": 625,
+    "sleep_performance": 0.6368,
+    "sleep_score": 77,
+    "strain": 19.42,
+    "trimp": 440.0,
+    "tsb": -12.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 318.6,
+    "ctl": 317.5,
+    "date": "2026-09-06",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 309,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 232.0,
+      "zone_minutes": [
+       232.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 15,
+      "hrv_baseline": [
+       3.6961,
+       0.1636
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3633,
+       0.2825
+      ],
+      "rhr_baseline": [
+       61.5,
+       9.0395
+      ],
+      "rhr_low_offset_min": 11,
+      "sleep_performance_baseline": [
+       0.5932,
+       0.1596
+      ],
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.33,
+      "wrist_temp": 35.85,
+      "z": {
+       "hrv": 0.503,
+       "resp_rate": -0.873,
+       "rhr": -0.055,
+       "sleep_performance": 0.55
+      }
+     },
+     "sleep": {
+      "asleep_min": 434.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-06T01:11+10:00",
+      "consistency": 27,
+      "deep_min": 90.0,
+      "duration": 100,
+      "efficiency": 0.948,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 120,
+      "need_from_strain": 37,
+      "rem_min": 82.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-06T08:49+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7784,
+    "muscle_load": null,
+    "recovery": 70,
+    "resp_rate_night": 15.8,
+    "rhr_night": 62.0,
+    "sleep_actual_min": 434,
+    "sleep_debt_min": 130,
+    "sleep_need_min": 637,
+    "sleep_performance": 0.681,
+    "sleep_score": 82,
+    "strain": 15.64,
+    "trimp": 232.0,
+    "tsb": -1.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 318.6,
+    "ctl": 317.5,
+    "date": "2026-09-07",
+    "details": {
+     "hrv_kind": "sdnn",
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1735.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 16,
+      "hrv_baseline": [
+       3.7013,
+       0.1594
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3906,
+       0.2939
+      ],
+      "rhr_baseline": [
+       61.5294,
+       8.7533
+      ],
+      "rhr_low_offset_min": 38,
+      "sleep_performance_baseline": [
+       0.5984,
+       0.156
+      ],
+      "spo2_night": 96.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.904,
+      "wrist_temp": 35.93,
+      "z": {
+       "hrv": 1.202,
+       "resp_rate": 0.681,
+       "rhr": 0.289,
+       "sleep_performance": 0.607
+      }
+     },
+     "sleep": {
+      "asleep_min": 426.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-06T22:53+10:00",
+      "consistency": 80,
+      "deep_min": 87.0,
+      "duration": 100,
+      "efficiency": 0.945,
+      "interruptions": 94,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 109,
+      "need_from_strain": 26,
+      "rem_min": 76.0,
+      "source": "ow",
+      "stages": 90,
+      "wake_time": "2026-09-07T06:24+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "这天只有快捷指令数据：心率是按小时求和的，算不了 TRIMP / strain",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": null,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8928,
+    "muscle_load": 1735.2,
+    "recovery": 85,
+    "resp_rate_night": 15.05,
+    "rhr_night": 59.0,
+    "sleep_actual_min": 426,
+    "sleep_debt_min": 109,
+    "sleep_need_min": 615,
+    "sleep_performance": 0.693,
+    "sleep_score": 92,
+    "strain": null,
+    "trimp": null,
+    "tsb": -1.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 318.3,
+    "ctl": 317.5,
+    "date": "2026-09-08",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 341,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 316.0,
+      "zone_minutes": [
+       130.0,
+       4.0,
+       2.0,
+       23.0,
+       16.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 17,
+      "hrv_baseline": [
+       3.7125,
+       0.1611
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3706,
+       0.2964
+      ],
+      "rhr_baseline": [
+       61.3889,
+       8.5128
+      ],
+      "rhr_low_offset_min": 258,
+      "sleep_performance_baseline": [
+       0.6036,
+       0.1529
+      ],
+      "spo2_night": 95.3,
+      "spo2_readings": 6,
+      "weighted_z": 0.788,
+      "wrist_temp": 35.88,
+      "z": {
+       "hrv": 0.773,
+       "resp_rate": 0.441,
+       "rhr": 0.398,
+       "sleep_performance": 1.479
+      }
+     },
+     "sleep": {
+      "asleep_min": 477.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-07T23:14+10:00",
+      "consistency": 90,
+      "deep_min": 81.0,
+      "duration": 100,
+      "efficiency": 0.95,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 95,
+      "need_from_strain": 0,
+      "rem_min": 99.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-08T07:36+10:00",
+      "waso_min": 21.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8372,
+    "muscle_load": null,
+    "recovery": 83,
+    "resp_rate_night": 15.15,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 477,
+    "sleep_debt_min": 95,
+    "sleep_need_min": 575,
+    "sleep_performance": 0.8299,
+    "sleep_score": 95,
+    "strain": 17.73,
+    "trimp": 316.0,
+    "tsb": -0.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 300.8,
+    "ctl": 314.4,
+    "date": "2026-09-09",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 333,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 187.0,
+      "zone_minutes": [
+       169.0,
+       9.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 18,
+      "hrv_baseline": [
+       3.7195,
+       0.1591
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3583,
+       0.2922
+      ],
+      "rhr_baseline": [
+       61.2105,
+       8.3094
+      ],
+      "rhr_low_offset_min": 135,
+      "sleep_performance_baseline": [
+       0.6156,
+       0.1574
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 1.075,
+      "wrist_temp": 35.89,
+      "z": {
+       "hrv": 1.296,
+       "resp_rate": -0.683,
+       "rhr": 0.868,
+       "sleep_performance": 1.052
+      }
+     },
+     "sleep": {
+      "asleep_min": 456.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-08T23:03+10:00",
+      "consistency": 80,
+      "deep_min": 88.0,
+      "duration": 100,
+      "efficiency": 0.954,
+      "interruptions": 92,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 72,
+      "need_from_strain": 32,
+      "rem_min": 90.0,
+      "source": "ow",
+      "stages": 98,
+      "wake_time": "2026-09-09T07:01+10:00",
+      "waso_min": 22.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9255,
+    "muscle_load": null,
+    "recovery": 88,
+    "resp_rate_night": 15.7,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 456,
+    "sleep_debt_min": 72,
+    "sleep_need_min": 584,
+    "sleep_performance": 0.7811,
+    "sleep_score": 94,
+    "strain": 14.01,
+    "trimp": 187.0,
+    "tsb": 13.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 297.6,
+    "ctl": 313.5,
+    "date": "2026-09-10",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 363,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 277.0,
+      "zone_minutes": [
+       111.0,
+       32.0,
+       34.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1759.2,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 19,
+      "hrv_baseline": [
+       3.7303,
+       0.1616
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3763,
+       0.2946
+      ],
+      "rhr_baseline": [
+       60.85,
+       8.2469
+      ],
+      "rhr_low_offset_min": 130,
+      "sleep_performance_baseline": [
+       0.6238,
+       0.1576
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": 0.459,
+      "wrist_temp": 35.6,
+      "z": {
+       "hrv": 0.119,
+       "resp_rate": 1.753,
+       "rhr": 0.709,
+       "sleep_performance": 1.058
+      }
+     },
+     "sleep": {
+      "asleep_min": 408.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-09T23:20+10:00",
+      "consistency": 100,
+      "deep_min": 97.0,
+      "duration": 98,
+      "efficiency": 0.953,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 59,
+      "need_from_strain": 21,
+      "rem_min": 68.0,
+      "source": "shortcut",
+      "stages": 87,
+      "wake_time": "2026-09-10T06:28+10:00",
+      "waso_min": 5.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7495,
+    "muscle_load": 1759.2,
+    "recovery": 74,
+    "resp_rate_night": 14.5,
+    "rhr_night": 55.0,
+    "sleep_actual_min": 443,
+    "sleep_debt_min": 59,
+    "sleep_need_min": 560,
+    "sleep_performance": 0.7906,
+    "sleep_score": 96,
+    "strain": 16.88,
+    "trimp": 277.0,
+    "tsb": 15.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 297.6,
+    "ctl": 313.5,
+    "date": "2026-09-11",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 3,
+      "hr_samples": 43,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 25.0,
+      "zone_minutes": [
+       25.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 20,
+      "hrv_baseline": [
+       3.7313,
+       0.1574
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3325,
+       0.3473
+      ],
+      "rhr_baseline": [
+       56.9512,
+       1.4483
+      ],
+      "sleep_performance_baseline": [
+       0.6318,
+       0.1579
+      ],
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "weighted_z": 0.897,
+      "wrist_temp": 35.86,
+      "z": {
+       "hrv": 1.155,
+       "resp_rate": 0.165,
+       "rhr": 0.657,
+       "sleep_performance": 0.432
+      }
+     },
+     "sleep": {
+      "asleep_min": 394.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-11T00:33+10:00",
+      "consistency": 52,
+      "deep_min": 75.0,
+      "duration": 95,
+      "efficiency": 0.949,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 53,
+      "need_from_strain": 30,
+      "rem_min": 71.0,
+      "source": "ow",
+      "stages": 80,
+      "wake_time": "2026-09-11T07:28+10:00",
+      "waso_min": 21.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "load_missing": "这天没有完整的 TRIMP，CTL / ATL 沿用前一天",
+     "no_raw_hr": "只有 3 小时有心率（要 ≥ 12），又没录到训练，负荷不出分",
+     "rhr_from_daily": "没有睡眠期原始心率，用当天的 resting_heart_rate（Apple 全天算法），和它自己的 60 天基线比"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.913,
+    "muscle_load": null,
+    "recovery": 85,
+    "resp_rate_night": 15.25,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 394,
+    "sleep_debt_min": 53,
+    "sleep_need_min": 563,
+    "sleep_performance": 0.7,
+    "sleep_score": 83,
+    "strain": null,
+    "trimp": null,
+    "tsb": 15.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 301.9,
+    "ctl": 313.9,
+    "date": "2026-09-12",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 375,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 330.0,
+      "zone_minutes": [
+       48.0,
+       0.0,
+       16.0,
+       56.0,
+       2.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 21,
+      "hrv_baseline": [
+       3.7399,
+       0.1584
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3286,
+       0.339
+      ],
+      "rhr_baseline": [
+       60.5714,
+       8.1389
+      ],
+      "rhr_low_offset_min": 197,
+      "sleep_performance_baseline": [
+       0.6349,
+       0.1548
+      ],
+      "spo2_night": 95.2,
+      "spo2_readings": 6,
+      "weighted_z": 1.118,
+      "wrist_temp": 35.83,
+      "z": {
+       "hrv": 1.246,
+       "resp_rate": 0.957,
+       "rhr": 1.029,
+       "sleep_performance": 0.781
+      }
+     },
+     "sleep": {
+      "asleep_min": 409.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-12T00:47+10:00",
+      "consistency": 49,
+      "deep_min": 88.0,
+      "duration": 98,
+      "efficiency": 0.965,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 61,
+      "need_from_strain": 0,
+      "rem_min": 77.0,
+      "source": "shortcut",
+      "stages": 91,
+      "wake_time": "2026-09-12T07:51+10:00",
+      "waso_min": 10.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "prev_strain_missing": "前一天没有负荷，睡眠需求不加负荷加成"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.9374,
+    "muscle_load": null,
+    "recovery": 89,
+    "resp_rate_night": 14.85,
+    "rhr_night": 52.2,
+    "sleep_actual_min": 409,
+    "sleep_debt_min": 61,
+    "sleep_need_min": 541,
+    "sleep_performance": 0.7558,
+    "sleep_score": 87,
+    "strain": 17.99,
+    "trimp": 330.0,
+    "tsb": 12.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 291.3,
+    "ctl": 311.7,
+    "date": "2026-09-13",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 4,
+      "hr_samples": 132,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 222.0,
+      "zone_minutes": [
+       37.0,
+       70.0,
+       15.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 22,
+      "hrv_baseline": [
+       3.7489,
+       0.1603
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3068,
+       0.3462
+      ],
+      "rhr_baseline": [
+       60.1909,
+       8.1408
+      ],
+      "rhr_low_offset_min": 0,
+      "sleep_performance_baseline": [
+       0.6401,
+       0.1533
+      ],
+      "spo2_night": 95.7,
+      "spo2_readings": 6,
+      "weighted_z": 0.275,
+      "wrist_temp": 35.73,
+      "z": {
+       "hrv": 0.748,
+       "resp_rate": -0.486,
+       "rhr": -0.468,
+       "sleep_performance": -0.373
+      }
+     },
+     "sleep": {
+      "asleep_min": 336.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-12T23:55+10:00",
+      "consistency": 99,
+      "deep_min": 63.0,
+      "duration": 74,
+      "efficiency": 0.952,
+      "interruptions": 95,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 63,
+      "need_from_strain": 33,
+      "rem_min": 73.0,
+      "source": "ow",
+      "stages": 75,
+      "wake_time": "2026-09-13T05:48+10:00",
+      "waso_min": 17.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "hr_coverage_low": "只有 4 小时有心率，负荷可能偏低（录到的部分已经有训练，照常出分）"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8687,
+    "muscle_load": null,
+    "recovery": 68,
+    "resp_rate_night": 15.55,
+    "rhr_night": 64.0,
+    "sleep_actual_min": 336,
+    "sleep_debt_min": 63,
+    "sleep_need_min": 576,
+    "sleep_performance": 0.5829,
+    "sleep_score": 83,
+    "strain": 15.31,
+    "trimp": 222.0,
+    "tsb": 20.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 288.2,
+    "ctl": 310.7,
+    "date": "2026-09-14",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 353,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 268.0,
+      "zone_minutes": [
+       131.0,
+       40.0,
+       19.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1792.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 23,
+      "hrv_baseline": [
+       3.7541,
+       0.1586
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3174,
+       0.342
+      ],
+      "rhr_baseline": [
+       60.3565,
+       7.9932
+      ],
+      "rhr_low_offset_min": 386,
+      "sleep_performance_baseline": [
+       0.6377,
+       0.1504
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": -0.811,
+      "wrist_temp": 36.06,
+      "z": {
+       "hrv": -1.516,
+       "resp_rate": -0.665,
+       "rhr": 0.545,
+       "sleep_performance": 0.153
+      }
+     },
+     "sleep": {
+      "asleep_min": 389.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-13T23:22+10:00",
+      "consistency": 97,
+      "deep_min": 89.0,
+      "duration": 94,
+      "efficiency": 0.915,
+      "interruptions": 89,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 25,
+      "rem_min": 66.0,
+      "source": "shortcut",
+      "stages": 85,
+      "wake_time": "2026-09-14T06:27+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5138,
+    "muscle_load": 1792.8,
+    "recovery": 27,
+    "resp_rate_night": 15.65,
+    "rhr_night": 56.0,
+    "sleep_actual_min": 389,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 589,
+    "sleep_performance": 0.6608,
+    "sleep_score": 91,
+    "strain": 16.66,
+    "trimp": 268.0,
+    "tsb": 22.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 296.7,
+    "ctl": 311.7,
+    "date": "2026-09-15",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 16,
+      "hr_samples": 259,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 352.0,
+      "zone_minutes": [
+       191.0,
+       2.0,
+       2.0,
+       29.0,
+       7.0
+      ]
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_sleep": "没有手表睡眠数据"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": null,
+    "muscle_load": null,
+    "recovery": null,
+    "resp_rate_night": null,
+    "rhr_night": null,
+    "sleep_actual_min": null,
+    "sleep_debt_min": null,
+    "sleep_need_min": null,
+    "sleep_performance": null,
+    "sleep_score": null,
+    "strain": 18.35,
+    "trimp": 352.0,
+    "tsb": 15.0
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 285.8,
+    "ctl": 309.4,
+    "date": "2026-09-16",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 311,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 215.0,
+      "zone_minutes": [
+       211.0,
+       2.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 24,
+      "hrv_baseline": [
+       3.7441,
+       0.1626
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3312,
+       0.3413
+      ],
+      "rhr_baseline": [
+       60.175,
+       7.8679
+      ],
+      "rhr_low_offset_min": 172,
+      "sleep_performance_baseline": [
+       0.6387,
+       0.1473
+      ],
+      "spo2_night": 96.6,
+      "spo2_readings": 6,
+      "weighted_z": -1.837,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -3.0,
+       "resp_rate": -0.738,
+       "rhr": 0.022,
+       "sleep_performance": -0.034
+      }
+     },
+     "sleep": {
+      "asleep_min": 379.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-16T00:35+10:00",
+      "consistency": 61,
+      "deep_min": 96.0,
+      "duration": 92,
+      "efficiency": 0.92,
+      "interruptions": 90,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 84,
+      "need_from_strain": 34,
+      "rem_min": 65.0,
+      "source": "shortcut",
+      "stages": 86,
+      "wake_time": "2026-09-16T07:27+10:00",
+      "waso_min": 24.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.1646,
+    "muscle_load": null,
+    "recovery": 7,
+    "resp_rate_night": 15.7,
+    "rhr_night": 60.0,
+    "sleep_actual_min": 379,
+    "sleep_debt_min": 84,
+    "sleep_need_min": 598,
+    "sleep_performance": 0.6337,
+    "sleep_score": 84,
+    "strain": 15.07,
+    "trimp": 215.0,
+    "tsb": 23.6
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 280.0,
+    "ctl": 307.8,
+    "date": "2026-09-17",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 242.0,
+      "zone_minutes": [
+       107.0,
+       27.0,
+       27.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 333.0,
+      "volume_kg": 1816.8,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 25,
+      "hrv_baseline": [
+       3.7209,
+       0.1969
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.346,
+       0.3422
+      ],
+      "rhr_baseline": [
+       60.168,
+       7.7023
+      ],
+      "rhr_low_offset_min": 185,
+      "sleep_performance_baseline": [
+       0.6385,
+       0.1443
+      ],
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "weighted_z": -0.334,
+      "wrist_temp": 35.82,
+      "z": {
+       "hrv": -0.65,
+       "resp_rate": 0.392,
+       "rhr": 0.411,
+       "sleep_performance": -0.303
+      }
+     },
+     "sleep": {
+      "asleep_min": 353.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-16T23:06+10:00",
+      "consistency": 80,
+      "deep_min": 63.0,
+      "duration": 82,
+      "efficiency": 0.931,
+      "interruptions": 93,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 89,
+      "need_from_strain": 24,
+      "rem_min": 66.0,
+      "source": "ow",
+      "stages": 71,
+      "wake_time": "2026-09-17T05:25+10:00",
+      "waso_min": 26.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定",
+     "no_stage_segments": "拿不到阶段明细：中断分用整段清醒分钟，醒来次数按 0"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.5929,
+    "muscle_load": 1816.8,
+    "recovery": 44,
+    "resp_rate_night": 15.15,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 353,
+    "sleep_debt_min": 89,
+    "sleep_need_min": 594,
+    "sleep_performance": 0.5947,
+    "sleep_score": 81,
+    "strain": 15.94,
+    "trimp": 242.0,
+    "tsb": 27.8
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 257.8,
+    "ctl": 303.2,
+    "date": "2026-09-18",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 325,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 113.0,
+      "zone_minutes": [
+       113.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 26,
+      "hrv_baseline": [
+       3.716,
+       0.1946
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3385,
+       0.3374
+      ],
+      "rhr_baseline": [
+       60.0462,
+       7.5722
+      ],
+      "rhr_low_offset_min": 174,
+      "sleep_performance_baseline": [
+       0.6369,
+       0.1418
+      ],
+      "spo2_night": 96.5,
+      "spo2_readings": 6,
+      "weighted_z": -0.02,
+      "wrist_temp": 35.79,
+      "z": {
+       "hrv": -0.414,
+       "resp_rate": -0.423,
+       "rhr": 0.931,
+       "sleep_performance": 0.423
+      }
+     },
+     "sleep": {
+      "asleep_min": 423.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-17T23:42+10:00",
+      "consistency": 100,
+      "deep_min": 73.0,
+      "duration": 100,
+      "efficiency": 0.968,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 100,
+      "need_from_strain": 27,
+      "rem_min": 103.0,
+      "source": "shortcut",
+      "stages": 90,
+      "wake_time": "2026-09-18T06:59+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6354,
+    "muscle_load": null,
+    "recovery": 57,
+    "resp_rate_night": 15.55,
+    "rhr_night": 53.0,
+    "sleep_actual_min": 423,
+    "sleep_debt_min": 100,
+    "sleep_need_min": 607,
+    "sleep_performance": 0.6968,
+    "sleep_score": 98,
+    "strain": 10.2,
+    "trimp": 113.0,
+    "tsb": 45.5
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 270.0,
+    "ctl": 304.3,
+    "date": "2026-09-19",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 22,
+      "hr_samples": 349,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 350.0,
+      "zone_minutes": [
+       69.0,
+       0.0,
+       14.0,
+       56.0,
+       3.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 27,
+      "hrv_baseline": [
+       3.713,
+       0.1914
+      ],
+      "hrv_readings": 5,
+      "resp_rate_baseline": [
+       15.3463,
+       0.3334
+      ],
+      "rhr_baseline": [
+       59.7852,
+       7.548
+      ],
+      "rhr_low_offset_min": 277,
+      "sleep_performance_baseline": [
+       0.639,
+       0.1396
+      ],
+      "spo2_night": 97.0,
+      "spo2_readings": 6,
+      "weighted_z": 1.108,
+      "wrist_temp": 35.53,
+      "z": {
+       "hrv": 1.019,
+       "resp_rate": 0.393,
+       "rhr": 0.766,
+       "sleep_performance": 2.161
+      }
+     },
+     "sleep": {
+      "asleep_min": 508.0,
+      "awakenings": 3,
+      "bedtime": "2026-09-19T01:13+10:00",
+      "consistency": 18,
+      "deep_min": 121.0,
+      "duration": 100,
+      "efficiency": 0.942,
+      "interruptions": 84,
+      "latency_min": null,
+      "nap_min": 35,
+      "need_from_debt": 88,
+      "need_from_strain": 10,
+      "rem_min": 87.0,
+      "source": "ow",
+      "stages": 98,
+      "wake_time": "2026-09-19T10:12+10:00",
+      "waso_min": 25.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.908,
+    "muscle_load": null,
+    "recovery": 89,
+    "resp_rate_night": 15.15,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 543,
+    "sleep_debt_min": 88,
+    "sleep_need_min": 577,
+    "sleep_performance": 0.9406,
+    "sleep_score": 80,
+    "strain": 18.32,
+    "trimp": 350.0,
+    "tsb": 34.3
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 293.6,
+    "ctl": 307.7,
+    "date": "2026-09-20",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 370,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 447.0,
+      "zone_minutes": [
+       227.0,
+       83.0,
+       18.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 28,
+      "hrv_baseline": [
+       3.72,
+       0.1914
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3393,
+       0.3292
+      ],
+      "rhr_baseline": [
+       59.5786,
+       7.4871
+      ],
+      "rhr_low_offset_min": 29,
+      "sleep_performance_baseline": [
+       0.6494,
+       0.1481
+      ],
+      "spo2_night": 96.4,
+      "spo2_readings": 6,
+      "weighted_z": 0.38,
+      "wrist_temp": 36.01,
+      "z": {
+       "hrv": 0.658,
+       "resp_rate": -0.821,
+       "rhr": -0.19,
+       "sleep_performance": 0.427
+      }
+     },
+     "sleep": {
+      "asleep_min": 399.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-20T00:58+10:00",
+      "consistency": 48,
+      "deep_min": 94.0,
+      "duration": 96,
+      "efficiency": 0.943,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 46,
+      "need_from_strain": 34,
+      "rem_min": 88.0,
+      "source": "shortcut",
+      "stages": 98,
+      "wake_time": "2026-09-20T08:01+10:00",
+      "waso_min": 9.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.8459,
+    "muscle_load": null,
+    "recovery": 71,
+    "resp_rate_night": 15.75,
+    "rhr_night": 61.0,
+    "sleep_actual_min": 399,
+    "sleep_debt_min": 46,
+    "sleep_need_min": 560,
+    "sleep_performance": 0.7126,
+    "sleep_score": 87,
+    "strain": 19.49,
+    "trimp": 447.0,
+    "tsb": 14.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 271.0,
+    "ctl": 303.4,
+    "date": "2026-09-21",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 316,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 124.0,
+      "zone_minutes": [
+       124.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 29,
+      "hrv_baseline": [
+       3.7243,
+       0.1894
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3534,
+       0.3322
+      ],
+      "rhr_baseline": [
+       59.6276,
+       7.357
+      ],
+      "rhr_low_offset_min": 124,
+      "sleep_performance_baseline": [
+       0.6515,
+       0.1459
+      ],
+      "spo2_night": 96.9,
+      "spo2_readings": 6,
+      "weighted_z": -0.03,
+      "wrist_temp": 36.0,
+      "z": {
+       "hrv": -0.181,
+       "resp_rate": -0.293,
+       "rhr": 0.221,
+       "sleep_performance": 0.332
+      }
+     },
+     "sleep": {
+      "asleep_min": 401.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-21T00:36+10:00",
+      "consistency": 69,
+      "deep_min": 79.0,
+      "duration": 97,
+      "efficiency": 0.962,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 55,
+      "need_from_strain": 37,
+      "rem_min": 86.0,
+      "source": "ow",
+      "stages": 91,
+      "wake_time": "2026-09-21T07:33+10:00",
+      "waso_min": 12.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.69,
+    "muscle_load": null,
+    "recovery": 56,
+    "resp_rate_night": 15.5,
+    "rhr_night": 58.0,
+    "sleep_actual_min": 401,
+    "sleep_debt_min": 55,
+    "sleep_need_min": 573,
+    "sleep_performance": 0.6999,
+    "sleep_score": 90,
+    "strain": 10.87,
+    "trimp": 124.0,
+    "tsb": 32.4
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 265.6,
+    "ctl": 301.6,
+    "date": "2026-09-22",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 344,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 167.0,
+      "trimp_recorded": 230.0,
+      "zone_minutes": [
+       80.0,
+       2.0,
+       1.0,
+       22.0,
+       11.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 30,
+      "hrv_baseline": [
+       3.7232,
+       0.1862
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3583,
+       0.3275
+      ],
+      "rhr_baseline": [
+       59.5733,
+       7.2351
+      ],
+      "rhr_low_offset_min": 119,
+      "sleep_performance_baseline": [
+       0.6531,
+       0.1438
+      ],
+      "spo2_night": 96.3,
+      "spo2_readings": 6,
+      "weighted_z": 1.189,
+      "wrist_temp": 35.91,
+      "z": {
+       "hrv": 1.574,
+       "resp_rate": 0.417,
+       "rhr": 0.356,
+       "sleep_performance": 1.013
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-21T22:56+10:00",
+      "consistency": 80,
+      "deep_min": 79.0,
+      "duration": 100,
+      "efficiency": 0.963,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 62,
+      "need_from_strain": 12,
+      "rem_min": 98.0,
+      "source": "shortcut",
+      "stages": 93,
+      "wake_time": "2026-09-22T06:35+10:00",
+      "waso_min": 9.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0164,
+    "muscle_load": null,
+    "recovery": 90,
+    "resp_rate_night": 15.15,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 62,
+    "sleep_need_min": 553,
+    "sleep_performance": 0.7987,
+    "sleep_score": 94,
+    "strain": 15.57,
+    "trimp": 230.0,
+    "tsb": 36.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 243.8,
+    "ctl": 296.9,
+    "date": "2026-09-23",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 317,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 102.0,
+      "zone_minutes": [
+       102.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 31,
+      "hrv_baseline": [
+       3.7326,
+       0.1905
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3516,
+       0.3242
+      ],
+      "rhr_baseline": [
+       59.4903,
+       7.1285
+      ],
+      "rhr_low_offset_min": 236,
+      "sleep_performance_baseline": [
+       0.6576,
+       0.1437
+      ],
+      "spo2_night": 96.6,
+      "spo2_readings": 6,
+      "weighted_z": -0.076,
+      "wrist_temp": 36.07,
+      "z": {
+       "hrv": -0.451,
+       "resp_rate": -0.197,
+       "rhr": 0.349,
+       "sleep_performance": 0.901
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-23T00:07+10:00",
+      "consistency": 97,
+      "deep_min": 94.0,
+      "duration": 100,
+      "efficiency": 0.957,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 56,
+      "need_from_strain": 26,
+      "rem_min": 95.0,
+      "source": "ow",
+      "stages": 100,
+      "wake_time": "2026-09-23T07:49+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.6466,
+    "muscle_load": null,
+    "recovery": 54,
+    "resp_rate_night": 15.45,
+    "rhr_night": 57.0,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 56,
+    "sleep_need_min": 561,
+    "sleep_performance": 0.7872,
+    "sleep_score": 99,
+    "strain": 9.47,
+    "trimp": 102.0,
+    "tsb": 53.2
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 241.4,
+    "ctl": 295.3,
+    "date": "2026-09-24",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 24,
+      "hr_samples": 352,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 226.0,
+      "zone_minutes": [
+       58.0,
+       27.0,
+       38.0,
+       0.0,
+       0.0
+      ]
+     },
+     "muscle": {
+      "bodyweight_sets": 2,
+      "sessions": [
+       "Strength"
+      ],
+      "sets_by_muscle": {
+       "back": 2,
+       "chest": 3,
+       "triceps": 3
+      },
+      "srpe": 444.0,
+      "volume_kg": 1872.0,
+      "working_sets": 5
+     },
+     "recovery": {
+      "baseline_nights": 32,
+      "hrv_baseline": [
+       3.7299,
+       0.1881
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3547,
+       0.3194
+      ],
+      "rhr_baseline": [
+       59.4125,
+       7.0264
+      ],
+      "rhr_low_offset_min": 0,
+      "sleep_performance_baseline": [
+       0.6615,
+       0.1433
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 1.339,
+      "wrist_temp": 35.52,
+      "z": {
+       "hrv": 1.679,
+       "resp_rate": 1.209,
+       "rhr": 0.913,
+       "sleep_performance": 0.591
+      }
+     },
+     "sleep": {
+      "asleep_min": 402.0,
+      "awakenings": 1,
+      "bedtime": "2026-09-24T00:50+10:00",
+      "consistency": 67,
+      "deep_min": 83.0,
+      "duration": 97,
+      "efficiency": 0.95,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 51,
+      "need_from_strain": 7,
+      "rem_min": 69.0,
+      "source": "shortcut",
+      "stages": 84,
+      "wake_time": "2026-09-24T07:53+10:00",
+      "waso_min": 11.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0456,
+    "muscle_load": 1872.0,
+    "recovery": 92,
+    "resp_rate_night": 14.75,
+    "rhr_night": 53.0,
+    "sleep_actual_min": 402,
+    "sleep_debt_min": 51,
+    "sleep_need_min": 539,
+    "sleep_performance": 0.7463,
+    "sleep_score": 89,
+    "strain": 15.44,
+    "trimp": 226.0,
+    "tsb": 53.9
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 227.4,
+    "ctl": 291.5,
+    "date": "2026-09-25",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 23,
+      "hr_samples": 330,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 136.0,
+      "zone_minutes": [
+       136.0,
+       0.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 33,
+      "hrv_baseline": [
+       3.7395,
+       0.1931
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3364,
+       0.3315
+      ],
+      "rhr_baseline": [
+       59.2182,
+       7.0052
+      ],
+      "rhr_low_offset_min": 117,
+      "sleep_performance_baseline": [
+       0.664,
+       0.1418
+      ],
+      "spo2_night": 96.8,
+      "spo2_readings": 6,
+      "weighted_z": 0.279,
+      "wrist_temp": 35.72,
+      "z": {
+       "hrv": -0.044,
+       "resp_rate": 0.473,
+       "rhr": 0.773,
+       "sleep_performance": 0.848
+      }
+     },
+     "sleep": {
+      "asleep_min": 442.0,
+      "awakenings": 0,
+      "bedtime": "2026-09-24T23:43+10:00",
+      "consistency": 80,
+      "deep_min": 87.0,
+      "duration": 100,
+      "efficiency": 1.0,
+      "interruptions": 100,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 58,
+      "need_from_strain": 25,
+      "rem_min": 85.0,
+      "source": "ow",
+      "stages": 95,
+      "wake_time": "2026-09-25T07:05+10:00",
+      "waso_min": 0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 3.7309,
+    "muscle_load": null,
+    "recovery": 68,
+    "resp_rate_night": 15.1,
+    "rhr_night": 53.8,
+    "sleep_actual_min": 442,
+    "sleep_debt_min": 58,
+    "sleep_need_min": 564,
+    "sleep_performance": 0.7842,
+    "sleep_score": 95,
+    "strain": 11.56,
+    "trimp": 136.0,
+    "tsb": 64.1
+   },
+   {
+    "algo_version": "v1.2-2026-10-27",
+    "atl": 234.7,
+    "ctl": 291.3,
+    "date": "2026-09-26",
+    "details": {
+     "hrv_kind": "sdnn",
+     "load": {
+      "hr_hours": 12,
+      "hr_samples": 197,
+      "hrmax_formula": 182.8,
+      "hrmax_observed_p995": 166.0,
+      "trimp_recorded": 282.0,
+      "zone_minutes": [
+       17.0,
+       0.0,
+       15.0,
+       50.0,
+       4.0
+      ]
+     },
+     "recovery": {
+      "baseline_nights": 34,
+      "hrv_baseline": [
+       3.7393,
+       0.1901
+      ],
+      "hrv_readings": 4,
+      "resp_rate_baseline": [
+       15.3294,
+       0.3289
+      ],
+      "rhr_baseline": [
+       59.0588,
+       6.9606
+      ],
+      "rhr_low_offset_min": 13,
+      "sleep_performance_baseline": [
+       0.6675,
+       0.1412
+      ],
+      "spo2_night": 96.1,
+      "spo2_readings": 6,
+      "weighted_z": 1.135,
+      "wrist_temp": 35.68,
+      "z": {
+       "hrv": 1.467,
+       "resp_rate": 0.359,
+       "rhr": 0.727,
+       "sleep_performance": 0.611
+      }
+     },
+     "sleep": {
+      "asleep_min": 412.0,
+      "awakenings": 2,
+      "bedtime": "2026-09-26T00:49+10:00",
+      "consistency": 86,
+      "deep_min": 82.0,
+      "duration": 98,
+      "efficiency": 0.934,
+      "interruptions": 84,
+      "latency_min": null,
+      "nap_min": 0,
+      "need_from_debt": 53,
+      "need_from_strain": 14,
+      "rem_min": 96.0,
+      "source": "shortcut",
+      "stages": 95,
+      "wake_time": "2026-09-26T08:10+10:00",
+      "waso_min": 29.0
+     }
+    },
+    "flags": {
+     "ctl_warmup": "评分起点后的前 42 天，CTL 还没稳定"
+    },
+    "hr_max": 182.8,
+    "hrv_kind": "sdnn",
+    "hrv_night_ln": 4.0181,
+    "muscle_load": null,
+    "recovery": 89,
+    "resp_rate_night": 15.15,
+    "rhr_night": 54.0,
+    "sleep_actual_min": 412,
+    "sleep_debt_min": 53,
+    "sleep_need_min": 547,
+    "sleep_performance": 0.7538,
+    "sleep_score": 92,
+    "strain": 17.0,
+    "trimp": 282.0,
+    "tsb": 56.6
+   }
+  ]
+ ]
+}

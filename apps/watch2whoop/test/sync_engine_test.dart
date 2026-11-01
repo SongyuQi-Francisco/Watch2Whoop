@@ -1,84 +1,86 @@
-// The app's own sync engine, step A1 (#219): registry, when it runs at all, and the foreground runner.
+// The app's own sync engine (#219): the registry, when it runs at all, what Dart hands to the native engine
+// (ios/Runner/SyncEngine.swift, A2: the round itself is native), the mode, and the sync center's view of it (A4).
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watch2whoop/src/hk_types.dart';
+import 'package:watch2whoop/src/resync.dart' show TypeVerdict;
 import 'package:watch2whoop/src/sync_engine.dart';
 
 const _sleep = 'HKCategoryTypeIdentifierSleepAnalysis';
+const _workout = 'HKWorkoutTypeIdentifier';
 const _hrv = 'HKQuantityTypeIdentifierHeartRateVariabilitySDNN';
 const _hr = 'HKQuantityTypeIdentifierHeartRate';
 const _steps = 'HKQuantityTypeIdentifierStepCount';
 const _energy = 'HKQuantityTypeIdentifierActiveEnergyBurned';
+const _beats = 'HKDataTypeIdentifierHeartbeatSeries';
 
-class FakeEngineSource implements EngineSource {
-  FakeEngineSource(this.pages, {this.recent = const {}, this.fail = const {}});
-
-  /// Anchored pages per type, served in order (the anchor moves only on commit).
-  final Map<String, List<EnginePage>> pages;
-  final Map<String, EnginePage> recent;
-  final Map<String, PlatformException> fail;
-  final Map<String, int> at = {};
-  final List<String> reads = [], commits = [];
-  bool wasReset = false;
+class FakeNative implements EngineNative {
+  final List<String> calls = [];
+  final List<Map<String, Object?>> args = [];
+  Map<Object?, Object?>? runAnswer = {'batches': 2, 'samples': 40, 'stop': null, 'uploaded': [_hr, _sleep], 'mode': 'shadow'};
+  Map<Object?, Object?>? statusAnswer;
 
   @override
-  Future<EnginePage> read(EngineType t, {required String anchorKey, required int daysBack, required int limit, bool recent = false}) async {
-    reads.add('${recent ? 'recent:' : ''}${t.hk}/$limit');
-    if (fail.containsKey(t.hk)) throw fail[t.hk]!;
-    if (recent) return this.recent[t.hk] ?? const EnginePage();
-    final list = pages[t.hk] ?? const [];
-    final i = at[t.hk] ?? 0;
-    return i < list.length ? list[i] : const EnginePage();
+  Future<Map<Object?, Object?>?> configure(Map<String, Object?> a) async {
+    calls.add('configure');
+    args.add(a);
+    return {'mode': 'shadow', 'active': true};
   }
 
   @override
-  Future<void> commit(String anchorKey, String anchor) async {
-    commits.add('$anchorKey:$anchor');
-    at[anchorKey] = (at[anchorKey] ?? 0) + 1;
+  Future<Map<Object?, Object?>?> run(Map<String, Object?> a) async {
+    calls.add('run');
+    args.add(a);
+    return runAnswer;
   }
 
   @override
-  Future<void> reset() async => wasReset = true;
+  Future<Map<Object?, Object?>?> status() async => statusAnswer;
+  @override
+  Future<void> setCellular(bool on) async => calls.add('cellular:$on');
+  @override
+  Future<Map<Object?, Object?>?> rangeStart(int days) async {
+    calls.add('range:$days');
+    return {'id': 'r', 'percent': 0};
+  }
+
+  @override
+  Future<void> rangeCancel() async => calls.add('rangeCancel');
+  @override
+  Future<void> rearm() async => calls.add('rearm');
+  @override
+  Future<void> reset() async => calls.add('reset');
 }
 
-EnginePage page(String anchor, {int n = 2, bool more = false}) => EnginePage(
-      uuid: [for (var i = 0; i < n; i++) '00000000-0000-4000-8000-${anchor.padLeft(12, '0').substring(0, 12)}'],
-      start: List.filled(n, 1761400000.0),
-      end: List.filled(n, 1761400060.0),
-      value: List.filled(n, 50.0),
-      src: List.filled(n, 0),
-      tz: List.filled(n, null),
-      sources: const [
-        {'name': 'Example Watch', 'device_type': 'watch'},
-      ],
-      anchor: anchor,
-      more: more,
-      tzName: 'Australia/Sydney',
-    );
-
 final _registry = [
-  const EngineType(hk: _sleep, key: 'sleep_analysis', kind: 'category', bg: 'immediate', order: 1),
-  const EngineType(hk: 'HKWorkoutTypeIdentifier', key: 'workout', kind: 'workout', unit: 'min', order: 2),
-  const EngineType(hk: _hrv, key: 'heart_rate_variability_sdnn', kind: 'quantity', unit: 'ms', bg: 'immediate', order: 3),
-  const EngineType(hk: 'HKQuantityTypeIdentifierHeartRateVariabilityRMSSD', key: 'rmssd', kind: 'quantity', unit: 'ms', minIos: 27),
-  const EngineType(hk: 'HKDataTypeIdentifierHeartbeatSeries', key: 'heartbeat_series', kind: 'heartbeat'),
+  const EngineType(hk: _sleep, key: 'sleep_analysis', kind: 'category', bg: 'immediate', order: 1, status: 'sleep'),
+  const EngineType(hk: _workout, key: 'workout', kind: 'workout', unit: 'min', bg: 'immediate', order: 2, status: 'workouts'),
+  const EngineType(hk: _hrv, key: 'heart_rate_variability_sdnn', kind: 'quantity', unit: 'ms', bg: 'immediate', order: 3, status: 'hrv'),
+  const EngineType(hk: _beats, key: 'heartbeat_series', kind: 'heartbeat'),
   const EngineType(hk: _steps, key: 'step_count', kind: 'quantity', unit: 'count', upload: 'raw+stats', bg: 'hourly'),
-  const EngineType(hk: _energy, key: 'active_energy_burned', kind: 'quantity', unit: 'kcal', upload: 'stats'),
+  const EngineType(hk: _energy, key: 'active_energy_burned', kind: 'quantity', unit: 'kcal', upload: 'stats', bg: 'hourly'),
   const EngineType(hk: _hr, key: 'heart_rate', kind: 'quantity', unit: 'count/min', bg: 'hourly', order: 99),
 ];
 
-const _active = EngineInfo(enabled: true, mode: 'shadow', accepts: {'heartbeats', 'phase', 'samples', 'categories', 'runs'},
-    encodings: {'gzip'}, types: {_sleep, _hrv, 'HKQuantityTypeIdentifierHeartRateVariabilityRMSSD', _steps, _energy, _hr});
-
-Map<String, Object?> unzip(List<int> gz) => jsonDecode(utf8.decode(gzip.decode(gz))) as Map<String, Object?>;
+Map<String, Object?> _status(String mode, {bool enabled = true, List<String> accepts = const ['phase', 'samples']}) => {
+      'engine': {'enabled': enabled, 'mode': mode, 'accepts': accepts, 'types': [_sleep, _hr, _steps, _energy, _workout]},
+    };
 
 void main() {
-  test('registry: the shipped JSON is the server table; A1 reads raw quantities and categories only', () {
-    final f = File('assets/healthkit_types.json');
-    final reg = parseRegistry(f.readAsStringSync());
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    SyncEngine.instance.resetForTest();
+    SyncEngine.instance.registryForTest = _registry;
+    SyncEngine.instance.onModeChange = null;
+  });
+
+  test('registry: the shipped JSON is the server table; the engine reads quantities, categories and workouts', () {
+    final reg = parseRegistry(File('assets/healthkit_types.json').readAsStringSync());
     expect(reg.first.hk, _sleep);
     expect(reg.last.hk, _hr, reason: 'heart rate (the largest) last');
     final byHk = {for (final t in reg) t.hk: t};
@@ -86,11 +88,16 @@ void main() {
     for (final t in kHkTypes) {
       expect(byHk[t.hk]?.unit, t.unit, reason: t.hk);
     }
-    final a1 = reg.where((t) => t.readByA1).map((t) => t.kind).toSet();
-    expect(a1, {'quantity', 'category'});
-    expect(byHk['HKWorkoutTypeIdentifier']!.readByA1, isFalse);
-    expect(byHk['HKQuantityTypeIdentifierBasalEnergyBurned']!.readByA1, isFalse, reason: 'statistics only (A3)');
-    expect(byHk['HKDataTypeIdentifierHeartbeatSeries']!.readByA1, isFalse, reason: 'RawSync');
+    expect(reg.where((t) => t.engine).map((t) => t.kind).toSet(), {'quantity', 'category', 'workout'});
+    expect(byHk[_workout]!.engine, isTrue, reason: 'workouts (A3)');
+    expect(byHk['HKQuantityTypeIdentifierBasalEnergyBurned']!.stats, isTrue, reason: 'statistics buckets (A3, D1)');
+    expect(byHk['HKQuantityTypeIdentifierBasalEnergyBurned']!.raw, isFalse);
+    expect(byHk[_beats]!.engine, isFalse, reason: 'RawSync');
+    expect(byHk['HKDataTypeIdentifierElectrocardiogram']!.engine, isFalse, reason: 'RawSync');
+    // background delivery: what wakes the app (design §3.1.3)
+    expect(byHk[_sleep]!.bg, 'immediate');
+    expect(byHk[_hr]!.bg, 'hourly');
+    expect(byHk[_hr]!.page, [2000, 200]);
     // the server compares the same file with rawdata/hk_types.engine_json() (tests/test_apple_sync_engine.py)
     final server = File('../../body_engine/src/body_engine/rawdata/hk_types.py');
     if (server.existsSync()) {
@@ -99,177 +106,168 @@ void main() {
         expect(byHk.containsKey(hk), isTrue, reason: hk);
       }
     }
-    // the asset is bundled
     expect(File('pubspec.yaml').readAsStringSync(), contains('- assets/healthkit_types.json'));
+  });
+
+  test('BGTask identifiers of the engine are permitted, next to Open Wearables\' and the backfill\'s', () {
+    final plist = File('ios/Runner/Info.plist').readAsStringSync();
+    for (final id in ['watch2whoop.sync.refresh', 'watch2whoop.sync.process', 'watch2whoop.sync.backfill',
+      'com.openwearables.healthsdk.task.refresh']) {
+      expect(plist, contains('<string>$id</string>'), reason: id);
+    }
+    expect(File('ios/Runner/Runner.entitlements').readAsStringSync(), contains('com.apple.developer.healthkit.background-delivery'));
   });
 
   test('off unless the server says: flag off, mode ow, an older server or no answer', () async {
     expect(EngineInfo.fromStatus(null), isNull);
     expect(EngineInfo.fromStatus({'heartbeats': 1}), isNull, reason: 'older server');
-    expect(EngineInfo.fromStatus({'engine': {'enabled': false, 'mode': 'ow', 'accepts': ['heartbeats']}})!.active, isFalse);
-    expect(EngineInfo.fromStatus({'engine': {'enabled': true, 'mode': 'ow', 'accepts': ['phase']}})!.active, isFalse);
-    expect(EngineInfo.fromStatus({
-      'engine': {'enabled': true, 'mode': 'shadow', 'accepts': ['phase', 'samples'], 'types': [_hr]}
-    })!.active, isTrue);
-    final src = FakeEngineSource({_hr: [page('A')]});
-    var uploads = 0;
-    final r = await EngineRunner(registry: _registry, info: const EngineInfo(), source: src, progress: MemoryEngineProgress(),
-        upload: (_) async {
-      uploads++;
-      return const EngineUploadResult(EngineUpload.ok);
-    }).run(90);
-    expect([r.stop, src.reads, uploads], ['off', isEmpty, 0]);
+    expect(EngineInfo.fromStatus(_status('ow', enabled: false, accepts: ['heartbeats']))!.active, isFalse);
+    expect(EngineInfo.fromStatus(_status('ow', accepts: ['phase']))!.active, isFalse);
+    expect(EngineInfo.fromStatus(_status('shadow'))!.active, isTrue);
+    expect(EngineInfo.fromStatus(_status('app'))!.active, isTrue);
+
+    final n = FakeNative();
+    SyncEngine.instance.native = n;
+    expect(await SyncEngine.instance.run(serverUrl: 'https://x.example', token: 't', serverStatus: null, daysBack: 14), isNull);
+    expect(n.calls, isEmpty);
+    // the flag went off: the native side learns it (its observers stop), no round
+    expect(
+        await SyncEngine.instance.run(
+            serverUrl: 'https://x.example', token: 't', serverStatus: _status('ow', enabled: false), daysBack: 14),
+        isNull);
+    expect(n.calls, ['configure']);
+    expect((n.args.single['engine'] as Map)['enabled'], isFalse);
   });
 
-  test('a pass: newest 48 h first, then the crawl; anchors only after 200; phases; one run report', () async {
-    final src = FakeEngineSource({
-      _sleep: [page('S1', more: true), page('S2')],
-      _hr: [page('H1')],
-    }, recent: {_sleep: page('R', n: 3)});
-    final progress = MemoryEngineProgress();
-    final sent = <Map<String, Object?>>[];
-    final r = await EngineRunner(registry: _registry, info: _active, source: src, progress: progress, ios: 26,
-        appVersion: '1.0.8+8', upload: (gz) async {
-      sent.add(unzip(gz));
-      return const EngineUploadResult(EngineUpload.ok, body: {'samples': 2});
-    }).run(90);
-    expect(r.stop, isNull);
-    expect(src.commits, ['$_sleep:S1', '$_sleep:S2', '$_hr:H1']);
-    // not read: the workout (A3), RMSSD (iOS 27), heartbeats (RawSync), statistics-only energy (A3)
-    expect(src.reads.where((x) => x.contains('RMSSD') || x.contains('Workout') || x.contains('Heartbeat') || x.contains('Energy')),
-        isEmpty);
-    final phases = [for (final b in sent) b['phase']];
-    expect(phases, ['recent', 'backfill', 'backfill', 'backfill', null], reason: 'empty pages are not sent');
-    final first = sent.first;
-    expect((first['categories'] as List).single, containsPair('type', _sleep));
-    expect(((first['categories'] as List).single as Map)['unit'], '');
-    expect(first['sources'], isNotEmpty);
-    expect(first['tz'], 'Australia/Sydney');
-    expect(first['app_version'], '1.0.8+8');
-    final hr = sent.firstWhere((b) => b['samples'] != null && b['phase'] == 'backfill');
-    expect(((hr['samples'] as List).single as Map)['unit'], 'count/min');
-    final run = (sent.last['runs'] as List).single as Map;
-    expect([run['trigger'], run['result'], run['samples']], ['foreground', 'ok', isPositive]);
-    expect(run.keys, isNot(contains('value')), reason: 'counts only');
-    expect(progress.full, containsAll([_sleep, _hr, _hrv, _steps]));
+  test('a foreground round: what Dart hands over, the result, the mode', () async {
+    final n = FakeNative();
+    SyncEngine.instance.native = n;
+    final modes = <String>[];
+    SyncEngine.instance.onModeChange = (from, to) => modes.add('$from>$to');
+    final r = await SyncEngine.instance.run(
+        serverUrl: 'https://x.example', token: 'tok', serverStatus: _status('shadow'), daysBack: 14, appVersion: '1.0.9+9');
+    expect(n.calls, ['run']);
+    final a = n.args.single;
+    expect([a['server'], a['token'], a['daysBack'], a['appVersion'], a['trigger']], ['https://x.example', 'tok', 14, '1.0.9+9', 'foreground']);
+    expect((a['engine'] as Map)['mode'], 'shadow');
+    final reg = [for (final t in a['registry'] as List) (t as Map)['hk']];
+    expect(reg, [_sleep, _workout, _hrv, _steps, _energy, _hr], reason: 'engine kinds only, in the registry order');
+    expect(((a['registry'] as List)[4] as Map)['upload'], 'stats');
+    expect(r!.samples, 40);
+    expect(r.uploaded, {_hr, _sleep});
+    expect(SyncEngine.instance.uploadedAt.keys, containsAll([_hr, _sleep]));
+    expect(modes, ['ow>shadow']);
 
-    // next pass: incremental, no recent read again
-    sent.clear();
-    src.pages[_hr] = [page('H1'), page('H2')];
-    await EngineRunner(registry: _registry, info: _active, source: src, progress: progress, ios: 26,
-        upload: (gz) async {
-      sent.add(unzip(gz));
-      return const EngineUploadResult(EngineUpload.ok);
-    }).run(90);
-    expect(src.reads.where((x) => x.startsWith('recent:')).length, 4, reason: 'only in the first pass');
-    expect(sent.where((b) => b['samples'] != null).map((b) => b['phase']), ['incremental']);
+    // the server switched this user to `app` (an answer of a round): Open Wearables stops (home page), Dart knows
+    n.runAnswer = {'batches': 1, 'samples': 3, 'uploaded': [_hr], 'mode': 'app'};
+    await SyncEngine.instance.run(serverUrl: 'https://x.example', token: 'tok', serverStatus: _status('shadow'), daysBack: 14);
+    expect(modes, ['ow>shadow', 'shadow>app']);
+    expect(SyncEngine.instance.appMode, isTrue);
+    expect((await SharedPreferences.getInstance()).getString('w2w.sync.mode.v1'), 'app', reason: 'kept across restarts');
+
+    // busy / backoff: not a round of its own
+    n.runAnswer = {'stop': 'busy'};
+    expect(await SyncEngine.instance.run(serverUrl: 'https://x.example', token: 'tok', serverStatus: _status('app'), daysBack: 14),
+        isNull);
   });
 
-  test('refusals: type_paused skips the type and keeps its anchor; engine_disabled / 401 / 429 / offline stop', () async {
-    for (final (res, stop, commits) in [
-      (const EngineUploadResult(EngineUpload.refused, detail: 'type_paused'), null, ['$_hr:H1']),
-      (const EngineUploadResult(EngineUpload.refused, detail: 'engine_disabled'), 'engine_disabled', <String>[]),
-      (const EngineUploadResult(EngineUpload.unauthorized), 'unauthorized', <String>[]),
-      (const EngineUploadResult(EngineUpload.rateLimited, retryAfter: Duration(seconds: 30)), 'rate_limited', <String>[]),
-      (const EngineUploadResult(EngineUpload.offline), 'offline', <String>[]),
-    ]) {
-      final src = FakeEngineSource({_sleep: [page('S1')], _hr: [page('H1')]});
-      final progress = MemoryEngineProgress()..recent.addAll([_sleep, _hr, _hrv, _steps]);
-      final r = await EngineRunner(registry: _registry, info: _active, source: src, progress: progress, sleep: (_) async {}, upload: (gz) async {
-        final b = unzip(gz);
-        final isSleep = (b['categories'] as List?)?.isNotEmpty ?? false;
-        return isSleep ? res : const EngineUploadResult(EngineUpload.ok);
-      }).run(90);
-      expect(r.stop, stop, reason: '${res.outcome} ${res.detail}');
-      expect(src.commits, commits, reason: '${res.outcome} ${res.detail}');
-      if (res.outcome == EngineUpload.rateLimited) expect(r.retryAfter, const Duration(seconds: 30));
-    }
+  test('round result and the log line carry counts only', () {
+    final r = EngineResult.fromMap({
+      'batches': 3, 'samples': 120, 'bytes': 9000, 'types': 12, 'stop': 'locked', 'retryAfter': 30.2,
+      'skipped': {_sleep: 'not_asked', _hrv: 'wifi_only'}, 'uploaded': [_hr],
+    });
+    expect([r.stop, r.retryAfter, r.skipped[_sleep], r.uploaded], ['locked', const Duration(seconds: 31), 'not_asked', {_hr}]);
+    final line = engineLogLine(r);
+    expect(line, contains('120 items of 1/12 types in 3 batches'));
+    expect(line, contains('stopped: locked'));
+    expect(engineStopText('locked'), isNotNull);
+    expect(engineStopText(null), isNull);
+    expect(engineStopText('budget'), isNull);
   });
 
-  test('contract §4: the same batch again after a short 429 / network error / 5xx; 401 and 422 not retried', () async {
-    for (final (answers, commits, tries, stop) in [
-      ([const EngineUploadResult(EngineUpload.rateLimited, retryAfter: Duration(seconds: 3))], ['$_hr:H1'], 2, null),
-      ([const EngineUploadResult(EngineUpload.offline), const EngineUploadResult(EngineUpload.failed)], ['$_hr:H1'], 3, null),
-      ([for (var i = 0; i < 4; i++) const EngineUploadResult(EngineUpload.offline)], <String>[], 4, 'offline'),
-      ([const EngineUploadResult(EngineUpload.unauthorized)], <String>[], 1, 'unauthorized'),
-      ([const EngineUploadResult(EngineUpload.rejected)], <String>[], 1, null),
-    ]) {
-      final src = FakeEngineSource({_hr: [page('H1')]});
-      final bodies = <String>[];
-      final waits = <Duration>[];
-      var n = 0;
-      final r = await EngineRunner(registry: _registry, info: _active, source: src,
-          progress: MemoryEngineProgress()..recent.addAll([_sleep, _hrv, _steps, _hr]),
-          sleep: (d) async => waits.add(d), upload: (gz) async {
-        final b = unzip(gz);
-        if (b['samples'] == null) return const EngineUploadResult(EngineUpload.ok); // the run report
-        bodies.add(b['batch_id'] as String);
-        return n < answers.length ? answers[n++] : const EngineUploadResult(EngineUpload.ok);
-      }).run(90);
-      expect(src.commits, commits, reason: '$answers');
-      expect(bodies.length, tries, reason: '$answers');
-      expect(bodies.toSet().length, 1, reason: 'a retry sends the same batch_id');
-      expect(r.stop, stop, reason: '$answers');
-      if (answers.first.outcome == EngineUpload.rejected) expect(r.skipped[_hr], 'contract');
-      if (answers.first.outcome == EngineUpload.rateLimited) expect(waits.single.inSeconds, 3);
-    }
+  test('native status: first-sync progress, per type, range, log for display', () {
+    final s = EngineStatus.fromMap({
+      'mode': 'app', 'enabled': true, 'active': true, 'cellularHistory': false, 'running': false,
+      'firstSync': {'types': 8, 'done': 6, 'percent': 75},
+      'types': {
+        _hr: {'backfilled': true, 'okAt': 1761955200.0},
+        _sleep: {'backfilled': false, 'error': 'not_asked', 'errorAt': 1761955100.0},
+      },
+      'range': {'percent': 40, 'batches': 3},
+      'lastRun': {'trigger': 'observer', 'result': 'ok', 'started': 1761955200.0},
+      'lastBackgroundAt': 1761955300.0, 'lastStop': '',
+      'log': ['2026-10-29T01:02:03Z\tobserver ok: 12 items, 2 types, 1 batches'],
+    });
+    expect([s.mode, s.active, s.firstPercent, s.firstSyncDone, s.lastStop], ['app', true, 75, false, null]);
+    expect(s.types[_hr]!.firstDone, isTrue);
+    expect(s.types[_sleep]!.error, 'not_asked');
+    expect(s.range!['percent'], 40);
+    expect(s.lastBackgroundAt, isNotNull);
+    final shown = engineLogForDisplay(s.log).single;
+    expect(shown, endsWith('observer ok: 12 items, 2 types, 1 batches'));
+    expect(shown, isNot(contains('\t')));
   });
 
-  test('history (backfill) only on Wi-Fi; the newest 48 hours and incremental types go on any network', () async {
-    final src = FakeEngineSource({_sleep: [page('S1')], _hr: [page('H1')]}, recent: {_sleep: page('R')});
-    final progress = MemoryEngineProgress()..full.add(_hr);
-    final sent = <String?>[];
-    final r = await EngineRunner(registry: _registry, info: _active, source: src, progress: progress, allowBackfill: false,
-        upload: (gz) async {
-      sent.add(unzip(gz)['phase'] as String?);
-      return const EngineUploadResult(EngineUpload.ok);
-    }).run(90);
-    expect(sent.where((p) => p != null), ['recent', 'incremental']);
-    expect(r.skipped[_sleep], 'wifi_only');
-    expect(src.commits, ['$_hr:H1']);
+  test('sync center (A4): server status per type, not recorded / not synced by time', () async {
+    final server = EngineServerStatus.fromJson({
+      'mode': 'shadow',
+      'types': [
+        {'type': _hr, 'latest_sample_at': '2026-11-01T18:58:00+11:00'},
+        {'type': _sleep, 'latest_sample_at': '2026-10-30T07:00:00+11:00'},
+        {'type': _steps, 'latest_sample_at': null},
+      ],
+      'failures': {'recovered': false, 'last': {'code': 'contract', 'reason': 'format'}},
+    });
+    expect(server.latest.keys, {_hr, _sleep});
+    expect(server.openFailure, 'contract');
+    expect(EngineServerStatus.fromJson({'failures': {'recovered': true}}).openFailure, isNull);
+
+    final t = DateTime.parse('2026-11-01T18:58:00+11:00');
+    expect(engineVerdict(null, t), TypeVerdict.notCollected);
+    expect(engineVerdict(t, null), TypeVerdict.notSynced);
+    expect(engineVerdict(t.add(const Duration(minutes: 10)), t), TypeVerdict.synced, reason: 'within the slack');
+    expect(engineVerdict(t.add(const Duration(hours: 2)), t), TypeVerdict.notSynced);
+    expect(engineVerdict(t, t.add(const Duration(minutes: 15))), TypeVerdict.synced, reason: 'newest bucket after the sample');
+
+    final phone = {_hr: t, _sleep: DateTime.parse('2026-11-01T07:00:00+11:00'), _steps: t};
+    final rows = engineRows(_registry, const {}, phone, server.latest);
+    expect([for (final r in rows) r.type.hk].take(2), [_sleep, _steps], reason: 'not synced first');
+    expect(rows.firstWhere((r) => r.type.hk == _hr).verdict, TypeVerdict.synced);
+    expect(rows.firstWhere((r) => r.type.hk == _energy).verdict, TypeVerdict.notCollected);
+    expect(rows.any((r) => r.type.hk == _beats), isFalse, reason: 'RawSync types are not the engine\'s');
+    expect(engineRows(_registry, {_hr}, phone, server.latest).map((r) => r.type.hk), [_hr]);
+    expect(engineTypeLabel(_registry.last), 'Heart rate');
+
+    final seen = <Uri>[];
+    final got = await fetchEngineServerStatus('https://x.example/app/', 'tok', client: MockClient((req) async {
+      seen.add(req.url);
+      expect(req.headers['Authorization'], 'Bearer tok');
+      return http.Response(jsonEncode({'mode': 'app', 'types': []}), 200);
+    }));
+    expect(seen.single.path, '/v1/ingest/sync-status');
+    expect(got!.mode, 'app');
   });
 
-  test('a page too large halves (also on 413); a type never asked for is skipped, the others go', () async {
-    final src = FakeEngineSource({_hr: [page('H1', n: 4)]},
-        fail: {_sleep: PlatformException(code: 'healthkit', message: 'not determined', details: 5)});
-    final progress = MemoryEngineProgress()..recent.addAll([_hrv, _steps, _hr]);
-    var first = true;
-    final r = await EngineRunner(registry: _registry, info: _active, source: src, progress: progress, upload: (gz) async {
-      if (first && unzip(gz)['samples'] != null) {
-        first = false;
-        return const EngineUploadResult(EngineUpload.tooLarge);
-      }
-      return const EngineUploadResult(EngineUpload.ok);
-    }).run(90);
-    expect(r.skipped[_sleep], 'not_asked');
-    expect(src.reads.where((x) => x.startsWith('$_hr/')), ['$_hr/2000', '$_hr/1000']);
-    expect(src.commits, ['$_hr:H1']);
+  test('a new user: the engine block first, `app` = no Open Wearables; range re-sync, cellular, rearm, reset', () async {
+    final n = FakeNative();
+    SyncEngine.instance.native = n;
+    final info = await fetchEngineInfo('https://x.example', 'tok', client: MockClient((req) async {
+      expect(req.url.path, '/v1/ingest/healthkit');
+      return http.Response(jsonEncode(_status('app')), 200);
+    }));
+    expect([info!.active, info.mode], [true, 'app']);
+    expect(await fetchEngineInfo('https://x.example', 'tok', client: MockClient((_) async => http.Response('', 401))), isNull);
 
-    final small = FakeEngineSource({_hr: [page('H1', n: 4)]});
-    await EngineRunner(registry: _registry, info: _active, source: small, progress: progress, maxBytes: 200,
-        upload: (gz) async => const EngineUploadResult(EngineUpload.ok)).run(90);
-    expect(small.reads.where((x) => x.startsWith('$_hr/')).length, greaterThan(1));
+    expect(await SyncEngine.instance.startRange(30), isTrue);
+    await SyncEngine.instance.setCellularHistory(true);
+    await SyncEngine.instance.rearm();
+    await SyncEngine.instance.clear();
+    expect(n.calls, ['range:30', 'cellular:true', 'rearm', 'reset']);
+    expect(SyncEngine.instance.appMode, isFalse);
   });
 
-  test('budget: the pass stops and the rest goes next time', () async {
-    var now = DateTime(2026, 10, 26, 9);
-    final src = FakeEngineSource({_hr: [page('H1', more: true), page('H2', more: true), page('H3')]});
-    final r = await EngineRunner(registry: _registry, info: _active, source: src,
-        progress: MemoryEngineProgress()..recent.addAll([_sleep, _hrv, _steps, _hr]), now: () => now, budget: const Duration(seconds: 5),
-        upload: (gz) async {
-      now = now.add(const Duration(seconds: 3));
-      return const EngineUploadResult(EngineUpload.ok);
-    }).run(90);
-    expect(r.stop, 'budget');
-    expect(src.commits.length, lessThan(3));
-  });
-
-  test('uploader: gzip body, bearer token, status codes and Retry-After', () async {
-    final batch = buildEngineBatch(_registry.last, page('X'), batchId: 'b', phase: 'incremental');
-    expect(batch.keys, containsAll(['batch_id', 'phase', 'sources', 'samples', 'deleted']));
-    expect(batch.containsKey('tz'), isTrue);
-    expect(((batch['samples'] as List).single as Map).containsKey('tz'), isFalse, reason: 'no per-sample zones: left out');
-    final gz = gzipJson(batch);
-    expect(unzip(gz)['batch_id'], 'b');
+  test('one permission sheet lists every type the app reads, the two Open Wearables-only ones too', () async {
+    final all = await SyncEngine.instance.authTypes();
+    expect(all, containsAll([_sleep, _workout, _hr, _beats, ...kOwOnlyHealthTypes]));
   });
 }

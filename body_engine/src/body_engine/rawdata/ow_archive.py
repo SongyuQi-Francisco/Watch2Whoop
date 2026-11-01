@@ -45,10 +45,19 @@ def reads_archive(conn: psycopg.Connection, user_id: int) -> bool:
     return S.reads_app(conn, user_id) and get(conn, user_id) is not None
 
 
+def _first_ow_day(conn: psycopg.Connection, user_id: int):
+    """First day of OW data, for a user with no resting heart rate (no scores; e.g. steps and sleep only): their samples,
+    daily values and nights are still OW's history, and retire-legacy needs them archived before OW stops."""
+    r = conn.execute("""SELECT least((SELECT min(day) FROM ow_sample_cache WHERE user_id = %(u)s AND cardinality(ts) > 0),
+                                     (SELECT min(date) FROM daily_metric_sources WHERE user_id = %(u)s AND source = 'ow'))
+                        AS d""", {"u": user_id}).fetchone()
+    return r["d"]
+
+
 def _range(conn: psycopg.Connection, user_id: int, tz: ZoneInfo, now: datetime) -> tuple[datetime, datetime] | None:
     from ..insights import stress
     from ..scores import engine as SE, params as SP
-    origin = SE.scoring_origin(conn, user_id)
+    origin = SE.scoring_origin(conn, user_id) or _first_ow_day(conn, user_id)
     if origin is None:
         return None
     first = origin - timedelta(days=SP.HRMAX_WINDOW_DAYS + max(stress.BASELINE_DAYS, STRESS_BASELINE_DAYS) + 1)

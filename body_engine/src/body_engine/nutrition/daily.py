@@ -24,7 +24,7 @@ GOAL_KEYS = ("name", "day_type", "source", "calories", "protein_g", "carbs_g", "
 
 def entries(conn: psycopg.Connection, user_id: int, start: date, end: date, client=None) -> list[dict]:
     """Food entries in [start, end] with sugar / fiber / sodium merged in (extras.merge), oldest first."""
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     rows = sparky_client.food_entries(client, start, end)
     merged = {r["entry_id"]: r["id"] for r in conn.execute(   # entries merged from several (issue #93): the page can split them
         "SELECT id, entry_id FROM food_merges WHERE user_id = %s AND date BETWEEN %s AND %s AND undone_at IS NULL",
@@ -56,7 +56,7 @@ def summarize_day(day: date, rows: list[dict], goal: dict | None) -> dict:
 
 def nutrition(conn: psycopg.Connection, user_id: int, start: date, end: date, include_entries: bool = True,
               client=None) -> dict:
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     rows = entries(conn, user_id, start, end, client)
     goal_of = goals.resolver(conn, user_id, client)
     by_day: dict[str, list] = {}

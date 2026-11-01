@@ -123,7 +123,9 @@ def _run_import(user_id: int, client=None, connect=None) -> None:
             try:
                 from ..importers import ow
                 from ..ow_client import OWClient
-                ow.run(conn, client or OWClient(), user_id)
+                from ..rawdata import retire
+                if not retire.ow_import_stopped():   # 2.0.0 R1: after the cutoff only the scores are refreshed
+                    ow.run(conn, client or OWClient(), user_id)
             finally:
                 conn.execute("SELECT pg_advisory_unlock(%s, %s)", (LOCK_NS, user_id))
             _set(conn, user_id, status="scores_queued", imported_at=_now(), error=None)
@@ -228,6 +230,12 @@ def import_queued(conn: psycopg.Connection, user_id: int, client=None) -> dict:
         conn.commit()
         return {"busy": True}
     try:
+        from ..rawdata import retire
+        if retire.ow_import_stopped():   # 2.0.0 R1: OW retired, nothing to import; the queued scores still run
+            conn.execute("""UPDATE sync_refresh SET status = 'scores_queued', import_queued_at = NULL, updated_at = now()
+                            WHERE user_id = %s""", (user_id,))
+            conn.commit()
+            return {"skipped": "legacy_cutoff"}
         _set(conn, user_id, status="importing")
         conn.commit()
         from ..importers import ow
@@ -269,9 +277,21 @@ def _score(conn, user_id: int, client=None, scores_from=None) -> dict:
     start = datetime.now(tz).date() - timedelta(days=SCORE_DAYS)
     if scores_from is not None:
         start = min(start, scores_from)
+    from ..nativesync import appscores, primary
+    plan = appscores.plan(conn, user_id)
+    # 2.0.0 S9: rules the user's phone evaluates (package `rules` primary) are not evaluated here
+    rules_here = not primary.server_primary(conn, user_id, "rules")
+    if plan["mode"] == "app":   # the user's app computes the scores (#340 N2): only the days it left stale
+        res = (scores_engine.run(conn, client, user_id, min(plan["days"]), None, shortcut.user_archive_dir(user_id),
+                                 ow_cache="use", only=set(plan["days"])) if plan["days"] else {"rows": 0})
+        res["app_scoring"] = True
+        if rules_here:
+            rules_engine.run(conn, user_id, None)
+        return res
     res = scores_engine.run(conn, client, user_id, start, None, shortcut.user_archive_dir(user_id), ow_cache="use")
     res["insights"] = insights_jobs.run(conn, client, user_id, ow_cache="use")
-    rules_engine.run(conn, user_id, None)
+    if rules_here:
+        rules_engine.run(conn, user_id, None)
     return res
 
 

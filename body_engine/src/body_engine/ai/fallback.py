@@ -484,5 +484,6 @@ def _open_signup_cost(conn: psycopg.Connection) -> dict:
     """Open sign-up (account/open_signup.py): switch, accounts / cap, and the monthly ceiling at the cap with the runway."""
     from ..account import open_signup, params as account_params
     n = open_signup.active_count(conn)
-    return {"on": open_signup.flag_on(conn), "active": n, "cap": account_params.OPEN_SIGNUP_MAX_ACTIVE,
+    return {"on": open_signup.flag_on(conn), "store": open_signup.store_on(conn), "active": n,
+            "cap": account_params.OPEN_SIGNUP_MAX_ACTIVE,
             **open_signup.fallback_cost(conn, n)}

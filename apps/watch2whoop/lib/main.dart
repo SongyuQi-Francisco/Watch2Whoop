@@ -19,6 +19,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await loadLangOverride(); // profile language saved from the Today page (null = system language)
   await AppState.instance.load();
+  await SyncEngine.instance.mode(); // the server's sync mode of the last answer: `app` = Open Wearables stays off (#219)
   try {
     // Also runs when woken by HealthKit in the background: restore the SDK session and the SDK continues syncing on its own.
     await HealthSync.instance.start(AppState.instance.config);
@@ -28,7 +29,7 @@ Future<void> main() async {
   await RawSync.instance.load(); // last upload of beat-to-beat HRV / ECG, for the sync page
   await Resync.instance.load(); // a forced re-sync still running (resync.dart)
   RawSync.instance.onLog = HealthSync.instance.note; // its passes show in the sync page's log
-  SyncEngine.instance.onLog = HealthSync.instance.note; // the sync engine's too (#219 A1; runs only when the server says)
+  SyncEngine.instance.onLog = HealthSync.instance.note; // the sync engine's too (#219; runs only when the server says)
   SetupLinks.instance.start(); // watch2whoop://setup?… passed in when the app is opened by scanning the setup QR code with the camera
   PushService.instance.start(); // device token, taps on notifications (#175); never asks for permission here
   langOverride.addListener(_rebuildAll);

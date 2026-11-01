@@ -125,6 +125,7 @@ class SyncStatusInput {
     required this.connected,
     required this.healthAsked,
     this.healthNeedsAsk = false,
+    this.extraNeedsAsk = false,
     this.running = false,
     this.firstSyncDone,
     required this.ow,
@@ -152,8 +153,11 @@ class SyncStatusInput {
   /// The Health permission sheet was shown (iOS never says what was allowed).
   final bool healthAsked;
 
-  /// iOS says a permission sheet is still needed (new types, never asked).
+  /// iOS says the sheet is still needed for a core type (kCoreHealthTypes: heart rate, sleep, steps …).
   final bool healthNeedsAsk;
+
+  /// iOS says the sheet is still needed only for other types the app reads (beat-to-beat, ECG, stand time …): a warning.
+  final bool extraNeedsAsk;
   final bool running;
   final bool? firstSyncDone;
   final SyncStats ow;
@@ -212,9 +216,15 @@ List<SyncProblem> syncProblems(SyncStatusInput s) {
             : tr('同步还没连上：要用设置链接里的邀请码连接', 'Sync is not connected: it needs the invitation code from your setup link'),
         action: s.signedIn ? 'enable' : 'sync_page'));
   }
-  if (!s.healthAsked || s.healthNeedsAsk || raw.stop == 'not_asked') {
+  if (!s.healthAsked || s.healthNeedsAsk) {
     out.add(SyncProblem('permission', 'error',
         tr('还没允许读取「健康」数据', 'Reading Apple Health is not allowed yet'),
+        action: 'enable'));
+  } else if (s.extraNeedsAsk || raw.stop == 'not_asked') {
+    // Only some extra types (beat-to-beat, ECG, water, stand time …) were never asked: the core types sync. 1.0.8 called
+    // this "not allowed" (health_denied) when the second sheet had not come up (#219); it is a warning, not a denial.
+    out.add(SyncProblem('permission_extra', 'warning',
+        tr('还有几项「健康」数据没问过读取权限', 'Some Health types have not been asked for yet'),
         action: 'enable'));
   }
   if (s.connected && ow.authProblem) {
@@ -507,7 +517,9 @@ String? deviceLastError(List<SyncProblem> problems) {
       'locked' => 'locked',
       'permission' => 'health_denied',
       'server' => 'server',
-      'not_connected' || 'background_refresh_off' || 'low_power' || 'stale' || 'consent' || 'unsupported' => null,
+      // permission_extra: only types beyond the core ones were never asked, not a denial (HealthKit cannot say "denied")
+      'not_connected' || 'background_refresh_off' || 'low_power' || 'stale' || 'consent' || 'unsupported' ||
+      'permission_extra' => null,
       _ => 'other',
     };
     if (e != null) return e;

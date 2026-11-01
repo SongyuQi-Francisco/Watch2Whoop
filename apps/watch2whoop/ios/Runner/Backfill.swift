@@ -1,6 +1,5 @@
 import BackgroundTasks
 import Compression
-import Flutter
 import Foundation
 import HealthKit
 
@@ -92,39 +91,31 @@ final class Backfill: NSObject, URLSessionDataDelegate {
     ]
   }
 
-  // MARK: - channel
+  // MARK: - API for the host (no Flutter here: the channel methods backfill* are in SyncEngineChannel.swift)
 
-  func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) -> Bool {
-    let args = call.arguments as? [String: Any] ?? [:]
-    switch call.method {
-    case "backfillStart":
-      start(args) { result($0) }
-    case "backfillStatus":
-      queue.async { let s = self.load(); DispatchQueue.main.async { result(self.statusMap(s)) } }
-    case "backfillPump":
-      pump(seconds: args["seconds"] as? Double ?? 20) { s in DispatchQueue.main.async { result(s) } }
-    case "backfillCancel":
-      queue.async {
-        var s = self.load()
-        if let f = s.pendingFile { try? FileManager.default.removeItem(atPath: f) }
-        s.active = false
-        s.pendingBatch = nil
-        s.pendingFile = nil
-        self.save(s)
-        self.session.getAllTasks { $0.forEach { $0.cancel() } }
-        Keychain.delete()
-        DispatchQueue.main.async { result(self.statusMap(s)) }
-      }
-    default:
-      return false
-    }
-    return true
+  func status(_ done: @escaping ([String: Any]) -> Void) {
+    queue.async { let s = self.load(); DispatchQueue.main.async { done(self.statusMap(s)) } }
   }
 
-  private func start(_ args: [String: Any], _ done: @escaping (Any) -> Void) {
+  func cancel(_ done: @escaping ([String: Any]) -> Void) {
+    queue.async {
+      var s = self.load()
+      if let f = s.pendingFile { try? FileManager.default.removeItem(atPath: f) }
+      s.active = false
+      s.pendingBatch = nil
+      s.pendingFile = nil
+      self.save(s)
+      self.session.getAllTasks { $0.forEach { $0.cancel() } }
+      Keychain.delete()
+      DispatchQueue.main.async { done(self.statusMap(s)) }
+    }
+  }
+
+  /// Starts (or widens) the backfill: {server, token, types, days (0 = all), to, appVersion, powerOnly}; nil = bad args.
+  func start(_ args: [String: Any], _ done: @escaping ([String: Any]?) -> Void) {
     guard let server = args["server"] as? String, let token = args["token"] as? String, !server.isEmpty, !token.isEmpty,
           let types = args["types"] as? [[String: String]], !types.isEmpty else {
-      done(FlutterError(code: "bad_args", message: "server, token, types", details: nil)); return
+      done(nil); return
     }
     let days = args["days"] as? Int ?? 90
     let to = args["to"] as? Double ?? Date().addingTimeInterval(-14 * 86400).timeIntervalSince1970
@@ -287,8 +278,11 @@ final class Backfill: NSObject, URLSessionDataDelegate {
     var count = 0
     let lock = NSLock()
     let group = DispatchGroup()
+    var workouts: [[String: Any]] = [], stats: [[String: Any]] = []
+    let sharedSources = EngineSources()
     for t in types {
       guard let id = t["hk"], let kind = t["kind"] else { continue }
+      let upload = t["upload"] ?? "raw"
       let type: HKSampleType?
       var unit: HKUnit?
       if kind == "quantity", let q = HKQuantityType.quantityType(forIdentifier: HKQuantityTypeIdentifier(rawValue: id)) {
@@ -296,8 +290,38 @@ final class Backfill: NSObject, URLSessionDataDelegate {
         guard q.is(compatibleWith: u) else { continue }
         type = q
         unit = u
+        if upload.contains("stats") {
+          // the day's 15-minute buckets (A3; activity / basal energy go only this way, D1)
+          let b0 = (start / EngineLimits.bucket).rounded(.down) * EngineLimits.bucket
+          let n = Int(((end - b0) / EngineLimits.bucket).rounded(.up))
+          group.enter()
+          EngineHK.buckets(store, q, unit: u, start: b0, count: n) { values in
+            lock.lock()
+            if let values, values.contains(where: { $0 > 0 }) {
+              stats.append(["type": id, "unit": t["unit"] ?? "", "bucket_s": Int(EngineLimits.bucket), "start": Int(b0), "values": values])
+              count += values.count
+            }
+            lock.unlock()
+            group.leave()
+          }
+        }
+        if !upload.contains("raw") { continue }
       } else if kind == "category" {
         type = HKCategoryType.categoryType(forIdentifier: HKCategoryTypeIdentifier(rawValue: id))
+      } else if kind == "workout" {
+        // workouts with their statistics, events and metadata (A3), sources in the batch's table
+        group.enter()
+        let q = HKSampleQuery(sampleType: HKObjectType.workoutType(), predicate: predicate, limit: HKObjectQueryNoLimit,
+                              sortDescriptors: nil) { _, list, _ in
+          lock.lock()
+          defer { lock.unlock(); group.leave() }
+          for case let w as HKWorkout in list ?? [] {
+            let i = sharedSources.add(w)
+            if let m = EngineWorkout.map(w, src: i) { workouts.append(m) }
+          }
+        }
+        store.execute(q)
+        continue
       } else {
         type = nil
       }
@@ -341,11 +365,18 @@ final class Backfill: NSObject, URLSessionDataDelegate {
       store.execute(q)
     }
     group.notify(queue: queue) {
+      // the workouts' sources go after the samples' ones
+      let offset = sources.count
+      sources += sharedSources.list
+      for i in workouts.indices { workouts[i]["src"] = (workouts[i]["src"] as? Int ?? 0) + offset }
+      count += workouts.count
       guard count > 0 else { done(nil, 0); return }
       var body: [String: Any] = ["device": "iPhone", "phase": "backfill", "tz": TimeZone.current.identifier,
                                  "sources": sources, "deleted": []]
       if !samples.isEmpty { body["samples"] = samples }
       if !categories.isEmpty { body["categories"] = categories }
+      if !workouts.isEmpty { body["workouts"] = workouts }
+      if !stats.isEmpty { body["stats"] = stats }
       done(body, count)
     }
   }
@@ -457,6 +488,17 @@ final class Backfill: NSObject, URLSessionDataDelegate {
     BGTaskScheduler.shared.register(forTaskWithIdentifier: taskId, using: nil) { task in
       guard let task = task as? BGProcessingTask else { return }
       Backfill.shared.run(task)
+    }
+  }
+
+  /// Open Wearables' stopBackgroundSync cancels every BGTask request of the app: ask for ours again while it runs.
+  func rescheduleIfActive() {
+    queue.async {
+      let s = self.load()
+      guard s.active else { return }
+      BGTaskScheduler.shared.getPendingTaskRequests { reqs in
+        if !reqs.contains(where: { $0.identifier == Self.taskId }) { Self.schedule(powerOnly: s.powerOnly) }
+      }
     }
   }
 

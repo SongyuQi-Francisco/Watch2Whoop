@@ -79,7 +79,7 @@ class AuthProbe extends FakeSource {
 
   @override
   Future<RawAuth> requestAuth() async {
-    triesBeforeCall = (await SharedPreferences.getInstance()).getInt('w2w.raw.authTries.v1');
+    triesBeforeCall = (await SharedPreferences.getInstance()).getInt('w2w.raw.authTries.v2');
     return answer;
   }
 }

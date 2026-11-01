@@ -37,6 +37,45 @@ def evaluate_ctx(ctx: Ctx) -> list[RuleResult]:
     return out
 
 
+REMINDER_FIELDS = ("rule_key", "subject", "level", "title", "message", "title_en", "message_en", "evidence", "sticky")
+
+
+def reminder_rows(results: list[RuleResult]) -> list[dict]:
+    """The reminders `store` writes, as plain rows: rules that errored are left out (store keeps their old rows), one row
+    per (rule, subject), the last one winning, in the order of first appearance."""
+    out: dict[tuple, dict] = {}
+    for res in results:
+        if res.status == "error":
+            continue
+        for r in res.reminders:
+            out[(r.rule_key, r.subject)] = {"rule_key": r.rule_key, "subject": r.subject, "level": r.level,
+                                            "title": r.title, "message": r.message, "title_en": r.title_en,
+                                            "message_en": r.message_en, "evidence": jsonable(r.evidence), "sticky": r.sticky}
+    return list(out.values())
+
+
+def evaluate_data(data: dict) -> dict:
+    """Pure (2.0.0 M6): every rule on plain data (context.to_data / assemble) -> {date, rules_version, rules: the
+    summaries rule_runs keeps, reminders: reminder_rows}. The phone's twin is OBS.rules.evaluate (src/36_rules.js)."""
+    from .context import from_data
+    ctx = from_data(data)
+    results = evaluate_ctx(ctx)
+    return {"date": ctx.day.isoformat(), "rules_version": P.RULES_VERSION, "rules": [r.summary() for r in results],
+            "reminders": reminder_rows(results)}
+
+
+def results_from(rules: list[dict], reminders: list[dict]) -> list[RuleResult]:
+    """Inverse of evaluate_data's rules + reminders (the kind `reminders` stores the phone's rows through `store`)."""
+    by_rule: dict[str, list[Reminder]] = {}
+    for r in reminders:
+        by_rule.setdefault(r["rule_key"], []).append(Reminder(
+            r["rule_key"], r["level"], r["title"], r["message"], subject=r.get("subject") or "",
+            evidence=r.get("evidence") or {}, sticky=bool(r.get("sticky")), title_en=r.get("title_en") or "",
+            message_en=r.get("message_en") or ""))
+    return [RuleResult(s["rule_key"], s["status"], s.get("note") or "", by_rule.get(s["rule_key"], []), s.get("details") or {})
+            for s in rules]
+
+
 def _initial_status(conn, user_id: int, day: date, r: Reminder) -> str:
     if not r.sticky:
         return "new"

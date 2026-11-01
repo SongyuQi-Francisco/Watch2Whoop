@@ -43,7 +43,7 @@ int? parseCustomDays(String text) {
 /// The phone part of a running re-sync (kept across app starts).
 class ResyncState {
   const ResyncState({this.days, required this.startedAt, this.owDone = false, this.rawDone = false, this.reported = 0,
-      this.phoneDone = false, this.engineDone = true, this.fromPage = false});
+      this.phoneDone = false, this.engineDone = true, this.fromPage = false, this.engineRange = false});
 
   final int? days;
   final DateTime startedAt;
@@ -56,6 +56,9 @@ class ResyncState {
   /// Started by the Today page's 「补全历史」 (its progress also goes to the page's onApp with kind backfill).
   final bool fromPage;
 
+  /// The engine's part is a range re-sync (SyncEngine.swift, contract §8), not the history backfill.
+  final bool engineRange;
+
   ResyncState copyWith({bool? owDone, bool? rawDone, bool? phoneDone, int? reported, bool? engineDone}) => ResyncState(
       days: days,
       startedAt: startedAt,
@@ -64,10 +67,12 @@ class ResyncState {
       phoneDone: phoneDone ?? this.phoneDone,
       reported: reported ?? this.reported,
       engineDone: engineDone ?? this.engineDone,
-      fromPage: fromPage);
+      fromPage: fromPage,
+      engineRange: engineRange);
 
   Map<String, Object?> toJson() => {'days': days, 'started_at': startedAt.toIso8601String(), 'ow_done': owDone,
-        'raw_done': rawDone, 'phone_done': phoneDone, 'reported': reported, 'engine_done': engineDone, 'from_page': fromPage};
+        'raw_done': rawDone, 'phone_done': phoneDone, 'reported': reported, 'engine_done': engineDone, 'from_page': fromPage,
+        'engine_range': engineRange};
 
   static ResyncState? fromJson(Object? j) {
     if (j is! Map) return null;
@@ -75,7 +80,7 @@ class ResyncState {
     if (at == null) return null;
     return ResyncState(days: (j['days'] as num?)?.toInt(), startedAt: at, owDone: j['ow_done'] == true,
         rawDone: j['raw_done'] == true, phoneDone: j['phone_done'] == true, reported: (j['reported'] as num?)?.toInt() ?? 0,
-        engineDone: j['engine_done'] != false, fromPage: j['from_page'] == true);
+        engineDone: j['engine_done'] != false, fromPage: j['from_page'] == true, engineRange: j['engine_range'] == true);
   }
 }
 

@@ -68,12 +68,28 @@ def explain(conn: psycopg.Connection, user_id: int, day: date, today: dict | Non
     """The empty-ring block for `day` (today = its daily_scores row or None); None when the day has a recovery score."""
     if today is not None and today.get("recovery") is not None:
         return None
-    if consent.needs_consent(conn, user_id):
+    return explain_from(day, today, local_today, consent.needs_consent(conn, user_id),
+                        lambda: scores_engine.scoring_origin(conn, user_id), lambda: _has_any_data(conn, user_id),
+                        lambda: _recent_watch_sleep(conn, user_id, day))
+
+
+def _v(x):
+    return x() if callable(x) else x
+
+
+def explain_from(day: date, today: dict | None, local_today: date, needs_consent: bool, origin, any_data,
+                 recent_watch_sleep) -> dict | None:
+    """The pure part of explain. origin (scoring origin or None), any_data and recent_watch_sleep (bools) may be given as
+    callables, asked only when the order above needs them (the server's queries); the phone passes the values
+    (docs/ios-native-2.0.md M4: JS OBS.coach.today.recovery_empty)."""
+    if today is not None and today.get("recovery") is not None:
+        return None
+    if needs_consent:
         return _entry("consent", L("需要先确认同意书", "Review the consent form first"),
                       L("去确认", "Review"), "consent")
-    origin = scores_engine.scoring_origin(conn, user_id)
+    origin = _v(origin)
     if origin is None:
-        if _has_any_data(conn, user_id):
+        if _v(any_data):
             return _entry("no_watch", L("还没有手表数据", "No watch data yet"), L("手机同步", "Phone sync"), "sync")
         return _entry("awaiting_sync", L("等待第一次同步", "Waiting for the first sync"), L("手机同步", "Phone sync"), "sync")
     if day < origin:
@@ -81,7 +97,7 @@ def explain(conn: psycopg.Connection, user_id: int, day: date, today: dict | Non
     flags = (today or {}).get("flags") or {}
     is_today = day >= local_today
     if "no_sleep" in flags or today is None:
-        if not _recent_watch_sleep(conn, user_id, day):
+        if not _v(recent_watch_sleep):
             return _entry("no_sleep", L("没有睡眠数据", "No sleep data"), L("开启睡眠追踪", "Turn on sleep tracking"), "sleep_help")
         if today is not None:
             if is_today:

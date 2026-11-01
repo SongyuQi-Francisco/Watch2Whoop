@@ -1,7 +1,6 @@
 /* Today page v2 (PWA): restrained, few words, let the numbers speak. No build step: plain JS, charts are hand-drawn SVG.
    Pages: Today / Trends (metrics, sleep) / Log / Me; explanations and details live in bottom sheets that open on tap.
-   A persistent "Ask the butler" (「问管家」) at the bottom: when the default AI is an API type (each person's own key) it opens the in-page chat (ai.js); for subscription types / when unset it opens the body butler
-   Claude Code session (Remote Control) link (assistant_url from /v1/web/me, only given to the deployer) -- subscriptions can only be used in the official client.
+   A persistent "Ask the butler" (「问管家」) at the bottom opens the in-page chat (ai.js) or, without an API-type AI, the butler's Remote Control link (assistant_url from /v1/web/me).
    Endpoints: /v1/web/* (login), /v1/users/{u}/today | sleep/nights | trends | journal/frequent (aggregates),
    /v1/users/{u}/memory (body profile card, observation notes, provided by the body butler session), plus the existing journal / events / supplements / reminders.
    Auth relies on an httpOnly cookie; write requests carry X-Body-Web: 1.
@@ -36,11 +35,9 @@
   // diet-profile.js adds foodTop(info) / bindFoodTop(view): one line above both 饮食 modes; water.js adds foodDiet(info) / bindFoodDiet(view):
   // the water card right after 「今天吃了」.
   const PLUGINS = () => window.BodyPlugins || [];
-  // On-demand scripts (first-screen slimming): index.html declares them as script elements of type w2w/lazy, which the browser neither
-  // fetches nor runs; the server puts ?v=<fingerprint> on the src. lazyScript(name) loads one the first time something needs it and
-  // resolves true (false: it could not be fetched; the next call tries again). In the offline copy of the page they are ordinary inline
-  // scripts already, so nothing is declared and nothing is fetched. A file that registers a plugin in window.BodyPlugins when it runs
-  // gets its init() right after, with what the start-up gave the others (initLate).
+  // On-demand scripts: index.html declares them as type w2w/lazy (the browser neither fetches nor runs them; the server adds ?v=<fingerprint>).
+  // lazyScript(name) loads one on first need and resolves true (false: not fetched, the next call retries). The offline copy has them inline.
+  // A file that registers a plugin in window.BodyPlugins gets its init() right after it runs (initLate).
   const LAZY = new Map();
   const lateInit = { ctx: null, me: null, done: new WeakSet() };
   function initLate() {
@@ -203,6 +200,7 @@
   // The UI only shows numbers and short words; the backend's original reasons / explanations are left for the butler (read via API / MCP), here they are mapped to one- or two-character labels
   // The regexes match the server's Chinese reasons (and English ones, should a reason come back in English)
   const SHORT = [
+    [/手表这晚没记录|watch did not record/i, "手表没记录"],   // i18n-ok: the wrist-temperature reason names "sleep" and must not become "无睡眠"
     [/授权|permission|forbidden|not allowed/i, "无权限"], [/还没有计算|还没计算|没算出来|not (yet )?(computed|calculated)/i, "未计算"],   // i18n-ok
     [/基线|baseline/i, "基线不足"], [/HRV/i, "无 HRV"], [/原始心率|心率|heart rate/i, "无心率"], [/睡眠|sleep/i, "无睡眠"],   // i18n-ok
     [/力量训练|strength/i, "无力量"], [/负荷|沿用|strain|load/i, "无负荷"],   // i18n-ok
@@ -287,8 +285,7 @@
     if (body !== undefined) headers["Content-Type"] = "application/json";
     let r;
     try {
-      // The app's saved copy of the page (offline cold start, web/api.py offline_shell): nothing is sent from it; the app
-      // loads the real page once the network is back
+      // The app's offline copy (web/api.py offline_shell) sends nothing; the app opens the real page once online
       if (window.W2W_SHELL) throw new Error("offline shell");
       const pre = method === "GET" ? await (S.stale ? prePeek(path) : preTake(path)) : null;
       if (!pre && method === "GET" && DEFERRED_GETS.test(path)) await firstPaint;
@@ -317,12 +314,14 @@
     let data = null;
     if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
     if (off && method === "GET" && r.ok && r.headers.get("X-Offline") !== "1") off.put(path, I18N.lang, data).catch(() => {});
+    if (r.status === 401 && window.W2W_LOCAL) { tellApp("reload"); throw new ApiError(401, ""); }   // #337
     if (r.status === 401 && off) off.clearCache().catch(() => {});   // signed out: no copies left readable; the queue waits for the same account
     if (r.status === 401) { PRE.clear(); try { localStorage.removeItem(FAST); } catch (e) { /* private mode */ } }
     if (r.status === 401 && !quiet401) {
       showLogin(/过期|expired/i.test(String(data?.detail || "")) ? tr("login.expired") : "");   // i18n-ok: server detail
       throw new ApiError(401, tr("err.notLoggedIn"));
     }
+    if (r.status === 426) lazyScript("upgrade.js").then(() => window.BodyUpgrade?.block(data?.detail));   // R2
     if (!r.ok && isRestart(r)) {   // still down after the retries (reads), or a write that was not repeated
       const e = new ApiError(r.status, tr("服务器正在更新，请过一会儿再试"), data);
       e.updating = true;
@@ -939,9 +938,12 @@
       catch (e) { if (box.isConnected) box.innerHTML = tags([badge("plain", e.status === 403 ? tr("无权限") : short(e.message))]); return; }
     }
     if (!box.isConnected) return;   // the sheet was closed or replaced while loading
-    box.innerHTML = explainHtml(x, head);
+    const weigh = isSelf() && /^weight/.test(key);   // the weight card logs a weigh-in too (weight.js)
+    box.innerHTML = (weigh ? `<div class="btns"><button class="btn btn-primary" data-xp-weigh>${tr("记体重")}</button></div>` : "") + explainHtml(x, head);
     const ask = $("[data-xp-ask]", box);
     if (ask) ask.onclick = () => askAI(x.ai_prompt);
+    const wb = $("[data-xp-weigh]", box);
+    if (wb) wb.onclick = async () => { if (await lazyScript("weight.js")) window.BodyWeight?.open(); };
   }
   const xpBox = `<div class="xp"><div class="xp-load"><span></span><span></span><span></span></div></div>`;
   function explainSheet(kind, key, title) { openSheet(title, xpBox, (root) => explainInto(root, kind, key, true), { kind: "explain", key }); }
@@ -2895,7 +2897,7 @@
       ${meSection(tr("账号"), [isSelf() ? langRow() : "", ...(rows["settings-account"] || [])])}
       ${meSection("AI", rows["settings-ai"] || [])}
       ${meSection(tr("导入"), rows["settings-import"] || [])}
-      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""])}
+      ${meSection(tr("帮助"), [window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : "", item(tr("更新记录"), null, 'id="me-whatsnew"')])}
       ${meSection(tr("关于"), [`<div class="item"><span class="row-title">${tr("版本")}</span><span class="val">${esc(ver || "—")}</span></div>`])}
       ${meSection("", [`<button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>`, ...(rows["settings-danger"] || [])])}
       ${who.self ? "" : `<p class="small faint" style="margin:14px 2px 0">${tr("这里是你自己账号的设置")}</p>`}</div>`;
@@ -2919,6 +2921,7 @@
     const computed = d?.scores?.computed_at;
     const item = (title, val, attr = "", tail = `<span class="chev">${ICON.chev}</span>`) => `<button class="item" ${attr}><span class="row-title">${title}</span>${val != null ? `<span class="val">${val}</span>` : ""}${tail}</button>`;
     const updatedVal = computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—";
+    const weightRow = who.self ? `<button class="item" id="me-weight"><span class="row-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px;margin-right:8px;color:var(--text-2)"><circle cx="12" cy="5" r="3"/><path d="M6.5 8a2 2 0 0 0-1.905 1.46L2.1 18.5A2 2 0 0 0 4 21h16a2 2 0 0 0 1.925-2.54L19.4 9.5A2 2 0 0 0 17.5 8z"/></svg>${tr("记体重")}</span><span class="chev">${ICON.chev}</span></button>` : "";
     if (meSettingsOn()) {
       const chev = `<span class="chev">${ICON.chev}</span>`;
       const rows = who.self ? pluginRows(chev) : {};
@@ -2933,7 +2936,7 @@
       return `${meHead(who)}
         ${healthspanHtml(hs)}
         <div class="cols2"><div>${statusHtml(mem)}</div><div>${recentHtml(mem)}${notesHtml(mem)}
-        ${meSection("", [...(rows.profile || []),
+        ${meSection("", [...(rows.profile || []), weightRow,
           item(tr("健康档案"), esc(archiveVal) || null, sheetAttr(() => openSheet(tr("健康档案"), `<div class="group">${archive}</div>`)) + ' id="me-archive"')])}
         ${meSection("", [who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : "",
           IN_APP ? phoneSyncRow() : "",
@@ -2955,9 +2958,11 @@
         ${isSelf() ? langRow() : ""}
         ${who.self && window.BodyAI ? item(tr("me.aiSettings"), esc(window.BodyAI.settingsValue()), 'id="me-ai"') : ""}
         ${who.self ? PLUGINS().map((p) => p.meItem?.(`<span class="chev">${ICON.chev}</span>`) || "").join("") : ""}
+        ${weightRow}
         ${IN_APP ? phoneSyncRow() : ""}
         ${item(tr("使用手册"), null, 'id="me-handbook"')}
         ${window.BodyIntro ? item(tr("新手引导"), null, 'id="me-intro"') : ""}
+        ${item(tr("更新记录"), null, 'id="me-whatsnew"')}
         ${S.viewable.length > 1 ? item(tr("me.switch"), esc(nameText(who.remark, who.display_name)), 'id="me-who"') : ""}
         ${syncCenterOn() ? "" : item(tr("me.updated"), computed ? new Date(computed).toLocaleString(I18N.locale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }) : "—", 'id="me-refresh"')}
         <button class="item danger" id="me-logout"><span class="row-title">${tr("me.logout")}</span></button>
@@ -3069,6 +3074,10 @@
     const ai = $("#me-ai", view);
     if (ai) ai.onclick = () => window.BodyAI.openSettings();
     PLUGINS().forEach((p) => p.bindMe?.(view));
+    for (const [id, file, g] of [["#me-weight", "weight.js", "BodyWeight"], ["#me-whatsnew", "whatsnew.js", "BodyWhatsNew"]]) {   // on demand (Lucide "weight", ISC)
+      const b = $(id, view);
+      if (b) b.onclick = async () => { if (await lazyScript(file)) window[g]?.open(); };
+    }
     for (const b of $$("[data-lang]", view)) b.onclick = () => { if (b.getAttribute("aria-pressed") !== "true" || !S.me?.language) setLanguage(b.dataset.lang, view); };   // the highlighted one too while the profile follows the device
     const out = $("#me-logout", view), hb = $("#me-handbook", view);
     if (out) out.onclick = logout;
@@ -4277,7 +4286,7 @@
     const paths = !S.viewDate && (!keepTab || S.owner === S.me?.id) ? fast.boot?.[tab] : null;
     const bundle = flagWas("boot_api") && paths?.length ? fetchBoot(paths) : null;
     rec = { tab, paths: new Set() };
-    const painted = !keepTab && tab === "today" && flagWas("cached_first_paint") && !S.viewDate
+    const painted = !keepTab && /^(today|trends|me)$/.test(tab) && flagWas("cached_first_paint") && !S.viewDate
       ? await paintCached(fast, bundle || Promise.resolve()) : false;
     if (bundle) await bundle;
     try { me = await api("/v1/web/me"); }
@@ -4323,10 +4332,12 @@
     await plugged;
     if (S.flags.includes("ui_ai_first")) await lazyScript("ui-ai-first.js");
     lateInit.ctx = { api, openSheet, closeSheet, toast, esc, isSelf, openHandbook, openAiSettings: () => window.BodyAI?.openSettings(), reload: refresh, setTab, openAssistant, needsNet,
-      page: () => lastPage, todayDrawn: () => lastToday };
+      page: () => lastPage, todayDrawn: () => lastToday, today: () => S.todayDate,
+      dropCache: () => { for (const k of Object.keys(S.data)) if (/^(today|trends)/.test(k)) delete S.data[k]; } };
     lateInit.me = me;
     if (S.flags.includes("slim_mode")) await lazyScript("slim.js");   // #126
     PLUGINS().forEach((p) => { lateInit.done.add(p); p.init?.(lateInit.ctx, me); });
+    if (me.upgrade && me.upgrade.state !== "none") lazyScript("upgrade.js");   // R2 notice / block
     if (!stale && me.me?.intro_seen === false && !A1()) lazyScript("intro.js");   // the first-run intro (intro.js shows itself once the consent sheet is out of the way)
     setupAssistant();
     if (!S.viewable.some((v) => v.id === S.owner)) S.owner = S.me.id;
@@ -4352,8 +4363,8 @@
     return TABS[tab] ? tab : "today";
   }
 
-  // Draw today's page from this device's copies (offline.js) while the network answers (docs/ios-native-plan.md 3.5):
-  // only the account the copies belong to, copies of today and at most STALE_MAX old; the banner says 「更新中」.
+  // Draw the start tab (today / trends / me) from this device's copies (offline.js) while the network answers (3.5):
+  // only the copies' own account, of today and at most STALE_MAX old; the banner says 「更新中」.
   const STALE_MAX = 12 * 3600 * 1000;
   const zoneToday = (tz) => { try { return new Intl.DateTimeFormat("en-CA", { timeZone: tz || undefined }).format(new Date()); } catch (e) { return isoDay(new Date()); } };
   async function paintCached(fast, wait) {
@@ -4365,7 +4376,7 @@
       || String(me.today) !== zoneToday(me.me.timezone) || !(me.flags || []).includes("offline_mode")) return false;
     S.stale = { wait };
     S.staleAt = hit.at;
-    try { await start(me, false, null, true); return S.tab === "today" && !$("#app").hidden; }   // optional plugin files are not waited for
+    try { await start(me, false, null, true); return !$("#app").hidden; }   // optional plugin files are not waited for
     catch (e) { return false; }
     finally { S.stale = null; S.data = {}; showBanner(); }   // nothing from the copies stays in memory: the next reads are fresh
   }
@@ -4463,8 +4474,8 @@
         await lib.clear();
       }
     } catch (e) { /* IndexedDB trouble: the page works online as before */ }
-    // The Watch2Whoop app keeps a copy of the page for a cold start without network only while this is on (1.0.7+)
-    if (!window.W2W_SHELL) tellApp(S.offlineOn ? "offline:on" : "offline:off");
+    // The app keeps a copy of the page while this is on (1.0.7+) and opens it first (#337)
+    if (!window.W2W_SHELL) { tellApp(S.offlineOn ? "offline:on" : "offline:off"); tellApp("local-first:" + !S.flags.includes("local_first_start_off")); }
     showBanner();
   }
   // Controls that need the server: greyed out offline (app.css body.is-offline) and a tap says so

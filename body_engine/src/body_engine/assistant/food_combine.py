@@ -7,8 +7,9 @@
   kept whole in food_merges, so split() puts them back (Today page 「拆开」, or rollback_write for the AI: kind merge).
   Red meat labelled in the names ("红肉 Ng") is carried over as one total label, so the weekly red-meat count stays right.
 - both: the template first, then the merge.
-Everything goes through the caller's own SparkyFitness read-write key, so only the caller's own entries can be read or changed;
-ids from another day or another user are "not found". AI calls are logged in ai_write_log (writelog.py).
+Everything goes through the caller's own store (sparky_write.backend: the SparkyFitness read-write key, or the own tables when
+own_food_only, issue #252), so only the caller's own entries can be read or changed; ids from another day or another user are
+"not found". AI calls are logged in ai_write_log (writelog.py).
 """
 import re
 from collections import Counter
@@ -20,7 +21,6 @@ from psycopg.types.json import Jsonb
 from .. import sparky_client
 from ..i18n import L
 from ..nutrition import extras
-from ..ownstore import mirror
 from ..rules.nutrition import RED_MEAT_MARK
 from . import meals, sparky_write, writelog
 
@@ -54,14 +54,14 @@ def clean_name(name: str | None) -> str:
     return (_TAIL.sub("", n) or n)[:60]
 
 
-def _load(conn, user_id: int, day: date, entry_ids: list[str], client) -> tuple[list[dict], list[dict]]:
+def _load(conn, user_id: int, day: date, entry_ids: list[str], be) -> tuple[list[dict], list[dict]]:
     """(raw SparkyFitness rows, entries with nutrition totals and extras) for the selected ids, in the order of the day."""
     ids = [str(i) for i in dict.fromkeys(entry_ids or [])]
     if not ids:
         raise ValueError(L("至少选一条", "Select at least one entry"))
     if len(ids) > MAX_ENTRIES:
         raise ValueError(L(f"一次最多 {MAX_ENTRIES} 条", f"At most {MAX_ENTRIES} entries at a time"))
-    raw = [r for r in (client.get(f"/food-entries/by-date/{day.isoformat()}") or []) if str(r.get("id")) in ids]
+    raw = [r for r in be.food_day(day) if str(r.get("id")) in ids]
     if len(raw) != len(ids):
         raise _not_found()
     ex = extras.load(conn, user_id, day, day)
@@ -139,8 +139,8 @@ def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[s
     flags.guard(conn, user_id, "meal_merge")   # rollout flag (docs/rollout.md): off -> "not available to you yet"
     if action not in ACTIONS:
         raise ValueError(L("action 只能是 template / merge / both", "action must be template, merge or both"))
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    raw, entries = _load(conn, user_id, day, entry_ids, client)
+    be = sparky_write.backend(conn, user_id, client)
+    raw, entries = _load(conn, user_id, day, entry_ids, be)
     if action in ("merge", "both") and len(entries) < 2:
         raise ValueError(L("合并至少要两条", "Merging needs at least two entries"))
     meal = _meal_of(entries, meal)
@@ -156,11 +156,10 @@ def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[s
         out["template"] = {"id": tpl["id"], "name": tpl["name"], "items": len(tpl["items"]), "needs_confirmation": unsure}
     if action in ("merge", "both"):
         food = _merged_food(entries, day, meal, name)
-        meal_ids = {m["name"]: m["id"] for m in client.get("/meal-types")}
-        new = sparky_write._create_food(client, meal_ids, day, food)
+        new = be.create_food(day, food)
         extras.save(conn, user_id, new["id"], day, {f: food.get(f) for f in extras.OPTIONAL}, None)
         for r in raw:
-            client.request("DELETE", sparky_write._entry_path("food", r))
+            be.delete_food(r)
         from ..grocery import pantry_auto   # grocery imports assistant
         for r in raw:   # what the originals took from the pantry follows the merged entry (issue #104)
             pantry_auto.merge_into(conn, user_id, r["id"], new["id"])
@@ -170,7 +169,7 @@ def combine(conn: psycopg.Connection, user_id: int, day: date, entry_ids: list[s
             (user_id, day, str(new["id"]), food["food"], Jsonb(writelog._plain(raw)), Jsonb(out["totals"]), channel)).fetchone()
         writelog.record(conn, "merge", "merge", row["id"], {"entry_ids": [str(r["id"]) for r in raw]},
                         {"entry_id": str(new["id"]), "name": food["food"]})
-        mirror.after_write(conn, user_id, client, food=[day])   # dual write (issue #252); off: nothing
+        be.after_write(food=[day])   # dual write (issue #252); off: nothing
         out["merge"] = {"id": row["id"], "entry_id": str(new["id"]), "name": food["food"], "replaced": len(raw),
                         "undo": L("拆开：今天页这条的「拆开」，或 rollback_write", "Split: 「拆开」 on the Today page, or rollback_write")}
     return out
@@ -183,14 +182,13 @@ def split(conn: psycopg.Connection, user_id: int, merge_id: int, client=None, lo
         raise LookupError(L("没有这次合并（或不是你的）", "No such merge (or it isn't yours)"))
     if row["undone_at"] is not None:
         raise LookupError(L("这次合并已经拆开过了", "This merge was already split"))
-    client = client or sparky_client.write_client_for_user(conn, user_id)
-    cur = next((r for r in client.get(f"/food-entries/by-date/{row['date'].isoformat()}") or []
-                if str(r.get("id")) == row["entry_id"]), None)
+    be = sparky_write.backend(conn, user_id, client)
+    cur = next((r for r in be.food_day(row["date"]) if str(r.get("id")) == row["entry_id"]), None)
     if cur is not None:
-        client.request("DELETE", sparky_write._entry_path("food", cur))
+        be.delete_food(cur)
     restored = []
     for o in row["originals"]:
-        new = sparky_write._recreate_food(client, o)
+        new = be.recreate_food(o)
         extras.carry_over(conn, user_id, str(o["id"]), str(new["id"]), row["date"])
         restored.append(str(new["id"]))
     from ..grocery import pantry_auto   # grocery imports assistant
@@ -198,5 +196,5 @@ def split(conn: psycopg.Connection, user_id: int, merge_id: int, client=None, lo
     conn.execute("UPDATE food_merges SET undone_at = now(), restored_ids = %s WHERE id = %s", (restored, merge_id))
     if log:
         writelog.record(conn, "merge", "split", merge_id, {"entry_id": row["entry_id"]}, {"entry_ids": restored})
-    mirror.after_write(conn, user_id, client, food=[row["date"]])
+    be.after_write(food=[row["date"]])
     return {"split": merge_id, "date": row["date"].isoformat(), "restored": len(restored), "merged_entry_gone": cur is None}

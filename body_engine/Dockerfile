@@ -3,6 +3,10 @@
 #   docker build --build-context openbodyscore=packages/openbodyscore body_engine
 # Without it the empty stage below is used (never an image of that name from a registry) and the check fails the build.
 FROM scratch AS openbodyscore
+# The JS port of the algorithms that the iOS app downloads (packages/openbodyscore-js/dist, served by algo/api.py, issue #340).
+# Optional build context `openbodyscore_js` (compose.yaml sets it; by hand add
+# --build-context openbodyscore_js=packages/openbodyscore-js/dist). Without it /v1/algo/* answers 503.
+FROM scratch AS openbodyscore_js
 
 FROM python:3.12.15-slim
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /usr/local/bin/uv
@@ -16,6 +20,7 @@ ENV MALLOC_ARENA_MAX=2
 COPY --from=openbodyscore . /packages/openbodyscore
 RUN test -f /packages/openbodyscore/pyproject.toml \
     || { echo "missing build context: add --build-context openbodyscore=packages/openbodyscore (see the top of this file)" >&2; exit 1; }
+COPY --from=openbodyscore_js . /packages/openbodyscore-js/dist
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY src ./src

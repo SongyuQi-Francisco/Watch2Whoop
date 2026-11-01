@@ -12,11 +12,12 @@ How the app reads the package is decided by the native-app plan (#247); this PR 
 | `taxonomy` | 肌群 / 器械 / 部位 / 运动模式 / 关节压力的中英文标签、肌群到部位的归属、默认「小心」动作 slug、导入来源列表 | 整个模块替换 |
 | `glossary` | 讲解词条（指标、化验、状态项、情况），中英文 | 整个模块替换 |
 | `split_templates` | 内置的 3 / 4 / 5 天训练分化模板 | 整个模块替换 |
+| `sport_muscles` | 每种训练类型练到的肌群（主 / 次）和阻力系数，没列出的类型用全身低强度兜底（`training/sport_muscles.py`；2.0.0 M1c 肌肉负荷图的运动层，算法包 `src/31_workouts.js` 带同一张表并做黄金测试） | 整个模块替换 |
 
 动作行是紧凑格式：缺的键 = 空 / null。`name_zh` / `cues_zh` / `instructions_zh` 只放中文；还没有中文的行（导入的）只有 `name_en` / `cues_en` / `instructions_en`，app 回退用英文。每行带 `source`、`license`、`text_sources[{source, license, ref}]`、`rev`；`images` 是库里的相对路径（演示图不在包里，也不打进 app）。署名清单在包头 `attribution`，完整文本在仓库的 `THIRD_PARTY_NOTICES.md`。
 
 ## 版本号
-- 全局一个递增计数器（迁移 730 的序列 `static_data_rev_seq`）。动作行的 `rev` 由触发器在**内容真的变了**时设成新值（重复 `seed-exercises` 不改内容就不变）；删除的行记进 `static_tombstones`（再次出现就清掉）；代码里的三个模块在 `static_modules` 记内容哈希和变化时的 rev（部署后第一次请求时对比，变了就取新 rev）。
+- 全局一个递增计数器（迁移 730 的序列 `static_data_rev_seq`）。动作行的 `rev` 由触发器在**内容真的变了**时设成新值（重复 `seed-exercises` 不改内容就不变）；删除的行记进 `static_tombstones`（再次出现就清掉）；代码里的几个模块（taxonomy、glossary、split_templates、sport_muscles）在 `static_modules` 记内容哈希和变化时的 rev（部署后第一次请求时对比，变了就取新 rev）。
 - 包版本 `version` = 所有 rev 里最大的，只增不减。所以「自 N 以来变了什么」是精确的：`rev > N` 的行 + `rev > N` 的删除记录 + `rev > N` 的模块。
 - `since` 没给 / 0 / 比服务器的版本还大（服务器回滚过）→ 返回全量，`full: true`。
 

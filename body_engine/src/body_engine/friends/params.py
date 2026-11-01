@@ -111,3 +111,22 @@ COMMENT_MAX = 300                   # characters; text only
 COMMENTS_PER_HOUR = 30              # per person, against floods (429)
 COMMENTS_SHOWN = 100                # newest comments returned for one post
 REPORT_REASON_MAX = 200
+
+# ---------------------------------------------------------------- moderation (App Store guideline 1.2, friends/moderation.py)
+# Report reasons, in the order the report sheet lists them (also a CHECK in migration 1100).
+REPORT_REASONS = ("spam", "harassment", "hate", "sexual", "violence", "self_harm", "other")
+REPORT_KINDS = ("post", "comment", "profile")
+REPORT_NOTE_MAX = 200
+# A report hides the item for the reporter at once. When this many DIFFERENT people reported the same post / comment /
+# profile, it is hidden for everyone except its author until an admin decides (keep / remove / ban-user). Three: one
+# person (or one angry pair) cannot take someone's content down alone, while a small circle (often 3–10 people) can still
+# act before an admin looks. Reports made before an admin chose "keep" no longer count.
+REPORT_HIDE_AFTER = 3
+# The review queue should be looked at within this many hours (moderation.overdue(): what the doctor check counts).
+REVIEW_WITHIN_HOURS = 24
+# Shown instead of the name of a person whose profile is hidden or removed (their picture is hidden too).
+HIDDEN_NAME = ("已隐藏的用户", "Hidden user")
+# Community rules (friends/rules.py): accepted once per version before creating / joining a circle or commenting, while the
+# flag is on for the person. Raise the version when the text (docs/legal/community-rules*.md) changes: everyone is asked again.
+RULES_FLAG = "circle_rules"
+RULES_VERSION = "2026-10-31"

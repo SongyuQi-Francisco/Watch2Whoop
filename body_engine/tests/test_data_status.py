@@ -240,3 +240,113 @@ def test_page_wiring():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     assert html.index('src="data-status.js"') < html.index('src="app.js"')
     assert '"data-status.js"' in (STATIC / "sw.js").read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- why a type is not ok (owner's report 2026-10-31)
+def _kind(key):
+    return next(k for k in data_status.KINDS if k.key == key)
+
+
+def test_explain_tells_not_recorded_from_not_delivered():
+    """The sync delivered minutes ago (the button said up to date) and weight / wrist temperature / water are old: the
+    phone had nothing newer, so they are "not recorded" with what makes them appear, not a sync problem (no alarm).
+    Only when nothing came through the phone's sync are they "not delivered", with the phone-side fix."""
+    ok = "ok"
+    e = data_status.explain
+    assert e(_kind("heart_rate"), "ok", ok) == {"reason": None, "action": None, "alarm": False}
+    assert e(_kind("weight"), "stale", ok) == {"reason": "not_recorded", "action": "use_scale", "alarm": False}
+    assert e(_kind("hrv"), "stale", ok) == {"reason": "not_recorded", "action": "wear_watch_sleep", "alarm": False}
+    assert e(_kind("steps"), "stale", ok)["action"] == "wear_watch"
+    assert e(_kind("vo2max"), "never", ok)["action"] == "outdoor_workout"
+    assert e(_kind("water"), "stale", ok)["action"] == "log_in_health"
+    assert e(_kind("water"), "stale", ok, elsewhere=True) == {"reason": "logged_elsewhere", "action": None, "alarm": False}
+    assert e(_kind("ecg"), "never", "behind") == {"reason": "on_demand", "action": "record_ecg", "alarm": False}
+    # never anything of a type a worn watch records daily, while other data arrives: the Health switch
+    assert e(_kind("hrv"), "never", ok) == {"reason": "no_permission", "action": "authorize", "alarm": True}
+    # nothing delivered: the phone report says why (background refresh off before a locked phone)
+    dev = {"background_refresh": "denied", "health_readable": True, "last_error": "locked"}
+    assert e(_kind("weight"), "stale", "behind", dev) == {"reason": "not_delivered", "action": "enable_background_refresh",
+                                                          "alarm": True}
+    assert e(_kind("sleep"), "stale", "behind", {"last_error": "locked"})["action"] == "unlock_phone"
+    assert e(_kind("sleep"), "stale", "behind", {"last_error": "auth", "background_refresh": "denied"})["action"] == "sign_in"
+    assert e(_kind("sleep"), "never", "never")["action"] == "open_app"
+    assert e(_kind("wrist_temperature"), "never", ok)["reason"] == "unsupported"   # the OW SDK cannot read it
+    for k in data_status.KINDS + data_status.EXTRA_KINDS:
+        for st in ("stale", "never"):
+            for d in data_status.DELIVERY:
+                r = e(k, st, d)
+                assert r["reason"] in data_status.REASONS and (r["action"] is None or r["action"] in data_status.ACTIONS), (k, st, d)
+
+
+def test_wrist_temperature_action_is_sleep_focus():
+    """FB-18: sleeping wrist temperature is written by the Apple Watch only on nights it is worn in bed with a sleep schedule /
+    Sleep Focus and sleep tracking on (about 5 nights before values appear), so "wear the watch to bed" is not the whole
+    answer: its action is `sleep_focus`. The other overnight types keep `wear_watch_sleep`."""
+    e = data_status.explain
+    assert params.RECORD_ACTION["wrist_temperature"] == "sleep_focus" and "sleep_focus" in data_status.ACTIONS
+    # the sync center reads wrist temperature with the app itself (no sdk_unsupported note)
+    wrist = data_status.EXTENDED_REPLACE["wrist_temperature"]
+    assert "sdk_unsupported" not in wrist.notes
+    for status in ("stale", "never"):
+        assert e(wrist, status, "ok") == {"reason": "not_recorded", "action": "sleep_focus", "alarm": False}
+    # not delivered is still a sync problem with the phone-side fix, not a sleep-focus hint
+    assert e(wrist, "stale", "behind", {"last_error": "locked"}) == {"reason": "not_delivered", "action": "unlock_phone",
+                                                                    "alarm": True}
+    for key in ("hrv", "sleep", "blood_oxygen", "respiratory_rate", "heartbeats"):
+        assert e(_kind(key), "stale", "ok")["action"] == "wear_watch_sleep", key
+    # every extended kind still answers with a known action
+    for k in data_status.kinds(extended=True, mode="app"):
+        for st in ("stale", "never"):
+            r = e(k, st, "ok")
+            assert r["action"] is None or r["action"] in data_status.ACTIONS, (k.key, st)
+
+
+def test_reasons_in_the_answer(dsn, users):
+    """User a: nothing ever came through a phone sync (fixture) -> old types are "not delivered"; then an app upload now
+    and a phone report with background refresh off: delivered, so weight is "not recorded", and the delivery says to turn
+    background refresh on. A weigh-in in the person's own records counts as weight on the server."""
+    ids, _, today = users
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        res = data_status.collect(conn, ids["a"], today)
+        t = by_key(res)
+        assert res["delivery"] == {"state": "never", "last_at": None, "action": "open_app"}
+        assert t["weight"]["reason"] == "not_delivered" and t["weight"]["alarm"] is True
+        assert t["heart_rate"]["reason"] is None and t["ecg"]["reason"] is None
+        assert res["alarm_count"] == sum(1 for x in res["types"] if x["alarm"])
+        conn.execute("""INSERT INTO rawdata_uploads (user_id, batch_id, device, app_version)
+                        VALUES (%s, gen_random_uuid(), 'iPhone', '1.0.8')""", (ids["a"],))
+        conn.execute("""INSERT INTO sync_device_state (user_id, app_version, background_refresh, health_readable, last_error)
+                        VALUES (%s, '1.0.8', 'denied', true, 'locked')""", (ids["a"],))
+        res = data_status.collect(conn, ids["a"], today)
+        t = by_key(res)
+        assert res["delivery"]["state"] == "ok" and res["delivery"]["action"] == "enable_background_refresh"
+        assert (t["weight"]["status"], t["weight"]["reason"], t["weight"]["action"], t["weight"]["alarm"]) == \
+            ("stale", "not_recorded", "use_scale", False)
+        assert t["sleep"]["reason"] == "not_recorded" and t["sleep"]["action"] == "wear_watch_sleep"
+        assert t["hrv"]["reason"] == "no_permission"
+        assert res["summary"] == {"ok": 5, "stale": 2, "never": 8}   # the old fields are unchanged
+        # a weigh-in logged on the Today page / by the AI: weight is on the server
+        conn.execute("INSERT INTO body_measurements (user_id, date, weight_kg) VALUES (%s, %s, 80)",
+                     (ids["a"], today - timedelta(days=1)))
+        w = by_key(data_status.collect(conn, ids["a"], today))["weight"]
+        assert (w["status"], w["days_since"], w["days"], w["reason"]) == ("ok", 1, 1, None) and "records" in w["sources"]
+        conn.rollback()
+
+
+def test_sync_status_has_the_newest_day_of_every_way_in(dsn, users):
+    """Root cause of "up to date, yet N types not synced": the app compared the phone's newest sample with the newest one
+    the engine uploaded (hk_samples). A weight from an Apple Health export or Open Wearables 40 days ago, older than the
+    engine's first 14 days, was never uploaded by the engine, so it showed as "not synced" for ever. GET
+    /v1/ingest/sync-status now also says the newest day the server has through any way in (`latest_day`); a type with no
+    engine sample has `latest_sample_at` null, which older apps skip."""
+    from body_engine.rawdata import sync_status
+    ids, _, today = users
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        types = {t["type"]: t for t in sync_status.collect(conn, ids["a"])["types"]}
+    q = "HKQuantityTypeIdentifier"
+    assert types[q + "BodyMass"]["latest_day"] == (today - timedelta(days=40)).isoformat()
+    assert types[q + "BodyMass"]["latest_sample_at"] is None
+    assert types[q + "StepCount"]["latest_day"] == today.isoformat()
+    assert types["HKCategoryTypeIdentifierSleepAnalysis"]["latest_day"] == (today - timedelta(days=5)).isoformat()
+    assert types["HKWorkoutTypeIdentifier"]["latest_day"] == (today - timedelta(days=3)).isoformat()
+    assert q + "HeartRateVariabilitySDNN" not in types   # nothing of it anywhere

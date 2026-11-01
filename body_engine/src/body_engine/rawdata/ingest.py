@@ -190,7 +190,7 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
     done = conn.execute("SELECT counts FROM rawdata_uploads WHERE user_id = %s AND batch_id = %s",
                         (user_id, batch["batch_id"])).fetchone()
     if done is not None:
-        return {**done["counts"], "duplicate_batch": True, **flags_now}
+        return {**done["counts"], "duplicate_batch": True, "dirty_days": None, **flags_now}   # unknown: pull as usual
     engine, uses = EN.enabled(conn, user_id), EN.uses_engine(batch)
     if uses and not engine:
         raise EN.Refused("engine_disabled")
@@ -219,11 +219,15 @@ def ingest(conn: psycopg.Connection, user_id: int, batch: dict, size: int | None
                  (user_id, batch["batch_id"], (batch.get("device") or "")[:80] or None,
                   (batch.get("app_version") or "")[:40] or None, Jsonb(counts), size, batch.get("phase"),
                   batch.get("tz") or None))
+    # the local days this batch changed (any table the native app mirrors, nativesync/): the app pulls just these;
+    # values derived later (daily values, sleep, scores) reach it through the change log and a silent push
+    from ..nativesync import store as sync_store
+    dirty_days = sync_store.days_changed_here(conn, user_id)
     conn.commit()
     if ctx["changed_from"] is not None:
         from ..sync import refresh
         refresh.queue_scores(conn, user_id, ctx["changed_from"])
-    return {**counts, **flags_now}
+    return {**counts, "dirty_days": dirty_days, **flags_now}
 
 
 def status(conn: psycopg.Connection, user_id: int, light: bool = False) -> dict:

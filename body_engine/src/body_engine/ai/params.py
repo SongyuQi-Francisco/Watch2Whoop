@@ -73,10 +73,11 @@ GROUP_BUDGET_CHARS = {"body": 12000, "training": 13000, "nutrition": 14000, "rec
 # (ai/web/mcp.py, about 400 chars; tests/test_mcp_web.py checks the group with them)
 # grocery 9200 -> 10700 (#291): save_product's nutrition goes from 7 to 14 items, there is a second table for the label's per-serving
 # column, and ingredients / allergens / allergen_traces / image_url / serving_size / serving_unit; about 1,450 chars in all.
-PAGE_BUDGET_CHARS = 38100         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
+PAGE_BUDGET_CHARS = 38300         # core + the page's groups + meta, for any page in PAGE_GROUPS; also the cap for a conversation
                                   # (36000 -> 36500 for the 5 nutrient fields of update_food_entry, #183; -> 37700 for
                                   # get_memory_review / apply_memory_changes in the memory group, #113; -> 38100 for the 14-item
-                                  # nutrition table + per-serving table + ingredients / allergens / image of save_product, #291)
+                                  # nutrition table + per-serving table + ingredients / allergens / image of save_product, #291; -> 38300
+                                  # for log_weight's context / note, the manual weigh-in)
                                   # that has been on several pages (the oldest pages' groups are dropped beyond it)
 FALLBACK_PAGE_BUDGET_CHARS = 26200  # the same cap for the fallback AI (core and pages cut to its whitelist; 25000 -> 26200 for
                                     # get_memory_review / apply_memory_changes, #113)

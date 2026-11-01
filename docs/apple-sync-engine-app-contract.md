@@ -124,7 +124,7 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
   "ow_last_sync_at": "2026-11-01T18:40:00+11:00",
   "types": [{"type": "HKQuantityTypeIdentifierHeartRate", "key": "heart_rate", "kind": "quantity",
              "status": "heart_rate", "latest_sample_at": "2026-11-01T18:58:00+11:00",
-             "received_at": "2026-11-01T19:02:11+11:00"}],
+             "received_at": "2026-11-01T19:02:11+11:00", "latest_day": "2026-11-01"}],
   "failures": {"counts_24h": {"auth": 0, "format": 0, "refused": 0, "limit": 2, "server": 0},
                "recovered": true,
                "last": {"reason": "limit", "code": "rate_limited", "status": 429, "n": 2,
@@ -140,7 +140,7 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
 | 字段 | 说明 |
 |---|---|
 | `last_upload` | 最后一次**成功**的上传（任何字段，包括 RawSync 老字段）；`null` = 从没传过 |
-| `types[]` | 引擎收到过的每个类型：服务器上最新样本的开始时间 `latest_sample_at`（统计桶类型取最新桶）、最近一次收到的时间。app 拿它和「本机 HealthKit 最新样本」比，就能分出「没采集」和「没同步」；没收到过的类型不在列表里 |
+| `types[]` | 引擎收到过的每个类型：服务器上最新样本的开始时间 `latest_sample_at`（统计桶类型取最新桶）、最近一次收到的时间。app 拿它和「本机 HealthKit 最新样本」比，就能分出「没采集」和「没同步」；`latest_day`（2026-10-31 起）：服务器经任何渠道（Apple 健康导出、Open Wearables、快捷指令、引擎）有这一类的最新一天（用户本地日期），比引擎读取范围（首次 14 天、补历史）还早的手机样本靠它判断「服务器已经有那一天」，不再算「没同步」；只有 `latest_day` 没有引擎样本的类型 `latest_sample_at` 为 `null`（老 app 会跳过）。两样都没有的类型不在列表里 |
 | `failures.counts_24h` | 近 24 小时被拒的次数，按原因：`auth`（token 吊销 / scope 不对 / 账号停用）、`format`（太大、gzip 坏、字段不合约）、`refused`（409：同意书、引擎没开、类型暂停）、`limit`（429）、`server`（500） |
 | `failures.last` | 最近一次被拒：`code`（`token_revoked`、`token_scope`、`validation`、`contract`、`bad_gzip`、`too_large`、`consent_required`、`engine_disabled`、`type_paused`、`rate_limited`、异常类名…）、`n` = 10 分钟内同一原因合并的次数 |
 | `failures.recovered` | 最后一次失败之后有没有成功上传过（面板可以只在 `false` 时标红） |
@@ -156,6 +156,17 @@ app 读 HealthKit → 按类型分页 → 列式 JSON + gzip → `POST /v1/inges
   - 从 `app` 回到 `shadow`（回退）：重新 `startBackgroundSync()`，OW 从自己的锚点补上停写期间的数据。
 - 模式在 app 内部存一份，每次 GET 后更新；不要因为一次网络失败就改模式。
 - `app` 模式下引擎每次上传，服务器会自动排队重算分数（不用再调 `POST /v1/users/{user}/sync/refresh`；调了也只是排队，不再从 OW 导入）。
+- `app` 模式下「立即重新同步」（`/v1/ingest/resync`）的服务器部分不再从 OW 导入：app 要用引擎把这段范围重发一遍（第 8 节的 `range` / `range_done`），再报 `phone_done`。服务器在 `range_done` 到达、这些天派生完之后才算分（最多等 30 分钟）。
+
+### 7.1 没有 OW 账号的账号（S5b，开关 `apple_sync_new_accounts`）
+
+开关打开后新开户不建 OW 用户，账号一开就是 `engine.mode = app`，而且以后也不会回到 `shadow`（没有 OW 可回）。服务器这边：
+
+- 激活码兑换出的设置链接 `watch2whoop://setup?…` **没有 `ow`、也没有 `code`**，只有 `today` 和 `login`；
+- `POST /v1/account/ow-invitation` 对 `app` 模式的人回 **409 `sync_engine`**（不是 `provisioning`，不要重试）；
+- 「手机同步已断开」（`GET /v1/users/me/sync/connection`）多一个 `channel`：`app` = 看的是引擎上传，今天页的「重新连接」直接打开 `watch2whoop://sync`。
+
+**打开这个开关之前 app 要做到**（1.0.8 / 1.0.9 还没有）：`engine.mode = app` 时，「已连接」看引擎（发现接口能用、有 token），不看 OW 的 `owUserId`；引导和同步页不再要求「连接同步」、不调 `ow-invitation`（或者把 409 `sync_engine` 当成「不需要」）；设置链接没有 `code` 时不提示输入邀请码；不启动 OW SDK。
 
 ## 8. 按范围重新同步
 

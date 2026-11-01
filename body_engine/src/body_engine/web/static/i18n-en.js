@@ -40,6 +40,7 @@ I18N.addEn({
   "恢复分 {v}": "Recovery {v}",
   "恢复": "Recovery",
   "无睡眠": "No sleep",
+  "手表没记录": "Not recorded",
   "无 HRV": "No HRV",
   "基线不足": "No baseline",
   "无心率": "No HR",
@@ -1594,7 +1595,6 @@ I18N.addEn({
   "{n} 个动作没对上动作库，没有计入": "{n} exercises are not in the exercise library and were not counted",
   "{n} 块肌群偏少": "{n} muscle groups are low",
   "{n} 组": "{n} sets",
-  "上周": "Last week",
   "较上周": "vs last week",
   "今天练了": "Trained today",
   "今天练过": "Trained today",
@@ -1908,4 +1908,25 @@ I18N.addEn({
   "换一句": "Next quote",
   "关闭语录": "Turn off the quote",
   "原帖": "Original post",
+  // log weight by hand (weight.js)
+  "记体重": "Log weight",
+  "测量情况": "Conditions",
+  "备注（选填）": "Note (optional)",
+  "不能记未来的日子": "Can't log a future day",
+  "早上空腹": "Morning, fasted",
+  "如厕后": "After the toilet",
+  "运动后": "After exercise",
+  "睡前": "Before bed",
+  "穿衣": "Clothed",
+  "未穿衣": "Unclothed",
+  // weekly what's new (whatsnew.js)
+  "更新记录": "What's new",
+  "本周更新": "This week's updates",
+  "上周": "Last week",
+  "{d} 起的一周": "Week of {d}",
+  // upgrade.js (R2 forced upgrade)
+  "请升级 Watch2Whoop": "Please update Watch2Whoop",
+  "去升级": "Update",
+  "这个版本已停用，请升级后继续使用。": "This version is no longer supported. Please update to continue.",
 });
+

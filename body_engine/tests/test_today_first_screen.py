@@ -3,7 +3,7 @@
 - first screen: what the page loads at start (file count and size budget), the on-demand scripts (type w2w/lazy), the English
   table only for an English page (lang-gate.js decides like i18n.js), the offline copy keeps everything inline;
 - W1: links that open a new tab are opened from code inside the app's WebView; W3: year in long chart ranges;
-  W4: a JSON 502 is not a restarting server; W5: the viewport allows zooming and no field can trigger iOS' focus zoom.
+  W4: a JSON 502 is not a restarting server; W5: the app page does not zoom (owner, 2026-11-02) and no field can trigger iOS' focus zoom.
 JS behaviour runs in node with stubs (skipped without node); the rest reads the files / the served page."""
 import json
 import re
@@ -40,7 +40,12 @@ def test_first_screen_budget():
     # 980_000 + 12_500 for the jarvis_dial layers that sit beside the old ring menu until the flag is on for everyone (#294 / #309 / #312); + 1_000 for the product card's fuller nutrition line and allergen labels (#291); + 500 for the four hooks of slim_mode in app.js (#126; slim.js and its quotes are on demand)
     # + 700 for the ui_ai_first hooks and window.BodyPage in app.js (the AI-first page itself, ui-ai-first.js, loads on demand; #279)
     # + 1,000 for the hooks of the iOS app's native views (#247 phase 2: the "today" hook, nativeHello, BodyJarvis.native); the bridge loads on demand
-    assert total <= 995_700, total
+    # + 800 for the 「记体重」 row of the Me page and its on-demand loader in app.js (weight.js loads on the first tap)
+    # + 400 for the 「记体重」 button on the weight card's explanation sheet
+    # + 200 for the sync-repair sheet opening the app's sync page for users on the own sync engine (#219 S5b)
+    # + 200 for the two R2 forced-upgrade hooks in app.js (upgrade.js itself loads on demand)
+    # + 200 for the wrist-temperature reason in app.js short() ("手表没记录", FB-18)
+    assert total <= 997_500, total
     for heavy in ("i18n-en.js", "muscle-body-data.js", "intro.js", "grocery.js", "diet-profile.js", "water.js", "ui-ai-first.js"):
         assert heavy not in names, f"{heavy} is loaded on demand, not at start"
 
@@ -48,10 +53,10 @@ def test_first_screen_budget():
 def test_lazy_scripts_are_declared_and_fingerprinted():
     html = served_page()
     lazy = re.findall(r'<script type="w2w/lazy"(?: data-lang="(\w+)")? src="([\w.-]+\.js)\?v=([0-9a-f]{12})"></script>', html)
-    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"),
+    assert [(lang, name) for lang, name, _ in lazy] == [("en", "i18n-en.js"), ("", "grocery.js"), ("", "diet-profile.js"), ("", "water.js"), ("", "weight.js"), ("", "whatsnew.js"),
                                                         ("", "muscle-body-data.js"), ("", "intro.js"), ("", "sync-status.js"), ("", "slim.js"),
                                                         ("", "slim-quotes.js"),
-                                                        ("", "ui-ai-first.js"), ("", "native-bridge.js")]
+                                                        ("", "ui-ai-first.js"), ("", "native-bridge.js"), ("", "upgrade.js")]
     assert re.search(r'<script data-w2w="gate" src="lang-gate\.js\?v=[0-9a-f]{12}"></script>', html)
     # the gate comes after i18n.js (the table adds itself to it) and before the scripts that call tr() when they run
     assert html.index('src="i18n.js?') < html.index('src="i18n-en.js?') < html.index('src="lang-gate.js?') < html.index('src="ios-web.js?')
@@ -60,7 +65,7 @@ def test_lazy_scripts_are_declared_and_fingerprinted():
         r = TestClient(root_api.app, base_url="https://testserver").get(f"/app/{name}?v={v}")
         assert r.status_code == 200 and "immutable" in r.headers["cache-control"]
     # an older page that still has the tags keeps working: nothing else in the page names these files as plain scripts
-    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|sync-status|slim|slim-quotes|ui-ai-first|native-bridge)\.js', INDEX)
+    assert not re.search(r'<script src="(?:i18n-en|muscle-body-data|intro|grocery|diet-profile|water|weight|whatsnew|sync-status|slim|slim-quotes|ui-ai-first|native-bridge|upgrade)\.js', INDEX)
 
 
 def test_offline_copy_has_the_lazy_scripts_inline_and_no_gate():
@@ -262,11 +267,13 @@ def test_long_chart_ranges_show_the_year():
 
 
 # ---------------------------------------------------------------- W5 zoom
-def test_viewport_allows_zoom_and_fields_do_not_trigger_focus_zoom():
-    """W5: no maximum-scale / user-scalable=no (WCAG 1.4.4) and no script that cancels pinch gestures. iOS zooms into a field on focus
-    only when its font is smaller than 16px: every input / select / textarea is at least 16px."""
+def test_viewport_blocks_zoom_and_fields_do_not_trigger_focus_zoom():
+    """W5, changed by the owner on 2026-11-02: the Today page inside the 1.0.8 app (WKWebView, which honours the viewport's
+    limits) must not pinch- or double-tap-zoom, so the viewport has maximum-scale=1 and user-scalable=no (the native 2.0.0
+    app has no WebView). Text size comes from the page, not from zooming. iOS also zooms into a field on focus when its font
+    is smaller than 16px: every input / select / textarea stays at least 16px. The other pages keep zooming."""
     viewport = re.search(r'<meta name="viewport" content="([^"]+)"', INDEX).group(1)
-    assert "maximum-scale" not in viewport and "user-scalable" not in viewport and "initial-scale=1" in viewport
+    assert "initial-scale=1" in viewport and "maximum-scale=1" in viewport and "user-scalable=no" in viewport
     assert "gesturestart" not in APP and "noPinch" not in APP
     css = "".join((STATIC / n).read_text(encoding="utf-8") for n in ("app.css", "ai.css", "grocery.css", "diet-profile.css", "jarvis-entry.css"))
     assert re.search(r"input, select, textarea \{ font-size: max\(16px, 1em\); \}", css)

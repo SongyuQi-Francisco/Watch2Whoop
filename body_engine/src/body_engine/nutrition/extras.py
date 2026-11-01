@@ -169,7 +169,7 @@ def backfill_from_notes(conn: psycopg.Connection, user_id: int, start: date, end
     """Parse sugar / fiber grams out of the notes of entries in [start, end] into food_entry_extras (source
     notes_parse). Only fills what neither SparkyFitness nor log_food knows. Idempotent; apply=False = dry run."""
     from .. import sparky_client
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     rows = sparky_client.food_entries(client, start, end)
     have = load(conn, user_id, start, end)
     found = []

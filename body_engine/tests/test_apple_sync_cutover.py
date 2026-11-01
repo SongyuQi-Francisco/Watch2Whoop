@@ -31,7 +31,7 @@ from body_engine.db import migrate
 from body_engine.importers import ow
 from body_engine.insights import stress
 from body_engine.rawdata import cutover as CO, derive as DV, engine as EN, ow_archive as OA, params as RP
-from body_engine.rawdata import shadow as SH
+from body_engine.rawdata import readiness as RD, shadow as SH
 from body_engine.rollout import flags
 from body_engine.scores import engine as scores_engine, inputs as SI
 from body_engine.web import views
@@ -94,6 +94,30 @@ def test_judge_sleep_and_workouts():
 
 def test_version_compare():
     assert CO._version("1.0.10") > CO._version("1.0.8") > CO._version("1.0.7+42") > CO._version(None)
+
+
+def _assessed(**kw):
+    a = {"mode": "shadow", "engine": True, "consent": False, "pin": None, "engine_only": False,
+         "app_version": {"ok": True, "app_version": "1.0.9", "min": "1.0.8"},
+         "shadow": {"blockers": [], "clean_streak": 7, "coverage": 1.0}, "scores": {"ok": True}}
+    return {**a, **kw}
+
+
+def test_readiness_missing_is_what_the_gates_check():
+    """#219 S5b: what blocks a switch, in the order to fix it (pure)."""
+    m = RD.missing
+    assert m(_assessed()) == []
+    assert m(_assessed(mode="app", consent=True)) == [] and m(_assessed(engine=False)) == []
+    old = {"ok": False, "app_version": "1.0.7", "min": "1.0.8"}
+    assert m(_assessed(app_version=old, shadow={"blockers": ["streak", "coverage"]}, scores={"ok": False})) \
+        == ["app_version", "streak", "coverage", "scores"]
+    assert m(_assessed(app_version={"ok": False, "app_version": None, "min": "1.0.8"}, shadow=None, consent=True,
+                       pin="ow")) == ["consent", "pinned", "no_engine_upload", "no_shadow"]
+    assert m(_assessed(scores={"ok": False, "recovery": {"lost": 2}})) == ["score_missing"]
+    assert m(_assessed(scores={"ok": None})) == []                  # no score items yet: the gate recomputes anyway
+    # an engine-only account (no OW link): only the app version, as cutover.gates
+    assert m(_assessed(engine_only=True, shadow=None, scores={"ok": False}, app_version=old)) == ["app_version"]
+    assert m(_assessed(engine_only=True, shadow=None)) == []
 
 
 # ---------------------------------------------------------------- database
@@ -404,3 +428,26 @@ def test_large_batch_within_two_seconds(world):
     # the same batch again (a lost answer on a weak network): answered from the log, nothing stored twice
     r2 = c.post("/v1/ingest/healthkit", content=raw, headers=hdr)
     assert r2.status_code == 200 and r2.json()["duplicate_batch"] is True
+
+
+def test_readiness_report(world, dsn):
+    """#219 S5b `sync-mode readiness`: S (clean comparison, app 1.0.8) can be switched, M (an injected difference) not
+    yet, V (the 1.0.7 app) not; the switches on top; nothing written but the declared flag rows."""
+    ids = world["ids"]
+    with conn_of(dsn) as conn:
+        SH.compare_user(conn, ids["S"], D1, D2, world["fake"], with_scores=True, now=NOW)
+        rep = RD.report(conn, [ids["S"], ids["M"], ids["V"]])
+        assert set(RD.users(conn)) >= {ids["S"], ids["M"], ids["V"], ids["X"]}   # OW link or engine data
+    by = {a["user_id"]: a for a in rep["users"]}
+    s, m, v = by[ids["S"]], by[ids["M"]], by[ids["V"]]
+    assert (s["status"], s["missing"]) == ("ready", []), s
+    assert s["scores"]["ok"] is True and s["scores"]["days"] == 2 and s["shadow"]["clean_streak"] == 2
+    assert m["status"] == "blocked" and "streak" in m["missing"]
+    assert v["status"] == "blocked" and v["missing"][0] == "app_version" and v["app_version"]["app_version"] == "1.0.7"
+    assert rep["counts"]["ready"] == 1 and rep["counts"]["blocked"] == 2
+    sw = rep["switches"]
+    assert sw["engine"]["state"] == "cohort" and sw["primary"]["cohort"] == CO.PRIMARY_COHORT
+    assert sw["new_accounts"] == {"on": False, "flag": "off", "engine": "cohort", "reason": "flag_off"}
+    text = RD.markdown(rep)
+    assert "可以切换" in text and "app 1.0.7 < 1.0.8" in text and "连续一致 1/2 天" in text
+    assert EN.NEW_ACCOUNTS_FLAG in text and "| user | 名字 |" in text

@@ -25,6 +25,7 @@ from psycopg_pool import ConnectionPool
 from body_engine import api, auth
 from body_engine.config import Settings
 from body_engine.db import migrate
+from body_engine.friends.params import RULES_VERSION
 from body_engine.rollout import flags, registry
 
 CJK = re.compile(r"[　-〿一-鿿＀-￯]")
@@ -109,6 +110,8 @@ def world(dsn):
                                         VALUES (%s, %s, 'm', 178, 'Australia/Sydney', now(), '2026-10-22.2') RETURNING id""",
                                      (name, born)).fetchone()["id"]
             tok[name] = auth.create_token(conn, ids[name], "web", ["read", "write"])
+            # the circle community rules (flag circle_rules, on above) accepted, so circles can be made below
+            conn.execute("INSERT INTO circle_rules_acceptances (user_id, version) VALUES (%s, %s)", (ids[name], RULES_VERSION))
         for name in ("A", "B"):
             for k in range(10):
                 conn.execute("""INSERT INTO daily_scores (user_id, date, recovery, sleep_score, sleep_actual_min, strain, ctl, atl, tsb,

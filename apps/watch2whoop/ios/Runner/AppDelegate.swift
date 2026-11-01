@@ -30,6 +30,10 @@ import HealthKit
     // background upload session recreated so uploads that finished while the app was not running are delivered
     Backfill.register()
     Backfill.shared.attach()
+    // The app's own sync engine (#219 A2): its BGTasks before launch finishes, its HealthKit observers on every launch
+    // (also the background launches HealthKit makes for them); nothing runs unless the server turned it on
+    SyncEngineChannel.attach()
+    SyncEngine.register()
     // Push notifications (#175): set before launch finishes so a tap that cold-starts the app reaches didReceive
     UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
@@ -51,9 +55,8 @@ import HealthKit
       case "deviceState": result(DeviceState.shared.snapshot())
       default:
         // raw*: beat-to-beat HRV series and ECG read for Body Engine (RawSync.swift)
-        // engine*: the app's own sync engine reader (SyncEngine.swift, #219 A1)
-        if !RawSync.shared.handle(call, result) && !SyncEngine.shared.handle(call, result)
-          && !Backfill.shared.handle(call, result) {
+        // engine* / backfill*: the app's own sync engine and history backfill (SyncEngineChannel.swift, #219)
+        if !RawSync.shared.handle(call, result) && !SyncEngineChannel.handle(call, result) {
           result(FlutterMethodNotImplemented)
         }
       }
@@ -78,6 +81,9 @@ import HealthKit
     debug.setMethodCallHandler { call, result in
       if call.method == "seedHealthData", #available(iOS 16.0, *) {
         DebugHealthSeeder.seed { result($0) }
+      } else if call.method == "deleteTestSample", #available(iOS 16.0, *) {
+        // the newest test heart rate sample: the engine's next round must send its UUID in deleted[]
+        DebugHealthSeeder.deleteNewest { result($0) }
       } else if call.method == "runBackfillTask" {
         // the BGProcessingTask's body (BGTaskScheduler does not run tasks in the simulator)
         Backfill.shared.runSlices(expired: { false }) { ok in DispatchQueue.main.async { result(ok) } }
@@ -423,6 +429,22 @@ enum DebugHealthSeeder {
         }
       }
     }
+  }
+
+  /// Deletes the newest heart rate sample this seeder wrote (metadata W2WTestData = 1).
+  static func deleteNewest(_ done: @escaping (String) -> Void) {
+    // only this app's own samples can be deleted by it (another build on the simulator is another source)
+    let pred = NSCompoundPredicate(andPredicateWithSubpredicates: [
+      HKQuery.predicateForObjects(withMetadataKey: "W2WTestData"), HKQuery.predicateForObjects(from: HKSource.default()),
+    ])
+    let q = HKSampleQuery(sampleType: HKQuantityType(.heartRate), predicate: pred, limit: 1,
+                          sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, list, _ in
+      guard let s = list?.first else { DispatchQueue.main.async { done("nothing to delete") }; return }
+      store.delete(s) { ok, error in
+        DispatchQueue.main.async { done(ok ? "deleted \(s.uuid.uuidString.lowercased())" : "delete failed: \(error?.localizedDescription ?? "-")") }
+      }
+    }
+    store.execute(q)
   }
 
   /// The quantity types RawSync reads itself (lib/src/hk_types.dart), each with a plausible value in its registry unit.

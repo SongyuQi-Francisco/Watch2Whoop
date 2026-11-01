@@ -9,6 +9,7 @@ Users: F (member, consented, uses the fallback), G (member, consented), O (owner
 import argparse
 import os
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import psycopg
 import pytest
@@ -329,7 +330,10 @@ def test_periodic_rules(dsn, world):
         assert card["source"] == "periodic" and card["granted_by"] == "rule:monthly-active" and card["grant_key"].startswith("rule:monthly-active:")
         assert qc.run_periodic(c, dry_run=True)["would_grant"] == []
         # next month the same rule grants again
-        nxt = datetime.now(timezone.utc).replace(day=1) + timedelta(days=40)
+        # the next month in the user's own zone (the period key is local): around a month boundary UTC and local differ
+        tz = ZoneInfo(c.execute("SELECT timezone FROM users WHERE id = %s", (ids["F"],)).fetchone()["timezone"] or "UTC")
+        local = datetime.now(tz)
+        nxt = (local.replace(day=28) + timedelta(days=5)).replace(day=2, hour=12)   # day 2 of next month, local noon
         assert [g["user_id"] for g in qc.run_periodic(c, now=nxt)["granted"]] == [ids["F"]]
         assert qc.set_rule_enabled(c, "monthly-active", False, "test")
         assert qc.run_periodic(c, now=nxt + timedelta(days=40))["granted"] == []

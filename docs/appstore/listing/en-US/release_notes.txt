@@ -1,0 +1,8 @@
+2.0.0
+- A new native interface: faster to open, and you can view and log offline
+- Recovery, sleep, strain, stress, body age and other scores are calculated on your iPhone
+- Training, trends, weekly and monthly reports are also calculated on the phone and work without a connection
+- New bedtime goal: compare your last 7 nights with your target
+- Sync center: one-tap sync, with a one-sentence reason when something is stuck
+- Jarvis: chat, voice, photos and quick logging
+- Circles: workout feed, likes, comments and a leaderboard

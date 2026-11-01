@@ -18,6 +18,7 @@ STATIC = Path(__file__).resolve().parents[1] / "src" / "body_engine" / "web" / "
 # endpoint (user segment and ${…} parts normalised to {x}, query dropped) -> fallback read tool(s)
 READ = {
     "today": ["get_briefing"],
+    "weight/recent": ["get_weight"],
     "days": ["get_scores"],
     "trends": ["get_scores", "get_daily_metrics", "get_sleep_details", "get_stress", "get_healthspan", "get_vo2max"],
     "vo2max": ["get_vo2max"],
@@ -87,7 +88,7 @@ NO_DATA = {
     "meal-logs/{x}": "write: undo a quick meal",
     "meal-templates/{x}/log": "write: log a quick meal",
     "recipes/{x}/log": "write: log a recipe",
-    "nutrition/entries/{x}": "write: delete a food entry (undo_sparky_entry)",
+    "nutrition/entries/{x}": "write: change the portion of / delete a food entry (update_food_entry / undo_sparky_entry)",
     "reminders/{x}": "write: dismiss a reminder",
     "supplements/{x}": "write: edit a supplement",
     "memory/observations/{x}": "write: delete an observation",

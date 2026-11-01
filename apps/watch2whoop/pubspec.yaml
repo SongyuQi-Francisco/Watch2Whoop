@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # <marketing version>+<build number>. The public name (tag, release, CHANGELOG) is the marketing version only (1.0.6);
 # the build number after "+" is what the stores need and goes up with every upload (docs/apps.md, section 4).
-version: 1.0.8+8
+version: 1.0.9+9
 
 environment:
   sdk: ^3.13.5

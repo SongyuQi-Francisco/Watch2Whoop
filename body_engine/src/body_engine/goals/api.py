@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..records.api import _bad_request, _owner, _self, current_user, get_conn
+from ..rules.context import goal_data
 from . import params as P
 from . import nutrition as store_nutrition, store
 
@@ -26,17 +27,33 @@ class SleepGoalIn(BaseModel):
     status: Literal["active", "paused"] | None = None
 
 
+def _with_settings(conn, owner: int, view: dict) -> dict:
+    """The view plus `settings`: the stored goal row as plain data (rules/context.GOAL_FIELDS, null without a goal), so
+    the app can cache it and compute the same view on the phone (JS OBS.sleepGoal, docs/ios-native-2.0.md M4)."""
+    return {**view, "settings": goal_data(store.get_goal(conn, owner))}
+
+
 @router.get("/sleep")
 def get_sleep_goal(user: str, night: Annotated[date | None, Query(description="哪一晚（入睡前的傍晚日期），默认今晚")] = None,
                    conn=Depends(get_conn), viewer=Depends(current_user)):
     """Bedtime goal, the step-by-step plan, tonight's target and the progress over the last 7 nights. When no goal is set, target_bedtime is null (progress is still given)."""
-    return store.view(conn, _owner(conn, viewer, user, "sleep"), night)
+    owner = _owner(conn, viewer, user, "sleep")
+    return _with_settings(conn, owner, store.view(conn, owner, night))
 
 
 @router.put("/sleep")
 def put_sleep_goal(user: str, body: SleepGoalIn, conn=Depends(get_conn), viewer=Depends(current_user)):
     """Set / change the goal: each time the stepping restarts from the average bedtime of the last 7 nights (pace and duration not given fall back to the old goal or defaults)."""
-    return _bad_request(store.set_goal, conn, _self(viewer, user), **body.model_dump())
+    owner = _self(viewer, user)
+    return _with_settings(conn, owner, _bad_request(store.set_goal, conn, owner, **body.model_dump()))
+
+
+@router.delete("/sleep")
+def delete_sleep_goal(user: str, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """Clear the goal (only for oneself); the answer is the view without a goal. Clearing twice is fine."""
+    owner = _self(viewer, user)
+    store.clear_goal(conn, owner)
+    return _with_settings(conn, owner, store.view(conn, owner))
 
 
 # ---------------------------------------------------------------- nutrition goals (goals/nutrition.py, scope nutrition)

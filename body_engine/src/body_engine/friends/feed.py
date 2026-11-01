@@ -23,7 +23,7 @@ from datetime import date, timedelta
 
 import psycopg
 
-from .. import auth
+from .. import auth, wordfilter
 from ..avatars import urls as avatar_store
 from ..i18n import L
 from ..training import catalog, custom, loads, params as TP
@@ -31,7 +31,7 @@ from ..training.history import display_name
 from ..web import views
 from ..notify import notify
 from ..rules import params as RP
-from . import cards, params as P, prefs, remarks, store
+from . import blocks, cards, params as P, prefs, remarks, rules, store
 from .store import FriendsError
 
 LIKE, COMMENT = "circle.like", "circle.comment"   # notification kinds (category circle in notify/params.py)
@@ -57,7 +57,32 @@ _IN_CIRCLE = """(%(c)s::int IS NULL OR {w} = {v} OR EXISTS (SELECT 1 FROM circle
 
 
 def _shown(w: str, v: str) -> str:
-    return _SEEN_BY.format(w=w, v=v) + " AND " + _IN_CIRCLE.format(w=w, v=v)
+    # ... and never between two people when either blocked the other (friends/blocks.py)
+    return _SEEN_BY.format(w=w, v=v) + " AND " + _IN_CIRCLE.format(w=w, v=v) + " AND " + blocks.not_blocked(v, w)
+
+
+def _comment_ok(v: str) -> str:
+    """A comment `c` not hidden from `v` by a report or by moderation (friends/blocks.py)."""
+    return blocks.item_shown("comment", "c.id", "c.user_id", v)
+
+
+def _post_ok(v: str, p: str = "p") -> str:
+    return blocks.item_shown("post", f"{p}.id", f"{p}.user_id", v)
+
+
+def comment_visible(conn: psycopg.Connection, viewer_id: int, comment_id: int) -> bool:
+    """The viewer is shown this comment right now (its post, its writer, no block, no report / moderation hiding it)."""
+    c = conn.execute("SELECT post_id FROM circle_feed_comments WHERE id = %s AND deleted_at IS NULL", (comment_id,)).fetchone()
+    if c is None:
+        return False
+    try:
+        _post_for(conn, viewer_id, c["post_id"])
+    except FriendsError:
+        return False
+    return conn.execute(
+        f"""SELECT 1 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
+            WHERE c.id = %(c)s AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')} AND {blocks.not_blocked('%(v)s', 'c.user_id')}
+              AND {_comment_ok('%(v)s')}""", {"c": comment_id, "v": viewer_id}).fetchone() is not None
 
 
 # ---------------------------------------------------------------- who sees what
@@ -76,8 +101,9 @@ def visible_authors(conn: psycopg.Connection, viewer_id: int, skip: list[int] = 
         """SELECT DISTINCT b.user_id FROM circle_members a JOIN circle_members b ON b.circle_id = a.circle_id
            WHERE a.user_id = %s AND %s = ANY(b.scopes) AND (b.user_id = a.user_id OR NOT (a.circle_id = ANY(%s)))""",
         (viewer_id, P.FEED_SCOPE, list(skip))).fetchall()
+    hidden = blocks.hidden_people(conn, viewer_id)
     return sorted(r["user_id"] for r in rows if r["user_id"] == viewer_id
-                  or auth.can_view(conn, viewer_id, r["user_id"], P.FEED_SCOPE))
+                  or (r["user_id"] not in hidden and auth.can_view(conn, viewer_id, r["user_id"], P.FEED_SCOPE)))
 
 
 def _circles_between(conn, viewer_id: int, author_id: int) -> list[dict]:
@@ -95,8 +121,9 @@ def _circle_fields(refs: list[dict]) -> dict:
 
 def _post_for(conn, viewer_id: int, post_id: int) -> dict:
     """A post the viewer may see; otherwise 404 (not telling whether it exists)."""
-    p = conn.execute("SELECT * FROM circle_feed_posts WHERE id = %s", (post_id,)).fetchone()
-    if p is None or not may_see(conn, viewer_id, p["user_id"]):
+    p = conn.execute(f"SELECT * FROM circle_feed_posts p WHERE p.id = %(p)s AND {_post_ok('%(v)s')}",
+                     {"p": post_id, "v": viewer_id}).fetchone()
+    if p is None or not may_see(conn, viewer_id, p["user_id"]) or blocks.pair_blocked(conn, viewer_id, p["user_id"]):
         raise FriendsError(404, L("没有这条动态", "No such post"))
     return p
 
@@ -280,7 +307,7 @@ def _counts(conn, viewer_id: int, ids: list[int], circle_id: int | None = None) 
         {"v": viewer_id, "ids": ids, "c": circle_id})}
     comments = {r["post_id"]: r["n"] for r in conn.execute(
         f"""SELECT c.post_id, count(*) AS n FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
-            WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}
+            WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')} AND {_comment_ok('%(v)s')}
             GROUP BY c.post_id""", {"v": viewer_id, "ids": ids, "c": circle_id})}
     return likes, comments
 
@@ -292,10 +319,12 @@ def _previews(conn, viewer_id: int, ids: list[int], circle_id: int | None = None
             f"""SELECT * FROM (SELECT c.post_id, c.id, c.user_id, c.body, u.display_name,
                        row_number() OVER (PARTITION BY c.post_id ORDER BY c.id DESC) AS rn
                 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-                WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}) t
+                WHERE c.post_id = ANY(%(ids)s) AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}
+                  AND {_comment_ok('%(v)s')}) t
                 WHERE rn <= %(n)s ORDER BY post_id, id""", {"ids": ids, "v": viewer_id, "n": P.COMMENT_PREVIEW, "c": circle_id}).fetchall()
     avatars = avatar_store.urls_for(conn, viewer_id, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, viewer_id, [r["user_id"] for r in rows])
+    blocks.mask_rows(conn, viewer_id, rows, "user_id")
     for r in rows:
         out.setdefault(r["post_id"], []).append({"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"],
                                                                          "avatar": avatars.get(r["user_id"]),
@@ -321,15 +350,19 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
         for a in authors:
             ensure_recent(conn, a, author=who[a])
     cur = _cursor(before)
-    users = {r["id"]: r["display_name"] for r in conn.execute("SELECT id, display_name FROM users WHERE id = ANY(%s)", (authors,))}
+    named = conn.execute("SELECT id, display_name FROM users WHERE id = ANY(%s)", (authors,)).fetchall()
+    blocks.mask_rows(conn, viewer_id, named)   # a profile hidden by moderation (friends/blocks.py)
+    users = {r["id"]: r["display_name"] for r in named}
     avatars = avatar_store.urls_for(conn, viewer_id, authors)
     nick = remarks.for_viewer(conn, viewer_id, authors)
     out: list[dict] = []
     exhausted = False
     while len(out) < limit and not exhausted:
         rows = conn.execute(
-            """SELECT * FROM circle_feed_posts WHERE user_id = ANY(%s) AND (%s::date IS NULL OR (date, id) < (%s::date, %s::bigint))
-               ORDER BY date DESC, id DESC LIMIT %s""", (authors, *(cur[0] if cur else None,) * 2, cur[1] if cur else None, limit * 2)).fetchall()
+            f"""SELECT * FROM circle_feed_posts p WHERE p.user_id = ANY(%(a)s)
+                  AND (%(d)s::date IS NULL OR (p.date, p.id) < (%(d)s::date, %(i)s::bigint)) AND {_post_ok('%(v)s')}
+               ORDER BY p.date DESC, p.id DESC LIMIT %(n)s""",
+            {"a": authors, "d": cur[0] if cur else None, "i": cur[1] if cur else None, "v": viewer_id, "n": limit * 2}).fetchall()
         exhausted = len(rows) < limit * 2
         likes, comments = _counts(conn, viewer_id, [r["id"] for r in rows], cid)
         previews = _previews(conn, viewer_id, [r["id"] for r in rows], cid)
@@ -347,7 +380,8 @@ def feed(conn: psycopg.Connection, viewer_id: int, before: str | None = None, li
             if len(out) == limit:
                 break
     more = len(out) == limit and cur is not None and conn.execute(
-        "SELECT 1 FROM circle_feed_posts WHERE user_id = ANY(%s) AND (date, id) < (%s, %s) LIMIT 1", (authors, *cur)).fetchone()
+        f"""SELECT 1 FROM circle_feed_posts p WHERE p.user_id = ANY(%(a)s) AND (p.date, p.id) < (%(d)s, %(i)s)
+            AND {_post_ok('%(v)s')} LIMIT 1""", {"a": authors, "d": cur[0], "i": cur[1], "v": viewer_id}).fetchone()
     return {"posts": out, "next": f"{cur[0].isoformat()}:{cur[1]}" if more else None, "has_circles": True,
             "preview_exercises": P.FEED_PREVIEW_EXERCISES, "comment_preview": P.COMMENT_PREVIEW, "comment_max": P.COMMENT_MAX}
 
@@ -368,6 +402,8 @@ def _has_circles(conn, uid: int) -> bool:
 
 # ---------------------------------------------------------------- ❤️
 def like(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -> dict:
+    from . import moderation
+    moderation.require_allowed(conn, uid)
     p = _post_for(conn, uid, post_id)
     new = conn.execute(
         """INSERT INTO circle_feed_likes (post_id, user_id) VALUES (%s, %s) ON CONFLICT (post_id, user_id)
@@ -405,10 +441,11 @@ def comments(conn: psycopg.Connection, uid: int, post_id: int, circle_id=None) -
     rows = conn.execute(
         f"""SELECT c.id, c.user_id, c.body, c.created_at, u.display_name FROM circle_feed_comments c
             JOIN circle_feed_posts p ON p.id = c.post_id JOIN users u ON u.id = c.user_id
-            WHERE c.post_id = %(p)s AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')}
+            WHERE c.post_id = %(p)s AND c.deleted_at IS NULL AND {_shown('c.user_id', '%(v)s')} AND {_comment_ok('%(v)s')}
             ORDER BY c.id DESC LIMIT %(n)s""", {"p": post_id, "v": uid, "n": P.COMMENTS_SHOWN, "c": one and one["id"]}).fetchall()
     avatars = avatar_store.urls_for(conn, uid, [r["user_id"] for r in rows])
     nick = remarks.for_viewer(conn, uid, [r["user_id"] for r in rows])
+    blocks.mask_rows(conn, uid, rows, "user_id")
     return [{"id": r["id"], "user": {"id": r["user_id"], "name": r["display_name"], "self": r["user_id"] == uid,
                                      "avatar": avatars.get(r["user_id"]), "remark": nick.get(r["user_id"])},
              "body": r["body"], "created_at": r["created_at"]} for r in reversed(rows)]
@@ -421,11 +458,16 @@ def clean_comment(text: str) -> str:
         raise FriendsError(400, L("评论不能是空的", "A comment can't be empty"))
     if len(text) > P.COMMENT_MAX:
         raise FriendsError(400, L(f"评论最多 {P.COMMENT_MAX} 个字", f"A comment is at most {P.COMMENT_MAX} characters"))
+    if wordfilter.find(text) is not None:   # App Store 1.2: the configured word list (wordfilter.py)
+        raise FriendsError(wordfilter.STATUS, str(wordfilter.Blocked()))
     return text
 
 
 def add_comment(conn: psycopg.Connection, uid: int, post_id: int, text: str) -> dict:
+    from . import moderation
+    moderation.require_allowed(conn, uid)
     p = _post_for(conn, uid, post_id)
+    rules.require(conn, uid)   # the community rules (flag circle_rules) before the first comment
     text = clean_comment(text)
     recent = conn.execute("SELECT count(*) AS n FROM circle_feed_comments WHERE user_id = %s AND created_at > now() - interval '1 hour'",
                           (uid,)).fetchone()["n"]
@@ -449,19 +491,19 @@ def delete_comment(conn: psycopg.Connection, uid: int, comment_id: int) -> None:
 
 
 def report_comment(conn: psycopg.Connection, uid: int, comment_id: int, reason: str | None = None) -> dict:
-    c = conn.execute("SELECT * FROM circle_feed_comments WHERE id = %s AND deleted_at IS NULL", (comment_id,)).fetchone()
-    if c is None:
-        raise FriendsError(404, L("没有这条评论", "No such comment"))
-    _post_for(conn, uid, c["post_id"])
-    if conn.execute(f"""SELECT 1 FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
-                        WHERE c.id = %(c)s AND {_SEEN_BY.format(w='c.user_id', v='%(v)s')}""",
-                    {"c": comment_id, "v": uid}).fetchone() is None:   # a comment this person is not shown
-        raise FriendsError(404, L("没有这条评论", "No such comment"))
-    if c["user_id"] == uid:
+    """The older comment-only report endpoint, now friends/moderation.report (a reason that is not one of
+    params.REPORT_REASONS is kept as the note, with reason `other`). Reporting it again changes nothing."""
+    from . import moderation
+    c = conn.execute("SELECT user_id FROM circle_feed_comments WHERE id = %s AND deleted_at IS NULL", (comment_id,)).fetchone()
+    if c is not None and c["user_id"] == uid:
         raise FriendsError(400, L("不能举报自己的评论（可以直接删除）", "You can't report your own comment (delete it instead)"))
-    reason = (reason or "").strip()[:P.REPORT_REASON_MAX] or None
-    conn.execute("INSERT INTO circle_feed_reports (comment_id, reporter_id, reason) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
-                 (comment_id, uid, reason))
+    if c is not None and conn.execute(
+            """SELECT 1 FROM circle_reports r JOIN circle_moderation m ON m.id = r.item_id
+               WHERE m.kind = 'comment' AND m.target_id = %s AND r.user_id = %s""", (comment_id, uid)).fetchone():
+        return {"reported": True}   # already reported (and so already hidden for this person)
+    text = (reason or "").strip()[:P.REPORT_REASON_MAX] or None
+    known = text if text in P.REPORT_REASONS else None
+    moderation.report(conn, uid, "comment", comment_id, known, None if known else text)
     return {"reported": True}
 
 
@@ -480,10 +522,11 @@ def unread(conn: psycopg.Connection, uid: int) -> int:
     n = conn.execute(
         f"""SELECT (SELECT count(*) FROM circle_feed_likes l JOIN circle_feed_posts p ON p.id = l.post_id
                     WHERE p.user_id = %(u)s AND l.user_id <> %(u)s AND l.active AND l.created_at > %(t)s AND {_SEEN_BY.format(w='l.user_id', v='%(u)s')}
-                      AND {_LOUD.format(w='l.user_id')})
+                      AND {_LOUD.format(w='l.user_id')} AND {blocks.not_blocked('%(u)s', 'l.user_id')})
                  + (SELECT count(*) FROM circle_feed_comments c JOIN circle_feed_posts p ON p.id = c.post_id
                     WHERE p.user_id = %(u)s AND c.user_id <> %(u)s AND c.deleted_at IS NULL AND c.created_at > %(t)s
-                      AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')} AND {_LOUD.format(w='c.user_id')}) AS n""",
+                      AND {_SEEN_BY.format(w='c.user_id', v='%(u)s')} AND {_LOUD.format(w='c.user_id')}
+                      AND {blocks.not_blocked('%(u)s', 'c.user_id')} AND {_comment_ok('%(u)s')}) AS n""",
         {"u": uid, "t": seen, "hide": prefs.hidden(conn, uid, feed=True)}).fetchone()["n"]
     return int(n)
 

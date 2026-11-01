@@ -145,7 +145,7 @@ def model_from_ctx(ctx: Ctx, day: date) -> WeekModel:
 def sparky_ctx(conn: psycopg.Connection, user_id: int, day: date,
                client: sparky_client.SparkyClient | None = None) -> Ctx:
     """SparkyFitness exercise library, templates and weekly plan, exercise_meta and day changes (raises SparkyError)."""
-    client = client or sparky_client.client_for_user(conn, user_id)
+    client = client or sparky_client.reader_for_user(conn, user_id)
     ctx = Ctx(user_id=user_id, day=day)
     ctx.exercises = {e["id"]: e for e in sparky_client.exercises(client)}
     ctx.presets = sparky_client.workout_presets(client)
@@ -164,7 +164,7 @@ def build_model(conn: psycopg.Connection, user_id: int, day: date,
         return model_from_plan_row(conn, user_id, plan_row)
     if client is None:
         try:
-            client = sparky_client.client_for_user(conn, user_id)
+            client = sparky_client.reader_for_user(conn, user_id)
         except sparky_client.SparkyError:   # SparkyFitness not connected: no weekly plan (rest / free activities still work)
             return WeekModel(None, None, {})
     try:

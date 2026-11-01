@@ -16,6 +16,7 @@
 		7A3C9E122F1B4A0100D0A001 /* RawSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E112F1B4A0100D0A001 /* RawSync.swift */; };
 		7A3C9E152F1B4A0100D0A001 /* VoiceInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */; };
 		7A3C9E182F1B4A0100D0A001 /* SyncEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */; };
+		7A3C9E1C2F1B4A0100D0A001 /* SyncEngineChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E1B2F1B4A0100D0A001 /* SyncEngineChannel.swift */; };
 		7A3C9E1A2F1B4A0100D0A001 /* Backfill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E192F1B4A0100D0A001 /* Backfill.swift */; };
 		7A3C9E2B2F1B4A0100D0A001 /* NativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */; };
 		7A3C9E2D2F1B4A0100D0A001 /* NativeJarvis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */; };
@@ -66,6 +67,7 @@
 		7A3C9E112F1B4A0100D0A001 /* RawSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RawSync.swift; sourceTree = "<group>"; };
 		7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceInput.swift; sourceTree = "<group>"; };
 		7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngine.swift; sourceTree = "<group>"; };
+		7A3C9E1B2F1B4A0100D0A001 /* SyncEngineChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncEngineChannel.swift; sourceTree = "<group>"; };
 		7A3C9E192F1B4A0100D0A001 /* Backfill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Backfill.swift; sourceTree = "<group>"; };
 		7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeUI.swift; sourceTree = "<group>"; };
 		7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeJarvis.swift; sourceTree = "<group>"; };
@@ -188,6 +190,7 @@
 				7A3C9E112F1B4A0100D0A001 /* RawSync.swift */,
 				7A3C9E142F1B4A0100D0A001 /* VoiceInput.swift */,
 				7A3C9E172F1B4A0100D0A001 /* SyncEngine.swift */,
+				7A3C9E1B2F1B4A0100D0A001 /* SyncEngineChannel.swift */,
 				7A3C9E192F1B4A0100D0A001 /* Backfill.swift */,
 				7A3C9E2A2F1B4A0100D0A001 /* NativeUI.swift */,
 				7A3C9E2C2F1B4A0100D0A001 /* NativeJarvis.swift */,
@@ -423,6 +426,7 @@
 				7A3C9E122F1B4A0100D0A001 /* RawSync.swift in Sources */,
 				7A3C9E152F1B4A0100D0A001 /* VoiceInput.swift in Sources */,
 				7A3C9E182F1B4A0100D0A001 /* SyncEngine.swift in Sources */,
+				7A3C9E1C2F1B4A0100D0A001 /* SyncEngineChannel.swift in Sources */,
 				7A3C9E1A2F1B4A0100D0A001 /* Backfill.swift in Sources */,
 				7A3C9E2B2F1B4A0100D0A001 /* NativeUI.swift in Sources */,
 				7A3C9E2D2F1B4A0100D0A001 /* NativeJarvis.swift in Sources */,

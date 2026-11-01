@@ -6,7 +6,8 @@ are versioned: [docs/apps.md](../docs/apps.md).
 
 | Platform | Directory | Status | Health data | Build / release |
 |---|---|---|---|---|
-| iOS | [`watch2whoop/`](watch2whoop/README.md) (Flutter) | TestFlight | HealthKit (Open Wearables SDK) | [README](watch2whoop/README.md) · [CHANGELOG](watch2whoop/CHANGELOG.md) · tags `app-ios-v*` |
+| iOS (native, from 1.0.9) | [`ios/`](ios/README.md) (SwiftUI, #340; [architecture](../docs/ios-native-app.md)) | In development | HealthKit (own sync engine, #219) | [README](ios/README.md) · [CHANGELOG](ios/CHANGELOG.md) · tags `app-ios-v*` |
+| iOS (up to 1.0.8) | [`watch2whoop/`](watch2whoop/README.md) (Flutter) | TestFlight; bug fixes only from 1.0.9 | HealthKit (Open Wearables SDK) | [README](watch2whoop/README.md) · [CHANGELOG](watch2whoop/CHANGELOG.md) · tags `app-ios-v*` |
 | Android | same Flutter app, `android/` target not added yet | Planned | Health Connect / Samsung Health (Open Wearables SDK) | tags `app-android-v*` |
 | HarmonyOS NEXT | `harmony/` (not created yet) | Idea | Huawei Health Service Kit | tags `app-harmony-v*` |
 | Apple Watch / Wear OS | inside the iOS / Android projects | Later | — | ships with the phone app |

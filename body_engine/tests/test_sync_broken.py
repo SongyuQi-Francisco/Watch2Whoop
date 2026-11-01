@@ -134,6 +134,31 @@ def test_broken_users_lists_only_broken_oldest_first(conn):
     assert all(x["broken"] for x in broken.broken_users(conn, NOW))
 
 
+def test_app_mode_judges_the_engine_uploads(conn, monkeypatch):
+    """#219 S5b: in the sync mode app the engine's batches (rawdata_uploads with a phase) are the phone's channel: OW's
+    stamps, the OW link and the server's OW import do not count; channel says which one was judged."""
+    def engine_batch(uid, ago, phase="incremental"):
+        conn.execute("INSERT INTO rawdata_uploads (user_id, batch_id, received_at, phase) VALUES (%s, %s, %s, %s)",
+                     (uid, uuid.uuid4(), NOW - ago, phase))
+        conn.commit()
+    stopped = user(conn, ow=None, web_seen=H)                       # engine-only account, the engine stopped 3 days ago
+    engine_batch(stopped, 3 * D)
+    conn.execute("INSERT INTO sync_mode_state (user_id, mode) VALUES (%s, 'app')", (stopped,))   # listed by sync-broken
+    fresh = user(conn, last_upload=5 * D, cursor=5 * D, web_seen=H)   # OW long silent (stopped in the app mode), engine fine
+    engine_batch(fresh, H)
+    new = user(conn, ow=None, web_seen=H, app_upload=H)             # only non-engine uploads so far: onboarding
+    app = {stopped, fresh, new}
+    monkeypatch.setattr(broken, "_mode", lambda c, u: "app" if u in app else "ow")
+    r = judge(conn, stopped)
+    assert (r["broken"], r["reason"], r["channel"]) == (True, "broken", "app")   # no server_stale: nothing is pulled
+    assert r["last_data_at"] == NOW - 3 * D
+    assert (judge(conn, fresh)["reason"], judge(conn, new)["reason"]) == ("ok", "never")
+    listed = [x["user_id"] for x in broken.broken_users(conn, NOW)]
+    assert stopped in listed and fresh not in listed
+    monkeypatch.setattr(broken, "_mode", lambda c, u: "ow")
+    assert judge(conn, fresh)["channel"] == "ow" and judge(conn, stopped)["reason"] == "not_linked"
+
+
 # ---------------------------------------------------------------- endpoint
 @pytest.fixture(scope="module")
 def client(dsn):
@@ -186,6 +211,8 @@ def test_page_wiring():
     js = (STATIC / "sync-repair.js").read_text(encoding="utf-8")
     assert '"/v1/users/me/sync/connection"' in js and '"/v1/account/ow-invitation"' in js
     assert "Watch2WhoopFeatures?.syncRepair" in js and 'href="watch2whoop://sync"' in js   # new apps: link; 1.0.6 / 1.0.7: sync page
+    # the sync mode app (#219 S5b): no OW invitation, the app's sync page restarts the engine
+    assert js.index('st?.channel === "app"') < js.index('"/v1/account/ow-invitation"')
     # the only thing stored is the day the sheet was shown, never the code
     assert js.count("localStorage.setItem(") == 1 and "localStorage.setItem(DAY_KEY, v)" in js and "sessionStorage" not in js
     html = (STATIC / "index.html").read_text(encoding="utf-8")

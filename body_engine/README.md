@@ -51,6 +51,19 @@ For OW's deployment and API key see `../deploy/open-wearables/README.md` (the ke
 The OW importer's rules (cumulative metrics de-duplicated by time window + source priority, the export day itself not written, the XML unit problem) are written at the top of `src/body_engine/importers/ow.py` and in section 10 of the system design.
 SparkyFitness (workouts, meals, weight) is not imported; it is read live through its API when needed (`src/body_engine/sparky_client.py`, one read-only key per person; only the body butler's write tools use the read-write key; address `BODY_SPARKY_URL`, default http://127.0.0.1:8300; key directory `BODY_SECRETS_DIR`, default `../secrets`). Why a read-only database role is not used is explained at the top of that file. For deployment see `../deploy/sparkyfitness/README.md`.
 
+**SparkyFitness is optional now (issue #252, `docs/own-food-weight-storage.md`).** Food, food library, weight / body
+measurements, the exercise library and strength logs live in Body Engine's own tables (`ownstore/`, migration 735).
+Three rollout flags move a deployment over, each per user and reversible:
+`own_food_store` (dual write: after each SparkyFitness write the touched dates are copied into the own tables),
+`own_food_read` (every reader — Today page, trends, scores, rules, AI tools, briefing, explain, training calendar,
+reports — reads the own tables through `sparky_client.reader_for_user`, same shapes; only for users whose latest
+`sparky-migrate` checked out; writes still go to SparkyFitness and are synced back) and
+`own_food_only` (writes go to the own tables only, `ownstore/write.py`; also for users without a SparkyFitness account;
+with the flag on for everyone, sign-up no longer creates a SparkyFitness account and plans / recipes are no longer
+mirrored there). A new deployment just runs `body-engine flags set own_food_only --state all` and never needs SparkyFitness.
+What still asks SparkyFitness in read mode (never in own-only mode): its weekly plan templates (only for users without a
+Body Engine plan) and its food goals (only before a user's first own goal version).
+
 ## Scores (`src/body_engine/scores/`)
 WHOOP-style sleep score, sleep need / sleep debt / sleep performance, recovery score (HRV currently uses SDNN), strain (Edwards TRIMP), CTL / ATL / TSB. For the formulas, parameter values, differences from the design and backfill results see "Implementation notes" in section 7 of the system design.
 - The pure functions and parameters (`params`, `sleep`, `recovery`, `strain`, `muscle`) live in the Apache-2.0 package [`packages/openbodyscore`](../packages/openbodyscore/README.md) (issue #115); the files here are aliases of those modules, so `from body_engine.scores import params` keeps working. Change the algorithms there; golden tests (`tests/test_openbodyscore_golden.py`) fail on any changed number.
@@ -91,10 +104,10 @@ Body age / pace of ageing, stress, today's strain target, sleep coach, health mo
 | `GET /v1/users/{user}/exercises?status=` · `PUT .../exercises/{exercise_ref}` | Extra exercise information: banned / caution / active, key points, the exercise ID in the logging app (scope `exercises`) |
 | `GET /v1/users/{user}/reminders?start=&end=&status=&rule=&evidence=` · `PATCH .../reminders/{id}` | Rule reminders (today only by default, status new + seen); PATCH body `{"status": "seen" / "dismissed" / "new"}` (scope `reminders`) |
 | `GET /v1/users/{user}/goals/nutrition?date=` · `PUT .../goals/nutrition` | Nutrition goals (scope `nutrition`; details under "Nutrition goals and sugar" below): GET → `{date, goal, version, upcoming, history}`; PUT body `{training?, rest?, training_weekdays?, effective_from?, name?, reason}` adds a version for yourself (token needs `write`) |
-| `GET /v1/users/{user}/goals/sleep?night=` · `PUT .../goals/sleep` | Bedtime target: the target, the step-by-step plan, tonight's target, progress over the last 7 nights; PUT body `{"target_bedtime": "00:00"}` (the rest optional), only your own can be changed (scope `sleep`, fields in system design 13.1) |
+| `GET /v1/users/{user}/goals/sleep?night=` · `PUT .../goals/sleep` · `DELETE .../goals/sleep` | Bedtime target: the target, the step-by-step plan, tonight's target, progress over the last 7 nights, and `settings` (the stored row, null without a goal; the app caches it); PUT body `{"target_bedtime": "00:00"}` (the rest optional), DELETE clears; only your own can be changed (scope `sleep`, fields in system design 13.1) |
 | `GET /v1/users/{user}/reminders/runs?start=&end=` | The result of each rule on each evaluation: triggered / not_triggered / insufficient_data / error and the reason |
 | `POST /v1/web/login` · `POST /v1/web/logout` · `GET /v1/web/me` | Today-page login: body `{"token"}` is exchanged for an httpOnly cookie; me = current user + family members that can be switched to (shares) + local date + `assistant_url` (the "Ask the butler" (「问管家」) link, given only to the deployer `BODY_ASSISTANT_USER_ID`, default 1) + `ai` (`{mode: api \| mcp \| none, kind, display_name, model}`, decides whether "Ask the butler" is in-page chat or a redirect) + version |
-| `POST /v1/web/login-code` | Log in with a one-time login code (the setup QR code of the Watch2Whoop app): body `{"code"}` (12 characters, tolerant of case, spaces and -) → issues this device a dedicated token (named `app:<label>`, the plaintext never leaves the server) and sets the same cookie; a code can be used once and expires, anything invalid is always 401. To issue a code: `body-engine login-code --user-id N [--label Mum-iPhone] [--hours 72] [--scopes read,write]` (table `web_login_codes`, migration 120) |
+| `POST /v1/web/login-code` | Log in with a one-time login code (the setup QR code of the Watch2Whoop app): body `{"code"}` (12 characters, tolerant of case, spaces and -) → issues this device a dedicated token (named `app:<label>`, the plaintext never leaves the server) and sets the same cookie; a code can be used once and expires, anything invalid is always 401. With `"client": "app"` (the native iOS app, #340 N8) no cookie is set and the answer carries that device token for the Keychain (Bearer). To issue a code: `body-engine login-code --user-id N [--label Mum-iPhone] [--hours 72] [--scopes read,write]` (table `web_login_codes`, migration 120) |
 | `POST /v1/web/activate` | Redeem a reusable activation code (page `/app/activate.html#<code>`): body `{"code"}` (16 characters) → `{setup_link, sync, note}`, a fresh `watch2whoop://setup?…` link with a new one-time login code (1 hour) and, when configured, a new OW invitation code. No auth; invalid / revoked / expired is always 401 and counts against the per-IP login failure limit (429). See "Activation links" below |
 | `GET /v1/users/{user}/days?month=YYYY-MM` | Calendar for looking back in the Today page: for each day of the month `{date, future, scores, sleep, training, metrics, has_data, recovery, sleep_score, strain, zone}` (categories not granted are null and listed in `hidden`) + `first` (the earliest day within the data you may see; an Apple Health history import can reach back to 2016), `today`. Each category follows its own shares scope (scores / sleep / training / metrics), with the same authorization as /today; reads this database only, does not connect to SparkyFitness |
 | `GET /v1/users/{user}/today?date=` | Today-page aggregate: scores (empty scores carry the reason from flags, latest recovery / sleep, CTL/ATL/TSB interpretation), **sleep** (main sleep onset / wake-up, minutes per stage, stage-chart segments `stages`, bedtimes of the last 7 nights `recent`; scope sleep), today's reminders, today's planned workout (banned / caution / progression advice), today's nutrition vs target; each block is authorized separately by shares |
@@ -363,9 +376,23 @@ client reads what the OW-only user reads from OW; shadow / OW users never read t
   the app mode and queues the recompute; `rollback` pins the user to OW at once and undoes the derived data (OW's nights
   imported again). `rawdata/engine.mode` = app only while the state says app, the flag is on and there is no pin. In the
   app mode an engine upload queues the recompute itself and `POST /sync/refresh` imports nothing from OW.
+- S5b (#219): `uv run body-engine sync-mode readiness [--user-id N] [--json] [--out file]` (`rawdata/readiness.py`, read
+  only, no recompute): the three switches, then one row per user — mode, app version, clean streak, coverage, score
+  consistency from the stored comparison, verdict (switched / ready / blocked / engine off) and what is missing (Chinese
+  Markdown with names: terminal or `health_data/reports/` only). Flag `apple_sync_new_accounts` (global, only `--state
+  all`, and only while `apple_sync_engine` is `all`): provisioning creates no OW user and starts the account in the app
+  mode (`cutover.start_on_engine`). An account without an OW link stays in the app mode whatever `apple_sync_primary`
+  says (`rollback` needs `--force`). In the app mode: no OW invitation (activation links without `ow` / `code`,
+  `POST /v1/account/ow-invitation` → 409 `sync_engine`), the forced re-sync waits for the app's range re-sync instead of
+  importing OW, the data status says `channel: app`, and the broken-sync check judges the engine's uploads.
 - S6 history (`rawdata/ow_archive.py`): `uv run body-engine ow-archive --user-id N [--check]` keeps OW's history locally
   (the raw-sample copy `ow_sample_cache` made complete over the scoring range, sleep stages in `ow_archive_segments`); an
   archived app-mode user's scores, stress, workout heart rate and stage chart never ask OW.
+- 2.0.0 R1 retirement (`rawdata/retire.py`, docs/ios-native-2.0.md §4 R1): `uv run body-engine retire-legacy verify
+  --user-id N | --all [--archive] [--offline] [--scores] [--json]` (per user ✓ / ⚠ / ✗ with counts and dates only; `--archive`
+  copies what still lives only in OW and imports pending Shortcut files, idempotent, never deletes) and `retire-legacy status`
+  (doctor). Switch: `BODY_LEGACY_SOURCES_CUTOFF` (unset by default): afterwards the Shortcut receiver answers 410 and every
+  OW import skips. Tests: `tests/test_retire_legacy.py`.
 - Status panel (`rawdata/sync_status.py`): refused uploads are recorded by reason (`ingest_failures`: auth / format /
   refused / limit / server, codes only, repeats folded); `GET /v1/users/{user}/sync/engine/status` (Today page) and
   `GET /v1/ingest/sync-status` (Bearer, the app) return the last upload, the newest sample per type, failures, the
@@ -573,8 +600,41 @@ Design, mail provider setup and deploy steps: [`docs/self-signup-plan.md`](../do
   account's activation / login code on the invite step moves its identity there. Apple joins an existing account only on
   an Apple-verified, non-relay e-mail equal to exactly one active account's bound e-mail. Changes are audited in
   `identity_events` (migration 390).
+- **Sign-up without a code** (`account/open_signup.py`, limits in `account/params.py`), two global switches (rollout flags,
+  only state `all` counts):
+  - `open_signup`: new accounts are active at once while fewer than `OPEN_SIGNUP_MAX_ACTIVE` (200) accounts are active; at
+    the cap new accounts wait for a code again.
+  - `store_signup` (App Store release, migration 1101, **default off**): new accounts are active at once with **no cap**, so
+    App Review and the public can sign up and use everything. Kept: `OPEN_SIGNUP_PER_IP_DAY` (5) new accounts per IP per
+    24 h, one free account per Apple ID / e-mail ever (a deleted account's identity needs a code to come back), the consent
+    first, and the fallback AI's per-person monthly quota as it is (each new person may cost up to that quota a month:
+    `body-engine open-signup status` shows the ceiling and the runway). Turn it on at release:
+    `body-engine flags set store_signup --state all`; off: `--state off` (accounts already opened stay active).
+  - Activation / invite / referral / circle codes keep working either way. `GET /v1/auth/methods` says `open_signup`
+    (a new account opens without a code now), `store_signup` and `invite_required`; the iOS app then shows the code entry
+    as a small link only. Accounts it opened: `open_signups.mode` = `store`, `body-engine user-stats` method `store`,
+    `body-engine open-signup status | list`.
 - `DELETE /v1/account` (Today page Me → 删除账号) deletes the account and its data in Body Engine, OW and SparkyFitness (`account/delete.py`).
+- Sign in with Apple token revocation (App Store guideline 5.1.1(v); `account/apple_tokens.py`, migration 1090): the app sends
+  the one-time `authorization_code` with `POST /v1/auth/apple` (and `/v1/account/identities/apple`); the server trades it at
+  Apple's `/auth/token` for a refresh token and keeps that AES-GCM encrypted under `secrets/ai_master_key` (table
+  `apple_signin_tokens`, one row per Apple ID). Deleting the account (and the 7-day pending purge) posts it to Apple's
+  `/auth/revoke` first. Settings: `BODY_APPLE_SIGNIN_KEY_FILE` (the Sign in with Apple `.p8` key, default
+  `secrets/apple_signin_key.p8`, mount it as a docker secret), `BODY_APPLE_SIGNIN_KEY_ID`, `BODY_APPLE_TEAM_ID`, optional
+  `BODY_APPLE_CLIENT_ID` (default: the identity token's audience = the bundle ID). Without them nothing is exchanged, sign-in
+  works as before, and a deletion reports `{"system": "apple", "error": "not_configured"}` in its `leftovers` (logged; the
+  deletion itself never fails on Apple). Tests: `tests/test_apple_revoke.py` (fake Apple on 127.0.0.1).
 - Tests: `tests/test_account.py` (fake JWKS, console mailer, fake OW / SparkyFitness).
+
+## Legal pages (`src/body_engine/legal/`, sources in `docs/legal/`)
+- Public, no sign-in: `GET /legal/privacy?lang=zh|en`, `GET /legal/terms?lang=zh|en` (HTML; without `lang` the browser's
+  Accept-Language picks), `GET /v1/legal` (paths, versions, minimum age). These are the URLs for App Store Connect and the
+  app (Me → 关于, the sign-in screen).
+- The Markdown sources are `docs/legal/{privacy,terms}{,.en}.md`; the package keeps byte-identical copies in `legal/texts/`
+  (`tests/test_legal.py` checks; copy after every edit). Operator details are placeholders filled at request time, so the
+  public repository names nobody: `BODY_LEGAL_APP_NAME` (default Watch2Whoop), `BODY_LEGAL_ENTITY`, `BODY_LEGAL_CONTACT`,
+  `BODY_DATA_REGION`, `BODY_LEGAL_GOVERNING_LAW` (each may have an `_EN` variant), `BODY_LEGAL_MIN_AGE` (default 16).
+  Unset ones show neutral wording. Details: `docs/legal/README.md`.
 - Provisioning retries (`account/provision.py`, migration 785): transient errors (connection refused, timeout, HTTP 5xx)
   are tried 3 times within a run; a failed run writes every failing step with its exception type to
   `user_provisioning.last_error` and sets `next_attempt_at` (10 min doubling per attempt, at most 6 h); `provision-run`
@@ -630,6 +690,12 @@ the push is off, pushes to the user's registered iPhones through APNs from a bac
   `GET / PUT /notification-settings`. Today page: `web/static/notify.js` (bell in the header, list, settings; in the app it
   asks for push permission on the first visit to the Friends tab or the settings).
 - Tests: `tests/test_notify.py` (fake APNs client, never Apple).
+- Weekly 「本周更新」 (`src/body_engine/whatsnew/`, migration 960): the hand-kept `entries.py` (one short zh + en sentence per user-visible
+  change, added in the PR that ships it; CONTRIBUTING.md "What's new") is sent through `notify()` as category `updates` (on by default,
+  switchable) to each user from Sunday 19:00 in their own time zone: what is new since their last message, never from before their
+  account existed, nothing new = nothing sent, one row of `whats_new_sends` per user and week. `body-engine whats-new send
+  [--user-id N] [--dry-run] [--now ISO]` is called hourly by `deploy/ops/ops.py` (idempotent). The Today page lists the same entries
+  (`GET /v1/whats-new`, `web/static/whatsnew.js`, 我 → 设置 → 更新记录; the message's link `/app/?whatsnew=1` opens it). Tests: `tests/test_whats_new.py`.
 
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
 Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.
@@ -655,6 +721,36 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - AI tool `get_friends_overview` (read-only, no arguments): each circle member's shared status, 7-day recovery and board ranks, with what they do not share listed; not in the fallback AI's tool set.
 - Tests: `tests/test_friends.py` (cross-user access, leaving, ECG, hand-made grants, consent, limits, referral, deletion, cards, cheers, every board, the AI tool).
 - **Circle activation codes and avatars (#199, migration 655, no feature flag)**: `friends/codes.py`, `friends/admin.py`, `images/`. A readable code (matched ignoring case, spaces and dashes) bound to one circle, with `max_uses` (new accounts only: existing accounts join without taking a place, also once it is used up), an optional expiry and `disable` (both stop everyone); every use is a row in `circle_code_uses` (`new_account` or an existing one). In the sign-up invite step (`POST /v1/account/redeem-invite`, tried before the other kinds of codes) it activates the account and keeps a place in the circle; the person joins with the circle's default scopes only after the consent (`POST /v1/users/{user}/consent` → `circles_joined`; `GET /profile` → `circle_pending` for the consent sheet). On the Friends page (`GET /v1/friends/invite`, `POST /v1/friends/join`) an existing account joins with the scopes it picks. No new-account places left (new accounts only) / disabled / expired → 410, circle full → 409. The code row is locked for the whole redemption, so concurrent sign-ups never exceed `max_uses`. Circle avatars: `GET /v1/friends/circles/{id}/avatar` (members only); `images/store.py` accepts PNG / JPEG / WebP, crops to 256×256 WebP and drops all metadata. CLI: `body-engine circle-admin create | avatar | list`, `body-engine circle-code create | list | uses | disable` (docs/admin-guide.md). Tests: `tests/test_circle_codes.py`.
+- **Moderation of user content (App Store guideline 1.2, migration 1100)**: `friends/moderation.py` (writes, admin review),
+  `friends/blocks.py` (what is hidden, applied on the server in every read path: feed, comments, ❤️ counts and the red dot,
+  member cards, leaderboards, cheers, avatars, names), `friends/rules.py`, `wordfilter.py`.
+  - **Block** (`GET /v1/friends/blocks`, `PUT|DELETE /v1/friends/blocks/{user}`; only someone sharing a circle with me):
+    per person across all circles, hides both ways (posts, comments, ❤️, member card, leaderboard row; no cheers, no
+    notifications) and pauses the circle sharing between the two (`shares.circle_scopes`, restored on unblock). They stay
+    in a circle's member list, marked `blocked`, so the owner can still remove them.
+  - **Report** (`POST /v1/friends/reports {kind: post|comment|profile, id, reason, note?}`, reasons in `friends/params.py`
+    `REPORT_REASONS`): hidden for the reporter at once; a profile report also blocks the person for the reporter. After
+    `REPORT_HIDE_AFTER` (3) distinct reporters the item is hidden for everyone but its author until reviewed (a hidden
+    profile shows `HIDDEN_NAME` and no picture). The older `POST /v1/friends/feed/comments/{id}/report` still works.
+  - **Review queue (admins)**: `GET /v1/admin/circles/reports?status=pending`, `POST /v1/admin/circles/reports/{id}/resolve
+    {action: keep|remove|ban-user, note}`, `GET /v1/admin/circles/reports/overdue` (users in `BODY_ADMIN_USER_IDS` with a
+    write token); CLI `body-engine circles-reports list | resolve --id N --action keep|remove|ban-user [--note] | log | unban
+    --user-id N | overdue`. keep = shown again (earlier reports stop counting); remove = a comment is deleted, a post hidden
+    for everyone but its author, a profile's picture deleted and its name hidden; ban-user = remove + out of every circle and
+    no creating / joining / commenting / ❤️ / cheering (`circle_bans`). Every decision and every automatic hide is in
+    `circle_moderation_log`. `moderation.overdue(conn)` = `{pending, overdue, oldest_hours}` for a health check
+    (reports older than `REVIEW_WITHIN_HOURS`, 24 h).
+  - **Keyword filter** (`wordfilter.py`): comments, circle names (create / rename / admin) and display names are refused with
+    422 and a fixed message when they contain a word of the list in `BODY_BLOCKED_WORDS_FILE` (default
+    `secrets/blocked_words.txt`, one word or phrase per line, `#` comments; missing file = empty list). Matching ignores case,
+    full-width forms, spaces and punctuation; the file is re-read when it changes.
+  - **Community rules** (flag `circle_rules`, default off): before creating or joining a circle or writing a comment the
+    person accepts `docs/legal/community-rules.md` / `.en.md` once per version (`friends/params.py` `RULES_VERSION`; the
+    package copies `friends/community_rules*.md` must be identical, tests check). `GET /v1/friends/rules?lang=`, `POST
+    /v1/friends/rules/accept {version}`; without it those writes answer 428; a circle activation code used at sign-up joins
+    after the acceptance. `GET /v1/friends` gives `rules {required, accepted, version}`, `banned`, `blocked_count`. Turn it on
+    together with the 2.0.0 forced upgrade (the web page and the Flutter app have no rules screen).
+  - Tests: `tests/test_circle_moderation.py`.
 
 ## Layout
 - `src/body_engine/migrations/`: SQL executed once in numbered order; the table definitions are authoritative here
@@ -663,8 +759,8 @@ Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behin
 - `src/body_engine/ow_client.py`: OW API client (standard library only)
 - `src/body_engine/scores/`: the scoring engine (see above)
 - `src/body_engine/insights/`: WHOOP-comparable analysis (see above)
-- `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight)
-- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check; nothing reads them yet (phase 3)
+- `src/body_engine/sparky_client.py`: read-only SparkyFitness client (workout logs, exercise library, workout templates and weekly plan, meals and targets, weight); `reader_for_user` hands out the own-table reader instead when `own_food_read` applies
+- `src/body_engine/ownstore/`: own tables for food, food library, weight and workout logs that replace SparkyFitness (issue #252, migration 735, `docs/own-food-weight-storage.md`): mapping from SparkyFitness rows, dual write behind the rollout flag `own_food_store` (off = unchanged), `sparky-migrate` with a per-table check, readers `read.py` (flag `own_food_read`), the own-only store `write.py` (flag `own_food_only`) and who uses which `source.py`
 - `src/body_engine/records/`: health records (supplements, lab results, journal and journal analysis, events, exercises, exercise ID mapping): reads/writes, API, assistant tools, migration
 - `src/body_engine/rules/`: the rule reminder engine (see above)
 - `src/body_engine/goals/`: bedtime target (see above)

@@ -1,0 +1,38 @@
+{{APP_NAME}} is your body's data layer: it turns Apple Watch and Health data into recovery, sleep and strain you can read at a glance, and keeps your records in your own account. You decide which AI, if any, gets to read them.
+
+DAILY OVERVIEW
+- The Today page shows three rings side by side: sleep score, recovery and yesterday's strain
+- Heart rate variability (HRV), resting heart rate, blood oxygen, respiratory rate, wrist temperature and more, compared with your own baseline so you see the direction of change
+- Stress, body battery, body age and a training load target
+- 7-day, 30-day, 90-day and 365-day trends, with a comparison to the previous period
+- Weekly and monthly reports
+
+SLEEP
+- Sleep stages, sleep score and bedtime for every night
+- A bedtime goal: set one and compare it with your last 7 nights
+
+LOG BY TALKING, NOT BY FORM
+- Training: muscle load map, set-by-set logging for today's plan, movement limits, training calendar
+- Food: quick meals, recipes, shopping list; also water, weight, journal, supplements and lab trends
+- View and log offline; everything syncs when you are back online
+
+JARVIS: YOUR AI, OPTIONAL
+- Chat, voice, photos and quick logging
+- Bring your own AI: your own API key, or connect Claude, ChatGPT and other clients through MCP; or use the backup AI the app provides (you are asked separately before the first use)
+- AI is off by default; data is sent to the AI you chose only when you start using Jarvis
+- Anything that deletes or undoes something is confirmed with you first
+- Answers are AI-generated and may be wrong
+
+CIRCLES
+- Create circles with friends: workout feed, likes, comments and a leaderboard
+- You choose what you share and you can leave at any time
+
+YOUR DATA
+- Recovery, sleep, strain and other scores are calculated on your iPhone
+- Sync center: one-tap sync, a one-sentence reason when something is stuck, and history backfill
+- Delete your account and all its data inside the app at any time
+- No ads, no tracking, no selling of data
+
+GOOD TO KNOW
+Requires an iPhone with iOS 16 or later and permission to read Health data; an Apple Watch gives you fuller data. Sign in with Apple, an e-mail code or a setup QR code.
+{{APP_NAME}} is not a medical device. Its scores and trends are for understanding your everyday condition and are not for diagnosing, treating or preventing any disease; if you feel unwell, talk to a doctor.

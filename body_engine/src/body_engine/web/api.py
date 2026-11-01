@@ -7,7 +7,8 @@
 - POST /v1/web/ingest-token {"device"}: the Watch2Whoop app (in its WebView, with the page's cookie) gets an upload-only
   token for POST /v1/ingest/healthkit (rawdata/ingest.py); setup-link users have no account token of their own.
 - GET /v1/web/me: current user + family members that can be switched to (shares), the "Ask the butler" (「问管家」) link, versions,
-  feature flags on for this user and their A/B variants (rollout/); also extends the cookie's lifetime.
+  feature flags on for this user and their A/B variants (rollout/), `upgrade` (R2 forced upgrade: state none / notice / block,
+  client/policy.py); also extends the cookie's lifetime.
 - POST /v1/web/boot {"paths"}: the page's start-up GETs answered in one round trip (boot.py, flag boot_api).
 - GET /v1/users/{user}/today, /sleep/nights, /trends, /days: aggregate endpoints (views.py), shares checked per block.
 - /app/: PWA static files (static/, no build step); / redirects to /app/. The page itself (/app/, /app/index.html) links
@@ -35,9 +36,10 @@ from . import activation, boot, login_codes, login_limit, session, views
 from ..records.defaults import with_label
 from ..rollout import api as rollout_api, flags as rollout_flags
 from ..appearance import store as appearance
+from ..client import policy as upgrade_policy
 
 STATIC = Path(__file__).parent / "static"
-WEB_VERSION = "v2.151-2026-10-27"   # Today page frontend version (bump whenever the page changes)
+WEB_VERSION = "v2.159-2026-10-30"   # Today page frontend version (bump whenever the page changes)
 
 
 router = APIRouter(tags=["web"])
@@ -101,11 +103,19 @@ def login(body: LoginIn, request: Request, response: Response, conn=Depends(get_
 
 class LoginCodeIn(BaseModel):
     code: str = Field(min_length=8, max_length=40)
+    client: str = Field("web", pattern="^(web|app)$")   # app: the native iOS app (#340 N8) gets the device token, no cookie
 
 
 @router.post("/v1/web/login-code")
 def login_with_code(body: LoginCodeIn, request: Request, response: Response, conn=Depends(get_conn)):
-    """Log in with a one-time login code (from the Watch2Whoop app's setup info / QR code): issue a token specific to this device and set the same cookie."""
+    """Log in with a one-time login code (from the Watch2Whoop app's setup info / QR code): issue a token specific to this
+    device and set the same cookie. client=app: no cookie; the answer carries that token (Bearer for the native app)."""
+    if body.client == "app":
+        token = login_codes.redeem_token(conn, body.code)
+        user = auth.user_for_token(conn, token) if token else None
+        if user is None:
+            raise HTTPException(401, "登录码无效、已用过或已过期")
+        return {**_me(user), "token": token}
     res = login_codes.redeem(conn, body.code, request.headers.get("user-agent"))
     if res is None:
         raise HTTPException(401, "登录码无效、已用过或已过期")
@@ -168,7 +178,9 @@ def logout(request: Request, conn=Depends(get_conn)):
 # file (index.html with every local stylesheet and script inlined) and opens it with loadHtmlString(baseUrl = the page's
 # address): same origin, so the page reads the copies offline.js kept in IndexedDB. window.W2W_SHELL tells the page it
 # runs from the copy: it sends nothing and asks the app to load the real page once the network is back. Public like the
-# other static files; no user data in it.
+# other static files; no user data in it. Local-first start (#337, apps after 1.0.9): the app also opens this copy first on a cold
+# start, with the marker renamed to window.W2W_LOCAL: then it is the ordinary page (it sends requests, draws the last data
+# from IndexedDB first, cached_first_paint) and only saves the round trip for the HTML.
 _SCRIPT = re.compile(r'<script src="([\w.-]+\.js)"( defer)?></script>')
 _STYLE = re.compile(r'<link rel="stylesheet" href="([\w.-]+\.css)">')
 _LAZY = re.compile(r'<script type="w2w/lazy"(?: data-lang="\w+")? src="([\w.-]+\.js)"></script>')   # not loaded until needed (index.html)
@@ -192,9 +204,15 @@ def offline_shell_html() -> str:
 
 
 @router.get("/app/offline-shell.html", include_in_schema=False)
-def offline_shell():
-    return Response(offline_shell_html(), media_type="text/html; charset=utf-8",
-                    headers={"X-Web-Version": WEB_VERSION})
+def offline_shell(request: Request):
+    # The app (versions after 1.0.9) asks once per run with If-None-Match: 304 while its copy is current, so a cold start that opens the
+    # copy first (local-first start, #337) costs one small request instead of the whole page.
+    html = offline_shell_html()
+    etag = '"' + hashlib.sha256(html.encode()).hexdigest()[:20] + '"'
+    headers = {"X-Web-Version": WEB_VERSION, "ETag": etag, "Cache-Control": "no-cache"}
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers=headers)
+    return Response(html, media_type="text/html; charset=utf-8", headers=headers)
 
 
 # ---- fingerprinted static files (docs/ios-native-plan.md, section 3.1)
@@ -248,11 +266,15 @@ def web_me(request: Request, response: Response, conn=Depends(get_conn), viewer=
     me = _me(viewer)
     me["avatar"] = avatar_urls.urls_for(conn, viewer["id"], [viewer["id"]]).get(viewer["id"])   # my own picture (#200)
     look = {"appearance": appearance.get(conn, viewer["id"])} if rollout_flags.enabled(conn, viewer["id"], appearance.FEATURE) else {}   # theme + quote (#126)
+    if rollout_flags.enabled(conn, viewer["id"], "native_sync"):   # the native app pulls when this differs from its own (#340 N2)
+        from ..nativesync import store as sync_store
+        look["data_version"] = sync_store.data_version(conn, viewer["id"])
     return {"me": me, "viewable": views.viewable(conn, viewer),
             "assistant_url": ai.get("assistant_url"), "ai": ai,
             "today": views.local_today(conn, viewer["id"]),
             **rollout_api.for_user(conn, viewer["id"]),   # feature flags on for me, my A/B variants (rollout/)
             **look,
+            "upgrade": upgrade_policy.for_request(conn, request, viewer),   # R2: none / notice / block (client/policy.py)
             "version": {"web": WEB_VERSION, "api": api.app.version}}
 
 

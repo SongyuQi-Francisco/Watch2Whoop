@@ -99,7 +99,7 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
       final r = await applySetup(info);
       _today.text = _config.todayUrl;
       _ow.text = _config.owHost;
-      if (_config.todayUrl.isEmpty || _config.owHost.isEmpty) {
+      if (_config.todayUrl.isEmpty || (_config.owHost.isEmpty && !info.engineOnly)) {
         setState(() {
           _manual = true;
           _error = tr('设置信息里缺服务器地址，请手动填写', 'The setup info has no server addresses — fill them in');
@@ -108,8 +108,8 @@ class _SetupLinkOnboardingState extends State<SetupLinkOnboarding> {
       }
       if (!hasHealthSync) {
         setState(() => _step = 3); // Android (#253): no sync to connect, no Health step yet
-      } else if (r.owConnected) {
-        setState(() => _step = 2);
+      } else if (r.owConnected || info.engineOnly) {
+        setState(() => _step = 2); // engine-only link (#219, mode app): no invitation code to enter
       } else {
         setState(() {
           _step = 1;

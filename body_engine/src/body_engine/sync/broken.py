@@ -14,6 +14,11 @@ Broken = all of (thresholds in sync/params.py):
   Today page asking counts as a visit.
 Last OW data = the later of ow_watch.ow_synced_at (OW's own stamp after each saved SDK batch, polled every 30 s,
 sync/ow_watch.py) and sync_state(ow).cursor (the newest sample the import pulled). Read only.
+
+In the sync mode app (rawdata/engine.mode, #219 S5b) OW is not the phone's channel any more: the last data is the app's
+last accepted sync-engine batch (rawdata_uploads with a phase), "linked" = the mode itself, and there is no server_stale
+(the engine uploads to this server; nothing is pulled). `channel` says which one was judged (ow / app), so the page's
+repair opens the app's sync page instead of minting an OW invitation code.
 """
 from __future__ import annotations
 
@@ -39,20 +44,23 @@ def _ts(cursor: str | None) -> datetime | None:
 _SQL = """
 SELECT u.id, u.ow_user_id, w.ow_synced_at, s.last_synced_at AS imported_at, s.cursor,
        (SELECT max(last_seen_at) FROM web_sessions ws WHERE ws.user_id = u.id) AS web_seen,
-       (SELECT max(received_at) FROM rawdata_uploads ru WHERE ru.user_id = u.id) AS app_upload
+       (SELECT max(received_at) FROM rawdata_uploads ru WHERE ru.user_id = u.id) AS app_upload,
+       (SELECT max(received_at) FROM rawdata_uploads ru WHERE ru.user_id = u.id AND ru.phase IS NOT NULL) AS engine_upload
 FROM users u
 LEFT JOIN ow_watch w ON w.user_id = u.id
 LEFT JOIN sync_state s ON s.user_id = u.id AND s.source = 'ow'
 """
 
 
-def _judge(r: dict, now: datetime, visiting: bool) -> dict:
-    last = max((t for t in (r["ow_synced_at"], _ts(r["cursor"])) if t is not None), default=None)
+def _judge(r: dict, now: datetime, visiting: bool, mode: str = "ow") -> dict:
+    app = mode == "app"
+    last = r["engine_upload"] if app else \
+        max((t for t in (r["ow_synced_at"], _ts(r["cursor"])) if t is not None), default=None)
     seen = now if visiting else max((t for t in (r["web_seen"], r["app_upload"]) if t is not None), default=None)
-    out = {"user_id": r["id"], "broken": False, "last_data_at": last,
+    out = {"user_id": r["id"], "broken": False, "channel": "app" if app else "ow", "last_data_at": last,
            "hours": round((now - last).total_seconds() / 3600, 1) if last else None,
            "after_hours": int(P.SYNC_BROKEN_AFTER.total_seconds() // 3600), "app_seen_at": seen}
-    if not r["ow_user_id"]:
+    if not app and not r["ow_user_id"]:
         reason = "not_linked"
     elif last is None:
         reason = "never"
@@ -60,7 +68,7 @@ def _judge(r: dict, now: datetime, visiting: bool) -> dict:
         reason = "ok"
     elif now - last > P.SYNC_BROKEN_GIVE_UP:
         reason = "given_up"
-    elif r["imported_at"] is None or now - r["imported_at"] > P.SYNC_BROKEN_SERVER_OK:
+    elif not app and (r["imported_at"] is None or now - r["imported_at"] > P.SYNC_BROKEN_SERVER_OK):
         reason = "server_stale"
     elif seen is None or now - seen > P.SYNC_BROKEN_APP_SEEN:
         reason = "not_seen"
@@ -71,17 +79,25 @@ def _judge(r: dict, now: datetime, visiting: bool) -> dict:
     return out
 
 
+def _mode(conn: psycopg.Connection, user_id: int) -> str:
+    from ..rawdata import engine as rx_engine
+    return rx_engine.mode(conn, user_id)
+
+
 def check(conn: psycopg.Connection, user_id: int, now: datetime | None = None, visiting: bool = True) -> dict:
-    """{broken, reason, last_data_at, hours, after_hours, app_seen_at} for one user. visiting: the user is on the page now."""
+    """{broken, reason, channel, last_data_at, hours, after_hours, app_seen_at} for one user. visiting: the user is on the
+    page now."""
     r = conn.execute(_SQL + " WHERE u.id = %s", (user_id,)).fetchone()
     if r is None:
         raise ValueError(f"no user {user_id}")
-    return _judge(r, now or datetime.now(timezone.utc), visiting)
+    return _judge(r, now or datetime.now(timezone.utc), visiting, _mode(conn, user_id))
 
 
 def broken_users(conn: psycopg.Connection, now: datetime | None = None) -> list[dict]:
     """Every user whose phone sync looks broken (for `body-engine sync-broken`), oldest data first."""
     now = now or datetime.now(timezone.utc)
-    rows = conn.execute(_SQL + " WHERE u.ow_user_id IS NOT NULL ORDER BY u.id").fetchall()
-    out = [x for x in (_judge(r, now, False) for r in rows) if x["broken"]]
+    rows = conn.execute(_SQL + """ WHERE u.ow_user_id IS NOT NULL
+                                      OR u.id IN (SELECT user_id FROM sync_mode_state WHERE mode = 'app')
+                                   ORDER BY u.id""").fetchall()
+    out = [x for x in (_judge(r, now, False, _mode(conn, r["id"])) for r in rows) if x["broken"]]
     return sorted(out, key=lambda x: x["last_data_at"])

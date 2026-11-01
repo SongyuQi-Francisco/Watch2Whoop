@@ -251,6 +251,10 @@ class SetupInfo {
   final String? loginCode;
   bool get isEmpty => todayUrl == null && owHost == null && code == null && loginCode == null;
   bool get hasServers => todayUrl != null && owHost != null;
+
+  /// A link of a server whose sync mode is `app` (#219): the Today page (and a login code) only, no Open Wearables
+  /// address or invitation code. Setup then skips the Open Wearables step entirely.
+  bool get engineOnly => todayUrl != null && owHost == null && code == null;
 }
 
 const String kSetupScheme = 'watch2whoop';

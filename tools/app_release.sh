@@ -15,14 +15,19 @@
 #   --ref       commit to release (default: origin/main after a fetch)
 #   --allow-unmerged   allow a commit that is not on origin/main (never for builds given to testers)
 #
-# Versions come from pubspec.yaml at that commit: X.Y.Z+N. The public name is the marketing version X.Y.Z only: tag
-# app-<platform>-vX.Y.Z, release title and zip name without the build number N (it stays in pubspec.yaml, where the
-# stores need it, and is named once in the release notes). Each marketing version is tagged once per platform, and N must
-# be higher than the build of every earlier tag of the platform (read from that tag's pubspec.yaml, so the older tags
-# app-ios-vX.Y.Z+N count too). The app's CHANGELOG.md at that commit must have a section "## X.Y.Z" (older "## X.Y.Z+N"
+# The app: iOS = the native SwiftUI app apps/ios (#340, from 1.0.9) when that commit has apps/ios/project.yml, else the
+# Flutter app; Android = the Flutter app (apps/flutter or apps/watch2whoop). Its version at that commit is X.Y.Z+N:
+# pubspec.yaml `version:` (Flutter), or W2W_MARKETING_VERSION + W2W_BUILD_NUMBER in apps/ios/Config/Watch2Whoop.xcconfig
+# (native). The public name is the marketing version X.Y.Z only: tag
+# app-<platform>-vX.Y.Z, release title and zip name without the build number N (it stays in the app's version file, where
+# the stores need it, and is named once in the release notes). Each marketing version is tagged once per platform, and N
+# must be higher than the build of every earlier tag of the platform (read from that tag's app the same way, so the
+# Flutter tags count for the native iOS app, and the older tags app-ios-vX.Y.Z+N count too). The app's CHANGELOG.md at
+# that commit must have a section "## X.Y.Z" (older "## X.Y.Z+N"
 # sections are still found). Test runs of this flow use X.Y.Z-test… (e.g. pubspec 0.0.0-test+0, tag app-ios-v0.0.0-test on a
 # throwaway commit): not checked against main, earlier builds or versions, titled "TEST", to be deleted right after.
-# The zip holds only the app directory, like the v0.1.0 release asset; its zip comment is the commit id (`unzip -z`).
+# The zip holds only the app directory, like the v0.1.0 release asset, plus (native iOS) the files outside it that
+# apps/ios/project.yml builds in, at their repository paths; its zip comment is the commit id (`unzip -z`).
 set -euo pipefail
 
 usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-2}"; }
@@ -63,15 +68,36 @@ git fetch --quiet $force --tags origin main || die "git fetch origin failed"
 commit="$(git rev-parse --verify --quiet "$ref^{commit}")" || die "not a commit: $ref"
 short="$(git rev-parse --short "$commit")"
 
-# The Flutter app moves from apps/watch2whoop to apps/flutter (docs/apps.md, section 3); accept either.
-app_dir=""
-for d in apps/flutter apps/watch2whoop; do
-  if git cat-file -e "$commit:$d/pubspec.yaml" 2>/dev/null; then app_dir="$d"; break; fi
-done
-[ -n "$app_dir" ] || die "no Flutter app (apps/flutter or apps/watch2whoop) at $short"
+NATIVE_IOS=apps/ios
+NATIVE_XCCONFIG=Config/Watch2Whoop.xcconfig
+# <rev> <platform> → the app directory at that revision. iOS is the native SwiftUI app from the first commit that has
+# it (#340); before that, and for Android, the Flutter app, which moves from apps/watch2whoop to apps/flutter
+# (docs/apps.md, section 3): accept either.
+app_dir_at() {
+  local d
+  if [ "$2" = ios ] && git cat-file -e "$1:$NATIVE_IOS/project.yml" 2>/dev/null; then echo "$NATIVE_IOS"; return; fi
+  for d in apps/flutter apps/watch2whoop; do
+    if git cat-file -e "$1:$d/pubspec.yaml" 2>/dev/null; then echo "$d"; return; fi
+  done
+}
+xcconfig_value() {  # <rev> <key> → the value of `KEY = value` in the native app's xcconfig
+  git show "$1:$NATIVE_IOS/$NATIVE_XCCONFIG" 2>/dev/null \
+    | sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*\([^[:space:]]*\).*/\1/p" | head -1
+}
+version_at() {  # <rev> <app dir> → X.Y.Z+N
+  if [ "$2" = "$NATIVE_IOS" ]; then
+    echo "$(xcconfig_value "$1" W2W_MARKETING_VERSION)+$(xcconfig_value "$1" W2W_BUILD_NUMBER)"
+  else
+    git show "$1:$2/pubspec.yaml" 2>/dev/null | sed -n 's/^version:[[:space:]]*\([^[:space:]#]*\).*/\1/p' | head -1
+  fi
+}
 
-version="$(git show "$commit:$app_dir/pubspec.yaml" | sed -n 's/^version:[[:space:]]*\([^[:space:]#]*\).*/\1/p' | head -1)"
-echo "$version" | grep -Eq "$VERSION_RE" || die "pubspec.yaml version must look like 1.2.3+45, got '$version'"
+app_dir="$(app_dir_at "$commit" "$platform")"
+[ -n "$app_dir" ] || die "no $platform app (apps/ios, apps/flutter or apps/watch2whoop) at $short"
+if [ "$app_dir" = "$NATIVE_IOS" ]; then version_file="$NATIVE_IOS/$NATIVE_XCCONFIG"; else version_file="$app_dir/pubspec.yaml"; fi
+
+version="$(version_at "$commit" "$app_dir")"
+echo "$version" | grep -Eq "$VERSION_RE" || die "$version_file must give a version like 1.2.3+45, got '$version'"
 marketing="${version%+*}"
 build="${version#*+}"
 test_run=0
@@ -86,7 +112,7 @@ check() { if eval "$2"; then echo "✓ $1"; else echo "✗ $1"; ok=0; fi; }
 
 echo "App:      $app_dir ($label)"
 echo "Commit:   $commit ($(git log -1 --format='%cs %s' "$commit"))"
-echo "Version:  $marketing, build $build"
+echo "Version:  $marketing, build $build ($version_file)"
 echo "Tag:      $tag"
 echo "Zip:      $zip"
 if [ "$test_run" = 1 ]; then echo "⚠ test version ($marketing): a throwaway run of the release flow, delete it afterwards"; fi
@@ -94,7 +120,7 @@ echo
 
 if [ "$mode" = "publish" ]; then
   # Tags from before the marketing-only names (app-ios-vX.Y.Z+N) can still be published again (re-run of the workflow)
-  check "tag $publish_tag matches pubspec.yaml version $version" '[ "$publish_tag" = "$tag" ] || [ "$publish_tag" = "$tag+$build" ]'
+  check "tag $publish_tag matches $version_file version $version" '[ "$publish_tag" = "$tag" ] || [ "$publish_tag" = "$tag+$build" ]'
   tag="$publish_tag"
   check "tag $publish_tag is an annotated tag" '[ "$(git cat-file -t "refs/tags/$publish_tag")" = tag ]'
 fi
@@ -116,12 +142,13 @@ if [ "$mode" != "publish" ]; then
   fi
 fi
 
-tag_version() {  # <tag> → the X.Y.Z+N in pubspec.yaml at that tag (older tags carry +N in their name as well)
+tag_version() {  # <tag> → the X.Y.Z+N of the app at that tag (older tags carry +N in their name as well)
   local d v
-  for d in apps/flutter apps/watch2whoop; do
-    v="$(git show "refs/tags/$1:$d/pubspec.yaml" 2>/dev/null | sed -n 's/^version:[[:space:]]*\([^[:space:]#]*\).*/\1/p' | head -1)"
-    if [ -n "$v" ]; then echo "$v"; return; fi
-  done
+  d="$(app_dir_at "refs/tags/$1" "$platform")"
+  if [ -n "$d" ]; then
+    v="$(version_at "refs/tags/$1" "$d")"
+    if echo "$v" | grep -Eq "$VERSION_RE"; then echo "$v"; return; fi
+  fi
   case "$1" in *+*) echo "${1#app-*-v}" ;; esac
 }
 
@@ -148,9 +175,8 @@ fi
 
 changelog_section() {  # <rev> → the app's CHANGELOG.md at that revision
   local d
-  for d in apps/flutter apps/watch2whoop; do
-    git show "$1:$d/CHANGELOG.md" 2>/dev/null && return
-  done
+  d="$(app_dir_at "$1" "$platform")"
+  if [ -n "$d" ]; then git show "$1:$d/CHANGELOG.md" 2>/dev/null; fi
 }
 # "## X.Y.Z" (or "## X.Y.Z — date"); sections from before the marketing-only names are "## X.Y.Z+N …".
 # A platform can have its own section "## Android X.Y.Z" (the first Android build shares 1.0.7 with iOS, #253); it is
@@ -175,13 +201,30 @@ if ! has_text "$notes" && [ "$mode" != "publish" ]; then
 fi
 check "CHANGELOG.md has a section \"## $marketing\" (or \"## $label $marketing\")" 'has_text "$notes"'
 
+# The native app builds in files from outside apps/ios (project.yml `- path: ../../…`: the scoring bundle, the muscle
+# map drawings). The zip carries them at their repository paths, so `xcodegen generate` works in the unpacked folder
+# exactly as in a clone.
+zip_paths() {
+  echo "$app_dir"
+  if [ "$app_dir" = "$NATIVE_IOS" ]; then
+    git show "$commit:$NATIVE_IOS/project.yml" \
+      | sed -n 's|^[[:space:]]*-[[:space:]]*path:[[:space:]]*\.\./\.\./\([^[:space:]#]*\).*|\1|p'
+  fi
+}
+missing=""
+for p in $(zip_paths); do
+  git cat-file -e "$commit:$p" 2>/dev/null || missing="$missing $p"
+done
+check "every file the app builds in is at $short${missing:+ (missing:$missing)}" '[ -z "$missing" ]'
+
 [ "$ok" = 1 ] || die "checks failed; nothing changed"
 
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
 make_zip() {
   mkdir -p dist
   rm -f "$zip" "$zip.sha256"
-  git archive --format=zip --prefix="$name/" -o "$zip" "$commit" "$app_dir"
+  # shellcheck disable=SC2046  # one repository path per line, none has spaces
+  git archive --format=zip --prefix="$name/" -o "$zip" "$commit" $(zip_paths)
   (cd dist && sha256 "$name.zip" > "$name.zip.sha256")
   echo "✓ $zip ($(du -h "$zip" | cut -f1 | tr -d ' '), sha256 $(cut -d' ' -f1 "$zip.sha256"))"
 }
@@ -208,12 +251,20 @@ if [ "$mode" = "publish" ]; then
     echo "Never from \`main\` or a zip sent by hand. Before building check:"
     echo "- \`shasum -a 256 -c $name.zip.sha256\` prints OK, and \`unzip -z $name.zip\` prints \`$commit\`"
     echo "  (in a clone: \`git describe --tags --exact-match\` prints \`$tag\`);"
-    echo "- \`grep '^version:' $app_dir/pubspec.yaml\` prints \`version: $version\` (the store build number $build is"
-    echo "  the part after +; TestFlight shows $marketing ($build)). Do not change it."
+    if [ "$app_dir" = "$NATIVE_IOS" ]; then
+      echo "- \`grep -E '^W2W_(MARKETING_VERSION|BUILD_NUMBER)' $version_file\` prints \`$marketing\` and \`$build\`"
+      echo "  (TestFlight shows $marketing ($build)). Do not change them, and do not set them in the local xcconfig."
+    else
+      echo "- \`grep '^version:' $app_dir/pubspec.yaml\` prints \`version: $version\` (the store build number $build is"
+      echo "  the part after +; TestFlight shows $marketing ($build)). Do not change it."
+    fi
     echo
     if [ "$platform" = android ]; then
       echo "Steps: \`$app_dir/README.md\`, \"Android\". The workflow attaches the signed APK and its .sha256 to this release"
       echo "(family install guide: \`$app_dir/android-install.zh-CN.md\`)."
+    elif [ "$app_dir" = "$NATIVE_IOS" ]; then
+      echo "Steps: \`$app_dir/README.md\`, \"TestFlight\" (XcodeGen, signing, capabilities, App Review notes); the zip also"
+      echo "holds the files the project builds in from outside \`$app_dir\`, at their repository paths."
     else
       echo "Steps: \`$app_dir/README.md\`, \"Building and shipping via TestFlight\"."
     fi
@@ -240,7 +291,7 @@ fi
 if [ "$reuse_tag" = 0 ]; then
   git tag -a "$tag" "$commit" -m "Watch2Whoop $label app $marketing
 
-Store build source: $app_dir at $commit (pubspec.yaml version $version).
+Store build source: $app_dir at $commit ($version_file version $version).
 
 $notes"
   echo "✓ tagged $tag → $short"
