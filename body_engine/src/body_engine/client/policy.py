@@ -210,7 +210,7 @@ def target_version(pol: Policy) -> str:
 
 
 def texts(state: str, version: str, block_day: str | None) -> dict:
-    title = L("请升级 Watch2Whoop", "Please update Watch2Whoop")
+    title = L(f"请升级 {P.APP_NAME_ZH}", f"Please update {P.APP_NAME_EN}")
     if state == "block":
         msg = L(f"这个版本已停用。升级到 {version} 后继续使用，数据都在，AI 连接不受影响。",
                 f"This version is no longer supported. Update to {version} to continue. Your data is safe and AI connections keep working.")

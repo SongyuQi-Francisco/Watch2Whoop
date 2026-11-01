@@ -91,7 +91,7 @@ struct UpgradeScreen: View {
   var body: some View {
     VStack(spacing: 16) {
       Spacer()
-      Text(info.title ?? tr("请升级 Watch2Whoop", "Please update Watch2Whoop"))
+      Text(info.title ?? tr("请升级 \(AppBrand.name)", "Please update \(AppBrand.name)"))
         .font(Typo.title).foregroundColor(Palette.text).multilineTextAlignment(.center)
       Text(info.message ?? tr("这个版本已停用，请升级后继续使用。", "This version is no longer supported. Please update to continue."))
         .font(Typo.body).foregroundColor(Palette.text2).multilineTextAlignment(.center)
@@ -119,7 +119,7 @@ struct UpgradeNoticeBanner: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Text(info.title ?? tr("请升级 Watch2Whoop", "Please update Watch2Whoop"))
+      Text(info.title ?? tr("请升级 \(AppBrand.name)", "Please update \(AppBrand.name)"))
         .font(Typo.bodyStrong).foregroundColor(Palette.text)
       if let m = info.message {
         Text(m).font(Typo.caption).foregroundColor(Palette.text2).fixedSize(horizontal: false, vertical: true)

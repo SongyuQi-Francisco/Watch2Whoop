@@ -1,4 +1,4 @@
-{{APP_NAME}} is your body's data layer: it turns Apple Watch and Health data into recovery, sleep and strain you can read at a glance, and keeps your records in your own account. You decide which AI, if any, gets to read them.
+Hale 息 is your body's data layer: it turns Apple Watch and Health data into recovery, sleep and strain you can read at a glance, and keeps your records in your own account. You decide which AI, if any, gets to read them.
 
 DAILY OVERVIEW
 - The Today page shows three rings side by side: sleep score, recovery and yesterday's strain
@@ -35,4 +35,4 @@ YOUR DATA
 
 GOOD TO KNOW
 Requires an iPhone with iOS 16 or later and permission to read Health data; an Apple Watch gives you fuller data. Sign in with Apple, an e-mail code or a setup QR code.
-{{APP_NAME}} is not a medical device. Its scores and trends are for understanding your everyday condition and are not for diagnosing, treating or preventing any disease; if you feel unwell, talk to a doctor.
+Hale 息 is not a medical device. Its scores and trends are for understanding your everyday condition and are not for diagnosing, treating or preventing any disease; if you feel unwell, talk to a doctor.

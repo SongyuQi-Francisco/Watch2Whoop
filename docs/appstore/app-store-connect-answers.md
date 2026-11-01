@@ -2,12 +2,13 @@
 
 > 这份是给负责人照着填 App Store Connect 的底稿；不是法律意见。所有"和代码对得上"的依据都列在每一节后面，问卷的措辞以填写当天 App Store Connect 里的为准（Apple 2025 年改过年龄分级问卷，下面按新问卷写）。
 > 依赖 PR #381（隐私和合规，`PrivacyInfo.xcprivacy`、隐私政策和使用条款）：合并前，第 3 节的数据类型以该 PR 的 `apps/ios/Watch2Whoop/PrivacyInfo.xcprivacy` 为准；合并后以 main 上的文件为准，两边不一致时先改文件、再改这里。
-> 文中 `{{APP_NAME}}` = 上架名（还没定，名字里不能有 WHOOP，商标）。
+> 上架名 = **`Hale 息`**（Hale、一个空格、息；不含 WHOOP 商标）。开源项目、仓库、Bundle ID、URL scheme 仍叫 Watch2Whoop。
 
 ## 1. 基本信息
 
 | 项 | 答案 | 说明 |
 |---|---|---|
+| 名称 / 副标题 | 名称 `Hale 息`；副标题中文 `恢复·负荷·睡眠，AI 读懂身体`，英文 `Recovery, strain, sleep & AI` | 字数 6 / 16 / 28，上限都是 30（`render_listing.py` 检查）；商店名字要先在 App Store Connect 里预占 |
 | 平台 | iPhone（`TARGETED_DEVICE_FAMILY: "1"`，只有 iPhone，没有 iPad / Mac / Vision 版） | 不勾"iPad 上运行 iPhone 版"以外的选项，由负责人定要不要允许 iPhone 版在 iPad / Apple 芯片 Mac 上运行 |
 | 最低系统 | iOS 16.0 | `project.yml` |
 | 主要类别 | **健康与健身（Health & Fitness）** | |

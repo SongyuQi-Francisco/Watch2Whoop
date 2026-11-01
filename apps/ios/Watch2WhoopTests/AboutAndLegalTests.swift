@@ -54,4 +54,27 @@ final class AboutAndLegalTests: XCTestCase {
       XCTAssertTrue(d["NSHealthShareUsageDescription"]?.contains("Jarvis") == true)
     }
   }
+
+  /// The product is called Hale 息 where a person reads it: the name under the icon (both languages), the permission texts and
+  /// the settings steps. The project name stays in code identifiers only.
+  func testProductNameIsHaleEverywhereAPersonReadsIt() throws {
+    XCTAssertEqual(AppBrand.name, "Hale 息")
+    for lang in ["zh-Hans", "en"] {
+      let p = try XCTUnwrap(Bundle.main.path(forResource: "InfoPlist", ofType: "strings", inDirectory: nil, forLocalization: lang))
+      let d = try XCTUnwrap(NSDictionary(contentsOfFile: p) as? [String: String])
+      XCTAssertEqual(d["CFBundleDisplayName"], AppBrand.name, lang)
+      for (key, text) in d where key.hasPrefix("NS") {
+        XCTAssertFalse(text.contains("Watch2Whoop"), "\(lang) \(key) still names the old product")
+      }
+      XCTAssertTrue(d["NSHealthShareUsageDescription"]?.contains(AppBrand.name) == true, lang)
+    }
+    for lang in ["zh", "en"] {
+      Lang.override = lang
+      let steps = SyncResult.backgroundSteps.first ?? ""
+      XCTAssertTrue(steps.contains(AppBrand.name) && !steps.contains("Watch2Whoop"), lang)
+      XCTAssertTrue(InviteShare.text(circle: "Example", code: "QWERT-YUP23").contains(AppBrand.name), lang)
+      XCTAssertEqual(AuthService.deviceLabel, "iPhone (\(AppBrand.name))")
+    }
+    Lang.override = nil
+  }
 }

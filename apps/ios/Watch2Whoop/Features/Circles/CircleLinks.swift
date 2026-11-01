@@ -70,6 +70,6 @@ enum InviteShare {
   }
 
   static func text(circle: String, code: String) -> String {
-    tr("加入我在 Watch2Whoop 的圈子「\(circle)」：邀请码 \(code)", "Join my circle \u{201C}\(circle)\u{201D} on Watch2Whoop: invite code \(code)")
+    tr("加入我在 \(AppBrand.name)的圈子「\(circle)」：邀请码 \(code)", "Join my circle \u{201C}\(circle)\u{201D} on \(AppBrand.name): invite code \(code)")
   }
 }

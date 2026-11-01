@@ -7,6 +7,8 @@
    and the dark block) has the same hex value, so the native app and the page cannot drift apart.
 3. Licences: Resources/licenses.json (the app's 开源许可 page) names every pinned SPM package of project.yml at its
    version, and every entry has a licence text.
+4. Product name: `AppBrand.name` ("Hale 息") is the name under the icon in both InfoPlist.strings and in the xcconfig, and
+   no string literal or permission text still says "Watch2Whoop" (the project name stays in identifiers and the URL scheme).
 
     python3 apps/ios/scripts/check_sources.py
 """
@@ -23,6 +25,8 @@ STRING = re.compile(r'"(?:[^"\\\n]|\\.)*"')
 TR = re.compile(r'\btr\(\s*("(?:[^"\\\n]|\\.)*")\s*,\s*("(?:[^"\\\n]|\\.)*")\s*\)')
 # Files copied byte for byte from the Flutter app (their own rules apply there)
 SKIP = {"SyncEngine.swift", "RawSync.swift", "Backfill.swift"}
+# The product name has one spelling in both languages ("Hale 息"), so it is the one place Chinese may sit outside tr()
+BRAND_FILE = "AppBrand.swift"
 
 
 def strip_comments(line: str) -> str:
@@ -41,7 +45,7 @@ def strip_comments(line: str) -> str:
 def check_i18n() -> list[str]:
     errors = []
     for f in sorted(APP.rglob("*.swift")):
-        if f.name in SKIP:
+        if f.name in SKIP or f.name == BRAND_FILE:
             continue
         for n, raw in enumerate(f.read_text().splitlines(), 1):
             line = strip_comments(raw)
@@ -103,8 +107,42 @@ def check_licences() -> list[str]:
     return errors
 
 
+def check_brand() -> list[str]:
+    """The product name users read is `AppBrand.name` ("Hale 息"): the name under the icon is the same in both InfoPlist.strings
+    and in the xcconfig, and no string literal in the app (or permission text) still names the project "Watch2Whoop". The
+    project name stays in identifiers, the URL scheme, paths and the licence list, none of which is a string a person reads."""
+    errors = []
+    brand_file = APP / "App" / "AppBrand.swift"
+    m = re.search(r'static let name = "([^"\n]+)"', brand_file.read_text())
+    if not m:
+        return [f"{brand_file.relative_to(REPO)}: no `static let name = \"…\"`"]
+    name = m.group(1)
+    for lang in ("zh-Hans", "en"):
+        path = APP / "Resources" / f"{lang}.lproj" / "InfoPlist.strings"
+        text = re.sub(r"/\*.*?\*/", "", path.read_text(), flags=re.S)   # comments may name files
+        d = re.search(r'"CFBundleDisplayName"\s*=\s*"([^"\n]*)"\s*;', text)
+        if not d or d.group(1) != name:
+            errors.append(f"{path.relative_to(REPO)}: CFBundleDisplayName must be {name!r} (AppBrand.name)")
+        if "Watch2Whoop" in text:
+            errors.append(f"{path.relative_to(REPO)}: a permission text still says Watch2Whoop (use {name!r})")
+    xc = re.search(r"^W2W_DISPLAY_NAME\s*=\s*(.+?)\s*$", (HERE / "Config" / "Watch2Whoop.xcconfig").read_text(), re.M)
+    if not xc or xc.group(1) != name:
+        errors.append(f"Config/Watch2Whoop.xcconfig: W2W_DISPLAY_NAME must be {name!r} (AppBrand.name)")
+    for m in re.finditer(r"^\s+NS\w+UsageDescription: (.*)$", (HERE / "project.yml").read_text(), re.M):
+        if "Watch2Whoop" in m.group(1):
+            errors.append("project.yml: a permission text still says Watch2Whoop (use the product name)")
+    for f in sorted(APP.rglob("*.swift")):
+        if f.name in SKIP:
+            continue
+        for n, raw in enumerate(f.read_text().splitlines(), 1):
+            for s in STRING.finditer(strip_comments(raw)):
+                if "Watch2Whoop" in s.group(0):
+                    errors.append(f"{f.relative_to(REPO)}:{n}: the string names Watch2Whoop; text a person reads uses AppBrand.name")
+    return errors
+
+
 def main() -> int:
-    errors = check_i18n() + check_tokens() + check_licences()
+    errors = check_i18n() + check_tokens() + check_licences() + check_brand()
     for e in errors:
         print(e)
     print("ok" if not errors else f"{len(errors)} problem(s)")

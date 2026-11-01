@@ -26,7 +26,7 @@
    open -e Config/Watch2Whoop.local.xcconfig
    ```
    - `W2W_BUNDLE_ID`、`W2W_TEAM_ID`：**和 Flutter 版一字不差**，直接从你上次用的 `apps/watch2whoop/ios/Flutter/Watch2Whoop.local.xcconfig` 抄过来。只有同一个 Bundle ID 和 Team，TestFlight 才会把 1.0.8 覆盖升级成 1.0.9，大家才不用重新登录（登录凭据存在钥匙串里，钥匙串按 Team + Bundle ID 区分）。
-   - `W2W_DISPLAY_NAME`：主屏幕上的名字，和以前一样。
+   - `W2W_DISPLAY_NAME`：主屏幕上的名字，现在是 **Hale 息**（原来叫 Watch2Whoop）；示例文件里已经写好，保持不变。工程里 `InfoPlist.strings` 也写了同一个名字，所以这一项写成别的也不会生效。
    - `W2W_DEFAULT_HOST`：登录页预填的服务器，只写主机名（不要 `https://`，xcconfig 里两个斜杠是注释）。就是你 `config/defaults.json` 里今天页地址的主机名。
 3. 生成工程：`xcodegen generate`，然后 `open Watch2Whoop.xcodeproj`（是 `.xcodeproj`，没有 `.xcworkspace`）。工程文件是生成的，不进 git；以后拿到新版本都要重新跑这一步。
 4. **Signing & Capabilities**（Watch2Whoop target，第一次做一次）：

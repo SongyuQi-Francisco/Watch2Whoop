@@ -87,7 +87,7 @@ struct OnboardingView: View {
   }
 
   @ViewBuilder private func welcome(_ model: OnboardingModel) -> some View {
-    title("Watch2Whoop", tr("登录后开始同步 Apple 健康数据。", "Sign in to start syncing your Apple Health data."))
+    title(AppBrand.name, tr("登录后开始同步 Apple 健康数据。", "Sign in to start syncing your Apple Health data."))
     serverRow(model)
     if model.methods?.apple ?? true {
       SignInWithAppleButton(.signIn, onRequest: model.prepareApple) { result in Task { await model.finishApple(result) } }

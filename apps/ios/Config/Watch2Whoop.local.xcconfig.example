@@ -7,7 +7,7 @@ W2W_BUNDLE_ID = com.yourname.watch2whoop
 // Apple Developer Team ID (developer.apple.com → Membership details, 10 alphanumeric characters).
 W2W_TEAM_ID = ABCDE12345
 // Name shown on the home screen.
-W2W_DISPLAY_NAME = Watch2Whoop
+W2W_DISPLAY_NAME = Hale 息
 // Version and build number come from Watch2Whoop.xcconfig in the repository (docs/apps.md section 4): do not set
 // W2W_MARKETING_VERSION / W2W_BUILD_NUMBER here.
 // Host of the default server on the sign-in screen (no https://: two slashes start a comment in xcconfig).

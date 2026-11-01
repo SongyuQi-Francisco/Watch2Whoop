@@ -21,6 +21,7 @@ from body_engine.ai import tokens as ai_tokens
 from body_engine.client import notice, params as P, policy
 from body_engine.config import Settings
 from body_engine.db import migrate
+from body_engine.i18n import use_lang
 from body_engine.rollout import flags
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME", "body_test_upgrade")
@@ -175,7 +176,9 @@ def test_during_the_notice(client, conn, users):
     assert me_state(client, H(t["a"], **NEW))["state"] == "none"
     assert me_state(client, H(t["a"]))["state"] == "none", "a Bearer token without X-App-Client is never asked"
     en = client.get("/v1/web/me", headers=H(t["a"], **OLD, **{"X-Body-Lang": "en"})).json()["upgrade"]
-    assert en["title"] == "Please update Watch2Whoop"
+    assert en["title"] == "Please update Hale 息 (formerly Watch2Whoop)"
+    zh = client.get("/v1/web/me", headers=H(t["a"], **OLD)).json()["upgrade"]
+    assert zh["title"] == "请升级 Hale 息（原 Watch2Whoop）"
 
 
 def test_explicit_notice_date(client, conn, users):
@@ -275,6 +278,17 @@ def test_send_needs_dates_and_link(conn):
     conn.commit()
     with pytest.raises(ValueError):
         notice.run(conn, dry_run=True)
+
+
+def test_texts_name_the_app_with_its_old_name():
+    """1.0.8 users read these: the new name "Hale 息" comes with "(formerly Watch2Whoop)" so they recognise the app."""
+    for stage, block_day in (("notice", None), ("notice", "2026-12-01"), ("last-day", "2026-12-01")):
+        m = notice.message(stage, "2.0.0", block_day)
+        assert "Hale 息（原 Watch2Whoop）2.0.0" in m["body"] + m["title"]
+        assert "Hale 息 (formerly Watch2Whoop) 2.0.0" in m["body_en"] + m["title_en"]
+    assert policy.texts("block", "2.0.0", None)["title"] == "请升级 Hale 息（原 Watch2Whoop）"
+    with use_lang("en"):
+        assert policy.texts("notice", "2.0.0", "2026-12-01")["title"] == "Please update Hale 息 (formerly Watch2Whoop)"
 
 
 def test_due_stage():

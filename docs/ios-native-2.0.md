@@ -870,7 +870,7 @@ app version that implements it (`nativesync/params.MIN_APP_VERSION_BY_KIND`, all
 | 1 | each package merged | flag stays off; internal TestFlight build for the owner only |
 | 2 | wave end | `flags set native_<pkg> --state cohort --cohort inner`; watch `app_compute_checks` (pass / fail counts only for non-research users) |
 | 3 | after S9 regression | `native_compute_primary` cohort `inner` + `app-compute primary --package all --cohort inner` (pass-rate gate), 3–7 days, then all package flags and primary `--state all` + `app-compute primary --package all --all` (S9 runbook) |
-| 4 | release (wave 6) | 2.0.0 to the external group; `force_upgrade` on with `notice_from` = release day, `block_from` = +7 days |
+| 4 | release (wave 6) | 2.0.0 (home-screen and store name **Hale 息**) to the external group; set `BODY_LEGAL_APP_NAME="Hale 息"` on the server (privacy policy and terms name the app by it; the code default stays `Watch2Whoop` for self-hosters); `force_upgrade` on with `notice_from` = release day, `block_from` = +7 days (its texts already say "Hale 息（原 Watch2Whoop）") |
 | 5 | `block_from` | Shortcut 410; OW stop-write after `retire-check` is green for everyone (R1) |
 
 Rollback per kind: turn the package flag off (app falls back to server docs, server recomputes the user via `app-scores server`-style command `app-compute server --kind K --user-id N`, built in S9); per package and target: `app-compute shadow --package P --cohort C`; global: `native_compute_primary` off; upgrade block: `force_upgrade` off.

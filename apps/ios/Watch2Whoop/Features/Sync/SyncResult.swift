@@ -138,7 +138,7 @@ struct SyncResult: Equatable {
     case .notDelivered:
       return tr("服务器最近没收到这台手机的同步。打开 app 点「立即同步」，并检查下面的后台设置。", "The server has not received this phone's sync lately. Open the app, tap Sync now and check the background settings below.")
     case .noPermission:
-      return tr("这一项从来没收到过。iOS 不告诉 app 有没有读取权限：在「健康」→ 头像 →「App」→「Watch2Whoop」里打开它。", "Nothing of this ever arrived. iOS does not tell apps whether reading is allowed: turn it on in Health → profile → Apps → Watch2Whoop.")
+      return tr("这一项从来没收到过。iOS 不告诉 app 有没有读取权限：在「健康」→ 头像 →「App」→「\(AppBrand.name)」里打开它。", "Nothing of this ever arrived. iOS does not tell apps whether reading is allowed: turn it on in Health → profile → Apps → \(AppBrand.name).")
     case .locked:
       return tr("iPhone 锁着时 iOS 不让 app 读「健康」。上次后台同步碰上锁屏，解锁后会自动接着传。", "iOS does not let apps read Health while the iPhone is locked. The last background sync met a locked phone; it continues once unlocked.")
     case .backgroundOff:
@@ -160,7 +160,7 @@ struct SyncResult: Equatable {
 
   /// Steps to turn Background App Refresh on (the person does it; the app never changes settings).
   static var backgroundSteps: [String] {
-    [tr("打开 iPhone「设置」，下滑找到「Watch2Whoop」", "Open iPhone Settings and scroll to Watch2Whoop"),
+    [tr("打开 iPhone「设置」，下滑找到「\(AppBrand.name)」", "Open iPhone Settings and scroll to \(AppBrand.name)"),
      tr("打开「后台 App 刷新」", "Turn on Background App Refresh"),
      tr("如果那里是灰的：「设置」→「通用」→「后台 App 刷新」→ 选「无线局域网与蜂窝网络」", "If it is greyed out: Settings → General → Background App Refresh → Wi-Fi & Cellular Data"),
      tr("低电量模式也会暂停后台刷新", "Low Power Mode also pauses it")]

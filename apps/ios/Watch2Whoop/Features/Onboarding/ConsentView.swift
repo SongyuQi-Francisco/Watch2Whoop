@@ -23,7 +23,7 @@ struct ConsentView: View {
         Text(reconfirm ? tr("同意书更新了", "The consent was updated") : tr("使用前请确认", "Before you start"))
           .font(.system(size: 28, weight: .bold)).titleTracking().foregroundColor(Palette.text).padding(.top, 12)
         Text(reconfirm ? tr("《健康数据使用同意书》有了新版本，请再看一遍。", "There is a new version of the health data consent; please read it again.")
-             : tr("Watch2Whoop 会处理你的健康数据。看完要点（或全文），同意后才开始处理。", "Watch2Whoop processes your health data. Read the points (or the full text); processing starts only after you agree."))
+             : tr("\(AppBrand.name)会处理你的健康数据。看完要点（或全文），同意后才开始处理。", "\(AppBrand.name) processes your health data. Read the points (or the full text); processing starts only after you agree."))
           .font(Typo.body).foregroundColor(Palette.text2)
         if let t = text {
           Card {
@@ -72,7 +72,7 @@ struct ConsentView: View {
           ProgressView().tint(Palette.text2).frame(maxWidth: .infinity).padding(.top, 40)
         }
         if declined {
-          Banner(text: tr("不同意就不能使用 Watch2Whoop。你的健康数据目前只暂存、没有处理；可以退出登录，或请管理员删除账号和暂存的数据。", "Without your consent Watch2Whoop can't be used. Your health data is only stored, not processed; you can sign out, or ask the admin to delete your account and the stored data."),
+          Banner(text: tr("不同意就不能使用 \(AppBrand.name)。你的健康数据目前只暂存、没有处理；可以退出登录，或请管理员删除账号和暂存的数据。", "Without your consent \(AppBrand.name) can't be used. Your health data is only stored, not processed; you can sign out, or ask the admin to delete your account and the stored data."),
                  tone: .mid, actionTitle: tr("退出登录", "Sign out")) { Task { await app.signOut() } }
         }
         if let message { Banner(text: message, tone: .bad, actionTitle: text == nil ? tr("重试", "Retry") : nil) { Task { await load() } } }

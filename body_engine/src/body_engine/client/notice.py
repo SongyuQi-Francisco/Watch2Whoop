@@ -27,15 +27,16 @@ STAGE_AUTO = "auto"
 
 def message(stage: str, version: str, block_day: str | None) -> dict:
     """zh / en texts of the notice and the push for one stage."""
+    zh, en = P.APP_NAME_ZH, P.APP_NAME_EN   # the new name with the old one, so the people on the old app recognise it
     if stage == "last-day":
         return {"title": "明天起旧版本停用", "title_en": "Older versions stop working tomorrow",
-                "body": f"请今天升级到 Watch2Whoop {version}。数据都在，AI 连接不受影响。",
-                "body_en": f"Please update to Watch2Whoop {version} today. Your data is safe and AI connections keep working."}
+                "body": f"请今天升级到 {zh}{version}。数据都在，AI 连接不受影响。",
+                "body_en": f"Please update to {en} {version} today. Your data is safe and AI connections keep working."}
     if block_day:
-        return {"title": f"请升级到 Watch2Whoop {version}", "title_en": f"Please update to Watch2Whoop {version}",
+        return {"title": f"请升级到 {zh}{version}", "title_en": f"Please update to {en} {version}",
                 "body": f"{block_day} 起旧版本停用。数据都在，AI 连接不受影响。",
                 "body_en": f"Older versions stop working on {block_day}. Your data is safe and AI connections keep working."}
-    return {"title": f"请升级到 Watch2Whoop {version}", "title_en": f"Please update to Watch2Whoop {version}",
+    return {"title": f"请升级到 {zh}{version}", "title_en": f"Please update to {en} {version}",
             "body": "数据都在，AI 连接不受影响。", "body_en": "Your data is safe and AI connections keep working."}
 
 

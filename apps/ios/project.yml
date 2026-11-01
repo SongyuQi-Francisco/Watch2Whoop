@@ -81,11 +81,11 @@ targets:
           - CFBundleURLName: watch2whoop
             CFBundleURLSchemes: [watch2whoop]
         # Permission texts: English here and in en.lproj, Chinese in zh-Hans.lproj/InfoPlist.strings (keep the three equal in
-        # meaning). Data goes to the person's account on the Watch2Whoop server; an AI sees it only through Jarvis.
-        NSHealthShareUsageDescription: "Watch2Whoop reads the Health data you allow (such as heart rate, HRV and beat-to-beat intervals, ECGs, sleep, workouts, steps and energy) to calculate your recovery, sleep and strain, and syncs it to your account on the Watch2Whoop server. It is never used for advertising or sold. An AI reads it only when you use Jarvis."
-        NSHealthUpdateUsageDescription: "Watch2Whoop does not write your data to Health. Only developer test builds add sample data in the simulator."
-        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for Jarvis or for your profile picture. Photos go to your account on the Watch2Whoop server, and to your AI only when you send them to Jarvis."
-        NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to Jarvis. Your voice is turned into text on this iPhone or on the Watch2Whoop server; no recording is kept."
+        # meaning). Data goes to the person's account on the Hale 息 server; an AI sees it only through Jarvis.
+        NSHealthShareUsageDescription: "Hale 息 reads the Health data you allow (such as heart rate, HRV and beat-to-beat intervals, ECGs, sleep, workouts, steps and energy) to calculate your recovery, sleep and strain, and syncs it to your account on the Hale 息 server. It is never used for advertising or sold. An AI reads it only when you use Jarvis."
+        NSHealthUpdateUsageDescription: "Hale 息 does not write your data to Health. Only developer test builds add sample data in the simulator."
+        NSCameraUsageDescription: "Used to scan your setup QR code and, when you choose to, to take a photo for Jarvis or for your profile picture. Photos go to your account on the Hale 息 server, and to your AI only when you send them to Jarvis."
+        NSMicrophoneUsageDescription: "Used only while you hold the mic button to talk to Jarvis. Your voice is turned into text on this iPhone or on the Hale 息 server; no recording is kept."
         NSSpeechRecognitionUsageDescription: "Used only while you talk to Jarvis: Apple's on-device recognition turns what you say into text on this iPhone."
     entitlements:
       path: Watch2Whoop/Watch2Whoop.entitlements

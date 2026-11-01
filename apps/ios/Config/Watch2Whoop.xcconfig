@@ -4,7 +4,7 @@
 // Copy Watch2Whoop.local.xcconfig.example to Watch2Whoop.local.xcconfig (git-ignored) and fill in your own values.
 W2W_BUNDLE_ID = org.watch2whoop.app
 W2W_TEAM_ID =
-W2W_DISPLAY_NAME = Watch2Whoop
+W2W_DISPLAY_NAME = Hale 息
 // Host of the default server on the sign-in screen, e.g. body.example.com (no scheme: two slashes start a comment here).
 W2W_DEFAULT_HOST =
 // Host of the public privacy policy / terms pages, e.g. body.example.com (empty = the signed-in server's /legal/ pages).

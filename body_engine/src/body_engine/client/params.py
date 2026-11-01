@@ -25,6 +25,11 @@ CACHE_TTL_S = 30.0              # policy rows per process; `upgrade set` clears 
 # logout), uploads (no data loss). /mcp and everything outside /v1/ never go through the check.
 EXEMPT_PREFIXES = ("/v1/web/", "/v1/ingest/")
 
+# How the upgrade texts name the app (owner, 2026-11-01). 2.0.0 is called "Hale 息" on the home screen, but the people asked
+# to upgrade are on the app that is still called Watch2Whoop, so the texts give both names until they have made the step.
+APP_NAME_ZH = "Hale 息（原 Watch2Whoop）"
+APP_NAME_EN = "Hale 息 (formerly Watch2Whoop)"
+
 NOTIFY_KIND = "system.upgrade"  # notify/params.py category `system`
 NOTIFY_URL = "/app/"
 STAGES = ("notice", "last-day")  # notice: from the start of the window; last-day: the day before the block

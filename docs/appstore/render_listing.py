@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Check and render the App Store listing texts.
 
-    python3 docs/appstore/render_listing.py                       # check only, placeholders counted at worst case
-    APP_NAME="<final name>" SERVER_URL="https://<host>" python3 docs/appstore/render_listing.py --write
+    python3 docs/appstore/render_listing.py                       # check only
+    SERVER_URL="https://<host>" python3 docs/appstore/render_listing.py --write
 
-Reads docs/appstore/listing/<locale>/*.txt (fastlane `deliver` metadata layout), where the app name is the placeholder
-{{APP_NAME}} and the server address {{SERVER_URL}}. Prints the character count of every field against Apple's limit and
-fails (exit 1) on: a limit exceeded, a competitor trademark (WHOOP, Oura, ...), a medical-claim word that is not in a
-negated sentence ("not a medical device"), keywords with a space next to a comma / duplicates / the word "apple",
-or an APP_NAME containing WHOOP. `--write` renders into docs/appstore/out/<locale>/ (git-ignored), ready for
+Reads docs/appstore/listing/<locale>/*.txt (fastlane `deliver` metadata layout). The app name ("Hale 息", name.txt) is
+written out in the texts; only the server address is the placeholder {{SERVER_URL}}. Prints the character count of every
+field against Apple's limit and fails (exit 1) on: a limit exceeded, a competitor trademark (WHOOP, Oura, ... also in the
+name), a medical-claim word that is not in a negated sentence ("not a medical device"), keywords with a space next to a
+comma / duplicates / the word "apple". `--write` renders into docs/appstore/out/<locale>/ (git-ignored), ready for
 `fastlane deliver --metadata_path docs/appstore/out` or for pasting into App Store Connect.
 Standard library only.
 """
@@ -38,13 +38,13 @@ NEGATION = ["不是", "不用于", "不提供", "不能", "not a", "not for", "n
 SENTENCE = re.compile(r"[^。.\n]+[。.]?")
 
 
-def load(locale: str, app_name: str, server_url: str) -> dict[str, str]:
+def load(locale: str, server_url: str) -> dict[str, str]:
     out = {}
     for f in FIELDS:
         p = LISTING / locale / f"{f}.txt"
         if p.exists():
             text = p.read_text(encoding="utf-8").rstrip("\n")
-            out[f] = text.replace("{{APP_NAME}}", app_name).replace("{{SERVER_URL}}", server_url)
+            out[f] = text.replace("{{SERVER_URL}}", server_url)
     return out
 
 
@@ -60,7 +60,7 @@ def check(locale: str, fields: dict[str, str]) -> tuple[list[str], list[str]]:
         if n > limit:
             errors.append(f"{locale}: {f} is {n} characters, the limit is {limit}")
     for f, text in fields.items():
-        if f in ("privacy_url", "name"):
+        if f == "privacy_url":
             continue
         low = text.lower()
         for t in TRADEMARKS:
@@ -92,21 +92,12 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--write", action="store_true", help="render into docs/appstore/out/<locale>/")
     args = ap.parse_args()
-    env_name = os.environ.get("APP_NAME", "").strip()
-    app_name = env_name or "X" * LIMITS["name"]   # worst case when the name is not decided
     server_url = os.environ.get("SERVER_URL", "").rstrip("/") or "https://example.invalid"
     errors: list[str] = []
     warns: list[str] = []
-    if env_name:
-        if "whoop" in env_name.lower():
-            errors.append("APP_NAME contains WHOOP (trademark): choose another name")
-        if len(env_name) > LIMITS["name"]:
-            errors.append(f"APP_NAME is {len(env_name)} characters, the limit is {LIMITS['name']}")
-    else:
-        print(f"APP_NAME not set: counting the name as {LIMITS['name']} characters (worst case)")
     locales = sorted(p.name for p in LISTING.iterdir() if p.is_dir())
     for loc in locales:
-        fields = load(loc, app_name, server_url)
+        fields = load(loc, server_url)
         e, w = check(loc, fields)
         errors += e
         warns += w

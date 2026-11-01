@@ -208,6 +208,9 @@ final class CircleLinkTests: XCTestCase {
 
   func testCodeFromPastedText() {
     XCTAssertEqual(InviteCode.extract("Join my circle \u{201C}Example\u{201D} on Watch2Whoop: invite code QWERT-YUP23 https://body.example.com/app/?circle=QWERT-YUP23"), "QWERT-YUP23")
+    // the text this app shares now, and the one earlier builds shared (testers still paste it)
+    XCTAssertEqual(InviteCode.extract(InviteShare.text(circle: "Example", code: "QWERT-YUP23")), "QWERT-YUP23")
+    XCTAssertEqual(InviteCode.extract("加入我在 Watch2Whoop 的圈子「Example」：邀请码 QWERT-YUP23"), "QWERT-YUP23")
     XCTAssertEqual(InviteCode.extract("  qwert yup23 "), "QWERT-YUP23")
     XCTAssertEqual(InviteCode.extract("EXAMPLECLUB"), "EXAMPLECLUB")   // an activation code of another shape
     XCTAssertNil(InviteCode.extract("  "))

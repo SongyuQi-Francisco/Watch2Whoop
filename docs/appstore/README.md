@@ -1,32 +1,33 @@
 # App Store 上架材料
 
-原生 iOS app（`apps/ios/`，2.0.0）上架 App Store 要用的文字、问卷答案、截图脚本和审核备注。**上架名还没定**（名字里不能有 WHOOP，商标）：所有文字里名字都是 `{{APP_NAME}}`，脚本里是环境变量 `APP_NAME`，名字定了重新生成一次就行。
+原生 iOS app（`apps/ios/`，2.0.0）上架 App Store 要用的文字、问卷答案、截图脚本和审核备注。**上架名是 `Hale 息`**（2026-11-01 负责人定的：Hale、一个空格、息；名字里不能有 WHOOP，商标）：商店文字里直接写这个名字，只有隐私政策网址还是占位符 `{{SERVER_URL}}`。开源项目、仓库、Bundle ID、Xcode target、URL scheme `watch2whoop://` 仍叫 Watch2Whoop，只有用户看得见的名字改了。
 
 ## 文件
 
 | 文件 | 内容 |
 |---|---|
 | `listing/zh-Hans/`、`listing/en-US/` | 商店文字，一个字段一个 `.txt`（fastlane `deliver` 的目录结构）：`name`、`subtitle`、`promotional_text`、`description`、`keywords`、`release_notes`、`privacy_url` |
-| `render_listing.py` | 检查字数限制并把名字 / 服务器地址填进去 |
+| `render_listing.py` | 检查字数限制、商标和医疗词，并把服务器地址填进去 |
 | `app-store-connect-answers.md` | 类别、年龄分级、App 隐私（营养标签）、HealthKit 类型、其他项的答案 |
 | `review-notes-template.md` | 给 App Review 的备注模板（英文）+ 中文摘要 |
 | `../../apps/ios/scripts/appstore_screenshots.sh` | 截图流水线（模拟器 + 合成数据），配套 `appstore_demo_server.py`、`appstore_seed_circles.py` |
 
-## 名字定了以后（三条命令）
+## 生成商店文字和截图（两条命令）
 
 ```bash
-export APP_NAME="<最终名字>"  SERVER_URL="https://<公网域名>"
+export SERVER_URL="https://<公网域名>"
 python3 docs/appstore/render_listing.py --write          # 检查字数 + 商标 / 医疗词，渲染到 docs/appstore/out/<语言>/（不进 git）
 apps/ios/scripts/appstore_screenshots.sh                  # 截图 → apps/ios/build/appstore-screenshots/（不进 git）
 ```
 
-`render_listing.py` 没设 `APP_NAME` 时按名字 30 个字符的最坏情况计数；设了的话名字里有 WHOOP、超过 30 个字符会报错。检查项：各字段字数上限（名称 30、副标题 30、宣传文字 170、描述 4000、关键词 100、更新说明 4000）、文字里出现竞品商标（WHOOP、Oura、Garmin、Fitbit 等）、医疗词（诊断、治疗、疾病等，只允许出现在否定句里，如"不是医疗器械"）、关键词里逗号旁有空格 / 重复 / 含 apple。当前各字段字数（名字按 30 个字符的最坏情况）：
+检查项：各字段字数上限（名称 30、副标题 30、宣传文字 170、描述 4000、关键词 100、更新说明 4000）、文字里出现竞品商标（WHOOP、Oura、Garmin、Fitbit 等）、医疗词（诊断、治疗、疾病等，只允许出现在否定句里，如"不是医疗器械"）、关键词里逗号旁有空格 / 重复 / 含 apple。当前各字段字数：
 
 | 字段 | 中文 | English | 上限 |
 |---|---|---|---|
-| 副标题 | 17 | 29 | 30 |
+| 名称 | 6 | 6 | 30 |
+| 副标题 | 16 | 28 | 30 |
 | 宣传文字 | 85 | 149 | 170 |
-| 描述 | 960 | 2432 | 4000 |
+| 描述 | 910 | 2384 | 4000 |
 | 关键词 | 66 | 100 | 100 |
 | 更新说明（2.0.0） | 189 | 532 | 4000 |
 
@@ -47,7 +48,7 @@ WITH_65=1 apps/ios/scripts/appstore_screenshots.sh               # 另外生成 
 - **Jarvis 一屏**用 `fake_jarvis_server.py`（不调任何 AI，回答是写死的示例），其余屏用真的 Body Engine。
 - 状态栏统一成 9:41、满电、满格；浅色模式；语言用启动参数 `-AppleLanguages`，加上 `W2W_DEV_LANG`。
 - 屏幕顺序（按故事排）：01 今天（三环）、02 睡眠、03 趋势、04 训练、05 Jarvis、06 圈子动态、07 排行榜、08 饮食、09 日记。上传时 Apple 最多 10 张，可以删减；每张图上要不要加说明文字、要不要套手机边框（做图工具）由负责人定，脚本只出原始截图。
-- 截图里显示的 app 名字是 `W2W_DISPLAY_NAME`；设了 `APP_NAME` 只覆盖这次构建的显示名。
+- 截图里显示的 app 名字来自 `Resources/{zh-Hans,en}.lproj/InfoPlist.strings` 的 `CFBundleDisplayName`（`Hale 息`）；`Config/Watch2Whoop.xcconfig` 的 `W2W_DISPLAY_NAME` 是同一个值，本地 xcconfig 里如果还写着旧名字也不影响，本地化文件优先。
 - 需要：Xcode 26 + XcodeGen 2.46.0、Docker（起 Postgres）、`uv`、`python3`；磁盘剩余 < 15G 会拒绝构建（`docs/ios-native-app.md` 第 10 节）。
 
 **2026-11-01 在本机跑过一次**（iPhone 17 Pro Max 模拟器 iOS 26.2，构建 + 起服务约 8 分钟，截图约 4 分钟）：中英文各 9 张 1320×2868 的 PNG 全部生成，内容是合成数据——今天（三环）、睡眠详情、趋势、训练（肌肉负荷）、Jarvis（假服务器）、圈子动态、排行榜、饮食、日记。已知的小问题：圈子动态那一张的页眉偶尔压到状态栏（首次进入朋友 tab 时的布局抖动，没有改 app 代码，需要的话手动重拍或等 app 修）；Jarvis 一张的回答是写死的示例；饮食页只有今天的早餐、喝水 0。
@@ -69,7 +70,7 @@ WITH_65=1 apps/ios/scripts/appstore_screenshots.sh               # 另外生成 
 
 **等负责人决定**
 
-- [ ] **上架名**（不能含 WHOOP）：定了之后设 `APP_NAME`，再设 `BODY_LEGAL_APP_NAME`（隐私政策里的名字），Bundle ID 不变；`W2W_DISPLAY_NAME` 改成新名字。商店名字不能被占用，先在 App Store Connect 里预占。
+- [ ] **上架名 `Hale 息` 的落地**：app 内的名字、商店文字、问卷和审核备注已改；上架时服务器要设 `BODY_LEGAL_APP_NAME="Hale 息"`（隐私政策、使用条款里的名字；代码里的默认值仍是 Watch2Whoop，给自托管的人用），见 `docs/ios-native-2.0.md` 上线清单。Bundle ID 不变。商店名字不能被占用，先在 App Store Connect 里预占 `Hale 息`。
 - [ ] **开发者账号 / 主体**：用个人还是公司主体上架（决定"卖家"名、`BODY_LEGAL_ENTITY`、中国大陆区要不要上）。App Store 的健康类 app 需要隐私政策网址、支持网址，主体和联系方式要对得上。
 - [ ] **上架地区**：中国大陆区需要 App 备案（ICP），备用 AI 在中国的服务器、Jarvis 可能还牵涉生成式 AI 服务的备案，要和有资质的人确认；其他地区看当地对健康数据的要求（欧盟 / 英国 GDPR、澳大利亚隐私法等）。没确认前先只选能确认的地区。
 - [ ] **JS 算法包的许可证**：`packages/openbodyscore-js/package.json` 现在写的是 AGPL-3.0-only，一般认为 App Store 的条款和 AGPL / GPL 不兼容，要改成 MIT / Apache-2.0 之类，或者另做授权；`review-notes-template.md` 第 4 节和 `licenses.json` 都依赖这个决定（PR #381 写了同样的问题）。

@@ -46,7 +46,7 @@ struct AuthService {
     let userId: Int?
   }
 
-  static var deviceLabel: String { "iPhone (Watch2Whoop)" }
+  static var deviceLabel: String { "iPhone (\(AppBrand.name))" }
 
   func methods() async throws -> Methods { try await api.send(.get(Endpoint.authMethods)) }
 

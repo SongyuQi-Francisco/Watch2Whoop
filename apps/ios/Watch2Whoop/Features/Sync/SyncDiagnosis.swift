@@ -8,7 +8,7 @@ struct SyncDiagnosis: Equatable {
   /// The one button an issue offers.
   enum Action: Equatable {
     case requestPermission    // the one Health sheet
-    case openHealthApp        // Health → profile → Apps → Watch2Whoop
+    case openHealthApp        // Health → profile → Apps → (the app, AppBrand.name)
     case openSettings         // this app's page in iOS Settings (background app refresh)
     case syncNow
     case retry                // ask the server again

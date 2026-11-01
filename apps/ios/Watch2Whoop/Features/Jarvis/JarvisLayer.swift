@@ -370,7 +370,7 @@ struct JarvisLayer: View {
         if run == voiceRun && voice.running && (mode == .hold || mode == .locked) { finishVoice() }
       } catch let f as JarvisVoice.Failure {
         endVoice(message: f == .permission
-                 ? tr("麦克风或语音识别没打开：在系统设置里允许 Watch2Whoop", "Microphone or speech recognition is off: allow Watch2Whoop in Settings")
+                 ? tr("麦克风或语音识别没打开：在系统设置里允许 \(AppBrand.name)", "Microphone or speech recognition is off: allow \(AppBrand.name) in Settings")
                  : tr("语音识别暂时不可用，用键盘上的麦克风听写", "Speech recognition isn't available; use the keyboard's dictation"))
       } catch {
         endVoice(message: nil)

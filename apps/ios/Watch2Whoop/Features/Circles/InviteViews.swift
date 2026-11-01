@@ -117,7 +117,7 @@ struct InviteCard: View {
     VStack(spacing: 10) {
       HStack(spacing: 6) {
         Icon(.users, size: 16)
-        Text("Watch2Whoop").font(.system(size: 13, weight: .semibold))
+        Text(AppBrand.name).font(.system(size: 13, weight: .semibold))
       }
       .foregroundColor(Palette.text2)
       Text(tr("\(inviter) 邀请你加入", "\(inviter) invites you to"))
@@ -131,7 +131,7 @@ struct InviteCard: View {
         .textSelection(.enabled)
       Text(expires == nil ? tr("永久有效", "Never expires") : FeedFormat.timeLeft(expires))
         .font(.system(size: 12)).foregroundColor(Palette.text3)
-      Text(tr("打开 Watch2Whoop → 朋友 → 用邀请码加入", "Open Watch2Whoop → Friends → Join with a code"))
+      Text(tr("打开 \(AppBrand.name) → 朋友 → 用邀请码加入", "Open \(AppBrand.name) → Friends → Join with a code"))
         .font(.system(size: 12)).foregroundColor(Palette.text2).multilineTextAlignment(.center)
     }
     .frame(maxWidth: .infinity)

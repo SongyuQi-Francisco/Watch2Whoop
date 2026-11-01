@@ -8,10 +8,10 @@
 ---
 
 ```
-{{APP_NAME}} — notes for App Review (version {{VERSION}})
+Hale 息 — notes for App Review (version {{VERSION}})
 
 1. WHAT THE APP IS
-{{APP_NAME}} turns Apple Watch / Health data into daily recovery, sleep and strain scores, lets the user log training,
+Hale 息 turns Apple Watch / Health data into daily recovery, sleep and strain scores, lets the user log training,
 food, weight and journal, and lets the user optionally talk to an AI ("Jarvis") about their own data. It also has
 "circles" (a small friends group with a workout feed and a leaderboard). It is NOT a medical device and makes no
 diagnosis or treatment claims; every AI answer is labelled "AI-generated" and links to a "not medical advice" sheet,
@@ -89,6 +89,8 @@ authorisation at Apple. Export of the data: by request through the contact in th
 - The app is for people {{MIN_AGE}} and over (stated in the privacy policy and terms of use).
 - Privacy policy: {{SERVER_URL}}/legal/privacy · Terms of use: {{SERVER_URL}}/legal/terms · Open-source licences: Me → About.
 - The project is open source (MIT for the app); the server is run by {{ENTITY}}; users can also run their own server.
+- Naming: the product name is Hale 息. The open-source project behind it, its repository and the bundle ID are named
+  Watch2Whoop (the name earlier TestFlight builds of this app carried).
 - Medical disclaimer: the scores are estimates for everyday awareness. Their methods and sources are in the open-source code
   (packages/openbodyscore, body_engine scores/params). The app does not diagnose, treat or prevent any disease.
 ```
@@ -102,4 +104,4 @@ authorisation at Apple. Export of the data: by request through the contact in th
 3. **下载的 JS**（第 4 节）：这是被拒风险最大的一条。依据是 Apple 开发者计划许可协议 3.3.2 里"解释型代码"的例外，措辞要负责人（最好有法务）确认；JS 包的许可证（`package.json` 现在写 AGPL-3.0-only）和 App Store 的兼容性还没定，见 `README.md`。
 4. **AI**（第 5 节）：和 `docs/legal/` 隐私政策第 4 节一致；备用 AI 在中国的服务器，是审核最可能追问的点。
 5. **圈子**（第 6 节）：举报 / 屏蔽合并后逐句核对；24 小时内处理是**对 Apple 的承诺**，负责人要确认做得到才保留这句。
-6. **占位符**：`APP_NAME`、`VERSION`、`REVIEW_TOKEN`、`REVIEW_SETUP_LINK`、`REVIEW_CONTACT`、`SUPPORT_CONTACT`、`SERVER_URL`、`ENTITY`、`MIN_AGE`。
+6. **占位符**：`VERSION`、`REVIEW_TOKEN`、`REVIEW_SETUP_LINK`、`REVIEW_CONTACT`、`SUPPORT_CONTACT`、`SERVER_URL`、`ENTITY`、`MIN_AGE`。

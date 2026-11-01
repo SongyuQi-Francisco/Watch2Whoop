@@ -2,7 +2,6 @@
 # App Store screenshots from the iOS Simulator, with SYNTHETIC data only (docs/appstore/README.md).
 #
 #   apps/ios/scripts/appstore_screenshots.sh                      # 6.9" iPhone, light mode, Chinese + English
-#   APP_NAME="<final name>" apps/ios/scripts/appstore_screenshots.sh
 #   LOCALES=zh SCREENS="01-today 05-jarvis" apps/ios/scripts/appstore_screenshots.sh
 #   WITH_65=1 apps/ios/scripts/appstore_screenshots.sh            # also a 6.5" set (resized from 6.9")
 #
@@ -12,7 +11,8 @@
 # launches the app signed in to the demo server (W2W_DEV_SERVER / W2W_DEV_TOKEN, README "模拟器自动登录"), waits for the
 # first sync, and saves a PNG. The status bar is set to 9:41, full battery and signal. Output (git-ignored):
 #   apps/ios/build/appstore-screenshots/<size>/<locale>/<NN-name>.png
-# The app's name on the home screen / in screenshots is W2W_DISPLAY_NAME; APP_NAME overrides it for this build only.
+# The app's name on the home screen / in screenshots is the build's own `Hale 息` (CFBundleDisplayName in the InfoPlist.strings
+# files, W2W_DISPLAY_NAME as the fallback); the script draws or passes no name itself.
 #
 # Sizes (assumed current App Store Connect rules): 6.9" (1320x2868, iPhone 17 Pro Max) is required for iPhone apps;
 # 6.5" (1284x2778) is only needed if no 6.9" set is uploaded (Apple scales the 6.9" set down), so it is off by default and,
@@ -70,7 +70,6 @@ trap cleanup EXIT
 say "building the Debug app ($DD)"
 ( cd "$IOS" && xcodegen generate >/dev/null )
 BUILD_ARGS=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual W2W_TEAM_ID=FAKETEAMID)
-[ -n "${APP_NAME:-}" ] && BUILD_ARGS+=("W2W_DISPLAY_NAME=$APP_NAME")
 xcodebuild -project "$IOS/Watch2Whoop.xcodeproj" -scheme Watch2Whoop -configuration Debug \
   -destination "platform=iOS Simulator,id=$UDID" -derivedDataPath "$DD" "${BUILD_ARGS[@]}" build >"$DD.build.log" 2>&1 \
   || { tail -30 "$DD.build.log" >&2; exit 1; }

@@ -2,6 +2,10 @@
 
 纯 SwiftUI 的 iOS app（#340），从 1.0.9 起替换 Flutter 版（`apps/watch2whoop/`）。架构、本地数据库、同步、算法包和各个页面的分工都写在 [`docs/ios-native-app.md`](../../docs/ios-native-app.md)，改代码前先读那份文档。
 
+## 名字
+
+用户看到的 app 名字是 **Hale 息**（主屏幕、App Store、权限说明、app 里的文字）。开源项目、仓库、Bundle ID、Xcode target / scheme、Swift 模块名和 `watch2whoop://` 链接仍叫 Watch2Whoop。代码里用 `AppBrand.name`（`Watch2Whoop/App/AppBrand.swift`）；主屏幕名字在 `Resources/{zh-Hans,en}.lproj/InfoPlist.strings` 的 `CFBundleDisplayName`，`Config/Watch2Whoop.xcconfig` 的 `W2W_DISPLAY_NAME` 是同一个值。
+
 ## 构建
 
 需要 Xcode 26 和 XcodeGen 2.46.0（`brew install xcodegen`）。工程文件由 `project.yml` 生成，不进 git。

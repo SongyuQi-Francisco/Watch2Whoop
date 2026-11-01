@@ -16,7 +16,7 @@ The public repository names no operator; placeholders are filled from server set
 
 | 占位符 | 设置 / Setting | 默认 / Default |
 |---|---|---|
-| `{{app_name}}` | `BODY_LEGAL_APP_NAME` | Watch2Whoop（上架名定了再改 / change once the store name is decided） |
+| `{{app_name}}` | `BODY_LEGAL_APP_NAME` | Watch2Whoop（自托管的默认值；上架的服务器设成上架名 `Hale 息` / the default for self-hosters; the server behind the store listing sets the store name `Hale 息`） |
 | `{{entity}}` | `BODY_LEGAL_ENTITY` | 本服务器的运营者 / the operator of this server |
 | `{{contact}}` | `BODY_LEGAL_CONTACT` | 未填写 / not set |
 | `{{region}}` | `BODY_DATA_REGION` | 运营者选择的地区 / the operator's region |
