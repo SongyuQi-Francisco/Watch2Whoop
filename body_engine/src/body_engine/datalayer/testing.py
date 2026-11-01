@@ -4,9 +4,12 @@ check_imports: the framework imports only the standard library, itself and a sho
 the application. Every import statement counts, also the ones inside functions, and so do importlib.import_module /
 __import__ / importlib.resources.files calls with a literal module name.
 check_toolset: the application's toolset configuration matches its tools and every set sent to a model fits its budget.
-check_handlers: every handler takes the arguments its signature (legacy or not) says it does."""
+check_handlers: every handler takes the arguments its signature (legacy or not) says it does.
+check_messages: an application's own texts have the same placeholders as the framework's."""
 import ast
+import dataclasses
 import inspect
+import string
 import sys
 from pathlib import Path
 
@@ -77,3 +80,14 @@ def check_handlers(tools) -> list[str]:
         except TypeError:
             out.append(f"{t.name}: the handler does not take ({', '.join(want)})")
     return out
+
+
+def check_messages(messages) -> list[str]:
+    """A placeholder missing from a translation, or a misspelt one, would only show when a model first hits that text:
+    the fields whose placeholders differ from messages.ENGLISH. Empty = fine."""
+    from .messages import ENGLISH
+
+    def holes(text: str) -> set[str]:
+        return {name for _, name, _, _ in string.Formatter().parse(text) if name}
+    return [f"{f.name}: {sorted(holes(getattr(messages, f.name)))} instead of {sorted(holes(getattr(ENGLISH, f.name)))}"
+            for f in dataclasses.fields(messages) if holes(getattr(messages, f.name)) != holes(getattr(ENGLISH, f.name))]

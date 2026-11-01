@@ -78,11 +78,8 @@ def _butler_prompt(identity: Identity, connect_fn: Callable[[], AbstractContextM
 def _prompts(connect_fn: Callable[[], AbstractContextManager]) -> list[dl_server.PromptSpec]:
     return [dl_server.PromptSpec(
         name=PROMPT_NAME, title="身体管家", description="身体管家的角色设定（根规则 + 和今天页内对话用的同一份设定，提供商无关）",
-        get_description="身体管家", text=lambda identity: _butler_prompt(identity, connect_fn))] + [
-        # the same text get_playbook returns (ai/playbooks/, issue #100)
-        dl_server.PromptSpec(name=n, title=playbooks.title(n), description=playbooks.description(n),
-                             get_description=playbooks.title(n), text=lambda identity, n=n: playbooks.text(n))
-        for n in playbooks.NAMES]
+        get_description="身体管家", text=lambda identity: _butler_prompt(identity, connect_fn))] + \
+        dl_server.playbook_prompts(playbooks._SOURCE)   # the same text get_playbook returns (ai/playbooks/, issue #100)
 
 
 def build_server(identity_of: Callable[[object], Identity],

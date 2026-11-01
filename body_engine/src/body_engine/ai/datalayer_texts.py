@@ -36,6 +36,7 @@ MESSAGES = Messages(
     mcp_no_such_tool="没有这个工具：{name}",
     mcp_read_only="这个 token 是只读的，不能写",
     mcp_no_such_prompt="没有这个 prompt：{name}",
+    mcp_no_such_resource="没有这个 resource：{uri}",   # Watch2Whoop has no resources (mcp_server.py): not shown today
     mcp_not_signed_in="没有登录",
     mcp_not_started="MCP 没有启动",
     mcp_missing_bearer="缺少 Bearer token（用今天页「AI 设置」里生成的 AI token，或用 OAuth 连接）",

@@ -118,6 +118,11 @@ jobs:
       - name: openbodyscore tests
         working-directory: packages/openbodyscore
         run: uv run --locked pytest -q
+      # The datalayer framework's non-health example (issue #116): real stdio and HTTP processes on SQLite, no database
+      # server. Outside body_engine/tests, so the example keeps standing on its own.
+      - name: reading-notes example
+        working-directory: body_engine
+        run: uv run --locked pytest -q ../examples/reading-notes
       - name: pytest
         working-directory: body_engine
         env:

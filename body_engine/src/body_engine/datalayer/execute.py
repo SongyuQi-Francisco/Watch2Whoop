@@ -4,6 +4,8 @@ Executor.run: fill the defaults the relaxed schema left out -> whose data (polic
 oneself, viewing another user needs Policy.can_view -> the handler in a savepoint (write tools inside a write-log
 capture) -> audit -> after_write. Confirming writes is the caller's job (the chat loop, the MCP client).
 On an error only what the tool half-wrote is undone; the audit row stays, so the caller must commit after an error.
+A connection is whatever the application's tools use, plus transaction(): a context manager that is a savepoint, rolling
+back to its start when the block raises. psycopg connections have it as they are.
 
 Handlers take (ctx, args), with ctx a ToolContext. Tools with legacy=True keep the application's older signature
 handler(conn, owner_id, args), with the viewer and the channel in args as _viewer_id / _channel (invoke adapts them)."""
@@ -12,8 +14,8 @@ from dataclasses import dataclass
 from typing import Any, Callable, ContextManager, Mapping
 
 from .audit import AuditSink
-from .messages import Messages
-from .policy import Policy, resolve_owner
+from .messages import ENGLISH, Messages
+from .policy import Policy, SelfOnly, resolve_owner
 from .spec import Tool, fill_defaults, relaxed
 from .writelog import WriteLog
 
@@ -41,15 +43,16 @@ def invoke(tool: Tool, ctx: ToolContext, args: dict) -> Any:
 
 class Executor:
     """tools: name -> Tool (read at call time, so the application's mapping stays the single copy);
+    policy: None = SelfOnly (nobody sees anybody else's data);
     call_context: a context manager around every call (Watch2Whoop: AI-facing texts in Chinese);
     after_write(viewer_id): runs after a successful write tool (Watch2Whoop: drop the cached briefing);
     optional_defaults: see spec.relaxed (what a relaxed caller may leave out)."""
 
-    def __init__(self, tools: Mapping[str, Tool], *, policy: Policy, audit: AuditSink, writelog: WriteLog,
-                 messages: Messages, call_context: Callable[[], ContextManager] | None = None,
+    def __init__(self, tools: Mapping[str, Tool], *, audit: AuditSink, writelog: WriteLog, policy: Policy | None = None,
+                 messages: Messages = ENGLISH, call_context: Callable[[], ContextManager] | None = None,
                  after_write: Callable[[int], None] | None = None, optional_defaults: Mapping[str, Any] | None = None):
         self.tools = tools
-        self.policy = policy
+        self.policy = SelfOnly() if policy is None else policy
         self.audit = audit
         self.writelog = writelog
         self.messages = messages
