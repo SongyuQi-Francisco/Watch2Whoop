@@ -8,24 +8,32 @@ Errors (permission, parameters, database) go back to the model as tool errors wi
 
 The application injects everything that is its own: the server name and instructions, who a request is (identity_of),
 the database connection, the prompts, an optional per-caller text filter (Watch2Whoop: ai_parity's name scrub) and
-optional per-caller extra tools that run outside the Executor (CallerTools; Watch2Whoop: the server's web tools)."""
+optional per-caller extra tools that run outside the Executor (CallerTools; Watch2Whoop: the server's web tools).
+
+MCP resources are optional and off unless the application passes some: without them the server has no resources/* handlers
+and does not announce the capability, exactly as before (docs/datalayer-design.md section 3.5)."""
+import json
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Callable, Protocol, Sequence
+from typing import Callable, Mapping, Protocol, Sequence
 
 import anyio
 import mcp.types as types
 from mcp.server.lowlevel import Server
+from mcp.shared.exceptions import MCPError
 
 from .. import compact
 from .. import toolsets as ts
 from ..execute import Executor
+from ..playbooks import PlaybookSource
 from ..policy import Caller
 from ..spec import Tool, relaxed
 
+RESOURCE_SCHEME = "datalayer"
+
 
 class TextFilter(Protocol):
-    """Applied to everything one caller reads: tool descriptions, schemas and results."""
+    """Applied to everything one caller reads: tool descriptions, schemas, results and resources."""
     def text(self, text: str) -> str: ...
     def schema(self, schema: dict) -> dict: ...
 
@@ -53,6 +61,42 @@ class PromptSpec:
     text: Callable[[Caller], str]
 
 
+@dataclass(frozen=True)
+class ResourceSpec:
+    """A text every signed-in caller can read: how this server works, never anybody's data. text() has no caller on purpose:
+    a resource has no approval or audit path, so what belongs to a person stays behind a tool. It runs in a worker thread."""
+    uri: str
+    name: str
+    description: str
+    text: Callable[[], str]
+    mime_type: str = "text/markdown"
+
+
+def playbook_prompts(source: PlaybookSource) -> list[PromptSpec]:
+    """Every playbook as an MCP prompt of the same name, with the text its get_playbook tool would return."""
+    return [PromptSpec(name=n, title=source.title(n), description=source.description(n), get_description=source.title(n),
+                       text=lambda caller, n=n: source.text(n)) for n in source.names]
+
+
+def playbook_resources(source: PlaybookSource) -> list[ResourceSpec]:
+    """Every playbook as a resource datalayer://playbooks/NAME, again the same text."""
+    return [ResourceSpec(f"{RESOURCE_SCHEME}://playbooks/{n}", n, source.description(n), lambda n=n: source.text(n))
+            for n in source.names]
+
+
+def scopes_resource(scopes: Mapping[str, str],
+                    description: str = "The data scopes of this server and what each one covers.") -> ResourceSpec:
+    """datalayer://scopes: the application's data scopes (scope -> one line), as JSON."""
+    return ResourceSpec(f"{RESOURCE_SCHEME}://scopes", "scopes", description,
+                        lambda: json.dumps(dict(scopes), ensure_ascii=False, indent=1), mime_type="application/json")
+
+
+def rules_resource(text: Callable[[], str],
+                   description: str = "The rules every conversation with this server follows.") -> ResourceSpec:
+    """datalayer://rules/root: the application's root rules."""
+    return ResourceSpec(f"{RESOURCE_SCHEME}://rules/root", "root rules", description, text)
+
+
 def call(executor: Executor, connect_fn: Callable[[], AbstractContextManager], caller: Caller, name: str,
          args: dict) -> str:
     """Run one tool with a connection of its own; the compact text for the model."""
@@ -69,12 +113,15 @@ def build_server(name: str, instructions: str, identity_of: Callable[[object], C
                  tools: Sequence[Tool], toolset: Callable[[], ts.ToolsetConfig],
                  connect_fn: Callable[[], AbstractContextManager], prompts: Sequence[PromptSpec] = (),
                  text_filter: Callable[[Caller], TextFilter | None] | None = None,
-                 caller_tools: CallerTools | None = None) -> Server:
+                 caller_tools: CallerTools | None = None, resources: Sequence[ResourceSpec] = ()) -> Server:
     """identity_of(ctx) -> whom this request represents (stdio: one fixed caller; HTTP: from the request's Bearer token).
     tools: every tool in registration order (executor.tools is the same set by name); toolset() -> the configuration,
     read on every request; text_filter(caller) runs in a worker thread (it may read the database), None = no filter;
-    caller_tools: see CallerTools (None = the registry only)."""
+    caller_tools: see CallerTools (None = the registry only); resources: see ResourceSpec (empty = no resources at all)."""
     prompts_by_name = {p.name: p for p in prompts}
+    resources_by_uri = {r.uri: r for r in resources}
+    if len(resources_by_uri) != len(resources):
+        raise ValueError("two resources have the same uri")
 
     async def _filter(caller: Caller) -> TextFilter | None:
         return None if text_filter is None else await anyio.to_thread.run_sync(text_filter, caller)
@@ -148,5 +195,22 @@ def build_server(name: str, instructions: str, identity_of: Callable[[object], C
         return types.GetPromptResult(description=p.get_description, messages=[
             types.PromptMessage(role="user", content=types.TextContent(text=text))])
 
+    async def list_resources(ctx, params) -> types.ListResourcesResult:
+        f = await _filter(identity_of(ctx))
+        return types.ListResourcesResult(resources=[
+            types.Resource(uri=r.uri, name=r.name, description=f.text(r.description) if f else r.description,
+                           mime_type=r.mime_type) for r in resources])
+
+    async def read_resource(ctx, params) -> types.ReadResourceResult:
+        f = await _filter(identity_of(ctx))
+        r = resources_by_uri.get(params.uri)
+        if r is None:   # MCPError: any other exception reaches the client as "Internal server error"
+            raise MCPError(types.INVALID_PARAMS, toolset().messages.mcp_no_such_resource.format(uri=params.uri))
+        text = await anyio.to_thread.run_sync(r.text)
+        return types.ReadResourceResult(contents=[
+            types.TextResourceContents(uri=r.uri, mime_type=r.mime_type, text=f.text(text) if f else text)])
+
+    # Only with resources: without these handlers the capability is not announced and resources/* stay "method not found".
+    optional = {"on_list_resources": list_resources, "on_read_resource": read_resource} if resources else {}
     return Server(name, instructions=instructions, on_list_tools=list_tools, on_call_tool=call_tool,
-                  on_list_prompts=list_prompts, on_get_prompt=get_prompt)
+                  on_list_prompts=list_prompts, on_get_prompt=get_prompt, **optional)

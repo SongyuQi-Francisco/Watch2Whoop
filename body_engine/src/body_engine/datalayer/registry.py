@@ -11,7 +11,7 @@ from typing import Any, Callable, ContextManager, Iterable, Mapping
 
 from .audit import AuditSink
 from .execute import Executor
-from .messages import Messages
+from .messages import ENGLISH, Messages
 from .policy import Policy
 from .spec import Tool
 from .toolsets import ToolsetConfig
@@ -39,7 +39,7 @@ class App:
 
 
 class Registry:
-    def __init__(self, messages: Messages):
+    def __init__(self, messages: Messages = ENGLISH):
         self.messages = messages
         self._tools: dict[str, Tool] = {}
         self._rollbacks: dict[str, tuple[Callable, str | None]] = {}
@@ -80,24 +80,28 @@ class Registry:
             raise ValueError(f"view {name} is registered twice")
         self._views[name] = view
 
-    def freeze(self, *, policy: Policy, audit: AuditSink, writelog: WriteLog,
-               toolset: Callable[[frozenset[str]], ToolsetConfig], call_context: Callable[[], ContextManager] | None = None,
+    def freeze(self, *, audit: AuditSink, writelog: WriteLog, toolset: Callable[[frozenset[str]], ToolsetConfig],
+               policy: Policy | None = None, call_context: Callable[[], ContextManager] | None = None,
                after_write: Callable[[int], None] | None = None,
                optional_defaults: Mapping[str, Any] | None = None) -> App:
         """toolset(confirm) -> the ToolsetConfig, with the confirm tools read off the registry; the other arguments are
-        Executor's. A view naming a tool that does not exist fails here: a typo must not widen or narrow what a
-        restricted caller gets without anybody noticing."""
+        Executor's (policy None = SelfOnly). A view naming a tool that does not exist fails here: a typo must not widen or
+        narrow what a restricted caller gets without anybody noticing. So does a write log or toolset with other texts than
+        the registry: left out, they default to English, and a model must not get a mix of languages."""
         self._open()
         for name, view in self._views.items():
             unknown = sorted({*(view.tools or ()), *view.exclude} - set(self._tools))
             if unknown:
                 raise ValueError(f"view {name}: no tool {', '.join(unknown)}")
+        confirm = frozenset(t.name for t in self._tools.values() if t.confirm)
+        for what, texts in (("write log", writelog.messages), ("toolset", toolset(confirm).messages)):
+            if texts != self.messages:
+                raise ValueError(f"the {what} has other texts (Messages) than the registry")
         self._frozen = True
         for kind, (fn, only_action) in self._rollbacks.items():
             writelog.register_rollback(kind, fn, only_action)
         by_name = MappingProxyType(dict(self._tools))
         executor = Executor(by_name, policy=policy, audit=audit, writelog=writelog, messages=self.messages,
                             call_context=call_context, after_write=after_write, optional_defaults=optional_defaults)
-        return App(tools=tuple(self._tools.values()), by_name=by_name, executor=executor,
-                   confirm=frozenset(t.name for t in self._tools.values() if t.confirm),
+        return App(tools=tuple(self._tools.values()), by_name=by_name, executor=executor, confirm=confirm,
                    views=MappingProxyType(dict(self._views)), toolset_factory=toolset)

@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Collection, Iterable, Mapping
 
-from .messages import Messages
+from .messages import ENGLISH, Messages
 from .spec import Tool, nullable, relaxed, schema
 
 FIND, RUN_READ, RUN_WRITE = "find_tools", "run_read_tool", "run_write_tool"
@@ -27,7 +27,7 @@ def _dispatched(conn, uid, a):  # never called: meta tools are dispatched by the
     raise RuntimeError("meta tools are resolved by the caller")
 
 
-def meta_tools(groups: Mapping[str, str], messages: Messages) -> list[Tool]:
+def meta_tools(groups: Mapping[str, str], messages: Messages = ENGLISH) -> list[Tool]:
     """The three meta tools; `groups` (group -> description) names the groups find_tools accepts."""
     args = {"type": ["object", "null"], "description": messages.run_args_param}
     return [
@@ -47,16 +47,16 @@ def meta_tools(groups: Mapping[str, str], messages: Messages) -> list[Tool]:
 @dataclass(frozen=True)
 class ToolsetConfig:
     """core: tools sent on every call; groups: group -> one line for find_tools' index (its order is the index order);
-    contexts: context id -> extra groups ("<a>.<b>" falls back to "<a>"); confirm: tools that always ask first (listed
-    in MCP tools/list and called by their own name, so the client's approval rules by name apply); meta: meta_tools(...);
+    confirm: tools that always ask first (listed in MCP tools/list and called by their own name, so the client's approval
+    rules by name apply); meta: meta_tools(...); contexts: context id -> extra groups ("<a>.<b>" falls back to "<a>");
     find_max: full schemas find_tools(query) returns at most; optional_defaults: see spec.relaxed."""
     core: Collection[str]
     groups: Mapping[str, str]
-    contexts: Mapping[str, tuple]
     confirm: Collection[str]
     meta: list
-    find_max: int
-    messages: Messages
+    contexts: Mapping[str, tuple] = field(default_factory=dict)
+    find_max: int = 12
+    messages: Messages = ENGLISH
     optional_defaults: Mapping[str, Any] = field(default_factory=dict)
 
 

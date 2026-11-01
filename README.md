@@ -160,6 +160,7 @@ Try changes locally with `./quickstart.sh`; tests: `cd body_engine && uv run pyt
 | [`apps/watch2whoop/`](apps/watch2whoop/README.md) | iOS app (Flutter) |
 | [`packages/openbodyscore/`](packages/openbodyscore/README.md) | Standalone scoring library |
 | [`packages/openbodyscore-js/`](packages/openbodyscore-js/README.md) | The same algorithms as one JS file the iOS app runs locally (JavaScriptCore) |
+| [`examples/reading-notes/`](examples/reading-notes/README.md) | The server's MCP framework ([`datalayer`](body_engine/src/body_engine/datalayer/README.md)) on non-health data: reading notes on SQLite |
 | [`shortcuts/`](shortcuts/README.md) | iOS Shortcut sync (no app needed) |
 | [`quickstart/`](quickstart/README.md) | One-command local demo |
 | `deploy/`, `assistant/` | Deployment, ops, AI coach workspace |

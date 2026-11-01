@@ -3,7 +3,8 @@ of every request first, then hands over to the MCP SDK's StreamableHTTPSessionMa
 
 - authenticate(token) -> Caller | None runs in a worker thread on every request (it may read the database), so a
   revoked token stops working at once; identity comes only from the token, never from what the client says.
-- unauthorized(scope, detail, error) -> the 401 response (the application adds its WWW-Authenticate challenge).
+- unauthorized(scope, detail, error) -> the 401 response (the application can add its own WWW-Authenticate challenge, say
+  where its OAuth server is; bearer_unauthorized is the plain default).
 - Stateless mode (stateless + JSON responses): no session is kept in memory, a restart does not affect clients, and
   one caller's session can never be handed to another.
 A manager can only run once, so a new one is created each time the lifespan starts (tests start it repeatedly)."""
@@ -15,10 +16,15 @@ from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.responses import JSONResponse
 
-from ..messages import Messages
+from ..messages import ENGLISH, Messages
 from ..policy import Caller
 
 IDENTITY_KEY = "datalayer_caller"
+
+
+def bearer_unauthorized(scope: dict, detail: str, error: str | None = None) -> JSONResponse:
+    return JSONResponse({"error": error or "unauthorized", "detail": detail}, status_code=401,
+                        headers={"WWW-Authenticate": "Bearer"})
 
 
 class McpHttpApp:
@@ -26,8 +32,8 @@ class McpHttpApp:
 
     def __init__(self, server_factory: Callable[[Callable[[object], Caller]], Server],
                  authenticate: Callable[[str], Caller | None],
-                 unauthorized: Callable[[dict, str, str | None], Callable[..., Awaitable[None]]],
-                 messages: Messages, identity_key: str = IDENTITY_KEY):
+                 unauthorized: Callable[[dict, str, str | None], Callable[..., Awaitable[None]]] = bearer_unauthorized,
+                 messages: Messages = ENGLISH, identity_key: str = IDENTITY_KEY):
         self.server_factory = server_factory
         self.authenticate = authenticate
         self.unauthorized = unauthorized
