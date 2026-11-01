@@ -164,3 +164,36 @@ NEGATION_BEFORE = ("不", "没", "未", "别", "停", "戒", "无", "no ", "not 
 NEGATION_AFTER = ("停", "不吃", "不再", "已停", "没吃", "stopped", "quit")
 WISH_WORDS = ("想", "打算", "希望", "考虑", "争取", "准备", "建议", "可以", "want", "plan to", "planning", "hope", "should", "consider")
 PAST_WORDS = ("曾", "以前", "之前", "过去", "原来", "once", "used to", "previously", "formerly")
+
+# ---------------------------------------------------------------- memory hygiene: the status card (issue #113, last item)
+# get_memory_review also looks at the status card items the AI or the user wrote (assistant_status, source assistant / seed / user).
+# Left out: auto items (the backend recomputes them) and items whose key is a lab test_key (the card reads the lab table at read time,
+# records/lab_history.py): both are as current as the data behind them.
+# An item nobody rewrote for longer than this is offered for a look, by the card's group (updated_at is when set_status_items last wrote
+# it, so writing an item again, unchanged, is how it is confirmed). Status items are short judgements about the present (a phase, an
+# injury, how well a plan is followed), so they go stale sooner than the long profile card texts: the same reasoning as STALE_DAYS
+# (plans and injuries change within weeks, goals within months). A judgement call, not from a study.
+STATUS_STALE_DAYS = {"目标": 90, "健康": 60, "训练": 60, "身体": 60, "饮食": 90, "作息": 120, "其他": 120}
+STATUS_STALE_DEFAULT_DAYS = 120
+# An item written less than this long ago is not judged against the records: someone has just looked at it (as DATA_SNOOZE_DAYS for notes).
+STATUS_SNOOZE_DAYS = DATA_SNOOZE_DAYS
+STATUS_MAX = 6    # items handed to the AI per review (mismatches first; the rest wait for the next review)
+
+# The phase item ("cutting", "bulking") against the weight trend. The item is found by its key or its label. A phase naming one
+# direction is contradicted when the weekly mean of the weigh-ins moved the other way by PHASE_WEIGHT_KG or more between the first
+# and the last week of the last PHASE_WINDOW_DAYS (three weeks apart). A phase naming both directions ("减脂增肌", recomposition) or
+# neither (maintenance) is never judged. Weekly means smooth out the day-to-day swings of a kilo or two (WEIGHT_TOLERANCE_KG); one
+# kilo in three weeks is more than that wobble. A judgement call, not from a study.
+STATUS_PHASE_KEYS = ("phase",)
+STATUS_PHASE_LABELS = ("当前阶段", "阶段")
+PHASE_WINDOW_DAYS = 28
+PHASE_MIN_WEIGH_INS = 3       # weigh-ins needed in each of the two weeks, else no verdict
+PHASE_WEIGHT_KG = 1.0
+PHASE_CUT_WORDS = ("减脂", "减重", "减肥", "瘦身", "cut", "fat loss", "weight loss", "lose weight")
+PHASE_BULK_WORDS = ("增肌", "增重", "长肌肉", "bulk", "muscle gain", "gain muscle", "gain weight")
+
+# An injury item (its key or label names a body part, BODY_PARTS) against the body events, judged from its short value. "Recovered"
+# and "still hurts" are judged as for notes (RECOVERED_WORDS, INJURY_WORDS) plus the short forms a card value uses; a value that says
+# "getting better" is in between and not judged, and neither is one that says both ("无痛但受限": no pain but limited).
+STATUS_RECOVERED_WORDS = RECOVERED_WORDS + ("康复", "无痛", "不痛", "不疼", "没事了", "恢复正常")
+STATUS_IMPROVING_WORDS = ("好转", "减轻", "缓解", "改善", "improving", "easing", "getting better")

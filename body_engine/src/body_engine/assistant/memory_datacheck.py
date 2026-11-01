@@ -9,6 +9,8 @@ A claim is only judged when the text states it as a present habit or fact (no ne
 is enough to say something (memory_params TRAIN_* / WEIGHT_*); otherwise there is no verdict. The words, windows and tolerances
 are in memory_params.py. This module only reads; memory_review.py decides what happens with a verdict (a match confirms a note,
 a mismatch is handed to the AI to put to the user, nothing is changed by itself).
+The same records also check the status card items the AI wrote (check_status): an injury item against the body events, the phase item
+("cutting" / "bulking") against the weight trend.
 Works on the caller's own user_id only; the caller (memory_review) never runs it for someone viewing through a share, because the
 verdicts quote the owner's weight, training, supplements and injuries.
 """
@@ -112,9 +114,8 @@ class Context:
     def window(self) -> list[date]:
         return [self.today - timedelta(days=i) for i in range(mp.TRAIN_WINDOW_DAYS)]
 
-    @cached_property
-    def weight_now(self) -> float | None:
-        """kg: the mean of the last WEIGHT_AVG_DAYS days, else the latest reading of the last WEIGHT_RECENT_DAYS; None = none."""
+    def _weigh_ins(self, days: int) -> dict[date, float]:
+        """date -> kg, one reading a day, for the last `days` days (a manual weigh-in beats the device's reading of the same day)."""
         rows = self.conn.execute(
             """SELECT date, kg FROM (
                  SELECT date, value AS kg, 1 AS pri FROM daily_metrics
@@ -123,14 +124,31 @@ class Context:
                  SELECT date, weight_kg, 0 FROM body_measurements
                    WHERE user_id = %(u)s AND weight_kg IS NOT NULL AND date BETWEEN %(s)s AND %(e)s) x
                ORDER BY date DESC, pri""",
-            {"u": self.uid, "s": self.today - timedelta(days=mp.WEIGHT_RECENT_DAYS - 1), "e": self.today}).fetchall()
+            {"u": self.uid, "s": self.today - timedelta(days=days - 1), "e": self.today}).fetchall()
         by_day: dict[date, float] = {}
-        for r in rows:                 # a manual weigh-in (pri 0) beats the device's reading of the same day
+        for r in rows:
             by_day.setdefault(r["date"], float(r["kg"]))
+        return by_day
+
+    @cached_property
+    def weight_now(self) -> float | None:
+        """kg: the mean of the last WEIGHT_AVG_DAYS days, else the latest reading of the last WEIGHT_RECENT_DAYS; None = none."""
+        by_day = self._weigh_ins(mp.WEIGHT_RECENT_DAYS)
         if not by_day:
             return None
         week = [v for d, v in by_day.items() if d > self.today - timedelta(days=mp.WEIGHT_AVG_DAYS)]
         return sum(week) / len(week) if week else by_day[max(by_day)]
+
+    @cached_property
+    def weight_change(self) -> tuple[float, float] | None:
+        """(mean kg of the first week, mean kg of the last week) of the last PHASE_WINDOW_DAYS days; None = fewer than
+        PHASE_MIN_WEIGH_INS weigh-ins in either week."""
+        by_day = self._weigh_ins(mp.PHASE_WINDOW_DAYS)
+        first = [v for d, v in by_day.items() if d <= self.today - timedelta(days=mp.PHASE_WINDOW_DAYS - mp.WEIGHT_AVG_DAYS)]
+        last = [v for d, v in by_day.items() if d > self.today - timedelta(days=mp.WEIGHT_AVG_DAYS)]
+        if min(len(first), len(last)) < mp.PHASE_MIN_WEIGH_INS:
+            return None
+        return sum(first) / len(first), sum(last) / len(last)
 
     @cached_property
     def goal_kg(self) -> float | None:
@@ -263,6 +281,12 @@ def _injuries(ctx: Context, clause: str) -> list[Verdict]:
     recovered = _has(low, mp.RECOVERED_WORDS)
     if not (recovered or _has(low, mp.INJURY_WORDS)):
         return []
+    return _injury_verdicts(ctx, low, recovered)
+
+
+def _injury_verdicts(ctx: Context, low: str, recovered: bool) -> list[Verdict]:
+    """The body parts named in `low` (lower-cased) against the body events: "recovered" is contradicted by an event not marked better,
+    "still hurts" by events all marked better a while ago. A part with no event has no verdict."""
     out = []
     for part, words in mp.BODY_PARTS.items():
         if not any(_kw_at(low, w) >= 0 for w in words):
@@ -305,3 +329,60 @@ def check_entries(conn: psycopg.Connection, user_id: int, entries: list[tuple[st
         if v := check_text(ctx, text, topic):
             out[ref] = v
     return out
+
+
+# ---------------------------------------------------------------- status card items
+def _injury_state(value: str) -> str | None:
+    """What a short status value says about an injury: "recovered" or "hurt"; None = neither, in between ("好转") or both ("无痛但受限")."""
+    low = value.lower()
+    if _has(low, mp.STATUS_IMPROVING_WORDS):
+        return None
+    recovered = False
+    for w in sorted(mp.STATUS_RECOVERED_WORDS, key=len, reverse=True):      # longest first: "不痛了" before "不痛"
+        if (p := _kw_at(low, w)) >= 0 and not _negated(low, p, p + len(w)):
+            recovered, low = True, low.replace(w, " ")
+    hurt = any((p := _kw_at(low, w)) >= 0 and not _negated(low, p, p + len(w)) for w in mp.INJURY_WORDS)
+    return None if recovered == hurt else ("recovered" if recovered else "hurt")
+
+
+def _status_injury(ctx: Context, item: dict) -> list[Verdict]:
+    """An item whose key or label names a body part (key "shoulder", label "右肩"), its value says it hurts or has healed."""
+    state = _injury_state(item["value"])
+    if state is None:
+        return []
+    return _injury_verdicts(ctx, f"{item['key'].replace('_', ' ')} {item['label']}".lower(), state == "recovered")
+
+
+def _status_phase(ctx: Context, item: dict) -> list[Verdict]:
+    """The phase item ("减脂", "增肌") against the weekly mean weight; a phase naming both directions or neither is not judged."""
+    if item["key"] not in mp.STATUS_PHASE_KEYS and item["label"] not in mp.STATUS_PHASE_LABELS:
+        return []
+    low = item["value"].lower()
+    if not _plain_claim(low):
+        return []
+
+    def named(words) -> bool:
+        return any((p := _kw_at(low, w)) >= 0 and not _negated(low, p, p + len(w)) for w in words)
+    cut, bulk = named(mp.PHASE_CUT_WORDS), named(mp.PHASE_BULK_WORDS)
+    if cut == bulk or (change := ctx.weight_change) is None:
+        return []
+    first, last = change
+    data = f"体重周均 {first:.1f}→{last:.1f} kg（{mp.PHASE_WINDOW_DAYS // 7} 周）"
+    if cut and last - first >= mp.PHASE_WEIGHT_KG:
+        return [Verdict("mismatch", "phase", "阶段是减脂", data)]
+    if bulk and first - last >= mp.PHASE_WEIGHT_KG:
+        return [Verdict("mismatch", "phase", "阶段是增肌", data)]
+    return []
+
+
+def check_status_item(ctx: Context, item: dict) -> dict | None:
+    """The first thing the records contradict about one status card item (a dict with key, label, value): {"kind", "claim", "data"}, or
+    None (nothing the records can say, or they agree)."""
+    bad = [v for v in _status_injury(ctx, item) + _status_phase(ctx, item) if v.verdict == "mismatch"]
+    return {"kind": bad[0].kind, "claim": _cut(bad[0].claim), "data": _cut(bad[0].data)} if bad else None
+
+
+def check_status(conn: psycopg.Connection, user_id: int, items: list[dict], today: date) -> dict[str, dict]:
+    """items = status card items (key, label, value) -> {key: contradiction} for the ones the user's records contradict."""
+    ctx = Context(conn, user_id, today)
+    return {i["key"]: v for i in items if (v := check_status_item(ctx, i))}
