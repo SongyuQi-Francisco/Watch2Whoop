@@ -17,6 +17,7 @@ import importlib.util
 import json
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -63,7 +64,10 @@ def params() -> dict:
                   "MONITOR_MIN_NIGHTS": coach.MONITOR_MIN_NIGHTS, "MONITOR_K": coach.MONITOR_K,
                   "HRV_MIN_HALF_LN": coach.MONITOR_HRV_MIN_HALF_LN,
                   "MONITOR": [[k, v[0], v[1], v[3]] for k, v in coach.MONITOR.items()],
-                  "MONITOR_EN": {k: list(v) for k, v in coach.MONITOR_EN.items()}, "RHR_APPLE_LABEL": list(coach.RHR_APPLE_LABEL)},
+                  "MONITOR_EN": {k: list(v) for k, v in coach.MONITOR_EN.items()}, "RHR_APPLE_LABEL": list(coach.RHR_APPLE_LABEL),
+                  "MONITOR_MISSING": list(coach.MONITOR_MISSING),
+                  "MONITOR_MISSING_KEY": {k: list(v) for k, v in coach.MONITOR_MISSING_KEY.items()},
+                  "MONITOR_MISSING_BASELINE": list(coach.MONITOR_MISSING_BASELINE)},
         "goals": {k: getattr(GP, k) for k in ("DEFAULT_PACE_MIN", "DEFAULT_STEP_DAYS", "WINDOW_NIGHTS", "MIN_NIGHTS",
                                                 "TREND_NIGHTS", "MIN_TREND_NIGHTS", "ON_TARGET_TOL_MIN",
                                                 "DEFAULT_DURATION_MIN")} | {"HISTORY_DAYS": goal_store.HISTORY_DAYS},
@@ -199,6 +203,34 @@ def test_the_endpoints_are_load_plus_compute():
     assert "view_compute(goal, sessions, tz, night, need)" in inspect.getsource(goal_store.view)
     assert "from_parts(load_parts(" in inspect.getsource(healthspan_store.Data.__init__)
     assert coach.COACH_VERSION.startswith("coach-") and healthspan_store.CURRENT.ALGO_VERSION in coach.COACH_VERSION
+
+
+def test_monitor_missing_reasons():
+    """FB-18: the health monitor says why a vital has no value, in both languages. Sleeping wrist temperature is written by the
+    Apple Watch only when it is worn in bed with Sleep Focus on, so its reason names that and not the sync; the other vitals keep
+    the generic one; too few earlier nights is told apart from no reading."""
+    def reasons(lang: str, rows: list[dict], d) -> dict:
+        with use_lang(lang):
+            return {m["key"]: m["missing_reason"] for m in coach.health_monitor_compute(rows, d)["metrics"]}
+    d = C.END
+    for lang, i in (("zh", 0), ("en", 1)):
+        got = reasons(lang, [], d)   # no night at all: every vital has no reading
+        assert got["wrist_temp"] == coach.MONITOR_MISSING_KEY["wrist_temp"][i]
+        assert got["rhr"] == got["hrv"] == got["spo2"] == coach.MONITOR_MISSING[i]
+        assert got["wrist_temp"] != coach.MONITOR_MISSING[i]
+    assert "睡" in reasons("zh", [], d)["wrist_temp"] and "Sleep Focus" in reasons("en", [], d)["wrist_temp"]
+    # a reading with 9 earlier nights only: the count, not "no reading"
+    rows = [{"date": d - timedelta(days=k), "rhr_night": 50.0 + k % 3, "hrv_night_ln": 3.7, "resp_rate_night": 14.0,
+             "rec": {"spo2_night": 96.0, "wrist_temp": 0.1}, "rhr_daily": False, "apple_rhr": None} for k in range(9, -1, -1)]
+    assert reasons("zh", rows, d)["wrist_temp"] == "前 60 天只有 9 晚（要 ≥ 14）"
+    assert reasons("en", rows, d)["wrist_temp"] == "Only 9 nights in the last 60 days (need ≥ 14)"
+    # enough nights: no reason at all
+    rows = [{**rows[0], "date": d - timedelta(days=k), "rhr_night": 50.0 + k % 3} for k in range(20, -1, -1)]
+    assert reasons("zh", rows, d)["wrist_temp"] is None
+    # the night exists but the watch wrote no wrist temperature that night: the wrist-temperature reason
+    rows[-1] = {**rows[-1], "rec": {"spo2_night": 96.0}}
+    assert reasons("en", rows, d)["wrist_temp"] == coach.MONITOR_MISSING_KEY["wrist_temp"][1]
+    assert reasons("en", rows, d)["rhr"] is None
 
 
 def test_ios_fixture(cases):

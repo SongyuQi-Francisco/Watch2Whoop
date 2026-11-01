@@ -17,6 +17,7 @@ struct SyncCenterView: View {
   @State private var showLog = false
   @State private var showResultInfo = false
   @State private var showBackgroundHelp = false
+  @State private var showSleepFocusSteps = false
   @State private var confirmResync: Int?? = nil
   @State private var tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -197,14 +198,22 @@ struct SyncCenterView: View {
         RowGroup {
           ForEach(Array(r.quiet.enumerated()), id: \.element.id) { i, item in
             if i > 0 { RowDivider(inset: 0) }
-            HStack {
+            HStack(spacing: 8) {
               Text(item.label).font(Typo.body).foregroundColor(Palette.text)
               Spacer()
               Text(SyncResult.hintLabel(item.hint)).font(Typo.caption).foregroundColor(Palette.text2)
+              if let a = item.action, let title = SyncDiagnosis.Issue(id: item.id, text: "", action: a).actionTitle {
+                Button(title) { Task { await perform(a) } }
+                  .font(.system(size: 13, weight: .semibold)).foregroundColor(Palette.text)
+                  .padding(.vertical, 7).padding(.horizontal, 12)
+                  .background(Capsule().fill(Palette.surface2))
+                  .buttonStyle(PressScale())
+              }
             }
             .padding(.vertical, 10)
           }
         }
+        if showSleepFocusSteps, r.quiet.contains(where: { $0.action == .sleepFocusHelp }) { sleepFocusHelp }
       }
     }
   }
@@ -221,6 +230,20 @@ struct SyncCenterView: View {
       }
       SecondaryButton(icon: .settings, title: tr("打开设置", "Open Settings"), background: Palette.surface2) {
         if let u = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(u) }
+      }
+    }
+  }
+
+  /// Wrist temperature: the steps to get it recorded (the person does it in Health; iOS has no link to the Focus settings).
+  private var sleepFocusHelp: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      Text(tr("睡眠手腕温度只在戴表睡觉、并开着睡眠追踪和睡眠专注的夜里才会记录，不是同步丢了：", "Sleeping wrist temperature is only recorded on nights you wear the watch to bed with sleep tracking and Sleep Focus on. It is not a lost sync:"))
+        .font(Typo.caption).foregroundColor(Palette.text2).fixedSize(horizontal: false, vertical: true)
+      ForEach(Array(SyncResult.sleepFocusSteps.enumerated()), id: \.offset) { i, step in
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+          Text("\(i + 1)").font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text2)
+          Text(step).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
   }
@@ -403,6 +426,7 @@ struct SyncCenterView: View {
       message = await sync.startHistory(days: sync.result.historyDays) ?? tr("已开始补全历史，会在后台接着传", "History started; it carries on in the background")
       busy = false
     case .backgroundHelp: showBackgroundHelp = true
+    case .sleepFocusHelp: showSleepFocusSteps.toggle()
     }
   }
 

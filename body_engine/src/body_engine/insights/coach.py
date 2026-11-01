@@ -15,7 +15,7 @@ from . import healthspan_store as _HSS
 # goal of goals/, the sleep detail of sleep_night/, the Today composition of web/views.py and the body-age loader of
 # healthspan_store.py as JS src/34_coach.js. One key for all of them and the body-age algorithm they run, so a change of
 # either makes the phone recompute (as insights/stress.STRESS_CARDS_VERSION).
-COACH_VERSION = "coach-1+" + _HSS.CURRENT.ALGO_VERSION
+COACH_VERSION = "coach-2+" + _HSS.CURRENT.ALGO_VERSION   # coach-2: the health monitor's missing reasons are bilingual, wrist temperature has its own (FB-18)
 
 # ---------------------------------------------------------------- today's strain target
 # WHOOP's Strain Coach gives the day's target strain by recovery score; the ranges are first-version values (strain calibrated to our K=170, median on strength-training days about 12).
@@ -195,6 +195,27 @@ MONITOR_EN = {  # key: (English label, unit) for the Today page in English (issu
     "wrist_temp": ("Wrist temperature (night)", "°C"),
 }
 RHR_APPLE_LABEL = ("静息心率（Apple 全天，最近一晚没有睡眠期原始心率）", "Resting HR (Apple, all day; no raw sleep HR last night)")
+# Why a vital has no value: a short label (the page and the app show numbers and short words; the longer explanation for the AI is
+# in explain/glossary_trends.py). Index 0 = Chinese, 1 = English, picked by is_en(). The JS twin (src/34_coach.js) carries the
+# same texts and the golden test compares them.
+# - MONITOR_MISSING: the latest night has no reading of this vital;
+# - MONITOR_MISSING_KEY: a vital with one usual cause. Sleeping wrist temperature is written by the Apple Watch only when it is
+#   worn in bed with a sleep schedule / Sleep Focus and "Track Sleep with Apple Watch" on, and only after about 5 such nights
+#   (Apple's documented behaviour), so a night without a reading is usually the watch, not the sync (FB-18);
+# - MONITOR_MISSING_BASELINE: there is a reading, but too few earlier nights to draw a personal range ({days}, {n}, {need}).
+MONITOR_MISSING = ("最近一晚没有这项读数", "No reading last night")
+MONITOR_MISSING_KEY = {
+    "wrist_temp": ("手表这晚没记录（要戴表睡觉、开睡眠专注）", "The watch did not record it (wear it to bed with Sleep Focus on)"),
+}
+MONITOR_MISSING_BASELINE = ("前 {days} 天只有 {n} 晚（要 ≥ {need}）", "Only {n} nights in the last {days} days (need ≥ {need})")
+
+
+def monitor_missing_reason(key: str, no_reading: bool, nights: int) -> str:
+    """The short reason a vital has no status: no reading last night (no_reading), else too few earlier nights."""
+    i = int(is_en())
+    if no_reading:
+        return MONITOR_MISSING_KEY.get(key, MONITOR_MISSING)[i]
+    return MONITOR_MISSING_BASELINE[i].format(days=MONITOR_DAYS, n=nights, need=MONITOR_MIN_NIGHTS)
 
 
 def monitor_range(values: list[float], key: str) -> tuple[float, float, float] | None:
@@ -250,7 +271,7 @@ def health_monitor_compute(rows: list[dict], d: date) -> dict:
                         "baseline": None if rng is None else round(rng[2], 2), "baseline_nights": len(hist),
                         "status": status,
                         "missing_reason": None if rng is not None and cur is not None else
-                        ("最近一晚没有这项读数" if cur is None else f"前 {MONITOR_DAYS} 天只有 {len(hist)} 晚（要 ≥ {MONITOR_MIN_NIGHTS}）")})
+                        monitor_missing_reason(key, cur is None, len(hist))})
     out_of_range = [m["key"] for m in metrics if m["status"] in ("low", "high")]
     return {"date": latest["date"] if latest else None, "metrics": metrics, "out_of_range": out_of_range,
             "all_in_range": None if all(m["status"] is None for m in metrics) else not out_of_range}

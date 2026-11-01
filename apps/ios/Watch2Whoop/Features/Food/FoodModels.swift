@@ -371,6 +371,37 @@ struct GroceryList: Equatable {
     return order.map { ($0, groups[$0] ?? []) }
   }
 
+  /// Items still to buy (ticked ones, queued ticks included, are left out of the export).
+  var toBuy: [Item] { items.filter { !$0.bought } }
+
+  /// The first line of `exportText`: the week and how many are left.
+  var exportTitle: String {
+    let n = toBuy.count
+    if let w = week, !w.isEmpty { return tr("采购清单（\(w) 起这一周）· 还差 \(n) 项", "Shopping list (week of \(w)) · \(n) left") }
+    return tr("采购清单 · 还差 \(n) 项", "Shopping list · \(n) left")
+  }
+
+  /// The whole list as plain text for the supermarket (FB-19), grouped by category the way the page shows it:
+  /// the title with the week, then per category a heading and one line per item still to buy,
+  /// `□ name — quantity (note)`. The quantity is the server's label (packages · total, e.g. 「2 包 · 500 g」). Items already
+  /// bought are left out, the title says how many are left. Empty when nothing is left to buy.
+  func exportText() -> String {
+    let left = toBuy
+    guard !left.isEmpty else { return "" }
+    var lines = [exportTitle]
+    for (cat, xs) in GroceryList(week: week, items: left).byCategory() {
+      lines.append("")
+      lines.append(tr("【\(cat)】", "[\(cat)]"))
+      for i in xs {
+        var s = "□ " + i.name
+        if let q = i.qty?.trimmingCharacters(in: .whitespaces), !q.isEmpty { s += " — " + q }
+        if let n = i.note?.trimmingCharacters(in: .whitespaces), !n.isEmpty { s += " (" + n + ")" }
+        lines.append(s)
+      }
+    }
+    return lines.joined(separator: "\n")
+  }
+
   static func build(_ j: [String: Any]?, pending: [PendingRecord]) -> GroceryList? {
     guard let j else { return nil }
     var items: [Item] = ((j["items"] as? [[String: Any]]) ?? []).compactMap { i in

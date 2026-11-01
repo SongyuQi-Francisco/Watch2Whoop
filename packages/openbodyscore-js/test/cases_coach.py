@@ -144,7 +144,9 @@ def monitor_case(data: dict) -> list[dict]:
 
     def spike(rows_: list[dict]) -> list[dict]:   # the last night off its range: high resting HR, low HRV
         return rows_[:-1] + [{**rows_[-1], "rhr_night": 72.0, "hrv_night_ln": round(math.log(18.0), 4)}]
-    extra = [{"rows": spike(window(END)), "d": END, "lang": "zh"}, {"rows": spike(window(END)), "d": END, "lang": "en"}]
+    extra = [{"rows": spike(window(END)), "d": END, "lang": "zh"}, {"rows": spike(window(END)), "d": END, "lang": "en"},
+             # English missing reasons (FB-18): too few earlier nights; no night at all (wrist temperature has its own reason)
+             {"rows": window(END)[-10:], "d": END, "lang": "en"}, {"rows": [], "d": END, "lang": "en"}]
     return [{"rows": window(END), "d": END, "lang": "zh"}, {"rows": window(END), "d": END, "lang": "en"},
             {"rows": window(END, True), "d": END, "lang": "zh"}, {"rows": window(END - timedelta(days=30)), "d": END, "lang": "zh"},
             {"rows": window(END)[-10:], "d": END, "lang": "zh"}, {"rows": [], "d": END, "lang": "zh"},

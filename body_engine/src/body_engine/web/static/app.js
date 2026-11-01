@@ -200,6 +200,7 @@
   // The UI only shows numbers and short words; the backend's original reasons / explanations are left for the butler (read via API / MCP), here they are mapped to one- or two-character labels
   // The regexes match the server's Chinese reasons (and English ones, should a reason come back in English)
   const SHORT = [
+    [/手表这晚没记录|watch did not record/i, "手表没记录"],   // i18n-ok: the wrist-temperature reason names "sleep" and must not become "无睡眠"
     [/授权|permission|forbidden|not allowed/i, "无权限"], [/还没有计算|还没计算|没算出来|not (yet )?(computed|calculated)/i, "未计算"],   // i18n-ok
     [/基线|baseline/i, "基线不足"], [/HRV/i, "无 HRV"], [/原始心率|心率|heart rate/i, "无心率"], [/睡眠|sleep/i, "无睡眠"],   // i18n-ok
     [/力量训练|strength/i, "无力量"], [/负荷|沿用|strain|load/i, "无负荷"],   // i18n-ok
