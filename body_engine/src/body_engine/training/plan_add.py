@@ -41,9 +41,10 @@ def _resolve(conn: psycopg.Connection, user_id: int, exercise: str, *, allow_ban
     catalog.ensure_seeded(conn)
     ex = catalog.resolve(conn, exercise, user_id=user_id)
     if ex is None:
-        near = [c["name_zh"] for c in catalog.search(conn, user_id=user_id, query=exercise, limit=5)]
-        raise ValueError(L(f"动作库里找不到「{exercise}」" + (f"；相近动作：{'、'.join(near)}" if near else ""),
-                           f"No exercise “{exercise}” in the library" + (f"; similar: {', '.join(near)}" if near else "")))
+        shown = (catalog._log_exercise(conn, user_id, exercise) or {}).get("name", exercise)   # never a `custom:<id>`
+        near = [c["name_zh"] for c in catalog.search(conn, user_id=user_id, query=shown, limit=5)]
+        raise ValueError(L(f"动作库里找不到「{shown}」" + (f"；相近动作：{'、'.join(near)}" if near else ""),
+                           f"No exercise “{shown}” in the library" + (f"; similar: {', '.join(near)}" if near else "")))
     if ex["status"] == "banned" and not allow_banned:
         alts = catalog.recommend_alternatives(conn, ex["slug"], user_id=user_id, limit=3)
         why = f"（{ex['reason']}）" if ex.get("reason") else ""

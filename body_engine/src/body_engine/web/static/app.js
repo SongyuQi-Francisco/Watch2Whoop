@@ -3868,7 +3868,7 @@
       ${exOther && exOther !== exMain ? `<div class="small muted" style="margin:-4px 0 8px">${esc(exOther)}</div>` : ""}
       ${carousel}${creditLine}${noDemo}
       <div class="rcard-tags" style="margin-bottom:8px">${stBadge}${muscles}${joints}</div>
-      ${addPlanOn() && isSelf() && !String(ex.slug).startsWith("custom:") ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
+      ${addPlanOn() && isSelf() ? `<button class="btn btn-block" id="ex-add" style="margin-bottom:8px" ${ex.status === "banned" ? "disabled" : ""}>${tr("加入训练计划")}</button>
         ${ex.status === "banned" ? `<div class="small muted" style="margin:-2px 0 8px">${tr("这是禁用动作，不能加入训练计划")}</div>` : ""}` : ""}
       ${ex.reason ? kv(tr("限制原因"), esc(ex.reason)) : ""}
       ${loadV ? kv(tr("推荐重量"), loadV) : ""}
