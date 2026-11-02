@@ -250,3 +250,19 @@ def test_flag_off_changes_nothing(client, conn, world, dsn):
             run_tool(conn, ids["A"], "test", "delete_custom_exercise", {"exercise": "神秘划船"})
     finally:
         _set_flag(dsn, "all")
+
+
+def test_library_row_of_a_logged_exercise_opens(monkeypatch):
+    """search() lists exercises of the person's log as `custom:<id>`. Opening one: the catalog exercise of that name, or its own card."""
+    lib = [{"id": "e1", "name": "Bench Press", "primary_muscles": ["Chest"]}, {"id": "e2", "name": "Zzz Demo Move", "description": "synthetic"}]
+    monkeypatch.setattr(catalog.sparky_client, "reader_for_user", lambda conn, uid: object())
+    monkeypatch.setattr(catalog.sparky_client, "exercises", lambda client: lib)
+    assert catalog._log_exercise(None, 1, "custom:e1")["name"] == "Bench Press"
+    assert catalog._log_exercise(None, 1, "bench_press") is None and catalog._log_exercise(None, None, "custom:e1") is None
+    assert catalog._log_exercise(None, 1, "custom:gone") is None
+    monkeypatch.setattr(catalog, "resolve_with_candidates", lambda conn, uid, ref, with_meta=True: (None, None, []))
+    monkeypatch.setattr(catalog, "recommend_alternatives", lambda *a, **k: [])
+    card = catalog.get_exercise(None, 1, "custom:e2")
+    assert card["slug"] == "custom:e2" and card["name_zh"] == "Zzz Demo Move" and card["alternatives"] == [] and card["status"] == "active"
+    with pytest.raises(ValueError):
+        catalog.get_exercise(None, 1, "custom:gone")

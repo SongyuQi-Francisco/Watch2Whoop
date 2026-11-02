@@ -302,10 +302,10 @@ struct ExerciseDetailView: View {
   }
 
   @ViewBuilder private func actions(_ d: ExerciseDetail) -> some View {
-    if let from = swapFrom, !d.banned {
+    if let from = swapFrom, !d.banned, !d.onlyInLog {
       PrimaryButton(title: tr("替换成这个", "Swap to this"), busy: swapping) { swap(from, to: d) }
     }
-    if nav.store.addToPlanOn {
+    if nav.store.addToPlanOn, !d.onlyInLog {
       if d.banned {
         Text(tr("这是禁用动作，不能加入训练计划", "This exercise is banned, so it can't be added to the plan")).font(Typo.caption).foregroundColor(Palette.bad)
       } else {

@@ -154,7 +154,8 @@ struct HevyImportView: View {
   private func loadLibrary() async {
     struct Answer: Decodable { var exercises: [HevyLibraryExercise] = [] }
     let a = try? await session.api.send(.get("/v1/users/me/training/exercises", ["limit": "200"]), as: Answer.self)
-    library = (a?.exercises ?? []).sorted { $0.name < $1.name }
+    // The catalog only: a `custom:` row is a name from the person's own log, there is nothing to match it to.
+    library = (a?.exercises ?? []).filter { !$0.slug.hasPrefix("custom:") }.sorted { $0.name < $1.name }
   }
 
   private func upload(_ url: URL) async {
