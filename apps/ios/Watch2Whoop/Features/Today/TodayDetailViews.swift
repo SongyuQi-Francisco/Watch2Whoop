@@ -19,7 +19,7 @@ struct TodayDetailBody: View {
     case .stress:
       if let date { StressDetailView(day: date, past: past) }
     case .sleepCoach:
-      SleepCoachDetailView(coach: coach, isPast: past != nil) { open(.detail(.bedtimeGoal)) }
+      SleepCoachDetailView(coach: coach, past: past) { open(.detail(.bedtimeGoal)) }
     case .bodyAge:
       BodyAgeView()
     case .bedtimeGoal:
@@ -162,19 +162,20 @@ struct SleepCoachCard: View {
 
 struct SleepCoachDetailView: View {
   let coach: SleepCoachModel?
-  let isPast: Bool
+  /// The look-back day (nil = today).
+  let past: String?
   let openGoal: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      KVRow(label: isPast ? tr("当晚入睡", "That night's bedtime") : tr("今晚入睡", "Tonight's bedtime"), value: coach?.bedtime,
+      KVRow(label: past != nil ? tr("当晚入睡", "That night's bedtime") : tr("今晚入睡", "Tonight's bedtime"), value: coach?.bedtime,
             badge: coach?.fromGoal == true ? (tr("目标", "Goal"), .sleep) : nil)
       KVRow(label: tr("需要睡", "Sleep need"), value: coach?.need.map(TodayModel.hm))
       KVRow(label: tr("起床", "Wake"), value: coach?.wake)
       if let s = coach?.shortfall { KVRow(label: tr("还差", "Short by"), value: TodayModel.hm(s), tone: .mid) }
       KVRow(label: tr("睡眠债", "Sleep debt"), value: coach?.debt.map(TodayModel.hm))
       KVRow(label: tr("入睡目标", "Bedtime goal"), value: "", action: openGoal)
-      ExplainBody(kind: "metric", key: "sleep_need", day: nil, head: false).padding(.top, 8)
+      ExplainBody(kind: "metric", key: "sleep_need", day: past, head: false).padding(.top, 8)
     }
   }
 }

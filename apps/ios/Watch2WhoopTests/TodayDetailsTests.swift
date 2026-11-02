@@ -116,6 +116,19 @@ final class TodayDetailsTests: XCTestCase {
     XCTAssertEqual(m.tonight?.bedtime, "23:40")
   }
 
+  /// A past day: the current bedtime goal may not have existed that night; a bedtime from the need is that day's own.
+  func testALookBackDayDoesNotShowTodaysGoal() {
+    var inp = TodayInputs(today: ["date": "2026-03-20"])
+    inp.userToday = "2026-03-31"
+    inp.sleepCoach = ["need_min": 480, "recommended_bedtime": "23:00", "source": "goal"]
+    XCTAssertNil(TodayModel(inp).tonight)
+    inp.sleepCoach = ["need_min": 480, "recommended_bedtime": "23:40", "source": "need"]
+    XCTAssertEqual(TodayModel(inp).tonight?.bedtime, "23:40")
+    inp.userToday = "2026-03-20"
+    inp.sleepCoach = ["need_min": 480, "recommended_bedtime": "23:00", "source": "goal"]
+    XCTAssertEqual(TodayModel(inp).tonight?.bedtime, "23:00", "today keeps the goal")
+  }
+
   func testNextStepOnlyForAnEmptyRingWithSomethingToDo() {
     XCTAssertNil(RecoveryNext(["code": "pending", "label": "还没算", "cta": NSNull(), "action": NSNull()]))
     XCTAssertEqual(RecoveryNext(["action": "consent", "cta": "去确认"])?.action, .consent)

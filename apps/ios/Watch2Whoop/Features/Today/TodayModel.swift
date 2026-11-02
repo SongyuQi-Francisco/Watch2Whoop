@@ -269,7 +269,8 @@ struct TodayModel: Equatable {
       ]),
     ]
 
-    tonight = SleepCoachModel(json: inp.sleepCoach)
+    // a past day: the coach's bedtime goal is the current one, which may not have existed that night (app.js goalCardHtml)
+    tonight = SleepCoachModel(json: inp.sleepCoach).flatMap { isPast && $0.fromGoal ? nil : $0 }
 
     // ---- strain target (app.js strainCoachHtml): hidden on a past day without a strain
     if let c = inp.coach, let low = Self.num(c["target_low"]), let high = Self.num(c["target_high"]) {
