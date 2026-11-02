@@ -90,7 +90,14 @@ struct TodayHomePage: View {
         .padding(.top, 22)
     }
 
-    ForEach(modules) { module($0).padding(.top, 22) }
+    // One row of TodayView's LazyVStack, not one per card: with the cards as separate rows of a ForEach the stack's placement
+    // never settled after the first swipe (main thread at 100 % in LazySubviewPlacements.updateValue, the page frozen).
+    let cards = modules
+    if !cards.isEmpty {
+      VStack(alignment: .leading, spacing: 0) {
+        ForEach(cards) { module($0).padding(.top, 22) }
+      }
+    }
 
     if let s = m.sync { SyncCardView(card: s, sync: sync, open: run.syncCenter, syncNow: run.syncNow).padding(.top, 22) }
 
