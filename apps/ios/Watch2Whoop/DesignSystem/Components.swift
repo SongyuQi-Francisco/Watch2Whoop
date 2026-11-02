@@ -144,5 +144,13 @@ struct PageScaffold<Content: View>: View {
       .frame(maxWidth: .infinity)
     }
     .background(Palette.bg.ignoresSafeArea())
+    .statusBarCover()
+  }
+}
+
+extension View {
+  /// The page's background behind the status bar, so what is scrolled up does not show under the clock (regression O3).
+  func statusBarCover(_ color: Color = Palette.bg) -> some View {
+    safeAreaInset(edge: .top, spacing: 0) { Color.clear.frame(height: 0).background(color) }
   }
 }
