@@ -41,13 +41,11 @@ class SparkyError(RuntimeError):
     pass
 
 
-class SparkyNotLinked(SparkyError):
-    """Nothing is wrong: this person has no log yet. Its text is written for them."""
-
-
 def _not_linked(user_id: int) -> SparkyError:
     log.info("user %s has no SparkyFitness link (admin: body-engine sparky-link --user-id %s --key-name ...)", user_id, user_id)
-    return SparkyNotLinked(L("训练和饮食记录还没连接", "The training and food log is not connected yet"))
+    e = SparkyError(L("训练和饮食记录还没连接", "The training and food log is not connected yet"))
+    e.for_people = True   # nothing is wrong: this person has no log yet, and the text is written for them
+    return e
 
 
 def _key_missing(path: Path) -> SparkyError:
@@ -57,7 +55,7 @@ def _key_missing(path: Path) -> SparkyError:
 
 def public_error(e: Exception) -> str:
     """What a person may read about a failure. The raw text (internal addresses, a server's answer) stays in this server's log."""
-    if isinstance(e, SparkyNotLinked):
+    if getattr(e, "for_people", False):
         return str(e)
     log.warning("SparkyFitness: %s", e)
     return L("训练和饮食记录暂时读不到，稍后再试", "The training and food log can't be read right now; try again later")
