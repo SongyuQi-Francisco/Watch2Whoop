@@ -76,7 +76,7 @@ and days gained or lost.
 
 ## 5. Decision rules
 Every threshold is a design choice, recorded in `validation/calibration_params.py`. They were written before any real data was analysed
-(only row counts were looked at, to see which criteria were available). A later change has to be marked as made afterwards.
+(only row counts were looked at, to see which criteria were available). A later change has to be marked as made afterwards: section 5.7 lists them.
 
 ### 5.1 Rules for any change (D2, D3)
 | Rule | Requirement | If not met |
@@ -100,9 +100,9 @@ back by itself. `HRV_KIND = "sdnn"` stays the library default either way, as the
 also repeated on the same readings only (each reading's stored Apple SDNN against its RMSSD) as a sensitivity check.
 
 **D3 (artifact threshold).** 25% is the reference and only 20% can become eligible. On top of the rules above:
-**reading loss**: the share of readings with a usable RMSSD drops by at most 2 percentage points; **no over-filtering**: the median ln RMSSD
-of unchanged-outcome readings shifts by at most 0.05, because a tighter filter that mostly trims real variability would lower RMSSD across
-the board. The other thresholds show whether any effect has a sensible trend. A successive-difference filter is run only as an exploratory
+**reading loss**: the share of readings with a usable RMSSD drops by at most 2 percentage points; **no over-filtering**: over readings usable under
+both thresholds, the median change in ln RMSSD does not fall below −0.05, because a tighter filter that mostly trims real variability would lower RMSSD across
+the board. The other thresholds show whether any effect has a sensible trend. A local-median filter (each interval against its neighbours) is run only as an exploratory
 row, labelled as such; it cannot become eligible here.
 
 ### 5.2 Recovery logistic (D4)
@@ -139,6 +139,13 @@ A mixed baseline is acceptable when the median absolute difference in nightly ln
 Otherwise the maintainer is told, since the baseline would need its sources separated. This covers a known systematic bias: rounding pushes RMSSD up, most at low RMSSD
 (scoring-validation 3.6).
 
+### 5.7 Changes after the rules were written
+No threshold, candidate or metric changed. Two things did, both found while checking the data preparation, and both are stated here because they came after a first look at real data:
+1. **A reading counted twice.** The same SDNN reading can arrive from two sources with different time precision (microseconds and whole seconds), and the first version of the export
+   merge kept both. A night's duplicated reading looks perfectly consistent, which flatters SDNN on P3, so this could change a D2 outcome. Readings are now matched on the whole second.
+   The check that found it does not depend on the outcome: the merged reading count has to equal what the scoring code's own report counts.
+2. **Wording of the over-filtering rule** in D3: "unchanged-outcome readings" was vague and became "readings usable under both thresholds". The threshold is the same.
+
 ## 6. From a rule to a change
 A rule saying `eligible` is not a decision:
 1. The maintainer sees the comparison and the history impact (section 4) and decides.
@@ -154,6 +161,24 @@ Public wording: "checked on one person's data, with no external reference". Neve
 - There is no ground truth. P1–P3 measure consistency, not accuracy: a stable bias scores well.
 - With a few hundred nights the intervals are wide, so most candidates will end in `keep`. That is intended: it means "no evidence to change", not "proven optimal".
 - Rule thresholds are design choices. They make the decision explicit and repeatable; they do not make it objective.
+- Everything runs on one chosen block length and seed. When an interval's bound sits near 0, the private report says so and repeats it with other block lengths and seeds.
+
+## 8. How to run it
+```bash
+cd body_engine
+uv run python -m body_engine.validation calibration export-sql --user-id N   # one read-only COPY per file, for one user
+uv run python -m body_engine.validation calibration run --data DIR --json OUT.json   # files only, no database; holds personal values, keep out of git
+uv run python -m body_engine.validation calibration synthetic                # the same report on a made-up person
+uv run python -m body_engine.validation calibration rules                    # the table below
+```
+Run the export where the database is, save each COPY as the file named above it in a private directory outside the repository, and delete that directory afterwards.
+Tests: `body_engine/tests/test_calibration.py`, synthetic data only. Among them, the replay has to reproduce the real scoring engine on a synthetic person.
+
+### Rules on synthetic persons
+The generator (`validation/calibration_synth.py`) has a known answer, so this measures the rules and says nothing about real physiology. Each row uses 340 days, like the
+data the rules were written for.
+
+<!-- RULES-TABLE -->
 
 ## References
 DOIs checked against Crossref on 2026-11-03 (title, first author, journal, year, volume, pages).
