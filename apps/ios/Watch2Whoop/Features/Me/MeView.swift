@@ -258,7 +258,7 @@ private struct MeSheetView: View {
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
       case .licences: LicensesView()
       case .memory: MemoryView()
-      case .trainingGoals: TrainingGoalsView { dismiss() }
+      case .trainingGoals: TrainingSettingsView { dismiss() }
       case .signIn: SignInMethodsView()
       case .invite: InviteFriendsView()
       case .lateInvite: LateInviteView { dismiss() }
