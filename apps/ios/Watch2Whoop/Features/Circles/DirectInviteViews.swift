@@ -199,7 +199,8 @@ struct InviteMutesSection: View {
   @State private var people: [InviteMute] = []
 
   var body: some View {
-    Group {
+    // A stack, not a Group: an empty Group is no view at all, so its `.task` never ran and the list stayed empty for good.
+    VStack(spacing: 0) {
       if !people.isEmpty {
         RowGroup(title: tr("不接收邀请", "No invites from")) {
           ForEach(Array(people.enumerated()), id: \.element.id) { i, p in
