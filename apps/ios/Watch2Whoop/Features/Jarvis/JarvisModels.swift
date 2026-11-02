@@ -19,6 +19,9 @@ struct JarvisAI: Equatable {
   var remainingPct: Int?
   /// false = this AI cannot read pictures (no photo / video buttons).
   var vision = true
+  /// The posture entry of the photo menu (ai/posture.py `mode`): none, the photo guide + words, or three photos to this AI.
+  enum PostureMode: String { case off, guide, photos }
+  var posture = PostureMode.off
   var assistantURL: URL?
 
   /// The chat runs inside the app (own API key, or the fallback AI).
@@ -45,6 +48,7 @@ struct JarvisAI: Equatable {
     message = v["message"]?.string
     remainingPct = mode == .fallback ? ChatEvent.pct(v) : nil
     vision = v["vision"]?.bool ?? true
+    posture = PostureMode(rawValue: v["posture"]?.string ?? "") ?? .off
     let url = assistantURL ?? v["assistant_url"]?.string
     self.assistantURL = url.flatMap(URL.init(string:))
   }

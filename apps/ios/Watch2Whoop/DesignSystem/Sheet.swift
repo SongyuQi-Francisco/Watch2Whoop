@@ -5,10 +5,12 @@ import SwiftUI
 struct SheetContainer<Content: View>: View {
   let title: String
   let close: () -> Void
+  /// Forms with a number pad: a 「完成」 bar above the keyboard, and dragging the page closes the keyboard.
+  var keyboardDone = false
   @ViewBuilder var content: () -> Content
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
+    let sheet = VStack(alignment: .leading, spacing: 0) {
       HStack {
         Text(title).font(.system(size: 17, weight: .semibold)).foregroundColor(Palette.text)
         Spacer()
@@ -24,8 +26,10 @@ struct SheetContainer<Content: View>: View {
       ScrollView(.vertical, showsIndicators: false) {
         content().padding(.horizontal, Metrics.gutter).padding(.bottom, 24)
       }
+      .scrollDismissesKeyboard(keyboardDone ? .interactively : .automatic)
     }
     .background(Palette.sheet.ignoresSafeArea())
+    if keyboardDone { sheet.keyboardDoneBar() } else { sheet }
   }
 }
 

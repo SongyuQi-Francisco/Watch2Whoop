@@ -88,6 +88,7 @@ ICONS = {
     "bot-message-square": "Jarvis menu: chat",
     "audio-waveform": "Jarvis menu: voice",
     "scan-eye": "Jarvis menu: photo",
+    "person-standing": "Jarvis: posture check",
     "zap": "Jarvis menu: quick log",
     "mic": "Jarvis: hold to talk",
     "lock": "Jarvis: lock the recording",

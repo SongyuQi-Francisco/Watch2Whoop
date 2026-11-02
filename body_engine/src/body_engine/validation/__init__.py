@@ -8,6 +8,8 @@ beat series in beats.py, a synthetic population in population.py.
     uv run python -m body_engine.validation population [--n 40]       (synthetic population: zones and strain K, population.py)
     uv run python -m body_engine.validation user --user-id N [--kinds sdnn,rmssd] [--no-ow]
     uv run python -m body_engine.validation healthspan --user-id N [--json]   (body age v1.1 vs v1.2, healthspan_compare.py)
+    uv run python -m body_engine.validation calibration export-sql --user-id N | run --data DIR | synthetic | rules
+                                                                     (decision rules, docs/scoring-calibration.md; `run` reads files only)
 
 The user mode reads the database only and prints aggregate statistics (no dates, no daily values); keep its output out of git anyway.
 """

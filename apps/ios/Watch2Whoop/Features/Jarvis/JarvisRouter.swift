@@ -27,6 +27,8 @@ final class JarvisRouter: ObservableObject {
 
   @Published var menuOpen = false
   @Published var sheet: Sheet?
+  /// A page a card opened over the chat (closing it comes back to the conversation).
+  @Published var detail: JarvisDetail?
   /// A short message over the tab bar (copied, needs a connection, …); clears itself.
   @Published private(set) var toast: String?
   /// The page Jarvis is opened from: picks the quick questions and the server's extra tool groups.
@@ -161,19 +163,47 @@ final class JarvisRouter: ObservableObject {
     if voiceDirect { chat.send(text, voiceSeconds: seconds) } else { chat.draft = text }
   }
 
-  /// A card's 「open」 button: the tab that has that page.
-  func open(page p: String) {
-    sheet = nil
-    let circles = session?.circlesTab ?? false
-    let tab: AppTab
-    switch p.split(separator: ".").first.map(String.init) ?? p {
-    case "today", "sleep", "healthspan": tab = .today
-    case "trends", "lab", "data_status": tab = .trends
-    case "food", "recipe": tab = circles ? .record : .food
-    case "profile", "supplements": tab = .me
-    default: tab = .record
+  /// Where a card's button goes: the sheets over the chat, or a tab and what that tab should show.
+  enum Route: Equatable {
+    case detail(JarvisDetail)
+    case tab(AppTab, JarvisPageLink.Request?)
+  }
+
+  /// `card`: the card or the row the button is on (a lab's key, a night's date, a recipe's id). The page keys are
+  /// cards.OPEN_PAGES plus `explain.<metric>` from a card's own title. Body age lands on Trends' 长期 group for now.
+  static func route(page p: String, card: JSONValue?, circles: Bool) -> Route {
+    let foodTab: AppTab = circles ? .record : .food
+    if p.hasPrefix("explain.") {
+      return .detail(.explain(key: String(p.dropFirst(8)), title: card?["title"]?.string ?? ""))
     }
-    selectTab?(tab)
+    switch p {
+    case "lab": return .detail(.lab(key: card?["test_key"]?.string, name: card?["test_name"]?.string))
+    case "supplements": return .detail(.supplements)
+    case "data_status": return .detail(.dataStatus)
+    case "profile": return .detail(.profile)
+    case "sleep": return .detail(.sleep(date: card?["date"]?.string))
+    case "today": return .tab(.today, nil)
+    case "trends", "healthspan": return .tab(.trends, .trends(.metrics))
+    case "trends.report": return .tab(.trends, .trends(.report))
+    case "record.training": return .tab(.record, .training)
+    case "food": return .tab(foodTab, .food(.diet))
+    case "food.shopping": return .tab(foodTab, .food(.shopping))
+    case "food.recipes": return .tab(foodTab, .food(.recipes))
+    case "recipe": return .tab(foodTab, .food(.recipe(id: card?["id"]?.string ?? "")))
+    default: return .tab(.record, nil)
+    }
+  }
+
+  /// A card's 「open」 button.
+  func open(page p: String, card: JSONValue? = nil) {
+    switch Self.route(page: p, card: card, circles: session?.circlesTab ?? false) {
+    case .detail(let d):
+      detail = d
+    case .tab(let tab, let request):
+      sheet = nil
+      if let request { JarvisPageLink.shared.ask(request, circles: session?.circlesTab ?? false) }
+      selectTab?(tab)
+    }
   }
 
   func show(_ text: String) {
