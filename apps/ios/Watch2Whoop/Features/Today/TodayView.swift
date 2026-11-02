@@ -70,6 +70,10 @@ struct TodayView: View {
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
+    // The page was read before the consent and still says 「需要先确认同意书」: read it again once it is given.
+    .onReceive(HealthSyncService.shared.$consentRequired.removeDuplicates().dropFirst()) { required in
+      if !required { Task { await store.refresh() } }
+    }
     .task(id: aiFirst) { await runHome() }
     .onChange(of: home.home) { _ in maybeOverview() }
     .onChange(of: store.hasData) { _ in maybeOverview() }
