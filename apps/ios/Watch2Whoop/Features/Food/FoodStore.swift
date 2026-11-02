@@ -91,7 +91,8 @@ final class FoodStore: LocalPageStore {
 
   private func observeDay() {
     if cardOnly {
-      observe(keys: [FoodDocs.today(day), FoodDocs.templates], kinds: FoodDocs.kinds)
+      // today:current as well: the card starts on the phone's date, and the first today document can say another one
+      observe(keys: [FoodDocs.today(day), FoodDocs.templates, DocKey.todayCurrent], kinds: FoodDocs.kinds)
       return
     }
     observe(keys: [FoodDocs.today(day), FoodDocs.water(day), FoodDocs.templates, FoodDocs.recipes, FoodDocs.grocery(week),
@@ -100,7 +101,16 @@ final class FoodStore: LocalPageStore {
             kinds: FoodDocs.kinds)
   }
 
+  /// The user's today moved (the server's date arrived, or midnight passed): a store showing today goes on showing today, one
+  /// looking back at a day stays there.
+  private func follow(today t: String) {
+    if day == today { day = t }
+    today = t
+    observeDay()
+  }
+
   override func changed() {
+    if cardOnly, let t = view.json(DocKey.todayCurrent)?["date"] as? String, t != today { follow(today: t) }
     let v = view
     nutrition = NutritionDay.build(today: v.json(FoodDocs.today(day)), day: day, pending: v.pending)
     templates = MealTemplate.parseList(v.list(FoodDocs.templates), pending: v.pending, today: today)
@@ -135,8 +145,8 @@ final class FoodStore: LocalPageStore {
   func refresh() async {
     let t = db.userToday()
     if t != today {
-      today = t
-      observeDay()
+      follow(today: t)
+      changed()
     }
     if cardOnly {
       await send()

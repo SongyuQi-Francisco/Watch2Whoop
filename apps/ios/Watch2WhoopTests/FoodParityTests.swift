@@ -411,3 +411,62 @@ final class FoodParityTests: XCTestCase {
     XCTAssertEqual(router.sheet, .chat)
   }
 }
+
+/// The Today card follows the user's today: their date is the server's, which can differ from the phone's the store starts with.
+@MainActor final class TodayFoodCardDayTests: XCTestCase {
+  private func session() throws -> AccountSession {
+    let cfg = AccountConfig(server: "https://body.example.com", userId: 7, displayName: "Test")
+    return AccountSession(config: cfg, api: PathStub.client(), db: try AppDatabase.inMemory(), flags: [])
+  }
+
+  private func save(_ s: AccountSession, day: String, kcal: Int) throws {
+    let doc = Data(#"{"date": "\#(day)", "nutrition": {"goal": {"kcal": 2000}, "intake": {"kcal": \#(kcal)}, "entries": []}}"#.utf8)
+    try s.db.saveDoc(DocKey.today(day), json: doc)
+    try s.db.saveDoc(DocKey.todayCurrent, json: doc)
+  }
+
+  private func until(_ cond: () -> Bool, _ file: StaticString = #filePath, _ line: UInt = #line) async {
+    let deadline = Date().addingTimeInterval(30)
+    while !cond(), Date() < deadline { try? await Task.sleep(nanoseconds: 10_000_000) }
+    XCTAssertTrue(cond(), "timed out after 30 s", file: file, line: line)
+  }
+
+  func testFirstDocumentWithAnotherDateShowsTheCard() async throws {
+    let s = try session()
+    let store = FoodStore(session: s, cardOnly: true)
+    XCTAssertNil(store.nutrition)
+    let serverDay = RecordDay.add(store.day, -1)
+    try save(s, day: serverDay, kcal: 500)
+    await until { store.nutrition != nil }
+    XCTAssertEqual(store.day, serverDay)
+    XCTAssertEqual(store.today, serverDay)
+    XCTAssertTrue(store.isToday)
+    XCTAssertEqual(store.nutrition?.intake.kcal, 500)
+  }
+
+  func testMidnightMovesTheCardToTheNewDay() async throws {
+    let s = try session()
+    let first = RecordDay.string(Date())
+    try save(s, day: first, kcal: 500)
+    let store = FoodStore(session: s, cardOnly: true)
+    XCTAssertEqual(store.nutrition?.intake.kcal, 500)
+    let next = RecordDay.add(first, 1)
+    try save(s, day: next, kcal: 100)
+    await until { store.day == next && store.nutrition?.intake.kcal == 100 }
+  }
+
+  func testADayLookedBackAtStaysWhenTodayMoves() async throws {
+    let s = try session()
+    let first = RecordDay.string(Date())
+    try save(s, day: first, kcal: 500)
+    let store = FoodStore(session: s, cardOnly: true)
+    let past = RecordDay.add(first, -3)
+    store.select(past)
+    XCTAssertEqual(store.day, past)
+    let next = RecordDay.add(first, 1)
+    try save(s, day: next, kcal: 100)
+    await until { store.today == next }
+    XCTAssertEqual(store.day, past)
+    XCTAssertFalse(store.isToday)
+  }
+}
