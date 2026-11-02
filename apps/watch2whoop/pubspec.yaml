@@ -19,7 +19,7 @@ dependencies:
     sdk: flutter
   # Open Wearables Flutter SDK (MIT). 0.0.25 depends on the native iOS SDK ~> 0.15.0
   # (0.14 has the sync race that interrupts the initial export) — check ios/Podfile.lock.
-  open_wearables_health_sdk: 0.0.25
+  open_wearables_health_sdk: 0.0.26
   webview_flutter: 4.14.1
   webview_flutter_wkwebview: 3.27.2
   # Android WebView (#253): file inputs and the platform params; same version the lock already had transitively
@@ -34,7 +34,7 @@ dependencies:
   # Keychain storage for the Body Engine account token (never in shared_preferences)
   flutter_secure_storage: 11.2.0
   # sha256 of the Sign in with Apple nonce
-  crypto: 3.0.7
+  crypto: 3.0.8
   wakelock_plus: 1.8.2
   package_info_plus: 10.2.2
   # Scan the setup QR code (iOS uses system AVFoundation / Vision, no Google ML Kit)
