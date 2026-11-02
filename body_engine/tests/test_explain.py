@@ -3,6 +3,7 @@ and per-user isolation (a family member sees only shared blocks; nobody gets ano
 
 Uses a separate test database BODY_TEST_DB_NAME_EXPLAIN (default body_test_explain), dropped and recreated on every run; skipped if Postgres is unreachable.
 """
+import json
 import os
 import re
 from datetime import date, datetime, timedelta
