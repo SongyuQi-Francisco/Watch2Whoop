@@ -33,6 +33,7 @@ private struct MeScreen: View {
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
+          if TodayHome.isOn(session.flags) { TodayHomeMeEntry() }   // flag ui_ai_first
           if inbox.on {
             RowGroup {
               ListRow(icon: .inbox, title: tr("消息", "Messages"), value: inbox.unread > 0 ? "\(inbox.unread)" : nil, tone: .bad) {

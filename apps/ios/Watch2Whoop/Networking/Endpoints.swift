@@ -37,6 +37,12 @@ enum Endpoint {
   static let sleepGoalPath = "/v1/users/me/goals/sleep"
   static func sleepGoal() -> APIRequest { .get(sleepGoalPath) }
   static let friendsOverview = APIRequest.get("/v1/friends/overview")
+
+  // flag ui_ai_first (#279): my Today
+  static func uiHome() -> APIRequest { .get("/v1/users/me/ui/home") }
+  static let uiFocus = "/v1/users/me/ui/focus"
+  static let uiOverviewSeen = "/v1/users/me/ui/overview-seen"
+  static func uiModule(_ key: String) -> String { "/v1/users/me/ui/modules/\(key)" }
   // N8: sign-in (no token yet), account, consent, profile
   static let authMethods = "/v1/auth/methods"
   static let authEmailStart = "/v1/auth/email/start"

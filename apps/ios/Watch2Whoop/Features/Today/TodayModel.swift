@@ -160,6 +160,9 @@ struct TodayModel: Equatable {
     var loadMissingDays: Int = 0
     var flags: [String] = []
     var strainFlags: [String] = []
+    /// The night's sleep and its need, in minutes (the AI-first page's sleep ring and questions; flag `ui_ai_first`).
+    var sleepMin: Double?
+    var sleepNeedMin: Double?
   }
 
   var date: String?
@@ -251,6 +254,8 @@ struct TodayModel: Equatable {
       loadMissingDays: (sc["load_missing_days"] as? NSNumber)?.intValue ?? 0,
       flags: Self.flagLabels(t["flags"], skip: ["load_missing", "day_in_progress", "no_raw_hr"]),
       strainFlags: Self.flagLabels(y["flags"], skip: []))
+    detail.sleepMin = Self.num(t["sleep_actual_min"])
+    detail.sleepNeedMin = Self.num(t["sleep_need_min"])
 
     // ---- core metrics, three per row (native_ui.dart todayModel sections)
     let sleepDoc = doc["sleep"] as? [String: Any]

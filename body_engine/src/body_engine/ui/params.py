@@ -8,6 +8,13 @@ FEATURE = "ui_ai_first"
 MODULES = ("health_monitor", "strain_coach", "sleep", "sleep_goal", "training", "muscle_load", "journal")
 MAX_MODULES = 6   # design v0.4, D5: at most six; the rest stay in 全部功能
 
+# Pace of my Today in the native app (design section 4.2 signal 5, 4.6, D6, D8). Days of use only set the pace: nothing is locked,
+# every card stays in 全部功能, and what the user pinned or an AI used goes on the page at once (the app applies that).
+FIRST_DAY_MODULES = 3      # sections 4.2 / 4.6: the first day shows at most three cards
+NEW_MODULES_PER_DAY = 2    # D6: at most two more a day
+VETERAN_ACCOUNT_DAYS = 14  # D8: an account this old when it first reaches the page is an existing user and keeps all it had
+                           # (no new-user stage). 14 days is the design's "two weeks in" stage (section 4, the prototype)
+
 # Focus the user picks in the first screen (D4) -> the cards that come first
 FOCUS = {
     "fat": ("training",),                         # 减脂: food and training on one card

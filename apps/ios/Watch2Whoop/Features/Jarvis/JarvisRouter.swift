@@ -87,6 +87,19 @@ final class JarvisRouter: ObservableObject {
     }
   }
 
+  /// A question the user tapped or typed on the AI-first Today (flag `ui_ai_first`): sent at once in an in-app AI, as on the web
+  /// page (ui-ai-first.js ask); any other AI goes the way `ask` goes.
+  func send(prompt: String) {
+    let ai = self.ai
+    guard ai.inApp, let chat else { ask(prompt: prompt); return }
+    if ai.mode == .fallback && !ai.consent {
+      Task { await chat.askConsent { [weak self] in self?.send(prompt: prompt) } ; presentOverOthers(.chat) }
+      return
+    }
+    presentOverOthers(.chat)
+    chat.send(prompt)
+  }
+
   /// How 一键小票 goes for the AI in use (#292).
   enum ScanRoute: Equatable {
     /// The camera, then the chat with the picture and the question.
