@@ -5,7 +5,8 @@ import SwiftUI
 /// - `SIMCTL_CHILD_W2W_DEV_RECORD=training|journal|food` picks the 记录 segment;
 /// - `SIMCTL_CHILD_W2W_DEV_HEALTH=supplements|labs|events[:test_key]` opens a health record sheet over 记录 (with a test
 ///   key: that test's trend);
-/// - `SIMCTL_CHILD_W2W_DEV_SCROLL=<points>` scrolls the 记录 / 饮食 page down that far.
+/// - `SIMCTL_CHILD_W2W_DEV_SCROLL=<points>` scrolls the 记录 / 饮食 page down that far;
+/// - `SIMCTL_CHILD_W2W_DEV_TRAINING=library|custom|split|goals|log|exercise:<slug>|plan:<date>` opens that sheet of 记录 → 训练.
 enum RecordDevShot {
   static func value(_ key: String) -> String? {
     #if DEBUG

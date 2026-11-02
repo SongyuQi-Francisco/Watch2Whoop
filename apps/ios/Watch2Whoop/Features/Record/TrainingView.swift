@@ -1,12 +1,14 @@
 import SwiftUI
 
 /// 记录 → 训练: the muscle load map, today's plan with set-by-set logging (banned / caution exercises marked with the
-/// user's own reason), the week, the user's exercise restrictions and the history calendar.
+/// user's own reason), the week, suggestions, the user's exercise restrictions and the history calendar. The library, split
+/// picker, custom exercises and training settings open as sheets from here (TrainingSheets.swift).
 struct TrainingSection: View {
   @ObservedObject var store: TrainingStore
   @Binding var toast: Toast?
   @State private var range: MuscleLoad.Range = .week
-  @State private var muscle: MuscleLoad.Muscle?
+  @State private var sheet: TrainingSheet?
+  @State private var removing: RemoveTarget?
   @State private var detailDay: String?
   @State private var open: Set<String> = []
   @State private var allMuscles = false
@@ -22,23 +24,29 @@ struct TrainingSection: View {
       if let m = store.muscle { muscleCard(m) }
       todayCard.id("n5.today")
       if let w = store.week { weekCard(w).id("n5.week") }
+      if let w = store.week, !w.suggestions.isEmpty { suggestions(w) }
       restrictions.id("n5.limits")
       TrainingCalendarView(store: store) { detailDay = $0 }.id("n5.calendar")
     }
     .task {
       await store.refresh()
       if open.isEmpty, let first = store.session?.loggable.first { open.insert(first.slug) }   // the first exercise opens by itself
+      if sheet == nil, let dev = RecordDevShot.value("W2W_DEV_TRAINING").flatMap(TrainingSheet.dev) { sheet = dev }
     }
-    .sheet(item: $muscle) { m in
-      SheetContainer(title: m.name, close: { muscle = nil }) { MuscleSheet(m: m, range: range) }
-        .presentationDetents([.medium])
+    .sheet(item: $sheet) { s in
+      TrainingSheetHost(store: store, start: s) { message in
+        sheet = nil
+        if let message { toast = message }
+      }
+      .presentationDetents([.large])
     }
     .sheet(item: Binding(get: { detailDay.map { DayRef(day: $0) } }, set: { detailDay = $0?.day })) { ref in
       SheetContainer(title: tr("训练 · \(RecordDay.short(ref.day))", "Training · \(RecordDay.short(ref.day))"), close: { detailDay = nil }) {
-        TrainingDaySheet(store: store, day: ref.day, plan: store.week?.days.first { $0.date == ref.day }?.planned ?? [])
+        TrainingDaySheet(store: store, day: ref.day)
       }
       .presentationDetents([.medium, .large])
     }
+    .modifier(RemoveExerciseDialogs(target: $removing, store: store, say: { toast = $0 }))
   }
 
   // MARK: muscle load
@@ -54,7 +62,7 @@ struct TrainingSection: View {
             ForEach([true, false], id: \.self) { front in
               VStack(spacing: 4) {
                 if let side = MuscleBodies.shared.side(sex: m.sex, front: front) {
-                  MuscleBodyView(side: side, regions: regions) { key in muscle = m.muscles.first { $0.key == key } }
+                  MuscleBodyView(side: side, regions: regions) { key in openMuscle(m, key) }
                     .frame(height: 260)
                 }
                 Text(front ? tr("正面", "Front") : tr("背面", "Back")).font(Typo.label).foregroundColor(Palette.text2)
@@ -63,6 +71,13 @@ struct TrainingSection: View {
             }
           }
           legend
+          if !m.sexSet {
+            Text(tr("按男性图显示，可在个人资料里设置性别", "Shown on the male body; set your sex in your profile"))
+              .font(Typo.caption).foregroundColor(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
+          }
+          if let sports = sportsLine(m) {
+            Text(sports).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2).frame(maxWidth: .infinity, alignment: .leading)
+          }
           let rows = m.muscles.filter { ($0.sets[range] ?? 0) > 0 || ($0.sportMin[range] ?? 0) > 0 }
             .sorted { ($0.sets[range] ?? 0) > ($1.sets[range] ?? 0) }
           if rows.isEmpty {
@@ -70,14 +85,23 @@ struct TrainingSection: View {
           }
           VStack(spacing: 0) {
             ForEach(allMuscles ? rows : Array(rows.prefix(5))) { r in
-              Button { muscle = r } label: {
-                HStack(spacing: 8) {
-                  Text(r.name).font(Typo.bodyStrong).foregroundColor(Palette.text)
-                  Badge(label: MuscleLoad.statusTitle(r.status[range] ?? "none"), tone: MuscleLoad.tone(r.status[range] ?? "none"))
-                  Spacer()
-                  Text(tr("\(RecordFormat.num(r.sets[range], 1)) 组", "\(RecordFormat.num(r.sets[range], 1)) sets"))
-                    .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-                  Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
+              Button { sheet = .muscle(r, range) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                  HStack(spacing: 8) {
+                    Text(r.name).font(Typo.bodyStrong).foregroundColor(Palette.text)
+                    if (r.sets[range] ?? 0) > 0 {
+                      Badge(label: MuscleLoad.statusTitle(r.status[range] ?? "none"), tone: MuscleLoad.tone(r.status[range] ?? "none"))
+                    } else {
+                      Badge(label: tr("运动", "Sports"))
+                    }
+                    Spacer()
+                    Text(tr("\(RecordFormat.num(r.sets[range], 1)) 组", "\(RecordFormat.num(r.sets[range], 1)) sets"))
+                      .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+                    Text("\(RecordFormat.num(r.volume[range])) kg")
+                      .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+                    Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
+                  }
+                  Text(rowDetail(r)).font(.system(size: 12).monospacedDigit()).foregroundColor(Palette.text3)
                 }
                 .padding(.vertical, 10)
                 .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)
@@ -90,13 +114,57 @@ struct TrainingSection: View {
             Button(allMuscles ? tr("收起", "Less") : tr("全部 \(rows.count) 个肌群", "All \(rows.count) muscles")) { withAnimation { allMuscles.toggle() } }
               .font(.system(size: 13, weight: .medium)).foregroundColor(Palette.text2)
           }
-          if !m.unmatched.isEmpty {
-            Text(tr("\(m.unmatched.count) 个动作没对上动作库，没有计入", "\(m.unmatched.count) exercises not in the library, not counted"))
-              .font(Typo.caption).foregroundColor(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
+          let rest = m.muscles.filter { ($0.sets[range] ?? 0) <= 0 && ($0.sportMin[range] ?? 0) <= 0 }.map(\.name)
+          if !rest.isEmpty, !rows.isEmpty {
+            Text("\(tr("没练", "None"))\(tr("：", ": "))\(rest.joined(separator: tr("、", ", ")))")
+              .font(.system(size: 12)).foregroundColor(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
           }
+          if !m.unmatched.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+              Text(unmatchedLine(m)).font(Typo.caption).foregroundColor(Palette.text3).frame(maxWidth: .infinity, alignment: .leading)
+              AskJarvisButton(title: tr("让 Jarvis 补进动作库", "Ask Jarvis to add them to the library"), prompt: MusclePrompts.fill(m.unmatched), background: Palette.bg)
+            }
+          }
+          AskJarvisButton(title: tr("让 Jarvis 分析我的肌群训练", "Ask Jarvis to analyse my muscle training"), prompt: MusclePrompts.analyse, background: Palette.bg)
+          SecondaryButton(icon: .settings, title: tr("训练设置", "Training settings"), background: Palette.bg) { sheet = .goals }
         }
       }
     }
+  }
+
+  private func openMuscle(_ m: MuscleLoad, _ key: String) {
+    if let row = m.muscles.first(where: { $0.key == key }) { sheet = .muscle(row, range) }
+  }
+
+  private func sportsLine(_ m: MuscleLoad) -> String? {
+    let list = m.sports[range] ?? []
+    guard !list.isEmpty else { return nil }
+    let items = list.map { s, minutes -> String in
+      let text = "\(s) \(tr("\(RecordFormat.num(minutes)) 分钟", "\(RecordFormat.num(minutes)) min"))"
+      return m.unmappedSports.contains(s) ? "\(text) (\(tr("不计入肌群", "not counted for muscles")))" : text
+    }
+    return "\(tr("运动", "Sports"))\(tr("：", ": "))\(items.joined(separator: " · "))"
+  }
+
+  /// 每周推荐 8–16 组 · 上周 6 组 · 较上周 +2 · 运动 30 分钟.
+  private func rowDetail(_ r: MuscleLoad.Muscle) -> String {
+    var parts: [String] = []
+    if let lo = r.low, let hi = r.high { parts.append(tr("每周推荐 \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) 组", "Weekly range \(RecordFormat.num(lo))–\(RecordFormat.num(hi)) sets")) }
+    if range == .week, let p = r.prevWeek {
+      parts.append(tr("上周 \(RecordFormat.num(p, 1)) 组", "Last week \(RecordFormat.num(p, 1)) sets"))
+      if let d = r.delta, d != 0 {
+        let v = "\(d > 0 ? "+" : "")\(RecordFormat.num(d, 1))"
+        parts.append(tr("较上周 \(v)", "vs last week \(v)"))
+      }
+    }
+    if let s = r.sportMin[range], s > 0 { parts.append(tr("运动 \(RecordFormat.num(s)) 分钟", "Sports \(RecordFormat.num(s)) min")) }
+    return parts.joined(separator: " · ")
+  }
+
+  private func unmatchedLine(_ m: MuscleLoad) -> String {
+    let n = m.unmatched.count
+    let names = m.unmatched.prefix(6).joined(separator: tr("、", ", ")) + (n > 6 ? "…" : "")
+    return "\(tr("\(n) 个动作没对上动作库，没有计入", "\(n) exercises not in the library, not counted"))\(tr("：", ": "))\(names)"
   }
 
   private var legend: some View {
@@ -110,6 +178,10 @@ struct TrainingSection: View {
       HStack(spacing: 4) {
         RoundedRectangle(cornerRadius: 3).stroke(Palette.text, lineWidth: 1.5).frame(width: 10, height: 10)
         Text(tr("今天练了", "Today"))
+      }
+      HStack(spacing: 4) {
+        RoundedRectangle(cornerRadius: 3).fill(Palette.text.opacity(0.22)).frame(width: 10, height: 10)
+        Text(tr("运动", "Sports"))
       }
     }
     .font(.system(size: 11)).foregroundColor(Palette.text2)
@@ -130,6 +202,7 @@ struct TrainingSection: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         SectionHeader(title: tr("今天", "Today"))
+        if let s = store.session, s.changed { Badge(label: tr("已调整", "Changed"), tone: .mid) }
         if let s = store.session, !s.title.isEmpty {
           Text(s.title).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1)
         }
@@ -139,6 +212,7 @@ struct TrainingSection: View {
           Card { EmptyNote(text: s.restDay ? tr("休息", "Rest day") : tr("无计划", "No plan")) }
         } else {
           if let r = s.readiness { Banner(text: r.label, tone: r.tone) }
+          Text(planLine(s)).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
           VStack(spacing: 10) {
             ForEach(ExerciseBlock.blocks(s.exercises)) { b in
               if b.isSuperset {
@@ -150,17 +224,41 @@ struct TrainingSection: View {
           }
           if s.canLog && !s.loggable.isEmpty { submitFooter(s) }
         }
+        if s.canEditPlan, !s.removed.isEmpty {
+          RemovedRow(removed: s.removed) { slug in restore(slug, s.day) }
+        }
       } else {
         Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
       }
     }
   }
 
+  /// 8 个动作 · 约 60 分钟 · 3/24 (training-day.js planSub).
+  private func planLine(_ s: TrainingSession) -> String {
+    var parts = [tr("\(s.exercises.count) 个动作", "\(s.exercises.count) exercises")]
+    if let m = s.minutes { parts.append(tr("约 \(m) 分钟", "About \(m) min")) }
+    let sets = s.loggable.flatMap { store.rows[$0.slug] ?? [] }
+    if !sets.isEmpty { parts.append("\(sets.filter(\.done).count)/\(sets.count)") }
+    return parts.joined(separator: " · ")
+  }
+
   private func exerciseCard(_ e: PlannedExercise, _ s: TrainingSession) -> some View {
     ExerciseCard(e: e, rows: store.rows[e.slug] ?? [], canLog: s.canLog, open: open.contains(e.slug),
                  toggle: { if open.contains(e.slug) { open.remove(e.slug) } else { open.insert(e.slug) } },
                  edit: { change in store.edit(e.slug, change) },
-                 swapTo: s.canEditPlan ? { c in swap(e, c) } : nil)
+                 swapTo: s.canEditPlan ? { c in swap(e, c) } : nil,
+                 baseURL: store.api.baseURL, sex: store.muscle?.sex ?? "male",
+                 guide: e.unresolved ? nil : { sheet = .exercise(e.slug) },
+                 remove: s.canEditPlan ? { removing = removeTarget(e, s) } : nil)
+  }
+
+  private func removeTarget(_ e: PlannedExercise, _ s: TrainingSession) -> RemoveTarget {
+    RemoveTarget(slug: e.slug, name: e.name, date: s.day, isToday: s.day == store.today, dayOfWeek: e.dayOfWeek, sessionName: e.sessionName,
+                 sessionTitle: e.sessionTitle, addedForDay: e.addedForDay)
+  }
+
+  private func restore(_ slug: String, _ day: String) {
+    Task { if let error = await store.restore(slug, day: day) { toast = Toast(error) } }
   }
 
   /// An exercise the library did not recognise, replaced in the weekly plan by one of its candidates.
@@ -177,6 +275,9 @@ struct TrainingSection: View {
       : s.submitted ? tr("已提交 \(done) 组", "Submitted \(done) sets")
       : s.changedSinceSubmit ? tr("重新提交 \(done) 组", "Submit again · \(done) sets") : tr("提交 \(done) 组", "Submit \(done) sets")
     return VStack(spacing: 6) {
+      if let log = s.trainingLog, log != "connected" {
+        SecondaryButton(title: tr("先连接训练记录", "Connect the training log first")) { sheet = .log }
+      }
       PrimaryButton(title: label) { submit(false) }
         .disabled(done == 0 || s.submitted || s.pendingSubmit != nil)
         .opacity(done == 0 || s.submitted || s.pendingSubmit != nil ? 0.45 : 1)
@@ -203,27 +304,37 @@ struct TrainingSection: View {
 
   private func weekCard(_ w: TrainingWeek) -> some View {
     VStack(alignment: .leading, spacing: 10) {
-      HStack {
+      HStack(spacing: 14) {
         SectionHeader(title: tr("本周", "This week"))
-        if let n = w.planName { Text(n).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1) }
+        if !w.splits.isEmpty {
+          weekLink(w.hasPlan ? tr("切换分化", "Change split") : tr("选周计划", "Pick a weekly plan")) { sheet = .split }
+        }
+        weekLink(tr("动作库", "Exercise library")) { sheet = .library }
       }
+      if let n = w.planName { Text(n).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1) }
       Card {
         VStack(alignment: .leading, spacing: 12) {
           HStack(spacing: 4) {
             ForEach(w.days) { d in
-              Button { detailDay = d.date } label: {
+              Button { if d.date > store.today { sheet = .planDay(d.date) } else { detailDay = d.date } } label: {
                 VStack(spacing: 4) {
                   Text(Self.weekdayName(RecordDay.weekday(d.date))).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3)
                   Text(String(Int(d.date.suffix(2)) ?? 0)).font(.system(size: 15, weight: d.date == store.today ? .bold : .medium).monospacedDigit())
                     .foregroundColor(d.date > store.today ? Palette.text3 : Palette.text)
                   Circle().fill(d.trained ? (TrainingMonth.tone(d.intensity) ?? .good).color : Palette.surface2).frame(width: 7, height: 7)
-                  Text(d.label).font(.system(size: 10)).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.7)
+                  Text(d.label).font(.system(size: 10)).foregroundColor(d.changedFrom != nil ? Palette.mid : Palette.text2).lineLimit(1).minimumScaleFactor(0.7)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 6)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(d.date == store.today ? Palette.bg : .clear))
               }
               .buttonStyle(PressScale())
             }
+          }
+          HStack(spacing: 6) {
+            WeekNumber(label: tr("训练", "Trained"), value: String(w.trainedDays), unit: tr("天", "d"))
+            WeekNumber(label: tr("时长", "Time"), value: w.totalMinutes > 0 ? RecordFormat.num(w.totalMinutes / 60, 1) : nil, unit: "h")
+            WeekNumber(label: tr("消耗", "Burned"), value: w.totalKcal.map { RecordFormat.num($0) }, unit: "kcal")
+            WeekNumber(label: tr("计划", "Plan"), value: w.plannedDays > 0 ? String(w.plannedDays) : nil, unit: tr("天", "d"))
           }
           if let r = w.readiness { Badge(label: r.label, tone: r.tone) }
           if !w.volume.isEmpty {
@@ -233,6 +344,53 @@ struct TrainingSection: View {
               }
             }
           }
+          if w.loadHistoryError, w.hasPlan { Badge(label: tr("训练记录读不到 · 重量为估算", "Training log unreadable · weights are estimates"), tone: .mid) }
+        }
+      }
+      if let log = w.log, !log.connected {
+        RowGroup {
+          Button { sheet = .log } label: {
+            HStack(spacing: 8) {
+              Text(tr("训练记录", "Training log")).font(Typo.body).foregroundColor(Palette.text)
+              Spacer()
+              Badge(label: log.word.text, tone: log.word.tone)
+              Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
+            }
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(PressScale())
+        }
+      }
+    }
+  }
+
+  private func weekLink(_ title: String, action: @escaping () -> Void) -> some View {
+    Button(title, action: action)
+      .font(.system(size: 13, weight: .medium)).foregroundColor(Palette.text2)
+      .lineLimit(1)
+      .fixedSize()
+  }
+
+  // MARK: suggestions
+
+  private func suggestions(_ w: TrainingWeek) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      SectionHeader(title: tr("建议", "Suggestions"))
+      RowGroup {
+        ForEach(Array(w.suggestions.enumerated()), id: \.element.id) { n, x in
+          if n > 0 { RowDivider(inset: 0) }
+          Button { sheet = .suggestion(x) } label: {
+            HStack(spacing: 8) {
+              Text(x.name).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
+              Spacer()
+              Badge(label: x.nextKg.map { "→ \(RecordFormat.num($0, 1)) kg" } ?? tr("建议", "Suggestion"), tone: x.warning ? .mid : .good)
+              Icon(.chevronRight, size: 14).foregroundColor(Palette.text3)
+            }
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(PressScale())
         }
       }
     }
@@ -253,18 +411,23 @@ struct TrainingSection: View {
         RowGroup {
           ForEach(Array(rules.enumerated()), id: \.element.id) { n, r in
             if n > 0 { RowDivider(inset: 0) }
-            HStack(alignment: .top, spacing: 10) {
-              Icon(r.banned ? .ban : .triangleAlert, size: 18).foregroundColor(r.banned ? Palette.bad : Palette.mid).padding(.top, 2)
-              VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                  Text(r.name).font(Typo.body).foregroundColor(Palette.text).strikethrough(r.banned, color: Palette.text3)
-                  Badge(label: r.banned ? tr("禁用", "Banned") : tr("注意", "Caution"), tone: r.banned ? .bad : .mid)
+            Button { sheet = .exercise(r.ref) } label: {
+              HStack(alignment: .top, spacing: 10) {
+                Icon(r.banned ? .ban : .triangleAlert, size: 18).foregroundColor(r.banned ? Palette.bad : Palette.mid).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                  HStack(spacing: 6) {
+                    Text(r.name).font(Typo.body).foregroundColor(Palette.text).strikethrough(r.banned, color: Palette.text3)
+                    Badge(label: r.banned ? tr("禁用", "Banned") : tr("注意", "Caution"), tone: r.banned ? .bad : .mid)
+                  }
+                  if let why = r.reason ?? r.cues { Text(why).font(Typo.caption).foregroundColor(Palette.text2).multilineTextAlignment(.leading) }
                 }
-                if let why = r.reason ?? r.cues { Text(why).font(Typo.caption).foregroundColor(Palette.text2) }
+                Spacer(minLength: 0)
+                Icon(.chevronRight, size: 14).foregroundColor(Palette.text3).padding(.top, 4)
               }
-              Spacer(minLength: 0)
+              .padding(.vertical, 11)
+              .contentShape(Rectangle())
             }
-            .padding(.vertical, 11)
+            .buttonStyle(PressScale())
           }
         }
       }
@@ -284,6 +447,26 @@ struct TrainingSection: View {
 private struct DayRef: Identifiable {
   let day: String
   var id: String { day }
+}
+
+/// A number of the week (app.js msum).
+private struct WeekNumber: View {
+  let label: String
+  let value: String?
+  let unit: String
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(label).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text2).lineLimit(1)
+      HStack(alignment: .firstTextBaseline, spacing: 2) {
+        Text(value ?? "—").font(.system(size: 17, weight: .semibold).monospacedDigit()).foregroundColor(value == nil ? Palette.text3 : Palette.text)
+          .lineLimit(1).minimumScaleFactor(0.6)
+        if value != nil { Text(unit).font(Typo.unit).foregroundColor(Palette.text2).lineLimit(1) }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .combine)
+  }
 }
 
 /// The exercises of one superset ("A + B" in the plan) drawn together under a 「超级组」 label; each keeps its own sets and weights.
@@ -319,11 +502,22 @@ struct ExerciseCard: View {
   let edit: ((inout [SetRow]) -> Void) -> Void
   /// Swap a name the library does not know for one of its candidates (nil: not offered, e.g. a plan that is not editable here).
   var swapTo: ((SwapCandidate) -> Void)? = nil
+  /// For the demo picture; nil draws none.
+  var baseURL: URL? = nil
+  var sex = "male"
+  /// 动作指导 / 看替代动作 (nil: a name the library does not know has no page).
+  var guide: (() -> Void)? = nil
+  /// × on the card: this day only, or from the session template (nil: the plan is not editable here).
+  var remove: (() -> Void)? = nil
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
+      HStack(spacing: 0) {
       Button(action: toggle) {
         HStack(spacing: 10) {
+          if let baseURL {
+            PlanExerciseThumb(thumb: e.thumb, primary: e.primaryMuscles, secondary: e.secondaryMuscles, base: baseURL, sex: sex)
+          }
           VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
               Text(e.name).font(Typo.bodyStrong).foregroundColor(e.banned ? Palette.text2 : Palette.text)
@@ -345,6 +539,14 @@ struct ExerciseCard: View {
         .contentShape(Rectangle())
       }
       .buttonStyle(PressScale())
+      if let remove {
+        Button(action: remove) {
+          Icon(.x, size: 16).foregroundColor(Palette.text3).frame(width: 40, height: 44)
+        }
+        .padding(.trailing, 4)
+        .accessibilityLabel(tr("移除这个动作", "Remove this exercise"))
+      }
+      }
       if e.unresolved, let swapTo, !e.candidates.isEmpty {
         HStack(spacing: 8) {
           Text(tr("换成", "Swap to")).font(Typo.label).foregroundColor(Palette.text3)
@@ -379,11 +581,25 @@ struct ExerciseCard: View {
             setHeader
             ForEach(Array(rows.enumerated()), id: \.offset) { i, r in setRow(i, r) }
             if let last = e.last { Text(tr("上次 \(last)", "Last \(last)")).font(Typo.label).foregroundColor(Palette.text3) }
-            if canLog {
+          }
+          HStack(spacing: 8) {
+            if canLog, !e.banned {
               Button { edit { $0.append($0.last.map { SetRow(reps: $0.reps, weightKg: $0.weightKg, durationS: $0.durationS, done: false) } ?? e.target) } } label: {
                 HStack(spacing: 6) {
                   Icon(.plus, size: 16)
                   Text(tr("一组", "Set"))
+                }
+                .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text)
+                .padding(.vertical, 8).padding(.horizontal, 14)
+                .background(Capsule().fill(Palette.bg))
+              }
+              .buttonStyle(PressScale())
+            }
+            if let guide {
+              Button(action: guide) {
+                HStack(spacing: 6) {
+                  Icon(.bookOpen, size: 16)
+                  Text(e.banned ? tr("看替代动作", "See alternatives") : tr("动作指导", "How to"))
                 }
                 .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text)
                 .padding(.vertical, 8).padding(.horizontal, 14)
@@ -429,7 +645,7 @@ struct ExerciseCard: View {
           }
         }
       }
-      Button { edit { if i < $0.count { $0[i].done.toggle() } } } label: {
+      Button { edit { if i < $0.count { $0[i].tick(target: e.target, timed: e.timed) } } } label: {
         Icon(.check, size: 16).foregroundColor(r.done ? Palette.bg : Palette.text3)
           .frame(width: 40, height: 38)
           .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(r.done ? Palette.good : Palette.bg))
@@ -472,28 +688,5 @@ private struct SetField: View {
       .onAppear { text = value }
       .onChange(of: value) { v in if v != text, Double(v.replacingOccurrences(of: ",", with: ".")) != Double(text.replacingOccurrences(of: ",", with: ".")) { text = v } }
       .onChange(of: text) { t in if t != value { commit(t) } }
-  }
-}
-
-/// One muscle: sets against the weekly range, volume, sports, last week.
-private struct MuscleSheet: View {
-  let m: MuscleLoad.Muscle
-  let range: MuscleLoad.Range
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      HStack {
-        Badge(label: MuscleLoad.statusTitle(m.status[range] ?? "none"), tone: MuscleLoad.tone(m.status[range] ?? "none"))
-        Spacer()
-      }
-      .padding(.bottom, 8)
-      KeyValueRow(label: range.title, value: tr("\(RecordFormat.num(m.sets[range], 1)) 组", "\(RecordFormat.num(m.sets[range], 1)) sets"))
-      if let lo = m.low, let hi = m.high {
-        KeyValueRow(label: tr("每周推荐", "Weekly range"), value: tr("\(RecordFormat.num(lo))–\(RecordFormat.num(hi)) 组", "\(RecordFormat.num(lo))–\(RecordFormat.num(hi)) sets"))
-      }
-      KeyValueRow(label: tr("训练量", "Volume"), value: "\(RecordFormat.num(m.volume[range])) kg")
-      if let p = m.prevWeek { KeyValueRow(label: tr("上周", "Last week"), value: tr("\(RecordFormat.num(p, 1)) 组", "\(RecordFormat.num(p, 1)) sets")) }
-      if let s = m.sportMin[range], s > 0 { KeyValueRow(label: tr("运动", "Sports"), value: tr("\(RecordFormat.num(s)) 分钟", "\(RecordFormat.num(s)) min")) }
-    }
   }
 }

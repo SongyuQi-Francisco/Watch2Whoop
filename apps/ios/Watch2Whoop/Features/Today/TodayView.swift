@@ -17,6 +17,8 @@ struct TodayView: View {
   @State private var sheet: TodaySheet?
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
+  @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
+  @State private var trainingOpen = false
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TodayStore(session: session))
@@ -33,6 +35,16 @@ struct TodayView: View {
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
         .environmentObject(session)
+    }
+    .sheet(isPresented: $trainingOpen) {
+      if let t = store.model.training {
+        TodayTrainingSheet(session: session, training: t, date: store.model.date, canLog: !store.model.isPast,
+                           close: { trainingOpen = false }, openLog: {
+          trainingOpen = false
+          openTraining()
+        })
+        .presentationDetents([.medium, .large])
+      }
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
@@ -181,6 +193,11 @@ struct TodayView: View {
       .id("allMetrics")
     }
 
+    if let t = m.training {
+      TodayTrainingCard(training: t, open: { trainingOpen = true }, history: openTraining).padding(.top, 22).id("training")
+    }
+    if !m.isPast, let mm = m.muscle { TodayMuscleCard(muscle: mm, open: openTraining).padding(.top, 22).id("muscle") }
+
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
 
     if !m.reminders.isEmpty {
@@ -235,6 +252,12 @@ struct TodayView: View {
         }
       }
     }
+  }
+
+  /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
+  private func openTraining() {
+    recordSegment = .training
+    tab = .record
   }
 
   private func open(_ o: TodayOpen) {
