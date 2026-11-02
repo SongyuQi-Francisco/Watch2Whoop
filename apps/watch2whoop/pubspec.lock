@@ -61,10 +61,10 @@ packages:
     dependency: "direct main"
     description:
       name: crypto
-      sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
+      sha256: e3626ae6270383c9e3a549f34c9e4cd26c09ae6a9adaab2bf4737a00340efdc4
       url: "https://pub.dev"
     source: hosted
-    version: "3.0.7"
+    version: "3.0.8"
   dbus:
     dependency: transitive
     description:
@@ -321,10 +321,10 @@ packages:
     dependency: "direct main"
     description:
       name: open_wearables_health_sdk
-      sha256: "20a86b17894172fe72146d9d82dace6d52b4684c52ddc66b238ec2e282921613"
+      sha256: "66c52fe66fda3d4165c1175f17024523b4a4a8bb685b1b0e6abcda21cff32f14"
       url: "https://pub.dev"
     source: hosted
-    version: "0.0.25"
+    version: "0.0.26"
   package_config:
     dependency: transitive
     description:
