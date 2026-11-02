@@ -21,7 +21,7 @@ final class JarvisRouter: ObservableObject {
   }
 
   enum Sheet: Identifiable, Equatable {
-    case chat, quick, camera
+    case chat, quick, camera, bodyAge
     var id: Self { self }
   }
 
@@ -154,7 +154,10 @@ final class JarvisRouter: ObservableObject {
     let circles = session?.circlesTab ?? false
     let tab: AppTab
     switch p.split(separator: ".").first.map(String.init) ?? p {
-    case "today", "sleep", "healthspan": tab = .today
+    case "healthspan":   // the detail itself, over the Today tab (takes the chat's place in the same sheet slot)
+      tab = .today
+      sheet = .bodyAge
+    case "today", "sleep": tab = .today
     case "trends", "lab", "data_status": tab = .trends
     case "food", "recipe": tab = circles ? .record : .food
     case "profile", "supplements": tab = .me

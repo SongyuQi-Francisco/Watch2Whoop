@@ -37,6 +37,8 @@ struct MeTab: View {
             ListRow(icon: .flaskConical, title: tr("化验", "Lab results")) { sheet = .records(.labs) }
             RowDivider()
             ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
+            RowDivider()
+            ListRow(icon: .activity, title: tr("身体年龄", "Body age")) { sheet = .bodyAge }
           }
           RowGroup(title: tr("设置", "Settings")) {
             ListRow(icon: .user, title: tr("个人资料", "Profile")) { sheet = .profile }
@@ -155,7 +157,7 @@ struct MeTab: View {
 }
 
 enum MeSheet: Identifiable, Equatable {
-  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, licences
+  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, bodyAge, licences
   case records(RecordKind)
 
   enum RecordKind: String { case supplements, labs, events }
@@ -181,6 +183,7 @@ private struct MeSheetView: View {
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
+      case .bodyAge: BodyAgeView()
       case .licences: LicensesView()
       case .records(let k): HealthRecordView(kind: k)                                    // N5
       }
@@ -199,6 +202,7 @@ private struct MeSheetView: View {
     case .appearance: return tr("外观", "Appearance")
     case .unsent: return tr("没提交的修改", "Unsent changes")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
+    case .bodyAge: return tr("身体年龄", "Body age")
     case .licences: return tr("开源许可", "Open-source licences")
     case .records(.supplements): return tr("补剂", "Supplements")
     case .records(.labs): return tr("化验", "Lab results")

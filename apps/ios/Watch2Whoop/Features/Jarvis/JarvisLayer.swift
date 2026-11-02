@@ -577,6 +577,11 @@ struct JarvisLayer: View {
         if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { router.sendPhoto(img) } }
       }
       .ignoresSafeArea()
+    case .bodyAge:
+      SheetContainer(title: tr("身体年龄", "Body age"), close: { router.sheet = nil }) { BodyAgeView() }
+        .environmentObject(session)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
   }
 
