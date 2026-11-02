@@ -256,18 +256,6 @@ final class MeAccountTests: XCTestCase {
     XCTAssertTrue(f.reports[1].withdrawable)
   }
 
-  func testGzipIsWhatTheServerReads() throws {
-    XCTAssertEqual(Gzip.crc32(Data("123456789".utf8)), 0xCBF4_3926)   // the standard check value of CRC-32
-    let csv = Data(String(repeating: "date,exercise,reps\n", count: 500).utf8)
-    let gz = try Gzip.compress(csv)
-    XCTAssertEqual(Array(gz.prefix(3)), [0x1F, 0x8B, 0x08])
-    XCTAssertLessThan(gz.count, csv.count / 4)
-    let deflated = gz.dropFirst(10).dropLast(8)
-    XCTAssertEqual(try (Data(deflated) as NSData).decompressed(using: .zlib) as Data, csv)
-    let size = gz.suffix(4).reversed().reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
-    XCTAssertEqual(Int(size), csv.count)
-  }
-
   func testHevyStatus() throws {
     let j = #"""
     {"last": {"workouts": 12, "new_workouts": 12, "sets": 80, "exercises": 9, "unmatched": [{"name": "Odd Lift", "sets": 3}], "skipped_rows": 2,

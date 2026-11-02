@@ -75,30 +75,6 @@ struct LibraryExercise: Decodable, Equatable, Identifiable {
   enum CodingKeys: String, CodingKey { case slug, nameZh = "name_zh", nameEn = "name_en" }
 }
 
-enum Gzip {
-  /// RFC 1952: the public server takes 2 MB per request and a CSV shrinks about ten times (same as the page does).
-  /// `compressed(using: .zlib)` is raw DEFLATE, so the header and trailer are added here.
-  static func compress(_ data: Data) throws -> Data {
-    let body = try (data as NSData).compressed(using: .zlib) as Data
-    var out = Data([0x1F, 0x8B, 0x08, 0, 0, 0, 0, 0, 0, 0xFF])
-    out.append(body)
-    var crc = crc32(data).littleEndian
-    var size = UInt32(truncatingIfNeeded: data.count).littleEndian
-    withUnsafeBytes(of: &crc) { out.append(contentsOf: $0) }
-    withUnsafeBytes(of: &size) { out.append(contentsOf: $0) }
-    return out
-  }
-
-  static func crc32(_ data: Data) -> UInt32 {
-    var c: UInt32 = 0xFFFF_FFFF
-    for byte in data {
-      c ^= UInt32(byte)
-      for _ in 0..<8 { c = (c >> 1) ^ (c & 1 == 1 ? 0xEDB8_8320 : 0) }
-    }
-    return ~c
-  }
-}
-
 struct HevyImportView: View {
   @EnvironmentObject private var session: AccountSession
   @State private var status: HevyStatus?
@@ -192,7 +168,8 @@ struct HevyImportView: View {
       let csv = try Data(contentsOf: url)
       let tooBig = tr("文件太大", "The file is too large")
       if let limit = status?.csvBytes, csv.count > limit { message = tooBig; return }
-      let gz = try Gzip.compress(csv)
+      // the public server takes 2 MB per request and a CSV shrinks about ten times (the page gzips it too)
+      guard let gz = Gzip.compress(csv) else { message = tr("读不了这个文件", "Can't read this file"); return }
       if let limit = status?.uploadBytes, gz.count > limit { message = tooBig; return }
       var r = APIRequest(method: .post, path: Self.path, body: gz, idempotent: false, timeout: 120)
       r.contentType = "application/gzip"
