@@ -10,6 +10,7 @@ events, cards, a pending delete, the AI switcher, the fallback AI's terms, voice
 so the rest of the app shows its empty states. Standard library only.
 """
 import json
+import pathlib
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -54,6 +55,9 @@ def cards(zh):
 
 
 def answer(msg, zh):
+    if msg.strip() == "cards":   # W2W_JARVIS_DEMO=cards: one card of every server type (the unit tests' fixture)
+        fixture = pathlib.Path(__file__).resolve().parent.parent / "Watch2WhoopTests" / "Fixtures" / "jarvis_cards.json"
+        return [("card", {"card": c, "call_id": 200 + i}) for i, c in enumerate(json.loads(fixture.read_text()))]
     if any(w in msg for w in ("删", "delete", "undo", "撤销")):
         return [("text", {"delta": "要删掉的是今天 12:30 记的那条午饭。" if zh else "That is the lunch logged at 12:30 today."}),
                 ("confirm", {"conversation_id": 1, "calls": [{"call_id": 41, "tool": "undo_meal_log", "args": {"id": 9},

@@ -112,6 +112,10 @@ enum JarvisDemo {
         router.present(.chat)
         await sec(1)
         router.chat?.send(JarvisRouter.quick(for: router.page).first?.text ?? "Hi")
+      case "cards":   // every card type, from apps/ios/scripts/fake_jarvis_server.py (word "cards")
+        router.present(.chat)
+        await sec(1)
+        router.chat?.send("cards")
       case "hold":
         h.press(h.center())
         await sec(1.5)
