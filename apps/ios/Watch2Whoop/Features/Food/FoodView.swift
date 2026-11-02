@@ -30,6 +30,9 @@ struct FoodContent: View {
   @State private var recipe: Recipe?
   @State private var logged: MealTemplate?
   @State private var busy = false
+  @State private var allRecipes = false
+  /// A Jarvis card's recipe, until the recipes are read.
+  @State private var askedRecipe: String?
 
   enum Mode: Hashable { case diet, shopping }
 
@@ -41,6 +44,13 @@ struct FoodContent: View {
   var body: some View {
     content
     .task { await store.refresh() }
+    .navigationDestination(isPresented: $allRecipes) { RecipesView(store: store) { r in recipe = r } }
+    .onReceive(JarvisPageLink.shared.$food) { r in
+      guard let r else { return }
+      JarvisPageLink.shared.food = nil
+      show(r)
+    }
+    .onChange(of: store.recipes.count) { _ in if let id = askedRecipe { openRecipe(id) } }
     .sheet(item: $entry) { e in
       SheetContainer(title: e.food, close: { entry = nil }) {
         FoodEntrySheet(entry: e, store: store) { msg in
@@ -68,6 +78,25 @@ struct FoodContent: View {
         Button(tr("撤销今天这次", "Undo today's"), role: .destructive) { undoTemplate(t) }
       }
       Button(tr("取消", "Cancel"), role: .cancel) {}
+    }
+  }
+
+  /// What a Jarvis card's button asked for.
+  private func show(_ r: JarvisPageLink.FoodPage) {
+    mode = r == .shopping ? .shopping : .diet
+    switch r {
+    case .recipes: allRecipes = true
+    case .recipe(let id): openRecipe(id)
+    case .diet, .shopping: break
+    }
+  }
+
+  private func openRecipe(_ id: String) {
+    if let r = store.recipes.first(where: { $0.id == id }) {
+      askedRecipe = nil
+      recipe = r
+    } else {
+      askedRecipe = id
     }
   }
 

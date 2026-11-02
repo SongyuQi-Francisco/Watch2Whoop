@@ -27,7 +27,7 @@ struct TodayDetailBody: View {
     case .sleepHelp:
       SleepHelpView(close: close)
     case .lab(let key, _):
-      LabDetailBody(key: key)
+      LabDetail(key: key)
     }
   }
 }
@@ -217,28 +217,6 @@ struct SleepHelpView: View {
       if let s = try? await session.api.send(.get(Endpoint.dataStatus), as: DataStatus.self) { sleep = s.types.first { $0.key == "sleep" } }
     }
   }
-}
-
-// MARK: - a status card's lab trend
-
-/// A status card with `lab_key`: the same trend as 我 → 化验.
-struct LabDetailBody: View {
-  let key: String
-  @EnvironmentObject private var session: AccountSession
-
-  var body: some View { LabDetailContent(key: key, session: session) }
-}
-
-private struct LabDetailContent: View {
-  let key: String
-  @StateObject private var store: HealthStore
-
-  init(key: String, session: AccountSession) {
-    self.key = key
-    _store = StateObject(wrappedValue: HealthStore(session: session))
-  }
-
-  var body: some View { LabTrendView(store: store, key: key) }
 }
 
 // MARK: - body age

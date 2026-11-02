@@ -213,17 +213,24 @@ final class TodayDetailsTests: XCTestCase {
     XCTAssertEqual(m.groups.count, 3)
   }
 
-  /// Jarvis' 「打开身体年龄」 opens the detail, the others keep their tab.
+  /// Jarvis' 「打开身体年龄」 opens the detail over the chat (the conversation stays underneath), not a tab.
   @MainActor func testJarvisOpensTheBodyAgeDetail() {
+    XCTAssertEqual(JarvisRouter.route(page: "healthspan", card: nil, circles: true), .detail(.bodyAge))
     let router = JarvisRouter()
+    router.sheet = .chat
     var tab: AppTab?
     router.selectTab = { tab = $0 }
     router.open(page: "healthspan")
-    XCTAssertEqual(router.sheet, .bodyAge)
-    XCTAssertEqual(tab, .today)
+    XCTAssertEqual(router.detail, .bodyAge)
+    XCTAssertEqual(router.sheet, .chat)
+    XCTAssertNil(tab)
+    XCTAssertEqual(JarvisDetail.bodyAge.title, "身体年龄")
+    router.detail = nil
     router.open(page: "trends")
+    XCTAssertNil(router.detail)
     XCTAssertNil(router.sheet)
     XCTAssertEqual(tab, .trends)
+    XCTAssertEqual(TrendsLink.shared.take(), TrendsLink.Request(end: nil, range: nil, mode: .metrics))
   }
 
   // MARK: - a night's notes
