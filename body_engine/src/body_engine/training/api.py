@@ -410,7 +410,7 @@ def _submit(conn, uid: int, day: date, allow_duplicate: bool):
     except ValueError as e:
         raise HTTPException(422, str(e))
     except sparky_client.SparkyError as e:
-        raise HTTPException(502, str(e))
+        raise HTTPException(502, sparky_client.public_error(e))
 
 
 # ---------------------------------------------------------------- Hevy CSV import (issue #161, rollout flag hevy_import)

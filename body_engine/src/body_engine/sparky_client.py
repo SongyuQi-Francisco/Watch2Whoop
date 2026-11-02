@@ -15,6 +15,7 @@ The address is BODY_SPARKY_URL, default http://127.0.0.1:8300 (inside the contai
 Dates are local dates in SparkyFitness (user time zone Australia/Sydney).
 """
 import json
+import logging
 import os
 import urllib.error
 import urllib.parse
@@ -26,14 +27,40 @@ from pathlib import Path
 import psycopg
 
 from .config import REPO_ROOT
+from .i18n import L
 
 SPARKY_URL = os.environ.get("BODY_SPARKY_URL", "http://127.0.0.1:8300")
 SECRETS_DIR = Path(os.environ.get("BODY_SECRETS_DIR", REPO_ROOT / "secrets"))
 HISTORY_PAGE = 100  # pageSize upper limit of /v2/exercise-entries/history
 
 
+log = logging.getLogger(__name__)
+
+
 class SparkyError(RuntimeError):
     pass
+
+
+class SparkyNotLinked(SparkyError):
+    """Nothing is wrong: this person has no log yet. Its text is written for them."""
+
+
+def _not_linked(user_id: int) -> SparkyError:
+    log.info("user %s has no SparkyFitness link (admin: body-engine sparky-link --user-id %s --key-name ...)", user_id, user_id)
+    return SparkyNotLinked(L("训练和饮食记录还没连接", "The training and food log is not connected yet"))
+
+
+def _key_missing(path: Path) -> SparkyError:
+    log.warning("SparkyFitness key file missing: %s (deploy/sparkyfitness/bootstrap.py makes it)", path)
+    return SparkyError(L("训练和饮食记录暂时读不到", "The training and food log can't be read right now"))
+
+
+def public_error(e: Exception) -> str:
+    """What a person may read about a failure. The raw text (internal addresses, a server's answer) stays in this server's log."""
+    if isinstance(e, SparkyNotLinked):
+        return str(e)
+    log.warning("SparkyFitness: %s", e)
+    return L("训练和饮食记录暂时读不到，稍后再试", "The training and food log can't be read right now; try again later")
 
 
 class SparkyClient:
@@ -104,10 +131,10 @@ def client_for_user(conn: psycopg.Connection, user_id: int) -> SparkyClient:
     if not row["sparky_key_name"] and (key := _provisioned_key(conn, user_id, "ro")):
         return SparkyClient(key)
     if not row["sparky_key_name"]:
-        raise SparkyError(f"用户 {user_id} 还没连 SparkyFitness：body-engine sparky-link --user-id {user_id} --key-name ...")
+        raise _not_linked(user_id)
     path = key_file(row["sparky_key_name"])
     if not path.exists():
-        raise SparkyError(f"找不到 SparkyFitness 只读 key：{path}（deploy/sparkyfitness/bootstrap.py 生成）")
+        raise _key_missing(path)
     return SparkyClient(path.read_text().strip())
 
 
@@ -188,10 +215,10 @@ def write_client_for_user(conn: psycopg.Connection, user_id: int) -> SparkyClien
     if not row["sparky_key_name"] and row["sparky_user_id"] and (key := _provisioned_key(conn, user_id, "rw")):
         return SparkyClient(key)   # created by account/provision.py for this very user (ciphertext bound to user_id)
     if not row["sparky_key_name"] or not row["sparky_user_id"]:
-        raise SparkyError(f"用户 {user_id} 还没连 SparkyFitness：body-engine sparky-link --user-id {user_id} --key-name ...")
+        raise _not_linked(user_id)
     path = key_file(row["sparky_key_name"], "rw")
     if not path.exists():
-        raise SparkyError(f"找不到 SparkyFitness 读写 key：{path}（deploy/sparkyfitness/bootstrap.py 生成）")
+        raise _key_missing(path)
     client = SparkyClient(path.read_text().strip())
     if (str(path), row["sparky_user_id"]) not in _verified_rw:
         sparky_user = client.get("/auth/get-session")["user"]["id"]
