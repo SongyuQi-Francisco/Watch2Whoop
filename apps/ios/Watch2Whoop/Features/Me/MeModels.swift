@@ -273,7 +273,7 @@ struct WhatsNew: Decodable, Equatable {
   /// "This week" / "Last week" / "Week of Oct 26" for the week starting on `weekStart` (a Monday), as whatsnew.js weekLabel.
   static func weekLabel(_ weekStart: String, today: String) -> String {
     guard let start = RecordDay.date(weekStart), let now = RecordDay.date(today) else { return weekStart }
-    let weeks = Int((now.timeIntervalSince(start) / (7 * 86_400)).rounded())
+    let weeks = Int((now.timeIntervalSince(start) / (7 * 86_400)).rounded(.down))
     if weeks <= 0 { return tr("本周", "This week") }
     if weeks == 1 { return tr("上周", "Last week") }
     let day = monthDay(weekStart)
