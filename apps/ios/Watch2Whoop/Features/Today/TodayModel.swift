@@ -27,6 +27,10 @@ struct TodayInputs {
   /// cards `trends.local:<day>`: 需要注意 and 今日核心 (#357).
   var trends: [String: Any]?
   var trendsLocal: [String: Any]?
+  /// The sleep coach: `sleep_coach` of the phone's coach document, or `GET /sleep-coach?date=`.
+  var sleepCoach: [String: Any]?
+  /// `GET /training/muscle-load` (`RecordDocs.muscle`, shared with 记录 → 训练): the small muscle map.
+  var muscle: [String: Any]?
 }
 
 /// Everything the Today tab draws, built from `TodayInputs`. Same numbers, rules and short labels as the page (app.js
@@ -166,8 +170,11 @@ struct TodayModel: Equatable {
   var sub: String?
   /// The rings come from the phone's own computation (no server score for this day yet).
   var local = false
+  /// The button under an empty recovery ring (`recovery_empty.action`).
+  var recoveryNext: RecoveryNext?
   var loadChip: String?
   var sections: [Section] = []
+  var tonight: SleepCoachModel?
   var coach: Coach?
   var vitals: [Vital] = []
   var vitalsOff = 0
@@ -182,6 +189,9 @@ struct TodayModel: Equatable {
   var coverage: BackfillCoverage?
   var circles: Circles?
   var sleepDate: String?
+  /// The day's training card (the today document's `training`), this week's muscle map (never on a look-back day).
+  var training: TodayTraining?
+  var muscle: MuscleLoad?
   var detail = Detail()
   var error: String?
   /// Server's hrv kind and the user's zone (for the phone's own computation).
@@ -195,6 +205,8 @@ struct TodayModel: Equatable {
 
   init(_ inp: TodayInputs) {
     let doc = inp.today ?? [:]
+    training = TodayTraining.parse(doc["training"] as? [String: Any])
+    muscle = MuscleLoad.parse(inp.muscle)
     let sc = doc["scores"] as? [String: Any] ?? [:]
     let t = sc["today"] as? [String: Any] ?? [:]
     let y = sc["yesterday"] as? [String: Any] ?? [:]
@@ -223,6 +235,7 @@ struct TodayModel: Equatable {
     let empty = sc["recovery_empty"] as? [String: Any]
     if let w = sc["recovery_word"] as? String { word = w }
     else if rec == nil, let e = empty?["label"] as? String { word = e; wordMuted = true }
+    if rec == nil { recoveryNext = RecoveryNext(empty) }
     if rec == nil, let last = sc["last_recovery"] as? [String: Any], let v = Self.num(last["recovery"]) {
       sub = "\(tr("上次", "Last")) \(Self.fmt(v)) · \(Self.shortDay(last["date"] as? String))"
     }
@@ -267,6 +280,9 @@ struct TodayModel: Equatable {
                unit: tr("分", "min"), action: .explainMetric("exercise_min", tr("锻炼分钟", "Exercise minutes"))),
       ]),
     ]
+
+    // a past day: the coach's bedtime goal is the current one, which may not have existed that night (app.js goalCardHtml)
+    tonight = SleepCoachModel(json: inp.sleepCoach).flatMap { isPast && $0.fromGoal ? nil : $0 }
 
     // ---- strain target (app.js strainCoachHtml): hidden on a past day without a strain
     if let c = inp.coach, let low = Self.num(c["target_low"]), let high = Self.num(c["target_high"]) {

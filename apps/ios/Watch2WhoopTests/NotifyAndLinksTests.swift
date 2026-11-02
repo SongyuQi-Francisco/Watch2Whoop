@@ -27,8 +27,6 @@ final class NotifyAndLinksTests: XCTestCase {
 
   @MainActor func testTapOnNotificationRoutes() {
     let app = AppModel(store: CredentialStore())
-    app.handle(link: "/app/?whatsnew=1")
-    XCTAssertEqual(app.route, .whatsNew)
     app.handle(link: "/app/?tab=me")
     XCTAssertEqual(app.route, .tab(.me))
     app.handle(link: "/app/?tab=friends&feed=3")
@@ -36,6 +34,22 @@ final class NotifyAndLinksTests: XCTestCase {
     app.route = nil
     app.handle(link: "/app/")
     XCTAssertNil(app.route)
+  }
+
+  /// The weekly message opens 更新记录 with the inbox off and the inbox with it on; other inbox links always go there
+  /// (InboxRouting drops them with the flag off).
+  @MainActor func testRoutesWithAndWithoutTheInbox() {
+    XCTAssertEqual(AppModel.route(for: "/app/?whatsnew=1", inbox: false), .whatsNew)
+    XCTAssertEqual(AppModel.route(for: "/app/?whatsnew=1", inbox: true), .inbox(item: nil))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=me&inbox=invite:3", inbox: true), .inbox(item: "invite:3"))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=me&inbox=invite:3", inbox: false), .inbox(item: "invite:3"))
+    XCTAssertEqual(AppModel.route(for: "/app/#notifications", inbox: true), .inbox(item: nil))
+    XCTAssertEqual(AppModel.route(for: "/app/#notifications", inbox: false), .inbox(item: nil))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=me", inbox: false), .tab(.me))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=me", inbox: true), .tab(.me))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=friends&feed=3", inbox: true), .circles(post: 3))
+    XCTAssertEqual(AppModel.route(for: "/app/?tab=friends", inbox: true), .circles(post: nil))
+    XCTAssertEqual(AppModel.route(for: "watch2whoop://circle?code=ABCDEFGHJK", inbox: true), .circleJoin("ABCDE-FGHJK"))
   }
 
   func testTabALinkLandsOn() {

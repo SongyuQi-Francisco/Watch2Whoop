@@ -32,7 +32,7 @@ import psycopg
 
 from .. import auth
 from ..profile import consent
-from . import params as P, store
+from . import notes, params as P, store
 
 DASHES = "-‐‑‒–—―"
 NORM_MIN, NORM_MAX, CODE_MAX = 4, 40, 60
@@ -248,6 +248,7 @@ def complete_pending(conn: psycopg.Connection, uid: int, scopes=None, only_circl
             conn.execute("""INSERT INTO circle_members (circle_id, user_id, scopes, join_via, circle_code_id)
                             VALUES (%s, %s, %s, 'circle_code', %s)""", (c["id"], uid, chosen, r["code_id"]))
             joined.append({"circle_id": c["id"], "name": c["name"]})
+            notes.member_joined(conn, uid, c["id"])
         conn.execute("UPDATE circle_code_uses SET joined_at = now() WHERE id = %s", (r["id"],))
     if joined:
         store.sync_user(conn, uid)

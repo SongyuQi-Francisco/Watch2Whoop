@@ -257,7 +257,8 @@ final class JarvisCardsTests: XCTestCase {
     XCTAssertEqual(R.route(page: "explain.hrv", card: json(#"{"title":"HRV"}"#), circles: true), .detail(.explain(key: "hrv", title: "HRV")))
     XCTAssertEqual(R.route(page: "today", card: nil, circles: true), .tab(.today, nil))
     XCTAssertEqual(R.route(page: "trends", card: nil, circles: true), .tab(.trends, .trends(.metrics)))
-    XCTAssertEqual(R.route(page: "healthspan", card: nil, circles: true), .tab(.trends, .trends(.metrics)))
+    XCTAssertEqual(R.route(page: "healthspan", card: nil, circles: true), .detail(.bodyAge))
+    XCTAssertEqual(R.route(page: "healthspan", card: nil, circles: false), .detail(.bodyAge))
     XCTAssertEqual(R.route(page: "trends.report", card: nil, circles: true), .tab(.trends, .trends(.report)))
     XCTAssertEqual(R.route(page: "record.training", card: nil, circles: true), .tab(.record, .training))
     // food is a segment of 记录 with the friends flag, its own tab without it

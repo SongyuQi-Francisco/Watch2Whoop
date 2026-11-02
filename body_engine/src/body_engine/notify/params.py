@@ -24,6 +24,9 @@ MAX_PUSHES_PER_WINDOW = 10      # after this many updates in one window the rest
 MERGED: dict[str, tuple[str, str]] = {
     "circle.like": ("{n} 个人给你点了 ❤️", "{n} people ❤️ your workout"),          # friends/feed.py (#176)
     "circle.comment": ("{n} 个人评论了你的训练", "{n} people commented on your workout"),
+    "circle.joined": ("{n} 个人加入了你的圈子", "{n} people joined your circle"),                  # friends/notes.py (#359)
+    "circle.invite_accepted": ("{n} 个人接受了你的邀请", "{n} people accepted your invite"),
+    "circle.invite": ("{n} 个人邀请你加入圈子", "{n} people invited you to a circle"),
 }
 DEFAULT_MERGED = ("{n} 条新的{label}", "{n} new · {label}")
 MERGED_BODY = ("点开查看", "Tap to see them")

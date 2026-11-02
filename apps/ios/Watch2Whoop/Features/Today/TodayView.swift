@@ -16,8 +16,12 @@ struct TodayView: View {
   @EnvironmentObject private var app: AppModel
   @StateObject private var store: TodayStore
   @State private var sheet: TodaySheet?
+  @State private var showConsent = false
   @State private var path: [SleepRoute] = []
+  @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
+  @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
+  @State private var trainingOpen = false
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TodayStore(session: session))
@@ -34,6 +38,24 @@ struct TodayView: View {
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
         .environmentObject(session)
+    }
+    .fullScreenCover(isPresented: $showConsent) {
+      ConsentView(reconfirm: false) {
+        showConsent = false
+        await store.refresh()
+      }
+      .environmentObject(session)
+      .environmentObject(app)
+    }
+    .sheet(isPresented: $trainingOpen) {
+      if let t = store.model.training {
+        TodayTrainingSheet(session: session, training: t, date: store.model.date, canLog: !store.model.isPast,
+                           close: { trainingOpen = false }, openLog: {
+          trainingOpen = false
+          openTraining()
+        })
+        .presentationDetents([.medium, .large])
+      }
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
@@ -58,6 +80,8 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .refreshable { await store.refresh() }
+      .toast($toast)
+      .modifier(DaySwipe { store.step($0) })
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
@@ -89,6 +113,7 @@ struct TodayView: View {
       if store.date != nil {
         Button { store.select(nil) } label: { Chip(label: tr("回到今天", "Back to today")) }.buttonStyle(PressScale())
       }
+      DayNavButtons(canGoNext: store.date != nil) { store.step($0) }
       SyncHeaderButton()
     }
     .padding(.top, 10).padding(.bottom, 8)
@@ -120,6 +145,12 @@ struct TodayView: View {
     }
     if let s = m.sub {
       Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
+    }
+    if let n = m.recoveryNext {
+      Button { runRecoveryNext(n.action) } label: { Chip(label: n.label) }
+        .buttonStyle(PressScale())
+        .frame(maxWidth: .infinity).padding(.top, 10)
+        .id("recoveryNext")
     }
     if m.loadChip != nil || m.local {
       HStack(spacing: 8) {
@@ -162,6 +193,10 @@ struct TodayView: View {
       .padding(.top, 22)
     }
 
+    if let c = m.tonight {
+      SleepCoachCard(coach: c, isPast: m.isPast) { sheet = .detail(.sleepCoach) }.padding(.top, 22).id("sleepCoach")
+    }
+
     // the strain target lives in 今日核心; the health monitor keeps its own card
     if !m.vitals.isEmpty {
       MonitorCard(vitals: m.vitals, off: m.vitalsOff) { sheet = .monitor }.padding(.top, 22)
@@ -186,7 +221,14 @@ struct TodayView: View {
       .id("allMetrics")
     }
 
+    if let t = m.training {
+      TodayTrainingCard(training: t, open: { trainingOpen = true }, history: openTraining).padding(.top, 22).id("training")
+    }
+    if !m.isPast, let mm = m.muscle { TodayMuscleCard(muscle: mm, open: openTraining).padding(.top, 22).id("muscle") }
+
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
+
+    TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")
 
     if !m.reminders.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
@@ -241,6 +283,7 @@ struct TodayView: View {
           ForEach(g.items) { it in
             StatusCell(item: it) {
               if it.key == "weight" { sheet = .weight }
+              else if let lab = it.labKey { sheet = .detail(.lab(key: lab, title: it.label)) }
               else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
             }
           }
@@ -249,11 +292,27 @@ struct TodayView: View {
     }
   }
 
+  /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
+  private func openTraining() {
+    recordSegment = .training
+    tab = .record
+  }
+
   private func open(_ o: TodayOpen) {
     switch o {
     case .coach: sheet = .coach
+    case .metric("stress", _): sheet = .detail(.stress)
     case .metric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
     case .status(let t): sheet = .status(t)
+    }
+  }
+
+  /// The button under an empty recovery ring (app.js recoveryNext).
+  private func runRecoveryNext(_ a: RecoveryNext.Action) {
+    switch a {
+    case .consent: showConsent = true
+    case .sync: app.route = .syncCenter
+    case .sleepHelp: sheet = .detail(.sleepHelp)
     }
   }
 
@@ -292,7 +351,7 @@ struct TodayView: View {
 #if DEBUG
 /// Debug builds only, for simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SCROLL=<anchor id>` (`attention`, `core`,
 /// `allMetrics`, `bottom`),
-/// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|explain:<kind>:<key>`,
+/// `SIMCTL_CHILD_W2W_DEV_SHEET=recovery|strain|load|coach|monitor|calendar|weight|stress|sleepCoach|bodyAge|sleepHelp|lab:<key>|explain:<kind>:<key>`,
 /// `SIMCTL_CHILD_W2W_DEV_SLEEP=1` (open the sleep detail page), `SIMCTL_CHILD_W2W_DEV_DATE=YYYY-MM-DD` (look back).
 enum DevShot {
   static func apply(proxy: ScrollViewProxy, sheet: @escaping (TodaySheet) -> Void, push: @escaping (SleepRoute) -> Void,
@@ -310,6 +369,11 @@ enum DevShot {
       case "monitor": sheet(.monitor)
       case "calendar": sheet(.calendar)
       case "weight": sheet(.weight)
+      case "stress": sheet(.detail(.stress))
+      case "sleepCoach": sheet(.detail(.sleepCoach))
+      case "bodyAge": sheet(.detail(.bodyAge))
+      case "sleepHelp": sheet(.detail(.sleepHelp))
+      case let x where x.hasPrefix("lab:"): sheet(.detail(.lab(key: String(x.dropFirst(4)), title: String(x.dropFirst(4)))))
       case let x where x.hasPrefix("explain:"):
         let p = x.split(separator: ":").map(String.init)
         if p.count == 3 { sheet(.explain(kind: p[1], key: p[2], title: p[2])) }

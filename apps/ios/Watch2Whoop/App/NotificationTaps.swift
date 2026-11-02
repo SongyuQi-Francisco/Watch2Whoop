@@ -8,6 +8,8 @@ import UserNotifications
 /// in Notification Center as before.
 final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate {
   static let shared = NotificationTaps()
+  /// A push arrived while the app is open.
+  static let pushArrived = Notification.Name("w2w.push.arrived")
 
   @MainActor var open: (@MainActor (String) -> Void)? {
     didSet { if let open, let link = pending { pending = nil; open(link) } }
@@ -21,7 +23,7 @@ final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate {
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                               withCompletionHandler done: @escaping () -> Void) {
     let info = response.notification.request.content.userInfo
-    if let link = info["url"] as? String {
+    if let link = InboxLink.pushTarget(url: info["url"] as? String, kind: info["kind"] as? String, nid: (info["nid"] as? NSNumber)?.intValue) {
       Task { @MainActor in self.deliver(link) }
     }
     done()
@@ -30,6 +32,7 @@ final class NotificationTaps: NSObject, UNUserNotificationCenterDelegate {
   func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                               withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
     let kind = notification.request.content.userInfo["kind"] as? String ?? ""
+    NotificationCenter.default.post(name: Self.pushArrived, object: nil)   // the inbox's badge keeps up
     done(kind.hasPrefix("circle.") ? [.banner, .list, .sound] : [])
   }
 }

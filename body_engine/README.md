@@ -699,12 +699,14 @@ the push is off, pushes to the user's registered iPhones through APNs from a bac
   (`GET /v1/whats-new`, `web/static/whatsnew.js`, 我 → 设置 → 更新记录; the message's link `/app/?whatsnew=1` opens it). Tests: `tests/test_whats_new.py`.
 
 ## Inbox (`src/body_engine/inbox/`, migration 1110, flag `inbox`, issue #359 P1)
-The server side of 「我 → 消息」: one list merged read-only from `admin_notices`, `whats_new_sends`, `circle_invites` addressed to the
-person (`invitee_user_id`) and `notifications` of the category `circle`; those tables stay as they are. No page or app screen yet.
+「我 → 消息」: one list merged read-only from `admin_notices`, `whats_new_sends`, `circle_invites` addressed to the person
+(`invitee_user_id`) and `notifications` of the categories `circle`, `system` and (while the flag `ai_cards` is on) `ai_card`; those
+tables stay as they are. The native app has the screen; the Today page has none.
 Every endpoint answers 404 while the flag is off for the person, and is about oneself only (`me` or one's own id, else 403).
 - `GET /v1/users/me/inbox?since=&before=&limit=` → `{items, unread, more, next, now, keep_days}`, newest first. Every item has `id`
-  (`notice:3`, `whatsnew:2026-10-25`, `invite:12`, `notification:9`), `type` (`notice` / `whatsnew` / `circle_invite` / `circle`), `at`,
-  `read`, `title`, `body`, `url`; plus `link_label` (notice), `entries` (whatsnew), `kind` (circle), `invite` (the card). `since` is
+  (`notice:3`, `whatsnew:2026-10-25`, `invite:12`, `notification:9`), `type` (`notice` / `whatsnew` / `circle_invite` / `circle` /
+  `system` / `ai_card`), `at`, `read`, `title`, `body`, `url`; plus `link_label` (notice), `entries` (whatsnew), `kind` and `circle_id`
+  (circle), `invite` (the card). `system.upgrade` (also a notice) and `system.test` are not listed. `since` is
   ISO 8601 with a zone (this answer's `now` is the next one); `before` is this answer's `next`. `unread` always counts the whole
   inbox. `since` only brings new items: without it the answer is complete, so a client with a copy drops what has gone.
 - `POST /v1/users/me/inbox/read {ids}` or `{all: true}`; `DELETE /v1/users/me/inbox/items/{id}` hides one item (it also counts as read;
@@ -712,19 +714,34 @@ Every endpoint answers 404 while the flag is off for the person, and is about on
   in `notifications.read_at` / `admin_notices.seen_at`, so the push badge and the old sheet and list agree; `inbox_item_state` holds
   only "hidden" and read state of what has no such column (invites, what's-new weeks with the push switched off).
 - Invite card (`item.invite`): `invite_id`, `circle_name`, `avatar`, `owner_name`, `members`, `expires_at`, `default_scopes`, `shares`
-  (`[{scope, label}]`: what joining shares), `consent_ok`, `rules_ok`; nothing about members or anyone else invited.
+  (`[{scope, label}]`: what joining shares), `consent_ok`, `rules_ok`, `can_mute`; nothing about members or anyone else invited.
   `GET …/inbox/invites/{id}/avatar` is the circle's picture for the person an open invite is addressed to (members keep
   `/v1/friends/circles/{id}/avatar`).
 - `POST …/inbox/invites/{id}/accept`: one step, joins through `friends/store.join` with the circle's default scopes, returns the
   circle (`already: true` when sent again). `POST …/inbox/invites/{id}/ignore` declines; nobody else can see it. Refusals are
   `detail: {code, message}`: 404 `invite_gone` (not addressed to you, expired, withdrawn or blocked: all look the same), 409
   `consent_required` and 428 `rules_required` (both with `required_version`: show that text, then send again), `join_refused`
-  (the circle is full, too many circles).
+  (the circle is full, too many circles). `POST …/inbox/invites/{id}/mute` (`can_mute`) declines and stops invites from whoever sent
+  it; they are not told.
+- Notifications written for it (`friends/notes.py`), only while the flag is on for the person told, never between people who
+  blocked each other, about a hidden profile or from a circle they muted: `circle.joined` to the owner (any way in, activation
+  codes too), `circle.invite_accepted` to whoever sent an invite (the owner hears one message, not two), `circle.invite` with the
+  push of an invite (not listed itself: the card stands for it and keeps its read state there; answering closes it).
+- Inviting someone you know (`friends/direct.py`, migration 1120): `GET /v1/friends/people/{id}/invite-options` → `{circles: [{id, name,
+  avatar, members, status}], per_day, left_today}` and `POST /v1/friends/people/{id}/invites {circle_id}` → `{status, already?}`. Only
+  someone who shares a circle with you, only into a circle you own; anything else (no such person, a stranger, a block) is the
+  same 404, so it cannot be used to find out who is here. `status`: `open`, `pending`, `accepted`, `member`, `full`; a declined invite
+  stays `pending` until it expires, so nobody sees a no. `friends/params.py`: `DIRECT_INVITES_PER_DAY` (429 above it),
+  `DIRECT_INVITE_DAYS`. `GET /v1/friends/invite-mutes`, `DELETE /v1/friends/invite-mutes/{id}` list and undo a mute.
+- `body-engine circle-admin invite --circle N --users 3,4,5 [--days 30]` sends one card each from the circle's owner, only to active
+  accounts with the circle consent, no code in the clear, safe to run again; prints one `{user_id, status}` per account
+  (`friends/admin.py`, `ADMIN_INVITE_DAYS`). `circle_invites.origin` (`referral` / `member` / `admin`) decides `circle_members.join_via`
+  (`referral` / `member_invite` / `admin_invite`).
 - Left out on every read: invites and interactions from someone blocked either way (the invite's maker or the circle's owner),
   interactions from someone hidden by moderation, banned or deleted, comment notifications whose comment may no longer be read
   (deleted, reported by this person, hidden or removed), and everything about circles while `friends` is off for the person.
-- Not here yet: app and page screens, direct invites between members, invite limits, replies, @, weekly challenges, push changes,
-  `circle-admin invite` (#359 P2 / P3). Tests: `tests/test_inbox.py`.
+- Not here yet: a screen on the Today page, inviting from the leaderboard or the feed (member cards only), replies, @, weekly
+  challenges, a push switch per message type (#359 P2 / P3). Tests: `tests/test_inbox.py`, `tests/test_inbox_invites.py`.
 
 ## Circles and circle sharing (`src/body_engine/friends/`, migration 470)
 Design: [`docs/friends-social-plan.md`](../docs/friends-social-plan.md). **Behind the feature flag `friends`** ([`docs/rollout.md`](../docs/rollout.md)): while it is off for someone, every `/v1/friends/*` endpoint answers 404, the Today page draws no circle entry, and circle grants (`shares.circle_scopes`) do not count unless the flag is on for **both** people (`auth.granted_scopes`); hand-made grants never depend on it. Turn it on with `body-engine flags set friends --state cohort --cohort beta --min-consent 2026-10-22.2`. The Today page part is 「我 → 圈子」 (`web/static/circles.js`); opening `/app/?circle=CODE` shows the join sheet after sign-in.

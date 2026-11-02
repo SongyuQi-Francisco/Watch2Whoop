@@ -143,6 +143,12 @@ def _circle_admin(conn, args, p) -> None:
                 cid = circle_admin.find_circle(conn, args.circle)
                 img = circle_admin.set_avatar(conn, cid, None if args.clear else read(args.file))
                 print(f"circle {cid}: " + (f"avatar image {img}" if img else "avatar cleared"))
+            elif args.ca_cmd == "invite":
+                cid = circle_admin.find_circle(conn, args.circle)
+                users = [int(x) for x in args.users.replace(",", " ").split() if x.isdigit()]
+                if not users:
+                    raise ValueError("--users 要写用户 id，逗号分隔")
+                show(circle_admin.invite_users(conn, cid, users, args.days))
             else:
                 show(circle_admin.list_circles(conn))
         elif args.cc_cmd == "create":
@@ -293,6 +299,10 @@ def main() -> None:
     cag.add_argument("--file")
     cag.add_argument("--clear", action="store_true")
     cas.add_parser("list", help="circles that are not personal ones: owner, members, cap, avatar")
+    cai = cas.add_parser("invite", help="send invite cards to these accounts (active, with the circle consent; safe to run again); no code in the clear")
+    cai.add_argument("--circle", required=True, help="circle id (or its exact name)")
+    cai.add_argument("--users", required=True, help="comma-separated user ids")
+    cai.add_argument("--days", type=int, default=30, help="how long the invite stays open (default 30)")
     cc = sub.add_parser("circle-code", help="circle activation codes: sign up and join one circle with a readable code (friends/codes.py)")
     ccs = cc.add_subparsers(dest="cc_cmd", required=True)
     ccc = ccs.add_parser("create", help="bind a code to a circle; matching ignores case, spaces and dashes")

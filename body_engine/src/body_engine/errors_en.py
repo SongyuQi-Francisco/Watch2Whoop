@@ -35,6 +35,8 @@ EXACT: dict[str, str] = {
     "这个人不在圈子里": "This person is not in the circle",
     "要给邀请码或邀请 ID（只给一个）": "Give an invite code or an invite ID (just one)",
     "这个人不在你的圈子里": "This person is not in any of your circles",
+    "这个人不在你不再接收邀请的名单里": "This person is not on your list of muted invites",
+    "有效期 1–365 天": "Valid for 1–365 days",
     "今天已经点过了": "Already sent today",
     "不能给自己设备注": "You can't set a nickname for yourself",
     # ---- circle activation codes and avatars (friends/codes.py, friends/admin.py, images/, #199)
@@ -297,6 +299,7 @@ _TEMPLATES: list[tuple[str, str]] = [
     ("没有这个圈子：{}（可选：{}）", "No such circle: {} (choose from: {})"),
     ("最多置顶 {} 个圈子", "You can pin at most {} circles"),
     ("这个圈子已满（最多 {} 人）", "This circle is full (at most {} people)"),
+    ("今天发出的邀请到上限了（{} 个），明天再试", "You reached today's limit of {} invites; try again tomorrow"),
     ("圈子激活码去掉空格和连字符后要 {}–{} 个字符", "A circle code needs {}–{} characters without spaces and dashes"),
     ("次数 1–{}", "Uses: 1–{}"),
     ("没有圈子 {}", "No circle {}"),

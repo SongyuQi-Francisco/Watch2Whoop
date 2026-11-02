@@ -1,11 +1,22 @@
 import SwiftUI
 
-/// 我: the account, sync, the health record, settings, sign-out. Settings are online-only (docs/ios-native-app.md 5.5);
-/// each opens as a sheet, the sync center as a page.
+/// 我: messages, the account, sync, the health record, settings, sign-out. Settings are online-only (docs/ios-native-app.md 5.5);
+/// each opens as a sheet, the sync center and the messages as a page. The tab's badge is the unread messages (flag `inbox`).
 struct MeTab: View {
+  @EnvironmentObject private var session: AccountSession
+
+  var body: some View {
+    MeScreen(inbox: InboxStore.shared(for: session), circles: CirclesStore.shared(for: session))
+  }
+}
+
+private struct MeScreen: View {
   @EnvironmentObject private var app: AppModel
   @EnvironmentObject private var session: AccountSession
+  @ObservedObject var inbox: InboxStore
+  let circles: CirclesStore
   @ObservedObject private var sync = HealthSyncService.shared
+  @State private var openInbox = false
   @State private var sheet: MeSheet?
   @State private var unsent = 0
   @State private var confirmSignOut = false
@@ -22,6 +33,13 @@ struct MeTab: View {
       PageScaffold(title: tr("我", "Me")) {
         VStack(alignment: .leading, spacing: 18) {
           header
+          if inbox.on {
+            RowGroup {
+              ListRow(icon: .inbox, title: tr("消息", "Messages"), value: inbox.unread > 0 ? "\(inbox.unread)" : nil, tone: .bad) {
+                openInbox = true
+              }
+            }
+          }
           RowGroup(title: tr("同步", "Sync")) {
             NavigationLink { SyncCenterView() } label: {
               row(.heartPulse, tr("同步中心", "Sync center"), value: sync.diagnosis.headline, tone: tone(sync.diagnosis.overall))
@@ -40,6 +58,8 @@ struct MeTab: View {
             ListRow(icon: .flaskConical, title: tr("化验", "Lab results")) { sheet = .records(.labs) }
             RowDivider()
             ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
+            RowDivider()
+            ListRow(icon: .activity, title: tr("身体年龄", "Body age")) { sheet = .bodyAge }
             RowDivider()
             ListRow(icon: .archive, title: tr("长期记忆", "Long-term memory")) { sheet = .memory }
           }
@@ -92,10 +112,15 @@ struct MeTab: View {
         .padding(.top, 8)
       }
       .toolbar(.hidden, for: .navigationBar)
+      .navigationDestination(isPresented: $openInbox) { InboxView(store: inbox, circles: circles) }
     }
+    .badge(inbox.unread)
+    .onAppear { take(app.route) }
+    .onChange(of: app.route) { take($0) }
     .task {
       await countUnsent()
       await loadAccountRows()
+      await inbox.refresh()
     }
     .sheet(item: $sheet, onDismiss: { Task { await countUnsent(); await loadAccountRows() } }) { s in
       MeSheetView(sheet: s).environmentObject(session).environmentObject(app)
@@ -121,6 +146,15 @@ struct MeTab: View {
     .alert(deleteError ?? "", isPresented: Binding(get: { deleteError != nil && !confirmDelete }, set: { if !$0 { deleteError = nil } })) {
       Button(tr("好", "OK"), role: .cancel) {}
     }
+  }
+
+  /// A push or a link into the inbox (InboxRouting brought the tab bar here).
+  private func take(_ r: AppModel.Route?) {
+    guard case .inbox(let item)? = r else { return }
+    app.route = nil
+    guard inbox.on else { return }
+    inbox.focus = item
+    openInbox = true
   }
 
   private var header: some View {
@@ -197,7 +231,7 @@ struct MeTab: View {
 }
 
 enum MeSheet: Identifiable, Equatable {
-  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, licences
+  case profile, ai, notifications, whatsNew, dataStatus, appearance, unsent, bedtimeGoal, bodyAge, licences
   case memory, trainingGoals, signIn, invite, lateInvite, feedback, hevy
   case records(RecordKind)
 
@@ -225,9 +259,10 @@ private struct MeSheetView: View {
       case .appearance: AppearanceView()
       case .unsent: UnsentChangesView()
       case .bedtimeGoal: BedtimeGoalView()                                                // 2.0.0
+      case .bodyAge: BodyAgeView()
       case .licences: LicensesView()
       case .memory: MemoryView()
-      case .trainingGoals: TrainingGoalsView { dismiss() }
+      case .trainingGoals: TrainingSettingsView { dismiss() }
       case .signIn: SignInMethodsView()
       case .invite: InviteFriendsView()
       case .lateInvite: LateInviteView { dismiss() }
@@ -258,6 +293,7 @@ private struct MeSheetView: View {
     case .appearance: return tr("外观", "Appearance")
     case .unsent: return tr("没提交的修改", "Unsent changes")
     case .bedtimeGoal: return tr("入睡目标", "Bedtime goal")
+    case .bodyAge: return tr("身体年龄", "Body age")
     case .licences: return tr("开源许可", "Open-source licences")
     case .memory: return tr("长期记忆", "Long-term memory")
     case .trainingGoals: return tr("训练设置", "Training settings")
