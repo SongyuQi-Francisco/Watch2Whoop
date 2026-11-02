@@ -183,7 +183,7 @@ struct UnsentChangesView: View {
                 Text(Self.stateLabel(it.state)).font(Typo.caption).foregroundColor(it.state == .pending || it.state == .sending ? Palette.text2 : Palette.bad)
               }
               if let e = it.lastError, it.state == .failed || it.state == .conflict {
-                Text(e).font(Typo.caption).foregroundColor(Palette.text2)
+                Text(Self.errorLine(e)).font(Typo.caption).foregroundColor(Palette.text2)
               }
               if it.state == .failed || it.state == .conflict, let id = it.id {
                 HStack(spacing: 16) {
@@ -206,18 +206,25 @@ struct UnsentChangesView: View {
 
   static func kindLabel(_ k: String) -> String {
     switch k {
-    case "water": return tr("喝水", "Water")
+    case "water", FoodKind.waterDelete: return tr("喝水", "Water")
     case "weight": return tr("体重", "Weight")
     case "sleep_goal": return tr("入睡目标", "Bedtime goal")
     case "journal": return tr("日记", "Journal")
-    case "meal", "food": return tr("饮食", "Food")
-    case "training": return tr("训练", "Training")
+    case "meal", "food", FoodKind.foodDelete, FoodKind.portion, FoodKind.mealLog, FoodKind.recipeLog: return tr("饮食", "Food")
+    case FoodKind.grocery, FoodKind.pantry: return tr("采购", "Shopping")
+    case "training", RecordKind.session, RecordKind.submit: return tr("训练", "Training")
     case "supplement": return tr("补剂", "Supplement")
     case "circle.like": return tr("圈子点赞", "Circle like")          // N7
     case "circle.comment": return tr("圈子评论", "Circle comment")    // N7
     case TodayHome.queueKind: return tr("首页设置", "Today settings")   // flag ui_ai_first
     default: return k
     }
+  }
+
+  /// The server's words when they are in the app's language; its validator speaks English only.
+  static func errorLine(_ e: String) -> String {
+    if !Lang.isZh || e.unicodeScalars.contains(where: { (0x4E00...0x9FFF).contains($0.value) }) { return e }
+    return tr("服务器没有接受这条修改", "The server did not accept this change")
   }
 
   static func stateLabel(_ s: OutboxItem.State) -> String {
