@@ -319,7 +319,7 @@ struct DataStatus: Decodable, Equatable {
 
   /// "11月3日 09:30" in the phone's time zone; "—" for nothing. The server's times are ISO 8601, with or without fractions.
   static func when(_ iso: String?, zone: TimeZone = .current) -> String {
-    guard let iso, let date = FeedLogic.parseDate(iso) else { return "—" }
+    guard let iso, let date = FeedFormat.parseDate(iso) else { return "—" }
     let f = DateFormatter()
     f.locale = Locale(identifier: Lang.isZh ? "zh_Hans" : "en_US_POSIX")
     f.timeZone = zone
