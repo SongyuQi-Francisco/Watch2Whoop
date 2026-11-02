@@ -26,7 +26,7 @@
 
   /** "This week" / "Last week" / "Oct 26 on" for the week starting on `iso` (a Monday), counted from the user's today. */
   function weekLabel(iso, today) {
-    const n = Math.round((day(today) - day(iso)) / (7 * 86400000));
+    const n = Math.floor(Math.round((day(today) - day(iso)) / 86400000) / 7);   // whole days first: a clock change is not a week
     if (n <= 0) return tr("本周");
     if (n === 1) return tr("上周");
     return tr("{d} 起的一周", { d: window.I18N.monthDay(day(iso)) });
