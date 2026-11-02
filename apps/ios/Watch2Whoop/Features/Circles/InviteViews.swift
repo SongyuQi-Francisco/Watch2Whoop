@@ -26,7 +26,8 @@ struct InviteView: View {
       }
       VStack(alignment: .leading, spacing: 10) {
         SectionHeader(title: tr("有效期", "Valid for"))
-        HStack(spacing: 6) {
+        // Wraps: in English the five pills are wider than the screen ("3 days", "Forever") and an HStack cut them short.
+        WrapLayout(spacing: 6) {
           ForEach((store.list?.limits.inviteDays ?? [1, 3, 7, 30]) + [0], id: \.self) { d in
             PillButton(title: d == 0 ? tr("永久", "Forever") : (d == 1 ? tr("1 天", "1 day") : tr("\(d) 天", "\(d) days")), on: days == d) { days = d }
           }
@@ -51,7 +52,7 @@ struct InviteView: View {
               VStack(alignment: .leading, spacing: 2) {
                 Text(FeedFormat.timeLeft(c.expiresAt)).font(Typo.body).foregroundColor(Palette.text)
                 if c.usedCount > 0 {
-                  Text(tr("已用 \(c.usedCount) 次", "Used \(c.usedCount) times")).font(Typo.caption).foregroundColor(Palette.text2)
+                  Text(c.usedCount == 1 ? tr("已用 1 次", "Used once") : tr("已用 \(c.usedCount) 次", "Used \(c.usedCount) times")).font(Typo.caption).foregroundColor(Palette.text2)
                 }
               }
               Spacer()
@@ -198,7 +199,7 @@ struct JoinView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(p.name).font(.system(size: 18, weight: .bold)).foregroundColor(Palette.text)
             if let o = p.ownerName {
-              Text(tr("\(o) 的圈子 · \(p.members) 人", "\(o)'s circle · \(p.members) people")).font(Typo.caption).foregroundColor(Palette.text2)
+              Text(tr("\(o) 的圈子", "\(o)'s circle") + " · " + InboxLogic.people(p.members)).font(Typo.caption).foregroundColor(Palette.text2)
             }
           }
         }
