@@ -239,7 +239,9 @@ struct NutritionDay: Equatable {
         continue
       }
     }
-    out.intake = out.entries.reduce(Macros(kcal: 0, protein: 0, carbs: 0, fat: 0)) { $0 + $1.macros }
+    // A log the server turned down stays listed (marked, for retry or discard) but does not count as eaten.
+    out.intake = out.entries.filter { !($0.isLocal && $0.pending?.needsAttention == true) }
+      .reduce(Macros(kcal: 0, protein: 0, carbs: 0, fat: 0)) { $0 + $1.macros }
     if !out.entries.isEmpty { out.notLogged = false }
     return out
   }
