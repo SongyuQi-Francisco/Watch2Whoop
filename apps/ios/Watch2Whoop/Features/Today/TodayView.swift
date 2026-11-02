@@ -254,7 +254,8 @@ struct TodayView: View {
           TrendsLink.shared.open(day: store.date)
           tab = .trends
         },
-        circles: { tab = .circles }))
+        circles: { tab = .circles },
+        training: { trainingOpen = true }))
   }
 
   private func go(_ d: TodayHomeDest) {

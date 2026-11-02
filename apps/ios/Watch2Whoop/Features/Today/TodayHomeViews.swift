@@ -9,6 +9,8 @@ struct TodayHomeActions {
   var refresh: () -> Void
   var allMetrics: () -> Void
   var circles: () -> Void
+  /// The day's training sheet (the same one as the classic page's training card).
+  var training: () -> Void
 }
 
 /// Asking the user's AI from the page: tapped and typed questions go out at once where the AI runs in the app.
@@ -201,7 +203,10 @@ struct TodayHomePage: View {
     let remove: (() -> Void)? = store.home == nil ? nil : { store.setModule(mod.key, state: "hidden") }
     return VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 6) {
-        Text(name).font(Typo.section).foregroundColor(Palette.text2).lineLimit(1)
+        // the training and muscle cards bring their own heading (TodayTrainingCards.swift)
+        if !TodayHome.cardHasHeading(mod.key, model: m) {
+          Text(name).font(Typo.section).foregroundColor(Palette.text2).lineLimit(1)
+        }
         if let r = mod.reason { ToneBadge(text: r.label) }
         Spacer(minLength: 4)
         Menu {
@@ -224,6 +229,7 @@ struct TodayHomePage: View {
     case "sleep": return { run.action(.sleepDetail(m.sleepDate)) }
     case "sleep_goal": return { run.go(.bedtimeGoal) }
     case "journal": return { run.go(.record(.journal)) }
+    case "training" where m.training != nil: return run.training
     default: return { run.go(.record(.training)) }
     }
   }
@@ -239,12 +245,17 @@ struct TodayHomePage: View {
     case "sleep_goal":
       NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }.buttonStyle(PressScale())
     case "training":
-      VStack(spacing: 8) {
-        tiles("activity")
+      if let t = m.training {
+        TodayTrainingCard(training: t, open: run.training, history: { run.go(.record(.training)) })
+      } else {
         link(.dumbbell, tr("训练计划和记录", "Training plan and log")) { run.go(.record(.training)) }
       }
     case "muscle_load":
-      link(.flame, tr("肌肉负荷图", "Muscle load map")) { run.go(.record(.training)) }
+      if let mm = m.muscle {
+        TodayMuscleCard(muscle: mm, open: { run.go(.record(.training)) })
+      } else {
+        link(.flame, tr("肌肉负荷图", "Muscle load map")) { run.go(.record(.training)) }
+      }
     case "journal":
       link(.fileText, tr("今天的日记", "Today's journal")) { run.go(.record(.journal)) }
     default:

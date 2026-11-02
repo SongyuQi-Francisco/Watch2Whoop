@@ -154,7 +154,7 @@ struct TodayHome: Equatable {
     case "health_monitor": return !m.vitals.isEmpty
     case "strain_coach": return coachCard(m) != nil
     case "sleep": return values("sleep")
-    case "training": return !m.isPast || values("activity")
+    case "training": return m.training != nil || !m.isPast
     // these open today's page, so they make no sense on a day looked back at
     case "sleep_goal", "journal": return !m.isPast
     case "muscle_load": return !m.isPast && flags.contains("muscle_load")
@@ -163,6 +163,11 @@ struct TodayHome: Equatable {
   }
 
   static func coachCard(_ m: TodayModel) -> TodayCoreCard? { m.core.first { $0.id == "coach" } }
+
+  /// These cards draw their own title (the module row above them then only says why they are there).
+  static func cardHasHeading(_ key: String, model m: TodayModel) -> Bool {
+    (key == "training" && m.training != nil) || (key == "muscle_load" && m.muscle != nil)
+  }
 
   // MARK: - the top of the page
 

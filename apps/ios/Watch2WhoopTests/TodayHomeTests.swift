@@ -111,6 +111,14 @@ final class TodayHomeModelTests: XCTestCase {
     XCTAssertTrue(past.isPast)
     for k in ["sleep_goal", "journal", "muscle_load"] { XCTAssertFalse(TodayHome.has(k, model: past, flags: ["muscle_load"]), k) }
     XCTAssertTrue(TodayHome.has("sleep", model: past, flags: []))
+    XCTAssertFalse(TodayHome.has("training", model: past, flags: []), "no training document: its link opens today")
+    var pastDoc = todayInputs(past: true)
+    pastDoc.today?["training"] = ["planned": [], "logged": [], "rest_day": true] as [String: Any]
+    let pastTraining = TodayModel(pastDoc)
+    XCTAssertTrue(TodayHome.has("training", model: pastTraining, flags: []))
+    XCTAssertTrue(TodayHome.cardHasHeading("training", model: pastTraining))
+    XCTAssertFalse(TodayHome.cardHasHeading("training", model: past))
+    XCTAssertFalse(TodayHome.cardHasHeading("sleep", model: pastTraining))
     // no data at all: no monitor, no strain target, no sleep
     let empty = TodayModel(TodayInputs())
     for k in ["health_monitor", "strain_coach", "sleep"] { XCTAssertFalse(TodayHome.has(k, model: empty, flags: []), k) }
