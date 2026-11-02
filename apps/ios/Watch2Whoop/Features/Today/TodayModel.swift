@@ -29,6 +29,8 @@ struct TodayInputs {
   var trendsLocal: [String: Any]?
   /// The sleep coach: `sleep_coach` of the phone's coach document, or `GET /sleep-coach?date=`.
   var sleepCoach: [String: Any]?
+  /// `GET /training/muscle-load` (`RecordDocs.muscle`, shared with 记录 → 训练): the small muscle map.
+  var muscle: [String: Any]?
 }
 
 /// Everything the Today tab draws, built from `TodayInputs`. Same numbers, rules and short labels as the page (app.js
@@ -182,6 +184,9 @@ struct TodayModel: Equatable {
   var sync: SyncCard?
   var circles: Circles?
   var sleepDate: String?
+  /// The day's training card (the today document's `training`), this week's muscle map (never on a look-back day).
+  var training: TodayTraining?
+  var muscle: MuscleLoad?
   var detail = Detail()
   var error: String?
   /// Server's hrv kind and the user's zone (for the phone's own computation).
@@ -195,6 +200,8 @@ struct TodayModel: Equatable {
 
   init(_ inp: TodayInputs) {
     let doc = inp.today ?? [:]
+    training = TodayTraining.parse(doc["training"] as? [String: Any])
+    muscle = MuscleLoad.parse(inp.muscle)
     let sc = doc["scores"] as? [String: Any] ?? [:]
     let t = sc["today"] as? [String: Any] ?? [:]
     let y = sc["yesterday"] as? [String: Any] ?? [:]

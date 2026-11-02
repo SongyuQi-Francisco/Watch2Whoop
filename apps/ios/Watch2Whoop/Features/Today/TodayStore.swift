@@ -17,7 +17,7 @@ enum TodayDocs {
   static let weightRecent = "weight:recent"
 
   /// What a refresh of `day` pulls besides the today document. Undated views (status cards, sync, circles) only on today.
-  static func fetches(day: String, isToday: Bool, circles: Bool) -> [DocFetch] {
+  static func fetches(day: String, isToday: Bool, circles: Bool, muscle: Bool = false) -> [DocFetch] {
     // the day's 61-day Trends document (需要注意, 今日核心; #357): the same key Trends' 「今天」 reads
     let end = isToday ? nil : day
     var f = [
@@ -31,6 +31,7 @@ enum TodayDocs {
       f.append(DocFetch(sync, Endpoint.syncOverview()))
       f.append(DocFetch(BedtimeGoal.serverKey, Endpoint.sleepGoal()))   // its `settings` feed the phone's sleep coach
       if circles { f.append(DocFetch(TodayDocs.circles, Endpoint.friendsOverview)) }
+      if muscle { f.append(DocFetch(RecordDocs.muscle, RecordAPI.muscle)) }   // the small muscle map (flag muscle_load)
     }
     return f
   }
@@ -49,7 +50,7 @@ struct TodaySnapshot: Equatable {
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if let main = try DocRecord.fetchOne(db, key: mainKey) { s.docs[mainKey] = main }
     s.day = date ?? (s.docs[mainKey].flatMap(Self.dateOf))
-    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles]
+    var keys = [TodayDocs.memory, TodayDocs.sync, TodayDocs.circles, RecordDocs.muscle]
     if let d = s.day { keys += [TodayDocs.activity(d), TodayDocs.coach(d), TodayDocs.monitor(d), TodayDocs.sleepCoach(d), TrendsLocal.docKey(d)] }
     for r in try DocRecord.fetchAll(db, keys: keys) { s.docs[r.key] = r }
     // the 61-day Trends document under its server key: the phone's own when package `series` is primary (M3)
@@ -96,12 +97,12 @@ final class TodayStore: ObservableObject {
   func observe(_ session: AccountSession) {
     self.session = session
     if userToday == nil, let cur = try? session.db.doc(DocKey.todayCurrent) { userToday = TodaySnapshot.dateOf(cur) }
-    let date = self.date, circlesOn = session.circlesTab
+    let date = self.date, circlesOn = session.circlesTab, muscleOn = session.flags.contains("muscle_load")
     cancellable?.cancel()
     cancellable = ValueObservation.tracking { db in try TodaySnapshot.read(db, date: date) }
       .removeDuplicates()
       .start(in: session.db.writer, scheduling: .immediate, onError: { _ in }, onChange: { [weak self] snap in
-        self?.apply(snap, circlesOn: circlesOn)
+        self?.apply(snap, circlesOn: circlesOn, muscleOn: muscleOn)
       })
   }
 
@@ -110,7 +111,7 @@ final class TodayStore: ObservableObject {
     cancellable = nil
   }
 
-  private func apply(_ s: TodaySnapshot, circlesOn: Bool) {
+  private func apply(_ s: TodaySnapshot, circlesOn: Bool, muscleOn: Bool) {
     lastSnapshot = s
     let mainKey = date.map(DocKey.today) ?? DocKey.todayCurrent
     if date == nil, let d = s.day { userToday = d }
@@ -135,7 +136,8 @@ final class TodayStore: ObservableObject {
       localDay: s.local, localPrev: s.localPrev, userToday: userToday, circlesOn: circlesOn,
       trends: s.docs[TrendsDocs.trends(TodayParams.trendsDays, end: date)]?.json,
       trendsLocal: s.day.flatMap { s.docs[TrendsLocal.docKey($0)]?.json },
-      sleepCoach: (local?["sleep_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.sleepCoach($0)]?.json })
+      sleepCoach: (local?["sleep_coach"] as? [String: Any]) ?? s.day.flatMap { s.docs[TodayDocs.sleepCoach($0)]?.json },
+      muscle: muscleOn ? s.docs[RecordDocs.muscle]?.json : nil)
     let m = TodayModel(inp)
     if m != model { model = m }
     if !hasData && s.docs[mainKey] != nil {
@@ -161,16 +163,16 @@ final class TodayStore: ObservableObject {
     let date = self.date
     let known = date ?? userToday
     let puller = DocPuller(api: session.api, db: session.db)
-    let circles = session.circlesTab
+    let circles = session.circlesTab, muscle = session.flags.contains("muscle_load")
     if let day = known {
       async let main: Void = session.sync.refresh(.today(date: date))
-      async let rest = puller.pull(TodayDocs.fetches(day: day, isToday: date == nil, circles: circles))
+      async let rest = puller.pull(TodayDocs.fetches(day: day, isToday: date == nil, circles: circles, muscle: muscle))
       _ = await (main, rest)
     } else {
       await session.sync.refresh(.today(date: nil))
       if let cur = try? session.db.doc(DocKey.todayCurrent), let day = TodaySnapshot.dateOf(cur) {
         userToday = day
-        _ = await puller.pull(TodayDocs.fetches(day: day, isToday: true, circles: circles))
+        _ = await puller.pull(TodayDocs.fetches(day: day, isToday: true, circles: circles, muscle: muscle))
       }
     }
     scoreLocally()

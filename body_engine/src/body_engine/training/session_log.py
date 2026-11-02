@@ -169,13 +169,13 @@ def view(conn: psycopg.Connection, viewer_id: int, owner_id: int, day: date | No
                 item["load"] = loads.apply_readiness(item.get("load"), tier)
                 item["load_text"] = loads.short_text(item["load"])
             exs.append(_card(item, rows, ctx, set_factor))
-        out_sessions.append({"name": p["name"], "day_of_week": p.get("day_of_week"), "added_for_day": bool(p.get("added_for_day")),
+        out_sessions.append({"name": p["name"], **plans.template_en(p["name"]), "day_of_week": p.get("day_of_week"), "added_for_day": bool(p.get("added_for_day")),
                              "exercises": exs, "minutes": _minutes(exs)})
     link = sparky_client.link_state(conn, owner_id)
     return {
         "date": day,
         "is_today": is_today,
-        "plan": plan and {"name": plan["name"], "split_type": plan.get("split_type")},
+        "plan": plan and {"name": plan["name"], **plans.template_en(plan["name"]), "split_type": plan.get("split_type")},
         "sessions": out_sessions,
         "rest_day": rest_day and not out_sessions,
         "change": change,

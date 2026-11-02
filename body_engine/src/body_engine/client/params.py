@@ -22,8 +22,9 @@ URL_ENV = "BODY_UPGRADE_URL"    # fallback for the App Store / TestFlight link w
 CACHE_TTL_S = 30.0              # policy rows per process; `upgrade set` clears this process's cache
 
 # Paths an old client still reaches after the block: the page's start (/v1/web/me carries the upgrade state; login,
-# logout), uploads (no data loss). /mcp and everything outside /v1/ never go through the check.
-EXEMPT_PREFIXES = ("/v1/web/", "/v1/ingest/")
+# logout), uploads (no data loss), the consent page of a new AI connector (/v1/oauth/: a browser page that belongs to MCP,
+# which is never blocked). /mcp and everything outside /v1/ never go through the check.
+EXEMPT_PREFIXES = ("/v1/web/", "/v1/ingest/", "/v1/oauth/")
 
 NOTIFY_KIND = "system.upgrade"  # notify/params.py category `system`
 NOTIFY_URL = "/app/"
