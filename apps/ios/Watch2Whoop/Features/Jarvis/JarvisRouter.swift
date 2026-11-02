@@ -157,7 +157,7 @@ final class JarvisRouter: ObservableObject {
   }
 
   /// `card`: the card or the row the button is on (a lab's key, a night's date, a recipe's id). The page keys are
-  /// cards.OPEN_PAGES plus `explain.<metric>` from a card's own title. Body age lands on Trends' 长期 group for now.
+  /// cards.OPEN_PAGES plus `explain.<metric>` from a card's own title.
   static func route(page p: String, card: JSONValue?, circles: Bool) -> Route {
     let foodTab: AppTab = circles ? .record : .food
     if p.hasPrefix("explain.") {
@@ -169,8 +169,9 @@ final class JarvisRouter: ObservableObject {
     case "data_status": return .detail(.dataStatus)
     case "profile": return .detail(.profile)
     case "sleep": return .detail(.sleep(date: card?["date"]?.string))
+    case "healthspan": return .detail(.bodyAge)
     case "today": return .tab(.today, nil)
-    case "trends", "healthspan": return .tab(.trends, .trends(.metrics))
+    case "trends": return .tab(.trends, .trends(.metrics))
     case "trends.report": return .tab(.trends, .trends(.report))
     case "record.training": return .tab(.record, .training)
     case "food": return .tab(foodTab, .food(.diet))

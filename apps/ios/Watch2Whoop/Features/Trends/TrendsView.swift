@@ -14,7 +14,7 @@ struct RangeFigures: Equatable {
 enum TrendsSheet: Identifiable {
   case explain(key: String, title: String, figures: RangeFigures? = nil)
   case status(TrendStatus.Tile)
-  case recovery, regularity, calendar
+  case recovery, regularity, calendar, bodyAge
 
   var id: String {
     switch self {
@@ -23,6 +23,7 @@ enum TrendsSheet: Identifiable {
     case .recovery: return "recovery"
     case .regularity: return "regularity"
     case .calendar: return "calendar"
+    case .bodyAge: return "bodyAge"
     }
   }
 }
@@ -30,7 +31,8 @@ enum TrendsSheet: Identifiable {
 /// The Trends tab (#340 N4), like the page's: 指标 (今天 = the end day's full metric list against the personal baseline,
 /// status cards first (#357); 7 / 30 / 90 / 365 days = every WHOOP metric with its range mean and "vs 上期", status cards
 /// as of the end date), 睡眠 (the last 14 nights) and 报告 (weekly / monthly report). Read from the local database
-/// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets.
+/// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets. With
+/// flag `trends_v2` each category folds (TrendsFold.swift).
 struct TrendsView: View {
   enum Mode: String, CaseIterable { case metrics, sleep, report
     var label: String {
@@ -47,6 +49,7 @@ struct TrendsView: View {
   @State private var sheet: TrendsSheet?
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.trends.mode") private var mode: Mode = .metrics
+  @AppStorage(TrendsFold.storageKey) private var foldedRaw = ""
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TrendsStore(session: session))
@@ -160,9 +163,11 @@ struct TrendsView: View {
       .lineLimit(1).minimumScaleFactor(0.8)
       .padding(.top, 14)
       ForEach(TrendCards.groups(p), id: \.id) { g in
-        SectionHeader(title: g.title).padding(.top, 22).padding(.bottom, 10)
-        ForEach(g.cards) { c in
-          TrendCardView(card: c) { sheet = $0 }.padding(.bottom, 8).id("card.\(c.id)")
+        groupHeader(g.id, g.title, count: g.cards.count, page: p)
+        if !isFolded(g.id) {
+          ForEach(g.cards) { c in
+            TrendCardView(card: c) { sheet = $0 }.padding(.bottom, 8).id("card.\(c.id)")
+          }
         }
       }
       if !p.status.tiles.isEmpty { statusBlock(p) }
@@ -181,9 +186,28 @@ struct TrendsView: View {
     let d = p.data
     if !p.status.tiles.isEmpty { statusBlock(p) }
     ForEach(TrendDay.groups(d), id: \.id) { g in
-      SectionHeader(title: g.title).padding(.top, 22).padding(.bottom, 10)
-      TrendDayList(rows: g.rows) { r in sheet = .explain(key: r.explain, title: r.label) }
-        .id("day.\(g.id)")
+      groupHeader(g.id, g.title, count: g.rows.count, page: p)
+      if !isFolded(g.id) {
+        TrendDayList(rows: g.rows) { r in sheet = r.id == "body_age" ? .bodyAge : .explain(key: r.explain, title: r.label) }
+          .id("day.\(g.id)")
+      }
+    }
+  }
+
+  // MARK: - foldable categories (flag trends_v2)
+
+  private var foldOn: Bool { session.flags.contains(TrendsFold.flag) }
+
+  private func isFolded(_ group: String) -> Bool { foldOn && TrendsFold.contains(foldedRaw, group) }
+
+  @ViewBuilder private func groupHeader(_ id: String, _ title: String, count: Int, page: TrendsPage) -> some View {
+    if foldOn {
+      TrendGroupHeader(title: title, count: count, summary: TrendsFold.summary(id, page.status), folded: isFolded(id)) {
+        foldedRaw = TrendsFold.toggled(foldedRaw, id)
+      }
+      .padding(.top, 14).padding(.bottom, isFolded(id) ? 0 : 6)
+    } else {
+      SectionHeader(title: title).padding(.top, 22).padding(.bottom, 10)
     }
   }
 
@@ -240,7 +264,7 @@ struct TrendsSheetView: View {
 
   var body: some View {
     SheetContainer(title: title, close: close) { content }
-      .presentationDetents(sheet.id == "calendar" ? [.large] : [.medium, .large])
+      .presentationDetents(sheet.id == "calendar" || sheet.id == "bodyAge" ? [.large] : [.medium, .large])
       .presentationDragIndicator(.visible)
   }
 
@@ -251,6 +275,7 @@ struct TrendsSheetView: View {
     case .recovery: return tr("恢复贡献项", "Recovery contributors")
     case .regularity: return tr("睡眠规律性", "Sleep regularity")
     case .calendar: return tr("选择结束日期", "Pick the end date")
+    case .bodyAge: return tr("身体年龄", "Body age")
     }
   }
 
@@ -283,6 +308,8 @@ struct TrendsSheetView: View {
         store.select(day)
         close()
       }
+    case .bodyAge:
+      BodyAgeView()
     }
   }
 

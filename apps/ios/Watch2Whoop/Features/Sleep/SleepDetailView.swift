@@ -222,11 +222,11 @@ struct SleepDetailView: View {
       }
     }
 
+    if !m.notes.isEmpty || m.aiPrompt != nil { SleepNotesSection(notes: m.notes, prompt: m.aiPrompt).padding(.top, 22) }
+
     NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }
       .buttonStyle(PressScale())
       .padding(.top, 22)
-
-    if let p = m.aiPrompt { AskAIButton(prompt: p).padding(.top, 24) }
   }
 
   private func section(_ t: String) -> some View { SectionHeader(title: t).padding(.top, 22).padding(.bottom, 10) }
@@ -256,6 +256,32 @@ struct SleepDetailView: View {
   }
 
   private func scoreTone(_ s: Double) -> Tone { s >= 80 ? .good : s >= 60 ? .mid : .bad }
+}
+
+/// 「AI 分析 · 规则要点」 (sleep-detail.js aiHtml): the night's findings with a tone dot, then the question for the user's AI.
+struct SleepNotesSection: View {
+  let notes: [SleepNightModel.Note]
+  let prompt: String?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        SectionHeader(title: tr("AI 分析", "AI analysis"))
+        Text(tr("规则要点", "Key points")).font(Typo.label).foregroundColor(Palette.text3)
+      }
+      Card {
+        VStack(alignment: .leading, spacing: 10) {
+          ForEach(notes) { n in
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+              Circle().fill(n.tone == .text ? Palette.text3 : n.tone.color).frame(width: 7, height: 7)
+              Text(n.text).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
+            }
+          }
+          if let prompt { AskAIButton(prompt: prompt).padding(.top, notes.isEmpty ? 0 : 4) }
+        }
+      }
+    }
+  }
 }
 
 /// Stage colours of the page (app.css .hy-*): deep / core / REM are the sleep colour at three strengths, awake is mid.

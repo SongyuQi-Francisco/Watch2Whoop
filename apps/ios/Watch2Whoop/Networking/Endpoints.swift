@@ -19,6 +19,7 @@ enum Endpoint {
   static func dayActivity(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/training/day/\(day)") }
   static func strainCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/strain-coach", ["date": day]) }
   static func healthMonitor(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/health-monitor", ["date": day]) }
+  static func sleepCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sleep-coach", ["date": day]) }
   static func memory(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/memory") }
   static func syncOverview(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sync/overview", ["in_app": "1"]) }
   static func monthDays(_ month: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/days", ["month": month]) }

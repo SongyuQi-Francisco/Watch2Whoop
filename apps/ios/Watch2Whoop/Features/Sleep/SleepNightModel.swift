@@ -27,6 +27,14 @@ struct SleepNightModel: Equatable {
     var avg30: String
   }
 
+  /// A rule-based finding about the night (sleep_night/view.py `notes`, worst first).
+  struct Note: Equatable, Identifiable {
+    var id: String { key }
+    var key: String
+    var text: String
+    var tone: Tone
+  }
+
   struct Vital: Equatable, Identifiable {
     var id: String { key }
     var key: String
@@ -57,6 +65,7 @@ struct SleepNightModel: Equatable {
   var compare: [Compare] = []
   var regularity7: Double?, regularity30: Double?
   var vitals: [Vital] = []
+  var notes: [Note] = []
   var aiPrompt: String?
 
   /// The stage timeline's lanes top to bottom (the Apple Watch sleep page's order); unspecified sleep is drawn as core.
@@ -67,6 +76,10 @@ struct SleepNightModel: Equatable {
     prev = json["prev"] as? String
     next = json["next"] as? String
     aiPrompt = json["ai_prompt"] as? String
+    notes = ((json["notes"] as? [[String: Any]]) ?? []).compactMap { x in
+      guard let text = x["text"] as? String else { return nil }
+      return Note(key: x["key"] as? String ?? text, text: text, tone: ExplainModel.tone(x["tone"] as? String))
+    }
     naps = ((json["naps"] as? [[String: Any]]) ?? []).compactMap { n in
       guard let a = n["start"] as? String, let b = n["end"] as? String else { return nil }
       return "\(a)–\(b)"
@@ -158,6 +171,6 @@ struct SleepNightModel: Equatable {
 
   static func == (a: SleepNightModel, b: SleepNightModel) -> Bool {
     a.date == b.date && a.stages == b.stages && a.score == b.score && a.compare == b.compare && a.vitals == b.vitals
-      && a.asleep == b.asleep && a.prev == b.prev && a.next == b.next && a.parts == b.parts
+      && a.asleep == b.asleep && a.prev == b.prev && a.next == b.next && a.parts == b.parts && a.notes == b.notes
   }
 }

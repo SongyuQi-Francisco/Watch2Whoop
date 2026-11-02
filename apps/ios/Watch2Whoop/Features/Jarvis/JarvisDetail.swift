@@ -3,7 +3,7 @@ import SwiftUI
 /// Pages a card's button opens over the chat, as the page's sheets (app.js goPage): the conversation stays underneath.
 enum JarvisDetail: Identifiable, Equatable {
   case lab(key: String?, name: String?)
-  case supplements, dataStatus, profile
+  case supplements, dataStatus, profile, bodyAge
   case sleep(date: String?)
   case explain(key: String, title: String)
 
@@ -13,6 +13,7 @@ enum JarvisDetail: Identifiable, Equatable {
     case .supplements: return "supplements"
     case .dataStatus: return "data_status"
     case .profile: return "profile"
+    case .bodyAge: return "body_age"
     case .sleep(let d): return "sleep:\(d ?? "")"
     case .explain(let k, _): return "explain:\(k)"
     }
@@ -24,6 +25,7 @@ enum JarvisDetail: Identifiable, Equatable {
     case .supplements: return tr("补剂", "Supplements")
     case .dataStatus: return tr("数据状态", "Data status")
     case .profile: return tr("个人资料", "Profile")
+    case .bodyAge: return tr("身体年龄", "Body age")
     case .sleep: return tr("睡眠详情", "Sleep detail")
     case .explain(_, let t): return t
     }
@@ -79,6 +81,7 @@ struct JarvisDetailSheet: View {
     case .supplements: HealthRecordView(kind: .supplements)
     case .dataStatus: DataStatusView()
     case .profile: ProfileSetupView(first: false) { close() }
+    case .bodyAge: BodyAgeView()
     case .explain(let key, _):
       ExplainBody(kind: "metric", key: key, day: nil)
       if TrendStatus.medicalKeys.contains(key) { DisclaimerTag(kind: .medical).padding(.top, 10) }
@@ -87,8 +90,8 @@ struct JarvisDetailSheet: View {
   }
 }
 
-/// One test's trend, straight from its card (app.js goPage: `labSheet`).
-private struct LabDetail: View {
+/// One test's trend, straight from its card (app.js goPage: `labSheet`) or a Today status card with `lab_key`.
+struct LabDetail: View {
   let key: String
   @EnvironmentObject private var session: AccountSession
 
