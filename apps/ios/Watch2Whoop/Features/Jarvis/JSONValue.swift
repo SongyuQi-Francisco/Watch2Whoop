@@ -94,4 +94,16 @@ enum JSONValue: Equatable, Codable {
   }
 
   var isNull: Bool { self == .null }
+
+  /// As JSONSerialization would give it, for the pages' own parsers (`TrendsData(json:)`, `ReportModel(json:)`, …).
+  var any: Any {
+    switch self {
+    case .null: return NSNull()
+    case .bool(let b): return b
+    case .number(let n): return n
+    case .string(let s): return s
+    case .array(let a): return a.map(\.any)
+    case .object(let o): return o.mapValues(\.any)
+    }
+  }
 }
