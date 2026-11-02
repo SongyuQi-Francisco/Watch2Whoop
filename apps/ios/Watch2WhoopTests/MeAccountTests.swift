@@ -270,7 +270,7 @@ final class MeAccountTests: XCTestCase {
   }
 
   func testTrainingGoals() throws {
-    let g = try JSONDecoder().decode(TrainingGoals.self, from: Data(
+    let g = try JSONDecoder().decode(TrainingSettings.self, from: Data(
       #"{"focus_muscles": ["chest"], "physique_goal": null, "updated_at": null, "muscles": [{"key": "chest", "name": "胸"}], "max_focus": 3}"#.utf8))
     XCTAssertEqual(g.maxFocus, 3)
     XCTAssertEqual(g.muscles.first?.key, "chest")

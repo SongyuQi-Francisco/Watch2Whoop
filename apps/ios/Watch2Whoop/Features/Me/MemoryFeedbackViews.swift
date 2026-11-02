@@ -371,7 +371,7 @@ struct FeedbackView: View {
 }
 
 /// GET / PUT /v1/users/me/training/goals (flag muscle_load).
-struct TrainingGoals: Decodable, Equatable {
+struct TrainingSettings: Decodable, Equatable {
   var focusMuscles: [String] = []
   var physiqueGoal: String?
   var muscles: [Muscle] = []
@@ -395,10 +395,10 @@ struct TrainingGoals: Decodable, Equatable {
 }
 
 /// 训练设置: focus muscles and the physique goal the AI plans with.
-struct TrainingGoalsView: View {
+struct TrainingSettingsView: View {
   @EnvironmentObject private var session: AccountSession
   let done: () -> Void
-  @State private var g: TrainingGoals?
+  @State private var g: TrainingSettings?
   @State private var chosen = Set<String>()
   @State private var goal = ""
   @State private var busy = false
@@ -437,7 +437,7 @@ struct TrainingGoalsView: View {
 
   private func load() async {
     do {
-      let v = try await session.api.send(.get(Endpoint.trainingGoals), as: TrainingGoals.self)
+      let v = try await session.api.send(.get(Endpoint.trainingGoals), as: TrainingSettings.self)
       g = v
       chosen = Set(v.focusMuscles)
       goal = v.physiqueGoal ?? ""
