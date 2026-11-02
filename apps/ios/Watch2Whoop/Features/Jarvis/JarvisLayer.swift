@@ -574,7 +574,7 @@ struct JarvisLayer: View {
     case .camera:
       CameraPicker { img in
         router.sheet = nil
-        if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { router.sendPhoto(img) } }
+        if let img { DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { router.sendPhoto(img) } } else { router.cancelPhoto() }
       }
       .ignoresSafeArea()
     }

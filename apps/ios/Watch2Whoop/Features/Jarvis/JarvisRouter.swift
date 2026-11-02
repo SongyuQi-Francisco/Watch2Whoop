@@ -20,6 +20,9 @@ final class JarvisRouter: ObservableObject {
     current?.ask(prompt: prompt)
   }
 
+  /// Posted after Jarvis changed the user's records: pages showing server views refresh.
+  static let wroteNotification = Notification.Name("w2w.jarvis.wrote")
+
   enum Sheet: Identifiable, Equatable {
     case chat, quick, camera
     var id: Self { self }
@@ -37,6 +40,8 @@ final class JarvisRouter: ObservableObject {
   /// Switches the tab bar (a card's 「看趋势」…); set by the layer.
   var selectTab: ((AppTab) -> Void)?
   private var toastTask: Task<Void, Never>?
+  /// The question a camera photo goes into the chat with, for the user to send (一键小票); nil = the 拍照 key's way.
+  private var photoPrompt: String?
 
   /// The AI in use (from the chat model, which keeps it fresh).
   var ai: JarvisAI { chat?.ai ?? JarvisAI() }
@@ -46,7 +51,10 @@ final class JarvisRouter: ObservableObject {
     guard session !== s else { return }
     session = s
     let c = JarvisChat(api: s.api)
-    c.onWrote = { [weak s] in Task { await s?.sync.refresh(.changes) } }
+    c.onWrote = { [weak s] in
+      NotificationCenter.default.post(name: Self.wroteNotification, object: nil)
+      Task { await s?.sync.refresh(.changes) }
+    }
     c.onAIChange = { [weak self] _ in self?.objectWillChange.send() }
     chat = c
     Task { await c.loadChoices() }
@@ -77,6 +85,67 @@ final class JarvisRouter: ObservableObject {
     }
   }
 
+  /// How 一键小票 goes for the AI in use (#292).
+  enum ScanRoute: Equatable {
+    /// The camera, then the chat with the picture and the question.
+    case camera
+    /// The fallback AI's terms first, then the camera.
+    case consent
+    /// This AI cannot read pictures.
+    case noVision
+    /// The fallback AI is paused or its allowance is used up: the server's message.
+    case unavailable(String?)
+    /// A subscription AI in its own app, or the butler's link: the question is copied, the picture stays with the user.
+    case elsewhere
+    /// No AI yet.
+    case none
+  }
+
+  static func scanRoute(_ ai: JarvisAI) -> ScanRoute {
+    switch ai.mode {
+    case .none: return .none
+    case .butler, .mcp: return .elsewhere
+    case .api, .fallback:
+      // The server's order (ai/fallback.py summary): paused, main consent, allowance, then the fallback's own terms.
+      if ai.mode == .fallback, ai.reason == "fallback_consent" || (ai.reason == nil && !ai.consent) { return .consent }
+      if !ai.available { return .unavailable(ai.message) }
+      return ai.vision ? .camera : .noVision
+    }
+  }
+
+  /// 一键小票 (#292): one tap to the camera; the photo goes to the chat with `Self.receiptPrompt` in the box, and the AI the user
+  /// picked records the prices (`record_store_prices`). Its usage counts against that AI, nothing else leaves the phone.
+  func scanPrices() {
+    page = "food.shopping"
+    switch Self.scanRoute(ai) {
+    case .camera:
+      photoPrompt = Self.receiptPrompt
+      present(.camera)
+    case .consent:
+      guard let chat else { return }
+      Task {
+        await chat.askConsent { [weak self] in
+          self?.photoPrompt = Self.receiptPrompt
+          self?.present(.camera)
+        }
+        present(.chat)
+      }
+    case .noVision:
+      show(tr("这个 AI 看不了图片", "This AI can't read pictures"))
+    case .unavailable(let m):
+      show(m ?? tr("Jarvis 暂时不可用", "Jarvis is not available right now"))
+    case .elsewhere:
+      ask(prompt: Self.receiptPrompt)
+    case .none:
+      show(tr("还没设置 AI：「我」→ AI 设置", "No AI yet: Me → AI settings"))
+    }
+  }
+
+  /// What goes with the picture. Plain words: the tool is the AI's business (its description says the same).
+  static var receiptPrompt: String {
+    tr("记下这张小票 / 价签的价格：逐行读商品、规格、价格、特价和原价，超市和日期也记上，一次记完。小票上的算我买了；读不准的行问我，别猜。", "Record the prices on this receipt / price tag: read each line's product, size, price, special and original price, plus the store and date, and record them in one go. Items on a receipt count as bought; ask me about any line you can't read, don't guess.")
+  }
+
   /// A tap on the Jarvis key: the menu where the chat runs in the app, otherwise what the Today page's key does
   /// (open the butler link, or say where this AI is used).
   func tapKey() {
@@ -105,6 +174,7 @@ final class JarvisRouter: ObservableObject {
       case .quick: self.present(.quick)
       case .photo:
         if !self.ai.vision { self.show(tr("这个 AI 看不了图片", "This AI can't read pictures")); return }
+        self.photoPrompt = nil
         self.present(.camera)
       case .voice: self.voiceRequested = true
       }
@@ -134,12 +204,32 @@ final class JarvisRouter: ObservableObject {
     sheet = s
   }
 
-  /// A photo from the 拍照 key goes to Jarvis with the photo quick task's text.
+  /// A photo from the 拍照 key goes to Jarvis with the photo quick task's text; one from 一键小票 waits in the box with its
+  /// question, for the user to add to or send.
   func sendPhoto(_ image: UIImage) {
     guard let chat, let a = JarvisMedia.photo(image) else { return }
     present(.chat)
+    if let prompt = photoPrompt {
+      photoPrompt = nil
+      if chat.imageCount + a.images.count <= JarvisMedia.maxImages { chat.attachments.append(a) }
+      chat.draft = chat.draft.isEmpty ? prompt : "\(chat.draft)\n\(prompt)"
+      return
+    }
     chat.send(tr("拍照记一餐", "Log this meal from the photo"), attachments: [a])
   }
+
+  /// The camera was closed without a photo.
+  func cancelPhoto() {
+    photoPrompt = nil
+  }
+
+  #if DEBUG
+  /// Unit tests: the state `scanPrices` and `attach` leave, without a camera or a session.
+  func prepareForTesting(chat: JarvisChat, photoPrompt: String?) {
+    self.chat = chat
+    self.photoPrompt = photoPrompt
+  }
+  #endif
 
   /// A recognised voice message: sent, or put in the box for checking (flag `jarvis_voice_direct`).
   func deliverVoice(_ text: String, seconds: Double) {

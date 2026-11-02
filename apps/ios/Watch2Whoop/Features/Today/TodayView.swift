@@ -16,6 +16,7 @@ struct TodayView: View {
   @StateObject private var store: TodayStore
   @State private var sheet: TodaySheet?
   @State private var path: [SleepRoute] = []
+  @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
 
   init(session: AccountSession) {
@@ -54,6 +55,7 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .refreshable { await store.refresh() }
+      .toast($toast)
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
         #if DEBUG
@@ -182,6 +184,8 @@ struct TodayView: View {
     }
 
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
+
+    TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")
 
     if !m.reminders.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
