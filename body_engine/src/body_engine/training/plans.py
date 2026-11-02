@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from .. import auth, sparky_client
-from ..i18n import L, use_lang
+from ..i18n import L, is_en, use_lang
 from ..rules import params as RP, store as rules_store
 from ..rules.context import load_overrides
 from . import catalog, combo, loads, params as P
@@ -24,6 +24,13 @@ from .catalog_data import GROUP_ZH, MUSCLE_GROUP, MUSCLE_ZH
 WEEKDAY_ZH = {1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日"}
 WEEKDAY_EN = {1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun"}
 BANNED_REASON_ZH, BANNED_REASON_EN = "该动作在用户的禁用名单中", "This exercise is on the user's banned list"   # a banned exercise without a reason of its own
+
+
+def template_en(text: str | None, field: str = "name_en") -> dict:
+    """{field: English} for a built-in template's text in an English request (params.TEMPLATE_TEXT_EN), else nothing: the app shows it
+    next to the stored Chinese name, which stays the name requests refer to."""
+    en = P.TEMPLATE_TEXT_EN.get(text or "") if is_en() else None
+    return {field: en} if en else {}
 
 
 def _shown_name(item: dict) -> str:
@@ -66,13 +73,16 @@ def list_splits() -> list[dict]:
         out.append({
             "split_type": key,
             "name": tpl["name"],
+            **template_en(tpl["name"]),
             "days_per_week": tpl["days_per_week"],
             "summary": tpl["summary"],
+            **template_en(tpl["summary"], "summary_en"),
             "days": [
                 {
                     "day_of_week": dow,
                     "weekday_zh": WEEKDAY_ZH.get(dow, f"周{dow}"),
                     "name": sname,
+                    **template_en(sname),
                     "exercise_count": len(exs),
                 }
                 for dow, sname, exs in tpl["days"]
@@ -840,7 +850,7 @@ def _get_week_plan(conn: psycopg.Connection, viewer_id: int, owner_id: int, day:
                     })
                 else:
                     exs.append(item)
-            raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], "day_of_week": dow, "exercises": exs})
+            raw_days_by_dow.setdefault(dow, []).append({"name": d_obj["name"], **template_en(d_obj["name"]), "day_of_week": dow, "exercises": exs})
             normalized_days_for_vol.append({"day_of_week": dow, "name": d_obj["name"], "exercises": vol_items})
 
         # Day changes (training/day_overrides.py): a date may hold other weekdays' sessions, a free activity or rest
@@ -906,6 +916,7 @@ def _get_week_plan(conn: psycopg.Connection, viewer_id: int, owner_id: int, day:
             "plan": {
                 "id": plan_row["id"],
                 "name": plan_row["name"],
+                **template_en(plan_row["name"]),
                 "split_type": plan_row["split_type"],
                 "days_per_week": plan_row["days_per_week"],
                 "start_date": plan_row["start_date"].isoformat() if isinstance(plan_row["start_date"], date) else str(plan_row["start_date"]),

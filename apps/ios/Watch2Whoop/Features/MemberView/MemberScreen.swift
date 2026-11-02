@@ -470,7 +470,7 @@ struct MemberRecordPage: View {
     .task(id: "\(shownDay)/\(store.refreshes)") { await loadJournal() }
     .sheet(item: $detail) { ref in
       SheetContainer(title: tr("训练 · \(RecordDay.short(ref.day))", "Training · \(RecordDay.short(ref.day))"), close: { detail = nil }) {
-        TrainingDayBody(today: today, day: ref.day, plan: week?.days.first { $0.date == ref.day }?.planned ?? []) {
+        TrainingDayBody {
           let r = Endpoint.dayActivity(ref.day, user: store.user)
           await store.load([r])
           return store.json(r)
@@ -484,7 +484,7 @@ struct MemberRecordPage: View {
 
   @ViewBuilder private var training: some View {
     if let m = muscle { MuscleLoadCard(load: m) }
-    if let w = week { TrainingWeekCard(week: w, today: today) { detail = DayRef(day: $0) } }
+    if let w = week { TrainingWeekCard(week: w, today: today, openDay: { d in if d <= today { detail = DayRef(day: d) } }) }
     ExerciseLimitsCard(rules: ExerciseRule.merged(rules, week: week))
     TrainingMonthCard(month: shownMonth, calendar: calendar, today: today,
                       showMonth: { m in if m <= String(today.prefix(7)) { month = m } }, openDay: { detail = DayRef(day: $0) })

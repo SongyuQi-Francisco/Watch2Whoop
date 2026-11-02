@@ -85,12 +85,15 @@ final class TrainingStore: LocalPageStore {
   private var editing = false
   private var saveTask: Task<Void, Never>?
   let muscleOn: Bool
+  /// Flag `exercise_add_to_plan`: the exercise detail's 「加入训练计划」.
+  let addToPlanOn: Bool
 
   init(session: AccountSession) {
     let t = session.db.userToday()
     today = t
     month = String(t.prefix(7))
     muscleOn = session.flags.contains("muscle_load")
+    addToPlanOn = session.flags.contains("exercise_add_to_plan")
     super.init(api: session.api, db: session.db, queue: session.sync.queue)
     observeAll()
   }
@@ -187,6 +190,13 @@ final class TrainingStore: LocalPageStore {
   }
 
   // MARK: - set-by-set logging
+
+  /// A change waiting to be saved goes out now (the plan is about to change under it).
+  func flushDraft() async {
+    guard editing else { return }
+    saveTask?.cancel()
+    await saveDraft()
+  }
 
   func edit(_ slug: String, _ change: (inout [SetRow]) -> Void) {
     editing = true

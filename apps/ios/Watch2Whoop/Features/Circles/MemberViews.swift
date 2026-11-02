@@ -46,6 +46,7 @@ struct MemberCardView: View {
   var open: (() -> Void)?
   let editRemark: () -> Void
   @State private var day: MemberCard.Scores.Day?
+  @State private var inviting = false
 
   var body: some View {
     let m = member
@@ -67,6 +68,7 @@ struct MemberCardView: View {
         if !m.isSelf {
           ModerationMenu(store: store, kind: .profile, target: m.id, user: m.id) {
             if store.remarksOn { Button(tr("设置备注名", "Set a nickname"), action: editRemark) }
+            if store.inboxOn { Button(tr("邀请进我的另一个圈子", "Invite to another circle of mine")) { inviting = true } }
           }
         }
         if open != nil { Icon(.chevronRight, size: 16).foregroundColor(Palette.text3) }
@@ -101,6 +103,7 @@ struct MemberCardView: View {
     .sheet(item: Binding(get: { day.map(DayRef.init) }, set: { if $0 == nil { day = nil } })) { ref in
       DaySheet(name: m.isSelf ? tr("我", "Me") : m.shownName, day: ref.day)
     }
+    .sheet(isPresented: $inviting) { DirectInviteSheet(store: store, person: m.id, name: m.shownName) }
   }
 
   @ViewBuilder private func hero(_ sc: MemberCard.Scores?) -> some View {

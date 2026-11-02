@@ -27,6 +27,11 @@ MAX_LIVE_CODES = 5            # live codes per circle; minting one more revokes 
 MAX_CIRCLES_PER_USER = 10
 MAX_MEMBERS = 30
 NAME_MAX = 40
+# Invites addressed to one person (issue #359 section 3, friends/direct.py, flag inbox)
+INBOX_FLAG = "inbox"
+DIRECT_INVITES_PER_DAY = 10   # one person, any 24 hours, across all their circles: enough for a group of friends, not for spam
+DIRECT_INVITE_DAYS = 14       # how long one stays open; until then the same person gets no second invite to the same circle
+ADMIN_INVITE_DAYS = 30        # `body-engine circle-admin invite`, the same as REFERRAL_INVITE_DAYS
 # Private nickname for a circle member (#212, friends/remarks.py): at most this many characters after trimming; empty clears it
 REMARK_MAX = 20
 

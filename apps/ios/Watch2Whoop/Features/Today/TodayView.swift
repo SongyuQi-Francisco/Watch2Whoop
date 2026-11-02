@@ -17,6 +17,8 @@ struct TodayView: View {
   @State private var sheet: TodaySheet?
   @State private var path: [SleepRoute] = []
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
+  @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
+  @State private var trainingOpen = false
 
   init(session: AccountSession) {
     _store = StateObject(wrappedValue: TodayStore(session: session))
@@ -33,6 +35,16 @@ struct TodayView: View {
     .sheet(item: $sheet) { s in
       TodaySheetView(sheet: s, model: store.model, store: store, open: { sheet = $0 }, close: { sheet = nil })
         .environmentObject(session)
+    }
+    .sheet(isPresented: $trainingOpen) {
+      if let t = store.model.training {
+        TodayTrainingSheet(session: session, training: t, date: store.model.date, canLog: !store.model.isPast,
+                           close: { trainingOpen = false }, openLog: {
+          trainingOpen = false
+          openTraining()
+        })
+        .presentationDetents([.medium, .large])
+      }
     }
     .onAppear { if !store.isObserving { store.observe(session) } }
     .task { await store.refresh() }
@@ -116,12 +128,19 @@ struct TodayView: View {
                   allMetrics: {
                     TrendsLink.shared.open(day: store.date)
                     tab = .trends
-                  })
+                  },
+                  openTraining: { trainingOpen = true }, openHistory: openTraining)
 
     if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
     if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
 
     SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
+  }
+
+  /// 记录 → 训练 (the muscle card, 训练历史, 逐组记录).
+  private func openTraining() {
+    recordSegment = .training
+    tab = .record
   }
 
   private func open(_ o: TodayOpen) { sheet = TodaySheet(open: o) }
@@ -150,7 +169,8 @@ struct TodayView: View {
 // MARK: - the day's cards
 
 /// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
-/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page.
+/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page. The training cards
+/// (`openTraining`, `openHistory`) lead to my own log, so without those there are none.
 struct TodayDayCards: View {
   let model: TodayModel
   var hasData = true
@@ -159,6 +179,8 @@ struct TodayDayCards: View {
   let open: (TodayOpen) -> Void
   let openStatus: (TodayModel.StatusItem) -> Void
   let allMetrics: () -> Void
+  var openTraining: (() -> Void)?
+  var openHistory: (() -> Void)?
 
   // no container here: inside the page's LazyVStack each card stays its own lazy row
   var body: some View {
@@ -232,6 +254,11 @@ struct TodayDayCards: View {
       .padding(.top, 12)
       .id("allMetrics")
     }
+
+    if let t = m.training, let openTraining, let openHistory {
+      TodayTrainingCard(training: t, open: openTraining, history: openHistory).padding(.top, 22).id("training")
+    }
+    if !m.isPast, let mm = m.muscle, let openHistory { TodayMuscleCard(muscle: mm, open: openHistory).padding(.top, 22).id("muscle") }
 
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
 
