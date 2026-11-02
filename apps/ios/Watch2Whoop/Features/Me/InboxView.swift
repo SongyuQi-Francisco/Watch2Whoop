@@ -68,6 +68,7 @@ struct InboxView: View {
         store.consentGiven()
         var again = item
         again.invite?.consentOk = true
+        try? await Task.sleep(nanoseconds: 450_000_000)   // the cover goes first: the rules sheet may come next
         join(again)
       }
       .overlay(alignment: .topLeading) {
@@ -156,7 +157,7 @@ struct InboxView: View {
     circles.requireRules(host: gateId) { Task { await runJoin(item) } }
   }
 
-  private func runJoin(_ item: InboxItem) async {
+  private func runJoin(_ item: InboxItem, askedRules: Bool = false) async {
     joining.insert(item.id)
     defer { joining.remove(item.id) }
     switch await store.accept(item) {
@@ -167,8 +168,12 @@ struct InboxView: View {
     case .needsConsent:
       consentFor = item
     case .needsRules:
+      guard !askedRules else {   // accepted a moment ago and the server still asks: not a loop, a message
+        circles.toast = tr("没能加入，稍后再试", "Couldn't join; try again shortly")
+        return
+      }
       await circles.refreshList()
-      circles.requireRules(host: gateId) { Task { await runJoin(item) } }
+      circles.requireRules(host: gateId) { Task { await runJoin(item, askedRules: true) } }
     case .gone:
       circles.toast = tr("这个邀请已失效", "This invite is no longer valid")
     case .refused(let why):
@@ -209,7 +214,7 @@ private struct MessageRow: View {
     .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
     .contentShape(Rectangle())
     .accessibilityElement(children: .combine)
-    .accessibilityAddTraits(item.read ? [] : .isSelected)
+    .accessibilityValue(item.read ? "" : tr("未读", "Unread"))
   }
 
   static func icon(_ item: InboxItem) -> Icon.Name {
