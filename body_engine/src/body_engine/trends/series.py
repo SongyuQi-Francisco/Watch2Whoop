@@ -186,7 +186,7 @@ def load(conn: psycopg.Connection, viewer: dict, owner_id: int, end: date, days:
         try:  # 6 extra days back so the 7-day mean of the first week is complete
             data["weights"] = weights(conn, owner_id, prev_start - timedelta(days=6), end)
         except sparky_client.SparkyError as e:
-            data["weights_error"] = str(e)
+            data["weights_error"] = sparky_client.public_error(e)
     return data
 
 

@@ -143,7 +143,7 @@ def _meal_call(fn, *args, **kwargs):
     except ValueError as e:
         raise HTTPException(422, str(e))
     except sparky_client.SparkyError as e:
-        raise HTTPException(502, f"SparkyFitness：{e}")
+        raise HTTPException(502, sparky_client.public_error(e))
 
 
 @router.get("/meal-templates")
