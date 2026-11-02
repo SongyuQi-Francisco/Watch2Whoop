@@ -3,6 +3,7 @@ and per-user isolation (a family member sees only shared blocks; nobody gets ano
 
 Uses a separate test database BODY_TEST_DB_NAME_EXPLAIN (default body_test_explain), dropped and recreated on every run; skipped if Postgres is unreachable.
 """
+import json
 import os
 import re
 from datetime import date, datetime, timedelta
@@ -18,7 +19,7 @@ from psycopg_pool import ConnectionPool
 from body_engine import api, auth
 from body_engine.config import Settings
 from body_engine.db import migrate
-from body_engine.explain import glossary as G, glossary_en as GE
+from body_engine.explain import glossary as G, glossary_en as GE, personal
 
 TEST_DB = os.environ.get("BODY_TEST_DB_NAME_EXPLAIN", "body_test_explain")
 TZ = ZoneInfo("Australia/Sydney")
@@ -233,6 +234,33 @@ def test_family_sees_only_shared_blocks(client, world):
     assert get(client, tok["B"], f"/v1/users/{a}/explain/status/shoulder").status_code == 403   # memory not shared
     assert get(client, tok["C"], f"/v1/users/{a}/explain/metric/sleep_hours").status_code == 403
     assert get(client, tok["A"], f"/v1/users/{ids['B']}/explain/metric/hrv").status_code == 403
+
+
+def test_someone_elses_sheet_talks_about_them(client, world):
+    """"Your baseline" on a family member's sheet reads as the viewer's own numbers: the owner keeps the second person, a viewer gets the third."""
+    ids, tok = world
+    a = ids["A"]
+    other = get(client, tok["B"], f"/v1/users/{a}/explain/metric/sleep_hours").json()
+    own = get(client, tok["A"], "/v1/users/me/explain/metric/sleep_hours").json()
+    assert other["current"] == own["current"]
+    assert own["ai_prompt"].startswith("帮我解读一下我的")
+    assert other["ai_prompt"].startswith("帮我解读一下 TA 的") and "TA 现在" in other["ai_prompt"]
+    assert "你" not in json.dumps(other, ensure_ascii=False) and "我的" not in other["ai_prompt"]
+    en = client.get(f"/v1/users/{a}/explain/metric/sleep_hours", headers={"Authorization": f"Bearer {tok['B']}", "X-Body-Lang": "en"}).json()
+    assert en["ai_prompt"].startswith('Please explain their "') and "how are they doing" in en["ai_prompt"] and "should they" in en["ai_prompt"]
+    words = json.dumps({k: en[k] for k in ("facts", "advice", "what", "tips", "ai_prompt")}, ensure_ascii=False)
+    assert not re.search(r"\b[Yy]ou(r|rself)?\b", words)
+
+
+def test_third_person_wording():
+    assert personal._third_person("比你的基线高 12%：恢复状态好。") == "比 TA 的基线高 12%：恢复状态好。"
+    assert personal._third_person("你设的每周上限") == "TA 设的每周上限"
+    assert personal._third_person("越多越准，真的在拖累你。") == "越多越准，真的在拖累 TA。"
+    assert personal._third_person("和你自己近 60 天比") == "和 TA 自己近 60 天比"
+    assert personal._third_person("Your baseline") == "Their baseline"
+    assert personal._third_person("above your baseline: you are recovering") == "above their baseline: they are recovering"
+    assert personal._for_viewer({"facts": [{"label": "你的基线"}]}, 1, 1) == {"facts": [{"label": "你的基线"}]}
+    assert personal._for_viewer({"facts": [{"label": "你的基线"}], "key": "你"}, 1, 2) == {"facts": [{"label": "TA 的基线"}], "key": "你"}
 
 
 def test_own_account_gets_own_numbers(client, world):
