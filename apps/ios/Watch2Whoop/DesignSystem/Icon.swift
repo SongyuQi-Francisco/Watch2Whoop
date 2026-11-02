@@ -73,6 +73,7 @@ struct Icon: View {
     case botMessageSquare = "bot-message-square"
     case audioWaveform = "audio-waveform"
     case scanEye = "scan-eye"
+    case personStanding = "person-standing"
     case zap
     case mic
     case lock
