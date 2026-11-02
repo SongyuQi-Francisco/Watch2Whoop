@@ -230,7 +230,7 @@ private struct InviteInbox: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(tr("\(from) 邀请你加入「\(i.name)」", "\(from) invites you to \u{201C}\(i.name)\u{201D}"))
               .font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-            Text(tr("\(i.members) 人", "\(i.members) people")).font(Typo.caption).foregroundColor(Palette.text2)
+            Text(InboxLogic.people(i.members)).font(Typo.caption).foregroundColor(Palette.text2)
           }
           Spacer(minLength: 4)
           Button(tr("加入", "Join")) { accept(i) }
@@ -262,7 +262,7 @@ struct CircleRowLabel: View {
           if prefs && circle.prefs.pinned { Icon(.pin, size: 13).foregroundColor(Palette.text3) }
           if prefs && circle.prefs.muted { Icon(.bellOff, size: 13).foregroundColor(Palette.text3) }
         }
-        Text(tr("\(n) 人 · 我共享：\(shares)", "\(n) people · I share: \(shares)"))
+        Text(InboxLogic.people(n) + tr(" · 我共享：\(shares)", " · I share: \(shares)"))
           .font(Typo.caption).foregroundColor(Palette.text2).lineLimit(1)
       }
       Spacer(minLength: 4)
@@ -379,7 +379,7 @@ struct CircleDetailView: View {
       AvatarView(url: c.avatar, name: c.name, size: 56)
       VStack(alignment: .leading, spacing: 3) {
         Text(c.name).font(.system(size: 20, weight: .bold)).foregroundColor(Palette.text)
-        Text(tr("\(c.members.count) 人", "\(c.members.count) people") + (c.isOwner ? tr(" · 我是圈主", " · I own it") : ""))
+        Text(InboxLogic.people(c.members.count) + (c.isOwner ? tr(" · 我是圈主", " · I own it") : ""))
           .font(Typo.caption).foregroundColor(Palette.text2)
       }
     }
