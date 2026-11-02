@@ -5,8 +5,9 @@ import SwiftUI
 ///    nothing of the person's health data is processed before it;
 /// 2. the profile (birthday, sex, height), when something is missing — skippable;
 /// 3. Health access: every type in one sheet, then the first sync starts.
-/// Also: `watch2whoop://sync` / `backfill` links open the sync center, and a setup link opened while signed in asks
-/// before switching accounts.
+/// Also: `watch2whoop://sync` / `backfill` links open the sync center, the weekly message opens 更新记录, and a setup link
+/// opened while signed in asks before switching accounts. Links wait until the steps above are over (`flowsSettled`): a
+/// person who taps an invite link before signing in gets the join sheet after them.
 struct SignedInFlows: ViewModifier {
   @ObservedObject var session: AccountSession
   @EnvironmentObject private var app: AppModel
@@ -14,6 +15,7 @@ struct SignedInFlows: ViewModifier {
 
   func body(content: Content) -> some View {
     content
+      .environment(\.flowsSettled, flow.settled)
       .task { await flow.start(session: session) }
       .fullScreenCover(item: $flow.step) { step in
         Group {
@@ -26,14 +28,25 @@ struct SignedInFlows: ViewModifier {
         .environmentObject(session)
         .environmentObject(app)
       }
-      .sheet(item: Binding(get: { app.route.flatMap(RouteBox.sync) }, set: { if $0 == nil { app.route = nil } })) { box in
-        NavigationStack {
-          SyncCenterView(startHistory: box.historyDays)
-            .toolbar {
-              ToolbarItem(placement: .cancellationAction) {
-                Button(tr("完成", "Done")) { app.route = nil }.foregroundColor(Palette.text)
-              }
+      .sheet(item: Binding(get: { flow.settled ? app.route.flatMap(RouteBox.sheet) : nil },
+                           set: { if $0 == nil { app.route = nil } })) { box in
+        Group {
+          if box.route == .whatsNew {
+            SheetContainer(title: tr("更新记录", "What's new"), close: { app.route = nil }) {
+              WhatsNewView { app.handle(link: $0) }
             }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+          } else {
+            NavigationStack {
+              SyncCenterView(startHistory: box.historyDays)
+                .toolbar {
+                  ToolbarItem(placement: .cancellationAction) {
+                    Button(tr("完成", "Done")) { app.route = nil }.foregroundColor(Palette.text)
+                  }
+                }
+            }
+          }
         }
         .environmentObject(session)
         .environmentObject(app)
@@ -71,10 +84,11 @@ private struct SwitchAccountDialog: ViewModifier {
 private struct RouteBox: Identifiable {
   let route: AppModel.Route
   var id: String { "\(route)" }
-  /// Only the sync routes open the sync center here (the circle routes belong to the Friends tab, N7).
-  static func sync(_ r: AppModel.Route) -> RouteBox? {
+  /// The routes that open a sheet here: the sync center, 更新记录 (the circle routes belong to the Friends tab, N7; a tab
+  /// route to the tab bar).
+  static func sheet(_ r: AppModel.Route) -> RouteBox? {
     switch r {
-    case .syncCenter, .history: return RouteBox(route: r)
+    case .syncCenter, .history, .whatsNew: return RouteBox(route: r)
     default: return nil
     }
   }
@@ -100,6 +114,9 @@ final class SignedInFlow: ObservableObject {
   }
 
   @Published var step: Step?
+  /// Nothing is still to come: links and first-visit questions may show now (`EnvironmentValues.flowsSettled`).
+  @Published private(set) var settled = false
+  private var showedStep = false
   /// A setup link is waiting for its question: the step that would show (or was showing) waits too.
   private var held = false
   private var heldStep: Step?
@@ -123,7 +140,13 @@ final class SignedInFlow: ObservableObject {
   }
 
   private func show(_ s: Step) {
+    showedStep = true
     if held { heldStep = s } else { step = s }
+  }
+
+  private func settle() async {
+    if showedStep { try? await Task.sleep(nanoseconds: 500_000_000) }   // the last cover goes first
+    settled = true
   }
 
   func hold(_ on: Bool) {
@@ -154,11 +177,12 @@ final class SignedInFlow: ObservableObject {
 
   func healthDone() async {
     step = nil
+    Task { await settle() }
     await HealthSyncService.shared.syncOnOpen(force: true)
   }
 
   private func next(afterConsent: Bool) async {
-    guard let s = session else { return }
+    guard let s = session else { await settle(); return }
     if afterConsent, let p = profile, !p.missing.isEmpty, !UserDefaults.standard.bool(forKey: Self.profileSeenKey(s)) {
       try? await Task.sleep(nanoseconds: 350_000_000)   // let the previous cover go first
       show(.profile)
@@ -166,12 +190,14 @@ final class SignedInFlow: ObservableObject {
     }
     #if DEBUG
     // simulator screenshots: `SIMCTL_CHILD_W2W_DEV_SKIP_HEALTH=1` leaves the Health sheet out (Debug builds only)
-    if ProcessInfo.processInfo.environment["W2W_DEV_SKIP_HEALTH"] != nil { return }
+    if ProcessInfo.processInfo.environment["W2W_DEV_SKIP_HEALTH"] != nil { await settle(); return }
     #endif
     await HealthSyncService.shared.refreshPermission()
     if HealthSyncService.shared.permission == .notAsked {
       try? await Task.sleep(nanoseconds: 350_000_000)
       show(.health)
+    } else {
+      await settle()
     }
   }
 }

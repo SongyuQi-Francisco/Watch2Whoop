@@ -234,7 +234,9 @@ struct FlowLayout: Layout {
     var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
     for s in subviews {
       let size = s.sizeThatFits(.unspecified)
-      if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += row + spacing; row = 0 }
+      // the tolerance: sizeThatFits may have returned exactly the row's width and the bounds come back rounded to pixels, so
+      // without it the last item of a row that fits wraps here, below a height measured for one row, on top of what follows
+      if x > bounds.minX, x + size.width > bounds.maxX + 1 { x = bounds.minX; y += row + spacing; row = 0 }
       s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
       x += size.width + spacing
       row = max(row, size.height)

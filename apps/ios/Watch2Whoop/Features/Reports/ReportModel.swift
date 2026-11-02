@@ -174,6 +174,18 @@ final class ReportStore: ObservableObject {
     })
   }
 
+  /// Someone else's report (read-only member view): only in `member`'s memory, never in `docs`.
+  func load(_ member: MemberViewStore, end: String?, regression: Bool) async {
+    let r = Endpoint.report(period.rawValue, end: end, user: member.user)
+    let b = Endpoint.journalAnalysis(end: end, regression: regression, user: member.user)
+    await member.load([r, b])
+    report = member.json(r).flatMap(ReportModel.init(json:))
+    let list = member.list(b) ?? []
+    behavior = BehaviorRow.parse(list)
+    adjusted = BehaviorRow.adjusted(list)
+    loaded = true
+  }
+
   func refresh(_ session: AccountSession) async {
     let p = period, e = end, reg = Self.regression(session)
     _ = await DocPuller(api: session.api, db: session.db).pull([

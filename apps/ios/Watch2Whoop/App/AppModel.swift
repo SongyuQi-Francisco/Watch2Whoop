@@ -20,6 +20,10 @@ final class AccountSession: ObservableObject {
     }
   }
   @Published var displayName: String?
+  /// People who share something with me (`/v1/web/me` → `viewable`, the server's answer). In memory only.
+  @Published var viewable: [ViewablePerson] = []
+  /// Whose read-only view is open (`MemberScreen`, over the whole app); nil = my own pages.
+  @Published var viewing: ViewablePerson?
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
 
@@ -32,6 +36,13 @@ final class AccountSession: ObservableObject {
     // the long jobs (scoring, history download) are the runtime's, shared with the background task (local history)
     self.sync = SyncCoordinator(db: db, api: api, scoring: runtime?.scoring, history: runtime?.history)
     sync.deltaAvailable = flags.contains(Self.nativeSyncFlag)
+  }
+
+  /// Asks the server again who shares with me (a share may have just started or ended).
+  func refreshViewable() async {
+    guard let me = try? await api.json(.get(Endpoint.webMe)) else { return }
+    let list = ViewablePerson.parse(me["viewable"])
+    if list != viewable { viewable = list }
   }
 
   /// Circles replace 饮食 in the tab bar while the `friends` flag is on (same rule as the Today page's applyTabs()).
@@ -67,6 +78,12 @@ final class AppModel: ObservableObject {
     case circles(post: Int?)
     /// The join sheet with an invite code (`watch2whoop://circle?code=…`, a shared invite link).
     case circleJoin(String)
+    /// 更新记录 (the weekly 「本周更新」 message).
+    case whatsNew
+    /// A tab (a notification or an update entry that points at it).
+    case tab(AppTab)
+    /// 我 → 消息; `item` = the row to scroll to (a tapped push, #359).
+    case inbox(item: String?)
   }
 
   let store: CredentialStore
@@ -189,12 +206,30 @@ final class AppModel: ObservableObject {
     }
   }
 
-  /// A notification's `url` (`/app/?tab=friends&feed=12`) or a circle link: where it points (N7: circles only so far).
+  /// A notification's `url`, an update entry's link, a circle link or an inbox link (#359): where it points. A tap that
+  /// launches the app comes before the account is open: the last known flags say whether the inbox is on (the weekly
+  /// message's way depends on it).
   func handle(link: String) {
-    switch CircleLink.parse(link) {
-    case .post(let id)?: route = .circles(post: id)
-    case .join(let code)?: route = .circleJoin(code)
-    case nil: if link.contains("tab=friends") { route = .circles(post: nil) }
+    let flags = session?.flags ?? Set(UserDefaults.standard.stringArray(forKey: flagsKey) ?? [])
+    if let r = Self.route(for: link, inbox: flags.contains(InboxStore.flag)) { route = r }
+  }
+
+  /// Posts and invites first. The weekly message lives in the inbox while that is on, else it opens 更新记录. Other inbox
+  /// links go to the inbox (`/app/?tab=me&inbox=…` is that row, not just the tab; InboxRouting drops them with the flag
+  /// off). The rest names a tab (AppLink).
+  static func route(for link: String, inbox: Bool) -> Route? {
+    let target = AppLink.parse(link)
+    switch target {
+    case .post(let id)?: return .circles(post: id)
+    case .join(let code)?: return .circleJoin(code)
+    case .whatsNew?: return inbox ? .inbox(item: nil) : .whatsNew
+    default: break
+    }
+    if let i = InboxLink.parse(link) { return .inbox(item: i.item) }
+    switch target {
+    case .friends?: return .circles(post: nil)
+    case .tab(let t)?: return .tab(t)
+    default: return nil
     }
   }
 
@@ -277,6 +312,7 @@ final class AppModel: ObservableObject {
       try open(cfg, userId: uid, api: api)
       session?.flags = Set(flags)
       session?.displayName = cfg.displayName
+      session?.viewable = ViewablePerson.parse(me["viewable"])
     } catch APIError.unauthorized {
       // handled by onUnauthorized
     } catch let e as APIError {

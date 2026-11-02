@@ -155,7 +155,7 @@ struct JournalSection: View {
 }
 
 /// Wrapping tags: a behaviour is ticked (filled) or not; a number shows its value.
-private struct TagCloud: View {
+struct TagCloud: View {
   let items: [JournalItem]
   let journal: JournalDay
   let tap: (JournalItem) -> Void

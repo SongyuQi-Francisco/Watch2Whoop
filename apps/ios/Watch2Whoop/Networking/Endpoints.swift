@@ -19,6 +19,7 @@ enum Endpoint {
   static func dayActivity(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/training/day/\(day)") }
   static func strainCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/strain-coach", ["date": day]) }
   static func healthMonitor(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/health-monitor", ["date": day]) }
+  static func sleepCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sleep-coach", ["date": day]) }
   static func memory(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/memory") }
   static func syncOverview(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sync/overview", ["in_app": "1"]) }
   static func monthDays(_ month: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/days", ["month": month]) }
@@ -91,6 +92,9 @@ enum Endpoint {
   static let ingestResync = "/v1/ingest/resync"
   static let ingestSyncDevice = "/v1/ingest/sync-device"
   static let historyBackfill = "/v1/users/me/sync/backfill"
+  static let syncHistory = "/v1/users/me/sync/history"              // coverage: how much history, the reminder's state
+  static let syncHistorySeen = "/v1/users/me/sync/history/seen"
+  static let syncHistoryMute = "/v1/users/me/sync/history/mute"
 
   // N4: trends (series and status cards), VO₂max level, sleep regularity, nights, reports, journal behaviour
   static func trends(days: Int, end: String?, user: String = "me") -> APIRequest {

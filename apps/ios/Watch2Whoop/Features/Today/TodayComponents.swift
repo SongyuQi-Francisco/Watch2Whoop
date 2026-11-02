@@ -182,21 +182,25 @@ struct SectionTitle: View {
 struct AskAIButton: View {
   let prompt: String
   @Environment(\.askAI) private var askAI
+  @Environment(\.memberView) private var member
   @State private var copied = false
 
   var body: some View {
-    Button {
-      askAI(prompt)
-      if !askAI.connected { copied = true }
-    } label: {
-      HStack(spacing: 6) {
-        Icon(.sparkles, size: 16)
-        Text(copied ? tr("问题已复制", "Question copied") : tr("问 AI", "Ask AI")).font(Typo.bodyStrong)
+    // no AI on someone else's pages: AI is not part of sharing
+    if member == nil {
+      Button {
+        askAI(prompt)
+        if !askAI.connected { copied = true }
+      } label: {
+        HStack(spacing: 6) {
+          Icon(.sparkles, size: 16)
+          Text(copied ? tr("问题已复制", "Question copied") : tr("问 AI", "Ask AI")).font(Typo.bodyStrong)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .foregroundColor(Palette.bg)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
       }
-      .frame(maxWidth: .infinity, minHeight: 44)
-      .foregroundColor(Palette.bg)
-      .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.text))
+      .buttonStyle(PressScale())
     }
-    .buttonStyle(PressScale())
   }
 }

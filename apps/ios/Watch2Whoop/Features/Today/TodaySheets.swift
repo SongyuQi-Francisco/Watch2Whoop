@@ -7,6 +7,33 @@ enum TodaySheet: Identifiable, Equatable {
   case explain(kind: String, key: String, title: String)
   /// A status card of 今日核心 / 需要注意 (#357), the same sheet as Trends'.
   case status(TrendStatus.Tile)
+  /// Stress, the sleep coach, body age, … (TodayDetails.swift).
+  case detail(TodayDetail)
+
+  /// The sheet of a tap on the day's cards (the sleep detail is a page, weight is my own form: no sheet here).
+  init?(action a: TodayModel.Action) {
+    switch a {
+    case .recovery: self = .recovery
+    case .strain: self = .strain
+    case .load: self = .load
+    case .coach: self = .coach
+    case .monitor: self = .monitor
+    case .weight: self = .weight
+    case .allReminders: self = .reminders
+    case .reminder(let id): self = .reminder(id)
+    case .explainMetric(let k, let t): self = .explain(kind: "metric", key: k, title: t)
+    case .explainStatus(let k, let t): self = .explain(kind: "status", key: k, title: t)
+    case .sleepDetail: return nil
+    }
+  }
+
+  init(open o: TodayOpen) {
+    switch o {
+    case .coach: self = .coach
+    case .metric(let k, let t): self = .explain(kind: "metric", key: k, title: t)
+    case .status(let t): self = .status(t)
+    }
+  }
 
   var id: String {
     switch self {
@@ -21,6 +48,7 @@ enum TodaySheet: Identifiable, Equatable {
     case .reminder(let id): return "reminder:\(id)"
     case .explain(let k, let key, _): return "explain:\(k):\(key)"
     case .status(let t): return "status:\(t.key)"
+    case .detail(let d): return "detail:\(d.id)"
     }
   }
 }
@@ -32,6 +60,7 @@ struct TodaySheetView: View {
   @ObservedObject var store: TodayStore
   let open: (TodaySheet) -> Void
   let close: () -> Void
+  @Environment(\.memberView) private var member
 
   var body: some View {
     SheetContainer(title: title, close: close) { content }
@@ -43,6 +72,7 @@ struct TodaySheetView: View {
     switch sheet {
     case .reminder, .load, .coach: return [.medium]
     case .calendar, .weight: return [.large]
+    case .detail(let d) where d.large: return [.large]
     default: return [.medium, .large]
     }
   }
@@ -61,6 +91,7 @@ struct TodaySheetView: View {
     case .reminder: return tr("提醒", "Reminder")
     case .explain(_, _, let t): return t
     case .status(let t): return t.label
+    case .detail(let d): return d.title
     }
   }
 
@@ -128,7 +159,7 @@ struct TodaySheetView: View {
             ToneBadge(text: levelLabel(r.level), tone: r.tone)
             if let d = r.date { ToneBadge(text: TodayModel.shortDay(d)) }
           }
-          if !model.isPast {
+          if !model.isPast && member == nil {
             HStack(spacing: 10) {
               if r.status == "new" { action(tr("已看", "Seen")) { store.setReminder(id, status: "seen"); close() } }
               else { action(tr("标为未读", "Mark unread")) { store.setReminder(id, status: "new"); close() } }
@@ -149,6 +180,10 @@ struct TodaySheetView: View {
       }
     case .weight:
       WeightSheet(today: store.userToday) { close() }
+    case .detail where member != nil:
+      EmptyView()   // these read my own tables
+    case .detail(let detail):
+      TodayDetailBody(detail: detail, date: model.date ?? store.userToday, past: day, coach: model.tonight, open: open, close: close)
     }
   }
 

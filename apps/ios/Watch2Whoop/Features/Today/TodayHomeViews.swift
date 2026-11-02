@@ -11,6 +11,10 @@ struct TodayHomeActions {
   var circles: () -> Void
   /// The day's training sheet (the same one as the classic page's training card).
   var training: () -> Void
+  /// The button under an empty recovery ring.
+  var recoveryNext: (RecoveryNext.Action) -> Void
+  var syncCenter: () -> Void
+  var syncNow: () -> Void
 }
 
 /// Asking the user's AI from the page: tapped and typed questions go out at once where the AI runs in the app.
@@ -40,6 +44,8 @@ struct TodayHomePage: View {
   @ObservedObject var store: TodayHomeStore
   @ObservedObject var sync: SyncCoordinator
   let hasData: Bool
+  /// The food card of the classic page: 训练与饮食 on the web page is training and food together.
+  let foodCard: AnyView
   let run: TodayHomeActions
 
   @State private var canPhoto = false
@@ -54,6 +60,11 @@ struct TodayHomePage: View {
     }
     if let s = m.sub {
       Text(s).font(Typo.caption).foregroundColor(Palette.text2).frame(maxWidth: .infinity).padding(.top, 3)
+    }
+    if let n = m.recoveryNext {
+      Button { run.recoveryNext(n.action) } label: { Chip(label: n.label) }
+        .buttonStyle(PressScale())
+        .frame(maxWidth: .infinity).padding(.top, 10)
     }
     if m.loadChip != nil || m.local {
       HStack(spacing: 8) {
@@ -81,7 +92,7 @@ struct TodayHomePage: View {
 
     ForEach(modules) { module($0).padding(.top, 22) }
 
-    if let s = m.sync { SyncCardView(card: s, sync: sync) { run.refresh() }.padding(.top, 22) }
+    if let s = m.sync { SyncCardView(card: s, sync: sync, open: run.syncCenter, syncNow: run.syncNow).padding(.top, 22) }
 
     if m.date != nil {
       Button(action: run.allMetrics) {
@@ -104,7 +115,9 @@ struct TodayHomePage: View {
     .padding(.top, 12)
     .id("allFeatures")
 
-    SyncStatusLine(sync: sync, hasData: hasData).padding(.top, 18)
+    Button(action: run.syncCenter) { SyncStatusLine(sync: sync, hasData: hasData) }
+      .buttonStyle(.plain)
+      .padding(.top, 18)
   }
 
   // MARK: - rings
@@ -243,12 +256,18 @@ struct TodayHomePage: View {
     case "sleep":
       tiles("sleep")
     case "sleep_goal":
-      NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }.buttonStyle(PressScale())
+      VStack(alignment: .leading, spacing: 8) {
+        if let c = m.tonight { SleepCoachCard(coach: c, isPast: m.isPast) { run.sheet(.detail(.sleepCoach)) } }
+        NavigationLink { BedtimeGoalPage() } label: { BedtimeGoalRow() }.buttonStyle(PressScale())
+      }
     case "training":
-      if let t = m.training {
-        TodayTrainingCard(training: t, open: run.training, history: { run.go(.record(.training)) })
-      } else {
-        link(.dumbbell, tr("训练计划和记录", "Training plan and log")) { run.go(.record(.training)) }
+      VStack(alignment: .leading, spacing: 0) {
+        if let t = m.training {
+          TodayTrainingCard(training: t, open: run.training, history: { run.go(.record(.training)) })
+        } else {
+          link(.dumbbell, tr("训练计划和记录", "Training plan and log")) { run.go(.record(.training)) }
+        }
+        foodCard
       }
     case "muscle_load":
       if let mm = m.muscle {
@@ -422,7 +441,9 @@ struct TodayHomeSheetView: View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
           ForEach(g.items) { it in
             StatusCell(item: it) {
-              go(.sheet(it.key == "weight" ? .weight : .explain(kind: "status", key: it.key, title: it.label)))
+              if it.key == "weight" { go(.sheet(.weight)) }
+              else if let lab = it.labKey { go(.sheet(.detail(.lab(key: lab, title: it.label)))) }
+              else { go(.sheet(.explain(kind: "status", key: it.key, title: it.label))) }
             }
           }
         }

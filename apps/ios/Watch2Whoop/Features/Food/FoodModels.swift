@@ -12,10 +12,20 @@ enum FoodDocs {
   static let recipes = "food:recipes"
   static func recipe(_ id: String) -> String { "food:recipe:\(id)" }
   static func grocery(_ week: String) -> String { "grocery:list:\(week)" }
+  static func mealPlan(_ day: String) -> String { "food:mealplan:\(day)" }
+  static let dietBrief = "food:diet:brief"
+  static let diet = "food:diet"
+  static let products = "grocery:products"
+  static let stores = "grocery:stores"
+  static let storeProducts = "grocery:store-products"
+  static func storeProduct(_ id: Int) -> String { "grocery:store-product:\(id)" }
+  static let pantry = "grocery:pantry"
+  static let pantryAuto = "grocery:pantry-auto"
+  static let specials = "grocery:specials"
 
   /// Pending kinds the food pages lay over the documents.
   static let kinds = [FoodKind.water, FoodKind.waterDelete, FoodKind.foodDelete, FoodKind.portion, FoodKind.mealLog,
-                      FoodKind.recipeLog, FoodKind.grocery]
+                      FoodKind.recipeLog, FoodKind.grocery, FoodKind.pantry]
 }
 
 /// Kinds of the food pages' local rows and queue entries.
@@ -27,6 +37,7 @@ enum FoodKind {
   static let mealLog = "meal_log"
   static let recipeLog = "recipe_log"
   static let grocery = "grocery.item"
+  static let pantry = "grocery.pantry"
 }
 
 /// The four meals, in the page's order. Food entries say `snacks`, recipes `snack`.
@@ -119,10 +130,16 @@ struct FoodEntry: Equatable, Identifiable {
   var pending: PendingRecord?
   /// A row the server has not given an id yet (a quick meal / recipe being logged): read-only.
   var isLocal = false
+  /// Merged from several entries (`POST /nutrition/combine`): 「拆开」 takes this id.
+  var mergeId: Int?
+  var satFat: Double?
+  var fiber: Double?
+  var addedSugar: Double?
 
   static func == (a: FoodEntry, b: FoodEntry) -> Bool {
     a.id == b.id && a.date == b.date && a.food == b.food && a.quantity == b.quantity && a.macros == b.macros
-      && a.pending == b.pending && a.meal == b.meal && a.isLocal == b.isLocal
+      && a.pending == b.pending && a.meal == b.meal && a.isLocal == b.isLocal && a.mergeId == b.mergeId
+      && a.satFat == b.satFat && a.fiber == b.fiber && a.addedSugar == b.addedSugar
   }
 
   static func parse(_ e: [String: Any], day: String) -> FoodEntry? {
@@ -138,7 +155,8 @@ struct FoodEntry: Equatable, Identifiable {
     }
     return FoodEntry(id: id, date: e["date"] as? String ?? day, time: e["time"] as? String, meal: MealSlot(e["meal_type"] as? String),
                      food: e["food"] as? String ?? "—", quantity: n(e["quantity"]) ?? 1, unit: e["unit"] as? String,
-                     macros: Macros(e), extras: extras)
+                     macros: Macros(e), extras: extras, mergeId: (e["merge_id"] as? NSNumber)?.intValue,
+                     satFat: n(e["saturated_fat_g"]), fiber: n(e["fiber_g"]), addedSugar: n(e["added_sugar_g"]))
   }
 }
 
@@ -151,12 +169,34 @@ struct NutritionDay: Equatable {
   var entries: [FoodEntry]
   /// The day's food log cannot be read right now (server message).
   var error: String?
+  /// The server says nothing was logged that day (「未记录」).
+  var notLogged = false
 
   func meals() -> [(MealSlot, [FoodEntry])] {
     MealSlot.allCases.compactMap { m in
       let xs = entries.filter { $0.meal == m }
       return xs.isEmpty ? nil : (m, xs)
     }
+  }
+
+  /// The Today card's bar turns red a little past the goal (same as app.js dayCardHtml; not a health rule).
+  static let kcalOverShare = 1.05
+
+  var kcalFraction: Double { (goal.kcal ?? 0) > 0 ? (intake.kcal ?? 0) / goal.kcal! : 0 }
+  var kcalOver: Bool { (goal.kcal ?? 0) > 0 && (intake.kcal ?? 0) > goal.kcal! * Self.kcalOverShare }
+
+  /// The line under the rings (app.js foodDayHtml): a nutrient no entry has is left out, and so is an empty day.
+  var extras: [(String, String)] {
+    func sum(_ f: (FoodEntry) -> Double?) -> Double? {
+      let xs = entries.compactMap(f)
+      return xs.isEmpty ? nil : xs.reduce(0, +)
+    }
+    var out: [(String, String)] = []
+    if let v = sum(\.satFat) { out.append((tr("饱和脂肪", "Saturated fat"), "\(RecordFormat.num(v, 1)) g")) }
+    if let v = sum(\.fiber) { out.append((tr("纤维", "Fibre"), "\(RecordFormat.num(v, 1)) g")) }
+    if let v = sum(\.addedSugar) { out.append((tr("添加糖", "Added sugar"), "\(RecordFormat.num(v, 1)) g")) }
+    if !entries.isEmpty { out.append((tr("条目", "Entries"), "\(entries.count)")) }
+    return out
   }
 
   /// From the today document's `nutrition`, then the pending writes of that day: entries being deleted are gone,
@@ -170,7 +210,7 @@ struct NutritionDay: Equatable {
     let goalJ = n["goal"] as? [String: Any]
     var d = NutritionDay(date: day, goal: Macros(goalJ), goalName: goalJ?["name"] as? String, intake: Macros(n["intake"] as? [String: Any]),
                          entries: ((n["entries"] as? [[String: Any]]) ?? []).compactMap { FoodEntry.parse($0, day: day) },
-                         error: n["error"] as? String)
+                         error: n["error"] as? String, notLogged: (n["logged"] as? Bool) == false && n["error"] == nil)
     d = d.applying(pending, day: day)
     return d
   }
@@ -200,12 +240,23 @@ struct NutritionDay: Equatable {
       }
     }
     out.intake = out.entries.reduce(Macros(kcal: 0, protein: 0, carbs: 0, fat: 0)) { $0 + $1.macros }
+    if !out.entries.isEmpty { out.notLogged = false }
     return out
   }
 }
 
 /// A quick-meal template (`/meal-templates`).
 struct MealTemplate: Equatable, Identifiable {
+  /// One food of the template: its grams can be changed before logging.
+  struct Food: Equatable {
+    var name: String
+    var grams: Double?
+    var macros: Macros
+  }
+
+  /// The strip shows this many, then 「全部」 (app.js QUICK_MAX).
+  static let stripCount = 5
+
   var id: Int
   var name: String
   var meal: MealSlot
@@ -215,15 +266,55 @@ struct MealTemplate: Equatable, Identifiable {
   var todayLog: Int?
   /// A logging of it still in the queue.
   var pending: PendingRecord?
+  var foods: [Food] = []
+  /// The grams are a guess: the sheet opens first (「克数待确认」).
+  var needsConfirmation = false
+  var uses30d = 0
+
+  var isLogged: Bool { todayLog != nil || pending != nil }
 
   static func parseList(_ list: [[String: Any]]?, pending: [PendingRecord], today: String) -> [MealTemplate] {
     (list ?? []).compactMap { t in
       guard let id = (t["id"] as? NSNumber)?.intValue, let name = t["name"] as? String else { return nil }
-      let items = ((t["items"] as? [[String: Any]]) ?? []).compactMap { $0["food"] as? String }.joined(separator: " · ")
+      let raw = (t["items"] as? [[String: Any]]) ?? []
+      let items = raw.compactMap { $0["food"] as? String }.joined(separator: " · ")
       let log = (t["today_log"] as? [String: Any]).flatMap { ($0["log_id"] as? NSNumber)?.intValue }
       let p = pending.last { $0.kind == FoodKind.mealLog && $0.date == today && (RecordFormat.double($0.json["template_id"]).map(Int.init)) == id }
+      let foods = raw.compactMap { f -> Food? in
+        guard let n = f["food"] as? String else { return nil }
+        return Food(name: n, grams: RecordFormat.double(f["grams"]), macros: Macros(f))
+      }
       return MealTemplate(id: id, name: name, meal: MealSlot(t["meal"] as? String), totals: Macros(t["totals"] as? [String: Any]),
-                          items: items, todayLog: log, pending: p)
+                          items: items, todayLog: log, pending: p, foods: foods,
+                          needsConfirmation: (t["needs_confirmation"] as? Bool) ?? false,
+                          uses30d: (t["uses_30d"] as? NSNumber)?.intValue ?? 0)
+    }
+  }
+
+  /// Most used in the last 30 days first; ties keep the server's order.
+  static func byUse(_ list: [MealTemplate]) -> [MealTemplate] {
+    list.enumerated().sorted { a, b in
+      a.element.uses30d != b.element.uses30d ? a.element.uses30d > b.element.uses30d : a.offset < b.offset
+    }.map(\.element)
+  }
+
+  /// What logging adds with `grams` edited in the sheet (one value per food, nil = as saved): each food scales by itself.
+  func totals(grams: [Double?]) -> Macros {
+    var out = Macros()
+    for (i, f) in foods.enumerated() {
+      let g = i < grams.count ? grams[i] : nil
+      let factor = (f.grams ?? 0) > 0 ? (g ?? f.grams ?? 0) / (f.grams ?? 1) : 1
+      out = out + f.macros.scaled(factor)
+    }
+    return out
+  }
+
+  /// The `items` of the log request: nil when nothing changed (the server then uses the template as saved).
+  func overrides(grams: [Double?]) -> [[String: Any]]? {
+    guard foods.enumerated().contains(where: { i, f in i < grams.count && grams[i] != f.grams }) else { return nil }
+    return foods.enumerated().compactMap { i, f in
+      guard let g = (i < grams.count ? grams[i] : nil) ?? f.grams else { return nil }
+      return ["food": f.name, "grams": g]
     }
   }
 }
@@ -321,10 +412,42 @@ struct WaterDay: Equatable {
   var goal: Double?
   var quick: [Int]
   var drinks: [Drink]
-  /// The newest drink (undo): a queued one first, else the server's `undo`.
-  var last: Drink? { drinks.first }
+  /// The server's `undo`: its newest drink logged by hand / button / AI (a Health sample is removed in Health itself).
+  var undoId: String?
+  var goalSource: String?
+  var goalExtras: [(kind: String, ml: Double)] = []
+
+  static func == (a: WaterDay, b: WaterDay) -> Bool {
+    a.date == b.date && a.total == b.total && a.goal == b.goal && a.quick == b.quick && a.drinks == b.drinks && a.undoId == b.undoId
+      && a.goalSource == b.goalSource && a.goalExtras.map(\.ml) == b.goalExtras.map(\.ml)
+  }
+
+  /// The drink undo takes back: a queued one first, else the server's `undo`.
+  var last: Drink? {
+    if let q = drinks.first(where: { $0.pending != nil }) { return q }
+    return drinks.first { $0.id == undoId }
+  }
 
   var fraction: Double { (goal ?? 0) > 0 ? total / goal! : 0 }
+
+  /// Of the goal; a very large day stops at 999 (water.js).
+  var percent: Int? { (goal ?? 0) > 0 ? min(Int((fraction * 100).rounded()), 999) : nil }
+
+  /// Where the goal comes from and what the day adds to it (training, sauna).
+  var goalNote: String? {
+    guard goalSource != nil else { return nil }
+    let base = goalSource == "profile" ? tr("目标来自饮食档案", "Goal from your diet profile") : tr("通用建议值", "General recommendation")
+    let extras = goalExtras.map { e -> String in
+      let name: String
+      switch e.kind {
+      case "training": name = tr("训练日", "Training day")
+      case "sauna": name = tr("桑拿", "Sauna")
+      default: name = e.kind
+      }
+      return "\(name) +\(RecordFormat.num(e.ml))"
+    }
+    return ([base] + extras).joined(separator: " · ")
+  }
 
   static func build(_ j: [String: Any]?, day: String, pending: [PendingRecord]) -> WaterDay? {
     guard j != nil || pending.contains(where: { $0.date == day && $0.kind == FoodKind.water }) else { return nil }
@@ -338,10 +461,16 @@ struct WaterDay: Equatable {
       Drink(id: "c:\($0.clientId)", ml: RecordFormat.double($0.json["ml"]) ?? 0, at: $0.json["at"] as? String, pending: $0)
     }
     drinks = added + drinks
-    let goal = (j?["goal"] as? [String: Any]).flatMap { RecordFormat.double($0["ml"]) }
+    let g = j?["goal"] as? [String: Any]
+    let goal = g.flatMap { RecordFormat.double($0["ml"]) }
     let quick = ((j?["quick_ml"] as? [NSNumber]) ?? []).map(\.intValue)
+    let extras = ((g?["extras"] as? [[String: Any]]) ?? []).compactMap { e -> (kind: String, ml: Double)? in
+      guard let k = e["kind"] as? String, let ml = RecordFormat.double(e["ml"]) else { return nil }
+      return (kind: k, ml: ml)
+    }
+    let undoId = (j?["undo"] as? [String: Any]).flatMap { RecordFormat.string($0["id"]) }
     return WaterDay(date: day, total: drinks.reduce(0) { $0 + $1.ml }, goal: goal, quick: quick.isEmpty ? [250, 500] : quick,
-                    drinks: drinks)
+                    drinks: drinks, undoId: deleting.contains(undoId ?? "") ? nil : undoId, goalSource: g?["source"] as? String, goalExtras: extras)
   }
 }
 
@@ -355,11 +484,58 @@ struct GroceryList: Equatable {
     var note: String?
     var bought: Bool
     var pending: PendingRecord?
+    var estCost: Double?
+    var paidPrice: Double?
+    var currency: String?
+    var links: [GroceryLink] = []
+    var offer: GroceryOffer?
+    /// cheap / dear: how the purchase compares with the user's own prices.
+    var verdict: String?
+    /// 「家里有 x」: why less is bought.
+    var pantryLabel: String?
+    var staple = false
+
+    /// Quantity · what it costs.
+    var value: String {
+      [qty, estCost != nil ? Money.full(paidPrice ?? estCost, currency) : nil].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// 半价 / 特价 for what is still to buy, 买得便宜 / 买贵了 once bought.
+    var badge: (String, Tone)? {
+      if bought {
+        switch verdict {
+        case "cheap": return (tr("买得便宜", "Good price"), .good)
+        case "dear": return (tr("买贵了", "Paid too much"), .bad)
+        default: return nil
+        }
+      }
+      return offer?.badge
+    }
+
+    /// Only prices from earlier days show their age.
+    var offerAge: String? {
+      guard !bought, let d = offer?.ageDays, d > 0 else { return nil }
+      return GroceryOffer.ageLabel(d)
+    }
   }
 
   var week: String?
   var items: [Item]
+  var weekEnd: String?
+  /// Estimated total per currency (a list can mix them).
+  var estTotal: [(String, Double)] = []
+  /// Lines without any estimate.
+  var unpriced = 0
+  var halfItems = 0
+  var halfSave: [(String, Double)] = []
+  var prices: GroceryPrices?
+  var warnings: [(code: String, label: String)] = []
   var bought: Int { items.filter(\.bought).count }
+
+  static func == (a: GroceryList, b: GroceryList) -> Bool {
+    a.week == b.week && a.items == b.items && a.weekEnd == b.weekEnd && a.unpriced == b.unpriced && a.halfItems == b.halfItems
+      && a.prices == b.prices && a.estTotal.map(\.1) == b.estTotal.map(\.1) && a.warnings.map(\.label) == b.warnings.map(\.label)
+  }
 
   func byCategory() -> [(String, [Item])] {
     var order: [String] = []
@@ -406,15 +582,26 @@ struct GroceryList: Equatable {
     guard let j else { return nil }
     var items: [Item] = ((j["items"] as? [[String: Any]]) ?? []).compactMap { i in
       guard let id = (i["id"] as? NSNumber)?.intValue else { return nil }
+      let n = RecordFormat.double
       return Item(id: id, name: i["name"] as? String ?? "—", qty: i["qty_label"] as? String,
                   category: (i["category_label"] as? String) ?? tr("其他", "Other"), note: i["note"] as? String,
-                  bought: (i["bought"] as? Bool) ?? false)
+                  bought: (i["bought"] as? Bool) ?? false, estCost: n(i["est_cost"]), paidPrice: n(i["paid_price"]),
+                  currency: i["currency"] as? String, links: GroceryLink.parse(i["links"]),
+                  offer: GroceryOffer.parse(i["offer"]), verdict: (i["purchase"] as? [String: Any])?["verdict"] as? String,
+                  pantryLabel: i["pantry_label"] as? String, staple: (i["staple"] as? Bool) ?? false)
     }
     for p in pending where p.kind == FoodKind.grocery {
       guard let id = RecordFormat.double(p.json["id"]).map(Int.init), let i = items.firstIndex(where: { $0.id == id }) else { continue }
       items[i].bought = (p.json["bought"] as? Bool) ?? items[i].bought
       items[i].pending = p
     }
-    return GroceryList(week: j["week_start"] as? String, items: items)
+    let half = j["half_price"] as? [String: Any]
+    return GroceryList(week: j["week_start"] as? String, items: items, weekEnd: j["week_end"] as? String,
+                       estTotal: Money.amounts(j["est_total"]), unpriced: (j["unpriced"] as? NSNumber)?.intValue ?? 0,
+                       halfItems: (half?["items"] as? NSNumber)?.intValue ?? 0, halfSave: Money.amounts(half?["save"]),
+                       prices: GroceryPrices.parse(j["prices"]),
+                       warnings: ((j["warnings"] as? [[String: Any]]) ?? []).compactMap { w in
+                         (w["label"] as? String).map { (code: (w["code"] as? String) ?? "", label: $0) }
+                       })
   }
 }

@@ -14,7 +14,7 @@ struct RangeFigures: Equatable {
 enum TrendsSheet: Identifiable {
   case explain(key: String, title: String, figures: RangeFigures? = nil)
   case status(TrendStatus.Tile)
-  case recovery, regularity, calendar
+  case recovery, regularity, calendar, bodyAge
 
   var id: String {
     switch self {
@@ -23,6 +23,7 @@ enum TrendsSheet: Identifiable {
     case .recovery: return "recovery"
     case .regularity: return "regularity"
     case .calendar: return "calendar"
+    case .bodyAge: return "bodyAge"
     }
   }
 }
@@ -30,7 +31,8 @@ enum TrendsSheet: Identifiable {
 /// The Trends tab (#340 N4), like the page's: 指标 (今天 = the end day's full metric list against the personal baseline,
 /// status cards first (#357); 7 / 30 / 90 / 365 days = every WHOOP metric with its range mean and "vs 上期", status cards
 /// as of the end date), 睡眠 (the last 14 nights) and 报告 (weekly / monthly report). Read from the local database
-/// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets.
+/// first, refreshed through the sync layer; the end date looks back. Numbers and charts only; words in the sheets. With
+/// flag `trends_v2` each category folds (TrendsFold.swift).
 struct TrendsView: View {
   enum Mode: String, CaseIterable { case metrics, sleep, report
     var label: String {
@@ -144,68 +146,9 @@ struct TrendsView: View {
   // MARK: - metrics
 
   @ViewBuilder private var metrics: some View {
-    SegControl(items: TrendRange.allCases.map { ($0, $0.label) }, selected: store.range) { store.setRange($0) }
-      .padding(.top, 8)
-    if let p = store.page, store.range == .today {
-      dayList(p)
-    } else if let p = store.page {
-      let d = p.data
-      let cur = Text("\(TrendsFormat.day(d.start, year: d.withYear)) – \(TrendsFormat.day(d.end, year: d.withYear))")
-        .font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
-      let prev = Text("vs \(TrendsFormat.day(d.prevStart, year: d.withYear)) – \(TrendsFormat.day(LocalDay.add(d.start, -1), year: d.withYear))")
-        .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-      Group {
-        if d.withYear { VStack(alignment: .leading, spacing: 2) { cur; prev } } else { HStack(spacing: 4) { cur; prev } }
-      }
-      .lineLimit(1).minimumScaleFactor(0.8)
-      .padding(.top, 14)
-      ForEach(TrendCards.groups(p), id: \.id) { g in
-        SectionHeader(title: g.title).padding(.top, 22).padding(.bottom, 10)
-        ForEach(g.cards) { c in
-          TrendCardView(card: c) { sheet = $0 }.padding(.bottom, 8).id("card.\(c.id)")
-        }
-      }
-      if !p.status.tiles.isEmpty { statusBlock(p) }
-    } else if store.loading {
-      ProgressView().tint(Palette.text3).frame(maxWidth: .infinity).padding(.vertical, 60)
-    } else {
-      Text(store.offline ? tr("需要联网", "Needs a connection") : tr("暂无", "Nothing yet")).font(Typo.body).foregroundColor(Palette.text3)
-        .frame(maxWidth: .infinity).padding(.vertical, 60)
-    }
+    TrendsMetricsContent(page: store.page, range: store.range, loading: store.loading, offline: store.offline,
+                         foldOn: session.flags.contains(TrendsFold.flag), setRange: { store.setRange($0) }, open: { sheet = $0 })
     SyncStatusLine(sync: session.sync, hasData: store.page != nil).padding(.top, 18)
-  }
-
-  /// 「今天」 (#357): the end day, its status cards first (they are "today" by nature), then every metric as one row.
-  @ViewBuilder private func dayList(_ p: TrendsPage) -> some View {
-    // the day itself is in the header's overline (and next to the status cards)
-    let d = p.data
-    if !p.status.tiles.isEmpty { statusBlock(p) }
-    ForEach(TrendDay.groups(d), id: \.id) { g in
-      SectionHeader(title: g.title).padding(.top, 22).padding(.bottom, 10)
-      TrendDayList(rows: g.rows) { r in sheet = .explain(key: r.explain, title: r.label) }
-        .id("day.\(g.id)")
-    }
-  }
-
-  /// Status cards describe the end date and do not change with the range, so they come after the charts.
-  private func statusBlock(_ p: TrendsPage) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        SectionHeader(title: tr("当前状态", "Current status"))
-        if p.localCount > 0 {
-          HStack(spacing: 4) {
-            Circle().fill(Palette.text3).frame(width: 4, height: 4)
-            Text(tr("本机计算", "On this phone")).font(Typo.label).foregroundColor(Palette.text3)
-          }
-        }
-        Text(TodayModel.shortDay(p.data.end)).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3)
-      }
-      LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
-        ForEach(p.status.tiles) { t in StatusTileView(tile: t) { sheet = .status(t) } }
-      }
-    }
-    .padding(.top, 22)
-    .id("status")
   }
 
   /// `W2W_PERF=1 W2W_PERF_SCROLL_TRENDS=1`: scroll the tab down and up three times while the frame meter counts.
@@ -226,6 +169,103 @@ struct TrendsView: View {
   }
 }
 
+/// 指标 of the Trends tab: the range control, then 今天's list or the range's cards. The tab and the read-only view of someone
+/// else (`MemberTrendsPage`) draw the same thing from a `TrendsPage`.
+struct TrendsMetricsContent: View {
+  let page: TrendsPage?
+  let range: TrendRange
+  let loading: Bool
+  let offline: Bool
+  let foldOn: Bool
+  let setRange: (TrendRange) -> Void
+  let open: (TrendsSheet) -> Void
+  @AppStorage(TrendsFold.storageKey) private var foldedRaw = ""
+
+  // no container here: inside the page's LazyVStack each card stays its own lazy row
+  var body: some View {
+    SegControl(items: TrendRange.allCases.map { ($0, $0.label) }, selected: range) { setRange($0) }
+      .padding(.top, 8)
+    if let p = page, range == .today {
+      dayList(p)
+    } else if let p = page {
+      let d = p.data
+      let cur = Text("\(TrendsFormat.day(d.start, year: d.withYear)) – \(TrendsFormat.day(d.end, year: d.withYear))")
+        .font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
+      let prev = Text("vs \(TrendsFormat.day(d.prevStart, year: d.withYear)) – \(TrendsFormat.day(LocalDay.add(d.start, -1), year: d.withYear))")
+        .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+      Group {
+        if d.withYear { VStack(alignment: .leading, spacing: 2) { cur; prev } } else { HStack(spacing: 4) { cur; prev } }
+      }
+      .lineLimit(1).minimumScaleFactor(0.8)
+      .padding(.top, 14)
+      ForEach(TrendCards.groups(p), id: \.id) { g in
+        groupHeader(g.id, g.title, count: g.cards.count, page: p)
+        if !isFolded(g.id) {
+          ForEach(g.cards) { c in
+            TrendCardView(card: c) { open($0) }.padding(.bottom, 8).id("card.\(c.id)")
+          }
+        }
+      }
+      if !p.status.tiles.isEmpty { statusBlock(p) }
+    } else if loading {
+      ProgressView().tint(Palette.text3).frame(maxWidth: .infinity).padding(.vertical, 60)
+    } else {
+      Text(offline ? tr("需要联网", "Needs a connection") : tr("暂无", "Nothing yet")).font(Typo.body).foregroundColor(Palette.text3)
+        .frame(maxWidth: .infinity).padding(.vertical, 60)
+    }
+  }
+
+  /// 「今天」 (#357): the end day, its status cards first (they are "today" by nature), then every metric as one row.
+  @ViewBuilder private func dayList(_ p: TrendsPage) -> some View {
+    // the day itself is in the header's overline (and next to the status cards)
+    let d = p.data
+    if !p.status.tiles.isEmpty { statusBlock(p) }
+    ForEach(TrendDay.groups(d), id: \.id) { g in
+      groupHeader(g.id, g.title, count: g.rows.count, page: p)
+      if !isFolded(g.id) {
+        TrendDayList(rows: g.rows) { r in open(r.id == "body_age" ? .bodyAge : .explain(key: r.explain, title: r.label)) }
+          .id("day.\(g.id)")
+      }
+    }
+  }
+
+  // MARK: - foldable categories (flag trends_v2)
+
+  private func isFolded(_ group: String) -> Bool { foldOn && TrendsFold.contains(foldedRaw, group) }
+
+  @ViewBuilder private func groupHeader(_ id: String, _ title: String, count: Int, page: TrendsPage) -> some View {
+    if foldOn {
+      TrendGroupHeader(title: title, count: count, summary: TrendsFold.summary(id, page.status), folded: isFolded(id)) {
+        foldedRaw = TrendsFold.toggled(foldedRaw, id)
+      }
+      .padding(.top, 14).padding(.bottom, isFolded(id) ? 0 : 6)
+    } else {
+      SectionHeader(title: title).padding(.top, 22).padding(.bottom, 10)
+    }
+  }
+
+  /// Status cards describe the end date and do not change with the range, so they come after the charts.
+  private func statusBlock(_ p: TrendsPage) -> some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        SectionHeader(title: tr("当前状态", "Current status"))
+        if p.localCount > 0 {
+          HStack(spacing: 4) {
+            Circle().fill(Palette.text3).frame(width: 4, height: 4)
+            Text(tr("本机计算", "On this phone")).font(Typo.label).foregroundColor(Palette.text3)
+          }
+        }
+        Text(TodayModel.shortDay(p.data.end)).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3)
+      }
+      LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+        ForEach(p.status.tiles) { t in StatusTileView(tile: t) { open(.status(t)) } }
+      }
+    }
+    .padding(.top, 22)
+    .id("status")
+  }
+}
+
 extension PerfProbe {
   static let trendsScroll = ProcessInfo.processInfo.environment["W2W_PERF_SCROLL_TRENDS"] == "1"
 }
@@ -237,10 +277,11 @@ struct TrendsSheetView: View {
   let end: String?
   @ObservedObject var store: TrendsStore
   let close: () -> Void
+  @Environment(\.memberView) private var member
 
   var body: some View {
     SheetContainer(title: title, close: close) { content }
-      .presentationDetents(sheet.id == "calendar" ? [.large] : [.medium, .large])
+      .presentationDetents(sheet.id == "calendar" || sheet.id == "bodyAge" ? [.large] : [.medium, .large])
       .presentationDragIndicator(.visible)
   }
 
@@ -251,6 +292,7 @@ struct TrendsSheetView: View {
     case .recovery: return tr("恢复贡献项", "Recovery contributors")
     case .regularity: return tr("睡眠规律性", "Sleep regularity")
     case .calendar: return tr("选择结束日期", "Pick the end date")
+    case .bodyAge: return tr("身体年龄", "Body age")
     }
   }
 
@@ -283,6 +325,8 @@ struct TrendsSheetView: View {
         store.select(day)
         close()
       }
+    case .bodyAge:
+      if member == nil { BodyAgeView() }   // it reads my own tables
     }
   }
 

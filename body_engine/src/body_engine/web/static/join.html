@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN" data-i18n-title="activate.joinTitle">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<title>加入圈子</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{--bg:#fff;--surface:#f4f4f6;--text:#111113;--text-2:#6c6c73;--accent:#111113;--on-accent:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#000;--surface:#1c1c1e;--text:#f5f5f7;--text-2:#a1a1a6;--accent:#f5f5f7;--on-accent:#000}}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;display:flex;align-items:center;justify-content:center}
+main{width:100%;max-width:420px;padding:32px 16px calc(32px + env(safe-area-inset-bottom))}
+img{display:block;width:64px;height:64px;margin:0 0 20px;border-radius:14px}
+h1{font-size:26px;line-height:1.2;margin:0 0 8px}
+p{margin:0 0 16px;color:var(--text-2)}
+.code{font:600 26px ui-monospace,Menlo,monospace;letter-spacing:.06em;text-align:center;padding:16px 12px;margin:0 0 16px;border-radius:14px;background:var(--surface);color:var(--text);-webkit-user-select:all;user-select:all;overflow-wrap:anywhere}
+button,.btn{display:block;width:100%;font:600 17px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;padding:16px;margin:0 0 10px;border:0;border-radius:14px;background:var(--accent);color:var(--on-accent);cursor:pointer;text-align:center;text-decoration:none}
+button.secondary{background:var(--surface);color:var(--text)}
+button:disabled{opacity:.5}
+h2{font-size:20px;margin:28px 0 8px}
+ol{margin:0 0 16px;padding-left:22px}li{margin:6px 0}
+.small{font-size:14px;margin:14px 0 0}
+.status{min-height:1.5em;margin:0 0 10px;color:var(--text-2)}
+.help{display:block;margin:20px 0 0;padding:14px;border-radius:14px;background:var(--surface);color:var(--text);text-align:center;text-decoration:none;font-weight:600}
+</style>
+</head>
+<body>
+<!-- Circle invite landing page: static, no API call, so the forced upgrade (client/policy.py) never stands in front of it. join.js -->
+<main>
+  <img src="icon.svg" alt="">
+  <h1 data-i18n="activate.joinTitle">加入圈子</h1>
+  <p id="lead" data-i18n="activate.joinLead">朋友邀请你加入 Watch2Whoop 的圈子</p>
+  <p id="nocode" data-i18n="activate.joinNoCode" hidden>链接里没有邀请码，请朋友再发一次</p>
+  <div id="code" class="code" hidden></div>
+  <p id="status" class="status" role="status"></p>
+  <button id="open-app" type="button" data-i18n="activate.openApp" hidden>在 App 里打开</button>
+  <a id="open-web" class="btn" data-i18n="activate.openWeb" hidden>在网页里打开</a>
+  <button id="copy" class="secondary" type="button" data-i18n="activate.copyCode" hidden>复制邀请码</button>
+  <p id="wechat" class="small" data-i18n="activate.joinWeChat" hidden>微信里打不开 App：点右上角 ··· →「在 Safari 中打开」</p>
+  <p id="manual" class="small" data-i18n="activate.joinManual" hidden>也可以打开 Watch2Whoop → 朋友 → 用邀请码加入</p>
+  <section id="install" hidden>
+    <h2 data-i18n="activate.installTitle">先安装 App</h2>
+    <p data-i18n="activate.joinInstallLead">iPhone 上要用 Watch2Whoop App。装好以后再点一次这个邀请链接。</p>
+    <ol>
+      <li data-i18n="activate.install1">在 App Store 安装 TestFlight</li>
+      <li data-i18n="activate.install2">打开 TestFlight 邀请邮件，点「查看测试」→「接受」</li>
+      <li data-i18n="activate.install3">在 TestFlight 里安装 Watch2Whoop</li>
+      <li data-i18n="activate.joinInstall4">回到这里，再点一次邀请链接</li>
+    </ol>
+    <a class="help" href="https://apps.apple.com/app/testflight/id899247664" target="_blank" rel="noopener" data-i18n="activate.getTestFlight">去 App Store 装 TestFlight</a>
+    <p class="small" data-i18n="activate.noInvite">没收到邀请邮件？请管理员把你的 Apple ID 加为测试员</p>
+  </section>
+</main>
+<script src="i18n.js"></script>
+<script src="i18n-en.js"></script>
+<script src="join.js"></script>
+</body>
+</html>

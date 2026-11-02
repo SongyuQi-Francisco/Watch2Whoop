@@ -16,10 +16,10 @@ enum TrendsDocs {
   }
 }
 
-/// The ranges of the range control (the page also has 180 days; #340 N4 keeps four). 「今天」 (#357) is one day: its
+/// The ranges of the range control (the page's five). 「今天」 (#357) is one day: its
 /// metric list reads the 61-day document (the day plus its 60-day baseline window, `TodayParams.trendsDays`).
 enum TrendRange: Int, CaseIterable, Identifiable {
-  case today = 1, week = 7, month = 30, quarter = 90, year = 365
+  case today = 1, week = 7, month = 30, quarter = 90, halfYear = 180, year = 365
   var id: Int { rawValue }
   var label: String {
     switch self {
@@ -27,6 +27,7 @@ enum TrendRange: Int, CaseIterable, Identifiable {
     case .week: return tr("7 天", "7 d")
     case .month: return tr("30 天", "30 d")
     case .quarter: return tr("90 天", "90 d")
+    case .halfYear: return tr("180 天", "180 d")
     case .year: return tr("365 天", "365 d")
     }
   }

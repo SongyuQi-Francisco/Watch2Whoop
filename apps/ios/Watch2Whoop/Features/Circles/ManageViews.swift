@@ -425,6 +425,8 @@ struct CircleDetailView: View {
     case "created": how = tr("建圈", "Created it")
     case "invite_code": how = me ? tr("我邀请的 · 邀请链接", "Invited by me · link") : tr("由 \(who) 邀请 · 邀请链接", "Invited by \(who) · link")
     case "referral": how = me ? tr("用了我的推荐码", "Used my referral code") : tr("用了 \(who) 的推荐码", "Used \(who)'s referral code")
+    case "member_invite": how = me ? tr("我邀请的", "Invited by me") : tr("由 \(who) 邀请", "Invited by \(who)")
+    case "admin_invite": how = tr("管理员邀请", "Invited by the admin")
     case "circle_code": how = tr("圈子激活码「\(code)」", "Circle code \u{201C}\(code)\u{201D}")
     default: how = tr("来源未记录", "Not recorded")
     }

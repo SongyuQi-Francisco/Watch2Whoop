@@ -291,7 +291,7 @@ enum TodayHomeFeatures {
       area(tr("恢复", "Recovery"), [
         (tr("恢复与 HRV", "Recovery and HRV"), .trends(.metrics)),
         (tr("健康监测", "Health monitor"), .sheet(.monitor)),
-        (tr("压力", "Stress"), .trends(.metrics)),
+        (tr("压力", "Stress"), .sheet(.detail(.stress))),
         (tr("训练负荷", "Training load"), .sheet(.load)),
       ]),
       area(tr("睡眠", "Sleep"), [
@@ -312,7 +312,7 @@ enum TodayHomeFeatures {
       area(tr("身体", "Body"), [
         (tr("身体状态", "Body status"), .bodyStatus),
         (tr("体重", "Weight"), .sheet(.weight)),
-        (tr("身体年龄", "Body age"), .trends(.metrics)),
+        (tr("身体年龄", "Body age"), .sheet(.detail(.bodyAge))),
         (tr("周报 / 月报", "Weekly / monthly report"), .trends(.report)),
       ]),
       area(tr("健康档案", "Health records"), [

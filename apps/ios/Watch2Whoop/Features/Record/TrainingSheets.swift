@@ -173,8 +173,9 @@ struct AskJarvisButton: View {
   /// How to ask from inside a sheet; nil = directly.
   var ask: ((String) -> Void)? = nil
   @Environment(\.askAI) private var askAI
+  @Environment(\.memberView) private var member
 
-  private var canAsk: Bool { JarvisRouter.current?.ai.mode != JarvisAI.Mode.none }
+  private var canAsk: Bool { member == nil && JarvisRouter.current?.ai.mode != JarvisAI.Mode.none }
 
   var body: some View {
     if canAsk {

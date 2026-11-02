@@ -100,6 +100,25 @@ final class APIClient {
     return URLSession(configuration: c)
   }()
 
+  /// No response cache, cookie or credential store at all: what the read-only member view fetches (someone else's data)
+  /// stays in memory. The server's `/v1/` answers also say `no-store`.
+  static let uncachedSession: URLSession = {
+    let c = URLSessionConfiguration.ephemeral
+    c.timeoutIntervalForRequest = 15
+    c.waitsForConnectivity = false
+    c.requestCachePolicy = .reloadIgnoringLocalCacheData
+    c.urlCache = nil
+    c.httpCookieStorage = nil
+    c.urlCredentialStorage = nil
+    c.httpShouldSetCookies = false
+    return URLSession(configuration: c)
+  }()
+
+  /// The same account through `uncachedSession`.
+  func uncached() -> APIClient {
+    APIClient(baseURL: baseURL, token: token, session: Self.uncachedSession, onUnauthorized: onUnauthorized, sleep: sleep)
+  }
+
   static var appVersion: String {
     Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
   }

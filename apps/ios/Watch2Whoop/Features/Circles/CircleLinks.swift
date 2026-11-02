@@ -5,8 +5,9 @@ enum CircleLink: Equatable {
   case post(Int)
   case join(String)
 
-  /// A notification's `url` (notify/core.py; feed.post_url = `/app/?tab=friends&feed=<id>`), a full Today page link
-  /// with `?circle=<code>` (an invite), or the app's own `watch2whoop://circle?code=…` / `watch2whoop://feed?post=…`.
+  /// A notification's `url` (notify/core.py; feed.post_url = `/app/?tab=friends&feed=<id>`), the shared invite link
+  /// `/app/join.html#<code>`, the older form with `?circle=<code>`, or the app's own `watch2whoop://circle?code=…` /
+  /// `watch2whoop://feed?post=…`.
   static func parse(_ raw: String) -> CircleLink? {
     let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     guard let c = URLComponents(string: s.hasPrefix("/") ? "https://x\(s)" : s) else { return nil }
@@ -18,6 +19,7 @@ enum CircleLink: Equatable {
       default: return nil
       }
     }
+    if c.path.hasSuffix("/join.html"), let code = c.fragment.flatMap(InviteCode.clean) { return .join(code) }
     if let id = Int(q["feed"] ?? ""), q["tab"] == nil || q["tab"] == "friends" { return .post(id) }
     if let code = q["circle"].flatMap(InviteCode.clean) { return .join(code) }
     return nil
@@ -52,21 +54,16 @@ enum InviteCode {
   }
 }
 
-/// The links an invite shares. The Today page link opens the join sheet in a browser; the app link opens it here.
+/// The link an invite shares: the server's landing page (`web/static/join.js`), static, so the forced upgrade never stands
+/// in front of it; it opens `watch2whoop://circle?code=<code>` here, or says how to install the app. The code is in the
+/// fragment, which browsers do not send to the server. Universal Links would skip the page (they need the Apple team's setup).
 enum InviteShare {
   static func webLink(server: String, code: String) -> URL? {
     var c = URLComponents(string: server)
-    c?.path = "/app/"
-    c?.queryItems = [URLQueryItem(name: "circle", value: code)]
+    c?.path = "/app/join.html"
+    c?.query = nil
+    c?.fragment = code
     return c?.url
-  }
-
-  static func appLink(code: String) -> URL? {
-    var c = URLComponents()
-    c.scheme = "watch2whoop"
-    c.host = "circle"
-    c.queryItems = [URLQueryItem(name: "code", value: code)]
-    return c.url
   }
 
   static func text(circle: String, code: String) -> String {

@@ -84,6 +84,16 @@ final class ExplainLoader: ObservableObject {
   @Published private(set) var error: String?
   private var cancellable: AnyDatabaseCancellable?
 
+  /// Someone else's explanation (read-only member view): only in `member`'s memory, never in `docs`.
+  func start(_ member: MemberViewStore, kind: String, key: String, day: String?) {
+    let r = Endpoint.explain(kind, key, day: day, user: member.user)
+    Task {
+      await member.load([r])
+      if let json = member.json(r) { model = ExplainModel(json: json) }
+      else { error = member.state(r) == .offline ? tr("需要联网", "Needs a connection") : tr("无权限", "No access") }
+    }
+  }
+
   func start(_ session: AccountSession, kind: String, key: String, day: String?) {
     let docKey = TodayDocs.explain(kind, key, day)
     let localKey = ExplainLocal.key(kind, key, day)
@@ -114,6 +124,7 @@ struct ExplainBody: View {
   var day: String?
   var head = true
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.memberView) private var member
   @StateObject private var loader = ExplainLoader()
 
   var body: some View {
@@ -122,7 +133,10 @@ struct ExplainBody: View {
       else if let e = loader.error { ToneBadge(text: e).padding(.top, 12) }
       else { ProgressView().tint(Palette.text3).frame(maxWidth: .infinity).padding(.vertical, 24) }
     }
-    .task { loader.start(session, kind: kind, key: key, day: day) }
+    .task {
+      if let member { loader.start(member, kind: kind, key: key, day: day) }
+      else { loader.start(session, kind: kind, key: key, day: day) }
+    }
   }
 
   @ViewBuilder private func content(_ m: ExplainModel) -> some View {
@@ -157,7 +171,7 @@ struct ExplainBody: View {
     list(tr("注意", "Notes"), m.tips, tone: .text)
     list(tr("避免", "Avoid"), m.avoid, tone: .bad)
     list(tr("小心做", "With care"), m.caution, tone: .mid)
-    list(tr("你的档案", "Your profile"), m.profile, tone: .sleep)
+    list(member == nil ? tr("你的档案", "Your profile") : tr("档案", "Profile"), m.profile, tone: .sleep)
     if let p = m.aiPrompt { AskAIButton(prompt: p).padding(.top, 20) }
   }
 

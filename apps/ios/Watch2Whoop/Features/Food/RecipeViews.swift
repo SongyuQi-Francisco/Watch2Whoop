@@ -84,51 +84,18 @@ struct RecipeSheet: View {
   @State private var busy = false
   @State private var message: String?
 
-  init(recipe: Recipe, store: FoodStore, done: @escaping (Toast?) -> Void) {
+  /// slot: the meal it was suggested for (每餐推荐); otherwise the meal for now, if the recipe suits it.
+  init(recipe: Recipe, slot: MealSlot? = nil, store: FoodStore, done: @escaping (Toast?) -> Void) {
     self.store = store
     self.done = done
     let detail = store.recipeDetail(recipe.id) ?? recipe
     _recipe = State(initialValue: detail)
-    _meal = State(initialValue: recipe.slots.contains(MealSlot.now()) ? MealSlot.now() : (recipe.slots.first ?? MealSlot.now()))
+    _meal = State(initialValue: slot ?? (recipe.slots.contains(MealSlot.now()) ? MealSlot.now() : (recipe.slots.first ?? MealSlot.now())))
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
-      let m = recipe.perServing.scaled(servings)
-      HStack(spacing: 8) {
-        MetricTile(label: tr("热量", "Energy"), value: RecordFormat.num(m.kcal), unit: "kcal")
-        MetricTile(label: tr("蛋白", "Protein"), value: RecordFormat.num(m.protein), unit: "g")
-        MetricTile(label: tr("碳水", "Carbs"), value: RecordFormat.num(m.carbs), unit: "g")
-        MetricTile(label: tr("脂肪", "Fat"), value: RecordFormat.num(m.fat), unit: "g")
-      }
-      if let s = recipe.servingLabel {
-        Text(tr("每份 = \(s)", "1 serving = \(s)")).font(Typo.caption).foregroundColor(Palette.text2)
-      }
-      if !recipe.badges.isEmpty {
-        ScrollView(.horizontal, showsIndicators: false) {
-          HStack(spacing: 6) { ForEach(recipe.badges, id: \.0) { Badge(label: $0.0, tone: $0.1) } }
-        }
-      }
-      if !recipe.ingredients.isEmpty {
-        VStack(alignment: .leading, spacing: 0) {
-          SectionHeader(title: servings == 1 ? tr("食材", "Ingredients") : tr("食材 · \(RecordFormat.num(servings, 1)) 份", "Ingredients · \(RecordFormat.num(servings, 1))"))
-            .padding(.bottom, 4)
-          ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { _, i in
-            KeyValueRow(label: i.food, value: i.grams.map { "\(RecordFormat.num($0 * servings / max(recipe.servings, 0.5))) g" } ?? i.amount ?? "—")
-          }
-        }
-      }
-      if !recipe.steps.isEmpty {
-        VStack(alignment: .leading, spacing: 8) {
-          SectionHeader(title: tr("做法", "Method"))
-          ForEach(Array(recipe.steps.enumerated()), id: \.offset) { n, s in
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-              Text("\(n + 1)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3).frame(width: 16)
-              Text(s).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
-            }
-          }
-        }
-      }
+      RecipeDetails(recipe: recipe, servings: servings)
       VStack(alignment: .leading, spacing: 12) {
         SegmentedControl(items: MealSlot.allCases.map { ($0, $0.title) }, selection: $meal)
         HStack {
@@ -182,78 +149,46 @@ struct RecipeSheet: View {
   }
 }
 
-/// 饮食 → 采购: this week's shopping list by category; tap a line to tick it (last tick wins, queued offline).
-struct GroceryView: View {
-  @ObservedObject var store: FoodStore
-  @Binding var toast: Toast?
-
-  /// 复制 / 分享 (FB-19): the whole list as plain text, grouped by category, for the supermarket. The system share sheet also
-  /// has Copy; the copy button here copies at once and says so.
-  @ViewBuilder private func exportButtons(_ g: GroceryList) -> some View {
-    let text = g.exportText()
-    if !text.isEmpty {
-      Button { copy(text, count: g.toBuy.count) } label: {
-        Icon(.copy, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
-      }
-      .buttonStyle(PressScale())
-      .accessibilityLabel(tr("复制清单", "Copy list"))
-      ShareLink(item: text, subject: Text(g.exportTitle)) {
-        Icon(.share, size: 18).foregroundColor(Palette.text2).frame(width: 32, height: 32)
-      }
-      .accessibilityLabel(tr("分享清单", "Share list"))
-    }
-  }
-
-  private func copy(_ text: String, count: Int) {
-    UIPasteboard.general.string = text
-    UINotificationFeedbackGenerator().notificationOccurred(.success)
-    toast = Toast(tr("已复制 · \(count) 项", "Copied · \(count) items"))
-  }
+/// A recipe's numbers, ingredients and steps for `servings` servings: its sheet and the read-only view of someone else's.
+struct RecipeDetails: View {
+  let recipe: Recipe
+  var servings = 1.0
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 18) {
-      if let g = store.grocery, !g.items.isEmpty {
-        HStack(spacing: 4) {
-          SectionHeader(title: tr("本周采购", "This week's list"))
-          Text("\(g.bought)/\(g.items.count)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
-          exportButtons(g)
+    VStack(alignment: .leading, spacing: 16) {
+      let m = recipe.perServing.scaled(servings)
+      HStack(spacing: 8) {
+        MetricTile(label: tr("热量", "Energy"), value: RecordFormat.num(m.kcal), unit: "kcal")
+        MetricTile(label: tr("蛋白", "Protein"), value: RecordFormat.num(m.protein), unit: "g")
+        MetricTile(label: tr("碳水", "Carbs"), value: RecordFormat.num(m.carbs), unit: "g")
+        MetricTile(label: tr("脂肪", "Fat"), value: RecordFormat.num(m.fat), unit: "g")
+      }
+      if let s = recipe.servingLabel {
+        Text(tr("每份 = \(s)", "1 serving = \(s)")).font(Typo.caption).foregroundColor(Palette.text2)
+      }
+      if !recipe.badges.isEmpty {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 6) { ForEach(recipe.badges, id: \.0) { Badge(label: $0.0, tone: $0.1) } }
         }
-        ProgressBar(fraction: Double(g.bought) / Double(max(1, g.items.count)))
-        ForEach(g.byCategory(), id: \.0) { cat, items in
-          RowGroup(title: cat) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { n, item in
-              if n > 0 { RowDivider(inset: 34) }
-              Button { Task { await store.setBought(item, !item.bought) } } label: {
-                HStack(spacing: 12) {
-                  ZStack {
-                    Circle().stroke(item.bought ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 22, height: 22)
-                    if item.bought { Icon(.check, size: 14).foregroundColor(Palette.good) }
-                  }
-                  VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name).font(Typo.body).foregroundColor(item.bought ? Palette.text3 : Palette.text)
-                      .strikethrough(item.bought, color: Palette.text3)
-                    if let note = item.note { Text(note).font(Typo.caption).foregroundColor(Palette.text3) }
-                  }
-                  if let p = item.pending { PendingMark(needsAttention: p.needsAttention) }
-                  Spacer()
-                  if let q = item.qty { Text(q).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2) }
-                }
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
-              }
-              .buttonStyle(PressScale())
-              .accessibilityAddTraits(item.bought ? .isSelected : [])
+      }
+      if !recipe.ingredients.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
+          SectionHeader(title: servings == 1 ? tr("食材", "Ingredients") : tr("食材 · \(RecordFormat.num(servings, 1)) 份", "Ingredients · \(RecordFormat.num(servings, 1))"))
+            .padding(.bottom, 4)
+          ForEach(Array(recipe.ingredients.enumerated()), id: \.offset) { _, i in
+            KeyValueRow(label: i.food, value: i.grams.map { "\(RecordFormat.num($0 * servings / max(recipe.servings, 0.5))) g" } ?? i.amount ?? "—")
+          }
+        }
+      }
+      if !recipe.steps.isEmpty {
+        VStack(alignment: .leading, spacing: 8) {
+          SectionHeader(title: tr("做法", "Method"))
+          ForEach(Array(recipe.steps.enumerated()), id: \.offset) { n, s in
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+              Text("\(n + 1)").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3).frame(width: 16)
+              Text(s).font(Typo.body).foregroundColor(Palette.text).fixedSize(horizontal: false, vertical: true)
             }
           }
-        }
-      } else {
-        Card {
-          VStack(spacing: 8) {
-            Icon(.shoppingCart, size: 28).foregroundColor(Palette.text3)
-            Text(tr("这周还没有采购清单。让你的 AI 按计划生成一份。", "No shopping list this week. Ask your AI to make one from your plan."))
-              .font(Typo.caption).foregroundColor(Palette.text2).multilineTextAlignment(.center)
-          }
-          .frame(maxWidth: .infinity).padding(.vertical, 12)
         }
       }
     }

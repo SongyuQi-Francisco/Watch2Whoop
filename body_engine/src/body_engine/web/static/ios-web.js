@@ -2,11 +2,16 @@
    On iPhone / iPad the app is the way in; the web version (incl. the home-screen web app) is being retired.
    - warn (default): a banner at the top 「iPhone 请改用 Watch2Whoop App，网页版即将停用」 linking to install.html.
    - off: the page goes to install.html instead of the login screen or the content (signed-in sessions too).
+   - /app/?circle=CODE (a circle invite link): always the landing page join.html, in both modes.
    Never inside the app's WebView (window.Watch2Whoop) and never on a computer. Loaded before account.js / app.js. */
 (function () {
   "use strict";
   const ios = /iPhone|iPad|iPod/.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   if (!ios || window.Watch2Whoop) return;
+  // A circle invite link in its older form (/app/?circle=CODE): the landing page opens the app and, being static, is never
+  // behind the forced upgrade (join.js)
+  const invite = new URLSearchParams(location.search).get("circle");
+  if (invite) { location.replace("join.html#" + encodeURIComponent(invite)); return; }
   const tr = window.I18N ? window.I18N.t : (k) => k;
   const root = document.documentElement;
   root.style.visibility = "hidden";   // no flash of the login screen before the mode is known
