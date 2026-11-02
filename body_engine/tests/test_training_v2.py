@@ -98,6 +98,25 @@ def test_splits_and_volume_summary():
     assert vol["chest"]["direct_sets"] >= 10
 
 
+def test_template_texts_have_their_english_next_to_the_stored_chinese():
+    """The native app has no copy of the page's i18n table: an English request gets the built-in template's English beside the
+    stored Chinese name (requests keep referring to the Chinese one), and the wording is the page's."""
+    from pathlib import Path
+
+    from body_engine.i18n import use_lang
+    page = (Path(plans.__file__).parents[1] / "web" / "static" / "i18n-en.js").read_text(encoding="utf-8")
+    for zh, en in P.TEMPLATE_TEXT_EN.items():
+        assert f'"{zh}": "{en}"' in page, zh
+    with use_lang("zh"):
+        assert all("name_en" not in s and "summary_en" not in s for s in plans.list_splits())
+    with use_lang("en"):
+        for s, tpl in zip(plans.list_splits(), P.SPLIT_TEMPLATES.values()):
+            assert s["name"] == tpl["name"]
+            assert s["name_en"] and s["summary_en"], s["split_type"]
+            assert all(d["name_en"] for d in s["days"]), s["split_type"]
+        assert plans.template_en("My own plan") == {}
+
+
 def test_v2_tools_registered_and_read_write_flags():
     for r_tool in ("search_exercises", "get_exercise", "propose_plan", "get_week_plan"):
         assert r_tool in TOOLS_BY_NAME and not TOOLS_BY_NAME[r_tool].writes

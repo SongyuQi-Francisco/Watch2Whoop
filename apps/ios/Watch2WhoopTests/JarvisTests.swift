@@ -201,6 +201,84 @@ final class JarvisTests: XCTestCase {
     XCTAssertFalse(JarvisAI(JSONValue.object(["mode": .string("api"), "vision": .bool(false)])).vision)
   }
 
+  // MARK: - posture photos (#174)
+
+  private func photo(_ data: String) -> ChatAttachment {
+    ChatAttachment(kind: .photo, images: [ChatImage(media_type: "image/jpeg", data: data)])
+  }
+
+  func testPosturePhotosCarryTheirPurposeFrontSideBack() async {
+    StubProtocol.reset([.init(status: 200, body: sse([
+      ("conversation", #"{"id":5}"#), ("notice", #"{"code":"posture","message":"Limited"}"#),
+      ("text", #"{"delta":"Looks fine"}"#), ("done", #"{"conversation_id":5}"#),
+    ]))])
+    var flow = PostureFlow()
+    flow.photos[.back] = photo("Qg==")
+    flow.photos[.front] = photo("Rg==")
+    XCTAssertFalse(flow.ready)
+    flow.photos[.side] = photo("Uw==")
+    XCTAssertTrue(flow.ready)
+    let c = chat()
+    c.send(PostureFlow.question, attachments: flow.attachments, purpose: PostureFlow.purpose)
+    await wait(!c.busy && c.items.count == 3)
+    let b = body(StubProtocol.requests[0])
+    XCTAssertEqual(b["purpose"] as? String, "posture")
+    XCTAssertEqual((b["images"] as? [[String: Any]])?.compactMap { $0["data"] as? String }, ["Rg==", "Uw==", "Qg=="])
+    XCTAssertEqual(c.items[1].kind, .note("Limited", warn: true, retry: false))   // before the answer
+    XCTAssertEqual(c.items[2].kind, .assistant("Looks fine"))
+  }
+
+  func testAnOrdinaryPhotoHasNoPurpose() async {
+    StubProtocol.reset([.init(status: 200, body: sse([("done", "{}")]))])
+    let c = chat()
+    c.send("meal", attachments: [photo("Rg==")])
+    await wait(!c.busy && StubProtocol.requests.count == 1)
+    XCTAssertNil(body(StubProtocol.requests[0])["purpose"])
+  }
+
+  /// In the composer they would go out later without their purpose, as ordinary photos, which stay on the server.
+  func testPosturePhotosNeverFallIntoTheComposerWhileAnAnswerRuns() async {
+    let cfg = URLSessionConfiguration.ephemeral
+    cfg.protocolClasses = [HoldProtocol.self]
+    let c = JarvisChat(api: APIClient(baseURL: URL(string: "https://body.example.com")!, token: { "example-token" },
+                                      session: URLSession(configuration: cfg), sleep: { _ in }))
+    c.send("first")
+    await wait(c.busy && HoldProtocol.open != nil)
+    let before = c.items.count
+    c.send(PostureFlow.question, attachments: [photo("Rg==")], purpose: PostureFlow.purpose)
+    XCTAssertTrue(c.attachments.isEmpty)
+    XCTAssertEqual(c.draft, "")
+    XCTAssertEqual(c.items.count, before + 1)
+    c.send("second", attachments: [photo("Uw==")])   // an ordinary one still waits in the composer, as before
+    XCTAssertEqual(c.attachments.count, 1)
+    HoldProtocol.fail()
+    await wait(!c.busy)
+  }
+
+  func testPostureEntryFollowsTheServer() {
+    XCTAssertEqual(JarvisAI().posture, .off)
+    XCTAssertEqual(JarvisAI(JSONValue.object(["mode": .string("api")])).posture, .off)   // an older server
+    XCTAssertEqual(JarvisAI(JSONValue.object(["mode": .string("api"), "posture": .string("photos")])).posture, .photos)
+    XCTAssertEqual(JarvisAI(JSONValue.object(["mode": .string("fallback"), "posture": .string("guide")])).posture, .guide)
+    XCTAssertEqual(JarvisAI(JSONValue.object(["mode": .string("api"), "posture": .string("new")])).posture, .off)
+  }
+
+  func testTheFirstUseNoticeIsPerAccountAndPerAI() {
+    let d = UserDefaults(suiteName: "posture-test-\(UUID().uuidString)")!
+    XCTAssertFalse(PostureNotice.seen(account: 1, ai: "A", defaults: d))
+    PostureNotice.mark(account: 1, ai: "A", defaults: d)
+    XCTAssertTrue(PostureNotice.seen(account: 1, ai: "A", defaults: d))
+    XCTAssertFalse(PostureNotice.seen(account: 1, ai: "B", defaults: d))
+    XCTAssertFalse(PostureNotice.seen(account: 2, ai: "A", defaults: d))
+  }
+
+  func testAReopenedPostureMessageShowsItsNotice() async {
+    StubProtocol.reset([.init(status: 200, body: #"{"id":2,"messages":[{"id":1,"role":"user","text":"Posture","images":3,"notice":"Limited"},{"id":2,"role":"assistant","text":"Fine."}],"pending":[]}"#)])
+    let c = chat()
+    await c.open(2)
+    XCTAssertEqual(c.items.map(\.kind), [.user("Posture", images: 3, voiceSeconds: nil), .note("Limited", warn: true, retry: false), .assistant("Fine.")])
+  }
+
   // MARK: - router, Markdown, cards, media
 
   func testAskCopiesForAnAIOutsideTheApp() {
@@ -239,9 +317,6 @@ final class JarvisTests: XCTestCase {
     XCTAssertNotNil(JarvisCards.openLabel("food.recipes"))
     XCTAssertEqual(JarvisCards.hm(462), "7:42")
     XCTAssertEqual(JarvisCards.mmdd("2026-01-02"), "01-02")
-    let v = JSONValue.parse(Data(#"{"type":"stress","date":"2026-01-02","score":41.5,"label":"Low","actions":[],"nested":{"a":1}}"#.utf8))!
-    XCTAssertEqual(GenericCard.rows(v).map(\.0), ["label", "score"])
-    XCTAssertEqual(GenericCard.rows(v).map(\.1), ["Low", "41.5"])
   }
 
   func testJSONValue() {
@@ -273,5 +348,21 @@ final class JarvisTests: XCTestCase {
     XCTAssertEqual(s.frames, 4)
     XCTAssertEqual(s.dropped, 1)
     XCTAssertEqual(s.worstMs, 1000.0 / 30, accuracy: 0.01)
+  }
+}
+
+/// Keeps a request open until the test lets go, so an answer stays running.
+private final class HoldProtocol: URLProtocol {
+  nonisolated(unsafe) static var open: HoldProtocol?
+
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func startLoading() { Self.open = self }
+  override func stopLoading() {}
+
+  static func fail() {
+    guard let o = open else { return }
+    open = nil
+    o.client?.urlProtocol(o, didFailWithError: URLError(.networkConnectionLost))
   }
 }

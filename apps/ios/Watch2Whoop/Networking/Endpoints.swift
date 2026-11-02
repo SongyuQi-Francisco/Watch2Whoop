@@ -6,6 +6,9 @@ enum Endpoint {
   // account / session
   static let webMe = "/v1/web/me"                       // me + feature flags + the user's local today
   static let accountLogout = "/v1/account/logout"
+  static let bindEmail = "/v1/account/identities/email"
+  static let bindApple = "/v1/account/identities/apple"
+  static let inviteCode = "/v1/users/me/invite-code"
 
   // N0: the today document (until N2's /v1/sync/pull carries it)
   static func today(_ user: String = "me", date: String? = nil) -> APIRequest {
@@ -16,6 +19,7 @@ enum Endpoint {
   static func dayActivity(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/training/day/\(day)") }
   static func strainCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/strain-coach", ["date": day]) }
   static func healthMonitor(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/health-monitor", ["date": day]) }
+  static func sleepCoach(_ day: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sleep-coach", ["date": day]) }
   static func memory(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/memory") }
   static func syncOverview(user: String = "me") -> APIRequest { .get("/v1/users/\(user)/sync/overview", ["in_app": "1"]) }
   static func monthDays(_ month: String, user: String = "me") -> APIRequest { .get("/v1/users/\(user)/days", ["month": month]) }
@@ -48,6 +52,9 @@ enum Endpoint {
 
   // N8: Me / settings
   static let aiChoice = "/v1/users/me/ai-choice"
+  static let aiProviders = "/v1/users/me/ai-providers"
+  static func aiProvider(_ id: Int) -> String { "/v1/users/me/ai-providers/\(id)" }
+  static func aiConnection(_ id: Int) -> String { "/v1/users/me/ai-connections/\(id)" }
   static let aiTokens = "/v1/users/me/ai-tokens"
   static func aiToken(_ id: Int) -> String { "/v1/users/me/ai-tokens/\(id)" }
   static let notificationSettings = "/v1/users/me/notification-settings"
@@ -55,6 +62,11 @@ enum Endpoint {
   static let whatsNew = "/v1/whats-new"
   static let dataStatus = "/v1/users/me/data-status"
   static let appearance = "/v1/users/me/appearance"
+  static let feedback = "/v1/users/me/feedback"
+  static let feedbackMode = "/v1/users/me/feedback-mode"
+  static func feedbackReport(_ ref: String) -> String { "/v1/users/me/feedback/\(ref)" }
+  static func memoryEntry(_ path: String) -> String { "/v1/users/me/memory/\(path)" }
+  static let trainingGoals = "/v1/users/me/training/goals"
 
   // N6: Jarvis (online only, section 5.5)
   static let assistantChat = "/v1/assistant/chat"                   // SSE

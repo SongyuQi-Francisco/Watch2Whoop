@@ -86,8 +86,18 @@ struct ProfileSetupView: View {
       .padding(.horizontal, Metrics.gutter)
       .padding(.bottom, 32)
     }
+    .scrollDismissesKeyboard(.interactively)
     .background((first ? Palette.bg : Palette.sheet).ignoresSafeArea())
+    .modifier(FirstRunDoneBar(on: first))
     .task { await load() }
+  }
+
+  /// The first-run step has no sheet around it, so it brings its own 「完成」 bar (in 我 the sheet has one).
+  private struct FirstRunDoneBar: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+      if on { content.keyboardDoneBar() } else { content }
+    }
   }
 
   static let birthRange: ClosedRange<Date> = {

@@ -21,8 +21,10 @@ struct AuthService {
     var email = false
     var apple = false
     var openSignup = false
+    /// Friends can be invited with a code of one's own (`BODY_REFERRALS_ENABLED`).
+    var referrals = false
 
-    enum CodingKeys: String, CodingKey { case email, apple, openSignup = "open_signup" }
+    enum CodingKeys: String, CodingKey { case email, apple, referrals, openSignup = "open_signup" }
 
     init(email: Bool = false, apple: Bool = false, openSignup: Bool = false) {
       self.email = email
@@ -35,6 +37,7 @@ struct AuthService {
       email = try c.decodeIfPresent(Bool.self, forKey: .email) ?? false
       apple = try c.decodeIfPresent(Bool.self, forKey: .apple) ?? false
       openSignup = try c.decodeIfPresent(Bool.self, forKey: .openSignup) ?? false
+      referrals = try c.decodeIfPresent(Bool.self, forKey: .referrals) ?? false
     }
   }
 

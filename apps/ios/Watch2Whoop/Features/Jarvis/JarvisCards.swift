@@ -4,10 +4,18 @@ import SwiftUI
 /// user's own data and the model only picks which, so nothing here draws model text as markup: buttons either send the
 /// app's own sentence back as the user's message or open one of the app's pages.
 ///
-/// Native: `nativeTypes`. Every other type (they keep growing on the server) gets `GenericCard`: its title, date and the
-/// plain numbers / words at its top level, plus its buttons.
+/// Native: `nativeTypes` (this file, JarvisBodyCards.swift, JarvisFoodCards.swift). A type this app does not know yet (they
+/// keep growing on the server) gets `GenericCard`: a generic title, the date, and only the top-level fields that have a
+/// translated label, plus its buttons. It never shows a raw field name.
 enum JarvisCards {
-  static let nativeTypes: Set<String> = ["training", "meal", "metric", "sleep", "actions", "product", "recovery", "water", "supplements"]
+  static let nativeTypes: Set<String> = [
+    "training", "meal", "metric", "sleep", "actions", "muscle", "goals", "suggest", "recipe", "recipes", "templates", "shopping",
+    "recovery", "strain", "stress", "healthspan", "trend", "weight", "lab", "supplements", "water", "journal", "report", "hr_zones",
+    "vo2max", "monitor", "data_status", "product",
+  ]
+
+  /// Drawn without the card's own frame: they hold the Trends tab's cards, which have theirs (ai.js BARE).
+  static let bare: Set<String> = ["recovery", "strain", "trend", "weight", "vo2max", "hr_zones"]
 
   static func title(_ type: String) -> String {
     switch type {
@@ -16,12 +24,12 @@ enum JarvisCards {
     case "metric": return tr("指标", "Metric")
     case "sleep": return tr("睡眠", "Sleep")
     case "muscle": return tr("肌肉负荷", "Muscle load")
-    case "goals": return tr("营养目标", "Nutrition goals")
-    case "suggest": return tr("推荐", "Suggestions")
+    case "goals": return tr("饮食目标", "Nutrition goals")
+    case "suggest": return tr("推荐餐", "Suggestions")
     case "recipe": return tr("食谱", "Recipe")
     case "recipes": return tr("食谱", "Recipes")
-    case "templates": return tr("快捷记餐", "Quick meals")
-    case "shopping": return tr("采购", "Shopping")
+    case "templates": return tr("快捷记录", "Quick meals")
+    case "shopping": return tr("采购清单", "Shopping list")
     case "recovery": return tr("恢复", "Recovery")
     case "strain": return tr("负荷", "Strain")
     case "stress": return tr("压力", "Stress")
@@ -33,16 +41,17 @@ enum JarvisCards {
     case "water": return tr("喝水", "Water")
     case "journal": return tr("日记", "Journal")
     case "report": return tr("报告", "Report")
-    case "hr_zones": return tr("心率区间", "Heart rate zones")
+    case "hr_zones": return tr("心率区间分布", "Heart-rate zones")
     case "vo2max": return "VO₂max"
     case "monitor": return tr("健康监测", "Health monitor")
     case "data_status": return tr("数据状态", "Data status")
     case "product": return tr("商品", "Product")
-    default: return type
+    default: return tr("卡片", "Card")
     }
   }
 
-  static func metricName(_ key: String?) -> String {
+  /// A metric's name: the app's own, then the series' label on a trend card; a bare key is never shown or sent.
+  static func metricName(_ key: String?, card: JSONValue? = nil) -> String {
     switch key {
     case "recovery": return tr("恢复", "Recovery")
     case "strain": return tr("负荷", "Strain")
@@ -50,7 +59,9 @@ enum JarvisCards {
     case "hrv": return "HRV"
     case "rhr": return tr("静息心率", "Resting HR")
     case "weight": return tr("体重", "Weight")
-    default: return key ?? ""
+    default:
+      guard let key else { return "" }
+      return TrendCards.conf[key]?.label ?? card?["trend"]?["series"]?[key]?["label"]?.string ?? tr("这个指标", "this metric")
     }
   }
 
@@ -58,7 +69,7 @@ enum JarvisCards {
   static func send(_ key: String, _ c: JSONValue) -> (String, String)? {
     let name = c["name"]?.string ?? ""
     let id = c["id"]?.string ?? ""
-    let metric = metricName(c["metric"]?.string)
+    let metric = metricName(c["metric"]?.string, card: c)
     let test = c["test_name"]?.string ?? ""
     let date = c["date"]?.string ?? ""
     switch key {
@@ -95,7 +106,7 @@ enum JarvisCards {
     case "trends": return tr("看趋势", "See trends")
     case "today": return tr("回到今天", "Back to today")
     case "sleep": return tr("睡眠详情", "Sleep detail")
-    case "profile": return tr("个人资料", "Profile")
+    case "profile": return tr("设置性别", "Set your sex")
     case "food.recipes": return tr("全部食谱", "All recipes")
     case "food.shopping": return tr("打开采购", "Open shopping")
     case "recipe": return tr("打开食谱", "Open recipe")
@@ -129,6 +140,29 @@ enum JarvisCards {
     return "\(Int(m) / 60):" + String(format: "%02d", Int(m.rounded()) % 60)
   }
 
+  /// The server's sleep performance is a fraction (0.82), shown as a percentage (ai.js recoveryBody).
+  static func percent(_ v: Double?) -> Double? { v.map { $0 * 100 } }
+
+  /// A night's stages in the sleep page's model, for its `Hypnogram`.
+  static func stages(_ main: JSONValue) -> [SleepNightModel.Stage] {
+    let rows: [JSONValue] = main["stages"]?.array ?? []
+    return rows.compactMap { s -> SleepNightModel.Stage? in
+      guard let st = s["stage"]?.string, let o = s["offset_min"]?.double, let mins = s["minutes"]?.double else { return nil }
+      let from: String = s["start"]?.string ?? "", to: String = s["end"]?.string ?? ""
+      return SleepNightModel.Stage(stage: st, offset: o, minutes: mins, start: from, end: to)
+    }
+  }
+
+  static func sleepPart(_ key: String) -> String {
+    switch key {
+    case "duration": return tr("时长", "Duration")
+    case "stages": return tr("阶段", "Stages")
+    case "consistency": return tr("规律性", "Consistency")
+    case "interruptions": return tr("中途醒来", "Wake-ups")
+    default: return tr("其他", "Other")
+    }
+  }
+
   /// `2026-01-02` → `01-02`.
   static func mmdd(_ iso: String?) -> String? {
     guard let s = iso, s.count >= 10 else { return nil }
@@ -141,45 +175,45 @@ struct JarvisCardView: View {
   let card: JSONValue
   var busy = false
   let send: (String) -> Void
-  let open: (String) -> Void
+  /// A page of the app (JarvisRouter.open(page:card:)) and the card or row it is about.
+  let open: (String, JSONValue) -> Void
 
   private var type: String { card["type"]?.string ?? "" }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      content
-      let acts = buttons
-      if !acts.isEmpty {
-        FlowRow(spacing: 8) {
-          ForEach(Array(acts.enumerated()), id: \.offset) { _, a in
-            Button(a.label) { a.run() }
-              .font(.system(size: 13, weight: .medium))
-              .foregroundColor(Palette.text)
-              .padding(.vertical, 7).padding(.horizontal, 12)
-              .overlay(Capsule().strokeBorder(Palette.text.opacity(a.send ? 0.35 : 0.8), lineWidth: 1))
-              .buttonStyle(PressScale())
-              .disabled(a.send && busy)
-          }
-        }
+    if JarvisCards.bare.contains(type) {
+      VStack(alignment: .leading, spacing: 8) {
+        content
+        actions
       }
+    } else {
+      VStack(alignment: .leading, spacing: 10) {
+        if type != "actions" { content }   // only buttons: no empty row above them
+        actions
+      }
+      .jarvisCardFrame()
     }
-    .padding(14)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.surface))
   }
 
-  @ViewBuilder private var content: some View {
-    switch type {
-    case "training": TrainingCard(c: card)
-    case "meal": MealCard(c: card, busy: busy, send: send)
-    case "metric": MetricCard(c: card)
-    case "sleep": SleepCard(c: card)
-    case "actions": EmptyView()
-    case "product": ProductCard(c: card)
-    case "recovery": RecoveryCard(c: card)
-    case "water": WaterCard(c: card)
-    case "supplements": SupplementsCard(c: card)
-    default: GenericCard(c: card)
+  /// Equatable, so a streaming answer redraws the chat without parsing every card above it again.
+  private var content: some View {
+    JarvisCardBody(card: card, busy: busy, send: send, open: open).equatable()
+  }
+
+  @ViewBuilder private var actions: some View {
+    let acts = buttons
+    if !acts.isEmpty {
+      FlowRow(spacing: 8) {
+        ForEach(Array(acts.enumerated()), id: \.offset) { _, a in
+          Button(a.label) { a.run() }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(Palette.text)
+            .padding(.vertical, 7).padding(.horizontal, 12)
+            .overlay(Capsule().strokeBorder(Palette.text.opacity(a.send ? 0.35 : 0.8), lineWidth: 1))
+            .buttonStyle(PressScale())
+            .disabled(a.send && busy)
+        }
+      }
     }
   }
 
@@ -190,7 +224,7 @@ struct JarvisCardView: View {
       switch a["kind"]?.string {
       case "open":
         guard let p = a["page"]?.string, let l = JarvisCards.openLabel(p) else { return nil }
-        return Act(label: l, send: false) { open(p) }
+        return Act(label: l, send: false) { open(p, card) }
       case "send":
         if let k = a["key"]?.string {
           guard let (l, t) = JarvisCards.send(k, card) else { return nil }
@@ -205,19 +239,76 @@ struct JarvisCardView: View {
   }
 }
 
+/// The body of a card by type. The closures only reach the chat and the router, which stay the same for the card's life.
+private struct JarvisCardBody: View, Equatable {
+  let card: JSONValue
+  let busy: Bool
+  let send: (String) -> Void
+  let open: (String, JSONValue) -> Void
+
+  static func == (a: JarvisCardBody, b: JarvisCardBody) -> Bool { a.busy == b.busy && a.card == b.card }
+
+  var body: some View {
+    switch card["type"]?.string ?? "" {
+    case "training": TrainingCard(c: card)
+    case "meal": MealCard(c: card, busy: busy, send: send)
+    case "metric": MetricCard(c: card)
+    case "sleep": SleepCard(c: card)
+    case "actions": EmptyView()
+    case "product": ProductCard(c: card)
+    case "recovery": RecoveryCard(c: card, open: open)
+    case "water": WaterCard(c: card)
+    case "supplements": SupplementsCard(c: card)
+    case "muscle": MuscleJarvisCard(c: card)
+    case "goals": GoalsJarvisCard(c: card)
+    case "suggest": SuggestJarvisCard(c: card, busy: busy, send: send, open: open)
+    case "recipe": RecipeJarvisCard(c: card)
+    case "recipes": RecipesJarvisCard(c: card, open: open)
+    case "templates": TemplatesJarvisCard(c: card, busy: busy, send: send)
+    case "shopping": ShoppingJarvisCard(c: card)
+    case "strain": StrainJarvisCard(c: card, open: open)
+    case "stress": StressJarvisCard(c: card)
+    case "healthspan": HealthspanJarvisCard(c: card)
+    case "trend": TrendJarvisCard(c: card, key: card["metric"]?.string ?? "", open: open)
+    case "weight": TrendJarvisCard(c: card, key: "weight", open: open)
+    case "vo2max": VO2JarvisCard(c: card, open: open)
+    case "hr_zones": HRZonesJarvisCard(c: card, open: open)
+    case "lab": LabJarvisCard(c: card)
+    case "journal": JournalJarvisCard(c: card)
+    case "report": ReportJarvisCard(c: card)
+    case "monitor": MonitorJarvisCard(c: card, open: open)
+    case "data_status": DataStatusJarvisCard(c: card)
+    default: GenericCard(c: card)
+    }
+  }
+}
+
 // MARK: - pieces
+
+extension View {
+  /// The frame of a card in the chat: surface background, tile corners.
+  func jarvisCardFrame() -> some View {
+    padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.surface))
+  }
+}
 
 struct CardHead: View {
   let title: String
   var date: String?
   var badge: String?
+  /// A coloured state label; nil = the plain outline.
+  var badgeTone: Tone?
 
   var body: some View {
     HStack(spacing: 8) {
       Text(title).font(Typo.section).foregroundColor(Palette.text2)
       if let d = JarvisCards.mmdd(date) { Text(d).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text3) }
       Spacer(minLength: 4)
-      if let badge, !badge.isEmpty { OutlineBadge(text: badge) }
+      if let badge, !badge.isEmpty {
+        if let badgeTone { ToneBadge(text: badge, tone: badgeTone) } else { OutlineBadge(text: badge) }
+      }
     }
   }
 }
@@ -243,14 +334,14 @@ struct CardMeter: View {
       HStack {
         Text(label).font(Typo.caption).foregroundColor(Palette.text2)
         Spacer()
-        Text("\(JarvisCards.num(value))\(goal.map { " / \(JarvisCards.num($0))" } ?? "") \(unit)")
+        Text("\(JarvisCards.num(value))\(goal.map { " / \(JarvisCards.num($0))" } ?? "")\(unit.isEmpty ? "" : " \(unit)")")
           .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text)
       }
       if let g = goal, g > 0 {
         GeometryReader { geo in
           ZStack(alignment: .leading) {
             Capsule().fill(Palette.surface2)
-            Capsule().fill(Palette.text).frame(width: geo.size.width * min(1, max(0, (value ?? 0) / g)))
+            Capsule().fill((value ?? 0) > g * 1.1 ? Palette.mid : Palette.text).frame(width: geo.size.width * min(1, max(0, (value ?? 0) / g)))
           }
         }
         .frame(height: 4)
@@ -449,7 +540,13 @@ private struct SleepCard: View {
       if let m = c["main"], !m.isNull {
         BigNumber(value: JarvisCards.hm(m["asleep_min"]?.double), unit: "\(m["start"]?.string ?? "") → \(m["end"]?.string ?? "")",
                   note: c["need_min"]?.double.map { tr("需求", "Need") + " " + JarvisCards.hm($0) })
-        if let eff = m["efficiency_pct"]?.double {
+        let stages = JarvisCards.stages(m)
+        if !stages.isEmpty {
+          Hypnogram(stages: stages, total: max(1, m["in_bed_min"]?.double ?? 1), start: m["start"]?.string ?? "", end: m["end"]?.string ?? "")
+        }
+        if let more = c["more"], !more.isNull {
+          SleepMore(c: c, main: m, more: more)
+        } else if let eff = m["efficiency_pct"]?.double {
           Text(tr("效率", "Efficiency") + " \(JarvisCards.num(eff))%").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
         }
         let keys = Array((c["notes"]?.array ?? []).filter { $0["tone"]?.string != "good" }.compactMap { $0["key"]?.string }
@@ -468,18 +565,64 @@ private struct SleepCard: View {
   }
 }
 
+/// Efficiency, time to fall asleep and wake-ups against the 7-night average, and the sleep score's parts (ai.js sleepMoreHtml).
+private struct SleepMore: View {
+  let c: JSONValue
+  let main: JSONValue
+  let more: JSONValue
+
+  var body: some View {
+    let a = c["avg7"], parts = (c["parts"]?.array ?? []).filter { $0["score"]?.double != nil }
+    let avgEff = a?["efficiency_pct"]?.double.map { tr("平均 \(JarvisCards.num($0))%", "Avg \(JarvisCards.num($0))%") }
+    let waso = more["waso_min"]?.double.map { tr("\(JarvisCards.num($0)) 分钟", "\(JarvisCards.num($0)) min") }
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .top, spacing: 0) {
+        cell(tr("效率", "Efficiency"), main["efficiency_pct"]?.double, "%", avgEff)
+        cell(tr("入睡耗时", "To fall asleep"), more["latency_min"]?.double, tr("分", "min"), nil)
+        cell(tr("夜醒", "Wake-ups"), more["awakenings"]?.double, tr("次", ""), waso)
+      }
+      if let bed = a?["bedtime"]?.string {
+        Text(tr("近 7 晚", "Last 7 nights") + " \(bed) → \(a?["wake"]?.string ?? "")").font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      ForEach(Array(parts.enumerated()), id: \.offset) { _, p in
+        CardMeter(label: JarvisCards.sleepPart(p["key"]?.string ?? ""), value: p["score"]?.double, goal: 100, unit: "")
+      }
+    }
+  }
+
+  private func cell(_ l: String, _ v: Double?, _ u: String, _ sub: String?) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      Text(l).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
+      HStack(alignment: .firstTextBaseline, spacing: 2) {
+        Text(JarvisCards.num(v)).font(Typo.bodyStrong.monospacedDigit()).foregroundColor(Palette.text)
+        if v != nil, !u.isEmpty { Text(u).font(Typo.unit).foregroundColor(Palette.text2) }
+      }
+      if let sub { Text(sub).font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text3).lineLimit(1) }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+/// Today's score with its parts above the last two weeks (ai.js recoveryBody).
 private struct RecoveryCard: View {
   let c: JSONValue
+  let open: (String, JSONValue) -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      CardHead(title: JarvisCards.title("recovery"), date: c["date"]?.string, badge: c["word"]?.string)
-      BigNumber(value: JarvisCards.num(c["recovery"]?.double), unit: "%",
-                note: c["last"]?.double.map { tr("上次", "Last") + " \(JarvisCards.num($0))%" })
-      HStack(spacing: 16) {
-        kv("HRV", c["hrv_ms"]?.double, "ms")
-        kv(tr("静息心率", "Resting HR"), c["rhr"]?.double, "bpm")
-        kv(tr("睡眠表现", "Sleep"), c["sleep_performance"]?.double, "%")
+      VStack(alignment: .leading, spacing: 8) {
+        CardHead(title: JarvisCards.title("recovery"), date: c["date"]?.string, badge: c["word"]?.string)
+        BigNumber(value: JarvisCards.num(c["recovery"]?.double), unit: "%",
+                  note: c["last"]?.double.map { tr("上次", "Last") + " \(JarvisCards.num($0))%" })
+        HStack(spacing: 16) {
+          kv("HRV", c["hrv_ms"]?.double, "ms")
+          kv(tr("静息心率", "Resting HR"), c["rhr"]?.double, "bpm")
+          kv(tr("睡眠表现", "Sleep"), JarvisCards.percent(c["sleep_performance"]?.double), "%")
+        }
+      }
+      .jarvisCardFrame()
+      if let d = JarvisCards.trendsData(c), let m = TrendCards.recovery(d), m.spec != nil {
+        TrendCardBody(model: m, open: open)
       }
     }
   }
@@ -596,30 +739,40 @@ private struct ProductCard: View {
   }
 }
 
-/// Every card type without a native body yet: title, date, and the plain numbers and words at its top level.
+/// A card type this version does not know yet (an older app, a newer server): a generic title, the date, and only the
+/// top-level fields below, under a translated label. Raw field names never reach the screen.
 struct GenericCard: View {
   let c: JSONValue
 
-  static let skip: Set<String> = ["type", "v", "actions", "date", "id", "entry_actions", "is_today", "digits", "days", "end", "start", "key"]
+  /// Field → short label, in display order.
+  static var labels: [(String, String)] {
+    [("name", tr("名称", "Name")), ("score", tr("分数", "Score")), ("value", tr("数值", "Value")), ("current", tr("现在", "Now")),
+     ("latest", tr("最新", "Latest")), ("avg", tr("平均", "Average")), ("total", tr("合计", "Total")), ("goal", tr("目标", "Goal")),
+     ("target", tr("目标", "Target")), ("percent", tr("百分比", "Percent")), ("count", tr("次数", "Count")), ("status", tr("状态", "Status")),
+     ("level", tr("等级", "Level"))]
+  }
 
-  /// The scalar fields shown, in a stable order (the server's dictionaries have none on the phone).
+  /// The labelled scalar fields that are present (at most six).
   static func rows(_ c: JSONValue) -> [(String, String)] {
-    (c.object ?? [:]).filter { !skip.contains($0.key) }.sorted { $0.key < $1.key }.compactMap { k, v in
-      switch v {
-      case .number(let n): return (k, JarvisCards.num(n, n.rounded() == n ? 0 : 1))
-      case .string(let s) where !s.isEmpty && s.count <= 40: return (k, s)
-      case .bool(let b): return (k, b ? "✓" : "—")
+    labels.compactMap { key, label -> (String, String)? in
+      switch c[key] {
+      case .number(let n): return (label, JarvisCards.num(n, n.rounded() == n ? 0 : 1))
+      case .string(let s) where !s.isEmpty && s.count <= 40 && !isCode(s): return (label, s)
       default: return nil
       }
     }
+    .prefix(6).map { $0 }
   }
+
+  /// `in_range`, `no_raw_hr`: a code for the app, not a word for the user.
+  static func isCode(_ s: String) -> Bool { s.range(of: "^[a-z0-9]+(_[a-z0-9]+)+$", options: .regularExpression) != nil }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       CardHead(title: JarvisCards.title(c["type"]?.string ?? ""), date: c["date"]?.string ?? c["end"]?.string)
-      ForEach(Array(Self.rows(c).prefix(6).enumerated()), id: \.offset) { _, r in
+      ForEach(Array(Self.rows(c).enumerated()), id: \.offset) { _, r in
         HStack {
-          Text(r.0.replacingOccurrences(of: "_", with: " ")).font(Typo.caption).foregroundColor(Palette.text2)
+          Text(r.0).font(Typo.caption).foregroundColor(Palette.text2)
           Spacer()
           Text(r.1).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text)
         }

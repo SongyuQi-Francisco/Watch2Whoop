@@ -31,6 +31,36 @@ struct FormField: View {
   }
 }
 
+/// A 「完成」 bar right above the keyboard while one is up. The number pads have no return key and cover what is below them,
+/// so a form could not reach its 「保存」 (regression O2). Goes on the outermost view of the form: inside a scroll view it would
+/// scroll away with the content.
+struct KeyboardDoneBar: ViewModifier {
+  @State private var up = false
+
+  func body(content: Content) -> some View {
+    content
+      .safeAreaInset(edge: .bottom, spacing: 0) {
+        if up {
+          HStack {
+            Spacer()
+            Button(tr("完成", "Done")) {
+              UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
+            .font(Typo.bodyStrong).foregroundColor(Palette.text)
+            .padding(.horizontal, Metrics.gutter).padding(.vertical, 10)
+          }
+          .background(Palette.surface2.ignoresSafeArea(edges: .bottom))
+        }
+      }
+      .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in up = true }
+      .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in up = false }
+  }
+}
+
+extension View {
+  func keyboardDoneBar() -> some View { modifier(KeyboardDoneBar()) }
+}
+
 /// A full-width secondary button: surface background, icon + title.
 struct SecondaryButton: View {
   var icon: Icon.Name?

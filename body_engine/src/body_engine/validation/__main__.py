@@ -115,6 +115,34 @@ def _healthspan(args) -> str:
         else healthspan_compare.markdown(res)
 
 
+def _calibration(args) -> str:
+    """Decision rules of docs/scoring-calibration.md. `export-sql` prints one read-only COPY per file for one user; `run` reads
+    those files (no database) and prints a report holding personal values; `synthetic` and `rules` use made-up persons only."""
+    import json
+    from pathlib import Path
+
+    from . import calibration as K
+    from . import calibration_synth as KS
+
+    if args.action == "export-sql":
+        if args.user_id is None:
+            raise SystemExit("export-sql needs --user-id")
+        return "".join(f"-- {name}\nBEGIN READ ONLY;\nCOPY ({' '.join(sql.split())}) TO STDOUT WITH CSV HEADER;\nROLLBACK;\n"
+                       for name, sql in K.export_queries(args.user_id).items())
+    if args.action == "rules":
+        return KS.operating_markdown(KS.operating_characteristics(args.seeds, args.days, args.bootstrap))
+    if args.action == "synthetic":
+        person = KS.make_person(args.days, args.seed, ectopic_rate=args.ectopic_rate)
+    else:
+        if args.data is None:
+            raise SystemExit("run needs --data DIR")
+        person = K.load_dir(Path(args.data))
+    res = K.run(person, n_boot=args.bootstrap)
+    if args.json:
+        Path(args.json).write_text(json.dumps(res, default=str, ensure_ascii=False, indent=1))
+    return K.markdown(res)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m body_engine.validation")
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -145,9 +173,19 @@ def main(argv=None) -> None:
     h.add_argument("--weeks", type=int, default=26)
     h.add_argument("--json", action="store_true")
     h.add_argument("--no-sensitivity", action="store_true")
+    k = sub.add_parser("calibration", help="decision rules of docs/scoring-calibration.md; `run` output holds personal values (keep it out of git)")
+    k.add_argument("action", choices=("export-sql", "run", "synthetic", "rules"))
+    k.add_argument("--user-id", type=int, help="export-sql: the one user to export")
+    k.add_argument("--data", help="run: the directory of exported files")
+    k.add_argument("--json", help="run / synthetic: also write the full result as JSON here")
+    k.add_argument("--bootstrap", type=int, default=2000)
+    k.add_argument("--days", type=int, default=300)
+    k.add_argument("--seed", type=int, default=1)
+    k.add_argument("--seeds", type=int, default=40)
+    k.add_argument("--ectopic-rate", type=float, default=0.0)
     args = ap.parse_args(argv)
     modes = {"synthetic": _synthetic, "regression": _regression, "beats": _beats, "population": _population,
-             "user": _user, "healthspan": _healthspan}
+             "user": _user, "healthspan": _healthspan, "calibration": _calibration}
     sys.stdout.write(modes[args.mode](args))
 
 

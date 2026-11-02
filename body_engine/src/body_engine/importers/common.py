@@ -286,6 +286,17 @@ def resolve_daily(conn: psycopg.Connection, user_id: int, dates, today: date | N
     return len(out)
 
 
+def clear_moved_nights(conn: psycopg.Connection, user_id: int, source: str, starts: list[datetime]) -> set[date]:
+    """A night keeps its start but moves to a later wake date when its end grows (only part of it had synced, so it first
+    woke "yesterday"). Its old row is outside the dates being rewritten and would break UNIQUE (user_id, source, start_at):
+    delete such rows. Returns the wake dates they left, whose is_main has to be chosen again."""
+    if not starts:
+        return set()
+    return {r["wake_date"] for r in conn.execute(
+        "DELETE FROM sleep_sessions WHERE user_id = %s AND source = %s AND start_at = ANY(%s) RETURNING wake_date",
+        (user_id, source, starts))}
+
+
 def replace_sleep(conn: psycopg.Connection, user_id: int, source: str, sessions: list[SleepSession]) -> dict:
     """Rewrite one source's sleep: first delete that source's old records within the covered dates, then insert (no stale segments remain when the algorithm changes).
     If a higher-priority source already has sleep on a day, do not insert; lower-priority sources' records on those days are deleted. Finally recompute is_main."""
@@ -303,6 +314,7 @@ def replace_sleep(conn: psycopg.Connection, user_id: int, source: str, sessions:
     dates = sorted({s.wake_date for s in keep})
     conn.execute("DELETE FROM sleep_sessions WHERE user_id = %s AND source = %s AND wake_date BETWEEN %s AND %s",
                  (user_id, source, first, last))
+    moved = clear_moved_nights(conn, user_id, source, [s.start for s in keep])
     conn.execute("DELETE FROM sleep_sessions WHERE user_id = %s AND source = ANY(%s) AND wake_date = ANY(%s)",
                  (user_id, lower, dates))
     with conn.cursor() as cur:
@@ -319,5 +331,6 @@ def replace_sleep(conn: psycopg.Connection, user_id: int, source: str, sessions:
            FROM (SELECT DISTINCT ON (wake_date) wake_date, id FROM sleep_sessions
                  WHERE user_id = %s AND wake_date BETWEEN %s AND %s
                  ORDER BY wake_date, asleep_min DESC, id) m
-           WHERE s.user_id = %s AND s.wake_date = m.wake_date""", (user_id, first, last, user_id))
+           WHERE s.user_id = %s AND s.wake_date = m.wake_date""",
+        (user_id, min(moved | {first}), max(moved | {last}), user_id))
     return {"inserted": len(keep), "skipped": len(sessions) - len(keep)}

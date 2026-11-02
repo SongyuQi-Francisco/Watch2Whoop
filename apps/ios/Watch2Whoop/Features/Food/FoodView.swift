@@ -33,6 +33,9 @@ struct FoodContent: View {
   /// 选择: the entries picked in the day's list; nil = not picking.
   @State private var picked: Set<String>?
   @State private var other: OtherSheet?
+  @State private var allRecipes = false
+  /// A Jarvis card's recipe, until the recipes are read.
+  @State private var askedRecipe: String?
 
   enum Mode: Hashable { case diet, shopping }
 
@@ -73,6 +76,13 @@ struct FoodContent: View {
     .onChange(of: mode) { _ in syncJarvisPage() }
     .onChange(of: store.day) { _ in picked = nil }
     .sheet(item: $other) { s in otherSheet(s) }
+    .navigationDestination(isPresented: $allRecipes) { RecipesView(store: store) { r in recipe = r } }
+    .onReceive(JarvisPageLink.shared.$food) { r in
+      guard let r else { return }
+      JarvisPageLink.shared.food = nil
+      show(r)
+    }
+    .onChange(of: store.recipes.count) { _ in if let id = askedRecipe { openRecipe(id) } }
     .sheet(item: $entry) { e in
       SheetContainer(title: e.food, close: { entry = nil }) {
         FoodEntrySheet(entry: e, store: store) { msg in
@@ -83,7 +93,7 @@ struct FoodContent: View {
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
     }
-    .sheet(item: $recipe) { r in
+    .sheet(item: $recipe, onDismiss: { recipeSlot = nil }) { r in
       SheetContainer(title: r.name, close: { recipe = nil }) {
         RecipeSheet(recipe: r, slot: recipeSlot, store: store) { t in
           recipe = nil
@@ -92,6 +102,25 @@ struct FoodContent: View {
       }
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
+    }
+  }
+
+  /// What a Jarvis card's button asked for.
+  private func show(_ r: JarvisPageLink.FoodPage) {
+    mode = r == .shopping ? .shopping : .diet
+    switch r {
+    case .recipes: allRecipes = true
+    case .recipe(let id): openRecipe(id)
+    case .diet, .shopping: break
+    }
+  }
+
+  private func openRecipe(_ id: String) {
+    if let r = store.recipes.first(where: { $0.id == id }) {
+      askedRecipe = nil
+      recipe = r
+    } else {
+      askedRecipe = id
     }
   }
 

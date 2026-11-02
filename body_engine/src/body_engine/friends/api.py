@@ -1,7 +1,9 @@
 """HTTP endpoints for circles (Friends page, docs/friends-social-plan.md §4). Everything acts for the caller only: there is
 no user in the path. Reading needs a normal sign-in; writing needs a write token (and X-Body-Web: 1 with cookie sign-in).
 Wrong invite codes count per client IP and per user (params.JOIN_MAX_FAILURES in JOIN_WINDOW_SECONDS) → 429."""
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from .. import auth
@@ -9,7 +11,7 @@ from ..records.api import _self, current_user, get_conn
 from ..rollout import flags
 from ..web import login_limit
 from ..images import store as images
-from . import cards, codes, leaderboard, params as P, prefs, remarks, store
+from . import cards, codes, direct, leaderboard, params as P, prefs, remarks, store
 
 # Every endpoint is behind the `friends` feature flag (docs/rollout.md): 404 while it is off for the caller
 router = APIRouter(prefix="/v1/friends", tags=["friends"], dependencies=[Depends(flags.require(auth.CIRCLES_FLAG))])
@@ -226,6 +228,38 @@ def leaderboard_board(board: str = "body", circle: int | None = None, conn=Depen
     if board not in P.BOARDS:
         raise HTTPException(400, f"排行榜只能是 {', '.join(P.BOARDS)}")
     return _run(leaderboard.board, conn, viewer["id"], board, circle)
+
+
+# ---------------------------------------------------------------- inviting someone I know (#359 section 3, flag inbox)
+INBOX = [Depends(flags.require(P.INBOX_FLAG))]
+PersonId = Annotated[int, Path(ge=1, le=2**31 - 1)]
+
+
+class DirectInviteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    circle_id: int = Field(ge=1, le=2**31 - 1)
+
+
+@router.get("/people/{target_id}/invite-options", dependencies=INBOX)
+def invite_options(target_id: PersonId, conn=Depends(get_conn), viewer=Depends(current_user)):
+    """The circles I own and where this person stands in each. 404 unless we share a circle (friends/direct.py)."""
+    return _run(direct.options, conn, viewer["id"], target_id)
+
+
+@router.post("/people/{target_id}/invites", dependencies=INBOX)
+def send_invite(target_id: PersonId, body: DirectInviteIn, conn=Depends(get_conn), viewer=Depends(current_user)):
+    return _run(direct.send, conn, _self(viewer, "me"), target_id, body.circle_id)
+
+
+@router.get("/invite-mutes", dependencies=INBOX)
+def invite_mutes(conn=Depends(get_conn), viewer=Depends(current_user)):
+    return {"people": direct.muted(conn, viewer["id"])}
+
+
+@router.delete("/invite-mutes/{target_id}", status_code=204, dependencies=INBOX)
+def invite_unmute(target_id: PersonId, conn=Depends(get_conn), viewer=Depends(current_user)):
+    _run(direct.unmute, conn, _self(viewer, "me"), target_id)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------- private remarks (#212, flag member_remarks)
