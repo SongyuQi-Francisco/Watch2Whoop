@@ -202,6 +202,11 @@ enum InboxLogic {
     return x < y
   }
 
+  /// 「3 人」 / "1 person".
+  static func people(_ n: Int) -> String {
+    n == 1 ? tr("1 人", "1 person") : tr("\(n) 人", "\(n) people")
+  }
+
   /// 「3 小时前」 within a day, then 昨天 / the date.
   static func when(_ iso: String?, now: Date = Date()) -> String {
     guard let iso, let d = FeedFormat.parseDate(iso) else { return "" }

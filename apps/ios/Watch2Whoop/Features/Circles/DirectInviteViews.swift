@@ -127,7 +127,7 @@ struct DirectInviteSheet: View {
                 row(c, canSend: o.leftToday > 0)
               }
             }
-            Text(tr("今天还能邀请 \(o.leftToday) 次", "\(o.leftToday) invites left today"))
+            Text(tr("今天还能邀请 \(o.leftToday) 次", "Invites left today: \(o.leftToday)"))
               .font(Typo.caption).foregroundColor(Palette.text2)
           }
         } else if failed {
@@ -151,7 +151,7 @@ struct DirectInviteSheet: View {
       AvatarView(url: c.avatar, name: c.name, size: 34)
       VStack(alignment: .leading, spacing: 1) {
         Text(c.name).font(Typo.body).foregroundColor(Palette.text).lineLimit(1)
-        Text(tr("\(c.members) 人", "\(c.members) people")).font(Typo.label).foregroundColor(Palette.text2)
+        Text(InboxLogic.people(c.members)).font(Typo.label).foregroundColor(Palette.text2)
       }
       Spacer(minLength: 6)
       if c.status == "open" {

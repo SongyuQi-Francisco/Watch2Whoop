@@ -137,6 +137,11 @@ final class InboxLogicTests: XCTestCase {
     XCTAssertTrue(d.items[0].read)
   }
 
+  func testPeople() {
+    XCTAssertEqual(InboxLogic.people(1), tr("1 人", "1 person"))
+    XCTAssertEqual(InboxLogic.people(4), tr("4 人", "4 people"))
+  }
+
   func testWhen() throws {
     let now = try XCTUnwrap(FeedFormat.parseDate("2026-11-02T12:00:00+00:00"))
     XCTAssertEqual(InboxLogic.when("2026-11-02T11:59:30+00:00", now: now), tr("刚刚", "Just now"))

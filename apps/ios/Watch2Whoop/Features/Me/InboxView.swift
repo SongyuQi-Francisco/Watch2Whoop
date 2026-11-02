@@ -286,9 +286,9 @@ private struct InviteCardRow: View {
   }
 
   private var subtitle: String {
-    let n = card.members
-    guard let o = card.ownerName, !o.isEmpty else { return tr("\(n) 人", "\(n) people") }
-    return tr("\(o) 邀请你 · \(n) 人", "From \(o) · \(n) people")
+    let n = InboxLogic.people(card.members)
+    guard let o = card.ownerName, !o.isEmpty else { return n }
+    return tr("\(o) 邀请你 · \(n)", "From \(o) · \(n)")
   }
 }
 
