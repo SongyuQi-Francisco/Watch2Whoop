@@ -45,7 +45,7 @@ final class MeAccountTests: XCTestCase {
     """#
     let l = try JSONDecoder().decode(AIProviderList.self, from: Data(j.utf8))
     XCTAssertEqual(l.providers.map(\.id), [3, 4, 5])
-    XCTAssertEqual(l.providers[0].subtitle, "model-a · 本月 $0.123 / $5.00 · key …abcd")
+    XCTAssertEqual(l.providers[0].subtitle, "model-a · 本月 $0.123 / $5.00 · key …\u{2060}abcd")
     XCTAssertTrue(l.hasAPIProvider)
     XCTAssertEqual(l.kind("anthropic_api")?.defaultModel, "model-a")
     XCTAssertEqual(l.fallback?.badge?.text, "未同意")

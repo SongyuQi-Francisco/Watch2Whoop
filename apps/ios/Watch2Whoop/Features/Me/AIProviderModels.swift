@@ -86,7 +86,7 @@ struct AIProvider: Decodable, Equatable, Identifiable {
       let spent = Self.money(monthCostUSD), budget = Self.money(monthlyBudgetUSD)
       parts.append(tr("本月 \(spent) / \(budget)", "This month \(spent) / \(budget)"))
     }
-    if let secretLast4, !secretLast4.isEmpty { parts.append("key …\(secretLast4)") }
+    if let secretLast4, !secretLast4.isEmpty { parts.append("key …\u{2060}\(secretLast4)") }   // a word joiner: never broken after the dots
     return parts.joined(separator: " · ")
   }
 
