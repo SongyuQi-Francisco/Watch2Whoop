@@ -80,6 +80,9 @@ struct FoodCombineSheet: View {
 /// A quick meal's foods with their grams, then 「记录」 (its grams can be changed for this logging). Opens first when the
 /// grams are still a guess (「克数待确认」).
 struct MealTemplateSheet: View {
+  /// The server's limit for one food (memory_api.py MealLogIn items): above it the log comes back rejected.
+  static let maxGrams = 2000.0
+
   let template: MealTemplate
   let log: ([Double?]) -> Void
   @State private var grams: [String]
@@ -128,11 +131,11 @@ struct MealTemplateSheet: View {
       let t = s.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)
       if t.isEmpty {
         out.append(template.foods[i].grams)
-      } else if let v = Double(t), v >= 0 {
+      } else if let v = Double(t), v >= 0, v <= Self.maxGrams {
         // An untouched field keeps the saved value (its text is rounded for display).
         out.append(s == template.foods[i].grams.map { RecordFormat.num($0, 1) } ? template.foods[i].grams : v)
       } else {
-        message = tr("克数要不小于 0", "Grams can't be below 0")
+        message = tr("克数要在 0–\(Int(Self.maxGrams)) 之间", "Grams must be 0–\(Int(Self.maxGrams))")
         return
       }
     }

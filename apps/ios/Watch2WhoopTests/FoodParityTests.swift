@@ -410,6 +410,27 @@ final class FoodParityTests: XCTestCase {
     XCTAssertTrue(chat.items.isEmpty, "nothing goes out before the user sends it")
     XCTAssertEqual(router.sheet, .chat)
   }
+
+  /// A quick meal the server turned down (12,000 g) is listed for retry or discard, but it was not eaten.
+  func testRejectedLogDoesNotCountAsEaten() throws {
+    let today: [String: Any] = ["nutrition": ["intake": ["calories": 100], "entries": [["id": "a", "date": "2026-11-03", "meal_type": "breakfast", "food": "A", "calories": 100]]]]
+    let payload = try JSONSerialization.data(withJSONObject: ["name": "Too big", "meal": "lunch", "kcal": 60000])
+    let queued = PendingRecord(kind: FoodKind.mealLog, clientId: "c1", date: "2026-11-03", payload: payload, createdAt: 0, state: .pending)
+    var rejected = queued
+    rejected.state = .failed
+    let waiting = try XCTUnwrap(NutritionDay.build(today: today, day: "2026-11-03", pending: [queued]))
+    let refused = try XCTUnwrap(NutritionDay.build(today: today, day: "2026-11-03", pending: [rejected]))
+    XCTAssertEqual(refused.entries.count, waiting.entries.count)
+    XCTAssertGreaterThan(waiting.intake.kcal ?? 0, 1000)
+    XCTAssertLessThan(refused.intake.kcal ?? 0, 1000)
+  }
+
+  func testUnsentListSpeaksInWords() {
+    for k in [FoodKind.mealLog, FoodKind.recipeLog, FoodKind.foodDelete, FoodKind.portion, FoodKind.waterDelete, FoodKind.grocery, FoodKind.pantry,
+              RecordKind.session, RecordKind.submit] {
+      XCTAssertNotEqual(UnsentChangesView.kindLabel(k), k)
+    }
+  }
 }
 
 /// The Today card follows the user's today: their date is the server's, which can differ from the phone's the store starts with.
