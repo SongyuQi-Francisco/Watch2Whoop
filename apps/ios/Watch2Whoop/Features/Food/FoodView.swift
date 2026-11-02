@@ -28,13 +28,34 @@ struct FoodContent: View {
   @State private var mode: Mode = .diet
   @State private var entry: FoodEntry?
   @State private var recipe: Recipe?
-  @State private var logged: MealTemplate?
-  @State private var busy = false
+  /// The meal a suggested recipe opens on.
+  @State private var recipeSlot: MealSlot?
+  /// 选择: the entries picked in the day's list; nil = not picking.
+  @State private var picked: Set<String>?
+  @State private var other: OtherSheet?
   @State private var allRecipes = false
   /// A Jarvis card's recipe, until the recipes are read.
   @State private var askedRecipe: String?
 
   enum Mode: Hashable { case diet, shopping }
+
+  enum OtherSheet: Identifiable {
+    case diet
+    case combine(FoodCombine.Action, [FoodEntry])
+    #if DEBUG
+    case dev(String)
+    #endif
+
+    var id: String {
+      switch self {
+      case .diet: return "diet"
+      case .combine(let a, _): return "combine.\(a.rawValue)"
+      #if DEBUG
+      case .dev(let what): return "dev.\(what)"
+      #endif
+      }
+    }
+  }
 
   init(store: FoodStore, toast: Binding<Toast?>) {
     self.store = store
@@ -43,7 +64,18 @@ struct FoodContent: View {
 
   var body: some View {
     content
-    .task { await store.refresh() }
+    .task {
+      devShot()
+      await store.refresh()
+    }
+    .onReceive(NotificationCenter.default.publisher(for: JarvisRouter.wroteNotification)) { _ in
+      Task { await store.refresh() }
+    }
+    .onAppear { syncJarvisPage() }
+    .onDisappear { leaveJarvisPage() }
+    .onChange(of: mode) { _ in syncJarvisPage() }
+    .onChange(of: store.day) { _ in picked = nil }
+    .sheet(item: $other) { s in otherSheet(s) }
     .navigationDestination(isPresented: $allRecipes) { RecipesView(store: store) { r in recipe = r } }
     .onReceive(JarvisPageLink.shared.$food) { r in
       guard let r else { return }
@@ -61,23 +93,15 @@ struct FoodContent: View {
       .presentationDetents([.medium, .large])
       .presentationDragIndicator(.visible)
     }
-    .sheet(item: $recipe) { r in
+    .sheet(item: $recipe, onDismiss: { recipeSlot = nil }) { r in
       SheetContainer(title: r.name, close: { recipe = nil }) {
-        RecipeSheet(recipe: r, store: store) { t in
+        RecipeSheet(recipe: r, slot: recipeSlot, store: store) { t in
           recipe = nil
           toast = t
         }
       }
       .presentationDetents([.large])
       .presentationDragIndicator(.visible)
-    }
-    .confirmationDialog(logged.map { tr("今天已记过「\($0.name)」", "\($0.name) is logged today") } ?? "",
-                        isPresented: Binding(get: { logged != nil }, set: { if !$0 { logged = nil } }), titleVisibility: .visible) {
-      if let t = logged {
-        Button(tr("再记一份", "Log another")) { logTemplate(t, again: true) }
-        Button(tr("撤销今天这次", "Undo today's"), role: .destructive) { undoTemplate(t) }
-      }
-      Button(tr("取消", "Cancel"), role: .cancel) {}
     }
   }
 
@@ -104,7 +128,113 @@ struct FoodContent: View {
     VStack(alignment: .leading, spacing: 22) {
       SegmentedControl(items: [(Mode.diet, tr("饮食", "Food")), (.shopping, tr("采购", "Shopping"))], selection: $mode)
       RecordStatusLine(offline: store.offline, refreshing: store.refreshing && store.nutrition == nil)
+      if let b = store.dietBrief { dietEntry(b) }
       if mode == .diet { diet } else { GroceryView(store: store, toast: $toast) }
+    }
+  }
+
+  /// Debug screenshots (`W2W_DEV_FOOD=shopping|diet|pick|scan|products|prices|product|history|grams|allmeals|combine`, with
+  /// `W2W_DEV_TAB` / `W2W_DEV_RECORD` / `W2W_DEV_SCROLL`).
+  private func devShot() {
+    #if DEBUG
+    switch RecordDevShot.value("W2W_DEV_FOOD") {
+    case nil: break
+    case "shopping": mode = .shopping
+    case "diet": other = .diet
+    case "pick": picked = []
+    case "scan":
+      mode = .shopping
+      DispatchQueue.main.asyncAfter(deadline: .now() + 2) { JarvisRouter.current?.devScanShot() }
+    case let what?: other = .dev(what)
+    }
+    #endif
+  }
+
+  #if DEBUG
+  /// The sheets and sub-pages that otherwise need a tap, for simulator screenshots.
+  @ViewBuilder private func devSheet(_ what: String) -> some View {
+    switch what {
+    case "products": NavigationStack { GroceryProductsView(store: store) }
+    case "prices": NavigationStack { StoreProductsView(store: store) }
+    case "product":
+      if let p = store.products.first(where: { !$0.nutrition.isEmpty }) {
+        SheetContainer(title: p.name, close: { other = nil }) { GroceryProductSheet(p: p, staplesOn: true) }
+      }
+    case "history":
+      if let p = store.storeProducts.first {
+        SheetContainer(title: p.name, close: { other = nil }) { PriceHistorySheet(product: p, store: store) }
+      }
+    case "grams":
+      if let t = store.templates.first(where: \.needsConfirmation) {
+        SheetContainer(title: t.name, close: { other = nil }) { MealTemplateSheet(template: t) { _ in } }
+      }
+    case "allmeals":
+      SheetContainer(title: tr("快捷记录", "Quick log"), close: { other = nil }) {
+        AllTemplatesSheet(templates: MealTemplate.byUse(store.templates), tap: { _ in }, edit: { _ in })
+      }
+    case "combine":
+      if let n = store.nutrition {
+        SheetContainer(title: tr("合并成一条", "Merge into one"), close: { other = nil }) {
+          FoodCombineSheet(action: .merge, picked: n.entries, store: store) { _ in }
+        }
+      }
+    default: EmptyView()
+    }
+  }
+  #endif
+
+  /// Which page Jarvis is asked from (its quick questions, the server's extra tools): food also as a segment of 记录, as on the
+  /// page. A tick later, so it comes after the Jarvis layer's own change for the tab.
+  private func syncJarvisPage() {
+    let page = mode == .shopping ? "food.shopping" : "food"
+    DispatchQueue.main.async { JarvisRouter.current?.page = page }
+  }
+
+  /// Back to 训练 / 日记 inside 记录 (leaving for another tab, the layer sets that tab's page).
+  private func leaveJarvisPage() {
+    guard store.circlesTab, let r = JarvisRouter.current, r.page.hasPrefix("food") else { return }
+    r.page = AppTab.record.rawValue
+  }
+
+  /// 「我的饮食档案」: one line above both modes.
+  private func dietEntry(_ b: DietProfileBrief) -> some View {
+    RowGroup {
+      Button { other = .diet } label: {
+        HStack(spacing: 12) {
+          Icon(.fileText, size: 20).foregroundColor(Palette.text2)
+          Text(tr("我的饮食档案", "My diet profile")).font(Typo.body).foregroundColor(Palette.text)
+          Spacer(minLength: 8)
+          Text(b.meta).font(Typo.caption).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
+          Icon(.chevronRight, size: 16).foregroundColor(Palette.text3)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressScale())
+    }
+  }
+
+  @ViewBuilder private func otherSheet(_ s: OtherSheet) -> some View {
+    switch s {
+    #if DEBUG
+    case .dev(let what): devSheet(what)
+    #endif
+    case .diet:
+      SheetContainer(title: tr("我的饮食档案", "My diet profile"), close: { other = nil }) {
+        DietProfileSheet(store: store)
+      }
+      .presentationDetents([.large])
+      .presentationDragIndicator(.visible)
+    case .combine(let action, let entries):
+      SheetContainer(title: action == .merge ? tr("合并成一条", "Merge into one") : tr("存成模板", "Save as template"), close: { other = nil }) {
+        FoodCombineSheet(action: action, picked: entries, store: store) { t in
+          other = nil
+          picked = nil
+          toast = t
+        }
+      }
+      .presentationDetents([.medium, .large])
+      .presentationDragIndicator(.visible)
     }
   }
 
@@ -115,7 +245,20 @@ struct FoodContent: View {
     }
     intakeSection
     if let w = store.water { FoodWaterCard(water: w, canWrite: store.isToday, add: addWater, undo: undoWater).id("n5.water") }
-    if store.isToday && !store.templates.isEmpty { templatesSection.id("n5.templates") }
+    if store.isToday && !store.templates.isEmpty {
+      VStack(alignment: .leading, spacing: 10) {
+        SectionHeader(title: tr("快捷记录", "Quick log"))
+        QuickMeals(store: store, toast: $toast)
+      }
+      .id("n5.templates")
+    }
+    if store.isToday, let plan = store.mealPlan, !plan.isEmpty {
+      MealPlanSection(plan: plan, retry: { Task { await store.refreshMealPlan() } }) { r, slot in
+        recipeSlot = slot
+        recipe = r
+      }
+      .id("n5.mealplan")
+    }
     recipesRow
   }
 
@@ -126,6 +269,12 @@ struct FoodContent: View {
       HStack {
         SectionHeader(title: store.isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(store.day)) 吃了", "Eaten on \(RecordDay.short(store.day))"))
         if let name = store.nutrition?.goalName { Badge(label: name) }
+        if store.nutrition?.notLogged == true { Badge(label: tr("未记录", "Not logged")) }
+        if store.mergeOn, store.nutrition?.entries.contains(where: { !$0.isLocal }) == true {
+          Button(picked == nil ? tr("选择", "Select") : tr("完成", "Done")) { picked = picked == nil ? [] : nil }
+            .font(.system(size: 14, weight: .medium)).foregroundColor(Palette.text2)
+            .padding(.leading, 6)
+        }
       }
       if let n = store.nutrition {
         Card {
@@ -136,11 +285,25 @@ struct FoodContent: View {
             GoalRing(label: tr("脂肪", "Fat"), value: n.intake.fat, goal: n.goal.fat, unit: "g", tone: .sleep)
           }
         }
+        let extras = n.extras
+        if !extras.isEmpty {
+          HStack(spacing: 8) {
+            ForEach(extras, id: \.0) { label, value in
+              VStack(alignment: .leading, spacing: 2) {
+                Text(label).font(Typo.label).foregroundColor(Palette.text2).lineLimit(1).minimumScaleFactor(0.8)
+                Text(value).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text).lineLimit(1)
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+            }
+          }
+          .padding(.horizontal, 4)
+        }
         if let err = n.error { Banner(text: err, tone: .mid) }
         if n.entries.isEmpty {
           EmptyNote(text: tr("还没有记录", "Nothing logged yet"))
         } else {
           ForEach(n.meals(), id: \.0) { meal, xs in mealCard(meal, xs) }
+          if let picked { pickBar(picked, entries: n.entries) }
         }
       } else {
         Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
@@ -159,13 +322,19 @@ struct FoodContent: View {
       }
       .padding(.bottom, 6)
       ForEach(xs) { e in
-        Button { if !e.isLocal { entry = e } } label: {
+        Button { tapEntry(e) } label: {
           HStack(spacing: 8) {
+            if let picked, !e.isLocal {
+              ZStack {
+                Circle().stroke(picked.contains(e.id) ? Palette.good : Palette.text3, lineWidth: 1.5).frame(width: 20, height: 20)
+                if picked.contains(e.id) { Icon(.check, size: 12).foregroundColor(Palette.good) }
+              }
+            }
             Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(2)
             if let p = e.pending { PendingMark(needsAttention: p.needsAttention) }
             Spacer(minLength: 8)
             Text("\(RecordFormat.num(e.macros.kcal)) kcal").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text2)
-            if !e.isLocal { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
+            if !e.isLocal && picked == nil { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
           }
           .padding(.vertical, 10)
           .contentShape(Rectangle())
@@ -178,52 +347,46 @@ struct FoodContent: View {
     .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 
-  // MARK: quick meals
-
-  private var templatesSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      SectionHeader(title: tr("快捷记录", "Quick log"))
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 10) {
-          ForEach(store.templates) { t in
-            Button { tapTemplate(t) } label: { TemplateCard(t: t) }
-              .buttonStyle(PressScale())
-              .disabled(busy)
-          }
-        }
-      }
+  private func tapEntry(_ e: FoodEntry) {
+    guard !e.isLocal else { return }
+    guard var p = picked else {
+      entry = e
+      return
     }
+    if p.contains(e.id) { p.remove(e.id) } else { p.insert(e.id) }
+    picked = p
   }
 
-  private func tapTemplate(_ t: MealTemplate) {
-    if t.todayLog != nil || t.pending != nil { logged = t } else { logTemplate(t, again: false) }
+  /// 已选 N 条 · 存成模板 · 合并成一条 (a merge needs at least two). Both need the server (docs section 5.5).
+  private func pickBar(_ ids: Set<String>, entries: [FoodEntry]) -> some View {
+    let chosen = entries.filter { ids.contains($0.id) }
+    return HStack(spacing: 8) {
+      Text(tr("已选 \(chosen.count) 条", "\(chosen.count) selected")).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2).lineLimit(1)
+      Spacer(minLength: 4)
+      pickButton(tr("存成模板", "Save as template"), filled: false, enabled: !chosen.isEmpty) { combine(.template, chosen) }
+      pickButton(tr("合并成一条", "Merge"), filled: true, enabled: chosen.count >= 2) { combine(.merge, chosen) }
+    }
+    .padding(12)
+    .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.surface))
   }
 
-  private func logTemplate(_ t: MealTemplate, again: Bool) {
-    busy = true
-    Task {
-      defer { busy = false }
-      let out = await store.log(t, again: again)
-      if out.conflict {
-        store.drop(out)
-        toast = Toast(tr("今天已记过「\(t.name)」", "\(t.name) is already logged today"), actionTitle: tr("再记一份", "Log another")) {
-          logTemplate(t, again: true)
-        }
-      } else if out.sent || out.queued {
-        toast = Toast(out.sent ? tr("已记 · \(t.name)", "Logged · \(t.name)") : out.message, actionTitle: tr("撤销", "Undo")) {
-          undoTemplate(t)
-        }
-      } else {
-        toast = Toast(out.message)
-      }
+  private func pickButton(_ title: String, filled: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Text(title).font(.system(size: 13, weight: .medium)).foregroundColor(filled ? Palette.bg : Palette.text).lineLimit(1)
+        .padding(.vertical, 8).padding(.horizontal, 12)
+        .background(Capsule().fill(filled ? Palette.text : Palette.bg))
     }
+    .buttonStyle(PressScale())
+    .disabled(!enabled)
+    .opacity(enabled && !store.offline ? 1 : 0.4)
   }
 
-  private func undoTemplate(_ t: MealTemplate) {
-    Task {
-      let cur = store.templates.first { $0.id == t.id } ?? t
-      toast = Toast(await store.undoLog(cur) ? tr("已撤销", "Undone") : tr("撤销要联网，稍后再试", "Undo needs a connection, try again later"))
+  private func combine(_ action: FoodCombine.Action, _ entries: [FoodEntry]) {
+    if store.offline {
+      toast = Toast(tr("需要联网", "Needs a connection"))
+      return
     }
+    other = .combine(action, entries)
   }
 
   // MARK: water
@@ -263,30 +426,6 @@ struct FoodContent: View {
   }
 }
 
-/// A quick-meal card in the horizontal row: name, kcal · protein, 「已记」 when logged today.
-private struct TemplateCard: View {
-  let t: MealTemplate
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      HStack(spacing: 6) {
-        Text(t.name).font(Typo.bodyStrong).foregroundColor(Palette.text).lineLimit(1)
-        if let p = t.pending { PendingMark(needsAttention: p.needsAttention) }
-      }
-      Text("\(RecordFormat.num(t.totals.kcal)) kcal · \(RecordFormat.num(t.totals.protein)) g")
-        .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-      HStack(spacing: 6) {
-        Text(t.meal.title).font(Typo.label).foregroundColor(Palette.text3)
-        if t.todayLog != nil || t.pending != nil { Badge(label: tr("已记", "Logged"), tone: .good) }
-      }
-    }
-    .frame(width: 150, alignment: .topLeading)
-    .frame(minHeight: 72, alignment: .topLeading)
-    .padding(14)
-    .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.surface))
-  }
-}
-
 /// 「今天喝水」: total / goal, a bar, +250 / +500 and undo of the newest drink.
 struct FoodWaterCard: View {
   let water: WaterDay
@@ -298,8 +437,8 @@ struct FoodWaterCard: View {
     VStack(alignment: .leading, spacing: 10) {
       HStack {
         SectionHeader(title: canWrite ? tr("今天喝水", "Water today") : tr("喝水", "Water"))
-        if water.goal != nil {
-          Text("\(Int((water.fraction * 100).rounded()))%").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
+        if let pct = water.percent {
+          Text("\(pct)%").font(Typo.label.monospacedDigit()).foregroundColor(Palette.text2)
         }
       }
       Card {
@@ -313,6 +452,7 @@ struct FoodWaterCard: View {
             }
           }
           ProgressBar(fraction: water.fraction, tone: .sleep)
+          if let note = water.goalNote { Text(note).font(Typo.label).foregroundColor(Palette.text3) }
           if canWrite {
             HStack(spacing: 8) {
               ForEach(water.quick, id: \.self) { ml in
@@ -328,7 +468,7 @@ struct FoodWaterCard: View {
                   Icon(.undo2, size: 18).foregroundColor(Palette.text2).frame(width: 44, height: 40)
                 }
                 .buttonStyle(PressScale())
-                .accessibilityLabel(tr("撤销最近一次", "Undo the last drink"))
+                .accessibilityLabel(tr("撤销最近一次（\(RecordFormat.num(water.last?.ml)) ml）", "Undo the last drink (\(RecordFormat.num(water.last?.ml)) ml)"))
               }
             }
           }
@@ -378,6 +518,11 @@ struct FoodEntrySheet: View {
           PrimaryButton(title: tr("保存份量", "Save portion"), busy: busy) { savePortion() }
             .disabled(abs(quantity - entry.quantity) < 0.001)
             .opacity(abs(quantity - entry.quantity) < 0.001 ? 0.4 : 1)
+          if let id = entry.mergeId, store.mergeOn {
+            SecondaryButton(title: tr("拆开成原来的几条", "Split back into the original entries"), background: Palette.inSheet) {
+              split(id)
+            }
+          }
           SecondaryButton(icon: .trash, title: tr("删除这条", "Delete this entry"), tone: .bad, background: Palette.inSheet) {
             confirmDelete = true
           }
@@ -405,6 +550,13 @@ struct FoodEntrySheet: View {
     Task {
       let out = await store.delete(entry)
       done(out.sent ? tr("已删除", "Deleted") : out.message)
+    }
+  }
+
+  private func split(_ id: Int) {
+    Task {
+      let err = await store.split(mergeId: id)
+      done(err ?? tr("已拆开", "Split"))
     }
   }
 }

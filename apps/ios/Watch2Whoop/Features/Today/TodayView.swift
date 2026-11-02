@@ -18,6 +18,7 @@ struct TodayView: View {
   @State private var sheet: TodaySheet?
   @State private var showConsent = false
   @State private var path: [SleepRoute] = []
+  @State private var toast: Toast?
   @SceneStorage("w2w.tab") private var tab: AppTab = .today
   @SceneStorage("w2w.record.segment") private var recordSegment: RecordTab.Segment = .training
   @State private var trainingOpen = false
@@ -76,6 +77,7 @@ struct TodayView: View {
       }
       .background(Palette.bg.ignoresSafeArea())
       .refreshable { await store.refresh() }
+      .toast($toast)
       .modifier(DaySwipe { store.step($0) })
       .onAppear {
         if store.hasData && PerfProbe.autoScroll { autoScroll(proxy) }
@@ -221,6 +223,8 @@ struct TodayView: View {
     if !m.isPast, let mm = m.muscle { TodayMuscleCard(muscle: mm, open: openTraining).padding(.top, 22).id("muscle") }
 
     if !m.isPast && !m.status.isEmpty { statusBlock(m.status).padding(.top, 22) }
+
+    TodayFoodCard(session: session, day: store.date, toast: $toast).id("n3.food")
 
     if !m.reminders.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
