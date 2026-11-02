@@ -208,7 +208,8 @@ struct PostCard: View {
           Button {
             withAnimation(.easeOut(duration: 0.2)) { showAll.toggle() }
           } label: {
-            Text(showAll ? tr("收起", "Show less") : tr("查看另外 \(post.exercises.count - preview) 个动作", post.exercises.count - preview == 1 ? "1 more exercise" : "\(post.exercises.count - preview) more exercises"))
+            Text(showAll ? tr("收起", "Show less") : post.exercises.count - preview == 1 ? tr("查看另外 1 个动作", "1 more exercise")
+                 : tr("查看另外 \(post.exercises.count - preview) 个动作", "\(post.exercises.count - preview) more exercises"))
               .font(Typo.caption).foregroundColor(Palette.text2)
               .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
           }
