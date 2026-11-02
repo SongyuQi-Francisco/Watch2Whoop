@@ -98,21 +98,25 @@ def operating_characteristics(seeds: int = 40, days: int = 300, n_boot: int = 30
             era = K.app_era(p)
             verdicts.append(K.compare(p, K.sdnn_series(p), K.rmssd_series(p, "RMSSD"), n_boot=n_boot, seed=seed, era=era)["verdict"])
         out.append({"setting": label, "eligible": sum(v == "eligible" for v in verdicts) / seeds, "seeds": seeds})
-    for label, kw in (("D3, no artifacts", {}), ("D3, 3% mildly premature beats", {"ectopic_rate": 0.03})):
-        verdicts = []
+    for label, kw in (("D3, no artifacts", {}), ("D3, 0.5% mildly premature beats", {"ectopic_rate": 0.005}),
+                      ("D3, 3% mildly premature beats", {"ectopic_rate": 0.03})):
+        results = []
         for seed in range(1, seeds + 1):
             p = make_person(days, seed, **kw)
             era = K.app_era(p)
             cur, cand = K.rmssd_series(p, "25%"), K.rmssd_series(p, "20%", max_deviation=0.20)
             n = sum(1 for r in p.readings if r.beats_ms and len(r.beats_ms) >= 2)
-            verdicts.append(K.compare(p, cur, cand, n_boot=n_boot, seed=seed, era=era, extra=K.filter_extras(cur, cand, n))["verdict"])
-        out.append({"setting": label, "eligible": sum(v == "eligible" for v in verdicts) / seeds, "seeds": seeds,
-                    "no_practical_effect": sum(v == "keep (no practical effect)" for v in verdicts) / seeds})
+            results.append(K.compare(p, cur, cand, n_boot=n_boot, seed=seed, era=era, extra=K.filter_extras(cur, cand, n)))
+        out.append({"setting": label, "seeds": seeds, "eligible": sum(r["verdict"] == "eligible" for r in results) / seeds,
+                    "improvement": sum(r["gates"]["E_improvement"]["ok"] for r in results) / seeds,
+                    "no_overfilter": sum(r["gates"]["no_overfilter"]["ok"] for r in results) / seeds})
     return out
 
 
 def operating_markdown(rows: list[dict]) -> str:
-    out = ["# Calibration rules on synthetic persons (known answer)", "", "| setting | seeds | `eligible` | `keep (no practical effect)` |", "|---|---|---|---|"]
-    out += [f"| {r['setting']} | {r['seeds']} | {r['eligible']:.0%} | {r['no_practical_effect']:.0%} |" if "no_practical_effect" in r
-            else f"| {r['setting']} | {r['seeds']} | {r['eligible']:.0%} | — |" for r in rows]
+    def share(row: dict, key: str) -> str:
+        return f"{row[key]:.0%}" if key in row else "—"
+    out = ["# Calibration rules on synthetic persons (known answer)", "",
+           "| setting | seeds | `eligible` | rule E passes | over-filtering check passes |", "|---|---|---|---|---|"]
+    out += [f"| {r['setting']} | {r['seeds']} | {r['eligible']:.0%} | {share(r, 'improvement')} | {share(r, 'no_overfilter')} |" for r in rows]
     return "\n".join(out) + "\n"

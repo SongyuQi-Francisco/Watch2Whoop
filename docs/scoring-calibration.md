@@ -107,7 +107,7 @@ row, labelled as such; it cannot become eligible here.
 
 ### 5.2 Recovery logistic (D4)
 - **Scale check of the fixed mapping**: in both development and hold-out, green, yellow and red each cover 15–60% of days, and the mean weighted z
-  stays within ±0.30. Pass = `keep`.
+  stays within ±0.30. Pass = `keep`. A failure in one window only is reported and also keeps the fixed mapping.
 - If the check fails in both windows, two alternatives are evaluated:
   a single fit on development (the slope and offset placing the window's terciles of weighted z on the 34 and 67 boundaries), and a rolling
   per-person mapping (the same calculation on the trailing 90 nights, slope limited to 0.5–4, falling back to fixed with fewer than 30).
@@ -127,7 +127,7 @@ K is not fitted. Checks on the current value: the median strain of training days
 `keep`, and the parameter can be relabelled from "personal calibration" to a design choice anchored on a reference session: 60 minutes entirely at 70–80% HRmax
 (Edwards TRIMP = 180). If either fails, K is redefined from that session alone, with no person's data: strain 14, so K = 180 / ln 3 ≈ 164.
 K calibrated per person is rejected in any case, because it makes strain incomparable between people (scoring-validation 3.7). The old definition (median training day → 12)
-is reported for the development and hold-out windows to show how unstable it is.
+is reported for the development and hold-out windows to show whether it holds over time.
 
 ### 5.5 Sleep-need baseline (D7)
 Report only: median actual sleep on nights with low debt (≤ 30 minutes) and low previous-day strain (≤ 7). How long someone sleeps is shaped by habit and schedule, so
@@ -144,7 +144,7 @@ No threshold, candidate or metric changed. Two things did, both found while chec
 1. **A reading counted twice.** The same SDNN reading can arrive from two sources with different time precision (microseconds and whole seconds), and the first version of the export
    merge kept both. A night's duplicated reading looks perfectly consistent, which flatters SDNN on P3, so this could change a D2 outcome. Readings are now matched on the whole second.
    The check that found it does not depend on the outcome: the merged reading count has to equal what the scoring code's own report counts.
-2. **Wording of the over-filtering rule** in D3: "unchanged-outcome readings" was vague and became "readings usable under both thresholds". The threshold is the same.
+2. **Wording only**, with the thresholds the same: in D3, "unchanged-outcome readings" was vague and became "readings usable under both thresholds"; in D4, what happens when only one window fails is now spelled out; in D6, the old definition is reported "to show whether it holds over time" instead of assuming that it does not; the exploratory filter in D3 is named for what it is (local median).
 
 ## 6. From a rule to a change
 A rule saying `eligible` is not a decision:
@@ -162,6 +162,8 @@ Public wording: "checked on one person's data, with no external reference". Neve
 - With a few hundred nights the intervals are wide, so most candidates will end in `keep`. That is intended: it means "no evidence to change", not "proven optimal".
 - Rule thresholds are design choices. They make the decision explicit and repeatable; they do not make it objective.
 - Everything runs on one chosen block length and seed. When an interval's bound sits near 0, the private report says so and repeats it with other block lengths and seeds.
+- D3's over-filtering check has a blind spot, found on synthetic data after the rules were written and left unchanged. If artifacts sit in nearly every reading, removing them lowers RMSSD across the
+  board, which is what the check looks for, so a filter that is right ends in `keep` (last row of the table in section 8). When that check is what stops a candidate, a person has to look at it.
 
 ## 8. How to run it
 ```bash
@@ -169,16 +171,25 @@ cd body_engine
 uv run python -m body_engine.validation calibration export-sql --user-id N   # one read-only COPY per file, for one user
 uv run python -m body_engine.validation calibration run --data DIR --json OUT.json   # files only, no database; holds personal values, keep out of git
 uv run python -m body_engine.validation calibration synthetic                # the same report on a made-up person
-uv run python -m body_engine.validation calibration rules                    # the table below
+uv run python -m body_engine.validation calibration rules --seeds 100 --days 340 --bootstrap 400   # the table below (about 10 minutes)
 ```
 Run the export where the database is, save each COPY as the file named above it in a private directory outside the repository, and delete that directory afterwards.
 Tests: `body_engine/tests/test_calibration.py`, synthetic data only. Among them, the replay has to reproduce the real scoring engine on a synthetic person.
 
 ### Rules on synthetic persons
-The generator (`validation/calibration_synth.py`) has a known answer, so this measures the rules and says nothing about real physiology. Each row uses 340 days, like the
-data the rules were written for.
+The generator (`validation/calibration_synth.py`) has a known answer, so this measures the rules and says nothing about real physiology. Each row is 100 synthetic persons of
+340 days. Bootstrap intervals use 400 resamples here for speed.
 
-<!-- RULES-TABLE -->
+| Setting | `eligible` | Rule E passes | Over-filtering check passes |
+|---|---|---|---|
+| D2, no difference (reading noise 0.25 / 0.25) | 0% | — | — |
+| D2, RMSSD less noisy (0.15 / 0.45) | 99% | — | — |
+| D3, no artifacts | 0% | 0% | 100% |
+| D3, 0.5% mildly premature beats | 100% | 100% | 100% |
+| D3, 3% mildly premature beats | 0% | 100% | 0% |
+
+The rules stay quiet when there is nothing to find and find a clear-cut difference, apart from the blind spot in the last row (section 7). These settings are clear-cut on purpose:
+the generator's premature beats always fall between the two thresholds, the best case for 20%, and D2's noise gap is wide. The table is not a power estimate for small real effects, and those will often end in `keep`.
 
 ## References
 DOIs checked against Crossref on 2026-11-03 (title, first author, journal, year, volume, pages).

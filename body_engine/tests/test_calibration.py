@@ -168,11 +168,22 @@ def test_d3_clean_data_has_no_practical_effect():
     assert res["verdict"].startswith("keep") and not res["gates"]["F_practical"]["ok"] and extra["reading_loss"]["ok"]
 
 
-def test_d3_tighter_filter_removes_mild_premature_beats():
-    p = KS.make_person(200, 6, ectopic_rate=0.03)
-    cur, cand = K.rmssd_series(p, "25%"), K.rmssd_series(p, "20%", max_deviation=0.20)
-    shifts = [cand.per_reading[t] - cur.per_reading[t] for t in set(cur.per_reading) & set(cand.per_reading)]
-    assert statistics.median(shifts) < -0.05   # these beats inflated RMSSD
+def _d3(person, n_boot=200):
+    cur, cand = K.rmssd_series(person, "25%"), K.rmssd_series(person, "20%", max_deviation=0.20)
+    extra = K.filter_extras(cur, cand, len(person.readings))
+    return K.compare(person, cur, cand, n_boot=n_boot, era=K.app_era(person), extra=extra)
+
+
+def test_d3_finds_a_filter_that_removes_occasional_premature_beats():
+    res = _d3(KS.make_person(300, 6, ectopic_rate=0.005))
+    assert res["verdict"] == "eligible" and res["gates"]["no_overfilter"]["ok"]
+
+
+def test_d3_over_filter_check_cannot_tell_when_artifacts_fill_every_reading():
+    """A known limit of the rule (docs/scoring-calibration.md section 7): removing artifacts present in nearly every reading
+    lowers RMSSD across the board, which is exactly what the check looks for, so a right filter ends in `keep`."""
+    res = _d3(KS.make_person(300, 6, ectopic_rate=0.03))
+    assert res["gates"]["E_improvement"]["ok"] and not res["gates"]["no_overfilter"]["ok"] and res["verdict"] == "keep"
 
 
 def test_over_filtering_is_caught():
