@@ -20,6 +20,10 @@ final class AccountSession: ObservableObject {
     }
   }
   @Published var displayName: String?
+  /// People who share something with me (`/v1/web/me` → `viewable`, the server's answer). In memory only.
+  @Published var viewable: [ViewablePerson] = []
+  /// Whose read-only view is open (`MemberScreen`, over the whole app); nil = my own pages.
+  @Published var viewing: ViewablePerson?
   /// N2's sync (`POST /v1/sync/pull`, `PUT /scores/app`) is on for this user: the phone scores itself (#340 N2b).
   static let nativeSyncFlag = "native_sync"
 
@@ -32,6 +36,13 @@ final class AccountSession: ObservableObject {
     // the long jobs (scoring, history download) are the runtime's, shared with the background task (local history)
     self.sync = SyncCoordinator(db: db, api: api, scoring: runtime?.scoring, history: runtime?.history)
     sync.deltaAvailable = flags.contains(Self.nativeSyncFlag)
+  }
+
+  /// Asks the server again who shares with me (a share may have just started or ended).
+  func refreshViewable() async {
+    guard let me = try? await api.json(.get(Endpoint.webMe)) else { return }
+    let list = ViewablePerson.parse(me["viewable"])
+    if list != viewable { viewable = list }
   }
 
   /// Circles replace 饮食 in the tab bar while the `friends` flag is on (same rule as the Today page's applyTabs()).
@@ -277,6 +288,7 @@ final class AppModel: ObservableObject {
       try open(cfg, userId: uid, api: api)
       session?.flags = Set(flags)
       session?.displayName = cfg.displayName
+      session?.viewable = ViewablePerson.parse(me["viewable"])
     } catch APIError.unauthorized {
       // handled by onUnauthorized
     } catch let e as APIError {

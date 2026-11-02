@@ -6,79 +6,7 @@ struct TrainingCalendarView: View {
   let openDay: (String) -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        SectionHeader(title: tr("训练历史", "Training history"))
-        Spacer()
-        Button { store.showMonth(TrainingMonth.add(store.month, -1)) } label: {
-          Icon(.chevronLeft, size: 16).foregroundColor(Palette.text2).frame(width: 32, height: 28)
-        }
-        .accessibilityLabel(tr("上个月", "Previous month"))
-        Text(monthTitle).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text)
-        Button { store.showMonth(TrainingMonth.add(store.month, 1)) } label: {
-          Icon(.chevronRight, size: 16).foregroundColor(store.month >= String(store.today.prefix(7)) ? Palette.text3 : Palette.text2)
-            .frame(width: 32, height: 28)
-        }
-        .disabled(store.month >= String(store.today.prefix(7)))
-        .accessibilityLabel(tr("下个月", "Next month"))
-      }
-      Card {
-        VStack(spacing: 12) {
-          grid
-          if let m = store.calendar {
-            HStack(spacing: 8) {
-              MetricTile(label: tr("训练", "Trained"), value: m.trainingDays.map(String.init), unit: tr("天", "d"))
-              MetricTile(label: tr("时长", "Time"), value: m.totalMinutes.map { RecordFormat.num($0 / 60, 1) }, unit: "h")
-              MetricTile(label: tr("消耗", "Burned"), value: m.totalKcal.map { RecordFormat.num($0) }, unit: "kcal")
-            }
-          }
-        }
-      }
-    }
-  }
-
-  private var monthTitle: String {
-    let p = store.month.split(separator: "-")
-    guard p.count == 2, let m = Int(p[1]) else { return store.month }
-    return tr("\(p[0]) 年 \(m) 月", "\(m)/\(p[0])")
-  }
-
-  private var grid: some View {
-    let days = store.calendar?.days ?? []
-    let byDate = Dictionary(days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
-    let first = "\(store.month)-01"
-    let lead = RecordDay.weekday(first) - 1
-    let count = Self.daysIn(store.month)
-    let cells: [String?] = Array(repeating: nil, count: lead) + (0..<count).map { RecordDay.add(first, $0) }
-    return VStack(spacing: 6) {
-      HStack(spacing: 0) {
-        ForEach(1...7, id: \.self) { wd in
-          Text(TrainingSection.weekdayName(wd)).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3).frame(maxWidth: .infinity)
-        }
-      }
-      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 6) {
-        ForEach(Array(cells.enumerated()), id: \.offset) { _, iso in
-          if let iso {
-            let d = byDate[iso]
-            let future = iso > store.today
-            Button { if !future { openDay(iso) } } label: {
-              VStack(spacing: 3) {
-                Text(String(Int(iso.suffix(2)) ?? 0)).font(.system(size: 14, weight: iso == store.today ? .bold : .regular).monospacedDigit())
-                  .foregroundColor(future ? Palette.text3 : Palette.text)
-                Circle().fill((d?.sessions ?? 0) > 0 ? (TrainingMonth.tone(d?.intensity) ?? .good).color : .clear).frame(width: 6, height: 6)
-              }
-              .frame(maxWidth: .infinity, minHeight: 38)
-              .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(iso == store.today ? Palette.bg : .clear))
-            }
-            .buttonStyle(PressScale())
-            .disabled(future)
-            .accessibilityLabel("\(RecordDay.short(iso)) \(d?.label ?? "")")
-          } else {
-            Color.clear.frame(minHeight: 38)
-          }
-        }
-      }
-    }
+    TrainingMonthCard(month: store.month, calendar: store.calendar, today: store.today, showMonth: { store.showMonth($0) }, openDay: openDay)
   }
 
   static func daysIn(_ month: String) -> Int {
@@ -91,13 +19,96 @@ struct TrainingCalendarView: View {
   }
 }
 
+/// The month grid and its totals, from plain values (`TrainingCalendarView`, the read-only view of someone else).
+struct TrainingMonthCard: View {
+  let month: String
+  let calendar: TrainingMonth?
+  let today: String
+  let showMonth: (String) -> Void
+  let openDay: (String) -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        SectionHeader(title: tr("训练历史", "Training history"))
+        Spacer()
+        Button { showMonth(TrainingMonth.add(month, -1)) } label: {
+          Icon(.chevronLeft, size: 16).foregroundColor(Palette.text2).frame(width: 32, height: 28)
+        }
+        .accessibilityLabel(tr("上个月", "Previous month"))
+        Text(monthTitle).font(Typo.label.monospacedDigit()).foregroundColor(Palette.text)
+        Button { showMonth(TrainingMonth.add(month, 1)) } label: {
+          Icon(.chevronRight, size: 16).foregroundColor(month >= String(today.prefix(7)) ? Palette.text3 : Palette.text2)
+            .frame(width: 32, height: 28)
+        }
+        .disabled(month >= String(today.prefix(7)))
+        .accessibilityLabel(tr("下个月", "Next month"))
+      }
+      Card {
+        VStack(spacing: 12) {
+          grid
+          if let m = calendar {
+            HStack(spacing: 8) {
+              MetricTile(label: tr("训练", "Trained"), value: m.trainingDays.map(String.init), unit: tr("天", "d"))
+              MetricTile(label: tr("时长", "Time"), value: m.totalMinutes.map { RecordFormat.num($0 / 60, 1) }, unit: "h")
+              MetricTile(label: tr("消耗", "Burned"), value: m.totalKcal.map { RecordFormat.num($0) }, unit: "kcal")
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private var monthTitle: String {
+    let p = month.split(separator: "-")
+    guard p.count == 2, let m = Int(p[1]) else { return month }
+    return tr("\(p[0]) 年 \(m) 月", "\(m)/\(p[0])")
+  }
+
+  private var grid: some View {
+    let days = calendar?.days ?? []
+    let byDate = Dictionary(days.map { ($0.date, $0) }, uniquingKeysWith: { a, _ in a })
+    let first = "\(month)-01"
+    let lead = RecordDay.weekday(first) - 1
+    let count = TrainingCalendarView.daysIn(month)
+    let cells: [String?] = Array(repeating: nil, count: lead) + (0..<count).map { RecordDay.add(first, $0) }
+    return VStack(spacing: 6) {
+      HStack(spacing: 0) {
+        ForEach(1...7, id: \.self) { wd in
+          Text(TrainingSection.weekdayName(wd)).font(.system(size: 11, weight: .medium)).foregroundColor(Palette.text3).frame(maxWidth: .infinity)
+        }
+      }
+      LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 6) {
+        ForEach(Array(cells.enumerated()), id: \.offset) { _, iso in
+          if let iso {
+            let d = byDate[iso]
+            let future = iso > today
+            Button { if !future { openDay(iso) } } label: {
+              VStack(spacing: 3) {
+                Text(String(Int(iso.suffix(2)) ?? 0)).font(.system(size: 14, weight: iso == today ? .bold : .regular).monospacedDigit())
+                  .foregroundColor(future ? Palette.text3 : Palette.text)
+                Circle().fill((d?.sessions ?? 0) > 0 ? (TrainingMonth.tone(d?.intensity) ?? .good).color : .clear).frame(width: 6, height: 6)
+              }
+              .frame(maxWidth: .infinity, minHeight: 38)
+              .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(iso == today ? Palette.bg : .clear))
+            }
+            .buttonStyle(PressScale())
+            .disabled(future)
+            .accessibilityLabel("\(RecordDay.short(iso)) \(d?.label ?? "")")
+          } else {
+            Color.clear.frame(minHeight: 38)
+          }
+        }
+      }
+    }
+  }
+}
+
 /// One day of training (`/training/day/{day}`): watch workouts and logged strength sessions; a future day shows its plan.
 struct TrainingDaySheet: View {
   @ObservedObject var store: TrainingStore
   let day: String
   let plan: [String]
-  @State private var detail: [String: Any]?
-  @State private var loaded = false
 
   init(store: TrainingStore, day: String, plan: [String]) {
     self.store = store
@@ -106,8 +117,22 @@ struct TrainingDaySheet: View {
   }
 
   var body: some View {
+    TrainingDayBody(today: store.today, day: day, plan: plan) { await store.dayDetail(day) }
+  }
+}
+
+/// The day's numbers and sessions; `load` fetches `/training/day/{day}` (from the phone's documents, or someone else's in memory).
+struct TrainingDayBody: View {
+  let today: String
+  let day: String
+  let plan: [String]
+  let load: () async -> [String: Any]?
+  @State private var detail: [String: Any]?
+  @State private var loaded = false
+
+  var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      if day > store.today {
+      if day > today {
         if plan.isEmpty { EmptyNote(text: tr("无计划", "No plan")) }
         ForEach(plan, id: \.self) { Text($0).font(Typo.body).foregroundColor(Palette.text) }
       } else if let d = detail {
@@ -125,7 +150,7 @@ struct TrainingDaySheet: View {
       }
     }
     .task {
-      detail = await store.dayDetail(day)
+      detail = await load()
       loaded = true
     }
   }

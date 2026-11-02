@@ -38,6 +38,14 @@ struct MeTab: View {
             RowDivider()
             ListRow(icon: .calendarDays, title: tr("身体事件", "Body events")) { sheet = .records(.events) }
           }
+          if !session.viewable.isEmpty {
+            RowGroup(title: tr("共享给我的", "Shared with me")) {
+              ForEach(Array(session.viewable.enumerated()), id: \.element.id) { n, p in
+                if n > 0 { RowDivider() }
+                ListRow(icon: .users, title: p.shownName) { session.viewing = p }
+              }
+            }
+          }
           RowGroup(title: tr("设置", "Settings")) {
             ListRow(icon: .user, title: tr("个人资料", "Profile")) { sheet = .profile }
             RowDivider()
@@ -66,7 +74,10 @@ struct MeTab: View {
       }
       .toolbar(.hidden, for: .navigationBar)
     }
-    .task { await countUnsent() }
+    .task {
+      await countUnsent()
+      await session.refreshViewable()
+    }
     .sheet(item: $sheet, onDismiss: { Task { await countUnsent() } }) { s in
       MeSheetView(sheet: s).environmentObject(session).environmentObject(app)
     }

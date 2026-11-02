@@ -6,6 +6,7 @@ import UIKit
 /// not drawn, just marked 「未共享」. Cheers 👏 💤 💪 once a day each.
 struct MemberList: View {
   @ObservedObject var store: CirclesStore
+  @EnvironmentObject private var session: AccountSession
   @State private var remarkFor: MemberCard?
   @State private var remark = ""
 
@@ -13,7 +14,9 @@ struct MemberList: View {
     VStack(spacing: 12) {
       if let o = store.overview {
         ForEach(o.everyone) { m in
-          MemberCardView(member: m, kinds: o.nudgeKinds, store: store) {
+          // the card opens their pages when the server lists them as viewable (app.js friendCard `canOpen`)
+          let person = m.isSelf ? nil : session.viewable.first { $0.id == m.id }
+          MemberCardView(member: m, kinds: o.nudgeKinds, store: store, open: person.map { p in { session.viewing = p } }) {
             remark = m.remark ?? ""
             remarkFor = m
           }
@@ -22,6 +25,7 @@ struct MemberList: View {
         ProgressView().tint(Palette.text2).padding(.vertical, 40)
       }
     }
+    .task { await session.refreshViewable() }
     .alert(tr("备注名", "Nickname"), isPresented: Binding(get: { remarkFor != nil }, set: { if !$0 { remarkFor = nil } })) {
       TextField(remarkFor?.displayName ?? "", text: $remark)
       Button(tr("保存", "Save")) {
@@ -38,6 +42,8 @@ struct MemberCardView: View {
   let member: MemberCard
   let kinds: [String]
   @ObservedObject var store: CirclesStore
+  /// Opens this person's read-only pages; nil = they share nothing I can open.
+  var open: (() -> Void)?
   let editRemark: () -> Void
   @State private var day: MemberCard.Scores.Day?
 
@@ -63,6 +69,7 @@ struct MemberCardView: View {
             if store.remarksOn { Button(tr("设置备注名", "Set a nickname"), action: editRemark) }
           }
         }
+        if open != nil { Icon(.chevronRight, size: 16).foregroundColor(Palette.text3) }
       }
       if let sc, sc.state == "scored" {
         HStack(spacing: 0) {
@@ -86,6 +93,11 @@ struct MemberCardView: View {
     }
     .padding(14)
     .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
+    .contentShape(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous))
+    .onTapGesture { open?() }   // the cheers, the week's dots and the menu keep their own buttons
+    .accessibilityActions {
+      if let open { Button(tr("查看", "View"), action: open) }
+    }
     .sheet(item: Binding(get: { day.map(DayRef.init) }, set: { if $0 == nil { day = nil } })) { ref in
       DaySheet(name: m.isSelf ? tr("我", "Me") : m.shownName, day: ref.day)
     }

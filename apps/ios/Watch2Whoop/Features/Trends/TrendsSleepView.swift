@@ -78,6 +78,7 @@ struct TrendsSleepView: View {
   let end: String?
   let openNight: (String) -> Void
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.memberView) private var member
   @State private var nights: SleepNights?
   @State private var cancellable: AnyDatabaseCancellable?
 
@@ -89,8 +90,11 @@ struct TrendsSleepView: View {
         ProgressView().tint(Palette.text3).frame(maxWidth: .infinity).padding(.vertical, 40)
       }
     }
-    .onAppear { observe(end) }
-    .onChange(of: end) { e in observe(e); Task { await pull(e) } }
+    .onAppear { if member == nil { observe(end) } }
+    .onChange(of: end) { e in
+      if member == nil { observe(e) }
+      Task { await pull(e) }
+    }
     .task { await pull(end) }
   }
 
@@ -106,6 +110,12 @@ struct TrendsSleepView: View {
 
   /// The server's nights, then (package `series` on) the phone's own (M3 `SeriesLocal`).
   private func pull(_ e: String?) async {
+    if let member {   // someone else's nights: only in memory
+      let r = Endpoint.sleepNights(end: e, user: member.user)
+      await member.load([r])
+      nights = SleepNights(json: member.json(r) ?? [:])
+      return
+    }
     _ = await DocPuller(api: session.api, db: session.db).pull([DocFetch(TrendsDocs.sleepNights(e), Endpoint.sleepNights(end: e))])
     await SeriesLocal.refresh(session: session, [.nights(end: e)], userToday: nil)
   }

@@ -84,69 +84,10 @@ struct FoodContent: View {
       DayStepper(day: store.day, today: store.today) { store.select($0) }
       Spacer()
     }
-    intakeSection
+    FoodIntakeSection(nutrition: store.nutrition, day: store.day, isToday: store.isToday, refreshing: store.refreshing) { entry = $0 }
     if let w = store.water { FoodWaterCard(water: w, canWrite: store.isToday, add: addWater, undo: undoWater).id("n5.water") }
     if store.isToday && !store.templates.isEmpty { templatesSection.id("n5.templates") }
     recipesRow
-  }
-
-  // MARK: intake
-
-  @ViewBuilder private var intakeSection: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        SectionHeader(title: store.isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(store.day)) 吃了", "Eaten on \(RecordDay.short(store.day))"))
-        if let name = store.nutrition?.goalName { Badge(label: name) }
-      }
-      if let n = store.nutrition {
-        Card {
-          HStack(spacing: 4) {
-            GoalRing(label: tr("热量", "Energy"), value: n.intake.kcal, goal: n.goal.kcal, unit: "kcal", tone: .train)
-            GoalRing(label: tr("蛋白质", "Protein"), value: n.intake.protein, goal: n.goal.protein, unit: "g", tone: .good)
-            GoalRing(label: tr("碳水", "Carbs"), value: n.intake.carbs, goal: n.goal.carbs, unit: "g", tone: .mid)
-            GoalRing(label: tr("脂肪", "Fat"), value: n.intake.fat, goal: n.goal.fat, unit: "g", tone: .sleep)
-          }
-        }
-        if let err = n.error { Banner(text: err, tone: .mid) }
-        if n.entries.isEmpty {
-          EmptyNote(text: tr("还没有记录", "Nothing logged yet"))
-        } else {
-          ForEach(n.meals(), id: \.0) { meal, xs in mealCard(meal, xs) }
-        }
-      } else {
-        Card { EmptyNote(text: store.refreshing ? "…" : tr("暂无", "None")) }
-      }
-    }
-  }
-
-  private func mealCard(_ meal: MealSlot, _ xs: [FoodEntry]) -> some View {
-    let total = xs.reduce(Macros()) { $0 + $1.macros }
-    return VStack(alignment: .leading, spacing: 0) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(meal.title).font(Typo.bodyStrong).foregroundColor(Palette.text)
-        Spacer()
-        Text("\(RecordFormat.num(total.kcal)) kcal · \(tr("蛋白", "protein")) \(RecordFormat.num(total.protein)) g")
-          .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-      }
-      .padding(.bottom, 6)
-      ForEach(xs) { e in
-        Button { if !e.isLocal { entry = e } } label: {
-          HStack(spacing: 8) {
-            Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(2)
-            if let p = e.pending { PendingMark(needsAttention: p.needsAttention) }
-            Spacer(minLength: 8)
-            Text("\(RecordFormat.num(e.macros.kcal)) kcal").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text2)
-            if !e.isLocal { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
-          }
-          .padding(.vertical, 10)
-          .contentShape(Rectangle())
-          .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)
-        }
-        .buttonStyle(PressScale())
-      }
-    }
-    .padding(16)
-    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 
   // MARK: quick meals
@@ -231,6 +172,73 @@ struct FoodContent: View {
       }
       .buttonStyle(PressScale())
     }
+  }
+}
+
+/// The day's intake: the goal rings and each meal's entries. `open` nil = read-only (someone else's page).
+struct FoodIntakeSection: View {
+  let nutrition: NutritionDay?
+  let day: String
+  let isToday: Bool
+  let refreshing: Bool
+  var open: ((FoodEntry) -> Void)?
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack {
+        SectionHeader(title: isToday ? tr("今天吃了", "Eaten today") : tr("\(RecordDay.short(day)) 吃了", "Eaten on \(RecordDay.short(day))"))
+        if let name = nutrition?.goalName { Badge(label: name) }
+      }
+      if let n = nutrition {
+        Card {
+          HStack(spacing: 4) {
+            GoalRing(label: tr("热量", "Energy"), value: n.intake.kcal, goal: n.goal.kcal, unit: "kcal", tone: .train)
+            GoalRing(label: tr("蛋白质", "Protein"), value: n.intake.protein, goal: n.goal.protein, unit: "g", tone: .good)
+            GoalRing(label: tr("碳水", "Carbs"), value: n.intake.carbs, goal: n.goal.carbs, unit: "g", tone: .mid)
+            GoalRing(label: tr("脂肪", "Fat"), value: n.intake.fat, goal: n.goal.fat, unit: "g", tone: .sleep)
+          }
+        }
+        if let err = n.error { Banner(text: err, tone: .mid) }
+        if n.entries.isEmpty {
+          EmptyNote(text: tr("还没有记录", "Nothing logged yet"))
+        } else {
+          ForEach(n.meals(), id: \.0) { meal, xs in mealCard(meal, xs) }
+        }
+      } else {
+        Card { EmptyNote(text: refreshing ? "…" : tr("暂无", "None")) }
+      }
+    }
+  }
+
+  private func mealCard(_ meal: MealSlot, _ xs: [FoodEntry]) -> some View {
+    let total = xs.reduce(Macros()) { $0 + $1.macros }
+    return VStack(alignment: .leading, spacing: 0) {
+      HStack(alignment: .firstTextBaseline) {
+        Text(meal.title).font(Typo.bodyStrong).foregroundColor(Palette.text)
+        Spacer()
+        Text("\(RecordFormat.num(total.kcal)) kcal · \(tr("蛋白", "protein")) \(RecordFormat.num(total.protein)) g")
+          .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      .padding(.bottom, 6)
+      ForEach(xs) { e in
+        Button { if !e.isLocal { open?(e) } } label: {
+          HStack(spacing: 8) {
+            Text(e.food).font(Typo.body).foregroundColor(Palette.text).lineLimit(2)
+            if let p = e.pending { PendingMark(needsAttention: p.needsAttention) }
+            Spacer(minLength: 8)
+            Text("\(RecordFormat.num(e.macros.kcal)) kcal").font(Typo.body.monospacedDigit()).foregroundColor(Palette.text2)
+            if !e.isLocal && open != nil { Icon(.chevronRight, size: 14).foregroundColor(Palette.text3) }
+          }
+          .padding(.vertical, 10)
+          .contentShape(Rectangle())
+          .overlay(Rectangle().fill(Palette.hair).frame(height: 1), alignment: .top)
+        }
+        .buttonStyle(PressScale())
+        .disabled(open == nil)
+      }
+    }
+    .padding(16)
+    .background(RoundedRectangle(cornerRadius: Metrics.cardRadius, style: .continuous).fill(Palette.surface))
   }
 }
 

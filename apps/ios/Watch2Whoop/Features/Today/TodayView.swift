@@ -108,7 +108,62 @@ struct TodayView: View {
 
   @ViewBuilder private var content: some View {
     let m = store.model
-    rings(m).padding(.top, 10)
+    TodayDayCards(model: m, hasData: store.hasData, onRingsShown: { PerfProbe.shared.ringsShown() }, handle: handle, open: open,
+                  openStatus: { it in
+                    if it.key == "weight" { sheet = .weight }
+                    else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
+                  },
+                  allMetrics: {
+                    TrendsLink.shared.open(day: store.date)
+                    tab = .trends
+                  })
+
+    if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
+    if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
+
+    SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
+  }
+
+  private func open(_ o: TodayOpen) { sheet = TodaySheet(open: o) }
+
+  private func handle(_ a: TodayModel.Action) {
+    if case .sleepDetail(let d) = a { path.append(SleepRoute(date: d ?? store.model.sleepDate)) }
+    else { sheet = TodaySheet(action: a) }
+  }
+
+  /// `W2W_PERF_SCROLL=1`: scroll down and up three times while the frame meter counts (PerfProbe).
+  private func autoScroll(_ proxy: ScrollViewProxy) {
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 1_500_000_000)
+      PerfProbe.shared.startFrames()
+      for _ in 0..<3 {
+        withAnimation(.easeInOut(duration: 1.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
+        try? await Task.sleep(nanoseconds: 1_400_000_000)
+        withAnimation(.easeInOut(duration: 1.2)) { proxy.scrollTo("top", anchor: .top) }
+        try? await Task.sleep(nanoseconds: 1_400_000_000)
+      }
+      PerfProbe.shared.stopFrames(label: "today_scroll")
+    }
+  }
+}
+
+// MARK: - the day's cards
+
+/// Everything a day shows, from the rings to the reminders: the Today tab's page and the read-only view of someone else
+/// (`MemberTodayPage`) draw the same cards from a `TodayModel`. What happens on a tap belongs to the page.
+struct TodayDayCards: View {
+  let model: TodayModel
+  var hasData = true
+  var onRingsShown: () -> Void = {}
+  let handle: (TodayModel.Action) -> Void
+  let open: (TodayOpen) -> Void
+  let openStatus: (TodayModel.StatusItem) -> Void
+  let allMetrics: () -> Void
+
+  // no container here: inside the page's LazyVStack each card stays its own lazy row
+  var body: some View {
+    let m = model
+    if !m.rings.isEmpty { rings(m).padding(.top, 10) }
     if let w = m.word {
       Text(w).font(Typo.heroWord).foregroundColor(m.wordMuted ? Palette.text2 : Palette.text)
         .frame(maxWidth: .infinity).padding(.top, 12)
@@ -119,7 +174,7 @@ struct TodayView: View {
     if m.loadChip != nil || m.local {
       HStack(spacing: 8) {
         if let l = m.loadChip {
-          Button { sheet = .load } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
+          Button { handle(.load) } label: { Chip(label: "\(tr("负荷", "Load")) \(l)") }.buttonStyle(PressScale())
         }
         if m.local { Chip(label: tr("本机计算", "On this phone")) }
       }
@@ -159,14 +214,11 @@ struct TodayView: View {
 
     // the strain target lives in 今日核心; the health monitor keeps its own card
     if !m.vitals.isEmpty {
-      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { sheet = .monitor }.padding(.top, 22)
+      MonitorCard(vitals: m.vitals, off: m.vitalsOff) { handle(.monitor) }.padding(.top, 22)
     }
 
     if m.date != nil {
-      Button {
-        TrendsLink.shared.open(day: store.date)
-        tab = .trends
-      } label: {
+      Button(action: allMetrics) {
         HStack(spacing: 4) {
           Text(tr("全部指标", "All metrics")).font(Typo.bodyStrong)
           Icon(.chevronRight, size: 14)
@@ -186,17 +238,12 @@ struct TodayView: View {
     if !m.reminders.isEmpty {
       VStack(alignment: .leading, spacing: 8) {
         SectionTitle(title: tr("提醒", "Reminders"), trailing: m.reminders.count > 3 ? tr("全部 \(m.reminders.count)", "All \(m.reminders.count)") : nil) {
-          sheet = .reminders
+          handle(.allReminders)
         }
-        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { sheet = .reminder(r.id) } }
+        ForEach(m.topReminders) { r in ReminderRow(reminder: r) { handle(.reminder(r.id)) } }
       }
       .padding(.top, 22)
     }
-
-    if let s = m.sync { SyncCardView(card: s, sync: session.sync) { Task { await store.refresh() } }.padding(.top, 22) }
-    if m.circles != nil { CircleSummaryCard { tab = .circles }.padding(.top, 22) }
-
-    SyncStatusLine(sync: session.sync, hasData: store.hasData).padding(.top, 18)
   }
 
   /// Three rings side by side, recovery in the middle and 1.4× bigger (NativeToday.swift of 1.0.9).
@@ -214,8 +261,8 @@ struct TodayView: View {
       }
     }
     .frame(maxWidth: .infinity)
-    .onAppear { if store.hasData { PerfProbe.shared.ringsShown() } }
-    .onChange(of: store.hasData) { if $0 { PerfProbe.shared.ringsShown() } }
+    .onAppear { if hasData { onRingsShown() } }
+    .onChange(of: hasData) { if $0 { onRingsShown() } }
   }
 
   private func statusBlock(_ groups: [TodayModel.StatusGroup]) -> some View {
@@ -227,52 +274,10 @@ struct TodayView: View {
         }
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
           ForEach(g.items) { it in
-            StatusCell(item: it) {
-              if it.key == "weight" { sheet = .weight }
-              else { sheet = .explain(kind: "status", key: it.key, title: it.label) }
-            }
+            StatusCell(item: it) { openStatus(it) }
           }
         }
       }
-    }
-  }
-
-  private func open(_ o: TodayOpen) {
-    switch o {
-    case .coach: sheet = .coach
-    case .metric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
-    case .status(let t): sheet = .status(t)
-    }
-  }
-
-  private func handle(_ a: TodayModel.Action) {
-    switch a {
-    case .recovery: sheet = .recovery
-    case .strain: sheet = .strain
-    case .load: sheet = .load
-    case .coach: sheet = .coach
-    case .monitor: sheet = .monitor
-    case .weight: sheet = .weight
-    case .allReminders: sheet = .reminders
-    case .reminder(let id): sheet = .reminder(id)
-    case .sleepDetail(let d): path.append(SleepRoute(date: d ?? store.model.sleepDate))
-    case .explainMetric(let k, let t): sheet = .explain(kind: "metric", key: k, title: t)
-    case .explainStatus(let k, let t): sheet = .explain(kind: "status", key: k, title: t)
-    }
-  }
-
-  /// `W2W_PERF_SCROLL=1`: scroll down and up three times while the frame meter counts (PerfProbe).
-  private func autoScroll(_ proxy: ScrollViewProxy) {
-    Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 1_500_000_000)
-      PerfProbe.shared.startFrames()
-      for _ in 0..<3 {
-        withAnimation(.easeInOut(duration: 1.2)) { proxy.scrollTo("bottom", anchor: .bottom) }
-        try? await Task.sleep(nanoseconds: 1_400_000_000)
-        withAnimation(.easeInOut(duration: 1.2)) { proxy.scrollTo("top", anchor: .top) }
-        try? await Task.sleep(nanoseconds: 1_400_000_000)
-      }
-      PerfProbe.shared.stopFrames(label: "today_scroll")
     }
   }
 }

@@ -11,6 +11,23 @@ final class SleepNightStore: ObservableObject {
   @Published private(set) var date: String?
   private var cancellable: AnyDatabaseCancellable?
 
+  /// Someone else's night (read-only member view): only in `member`'s memory, never in `docs`.
+  func show(_ member: MemberViewStore, date: String?) {
+    self.date = date
+    error = nil
+    let r = Endpoint.sleepNight(date, user: member.user)
+    Task {
+      await member.load([r])
+      if let json = member.json(r) {
+        let m = SleepNightModel(json: json)
+        if model != m { model = m }
+      } else {
+        model = nil
+        error = member.state(r) == .offline ? tr("离线，连上网络后重试", "Offline, retry when connected") : tr("这晚没有数据", "No data for this night")
+      }
+    }
+  }
+
   func show(_ session: AccountSession, date: String?) {
     self.date = date
     error = nil
@@ -45,6 +62,7 @@ struct SleepDetailView: View {
   let initialDate: String?
   let explain: (String, String) -> Void
   @EnvironmentObject private var session: AccountSession
+  @Environment(\.memberView) private var member
   @StateObject private var store = SleepNightStore()
 
   var body: some View {
@@ -69,10 +87,14 @@ struct SleepDetailView: View {
     .navigationBarTitleDisplayMode(.inline)
     .simultaneousGesture(DragGesture(minimumDistance: 40).onEnded { v in
       guard abs(v.translation.width) > 70, abs(v.translation.height) < abs(v.translation.width) * 0.6, let m = store.model else { return }
-      if v.translation.width < 0, let n = m.next { store.show(session, date: n) }
-      else if v.translation.width > 0, let p = m.prev { store.show(session, date: p) }
+      if v.translation.width < 0, let n = m.next { show(n) }
+      else if v.translation.width > 0, let p = m.prev { show(p) }
     })
-    .onAppear { if store.model == nil { store.show(session, date: initialDate) } }
+    .onAppear { if store.model == nil { show(initialDate) } }
+  }
+
+  private func show(_ date: String?) {
+    if let member { store.show(member, date: date) } else { store.show(session, date: date) }
   }
 
   private var nav: some View {
@@ -92,7 +114,7 @@ struct SleepDetailView: View {
   }
 
   private func stepButton(_ icon: Icon.Name, target: String?, label: String) -> some View {
-    Button { if let target { store.show(session, date: target) } } label: {
+    Button { if let target { show(target) } } label: {
       Icon(icon, size: 18).foregroundColor(target == nil ? Palette.text3 : Palette.text)
         .frame(width: 36, height: 36).background(Circle().fill(Palette.surface))
     }
