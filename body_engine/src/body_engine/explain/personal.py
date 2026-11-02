@@ -686,7 +686,7 @@ def explain_lab(conn: psycopg.Connection, viewer_id: int, owner: int, key: str, 
     profile = None
     if auth.can_view(conn, viewer_id, owner, "memory"):  # profile card lines live in memory
         profile = profile_sentences(conn, owner, [e["title"]], e.get("keywords", []))
-    return lab_view(key, e, o, profile)
+    return _for_viewer(lab_view(key, e, o, profile), viewer_id, owner)
 
 
 def calc_training_week(item: dict) -> Out:
@@ -784,12 +784,44 @@ def _prompt(title: str, view: dict, subject: str | None = None) -> str:
             "：这是什么意思、我现在的情况怎么样、接下来具体该怎么做、要避免什么？")
 
 
+# Someone else's sheet (a shared member's): the texts are written to the owner ("your baseline"), the viewer reads about them.
+_EN_OTHER = ((r"\bmy \"", 'their "'), (r"\bhow am I doing\b", "how are they doing"), (r"\bshould I\b", "should they"),
+             (r"\bgets you\b", "gets them"), (r"\byourself\b", "themselves"), (r"\bYourself\b", "Themselves"),
+             (r"\byour\b", "their"), (r"\bYour\b", "Their"), (r"\bYou\b", "They"), (r"\byou\b", "they"))
+_OTHER_SKIP = {"kind", "key", "source", "hidden", "tone", "unit", "value", "item", "exercises"}
+
+
+def _third_person(text: str) -> str:
+    """Owner's second person -> third person, both languages (only the sheet's own wording: names and values are left out)."""
+    text = text.replace("我的「", "你的「").replace("我现在", "你现在").replace("你", " TA ")
+    text = re.sub(r"^ +| +(?=[，。：；、）」])|(?<=[，。：；、（「]) +", "", text).replace("  ", " ")
+    for old, new in _EN_OTHER:
+        text = re.sub(old, new, text)
+    return text
+
+
+def _for_viewer(view: dict, viewer_id: int, owner: int) -> dict:
+    """Pure. The viewer's own sheet is unchanged; on someone else's, every sentence talks about them, not to the viewer."""
+    if viewer_id == owner:
+        return view
+
+    def walk(x):
+        if isinstance(x, str):
+            return _third_person(x)
+        if isinstance(x, list):
+            return [walk(v) for v in x]
+        if isinstance(x, dict):
+            return {k: v if k in _OTHER_SKIP else walk(v) for k, v in x.items()}
+        return x
+    return walk(view)
+
+
 def explain_metric(conn: psycopg.Connection, viewer_id: int, owner: int, key: str, day: date) -> dict:
     e = G.metric(key)
     scope = METRIC_SCOPE[key]
     if auth.can_view(conn, viewer_id, owner, scope):
-        return metric_view(key, e, CALC[key](conn, owner, day))
-    return metric_view(key, e, None, scope)
+        return _for_viewer(metric_view(key, e, CALC[key](conn, owner, day)), viewer_id, owner)
+    return _for_viewer(metric_view(key, e, None, scope), viewer_id, owner)
 
 
 def metric_view(key: str, e: dict, o: Out | None, hidden: str | None = None) -> dict:
@@ -980,5 +1012,5 @@ def explain_status(conn: psycopg.Connection, viewer_id: int, owner: int, key: st
     view["profile"] = profile_sentences(conn, owner, own, keywords)
     view["ai_prompt"] = _prompt(view["title"], view, L(f"我的「{item['label']}：{item['value']}」",
                                                        f"my \"{shown['label']}: {shown['value']}\""))
-    return view
+    return _for_viewer(view, viewer_id, owner)
 
