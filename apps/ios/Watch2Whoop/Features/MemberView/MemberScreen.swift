@@ -23,14 +23,17 @@ struct MemberScreen: View {
   }
 
   var body: some View {
-    NavigationStack(path: $path) {
-      content
-        .toolbar(.hidden, for: .navigationBar)
-        .navigationDestination(for: SleepRoute.self) { r in
-          SleepDetailView(initialDate: r.date) { key, title in explain = .explain(key: key, title: title) }
-        }
+    // not a safeAreaInset: outside a NavigationStack it does not move the stack's root, which would lie under the banner
+    VStack(spacing: 0) {
+      banner
+      NavigationStack(path: $path) {
+        content
+          .toolbar(.hidden, for: .navigationBar)
+          .navigationDestination(for: SleepRoute.self) { r in
+            SleepDetailView(initialDate: r.date) { key, title in explain = .explain(key: key, title: title) }
+          }
+      }
     }
-    .safeAreaInset(edge: .top, spacing: 0) { banner }
     .environment(\.memberView, store)
     .sheet(item: $explain) { s in
       TrendsSheetView(sheet: s, page: nil, end: nil, store: inertTrends, close: { explain = nil })
@@ -38,8 +41,22 @@ struct MemberScreen: View {
         .environment(\.memberView, store)
     }
     .overlay { if scene != .active { Palette.bg.ignoresSafeArea() } }
-    .task { await store.start() }
+    .task {
+      await store.start()
+      devOpen()
+    }
     .onDisappear { store.close() }
+  }
+
+  /// `SIMCTL_CHILD_W2W_DEV_MEMBER_OPEN=night|explain` (Debug, simulator screenshots): the sleep detail page, or an explain sheet.
+  private func devOpen() {
+    #if DEBUG
+    switch RecordDevShot.value("W2W_DEV_MEMBER_OPEN") {
+    case "night": path.append(SleepRoute(date: nil))
+    case "explain": explain = .explain(key: "hrv", title: "HRV")
+    default: break
+    }
+    #endif
   }
 
   // MARK: - banner
@@ -386,7 +403,9 @@ struct MemberFoodPage: View {
     let t = store.todayRequest(shownDay == today ? nil : shownDay), w = store.waterRequest(shownDay), r = store.request("recipes")
     await store.load([t, w, r])
     loading = false
-    nutrition = NutritionDay.build(today: MemberViewStore.withoutRefused(store.json(t)), day: shownDay, pending: [])
+    var n = NutritionDay.build(today: MemberViewStore.withoutRefused(store.json(t)), day: shownDay, pending: [])
+    if n?.error != nil { n?.error = tr("暂时读不到饮食记录", "Food log unavailable") }   // the server's text is for the owner's own page
+    nutrition = n
     water = WaterDay.build(store.json(w), day: shownDay, pending: [])
     recipes = (store.list(r) ?? []).compactMap(Recipe.parse)
   }
