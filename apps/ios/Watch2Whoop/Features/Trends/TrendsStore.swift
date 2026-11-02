@@ -54,7 +54,7 @@ final class TrendsLink: ObservableObject {
   /// `day`: the day the Today tab shows (nil = today).
   func open(day: String?) { pending = Request(end: day) }
 
-  /// A Jarvis card's button: this mode, up to today, in the range the tab has.
+  /// A Jarvis card's button or a row of 全部功能: this mode, up to today, in the range the tab has.
   func open(mode: TrendsView.Mode) { pending = Request(end: nil, range: nil, mode: mode) }
 
   /// The pending request, once.
