@@ -411,6 +411,34 @@ SPLIT_TEMPLATES: dict[str, dict] = {
     },
 }
 
+# English for the built-in templates' texts (plan name, summary, session names), the same wording as the page's i18n-en.js. A saved
+# plan stores the Chinese names (the AI and the training log use them); plans.template_en() adds the English next to them for the
+# native app, which has no copy of the page's table. A name the user or the AI wrote is not here and is shown as written.
+TEMPLATE_TEXT_EN: dict[str, str] = {
+    "3 分化 · 推 / 拉 / 腿": "3-day split · Push / Pull / Legs",
+    "3 分化 · 全身 A / B / C": "3-day split · Full body A / B / C",
+    "4 分化 · 上下肢（A / B）": "4-day split · Upper / Lower (A / B)",
+    "5 分化 · 上下肢 + 推拉腿": "5-day split · Upper / Lower + Push / Pull / Legs",
+    "自定义周训练计划": "Custom weekly plan",
+    "周一推（胸/肩/三头）、周三拉（背/后束/二头）、周五腿（股四头/臀/腘绳/核心），适合每周固定 3 练。": "Push on Monday (chest / shoulders / triceps), pull on Wednesday (back / rear delts / biceps), legs on Friday (quads / glutes / hamstrings / core); fits a fixed 3 sessions a week.",
+    "每次覆盖推 + 拉 + 下肢，高频率、单次部位疲劳低，适合新手入门或恢复期。": "Every session covers push + pull + lower body: high frequency, low fatigue per muscle per session; good for beginners or a recovery phase.",
+    "上肢 A（拉偏重）/ 下肢 A（深蹲主导）/ 上肢 B（推偏重）/ 下肢 B（髋铰链主导），每周 4 天，每个肌群每周练 2 次。": "Upper A (pull-biased) / Lower A (squat-led) / Upper B (push-biased) / Lower B (hip-hinge-led), 4 days a week, each muscle group twice a week.",
+    "周一上肢、周二下肢、周三休息、周四推、周五拉、周六腿；每个肌群每周 2 次且单次容量更充裕。": "Upper on Monday, lower on Tuesday, rest on Wednesday, push on Thursday, pull on Friday, legs on Saturday; each muscle group twice a week with more volume per session.",
+    "推（胸 / 肩 / 三头）": "Push (chest / shoulders / triceps)",
+    "拉（背 / 后束 / 二头）": "Pull (back / rear delts / biceps)",
+    "腿（股四头 / 臀腿 / 核心）": "Legs (quads / glutes & hamstrings / core)",
+    "全身 A": "Full body A",
+    "全身 B": "Full body B",
+    "全身 C": "Full body C",
+    "上肢 A（拉为主）": "Upper A (pull-focused)",
+    "上肢 B（推为主）": "Upper B (push-focused)",
+    "下肢 A（深蹲为主）": "Lower A (squat-focused)",
+    "下肢 A（深蹲主导）": "Lower A (squat-led)",
+    "下肢 B（髋铰链为主）": "Lower B (hip-hinge-focused)",
+    "下肢 B（髋铰链主导）": "Lower B (hip-hinge-led)",
+    "上肢（综合）": "Upper (mixed)",
+}
+
 
 # ---------- Recommended working weight (issue #41, training/loads.py, docs/training-v2-plan.md "推荐重量") ----------
 # Order of evidence for each planned exercise:

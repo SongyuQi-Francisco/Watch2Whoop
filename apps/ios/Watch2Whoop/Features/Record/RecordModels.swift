@@ -153,13 +153,22 @@ struct PlannedExercise: Equatable, Identifiable {
   /// The library does not know this name (FB-21): the card says so and offers `candidates` to swap it for.
   var unresolved: Bool
   var candidates: [SwapCandidate]
+  /// The demo picture (`thumb`) and, when there is none, the muscles to draw instead.
+  var thumb: String? = nil
+  var primaryMuscles: [String] = []
+  var secondaryMuscles: [String] = []
+  /// The session it came from, for 「以后都不要」 (remove-exercise scope template needs the stored name).
+  var dayOfWeek: Int? = nil
+  var sessionName: String? = nil
+  var sessionTitle: String? = nil
+  var addedForDay = false
   var id: String { slug }
 
   var banned: Bool { status == "banned" }
   var caution: Bool { status == "caution" }
 
-  /// `session`: the index of the session it is in (a group id is only unique inside one session).
-  static func parse(_ c: [String: Any], session: Int = 0) -> PlannedExercise? {
+  /// `session`: the index of the session it is in (a group id is only unique inside one session); `of`: that session.
+  static func parse(_ c: [String: Any], session: Int = 0, of s: [String: Any]? = nil) -> PlannedExercise? {
     // An exercise is never dropped for lack of a slug (an older server sent none for a name it did not know): its name stands in.
     guard let slug = (c["slug"] as? String) ?? (c["name_zh"] as? String) else { return nil }
     let t = c["target"] as? [String: Any] ?? [:]
@@ -194,7 +203,12 @@ struct PlannedExercise: Equatable, Identifiable {
                                           durationS: RecordFormat.double(t["duration_s"]), done: false),
                            targetSets: (t["sets"] as? NSNumber)?.intValue ?? 3, last: last,
                            group: (c["group"] as? String).map { "\(session):\($0)" },
-                           unresolved: (c["unresolved"] as? Bool) ?? false, candidates: candidates)
+                           unresolved: (c["unresolved"] as? Bool) ?? false, candidates: candidates,
+                           thumb: c["thumb"] as? String, primaryMuscles: (c["primary_muscles"] as? [String]) ?? [],
+                           secondaryMuscles: (c["secondary_muscles"] as? [String]) ?? [],
+                           dayOfWeek: (s?["day_of_week"] as? NSNumber)?.intValue, sessionName: s?["name"] as? String,
+                           sessionTitle: ExerciseNames.template(s),
+                           addedForDay: (c["added_for_day"] as? Bool) ?? (s?["added_for_day"] as? Bool) ?? false)
   }
 }
 
@@ -247,6 +261,18 @@ struct SetRow: Equatable {
   }
 
   var hasValue: Bool { reps != nil || weightKg != nil || durationS != nil }
+
+  /// The done tick; ticking an empty row takes the recommendation (training-day.js).
+  mutating func tick(target: SetRow, timed: Bool) {
+    done.toggle()
+    guard done else { return }
+    if timed {
+      durationS = durationS ?? target.durationS
+    } else {
+      reps = reps ?? target.reps
+      weightKg = weightKg ?? target.weightKg
+    }
+  }
 }
 
 /// The training day (`/training/session?date=`): the plan's exercises, the draft's sets (a pending save wins over the
@@ -266,11 +292,18 @@ struct TrainingSession: Equatable {
   var readiness: (label: String, tone: Tone)?
   var pendingSave: PendingRecord?
   var pendingSubmit: PendingRecord?
+  /// Removed for this date only (issue #172): offered back.
+  var removed: [RemovedExercise] = []
+  /// The day's plan was changed (moved, swapped): 「已调整」.
+  var changed = false
+  /// `connected` / `not_linked` / `unreadable`; submitting needs the log.
+  var trainingLog: String? = nil
 
   static func == (a: TrainingSession, b: TrainingSession) -> Bool {
     a.day == b.day && a.exercises == b.exercises && a.rows == b.rows && a.submitted == b.submitted && a.canLog == b.canLog
       && a.canEditPlan == b.canEditPlan && a.pendingSave == b.pendingSave && a.pendingSubmit == b.pendingSubmit && a.changedSinceSubmit == b.changedSinceSubmit
-      && a.title == b.title && a.readiness?.label == b.readiness?.label
+      && a.title == b.title && a.readiness?.label == b.readiness?.label && a.removed == b.removed && a.changed == b.changed
+      && a.trainingLog == b.trainingLog
   }
 
   var loggable: [PlannedExercise] { exercises.filter { !$0.banned } }
@@ -287,7 +320,7 @@ struct TrainingSession: Equatable {
     let sessions = (j["sessions"] as? [[String: Any]]) ?? []
     var exercises: [PlannedExercise] = []
     for (i, s) in sessions.enumerated() {
-      exercises += ((s["exercises"] as? [[String: Any]]) ?? []).compactMap { PlannedExercise.parse($0, session: i) }
+      exercises += ((s["exercises"] as? [[String: Any]]) ?? []).compactMap { PlannedExercise.parse($0, session: i, of: s) }
     }
     let log = j["log"] as? [String: Any]
     let save = pending.last { $0.kind == RecordKind.session && $0.date == day }
@@ -307,12 +340,13 @@ struct TrainingSession: Equatable {
        tier == "red" || tier == "yellow" {
       readiness = (label, tier == "red" ? .bad : .mid)
     }
-    let names = sessions.compactMap { $0["name"] as? String }
+    let names = sessions.compactMap { ExerciseNames.template($0) }
     return TrainingSession(day: day, title: names.joined(separator: " · "), minutes: (j["minutes"] as? NSNumber)?.intValue,
                            restDay: (j["rest_day"] as? Bool) ?? false, exercises: exercises, rows: rows,
                            canLog: (j["can_log"] as? Bool) ?? false, canEditPlan: (j["can_edit_plan"] as? Bool) ?? false, submitted: (log?["status"] as? String) == "submitted" && save == nil,
                            changedSinceSubmit: (log?["changed_since_submit"] as? Bool) ?? false,
-                           readiness: readiness.map { (label: $0.0, tone: $0.1) }, pendingSave: save, pendingSubmit: submit)
+                           readiness: readiness.map { (label: $0.0, tone: $0.1) }, pendingSave: save, pendingSubmit: submit,
+                           removed: RemovedExercise.list(j["removed"]), changed: j["change"] is [String: Any], trainingLog: j["training_log"] as? String)
   }
 }
 
@@ -325,6 +359,12 @@ struct TrainingWeek: Equatable {
     var intensity: String?
     var restDay: Bool
     var planned: [String]
+    var sessions: [PlanSession] = []
+    var removed: [RemovedExercise] = []
+    /// The sessions the template had before this date was changed (`change.from`), nil when it was not changed.
+    var changedFrom: [String]? = nil
+    var minutes: Double = 0
+    var kcal: Double? = nil
     var id: String { date }
   }
 
@@ -342,10 +382,27 @@ struct TrainingWeek: Equatable {
   var cautions: [Caution]
   var readiness: (label: String, tone: Tone)?
   var volume: [(String, Int, Bool)]   // group name, direct sets, in the optimal range
+  var suggestions: [TrainingSuggestion] = []
+  /// The built-in splits to pick from and the plan's own (the page's 切换分化 / 选周计划).
+  var splits: [SplitOption] = []
+  var splitType: String? = nil
+  var hasPlan = false
+  var log: TrainingLogLink? = nil
+  var loadHistoryError = false
+
+  /// The week's numbers (app.js msum): days trained, time and energy of the workouts, days with a plan.
+  var trainedDays: Int { days.filter { $0.trained }.count }
+  var plannedDays: Int { days.filter { !$0.planned.isEmpty }.count }
+  var totalMinutes: Double { days.reduce(0) { $0 + $1.minutes } }
+  var totalKcal: Double? {
+    let list = days.compactMap(\.kcal)
+    return list.isEmpty ? nil : list.reduce(0, +)
+  }
 
   static func == (a: TrainingWeek, b: TrainingWeek) -> Bool {
     a.planName == b.planName && a.days == b.days && a.cautions == b.cautions && a.readiness?.label == b.readiness?.label
-      && a.volume.map(\.0) == b.volume.map(\.0) && a.volume.map(\.1) == b.volume.map(\.1)
+      && a.volume.map(\.0) == b.volume.map(\.0) && a.volume.map(\.1) == b.volume.map(\.1) && a.suggestions == b.suggestions
+      && a.splits == b.splits && a.splitType == b.splitType && a.hasPlan == b.hasPlan && a.log == b.log && a.loadHistoryError == b.loadHistoryError
   }
 
   static func build(_ w: [String: Any]?, calendar: [[String: Any]], monday: String) -> TrainingWeek? {
@@ -359,11 +416,15 @@ struct TrainingWeek: Equatable {
     let days = (0..<7).map { k -> Day in
       let iso = RecordDay.add(monday, k)
       let p = plan[iso], d = done[iso]
-      let planned = ((p?["planned"] as? [[String: Any]]) ?? []).compactMap { $0["name"] as? String }
+      let sessions = ((p?["planned"] as? [[String: Any]]) ?? []).map(PlanSession.parse)
+      let planned = sessions.map(\.name).filter { !$0.isEmpty }
       let trained = ((d?["sessions_count"] as? NSNumber)?.intValue ?? 0) > 0 && (d?["intensity"] as? String) != "rest"
       let rest = (p?["rest_day"] as? Bool) ?? false
       let label = planned.first.map(Self.shortPlan) ?? (rest ? tr("休", "Rest") : "")
-      return Day(date: iso, label: label, trained: trained, intensity: d?["intensity"] as? String, restDay: rest, planned: planned)
+      let change = p?["change"] as? [String: Any]
+      return Day(date: iso, label: label, trained: trained, intensity: d?["intensity"] as? String, restDay: rest, planned: planned,
+                 sessions: sessions, removed: RemovedExercise.list(p?["removed"]), changedFrom: change.map { ($0["from"] as? [String]) ?? [] },
+                 minutes: RecordFormat.double(d?["duration_min"]) ?? 0, kcal: RecordFormat.double(d?["workout_kcal"]))
     }
     let cautions = ((w["cautions"] as? [[String: Any]]) ?? []).compactMap { c -> Caution? in
       guard let name = c["name"] as? String else { return nil }
@@ -380,8 +441,12 @@ struct TrainingWeek: Equatable {
         return (n, s, (g["status"] as? String) == "optimal")
       }
       .sorted { $0.1 > $1.1 }
-    return TrainingWeek(planName: (w["plan"] as? [String: Any])?["name"] as? String, days: days, cautions: cautions,
-                        readiness: readiness.map { (label: $0.0, tone: $0.1) }, volume: volume)
+    let planDoc = w["plan"] as? [String: Any]
+    return TrainingWeek(planName: ExerciseNames.template(planDoc), days: days, cautions: cautions,
+                        readiness: readiness.map { (label: $0.0, tone: $0.1) }, volume: volume,
+                        suggestions: TrainingSuggestion.list(w["suggestions"]), splits: SplitOption.list(w["available_splits"]),
+                        splitType: planDoc?["split_type"] as? String, hasPlan: planDoc != nil, log: TrainingLogLink(w["sparky"] as? [String: Any]),
+                        loadHistoryError: w["load_history_error"] != nil)
   }
 
   /// 「上肢 B（推为主）」 → 「上肢 B」.
@@ -454,8 +519,15 @@ struct ExerciseRule: Equatable, Identifiable {
     (list ?? []).compactMap { r in
       guard let ref = r["exercise_ref"] as? String, let st = r["status"] as? String, st == "banned" || st == "caution" else { return nil }
       let name = Lang.isZh ? (r["name_zh"] as? String) : ((r["name_en"] as? String) ?? (r["name_zh"] as? String))
-      return ExerciseRule(ref: ref, name: name ?? ref, banned: st == "banned", reason: r["reason"] as? String, cues: r["cues"] as? String)
+      return ExerciseRule(ref: ref, name: name ?? shown(ref), banned: st == "banned", reason: r["reason"] as? String, cues: r["cues"] as? String)
     }
     .sorted { ($0.banned ? 0 : 1, $0.name) < ($1.banned ? 0 : 1, $1.name) }
+  }
+
+  /// A rule set by slug has no name of its own: `upright_row` reads as "Upright row". A name standing in for a slug stays as written.
+  static func shown(_ ref: String) -> String {
+    guard !ref.isEmpty, ref.allSatisfy({ $0 == "_" || $0.isNumber || ($0.isASCII && $0.isLowercase) }) else { return ref }
+    let t = ref.replacingOccurrences(of: "_", with: " ")
+    return t.prefix(1).uppercased() + t.dropFirst()
   }
 }

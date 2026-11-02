@@ -91,26 +91,22 @@ struct TrainingCalendarView: View {
   }
 }
 
-/// One day of training (`/training/day/{day}`): watch workouts and logged strength sessions; a future day shows its plan.
+/// One day of training (`/training/day/{day}`): watch workouts and logged strength sessions. A future day of this week opens
+/// its plan instead (PlanDayView).
 struct TrainingDaySheet: View {
   @ObservedObject var store: TrainingStore
   let day: String
-  let plan: [String]
   @State private var detail: [String: Any]?
   @State private var loaded = false
 
-  init(store: TrainingStore, day: String, plan: [String]) {
+  init(store: TrainingStore, day: String) {
     self.store = store
     self.day = day
-    self.plan = plan
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
-      if day > store.today {
-        if plan.isEmpty { EmptyNote(text: tr("无计划", "No plan")) }
-        ForEach(plan, id: \.self) { Text($0).font(Typo.body).foregroundColor(Palette.text) }
-      } else if let d = detail {
+      if let d = detail {
         let daily = d["daily"] as? [String: Any]
         HStack(spacing: 8) {
           MetricTile(label: tr("负荷", "Strain"), value: RecordFormat.double(daily?["strain"]).map { RecordFormat.num($0, 1) })
@@ -120,6 +116,7 @@ struct TrainingDaySheet: View {
         let sessions = (d["sessions"] as? [[String: Any]]) ?? []
         if sessions.isEmpty { EmptyNote(text: tr("这天没有训练", "No training that day")) }
         ForEach(Array(sessions.enumerated()), id: \.offset) { _, s in sessionCard(s) }
+        dayRows(daily)
       } else {
         EmptyNote(text: loaded ? tr("需要联网", "Needs a connection") : "…")
       }
@@ -141,12 +138,18 @@ struct TrainingDaySheet: View {
       Text([RecordFormat.double(s["duration_min"]).map { tr("\(RecordFormat.num($0)) 分钟", "\(RecordFormat.num($0)) min") },
             RecordFormat.double(s["active_kcal"]).map { "\(RecordFormat.num($0)) kcal" },
             RecordFormat.double(s["avg_hr"]).map { tr("平均 \(RecordFormat.num($0)) bpm", "avg \(RecordFormat.num($0)) bpm") },
+            RecordFormat.double(s["max_hr"]).map { tr("最高 \(RecordFormat.num($0)) bpm", "max \(RecordFormat.num($0)) bpm") },
             RecordFormat.double(s["volume_kg"]).map { tr("训练量 \(RecordFormat.num($0)) kg", "volume \(RecordFormat.num($0)) kg") }]
         .compactMap { $0 }.joined(separator: " · "))
         .font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2)
-      ForEach(Array(((s["exercises"] as? [[String: Any]]) ?? []).enumerated()), id: \.offset) { _, x in
+      if ["active_kcal", "avg_hr", "max_hr"].allSatisfy({ RecordFormat.double(s[$0]) == nil }) {
+        Badge(label: tr("无手表数据", "No watch data"))
+      }
+      ZoneBar(minutes: Self.zones(s["hr_zone_min"]))
+      ForEach(Array(Self.listed(s).enumerated()), id: \.offset) { _, x in
         HStack(alignment: .firstTextBaseline) {
           Text(x["name"] as? String ?? "—").font(Typo.body).foregroundColor(Palette.text)
+          ExerciseStatusBadge(status: (x["status_key"] as? String) ?? "active")
           Spacer()
           Text(Self.setsText(x)).font(Typo.caption.monospacedDigit()).foregroundColor(Palette.text2).multilineTextAlignment(.trailing)
         }
@@ -155,6 +158,33 @@ struct TrainingDaySheet: View {
     }
     .padding(14)
     .background(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous).fill(Palette.inSheet))
+  }
+
+  /// The rest of the day's numbers (app.js daySheet); the tiles above hold strain, activity and steps.
+  @ViewBuilder private func dayRows(_ daily: [String: Any]?) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if let v = RecordFormat.double(daily?["workout_kcal"]) { KeyValueRow(label: tr("训练消耗", "Workout energy"), value: "\(RecordFormat.num(v)) kcal") }
+      if let v = RecordFormat.double(daily?["total_kcal"]) { KeyValueRow(label: tr("全天总消耗", "Total energy"), value: "\(RecordFormat.num(v)) kcal") }
+      if let v = RecordFormat.double(daily?["exercise_min"]) { KeyValueRow(label: tr("锻炼分钟", "Exercise minutes"), value: tr("\(RecordFormat.num(v)) 分钟", "\(RecordFormat.num(v)) min")) }
+      if let v = RecordFormat.double(daily?["muscle_load"]) { KeyValueRow(label: tr("肌肉负荷", "Muscle load"), value: "\(RecordFormat.num(v)) kg") }
+      if let v = RecordFormat.double(daily?["recovery_next_day"]) { KeyValueRow(label: tr("次日恢复", "Next-day recovery"), value: RecordFormat.num(v)) }
+    }
+  }
+
+  /// Minutes per heart-rate zone: a list, or an object keyed by zone (app.js zonesHtml).
+  static func zones(_ raw: Any?) -> [Double] {
+    if let list = raw as? [Any] { return list.map { RecordFormat.double($0) ?? 0 } }
+    if let o = raw as? [String: Any] { return o.keys.sorted().map { RecordFormat.double(o[$0]) ?? 0 } }
+    return []
+  }
+
+  /// A workout's exercises; a line with the workout's own name and no sets (the cardio line) is not listed again.
+  static func listed(_ s: [String: Any]) -> [[String: Any]] {
+    let name = (s["name"] as? String) ?? (s["type_name"] as? String)
+    return ((s["exercises"] as? [[String: Any]]) ?? []).filter { x in
+      let sets = (x["sets"] as? [[String: Any]]) ?? []
+      return (x["name"] as? String) != name || sets.contains { RecordFormat.double($0["reps"]) != nil || RecordFormat.double($0["weight_kg"]) != nil }
+    }
   }
 
   static func setsText(_ x: [String: Any]) -> String {
@@ -168,5 +198,32 @@ struct TrainingDaySheet: View {
       default: return w.map { "\($0) kg" } ?? "—"
       }
     }.joined(separator: " · ")
+  }
+}
+
+/// Minutes in each heart-rate zone: a bar, darker by zone, and the numbers (app.js zonesHtml).
+private struct ZoneBar: View {
+  let minutes: [Double]
+
+  private var total: Double { minutes.reduce(0, +) }
+
+  var body: some View {
+    if total > 0 {
+      VStack(alignment: .leading, spacing: 4) {
+        GeometryReader { g in
+          HStack(spacing: 1) {
+            ForEach(Array(minutes.enumerated()), id: \.offset) { i, m in
+              Rectangle().fill(Palette.train.opacity(0.25 + Double(i) * 0.18))
+                .frame(width: max(0, (g.size.width - CGFloat(minutes.count - 1)) * CGFloat(m / total)))
+            }
+          }
+        }
+        .frame(height: 6)
+        .clipShape(Capsule())
+        Text(minutes.enumerated().map { "Z\($0.offset + 1) \(RecordFormat.num($0.element))′" }.joined(separator: " · "))
+          .font(.system(size: 11).monospacedDigit()).foregroundColor(Palette.text2)
+      }
+      .accessibilityElement(children: .combine)
+    }
   }
 }
