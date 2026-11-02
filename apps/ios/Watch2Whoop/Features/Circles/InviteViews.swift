@@ -52,7 +52,7 @@ struct InviteView: View {
               VStack(alignment: .leading, spacing: 2) {
                 Text(FeedFormat.timeLeft(c.expiresAt)).font(Typo.body).foregroundColor(Palette.text)
                 if c.usedCount > 0 {
-                  Text(tr("已用 \(c.usedCount) 次", "Used \(c.usedCount) times")).font(Typo.caption).foregroundColor(Palette.text2)
+                  Text(c.usedCount == 1 ? tr("已用 1 次", "Used once") : tr("已用 \(c.usedCount) 次", "Used \(c.usedCount) times")).font(Typo.caption).foregroundColor(Palette.text2)
                 }
               }
               Spacer()
@@ -199,7 +199,7 @@ struct JoinView: View {
           VStack(alignment: .leading, spacing: 2) {
             Text(p.name).font(.system(size: 18, weight: .bold)).foregroundColor(Palette.text)
             if let o = p.ownerName {
-              Text(tr("\(o) 的圈子 · \(p.members) 人", "\(o)'s circle · \(p.members) people")).font(Typo.caption).foregroundColor(Palette.text2)
+              Text(tr("\(o) 的圈子", "\(o)'s circle") + " · " + InboxLogic.people(p.members)).font(Typo.caption).foregroundColor(Palette.text2)
             }
           }
         }
