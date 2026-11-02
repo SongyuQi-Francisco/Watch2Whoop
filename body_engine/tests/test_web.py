@@ -4,6 +4,7 @@ Uses a separate test database BODY_TEST_DB_NAME (default body_test_web), dropped
 SparkyFitness is faked with monkeypatch; no real service is contacted.
 """
 import os
+import re
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -220,6 +221,8 @@ def test_today_scores_reasons_and_load_text(client, world):
     assert {r["rule_key"] for r in d["reminders"]} == {"progression", "readiness"}
     # SparkyFitness not connected: nutrition errors on its own; training (no plan) is an empty day that says why (#66 FB-4)
     assert d["nutrition"]["code"] == "sparky"
+    # Words for a person: never an admin command, a file path or the back end's name
+    assert not re.search(r"body-engine|sparky|bootstrap|/|--", d["nutrition"]["error"], re.I)
     assert d["training"]["planned"] == [] and d["training"]["sparky"]["state"] == "not_linked"
 
 
