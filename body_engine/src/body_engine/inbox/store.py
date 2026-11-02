@@ -5,7 +5,8 @@ Item ids and where each comes from (those tables stay as they are):
   whatsnew:<week>    whats_new_sends: every week a message was due, also when the person switched its push off (that switch is
                      about the push; the text comes from whatsnew/entries.py)
   invite:<id>        circle_invites addressed to the person (invitee_user_id) that can still be accepted
-  notification:<id>  notifications of the category circle (❤️, comments)
+  notification:<id>  notifications of the category circle (❤️, comments, someone joined, an invite accepted; friends/notes.py),
+                     system (not upgrades, those are notices already) and ai_card (only while the flag ai_cards is on)
 
 Left out on every read, so a client never has to know the rules (friends/blocks.py is the one source for them):
 - invites whose maker or circle owner the person blocked or was blocked by, and interactions from such a person;
@@ -15,7 +16,8 @@ Left out on every read, so a client never has to know the rules (friends/blocks.
 
 Read state lives where it already lived (notifications.read_at, admin_notices.seen_at), so the app's badge and the old lists
 agree with the inbox; only what has no column of its own (invites, what's-new weeks without a notification) and "hidden" for
-every kind are in inbox_item_state. Reading or hiding only ever touches items in the person's own list.
+every kind are in inbox_item_state. Reading or hiding only ever touches items in the person's own list. An invite that came with a
+push (circle.invite, friends/notes.py) keeps its read state on that notification, which is not listed itself: the card stands for it.
 
 Invite cards show what a stranger to the circle may know: its name and picture, the owner's name, how many members, what the
 person would share. Member names, the inviter's id and who else was invited or declined are never in them. Accepting goes
@@ -28,12 +30,12 @@ from datetime import datetime, timezone
 import psycopg
 
 from .. import auth, queries
-from ..friends import blocks, params as FP, rules, store as friends
+from ..friends import blocks, direct, notes, params as FP, rules, store as friends
 from ..friends.feed import COMMENT
 from ..i18n import L, is_en
 from ..images import store as images
 from ..notices import store as notices
-from ..notify import store as notify_store
+from ..notify import core as notify_core, store as notify_store
 from ..profile import consent
 from ..rollout import flags
 from ..whatsnew import entries as E, params as WP, service as whatsnew
@@ -115,7 +117,7 @@ def _open_invites(conn, uid: int, invite_id: int | None = None) -> list[dict]:
     if not _circles_reach(conn, uid) or blocks.banned(conn, uid):
         return []
     rows = conn.execute(
-        f"""SELECT i.id, i.created_at, i.expires_at, c.name, c.owner_id, c.avatar_image_id, c.default_scopes,
+        f"""SELECT i.id, i.created_at, i.expires_at, i.origin, c.name, c.owner_id, c.avatar_image_id, c.default_scopes,
                    u.display_name AS owner_name, (SELECT count(*) FROM circle_members x WHERE x.circle_id = c.id) AS members
             FROM circle_invites i JOIN circles c ON c.id = i.circle_id LEFT JOIN users u ON u.id = c.owner_id
             WHERE i.invitee_user_id = %(u)s AND i.revoked_at IS NULL AND i.expires_at > now()
@@ -144,8 +146,12 @@ def _invites(conn, uid: int) -> list[dict]:
     if not rows:
         return []
     consent_ok, rules_ok = consent.agreed_at_least(conn, uid, FP.CONSENT_VERSION), rules.ok(conn, uid)
+    pushes = {n["invite_id"]: n for n in conn.execute(
+        """SELECT id, read_at, (data->>'invite_id')::int AS invite_id FROM notifications
+           WHERE user_id = %s AND kind = %s AND data ? 'invite_id'""", (uid, notes.INVITED))}
     out = []
     for r in rows:
+        push = pushes.get(r["id"])
         scopes = card_scopes(r)
         owner = r["owner_name"] or L("圈主", "The owner")
         avatar = f"/v1/users/me/inbox/invites/{r['id']}/avatar?v={r['avatar_image_id']}" if r["avatar_image_id"] else None
@@ -156,8 +162,8 @@ def _invites(conn, uid: int) -> list[dict]:
             "invite": {"invite_id": r["id"], "circle_name": r["name"], "avatar": avatar, "owner_name": r["owner_name"],
                        "members": r["members"], "expires_at": r["expires_at"], "default_scopes": scopes,
                        "shares": [{"scope": s, "label": L(*P.SCOPE_LABELS[s])} for s in scopes],
-                       "consent_ok": consent_ok, "rules_ok": rules_ok},
-            "_read": False, "_src": ("state", None)})
+                       "consent_ok": consent_ok, "rules_ok": rules_ok, "can_mute": r["origin"] == "member"},
+            "_read": bool(push and push["read_at"]), "_src": ("notification", push["id"]) if push else ("state", None)})
     return out
 
 
@@ -188,8 +194,8 @@ def _shown_comments(conn, uid: int, post_ids: set[int]) -> dict[tuple[int, int],
 def _circle_notifications(conn, uid: int) -> list[dict]:
     rows = conn.execute(
         """SELECT id, kind, title, body, title_en, body_en, url, data, created_at, read_at FROM notifications
-           WHERE user_id = %s AND kind ~ '^circle([._]|$)' AND created_at > now() - make_interval(days => %s)
-           ORDER BY created_at DESC, id DESC LIMIT %s""", (uid, P.KEEP_DAYS, P.SOURCE_MAX)).fetchall()
+           WHERE user_id = %s AND kind ~ '^circle([._]|$)' AND kind <> %s AND created_at > now() - make_interval(days => %s)
+           ORDER BY created_at DESC, id DESC LIMIT %s""", (uid, notes.INVITED, P.KEEP_DAYS, P.SOURCE_MAX)).fetchall()
 
     def number(row: dict, key: str) -> int | None:
         value = (row["data"] or {}).get(key)
@@ -206,8 +212,22 @@ def _circle_notifications(conn, uid: int) -> list[dict]:
 
     en = is_en()
     return [{"id": f"notification:{r['id']}", "type": "circle", "kind": r["kind"], "at": r["created_at"],
-             "title": _pick(r, "title", en), "body": _pick(r, "body", en), "url": r["url"],
+             "title": _pick(r, "title", en), "body": _pick(r, "body", en), "url": r["url"], "circle_id": number(r, "circle_id"),
              "_read": r["read_at"] is not None, "_src": ("notification", r["id"])} for r in rows if still_shown(r)]
+
+
+def _other_notifications(conn, uid: int) -> list[dict]:
+    """Categories system and ai_card (notify/params.py), the second only while its own flag is on for the person."""
+    pattern = "^(system|ai_card)([._]|$)" if flags.enabled(conn, uid, P.AI_CARDS_FLAG) else "^system([._]|$)"
+    rows = conn.execute(
+        """SELECT id, kind, title, body, title_en, body_en, url, created_at, read_at FROM notifications
+           WHERE user_id = %s AND kind ~ %s AND kind <> ALL(%s) AND created_at > now() - make_interval(days => %s)
+           ORDER BY created_at DESC, id DESC LIMIT %s""",
+        (uid, pattern, list(P.NOT_LISTED_KINDS), P.KEEP_DAYS, P.SOURCE_MAX)).fetchall()
+    en = is_en()
+    return [{"id": f"notification:{r['id']}", "type": notify_core.category_of(r["kind"]), "kind": r["kind"], "at": r["created_at"],
+             "title": _pick(r, "title", en), "body": _pick(r, "body", en), "url": r["url"],
+             "_read": r["read_at"] is not None, "_src": ("notification", r["id"])} for r in rows]
 
 
 # ---------------------------------------------------------------- the list
@@ -217,7 +237,7 @@ def _order(item: dict) -> tuple[datetime, str]:
 
 def _collect(conn, uid: int) -> list[dict]:
     """Everything in the person's inbox, newest first (nothing they hid); `read` set, `_src` says where it is kept."""
-    items = _notices(conn, uid) + _whatsnew(conn, uid)
+    items = _notices(conn, uid) + _whatsnew(conn, uid) + _other_notifications(conn, uid)
     if _circles_reach(conn, uid):
         items += _invites(conn, uid) + _circle_notifications(conn, uid)
     state = {r["item_id"]: r for r in conn.execute("SELECT item_id, read_at, hidden_at FROM inbox_item_state WHERE user_id = %s",
@@ -352,6 +372,18 @@ def ignore(conn: psycopg.Connection, uid: int, invite_id: int) -> None:
     """Decline (friends/store.decline): the card goes and the invite stops working. Nobody else can see that it happened."""
     if not _circles_reach(conn, uid) or not friends.decline(conn, uid, invite_id):
         raise _invite_gone()
+
+
+def mute_sender(conn: psycopg.Connection, uid: int, invite_id: int) -> None:
+    """「不再接收此人的邀请」 on a card: closes it and every other open invite from its maker (friends/direct.py). Only for an invite
+    someone sent by hand: a referral or the admin's is answered with 「忽略」. The maker is not told and is not named here."""
+    if not _circles_reach(conn, uid):
+        raise _invite_gone()
+    row = conn.execute("""SELECT created_by FROM circle_invites WHERE id = %s AND invitee_user_id = %s AND origin = 'member'
+                           AND revoked_at IS NULL AND expires_at > now()""", (invite_id, uid)).fetchone()
+    if row is None or row["created_by"] is None:
+        raise _invite_gone()
+    direct.mute(conn, uid, row["created_by"])
 
 
 def invite_avatar(conn: psycopg.Connection, uid: int, invite_id: int) -> dict | None:

@@ -24,9 +24,11 @@ from .. import auth, i18n, wordfilter
 from ..avatars import urls as avatar_store
 from ..profile import consent
 from ..web import login_codes
-from . import blocks, params as P, remarks, trail
+from . import blocks, notes, params as P, remarks, trail
 
 CODE_LENGTH = 10
+# circle_invites.origin of an addressed invite -> circle_members.join_via (migration 1120)
+JOIN_VIA = {"referral": "referral", "member": "member_invite", "admin": "admin_invite"}
 
 
 class FriendsError(Exception):
@@ -262,7 +264,7 @@ def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, in
         if hit is not None:
             return {**circle_view(conn, uid, hit["circle_id"]), **({"already": True} if hit["already"] else {})}
     if invite_id is not None:
-        inv = conn.execute("""SELECT id, circle_id, created_by FROM circle_invites WHERE id = %s AND invitee_user_id = %s
+        inv = conn.execute("""SELECT id, circle_id, created_by, origin FROM circle_invites WHERE id = %s AND invitee_user_id = %s
                               AND revoked_at IS NULL AND expires_at > now()""", (invite_id, uid)).fetchone()
     else:
         inv = _live_code(conn, code or "")
@@ -276,10 +278,10 @@ def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, in
         raise FriendsError(409, f"最多加入 {P.MAX_CIRCLES_PER_USER} 个圈子")
     if members_and_waiting(conn, cid) >= max_members(circle):
         raise FriendsError(409, f"这个圈子已满（最多 {max_members(circle)} 人）")
-    # an addressed invite only comes from a referral sign-up (referral_invites); its maker is the referral code's owner
+    # an addressed invite says where it came from (migration 1120); a referral's maker is the referral code's owner
+    via = JOIN_VIA.get(inv["origin"], "referral") if invite_id is not None else "invite_code"
     conn.execute("""INSERT INTO circle_members (circle_id, user_id, scopes, join_via, invite_id, invited_by)
-                    VALUES (%s, %s, %s, %s, %s, %s)""",
-                 (cid, uid, scopes, "referral" if invite_id is not None else "invite_code", inv["id"], inv["created_by"]))
+                    VALUES (%s, %s, %s, %s, %s, %s)""", (cid, uid, scopes, via, inv["id"], inv["created_by"]))
     if invite_id is not None:   # an addressed invite is used up
         conn.execute("UPDATE circle_invites SET revoked_at = now(), used_count = used_count + 1 WHERE id = %s", (inv["id"],))
     else:
@@ -288,6 +290,8 @@ def join(conn: psycopg.Connection, uid: int, scopes, code: str | None = None, in
     conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE circle_id = %s AND invitee_user_id = %s
                     AND revoked_at IS NULL""", (cid, uid))
     sync_user(conn, uid)
+    notes.invites_settled(conn, uid, circle_id=cid)
+    notes.member_joined(conn, uid, cid, invite_maker=inv["created_by"] if invite_id is not None else None)
     return circle_view(conn, uid, cid)
 
 
@@ -353,12 +357,16 @@ def dissolve(conn: psycopg.Connection, uid: int, circle_id: int) -> None:
 
 
 def decline(conn: psycopg.Connection, uid: int, invite_id: int) -> bool:
-    return conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE id = %s AND invitee_user_id = %s
+    done = conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE id = %s AND invitee_user_id = %s
                            AND revoked_at IS NULL RETURNING id""", (invite_id, uid)).fetchone() is not None
+    if done:
+        notes.invites_settled(conn, uid, invite_id=invite_id)
+    return done
 
 
 def decline_all(conn: psycopg.Connection, uid: int) -> int:
     """「全部忽略」 (#269 P2): every open invite addressed to the caller; returns how many."""
+    notes.invites_settled(conn, uid)
     return len(conn.execute("""UPDATE circle_invites SET revoked_at = now() WHERE invitee_user_id = %s
                                AND revoked_at IS NULL RETURNING id""", (uid,)).fetchall())
 
@@ -435,8 +443,8 @@ def referral_invites(conn: psycopg.Connection, inviter_id: int, invitee_id: int)
     if not conn.execute("""SELECT 1 FROM circle_invites WHERE circle_id = %s AND invitee_user_id = %s
                            UNION ALL SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s""",
                         (cid, invitee_id, cid, invitee_id)).fetchone():
-        conn.execute("""INSERT INTO circle_invites (circle_id, created_by, invitee_user_id, expires_at)
-                        VALUES (%s, %s, %s, now() + make_interval(days => %s))""",
+        conn.execute("""INSERT INTO circle_invites (circle_id, created_by, invitee_user_id, expires_at, origin)
+                        VALUES (%s, %s, %s, now() + make_interval(days => %s), 'referral')""",
                      (cid, inviter_id, invitee_id, P.REFERRAL_INVITE_DAYS))
     return cid
 

@@ -51,6 +51,7 @@ struct MainTabView: View {
     }
     .tint(Palette.text)
     .circleRouting(selection: $selection)                                                  // N7: notification / link → 朋友
+    .inboxRouting(selection: $selection)                                                   // #359: push / link → 我 → 消息
     .overlay { JarvisLayer(tab: $selection) }                                             // N6
     .environment(\.askAI, AskAIAction { p in Task { @MainActor in JarvisRouter.ask(prompt: p) } })   // N6
     .devTab($selection)                                                                    // N5: Debug screenshots

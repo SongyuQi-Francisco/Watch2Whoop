@@ -141,6 +141,7 @@ def add_circle(dsn, owner, name="示例圈", members=(), scopes=None, avatar=Non
         cid = circle_admin.create_circle(conn, name, owner, avatar=avatar, default_scopes=scopes, max_members=max_members)["id"]
         for m in members:
             friends.join(conn, m, list(FP.DEFAULT_SCOPES), code=friends.mint_invite(conn, owner, cid)["code"])
+        conn.execute("DELETE FROM notifications WHERE kind = 'circle.joined'")   # setting up the circle is not what these tests read
     return cid
 
 
@@ -440,7 +441,7 @@ def test_card_gives_public_circle_facts_only(client, dsn, world):
     assert item["id"] == f"invite:{inv}" and item["type"] == "circle_invite" and item["title"] == "Ben 邀请你加入「示例跑团」"
     card = item["invite"]
     assert set(card) == {"invite_id", "circle_name", "avatar", "owner_name", "members", "expires_at", "default_scopes", "shares",
-                         "consent_ok", "rules_ok"}
+                         "consent_ok", "rules_ok", "can_mute"}
     assert card["invite_id"] == inv and card["circle_name"] == "示例跑团" and card["owner_name"] == "Ben" and card["members"] == 3
     assert card["default_scopes"] == list(FP.DEFAULT_SCOPES)
     assert [s["label"] for s in card["shares"]] == ["评分", "睡眠", "训练", "饮食达标率"]

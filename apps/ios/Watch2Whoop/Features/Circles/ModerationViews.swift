@@ -87,6 +87,7 @@ struct BlockedListView: View {
         }
         Text(tr("互相看不到，圈子共享暂停", "Hidden both ways; circle sharing paused"))
           .font(Typo.caption).foregroundColor(Palette.text2).fixedSize(horizontal: false, vertical: true)
+        InviteMutesSection(store: store)
       } else {
         ProgressView().tint(Palette.text2).frame(maxWidth: .infinity).padding(.vertical, 30)
       }

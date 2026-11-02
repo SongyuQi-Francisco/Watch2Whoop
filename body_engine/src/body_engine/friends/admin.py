@@ -1,5 +1,5 @@
 """Admin side of circles (#199, CLI `body-engine circle-admin`): make a circle for a group (a club, a society) with an owner,
-a member cap and default scopes, and set or clear its avatar. Activation codes for it are in codes.py.
+a member cap and default scopes, set or clear its avatar, invite people by account. Activation codes for it are in codes.py.
 
 The owner joins the circle as its first member and shares its default scopes with everyone who joins later: pick an owner
 who agreed to that (usually the deployer's own account, or the group's organiser). The owner must have given the circle
@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import psycopg
 
+from .. import auth
 from ..images import store as images
-from . import params as P, store
+from ..profile import consent
+from ..rollout import flags
+from . import blocks, notes, params as P, store
 
 MAX_MEMBERS_LIMIT = 1000
 
@@ -49,6 +52,55 @@ def set_avatar(conn: psycopg.Connection, circle_id: int, data: bytes | None, by_
     if c["avatar_image_id"]:
         images.delete(conn, c["avatar_image_id"])
     return image_id
+
+
+def invite_users(conn: psycopg.Connection, circle_id: int, user_ids, days: int = P.ADMIN_INVITE_DAYS) -> list[dict]:
+    """One invite card each, from the circle's owner, in 「我 → 消息」 (issue #359): no code to pass on. Only active accounts with the
+    consent that has the circle clause. Safe to run again: someone already invited (also someone who declined, until the invite
+    expires) or already in the circle is left alone. [{user_id, status}]: invited / member / already_invited / no_account /
+    not_active / no_consent / friends_off / banned / blocked / muted."""
+    if not 1 <= days <= 365:
+        raise ValueError("有效期 1–365 天")
+    circle = conn.execute("SELECT id, owner_id FROM circles WHERE id = %s FOR UPDATE", (circle_id,)).fetchone()
+    if circle is None:
+        raise ValueError(f"没有圈子 {circle_id}")
+    owner = circle["owner_id"]
+
+    def status_of(uid: int) -> str | None:
+        user = conn.execute("SELECT status FROM users WHERE id = %s", (uid,)).fetchone()
+        if user is None:
+            return "no_account"
+        if user["status"] != "active":
+            return "not_active"
+        if conn.execute("SELECT 1 FROM circle_members WHERE circle_id = %s AND user_id = %s", (circle_id, uid)).fetchone():
+            return "member"
+        if conn.execute("""SELECT 1 FROM circle_invites WHERE circle_id = %s AND invitee_user_id = %s AND expires_at > now()
+                           LIMIT 1""", (circle_id, uid)).fetchone():
+            return "already_invited"
+        if not consent.agreed_at_least(conn, uid, P.CONSENT_VERSION):
+            return "no_consent"
+        if not flags.targeted(conn, uid, auth.CIRCLES_FLAG):
+            return "friends_off"
+        if blocks.banned(conn, uid):
+            return "banned"
+        if blocks.pair_blocked(conn, uid, owner):
+            return "blocked"
+        if conn.execute("SELECT 1 FROM circle_invite_mutes WHERE user_id = %s AND muted_user_id = %s", (uid, owner)).fetchone():
+            return "muted"
+        return None
+
+    out = []
+    for uid in dict.fromkeys(user_ids):
+        status = status_of(uid)
+        if status is None:
+            row = conn.execute(
+                """INSERT INTO circle_invites (circle_id, created_by, invitee_user_id, expires_at, origin)
+                   VALUES (%s, %s, %s, now() + make_interval(days => %s), 'admin') RETURNING id""",
+                (circle_id, owner, uid, days)).fetchone()
+            notes.invited(conn, uid, owner, circle_id, row["id"])
+            status = "invited"
+        out.append({"user_id": uid, "status": status})
+    return out
 
 
 def list_circles(conn: psycopg.Connection) -> list[dict]:
